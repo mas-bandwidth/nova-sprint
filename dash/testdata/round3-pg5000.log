@@ -1,0 +1,12 @@
+=== RUN   TestColdreadFunctionalPG5000
+    coldread_test.go:444: pg 5000: worst advance=5.983176ms snapshots=1
+--- PASS: TestColdreadFunctionalPG5000 (1.72s)
+PASS
+ok  	github.com/mas-bandwidth/nova-sprint/dash	1.727s
+normal=0
+=== RUN   TestColdreadFunctionalPG5000
+    coldread_test.go:444: pg 5000: worst advance=15.614372ms snapshots=1
+--- PASS: TestColdreadFunctionalPG5000 (2.67s)
+PASS
+ok  	github.com/mas-bandwidth/nova-sprint/dash	3.692s
+race=0

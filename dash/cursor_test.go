@@ -2,6 +2,7 @@ package dash
 
 import (
 	"context"
+	"errors"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"reflect"
 	"testing"
@@ -158,5 +159,26 @@ func TestCursorColdStartIdle(t *testing.T) {
 	}
 	if snap.Seq != before {
 		t.Fatal("idle poll wrote cursor again")
+	}
+}
+
+type blockingStore struct{ store.Store }
+
+func (s blockingStore) Events(ctx context.Context, after int64, max int) ([]store.Event, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func TestAdvanceDeadline(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	c, e := New(ctx, f)
+	if e != nil {
+		t.Fatal(e)
+	}
+	start := time.Now()
+	e = c.Advance(ctx, blockingStore{f})
+	elapsed := time.Since(start)
+	if !errors.Is(e, context.DeadlineExceeded) || elapsed > time.Second {
+		t.Fatalf("error=%v elapsed=%s", e, elapsed)
 	}
 }

@@ -2,23 +2,25 @@ package dash
 
 import (
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"math/big"
 	"sort"
 	"time"
 )
 
 type workRow struct {
-	Blocked  int                `json:"blocked"`
-	Waiting  int                `json:"waiting"`
-	Ready    int                `json:"ready"`
-	Working  int                `json:"working"`
-	Review   int                `json:"review"`
-	Fix      int                `json:"fix"`
-	Merging  int                `json:"merging"`
-	Landed   int                `json:"landed"`
-	Fail     int                `json:"fail"`
-	Cost     *float64           `json:"cost"`
-	Unpriced bool               `json:"unpriced"`
-	ByTier   map[string]float64 `json:"cost_by_tier"`
+	tierMicros map[string]*big.Int
+	Blocked    int                `json:"blocked"`
+	Waiting    int                `json:"waiting"`
+	Ready      int                `json:"ready"`
+	Working    int                `json:"working"`
+	Review     int                `json:"review"`
+	Fix        int                `json:"fix"`
+	Merging    int                `json:"merging"`
+	Landed     int                `json:"landed"`
+	Fail       int                `json:"fail"`
+	Cost       *float64           `json:"cost"`
+	Unpriced   bool               `json:"unpriced"`
+	ByTier     map[string]float64 `json:"cost_by_tier"`
 }
 type fleetRow struct {
 	Status   string   `json:"status"`
@@ -70,12 +72,12 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 	friends := map[string]*fleetRow{}
 	costs := map[string]map[string]float64{}
 	streams := []streamLine{}
-	readers := map[string]map[string]int{}
-	merge := map[string]map[string]int{}
+	readers := map[string]numberCells{}
+	merge := map[string]numberCells{}
 	for n, v := range s.Streams {
-		work[n] = &workRow{ByTier: map[string]float64{}}
+		work[n] = &workRow{ByTier: map[string]float64{}, tierMicros: map[string]*big.Int{}}
 		costs[n] = map[string]float64{}
-		merge[n] = map[string]int{}
+		merge[n] = numberCells{}
 		state := "waiting"
 		if v.Held {
 			state = "held"
@@ -101,6 +103,9 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 				countRead(readers, c)
 			}
 		}
+	}
+	for _, w := range work {
+		finishCosts(w)
 	}
 	setStreamStates(streams, work)
 	for _, f := range fleet {
@@ -142,9 +147,9 @@ func mapRows(rows map[string]store.Row, fleet, friends map[string]*fleetRow) {
 		}
 	}
 }
-func countRead(readers map[string]map[string]int, c store.Card) {
+func countRead(readers map[string]numberCells, c store.Card) {
 	if readers[c.Holder] == nil {
-		readers[c.Holder] = map[string]int{}
+		readers[c.Holder] = numberCells{}
 	}
 	switch c.State {
 	case "ready":
@@ -230,7 +235,10 @@ func countCost(w *workRow, c store.Card, costs map[string]float64) {
 		w.Cost = &z
 	}
 	*w.Cost += d
-	w.ByTier[c.Tier] += d
+	if w.tierMicros[c.Tier] == nil {
+		w.tierMicros[c.Tier] = new(big.Int)
+	}
+	w.tierMicros[c.Tier].Add(w.tierMicros[c.Tier], big.NewInt(c.Cost))
 	costs["total_cost"] += d
 	if c.Kind == "read" {
 		costs["read_cost"] += d

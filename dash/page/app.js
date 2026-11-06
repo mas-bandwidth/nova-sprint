@@ -276,6 +276,7 @@ function streamOrder(d) {
 }
 function streamStatus(state, c, total) {
   if (total > 0 && c.landed === total) return ["landed", "done"];
+  if (total > 0 && c.fail > 0 && c.landed + c.fail === total) return ["fail", "failed"];
   if (state === "stopped") return ["stopped", "critical"];
   // held only for a hold set on the stream (the server's State "held", hold <stream>): cards that all
   // wait on their needs are waiting, never held (the owner 2026-10-13: "don't show held on a work stream
@@ -361,7 +362,7 @@ function renderStreams(d) {
     r.node.classList.toggle("group-start", prevRank !== null && rank(k) !== prevRank);
     prevRank = rank(k);
     setText(r.nameT, k);
-    var tone = { landed: "done", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
+    var tone = { landed: "done", fail: "failed", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
     setPill(r.pill, status, tone, status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
     // an archived stream shown is marked: the total row leaves it out
     var tags = arch[k] ? ["archived"] : []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
@@ -384,6 +385,7 @@ function renderStreams(d) {
   // the "landed" header is centred over its n / total cell: same width as the cell, text centred
   var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
   if (lw && box._head.children[LANDED_AT].style.width !== lw) box._head.children[LANDED_AT].style.width = lw;
+  box.closest("section").classList.toggle("no-blocked", sum.blocked === 0);
   return { sum: sum, all: all };
 }
 
@@ -403,6 +405,7 @@ function renderOverall(sum, all) {
     });
   }
   STATES.forEach(function (st) { setText(lg._items[st], st + " " + sum[st]); });
+  lg._items.blocked.parentNode.hidden = !sum.blocked;
 }
 window.addEventListener("resize", function () { if (overallLast) renderOverall(overallLast.sum, overallLast.all); });
 
@@ -640,7 +643,7 @@ function renderHero(d, s, ft) {
   setTitle($("tput"), throughput == null ? "needs ten minutes of samples" : "over the last " + Math.round(throughputMinutes) + " min");
   
   setMachine(d.machine || (cacheHealthy ? "running" : ""));
-  setText($("coord"), d.coordinator || ""); $("coord-chip").hidden = !d.coordinator;
+  setText($("coord"), d.coordinator || "-"); $("coord-chip").hidden = false;
   // the running sprint server's version (server.py reads it from the process; absent when unknown) and the epoch (the owner ~01:20Z)
   var vc = $("ver-chip"); if (vc) { vc.hidden = !d.server_version; if (d.server_version) setText($("ver"), d.server_version); }
   setText($("epoch"), d.epoch != null ? d.epoch : "-");
@@ -648,7 +651,7 @@ function renderHero(d, s, ft) {
 }
 
 // ---------- poll loop ----------
-var cacheHealthy = false, lastMachine = "";
+var cacheHealthy = false, lastMachine = "", lastAge = Infinity, ageAt = performance.now();
 var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0;
 // Readers and merge are hidden by default; ?all=1 shows them.
 var SHOW_ALL = /(?:^|[?&])all=1(?:&|$)/.test(location.search);
@@ -916,7 +919,9 @@ function render(d) {
 // `where --json` snapshot.
 function accept(j) {
   if (!j) return;
-  cacheHealthy = j.ok && Date.now() - Date.parse(j.fetchedAt) < 2000;
+  lastAge = j.dataAgeSeconds == null ? Infinity : Number(j.dataAgeSeconds);
+  ageAt = performance.now();
+  cacheHealthy = !!j.ok && isFinite(lastAge) && lastAge < 2;
   var d = j.tables ? j : j.data;
   lastMachine = d && d.machine || "";
   setMachine(lastMachine || (cacheHealthy ? "running" : ""));
@@ -935,7 +940,7 @@ function accept(j) {
 // hold a slot. A failure changes nothing on the page.
 var MAX_IN_FLIGHT = 2, FETCH_TIMEOUT_MS = 10000, pollTimer = null;
 function poll() {
-  if (Date.now() - shownAt >= 2000) { cacheHealthy = false; setMachine(lastMachine); }
+  if (lastAge + (performance.now() - ageAt) / 1000 >= 2) { cacheHealthy = false; setMachine(lastMachine); }
   if (inFlight >= MAX_IN_FLIGHT) { console.debug("poll: tick skipped, " + inFlight + " fetches in flight"); return; }
   inFlight++;
   var ctl = typeof AbortController === "function" ? new AbortController() : null;

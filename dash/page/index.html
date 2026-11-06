@@ -192,6 +192,7 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .progress-card { background: var(--surface); border: 1px solid var(--border); border-radius: 1.5rem; padding: 2rem 3rem; margin-bottom: 3rem; }
 .progress-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 1rem 2rem; margin-bottom: 1.5rem; }
 .legend { display: flex; gap: 0.5rem 2rem; flex-wrap: wrap; font-size: 1.5rem; color: var(--text-2); }
+.legend span[hidden] { display: none; }
 .legend span { display: inline-flex; align-items: center; gap: 0.75rem; }
 .sw { width: 1rem; height: 1rem; border-radius: 1px; display: inline-block; flex: none; }
 
@@ -260,6 +261,8 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .pill.critical { background: var(--critical-tint); } .pill.critical .dot { background: var(--critical); }
 .pill.neutral .dot { background: var(--text-3); }
 .pill.done .dot { background: var(--s-landed); }
+.pill.failed { background: var(--s-fail); color: var(--text); }
+.pill.failed .dot { background: var(--s-fail); }
 .pill.active .dot { background: var(--s-working); }
 .pill.dim { color: var(--text-3); } .pill.dim .dot { background: var(--text-3); }
 
@@ -354,6 +357,8 @@ footer a:hover { color: var(--text); }
    rule (the panel's border colour) between groups. */
 .streams .row { --pad: 2rem; --gap: clamp(1rem, calc(3vw - 2.75rem), 2.5rem); --S: 9.75rem; column-gap: var(--gap); padding: 0 var(--pad);
   grid-template-columns: var(--name-w) var(--status-w) repeat(7, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }
+.streams.no-blocked .row { --gap: clamp(2.1875rem, calc(0.625vw + 1.40625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }
+.streams.no-blocked .row > :nth-child(3) { display: none; }
 .streams .row > :nth-child(10) { grid-column: span 2; justify-self: end; }
 .streams .row.head > :nth-child(10) { text-align: center; }  /* width set by app.js to the n / total cell's */
 .streams .row > :nth-child(2) { justify-self: end; }

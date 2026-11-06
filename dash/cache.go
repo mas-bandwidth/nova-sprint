@@ -14,7 +14,7 @@ import (
 // Cache starts at one consistent snapshot and applies every later event.
 type Cache struct {
 	mu          sync.RWMutex
-	advanceMu   sync.Mutex
+	gate        chan struct{}
 	state       store.Snapshot
 	at          time.Time
 	err         error
@@ -31,7 +31,7 @@ func New(ctx context.Context, s store.Store) (*Cache, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Cache{state: snap, at: time.Now(), now: time.Now, pending: true}
+	c := &Cache{state: snap, at: time.Now(), now: time.Now, pending: true, gate: make(chan struct{}, 1)}
 	c.view = mapSnapshot(c.state, c.at)
 	c.samples = []sample{{c.at, c.view.Landed}}
 	return c, nil
@@ -39,8 +39,14 @@ func New(ctx context.Context, s store.Store) (*Cache, error) {
 
 // Advance reads a committed prefix in pages and keeps the last good copy on error.
 func (c *Cache) Advance(ctx context.Context, s store.Store) error {
-	c.advanceMu.Lock()
-	defer c.advanceMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	select {
+	case c.gate <- struct{}{}:
+		defer func() { <-c.gate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	start := c.clock()
 	if err := c.readAvailable(ctx, s); err != nil {
 		return c.failed(err)

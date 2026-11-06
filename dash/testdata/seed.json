@@ -1,10 +1,10 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "50add03585c9",
+  "build": "d2f531b6480f",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "50add03585c9",
+    "build": "d2f531b6480f",
     "done": false,
     "epoch": 1,
     "landed": 0,
@@ -22,18 +22,18 @@
     "tables": {
       "fleet": {
         "w": {
-          "blocker_working": 0,
-          "critical_working": 0,
-          "done": 0,
-          "failed": 0,
-          "fix_working": 0,
-          "ok": 0,
-          "okpct": null,
-          "reads_working": 0,
-          "ready": 0,
+          "blocker_working": "0",
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "ok": "0",
+          "okpct": "-",
+          "reads_working": "0",
+          "ready": "0",
           "status": "down",
-          "width": 2,
-          "working": 0
+          "width": "2",
+          "working": "0"
         }
       },
       "friends": {},
@@ -43,18 +43,17 @@
       "readers": {},
       "work": {
         "alpha": {
-          "blocked": 0,
-          "cost": null,
+          "blocked": "0",
+          "cost": "-",
           "cost_by_tier": {},
-          "fail": 0,
-          "fix": 0,
-          "landed": 0,
-          "merging": 0,
-          "ready": 0,
-          "review": 0,
-          "unpriced": false,
-          "waiting": 1,
-          "working": 0
+          "fail": "0",
+          "fix": "0",
+          "landed": "0",
+          "merging": "0",
+          "ready": "0",
+          "review": "0",
+          "waiting": "1",
+          "working": "0"
         }
       }
     }

@@ -94,7 +94,7 @@ func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
 func Handler(c *Cache) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/sprint", func(w http.ResponseWriter, r *http.Request) { dataHandler(c, w, r) })
-	for _, path := range []string{"/stream/", "/api/stream/", "/api/history"} {
+	for _, path := range []string{"/stream/", "/api/stream/", "/api/history", "/events"} {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusFound) })
 	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
