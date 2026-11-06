@@ -850,3 +850,28 @@ func TestFunctionalLockTimeoutIsKnown(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found)
 }
+
+// Round 15: an event stores its after-image once, in after; the receipt
+// column does not repeat it, and Replay, a repeated Apply and Events still
+// return the receipt Apply gave, after-image included.
+func TestFunctionalReceiptAfterStoredOnce(t *testing.T) {
+	t.Parallel()
+	h, p, dsn := pgHarness(t)
+	h.seed()
+	o := h.op("add", []Expect{CardAbsent{"k1"}}, PutCard{Tier: "pro", Kind: "producer", ID: "k1", Stream: "s1"}, SetCardState{"k1", "ready"}, SetCardReason{"k1", "first"})
+	r := h.ok(o)
+	require.NotNil(t, r.After)
+	var inReceipt, inAfter bool
+	require.NoError(t, connect(t, dsn).QueryRow(context.Background(), "SELECT receipt ? 'after', after IS NOT NULL FROM sprint.events WHERE op = $1", o.ID).Scan(&inReceipt, &inAfter))
+	assert.False(t, inReceipt, "the receipt column does not repeat the after-image")
+	assert.True(t, inAfter)
+	again, ok, err := p.Replay(context.Background(), o.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, r, again)
+	applied, err := p.Apply(context.Background(), o)
+	require.NoError(t, err)
+	assert.Equal(t, r, applied)
+	ev := h.events()
+	assert.Equal(t, r, ev[len(ev)-1].Receipt)
+}

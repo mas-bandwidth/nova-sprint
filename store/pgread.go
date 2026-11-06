@@ -170,7 +170,7 @@ func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, erro
 		if e.After, err = readState(after); err != nil {
 			return nil, fmt.Errorf("store: events: after-image of seq %d: %w", e.Seq, err)
 		}
-		if err := json.Unmarshal(rec, &e.Receipt); err != nil {
+		if e.Receipt, err = readReceipt(rec, e.After); err != nil {
 			return nil, fmt.Errorf("store: events: receipt of %s: %w", e.Op, err)
 		}
 		out = append(out, e)
@@ -319,17 +319,23 @@ func list0(l []string) []string {
 	return l
 }
 
-func (t *pgTx) replay(opID string) (Receipt, bool, error) { return replayTx(t.ctx, t.tx, opID) }
+func (t *pgTx) replay(opID string) (Receipt, bool, error) {
+	return scanReplay(t.tx.QueryRow(t.ctx, replaySQL, opID))
+}
 
 func (t *pgTx) discard() error {
 	_, err := t.tx.Exec(t.ctx, "ROLLBACK TO SAVEPOINT writes")
 	return err
 }
 
+// appendEvent inserts the op's event. The after-image is stored once, in
+// after; the receipt column leaves it out, and readReceipt puts it back.
 func (t *pgTx) appendEvent(e Event) error {
+	rec := e.Receipt
+	rec.After = nil
 	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-		e.Seq, e.Op, e.Actor, e.Kind, e.Accepted, e.Reason, jsonArg(e.Before), jsonArg(e.After), string(encode(e.Receipt)), e.At, e.Epoch, e.Policy)
+		e.Seq, e.Op, e.Actor, e.Kind, e.Accepted, e.Reason, jsonArg(e.Before), jsonArg(e.After), string(encode(rec)), e.At, e.Epoch, e.Policy)
 	return err
 }
 
@@ -338,4 +344,19 @@ func (t *pgTx) putPolicy(p PolicyVersion) error {
 		ON CONFLICT (version) DO UPDATE SET active = EXCLUDED.active`,
 		p.Version, p.Kind, p.Name, p.Body, p.Active, p.Actor, p.At)
 	return err
+}
+
+// readReceipt is a stored receipt with its after-image, the event's after
+// column (shared with the event, not copied: an event's images are read
+// only). A receipt stored before round 15 carries its own after, the same
+// image.
+func readReceipt(b []byte, after *State) (Receipt, error) {
+	var r Receipt
+	if err := json.Unmarshal(b, &r); err != nil {
+		return Receipt{}, err
+	}
+	if after != nil {
+		r.After = after
+	}
+	return r, nil
 }
