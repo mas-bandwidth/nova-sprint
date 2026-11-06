@@ -93,8 +93,22 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   cursor is a committed prefix: `Events(afterSeq)` never skips an event.
   `before` and `after` hold the full row of each touched stream, card, row or
   policy version, so folding the accepted events in `seq` order from the first
-  event rebuilds the snapshot. The events are layer 4's outbox: a deal is an
-  accepted event, and the bus push reads from a cursor.
+  event rebuilds the snapshot. `receipt` holds the receipt without its
+  after-image (round 15): Replay, a repeated Apply and Events rebuild
+  `Receipt.After` from a copy of the event's `after` column, so a receipt
+  reads as it did; a row written before round 15, whose receipt carries its
+  own `after`, still reads the same. The events are layer 4's outbox: a deal
+  is an accepted event, and the bus push reads from a cursor.
+- Indexes beyond the primary keys (`events.op` is unique), each serving one
+  store query that would otherwise scan the epoch's cards (rounds 15 and
+  16): `cards_working (epoch, holder) WHERE state = 'working'`, the width
+  count on every move into working and every width write (readers' per-row
+  working counts use it too); `cards_live (epoch, holder, id COLLATE "C")
+  WHERE state IN ('ready', 'working')`, the tier check on a tiers write. Every
+  other store read is by a primary key or a prefix of one (a snapshot's
+  epoch), and the foreign keys and trigger lookups reach primary keys, so
+  nothing else is indexed; a reader that needs another index (a dashboard
+  query by stream or state) names it in its own layer.
 - `sprint.policy`: `version serial`, `kind text` (`script` or `data`),
   `name text`, `body text`, `active boolean`, `actor text`, `at timestamptz`.
   Global, not epoch-scoped: a clear keeps the policy. At most one version is
@@ -482,8 +496,8 @@ Apply latency under the writer lock and the incremental read both measured.
 
 ## Measured at the bar (2026-11-06, hetzner2, PostgreSQL 18.6, fsync on, bench shared with TLC)
 
-After round 15 (indexes on every filtered column, each event's after-image
-stored once), 5,000 producers with their consumers, 125,000 events:
+After round 15 (indexes, each event's after-image stored once; round 16
+kept the two indexes a store query uses and re-measured on a quiet bench, below), 5,000 producers with their consumers, 125,000 events:
 tick 119 ms median, 153 max (was 327 / 387); tick while 200 reports/s arrive
 132 median, 178 max; report median wait 2.1 ms; 2,000-report burst 2.8 s;
 dashboard refresh from the local copy 24 ms; incremental read per tick 13

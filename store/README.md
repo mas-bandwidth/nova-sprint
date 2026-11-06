@@ -106,7 +106,10 @@ default: // accepted: r.Seq is the event, r.After the touched rows
    than it opened. A consumer's attempt is fixed at add by the
    store alone (the schema cannot tell the store's writes from a caller's). `of` is the
    one column besides `holder` that is NULL for "none" (the foreign key needs
-   it); the Go side reads both as `""`.
+   it); the Go side reads both as `""`. Beyond the primary keys there are two
+   indexes, each for one store query: `cards_working` (working cards per
+   holder: the width count) and `cards_live` (a row's ready or working
+   consumers: the tier check).
 5. The log matches the state: folding every accepted event from the first
    (`Rebuild`) gives the snapshot, policy included. Rebuild needs every event,
    so page `Events` past `MaxEvents` to the end. Nothing is deleted; a clear
@@ -114,7 +117,10 @@ default: // accepted: r.Seq is the event, r.After the touched rows
 6. A snapshot is one consistent read (one REPEATABLE READ transaction) of the
    current epoch, with the seq it was read at and the epoch. It is the
    caller's own copy: editing it, a receipt or an event never changes the
-   store.
+   store, and an event's `After` and its `Receipt.After` are two copies (the
+   receipt column stores no after-image since round 15; it is rebuilt from
+   the event's `after` column, and rows of the old shape still read the
+   same).
 7. Every condition is checked against the rows as they are when the writes
    land: Apply and Clear take one lock (`LOCK TABLE sprint.epoch`) at the
    start and hold it to commit, at READ COMMITTED. Writers run one at a time,

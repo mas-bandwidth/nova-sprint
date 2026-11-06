@@ -146,18 +146,20 @@ $$;
 CREATE OR REPLACE TRIGGER cards_fixed BEFORE INSERT OR UPDATE ON sprint.cards
     FOR EACH ROW EXECUTE FUNCTION sprint.cards_fixed();
 
--- The indexes of every column the store and its readers filter or count by
--- (the load test, store round 15: the width count was a scan of every card
--- of the epoch, once per move into working). cards_working serves width
--- (working cards per holder) and the dashboard's per-row count; cards_live
--- the tier check (a row's ready or working consumers, lowest id). No read
--- filters events by epoch, so events has no such index.
+-- The indexes beyond the primary keys, one per store query that would
+-- otherwise scan every card of the epoch (the load test, store round 15):
+--   cards_working: the width count, working cards per holder (pgTx.working,
+--     once per move into working and per width write); readers' per-row
+--     working counts use it too.
+--   cards_live: the tier check, a row's ready or working consumers, lowest id
+--     (pgTx.needed, per tiers write).
+-- Every other store read is by the primary key (epoch, id or name) or a
+-- prefix of it (a snapshot's whole epoch), and the foreign keys and the
+-- cards_fixed lookups go to a primary key, so nothing else is indexed: an
+-- index serves no store query costs every card write. Events are read by seq
+-- (primary key) and op (unique), never by epoch.
 CREATE INDEX IF NOT EXISTS cards_working ON sprint.cards (epoch, holder) WHERE state = 'working';
 CREATE INDEX IF NOT EXISTS cards_live ON sprint.cards (epoch, holder, id COLLATE "C") WHERE state IN ('ready', 'working');
-CREATE INDEX IF NOT EXISTS cards_epoch_state ON sprint.cards (epoch, state);
-CREATE INDEX IF NOT EXISTS cards_epoch_stream ON sprint.cards (epoch, stream);
-CREATE INDEX IF NOT EXISTS cards_epoch_of ON sprint.cards (epoch, "of");
-CREATE INDEX IF NOT EXISTS cards_epoch_holder ON sprint.cards (epoch, holder);
 
 -- A stream's, row's or judgement's key (TG_ARGV[0]) and epoch never change:
 -- an update that moved one would move its history with it.
@@ -265,7 +267,6 @@ CREATE TABLE IF NOT EXISTS sprint.judgements (
     CONSTRAINT judgements_closed_check CHECK ((state = 'open') = (closed_at IS NULL)),
     CONSTRAINT judgements_order_check CHECK (closed_at >= opened_at)
 );
-CREATE INDEX IF NOT EXISTS judgements_epoch_state ON sprint.judgements (epoch, state);
 CREATE OR REPLACE TRIGGER judgements_key_fixed BEFORE UPDATE ON sprint.judgements FOR EACH ROW EXECUTE FUNCTION sprint.key_fixed('id');
 
 -- A subscriber's place in the event log (the last seq it read), so a restart

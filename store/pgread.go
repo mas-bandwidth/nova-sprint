@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -346,17 +348,34 @@ func (t *pgTx) putPolicy(p PolicyVersion) error {
 	return err
 }
 
-// readReceipt is a stored receipt with its after-image, the event's after
-// column (shared with the event, not copied: an event's images are read
-// only). A receipt stored before round 15 carries its own after, the same
-// image.
+// readReceipt is a stored receipt with its after-image, a copy of the
+// event's after column (the receipt column leaves it out since round 15), so
+// an event's After and its Receipt.After are two values, as on the Fake (the
+// seventh cold read). A receipt stored before round 15 carries its own
+// after, the same image; the column's copy replaces it.
 func readReceipt(b []byte, after *State) (Receipt, error) {
 	var r Receipt
 	if err := json.Unmarshal(b, &r); err != nil {
 		return Receipt{}, err
 	}
 	if after != nil {
-		r.After = after
+		r.After = after.clone()
 	}
 	return r, nil
+}
+
+// clone is a deep copy of an image: every map and list its own.
+func (s *State) clone() *State {
+	c := *s
+	c.Streams, c.Rows, c.Policies, c.Judgements, c.Cursors = maps.Clone(s.Streams), maps.Clone(s.Rows), maps.Clone(s.Policies), maps.Clone(s.Judgements), maps.Clone(s.Cursors)
+	for k, r := range c.Rows {
+		r.Tiers = slices.Clone(r.Tiers)
+		c.Rows[k] = r
+	}
+	c.Cards = maps.Clone(s.Cards)
+	for k, v := range c.Cards {
+		v.Needs, v.After, v.Paths, v.DoneWhen = slices.Clone(v.Needs), slices.Clone(v.After), slices.Clone(v.Paths), slices.Clone(v.DoneWhen)
+		c.Cards[k] = v
+	}
+	return &c
 }
