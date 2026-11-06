@@ -34,10 +34,10 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   the snapshot shows only the current epoch's rows. Nothing is deleted.
 - `sprint.streams`: `name text`, `repo text`, `base text`, `held boolean`,
   `pos integer`, `epoch integer`. Primary key `(epoch, name)`.
-- `sprint.cards`: `id text`, `kind text` (`producer`, `work`, `read`),
+- `sprint.cards`: `id text`, `kind text` (`producer`, `sentinel`, `work`, `read`),
   `of text` (the producer a consumer belongs to; empty on a producer),
   `stream text`, `state text`, `gen integer`, `attempt integer`,
-  `score integer`, `needs text[]`, `holder text` (nullable), `author text`,
+  `score integer`, `needs text[]` (hard: cannot start until these landed), `after text[]` (soft: may start any time, cannot land until these landed; v1's land order), `holder text` (nullable), `author text`,
   `branch text`, `base_sha text`, `head text`, `pr integer`, `result text`
   (`""`, `ok`, `fix`, `fail`), `brief text`, `reason text`, `epoch integer`.
   Primary key `(epoch, id)`. Every column but `holder` is `NOT NULL` (text
@@ -56,7 +56,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   write, never by a move. A card is added in state `waiting`, gen 0, attempt
   0, no holder; a consumer is added with its holder in the same op.
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
-  `state text` (`up`, `down`, `blocked`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; Glenn 2026-11-06: "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
+  `state text` (`up`, `down`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; Glenn 2026-11-06: "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
   so a late report from an old session can be told apart), `flaps integer`,
   `gen integer`, `epoch integer`. Primary key `(epoch, name)`; every column
   `NOT NULL`; `kind` and `state` checked against their sets. `gen` rises by
@@ -84,14 +84,17 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 ### Card states
 
 The closed set, locked by Glenn 2026-09-29 plus one exit and one consumer
-state: `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`,
+state: `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`, `blocked`,
 `done`. `landed` means the code is on the base branch and is final. `fail` is
 the record of a card that stopped any other way (cancelled, replaced, its need
 failed, or a consumer withdrawn) with the reason kept. `done` is a consumer
-that reported. Which transitions are legal, and which states each kind may
-use, is layer 2's; this layer only refuses a state outside the set. (The
-flapping row goes to row state `blocked`; that is a row state, not a card
-state.) A card is live when it is in `ready` or `working`.
+that reported. `blocked` is a producer that bounced too many times (Glenn
+2026-11-05: "if a card flaps around more than n times, it goes into blocked
+primary card state. blocked -> waiting -> ready"; coloured black on the
+board); it is not final, and only the coordinator's unblock leaves it. Which
+transitions are legal, and which states each kind may use, is layer 2's;
+this layer only refuses a state outside the set. A card is live when it is in
+`ready` or `working`.
 
 ## The operations
 
@@ -136,7 +139,7 @@ is refused on the second and nothing lands; a `done` or `fail` consumer keeps
 its holder for the record and does not count; there is no separate width
 condition, the write is the check); set card attempt; set card author; set
 card branch; set card base_sha; set card head; set card pr; set card result;
-set card reason; set card score; set card needs; put row (insert or
+set card reason; set card score; set card needs; set card after (same rule as needs); put row (insert or
 overwrite: kind, width, session); set row width; set row held; set row state; set row
 session; set row flaps; put policy version; set active policy version
 (deactivates the one active before it in the same transaction). An op that

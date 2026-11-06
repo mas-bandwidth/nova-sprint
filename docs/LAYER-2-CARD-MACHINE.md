@@ -80,7 +80,8 @@ Producer events:
 
 | event | from | to | writes | conditions |
 |---|---|---|---|---|
-| `Resolve` | waiting | ready | state | `NeedsLanded(p)` |
+| `Resolve` | waiting | ready | state | `NeedsLanded(p)`; a producer only |
+| `Reached` | waiting | landed | state | `NeedsLanded(p)`; a sentinel only: it has no brief and never a consumer; its landing is the signal (a release gate, a phase mark), reported to the coordinator |
 | `Start{row, branch, base}` | ready | working | state, attempt+1, author=""; **cuts** a work consumer: kind work, of p, holder row, attempt, branch, base_sha, state ready | row up and not held; stream not held; the holder write enforces width |
 | `Finished{c}` (its work consumer reported ok with head H) | working | review | state, head=H, author=c's row | c is p's work consumer of this attempt, done, result ok |
 | `Broken{c}` (its work consumer reported fail) | working | ready | state, reason=c's reason | c is p's work consumer of this attempt, done, result fail |
@@ -93,6 +94,8 @@ Producer events:
 | `Cancel{reason}` / `Replace{by, reason}` | any non-final | fail | state, reason | no live consumer of p |
 | `NeedFailed{need}` | any non-final | fail | state, reason naming the need | need is in p's needs and is `fail`; no live consumer of p |
 | `Rescore{score}` | any non-final | same | score | |
+| `Block{reason}` | ready, review, or working after its consumer is withdrawn | blocked | state, reason | no live consumer of p; raised by policy when attempts pass its limit, with a judgement |
+| `Unblock{reason}` | blocked | waiting | state, reason | a coordinator verb; Resolve then moves it on |
 
 Consumer events:
 
@@ -132,8 +135,6 @@ Rules the tables encode, each checked by the model and tested one by one:
 |---|---|---|---|
 | `Seen` | down | up | state=up |
 | `Gone` | up | down | state=down, flaps+1 |
-| `Flapped{limit}` | up or down, flaps >= limit | blocked | state=blocked |
-| `Unblock` | blocked | down | state=down, flaps=0 |
 | `Width{n}` | any | same | width (refused below the row's live count by layer 1) |
 | `Hold{reason}` | any | same | held=true |
 | `Unhold` | any | same | held=false |
@@ -150,11 +151,11 @@ never moves a card by itself.
 - A head that is not a full 40-hex commit: "head abc is not a full commit sha".
 - A read report whose head is not the producer's: "producer X is at head H1, the read was of H2".
 - A read asked of the author: "r1 wrote producer X's head and may not read it".
-- A start or read in a held stream, or to a row that is down, blocked or held.
+- A start or read in a held stream, to a blocked producer, or to a row that is down or held.
 - A producer event naming a consumer that is not its consumer of the current
   attempt and kind, or one that is not done.
 - `NeedFailed` naming a card that is not a need, or a need that has not failed.
-- `Flapped` below the limit; `Unblock` of a row that is not blocked.
+- `Unblock` of a producer that is not blocked.
 
 A refusal is a value (`Refusal{Reason}`), never an error; the step layer logs
 it through layer 1 as a refused op so it is visible.
@@ -197,9 +198,25 @@ About 1,100 lines of Go. An estimate from the event count.
 - The producer's `author` is set from the work consumer's row at `Finished`
   and cleared at `Start`: an attempt has one author, and a release before a
   finish leaves none.
-- The flap limit is an input to `Flapped`, not a constant here.
+- The attempt limit that blocks a producer is policy's number; the move is the engine's. A row is never blocked: on the record (10-25, 11-05) the flaps were our hook's, not the row's; a row's flaps stay a counted fact for policy to raise a judgement on.
 - The runner is its own binary, `nova-worker`, in this repo (Glenn: "your
   call"); it and `nova-sprint` share the consumer verbs (take, report) from
   one package. The name `nova-swarm` is reserved by Glenn for a future mode
   where the whole sprint works one hard problem; this is workers across
   lanes, not a swarm.
+
+## Hard needs, soft order, sentinels
+
+Glenn, 2026-11-06: "Cards had dependencies on other cards, we had sentinel
+cards (very useful). And you even had soft ordering for dependencies, eg.
+land order. Those were hard earned."
+
+- `needs` is hard: `Resolve` waits until every need has landed.
+- `after` is soft: work starts whenever the card is ready, but the landing
+  step (layer 3) takes merging producers in score order and skips one whose
+  `after` has a card not yet landed. v1's land order, without blocking the work.
+- A sentinel is a producer of kind `sentinel`: no brief, no consumer, no
+  score of its own. When its needs have landed, `Reached` lands it, and that
+  landing is reported. A release gate or a phase mark is a sentinel with the
+  cards it waits for as its needs.
+- A need failing takes a sentinel with it like any dependant.
