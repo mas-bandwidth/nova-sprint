@@ -133,7 +133,7 @@ func TestColdreadFoldNoClear(t *testing.T) {
 		t.Fatalf("Snapshot calls %d", s.snapshots)
 	}
 	for i := 1; i < len(s.cursors); i++ {
-		if s.cursors[i] <= s.cursors[i-1] {
+		if s.cursors[i] != s.cursors[i-1]+1 {
 			t.Fatalf("cursor did not resume: %v", s.cursors)
 		}
 	}
@@ -277,7 +277,7 @@ func TestColdreadMissingCellsBlank(t *testing.T) {
 			t.Errorf("fleet row carries MISSING %s=%v", k, row[k])
 		}
 	}
-	if row["okpct"] != "-" {
+	if row["okpct"] != "0.0%" {
 		t.Errorf("okpct with no verdicts = %v", row["okpct"])
 	}
 	work := tables["work"].(map[string]any)["s00"].(map[string]any)

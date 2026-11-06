@@ -309,13 +309,13 @@ function renderStreams(d) {
   // Rows are grouped by status (landed, working, stopped, held), by name within a group,
   // with a thin rule between groups; each row also carries its status pill. Rows are keyed by stream, so a reorder
   // only moves nodes and flashes nothing.
-  var RANK = { landed: 0, working: 1, stopped: 2, held: 3 };
+  var RANK = { landed: 0, fail: 1, working: 2, stopped: 3, held: 4, waiting: 5 };
   var statusOf = {};
   streamOrder(d).forEach(function (k) {
     var c = {}, total = 0; FLOW.forEach(function (st) { c[st] = int(work[k][st]); total += c[st]; });
     statusOf[k] = streamStatus((states[k] || {}).State, c, total)[0];
   });
-  var rank = function (k) { return RANK[statusOf[k]] == null ? 3.5 : RANK[statusOf[k]]; };
+  var rank = function (k) { return RANK[statusOf[k]] == null ? 5 : RANK[statusOf[k]]; };
   var keys = streamOrder(d).filter(function (k) { return !arch[k]; }).sort(function (a, b) { return rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0); });
   var sum = { cost: 0, totalCost: 0, workCost: 0, readCost: 0, unreconciled: 0, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
   // the epoch's spend, every stream's, the archived ones' too: the cost tile's scope once the
@@ -363,7 +363,7 @@ function renderStreams(d) {
     prevRank = rank(k);
     setText(r.nameT, k);
     var tone = { landed: "done", fail: "failed", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
-    setPill(r.pill, status, tone, status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
+    setPill(r.pill, status, tone, status === "fail" ? "fail · stream failed" : status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
     // an archived stream shown is marked: the total row leaves it out
     var tags = arch[k] ? ["archived"] : []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
     setText(r.tag, tags.join(" · "));
@@ -590,11 +590,9 @@ function renderReaders(d) {
   setText($("readers-sub"), names.length + " readers");
 
   // merge, summed over streams the way the terminal table does
-  var merge = d.tables.merge || {}, q = 0, mg = 0, stuck = 0, stopped = 0, ci = "-";
+  var merge = d.tables.merge || {}, q = 0, mg = 0;
   Object.keys(merge).forEach(function (k) {
-    var m = merge[k]; q += int(m.queued); mg += int(m.merged); stuck += int(m.stuck);
-    if (m.state === "stopped") stopped++;
-    if (m.ci === "red") ci = "red"; else if (m.ci === "green" && ci !== "red") ci = "green";
+    var m = merge[k]; q += int(m.queued); mg += int(m.merged);
   });
   var strip = $("merge");
   if (!strip._v) {
@@ -605,9 +603,6 @@ function renderReaders(d) {
   }
   setText(strip._v.queued, q); setText(strip._v.merged, mg); setText(strip._v.stuck, "");
   setText(strip._v.ci, ""); setText(strip._v.stopped, "");
-  strip._v.stuck.style.color = stuck > 0 ? "var(--warning)" : "";
-  strip._v.stopped.style.color = stopped > 0 ? "var(--critical)" : "";
-  strip._v.ci.style.color = ci === "red" ? "var(--critical)" : ci === "green" ? "var(--good)" : "var(--text-3)";
 }
 
 function renderHero(d, s, ft) {
@@ -631,7 +626,6 @@ function renderHero(d, s, ft) {
   // is. The cost is every recorded take and read of their cards in any column; the cost per
   // card is that over the cards that landed
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
-  var unpriced = Object.keys(d.stream_costs || {}).some(function (k) { return int(d.stream_costs[k].unpriced_runs) > 0; });
   setText($("cost"), money(recorded));
   setText($("cost-whole"), dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout", "just round up to nearest dollar")
   var per = landed ? money(Math.ceil(recorded / landed)) + " per card" : "";
@@ -698,6 +692,8 @@ function fitTables() {
     panel.classList.remove("compact");
     // every row, not only the header: a row's pill or name can be wider than its header
     var over = [].some.call(panel.querySelectorAll(".row"), function (r) {
+      var css = getComputedStyle(r), right = r.getBoundingClientRect().right - parseFloat(css.paddingRight) - parseFloat(css.borderRightWidth);
+      if (Array.from(r.children).some(function (c) { return c.offsetParent !== null && c.getBoundingClientRect().right > right + 1; })) return true;
       if (r.scrollWidth > r.clientWidth + 1) return true;
       // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
       return [].some.call(r.children, function (c) {

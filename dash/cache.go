@@ -27,9 +27,11 @@ type Cache struct {
 }
 
 func New(ctx context.Context, s store.Store) (*Cache, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	snap, err := s.Snapshot(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("dashboard startup snapshot (30s deadline): check PostgreSQL connectivity and schema, then restart dashboard: %w", err)
 	}
 	c := &Cache{state: snap, at: time.Now(), now: time.Now, pending: true, gate: make(chan struct{}, 1)}
 	c.view = mapSnapshot(c.state, c.at)

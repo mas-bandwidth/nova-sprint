@@ -9,32 +9,32 @@ import (
 
 type workRow struct {
 	tierMicros map[string]*big.Int
-	Blocked    int                `json:"blocked"`
-	Waiting    int                `json:"waiting"`
-	Ready      int                `json:"ready"`
-	Working    int                `json:"working"`
-	Review     int                `json:"review"`
-	Fix        int                `json:"fix"`
-	Merging    int                `json:"merging"`
-	Landed     int                `json:"landed"`
-	Fail       int                `json:"fail"`
-	Cost       *float64           `json:"cost"`
-	Unpriced   bool               `json:"unpriced"`
-	ByTier     map[string]float64 `json:"cost_by_tier"`
+	Blocked    int
+	Waiting    int
+	Ready      int
+	Working    int
+	Review     int
+	Fix        int
+	Merging    int
+	Landed     int
+	Fail       int
+	Cost       *float64
+	Unpriced   bool
+	ByTier     map[string]float64
 }
 type fleetRow struct {
-	Status   string   `json:"status"`
-	Width    int      `json:"width"`
-	Ready    int      `json:"ready"`
-	Working  int      `json:"working"`
-	Done     int      `json:"done"`
-	Blocker  int      `json:"blocker_working"`
-	Critical int      `json:"critical_working"`
-	Fix      int      `json:"fix_working"`
-	Reads    int      `json:"reads_working"`
-	OK       int      `json:"ok"`
-	Failed   int      `json:"failed"`
-	OKPct    *float64 `json:"okpct"`
+	Status   string
+	Width    int
+	Ready    int
+	Working  int
+	Done     int
+	Blocker  int
+	Critical int
+	Fix      int
+	Reads    int
+	OK       int
+	Failed   int
+	OKPct    *float64
 }
 type streamLine struct{ Stream, State string }
 
@@ -148,6 +148,9 @@ func mapRows(rows map[string]store.Row, fleet, friends map[string]*fleetRow) {
 	}
 }
 func countRead(readers map[string]numberCells, c store.Card) {
+	if c.Holder == "" || (c.State != "ready" && c.State != "working" && !(c.State == "done" && (c.Result == "ok" || c.Result == "fix"))) {
+		return
+	}
 	if readers[c.Holder] == nil {
 		readers[c.Holder] = numberCells{}
 	}
@@ -258,8 +261,9 @@ func countTrack(f *fleetRow, c, p store.Card) {
 	}
 }
 func setPercent(f *fleetRow) {
+	p := 0.0
 	if f.OK+f.Failed > 0 {
-		p := float64(f.OK) * 100 / float64(f.OK+f.Failed)
-		f.OKPct = &p
+		p = float64(f.OK) * 100 / float64(f.OK+f.Failed)
 	}
+	f.OKPct = &p
 }
