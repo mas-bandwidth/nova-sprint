@@ -342,3 +342,27 @@ land order. Those were hard earned."
 - A judgement is a stored record in layer 1 (`sprint.judgements`), opened by
   a named layer 3 step, pushed from the record, answered by a verb; nothing
   owed lives only in a message (all six reviews).
+
+## Added after layer 2 was built (2026-11-06)
+
+Building layer 2 on the locked store found one gap in the store and four
+details, each ruled here (the lock allows a column that a layer above needs,
+with a design change, never a special case):
+
+- `cards.review integer NOT NULL DEFAULT 0`: on a producer, the number of
+  times it has entered `review`; on a read consumer, the producer's `review`
+  at the moment it was cut (fixed at add). Write: `SetCardReview` (producer
+  only, raised by one). `ReadYes` requires a done ok read whose `review`
+  equals the producer's current `review`, so a read from before a `Red` or
+  a fix never counts and a yes never fires on zero yes.
+- `rows.reason text NOT NULL DEFAULT ''`: the reason a row was held or
+  released; `SetRowHeld` takes it.
+- `Edit` changes prose, paths and done_when; the brief as given is immutable.
+- `SetPriority{level, reason}` writes the reason too.
+- Consumer ids are the machine's: `<producer>.w<attempt>` for work,
+  `<producer>.r<review>.<n>` for reads, fenced with `CardAbsent` at cut.
+- `Relink`'s cycle check sees the cards the caller passes; the caller passes
+  every card reachable through needs.
+- Blocker preemption: the machine does not choose the youngest consumer;
+  policy chooses, and the step joins the `Withdraw` and the blocker's `Start`
+  into one op.
