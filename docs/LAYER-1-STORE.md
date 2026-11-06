@@ -99,7 +99,42 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   `name text`, `body text`, `active boolean`, `actor text`, `at timestamptz`.
   Global, not epoch-scoped: a clear keeps the policy. At most one version is
   active (a unique partial index). Layer 5 fills it; the table exists now so
-  there is one store.
+  there is one store. Every event records `policy integer`, the active
+  version when it applied, so a decision can always be traced to the rules
+  that made it (promise 6; PROMISE reviews 2026-11-06).
+- `sprint.judgements`: `id text`, `kind text` (a word for the dashboard:
+  `red`, `fix`, `stuck`, `blocked`, `flap`, `conflict`, `landed-sentinel`,
+  and the rest layer 3 names), `about text` (the card, stream or row it
+  concerns), `question text`, `command text` (the exact verb that answers
+  it), `group_key text` (judgements with one key are shown and pushed as
+  one), `state text` (`open`, `answered`, `expired`), `deadline timestamptz`
+  (nullable), `answer text`, `actor text`, `opened_at timestamptz`,
+  `closed_at timestamptz` (nullable), `epoch integer`. Primary key `(epoch,
+  id)`. A judgement is a stored record, not a bus message: the push is made
+  from the row and the row outlives the push, so nothing owed is forgotten
+  (promise 1), the dashboard's "needs you" column reads this table (promise
+  5), and the coordinator is told once per group (promise 6). Writes: put
+  judgement; answer judgement (state answered, answer, actor); expire
+  judgement (state expired, reason in answer). Condition: judgement `J` is
+  open. Layer 3 opens them, layer 6 answers them.
+- `sprint.cursors`: `name text`, `seq bigint`, `epoch integer`. Primary key
+  `(epoch, name)`. A subscriber's place in the event log (the run loop's push
+  cursor per row, the dashboard's feed cursor), saved so a restart resumes
+  where it stopped and never pushes twice or skips (promise 6). Write: set
+  cursor (refused below the cursor's current value).
+
+Two columns for the tier (Glenn 2026-11-06: "flash, pro, heavy, frontier ...
+making sure the right models did the work"): on cards, `tier text` (one of
+the four; a producer's, set at add from the brief; a consumer inherits its
+producer's at add); on rows, `tiers text[]` (the tiers this row serves; a
+bench row's from its model, a kin's from its own word), with `model text` and
+`harness text` as labels for policy and the dashboard. Condition: row `R`
+serves tier `T` (read from the row inside the transaction), so a deal to a
+row that does not serve the card's tier is refused by the store, never by
+layer 2's good behaviour. And the card contract's structured fields as
+columns, since the table is the structure: `paths text[]`, `done_when
+text[]`, and `prose text` (the task a mind reads), beside `brief text` which
+keeps the whole brief as given.
 
 ### Card states
 
