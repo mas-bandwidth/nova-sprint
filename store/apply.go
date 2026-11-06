@@ -15,7 +15,7 @@ type txn interface {
 	row(name string) (Row, bool, error)
 	policy(version int) (PolicyVersion, bool, error)
 	policies() (last int, active []PolicyVersion, err error)
-	held(row string) (int, error) // cards whose holder is row
+	held(row string) (int, error) // live cards (ready or working) whose holder is row
 	lastSeq() (int64, error)
 	rows() ([]Row, error) // every row of the epoch
 	open() error          // epoch n = n + 1; later puts go to the new epoch
@@ -105,7 +105,8 @@ func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 }
 
 // runClear is run for a clear: the epoch and the seq fence, then the new
-// epoch with every row carried into it, down and with no flaps.
+// epoch with every row carried into it, down and with no flaps; the clear
+// writes the row, so its gen rises by one.
 func runClear(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	r, _, _, err := run(tx, epoch, Op{Epoch: op.Epoch, Expect: op.Expect})
 	if r != "" || err != nil {
@@ -120,7 +121,7 @@ func runClear(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	}
 	after := &State{Epoch: epoch + 1}
 	for _, row := range rows {
-		row.State, row.Flaps = "down", 0
+		row.State, row.Flaps, row.Gen = "down", 0, row.Gen+1
 		if err := tx.putRow(row); err != nil {
 			return "", nil, nil, err
 		}
@@ -160,6 +161,9 @@ func (w *work) expect(e Expect) (string, error) {
 	case RowIs:
 		row, r, err := w.mustRow(c.Row)
 		return cmp.Or(r, when(err == nil && row.State != c.State, "row %s is %s, expected %s", c.Row, row.State, c.State)), err
+	case RowGen:
+		row, r, err := w.mustRow(c.Row)
+		return cmp.Or(r, when(err == nil && row.Gen != c.Gen, "row %s is at gen %d, expected gen %d", c.Row, row.Gen, c.Gen)), err
 	case StreamHeld:
 		s, r, err := w.mustStream(c.Stream)
 		return cmp.Or(r, when(err == nil && s.Held != c.Held, "stream %s is %s, expected %s", c.Stream, heldWord(s.Held), heldWord(c.Held))), err
@@ -240,8 +244,14 @@ func (w *work) putCard(old Card, existed bool, c Card) error {
 	return w.tx.putCard(c)
 }
 
+// putRow also sets the gen, once per op, as putCard does.
 func (w *work) putRow(old Row, existed bool, r Row) error {
 	w.before.Rows, w.after.Rows = touch(w.before.Rows, w.after.Rows, r.Name, old, existed, r)
+	r.Gen = 0
+	if b, ok := w.before.Rows[r.Name]; ok {
+		r.Gen = b.Gen + 1
+	}
+	w.after.Rows[r.Name] = r
 	return w.tx.putRow(r)
 }
 

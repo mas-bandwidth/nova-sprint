@@ -38,6 +38,8 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"row width":               rowWidth,
 		"author and base sha":     authorAndBase,
 		"width in one op":         widthInOneOp,
+		"live count":              liveCount,
+		"row gen race":            rowGenRace,
 		"int range":               intRange,
 		"nul bytes":               nulBytes,
 		"text and time":           textAndTime,
@@ -111,30 +113,36 @@ func (h *harness) clear(expect ...Expect) Receipt {
 	return r
 }
 
-// The seed: stream s1; row w1 (worker, width 2, up); card c0 landed (gen 0: added and landed in one op);
-// card c1 waiting, needs c0, gen 0; card c2 waiting, needs c1.
+// The seed: stream s1; row w1 (worker, width 2, up, gen 0: added in the op);
+// producer c0 landed (gen 0: added and landed in one op); producer c1
+// waiting, needs c0; producer c2 waiting, needs c1; consumers u1 (work of
+// c1), u2 (read of c1) and u3 (work of c2), waiting with no holder.
 var (
 	s1 = Stream{Name: "s1", Repo: "mas-bandwidth/x", Base: "main", Pos: 1}
 	w1 = Row{Name: "w1", Kind: "worker", Width: 2, State: "up", Session: "sess-a"}
-	c0 = Card{ID: "c0", Stream: "s1", State: "landed"}
-	c1 = Card{ID: "c1", Stream: "s1", State: "waiting", Score: 10, Needs: []string{"c0"}, Brief: "do it"}
-	c2 = Card{ID: "c2", Stream: "s1", State: "waiting", Needs: []string{"c1"}}
+	c0 = Card{ID: "c0", Kind: "producer", Stream: "s1", State: "landed"}
+	c1 = Card{ID: "c1", Kind: "producer", Stream: "s1", State: "waiting", Score: 10, Needs: []string{"c0"}, Brief: "do it"}
+	c2 = Card{ID: "c2", Kind: "producer", Stream: "s1", State: "waiting", Needs: []string{"c1"}}
+	u1 = Card{ID: "u1", Kind: "work", Of: "c1", Stream: "s1", State: "waiting"}
+	u2 = Card{ID: "u2", Kind: "read", Of: "c1", Stream: "s1", State: "waiting"}
+	u3 = Card{ID: "u3", Kind: "work", Of: "c2", Stream: "s1", State: "waiting"}
 )
 
 func (h *harness) seed() {
 	h.t.Helper()
 	h.ok(h.op("seed", nil, PutStream{"s1", s1.Repo, s1.Base, s1.Pos}, PutRow{"w1", "worker", 2, "sess-a"}, SetRowState{"w1", "up"},
-		PutCard{ID: "c0", Stream: "s1"}, SetCardState{"c0", "landed"},
-		PutCard{ID: "c1", Stream: "s1", Score: 10, Needs: []string{"c0"}, Brief: "do it"}, PutCard{ID: "c2", Stream: "s1", Needs: []string{"c1"}}))
+		PutCard{Kind: "producer", ID: "c0", Stream: "s1"}, SetCardState{"c0", "landed"},
+		PutCard{Kind: "producer", ID: "c1", Stream: "s1", Score: 10, Needs: []string{"c0"}, Brief: "do it"}, PutCard{Kind: "producer", ID: "c2", Stream: "s1", Needs: []string{"c1"}},
+		PutCard{ID: "u1", Kind: "work", Of: "c1", Stream: "s1"}, PutCard{ID: "u2", Kind: "read", Of: "c1", Stream: "s1"}, PutCard{ID: "u3", Kind: "work", Of: "c2", Stream: "s1"}))
 }
 
 func (h *harness) seeded() Snapshot {
-	return Snapshot{Epoch: 1, Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": w1}, Cards: map[string]Card{"c0": c0, "c1": c1, "c2": c2}}
+	return Snapshot{Epoch: 1, Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": w1}, Cards: map[string]Card{"c0": c0, "c1": c1, "c2": c2, "u1": u1, "u2": u2, "u3": u3}}
 }
 
 func conditions(h *harness) {
 	h.seed()
-	h.ok(h.op("take", nil, SetCardHolder{"c1", "w1"}))
+	h.ok(h.op("take", nil, SetCardHolder{"u1", "w1"}, SetCardReason{"c1", "r"}, SetRowFlaps{"w1", 1}))
 	for _, c := range []struct {
 		e      Expect
 		reason string // "" when it holds
@@ -145,9 +153,12 @@ func conditions(h *harness) {
 		{CardState{"c1", "waiting"}, ""},
 		{CardState{"c1", "ready"}, "card c1 is waiting, expected ready"},
 		{CardState{"c9", "ready"}, "card c9 does not exist"},
-		{CardHolder{"c1", "w1"}, ""},
-		{CardHolder{"c1", ""}, "card c1 has holder w1, expected none"},
-		{CardHolder{"c2", "w1"}, "card c2 has holder none, expected w1"},
+		{CardHolder{"u1", "w1"}, ""},
+		{CardHolder{"u1", ""}, "card u1 has holder w1, expected none"},
+		{CardHolder{"u2", "w1"}, "card u2 has holder none, expected w1"},
+		{RowGen{"w1", 1}, ""},
+		{RowGen{"w1", 0}, "row w1 is at gen 1, expected gen 0"},
+		{RowGen{"w9", 0}, "row w9 does not exist"},
 		{CardHolder{"c9", ""}, "card c9 does not exist"},
 		{NeedsLanded{"c1"}, ""},
 		{NeedsLanded{"c0"}, ""},
@@ -172,7 +183,7 @@ func conditions(h *harness) {
 	h.ok(h.op("hold", nil, SetStreamHeld{"s1", true}))
 	h.ok(h.op("check", []Expect{StreamHeld{"s1", true}}))
 	h.refused(h.op("check", []Expect{StreamHeld{"s1", false}}), "stream s1 is held, expected not held")
-	h.refused(h.op("check", []Expect{CardHolder{"c1", "w1"}, RowIs{"w1", "up"}, CardState{"c1", "fail"}}), "card c1 is waiting, expected fail")
+	h.refused(h.op("check", []Expect{CardHolder{"u1", "w1"}, RowIs{"w1", "up"}, CardState{"c1", "fail"}}), "card c1 is waiting, expected fail")
 	assert.Equal(h.t, 1, h.snap().Cards["c1"].Gen, "conditions never change a row")
 }
 
@@ -190,29 +201,34 @@ func fences(h *harness) {
 }
 
 func writes(h *harness) {
-	r := h.ok(h.op("add", nil, PutStream{"s1", s1.Repo, s1.Base, s1.Pos}, PutRow{"w1", "worker", 2, "sess-a"}, PutCard{ID: "c0", Stream: "s1"},
-		PutCard{ID: "c1", Stream: "s1", Score: 10, Needs: []string{"c0"}, Brief: "do it"}))
+	r := h.ok(h.op("add", nil, PutStream{"s1", s1.Repo, s1.Base, s1.Pos}, PutRow{"w1", "worker", 2, "sess-a"}, PutCard{Kind: "producer", ID: "c0", Stream: "s1"},
+		PutCard{Kind: "producer", ID: "c1", Stream: "s1", Score: 10, Needs: []string{"c0"}, Brief: "do it"}))
 	row := Row{Name: "w1", Kind: "worker", Width: 2, State: "down", Session: "sess-a"}
-	card0 := Card{ID: "c0", Stream: "s1", State: "waiting"}
+	card0 := Card{ID: "c0", Kind: "producer", Stream: "s1", State: "waiting"}
 	assert.Equal(h.t, &State{Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": row}, Cards: map[string]Card{"c0": card0, "c1": c1}}, r.After, "a row starts down, a card waiting at gen 0")
-	r = h.ok(h.op("move", nil, SetCardState{"c1", "working"}, SetCardHolder{"c1", "w1"}, SetCardAttempt{"c1", 2}, SetCardBranch{"c1", "b1"},
+	r = h.ok(h.op("move", nil, SetCardState{"c1", "working"}, SetCardAttempt{"c1", 2}, SetCardBranch{"c1", "b1"},
 		SetCardHead{"c1", "abc123"}, SetCardPR{"c1", 42}, SetCardReason{"c1", "why"}, SetCardScore{"c1", 3}, SetCardNeeds{"c1", nil},
-		SetCardAuthor{"c1", "w1"}, SetCardBaseSHA{"c1", "def456"}))
-	want := Card{ID: "c1", Stream: "s1", State: "working", Gen: 1, Attempt: 2, Score: 3, Holder: "w1", Branch: "b1", Head: "abc123", PR: 42, Brief: "do it", Reason: "why",
-		Author: "w1", BaseSHA: "def456"}
-	assert.Equal(h.t, &State{Cards: map[string]Card{"c1": want}}, r.After, "every card write raises gen by one")
+		SetCardAuthor{"c1", "w1"}, SetCardBaseSHA{"c1", "def456"}, SetCardResult{"c1", "ok"},
+		PutCard{ID: "k1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w1"}))
+	want := Card{ID: "c1", Kind: "producer", Stream: "s1", State: "working", Gen: 1, Attempt: 2, Score: 3, Branch: "b1", Head: "abc123", PR: 42, Brief: "do it", Reason: "why",
+		Author: "w1", BaseSHA: "def456", Result: "ok"}
+	k1 := Card{ID: "k1", Kind: "work", Of: "c1", Stream: "s1", State: "waiting", Holder: "w1"}
+	assert.Equal(h.t, &State{Cards: map[string]Card{"c1": want, "k1": k1}}, r.After, "every card write raises gen by one; a consumer is added with its holder")
 	h.ok(h.op("rows", nil, SetRowState{"w1", "blocked"}, SetRowSession{"w1", "sess-b"}, SetRowFlaps{"w1", 4}, SetStreamHeld{"s1", true}))
-	h.ok(h.op("over", nil, PutRow{"w1", "kin", 1, "sess-c"}, PutStream{"s1", "other", "dev", 5}, SetCardHolder{"c1", ""}, SetCardNeeds{"c1", []string{"c0"}}))
-	want.Holder, want.Needs, want.Gen = "", []string{"c0"}, 2
+	h.ok(h.op("over", nil, PutRow{"w1", "kin", 1, "sess-c"}, PutStream{"s1", "other", "dev", 5}, SetCardHolder{"k1", ""}, SetCardNeeds{"c1", []string{"c0"}}, SetCardState{"k1", "done"}))
+	h.ok(h.op("width", []Expect{RowGen{"w1", 2}}, SetRowWidth{"w1", 3}))
+	want.Needs, want.Gen = []string{"c0"}, 2
+	k1.Holder, k1.State, k1.Gen = "", "done", 1
 	got := h.snap()
-	assert.Equal(h.t, Row{Name: "w1", Kind: "kin", Width: 1, State: "blocked", Session: "sess-c", Flaps: 4}, got.Rows["w1"], "put row keeps state and flaps")
+	assert.Equal(h.t, Row{Name: "w1", Kind: "kin", Width: 3, State: "blocked", Session: "sess-c", Flaps: 4, Gen: 3}, got.Rows["w1"], "put row keeps state and flaps; gen rises once per op")
 	assert.Equal(h.t, Stream{Name: "s1", Repo: "other", Base: "dev", Held: true, Pos: 5}, got.Streams["s1"], "put stream keeps held")
-	assert.Equal(h.t, map[string]Card{"c0": card0, "c1": want}, got.Cards)
+	assert.Equal(h.t, map[string]Card{"c0": card0, "c1": want, "k1": k1}, got.Cards)
 	ev := h.events()
-	require.Len(h.t, ev, 4)
+	require.Len(h.t, ev, 5)
 	assert.Nil(h.t, ev[0].Before, "new rows have no before-image")
-	row.State, row.Session, row.Flaps = "blocked", "sess-b", 4
-	assert.Equal(h.t, &State{Streams: map[string]Stream{"s1": {Name: "s1", Repo: s1.Repo, Base: s1.Base, Held: true, Pos: 1}}, Rows: map[string]Row{"w1": row}, Cards: map[string]Card{"c1": ev[1].After.Cards["c1"]}}, ev[3].Before)
+	row.State, row.Session, row.Flaps, row.Gen = "blocked", "sess-b", 4, 1
+	assert.Equal(h.t, &State{Streams: map[string]Stream{"s1": {Name: "s1", Repo: s1.Repo, Base: s1.Base, Held: true, Pos: 1}}, Rows: map[string]Row{"w1": row},
+		Cards: map[string]Card{"c1": ev[1].After.Cards["c1"], "k1": ev[1].After.Cards["k1"]}}, ev[3].Before)
 }
 
 // strangeWrite and strangeExpect are outside the closed sets: they carry the
@@ -222,19 +238,32 @@ type strangeExpect struct{ AtSeq }
 
 func writeRefusals(h *harness) {
 	h.seed()
-	all := "waiting, ready, working, review, merging, landed, fail"
+	all := "waiting, ready, working, review, merging, landed, fail, done"
 	for _, c := range []struct {
 		w      Write
 		reason string
 	}{
-		{PutCard{ID: "c1", Stream: "s1"}, "card c1 exists"},
-		{PutCard{ID: "c3", Stream: "s9"}, "stream s9 does not exist"},
-		{PutCard{ID: "c3", Stream: "s1", Needs: []string{"c3"}}, "card c3 cannot need itself"},
-		{PutCard{ID: "c3", Stream: "s1", Needs: []string{"c0", "c0"}}, "card c3 names need c0 twice"},
-		{PutCard{ID: "c3", Stream: "s1", Needs: []string{"c9"}}, "need c9 of card c3 does not exist"},
+		{PutCard{Kind: "producer", ID: "c1", Stream: "s1"}, "card c1 exists"},
+		{PutCard{ID: "u1", Kind: "work", Of: "c2", Stream: "s1"}, "card u1 exists"}, // of never changes: there is no write that sets it
+		{PutCard{Kind: "producer", ID: "c3", Stream: "s9"}, "stream s9 does not exist"},
+		{PutCard{Kind: "producer", ID: "c3", Stream: "s1", Needs: []string{"c3"}}, "card c3 cannot need itself"},
+		{PutCard{Kind: "producer", ID: "c3", Stream: "s1", Needs: []string{"c0", "c0"}}, "card c3 names need c0 twice"},
+		{PutCard{Kind: "producer", ID: "c3", Stream: "s1", Needs: []string{"c9"}}, "need c9 of card c3 does not exist"},
 		{PutCard{Stream: "s1"}, "a card needs an id"},
-		{SetCardState{"c1", "done"}, `card state "done" is not one of ` + all},
-		{SetCardHolder{"c1", "w9"}, "row w9 does not exist"},
+		{PutCard{ID: "c3", Kind: "job", Stream: "s1"}, `card kind "job" is not one of producer, work, read`},
+		{PutCard{ID: "c3", Kind: "producer", Of: "c1", Stream: "s1"}, "card c3 is a producer; a producer has no of"},
+		{PutCard{ID: "c3", Kind: "producer", Stream: "s1", Holder: "w1"}, "card c3 is a producer; a producer never has a holder"},
+		{PutCard{ID: "k3", Kind: "work", Stream: "s1"}, "card k3 is a consumer; a consumer names its producer in of"},
+		{PutCard{ID: "k3", Kind: "read", Of: "c9", Stream: "s1"}, "card k3 is a consumer of c9, which does not exist"},
+		{PutCard{ID: "k3", Kind: "read", Of: "u1", Stream: "s1"}, "card k3 is a consumer of u1, which is not a producer"},
+		{PutCard{ID: "k3", Kind: "work", Of: "c1", Stream: "s1", Needs: []string{"c0"}}, "card k3 is a consumer; a consumer has no needs"},
+		{PutCard{ID: "k3", Kind: "work", Of: "c1", Stream: "s1", Holder: "w9"}, "row w9 does not exist"},
+		{SetCardState{"c1", "gone"}, `card state "gone" is not one of ` + all},
+		{SetCardHolder{"c1", "w1"}, "card c1 is a producer; a producer never has a holder"},
+		{SetCardHolder{"u1", "w9"}, "row w9 does not exist"},
+		{SetCardNeeds{"u1", []string{"c0"}}, "card u1 is a consumer; a consumer has no needs"},
+		{SetCardResult{"u1", "maybe"}, `card result "maybe" is not one of , ok, fix, fail`},
+		{SetRowWidth{"w9", 1}, "row w9 does not exist"},
 		{SetCardNeeds{"c1", []string{"c2", "c2"}}, "card c1 names need c2 twice"},
 		{SetCardNeeds{"c1", []string{"c1"}}, "card c1 cannot need itself"},
 		{SetCardNeeds{"c1", []string{"c9"}}, "need c9 of card c1 does not exist"},
@@ -252,7 +281,8 @@ func writeRefusals(h *harness) {
 		h.refused(h.op("bad", nil, c.w), c.reason)
 	}
 	for _, w := range []Write{SetCardState{"c9", "ready"}, SetCardHolder{"c9", ""}, SetCardAttempt{"c9", 1}, SetCardBranch{"c9", "b"}, SetCardHead{"c9", "h"},
-		SetCardPR{"c9", 1}, SetCardReason{"c9", "r"}, SetCardScore{"c9", 1}, SetCardNeeds{"c9", nil}, SetCardAuthor{"c9", "w1"}, SetCardBaseSHA{"c9", "abc"}} {
+		SetCardPR{"c9", 1}, SetCardReason{"c9", "r"}, SetCardScore{"c9", 1}, SetCardNeeds{"c9", nil}, SetCardAuthor{"c9", "w1"}, SetCardBaseSHA{"c9", "abc"},
+		SetCardResult{"c9", "ok"}} {
 		h.refused(h.op("bad", nil, w), "card c9 does not exist")
 	}
 	got := h.snap()
@@ -271,7 +301,7 @@ func invalidOps(h *harness) {
 		"strange condition": h.op("x", []Expect{strangeExpect{}}),
 		"nil condition":     h.op("x", []Expect{nil}),
 		"state twice":       h.op("x", nil, SetCardState{"c1", "ready"}, SetCardState{"c1", "working"}),
-		"add then score":    h.op("x", nil, PutCard{ID: "c3", Stream: "s1"}, SetCardScore{"c3", 2}),
+		"add then score":    h.op("x", nil, PutCard{Kind: "producer", ID: "c3", Stream: "s1"}, SetCardScore{"c3", 2}),
 		"stream twice":      h.op("x", nil, PutStream{Name: "s1"}, PutStream{Name: "s1"}),
 		"row then session":  h.op("x", nil, PutRow{"w1", "kin", 1, ""}, SetRowSession{"w1", "s"}),
 		"activate twice":    h.op("x", nil, SetActivePolicy{1}, SetActivePolicy{2}),
@@ -290,13 +320,13 @@ func invalidOps(h *harness) {
 		assert.ErrorIs(h.t, err, ErrInvalid, name)
 	}
 	assert.Len(h.t, h.events(), n, "nothing invalid is logged")
-	h.ok(h.op("fine", nil, SetCardState{"c1", "ready"}, SetCardHolder{"c1", "w1"}))
+	h.ok(h.op("fine", nil, SetCardState{"u1", "ready"}, SetCardHolder{"u1", "w1"}))
 }
 
 func refusalChangesNothing(h *harness) {
 	h.seed()
 	before := h.snap()
-	o := h.op("partial", []Expect{CardGen{"c1", 0}}, PutStream{Name: "s2"}, SetCardState{"c1", "working"}, SetCardHolder{"c1", "w9"})
+	o := h.op("partial", []Expect{CardGen{"u1", 0}}, PutStream{Name: "s2"}, SetCardState{"u1", "working"}, SetCardHolder{"u1", "w9"})
 	h.refused(o, "row w9 does not exist")
 	after := h.snap()
 	after.Seq--
@@ -328,7 +358,7 @@ func idempotent(h *harness) {
 	require.NoError(h.t, err)
 	assert.False(h.t, ok)
 	no := h.op("bad", nil, SetCardState{"c1", "nope"})
-	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, fail`)
+	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, fail, done`)
 	no.Writes = nil
 	r, err = h.s.Apply(h.ctx, no)
 	require.NoError(h.t, err)
@@ -342,10 +372,10 @@ func idempotent(h *harness) {
 
 func clearCarriesRows(h *harness) {
 	h.seed()
-	h.ok(h.op("busy", nil, SetRowFlaps{"w1", 3}, SetCardHolder{"c1", "w1"}, PutRow{"k1", "kin", 1, "sess-k"}))
+	h.ok(h.op("busy", nil, SetRowFlaps{"w1", 3}, SetCardHolder{"u1", "w1"}, PutRow{"k1", "kin", 1, "sess-k"}))
 	h.ok(h.op("pol", nil, PutPolicy{"data", "p", "{}"}, SetActivePolicy{1}))
 	r := h.clear(AtSeq{3})
-	carried := map[string]Row{"w1": {Name: "w1", Kind: "worker", Width: 2, State: "down", Session: "sess-a"}, "k1": {Name: "k1", Kind: "kin", Width: 1, State: "down", Session: "sess-k"}}
+	carried := map[string]Row{"w1": {Name: "w1", Kind: "worker", Width: 2, State: "down", Session: "sess-a", Gen: 2}, "k1": {Name: "k1", Kind: "kin", Width: 1, State: "down", Session: "sess-k", Gen: 1}}
 	assert.Equal(h.t, Receipt{Op: r.Op, Kind: "clear", Actor: "tester", Epoch: 1, At: r.At, Note: r.Note, Accepted: true, Seq: 4, NewEpoch: 2, After: &State{Epoch: 2, Rows: carried}}, r)
 	assert.Equal(h.t, Snapshot{Seq: 4, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: carried},
 		h.snap(), "rows are carried down with no flaps; streams and cards are not; policy is kept")
@@ -358,8 +388,9 @@ func clearCarriesRows(h *harness) {
 	o := h.op("stale", nil)
 	o.Epoch = 1
 	h.refused(o, "the op is for epoch 1, the store is at epoch 2")
-	h.ok(h.op("again", []Expect{CardAbsent{"c1"}, RowIs{"w1", "down"}}, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetCardHolder{"c1", "w1"}))
-	assert.Equal(h.t, map[string]Card{"c1": {ID: "c1", Stream: "s1", State: "waiting", Holder: "w1"}}, h.snap().Cards)
+	h.ok(h.op("again", []Expect{CardAbsent{"c1"}, RowIs{"w1", "down"}}, PutStream{Name: "s1"}, PutCard{Kind: "producer", ID: "c1", Stream: "s1"},
+		PutCard{ID: "u1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w1"}))
+	assert.Equal(h.t, map[string]Card{"c1": {ID: "c1", Kind: "producer", Stream: "s1", State: "waiting"}, "u1": {ID: "u1", Kind: "work", Of: "c1", Stream: "s1", State: "waiting", Holder: "w1"}}, h.snap().Cards)
 	assert.Equal(h.t, 2, h.events()[6].Epoch)
 }
 
@@ -378,7 +409,7 @@ func clearRefusals(h *harness) {
 	assert.Equal(h.t, "the op is for epoch 5, the store is at epoch 1", r.Reason)
 	got := h.snap()
 	assert.Equal(h.t, 1, got.Epoch)
-	assert.Len(h.t, got.Cards, 3)
+	assert.Len(h.t, got.Cards, 6)
 	ev := h.events()
 	require.Len(h.t, ev, 3, "a refused clear is an event")
 	assert.False(h.t, ev[2].Accepted)
@@ -398,33 +429,64 @@ func clearRefusals(h *harness) {
 // Gen counts the operations that changed a card, not the writes.
 func genOncePerOp(h *harness) {
 	h.seed()
-	r := h.ok(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}, SetCardHolder{"c1", "w1"}))
-	assert.Equal(h.t, 1, r.After.Cards["c1"].Gen, "set state and set holder in one op raise gen by exactly 1")
-	assert.Equal(h.t, 1, h.snap().Cards["c1"].Gen)
-	r = h.ok(h.op("touch", nil, SetCardReason{"c1", "r"}, SetCardReason{"c2", "r"}))
-	assert.Equal(h.t, 2, r.After.Cards["c1"].Gen)
+	r := h.ok(h.op("take", []Expect{CardGen{"u1", 0}}, SetCardState{"u1", "working"}, SetCardHolder{"u1", "w1"}))
+	assert.Equal(h.t, 1, r.After.Cards["u1"].Gen, "set state and set holder in one op raise gen by exactly 1")
+	assert.Equal(h.t, 1, h.snap().Cards["u1"].Gen)
+	r = h.ok(h.op("touch", nil, SetCardReason{"u1", "r"}, SetCardReason{"c2", "r"}))
+	assert.Equal(h.t, 2, r.After.Cards["u1"].Gen)
 	assert.Equal(h.t, 1, r.After.Cards["c2"].Gen, "each card the op writes moves once")
-	r = h.ok(h.op("add", nil, PutCard{ID: "c3", Stream: "s1"}, SetCardState{"c3", "ready"}, SetCardHolder{"c3", "w1"}))
-	assert.Equal(h.t, 0, r.After.Cards["c3"].Gen, "a card the op adds is at gen 0")
+	r = h.ok(h.op("add", nil, PutCard{ID: "k3", Kind: "read", Of: "c1", Stream: "s1", Holder: "w1"}, SetCardState{"k3", "ready"}))
+	assert.Equal(h.t, 0, r.After.Cards["k3"].Gen, "a card the op adds is at gen 0")
 	assert.Equal(h.t, 0, h.snap().Cards["c0"].Gen)
+	r = h.ok(h.op("rows", []Expect{RowGen{"w1", 0}}, SetRowState{"w1", "down"}, SetRowFlaps{"w1", 1}, SetRowSession{"w1", "s"}))
+	assert.Equal(h.t, 1, r.After.Rows["w1"].Gen, "three row writes in one op raise its gen by exactly 1")
+	r = h.ok(h.op("add", nil, PutRow{"w2", "kin", 1, ""}, SetRowState{"w2", "up"}))
+	assert.Equal(h.t, 0, r.After.Rows["w2"].Gen, "a row the op adds is at gen 0")
 }
 
-// Holders never exceed width: the holder write counts the row's holders at
-// the moment it lands, against the row's own width, and put row refuses a
-// width below the cards the row holds. There is no width condition.
+// Live holders never exceed width: the holder write counts the row's live
+// cards (ready or working) at the moment it lands, against the row's own
+// width, not counting the card written; making a held card live counts the
+// same way; put row and set row width refuse a width below the live count.
+// There is no width condition.
 func rowWidth(h *harness) {
 	h.seed()
-	h.ok(h.op("deal", nil, SetCardHolder{"c1", "w1"}))
-	h.ok(h.op("deal", nil, SetCardHolder{"c2", "w1"}))
-	h.refused(h.op("deal", nil, SetCardHolder{"c0", "w1"}), "row w1 holds 2 cards, its width is 2")
-	h.ok(h.op("again", nil, SetCardHolder{"c1", "w1"})) // a card the row already holds adds nothing
-	h.refused(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}), "row w1 holds 2 cards, more than width 1")
+	h.ok(h.op("ready", nil, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}, SetCardState{"u3", "ready"}))
+	h.ok(h.op("deal", nil, SetCardHolder{"u1", "w1"}))
+	h.ok(h.op("deal", nil, SetCardHolder{"u2", "w1"}))
+	h.refused(h.op("deal", nil, SetCardHolder{"u3", "w1"}), "row w1 holds 2 live cards, its width is 2")
+	h.ok(h.op("again", nil, SetCardHolder{"u1", "w1"})) // a card the row already holds adds nothing
+	h.refused(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}), "row w1 holds 2 live cards, more than width 1")
+	h.refused(h.op("narrow", nil, SetRowWidth{"w1", 1}), "row w1 holds 2 live cards, more than width 1")
 	h.ok(h.op("same", nil, PutRow{"w1", "worker", 2, "sess-a"}))
-	h.ok(h.op("wide", nil, PutRow{"w1", "worker", 3, "sess-a"}))
-	h.ok(h.op("deal", nil, SetCardHolder{"c0", "w1"}))
+	h.ok(h.op("wide", nil, SetRowWidth{"w1", 3}))
+	h.ok(h.op("deal", nil, SetCardHolder{"u3", "w1"}))
 	assert.Equal(h.t, 3, h.snap().Rows["w1"].Width)
 	h.ok(h.op("new", nil, PutRow{"w2", "kin", 0, ""}))
-	h.refused(h.op("deal", nil, SetCardHolder{"c0", "w2"}), "row w2 holds 0 cards, its width is 0")
+	h.refused(h.op("deal", nil, PutCard{ID: "k1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w2"}), "row w2 holds 0 live cards, its width is 0")
+	h.ok(h.op("open", nil, SetRowWidth{"w2", 1}))
+	h.ok(h.op("deal", nil, PutCard{ID: "k1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w2"}))
+}
+
+// A done or fail consumer keeps its holder for the record and never counts:
+// a width-1 row with a done consumer still takes a new live consumer. A held
+// waiting consumer made live counts like a holder write.
+func liveCount(h *harness) {
+	h.seed()
+	h.ok(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}))
+	h.ok(h.op("deal", nil, SetCardState{"u1", "working"}, SetCardHolder{"u1", "w1"}))
+	h.refused(h.op("deal", nil, SetCardState{"u2", "ready"}, SetCardHolder{"u2", "w1"}), "row w1 holds 1 live cards, its width is 1")
+	h.ok(h.op("report", nil, SetCardState{"u1", "done"}, SetCardResult{"u1", "ok"}))
+	h.ok(h.op("hold", nil, SetCardHolder{"u3", "w1"})) // waiting: held, not live
+	h.ok(h.op("deal", nil, SetCardState{"u2", "ready"}, SetCardHolder{"u2", "w1"}))
+	s := h.snap()
+	assert.Equal(h.t, "w1", s.Cards["u1"].Holder, "the done consumer keeps its holder")
+	assert.Equal(h.t, "ok", s.Cards["u1"].Result)
+	h.refused(h.op("live", nil, SetCardState{"u3", "ready"}), "row w1 holds 1 live cards, its width is 1")
+	h.ok(h.op("fail", nil, SetCardState{"u2", "fail"}))
+	h.ok(h.op("live", nil, SetCardState{"u3", "ready"}))
+	h.ok(h.op("width", nil, SetRowWidth{"w1", 1}))
+	h.refused(h.op("narrow", nil, SetRowWidth{"w1", 0}), "row w1 holds 1 live cards, more than width 0")
 }
 
 // Stella's probe (l1-validation-20261106/width_review_test.go): one op with
@@ -432,12 +494,42 @@ func rowWidth(h *harness) {
 // The second write counts the first and is refused; nothing lands.
 func widthInOneOp(h *harness) {
 	h.seed()
-	h.ok(h.op("width", nil, PutRow{"w1", "worker", 1, "sess-a"}))
+	h.ok(h.op("width", nil, PutRow{"w1", "worker", 1, "sess-a"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	before := h.snap()
-	h.refused(h.op("take", nil, SetCardHolder{"c1", "w1"}, SetCardHolder{"c2", "w1"}), "row w1 holds 1 cards, its width is 1")
+	h.refused(h.op("take", nil, SetCardHolder{"u1", "w1"}, SetCardHolder{"u2", "w1"}), "row w1 holds 1 live cards, its width is 1")
 	after := h.snap()
 	after.Seq--
 	assert.Equal(h.t, before, after, "the first holder write is undone too")
+}
+
+// RowGen fences a row plan: two Gone plans made from one snapshot, one is
+// accepted and the other refused.
+func rowGenRace(h *harness) {
+	h.seed()
+	g := h.snap().Rows["w1"].Gen
+	gone := func() Op {
+		return h.op("gone", []Expect{RowGen{"w1", g}}, SetRowState{"w1", "down"}, SetRowFlaps{"w1", 1})
+	}
+	a, b := gone(), gone()
+	var ra, rb Receipt
+	var ea, eb error
+	var wg sync.WaitGroup
+	wg.Go(func() { ra, ea = h.s.Apply(h.ctx, a) })
+	wg.Go(func() { rb, eb = h.s.Apply(h.ctx, b) })
+	wg.Wait()
+	require.NoError(h.t, ea)
+	require.NoError(h.t, eb)
+	require.NotEqual(h.t, ra.Accepted, rb.Accepted, "exactly one Gone is accepted")
+	refused := cmpRefused(ra, rb)
+	assert.Equal(h.t, fmt.Sprintf("row w1 is at gen %d, expected gen %d", g+1, g), refused.Reason)
+	assert.Equal(h.t, 1, h.snap().Rows["w1"].Flaps, "the flap is counted once")
+}
+
+func cmpRefused(a, b Receipt) Receipt {
+	if a.Accepted {
+		return b
+	}
+	return a
 }
 
 // Every integer a write carries fits a PostgreSQL integer; outside it the op
@@ -450,7 +542,7 @@ func intRange(h *harness) {
 		w      Write
 		reason string
 	}{
-		"score over":       {PutCard{ID: "c3", Stream: "s1", Score: math.MaxInt32 + 1}, "score 2147483648 is outside the range 0..2147483647"},
+		"score over":       {PutCard{Kind: "producer", ID: "c3", Stream: "s1", Score: math.MaxInt32 + 1}, "score 2147483648 is outside the range 0..2147483647"},
 		"score negative":   {SetCardScore{"c1", -1}, "score -1 is outside the range 0..2147483647"},
 		"width over":       {PutRow{"w2", "kin", math.MaxInt32 + 1, ""}, "width 2147483648 is outside the range 0..2147483647"},
 		"width negative":   {PutRow{"w2", "kin", -1, ""}, "width -1 is outside the range 0..2147483647"},
@@ -487,9 +579,9 @@ func nulBytes(h *harness) {
 		"id":         {ID: "x\x00", Epoch: 1},
 		"actor":      {ID: "x", Epoch: 1, At: t0, Actor: "a\x00"},
 		"note":       {ID: "x", Epoch: 1, At: t0, Note: "\x00"},
-		"card id":    h.op("x", nil, PutCard{ID: "c\x00", Stream: "s1"}),
+		"card id":    h.op("x", nil, PutCard{Kind: "producer", ID: "c\x00", Stream: "s1"}),
 		"need":       h.op("x", nil, SetCardNeeds{"c1", []string{"c0\x00"}}),
-		"brief":      h.op("x", nil, PutCard{ID: "c3", Stream: "s1", Brief: "b\x00"}),
+		"brief":      h.op("x", nil, PutCard{Kind: "producer", ID: "c3", Stream: "s1", Brief: "b\x00"}),
 		"reason":     h.op("x", nil, SetCardReason{"c1", "r\x00"}),
 		"head":       h.op("x", nil, SetCardHead{"c1", "\x00"}),
 		"branch":     h.op("x", nil, SetCardBranch{"c1", "b\x00"}),
@@ -590,7 +682,7 @@ func snapshotIsCopy(h *harness) {
 // one op id give one receipt and one event.
 func sameIDConcurrent(h *harness) {
 	h.ok(h.op("stream", nil, PutStream{"s", "repo", "main", 0}))
-	o := h.op("card", nil, PutCard{ID: "c", Stream: "s"})
+	o := h.op("card", nil, PutCard{Kind: "producer", ID: "c", Stream: "s"})
 	const n = 16
 	receipts, errs := make([]Receipt, n), make([]error, n)
 	start := make(chan struct{})
@@ -614,7 +706,7 @@ func sameIDConcurrent(h *harness) {
 // when it is logged before the clear.
 func clearRacesApply(h *harness) {
 	h.ok(h.op("stream", nil, PutStream{"s", "repo", "main", 0}))
-	apply, clear := h.op("card", nil, PutCard{ID: "c", Stream: "s"}), h.op("clear", nil)
+	apply, clear := h.op("card", nil, PutCard{Kind: "producer", ID: "c", Stream: "s"}), h.op("clear", nil)
 	var a, c Receipt
 	var ae, ce error
 	start := make(chan struct{})
@@ -640,7 +732,7 @@ func clearRacesApply(h *harness) {
 func authorAndBase(h *harness) {
 	h.seed()
 	r := h.ok(h.op("deal", []Expect{CardGen{"c1", 0}}, SetCardBaseSHA{"c1", "b0"}))
-	assert.Equal(h.t, Card{ID: "c1", Stream: "s1", State: "waiting", Gen: 1, Score: 10, Needs: []string{"c0"}, Brief: "do it", BaseSHA: "b0"}, r.After.Cards["c1"])
+	assert.Equal(h.t, Card{ID: "c1", Kind: "producer", Stream: "s1", State: "waiting", Gen: 1, Score: 10, Needs: []string{"c0"}, Brief: "do it", BaseSHA: "b0"}, r.After.Cards["c1"])
 	r = h.ok(h.op("finish", []Expect{CardGen{"c1", 1}}, SetCardAuthor{"c1", "w1"}))
 	assert.Equal(h.t, 2, r.After.Cards["c1"].Gen)
 	r = h.ok(h.op("both", nil, SetCardAuthor{"c1", "w2"}, SetCardBaseSHA{"c1", "b1"}))
@@ -660,18 +752,19 @@ func authorAndBase(h *harness) {
 
 func rebuild(h *harness) {
 	h.seed()
-	h.ok(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}, SetCardHolder{"c1", "w1"}))
+	h.ok(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}, SetCardHolder{"u1", "w1"}, SetCardState{"u1", "working"}, SetCardResult{"u2", "fix"}))
 	h.refused(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), "card c1 is at gen 1, expected gen 0")
-	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}))
+	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowWidth{"w1", 4}))
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 	h.clear()
-	h.ok(h.op("seed2", nil, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetActivePolicy{1}, SetRowSession{"w1", "sess-z"}))
+	h.ok(h.op("seed2", nil, PutStream{Name: "s1"}, PutCard{Kind: "producer", ID: "c1", Stream: "s1"}, SetActivePolicy{1}, SetRowSession{"w1", "sess-z"}))
 	h.ok(h.op("rows", nil, SetRowState{"w1", "up"}, SetCardReason{"c1", "r"}))
 	got := h.snap()
 	assert.Equal(h.t, Rebuild(h.events()), got, "the clear's after-image carries the rows")
 	assert.Equal(h.t, 1, got.Policy)
 	assert.Equal(h.t, 2, got.Epoch)
 	assert.Equal(h.t, "sess-z", got.Rows["w1"].Session)
+	assert.Equal(h.t, 4, got.Rows["w1"].Gen, "row gen survives the clear and the rebuild")
 }
 
 func eventsPaging(h *harness) {

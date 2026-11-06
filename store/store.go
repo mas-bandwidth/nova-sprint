@@ -54,7 +54,10 @@ var (
 
 // The closed sets the schema checks.
 var (
-	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail"}
+	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "done"}
+	CardKinds   = []string{"producer", "work", "read"}
+	CardResults = []string{"", "ok", "fix", "fail"}
+	LiveStates  = []string{"ready", "working"} // a live card counts against its holder's width
 	RowKinds    = []string{"worker", "kin"}
 	RowStates   = []string{"up", "down", "blocked"}
 	PolicyKinds = []string{"script", "data"}
@@ -82,9 +85,12 @@ type Stream struct {
 	Pos  int    `json:"pos"`
 }
 
-// Card is a row of sprint.cards. Holder "" is no holder.
+// Card is a row of sprint.cards. Holder "" is no holder; Of "" is a producer's
+// (a consumer's Of is its producer).
 type Card struct {
 	ID      string   `json:"id"`
+	Kind    string   `json:"kind"`
+	Of      string   `json:"of,omitempty"`
 	Stream  string   `json:"stream"`
 	State   string   `json:"state"`
 	Gen     int      `json:"gen"`
@@ -99,6 +105,7 @@ type Card struct {
 	Reason  string   `json:"reason"`
 	Author  string   `json:"author"`   // the row whose work the head is (schema 2)
 	BaseSHA string   `json:"base_sha"` // the base commit the attempt started from (schema 2)
+	Result  string   `json:"result"`   // "", ok, fix or fail
 }
 
 // Row is a row of sprint.rows: a worker or a kin.
@@ -109,6 +116,7 @@ type Row struct {
 	State   string `json:"state"`
 	Session string `json:"session"`
 	Flaps   int    `json:"flaps"`
+	Gen     int    `json:"gen"`
 }
 
 // PolicyVersion is one version of sprint.policy.

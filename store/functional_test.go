@@ -179,7 +179,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	h.ok(h.op("wide", nil, PutRow{"w1", "worker", 10, "sess-a"})) // room for every take: the holder write checks width
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
-		h.ok(h.op("add", nil, PutCard{ID: id, Stream: "s1"}))
+		h.ok(h.op("add", nil, PutCard{Kind: "work", ID: id, Of: "c1", Stream: "s1"}))
 		take := func() Op {
 			return h.op("take", []Expect{CardGen{id, 0}, CardHolder{id, ""}}, SetCardState{id, "working"}, SetCardHolder{id, "w1"})
 		}
@@ -194,7 +194,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	}
 }
 
-// Two deals on a width-1 row: the holder write counts the holders inside the
+// Two deals on a width-1 row: the holder write counts the live cards it holds inside the
 // transaction, so one is accepted and one refused, with no width condition.
 func TestFunctionalWidthRace(t *testing.T) {
 	t.Parallel()
@@ -202,7 +202,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 	h.seed()
 	for i := range 10 {
 		row := fmt.Sprintf("r%d", i)
-		h.ok(h.op("row", nil, PutRow{row, "worker", 1, ""}, SetRowState{row, "up"}, PutCard{ID: row + "a", Stream: "s1"}, PutCard{ID: row + "b", Stream: "s1"}))
+		h.ok(h.op("row", nil, PutRow{row, "worker", 1, ""}, SetRowState{row, "up"}, PutCard{Kind: "work", ID: row + "a", Of: "c1", Stream: "s1"}, PutCard{Kind: "work", ID: row + "b", Of: "c1", Stream: "s1"}))
 		deal := func(card string) Op {
 			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
 		}
@@ -210,7 +210,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
 		for _, r := range []Receipt{a, b} {
 			if !r.Accepted {
-				assert.Equal(t, "row "+row+" holds 1 cards, its width is 1", r.Reason)
+				assert.Equal(t, "row "+row+" holds 1 live cards, its width is 1", r.Reason)
 			}
 		}
 	}
@@ -225,7 +225,7 @@ func TestFunctionalNeedsLandedRace(t *testing.T) {
 	h.seed()
 	for i := range 10 {
 		id, gate := fmt.Sprintf("n%d", i), fmt.Sprintf("g%d", i)
-		h.ok(h.op("add", nil, PutCard{ID: gate, Stream: "s1"}, PutCard{ID: id, Stream: "s1", Needs: []string{"c0"}}))
+		h.ok(h.op("add", nil, PutCard{Kind: "producer", ID: gate, Stream: "s1"}, PutCard{Kind: "producer", ID: id, Stream: "s1", Needs: []string{"c0"}}))
 		deal := h.op("deal", []Expect{NeedsLanded{id}}, SetCardState{id, "ready"})
 		block := h.op("block", nil, SetCardNeeds{id, []string{"c0", gate}})
 		d, b := race(t, p, deal, block)
@@ -432,7 +432,7 @@ func TestFunctionalSnapshotConsistentUnderWrites(t *testing.T) {
 	ops := make([]Op, 50)
 	for i := range ops {
 		id := fmt.Sprintf("k%d", i)
-		ops[i] = h.op("add", nil, PutCard{ID: id, Stream: "s1", Score: i}, SetCardReason{"c1", id})
+		ops[i] = h.op("add", nil, PutCard{Kind: "producer", ID: id, Stream: "s1", Score: i}, SetCardReason{"c1", id})
 	}
 	done := make(chan struct{})
 	go func() {
@@ -471,7 +471,7 @@ func TestFunctionalConstraintIsDefect(t *testing.T) {
 	_, err := connect(t, dsn).Exec(context.Background(), "ALTER TABLE sprint.cards ADD CONSTRAINT test_no_x CHECK (brief <> 'x')")
 	require.NoError(t, err)
 	before := h.snap()
-	o := h.op("add", nil, PutStream{Name: "s2"}, PutCard{ID: "c9", Stream: "s1", Brief: "x"})
+	o := h.op("add", nil, PutStream{Name: "s2"}, PutCard{Kind: "producer", ID: "c9", Stream: "s1", Brief: "x"})
 	_, err = p.Apply(h.ctx, o)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "constraint test_no_x")
@@ -489,12 +489,12 @@ func TestFunctionalRebuildFromLog(t *testing.T) {
 	h.seed()
 	for i := range 20 {
 		id := fmt.Sprintf("k%d", i)
-		h.ok(h.op("add", []Expect{CardAbsent{id}}, PutCard{ID: id, Stream: "s1", Score: i, Needs: []string{"c1"}}))
+		h.ok(h.op("add", []Expect{CardAbsent{id}}, PutCard{Kind: "producer", ID: id, Stream: "s1", Score: i, Needs: []string{"c1"}}))
 		h.ok(h.op("ready", []Expect{CardGen{id, 0}}, SetCardState{id, "ready"}))
 		h.refused(h.op("ready", []Expect{CardGen{id, 0}}, SetCardState{id, "ready"}), "card "+id+" is at gen 1, expected gen 0")
 		if i == 10 {
 			h.clear()
-			h.ok(h.op("seed", nil, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetRowState{"w1", "up"}))
+			h.ok(h.op("seed", nil, PutStream{Name: "s1"}, PutCard{Kind: "producer", ID: "c1", Stream: "s1"}, SetRowState{"w1", "up"}))
 		}
 	}
 	h.ok(h.op("land", nil, SetCardState{"k15", "landed"}, SetCardHead{"k15", "deadbeef"}, SetCardPR{"k15", 7}, SetRowFlaps{"w1", 2}))
@@ -531,19 +531,27 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 	h.seed()
 	c := connect(t, dsn)
 	for q, constraint := range map[string]string{
-		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                             "cards_state_check",
-		"UPDATE sprint.cards SET state = NULL WHERE id = 'c1'":                                 `"state"`,
-		"UPDATE sprint.cards SET branch = NULL WHERE id = 'c1'":                                `"branch"`,
-		"UPDATE sprint.cards SET author = NULL WHERE id = 'c1'":                                `"author"`,
-		"UPDATE sprint.cards SET base_sha = NULL WHERE id = 'c1'":                              `"base_sha"`,
-		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'c1'":                                "cards_epoch_holder_fkey",
-		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's9', 'ready', 1)":  "cards_epoch_stream_fkey",
-		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 2)":  "cards_epoch_stream_fkey",
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":   "rows_kind_check",
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)": "rows_state_check",
-		"UPDATE sprint.rows SET session = NULL":                                                `"session"`,
-		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                       "epoch_id_check",
-		"INSERT INTO sprint.meta (id, schema) VALUES (2, 1)":                                   "meta_id_check",
+		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                                              "cards_state_check",
+		"UPDATE sprint.cards SET state = NULL WHERE id = 'c1'":                                                  `"state"`,
+		"UPDATE sprint.cards SET branch = NULL WHERE id = 'c1'":                                                 `"branch"`,
+		"UPDATE sprint.cards SET author = NULL WHERE id = 'c1'":                                                 `"author"`,
+		"UPDATE sprint.cards SET base_sha = NULL WHERE id = 'c1'":                                               `"base_sha"`,
+		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'u1'":                                                 "cards_epoch_holder_fkey",
+		"UPDATE sprint.cards SET holder = 'w1' WHERE id = 'c1'":                                                 "cards_holder_check",
+		"UPDATE sprint.cards SET kind = 'gate' WHERE id = 'c1'":                                                 "cards_kind_check",
+		"UPDATE sprint.cards SET result = 'maybe' WHERE id = 'u1'":                                              "cards_result_check",
+		"UPDATE sprint.cards SET kind = 'work' WHERE id = 'c0'":                                                 "cards_of_check",
+		`UPDATE sprint.cards SET "of" = NULL WHERE id = 'u1'`:                                                   "cards_of_check",
+		`UPDATE sprint.cards SET "of" = 'c9' WHERE id = 'u1'`:                                                   "cards_epoch_of_fkey",
+		"UPDATE sprint.cards SET needs = '{c1}' WHERE id = 'u1'":                                                "cards_needs_check",
+		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('c3', 'producer', 's9', 'ready', 1)": "cards_epoch_stream_fkey",
+		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('c3', 'producer', 's1', 'ready', 2)": "cards_epoch_stream_fkey",
+		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 1)":                   `"kind"`,
+		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":                    "rows_kind_check",
+		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)":                  "rows_state_check",
+		"UPDATE sprint.rows SET session = NULL":                                                                 `"session"`,
+		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                                        "epoch_id_check",
+		"INSERT INTO sprint.meta (id, schema) VALUES (2, 1)":                                                    "meta_id_check",
 		"INSERT INTO sprint.events (seq, op, actor, kind, accepted, receipt, at, epoch) SELECT 99, op, actor, kind, accepted, receipt, at, epoch FROM sprint.events": "events_op_key",
 		"INSERT INTO sprint.policy (kind, name, body, active, actor, at) VALUES ('data', 'a', '', true, 'x', now()), ('data', 'b', '', true, 'x', now())":            "policy_one_active",
 	} {

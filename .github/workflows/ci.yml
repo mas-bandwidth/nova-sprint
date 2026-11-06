@@ -78,6 +78,9 @@ jobs:
           true
       - name: initdb is present (a missing one fails the job, it does not skip)
         run: command -v initdb
+      # Each functional test starts its own PostgreSQL. This runner is Linux, so
+      # the default parallelism is fine; on macOS run with -parallel 4, because
+      # its System V shared memory limits run out (docs/TESTING.md).
       - name: functional tests
         run: go test -count=1 -race -run Functional ./...
 

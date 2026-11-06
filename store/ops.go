@@ -1,7 +1,7 @@
 package store
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, NeedsLanded,
-// RowIs, StreamHeld, CardAbsent, AtSeq. There is no width condition: the
+// RowIs, RowGen, StreamHeld, CardAbsent, AtSeq. There is no width condition: the
 // holder write is the check. The set is closed by the
 // unexported method; any other value is ErrInvalid.
 type Expect interface{ isExpect() }
@@ -25,6 +25,13 @@ type NeedsLanded struct{ Card string }
 // RowIs holds when row Row is in state State.
 type RowIs struct{ Row, State string }
 
+// RowGen holds when row Row is at gen Gen: it fences a row plan as CardGen
+// fences a card plan.
+type RowGen struct {
+	Row string
+	Gen int
+}
+
 // StreamHeld holds when stream Stream's held flag is Held.
 type StreamHeld struct {
 	Stream string
@@ -43,6 +50,7 @@ func (CardState) isExpect()   {}
 func (CardHolder) isExpect()  {}
 func (NeedsLanded) isExpect() {}
 func (RowIs) isExpect()       {}
+func (RowGen) isExpect()      {}
 func (StreamHeld) isExpect()  {}
 func (CardAbsent) isExpect()  {}
 func (AtSeq) isExpect()       {}
@@ -64,23 +72,32 @@ type SetStreamHeld struct {
 	Held   bool
 }
 
-// PutCard adds a card: refused when it exists. It starts waiting, gen 0,
-// attempt 0, no holder. Its stream must exist; every need must name another
-// card of the same epoch, once.
+// PutCard adds a card of a kind (producer, work or read): refused when it
+// exists. It starts waiting, gen 0, attempt 0. Its stream must exist; every
+// need must name another card of the same epoch, once. A producer has no Of
+// and no Holder. A consumer (work or read) names its producer in Of (a
+// producer of the same epoch; Of never changes after), has no needs, and may
+// be added with its Holder, which is the holder write in the same op.
 type PutCard struct {
-	ID, Stream string
-	Score      int
-	Needs      []string
-	Brief      string
+	ID, Kind, Of, Stream string
+	Score                int
+	Needs                []string
+	Brief                string
+	Holder               string
 }
 
-// SetCardState sets a card's state.
+// SetCardState sets a card's state. A held card made live (ready or working)
+// counts against its holder's width, as the holder write does.
 type SetCardState struct{ Card, State string }
 
 // SetCardHolder sets a card's holder: a row's name, or "" for none. Setting a
-// name is refused when that row already holds as many cards as its width,
-// counted at the moment of the write (earlier writes of the op included).
+// name is refused on a producer, and when that row already holds as many live
+// cards as its width, counted at the moment of the write (earlier writes of
+// the op included) and not counting the card written.
 type SetCardHolder struct{ Card, Holder string }
+
+// SetCardResult sets a card's result: "", ok, fix or fail.
+type SetCardResult struct{ Card, Result string }
 
 // SetCardAttempt sets the number of the attempt the holder is on.
 type SetCardAttempt struct {
@@ -129,6 +146,13 @@ type PutRow struct {
 	Session    string
 }
 
+// SetRowWidth sets a row's width; a width below the live cards it holds is
+// refused.
+type SetRowWidth struct {
+	Row   string
+	Width int
+}
+
 // SetRowState sets a row's state.
 type SetRowState struct{ Row, State string }
 
@@ -153,6 +177,8 @@ func (SetStreamHeld) isWrite()   {}
 func (PutCard) isWrite()         {}
 func (SetCardState) isWrite()    {}
 func (SetCardHolder) isWrite()   {}
+func (SetCardResult) isWrite()   {}
+func (SetRowWidth) isWrite()     {}
 func (SetCardAttempt) isWrite()  {}
 func (SetCardBranch) isWrite()   {}
 func (SetCardHead) isWrite()     {}
@@ -193,7 +219,7 @@ func fields(w Write) (fs []field, ok bool) {
 	case SetStreamHeld:
 		return of("stream", v.Stream, "held"), true
 	case PutCard:
-		return of("card", v.ID, "stream", "score", "needs", "brief"), true
+		return of("card", v.ID, "kind", "of", "stream", "score", "needs", "brief", "holder"), true
 	case PutRow:
 		return of("row", v.Name, "kind", "width", "session"), true
 	case PutPolicy:
@@ -213,6 +239,8 @@ func cardSet(w Write) (id, column string, set func(*Card), ok bool) {
 		return v.Card, "state", func(c *Card) { c.State = v.State }, true
 	case SetCardHolder:
 		return v.Card, "holder", func(c *Card) { c.Holder = v.Holder }, true
+	case SetCardResult:
+		return v.Card, "result", func(c *Card) { c.Result = v.Result }, true
 	case SetCardAttempt:
 		return v.Card, "attempt", func(c *Card) { c.Attempt = v.Attempt }, true
 	case SetCardBranch:
@@ -244,6 +272,8 @@ func rowSet(w Write) (name, column string, set func(*Row), ok bool) {
 		return v.Row, "session", func(r *Row) { r.Session = v.Session }, true
 	case SetRowFlaps:
 		return v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, true
+	case SetRowWidth:
+		return v.Row, "width", func(r *Row) { r.Width = v.Width }, true
 	}
 	return "", "", nil, false
 }
