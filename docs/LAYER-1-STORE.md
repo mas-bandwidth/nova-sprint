@@ -479,3 +479,17 @@ whatever the sprint's size. A snapshot per tick is a defect in layer 3. The
 deferred load test's target is thousands of producers with their consumers
 and judgements at a one-second tick, every worker reporting at once, with
 Apply latency under the writer lock and the incremental read both measured.
+
+## Measured at the bar (2026-11-06, hetzner2, PostgreSQL 18.6, fsync on, bench shared with TLC)
+
+After round 15 (indexes on every filtered column, each event's after-image
+stored once), 5,000 producers with their consumers, 125,000 events:
+tick 119 ms median, 153 max (was 327 / 387); tick while 200 reports/s arrive
+132 median, 178 max; report median wait 2.1 ms; 2,000-report burst 2.8 s;
+dashboard refresh from the local copy 24 ms; incremental read per tick 13
+ms; cold snapshot 45 ms; cold rebuild of the log 4.9 s read plus 83 ms fold;
+lock wait 21 ms mean, 168 max. At 2,000 producers every number is at or
+under these. Logs: store/testdata/load-*.log. The width count went from 3.8
+ms (a sequential scan) to 0.04 ms with one partial index. Remaining tick
+cost is about 1,500 one-row round trips; by Glenn's ruling the per-tick
+budget absorbs bursts rather than further tuning here.
