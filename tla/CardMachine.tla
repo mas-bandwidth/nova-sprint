@@ -634,8 +634,10 @@ NeverRed             == ~\E p \in Prods : AfterRed(p)
 NeverNeedFailed      == last.ev # "NeedFailed"
 NeverBlocked         == \A p \in P : ps[p].st # "blocked"
 NeverPreempted       == last.ev # "Preempt"
-(* Only Reached lands a sentinel (SentinelLandsByReached).                 *)
-NeverSentinelReached == \A s \in Sentinels : ps[s].st # "landed"
+(* Only Reached lands a sentinel (SentinelLandsByReached); this one lands *)
+(* with its original needs landed, not waived away.                       *)
+NeverSentinelReached ==
+  \A s \in Sentinels : ~(ps[s].st = "landed" /\ \A n \in Needs0[s] : ps[n].st = "landed")
 NeverRelinked        == \A p \in P : ps[p].needs \subseteq Needs0[p]
 (* A work consumer reported fault, and a later work consumer of the same *)
 (* producer was cut: the fault was re-dealt.                              *)
