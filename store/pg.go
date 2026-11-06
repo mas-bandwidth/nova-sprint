@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -280,21 +279,25 @@ func jsonArg(s *State) any {
 	return string(encode(s))
 }
 
-type queryRower interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}
+// replaySQL is the stored receipt of an op id with its event's after-image,
+// which the receipt does not repeat (readReceipt).
+const replaySQL = "SELECT receipt, after FROM sprint.events WHERE op = $1"
 
-func replayTx(ctx context.Context, q queryRower, opID string) (Receipt, bool, error) {
-	var b []byte
-	err := q.QueryRow(ctx, "SELECT receipt FROM sprint.events WHERE op = $1", opID).Scan(&b)
+func scanReplay(row pgx.Row) (Receipt, bool, error) {
+	var b, after []byte
+	err := row.Scan(&b, &after)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Receipt{}, false, nil
 	}
 	if err != nil {
 		return Receipt{}, false, err
 	}
-	var r Receipt
-	return r, true, json.Unmarshal(b, &r)
+	a, err := readState(after)
+	if err != nil {
+		return Receipt{}, false, err
+	}
+	r, err := readReceipt(b, a)
+	return r, err == nil, err
 }
 
 // Replay returns the stored receipt of an op id, and false when it is
@@ -303,7 +306,7 @@ func (p *PG) Replay(ctx context.Context, opID string) (Receipt, bool, error) {
 	if checkID(Op{ID: opID}) != nil {
 		return Receipt{}, false, nil
 	}
-	r, ok, err := replayTx(ctx, p.pool, opID)
+	r, ok, err := scanReplay(p.pool.QueryRow(ctx, replaySQL, opID))
 	if err != nil {
 		return Receipt{}, false, fmt.Errorf("store: replay: %w", err)
 	}
