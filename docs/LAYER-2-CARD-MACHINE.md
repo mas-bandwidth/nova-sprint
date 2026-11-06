@@ -448,3 +448,35 @@ with a design change, never a special case):
   coordinator's judgement that the red was not the code's).
 - Actor rulings (who may Unblock, Waive, Relink, SetPriority, WaiveRed) are
   layer 3's; events carry no actor.
+
+## Rulings from the third cold read of layer 2 and the card model (2026-11-06)
+
+- `Merge` is sequential composition, never a union of writes: plan 1's
+  writes are applied to a copy of the snapshot, plan 2's move is re-run
+  against that state, and so on; any refusal refuses the whole merge naming
+  both plans. This is what makes "the same checks as a single plan" literally
+  true (two relinks cannot close a cycle; a hold merged with a resolve cannot
+  leave a ready producer in a held stream).
+- A Red records itself on the producer (`result = "red"`); `Finished` and
+  `Start` clear it; `WaiveRed` refuses "no red on review N" without it.
+- A fault never writes `finding`. A fault's reason goes to `reason`;
+  `finding` is written only by a read (`Broken` carries the reader's text,
+  `Faulted` does not) and `Start` copies it to the next attempt. This
+  replaces the second read's "Broken and Faulted write the consumer's reason
+  into finding".
+- `Relink` accepts a sentinel as the new need, as `Add` does.
+- A `Withdraw` whose reason is preempt refuses unless the consumer is
+  working; choosing the youngest on the blocker's row is the step's (layer 3
+  has the list).
+- `HoldStream` parks exactly the ready set the caller lists; passing the full
+  ready set of the snapshot is layer 3's duty, and the `AtSeq` fence makes a
+  stale list refuse rather than fill it in.
+- `Landed` has no `after` check in the machine; "a landing never holds on a
+  soft after whose target is not queued" is the landing step's rule (layer 3).
+- A hold merged after a start parks what the start readied; a start merged
+  after a hold is refused "held". Both fall out of sequential `Merge`.
+- The model (`tla/CardMachine.tla`, 93 runs at 279a8835) matches the code at
+  1b6e66ab; `prior_head` is model state (Report and Withdraw refuse a head
+  equal to it); `reason`, `brief`, `cost`, `priced`, `prose`, `paths` and
+  `done_when` are data no transition reads. Its holes are listed in
+  `tla/README.md`; the ones above are the rulings on them.
