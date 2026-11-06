@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"math"
+	"strings"
 	"sync"
 	"testing"
 
@@ -73,7 +75,7 @@ func TestFakeRaces(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 	h.seed()
-	h.ok(h.op("narrow", nil, PutRow{Name: "w1", Kind: "worker", Width: 1, Session: "sess-a"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
+	h.ok(h.op("narrow", nil, PutRow{Name: "w1", Kind: "worker", Width: 1, Session: "sess-a", Tiers: []string{"pro"}}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
 		"deal": {h.op("deal", nil, SetCardState{"u1", "working"}), h.op("deal", nil, SetCardState{"u2", "working"})}, // the state write into working alone is the width check
@@ -129,4 +131,43 @@ func TestSchemaIsEmbedded(t *testing.T) {
 	for _, want := range []string{"CREATE SCHEMA IF NOT EXISTS sprint", fmt.Sprintf("INSERT INTO sprint.meta (id, schema) VALUES (1, %d)", SchemaVersion), "FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name)"} {
 		assert.Contains(t, schemaSQL, want)
 	}
+}
+
+// Fake applies PG's bound: a counter at the top of a PostgreSQL integer
+// cannot rise, a plain error naming it, and nothing lands (PG's side is
+// TestFunctionalClientErrorIsKnown).
+func TestFakeCounterBound(t *testing.T) {
+	f := NewFake()
+	h := &harness{t: t, s: f, ctx: context.Background(), epoch: 1}
+	h.seed()
+	c := f.cards[key{1, "c1"}]
+	c.Gen = math.MaxInt32
+	f.cards[key{1, "c1"}] = c
+	r := f.rows[key{1, "w1"}]
+	r.Gen = math.MaxInt32
+	f.rows[key{1, "w1"}] = r
+	f.policies[math.MaxInt32] = PolicyVersion{Version: math.MaxInt32, Kind: "data"}
+	before := h.snap()
+	for w, want := range map[Write]string{
+		SetCardReason{"c1", "r"}:   "store: card c1 gen is 2147483647, the most its column holds; it cannot rise",
+		SetRowFlaps{"w1", 1}:       "store: row w1 gen is 2147483647, the most its column holds; it cannot rise",
+		PutPolicy{"data", "q", ""}: "store: policy version is 2147483647, the most its column holds; it cannot rise",
+	} {
+		_, err := f.Apply(h.ctx, h.op("x", nil, w))
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrUnknown)
+		assert.Equal(t, want, err.Error())
+	}
+	_, err := f.Clear(h.ctx, h.op("clear", nil))
+	assert.EqualError(t, err, "store: row w1 gen is 2147483647, the most its column holds; it cannot rise", "a clear raises every row's gen")
+	assert.Equal(t, before, h.snap(), "nothing landed")
+}
+
+// The schema hash ignores comments, indentation and blank lines, so a
+// comment edit does not refuse every store; any change to the SQL does.
+func TestSchemaHash(t *testing.T) {
+	assert.Equal(t, schemaHash, hashSchema(schemaSQL))
+	assert.Equal(t, schemaHash, hashSchema("-- a new comment\n\n"+strings.ReplaceAll(schemaSQL, "\n", "  -- note\n\n")))
+	assert.Equal(t, schemaHash, hashSchema(strings.ReplaceAll(schemaSQL, "\n    ", "\n\t")))
+	assert.NotEqual(t, schemaHash, hashSchema(strings.Replace(schemaSQL, "width >= 0", "width >= 1", 1)))
 }

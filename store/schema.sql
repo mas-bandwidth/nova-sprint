@@ -1,8 +1,9 @@
 -- The sprint store: layer 1 of nova-sprint v2 (docs/LAYER-1-STORE.md).
 -- Idempotent: applying it twice is a no-op. Migrate checks sprint.meta before
 -- it runs this, and refuses a store at another schema version. Nothing is
--- ever deleted; a clear increments sprint.epoch and every stream, card, row,
--- judgement and cursor carries the epoch it was written in. Version 2 is the
+-- ever deleted; a clear increments sprint.epoch and every stream, card, row
+-- and judgement carries the epoch it was written in (a cursor is global, as
+-- seq is). Every count is 0 or more by a CHECK. Version 2 is the
 -- version with the two card kinds (kind with sentinel, of, after, author,
 -- base_sha, result, the states blocked and done; prior_head, bounces, cost,
 -- priced, priority, the result fault; tier, paths, done_when, prose), row
@@ -12,8 +13,9 @@
 CREATE SCHEMA IF NOT EXISTS sprint;
 
 -- hash is the sha256 of this file as the binary that made the store carries
--- it: Migrate sets it on a new store and refuses a store whose hash differs
--- at the same version (a different build of the schema).
+-- it, comments and blank lines stripped: Migrate sets it on a new store and
+-- refuses a store whose hash differs at the same version (a different build
+-- of the schema).
 CREATE TABLE IF NOT EXISTS sprint.meta (
     id     integer PRIMARY KEY CHECK (id = 1),
     schema integer NOT NULL,
@@ -32,7 +34,7 @@ CREATE TABLE IF NOT EXISTS sprint.streams (
     repo  text    NOT NULL DEFAULT '',
     base  text    NOT NULL DEFAULT '',
     held  boolean NOT NULL DEFAULT false,
-    pos   integer NOT NULL DEFAULT 0,
+    pos   integer NOT NULL DEFAULT 0 CHECK (pos >= 0),
     epoch integer NOT NULL,
     PRIMARY KEY (epoch, name)
 );
@@ -40,12 +42,12 @@ CREATE TABLE IF NOT EXISTS sprint.streams (
 CREATE TABLE IF NOT EXISTS sprint.rows (
     name    text    NOT NULL,
     kind    text    NOT NULL CHECK (kind IN ('worker', 'kin')),
-    width   integer NOT NULL DEFAULT 1,
+    width   integer NOT NULL DEFAULT 1 CHECK (width >= 0),
     state   text    NOT NULL CHECK (state IN ('up', 'down')),
     session text    NOT NULL DEFAULT '',
-    flaps   integer NOT NULL DEFAULT 0,
+    flaps   integer NOT NULL DEFAULT 0 CHECK (flaps >= 0),
     held    boolean NOT NULL DEFAULT false,
-    gen     integer NOT NULL DEFAULT 0,
+    gen     integer NOT NULL DEFAULT 0 CHECK (gen >= 0),
     tiers   text[]  NOT NULL DEFAULT '{}' CHECK (tiers <@ ARRAY['flash', 'pro', 'heavy', 'frontier']::text[]),
     model   text    NOT NULL DEFAULT '',
     harness text    NOT NULL DEFAULT '',
@@ -64,9 +66,9 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     "of"     text,
     stream   text    NOT NULL,
     state    text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail', 'blocked', 'done')),
-    gen      integer NOT NULL DEFAULT 0,
-    attempt  integer NOT NULL DEFAULT 0,
-    score    integer NOT NULL DEFAULT 0,
+    gen      integer NOT NULL DEFAULT 0 CHECK (gen >= 0),
+    attempt  integer NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+    score    integer NOT NULL DEFAULT 0 CHECK (score >= 0),
     needs    text[]  NOT NULL DEFAULT '{}',
     after    text[]  NOT NULL DEFAULT '{}',
     holder   text,
@@ -75,10 +77,10 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     base_sha text    NOT NULL DEFAULT '',
     prior_head text  NOT NULL DEFAULT '',
     head     text    NOT NULL DEFAULT '',
-    pr       integer NOT NULL DEFAULT 0,
+    pr       integer NOT NULL DEFAULT 0 CHECK (pr >= 0),
     result   text    NOT NULL DEFAULT '' CHECK (result IN ('', 'ok', 'fix', 'fail', 'fault')),
-    bounces  integer NOT NULL DEFAULT 0,
-    cost     bigint  NOT NULL DEFAULT 0,
+    bounces  integer NOT NULL DEFAULT 0 CONSTRAINT cards_bounces_min_check CHECK (bounces >= 0),
+    cost     bigint  NOT NULL DEFAULT 0 CHECK (cost >= 0),
     priced   boolean NOT NULL DEFAULT false,
     priority text    NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'critical', 'blocker')),
     brief    text    NOT NULL DEFAULT '',
@@ -104,18 +106,18 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     FOREIGN KEY (epoch, "of") REFERENCES sprint.cards (epoch, id)
 );
 
--- What a CHECK cannot say: a card's kind, of, stream, holder and tier never
--- change once it is written (there is no write for any of them; Johnny's
--- review 2026-11-06: a working card could drop its holder and keep the
--- slot), and a consumer's of names a producer of its own tier (the foreign
--- key says only that it names a card). A consumer's attempt is fixed at add
+-- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
+-- tier never change once it is written (there is no write for any of them;
+-- Johnny's review 2026-11-06: a working card could drop its holder and keep
+-- the slot), and a consumer's of names a producer of its own stream and tier
+-- (the foreign key says only that it names a card). A consumer's attempt is fixed at add
 -- too, but a trigger cannot tell the store's own writes from a caller's, so
 -- that rule is the store's alone.
 CREATE OR REPLACE FUNCTION sprint.cards_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF TG_OP = 'UPDATE' AND (NEW.kind IS DISTINCT FROM OLD.kind OR NEW."of" IS DISTINCT FROM OLD."of" OR NEW.stream IS DISTINCT FROM OLD.stream
-            OR NEW.holder IS DISTINCT FROM OLD.holder OR NEW.tier IS DISTINCT FROM OLD.tier) THEN
-        RAISE EXCEPTION 'card % changes its kind, of, stream, holder or tier; they are fixed when the card is added', OLD.id
+    IF TG_OP = 'UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.epoch IS DISTINCT FROM OLD.epoch OR NEW.kind IS DISTINCT FROM OLD.kind
+            OR NEW."of" IS DISTINCT FROM OLD."of" OR NEW.stream IS DISTINCT FROM OLD.stream OR NEW.holder IS DISTINCT FROM OLD.holder OR NEW.tier IS DISTINCT FROM OLD.tier) THEN
+        RAISE EXCEPTION 'card % changes its id, epoch, kind, of, stream, holder or tier; they are fixed when the card is added', OLD.id
             USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_fixed_check';
     END IF;
     IF NEW."of" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sprint.cards c WHERE c.epoch = NEW.epoch AND c.id = NEW."of" AND c.kind = 'producer') THEN
@@ -126,11 +128,29 @@ BEGIN
         RAISE EXCEPTION 'card % is not of its producer %''s tier', NEW.id, NEW."of"
             USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_consumer_tier_check';
     END IF;
+    IF NEW."of" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sprint.cards c WHERE c.epoch = NEW.epoch AND c.id = NEW."of" AND c.stream = NEW.stream) THEN
+        RAISE EXCEPTION 'card % is not in its producer %''s stream', NEW.id, NEW."of"
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_consumer_stream_check';
+    END IF;
     RETURN NEW;
 END
 $$;
 CREATE OR REPLACE TRIGGER cards_fixed BEFORE INSERT OR UPDATE ON sprint.cards
     FOR EACH ROW EXECUTE FUNCTION sprint.cards_fixed();
+
+-- A stream's, row's or judgement's key (TG_ARGV[0]) and epoch never change:
+-- an update that moved one would move its history with it.
+CREATE OR REPLACE FUNCTION sprint.key_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF to_jsonb(NEW)->TG_ARGV[0] IS DISTINCT FROM to_jsonb(OLD)->TG_ARGV[0] OR NEW.epoch IS DISTINCT FROM OLD.epoch THEN
+        RAISE EXCEPTION '% % changes its % or epoch; they are fixed when it is added', TG_TABLE_NAME, to_jsonb(OLD)->>TG_ARGV[0], TG_ARGV[0]
+            USING ERRCODE = 'check_violation', CONSTRAINT = TG_TABLE_NAME || '_key_fixed_check';
+    END IF;
+    RETURN NEW;
+END
+$$;
+CREATE OR REPLACE TRIGGER streams_key_fixed BEFORE UPDATE ON sprint.streams FOR EACH ROW EXECUTE FUNCTION sprint.key_fixed('name');
+CREATE OR REPLACE TRIGGER rows_key_fixed BEFORE UPDATE ON sprint.rows FOR EACH ROW EXECUTE FUNCTION sprint.key_fixed('name');
 
 -- Append-only: one row per operation that entered the store, accepted or
 -- refused. Writers run one at a time, so seq is commit order with no gaps.
@@ -148,6 +168,16 @@ CREATE TABLE IF NOT EXISTS sprint.events (
     epoch    integer     NOT NULL,
     policy   integer     NOT NULL DEFAULT 0 -- the active policy version when the op was checked; 0 when none
 );
+
+-- The log is append-only: an event is never changed or removed.
+CREATE OR REPLACE FUNCTION sprint.events_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'event % is in the log; the log is append-only', OLD.seq
+        USING ERRCODE = 'check_violation', CONSTRAINT = 'events_append_only_check';
+END
+$$;
+CREATE OR REPLACE TRIGGER events_append_only BEFORE UPDATE OR DELETE ON sprint.events
+    FOR EACH ROW EXECUTE FUNCTION sprint.events_append_only();
 
 -- Global, not epoch scoped: a clear keeps the policy. At most one version is
 -- active. Filled by layer 5.
@@ -180,14 +210,15 @@ CREATE TABLE IF NOT EXISTS sprint.judgements (
     closed_at timestamptz,
     epoch     integer     NOT NULL,
     PRIMARY KEY (epoch, id),
-    CONSTRAINT judgements_closed_check CHECK ((state = 'open') = (closed_at IS NULL))
+    CONSTRAINT judgements_closed_check CHECK ((state = 'open') = (closed_at IS NULL)),
+    CONSTRAINT judgements_order_check CHECK (closed_at >= opened_at)
 );
+CREATE OR REPLACE TRIGGER judgements_key_fixed BEFORE UPDATE ON sprint.judgements FOR EACH ROW EXECUTE FUNCTION sprint.key_fixed('id');
 
--- A subscriber's place in the event log, so a restart resumes where it
--- stopped (promise 6). Epoch scoped: a clear does not carry it.
+-- A subscriber's place in the event log (the last seq it read), so a restart
+-- resumes where it stopped (promise 6). Global, as seq is: a clear carries
+-- it.
 CREATE TABLE IF NOT EXISTS sprint.cursors (
-    name  text    NOT NULL,
-    seq   bigint  NOT NULL CHECK (seq >= 0),
-    epoch integer NOT NULL,
-    PRIMARY KEY (epoch, name)
+    name text   PRIMARY KEY,
+    seq  bigint NOT NULL CHECK (seq >= 0)
 );

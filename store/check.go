@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -55,17 +56,18 @@ func check(op Op) error {
 	seen := map[field]bool{}
 	for _, w := range op.Writes {
 		c.in = fmt.Sprintf("write %T", w)
-		fs, ok := fields(w)
+		sp, ok := specOf(w)
 		if !ok {
 			c.fail("it is not a write of the closed set")
+			continue
 		}
-		for _, f := range fs {
+		for _, f := range sp.fields {
 			if seen[f] {
-				c.fail("a second write to %s %s field %s", f.table, f.key, f.name)
+				c.fail("a second write to %s", f)
 			}
 			seen[f] = true
 		}
-		c.write(w)
+		sp.check(&c)
 	}
 	return c.err
 }
@@ -123,19 +125,44 @@ func (c *checker) num(what string, n int) *checker {
 	return c
 }
 
+// num64 is num for a PostgreSQL bigint.
+func (c *checker) num64(what string, n int64) *checker {
+	if n < 0 {
+		c.fail("%s %d is outside the range 0..%d", what, n, int64(math.MaxInt64))
+	}
+	return c
+}
+
+// time is a time in the years 0..9999; the zero time is none when it may be.
+func (c *checker) time(what string, t time.Time, none bool) *checker {
+	if (!none || !t.IsZero()) && (t.IsZero() || t.UTC().Year() < 0 || t.UTC().Year() > 9999) {
+		c.fail("%s %s is not a time in the years 0..9999", what, t)
+	}
+	return c
+}
+
+// oneOf refuses a value outside its closed set: a condition on a state no card
+// or row can be in can never hold, so it is a caller bug, not a refusal.
+func (c *checker) oneOf(what, v string, set []string) *checker {
+	if r := oneOf(what, v, set); r != "" {
+		c.fail("%s", r)
+	}
+	return c
+}
+
 // expect checks one condition: a type of the closed set, its names and text.
 func (c *checker) expect(e Expect) {
 	switch v := e.(type) {
 	case CardGen:
 		c.name(v.Card)
 	case CardState:
-		c.name(v.Card).text(v.State)
+		c.name(v.Card).oneOf("card state", v.State, CardStates)
 	case CardHolder:
 		c.name(v.Card, v.Holder)
 	case NeedsLanded:
 		c.name(v.Card)
 	case RowIs:
-		c.name(v.Row).text(v.State)
+		c.name(v.Row).oneOf("row state", v.State, RowStates)
 	case RowGen:
 		c.name(v.Row)
 	case RowHeld:
@@ -144,8 +171,6 @@ func (c *checker) expect(e Expect) {
 		c.name(v.Stream)
 	case CardAbsent:
 		c.name(v.Card)
-	case RowServes:
-		c.name(v.Row).text(v.Tier)
 	case JudgementOpen:
 		c.name(v.ID)
 	case AtSeq:
@@ -154,97 +179,16 @@ func (c *checker) expect(e Expect) {
 	}
 }
 
-// write checks one write's fields; fields has already refused a write
-// outside the closed set.
-func (c *checker) write(w Write) {
-	switch v := w.(type) {
-	case PutStream:
-		c.name(v.Name).text(v.Repo, v.Base).num("pos", v.Pos)
-	case SetStreamHeld:
-		c.name(v.Stream)
-	case PutCard:
-		c.name(v.ID, v.Of, v.Stream, v.Holder).name(v.Needs...).name(v.After...).text(v.Kind, v.Brief, v.Priority, v.Tier, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("score", v.Score)
-	case SetCardState:
-		c.name(v.Card).text(v.State)
-	case SetCardPaths:
-		c.name(v.Card).text(v.Paths...)
-	case SetCardDoneWhen:
-		c.name(v.Card).text(v.DoneWhen...)
-	case SetCardProse:
-		c.name(v.Card).text(v.Prose)
-	case SetCardResult:
-		c.name(v.Card).text(v.Result)
-	case SetCardAttempt:
-		c.name(v.Card).num("attempt", v.Attempt)
-	case SetCardBranch:
-		c.name(v.Card).text(v.Branch)
-	case SetCardHead:
-		c.name(v.Card).text(v.Head)
-	case SetCardPR:
-		c.name(v.Card).num("pr", v.PR)
-	case SetCardReason:
-		c.name(v.Card).text(v.Reason)
-	case SetCardScore:
-		c.name(v.Card).num("score", v.Score)
-	case SetCardAuthor:
-		c.name(v.Card, v.Author)
-	case SetCardBaseSHA:
-		c.name(v.Card).text(v.SHA)
-	case SetCardNeeds:
-		c.name(v.Card).name(v.Needs...)
-	case SetCardAfter:
-		c.name(v.Card).name(v.After...)
-	case SetCardPriorHead:
-		c.name(v.Card).text(v.Head)
-	case SetCardBounces:
-		c.name(v.Card).num("bounces", v.Bounces)
-	case SetCardCost:
-		if c.name(v.Card); v.Cost < 0 {
-			c.fail("cost %d is outside the range 0..%d", v.Cost, int64(math.MaxInt64))
-		}
-	case SetCardPriority:
-		c.name(v.Card).text(v.Priority)
-	case PutRow:
-		c.name(v.Name).text(v.Kind, v.Session, v.Model, v.Harness).text(v.Tiers...).num("width", v.Width)
-	case SetRowTiers:
-		c.name(v.Row).text(v.Tiers...)
-	case SetRowLabels:
-		c.name(v.Row).text(v.Model, v.Harness)
-	case PutJudgement:
-		c.name(v.ID, v.Kind, v.About, v.Group).text(v.Question, v.Command)
-		if !v.Deadline.IsZero() && (v.Deadline.UTC().Year() < 0 || v.Deadline.UTC().Year() > 9999) {
-			c.fail("deadline %s is not a time in the years 0..9999", v.Deadline)
-		}
-	case AnswerJudgement:
-		c.name(v.ID, v.Actor).text(v.Answer)
-	case ExpireJudgement:
-		c.name(v.ID).text(v.Reason)
-	case SetCursor:
-		if c.name(v.Name); v.Seq < 0 {
-			c.fail("cursor seq %d is outside the range 0..%d", v.Seq, int64(math.MaxInt64))
-		}
-	case SetRowWidth:
-		c.name(v.Row).num("width", v.Width)
-	case SetRowState:
-		c.name(v.Row).text(v.State)
-	case SetRowSession:
-		c.name(v.Row).text(v.Session)
-	case SetRowFlaps:
-		c.name(v.Row).num("flaps", v.Flaps)
-	case SetRowHeld:
-		c.name(v.Row)
-	case PutPolicy:
-		c.name(v.Name).text(v.Kind, v.Body)
-	case SetActivePolicy:
-		c.num("version", v.Version)
-	}
-}
-
 func badText(s string) bool { return !utf8.ValidString(s) || strings.IndexByte(s, 0) >= 0 }
 
+// oneOf is the reason a value is outside its closed set, quoting at most
+// MaxName bytes of it, or "".
 func oneOf(what, v string, set []string) string {
 	if slices.Contains(set, v) {
 		return ""
+	}
+	if len(v) > MaxName {
+		v = v[:MaxName] + "..."
 	}
 	return fmt.Sprintf("%s %q is not one of %s", what, v, strings.Join(set, ", "))
 }

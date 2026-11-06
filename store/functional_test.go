@@ -125,22 +125,51 @@ func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	require.NoError(t, err)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 2", err.Error())
+	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 2: run a binary built for schema version 7, or recreate the store", err.Error())
 	_, err = c.Exec(context.Background(), "UPDATE sprint.meta SET schema = 1")
 	require.NoError(t, err)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store is at schema version 1, this binary knows schema version 2", err.Error(), "no upgrade path from version 1")
+	assert.Equal(t, "store: migrate: the store is at schema version 1, this binary knows schema version 2: run a binary built for schema version 1, or recreate the store", err.Error(), "no upgrade path from version 1")
 
-	old := startPG(t)
-	_, err = connect(t, old).Exec(context.Background(), "CREATE SCHEMA sprint; CREATE TABLE sprint.epoch (n integer)")
+}
+
+// A schema sprint that holds anything but no sprint.meta was not made by
+// nova-sprint (or predates versions): Migrate refuses it and changes nothing.
+// The foreign sprint.cards is from the third cold read's
+// TestFunctionalColdRead3MigrateForeignSchema, which found Migrate building
+// the store around it.
+func TestFunctionalMigrateRefusesForeignSchema(t *testing.T) {
+	t.Parallel()
+	for name, ddl := range map[string]string{
+		"before sprint.meta": "CREATE SCHEMA sprint; CREATE TABLE sprint.epoch (n integer)",
+		"foreign cards":      "CREATE SCHEMA sprint; CREATE TABLE sprint.cards (id text PRIMARY KEY)",
+		"a sequence only":    "CREATE SCHEMA sprint; CREATE SEQUENCE sprint.s",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dsn := startPG(t)
+			c := connect(t, dsn)
+			_, err := c.Exec(context.Background(), ddl)
+			require.NoError(t, err)
+			q, err := Open(context.Background(), dsn, "")
+			require.NoError(t, err)
+			defer q.Close()
+			err = q.Migrate(context.Background())
+			require.Error(t, err)
+			assert.Equal(t, "store: migrate: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere", err.Error())
+			var meta bool
+			require.NoError(t, c.QueryRow(context.Background(), "SELECT to_regclass('sprint.meta') IS NOT NULL").Scan(&meta))
+			assert.False(t, meta, "a refused Migrate changes nothing")
+		})
+	}
+	dsn := startPG(t)
+	_, err := connect(t, dsn).Exec(context.Background(), "CREATE SCHEMA sprint")
 	require.NoError(t, err)
-	q, err := Open(context.Background(), old, "")
+	q, err := Open(context.Background(), dsn, "")
 	require.NoError(t, err)
 	defer q.Close()
-	err = q.Migrate(context.Background())
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "schema version 0, this binary knows schema version 2", "a store from before sprint.meta")
+	require.NoError(t, q.Migrate(context.Background()), "an empty schema sprint is an empty store")
 }
 
 const staleShape = "this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)"
@@ -220,7 +249,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
-	h.ok(h.op("wide", nil, PutRow{Name: "w1", Kind: "worker", Width: 10, Session: "sess-a"})) // room for every take: the take checks width
+	h.ok(h.op("wide", nil, PutRow{Name: "w1", Kind: "worker", Width: 10, Session: "sess-a", Tiers: []string{"pro"}})) // room for every take: the take checks width
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
 		h.ok(h.op("add", nil, PutCard{Tier: "pro", Kind: "work", ID: id, Of: "c1", Stream: "s1", Holder: "w1"}))
@@ -246,7 +275,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 	h.seed()
 	for i := range 10 {
 		row := fmt.Sprintf("r%d", i)
-		h.ok(h.op("row", nil, PutRow{Name: row, Kind: "worker", Width: 1}, SetRowState{row, "up"}, PutCard{Tier: "pro", Kind: "work", ID: row + "a", Of: "c1", Stream: "s1", Holder: row}, PutCard{Tier: "pro", Kind: "work", ID: row + "b", Of: "c1", Stream: "s1", Holder: row}))
+		h.ok(h.op("row", nil, PutRow{Name: row, Kind: "worker", Width: 1, Tiers: []string{"pro"}}, SetRowState{row, "up"}, PutCard{Tier: "pro", Kind: "work", ID: row + "a", Of: "c1", Stream: "s1", Holder: row}, PutCard{Tier: "pro", Kind: "work", ID: row + "b", Of: "c1", Stream: "s1", Holder: row}))
 		deal := func(card string) Op {
 			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, row}}, SetCardState{card, "working"})
 		}
@@ -422,14 +451,27 @@ func TestFunctionalConcurrentMigrate(t *testing.T) {
 	}
 }
 
+// unguardLog runs sql on the log with its append-only trigger off: how a
+// test corrupts an event the store would never let change.
+func unguardLog(t *testing.T, dsn, sql string) {
+	t.Helper()
+	c := connect(t, dsn)
+	_, err := c.Exec(context.Background(), "ALTER TABLE sprint.events DISABLE TRIGGER events_append_only")
+	require.NoError(t, err)
+	_, err = c.Exec(context.Background(), sql)
+	require.NoError(t, err)
+	_, err = c.Exec(context.Background(), "ALTER TABLE sprint.events ENABLE TRIGGER events_append_only")
+	require.NoError(t, err)
+}
+
 // Corrupt JSON in an event's image is an error naming the seq from Events,
 // never a panic (Emma's read, 2026-11-06).
 func TestFunctionalEventsCorruptImage(t *testing.T) {
 	t.Parallel()
 	h, p, dsn := pgHarness(t)
 	h.seed()
-	_, err := connect(t, dsn).Exec(context.Background(), `UPDATE sprint.events SET after = '"not a state"' WHERE seq = 1`)
-	require.NoError(t, err)
+	unguardLog(t, dsn, `UPDATE sprint.events SET after = '"not a state"' WHERE seq = 1`)
+	var err error
 	assert.NotPanics(t, func() {
 		_, err = p.Events(context.Background(), 0, 0)
 	})
@@ -626,13 +668,37 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.rows SET tiers = NULL":            `"tiers"`,
 		"UPDATE sprint.rows SET model = NULL":            `"model"`,
 		"UPDATE sprint.rows SET harness = NULL":          `"harness"`,
-		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'pending', now(), now(), 1)": "judgements_state_check",
-		"INSERT INTO sprint.judgements (id, kind, state, opened_at, epoch) VALUES ('j1', 'red', 'answered', now(), 1)":                  "judgements_closed_check",
-		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'open', now(), now(), 1)":    "judgements_closed_check",
-		"INSERT INTO sprint.judgements (id, kind, state, epoch) VALUES ('j1', 'red', 'open', 1)":                                        `"opened_at"`,
-		"INSERT INTO sprint.cursors (name, seq, epoch) VALUES ('push', -1, 1)":                                                          "cursors_seq_check",
-		"INSERT INTO sprint.cursors (name, seq, epoch) VALUES ('push', NULL, 1)":                                                        `"seq"`,
-		"UPDATE sprint.events SET policy = NULL":                                                                                        `"policy"`,
+		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'pending', now(), now(), 1)":                 "judgements_state_check",
+		"INSERT INTO sprint.judgements (id, kind, state, opened_at, epoch) VALUES ('j1', 'red', 'answered', now(), 1)":                                  "judgements_closed_check",
+		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'open', now(), now(), 1)":                    "judgements_closed_check",
+		"INSERT INTO sprint.judgements (id, kind, state, epoch) VALUES ('j1', 'red', 'open', 1)":                                                        `"opened_at"`,
+		"INSERT INTO sprint.cursors (name, seq) VALUES ('push', -1)":                                                                                    "cursors_seq_check",
+		"INSERT INTO sprint.cursors (name, seq) VALUES ('push', NULL)":                                                                                  `"seq"`,
+		"INSERT INTO sprint.events (seq, op, actor, kind, accepted, receipt, at, epoch, policy) VALUES (99, 'x', 'a', 'k', true, '{}', now(), 1, NULL)": `"policy"`,
+		// round 10 (the third cold read's TestFunctionalColdRead3DirectSQL):
+		// keys and epochs fixed, a consumer in its producer's stream, every
+		// count at 0 or more, a judgement closed after it opened, the log
+		// append-only
+		"UPDATE sprint.cards SET epoch = 2 WHERE id = 'u1'":      "cards_fixed_check",
+		"UPDATE sprint.cards SET id = 'renamed' WHERE id = 'u2'": "cards_fixed_check",
+		"UPDATE sprint.rows SET name = 'renamed'":                "rows_key_fixed_check",
+		"UPDATE sprint.rows SET epoch = 2":                       "rows_key_fixed_check",
+		"UPDATE sprint.streams SET name = 'renamed'":             "streams_key_fixed_check",
+		"UPDATE sprint.streams SET epoch = 2":                    "streams_key_fixed_check",
+		"UPDATE sprint.rows SET width = -1":                      "rows_width_check",
+		"UPDATE sprint.rows SET flaps = -1":                      "rows_flaps_check",
+		"UPDATE sprint.rows SET gen = -1":                        "rows_gen_check",
+		"UPDATE sprint.streams SET pos = -1":                     "streams_pos_check",
+		"UPDATE sprint.cards SET gen = -1 WHERE id = 'c1'":       "cards_gen_check",
+		"UPDATE sprint.cards SET attempt = -1 WHERE id = 'c1'":   "cards_attempt_check",
+		"UPDATE sprint.cards SET score = -5 WHERE id = 'c1'":     "cards_score_check",
+		"UPDATE sprint.cards SET pr = -2 WHERE id = 'c1'":        "cards_pr_check",
+		"UPDATE sprint.cards SET bounces = -1 WHERE id = 'c1'":   "cards_bounces_min_check",
+		"UPDATE sprint.cards SET cost = -1 WHERE id = 'u1'":      "cards_cost_check",
+		"UPDATE sprint.events SET accepted = NOT accepted":       "events_append_only_check",
+		"DELETE FROM sprint.events":                              "events_append_only_check",
+		`INSERT INTO sprint.cards (id, kind, tier, "of", stream, state, holder, epoch) VALUES ('k3', 'work', 'pro', 'c1', 's9', 'ready', 'w1', 1)`:           "cards_consumer_stream_check",
+		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'answered', now(), now() - interval '1 hour', 1)": "judgements_order_check",
 		// the cards_fixed trigger: kind, of and stream never change, and of names a producer
 		`UPDATE sprint.cards SET "of" = NULL WHERE id = 'u1'`:                                                                                                        "cards_fixed_check",
 		`UPDATE sprint.cards SET "of" = 'c0' WHERE id = 'u1'`:                                                                                                        "cards_fixed_check",
@@ -680,4 +746,84 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		require.ErrorAs(t, err, &pe, q)
 		assert.Contains(t, err.Error()+" "+pe.ConstraintName, constraint, q)
 	}
+}
+
+// The unknown rule, final form (round 10): inside the transaction, every
+// error but a lost connection or a done ctx is known, a plain error, and
+// nothing is logged. A scan error (a column whose type changed under the
+// store) and a lock timeout are from the third cold read's
+// TestFunctionalColdRead3ScanErrorIsKnown and ...LockTimeoutIsKnown.
+func TestFunctionalClientErrorIsKnown(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		setup string // as the store's owner, behind its back
+		w     Write
+		want  string
+	}{
+		"scan error":    {"ALTER TABLE sprint.rows ALTER COLUMN held DROP DEFAULT, ALTER COLUMN held TYPE integer USING held::int", SetRowFlaps{"w1", 1}, "failed before COMMIT, so nothing landed: can't scan"},
+		"card gen full": {"UPDATE sprint.cards SET gen = 2147483647 WHERE id = 'c1'", SetCardReason{"c1", "r"}, "store: card c1 gen is 2147483647, the most its column holds; it cannot rise"},
+		"row gen full":  {"UPDATE sprint.rows SET gen = 2147483647 WHERE name = 'w1'", SetRowFlaps{"w1", 1}, "store: row w1 gen is 2147483647, the most its column holds; it cannot rise"},
+		"policy full":   {"INSERT INTO sprint.policy (version, kind, name, body, actor, at) VALUES (2147483647, 'data', 'p', '', 'x', now())", PutPolicy{"data", "q", ""}, "store: policy version is 2147483647, the most its column holds; it cannot rise"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h, _, dsn := pgHarness(t)
+			h.seed()
+			_, err := connect(t, dsn).Exec(context.Background(), c.setup)
+			require.NoError(t, err)
+			p, err := Open(context.Background(), dsn, "") // a fresh pool: no statement cached before the setup
+			require.NoError(t, err)
+			t.Cleanup(p.Close)
+			o := h.op("x", nil, c.w)
+			for range 2 { // the same each time: nothing landed, nothing to replay
+				_, err = p.Apply(h.ctx, o)
+				require.Error(t, err)
+				assert.NotErrorIs(t, err, ErrUnknown)
+				assert.NotErrorIs(t, err, ErrInvalid)
+				assert.Contains(t, err.Error(), c.want)
+				_, found, rerr := p.Replay(h.ctx, o.ID)
+				require.NoError(t, rerr)
+				assert.False(t, found, "nothing logged")
+			}
+		})
+	}
+}
+
+// A receipt that does not decode is a plain error from Apply on its id, not
+// ErrUnknown (a caller would replay forever).
+func TestFunctionalCorruptReceiptIsKnown(t *testing.T) {
+	t.Parallel()
+	h, p, dsn := pgHarness(t)
+	h.seed()
+	o := h.op("x", nil, SetCardReason{"c1", "r"})
+	h.ok(o)
+	unguardLog(t, dsn, fmt.Sprintf(`UPDATE sprint.events SET receipt = '{"seq": "x"}' WHERE op = '%s'`, o.ID))
+	_, err := p.Apply(h.ctx, o)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrUnknown)
+	assert.Contains(t, err.Error(), "failed before COMMIT, so nothing landed")
+}
+
+// A lock timeout is the server answering: known, a plain error, nothing logged.
+func TestFunctionalLockTimeoutIsKnown(t *testing.T) {
+	t.Parallel()
+	dsn := startPG(t)
+	_, err := connect(t, dsn).Exec(context.Background(), "ALTER DATABASE postgres SET lock_timeout = '200ms'")
+	require.NoError(t, err)
+	p := openPG(t, dsn)
+	h := &harness{t: t, s: p, ctx: context.Background(), epoch: 1}
+	h.seed()
+	tx, err := connect(t, dsn).Begin(context.Background())
+	require.NoError(t, err)
+	_, err = tx.Exec(context.Background(), "LOCK TABLE sprint.epoch IN ACCESS EXCLUSIVE MODE")
+	require.NoError(t, err)
+	o := h.op("x", nil, SetCardReason{"c1", "r"})
+	_, err = p.Apply(h.ctx, o)
+	require.NoError(t, tx.Rollback(context.Background()))
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrUnknown)
+	assert.Contains(t, err.Error(), "SQLSTATE 55P03")
+	_, found, err := p.Replay(h.ctx, o.ID)
+	require.NoError(t, err)
+	assert.False(t, found)
 }

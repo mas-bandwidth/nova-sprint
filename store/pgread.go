@@ -127,7 +127,7 @@ func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	if s.Judgements, err = all(ctx, tx, scanJudgement, func(v Judgement) string { return v.ID }, "SELECT "+judgeCols+" FROM sprint.judgements WHERE epoch = $1", s.Epoch); err != nil {
 		return s, err
 	}
-	cursors, err := all(ctx, tx, scanCursor, func(v cursorRow) string { return v.name }, "SELECT name, seq FROM sprint.cursors WHERE epoch = $1", s.Epoch)
+	cursors, err := all(ctx, tx, scanCursor, func(v cursorRow) string { return v.name }, "SELECT name, seq FROM sprint.cursors")
 	s.Cursors = map[string]int64{}
 	for name, c := range cursors {
 		s.Cursors[name] = c.seq
@@ -224,6 +224,16 @@ func (t *pgTx) working(row string) (int, error) {
 	return n, err
 }
 
+func (t *pgTx) needed(row string, tiers []string) (Card, bool, error) {
+	var c Card
+	err := t.tx.QueryRow(t.ctx, "SELECT id, tier FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') AND NOT tier = ANY(coalesce($3::text[], '{}')) ORDER BY id LIMIT 1",
+		t.epoch, row, tiers).Scan(&c.ID, &c.Tier)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Card{}, false, nil
+	}
+	return c, err == nil, err
+}
+
 func (t *pgTx) lastSeq() (int64, error) {
 	var n int64
 	err := t.tx.QueryRow(t.ctx, "SELECT coalesce(max(seq), 0) FROM sprint.events").Scan(&n)
@@ -291,13 +301,13 @@ func (t *pgTx) putJudgement(j Judgement) error {
 }
 
 func (t *pgTx) cursor(name string) (int64, bool, error) {
-	c, ok, err := one(t.tx.QueryRow(t.ctx, "SELECT name, seq FROM sprint.cursors WHERE epoch = $1 AND name = $2", t.epoch, name), scanCursor)
+	c, ok, err := one(t.tx.QueryRow(t.ctx, "SELECT name, seq FROM sprint.cursors WHERE name = $1", name), scanCursor)
 	return c.seq, ok, err
 }
 
 func (t *pgTx) putCursor(name string, seq int64) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cursors (epoch, name, seq) VALUES ($1, $2, $3)
-		ON CONFLICT (epoch, name) DO UPDATE SET seq = EXCLUDED.seq`, t.epoch, name, seq)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cursors (name, seq) VALUES ($1, $2)
+		ON CONFLICT (name) DO UPDATE SET seq = EXCLUDED.seq`, name, seq)
 	return err
 }
 

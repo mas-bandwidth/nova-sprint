@@ -20,16 +20,34 @@ import (
 var schemaSQL string
 
 // SchemaVersion is the version of schema.sql, kept in sprint.meta with the
-// sha256 of the file. Version 2 adds to version 1: the card columns kind
-// (with sentinel), of, after, author, base_sha, prior_head, result (with
-// fault), bounces, cost, priced and priority, the card states blocked and
-// done, the row columns gen and held, the meta hash, and the cards_fixed
-// trigger. There is no upgrade path: a store at version 1 is refused like
-// any other version.
+// schema's hash. Version 2 adds to version 1: the card columns kind (with
+// sentinel), of, after, author, base_sha, prior_head, result (with fault),
+// bounces, cost, priced, priority, tier, paths, done_when and prose; the card
+// states blocked and done; the row columns gen, held, tiers, model and
+// harness; the tables judgements and cursors; the events' policy; the meta
+// hash; the triggers that keep a card's kind, of, stream, holder, tier, id
+// and epoch, a row's, stream's or judgement's key and epoch, and the log
+// fixed; and the CHECKs that keep every count at 0 or more. There is no
+// upgrade path: a store at version 1 is refused like any other version.
 const SchemaVersion = 2
 
-// schemaHash is the sha256 of the schema file the binary carries, in hex.
-var schemaHash = fmt.Sprintf("%x", sha256.Sum256([]byte(schemaSQL)))
+// schemaHash is the sha256, in hex, of the schema the binary carries with
+// comments, indentation and blank lines stripped, so editing a comment does
+// not refuse every store.
+var schemaHash = hashSchema(schemaSQL)
+
+func hashSchema(sql string) string {
+	var b strings.Builder
+	for line := range strings.Lines(sql) {
+		if i := strings.Index(line, "--"); i >= 0 {
+			line = line[:i]
+		}
+		if line = strings.TrimSpace(line); line != "" {
+			b.WriteString(line + "\n")
+		}
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(b.String())))
+}
 
 // migrateLock is the advisory lock key Migrate holds for its transaction, so
 // concurrent Migrates of one store run one at a time.
@@ -41,9 +59,10 @@ type PG struct {
 	// fault is a fault-injection seam for the functional tests (kept, not
 	// dead code). It is called with "locked" inside a write's transaction
 	// once the writer lock is held, and with "committed" after COMMIT and
-	// before the receipt is returned. An error it returns is ErrUnknown (a
-	// reply lost after the commit, guarantee 3); a panic in it proves the
-	// lock is released. Nil outside tests.
+	// before the receipt is returned. An error at committed is ErrUnknown (a
+	// reply lost after the commit, guarantee 3), one at locked is known like
+	// any other before COMMIT; a panic in it proves the lock is released. Nil
+	// outside tests.
 	fault func(stage string) error
 }
 
@@ -73,8 +92,10 @@ func (p *PG) Close() { p.pool.Close() }
 
 // Migrate applies schema.sql to an empty store or one at SchemaVersion made
 // by this build of it, and refuses a store at any other version, or at this
-// version with another schema hash (sprint.meta), naming both. Twice is a no-op, and
-// concurrent Migrates are safe: each holds one advisory lock.
+// version with another schema hash (sprint.meta), naming both, and a schema
+// sprint that holds anything but no sprint.meta (not made by nova-sprint).
+// Twice is a no-op, and concurrent Migrates are safe: each holds one
+// advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
@@ -84,21 +105,23 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateLock); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
-	var meta, sprint bool
-	if err := tx.QueryRow(ctx, "SELECT to_regclass('sprint.meta') IS NOT NULL, to_regclass('sprint.epoch') IS NOT NULL").Scan(&meta, &sprint); err != nil {
+	var meta, used bool
+	if err := tx.QueryRow(ctx, `SELECT to_regclass('sprint.meta') IS NOT NULL,
+		EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'sprint')`).Scan(&meta, &used); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
-	if meta || sprint {
-		v, hash := 0, "" // a sprint schema without sprint.meta predates versions
-		if meta {
-			// to_jsonb reads hash from a meta made before the column existed as ""
-			err := tx.QueryRow(ctx, "SELECT m.schema, coalesce(to_jsonb(m)->>'hash', '') FROM sprint.meta m WHERE id = 1").Scan(&v, &hash)
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return fmt.Errorf("store: migrate: %w", err)
-			}
+	if used && !meta {
+		return errors.New("store: migrate: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere")
+	}
+	if meta {
+		v, hash := 0, ""
+		// to_jsonb reads hash from a meta made before the column existed as ""
+		err := tx.QueryRow(ctx, "SELECT m.schema, coalesce(to_jsonb(m)->>'hash', '') FROM sprint.meta m WHERE id = 1").Scan(&v, &hash)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("store: migrate: %w", err)
 		}
 		if v != SchemaVersion {
-			return fmt.Errorf("store: migrate: the store is at schema version %d, this binary knows schema version %d", v, SchemaVersion)
+			return fmt.Errorf("store: migrate: the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", v, SchemaVersion, v)
 		}
 		if hash != schemaHash {
 			return fmt.Errorf("store: migrate: the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
@@ -116,32 +139,38 @@ func (p *PG) Migrate(ctx context.Context) error {
 	return nil
 }
 
-// known is a failure before COMMIT whose outcome is known, as a plain error:
-// an invalid body, or any error the server itself returned (any SQLSTATE),
-// named with its SQLSTATE and message. The server answered, and a
-// transaction with an error in it cannot commit, so nothing landed. It is
-// nil (the outcome is unknown) when the server did not answer: a connection
-// error, or a timeout or cancellation of ctx once the request was sent.
-func known(ctx context.Context, op Op, err error) error {
+// known is a failure inside the transaction, before COMMIT, whose outcome
+// is known, as a plain error: an invalid body, an error the server returned
+// (any SQLSTATE), or one the client raised (a scan, an encode, a receipt that
+// does not decode, a counter at the top of its column). The transaction
+// rolls back, so nothing landed. It is nil, the outcome unknown, when ctx is
+// done, or when the connection was lost after a request may have reached the
+// server (pgconn.SafeToRetry says when none did, and that is known).
+func known(ctx context.Context, closed bool, op Op, err error) error {
 	var pe *pgconn.PgError
+	isPG := errors.As(err, &pe)
 	switch {
 	case errors.Is(err, ErrInvalid):
 		return err
 	case ctx.Err() != nil:
 		return nil
-	case errors.As(err, &pe) && !lost(pe):
-		on := ""
-		switch {
-		case pe.ConstraintName != "":
-			on = " on constraint " + pe.ConstraintName
-		case pe.ColumnName != "":
-			on = " on column " + pe.ColumnName
-		case pe.TableName != "":
-			on = " on table " + pe.TableName
-		}
-		return fmt.Errorf("store: op %s: postgres refused it before COMMIT, so nothing landed: SQLSTATE %s%s: %s: %w", op.ID, pe.Code, on, pe.Message, err)
+	case pgconn.SafeToRetry(err):
+	case closed || isPG && lost(pe):
+		return nil
 	}
-	return nil
+	if !isPG {
+		return fmt.Errorf("store: op %s failed before COMMIT, so nothing landed: %w", op.ID, err)
+	}
+	on := ""
+	switch {
+	case pe.ConstraintName != "":
+		on = " on constraint " + pe.ConstraintName
+	case pe.ColumnName != "":
+		on = " on column " + pe.ColumnName
+	case pe.TableName != "":
+		on = " on table " + pe.TableName
+	}
+	return fmt.Errorf("store: op %s: postgres refused it before COMMIT, so nothing landed: SQLSTATE %s%s: %s: %w", op.ID, pe.Code, on, pe.Message, err)
 }
 
 // lost is a server error that ends the session rather than answering the
@@ -153,8 +182,8 @@ func lost(pe *pgconn.PgError) bool {
 
 // write runs protocol in one READ COMMITTED transaction holding the writer lock,
 // so writers run one at a time and nothing needs a retry. A failure after
-// BEGIN and before COMMIT is ErrUnknown unless it is known (above); any
-// error during or after COMMIT is ErrUnknown. A panic rolls the transaction
+// BEGIN and before COMMIT is a plain error unless the connection or ctx went
+// (known, above); any error during or after COMMIT is ErrUnknown. A panic rolls the transaction
 // back, releasing the lock, and is re-raised.
 func (p *PG) write(ctx context.Context, op Op, valid func(Op) error, rule rules) (r Receipt, err error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
@@ -168,7 +197,7 @@ func (p *PG) write(ctx context.Context, op Op, valid func(Op) error, rule rules)
 		}
 	}()
 	if r, err = p.inTx(ctx, tx, op, valid, rule); err != nil {
-		if k := known(ctx, op, err); k != nil {
+		if k := known(ctx, tx.Conn().IsClosed(), op, err); k != nil {
 			return Receipt{}, k
 		}
 		return Receipt{}, fmt.Errorf("%w: %w", ErrUnknown, err)
