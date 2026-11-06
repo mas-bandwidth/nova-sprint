@@ -125,10 +125,13 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   a clear.
 - `sprint.cursors`: `name text` (primary key), `seq bigint`. A subscriber's
   place in the event log (the run loop's push cursor per row, the
-  dashboard's feed cursor), saved so a restart resumes where it stopped and
-  never pushes twice or skips (promise 6). Global, as seq is: a clear keeps
-  it, and a subscriber resumes exactly where it was, so the old epoch is
-  never pushed again. Write: set cursor (refused below the cursor's current
+  dashboard's feed cursor), saved so a restart can resume where it stopped.
+  The store gives the primitive, a monotone cursor bounded by the log; that
+  a restart never pushes twice or skips is layer 4's guarantee, built on it
+  by advancing the cursor only after a push is confirmed (promise 6). Global,
+  as seq is: a clear keeps it, and a subscriber resumes where it was, so the
+  old epoch is not pushed again by a subscriber that kept its cursor. Write:
+  set cursor (refused below the cursor's current
   value, and above the last event's seq: "cursor X cannot pass the log at
   42"); an absent cursor reads as 0.
 
@@ -337,11 +340,11 @@ attempts alike) by the op that reports it; a producer's, a stream's and the
 sprint's cost are sums read from those rows, never a second record kept
 beside them (LESSONS 1.17, 1.1).
 
-The store offers a backup (a dump of the `sprint` schema, named with the
-epoch and seq it was taken at) and a restore into an empty schema, which a
-layer 6 verb runs; a restore is checked by rebuilding from its event log. A
-clear deletes nothing, and any future op that would lose rows is taken only
-after a backup (LESSONS 1.16).
+Owed to layer 6, not part of this layer's lock: a backup (a dump of the
+`sprint` schema, named with the epoch and seq it was taken at) and a restore
+into an empty schema, run by a layer 6 verb and checked by rebuilding from
+the event log; any future op that would lose rows is taken only after a
+backup (LESSONS 1.16). The gate is `nova-sprint up` on the first real store.
 
 ## What it guarantees
 
@@ -390,12 +393,24 @@ it the StaleCheck witness is exactly what `READ COMMITTED` would do.
   on PATH. Includes: the unknown-then-replay path (a connection killed between
   request and commit), two concurrent applies on the same expectation (one
   accepted, one refused), rebuild from the event log equals the snapshot.
-- A load test, functional tier, at four times live size (thousands of cards,
-  their consumers, a long event log): `Snapshot` and `Apply` are timed there,
-  and the bound held is v1's "the tick stays under one second at load"; the
-  per-call numbers are not yet measured and are said to be unmeasured until
-  they are (LESSONS 1.15).
+- Owed to layer 6, not part of this layer's lock: a load test, functional
+  tier, at four times live size (thousands of cards, their consumers, a long
+  event log), timing `Snapshot` and `Apply` against v1's bound "the tick
+  stays under one second at load"; the per-call numbers are unmeasured until
+  then (LESSONS 1.15). The gate is the first dogfood sprint.
 - A cold reader on the final head, then the layer is locked.
+
+## What the lock approves (2026-11-06)
+
+The layer 1 lock approves the tested database primitive: the schema, the
+operations, the four outcomes and the seven guarantees, as held by the
+conformance suite on Fake and PostgreSQL (C and ICU collations), the
+functional tests, the model with its witnesses and reach checks, five cold
+reads and the friends' reads. Three things named in this file are deferred
+to later, named gates and are not claimed by the lock: the backup and
+restore verb and the load test (layer 6's `up` and the first dogfood sprint),
+and "used for real work", which no layer can show before the first sprint
+runs on it. (Stella's READ5, 2026-11-06.)
 
 ## Size
 
