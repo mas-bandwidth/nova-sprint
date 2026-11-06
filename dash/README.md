@@ -15,19 +15,22 @@ The store has no coordinator, machine stop, row load or subscription window, pro
 
 ## Visual comparison
 
-The live v1 board was captured on 2026-11-06 at 21:03 UTC, in `America/New_York`, with a Linux browser. The v2 fixture projects its captured work-state counts and row shape into synthetic store records: 30 streams, 151 landed of 376 producers, 12 worker and four kin rows, with representative per-tier costs. It is not the live store; it does not reproduce verdict history, so its ok% cells are blank. [Fixture source](testdata/visual-fixture.go.txt), captured envelopes and browser checks are in `testdata/`.
+The live v1 board was captured on 2026-11-06 at 21:18 UTC, in `America/New_York`, with a Linux browser. The v2 fixture projects its captured work-state counts and row shape into synthetic store records: 30 streams, 151 landed of 376 producers, 12 worker and four kin rows, with representative per-tier costs. It is not the live store; it does not reproduce verdict history, so its ok% cells are blank. [Fixture source](testdata/visual-fixture.go.txt), captured envelopes and browser checks are in `testdata/`.
 
 | Width | Live v1 | v2 fixture |
 |---|---|---|
 | 1440 | ![Live v1 at 1440 px](testdata/v1-live-1440.png) | ![V2 fixture at 1440 px](testdata/v2-1440.png) |
 | 375 | ![Live v1 at 375 px](testdata/v1-live-375.png) | ![V2 fixture at 375 px](testdata/v2-375.png) |
-| 2000 | [v1](testdata/v1-live-2000.png) | [v2](testdata/v2-2000.png) |
+| 2000 | ![Live v1 at 2000 px](testdata/v1-live-2000.png) | ![V2 fixture at 2000 px](testdata/v2-2000.png) |
+| 2800 | ![Live v1 at 2800 px](testdata/v1-live-2800.png) | ![V2 fixture at 2800 px](testdata/v2-2800.png) |
 | 1100 | [v1](testdata/v1-live-1100.png) | [v2](testdata/v2-1100.png) |
 | 760 | [v1](testdata/v1-live-760.png) | [v2](testdata/v2-760.png) |
 
-The added blocked and fail columns make Work compact at 2000 px where v1 is full; [v2 at 2800 px](testdata/v2-2800.png) shows the full table. A separate [synthetic browser render probe](testdata/render-probe.json) checks nonzero blocked/fail, zero cost and zero percent, and missing cells; it is not a live-store capture. The browser checks report loaded fonts, no horizontal overflow, no console or HTTP errors, and a one-second poll timer (actual request intervals have browser jitter).
+The full Work table fits at both 2000 and 2800 px. Its gutter is 16 px at 2000 and 40 px at 2800, leaving room for blocked and fail while preserving the column minima; at 375 px it uses the compact layout. A separate [synthetic browser render probe](testdata/render-probe.json) checks nonzero blocked/fail, zero cost and zero percent, and missing cells; it is not a live-store capture. The browser checks report loaded fonts, no horizontal overflow, no console or HTTP errors, and a one-second poll timer (actual request intervals have browser jitter).
 
 ## Validation
 
 On Linux amd-1 with Go 1.26.10 and PostgreSQL 18.6, format, build, vet, unit race and PG functional race checks passed. One earlier full functional run saw a PostgreSQL connection reset in the store's rebuild test; the targeted test and subsequent full functional run passed ([failure](testdata/gates5.log), [recheck](testdata/functional-recheck.log)). A three-trial, 5,000-producer Fake-store microtest measured incremental advance at 0.90–1.52 ms and cached HTTP JSON at 0.03–0.15 ms; it checks that Snapshot is called once ([log](testdata/performance-final.log)). This is not a fleet-scale performance acceptance.
 
+
+The full-width adjustment passed the focused Linux build, vet and race tests, including the PostgreSQL golden ([log](testdata/fullwidth-gates.log)).

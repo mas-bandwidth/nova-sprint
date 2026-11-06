@@ -351,7 +351,7 @@ footer a:hover { color: var(--text); }
    figure's extra width over a count's, so the gap from merging to landed matches the gaps
    between the counts. 40 px gutters. Rows grouped by status: no rule between rows, a 1 px
    rule (the panel's border colour) between groups. */
-.streams .row { --pad: 2rem; --gap: 2.5rem; --S: 9.75rem; column-gap: var(--gap); padding: 0 var(--pad);
+.streams .row { --pad: 2rem; --gap: clamp(1rem, calc(3vw - 2.75rem), 2.5rem); --S: 9.75rem; column-gap: var(--gap); padding: 0 var(--pad);
   grid-template-columns: var(--name-w) var(--status-w) repeat(7, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }
 .streams .row > :nth-child(10) { grid-column: span 2; justify-self: end; }
 .streams .row.head > :nth-child(10) { text-align: center; }  /* width set by app.js to the n / total cell's */

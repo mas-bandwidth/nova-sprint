@@ -1,6 +1,6 @@
 {
   "url": "http://37.27.135.206/",
-  "at": "2026-11-06T21:03:08.950Z",
+  "at": "2026-11-06T21:18:35.684Z",
   "zone": "America/New_York",
   "checks": [
     {
@@ -30,6 +30,12 @@
     {
       "width": 760,
       "scroll": 760,
+      "title": "nova-sprint",
+      "fonts": "loaded"
+    },
+    {
+      "width": 2800,
+      "scroll": 2800,
       "title": "nova-sprint",
       "fonts": "loaded"
     }
