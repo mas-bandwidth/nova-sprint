@@ -97,6 +97,8 @@ type Card struct {
 	PR      int      `json:"pr"`
 	Brief   string   `json:"brief"`
 	Reason  string   `json:"reason"`
+	Author  string   `json:"author"`   // the row whose work the head is (schema 2)
+	BaseSHA string   `json:"base_sha"` // the base commit the attempt started from (schema 2)
 }
 
 // Row is a row of sprint.rows: a worker or a kin.

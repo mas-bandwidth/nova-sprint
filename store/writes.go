@@ -109,6 +109,10 @@ func cardTarget(wr Write) string {
 		return v.Card
 	case SetCardScore:
 		return v.Card
+	case SetCardAuthor:
+		return v.Card
+	case SetCardBaseSHA:
+		return v.Card
 	case SetCardNeeds:
 		return v.Card
 	}
@@ -142,6 +146,10 @@ func (w *work) writeCard(wr Write) (string, error) {
 		next.Reason = v.Reason
 	case SetCardScore:
 		next.Score = v.Score
+	case SetCardAuthor:
+		next.Author = v.Author
+	case SetCardBaseSHA:
+		next.BaseSHA = v.SHA
 	case SetCardNeeds:
 		r, err = w.checkNeeds(card.ID, v.Needs)
 		next.Needs = v.Needs

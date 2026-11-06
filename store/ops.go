@@ -112,6 +112,12 @@ type SetCardScore struct {
 	Score int
 }
 
+// SetCardAuthor sets a card's author: the row whose work its head is.
+type SetCardAuthor struct{ Card, Author string }
+
+// SetCardBaseSHA sets the base commit the card's attempt started from.
+type SetCardBaseSHA struct{ Card, SHA string }
+
 // SetCardNeeds replaces a card's needs, under the rules of PutCard.
 type SetCardNeeds struct {
 	Card  string
@@ -156,6 +162,8 @@ func (SetCardHead) isWrite()     {}
 func (SetCardPR) isWrite()       {}
 func (SetCardReason) isWrite()   {}
 func (SetCardScore) isWrite()    {}
+func (SetCardAuthor) isWrite()   {}
+func (SetCardBaseSHA) isWrite()  {}
 func (SetCardNeeds) isWrite()    {}
 func (PutRow) isWrite()          {}
 func (SetRowState) isWrite()     {}
@@ -195,6 +203,10 @@ func fields(w Write) (fs []field, ok bool) {
 		return card(v.Card, "reason"), true
 	case SetCardScore:
 		return card(v.Card, "score"), true
+	case SetCardAuthor:
+		return card(v.Card, "author"), true
+	case SetCardBaseSHA:
+		return card(v.Card, "base_sha"), true
 	case SetCardNeeds:
 		return card(v.Card, "needs"), true
 	case PutRow:

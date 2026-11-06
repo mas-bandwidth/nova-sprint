@@ -123,7 +123,12 @@ func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	require.NoError(t, err)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 1", err.Error())
+	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 2", err.Error())
+	_, err = c.Exec(context.Background(), "UPDATE sprint.meta SET schema = 1")
+	require.NoError(t, err)
+	err = p.Migrate(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, "store: migrate: the store is at schema version 1, this binary knows schema version 2", err.Error(), "no upgrade path from version 1")
 
 	old := startPG(t)
 	_, err = connect(t, old).Exec(context.Background(), "CREATE SCHEMA sprint; CREATE TABLE sprint.epoch (n integer)")
@@ -133,7 +138,7 @@ func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	defer q.Close()
 	err = q.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "schema version 0, this binary knows schema version 1", "a store from before sprint.meta")
+	assert.Contains(t, err.Error(), "schema version 0, this binary knows schema version 2", "a store from before sprint.meta")
 }
 
 func TestFunctionalConformance(t *testing.T) {
@@ -363,6 +368,8 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                             "cards_state_check",
 		"UPDATE sprint.cards SET state = NULL WHERE id = 'c1'":                                 `"state"`,
 		"UPDATE sprint.cards SET branch = NULL WHERE id = 'c1'":                                `"branch"`,
+		"UPDATE sprint.cards SET author = NULL WHERE id = 'c1'":                                `"author"`,
+		"UPDATE sprint.cards SET base_sha = NULL WHERE id = 'c1'":                              `"base_sha"`,
 		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'c1'":                                "cards_epoch_holder_fkey",
 		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's9', 'ready', 1)":  "cards_epoch_stream_fkey",
 		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 2)":  "cards_epoch_stream_fkey",

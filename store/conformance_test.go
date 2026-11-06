@@ -34,6 +34,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"times":                   times,
 		"gen once per op":         genOncePerOp,
 		"row width":               rowWidth,
+		"author and base sha":     authorAndBase,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -187,8 +188,10 @@ func writes(h *harness) {
 	card0 := Card{ID: "c0", Stream: "s1", State: "waiting"}
 	assert.Equal(h.t, &State{Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": row}, Cards: map[string]Card{"c0": card0, "c1": c1}}, r.After, "a row starts down, a card waiting at gen 0")
 	r = h.ok(h.op("move", nil, SetCardState{"c1", "working"}, SetCardHolder{"c1", "w1"}, SetCardAttempt{"c1", 2}, SetCardBranch{"c1", "b1"},
-		SetCardHead{"c1", "abc123"}, SetCardPR{"c1", 42}, SetCardReason{"c1", "why"}, SetCardScore{"c1", 3}, SetCardNeeds{"c1", nil}))
-	want := Card{ID: "c1", Stream: "s1", State: "working", Gen: 1, Attempt: 2, Score: 3, Holder: "w1", Branch: "b1", Head: "abc123", PR: 42, Brief: "do it", Reason: "why"}
+		SetCardHead{"c1", "abc123"}, SetCardPR{"c1", 42}, SetCardReason{"c1", "why"}, SetCardScore{"c1", 3}, SetCardNeeds{"c1", nil},
+		SetCardAuthor{"c1", "w1"}, SetCardBaseSHA{"c1", "def456"}))
+	want := Card{ID: "c1", Stream: "s1", State: "working", Gen: 1, Attempt: 2, Score: 3, Holder: "w1", Branch: "b1", Head: "abc123", PR: 42, Brief: "do it", Reason: "why",
+		Author: "w1", BaseSHA: "def456"}
 	assert.Equal(h.t, &State{Cards: map[string]Card{"c1": want}}, r.After, "every card write raises gen by one")
 	h.ok(h.op("rows", nil, SetRowState{"w1", "blocked"}, SetRowSession{"w1", "sess-b"}, SetRowFlaps{"w1", 4}, SetStreamHeld{"s1", true}))
 	h.ok(h.op("over", nil, PutRow{"w1", "kin", 1, "sess-c"}, PutStream{"s1", "other", "dev", 5}, SetCardHolder{"c1", ""}, SetCardNeeds{"c1", []string{"c0"}}))
@@ -241,7 +244,7 @@ func writeRefusals(h *harness) {
 		h.refused(h.op("bad", nil, c.w), c.reason)
 	}
 	for _, w := range []Write{SetCardState{"c9", "ready"}, SetCardHolder{"c9", ""}, SetCardAttempt{"c9", 1}, SetCardBranch{"c9", "b"}, SetCardHead{"c9", "h"},
-		SetCardPR{"c9", 1}, SetCardReason{"c9", "r"}, SetCardScore{"c9", 1}, SetCardNeeds{"c9", nil}} {
+		SetCardPR{"c9", 1}, SetCardReason{"c9", "r"}, SetCardScore{"c9", 1}, SetCardNeeds{"c9", nil}, SetCardAuthor{"c9", "w1"}, SetCardBaseSHA{"c9", "abc"}} {
 		h.refused(h.op("bad", nil, w), "card c9 does not exist")
 	}
 	got := h.snap()
@@ -412,6 +415,30 @@ func rowWidth(h *harness) {
 	assert.Equal(h.t, 3, h.snap().Rows["w1"].Width)
 	h.ok(h.op("new", nil, PutRow{"w2", "kin", 0, ""}))
 	h.refused(h.op("deal", []Expect{RowUnder{"w2"}}, SetCardHolder{"c0", "w2"}), "row w2 holds 0 cards, its width is 0")
+}
+
+// Schema 2: author and base_sha are plain card writes. Each is accepted once,
+// raises gen once per op, is refused on a missing card, and is in the
+// snapshot, the event images and the rebuild.
+func authorAndBase(h *harness) {
+	h.seed()
+	r := h.ok(h.op("deal", []Expect{CardGen{"c1", 0}}, SetCardBaseSHA{"c1", "b0"}))
+	assert.Equal(h.t, Card{ID: "c1", Stream: "s1", State: "waiting", Gen: 1, Score: 10, Needs: []string{"c0"}, Brief: "do it", BaseSHA: "b0"}, r.After.Cards["c1"])
+	r = h.ok(h.op("finish", []Expect{CardGen{"c1", 1}}, SetCardAuthor{"c1", "w1"}))
+	assert.Equal(h.t, 2, r.After.Cards["c1"].Gen)
+	r = h.ok(h.op("both", nil, SetCardAuthor{"c1", "w2"}, SetCardBaseSHA{"c1", "b1"}))
+	assert.Equal(h.t, 3, r.After.Cards["c1"].Gen, "both in one op raise gen once")
+	h.refused(h.op("bad", nil, SetCardAuthor{"c9", "w1"}), "card c9 does not exist")
+	h.refused(h.op("bad", nil, SetCardBaseSHA{"c9", "b"}), "card c9 does not exist")
+	_, err := h.s.Apply(h.ctx, h.op("x", nil, SetCardAuthor{"c1", "a"}, SetCardAuthor{"c1", "b"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "two author writes in one op")
+	got := h.snap()
+	assert.Equal(h.t, "w2", got.Cards["c1"].Author)
+	assert.Equal(h.t, "b1", got.Cards["c1"].BaseSHA)
+	ev := h.events()
+	assert.Equal(h.t, "w1", ev[3].Before.Cards["c1"].Author, "the before-image carries the author")
+	assert.Equal(h.t, "b0", ev[3].Before.Cards["c1"].BaseSHA, "the before-image carries the base")
+	assert.Equal(h.t, Rebuild(ev), got)
 }
 
 func rebuild(h *harness) {

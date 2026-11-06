@@ -16,8 +16,10 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
-// SchemaVersion is the version of schema.sql, kept in sprint.meta.
-const SchemaVersion = 1
+// SchemaVersion is the version of schema.sql, kept in sprint.meta. Version 2
+// adds the card columns author and base_sha. There is no upgrade path: a store
+// at version 1 is refused like any other version.
+const SchemaVersion = 2
 
 // Schema is the schema file the binary carries; Migrate applies it.
 func Schema() string { return schemaSQL }

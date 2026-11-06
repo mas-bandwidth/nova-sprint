@@ -7,7 +7,9 @@ package does with it.
 - `PG` is the store in PostgreSQL, schema `sprint` (`schema.sql`, embedded,
   applied by `Migrate`). Open it with `Open(ctx, $NOVA_PG_DSN, $NOVA_PG_PASSWORD)`.
   `Migrate` refuses a store at a schema version other than `SchemaVersion`,
-  naming both numbers.
+  naming both numbers. The binary knows schema version 2 (version 1 plus the
+  card columns `author` and `base_sha`, layer 2's). There is no upgrade path
+  yet: a store at version 1 is refused like any other version.
 - `Fake` is the same store in memory, for unit tests of the layers above. It
   runs the same rules (`apply.go`, `writes.go`), so its conditions, writes,
   refusal reasons and receipts are PG's. Time comes from `Op.At`; it never
@@ -53,7 +55,9 @@ Writes, one field each, applied in order: `PutStream` (repo, base, pos;
 insert or overwrite), `SetStreamHeld`, `PutCard` (stream, score, needs,
 brief; the card must not exist; it starts waiting, gen 0, attempt 0, no
 holder), `SetCardState`, `SetCardHolder`, `SetCardAttempt`, `SetCardBranch`,
-`SetCardHead`, `SetCardPR`, `SetCardReason`, `SetCardScore`, `SetCardNeeds`,
+`SetCardHead`, `SetCardPR`, `SetCardReason`, `SetCardScore`, `SetCardAuthor`
+(the row whose work the head is), `SetCardBaseSHA` (the base commit the
+attempt started from), `SetCardNeeds`,
 `PutRow` (kind, width, session; insert or overwrite; a new row is down; a
 width below the cards the row holds is refused), `SetRowState`,
 `SetRowSession`, `SetRowFlaps`, `PutPolicy`, `SetActivePolicy`. An op that
