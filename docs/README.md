@@ -117,3 +117,7 @@ Glenn, 2026-11-06: "it must be performant. layers must be correct and
 performant before we build on top." So the load test is not deferred: each
 layer's lock includes its measurement at the bar above, and layer 1's is owed
 before layer 3 starts.
+
+The hard requirement, never bent (Glenn, 2026-11-06): a sprint of thousands of
+cards, one-second ticks, and a dashboard updated every second. Nothing is built
+above a layer until it is shown to hold at that size, by measurement.
