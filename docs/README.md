@@ -20,7 +20,7 @@ are all required.
 
 Landing, approved 2026-11-06: [LANDING.md](LANDING.md). The card contract the lint enforces: [CARD-CONTRACT.md](CARD-CONTRACT.md). The hard-earned rules of v1 (priority, merge, tiers) are gathered in [LESSONS-PRIORITY-AND-MERGE.md](LESSONS-PRIORITY-AND-MERGE.md) as they are extracted.
 
-A layer is secured when it is modelled in TLA+ with reversed witnesses, every
+A layer is secured when it is correct and performant: modelled in TLA+ with reversed witnesses, every
 refusal is tested on a real store, a cold reader is green, and it has been used
 for real work.
 
@@ -112,3 +112,8 @@ steady-state reads incremental from the event log, never a snapshot per tick.
 Measured by the load test before v2 is called done, and watched in every
 layer design from 3 on: a step that handles one card where it could handle
 all of them is a defect.
+
+Glenn, 2026-11-06: "it must be performant. layers must be correct and
+performant before we build on top." So the load test is not deferred: each
+layer's lock includes its measurement at the bar above, and layer 1's is owed
+before layer 3 starts.
