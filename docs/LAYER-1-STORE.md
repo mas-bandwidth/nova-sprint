@@ -187,13 +187,15 @@ rows as they are at that moment.
 Writes (closed set), one field each: put stream (insert or overwrite: repo,
 base, pos; `pos` is the order streams land in); set stream held; put card
 (add: stream, score, needs, brief; refused if the card exists; every need must
-name a different card of the same epoch, no duplicates); set card state; set
-card holder (a name or none: setting a name is refused on a producer; a
-`done` or `fail` consumer keeps its holder for the record and does not
-count). Width caps work in progress, not what is queued (LESSONS 3.3;
+name a different card of the same epoch, no duplicates); set card state; a
+consumer's holder is fixed at add; there is no holder write (Johnny's review,
+2026-11-06: with a holder write, a working card could drop its holder and
+keep the slot); put card for a consumer names a row of the same epoch, a
+producer or sentinel never has one, and a `done` or `fail` consumer keeps its
+holder for the record and does not count. Width caps work in progress, not what is queued (LESSONS 3.3;
 PRIORITY D21; ruled by Rowan 2026-11-06): the count is the consumers a row
-holds in `working`, never those in `ready`. A state write that takes a held
-card into `working`, or a holder write on a card already in `working`, is
+holds in `working`, never those in `ready`. A state write that takes a
+consumer into `working` is
 refused when that row already holds as many `working` cards as its width,
 counted at the moment of the write and not counting the card being written,
 so one op with two such writes to a width-one row is refused on the second

@@ -5,14 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
 const (
 	streamCols = "name, repo, base, held, pos"
-	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority`
-	rowCols    = "name, kind, width, state, session, flaps, held, gen"
+	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose`
+	rowCols    = "name, kind, width, state, session, flaps, held, gen, tiers, model, harness"
+	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
 
@@ -24,15 +26,38 @@ func scanStream(r pgx.Row) (Stream, error) {
 
 func scanCard(r pgx.Row) (Card, error) {
 	var c Card
-	err := r.Scan(&c.ID, &c.Kind, &c.Of, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.After, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason, &c.Author, &c.BaseSHA, &c.Result, &c.Prior, &c.Bounces, &c.Cost, &c.Priced, &c.Priority)
-	c.Needs, c.After = needs(c.Needs), needs(c.After)
+	err := r.Scan(&c.ID, &c.Kind, &c.Of, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.After, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason, &c.Author, &c.BaseSHA, &c.Result, &c.Prior, &c.Bounces, &c.Cost, &c.Priced, &c.Priority, &c.Tier, &c.Paths, &c.DoneWhen, &c.Prose)
+	c = cardCopy(c)
 	return c, err
 }
 
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
-	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen)
+	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen, &w.Tiers, &w.Model, &w.Harness)
+	w.Tiers = needs(w.Tiers)
 	return w, err
+}
+
+func scanJudgement(r pgx.Row) (Judgement, error) {
+	var j Judgement
+	var deadline, closed *time.Time
+	err := r.Scan(&j.ID, &j.Kind, &j.About, &j.Question, &j.Command, &j.Group, &j.State, &deadline, &j.Answer, &j.Actor, &j.OpenedAt, &closed)
+	j.OpenedAt = at(j.OpenedAt)
+	if deadline != nil {
+		j.Deadline = at(*deadline)
+	}
+	if closed != nil {
+		j.ClosedAt = at(*closed)
+	}
+	return j, err
+}
+
+// nullTime is a time as a nullable column: NULL for the zero time.
+func nullTime(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t
 }
 
 func scanPolicy(r pgx.Row) (PolicyVersion, error) {
@@ -96,14 +121,35 @@ func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	if s.Cards, err = all(ctx, tx, scanCard, func(v Card) string { return v.ID }, "SELECT "+cardCols+" FROM sprint.cards WHERE epoch = $1", s.Epoch); err != nil {
 		return s, err
 	}
-	s.Rows, err = all(ctx, tx, scanRow, func(v Row) string { return v.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", s.Epoch)
+	if s.Rows, err = all(ctx, tx, scanRow, func(v Row) string { return v.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", s.Epoch); err != nil {
+		return s, err
+	}
+	if s.Judgements, err = all(ctx, tx, scanJudgement, func(v Judgement) string { return v.ID }, "SELECT "+judgeCols+" FROM sprint.judgements WHERE epoch = $1", s.Epoch); err != nil {
+		return s, err
+	}
+	cursors, err := all(ctx, tx, scanCursor, func(v cursorRow) string { return v.name }, "SELECT name, seq FROM sprint.cursors WHERE epoch = $1", s.Epoch)
+	s.Cursors = map[string]int64{}
+	for name, c := range cursors {
+		s.Cursors[name] = c.seq
+	}
 	return s, err
+}
+
+type cursorRow struct {
+	name string
+	seq  int64
+}
+
+func scanCursor(r pgx.Row) (cursorRow, error) {
+	var c cursorRow
+	err := r.Scan(&c.name, &c.seq)
+	return c, err
 }
 
 // Events returns up to max (capped at MaxEvents) events after afterSeq, in
 // seq order.
 func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, error) {
-	rows, err := p.pool.Query(ctx, `SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch
+	rows, err := p.pool.Query(ctx, `SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy
 		FROM sprint.events WHERE seq > $1 ORDER BY seq LIMIT $2`, afterSeq, capEvents(max))
 	if err != nil {
 		return nil, fmt.Errorf("store: events: %w", err)
@@ -113,7 +159,7 @@ func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, erro
 	for rows.Next() {
 		var e Event
 		var before, after, rec []byte
-		if err := rows.Scan(&e.Seq, &e.Op, &e.Actor, &e.Kind, &e.Accepted, &e.Reason, &before, &after, &rec, &e.At, &e.Epoch); err != nil {
+		if err := rows.Scan(&e.Seq, &e.Op, &e.Actor, &e.Kind, &e.Accepted, &e.Reason, &before, &after, &rec, &e.At, &e.Epoch, &e.Policy); err != nil {
 			return nil, fmt.Errorf("store: events: %w", err)
 		}
 		e.At = at(e.At)
@@ -209,22 +255,49 @@ func (t *pgTx) putStream(s Stream) error {
 }
 
 func (t *pgTx) putCard(c Card) error {
-	// kind and of are set on insert only: no write changes them.
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, kind, "of", stream, state, gen, attempt, score, needs, after, holder, branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
-		ON CONFLICT (epoch, id) DO UPDATE SET stream = EXCLUDED.stream, state = EXCLUDED.state, gen = EXCLUDED.gen, attempt = EXCLUDED.attempt,
-		score = EXCLUDED.score, needs = EXCLUDED.needs, after = EXCLUDED.after, holder = EXCLUDED.holder, branch = EXCLUDED.branch, head = EXCLUDED.head,
+	// kind, of, stream, holder and tier are set on insert only: no write
+	// changes them, and the cards_fixed trigger refuses an update that would.
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, kind, "of", stream, state, gen, attempt, score, needs, after, holder, branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+		ON CONFLICT (epoch, id) DO UPDATE SET state = EXCLUDED.state, gen = EXCLUDED.gen, attempt = EXCLUDED.attempt,
+		score = EXCLUDED.score, needs = EXCLUDED.needs, after = EXCLUDED.after, branch = EXCLUDED.branch, head = EXCLUDED.head,
 		pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason, author = EXCLUDED.author, base_sha = EXCLUDED.base_sha, result = EXCLUDED.result,
-		prior_head = EXCLUDED.prior_head, bounces = EXCLUDED.bounces, cost = EXCLUDED.cost, priced = EXCLUDED.priced, priority = EXCLUDED.priority`,
-		t.epoch, c.ID, c.Kind, c.Of, c.Stream, c.State, c.Gen, c.Attempt, c.Score, list0(c.Needs), list0(c.After), c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason, c.Author, c.BaseSHA, c.Result, c.Prior, c.Bounces, c.Cost, c.Priced, c.Priority)
+		prior_head = EXCLUDED.prior_head, bounces = EXCLUDED.bounces, cost = EXCLUDED.cost, priced = EXCLUDED.priced, priority = EXCLUDED.priority,
+		paths = EXCLUDED.paths, done_when = EXCLUDED.done_when, prose = EXCLUDED.prose`,
+		t.epoch, c.ID, c.Kind, c.Of, c.Stream, c.State, c.Gen, c.Attempt, c.Score, list0(c.Needs), list0(c.After), c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason, c.Author, c.BaseSHA, c.Result, c.Prior, c.Bounces, c.Cost, c.Priced, c.Priority,
+		c.Tier, list0(c.Paths), list0(c.DoneWhen), c.Prose)
 	return err
 }
 
 func (t *pgTx) putRow(r Row) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, session, flaps, held, gen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, session, flaps, held, gen, tiers, model, harness) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state,
-		session = EXCLUDED.session, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen`,
-		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps, r.Held, r.Gen)
+		session = EXCLUDED.session, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen,
+		tiers = EXCLUDED.tiers, model = EXCLUDED.model, harness = EXCLUDED.harness`,
+		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps, r.Held, r.Gen, list0(r.Tiers), r.Model, r.Harness)
+	return err
+}
+
+func (t *pgTx) judgement(id string) (Judgement, bool, error) {
+	return one(t.tx.QueryRow(t.ctx, "SELECT "+judgeCols+" FROM sprint.judgements WHERE epoch = $1 AND id = $2", t.epoch, id), scanJudgement)
+}
+
+func (t *pgTx) putJudgement(j Judgement) error {
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.judgements (epoch, id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (epoch, id) DO UPDATE SET state = EXCLUDED.state, answer = EXCLUDED.answer, actor = EXCLUDED.actor, closed_at = EXCLUDED.closed_at`,
+		t.epoch, j.ID, j.Kind, j.About, j.Question, j.Command, j.Group, j.State, nullTime(j.Deadline), j.Answer, j.Actor, j.OpenedAt, nullTime(j.ClosedAt))
+	return err
+}
+
+func (t *pgTx) cursor(name string) (int64, bool, error) {
+	c, ok, err := one(t.tx.QueryRow(t.ctx, "SELECT name, seq FROM sprint.cursors WHERE epoch = $1 AND name = $2", t.epoch, name), scanCursor)
+	return c.seq, ok, err
+}
+
+func (t *pgTx) putCursor(name string, seq int64) error {
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cursors (epoch, name, seq) VALUES ($1, $2, $3)
+		ON CONFLICT (epoch, name) DO UPDATE SET seq = EXCLUDED.seq`, t.epoch, name, seq)
 	return err
 }
 
@@ -244,9 +317,9 @@ func (t *pgTx) discard() error {
 }
 
 func (t *pgTx) appendEvent(e Event) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		e.Seq, e.Op, e.Actor, e.Kind, e.Accepted, e.Reason, jsonArg(e.Before), jsonArg(e.After), string(encode(e.Receipt)), e.At, e.Epoch)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		e.Seq, e.Op, e.Actor, e.Kind, e.Accepted, e.Reason, jsonArg(e.Before), jsonArg(e.After), string(encode(e.Receipt)), e.At, e.Epoch, e.Policy)
 	return err
 }
 

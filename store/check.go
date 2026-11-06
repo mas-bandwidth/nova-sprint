@@ -144,6 +144,10 @@ func (c *checker) expect(e Expect) {
 		c.name(v.Stream)
 	case CardAbsent:
 		c.name(v.Card)
+	case RowServes:
+		c.name(v.Row).text(v.Tier)
+	case JudgementOpen:
+		c.name(v.ID)
 	case AtSeq:
 	default:
 		c.fail("it is not a condition of the closed set")
@@ -159,11 +163,15 @@ func (c *checker) write(w Write) {
 	case SetStreamHeld:
 		c.name(v.Stream)
 	case PutCard:
-		c.name(v.ID, v.Of, v.Stream, v.Holder).name(v.Needs...).name(v.After...).text(v.Kind, v.Brief, v.Priority).num("attempt", v.Attempt).num("score", v.Score)
+		c.name(v.ID, v.Of, v.Stream, v.Holder).name(v.Needs...).name(v.After...).text(v.Kind, v.Brief, v.Priority, v.Tier, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("score", v.Score)
 	case SetCardState:
 		c.name(v.Card).text(v.State)
-	case SetCardHolder:
-		c.name(v.Card, v.Holder)
+	case SetCardPaths:
+		c.name(v.Card).text(v.Paths...)
+	case SetCardDoneWhen:
+		c.name(v.Card).text(v.DoneWhen...)
+	case SetCardProse:
+		c.name(v.Card).text(v.Prose)
 	case SetCardResult:
 		c.name(v.Card).text(v.Result)
 	case SetCardAttempt:
@@ -197,7 +205,24 @@ func (c *checker) write(w Write) {
 	case SetCardPriority:
 		c.name(v.Card).text(v.Priority)
 	case PutRow:
-		c.name(v.Name).text(v.Kind, v.Session).num("width", v.Width)
+		c.name(v.Name).text(v.Kind, v.Session, v.Model, v.Harness).text(v.Tiers...).num("width", v.Width)
+	case SetRowTiers:
+		c.name(v.Row).text(v.Tiers...)
+	case SetRowLabels:
+		c.name(v.Row).text(v.Model, v.Harness)
+	case PutJudgement:
+		c.name(v.ID, v.Kind, v.About, v.Group).text(v.Question, v.Command)
+		if !v.Deadline.IsZero() && (v.Deadline.UTC().Year() < 0 || v.Deadline.UTC().Year() > 9999) {
+			c.fail("deadline %s is not a time in the years 0..9999", v.Deadline)
+		}
+	case AnswerJudgement:
+		c.name(v.ID, v.Actor).text(v.Answer)
+	case ExpireJudgement:
+		c.name(v.ID).text(v.Reason)
+	case SetCursor:
+		if c.name(v.Name); v.Seq < 0 {
+			c.fail("cursor seq %d is outside the range 0..%d", v.Seq, int64(math.MaxInt64))
+		}
 	case SetRowWidth:
 		c.name(v.Row).num("width", v.Width)
 	case SetRowState:

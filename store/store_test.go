@@ -73,7 +73,7 @@ func TestFakeRaces(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 	h.seed()
-	h.ok(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}, SetCardHolder{"u1", "w1"}, SetCardHolder{"u2", "w1"}))
+	h.ok(h.op("narrow", nil, PutRow{Name: "w1", Kind: "worker", Width: 1, Session: "sess-a"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
 		"deal": {h.op("deal", nil, SetCardState{"u1", "working"}), h.op("deal", nil, SetCardState{"u2", "working"})}, // the state write into working alone is the width check
@@ -110,7 +110,7 @@ func TestEventsCap(t *testing.T) {
 
 func TestRebuildCarriesClearImage(t *testing.T) {
 	t.Parallel()
-	card := Card{Priority: "normal", ID: "c1", Kind: "producer", Stream: "s1", State: "ready"}
+	card := Card{Tier: "pro", Priority: "normal", ID: "c1", Kind: "producer", Stream: "s1", State: "ready"}
 	row := Row{Name: "w1", Kind: "worker", State: "down"}
 	events := []Event{
 		{Seq: 1, Accepted: true, After: &State{Streams: map[string]Stream{"s1": {Name: "s1"}}, Cards: map[string]Card{"c1": card}}},
@@ -119,7 +119,7 @@ func TestRebuildCarriesClearImage(t *testing.T) {
 		{Seq: 4, Accepted: true, After: &State{Epoch: 2, Rows: map[string]Row{"w1": row}}},
 		{Seq: 5, Reason: "no"},
 	}
-	want := Snapshot{Seq: 5, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{"w1": row}}
+	want := Snapshot{Seq: 5, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{"w1": row}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
 	assert.Equal(t, want, Rebuild(events))
 	assert.Equal(t, emptySnapshot(1), Rebuild(nil))
 }

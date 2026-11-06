@@ -20,6 +20,8 @@ type Fake struct {
 	cards    map[key]Card
 	rows     map[key]Row
 	policies map[int]PolicyVersion
+	judges   map[key]Judgement
+	cursors  map[key]int64
 	events   []fakeEvent
 	ops      map[string]int // op id -> index in events
 	drops    map[string]bool
@@ -40,7 +42,7 @@ type fakeEvent struct {
 
 // NewFake is an empty store at epoch 1.
 func NewFake() *Fake {
-	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, ops: map[string]int{}, drops: map[string]bool{}}
+	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, judges: map[key]Judgement{}, cursors: map[key]int64{}, ops: map[string]int{}, drops: map[string]bool{}}
 }
 
 // Drop makes the next Apply or Clear of op id report ErrUnknown, as if the
@@ -73,7 +75,7 @@ func (f *Fake) do(op Op, valid func(Op) error, rule rules) (Receipt, error) {
 	if err != nil {
 		return Receipt{}, err
 	}
-	f.epoch, f.streams, f.cards, f.rows, f.policies = tx.st.epoch, tx.st.streams, tx.st.cards, tx.st.rows, tx.st.policies
+	f.epoch, f.streams, f.cards, f.rows, f.policies, f.judges, f.cursors = tx.st.epoch, tx.st.streams, tx.st.cards, tx.st.rows, tx.st.policies, tx.st.judges, tx.st.cursors
 	if len(tx.events) > len(f.events) {
 		f.events = tx.events
 		f.ops[op.ID] = len(f.events) - 1
@@ -139,10 +141,15 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	pick(s.Streams, f.streams, f.epoch)
 	pick(s.Cards, f.cards, f.epoch)
 	for id, c := range s.Cards {
-		c.Needs, c.After = needs(c.Needs), needs(c.After) // the caller's own copy: editing it never changes the store
-		s.Cards[id] = c
+		s.Cards[id] = cardCopy(c) // the caller's own copy: editing it never changes the store
 	}
 	pick(s.Rows, f.rows, f.epoch)
+	for name, r := range s.Rows {
+		r.Tiers = needs(r.Tiers)
+		s.Rows[name] = r
+	}
+	pick(s.Judgements, f.judges, f.epoch)
+	pick(s.Cursors, f.cursors, f.epoch)
 	for v, p := range f.policies {
 		if p.Active {
 			s.Policy = v
@@ -171,7 +178,7 @@ func (f *Fake) Policy(_ context.Context, version int) (PolicyVersion, error) {
 }
 
 func (f *Fake) clone() *Fake {
-	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies)}
+	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors)}
 }
 
 // fakeTx is the txn of one Fake transaction: st is the working copy of the
@@ -186,9 +193,28 @@ func (t *fakeTx) k(name string) key { return key{t.st.epoch, name} }
 
 func (t *fakeTx) card(id string) (Card, bool, error) {
 	c, ok := t.st.cards[t.k(id)]
-	c.Needs, c.After = needs(c.Needs), needs(c.After)
-	return c, ok, nil
+	return cardCopy(c), ok, nil
 }
+
+// cardCopy is a card with every list its own.
+func cardCopy(c Card) Card {
+	c.Needs, c.After, c.Paths, c.DoneWhen = needs(c.Needs), needs(c.After), needs(c.Paths), needs(c.DoneWhen)
+	return c
+}
+
+func (t *fakeTx) judgement(id string) (Judgement, bool, error) {
+	j, ok := t.st.judges[t.k(id)]
+	return j, ok, nil
+}
+
+func (t *fakeTx) putJudgement(j Judgement) error { t.st.judges[t.k(j.ID)] = j; return nil }
+
+func (t *fakeTx) cursor(name string) (int64, bool, error) {
+	seq, ok := t.st.cursors[t.k(name)]
+	return seq, ok, nil
+}
+
+func (t *fakeTx) putCursor(name string, seq int64) error { t.st.cursors[t.k(name)] = seq; return nil }
 
 func (t *fakeTx) stream(name string) (Stream, bool, error) {
 	s, ok := t.st.streams[t.k(name)]
@@ -197,6 +223,7 @@ func (t *fakeTx) stream(name string) (Stream, bool, error) {
 
 func (t *fakeTx) row(name string) (Row, bool, error) {
 	r, ok := t.st.rows[t.k(name)]
+	r.Tiers = needs(r.Tiers)
 	return r, ok, nil
 }
 
@@ -240,14 +267,14 @@ func (t *fakeTx) rows() ([]Row, error) {
 
 func (t *fakeTx) open() error { t.st.epoch++; return nil }
 
-func (t *fakeTx) putCard(c Card) error {
-	c.Needs, c.After = needs(c.Needs), needs(c.After)
-	t.st.cards[t.k(c.ID)] = c
+func (t *fakeTx) putCard(c Card) error { t.st.cards[t.k(c.ID)] = cardCopy(c); return nil }
+
+func (t *fakeTx) putStream(s Stream) error { t.st.streams[t.k(s.Name)] = s; return nil }
+func (t *fakeTx) putRow(r Row) error {
+	r.Tiers = needs(r.Tiers)
+	t.st.rows[t.k(r.Name)] = r
 	return nil
 }
-
-func (t *fakeTx) putStream(s Stream) error        { t.st.streams[t.k(s.Name)] = s; return nil }
-func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = r; return nil }
 func (t *fakeTx) putPolicy(p PolicyVersion) error { t.st.policies[p.Version] = p; return nil }
 
 func (t *fakeTx) replay(opID string) (Receipt, bool, error) {

@@ -3,6 +3,7 @@ package store
 import (
 	"cmp"
 	"fmt"
+	"slices"
 )
 
 // write performs one write, or returns the reason it is refused.
@@ -24,6 +25,14 @@ func (w *work) write(wr Write) (string, error) {
 		return w.writePutRow(v)
 	case PutPolicy, SetActivePolicy:
 		return w.writePolicy(wr)
+	case PutJudgement:
+		return w.openJudgement(v)
+	case AnswerJudgement:
+		return w.closeJudgement(v.ID, "answered", v.Answer, cmp.Or(v.Actor, w.op.Actor))
+	case ExpireJudgement:
+		return w.closeJudgement(v.ID, "expired", v.Reason, w.op.Actor)
+	case SetCursor:
+		return w.writeCursor(v)
 	}
 	if _, _, _, ok := rowSet(wr); ok {
 		return w.writeRow(wr)
@@ -47,14 +56,14 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if v.Name == "" {
 		return "a row needs a name", nil
 	}
-	if r := oneOf("row kind", v.Kind, RowKinds); r != "" {
+	if r := cmp.Or(oneOf("row kind", v.Kind, RowKinds), checkTiers(v.Name, v.Tiers)); r != "" {
 		return r, nil
 	}
 	old, ok, err := w.tx.row(v.Name)
 	if err != nil {
 		return "", err
 	}
-	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down"}
+	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down", Tiers: v.Tiers, Model: v.Model, Harness: v.Harness}
 	if ok {
 		if r, err := w.widthFits(v.Name, v.Width); r != "" || err != nil {
 			return r, err
@@ -70,6 +79,19 @@ func (w *work) widthFits(row string, width int) (string, error) {
 	return when(err == nil && n > width, "row %s holds %s, more than width %d; wait for a card to finish before narrowing it", row, workingCards(n), width), err
 }
 
+// checkTiers refuses a tier outside the four, or one named twice.
+func checkTiers(row string, tiers []string) string {
+	for i, t := range tiers {
+		if r := oneOf("row tier", t, Tiers); r != "" {
+			return r
+		}
+		if slices.Contains(tiers[:i], t) {
+			return fmt.Sprintf("row %s names tier %s twice", row, t)
+		}
+	}
+	return ""
+}
+
 func workingCards(n int) string {
 	if n == 1 {
 		return "1 working card"
@@ -80,8 +102,13 @@ func workingCards(n int) string {
 // writeRow is the set-row writes (rowSet).
 func (w *work) writeRow(wr Write) (string, error) {
 	name, _, set, _ := rowSet(wr)
-	if v, ok := wr.(SetRowState); ok {
+	switch v := wr.(type) {
+	case SetRowState:
 		if r := oneOf("row state", v.State, RowStates); r != "" {
+			return r, nil
+		}
+	case SetRowTiers:
+		if r := checkTiers(v.Row, v.Tiers); r != "" {
 			return r, nil
 		}
 	}
@@ -115,10 +142,12 @@ func (w *work) writeCard(wr Write) (string, error) {
 		if r == "" && card.Holder != "" && card.State != "working" && v.State == "working" {
 			r, err = w.rowFits(card.Holder)
 		}
-	case SetCardHolder:
-		if r = onlyFor(card, "SetCardHolder", "a consumer", consumer(card.Kind)); r == "" {
-			r, err = w.holderFits(card, v.Holder)
-		}
+	case SetCardPaths:
+		r = onlyFor(card, "SetCardPaths", "a producer or sentinel (a consumer's copy is set at add)", !consumer(card.Kind))
+	case SetCardDoneWhen:
+		r = onlyFor(card, "SetCardDoneWhen", "a producer or sentinel (a consumer's copy is set at add)", !consumer(card.Kind))
+	case SetCardProse:
+		r = onlyFor(card, "SetCardProse", "a producer or sentinel (a consumer's copy is set at add)", !consumer(card.Kind))
 	case SetCardResult:
 		r = cmp.Or(onlyFor(card, "SetCardResult", "a consumer", consumer(card.Kind)), oneOf("card result", v.Result, CardResults))
 	case SetCardPriorHead:
@@ -164,28 +193,23 @@ func onlyFor(card Card, write, kinds string, ok bool) string {
 // kinds (producer and sentinel) are bookkeeping and are never held.
 func consumer(kind string) bool { return kind == "work" || kind == "read" }
 
-// holderFits refuses a holder on a producer or sentinel, and a holder row
-// that does not exist. A card already in working also needs room on the row:
-// refused when the row holds as many working cards as its width, counted now
-// (earlier writes of the op included). A card in any other state takes no
-// room: width caps work in progress, not what is queued. The count excludes
-// the card being written: setting a card's holder to the row that holds it
-// already is a no-op, never a refusal.
-func (w *work) holderFits(card Card, holder string) (string, error) {
+// checkHolder is the holder at add, the only time it is set: a producer or
+// sentinel has none, and a consumer names a row of the epoch. The card is
+// added waiting, so it takes no room; width is checked when it moves into
+// working.
+func (w *work) checkHolder(c Card) (string, error) {
 	switch {
-	case holder == "" || holder == card.Holder:
-		return "", nil
-	case !consumer(card.Kind):
-		return fmt.Sprintf("card %s is a %s; a %s never has a holder", card.ID, card.Kind, card.Kind), nil
-	case card.State != "working":
-		_, r, err := w.mustRow(holder)
-		return r, err
+	case !consumer(c.Kind):
+		return when(c.Holder != "", "card %s is a %s; a %s never has a holder", c.ID, c.Kind, c.Kind), nil
+	case c.Holder == "":
+		return fmt.Sprintf("card %s is a consumer; a consumer names its holder row at add, and it never changes", c.ID), nil
 	}
-	return w.rowFits(holder)
+	_, r, err := w.mustRow(c.Holder)
+	return r, err
 }
 
 // rowFits refuses a row that does not exist or has no room for one more
-// working card.
+// working card, counted now (earlier writes of the op included).
 func (w *work) rowFits(name string) (string, error) {
 	row, r, err := w.mustRow(name)
 	if r != "" || err != nil {
@@ -243,8 +267,9 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if v.Kind == "sentinel" && v.Brief != "" {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
-	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal")}
-	if r := oneOf("card priority", c.Priority, Priorities); r != "" {
+	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
+		Holder: v.Holder, Tier: v.Tier, Paths: v.Paths, DoneWhen: v.DoneWhen, Prose: v.Prose}
+	if r := cmp.Or(oneOf("card priority", c.Priority, Priorities), oneOf("card tier", c.Tier, Tiers)); r != "" {
 		return r, nil
 	}
 	if c.Priority != "normal" {
@@ -264,10 +289,9 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if r, err := w.checkList(c, afterList, v.After); r != "" || err != nil {
 		return r, err
 	}
-	if r, err := w.holderFits(c, v.Holder); r != "" || err != nil {
+	if r, err := w.checkHolder(c); r != "" || err != nil {
 		return r, err
 	}
-	c.Holder = v.Holder
 	return "", w.putCard(Card{}, false, c)
 }
 
@@ -287,7 +311,49 @@ func (w *work) checkOf(c Card) (string, error) {
 	case !ok:
 		return fmt.Sprintf("card %s is a consumer of %s, which does not exist", c.ID, c.Of), nil
 	}
-	return when(p.Kind != "producer", "card %s is a consumer of %s, which is not a producer", c.ID, c.Of), nil
+	if p.Kind != "producer" {
+		return fmt.Sprintf("card %s is a consumer of %s, which is not a producer", c.ID, c.Of), nil
+	}
+	return when(p.Tier != c.Tier, "card %s is tier %s, its producer %s is tier %s; a consumer takes its producer's tier", c.ID, c.Tier, c.Of, p.Tier), nil
+}
+
+func (w *work) openJudgement(v PutJudgement) (string, error) {
+	if v.ID == "" {
+		return "a judgement needs an id", nil
+	}
+	if _, ok, err := w.tx.judgement(v.ID); ok || err != nil {
+		return when(err == nil, "judgement %s exists", v.ID), err
+	}
+	j := Judgement{ID: v.ID, Kind: v.Kind, About: v.About, Question: v.Question, Command: v.Command, Group: v.Group, State: "open", Deadline: v.Deadline, OpenedAt: w.op.At}
+	return "", w.putJudgement(Judgement{}, false, j)
+}
+
+// closeJudgement moves an open judgement to answered or expired.
+func (w *work) closeJudgement(id, state, answer, actor string) (string, error) {
+	j, r, err := w.mustJudgement(id)
+	if r != "" || err != nil {
+		return r, err
+	}
+	if j.State != "open" {
+		return fmt.Sprintf("judgement %s is %s; only an open judgement can be %s", id, j.State, state), nil
+	}
+	next := j
+	next.State, next.Answer, next.Actor, next.ClosedAt = state, answer, actor, w.op.At
+	return "", w.putJudgement(j, true, next)
+}
+
+func (w *work) writeCursor(v SetCursor) (string, error) {
+	if v.Name == "" {
+		return "a cursor needs a name", nil
+	}
+	seq, ok, err := w.tx.cursor(v.Name)
+	switch {
+	case err != nil:
+		return "", err
+	case ok && v.Seq < seq:
+		return fmt.Sprintf("cursor %s is at %d, cannot move back to %d", v.Name, seq, v.Seq), nil
+	}
+	return "", w.putCursor(v.Name, seq, ok, v.Seq)
 }
 
 func (w *work) writePolicy(wr Write) (string, error) {

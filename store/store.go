@@ -1,5 +1,5 @@
 // Package store is layer 1 of nova-sprint v2: the one place the sprint's state
-// lives (docs/LAYER-1-STORE.md). It holds streams, cards, rows and policy
+// lives (docs/LAYER-1-STORE.md). It holds streams, cards, rows, judgements, cursors and policy
 // versions, applies one checked operation at a time in one transaction, and
 // logs every operation that entered it, accepted or refused.
 package store
@@ -61,6 +61,9 @@ var (
 	RowKinds    = []string{"worker", "kin"}
 	RowStates   = []string{"up", "down"}
 	PolicyKinds = []string{"script", "data"}
+	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier, and the tiers a row serves
+	// JudgementStates are a judgement's states: open until answered or expired.
+	JudgementStates = []string{"open", "answered", "expired"}
 )
 
 // Op is one operation: conditions that must all hold and writes that all land,
@@ -112,18 +115,43 @@ type Card struct {
 	Cost     int64    `json:"cost"`       // on a consumer: what its run cost, in micro-dollars
 	Priced   bool     `json:"priced"`     // false when the run's route has no price
 	Priority string   `json:"priority"`   // a producer's level; normal on a consumer
+	Tier     string   `json:"tier"`       // flash, pro, heavy or frontier; a consumer's is its producer's
+	Paths    []string `json:"paths,omitempty"`
+	DoneWhen []string `json:"done_when,omitempty"`
+	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given
 }
 
 // Row is a row of sprint.rows: a worker or a kin.
 type Row struct {
-	Name    string `json:"name"`
-	Kind    string `json:"kind"`
-	Width   int    `json:"width"`
-	State   string `json:"state"`
-	Session string `json:"session"`
-	Flaps   int    `json:"flaps"`
-	Held    bool   `json:"held"` // the coordinator's hold: no deals while true
-	Gen     int    `json:"gen"`
+	Name    string   `json:"name"`
+	Kind    string   `json:"kind"`
+	Width   int      `json:"width"`
+	State   string   `json:"state"`
+	Session string   `json:"session"`
+	Flaps   int      `json:"flaps"`
+	Held    bool     `json:"held"` // the coordinator's hold: no deals while true
+	Gen     int      `json:"gen"`
+	Tiers   []string `json:"tiers,omitempty"` // the tiers this row serves
+	Model   string   `json:"model"`           // a label for policy and the dashboard
+	Harness string   `json:"harness"`         // a label for policy and the dashboard
+}
+
+// Judgement is a row of sprint.judgements: a question owed to a person,
+// stored so it outlives any push. It has no gen; JudgementOpen fences it.
+// Deadline and ClosedAt are zero for none (NULL).
+type Judgement struct {
+	ID       string    `json:"id"`
+	Kind     string    `json:"kind"`  // a word for the dashboard: red, fix, stuck, ...
+	About    string    `json:"about"` // the card, stream or row it concerns
+	Question string    `json:"question"`
+	Command  string    `json:"command"`   // the exact verb that answers it
+	Group    string    `json:"group_key"` // judgements with one key are shown and pushed as one
+	State    string    `json:"state"`     // open, answered or expired
+	Deadline time.Time `json:"deadline,omitzero"`
+	Answer   string    `json:"answer"` // the answer, or an expiry's reason
+	Actor    string    `json:"actor"`  // who answered or expired it
+	OpenedAt time.Time `json:"opened_at"`
+	ClosedAt time.Time `json:"closed_at,omitzero"`
 }
 
 // PolicyVersion is one version of sprint.policy.
@@ -139,13 +167,15 @@ type PolicyVersion struct {
 
 // State is a set of full rows by key: the rows an operation touched, before
 // or after it. Epoch is set only on the after-state of a clear: the epoch it
-// opened.
+// opened. Cursors maps a cursor's name to its seq.
 type State struct {
-	Epoch    int                   `json:"epoch,omitempty"`
-	Streams  map[string]Stream     `json:"streams,omitempty"`
-	Cards    map[string]Card       `json:"cards,omitempty"`
-	Rows     map[string]Row        `json:"rows,omitempty"`
-	Policies map[int]PolicyVersion `json:"policies,omitempty"`
+	Epoch      int                   `json:"epoch,omitempty"`
+	Streams    map[string]Stream     `json:"streams,omitempty"`
+	Cards      map[string]Card       `json:"cards,omitempty"`
+	Rows       map[string]Row        `json:"rows,omitempty"`
+	Policies   map[int]PolicyVersion `json:"policies,omitempty"`
+	Judgements map[string]Judgement  `json:"judgements,omitempty"`
+	Cursors    map[string]int64      `json:"cursors,omitempty"`
 }
 
 // Receipt is what an operation got. It is stored with its event, so Replay
@@ -167,6 +197,9 @@ type Receipt struct {
 
 // Event is a row of sprint.events. Epoch is the store's epoch when the op ran
 // (for a clear, the epoch it closed). Before and After are nil when refused.
+// Policy is the version that was active when the op was checked (0 when
+// none), so a decision can be traced to the rules that made it; Rebuild
+// ignores it.
 type Event struct {
 	Seq      int64
 	Op       string
@@ -179,25 +212,28 @@ type Event struct {
 	Receipt  Receipt
 	At       time.Time
 	Epoch    int
+	Policy   int
 }
 
 // Snapshot is the whole current epoch: the last event seq when it was read,
 // the epoch, the active policy version (0 when none) and the rows.
 type Snapshot struct {
-	Seq     int64
-	Epoch   int
-	Policy  int
-	Streams map[string]Stream
-	Cards   map[string]Card
-	Rows    map[string]Row
+	Seq        int64
+	Epoch      int
+	Policy     int
+	Streams    map[string]Stream
+	Cards      map[string]Card
+	Rows       map[string]Row
+	Judgements map[string]Judgement
+	Cursors    map[string]int64
 }
 
 func emptySnapshot(epoch int) Snapshot {
-	return Snapshot{Epoch: epoch, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{}}
+	return Snapshot{Epoch: epoch, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
 }
 
 // Rebuild folds events, in seq order from the first, into the snapshot they
-// produce: a clear empties the streams, cards and rows, every other accepted
+// produce: a clear empties the streams, cards, rows, judgements and cursors, every other accepted
 // event lays its after-images over them, policy included. Guarantee 5 is
 // Rebuild(every event) == Snapshot().
 func Rebuild(events []Event) Snapshot {
@@ -216,6 +252,8 @@ func Rebuild(events []Event) Snapshot {
 		overlay(s.Streams, e.After.Streams)
 		overlay(s.Cards, e.After.Cards)
 		overlay(s.Rows, e.After.Rows)
+		overlay(s.Judgements, e.After.Judgements)
+		overlay(s.Cursors, e.After.Cursors)
 		overlay(policies, e.After.Policies)
 	}
 	for v, p := range policies {
