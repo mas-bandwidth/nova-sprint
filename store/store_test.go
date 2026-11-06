@@ -127,6 +127,6 @@ func TestRebuildCarriesClearImage(t *testing.T) {
 func TestSchemaIsEmbedded(t *testing.T) {
 	t.Parallel()
 	for _, want := range []string{"CREATE SCHEMA IF NOT EXISTS sprint", fmt.Sprintf("INSERT INTO sprint.meta (id, schema) VALUES (1, %d)", SchemaVersion), "FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name)"} {
-		assert.Contains(t, Schema(), want)
+		assert.Contains(t, schemaSQL, want)
 	}
 }

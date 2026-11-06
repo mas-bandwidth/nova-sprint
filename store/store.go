@@ -97,7 +97,7 @@ type Card struct {
 	Attempt  int      `json:"attempt"`
 	Score    int      `json:"score"`
 	Needs    []string `json:"needs,omitempty"` // hard: cannot start until these landed
-	After    []string `json:"after,omitempty"` // soft: cannot land until these landed
+	After    []string `json:"after,omitempty"` // soft: may start any time; orders its landing only behind targets that are themselves queued to land, never behind one that is not
 	Holder   string   `json:"holder,omitempty"`
 	Branch   string   `json:"branch"`
 	Head     string   `json:"head"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -52,6 +53,8 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"snapshot is a copy":      snapshotIsCopy,
 		"same id concurrent":      sameIDConcurrent,
 		"clear races apply":       clearRacesApply,
+		"name lengths":            nameLengths,
+		"check order":             checkOrder,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -264,9 +267,9 @@ func writeRefusals(h *harness) {
 		{PutCard{ID: "k3", Kind: "work", Of: "c1", Stream: "s1", Needs: []string{"c0"}}, "card k3 is a consumer; a consumer has no needs"},
 		{PutCard{ID: "k3", Kind: "work", Of: "c1", Stream: "s1", Holder: "w9"}, "row w9 does not exist"},
 		{SetCardState{"c1", "gone"}, `card state "gone" is not one of ` + all},
-		{SetCardHolder{"c1", "w1"}, "card c1 is a producer; a producer never has a holder"},
+		{SetCardHolder{"c1", "w1"}, "card c1 is of kind producer; SetCardHolder is only for a consumer"},
 		{SetCardHolder{"u1", "w9"}, "row w9 does not exist"},
-		{SetCardNeeds{"u1", []string{"c0"}}, "card u1 is a consumer; a consumer has no needs"},
+		{SetCardNeeds{"u1", []string{"c0"}}, "card u1 is of kind work; SetCardNeeds is only for a producer or sentinel"},
 		{SetCardResult{"u1", "maybe"}, `card result "maybe" is not one of , ok, fix, fail, fault`},
 		{SetRowWidth{"w9", 1}, "row w9 does not exist"},
 		{SetCardNeeds{"c1", []string{"c2", "c2"}}, "card c1 names need c2 twice"},
@@ -464,21 +467,21 @@ func rowWidth(h *harness) {
 		SetCardHolder{"u1", "w1"}, SetCardHolder{"u2", "w1"}, SetCardHolder{"u3", "w1"})) // width 2, three ready: queued work takes no room
 	h.ok(h.op("take", nil, SetCardState{"u1", "working"}))
 	h.ok(h.op("take", nil, SetCardState{"u2", "working"}))
-	h.refused(h.op("take", nil, SetCardState{"u3", "working"}), "row w1 holds 2 working cards, its width is 2")
+	h.refused(h.op("take", nil, SetCardState{"u3", "working"}), "row w1 holds 2 working cards, its width is 2; raise the width with set row width, or wait for a card to finish")
 	h.ok(h.op("again", nil, SetCardHolder{"u1", "w1"}, SetCardState{"u1", "working"})) // already working on the row: adds nothing
-	h.refused(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}), "row w1 holds 2 working cards, more than width 1")
-	h.refused(h.op("narrow", nil, SetRowWidth{"w1", 1}), "row w1 holds 2 working cards, more than width 1")
+	h.refused(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}), "row w1 holds 2 working cards, more than width 1; wait for a card to finish before narrowing it")
+	h.refused(h.op("narrow", nil, SetRowWidth{"w1", 1}), "row w1 holds 2 working cards, more than width 1; wait for a card to finish before narrowing it")
 	h.ok(h.op("same", nil, PutRow{"w1", "worker", 2, "sess-a"}))
 	h.ok(h.op("wide", nil, SetRowWidth{"w1", 3}))
 	h.ok(h.op("take", nil, SetCardState{"u3", "working"}))
 	assert.Equal(h.t, 3, h.snap().Rows["w1"].Width)
 	h.ok(h.op("new", nil, PutRow{"w2", "kin", 0, ""}))
 	h.ok(h.op("queue", nil, PutCard{ID: "k1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w2"})) // width 0 still queues
-	h.refused(h.op("take", nil, SetCardState{"k1", "working"}), "row w2 holds 0 working cards, its width is 0")
-	h.refused(h.op("move", nil, SetCardHolder{"u3", "w2"}), "row w2 holds 0 working cards, its width is 0")
+	h.refused(h.op("take", nil, SetCardState{"k1", "working"}), "row w2 holds 0 working cards, its width is 0; raise the width with set row width, or wait for a card to finish")
+	h.refused(h.op("move", nil, SetCardHolder{"u3", "w2"}), "row w2 holds 0 working cards, its width is 0; raise the width with set row width, or wait for a card to finish")
 	h.ok(h.op("open", nil, SetRowWidth{"w2", 1}))
 	h.ok(h.op("move", nil, SetCardHolder{"u3", "w2"}))
-	h.refused(h.op("take", nil, SetCardState{"k1", "working"}), "row w2 holds 1 working cards, its width is 1")
+	h.refused(h.op("take", nil, SetCardState{"k1", "working"}), "row w2 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish")
 	h.refused(h.op("move", nil, SetCardHolder{"u3", "w9"}), "row w9 does not exist")
 }
 
@@ -490,18 +493,18 @@ func workingCount(h *harness) {
 	h.ok(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}))
 	h.ok(h.op("take", nil, SetCardHolder{"u1", "w1"}, SetCardState{"u1", "working"}))
 	h.ok(h.op("queue", nil, SetCardHolder{"u2", "w1"}, SetCardState{"u2", "ready"})) // at width; ready takes no room
-	h.refused(h.op("take", nil, SetCardState{"u2", "working"}), "row w1 holds 1 working cards, its width is 1")
+	h.refused(h.op("take", nil, SetCardState{"u2", "working"}), "row w1 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish")
 	h.ok(h.op("report", nil, SetCardState{"u1", "done"}, SetCardResult{"u1", "ok"}))
 	h.ok(h.op("take", nil, SetCardState{"u2", "working"}))
 	s := h.snap()
 	assert.Equal(h.t, "w1", s.Cards["u1"].Holder, "the done consumer keeps its holder")
 	assert.Equal(h.t, "ok", s.Cards["u1"].Result)
 	h.ok(h.op("queue", nil, SetCardHolder{"u3", "w1"}, SetCardState{"u3", "ready"}))
-	h.refused(h.op("take", nil, SetCardState{"u3", "working"}), "row w1 holds 1 working cards, its width is 1")
+	h.refused(h.op("take", nil, SetCardState{"u3", "working"}), "row w1 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish")
 	h.ok(h.op("fail", nil, SetCardState{"u2", "fail"}))
 	h.ok(h.op("take", nil, SetCardState{"u3", "working"}))
 	h.ok(h.op("width", nil, SetRowWidth{"w1", 1}))
-	h.refused(h.op("narrow", nil, SetRowWidth{"w1", 0}), "row w1 holds 1 working cards, more than width 0")
+	h.refused(h.op("narrow", nil, SetRowWidth{"w1", 0}), "row w1 holds 1 working card, more than width 0; wait for a card to finish before narrowing it")
 	h.ok(h.op("back", nil, SetCardState{"u3", "ready"}, SetRowWidth{"w1", 0})) // ready again: the room is back within the op
 }
 
@@ -513,7 +516,7 @@ func widthInOneOp(h *harness) {
 	h.ok(h.op("width", nil, PutRow{"w1", "worker", 1, "sess-a"}, SetCardHolder{"u1", "w1"}, SetCardHolder{"u2", "w1"},
 		SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	before := h.snap()
-	h.refused(h.op("take", nil, SetCardState{"u1", "working"}, SetCardState{"u2", "working"}), "row w1 holds 1 working cards, its width is 1")
+	h.refused(h.op("take", nil, SetCardState{"u1", "working"}, SetCardState{"u2", "working"}), "row w1 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish")
 	after := h.snap()
 	after.Seq--
 	assert.Equal(h.t, before, after, "the first take is undone too")
@@ -799,7 +802,7 @@ func sentinels(h *harness) {
 		{PutCard{Kind: "sentinel", ID: "g2", Stream: "s1", Brief: "x"}, "card g2 is a sentinel; a sentinel has no brief"},
 		{PutCard{Kind: "sentinel", ID: "g2", Of: "c1", Stream: "s1"}, "card g2 is a sentinel; a sentinel has no of"},
 		{PutCard{Kind: "sentinel", ID: "g2", Stream: "s1", Holder: "w1"}, "card g2 is a sentinel; a sentinel never has a holder"},
-		{SetCardHolder{"g1", "w1"}, "card g1 is a sentinel; a sentinel never has a holder"},
+		{SetCardHolder{"g1", "w1"}, "card g1 is of kind sentinel; SetCardHolder is only for a consumer"},
 		{PutCard{Kind: "read", ID: "k1", Of: "g1", Stream: "s1"}, "card k1 is a consumer of g1, which is not a producer"},
 	} {
 		h.refused(h.op("bad", nil, c.w), c.reason)
@@ -824,7 +827,7 @@ func afterOrder(h *harness) {
 		{SetCardAfter{"c1", []string{"c0", "c0"}}, "card c1 names after c0 twice"},
 		{SetCardAfter{"c1", []string{"c9"}}, "after c9 of card c1 does not exist"},
 		{SetCardAfter{"c9", []string{"c0"}}, "card c9 does not exist"},
-		{SetCardAfter{"u1", []string{"c0"}}, "card u1 is a consumer; a consumer has no after"},
+		{SetCardAfter{"u1", []string{"c0"}}, "card u1 is of kind work; SetCardAfter is only for a producer or sentinel"},
 		{PutCard{Kind: "work", ID: "k1", Of: "c1", Stream: "s1", After: []string{"c0"}}, "card k1 is a consumer; a consumer has no after"},
 		{PutCard{Kind: "producer", ID: "c4", Stream: "s1", After: []string{"c4"}}, "card c4 cannot come after itself"},
 	} {
@@ -898,8 +901,8 @@ func lessonColumns(h *harness) {
 	}{
 		{SetCardPriority{"c1", "urgent"}, `card priority "urgent" is not one of low, normal, high, critical, blocker`},
 		{SetCardPriority{"c1", "read"}, `card priority "read" is not one of low, normal, high, critical, blocker`}, // read is a rung, not a level
-		{SetCardPriority{"u1", "high"}, "card u1 is a consumer; a consumer has no priority of its own"},
-		{PutCard{Kind: "work", ID: "k2", Of: "c1", Stream: "s1", Priority: "high"}, "card k2 is a consumer; a consumer has no priority of its own"},
+		{SetCardPriority{"u1", "high"}, "card u1 is of kind work; priority is a producer's"},
+		{PutCard{Kind: "work", ID: "k2", Of: "c1", Stream: "s1", Priority: "high"}, "card k2 is of kind work; priority is a producer's"},
 		{PutCard{Kind: "producer", ID: "c4", Stream: "s1", Priority: "top"}, `card priority "top" is not one of low, normal, high, critical, blocker`},
 		{SetCardResult{"u1", "faulty"}, `card result "faulty" is not one of , ok, fix, fail, fault`},
 		{SetCardPriorHead{"u9", "x"}, "card u9 does not exist"},
@@ -915,6 +918,21 @@ func lessonColumns(h *harness) {
 		{SetCardResult{"g1", ""}, "card g1 is of kind sentinel; SetCardResult is only for a consumer"},
 		{SetCardAttempt{"u1", 2}, "card u1 is of kind work; SetCardAttempt is only for a producer or sentinel (a consumer's attempt is set at add)"},
 		{PutCard{Kind: "producer", ID: "c4", Stream: "s1", Attempt: 1}, "card c4 is a producer; its attempt starts at 0 and is raised by SetCardAttempt"},
+		// the kind decides, before the value is looked at: a no-op value on
+		// the wrong kind is refused too (Emma's second read, defect 1)
+		{SetCardPriority{"u1", "normal"}, "card u1 is of kind work; priority is a producer's"},
+		{SetCardPriority{"u2", "normal"}, "card u2 is of kind read; priority is a producer's"},
+		{SetCardNeeds{"u1", nil}, "card u1 is of kind work; SetCardNeeds is only for a producer or sentinel"},
+		{SetCardNeeds{"u2", []string{}}, "card u2 is of kind read; SetCardNeeds is only for a producer or sentinel"},
+		{SetCardAfter{"u1", nil}, "card u1 is of kind work; SetCardAfter is only for a producer or sentinel"},
+		{SetCardAfter{"u2", []string{}}, "card u2 is of kind read; SetCardAfter is only for a producer or sentinel"},
+		{SetCardHolder{"c1", ""}, "card c1 is of kind producer; SetCardHolder is only for a consumer"},
+		{SetCardHolder{"g1", ""}, "card g1 is of kind sentinel; SetCardHolder is only for a consumer"},
+		{SetCardPriorHead{"c1", ""}, "card c1 is of kind producer; SetCardPriorHead is only for a work consumer"},
+		{SetCardBounces{"u1", 0}, "card u1 is of kind work; SetCardBounces is only for a producer"},
+		{SetCardCost{"c1", 0, false}, "card c1 is of kind producer; SetCardCost is only for a consumer"},
+		{SetCardResult{"c1", ""}, "card c1 is of kind producer; SetCardResult is only for a consumer"},
+		{SetCardAttempt{"u1", 0}, "card u1 is of kind work; SetCardAttempt is only for a producer or sentinel (a consumer's attempt is set at add)"},
 	} {
 		h.refused(h.op("bad", nil, c.w), c.reason)
 	}
@@ -984,4 +1002,82 @@ func times(h *harness) {
 	assert.Equal(h.t, t0.Truncate(time.Microsecond), r.At)
 	assert.Equal(h.t, r.At, h.events()[0].At)
 	assert.Equal(h.t, r.At, h.events()[0].Receipt.At)
+}
+
+// Ids and names are at most MaxName (128) bytes, ErrInvalid above, so no
+// index can refuse one; brief and reason are unbounded. From the second cold
+// read's cr2LongIDs, which found an 8000-byte id or name unknown on PG and
+// accepted on Fake.
+func nameLengths(h *harness) {
+	h.seed()
+	n := func(c string, size int) string { return strings.Repeat(c, size) }
+	cases := func(size int) map[string]Op {
+		withID, withActor, withKind := h.op("x", nil, SetCardReason{"c1", "r"}), h.op("x", nil, SetCardReason{"c1", "r"}), h.op("x", nil, SetCardReason{"c1", "r"})
+		withID.ID, withActor.Actor, withKind.Kind = n("o", size), n("a", size), n("k", size)
+		return map[string]Op{
+			"op id":       withID,
+			"actor":       withActor,
+			"kind label":  withKind,
+			"card id":     h.op("x", nil, PutCard{ID: n("c", size), Kind: "producer", Stream: "s1"}),
+			"row name":    h.op("x", nil, PutRow{n("r", size), "worker", 1, ""}),
+			"stream name": h.op("x", nil, PutStream{Name: n("s", size)}),
+			"policy name": h.op("x", nil, PutPolicy{"data", n("p", size), "b"}),
+		}
+	}
+	for _, o := range cases(MaxName) {
+		h.ok(o)
+	}
+	logged := len(h.events())
+	for name, o := range cases(MaxName + 1) {
+		_, err := h.s.Apply(h.ctx, o)
+		assert.ErrorIs(h.t, err, ErrInvalid, name)
+		assert.ErrorContains(h.t, err, "over 128 bytes", name)
+	}
+	for name, o := range map[string]Op{
+		"a condition naming a long card": h.op("x", []Expect{CardGen{n("c", MaxName+1), 0}}),
+		"a holder naming a long row":     h.op("x", nil, SetCardHolder{"u1", n("r", MaxName+1)}),
+		"a need naming a long card":      h.op("x", nil, SetCardNeeds{"c1", []string{n("c", MaxName+1)}}),
+	} {
+		_, err := h.s.Apply(h.ctx, o)
+		assert.ErrorIs(h.t, err, ErrInvalid, name)
+	}
+	_, found, err := h.s.Replay(h.ctx, n("o", MaxName+1))
+	require.NoError(h.t, err)
+	assert.False(h.t, found, "an id no op can have is unknown to Replay")
+	assert.Len(h.t, h.events(), logged, "nothing is logged for a long name")
+	r := h.ok(h.op("big", nil, PutCard{ID: "big", Kind: "producer", Stream: "s1", Brief: n("b", 8000)}, SetCardReason{"c1", n("x", 8000)}))
+	assert.Len(h.t, r.After.Cards["big"].Brief, 8000, "a brief has no limit")
+	assert.Len(h.t, r.After.Cards["c1"].Reason, 8000, "a reason has no limit")
+}
+
+// The order of checks: after the known-id lookup the whole body is checked,
+// before the epoch and before any condition, so an op outside the closed sets
+// is ErrInvalid whatever its epoch or its other conditions say, and nothing is
+// logged. From the second cold read's cr2UnknownCondition, which found a nil
+// condition refused for its epoch rather than invalid.
+func checkOrder(h *harness) {
+	h.seed()
+	logged := len(h.events())
+	for name, c := range map[string]struct {
+		expect []Expect
+		epoch  int
+	}{
+		"nil":                           {[]Expect{nil}, 1},
+		"nil, wrong epoch":              {[]Expect{nil}, 7},
+		"nil after a failing condition": {[]Expect{CardGen{"c1", 99}, nil}, 1},
+		"pointer":                       {[]Expect{&CardGen{"c1", 0}}, 1},
+		"pointer, wrong epoch":          {[]Expect{&CardGen{"c1", 0}}, 7},
+		"embedding type":                {[]Expect{strangeExpect{}}, 1},
+	} {
+		o := h.op("cond", c.expect, SetCardReason{"c1", "r"})
+		o.Epoch = c.epoch
+		_, err := h.s.Apply(h.ctx, o)
+		assert.ErrorIs(h.t, err, ErrInvalid, name)
+		assert.ErrorContains(h.t, err, "not a condition of the closed set", name)
+	}
+	bad := h.op("write", []Expect{CardGen{"c1", 99}}, SetCardReason{"c1", "r"}, SetCardBranch{"c1", "\x00"})
+	bad.Epoch = 7
+	_, err := h.s.Apply(h.ctx, bad)
+	assert.ErrorIs(h.t, err, ErrInvalid, "a bad write behind a wrong epoch and a failing condition")
+	assert.Len(h.t, h.events(), logged, "nothing is logged for an op outside the closed sets")
 }
