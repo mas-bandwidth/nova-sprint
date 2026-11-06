@@ -1,10 +1,10 @@
 // Package card is layer 2 of nova-sprint v2: every legal move of a producer
 // card, a consumer card and a row, and nothing else. Pure Go: no store, no
-// clock, no bus. Given the records an event touches, Move, MoveConsumer and
-// MoveRow return the plan layer 1 applies (conditions and writes from package
-// store) or a refusal naming why. The contract is docs/LAYER-2-CARD-MACHINE.md;
-// the model is tla/CardMachine.tla (landing with the model's branch), checked
-// with TLC, and the tables here are its actions.
+// clock, no bus. Given the records an event touches, Move, MoveConsumer,
+// MoveRow, MoveStream and MoveAdd return the plan layer 1 applies (conditions
+// and writes from package store) or a refusal naming why. The contract is
+// docs/LAYER-2-CARD-MACHINE.md; the model is tla/CardMachine.tla, checked
+// with TLC (tla/README.md), and the tables here are its actions.
 package card
 
 import (
@@ -23,12 +23,13 @@ type Card struct {
 	Author                      string // a consumer: the row whose head it reads; a producer: the row whose work the head is
 	Branch, BaseSHA             string
 	PriorHead, Head             string
-	PR                          int
-	Result, Reason              string
+	Result, Reason              string // reason is the status reason
+	Finding                     string // a producer: the last read's finding; a work consumer: the producer's at cut
 	Bounces                     int
 	Review                      int // a producer: its entries into review; a read: the producer's at cut
 	Cost                        int64
 	Priced                      bool
+	Brief                       string // the brief as given: immutable, copied to each consumer at cut
 	Prose                       string // the contract fields Edit sets
 	Paths, DoneWhen             []string
 }
@@ -87,16 +88,24 @@ type (
 	Faulted  struct{ Consumer string } // the work consumer reported fault
 	AskRead  struct{ Row string }
 	ReadYes  struct{}
-	ReadFix  struct{ Reason string }
+	ReadFix  struct{ Finding string } // the read's finding, kept in its own column
 	Landed   struct{ Head string }
 	Red      struct{ Head, Reason string } // review +1: reads before it no longer count
 	Released struct{ Reason string }       // the work consumer of this attempt was withdrawn
 	Cancel   struct{ Reason string }
 	Replace  struct{ By, Reason string }
-	// NeedFailed takes a dependant with its failed need.
-	NeedFailed struct{ Need string }
-	Waive      struct{ Need, Reason string }
-	Relink     struct{ Need, To, Reason string }
+	// NeedFailed takes a dependant with its failed need. InThisOp says the
+	// step fails the need earlier in the same op, so the plan carries no
+	// "need is fail" condition (layer 1 checks conditions before writes).
+	NeedFailed struct {
+		Need     string
+		InThisOp bool
+	}
+	Waive struct {
+		Need, Reason string
+		InThisOp     bool // as NeedFailed's
+	}
+	Relink struct{ Need, To, Reason string }
 	// Edit sets prose, paths and done_when; the brief as given is immutable.
 	// A nil list or "" prose leaves that field as it is.
 	Edit struct {
@@ -118,8 +127,55 @@ type (
 		Cost                      int64
 		Priced                    bool
 	}
-	Withdraw struct{ Reason string }
+	// Withdraw fails a live consumer; Head is its last pushed head, when it
+	// has one. Withdrawing the work consumer of a working producer releases
+	// the producer in the same plan.
+	// Stream is the producer's stream, read with it: a release into a held
+	// stream parks the producer (waiting); needed only when the withdraw
+	// releases.
+	Withdraw struct {
+		Reason, Head string
+		Stream       Stream
+	}
 )
+
+// Add is a new producer or sentinel (MoveAdd): the put-card plan. Consumers
+// are cut by Start and AskRead, never added.
+type Add struct {
+	ID, Kind, Stream, Tier, Priority string
+	Score                            int
+	Needs, After                     []string
+	Brief, Prose                     string
+	Paths, DoneWhen                  []string
+}
+
+func (Add) isEvent() {}
+
+// FromStore is a store card as the machine reads it.
+func FromStore(c store.Card) Card {
+	return Card{ID: c.ID, Kind: c.Kind, Of: c.Of, Stream: c.Stream, State: c.State, Gen: c.Gen, Attempt: c.Attempt, Priority: c.Priority,
+		Tier: c.Tier, Score: c.Score, Needs: c.Needs, After: c.After, Holder: c.Holder, Author: c.Author, Branch: c.Branch,
+		BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: c.Head, Result: c.Result, Reason: c.Reason, Finding: c.Finding,
+		Bounces: c.Bounces, Review: c.Review, Cost: c.Cost, Priced: c.Priced, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
+}
+
+// RowFromStore is a store row as the machine reads it.
+func RowFromStore(r store.Row) Row {
+	return Row{Name: r.Name, State: r.State, Width: r.Width, Gen: r.Gen, Flaps: r.Flaps, Held: r.Held, Reason: r.Reason, Tiers: r.Tiers}
+}
+
+// StreamFromStore is a store stream as the machine reads it.
+func StreamFromStore(s store.Stream) Stream { return Stream{Name: s.Name, Held: s.Held} }
+
+// Stream events. HoldStream holds the stream and parks, in the same op,
+// the ready producers named (the caller passes every ready producer of the
+// stream; one it misses is parked later by Park).
+type HoldStream struct {
+	Reason string
+	Ready  []Card
+}
+
+func (HoldStream) isEvent() {}
 
 // Row events, one per row of the row table.
 type (

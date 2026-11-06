@@ -3,8 +3,8 @@
 Every legal move of a producer card, a consumer card and a row, as a pure
 function from the records a move reads to the plan layer 1 applies, or a
 refusal. No store, no clock, no I/O, no globals. The contract is
-`docs/LAYER-2-CARD-MACHINE.md`; the model is `tla/CardMachine.tla` (landing
-with the model's branch).
+`docs/LAYER-2-CARD-MACHINE.md`; the model is `tla/CardMachine.tla`, checked
+with TLC (`tla/README.md`), and the tables below are its actions.
 
 ## Calling it
 
@@ -12,30 +12,104 @@ with the model's branch).
 plan, r := card.Move(p, consumers, rows, stream, needs, card.Start{Row: "r1", Branch: "b", Base: sha})
 if r != nil { /* refused: r.Reason names why */ }
 op := store.Op{ID: id, Epoch: snap.Epoch, Actor: who, Kind: "start", At: now, Expect: plan.Expect, Writes: plan.Writes}
-_, err := st.Apply(ctx, op)
+rec, err := st.Apply(ctx, op) // a refused op is rec.Accepted false, err nil
 ```
 
+`card.FromStore`, `card.RowFromStore` and `card.StreamFromStore` turn the
+store's records into the machine's.
+
 - `Move(p, consumers, rows, stream, needs, e)`: producer and sentinel events.
-  `consumers` is every consumer whose `Of` is p; `rows` every row an event may
-  name; `needs` every card reachable through needs. Relink's cycle check sees
-  only the cards passed, so the caller passes every card reachable through needs.
-- `MoveConsumer(c, p, r, e)`: Take, Report, Withdraw; `p` is c's producer, `r` c's holder.
+  `consumers` is every consumer whose `Of` is p, and the list must be
+  complete: a working producer whose work consumer of this attempt is not
+  passed is refused, since a missing live consumer would let a plan through
+  that layer 1 has no condition to stop. `rows` is every row an event may
+  name; `needs` every card reachable through needs. Relink's cycle walk fences
+  every card it reads with CardGen, so two relinks planned from one snapshot
+  cannot both land and close a loop; a walk that reaches a card not passed is
+  refused.
+- `MoveConsumer(c, p, r, e)`: Take, Report, Withdraw; `p` is c's producer, `r`
+  c's holder. `Withdraw.Stream` is p's stream, needed when the withdraw
+  releases p.
 - `MoveRow(r, e)`: Seen, Gone, Width, Hold, Unhold.
-- `Merge(plans...)`: several plans as one op. Blocker preemption: the
-  machine does not choose the youngest consumer; policy chooses, and the step
-  joins that consumer's `Withdraw` and the blocker's `Start` into one op, then
-  moves the preempted producer with `Released`.
+- `MoveStream(s, e)`: HoldStream{Reason, Ready} holds the stream and parks,
+  in the same op, every ready producer named (fenced by StreamHeld false and
+  each producer's gen). The caller passes every ready producer of the
+  stream; one it misses is parked later with Park.
+- `MoveAdd(e, cards)`: a new producer or sentinel; `cards` is every card its
+  needs and after reach.
+- `Merge(plans...)`: several plans as one op.
+
+A machine refusal never reaches the store as a write. Layer 3 logs it by
+applying it as a refused op, so the store's log holds it beside the ops
+layer 1 refuses.
+
+### Ops made of several plans
+
+- **Withdraw and release are one plan.** Withdrawing the work consumer of a
+  working producer's current attempt also moves the producer back (ready, or
+  waiting when the stream is held), with the reason and the head for the next
+  attempt's prior head (`Withdraw.Head`, else the consumer's). `Released` is
+  kept for recovery of a store where a withdrawn consumer's producer is still
+  working; the normal path never needs it.
+- **Preemption.** Policy chooses the consumer to preempt; the machine does
+  not. Only a working consumer is withdrawn for a blocker, and "no width" is
+  counted over open rows (up and not held). The step merges that consumer's
+  `Withdraw` (which releases its producer) and the blocker's `Start` into one
+  op.
+- **A drop.** When a need fails in the same op that moves its dependants,
+  each dependant's `NeedFailed` or `Waive` is planned with `InThisOp: true`
+  and merged with the drop: the need is not yet fail in the snapshot, so the
+  plan carries no CardState condition, and a need that is landed is refused.
+  The caller merges the drop that fails it; a plan with `InThisOp` alone
+  asserts nothing about the need.
+
+### The invariant, as the tables keep it
+
+A producer has at most one live work consumer, and it is of the producer's
+current attempt: Start is refused under any live consumer and cuts `p.w<n>`
+at attempt n. A consumer that has reported (done) or been withdrawn (fail) is
+one plan away from the producer leaving working: Finished, Broken or Faulted
+applies a report, and a withdraw of the current work consumer moves the
+producer in its own plan.
+
+### What a cut consumer carries
+
+A cut consumer carries its producer's brief, prose, paths and done_when
+(copies, in slices of its own), stream and tier. A work consumer carries the
+producer's finding (the store requires it to equal the producer's); a read
+carries the producer's review. Start copies no reason.
+
+A refusal that depends on a live consumer reads every consumer passed, in
+any order, and names the refused one with the lowest id; AskRead allows live
+reads but never a live work consumer, nor a second live read on one row of
+one head.
 
 Consumer ids are the machine's: `<producer>.w<attempt>` for work and
 `<producer>.r<review>.<n>` for reads, each fenced with `CardAbsent` at cut. A
 producer's `review` counts its entries into review (Finished and Red raise it
 by one with `SetCardReview`); a read is cut at the producer's current review
-and keeps it, so a read from before a Red or a fix never counts for ReadYes.
+and keeps it, so a read from before a Red or a fix never counts for ReadYes
+or ReadFix.
 
 Every plan fences each card it reads with `store.CardGen` and each row with
 `store.RowGen`; layer 1's conditions carry the rest of what may change between
 read and apply. A plan writes only what changes, since layer 1 refuses a
 same-value set write.
+
+A move back to ready (Broken, Faulted, ReadFix, Released, and the withdraw
+release) fences the stream's held flag and writes waiting instead when the
+stream is held, so no producer is ready in a held stream.
+
+### Values
+
+Before a plan leaves the machine it is checked against layer 1's value
+rules, so no plan it emits is `ErrInvalid`: every key is non-empty and at
+most 128 bytes, every text valid UTF-8 with no NUL, every count in
+0..2147483647, a cost at or above 0, a tier one of the store's tiers. The
+refusals: `a card needs a name`, `card "..." is over 128 bytes`,
+`reason "..." is not valid UTF-8 or holds a NUL byte`,
+`score 2147483648 is outside the range 0..2147483647`, `cost -1 is below 0`,
+`tier "x" is not one of ...`.
 
 ## Producer table (Move)
 
@@ -44,34 +118,37 @@ same-value set write.
 | Resolve | waiting | StreamHeld false, NeedsLanded | state ready |
 | Park | ready | StreamHeld true | state waiting, reason |
 | Reached (sentinel) | waiting | NeedsLanded | state landed |
-| Start{Row,Branch,Base} | ready | StreamHeld false; RowGen, RowIs up, RowHeld false; CardGen of every consumer; CardAbsent of the new id | state working, attempt+1, author cleared; PutCard `p.wN` (work, of, stream, holder, tier, attempt) + branch, base_sha, prior_head (p's head), reason (p's), state ready |
+| Start{Row,Branch,Base} | ready | producer only; StreamHeld false; RowGen, RowIs up, RowHeld false; CardGen of every consumer; CardAbsent of the new id | state working, attempt+1, author cleared; PutCard `p.wN` (work, of, stream, holder, tier, attempt, task, finding) + branch, base_sha, prior_head (p's head), state ready |
 | Finished{Consumer} | working | CardGen of the work consumer of this attempt, done ok | state review, review+1, head, author = its holder |
-| Broken{Consumer} | working | ... done fail | state ready, reason, bounces+1, head |
-| Faulted{Consumer} | working | ... done fault | state ready, reason, head (no bounce) |
-| AskRead{Row} | review | StreamHeld false; row as Start; no live work consumer; CardAbsent of the new id | PutCard `p.rR.N` (read, review = p's) + head, author (p's), state ready |
-| ReadYes | review | no live consumer; a done ok read whose review is p's current review | state merging |
-| ReadFix{Reason} | review | no live consumer | state ready, reason, bounces+1 |
+| Broken{Consumer} | working | ... done fail; StreamHeld as read | state ready (waiting if held), reason, bounces+1, head |
+| Faulted{Consumer} | working | ... done fault; StreamHeld as read | state ready (waiting if held), reason, head (no bounce) |
+| AskRead{Row} | review | producer only; StreamHeld false; row as Start; no live work consumer, no live read of this head on the row; CardAbsent of the new id | PutCard `p.rR.N` (read, review = p's, task) + head, author (p's), state ready |
+| ReadYes | review | no live consumer; a done ok read of p's current review and head | state merging |
+| ReadFix{Finding} | review | no live consumer; a done fix read of p's current review and head; StreamHeld as read | state ready (waiting if held), finding (when given and changed), bounces+1 |
 | Landed{Head} | merging | head equals p's | state landed |
 | Red{Head,Reason} | merging | head equals p's | state review, review+1, reason |
-| Released{Reason} | working | the work consumer of this attempt is fail (withdrawn) | state ready, reason (event's, else consumer's), head |
+| Released{Reason} | working | the work consumer of this attempt is fail (withdrawn); StreamHeld as read | state ready (waiting if held), reason (event's, else consumer's), head |
 | Cancel{Reason} | any non-final | no live consumer | state fail, reason |
-| Replace{By,Reason} | any non-final | no live consumer | state fail, reason "replaced by X: ..." |
-| NeedFailed{Need} | any non-final | CardState need fail; no live consumer | state fail, reason "need X failed" |
-| Waive{Need,Reason} | waiting | CardState need fail | needs without it, reason |
-| Relink{Need,To,Reason} | waiting | CardState need fail; CardGen of To; no cycle | needs with it replaced, reason |
-| Edit{Prose,Paths,DoneWhen,Reason} | any non-final | no live consumer | prose, paths, done_when, reason (each when changed); the brief as given is immutable |
-| Rescore{Score} | any non-final | | score |
-| SetPriority{Level,Reason} | any non-final | | priority ("" is normal), reason |
-| Block{Reason} | ready, review, working | no live consumer | state blocked, reason |
+| Replace{By,Reason} | any non-final | By passed in needs, not p; no live consumer | state fail, reason "replaced by X: ..." |
+| NeedFailed{Need,InThisOp} | any non-final | CardState need fail (none with InThisOp); no live consumer | state fail, reason "need X failed" |
+| Waive{Need,Reason,InThisOp} | waiting | CardState need fail (none with InThisOp) | needs without it, reason |
+| Relink{Need,To,Reason} | waiting | CardState need fail; To a non-final producer; CardGen of every card the cycle walk read, To first; no cycle | needs with it replaced, reason |
+| Edit{Prose,Paths,DoneWhen,Reason} | any non-final | producer only; no live consumer | prose, paths, done_when, reason (each when changed); the brief as given is immutable |
+| Rescore{Score} | any non-final | producer only | score |
+| SetPriority{Level,Reason} | any non-final | (a sentinel too) | priority ("" is normal), reason |
+| Block{Reason} | ready, review, working | no live consumer; a reported one is applied first | state blocked, reason |
 | Unblock{Reason} | blocked | | state waiting, reason |
+
+Relink on a sentinel is allowed, as is SetPriority; Edit, Rescore, Start and
+AskRead on a sentinel are refused.
 
 ## Consumer table (MoveConsumer)
 
 | Event | From | Conditions | Writes |
 |---|---|---|---|
-| Take{Row} | ready | row is the holder; RowGen (layer 1 counts width) | state working |
-| Report{Row,Result,Head,Reason,Cost,Priced} | working | row is the holder; a read fences its producer's gen | state done, result, head, reason, cost (when changed) |
-| Withdraw{Reason} | ready, working | | state fail, reason |
+| Take{Row} | ready | row is the holder and was passed; RowGen, RowIs up (a held row may take; layer 1 counts width) | state working |
+| Report{Row,Result,Head,Reason,Cost,Priced} | working | row is the holder; work reports ok, fail or fault, a read ok, fix or fault; a work ok is neither its base nor its prior head; a read fences its producer's gen | state done, result, head, reason, cost (when changed) |
+| Withdraw{Reason,Head,Stream} | ready, working | a read keeps its own head; releasing: Stream is p's, CardGen p, StreamHeld as read | state fail, reason, head; when it is the current work consumer of a working producer, also the producer: ready (waiting if held), reason, head |
 
 ## Row table (MoveRow)
 
@@ -83,6 +160,16 @@ same-value set write.
 | Hold{Reason} | not held | held true, reason |
 | Unhold{Reason} | held | held false, reason |
 
+## Add (MoveAdd)
+
+| Event | Conditions | Writes |
+|---|---|---|
+| Add{ID,Kind,Stream,Tier,Priority,Score,Needs,After,Brief,Prose,Paths,DoneWhen} | kind producer or sentinel; CardAbsent of the id; a sentinel has no brief and no score; each need a producer, each after a producer or sentinel, none named twice, none the card itself; no cycle through needs and after | PutCard (state waiting) |
+
+No card but the new one is fenced: layer 1 refuses a need or after naming a
+card that does not exist, so no stored card can name the new id before it
+lands, and a loop can close only through the new card's own lists.
+
 ## Refusals
 
 From-state: `producer p1 is in ready, Resolve needs waiting` (sentinel and
@@ -90,28 +177,37 @@ consumer say so); final: `producer p1 is landed; nothing moves a landed card`.
 The rest, in order of the code:
 
 - `card X is a work consumer; Move is for producers` / `card X is a producer; MoveConsumer is for consumers`
-- `X is not a producer event; Move takes the producer table's events` (and the consumer and row forms)
+- `X is not a producer event; Move takes the producer table's events` (and the consumer, row and stream forms)
 - `sentinel X is landed by Reached, never resolved`; `producer X is not a sentinel; Reached is for sentinels`; `sentinel X never has a consumer`
 - `stream S is not producer X's stream T`; `stream S is held; no new consumers start in a held stream`; `stream S is not held; Park is for a held stream`
 - `need N of producer X does not exist`; `need N of producer X is waiting, not landed`
 - `row R does not exist`; `row R is down; a consumer is dealt only to a row that is up`; `row R is held; nothing is dealt to a held row`; `row R serves heavy; consumer needs pro`
 - `base is empty; it needs a full commit sha`; `base B is not a full commit sha`; `Start of producer X needs a branch`
+- `producer X is working; its work consumer C was not passed (the consumer list must be complete)`
 - `producer X has live consumer C on row R; withdraw it first`
+- `producer X has a live work consumer C; a read is cut only after it reports`
+- `row R already holds live read C of head H`
 - `producer X's id is too long to name its consumer C`
-- `card C is not producer X's work consumer of attempt N`; `consumer C is working, not done`; `consumer C reported fix, Finished needs ok`
+- `card C is not producer X's work consumer of attempt N`; `consumer C is working, not done; Finished waits for its report, or withdraw it`; `consumer C reported fix, Finished needs ok`
+- `producer X is at review N, the most there is`
 - `consumer C is working; Released needs it withdrawn (fail)`
 - `R wrote producer X's head and may not read it`
-- `producer X has no read of review N that said ok; ReadYes needs one`
+- `producer X has no read of review N that said ok; ReadYes needs one`; `producer X has no read of review N that said fix; ReadFix needs one`
 - `producer X is at head H, Landed names G` (and Red)
-- `Replace of producer X needs the card it is replaced by`
-- `N is not a need of producer X`; `need N of producer X is landed, not fail`
-- `card T does not exist`; `card T is a landed producer; a need is relinked only to a producer that is not final`; `producer X already needs T`; a cycle: `p1 needs n2 needs p1`
-- `producer X is held by R in consumer C; message R instead`; `Edit of producer X changes nothing`
-- `score -1 is below 0`; `producer X already has score 5`
+- `Replace of producer X needs the card it is replaced by`; `producer X cannot be replaced by itself`; `card B does not exist (Replace takes the card it is replaced by among the cards passed)`
+- `N is not a need of producer X`; `need N of producer X does not exist`; `need N of producer X is landed, not fail`; `need N of producer X is landed; it cannot fail in this op`
+- `card T does not exist`; `card T is a work consumer; a need is relinked only to a producer that is not final`; `producer T is landed; a need is relinked only to a producer that is not final`; `producer X already needs T`; `card B, needed by R, was not passed; Relink needs every card reachable through needs`; a cycle: `p1 needs n2 needs p1`
+- `sentinel X has no brief or prose to edit`; `producer X is held by R in consumer C; message R instead`; `Edit of producer X changes nothing`
+- `sentinel X has no score of its own`; `score -1 is below 0`; `producer X already has score 5`
 - `priority P is not one of low, normal, high, critical or blocker`; `producer X is already at priority normal`
-- `consumer C belongs to X, not Y`; `consumer C is held by R, not S`; `row R is not the row the take names (S)`
-- `result "maybe" is not ok, fix, fail or fault`; `head H is not a full commit sha`; `head is empty; it needs a full commit sha`; `head H is the base; nothing was done`; `producer X is at head H, the read was of G`
+- `consumer C reported ok; apply it with Finished|Broken|Faulted before Block`
+- `consumer C belongs to X, not Y`; `consumer C is held by R, not S`; `MoveConsumer was passed row S for a take on R; pass the consumer's holder row`; `row R is down; it cannot take`
+- `result "maybe" is not ok, fix, fail or fault`; `a work consumer reports ok, fail or fault; fix is a read's result`; `a read consumer reports ok, fix or fault; fail is a work's result`; `head H is not a full commit sha`; `head is empty; it needs a full commit sha`; `head H is the base; nothing was done`; `head H is the prior head; nothing new was pushed`; `producer X is at head H, the read was of G`
+- `read C is of head H; a read is withdrawn without a head of its own`; `Withdraw of C releases producer X; it needs X's stream S, not ""`
+- `stream S is already held`; `card C is a work consumer; HoldStream parks producers`; `producer X is in stream S, not T`; `producer X is in working, HoldStream parks ready producers`
 - `row R is up, Seen needs down`; `width -1 is below 0`; `row R already has width 2`; `row R is already held`; `row R is already not held`
+- Add: `Add makes a producer or sentinel, not a work; consumers are cut by Start and AskRead`; `card X exists`; `sentinel X has no brief`; `sentinel X has no score of its own`; `need N of producer X is not a card` / `is named twice` / `is a sentinel; a need is a producer`; `X needs X`; `X comes after X`; `after A of producer X is a work consumer; a card comes after a producer or sentinel`; `card N, reached from M, was not passed; Add needs every card reachable through needs and after`; a cycle: `p1 needs n1 needs p1`
+- The value rules above.
 
 ## Tests
 
@@ -122,5 +218,11 @@ go test -race ./card/
 `move_test.go` accepts every table row once with its plan asserted exactly,
 refuses it from every other state, and checks every refusal above.
 `conformance_test.go` drives producers through the happy, fix, red, fault,
-release, withdraw, block, park, need, sentinel, preemption and row paths on
-`store.Fake`, applying each plan as a real op and checking the rows it leaves.
+release, withdraw, block, park, need, sentinel, preemption, row, stale
+relink, task copy, work-fix, stream-hold, return-into-held-stream, drop and
+add paths on `store.Fake`, applying each plan as a real op, requiring the
+receipt accepted, and checking every write type it lands. `coldread_test.go`
+is the first cold read of layer 2 (defects D1-D11 and suspects S1-S3, each
+asserting its ruling) and its random walk of accepted moves on the Fake.
+Probes from Stella's and Johnny's reads of a822dfc7 are folded in, named in
+their tests.
