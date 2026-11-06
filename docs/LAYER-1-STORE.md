@@ -408,3 +408,5 @@ snapshot, replay, fake). An estimate from the operation count, not a measure.
   set score in one op is two writes to one field and invalid.
 - The test servers run with `LC_ALL=C`: PostgreSQL 18 on macOS refuses to
   start under a shell with no valid locale.
+
+Recorded with round 9 (2026-11-06): `events.policy` is the version active when the op was checked, before its writes, so the op that activates a policy records the version before it; opening and answering a judgement in one op is `ErrInvalid` (two writes to one state); `tier` on a card is fixed at add (in the trigger), a consumer's equal to its producer's; the schema hash in `sprint.meta` is computed from `schema.sql` at build.
