@@ -1,10 +1,21 @@
 package store
 
+import "time"
+
 // Expect is a condition: one of CardGen, CardState, CardHolder, NeedsLanded,
-// RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, AtSeq. There is no width condition: the
-// holder write is the check. The set is closed by the
-// unexported method; any other value is ErrInvalid.
+// RowIs, RowGen, RowHeld, RowServes, StreamHeld, CardAbsent, JudgementOpen,
+// AtSeq. There is no width condition: the state write into working is the
+// check. The set is closed by the unexported method; any other value is
+// ErrInvalid.
 type Expect interface{ isExpect() }
+
+// RowServes holds when row Row serves tier Tier (one of its tiers, read from
+// the row inside the transaction).
+type RowServes struct{ Row, Tier string }
+
+// JudgementOpen holds when judgement ID is open: it fences a judgement plan
+// (a judgement has no gen).
+type JudgementOpen struct{ ID string }
 
 // CardGen holds when card Card is at gen Gen.
 type CardGen struct {
@@ -51,16 +62,18 @@ type CardAbsent struct{ Card string }
 // the store since a snapshot read at Seq.
 type AtSeq struct{ Seq int64 }
 
-func (CardGen) isExpect()     {}
-func (CardState) isExpect()   {}
-func (CardHolder) isExpect()  {}
-func (NeedsLanded) isExpect() {}
-func (RowIs) isExpect()       {}
-func (RowGen) isExpect()      {}
-func (RowHeld) isExpect()     {}
-func (StreamHeld) isExpect()  {}
-func (CardAbsent) isExpect()  {}
-func (AtSeq) isExpect()       {}
+func (CardGen) isExpect()       {}
+func (CardState) isExpect()     {}
+func (CardHolder) isExpect()    {}
+func (NeedsLanded) isExpect()   {}
+func (RowIs) isExpect()         {}
+func (RowGen) isExpect()        {}
+func (RowHeld) isExpect()       {}
+func (StreamHeld) isExpect()    {}
+func (CardAbsent) isExpect()    {}
+func (AtSeq) isExpect()         {}
+func (RowServes) isExpect()     {}
+func (JudgementOpen) isExpect() {}
 
 // Write is one write. The set is closed by the unexported method; any other
 // value is ErrInvalid. An op that writes a card raises its gen by one, once.
@@ -82,12 +95,14 @@ type SetStreamHeld struct {
 // PutCard adds a card of a kind (producer, sentinel, work or read): refused
 // when it exists. It starts waiting, gen 0, attempt 0. Its stream must exist;
 // every need, and every card it comes after, must name another card of the
-// same epoch, once. A producer or sentinel has no Of and no Holder; a
-// sentinel has no Brief. A consumer (work or read) names its producer in Of
-// (a producer of the same epoch; Of never changes after), has no needs and no
-// after, and may be added with its Holder, which is the holder write in the
-// same op and with the Attempt it belongs to (a producer's starts at 0).
-// Prior head, bounces, cost and result are never set at add.
+// same epoch, once. Every card names its Tier (flash, pro, heavy, frontier).
+// A producer or sentinel has no Of and no Holder; a sentinel has no Brief. A
+// consumer (work or read) names its producer in Of (a producer of the same
+// epoch), its producer's tier, and its Holder (a row of the same epoch), has
+// no needs and no after, and carries the Attempt it belongs to (a producer's
+// starts at 0); its paths, done-when and prose are copies set here. Kind, of,
+// stream, holder and tier never change after. Prior head, bounces, cost and
+// result are never set at add.
 type PutCard struct {
 	ID, Kind, Of, Stream string
 	Score                int
@@ -95,21 +110,39 @@ type PutCard struct {
 	Needs                []string // hard: cannot start until these landed
 	After                []string // soft: may start any time; orders its landing only behind targets that are themselves queued to land, never behind one that is not
 	Brief                string
-	Holder               string
+	Holder               string // a consumer's row, fixed at add; none on a producer or sentinel
 	Priority             string // a producer's or sentinel's level; "" is normal; a consumer takes only the default ("" or normal)
+	Tier                 string
+	Paths                []string
+	DoneWhen             []string
+	Prose                string
 }
 
-// SetCardState sets a card's state. A held card moved into working counts
+// SetCardState sets a card's state. A consumer moved into working counts
 // against its holder's width: refused when the row already holds as many
-// working cards as its width. No other state counts.
+// working cards as its width, counted at the moment of the write (earlier
+// writes of the op included). No other state counts. There is no holder
+// write: a consumer's holder is fixed at add (Johnny's review, 2026-11-06:
+// a working card could drop its holder and keep the slot).
 type SetCardState struct{ Card, State string }
 
-// SetCardHolder sets a card's holder: a row's name, or "" for none. Refused
-// on a producer or sentinel whatever the value ("" included), and, for a card
-// in working, when that row already holds as many working cards as its width,
-// counted at the moment of the write (earlier writes of the op included) and
-// not counting the card written.
-type SetCardHolder struct{ Card, Holder string }
+// SetCardPaths replaces a producer's or sentinel's paths; refused on a
+// consumer, which carries the copy it was added with.
+type SetCardPaths struct {
+	Card  string
+	Paths []string
+}
+
+// SetCardDoneWhen replaces a producer's or sentinel's done-when list; refused
+// on a consumer, as SetCardPaths.
+type SetCardDoneWhen struct {
+	Card     string
+	DoneWhen []string
+}
+
+// SetCardProse sets a producer's or sentinel's prose; refused on a consumer,
+// as SetCardPaths.
+type SetCardProse struct{ Card, Prose string }
 
 // SetCardResult sets a consumer's result: "", ok, fix, fail or fault; refused on
 // a producer or sentinel.
@@ -188,12 +221,49 @@ type SetCardAfter struct {
 	After []string
 }
 
-// PutRow inserts a row or overwrites its kind, width and session; state,
-// flaps and held are kept on overwrite, and down, 0 and false on insert.
+// PutRow inserts a row or overwrites its kind, width, session, tiers, model
+// and harness; state, flaps and held are kept on overwrite, and down, 0 and
+// false on insert. Each tier is one of the four, once.
 type PutRow struct {
 	Name, Kind string
 	Width      int
 	Session    string
+	Tiers      []string
+	Model      string
+	Harness    string
+}
+
+// SetRowTiers replaces the tiers a row serves, under the rules of PutRow.
+type SetRowTiers struct {
+	Row   string
+	Tiers []string
+}
+
+// SetRowLabels sets a row's model and harness labels: one field.
+type SetRowLabels struct{ Row, Model, Harness string }
+
+// PutJudgement opens a judgement: refused when it exists. Its state is
+// open, opened at the op's At; Deadline zero is none. It belongs to the
+// epoch: a clear does not carry it.
+type PutJudgement struct {
+	ID, Kind, About, Question, Command, Group string
+	Deadline                                  time.Time
+}
+
+// AnswerJudgement answers an open judgement: state answered, the answer, the
+// actor ("" is the op's actor), closed at the op's At. Refused unless open.
+type AnswerJudgement struct{ ID, Answer, Actor string }
+
+// ExpireJudgement expires an open judgement: state expired, the reason kept
+// as its answer, the op's actor, closed at the op's At. Refused unless open.
+type ExpireJudgement struct{ ID, Reason string }
+
+// SetCursor sets a subscriber's place in the event log, inserting it when
+// absent; refused below its stored seq. It belongs to the epoch: a clear
+// does not carry it.
+type SetCursor struct {
+	Name string
+	Seq  int64
 }
 
 // SetRowWidth sets a row's width; a width below the working cards it holds
@@ -233,7 +303,6 @@ func (PutStream) isWrite()        {}
 func (SetStreamHeld) isWrite()    {}
 func (PutCard) isWrite()          {}
 func (SetCardState) isWrite()     {}
-func (SetCardHolder) isWrite()    {}
 func (SetCardResult) isWrite()    {}
 func (SetRowWidth) isWrite()      {}
 func (SetCardAttempt) isWrite()   {}
@@ -257,6 +326,15 @@ func (SetRowSession) isWrite()    {}
 func (SetRowFlaps) isWrite()      {}
 func (PutPolicy) isWrite()        {}
 func (SetActivePolicy) isWrite()  {}
+func (SetCardPaths) isWrite()     {}
+func (SetCardDoneWhen) isWrite()  {}
+func (SetCardProse) isWrite()     {}
+func (SetRowTiers) isWrite()      {}
+func (SetRowLabels) isWrite()     {}
+func (PutJudgement) isWrite()     {}
+func (AnswerJudgement) isWrite()  {}
+func (ExpireJudgement) isWrite()  {}
+func (SetCursor) isWrite()        {}
 
 // field names one field one write sets; two writes to one field in an op are
 // invalid.
@@ -282,9 +360,17 @@ func fields(w Write) (fs []field, ok bool) {
 	case SetStreamHeld:
 		return of("stream", v.Stream, "held"), true
 	case PutCard:
-		return of("card", v.ID, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority"), true
+		return of("card", v.ID, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose"), true
 	case PutRow:
-		return of("row", v.Name, "kind", "width", "session"), true
+		return of("row", v.Name, "kind", "width", "session", "tiers", "labels"), true
+	case PutJudgement:
+		return of("judgement", v.ID, "state"), true
+	case AnswerJudgement:
+		return of("judgement", v.ID, "state"), true
+	case ExpireJudgement:
+		return of("judgement", v.ID, "state"), true
+	case SetCursor:
+		return of("cursor", v.Name, "seq"), true
 	case PutPolicy:
 		return nil, true
 	case SetActivePolicy:
@@ -300,8 +386,12 @@ func cardSet(w Write) (id, column string, set func(*Card), ok bool) {
 	switch v := w.(type) {
 	case SetCardState:
 		return v.Card, "state", func(c *Card) { c.State = v.State }, true
-	case SetCardHolder:
-		return v.Card, "holder", func(c *Card) { c.Holder = v.Holder }, true
+	case SetCardPaths:
+		return v.Card, "paths", func(c *Card) { c.Paths = v.Paths }, true
+	case SetCardDoneWhen:
+		return v.Card, "done_when", func(c *Card) { c.DoneWhen = v.DoneWhen }, true
+	case SetCardProse:
+		return v.Card, "prose", func(c *Card) { c.Prose = v.Prose }, true
 	case SetCardResult:
 		return v.Card, "result", func(c *Card) { c.Result = v.Result }, true
 	case SetCardAttempt:
@@ -349,6 +439,10 @@ func rowSet(w Write) (name, column string, set func(*Row), ok bool) {
 		return v.Row, "width", func(r *Row) { r.Width = v.Width }, true
 	case SetRowHeld:
 		return v.Row, "held", func(r *Row) { r.Held = v.Held }, true
+	case SetRowTiers:
+		return v.Row, "tiers", func(r *Row) { r.Tiers = v.Tiers }, true
+	case SetRowLabels:
+		return v.Row, "labels", func(r *Row) { r.Model, r.Harness = v.Model, v.Harness }, true
 	}
 	return "", "", nil, false
 }
@@ -360,7 +454,22 @@ func normalize(op Op) Op {
 	for i, w := range op.Writes {
 		switch v := w.(type) {
 		case PutCard:
-			v.Needs, v.After = needs(v.Needs), needs(v.After)
+			v.Needs, v.After, v.Paths, v.DoneWhen = needs(v.Needs), needs(v.After), needs(v.Paths), needs(v.DoneWhen)
+			op.Writes[i] = v
+		case SetCardPaths:
+			v.Paths = needs(v.Paths)
+			op.Writes[i] = v
+		case SetCardDoneWhen:
+			v.DoneWhen = needs(v.DoneWhen)
+			op.Writes[i] = v
+		case PutRow:
+			v.Tiers = needs(v.Tiers)
+			op.Writes[i] = v
+		case SetRowTiers:
+			v.Tiers = needs(v.Tiers)
+			op.Writes[i] = v
+		case PutJudgement:
+			v.Deadline = at(v.Deadline)
 			op.Writes[i] = v
 		case SetCardNeeds:
 			v.Needs = needs(v.Needs)

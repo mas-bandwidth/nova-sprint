@@ -3,6 +3,8 @@ package store
 import (
 	"cmp"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // txn is one transaction as the shared rules see it, run with the writer
@@ -23,6 +25,10 @@ type txn interface {
 	putStream(s Stream) error
 	putRow(r Row) error
 	putPolicy(p PolicyVersion) error
+	judgement(id string) (Judgement, bool, error)
+	putJudgement(j Judgement) error
+	cursor(name string) (int64, bool, error)
+	putCursor(name string, seq int64) error
 	replay(opID string) (Receipt, bool, error) // the stored receipt of an op id
 	discard() error                            // back to the state the transaction began with: a refusal changes nothing
 	appendEvent(e Event) error                 // the op's event, at lastSeq + 1
@@ -58,14 +64,23 @@ func clearOp(do writer, op Op) (Receipt, error) {
 // protocol is what Apply and Clear share, inside the writer lock: the
 // stored receipt for a known id whatever the body says; else the whole body
 // is checked (ErrInvalid, nothing logged) before the epoch or any condition,
-// the rules run, a refusal is discarded, and the event is appended with the
-// receipt.
+// the active policy version is read (the rules in force when the op is
+// decided, kept on its event), the rules run, a refusal is discarded, and
+// the event is appended with the receipt.
 func protocol(tx txn, epoch int, op Op, valid func(Op) error, rule rules) (Receipt, error) {
 	if r, ok, err := tx.replay(op.ID); err != nil || ok {
 		return r, err
 	}
 	if err := valid(op); err != nil {
 		return Receipt{}, err
+	}
+	_, active, err := tx.policies()
+	if err != nil {
+		return Receipt{}, err
+	}
+	policy := 0
+	for _, p := range active {
+		policy = p.Version
 	}
 	reason, before, after, err := rule(tx, epoch)
 	if err != nil {
@@ -82,7 +97,7 @@ func protocol(tx txn, epoch int, op Op, valid func(Op) error, rule rules) (Recei
 		return Receipt{}, err
 	}
 	r := receipt(op, reason, after, seq+1)
-	e := Event{Seq: r.Seq, Op: op.ID, Actor: op.Actor, Kind: op.Kind, Accepted: r.Accepted, Reason: reason, Before: before, After: after, Receipt: r, At: op.At, Epoch: epoch}
+	e := Event{Seq: r.Seq, Op: op.ID, Actor: op.Actor, Kind: op.Kind, Accepted: r.Accepted, Reason: reason, Before: before, After: after, Receipt: r, At: op.At, Epoch: epoch, Policy: policy}
 	return r, tx.appendEvent(e)
 }
 
@@ -196,6 +211,12 @@ func (w *work) expect(e Expect) (string, error) {
 	case AtSeq:
 		seq, err := w.tx.lastSeq()
 		return when(seq != c.Seq, "the store is at seq %d, expected seq %d", seq, c.Seq), err
+	case RowServes:
+		row, r, err := w.mustRow(c.Row)
+		return cmp.Or(r, when(err == nil && !slices.Contains(row.Tiers, c.Tier), "row %s serves %s; card needs %s", c.Row, tierList(row.Tiers), c.Tier)), err
+	case JudgementOpen:
+		j, r, err := w.mustJudgement(c.ID)
+		return cmp.Or(r, when(err == nil && j.State != "open", "judgement %s is %s, expected open", c.ID, j.State)), err
 	default:
 		return "", invalid("op %s: unknown condition %T", w.op.ID, e)
 	}
@@ -242,6 +263,14 @@ func (w *work) mustRow(name string) (Row, string, error) {
 	return r, when(err == nil && !ok, "row %s does not exist", name), err
 }
 
+func (w *work) mustJudgement(id string) (Judgement, string, error) {
+	j, ok, err := w.tx.judgement(id)
+	return j, when(err == nil && !ok, "judgement %s does not exist", id), err
+}
+
+// tierList is a row's tiers for a reason: "flash,pro", or none.
+func tierList(tiers []string) string { return cmp.Or(strings.Join(tiers, ","), "none") }
+
 func (w *work) mustStream(name string) (Stream, string, error) {
 	s, ok, err := w.tx.stream(name)
 	return s, when(err == nil && !ok, "stream %s does not exist", name), err
@@ -283,6 +312,16 @@ func (w *work) putPolicy(old PolicyVersion, existed bool, p PolicyVersion) error
 	return w.tx.putPolicy(p)
 }
 
+func (w *work) putJudgement(old Judgement, existed bool, j Judgement) error {
+	w.before.Judgements, w.after.Judgements = touch(w.before.Judgements, w.after.Judgements, j.ID, old, existed, j)
+	return w.tx.putJudgement(j)
+}
+
+func (w *work) putCursor(name string, old int64, existed bool, seq int64) error {
+	w.before.Cursors, w.after.Cursors = touch(w.before.Cursors, w.after.Cursors, name, old, existed, seq)
+	return w.tx.putCursor(name, seq)
+}
+
 func touch[K comparable, V any](before, after map[K]V, k K, old V, existed bool, v V) (map[K]V, map[K]V) {
 	if before == nil {
 		before, after = map[K]V{}, map[K]V{}
@@ -297,7 +336,8 @@ func touch[K comparable, V any](before, after map[K]V, k K, old V, existed bool,
 // compact is the state with empty maps dropped, or nil when nothing is in it.
 func (s State) compact() *State {
 	s.Streams, s.Cards, s.Rows, s.Policies = nilIfEmpty(s.Streams), nilIfEmpty(s.Cards), nilIfEmpty(s.Rows), nilIfEmpty(s.Policies)
-	if s.Epoch == 0 && s.Streams == nil && s.Cards == nil && s.Rows == nil && s.Policies == nil {
+	s.Judgements, s.Cursors = nilIfEmpty(s.Judgements), nilIfEmpty(s.Cursors)
+	if s.Epoch == 0 && s.Streams == nil && s.Cards == nil && s.Rows == nil && s.Policies == nil && s.Judgements == nil && s.Cursors == nil {
 		return nil
 	}
 	return &s

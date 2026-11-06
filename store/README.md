@@ -16,7 +16,7 @@ package does with it.
   (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
   `done`), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
-  lessons of v1), and row `gen` and `held`. There is no upgrade path: a store at
+  lessons of v1), the card columns `tier`, `paths`, `done_when` and `prose`, row `gen`, `held`, `tiers`, `model` and `harness`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
   version 1 is refused like any other version.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
@@ -70,7 +70,7 @@ default: // accepted: r.Seq is the event, r.After the touched rows
 4. A card is in exactly one state and has at most one holder. The schema holds
    this (one `NOT NULL` `state` column with a CHECK, one `holder` column with
    a foreign key to a row of the same epoch), not Go. The schema also holds
-   the kinds: a producer or sentinel has no `of` and no holder, a sentinel
+   the kinds: a producer or sentinel has no `of` and no holder, a consumer always has one, a sentinel
    no brief, a consumer has an `of` naming a producer of the same epoch (a
    foreign key and the `cards_fixed` trigger) and no needs, after or priority
    of its own; the trigger also refuses any UPDATE that changes a card's
@@ -101,9 +101,11 @@ against; required, epochs start at 1), `Actor`, `Kind` (a label for the log),
 
 Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
 (every need of the card, read from the card inside the transaction, is
-landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`, `AtSeq`
-(the last event's seq is N: nothing changed since a snapshot). There is no
-width condition: the writes are the check.
+landed), `RowIs`, `RowGen`, `RowHeld`, `RowServes` (the row's tiers include
+the tier, read inside the transaction: "row r1 serves flash,pro; card needs
+heavy"), `StreamHeld`, `CardAbsent`, `JudgementOpen`, `AtSeq` (the last
+event's seq is N: nothing changed since a snapshot). There is no width
+condition: the state write into working is the check.
 
 Cards are of two kinds. A `producer` is the work itself (it has needs, a
 branch, a head, a PR, a bounce count and a priority, and lands); it never has
@@ -112,12 +114,15 @@ release gate or a phase mark: its needs are what it waits for). A consumer
 (`work` or `read`) is one attempt at, or one read of, a producer: its `of`
 names that producer (never a sentinel), it has no needs, no after and no
 priority of its own (its column stays `normal`; it is ordered by its
-producer's), it may have a holder, and it records a `result` (`""`, `ok`,
+producer's), it names its holder row at add, and that holder never changes
+(there is no holder write: Johnny's review, 2026-11-06, found a working card
+could drop its holder and keep the slot), and it records a `result` (`""`, `ok`,
 `fix`, `fail`, `fault`), its `cost` in micro-dollars with `priced` (false
 when its route has no price, never shown as $0), and on a work consumer the
 `prior_head` it continues from, and the `attempt` of its producer it belongs
-to, given at add (`PutCard.Attempt`) and never written after. Kind, of and
-stream are set by `PutCard` and never change. `needs` is hard order (cannot start until they landed), `after` soft
+to, given at add (`PutCard.Attempt`) and never written after. Kind, of,
+stream, holder and tier are set by `PutCard` and never change (in Go, and by
+the `cards_fixed` trigger). `needs` is hard order (cannot start until they landed), `after` soft
 (orders the landing only); layers 2 and 3 read them, the store only checks
 that they name other cards of the epoch, once each. A priority is one of
 `low`, `normal` (the default), `high`, `critical`, `blocker`; the `read` rung
@@ -126,8 +131,46 @@ is, in Go and by a CHECK: prior head a work consumer's, bounces a producer's, co
 priced and result a consumer's, priority, needs and after a producer's or sentinel's, a holder a consumer's,
 and SetCardAttempt is refused on a consumer (its attempt is set at add by PutCard). The check is on the kind, before
 the value is looked at: a kind-specific write on the wrong kind is refused whatever its value, no-op values included
-(`SetCardPriority` normal, `SetCardNeeds` or `SetCardAfter` nil, `SetCardHolder` `""`, `SetCardBounces` 0), so it
+(`SetCardPriority` normal, `SetCardNeeds` or `SetCardAfter` nil, `SetCardPaths` nil, `SetCardBounces` 0), so it
 never raises a gen or logs an accepted event. At add a consumer may name only the default priority (`""` or normal).
+
+Tier. Every card names its tier at add, one of `flash`, `pro`, `heavy`,
+`frontier` (a CHECK in the schema; in Go a tier outside the four is a
+refusal naming the set); a consumer's must equal its producer's ("card k1
+is tier pro, its producer c1 is tier heavy; a consumer takes its producer's
+tier"), and no write changes it. A row serves a set of tiers, `tiers`
+(each one of the four, once; a CHECK `tiers <@ '{flash,pro,heavy,frontier}'`,
+no function), with `model` and `harness` as labels for policy and the
+dashboard; `PutRow` takes them, `SetRowTiers` and `SetRowLabels` (model and
+harness, one field) change them and raise the row's gen. `RowServes` lets a
+deal refuse a row that does not serve the card's tier inside the
+transaction. Beside `brief`, which keeps the whole brief as given, a card
+carries the contract's structured fields: `paths`, `done_when` and `prose`;
+`PutCard` takes them, `SetCardPaths`, `SetCardDoneWhen` and `SetCardProse`
+change a producer's or sentinel's, and a consumer carries the copies it was
+added with.
+
+Judgements (`sprint.judgements`). A question owed to a person, stored so it
+outlives any push: id, kind (a word for the dashboard), about (the card,
+stream or row), question, command (the verb that answers it), group key
+(shown and pushed as one), state `open`, `answered` or `expired`, deadline
+(zero is none), answer, actor, opened and closed times. `PutJudgement`
+opens one (refused when it exists; opened at the op's `At`);
+`AnswerJudgement{ID, Answer, Actor}` and `ExpireJudgement{ID, Reason}` close
+an open one at the op's `At` (the reason is kept as the answer; an empty
+actor is the op's), refused on any other state. A judgement has no gen:
+fence a plan on `JudgementOpen`. It belongs to the epoch, so a clear drops
+it; the images and `Rebuild` carry it, and `Snapshot.Judgements` lists the
+epoch's.
+
+Cursors (`sprint.cursors`). A subscriber's place in the event log (a row's
+push cursor, the dashboard's feed), so a restart resumes where it stopped:
+`SetCursor{Name, Seq}` inserts it when absent and is refused below the
+stored seq ("cursor push-w1 is at 42, cannot move back to 7"). It belongs to
+the epoch, so a clear drops it; the images and `Rebuild` carry it, and
+`Snapshot.Cursors` maps each name to its seq. Every event also records
+`policy`, the active policy version when its op was checked (0 when none);
+`Rebuild` ignores it.
 
 The card states are `waiting`, `ready`, `working`, `review`, `merging`,
 `landed`, `fail`, `blocked`, `done`. Width caps work in progress, not what is
@@ -139,32 +182,33 @@ the state.
 
 Writes, one field each, applied in order: `PutStream` (repo, base, pos;
 insert or overwrite), `SetStreamHeld`, `PutCard` (kind, of, stream, score,
-needs, after, brief, holder, priority, and a consumer's attempt; the card must not exist; it starts
+needs, after, brief, holder, priority, tier, paths, done when, prose, and a
+consumer's attempt; the card must not exist; it starts
 waiting, gen 0, attempt 0, result `""`; a producer or sentinel is refused an
 `of` and a holder, a sentinel a brief, a consumer needs, after, a priority
-other than normal and an `of` that is missing or is not a producer; the
-holder row must exist), `SetCardState` (a held card moving into `working` is
+other than normal, a missing holder, a tier other than its producer's and
+an `of` that is missing or is not a producer; the
+holder row must exist), `SetCardState` (a consumer moving into `working` is
 refused when its row already holds as many working cards as its width),
-`SetCardHolder` (refused on a producer or sentinel and on a row that does not
-exist; on a card already in `working`, refused when the row is full the same
-way), `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
+`SetCardPaths`, `SetCardDoneWhen`, `SetCardProse`, `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
 `SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardCost` (cost
 and priced together, one field), `SetCardPriority` (refused on a consumer,
 normal included), `SetCardNeeds` and `SetCardAfter` (each refused on a
 consumer, nil included), `PutRow`
-(kind, width, session; insert or overwrite; a new row is down and not held;
+(kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
 state, flaps and held are kept on overwrite), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
 true, whatever its state), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
-`PutPolicy`, `SetActivePolicy`. `PutPolicy` takes no version: the store
+`SetRowTiers`, `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
+`PutJudgement`, `AnswerJudgement`, `ExpireJudgement`, `SetCursor`. `PutPolicy` takes no version: the store
 gives it the next one, and the caller learns it from the receipt,
 `r.After.Policies` (keyed by version; the new version is the one not in
 the snapshot it planned from). The working count is taken at the moment of
 the write and excludes the card written, so two takes onto a width-one row in
 one op are refused on the second and nothing lands; re-setting the same
-holder, or the same state, is a no-op. A width below the working cards the
+state is a no-op. A width below the working cards the
 row holds is refused; width 0 is a row that takes nothing into working (it
 may still hold queued cards). An op that writes a card or a row raises its
 gen by one, however many of its writes touch it (gen counts the operations

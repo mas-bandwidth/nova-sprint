@@ -1,12 +1,13 @@
 -- The sprint store: layer 1 of nova-sprint v2 (docs/LAYER-1-STORE.md).
 -- Idempotent: applying it twice is a no-op. Migrate checks sprint.meta before
 -- it runs this, and refuses a store at another schema version. Nothing is
--- ever deleted; a clear increments sprint.epoch and every stream, card and row
--- carries the epoch it was written in. Version 2 is the version with the two
--- card kinds (kind with sentinel, of, after, author, base_sha, result, the
--- states blocked and done; prior_head, bounces, cost, priced, priority and the
--- result fault) and row gen and held;
--- there is no upgrade path from version 1.
+-- ever deleted; a clear increments sprint.epoch and every stream, card, row,
+-- judgement and cursor carries the epoch it was written in. Version 2 is the
+-- version with the two card kinds (kind with sentinel, of, after, author,
+-- base_sha, result, the states blocked and done; prior_head, bounces, cost,
+-- priced, priority, the result fault; tier, paths, done_when, prose), row
+-- gen, held, tiers, model and harness, the judgements and cursors tables and
+-- the events' policy; there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
 
@@ -45,6 +46,9 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
     flaps   integer NOT NULL DEFAULT 0,
     held    boolean NOT NULL DEFAULT false,
     gen     integer NOT NULL DEFAULT 0,
+    tiers   text[]  NOT NULL DEFAULT '{}' CHECK (tiers <@ ARRAY['flash', 'pro', 'heavy', 'frontier']::text[]),
+    model   text    NOT NULL DEFAULT '',
+    harness text    NOT NULL DEFAULT '',
     epoch   integer NOT NULL,
     PRIMARY KEY (epoch, name)
 );
@@ -79,6 +83,10 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     priority text    NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'critical', 'blocker')),
     brief    text    NOT NULL DEFAULT '',
     reason   text    NOT NULL DEFAULT '',
+    tier     text    NOT NULL CHECK (tier IN ('flash', 'pro', 'heavy', 'frontier')),
+    paths    text[]  NOT NULL DEFAULT '{}',
+    done_when text[] NOT NULL DEFAULT '{}',
+    prose    text    NOT NULL DEFAULT '',
     epoch    integer NOT NULL,
     PRIMARY KEY (epoch, id),
     CONSTRAINT cards_of_check CHECK ((kind IN ('producer', 'sentinel')) = ("of" IS NULL)),
@@ -86,7 +94,7 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     CONSTRAINT cards_after_check CHECK (kind IN ('producer', 'sentinel') OR after = '{}'),
     CONSTRAINT cards_brief_check CHECK (kind <> 'sentinel' OR brief = ''),
     CONSTRAINT cards_consumer_priority_check CHECK (kind IN ('producer', 'sentinel') OR priority = 'normal'),
-    CONSTRAINT cards_holder_check CHECK (kind IN ('work', 'read') OR holder IS NULL),
+    CONSTRAINT cards_holder_check CHECK ((kind IN ('work', 'read')) = (holder IS NOT NULL)),
     CONSTRAINT cards_prior_head_check CHECK (kind = 'work' OR prior_head = ''),
     CONSTRAINT cards_bounces_check CHECK (kind = 'producer' OR bounces = 0),
     CONSTRAINT cards_producer_cost_check CHECK (kind IN ('work', 'read') OR (cost = 0 AND NOT priced)),
@@ -96,20 +104,27 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     FOREIGN KEY (epoch, "of") REFERENCES sprint.cards (epoch, id)
 );
 
--- What a CHECK cannot say: a card's kind, of and stream never change once it
--- is written, and a consumer's of names a producer (the foreign key says only
--- that it names a card). A consumer's attempt is fixed at add too, but a
--- trigger cannot tell the store's own writes from a caller's, so that rule is
--- the store's alone.
+-- What a CHECK cannot say: a card's kind, of, stream, holder and tier never
+-- change once it is written (there is no write for any of them; Johnny's
+-- review 2026-11-06: a working card could drop its holder and keep the
+-- slot), and a consumer's of names a producer of its own tier (the foreign
+-- key says only that it names a card). A consumer's attempt is fixed at add
+-- too, but a trigger cannot tell the store's own writes from a caller's, so
+-- that rule is the store's alone.
 CREATE OR REPLACE FUNCTION sprint.cards_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF TG_OP = 'UPDATE' AND (NEW.kind IS DISTINCT FROM OLD.kind OR NEW."of" IS DISTINCT FROM OLD."of" OR NEW.stream IS DISTINCT FROM OLD.stream) THEN
-        RAISE EXCEPTION 'card % changes its kind, of or stream; they are fixed when the card is added', OLD.id
+    IF TG_OP = 'UPDATE' AND (NEW.kind IS DISTINCT FROM OLD.kind OR NEW."of" IS DISTINCT FROM OLD."of" OR NEW.stream IS DISTINCT FROM OLD.stream
+            OR NEW.holder IS DISTINCT FROM OLD.holder OR NEW.tier IS DISTINCT FROM OLD.tier) THEN
+        RAISE EXCEPTION 'card % changes its kind, of, stream, holder or tier; they are fixed when the card is added', OLD.id
             USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_fixed_check';
     END IF;
     IF NEW."of" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sprint.cards c WHERE c.epoch = NEW.epoch AND c.id = NEW."of" AND c.kind = 'producer') THEN
         RAISE EXCEPTION 'card % is a consumer of %, which is not a producer', NEW.id, NEW."of"
             USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_of_producer_check';
+    END IF;
+    IF NEW."of" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sprint.cards c WHERE c.epoch = NEW.epoch AND c.id = NEW."of" AND c.tier = NEW.tier) THEN
+        RAISE EXCEPTION 'card % is not of its producer %''s tier', NEW.id, NEW."of"
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_consumer_tier_check';
     END IF;
     RETURN NEW;
 END
@@ -130,7 +145,8 @@ CREATE TABLE IF NOT EXISTS sprint.events (
     after    jsonb,
     receipt  jsonb       NOT NULL,
     at       timestamptz NOT NULL,
-    epoch    integer     NOT NULL
+    epoch    integer     NOT NULL,
+    policy   integer     NOT NULL DEFAULT 0 -- the active policy version when the op was checked; 0 when none
 );
 
 -- Global, not epoch scoped: a clear keeps the policy. At most one version is
@@ -145,3 +161,33 @@ CREATE TABLE IF NOT EXISTS sprint.policy (
     at      timestamptz NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS policy_one_active ON sprint.policy (active) WHERE active;
+
+-- A question owed to a person, stored so it outlives any push (promises 1, 5
+-- and 6). No gen: JudgementOpen fences it. Epoch scoped: a clear does not
+-- carry it. An open judgement is not closed; a closed one has a closed_at.
+CREATE TABLE IF NOT EXISTS sprint.judgements (
+    id        text        NOT NULL,
+    kind      text        NOT NULL,
+    about     text        NOT NULL DEFAULT '',
+    question  text        NOT NULL DEFAULT '',
+    command   text        NOT NULL DEFAULT '',
+    group_key text        NOT NULL DEFAULT '',
+    state     text        NOT NULL CHECK (state IN ('open', 'answered', 'expired')),
+    deadline  timestamptz,
+    answer    text        NOT NULL DEFAULT '',
+    actor     text        NOT NULL DEFAULT '',
+    opened_at timestamptz NOT NULL,
+    closed_at timestamptz,
+    epoch     integer     NOT NULL,
+    PRIMARY KEY (epoch, id),
+    CONSTRAINT judgements_closed_check CHECK ((state = 'open') = (closed_at IS NULL))
+);
+
+-- A subscriber's place in the event log, so a restart resumes where it
+-- stopped (promise 6). Epoch scoped: a clear does not carry it.
+CREATE TABLE IF NOT EXISTS sprint.cursors (
+    name  text    NOT NULL,
+    seq   bigint  NOT NULL CHECK (seq >= 0),
+    epoch integer NOT NULL,
+    PRIMARY KEY (epoch, name)
+);
