@@ -14,12 +14,13 @@ import (
 // give them. A set write is added only when it changes its column, so layer 1
 // never refuses a plan for a write that changes nothing.
 type mover struct {
-	plan  Plan
-	p     Card   // the producer, or the consumer for MoveConsumer
-	cons  []Card // the producer's consumers
-	rows  map[string]Row
-	s     Stream
-	needs map[string]Card
+	plan   Plan
+	p      Card   // the producer, or the consumer for MoveConsumer
+	cons   []Card // the producer's consumers
+	rows   map[string]Row
+	s      Stream
+	needs  map[string]Card
+	fenced bool // fenceConsumers has run (AskReads cuts several reads)
 }
 
 func (m *mover) expect(e ...store.Expect) { m.plan.Expect = append(m.plan.Expect, e...) }
@@ -144,10 +145,14 @@ func (m *mover) producerEvent(e Event) *Refusal {
 		return m.returned(v, v.Consumer, "fault", false)
 	case AskRead:
 		return m.askRead(v)
+	case AskReads:
+		return m.askReads(v)
 	case ReadYes:
 		return m.readYes(v)
 	case ReadFix:
 		return m.readFix(v)
+	case WaiveRed:
+		return m.waiveRed(v)
 	case Landed:
 		return m.landed(v)
 	case Red:
@@ -287,6 +292,16 @@ func tierList(ts []string) string {
 // AskRead) never hides one it refuses, and the refusal names the refused card
 // with the lowest id (Johnny's read of a822dfc7).
 func (m *mover) noLive(refuse func(c Card) *Refusal) *Refusal {
+	if r := m.liveRefused(refuse); r != nil {
+		return r
+	}
+	m.fenceConsumers()
+	return nil
+}
+
+// liveRefused is noLive's check without the fence, so a caller can fence
+// after the conditions that belong ahead of it.
+func (m *mover) liveRefused(refuse func(c Card) *Refusal) *Refusal {
 	if id := workID(m.p.ID, m.p.Attempt); m.p.State == Working && !slices.ContainsFunc(m.cons, func(c Card) bool { return c.ID == id }) {
 		return no("producer %s is working; its work consumer %s was not passed (the consumer list must be complete)", m.p.ID, id)
 	}
@@ -300,11 +315,7 @@ func (m *mover) noLive(refuse func(c Card) *Refusal) *Refusal {
 			first, low = r, c.ID
 		}
 	}
-	if first != nil {
-		return first
-	}
-	m.fenceConsumers()
-	return nil
+	return first
 }
 
 func (m *mover) fenceConsumers() {
@@ -329,6 +340,11 @@ func (m *mover) readID() string {
 	n := 1
 	for _, c := range m.cons {
 		if c.Kind == "read" && c.Review == m.p.Review {
+			n++
+		}
+	}
+	for _, w := range m.plan.Writes {
+		if put, ok := w.(store.PutCard); ok && put.Kind == "read" && put.Review == m.p.Review {
 			n++
 		}
 	}
@@ -451,6 +467,19 @@ func (m *mover) back() *Refusal {
 	return nil
 }
 
+// holdPhrase names a park into a held stream. A stream has no reason column,
+// so the phrase names the stream (the second cold read of layer 2).
+func holdPhrase(s Stream) string { return "held: stream " + s.Name + " is held" }
+
+// returnReason is the producer's reason on a return: the hold when the
+// stream is held, otherwise the consumer's own reason.
+func (m *mover) returnReason(consumer string) string {
+	if m.s.Held {
+		return holdPhrase(m.s)
+	}
+	return consumer
+}
+
 // raiseReview moves p into review and raises its review by one: reads cut
 // before no longer count.
 func (m *mover) raiseReview() *Refusal {
@@ -475,7 +504,10 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 	if r := m.back(); r != nil {
 		return r
 	}
-	m.reason(m.p.ID, m.p.Reason, c.Reason)
+	m.reason(m.p.ID, m.p.Reason, m.returnReason(c.Reason))
+	if c.Reason != "" && c.Reason != m.p.Finding {
+		m.write(store.SetCardFinding{Card: m.p.ID, Finding: c.Reason})
+	}
 	if bounce {
 		m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
 	}
@@ -484,21 +516,62 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 }
 
 func (m *mover) askRead(e AskRead) *Refusal {
+	if r := m.readGate(e); r != nil {
+		return r
+	}
+	return m.oneRead(e.Row, map[string]bool{})
+}
+
+func (m *mover) askReads(e AskReads) *Refusal {
+	if r := m.readGate(e); r != nil {
+		return r
+	}
+	if len(e.Rows) == 0 {
+		return no("AskReads of producer %s needs a row", m.p.ID)
+	}
+	seen := map[string]bool{}
+	for _, row := range e.Rows {
+		if r := m.oneRead(row, seen); r != nil {
+			return r
+		}
+	}
+	return nil
+}
+
+// readGate is the shared front of AskRead and AskReads: a producer in
+// review, a head to read, the stream free, and no live work consumer.
+func (m *mover) readGate(e Event) *Refusal {
 	if m.p.Kind != "producer" {
 		return no("sentinel %s never has a consumer", m.p.ID)
 	}
 	if r := m.from(e, Review); r != nil {
 		return r
 	}
-	if e.Row == m.p.Author {
-		return no("%s wrote producer %s's head and may not read it", e.Row, m.p.ID)
-	}
-	if r := firstOf(m.stream(true), m.row(e.Row), m.noLive(m.liveWork)); r != nil {
+	if r := sha("head", m.p.Head); r != nil {
 		return r
 	}
+	return firstOf(m.stream(true), m.liveRefused(m.liveWork))
+}
+
+// oneRead cuts one read of p's head on row. seen refuses a row named twice.
+func (m *mover) oneRead(row string, seen map[string]bool) *Refusal {
+	switch {
+	case seen[row]:
+		return no("row %s is named twice in AskReads of producer %s; name each row once", row, m.p.ID)
+	case row == m.p.Author:
+		return no("%s wrote producer %s's head and may not read it", row, m.p.ID)
+	}
+	seen[row] = true
+	if r := m.row(row); r != nil {
+		return r
+	}
+	if !m.fenced {
+		m.fenceConsumers() // after the row, so AskRead's conditions stay in table order
+		m.fenced = true
+	}
 	for _, c := range m.cons {
-		if c.Kind == "read" && live(c) && c.Holder == e.Row && c.Head == m.p.Head {
-			return no("row %s already holds live read %s of head %s", e.Row, c.ID, m.p.Head)
+		if c.Kind == "read" && live(c) && c.Holder == row && c.Head == m.p.Head {
+			return no("row %s already holds live read %s of head %s", row, c.ID, m.p.Head)
 		}
 	}
 	id := m.readID()
@@ -506,7 +579,7 @@ func (m *mover) askRead(e AskRead) *Refusal {
 	if m.p.Author != "" {
 		cols = append(cols, store.SetCardAuthor{Card: id, Author: m.p.Author})
 	}
-	return m.cut(id, "read", e.Row, m.p.Attempt, cols...)
+	return m.cut(id, "read", row, m.p.Attempt, cols...)
 }
 
 // liveWork refuses only a live work consumer: reads of one review may be
@@ -530,10 +603,12 @@ func (m *mover) reads() (int, *Refusal) {
 
 // count is how many reads of p, cut at p's current review and of p's head,
 // are done with result.
-func (m *mover) count(result string) int {
+func (m *mover) count(result string) int { return m.countAt(m.p.Review, result) }
+
+func (m *mover) countAt(review int, result string) int {
 	n := 0
 	for _, c := range m.cons {
-		if c.Kind == "read" && c.Of == m.p.ID && c.Review == m.p.Review && c.Head == m.p.Head && c.State == Done && c.Result == result {
+		if c.Kind == "read" && c.Of == m.p.ID && c.Review == review && c.Head == m.p.Head && c.State == Done && c.Result == result {
 			n++
 		}
 	}
@@ -568,10 +643,32 @@ func (m *mover) readFix(e ReadFix) *Refusal {
 	if r := m.back(); r != nil {
 		return r
 	}
+	if m.s.Held {
+		m.reason(m.p.ID, m.p.Reason, holdPhrase(m.s))
+	}
 	if e.Finding != "" && e.Finding != m.p.Finding {
 		m.write(store.SetCardFinding{Card: m.p.ID, Finding: e.Finding})
 	}
 	m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
+	return nil
+}
+
+// waiveRed sends a producer a Red returned to review on to merging, when a
+// done ok read of the previous review at this head exists. It does not raise
+// the review. A live consumer is refused, so a live read cannot leave review.
+func (m *mover) waiveRed(e WaiveRed) *Refusal {
+	if r := m.from(e, Review); r != nil {
+		return r
+	}
+	if r := m.noLive(m.liveRefusal); r != nil {
+		return r
+	}
+	prev := m.p.Review - 1
+	if prev < 0 || m.countAt(prev, "ok") == 0 {
+		return no("producer %s has no done ok read of review %d at head %s; WaiveRed needs one", m.p.ID, prev, m.p.Head)
+	}
+	m.state(m.p.ID, Merging)
+	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	return nil
 }
 
@@ -621,7 +718,7 @@ func (m *mover) released(e Released) *Refusal {
 	if e.Reason == "" {
 		e.Reason = c.Reason
 	}
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
+	m.reason(m.p.ID, m.p.Reason, m.returnReason(e.Reason))
 	m.head(m.p.ID, m.p.Head, c.Head)
 	return nil
 }
@@ -638,7 +735,7 @@ func (m *mover) fail(reason string) *Refusal {
 }
 
 func (m *mover) replace(e Replace) *Refusal {
-	_, ok := m.needs[e.By]
+	by, ok := m.needs[e.By]
 	switch {
 	case e.By == "":
 		return no("Replace of %s %s needs the card it is replaced by", m.p.Kind, m.p.ID)
@@ -646,7 +743,12 @@ func (m *mover) replace(e Replace) *Refusal {
 		return no("%s %s cannot be replaced by itself", m.p.Kind, m.p.ID)
 	case !ok:
 		return no("card %s does not exist (Replace takes the card it is replaced by among the cards passed)", e.By)
+	case by.Kind != "producer" && by.Kind != "sentinel":
+		return no("card %s is a %s; Replace needs a producer or a sentinel that is not final", e.By, kindName(by.Kind))
+	case final(by.Kind, by.State):
+		return no("%s %s is %s; Replace needs a producer or a sentinel that is not final", by.Kind, e.By, by.State)
 	}
+	m.expect(store.CardGen{Card: e.By, Gen: by.Gen})
 	return m.fail("replaced by " + e.By + ": " + e.Reason)
 }
 
@@ -692,7 +794,7 @@ func (m *mover) waive(e Waive) *Refusal {
 }
 
 func (m *mover) relink(e Relink) *Refusal {
-	if r := firstOf(m.from(e, Waiting), m.failedNeed(e.Need, false)); r != nil {
+	if r := firstOf(m.from(e, Waiting), m.failedNeed(e.Need, e.InThisOp)); r != nil {
 		return r
 	}
 	to, ok := m.needs[e.To]
@@ -723,11 +825,12 @@ func (m *mover) relink(e Relink) *Refusal {
 	return nil
 }
 
-// cycle is the path of needs from id back to p ("c2", "c1" for c1 needs c2
-// needs c1), or nil when p is not reachable from id; read is every card the
-// walk read, in order, each to be fenced by its gen so no other relink can
-// close a loop through them between plan and apply. A card the walk needs
-// that was not passed is refused: the proof would be incomplete.
+// cycle is the path of needs and after from id back to p ("c2", "c1" for c1
+// needs c2 needs c1), or nil when p is not reachable from id; read is every
+// card the walk read, in order, each to be fenced by its gen so no other
+// relink can close a loop through them between plan and apply. A card the
+// walk reaches that was not passed is refused: the proof would be incomplete.
+// The path is joined with " needs " even when an edge was after, as Add's is.
 func (m *mover) cycle(id string) (path, read []string, refusal *Refusal) {
 	seen := map[string]bool{}
 	var walk func(id, by string) []string
@@ -737,12 +840,12 @@ func (m *mover) cycle(id string) (path, read []string, refusal *Refusal) {
 		}
 		c, ok := m.needs[id]
 		if !ok {
-			refusal = no("card %s, needed by %s, was not passed; Relink needs every card reachable through needs", id, by)
+			refusal = no("card %s, needed by %s, was not passed; Relink needs every card reachable through needs and after", id, by)
 			return nil
 		}
 		seen[id] = true
 		read = append(read, id)
-		for _, n := range c.Needs {
+		for _, n := range append(slices.Clone(c.Needs), c.After...) {
 			if p := walk(n, id); p != nil {
 				return append([]string{id}, p...)
 			}
@@ -840,8 +943,16 @@ func (m *mover) unblock(e Unblock) *Refusal {
 	if r := m.from(e, Blocked); r != nil {
 		return r
 	}
+	if m.s.Name != m.p.Stream {
+		return no("stream %s is not producer %s's stream %s", m.s.Name, m.p.ID, m.p.Stream)
+	}
+	m.expect(store.StreamHeld{Stream: m.s.Name, Held: m.s.Held})
 	m.state(m.p.ID, Waiting)
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
+	why := e.Reason
+	if m.s.Held {
+		why = holdPhrase(m.s)
+	}
+	m.reason(m.p.ID, m.p.Reason, why)
 	return nil
 }
 
@@ -932,21 +1043,38 @@ func (m *mover) reportHead(e Report, p Card) *Refusal {
 	case c.Kind == "read" && e.Result == "fail":
 		return no("a read consumer reports ok, fix or fault; fail is a work's result")
 	}
+	if c.Kind == "read" {
+		if r := m.readReportHead(e, p); r != nil {
+			return r
+		}
+	}
 	if e.Result == "ok" || e.Head != "" {
 		if r := sha("head", e.Head); r != nil {
 			return r
 		}
 	}
-	switch {
-	case c.Kind == "work" && e.Result == "ok" && e.Head == c.BaseSHA:
-		return no("head %s is the base; nothing was done", e.Head)
-	case c.Kind == "work" && e.Result == "ok" && c.PriorHead != "" && e.Head == c.PriorHead:
-		return no("head %s is the prior head; nothing new was pushed", e.Head)
-	case c.Kind == "read" && e.Head != "" && e.Head != p.Head:
-		return no("producer %s is at head %s, the read was of %s", p.ID, p.Head, e.Head)
-	case c.Kind == "read":
-		m.expect(store.CardGen{Card: p.ID, Gen: p.Gen})
+	if c.Kind == "work" && e.Head != "" {
+		switch {
+		case e.Head == c.BaseSHA:
+			return no("head %s is the base; nothing was done", e.Head)
+		case c.PriorHead != "" && e.Head == c.PriorHead:
+			return no("head %s is the prior head; nothing new was pushed", e.Head)
+		}
 	}
+	return nil
+}
+
+// readReportHead: a read reports the head it was cut at, which is the
+// producer's head. A different head is refused and never written.
+func (m *mover) readReportHead(e Report, p Card) *Refusal {
+	c := m.p
+	switch {
+	case e.Head != "" && e.Head != c.Head:
+		return no("read %s was cut at %s, the report names %s", c.ID, c.Head, e.Head)
+	case c.Head != p.Head:
+		return no("read %s was cut at %s; producer %s is at %s", c.ID, c.Head, p.ID, p.Head)
+	}
+	m.expect(store.CardGen{Card: p.ID, Gen: p.Gen})
 	return nil
 }
 
@@ -960,12 +1088,12 @@ func (m *mover) withdraw(e Withdraw, p Card) *Refusal {
 		return r
 	}
 	if e.Head != "" {
-		switch r := sha("head", e.Head); {
-		case r != nil:
+		if r := m.withdrawHead(e, c); r != nil {
 			return r
-		case c.Kind == "read" && e.Head != c.Head:
-			return no("read %s is of head %s; a read is withdrawn without a head of its own", c.ID, c.Head)
 		}
+	}
+	if c.Kind == "work" && live(c) && p.State != Working {
+		return no("producer %s is %s; withdrawing live work consumer %s would leave it working", p.ID, p.State, c.ID)
 	}
 	m.state(c.ID, Fail)
 	m.reason(c.ID, c.Reason, e.Reason)
@@ -978,28 +1106,60 @@ func (m *mover) withdraw(e Withdraw, p Card) *Refusal {
 	}
 	m.expect(store.CardGen{Card: p.ID, Gen: p.Gen}, store.StreamHeld{Stream: p.Stream, Held: e.Stream.Held})
 	m.state(p.ID, cmp.Or(when(e.Stream.Held, Waiting), Ready))
-	m.reason(p.ID, p.Reason, e.Reason)
+	why := e.Reason
+	if e.Stream.Held {
+		why = holdPhrase(e.Stream)
+	}
+	m.reason(p.ID, p.Reason, why)
 	m.head(p.ID, p.Head, cmp.Or(e.Head, c.Head))
 	return nil
 }
 
-// MoveStream is a stream's move on event e: HoldStream holds s and parks
-// every ready producer it names in the same op (Stella's read of a822dfc7:
-// a hold merged with a Park built against the held stream is refused by
-// layer 1, which checks every condition before any write).
-func MoveStream(s Stream, e Event) (Plan, *Refusal) {
-	v, ok := e.(HoldStream)
-	if !ok {
-		return Plan{}, no("%s is not a stream event; MoveStream takes HoldStream", name(e))
+// withdrawHead checks a pushed head the way an ok report does: a full sha,
+// not the base, not the prior head. A ready work consumer has not pushed.
+// A read is withdrawn without a head of its own.
+func (m *mover) withdrawHead(e Withdraw, c Card) *Refusal {
+	if r := sha("head", e.Head); r != nil {
+		return r
 	}
+	switch {
+	case c.Kind == "read" && e.Head != c.Head:
+		return no("read %s is of head %s; a read is withdrawn without a head of its own", c.ID, c.Head)
+	case c.Kind == "work" && c.State == Ready:
+		return no("consumer %s is ready; it has not pushed a head", c.ID)
+	case c.Kind == "work" && e.Head == c.BaseSHA:
+		return no("head %s is the base; nothing was done", e.Head)
+	case c.Kind == "work" && c.PriorHead != "" && e.Head == c.PriorHead:
+		return no("head %s is the prior head; nothing new was pushed", e.Head)
+	}
+	return nil
+}
+
+// MoveStream is a stream's move on event e. HoldStream holds s and parks
+// every ready producer it names, once, in the same op, fenced at the
+// snapshot's seq (Stella's read of a822dfc7, and the second cold read).
+// UnholdStream clears the hold and parks nothing.
+func MoveStream(s Stream, e Event) (Plan, *Refusal) {
+	switch v := e.(type) {
+	case HoldStream:
+		return holdStream(s, v)
+	case UnholdStream:
+		return unholdStream(s, v)
+	default:
+		return Plan{}, no("%s is not a stream event; MoveStream takes HoldStream and UnholdStream", name(e))
+	}
+}
+
+func holdStream(s Stream, v HoldStream) (Plan, *Refusal) {
 	if s.Held {
 		return Plan{}, no("stream %s is already held", s.Name)
 	}
-	m := &mover{}
-	m.expect(store.StreamHeld{Stream: s.Name, Held: false})
-	m.write(store.SetStreamHeld{Stream: s.Name, Held: true})
-	why := cmp.Or(v.Reason, "stream "+s.Name+" is held")
+	seen := map[string]bool{}
 	for _, p := range v.Ready {
+		if seen[p.ID] {
+			return Plan{}, no("producer %s is listed twice in HoldStream; name each ready producer once", p.ID)
+		}
+		seen[p.ID] = true
 		switch {
 		case p.Kind != "producer":
 			return Plan{}, no("card %s is a %s; HoldStream parks producers", p.ID, kindName(p.Kind))
@@ -1008,10 +1168,33 @@ func MoveStream(s Stream, e Event) (Plan, *Refusal) {
 		case p.State != Ready:
 			return Plan{}, no("producer %s is in %s, HoldStream parks ready producers", p.ID, p.State)
 		}
+	}
+	m := &mover{}
+	m.expect(store.StreamHeld{Stream: s.Name, Held: false}, store.AtSeq{Seq: v.Seq})
+	m.write(store.SetStreamHeld{Stream: s.Name, Held: true})
+	why := cmp.Or(v.Reason, "stream "+s.Name+" is held")
+	for _, p := range v.Ready {
 		m.expect(store.CardGen{Card: p.ID, Gen: p.Gen})
 		m.state(p.ID, Waiting)
 		m.reason(p.ID, p.Reason, why)
 	}
+	return checked(m.plan)
+}
+
+func unholdStream(s Stream, e UnholdStream) (Plan, *Refusal) {
+	if !s.Held {
+		return Plan{}, no("stream %s is already not held", s.Name)
+	}
+	if e.Reason != "" {
+		v := &vals{}
+		v.text("reason", e.Reason)
+		if v.r != nil {
+			return Plan{}, v.r
+		}
+	}
+	m := &mover{}
+	m.expect(store.StreamHeld{Stream: s.Name, Held: true})
+	m.write(store.SetStreamHeld{Stream: s.Name, Held: false})
 	return checked(m.plan)
 }
 
