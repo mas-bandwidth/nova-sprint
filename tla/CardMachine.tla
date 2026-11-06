@@ -458,9 +458,13 @@ EnvMove ==
        \/ \E n \in 1..2 : Width(r, n)
   \/ HoldStream \/ UnholdStream
 
+\* Every producer final: the run is over (any other deadlock is reported).
+Terminating == (\A p \in P : ps[p].st \in PFinal) /\ UNCHANGED vars
+
 Next ==
   \/ CardMove /\ UNCHANGED env
   \/ env < MaxEnv /\ EnvMove /\ env' = env + 1
+  \/ Terminating
 
 Spec == Init /\ [][Next]_vars
 
