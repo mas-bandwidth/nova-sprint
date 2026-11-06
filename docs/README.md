@@ -95,6 +95,15 @@ from the tool's help twice; the friends adopt it; the six promises and 10/10
 across all friends and models; the vanilla-versus-sprint measurement) are
 2.0.x point releases, each one a gate met.
 
+After v2.0.0 there are only point releases, never a big refactor again
+(Glenn, 2026-11-06: "We just have to make sure it's only point releases, not
+any big refactor ever again. That's the important thing now."). What makes
+that holdable: each layer stays locked and a change inside one reopens it
+only for that fix; a change of behaviour goes into policy as a new version,
+never into the engine; the line budget and the enforcement ledger refuse
+growth; every fix ships as 2.0.x with its model, tests and cold read kept
+green.
+
 ## Two ideas from the field, deferred (Glenn, 2026-11-06)
 
 From the Hacker News thread "Ask HN: What's your current AI agentic setup?"
