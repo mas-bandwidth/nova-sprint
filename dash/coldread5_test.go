@@ -23,14 +23,16 @@ import (
 // Contract: docs/DASHBOARD-LESSONS.md ETA tile (d) "else `-` with sub `not in the summary`";
 // dash/README.md round-two ruling 4 "v1's cost, ok%, ETA and throughput fallbacks remain".
 func TestColdread5DefectETAFallbackSubDropped(t *testing.T) {
+	// Ruled 2026-11-06 (Glenn: "I don't think I ever asked for 'not in the summary' to be
+	// displayed"): v2 has no summary, so the ETA subline is blank. The probe now holds that.
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
 	const v1 = `else { setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }`
 	const v2 = `else { setText($("eta"), "-"); setText($("eta-at"), ""); }`
-	if strings.Contains(string(js), v2) || !strings.Contains(string(js), v1) {
-		t.Errorf("ETA fallback sub: v1 %q, shim blanks it (%q)", "not in the summary", v2)
+	if strings.Contains(string(js), v1) || !strings.Contains(string(js), v2) {
+		t.Errorf("ETA fallback sub: ruled blank in v2, page still carries v1's %q", "not in the summary")
 	}
 }
 

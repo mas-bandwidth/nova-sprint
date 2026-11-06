@@ -620,7 +620,7 @@ function renderHero(d, s, ft) {
     var etaAt = new Date(at.getTime() + ms);
     if (ms != null && !isNaN(at)) { etaAtLast = [etaAt, ms]; fitEtaAt(); } else { etaAtLast = null; setText($("eta-at"), "\u00a0"); }
   } else if (d.done) { setHTML($("eta"), "<span class=\"eta-done\">DONE</span>");  /* the owner 2026-10-12 ~00:32Z: "DONE with done in bright green" */ setText($("eta-at"), tookText(d));  /* the owner 2026-10-12 ~00:35Z: "Below DONE show the time it took in days, hours, minutes" */ }
-  else { setText($("eta"), "-"); setText($("eta-at"), "not in the summary"); }
+  else { setText($("eta"), "-"); setText($("eta-at"), ""); }
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
