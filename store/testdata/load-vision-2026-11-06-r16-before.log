@@ -1,0 +1,271 @@
+QUIET-CHECK 2026-11-06T22:02:33Z host=vision loadavg=0.81 0.63 1.10 1/1126 2737902 java=0
+c373d4a8 docs: per-tick budget, bursts spread over ticks (Glenn)
+=== RUN   TestLoad
+=== RUN   TestLoad/producers=2000
+    load_test.go:237: LOAD-INFO host=vision cpus=64 go=go1.26.10 postgres=18.6 (Ubuntu 18.6-0ubuntu0.26.04.1) fsync=on producers=2000 streams=20 rows=50 width=40 pg_stat_statements=false
+=== RUN   TestLoad/producers=2000/build
+    load_test.go:276: LOAD build-setup n=2 p50=17.58 p95=26.84 max=26.84 wall=44.45ms
+    load_test.go:276: LOAD build-producers n=20 p50=86.52 p95=104.48 max=104.98 wall=1787.19ms
+    load_test.go:276: LOAD build-policy n=4 p50=17.71 p95=20.06 max=20.06 wall=73.47ms
+    load_test.go:276: LOAD build-policy-activate n=1 p50=4.16 p95=4.16 max=4.16 wall=4.20ms
+    load_test.go:276: LOAD build-consumers n=40 p50=551.34 p95=609.84 max=621.58 wall=5631.84ms
+    load_test.go:276: LOAD build-judgements n=5 p50=23.22 p95=29.13 max=29.13 wall=120.66ms
+    load_test.go:276: LOAD build-filler n=49928 p50=24.99 p95=28.17 max=58.31 wall=159397.94ms
+    load_test.go:355: LOAD build-total n=50000 p50=24.99 p95=28.21 max=621.58 wall=167242.32ms events=50000
+=== RUN   TestLoad/producers=2000/tick
+    load_test.go:557: LOAD tick-apply n=20 p50=444.94 p95=471.13 max=471.92 writes=470
+    load_test.go:558: LOAD incr-read n=20 p50=35.40 p95=36.79 max=38.31 events=20
+    load_test.go:559: LOAD incr-fold n=20 p50=0.20 p95=0.23 max=0.26
+    load_test.go:560: LOAD incr-total n=20 p50=35.60 p95=37.00 max=38.52
+    load_test.go:561: BAR tick-apply PASS max 471.92ms against a 1000 ms tick
+    load_test.go:562: BAR incr-total PASS max 38.52ms per tick's worth against 100 ms
+=== RUN   TestLoad/producers=2000/dashboard
+    load_test.go:764: LOAD dash-sql n=30 p50=28.60 p95=38.60 max=38.76 over1s=0 board={counts:40 rows:50 open:1480 merging:200 events:50}
+    load_test.go:765: LOAD dash-incr n=30 p50=45.30 p95=51.89 max=65.42 over1s=0 events=1359 board={counts:40 rows:50 open:1480 merging:200 events:50}
+    load_test.go:766: LOAD dash-tick n=30 p50=665.92 p95=709.27 max=754.14 over1s=0
+    load_test.go:767: LOAD dash-report n=1346 p50=210.87 p95=684.14 max=717.62 rate=45/s dropped=3598 over1s=0
+    load_test.go:768: BAR dash-sql PASS 0 of 30 refreshes over 1 s, max 38.76ms
+    load_test.go:769: BAR dash-incr PASS 0 of 30 refreshes over 1 s, max 65.42ms
+    load_test.go:770: BAR dash-tick PASS 0 of 30 ticks over 1 s while the board reads, max 754.14ms
+    load_test.go:771: BAR dash-report-rate FAIL 1346 report ops in 30s against 200/s
+    load_test.go:771: bar missed: dash-report-rate: 1346 report ops in 30s against 200/s
+=== RUN   TestLoad/producers=2000/burst
+    load_test.go:807: LOAD burst n=2000 p50=257.17 p95=288.52 max=613.78 wall=10733.80ms rate=186/s over1s=0
+    load_test.go:808: BAR burst-wall FAIL 2000 reports cleared in 10733.80ms against a few seconds (5 s)
+    load_test.go:808: bar missed: burst-wall: 2000 reports cleared in 10733.80ms against a few seconds (5 s)
+    load_test.go:809: BAR burst-wait PASS slowest op 613.78ms against 1000 ms
+    load_test.go:812: LOAD burst-catchup n=1 p50=142.77 p95=142.77 max=142.77 events=2000 read=140.89ms fold=1.88ms
+=== RUN   TestLoad/producers=2000/cold
+    load_test.go:823: LOAD cold-snapshot n=1 p50=59.04 p95=59.04 max=59.04 cards=7846 judgements=1500 seq=53396
+    load_test.go:836: LOAD cold-events-read n=1 p50=6178.37 p95=6178.37 max=6178.37 events=53396
+    load_test.go:840: LOAD cold-rebuild-fold n=1 p50=42.08 p95=42.08 max=42.08 events=53396
+    load_test.go:844: BAR cold-snapshot PASS snapshot 59.04ms against seconds (10 s)
+    load_test.go:845: BAR cold-rebuild PASS read 6178.37ms + fold 42.08ms against seconds (10 s)
+=== NAME  TestLoad/producers=2000
+    load_test.go:857: LOAD-INFO cards=7846 rows cards_bytes=16719872 events=53396 rows events_bytes=143319040
+    load_test.go:877: PLAN SELECT count(*) FROM sprint.cards WHERE epoch = 1 AND holder = 'r07' AND state = 'working'
+    load_test.go:881: PLAN   Aggregate  (cost=2083.93..2083.95 rows=1 width=8) (actual time=8.393..8.394 rows=1.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=1645 read=334
+    load_test.go:881: PLAN     ->  Seq Scan on cards  (cost=0.00..2083.81 rows=51 width=0) (actual time=8.389..8.390 rows=0.00 loops=1)
+    load_test.go:881: PLAN           Filter: ((epoch = 1) AND (holder = 'r07'::text) AND (state = 'working'::text))
+    load_test.go:881: PLAN           Rows Removed by Filter: 7846
+    load_test.go:881: PLAN           Buffers: shared hit=1645 read=334
+    load_test.go:881: PLAN   Planning Time: 0.065 ms
+    load_test.go:881: PLAN   Execution Time: 8.424 ms
+    load_test.go:877: PLAN SELECT id, tier FROM sprint.cards WHERE epoch = 1 AND holder = 'r07' AND state IN ('ready', 'working') AND NOT tier = ANY('{flash,pro}'::text[]) ORDER BY id COLLATE "C" LIMIT 1
+    load_test.go:881: PLAN   Limit  (cost=2098.91..2098.91 rows=1 width=47) (actual time=5.856..5.857 rows=0.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=1979
+    load_test.go:881: PLAN     ->  Sort  (cost=2098.91..2098.98 rows=26 width=47) (actual time=5.855..5.856 rows=0.00 loops=1)
+    load_test.go:881: PLAN           Sort Key: id COLLATE "C"
+    load_test.go:881: PLAN           Sort Method: quicksort  Memory: 25kB
+    load_test.go:881: PLAN           Buffers: shared hit=1979
+    load_test.go:881: PLAN           ->  Seq Scan on cards  (cost=0.00..2098.78 rows=26 width=47) (actual time=5.848..5.848 rows=0.00 loops=1)
+    load_test.go:881: PLAN                 Filter: ((state = ANY ('{ready,working}'::text[])) AND (tier <> ALL ('{flash,pro}'::text[])) AND (epoch = 1) AND (holder = 'r07'::text))
+    load_test.go:881: PLAN                 Rows Removed by Filter: 7846
+    load_test.go:881: PLAN                 Buffers: shared hit=1979
+    load_test.go:881: PLAN   Planning:
+    load_test.go:881: PLAN     Buffers: shared hit=1 read=8
+    load_test.go:881: PLAN   Planning Time: 0.263 ms
+    load_test.go:881: PLAN   Execution Time: 5.875 ms
+    load_test.go:877: PLAN SELECT coalesce(max(seq), 0) FROM sprint.events
+    load_test.go:881: PLAN   Result  (cost=0.33..0.34 rows=1 width=8) (actual time=0.021..0.022 rows=1.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=4
+    load_test.go:881: PLAN     InitPlan 1
+    load_test.go:881: PLAN       ->  Limit  (cost=0.29..0.33 rows=1 width=8) (actual time=0.020..0.020 rows=1.00 loops=1)
+    load_test.go:881: PLAN             Buffers: shared hit=4
+    load_test.go:881: PLAN             ->  Index Only Scan Backward using events_pkey on events  (cost=0.29..2140.38 rows=53867 width=8) (actual time=0.019..0.019 rows=1.00 loops=1)
+    load_test.go:881: PLAN                   Heap Fetches: 1
+    load_test.go:881: PLAN                   Index Searches: 1
+    load_test.go:881: PLAN                   Buffers: shared hit=4
+    load_test.go:881: PLAN   Planning Time: 0.090 ms
+    load_test.go:881: PLAN   Execution Time: 0.032 ms
+    load_test.go:877: PLAN SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy FROM sprint.events WHERE seq > 52396 ORDER BY seq LIMIT 1000
+    load_test.go:881: PLAN   Limit  (cost=0.29..40.87 rows=146 width=1410) (actual time=0.120..1.086 rows=1000.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=1004 read=3
+    load_test.go:881: PLAN     ->  Index Scan using events_pkey on events  (cost=0.29..40.87 rows=146 width=1410) (actual time=0.119..0.943 rows=1000.00 loops=1)
+    load_test.go:881: PLAN           Index Cond: (seq > 52396)
+    load_test.go:881: PLAN           Index Searches: 1
+    load_test.go:881: PLAN           Buffers: shared hit=1004 read=3
+    load_test.go:881: PLAN   Planning:
+    load_test.go:881: PLAN     Buffers: shared hit=19 read=8
+    load_test.go:881: PLAN   Planning Time: 0.368 ms
+    load_test.go:881: PLAN   Execution Time: 1.183 ms
+    load_test.go:877: PLAN SELECT r.name, r.width, r.state, r.held, count(c.id) FROM sprint.rows r LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working' WHERE r.epoch = 1 GROUP BY r.name, r.width, r.state, r.held ORDER BY r.name
+    load_test.go:881: PLAN   Sort  (cost=2119.42..2119.67 rows=100 width=20) (actual time=5.005..5.008 rows=50.00 loops=1)
+    load_test.go:881: PLAN     Sort Key: r.name
+    load_test.go:881: PLAN     Sort Method: quicksort  Memory: 26kB
+    load_test.go:881: PLAN     Buffers: shared hit=1979 read=2
+    load_test.go:881: PLAN     ->  HashAggregate  (cost=2115.09..2116.09 rows=100 width=20) (actual time=4.976..4.983 rows=50.00 loops=1)
+    load_test.go:881: PLAN           Group Key: r.name, r.width, r.state, r.held
+    load_test.go:881: PLAN           Batches: 1  Memory Usage: 40kB
+    load_test.go:881: PLAN           Buffers: shared hit=1979 read=2
+    load_test.go:881: PLAN           ->  Hash Right Join  (cost=3.25..2083.38 rows=2537 width=21) (actual time=4.949..4.956 rows=50.00 loops=1)
+    load_test.go:881: PLAN                 Hash Cond: (c.holder = r.name)
+    load_test.go:881: PLAN                 Buffers: shared hit=1979 read=2
+    load_test.go:881: PLAN                 ->  Seq Scan on cards c  (cost=0.00..2068.84 rows=4087 width=17) (actual time=4.706..4.707 rows=0.00 loops=1)
+    load_test.go:881: PLAN                       Filter: ((state = 'working'::text) AND (epoch = 1))
+    load_test.go:881: PLAN                       Rows Removed by Filter: 7846
+    load_test.go:881: PLAN                       Buffers: shared hit=1979
+    load_test.go:881: PLAN                 ->  Hash  (cost=2.62..2.62 rows=50 width=16) (actual time=0.231..0.231 rows=50.00 loops=1)
+    load_test.go:881: PLAN                       Buckets: 1024  Batches: 1  Memory Usage: 11kB
+    load_test.go:881: PLAN                       Buffers: shared read=2
+    load_test.go:881: PLAN                       ->  Seq Scan on rows r  (cost=0.00..2.62 rows=50 width=16) (actual time=0.161..0.210 rows=50.00 loops=1)
+    load_test.go:881: PLAN                             Filter: (epoch = 1)
+    load_test.go:881: PLAN                             Buffers: shared read=2
+    load_test.go:881: PLAN   Planning Time: 0.208 ms
+    load_test.go:881: PLAN   Execution Time: 5.123 ms
+    load_test.go:877: PLAN SELECT stream, state, count(*) FROM sprint.cards WHERE epoch = 1 AND kind = 'producer' GROUP BY stream, state
+    load_test.go:881: PLAN   HashAggregate  (cost=2085.87..2086.47 rows=60 width=19) (actual time=3.644..3.647 rows=20.00 loops=1)
+    load_test.go:881: PLAN     Group Key: stream, state
+    load_test.go:881: PLAN     Batches: 1  Memory Usage: 32kB
+    load_test.go:881: PLAN     Buffers: shared hit=1979
+    load_test.go:881: PLAN     ->  Seq Scan on cards  (cost=0.00..2068.84 rows=2271 width=11) (actual time=0.005..3.276 rows=2000.00 loops=1)
+    load_test.go:881: PLAN           Filter: ((epoch = 1) AND (kind = 'producer'::text))
+    load_test.go:881: PLAN           Rows Removed by Filter: 5846
+    load_test.go:881: PLAN           Buffers: shared hit=1979
+    load_test.go:881: PLAN   Planning Time: 0.074 ms
+    load_test.go:881: PLAN   Execution Time: 3.665 ms
+=== RUN   TestLoad/producers=5000
+    load_test.go:237: LOAD-INFO host=vision cpus=64 go=go1.26.10 postgres=18.6 (Ubuntu 18.6-0ubuntu0.26.04.1) fsync=on producers=5000 streams=20 rows=50 width=40 pg_stat_statements=false
+=== RUN   TestLoad/producers=5000/build
+    load_test.go:276: LOAD build-setup n=2 p50=22.48 p95=28.58 max=28.58 wall=51.09ms
+    load_test.go:276: LOAD build-producers n=50 p50=104.96 p95=118.68 max=131.02 wall=5217.84ms
+    load_test.go:276: LOAD build-policy n=4 p50=23.74 p95=27.67 max=27.67 wall=98.31ms
+    load_test.go:276: LOAD build-policy-activate n=1 p50=5.18 p95=5.18 max=5.18 wall=5.20ms
+    load_test.go:276: LOAD build-consumers n=100 p50=393.91 p95=831.26 max=872.79 wall=13647.38ms
+    load_test.go:276: LOAD build-judgements n=5 p50=26.45 p95=33.18 max=33.18 wall=138.94ms
+    load_test.go:276: LOAD build-filler n=124838 p50=42.93 p95=46.31 max=106.55 wall=607965.61ms
+    load_test.go:355: LOAD build-total n=125000 p50=42.93 p95=46.35 max=872.79 wall=627593.74ms events=125000
+=== RUN   TestLoad/producers=5000/tick
+    load_test.go:557: LOAD tick-apply n=20 p50=607.16 p95=651.29 max=656.76 writes=470
+    load_test.go:558: LOAD incr-read n=20 p50=35.24 p95=36.64 max=37.34 events=20
+    load_test.go:559: LOAD incr-fold n=20 p50=0.22 p95=0.26 max=0.28
+    load_test.go:560: LOAD incr-total n=20 p50=35.45 p95=36.89 max=37.58
+    load_test.go:561: BAR tick-apply PASS max 656.76ms against a 1000 ms tick
+    load_test.go:562: BAR incr-total PASS max 37.58ms per tick's worth against 100 ms
+=== RUN   TestLoad/producers=5000/dashboard
+    load_test.go:764: LOAD dash-sql n=29 p50=40.49 p95=50.53 max=54.06 over1s=0 board={counts:40 rows:50 open:1460 merging:0 events:50}
+    load_test.go:765: LOAD dash-incr n=29 p50=40.97 p95=65.00 max=70.04 over1s=0 events=652 board={counts:40 rows:50 open:1460 merging:0 events:50}
+    load_test.go:766: LOAD dash-tick n=30 p50=906.32 p95=1032.87 max=1060.31 over1s=2
+    load_test.go:767: LOAD dash-report n=660 p50=889.51 p95=1024.82 max=1067.87 rate=22/s dropped=4279 over1s=59
+    load_test.go:768: BAR dash-sql PASS 0 of 29 refreshes over 1 s, max 54.06ms
+    load_test.go:769: BAR dash-incr PASS 0 of 29 refreshes over 1 s, max 70.04ms
+    load_test.go:770: BAR dash-tick FAIL 2 of 30 ticks over 1 s while the board reads, max 1060.31ms
+    load_test.go:770: bar missed: dash-tick: 2 of 30 ticks over 1 s while the board reads, max 1060.31ms
+    load_test.go:771: BAR dash-report-rate FAIL 660 report ops in 30s against 200/s
+    load_test.go:771: bar missed: dash-report-rate: 660 report ops in 30s against 200/s
+=== RUN   TestLoad/producers=5000/burst
+    load_test.go:807: LOAD burst n=2000 p50=367.69 p95=393.60 max=699.20 wall=15066.27ms rate=133/s over1s=0
+    load_test.go:808: BAR burst-wall FAIL 2000 reports cleared in 15066.27ms against a few seconds (5 s)
+    load_test.go:808: bar missed: burst-wall: 2000 reports cleared in 15066.27ms against a few seconds (5 s)
+    load_test.go:809: BAR burst-wait PASS slowest op 699.20ms against 1000 ms
+    load_test.go:812: LOAD burst-catchup n=1 p50=135.16 p95=135.16 max=135.16 events=2000 read=133.22ms fold=1.95ms
+=== RUN   TestLoad/producers=5000/cold
+    load_test.go:823: LOAD cold-snapshot n=1 p50=88.56 p95=88.56 max=88.56 cards=13160 judgements=1500 seq=127710
+    load_test.go:836: LOAD cold-events-read n=1 p50=13761.87 p95=13761.87 max=13761.87 events=127710
+    load_test.go:840: LOAD cold-rebuild-fold n=1 p50=115.49 p95=115.49 max=115.49 events=127710
+    load_test.go:844: BAR cold-snapshot PASS snapshot 88.56ms against seconds (10 s)
+    load_test.go:845: BAR cold-rebuild FAIL read 13761.87ms + fold 115.49ms against seconds (10 s)
+    load_test.go:845: bar missed: cold-rebuild: read 13761.87ms + fold 115.49ms against seconds (10 s)
+=== NAME  TestLoad/producers=5000
+    load_test.go:857: LOAD-INFO cards=13160 rows cards_bytes=27525120 events=127710 rows events_bytes=340975616
+    load_test.go:877: PLAN SELECT count(*) FROM sprint.cards WHERE epoch = 1 AND holder = 'r07' AND state = 'working'
+    load_test.go:881: PLAN   Aggregate  (cost=3480.61..3480.62 rows=1 width=8) (actual time=11.053..11.054 rows=1.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=2631 read=633
+    load_test.go:881: PLAN     ->  Seq Scan on cards  (cost=0.00..3480.47 rows=55 width=0) (actual time=11.048..11.048 rows=0.00 loops=1)
+    load_test.go:881: PLAN           Filter: ((epoch = 1) AND (holder = 'r07'::text) AND (state = 'working'::text))
+    load_test.go:881: PLAN           Rows Removed by Filter: 13160
+    load_test.go:881: PLAN           Buffers: shared hit=2631 read=633
+    load_test.go:881: PLAN   Planning Time: 0.044 ms
+    load_test.go:881: PLAN   Execution Time: 11.086 ms
+    load_test.go:877: PLAN SELECT id, tier FROM sprint.cards WHERE epoch = 1 AND holder = 'r07' AND state IN ('ready', 'working') AND NOT tier = ANY('{flash,pro}'::text[]) ORDER BY id COLLATE "C" LIMIT 1
+    load_test.go:881: PLAN   Limit  (cost=3511.70..3511.70 rows=1 width=47) (actual time=20.505..20.509 rows=1.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=3264
+    load_test.go:881: PLAN     ->  Sort  (cost=3511.70..3511.85 rows=60 width=47) (actual time=20.503..20.506 rows=1.00 loops=1)
+    load_test.go:881: PLAN           Sort Key: id COLLATE "C"
+    load_test.go:881: PLAN           Sort Method: top-N heapsort  Memory: 25kB
+    load_test.go:881: PLAN           Buffers: shared hit=3264
+    load_test.go:881: PLAN           ->  Seq Scan on cards  (cost=0.00..3511.40 rows=60 width=47) (actual time=12.896..20.484 rows=30.00 loops=1)
+    load_test.go:881: PLAN                 Filter: ((state = ANY ('{ready,working}'::text[])) AND (tier <> ALL ('{flash,pro}'::text[])) AND (epoch = 1) AND (holder = 'r07'::text))
+    load_test.go:881: PLAN                 Rows Removed by Filter: 13130
+    load_test.go:881: PLAN                 Buffers: shared hit=3264
+    load_test.go:881: PLAN   Planning:
+    load_test.go:881: PLAN     Buffers: shared hit=1 read=8
+    load_test.go:881: PLAN   Planning Time: 0.220 ms
+    load_test.go:881: PLAN   Execution Time: 20.533 ms
+    load_test.go:877: PLAN SELECT coalesce(max(seq), 0) FROM sprint.events
+    load_test.go:881: PLAN   Result  (cost=0.32..0.33 rows=1 width=8) (actual time=0.030..0.030 rows=1.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=4
+    load_test.go:881: PLAN     InitPlan 1
+    load_test.go:881: PLAN       ->  Limit  (cost=0.29..0.32 rows=1 width=8) (actual time=0.028..0.028 rows=1.00 loops=1)
+    load_test.go:881: PLAN             Buffers: shared hit=4
+    load_test.go:881: PLAN             ->  Index Only Scan Backward using events_pkey on events  (cost=0.29..3834.96 rows=127998 width=8) (actual time=0.027..0.027 rows=1.00 loops=1)
+    load_test.go:881: PLAN                   Heap Fetches: 1
+    load_test.go:881: PLAN                   Index Searches: 1
+    load_test.go:881: PLAN                   Buffers: shared hit=4
+    load_test.go:881: PLAN   Planning Time: 0.132 ms
+    load_test.go:881: PLAN   Execution Time: 0.042 ms
+    load_test.go:877: PLAN SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy FROM sprint.events WHERE seq > 126710 ORDER BY seq LIMIT 1000
+    load_test.go:881: PLAN   Limit  (cost=0.29..93.45 rows=372 width=1411) (actual time=0.074..1.196 rows=1000.00 loops=1)
+    load_test.go:881: PLAN     Buffers: shared hit=1004 read=3
+    load_test.go:881: PLAN     ->  Index Scan using events_pkey on events  (cost=0.29..93.45 rows=372 width=1411) (actual time=0.074..1.130 rows=1000.00 loops=1)
+    load_test.go:881: PLAN           Index Cond: (seq > 126710)
+    load_test.go:881: PLAN           Index Searches: 1
+    load_test.go:881: PLAN           Buffers: shared hit=1004 read=3
+    load_test.go:881: PLAN   Planning:
+    load_test.go:881: PLAN     Buffers: shared hit=20 read=7
+    load_test.go:881: PLAN   Planning Time: 0.204 ms
+    load_test.go:881: PLAN   Execution Time: 1.260 ms
+    load_test.go:877: PLAN SELECT r.name, r.width, r.state, r.held, count(c.id) FROM sprint.rows r LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working' WHERE r.epoch = 1 GROUP BY r.name, r.width, r.state, r.held ORDER BY r.name
+    load_test.go:881: PLAN   Sort  (cost=3504.07..3504.32 rows=100 width=20) (actual time=8.517..8.522 rows=50.00 loops=1)
+    load_test.go:881: PLAN     Sort Key: r.name
+    load_test.go:881: PLAN     Sort Method: quicksort  Memory: 26kB
+    load_test.go:881: PLAN     Buffers: shared hit=3264 read=2
+    load_test.go:881: PLAN     ->  HashAggregate  (cost=3499.75..3500.75 rows=100 width=20) (actual time=8.475..8.484 rows=50.00 loops=1)
+    load_test.go:881: PLAN           Group Key: r.name, r.width, r.state, r.held
+    load_test.go:881: PLAN           Batches: 1  Memory Usage: 40kB
+    load_test.go:881: PLAN           Buffers: shared hit=3264 read=2
+    load_test.go:881: PLAN           ->  Hash Right Join  (cost=3.25..3465.49 rows=2741 width=21) (actual time=8.435..8.446 rows=50.00 loops=1)
+    load_test.go:881: PLAN                 Hash Cond: (c.holder = r.name)
+    load_test.go:881: PLAN                 Buffers: shared hit=3264 read=2
+    load_test.go:881: PLAN                 ->  Seq Scan on cards c  (cost=0.00..3449.55 rows=4600 width=17) (actual time=0.024..8.104 rows=5000.00 loops=1)
+    load_test.go:881: PLAN                       Filter: ((state = 'working'::text) AND (epoch = 1))
+    load_test.go:881: PLAN                       Rows Removed by Filter: 8160
+    load_test.go:881: PLAN                       Buffers: shared hit=3264
+    load_test.go:881: PLAN                 ->  Hash  (cost=2.62..2.62 rows=50 width=16) (actual time=0.150..0.151 rows=50.00 loops=1)
+    load_test.go:881: PLAN                       Buckets: 1024  Batches: 1  Memory Usage: 11kB
+    load_test.go:881: PLAN                       Buffers: shared read=2
+    load_test.go:881: PLAN                       ->  Seq Scan on rows r  (cost=0.00..2.62 rows=50 width=16) (actual time=0.122..0.134 rows=50.00 loops=1)
+    load_test.go:881: PLAN                             Filter: (epoch = 1)
+    load_test.go:881: PLAN                             Buffers: shared read=2
+    load_test.go:881: PLAN   Planning Time: 0.144 ms
+    load_test.go:881: PLAN   Execution Time: 8.604 ms
+    load_test.go:877: PLAN SELECT stream, state, count(*) FROM sprint.cards WHERE epoch = 1 AND kind = 'producer' GROUP BY stream, state
+    load_test.go:881: PLAN   HashAggregate  (cost=3487.05..3487.65 rows=60 width=18) (actual time=8.382..8.386 rows=20.00 loops=1)
+    load_test.go:881: PLAN     Group Key: stream, state
+    load_test.go:881: PLAN     Batches: 1  Memory Usage: 32kB
+    load_test.go:881: PLAN     Buffers: shared hit=3264
+    load_test.go:881: PLAN     ->  Seq Scan on cards  (cost=0.00..3449.55 rows=5000 width=10) (actual time=0.008..7.486 rows=5000.00 loops=1)
+    load_test.go:881: PLAN           Filter: ((epoch = 1) AND (kind = 'producer'::text))
+    load_test.go:881: PLAN           Rows Removed by Filter: 8160
+    load_test.go:881: PLAN           Buffers: shared hit=3264
+    load_test.go:881: PLAN   Planning Time: 0.107 ms
+    load_test.go:881: PLAN   Execution Time: 8.416 ms
+--- FAIL: TestLoad (928.39s)
+    --- FAIL: TestLoad/producers=2000 (226.09s)
+        --- PASS: TestLoad/producers=2000/build (167.26s)
+        --- PASS: TestLoad/producers=2000/tick (9.72s)
+        --- FAIL: TestLoad/producers=2000/dashboard (30.80s)
+        --- FAIL: TestLoad/producers=2000/burst (10.96s)
+        --- PASS: TestLoad/producers=2000/cold (6.30s)
+    --- FAIL: TestLoad/producers=5000 (702.29s)
+        --- PASS: TestLoad/producers=5000/build (627.62s)
+        --- PASS: TestLoad/producers=5000/tick (13.18s)
+        --- FAIL: TestLoad/producers=5000/dashboard (30.97s)
+        --- FAIL: TestLoad/producers=5000/burst (15.35s)
+        --- FAIL: TestLoad/producers=5000/cold (14.03s)
+FAIL
+FAIL	github.com/mas-bandwidth/nova-sprint/store	928.614s
+FAIL
+exit 1
+DURING-RUN samples=184 with-java=0 max-load1=1.69

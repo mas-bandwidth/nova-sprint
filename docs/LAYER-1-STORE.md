@@ -496,8 +496,10 @@ Apply latency under the writer lock and the incremental read both measured.
 
 ## Measured at the bar (2026-11-06, hetzner2, PostgreSQL 18.6, fsync on, bench shared with TLC)
 
-After round 15 (indexes, each event's after-image stored once; round 16
-kept the two indexes a store query uses and re-measured on a quiet bench, below), 5,000 producers with their consumers, 125,000 events:
+After round 15 (indexes, each event's after-image stored once), 5,000
+producers with their consumers, 125,000 events, on a bench shared with TLC
+jobs (these are the absolute numbers that stand; the quiet A/B below is
+relative):
 tick 119 ms median, 153 max (was 327 / 387); tick while 200 reports/s arrive
 132 median, 178 max; report median wait 2.1 ms; 2,000-report burst 2.8 s;
 dashboard refresh from the local copy 24 ms; incremental read per tick 13
@@ -507,3 +509,36 @@ under these. Logs: store/testdata/load-*.log. The width count went from 3.8
 ms (a sequential scan) to 0.04 ms with one partial index. Remaining tick
 cost is about 1,500 one-row round trips; by Glenn's ruling the per-tick
 budget absorbs bursts rather than further tuning here.
+
+### Quiet A/B (2026-11-06, vision, PostgreSQL 18.6, fsync on)
+
+The four heads once each, one after another under one exclusive
+reservation, each started at a 1-minute load under 2 with no java (TLC), a
+sampler confirming none ran during it: before (c373d4a8), indexes
+(5c1eec16), image once (09b2eeb8), round 16 (36c1bbd6: the two indexes a
+store query uses, the event's images copied). Logs:
+store/testdata/load-vision-2026-11-06-r16-*.log. Medians in ms, 5,000
+producers (2,000 in brackets):
+
+| | before | indexes | image once | round 16 |
+|---|---|---|---|---|
+| tick-apply | 607 (445) | 396 (389) | 371 (364) | 362 (356) |
+| tick under reports (dash-tick) | 906 (666) | 507 (461) | 517 (497) | 484 (440) |
+| report wait (dash-report) | 890 (211) | 172 (127) | 171 (124) | 164 (120) |
+| report rate, per s | 22 (45) | 63 (85) | 63 (85) | 68 (91) |
+| 2,000-report burst, wall | 15.1 s (10.7 s) | 15.5 s (10.9 s) | 15.4 s (10.9 s) | 15.1 s (10.4 s) |
+| cold read of the log | 13.8 s (6.2 s) | 13.3 s (6.3 s) | 9.9 s (4.6 s) | 10.7 s (4.8 s) |
+| cold rebuild fold | 115 (42) | 114 (38) | 119 (58) | 117 (39) |
+| events table | 341 MB (143) | 344 MB (146) | 226 MB (98) | 226 MB (98) |
+
+The order of the heads holds: the indexes take the 5,000 tick from 607 to
+396 ms and the report wait from 890 to 172; storing the image once takes a
+third off the log and its cold read; dropping the five unused indexes in
+round 16 costs nothing and saves a little on every write. vision's absolute
+numbers are about three times hetzner2's and fail the burst, report-rate
+and cold-rebuild bars on every head: its disks are consumer NVMe (Samsung
+970 EVO) without power-loss protection, so every commit's fsync is slow
+(the burst clears at about 130 to 190 commits a second), where hetzner2's
+are datacenter NVMe (PM9A3) with it. The bars are judged on hetzner2's
+numbers above; vision's are for the comparison only. pg_stat_statements is
+not loadable on vision, so its logs have no STMT lines.
