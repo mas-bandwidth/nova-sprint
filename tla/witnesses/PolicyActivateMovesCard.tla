@@ -58,6 +58,9 @@ Init ==
   /\ waitBound = None /\ startBound = None
   /\ lastOp = "up"
 
+(* The card's next state when a tick moves it.                            *)
+Advance(c) == CASE c = "ready" -> "working" [] c = "working" -> "done" [] c = "done" -> "ready"
+
 (* policy set: checked on the current snapshot before it is stored; the   *)
 (* next number; never active.                                             *)
 Set(v) ==
@@ -104,8 +107,6 @@ Pick ==
 Failing ==
   ({active} \cap breaks) \cup
   (IF active \in breaks /\ prev # None THEN {prev} \cap breaks ELSE {})
-
-Advance(c) == CASE c = "ready" -> "working" [] c = "working" -> "done" [] c = "done" -> "ready"
 
 (* A tick: answered by Pick; opens a judgement for each failing version   *)
 (* with none open; may move the card. A wait records the bound of the     *)
