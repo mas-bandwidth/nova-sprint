@@ -172,7 +172,7 @@ func (t *pgTx) policies() (int, []PolicyVersion, error) {
 	return last, active, err
 }
 
-func (t *pgTx) held(row string) (int, error) {
+func (t *pgTx) working(row string) (int, error) {
 	var n int
 	err := t.tx.QueryRow(t.ctx, "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = 'working'", t.epoch, row).Scan(&n)
 	return n, err
@@ -237,11 +237,6 @@ func list0(l []string) []string {
 }
 
 func (t *pgTx) replay(opID string) (Receipt, bool, error) { return replayTx(t.ctx, t.tx, opID) }
-
-func (t *pgTx) mark() error {
-	_, err := t.tx.Exec(t.ctx, "SAVEPOINT writes")
-	return err
-}
 
 func (t *pgTx) discard() error {
 	_, err := t.tx.Exec(t.ctx, "ROLLBACK TO SAVEPOINT writes")

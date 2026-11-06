@@ -6,6 +6,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -141,6 +143,48 @@ func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	assert.Contains(t, err.Error(), "schema version 0, this binary knows schema version 2", "a store from before sprint.meta")
 }
 
+const staleShape = "this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)"
+
+// Migrate checks the shape, not only the version: a store at version 2 made
+// by another build of schema 2 (another hash in sprint.meta, or none) is
+// refused naming both hashes, and nothing in it changes.
+func TestFunctionalMigrateRefusesOtherShape(t *testing.T) {
+	t.Parallel()
+	_, p, dsn := pgHarness(t)
+	c := connect(t, dsn)
+	var hash string
+	require.NoError(t, c.QueryRow(context.Background(), "SELECT hash FROM sprint.meta").Scan(&hash))
+	assert.Equal(t, schemaHash, hash, "Migrate records the hash of the schema it applied")
+	_, err := c.Exec(context.Background(), "UPDATE sprint.meta SET hash = 'abc'")
+	require.NoError(t, err)
+	err = p.Migrate(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, "store: migrate: the store's schema hash is abc, this binary's is "+schemaHash+": "+staleShape, err.Error())
+	require.NoError(t, c.QueryRow(context.Background(), "SELECT hash FROM sprint.meta").Scan(&hash))
+	assert.Equal(t, "abc", hash, "a refused Migrate changes nothing")
+}
+
+// The first build of schema 2 (b95a1414: no kind, of, result, priority, row
+// gen or held, and no meta hash) is at version 2 by its meta row; Migrate
+// refuses it by shape. From the second cold read's
+// TestFunctionalColdRead2StaleV2Migrate, which found Migrate accepting it
+// and every Apply failing after. The file is git show b95a1414:store/schema.sql,
+// kept in testdata so a shallow clone runs the test.
+func TestFunctionalMigrateRefusesStaleV2(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile(filepath.Join("testdata", "schema-b95a1414.sql"))
+	require.NoError(t, err)
+	dsn := startPG(t)
+	_, err = connect(t, dsn).Exec(context.Background(), string(old))
+	require.NoError(t, err)
+	p, err := Open(context.Background(), dsn, "")
+	require.NoError(t, err)
+	t.Cleanup(p.Close)
+	err = p.Migrate(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, "store: migrate: the store's schema hash is none, this binary's is "+schemaHash+": "+staleShape, err.Error())
+}
+
 func TestFunctionalConformance(t *testing.T) {
 	t.Parallel()
 	dsn := startPG(t)
@@ -210,7 +254,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
 		for _, r := range []Receipt{a, b} {
 			if !r.Accepted {
-				assert.Equal(t, "row "+row+" holds 1 working cards, its width is 1", r.Reason)
+				assert.Equal(t, "row "+row+" holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish", r.Reason)
 			}
 		}
 	}
@@ -462,25 +506,47 @@ func TestFunctionalSnapshotConsistentUnderWrites(t *testing.T) {
 	t.Logf("%d snapshots checked", len(snaps))
 }
 
-// A constraint the rules do not know about is an engine defect: an error
-// naming it, not a refusal and not unknown, and nothing is logged.
-func TestFunctionalConstraintIsDefect(t *testing.T) {
+// The unknown rule: any error the server returned before COMMIT, whatever
+// its SQLSTATE, is known. It comes back as a plain error naming the SQLSTATE
+// and the message (not a refusal, not ErrUnknown, not ErrInvalid), nothing is
+// logged, and Replay is not needed: the id is not in the log. Cases: a
+// constraint the rules do not know about (23514), a value too large for an
+// index (54000) and a column the store writes that is gone (42703).
+func TestFunctionalServerErrorIsKnown(t *testing.T) {
 	t.Parallel()
-	h, p, dsn := pgHarness(t)
-	h.seed()
-	_, err := connect(t, dsn).Exec(context.Background(), "ALTER TABLE sprint.cards ADD CONSTRAINT test_no_x CHECK (brief <> 'x')")
-	require.NoError(t, err)
-	before := h.snap()
-	o := h.op("add", nil, PutStream{Name: "s2"}, PutCard{Kind: "producer", ID: "c9", Stream: "s1", Brief: "x"})
-	_, err = p.Apply(h.ctx, o)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "constraint test_no_x")
-	assert.NotErrorIs(t, err, ErrUnknown)
-	assert.NotErrorIs(t, err, ErrInvalid)
-	_, ok, err := p.Replay(h.ctx, o.ID)
-	require.NoError(t, err)
-	assert.False(t, ok)
-	assert.Equal(t, before, h.snap())
+	big := ""
+	for i := 0; len(big) < 3072; i++ { // 3 KB that pglz cannot shrink under the btree limit
+		big += fmt.Sprintf("%x", sha256.Sum256([]byte(strconv.Itoa(i))))
+	}
+	for _, c := range []struct {
+		name, ddl, sqlstate, msg string
+		brief                    string
+	}{
+		{"constraint", "ALTER TABLE sprint.cards ADD CONSTRAINT test_no_x CHECK (brief <> 'x')", "23514", "constraint test_no_x", "x"},
+		{"index row too large", "CREATE INDEX test_brief ON sprint.cards (brief)", "54000", "index row", big},
+		{"dropped column", "ALTER TABLE sprint.cards DROP COLUMN priced", "42703", "priced", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h, p, dsn := pgHarness(t)
+			h.seed()
+			_, err := connect(t, dsn).Exec(context.Background(), c.ddl)
+			require.NoError(t, err)
+			before := h.events() // a snapshot cannot read the store once a column is gone
+			o := h.op("add", nil, PutStream{Name: "s2"}, PutCard{Kind: "producer", ID: "c9", Stream: "s1", Brief: c.brief})
+			_, err = p.Apply(h.ctx, o)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "SQLSTATE "+c.sqlstate)
+			assert.Contains(t, err.Error(), c.msg)
+			assert.Contains(t, err.Error(), "before COMMIT, so nothing landed")
+			assert.NotErrorIs(t, err, ErrUnknown)
+			assert.NotErrorIs(t, err, ErrInvalid)
+			_, ok, err := p.Replay(h.ctx, o.ID)
+			require.NoError(t, err)
+			assert.False(t, ok, "nothing was logged")
+			assert.Equal(t, before, h.events())
+		})
+	}
 }
 
 func TestFunctionalRebuildFromLog(t *testing.T) {
@@ -531,52 +597,61 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 	h.seed()
 	c := connect(t, dsn)
 	for q, constraint := range map[string]string{
-		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                                              "cards_state_check",
-		"UPDATE sprint.cards SET state = NULL WHERE id = 'c1'":                                                  `"state"`,
-		"UPDATE sprint.cards SET branch = NULL WHERE id = 'c1'":                                                 `"branch"`,
-		"UPDATE sprint.cards SET author = NULL WHERE id = 'c1'":                                                 `"author"`,
-		"UPDATE sprint.cards SET base_sha = NULL WHERE id = 'c1'":                                               `"base_sha"`,
-		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'u1'":                                                 "cards_epoch_holder_fkey",
-		"UPDATE sprint.cards SET holder = 'w1' WHERE id = 'c1'":                                                 "cards_holder_check",
-		"UPDATE sprint.cards SET kind = 'gate' WHERE id = 'c1'":                                                 "cards_kind_check",
-		"UPDATE sprint.cards SET result = 'maybe' WHERE id = 'u1'":                                              "cards_result_check",
-		"UPDATE sprint.cards SET kind = 'work' WHERE id = 'c0'":                                                 "cards_of_check",
-		`UPDATE sprint.cards SET "of" = NULL WHERE id = 'u1'`:                                                   "cards_of_check",
-		`UPDATE sprint.cards SET "of" = 'c9' WHERE id = 'u1'`:                                                   "cards_epoch_of_fkey",
-		"UPDATE sprint.cards SET needs = '{c1}' WHERE id = 'u1'":                                                "cards_needs_check",
-		"UPDATE sprint.cards SET priority = 'read' WHERE id = 'c1'":                                             "cards_priority_check",
-		"UPDATE sprint.cards SET priority = 'high' WHERE id = 'u1'":                                             "cards_consumer_priority_check",
-		"UPDATE sprint.cards SET prior_head = 'x' WHERE id = 'u2'":                                              "cards_prior_head_check",
-		"UPDATE sprint.cards SET prior_head = 'x' WHERE id = 'c1'":                                              "cards_prior_head_check",
-		"UPDATE sprint.cards SET bounces = 1 WHERE id = 'u1'":                                                   "cards_bounces_check",
-		"UPDATE sprint.cards SET cost = 1 WHERE id = 'c1'":                                                      "cards_producer_cost_check",
-		"UPDATE sprint.cards SET priced = true WHERE id = 'c1'":                                                 "cards_producer_cost_check",
-		"UPDATE sprint.cards SET result = 'ok' WHERE id = 'c1'":                                                 "cards_producer_result_check",
-		"UPDATE sprint.cards SET priority = NULL WHERE id = 'c1'":                                               `"priority"`,
-		"UPDATE sprint.cards SET prior_head = NULL WHERE id = 'u1'":                                             `"prior_head"`,
-		"UPDATE sprint.cards SET bounces = NULL WHERE id = 'c1'":                                                `"bounces"`,
-		"UPDATE sprint.cards SET cost = NULL WHERE id = 'u1'":                                                   `"cost"`,
-		"UPDATE sprint.cards SET priced = NULL WHERE id = 'u1'":                                                 `"priced"`,
-		"UPDATE sprint.cards SET after = '{c1}' WHERE id = 'u1'":                                                "cards_after_check",
-		"UPDATE sprint.cards SET after = NULL WHERE id = 'c1'":                                                  `"after"`,
-		"UPDATE sprint.cards SET kind = 'sentinel' WHERE id = 'c1'":                                             "cards_brief_check",
-		"UPDATE sprint.cards SET kind = 'sentinel' WHERE id = 'u1'":                                             "cards_of_check",
-		"UPDATE sprint.cards SET kind = 'sentinel', brief = '', holder = 'w1' WHERE id = 'c1'":                  "cards_holder_check",
-		"UPDATE sprint.rows SET held = NULL":                                                                    `"held"`,
-		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('c3', 'producer', 's9', 'ready', 1)": "cards_epoch_stream_fkey",
-		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('c3', 'producer', 's1', 'ready', 2)": "cards_epoch_stream_fkey",
-		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 1)":                   `"kind"`,
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":                    "rows_kind_check",
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)":                  "rows_state_check",
-		"UPDATE sprint.rows SET state = 'blocked'":                                                              "rows_state_check",
-		"UPDATE sprint.rows SET session = NULL":                                                                 `"session"`,
-		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                                        "epoch_id_check",
-		"INSERT INTO sprint.meta (id, schema) VALUES (2, 1)":                                                    "meta_id_check",
+		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                                          "cards_state_check",
+		"UPDATE sprint.cards SET state = NULL WHERE id = 'c1'":                                              `"state"`,
+		"UPDATE sprint.cards SET branch = NULL WHERE id = 'c1'":                                             `"branch"`,
+		"UPDATE sprint.cards SET author = NULL WHERE id = 'c1'":                                             `"author"`,
+		"UPDATE sprint.cards SET base_sha = NULL WHERE id = 'c1'":                                           `"base_sha"`,
+		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'u1'":                                             "cards_epoch_holder_fkey",
+		"UPDATE sprint.cards SET holder = 'w1' WHERE id = 'c1'":                                             "cards_holder_check",
+		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('c3', 'gate', 's1', 'ready', 1)": "cards_kind_check",
+		"UPDATE sprint.cards SET result = 'maybe' WHERE id = 'u1'":                                          "cards_result_check",
+		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('k3', 'work', 's1', 'ready', 1)": "cards_of_check",
+		// the cards_fixed trigger: kind, of and stream never change, and of names a producer
+		`UPDATE sprint.cards SET "of" = NULL WHERE id = 'u1'`:                                                                 "cards_fixed_check",
+		`UPDATE sprint.cards SET "of" = 'c0' WHERE id = 'u1'`:                                                                 "cards_fixed_check",
+		`UPDATE sprint.cards SET "of" = 'c9' WHERE id = 'u1'`:                                                                 "cards_fixed_check",
+		"UPDATE sprint.cards SET kind = 'sentinel' WHERE id = 'c1'":                                                           "cards_fixed_check",
+		"UPDATE sprint.cards SET kind = 'read' WHERE id = 'u1'":                                                               "cards_fixed_check",
+		"UPDATE sprint.cards SET stream = 's9' WHERE id = 'c1'":                                                               "cards_fixed_check",
+		`INSERT INTO sprint.cards (id, kind, "of", stream, state, epoch) VALUES ('k3', 'read', 'u1', 's1', 'ready', 1)`:       "cards_of_producer_check",
+		`INSERT INTO sprint.cards (id, kind, "of", stream, state, epoch) VALUES ('k3', 'read', 'c9', 's1', 'ready', 1)`:       "cards_of_producer_check",
+		"UPDATE sprint.cards SET needs = '{c1}' WHERE id = 'u1'":                                                              "cards_needs_check",
+		"UPDATE sprint.cards SET priority = 'read' WHERE id = 'c1'":                                                           "cards_priority_check",
+		"UPDATE sprint.cards SET priority = 'high' WHERE id = 'u1'":                                                           "cards_consumer_priority_check",
+		"UPDATE sprint.cards SET prior_head = 'x' WHERE id = 'u2'":                                                            "cards_prior_head_check",
+		"UPDATE sprint.cards SET prior_head = 'x' WHERE id = 'c1'":                                                            "cards_prior_head_check",
+		"UPDATE sprint.cards SET bounces = 1 WHERE id = 'u1'":                                                                 "cards_bounces_check",
+		"UPDATE sprint.cards SET cost = 1 WHERE id = 'c1'":                                                                    "cards_producer_cost_check",
+		"UPDATE sprint.cards SET priced = true WHERE id = 'c1'":                                                               "cards_producer_cost_check",
+		"UPDATE sprint.cards SET result = 'ok' WHERE id = 'c1'":                                                               "cards_producer_result_check",
+		"UPDATE sprint.cards SET priority = NULL WHERE id = 'c1'":                                                             `"priority"`,
+		"UPDATE sprint.cards SET prior_head = NULL WHERE id = 'u1'":                                                           `"prior_head"`,
+		"UPDATE sprint.cards SET bounces = NULL WHERE id = 'c1'":                                                              `"bounces"`,
+		"UPDATE sprint.cards SET cost = NULL WHERE id = 'u1'":                                                                 `"cost"`,
+		"UPDATE sprint.cards SET priced = NULL WHERE id = 'u1'":                                                               `"priced"`,
+		"UPDATE sprint.cards SET after = '{c1}' WHERE id = 'u1'":                                                              "cards_after_check",
+		"UPDATE sprint.cards SET after = NULL WHERE id = 'c1'":                                                                `"after"`,
+		"INSERT INTO sprint.cards (id, kind, stream, state, brief, epoch) VALUES ('g3', 'sentinel', 's1', 'ready', 'x', 1)":   "cards_brief_check",
+		`INSERT INTO sprint.cards (id, kind, "of", stream, state, epoch) VALUES ('g3', 'sentinel', 'c1', 's1', 'ready', 1)`:   "cards_of_check",
+		"INSERT INTO sprint.cards (id, kind, stream, state, holder, epoch) VALUES ('g3', 'sentinel', 's1', 'ready', 'w1', 1)": "cards_holder_check",
+		"UPDATE sprint.rows SET held = NULL":                                                                                  `"held"`,
+		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('c3', 'producer', 's9', 'ready', 1)":               "cards_epoch_stream_fkey",
+		"INSERT INTO sprint.cards (id, kind, stream, state, epoch) VALUES ('c3', 'producer', 's1', 'ready', 2)":               "cards_epoch_stream_fkey",
+		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 1)":                                 `"kind"`,
+		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":                                  "rows_kind_check",
+		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)":                                "rows_state_check",
+		"UPDATE sprint.rows SET state = 'blocked'":                                                                            "rows_state_check",
+		"UPDATE sprint.rows SET session = NULL":                                                                               `"session"`,
+		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                                                      "epoch_id_check",
+		"INSERT INTO sprint.meta (id, schema) VALUES (2, 1)":                                                                  "meta_id_check",
 		"INSERT INTO sprint.events (seq, op, actor, kind, accepted, receipt, at, epoch) SELECT 99, op, actor, kind, accepted, receipt, at, epoch FROM sprint.events": "events_op_key",
 		"INSERT INTO sprint.policy (kind, name, body, active, actor, at) VALUES ('data', 'a', '', true, 'x', now()), ('data', 'b', '', true, 'x', now())":            "policy_one_active",
 	} {
 		_, err := c.Exec(context.Background(), q)
 		require.Error(t, err, q)
-		assert.Contains(t, err.Error(), constraint, q)
+		var pe *pgconn.PgError
+		require.ErrorAs(t, err, &pe, q)
+		assert.Contains(t, err.Error()+" "+pe.ConstraintName, constraint, q)
 	}
 }

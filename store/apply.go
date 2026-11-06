@@ -15,7 +15,7 @@ type txn interface {
 	row(name string) (Row, bool, error)
 	policy(version int) (PolicyVersion, bool, error)
 	policies() (last int, active []PolicyVersion, err error)
-	held(row string) (int, error) // cards in working whose holder is row: what width counts
+	working(row string) (int, error) // cards in working whose holder is row: what width counts
 	lastSeq() (int64, error)
 	rows() ([]Row, error) // every row of the epoch
 	open() error          // epoch n = n + 1; later puts go to the new epoch
@@ -24,8 +24,7 @@ type txn interface {
 	putRow(r Row) error
 	putPolicy(p PolicyVersion) error
 	replay(opID string) (Receipt, bool, error) // the stored receipt of an op id
-	mark() error                               // remember the state before the rules
-	discard() error                            // back to the mark: a refusal changes nothing
+	discard() error                            // back to the state the transaction began with: a refusal changes nothing
 	appendEvent(e Event) error                 // the op's event, at lastSeq + 1
 }
 
@@ -33,18 +32,39 @@ type txn interface {
 // a refusal reason ("" when accepted) and the touched rows before and after.
 type rules func(tx txn, epoch int) (reason string, before, after *State, err error)
 
+// writer runs protocol in one transaction of a store's own: Fake.do, PG.write.
+type writer func(op Op, valid func(Op) error, rule rules) (Receipt, error)
+
+// applyOp is the Apply both stores share: the id checked, the op normalized,
+// then one transaction of the store's own.
+func applyOp(do writer, op Op) (Receipt, error) {
+	if err := checkID(op); err != nil {
+		return Receipt{}, err
+	}
+	op = normalize(op)
+	return do(op, check, func(tx txn, epoch int) (string, *State, *State, error) { return run(tx, epoch, op) })
+}
+
+// clearOp is the Clear both stores share, as applyOp.
+func clearOp(do writer, op Op) (Receipt, error) {
+	if err := checkID(op); err != nil {
+		return Receipt{}, err
+	}
+	op = normalize(op)
+	op.Kind = cmp.Or(op.Kind, "clear")
+	return do(op, checkClear, func(tx txn, epoch int) (string, *State, *State, error) { return runClear(tx, epoch, op) })
+}
+
 // protocol is what Apply and Clear share, inside the writer lock: the
-// stored receipt for a known id whatever the body says; else the body is
-// checked (ErrInvalid, nothing logged), the rules run, a refusal is
-// discarded, and the event is appended with the receipt.
+// stored receipt for a known id whatever the body says; else the whole body
+// is checked (ErrInvalid, nothing logged) before the epoch or any condition,
+// the rules run, a refusal is discarded, and the event is appended with the
+// receipt.
 func protocol(tx txn, epoch int, op Op, valid func(Op) error, rule rules) (Receipt, error) {
 	if r, ok, err := tx.replay(op.ID); err != nil || ok {
 		return r, err
 	}
 	if err := valid(op); err != nil {
-		return Receipt{}, err
-	}
-	if err := tx.mark(); err != nil {
 		return Receipt{}, err
 	}
 	reason, before, after, err := rule(tx, epoch)
@@ -85,7 +105,7 @@ type work struct {
 
 // run checks the epoch and every condition, then performs every write in
 // order. It returns a refusal reason ("" when accepted); an error is a
-// failure of the txn, or ErrInvalid for an unknown condition.
+// failure of the txn (check has already refused anything outside the sets).
 func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	w := &work{tx: tx, op: op}
 	if op.Epoch != epoch {

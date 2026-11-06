@@ -3,11 +3,13 @@ package store
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,17 +19,21 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
-// SchemaVersion is the version of schema.sql, kept in sprint.meta. Version 2
-// adds the card columns author and base_sha. There is no upgrade path: a store
-// at version 1 is refused like any other version.
+// SchemaVersion is the version of schema.sql, kept in sprint.meta with the
+// sha256 of the file. Version 2 adds to version 1: the card columns kind
+// (with sentinel), of, after, author, base_sha, prior_head, result (with
+// fault), bounces, cost, priced and priority, the card states blocked and
+// done, the row columns gen and held, the meta hash, and the cards_fixed
+// trigger. There is no upgrade path: a store at version 1 is refused like
+// any other version.
 const SchemaVersion = 2
+
+// schemaHash is the sha256 of the schema file the binary carries, in hex.
+var schemaHash = fmt.Sprintf("%x", sha256.Sum256([]byte(schemaSQL)))
 
 // migrateLock is the advisory lock key Migrate holds for its transaction, so
 // concurrent Migrates of one store run one at a time.
 const migrateLock = 0x6e6f7661 // "nova"
-
-// Schema is the schema file the binary carries; Migrate applies it.
-func Schema() string { return schemaSQL }
 
 // PG is the Store in PostgreSQL, schema sprint.
 type PG struct {
@@ -65,8 +71,9 @@ func Open(ctx context.Context, dsn, password string) (*PG, error) {
 // Close closes the connection pool.
 func (p *PG) Close() { p.pool.Close() }
 
-// Migrate applies schema.sql to an empty store or one at SchemaVersion, and
-// refuses a store at any other version, naming both. Twice is a no-op, and
+// Migrate applies schema.sql to an empty store or one at SchemaVersion made
+// by this build of it, and refuses a store at any other version, or at this
+// version with another schema hash (sprint.meta), naming both. Twice is a no-op, and
 // concurrent Migrates are safe: each holds one advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
 	tx, err := p.pool.Begin(ctx)
@@ -82,9 +89,10 @@ func (p *PG) Migrate(ctx context.Context) error {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if meta || sprint {
-		v := 0 // a sprint schema without sprint.meta predates versions
+		v, hash := 0, "" // a sprint schema without sprint.meta predates versions
 		if meta {
-			err := tx.QueryRow(ctx, "SELECT schema FROM sprint.meta WHERE id = 1").Scan(&v)
+			// to_jsonb reads hash from a meta made before the column existed as ""
+			err := tx.QueryRow(ctx, "SELECT m.schema, coalesce(to_jsonb(m)->>'hash', '') FROM sprint.meta m WHERE id = 1").Scan(&v, &hash)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return fmt.Errorf("store: migrate: %w", err)
 			}
@@ -92,8 +100,14 @@ func (p *PG) Migrate(ctx context.Context) error {
 		if v != SchemaVersion {
 			return fmt.Errorf("store: migrate: the store is at schema version %d, this binary knows schema version %d", v, SchemaVersion)
 		}
+		if hash != schemaHash {
+			return fmt.Errorf("store: migrate: the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
+		}
 	}
 	if _, err := tx.Exec(ctx, schemaSQL); err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	if _, err := tx.Exec(ctx, "UPDATE sprint.meta SET hash = $1 WHERE id = 1", schemaHash); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -102,26 +116,46 @@ func (p *PG) Migrate(ctx context.Context) error {
 	return nil
 }
 
-// known is a failure whose outcome is known: nothing was committed. An
-// invalid body, or a PostgreSQL data (class 22) or constraint (class 23)
-// error during the writes: an engine defect, the rules let through what the
-// schema refuses. Never ErrUnknown.
-func known(op Op, err error) error {
+// known is a failure before COMMIT whose outcome is known, as a plain error:
+// an invalid body, or any error the server itself returned (any SQLSTATE),
+// named with its SQLSTATE and message. The server answered, and a
+// transaction with an error in it cannot commit, so nothing landed. It is
+// nil (the outcome is unknown) when the server did not answer: a connection
+// error, or a timeout or cancellation of ctx once the request was sent.
+func known(ctx context.Context, op Op, err error) error {
 	var pe *pgconn.PgError
 	switch {
 	case errors.Is(err, ErrInvalid):
 		return err
-	case errors.As(err, &pe) && (pe.Code[:2] == "22" || pe.Code[:2] == "23"):
-		on := cmp.Or(pe.ConstraintName, pe.ColumnName, pe.TableName)
-		return fmt.Errorf("store: engine defect: op %s: SQLSTATE %s on constraint %s: %w", op.ID, pe.Code, on, err)
+	case ctx.Err() != nil:
+		return nil
+	case errors.As(err, &pe) && !lost(pe):
+		on := ""
+		switch {
+		case pe.ConstraintName != "":
+			on = " on constraint " + pe.ConstraintName
+		case pe.ColumnName != "":
+			on = " on column " + pe.ColumnName
+		case pe.TableName != "":
+			on = " on table " + pe.TableName
+		}
+		return fmt.Errorf("store: op %s: postgres refused it before COMMIT, so nothing landed: SQLSTATE %s%s: %s: %w", op.ID, pe.Code, on, pe.Message, err)
 	}
 	return nil
 }
 
+// lost is a server error that ends the session rather than answering the
+// statement (severity FATAL or PANIC, or a connection exception, class 08):
+// a connection error, so the outcome is unknown.
+func lost(pe *pgconn.PgError) bool {
+	return pe.Severity == "FATAL" || pe.Severity == "PANIC" || strings.HasPrefix(pe.Code, "08")
+}
+
 // write runs protocol in one READ COMMITTED transaction holding the writer lock,
 // so writers run one at a time and nothing needs a retry. A failure after
-// the transaction began is ErrUnknown unless it is known (above). A panic
-// rolls the transaction back, releasing the lock, and is re-raised.
+// BEGIN and before COMMIT is ErrUnknown unless it is known (above); any
+// error during or after COMMIT is ErrUnknown. A panic rolls the transaction
+// back, releasing the lock, and is re-raised.
 func (p *PG) write(ctx context.Context, op Op, valid func(Op) error, rule rules) (r Receipt, err error) {
 	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
@@ -134,7 +168,7 @@ func (p *PG) write(ctx context.Context, op Op, valid func(Op) error, rule rules)
 		}
 	}()
 	if r, err = p.inTx(ctx, tx, op, valid, rule); err != nil {
-		if k := known(op, err); k != nil {
+		if k := known(ctx, op, err); k != nil {
 			return Receipt{}, k
 		}
 		return Receipt{}, fmt.Errorf("%w: %w", ErrUnknown, err)
@@ -160,6 +194,9 @@ func (p *PG) inTx(ctx context.Context, tx pgx.Tx, op Op, valid func(Op) error, r
 	if err := tx.QueryRow(ctx, "SELECT n FROM sprint.epoch WHERE id = 1").Scan(&epoch); err != nil {
 		return Receipt{}, err
 	}
+	if _, err := tx.Exec(ctx, "SAVEPOINT writes"); err != nil { // discard rolls back to it
+		return Receipt{}, err
+	}
 	return protocol(&pgTx{ctx: ctx, tx: tx, epoch: epoch}, epoch, op, valid, rule)
 }
 
@@ -171,22 +208,13 @@ func (p *PG) injected(stage string) error {
 }
 
 // Apply runs op in one transaction (protocol, apply.go).
-func (p *PG) Apply(ctx context.Context, op Op) (Receipt, error) {
-	if err := checkID(op); err != nil {
-		return Receipt{}, err
-	}
-	op = normalize(op)
-	return p.write(ctx, op, check, func(tx txn, epoch int) (string, *State, *State, error) { return run(tx, epoch, op) })
-}
+func (p *PG) Apply(ctx context.Context, op Op) (Receipt, error) { return applyOp(p.writer(ctx), op) }
 
 // Clear opens a new epoch, carrying every row into it, in one transaction.
-func (p *PG) Clear(ctx context.Context, op Op) (Receipt, error) {
-	if err := checkID(op); err != nil {
-		return Receipt{}, err
-	}
-	op = normalize(op)
-	op.Kind = cmp.Or(op.Kind, "clear")
-	return p.write(ctx, op, checkClear, func(tx txn, epoch int) (string, *State, *State, error) { return runClear(tx, epoch, op) })
+func (p *PG) Clear(ctx context.Context, op Op) (Receipt, error) { return clearOp(p.writer(ctx), op) }
+
+func (p *PG) writer(ctx context.Context) writer {
+	return func(op Op, valid func(Op) error, rule rules) (Receipt, error) { return p.write(ctx, op, valid, rule) }
 }
 
 func jsonArg(s *State) any {
@@ -214,9 +242,9 @@ func replayTx(ctx context.Context, q queryRower, opID string) (Receipt, bool, er
 }
 
 // Replay returns the stored receipt of an op id, and false when it is
-// unknown (an id no op could have, such as one holding a NUL, is unknown).
+// unknown (an id no op could have, empty, over MaxName bytes or holding a NUL, is unknown).
 func (p *PG) Replay(ctx context.Context, opID string) (Receipt, bool, error) {
-	if badText(opID) {
+	if checkID(Op{ID: opID}) != nil {
 		return Receipt{}, false, nil
 	}
 	r, ok, err := replayTx(ctx, p.pool, opID)

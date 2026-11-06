@@ -66,8 +66,15 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 
 // widthFits refuses a width below the working cards the row holds.
 func (w *work) widthFits(row string, width int) (string, error) {
-	n, err := w.tx.held(row)
-	return when(err == nil && n > width, "row %s holds %d working cards, more than width %d", row, n, width), err
+	n, err := w.tx.working(row)
+	return when(err == nil && n > width, "row %s holds %s, more than width %d; wait for a card to finish before narrowing it", row, workingCards(n), width), err
+}
+
+func workingCards(n int) string {
+	if n == 1 {
+		return "1 working card"
+	}
+	return fmt.Sprintf("%d working cards", n)
 }
 
 // writeRow is the set-row writes (rowSet).
@@ -93,7 +100,9 @@ func (w *work) writeRow(wr Write) (string, error) {
 }
 
 // writeCard is the set-card writes (cardSet) on an existing card; putCard
-// sets the gen, once per op.
+// sets the gen, once per op. A kind-specific write is refused on the wrong
+// kind before its value is looked at, a no-op value included, so it never
+// bumps a gen or logs an accepted event.
 func (w *work) writeCard(wr Write) (string, error) {
 	id, _, set, _ := cardSet(wr)
 	card, r, err := w.mustCard(id)
@@ -107,7 +116,9 @@ func (w *work) writeCard(wr Write) (string, error) {
 			r, err = w.rowFits(card.Holder)
 		}
 	case SetCardHolder:
-		r, err = w.holderFits(card, v.Holder)
+		if r = onlyFor(card, "SetCardHolder", "a consumer", consumer(card.Kind)); r == "" {
+			r, err = w.holderFits(card, v.Holder)
+		}
 	case SetCardResult:
 		r = cmp.Or(onlyFor(card, "SetCardResult", "a consumer", consumer(card.Kind)), oneOf("card result", v.Result, CardResults))
 	case SetCardPriorHead:
@@ -119,11 +130,15 @@ func (w *work) writeCard(wr Write) (string, error) {
 	case SetCardAttempt:
 		r = onlyFor(card, "SetCardAttempt", "a producer or sentinel (a consumer's attempt is set at add)", !consumer(card.Kind))
 	case SetCardPriority:
-		r = checkPriority(card, v.Priority)
+		r = cmp.Or(producersOnly(card), oneOf("card priority", v.Priority, Priorities))
 	case SetCardNeeds:
-		r, err = w.checkList(card, needList, v.Needs)
+		if r = onlyFor(card, "SetCardNeeds", "a producer or sentinel", !consumer(card.Kind)); r == "" {
+			r, err = w.checkList(card, needList, v.Needs)
+		}
 	case SetCardAfter:
-		r, err = w.checkList(card, afterList, v.After)
+		if r = onlyFor(card, "SetCardAfter", "a producer or sentinel", !consumer(card.Kind)); r == "" {
+			r, err = w.checkList(card, afterList, v.After)
+		}
 	}
 	if r != "" || err != nil {
 		return r, err
@@ -133,13 +148,10 @@ func (w *work) writeCard(wr Write) (string, error) {
 	return "", w.putCard(card, true, next)
 }
 
-// checkPriority refuses a level outside the five, and any level but normal
-// on a consumer: a consumer is ordered by its producer's level, never its own.
-func checkPriority(card Card, p string) string {
-	if r := oneOf("card priority", p, Priorities); r != "" {
-		return r
-	}
-	return when(consumer(card.Kind) && p != "normal", "card %s is a consumer; a consumer has no priority of its own", card.ID)
+// producersOnly refuses a priority write on a consumer, whatever the value: a
+// consumer is ordered by its producer's level, never its own.
+func producersOnly(card Card) string {
+	return when(consumer(card.Kind), "card %s is of kind %s; priority is a producer's", card.ID, card.Kind)
 }
 
 // onlyFor refuses a write on a card whose kind does not carry the column,
@@ -179,8 +191,8 @@ func (w *work) rowFits(name string) (string, error) {
 	if r != "" || err != nil {
 		return r, err
 	}
-	n, err := w.tx.held(name)
-	return when(err == nil && n >= row.Width, "row %s holds %d working cards, its width is %d", name, n, row.Width), err
+	n, err := w.tx.working(name)
+	return when(err == nil && n >= row.Width, "row %s holds %s, its width is %d; raise the width with set row width, or wait for a card to finish", name, workingCards(n), row.Width), err
 }
 
 // list is one of a card's lists of other cards: needs (hard) or after (soft).
@@ -232,8 +244,13 @@ func (w *work) addCard(v PutCard) (string, error) {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
 	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal")}
-	if r := checkPriority(c, c.Priority); r != "" {
+	if r := oneOf("card priority", c.Priority, Priorities); r != "" {
 		return r, nil
+	}
+	if c.Priority != "normal" {
+		if r := producersOnly(c); r != "" {
+			return r, nil
+		}
 	}
 	if v.Attempt != 0 && !consumer(v.Kind) {
 		return fmt.Sprintf("card %s is a %s; its attempt starts at 0 and is raised by SetCardAttempt", v.ID, v.Kind), nil

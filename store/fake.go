@@ -1,7 +1,6 @@
 package store
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -53,23 +52,10 @@ func (f *Fake) Drop(opID string, landed bool) {
 }
 
 // Apply runs op in a transaction of the fake's own (protocol, apply.go).
-func (f *Fake) Apply(_ context.Context, op Op) (Receipt, error) {
-	if err := checkID(op); err != nil {
-		return Receipt{}, err
-	}
-	op = normalize(op)
-	return f.do(op, check, func(tx txn, epoch int) (string, *State, *State, error) { return run(tx, epoch, op) })
-}
+func (f *Fake) Apply(_ context.Context, op Op) (Receipt, error) { return applyOp(f.do, op) }
 
 // Clear opens a new epoch, carrying the rows, and logs itself.
-func (f *Fake) Clear(_ context.Context, op Op) (Receipt, error) {
-	if err := checkID(op); err != nil {
-		return Receipt{}, err
-	}
-	op = normalize(op)
-	op.Kind = cmp.Or(op.Kind, "clear")
-	return f.do(op, checkClear, func(tx txn, epoch int) (string, *State, *State, error) { return runClear(tx, epoch, op) })
-}
+func (f *Fake) Clear(_ context.Context, op Op) (Receipt, error) { return clearOp(f.do, op) }
 
 // do runs protocol against a copy of the state under the mutex, and keeps the
 // copy and the event only when protocol returns no error. Drop's faults come
@@ -102,11 +88,18 @@ func (f *Fake) do(op Op, valid func(Op) error, rule rules) (Receipt, error) {
 func (f *Fake) Replay(_ context.Context, opID string) (Receipt, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	r, ok := f.receipt(opID)
+	return r, ok, nil
+}
+
+// receipt is the stored receipt of a committed op id; Replay and the
+// transaction's replay share it.
+func (f *Fake) receipt(opID string) (Receipt, bool) {
 	i, ok := f.ops[opID]
 	if !ok {
-		return Receipt{}, false, nil
+		return Receipt{}, false
 	}
-	return decodeReceipt(f.events[i].receipt), true, nil
+	return decodeReceipt(f.events[i].receipt), true
 }
 
 // Events returns up to max (capped at MaxEvents) events after afterSeq.
@@ -223,7 +216,7 @@ func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 	return last, active, nil
 }
 
-func (t *fakeTx) held(row string) (int, error) {
+func (t *fakeTx) working(row string) (int, error) {
 	n := 0
 	for k, c := range t.st.cards {
 		if k.epoch == t.st.epoch && c.Holder == row && c.State == "working" {
@@ -258,14 +251,10 @@ func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = r; 
 func (t *fakeTx) putPolicy(p PolicyVersion) error { t.st.policies[p.Version] = p; return nil }
 
 func (t *fakeTx) replay(opID string) (Receipt, bool, error) {
-	i, ok := t.base.ops[opID]
-	if !ok {
-		return Receipt{}, false, nil
-	}
-	return decodeReceipt(t.base.events[i].receipt), true, nil
+	r, ok := t.base.receipt(opID)
+	return r, ok, nil
 }
 
-func (t *fakeTx) mark() error    { return nil } // st is already a copy of the committed state
 func (t *fakeTx) discard() error { t.st = t.base.clone(); return nil }
 
 func (t *fakeTx) appendEvent(e Event) error {

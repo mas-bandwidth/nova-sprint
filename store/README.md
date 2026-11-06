@@ -8,7 +8,11 @@ package does with it.
   applied by `Migrate`). Open it with `Open(ctx, $NOVA_PG_DSN, $NOVA_PG_PASSWORD)`.
   `Migrate` refuses a store at a schema version other than `SchemaVersion`,
   naming both numbers, and is safe to run concurrently (it holds one advisory
-  lock). The binary knows schema version 2: version 1 plus the two card kinds
+  lock). It also checks the shape: `sprint.meta` keeps the sha256 of the
+  schema text that made the store, and a store at version 2 whose hash
+  differs from this binary's (or has none) is refused naming both hashes:
+  "this store was made by a different build of schema 2; recreate it (no live
+  store is at v2 yet)". The binary knows schema version 2: version 1 plus the two card kinds
   (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
   `done`), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
@@ -40,8 +44,8 @@ op := store.Op{
 r, err := s.Apply(ctx, op)
 switch {
 case errors.Is(err, store.ErrInvalid): // a caller bug: fix the op; nothing was logged
-case errors.Is(err, store.ErrUnknown): // r, found, err := s.Replay(ctx, op.ID); if !found, Apply the same op again
-case err != nil: // did not reach the store, or an engine defect: nothing happened
+case errors.Is(err, store.ErrUnknown): // the server did not answer: r, found, err := s.Replay(ctx, op.ID); if !found, Apply the same op again
+case err != nil: // did not reach the store, or the server refused it before COMMIT (SQLSTATE named): nothing happened
 case !r.Accepted: // refused: read r.Reason, take a new snapshot, plan again with a new id
 default: // accepted: r.Seq is the event, r.After the touched rows
 }
@@ -54,17 +58,24 @@ default: // accepted: r.Seq is the event, r.After the touched rows
 2. An op id applies at most once. A second Apply with a known id returns the
    receipt the first one got, whatever the second one asks for, an invalid
    body included: only a missing id is refused before the lookup.
-3. When the transport fails after the request may have reached the server,
-   Apply says the outcome is unknown; it never says nothing changed. A
-   failure whose outcome is known (an invalid body, a PostgreSQL data or
-   constraint error) is never reported as unknown.
+3. The unknown rule: Apply returns `ErrUnknown` only when the server did not
+   answer: a connection error (a FATAL or PANIC from the server, or a
+   connection exception, class 08, included), a timeout or a cancelled
+   context once the request was sent, or any error during or after COMMIT.
+   It never says nothing changed then. Every error the server itself
+   returned before COMMIT, whatever its SQLSTATE, is known: a transaction
+   with an error in it cannot commit, so nothing landed, and it comes back as
+   a plain error naming the SQLSTATE and the message. An invalid body is
+   known too (`ErrInvalid`).
 4. A card is in exactly one state and has at most one holder. The schema holds
    this (one `NOT NULL` `state` column with a CHECK, one `holder` column with
    a foreign key to a row of the same epoch), not Go. The schema also holds
    the kinds: a producer or sentinel has no `of` and no holder, a sentinel
-   no brief, a consumer has an `of` naming a card of the same epoch (a
-   foreign key; that it is a producer, not a sentinel, is Go's check) and no
-   needs, after or priority of its own. `of` is the
+   no brief, a consumer has an `of` naming a producer of the same epoch (a
+   foreign key and the `cards_fixed` trigger) and no needs, after or priority
+   of its own; the trigger also refuses any UPDATE that changes a card's
+   `kind`, `of` or `stream`. A consumer's attempt is fixed at add by the
+   store alone (the schema cannot tell the store's writes from a caller's). `of` is the
    one column besides `holder` that is NULL for "none" (the foreign key needs
    it); the Go side reads both as `""`.
 5. The log matches the state: folding every accepted event from the first
@@ -104,14 +115,19 @@ priority of its own (its column stays `normal`; it is ordered by its
 producer's), it may have a holder, and it records a `result` (`""`, `ok`,
 `fix`, `fail`, `fault`), its `cost` in micro-dollars with `priced` (false
 when its route has no price, never shown as $0), and on a work consumer the
-`prior_head` it continues from. Kind and of are set by `PutCard` and never
-change. `needs` is hard order (cannot start until they landed), `after` soft
+`prior_head` it continues from, and the `attempt` of its producer it belongs
+to, given at add (`PutCard.Attempt`) and never written after. Kind, of and
+stream are set by `PutCard` and never change. `needs` is hard order (cannot start until they landed), `after` soft
 (orders the landing only); layers 2 and 3 read them, the store only checks
 that they name other cards of the epoch, once each. A priority is one of
 `low`, `normal` (the default), `high`, `critical`, `blocker`; the `read` rung
 of the deal order is layer 2's, never a level. The store enforces whose each column
 is, in Go and by a CHECK: prior head a work consumer's, bounces a producer's, cost,
-priced and result a consumer's, priority a producer's or sentinel's, and SetCardAttempt is refused on a consumer (its attempt is set at add by PutCard).
+priced and result a consumer's, priority, needs and after a producer's or sentinel's, a holder a consumer's,
+and SetCardAttempt is refused on a consumer (its attempt is set at add by PutCard). The check is on the kind, before
+the value is looked at: a kind-specific write on the wrong kind is refused whatever its value, no-op values included
+(`SetCardPriority` normal, `SetCardNeeds` or `SetCardAfter` nil, `SetCardHolder` `""`, `SetCardBounces` 0), so it
+never raises a gen or logs an accepted event. At add a consumer may name only the default priority (`""` or normal).
 
 The card states are `waiting`, `ready`, `working`, `review`, `merging`,
 `landed`, `fail`, `blocked`, `done`. Width caps work in progress, not what is
@@ -135,13 +151,17 @@ way), `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
 `SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardCost` (cost
-and priced together, one field), `SetCardPriority` (refused on a consumer),
-`SetCardNeeds` and `SetCardAfter` (each refused on a consumer), `PutRow`
+and priced together, one field), `SetCardPriority` (refused on a consumer,
+normal included), `SetCardNeeds` and `SetCardAfter` (each refused on a
+consumer, nil included), `PutRow`
 (kind, width, session; insert or overwrite; a new row is down and not held;
 state, flaps and held are kept on overwrite), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
 true, whatever its state), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
-`PutPolicy`, `SetActivePolicy`. The working count is taken at the moment of
+`PutPolicy`, `SetActivePolicy`. `PutPolicy` takes no version: the store
+gives it the next one, and the caller learns it from the receipt,
+`r.After.Policies` (keyed by version; the new version is the one not in
+the snapshot it planned from). The working count is taken at the moment of
 the write and excludes the card written, so two takes onto a width-one row in
 one op are refused on the second and nothing lands; re-setting the same
 holder, or the same state, is a no-op. A width below the working cards the
@@ -157,6 +177,12 @@ The value limits, each `ErrInvalid` from both stores, naming the field:
   flaps, policy version) is in 0..2147483647 (a PostgreSQL `integer`,
   nothing meaningful below 0); cost is in 0..9223372036854775807 (a
   `bigint`); the op's epoch is in 1..2147483647;
+- every id and name is at most 128 bytes (`MaxName`): the op id, card id,
+  row name, stream name, actor, the op's kind label and policy name, and
+  every field that names one of them (of, holder, author, needs, after, and
+  the card, row and stream a condition or write names). Brief, reason, body,
+  head, prior head, branch, base sha and note are unbounded. `Replay` of an
+  id no op can have (empty, too long, holding a NUL) is not found;
 - every text (ids, names, actor, kind, note, brief, reason, head, prior head,
   branch, author, base sha, needs, after, priority, policy name and body) is
   valid UTF-8 with no NUL byte;
@@ -175,13 +201,14 @@ carries the epoch it closed; the receipt's `NewEpoch` is the one it opened.
 | `Receipt{Accepted: true}` | The epoch matched, every condition held, every write landed; `Seq` is the event, `After` the touched rows. | Go on. |
 | `Receipt{Accepted: false, Reason}` | The epoch was wrong, a condition failed, or a write broke a rule (target missing, card exists, bad state name, row full). Nothing changed; the refusal is an event (`accepted = false`). | Read the reason; take a new snapshot; ask again with a new op id. Exit 1 at the CLI. |
 | an error wrapping `ErrInvalid` | The op never entered the store: no id, no epoch, a condition or write outside the closed sets, two writes to one field, a value outside the limits. Nothing is logged. | Fix the caller: it is a bug. |
-| an error wrapping `ErrUnknown` | The request may have reached the server; nothing is known. | `Replay(opID)`: if it comes back, that is the receipt; if not, `Apply` again with the same id. Exit 2 at the CLI. |
+| an error wrapping `ErrUnknown` | The server did not answer: the connection failed, ctx timed out or was cancelled once the request was sent, or an error came during or after COMMIT. Nothing is known. | `Replay(opID)`: if it comes back, that is the receipt; if not, `Apply` again with the same id. Exit 2 at the CLI. |
 
-Any other error means nothing happened: the request did not reach the store,
-or PostgreSQL refused a write with a data (SQLSTATE class 22) or constraint
-(class 23) error, an engine defect (the rules let through what the schema
-refuses). The transaction is rolled back, nothing is logged, and the error
-names the SQLSTATE and the constraint or column.
+Any other error means nothing happened, and `Replay` is not needed: the
+request did not reach the store, or the server returned an error before
+COMMIT, whatever its SQLSTATE (a CHECK the rules do not know, a value too
+large for an index, a column that is gone, ...). The transaction is rolled
+back, nothing is logged, and the error names the SQLSTATE, the constraint,
+column or table, and the server's message.
 
 `Events(afterSeq, max)` is exclusive of `afterSeq`, ascending, and returns at
 most `MaxEvents` (1000) events; a larger `max`, or `max <= 0`, is capped
@@ -190,8 +217,8 @@ panic. `Policy(version)` returns one policy version, or `ErrNotFound`.
 
 ## Tests
 
-    go test ./store/                    # unit tests (Fake) and functional tests (PG)
-    go test -run Functional ./store/    # functional tests only
+    go test -count=1 -race -parallel 4 ./store/                   # unit tests (Fake) and functional tests (PG)
+    go test -count=1 -race -parallel 4 -run Functional ./store/   # functional tests only
 
 The unit tests use no real time, no sockets, no network and no outside
 service. The functional tests start a PostgreSQL of their own per test

@@ -10,9 +10,13 @@
 
 CREATE SCHEMA IF NOT EXISTS sprint;
 
+-- hash is the sha256 of this file as the binary that made the store carries
+-- it: Migrate sets it on a new store and refuses a store whose hash differs
+-- at the same version (a different build of the schema).
 CREATE TABLE IF NOT EXISTS sprint.meta (
     id     integer PRIMARY KEY CHECK (id = 1),
-    schema integer NOT NULL
+    schema integer NOT NULL,
+    hash   text    NOT NULL DEFAULT ''
 );
 INSERT INTO sprint.meta (id, schema) VALUES (1, 2) ON CONFLICT (id) DO NOTHING;
 
@@ -91,6 +95,27 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name),
     FOREIGN KEY (epoch, "of") REFERENCES sprint.cards (epoch, id)
 );
+
+-- What a CHECK cannot say: a card's kind, of and stream never change once it
+-- is written, and a consumer's of names a producer (the foreign key says only
+-- that it names a card). A consumer's attempt is fixed at add too, but a
+-- trigger cannot tell the store's own writes from a caller's, so that rule is
+-- the store's alone.
+CREATE OR REPLACE FUNCTION sprint.cards_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND (NEW.kind IS DISTINCT FROM OLD.kind OR NEW."of" IS DISTINCT FROM OLD."of" OR NEW.stream IS DISTINCT FROM OLD.stream) THEN
+        RAISE EXCEPTION 'card % changes its kind, of or stream; they are fixed when the card is added', OLD.id
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_fixed_check';
+    END IF;
+    IF NEW."of" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sprint.cards c WHERE c.epoch = NEW.epoch AND c.id = NEW."of" AND c.kind = 'producer') THEN
+        RAISE EXCEPTION 'card % is a consumer of %, which is not a producer', NEW.id, NEW."of"
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_of_producer_check';
+    END IF;
+    RETURN NEW;
+END
+$$;
+CREATE OR REPLACE TRIGGER cards_fixed BEFORE INSERT OR UPDATE ON sprint.cards
+    FOR EACH ROW EXECUTE FUNCTION sprint.cards_fixed();
 
 -- Append-only: one row per operation that entered the store, accepted or
 -- refused. Writers run one at a time, so seq is commit order with no gaps.

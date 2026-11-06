@@ -93,20 +93,22 @@ type PutCard struct {
 	Score                int
 	Attempt              int      // a consumer's attempt, set here and never after
 	Needs                []string // hard: cannot start until these landed
-	After                []string // soft: cannot land until these landed
+	After                []string // soft: may start any time; orders its landing only behind targets that are themselves queued to land, never behind one that is not
 	Brief                string
 	Holder               string
-	Priority             string // a producer's or sentinel's level; "" is normal, a consumer's is always normal
+	Priority             string // a producer's or sentinel's level; "" is normal; a consumer takes only the default ("" or normal)
 }
 
-// SetCardState sets a card's state. A held card made live (ready or working)
-// counts against its holder's width, as the holder write does.
+// SetCardState sets a card's state. A held card moved into working counts
+// against its holder's width: refused when the row already holds as many
+// working cards as its width. No other state counts.
 type SetCardState struct{ Card, State string }
 
-// SetCardHolder sets a card's holder: a row's name, or "" for none. Setting a
-// name is refused on a producer, and when that row already holds as many live
-// cards as its width, counted at the moment of the write (earlier writes of
-// the op included) and not counting the card written.
+// SetCardHolder sets a card's holder: a row's name, or "" for none. Refused
+// on a producer or sentinel whatever the value ("" included), and, for a card
+// in working, when that row already holds as many working cards as its width,
+// counted at the moment of the write (earlier writes of the op included) and
+// not counting the card written.
 type SetCardHolder struct{ Card, Holder string }
 
 // SetCardResult sets a consumer's result: "", ok, fix, fail or fault; refused on
@@ -169,10 +171,11 @@ type SetCardCost struct {
 }
 
 // SetCardPriority sets a producer's or sentinel's level (low, normal, high,
-// critical, blocker); refused on a consumer.
+// critical, blocker); refused on a consumer for any value, normal included.
 type SetCardPriority struct{ Card, Priority string }
 
-// SetCardNeeds replaces a card's needs, under the rules of PutCard.
+// SetCardNeeds replaces a card's needs, under the rules of PutCard; refused
+// on a consumer for any value, nil or empty included (as SetCardAfter).
 type SetCardNeeds struct {
 	Card  string
 	Needs []string
@@ -193,8 +196,8 @@ type PutRow struct {
 	Session    string
 }
 
-// SetRowWidth sets a row's width; a width below the live cards it holds is
-// refused.
+// SetRowWidth sets a row's width; a width below the working cards it holds
+// is refused.
 type SetRowWidth struct {
 	Row   string
 	Width int
