@@ -18,7 +18,8 @@ INVARIANTS = [
     "TypeOK", "SingleStateSingleHolder", "ProducerNeverHeld", "ConsumersWellFormed",
     "WidthKept", "IdempotentById", "AppliedIsLog", "LogMatchesState", "OpsInTheirEpoch",
     "ConditionsAtomic", "ServesHeld", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
-    "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "ReceiptMatches",
+    "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "CursorWithinLog",
+    "LogAppendOnly", "ReceiptMatches",
 ]
 
 # The passing runs: cfg name -> Scenario.
@@ -41,12 +42,17 @@ REACH = {
     "NeverWorkEntryRefused": ("deal", "a held card going working on a full row is refused (b2)"),
     "NeverQueuedPastWidth": ("deal", "a row holds a ready consumer past its width (r1)"),
     "NeverHeldRefused": ("deal", "a deal is refused on RowHeld after a hold (a1)"),
-    "NeverServesRefused": ("deal", "a deal is refused on RowServes after a tier change (a1)"),
+    "NeverReadyServesRefused": ("deal", "a move into ready on a row that no longer serves the tier is refused (s15)"),
+    "NeverAddServesRefused": ("deal", "put card of a consumer on a row that does not serve its tier is refused (s16)"),
+    "NeverTiersRefused": ("deal", "dropping a tier a live consumer needs is refused (v1)"),
     "NeverRowFenced": ("deal", "a row write is refused on a stale RowGen (e1)"),
     "NeverSlotReused": ("deal", "a done consumer's slot is reused while it keeps its holder (b2)"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
     "NeverJudgementFenced": ("records", "a second close of a judgement is refused on JudgementOpen"),
     "NeverCursorRefused": ("records", "a cursor write below the current value is refused (m2)"),
+    "NeverCloseRefused": ("records", "an unfenced second close is refused by the write (h2)"),
+    "NeverCursorPastRefused": ("records", "a cursor write past the log is refused (m3)"),
+    "NeverCursorCarried": ("records", "the clear keeps the cursor"),
 }
 
 # The two-step transaction (Begin reads a snapshot, Apply commits on it),
@@ -57,19 +63,19 @@ STALE_INFRA = [
     (r"  lost        \* op id -> transport failures so far (bounded by MaxLoss)",
      "  lost,       \\* op id -> transport failures so far (bounded by MaxLoss)\n"
      "  snap        \\* op id -> the state its transaction read at Begin (FAULT)", 1),
-    ("vars == <<epoch, cards, rows, judgements, cursors, events, applied, phase, receipt, lost>>",
-     "vars == <<epoch, cards, rows, judgements, cursors, events, applied, phase, receipt, lost, snap>>", 1),
+    ("vars == <<epoch, cards, rows, judgements, cursors, events, ledger, applied, phase, receipt, lost>>",
+     "vars == <<epoch, cards, rows, judgements, cursors, events, ledger, applied, phase, receipt, lost, snap>>", 1),
     (r"  /\ lost       = [o \in OpIds |-> 0]",
      "  /\\ lost       = [o \\in OpIds |-> 0]\n  /\\ snap       = [o \\in OpIds |-> Empty]", 1),
-    ("  /\\ UNCHANGED <<store, events, applied, lost>>",
-     "  /\\ UNCHANGED <<store, events, applied, lost, snap>>", 1),
-    ("  /\\ UNCHANGED <<store, events, applied, receipt>>",
-     "  /\\ UNCHANGED <<store, events, applied, receipt, snap>>", 1),
-    ("      out  == Outcome(pre, o)\n      post == out.st\n",
+    ("  /\\ UNCHANGED <<store, events, ledger, applied, lost>>",
+     "  /\\ UNCHANGED <<store, events, ledger, applied, lost, snap>>", 1),
+    ("  /\\ UNCHANGED <<store, events, ledger, applied, receipt>>",
+     "  /\\ UNCHANGED <<store, events, ledger, applied, receipt, snap>>", 1),
+    ("      out  == Outcome(pre, o, Len(events))\n      post == out.st\n",
      "      \\* FAULT: the op is judged with the snapshot its Begin read.\n"
      "      out  == Outcome([epoch |-> pre.epoch, cards |-> pre.cards, rows |-> pre.rows,\n"
      "                       judgements |-> pre.judgements, cursors |-> pre.cursors,\n"
-     "                       sn |-> snap[o], p0 |-> pre], o)\n"
+     "                       sn |-> snap[o], p0 |-> pre], o, Len(events))\n"
      "      post == [epoch |-> out.st.epoch, cards |-> out.st.cards, rows |-> out.st.rows,\n"
      "               judgements |-> out.st.judgements, cursors |-> out.st.cursors]\n", 1),
     ("          /\\ lost'    = IF res = \"unknown\" THEN [lost EXCEPT ![o] = @ + 1] ELSE lost\n",
@@ -86,7 +92,7 @@ STALE_INFRA = [
      "  /\\ o \\notin applied\n"
      "  /\\ phase' = [phase EXCEPT ![o] = \"inflight\"]\n"
      "  /\\ snap'  = [snap EXCEPT ![o] = Current]\n"
-     "  /\\ UNCHANGED <<store, events, applied, receipt, lost>>\n"
+     "  /\\ UNCHANGED <<store, events, ledger, applied, receipt, lost>>\n"
      "\n"
      "Apply(o) ==\n"
      "  \\/ phase[o] = \"inflight\" /\\ Execute(o)\n"
@@ -102,16 +108,18 @@ STALE_INFRA = [
 ]
 
 OUTCOME_HOLDS = ("  ELSE LET run == RunOp(st, Ops[o].writes)\n"
-                 "       IN IF Holds(st, Ops[o].expect) /\\ run.ok")
+                 "       IN IF Holds(st, Ops[o].expect) /\\ run.ok /\\ CursorsFit(Ops[o].writes, last)")
 
 # (name, target, scenario, fault, replacements)
 WITNESSES = [
     ("StoreNoEvent", "LogMatchesState", "deal",
      "An accepted op's writes land but its event row is not appended (and so\n"
      "its id is not remembered).",
-     [("     /\\ events'  = Append(events, ev)\n     /\\ applied' = applied \\cup {o}\n",
+     [("     /\\ events'  = Append(events, ev)\n     /\\ ledger'  = Append(ledger, ev)\n"
+       "     /\\ applied' = applied \\cup {o}\n",
        "     \\* FAULT: the accepted path forgets its event row.\n"
        "     /\\ events'  = IF out.acc THEN events ELSE Append(events, ev)\n"
+       "     /\\ ledger'  = IF out.acc THEN ledger ELSE Append(ledger, ev)\n"
        "     /\\ applied' = IF out.acc THEN applied ELSE applied \\cup {o}\n", 1)]),
     ("StoreReplayApplies", "IdempotentById", "deal",
      "Replay runs the op again and logs it again instead of returning the\n"
@@ -119,11 +127,11 @@ WITNESSES = [
      [("ReplayEffect(o) ==\n"
        "  /\\ phase'   = [phase EXCEPT ![o] = \"done\"]\n"
        "  /\\ receipt' = [receipt EXCEPT ![o] = StoredEvent(o)]\n"
-       "  /\\ UNCHANGED <<store, events, applied, lost>>\n",
+       "  /\\ UNCHANGED <<store, events, ledger, applied, lost>>\n",
        "\\* FAULT: replay runs the op again and logs a new event.\n"
        "ReplayEffect(o) ==\n"
        "  LET pre == Current\n"
-       "      out == Outcome(pre, o)\n"
+       "      out == Outcome(pre, o, Len(events))\n"
        "      ev  == [id |-> o, accepted |-> out.acc, epoch |-> pre.epoch, before |-> pre, after |-> out.st]\n"
        "  IN /\\ epoch'      = out.st.epoch\n"
        "     /\\ cards'      = out.st.cards\n"
@@ -131,6 +139,7 @@ WITNESSES = [
        "     /\\ judgements' = out.st.judgements\n"
        "     /\\ cursors'    = out.st.cursors\n"
        "     /\\ events'  = Append(events, ev)\n"
+       "     /\\ ledger'  = Append(ledger, ev)\n"
        "     /\\ phase'   = [phase EXCEPT ![o] = \"done\"]\n"
        "     /\\ receipt' = [receipt EXCEPT ![o] = ev]\n"
        "     /\\ UNCHANGED <<applied, lost>>\n", 1)]),
@@ -142,7 +151,7 @@ WITNESSES = [
          (OUTCOME_HOLDS,
           "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
           "       \\* FAULT: the conditions are read on the snapshot.\n"
-          "       IN IF Holds(Snap(st), Ops[o].expect) /\\ run.ok", 1)]),
+          "       IN IF Holds(Snap(st), Ops[o].expect) /\\ run.ok /\\ CursorsFit(Ops[o].writes, last)", 1)]),
     ("StoreEpochUnfenced", "OpsInTheirEpoch", "deal",
      "Ops other than clear are not checked against the store's epoch, so an\n"
      "op planned against epoch 1 arriving after the clear lands in epoch 2\n"
@@ -171,7 +180,9 @@ WITNESSES = [
      "a1 deals u1 working to r1, then e1 lowers r1's width to 0 and is\n"
      "accepted.",
      [("                              /\\ st.rows[w.r].state = Absent \\/ w.w >= Cardinality(CountedIn(st, w.r, L))\n"
+       "                              /\\ st.rows[w.r].state = Absent \\/ TiersFit(st, w.r, w.n)\n"
        "    [] w.k = \"setRowWidth\" -> st.rows[w.r].state # Absent /\\ w.w >= Cardinality(CountedIn(st, w.r, L))\n",
+       "                              /\\ st.rows[w.r].state = Absent \\/ TiersFit(st, w.r, w.n)\n"
        "    \\* FAULT: any width is accepted, whatever the row holds.\n"
        "    [] w.k = \"setRowWidth\" -> st.rows[w.r].state # Absent\n", 1)]),
     ("StoreWidthPerOp", "WidthKept", "deal",
@@ -185,6 +196,8 @@ WITNESSES = [
        "  THEN LET card == st.cards[w.c]\n"
        "       IN /\\ Exists(st, w.c)\n"
        "          /\\ w.s \\in CardStates\n"
+       "          /\\ w.s # card.state\n"
+       "          /\\ ServesOK(st, w)\n"
        "          /\\ (w.s \\in Counted /\\ card.state \\notin Counted /\\ card.holder # NoHolder)\n"
        "               => Room(pre, card.holder, w.c, Counted)\n"
        "  ELSE RuleLegal(st, w, Counted)\n"
@@ -232,7 +245,8 @@ WITNESSES = [
      [(OUTCOME_HOLDS,
        "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
        "       \\* FAULT: RowGen conditions are not checked.\n"
-       "       IN IF (\\A x \\in Ops[o].expect : x.k = \"rowGen\" \\/ Cond(st, x)) /\\ run.ok", 1)]),
+       "       IN IF (\\A x \\in Ops[o].expect : x.k = \"rowGen\" \\/ Cond(st, x)) /\\ run.ok\n"
+       "             /\\ CursorsFit(Ops[o].writes, last)", 1)]),
     ("StoreWorkEntryUnchecked", "WidthKept", "deal",
      "No work-entry check: a state write that takes a held card into\n"
      "working is not width-checked: s10 makes u1 and u2 working on the\n"
@@ -240,27 +254,44 @@ WITNESSES = [
      "over-fills; e1 then a1 on r1 is another).",
      [("Exists(st, w.c) /\\ w.s \\in CardStates /\\ WorkEntryOK(st, w, L)",
        "Exists(st, w.c) /\\ w.s \\in CardStates   \\* FAULT: no WorkEntryOK", 1)]),
-    ("StoreServesStale", "ServesHeld", "deal",
-     "Apply is two steps, and RowServes is read on the snapshot Begin took:\n"
-     "a1 begins while r1 serves pro, v1 sets r1 to serve flash only, and a1\n"
-     "deals u1 (a pro consumer) to r1.",
-     STALE_INFRA + [
-         (OUTCOME_HOLDS,
-          "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
-          "       \\* FAULT: RowServes is read on the snapshot.\n"
-          "       IN IF (\\A x \\in Ops[o].expect :\n"
-          "                IF x.k = \"rowServes\" THEN Cond(Snap(st), x) ELSE Cond(st, x)) /\\ run.ok", 1)]),
     ("StoreJudgementTwice", "JudgementClosedOnce", "records",
-     "The store does not check JudgementOpen: h1 answers j1, and h2 answers\n"
-     "it again (or y1 expires it after the answer).",
-     [(OUTCOME_HOLDS,
-       "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
-       "       \\* FAULT: JudgementOpen conditions are not checked.\n"
-       "       IN IF (\\A x \\in Ops[o].expect : x.k = \"judgeOpen\" \\/ Cond(st, x)) /\\ run.ok", 1)]),
+     "Answer and expire refuse only an absent judgement, not a closed one:\n"
+     "h1 answers j1, and h2, which carries no JudgementOpen fence, answers\n"
+     "it again.",
+     [("    [] w.k = \"closeJudge\"  -> st.judgements[w.c] = \"open\"",
+       "    [] w.k = \"closeJudge\"  -> st.judgements[w.c] # Absent   \\* FAULT: a closed one too", 1)]),
     ("StoreCursorBack", "CursorMonotone", "records",
      "Set cursor accepts any value: m1 sets c1 to 2, then m2 sets it to 1.",
      [("    [] w.k = \"setCursor\"   -> w.w >= st.cursors[w.c]",
        "    [] w.k = \"setCursor\"   -> TRUE   \\* FAULT: a cursor may move back", 1)]),
+    ("StoreCursorPastLog", "CursorWithinLog", "records",
+     "Set cursor is not bounded by the log: m3 sets c1 past the last\n"
+     "event's seq and is accepted.",
+     [("  \\A k \\in DOMAIN ws : ws[k].k = \"setCursor\" => ws[k].w <= last",
+       "  TRUE   \\* FAULT: no upper bound", 1)]),
+    ("StoreServesUnchecked", "ServesHeld", "deal",
+     "No serving check: put card and the move into ready or working do not\n"
+     "read the holder row's tiers: s15 readies u4 on r2, which serves flash\n"
+     "only, and is accepted.",
+     [("Serves(st, r, t) == t \\in st.rows[r].tiers",
+       "Serves(st, r, t) == TRUE   \\* FAULT: no serving check", 1)]),
+    ("StoreTiersNarrowed", "ServesHeld", "deal",
+     "Put row and set row tiers may drop a tier a live consumer needs: v1\n"
+     "makes r1 serve flash only while the pro consumer u3 is ready there.",
+     [("  \\A c \\in Cards : (st.cards[c].holder = r /\\ st.cards[c].state \\in Live) => st.cards[c].tier \\in ts",
+       "  TRUE   \\* FAULT: any tiers are accepted", 1)]),
+    ("StoreLogTampered", "LogAppendOnly", "deal",
+     "The events table takes an UPDATE (the trigger is missing): an action\n"
+     "flips a logged event's outcome.",
+     [("Terminating == ",
+       "(* FAULT: an UPDATE on the events table flips an event's outcome.        *)\n"
+       "Tamper ==\n"
+       "  /\\ \\E i \\in DOMAIN events : events' = [events EXCEPT ![i].accepted = ~@]\n"
+       "  /\\ UNCHANGED <<store, ledger, applied, phase, receipt, lost>>\n"
+       "\n"
+       "Terminating == ", 1),
+      ("  \\/ \\E o \\in OpIds : Apply(o) \\/ LoseRequest(o) \\/ Replay(o)\n",
+       "  \\/ \\E o \\in OpIds : Apply(o) \\/ LoseRequest(o) \\/ Replay(o)\n  \\/ Tamper\n", 1)]),
 ]
 
 
