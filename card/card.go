@@ -59,14 +59,20 @@ type Plan struct {
 }
 
 // Merge is plans applied as one op, in order (a preemption: the withdraw of
-// the youngest consumer and the start of the blocker).
-func Merge(plans ...Plan) Plan {
+// the youngest consumer and the start of the blocker). It runs the same
+// value checks as one plan, and refuses two writes to one field, so a merged
+// plan is never store.ErrInvalid (the second cold read of layer 2). Several
+// reads of one head are AskReads, not two AskReads merged.
+func Merge(plans ...Plan) (Plan, *Refusal) {
 	var m Plan
 	for _, p := range plans {
 		m.Expect = append(m.Expect, p.Expect...)
 		m.Writes = append(m.Writes, p.Writes...)
 	}
-	return m
+	if r := dupWrites(m.Writes); r != nil {
+		return Plan{}, r
+	}
+	return checked(m)
 }
 
 // Refusal is an illegal move, as a value: the reason names the fix.
@@ -87,8 +93,13 @@ type (
 	Broken   struct{ Consumer string } // the work consumer reported fail
 	Faulted  struct{ Consumer string } // the work consumer reported fault
 	AskRead  struct{ Row string }
+	AskReads struct{ Rows []string } // several reads of this head, one plan, distinct indices
 	ReadYes  struct{}
 	ReadFix  struct{ Finding string } // the read's finding, kept in its own column
+	// WaiveRed moves a producer a Red sent back to review on to merging
+	// without a new read, when a done ok read of the previous review at the
+	// same head exists. Who may waive is layer 3's; the event carries no actor.
+	WaiveRed struct{ Reason string }
 	Landed   struct{ Head string }
 	Red      struct{ Head, Reason string } // review +1: reads before it no longer count
 	Released struct{ Reason string }       // the work consumer of this attempt was withdrawn
@@ -105,7 +116,12 @@ type (
 		Need, Reason string
 		InThisOp     bool // as NeedFailed's
 	}
-	Relink struct{ Need, To, Reason string }
+	// Relink replaces a failed need. InThisOp, as Waive: the drop fails the
+	// need earlier in the same op, so the plan carries no "need is fail" fence.
+	Relink struct {
+		Need, To, Reason string
+		InThisOp         bool
+	}
 	// Edit sets prose, paths and done_when; the brief as given is immutable.
 	// A nil list or "" prose leaves that field as it is.
 	Edit struct {
@@ -169,13 +185,22 @@ func StreamFromStore(s store.Stream) Stream { return Stream{Name: s.Name, Held: 
 
 // Stream events. HoldStream holds the stream and parks, in the same op,
 // the ready producers named (the caller passes every ready producer of the
-// stream; one it misses is parked later by Park).
+// stream, each once; one it misses is parked later by Park). Seq is the
+// snapshot's seq: the plan fences AtSeq, so a card that became ready after
+// the snapshot refuses the op. UnholdStream clears the hold and parks
+// nothing (Resolve does that). A stream has no reason column; UnholdStream's
+// reason is for the caller, and a park into the hold names the stream.
 type HoldStream struct {
 	Reason string
 	Ready  []Card
+	Seq    int64
 }
 
-func (HoldStream) isEvent() {}
+// UnholdStream clears a held stream. Reason is not stored.
+type UnholdStream struct{ Reason string }
+
+func (HoldStream) isEvent()   {}
+func (UnholdStream) isEvent() {}
 
 // Row events, one per row of the row table.
 type (
@@ -194,8 +219,10 @@ func (Finished) isEvent()    {}
 func (Broken) isEvent()      {}
 func (Faulted) isEvent()     {}
 func (AskRead) isEvent()     {}
+func (AskReads) isEvent()    {}
 func (ReadYes) isEvent()     {}
 func (ReadFix) isEvent()     {}
+func (WaiveRed) isEvent()    {}
 func (Landed) isEvent()      {}
 func (Red) isEvent()         {}
 func (Released) isEvent()    {}

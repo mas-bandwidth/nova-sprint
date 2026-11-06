@@ -51,7 +51,7 @@ func (w *world) all() (map[string]Card, map[string][]Card) {
 
 func coldProducerEvents() []Event {
 	return []Event{Resolve{}, Park{}, Reached{}, Start{Row: "r1", Branch: "b", Base: base}, Finished{Consumer: "p1.w1"},
-		Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, AskRead{Row: "r1"}, ReadYes{}, ReadFix{Finding: "x"},
+		Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, AskRead{Row: "r1"}, AskReads{Rows: []string{"r1"}}, ReadYes{}, ReadFix{Finding: "x"}, WaiveRed{Reason: "x"},
 		Landed{Head: h1}, Red{Head: h1, Reason: "x"}, Released{}, Cancel{Reason: "x"}, Replace{By: "p9", Reason: "x"},
 		NeedFailed{Need: "n1"}, Waive{Need: "n1"}, Relink{Need: "n1", To: "n2"}, Edit{Prose: "x"}, Rescore{Score: 9},
 		SetPriority{Level: "high"}, Block{Reason: "x"}, Unblock{Reason: "x"}}
@@ -61,7 +61,7 @@ func coldProducerEvents() []Event {
 var coldAllowed = map[string][]string{
 	"Resolve": {Waiting}, "Park": {Ready}, "Reached": {Waiting}, "Start": {Ready},
 	"Finished": {Working}, "Broken": {Working}, "Faulted": {Working}, "Released": {Working},
-	"AskRead": {Review}, "ReadYes": {Review}, "ReadFix": {Review}, "Landed": {Merging}, "Red": {Merging},
+	"AskRead": {Review}, "AskReads": {Review}, "ReadYes": {Review}, "ReadFix": {Review}, "WaiveRed": {Review}, "Landed": {Merging}, "Red": {Merging},
 	"Cancel": nonFinal, "Replace": nonFinal, "NeedFailed": nonFinal, "Edit": nonFinal, "Rescore": nonFinal,
 	"SetPriority": nonFinal, "Waive": {Waiting}, "Relink": {Waiting}, "Block": {Ready, Review, Working}, "Unblock": {Blocked},
 }
@@ -250,7 +250,7 @@ func TestColdPreemptARead(t *testing.T) {
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
-	w.op("preempt", Merge(w.consumerPlan("p1.r1.1", Withdraw{Reason: "preempted by blocker p2"}), start))
+	w.op("preempt", mustMerge(t, w.consumerPlan("p1.r1.1", Withdraw{Reason: "preempted by blocker p2"}), start))
 	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p1", Review)
 	assert.Zero(t, w.card("p1").Bounces)
@@ -351,7 +351,7 @@ func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
 		}
 		heads := []string{p.Head, p.Head, h1, coldH3}
 		evs := []Event{Resolve{}, Resolve{}, Park{}, Reached{}, Start{Row: row, Branch: "b-" + p.ID, Base: base}, Start{Row: row, Branch: "b-" + p.ID, Base: base},
-			Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskRead{Row: row},
+			Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskReads{Rows: []string{row}},
 			ReadYes{}, ReadYes{}, ReadFix{Finding: "fix it"}, Landed{Head: pick(heads)}, Red{Head: pick(heads), Reason: "red"}, Red{Head: p.Head, Reason: "red"}, Released{},
 			Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
 			Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
@@ -476,9 +476,14 @@ func coldInvariants(t *testing.T, s store.Snapshot, finals map[string]coldFinal,
 			_, ok := s.Cards[workID(p.ID, p.Attempt)]
 			assert.True(t, ok, "%s: %s working with no work consumer of attempt %d", label, p.ID, p.Attempt)
 		case p.Kind == "producer" && p.State == Merging:
-			assert.True(t, slices.ContainsFunc(coldValues(s.Cards), func(c store.Card) bool {
-				return c.Of == p.ID && c.Kind == "read" && c.Review == p.Review && c.State == Done && c.Result == "ok"
-			}), "%s: %s merging without an ok read of review %d", label, p.ID, p.Review)
+			okRead := func(review int) bool {
+				return slices.ContainsFunc(coldValues(s.Cards), func(c store.Card) bool {
+					return c.Of == p.ID && c.Kind == "read" && c.Review == review && c.Head == p.Head && c.State == Done && c.Result == "ok"
+				})
+			}
+			// ReadYes has an ok read of this review. WaiveRed has one of the
+			// previous review, at this head, and does not raise the review.
+			assert.True(t, okRead(p.Review) || (p.Review > 0 && okRead(p.Review-1)), "%s: %s merging without an ok read of review %d or %d at its head", label, p.ID, p.Review, p.Review-1)
 		}
 	}
 	assert.Empty(t, coldCycle(s.Cards), "%s: needs cycle", label)
@@ -617,7 +622,7 @@ func TestColdDefectWaiveInTheDropsOp(t *testing.T) {
 	all, _ := w.all()
 	waive, r := Move(all["p3"], nil, w.rows(), Stream{Name: "s1"}, all, Waive{Need: "n1", Reason: "not needed", InThisOp: true})
 	require.Nil(t, r)
-	rc, err := w.apply("drop", Merge(drop, waive))
+	rc, err := w.apply("drop", mustMerge(t, drop, waive))
 	require.NoError(t, err)
 	assert.True(t, rc.Accepted, "drop + waive as one op refused: %s", rc.Reason)
 	assert.Empty(t, w.card("p3").Needs)
