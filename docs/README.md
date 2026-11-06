@@ -77,3 +77,11 @@ unimplemented stats part at bottom we didn't end up doing." The reference is
 v1's `docs/SPEC-SPRINT-DASHBOARD.md` and `assets/nova-sprint-dashboard.jpg` at
 v1 main (nova-sprint `origin/main`); layer 6 reproduces that view over the v2
 store, without the bottom stats section.
+
+Glenn, 2026-11-06, on the dashboard: "I need it to check for visual
+correctness." "And it should be exactly matching what we currently have,
+visually. no changes except i think you added fail state." So: a visual
+match of the live v1 board, with the `fail` column as the one addition and the
+unbuilt stats block left off; built right after layers 1 and 2 lock, as its
+own part, before the first dogfood run; the reference is the running v1
+dashboard and `assets/nova-sprint-dashboard.jpg`, compared by eye.
