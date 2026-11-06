@@ -63,7 +63,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   `(epoch, holder)` references `rows`; `(epoch, of)` references `cards` when
   `of` is set. The two kinds (layer 2's producer and consumer cards, Glenn
   2026-09-29 and 2026-11-06) share one table and one write set; what the
-  store itself enforces about them: a producer never has a holder (the holder
+  store itself enforces about them (in Go and, where SQL can say it, in the schema's CHECKs and one trigger that refuses any change to `kind`, `of` or `stream`): a sentinel has no brief, no holder, no consumer and no `of`; a producer never has a holder (the holder
   write is refused on a producer, naming it); a consumer's `of` is set at add,
   names a producer of the same epoch, and never changes; a consumer has no
   needs. `gen` starts at 0 and goes up by one on every op that writes the
