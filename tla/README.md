@@ -697,7 +697,9 @@ Step invariants (each: the last step kept its rule):
 
 Every run (store and card) in one parallel pass with `run-tlc.sh`, the
 passing runs on 4 workers each and the rest on 1, so the times are under
-full contention. `ci-tlc.sh` then passed.
+full contention. `ci-tlc.sh` then passed: 94 runs, 94 ok, exit 0 (a first
+pass lost CardDeps to "Cannot allocate memory" while another user's TLC
+jobs held about 30 GB; rerun clean).
 
 | Module | Result | Generated / distinct | Depth | Time |
 |---|---|---|---|---|
