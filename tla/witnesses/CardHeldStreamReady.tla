@@ -342,6 +342,7 @@ AskRead(p, r) ==
   /\ ps'   = [ps EXCEPT ![p].ncut = @ + 1]
   /\ cs'   = [cs EXCEPT ![NextSlot(p)] = ReadCut(p, r)]
   /\ last' = L("AskRead", p, NextSlot(p), r)
+  /\ UNCHANGED <<rs, held>>
 
 \* AskReads{rows} (the second cold read): several reads cut from one
 \* snapshot, each row as AskRead checks it, in distinct slots (indices),
@@ -782,8 +783,10 @@ NeedFailedTakesDependants ==
 SentinelShape == \A s \in Sentinels : ps[s].st \in {"absent", "waiting", "landed", "fail"}
 
 NeedsAcyclic == Acyclic(NeedsGraph)
-(* Needs and after together stay acyclic (Add refuses a cycle through     *)
-(* either; Relink checks needs only, see the README's holes).             *)
+(* Needs and after together acyclic: what Add refuses. Not an invariant   *)
+(* of the passing runs: Relink checks needs only, so with a sentinel as a *)
+(* need it can close a loop through needs and after that Add would refuse *)
+(* (reach/CardNeverOrderCycle shows it; a hole in the design text).        *)
 OrderAcyclic == Acyclic(OrderGraph)
 
 (* Soft order never holds a landing whose target is not queued: a         *)
@@ -841,6 +844,8 @@ NeverAdded           == \A p \in Added : ~(Exists(p) /\ ps[p].needs # {} /\ ps[p
 (* A sentinel is a need: a is added needing s.                            *)
 NeverSentinelNeeded  == \A p \in Added : ~(Exists(p) /\ \E n \in ps[p].needs : n \in Sentinels)
 NeverAskReads        == last.ev # "AskReads"
+(* The hole: Relink closes a needs-and-after loop that Add refuses.       *)
+NeverOrderCycle      == OrderAcyclic
 (* WaiveRed: merging after a Red with no ok read of the current review.   *)
 NeverWaivedRed       ==
   ~\E p \in Prods :
