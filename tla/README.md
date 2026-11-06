@@ -1,6 +1,6 @@
 # tla/: the store model (layer 1)
 
-`Store.tla` models the contract in `docs/LAYER-1-STORE.md` (v2 at a7fb753f).
+`Store.tla` models the contract in `docs/LAYER-1-STORE.md` (v2 at 3c9b5155).
 Each operation is one atomic step over `epoch`, `cards`, `rows`,
 `judgements`, `cursors`, `policies`, `events` and `applied`. In order, the step:
 1. checks the op's epoch against the store's epoch;
@@ -23,7 +23,16 @@ trigger; only `active` may change, and `active` is left out of the model).
 
 Every set write that would change nothing is refused ("row r1 is already
 up", "cursor c1 is already at 2"): the op is refused, its refused event is
-logged, and no gen moves.
+logged, and no gen moves. In the model that covers every set write it has:
+card state, row width, row state, row held, row tiers and cursor. Streams
+(set stream held), policy activation and the set-card writes on fields no
+rule reads are left out, so their same-value refusals are not modelled.
+
+Tiers and needs are TLA+ sets, so a reorder is the same value by
+construction (the store keeps them sorted without repeats), and a tiers
+write equal to the row's set is refused like any other same-value write. An
+empty name is `ErrInvalid` before the store's step and is never logged, so
+it never reaches the model: structural.
 
 Cards have a kind: `producer`, `sentinel`, or a consumer (`work` or `read`).
 A consumer names its producer (`prod`, the design's `of`), takes its
@@ -103,7 +112,7 @@ previous one committed. That serial order is the order of `events` here.
 ## The instance
 
 7 cards (producers p1, p2; sentinel t1; consumers u1, u2, u3, u4), 2 rows
-of width 1, one judgement j1, one cursor c1, two policy versions, 34
+of width 1, one judgement j1, one cursor c1, two policy versions, 35
 fixed ops. Callers issue their
 ops in program order (`Pred`). A setup caller goes first, covering each
 deterministic rule once:
@@ -122,7 +131,8 @@ deterministic rule once:
   pro; s16 adds u1 on r2: refused by put card for the same reason;
 - s17 sets r2's width to 1, which it already is: refused as changing
   nothing;
-- s18 and s19 put policy versions 1 and 2.
+- s18 and s19 put policy versions 1 and 2;
+- s20 sets r2's tiers to the set it serves: refused as changing nothing.
 
 Then the callers of one scenario run concurrently. The constant `Scenario`
 picks it. The two scenarios touch disjoint tables, so splitting them keeps
@@ -173,7 +183,7 @@ Left out:
   `reach/*.cfg`) from `Store.tla` and the fault list in the script. Each
   fault is a set of exact text replacements; one that no longer matches
   stops the script. Edit `Store.tla`, rerun the script, commit both.
-- `reach/`: twenty-eight reachability checks on `Store.tla`. Each must be
+- `reach/`: twenty-nine reachability checks on `Store.tla`. Each must be
   violated, which shows the passing runs are not vacuous.
 
 In each witness cfg the target invariant is listed first: when one state
@@ -312,6 +322,7 @@ The helper scripts:
 | reach `NeverTiersRefused` | none | v1 is refused: the ready u3 needs pro on r1 |
 | reach `NeverSameValueRefused` | none | s17 is refused as changing nothing |
 | reach `NeverTwoPolicies` | none | s19 adds policy version 2 |
+| reach `NeverSameTiersRefused` | none | s20 is refused as changing nothing |
 | reach `NeverQueuedPastWidth` | none | r1 holds a ready and a working consumer at width 1 |
 | reach `NeverWorkEntryRefused` | none | b2 is refused by the work-entry check |
 | reach `NeverRowFenced` | none | e1 is refused on a stale RowGen |
@@ -325,65 +336,66 @@ The helper scripts:
 
 ## Results, tla2tools v1.8.0 (the CI jar; it prints "TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)") on hetzner2, 2026-11-06
 
-All 50 ran in one parallel pass with `run-tlc.sh`. The numbers below are
+All 51 ran in one parallel pass with `run-tlc.sh`. The numbers below are
 from `summarize-logs.sh` on those logs. `ci-tlc.sh` then passed twice in a
-row in the same tree (50 ok, 0 FAIL, exit 0 both times). The negative
+row in the same tree (51 ok, 0 FAIL, exit 0 both times). The negative
 test (StoreNoEvent replaced by the fault-free model, and
 StoreProducerHolds' cfg given WidthKept as its first invariant) failed
 exactly those two and exited non-zero.
 
 | Module | Result | States generated / distinct | Depth | Time |
 |---|---|---|---|---|
-| `Store` | No error has been found | 1035202 / 618645 | 31 | 03min 18s |
-| `StoreRecords` | No error has been found | 74684 / 39162 | 28 | 22s |
-| `StoreCursorBack` | Invariant CursorMonotone is violated | 81 / 75 | 22 | 09s |
-| `StoreCursorPastLog` | Invariant CursorWithinLog is violated | 29 / 29 | 21 | 08s |
-| `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated | 99 / 92 | 22 | 09s |
-| `StoreJudgementTwice` | Invariant JudgementClosedOnce is violated | 54 / 51 | 22 | 08s |
-| `StoreLogTampered` | Invariant LogAppendOnly is violated | 4 / 4 | 3 | 04s |
+| `Store` | No error has been found | 1035203 / 618646 | 32 | 04min 48s |
+| `StoreRecords` | No error has been found | 74685 / 39163 | 29 | 31s |
+| `StoreCursorBack` | Invariant CursorMonotone is violated | 82 / 76 | 23 | 10s |
+| `StoreCursorPastLog` | Invariant CursorWithinLog is violated | 30 / 30 | 22 | 08s |
+| `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated | 100 / 93 | 23 | 10s |
+| `StoreJudgementTwice` | Invariant JudgementClosedOnce is violated | 55 / 52 | 23 | 09s |
+| `StoreLogTampered` | Invariant LogAppendOnly is violated | 4 / 4 | 3 | 05s |
 | `StoreNoEvent` | Invariant LogMatchesState is violated | 2 / 2 | 2 | 04s |
 | `StorePolicyRewritten` | Invariant PolicyImmutable is violated | 20 / 20 | 20 | 08s |
-| `StoreProducerHolds` | Invariant ProducerNeverHeld is violated | 4 / 4 | 4 | 05s |
-| `StoreReplayApplies` | Invariant IdempotentById is violated | 39 / 39 | 22 | 09s |
-| `StoreRowStale` | Invariant ConditionsAtomic is violated | 70 / 66 | 22 | 09s |
-| `StoreSentinelHolds` | Invariant ProducerNeverHeld is violated | 5 / 5 | 5 | 05s |
-| `StoreServesUnchecked` | Invariant ServesHeld is violated | 16 / 16 | 16 | 07s |
-| `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 611 / 391 | 43 | 10s |
-| `StoreTiersNarrowed` | Invariant ServesHeld is violated | 27 / 27 | 21 | 09s |
-| `StoreWidthCountsDone` | Invariant NoSpuriousRefusal is violated | 119 / 102 | 23 | 09s |
-| `StoreWidthCountsReady` | Invariant NoSpuriousRefusal is violated | 21 / 21 | 21 | 09s |
+| `StoreProducerHolds` | Invariant ProducerNeverHeld is violated | 4 / 4 | 4 | 06s |
+| `StoreReplayApplies` | Invariant IdempotentById is violated | 40 / 40 | 23 | 09s |
+| `StoreRowStale` | Invariant ConditionsAtomic is violated | 71 / 67 | 23 | 10s |
+| `StoreSentinelHolds` | Invariant ProducerNeverHeld is violated | 5 / 5 | 5 | 06s |
+| `StoreServesUnchecked` | Invariant ServesHeld is violated | 16 / 16 | 16 | 08s |
+| `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 613 / 393 | 45 | 11s |
+| `StoreTiersNarrowed` | Invariant ServesHeld is violated | 28 / 28 | 22 | 09s |
+| `StoreWidthCountsDone` | Invariant NoSpuriousRefusal is violated | 120 / 103 | 24 | 10s |
+| `StoreWidthCountsReady` | Invariant NoSpuriousRefusal is violated | 22 / 22 | 22 | 09s |
 | `StoreWidthPerOp` | Invariant WidthKept is violated | 11 / 11 | 11 | 07s |
-| `StoreWidthStale` | Invariant WidthKept is violated | 558 / 351 | 43 | 10s |
-| `StoreWidthUnchecked` | Invariant WidthKept is violated | 33 / 33 | 22 | 09s |
-| `StoreWorkEntryUnchecked` | Invariant WidthKept is violated | 11 / 11 | 11 | 05s |
+| `StoreWidthStale` | Invariant WidthKept is violated | 560 / 353 | 45 | 11s |
+| `StoreWidthUnchecked` | Invariant WidthKept is violated | 34 / 34 | 23 | 10s |
+| `StoreWorkEntryUnchecked` | Invariant WidthKept is violated | 11 / 11 | 11 | 07s |
 | reach `NeverAddServesRefused` | violated | 17 / 17 | 17 | 08s |
-| reach `NeverAnswered` | violated | 24 / 24 | 21 | 08s |
-| reach `NeverCloseRefused` | violated | 54 / 51 | 22 | 07s |
-| reach `NeverCursorCarried` | violated | 75 / 70 | 22 | 08s |
-| reach `NeverCursorPastRefused` | violated | 29 / 29 | 21 | 08s |
-| reach `NeverCursorRefused` | violated | 81 / 75 | 22 | 09s |
-| reach `NeverHeldCarried` | violated | 81 / 76 | 22 | 09s |
-| reach `NeverHeldRefused` | violated | 75 / 71 | 22 | 09s |
+| reach `NeverAnswered` | violated | 25 / 25 | 22 | 08s |
+| reach `NeverCloseRefused` | violated | 55 / 52 | 23 | 09s |
+| reach `NeverCursorCarried` | violated | 76 / 71 | 23 | 09s |
+| reach `NeverCursorPastRefused` | violated | 30 / 30 | 22 | 08s |
+| reach `NeverCursorRefused` | violated | 82 / 76 | 23 | 09s |
+| reach `NeverHeldCarried` | violated | 82 / 77 | 23 | 09s |
+| reach `NeverHeldRefused` | violated | 76 / 72 | 23 | 10s |
 | reach `NeverInOpWidthRefused` | violated | 11 / 11 | 11 | 07s |
-| reach `NeverJudgementFenced` | violated | 55 / 52 | 22 | 08s |
-| reach `NeverNeedsReady` | violated | 10 / 10 | 10 | 07s |
-| reach `NeverNewEpochOp` | violated | 100 / 93 | 22 | 09s |
+| reach `NeverJudgementFenced` | violated | 56 / 53 | 23 | 09s |
+| reach `NeverNeedsReady` | violated | 10 / 10 | 10 | 08s |
+| reach `NeverNewEpochOp` | violated | 101 / 94 | 23 | 09s |
 | reach `NeverProducerRefused` | violated | 4 / 4 | 4 | 05s |
-| reach `NeverQueuedPastWidth` | violated | 21 / 21 | 21 | 08s |
-| reach `NeverReadyServesRefused` | violated | 16 / 16 | 16 | 08s |
-| reach `NeverRecovered` | violated | 39 / 39 | 22 | 08s |
-| reach `NeverRowFenced` | violated | 79 / 74 | 22 | 08s |
-| reach `NeverSameValueRefused` | violated | 18 / 18 | 18 | 08s |
-| reach `NeverSentinelRefused` | violated | 5 / 5 | 5 | 05s |
-| reach `NeverSlotReused` | violated | 653 / 514 | 24 | 09s |
-| reach `NeverStaleEpochRefused` | violated | 93 / 87 | 22 | 08s |
-| reach `NeverTaken` | violated | 21 / 21 | 21 | 08s |
-| reach `NeverTiersRefused` | violated | 27 / 27 | 21 | 08s |
-| reach `NeverTwoPolicies` | violated | 20 / 20 | 20 | 08s |
-| reach `NeverWidthFull` | violated | 21 / 21 | 21 | 08s |
-| reach `NeverWidthLowered` | violated | 25 / 25 | 21 | 09s |
-| reach `NeverWidthRefused` | violated | 33 / 33 | 22 | 08s |
-| reach `NeverWorkEntryRefused` | violated | 126 / 109 | 23 | 08s |
+| reach `NeverQueuedPastWidth` | violated | 22 / 22 | 22 | 09s |
+| reach `NeverReadyServesRefused` | violated | 16 / 16 | 16 | 09s |
+| reach `NeverRecovered` | violated | 40 / 40 | 23 | 09s |
+| reach `NeverRowFenced` | violated | 80 / 75 | 23 | 08s |
+| reach `NeverSameTiersRefused` | violated | 21 / 21 | 21 | 09s |
+| reach `NeverSameValueRefused` | violated | 18 / 18 | 18 | 09s |
+| reach `NeverSentinelRefused` | violated | 5 / 5 | 5 | 06s |
+| reach `NeverSlotReused` | violated | 654 / 515 | 25 | 10s |
+| reach `NeverStaleEpochRefused` | violated | 94 / 88 | 23 | 10s |
+| reach `NeverTaken` | violated | 22 / 22 | 22 | 09s |
+| reach `NeverTiersRefused` | violated | 28 / 28 | 22 | 09s |
+| reach `NeverTwoPolicies` | violated | 20 / 20 | 20 | 09s |
+| reach `NeverWidthFull` | violated | 22 / 22 | 22 | 08s |
+| reach `NeverWidthLowered` | violated | 26 / 26 | 22 | 09s |
+| reach `NeverWidthRefused` | violated | 34 / 34 | 23 | 09s |
+| reach `NeverWorkEntryRefused` | violated | 127 / 110 | 24 | 09s |
 
 The counterexamples were checked by hand with `show-all-traces.sh`. After
 setup:

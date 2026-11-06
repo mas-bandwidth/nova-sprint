@@ -49,8 +49,8 @@
 (* a plan). A cursor never moves back and never passes the log's last seq. *)
 (*                                                                         *)
 (* Small instance: 7 cards (2 producers, 1 sentinel, 4 consumers), 2 rows  *)
-(* of width 1, one judgement, one cursor, two policy versions, 34 fixed    *)
-(* ops. A setup caller runs s1..s19 in order, covering the deterministic   *)
+(* of width 1, one judgement, one cursor, two policy versions, 35 fixed    *)
+(* ops. A setup caller runs s1..s20 in order, covering the deterministic   *)
 (* rules once each; then                                                   *)
 (* the callers of one Scenario run concurrently: "deal" (cards and rows)   *)
 (* or "records" (judgements and cursors). The two never interact, and      *)
@@ -108,7 +108,7 @@ JudgementOpen(j)  == Cnd("judgeOpen",   j,    None, None, 0)
 (* A write: k the kind; c the card, judgement or cursor; r the row (and a  *)
 (* consumer's holder at add); s a state, or a producer's tier at add; n    *)
 (* needs at add, or a row's tiers; s also a policy body; w a width, held   *)
-(* as 1 or 0, or a cursor value; kd a card kind; p a consumer's producer. *)
+(* as 1 or 0, or a cursor value; kd a card kind; p a consumer's producer.  *)
 Wr(k, c, r, s, n, w, kd, p) == [k |-> k, c |-> c, r |-> r, s |-> s, n |-> n, w |-> w, kd |-> kd, p |-> p]
 AddCard(c, kd, p, n, h, t) == Wr("addCard",  c,    h,    t,    n,  0, kd,   p)
 SetState(c, s)       == Wr("setState",    c,    None, s,    {}, 0, None, None)
@@ -140,7 +140,11 @@ ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 (* not live, so nothing needs pro); s15 readies u4: refused, r2 does not   *)
 (* serve its tier; s16 adds u1 on r2: refused for the same reason. s17     *)
 (* sets r2's width to 1, which it already is: refused (no gen moves). s18  *)
-(* and s19 put policy versions 1 (a) and 2 (b).                            *)
+(* and s19 put policy versions 1 (a) and 2 (b). s20 sets r2's tiers to     *)
+(* the set it has: refused as changing nothing. Tiers and needs are TLA+   *)
+(* sets, so a reorder is the same value by construction (the store keeps   *)
+(* them sorted without repeats). An empty name is ErrInvalid before the    *)
+(* store's step, so it never reaches the model (structural).               *)
 (* Scenario "deal": a1 deals new consumer u1 to r1 and makes it working,   *)
 (* fenced on r1 up and not held; a2 marks it done (it keeps r1, the slot   *)
 (* frees). b1 adds consumer u2 ready on r1, b2 makes it working (the       *)
@@ -174,6 +178,7 @@ Ops == [
   s17 |-> Op(1, {}, <<SetRowWidth("r2", 1)>>),
   s18 |-> Op(1, {}, <<PutPolicy("a")>>),
   s19 |-> Op(1, {}, <<PutPolicy("b")>>),
+  s20 |-> Op(1, {}, <<SetRowTiers("r2", {"flash"})>>),
   a1  |-> Op(1, {CardAbsent("u1"), RowIs("r1", "up"), RowHeld("r1", FALSE)},
               <<AddCard("u1", "work", "p2", {}, "r1", None), SetState("u1", "working")>>),
   a2  |-> Op(1, {CardState("u1", "working")}, <<SetState("u1", "done")>>),
@@ -193,7 +198,7 @@ Ops == [
 ]
 OpIds == DOMAIN Ops
 SetupSeq == <<"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12",
-              "s13", "s14", "s15", "s16", "s17", "s18", "s19">>
+              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20">>
 Setup == {SetupSeq[i] : i \in DOMAIN SetupSeq}
 Active == Setup \cup (IF Scenario = "deal"
                       THEN {"a1", "a2", "b1", "b2", "e1", "g1", "v1", "k1", "k2"}
@@ -785,5 +790,7 @@ NeverCursorCarried    == ~(epoch = 2 /\ cursors["c1"] > 0)
 NeverSameValueRefused == ~RuleRefused("s17")
 \* s19 adds a second policy version beside the first
 NeverTwoPolicies      == policies[2] = Absent
+\* s20 sets r2's tiers to the set it already serves: refused as changing nothing
+NeverSameTiersRefused == ~RuleRefused("s20")
 
 =============================================================================

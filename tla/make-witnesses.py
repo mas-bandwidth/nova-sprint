@@ -47,6 +47,7 @@ REACH = {
     "NeverTiersRefused": ("deal", "dropping a tier a live consumer needs is refused (v1)"),
     "NeverSameValueRefused": ("deal", "a set write that changes nothing is refused (s17)"),
     "NeverTwoPolicies": ("deal", "a second policy version is put beside the first (s19)"),
+    "NeverSameTiersRefused": ("deal", "a tiers write equal to the row's set is refused (s20)"),
     "NeverRowFenced": ("deal", "a row write is refused on a stale RowGen (e1)"),
     "NeverSlotReused": ("deal", "a done consumer's slot is reused while it keeps its holder (b2)"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
