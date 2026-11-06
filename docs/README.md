@@ -14,7 +14,7 @@ are all required.
 1. [The store](LAYER-1-STORE.md): PostgreSQL, one transaction per operation, every operation logged.
 2. [The card machine](LAYER-2-CARD-MACHINE.md): the states of one card and the legal moves between them.
 3. The steps: one legal move each, a pure function from snapshot and request to plan or refusal.
-4. The edges: nova-bus, git and GitHub, the worker runner.
+4. The edges: nova-bus, git and GitHub, and the worker runner: a service per bench in the shape nova-swarm already proved (a slot from nova-reserve, nova-sandbox, a worktree per card), dealt over the bus (Glenn 2026-11-06: "you need actual runners ... that was pretty reliable already").
 5. Policy: Starlark scripts, versioned in the store, changed during a sprint.
 6. Run, worker, verbs, the dashboard, and setup: `nova-sprint up` ships the setup in [SETUP.md](SETUP.md) as part of the tool.
 
