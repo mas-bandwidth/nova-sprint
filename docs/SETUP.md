@@ -58,3 +58,10 @@ runs are owed before v2 is done: a cold AI's setup on a fresh fleet from the
 docs alone (above), and our own real sprint set up with v2 through this same
 walkthrough, run to completion with the dashboard live, by Rowan and the kin as
 rows.
+
+nova-sprint and nova-tools release separately (Glenn, 2026-11-06: "We no longer
+pin nova-sprint and nova-tools together ... we'll need a pin to the nova-tools
+version the nova-sprint release wants"). The binary carries the minimum
+nova-tools version it needs; `nova-sprint check` reads the installed tools'
+versions (`nova-bus -h`, `nova-fleet -h`, and the rest) and refuses below the
+pin, naming the `nova-fleet up` that brings them up.
