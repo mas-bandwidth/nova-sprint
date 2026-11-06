@@ -1,6 +1,6 @@
 # Enforcement Ledger — Layers 1 and 2
 
-Nothing ceiling: 18
+Nothing ceiling: 20
 
 This ledger records every guarantee, rule, refusal, card-contract clause, and `PLACED` v1 lesson claimed by Layer 1 (`docs/LAYER-1-STORE.md`) and Layer 2 (`docs/LAYER-2-CARD-MACHINE.md`), together with the concrete artifacts in the tree that hold it today:
 
@@ -102,6 +102,8 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 | L2-U15 | `LAYER-2-CARD-MACHINE.md` Cold Read 2 Ruling 10 | `Withdraw` refuses leaving a working producer unreleased when the producer card is omitted/mismatched and refuses `Withdraw{head}` equal to `base_sha` in `card/` | `nothing` |
 | L2-U16 | `LAYER-2-CARD-MACHINE.md` Cold Read 2 Ruling 11 | `UnholdStream{reason}` is an event in `card/` | `nothing` |
 | L2-U17 | `LAYER-2-CARD-MACHINE.md` Cold Read 2 Ruling 12 & Cold Read 3 | `WaiveRed{reason}` moves a producer with `red = true` that a `Red` sent back to `review` on to `merging` without a new read when a done ok read of the previous review at the same head exists in `card/` | `nothing` |
+| L2-U18 | `LAYER-2-CARD-MACHINE.md` Check 1 (`LESSONS 2.5`) | Soft `after` never holds a card when its target is not queued in `merging` (`AfterNeverHolds`, moved from `CardMachine.tla` to Layer 3's landing step) | `nothing` |
+| L2-U19 | `LAYER-2-CARD-MACHINE.md` Check 1 (`LESSONS 2.5`) | Soft `after` order is kept among cards queued in `merging` (`AfterKept`, moved from `CardMachine.tla` to Layer 3's landing step) | `nothing` |
 
 ---
 
@@ -117,12 +119,12 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 
 ## Summary Counts
 
-Total rules audited: 68
+Total rules audited: 70
 
 - held by a model: 38
 - held by a test: 50
 - held by the schema: 16
-- held by nothing: 18
+- held by nothing: 20
 
 ---
 
@@ -146,3 +148,5 @@ Total rules audited: 68
 - `L2-U15`: Update `Withdraw` in `card/move.go:957` to refuse `e.Head == c.BaseSHA` when `e.Head != ""` and to require a matching working producer (`p.ID == c.Of`) when withdrawing a live `work` consumer, tested by `test TestWithdrawBaseSHAAndUnreleasedWorkRefused` in `card/move_test.go`.
 - `L2-U16`: Add `UnholdStream{Reason string}` event in `card/card.go` and `card/move.go` (fenced on stream held, setting `SetStreamHeld{Held: false}`) and add `test TestUnholdStream` in `card/move_test.go`.
 - `L2-U17`: Add `WaiveRed{Reason string}` event in `card/card.go` and `card/move.go` (fenced on `CardRed{Card: p.ID, Red: true}`, moving `review -> merging` when a prior review has a `done` `ok` read at `p.Head` and current review has no live consumer) and add `test TestProducerTable/WaiveRed` in `card/move_test.go`.
+- `L2-U18`: layer 3 `Steps.tla` invariant (`AfterNeverHolds`: a landing never holds on an unqueued soft `after` target).
+- `L2-U19`: layer 3 `Steps.tla` invariant (`AfterKept`: soft `after` order is kept among cards queued to land).
