@@ -88,20 +88,47 @@ func connect(t *testing.T, dsn string) *pgx.Conn {
 	return c
 }
 
-func TestFunctionalMigrateTwice(t *testing.T) {
-	t.Parallel()
+func pgHarness(t *testing.T) (*harness, *PG, string) {
 	dsn := startPG(t)
 	p := openPG(t, dsn)
+	return &harness{t: t, s: p, ctx: context.Background(), epoch: 1}, p, dsn
+}
+
+func TestFunctionalMigrateTwice(t *testing.T) {
+	t.Parallel()
+	_, p, dsn := pgHarness(t)
 	require.NoError(t, p.Migrate(context.Background()), "a second Migrate is a no-op")
 	c := connect(t, dsn)
-	var rows, tables int
-	require.NoError(t, c.QueryRow(context.Background(), "SELECT count(*) FROM sprint.epoch").Scan(&rows))
+	var rows, tables, version int
+	require.NoError(t, c.QueryRow(context.Background(), "SELECT count(*), (SELECT schema FROM sprint.meta) FROM sprint.epoch").Scan(&rows, &version))
 	assert.Equal(t, 1, rows)
+	assert.Equal(t, SchemaVersion, version)
 	require.NoError(t, c.QueryRow(context.Background(), "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'sprint'").Scan(&tables))
-	assert.Equal(t, 6, tables)
+	assert.Equal(t, 7, tables)
 	s, err := p.Snapshot(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, emptySnapshot(0), s)
+	assert.Equal(t, emptySnapshot(1), s)
+}
+
+func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
+	t.Parallel()
+	_, p, dsn := pgHarness(t)
+	c := connect(t, dsn)
+	_, err := c.Exec(context.Background(), "UPDATE sprint.meta SET schema = 7")
+	require.NoError(t, err)
+	err = p.Migrate(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 1", err.Error())
+
+	old := startPG(t)
+	_, err = connect(t, old).Exec(context.Background(), "CREATE SCHEMA sprint; CREATE TABLE sprint.epoch (n integer)")
+	require.NoError(t, err)
+	q, err := Open(context.Background(), old, "")
+	require.NoError(t, err)
+	defer q.Close()
+	err = q.Migrate(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema version 0, this binary knows schema version 1", "a store from before sprint.meta")
 }
 
 func TestFunctionalConformance(t *testing.T) {
@@ -120,43 +147,92 @@ func TestFunctionalConformance(t *testing.T) {
 	})
 }
 
-func TestFunctionalConcurrentApplies(t *testing.T) {
+// race applies two ops at once and returns their receipts in order.
+func race(t *testing.T, s Store, a, b Op) (Receipt, Receipt) {
+	got := make([]Receipt, 2)
+	var wg sync.WaitGroup
+	for i, o := range []Op{a, b} {
+		wg.Go(func() {
+			r, err := s.Apply(context.Background(), o)
+			assert.NoError(t, err)
+			got[i] = r
+		})
+	}
+	wg.Wait()
+	return got[0], got[1]
+}
+
+func TestFunctionalConcurrentTakes(t *testing.T) {
 	t.Parallel()
-	p := openPG(t, startPG(t))
-	h := &harness{t: t, s: p, ctx: context.Background()}
+	h, p, _ := pgHarness(t)
 	h.seed()
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
-		h.ok(h.op("add", nil, PutCard{Card{ID: id, Stream: "s1", State: "ready"}}))
-		ops := []Op{
-			h.op("take", []Expect{CardIs{id, "ready", 0}, CardHolder{id, ""}}, SetCardState{id, "working"}, SetCardHolder{id, "w1"}),
-			h.op("take", []Expect{CardIs{id, "ready", 0}, CardHolder{id, ""}}, SetCardState{id, "working"}, SetCardHolder{id, "w1"}),
+		h.ok(h.op("add", nil, PutCard{ID: id, Stream: "s1"}))
+		take := func() Op {
+			return h.op("take", []Expect{CardGen{id, 0}, CardHolder{id, ""}}, SetCardState{id, "working"}, SetCardHolder{id, "w1"})
 		}
-		got := make([]Receipt, 2)
-		var wg sync.WaitGroup
-		for j := range ops {
-			wg.Go(func() {
-				r, err := p.Apply(h.ctx, ops[j])
-				assert.NoError(t, err)
-				got[j] = r
-			})
-		}
-		wg.Wait()
-		require.NotEqual(t, got[0].Accepted, got[1].Accepted, "exactly one of two takes of %s is accepted", id)
-		for _, r := range got {
+		a, b := race(t, p, take(), take())
+		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one of two takes of %s is accepted", id)
+		for _, r := range []Receipt{a, b} {
 			if !r.Accepted {
-				assert.Equal(t, "card "+id+" is at gen 1, expected gen 0", r.Reason)
+				assert.Equal(t, "card "+id+" is at gen 2, expected gen 0", r.Reason)
 			}
 		}
-		assert.Equal(t, 1, h.snap().Cards[id].Gen)
+		assert.Equal(t, 2, h.snap().Cards[id].Gen)
 	}
 }
 
-// blockApplies holds the epoch lock in a transaction of its own, starts apply,
-// and waits until that Apply is blocked inside its transaction. It returns the
-// Apply's backend pid, the blocker (roll it back to release) and a connection
-// to act from (pg_stat_activity is read outside the blocker: it is cached for
-// the length of a transaction).
+// Two deals on a width-1 row: the holders are counted inside the
+// transaction, so one is accepted and one refused.
+func TestFunctionalRowUnderRace(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	for i := range 10 {
+		row := fmt.Sprintf("r%d", i)
+		h.ok(h.op("row", nil, PutRow{row, "worker", 1, ""}, SetRowState{row, "up"}, PutCard{ID: row + "a", Stream: "s1"}, PutCard{ID: row + "b", Stream: "s1"}))
+		deal := func(card string) Op {
+			return h.op("deal", []Expect{RowIs{row, "up"}, RowUnder{row, 1}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
+		}
+		a, b := race(t, p, deal(row+"a"), deal(row+"b"))
+		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
+		for _, r := range []Receipt{a, b} {
+			if !r.Accepted {
+				assert.Equal(t, "row "+row+" holds 1 cards, expected fewer than 1", r.Reason)
+			}
+		}
+	}
+}
+
+// A deal fenced on NeedsLanded races a write that adds an unlanded need: the
+// needs are read inside the transaction, so the deal is accepted only when it
+// ran first, and is refused naming the new need otherwise.
+func TestFunctionalNeedsLandedRace(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	for i := range 10 {
+		id, gate := fmt.Sprintf("n%d", i), fmt.Sprintf("g%d", i)
+		h.ok(h.op("add", nil, PutCard{ID: gate, Stream: "s1"}, PutCard{ID: id, Stream: "s1", Needs: []string{"c0"}}))
+		deal := h.op("deal", []Expect{NeedsLanded{id}}, SetCardState{id, "ready"})
+		block := h.op("block", nil, SetCardNeeds{id, []string{"c0", gate}})
+		d, b := race(t, p, deal, block)
+		require.True(t, b.Accepted)
+		if d.Accepted {
+			assert.Less(t, d.Seq, b.Seq, "an accepted deal ran before the need was added")
+		} else {
+			assert.Greater(t, d.Seq, b.Seq)
+			assert.Equal(t, "need "+gate+" of card "+id+" is waiting, not landed", d.Reason)
+		}
+	}
+}
+
+// blockApplies holds the writer lock in a transaction of its own, starts
+// apply, and waits until that Apply is blocked inside its transaction. It
+// returns the Apply's backend pid, the blocker (roll it back to release) and
+// a connection to act from (pg_stat_activity is cached for the length of a
+// transaction, so it is read outside the blocker).
 func blockApplies(t *testing.T, dsn string, apply func()) (int32, pgx.Tx, *pgx.Conn) {
 	t.Helper()
 	tx, err := connect(t, dsn).Begin(context.Background())
@@ -185,11 +261,9 @@ func TestFunctionalUnknownThenReplay(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			dsn := startPG(t)
-			p := openPG(t, dsn)
-			h := &harness{t: t, s: p, ctx: context.Background()}
+			h, p, dsn := pgHarness(t)
 			h.seed()
-			o := h.op("take", []Expect{CardIs{"c1", "ready", 0}}, SetCardState{"c1", "working"})
+			o := h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
@@ -212,73 +286,88 @@ func TestFunctionalUnknownThenReplay(t *testing.T) {
 	}
 }
 
+// A constraint the rules do not know about is an engine defect: an error
+// naming it, not a refusal and not unknown, and nothing is logged.
+func TestFunctionalConstraintIsDefect(t *testing.T) {
+	t.Parallel()
+	h, p, dsn := pgHarness(t)
+	h.seed()
+	_, err := connect(t, dsn).Exec(context.Background(), "ALTER TABLE sprint.cards ADD CONSTRAINT test_no_x CHECK (brief <> 'x')")
+	require.NoError(t, err)
+	before := h.snap()
+	o := h.op("add", nil, PutStream{Name: "s2"}, PutCard{ID: "c9", Stream: "s1", Brief: "x"})
+	_, err = p.Apply(h.ctx, o)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "constraint test_no_x")
+	assert.NotErrorIs(t, err, ErrUnknown)
+	assert.NotErrorIs(t, err, ErrInvalid)
+	_, ok, err := p.Replay(h.ctx, o.ID)
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Equal(t, before, h.snap())
+}
+
 func TestFunctionalRebuildFromLog(t *testing.T) {
 	t.Parallel()
-	p := openPG(t, startPG(t))
-	h := &harness{t: t, s: p, ctx: context.Background()}
+	h, _, _ := pgHarness(t)
 	h.seed()
 	for i := range 20 {
 		id := fmt.Sprintf("k%d", i)
-		h.ok(h.op("add", []Expect{CardAbsent{id}}, PutCard{Card{ID: id, Stream: "s1", State: "waiting", Score: i, Needs: []string{"c1"}}}))
-		h.ok(h.op("ready", []Expect{CardIs{id, "waiting", 0}}, SetCardState{id, "ready"}))
-		h.refused(h.op("ready", []Expect{CardIs{id, "waiting", 0}}, SetCardState{id, "ready"}), "card "+id+" is at gen 1, expected gen 0")
+		h.ok(h.op("add", []Expect{CardAbsent{id}}, PutCard{ID: id, Stream: "s1", Score: i, Needs: []string{"c1"}}))
+		h.ok(h.op("ready", []Expect{CardGen{id, 0}}, SetCardState{id, "ready"}))
+		h.refused(h.op("ready", []Expect{CardGen{id, 0}}, SetCardState{id, "ready"}), "card "+id+" is at gen 1, expected gen 0")
 		if i == 10 {
-			_, err := p.Clear(h.ctx, h.op("clear", nil))
-			require.NoError(t, err)
-			h.seed()
+			h.clear()
+			h.ok(h.op("seed", nil, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetRowState{"w1", "up"}))
 		}
 	}
-	h.ok(h.op("land", nil, SetCardState{"k15", "landed"}, SetCardHeadPR{"k15", "deadbeef", 7}, SetRowState{"w1", "down", t0, 2}))
-	events := h.events()
+	h.ok(h.op("land", nil, SetCardState{"k15", "landed"}, SetCardHead{"k15", "deadbeef"}, SetCardPR{"k15", 7}, SetRowFlaps{"w1", 2}))
 	snap := h.snap()
-	assert.Equal(t, snap, Rebuild(events))
-	var current []Event
-	for _, e := range events {
-		if e.Epoch == snap.Epoch {
-			current = append(current, e)
-		}
-	}
-	assert.Equal(t, snap, Rebuild(current), "the current epoch's events alone rebuild it")
+	assert.Equal(t, snap, Rebuild(h.events()))
 	assert.Len(t, snap.Cards, 10)
+	assert.Equal(t, 2, snap.Epoch)
+	assert.Equal(t, "up", snap.Rows["w1"].State)
 }
 
 func TestFunctionalRefusalRow(t *testing.T) {
 	t.Parallel()
-	dsn := startPG(t)
-	p := openPG(t, dsn)
-	h := &harness{t: t, s: p, ctx: context.Background()}
+	h, _, dsn := pgHarness(t)
 	h.seed()
-	o := h.op("take", []Expect{CardIs{"c1", "working", 0}}, SetCardState{"c1", "review"})
-	h.refused(o, "card c1 is ready, expected working")
-	c := connect(t, dsn)
+	o := h.op("take", []Expect{CardState{"c1", "working"}}, SetCardState{"c1", "review"})
+	h.refused(o, "card c1 is waiting, expected working")
 	var accepted, noBefore, noAfter bool
 	var reason, inReceipt string
-	require.NoError(t, c.QueryRow(context.Background(), "SELECT accepted, reason, before IS NULL, after IS NULL, receipt->>'reason' FROM sprint.events WHERE op = $1", o.ID).
-		Scan(&accepted, &reason, &noBefore, &noAfter, &inReceipt))
+	var epoch int
+	require.NoError(t, connect(t, dsn).QueryRow(context.Background(), "SELECT accepted, reason, before IS NULL, after IS NULL, receipt->>'reason', epoch FROM sprint.events WHERE op = $1", o.ID).
+		Scan(&accepted, &reason, &noBefore, &noAfter, &inReceipt, &epoch))
 	assert.False(t, accepted)
-	assert.Equal(t, "card c1 is ready, expected working", reason)
+	assert.Equal(t, "card c1 is waiting, expected working", reason)
 	assert.Equal(t, reason, inReceipt)
 	assert.True(t, noBefore)
 	assert.True(t, noAfter)
+	assert.Equal(t, 1, epoch)
 }
 
 // Guarantee 4 is the schema's, not Go's: SQL that skips the store is refused.
 func TestFunctionalSchemaEnforces(t *testing.T) {
 	t.Parallel()
-	dsn := startPG(t)
-	p := openPG(t, dsn)
-	h := &harness{t: t, s: p, ctx: context.Background()}
+	h, _, dsn := pgHarness(t)
 	h.seed()
 	c := connect(t, dsn)
 	for q, constraint := range map[string]string{
-		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                                                                                          "cards_state_check",
-		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'c1'":                                                                                             "cards_epoch_holder_fkey",
-		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c2', 's9', 'ready', 0)":                                                               "cards_epoch_stream_fkey",
-		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c2', 's1', 'ready', 1)":                                                               "cards_epoch_stream_fkey",
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 0)":                                                                "rows_kind_check",
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 0)":                                                              "rows_state_check",
-		"INSERT INTO sprint.epoch (n) VALUES (5)":                                                                                                           "epoch_one_row",
-		"INSERT INTO sprint.events (op, actor, kind, accepted, receipt, at, epoch) SELECT op, actor, kind, accepted, receipt, at, epoch FROM sprint.events": "events_op_key",
+		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                             "cards_state_check",
+		"UPDATE sprint.cards SET state = NULL WHERE id = 'c1'":                                 `"state"`,
+		"UPDATE sprint.cards SET branch = NULL WHERE id = 'c1'":                                `"branch"`,
+		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'c1'":                                "cards_epoch_holder_fkey",
+		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's9', 'ready', 1)":  "cards_epoch_stream_fkey",
+		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 2)":  "cards_epoch_stream_fkey",
+		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":   "rows_kind_check",
+		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)": "rows_state_check",
+		"UPDATE sprint.rows SET session = NULL":                                                `"session"`,
+		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                       "epoch_id_check",
+		"INSERT INTO sprint.meta (id, schema) VALUES (2, 1)":                                   "meta_id_check",
+		"INSERT INTO sprint.events (seq, op, actor, kind, accepted, receipt, at, epoch) SELECT 99, op, actor, kind, accepted, receipt, at, epoch FROM sprint.events": "events_op_key",
+		"INSERT INTO sprint.policy (kind, name, body, active, actor, at) VALUES ('data', 'a', '', true, 'x', now()), ('data', 'b', '', true, 'x', now())":            "policy_one_active",
 	} {
 		_, err := c.Exec(context.Background(), q)
 		require.Error(t, err, q)

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -17,14 +16,14 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
+// SchemaVersion is the version of schema.sql, kept in sprint.meta.
+const SchemaVersion = 1
+
 // Schema is the schema file the binary carries; Migrate applies it.
 func Schema() string { return schemaSQL }
 
 // PG is the Store in PostgreSQL, schema sprint.
 type PG struct{ pool *pgxpool.Pool }
-
-// maxTries bounds the retries of a serialization failure inside Apply and Clear.
-const maxTries = 8
 
 // Open connects to the store at dsn (NOVA_PG_DSN, no password in it) with
 // password (NOVA_PG_PASSWORD, may be empty). It never quotes the dsn back.
@@ -50,104 +49,113 @@ func Open(ctx context.Context, dsn, password string) (*PG, error) {
 // Close closes the connection pool.
 func (p *PG) Close() { p.pool.Close() }
 
-// Migrate applies schema.sql; applying it twice is a no-op.
+// Migrate applies schema.sql to an empty store or one at SchemaVersion, and
+// refuses a store at any other version, naming both. Twice is a no-op.
 func (p *PG) Migrate(ctx context.Context) error {
-	if _, err := p.pool.Exec(ctx, schemaSQL); err != nil {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }() // ignored: a no-op after the commit
+	var meta, sprint bool
+	if err := tx.QueryRow(ctx, "SELECT to_regclass('sprint.meta') IS NOT NULL, to_regclass('sprint.epoch') IS NOT NULL").Scan(&meta, &sprint); err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	if meta || sprint {
+		v := 0 // a sprint schema without sprint.meta predates versions
+		if meta {
+			err := tx.QueryRow(ctx, "SELECT schema FROM sprint.meta WHERE id = 1").Scan(&v)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("store: migrate: %w", err)
+			}
+		}
+		if v != SchemaVersion {
+			return fmt.Errorf("store: migrate: the store is at schema version %d, this binary knows schema version %d", v, SchemaVersion)
+		}
+	}
+	if _, err := tx.Exec(ctx, schemaSQL); err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	return nil
 }
 
-// notSent marks an error from before any write could have reached the server.
-type notSent struct{ error }
+// defect is a constraint violation during the writes: the rules let through
+// something the schema refuses. It is an engine bug, not a refusal and not
+// unknown: the transaction is rolled back.
+type defect struct{ error }
 
-func (e notSent) Unwrap() error { return e.error }
+func (d defect) Unwrap() error { return d.error }
 
-func retryable(err error) bool {
-	var pe *pgconn.PgError
-	if !errors.As(err, &pe) {
-		return false
-	}
-	return pe.Code == "40001" || pe.Code == "40P01" || (pe.Code == "23505" && strings.HasPrefix(pe.ConstraintName, "events_"))
-}
-
-func backoff(ctx context.Context, try int) error {
-	t := time.NewTimer(time.Duration(try*try) * 5 * time.Millisecond)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
-
-// serial runs fn in one SERIALIZABLE transaction, retrying a serialization
-// failure; the op id makes a retry safe. Every failure after the transaction
-// began is ErrUnknown: the caller replays.
-func (p *PG) serial(ctx context.Context, fn func(pgx.Tx) error) error {
-	for try := 1; ; try++ {
-		err := p.once(ctx, fn)
-		var ns notSent
-		switch {
-		case err == nil:
-			return nil
-		case errors.As(err, &ns):
-			return fmt.Errorf("store: begin: %w", ns.error)
-		case !retryable(err) || try == maxTries:
-			return fmt.Errorf("%w: %w", ErrUnknown, err)
-		}
-		if err := backoff(ctx, try); err != nil {
-			return fmt.Errorf("%w: %w", ErrUnknown, err)
-		}
-	}
-}
-
-func (p *PG) once(ctx context.Context, fn func(pgx.Tx) error) (err error) {
-	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+// write runs fn in one READ COMMITTED transaction. fn takes the writer lock
+// first, so writers run one at a time and nothing needs a retry. Every failure
+// after the transaction began is ErrUnknown, except a defect.
+func (p *PG) write(ctx context.Context, fn func(pgx.Tx) error) error {
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
-		return notSent{err}
+		return fmt.Errorf("store: begin: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback(context.WithoutCancel(ctx)) // ignored: the error that got us here is the one returned
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback(context.WithoutCancel(ctx)) // ignored: the error that got us here is the one returned
+		var d defect
+		if errors.As(err, &d) {
+			return d
 		}
-	}()
-	if err = fn(tx); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrUnknown, err)
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("%w: %w", ErrUnknown, err)
+	}
+	return nil
 }
 
-// lockEpoch serializes every Apply and Clear and reads the epoch. LOCK TABLE
-// takes no snapshot, so everything after it sees every op committed before it:
-// the replay check, the conditions and the next seq are never stale.
+// lockEpoch takes the writer lock, held to commit, and reads the epoch.
 func lockEpoch(ctx context.Context, tx pgx.Tx) (int, error) {
 	if _, err := tx.Exec(ctx, "LOCK TABLE sprint.epoch IN SHARE ROW EXCLUSIVE MODE"); err != nil {
 		return 0, err
 	}
 	var n int
-	err := tx.QueryRow(ctx, "SELECT n FROM sprint.epoch").Scan(&n)
+	err := tx.QueryRow(ctx, "SELECT n FROM sprint.epoch WHERE id = 1").Scan(&n)
 	return n, err
 }
 
-// Apply runs op in one SERIALIZABLE transaction: the stored receipt when the
-// op id is known; else the conditions, the writes and the event row.
+// Apply runs op in one transaction: the stored receipt when the op id is
+// known; else the epoch, the conditions, the writes and the event row.
 func (p *PG) Apply(ctx context.Context, op Op) (Receipt, error) {
-	if op.ID == "" {
-		return Receipt{}, errNoID
+	if err := check(op); err != nil {
+		return Receipt{}, err
 	}
 	op = normalize(op)
+	return p.do(ctx, op, func(t *pgTx) (string, *State, *State, error) { return run(t, t.epoch, op) })
+}
+
+// Clear opens a new epoch, carrying every row into it, in one transaction.
+func (p *PG) Clear(ctx context.Context, op Op) (Receipt, error) {
+	op, err := checkClear(op)
+	if err != nil {
+		return Receipt{}, err
+	}
+	op = normalize(op)
+	return p.do(ctx, op, func(t *pgTx) (string, *State, *State, error) {
+		r, after, err := runClear(t, t.epoch, op)
+		return r, nil, after, err
+	})
+}
+
+// do is the protocol Apply and Clear share.
+func (p *PG) do(ctx context.Context, op Op, rules func(*pgTx) (string, *State, *State, error)) (Receipt, error) {
 	var r Receipt
-	err := p.serial(ctx, func(tx pgx.Tx) error {
+	err := p.write(ctx, func(tx pgx.Tx) error {
 		var err error
-		r, err = applyTx(ctx, tx, op)
+		r, err = doTx(ctx, tx, op, rules)
 		return err
 	})
 	return r, err
 }
 
-func applyTx(ctx context.Context, tx pgx.Tx, op Op) (Receipt, error) {
+func doTx(ctx context.Context, tx pgx.Tx, op Op, rules func(*pgTx) (string, *State, *State, error)) (Receipt, error) {
 	epoch, err := lockEpoch(ctx, tx)
 	if err != nil {
 		return Receipt{}, err
@@ -158,10 +166,10 @@ func applyTx(ctx context.Context, tx pgx.Tx, op Op) (Receipt, error) {
 	if _, err := tx.Exec(ctx, "SAVEPOINT writes"); err != nil {
 		return Receipt{}, err
 	}
-	reason, before, after, err := run(&pgTx{ctx: ctx, tx: tx, epoch: epoch}, epoch, op)
+	reason, before, after, err := rules(&pgTx{ctx: ctx, tx: tx, epoch: epoch})
 	var pe *pgconn.PgError
-	if errors.As(err, &pe) && strings.HasPrefix(pe.Code, "23") { // the schema refused what the rules let through
-		reason, err = "the store refused the write: "+pe.ConstraintName, nil
+	if errors.As(err, &pe) && strings.HasPrefix(pe.Code, "23") {
+		return Receipt{}, defect{fmt.Errorf("store: engine defect: op %s broke constraint %s: %w", op.ID, pe.ConstraintName, err)}
 	}
 	if err != nil {
 		return Receipt{}, err
@@ -175,17 +183,15 @@ func applyTx(ctx context.Context, tx pgx.Tx, op Op) (Receipt, error) {
 	return logTx(ctx, tx, op, reason, before, after, epoch)
 }
 
-// logTx appends the event of op and returns its receipt. The seq is the next
-// one under the epoch lock, so seq order is commit order with no gaps; the
-// bigserial's sequence is moved up to it so its default never collides.
+// logTx appends the event of op, logged in epoch, and returns its receipt.
+// Under the writer lock the next seq is the last plus one.
 func logTx(ctx context.Context, tx pgx.Tx, op Op, reason string, before, after *State, epoch int) (Receipt, error) {
 	var seq int64
-	err := tx.QueryRow(ctx, "SELECT setval(pg_get_serial_sequence('sprint.events', 'seq'), coalesce(max(seq), 0) + 1) FROM sprint.events").Scan(&seq)
-	if err != nil {
+	if err := tx.QueryRow(ctx, "SELECT coalesce(max(seq), 0) + 1 FROM sprint.events").Scan(&seq); err != nil {
 		return Receipt{}, err
 	}
-	r := receipt(op, reason, after, seq, epoch)
-	_, err = tx.Exec(ctx, `INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch)
+	r := receipt(op, reason, after, seq)
+	_, err := tx.Exec(ctx, `INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		seq, op.ID, op.Actor, op.Kind, reason == "", reason, jsonArg(before), jsonArg(after), string(encode(r)), op.At, epoch)
 	return r, err
@@ -198,9 +204,11 @@ func jsonArg(s *State) any {
 	return string(encode(s))
 }
 
-func replayTx(ctx context.Context, q interface {
+type queryRower interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
-}, opID string) (Receipt, bool, error) {
+}
+
+func replayTx(ctx context.Context, q queryRower, opID string) (Receipt, bool, error) {
 	var b []byte
 	err := q.QueryRow(ctx, "SELECT receipt FROM sprint.events WHERE op = $1", opID).Scan(&b)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -222,28 +230,14 @@ func (p *PG) Replay(ctx context.Context, opID string) (Receipt, bool, error) {
 	return r, ok, nil
 }
 
-// Clear increments the epoch and logs itself, in one transaction.
-func (p *PG) Clear(ctx context.Context, op Op) (int, error) {
-	if err := clearable(op); err != nil {
-		return 0, err
+// Policy returns one policy version; ErrNotFound when there is none.
+func (p *PG) Policy(ctx context.Context, version int) (PolicyVersion, error) {
+	v, ok, err := one(p.pool.QueryRow(ctx, "SELECT "+policyCols+" FROM sprint.policy WHERE version = $1", version), scanPolicy)
+	switch {
+	case err != nil:
+		return v, fmt.Errorf("store: policy: %w", err)
+	case !ok:
+		return v, fmt.Errorf("%w: policy version %d", ErrNotFound, version)
 	}
-	op = clearOp(normalize(op))
-	var epoch int
-	err := p.serial(ctx, func(tx pgx.Tx) error {
-		n, err := lockEpoch(ctx, tx)
-		if err != nil {
-			return err
-		}
-		if r, ok, err := replayTx(ctx, tx, op.ID); err != nil || ok {
-			epoch = r.Epoch
-			return err
-		}
-		if _, err := tx.Exec(ctx, "UPDATE sprint.epoch SET n = n + 1"); err != nil {
-			return err
-		}
-		epoch = n + 1
-		_, err = logTx(ctx, tx, op, "", nil, &State{Epoch: epoch}, epoch)
-		return err
-	})
-	return epoch, err
+	return v, nil
 }

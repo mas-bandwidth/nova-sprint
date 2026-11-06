@@ -5,15 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
 const (
 	streamCols = "name, repo, base, held, pos"
-	cardCols   = "id, stream, state, gen, score, needs, coalesce(holder, ''), head, pr, brief, reason"
-	rowCols    = "name, kind, width, state, seen, flaps"
+	cardCols   = "id, stream, state, gen, attempt, score, needs, coalesce(holder, ''), branch, head, pr, brief, reason"
+	rowCols    = "name, kind, width, state, session, flaps"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
 
@@ -25,23 +24,19 @@ func scanStream(r pgx.Row) (Stream, error) {
 
 func scanCard(r pgx.Row) (Card, error) {
 	var c Card
-	err := r.Scan(&c.ID, &c.Stream, &c.State, &c.Gen, &c.Score, &c.Needs, &c.Holder, &c.Head, &c.PR, &c.Brief, &c.Reason)
+	err := r.Scan(&c.ID, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason)
 	c.Needs = needs(c.Needs)
 	return c, err
 }
 
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
-	var seen *time.Time
-	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &seen, &w.Flaps)
-	if seen != nil {
-		w.Seen = at(*seen)
-	}
+	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps)
 	return w, err
 }
 
-func scanPolicy(r pgx.Row) (Policy, error) {
-	var p Policy
+func scanPolicy(r pgx.Row) (PolicyVersion, error) {
+	var p PolicyVersion
 	err := r.Scan(&p.Version, &p.Kind, &p.Name, &p.Body, &p.Active, &p.Actor, &p.At)
 	p.At = at(p.At)
 	return p, err
@@ -90,7 +85,8 @@ func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) {
 
 func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	var s Snapshot
-	err := tx.QueryRow(ctx, "SELECT n, (SELECT coalesce(max(version), 0) FROM sprint.policy WHERE active) FROM sprint.epoch").Scan(&s.Epoch, &s.Policy)
+	err := tx.QueryRow(ctx, `SELECT n, (SELECT coalesce(max(version), 0) FROM sprint.policy WHERE active),
+		(SELECT coalesce(max(seq), 0) FROM sprint.events) FROM sprint.epoch WHERE id = 1`).Scan(&s.Epoch, &s.Policy, &s.Seq)
 	if err != nil {
 		return s, err
 	}
@@ -104,14 +100,11 @@ func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	return s, err
 }
 
-// Events returns up to max events after afterSeq, in seq order.
+// Events returns up to max (capped at MaxEvents) events after afterSeq, in
+// seq order.
 func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, error) {
-	var limit any
-	if max > 0 {
-		limit = max
-	}
 	rows, err := p.pool.Query(ctx, `SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch
-		FROM sprint.events WHERE seq > $1 ORDER BY seq LIMIT $2`, afterSeq, limit)
+		FROM sprint.events WHERE seq > $1 ORDER BY seq LIMIT $2`, afterSeq, capEvents(max))
 	if err != nil {
 		return nil, fmt.Errorf("store: events: %w", err)
 	}
@@ -135,7 +128,8 @@ func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, erro
 	return out, nil
 }
 
-// pgTx is the txn of one PostgreSQL transaction: every read locks its row.
+// pgTx is the txn of one PostgreSQL transaction holding the writer lock: at
+// READ COMMITTED every read sees every op committed before this one.
 type pgTx struct {
 	ctx   context.Context
 	tx    pgx.Tx
@@ -143,32 +137,61 @@ type pgTx struct {
 }
 
 func (t *pgTx) card(id string) (Card, bool, error) {
-	return one(t.tx.QueryRow(t.ctx, "SELECT "+cardCols+" FROM sprint.cards WHERE epoch = $1 AND id = $2 FOR UPDATE", t.epoch, id), scanCard)
+	return one(t.tx.QueryRow(t.ctx, "SELECT "+cardCols+" FROM sprint.cards WHERE epoch = $1 AND id = $2", t.epoch, id), scanCard)
 }
 
 func (t *pgTx) stream(name string) (Stream, bool, error) {
-	return one(t.tx.QueryRow(t.ctx, "SELECT "+streamCols+" FROM sprint.streams WHERE epoch = $1 AND name = $2 FOR UPDATE", t.epoch, name), scanStream)
+	return one(t.tx.QueryRow(t.ctx, "SELECT "+streamCols+" FROM sprint.streams WHERE epoch = $1 AND name = $2", t.epoch, name), scanStream)
 }
 
 func (t *pgTx) row(name string) (Row, bool, error) {
-	return one(t.tx.QueryRow(t.ctx, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1 AND name = $2 FOR UPDATE", t.epoch, name), scanRow)
+	return one(t.tx.QueryRow(t.ctx, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1 AND name = $2", t.epoch, name), scanRow)
 }
 
-func (t *pgTx) policy(v int) (Policy, bool, error) {
-	return one(t.tx.QueryRow(t.ctx, "SELECT "+policyCols+" FROM sprint.policy WHERE version = $1 FOR UPDATE", v), scanPolicy)
+func (t *pgTx) policy(v int) (PolicyVersion, bool, error) {
+	return one(t.tx.QueryRow(t.ctx, "SELECT "+policyCols+" FROM sprint.policy WHERE version = $1", v), scanPolicy)
 }
 
-func (t *pgTx) policies() (int, []Policy, error) {
+func (t *pgTx) policies() (int, []PolicyVersion, error) {
 	var last int
 	if err := t.tx.QueryRow(t.ctx, "SELECT coalesce(max(version), 0) FROM sprint.policy").Scan(&last); err != nil {
 		return 0, nil, err
 	}
-	m, err := all(t.ctx, t.tx, scanPolicy, func(p Policy) int { return p.Version }, "SELECT "+policyCols+" FROM sprint.policy WHERE active FOR UPDATE")
-	var active []Policy
+	m, err := all(t.ctx, t.tx, scanPolicy, func(p PolicyVersion) int { return p.Version }, "SELECT "+policyCols+" FROM sprint.policy WHERE active")
+	var active []PolicyVersion
 	for _, p := range m {
 		active = append(active, p)
 	}
 	return last, active, err
+}
+
+func (t *pgTx) held(row string) (int, error) {
+	var n int
+	err := t.tx.QueryRow(t.ctx, "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2", t.epoch, row).Scan(&n)
+	return n, err
+}
+
+func (t *pgTx) lastSeq() (int64, error) {
+	var n int64
+	err := t.tx.QueryRow(t.ctx, "SELECT coalesce(max(seq), 0) FROM sprint.events").Scan(&n)
+	return n, err
+}
+
+func (t *pgTx) rows() ([]Row, error) {
+	m, err := all(t.ctx, t.tx, scanRow, func(r Row) string { return r.Name }, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1", t.epoch)
+	var out []Row
+	for _, r := range m {
+		out = append(out, r)
+	}
+	return out, err
+}
+
+func (t *pgTx) open() error {
+	if _, err := t.tx.Exec(t.ctx, "UPDATE sprint.epoch SET n = n + 1 WHERE id = 1"); err != nil {
+		return err
+	}
+	t.epoch++
+	return nil
 }
 
 func (t *pgTx) putStream(s Stream) error {
@@ -183,26 +206,24 @@ func (t *pgTx) putCard(c Card) error {
 	if n == nil {
 		n = []string{}
 	}
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, stream, state, gen, score, needs, holder, head, pr, brief, reason)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), $9, $10, $11, $12)
-		ON CONFLICT (epoch, id) DO UPDATE SET stream = EXCLUDED.stream, state = EXCLUDED.state, gen = EXCLUDED.gen, score = EXCLUDED.score,
-		needs = EXCLUDED.needs, holder = EXCLUDED.holder, head = EXCLUDED.head, pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason`,
-		t.epoch, c.ID, c.Stream, c.State, c.Gen, c.Score, n, c.Holder, c.Head, c.PR, c.Brief, c.Reason)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, stream, state, gen, attempt, score, needs, holder, branch, head, pr, brief, reason)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11, $12, $13, $14)
+		ON CONFLICT (epoch, id) DO UPDATE SET stream = EXCLUDED.stream, state = EXCLUDED.state, gen = EXCLUDED.gen, attempt = EXCLUDED.attempt,
+		score = EXCLUDED.score, needs = EXCLUDED.needs, holder = EXCLUDED.holder, branch = EXCLUDED.branch, head = EXCLUDED.head,
+		pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason`,
+		t.epoch, c.ID, c.Stream, c.State, c.Gen, c.Attempt, c.Score, n, c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason)
 	return err
 }
 
 func (t *pgTx) putRow(r Row) error {
-	var seen any
-	if !r.Seen.IsZero() {
-		seen = r.Seen
-	}
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, seen, flaps) VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state, seen = EXCLUDED.seen, flaps = EXCLUDED.flaps`,
-		t.epoch, r.Name, r.Kind, r.Width, r.State, seen, r.Flaps)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, session, flaps) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state,
+		session = EXCLUDED.session, flaps = EXCLUDED.flaps`,
+		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps)
 	return err
 }
 
-func (t *pgTx) putPolicy(p Policy) error {
+func (t *pgTx) putPolicy(p PolicyVersion) error {
 	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.policy (version, kind, name, body, active, actor, at) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (version) DO UPDATE SET active = EXCLUDED.active`,
 		p.Version, p.Kind, p.Name, p.Body, p.Active, p.Actor, p.At)

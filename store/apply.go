@@ -1,221 +1,91 @@
 package store
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 )
 
-// Expect is a condition: one of CardIs, CardHolder, RowIs, StreamHeld,
-// CardAbsent, EpochIs. The set is closed by the unexported method.
-type Expect interface{ isExpect() }
-
-// CardIs holds when card Card is in state State with gen Gen.
-type CardIs struct {
-	Card, State string
-	Gen         int
-}
-
-// CardHolder holds when card Card has holder Holder ("" for none).
-type CardHolder struct{ Card, Holder string }
-
-// RowIs holds when row Row is in state State.
-type RowIs struct{ Row, State string }
-
-// StreamHeld holds when stream Stream's held flag is Held.
-type StreamHeld struct {
-	Stream string
-	Held   bool
-}
-
-// CardAbsent holds when card Card does not exist in the current epoch.
-type CardAbsent struct{ Card string }
-
-// EpochIs holds when the current epoch is N.
-type EpochIs struct{ N int }
-
-func (CardIs) isExpect()     {}
-func (CardHolder) isExpect() {}
-func (RowIs) isExpect()      {}
-func (StreamHeld) isExpect() {}
-func (CardAbsent) isExpect() {}
-func (EpochIs) isExpect()    {}
-
-// Write is one write: one of PutStream, SetStreamHeld, PutCard, SetCardState,
-// SetCardHolder, SetCardHeadPR, SetCardReason, PutRow, SetRowState, PutPolicy,
-// SetActivePolicy. The set is closed by the unexported method.
-type Write interface{ isWrite() }
-
-// PutStream writes a stream whole, adding it or replacing it.
-type PutStream struct{ Stream Stream }
-
-// SetStreamHeld sets a stream's held flag.
-type SetStreamHeld struct {
-	Stream string
-	Held   bool
-}
-
-// PutCard adds a card; it is refused when the card exists. The card starts at
-// gen 0 whatever Card.Gen says; its stream, and its holder when set, must exist.
-type PutCard struct{ Card Card }
-
-// SetCardState sets a card's state and increments its gen by one.
-type SetCardState struct{ Card, State string }
-
-// SetCardHolder sets a card's holder; "" is none, else the row must exist.
-type SetCardHolder struct{ Card, Holder string }
-
-// SetCardHeadPR sets a card's head commit and pull request number.
-type SetCardHeadPR struct {
-	Card, Head string
-	PR         int
-}
-
-// SetCardReason sets a card's reason.
-type SetCardReason struct{ Card, Reason string }
-
-// PutRow writes a row whole, adding it or replacing it.
-type PutRow struct{ Row Row }
-
-// SetRowState sets a row's state, last seen time and flap count together.
-type SetRowState struct {
-	Row, State string
-	Seen       time.Time
-	Flaps      int
-}
-
-// PutPolicy adds the next policy version, inactive; Actor and At come from the op.
-type PutPolicy struct{ Kind, Name, Body string }
-
-// SetActivePolicy makes one existing version the active one.
-type SetActivePolicy struct{ Version int }
-
-func (PutStream) isWrite()       {}
-func (SetStreamHeld) isWrite()   {}
-func (PutCard) isWrite()         {}
-func (SetCardState) isWrite()    {}
-func (SetCardHolder) isWrite()   {}
-func (SetCardHeadPR) isWrite()   {}
-func (SetCardReason) isWrite()   {}
-func (PutRow) isWrite()          {}
-func (SetRowState) isWrite()     {}
-func (PutPolicy) isWrite()       {}
-func (SetActivePolicy) isWrite() {}
-
-// txn is one transaction as the shared rules see it: reads by key (locking the
-// row in PostgreSQL) and whole-row upserts. PG and Fake each implement it, so
-// the conditions, writes and refusal reasons are written once.
+// txn is one transaction as the shared rules see it: reads by key and
+// whole-row upserts in its epoch. PG and Fake each implement it, so the
+// conditions, writes and refusal reasons are written once, here.
 type txn interface {
 	card(id string) (Card, bool, error)
 	stream(name string) (Stream, bool, error)
 	row(name string) (Row, bool, error)
-	policy(version int) (Policy, bool, error)
-	policies() (last int, active []Policy, err error)
+	policy(version int) (PolicyVersion, bool, error)
+	policies() (last int, active []PolicyVersion, err error)
+	held(row string) (int, error) // cards whose holder is row
+	lastSeq() (int64, error)
+	rows() ([]Row, error) // every row of the epoch
+	open() error          // epoch n = n + 1; later puts go to the new epoch
 	putCard(c Card) error
 	putStream(s Stream) error
 	putRow(r Row) error
-	putPolicy(p Policy) error
+	putPolicy(p PolicyVersion) error
 }
 
-// errNoID is returned, before anything is sent, for an op without an id.
-var errNoID = errors.New("store: an op needs an id")
-
-// receipt is the receipt of an op that ran in epoch and was logged at seq.
-func receipt(op Op, reason string, after *State, seq int64, epoch int) Receipt {
-	return Receipt{Op: op.ID, Kind: op.Kind, Accepted: reason == "", Reason: reason, Seq: seq, Epoch: epoch, At: op.At, Note: op.Note, After: after}
+func invalid(format string, args ...any) error {
+	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, args...))
 }
 
-// clearable refuses, before anything is sent, a clear it cannot run.
-func clearable(op Op) error {
-	if op.ID == "" {
-		return errNoID
+// check refuses with ErrInvalid, before the store is touched, an op that can
+// never enter it: no id, no epoch, a condition or write outside the closed
+// sets, two writes to one field.
+func check(op Op) error {
+	switch {
+	case op.ID == "":
+		return invalid("an op needs an id")
+	case op.Epoch < 1:
+		return invalid("op %s needs an epoch", op.ID)
 	}
-	if len(op.Expect) > 0 || len(op.Writes) > 0 {
-		return errors.New("store: a clear takes no conditions or writes")
+	for _, e := range op.Expect {
+		switch e.(type) {
+		case CardGen, CardState, CardHolder, NeedsLanded, RowIs, RowUnder, StreamHeld, CardAbsent, AtSeq:
+		default:
+			return invalid("op %s: unknown condition %T", op.ID, e)
+		}
+	}
+	seen := map[field]bool{}
+	for _, w := range op.Writes {
+		fs, ok := fields(w)
+		if !ok {
+			return invalid("op %s: unknown write %T", op.ID, w)
+		}
+		for _, f := range fs {
+			if seen[f] {
+				return invalid("op %s: two writes to %s %s field %s", op.ID, f.table, f.key, f.name)
+			}
+			seen[f] = true
+		}
 	}
 	return nil
 }
 
-// clearOp is a clear's op as it is logged: kind clear unless the caller named one.
-func clearOp(op Op) Op {
+// checkClear is check for a clear: kind clear, no writes, at most AtSeq.
+func checkClear(op Op) (Op, error) {
 	op.Kind = cmpOr(op.Kind, "clear")
-	return op
-}
-
-// normalize is an op with its times as the store keeps them.
-func normalize(op Op) Op {
-	op.At = at(op.At)
-	op.Writes = slices.Clone(op.Writes)
-	for i, w := range op.Writes {
-		switch v := w.(type) {
-		case SetRowState:
-			v.Seen = at(v.Seen)
-			op.Writes[i] = v
-		case PutRow:
-			v.Row.Seen = at(v.Row.Seen)
-			op.Writes[i] = v
-		case PutCard:
-			v.Card.Gen, v.Card.Needs = 0, needs(v.Card.Needs)
-			op.Writes[i] = v
-		}
+	if err := check(op); err != nil {
+		return op, err
 	}
-	return op
-}
-
-func oneOf(what, v string, set []string) string {
-	if slices.Contains(set, v) {
-		return ""
+	if op.Kind != "clear" || len(op.Writes) > 0 {
+		return op, invalid("op %s: a clear is kind clear with no writes", op.ID)
 	}
-	return fmt.Sprintf("%s %q is not one of %s", what, v, strings.Join(set, ", "))
-}
-
-// validate refuses, before any SQL runs, a condition or write outside the
-// closed sets and a value the schema would refuse.
-func validate(op Op) string {
 	for _, e := range op.Expect {
-		switch e.(type) {
-		case CardIs, CardHolder, RowIs, StreamHeld, CardAbsent, EpochIs:
-		default:
-			return fmt.Sprintf("unknown condition %T", e)
+		if _, ok := e.(AtSeq); !ok {
+			return op, invalid("op %s: a clear takes only an AtSeq condition, not %T", op.ID, e)
 		}
 	}
-	for _, w := range op.Writes {
-		if r := validateWrite(w); r != "" {
-			return r
-		}
-	}
-	return ""
+	return op, nil
 }
 
-func validateWrite(w Write) string {
-	switch v := w.(type) {
-	case PutStream:
-		if v.Stream.Name == "" {
-			return "a stream needs a name"
-		}
-	case PutCard:
-		if v.Card.ID == "" {
-			return "a card needs an id"
-		}
-		return oneOf("card state", v.Card.State, CardStates)
-	case SetCardState:
-		return oneOf("card state", v.State, CardStates)
-	case PutRow:
-		if v.Row.Name == "" {
-			return "a row needs a name"
-		}
-		return cmpOr(oneOf("row kind", v.Row.Kind, RowKinds), oneOf("row state", v.Row.State, RowStates))
-	case SetRowState:
-		return oneOf("row state", v.State, RowStates)
-	case PutPolicy:
-		return oneOf("policy kind", v.Kind, PolicyKind)
-	case SetStreamHeld, SetCardHolder, SetCardHeadPR, SetCardReason, SetActivePolicy:
-	default:
-		return fmt.Sprintf("unknown write %T", w)
+// receipt is the receipt of an op that was logged at seq.
+func receipt(op Op, reason string, after *State, seq int64) Receipt {
+	r := Receipt{Op: op.ID, Kind: op.Kind, Actor: op.Actor, Epoch: op.Epoch, At: op.At, Note: op.Note, Accepted: reason == "", Reason: reason, Seq: seq, After: after}
+	if after != nil {
+		r.NewEpoch = after.Epoch
 	}
-	return ""
+	return r
 }
 
 func cmpOr(a, b string) string {
@@ -225,22 +95,28 @@ func cmpOr(a, b string) string {
 	return b
 }
 
+func oneOf(what, v string, set []string) string {
+	if slices.Contains(set, v) {
+		return ""
+	}
+	return fmt.Sprintf("%s %q is not one of %s", what, v, strings.Join(set, ", "))
+}
+
 // work is one operation being run against a txn: the touched rows before and
 // after, kept for the event and the receipt.
 type work struct {
 	tx            txn
-	epoch         int
 	op            Op
 	before, after State
 }
 
-// run checks every condition, then performs every write, in order. It returns
-// a refusal reason ("" when accepted); an error is a transport failure. On a
-// refusal the caller discards whatever the txn did.
+// run checks the epoch and every condition, then performs every write in
+// order. It returns a refusal reason ("" when accepted); an error is a
+// failure of the txn. On a refusal the caller discards whatever the txn did.
 func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
-	w := &work{tx: tx, epoch: epoch, op: op}
-	if r := validate(op); r != "" {
-		return r, nil, nil, nil
+	w := &work{tx: tx, op: op}
+	if op.Epoch != epoch {
+		return fmt.Sprintf("the op is for epoch %d, the store is at epoch %d", op.Epoch, epoch), nil, nil, nil
 	}
 	for _, e := range op.Expect {
 		if r, err := w.expect(e); r != "" || err != nil {
@@ -255,7 +131,35 @@ func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	return "", w.before.compact(), w.after.compact(), nil
 }
 
-func none(holder string) string { return cmpOr(holder, "none") }
+// runClear is run for a clear: the epoch and the seq fence, then the new
+// epoch with every row carried into it, down and with no flaps.
+func runClear(tx txn, epoch int, op Op) (string, *State, error) {
+	r, _, _, err := run(tx, epoch, Op{Epoch: op.Epoch, Expect: op.Expect})
+	if r != "" || err != nil {
+		return r, nil, err
+	}
+	rows, err := tx.rows()
+	if err != nil {
+		return "", nil, err
+	}
+	if err := tx.open(); err != nil {
+		return "", nil, err
+	}
+	after := &State{Epoch: epoch + 1}
+	for _, row := range rows {
+		row.State, row.Flaps = "down", 0
+		if err := tx.putRow(row); err != nil {
+			return "", nil, err
+		}
+		if after.Rows == nil {
+			after.Rows = map[string]Row{}
+		}
+		after.Rows[row.Name] = row
+	}
+	return "", after, nil
+}
+
+func noneIfEmpty(holder string) string { return cmpOr(holder, "none") }
 
 func heldWord(held bool) string {
 	if held {
@@ -266,197 +170,104 @@ func heldWord(held bool) string {
 
 func (w *work) expect(e Expect) (string, error) {
 	switch c := e.(type) {
-	case CardIs:
-		card, r, err := w.mustCard(c.Card)
-		switch {
-		case r != "" || err != nil:
-			return r, err
-		case card.Gen != c.Gen:
-			return fmt.Sprintf("card %s is at gen %d, expected gen %d", c.Card, card.Gen, c.Gen), nil
-		case card.State != c.State:
-			return fmt.Sprintf("card %s is %s, expected %s", c.Card, card.State, c.State), nil
-		}
+	case CardGen:
+		return w.cardIs(c.Card, func(k Card) string {
+			return when(k.Gen != c.Gen, "card %s is at gen %d, expected gen %d", c.Card, k.Gen, c.Gen)
+		})
+	case CardState:
+		return w.cardIs(c.Card, func(k Card) string {
+			return when(k.State != c.State, "card %s is %s, expected %s", c.Card, k.State, c.State)
+		})
 	case CardHolder:
-		card, r, err := w.mustCard(c.Card)
-		if r == "" && err == nil && card.Holder != c.Holder {
-			r = fmt.Sprintf("card %s has holder %s, expected %s", c.Card, none(card.Holder), none(c.Holder))
-		}
-		return r, err
+		return w.cardIs(c.Card, func(k Card) string {
+			return when(k.Holder != c.Holder, "card %s has holder %s, expected %s", c.Card, noneIfEmpty(k.Holder), noneIfEmpty(c.Holder))
+		})
+	case NeedsLanded:
+		return w.needsLanded(c.Card)
 	case RowIs:
 		row, r, err := w.mustRow(c.Row)
-		if r == "" && err == nil && row.State != c.State {
-			r = fmt.Sprintf("row %s is %s, expected %s", c.Row, row.State, c.State)
+		if r != "" || err != nil {
+			return r, err
 		}
-		return r, err
+		return when(row.State != c.State, "row %s is %s, expected %s", c.Row, row.State, c.State), nil
+	case RowUnder:
+		return w.rowUnder(c)
 	case StreamHeld:
 		s, r, err := w.mustStream(c.Stream)
-		if r == "" && err == nil && s.Held != c.Held {
-			r = fmt.Sprintf("stream %s is %s, expected %s", c.Stream, heldWord(s.Held), heldWord(c.Held))
+		if r != "" || err != nil {
+			return r, err
 		}
-		return r, err
+		return when(s.Held != c.Held, "stream %s is %s, expected %s", c.Stream, heldWord(s.Held), heldWord(c.Held)), nil
 	case CardAbsent:
 		_, ok, err := w.tx.card(c.Card)
-		if ok {
-			return fmt.Sprintf("card %s exists", c.Card), err
-		}
-		return "", err
-	case EpochIs:
-		if w.epoch != c.N {
-			return fmt.Sprintf("the epoch is %d, expected %d", w.epoch, c.N), nil
+		return when(ok, "card %s exists", c.Card), err
+	case AtSeq:
+		seq, err := w.tx.lastSeq()
+		return when(seq != c.Seq, "the store is at seq %d, expected seq %d", seq, c.Seq), err
+	}
+	return "", nil
+}
+
+// when is the reason when cond holds, else "".
+func when(cond bool, format string, args ...any) string {
+	if !cond {
+		return ""
+	}
+	return fmt.Sprintf(format, args...)
+}
+
+func (w *work) cardIs(id string, test func(Card) string) (string, error) {
+	c, r, err := w.mustCard(id)
+	if r != "" || err != nil {
+		return r, err
+	}
+	return test(c), nil
+}
+
+func (w *work) needsLanded(id string) (string, error) {
+	c, r, err := w.mustCard(id)
+	if r != "" || err != nil {
+		return r, err
+	}
+	for _, n := range c.Needs {
+		need, ok, err := w.tx.card(n)
+		switch {
+		case err != nil:
+			return "", err
+		case !ok:
+			return fmt.Sprintf("need %s of card %s does not exist", n, id), nil
+		case need.State != "landed":
+			return fmt.Sprintf("need %s of card %s is %s, not landed", n, id, need.State), nil
 		}
 	}
 	return "", nil
+}
+
+func (w *work) rowUnder(c RowUnder) (string, error) {
+	if _, r, err := w.mustRow(c.Row); r != "" || err != nil {
+		return r, err
+	}
+	n, err := w.tx.held(c.Row)
+	return when(n >= c.Width, "row %s holds %d cards, expected fewer than %d", c.Row, n, c.Width), err
 }
 
 func (w *work) mustCard(id string) (Card, string, error) {
 	c, ok, err := w.tx.card(id)
-	if err == nil && !ok {
-		return c, fmt.Sprintf("card %s does not exist", id), nil
-	}
-	return c, "", err
+	return c, when(err == nil && !ok, "card %s does not exist", id), err
 }
 
 func (w *work) mustRow(name string) (Row, string, error) {
 	r, ok, err := w.tx.row(name)
-	if err == nil && !ok {
-		return r, fmt.Sprintf("row %s does not exist", name), nil
-	}
-	return r, "", err
+	return r, when(err == nil && !ok, "row %s does not exist", name), err
 }
 
 func (w *work) mustStream(name string) (Stream, string, error) {
 	s, ok, err := w.tx.stream(name)
-	if err == nil && !ok {
-		return s, fmt.Sprintf("stream %s does not exist", name), nil
-	}
-	return s, "", err
+	return s, when(err == nil && !ok, "stream %s does not exist", name), err
 }
 
-func (w *work) write(wr Write) (string, error) {
-	switch v := wr.(type) {
-	case PutStream:
-		old, ok, err := w.tx.stream(v.Stream.Name)
-		if err != nil {
-			return "", err
-		}
-		return "", w.putStream(old, ok, v.Stream)
-	case SetStreamHeld:
-		s, r, err := w.mustStream(v.Stream)
-		if r != "" || err != nil {
-			return r, err
-		}
-		next := s
-		next.Held = v.Held
-		return "", w.putStream(s, true, next)
-	case PutCard:
-		return w.addCard(v.Card)
-	case PutRow:
-		old, ok, err := w.tx.row(v.Row.Name)
-		if err != nil {
-			return "", err
-		}
-		return "", w.putRow(old, ok, v.Row)
-	case SetRowState:
-		row, r, err := w.mustRow(v.Row)
-		if r != "" || err != nil {
-			return r, err
-		}
-		next := row
-		next.State, next.Seen, next.Flaps = v.State, v.Seen, v.Flaps
-		return "", w.putRow(row, true, next)
-	case PutPolicy, SetActivePolicy:
-		return w.writePolicy(wr)
-	}
-	return w.writeCard(wr)
-}
-
-// writeCard is the writes that change one field set of an existing card.
-func (w *work) writeCard(wr Write) (string, error) {
-	var id string
-	switch v := wr.(type) {
-	case SetCardState:
-		id = v.Card
-	case SetCardHolder:
-		id = v.Card
-	case SetCardHeadPR:
-		id = v.Card
-	case SetCardReason:
-		id = v.Card
-	}
-	card, r, err := w.mustCard(id)
-	if r != "" || err != nil {
-		return r, err
-	}
-	next := card
-	switch v := wr.(type) {
-	case SetCardState:
-		next.State, next.Gen = v.State, card.Gen+1
-	case SetCardHolder:
-		if r, err := w.holderExists(v.Holder); r != "" || err != nil {
-			return r, err
-		}
-		next.Holder = v.Holder
-	case SetCardHeadPR:
-		next.Head, next.PR = v.Head, v.PR
-	case SetCardReason:
-		next.Reason = v.Reason
-	}
-	return "", w.putCard(card, true, next)
-}
-
-func (w *work) holderExists(holder string) (string, error) {
-	if holder == "" {
-		return "", nil
-	}
-	_, r, err := w.mustRow(holder)
-	return r, err
-}
-
-func (w *work) addCard(c Card) (string, error) {
-	if _, ok, err := w.tx.card(c.ID); ok || err != nil {
-		return fmt.Sprintf("card %s exists", c.ID), err
-	}
-	if _, r, err := w.mustStream(c.Stream); r != "" || err != nil {
-		return r, err
-	}
-	if r, err := w.holderExists(c.Holder); r != "" || err != nil {
-		return r, err
-	}
-	return "", w.putCard(Card{}, false, c)
-}
-
-func (w *work) writePolicy(wr Write) (string, error) {
-	last, active, err := w.tx.policies()
-	if err != nil {
-		return "", err
-	}
-	switch v := wr.(type) {
-	case PutPolicy:
-		p := Policy{Version: last + 1, Kind: v.Kind, Name: v.Name, Body: v.Body, Actor: w.op.Actor, At: w.op.At}
-		return "", w.putPolicy(Policy{}, false, p)
-	case SetActivePolicy:
-		p, ok, err := w.tx.policy(v.Version)
-		if err != nil || !ok {
-			return fmt.Sprintf("policy version %d does not exist", v.Version), err
-		}
-		for _, a := range active {
-			if a.Version != p.Version {
-				off := a
-				off.Active = false
-				if err := w.putPolicy(a, true, off); err != nil {
-					return "", err
-				}
-			}
-		}
-		on := p
-		on.Active = true
-		return "", w.putPolicy(p, true, on)
-	}
-	return "", nil
-}
-
-// The put helpers record a row's before-state the first time it is touched
-// (only when it existed) and its after-state every time.
+// The put helpers record a row's before-image the first time it is touched
+// (only when it existed) and its after-image every time.
 
 func (w *work) putStream(old Stream, existed bool, s Stream) error {
 	w.before.Streams, w.after.Streams = touch(w.before.Streams, w.after.Streams, s.Name, old, existed, s)
@@ -473,7 +284,7 @@ func (w *work) putRow(old Row, existed bool, r Row) error {
 	return w.tx.putRow(r)
 }
 
-func (w *work) putPolicy(old Policy, existed bool, p Policy) error {
+func (w *work) putPolicy(old PolicyVersion, existed bool, p PolicyVersion) error {
 	w.before.Policies, w.after.Policies = touch(w.before.Policies, w.after.Policies, p.Version, old, existed, p)
 	return w.tx.putPolicy(p)
 }
@@ -491,20 +302,16 @@ func touch[K comparable, V any](before, after map[K]V, k K, old V, existed bool,
 
 // compact is the state with empty maps dropped, or nil when nothing is in it.
 func (s State) compact() *State {
-	if len(s.Streams) == 0 {
-		s.Streams = nil
-	}
-	if len(s.Cards) == 0 {
-		s.Cards = nil
-	}
-	if len(s.Rows) == 0 {
-		s.Rows = nil
-	}
-	if len(s.Policies) == 0 {
-		s.Policies = nil
-	}
+	s.Streams, s.Cards, s.Rows, s.Policies = nilIfEmpty(s.Streams), nilIfEmpty(s.Cards), nilIfEmpty(s.Rows), nilIfEmpty(s.Policies)
 	if s.Epoch == 0 && s.Streams == nil && s.Cards == nil && s.Rows == nil && s.Policies == nil {
 		return nil
 	}
 	return &s
+}
+
+func nilIfEmpty[K comparable, V any](m map[K]V) map[K]V {
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
