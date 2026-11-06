@@ -26,8 +26,8 @@ type Card struct {
 	Result, Reason              string // reason is the status reason
 	Finding                     string // a producer: the last read's finding; a work consumer: the producer's at cut
 	Bounces                     int
-	Review                      int // a producer: its entries into review; a read: the producer's at cut
-	PR                          int // 1 after a Red, cleared by Finished and Start. result cannot hold "red"
+	Review                      int  // a producer: its entries into review; a read: the producer's at cut
+	Red                         bool // a producer: the last read's verdict was red; set by Red, cleared by Finished and Start
 	Cost                        int64
 	Priced                      bool
 	Brief                       string // the brief as given: immutable, copied to each consumer at cut
@@ -164,7 +164,7 @@ func FromStore(c store.Card) Card {
 	return Card{ID: c.ID, Kind: c.Kind, Of: c.Of, Stream: c.Stream, State: c.State, Gen: c.Gen, Attempt: c.Attempt, Priority: c.Priority,
 		Tier: c.Tier, Score: c.Score, Needs: c.Needs, After: c.After, Holder: c.Holder, Author: c.Author, Branch: c.Branch,
 		BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: c.Head, Result: c.Result, Reason: c.Reason, Finding: c.Finding,
-		Bounces: c.Bounces, Review: c.Review, PR: c.PR, Cost: c.Cost, Priced: c.Priced, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
+		Bounces: c.Bounces, Review: c.Review, Red: c.Red, Cost: c.Cost, Priced: c.Priced, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
 }
 
 // RowFromStore is a store row as the machine reads it.

@@ -121,9 +121,11 @@ the phrase names the stream. Finding is written only by a read (ReadFix) and
 carried by Start onto the next work consumer. Broken and Faulted write the
 reason and do not touch finding. Start copies finding and copies no reason.
 Unblock of a producer whose stream is held parks it waiting with the same
-phrase. HoldStream's own park keeps the event's reason. A Red is recorded by
-setting pr to 1, because result is consumers only and its closed set has no
-"red". Finished and Start clear it. pr is otherwise unused by this layer.
+phrase. HoldStream's own park keeps the event's reason. A Red is recorded on
+the producer's red column (`SetCardRed`). Finished and Start clear it.
+WaiveRed requires it and fences the plan on `CardRed`. Broken, Faulted and
+WaiveRed do not clear it. pr stays the pull-request number; this layer does
+not write it.
 
 ### Values
 
@@ -144,8 +146,8 @@ refusals: `a card needs a name`, `card "..." is over 128 bytes`,
 | Resolve | waiting | StreamHeld false, NeedsLanded | state ready |
 | Park | ready | StreamHeld true | state waiting, reason |
 | Reached (sentinel) | waiting | NeedsLanded | state landed |
-| Start{Row,Branch,Base} | ready | producer only; StreamHeld false; RowGen, RowIs up, RowHeld false; CardGen of every consumer; CardAbsent of the new id | state working, attempt+1, author cleared, pr cleared when a Red set it; PutCard `p.wN` (work, of, stream, holder, tier, attempt, task, finding) + branch, base_sha, prior_head (p's head), state ready |
-| Finished{Consumer} | working | CardGen of the work consumer of this attempt, done ok | state review, review+1, head, author = its holder, pr cleared when a Red set it |
+| Start{Row,Branch,Base} | ready | producer only; StreamHeld false; RowGen, RowIs up, RowHeld false; CardGen of every consumer; CardAbsent of the new id | state working, attempt+1, author cleared, red cleared when a Red set it; PutCard `p.wN` (work, of, stream, holder, tier, attempt, task, finding) + branch, base_sha, prior_head (p's head), state ready |
+| Finished{Consumer} | working | CardGen of the work consumer of this attempt, done ok | state review, review+1, head, author = its holder, red cleared when a Red set it |
 | Broken{Consumer} | working | ... done fail; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), bounces+1, head |
 | Faulted{Consumer} | working | ... done fault; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), head (no bounce) |
 | AskRead{Row} | review | producer only; a full sha head; StreamHeld false; row as Start; no live work consumer, no live read of this head on the row; CardAbsent of the new id | PutCard `p.rR.N` (read, review = p's, task) + head, author (p's), state ready |
@@ -153,8 +155,8 @@ refusals: `a card needs a name`, `card "..." is over 128 bytes`,
 | ReadYes | review | no live consumer; a done ok read of p's current review and head | state merging |
 | ReadFix{Finding} | review | no live consumer; a done fix read of p's current review and head; StreamHeld as read | state ready (waiting if held), finding (when given and changed), bounces+1 |
 | Landed{Head} | merging | head equals p's | state landed |
-| Red{Head,Reason} | merging | head equals p's | state review, review+1, reason, pr = 1 |
-| WaiveRed{Reason} | review | no live consumer; pr is 1; review at least 1; a done ok read of review p.Review-1 at p's head | state merging, reason; review is not raised |
+| Red{Head,Reason} | merging | head equals p's | state review, review+1, reason, red = true |
+| WaiveRed{Reason} | review | no live consumer; red is set (CardRed true); review at least 1; a done ok read of review p.Review-1 at p's head | state merging, reason; review is not raised |
 | Released{Reason} | working | the work consumer of this attempt is fail (withdrawn); StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held, else the event's, else the consumer's), head |
 | Cancel{Reason} | any non-final | no live consumer | state fail, reason |
 | Replace{By,Reason} | any non-final | By a producer or sentinel, not final, not p, passed in needs, fenced by CardGen; no live consumer | state fail, reason "replaced by X: ..." |
@@ -260,4 +262,4 @@ the same way. `coldread3_test.go` is the third cold read, folded with these
 rulings: Merge is sequential, WaiveRed needs a recorded Red, a fault does not
 write finding, a sentinel may be a need, and a preempt withdraws a working
 consumer. `round4_test.go` covers Start then Hold, Hold then Start, and the
-pr marker.
+red column.

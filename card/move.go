@@ -670,32 +670,27 @@ func (m *mover) waiveRed(e WaiveRed) *Refusal {
 	if m.p.Review < 1 {
 		return no("producer %s has no review yet", m.p.ID)
 	}
-	if m.p.PR != redPR {
+	if !m.p.Red {
 		return no("no red on review %d", m.p.Review)
 	}
 	if m.countAt(m.p.Review-1, "ok") == 0 {
 		return no("producer %s has no done ok read of review %d at head %s; WaiveRed needs one", m.p.ID, m.p.Review-1, m.p.Head)
 	}
+	m.expect(store.CardRed{Card: m.p.ID, Red: true})
 	m.state(m.p.ID, Merging)
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	return nil
 }
 
-// redPR is a recorded Red. The store's result column is consumers only and
-// its closed set has no "red", so until a red column exists the producer's
-// pr holds 1 after Red and 0 after Finished or Start. pr is otherwise unused
-// by this layer.
-const redPR = 1
-
 func (m *mover) markRed() {
-	if m.p.PR != redPR {
-		m.write(store.SetCardPR{Card: m.p.ID, PR: redPR})
+	if !m.p.Red {
+		m.write(store.SetCardRed{Card: m.p.ID, Red: true})
 	}
 }
 
 func (m *mover) clearRed() {
-	if m.p.PR == redPR {
-		m.write(store.SetCardPR{Card: m.p.ID, PR: 0})
+	if m.p.Red {
+		m.write(store.SetCardRed{Card: m.p.ID, Red: false})
 	}
 }
 
