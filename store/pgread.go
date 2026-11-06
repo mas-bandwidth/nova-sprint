@@ -34,7 +34,7 @@ func scanCard(r pgx.Row) (Card, error) {
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
 	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen, &w.Tiers, &w.Model, &w.Harness)
-	w.Tiers = normList(w.Tiers)
+	w.Tiers = normSet(w.Tiers)
 	return w, err
 }
 

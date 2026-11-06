@@ -358,7 +358,8 @@ func (f field) String() string {
 // the write itself, or for a set-card or set-row write the change and the
 // rule it runs first (who may make it, what it must not break). A set write
 // that would change nothing is refused: is says how ("is already up"), or
-// it is "<column> unchanged".
+// the record "already has the given <column>". The zero spec is a value
+// outside the closed set.
 type spec struct {
 	fields []field
 	check  func(c *checker)
@@ -370,125 +371,126 @@ type spec struct {
 	is     string
 }
 
-// specOf is the one table of the writes, keyed by type; ok is false for a
+// specOf is the one table of the writes, keyed by type; the zero spec for a
 // value outside the closed set (a pointer or an embedding type included). A
 // new write is one entry here.
-func specOf(w Write) (s spec, ok bool) {
+func specOf(w Write) spec {
 	switch v := w.(type) {
 	case PutStream:
-		return put("stream", v.Name, func(c *checker) { c.text(v.Repo, v.Base).num("pos", v.Pos) }, "repo", "base", "pos").then(func(w *work) (string, error) { return w.writePutStream(v) }), true
+		return put("stream", v.Name, func(c *checker) { c.text(v.Repo, v.Base).num("pos", v.Pos) }, "repo", "base", "pos").then(func(w *work) (string, error) { return w.writePutStream(v) })
 	case SetStreamHeld:
-		return put("stream", v.Stream, nil, "held").then(func(w *work) (string, error) { return w.setStreamHeld(v) }), true
+		return put("stream", v.Stream, nil, "held").then(func(w *work) (string, error) { return w.setStreamHeld(v) })
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
-			c.name(v.Of, v.Stream, v.Holder).name(v.Needs...).name(v.After...).text(v.Brief, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("score", v.Score).
+			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("score", v.Score).
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
-		}, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) }), true
+		}, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
 		return put("row", v.Name, func(c *checker) {
 			c.text(v.Session, v.Model, v.Harness).num("width", v.Width).oneOf("row kind", v.Kind, RowKinds).tiers(v.Tiers)
-		}, "kind", "width", "session", "tiers", "labels").then(func(w *work) (string, error) { return w.writePutRow(v) }), true
+		}, "kind", "width", "session", "tiers", "labels").then(func(w *work) (string, error) { return w.writePutRow(v) })
 	case PutJudgement:
 		return put("judgement", v.ID, func(c *checker) {
 			c.name(v.Kind, v.About, v.Group).text(v.Question, v.Command).time("deadline", v.Deadline, true)
-		}, "state").then(func(w *work) (string, error) { return w.openJudgement(v) }), true
+		}, "state").then(func(w *work) (string, error) { return w.openJudgement(v) })
 	case AnswerJudgement:
 		return put("judgement", v.ID, func(c *checker) { c.name(v.Actor).text(v.Answer) }, "state").then(func(w *work) (string, error) {
 			return w.closeJudgement(v.ID, "answered", v.Answer, cmp.Or(v.Actor, w.op.Actor))
-		}), true
+		})
 	case ExpireJudgement:
 		return put("judgement", v.ID, func(c *checker) { c.text(v.Reason) }, "state").then(func(w *work) (string, error) {
 			return w.closeJudgement(v.ID, "expired", v.Reason, w.op.Actor)
-		}), true
+		})
 	case SetCursor:
-		return put("cursor", v.Name, func(c *checker) { c.num64("cursor seq", v.Seq) }, "seq").then(func(w *work) (string, error) { return w.writeCursor(v) }), true
+		return put("cursor", v.Name, func(c *checker) { c.num64("cursor seq", v.Seq) }, "seq").then(func(w *work) (string, error) { return w.writeCursor(v) })
 	case PutPolicy:
-		return spec{check: func(c *checker) { c.name(v.Name).text(v.Body).oneOf("policy kind", v.Kind, PolicyKinds) }}.then(func(w *work) (string, error) { return w.addPolicy(v) }), true
+		return spec{check: func(c *checker) { c.name(v.Name).text(v.Body).oneOf("policy kind", v.Kind, PolicyKinds) }}.then(func(w *work) (string, error) { return w.addPolicy(v) })
 	case SetActivePolicy:
-		return spec{fields: []field{{"policy", "", "active"}}, check: func(c *checker) { c.num("version", v.Version) }}.then(func(w *work) (string, error) { return w.activate(v) }), true
+		return spec{fields: []field{{"policy", "", "active"}}, check: func(c *checker) { c.num("version", v.Version) }}.then(func(w *work) (string, error) { return w.activate(v) })
 	}
 	return setSpec(w)
 }
 
 // setSpec is specOf for the set-card and set-row writes: one column each,
 // with its kind rule.
-func setSpec(w Write) (spec, bool) {
+func setSpec(w Write) spec {
 	switch v := w.(type) {
 	case SetCardState:
 		s := card(v.Card, "state", func(k *Card) { k.State = v.State }, func(c *checker) { c.oneOf("card state", v.State, CardStates) })
 		s.cardIf, s.is = func(w *work, k Card) (string, error) { return w.move(k, v.State) }, "is already "+v.State
-		return s, true
+		return s
 	case SetCardPaths:
-		return card(v.Card, "paths", func(k *Card) { k.Paths = normList(v.Paths) }, func(c *checker) { c.text(v.Paths...) }).kinds("SetCardPaths", copied, holdless), true
+		return card(v.Card, "paths", func(k *Card) { k.Paths = normList(v.Paths) }, func(c *checker) { c.text(v.Paths...) }).kinds("SetCardPaths", copied, holdless)
 	case SetCardDoneWhen:
-		return card(v.Card, "done_when", func(k *Card) { k.DoneWhen = normList(v.DoneWhen) }, func(c *checker) { c.text(v.DoneWhen...) }).kinds("SetCardDoneWhen", copied, holdless), true
+		return card(v.Card, "done_when", func(k *Card) { k.DoneWhen = normList(v.DoneWhen) }, func(c *checker) { c.text(v.DoneWhen...) }).kinds("SetCardDoneWhen", copied, holdless)
 	case SetCardProse:
-		return card(v.Card, "prose", func(k *Card) { k.Prose = v.Prose }, func(c *checker) { c.text(v.Prose) }).kinds("SetCardProse", copied, holdless), true
+		return card(v.Card, "prose", func(k *Card) { k.Prose = v.Prose }, func(c *checker) { c.text(v.Prose) }).kinds("SetCardProse", copied, holdless)
 	case SetCardResult:
-		return card(v.Card, "result", func(k *Card) { k.Result = v.Result }, func(c *checker) { c.oneOf("card result", v.Result, CardResults) }).kinds("SetCardResult", "a consumer", consumer), true
+		return card(v.Card, "result", func(k *Card) { k.Result = v.Result }, func(c *checker) { c.oneOf("card result", v.Result, CardResults) }).kinds("SetCardResult", "a consumer", consumer)
 	case SetCardAttempt:
-		return card(v.Card, "attempt", func(k *Card) { k.Attempt = v.Attempt }, func(c *checker) { c.num("attempt", v.Attempt) }).kinds("SetCardAttempt", "a producer or sentinel (a consumer's attempt is set at add)", holdless), true
+		return card(v.Card, "attempt", func(k *Card) { k.Attempt = v.Attempt }, func(c *checker) { c.num("attempt", v.Attempt) }).kinds("SetCardAttempt", "a producer or sentinel (a consumer's attempt is set at add)", holdless)
 	case SetCardBranch:
-		return card(v.Card, "branch", func(k *Card) { k.Branch = v.Branch }, func(c *checker) { c.text(v.Branch) }), true
+		return card(v.Card, "branch", func(k *Card) { k.Branch = v.Branch }, func(c *checker) { c.text(v.Branch) })
 	case SetCardHead:
-		return card(v.Card, "head", func(k *Card) { k.Head = v.Head }, func(c *checker) { c.text(v.Head) }), true
+		return card(v.Card, "head", func(k *Card) { k.Head = v.Head }, func(c *checker) { c.text(v.Head) })
 	case SetCardPR:
-		return card(v.Card, "pr", func(k *Card) { k.PR = v.PR }, func(c *checker) { c.num("pr", v.PR) }), true
+		return card(v.Card, "pr", func(k *Card) { k.PR = v.PR }, func(c *checker) { c.num("pr", v.PR) })
 	case SetCardReason:
-		return card(v.Card, "reason", func(k *Card) { k.Reason = v.Reason }, func(c *checker) { c.text(v.Reason) }), true
+		return card(v.Card, "reason", func(k *Card) { k.Reason = v.Reason }, func(c *checker) { c.text(v.Reason) })
 	case SetCardScore:
-		return card(v.Card, "score", func(k *Card) { k.Score = v.Score }, func(c *checker) { c.num("score", v.Score) }), true
+		return card(v.Card, "score", func(k *Card) { k.Score = v.Score }, func(c *checker) { c.num("score", v.Score) })
 	case SetCardAuthor:
-		return card(v.Card, "author", func(k *Card) { k.Author = v.Author }, func(c *checker) { c.name(v.Author) }), true
+		return card(v.Card, "author", func(k *Card) { k.Author = v.Author }, func(c *checker) { c.name(v.Author) })
 	case SetCardBaseSHA:
-		return card(v.Card, "base_sha", func(k *Card) { k.BaseSHA = v.SHA }, func(c *checker) { c.text(v.SHA) }), true
+		return card(v.Card, "base_sha", func(k *Card) { k.BaseSHA = v.SHA }, func(c *checker) { c.text(v.SHA) })
 	case SetCardNeeds:
-		s := card(v.Card, "needs", func(k *Card) { k.Needs = normList(v.Needs) }, func(c *checker) { c.name(v.Needs...) }).kinds("SetCardNeeds", "a producer or sentinel", holdless)
-		return s.listed(needList, v.Needs), true
+		s := card(v.Card, "needs", func(k *Card) { k.Needs = normSet(v.Needs) }, func(c *checker) { c.keys("card", v.Needs...) }).kinds("SetCardNeeds", "a producer or sentinel", holdless)
+		return s.listed(needList, v.Needs)
 	case SetCardAfter:
-		s := card(v.Card, "after", func(k *Card) { k.After = normList(v.After) }, func(c *checker) { c.name(v.After...) }).kinds("SetCardAfter", "a producer or sentinel", holdless)
-		return s.listed(afterList, v.After), true
+		s := card(v.Card, "after", func(k *Card) { k.After = normSet(v.After) }, func(c *checker) { c.keys("card", v.After...) }).kinds("SetCardAfter", "a producer or sentinel", holdless)
+		return s.listed(afterList, v.After)
 	case SetCardPriorHead:
-		return card(v.Card, "prior_head", func(k *Card) { k.Prior = v.Head }, func(c *checker) { c.text(v.Head) }).kinds("SetCardPriorHead", "a work consumer", func(k string) bool { return k == "work" }), true
+		return card(v.Card, "prior_head", func(k *Card) { k.Prior = v.Head }, func(c *checker) { c.text(v.Head) }).kinds("SetCardPriorHead", "a work consumer", func(k string) bool { return k == "work" })
 	case SetCardBounces:
-		return card(v.Card, "bounces", func(k *Card) { k.Bounces = v.Bounces }, func(c *checker) { c.num("bounces", v.Bounces) }).kinds("SetCardBounces", "a producer", func(k string) bool { return k == "producer" }), true
+		return card(v.Card, "bounces", func(k *Card) { k.Bounces = v.Bounces }, func(c *checker) { c.num("bounces", v.Bounces) }).kinds("SetCardBounces", "a producer", func(k string) bool { return k == "producer" })
 	case SetCardCost:
-		return card(v.Card, "cost", func(k *Card) { k.Cost, k.Priced = v.Cost, v.Priced }, func(c *checker) { c.num64("cost", v.Cost) }).kinds("SetCardCost", "a consumer", consumer), true
+		return card(v.Card, "cost", func(k *Card) { k.Cost, k.Priced = v.Cost, v.Priced }, func(c *checker) { c.num64("cost", v.Cost) }).kinds("SetCardCost", "a consumer", consumer)
 	case SetCardPriority:
-		s := card(v.Card, "priority", func(k *Card) { k.Priority = v.Priority }, func(c *checker) { c.oneOf("card priority", v.Priority, Priorities) })
+		// "" is normal, as at put card: one rule for an absent priority.
+		s := card(v.Card, "priority", func(k *Card) { k.Priority = cmp.Or(v.Priority, "normal") }, func(c *checker) { c.oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities) })
 		s.cardIf = func(_ *work, k Card) (string, error) { return producersOnly(k), nil }
-		return s, true
+		return s
 	}
 	return rowSpec(w)
 }
 
 // rowSpec is specOf for the set-row writes.
-func rowSpec(w Write) (spec, bool) {
+func rowSpec(w Write) spec {
 	switch v := w.(type) {
 	case SetRowState:
 		s := row(v.Row, "state", func(r *Row) { r.State = v.State }, func(c *checker) { c.oneOf("row state", v.State, RowStates) })
 		s.is = "is already " + v.State
-		return s, true
+		return s
 	case SetRowSession:
-		return row(v.Row, "session", func(r *Row) { r.Session = v.Session }, func(c *checker) { c.text(v.Session) }), true
+		return row(v.Row, "session", func(r *Row) { r.Session = v.Session }, func(c *checker) { c.text(v.Session) })
 	case SetRowFlaps:
-		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) }), true
+		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) })
 	case SetRowWidth:
 		s := row(v.Row, "width", func(r *Row) { r.Width = v.Width }, func(c *checker) { c.num("width", v.Width) })
 		s.rowIf = func(w *work, r Row) (string, error) { return w.widthFits(r.Name, v.Width) }
-		return s, true
+		return s
 	case SetRowHeld:
 		s := row(v.Row, "held", func(r *Row) { r.Held = v.Held }, nil)
 		s.is = "is already " + heldWord(v.Held)
-		return s, true
+		return s
 	case SetRowTiers:
-		s := row(v.Row, "tiers", func(r *Row) { r.Tiers = normList(v.Tiers) }, func(c *checker) { c.tiers(v.Tiers) })
+		s := row(v.Row, "tiers", func(r *Row) { r.Tiers = normSet(v.Tiers) }, func(c *checker) { c.tiers(v.Tiers) })
 		s.rowIf = func(w *work, r Row) (string, error) { return w.tiersFit(r.Name, v.Tiers) }
-		return s, true
+		return s
 	case SetRowLabels:
-		return row(v.Row, "labels", func(r *Row) { r.Model, r.Harness = v.Model, v.Harness }, func(c *checker) { c.text(v.Model, v.Harness) }), true
+		return row(v.Row, "labels", func(r *Row) { r.Model, r.Harness = v.Model, v.Harness }, func(c *checker) { c.text(v.Model, v.Harness) })
 	}
-	return spec{}, false
+	return spec{}
 }
 
 // put is the spec of a write to the record key of table, setting columns;
@@ -506,7 +508,10 @@ func put(table, key string, check func(*checker), columns ...string) spec {
 }
 
 // then is s with the write itself.
-func (s spec) then(do func(w *work) (string, error)) spec { s.do = do; return s }
+func (s spec) then(do func(w *work) (string, error)) spec {
+	s.do = do
+	return s
+}
 
 // card is the spec of a set-card write: one column of card id.
 func card(id, column string, set func(*Card), check func(*checker)) spec {

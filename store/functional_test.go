@@ -150,6 +150,16 @@ func TestFunctionalMigrateRefusesForeignSchema(t *testing.T) {
 		"an enum type":                        "CREATE SCHEMA sprint; CREATE TYPE sprint.mood AS ENUM ('a')",
 		"a function of the same name":         "CREATE SCHEMA sprint; CREATE FUNCTION sprint.cards_fixed() RETURNS integer LANGUAGE sql AS 'SELECT 1'",
 		"a trigger function of the same name": "CREATE SCHEMA sprint; CREATE FUNCTION sprint.events_append_only() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END'",
+		// the fifth cold read's MigrateForeign: any object in the namespace
+		"an operator":         "CREATE SCHEMA sprint; CREATE OPERATOR sprint.<<< (LEFTARG = integer, RIGHTARG = integer, FUNCTION = int4lt)",
+		"a collation":         `CREATE SCHEMA sprint; CREATE COLLATION sprint.mine FROM "C"`,
+		"a text search conf":  "CREATE SCHEMA sprint; CREATE TEXT SEARCH CONFIGURATION sprint.cfg (COPY = pg_catalog.simple)",
+		"an operator family":  "CREATE SCHEMA sprint; CREATE OPERATOR FAMILY sprint.fam USING btree",
+		"a domain":            "CREATE SCHEMA sprint; CREATE DOMAIN sprint.d AS integer",
+		"an aggregate":        "CREATE SCHEMA sprint; CREATE AGGREGATE sprint.agg (integer) (SFUNC = int4pl, STYPE = integer)",
+		"a procedure":         "CREATE SCHEMA sprint; CREATE PROCEDURE sprint.p() LANGUAGE sql AS 'SELECT 1'",
+		"a view":              "CREATE SCHEMA sprint; CREATE VIEW sprint.v AS SELECT 1 AS one",
+		"a materialized view": "CREATE SCHEMA sprint; CREATE MATERIALIZED VIEW sprint.mv AS SELECT 1 AS one",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

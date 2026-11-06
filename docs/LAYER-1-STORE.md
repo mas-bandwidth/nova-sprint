@@ -400,8 +400,8 @@ it the StaleCheck witness is exactly what `READ COMMITTED` would do.
 ## Size
 
 About 2.8k lines of Go plus 0.25k of SQL, measured (`wc -l`, tests excluded:
-2,814 Go and 255 SQL at round 11); the first estimate, 1.5k from the operation
-count, left out the guarantees eleven rounds of review added: the full-body
+2,829 Go and 255 SQL at round 12); the first estimate, 1.5k from the operation
+count, left out the guarantees twelve rounds of review added: the full-body
 check before any read (closed sets, limits, empty keys), the write table, the
 unknown rule and its known cases, the counter bounds, tier serving, the
 same-value refusals, the schema hash and the foreign-schema check, and the
@@ -439,3 +439,5 @@ Recorded with round 9 (2026-11-06): `events.policy` is the version active when t
 Recorded with round 10 (2026-11-06, the lock round): tier serving is the writes' own check (put card, a move into ready or working, and the row writes; no condition); a consumer's stream is its producer's; cursors are global and carried by a clear; the unknown rule is the one above; a gen, epoch or policy version that would pass 2147483647 is a plain error naming it, in both stores; Migrate refuses a schema `sprint` it did not make; the schema hash ignores comments, indentation and blank lines; a condition on a state outside its set is `ErrInvalid`; setting a card to the state it is in is refused; the triggers fix every key and epoch and keep the log append-only, and every count is 0 or more by a CHECK.
 
 Recorded with round 11 (2026-11-06, from the fourth cold read): reasons that depend on an order of names use byte order in both stores (PG `COLLATE "C"`), checked by the whole conformance suite on an ICU en-US database; the log and the policy versions refuse TRUNCATE, and a policy version is immutable but for `active` and never deleted; Migrate's foreign-schema check counts types and functions as well as relations; a value outside its closed set and an empty key are `ErrInvalid` in a write exactly as in a condition; every set write that would change nothing is refused (no gen moves); the schema hash strips a `--` comment only outside a single-quoted literal; each write is one entry in the write table (`specOf`).
+
+Recorded with round 12 (2026-11-06, from the fifth cold read): every name an op points at (a card's stream, needs and after) takes the key rule; tiers, needs and after are sets kept in canonical order in both stores; Migrate's foreign-schema check counts any object that depends on the namespace (`pg_depend`); integer conditions are range-checked like writes; `SetCardPriority{""}` is normal; each condition is one entry in the condition table (`condOf`); the schema hash also skips double-quoted identifiers, and scans dollar quotes as code (the stated limit).

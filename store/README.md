@@ -11,8 +11,10 @@ package does with it.
   version 1 opened by this binary is refused with "the store is at schema
   version 1, this binary knows schema version 2: run a binary built for
   schema version 1, or recreate the store". It is safe to run concurrently
-  (it holds one advisory lock). A schema `sprint` that holds anything (a
-  relation, a type or a function) but no `sprint.meta` is refused: "schema sprint exists and was not made by
+  (it holds one advisory lock). A schema `sprint` that holds any object
+  at all (anything PostgreSQL records as depending on the namespace: a
+  relation, type, function, operator, collation, text search object,
+  operator family, ...) but no `sprint.meta` is refused: "schema sprint exists and was not made by
   nova-sprint; drop it or point NOVA_PG_DSN elsewhere" (an empty one is an
   empty store). It also checks the shape: `sprint.meta` keeps the sha256 of
   the schema text that made the store, with comments, indentation and blank
@@ -133,11 +135,15 @@ landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`,
 the store since a snapshot at N, a refused op included, since a refusal is an
 event and moves seq too). One rule for a value outside its closed set
 (card kind, state, result, priority and tier; row kind, state and tiers,
-none twice; policy kind) and for an empty key (a card, judgement id; a
-stream, row, cursor name), in a condition exactly as in a write: it is
-`ErrInvalid` ("card state \"flying\" is not one of ...", "a card needs an
-id"), never a refusal, and nothing is logged. `CardHolder`'s holder `""` is
-none, not an empty key. There is no width condition and no tier condition:
+none twice; policy kind), for an empty key (a card, judgement id; a
+stream, row, cursor name) and for every name an op points at (a card's
+stream, each of its needs and after), and for an integer outside its range
+(a `CardGen` or `RowGen` gen, an `AtSeq` seq below 0), in a condition
+exactly as in a write: it is `ErrInvalid` ("card state \"flying\" is not one
+of ...", "a card needs an id"), never a refusal, and nothing is logged, so
+no reason has a gap where a name should be. `CardHolder`'s holder `""`, a
+card's `of` and holder `""`, and an answer's actor `""` are none, not an
+empty key (a consumer with no of or no holder is refused, by name). There is no width condition and no tier condition:
 the writes are the checks (the state write into working for width; put
 card, the state write into ready or working, and the row writes for
 tiers).
@@ -242,7 +248,7 @@ when its row already holds as many working cards as its width),
 is), `SetCardBaseSHA` (the base commit the attempt started from),
 `SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardCost` (cost
 and priced together, one field), `SetCardPriority` (refused on a consumer,
-normal included), `SetCardNeeds` and `SetCardAfter` (each refused on a
+normal included; `""` is normal, as at put card), `SetCardNeeds` and `SetCardAfter` (each refused on a
 consumer, nil included), `PutRow`
 (kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
 state, flaps and held are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
@@ -260,8 +266,13 @@ already working"), a row likewise ("row r1 is already up"), a stream or row
 held to what it is ("stream s1 is already not held"), the active policy
 version activated ("policy version 1 is already active"), a cursor set to
 its seq ("cursor feed is already at 7"), and every other set-card and
-set-row write to the value it holds ("card c1 already has that reason",
-"row w1 already has those tiers"; an empty list and none are one value).
+set-row write to the value it holds ("card c1 already has the given
+reason", "row w1 already has the given tiers"; an empty list and none are
+one value). Tiers, needs and after are sets: both stores keep them sorted
+in byte order without repeats, so a reorder is the same value and is
+refused like any other; a name twice in what a write sends is still
+refused (needs, after) or invalid (tiers). Paths and done when are lists:
+their order is kept.
 The kind rule comes first. Nothing moves without a change: no gen rises,
 and the refusal event carries no image. Put writes are not set writes: a
 `PutStream` or `PutRow` overwrite with the same values is accepted. A

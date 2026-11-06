@@ -510,7 +510,7 @@ func workingCount(h *harness) {
 	h.refused(h.op("take", nil, SetCardState{"u3", "working"}), "row w1 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish")
 	h.ok(h.op("fail", nil, SetCardState{"u2", "fail"}))
 	h.ok(h.op("take", nil, SetCardState{"u3", "working"}))
-	h.refused(h.op("width", nil, SetRowWidth{"w1", 1}), "row w1 already has that width")
+	h.refused(h.op("width", nil, SetRowWidth{"w1", 1}), "row w1 already has the given width")
 	h.refused(h.op("narrow", nil, SetRowWidth{"w1", 0}), "row w1 holds 1 working card, more than width 0; wait for a card to finish before narrowing it")
 	h.ok(h.op("back", nil, SetCardState{"u3", "ready"}, SetRowWidth{"w1", 0})) // ready again: the room is back within the op
 }
@@ -1390,7 +1390,6 @@ func coldRead4(h *harness) {
 		{PutCard{Tier: "pro", ID: "c3", Kind: "producer", Stream: "s1", Priority: "top"}, `card priority "top" is not one of`},
 		{SetCardState{"c1", "gone"}, `card state "gone" is not one of`},
 		{SetCardResult{"u1", "maybe"}, `card result "maybe" is not one of`},
-		{SetCardPriority{"c1", ""}, `card priority "" is not one of`},
 		{PutRow{Name: "w2", Kind: "robot"}, `row kind "robot" is not one of`},
 		{PutRow{Name: "w2", Kind: "kin", Tiers: []string{"x"}}, `row tier "x" is not one of`},
 		{SetRowTiers{"w1", []string{"pro", "pro"}}, "tier pro is named twice"},
@@ -1422,29 +1421,30 @@ func coldRead4(h *harness) {
 		{SetStreamHeld{"s1", false}, "stream s1 is already not held"},
 		{SetActivePolicy{1}, "policy version 1 is already active"},
 		{SetCursor{"feed", 1}, "cursor feed is already at 1"},
-		{SetCardScore{"c1", 10}, "card c1 already has that score"},
-		{SetCardReason{"c1", ""}, "card c1 already has that reason"},
-		{SetCardBranch{"c1", ""}, "card c1 already has that branch"},
-		{SetCardHead{"c1", ""}, "card c1 already has that head"},
-		{SetCardPR{"c1", 0}, "card c1 already has that pr"},
-		{SetCardAuthor{"c1", ""}, "card c1 already has that author"},
-		{SetCardBaseSHA{"c1", ""}, "card c1 already has that base sha"},
-		{SetCardAttempt{"c1", 0}, "card c1 already has that attempt"},
-		{SetCardBounces{"c1", 0}, "card c1 already has those bounces"},
-		{SetCardPriority{"c1", "normal"}, "card c1 already has that priority"},
-		{SetCardNeeds{"c1", []string{"c0"}}, "card c1 already has those needs"},
-		{SetCardAfter{"c1", nil}, "card c1 already has those after"},
-		{SetCardPaths{"c1", []string{}}, "card c1 already has those paths"}, // empty and none are one value
-		{SetCardDoneWhen{"c1", nil}, "card c1 already has those done when"},
-		{SetCardProse{"c1", ""}, "card c1 already has that prose"},
-		{SetCardResult{"u1", ""}, "card u1 already has that result"},
-		{SetCardPriorHead{"u1", ""}, "card u1 already has that prior head"},
-		{SetCardCost{"u1", 0, false}, "card u1 already has that cost"},
-		{SetRowWidth{"w1", 2}, "row w1 already has that width"},
-		{SetRowTiers{"w1", []string{"pro"}}, "row w1 already has those tiers"},
-		{SetRowSession{"w1", "sess-a"}, "row w1 already has that session"},
-		{SetRowLabels{"w1", "", ""}, "row w1 already has those labels"},
-		{SetRowFlaps{"w1", 0}, "row w1 already has those flaps"},
+		{SetCardScore{"c1", 10}, "card c1 already has the given score"},
+		{SetCardReason{"c1", ""}, "card c1 already has the given reason"},
+		{SetCardBranch{"c1", ""}, "card c1 already has the given branch"},
+		{SetCardHead{"c1", ""}, "card c1 already has the given head"},
+		{SetCardPR{"c1", 0}, "card c1 already has the given pr"},
+		{SetCardAuthor{"c1", ""}, "card c1 already has the given author"},
+		{SetCardBaseSHA{"c1", ""}, "card c1 already has the given base sha"},
+		{SetCardAttempt{"c1", 0}, "card c1 already has the given attempt"},
+		{SetCardBounces{"c1", 0}, "card c1 already has the given bounces"},
+		{SetCardPriority{"c1", "normal"}, "card c1 already has the given priority"},
+		{SetCardPriority{"c1", ""}, "card c1 already has the given priority"}, // "" is normal, as at put card
+		{SetCardNeeds{"c1", []string{"c0"}}, "card c1 already has the given needs"},
+		{SetCardAfter{"c1", nil}, "card c1 already has the given after"},
+		{SetCardPaths{"c1", []string{}}, "card c1 already has the given paths"}, // empty and none are one value
+		{SetCardDoneWhen{"c1", nil}, "card c1 already has the given done when"},
+		{SetCardProse{"c1", ""}, "card c1 already has the given prose"},
+		{SetCardResult{"u1", ""}, "card u1 already has the given result"},
+		{SetCardPriorHead{"u1", ""}, "card u1 already has the given prior head"},
+		{SetCardCost{"u1", 0, false}, "card u1 already has the given cost"},
+		{SetRowWidth{"w1", 2}, "row w1 already has the given width"},
+		{SetRowTiers{"w1", []string{"pro"}}, "row w1 already has the given tiers"},
+		{SetRowSession{"w1", "sess-a"}, "row w1 already has the given session"},
+		{SetRowLabels{"w1", "", ""}, "row w1 already has the given labels"},
+		{SetRowFlaps{"w1", 0}, "row w1 already has the given flaps"},
 		{SetCardPriority{"u1", "normal"}, "card u1 is of kind work; priority is a producer's"}, // the kind rule first
 	})
 	after := h.snap()

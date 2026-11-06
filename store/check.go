@@ -51,13 +51,17 @@ func check(op Op) error {
 	c.name(op.Actor, op.Kind).text(op.Note)
 	for _, e := range op.Expect {
 		c.in = fmt.Sprintf("condition %T", e)
-		c.expect(e)
+		if cd := condOf(e); cd.check == nil {
+			c.fail("it is not a condition of the closed set")
+		} else {
+			cd.check(&c)
+		}
 	}
 	seen := map[field]bool{}
 	for _, w := range op.Writes {
 		c.in = fmt.Sprintf("write %T", w)
-		sp, ok := specOf(w)
-		if !ok {
+		sp := specOf(w)
+		if sp.check == nil {
 			c.fail("it is not a write of the closed set")
 			continue
 		}
@@ -67,9 +71,7 @@ func check(op Op) error {
 			}
 			seen[f] = true
 		}
-		if sp.check != nil {
-			sp.check(&c)
-		}
+		sp.check(&c)
 	}
 	return c.err
 }
@@ -165,6 +167,14 @@ func (c *checker) key(table, k string) *checker {
 	return c.name(k)
 }
 
+// keys is key for each name a write points at: a need, an after.
+func (c *checker) keys(table string, ks ...string) *checker {
+	for _, k := range ks {
+		c.key(table, k)
+	}
+	return c
+}
+
 // tiers is a row's tiers: each one of Tiers, none named twice.
 func (c *checker) tiers(ts []string) *checker {
 	for i, t := range ts {
@@ -173,36 +183,6 @@ func (c *checker) tiers(ts []string) *checker {
 		}
 	}
 	return c
-}
-
-// expect checks one condition: a type of the closed set, its names and text,
-// by the same rules as the writes (an empty key, a value outside its set).
-func (c *checker) expect(e Expect) {
-	switch v := e.(type) {
-	case CardGen:
-		c.key("card", v.Card)
-	case CardState:
-		c.key("card", v.Card).oneOf("card state", v.State, CardStates)
-	case CardHolder:
-		c.key("card", v.Card).name(v.Holder)
-	case NeedsLanded:
-		c.key("card", v.Card)
-	case RowIs:
-		c.key("row", v.Row).oneOf("row state", v.State, RowStates)
-	case RowGen:
-		c.key("row", v.Row)
-	case RowHeld:
-		c.key("row", v.Row)
-	case StreamHeld:
-		c.key("stream", v.Stream)
-	case CardAbsent:
-		c.key("card", v.Card)
-	case JudgementOpen:
-		c.key("judgement", v.ID)
-	case AtSeq:
-	default:
-		c.fail("it is not a condition of the closed set")
-	}
 }
 
 func badText(s string) bool { return !utf8.ValidString(s) || strings.IndexByte(s, 0) >= 0 }

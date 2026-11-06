@@ -127,7 +127,7 @@ func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 		return fmt.Sprintf("the op is for epoch %d, the store is at epoch %d: take a new snapshot", op.Epoch, epoch), nil, nil, nil
 	}
 	for _, e := range op.Expect {
-		if r, err := w.expect(e); r != "" || err != nil {
+		if r, err := condOf(e).holds(w); r != "" || err != nil {
 			return r, nil, nil, err
 		}
 	}
@@ -194,46 +194,84 @@ func heldWord(held bool) string {
 	return "not held"
 }
 
-func (w *work) expect(e Expect) (string, error) {
-	switch c := e.(type) {
+// cond is one condition's entry in the one table of the conditions: the
+// check of its body (keys, ranges and closed sets, by the writes' rules) and
+// its test inside the transaction. The zero cond is a value outside the
+// closed set.
+type cond struct {
+	check func(c *checker)
+	holds func(w *work) (string, error)
+}
+
+// condOf is the one table of the conditions, keyed by type. A new condition
+// is one entry here.
+func condOf(e Expect) cond {
+	switch v := e.(type) {
 	case CardGen:
-		return w.cardIs(c.Card, func(k Card) string {
-			return when(k.Gen != c.Gen, "card %s is at gen %d, expected gen %d", c.Card, k.Gen, c.Gen)
+		return cardCond(v.Card, func(c *checker) { c.num("gen", v.Gen) }, func(k Card) string {
+			return when(k.Gen != v.Gen, "card %s is at gen %d, expected gen %d", v.Card, k.Gen, v.Gen)
 		})
 	case CardState:
-		return w.cardIs(c.Card, func(k Card) string {
-			return when(k.State != c.State, "card %s is %s, expected %s", c.Card, k.State, c.State)
+		return cardCond(v.Card, func(c *checker) { c.oneOf("card state", v.State, CardStates) }, func(k Card) string {
+			return when(k.State != v.State, "card %s is %s, expected %s", v.Card, k.State, v.State)
 		})
-	case CardHolder:
-		return w.cardIs(c.Card, func(k Card) string {
-			return when(k.Holder != c.Holder, "card %s has holder %s, expected %s", c.Card, noneIfEmpty(k.Holder), noneIfEmpty(c.Holder))
+	case CardHolder: // holder "" is none, not an empty key
+		return cardCond(v.Card, func(c *checker) { c.name(v.Holder) }, func(k Card) string {
+			return when(k.Holder != v.Holder, "card %s has holder %s, expected %s", v.Card, noneIfEmpty(k.Holder), noneIfEmpty(v.Holder))
 		})
 	case NeedsLanded:
-		return w.needsLanded(c.Card)
-	case RowIs:
-		row, r, err := w.mustRow(c.Row)
-		return cmp.Or(r, when(err == nil && row.State != c.State, "row %s is %s, expected %s", c.Row, row.State, c.State)), err
-	case RowGen:
-		row, r, err := w.mustRow(c.Row)
-		return cmp.Or(r, when(err == nil && row.Gen != c.Gen, "row %s is at gen %d, expected gen %d", c.Row, row.Gen, c.Gen)), err
-	case RowHeld:
-		row, r, err := w.mustRow(c.Row)
-		return cmp.Or(r, when(err == nil && row.Held != c.Held, "row %s is %s, expected %s", c.Row, heldWord(row.Held), heldWord(c.Held))), err
-	case StreamHeld:
-		s, r, err := w.mustStream(c.Stream)
-		return cmp.Or(r, when(err == nil && s.Held != c.Held, "stream %s is %s, expected %s", c.Stream, heldWord(s.Held), heldWord(c.Held))), err
+		return cond{func(c *checker) { c.key("card", v.Card) }, func(w *work) (string, error) { return w.needsLanded(v.Card) }}
 	case CardAbsent:
-		_, ok, err := w.tx.card(c.Card)
-		return when(ok, "card %s exists", c.Card), err
-	case AtSeq:
-		seq, err := w.tx.lastSeq()
-		return when(seq != c.Seq, "the store is at seq %d, expected seq %d", seq, c.Seq), err
+		return cond{func(c *checker) { c.key("card", v.Card) }, func(w *work) (string, error) {
+			_, ok, err := w.tx.card(v.Card)
+			return when(ok, "card %s exists", v.Card), err
+		}}
+	case RowIs:
+		return rowCond(v.Row, func(c *checker) { c.oneOf("row state", v.State, RowStates) }, func(r Row) string {
+			return when(r.State != v.State, "row %s is %s, expected %s", v.Row, r.State, v.State)
+		})
+	case RowGen:
+		return rowCond(v.Row, func(c *checker) { c.num("gen", v.Gen) }, func(r Row) string {
+			return when(r.Gen != v.Gen, "row %s is at gen %d, expected gen %d", v.Row, r.Gen, v.Gen)
+		})
+	case RowHeld:
+		return rowCond(v.Row, func(*checker) {}, func(r Row) string {
+			return when(r.Held != v.Held, "row %s is %s, expected %s", v.Row, heldWord(r.Held), heldWord(v.Held))
+		})
+	case StreamHeld:
+		return cond{func(c *checker) { c.key("stream", v.Stream) }, func(w *work) (string, error) {
+			s, r, err := w.mustStream(v.Stream)
+			return cmp.Or(r, when(err == nil && s.Held != v.Held, "stream %s is %s, expected %s", v.Stream, heldWord(s.Held), heldWord(v.Held))), err
+		}}
 	case JudgementOpen:
-		j, r, err := w.mustJudgement(c.ID)
-		return cmp.Or(r, when(err == nil && j.State != "open", "judgement %s is %s, expected open", c.ID, j.State)), err
-	default:
-		return "", invalid("op %s: unknown condition %T", w.op.ID, e)
+		return cond{func(c *checker) { c.key("judgement", v.ID) }, func(w *work) (string, error) {
+			j, r, err := w.mustJudgement(v.ID)
+			return cmp.Or(r, when(err == nil && j.State != "open", "judgement %s is %s, expected open", v.ID, j.State)), err
+		}}
+	case AtSeq:
+		return cond{func(c *checker) { c.num64("seq", v.Seq) }, func(w *work) (string, error) {
+			seq, err := w.tx.lastSeq()
+			return when(seq != v.Seq, "the store is at seq %d, expected seq %d", seq, v.Seq), err
+		}}
 	}
+	return cond{}
+}
+
+// cardCond is a condition on card id: its key and check, then test on the
+// card, which must exist.
+func cardCond(id string, check func(*checker), test func(Card) string) cond {
+	return cond{func(c *checker) { check(c.key("card", id)) }, func(w *work) (string, error) { return w.cardIs(id, test) }}
+}
+
+// rowCond is cardCond for a row.
+func rowCond(name string, check func(*checker), test func(Row) string) cond {
+	return cond{func(c *checker) { check(c.key("row", name)) }, func(w *work) (string, error) {
+		row, r, err := w.mustRow(name)
+		if r != "" || err != nil {
+			return r, err
+		}
+		return test(row), nil
+	}}
 }
 
 // when is the reason when cond holds, else "".

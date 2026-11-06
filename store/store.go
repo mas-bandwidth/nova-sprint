@@ -62,8 +62,6 @@ var (
 	RowStates   = []string{"up", "down"}
 	PolicyKinds = []string{"script", "data"}
 	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier, and the tiers a row serves
-	// JudgementStates are a judgement's states: open until answered or expired.
-	JudgementStates = []string{"open", "answered", "expired"}
 )
 
 // Op is one operation: conditions that must all hold and writes that all land,
@@ -282,4 +280,14 @@ func normList(n []string) []string {
 		return nil
 	}
 	return slices.Clone(n)
+}
+
+// normSet is a set as the store keeps it (tiers, needs, after): sorted in
+// byte order without repeats, or nil when empty, so a reorder is the same
+// value (and a same-value write is refused). Fake and PG both keep it so:
+// every write builds it here, and every read passes through it.
+func normSet(n []string) []string {
+	s := normList(n)
+	slices.Sort(s)
+	return slices.Compact(s)
 }

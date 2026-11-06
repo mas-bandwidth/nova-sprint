@@ -12,72 +12,50 @@ import (
 // write performs one write (its entry in specOf), or returns the reason it is
 // refused; check has already refused anything outside the closed sets.
 func (w *work) write(wr Write) (string, error) {
-	sp, _ := specOf(wr)
+	s := specOf(wr)
 	switch {
-	case sp.do != nil:
-		return sp.do(w)
-	case sp.row != nil:
-		return w.setRow(sp)
+	case s.do != nil:
+		return s.do(w)
+	case s.row != nil:
+		return set(w, s, w.mustRow, s.rowIf, s.row, w.putRow)
 	}
-	return w.setCard(sp)
+	return set(w, s, w.mustCard, s.cardIf, s.card, w.putCard)
 }
 
-// setCard is a set-card write on an existing card: its kind rule first (a
-// write on the wrong kind is refused before its value is looked at), then a
-// value that changes nothing is refused; putCard sets the gen, once per op.
-func (w *work) setCard(sp spec) (string, error) {
-	card, r, err := w.mustCard(sp.fields[0].key)
+// set is a set-card or set-row write on an existing record: its rule first
+// (a write on the wrong kind is refused before its value is looked at), then
+// a value that changes nothing is refused; put sets the gen, once per op.
+func set[T any](w *work, s spec, must func(string) (T, string, error), rule func(*work, T) (string, error), change func(*T), put func(T, bool, T) error) (string, error) {
+	old, r, err := must(s.fields[0].key)
 	if r != "" || err != nil {
 		return r, err
 	}
-	if sp.cardIf != nil {
-		if r, err := sp.cardIf(w, card); r != "" || err != nil {
+	if rule != nil {
+		if r, err := rule(w, old); r != "" || err != nil {
 			return r, err
 		}
 	}
-	next := card
-	sp.card(&next)
-	if r := sp.unchanged(card, next); r != "" {
+	next := old
+	change(&next)
+	if r := s.unchanged(old, next); r != "" {
 		return r, nil
 	}
-	return "", w.putCard(card, true, next)
-}
-
-// setRow is setCard for a set-row write.
-func (w *work) setRow(sp spec) (string, error) {
-	row, r, err := w.mustRow(sp.fields[0].key)
-	if r != "" || err != nil {
-		return r, err
-	}
-	if sp.rowIf != nil {
-		if r, err := sp.rowIf(w, row); r != "" || err != nil {
-			return r, err
-		}
-	}
-	next := row
-	sp.row(&next)
-	if r := sp.unchanged(row, next); r != "" {
-		return r, nil
-	}
-	return "", w.putRow(row, true, next)
+	return "", put(old, true, next)
 }
 
 // unchanged is the refusal of a set write whose record would be the same
-// after it as before: "row r1 is already up", "card c1 already has that
-// reason". Nothing is logged as accepted and no gen moves.
-func (sp spec) unchanged(was, now any) string {
+// after it as before: "row r1 is already up", "card c1 already has the given
+// reason" (one form for one value or a list, so no word depends on the
+// column). Nothing is logged as accepted and no gen moves.
+func (s spec) unchanged(was, now any) string {
 	if !bytes.Equal(encode(was), encode(now)) {
 		return ""
 	}
-	f := sp.fields[0]
-	if sp.is != "" {
-		return fmt.Sprintf("%s %s %s", f.table, f.key, sp.is)
+	f := s.fields[0]
+	if s.is != "" {
+		return fmt.Sprintf("%s %s %s", f.table, f.key, s.is)
 	}
-	that := "that"
-	if slices.Contains([]string{"paths", "done_when", "needs", "after", "tiers", "labels", "flaps", "bounces"}, f.name) {
-		that = "those"
-	}
-	return fmt.Sprintf("%s %s already has %s %s", f.table, f.key, that, strings.ReplaceAll(f.name, "_", " "))
+	return fmt.Sprintf("%s %s already has the given %s", f.table, f.key, strings.ReplaceAll(f.name, "_", " "))
 }
 
 func (w *work) setStreamHeld(v SetStreamHeld) (string, error) {
@@ -107,7 +85,7 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down", Tiers: normList(v.Tiers), Model: v.Model, Harness: v.Harness}
+	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down", Tiers: normSet(v.Tiers), Model: v.Model, Harness: v.Harness}
 	if ok {
 		if r, err := w.widthFits(v.Name, v.Width); r != "" || err != nil {
 			return r, err
@@ -249,7 +227,7 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if v.Kind == "sentinel" && v.Brief != "" {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
-	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: normList(v.Needs), After: normList(v.After), Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
+	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: normSet(v.Needs), After: normSet(v.After), Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
 		Holder: v.Holder, Tier: v.Tier, Paths: normList(v.Paths), DoneWhen: normList(v.DoneWhen), Prose: v.Prose}
 	if c.Priority != "normal" {
 		if r := producersOnly(c); r != "" {
@@ -262,10 +240,10 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if r, err := w.checkOf(c); r != "" || err != nil {
 		return r, err
 	}
-	if r, err := w.checkList(c, needList, c.Needs); r != "" || err != nil {
+	if r, err := w.checkList(c, needList, v.Needs); r != "" || err != nil { // as sent: a name twice is refused, not merged
 		return r, err
 	}
-	if r, err := w.checkList(c, afterList, c.After); r != "" || err != nil {
+	if r, err := w.checkList(c, afterList, v.After); r != "" || err != nil {
 		return r, err
 	}
 	if r, err := w.checkHolder(c); r != "" || err != nil {

@@ -38,19 +38,24 @@ const SchemaVersion = 2
 var schemaHash = hashSchema(schemaSQL)
 
 // hashSchema strips a -- comment only outside a single-quoted string literal
-// (a doubled quote inside one toggles twice, so it stays inside), across lines,
-// so a '--' in a literal is hashed. Function bodies ($$ ... $$) are scanned as
-// code: their comments are stripped and their literals kept. E-prefixed
+// and a double-quoted identifier (a doubled quote closes and reopens, so it
+// stays inside), across lines, so a '--' in a literal is hashed. Dollar
+// quotes ($$ ... $$) are scanned as code, since the schema's are all function
+// bodies: their comments are stripped and their literals kept, so a -- in a
+// $$ string literal would be stripped (the schema has none). E-prefixed
 // escape strings are not read (the schema has none).
 func hashSchema(sql string) string {
 	var b strings.Builder
-	quoted := false
+	var quote byte // the open quote: ' a literal, " an identifier, 0 none
 	for line := range strings.Lines(sql) {
 		cut := len(line)
 		for i := 0; i < cut; i++ {
-			if line[i] == '\'' {
-				quoted = !quoted
-			} else if !quoted && strings.HasPrefix(line[i:], "--") {
+			switch ch := line[i]; {
+			case quote == 0 && (ch == '\'' || ch == '"'):
+				quote = ch
+			case ch == quote:
+				quote = 0
+			case quote == 0 && strings.HasPrefix(line[i:], "--"):
 				cut = i
 			}
 		}
@@ -105,8 +110,10 @@ func (p *PG) Close() { p.pool.Close() }
 // Migrate applies schema.sql to an empty store or one at SchemaVersion made
 // by this build of it, and refuses a store at any other version, or at this
 // version with another schema hash (sprint.meta), naming both, and a schema
-// sprint that holds anything (a relation, a type or a function) but no
-// sprint.meta (not made by nova-sprint).
+// sprint that holds anything but no sprint.meta (not made by nova-sprint):
+// any object of any kind in the namespace, which PostgreSQL records as a
+// pg_depend row on it (a relation, type, function, operator, collation, text
+// search object, operator family, ...).
 // Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
@@ -120,9 +127,8 @@ func (p *PG) Migrate(ctx context.Context) error {
 	}
 	var meta, used bool
 	if err := tx.QueryRow(ctx, `SELECT to_regclass('sprint.meta') IS NOT NULL,
-		EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'sprint')
-		OR EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'sprint')
-		OR EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace WHERE n.nspname = 'sprint')`).Scan(&meta, &used); err != nil {
+		EXISTS (SELECT 1 FROM pg_depend d JOIN pg_namespace n ON n.oid = d.refobjid
+			WHERE d.refclassid = 'pg_namespace'::regclass AND n.nspname = 'sprint')`).Scan(&meta, &used); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if used && !meta {
