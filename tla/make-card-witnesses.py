@@ -30,7 +30,7 @@ INVARIANTS = [
 # environment moves, so a blocker priority and a closed row fit in one
 # behaviour.
 SCENARIOS = {
-    "life": {"K": 3, "MaxHead": 1, "MaxAttempt": 2, "MaxBounce": 1, "MaxEnv": 1},
+    "life": {"K": 3, "MaxHead": 2, "MaxAttempt": 2, "MaxBounce": 1, "MaxEnv": 2},
     "deps": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
     "pre":  {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 2},
 }
