@@ -73,14 +73,14 @@ CONSTANTS
   MaxBounce,   \* model bound: Broken and ReadFix are not enabled at this count
   MaxEnv       \* model bound: environment and coordinator moves per behaviour
 
-Prods     == IF Scenario = "life" THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
+Prods     == IF Scenario \in {"life", "reads"} THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
 \* In deps a second sentinel, a, is absent until Add puts it.
 Added     == IF Scenario = "deps" THEN {"a"} ELSE {}
-Sentinels == (IF Scenario = "pre" THEN {} ELSE {"s"}) \cup Added
+Sentinels == (IF Scenario \in {"pre", "reads"} THEN {} ELSE {"s"}) \cup Added
 P         == Prods \cup Sentinels
-\* deps has a third row, so AskReads can cut reads on two rows that are
+\* "reads" has a third row, so AskReads can cut reads on two rows that are
 \* not the author.
-Rows      == IF Scenario = "deps" THEN {"r1", "r2", "r3"} ELSE {"r1", "r2"}
+Rows      == IF Scenario = "reads" THEN {"r1", "r2", "r3"} ELSE {"r1", "r2"}
 RowIdx    == [r \in Rows |-> CASE r = "r1" -> 1 [] r = "r2" -> 2 [] OTHER -> 3]
 CIds      == Prods \X (1..K)
 ConsOf(p) == IF p \in Prods THEN {<<p, i>> : i \in 1..K} ELSE {}
@@ -195,6 +195,10 @@ StepRule(n, ev, p, c, r) ==
            \E k \in ConsOf(p) :
              /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "fix"
              /\ cs[k].head = ps[p].head /\ cs[k].review = ps[p].review
+    [] n = "ReplaceByLive" -> ev = "Replace" => (r \in P \ {p} /\ NonFinal(r))
+    [] n = "HeadNeverRepeats" ->
+         (ev \in {"Report", "Withdraw"} /\ cs[c].kind = "work")
+           => (cs'[c].head = 0 \/ cs'[c].head # cs[c].prior)
     [] n = "WaiveRedNeedsPriorRead" ->
          ev = "WaiveRed" =>
            \E k \in ConsOf(p) :
@@ -220,7 +224,7 @@ StepRule(n, ev, p, c, r) ==
 StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
               "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs",
               "ReadYesNeedsYes", "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
-              "WaiveRedNeedsPriorRead", "FixCarriesFailure",
+              "WaiveRedNeedsPriorRead", "FixCarriesFailure", "ReplaceByLive", "HeadNeverRepeats",
               "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
               "SentinelLandsByReached", "AfterKept"}
 
@@ -228,7 +232,7 @@ StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixK
 \* when a reach check needs it (every other step is "-", so states are not
 \* split by the event that reached them). ps' and cs' must be set before it
 \* is evaluated.
-Tracked == {"NeedFailed", "Preempt", "AskReads"}
+Tracked == {"NeedFailed", "Preempt", "AskReads", "InThisOp"}
 L(ev, p, c, r) == [ev |-> IF ev \in Tracked THEN ev ELSE "-",
                    bad |-> {n \in StepRules : ~StepRule(n, ev, p, c, r)}]
 
@@ -447,7 +451,9 @@ Replace(p, by) ==
   /\ by \in P \ {p}
   /\ NonFinal(by)
   /\ NoLive(p)
-  /\ PStep("Replace", p, NoC, [ps[p] EXCEPT !.st = "fail"])
+  /\ ps'   = [ps EXCEPT ![p].st = "fail"]
+  /\ UNCHANGED <<cs, rs, held>>
+  /\ last' = L("Replace", p, NoC, by)   \* by rides in the row slot, for ReplaceByLive
 
 NeedFailed(p, n) ==
   /\ NonFinal(p)
@@ -466,11 +472,35 @@ Relink(p, n, to) ==
   /\ ps[p].st = "waiting"
   /\ n \in ps[p].needs
   /\ ps[n].st = "fail"
-  /\ to \in P \ {p}   \* a sentinel may be a need (the second cold read)
+  /\ to \in Prods \ {p}   \* the code: a need is relinked only to a producer
   /\ NonFinal(to)
   /\ to \notin ps[p].needs
-  /\ Acyclic([NeedsGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])
+  /\ Acyclic([OrderGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])   \* needs and after (the code)
   /\ PStep("Relink", p, NoC, [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}])
+
+\* NeedFailed, Waive and Relink {InThisOp} (the code at v2-card-fix3): the
+\* op fails the need n earlier (here by Cancel) and moves the dependant p
+\* in the same op, with no "need is fail" fence; one step, no state between.
+InThisOpGuard(n, p, m, to) ==
+  /\ NonFinal(n) /\ NoLive(n)            \* Cancel(n)
+  /\ p # n /\ n \in ps[p].needs
+  /\ (m # "Relink") => to = n
+  /\ CASE m = "NeedFailed" -> NonFinal(p) /\ NoLive(p)
+       [] m = "Waive"      -> ps[p].st = "waiting"
+       [] OTHER            -> /\ ps[p].st = "waiting"
+                              /\ to \in Prods \ {p, n}
+                              /\ NonFinal(to)
+                              /\ to \notin ps[p].needs
+                              /\ Acyclic([OrderGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])
+InThisOpMove(p, n, m, to) ==
+  CASE m = "NeedFailed" -> [ps[p] EXCEPT !.st = "fail"]
+    [] m = "Waive"      -> [ps[p] EXCEPT !.needs = @ \ {n}]
+    [] OTHER            -> [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}]
+InThisOp(n, p, m, to) ==
+  /\ InThisOpGuard(n, p, m, to)
+  /\ ps'   = [ps EXCEPT ![n].st = "fail", ![p] = InThisOpMove(p, n, m, to)]
+  /\ UNCHANGED <<cs, rs, held>>
+  /\ last' = L("InThisOp", p, NoC, NoR)
 
 \* Edit writes the brief, which the model leaves out: only the history moves.
 \* A sentinel has no prose or score: Edit and Rescore refuse it, as Start
@@ -531,7 +561,7 @@ Take(c, r) ==
 \* report carries the producer's head.
 ReportHeads(c, res) ==
   IF cs[c].kind = "read" THEN {ps[c[1]].head}
-  ELSE IF res = "ok" THEN Heads \ {cs[c].prior} ELSE 0..MaxHead
+  ELSE IF res = "ok" THEN Heads \ {cs[c].prior} ELSE {0} \cup (Heads \ {cs[c].prior})
 \* A work consumer reports ok, fail or fault; a read ok, fix or fault. The
 \* model's bound on bounces sits here, on the report that would raise them
 \* (fail, fix), so Broken and ReadFix are always enabled once reported.
@@ -559,9 +589,14 @@ ReleasedBy(c, h) ==
   THEN [ps EXCEPT ![c[1]].st = Back, ![c[1]].head = IF h # 0 THEN h ELSE @]
   ELSE ps
 
+\* The code: a ready work consumer has pushed nothing; a pushed head is not
+\* the base (0 here is "none") nor the prior head; a read gives none.
+WithdrawHeads(c) ==
+  IF cs[c].kind = "work" /\ cs[c].st = "working" THEN {0} \cup (Heads \ {cs[c].prior}) ELSE {0}
+
 Withdraw(c, h) ==
   /\ Live(c)
-  /\ h \in (IF cs[c].kind = "work" THEN 0..MaxHead ELSE {0})
+  /\ h \in WithdrawHeads(c)
   /\ cs'   = [cs EXCEPT ![c] = Withdrawn(c, h)]
   /\ ps'   = ReleasedBy(c, h)
   /\ UNCHANGED <<rs, held>>
@@ -639,6 +674,7 @@ CardMove ==
        \/ \E n \in P : NeedFailed(p, n) \/ Waive(p, n)
        \/ \E n, to \in P : Relink(p, n, to)
        \/ \E c \in CIds, r \in Rows : Preempt(p, c, r)
+  \/ \E n, p \in P, m \in {"NeedFailed", "Waive", "Relink"}, to \in P : InThisOp(n, p, m, to)
   \/ \E c \in CIds :
        \/ \E h \in 0..MaxHead : Withdraw(c, h)
        \/ \E r \in Rows :
@@ -765,6 +801,19 @@ ReaderNeverAuthor ==
 
 WidthKept == \A r \in Rows : Cardinality(WorkingOn(r)) <= rs[r].width
 
+(* A work consumer reports ok, fail or fault; a read ok, fix or fault.   *)
+ResultsByKind ==
+  \A c \in CIds :
+    /\ cs[c].kind = "work" => cs[c].res \in {"-", "ok", "fail", "fault"}
+    /\ cs[c].kind = "read" => cs[c].res \in {"-", "ok", "fix", "fault"}
+
+(* AskRead and AskReads refuse a row already holding a live read of this  *)
+(* head: at most one live read of a head per row.                         *)
+OneLiveReadPerRow ==
+  \A c, k \in CIds :
+    (c # k /\ c[1] = k[1] /\ Live(c) /\ Live(k) /\ cs[c].kind = "read" /\ cs[k].kind = "read"
+       /\ cs[c].head = cs[k].head) => cs[c].row # cs[k].row
+
 (* A ready consumer is never refused Take while its row is up and its     *)
 (* working count is below width, held or not: ready ones are not counted  *)
 (* (LESSONS 3.3), and a hold stops deals, not taking what was dealt.      *)
@@ -783,10 +832,8 @@ NeedFailedTakesDependants ==
 SentinelShape == \A s \in Sentinels : ps[s].st \in {"absent", "waiting", "landed", "fail"}
 
 NeedsAcyclic == Acyclic(NeedsGraph)
-(* Needs and after together acyclic: what Add refuses. Not an invariant   *)
-(* of the passing runs: Relink checks needs only, so with a sentinel as a *)
-(* need it can close a loop through needs and after that Add would refuse *)
-(* (reach/CardNeverOrderCycle shows it; a hole in the design text).        *)
+(* Needs and after together stay acyclic: Add and Relink both walk needs *)
+(* and after (the code at v2-card-fix3).                                 *)
 OrderAcyclic == Acyclic(OrderGraph)
 
 (* Soft order never holds a landing whose target is not queued: a         *)
@@ -807,6 +854,8 @@ ReadFixNeedsFix        == "ReadFixNeedsFix" \notin last.bad
 WithdrawReleasesInOneStep == "WithdrawReleasesInOneStep" \notin last.bad
 WaiveRedNeedsPriorRead == "WaiveRedNeedsPriorRead" \notin last.bad
 FixCarriesFailure      == "FixCarriesFailure" \notin last.bad
+ReplaceByLive          == "ReplaceByLive" \notin last.bad
+HeadNeverRepeats       == "HeadNeverRepeats" \notin last.bad
 FaultSpendsNothing     == "FaultSpendsNothing" \notin last.bad
 BlockNoLive            == "BlockNoLive" \notin last.bad
 EditNoLive             == "EditNoLive" \notin last.bad
@@ -844,8 +893,7 @@ NeverAdded           == \A p \in Added : ~(Exists(p) /\ ps[p].needs # {} /\ ps[p
 (* A sentinel is a need: a is added needing s.                            *)
 NeverSentinelNeeded  == \A p \in Added : ~(Exists(p) /\ \E n \in ps[p].needs : n \in Sentinels)
 NeverAskReads        == last.ev # "AskReads"
-(* The hole: Relink closes a needs-and-after loop that Add refuses.       *)
-NeverOrderCycle      == OrderAcyclic
+NeverInThisOp        == last.ev # "InThisOp"
 (* WaiveRed: merging after a Red with no ok read of the current review.   *)
 NeverWaivedRed       ==
   ~\E p \in Prods :
