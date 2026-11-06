@@ -21,3 +21,14 @@ are all required.
 A layer is secured when it is modelled in TLA+ with reversed witnesses, every
 refusal is tested on a real store, a cold reader is green, and it has been used
 for real work.
+
+## The standards every verb meets (Glenn, 2026-11-06)
+
+1. **The tool enforces the order of doing things.** As nova-bus makes you hook in
+   before you can send, nova-sprint refuses a step whose prerequisite has not
+   happened and says, nicely, what to do first.
+2. **A great first-time experience that guides an AI toward using the tool
+   correctly as it works.** Every verb's output says what it did and what the
+   next verb is; help and refusals are written for an AI meeting the tool cold.
+3. **No error is ever silent.** Every error is printed with what went wrong and
+   how to resolve it, and the exit code says which kind it was.
