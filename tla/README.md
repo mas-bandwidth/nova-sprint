@@ -1,8 +1,8 @@
 # tla/: the store model (layer 1)
 
-`Store.tla` models the contract in `docs/LAYER-1-STORE.md`. Each operation is
-one atomic step over `epoch`, `cards`, `rows`, `events` and `applied`. In
-order, the step:
+`Store.tla` models the contract in `docs/LAYER-1-STORE.md` (v2 at 293f4ed6).
+Each operation is one atomic step over `epoch`, `cards`, `rows`, `events` and
+`applied`. In order, the step:
 1. checks the op's epoch against the store's epoch;
 2. checks its conditions;
 3. runs its writes in order, each under its own rule;
@@ -10,28 +10,33 @@ order, the step:
    and appends a refused event.
 
 Epochs start at 1. `Clear` is an op with no writes and its epoch is checked
-too. It opens the next epoch, carries the rows forward (same width, state
-`down`) and leaves the cards behind. It is idempotent by id and logged with
-the epoch it closed.
+too. It opens the next epoch, carries the rows forward (same width and held
+flag, state `down`, gen + 1) and leaves the cards behind. It is idempotent
+by id and logged with the epoch it closed.
+
+Cards have a kind: `producer`, `sentinel`, or a consumer (`work` or `read`)
+that names its producer (`prod`, the design's `of`). A producer or sentinel
+never has a holder: the holder write refuses it. A consumer has no needs.
 
 The conditions are:
 - `CardGen`, `CardState`, `HolderIs` and `CardAbsent` on a card;
 - `NeedsLanded`: every need of the card is landed, read from the store in the
   step;
-- `RowIs` on a row.
+- `RowIs`, `RowGen` and `RowHeld` on a row.
 
-There is no width condition. Width is kept by two write rules:
-- **Set holder (to a row):** refused when that row already holds as many
-  cards as its width, counted at the moment of the write. So one op with two
-  holder writes to a width-1 row is refused on the second, and nothing lands.
-- **Put row:** refused if it would set a width below the number of cards the
-  row holds.
+There is no width condition. A row's width counts the consumers it holds in
+`working`, never `ready`, `done` or `fail`, so a row may hold ready (queued)
+consumers past its width. Width is kept by the write rules:
+- **Set state into `working`** on a held card, and **set holder** on a card
+  already in `working`: refused when that row already holds width other
+  working cards, counted at the moment of the write. So one op with two such
+  writes to a width-1 row is refused on the second, and nothing lands.
+- **Put row** and **set row width**: refused below the row's working
+  holders.
 
-An op that writes a card raises that card's gen by one, however many of its
-writes touch the card. A card the op itself adds stays at gen 0.
-
-The card states are `waiting`, `ready`, `working`, `review`, `merging`,
-`landed` and `fail`.
+An op that writes a card or a row raises its gen by one, however many of its
+writes touch it. A card or row the op itself adds stays at gen 0. A row's
+held flag is set by its own write (`SetRowHeld`), which raises the row's gen.
 
 The caller's view is modelled too:
 - `phase` per op: `idle`, `unknown` or `done`;
@@ -44,188 +49,234 @@ reply lost after the store applied it. Either way the caller is left
 
 ## What one model step stands for in SQL
 
-One step of `Store.tla` is one SQL transaction. It runs at `READ COMMITTED`
-from `LOCK TABLE sprint.epoch` to `COMMIT`, and checks the epoch, the
-conditions, the writes with their rules, and the event row inside it. The
-lock is what makes the atomic step real. Without it, two transactions at
-`READ COMMITTED` can each read the rows, decide, and then write. Two
-witnesses are exactly that interleaving:
-- **StaleCheck:** every condition is judged on an earlier read, so two takes
-  of one card both land.
-- **WidthStale:** the holder write's room check is judged on an earlier
-  count, so two deals overfill a width-1 row.
+One model step = one SQL transaction from `LOCK TABLE sprint.epoch` to COMMIT
+at READ COMMITTED; the lock is what makes the atomic step real. The epoch,
+the conditions, the writes with their rules, and the event row are all
+inside it. Without the lock, two transactions at READ COMMITTED can each
+read the rows, decide, and then write. Two witnesses are exactly that
+interleaving:
+- **StoreStaleCheck:** the conditions are judged on an earlier read, so a1
+  deals to r1 after g1 held it.
+- **StoreWidthStale:** the width check is judged on an earlier read, so a1
+  lands a working consumer after e1 lowered the width to 0.
 
 With the lock, writers run one at a time and each one reads the state the
 previous one committed. That serial order is the order of `events` here.
 
 ## The instance
 
-3 cards, 2 rows, 15 fixed ops. Callers issue their ops in program order
-(`Pred`). A setup caller goes first:
-- s1 to s3 add c1, c2, and c3 (which needs c1);
-- s4 and s5 put rows r1 and r2, width 1, up;
-- s6 deals c2 and c3 to r2 in one op. It is always refused on its second
-  holder write.
+6 cards (producers p1, p2; sentinel t1; consumers u1, u2, u3), 2 rows of
+width 1, 21 fixed ops. Callers issue their ops in program order (`Pred`). A
+setup caller goes first, covering each deterministic rule once:
+- s1, s2 add p1, p2 (needs p1) and t1 (needs p2); s3, s4 put r1 and r2,
+  width 1, up;
+- s5 and s6 set a holder on the producer and on the sentinel: both refused;
+- s7 readies p2 before its need landed (refused), s8 lands p1, s9 readies
+  p2;
+- s10 adds u1 and u2, both working, to the width-1 r2 in one op: refused on
+  its second holder write;
+- s11 adds u3 ready on r2, s12 moves it to r1, where it stays queued.
 
-Then six callers run concurrently:
+Then seven callers run concurrently:
 
 | Caller | Ops | What it does |
 |---|---|---|
-| a | a1, a2 | a1 takes c1 for r1; a2 lands c1 if r1 holds it |
-| b | b1, b2 | b1 takes c1 for r2 (racing a1 on the same expectation); b2 reassigns c1 to r1 (refused by the holder write if r1 is full) |
-| w | w1 | deals c2 to r1 (racing a1 for r1's one slot) |
-| n | n1 | readies c3 once its need c1 is landed |
-| e | e1 | lowers r1's width to 0: accepted when r1 holds nothing, refused when it holds a card; also an epoch-1 op that may arrive after the clear |
-| k | k1, k2 | k1 clears epoch 1; k2 adds c2 in epoch 2 |
+| a | a1, a2 | a1 deals new consumer u1 working to r1, fenced on RowHeld(r1, false); a2 marks it done (it keeps r1, the slot frees) |
+| b | b1, b2 | b1 adds u2 ready on r1; b2 makes it working (the work-entry check) |
+| e | e1 | lowers r1's width to 0, fenced on RowGen(r1, 0) |
+| g | g1 | holds r1, fenced on RowGen(r1, 0) |
+| x | x1 | sets r2 up, fenced only by its epoch |
+| k | k1, k2 | k1 clears epoch 1; k2 adds p1 in epoch 2 |
 
 Transport failures happen only on a1 and k1 (`Lossy`, `MaxLoss = 1`).
 
 Left out:
 - streams, policy and the seq fence;
-- the card and row fields that no rule reads (attempt, branch, head, pr,
-  reason, score, kind, session, flaps). They add columns, not behaviour.
+- the soft `after` list (it follows the needs rule; no store rule reads it);
+- the card and row fields no rule reads (attempt, author, branch, base_sha,
+  prior_head, head, pr, result, bounces, cost, priced, priority, brief,
+  reason, score, row kind, session, flaps). They add columns, not behaviour.
 
-There is no heartbeat: rows have no seen field.
+## Files
 
-`witnesses/` holds eight reversed witnesses. Each is a copy of `Store.tla`
-with one deliberate fault, and TLC must report a violation for each. In each
-witness `.cfg` the target invariant is listed first: when one state breaks
-several invariants, TLC names the first one in the list. `reach/` holds nine
-reachability checks on `Store.tla`. Each must be violated, which shows the
-passing run is not vacuous.
+- `Store.tla`, `Store.cfg`: the model and its passing run.
+- `witnesses/`: fourteen reversed witnesses, each `Store.tla` with one fault.
+  They are generated: `python3 make-witnesses.py` writes every witness and
+  every cfg (`Store.cfg`, `witnesses/*.cfg`, `reach/*.cfg`) from `Store.tla`
+  and the fault list in the script. Each fault is a set of exact text
+  replacements; one that no longer matches stops the script. Edit
+  `Store.tla`, rerun the script, commit both.
+- `reach/`: seventeen reachability checks on `Store.tla`. Each must be
+  violated, which shows the passing run is not vacuous.
+
+In each witness cfg the target invariant is listed first: when one state
+breaks several invariants, TLC names the first in the list. StoreWidthStale
+leaves NoSpuriousRefusal out (its cfg says why): a stale count also refuses a
+deal the live state allows, which TLC finds before the over-fill.
 
 ## Running
 
 Run TLC on a bench host, never on the working machine. `ci-tlc.sh` is the
 gate. It runs every module in parallel:
-- `Store.tla` must pass;
+- `Store.tla` must pass (TLC exit 0);
 - every `witnesses/*.tla` and every `reach/*.cfg` must report a violation
-  (TLC exit 12).
+  (TLC exit 12) of the first invariant in its cfg.
 
 It exits non-zero on any other outcome: a pass where a violation is
-required, a parse error, a crash, or a run that wrote no result. It uses a
-pinned, sha256-checked `tla2tools.jar` (v1.8.0), gives each run its own
-`java.io.tmpdir`, and passes `-noGenerateSpecTE`, so a rerun in the same
-tree never sees trace modules.
+required, a violation of a different invariant, a parse error, a crash, or a
+run that wrote no result. It uses a pinned, sha256-checked `tla2tools.jar`
+(v1.8.0), gives each run its own `java.io.tmpdir`, and passes
+`-noGenerateSpecTE`, so a rerun in the same tree never sees trace modules.
 
 ```
 bash ci-tlc.sh
 ```
 
-By hand, from this directory:
-
-```
-java -jar tla2tools.jar -workers 4 -config Store.cfg Store.tla
-java -jar tla2tools.jar -config reach/<Name>.cfg Store.tla
-```
-
-and from `witnesses/`:
-
-```
-java -jar tla2tools.jar -config <Witness>.cfg <Witness>.tla
-```
-
 The helper scripts:
-- `sh run-tlc.sh /path/to/tla2tools.jar [java]` runs the same set, keeps one
-  log per run in `logs/`, and gives the state counts below.
-- `sh run-one.sh` runs a single one.
-- `sh summarize-logs.sh` prints the result lines.
-- `sh show-trace.sh <name>` prints a counterexample's steps and its event log.
+- `sh run-tlc.sh /path/to/tla2tools.jar [java]` runs the same set, one log
+  per run in `logs/`;
+- `sh run-one.sh` runs a single one;
+- `sh summarize-logs.sh` prints the result lines;
+- `sh show-trace.sh <name>` prints a counterexample's event ids, and
+  `sh show-all-traces.sh` does it for every violated log;
+- `sh last-state.sh <name>` prints the epoch, cards and rows of a
+  counterexample's last state.
 
 ## Invariants
 
 - **TypeOK**: every variable stays in its type.
 - **SingleStateSingleHolder**: every card has exactly one state from the
   closed set (or is absent), at most one holder, and that holder is a row of
-  this epoch. This is structural in `Store.tla` and stated anyway.
-- **WidthKept**: no row has more cards holding it than its width.
+  this epoch.
+- **ProducerNeverHeld**: no producer or sentinel has a holder.
+- **ConsumersWellFormed**: a consumer names an existing producer and has no
+  needs; a producer or sentinel names none.
+- **WidthKept**: no row holds more `working` cards than its width.
 - **IdempotentById**: no op id appears twice in the event log.
 - **AppliedIsLog**: the op ids the store remembers are exactly the ids in the
-  event log.
-- **LogMatchesState**: folding the accepted events from empty, with a clear
-  applied the same way the store applies it, gives the current state. Each
-  event records the epoch it ran in. It is checked as a chain, which is the
-  fold by induction:
-  - each event starts where the one before it ended;
-  - each accepted event's after-state is its writes applied to its
-    before-state;
-  - the last event ends at the current state.
+  log.
+- **LogMatchesState**: folding the accepted events from empty gives the
+  current state. Rebuild applies each accepted event's writes and never
+  rechecks a condition or a write rule. Checked as a chain (the fold by
+  induction): each event starts where the one before ended, each accepted
+  event's after-state is its writes applied to its before-state, and the
+  last ends at the current state.
 - **OpsInTheirEpoch**: every accepted op, clear included, was planned against
-  the epoch the store was at when it applied. So after a clear, a delayed op
-  planned against the old epoch is refused.
-- **ConditionsAtomic**: every accepted op's conditions held against the state
-  immediately before its own writes, so no update is lost.
-- **NoChangeOnRefusal**: a refused op's before- and after-states are equal,
-  and both are the state immediately before it.
+  the epoch the store was at when it applied.
+- **ConditionsAtomic**: every accepted op's conditions held in the state
+  immediately before its own writes.
+- **NoChangeOnRefusal**: a refused op changed nothing.
+- **NoSpuriousRefusal**: every refusal has a cause in the spec (the epoch, a
+  condition, or a write rule as the design states it), so a store rule
+  stricter than the design is caught.
+- **GenPerOp**: each accepted op raises the gen of each card and row it
+  writes that existed before it by exactly one; one it creates is at 0; a
+  clear raises every carried row's gen by one.
+- **ClearCarriesRows**: a clear keeps every row's width and held flag, sets
+  it down, and leaves no card.
 - **ReceiptMatches**: a caller that thinks it knows the outcome holds exactly
-  the stored receipt. Unknown is never reported as unchanged.
+  the stored receipt.
 
 ## Expected results
 
-| Module | Fault | Expected result |
+| Module | Fault | Expected |
 |---|---|---|
-| `Store` | none | pass, no violation |
-| `witnesses/StoreNoEvent` | an accepted op's writes land without appending its event | violation of LogMatchesState |
-| `witnesses/StoreReplayApplies` | Replay (and Apply of a known id) runs the op again and logs it again | violation of IdempotentById |
-| `witnesses/StoreStaleCheck` | the epoch and conditions are checked against a snapshot read before another op's writes (no lock) | violation of ConditionsAtomic |
-| `witnesses/StoreTwoHolders` | holder is a set; set holder adds without clearing the previous holder | violation of SingleStateSingleHolder |
-| `witnesses/StoreEpochUnfenced` | ops other than clear are not checked against the store's epoch | violation of OpsInTheirEpoch |
-| `witnesses/StoreWidthStale` | the holder write counts the row's holders from a snapshot read before another deal (no lock) | violation of WidthKept |
-| `witnesses/StoreWidthUnchecked` | put row accepts a width below the row's holders | violation of WidthKept |
-| `witnesses/StoreWidthPerOp` | the holder write counts holders as at the start of the op, not at the moment of the write | violation of WidthKept |
-| `Store` + `reach/NeverTaken.cfg` | none | violation: a take (a1 or b1) is accepted |
-| `Store` + `reach/NeverRecovered.cfg` | none | violation: a caller left unknown reaches done |
-| `Store` + `reach/NeverStaleEpochRefused.cfg` | none | violation: an old-epoch op arriving after the clear is refused |
-| `Store` + `reach/NeverNeedsReady.cfg` | none | violation: n1 passes NeedsLanded |
-| `Store` + `reach/NeverNewEpochOp.cfg` | none | violation: an op planned against epoch 2 is accepted |
-| `Store` + `reach/NeverWidthFull.cfg` | none | violation: a row fills to its width |
-| `Store` + `reach/NeverWidthLowered.cfg` | none | violation: e1 lowers r1's width |
-| `Store` + `reach/NeverWidthRefused.cfg` | none | violation: e1 is refused because r1 holds a card |
-| `Store` + `reach/NeverInOpWidthRefused.cfg` | none | violation: s6 is refused on its second holder write |
+| `Store` | none | pass |
+| `StoreNoEvent` | an accepted op lands without its event | LogMatchesState violated |
+| `StoreReplayApplies` | Replay runs the op again and logs it again | IdempotentById violated |
+| `StoreStaleCheck` | conditions judged on a snapshot read before another op's commit (no lock) | ConditionsAtomic violated |
+| `StoreTwoHolders` | holder is a set; set holder adds without clearing | SingleStateSingleHolder violated |
+| `StoreEpochUnfenced` | ops other than clear are not epoch-checked | OpsInTheirEpoch violated |
+| `StoreWidthStale` | width check judged on a snapshot (no lock) | WidthKept violated |
+| `StoreWidthUnchecked` | put row and set row width accept any width | WidthKept violated |
+| `StoreWidthPerOp` | the holder write counts as at the start of the op | WidthKept violated |
+| `StoreWorkEntryUnchecked` | a state write into working is not width-checked | WidthKept violated |
+| `StoreProducerHolds` | the holder write refuses neither producer nor sentinel | ProducerNeverHeld violated |
+| `StoreSentinelHolds` | the holder write refuses a producer but not a sentinel | ProducerNeverHeld violated |
+| `StoreWidthCountsDone` | done and fail holders are counted | NoSpuriousRefusal violated |
+| `StoreWidthCountsReady` | ready holders are counted (Go's live count) | NoSpuriousRefusal violated |
+| `StoreRowStale` | RowGen is not checked | ConditionsAtomic violated |
+| reach `NeverTaken` | none | a1 is accepted |
+| reach `NeverRecovered` | none | a caller left unknown reaches done |
+| reach `NeverStaleEpochRefused` | none | an old-epoch op after the clear is refused |
+| reach `NeverNeedsReady` | none | s9 passes NeedsLanded |
+| reach `NeverNewEpochOp` | none | k2 is accepted in epoch 2 |
+| reach `NeverWidthFull` | none | a row fills to its width |
+| reach `NeverWidthLowered` | none | e1 lowers r1's width |
+| reach `NeverWidthRefused` | none | e1 is refused by the width rule |
+| reach `NeverInOpWidthRefused` | none | s10 is refused on its second holder write |
+| reach `NeverProducerRefused` | none | s5 is refused |
+| reach `NeverSentinelRefused` | none | s6 is refused |
+| reach `NeverHeldCarried` | none | r1's hold survives the clear |
+| reach `NeverHeldRefused` | none | a1 is refused on RowHeld after g1 |
+| reach `NeverQueuedPastWidth` | none | r1 holds a ready and a working consumer at width 1 |
+| reach `NeverWorkEntryRefused` | none | b2 is refused by the work-entry check |
+| reach `NeverRowFenced` | none | e1 is refused on a stale RowGen |
+| reach `NeverSlotReused` | none | b2 goes working while the done u1 still holds r1 |
 
-## Results, TLC 2.19 (tla2tools v1.8.0, the CI jar) on hetzner2, 2026-11-06
+## Results, tla2tools v1.8.0 (the CI jar; it prints "TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)") on hetzner2, 2026-11-06
 
-All eighteen ran in one parallel pass with `run-tlc.sh`. `ci-tlc.sh` then
-passed twice in a row in the same tree. With StoreNoEvent replaced by the
-fault-free model, it failed exactly that witness and exited 1.
+All 32 ran in one parallel pass with `run-tlc.sh`. `ci-tlc.sh` then passed
+twice in a row in the same tree (32 ok, 0 FAIL, exit 0 both times). The
+negative test (StoreNoEvent replaced by the fault-free model, and
+StoreProducerHolds' cfg given WidthKept as its first invariant) failed
+exactly those two and exited non-zero.
 
 | Module | Result | States generated / distinct | Depth | Time |
 |---|---|---|---|---|
-| `Store` | No error has been found | 1035189 / 618632 | 18 | 35s |
-| `StoreNoEvent` | Invariant LogMatchesState is violated | 2 / 2 | 2 | 01s |
-| `StoreReplayApplies` | Invariant IdempotentById is violated | 26 / 26 | 9 | 01s |
-| `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 463 / 272 | 17 | 01s |
-| `StoreTwoHolders` | Invariant SingleStateSingleHolder is violated | 46 / 43 | 9 | 01s |
-| `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated | 86 / 79 | 9 | 01s |
-| `StoreWidthStale` | Invariant WidthKept is violated | 526 / 323 | 17 | 01s |
-| `StoreWidthUnchecked` | Invariant WidthKept is violated | 22 / 22 | 9 | 01s |
-| `StoreWidthPerOp` | Invariant WidthKept is violated | 7 / 7 | 7 | 01s |
-| reach `NeverTaken` | violated | 8 / 8 | 8 | 01s |
-| reach `NeverRecovered` | violated | 26 / 26 | 9 | 01s |
-| reach `NeverStaleEpochRefused` | violated | 80 / 74 | 9 | 01s |
-| reach `NeverNeedsReady` | violated | 107 / 90 | 10 | 01s |
-| reach `NeverNewEpochOp` | violated | 87 / 80 | 9 | 01s |
-| reach `NeverWidthFull` | violated | 8 / 8 | 8 | 01s |
-| reach `NeverWidthLowered` | violated | 14 / 14 | 8 | 01s |
-| reach `NeverWidthRefused` | violated | 22 / 22 | 9 | 01s |
-| reach `NeverInOpWidthRefused` | violated | 7 / 7 | 7 | 01s |
+| `Store` | No error has been found | 1035195 / 618638 | 24 | 01min 18s |
+| `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated | 92 / 85 | 15 | 03s |
+| `StoreNoEvent` | Invariant LogMatchesState is violated | 2 / 2 | 2 | 02s |
+| `StoreProducerHolds` | Invariant ProducerNeverHeld is violated | 6 / 6 | 6 | 02s |
+| `StoreReplayApplies` | Invariant IdempotentById is violated | 32 / 32 | 15 | 03s |
+| `StoreRowStale` | Invariant ConditionsAtomic is violated | 63 / 59 | 15 | 03s |
+| `StoreSentinelHolds` | Invariant ProducerNeverHeld is violated | 7 / 7 | 7 | 02s |
+| `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 597 / 382 | 29 | 04s |
+| `StoreTwoHolders` | Invariant SingleStateSingleHolder is violated | 13 / 13 | 13 | 03s |
+| `StoreWidthCountsDone` | Invariant NoSpuriousRefusal is violated | 112 / 95 | 16 | 03s |
+| `StoreWidthCountsReady` | Invariant NoSpuriousRefusal is violated | 14 / 14 | 14 | 03s |
+| `StoreWidthPerOp` | Invariant WidthKept is violated | 11 / 11 | 11 | 02s |
+| `StoreWidthStale` | Invariant WidthKept is violated | 544 / 342 | 29 | 04s |
+| `StoreWidthUnchecked` | Invariant WidthKept is violated | 26 / 26 | 15 | 03s |
+| `StoreWorkEntryUnchecked` | Invariant WidthKept is violated | 59 / 56 | 15 | 03s |
+| reach `NeverHeldCarried` | violated | 74 / 69 | 15 | 03s |
+| reach `NeverHeldRefused` | violated | 68 / 64 | 15 | 03s |
+| reach `NeverInOpWidthRefused` | violated | 11 / 11 | 11 | 03s |
+| reach `NeverNeedsReady` | violated | 10 / 10 | 10 | 03s |
+| reach `NeverNewEpochOp` | violated | 93 / 86 | 15 | 03s |
+| reach `NeverProducerRefused` | violated | 6 / 6 | 6 | 02s |
+| reach `NeverQueuedPastWidth` | violated | 14 / 14 | 14 | 03s |
+| reach `NeverRecovered` | violated | 32 / 32 | 15 | 03s |
+| reach `NeverRowFenced` | violated | 72 / 67 | 15 | 03s |
+| reach `NeverSentinelRefused` | violated | 7 / 7 | 7 | 02s |
+| reach `NeverSlotReused` | violated | 646 / 507 | 17 | 03s |
+| reach `NeverStaleEpochRefused` | violated | 86 / 80 | 15 | 03s |
+| reach `NeverTaken` | violated | 14 / 14 | 14 | 03s |
+| reach `NeverWidthFull` | violated | 14 / 14 | 14 | 03s |
+| reach `NeverWidthLowered` | violated | 18 / 18 | 14 | 02s |
+| reach `NeverWidthRefused` | violated | 26 / 26 | 15 | 03s |
+| reach `NeverWorkEntryRefused` | violated | 119 / 102 | 16 | 03s |
 
-The distinct state count barely moves between design rounds. That is
-expected: every op's id is logged in order, so the states correspond one to
-one with the interleavings allowed by program order, whatever each op's
-outcome. The reach checks are what show the new behaviour is there.
-
-The counterexamples were checked by hand (`show-trace.sh`):
+The counterexamples were checked by hand (`show-all-traces.sh`,
+`last-state.sh`); after setup:
 - **StoreNoEvent:** s1 lands with no event.
 - **StoreReplayApplies:** a1 is accepted, its reply is lost, and the retried
-  Apply runs a1 again and logs it a second time.
-- **StoreStaleCheck:** a1 and b1 both begin, then both commit and are both
-  accepted.
-- **StoreTwoHolders:** b1 takes c1 for r2, then b2 adds r1.
-- **StoreEpochUnfenced:** k1 clears epoch 1, then the epoch-1 e1 is accepted
+  Apply runs a1 again (refused, u1 exists) and logs it a second time.
+- **StoreStaleCheck:** a1 begins with r1 not held, g1 holds r1, a1 lands.
+- **StoreTwoHolders:** s12 moves u3 to r1 and it keeps r2 as well.
+- **StoreEpochUnfenced:** k1 clears epoch 1, then the epoch-1 x1 is accepted
   in epoch 2.
-- **StoreWidthStale:** s6 is refused; then a1 and w1 both begin with a count
-  of 0 on r1, and both land.
-- **StoreWidthUnchecked:** a1 takes c1 for r1, then e1 sets r1's width to 0.
-- **StoreWidthPerOp:** s6 lands both of its holder writes on the width-1 row
-  r2.
+- **StoreWidthStale:** a1 begins, e1 lowers r1's width to 0, a1 lands u1
+  working on the stale width 1.
+- **StoreWidthUnchecked:** a1 deals u1 working to r1, then e1 sets r1's
+  width to 0.
+- **StoreWidthPerOp:** s10 lands both working consumers on r2.
+- **StoreWorkEntryUnchecked:** e1 sets r1's width to 0, then a1 holds u1 on
+  r1 while waiting and makes it working.
+- **StoreProducerHolds / StoreSentinelHolds:** s5 (producer p1) and s6
+  (sentinel t1) are accepted.
+- **StoreWidthCountsDone:** after a1 and a2 (u1 done on r1), e1's width 0 is
+  refused.
+- **StoreWidthCountsReady:** a1 is refused with only the ready u3 on r1.
+- **StoreRowStale:** e1 lands, then g1 lands on RowGen(r1, 0) although e1
+  raised r1's gen to 1.
