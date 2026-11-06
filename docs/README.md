@@ -69,3 +69,11 @@ approved:
 - Placed in part inside layers 1 and 2, the rest owed a decision: running-
   time deadlines (LESSONS 1.14) and what a ready producer that cannot start
   for a reason other than a held stream becomes (LESSONS 2.20).
+
+## The dashboard (Glenn, 2026-11-06)
+
+"The dashboard design should be identical to the v1 in visual, excluding the
+unimplemented stats part at bottom we didn't end up doing." The reference is
+v1's `docs/SPEC-SPRINT-DASHBOARD.md` and `assets/nova-sprint-dashboard.jpg` at
+v1 main (nova-sprint `origin/main`); layer 6 reproduces that view over the v2
+store, without the bottom stats section.
