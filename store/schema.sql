@@ -83,6 +83,10 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     CONSTRAINT cards_brief_check CHECK (kind <> 'sentinel' OR brief = ''),
     CONSTRAINT cards_consumer_priority_check CHECK (kind IN ('producer', 'sentinel') OR priority = 'normal'),
     CONSTRAINT cards_holder_check CHECK (kind IN ('work', 'read') OR holder IS NULL),
+    CONSTRAINT cards_prior_head_check CHECK (kind = 'work' OR prior_head = ''),
+    CONSTRAINT cards_bounces_check CHECK (kind = 'producer' OR bounces = 0),
+    CONSTRAINT cards_producer_cost_check CHECK (kind IN ('work', 'read') OR (cost = 0 AND NOT priced)),
+    CONSTRAINT cards_producer_result_check CHECK (kind IN ('work', 'read') OR result = ''),
     FOREIGN KEY (epoch, stream) REFERENCES sprint.streams (epoch, name),
     FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name),
     FOREIGN KEY (epoch, "of") REFERENCES sprint.cards (epoch, id)

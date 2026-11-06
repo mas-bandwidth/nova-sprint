@@ -109,9 +109,9 @@ change. `needs` is hard order (cannot start until they landed), `after` soft
 (orders the landing only); layers 2 and 3 read them, the store only checks
 that they name other cards of the epoch, once each. A priority is one of
 `low`, `normal` (the default), `high`, `critical`, `blocker`; the `read` rung
-of the deal order is layer 2's, never a level. Which kind uses `bounces`,
-`cost` and `prior_head` is layer 2's; the store refuses only a priority on a
-consumer.
+of the deal order is layer 2's, never a level. The store enforces whose each column
+is, in Go and by a CHECK: prior head a work consumer's, bounces a producer's, cost,
+priced and result a consumer's, priority a producer's or sentinel's, and SetCardAttempt is refused on a consumer (its attempt is set at add by PutCard).
 
 The card states are `waiting`, `ready`, `working`, `review`, `merging`,
 `landed`, `fail`, `blocked`, `done`. Width caps work in progress, not what is
@@ -123,7 +123,7 @@ the state.
 
 Writes, one field each, applied in order: `PutStream` (repo, base, pos;
 insert or overwrite), `SetStreamHeld`, `PutCard` (kind, of, stream, score,
-needs, after, brief, holder, priority; the card must not exist; it starts
+needs, after, brief, holder, priority, and a consumer's attempt; the card must not exist; it starts
 waiting, gen 0, attempt 0, result `""`; a producer or sentinel is refused an
 `of` and a holder, a sentinel a brief, a consumer needs, after, a priority
 other than normal and an `of` that is missing or is not a producer; the

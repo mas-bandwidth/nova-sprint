@@ -109,7 +109,15 @@ func (w *work) writeCard(wr Write) (string, error) {
 	case SetCardHolder:
 		r, err = w.holderFits(card, v.Holder)
 	case SetCardResult:
-		r = oneOf("card result", v.Result, CardResults)
+		r = cmp.Or(onlyFor(card, "SetCardResult", "a consumer", consumer(card.Kind)), oneOf("card result", v.Result, CardResults))
+	case SetCardPriorHead:
+		r = onlyFor(card, "SetCardPriorHead", "a work consumer", card.Kind == "work")
+	case SetCardBounces:
+		r = onlyFor(card, "SetCardBounces", "a producer", card.Kind == "producer")
+	case SetCardCost:
+		r = onlyFor(card, "SetCardCost", "a consumer", consumer(card.Kind))
+	case SetCardAttempt:
+		r = onlyFor(card, "SetCardAttempt", "a producer or sentinel (a consumer's attempt is set at add)", !consumer(card.Kind))
 	case SetCardPriority:
 		r = checkPriority(card, v.Priority)
 	case SetCardNeeds:
@@ -132,6 +140,12 @@ func checkPriority(card Card, p string) string {
 		return r
 	}
 	return when(consumer(card.Kind) && p != "normal", "card %s is a consumer; a consumer has no priority of its own", card.ID)
+}
+
+// onlyFor refuses a write on a card whose kind does not carry the column,
+// naming the card's kind and the write.
+func onlyFor(card Card, write, kinds string, ok bool) string {
+	return when(!ok, "card %s is of kind %s; %s is only for %s", card.ID, card.Kind, write, kinds)
 }
 
 // consumer is true for the kinds a row is handed (work and read); the other
@@ -217,9 +231,12 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if v.Kind == "sentinel" && v.Brief != "" {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
-	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal")}
+	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal")}
 	if r := checkPriority(c, c.Priority); r != "" {
 		return r, nil
+	}
+	if v.Attempt != 0 && !consumer(v.Kind) {
+		return fmt.Sprintf("card %s is a %s; its attempt starts at 0 and is raised by SetCardAttempt", v.ID, v.Kind), nil
 	}
 	if r, err := w.checkOf(c); r != "" || err != nil {
 		return r, err
