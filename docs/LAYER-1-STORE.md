@@ -461,3 +461,7 @@ Round 13 (2026-11-06, from building layer 2): `cards.review integer` (a
 producer's count of entries into review; a read consumer's copy at cut, fixed)
 with `SetCardReview` (producer only, +1), and `rows.reason text` written by
 `SetRowHeld`. Schema version 2 still (no live store).
+
+Round 14 (2026-11-06, from the first cold read of layer 2): `cards.finding
+text NOT NULL DEFAULT ''` (producer: the last read's finding; work consumer: a
+copy at cut, fixed), written by `SetCardFinding` (producer only).

@@ -366,3 +366,40 @@ with a design change, never a special case):
 - Blocker preemption: the machine does not choose the youngest consumer;
   policy chooses, and the step joins the `Withdraw` and the blocker's `Start`
   into one op.
+
+## Rulings from the first cold read of layer 2 (2026-11-06)
+
+- A work consumer reports ok, fail or fault; a read consumer reports ok, fix
+  or fault; anything else is refused naming the kind.
+- In `working` the machine knows its work consumer's id (`<producer>.w<attempt>`)
+  and requires it in the consumers passed; a missing one is a refusal, and it
+  is fenced in every plan that depends on "no live consumer".
+- `Block` from `working` requires the current attempt's consumer to be
+  withdrawn (`fail`); a consumer that has reported must be applied first
+  (`Finished` or `Broken`), never discarded.
+- `Replace{by}` requires `by` to be an existing card other than the producer.
+- `SetPriority` applies to producers and sentinels (a release gate may be a
+  blocker); the earlier "a producer only" is corrected.
+- The reader's finding has its own column: `cards.finding text` (producer: the
+  last read's finding; work consumer: a copy at cut, so a fix attempt carries
+  it), written by `ReadFix`; `reason` stays the status reason. Layer 1 round 14.
+- `Withdraw{reason, head}` carries the consumer's last pushed head when there
+  is one, written to the consumer's `head`; `Released` copies it to the
+  producer as the next attempt's `prior_head`. And a `Withdraw` of the work
+  consumer in `working` folds `Released` into the same plan, so the producer
+  is never in `working` with no live consumer between two ops.
+- `NeedFailed{need, inThisOp}`: when the step fails the need in the same op,
+  the plan carries no "need is fail" condition (layer 1 checks conditions
+  before writes), so a waive and its drop can be one op.
+- A fix attempt's ok report with head equal to `prior_head` is refused
+  ("nothing new was pushed"), as is head equal to `base_sha`.
+- `ReadYes` requires the counted read to belong to this producer and to carry
+  the producer's current head, as well as its review.
+- `AskRead` refuses a row that already holds a live read of this head, and
+  refuses a sentinel.
+- The machine applies layer 1's value rules (ranges, names, NUL) as refusals
+  before building a plan, so no plan it emits is `ErrInvalid`.
+- An `Add` event builds the put-card plan for a producer or sentinel and
+  refuses a cycle through needs or after, and a need that is not a card.
+- Wording: `attempt` counts the work consumers cut; `bounces` is what the
+  block limit reads; a fault raises neither.
