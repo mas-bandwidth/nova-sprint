@@ -11,6 +11,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ONE="$HERE/run-one.sh"
 
 sh "$ONE" "$JAR" "$JAVA" . Store 4 &
+sh "$ONE" "$JAR" "$JAVA" . Store 4 StoreRecords.cfg StoreRecords &
 for f in "$HERE"/witnesses/*.tla; do
     case "$f" in *_TTrace_*) continue ;; esac   # TLC trace output, not a witness
     sh "$ONE" "$JAR" "$JAVA" witnesses "$(basename "$f" .tla)" 1 &

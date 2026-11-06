@@ -13,33 +13,40 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Every invariant of the passing run, in cfg order.
+# Every invariant of the passing runs, in cfg order.
 INVARIANTS = [
     "TypeOK", "SingleStateSingleHolder", "ProducerNeverHeld", "ConsumersWellFormed",
     "WidthKept", "IdempotentById", "AppliedIsLog", "LogMatchesState", "OpsInTheirEpoch",
-    "ConditionsAtomic", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp", "ClearCarriesRows",
-    "ReceiptMatches",
+    "ConditionsAtomic", "ServesHeld", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
+    "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "ReceiptMatches",
 ]
 
-# Reachability checks: each must be violated on Store.tla.
+# The passing runs: cfg name -> Scenario.
+PASSING = {"Store": "deal", "StoreRecords": "records"}
+
+# Reachability checks: each must be violated on Store.tla, in its scenario.
 REACH = {
-    "NeverTaken": "an accepted deal (a1) is reachable",
-    "NeverRecovered": "a caller recovers from a transport failure",
-    "NeverStaleEpochRefused": "an op planned against a closed epoch is refused",
-    "NeverNeedsReady": "a card whose needs landed becomes ready (s9)",
-    "NeverNewEpochOp": "an op in the new epoch is accepted (k2)",
-    "NeverWidthFull": "a row holds width live cards",
-    "NeverWidthLowered": "a width is lowered (e1)",
-    "NeverWidthRefused": "a width below the live holders is refused (e1)",
-    "NeverInOpWidthRefused": "an op is refused on its own second holder write (s10)",
-    "NeverProducerRefused": "a holder write on a producer is refused (s5)",
-    "NeverSentinelRefused": "a holder write on a sentinel is refused (s6)",
-    "NeverHeldCarried": "a row's hold survives the clear",
-    "NeverWorkEntryRefused": "a held card going working on a full row is refused (b2)",
-    "NeverQueuedPastWidth": "a row holds a ready consumer past its width (r1)",
-    "NeverHeldRefused": "a deal is refused on RowHeld after a hold (a1)",
-    "NeverRowFenced": "a row write is refused on a stale RowGen (e1)",
-    "NeverSlotReused": "a done consumer's slot is reused while it keeps its holder (b2)",
+    "NeverTaken": ("deal", "an accepted deal (a1) is reachable"),
+    "NeverRecovered": ("deal", "a caller recovers from a transport failure"),
+    "NeverStaleEpochRefused": ("deal", "an op planned against a closed epoch is refused"),
+    "NeverNeedsReady": ("deal", "a card whose needs landed becomes ready (s9)"),
+    "NeverNewEpochOp": ("deal", "an op in the new epoch is accepted (k2)"),
+    "NeverWidthFull": ("deal", "a row holds width working cards"),
+    "NeverWidthLowered": ("deal", "a width is lowered (e1)"),
+    "NeverWidthRefused": ("deal", "a width below the working holders is refused (e1)"),
+    "NeverInOpWidthRefused": ("deal", "an op is refused on its own second work entry (s10)"),
+    "NeverProducerRefused": ("deal", "a producer added with a holder is refused (s3)"),
+    "NeverSentinelRefused": ("deal", "a sentinel added with a holder is refused (s4)"),
+    "NeverHeldCarried": ("deal", "a row's hold survives the clear"),
+    "NeverWorkEntryRefused": ("deal", "a held card going working on a full row is refused (b2)"),
+    "NeverQueuedPastWidth": ("deal", "a row holds a ready consumer past its width (r1)"),
+    "NeverHeldRefused": ("deal", "a deal is refused on RowHeld after a hold (a1)"),
+    "NeverServesRefused": ("deal", "a deal is refused on RowServes after a tier change (a1)"),
+    "NeverRowFenced": ("deal", "a row write is refused on a stale RowGen (e1)"),
+    "NeverSlotReused": ("deal", "a done consumer's slot is reused while it keeps its holder (b2)"),
+    "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
+    "NeverJudgementFenced": ("records", "a second close of a judgement is refused on JudgementOpen"),
+    "NeverCursorRefused": ("records", "a cursor write below the current value is refused (m2)"),
 }
 
 # The two-step transaction (Begin reads a snapshot, Apply commits on it),
@@ -47,22 +54,24 @@ REACH = {
 # ride in the state record as extra fields sn and p0 (the rebuild path never
 # has them), and are stripped before the state is stored.
 STALE_INFRA = [
-    ("  lost      \\* op id -> transport failures so far (bounded by MaxLoss)",
-     "  lost,     \\* op id -> transport failures so far (bounded by MaxLoss)\n"
-     "  snap      \\* op id -> the state its transaction read at Begin (FAULT)", 1),
-    ("vars == <<epoch, cards, rows, events, applied, phase, receipt, lost>>",
-     "vars == <<epoch, cards, rows, events, applied, phase, receipt, lost, snap>>", 1),
-    ("  /\\ lost    = [o \\in OpIds |-> 0]",
-     "  /\\ lost    = [o \\in OpIds |-> 0]\n  /\\ snap    = [o \\in OpIds |-> Empty]", 1),
-    ("  /\\ UNCHANGED <<epoch, cards, rows, events, applied, lost>>",
-     "  /\\ UNCHANGED <<epoch, cards, rows, events, applied, lost, snap>>", 1),
-    ("  /\\ UNCHANGED <<epoch, cards, rows, events, applied, receipt>>",
-     "  /\\ UNCHANGED <<epoch, cards, rows, events, applied, receipt, snap>>", 1),
+    (r"  lost        \* op id -> transport failures so far (bounded by MaxLoss)",
+     "  lost,       \\* op id -> transport failures so far (bounded by MaxLoss)\n"
+     "  snap        \\* op id -> the state its transaction read at Begin (FAULT)", 1),
+    ("vars == <<epoch, cards, rows, judgements, cursors, events, applied, phase, receipt, lost>>",
+     "vars == <<epoch, cards, rows, judgements, cursors, events, applied, phase, receipt, lost, snap>>", 1),
+    (r"  /\ lost       = [o \in OpIds |-> 0]",
+     "  /\\ lost       = [o \\in OpIds |-> 0]\n  /\\ snap       = [o \\in OpIds |-> Empty]", 1),
+    ("  /\\ UNCHANGED <<store, events, applied, lost>>",
+     "  /\\ UNCHANGED <<store, events, applied, lost, snap>>", 1),
+    ("  /\\ UNCHANGED <<store, events, applied, receipt>>",
+     "  /\\ UNCHANGED <<store, events, applied, receipt, snap>>", 1),
     ("      out  == Outcome(pre, o)\n      post == out.st\n",
      "      \\* FAULT: the op is judged with the snapshot its Begin read.\n"
      "      out  == Outcome([epoch |-> pre.epoch, cards |-> pre.cards, rows |-> pre.rows,\n"
+     "                       judgements |-> pre.judgements, cursors |-> pre.cursors,\n"
      "                       sn |-> snap[o], p0 |-> pre], o)\n"
-     "      post == [epoch |-> out.st.epoch, cards |-> out.st.cards, rows |-> out.st.rows]\n", 1),
+     "      post == [epoch |-> out.st.epoch, cards |-> out.st.cards, rows |-> out.st.rows,\n"
+     "               judgements |-> out.st.judgements, cursors |-> out.st.cursors]\n", 1),
     ("          /\\ lost'    = IF res = \"unknown\" THEN [lost EXCEPT ![o] = @ + 1] ELSE lost\n",
      "          /\\ lost'    = IF res = \"unknown\" THEN [lost EXCEPT ![o] = @ + 1] ELSE lost\n"
      "     /\\ UNCHANGED snap\n", 1),
@@ -77,7 +86,7 @@ STALE_INFRA = [
      "  /\\ o \\notin applied\n"
      "  /\\ phase' = [phase EXCEPT ![o] = \"inflight\"]\n"
      "  /\\ snap'  = [snap EXCEPT ![o] = Current]\n"
-     "  /\\ UNCHANGED <<epoch, cards, rows, events, applied, receipt, lost>>\n"
+     "  /\\ UNCHANGED <<store, events, applied, receipt, lost>>\n"
      "\n"
      "Apply(o) ==\n"
      "  \\/ phase[o] = \"inflight\" /\\ Execute(o)\n"
@@ -92,112 +101,92 @@ STALE_INFRA = [
      "Snap(st) == IF \"sn\" \\in DOMAIN st THEN st.sn ELSE st\n", 1),
 ]
 
+OUTCOME_HOLDS = ("  ELSE LET run == RunOp(st, Ops[o].writes)\n"
+                 "       IN IF Holds(st, Ops[o].expect) /\\ run.ok")
+
+# (name, target, scenario, fault, replacements)
 WITNESSES = [
-    ("StoreNoEvent", "LogMatchesState",
+    ("StoreNoEvent", "LogMatchesState", "deal",
      "An accepted op's writes land but its event row is not appended (and so\n"
      "its id is not remembered).",
      [("     /\\ events'  = Append(events, ev)\n     /\\ applied' = applied \\cup {o}\n",
        "     \\* FAULT: the accepted path forgets its event row.\n"
        "     /\\ events'  = IF out.acc THEN events ELSE Append(events, ev)\n"
        "     /\\ applied' = IF out.acc THEN applied ELSE applied \\cup {o}\n", 1)]),
-    ("StoreReplayApplies", "IdempotentById",
+    ("StoreReplayApplies", "IdempotentById", "deal",
      "Replay runs the op again and logs it again instead of returning the\n"
      "stored receipt.",
      [("ReplayEffect(o) ==\n"
        "  /\\ phase'   = [phase EXCEPT ![o] = \"done\"]\n"
        "  /\\ receipt' = [receipt EXCEPT ![o] = StoredEvent(o)]\n"
-       "  /\\ UNCHANGED <<epoch, cards, rows, events, applied, lost>>\n",
+       "  /\\ UNCHANGED <<store, events, applied, lost>>\n",
        "\\* FAULT: replay runs the op again and logs a new event.\n"
        "ReplayEffect(o) ==\n"
        "  LET pre == Current\n"
        "      out == Outcome(pre, o)\n"
        "      ev  == [id |-> o, accepted |-> out.acc, epoch |-> pre.epoch, before |-> pre, after |-> out.st]\n"
-       "  IN /\\ epoch'   = out.st.epoch\n"
-       "     /\\ cards'   = out.st.cards\n"
-       "     /\\ rows'    = out.st.rows\n"
+       "  IN /\\ epoch'      = out.st.epoch\n"
+       "     /\\ cards'      = out.st.cards\n"
+       "     /\\ rows'       = out.st.rows\n"
+       "     /\\ judgements' = out.st.judgements\n"
+       "     /\\ cursors'    = out.st.cursors\n"
        "     /\\ events'  = Append(events, ev)\n"
        "     /\\ phase'   = [phase EXCEPT ![o] = \"done\"]\n"
        "     /\\ receipt' = [receipt EXCEPT ![o] = ev]\n"
        "     /\\ UNCHANGED <<applied, lost>>\n", 1)]),
-    ("StoreStaleCheck", "ConditionsAtomic",
+    ("StoreStaleCheck", "ConditionsAtomic", "deal",
      "Apply is two steps: Begin reads a snapshot, and the commit checks the\n"
      "op's conditions on that snapshot, not on the state its writes change\n"
      "(no lock): a1 reads r1 not held, g1 holds r1, a1 lands.",
      STALE_INFRA + [
-         ("  ELSE LET run == RunOp(st, Ops[o].writes)\n"
-          "       IN IF Holds(st, Ops[o].expect) /\\ run.ok",
+         (OUTCOME_HOLDS,
           "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
           "       \\* FAULT: the conditions are read on the snapshot.\n"
           "       IN IF Holds(Snap(st), Ops[o].expect) /\\ run.ok", 1)]),
-    ("StoreTwoHolders", "SingleStateSingleHolder",
-     "The holder is modelled as a set of rows (as a join table would allow)\n"
-     "so the fault is expressible: set holder adds the new row without\n"
-     "clearing the old one, and s12 leaves u3 held by both r2 and r1.",
-     [("NoCard == [state |-> Absent, gen |-> 0, holder |-> NoHolder,",
-       "NoCard == [state |-> Absent, gen |-> 0, holder |-> {},", 1),
-      ("Exists(st, c) == st.cards[c].state # Absent\n",
-       "Exists(st, c) == st.cards[c].state # Absent\n"
-       "HolderSet(r) == IF r = NoHolder THEN {} ELSE {r}\n", 1),
-      ("CountedIn(st, r, L) == {c \\in Cards : st.cards[c].holder = r /\\",
-       "CountedIn(st, r, L) == {c \\in Cards : r \\in st.cards[c].holder /\\", 1),
-      ("Exists(st, x.c) /\\ st.cards[x.c].holder = x.r",
-       "Exists(st, x.c) /\\ st.cards[x.c].holder = HolderSet(x.r)", 1),
-      ("card.holder # NoHolder)\n       => Room(st, card.holder, w.c, L)",
-       "card.holder # {})\n       => \\A h \\in card.holder : Room(st, h, w.c, L)", 1),
-      ("[state |-> \"waiting\", gen |-> 0, holder |-> NoHolder,",
-       "[state |-> \"waiting\", gen |-> 0, holder |-> {},", 1),
-      ("    [] w.k = \"setHolder\"   -> [st EXCEPT !.cards[w.c].holder = w.r]",
-       "    \\* FAULT: adds to the holders instead of replacing the one holder.\n"
-       "    [] w.k = \"setHolder\"   -> [st EXCEPT !.cards[w.c].holder =\n"
-       "                                 IF w.r = NoHolder THEN {} ELSE @ \\cup {w.r}]", 1),
-      ("holder : Rows \\cup {NoHolder}", "holder : SUBSET Rows", 1),
-      ("    /\\ cards[c].holder \\in Rows \\cup {NoHolder}\n"
-       "    /\\ cards[c].holder # NoHolder => rows[cards[c].holder].state # Absent\n",
-       "    /\\ Cardinality(cards[c].holder) <= 1\n"
-       "    /\\ \\A r \\in cards[c].holder : rows[r].state # Absent\n", 1),
-      ("cards[c].kind \\in Unheld => cards[c].holder = NoHolder",
-       "cards[c].kind \\in Unheld => cards[c].holder = {}", 1)]),
-    ("StoreEpochUnfenced", "OpsInTheirEpoch",
+    ("StoreEpochUnfenced", "OpsInTheirEpoch", "deal",
      "Ops other than clear are not checked against the store's epoch, so an\n"
      "op planned against epoch 1 arriving after the clear lands in epoch 2\n"
-     "(x1 sets r2 up in epoch 2).",
+     "(v1 sets r1's tiers in epoch 2).",
      [("  IF Ops[o].epoch # st.epoch THEN [acc |-> FALSE, st |-> st]\n"
        "  ELSE IF Ops[o].kind = \"clear\"",
        "  \\* FAULT: only the clear is fenced by epoch.\n"
        "  IF Ops[o].kind = \"clear\" /\\ Ops[o].epoch # st.epoch THEN [acc |-> FALSE, st |-> st]\n"
        "  ELSE IF Ops[o].kind = \"clear\"", 1)]),
-    ("StoreWidthStale", "WidthKept",
+    ("StoreWidthStale", "WidthKept", "deal",
      "Apply is two steps, and the width check (count and width) is read\n"
      "on the snapshot Begin took, plus this op's own writes: a1 begins,\n"
      "e1 lowers r1's width to 0, and a1 lands u1 working on the stale\n"
      "width 1.",
      STALE_INFRA + [
          ("Room(st, r, c, L) == Cardinality(CountedIn(st, r, L) \\ {c}) < st.rows[r].width\n",
-          "\\* FAULT: counted on the snapshot, plus the live holders this op added.\n"
+          "\\* FAULT: counted on the snapshot, plus the working holders this op added.\n"
           "Room(st, r, c, L) ==\n"
           "  IF \"sn\" \\in DOMAIN st\n"
           "  THEN Cardinality(CountedIn(st.sn, r, L) \\ {c})\n"
           "         + Cardinality((CountedIn(st, r, L) \\ CountedIn(st.p0, r, L)) \\ {c})\n"
           "       < st.sn.rows[r].width\n"
           "  ELSE Cardinality(CountedIn(st, r, L) \\ {c}) < st.rows[r].width\n", 1)]),
-    ("StoreWidthUnchecked", "WidthKept",
+    ("StoreWidthUnchecked", "WidthKept", "deal",
      "Put row and set row width accept any width, whatever the row holds:\n"
-     "a1 deals u1 to r1, then e1 lowers r1's width to 0 and is accepted.",
-     [("    [] w.k = \"putRow\"      -> st.rows[w.r].state = Absent \\/ w.w >= Cardinality(CountedIn(st, w.r, L))\n"
+     "a1 deals u1 working to r1, then e1 lowers r1's width to 0 and is\n"
+     "accepted.",
+     [("                              /\\ st.rows[w.r].state = Absent \\/ w.w >= Cardinality(CountedIn(st, w.r, L))\n"
        "    [] w.k = \"setRowWidth\" -> st.rows[w.r].state # Absent /\\ w.w >= Cardinality(CountedIn(st, w.r, L))\n",
        "    \\* FAULT: any width is accepted, whatever the row holds.\n"
-       "    [] w.k = \"putRow\"      -> TRUE\n"
        "    [] w.k = \"setRowWidth\" -> st.rows[w.r].state # Absent\n", 1)]),
-    ("StoreWidthPerOp", "WidthKept",
-     "The holder write counts the row's live holders as at the start of the\n"
-     "op, not at the moment of the write: s10 puts two ready consumers on\n"
-     "the width-1 row r2 in one op and is accepted.",
+    ("StoreWidthPerOp", "WidthKept", "deal",
+     "The work-entry check counts the row's working holders as at the start\n"
+     "of the op, not at the moment of the write: s10 makes two consumers\n"
+     "working on the width-1 row r2 in one op and is accepted.",
      [("RECURSIVE SpecRun(_, _)\n",
-       "\\* FAULT: the holder write's count is read in pre, the state before the op.\n"
+       "\\* FAULT: the work-entry count is read in pre, the state before the op.\n"
        "PreLegal(pre, st, w) ==\n"
-       "  IF w.k = \"setHolder\" /\\ w.r # NoHolder\n"
-       "  THEN Exists(st, w.c) /\\ st.cards[w.c].kind \\notin Unheld /\\ st.rows[w.r].state # Absent\n"
-       "       /\\ (st.cards[w.c].state \\in Counted => Room(pre, w.r, w.c, Counted))\n"
+       "  IF w.k = \"setState\"\n"
+       "  THEN LET card == st.cards[w.c]\n"
+       "       IN /\\ Exists(st, w.c)\n"
+       "          /\\ w.s \\in CardStates\n"
+       "          /\\ (w.s \\in Counted /\\ card.state \\notin Counted /\\ card.holder # NoHolder)\n"
+       "               => Room(pre, card.holder, w.c, Counted)\n"
        "  ELSE RuleLegal(st, w, Counted)\n"
        "\n"
        "RECURSIVE RunPre(_, _, _)\n"
@@ -209,19 +198,17 @@ WITNESSES = [
        "RECURSIVE SpecRun(_, _)\n", 1),
       ("  LET r == Run(st, ws)\n",
        "  LET r == RunPre(st, st, ws)   \\* FAULT\n", 1)]),
-    ("StoreProducerHolds", "ProducerNeverHeld",
-     "The holder write does not refuse a producer (or a sentinel): s5 sets\n"
-     "producer p1's holder to r1 and is accepted.",
-     [("                                  \\/ (st.cards[w.c].kind \\notin Unheld\n"
-       "                                      /\\ st.rows[w.r].state # Absent\n",
-       "                                  \\* FAULT: no producer or sentinel check.\n"
-       "                                  \\/ (st.rows[w.r].state # Absent\n", 1)]),
-    ("StoreSentinelHolds", "ProducerNeverHeld",
-     "The holder write refuses a producer but not a sentinel (Go's check,\n"
-     "kind == producer): s6 sets sentinel t1's holder to r1 and is accepted.",
-     [("st.cards[w.c].kind \\notin Unheld\n",
-       "st.cards[w.c].kind # \"producer\"   \\* FAULT: sentinels pass\n", 1)]),
-    ("StoreWidthCountsDone", "NoSpuriousRefusal",
+    ("StoreProducerHolds", "ProducerNeverHeld", "deal",
+     "Add card does not refuse a holder on a producer (or a sentinel): s3\n"
+     "adds producer p1 held by r1 and is accepted.",
+     [("                                      /\\ w.r = NoHolder\n",
+       "                                      \\* FAULT: no holder check\n", 1)]),
+    ("StoreSentinelHolds", "ProducerNeverHeld", "deal",
+     "Add card refuses a holder on a producer but not on a sentinel (a check\n"
+     "on kind == producer): s4 adds sentinel t1 held by r1 and is accepted.",
+     [("                                      /\\ w.r = NoHolder\n",
+       "                                      /\\ (w.kd = \"producer\" => w.r = NoHolder)   \\* FAULT: sentinels pass\n", 1)]),
+    ("StoreWidthCountsDone", "NoSpuriousRefusal", "deal",
      "The store's width count also counts done and fail holders (the design:\n"
      "they keep their holder and do not count): once u1 is done on r1, e1\n"
      "lowering r1's width to 0 is refused although r1 holds no working card.\n"
@@ -231,29 +218,49 @@ WITNESSES = [
      [("Legal(st, w)     == RuleLegal(st, w, Counted)\n",
        "\\* FAULT: done and fail holders are counted too.\n"
        "Legal(st, w)     == RuleLegal(st, w, Counted \\cup {\"done\", \"fail\"})\n", 1)]),
-    ("StoreWidthCountsReady", "NoSpuriousRefusal",
-     "The store's width count also counts ready holders (live, as Go counts;\n"
-     "the design: ready is queued, not counted): with u3 ready on r1, a1\n"
-     "dealing u1 working is refused although r1 has no working holder. An\n"
-     "invariant, NoSpuriousRefusal, as in StoreWidthCountsDone.",
+    ("StoreWidthCountsReady", "NoSpuriousRefusal", "deal",
+     "The store's width count also counts ready holders (the design: ready\n"
+     "is queued, not counted): with u3 ready on r1, a1 making u1 working is\n"
+     "refused although r1 has no working holder. An invariant,\n"
+     "NoSpuriousRefusal, as in StoreWidthCountsDone.",
      [("Legal(st, w)     == RuleLegal(st, w, Counted)\n",
        "\\* FAULT: ready holders are counted too.\n"
        "Legal(st, w)     == RuleLegal(st, w, Counted \\cup {\"ready\"})\n", 1)]),
-    ("StoreRowStale", "ConditionsAtomic",
+    ("StoreRowStale", "ConditionsAtomic", "deal",
      "The store does not check RowGen: g1 holds r1 (its gen rises to 1), and\n"
      "e1, fenced on RowGen(r1, 0), still lowers r1's width.",
-     [("  ELSE LET run == RunOp(st, Ops[o].writes)\n"
-       "       IN IF Holds(st, Ops[o].expect) /\\ run.ok",
+     [(OUTCOME_HOLDS,
        "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
        "       \\* FAULT: RowGen conditions are not checked.\n"
        "       IN IF (\\A x \\in Ops[o].expect : x.k = \"rowGen\" \\/ Cond(st, x)) /\\ run.ok", 1)]),
-    ("StoreWorkEntryUnchecked", "WidthKept",
-     "No work-entry check: only the holder write on a working card is\n"
-     "width-checked, and a state write that takes a held card into working\n"
-     "is not: e1 lowers r1's width to 0, then a1 holds u1 on r1 while it\n"
-     "waits and makes it working: one working holder on a width-0 row.",
+    ("StoreWorkEntryUnchecked", "WidthKept", "deal",
+     "No work-entry check: a state write that takes a held card into\n"
+     "working is not width-checked: s10 makes u1 and u2 working on the\n"
+     "width-1 row r2 in one op and is accepted (the shallowest of several\n"
+     "over-fills; e1 then a1 on r1 is another).",
      [("Exists(st, w.c) /\\ w.s \\in CardStates /\\ WorkEntryOK(st, w, L)",
        "Exists(st, w.c) /\\ w.s \\in CardStates   \\* FAULT: no WorkEntryOK", 1)]),
+    ("StoreServesStale", "ServesHeld", "deal",
+     "Apply is two steps, and RowServes is read on the snapshot Begin took:\n"
+     "a1 begins while r1 serves pro, v1 sets r1 to serve flash only, and a1\n"
+     "deals u1 (a pro consumer) to r1.",
+     STALE_INFRA + [
+         (OUTCOME_HOLDS,
+          "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
+          "       \\* FAULT: RowServes is read on the snapshot.\n"
+          "       IN IF (\\A x \\in Ops[o].expect :\n"
+          "                IF x.k = \"rowServes\" THEN Cond(Snap(st), x) ELSE Cond(st, x)) /\\ run.ok", 1)]),
+    ("StoreJudgementTwice", "JudgementClosedOnce", "records",
+     "The store does not check JudgementOpen: h1 answers j1, and h2 answers\n"
+     "it again (or y1 expires it after the answer).",
+     [(OUTCOME_HOLDS,
+       "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
+       "       \\* FAULT: JudgementOpen conditions are not checked.\n"
+       "       IN IF (\\A x \\in Ops[o].expect : x.k = \"judgeOpen\" \\/ Cond(st, x)) /\\ run.ok", 1)]),
+    ("StoreCursorBack", "CursorMonotone", "records",
+     "Set cursor accepts any value: m1 sets c1 to 2, then m2 sets it to 1.",
+     [("    [] w.k = \"setCursor\"   -> w.w >= st.cursors[w.c]",
+       "    [] w.k = \"setCursor\"   -> TRUE   \\* FAULT: a cursor may move back", 1)]),
 ]
 
 
@@ -269,6 +276,9 @@ def header(name, fault, target):
     lines = ["REVERSED WITNESS. FAULT:"] + fault.split("\n")
     lines += ["TLC must report " + target + " violated. Everything else is",
               "Store.tla unchanged (generated by make-witnesses.py)."]
+    for l in lines:
+        if len(l) > 71:
+            die(name + ": header line over 71 characters: " + l)
     box = ["(" + "*" * 75 + ")"]
     box += ["(* " + l.ljust(71) + " *)" for l in lines]
     box += ["(" + "*" * 75 + ")"]
@@ -285,15 +295,20 @@ DROP = {
 }
 
 
-def cfg(name, target):
+def constants(scenario):
+    return "CONSTANT MaxLoss = 1\nCONSTANT Scenario = \"%s\"\nSPECIFICATION Spec\n" % scenario
+
+
+def cfg(name, target, scenario):
     out = ["\\* Reversed witness: TLC must report " + target + " violated.",
            "\\* The target invariant is listed first so it is the one TLC names."]
     drop, why = DROP.get(name, ([], ""))
     if drop:
         out.append("\\* Left out: " + why)
-    out += ["CONSTANT MaxLoss = 1", "SPECIFICATION Spec"]
-    out += ["INVARIANT " + i for i in [target] + [i for i in INVARIANTS if i != target and i not in drop]]
-    return "\n".join(out) + "\n"
+    text = "\n".join(out) + "\n" + constants(scenario)
+    text += "".join("INVARIANT " + i + "\n"
+                    for i in [target] + [i for i in INVARIANTS if i != target and i not in drop])
+    return text
 
 
 def main():
@@ -302,7 +317,7 @@ def main():
     first = base.split("\n", 1)
     if "MODULE Store " not in first[0]:
         die("Store.tla does not start with its module line")
-    for name, target, fault, reps in WITNESSES:
+    for name, target, scenario, fault, reps in WITNESSES:
         if target not in INVARIANTS:
             die(name + ": unknown target " + target)
         text = first[1]
@@ -315,16 +330,16 @@ def main():
         with open(os.path.join(HERE, "witnesses", name + ".tla"), "w") as f:
             f.write(line + "\n" + box + "\n" + text)
         with open(os.path.join(HERE, "witnesses", name + ".cfg"), "w") as f:
-            f.write(cfg(name, target))
-    with open(os.path.join(HERE, "Store.cfg"), "w") as f:
-        f.write("CONSTANT MaxLoss = 1\nSPECIFICATION Spec\n" +
-                "".join("INVARIANT " + i + "\n" for i in INVARIANTS))
-    for name, what in REACH.items():
+            f.write(cfg(name, target, scenario))
+    for name, scenario in PASSING.items():
+        with open(os.path.join(HERE, name + ".cfg"), "w") as f:
+            f.write(constants(scenario) + "".join("INVARIANT " + i + "\n" for i in INVARIANTS))
+    for name, (scenario, what) in REACH.items():
         if "\n" + name + " " not in base and "\n" + name + "=" not in base:
             die("reach check " + name + " is not defined in Store.tla")
         with open(os.path.join(HERE, "reach", name + ".cfg"), "w") as f:
-            f.write("\\* Reachability: TLC must report %s violated (%s).\n"
-                    "CONSTANT MaxLoss = 1\nSPECIFICATION Spec\nINVARIANT %s\n" % (name, what, name))
+            f.write("\\* Reachability: TLC must report %s violated (%s).\n" % (name, what)
+                    + constants(scenario) + "INVARIANT %s\n" % name)
 
 
 main()

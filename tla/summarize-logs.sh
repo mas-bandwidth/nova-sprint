@@ -1,7 +1,7 @@
 #!/bin/sh
 # Print the result lines of each TLC log written by run-tlc.sh.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-names="Store"
+names="Store StoreRecords"
 for f in "$HERE"/witnesses/*.tla; do
     case "$f" in *_TTrace_*) continue ;; esac
     names="$names $(basename "$f" .tla)"
