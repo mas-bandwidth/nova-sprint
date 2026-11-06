@@ -213,17 +213,17 @@ func writes(h *harness) {
 	assert.Equal(h.t, &State{Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": row}, Cards: map[string]Card{"c0": card0, "c1": c1}}, r.After, "a row starts down, a card waiting at gen 0")
 	r = h.ok(h.op("move", nil, SetCardState{"c1", "working"}, SetCardAttempt{"c1", 2}, SetCardBranch{"c1", "b1"},
 		SetCardHead{"c1", "abc123"}, SetCardPR{"c1", 42}, SetCardReason{"c1", "why"}, SetCardScore{"c1", 3}, SetCardNeeds{"c1", nil},
-		SetCardAuthor{"c1", "w1"}, SetCardBaseSHA{"c1", "def456"}, SetCardResult{"c1", "ok"},
+		SetCardAuthor{"c1", "w1"}, SetCardBaseSHA{"c1", "def456"},
 		PutCard{ID: "k1", Kind: "work", Of: "c1", Stream: "s1", Holder: "w1"}))
 	want := Card{Priority: "normal", ID: "c1", Kind: "producer", Stream: "s1", State: "working", Gen: 1, Attempt: 2, Score: 3, Branch: "b1", Head: "abc123", PR: 42, Brief: "do it", Reason: "why",
-		Author: "w1", BaseSHA: "def456", Result: "ok"}
+		Author: "w1", BaseSHA: "def456"}
 	k1 := Card{Priority: "normal", ID: "k1", Kind: "work", Of: "c1", Stream: "s1", State: "waiting", Holder: "w1"}
 	assert.Equal(h.t, &State{Cards: map[string]Card{"c1": want, "k1": k1}}, r.After, "every card write raises gen by one; a consumer is added with its holder")
 	h.ok(h.op("rows", nil, SetRowState{"w1", "up"}, SetRowSession{"w1", "sess-b"}, SetRowFlaps{"w1", 4}, SetStreamHeld{"s1", true}))
-	h.ok(h.op("over", nil, PutRow{"w1", "kin", 1, "sess-c"}, PutStream{"s1", "other", "dev", 5}, SetCardHolder{"k1", ""}, SetCardNeeds{"c1", []string{"c0"}}, SetCardState{"k1", "done"}))
+	h.ok(h.op("over", nil, PutRow{"w1", "kin", 1, "sess-c"}, PutStream{"s1", "other", "dev", 5}, SetCardHolder{"k1", ""}, SetCardNeeds{"c1", []string{"c0"}}, SetCardState{"k1", "done"}, SetCardResult{"k1", "ok"}))
 	h.ok(h.op("width", []Expect{RowGen{"w1", 2}}, SetRowWidth{"w1", 3}))
 	want.Needs, want.Gen = []string{"c0"}, 2
-	k1.Holder, k1.State, k1.Gen = "", "done", 1
+	k1.Holder, k1.State, k1.Result, k1.Gen = "", "done", "ok", 1
 	got := h.snap()
 	assert.Equal(h.t, Row{Name: "w1", Kind: "kin", Width: 3, State: "up", Session: "sess-c", Flaps: 4, Gen: 3}, got.Rows["w1"], "put row keeps state and flaps; gen rises once per op")
 	assert.Equal(h.t, Stream{Name: "s1", Repo: "other", Base: "dev", Held: true, Pos: 5}, got.Streams["s1"], "put stream keeps held")
@@ -889,6 +889,9 @@ func lessonColumns(h *harness) {
 	assert.Equal(h.t, c1want, r.After.Cards["c1"])
 	assert.False(h.t, r.After.Cards["u2"].Priced, "an unpriced run is unpriced, never $0")
 	h.ok(h.op("level", nil, SetCardPriority{"g1", "high"}))
+	r = h.ok(h.op("cut", nil, SetCardAttempt{"c1", 3}, PutCard{Kind: "work", ID: "k3", Of: "c1", Stream: "s1", Attempt: 3}))
+	assert.Equal(h.t, 3, r.After.Cards["k3"].Attempt, "a consumer carries the attempt it belongs to, set at add")
+	assert.Equal(h.t, 3, r.After.Cards["c1"].Attempt)
 	for _, c := range []struct {
 		w      Write
 		reason string
@@ -902,6 +905,16 @@ func lessonColumns(h *harness) {
 		{SetCardPriorHead{"u9", "x"}, "card u9 does not exist"},
 		{SetCardBounces{"c9", 1}, "card c9 does not exist"},
 		{SetCardCost{"u9", 1, true}, "card u9 does not exist"},
+		// the kind-specific columns: the store enforces whose they are
+		{SetCardPriorHead{"u2", "x"}, "card u2 is of kind read; SetCardPriorHead is only for a work consumer"},
+		{SetCardPriorHead{"c1", "x"}, "card c1 is of kind producer; SetCardPriorHead is only for a work consumer"},
+		{SetCardBounces{"u1", 1}, "card u1 is of kind work; SetCardBounces is only for a producer"},
+		{SetCardBounces{"g1", 1}, "card g1 is of kind sentinel; SetCardBounces is only for a producer"},
+		{SetCardCost{"c1", 1, true}, "card c1 is of kind producer; SetCardCost is only for a consumer"},
+		{SetCardResult{"c1", "ok"}, "card c1 is of kind producer; SetCardResult is only for a consumer"},
+		{SetCardResult{"g1", ""}, "card g1 is of kind sentinel; SetCardResult is only for a consumer"},
+		{SetCardAttempt{"u1", 2}, "card u1 is of kind work; SetCardAttempt is only for a producer or sentinel (a consumer's attempt is set at add)"},
+		{PutCard{Kind: "producer", ID: "c4", Stream: "s1", Attempt: 1}, "card c4 is a producer; its attempt starts at 0 and is raised by SetCardAttempt"},
 	} {
 		h.refused(h.op("bad", nil, c.w), c.reason)
 	}

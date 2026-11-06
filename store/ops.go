@@ -86,10 +86,12 @@ type SetStreamHeld struct {
 // sentinel has no Brief. A consumer (work or read) names its producer in Of
 // (a producer of the same epoch; Of never changes after), has no needs and no
 // after, and may be added with its Holder, which is the holder write in the
-// same op.
+// same op and with the Attempt it belongs to (a producer's starts at 0).
+// Prior head, bounces, cost and result are never set at add.
 type PutCard struct {
 	ID, Kind, Of, Stream string
 	Score                int
+	Attempt              int      // a consumer's attempt, set here and never after
 	Needs                []string // hard: cannot start until these landed
 	After                []string // soft: cannot land until these landed
 	Brief                string
@@ -107,10 +109,12 @@ type SetCardState struct{ Card, State string }
 // the op included) and not counting the card written.
 type SetCardHolder struct{ Card, Holder string }
 
-// SetCardResult sets a card's result: "", ok, fix or fail.
+// SetCardResult sets a consumer's result: "", ok, fix, fail or fault; refused on
+// a producer or sentinel.
 type SetCardResult struct{ Card, Result string }
 
-// SetCardAttempt sets the number of the attempt the holder is on.
+// SetCardAttempt sets a producer's or sentinel's attempt count; refused on a
+// consumer, whose attempt is set at add.
 type SetCardAttempt struct {
 	Card    string
 	Attempt int
@@ -144,11 +148,12 @@ type SetCardAuthor struct{ Card, Author string }
 type SetCardBaseSHA struct{ Card, SHA string }
 
 // SetCardPriorHead sets the head a work consumer's attempt continues from
-// ("" on a first attempt).
+// ("" on a first attempt); refused on any other kind.
 type SetCardPriorHead struct{ Card, Head string }
 
 // SetCardBounces sets a producer's bounce count: the returns that count
-// toward blocked (a fault never raises it; layer 2 says when).
+// toward blocked (a fault never raises it; layer 2 says when); refused on any
+// other kind.
 type SetCardBounces struct {
 	Card    string
 	Bounces int
@@ -156,6 +161,7 @@ type SetCardBounces struct {
 
 // SetCardCost sets what a consumer's run cost, in micro-dollars, and whether
 // its route had a price at all: one field, so an unpriced run is never $0.
+// Refused on a producer or sentinel.
 type SetCardCost struct {
 	Card   string
 	Cost   int64
@@ -273,7 +279,7 @@ func fields(w Write) (fs []field, ok bool) {
 	case SetStreamHeld:
 		return of("stream", v.Stream, "held"), true
 	case PutCard:
-		return of("card", v.ID, "kind", "of", "stream", "score", "needs", "after", "brief", "holder", "priority"), true
+		return of("card", v.ID, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority"), true
 	case PutRow:
 		return of("row", v.Name, "kind", "width", "session"), true
 	case PutPolicy:
