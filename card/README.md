@@ -180,6 +180,10 @@ AskRead on a sentinel are refused.
 | Report{Row,Result,Head,Reason,Cost,Priced} | working | row is the holder; work reports ok, fail or fault, a read ok, fix or fault; a non-empty work head is a full sha, neither its base nor its prior head, for every result; a read reports the head it was cut at, which is the producer's, and fences the producer's gen; an empty read head stays empty | state done, result, head (a read's only when it is the head it was cut at), reason, cost (when changed) |
 | Withdraw{Reason,Head,Stream} | ready, working | a non-empty work head is a full sha, not the base, not the prior; a ready work consumer has not pushed; a read keeps its own head; a preempt refuses unless the consumer is working; a withdraw that would leave a working producer working is refused, and says to pass the producer in working so the withdraw releases it; releasing: Stream is p's, CardGen p, StreamHeld as read | state fail, reason, head; when it is the current work consumer of a working producer, also the producer: ready (waiting if held), reason (the hold phrase when held), head |
 
+`ReportPlan` is a work consumer's `Report` and the producer's `Finished`,
+`Broken` or `Faulted` as one `Merge`, fenced on both gens. A read's
+`ReportPlan` moves only the consumer.
+
 ## Row table (MoveRow)
 
 | Event | From | Writes |
