@@ -71,7 +71,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   attempt. `attempt` is raised only by its own write (layer 2 says when).
   `score` is the work order: set at add, changed only by the explicit score
   write, never by a move. A card is added in state `waiting`, gen 0, attempt
-  0, no holder; a consumer is added with its holder in the same op.
+  0, no holder; a consumer is added with its holder and the attempt it belongs to in the same op (a producer or sentinel with a non-zero attempt at add is refused).
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
   `state text` (`up`, `down`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; Glenn 2026-11-06: "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
   so a late report from an old session can be told apart), `flaps integer`,
