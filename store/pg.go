@@ -26,7 +26,8 @@ var schemaSQL string
 // states blocked and done; the row columns gen, held, tiers, model and
 // harness; the tables judgements and cursors; the events' policy; the meta
 // hash; the triggers that keep a card's kind, of, stream, holder, tier, id
-// and epoch, a row's, stream's or judgement's key and epoch, and the log
+// and epoch, a row's, stream's or judgement's key and epoch, a policy version's
+// columns but active, and the log (TRUNCATE included)
 // fixed; and the CHECKs that keep every count at 0 or more. There is no
 // upgrade path: a store at version 1 is refused like any other version.
 const SchemaVersion = 2
@@ -36,13 +37,24 @@ const SchemaVersion = 2
 // not refuse every store.
 var schemaHash = hashSchema(schemaSQL)
 
+// hashSchema strips a -- comment only outside a single-quoted string literal
+// (a doubled quote inside one toggles twice, so it stays inside), across lines,
+// so a '--' in a literal is hashed. Function bodies ($$ ... $$) are scanned as
+// code: their comments are stripped and their literals kept. E-prefixed
+// escape strings are not read (the schema has none).
 func hashSchema(sql string) string {
 	var b strings.Builder
+	quoted := false
 	for line := range strings.Lines(sql) {
-		if i := strings.Index(line, "--"); i >= 0 {
-			line = line[:i]
+		cut := len(line)
+		for i := 0; i < cut; i++ {
+			if line[i] == '\'' {
+				quoted = !quoted
+			} else if !quoted && strings.HasPrefix(line[i:], "--") {
+				cut = i
+			}
 		}
-		if line = strings.TrimSpace(line); line != "" {
+		if line = strings.TrimSpace(line[:cut]); line != "" {
 			b.WriteString(line + "\n")
 		}
 	}
@@ -93,7 +105,8 @@ func (p *PG) Close() { p.pool.Close() }
 // Migrate applies schema.sql to an empty store or one at SchemaVersion made
 // by this build of it, and refuses a store at any other version, or at this
 // version with another schema hash (sprint.meta), naming both, and a schema
-// sprint that holds anything but no sprint.meta (not made by nova-sprint).
+// sprint that holds anything (a relation, a type or a function) but no
+// sprint.meta (not made by nova-sprint).
 // Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
@@ -107,7 +120,9 @@ func (p *PG) Migrate(ctx context.Context) error {
 	}
 	var meta, used bool
 	if err := tx.QueryRow(ctx, `SELECT to_regclass('sprint.meta') IS NOT NULL,
-		EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'sprint')`).Scan(&meta, &used); err != nil {
+		EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'sprint')
+		OR EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'sprint')
+		OR EXISTS (SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace WHERE n.nspname = 'sprint')`).Scan(&meta, &used); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if used && !meta {
@@ -155,6 +170,9 @@ func known(ctx context.Context, closed bool, op Op, err error) error {
 	case ctx.Err() != nil:
 		return nil
 	case pgconn.SafeToRetry(err):
+		// Known: the request never reached the server, so nothing can have
+		// landed. Leave the switch for the plain error below, as for any
+		// error before COMMIT, ahead of the lost-connection case.
 	case closed || isPG && lost(pe):
 		return nil
 	}

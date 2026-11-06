@@ -7,14 +7,18 @@ package does with it.
 - `PG` is the store in PostgreSQL, schema `sprint` (`schema.sql`, embedded,
   applied by `Migrate`). Open it with `Open(ctx, $NOVA_PG_DSN, $NOVA_PG_PASSWORD)`.
   `Migrate` refuses a store at a schema version other than `SchemaVersion`,
-  naming both numbers and the fix ("run a binary built for schema version 1,
-  or recreate the store"), and is safe to run concurrently (it holds one
-  advisory lock). A schema `sprint` that holds any relation but no
-  `sprint.meta` is refused: "schema sprint exists and was not made by
+  naming both numbers and the fix, the store's own version first: a store at
+  version 1 opened by this binary is refused with "the store is at schema
+  version 1, this binary knows schema version 2: run a binary built for
+  schema version 1, or recreate the store". It is safe to run concurrently
+  (it holds one advisory lock). A schema `sprint` that holds anything (a
+  relation, a type or a function) but no `sprint.meta` is refused: "schema sprint exists and was not made by
   nova-sprint; drop it or point NOVA_PG_DSN elsewhere" (an empty one is an
   empty store). It also checks the shape: `sprint.meta` keeps the sha256 of
   the schema text that made the store, with comments, indentation and blank
-  lines stripped (so a comment edit refuses nothing), and a store at version
+  lines stripped (so a comment edit refuses nothing; a `--` is a comment only
+  outside a single-quoted string literal, so one inside a literal is hashed),
+  and a store at version
   2 whose hash differs from this binary's (or has none) is refused naming
   both hashes:
   "this store was made by a different build of schema 2; recreate it (no live
@@ -27,7 +31,11 @@ package does with it.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
-  receipts are PG's. Time comes from `Op.At`; it never reads a clock. It
+  receipts are PG's. Where a reason depends on an order of names (the
+  consumer a tier drop would strand is the lowest id), both use byte order:
+  Fake compares bytes and PG orders `COLLATE "C"`, so the reasons are equal on
+  any database collation (an ICU en-US database runs the whole conformance
+  suite). Time comes from `Op.At`; it never reads a clock. It
   clones every table and the log on every op (O(n) per op, O(n^2) over a
   long log): it is for tests only.
   `Fake.Drop(opID, landed)` makes the next Apply or Clear of that id report
@@ -88,7 +96,9 @@ default: // accepted: r.Seq is the event, r.After the touched rows
    refuses any UPDATE that changes a card's `id`, `epoch`, `kind`, `of`,
    `stream`, `holder` or `tier`, and a second trigger refuses one that
    changes a stream's, row's or judgement's key or epoch. The log is
-   append-only (a trigger refuses UPDATE and DELETE on `sprint.events`), every
+   append-only (a row trigger refuses UPDATE and DELETE on `sprint.events`, a
+   statement trigger TRUNCATE), a policy version is immutable once added (a
+   trigger lets only `active` change and refuses DELETE and TRUNCATE), every
    count (pos, width, flaps, gen, attempt, score, pr, bounces, cost, a
    cursor's seq) is 0 or more by a CHECK, and a judgement closes no earlier
    than it opened. A consumer's attempt is fixed at add by the
@@ -121,9 +131,13 @@ Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
 landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`,
 `JudgementOpen`, `AtSeq` (the last event's seq is N: nothing at all entered
 the store since a snapshot at N, a refused op included, since a refusal is an
-event and moves seq too). A `CardState` or `RowIs` naming a state outside its
-set can never hold, so it is `ErrInvalid` ("card state \"flying\" is not one
-of ..."), not a refusal. There is no width condition and no tier condition:
+event and moves seq too). One rule for a value outside its closed set
+(card kind, state, result, priority and tier; row kind, state and tiers,
+none twice; policy kind) and for an empty key (a card, judgement id; a
+stream, row, cursor name), in a condition exactly as in a write: it is
+`ErrInvalid` ("card state \"flying\" is not one of ...", "a card needs an
+id"), never a refusal, and nothing is logged. `CardHolder`'s holder `""` is
+none, not an empty key. There is no width condition and no tier condition:
 the writes are the checks (the state write into working for width; put
 card, the state write into ready or working, and the row writes for
 tiers).
@@ -209,8 +223,8 @@ The card states are `waiting`, `ready`, `working`, `review`, `merging`,
 `landed`, `fail`, `blocked`, `done`. Width caps work in progress, not what is
 queued: a row's width counts only the cards it holds in `working`, so a held
 card that is ready, waiting, done or anything else takes no room. Which kind
-may use which state is layer 2's; the store refuses only a state outside the
-set. Rows are `up` or `down`; the coordinator's hold is `held`, apart from
+may use which state is layer 2's; to the store only a state outside the set
+is wrong (`ErrInvalid`). Rows are `up` or `down`; the coordinator's hold is `held`, apart from
 the state.
 
 Writes, one field each, applied in order: `PutStream` (repo, base, pos;
@@ -240,9 +254,17 @@ gives it the next one, and the caller learns it from the receipt,
 `r.After.Policies` (keyed by version; the new version is the one not in
 the snapshot it planned from). The working count is taken at the moment of
 the write and excludes the card written, so two takes onto a width-one row in
-one op are refused on the second and nothing lands. Setting a card to the
-state it is in is refused ("card u1 is already working"): nothing moves
-without a change, so no gen rises and no accepted event logs for nothing. A
+one op are refused on the second and nothing lands. Every set write that would
+change nothing is refused: a card to the state it is in ("card u1 is
+already working"), a row likewise ("row r1 is already up"), a stream or row
+held to what it is ("stream s1 is already not held"), the active policy
+version activated ("policy version 1 is already active"), a cursor set to
+its seq ("cursor feed is already at 7"), and every other set-card and
+set-row write to the value it holds ("card c1 already has that reason",
+"row w1 already has those tiers"; an empty list and none are one value).
+The kind rule comes first. Nothing moves without a change: no gen rises,
+and the refusal event carries no image. Put writes are not set writes: a
+`PutStream` or `PutRow` overwrite with the same values is accepted. A
 width below the working cards the
 row holds is refused; width 0 is a row that takes nothing into working (it
 may still hold queued cards). An op that writes a card or a row raises its
@@ -275,7 +297,8 @@ rise"), nothing lands, in both stores.
 
 `Clear` takes an op of kind `clear` with no writes and at most an `AtSeq`
 condition. It opens epoch n + 1 and carries every row into it (same name,
-kind, width, session and held; state down, no flaps, gen raised by one);
+kind, width, session, held, tiers, model and harness; state down, no flaps,
+gen raised by one);
 streams, cards and judgements stay behind in the old epoch, policy and
 cursors are kept. The event carries the epoch it closed; the receipt's
 `NewEpoch` is the one it opened. Like Apply, Clear with an op id already
@@ -287,8 +310,8 @@ receipt (`NewEpoch` 0) when the id was an Apply's.
 | Result | What happened | What the caller does |
 |---|---|---|
 | `Receipt{Accepted: true}` | The epoch matched, every condition held, every write landed; `Seq` is the event, `After` the touched rows. | Go on. |
-| `Receipt{Accepted: false, Reason}` | The epoch was wrong, a condition failed, or a write broke a rule (target missing, card exists, bad state name, row full). Nothing changed; the refusal is an event (`accepted = false`). | Read the reason; take a new snapshot; ask again with a new op id. Exit 1 at the CLI. |
-| an error wrapping `ErrInvalid` | The op never entered the store: no id, no epoch, a condition or write outside the closed sets, two writes to one field, a value outside the limits. Nothing is logged. | Fix the caller: it is a bug. |
+| `Receipt{Accepted: false, Reason}` | The epoch was wrong, a condition failed, or a write broke a rule (target missing, card exists, row full, a write that changes nothing). Nothing changed; the refusal is an event (`accepted = false`). | Read the reason; take a new snapshot; ask again with a new op id. Exit 1 at the CLI. |
+| an error wrapping `ErrInvalid` | The op never entered the store: no id, no epoch, a condition or write outside the closed sets, a value outside its closed set or an empty key, two writes to one field, a value outside the limits. Nothing is logged. | Fix the caller: it is a bug. |
 | an error wrapping `ErrUnknown` | The server did not answer: the connection failed, ctx timed out or was cancelled once the request was sent, or an error came during or after COMMIT. Nothing is known. | `Replay(opID)`: if it comes back, that is the receipt; if not, `Apply` again with the same id. Exit 2 at the CLI. |
 
 Any other error means nothing happened, and `Replay` is not needed: the

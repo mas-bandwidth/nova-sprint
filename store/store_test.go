@@ -170,4 +170,7 @@ func TestSchemaHash(t *testing.T) {
 	assert.Equal(t, schemaHash, hashSchema("-- a new comment\n\n"+strings.ReplaceAll(schemaSQL, "\n", "  -- note\n\n")))
 	assert.Equal(t, schemaHash, hashSchema(strings.ReplaceAll(schemaSQL, "\n    ", "\n\t")))
 	assert.NotEqual(t, schemaHash, hashSchema(strings.Replace(schemaSQL, "width >= 0", "width >= 1", 1)))
+	assert.NotEqual(t, hashSchema("SELECT 'a -- b';\n"), hashSchema("SELECT 'a -- c';\n"), "a -- inside a string literal is hashed, not stripped")
+	assert.Equal(t, hashSchema("SELECT 'it''s';\n"), hashSchema("SELECT 'it''s'; -- x\n"), "a doubled quote stays inside the literal")
+	assert.Equal(t, hashSchema("SELECT 1;\nSELECT 2;\n"), hashSchema("SELECT 1; -- 'x\nSELECT 2;\n"), "a quote inside a comment opens nothing")
 }

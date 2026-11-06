@@ -34,7 +34,7 @@ func scanCard(r pgx.Row) (Card, error) {
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
 	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen, &w.Tiers, &w.Model, &w.Harness)
-	w.Tiers = needs(w.Tiers)
+	w.Tiers = normList(w.Tiers)
 	return w, err
 }
 
@@ -226,7 +226,7 @@ func (t *pgTx) working(row string) (int, error) {
 
 func (t *pgTx) needed(row string, tiers []string) (Card, bool, error) {
 	var c Card
-	err := t.tx.QueryRow(t.ctx, "SELECT id, tier FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') AND NOT tier = ANY(coalesce($3::text[], '{}')) ORDER BY id LIMIT 1",
+	err := t.tx.QueryRow(t.ctx, "SELECT id, tier FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') AND NOT tier = ANY(coalesce($3::text[], '{}')) ORDER BY id COLLATE \"C\" LIMIT 1",
 		t.epoch, row, tiers).Scan(&c.ID, &c.Tier)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Card{}, false, nil

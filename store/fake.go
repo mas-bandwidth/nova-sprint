@@ -147,7 +147,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	}
 	pick(s.Rows, f.rows, f.epoch)
 	for name, r := range s.Rows {
-		r.Tiers = needs(r.Tiers)
+		r.Tiers = normList(r.Tiers)
 		s.Rows[name] = r
 	}
 	pick(s.Judgements, f.judges, f.epoch)
@@ -200,7 +200,7 @@ func (t *fakeTx) card(id string) (Card, bool, error) {
 
 // cardCopy is a card with every list its own.
 func cardCopy(c Card) Card {
-	c.Needs, c.After, c.Paths, c.DoneWhen = needs(c.Needs), needs(c.After), needs(c.Paths), needs(c.DoneWhen)
+	c.Needs, c.After, c.Paths, c.DoneWhen = normList(c.Needs), normList(c.After), normList(c.Paths), normList(c.DoneWhen)
 	return c
 }
 
@@ -225,7 +225,7 @@ func (t *fakeTx) stream(name string) (Stream, bool, error) {
 
 func (t *fakeTx) row(name string) (Row, bool, error) {
 	r, ok := t.st.rows[t.k(name)]
-	r.Tiers = needs(r.Tiers)
+	r.Tiers = normList(r.Tiers)
 	return r, ok, nil
 }
 
@@ -283,7 +283,7 @@ func (t *fakeTx) putCard(c Card) error { t.st.cards[t.k(c.ID)] = cardCopy(c); re
 
 func (t *fakeTx) putStream(s Stream) error { t.st.streams[t.k(s.Name)] = s; return nil }
 func (t *fakeTx) putRow(r Row) error {
-	r.Tiers = needs(r.Tiers)
+	r.Tiers = normList(r.Tiers)
 	t.st.rows[t.k(r.Name)] = r
 	return nil
 }

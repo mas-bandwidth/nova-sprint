@@ -275,8 +275,9 @@ func overlay[K comparable, V any](dst, src map[K]V) {
 // at is a time as the store keeps it: UTC, to the microsecond PostgreSQL holds.
 func at(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
 
-// needs is a needs list as the store keeps it: nil when empty.
-func needs(n []string) []string {
+// normList is a list as the store keeps it (needs, after, paths, done when,
+// tiers): a copy, or nil when empty, so an empty list and none are one value.
+func normList(n []string) []string {
 	if len(n) == 0 {
 		return nil
 	}

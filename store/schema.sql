@@ -179,6 +179,17 @@ $$;
 CREATE OR REPLACE TRIGGER events_append_only BEFORE UPDATE OR DELETE ON sprint.events
     FOR EACH ROW EXECUTE FUNCTION sprint.events_append_only();
 
+-- TRUNCATE fires no row trigger, so the log and the policy versions each
+-- refuse it with a statement trigger of their own (no OLD row to name).
+CREATE OR REPLACE FUNCTION sprint.no_truncate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'sprint.% cannot be truncated; its rows are never removed', TG_TABLE_NAME
+        USING ERRCODE = 'check_violation', CONSTRAINT = TG_TABLE_NAME || '_no_truncate_check';
+END
+$$;
+CREATE OR REPLACE TRIGGER events_no_truncate BEFORE TRUNCATE ON sprint.events
+    FOR EACH STATEMENT EXECUTE FUNCTION sprint.no_truncate();
+
 -- Global, not epoch scoped: a clear keeps the policy. At most one version is
 -- active. Filled by layer 5.
 CREATE TABLE IF NOT EXISTS sprint.policy (
@@ -191,6 +202,26 @@ CREATE TABLE IF NOT EXISTS sprint.policy (
     at      timestamptz NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS policy_one_active ON sprint.policy (active) WHERE active;
+
+-- A policy version is immutable once added: only active may change, and a
+-- version is never removed (an event names the version it was decided under).
+CREATE OR REPLACE FUNCTION sprint.policy_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'policy version % is never removed', OLD.version
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'policy_fixed_check';
+    END IF;
+    IF to_jsonb(NEW) - 'active' IS DISTINCT FROM to_jsonb(OLD) - 'active' THEN
+        RAISE EXCEPTION 'policy version % changes more than active; a version is fixed when it is added', OLD.version
+            USING ERRCODE = 'check_violation', CONSTRAINT = 'policy_fixed_check';
+    END IF;
+    RETURN NEW;
+END
+$$;
+CREATE OR REPLACE TRIGGER policy_fixed BEFORE UPDATE OR DELETE ON sprint.policy
+    FOR EACH ROW EXECUTE FUNCTION sprint.policy_fixed();
+CREATE OR REPLACE TRIGGER policy_no_truncate BEFORE TRUNCATE ON sprint.policy
+    FOR EACH STATEMENT EXECUTE FUNCTION sprint.no_truncate();
 
 -- A question owed to a person, stored so it outlives any push (promises 1, 5
 -- and 6). No gen: JudgementOpen fences it. Epoch scoped: a clear does not

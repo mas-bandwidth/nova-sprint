@@ -67,7 +67,9 @@ func check(op Op) error {
 			}
 			seen[f] = true
 		}
-		sp.check(&c)
+		if sp.check != nil {
+			sp.check(&c)
+		}
 	}
 	return c.err
 }
@@ -150,29 +152,53 @@ func (c *checker) oneOf(what, v string, set []string) *checker {
 	return c
 }
 
-// expect checks one condition: a type of the closed set, its names and text.
+// key is the id or name a condition or write is about: never empty, so a
+// reason never names nothing ("card  does not exist").
+func (c *checker) key(table, k string) *checker {
+	if k == "" {
+		what := "a name"
+		if table == "card" || table == "judgement" {
+			what = "an id"
+		}
+		c.fail("a %s needs %s", table, what)
+	}
+	return c.name(k)
+}
+
+// tiers is a row's tiers: each one of Tiers, none named twice.
+func (c *checker) tiers(ts []string) *checker {
+	for i, t := range ts {
+		if c.oneOf("row tier", t, Tiers); c.err == nil && slices.Contains(ts[:i], t) {
+			c.fail("tier %s is named twice", t)
+		}
+	}
+	return c
+}
+
+// expect checks one condition: a type of the closed set, its names and text,
+// by the same rules as the writes (an empty key, a value outside its set).
 func (c *checker) expect(e Expect) {
 	switch v := e.(type) {
 	case CardGen:
-		c.name(v.Card)
+		c.key("card", v.Card)
 	case CardState:
-		c.name(v.Card).oneOf("card state", v.State, CardStates)
+		c.key("card", v.Card).oneOf("card state", v.State, CardStates)
 	case CardHolder:
-		c.name(v.Card, v.Holder)
+		c.key("card", v.Card).name(v.Holder)
 	case NeedsLanded:
-		c.name(v.Card)
+		c.key("card", v.Card)
 	case RowIs:
-		c.name(v.Row).oneOf("row state", v.State, RowStates)
+		c.key("row", v.Row).oneOf("row state", v.State, RowStates)
 	case RowGen:
-		c.name(v.Row)
+		c.key("row", v.Row)
 	case RowHeld:
-		c.name(v.Row)
+		c.key("row", v.Row)
 	case StreamHeld:
-		c.name(v.Stream)
+		c.key("stream", v.Stream)
 	case CardAbsent:
-		c.name(v.Card)
+		c.key("card", v.Card)
 	case JudgementOpen:
-		c.name(v.ID)
+		c.key("judgement", v.ID)
 	case AtSeq:
 	default:
 		c.fail("it is not a condition of the closed set")

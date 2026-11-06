@@ -145,6 +145,11 @@ func TestFunctionalMigrateRefusesForeignSchema(t *testing.T) {
 		"before sprint.meta": "CREATE SCHEMA sprint; CREATE TABLE sprint.epoch (n integer)",
 		"foreign cards":      "CREATE SCHEMA sprint; CREATE TABLE sprint.cards (id text PRIMARY KEY)",
 		"a sequence only":    "CREATE SCHEMA sprint; CREATE SEQUENCE sprint.s",
+		// the fourth cold read's MigrateForeignNonRelation: a type or a
+		// function is something too, a same-name one the schema would replace
+		"an enum type":                        "CREATE SCHEMA sprint; CREATE TYPE sprint.mood AS ENUM ('a')",
+		"a function of the same name":         "CREATE SCHEMA sprint; CREATE FUNCTION sprint.cards_fixed() RETURNS integer LANGUAGE sql AS 'SELECT 1'",
+		"a trigger function of the same name": "CREATE SCHEMA sprint; CREATE FUNCTION sprint.events_append_only() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NEW; END'",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
