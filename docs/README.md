@@ -91,3 +91,13 @@ and we should bring across all the good in the dashboard." So the dashboard
 is built from the record: a lessons file extracted from v1's dashboard spec,
 code and the iteration rulings first, then the build, then side-by-side
 screenshots against the live v1 board; any difference is a defect.
+
+## Always batch (Glenn, 2026-11-06, for layer 3)
+
+"Let's not throw away what we learned in v1, which is always batch." A step
+in layer 3 is a batch step: the run loop takes one snapshot and emits one
+plan that moves every card it can in one transaction, every ready card
+dealt, every reported consumer applied, every resolvable need resolved,
+every read asked, together. Per-card verbs exist for a person; the tick
+batches. Landing follows the ladder in LANDING.md: one at a time only while
+the flow is good, batched the moment it backs up.
