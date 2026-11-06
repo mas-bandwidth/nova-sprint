@@ -19,13 +19,13 @@ INVARIANTS = [
     "TypeOK", "ProducerNeverHeld", "SlotsDense", "WorkingOneWorkConsumer",
     "WorkingLeavesInOneStep", "ParkedUnderHold", "NeverStranded", "ReadOnlyInReview",
     "ReaderNeverAuthor", "WidthKept", "TakeBelowWidth", "NeedFailedTakesDependants",
-    "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "AfterNeverHolds",
+    "SentinelShape", "NeedsAcyclic", "OrderAcyclic",
     "ResultsByKind", "OneLiveReadPerRow",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "ReplaceByLive", "HeadNeverRepeats",
-    "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "AfterKept",
+    "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed",
 ]
 
 # The instance of each scenario (see the module header). "life": one
@@ -39,6 +39,9 @@ SCENARIOS = {
     "deps":  {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
     "pre":   {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 2},
     "reads": {"K": 3, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
+    # life, sized for the one witness whose fault needs a third attempt
+    # (CardWaiveRedWithoutRed); never a passing run.
+    "redw":  {"Scenario": "life", "K": 5, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 1, "MaxEnv": 0},
 }
 
 # The passing runs: cfg name -> scenario.
@@ -60,13 +63,11 @@ REACH = {
     "NeverAskReads": ("reads", "AskReads cuts two reads in one step"),
     "NeverInThisOp": ("deps", "a need is failed and its dependant moved in one op"),
     "NeverWaivedRed": ("life", "WaiveRed merges after a Red without a new read"),
-    "NeverFindingCarried": ("life", "a fix attempt carries the failure it fixes"),
+    "NeverFindingCarried": ("life", "a fix attempt carries the reader's finding"),
     "NeverPreempted": ("pre", "a blocker preempts a live consumer"),
 }
 
 # Relink's lines, shared by the two cycle witnesses.
-RELINK_TO = "  /\\ to \\in Prods \\ {p}   \\* the code: a need is relinked only to a producer\n"
-RELINK_TO_ANY = "  /\\ to \\in P \\ {p}   \\* FAULT: a sentinel target\n"
 RELINK_ACYCLIC = ("  /\\ Acyclic([OrderGraph EXCEPT ![p] = (@ \\ {n}) \\cup {to}])"
                   "   \\* needs and after (the code)\n")
 
@@ -83,7 +84,8 @@ WITNESSES = [
        "  /\\ TRUE   \\* FAULT: was r # ps[p].author\n", 1)]),
     ("CardRedAdvances", "RedNeverAdvances", "life",
      "A red CI result moves merging to landed.",
-     [("PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"review\", !.review = @ + 1])",
+     [("PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"review\", !.review = @ + 1,\n"
+       "                                      !.red = TRUE])",
        "PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"landed\"])   \\* FAULT: was review", 1)]),
     ("CardNeedFailedIgnored", "NeedFailedTakesDependants", "deps",
      "NeedFailed reads the dependant's state where it means the need's, so\n"
@@ -116,16 +118,14 @@ WITNESSES = [
        "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was YesRead(p)\n", 1)]),
     ("CardFaultBumpsAttempt", "FaultSpendsNothing", "life",
      "Faulted raises the producer's attempt.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
-       "                                          !.finding = \"fault\"])",
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
        "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
-       "                                          !.finding = \"fault\", !.att = @ + 1])   \\* FAULT: attempt+1", 1)]),
+       "                                          !.att = @ + 1])   \\* FAULT: attempt+1", 1)]),
     ("CardFaultBounces", "FaultSpendsNothing", "life",
      "Faulted raises bounces, so a fault counts toward Block.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
-       "                                          !.finding = \"fault\"])",
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
        "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
-       "                                          !.finding = \"fault\", !.bounces = @ + 1])   \\* FAULT: bounces+1", 1)]),
+       "                                          !.bounces = @ + 1])   \\* FAULT: bounces+1", 1)]),
     ("CardEditUnderLive", "EditNoLive", "life",
      "Edit is accepted while the producer has a live consumer.",
      [("  /\\ NonFinal(p)\n  /\\ NoLive(p)\n  /\\ PStep(\"Edit\"",
@@ -138,16 +138,15 @@ WITNESSES = [
        "  /\\ Cardinality({k \\in CIds : cs[k].st \\in LiveSt /\\ cs[k].row = r}) < rs[r].width\n"
        "  /\\ CStep(\"Take\"", 1)]),
     ("CardNeedsCycle", "NeedsAcyclic", "deps",
-     "Relink does not check for a cycle, and takes a sentinel as its target\n"
-     "(the producer-only rule alone keeps this instance acyclic): p2's\n"
-     "failed need p1 is relinked to the sentinel, which needs p2.",
-     [(RELINK_TO, RELINK_TO_ANY, 1),
-      (RELINK_ACYCLIC, "  /\\ TRUE   \\* FAULT: no cycle check\n", 1)]),
+     "Relink does not check for a cycle: p2's failed need p1 is relinked\n"
+     "to the sentinel, which needs p2 (a sentinel target is the rule since\n"
+     "round 4).",
+     [(RELINK_ACYCLIC, "  /\\ TRUE   \\* FAULT: no cycle check\n", 1)]),
     ("CardRelinkAfterCycle", "OrderAcyclic", "deps",
-     "Relink walks needs only, not after, and takes a sentinel target: p2's\n"
-     "failed need p1 is relinked to a, which comes after s, which needs p2.",
-     [(RELINK_TO, RELINK_TO_ANY, 1),
-      (RELINK_ACYCLIC,
+     "Relink walks needs only, not after: p2's failed need p1 is relinked\n"
+     "to a, which comes after s, which needs p2 (a sentinel target is the\n"
+     "rule since round 4).",
+     [(RELINK_ACYCLIC,
        "  /\\ Acyclic([NeedsGraph EXCEPT ![p] = (@ \\ {n}) \\cup {to}])   \\* FAULT: needs only\n", 1)]),
     ("CardReadReportsFail", "ResultsByKind", "life",
      "A read consumer may report fail, a work consumer's result.",
@@ -187,8 +186,13 @@ WITNESSES = [
     ("CardWaiveRedWithoutRead", "WaiveRedNeedsPriorRead", "life",
      "WaiveRed does not require a done ok read of the previous review at\n"
      "the same head: a producer in review goes to merging on no read.",
-     [("  /\\ NoLive(p)\n  /\\ PrevYes(p)\n",
-       "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was PrevYes(p)\n", 1)]),
+     [("  /\\ PrevYes(p)\n  /\\ PStep(\"WaiveRed\"",
+       "  /\\ TRUE   \\* FAULT: was PrevYes(p)\n  /\\ PStep(\"WaiveRed\"", 1)]),
+    ("CardWaiveRedWithoutRed", "WaiveRedNeedsRed", "redw",
+     "WaiveRed does not require the Red to be recorded: a producer back in\n"
+     "review by a Finished at an already-read head goes to merging.",
+     [("  /\\ ps[p].red   \\* the code: \"no red on review N\"\n",
+       "  /\\ TRUE   \\* FAULT: was ps[p].red\n", 1)]),
 ]
 
 
@@ -215,7 +219,7 @@ def header(name, fault, target):
 
 def constants(scenario):
     s = SCENARIOS[scenario]
-    out = "CONSTANT Scenario = \"%s\"\n" % scenario
+    out = "CONSTANT Scenario = \"%s\"\n" % s.get("Scenario", scenario)
     for k in ["K", "MaxHead", "MaxAttempt", "MaxBounce", "MaxEnv"]:
         out += "CONSTANT %s = %d\n" % (k, s[k])
     return out + "SPECIFICATION Spec\n"
