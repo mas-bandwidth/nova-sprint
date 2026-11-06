@@ -27,7 +27,10 @@
 (* producer; attempt stops at MaxAttempt and bounces at MaxBounce (Start,  *)
 (* Broken and ReadFix are not enabled past them); flaps stop at 1; scores  *)
 (* are 0..1; widths 1..2; priority is normal or blocker (the other levels  *)
-(* only order within policy).                                              *)
+(* only order within policy). The environment and coordinator moves       *)
+(* (Rescore, SetPriority, Edit, the row table, the stream's hold) share a *)
+(* budget of MaxEnv per behaviour; every card and consumer move is        *)
+(* unbounded but for the slots. Rows start up, width 1, not held.         *)
 (*                                                                         *)
 (* Left out, because no guard reads them: branch, base_sha (always 0),     *)
 (* prior_head, reason, brief, cost, priced, the by of Replace. Edit writes *)
@@ -44,7 +47,8 @@ CONSTANTS
   K,           \* consumer slots per producer
   MaxHead,     \* heads are 1..MaxHead
   MaxAttempt,  \* model bound: Start is not enabled at this attempt
-  MaxBounce    \* model bound: Broken and ReadFix are not enabled at this count
+  MaxBounce,   \* model bound: Broken and ReadFix are not enabled at this count
+  MaxEnv       \* model bound: environment and coordinator moves per behaviour
 
 Prods     == {"p1", "p2"}            \* producers with work
 Sentinels == {"s"}
@@ -88,9 +92,10 @@ VARIABLES
   cs,    \* consumer slot -> [st, kind, row, att, head, res, author, rseq]
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
-  last   \* history: [ev, p, c, r, pp, pc]
+  last,  \* history: [ev, p, c, r, pp, pc]
+  env    \* environment and coordinator moves so far (bounded by MaxEnv)
 
-vars == <<ps, cs, rs, held, last>>
+vars == <<ps, cs, rs, held, last, env>>
 
 Live(c)      == cs[c].st \in LiveSt
 LiveOf(p)    == {c \in ConsOf(p) : Live(c)}
@@ -118,6 +123,7 @@ Init ==
   /\ rs   = [r \in Rows |-> [st |-> "up", flaps |-> 0, width |-> 1, held |-> FALSE]]
   /\ held = FALSE
   /\ last = [ev |-> "Init", p |-> NoP, c |-> NoC, r |-> NoR, pp |-> NoProd, pc |-> NoCons]
+  /\ env  = 0
 
 L(ev, p, c, r) == [ev |-> ev, p |-> p, c |-> c, r |-> r,
                    pp |-> IF p = NoP THEN NoProd ELSE ps[p],
@@ -423,28 +429,38 @@ UnholdStream ==
   /\ last' = L("UnholdStream", NoP, NoC, NoR)
   /\ UNCHANGED <<ps, cs, rs>>
 
-Next ==
+\* The card and consumer moves.
+CardMove ==
   \/ \E p \in P :
        \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p)
-       \/ Cancel(p) \/ Edit(p) \/ Block(p) \/ Unblock(p)
+       \/ Cancel(p) \/ Block(p) \/ Unblock(p)
        \/ \E h \in Heads : Landed(p, h) \/ Red(p, h)
        \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
        \/ \E c \in CIds : Finished(p, c) \/ Broken(p, c) \/ Faulted(p, c) \/ Released(p, c)
        \/ \E q \in P \ {p} : Replace(p, q)
        \/ \E n \in P : NeedFailed(p, n) \/ Waive(p, n)
        \/ \E n, to \in P : Relink(p, n, to)
-       \/ \E s \in 0..1 : Rescore(p, s)
-       \/ \E l \in Prios : SetPriority(p, l)
        \/ \E c \in CIds, r \in Rows : Preempt(p, c, r)
   \/ \E c \in CIds :
        \/ Withdraw(c)
        \/ \E r \in Rows :
             \/ Take(c, r)
             \/ \E res \in Results, h \in 0..MaxHead : Report(c, r, res, h)
+
+\* The environment and coordinator moves, on the MaxEnv budget.
+EnvMove ==
+  \/ \E p \in P :
+       \/ Edit(p)
+       \/ \E s \in 0..1 : Rescore(p, s)
+       \/ \E l \in Prios : SetPriority(p, l)
   \/ \E r \in Rows :
        \/ Seen(r) \/ Gone(r) \/ Hold(r) \/ Unhold(r)
        \/ \E n \in 1..2 : Width(r, n)
   \/ HoldStream \/ UnholdStream
+
+Next ==
+  \/ CardMove /\ UNCHANGED env
+  \/ env < MaxEnv /\ EnvMove /\ env' = env + 1
 
 Spec == Init /\ [][Next]_vars
 
@@ -463,6 +479,7 @@ TypeOK ==
   /\ cs \in [CIds -> ConsRec]
   /\ rs \in [Rows -> [st : {"up", "down"}, flaps : 0..1, width : 1..2, held : BOOLEAN]]
   /\ held \in BOOLEAN
+  /\ env \in 0..MaxEnv
   /\ last.p \in P \cup {NoP}
   /\ last.r \in Rows \cup {NoR}
   /\ last.pp \in ProdRec
