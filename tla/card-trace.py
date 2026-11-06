@@ -36,6 +36,8 @@ def prod(name, f):
         s += " " + f["prio"]
     if f["needs"] != "{}":
         s += " needs" + f["needs"].replace('"', "").replace(" ", "")
+    if f.get("after", "{}") != "{}":
+        s += " after" + f["after"].replace('"', "").replace(" ", "")
     return s
 
 
@@ -45,6 +47,8 @@ def cons(cid, f):
         s += " h" + f["head"]
     if f["res"] != "-":
         s += " " + f["res"]
+    if f["kind"] == "work" and f.get("prior", "0") != "0":
+        s += " pr" + f["prior"]
     if f["kind"] == "read":
         s += " rv" + f["review"]
     return s

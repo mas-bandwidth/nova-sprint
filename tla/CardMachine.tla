@@ -30,8 +30,10 @@
 (* work report's head (in 1..MaxHead) always differs from base_sha.        *)
 (*                                                                         *)
 (* Bounds that are the model's and not the design's: K consumer slots per  *)
-(* producer; attempt stops at MaxAttempt and bounces at MaxBounce (Start,  *)
-(* Broken and ReadFix are not enabled past them); flaps stop at 1; scores  *)
+(* producer; attempt stops at MaxAttempt (Start is not enabled past it)    *)
+(* and bounces at MaxBounce (a work consumer does not report fail, nor a   *)
+(* read fix, at it, so Broken and ReadFix are never stuck once reported);  *)
+(* flaps stop at 1; scores                                                 *)
 (* are 0..1; widths 1..2; priority is normal or blocker (the other levels  *)
 (* only order within policy). The environment and coordinator moves       *)
 (* (Rescore, SetPriority, Edit, the row table, the stream's hold) share a *)
@@ -39,8 +41,13 @@
 (* unbounded but for the slots. Rows start up, width 1, not held.         *)
 (*                                                                         *)
 (* Left out, because no guard reads them: branch, base_sha (always 0),     *)
-(* prior_head, reason, brief, cost, priced, the by of Replace. Edit writes *)
-(* only the brief, so in the model it changes nothing but the monitor.    *)
+(* reason, finding, brief, prose, paths, done_when, cost, priced. Edit     *)
+(* writes only prose, paths and done_when, so in the model it changes     *)
+(* nothing but the monitor. prior_head is the work consumer's prior: the  *)
+(* producer's head at Start, which an ok report may not repeat.           *)
+(*                                                                         *)
+(* deps also carries the sentinel a, absent until Add puts it with needs  *)
+(* and after chosen from the existing cards.                              *)
 (*                                                                         *)
 (* last is a step monitor: the set of step rules the step broke (bad),    *)
 (* computed by StepRule from the state before and after the step, and the *)
@@ -658,11 +665,13 @@ ReaderNeverAuthor ==
 
 WidthKept == \A r \in Rows : Cardinality(WorkingOn(r)) <= rs[r].width
 
-(* A ready consumer is never refused Take while its row's working count  *)
-(* is below width: ready ones are not counted (LESSONS 3.3).              *)
+(* A ready consumer is never refused Take while its row is up and its     *)
+(* working count is below width, held or not: ready ones are not counted  *)
+(* (LESSONS 3.3), and a hold stops deals, not taking what was dealt.      *)
 TakeBelowWidth ==
   \A c \in CIds :
-    (cs[c].st = "ready" /\ Cardinality(WorkingOn(cs[c].row)) < rs[cs[c].row].width)
+    (cs[c].st = "ready" /\ rs[cs[c].row].st = "up"
+       /\ Cardinality(WorkingOn(cs[c].row)) < rs[cs[c].row].width)
       => ENABLED Take(c, cs[c].row)
 
 NeedFailedTakesDependants ==
