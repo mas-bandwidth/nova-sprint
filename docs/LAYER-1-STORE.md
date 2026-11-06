@@ -37,11 +37,28 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 - `sprint.cards`: `id text`, `kind text` (`producer`, `sentinel`, `work`, `read`),
   `of text` (the producer a consumer belongs to; empty on a producer),
   `stream text`, `state text`, `gen integer`, `attempt integer`,
-  `score integer`, `needs text[]` (hard: cannot start until these landed), `after text[]` (soft: may start any time, cannot land until these landed; v1's land order), `holder text` (nullable), `author text`,
-  `branch text`, `base_sha text`, `head text`, `pr integer`, `result text`
-  (`""`, `ok`, `fix`, `fail`), `brief text`, `reason text`, `epoch integer`.
+  `score integer`, `needs text[]` (hard: cannot start until these landed), `after text[]` (soft: may start any time; orders its landing only behind targets that are themselves queued to land, and never holds it behind a target that is not, as in v1 (LESSONS 2.15; PRIORITY D29, M20)), `holder text` (nullable), `author text`,
+  `branch text`, `base_sha text`, `prior_head text` (on a work consumer: the
+  head the attempt continues from, empty on a first attempt; LESSONS 3.9),
+  `head text`, `pr integer`, `result text`
+  (`""`, `ok`, `fix`, `fail`, `fault`), `bounces integer` (on a producer:
+  the returns that count toward `blocked`; a `fault` never raises it;
+  LESSONS 2.24), `cost bigint` (on a consumer: what its run cost, in
+  micro-dollars) and `priced boolean` (false when the run's route has no
+  price, so an unpriced run is shown as unpriced, never as $0; LESSONS 1.17),
+  `priority text NOT NULL DEFAULT 'normal'` (checked against `low`,
+  `normal`, `high`, `critical`, `blocker`; the deal order, lowest to
+  highest, is Glenn's of 2026-11-06: "There is low, normal, high, read,
+  critical, blocker in specific order.", where `read` is the rung every read
+  consumer occupies and is never a producer's level; Glenn 2026-11-06: "Default is normal." and
+  "Priorities are manually set by request.": a level is declared on a
+  producer by a person or by the coordinator on request, never computed or
+  raised by the system; a consumer has no level of its own and is ordered by
+  its producer's, read from that row, never a second copy; LESSONS 5.3),
+  `brief text`, `reason text`, `epoch integer`.
   Primary key `(epoch, id)`. Every column but `holder` and `of` is `NOT NULL` (text
-  defaults to the empty string, `pr` to 0). `state`, `kind` and `result` are
+  defaults to the empty string, `pr`, `bounces` and `cost` to 0, `priced` to
+  false). `state`, `kind` and `result` are
   checked against their sets. `(epoch, stream)` references `streams`;
   `(epoch, holder)` references `rows`; `(epoch, of)` references `cards` when
   `of` is set. The two kinds (layer 2's producer and consumer cards, Glenn
@@ -58,7 +75,10 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
   `state text` (`up`, `down`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; Glenn 2026-11-06: "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
   so a late report from an old session can be told apart), `flaps integer`,
-  `gen integer`, `epoch integer`. Primary key `(epoch, name)`; every column
+  `gen integer`, `epoch integer`. A row's width has one source, nova-config:
+  the run loop writes `set row width` when nova-config's value differs from
+  the store's, and nothing else writes it, so a nova-config change reaches the
+  store with no hand sync (LESSONS 1.12). Primary key `(epoch, name)`; every column
   `NOT NULL`; `kind` and `state` checked against their sets. `gen` rises by
   one on every op that writes the row, so a row plan is fenced like a card
   plan. There is no heartbeat column and no heartbeat op: presence is the
@@ -94,7 +114,9 @@ primary card state. blocked -> waiting -> ready"; coloured black on the
 board); it is not final, and only the coordinator's unblock leaves it. Which
 transitions are legal, and which states each kind may use, is layer 2's;
 this layer only refuses a state outside the set. A card is live when it is in
-`ready` or `working`.
+`ready` or `working`; live is what layer 2's producer invariant counts (one
+live work consumer). Width counts consumers in `working` only, never `ready`
+(below; LESSONS 3.3).
 
 ## The operations
 
@@ -131,23 +153,32 @@ Writes (closed set), one field each: put stream (insert or overwrite: repo,
 base, pos; `pos` is the order streams land in); set stream held; put card
 (add: stream, score, needs, brief; refused if the card exists; every need must
 name a different card of the same epoch, no duplicates); set card state; set
-card holder (a name or none: setting a name is refused on a producer, and
-refused when that row already holds as many **live** cards (`ready` or
-`working`) as its width, counted at the moment of the write and not counting
-the card being written, so one op with two holder writes to a width-one row
-is refused on the second and nothing lands; a `done` or `fail` consumer keeps
-its holder for the record and does not count; a state write that takes a held card into a live state is checked the same way, so no path over-fills a row; there is no separate width
-condition, the write is the check); set card attempt; set card author; set
-card branch; set card base_sha; set card head; set card pr; set card result;
-set card reason; set card score; set card needs; set card after (same rule as needs); put row (insert or
+card holder (a name or none: setting a name is refused on a producer; a
+`done` or `fail` consumer keeps its holder for the record and does not
+count). Width caps work in progress, not what is queued (LESSONS 3.3;
+PRIORITY D21; ruled by Rowan 2026-11-06): the count is the consumers a row
+holds in `working`, never those in `ready`. A state write that takes a held
+card into `working`, or a holder write on a card already in `working`, is
+refused when that row already holds as many `working` cards as its width,
+counted at the moment of the write and not counting the card being written,
+so one op with two such writes to a width-one row is refused on the second
+and nothing lands, and no path over-fills a row; there is no separate width
+condition, the write is the check. How many `ready` consumers a row may hold
+ahead of its width is policy's number (PRIORITY D21), never the store's;
+set card attempt; set card author; set
+card branch; set card base_sha; set card prior_head; set card head; set card
+pr; set card result; set card bounces; set card cost (cost and priced
+together, one field); set card reason; set card score; set card priority (`SetCardPriority`: one
+of the five levels, refused on a consumer, written only by the verb a
+person or the coordinator runs on request); set card needs; set card after (same rule as needs); put row (insert or
 overwrite: kind, width, session); set row width; set row held; set row state; set row
 session; set row flaps; put policy version; set active policy version
 (deactivates the one active before it in the same transaction). An op that
 writes a card raises that card's gen by one, however many of its writes
 touch the card, and the same for a row: gen counts the operations that
 changed it. Put row and set row width refuse a width below the number of
-live cards the row holds. Together, the refusals make "live holders never
-exceed width" true by every path. The condition `RowGen(R, G)` fences a row
+`working` cards the row holds. Together, the refusals make "working holders
+never exceed width" true by every path. The condition `RowGen(R, G)` fences a row
 plan as `CardGen` fences a card plan. Every integer a write carries must fit the column
 (PostgreSQL `integer`, 32-bit signed); a value outside it is `ErrInvalid`
 from Fake and PG alike, never `ErrUnknown`. A snapshot is the caller's own
@@ -169,7 +200,10 @@ Writers run one at a time: `Apply` and `Clear` begin by taking one lock
 sprint sees a few operations a second at most; one writer at a time is the
 simplest thing that makes every condition exact and every seq commit order.
 There are no serialization retries because there are no serialization
-failures.
+failures. Nothing that waits on the outside world runs while the lock is
+held: no network I/O, no git, no bus send, no read of a whole history; a
+caller does that work before it calls `Apply` and passes the result in, so
+one slow call never stalls every writer (LESSONS 3.23).
 
 `Apply` ends one of four ways:
 
@@ -215,7 +249,9 @@ not remove the old one.
 
 Schema version 2 (2026-11-06) is the version with the two card kinds:
 `kind`, `of`, `author`, `base_sha`, `result`, the state `done`, and row
-`gen`. Still owed to a later layer, named so it is not lost: row labels for
+`gen`; with the lessons placed the same day it also carries `prior_head`,
+`bounces`, `cost`, `priced` and the result `fault` (LESSONS 1.17, 2.24,
+3.9), and `priority` (Glenn's rulings of 2026-11-06, above). Still owed to a later layer, named so it is not lost: row labels for
 policy (tier, model, harness) are layer 5's, and arrive with a schema version
 bump and a design change, never as a special case.
 
@@ -228,6 +264,17 @@ One PostgreSQL role, `sprint`, owns the schema and is the only writer; the
 run loop and the verbs connect as it. Workers, kin and the bus never get the
 DSN: they talk to the store only through the engine's verbs. Making the role
 is nova-fleet's postgres play (layer 6 adds the row).
+
+Cost is recorded on the consumer that spent it (work, read, and the fix
+attempts alike) by the op that reports it; a producer's, a stream's and the
+sprint's cost are sums read from those rows, never a second record kept
+beside them (LESSONS 1.17, 1.1).
+
+The store offers a backup (a dump of the `sprint` schema, named with the
+epoch and seq it was taken at) and a restore into an empty schema, which a
+layer 6 verb runs; a restore is checked by rebuilding from its event log. A
+clear deletes nothing, and any future op that would lose rows is taken only
+after a backup (LESSONS 1.16).
 
 ## What it guarantees
 
@@ -256,7 +303,7 @@ it the StaleCheck witness is exactly what `READ COMMITTED` would do.
   rows, events and applied op ids; invariants for the guarantees above
   (single state and holder are structural; idempotent replay; log matches
   state; conditions checked against the same state the writes change; ops
-  land only in their epoch; holders never exceed width). Reversed witnesses
+  land only in their epoch; `working` holders never exceed width). Reversed witnesses
   in `tla/witnesses/`, each a variant that TLC must fail: a write that lands
   without its event row; a replay that applies again; a condition checked
   against a stale snapshot (lost update); a second holder; an op without the
@@ -276,6 +323,11 @@ it the StaleCheck witness is exactly what `READ COMMITTED` would do.
   on PATH. Includes: the unknown-then-replay path (a connection killed between
   request and commit), two concurrent applies on the same expectation (one
   accepted, one refused), rebuild from the event log equals the snapshot.
+- A load test, functional tier, at four times live size (thousands of cards,
+  their consumers, a long event log): `Snapshot` and `Apply` are timed there,
+  and the bound held is v1's "the tick stays under one second at load"; the
+  per-call numbers are not yet measured and are said to be unmeasured until
+  they are (LESSONS 1.15).
 - A cold reader on the final head, then the layer is locked.
 
 ## Size

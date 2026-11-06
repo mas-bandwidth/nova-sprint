@@ -9,6 +9,20 @@ Source keys (dates are Glenn's, as quoted in the source):
 
 ## 1. Deal order and auto-balance
 
+Glenn's rulings of 2026-11-06 correct this section for v2; the lines below
+stay as the record of v1. The ladder, lowest to highest: "There is low,
+normal, high, read, critical, blocker in specific order." `read` is the rung
+every read consumer occupies. "reads are below blocker and critical. the
+idea is that when something is blocker and critical it must be done ahead of
+current work in flight (that resulted in the reads)." Levels are declared,
+never computed or raised by the system: "Priorities are manually set by
+request." "Critical was a priority manually set by me at request." (so D6's
+computed critical and D9's automatic rework level do not carry into v2).
+"Default is normal." "blocker is so high, it'll kick out the youngest work or
+read task on a worker to get started right away." In v2 these are in
+LAYER-1-STORE.md (the `priority` column) and LAYER-2-CARD-MACHINE.md (the
+rules and the preemption).
+
 Order of kinds of work
 - D1. The order is LAND > FIX > READ > WORK. Glenn 2026-10-18: "highest priority is landing. above everything else!" because landing frees work and unblocks dependencies. (topic-sprint-dealing-and-cards §finish-before-starting)
 - D2. Why reads and fixes sit above work: "if reading, fixing and landing are all higher priority than work, the system balances. if the same, or lower, then the system backs up with more work coming in until it collapses." Glenn 2026-10-18. Rule of thumb: backlog in review or merging means stop feeding new work and drain. (same §)
@@ -172,9 +186,9 @@ What went wrong with tiers
 
 Policy layer: deal order
 - R1. Rank kinds of work LAND > FIX > READ > WORK; landing, fixing and reading must each outrank new work or the system backs up (D1, D2).
-- R2. Provide the seven-level card priority (`blocker`, `critical`, `fix`, `high`, `reader`, `normal`, `low`), seeded by brief header, then stream default, then a reasoned verb; refuse unknown levels; never settable on a read card (D3 to D5).
-- R3. A read inherits its primary's level when higher; a reworked attempt reopens at `fix` (or per the rework-priority setting); the score is given once at admission and only `rank` changes it (D7, D9, D10).
-- R4. Deal level by level, reads before work at the same level, and no work card at a level while a read at that level or above is waiting for that unit (D8, D12).
+- R2. Corrected by Glenn 2026-11-06: the ladder, lowest to highest, is "low, normal, high, read, critical, blocker in specific order"; a producer's level is one of `low`, `normal`, `high`, `critical`, `blocker`, "Default is normal.", declared by an optional brief line or a reasoned verb run on request ("Priorities are manually set by request."); unknown levels are refused; `read` is the rung of read consumers, never set on a card (D3 to D5 as corrected).
+- R3. Corrected by Glenn 2026-11-06: a read sits on the `read` rung whatever its producer's level; no level is raised by the system, so a reworked attempt keeps its declared level; a fix keeps its score and so is at the head of its queue; the score is given once at admission and only `rank` changes it (D10).
+- R4. Corrected by Glenn 2026-11-06: deal rung by rung down the ladder (blocker, critical, read, high, normal, low), so reads go ahead of high, normal and low work and behind blocker and critical work, and a blocker with no room preempts the youngest live consumer of a serving row (D8, D12 as corrected).
 - R5. Deal all reads a card needs at once to distinct readers, none serial, none the worker, each waiting only for room (D14 to D16).
 - R6. Fill idle lanes first by tier on every tick, hold DealAhead (2) x width per row with width capping work and not the queue, rebalance queued unstarted cards across friends and fleet each tick, and never move a started, pinned or held-stream card or return a card to a row it left (D21 to D25).
 - R7. Ready lasts one tick; waiting -> ready is one way and automatic; the landing step releases the waiting cards it unblocks in the same step (D20, D26).
@@ -183,7 +197,7 @@ Policy layer: deal order
 - R10. Name the backup (`reads`, `merges`, `none`) and push alarms as episodes: review above threshold, merging above threshold, nothing ready while cards wait, fleet below percent (D19).
 - R11. Card quality gates dealing: lint at `add`, `check` before start, pro-sized cards by default (D38).
 - R12. A HOLD finish raises a judgment and a rework verb re-deals; a brief edit never retires a reviewed head's reads (D34, D39).
-- R13. Critical-by-weight (10 or more behind) orders the deal and the ask in v2; v1 never ordered by weight ("owed with the model") so the v2 order has no v1 behaviour to copy, only the 10-card threshold and the "front of queue" intent (D6).
+- R13. Withdrawn by Glenn 2026-11-06: "Critical was a priority manually set by me at request." There is no critical-by-weight in v2; `critical` is only declared on request (D6 records v1's computed form, which that reading got wrong).
 
 Landing step: merge wide
 - R14. Land per work stream: one branch per stream, one writer, members in dependency order then created_at, all ready members in one batch, then that branch merges into the trunk (M2 to M5).
@@ -202,7 +216,7 @@ Landing step: merge wide
 Tiers and routes
 - R26. Support four tiers ordered `flash < pro < heavy < frontier`; a card declares its tier on its brief and the coordinator may pin or raise it with a reason; the card's field is authoritative (T1, T2).
 - R27. The tier of a card is chosen by its contents and the model for the tier comes from config read by code, never chosen by hand (T3).
-- R28. Content rules fix a minimum tier: new formal model at heavy or above, critical at pro or above, a gate measured over the flash bound at pro (T4).
+- R28. Content rules fix a minimum tier: new formal model at heavy or above, a gate measured over the flash bound at pro (T4). The "critical at pro or above" floor came from v1's computed critical, which Glenn's ruling of 2026-11-06 withdrew ("Priorities are manually set by request."); whether a declared critical keeps a pro floor has no source.
 - R29. Routes are config rows (tier, provider, model, budget, deadline, enabled); a tier's ordered route array with repeated names for extra turns is a separate config row; friends and readers list the tiers they serve (T6, T7).
 - R30. One check, `tierServed`, answers whether a tier is served by an enabled funded route or an up, un-held friend whose row lists it; every verb that validates a tier uses it (T11).
 - R31. Never deal, work or read a card below its tier and never fall back; when no route serves a tier, raise one named judgment per tier and keep the card ready (T12, T13).
@@ -216,7 +230,7 @@ Tiers and routes
 
 Gaps with no source found
 - G1. The value of n for the flap bound (D35, R9).
-- G2. A v1 spec section for "ready is one second" and for the order LAND > FIX > READ > WORK as a single ordering; only memory records them, and the v1 ladder has no `land` rung (landing is a separate pass with its own order, M8). The spec ordering of reads against blocker and critical work is left "owed" (D14).
+- G2. A v1 spec section for "ready is one second" and for the order LAND > FIX > READ > WORK as a single ordering; only memory records them, and the v1 ladder has no `land` rung (landing is a separate pass with its own order, M8). The spec ordering of reads against blocker and critical work is left "owed" (D14); Glenn settled it 2026-11-06 (section 1's note).
 - G3. How v2 should reconcile per-stream batch merging with one-at-a-time merging into a trunk that has CI (M4 vs M12); no source states the combined rule (see Conflicts, item 5).
 - G4. Whether `alarm_*` thresholds have working defaults in v1: SPEC §13 mentions "working defaults" but I did not read the values.
 - G5. What SPEC §8 "The base's CI after a landing" requires; not read.
@@ -225,9 +239,9 @@ Gaps with no source found
 ## 6. Conflicts found between sources
 
 1. Flash-first. COORD §1 and §5 (`docs/SPRINT-COORDINATOR.md`) say a brief's line 1 `tier:` is a ceiling, "none is flash", every card is dealt on flash first, escalated at its bound, and "a frontier card is the coordinator's and is never dealt". SPEC §5 says flash first and the escalation below a card's tier "are gone: a card is at its ceiling from its first deal" and that a frontier card is dealt like every tier. Inside SPEC itself, §5 "The grade" still says "Flash first (section 5) applies to a brief that says flash or says no tier". Later, more specific text (SPEC §5 line quoted in T17 and Glenn 2026-10-03/10-16) wins; COORD is stale.
-2. Reads against the ladder. SPEC §1 "The deal" places `reader` reads between high and normal work, level by level; SPEC §6 "The deal deals the reads, first" says every read is dealt before any work card of the same deal, "blocker and critical work included: placing the reads within the ladder ... is owed". Both are in the same spec.
+2. Reads against the ladder. SPEC §1 "The deal" places `reader` reads between high and normal work, level by level; SPEC §6 "The deal deals the reads, first" says every read is dealt before any work card of the same deal, "blocker and critical work included: placing the reads within the ladder ... is owed". Both are in the same spec. Resolved by Glenn 2026-11-06: "There is low, normal, high, read, critical, blocker in specific order."
 3. Rowan's tiers. fleet-model-map (2026-10-17 section): "my coordinator row is now tiers frontier,heavy (config rev 930)". topic-tiers-models-and-budget §rowan-takes-every-tier (Glenn 2026-10-18): friend.rowan's tiers "must never be narrowed again". The later ruling wins.
 4. Read counts. SPEC §6 default (one for flash, two for pro/heavy) against Glenn 2026-10-20 mixes of 4, 5, 3 and finally one friend read (sprint-standing-rules). The 10-20 later rule wins; the v2 count is a setting.
 5. Merging mode. The 2026-09-25/26 notes say batch per stream, "coordinator merges manually ... never a child" (coordinator-merges-manually-holistically) while SPEC §7 has the lander (`land`) do it and Glenn 2026-10-07 wants parallel merges across streams; merge-only-on-ci-against-current-main (2026-10-27) says "serialize the merges and let each one re-run CI" and "Never batch-merge on stale green", and Glenn 2026-09-25 says "ALWAYS BATCH". The sources do not reconcile these. The only reading consistent with all of them is batch inside a stream onto its branch, parallel across streams, and a fresh CI result against the current trunk for each branch merged into it; that reading is an inference, not stated anywhere.
 6. Hold. topic-sprint-dealing-and-cards §parked-language-streams-held (2026-10-16, Glenn held schema languages) against §unleash-everything-priority-sorts (2026-10-19, "never hold whole streams to favour rocketnet"). Different reasons (a rule versus a preference); the languages were unheld 2026-10-18.
-7. Critical. SPEC §7 "Weight" says critical roots are "dealt, read and judged first" (test name `TestACriticalRootIsDealtReadAndJudgedFirst`) while SPEC §1 says computed `critical` "orders nothing yet". The only enforced effect is the pro-tier floor.
+7. Critical. SPEC §7 "Weight" says critical roots are "dealt, read and judged first" (test name `TestACriticalRootIsDealtReadAndJudgedFirst`) while SPEC §1 says computed `critical` "orders nothing yet". The only enforced effect is the pro-tier floor. Resolved by Glenn 2026-11-06: "Critical was a priority manually set by me at request." Nothing computes it in v2.

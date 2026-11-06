@@ -25,8 +25,10 @@ this layer says *whether* the move is legal and *what* it writes.
   the same structure whether the row is a `nova-worker` on a bench or a
   friend on a harness; the row is a name on the bus either way.
 - The producer moves on its consumers' results. A work consumer finishing
-  moves its producer to review; a read consumer saying yes moves it to
-  merging, saying fix sends it back to ready at the head of its queue.
+  moves its producer to review. Whether the done reads of a head mean yes
+  (to merging) or fix (back to ready, at the head of its queue) is policy's
+  decision from all the reads of that head, never the engine's on the first
+  fix it sees (LESSONS 3.7; ruled by Rowan 2026-11-06).
 - The holder lives on the consumer only. Two reads of one head are two read
   consumers; there is never a second holder column.
 
@@ -35,10 +37,15 @@ In the store both are rows of `sprint.cards`, told apart by `kind`
 empty on a producer). Schema version 2 adds `kind`, `of`, `author` (on a
 consumer: the row that produced the head it reads; on a producer: the row
 whose work the current head is), `base_sha` (on a consumer: the base commit
-the attempt started from), and `result` (on a consumer: `ok`, `fix` or `fail`
-once reported). A consumer's `holder` is its row; a producer's holder is
+the attempt started from), and `result` (on a consumer: `ok`, `fix`, `fail`
+or `fault` once reported). A consumer's `holder` is its row; a producer's holder is
 always none. `attempt` on a producer counts its work consumers cut so far;
-a consumer carries the attempt it belongs to.
+a consumer carries the attempt it belongs to. The lessons placed on
+2026-11-06 add three more: `prior_head` (on a work consumer: the head this
+attempt continues from; LESSONS 3.9, 4.3), `bounces` (on a producer: the
+returns that count toward `blocked`; LESSONS 2.24), and `cost` with `priced`
+(on a consumer: what its run cost, or that its route has no price; LESSONS
+1.17).
 
 ## Producer states
 
@@ -56,7 +63,11 @@ The six states Glenn locked on 2026-09-29, plus `fail`:
 
 Invariant across the two kinds: a producer is in `working` exactly when it
 has one live work consumer; it has a live read consumer only in `review`.
-(Live: a consumer in `ready` or `working`.)
+(Live: a consumer in `ready` or `working`.) Width is a different count: it
+caps the consumers a row holds in `working`, never those in `ready`, so ready
+work is dealt into a row's queue even when the row is at width (LESSONS 3.3;
+PRIORITY D21; ruled by Rowan 2026-11-06). How many `ready` consumers to deal
+a row ahead of its width is policy's number.
 
 ## Consumer states
 
@@ -64,7 +75,7 @@ has one live work consumer; it has a live read consumer only in `review`.
 |---|---|---|
 | `ready` | dealt to the row, not yet taken | the row |
 | `working` | the row took it | the row |
-| `done` | reported (`result` ok, fix or fail; `head` set); **final** | the row |
+| `done` | reported (`result` ok, fix, fail or fault; `head` set when one was pushed); **final** | the row |
 | `fail` | withdrawn before a report (released, cancelled, its producer moved on); **final**, reason kept | the row |
 
 A consumer never has needs or a score of its own; its order is its
@@ -80,35 +91,64 @@ Producer events:
 
 | event | from | to | writes | conditions |
 |---|---|---|---|---|
-| `Resolve` | waiting | ready | state | `NeedsLanded(p)`; a producer only |
+| `Resolve` | waiting | ready | state | `NeedsLanded(p)`; stream not held; a producer only |
+| `Park{reason}` | ready | waiting | state, reason naming the hold | p's stream is held; raised in the same op as the stream's hold, so a card that cannot start is never left in `ready` (LESSONS 2.20; PRIORITY D20); `Resolve` moves it on when the hold lifts |
 | `Reached` | waiting | landed | state | `NeedsLanded(p)`; a sentinel only: it has no brief and never a consumer; its landing is the signal (a release gate, a phase mark), reported to the coordinator |
-| `Start{row, branch, base}` | ready | working | state, attempt+1, author=""; **cuts** a work consumer: kind work, of p, holder row, attempt, branch, base_sha, state ready | row up and not held; stream not held; the holder write enforces width |
+| `Start{row, branch, base}` | ready | working | state, attempt+1, author=""; **cuts** a work consumer: kind work, of p, holder row, attempt, branch, base_sha, prior_head=p.head, reason=p.reason, state ready | row up and not held; stream not held; width is not checked here: it is checked at `Take` (LESSONS 3.3) |
 | `Finished{c}` (its work consumer reported ok with head H) | working | review | state, head=H, author=c's row | c is p's work consumer of this attempt, done, result ok |
-| `Broken{c}` (its work consumer reported fail) | working | ready | state, reason=c's reason | c is p's work consumer of this attempt, done, result fail |
-| `AskRead{row}` | review | review | **cuts** a read consumer: kind read, of p, holder row, head=p.head, author=p.author, state ready | row up and not held; stream not held; row != p.author; width by the holder write |
-| `ReadYes{c}` | review | merging | state | c is p's read consumer at p.head, done, result ok; no live consumer of p |
-| `ReadFix{c}` | review | ready | state, reason=c's reason | c is p's read consumer at p.head, done, result fix; no live consumer of p (layer 3 withdraws the others first) |
+| `Broken{c}` (its work consumer reported fail) | working | ready | state, reason=c's reason, bounces+1, head=c's head when c pushed one | c is p's work consumer of this attempt, done, result fail |
+| `Faulted{c}` (its work consumer reported fault) | working | ready | state, reason=c's reason, head=c's head when c pushed one; **bounces unchanged** | c is p's work consumer of this attempt, done, result fault: a harness, environment or bench fault (exit 134 or 137, a run that never started, a staging failure, a provider's rate limit or credit refusal), which spends no attempt toward `blocked` (LESSONS 2.24, 4.14, 4.24) |
+| `AskRead{row}` | review | review | **cuts** a read consumer: kind read, of p, holder row, head=p.head, author=p.author, state ready | row up and not held; stream not held; row != p.author; width is checked at `Take` |
+| `ReadYes` | review | merging | state | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy, which reads all of them (LESSONS 3.7) |
+| `ReadFix{reason}` | review | ready | state, reason=the findings policy chose, bounces+1 | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy from all the reads of that head, never automatically on the first fix (LESSONS 3.7); p.head is kept, so the next `Start` continues from it (LESSONS 3.9) |
 | `Landed{head}` | merging | landed | state | head equals p.head |
 | `Red{head, reason}` | merging | review | state, reason | head equals p.head |
-| `Released` | working | ready | state, reason | p's work consumer of this attempt is `fail` (withdrawn) |
+| `Released` | working | ready | state, reason, head=the consumer's last pushed head when there is one; score and bounces unchanged | p's work consumer of this attempt is `fail` (withdrawn, after a silence or preempted by a blocker) |
 | `Cancel{reason}` / `Replace{by, reason}` | any non-final | fail | state, reason | no live consumer of p |
 | `NeedFailed{need}` | any non-final | fail | state, reason naming the need | need is in p's needs and is `fail`; no live consumer of p |
+| `Waive{need, reason}` | waiting | same | needs without `need`, reason | need is in p's needs and is `fail`, or is failed by an earlier write of the same op (the drop that names the waive); a coordinator verb; the actor and time are the op's own, kept in the event (LESSONS 2.18) |
+| `Relink{need, to, reason}` | waiting | same | needs with `need` replaced by `to`, reason | as `Waive`; `to` is a non-final producer of the epoch and the new needs make no cycle; recorded as `Waive` is (LESSONS 2.18) |
+| `Edit{brief, reason}` | any non-final | same | brief, reason | no live consumer of p: an edit never bounces or rewrites a card in hand, and it keeps p's head, author, attempt, score and finished reads, so a scope-only edit keeps the reviewed head (LESSONS 2.25; PRIORITY D39, W14) |
 | `Rescore{score}` | any non-final | same | score | |
-| `Block{reason}` | ready, review, or working after its consumer is withdrawn | blocked | state, reason | no live consumer of p; raised by policy when attempts pass its limit, with a judgement |
+| `SetPriority{level, reason}` | any non-final | same | priority | a producer only; level is `low`, `normal` (the default), `high`, `critical` or `blocker`; a verb a person or the coordinator runs on request, never raised by the engine or by policy (Glenn 2026-11-06: "Priorities are manually set by request." "Default is normal."); policy only orders within a level |
+| `Block{reason}` | ready, review, or working after its consumer is withdrawn | blocked | state, reason | no live consumer of p; raised by policy when `bounces` passes its limit, with a judgement; a `fault` never counts (LESSONS 2.24) |
 | `Unblock{reason}` | blocked | waiting | state, reason | a coordinator verb; Resolve then moves it on |
 
 Consumer events:
 
 | event | from | to | writes | conditions |
 |---|---|---|---|---|
-| `Take{row}` | ready | working | state | row is the holder |
-| `Report{row, result, head, reason}` | working | done | state, result, head, reason | row is the holder; result ok needs a full 40-hex head; a read's head must equal the producer's |
+| `Take{row}` | ready | working | state | row is the holder; the store's state write refuses it when the row already has as many `working` consumers as its width (LESSONS 3.3) |
+| `Report{row, result, head, reason, cost}` | working | done | state, result, head, reason, cost, priced | row is the holder; result ok needs a full 40-hex head; a work consumer's ok head must differ from its base_sha (an empty head is never ok; LESSONS 3.5); a read's head must equal the producer's; the report's id is its op id, so a report delivered twice is one op (LESSONS 4.5) |
 | `Withdraw{reason}` | ready or working | fail | state, reason | |
 
 Rules the tables encode, each checked by the model and tested one by one:
 
 - `landed` and `fail` are final for a producer; `done` and `fail` for a
-  consumer. No event moves them, `Rescore` included.
+  consumer. No event moves them, `Rescore` and `SetPriority` included.
+- A producer's priority is declared, never computed: `low`, `normal`,
+  `high`, `critical` or `blocker`, normal by default, changed only by
+  `SetPriority` on request. Glenn 2026-11-06: "Critical was a priority
+  manually set by me at request." The deal order, lowest to highest, is
+  Glenn's (2026-11-06): "There is low, normal, high, read, critical, blocker
+  in specific order." `read` is the rung every read consumer occupies: above
+  high work, below critical and blocker. Glenn 2026-11-06: "reads are below blocker and critical.
+  the idea is that when something is blocker and critical it must be done
+  ahead of current work in flight (that resulted in the reads)." Ordering
+  inside a level is policy's (LESSONS 5.3).
+- A blocker preempts. Glenn 2026-11-06: "blocker is so high, it'll kick out
+  the youngest work or read task on a worker to get started right away."
+  When a blocker producer is ready and no row that serves it has width,
+  policy raises `Withdraw{reason: "preempted by blocker <id>"}` on the
+  youngest live consumer (work or read) of a serving row and, in the same
+  plan, `Start` deals the blocker to that row. A preempted work consumer's
+  producer goes `Released` to ready with its score kept, so it is next after
+  the blocker, and its pushed branch kept: the withdrawn consumer's partial
+  work stays on its branch and is never deleted (the friends' NEVER lists),
+  and the next `Start` continues from it as `prior_head`. A preempted read
+  consumer's producer stays in review and is asked again. A preemption never
+  raises `bounces`. Which consumer is youngest is policy's choice; the
+  withdraw and the deal are the engine's moves (LESSONS 5.12).
 - A red CI result never advances a producer: the step retreats
   `merging → review` and is reported (layer 3 raises the notification; this
   layer only moves). A later read may say yes again; that is legal.
@@ -125,17 +165,38 @@ Rules the tables encode, each checked by the model and tested one by one:
   silence.
 - A need failing takes its dependants: layer 3 raises `NeedFailed` for every
   producer whose needs name it, in the same tick, after withdrawing their
-  consumers.
+  consumers. The drop that fails a need may instead name, per dependant, a
+  `Waive` or a `Relink` to a replacement, applied in the same op, so the
+  dependant is never failed first and revived after (LESSONS 2.18).
 - A held stream stops `Start` and `AskRead` (no new consumers); live
-  consumers, `Landed` and `Red` continue.
+  consumers, `Landed` and `Red` continue. Its `ready` producers are parked in
+  `waiting` with the hold named, in the same op (LESSONS 2.20).
+- `ready` lasts one tick: a ready producer is started on the next tick, or
+  parked with the reason it cannot start. The held stream is the parking
+  this layer defines; the other reasons a producer cannot start (no row
+  serves its tier, no room ahead) are owed a decision (LESSONS 2.20).
+- A fix continues from the work already done: `Broken`, `Faulted` and
+  `ReadFix` keep the last pushed head and the reason on the producer, and
+  `Start` copies them to the new work consumer as `prior_head` and `reason`,
+  so the next attempt starts from that head with the finding in hand, never
+  from base (LESSONS 3.9, 4.3).
+- Only `Broken` and `ReadFix` raise `bounces`. A `fault` (harness,
+  environment, bench, staging, a provider's rate limit or credit refusal)
+  returns the producer to ready with nothing counted, and `Block` compares
+  `bounces`, never `attempt` (LESSONS 2.24, 4.14, 4.24).
+- A brief is changed only by `Edit`, and only while the producer has no live
+  consumer; the coordinator messages a holder instead of editing under it
+  (LESSONS 2.25; PRIORITY D39).
+- A soft `after` never holds a landing whose target is not itself queued to
+  land (below; LESSONS 2.15).
 
 ## The row machine
 
 | event | from | to | writes |
 |---|---|---|---|
 | `Seen` | down | up | state=up |
-| `Gone` | up | down | state=down, flaps+1 |
-| `Width{n}` | any | same | width (refused below the row's live count by layer 1) |
+| `Gone` | up | down | state=down, flaps+1; raised by policy after a silence it states, never for one missed challenge inside a single long turn, which is "busy or gone, unknown", not down (LESSONS 4.7) |
+| `Width{n}` | any | same | width, from nova-config only (LESSONS 1.12); refused below the row's `working` count by layer 1 |
 | `Hold{reason}` | any | same | held=true |
 | `Unhold` | any | same | held=false |
 
@@ -156,6 +217,17 @@ never moves a card by itself.
   attempt and kind, or one that is not done.
 - `NeedFailed` naming a card that is not a need, or a need that has not failed.
 - `Unblock` of a producer that is not blocked.
+- A cycle through `needs` or through `after`, at add or at any later needs,
+  after or `Relink` write, naming the loop: "c1 needs c2 needs c1" (LESSONS
+  2.19).
+- An `Edit` while the producer has a live consumer: "producer X is held by
+  r1 in consumer C; message r1 instead" (LESSONS 2.25).
+- An event naming a row, card or stream that does not exist: a refusal
+  naming the unknown name, never an empty or zero answer; a sha that is not
+  on the branch is refused by `finish` before the event is built (CORRECT-USE
+  step 8) (LESSONS 2.26).
+- An ok report of a work consumer whose head equals its base_sha: "head H is
+  the base; nothing was done" (LESSONS 3.5).
 
 A refusal is a value (`Refusal{Reason}`), never an error; the step layer logs
 it through layer 1 as a refused op so it is visible.
@@ -168,20 +240,45 @@ it through layer 1 as a refused op so it is visible.
   holder; working ⇔ one live work consumer; a live read consumer's holder is
   never the producer's author; attempt rises only on Start; a Red step never
   ends in merging or landed; NeedFailed is enabled whenever a need has failed
-  and the dependant is non-final; holders ≤ width; fix keeps score; a
+  and the dependant is non-final; `working` consumers per row ≤ width
+  (`ready` ones are not counted; LESSONS 3.3); fix keeps score; a
   consumer's holder never changes; a consumer of an old attempt never moves
-  its producer. Reversed witnesses, each a required violation: a landed
+  its producer; a `fault` never raises `bounces` (LESSONS 2.24); an `Edit`
+  never lands while a consumer is live (LESSONS 2.25); no producer stays in
+  `ready` across a tick in a held stream (LESSONS 2.20); the needs and after
+  graphs stay acyclic (LESSONS 2.19). Reversed witnesses, each a required violation: a landed
   producer moving; the author reading their own head; red advancing;
   NeedFailed not enabled after a need failed; a report by a non-holder
   accepted; a producer with two live work consumers; a stale attempt's
-  report moving the producer.
+  report moving the producer; a fault counted toward `Block`; an edit under
+  a live consumer; a `ready` consumer counted against width, which starves a
+  row at width; a needs cycle accepted, which stalls both cards.
+- Nothing stalls (LESSONS 2.21), a liveness obligation of the same model:
+  with the outside actors modelled as acting eventually (weak fairness on
+  the rows, the tick and the coordinator), every non-final producer leaves
+  its state or is waited on by a named actor, and following the chain of
+  waits from any producer reaches an actor, never a loop. Who waits on what:
+
+  | producer state | waits on | bounded by |
+  |---|---|---|
+  | `waiting` | each need in `needs` (itself not stalled), or the stream's hold | the need's own chain; the hold is the coordinator's, shown as such |
+  | `ready` | the next tick's `Start` or `Park` | one tick |
+  | `working` | the holder of its work consumer | the silence policy states, then `Withdraw` |
+  | `review` | the holders of its live read consumers; else the next tick's `AskRead`; else, when no row may read it, a judgement to the coordinator | the readers' silence; one tick; the judgement's deadline (policy's) |
+  | `merging` | the landing step's next pass, or a judgement on its stream (LANDING.md) | the landing-stall bound (LANDING.md) |
+  | `blocked` | the coordinator's `Unblock` | none, by Glenn's ruling (2026-11-05: it "sits there until you review it") |
+
+  Reversed witnesses: a review with no askable reader and no judgement; a
+  needs cycle; a producer parked with no named hold.
 - Unit tests, package `card`: every row of the three tables accepted once and
   refused from every other state; every refusal above with its exact reason;
   no store, no clock, no sockets. A conformance test drives a producer
   through the happy path and the fix, red, withdraw and fail paths by
   applying each plan to `store.Fake`.
 - Layer 1 gains `kind`, `of`, `author`, `base_sha`, `result`, the state
-  `done`, and schema version 2, with conformance cases.
+  `done`, and schema version 2, with conformance cases; and `prior_head`,
+  `bounces`, `cost`, `priced` and the result `fault` (LESSONS 1.17, 2.24,
+  3.9).
 
 ## Size
 
@@ -198,7 +295,7 @@ About 1,100 lines of Go. An estimate from the event count.
 - The producer's `author` is set from the work consumer's row at `Finished`
   and cleared at `Start`: an attempt has one author, and a release before a
   finish leaves none.
-- The attempt limit that blocks a producer is policy's number; the move is the engine's. A row is never blocked: on the record (10-25, 11-05) the flaps were our hook's, not the row's; a row's flaps stay a counted fact for policy to raise a judgement on.
+- The bounce limit that blocks a producer is policy's number, compared with `bounces` (LESSONS 2.24); the move is the engine's. A row is never blocked: on the record (10-25, 11-05) the flaps were our hook's, not the row's; a row's flaps stay a counted fact for policy to raise a judgement on.
 - The runner is its own binary, `nova-worker`, in this repo (Glenn: "your
   call"); it and `nova-sprint` share the consumer verbs (take, report) from
   one package. The name `nova-swarm` is reserved by Glenn for a future mode
@@ -212,9 +309,16 @@ cards (very useful). And you even had soft ordering for dependencies, eg.
 land order. Those were hard earned."
 
 - `needs` is hard: `Resolve` waits until every need has landed.
-- `after` is soft: work starts whenever the card is ready, but the landing
-  step (layer 3) takes merging producers in score order and skips one whose
-  `after` has a card not yet landed. v1's land order, without blocking the work.
+- `after` is soft: work starts whenever the card is ready, and it orders
+  landing only among cards that are both queued to land. When producer B
+  names A in `after` and A is itself queued to land (in `merging`, or ahead
+  of B in the same batch), A lands first; when A is not queued to land, the
+  `after` is ignored for this landing: B lands, and A lands when it is
+  queued (PRIORITY M20). A soft
+  `after` never holds a landing whose target is not queued: in v1 a
+  two-day-old LAND-AFTER froze four streams' landings until that rule was
+  made (2026-10-16; LESSONS 2.15; PRIORITY D29, M20; ruled by Rowan
+  2026-11-06).
 - A sentinel is a producer of kind `sentinel`: no brief, no consumer, no
   score of its own. When its needs have landed, `Reached` lands it, and that
   landing is reported. A release gate or a phase mark is a sentinel with the

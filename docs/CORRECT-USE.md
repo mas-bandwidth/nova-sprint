@@ -19,6 +19,10 @@ that does not hold is a refusal, exit 1, one line, in the nova-fleet form:
 SPRINT REFUSED <verb>: <what is not true>: <the command that makes it true>
 ```
 
+A name, id or sha that does not exist (a row, a card, a stream, a commit)
+is a refusal naming it, never an empty answer: v1's `queue --as <typo>`
+returned `cards=0` (LESSONS 2.26).
+
 Every successful verb ends with one line, `next: <the command to run now>`,
 or `next: nothing; wait for the bus` when the next move is someone else's.
 
@@ -37,7 +41,7 @@ Each step refuses until the one before it has happened.
 | 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers | the nova-tools command for each missing piece, one line each |
 | 2 | `up` | `check` passes | `nova-sprint check` |
 | 3 | `stream add` | the store is at the schema `up` makes | `nova-sprint up` |
-| 4 | `add` | the stream exists; the brief passes the card contract; every need names a card | `stream add <s>`; the missing sections of the brief by name; the unknown need |
+| 4 | `add` | the stream exists; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)); every need names a card | `stream add <s>`; the missing sections of the brief by name; the unknown need |
 | 5 | rows | a row hooks in (`nova-sprint worker --as <row>` on a bench; `nova-bus hook --as <name>` for a kin) | the recipe for the harness it detects |
 | 6 | deals | `run` is a service (made by `up`) and at least one row is up | `nova-sprint up`; "no row is hooked in" with step 5's recipe |
 | 7 | `take` | the name is hooked in; the card was dealt to this row at this gen | the hook recipe; "card X moved: run `nova-sprint show X`" |
