@@ -142,7 +142,7 @@ writes), `Note` (kept in the receipt).
 Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
 `X` has holder `R` (or none); every need of card `X` is `landed` (read from the
 card's own `needs` inside the transaction, never from a caller's list); row
-`R` is in state `S`; stream `S` is held or not held; card `X` does not exist;
+`R` is in state `S`; row `R` is at gen `G` (`RowGen`); row `R` is held or not held (`RowHeld`); stream `S` is held or not held; card `X` does not exist;
 the store is at seq `N` (a fence
 for a plan that needs nothing at all to have changed since its snapshot). The
 op's epoch must equal the store's epoch; a mismatch is a refusal. Every
@@ -167,8 +167,8 @@ condition, the write is the check. How many `ready` consumers a row may hold
 ahead of its width is policy's number (PRIORITY D21), never the store's;
 set card attempt; set card author; set
 card branch; set card base_sha; set card prior_head; set card head; set card
-pr; set card result; set card bounces; set card cost (cost and priced
-together, one field); set card reason; set card score; set card priority (`SetCardPriority`: one
+pr; set card result (a consumer only); set card bounces (a producer only); set card prior_head (a work consumer only); set card attempt (never a consumer: its attempt is set at add); set card cost (a consumer only; cost and priced
+together, one field; each kind-specific write is refused on the wrong kind, naming the kind and the write, and the schema carries the matching CHECKs); set card reason; set card score; set card priority (`SetCardPriority`: one
 of the five levels, refused on a consumer, written only by the verb a
 person or the coordinator runs on request); set card needs; set card after (same rule as needs); put row (insert or
 overwrite: kind, width, session); set row width; set row held; set row state; set row
@@ -180,7 +180,7 @@ changed it. Put row and set row width refuse a width below the number of
 `working` cards the row holds. Together, the refusals make "working holders
 never exceed width" true by every path. The condition `RowGen(R, G)` fences a row
 plan as `CardGen` fences a card plan. Every integer a write carries must fit the column
-(PostgreSQL `integer`, 32-bit signed); a value outside it is `ErrInvalid`
+(PostgreSQL `integer`, 32-bit signed; `cost` alone is `bigint`, micro-dollars, 0..MaxInt64); a value outside it is `ErrInvalid`
 from Fake and PG alike, never `ErrUnknown`. A snapshot is the caller's own
 copy: editing it never changes the store (the Fake copies every slice).
 Set card needs follows the add rule (other cards of the same epoch, no
@@ -241,7 +241,7 @@ and returns the first's receipt.
 a condition. It is idempotent by id, logged with the epoch it closed, and its
 receipt carries the new epoch. Streams and cards of the old epoch stay readable
 through `Events` and are not in the next `Snapshot`; policy is kept; rows are
-carried forward into the new epoch in the same transaction (copied: same name,
+carried forward into the new epoch in the same transaction (copied: same name, held flag,
 kind, width and session, state `down`, flaps 0), because the rows are the
 fleet, not the sprint's work, and a clear must not make every worker and kin
 register again. Nothing is ever deleted: a clear opens a new epoch, it does
