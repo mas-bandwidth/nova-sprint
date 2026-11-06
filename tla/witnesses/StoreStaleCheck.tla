@@ -26,7 +26,7 @@
 (* reply was lost after the store applied it; the caller then calls Replay *)
 (* or Apply again.                                                         *)
 (*                                                                         *)
-(* Small instance: 3 cards, 2 rows of width 1, 14 fixed ops. Callers issue *)
+(* Small instance: 3 cards, 2 rows of width 1, 15 fixed ops. Callers issue *)
 (* their ops in program order (Pred): a setup caller first, then six       *)
 (* callers concurrently. Transport failures (at most MaxLoss each) only on *)
 (* the take a1 and the clear k1 (Lossy). Streams, policy, the seq fence,   *)
@@ -40,13 +40,13 @@ CONSTANT MaxLoss   \* transport failures allowed per lossy op (bounds the model)
 
 Cards      == {"c1", "c2", "c3"}
 Rows       == {"r1", "r2"}
-CardStates == {"waiting", "ready", "working", "review", "merging", "landed", "left"}
+CardStates == {"waiting", "ready", "working", "review", "merging", "landed", "fail"}
 RowStates  == {"up", "down", "blocked"}
 Absent     == "absent"   \* the state of a card or row that does not exist
 NoHolder   == "none"
 
 (* Conditions and writes are uniform records so TLC can compare them. In a *)
-(* condition, g is the gen for CardGen and the width bound W for RowUnder. *)
+(* condition, g is the gen for CardGen.                                    *)
 Cnd(k, c, r, s, g) == [k |-> k, c |-> c, r |-> r, s |-> s, g |-> g]
 CardGen(c, g)     == Cnd("cardGen",     c,   "-", "-", g)
 CardState(c, s)   == Cnd("cardState",   c,   "-", s,   0)
@@ -54,7 +54,6 @@ HolderIs(c, r)    == Cnd("holderIs",    c,   r,   "-", 0)
 NeedsLanded(c)    == Cnd("needsLanded", c,   "-", "-", 0)
 CardAbsent(c)     == Cnd("cardAbsent",  c,   "-", "-", 0)
 RowIs(r, s)       == Cnd("rowIs",       "-", r,   s,   0)
-RowUnder(r, w)    == Cnd("rowUnder",    "-", r,   "-", w)
 
 Wr(k, c, r, s, n, w) == [k |-> k, c |-> c, r |-> r, s |-> s, n |-> n, w |-> w]
 AddCard(c, n)     == Wr("addCard",     c,   "-", "-", n,  0)
@@ -66,45 +65,48 @@ SetRowState(r, s) == Wr("setRowState", "-", r,   s,   {}, 0)
 Op(e, x, w)  == [kind |-> "op",    epoch |-> e, expect |-> x,  writes |-> w]
 ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 
-(* s1..s5 set up epoch 0: three cards (c3 needs c1), two rows, up.         *)
+(* s1..s5 set up epoch 1: three cards (c3 needs c1), two rows, up. s6     *)
+(* deals c2 and c3 to r2 (width 1) in one op: refused on the second write. *)
 (* a1/b1 race to take c1 (same expectation, two rows). a1/w1 race to deal  *)
 (* two cards to r1, width 1. a2 lands c1 if a1 holds it. b2 reassigns c1   *)
-(* to r1 if r1 has room. n1 readies c3 once its need c1 is landed. e1 is   *)
-(* an epoch-0 put row that may arrive after the clear. k1 clears epoch 0;  *)
-(* k2 is planned against epoch 1.                                          *)
+(* to r1 if r1 has room. n1 readies c3 once its need c1 is landed. e1     *)
+(* lowers r1's width to 0 (refused while r1 holds a card) and may arrive  *)
+(* after the clear. k1 clears epoch 1; k2 is planned against epoch 2.     *)
 Ops == [
-  s1 |-> Op(0, {CardAbsent("c1")}, <<AddCard("c1", {})>>),
-  s2 |-> Op(0, {CardAbsent("c2")}, <<AddCard("c2", {})>>),
-  s3 |-> Op(0, {CardAbsent("c3")}, <<AddCard("c3", {"c1"})>>),
-  s4 |-> Op(0, {}, <<PutRow("r1", 1), SetRowState("r1", "up")>>),
-  s5 |-> Op(0, {}, <<PutRow("r2", 1), SetRowState("r2", "up")>>),
-  a1 |-> Op(0, {CardState("c1", "waiting"), CardGen("c1", 0), HolderIs("c1", NoHolder),
-                RowIs("r1", "up"), RowUnder("r1", 1)},
+  s1 |-> Op(1, {CardAbsent("c1")}, <<AddCard("c1", {})>>),
+  s2 |-> Op(1, {CardAbsent("c2")}, <<AddCard("c2", {})>>),
+  s3 |-> Op(1, {CardAbsent("c3")}, <<AddCard("c3", {"c1"})>>),
+  s4 |-> Op(1, {}, <<PutRow("r1", 1), SetRowState("r1", "up")>>),
+  s5 |-> Op(1, {}, <<PutRow("r2", 1), SetRowState("r2", "up")>>),
+  s6 |-> Op(1, {}, <<SetHolder("c2", "r2"), SetHolder("c3", "r2")>>),
+  a1 |-> Op(1, {CardState("c1", "waiting"), CardGen("c1", 0), HolderIs("c1", NoHolder),
+                RowIs("r1", "up")},
              <<SetState("c1", "working"), SetHolder("c1", "r1")>>),
-  a2 |-> Op(0, {CardState("c1", "working"), HolderIs("c1", "r1")},
+  a2 |-> Op(1, {CardState("c1", "working"), HolderIs("c1", "r1")},
              <<SetState("c1", "landed"), SetHolder("c1", NoHolder)>>),
-  b1 |-> Op(0, {CardState("c1", "waiting"), CardGen("c1", 0), HolderIs("c1", NoHolder),
-                RowIs("r2", "up"), RowUnder("r2", 1)},
+  b1 |-> Op(1, {CardState("c1", "waiting"), CardGen("c1", 0), HolderIs("c1", NoHolder),
+                RowIs("r2", "up")},
              <<SetState("c1", "working"), SetHolder("c1", "r2")>>),
-  b2 |-> Op(0, {CardState("c1", "working"), RowIs("r1", "up"), RowUnder("r1", 1)},
+  b2 |-> Op(1, {CardState("c1", "working"), RowIs("r1", "up")},
              <<SetHolder("c1", "r1")>>),
-  w1 |-> Op(0, {CardState("c2", "waiting"), CardGen("c2", 0), HolderIs("c2", NoHolder),
-                RowIs("r1", "up"), RowUnder("r1", 1)},
+  w1 |-> Op(1, {CardState("c2", "waiting"), CardGen("c2", 0), HolderIs("c2", NoHolder),
+                RowIs("r1", "up")},
              <<SetState("c2", "working"), SetHolder("c2", "r1")>>),
-  n1 |-> Op(0, {CardState("c3", "waiting"), NeedsLanded("c3")},
+  n1 |-> Op(1, {CardState("c3", "waiting"), NeedsLanded("c3")},
              <<SetState("c3", "ready")>>),
-  e1 |-> Op(0, {}, <<PutRow("r2", 2)>>),
-  k1 |-> ClearOp(0),
-  k2 |-> Op(1, {CardAbsent("c2")}, <<AddCard("c2", {})>>)
+  e1 |-> Op(1, {}, <<PutRow("r1", 0)>>),
+  k1 |-> ClearOp(1),
+  k2 |-> Op(2, {CardAbsent("c2")}, <<AddCard("c2", {})>>)
 ]
 OpIds == DOMAIN Ops
-Setup == {"s1", "s2", "s3", "s4", "s5"}
+Setup == {"s1", "s2", "s3", "s4", "s5", "s6"}
 Lossy == {"a1", "k1"}   \* ops whose transport can fail: one race op, the clear
 
 (* Program order: an op is asked for only once these ops are done.         *)
 Pred == [
   s1 |-> {}, s2 |-> {"s1"}, s3 |-> {"s1", "s2"}, s4 |-> {"s1", "s2", "s3"},
   s5 |-> {"s1", "s2", "s3", "s4"},
+  s6 |-> {"s1", "s2", "s3", "s4", "s5"},
   a1 |-> Setup, a2 |-> Setup \cup {"a1"},
   b1 |-> Setup, b2 |-> Setup \cup {"b1"},
   w1 |-> Setup, n1 |-> Setup, e1 |-> Setup,
@@ -113,7 +115,7 @@ Pred == [
 
 NoCard == [state |-> Absent, gen |-> 0, holder |-> NoHolder, needs |-> {}]
 NoRow  == [state |-> Absent, width |-> 0]
-Empty  == [epoch |-> 0, cards |-> [c \in Cards |-> NoCard], rows |-> [r \in Rows |-> NoRow]]
+Empty  == [epoch |-> 1, cards |-> [c \in Cards |-> NoCard], rows |-> [r \in Rows |-> NoRow]]
 
 Holders(st, r) == {c \in Cards : st.cards[c].holder = r}
 
@@ -125,31 +127,32 @@ Cond(st, x) ==
                               /\ \A n \in st.cards[x.c].needs : st.cards[n].state = "landed"
     [] x.k = "cardAbsent"  -> st.cards[x.c].state = Absent
     [] x.k = "rowIs"       -> st.rows[x.r].state = x.s
-    [] x.k = "rowUnder"    -> st.rows[x.r].state # Absent
-                              /\ Cardinality(Holders(st, x.r)) < x.g
 
 Holds(st, conds) == \A x \in conds : Cond(st, x)
 
 (* The write rules: a card is added only if absent, with needs that name   *)
 (* other cards of this epoch; a set write needs its target; a state is in  *)
-(* the closed set; a holder is a row of this epoch (the foreign key).      *)
+(* the closed set; a holder is a row of this epoch (the foreign key) that *)
+(* holds fewer cards than its width at the moment of the write; a put row *)
+(* never sets a width below the cards the row holds.                      *)
 Legal(st, w) ==
   CASE w.k = "addCard"     -> st.cards[w.c].state = Absent /\ w.c \notin w.n
                               /\ \A x \in w.n : st.cards[x].state # Absent
     [] w.k = "setState"    -> st.cards[w.c].state # Absent /\ w.s \in CardStates
     [] w.k = "setHolder"   -> st.cards[w.c].state # Absent
-                              /\ (w.r = NoHolder \/ st.rows[w.r].state # Absent)
-    [] w.k = "putRow"      -> TRUE
+                              /\ (w.r = NoHolder \/ (st.rows[w.r].state # Absent
+                                                   /\ Cardinality(Holders(st, w.r)) < st.rows[w.r].width))
+    [] w.k = "putRow"      -> st.rows[w.r].state = Absent \/ w.w >= Cardinality(Holders(st, w.r))
     [] w.k = "setRowState" -> st.rows[w.r].state # Absent /\ w.s \in RowStates
 
-(* Every card write raises gen by one. A put row inserts a row as down     *)
-(* (the design leaves the insert state open; down is the safe choice) or   *)
+(* gen is raised once per op, in RunOp below. A put row inserts a row as  *)
+(* down (the design's default: up once the run loop sees its hook) or   *)
 (* overwrites its width.                                                   *)
 Do(st, w) ==
   CASE w.k = "addCard"     -> [st EXCEPT !.cards[w.c] =
                                  [state |-> "waiting", gen |-> 0, holder |-> NoHolder, needs |-> w.n]]
-    [] w.k = "setState"    -> [st EXCEPT !.cards[w.c].state = w.s, !.cards[w.c].gen = @ + 1]
-    [] w.k = "setHolder"   -> [st EXCEPT !.cards[w.c].holder = w.r, !.cards[w.c].gen = @ + 1]
+    [] w.k = "setState"    -> [st EXCEPT !.cards[w.c].state = w.s]
+    [] w.k = "setHolder"   -> [st EXCEPT !.cards[w.c].holder = w.r]
     [] w.k = "putRow"      -> [st EXCEPT !.rows[w.r] =
                                  IF @.state = Absent THEN [state |-> "down", width |-> w.w]
                                  ELSE [@ EXCEPT !.width = w.w]]
@@ -161,6 +164,19 @@ Run(st, ws) ==
   IF ws = <<>> THEN [ok |-> TRUE, st |-> st]
   ELSE IF Legal(st, Head(ws)) THEN Run(Do(st, Head(ws)), Tail(ws))
   ELSE [ok |-> FALSE, st |-> st]
+
+(* An op that writes a card raises its gen by one, however many of its     *)
+(* writes touch it. A card the op itself adds stays at gen 0.              *)
+CardWrites == {"setState", "setHolder"}
+Bumped(ws) == {ws[i].c : i \in {j \in DOMAIN ws : ws[j].k \in CardWrites}}
+                \ {ws[i].c : i \in {j \in DOMAIN ws : ws[j].k = "addCard"}}
+RunOp(st, ws) ==
+  LET r == Run(st, ws)
+  IN IF ~r.ok THEN r
+     ELSE [ok |-> TRUE,
+           st |-> [r.st EXCEPT !.cards = [c \in Cards |->
+                     IF c \in Bumped(ws) THEN [r.st.cards[c] EXCEPT !.gen = @ + 1]
+                     ELSE r.st.cards[c]]]]
 
 (* Clear: the next epoch, the rows carried forward as down, no cards.      *)
 ClearState(st) ==
@@ -174,7 +190,7 @@ ClearState(st) ==
 Outcome(st, o) ==
   IF Ops[o].epoch # st.epoch THEN [acc |-> FALSE, st |-> st]
   ELSE IF Ops[o].kind = "clear" THEN [acc |-> TRUE, st |-> ClearState(st)]
-  ELSE LET run == Run(st, Ops[o].writes)
+  ELSE LET run == RunOp(st, Ops[o].writes)
        IN IF Holds(st, Ops[o].expect) /\ run.ok THEN [acc |-> TRUE, st |-> run.st]
           ELSE [acc |-> FALSE, st |-> st]
 
@@ -182,13 +198,13 @@ Outcome(st, o) ==
 StaleOutcome(sn, st, o) ==
   IF Ops[o].epoch # sn.epoch THEN [acc |-> FALSE, st |-> st]
   ELSE IF Ops[o].kind = "clear" THEN [acc |-> TRUE, st |-> ClearState(st)]
-  ELSE LET run == Run(st, Ops[o].writes)
+  ELSE LET run == RunOp(st, Ops[o].writes)
        IN IF Holds(sn, Ops[o].expect) /\ run.ok THEN [acc |-> TRUE, st |-> run.st]
           ELSE [acc |-> FALSE, st |-> st]
 
 (* Rebuild applies an accepted event's writes (a clear the same way the    *)
 (* store applies it); it never rechecks the conditions.                    *)
-Effect(st, o) == IF Ops[o].kind = "clear" THEN ClearState(st) ELSE Run(st, Ops[o].writes).st
+Effect(st, o) == IF Ops[o].kind = "clear" THEN ClearState(st) ELSE RunOp(st, Ops[o].writes).st
 
 NoReceipt == [id |-> "none", accepted |-> FALSE, epoch |-> 0, before |-> Empty, after |-> Empty]
 

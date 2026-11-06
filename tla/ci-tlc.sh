@@ -2,13 +2,13 @@
 # CI run of the models: bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
-#   Store.tla with Store.cfg                 must pass            (TLC exit 0)
-#   CardMachine.tla with CardMachine.cfg     must pass            (TLC exit 0)
-#   witnesses/*.tla with their .cfg          must report a violation (TLC exit 12)
-#   Store.tla with its reach cfgs            must report a violation (TLC exit 12)
-#   CardMachine.tla with its reach cfgs      must report a violation (TLC exit 12)
-# Each reach cfg is listed below with the module it checks; a cfg in reach/
-# that is in neither list fails the run, so none is silently skipped.
+#   Store.tla with Store.cfg               must pass            (TLC exit 0)
+#   CardMachine.tla with CardMachine.cfg   must pass            (TLC exit 0)
+#   witnesses/*.tla with their .cfg        must report a violation (TLC exit 12)
+#   reach/*.cfg                            must report a violation (TLC exit 12)
+# A reach cfg named in CARD_REACH checks CardMachine.tla; every other one
+# checks Store.tla (a card cfg left off the list then fails to parse: a FAIL,
+# never a silent skip).
 # Exits non-zero if a model fails, if any witness or reach run passes, or if any
 # run ends any other way (a parse error, a crash, a timeout is not a violation).
 # Run it on a bench host, never on the working machine.
@@ -63,16 +63,20 @@ trap 'rm -rf "$WORK"' EXIT
 # EXPECT is pass or violate. Writes $WORK/NAME.log and $WORK/NAME.result.
 run() {
     name="$1"; expect="$2"; dir="$3"; cfg="$4"; mod="$5"; workers="$6"
+    echo "$name" >> "$WORK/expected"
     if [ "$DRY" = 1 ]; then
         echo "dry run: (cd tla/$dir && java -XX:+UseParallelGC -cp $JAR tlc2.TLC -workers $workers -metadir \$WORK/states/$name -config $cfg $mod)  expect $expect"
         return
     fi
     (
         cd "$HERE/$dir" || exit 1
-        # Own java.io.tmpdir per run: parallel runs sharing /tmp race while
-        # unpacking the standard modules.
+        # Own java.io.tmpdir per run: TLC unpacks the standard modules there,
+        # and parallel runs sharing /tmp race on it (a parser NPE, exit 150).
         mkdir -p "$WORK/tmp/$name" || exit 1
-        "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC -workers "$workers" \
+        # -noGenerateSpecTE: no *_TTrace_*.tla trace modules beside the spec,
+        # which the witnesses/*.tla glob would otherwise run on the next pass.
+        "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC \
+            -noGenerateSpecTE -workers "$workers" \
             -metadir "$WORK/states/$name" -config "$cfg" "$mod" > "$WORK/$name.log" 2>&1
         code=$?
         if [ "$expect" = pass ] && [ "$code" -eq 0 ]; then
@@ -86,39 +90,43 @@ run() {
     ) &
 }
 
-STORE_REACH="NeverTaken NeverRecovered NeverStaleEpochRefused NeverNeedsReady NeverNewEpochOp NeverWidthFull"
 CARD_REACH="NeverLanded NeverFixed NeverRed NeverNeedFailed NeverBlocked"
 
-status=0
-for f in "$HERE"/reach/*.cfg; do
-    m="$(basename "$f" .cfg)"
-    case " $STORE_REACH $CARD_REACH " in
-        *" $m "*) ;;
-        *) echo "FAIL reach/$m.cfg is not listed in ci-tlc.sh" >&2; status=1 ;;
+# reach_module NAME: the module a reach cfg checks.
+reach_module() {
+    case " $CARD_REACH " in
+        *" $1 "*) echo CardMachine.tla ;;
+        *) echo Store.tla ;;
     esac
-done
+}
 
 run Store pass . Store.cfg Store.tla 4
 run CardMachine pass . CardMachine.cfg CardMachine.tla 8
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
-    # TLC writes a <module>_TTrace_<n>.tla beside a violated spec; not a witness.
-    case "$m" in *_TTrace_*) continue ;; esac
+    case "$m" in *_TTrace_*) continue ;; esac   # TLC trace output, not a witness
     run "witness-$m" violate witnesses "$m.cfg" "$m.tla" 1
 done
 
-for m in $STORE_REACH; do
-    run "reach-$m" violate . "reach/$m.cfg" Store.tla 1
-done
-
-for m in $CARD_REACH; do
-    run "reach-$m" violate . "reach/$m.cfg" CardMachine.tla 1
+for f in "$HERE"/reach/*.cfg; do
+    m="$(basename "$f" .cfg)"
+    run "reach-$m" violate . "reach/$m.cfg" "$(reach_module "$m")" 1
 done
 
 wait
-[ "$DRY" = 1 ] && exit $status
+[ "$DRY" = 1 ] && exit 0
 
+status=0
+# A run that ended before writing its result (a failed cd or mkdir) is a
+# failure too, never a silent skip.
+while read -r name; do
+    if [ ! -f "$WORK/$name.result" ]; then
+        echo "FAIL $name: no result written" > "$WORK/$name.result"
+        echo 1 > "$WORK/$name.failed"
+        touch "$WORK/$name.log"
+    fi
+done < "$WORK/expected"
 for r in "$WORK"/*.result; do
     cat "$r"
     if [ -f "${r%.result}.failed" ]; then

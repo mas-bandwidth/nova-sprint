@@ -12,6 +12,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$HERE/states/$LOG.tmp"
 mkdir -p "$HERE/logs" "$HERE/states" "$TMP"
 cd "$HERE/$DIR" || exit 1
-"$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$TMP" -cp "$JAR" tlc2.TLC -workers "$W" \
+"$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$TMP" -cp "$JAR" tlc2.TLC -noGenerateSpecTE -workers "$W" \
     -metadir "$HERE/states/$LOG" -config "$CFG" "$MOD.tla" > "$HERE/logs/$LOG.log" 2>&1
 echo "exit $?" >> "$HERE/logs/$LOG.log"

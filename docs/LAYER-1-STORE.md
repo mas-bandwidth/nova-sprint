@@ -117,7 +117,7 @@ base, pos; `pos` is the order streams land in); set stream held; put card
 (add: stream, score, needs, brief; refused if the card exists; every need must
 name a different card of the same epoch, no duplicates); set card state; set
 card holder (a name or none: setting a name is refused when that row already
-holds as many cards as its width, counted at the moment of the write, so one
+holds as many cards as its width, counted at the moment of the write and not counting the card being written (re-setting the same holder is a no-op), so one
 op with two holder writes to a width-one row is refused on the second and
 nothing lands; there is no separate width condition, the write is the check);
 set card attempt; set card branch; set card head; set card pr; set card
