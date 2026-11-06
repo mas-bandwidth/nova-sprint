@@ -85,3 +85,9 @@ match of the live v1 board, with the `fail` column as the one addition and the
 unbuilt stats block left off; built right after layers 1 and 2 lock, as its
 own part, before the first dogfood run; the reference is the running v1
 dashboard and `assets/nova-sprint-dashboard.jpg`, compared by eye.
+Glenn, same hour: "remember that we iterated a lot on the dashboard, so if it
+comes out different in any way, it's going to make me sad. we learned a lot
+and we should bring across all the good in the dashboard." So the dashboard
+is built from the record: a lessons file extracted from v1's dashboard spec,
+code and the iteration rulings first, then the build, then side-by-side
+screenshots against the live v1 board; any difference is a defect.
