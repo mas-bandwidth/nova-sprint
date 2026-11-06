@@ -19,7 +19,7 @@ INVARIANTS = [
     "WidthKept", "IdempotentById", "AppliedIsLog", "LogMatchesState", "OpsInTheirEpoch",
     "ConditionsAtomic", "ServesHeld", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
     "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "CursorWithinLog",
-    "LogAppendOnly", "PolicyImmutable", "ReceiptMatches",
+    "LogAppendOnly", "PolicyImmutable", "ReceiptMatches", "RedOnlyOnProducers",
 ]
 
 # The passing runs: cfg name -> Scenario.
@@ -48,6 +48,9 @@ REACH = {
     "NeverSameValueRefused": ("deal", "a set write that changes nothing is refused (s17)"),
     "NeverTwoPolicies": ("deal", "a second policy version is put beside the first (s19)"),
     "NeverSameTiersRefused": ("deal", "a tiers write equal to the row's set is refused (s20)"),
+    "NeverRed": ("deal", "a producer is set red (s21)"),
+    "NeverRedKindRefused": ("deal", "a red write on a consumer (s22) and on a sentinel (s23) is refused"),
+    "NeverSameRedRefused": ("deal", "a red write equal to the producer's flag is refused (s24)"),
     "NeverRowFenced": ("deal", "a row write is refused on a stale RowGen (e1)"),
     "NeverSlotReused": ("deal", "a done consumer's slot is reused while it keeps its holder (b2)"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
@@ -293,6 +296,11 @@ WITNESSES = [
        "\\* FAULT: the latest version, not the next.\n"
        "NextVersion(st) == LET n == Cardinality({v \\in Versions : st.policies[v] # Absent})\n"
        "                   IN IF n = 0 THEN 1 ELSE n", 1)]),
+    ("StoreRedOnConsumer", "RedOnlyOnProducers", "deal",
+     "The red write checks only that the card exists, not its kind: s22\n"
+     "sets the consumer u3 red and is accepted.",
+     [("    [] w.k = \"setRed\"      -> Exists(st, w.c) /\\ st.cards[w.c].kind = \"producer\"",
+       "    [] w.k = \"setRed\"      -> Exists(st, w.c)   \\* FAULT: no kind check", 1)]),
     ("StoreLogTampered", "LogAppendOnly", "deal",
      "The events table takes an UPDATE (the trigger is missing): an action\n"
      "flips a logged event's outcome.",
