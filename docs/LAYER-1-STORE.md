@@ -34,27 +34,37 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   the snapshot shows only the current epoch's rows. Nothing is deleted.
 - `sprint.streams`: `name text`, `repo text`, `base text`, `held boolean`,
   `pos integer`, `epoch integer`. Primary key `(epoch, name)`.
-- `sprint.cards`: `id text`, `stream text`, `state text`, `gen integer`,
-  `attempt integer`, `score integer`, `needs text[]`, `holder text`
-  (nullable), `branch text`, `head text`, `pr integer`, `brief text`,
-  `reason text`, `epoch integer`. Primary key `(epoch, id)`. Every column but
-  `holder` is `NOT NULL` (text defaults to the empty string, `pr` to 0).
-  `state` is checked against the closed set below. `(epoch, stream)`
-  references `streams`; `(epoch, holder)` references `rows`. `gen` starts at 0
-  and goes up by one on every write to the card, so an expectation on gen
-  catches any change; it is a version, not an attempt. `attempt` is the
-  number of the attempt the holder is on, raised only by its own write when
-  a new attempt starts (layer 2 says when). `score` is the work order: set at
-  add, changed only by the explicit score write, never by a move. A card is
-  added in state `waiting`, gen 0, attempt 0, no holder.
+- `sprint.cards`: `id text`, `kind text` (`producer`, `work`, `read`),
+  `of text` (the producer a consumer belongs to; empty on a producer),
+  `stream text`, `state text`, `gen integer`, `attempt integer`,
+  `score integer`, `needs text[]`, `holder text` (nullable), `author text`,
+  `branch text`, `base_sha text`, `head text`, `pr integer`, `result text`
+  (`""`, `ok`, `fix`, `fail`), `brief text`, `reason text`, `epoch integer`.
+  Primary key `(epoch, id)`. Every column but `holder` is `NOT NULL` (text
+  defaults to the empty string, `pr` to 0). `state`, `kind` and `result` are
+  checked against their sets. `(epoch, stream)` references `streams`;
+  `(epoch, holder)` references `rows`; `(epoch, of)` references `cards` when
+  `of` is set. The two kinds (layer 2's producer and consumer cards, Glenn
+  2026-09-29 and 2026-11-06) share one table and one write set; what the
+  store itself enforces about them: a producer never has a holder (the holder
+  write is refused on a producer, naming it); a consumer's `of` is set at add,
+  names a producer of the same epoch, and never changes; a consumer has no
+  needs. `gen` starts at 0 and goes up by one on every op that writes the
+  card, so an expectation on gen catches any change; it is a version, not an
+  attempt. `attempt` is raised only by its own write (layer 2 says when).
+  `score` is the work order: set at add, changed only by the explicit score
+  write, never by a move. A card is added in state `waiting`, gen 0, attempt
+  0, no holder; a consumer is added with its holder in the same op.
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
   `state text` (`up`, `down`, `blocked`), `session text` (the hook's session,
   so a late report from an old session can be told apart), `flaps integer`,
-  `epoch integer`. Primary key `(epoch, name)`; every column `NOT NULL`;
-  `kind` and `state` checked against their sets. There is no heartbeat column
-  and no heartbeat op: presence is the bus's fact (`nova-bus who`), read by
-  the run loop at tick time; the store records a row's state only when it
-  changes. v1 filled its log with heartbeats.
+  `gen integer`, `epoch integer`. Primary key `(epoch, name)`; every column
+  `NOT NULL`; `kind` and `state` checked against their sets. `gen` rises by
+  one on every op that writes the row, so a row plan is fenced like a card
+  plan. There is no heartbeat column and no heartbeat op: presence is the
+  bus's fact (`nova-bus who`), read by the run loop at tick time; the store
+  records a row's state only when it changes. v1 filled its log with
+  heartbeats.
 - `sprint.events`: `seq bigint`, `op text unique`, `actor text`, `kind text`,
   `accepted boolean`, `reason text`, `before jsonb`, `after jsonb`,
   `receipt jsonb`, `at timestamptz`, `epoch integer`. Append-only. One row per
@@ -73,13 +83,15 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 
 ### Card states
 
-The closed set, locked by Glenn 2026-09-29 plus one exit: `waiting`, `ready`,
-`working`, `review`, `merging`, `landed`, `fail`. `landed` means the code is on
-the base branch and is final. `fail` is the record of a card that stopped any
-other way (cancelled, replaced, its need failed) with the reason kept. Which
-transitions are legal is layer 2's; this layer only refuses a state outside the
-set. (The flapping row goes to row state `blocked`; that is a row state, not a
-card state.)
+The closed set, locked by Glenn 2026-09-29 plus one exit and one consumer
+state: `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`,
+`done`. `landed` means the code is on the base branch and is final. `fail` is
+the record of a card that stopped any other way (cancelled, replaced, its need
+failed, or a consumer withdrawn) with the reason kept. `done` is a consumer
+that reported. Which transitions are legal, and which states each kind may
+use, is layer 2's; this layer only refuses a state outside the set. (The
+flapping row goes to row state `blocked`; that is a row state, not a card
+state.) A card is live when it is in `ready` or `working`.
 
 ## The operations
 
@@ -116,19 +128,24 @@ Writes (closed set), one field each: put stream (insert or overwrite: repo,
 base, pos; `pos` is the order streams land in); set stream held; put card
 (add: stream, score, needs, brief; refused if the card exists; every need must
 name a different card of the same epoch, no duplicates); set card state; set
-card holder (a name or none: setting a name is refused when that row already
-holds as many cards as its width, counted at the moment of the write and not counting the card being written (re-setting the same holder is a no-op), so one
-op with two holder writes to a width-one row is refused on the second and
-nothing lands; there is no separate width condition, the write is the check);
-set card attempt; set card branch; set card head; set card pr; set card
-reason; set card score; set card needs; put row (insert or overwrite: kind,
-width, session); set row state; set row session; set row flaps; put policy
-version; set active policy version (deactivates the one active before it in
-the same transaction). An op that writes a card raises that card's gen by
-one, however many of its writes touch the card: gen counts the operations
-that changed the card. Put row refuses a width below the number of cards the
-row holds. Together, the two refusals make "holders never exceed width" true
-by every path. Every integer a write carries must fit the column
+card holder (a name or none: setting a name is refused on a producer, and
+refused when that row already holds as many **live** cards (`ready` or
+`working`) as its width, counted at the moment of the write and not counting
+the card being written, so one op with two holder writes to a width-one row
+is refused on the second and nothing lands; a `done` or `fail` consumer keeps
+its holder for the record and does not count; there is no separate width
+condition, the write is the check); set card attempt; set card author; set
+card branch; set card base_sha; set card head; set card pr; set card result;
+set card reason; set card score; set card needs; put row (insert or
+overwrite: kind, width, session); set row width; set row state; set row
+session; set row flaps; put policy version; set active policy version
+(deactivates the one active before it in the same transaction). An op that
+writes a card raises that card's gen by one, however many of its writes
+touch the card, and the same for a row: gen counts the operations that
+changed it. Put row and set row width refuse a width below the number of
+live cards the row holds. Together, the refusals make "live holders never
+exceed width" true by every path. The condition `RowGen(R, G)` fences a row
+plan as `CardGen` fences a card plan. Every integer a write carries must fit the column
 (PostgreSQL `integer`, 32-bit signed); a value outside it is `ErrInvalid`
 from Fake and PG alike, never `ErrUnknown`. A snapshot is the caller's own
 copy: editing it never changes the store (the Fake copies every slice).
@@ -193,11 +210,11 @@ fleet, not the sprint's work, and a clear must not make every worker and kin
 register again. Nothing is ever deleted: a clear opens a new epoch, it does
 not remove the old one.
 
-Owed to later layers, named here so they are not lost: an `author` on a card
-(the row whose work a read judges, so a row is never dealt its own card to
-read) and a `base_sha` at deal are layer 2's columns; row labels for policy
-(tier, model, harness) are layer 5's. Each arrives with a schema version bump
-and a design change, never as a special case.
+Schema version 2 (2026-11-06) is the version with the two card kinds:
+`kind`, `of`, `author`, `base_sha`, `result`, the state `done`, and row
+`gen`. Still owed to a later layer, named so it is not lost: row labels for
+policy (tier, model, harness) are layer 5's, and arrive with a schema version
+bump and a design change, never as a special case.
 
 `Replay` returns `(receipt, found, err)`: `found` is false when no event has
 that id. A refused event has no before or after images; rebuild folds only
