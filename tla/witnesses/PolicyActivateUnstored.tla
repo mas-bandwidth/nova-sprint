@@ -20,7 +20,7 @@
 (* judgements[v] counts the open policy judgements of version v (group    *)
 (* key policy:v<n>).                                                      *)
 (***************************************************************************)
-EXTENDS Naturals, FiniteSets
+EXTENDS Integers, FiniteSets
 
 CONSTANT MaxVersion
 
