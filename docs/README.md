@@ -24,6 +24,8 @@ for real work.
 
 ## The standards every verb meets (Glenn, 2026-11-06)
 
+How the first standard is applied, verb by verb: [CORRECT-USE.md](CORRECT-USE.md).
+
 1. **The tool enforces the order of doing things.** As nova-bus makes you hook in
    before you can send, nova-sprint refuses a step whose prerequisite has not
    happened and says, nicely, what to do first. This one is the key: it is how
