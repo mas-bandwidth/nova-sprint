@@ -28,7 +28,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 
 - `sprint.meta`: one row (`id = 1` by CHECK), `schema integer`. `Migrate`
   creates the schema at the version the binary knows and refuses a store at any
-  other version, naming both numbers, and also keeps a hash of the schema text that made the store, refusing a store made by a different build of the same version (no live store is at version 2 yet, so such a store is recreated, not upgraded).
+  other version, naming both numbers, and also keeps a hash of the schema text that made the store, refusing a store made by a different build of the same version, with one exception: a store made by round 16's schema is upgraded in place (round 17, below).
 - `sprint.epoch`: one row (`id = 1` by CHECK), `n integer`. Clear is
   `n = n + 1`. Every stream, card and row carries the epoch it was written in;
   the snapshot shows only the current epoch's rows. Nothing is deleted.
@@ -55,7 +55,10 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   producer by a person or by the coordinator on request, never computed or
   raised by the system; a consumer has no level of its own and is ordered by
   its producer's, read from that row, never a second copy; LESSONS 5.3),
-  `brief text`, `reason text`, `epoch integer`.
+  `brief text`, `reason text`, `red boolean NOT NULL DEFAULT false` (on a
+  producer: its last read's verdict was red, so a later waiver can require
+  it; false on every other kind, by the CHECK `cards_red_check`; mutable,
+  so the `cards_fixed` trigger does not name it; round 17), `epoch integer`.
   Primary key `(epoch, id)`. Every column but `holder` and `of` is `NOT NULL` (text
   defaults to the empty string, `pr`, `bounces` and `cost` to 0, `priced` to
   false). `state`, `kind` and `result` are
@@ -203,7 +206,7 @@ never `now()` in SQL), `Expect` (conditions), `Writes` (a closed set of typed
 writes), `Note` (kept in the receipt).
 
 Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
-`X` has holder `R` (or none); every need of card `X` is `landed` (read from the
+`X` has holder `R` (or none); card `X` is red or not red (`CardRed`); every need of card `X` is `landed` (read from the
 card's own `needs` inside the transaction, never from a caller's list); row
 `R` is in state `S`; row `R` is at gen `G` (`RowGen`); row `R` is held or not held (`RowHeld`); stream `S` is held or not held; card `X` does not exist;
 the store is at seq `N` (a fence
@@ -233,7 +236,10 @@ ahead of its width is policy's number (PRIORITY D21), never the store's;
 set card author; set
 card branch; set card base_sha; set card head; set card
 pr; set card result (a consumer only); set card bounces (a producer only); set card prior_head (a work consumer only); set card attempt (never a consumer: its attempt is set at add); set card cost (a consumer only; cost and priced
-together, one field; each kind-specific write is refused on the wrong kind, naming the kind and the write, and the schema carries the matching CHECKs); set card reason; set card score; set card priority (`SetCardPriority`: one
+together, one field; each kind-specific write is refused on the wrong kind, naming the kind and the write, and the schema carries the matching CHECKs); set card reason; set card score; set card red (`SetCardRed`: a producer only, refused on a consumer naming
+its producer as the place to record the verdict and on a sentinel as never
+read, whatever the value; a same-value write is refused like every set
+write); set card priority (`SetCardPriority`: one
 of the five levels, refused on a consumer, written only by the verb a
 person or the coordinator runs on request); set card needs; set card after (same rule as needs); put row (insert or
 overwrite: kind, width, session); set row width; set row held; set row state; set row
@@ -479,6 +485,39 @@ with `SetCardReview` (producer only, +1), and `rows.reason text` written by
 Round 14 (2026-11-06, from the first cold read of layer 2): `cards.finding
 text NOT NULL DEFAULT ''` (producer: the last read's finding; work consumer: a
 copy at cut, fixed), written by `SetCardFinding` (producer only).
+
+Recorded with round 17 (2026-11-06; Glenn-approved context: a red read
+verdict is recorded on the producer so that a later waive can require it,
+where the card machine had been using `pr` for it): `cards.red boolean NOT
+NULL DEFAULT false` with the CHECK `cards_red_check` (`kind = 'producer' OR
+NOT red`); the write `SetCardRed{Card, Red}`, producer only (a consumer is
+refused "card u1 is of kind work; SetCardRed is only for a producer: record
+the verdict on its producer c1", a sentinel "... and a sentinel is never
+read"; a missing card "card c9 does not exist"; the same value "card c1
+already has the given red"; each a logged refusal, like every kind rule,
+not `ErrInvalid`, which is only for an op the store never reads); the
+condition `CardRed{Card, Red}` ("card c1 is not red, expected red"); `red`
+in the snapshot, every after-image and so `Rebuild`, in Fake and PG alike
+(an event written before round 17 has no `red` in its images and reads as
+false, which is what every card was). The `cards_fixed` trigger is
+unchanged. The column is added by an `ALTER TABLE sprint.cards ADD COLUMN
+IF NOT EXISTS red ...` after the `CREATE TABLE`, not inside it, so a new
+store and an upgraded one get it the same way. The schema hash moves with
+it. What `Migrate` does on an existing round-16 store (hash
+`round16Hash`, the hash of `store/testdata/schema-round16.sql`, the
+schema at 36c1bbd6), in its one transaction under the advisory lock: it
+finds version 2 and that hash and takes it instead of refusing; runs
+`schema.sql`, in which every `CREATE ... IF NOT EXISTS` is a no-op, every
+`CREATE OR REPLACE FUNCTION` and trigger is replaced by its identical
+text, and the `ALTER` adds `red` (PostgreSQL stores the default without
+rewriting the table, and the CHECK is validated against the existing rows,
+all false, under an ACCESS EXCLUSIVE lock on `sprint.cards` for the
+transaction); then writes the new hash into `sprint.meta` and commits. The
+events are not touched. A second `Migrate` is a no-op; a store at any
+other hash is still refused. Model: `red` is a plain card attribute
+(`SetRed`, `CardRed`), the invariant `RedOnlyOnProducers`, the reversed
+witness `StoreRedOnConsumer` (the write without its kind check) and the
+reach checks `NeverRed`, `NeverRedKindRefused` and `NeverSameRedRefused`.
 
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
 
