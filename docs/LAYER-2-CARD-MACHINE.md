@@ -324,3 +324,21 @@ land order. Those were hard earned."
   landing is reported. A release gate or a phase mark is a sentinel with the
   cards it waits for as its needs.
 - A need failing takes a sentinel with it like any dependant.
+
+## Rules added from the promise reviews (2026-11-06)
+
+- `ReadYes` requires at least one read consumer of the current head that is
+  `done` with result ok and was cut after the producer last entered `review`;
+  reads withdrawn or from an earlier head count for nothing, so a yes never
+  fires on zero yes (Fable, promise 4). After a `Red`, a waived red re-enables
+  the same reads only when the coordinator's waive says so; otherwise the fix
+  brings a new head and new reads.
+- A consumer that reports `fault` (the harness, the bench or the route
+  failed, not the work) spends no attempt and raises no bounce; policy rests
+  the route it ran on before re-dealing, so a fault never loops (Fable,
+  promise 2; LESSONS 4.24).
+- `AskRead` may be raised for every read a head needs in one tick; how many
+  reads a head gets and whether they are asked together is policy's (LESSONS 3.4).
+- A judgement is a stored record in layer 1 (`sprint.judgements`), opened by
+  a named layer 3 step, pushed from the record, answered by a verb; nothing
+  owed lives only in a message (all six reviews).

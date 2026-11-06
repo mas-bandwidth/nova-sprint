@@ -93,8 +93,8 @@ the fix. Never a silent zero.
 
 ## Notifications name their verb
 
-Every judgement that reaches the coordinator (a red CI, a fix read, a row
-blocked, a card that cannot land) carries the exact command that answers it:
+Every judgement that reaches the coordinator (a red CI, a producer sent back to ready by its reads, a producer
+blocked after too many bounces, a row that flapped, a card that cannot land) is a stored record in the store, pushed from that record, and carries the exact command that answers it:
 
 ```
 NEEDS YOU card=<id>: CI red at <head>: see <url>

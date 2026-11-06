@@ -155,3 +155,15 @@ a stream; a bench fault blaming a head; a red base with no path back.
   the card.
 - The batch and the merge table are layer 3's landing step and layer 6's
   view.
+
+## Added from the promise reviews (2026-11-06)
+
+- After any landing into base, the stream branch is fast-forwarded to base
+  in the same step, so cards cut afterwards start from what landed and the
+  stream branch never drifts behind base (Fable, promise 4; v1: 105 conflicts).
+- The engine learns a CI result from the run loop reading the check status of
+  the exact head (layer 4's GitHub edge, a machine reading an API, which is
+  not a model polling) and recording it as evidence on the consumer; a red is
+  a judgement, a green at the landable head is what step 4 requires.
+- "A card that wants a PR" is one whose stream's repo requires PRs (a stream
+  field, set at `stream add`); a stream that lands by fast-forward wants none.
