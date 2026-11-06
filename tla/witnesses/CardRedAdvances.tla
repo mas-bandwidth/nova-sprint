@@ -15,11 +15,15 @@
 (* value, which changes nothing). The model is the reachable state space   *)
 (* of accepted moves.                                                      *)
 (*                                                                         *)
-(* Producers p1 and p2 and the sentinel s. Scenario "deps": p2 needs p1, s *)
-(* needs p2. Scenario "pre": p1 and p2 are independent, p2 names p1 in     *)
-(* after, s needs both; it exists because a blocker can only preempt the   *)
-(* consumer of another producer that is live at the same time, which      *)
-(* needs a pair that can both be in flight. A sentinel has no consumers.   *)
+(* Three scenarios of one module, each small enough to check whole:       *)
+(* - "life": one producer p1 and the sentinel s (s needs p1), with room    *)
+(*   for a fix, a Red and a re-deal: the whole lifecycle.                  *)
+(* - "deps": producers p1 and p2 (p2 needs p1) and s (s needs p2): needs,  *)
+(*   NeedFailed, Waive, Relink and the cycle check.                        *)
+(* - "pre": p1 and p2 independent, p2 names p1 in after, s needs both: a   *)
+(*   blocker can only preempt the consumer of another producer live at    *)
+(*   the same time, and after only orders two producers queued together.  *)
+(* A sentinel has no consumers.                                            *)
 (*                                                                         *)
 (* Consumers are slots: producer p's i-th cut consumer is <<p, i>>, for i  *)
 (* in 1..K; an uncut slot is in state "none". Start and AskRead cut the    *)
@@ -40,38 +44,39 @@
 (*                                                                         *)
 (* Left out, because no guard reads them: branch, base_sha (always 0),     *)
 (* prior_head, reason, brief, cost, priced, the by of Replace. Edit writes *)
-(* only the brief, so in the model it changes nothing but the history.    *)
+(* only the brief, so in the model it changes nothing but the monitor.    *)
 (*                                                                         *)
-(* last is a step monitor: the event's name, and the set of step rules    *)
-(* the step broke (bad), computed by Bad from the state before and after  *)
-(* the step. Bad is shared by every action and is not part of any one, so *)
-(* a fault in an action is seen there; each step invariant says its rule  *)
-(* is not in last.bad. Only the name and the set are kept, so the monitor *)
-(* does not split states by their predecessor.                            *)
+(* last is a step monitor: the set of step rules the step broke (bad),    *)
+(* computed by StepRule from the state before and after the step, and the *)
+(* event's name only for the two a reach check needs. StepRule is shared  *)
+(* by every action and is not part of any one, so a fault in an action is *)
+(* seen there; each step invariant says its rule is not in last.bad. The  *)
+(* monitor keeps no predecessor, so it does not split states by them.     *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS
-  Scenario,    \* "deps" or "pre"
+  Scenario,    \* "life", "deps" or "pre"
   K,           \* consumer slots per producer
   MaxHead,     \* heads are 1..MaxHead
   MaxAttempt,  \* model bound: Start is not enabled at this attempt
   MaxBounce,   \* model bound: Broken and ReadFix are not enabled at this count
   MaxEnv       \* model bound: environment and coordinator moves per behaviour
 
-Prods     == {"p1", "p2"}            \* producers with work
+Prods     == IF Scenario = "life" THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
 Sentinels == {"s"}
 P         == Prods \cup Sentinels
 Rows      == {"r1", "r2"}
 CIds      == Prods \X (1..K)
 ConsOf(p) == IF p \in Prods THEN {<<p, i>> : i \in 1..K} ELSE {}
 
-Needs0 == IF Scenario = "deps"
-          THEN [p \in P |-> CASE p = "p2" -> {"p1"} [] p = "s" -> {"p2"} [] OTHER -> {}]
-          ELSE [p \in P |-> IF p = "s" THEN {"p1", "p2"} ELSE {}]
-After  == IF Scenario = "deps"
-          THEN [p \in P |-> {}]
-          ELSE [p \in P |-> IF p = "p2" THEN {"p1"} ELSE {}]
+Needs0 == CASE Scenario = "life" -> [p \in P |-> IF p = "s" THEN {"p1"} ELSE {}]
+            [] Scenario = "deps" ->
+                 [p \in P |-> CASE p = "p2" -> {"p1"} [] p = "s" -> {"p2"} [] OTHER -> {}]
+            [] OTHER -> [p \in P |-> IF p = "s" THEN {"p1", "p2"} ELSE {}]
+After  == IF Scenario = "pre"
+          THEN [p \in P |-> IF p = "p2" THEN {"p1"} ELSE {}]
+          ELSE [p \in P |-> {}]
 
 Tier     == [p \in P |-> "pro"]
 RowTiers == [r \in Rows |-> {"pro"}]
