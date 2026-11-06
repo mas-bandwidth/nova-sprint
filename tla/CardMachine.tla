@@ -36,9 +36,12 @@
 (* prior_head, reason, brief, cost, priced, the by of Replace. Edit writes *)
 (* only the brief, so in the model it changes nothing but the history.    *)
 (*                                                                         *)
-(* last is a history variable: the event, the producer, consumer and row   *)
-(* it names, and that producer and consumer as they were before the step. *)
-(* The step invariants below read it.                                      *)
+(* last is a step monitor: the event's name, and the set of step rules    *)
+(* the step broke (bad), computed by Bad from the state before and after  *)
+(* the step. Bad is shared by every action and is not part of any one, so *)
+(* a fault in an action is seen there; each step invariant says its rule  *)
+(* is not in last.bad. Only the name and the set are kept, so the monitor *)
+(* does not split states by their predecessor.                            *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -82,17 +85,16 @@ NoC     == <<"-", 0>>
 Heads   == 1..MaxHead
 
 NoCons == [st |-> "none", kind |-> "-", row |-> NoR, att |-> 0, head |-> 0,
-           res |-> "-", author |-> None, rseq |-> 0]
+           res |-> "-", author |-> None, review |-> 0]
 NewProd(p) == [st |-> "waiting", att |-> 0, head |-> 0, author |-> None, bounces |-> 0,
-               score |-> 0, prio |-> "normal", needs |-> Needs0[p], rseq |-> 0, ncut |-> 0]
-NoProd == [NewProd("p1") EXCEPT !.needs = {}]
+               score |-> 0, prio |-> "normal", needs |-> Needs0[p], review |-> 0, ncut |-> 0]
 
 VARIABLES
-  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, rseq, ncut]
-  cs,    \* consumer slot -> [st, kind, row, att, head, res, author, rseq]
+  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, review, ncut]
+  cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review]
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
-  last,  \* history: [ev, p, c, r, pp, pc]
+  last,  \* step monitor: [ev, bad]
   env    \* environment and coordinator moves so far (bounded by MaxEnv)
 
 vars == <<ps, cs, rs, held, last, env>>
@@ -122,29 +124,70 @@ Init ==
   /\ cs   = [c \in CIds |-> NoCons]
   /\ rs   = [r \in Rows |-> [st |-> "up", flaps |-> 0, width |-> 1, held |-> FALSE]]
   /\ held = FALSE
-  /\ last = [ev |-> "Init", p |-> NoP, c |-> NoC, r |-> NoR, pp |-> NoProd, pc |-> NoCons]
+  /\ last = [ev |-> "Init", bad |-> {}]
   /\ env  = 0
 
-L(ev, p, c, r) == [ev |-> ev, p |-> p, c |-> c, r |-> r,
-                   pp |-> IF p = NoP THEN NoProd ELSE ps[p],
-                   pc |-> IF c = NoC THEN NoCons ELSE cs[c]]
+-----------------------------------------------------------------------------
+(* The step monitor. Each rule reads the state before the step (ps, cs)  *)
+(* and after it (ps', cs'), and the event's name and the producer p,      *)
+(* consumer c and row r it names (NoP, NoC, NoR when it names none).      *)
+(* A rule about a named card is only read when the event names one.       *)
+
+PEvents == {"Finished", "Broken", "Faulted", "Released"}
+
+StepRule(n, ev, p, c, r) ==
+  CASE n = "FinalNeverMoves" ->
+         /\ \A q \in P : ps[q].st \in PFinal => ps'[q] = ps[q]
+         /\ \A k \in CIds : cs[k].st \in CFinal => cs'[k] = cs[k]
+    [] n = "AttemptOnlyOnStart" ->
+         \A q \in Prods :
+           ps'[q].att = ps[q].att + (IF ev \in {"Start", "Preempt"} /\ q = p THEN 1 ELSE 0)
+    [] n = "RedNeverAdvances" -> ev = "Red" => ps'[p].st \notin {"merging", "landed"}
+    [] n = "FixKeepsScore" -> ev = "ReadFix" => ps'[p].score = ps[p].score
+    [] n = "HolderNeverChanges" -> \A k \in CIds : cs[k].st # "none" => cs'[k].row = cs[k].row
+    [] n = "OldAttemptNeverMoves" ->
+         ev \in PEvents => (cs[c].kind = "work" /\ cs[c].att = ps[p].att)
+    [] n = "OnlyHolderActs" -> ev \in {"Take", "Report"} => r = cs[c].row
+    [] n = "ReadYesNeedsYes" ->
+         ev = "ReadYes" =>
+           \E k \in ConsOf(p) :
+             /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "ok"
+             /\ cs[k].head = ps[p].head /\ cs[k].review = ps[p].review
+    [] n = "FaultSpendsNothing" ->
+         ev = "Faulted" => (ps'[p].att = ps[p].att /\ ps'[p].bounces = ps[p].bounces)
+    [] n = "BlockNoLive" -> ev = "Block" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
+    [] n = "EditNoLive" -> ev = "Edit" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
+    [] n = "SentinelLandsByReached" ->
+         \A s \in Sentinels :
+           (ps[s].st # "landed" /\ ps'[s].st = "landed")
+             => (ev = "Reached" /\ \A x \in ps[s].needs : ps[x].st = "landed")
+    [] n = "AfterKept" -> ev = "Landed" => \A a \in After[p] : ps[a].st # "merging"
+
+StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
+              "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs",
+              "ReadYesNeedsYes", "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
+              "SentinelLandsByReached", "AfterKept"}
+
+\* The monitor's value after a step: its name and the rules it broke.
+\* ps' and cs' must be set before it is evaluated.
+L(ev, p, c, r) == [ev |-> ev, bad |-> {n \in StepRules : ~StepRule(n, ev, p, c, r)}]
 
 \* A producer event that writes producer p only.
 PStep(ev, p, c, rec) ==
   /\ ps'   = [ps EXCEPT ![p] = rec]
-  /\ last' = L(ev, p, c, NoR)
   /\ UNCHANGED <<cs, rs, held>>
+  /\ last' = L(ev, p, c, NoR)
 
 \* A consumer event that writes consumer c only.
 CStep(ev, c, r, rec) ==
   /\ cs'   = [cs EXCEPT ![c] = rec]
-  /\ last' = L(ev, NoP, c, r)
   /\ UNCHANGED <<ps, rs, held>>
+  /\ last' = L(ev, NoP, c, r)
 
 RStep(ev, r, rec) ==
   /\ rs'   = [rs EXCEPT ![r] = rec]
-  /\ last' = L(ev, NoP, NoC, r)
   /\ UNCHANGED <<ps, cs, held>>
+  /\ last' = L(ev, NoP, NoC, r)
 
 -----------------------------------------------------------------------------
 (* Producer events                                                         *)
@@ -171,7 +214,7 @@ Reached(p) ==
 \* on row r in state ready.
 StartCut(p, r) ==
   [st |-> "ready", kind |-> "work", row |-> r, att |-> ps[p].att + 1, head |-> 0,
-   res |-> "-", author |-> None, rseq |-> 0]
+   res |-> "-", author |-> None, review |-> 0]
 StartGuard(p, r) ==
   /\ p \in Prods
   /\ ps[p].st = "ready"
@@ -195,7 +238,7 @@ Finished(p, c) ==
   /\ cs[c].st = "done"
   /\ cs[c].res = "ok"
   /\ PStep("Finished", p, c, [ps[p] EXCEPT !.st = "review", !.head = cs[c].head,
-                                           !.author = cs[c].row, !.rseq = @ + 1])
+                                           !.author = cs[c].row, !.review = @ + 1])
 
 \* A pushed head is kept on the producer; a report with no head keeps p's.
 KeptHead(p, c) == IF cs[c].head # 0 THEN cs[c].head ELSE ps[p].head
@@ -228,7 +271,7 @@ AskRead(p, r) ==
   /\ cs'   = [cs EXCEPT ![NextSlot(p)] =
                 [st |-> "ready", kind |-> "read", row |-> r, att |-> ps[p].att,
                  head |-> ps[p].head, res |-> "-", author |-> ps[p].author,
-                 rseq |-> ps[p].rseq]]
+                 review |-> ps[p].review]]
   /\ last' = L("AskRead", p, NextSlot(p), r)
   /\ UNCHANGED <<rs, held>>
 
@@ -238,15 +281,17 @@ ReadsSettled(p) ==
     (cs[c].kind = "read" /\ cs[c].st # "none" /\ cs[c].head = ps[p].head)
       => cs[c].st \in CFinal
 
-\* A read of the current head, done ok, cut after p last entered review
-\* (Rules added from the promise reviews: no yes on zero yes).
+\* A done ok read of the current head whose review count (fixed at cut)
+\* equals p's: cut after p last entered review, so a read from before a
+\* Red or a fix never counts and a yes never fires on zero yes (Rules added
+\* from the promise reviews; Added after layer 2 was built).
 YesRead(p) ==
   \E c \in ConsOf(p) :
     /\ cs[c].kind = "read"
     /\ cs[c].st = "done"
     /\ cs[c].res = "ok"
     /\ cs[c].head = ps[p].head
-    /\ cs[c].rseq = ps[p].rseq
+    /\ cs[c].review = ps[p].review
 
 ReadYes(p) ==
   /\ ps[p].st = "review"
@@ -274,7 +319,7 @@ Landed(p, h) ==
 Red(p, h) ==
   /\ ps[p].st = "merging"
   /\ h = ps[p].head
-  /\ PStep("Red", p, NoC, [ps[p] EXCEPT !.st = "review", !.rseq = @ + 1])
+  /\ PStep("Red", p, NoC, [ps[p] EXCEPT !.st = "review", !.review = @ + 1])
 
 Released(p, c) ==
   /\ ps[p].st = "working"
@@ -420,14 +465,14 @@ HoldStream ==
   /\ ~held
   /\ held' = TRUE
   /\ ps'   = [p \in P |-> IF ps[p].st = "ready" THEN [ps[p] EXCEPT !.st = "waiting"] ELSE ps[p]]
-  /\ last' = L("HoldStream", NoP, NoC, NoR)
   /\ UNCHANGED <<cs, rs>>
+  /\ last' = L("HoldStream", NoP, NoC, NoR)
 
 UnholdStream ==
   /\ held
   /\ held' = FALSE
-  /\ last' = L("UnholdStream", NoP, NoC, NoR)
   /\ UNCHANGED <<ps, cs, rs>>
+  /\ last' = L("UnholdStream", NoP, NoC, NoR)
 
 \* The card and consumer moves.
 CardMove ==
@@ -473,10 +518,10 @@ Spec == Init /\ [][Next]_vars
 
 ProdRec == [st : PStates, att : 0..MaxAttempt, head : 0..MaxHead, author : Rows \cup {None},
             bounces : 0..MaxBounce, score : 0..1, prio : Prios, needs : SUBSET P,
-            rseq : 0..(K + MaxAttempt), ncut : 0..K]
+            review : 0..(K + MaxAttempt), ncut : 0..K]
 ConsRec == [st : CStates, kind : {"-", "work", "read"}, row : Rows \cup {NoR},
             att : 0..MaxAttempt, head : 0..MaxHead, res : Results,
-            author : Rows \cup {None}, rseq : 0..(K + MaxAttempt)]
+            author : Rows \cup {None}, review : 0..(K + MaxAttempt)]
 
 TypeOK ==
   /\ ps \in [P -> ProdRec]
@@ -484,10 +529,7 @@ TypeOK ==
   /\ rs \in [Rows -> [st : {"up", "down"}, flaps : 0..1, width : 1..2, held : BOOLEAN]]
   /\ held \in BOOLEAN
   /\ env \in 0..MaxEnv
-  /\ last.p \in P \cup {NoP}
-  /\ last.r \in Rows \cup {NoR}
-  /\ last.pp \in ProdRec
-  /\ last.pc \in ConsRec
+  /\ last.bad \subseteq StepRules
 
 (* A producer never has a holder: the holder lives on the consumer only,  *)
 (* so every cut consumer names a row and belongs to a producer with work. *)
@@ -511,10 +553,12 @@ WorkingOneWorkConsumer ==
     /\ \A c \in LiveOf(p) : cs[c].kind = "work" => (ps[p].st = "working" /\ IsCur(p, c))
     /\ ps[p].st = "working" => \E c \in ConsOf(p) : IsCur(p, c)
 
-(* A live read consumer only in review, of the producer's current head.   *)
+(* A live read consumer only in review, of the producer's current head    *)
+(* and review count.                                                      *)
 ReadOnlyInReview ==
   \A p \in Prods : \A c \in LiveOf(p) :
-    cs[c].kind = "read" => (ps[p].st = "review" /\ cs[c].head = ps[p].head)
+    cs[c].kind = "read" =>
+      (ps[p].st = "review" /\ cs[c].head = ps[p].head /\ cs[c].review = ps[p].review)
 
 ReaderNeverAuthor ==
   \A p \in Prods : \A c \in LiveOf(p) : cs[c].kind = "read" => cs[c].row # ps[p].author
@@ -528,82 +572,66 @@ TakeBelowWidth ==
     (cs[c].st = "ready" /\ Cardinality(WorkingOn(cs[c].row)) < rs[cs[c].row].width)
       => ENABLED Take(c, cs[c].row)
 
-(* Final states never move: the producer and consumer a step names, if   *)
-(* final before it, are unchanged after it.                               *)
-FinalNeverMoves ==
-  /\ (last.p # NoP /\ last.pp.st \in PFinal) => ps[last.p] = last.pp
-  /\ (last.c # NoC /\ last.pc.st \in CFinal) => cs[last.c] = last.pc
-
-(* attempt rises by one on Start (and the Start inside Preempt) of that   *)
-(* producer, and on nothing else.                                         *)
-AttemptOnlyOnStart ==
-  last.p # NoP =>
-    ps[last.p].att = last.pp.att + (IF last.ev \in {"Start", "Preempt"} THEN 1 ELSE 0)
-
-RedNeverAdvances == last.ev = "Red" => ps[last.p].st \notin {"merging", "landed"}
-
-FixKeepsScore == last.ev = "ReadFix" => ps[last.p].score = last.pp.score
-
-(* A consumer's holder never changes once it is cut.                      *)
-HolderNeverChanges == (last.c # NoC /\ last.pc.st # "none") => cs[last.c].row = last.pc.row
-
-(* A producer event moved by a consumer accepts only the work consumer of *)
-(* its current attempt.                                                   *)
-OldAttemptNeverMoves ==
-  last.ev \in {"Finished", "Broken", "Faulted", "Released"} =>
-    (last.pc.kind = "work" /\ last.pc.att = last.pp.att)
-
-(* Take and Report are accepted only from the consumer's holder.          *)
-OnlyHolderActs == last.ev \in {"Take", "Report"} => last.r = last.pc.row
-
-(* ReadYes fired with a done ok read of the current head, cut after the   *)
-(* producer last entered review. ReadYes changes no consumer and keeps    *)
-(* head and rseq, so the check reads the state after it.                  *)
-ReadYesNeedsYes == last.ev = "ReadYes" => YesRead(last.p)
-
-(* A fault spends no attempt and raises no bounce.                        *)
-FaultSpendsNothing ==
-  last.ev = "Faulted" => (ps[last.p].att = last.pp.att /\ ps[last.p].bounces = last.pp.bounces)
-
-(* Block and Edit only with no live consumer (neither changes a consumer). *)
-BlockNoLive == last.ev = "Block" => NoLive(last.p)
-EditNoLive  == last.ev = "Edit" => NoLive(last.p)
-
 NeedFailedTakesDependants ==
   \A p \in P : \A n \in ps[p].needs :
     (ps[n].st = "fail" /\ NonFinal(p)) => ENABLED NeedFailed(p, n)
 
-(* A sentinel never has a consumer (structural: it has no slots), is      *)
-(* never in a state that has one, and lands only by Reached, with every   *)
-(* need landed.                                                           *)
-SentinelShape ==
-  /\ \A s \in Sentinels : ps[s].st \in {"waiting", "landed", "fail"}
-  /\ (last.p \in Sentinels /\ last.pp.st # "landed" /\ ps[last.p].st = "landed")
-       => (last.ev = "Reached" /\ NeedsLanded(last.p))
+(* A sentinel never has a consumer (structural: it has no slots) and is   *)
+(* never in a state that has one.                                         *)
+SentinelShape == \A s \in Sentinels : ps[s].st \in {"waiting", "landed", "fail"}
 
 NeedsAcyclic == Acyclic(NeedsGraph)
 
-(* Soft order: a landing never passes a merging after-target, and a       *)
+(* Soft order never holds a landing whose target is not queued: a         *)
 (* merging producer whose after-targets are not merging can land.         *)
-AfterKept ==
-  /\ last.ev = "Landed" => AfterClear(last.p)
-  /\ \A p \in P : (ps[p].st = "merging" /\ AfterClear(p)) => ENABLED Landed(p, ps[p].head)
+AfterNeverHolds ==
+  \A p \in P : (ps[p].st = "merging" /\ AfterClear(p)) => ENABLED Landed(p, ps[p].head)
+
+(* The step invariants: each says the last step kept its rule (StepRule). *)
+FinalNeverMoves        == "FinalNeverMoves" \notin last.bad
+AttemptOnlyOnStart     == "AttemptOnlyOnStart" \notin last.bad
+RedNeverAdvances       == "RedNeverAdvances" \notin last.bad
+FixKeepsScore          == "FixKeepsScore" \notin last.bad
+HolderNeverChanges     == "HolderNeverChanges" \notin last.bad
+OldAttemptNeverMoves   == "OldAttemptNeverMoves" \notin last.bad
+OnlyHolderActs         == "OnlyHolderActs" \notin last.bad
+ReadYesNeedsYes        == "ReadYesNeedsYes" \notin last.bad
+FaultSpendsNothing     == "FaultSpendsNothing" \notin last.bad
+BlockNoLive            == "BlockNoLive" \notin last.bad
+EditNoLive             == "EditNoLive" \notin last.bad
+SentinelLandsByReached == "SentinelLandsByReached" \notin last.bad
+AfterKept              == "AfterKept" \notin last.bad
 
 -----------------------------------------------------------------------------
 (* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each    *)
 (* violation shows that the passing run is not vacuous.                   *)
 
-NeverLanded       == \A p \in Prods : ps[p].st # "landed"
-NeverFixed        == last.ev # "ReadFix"
-NeverRed          == last.ev # "Red"
-NeverNeedFailed   == last.ev # "NeedFailed"
-NeverBlocked      == \A p \in P : ps[p].st # "blocked"
-NeverPreempted    == last.ev # "Preempt"
+NeverLanded          == \A p \in Prods : ps[p].st # "landed"
+NeverFixed           == last.ev # "ReadFix"
+NeverRed             == last.ev # "Red"
+NeverNeedFailed      == last.ev # "NeedFailed"
+NeverBlocked         == \A p \in P : ps[p].st # "blocked"
+NeverPreempted       == last.ev # "Preempt"
 NeverSentinelReached == last.ev # "Reached"
-NeverRelinked     == last.ev # "Relink"
-(* A work consumer that reported fault, then a new Start of its producer. *)
+NeverRelinked        == last.ev # "Relink"
+(* A work consumer reported fault, and a later work consumer of the same *)
+(* producer was cut: the fault was re-dealt.                              *)
 NeverFaultRedealt ==
-  ~(last.ev = "Start"
-    /\ \E c \in ConsOf(last.p) : cs[c].kind = "work" /\ cs[c].res = "fault")
+  ~\E p \in Prods : \E i, j \in 1..K :
+     /\ i < j
+     /\ cs[<<p, i>>].kind = "work" /\ cs[<<p, i>>].res = "fault"
+     /\ cs[<<p, j>>].kind = "work"
+(* A yes after a Red needs a new read: ReadYes fires while an ok read of  *)
+(* the same attempt from an earlier review exists (the attempt is the     *)
+(* same, so the re-entry into review was a Red, not a new Finished).      *)
+NeverYesAfterRed ==
+  ~(last.ev = "ReadYes"
+    /\ \E p \in Prods : \E k1, k2 \in ConsOf(p) :
+         /\ ps[p].st = "merging"
+         /\ cs[k1].kind = "read" /\ cs[k1].st = "done" /\ cs[k1].res = "ok"
+         /\ cs[k2].kind = "read" /\ cs[k2].st = "done" /\ cs[k2].res = "ok"
+         /\ cs[k1].att = ps[p].att /\ cs[k2].att = ps[p].att
+         /\ cs[k1].review < cs[k2].review
+         /\ cs[k2].review = ps[p].review)
 
 =============================================================================
