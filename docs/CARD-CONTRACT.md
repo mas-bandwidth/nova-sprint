@@ -86,12 +86,12 @@ honest: LAND only with every done-when gate green at the exact head
 ## The card is a structured record (decided 2026-11-06)
 
 Glenn: "There is some value in having things *structured* that was an idea we
-learned from v1." So the card contract above is a typed record, defined once
-in one schema file: the markdown brief is a serialization of it, `add` parses
+learned from v1." "As long as the *structure* exists and things aren't free form text, I'm happy." "So the structure we choose here is the SQL database." So the card contract above is a typed record, defined once
+in `store/schema.sql` (the table and its checks are the structure; the Go types mirror the columns; there is no second definition): the markdown brief is a serialization of it, `add` parses
 the brief into the record and the lint is the parser's refusals naming the
 field; the store keeps as columns the fields the engine reads (needs, after,
 paths, tier, priority, done-when) and the prose as text; the deal message, the
-report and the dashboard feed carry the same record or parts of it, generated
-for Go and the dashboard's language. Few records, at the edges and the card;
+report and the dashboard feed carry the same fields as JSON, and the dashboard reads the table;
+the only free text is the prose a mind reads: the task itself and the reason lines;
 v1's 400k generated lines came from making every internal message a record,
 and the engine's internals stay plain Go.
