@@ -258,3 +258,12 @@ snapshot, replay, fake). An estimate from the operation count, not a measure.
 - Snapshot is the whole epoch: a sprint is thousands of cards at most; one
   read is simpler than a query language, and layers 2 and 3 are pure functions
   over it.
+- Epochs start at 1, so an op whose epoch is 0 is one that forgot to set it
+  (`ErrInvalid`), never a match.
+- A row that is put for the first time starts `down`; it is up when the run
+  loop sees its hook on the bus.
+- `put card` sets stream, score, needs and brief, so an op may put a card and
+  set its state in the same transaction (add and ready at once); put card plus
+  set score in one op is two writes to one field and invalid.
+- The test servers run with `LC_ALL=C`: PostgreSQL 18 on macOS refuses to
+  start under a shell with no valid locale.
