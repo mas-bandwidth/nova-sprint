@@ -90,13 +90,13 @@ yes. not right now, but yes."
 
 "The only thing we can improve is the stitch together passes after the
 patchwork work." Code from many models working in isolation is a pastiche
-(Glenn's own word in the thread); today the hardening pass is a chore run by
-hand afterwards. In v2 it is a policy rule, owed to layer 5: when a stream's
-sentinel is reached, deal one stitch card for the stream (the whole diff since
-its base as the brief, heavy or frontier tier, a model that wrote none of the
-cards), whose job is one style, one set of names, duplicated helpers folded,
-dead seams removed, no behaviour change, read cold before it lands. The
-engine needs nothing new: sentinels, tiers, reads and `needs` are layer 2.
+(Glenn's own word in the thread). The stitch pass is not a sprint card:
+"it's more that we just go back to do this manually after using just bus."
+The sprint does the wide work; then Glenn and the models go back over the
+result directly, coordinated over the message bus, and make it read as one
+hand wrote it. What the sprint owes that pass is to make it cheap: per
+stream, the diff since its base, which model wrote each card, and every
+reader's findings, available in one place when the stream lands (layer 6).
 
 ## The dashboard (Glenn, 2026-11-06)
 
