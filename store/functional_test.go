@@ -123,7 +123,12 @@ func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	require.NoError(t, err)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 1", err.Error())
+	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 2", err.Error())
+	_, err = c.Exec(context.Background(), "UPDATE sprint.meta SET schema = 1")
+	require.NoError(t, err)
+	err = p.Migrate(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, "store: migrate: the store is at schema version 1, this binary knows schema version 2", err.Error(), "no upgrade path from version 1")
 
 	old := startPG(t)
 	_, err = connect(t, old).Exec(context.Background(), "CREATE SCHEMA sprint; CREATE TABLE sprint.epoch (n integer)")
@@ -133,7 +138,7 @@ func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	defer q.Close()
 	err = q.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "schema version 0, this binary knows schema version 1", "a store from before sprint.meta")
+	assert.Contains(t, err.Error(), "schema version 0, this binary knows schema version 2", "a store from before sprint.meta")
 }
 
 func TestFunctionalConformance(t *testing.T) {
@@ -171,6 +176,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
+	h.ok(h.op("wide", nil, PutRow{"w1", "worker", 10, "sess-a"})) // room for every take: the holder write checks width
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
 		h.ok(h.op("add", nil, PutCard{ID: id, Stream: "s1"}))
@@ -188,9 +194,9 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	}
 }
 
-// Two deals on a width-1 row: the holders are counted inside the
-// transaction, so one is accepted and one refused.
-func TestFunctionalRowUnderRace(t *testing.T) {
+// Two deals on a width-1 row: the holder write counts the holders inside the
+// transaction, so one is accepted and one refused, with no width condition.
+func TestFunctionalWidthRace(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
@@ -198,7 +204,7 @@ func TestFunctionalRowUnderRace(t *testing.T) {
 		row := fmt.Sprintf("r%d", i)
 		h.ok(h.op("row", nil, PutRow{row, "worker", 1, ""}, SetRowState{row, "up"}, PutCard{ID: row + "a", Stream: "s1"}, PutCard{ID: row + "b", Stream: "s1"}))
 		deal := func(card string) Op {
-			return h.op("deal", []Expect{RowIs{row, "up"}, RowUnder{row}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
+			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
 		}
 		a, b := race(t, p, deal(row+"a"), deal(row+"b"))
 		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
@@ -291,6 +297,171 @@ func TestFunctionalUnknownThenReplay(t *testing.T) {
 	}
 }
 
+// Guarantee 3, deterministically: the reply is lost after COMMIT (the
+// afterCommit seam fails once). Apply says unknown; Replay finds the accepted
+// receipt; a second Apply with the id returns it and logs nothing.
+func TestFunctionalLostReplyAfterCommit(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	var failed atomic.Bool
+	p.fault = func(stage string) error {
+		if stage == "committed" && failed.CompareAndSwap(false, true) {
+			return fmt.Errorf("test: reply lost after commit")
+		}
+		return nil
+	}
+	o := h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})
+	_, err := p.Apply(h.ctx, o)
+	require.ErrorIs(t, err, ErrUnknown)
+	assert.Contains(t, err.Error(), "reply lost after commit")
+	got, ok, err := p.Replay(h.ctx, o.ID)
+	require.NoError(t, err)
+	require.True(t, ok, "it landed")
+	assert.True(t, got.Accepted)
+	again := h.ok(o)
+	assert.Equal(t, got, again, "a second Apply returns the stored receipt")
+	n := 0
+	for _, e := range h.events() {
+		if e.Op == o.ID {
+			n++
+		}
+	}
+	assert.Equal(t, 1, n, "one event for the op")
+	assert.Equal(t, 1, h.snap().Cards["c1"].Gen, "the gen moved once")
+}
+
+// A panic inside a write's transaction, with the writer lock held, rolls the
+// transaction back and is re-raised: the next writer proceeds (the cold
+// read's TestColdFarFutureAtPG left every later writer blocked).
+func TestFunctionalPanicReleasesLock(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	var once atomic.Bool
+	p.fault = func(stage string) error {
+		if stage == "locked" && once.CompareAndSwap(false, true) {
+			panic("test: panic with the writer lock held")
+		}
+		return nil
+	}
+	o := h.op("boom", nil, SetCardState{"c1", "ready"})
+	assert.PanicsWithValue(t, "test: panic with the writer lock held", func() { _, _ = p.Apply(h.ctx, o) })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	r, err := p.Apply(ctx, h.op("next", nil, SetCardState{"c2", "ready"}))
+	require.NoError(t, err, "the next writer after the panic")
+	assert.True(t, r.Accepted)
+	_, ok, err := p.Replay(h.ctx, o.ID)
+	require.NoError(t, err)
+	assert.False(t, ok, "the op that panicked did not land")
+	assert.Equal(t, "waiting", h.snap().Cards["c1"].State)
+}
+
+// Eight Migrates of one fresh store at once all succeed: each holds the
+// advisory lock (the cold read's TestFunctionalColdConcurrentMigrate).
+func TestFunctionalConcurrentMigrate(t *testing.T) {
+	t.Parallel()
+	dsn := startPG(t)
+	const n = 8
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		p, err := Open(context.Background(), dsn, "")
+		require.NoError(t, err)
+		t.Cleanup(p.Close)
+		wg.Go(func() { errs[i] = p.Migrate(context.Background()) })
+	}
+	wg.Wait()
+	for i, err := range errs {
+		assert.NoError(t, err, "migrate %d", i)
+	}
+}
+
+// Corrupt JSON in an event's image is an error naming the seq from Events,
+// never a panic (Emma's read, 2026-11-06).
+func TestFunctionalEventsCorruptImage(t *testing.T) {
+	t.Parallel()
+	h, p, dsn := pgHarness(t)
+	h.seed()
+	_, err := connect(t, dsn).Exec(context.Background(), `UPDATE sprint.events SET after = '"not a state"' WHERE seq = 1`)
+	require.NoError(t, err)
+	assert.NotPanics(t, func() {
+		_, err = p.Events(context.Background(), 0, 0)
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "after-image of seq 1")
+}
+
+// A tail on Events while eight writers race never sees a gap (the cold
+// read's TestFunctionalColdEventsTailNoGap).
+func TestFunctionalEventsTailNoGap(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	const writers, each = 8, 25
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Go(func() {
+			for i := range each {
+				_, err := p.Apply(context.Background(), Op{ID: fmt.Sprintf("w%d-%d", w, i), Epoch: 1, Actor: "t", Kind: "s", At: t0, Writes: []Write{PutStream{Name: fmt.Sprintf("s%d-%d", w, i)}}})
+				assert.NoError(t, err)
+			}
+		})
+	}
+	var cursor int64
+	for deadline := time.Now().Add(wait); cursor < 1+writers*each && time.Now().Before(deadline); {
+		page, err := p.Events(context.Background(), cursor, 7)
+		require.NoError(t, err)
+		for _, e := range page {
+			require.Equal(t, cursor+1, e.Seq, "the tail skipped an event")
+			cursor = e.Seq
+		}
+	}
+	wg.Wait()
+	assert.Equal(t, int64(1+writers*each), cursor)
+}
+
+// Guarantee 6: snapshots taken while 50 ops land are each one consistent
+// read: the Seq is the last event in it, and folding the events up to Seq
+// gives exactly its streams, cards and rows.
+func TestFunctionalSnapshotConsistentUnderWrites(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	ops := make([]Op, 50)
+	for i := range ops {
+		id := fmt.Sprintf("k%d", i)
+		ops[i] = h.op("add", nil, PutCard{ID: id, Stream: "s1", Score: i}, SetCardReason{"c1", id})
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for _, o := range ops {
+			_, err := p.Apply(context.Background(), o)
+			assert.NoError(t, err)
+		}
+	}()
+	var snaps []Snapshot
+	for running := true; running; {
+		select {
+		case <-done:
+			running = false
+		default:
+		}
+		s, err := p.Snapshot(context.Background())
+		require.NoError(t, err)
+		snaps = append(snaps, s)
+	}
+	all := h.events()
+	require.Len(t, all, 51)
+	for _, s := range snaps {
+		require.LessOrEqual(t, s.Seq, int64(len(all)))
+		assert.Equal(t, s, Rebuild(all[:s.Seq]), "snapshot at seq %d", s.Seq)
+	}
+	t.Logf("%d snapshots checked", len(snaps))
+}
+
 // A constraint the rules do not know about is an engine defect: an error
 // naming it, not a refusal and not unknown, and nothing is logged.
 func TestFunctionalConstraintIsDefect(t *testing.T) {
@@ -363,6 +534,8 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.cards SET state = 'flying' WHERE id = 'c1'":                             "cards_state_check",
 		"UPDATE sprint.cards SET state = NULL WHERE id = 'c1'":                                 `"state"`,
 		"UPDATE sprint.cards SET branch = NULL WHERE id = 'c1'":                                `"branch"`,
+		"UPDATE sprint.cards SET author = NULL WHERE id = 'c1'":                                `"author"`,
+		"UPDATE sprint.cards SET base_sha = NULL WHERE id = 'c1'":                              `"base_sha"`,
 		"UPDATE sprint.cards SET holder = 'w9' WHERE id = 'c1'":                                "cards_epoch_holder_fkey",
 		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's9', 'ready', 1)":  "cards_epoch_stream_fkey",
 		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 2)":  "cards_epoch_stream_fkey",

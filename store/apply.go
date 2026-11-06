@@ -1,14 +1,14 @@
 package store
 
 import (
+	"cmp"
 	"fmt"
-	"slices"
-	"strings"
 )
 
-// txn is one transaction as the shared rules see it: reads by key and
-// whole-row upserts in its epoch. PG and Fake each implement it, so the
-// conditions, writes and refusal reasons are written once, here.
+// txn is one transaction as the shared rules see it, run with the writer
+// lock held: reads by key, whole-row upserts in its epoch, and the event log.
+// PG and Fake each implement it, so the protocol, conditions, writes and
+// refusal reasons are written once, here.
 type txn interface {
 	card(id string) (Card, bool, error)
 	stream(name string) (Stream, bool, error)
@@ -23,60 +23,47 @@ type txn interface {
 	putStream(s Stream) error
 	putRow(r Row) error
 	putPolicy(p PolicyVersion) error
+	replay(opID string) (Receipt, bool, error) // the stored receipt of an op id
+	mark() error                               // remember the state before the rules
+	discard() error                            // back to the mark: a refusal changes nothing
+	appendEvent(e Event) error                 // the op's event, at lastSeq + 1
 }
 
-func invalid(format string, args ...any) error {
-	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, args...))
-}
+// rules are the checks and writes of one op against tx in the store's epoch:
+// a refusal reason ("" when accepted) and the touched rows before and after.
+type rules func(tx txn, epoch int) (reason string, before, after *State, err error)
 
-// check refuses with ErrInvalid, before the store is touched, an op that can
-// never enter it: no id, no epoch, a condition or write outside the closed
-// sets, two writes to one field.
-func check(op Op) error {
-	switch {
-	case op.ID == "":
-		return invalid("an op needs an id")
-	case op.Epoch < 1:
-		return invalid("op %s needs an epoch", op.ID)
+// protocol is what Apply and Clear share, inside the writer lock: the
+// stored receipt for a known id whatever the body says; else the body is
+// checked (ErrInvalid, nothing logged), the rules run, a refusal is
+// discarded, and the event is appended with the receipt.
+func protocol(tx txn, epoch int, op Op, valid func(Op) error, rule rules) (Receipt, error) {
+	if r, ok, err := tx.replay(op.ID); err != nil || ok {
+		return r, err
 	}
-	for _, e := range op.Expect {
-		switch e.(type) {
-		case CardGen, CardState, CardHolder, NeedsLanded, RowIs, RowUnder, StreamHeld, CardAbsent, AtSeq:
-		default:
-			return invalid("op %s: unknown condition %T", op.ID, e)
+	if err := valid(op); err != nil {
+		return Receipt{}, err
+	}
+	if err := tx.mark(); err != nil {
+		return Receipt{}, err
+	}
+	reason, before, after, err := rule(tx, epoch)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if reason != "" {
+		before, after = nil, nil
+		if err := tx.discard(); err != nil {
+			return Receipt{}, err
 		}
 	}
-	seen := map[field]bool{}
-	for _, w := range op.Writes {
-		fs, ok := fields(w)
-		if !ok {
-			return invalid("op %s: unknown write %T", op.ID, w)
-		}
-		for _, f := range fs {
-			if seen[f] {
-				return invalid("op %s: two writes to %s %s field %s", op.ID, f.table, f.key, f.name)
-			}
-			seen[f] = true
-		}
+	seq, err := tx.lastSeq()
+	if err != nil {
+		return Receipt{}, err
 	}
-	return nil
-}
-
-// checkClear is check for a clear: kind clear, no writes, at most AtSeq.
-func checkClear(op Op) (Op, error) {
-	op.Kind = cmpOr(op.Kind, "clear")
-	if err := check(op); err != nil {
-		return op, err
-	}
-	if op.Kind != "clear" || len(op.Writes) > 0 {
-		return op, invalid("op %s: a clear is kind clear with no writes", op.ID)
-	}
-	for _, e := range op.Expect {
-		if _, ok := e.(AtSeq); !ok {
-			return op, invalid("op %s: a clear takes only an AtSeq condition, not %T", op.ID, e)
-		}
-	}
-	return op, nil
+	r := receipt(op, reason, after, seq+1)
+	e := Event{Seq: r.Seq, Op: op.ID, Actor: op.Actor, Kind: op.Kind, Accepted: r.Accepted, Reason: reason, Before: before, After: after, Receipt: r, At: op.At, Epoch: epoch}
+	return r, tx.appendEvent(e)
 }
 
 // receipt is the receipt of an op that was logged at seq.
@@ -86,20 +73,6 @@ func receipt(op Op, reason string, after *State, seq int64) Receipt {
 		r.NewEpoch = after.Epoch
 	}
 	return r
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
-
-func oneOf(what, v string, set []string) string {
-	if slices.Contains(set, v) {
-		return ""
-	}
-	return fmt.Sprintf("%s %q is not one of %s", what, v, strings.Join(set, ", "))
 }
 
 // work is one operation being run against a txn: the touched rows before and
@@ -112,7 +85,7 @@ type work struct {
 
 // run checks the epoch and every condition, then performs every write in
 // order. It returns a refusal reason ("" when accepted); an error is a
-// failure of the txn. On a refusal the caller discards whatever the txn did.
+// failure of the txn, or ErrInvalid for an unknown condition.
 func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	w := &work{tx: tx, op: op}
 	if op.Epoch != epoch {
@@ -133,33 +106,33 @@ func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 
 // runClear is run for a clear: the epoch and the seq fence, then the new
 // epoch with every row carried into it, down and with no flaps.
-func runClear(tx txn, epoch int, op Op) (string, *State, error) {
+func runClear(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	r, _, _, err := run(tx, epoch, Op{Epoch: op.Epoch, Expect: op.Expect})
 	if r != "" || err != nil {
-		return r, nil, err
+		return r, nil, nil, err
 	}
 	rows, err := tx.rows()
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	if err := tx.open(); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	after := &State{Epoch: epoch + 1}
 	for _, row := range rows {
 		row.State, row.Flaps = "down", 0
 		if err := tx.putRow(row); err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 		if after.Rows == nil {
 			after.Rows = map[string]Row{}
 		}
 		after.Rows[row.Name] = row
 	}
-	return "", after, nil
+	return "", nil, after, nil
 }
 
-func noneIfEmpty(holder string) string { return cmpOr(holder, "none") }
+func noneIfEmpty(holder string) string { return cmp.Or(holder, "none") }
 
 func heldWord(held bool) string {
 	if held {
@@ -186,26 +159,19 @@ func (w *work) expect(e Expect) (string, error) {
 		return w.needsLanded(c.Card)
 	case RowIs:
 		row, r, err := w.mustRow(c.Row)
-		if r != "" || err != nil {
-			return r, err
-		}
-		return when(row.State != c.State, "row %s is %s, expected %s", c.Row, row.State, c.State), nil
-	case RowUnder:
-		return w.rowUnder(c)
+		return cmp.Or(r, when(err == nil && row.State != c.State, "row %s is %s, expected %s", c.Row, row.State, c.State)), err
 	case StreamHeld:
 		s, r, err := w.mustStream(c.Stream)
-		if r != "" || err != nil {
-			return r, err
-		}
-		return when(s.Held != c.Held, "stream %s is %s, expected %s", c.Stream, heldWord(s.Held), heldWord(c.Held)), nil
+		return cmp.Or(r, when(err == nil && s.Held != c.Held, "stream %s is %s, expected %s", c.Stream, heldWord(s.Held), heldWord(c.Held))), err
 	case CardAbsent:
 		_, ok, err := w.tx.card(c.Card)
 		return when(ok, "card %s exists", c.Card), err
 	case AtSeq:
 		seq, err := w.tx.lastSeq()
 		return when(seq != c.Seq, "the store is at seq %d, expected seq %d", seq, c.Seq), err
+	default:
+		return "", invalid("op %s: unknown condition %T", w.op.ID, e)
 	}
-	return "", nil
 }
 
 // when is the reason when cond holds, else "".
@@ -224,32 +190,19 @@ func (w *work) cardIs(id string, test func(Card) string) (string, error) {
 	return test(c), nil
 }
 
+// needsLanded reads the needs from the card itself. Needs always name cards
+// of the epoch (put card and set needs check it, nothing is deleted).
 func (w *work) needsLanded(id string) (string, error) {
 	c, r, err := w.mustCard(id)
-	if r != "" || err != nil {
-		return r, err
-	}
 	for _, n := range c.Needs {
-		need, ok, err := w.tx.card(n)
-		switch {
-		case err != nil:
-			return "", err
-		case !ok:
-			return fmt.Sprintf("need %s of card %s does not exist", n, id), nil
-		case need.State != "landed":
-			return fmt.Sprintf("need %s of card %s is %s, not landed", n, id, need.State), nil
+		if r != "" || err != nil {
+			break
 		}
+		var need Card
+		need, _, err = w.tx.card(n)
+		r = when(err == nil && need.State != "landed", "need %s of card %s is %s, not landed", n, id, need.State)
 	}
-	return "", nil
-}
-
-func (w *work) rowUnder(c RowUnder) (string, error) {
-	row, r, err := w.mustRow(c.Row)
-	if r != "" || err != nil {
-		return r, err
-	}
-	n, err := w.tx.held(c.Row)
-	return when(n >= row.Width, "row %s holds %d cards, its width is %d", c.Row, n, row.Width), err
+	return r, err
 }
 
 func (w *work) mustCard(id string) (Card, string, error) {

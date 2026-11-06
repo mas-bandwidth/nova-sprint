@@ -2,7 +2,8 @@
 -- Idempotent: applying it twice is a no-op. Migrate checks sprint.meta before
 -- it runs this, and refuses a store at another schema version. Nothing is
 -- ever deleted; a clear increments sprint.epoch and every stream, card and row
--- carries the epoch it was written in.
+-- carries the epoch it was written in. Version 2 adds sprint.cards.author and
+-- sprint.cards.base_sha (layer 2); there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
 
@@ -10,7 +11,7 @@ CREATE TABLE IF NOT EXISTS sprint.meta (
     id     integer PRIMARY KEY CHECK (id = 1),
     schema integer NOT NULL
 );
-INSERT INTO sprint.meta (id, schema) VALUES (1, 1) ON CONFLICT (id) DO NOTHING;
+INSERT INTO sprint.meta (id, schema) VALUES (1, 2) ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS sprint.epoch (
     id integer PRIMARY KEY CHECK (id = 1),
@@ -45,7 +46,7 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
 CREATE TABLE IF NOT EXISTS sprint.cards (
     id      text    NOT NULL,
     stream  text    NOT NULL,
-    state   text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'left')),
+    state   text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail')),
     gen     integer NOT NULL DEFAULT 0,
     attempt integer NOT NULL DEFAULT 0,
     score   integer NOT NULL DEFAULT 0,
@@ -56,6 +57,8 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     pr      integer NOT NULL DEFAULT 0,
     brief   text    NOT NULL DEFAULT '',
     reason  text    NOT NULL DEFAULT '',
+    author   text   NOT NULL DEFAULT '',
+    base_sha text   NOT NULL DEFAULT '',
     epoch   integer NOT NULL,
     PRIMARY KEY (epoch, id),
     FOREIGN KEY (epoch, stream) REFERENCES sprint.streams (epoch, name),

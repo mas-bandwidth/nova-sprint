@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +36,15 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"times":                   times,
 		"gen once per op":         genOncePerOp,
 		"row width":               rowWidth,
+		"author and base sha":     authorAndBase,
+		"width in one op":         widthInOneOp,
+		"int range":               intRange,
+		"nul bytes":               nulBytes,
+		"text and time":           textAndTime,
+		"known id, invalid body":  knownIDInvalidBody,
+		"snapshot is a copy":      snapshotIsCopy,
+		"same id concurrent":      sameIDConcurrent,
+		"clear races apply":       clearRacesApply,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -145,8 +156,6 @@ func conditions(h *harness) {
 		{RowIs{"w1", "up"}, ""},
 		{RowIs{"w1", "down"}, "row w1 is up, expected down"},
 		{RowIs{"w9", "up"}, "row w9 does not exist"},
-		{RowUnder{"w1"}, ""},
-		{RowUnder{"w9"}, "row w9 does not exist"},
 		{StreamHeld{"s1", false}, ""},
 		{StreamHeld{"s1", true}, "stream s1 is not held, expected held"},
 		{StreamHeld{"s9", false}, "stream s9 does not exist"},
@@ -163,7 +172,7 @@ func conditions(h *harness) {
 	h.ok(h.op("hold", nil, SetStreamHeld{"s1", true}))
 	h.ok(h.op("check", []Expect{StreamHeld{"s1", true}}))
 	h.refused(h.op("check", []Expect{StreamHeld{"s1", false}}), "stream s1 is held, expected not held")
-	h.refused(h.op("check", []Expect{CardHolder{"c1", "w1"}, RowIs{"w1", "up"}, CardState{"c1", "left"}}), "card c1 is waiting, expected left")
+	h.refused(h.op("check", []Expect{CardHolder{"c1", "w1"}, RowIs{"w1", "up"}, CardState{"c1", "fail"}}), "card c1 is waiting, expected fail")
 	assert.Equal(h.t, 1, h.snap().Cards["c1"].Gen, "conditions never change a row")
 }
 
@@ -187,8 +196,10 @@ func writes(h *harness) {
 	card0 := Card{ID: "c0", Stream: "s1", State: "waiting"}
 	assert.Equal(h.t, &State{Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": row}, Cards: map[string]Card{"c0": card0, "c1": c1}}, r.After, "a row starts down, a card waiting at gen 0")
 	r = h.ok(h.op("move", nil, SetCardState{"c1", "working"}, SetCardHolder{"c1", "w1"}, SetCardAttempt{"c1", 2}, SetCardBranch{"c1", "b1"},
-		SetCardHead{"c1", "abc123"}, SetCardPR{"c1", 42}, SetCardReason{"c1", "why"}, SetCardScore{"c1", 3}, SetCardNeeds{"c1", nil}))
-	want := Card{ID: "c1", Stream: "s1", State: "working", Gen: 1, Attempt: 2, Score: 3, Holder: "w1", Branch: "b1", Head: "abc123", PR: 42, Brief: "do it", Reason: "why"}
+		SetCardHead{"c1", "abc123"}, SetCardPR{"c1", 42}, SetCardReason{"c1", "why"}, SetCardScore{"c1", 3}, SetCardNeeds{"c1", nil},
+		SetCardAuthor{"c1", "w1"}, SetCardBaseSHA{"c1", "def456"}))
+	want := Card{ID: "c1", Stream: "s1", State: "working", Gen: 1, Attempt: 2, Score: 3, Holder: "w1", Branch: "b1", Head: "abc123", PR: 42, Brief: "do it", Reason: "why",
+		Author: "w1", BaseSHA: "def456"}
 	assert.Equal(h.t, &State{Cards: map[string]Card{"c1": want}}, r.After, "every card write raises gen by one")
 	h.ok(h.op("rows", nil, SetRowState{"w1", "blocked"}, SetRowSession{"w1", "sess-b"}, SetRowFlaps{"w1", 4}, SetStreamHeld{"s1", true}))
 	h.ok(h.op("over", nil, PutRow{"w1", "kin", 1, "sess-c"}, PutStream{"s1", "other", "dev", 5}, SetCardHolder{"c1", ""}, SetCardNeeds{"c1", []string{"c0"}}))
@@ -211,7 +222,7 @@ type strangeExpect struct{ AtSeq }
 
 func writeRefusals(h *harness) {
 	h.seed()
-	all := "waiting, ready, working, review, merging, landed, left"
+	all := "waiting, ready, working, review, merging, landed, fail"
 	for _, c := range []struct {
 		w      Write
 		reason string
@@ -241,7 +252,7 @@ func writeRefusals(h *harness) {
 		h.refused(h.op("bad", nil, c.w), c.reason)
 	}
 	for _, w := range []Write{SetCardState{"c9", "ready"}, SetCardHolder{"c9", ""}, SetCardAttempt{"c9", 1}, SetCardBranch{"c9", "b"}, SetCardHead{"c9", "h"},
-		SetCardPR{"c9", 1}, SetCardReason{"c9", "r"}, SetCardScore{"c9", 1}, SetCardNeeds{"c9", nil}} {
+		SetCardPR{"c9", 1}, SetCardReason{"c9", "r"}, SetCardScore{"c9", 1}, SetCardNeeds{"c9", nil}, SetCardAuthor{"c9", "w1"}, SetCardBaseSHA{"c9", "abc"}} {
 		h.refused(h.op("bad", nil, w), "card c9 does not exist")
 	}
 	got := h.snap()
@@ -303,7 +314,7 @@ func idempotent(h *harness) {
 	first := h.ok(o)
 	after := h.snap()
 	again := o
-	again.Writes, again.Expect, again.Actor, again.Kind = []Write{SetCardState{"c1", "left"}}, []Expect{AtSeq{99}}, "someone", "other"
+	again.Writes, again.Expect, again.Actor, again.Kind = []Write{SetCardState{"c1", "fail"}}, []Expect{AtSeq{99}}, "someone", "other"
 	r, err := h.s.Apply(h.ctx, again)
 	require.NoError(h.t, err)
 	assert.Equal(h.t, first, r, "a second Apply with the id returns the stored receipt whatever its body")
@@ -317,7 +328,7 @@ func idempotent(h *harness) {
 	require.NoError(h.t, err)
 	assert.False(h.t, ok)
 	no := h.op("bad", nil, SetCardState{"c1", "nope"})
-	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, left`)
+	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, fail`)
 	no.Writes = nil
 	r, err = h.s.Apply(h.ctx, no)
 	require.NoError(h.t, err)
@@ -343,11 +354,11 @@ func clearCarriesRows(h *harness) {
 	assert.Equal(h.t, 1, ev[3].Epoch, "a clear is logged with the epoch it closed")
 	assert.Equal(h.t, "clear", ev[3].Kind)
 	assert.Equal(h.t, &State{Epoch: 2, Rows: carried}, ev[3].After)
-	h.refused(h.op("old", nil, SetCardState{"c1", "left"}), "card c1 does not exist")
+	h.refused(h.op("old", nil, SetCardState{"c1", "fail"}), "card c1 does not exist")
 	o := h.op("stale", nil)
 	o.Epoch = 1
 	h.refused(o, "the op is for epoch 1, the store is at epoch 2")
-	h.ok(h.op("again", []Expect{CardAbsent{"c1"}, RowIs{"w1", "down"}, RowUnder{"w1"}}, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetCardHolder{"c1", "w1"}))
+	h.ok(h.op("again", []Expect{CardAbsent{"c1"}, RowIs{"w1", "down"}}, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetCardHolder{"c1", "w1"}))
 	assert.Equal(h.t, map[string]Card{"c1": {ID: "c1", Stream: "s1", State: "waiting", Holder: "w1"}}, h.snap().Cards)
 	assert.Equal(h.t, 2, h.events()[6].Epoch)
 }
@@ -398,20 +409,253 @@ func genOncePerOp(h *harness) {
 	assert.Equal(h.t, 0, h.snap().Cards["c0"].Gen)
 }
 
-// Holders never exceed width: RowUnder reads the row's own width, and put
-// row refuses a width below the cards the row holds.
+// Holders never exceed width: the holder write counts the row's holders at
+// the moment it lands, against the row's own width, and put row refuses a
+// width below the cards the row holds. There is no width condition.
 func rowWidth(h *harness) {
 	h.seed()
-	h.ok(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c1", "w1"}))
-	h.ok(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c2", "w1"}))
-	h.refused(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c0", "w1"}), "row w1 holds 2 cards, its width is 2")
+	h.ok(h.op("deal", nil, SetCardHolder{"c1", "w1"}))
+	h.ok(h.op("deal", nil, SetCardHolder{"c2", "w1"}))
+	h.refused(h.op("deal", nil, SetCardHolder{"c0", "w1"}), "row w1 holds 2 cards, its width is 2")
+	h.ok(h.op("again", nil, SetCardHolder{"c1", "w1"})) // a card the row already holds adds nothing
 	h.refused(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}), "row w1 holds 2 cards, more than width 1")
 	h.ok(h.op("same", nil, PutRow{"w1", "worker", 2, "sess-a"}))
 	h.ok(h.op("wide", nil, PutRow{"w1", "worker", 3, "sess-a"}))
-	h.ok(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c0", "w1"}))
+	h.ok(h.op("deal", nil, SetCardHolder{"c0", "w1"}))
 	assert.Equal(h.t, 3, h.snap().Rows["w1"].Width)
 	h.ok(h.op("new", nil, PutRow{"w2", "kin", 0, ""}))
-	h.refused(h.op("deal", []Expect{RowUnder{"w2"}}, SetCardHolder{"c0", "w2"}), "row w2 holds 0 cards, its width is 0")
+	h.refused(h.op("deal", nil, SetCardHolder{"c0", "w2"}), "row w2 holds 0 cards, its width is 0")
+}
+
+// Stella's probe (l1-validation-20261106/width_review_test.go): one op with
+// two holder writes to a width-one row was accepted and ended holding two.
+// The second write counts the first and is refused; nothing lands.
+func widthInOneOp(h *harness) {
+	h.seed()
+	h.ok(h.op("width", nil, PutRow{"w1", "worker", 1, "sess-a"}))
+	before := h.snap()
+	h.refused(h.op("take", nil, SetCardHolder{"c1", "w1"}, SetCardHolder{"c2", "w1"}), "row w1 holds 1 cards, its width is 1")
+	after := h.snap()
+	after.Seq--
+	assert.Equal(h.t, before, after, "the first holder write is undone too")
+}
+
+// Every integer a write carries fits a PostgreSQL integer; outside it the op
+// is ErrInvalid from both stores (Stella's probe score_range_test.go: Fake
+// accepted 2^31 and PG reported ErrUnknown).
+func intRange(h *harness) {
+	h.seed()
+	n := len(h.events())
+	for name, c := range map[string]struct {
+		w      Write
+		reason string
+	}{
+		"score over":       {PutCard{ID: "c3", Stream: "s1", Score: math.MaxInt32 + 1}, "score 2147483648 is outside the range 0..2147483647"},
+		"score negative":   {SetCardScore{"c1", -1}, "score -1 is outside the range 0..2147483647"},
+		"width over":       {PutRow{"w2", "kin", math.MaxInt32 + 1, ""}, "width 2147483648 is outside the range 0..2147483647"},
+		"width negative":   {PutRow{"w2", "kin", -1, ""}, "width -1 is outside the range 0..2147483647"},
+		"width overwrite":  {PutRow{"w1", "worker", -1, "sess-a"}, "width -1 is outside"},
+		"attempt":          {SetCardAttempt{"c1", math.MaxInt32 + 1}, "attempt 2147483648 is outside"},
+		"attempt negative": {SetCardAttempt{"c1", -1}, "attempt -1 is outside"},
+		"pr":               {SetCardPR{"c1", -1}, "pr -1 is outside"},
+		"flaps":            {SetRowFlaps{"w1", math.MaxInt32 + 1}, "flaps 2147483648 is outside"},
+		"flaps negative":   {SetRowFlaps{"w1", -1}, "flaps -1 is outside"},
+		"pos":              {PutStream{"s2", "", "", -1}, "pos -1 is outside"},
+		"policy version":   {SetActivePolicy{-1}, "version -1 is outside"},
+	} {
+		_, err := h.s.Apply(h.ctx, h.op("big", nil, c.w))
+		require.ErrorIs(h.t, err, ErrInvalid, name)
+		assert.Contains(h.t, err.Error(), c.reason, name)
+	}
+	o := h.op("big", nil)
+	o.Epoch = math.MaxInt32 + 1
+	_, err := h.s.Apply(h.ctx, o)
+	require.ErrorIs(h.t, err, ErrInvalid)
+	assert.Contains(h.t, err.Error(), "epoch 2147483648 is outside")
+	assert.Len(h.t, h.events(), n, "nothing out of range is logged")
+	h.ok(h.op("edge", nil, SetCardScore{"c1", math.MaxInt32}, PutRow{"w2", "kin", math.MaxInt32, ""}, SetCardAttempt{"c1", 0}))
+	assert.Equal(h.t, math.MaxInt32, h.snap().Cards["c1"].Score)
+}
+
+// A NUL byte in any text is ErrInvalid before the transaction, from both
+// stores: PostgreSQL text cannot hold one (Emma's read, 2026-11-06: it
+// surfaced as ErrUnknown).
+func nulBytes(h *harness) {
+	h.seed()
+	n := len(h.events())
+	for name, o := range map[string]Op{
+		"id":         {ID: "x\x00", Epoch: 1},
+		"actor":      {ID: "x", Epoch: 1, At: t0, Actor: "a\x00"},
+		"note":       {ID: "x", Epoch: 1, At: t0, Note: "\x00"},
+		"card id":    h.op("x", nil, PutCard{ID: "c\x00", Stream: "s1"}),
+		"need":       h.op("x", nil, SetCardNeeds{"c1", []string{"c0\x00"}}),
+		"brief":      h.op("x", nil, PutCard{ID: "c3", Stream: "s1", Brief: "b\x00"}),
+		"reason":     h.op("x", nil, SetCardReason{"c1", "r\x00"}),
+		"head":       h.op("x", nil, SetCardHead{"c1", "\x00"}),
+		"branch":     h.op("x", nil, SetCardBranch{"c1", "b\x00"}),
+		"author":     h.op("x", nil, SetCardAuthor{"c1", "w\x00"}),
+		"row name":   h.op("x", nil, PutRow{"w\x00", "kin", 1, ""}),
+		"stream":     h.op("x", nil, PutStream{"s\x00", "", "", 0}),
+		"policy":     h.op("x", nil, PutPolicy{"data", "p", "{\x00}"}),
+		"condition":  h.op("x", []Expect{CardState{"c1", "ready\x00"}}),
+		"row in cnd": h.op("x", []Expect{RowIs{"w\x00", "up"}}),
+	} {
+		_, err := h.s.Apply(h.ctx, o)
+		require.ErrorIs(h.t, err, ErrInvalid, name)
+		assert.Contains(h.t, err.Error(), "NUL byte", name)
+	}
+	o := h.op("clear", nil)
+	o.Note = "\x00"
+	_, err := h.s.Clear(h.ctx, o)
+	assert.ErrorIs(h.t, err, ErrInvalid, "a clear too")
+	assert.Len(h.t, h.events(), n, "nothing with a NUL is logged")
+}
+
+// Text must be valid UTF-8 and a time must fall in the years 0..9999, or the
+// op is ErrInvalid from both stores (the cold read: Fake kept raw bytes its
+// JSON image rewrote, so Rebuild diverged; a far At panicked inside encode).
+func textAndTime(h *harness) {
+	h.seed()
+	n := len(h.events())
+	bad := map[string]Op{
+		"utf8 reason": h.op("x", nil, SetCardReason{"c1", "\xff\xfe"}),
+		"utf8 id":     {ID: "\xff", Epoch: 1, At: t0},
+		"utf8 kind":   {ID: "y", Epoch: 1, Kind: "\xff", At: t0},
+		"zero at":     {ID: "z", Epoch: 1},
+	}
+	for name, at := range map[string]time.Time{"year 10000": time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), "year -1": time.Date(-1, 1, 1, 0, 0, 0, 0, time.UTC)} {
+		o := h.op("far", nil, SetCardState{"c1", "ready"})
+		o.At = at
+		bad[name] = o
+	}
+	for name, o := range bad {
+		_, err := h.s.Apply(h.ctx, o)
+		require.ErrorIs(h.t, err, ErrInvalid, name)
+	}
+	assert.Len(h.t, h.events(), n, "nothing invalid is logged")
+	o := h.op("edge", nil, SetCardReason{"c1", "naïve ✓"})
+	o.At = time.Date(9999, 12, 31, 23, 0, 0, 0, time.UTC)
+	h.ok(o)
+	assert.Equal(h.t, Rebuild(h.events()), h.snap())
+	assert.Equal(h.t, "waiting", h.snap().Cards["c1"].State)
+}
+
+// A known id returns its stored receipt whatever its body says, invalid
+// included: the lookup comes before the body is checked; only a missing id
+// is refused first (the cold read's TestColdKnownIDInvalidBody).
+func knownIDInvalidBody(h *harness) {
+	h.seed()
+	o := h.op("take", nil, SetCardState{"c1", "ready"})
+	first := h.ok(o)
+	for name, mutate := range map[string]func(*Op){
+		"epoch 0":          func(o *Op) { o.Epoch = 0 },
+		"two state writes": func(o *Op) { o.Writes = []Write{SetCardState{"c1", "a"}, SetCardState{"c1", "b"}} },
+		"nul reason":       func(o *Op) { o.Writes = []Write{SetCardReason{"c1", "\x00"}} },
+		"zero at":          func(o *Op) { o.At = time.Time{} },
+		"nil condition":    func(o *Op) { o.Expect = []Expect{nil} },
+	} {
+		again := o
+		mutate(&again)
+		r, err := h.s.Apply(h.ctx, again)
+		require.NoError(h.t, err, name)
+		assert.Equal(h.t, first, r, name)
+	}
+	_, err := h.s.Apply(h.ctx, Op{Epoch: 1, At: t0})
+	assert.ErrorIs(h.t, err, ErrInvalid, "a missing id")
+	assert.Len(h.t, h.events(), 2)
+}
+
+// A snapshot is the caller's own copy (Stella's probe
+// snapshot_isolation_test.go: editing a Fake snapshot's needs changed the
+// store without an event, and Rebuild then diverged).
+func snapshotIsCopy(h *harness) {
+	h.seed()
+	s := h.snap()
+	require.Equal(h.t, []string{"c0"}, s.Cards["c1"].Needs)
+	s.Cards["c1"].Needs[0] = "changed-by-caller"
+	s.Rows["w1"] = Row{}
+	again := h.snap()
+	assert.Equal(h.t, []string{"c0"}, again.Cards["c1"].Needs)
+	assert.Equal(h.t, w1, again.Rows["w1"])
+	assert.Equal(h.t, Rebuild(h.events()), again)
+	r := h.ok(h.op("touch", nil, SetCardReason{"c1", "r"}))
+	r.After.Cards["c1"].Needs[0] = "changed-by-caller"
+	assert.Equal(h.t, []string{"c0"}, h.snap().Cards["c1"].Needs, "a receipt is a copy too")
+	ev := h.events()
+	ev[1].After.Cards["c1"].Needs[0] = "changed-by-caller"
+	assert.Equal(h.t, []string{"c0"}, h.events()[1].After.Cards["c1"].Needs, "an event image is a copy too")
+}
+
+// Stella's probe (concurrency_review_test.go): sixteen concurrent applies of
+// one op id give one receipt and one event.
+func sameIDConcurrent(h *harness) {
+	h.ok(h.op("stream", nil, PutStream{"s", "repo", "main", 0}))
+	o := h.op("card", nil, PutCard{ID: "c", Stream: "s"})
+	const n = 16
+	receipts, errs := make([]Receipt, n), make([]error, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() { <-start; receipts[i], errs[i] = h.s.Apply(h.ctx, o) })
+	}
+	close(start)
+	wg.Wait()
+	for i := range n {
+		require.NoError(h.t, errs[i])
+		assert.True(h.t, receipts[i].Accepted)
+		assert.Equal(h.t, receipts[0], receipts[i])
+	}
+	assert.Len(h.t, h.events(), 2)
+	assert.Equal(h.t, Rebuild(h.events()), h.snap())
+}
+
+// Stella's probe (concurrency_review_test.go): a clear racing an apply
+// planned against the old epoch follows serial order: the apply lands only
+// when it is logged before the clear.
+func clearRacesApply(h *harness) {
+	h.ok(h.op("stream", nil, PutStream{"s", "repo", "main", 0}))
+	apply, clear := h.op("card", nil, PutCard{ID: "c", Stream: "s"}), h.op("clear", nil)
+	var a, c Receipt
+	var ae, ce error
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() { <-start; a, ae = h.s.Apply(h.ctx, apply) })
+	wg.Go(func() { <-start; c, ce = h.s.Clear(h.ctx, clear) })
+	close(start)
+	wg.Wait()
+	require.NoError(h.t, ae)
+	require.NoError(h.t, ce)
+	require.True(h.t, c.Accepted)
+	assert.Equal(h.t, 2, c.NewEpoch)
+	assert.Equal(h.t, a.Seq < c.Seq, a.Accepted, "the apply lands only before the clear")
+	s := h.snap()
+	assert.Equal(h.t, 2, s.Epoch)
+	assert.Empty(h.t, s.Cards)
+	assert.Equal(h.t, Rebuild(h.events()), s)
+}
+
+// Schema 2: author and base_sha are plain card writes. Each is accepted once,
+// raises gen once per op, is refused on a missing card, and is in the
+// snapshot, the event images and the rebuild.
+func authorAndBase(h *harness) {
+	h.seed()
+	r := h.ok(h.op("deal", []Expect{CardGen{"c1", 0}}, SetCardBaseSHA{"c1", "b0"}))
+	assert.Equal(h.t, Card{ID: "c1", Stream: "s1", State: "waiting", Gen: 1, Score: 10, Needs: []string{"c0"}, Brief: "do it", BaseSHA: "b0"}, r.After.Cards["c1"])
+	r = h.ok(h.op("finish", []Expect{CardGen{"c1", 1}}, SetCardAuthor{"c1", "w1"}))
+	assert.Equal(h.t, 2, r.After.Cards["c1"].Gen)
+	r = h.ok(h.op("both", nil, SetCardAuthor{"c1", "w2"}, SetCardBaseSHA{"c1", "b1"}))
+	assert.Equal(h.t, 3, r.After.Cards["c1"].Gen, "both in one op raise gen once")
+	h.refused(h.op("bad", nil, SetCardAuthor{"c9", "w1"}), "card c9 does not exist")
+	h.refused(h.op("bad", nil, SetCardBaseSHA{"c9", "b"}), "card c9 does not exist")
+	_, err := h.s.Apply(h.ctx, h.op("x", nil, SetCardAuthor{"c1", "a"}, SetCardAuthor{"c1", "b"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "two author writes in one op")
+	got := h.snap()
+	assert.Equal(h.t, "w2", got.Cards["c1"].Author)
+	assert.Equal(h.t, "b1", got.Cards["c1"].BaseSHA)
+	ev := h.events()
+	assert.Equal(h.t, "w1", ev[3].Before.Cards["c1"].Author, "the before-image carries the author")
+	assert.Equal(h.t, "b0", ev[3].Before.Cards["c1"].BaseSHA, "the before-image carries the base")
+	assert.Equal(h.t, Rebuild(ev), got)
 }
 
 func rebuild(h *harness) {
@@ -468,6 +712,8 @@ func policy(h *harness) {
 	assert.Equal(h.t, p2, got)
 	_, err = h.s.Policy(h.ctx, 9)
 	assert.ErrorIs(h.t, err, ErrNotFound)
+	_, err = h.s.Policy(h.ctx, 1<<40)
+	assert.ErrorIs(h.t, err, ErrNotFound, "a version past int32 is not found on both (the cold read)")
 	r = h.ok(h.op("pol", nil, PutPolicy{"data", "limits", `{"a":1}`}))
 	assert.Equal(h.t, 3, r.After.Policies[3].Version)
 	assert.Equal(h.t, 2, h.snap().Policy, "a new version is inactive")

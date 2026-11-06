@@ -11,7 +11,7 @@ import (
 
 const (
 	streamCols = "name, repo, base, held, pos"
-	cardCols   = "id, stream, state, gen, attempt, score, needs, coalesce(holder, ''), branch, head, pr, brief, reason"
+	cardCols   = "id, stream, state, gen, attempt, score, needs, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha"
 	rowCols    = "name, kind, width, state, session, flaps"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
@@ -24,7 +24,7 @@ func scanStream(r pgx.Row) (Stream, error) {
 
 func scanCard(r pgx.Row) (Card, error) {
 	var c Card
-	err := r.Scan(&c.ID, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason)
+	err := r.Scan(&c.ID, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason, &c.Author, &c.BaseSHA)
 	c.Needs = needs(c.Needs)
 	return c, err
 }
@@ -116,7 +116,14 @@ func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, erro
 		if err := rows.Scan(&e.Seq, &e.Op, &e.Actor, &e.Kind, &e.Accepted, &e.Reason, &before, &after, &rec, &e.At, &e.Epoch); err != nil {
 			return nil, fmt.Errorf("store: events: %w", err)
 		}
-		e.At, e.Before, e.After = at(e.At), decodeState(before), decodeState(after)
+		e.At = at(e.At)
+		var err error
+		if e.Before, err = readState(before); err != nil {
+			return nil, fmt.Errorf("store: events: before-image of seq %d: %w", e.Seq, err)
+		}
+		if e.After, err = readState(after); err != nil {
+			return nil, fmt.Errorf("store: events: after-image of seq %d: %w", e.Seq, err)
+		}
 		if err := json.Unmarshal(rec, &e.Receipt); err != nil {
 			return nil, fmt.Errorf("store: events: receipt of %s: %w", e.Op, err)
 		}
@@ -206,12 +213,12 @@ func (t *pgTx) putCard(c Card) error {
 	if n == nil {
 		n = []string{}
 	}
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, stream, state, gen, attempt, score, needs, holder, branch, head, pr, brief, reason)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11, $12, $13, $14)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, stream, state, gen, attempt, score, needs, holder, branch, head, pr, brief, reason, author, base_sha)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''), $10, $11, $12, $13, $14, $15, $16)
 		ON CONFLICT (epoch, id) DO UPDATE SET stream = EXCLUDED.stream, state = EXCLUDED.state, gen = EXCLUDED.gen, attempt = EXCLUDED.attempt,
 		score = EXCLUDED.score, needs = EXCLUDED.needs, holder = EXCLUDED.holder, branch = EXCLUDED.branch, head = EXCLUDED.head,
-		pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason`,
-		t.epoch, c.ID, c.Stream, c.State, c.Gen, c.Attempt, c.Score, n, c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason)
+		pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason, author = EXCLUDED.author, base_sha = EXCLUDED.base_sha`,
+		t.epoch, c.ID, c.Stream, c.State, c.Gen, c.Attempt, c.Score, n, c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason, c.Author, c.BaseSHA)
 	return err
 }
 
@@ -220,6 +227,25 @@ func (t *pgTx) putRow(r Row) error {
 		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state,
 		session = EXCLUDED.session, flaps = EXCLUDED.flaps`,
 		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps)
+	return err
+}
+
+func (t *pgTx) replay(opID string) (Receipt, bool, error) { return replayTx(t.ctx, t.tx, opID) }
+
+func (t *pgTx) mark() error {
+	_, err := t.tx.Exec(t.ctx, "SAVEPOINT writes")
+	return err
+}
+
+func (t *pgTx) discard() error {
+	_, err := t.tx.Exec(t.ctx, "ROLLBACK TO SAVEPOINT writes")
+	return err
+}
+
+func (t *pgTx) appendEvent(e Event) error {
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		e.Seq, e.Op, e.Actor, e.Kind, e.Accepted, e.Reason, jsonArg(e.Before), jsonArg(e.After), string(encode(e.Receipt)), e.At, e.Epoch)
 	return err
 }
 
