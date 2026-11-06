@@ -56,7 +56,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   write, never by a move. A card is added in state `waiting`, gen 0, attempt
   0, no holder; a consumer is added with its holder in the same op.
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
-  `state text` (`up`, `down`, `blocked`), `session text` (the hook's session,
+  `state text` (`up`, `down`, `blocked`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; Glenn 2026-11-06: "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
   so a late report from an old session can be told apart), `flaps integer`,
   `gen integer`, `epoch integer`. Primary key `(epoch, name)`; every column
   `NOT NULL`; `kind` and `state` checked against their sets. `gen` rises by
@@ -137,7 +137,7 @@ its holder for the record and does not count; there is no separate width
 condition, the write is the check); set card attempt; set card author; set
 card branch; set card base_sha; set card head; set card pr; set card result;
 set card reason; set card score; set card needs; put row (insert or
-overwrite: kind, width, session); set row width; set row state; set row
+overwrite: kind, width, session); set row width; set row held; set row state; set row
 session; set row flaps; put policy version; set active policy version
 (deactivates the one active before it in the same transaction). An op that
 writes a card raises that card's gen by one, however many of its writes

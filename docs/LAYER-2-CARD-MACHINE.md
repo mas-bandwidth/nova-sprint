@@ -81,10 +81,10 @@ Producer events:
 | event | from | to | writes | conditions |
 |---|---|---|---|---|
 | `Resolve` | waiting | ready | state | `NeedsLanded(p)` |
-| `Start{row, branch, base}` | ready | working | state, attempt+1, author=""; **cuts** a work consumer: kind work, of p, holder row, attempt, branch, base_sha, state ready | row up; stream not held; the holder write enforces width |
+| `Start{row, branch, base}` | ready | working | state, attempt+1, author=""; **cuts** a work consumer: kind work, of p, holder row, attempt, branch, base_sha, state ready | row up and not held; stream not held; the holder write enforces width |
 | `Finished{c}` (its work consumer reported ok with head H) | working | review | state, head=H, author=c's row | c is p's work consumer of this attempt, done, result ok |
 | `Broken{c}` (its work consumer reported fail) | working | ready | state, reason=c's reason | c is p's work consumer of this attempt, done, result fail |
-| `AskRead{row}` | review | review | **cuts** a read consumer: kind read, of p, holder row, head=p.head, author=p.author, state ready | row up; stream not held; row != p.author; width by the holder write |
+| `AskRead{row}` | review | review | **cuts** a read consumer: kind read, of p, holder row, head=p.head, author=p.author, state ready | row up and not held; stream not held; row != p.author; width by the holder write |
 | `ReadYes{c}` | review | merging | state | c is p's read consumer at p.head, done, result ok; no live consumer of p |
 | `ReadFix{c}` | review | ready | state, reason=c's reason | c is p's read consumer at p.head, done, result fix; no live consumer of p (layer 3 withdraws the others first) |
 | `Landed{head}` | merging | landed | state | head equals p.head |
@@ -134,7 +134,9 @@ Rules the tables encode, each checked by the model and tested one by one:
 | `Gone` | up | down | state=down, flaps+1 |
 | `Flapped{limit}` | up or down, flaps >= limit | blocked | state=blocked |
 | `Unblock` | blocked | down | state=down, flaps=0 |
-| `Width{n}` | any | same | width (refused below the row's held count by layer 1) |
+| `Width{n}` | any | same | width (refused below the row's live count by layer 1) |
+| `Hold{reason}` | any | same | held=true |
+| `Unhold` | any | same | held=false |
 
 `limit` is a number policy supplies; the move is the engine's, the number is
 not. `blocked` leaves only by `Unblock`, a coordinator verb. A row's state
@@ -148,7 +150,7 @@ never moves a card by itself.
 - A head that is not a full 40-hex commit: "head abc is not a full commit sha".
 - A read report whose head is not the producer's: "producer X is at head H1, the read was of H2".
 - A read asked of the author: "r1 wrote producer X's head and may not read it".
-- A start or read in a held stream, or to a row that is down or blocked.
+- A start or read in a held stream, or to a row that is down, blocked or held.
 - A producer event naming a consumer that is not its consumer of the current
   attempt and kind, or one that is not done.
 - `NeedFailed` naming a card that is not a need, or a need that has not failed.
