@@ -19,7 +19,7 @@ INVARIANTS = [
     "WidthKept", "IdempotentById", "AppliedIsLog", "LogMatchesState", "OpsInTheirEpoch",
     "ConditionsAtomic", "ServesHeld", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
     "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "CursorWithinLog",
-    "LogAppendOnly", "ReceiptMatches",
+    "LogAppendOnly", "PolicyImmutable", "ReceiptMatches",
 ]
 
 # The passing runs: cfg name -> Scenario.
@@ -45,6 +45,8 @@ REACH = {
     "NeverReadyServesRefused": ("deal", "a move into ready on a row that no longer serves the tier is refused (s15)"),
     "NeverAddServesRefused": ("deal", "put card of a consumer on a row that does not serve its tier is refused (s16)"),
     "NeverTiersRefused": ("deal", "dropping a tier a live consumer needs is refused (v1)"),
+    "NeverSameValueRefused": ("deal", "a set write that changes nothing is refused (s17)"),
+    "NeverTwoPolicies": ("deal", "a second policy version is put beside the first (s19)"),
     "NeverRowFenced": ("deal", "a row write is refused on a stale RowGen (e1)"),
     "NeverSlotReused": ("deal", "a done consumer's slot is reused while it keeps its holder (b2)"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
@@ -63,8 +65,8 @@ STALE_INFRA = [
     (r"  lost        \* op id -> transport failures so far (bounded by MaxLoss)",
      "  lost,       \\* op id -> transport failures so far (bounded by MaxLoss)\n"
      "  snap        \\* op id -> the state its transaction read at Begin (FAULT)", 1),
-    ("vars == <<epoch, cards, rows, judgements, cursors, events, ledger, applied, phase, receipt, lost>>",
-     "vars == <<epoch, cards, rows, judgements, cursors, events, ledger, applied, phase, receipt, lost, snap>>", 1),
+    ("vars == <<epoch, cards, rows, judgements, cursors, policies, events, ledger, applied, phase, receipt, lost>>",
+     "vars == <<epoch, cards, rows, judgements, cursors, policies, events, ledger, applied, phase, receipt, lost, snap>>", 1),
     (r"  /\ lost       = [o \in OpIds |-> 0]",
      "  /\\ lost       = [o \\in OpIds |-> 0]\n  /\\ snap       = [o \\in OpIds |-> Empty]", 1),
     ("  /\\ UNCHANGED <<store, events, ledger, applied, lost>>",
@@ -75,9 +77,11 @@ STALE_INFRA = [
      "      \\* FAULT: the op is judged with the snapshot its Begin read.\n"
      "      out  == Outcome([epoch |-> pre.epoch, cards |-> pre.cards, rows |-> pre.rows,\n"
      "                       judgements |-> pre.judgements, cursors |-> pre.cursors,\n"
+     "                       policies |-> pre.policies,\n"
      "                       sn |-> snap[o], p0 |-> pre], o, Len(events))\n"
      "      post == [epoch |-> out.st.epoch, cards |-> out.st.cards, rows |-> out.st.rows,\n"
-     "               judgements |-> out.st.judgements, cursors |-> out.st.cursors]\n", 1),
+     "               judgements |-> out.st.judgements, cursors |-> out.st.cursors,\n"
+     "               policies |-> out.st.policies]\n", 1),
     ("          /\\ lost'    = IF res = \"unknown\" THEN [lost EXCEPT ![o] = @ + 1] ELSE lost\n",
      "          /\\ lost'    = IF res = \"unknown\" THEN [lost EXCEPT ![o] = @ + 1] ELSE lost\n"
      "     /\\ UNCHANGED snap\n", 1),
@@ -138,6 +142,7 @@ WITNESSES = [
        "     /\\ rows'       = out.st.rows\n"
        "     /\\ judgements' = out.st.judgements\n"
        "     /\\ cursors'    = out.st.cursors\n"
+       "     /\\ policies'   = out.st.policies\n"
        "     /\\ events'  = Append(events, ev)\n"
        "     /\\ ledger'  = Append(ledger, ev)\n"
        "     /\\ phase'   = [phase EXCEPT ![o] = \"done\"]\n"
@@ -280,6 +285,13 @@ WITNESSES = [
      "makes r1 serve flash only while the pro consumer u3 is ready there.",
      [("  \\A c \\in Cards : (st.cards[c].holder = r /\\ st.cards[c].state \\in Live) => st.cards[c].tier \\in ts",
        "  TRUE   \\* FAULT: any tiers are accepted", 1)]),
+    ("StorePolicyRewritten", "PolicyImmutable", "deal",
+     "Put policy writes the latest version instead of adding the next (or\n"
+     "the immutability trigger is missing): s19 overwrites version 1's body.",
+     [("NextVersion(st) == Cardinality({v \\in Versions : st.policies[v] # Absent}) + 1",
+       "\\* FAULT: the latest version, not the next.\n"
+       "NextVersion(st) == LET n == Cardinality({v \\in Versions : st.policies[v] # Absent})\n"
+       "                   IN IF n = 0 THEN 1 ELSE n", 1)]),
     ("StoreLogTampered", "LogAppendOnly", "deal",
      "The events table takes an UPDATE (the trigger is missing): an action\n"
      "flips a logged event's outcome.",
