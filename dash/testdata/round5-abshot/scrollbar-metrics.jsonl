@@ -1,0 +1,4 @@
+{"at": "2026-11-06T22:39:54.107408+00:00", "role": "A", "upstream": "http://37.27.135.206", "width": 2000, "height": 1000, "client": 1985, "scrollbar": 15, "compact": false}
+{"at": "2026-11-06T22:39:55.619218+00:00", "role": "A", "upstream": "http://37.27.135.206", "width": 2000, "height": 6400, "client": 1985, "scrollbar": 15, "compact": false}
+{"at": "2026-11-06T22:39:56.683599+00:00", "role": "B", "upstream": "http://127.0.0.1:18082", "width": 2000, "height": 1000, "client": 1985, "scrollbar": 15, "compact": false}
+{"at": "2026-11-06T22:39:57.737906+00:00", "role": "B", "upstream": "http://127.0.0.1:18082", "width": 2000, "height": 6254, "client": 1985, "scrollbar": 15, "compact": false}

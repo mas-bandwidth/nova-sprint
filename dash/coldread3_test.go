@@ -31,11 +31,11 @@ import (
 func cr3WorkGrid(vw float64) (grid, content float64) {
 	const rem = 16.0
 	clamp := func(lo, v, hi float64) float64 { return max(lo, min(v, hi)) }
-	e := clamp(18.5*rem, 0.45*vw, 42*rem)          // .panel { --E: clamp(18.5rem, 45vw, 42rem) }
-	gap := clamp(2*rem, 0.01*vw+0.75*rem, 2.5*rem) // .streams.no-blocked .row --gap
-	pad, s := 2*rem, 9.75*rem                      // .streams .row --pad, --S
-	name := min(27.75*rem, e-pad-gap-s)            // --name-w, --name-cap 27.75rem
-	status := e - pad - gap - name                 // --status-w
+	e := clamp(18.5*rem, 0.45*vw, 42*rem)               // .panel { --E: clamp(18.5rem, 45vw, 42rem) }
+	gap := clamp(1.5*rem, 0.10*vw-10.5625*rem, 2.5*rem) // .streams.no-blocked .row --gap
+	pad, s := 2*rem, 9.75*rem                           // .streams .row --pad, --S
+	name := min(27.75*rem, e-pad-gap-s)                 // --name-w, --name-cap 27.75rem
+	status := e - pad - gap - name                      // --status-w
 	// name status repeat(6, minmax(5.625rem,1fr)) 4rem minmax(5.625rem,1fr) minmax(5.625rem,1fr) minmax(7.5rem,1.25fr)
 	grid = name + status + 6*5.625*rem + 4*rem + 5.625*rem + 5.625*rem + 7.5*rem + 11*gap
 	content = vw - 2*2*rem - 2 - 2*pad // body padding 2rem each side, panel border 1px each side, row padding
@@ -54,7 +54,7 @@ func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
 	}
 	for _, rule := range []string{
 		".panel { --E: clamp(18.5rem, 45vw, 42rem); }",
-		".streams.no-blocked .row { --gap: clamp(2rem, calc(1vw + 0.75rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }",
+		".streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }",
 		".streams .row { --name-cap: 27.75rem; }",
 		"padding: 2rem 2rem 4rem;",
 	} {
@@ -163,7 +163,7 @@ func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
 			t.Fatalf("cursor did not resume exactly: %v", s.calls)
 		}
 	}
-	if d := c.Data().(envelope); d.Epoch != 2 || d.All != 1 {
+	if d := c.pageSnapshot().Data.(envelope); d.Epoch != 2 || d.All != 1 {
 		t.Fatalf("view after clear epoch=%d all=%d", d.Epoch, d.All)
 	}
 }
@@ -208,7 +208,7 @@ func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
 	if err = c.Advance(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	if d := c.Data().(envelope); !d.OK {
+	if d := c.pageSnapshot().Data.(envelope); !d.OK {
 		t.Fatal("not recovered")
 	}
 }
@@ -445,7 +445,7 @@ func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
 			t.Fatal("advance succeeded with the store down")
 		}
 	}
-	if d := c.Data().(envelope); d.OK {
+	if d := c.pageSnapshot().Data.(envelope); d.OK {
 		t.Fatal("ok while the store is down")
 	}
 	g.start(t)
@@ -468,7 +468,7 @@ func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(c.state, fresh) || s.snapshots != 1 || !c.Data().(envelope).OK {
+	if !reflect.DeepEqual(c.state, fresh) || s.snapshots != 1 || !c.pageSnapshot().Data.(envelope).OK {
 		t.Fatalf("after restart: equal=%v snapshots=%d", reflect.DeepEqual(c.state, fresh), s.snapshots)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

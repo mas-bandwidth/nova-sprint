@@ -23,7 +23,9 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	s, err := store.Open(ctx, *pg, os.Getenv("NOVA_PG_PASSWORD"))
+	openCtx, cancelOpen := context.WithTimeout(ctx, 30*time.Second)
+	s, err := store.Open(openCtx, *pg, os.Getenv("NOVA_PG_PASSWORD"))
+	cancelOpen()
 	if err != nil {
 		log.Fatal(err)
 	}

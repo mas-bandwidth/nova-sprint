@@ -775,7 +775,7 @@ var inflightLast = null;
 function renderInflight(sum) {
   var box = $("inflight-sub"); if (!box) return;
   var fx = sum.fix || 0;
-  setTitle(box, sum.working + " working, " + sum.review + " review, " + fx + " fix, " + sum.merging + " merging, " + (sum.blocked || 0) + " blocked");
+  setTitle(box, sum.working + " working, " + sum.review + " review, " + fx + " fix, " + sum.merging + " merging" + (sum.blocked ? ", " + sum.blocked + " blocked" : ""));
   // the words shorten in turn when the line does not fit the tile (a phone)
   var forms = [["working", "verify"], ["work", "verify"], ["wk", "vfy"]];
   var draw = function (w) {

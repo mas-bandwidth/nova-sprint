@@ -112,12 +112,12 @@ func TestCursorClearRaceRecovers(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	before := c.Data().(envelope)
+	before := c.pageSnapshot().Data.(envelope)
 	apply(t, f, "change", 1, store.SetStreamHeld{Stream: "s", Held: true})
 	if e = c.Advance(ctx, s); e == nil {
 		t.Fatal("stale epoch cursor was not refused")
 	}
-	after := c.Data().(envelope)
+	after := c.pageSnapshot().Data.(envelope)
 	if after.At != before.At || after.Epoch != before.Epoch {
 		t.Fatal("failed advance changed last-good view")
 	}

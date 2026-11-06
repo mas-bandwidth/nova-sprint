@@ -156,7 +156,7 @@ func TestColdreadClearAndUnknownKind(t *testing.T) {
 	if err = c.Advance(ctx, f); err != nil {
 		t.Fatal(err)
 	}
-	if d := c.Data().(envelope); d.Landed != 1 || d.All != 20 {
+	if d := c.pageSnapshot().Data.(envelope); d.Landed != 1 || d.All != 20 {
 		t.Fatalf("after odd kind landed=%d all=%d", d.Landed, d.All)
 	}
 	if _, err = f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
@@ -165,7 +165,7 @@ func TestColdreadClearAndUnknownKind(t *testing.T) {
 	if err = c.Advance(ctx, f); err != nil {
 		t.Fatal(err)
 	}
-	d := c.Data().(envelope)
+	d := c.pageSnapshot().Data.(envelope)
 	if d.Epoch != 2 || d.Landed != 0 || d.All != 0 || len(d.Tables["work"].(map[string]*workRow)) != 0 {
 		t.Fatalf("after clear epoch=%d landed=%d all=%d", d.Epoch, d.Landed, d.All)
 	}
@@ -181,13 +181,13 @@ func TestColdreadLostConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := c.Data().(envelope)
+	before := c.pageSnapshot().Data.(envelope)
 	s.fail = true
 	mustApply(t, f, "move", 1, store.SetCardState{Card: "p00001", State: "landed"})
 	if err = c.Advance(ctx, s); err == nil {
 		t.Fatal("no error")
 	}
-	d := c.Data().(envelope)
+	d := c.pageSnapshot().Data.(envelope)
 	if d.OK || d.At != before.At || d.Landed != 0 {
 		t.Fatalf("on error ok=%v at moved=%v landed=%d", d.OK, d.At != before.At, d.Landed)
 	}
@@ -206,7 +206,7 @@ func TestColdreadLostConnection(t *testing.T) {
 	if err = c.Advance(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	if d = c.Data().(envelope); !d.OK || d.Landed != 1 || s.snapshots != 1 {
+	if d = c.pageSnapshot().Data.(envelope); !d.OK || d.Landed != 1 || s.snapshots != 1 {
 		t.Fatalf("after recovery ok=%v landed=%d snapshots=%d", d.OK, d.Landed, s.snapshots)
 	}
 }
@@ -375,7 +375,7 @@ func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
 	d := mapSnapshot(s, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
-	if w.Cost == nil || *w.Cost != 1.2 || !w.Unpriced {
+	if w.Cost == nil || *w.Cost != 1.2 {
 		t.Fatalf("priced sum lost: %+v", w)
 	}
 	js, _ := page.ReadFile("page/app.js")

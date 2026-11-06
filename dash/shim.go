@@ -19,7 +19,6 @@ type workRow struct {
 	Landed     int
 	Fail       int
 	Cost       *float64
-	Unpriced   bool
 	ByTier     map[string]float64
 }
 type fleetRow struct {
@@ -34,7 +33,7 @@ type fleetRow struct {
 	Reads    int
 	OK       int
 	Failed   int
-	OKPct    *float64
+	OKPct    float64
 }
 type streamLine struct{ Stream, State string }
 
@@ -42,41 +41,31 @@ type streamLine struct{ Stream, State string }
 var Version = "dev"
 
 type envelope struct {
-	Done          bool                          `json:"done"`
-	Build         string                        `json:"build"`
-	ServerVersion string                        `json:"server_version"`
-	Landed        int                           `json:"landed"`
-	All           int                           `json:"all"`
-	At            time.Time                     `json:"at"`
-	Epoch         int                           `json:"epoch"`
-	Tables        map[string]any                `json:"tables"`
-	Streams       []streamLine                  `json:"streams"`
-	StreamCosts   map[string]map[string]float64 `json:"stream_costs"`
-	OK            bool                          `json:"ok"`
-	Error         string                        `json:"error,omitempty"`
+	Done          bool                   `json:"done"`
+	Build         string                 `json:"build"`
+	ServerVersion string                 `json:"server_version"`
+	Landed        int                    `json:"landed"`
+	All           int                    `json:"all"`
+	At            time.Time              `json:"at"`
+	Epoch         int                    `json:"epoch"`
+	Tables        map[string]any         `json:"tables"`
+	Streams       []streamLine           `json:"streams"`
+	StreamCosts   map[string]*streamCost `json:"stream_costs"`
+	OK            bool                   `json:"ok"`
+	Error         string                 `json:"error,omitempty"`
 }
 
-func (c *Cache) Data() any {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	d := c.view
-	if c.err != nil {
-		d.OK = false
-		d.Error = "store read failed"
-	}
-	return d
-}
 func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 	work := map[string]*workRow{}
 	fleet := map[string]*fleetRow{}
 	friends := map[string]*fleetRow{}
-	costs := map[string]map[string]float64{}
+	costs := map[string]*streamCost{}
 	streams := []streamLine{}
 	readers := map[string]numberCells{}
 	merge := map[string]numberCells{}
 	for n, v := range s.Streams {
 		work[n] = &workRow{ByTier: map[string]float64{}, tierMicros: map[string]*big.Int{}}
-		costs[n] = map[string]float64{}
+		costs[n] = &streamCost{amounts: map[string]*big.Int{}}
 		merge[n] = numberCells{}
 		state := "waiting"
 		if v.Held {
@@ -193,7 +182,7 @@ func countWork(w *workRow, c store.Card) {
 		w.Fix++
 	}
 }
-func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]map[string]float64) {
+func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]*streamCost) {
 	if w := work[c.Stream]; w != nil {
 		countCost(w, c, costs[c.Stream])
 	}
@@ -226,10 +215,9 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 		}
 	}
 }
-func countCost(w *workRow, c store.Card, costs map[string]float64) {
+func countCost(w *workRow, c store.Card, costs *streamCost) {
 	if !c.Priced {
-		w.Unpriced = true
-		costs["unpriced_runs"]++
+		costs.unpriced++
 		return
 	}
 	d := float64(c.Cost) / 1e6
@@ -242,11 +230,11 @@ func countCost(w *workRow, c store.Card, costs map[string]float64) {
 		w.tierMicros[c.Tier] = new(big.Int)
 	}
 	w.tierMicros[c.Tier].Add(w.tierMicros[c.Tier], big.NewInt(c.Cost))
-	costs["total_cost"] += d
+	costs.add("total_cost", c.Cost)
 	if c.Kind == "read" {
-		costs["read_cost"] += d
+		costs.add("read_cost", c.Cost)
 	} else {
-		costs["work_cost"] += d
+		costs.add("work_cost", c.Cost)
 	}
 }
 func countTrack(f *fleetRow, c, p store.Card) {
@@ -265,5 +253,5 @@ func setPercent(f *fleetRow) {
 	if f.OK+f.Failed > 0 {
 		p = float64(f.OK) * 100 / float64(f.OK+f.Failed)
 	}
-	f.OKPct = &p
+	f.OKPct = p
 }
