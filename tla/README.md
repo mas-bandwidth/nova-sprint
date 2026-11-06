@@ -438,10 +438,11 @@ setup:
 
 # The card machine (layer 2)
 
-`CardMachine.tla` models `docs/LAYER-2-CARD-MACHINE.md` (v2 at 7d53453c,
-with its sections "Rulings from the first cold read of layer 2" and
-"Rulings from the card model"): producer and consumer cards, every event of
-the producer, consumer and row tables as an action, Add, blocker
+`CardMachine.tla` models `docs/LAYER-2-CARD-MACHINE.md` (v2 at 2b0fe77c,
+with its sections "Rulings from the first cold read of layer 2", "Rulings
+from the card model" and "Rulings from the second cold read of layer 2"):
+producer and consumer cards, every event of the producer, consumer and row
+tables as an action, Add, AskReads, WaiveRed, UnholdStream, blocker
 preemption, the stream's hold with Park in the same op, hard needs with
 Waive and Relink, soft `after` on landing, and the sentinel. An action's
 guard is the design's from-state plus its conditions;
@@ -469,8 +470,18 @@ existing other card; a sentinel takes no Start, AskRead, Edit or Rescore,
 and takes SetPriority and Relink; Relink's target is a producer; Take is
 refused on a down row and allowed on a held one; preemption withdraws a
 working consumer only and counts open rows (up, not held); Add puts a card
-with needs (producers) and after (producers or sentinels), refusing a cycle
-through either.
+with needs and after (producers or sentinels: a sentinel may be a need),
+refusing a cycle through either.
+
+From the second cold read: AskReads cuts reads on several rows in one step,
+each checked as AskRead checks it, into distinct consecutive slots;
+WaiveRed moves a producer from review to merging with no new read when a
+done ok read of the previous review at the same head exists (only a Red
+makes one: a Finished always brings a new head), with no live consumer;
+Broken, Faulted and ReadFix write the producer's finding (fail, fault, fix)
+and Start copies it to the new work consumer; Replace names a non-final
+producer or sentinel; Relink may name a sentinel; UnholdStream is an event.
+The reasons ("held: ...") are not modelled.
 
 `last` is a step monitor. `StepRule` reads the state before and after each
 step and records the step rules it broke (`last.bad`). It is shared by every
@@ -483,13 +494,15 @@ are not split by the move that reached them.
 | cfg | Scenario | producers | needs | K | heads | attempts | env moves |
 |---|---|---|---|---|---|---|---|
 | `CardMachine.cfg` | `life` | p1, sentinel s | s needs p1 | 3 | 2 | 2 | 2 |
-| `CardDeps.cfg` | `deps` | p1, p2, sentinel s, sentinel a (absent until Add) | p2 needs p1, s needs p2 | 2 | 1 | 1 | 2 |
+| `CardDeps.cfg` | `deps` | p1, p2, sentinel s, sentinel a (absent until Add); rows r1, r2, r3 | p2 needs p1, s needs p2 | 3 | 1 | 1 | 1 |
 | `CardPreempt.cfg` | `pre` | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 2 |
 
 - `life` carries the whole lifecycle: a fix, a Red with a yes after it, a
   fault re-dealt, the sentinel reached.
 - `deps` is the brief's pair (c2 needs c1) plus the sentinel: NeedFailed,
-  Waive, Relink and the cycle check, and Add of a second sentinel.
+  Waive, Relink and the cycle check, Add of a second sentinel, and a third
+  row so AskReads has two rows that are not the author. One environment
+  move: with two, Add's choices took it past 6M states.
 - `pre` exists because a blocker can only preempt the consumer of another
   producer live at the same time, which the `deps` pair never is (p2 waits
   for p1 to land). Its environment budget goes to SetPriority, the row table
@@ -513,8 +526,8 @@ and done_when, so in the model it moves nothing but the monitor.
 ## Files
 
 - `CardMachine.tla` and its three passing cfgs.
-- `witnesses/Card*.tla`: sixteen reversed witnesses; `reach/Card*.cfg`:
-  eleven reachability checks. Generated with every card cfg by
+- `witnesses/Card*.tla`: seventeen reversed witnesses; `reach/Card*.cfg`:
+  sixteen reachability checks (one of them, NeverOrderCycle, shows a hole). Generated with every card cfg by
   `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
   in the script, in the same shape as `make-witnesses.py`: a replacement
   that no longer matches stops the script.
@@ -535,6 +548,12 @@ State invariants:
   consumer reported) has a leaving move enabled: Finished, Broken, Faulted,
   Released or Block.
 - **ParkedUnderHold**: no producer is ready in a held stream after any step.
+- **NeverStranded**: every non-final producer with no live consumer has a
+  move of its own enabled (not counting the coordinator's Cancel, Replace,
+  Block, Edit, Rescore, SetPriority), or waits on a need that can still
+  move, an after-target that is merging, or (waiting, ready, review) a row
+  coming back or a hold lifting. A ready producer at the attempt bound, or
+  one with no slot left, is exempt as the model's limit.
 - **ReadOnlyInReview**: a live read only in review, of the current head and
   review count.
 - **ReaderNeverAuthor**: a live read's holder is never the producer's author.
@@ -546,8 +565,8 @@ State invariants:
   not final, NeedFailed is enabled.
 - **SentinelShape**: a sentinel is only absent (before Add), waiting, landed
   or fail (it never has a consumer).
-- **NeedsAcyclic**: the needs graph stays acyclic.
-- **OrderAcyclic**: needs and after together stay acyclic.
+- **NeedsAcyclic**: the needs graph stays acyclic. (Needs and after
+  together do not: see `reach/CardNeverOrderCycle`.)
 - **AfterNeverHolds**: a merging producer whose after-targets are not merging
   can land.
 
@@ -568,6 +587,11 @@ Step invariants (each: the last step kept its rule):
 - **WithdrawReleasesInOneStep**: a Withdraw (or Preempt) of the working
   producer's work consumer leaves the producer ready, or waiting under a
   hold, in that same step.
+- **WaiveRedNeedsPriorRead**: WaiveRed only with a done ok read of the
+  previous review at the current head.
+- **FixCarriesFailure**: Broken and Faulted write the result as the
+  producer's finding, and Start (and Preempt's Start) copies the finding to
+  the new work consumer.
 - **FaultSpendsNothing**: Faulted keeps attempt and bounces.
 - **BlockNoLive**, **EditNoLive**: Block and Edit only with no live consumer.
 - **SentinelLandsByReached**: a sentinel lands only by Reached, needs landed.
@@ -594,6 +618,7 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardWithdrawLeavesWorking` | life | Withdraw does not release the working producer | WithdrawReleasesInOneStep |
 | `witnesses/CardReadFixOnZero` | life | ReadFix without the fix-read check | ReadFixNeedsFix |
 | `witnesses/CardHeldStreamReady` | life | Broken returns to ready under a held stream | ParkedUnderHold |
+| `witnesses/CardWaiveRedWithoutRead` | life | WaiveRed without the prior-read check | WaiveRedNeedsPriorRead |
 | `reach/CardNeverLanded` | life | none | violated: a producer lands |
 | `reach/CardNeverFixed` | life | none | violated: a review ends in ReadFix |
 | `reach/CardNeverRed` | life | none | violated: merging goes red |
@@ -604,6 +629,11 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |
 | `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |
 | `reach/CardNeverAdded` | deps | none | violated: Add puts a sentinel with a need and an after |
+| `reach/CardNeverSentinelNeeded` | deps | none | violated: a sentinel is a need |
+| `reach/CardNeverAskReads` | deps | none | violated: AskReads cuts two reads in one step |
+| `reach/CardNeverOrderCycle` | deps | none | violated: the hole, Relink closes a needs-and-after loop |
+| `reach/CardNeverWaivedRed` | life | none | violated: WaiveRed merges after a Red on the earlier read |
+| `reach/CardNeverFindingCarried` | life | none | violated: a fix attempt carries the failure |
 | `reach/CardNeverPreempted` | pre | none | violated: a blocker preempts a live consumer |
 
 ## Results, the CI jar on hetzner2, 2026-11-06

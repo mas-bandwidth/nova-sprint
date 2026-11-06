@@ -43,7 +43,7 @@
 (* flaps stop at 1; scores                                                 *)
 (* are 0..1; widths 1..2; priority is normal or blocker (the other levels  *)
 (* only order within policy). The environment and coordinator moves       *)
-(* (Rescore, SetPriority, Edit, the row table, the stream's hold) share a *)
+(* (Rescore, SetPriority, Edit, Red, the rows, the stream's hold) share a *)
 (* budget of MaxEnv per behaviour; every card and consumer move is        *)
 (* unbounded but for the slots. Rows start up, width 1, not held.         *)
 (*                                                                         *)
@@ -631,7 +631,7 @@ CardMove ==
   \/ \E p \in P :
        \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
        \/ Cancel(p) \/ Block(p) \/ Unblock(p)
-       \/ \E h \in Heads : Landed(p, h) \/ Red(p, h)
+       \/ \E h \in Heads : Landed(p, h)
        \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
        \/ \E R \in SUBSET Rows : AskReads(p, R)
        \/ \E c \in CIds : Finished(p, c) \/ Broken(p, c) \/ Faulted(p, c) \/ Released(p, c)
@@ -651,7 +651,8 @@ EnvMove ==
        \/ Scenario # "pre" /\ Edit(p)
        \/ Scenario # "pre" /\ \E s \in 0..1 : Rescore(p, s)
        \/ \E l \in Prios : SetPriority(p, l)
-       \/ \E ns \in SUBSET Prods, as \in SUBSET P : Add(p, ns, as)
+       \/ \E h \in Heads : Red(p, h)   \* a red CI result: an outside event
+       \/ \E ns, as \in SUBSET P : Add(p, ns, as)
   \/ \E r \in Rows :
        \/ Seen(r) \/ Gone(r) \/ Hold(r) \/ Unhold(r)
        \/ \E n \in 1..2 : Width(r, n)
@@ -672,10 +673,10 @@ Spec == Init /\ [][Next]_vars
 
 ProdRec == [st : PStates, att : 0..MaxAttempt, head : 0..MaxHead, author : Rows \cup {None},
             bounces : 0..MaxBounce, score : 0..1, prio : Prios, needs : SUBSET P,
-            after : SUBSET P, review : 0..(K + MaxAttempt), ncut : 0..K, finding : Findings]
+            after : SUBSET P, review : 0..(MaxAttempt + MaxEnv), ncut : 0..K, finding : Findings]
 ConsRec == [st : CStates, kind : {"-", "work", "read"}, row : Rows \cup {NoR},
             att : 0..MaxAttempt, head : 0..MaxHead, res : Results,
-            author : Rows \cup {None}, review : 0..(K + MaxAttempt), prior : 0..MaxHead,
+            author : Rows \cup {None}, review : 0..(MaxAttempt + MaxEnv), prior : 0..MaxHead,
             finding : Findings]
 
 TypeOK ==
