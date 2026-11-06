@@ -1,0 +1,17 @@
+nova-reserve: HELD mode=shared slot=4/4 pid=1901030
+=== RUN   TestColdread4DefectStreamCostsTypesVsV1
+--- PASS: TestColdread4DefectStreamCostsTypesVsV1 (0.01s)
+=== RUN   TestStreamCostWireExact
+=== RUN   TestStreamCostWireExact/zero
+=== RUN   TestStreamCostWireExact/subcent
+=== RUN   TestStreamCostWireExact/boundary
+=== RUN   TestStreamCostWireExact/above_boundary
+=== RUN   TestStreamCostWireExact/grouped_sum
+--- PASS: TestStreamCostWireExact (0.00s)
+    --- PASS: TestStreamCostWireExact/zero (0.00s)
+    --- PASS: TestStreamCostWireExact/subcent (0.00s)
+    --- PASS: TestStreamCostWireExact/boundary (0.00s)
+    --- PASS: TestStreamCostWireExact/above_boundary (0.00s)
+    --- PASS: TestStreamCostWireExact/grouped_sum (0.00s)
+PASS
+ok  	github.com/mas-bandwidth/nova-sprint/dash	1.026s

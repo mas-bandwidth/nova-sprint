@@ -1,0 +1,448 @@
+package dash
+
+// Cold read by Rowan’s reviewer (2026-11-06), retained with adaptations for
+// the agreed 30-second health grace, controlled clock, and revised cost rule.
+// The unmodified original is testdata/coldread-original.go.txt.
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http/httptest"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/store"
+)
+
+// tapStore counts Snapshot calls, records every Events cursor and can fail Events.
+type tapStore struct {
+	store.Store
+	snapshots int
+	cursors   []int64
+	fail      bool
+}
+
+func (s *tapStore) Snapshot(ctx context.Context) (store.Snapshot, error) {
+	s.snapshots++
+	return s.Store.Snapshot(ctx)
+}
+
+func (s *tapStore) Events(ctx context.Context, after int64, max int) ([]store.Event, error) {
+	s.cursors = append(s.cursors, after)
+	if s.fail {
+		return nil, errors.New("connection reset")
+	}
+	return s.Store.Events(ctx, after, max)
+}
+
+func mustApply(t *testing.T, s store.Store, id string, epoch int, w ...store.Write) {
+	t.Helper()
+	if r := apply(t, s, id, epoch, w...); !r.Accepted {
+		t.Fatalf("%s refused: %s", id, r.Reason)
+	}
+}
+
+// seedSprint writes n producers in streams, two rows, and a consumer pair for every tenth producer.
+func seedSprint(t *testing.T, s store.Store, n int) {
+	t.Helper()
+	w := []store.Write{
+		store.PutRow{Name: "amd-1", Kind: "worker", Width: 4000, Tiers: []string{"pro", "heavy"}},
+		store.PutRow{Name: "stella", Kind: "kin", Width: 4000, Tiers: []string{"pro", "heavy"}},
+	}
+	for i := 0; i < 50; i++ {
+		w = append(w, store.PutStream{Name: fmt.Sprintf("s%02d", i)})
+	}
+	for i := 0; i < n; i++ {
+		w = append(w, store.PutCard{ID: fmt.Sprintf("p%05d", i), Kind: "producer", Tier: "pro", Stream: fmt.Sprintf("s%02d", i%50)})
+	}
+	mustApply(t, s, "seed", 1, w...)
+	w = nil
+	for i := 0; i < n; i += 10 {
+		p, st := fmt.Sprintf("p%05d", i), fmt.Sprintf("s%02d", i%50)
+		w = append(w, store.PutCard{ID: "w" + p, Kind: "work", Of: p, Stream: st, Tier: "pro", Holder: "amd-1"},
+			store.PutCard{ID: "r" + p, Kind: "read", Of: p, Stream: st, Tier: "pro", Holder: "stella"})
+	}
+	mustApply(t, s, "consumers", 1, w...)
+}
+
+func viewJSON(t *testing.T, s store.Snapshot) string {
+	t.Helper()
+	b, err := json.Marshal(mapSnapshot(s, time.Time{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// 2: Snapshot once, the read position advances exactly +1 per call, and fold == Snapshot == Rebuild(all).
+func TestColdreadFoldNoClear(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	seedSprint(t, f, 200)
+	s := &tapStore{Store: f}
+	c, err := New(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moves := [][]store.Write{
+		{store.SetRowState{Row: "amd-1", State: "up"}},
+		{store.SetRowState{Row: "stella", State: "up"}, store.SetRowHeld{Row: "stella", Held: true, Reason: "x"}},
+		{store.SetCardState{Card: "p00000", State: "ready"}, store.SetCardState{Card: "wp00000", State: "ready"}},
+		{store.SetCardState{Card: "wp00000", State: "working"}},
+		{store.SetCardCost{Card: "wp00000", Cost: 1234567, Priced: true}, store.SetCardState{Card: "wp00000", State: "done"}},
+		{store.SetCardState{Card: "rp00000", State: "ready"}},
+		{store.SetCardState{Card: "rp00000", State: "working"}},
+		{store.SetCardResult{Card: "rp00000", Result: "ok"}, store.SetCardAuthor{Card: "rp00000", Author: "amd-1"}, store.SetCardState{Card: "rp00000", State: "done"}},
+		{store.SetCardState{Card: "p00000", State: "landed"}},
+		{store.SetCardState{Card: "p00010", State: "blocked"}},
+		{store.SetCardState{Card: "p00020", State: "fail"}},
+		{store.SetStreamHeld{Stream: "s03", Held: true}},
+		{store.PutJudgement{ID: "j1", Kind: "red", About: "s03", Question: "?"}},
+		{store.SetCursor{Name: "someone", Seq: 3}},
+		{store.SetCardState{Card: "p00000", State: "landed"}}, // refused: already landed
+	}
+	for i, m := range moves {
+		apply(t, f, fmt.Sprintf("m%d", i), 1, m...)
+		if err = c.Advance(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fresh, err := f.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(c.state, fresh) {
+		t.Fatalf("fold != Snapshot")
+	}
+	all, err := f.Events(ctx, 0, store.MaxEvents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rb := store.Rebuild(all); !reflect.DeepEqual(rb, fresh) {
+		t.Fatalf("Rebuild(all) != Snapshot")
+	}
+	if viewJSON(t, c.state) != viewJSON(t, fresh) {
+		t.Fatal("view of fold != view of Snapshot")
+	}
+	if s.snapshots != 1 {
+		t.Fatalf("Snapshot calls %d", s.snapshots)
+	}
+	for i := 1; i < len(s.cursors); i++ {
+		if s.cursors[i] != s.cursors[i-1]+1 {
+			t.Fatalf("cursor did not resume: %v", s.cursors)
+		}
+	}
+	t.Logf("snapshots=%d events-cursors=%v", s.snapshots, s.cursors)
+}
+
+// 2: a clear empties the view and moves the epoch; an op kind the fold has never seen folds fine.
+func TestColdreadClearAndUnknownKind(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	seedSprint(t, f, 20)
+	c, err := New(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := f.Apply(ctx, store.Op{ID: "odd", Epoch: 1, Actor: "x", Kind: "frobnicate", At: time.Now(), Writes: []store.Write{store.SetCardState{Card: "p00001", State: "landed"}}})
+	if err != nil || !r.Accepted {
+		t.Fatalf("odd op: %v %+v", err, r)
+	}
+	if err = c.Advance(ctx, f); err != nil {
+		t.Fatal(err)
+	}
+	if d := c.pageSnapshot().Data.(envelope); d.Landed != 1 || d.All != 20 {
+		t.Fatalf("after odd kind landed=%d all=%d", d.Landed, d.All)
+	}
+	if _, err = f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Advance(ctx, f); err != nil {
+		t.Fatal(err)
+	}
+	d := c.pageSnapshot().Data.(envelope)
+	if d.Epoch != 2 || d.Landed != 0 || d.All != 0 || len(d.Tables["work"].(map[string]*workRow)) != 0 {
+		t.Fatalf("after clear epoch=%d landed=%d all=%d", d.Epoch, d.Landed, d.All)
+	}
+}
+
+// 2: a lost connection keeps the copy and clock, observes the health grace, and recovers.
+func TestColdreadLostConnection(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	seedSprint(t, f, 20)
+	s := &tapStore{Store: f}
+	c, err := New(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := c.pageSnapshot().Data.(envelope)
+	s.fail = true
+	mustApply(t, f, "move", 1, store.SetCardState{Card: "p00001", State: "landed"})
+	if err = c.Advance(ctx, s); err == nil {
+		t.Fatal("no error")
+	}
+	d := c.pageSnapshot().Data.(envelope)
+	if d.OK || d.At != before.At || d.Landed != 0 {
+		t.Fatalf("on error ok=%v at moved=%v landed=%d", d.OK, d.At != before.At, d.Landed)
+	}
+	rec := httptest.NewRecorder()
+	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
+	if rec.Code != 200 {
+		t.Fatalf("healthz during grace %d", rec.Code)
+	}
+	c.at = c.at.Add(-33 * time.Second)
+	rec = httptest.NewRecorder()
+	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
+	if rec.Code != 503 {
+		t.Fatalf("healthz after grace %d", rec.Code)
+	}
+	s.fail = false
+	if err = c.Advance(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	if d = c.pageSnapshot().Data.(envelope); !d.OK || d.Landed != 1 || s.snapshots != 1 {
+		t.Fatalf("after recovery ok=%v landed=%d snapshots=%d", d.OK, d.Landed, s.snapshots)
+	}
+}
+
+// 5: the refresh path at 5,000 producers (+1,000 consumers): idle tick, one-event tick, HTTP JSON.
+func TestColdreadRefresh5000(t *testing.T) {
+	for _, n := range []int{5000, 20000} {
+		ctx := context.Background()
+		f := store.NewFake()
+		seedSprint(t, f, n)
+		s := &tapStore{Store: f}
+		c, err := New(ctx, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		worst := time.Duration(0)
+		var idle, one, js time.Duration
+		for i := 0; i < 5; i++ {
+			t0 := time.Now()
+			if err = c.Advance(ctx, s); err != nil { // no events
+				t.Fatal(err)
+			}
+			idle = time.Since(t0)
+			mustApply(t, f, fmt.Sprintf("r%d", i), 1, store.SetCardReason{Card: "p00001", Reason: fmt.Sprint(i)})
+			t1 := time.Now()
+			if err = c.Advance(ctx, s); err != nil {
+				t.Fatal(err)
+			}
+			one = time.Since(t1)
+			t2 := time.Now()
+			rec := httptest.NewRecorder()
+			Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
+			js = time.Since(t2)
+			worst = max(worst, idle, one, js)
+		}
+		t.Logf("producers=%d idle-advance=%s one-event-advance=%s json=%s worst=%s snapshots=%d", n, idle, one, js, worst, s.snapshots)
+		if n == 5000 && worst > 100*time.Millisecond {
+			t.Errorf("5,000-card refresh %s: less than 10x headroom on the 1 s bar", worst)
+		}
+	}
+}
+
+// 4: MISSING cells come out absent or null, never a fabricated 0.
+func TestColdreadMissingCellsBlank(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	seedSprint(t, f, 20)
+	c, err := New(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
+	var env map[string]any
+	if err = json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	data := env["data"].(map[string]any)
+	for _, k := range []string{"coordinator", "machine", "summary", "cleared", "landedSeries", "fleet_work", "friends_work", "providers"} {
+		if _, ok := data[k]; ok {
+			t.Errorf("MISSING key %s present", k)
+		}
+	}
+	tables := data["tables"].(map[string]any)
+	row := tables["fleet"].(map[string]any)["amd-1"].(map[string]any)
+	for _, k := range []string{"load", "window"} {
+		if _, ok := row[k]; ok {
+			t.Errorf("fleet row carries MISSING %s=%v", k, row[k])
+		}
+	}
+	if row["okpct"] != "0.0%" {
+		t.Errorf("okpct with no verdicts = %v", row["okpct"])
+	}
+	work := tables["work"].(map[string]any)["s00"].(map[string]any)
+	if work["cost"] != "-" {
+		t.Errorf("cost with no runs = %v", work["cost"])
+	}
+	m := tables["merge"].(map[string]any)["s00"].(map[string]any)
+	for _, k := range []string{"stuck", "ci", "state"} {
+		if _, ok := m[k]; ok {
+			t.Errorf("merge carries MISSING %s", k)
+		}
+	}
+}
+
+func readJSON(t *testing.T, path string) map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	if err = json.Unmarshal(b, &v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// 3: the envelope's top-level value types against the live v1 capture.
+func TestColdreadDefectEnvelopeTypesVsV1(t *testing.T) {
+	v1 := readJSON(t, "testdata/live-v1-envelope.json")
+	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{Epoch: 1}, time.Now())}
+	rec := httptest.NewRecorder()
+	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
+	var v2 map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &v2); err != nil {
+		t.Fatal(err)
+	}
+	kind := func(x any) string { return fmt.Sprintf("%T", x) }
+	for k, a := range v1 {
+		if k == "data" {
+			continue
+		}
+		if kind(a) != kind(v2[k]) {
+			t.Errorf("%s: v1 %s (%v), v2 %s (%v)", k, kind(a), a, kind(v2[k]), v2[k])
+		}
+	}
+}
+
+// 3: v1 always sends a stream State; v2 sends "" for every stream not held, so an empty
+// stream's pill reads "idle" where v1 reads "waiting" (v2-2800.png vs v1-live-2000.png, serialize-audit-cs..moo).
+func TestColdreadDefectStreamStateBlank(t *testing.T) {
+	v1 := readJSON(t, "testdata/live-v1-envelope.json")
+	states := map[string]int{}
+	for _, s := range v1["data"].(map[string]any)["streams"].([]any) {
+		states[fmt.Sprint(s.(map[string]any)["State"])]++
+	}
+	d := mapSnapshot(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"a": {Name: "a"}}}, time.Now())
+	if states[""] == 0 && d.Streams[0].State == "" {
+		t.Errorf("v1 stream States %v (none blank); v2 sends State=%q", states, d.Streams[0].State)
+	}
+}
+
+// 3: the lessons map Throughput "as v1" (dashboard samples of landed), not MISSING; v2 never computes it,
+// so the tile's figure is "" and the tile collapses (v2-1100.png Throughput tile vs v1-live-1100.png).
+func TestColdreadDefectThroughputNeverComputed(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	seedSprint(t, f, 20)
+	c, err := New(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := c.at
+	c.now = func() time.Time { return now }
+	for i := 0; i < 5; i++ {
+		mustApply(t, f, fmt.Sprintf("land%d", i), 1, store.SetCardState{Card: fmt.Sprintf("p%05d", i), State: "landed"})
+		now = now.Add(3 * time.Minute)
+		if err = c.Advance(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := httptest.NewRecorder()
+	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
+	var env pageEnvelope
+	if err = json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Throughput <= 0 {
+		t.Errorf("throughput null after 5 landings; v1 samples landed per good read and reports a rate after 10 min")
+	}
+}
+
+// 3: a priced sum remains visible when a stream also has unpriced work.
+func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
+	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
+	d := mapSnapshot(s, time.Time{})
+	w := d.Tables["work"].(map[string]*workRow)["s"]
+	if w.Cost == nil || *w.Cost != 1.2 {
+		t.Fatalf("priced sum lost: %+v", w)
+	}
+	js, _ := page.ReadFile("page/app.js")
+	if strings.Contains(string(js), "unpriced ? \"\" : money(recorded)") {
+		t.Fatal("unpriced run hides priced total")
+	}
+}
+
+// 3: the page links every stream name to /stream/<key> (charts.js); the shim answers 404.
+func TestColdreadDefectStreamPagesDead(t *testing.T) {
+	js, err := page.ReadFile("page/charts.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := Handler(&Cache{at: time.Now()})
+	for _, p := range []string{"/stream/s00", "/api/stream/s00", "/api/history"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		if rec.Code == 404 && strings.Contains(string(js), `"/stream/"`) {
+			t.Errorf("%s -> 404 while charts.js still wires stream-name clicks to /stream/", p)
+		}
+	}
+}
+
+// 2 + 5, functional: a throwaway PostgreSQL, 5,000 producers, cold snapshot then deltas.
+func TestColdreadFunctionalPG5000(t *testing.T) {
+	dsn := startPG(t)
+	ctx := context.Background()
+	var pg *store.PG
+	var err error
+	for i := 0; i < 100; i++ {
+		if pg, err = store.Open(ctx, dsn, ""); err == nil {
+			if err = pg.Migrate(ctx); err == nil {
+				break
+			}
+			pg.Close()
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pg.Close()
+	seedSprint(t, pg, 5000)
+	s := &tapStore{Store: pg}
+	c, err := New(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worst := time.Duration(0)
+	for i := 0; i < 20; i++ {
+		mustApply(t, pg, fmt.Sprintf("m%d", i), 1, store.SetCardState{Card: fmt.Sprintf("p%05d", i+1), State: "ready"})
+		t0 := time.Now()
+		if err = c.Advance(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+		worst = max(worst, time.Since(t0))
+	}
+	fresh, err := pg.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(c.state, fresh) {
+		t.Fatal("fold != PG Snapshot")
+	}
+	t.Logf("pg 5000: worst advance=%s snapshots=%d", worst, s.snapshots)
+	if s.snapshots != 1 || worst > 100*time.Millisecond {
+		t.Errorf("snapshots=%d worst=%s", s.snapshots, worst)
+	}
+}

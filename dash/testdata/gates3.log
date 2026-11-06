@@ -1,0 +1,17 @@
+Fri Nov  6 21:09:24 UTC 2026
+b1
+go version go1.26.10 linux/amd64
+initdb (PostgreSQL) 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1)
+format=0
+build=0
+vet=0
+ok  	github.com/mas-bandwidth/nova-sprint/card	3.986s
+?   	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint-dash	[no test files]
+ok  	github.com/mas-bandwidth/nova-sprint/dash	1.498s
+ok  	github.com/mas-bandwidth/nova-sprint/store	1.763s
+unit=0
+ok  	github.com/mas-bandwidth/nova-sprint/card	1.013s [no tests to run]
+?   	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint-dash	[no test files]
+ok  	github.com/mas-bandwidth/nova-sprint/dash	1.429s
+ok  	github.com/mas-bandwidth/nova-sprint/store	7.913s
+functional=0

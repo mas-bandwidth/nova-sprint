@@ -1,0 +1,69 @@
+{
+  "attemptAt": "2026-01-01T00:00:00Z",
+  "build": "2a5bac9ddbe6",
+  "data": {
+    "all": 1,
+    "at": "2026-01-01T00:00:00Z",
+    "build": "2a5bac9ddbe6",
+    "done": false,
+    "epoch": 1,
+    "landed": 0,
+    "ok": true,
+    "server_version": "dev",
+    "stream_costs": {
+      "alpha": {}
+    },
+    "streams": [
+      {
+        "State": "waiting",
+        "Stream": "alpha"
+      }
+    ],
+    "tables": {
+      "fleet": {
+        "w": {
+          "blocker_working": "0",
+          "critical_working": "0",
+          "done": "0",
+          "failed": "0",
+          "fix_working": "0",
+          "ok": "0",
+          "okpct": "0.0%",
+          "reads_working": "0",
+          "ready": "0",
+          "status": "down",
+          "width": "2",
+          "working": "0"
+        }
+      },
+      "friends": {},
+      "merge": {
+        "alpha": {}
+      },
+      "readers": {},
+      "work": {
+        "alpha": {
+          "blocked": "0",
+          "cost": "-",
+          "cost_by_tier": {},
+          "fail": "0",
+          "fix": "0",
+          "landed": "0",
+          "merging": "0",
+          "ready": "0",
+          "review": "0",
+          "waiting": "1",
+          "working": "0"
+        }
+      }
+    }
+  },
+  "dataAgeSeconds": 0,
+  "error": null,
+  "fetchedAt": "2026-01-01T00:00:00Z",
+  "minInterval": 1,
+  "ok": true,
+  "readSeconds": 0,
+  "throughput": 0,
+  "throughputMinutes": 0
+}

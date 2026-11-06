@@ -1,0 +1,152 @@
+{
+  "at": "2026-11-06T22:16:24.249Z",
+  "zone": "America/New_York",
+  "checks": [
+    {
+      "width": 2000,
+      "scroll": 2000,
+      "fonts": "loaded",
+      "statsDisplay": "none",
+      "coordDisplay": "flex",
+      "failColor": "rgb(0, 0, 0)",
+      "blockedColor": "rgb(112, 67, 66)",
+      "commentLeak": false,
+      "zeroCents": 0,
+      "zeroPercent": 0,
+      "flow": [
+        "blocked",
+        "waiting",
+        "ready",
+        "working",
+        "review",
+        "fix",
+        "merging",
+        "landed",
+        "fail"
+      ],
+      "legend": [
+        "landed",
+        "fail",
+        "merging",
+        "fix",
+        "review",
+        "working",
+        "ready",
+        "blocked",
+        "waiting"
+      ],
+      "landed": "151",
+      "inflight": "27",
+      "cost": "$28.62",
+      "version": "dev",
+      "coordinator": "coordinator-",
+      "legendVisible": [
+        "landed 151",
+        "fail 0",
+        "merging 0",
+        "fix 5",
+        "review 19",
+        "working 3",
+        "ready 23",
+        "waiting 175"
+      ],
+      "fleetFirstOK": "33.3%",
+      "throughputText": "0",
+      "eta": "-",
+      "pulseStopped": false,
+      "emptyStreamState": [
+        "waiting"
+      ],
+      "workCompact": false,
+      "workHeaders": [
+        "stream",
+        "status",
+        "waiting",
+        "ready",
+        "working",
+        "review",
+        "fix",
+        "merging",
+        "landed",
+        "fail",
+        "cost"
+      ],
+      "workFirstVisible": [
+        {
+          "text": "schema-main",
+          "x": 65,
+          "y": 1735.1875
+        },
+        {
+          "text": "landed",
+          "x": 571.65625,
+          "y": 1732.1875
+        },
+        {
+          "text": "0",
+          "x": 737,
+          "y": 1736.1875
+        },
+        {
+          "text": "0",
+          "x": 859.75,
+          "y": 1736.1875
+        },
+        {
+          "text": "0",
+          "x": 982.5,
+          "y": 1736.1875
+        },
+        {
+          "text": "0",
+          "x": 1105.25,
+          "y": 1736.1875
+        },
+        {
+          "text": "0",
+          "x": 1228,
+          "y": 1736.1875
+        },
+        {
+          "text": "0",
+          "x": 1350.75,
+          "y": 1736.1875
+        },
+        {
+          "text": "5 / 5",
+          "x": 1508.546875,
+          "y": 1736.1875
+        },
+        {
+          "text": "0",
+          "x": 1692.25,
+          "y": 1736.1875
+        },
+        {
+          "text": "$0.54",
+          "x": 1815,
+          "y": 1736.1875
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "url": "http://127.0.0.1:18082/api/sprint",
+      "at": 1794003380547
+    },
+    {
+      "url": "http://127.0.0.1:18082/api/sprint",
+      "at": 1794003381546
+    },
+    {
+      "url": "http://127.0.0.1:18082/api/sprint",
+      "at": 1794003382547
+    },
+    {
+      "url": "http://127.0.0.1:18082/api/sprint",
+      "at": 1794003383547
+    }
+  ]
+}

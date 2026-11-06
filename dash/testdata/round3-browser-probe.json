@@ -1,0 +1,127 @@
+{
+  "note": "Live fixture checks plus synthetic intercepted response probes; no live board modifications.",
+  "initial": {
+    "cost": "$28.62",
+    "tput": "0",
+    "pulse": true,
+    "linkCursor": "pointer",
+    "coord": "coordinator-",
+    "blockedLegend": false,
+    "empty": "waiting"
+  },
+  "blockedLayout": {
+    "headers": [
+      "stream",
+      "status",
+      "blocked",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ],
+    "legend": [
+      "landed 146",
+      "fail 3",
+      "merging 0",
+      "fix 5",
+      "review 19",
+      "working 3",
+      "ready 23",
+      "blocked 2",
+      "waiting 175"
+    ]
+  },
+  "skew": [
+    {
+      "offset": 120000,
+      "healthyWithOldServerTime": true,
+      "stoppedAfterMonotonicElapsed": true,
+      "staleAgeStopped": true,
+      "recovered": true
+    },
+    {
+      "offset": -120000,
+      "healthyWithOldServerTime": true,
+      "stoppedAfterMonotonicElapsed": true,
+      "staleAgeStopped": true,
+      "recovered": true
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/events",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/stream/schema-main",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/api/stream/schema-main",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/api/history",
+      "status": 302,
+      "location": "/"
+    }
+  ],
+  "healthPulse": {
+    "stoppedAfterLostPoll": true,
+    "clockHeld": true,
+    "recovered": true
+  },
+  "probe": {
+    "inflight": "27",
+    "sub": "3 working · 24 verify · 2 blocked",
+    "all": "376",
+    "work": [
+      "schema-main",
+      "waiting",
+      "2",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0 / 5",
+      "3",
+      "$0.00"
+    ],
+    "fleet": [
+      "amd-1",
+      "up",
+      "2",
+      "",
+      "0 / 8",
+      "1",
+      "0.0%",
+      ""
+    ],
+    "missingCost": "-",
+    "missingOK": "-",
+    "merge": [
+      "0",
+      "151",
+      "",
+      "",
+      ""
+    ]
+  },
+  "done": {
+    "eta": "DONE",
+    "all": "376",
+    "inflight": "0",
+    "legend": "landed 146fail 230merging 0fix 0review 0working 0ready 0blocked 0waiting 0"
+  },
+  "errors": []
+}
