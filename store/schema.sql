@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
 CREATE TABLE IF NOT EXISTS sprint.cards (
     id      text    NOT NULL,
     stream  text    NOT NULL,
-    state   text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'left')),
+    state   text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail')),
     gen     integer NOT NULL DEFAULT 0,
     attempt integer NOT NULL DEFAULT 0,
     score   integer NOT NULL DEFAULT 0,

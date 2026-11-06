@@ -54,7 +54,7 @@ var (
 
 // The closed sets the schema checks.
 var (
-	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "left"}
+	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail"}
 	RowKinds    = []string{"worker", "kin"}
 	RowStates   = []string{"up", "down", "blocked"}
 	PolicyKinds = []string{"script", "data"}

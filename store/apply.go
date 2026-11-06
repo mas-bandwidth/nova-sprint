@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 )
@@ -38,10 +39,12 @@ func check(op Op) error {
 		return invalid("an op needs an id")
 	case op.Epoch < 1:
 		return invalid("op %s needs an epoch", op.ID)
+	case op.Epoch > math.MaxInt32:
+		return invalid("op %s: epoch %d is outside the 32-bit integer range %d..%d", op.ID, op.Epoch, math.MinInt32, math.MaxInt32)
 	}
 	for _, e := range op.Expect {
 		switch e.(type) {
-		case CardGen, CardState, CardHolder, NeedsLanded, RowIs, RowUnder, StreamHeld, CardAbsent, AtSeq:
+		case CardGen, CardState, CardHolder, NeedsLanded, RowIs, StreamHeld, CardAbsent, AtSeq:
 		default:
 			return invalid("op %s: unknown condition %T", op.ID, e)
 		}
@@ -51,6 +54,11 @@ func check(op Op) error {
 		fs, ok := fields(w)
 		if !ok {
 			return invalid("op %s: unknown write %T", op.ID, w)
+		}
+		for _, n := range ints(w) {
+			if n.v < math.MinInt32 || n.v > math.MaxInt32 {
+				return invalid("op %s: %s %d is outside the 32-bit integer range %d..%d", op.ID, n.name, n.v, math.MinInt32, math.MaxInt32)
+			}
 		}
 		for _, f := range fs {
 			if seen[f] {
@@ -190,8 +198,6 @@ func (w *work) expect(e Expect) (string, error) {
 			return r, err
 		}
 		return when(row.State != c.State, "row %s is %s, expected %s", c.Row, row.State, c.State), nil
-	case RowUnder:
-		return w.rowUnder(c)
 	case StreamHeld:
 		s, r, err := w.mustStream(c.Stream)
 		if r != "" || err != nil {
@@ -241,15 +247,6 @@ func (w *work) needsLanded(id string) (string, error) {
 		}
 	}
 	return "", nil
-}
-
-func (w *work) rowUnder(c RowUnder) (string, error) {
-	row, r, err := w.mustRow(c.Row)
-	if r != "" || err != nil {
-		return r, err
-	}
-	n, err := w.tx.held(c.Row)
-	return when(n >= row.Width, "row %s holds %d cards, its width is %d", c.Row, n, row.Width), err
 }
 
 func (w *work) mustCard(id string) (Card, string, error) {

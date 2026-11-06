@@ -25,7 +25,14 @@ const SchemaVersion = 2
 func Schema() string { return schemaSQL }
 
 // PG is the Store in PostgreSQL, schema sprint.
-type PG struct{ pool *pgxpool.Pool }
+type PG struct {
+	pool *pgxpool.Pool
+	// afterCommit is a fault-injection seam for the functional tests (kept,
+	// not dead code): called after a write commits and before its receipt is
+	// returned; an error it returns is reported as ErrUnknown, as a reply lost
+	// after the commit would be (guarantee 3). Nil outside tests.
+	afterCommit func() error
+}
 
 // Open connects to the store at dsn (NOVA_PG_DSN, no password in it) with
 // password (NOVA_PG_PASSWORD, may be empty). It never quotes the dsn back.
@@ -110,6 +117,11 @@ func (p *PG) write(ctx context.Context, fn func(pgx.Tx) error) error {
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("%w: %w", ErrUnknown, err)
 	}
+	if p.afterCommit != nil {
+		if err := p.afterCommit(); err != nil {
+			return fmt.Errorf("%w: %w", ErrUnknown, err)
+		}
+	}
 	return nil
 }
 
@@ -154,7 +166,10 @@ func (p *PG) do(ctx context.Context, op Op, rules func(*pgTx) (string, *State, *
 		r, err = doTx(ctx, tx, op, rules)
 		return err
 	})
-	return r, err
+	if err != nil {
+		return Receipt{}, err
+	}
+	return r, nil
 }
 
 func doTx(ctx context.Context, tx pgx.Tx, op Op, rules func(*pgTx) (string, *State, *State, error)) (Receipt, error) {

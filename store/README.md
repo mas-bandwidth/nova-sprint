@@ -47,14 +47,17 @@ against; required, epochs start at 1), `Actor`, `Kind` (a label for the log),
 
 Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
 (every need of the card, read from the card inside the transaction, is
-landed), `RowIs`, `RowUnder` (the row holds fewer cards than its width; both read
-from the row inside the transaction, never from the caller), `StreamHeld`, `CardAbsent`, `AtSeq` (the last event's seq is
-N: nothing changed since a snapshot).
+landed), `RowIs`, `StreamHeld`, `CardAbsent`, `AtSeq` (the last event's seq is
+N: nothing changed since a snapshot). There is no width condition: the holder
+write is the check.
 
 Writes, one field each, applied in order: `PutStream` (repo, base, pos;
 insert or overwrite), `SetStreamHeld`, `PutCard` (stream, score, needs,
 brief; the card must not exist; it starts waiting, gen 0, attempt 0, no
-holder), `SetCardState`, `SetCardHolder`, `SetCardAttempt`, `SetCardBranch`,
+holder), `SetCardState`, `SetCardHolder` (a row's name is refused when that
+row already holds as many cards as its width, counted at the moment of the
+write, so a second holder write in one op counts the first and nothing
+lands), `SetCardAttempt`, `SetCardBranch`,
 `SetCardHead`, `SetCardPR`, `SetCardReason`, `SetCardScore`, `SetCardAuthor`
 (the row whose work the head is), `SetCardBaseSHA` (the base commit the
 attempt started from), `SetCardNeeds`,
@@ -63,7 +66,13 @@ width below the cards the row holds is refused), `SetRowState`,
 `SetRowSession`, `SetRowFlaps`, `PutPolicy`, `SetActivePolicy`. An op that
 writes a card raises its gen by one, however many of its writes touch it (gen
 counts the operations that changed the card; a card the op adds is at gen 0).
-Needs must name other cards of the same epoch, once each.
+Needs must name other cards of the same epoch, once each. Every integer a
+write carries (pos, score, attempt, pr, width, flaps, policy version) and the
+op's epoch must fit a PostgreSQL `integer` (32-bit signed); outside it the op
+is `ErrInvalid` from both stores, naming the field and the range. A snapshot,
+receipt or event is the caller's own copy: editing it never changes the store.
+The card states are `waiting`, `ready`, `working`, `review`, `merging`,
+`landed`, `fail`.
 
 `Clear` takes an op of kind `clear` with no writes and at most an `AtSeq`
 condition. It opens epoch n + 1 and carries every row into it (same name,
@@ -101,4 +110,6 @@ service. The functional tests start a PostgreSQL of their own per test
 skip with a message when `initdb` is not on PATH, in
 `/opt/homebrew/opt/postgresql@18/bin` or in `/usr/lib/postgresql/*/bin`.
 `RunConformance` (conformance_test.go) is the same set of scenarios run
-against both, so Fake and PG cannot drift.
+against both, so Fake and PG cannot drift. `PG.afterCommit` is a
+fault-injection seam the functional tests set to lose a reply after COMMIT
+(guarantee 3); it is nil in the binary.

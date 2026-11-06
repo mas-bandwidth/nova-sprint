@@ -76,7 +76,7 @@ func TestFakeRaces(t *testing.T) {
 	h.ok(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
-		"deal": {h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c0", "w1"}), h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c2", "w1"})},
+		"deal": {h.op("deal", nil, SetCardHolder{"c0", "w1"}), h.op("deal", nil, SetCardHolder{"c2", "w1"})}, // the holder write alone is the width check
 	} {
 		got := make([]Receipt, 2)
 		var wg sync.WaitGroup

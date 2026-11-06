@@ -132,7 +132,7 @@ func (w *work) writeCard(wr Write) (string, error) {
 		r = oneOf("card state", v.State, CardStates)
 		next.State = v.State
 	case SetCardHolder:
-		r, err = w.holderExists(v.Holder)
+		r, err = w.holderFits(card, v.Holder)
 		next.Holder = v.Holder
 	case SetCardAttempt:
 		next.Attempt = v.Attempt
@@ -160,12 +160,19 @@ func (w *work) writeCard(wr Write) (string, error) {
 	return "", w.putCard(card, true, next)
 }
 
-func (w *work) holderExists(holder string) (string, error) {
-	if holder == "" {
+// holderFits refuses a holder row that does not exist or already holds as
+// many cards as its width, counted now, so earlier writes of the same op are
+// counted too. A card already held by the row adds nothing and fits.
+func (w *work) holderFits(card Card, holder string) (string, error) {
+	if holder == "" || holder == card.Holder {
 		return "", nil
 	}
-	_, r, err := w.mustRow(holder)
-	return r, err
+	row, r, err := w.mustRow(holder)
+	if r != "" || err != nil {
+		return r, err
+	}
+	n, err := w.tx.held(holder)
+	return when(err == nil && n >= row.Width, "row %s holds %d cards, its width is %d", holder, n, row.Width), err
 }
 
 // checkNeeds refuses needs that name the card itself, a card twice, or a card

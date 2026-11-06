@@ -1,7 +1,8 @@
 package store
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, NeedsLanded,
-// RowIs, RowUnder, StreamHeld, CardAbsent, AtSeq. The set is closed by the
+// RowIs, StreamHeld, CardAbsent, AtSeq. There is no width condition: the
+// holder write is the check. The set is closed by the
 // unexported method; any other value is ErrInvalid.
 type Expect interface{ isExpect() }
 
@@ -24,11 +25,6 @@ type NeedsLanded struct{ Card string }
 // RowIs holds when row Row is in state State.
 type RowIs struct{ Row, State string }
 
-// RowUnder holds when row Row holds fewer cards than its width: both the
-// holders and the width are read from the store inside the transaction,
-// never from the caller.
-type RowUnder struct{ Row string }
-
 // StreamHeld holds when stream Stream's held flag is Held.
 type StreamHeld struct {
 	Stream string
@@ -47,7 +43,6 @@ func (CardState) isExpect()   {}
 func (CardHolder) isExpect()  {}
 func (NeedsLanded) isExpect() {}
 func (RowIs) isExpect()       {}
-func (RowUnder) isExpect()    {}
 func (StreamHeld) isExpect()  {}
 func (CardAbsent) isExpect()  {}
 func (AtSeq) isExpect()       {}
@@ -82,7 +77,9 @@ type PutCard struct {
 // SetCardState sets a card's state.
 type SetCardState struct{ Card, State string }
 
-// SetCardHolder sets a card's holder: a row's name, or "" for none.
+// SetCardHolder sets a card's holder: a row's name, or "" for none. Setting a
+// name is refused when that row already holds as many cards as its width,
+// counted at the moment of the write (earlier writes of the op included).
 type SetCardHolder struct{ Card, Holder string }
 
 // SetCardAttempt sets the number of the attempt the holder is on.
@@ -223,6 +220,36 @@ func fields(w Write) (fs []field, ok bool) {
 		return []field{{"policy", "", "active"}}, true
 	}
 	return nil, false
+}
+
+// namedInt is one integer a write carries, named by its column.
+type namedInt struct {
+	name string
+	v    int
+}
+
+// ints are the integers a write carries; each must fit the column, a
+// PostgreSQL integer (32-bit signed).
+func ints(w Write) []namedInt {
+	switch v := w.(type) {
+	case PutStream:
+		return []namedInt{{"pos", v.Pos}}
+	case PutCard:
+		return []namedInt{{"score", v.Score}}
+	case SetCardAttempt:
+		return []namedInt{{"attempt", v.Attempt}}
+	case SetCardPR:
+		return []namedInt{{"pr", v.PR}}
+	case SetCardScore:
+		return []namedInt{{"score", v.Score}}
+	case PutRow:
+		return []namedInt{{"width", v.Width}}
+	case SetRowFlaps:
+		return []namedInt{{"flaps", v.Flaps}}
+	case SetActivePolicy:
+		return []namedInt{{"version", v.Version}}
+	}
+	return nil
 }
 
 // normalize is an op with its times and lists as the store keeps them.

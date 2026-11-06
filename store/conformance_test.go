@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,6 +37,11 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"gen once per op":         genOncePerOp,
 		"row width":               rowWidth,
 		"author and base sha":     authorAndBase,
+		"width in one op":         widthInOneOp,
+		"int range":               intRange,
+		"snapshot is a copy":      snapshotIsCopy,
+		"same id concurrent":      sameIDConcurrent,
+		"clear races apply":       clearRacesApply,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -146,8 +153,6 @@ func conditions(h *harness) {
 		{RowIs{"w1", "up"}, ""},
 		{RowIs{"w1", "down"}, "row w1 is up, expected down"},
 		{RowIs{"w9", "up"}, "row w9 does not exist"},
-		{RowUnder{"w1"}, ""},
-		{RowUnder{"w9"}, "row w9 does not exist"},
 		{StreamHeld{"s1", false}, ""},
 		{StreamHeld{"s1", true}, "stream s1 is not held, expected held"},
 		{StreamHeld{"s9", false}, "stream s9 does not exist"},
@@ -164,7 +169,7 @@ func conditions(h *harness) {
 	h.ok(h.op("hold", nil, SetStreamHeld{"s1", true}))
 	h.ok(h.op("check", []Expect{StreamHeld{"s1", true}}))
 	h.refused(h.op("check", []Expect{StreamHeld{"s1", false}}), "stream s1 is held, expected not held")
-	h.refused(h.op("check", []Expect{CardHolder{"c1", "w1"}, RowIs{"w1", "up"}, CardState{"c1", "left"}}), "card c1 is waiting, expected left")
+	h.refused(h.op("check", []Expect{CardHolder{"c1", "w1"}, RowIs{"w1", "up"}, CardState{"c1", "fail"}}), "card c1 is waiting, expected fail")
 	assert.Equal(h.t, 1, h.snap().Cards["c1"].Gen, "conditions never change a row")
 }
 
@@ -214,7 +219,7 @@ type strangeExpect struct{ AtSeq }
 
 func writeRefusals(h *harness) {
 	h.seed()
-	all := "waiting, ready, working, review, merging, landed, left"
+	all := "waiting, ready, working, review, merging, landed, fail"
 	for _, c := range []struct {
 		w      Write
 		reason string
@@ -306,7 +311,7 @@ func idempotent(h *harness) {
 	first := h.ok(o)
 	after := h.snap()
 	again := o
-	again.Writes, again.Expect, again.Actor, again.Kind = []Write{SetCardState{"c1", "left"}}, []Expect{AtSeq{99}}, "someone", "other"
+	again.Writes, again.Expect, again.Actor, again.Kind = []Write{SetCardState{"c1", "fail"}}, []Expect{AtSeq{99}}, "someone", "other"
 	r, err := h.s.Apply(h.ctx, again)
 	require.NoError(h.t, err)
 	assert.Equal(h.t, first, r, "a second Apply with the id returns the stored receipt whatever its body")
@@ -320,7 +325,7 @@ func idempotent(h *harness) {
 	require.NoError(h.t, err)
 	assert.False(h.t, ok)
 	no := h.op("bad", nil, SetCardState{"c1", "nope"})
-	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, left`)
+	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, fail`)
 	no.Writes = nil
 	r, err = h.s.Apply(h.ctx, no)
 	require.NoError(h.t, err)
@@ -346,11 +351,11 @@ func clearCarriesRows(h *harness) {
 	assert.Equal(h.t, 1, ev[3].Epoch, "a clear is logged with the epoch it closed")
 	assert.Equal(h.t, "clear", ev[3].Kind)
 	assert.Equal(h.t, &State{Epoch: 2, Rows: carried}, ev[3].After)
-	h.refused(h.op("old", nil, SetCardState{"c1", "left"}), "card c1 does not exist")
+	h.refused(h.op("old", nil, SetCardState{"c1", "fail"}), "card c1 does not exist")
 	o := h.op("stale", nil)
 	o.Epoch = 1
 	h.refused(o, "the op is for epoch 1, the store is at epoch 2")
-	h.ok(h.op("again", []Expect{CardAbsent{"c1"}, RowIs{"w1", "down"}, RowUnder{"w1"}}, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetCardHolder{"c1", "w1"}))
+	h.ok(h.op("again", []Expect{CardAbsent{"c1"}, RowIs{"w1", "down"}}, PutStream{Name: "s1"}, PutCard{ID: "c1", Stream: "s1"}, SetCardHolder{"c1", "w1"}))
 	assert.Equal(h.t, map[string]Card{"c1": {ID: "c1", Stream: "s1", State: "waiting", Holder: "w1"}}, h.snap().Cards)
 	assert.Equal(h.t, 2, h.events()[6].Epoch)
 }
@@ -401,20 +406,136 @@ func genOncePerOp(h *harness) {
 	assert.Equal(h.t, 0, h.snap().Cards["c0"].Gen)
 }
 
-// Holders never exceed width: RowUnder reads the row's own width, and put
-// row refuses a width below the cards the row holds.
+// Holders never exceed width: the holder write counts the row's holders at
+// the moment it lands, against the row's own width, and put row refuses a
+// width below the cards the row holds. There is no width condition.
 func rowWidth(h *harness) {
 	h.seed()
-	h.ok(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c1", "w1"}))
-	h.ok(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c2", "w1"}))
-	h.refused(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c0", "w1"}), "row w1 holds 2 cards, its width is 2")
+	h.ok(h.op("deal", nil, SetCardHolder{"c1", "w1"}))
+	h.ok(h.op("deal", nil, SetCardHolder{"c2", "w1"}))
+	h.refused(h.op("deal", nil, SetCardHolder{"c0", "w1"}), "row w1 holds 2 cards, its width is 2")
+	h.ok(h.op("again", nil, SetCardHolder{"c1", "w1"})) // a card the row already holds adds nothing
 	h.refused(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}), "row w1 holds 2 cards, more than width 1")
 	h.ok(h.op("same", nil, PutRow{"w1", "worker", 2, "sess-a"}))
 	h.ok(h.op("wide", nil, PutRow{"w1", "worker", 3, "sess-a"}))
-	h.ok(h.op("deal", []Expect{RowUnder{"w1"}}, SetCardHolder{"c0", "w1"}))
+	h.ok(h.op("deal", nil, SetCardHolder{"c0", "w1"}))
 	assert.Equal(h.t, 3, h.snap().Rows["w1"].Width)
 	h.ok(h.op("new", nil, PutRow{"w2", "kin", 0, ""}))
-	h.refused(h.op("deal", []Expect{RowUnder{"w2"}}, SetCardHolder{"c0", "w2"}), "row w2 holds 0 cards, its width is 0")
+	h.refused(h.op("deal", nil, SetCardHolder{"c0", "w2"}), "row w2 holds 0 cards, its width is 0")
+}
+
+// Stella's probe (l1-validation-20261106/width_review_test.go): one op with
+// two holder writes to a width-one row was accepted and ended holding two.
+// The second write counts the first and is refused; nothing lands.
+func widthInOneOp(h *harness) {
+	h.seed()
+	h.ok(h.op("width", nil, PutRow{"w1", "worker", 1, "sess-a"}))
+	before := h.snap()
+	h.refused(h.op("take", nil, SetCardHolder{"c1", "w1"}, SetCardHolder{"c2", "w1"}), "row w1 holds 1 cards, its width is 1")
+	after := h.snap()
+	after.Seq--
+	assert.Equal(h.t, before, after, "the first holder write is undone too")
+}
+
+// Every integer a write carries fits a PostgreSQL integer; outside it the op
+// is ErrInvalid from both stores (Stella's probe score_range_test.go: Fake
+// accepted 2^31 and PG reported ErrUnknown).
+func intRange(h *harness) {
+	h.seed()
+	n := len(h.events())
+	for name, c := range map[string]struct {
+		w      Write
+		reason string
+	}{
+		"score over":  {PutCard{ID: "c3", Stream: "s1", Score: math.MaxInt32 + 1}, "score 2147483648 is outside the 32-bit integer range -2147483648..2147483647"},
+		"score under": {SetCardScore{"c1", math.MinInt32 - 1}, "score -2147483649 is outside the 32-bit integer range -2147483648..2147483647"},
+		"width":       {PutRow{"w2", "kin", math.MaxInt32 + 1, ""}, "width 2147483648 is outside the 32-bit integer range -2147483648..2147483647"},
+		"attempt":     {SetCardAttempt{"c1", math.MaxInt32 + 1}, "attempt 2147483648 is outside"},
+		"pr":          {SetCardPR{"c1", math.MaxInt32 + 1}, "pr 2147483648 is outside"},
+		"flaps":       {SetRowFlaps{"w1", math.MaxInt32 + 1}, "flaps 2147483648 is outside"},
+		"pos":         {PutStream{"s2", "", "", math.MaxInt32 + 1}, "pos 2147483648 is outside"},
+	} {
+		_, err := h.s.Apply(h.ctx, h.op("big", nil, c.w))
+		require.ErrorIs(h.t, err, ErrInvalid, name)
+		assert.Contains(h.t, err.Error(), c.reason, name)
+	}
+	o := h.op("big", nil)
+	o.Epoch = math.MaxInt32 + 1
+	_, err := h.s.Apply(h.ctx, o)
+	require.ErrorIs(h.t, err, ErrInvalid)
+	assert.Contains(h.t, err.Error(), "epoch 2147483648 is outside")
+	assert.Len(h.t, h.events(), n, "nothing out of range is logged")
+	h.ok(h.op("edge", nil, SetCardScore{"c1", math.MaxInt32}, PutRow{"w2", "kin", math.MaxInt32, ""}))
+	assert.Equal(h.t, math.MaxInt32, h.snap().Cards["c1"].Score)
+}
+
+// A snapshot is the caller's own copy (Stella's probe
+// snapshot_isolation_test.go: editing a Fake snapshot's needs changed the
+// store without an event, and Rebuild then diverged).
+func snapshotIsCopy(h *harness) {
+	h.seed()
+	s := h.snap()
+	require.Equal(h.t, []string{"c0"}, s.Cards["c1"].Needs)
+	s.Cards["c1"].Needs[0] = "changed-by-caller"
+	s.Rows["w1"] = Row{}
+	again := h.snap()
+	assert.Equal(h.t, []string{"c0"}, again.Cards["c1"].Needs)
+	assert.Equal(h.t, w1, again.Rows["w1"])
+	assert.Equal(h.t, Rebuild(h.events()), again)
+	r := h.ok(h.op("touch", nil, SetCardReason{"c1", "r"}))
+	r.After.Cards["c1"].Needs[0] = "changed-by-caller"
+	assert.Equal(h.t, []string{"c0"}, h.snap().Cards["c1"].Needs, "a receipt is a copy too")
+	ev := h.events()
+	ev[1].After.Cards["c1"].Needs[0] = "changed-by-caller"
+	assert.Equal(h.t, []string{"c0"}, h.events()[1].After.Cards["c1"].Needs, "an event image is a copy too")
+}
+
+// Stella's probe (concurrency_review_test.go): sixteen concurrent applies of
+// one op id give one receipt and one event.
+func sameIDConcurrent(h *harness) {
+	h.ok(h.op("stream", nil, PutStream{"s", "repo", "main", 0}))
+	o := h.op("card", nil, PutCard{ID: "c", Stream: "s"})
+	const n = 16
+	receipts, errs := make([]Receipt, n), make([]error, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() { <-start; receipts[i], errs[i] = h.s.Apply(h.ctx, o) })
+	}
+	close(start)
+	wg.Wait()
+	for i := range n {
+		require.NoError(h.t, errs[i])
+		assert.True(h.t, receipts[i].Accepted)
+		assert.Equal(h.t, receipts[0], receipts[i])
+	}
+	assert.Len(h.t, h.events(), 2)
+	assert.Equal(h.t, Rebuild(h.events()), h.snap())
+}
+
+// Stella's probe (concurrency_review_test.go): a clear racing an apply
+// planned against the old epoch follows serial order: the apply lands only
+// when it is logged before the clear.
+func clearRacesApply(h *harness) {
+	h.ok(h.op("stream", nil, PutStream{"s", "repo", "main", 0}))
+	apply, clear := h.op("card", nil, PutCard{ID: "c", Stream: "s"}), h.op("clear", nil)
+	var a, c Receipt
+	var ae, ce error
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() { <-start; a, ae = h.s.Apply(h.ctx, apply) })
+	wg.Go(func() { <-start; c, ce = h.s.Clear(h.ctx, clear) })
+	close(start)
+	wg.Wait()
+	require.NoError(h.t, ae)
+	require.NoError(h.t, ce)
+	require.True(h.t, c.Accepted)
+	assert.Equal(h.t, 2, c.NewEpoch)
+	assert.Equal(h.t, a.Seq < c.Seq, a.Accepted, "the apply lands only before the clear")
+	s := h.snap()
+	assert.Equal(h.t, 2, s.Epoch)
+	assert.Empty(h.t, s.Cards)
+	assert.Equal(h.t, Rebuild(h.events()), s)
 }
 
 // Schema 2: author and base_sha are plain card writes. Each is accepted once,

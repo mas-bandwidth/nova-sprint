@@ -176,6 +176,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
+	h.ok(h.op("wide", nil, PutRow{"w1", "worker", 10, "sess-a"})) // room for every take: the holder write checks width
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
 		h.ok(h.op("add", nil, PutCard{ID: id, Stream: "s1"}))
@@ -193,9 +194,9 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	}
 }
 
-// Two deals on a width-1 row: the holders are counted inside the
-// transaction, so one is accepted and one refused.
-func TestFunctionalRowUnderRace(t *testing.T) {
+// Two deals on a width-1 row: the holder write counts the holders inside the
+// transaction, so one is accepted and one refused, with no width condition.
+func TestFunctionalWidthRace(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
@@ -203,7 +204,7 @@ func TestFunctionalRowUnderRace(t *testing.T) {
 		row := fmt.Sprintf("r%d", i)
 		h.ok(h.op("row", nil, PutRow{row, "worker", 1, ""}, SetRowState{row, "up"}, PutCard{ID: row + "a", Stream: "s1"}, PutCard{ID: row + "b", Stream: "s1"}))
 		deal := func(card string) Op {
-			return h.op("deal", []Expect{RowIs{row, "up"}, RowUnder{row}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
+			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
 		}
 		a, b := race(t, p, deal(row+"a"), deal(row+"b"))
 		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
@@ -294,6 +295,80 @@ func TestFunctionalUnknownThenReplay(t *testing.T) {
 			assert.Equal(t, 1, h.snap().Cards["c1"].Gen)
 		})
 	}
+}
+
+// Guarantee 3, deterministically: the reply is lost after COMMIT (the
+// afterCommit seam fails once). Apply says unknown; Replay finds the accepted
+// receipt; a second Apply with the id returns it and logs nothing.
+func TestFunctionalLostReplyAfterCommit(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	var failed atomic.Bool
+	p.afterCommit = func() error {
+		if failed.CompareAndSwap(false, true) {
+			return fmt.Errorf("test: reply lost after commit")
+		}
+		return nil
+	}
+	o := h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})
+	_, err := p.Apply(h.ctx, o)
+	require.ErrorIs(t, err, ErrUnknown)
+	assert.Contains(t, err.Error(), "reply lost after commit")
+	got, ok, err := p.Replay(h.ctx, o.ID)
+	require.NoError(t, err)
+	require.True(t, ok, "it landed")
+	assert.True(t, got.Accepted)
+	again := h.ok(o)
+	assert.Equal(t, got, again, "a second Apply returns the stored receipt")
+	n := 0
+	for _, e := range h.events() {
+		if e.Op == o.ID {
+			n++
+		}
+	}
+	assert.Equal(t, 1, n, "one event for the op")
+	assert.Equal(t, 1, h.snap().Cards["c1"].Gen, "the gen moved once")
+}
+
+// Guarantee 6: snapshots taken while 50 ops land are each one consistent
+// read: the Seq is the last event in it, and folding the events up to Seq
+// gives exactly its streams, cards and rows.
+func TestFunctionalSnapshotConsistentUnderWrites(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	ops := make([]Op, 50)
+	for i := range ops {
+		id := fmt.Sprintf("k%d", i)
+		ops[i] = h.op("add", nil, PutCard{ID: id, Stream: "s1", Score: i}, SetCardReason{"c1", id})
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for _, o := range ops {
+			_, err := p.Apply(context.Background(), o)
+			assert.NoError(t, err)
+		}
+	}()
+	var snaps []Snapshot
+	for running := true; running; {
+		select {
+		case <-done:
+			running = false
+		default:
+		}
+		s, err := p.Snapshot(context.Background())
+		require.NoError(t, err)
+		snaps = append(snaps, s)
+	}
+	all := h.events()
+	require.Len(t, all, 51)
+	for _, s := range snaps {
+		require.LessOrEqual(t, s.Seq, int64(len(all)))
+		assert.Equal(t, s, Rebuild(all[:s.Seq]), "snapshot at seq %d", s.Seq)
+	}
+	t.Logf("%d snapshots checked", len(snaps))
 }
 
 // A constraint the rules do not know about is an engine defect: an error

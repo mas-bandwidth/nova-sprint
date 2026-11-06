@@ -151,7 +151,8 @@ func capEvents(max int) int {
 	return max
 }
 
-// Snapshot is the current epoch's rows.
+// Snapshot is the current epoch's rows, every slice copied. Receipts and
+// event images are decoded from JSON on every read, so they never alias.
 func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -159,6 +160,10 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	s.Seq = int64(len(f.events))
 	pick(s.Streams, f.streams, f.epoch)
 	pick(s.Cards, f.cards, f.epoch)
+	for id, c := range s.Cards {
+		c.Needs = needs(c.Needs) // the caller's own copy: editing it never changes the store
+		s.Cards[id] = c
+	}
 	pick(s.Rows, f.rows, f.epoch)
 	for v, p := range f.policies {
 		if p.Active {
