@@ -9,8 +9,9 @@ import (
 
 // MoveAdd is the put-card plan of a new producer or sentinel: e is the card,
 // cards every card its needs and after reach (through needs and after). It
-// refuses a kind other than producer or sentinel, an id that exists, a
-// sentinel with a brief or a score, a need that is not a producer, an after
+// refuses a kind other than producer or sentinel, an id that exists, an id
+// over 104 bytes (so a consumer suffix still fits in 128), a sentinel with a
+// brief or a score, a need that is not a producer or a sentinel, an after
 // that is not a producer or sentinel, a name given twice, and a cycle through
 // needs or after (the first cold read of layer 2). The new card is fenced
 // absent. No other card is fenced: layer 1 refuses a need or after naming a
@@ -51,14 +52,20 @@ func addShape(e Add, cards map[string]Card) *Refusal {
 		return no("sentinel %s has no brief", e.ID)
 	case e.Kind == "sentinel" && e.Score != 0:
 		return no("sentinel %s has no score of its own", e.ID)
+	case len(e.ID) > maxCardID:
+		return no("id %q is %d bytes; Add caps a card id at %d so its consumer ids fit in %d", short(e.ID), len(e.ID), maxCardID, store.MaxName)
 	case !slices.Contains(Levels, level):
 		return no("priority %s is not one of %s", level, orList(Levels))
 	}
 	return nil
 }
 
-// addLists refuses a need that is not a producer, an after that is not a
-// producer or sentinel, and a name given twice in one list.
+// maxCardID leaves room in store.MaxName for the longest consumer suffix,
+// ".r" plus two int32s (the second cold read of layer 2).
+const maxCardID = 104
+
+// addLists refuses a need that is not a producer or a sentinel, an after
+// that is not a producer or sentinel, and a name given twice in one list.
 func addLists(e Add, cards map[string]Card) *Refusal {
 	for i, n := range e.Needs {
 		c, ok := cards[n]
@@ -69,8 +76,8 @@ func addLists(e Add, cards map[string]Card) *Refusal {
 			return no("%s needs %s", e.ID, e.ID)
 		case !ok:
 			return no("need %s of %s %s is not a card", n, e.Kind, e.ID)
-		case c.Kind != "producer":
-			return no("need %s of %s %s is a %s; a need is a producer", n, e.Kind, e.ID, c.Kind)
+		case c.Kind != "producer" && c.Kind != "sentinel":
+			return no("need %s of %s %s is a %s; a need is a producer or a sentinel", n, e.Kind, e.ID, c.Kind)
 		}
 	}
 	for i, a := range e.After {
