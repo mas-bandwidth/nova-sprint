@@ -101,3 +101,14 @@ dealt, every reported consumer applied, every resolvable need resolved,
 every read asked, together. Per-card verbs exist for a person; the tick
 batches. Landing follows the ladder in LANDING.md: one at a time only while
 the flow is good, batched the moment it backs up.
+
+## The performance bar is a gate (Glenn, 2026-11-06)
+
+"If we build this slow, but correct, we have failed." Speed is a requirement
+on the same footing as the invariants, not a later optimization. The bar:
+sprints of hundreds or thousands of cards; a one-second tick; every worker
+reporting at once; nothing handled one at a time that could be batched;
+steady-state reads incremental from the event log, never a snapshot per tick.
+Measured by the load test before v2 is called done, and watched in every
+layer design from 3 on: a step that handles one card where it could handle
+all of them is a defect.
