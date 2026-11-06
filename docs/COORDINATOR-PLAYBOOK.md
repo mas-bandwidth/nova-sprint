@@ -82,8 +82,10 @@ the action, and the exact blocker when another action cannot start.
 5. Separate evidence levels. Source CLEAR is not execution of a required gate. Reuse a gate only
    as the raw result of its original tested head. A new head may credit it only for an explicitly
    reviewed unchanged scope together with the required delta verification; never relabel the old
-   result as a new-head or full-gate pass, and never waive a required gate. Require the brief's
-   portable evidence and oracle controls before finish, then verify the canonical finish,
+   result as a new-head or full-gate pass, and never waive a required gate. Keep the original raw
+   gate log, oracle and negative-control inputs, deterministic seed, and first-failure evidence
+   portable and readable until independent review and landing have both completed. Require the
+   brief's portable evidence and oracle controls before finish, then verify the canonical finish,
    independent read and landing rather than stopping at a report or push. Proactively rework the
    actual bottleneck while preserving valid work and evidence.
 
