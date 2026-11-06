@@ -175,9 +175,13 @@ StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixK
               "ReadYesNeedsYes", "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
               "SentinelLandsByReached", "AfterKept"}
 
-\* The monitor's value after a step: its name and the rules it broke.
-\* ps' and cs' must be set before it is evaluated.
-L(ev, p, c, r) == [ev |-> ev, bad |-> {n \in StepRules : ~StepRule(n, ev, p, c, r)}]
+\* The monitor's value after a step: the rules it broke, and its name only
+\* when a reach check needs it (every other step is "-", so states are not
+\* split by the event that reached them). ps' and cs' must be set before it
+\* is evaluated.
+Tracked == {"NeedFailed", "Preempt"}
+L(ev, p, c, r) == [ev |-> IF ev \in Tracked THEN ev ELSE "-",
+                   bad |-> {n \in StepRules : ~StepRule(n, ev, p, c, r)}]
 
 \* A producer event that writes producer p only.
 PStep(ev, p, c, rec) ==
@@ -614,14 +618,26 @@ AfterKept              == "AfterKept" \notin last.bad
 (* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each    *)
 (* violation shows that the passing run is not vacuous.                   *)
 
+(* Most are read off the state (the monitor keeps only two event names).  *)
+(* An ok read of the current attempt from an earlier review exists only   *)
+(* after a Red: a Finished starts a new attempt, and reads carry theirs.  *)
+OkRead(p, k) == cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "ok" /\ cs[k].att = ps[p].att
+AfterRed(p) == \E k \in ConsOf(p) : OkRead(p, k) /\ cs[k].review < ps[p].review
+
 NeverLanded          == \A p \in Prods : ps[p].st # "landed"
-NeverFixed           == last.ev # "ReadFix"
-NeverRed             == last.ev # "Red"
+(* Ready, bounced, and the current work consumer done ok: ReadFix (the    *)
+(* trace is checked by hand, since Block, Unblock and Resolve after an    *)
+(* earlier bounce can also get there).                                    *)
+NeverFixed           ==
+  ~\E p \in Prods : ps[p].st = "ready" /\ ps[p].bounces >= 1 /\ \E c \in ConsOf(p) :
+     IsCur(p, c) /\ cs[c].st = "done" /\ cs[c].res = "ok"
+NeverRed             == ~\E p \in Prods : AfterRed(p)
 NeverNeedFailed      == last.ev # "NeedFailed"
 NeverBlocked         == \A p \in P : ps[p].st # "blocked"
 NeverPreempted       == last.ev # "Preempt"
-NeverSentinelReached == last.ev # "Reached"
-NeverRelinked        == last.ev # "Relink"
+(* Only Reached lands a sentinel (SentinelLandsByReached).                 *)
+NeverSentinelReached == \A s \in Sentinels : ps[s].st # "landed"
+NeverRelinked        == \A p \in P : ps[p].needs \subseteq Needs0[p]
 (* A work consumer reported fault, and a later work consumer of the same *)
 (* producer was cut: the fault was re-dealt.                              *)
 NeverFaultRedealt ==
@@ -629,17 +645,13 @@ NeverFaultRedealt ==
      /\ i < j
      /\ cs[<<p, i>>].kind = "work" /\ cs[<<p, i>>].res = "fault"
      /\ cs[<<p, j>>].kind = "work"
-(* A yes after a Red needs a new read: ReadYes fires while an ok read of  *)
-(* the same attempt from an earlier review exists (the attempt is the     *)
-(* same, so the re-entry into review was a Red, not a new Finished).      *)
+(* A yes after a Red needs a new read: the producer is merging again      *)
+(* after a Red, on an ok read cut in the current review (a new read; the  *)
+(* pre-Red one is from an earlier review).                                *)
 NeverYesAfterRed ==
-  ~(last.ev = "ReadYes"
-    /\ \E p \in Prods : \E k1, k2 \in ConsOf(p) :
-         /\ ps[p].st = "merging"
-         /\ cs[k1].kind = "read" /\ cs[k1].st = "done" /\ cs[k1].res = "ok"
-         /\ cs[k2].kind = "read" /\ cs[k2].st = "done" /\ cs[k2].res = "ok"
-         /\ cs[k1].att = ps[p].att /\ cs[k2].att = ps[p].att
-         /\ cs[k1].review < cs[k2].review
-         /\ cs[k2].review = ps[p].review)
+  ~\E p \in Prods :
+     /\ ps[p].st = "merging"
+     /\ AfterRed(p)
+     /\ \E k \in ConsOf(p) : OkRead(p, k) /\ cs[k].review = ps[p].review
 
 =============================================================================
