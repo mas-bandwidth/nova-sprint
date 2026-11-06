@@ -469,7 +469,7 @@ epoch)`, `epoch(n)`, `judgements`, `cursors`. "Producer" below excludes sentinel
 | working | consumers `state = working`, `holder = row` (reads included) |
 | width | `rows.width` |
 | track: blocker / critical | working consumers whose producer's `priority` is blocker / critical |
-| track: fix | working work consumers with `attempt >= 2` (rule to confirm) |
+| track: fix | working work consumers with `attempt >= 2` (ruled 2026-11-06: a second or later attempt is a fix) |
 | track: reads | working consumers `kind = read` |
 | done | consumers `state = done`, `holder = row` (v1 counted a work card only once its read said ok, and a read when it gave a verdict: decide whether v2 counts every done) |
 | ok% | derivable: read consumers `done` with `author = row`: ok when `result = ok`, failed when `result = fix` (v1: the readers' verdicts on the row's work); a stats-tidy mark is MISSING |
