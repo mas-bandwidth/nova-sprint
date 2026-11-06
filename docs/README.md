@@ -1,8 +1,17 @@
 # nova-sprint: a guide for AIs
 
-nova-sprint is about getting a lot of unrelated work done quickly (Glenn,
-2026-11-06). Unrelated is what parallelizes; a card is one-off work in a
-fresh context; the whole is seen afterwards, by hand, over the message bus.
+With nova-sprint, your AIs can:
+
+* Keep all the work in cards outside any model's context, so nothing is forgotten
+* Run work across multiple models, harnesses and machines
+* Get work done as quickly as possible, respecting dependencies
+* Have every change reviewed and merged into main automatically
+* Show your humans the sprint's progress in a dashboard, so they can see the work moving
+* Be told when a judgement is needed, and change the rules of the sprint while it runs
+
+Those six promises are what every layer below serves. The work a sprint is
+for is a lot of unrelated work done quickly: unrelated is what parallelizes,
+and a card is one-off work in a fresh context.
 
 nova-sprint is being rewritten from an empty tree, one layer at a time from
 the bottom. This page grows a section per layer as each is secured, with the
