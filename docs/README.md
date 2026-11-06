@@ -121,3 +121,13 @@ before layer 3 starts.
 The hard requirement, never bent (Glenn, 2026-11-06): a sprint of thousands of
 cards, one-second ticks, and a dashboard updated every second. Nothing is built
 above a layer until it is shown to hold at that size, by measurement.
+
+## Reports are batched by the run loop (2026-11-06, from the layer 1 load test)
+
+At 5,000 producers with a one-second tick and 200 single-report ops a second,
+the one writer lock was near saturation (ticks 322 ms, report median wait 59
+ms). Batch always: a worker's report goes over the bus to the run loop, and the
+run loop applies every report that arrived during the tick as part of the
+tick's one op, so the lock has one writer and a burst of 2,000 reports is two
+ticks. The per-card verbs still write directly for a person; rows never do.
+Layer 3 and 4 rule.
