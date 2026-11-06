@@ -30,6 +30,8 @@ def prod(name, f):
     if f["author"] != "none":
         s += " by " + f["author"]
     s += " rv%s b%s" % (f["review"], f["bounces"])
+    if f.get("red") == "TRUE":
+        s += " red"
     if f["score"] != "0":
         s += " sc" + f["score"]
     if f["prio"] != "normal":
