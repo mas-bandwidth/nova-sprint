@@ -26,27 +26,42 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 
 ### Tables
 
-- `sprint.epoch`: one row, `n integer`. Clear is `n = n + 1`. Every other row
-  carries the epoch it was written in; the snapshot shows only the current
-  epoch's rows. Nothing is deleted.
+- `sprint.meta`: one row (`id = 1` by CHECK), `schema integer`. `Migrate`
+  creates the schema at the version the binary knows and refuses a store at any
+  other version, naming both numbers.
+- `sprint.epoch`: one row (`id = 1` by CHECK), `n integer`. Clear is
+  `n = n + 1`. Every stream, card and row carries the epoch it was written in;
+  the snapshot shows only the current epoch's rows. Nothing is deleted.
 - `sprint.streams`: `name text`, `repo text`, `base text`, `held boolean`,
   `pos integer`, `epoch integer`. Primary key `(epoch, name)`.
-- `sprint.cards`: `id text`, `stream text`, `state text`, `gen integer`,
-  `score integer`, `needs text[]`, `holder text` (nullable), `head text`,
-  `pr integer`, `brief text`, `reason text`, `epoch integer`. Primary key
-  `(epoch, id)`. `state` is checked against the closed set below. `stream`
-  references `streams`; `holder` references `rows`. `score` is set once at add
-  and never changed by a move; it is the work order.
+- `sprint.cards`: `id text`, `stream text`, `state text NOT NULL`,
+  `gen integer`, `score integer`, `needs text[]`, `holder text` (nullable),
+  `head text`, `pr integer`, `brief text`, `reason text`, `epoch integer`.
+  Primary key `(epoch, id)`. `state` is checked against the closed set below.
+  `(epoch, stream)` references `streams`; `(epoch, holder)` references `rows`.
+  `gen` starts at 0 and goes up by one on every write to the card (state,
+  holder, head and pr, reason, score), so an expectation on gen catches any
+  change. `score` is the work order: set at add, changed only by the explicit
+  score write, never by a move.
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
-  `state text` (`up`, `down`, `blocked`), `seen timestamptz`, `flaps integer`,
-  `epoch integer`. Primary key `(epoch, name)`.
-- `sprint.events`: `seq bigserial`, `op text unique`, `actor text`,
-  `kind text`, `accepted boolean`, `reason text`, `before jsonb`, `after jsonb`,
+  `state text` (`up`, `down`, `blocked`), `session text` (the hook's session,
+  so a late heartbeat from an old session can be told apart), `seen
+  timestamptz`, `flaps integer`, `epoch integer`. Primary key `(epoch, name)`.
+- `sprint.events`: `seq bigint`, `op text unique`, `actor text`, `kind text`,
+  `accepted boolean`, `reason text`, `before jsonb`, `after jsonb`,
   `receipt jsonb`, `at timestamptz`, `epoch integer`. Append-only. One row per
-  operation asked for, accepted or refused.
+  operation that entered the store, accepted or refused. Because writers run
+  one at a time (below), `seq` is commit order with no gaps, so a reader's
+  cursor is a committed prefix: `Events(afterSeq)` never skips an event.
+  `before` and `after` hold the full row of each touched stream, card, row or
+  policy version, so folding the accepted events in `seq` order from the first
+  event rebuilds the snapshot. The events are layer 4's outbox: a deal is an
+  accepted event, and the bus push reads from a cursor.
 - `sprint.policy`: `version serial`, `kind text` (`script` or `data`),
   `name text`, `body text`, `active boolean`, `actor text`, `at timestamptz`.
-  Layer 5 fills it; the table exists now so there is one store.
+  Global, not epoch-scoped: a clear keeps the policy. At most one version is
+  active (a unique partial index). Layer 5 fills it; the table exists now so
+  there is one store.
 
 ### Card states
 
@@ -64,46 +79,81 @@ The Go API, package `store`:
 
 ```go
 type Store interface {
-    Snapshot(ctx) (Snapshot, error)                 // the whole current epoch
+    Snapshot(ctx) (Snapshot, error)                 // the whole current epoch, with Seq and Epoch
     Apply(ctx, Op) (Receipt, error)                 // one transaction
     Replay(ctx, opID string) (Receipt, bool, error) // the receipt an op already got
-    Events(ctx, afterSeq int64, max int) ([]Event, error)
-    Clear(ctx, Op) (epoch int, err error)           // n = n + 1; itself an event
+    Events(ctx, afterSeq int64, max int) ([]Event, error) // afterSeq exclusive, seq order, max capped at 1000
+    Clear(ctx, Op) (Receipt, error)                 // n = n + 1; same protocol as Apply
+    Policy(ctx, version int) (PolicyVersion, error) // the body layer 5 runs
 }
 ```
 
-An `Op` is: `ID` (chosen by the caller, unique forever), `Actor`, `Kind` (a
-word for the event log, such as `add`, `take`, `finish`), `At` (the time, passed
-in by the caller, never `now()` in SQL), `Expect` (conditions), `Writes`
-(a closed set of typed writes), `Note`.
+An `Op` is: `ID` (chosen by the caller, unique forever), `Epoch` (the epoch
+the caller planned against; required), `Actor`, `Kind` (a word for the event
+log, such as `add`, `take`, `finish`), `At` (the time, passed in by the caller,
+never `now()` in SQL), `Expect` (conditions), `Writes` (a closed set of typed
+writes), `Note` (kept in the receipt).
 
-Conditions (`Expect`): card `X` is in state `S` with gen `G`; card `X` has
-holder `R` (or none); row `R` is in state `S`; stream `S` is held or not held;
-card `X` does not exist; the epoch is `N`. Every condition is checked inside the
-same transaction as the writes, against the rows as they are at that moment.
+Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
+`X` has holder `R` (or none); row `R` is in state `S`; stream `S` is held or
+not held; card `X` does not exist; the store is at seq `N` (a fence for a plan
+that needs nothing at all to have changed since its snapshot). The op's epoch
+must equal the store's epoch; a mismatch is a refusal. Every condition is
+checked inside the same transaction as the writes, against the rows as they
+are at that moment.
 
-Writes (closed set): put stream; set stream held; put card (add); set card
-state, with gen incremented by one; set card holder; set card head and pr;
-set card reason; put row; set row state, seen, flaps; put policy version; set
-active policy version. Nothing else. A write the engine does not know is a
-refusal at the Go level before any SQL runs.
+Writes (closed set): put stream (insert or overwrite); set stream held; put
+card (add; refused if the card exists; every need must name a card of the same
+epoch); set card state; set card holder (a name or none); set card head and
+pr; set card reason; set card score; put row (insert or overwrite); set row
+state, session, seen, flaps; put policy version; set active policy version.
+Every card write raises gen by one. A set write whose target does not exist is
+a refusal. Writes in one op apply in order, so a later write sees a row an
+earlier one put. Two writes to one field in one op are invalid.
 
-`Apply` returns one of three things:
+Writers run one at a time: `Apply` and `Clear` begin by taking one lock
+(`LOCK TABLE sprint.epoch`) and hold it to commit, at `READ COMMITTED`. A
+sprint sees a few operations a second at most; one writer at a time is the
+simplest thing that makes every condition exact and every seq commit order.
+There are no serialization retries because there are no serialization
+failures.
+
+`Apply` ends one of four ways:
 
 1. `Receipt{Accepted: true, ...}` with the event seq and the after-state of each
    touched row: every condition held, every write landed, the event row is in
    the same transaction.
-2. `Receipt{Accepted: false, Reason: ...}`: a condition failed or a write was
-   illegal; nothing changed; the refusal is logged as an event with
-   `accepted = false`. Exit code 1 at the CLI.
-3. `ErrUnknown`: the transport failed after the request left (connection
-   dropped mid-commit). Nothing is known. The caller calls `Replay(opID)`: if
-   the op landed, its receipt comes back; if not, the caller may `Apply` again
-   with the same id. Exit code 2 at the CLI.
+2. `Receipt{Accepted: false, Reason: ...}`: the epoch was wrong, a condition
+   failed, or a write broke a rule (target missing, card exists, bad state
+   name); nothing changed; the refusal is logged as an event with
+   `accepted = false`. Exit code 1 at the CLI. The id is used: a retry after a
+   refusal is a new op with a new id.
+3. `ErrInvalid`: the op never entered the store (no id, no epoch, a write type
+   outside the closed set, two writes to one field). Nothing is logged. A
+   caller bug.
+4. `ErrUnknown`: the request may have reached the server and the outcome is
+   not known (any failure after the transaction began, held conservatively).
+   The caller calls `Replay(opID)`: if the op landed, its receipt comes back;
+   if not, the caller may `Apply` again with the same id. Exit code 2 at the
+   CLI.
+
+Any other error means the request did not reach the store and nothing
+happened. A constraint violation from PostgreSQL during the writes is an engine
+defect, not a refusal: the transaction rolls back and the error is returned
+with the constraint named.
 
 `Replay` of an op id that was accepted or refused returns the stored receipt
 and changes nothing. A second `Apply` with an id already in `events` returns
-the stored receipt and changes nothing, whatever its body says.
+the stored receipt and changes nothing, whatever its body says: a changed body
+is never a new operation. The receipt carries the original op's id, kind,
+actor, epoch and at, so a caller can see what it is crediting. Two concurrent
+applies with one id are serialized by the lock; the second sees the event row
+and returns the first's receipt.
+
+`Clear` is an `Op` with kind `clear`, no writes, and at most the seq fence as
+a condition. It is idempotent by id, logged, and its receipt carries the new
+epoch. Streams, cards and rows of the old epoch stay readable through `Events`
+and are not in the next `Snapshot`; policy is kept.
 
 ## What it guarantees
 
@@ -111,12 +161,20 @@ the stored receipt and changes nothing, whatever its body says.
 2. Idempotent by op id: the same id never applies twice.
 3. A transport failure is reported as unknown, never as unchanged.
 4. A card is in exactly one state and has at most one holder. The schema
-   enforces this (`state` is one column with a CHECK; `holder` is one column
-   with a foreign key), not Go.
-5. The log matches the state: replaying every accepted event from an empty
-   epoch rebuilds the snapshot. Nothing is deleted except by epoch.
+   enforces this (`state` is one `NOT NULL` column with a CHECK; `holder` is
+   one column with a foreign key), not Go.
+5. The log matches the state: folding every accepted event from the first in
+   seq order rebuilds the snapshot, policy included. Nothing is deleted except
+   by epoch, and an old epoch stays readable in the log.
 6. Snapshot is one consistent read (one `REPEATABLE READ` transaction) of the
-   current epoch.
+   current epoch, and carries the seq it was read at and the epoch, so a plan
+   made from it can fence on either.
+7. A condition is checked against the rows as they are when the writes land:
+   writers are serialized, so there is no stale check and no lost update.
+
+What the model's atomic step stands for in SQL: one transaction, from the
+lock to the commit. The lock is what makes the correspondence hold; without
+it the StaleCheck witness is exactly what `READ COMMITTED` would do.
 
 ## How it is checked
 
