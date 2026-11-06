@@ -75,10 +75,15 @@ run() {
             -noGenerateSpecTE -workers "$workers" \
             -metadir "$WORK/states/$name" -config "$cfg" "$mod" > "$WORK/$name.log" 2>&1
         code=$?
+        # The invariant a violate run must break is the first one in its cfg;
+        # a violation of any other invariant is a FAIL (the fault is not the
+        # one the witness names, or the model broke elsewhere first).
+        target="$(grep -m 1 '^INVARIANT' "$cfg" | awk '{print $2}')"
         if [ "$expect" = pass ] && [ "$code" -eq 0 ]; then
             echo "ok   $name: no error found" > "$WORK/$name.result"
-        elif [ "$expect" = violate ] && [ "$code" -eq 12 ]; then
-            echo "ok   $name: violation reported, as required" > "$WORK/$name.result"
+        elif [ "$expect" = violate ] && [ "$code" -eq 12 ] \
+            && grep -q "Invariant $target is violated" "$WORK/$name.log"; then
+            echo "ok   $name: $target violated, as required" > "$WORK/$name.result"
         else
             echo "FAIL $name: TLC exit $code, wanted $expect (log below)" > "$WORK/$name.result"
             echo 1 > "$WORK/$name.failed"
