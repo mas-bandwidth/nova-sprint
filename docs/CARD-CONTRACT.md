@@ -82,3 +82,16 @@ A report is machine-read: verdict and full head first; a hold is a report
 with its reason, not a commit message or a file (LESSONS C.15). A HOLD is
 honest: LAND only with every done-when gate green at the exact head
 (LESSONS C.19).
+
+## The card is a structured record (decided 2026-11-06)
+
+Glenn: "There is some value in having things *structured* that was an idea we
+learned from v1." So the card contract above is a typed record, defined once
+in one schema file: the markdown brief is a serialization of it, `add` parses
+the brief into the record and the lint is the parser's refusals naming the
+field; the store keeps as columns the fields the engine reads (needs, after,
+paths, tier, priority, done-when) and the prose as text; the deal message, the
+report and the dashboard feed carry the same record or parts of it, generated
+for Go and the dashboard's language. Few records, at the edges and the card;
+v1's 400k generated lines came from making every internal message a record,
+and the engine's internals stay plain Go.
