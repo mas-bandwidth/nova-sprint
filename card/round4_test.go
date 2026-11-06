@@ -56,30 +56,31 @@ func TestWaiveRedOnReviewZero(t *testing.T) {
 	refusal{r, "producer p1 has no review yet"}.check(t)
 }
 
-// Red is recorded on pr, because result is consumers only. WaiveRed accepts
-// while it is set. Start and Finished clear it.
-func TestRedRecordedOnPR(t *testing.T) {
+// Red is recorded on the producer's red column. WaiveRed accepts while it is
+// set and fences the plan on it. Start and Finished clear it.
+func TestRedRecorded(t *testing.T) {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
 	w.read("p1", "r2", "ok", "")
 	w.move("p1", ReadYes{})
 	w.move("p1", Red{Head: h1, Reason: "ci red"})
-	assert.Equal(t, 1, w.card("p1").PR)
-	_, r := w.plan("p1", WaiveRed{Reason: "the red was not the code"})
+	assert.True(t, w.card("p1").Red)
+	plan, r := w.plan("p1", WaiveRed{Reason: "the red was not the code"})
 	require.Nil(t, r, "a recorded red may be waived")
+	assert.Contains(t, plan.Expect, store.Expect(store.CardRed{Card: "p1", Red: true}))
 }
 
 func TestStartAndFinishedClearRed(t *testing.T) {
 	p := pr(Ready)
-	p.PR = redPR
+	p.Red = true
 	plan, r := Move(p, nil, rows(), Stream{Name: "s1"}, nil, Start{Row: "r1", Branch: "b", Base: base})
 	require.Nil(t, r)
-	assert.Contains(t, plan.Writes, store.Write(store.SetCardPR{Card: "p1", PR: 0}))
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardRed{Card: "p1", Red: false}))
 	p = pr(Working)
-	p.PR = redPR
+	p.Red = true
 	c := wk(Done, "ok", h2)
 	plan, r = Move(p, []Card{c}, rows(), Stream{Name: "s1"}, nil, Finished{Consumer: c.ID})
 	require.Nil(t, r)
-	assert.Contains(t, plan.Writes, store.Write(store.SetCardPR{Card: "p1", PR: 0}))
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardRed{Card: "p1", Red: false}))
 }

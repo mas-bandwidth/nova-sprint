@@ -113,7 +113,7 @@ func producerTable() []pcase {
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}, store.SetCardFinding{Card: "p1", Finding: "fix x"}, store.SetCardBounces{Card: "p1", Bounces: 1}}},
 		{event: Landed{Head: h1}, from: []string{Merging}, expect: []store.Expect{p1}, writes: []store.Write{store.SetCardState{Card: "p1", State: LandedState}}},
 		{event: Red{Head: h1, Reason: "ci red"}, from: []string{Merging}, expect: []store.Expect{p1},
-			writes: []store.Write{store.SetCardState{Card: "p1", State: Review}, store.SetCardReview{Card: "p1"}, store.SetCardReason{Card: "p1", Reason: "ci red"}, store.SetCardPR{Card: "p1", PR: 1}}},
+			writes: []store.Write{store.SetCardState{Card: "p1", State: Review}, store.SetCardReview{Card: "p1"}, store.SetCardReason{Card: "p1", Reason: "ci red"}, store.SetCardRed{Card: "p1", Red: true}}},
 		{event: Released{}, from: []string{Working}, cons: []Card{{ID: "p1.w1", Kind: "work", Of: "p1", State: Fail, Gen: 6, Attempt: 1, Holder: "r1", Head: h2, Reason: "silent"}},
 			expect: []store.Expect{p1, gen("p1.w1", 6), store.StreamHeld{Stream: "s1"}},
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}, store.SetCardReason{Card: "p1", Reason: "silent"}, store.SetCardHead{Card: "p1", Head: h2}}},

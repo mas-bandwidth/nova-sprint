@@ -406,8 +406,8 @@ func foldCard(s records, w store.Write) {
 		editCard(s, x.Card, func(c *Card) { c.Needs = slices.Clone(x.Needs) })
 	case store.SetCardAfter:
 		editCard(s, x.Card, func(c *Card) { c.After = slices.Clone(x.After) })
-	case store.SetCardPR:
-		editCard(s, x.Card, func(c *Card) { c.PR = x.PR })
+	case store.SetCardRed:
+		editCard(s, x.Card, func(c *Card) { c.Red = x.Red })
 	default:
 		foldCardRest(s, w)
 	}

@@ -105,6 +105,8 @@ func (v *vals) expect(e store.Expect) {
 		if x.Seq < 0 {
 			v.fail("seq %d is below 0", x.Seq)
 		}
+	case store.CardRed:
+		v.key("card", x.Card)
 	default:
 		v.fail("condition %T is not one the machine makes", e)
 	}
@@ -204,8 +206,8 @@ func cardValue(w store.Write) (string, func(v *vals)) {
 				v.fail("cost %d is below 0", x.Cost)
 			}
 		}
-	case store.SetCardPR:
-		return x.Card, func(v *vals) { v.num("pr", x.PR) }
+	case store.SetCardRed:
+		return x.Card, func(*vals) {}
 	}
 	return "", nil
 }
@@ -293,8 +295,8 @@ func oneField(w store.Write) (id, col string, ok bool) {
 		return x.Card, "bounces", true
 	case store.SetCardCost:
 		return x.Card, "cost", true
-	case store.SetCardPR:
-		return x.Card, "pr", true
+	case store.SetCardRed:
+		return x.Card, "red", true
 	}
 	return "", "", false
 }
