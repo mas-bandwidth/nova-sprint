@@ -169,10 +169,19 @@ and returns the first's receipt.
 
 `Clear` is an `Op` with kind `clear`, no writes, and at most the seq fence as
 a condition. It is idempotent by id, logged with the epoch it closed, and its
-receipt carries the new epoch. Streams, cards and rows of the old epoch stay
-readable through `Events` and are not in the next `Snapshot`; policy is kept.
-Nothing is ever deleted: a clear opens a new epoch, it does not remove the
-old one.
+receipt carries the new epoch. Streams and cards of the old epoch stay readable
+through `Events` and are not in the next `Snapshot`; policy is kept; rows are
+carried forward into the new epoch in the same transaction (copied: same name,
+kind, width and session, state `down`, flaps 0), because the rows are the
+fleet, not the sprint's work, and a clear must not make every worker and kin
+register again. Nothing is ever deleted: a clear opens a new epoch, it does
+not remove the old one.
+
+Owed to later layers, named here so they are not lost: an `author` on a card
+(the row whose work a read judges, so a row is never dealt its own card to
+read) and a `base_sha` at deal are layer 2's columns; row labels for policy
+(tier, model, harness) are layer 5's. Each arrives with a schema version bump
+and a design change, never as a special case.
 
 `Replay` returns `(receipt, found, err)`: `found` is false when no event has
 that id. A refused event has no before or after images; rebuild folds only
