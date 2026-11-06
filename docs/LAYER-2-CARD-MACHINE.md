@@ -421,3 +421,30 @@ with a design change, never a special case):
   failed need gets no new consumer and is failed by layer 3 in the same tick.
 - Row table text: there is no row block; the flap limit sentence is gone.
 - The liveness obligation "nothing stalls" is layer 3's model, with the tick.
+
+## Rulings from the second cold read of layer 2 (2026-11-06)
+
+- `AskReads{rows}` cuts several reads from one snapshot with distinct
+  indices; `Merge` validates the merged plan (the same checks as a single
+  plan, plus no two writes to one field), so no plan the machine emits is
+  ever invalid at the store.
+- `HoldStream` refuses a producer listed twice; its ready set is fenced with
+  the snapshot's `AtSeq`.
+- `Relink{InThisOp}` as `Waive`, so a drop and its relink are one op.
+- `Broken` and `Faulted` write the consumer's reason into the producer's
+  `finding`; `Start` copies `finding` to the new work consumer, so a fix
+  attempt always carries what it fixes.
+- Every return into a held stream, and `Unblock`, parks with a reason that
+  names the hold ("held: <the stream's reason>").
+- `Add` caps a card id at 104 bytes so every consumer suffix fits in 128.
+- A sentinel may be a need (a phase mark is what later phases need).
+- `Replace{by}`: `by` is a producer or sentinel, non-final, fenced.
+- `Withdraw` of a working producer's live consumer always releases the
+  producer in the same plan (a withdraw that leaves it working is refused);
+  `Withdraw{head}` equal to `base_sha` is refused (nothing was pushed).
+- `UnholdStream{reason}` is an event; `WaiveRed{reason}` moves a producer
+  that a Red sent back to `review` on to `merging` without a new read when a
+  done ok read of the previous review at the same head exists (the
+  coordinator's judgement that the red was not the code's).
+- Actor rulings (who may Unblock, Waive, Relink, SetPriority, WaiveRed) are
+  layer 3's; events carry no actor.
