@@ -3498,4 +3498,8 @@
           :item-date "2026-10-24"
           :item-why "On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour."
           :item-release "v1.9")
-   :origin "coordinator review 2026-10-24")))
+   :origin "coordinator review 2026-10-24")
+  (fix "the-lane-record-test-sets-its-own-file-times" :release "v1.6.21" :status "done"
+   :title "The lane's record-cache test sets its own file times, and the base-CI judgment is pinned across ticks"
+   :text "TestTheLaneReadsARecordOnlyWhenItsFileChanged failed 19 of 20 on hetzner2 (Linux 6.8, ext4) and passed 20 of 20 on amd-3 (Linux 7.0) and in CI: it truncated the record and wrote one of the same size, and left the new mtime to the kernel, whose ext4 timestamps on 6.8 come from the coarse 1 ms tick, so a rewrite inside one tick kept the (size, mtime) the lane caches on and the cache rightly stood (j1 read where j2 was asserted). Real time reached a unit test through the filesystem clock. The lane itself is sound: it writes only by decide.Append (O_APPEND), so every real write grows the file. The test now sets every file time with os.Chtimes from fixed instants and pins each half of the cache key on its own: same size and time keeps the cache (garbage, then a same-size rewrite), a new time at the same size is read again, and an append is read though its time stands still. Also: a second-tick test for the red-base judgment (TestTheBaseCIJudgmentSurvivesASecondTick). The reported orphan retirement of TickBaseCI's owner/repo@base subject did not reproduce: isNonCardSubject exempts any subject with '@' or '/' (since v1.2.17), so neither OrphanJudgments (rule 8) nor RetireJudgments touches it; the test fails if the subject is made a bare word, so it guards that exemption. Done: this PR."
+   :origin "the child that wrote PR #603 (the base-CI report); the coordinator, 2026-10-24 (the hetzner2 failure on main)")))

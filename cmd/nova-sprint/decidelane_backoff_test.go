@@ -95,36 +95,67 @@ func TestAFailedShadowReadBacksOffUntilItsHeadChanges(t *testing.T) {
 
 // The record's open decisions are decoded again only when its file changed: a file of the
 // same size and time is not read (the proof: garbage of the same size and time is not
-// noticed), and an append is read at once.
+// noticed), an append is read at once, and so is a file of the same size at a new time.
+// Every file time is the test's own (os.Chtimes): a time left to the filesystem is the
+// kernel's clock, and on a coarse one (ext4 on Linux 6.8 stamps from the 1 ms tick) a
+// rewrite of the same size inside one tick keeps its time, so the test would pass or
+// fail on how fast it ran.
 func TestTheLaneReadsARecordOnlyWhenItsFileChanged(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	now := func() time.Time { return time.Unix(1000, 0).UTC() }
+	at := time.Unix(2000, 0)
 	lane := newDecideLane(dir, nil, now, GradeWait)
 	path := lane.record(decide.JudgmentAnswerName)
 	d := func(id string) decide.Decision {
 		return decide.Decision{ID: id, Decision: decide.JudgmentAnswerName, At: now().Format(time.RFC3339), Inputs: map[string]string{"card": "s1-1"}}
 	}
+	ids := func(ds []decide.Decision) []string {
+		var out []string
+		for _, x := range ds {
+			out = append(out, x.ID)
+		}
+		return out
+	}
 	require.NoError(t, lane.recordAnswer(d("j1")))
+	require.NoError(t, os.Chtimes(path, at, at))
 	open, err := lane.openOf(path)
 	require.NoError(t, err)
-	require.Len(t, open, 1)
-
-	fi, err := os.Stat(path)
+	require.Equal(t, []string{"j1"}, ids(open))
+	j1, err := os.ReadFile(path)
 	require.NoError(t, err)
-	garbage := bytes.Repeat([]byte("x"), int(fi.Size()))
+
+	garbage := bytes.Repeat([]byte("x"), len(j1))
 	require.NoError(t, os.WriteFile(path, garbage, 0o644))
-	require.NoError(t, os.Chtimes(path, fi.ModTime(), fi.ModTime()))
+	require.NoError(t, os.Chtimes(path, at, at))
 	open, err = lane.openOf(path)
 	require.NoError(t, err, "an unchanged size and time is not read again")
-	require.Len(t, open, 1)
+	require.Equal(t, []string{"j1"}, ids(open))
 
-	require.NoError(t, os.WriteFile(path, nil, 0o644))
-	require.NoError(t, lane.recordAnswer(d("j2")))
+	// a file of the same size at a new time is read again: j2 alone, written as j1 was
+	other := newDecideLane(t.TempDir(), nil, now, GradeWait)
+	require.NoError(t, other.recordAnswer(d("j2")))
+	j2, err := os.ReadFile(other.record(decide.JudgmentAnswerName))
+	require.NoError(t, err)
+	require.Len(t, j2, len(j1), "the rewrite is the same size, so only its time tells it changed")
+	require.NoError(t, os.WriteFile(path, j2, 0o644))
+	require.NoError(t, os.Chtimes(path, at, at))
 	open, err = lane.openOf(path)
 	require.NoError(t, err)
-	require.Len(t, open, 1, "the changed file is read again")
-	assert.Equal(t, "j2", open[0].ID)
+	require.Equal(t, []string{"j1"}, ids(open), "same size and time: the cache stands")
+	later := at.Add(time.Second)
+	require.NoError(t, os.Chtimes(path, later, later))
+	open, err = lane.openOf(path)
+	require.NoError(t, err)
+	require.Equal(t, []string{"j2"}, ids(open), "the changed file is read again")
+
+	// an append (the only write the lane makes: decide.Append) grows the file, read at
+	// once though its time stands still
+	require.NoError(t, lane.recordAnswer(d("j3")))
+	require.NoError(t, os.Chtimes(path, later, later))
+	open, err = lane.openOf(path)
+	require.NoError(t, err)
+	require.Equal(t, []string{"j2", "j3"}, ids(open), "the appended file is read again")
 
 	_, err = lane.openOf(filepath.Join(dir, "absent.jsonl"))
 	require.NoError(t, err, "an absent record is no decisions")
