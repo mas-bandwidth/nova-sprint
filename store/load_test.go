@@ -863,6 +863,9 @@ func (l *load) explain(t *testing.T, c *pgx.Conn) {
 	_ = c.QueryRow(l.ctx, "SELECT max(seq) FROM sprint.events").Scan(&last) // ignored: 0 is a fine plan input
 	for _, q := range []string{
 		"SELECT count(*) FROM sprint.cards WHERE epoch = 1 AND holder = 'r07' AND state = 'working'",
+		"SELECT id FROM sprint.judgements WHERE epoch = 1 AND state = 'open'",
+		"SELECT stream, id, score, priority FROM sprint.cards WHERE epoch = 1 AND kind = 'producer' AND state = 'ready' ORDER BY stream, score DESC, id",
+		"SELECT receipt FROM sprint.events WHERE op = 'none'",
 		"SELECT id, tier FROM sprint.cards WHERE epoch = 1 AND holder = 'r07' AND state IN ('ready', 'working') AND NOT tier = ANY('{flash,pro}'::text[]) ORDER BY id COLLATE \"C\" LIMIT 1",
 		"SELECT coalesce(max(seq), 0) FROM sprint.events",
 		fmt.Sprintf("SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy FROM sprint.events WHERE seq > %d ORDER BY seq LIMIT 1000", last-1000),
