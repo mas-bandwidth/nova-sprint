@@ -19,8 +19,8 @@ The live v1 board was captured on 2026-11-06 at 21:03 UTC, in `America/New_York`
 
 | Width | Live v1 | v2 fixture |
 |---|---|---|
-| 1440 | [v1](testdata/v1-live-1440.png) | [v2](testdata/v2-1440.png) |
-| 375 | [v1](testdata/v1-live-375.png) | [v2](testdata/v2-375.png) |
+| 1440 | ![Live v1 at 1440 px](testdata/v1-live-1440.png) | ![V2 fixture at 1440 px](testdata/v2-1440.png) |
+| 375 | ![Live v1 at 375 px](testdata/v1-live-375.png) | ![V2 fixture at 375 px](testdata/v2-375.png) |
 | 2000 | [v1](testdata/v1-live-2000.png) | [v2](testdata/v2-2000.png) |
 | 1100 | [v1](testdata/v1-live-1100.png) | [v2](testdata/v2-1100.png) |
 | 760 | [v1](testdata/v1-live-760.png) | [v2](testdata/v2-760.png) |
