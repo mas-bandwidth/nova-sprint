@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# CI run of the store model: bash tla/ci-tlc.sh
+# CI run of the models: bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
-#   Store.tla with Store.cfg           must pass            (TLC exit 0)
-#   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
-#   Store.tla with reach/*.cfg         must report a violation (TLC exit 12)
-# Exits non-zero if Store fails, if any witness or reach run passes, or if any
+#   Store.tla with Store.cfg                 must pass            (TLC exit 0)
+#   CardMachine.tla with CardMachine.cfg     must pass            (TLC exit 0)
+#   witnesses/*.tla with their .cfg          must report a violation (TLC exit 12)
+#   Store.tla with its reach cfgs            must report a violation (TLC exit 12)
+#   CardMachine.tla with its reach cfgs      must report a violation (TLC exit 12)
+# Each reach cfg is listed below with the module it checks; a cfg in reach/
+# that is in neither list fails the run, so none is silently skipped.
+# Exits non-zero if a model fails, if any witness or reach run passes, or if any
 # run ends any other way (a parse error, a crash, a timeout is not a violation).
 # Run it on a bench host, never on the working machine.
 #
@@ -65,7 +69,10 @@ run() {
     fi
     (
         cd "$HERE/$dir" || exit 1
-        "$JAVA" -XX:+UseParallelGC -cp "$JAR" tlc2.TLC -workers "$workers" \
+        # Own java.io.tmpdir per run: parallel runs sharing /tmp race while
+        # unpacking the standard modules.
+        mkdir -p "$WORK/tmp/$name" || exit 1
+        "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC -workers "$workers" \
             -metadir "$WORK/states/$name" -config "$cfg" "$mod" > "$WORK/$name.log" 2>&1
         code=$?
         if [ "$expect" = pass ] && [ "$code" -eq 0 ]; then
@@ -79,22 +86,37 @@ run() {
     ) &
 }
 
+STORE_REACH="NeverTaken NeverRecovered NeverStaleEpochRefused NeverNeedsReady NeverNewEpochOp NeverWidthFull"
+CARD_REACH="NeverLanded NeverFixed NeverRed NeverNeedFailed NeverBlocked"
+
+status=0
+for f in "$HERE"/reach/*.cfg; do
+    m="$(basename "$f" .cfg)"
+    case " $STORE_REACH $CARD_REACH " in
+        *" $m "*) ;;
+        *) echo "FAIL reach/$m.cfg is not listed in ci-tlc.sh" >&2; status=1 ;;
+    esac
+done
+
 run Store pass . Store.cfg Store.tla 4
+run CardMachine pass . CardMachine.cfg CardMachine.tla 8
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
     run "witness-$m" violate witnesses "$m.cfg" "$m.tla" 1
 done
 
-for f in "$HERE"/reach/*.cfg; do
-    m="$(basename "$f" .cfg)"
+for m in $STORE_REACH; do
     run "reach-$m" violate . "reach/$m.cfg" Store.tla 1
 done
 
-wait
-[ "$DRY" = 1 ] && exit 0
+for m in $CARD_REACH; do
+    run "reach-$m" violate . "reach/$m.cfg" CardMachine.tla 1
+done
 
-status=0
+wait
+[ "$DRY" = 1 ] && exit $status
+
 for r in "$WORK"/*.result; do
     cat "$r"
     if [ -f "${r%.result}.failed" ]; then
