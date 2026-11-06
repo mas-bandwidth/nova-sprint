@@ -47,6 +47,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"row held":                rowHeld,
 		"lesson columns":          lessonColumns,
 		"review and row reason":   reviewAndRowReason,
+		"finding":                 finding,
 		"int range":               intRange,
 		"nul bytes":               nulBytes,
 		"text and time":           textAndTime,
@@ -995,6 +996,41 @@ func reviewAndRowReason(h *harness) {
 		assert.ErrorIs(h.t, err, ErrInvalid, name)
 	}
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry review and the row reason")
+}
+
+// Round 14, from the first cold read of layer 2: a producer's finding is
+// set by SetCardFinding (producers only); a work consumer is cut with its
+// producer's finding and keeps it.
+func finding(h *harness) {
+	h.seed()
+	r := h.ok(h.op("fix", []Expect{CardGen{"c1", 0}}, SetCardFinding{"c1", "rename x"}))
+	assert.Equal(h.t, "rename x", r.After.Cards["c1"].Finding)
+	r = h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "work", ID: "k1", Of: "c1", Stream: "s1", Holder: "w1", Finding: "rename x"}))
+	assert.Equal(h.t, "rename x", r.After.Cards["k1"].Finding, "a work consumer is cut with its producer's finding")
+	h.ok(h.op("again", nil, SetCardFinding{"c1", "and y"}, SetCardState{"k1", "ready"}))
+	assert.Equal(h.t, []string{"and y", "rename x"}, []string{h.snap().Cards["c1"].Finding, h.snap().Cards["k1"].Finding}, "the consumer keeps its copy")
+	for _, c := range []struct {
+		w      Write
+		reason string
+	}{
+		{SetCardFinding{"c9", "x"}, "card c9 does not exist"},
+		{SetCardFinding{"u1", "x"}, "card u1 is of kind work; SetCardFinding is only for a producer"},
+		{SetCardFinding{"u2", "x"}, "card u2 is of kind read; SetCardFinding is only for a producer"},
+		{SetCardFinding{"c1", "and y"}, "card c1 already has the given finding"},
+		{PutCard{Tier: "pro", Kind: "work", ID: "k2", Of: "c1", Stream: "s1", Holder: "w1", Finding: "rename x"}, `card k2 is cut with finding "rename x", its producer c1 has "and y"; a work consumer takes its producer's finding`},
+		{PutCard{Tier: "pro", Kind: "read", ID: "k2", Of: "c1", Stream: "s1", Holder: "w1", Finding: "x"}, "card k2 is a read; only a work consumer is cut with a finding (a producer's is set by SetCardFinding)"},
+		{PutCard{Tier: "pro", Kind: "producer", ID: "c4", Stream: "s1", Finding: "x"}, "card c4 is a producer; only a work consumer is cut with a finding (a producer's is set by SetCardFinding)"},
+	} {
+		h.refused(h.op("bad", nil, c.w), c.reason)
+	}
+	for name, o := range map[string]Op{
+		"finding twice": h.op("x", nil, SetCardFinding{"c1", "a"}, SetCardFinding{"c1", "b"}),
+		"nul finding":   h.op("x", nil, SetCardFinding{"c1", "a\x00"}),
+	} {
+		_, err := h.s.Apply(h.ctx, o)
+		assert.ErrorIs(h.t, err, ErrInvalid, name)
+	}
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the finding")
 }
 
 func eventsPaging(h *harness) {

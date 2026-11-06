@@ -28,7 +28,7 @@ package does with it.
   (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
   `done`), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
-  lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose` and `review`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
+  lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose`, `review` and `finding`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
   version 1 is refused like any other version.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
@@ -168,7 +168,7 @@ the `cards_fixed` trigger). `needs` is hard order (cannot start until they lande
 that they name other cards of the epoch, once each. A priority is one of
 `low`, `normal` (the default), `high`, `critical`, `blocker`; the `read` rung
 of the deal order is layer 2's, never a level. The store enforces whose each column
-is, in Go and by a CHECK: prior head a work consumer's, bounces a producer's, review a producer's or a read consumer's, cost,
+is, in Go and by a CHECK: prior head a work consumer's, bounces a producer's, review a producer's or a read consumer's, finding a producer's or a work consumer's, cost,
 priced and result a consumer's, priority, needs and after a producer's or sentinel's, a holder a consumer's,
 and SetCardAttempt is refused on a consumer (its attempt is set at add by PutCard). The check is on the kind, before
 the value is looked at: a kind-specific write on the wrong kind is refused whatever its value, no-op values included
@@ -183,6 +183,13 @@ is at review 2; a read takes its producer's review"), and keeps it: the
 cards_fixed trigger refuses an update of a read's review. Every other kind's
 review is 0 (a CHECK). Layer 2's ReadYes counts only a read whose review is
 the producer's current one.
+
+Finding (round 14, from the first cold read of layer 2). A producer's
+`finding` is what its last read asked for, set by `SetCardFinding{card,
+finding}` (producers only); `reason` stays the status reason. A work
+consumer is cut with `PutCard{Finding}` equal to its producer's current
+finding (refused otherwise, naming both) and keeps it (the cards_fixed
+trigger); every other kind's finding is "" (a CHECK).
 
 Tier. Every card names its tier at add, one of `flash`, `pro`, `heavy`,
 `frontier` (a CHECK in the schema; in Go a tier outside the four is a
@@ -255,7 +262,7 @@ when its row already holds as many working cards as its width),
 `SetCardPaths`, `SetCardDoneWhen`, `SetCardProse`, `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
-`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardReview` (+1, a producer's), `SetCardCost` (cost
+`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardReview` (+1, a producer's), `SetCardFinding` (a producer's), `SetCardCost` (cost
 and priced together, one field), `SetCardPriority` (refused on a consumer,
 normal included; `""` is normal, as at put card), `SetCardNeeds` and `SetCardAfter` (each refused on a
 consumer, nil included), `PutRow`

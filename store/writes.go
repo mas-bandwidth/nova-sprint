@@ -228,7 +228,7 @@ func (w *work) addCard(v PutCard) (string, error) {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
 	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: normSet(v.Needs), After: normSet(v.After), Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
-		Holder: v.Holder, Tier: v.Tier, Paths: normList(v.Paths), DoneWhen: normList(v.DoneWhen), Prose: v.Prose, Review: v.Review}
+		Holder: v.Holder, Tier: v.Tier, Paths: normList(v.Paths), DoneWhen: normList(v.DoneWhen), Prose: v.Prose, Review: v.Review, Finding: v.Finding}
 	if c.Priority != "normal" {
 		if r := producersOnly(c); r != "" {
 			return r, nil
@@ -236,6 +236,9 @@ func (w *work) addCard(v PutCard) (string, error) {
 	}
 	if v.Attempt != 0 && !consumer(v.Kind) {
 		return fmt.Sprintf("card %s is a %s; its attempt starts at 0 and is raised by SetCardAttempt", v.ID, v.Kind), nil
+	}
+	if v.Finding != "" && v.Kind != "work" {
+		return fmt.Sprintf("card %s is a %s; only a work consumer is cut with a finding (a producer's is set by SetCardFinding)", v.ID, v.Kind), nil
 	}
 	if v.Review != 0 && v.Kind != "read" {
 		return fmt.Sprintf("card %s is a %s; only a read consumer is cut at a review (a producer's starts at 0 and is raised by SetCardReview)", v.ID, v.Kind), nil
@@ -277,6 +280,7 @@ func (w *work) checkOf(c Card) (string, error) {
 	}
 	return cmp.Or(when(p.Stream != c.Stream, "card %s is in stream %s, its producer %s is in stream %s; a consumer takes its producer's stream", c.ID, c.Stream, c.Of, p.Stream),
 		when(p.Tier != c.Tier, "card %s is tier %s, its producer %s is tier %s; a consumer takes its producer's tier", c.ID, c.Tier, c.Of, p.Tier),
+		when(c.Kind == "work" && p.Finding != c.Finding, "card %s is cut with finding %q, its producer %s has %q; a work consumer takes its producer's finding", c.ID, c.Finding, c.Of, p.Finding),
 		when(c.Kind == "read" && p.Review != c.Review, "card %s is cut at review %d, its producer %s is at review %d; a read takes its producer's review", c.ID, c.Review, c.Of, p.Review)), nil
 }
 

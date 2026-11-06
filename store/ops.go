@@ -104,13 +104,15 @@ type SetStreamHeld struct {
 // starts at 0); its paths, done-when and prose are copies set here. Kind, of,
 // stream, holder and tier never change after. A read consumer carries the
 // Review it was cut at: its producer's current review, fixed; every other
-// kind's is 0. Prior head, bounces, cost and
+// kind's is 0. A work consumer carries the Finding it was cut with: its
+// producer's current finding, fixed; every other kind's is "". Prior head, bounces, cost and
 // result are never set at add.
 type PutCard struct {
 	ID, Kind, Of, Stream string
 	Score                int
 	Attempt              int      // a consumer's attempt, set here and never after
 	Review               int      // a read consumer's: its producer's review now; 0 on every other kind
+	Finding              string   // a work consumer's: its producer's finding now; "" on every other kind
 	Needs                []string // hard: cannot start until these landed
 	After                []string // soft: may start any time; orders its landing only behind targets that are themselves queued to land, never behind one that is not
 	Brief                string
@@ -204,6 +206,11 @@ type SetCardBounces struct {
 // (layer 2 says when); refused on any other kind. A read cut at an earlier
 // review no longer counts for ReadYes.
 type SetCardReview struct{ Card string }
+
+// SetCardFinding sets a producer's finding: what the last read asked for
+// (layer 2's ReadFix); a work consumer cut after carries a copy. Refused on
+// any other kind.
+type SetCardFinding struct{ Card, Finding string }
 
 // SetCardCost sets what a consumer's run cost, in micro-dollars, and whether
 // its route had a price at all: one field, so an unpriced run is never $0.
@@ -337,6 +344,7 @@ func (SetCardAfter) isWrite()     {}
 func (SetCardPriorHead) isWrite() {}
 func (SetCardBounces) isWrite()   {}
 func (SetCardReview) isWrite()    {}
+func (SetCardFinding) isWrite()   {}
 func (SetCardCost) isWrite()      {}
 func (SetCardPriority) isWrite()  {}
 func (PutRow) isWrite()           {}
@@ -394,9 +402,9 @@ func specOf(w Write) spec {
 		return put("stream", v.Stream, nil, "held").then(func(w *work) (string, error) { return w.setStreamHeld(v) })
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
-			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
+			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
-		}, "kind", "of", "stream", "attempt", "review", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
+		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
 		return put("row", v.Name, func(c *checker) {
 			c.text(v.Session, v.Model, v.Harness).num("width", v.Width).oneOf("row kind", v.Kind, RowKinds).tiers(v.Tiers)
@@ -475,6 +483,8 @@ func setSpec(w Write) spec {
 			return when(k.Review >= math.MaxInt32, "card %s is at review %d, the most there is", k.ID, k.Review), nil
 		}
 		return s
+	case SetCardFinding:
+		return card(v.Card, "finding", func(k *Card) { k.Finding = v.Finding }, func(c *checker) { c.text(v.Finding) }).kinds("SetCardFinding", "a producer", func(k string) bool { return k == "producer" })
 	case SetCardCost:
 		return card(v.Card, "cost", func(k *Card) { k.Cost, k.Priced = v.Cost, v.Priced }, func(c *checker) { c.num64("cost", v.Cost) }).kinds("SetCardCost", "a consumer", consumer)
 	case SetCardPriority:
