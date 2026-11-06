@@ -131,3 +131,10 @@ run loop applies every report that arrived during the tick as part of the
 tick's one op, so the lock has one writer and a burst of 2,000 reports is two
 ticks. The per-card verbs still write directly for a person; rows never do.
 Layer 3 and 4 rule.
+
+And a per-tick budget (Glenn, 2026-11-06: "if you distributed too many reports
+over several frames you'd stay in budget"): the run loop applies up to a
+budget's worth of reports and moves in each tick and carries the rest to the
+next tick, so a burst costs each report a tick or two of latency and the
+tick never leaves its budget. The budget is policy's number; the carry is the
+engine's. Layer 3 rule.
