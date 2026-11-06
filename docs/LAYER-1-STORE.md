@@ -465,3 +465,5 @@ with `SetCardReview` (producer only, +1), and `rows.reason text` written by
 Round 14 (2026-11-06, from the first cold read of layer 2): `cards.finding
 text NOT NULL DEFAULT ''` (producer: the last read's finding; work consumer: a
 copy at cut, fixed), written by `SetCardFinding` (producer only).
+
+Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
