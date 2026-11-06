@@ -45,8 +45,8 @@ against; required, epochs start at 1), `Actor`, `Kind` (a label for the log),
 
 Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
 (every need of the card, read from the card inside the transaction, is
-landed), `RowIs`, `RowUnder` (the row holds fewer than W cards, counted inside
-the transaction), `StreamHeld`, `CardAbsent`, `AtSeq` (the last event's seq is
+landed), `RowIs`, `RowUnder` (the row holds fewer cards than its width; both read
+from the row inside the transaction, never from the caller), `StreamHeld`, `CardAbsent`, `AtSeq` (the last event's seq is
 N: nothing changed since a snapshot).
 
 Writes, one field each, applied in order: `PutStream` (repo, base, pos;
@@ -54,10 +54,12 @@ insert or overwrite), `SetStreamHeld`, `PutCard` (stream, score, needs,
 brief; the card must not exist; it starts waiting, gen 0, attempt 0, no
 holder), `SetCardState`, `SetCardHolder`, `SetCardAttempt`, `SetCardBranch`,
 `SetCardHead`, `SetCardPR`, `SetCardReason`, `SetCardScore`, `SetCardNeeds`,
-`PutRow` (kind, width, session; insert or overwrite; a new row is down),
-`SetRowState`, `SetRowSession`, `SetRowFlaps`, `PutPolicy`, `SetActivePolicy`.
-Every card write raises the card's gen by one. Needs must name other cards of
-the same epoch, once each.
+`PutRow` (kind, width, session; insert or overwrite; a new row is down; a
+width below the cards the row holds is refused), `SetRowState`,
+`SetRowSession`, `SetRowFlaps`, `PutPolicy`, `SetActivePolicy`. An op that
+writes a card raises its gen by one, however many of its writes touch it (gen
+counts the operations that changed the card; a card the op adds is at gen 0).
+Needs must name other cards of the same epoch, once each.
 
 `Clear` takes an op of kind `clear` with no writes and at most an `AtSeq`
 condition. It opens epoch n + 1 and carries every row into it (same name,

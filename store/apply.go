@@ -244,11 +244,12 @@ func (w *work) needsLanded(id string) (string, error) {
 }
 
 func (w *work) rowUnder(c RowUnder) (string, error) {
-	if _, r, err := w.mustRow(c.Row); r != "" || err != nil {
+	row, r, err := w.mustRow(c.Row)
+	if r != "" || err != nil {
 		return r, err
 	}
 	n, err := w.tx.held(c.Row)
-	return when(n >= c.Width, "row %s holds %d cards, expected fewer than %d", c.Row, n, c.Width), err
+	return when(n >= row.Width, "row %s holds %d cards, its width is %d", c.Row, n, row.Width), err
 }
 
 func (w *work) mustCard(id string) (Card, string, error) {
@@ -274,8 +275,15 @@ func (w *work) putStream(old Stream, existed bool, s Stream) error {
 	return w.tx.putStream(s)
 }
 
+// putCard also sets the gen: one more than before the op for a card that
+// existed, however many of the op's writes touch it; 0 for a card the op adds.
 func (w *work) putCard(old Card, existed bool, c Card) error {
 	w.before.Cards, w.after.Cards = touch(w.before.Cards, w.after.Cards, c.ID, old, existed, c)
+	c.Gen = 0
+	if b, ok := w.before.Cards[c.ID]; ok {
+		c.Gen = b.Gen + 1
+	}
+	w.after.Cards[c.ID] = c
 	return w.tx.putCard(c)
 }
 

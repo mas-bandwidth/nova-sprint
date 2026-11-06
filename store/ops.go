@@ -24,12 +24,10 @@ type NeedsLanded struct{ Card string }
 // RowIs holds when row Row is in state State.
 type RowIs struct{ Row, State string }
 
-// RowUnder holds when row Row holds fewer than Width cards, counted inside the
-// transaction.
-type RowUnder struct {
-	Row   string
-	Width int
-}
+// RowUnder holds when row Row holds fewer cards than its width: both the
+// holders and the width are read from the store inside the transaction,
+// never from the caller.
+type RowUnder struct{ Row string }
 
 // StreamHeld holds when stream Stream's held flag is Held.
 type StreamHeld struct {
@@ -55,7 +53,7 @@ func (CardAbsent) isExpect()  {}
 func (AtSeq) isExpect()       {}
 
 // Write is one write. The set is closed by the unexported method; any other
-// value is ErrInvalid. Every card write raises the card's gen by one.
+// value is ErrInvalid. An op that writes a card raises its gen by one, once.
 type Write interface{ isWrite() }
 
 // PutStream inserts a stream or overwrites its repo, base and pos; held is

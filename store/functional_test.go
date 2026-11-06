@@ -181,10 +181,10 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one of two takes of %s is accepted", id)
 		for _, r := range []Receipt{a, b} {
 			if !r.Accepted {
-				assert.Equal(t, "card "+id+" is at gen 2, expected gen 0", r.Reason)
+				assert.Equal(t, "card "+id+" is at gen 1, expected gen 0", r.Reason)
 			}
 		}
-		assert.Equal(t, 2, h.snap().Cards[id].Gen)
+		assert.Equal(t, 1, h.snap().Cards[id].Gen)
 	}
 }
 
@@ -198,13 +198,13 @@ func TestFunctionalRowUnderRace(t *testing.T) {
 		row := fmt.Sprintf("r%d", i)
 		h.ok(h.op("row", nil, PutRow{row, "worker", 1, ""}, SetRowState{row, "up"}, PutCard{ID: row + "a", Stream: "s1"}, PutCard{ID: row + "b", Stream: "s1"}))
 		deal := func(card string) Op {
-			return h.op("deal", []Expect{RowIs{row, "up"}, RowUnder{row, 1}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
+			return h.op("deal", []Expect{RowIs{row, "up"}, RowUnder{row}, CardHolder{card, ""}}, SetCardHolder{card, row}, SetCardState{card, "working"})
 		}
 		a, b := race(t, p, deal(row+"a"), deal(row+"b"))
 		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
 		for _, r := range []Receipt{a, b} {
 			if !r.Accepted {
-				assert.Equal(t, "row "+row+" holds 1 cards, expected fewer than 1", r.Reason)
+				assert.Equal(t, "row "+row+" holds 1 cards, its width is 1", r.Reason)
 			}
 		}
 	}
