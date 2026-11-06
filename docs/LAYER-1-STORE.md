@@ -40,7 +40,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   `score integer`, `needs text[]` (hard: cannot start until these landed), `after text[]` (soft: may start any time, cannot land until these landed; v1's land order), `holder text` (nullable), `author text`,
   `branch text`, `base_sha text`, `head text`, `pr integer`, `result text`
   (`""`, `ok`, `fix`, `fail`), `brief text`, `reason text`, `epoch integer`.
-  Primary key `(epoch, id)`. Every column but `holder` is `NOT NULL` (text
+  Primary key `(epoch, id)`. Every column but `holder` and `of` is `NOT NULL` (text
   defaults to the empty string, `pr` to 0). `state`, `kind` and `result` are
   checked against their sets. `(epoch, stream)` references `streams`;
   `(epoch, holder)` references `rows`; `(epoch, of)` references `cards` when
@@ -136,7 +136,7 @@ refused when that row already holds as many **live** cards (`ready` or
 `working`) as its width, counted at the moment of the write and not counting
 the card being written, so one op with two holder writes to a width-one row
 is refused on the second and nothing lands; a `done` or `fail` consumer keeps
-its holder for the record and does not count; there is no separate width
+its holder for the record and does not count; a state write that takes a held card into a live state is checked the same way, so no path over-fills a row; there is no separate width
 condition, the write is the check); set card attempt; set card author; set
 card branch; set card base_sha; set card head; set card pr; set card result;
 set card reason; set card score; set card needs; set card after (same rule as needs); put row (insert or
