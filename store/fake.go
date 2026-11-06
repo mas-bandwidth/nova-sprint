@@ -226,7 +226,7 @@ func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 func (t *fakeTx) held(row string) (int, error) {
 	n := 0
 	for k, c := range t.st.cards {
-		if k.epoch == t.st.epoch && c.Holder == row && live(c.State) {
+		if k.epoch == t.st.epoch && c.Holder == row && c.State == "working" {
 			n++
 		}
 	}

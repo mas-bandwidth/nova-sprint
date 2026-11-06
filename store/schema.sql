@@ -4,7 +4,8 @@
 -- ever deleted; a clear increments sprint.epoch and every stream, card and row
 -- carries the epoch it was written in. Version 2 is the version with the two
 -- card kinds (kind with sentinel, of, after, author, base_sha, result, the
--- states blocked and done) and row gen and held;
+-- states blocked and done; prior_head, bounces, cost, priced, priority and the
+-- result fault) and row gen and held;
 -- there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
@@ -35,7 +36,7 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
     name    text    NOT NULL,
     kind    text    NOT NULL CHECK (kind IN ('worker', 'kin')),
     width   integer NOT NULL DEFAULT 1,
-    state   text    NOT NULL CHECK (state IN ('up', 'down', 'blocked')),
+    state   text    NOT NULL CHECK (state IN ('up', 'down')),
     session text    NOT NULL DEFAULT '',
     flaps   integer NOT NULL DEFAULT 0,
     held    boolean NOT NULL DEFAULT false,
@@ -64,9 +65,14 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     author   text    NOT NULL DEFAULT '',
     branch   text    NOT NULL DEFAULT '',
     base_sha text    NOT NULL DEFAULT '',
+    prior_head text  NOT NULL DEFAULT '',
     head     text    NOT NULL DEFAULT '',
     pr       integer NOT NULL DEFAULT 0,
-    result   text    NOT NULL DEFAULT '' CHECK (result IN ('', 'ok', 'fix', 'fail')),
+    result   text    NOT NULL DEFAULT '' CHECK (result IN ('', 'ok', 'fix', 'fail', 'fault')),
+    bounces  integer NOT NULL DEFAULT 0,
+    cost     bigint  NOT NULL DEFAULT 0,
+    priced   boolean NOT NULL DEFAULT false,
+    priority text    NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'critical', 'blocker')),
     brief    text    NOT NULL DEFAULT '',
     reason   text    NOT NULL DEFAULT '',
     epoch    integer NOT NULL,
@@ -75,6 +81,7 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     CONSTRAINT cards_needs_check CHECK (kind IN ('producer', 'sentinel') OR needs = '{}'),
     CONSTRAINT cards_after_check CHECK (kind IN ('producer', 'sentinel') OR after = '{}'),
     CONSTRAINT cards_brief_check CHECK (kind <> 'sentinel' OR brief = ''),
+    CONSTRAINT cards_consumer_priority_check CHECK (kind IN ('producer', 'sentinel') OR priority = 'normal'),
     CONSTRAINT cards_holder_check CHECK (kind IN ('work', 'read') OR holder IS NULL),
     FOREIGN KEY (epoch, stream) REFERENCES sprint.streams (epoch, name),
     FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name),

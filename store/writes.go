@@ -1,8 +1,8 @@
 package store
 
 import (
+	"cmp"
 	"fmt"
-	"slices"
 )
 
 // write performs one write, or returns the reason it is refused.
@@ -64,10 +64,10 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	return "", w.putRow(old, ok, next)
 }
 
-// widthFits refuses a width below the live cards the row holds.
+// widthFits refuses a width below the working cards the row holds.
 func (w *work) widthFits(row string, width int) (string, error) {
 	n, err := w.tx.held(row)
-	return when(err == nil && n > width, "row %s holds %d live cards, more than width %d", row, n, width), err
+	return when(err == nil && n > width, "row %s holds %d working cards, more than width %d", row, n, width), err
 }
 
 // writeRow is the set-row writes (rowSet).
@@ -103,13 +103,15 @@ func (w *work) writeCard(wr Write) (string, error) {
 	switch v := wr.(type) {
 	case SetCardState:
 		r = oneOf("card state", v.State, CardStates)
-		if r == "" && card.Holder != "" && !live(card.State) && live(v.State) {
+		if r == "" && card.Holder != "" && card.State != "working" && v.State == "working" {
 			r, err = w.rowFits(card.Holder)
 		}
 	case SetCardHolder:
 		r, err = w.holderFits(card, v.Holder)
 	case SetCardResult:
 		r = oneOf("card result", v.Result, CardResults)
+	case SetCardPriority:
+		r = checkPriority(card, v.Priority)
 	case SetCardNeeds:
 		r, err = w.checkList(card, needList, v.Needs)
 	case SetCardAfter:
@@ -123,16 +125,25 @@ func (w *work) writeCard(wr Write) (string, error) {
 	return "", w.putCard(card, true, next)
 }
 
-func live(state string) bool { return slices.Contains(LiveStates, state) }
+// checkPriority refuses a level outside the five, and any level but normal
+// on a consumer: a consumer is ordered by its producer's level, never its own.
+func checkPriority(card Card, p string) string {
+	if r := oneOf("card priority", p, Priorities); r != "" {
+		return r
+	}
+	return when(consumer(card.Kind) && p != "normal", "card %s is a consumer; a consumer has no priority of its own", card.ID)
+}
 
 // consumer is true for the kinds a row is handed (work and read); the other
 // kinds (producer and sentinel) are bookkeeping and are never held.
 func consumer(kind string) bool { return kind == "work" || kind == "read" }
 
-// holderFits refuses a holder on a producer or sentinel, a holder row that
-// does not exist, or one that already holds as many live cards as its width,
-// counted now (earlier writes of the op included). The count excludes the
-// card being written: setting a card's holder to the row that holds it
+// holderFits refuses a holder on a producer or sentinel, and a holder row
+// that does not exist. A card already in working also needs room on the row:
+// refused when the row holds as many working cards as its width, counted now
+// (earlier writes of the op included). A card in any other state takes no
+// room: width caps work in progress, not what is queued. The count excludes
+// the card being written: setting a card's holder to the row that holds it
 // already is a no-op, never a refusal.
 func (w *work) holderFits(card Card, holder string) (string, error) {
 	switch {
@@ -140,19 +151,22 @@ func (w *work) holderFits(card Card, holder string) (string, error) {
 		return "", nil
 	case !consumer(card.Kind):
 		return fmt.Sprintf("card %s is a %s; a %s never has a holder", card.ID, card.Kind, card.Kind), nil
+	case card.State != "working":
+		_, r, err := w.mustRow(holder)
+		return r, err
 	}
 	return w.rowFits(holder)
 }
 
-// rowFits refuses a row that does not exist or has no room for one more live
-// card.
+// rowFits refuses a row that does not exist or has no room for one more
+// working card.
 func (w *work) rowFits(name string) (string, error) {
 	row, r, err := w.mustRow(name)
 	if r != "" || err != nil {
 		return r, err
 	}
 	n, err := w.tx.held(name)
-	return when(err == nil && n >= row.Width, "row %s holds %d live cards, its width is %d", name, n, row.Width), err
+	return when(err == nil && n >= row.Width, "row %s holds %d working cards, its width is %d", name, n, row.Width), err
 }
 
 // list is one of a card's lists of other cards: needs (hard) or after (soft).
@@ -203,7 +217,10 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if v.Kind == "sentinel" && v.Brief != "" {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
-	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief}
+	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal")}
+	if r := checkPriority(c, c.Priority); r != "" {
+		return r, nil
+	}
 	if r, err := w.checkOf(c); r != "" || err != nil {
 		return r, err
 	}

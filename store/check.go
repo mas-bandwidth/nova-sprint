@@ -68,10 +68,8 @@ func checkWrite(id string, w Write, seen map[field]bool) error {
 	}
 	rv := reflect.ValueOf(w)
 	for i := range rv.NumField() {
-		if f := rv.Field(i); f.Kind() == reflect.Int && (f.Int() < 0 || f.Int() > math.MaxInt32) {
-			// every integer a write carries is a PostgreSQL integer column
-			// with no meaning below 0
-			return invalid("op %s: %s %d is outside the range 0..%d", id, strings.ToLower(rv.Type().Field(i).Name), f.Int(), math.MaxInt32)
+		if f := rv.Field(i); intLimit[f.Kind()] > 0 && (f.Int() < 0 || f.Int() > intLimit[f.Kind()]) {
+			return invalid("op %s: %s %d is outside the range 0..%d", id, strings.ToLower(rv.Type().Field(i).Name), f.Int(), intLimit[f.Kind()])
 		}
 	}
 	for _, f := range fs {
@@ -82,6 +80,11 @@ func checkWrite(id string, w Write, seen map[field]bool) error {
 	}
 	return nil
 }
+
+// intLimit is the top of the column an integer field of a write lands in:
+// every int is a PostgreSQL integer, every int64 a bigint (cost). None has a
+// meaning below 0.
+var intLimit = map[reflect.Kind]int64{reflect.Int: math.MaxInt32, reflect.Int64: math.MaxInt64}
 
 // checkClear is check for a clear: kind clear, no writes, at most AtSeq.
 func checkClear(op Op) error {

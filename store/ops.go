@@ -1,7 +1,7 @@
 package store
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, NeedsLanded,
-// RowIs, RowGen, StreamHeld, CardAbsent, AtSeq. There is no width condition: the
+// RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, AtSeq. There is no width condition: the
 // holder write is the check. The set is closed by the
 // unexported method; any other value is ErrInvalid.
 type Expect interface{ isExpect() }
@@ -32,6 +32,12 @@ type RowGen struct {
 	Gen int
 }
 
+// RowHeld holds when row Row's held flag is Held.
+type RowHeld struct {
+	Row  string
+	Held bool
+}
+
 // StreamHeld holds when stream Stream's held flag is Held.
 type StreamHeld struct {
 	Stream string
@@ -51,6 +57,7 @@ func (CardHolder) isExpect()  {}
 func (NeedsLanded) isExpect() {}
 func (RowIs) isExpect()       {}
 func (RowGen) isExpect()      {}
+func (RowHeld) isExpect()     {}
 func (StreamHeld) isExpect()  {}
 func (CardAbsent) isExpect()  {}
 func (AtSeq) isExpect()       {}
@@ -87,6 +94,7 @@ type PutCard struct {
 	After                []string // soft: cannot land until these landed
 	Brief                string
 	Holder               string
+	Priority             string // a producer's or sentinel's level; "" is normal, a consumer's is always normal
 }
 
 // SetCardState sets a card's state. A held card made live (ready or working)
@@ -134,6 +142,29 @@ type SetCardAuthor struct{ Card, Author string }
 
 // SetCardBaseSHA sets the base commit the card's attempt started from.
 type SetCardBaseSHA struct{ Card, SHA string }
+
+// SetCardPriorHead sets the head a work consumer's attempt continues from
+// ("" on a first attempt).
+type SetCardPriorHead struct{ Card, Head string }
+
+// SetCardBounces sets a producer's bounce count: the returns that count
+// toward blocked (a fault never raises it; layer 2 says when).
+type SetCardBounces struct {
+	Card    string
+	Bounces int
+}
+
+// SetCardCost sets what a consumer's run cost, in micro-dollars, and whether
+// its route had a price at all: one field, so an unpriced run is never $0.
+type SetCardCost struct {
+	Card   string
+	Cost   int64
+	Priced bool
+}
+
+// SetCardPriority sets a producer's or sentinel's level (low, normal, high,
+// critical, blocker); refused on a consumer.
+type SetCardPriority struct{ Card, Priority string }
 
 // SetCardNeeds replaces a card's needs, under the rules of PutCard.
 type SetCardNeeds struct {
@@ -189,30 +220,34 @@ type PutPolicy struct{ Kind, Name, Body string }
 // the one active before it.
 type SetActivePolicy struct{ Version int }
 
-func (PutStream) isWrite()       {}
-func (SetStreamHeld) isWrite()   {}
-func (PutCard) isWrite()         {}
-func (SetCardState) isWrite()    {}
-func (SetCardHolder) isWrite()   {}
-func (SetCardResult) isWrite()   {}
-func (SetRowWidth) isWrite()     {}
-func (SetCardAttempt) isWrite()  {}
-func (SetCardBranch) isWrite()   {}
-func (SetCardHead) isWrite()     {}
-func (SetCardPR) isWrite()       {}
-func (SetCardReason) isWrite()   {}
-func (SetCardScore) isWrite()    {}
-func (SetCardAuthor) isWrite()   {}
-func (SetCardBaseSHA) isWrite()  {}
-func (SetCardNeeds) isWrite()    {}
-func (SetCardAfter) isWrite()    {}
-func (PutRow) isWrite()          {}
-func (SetRowHeld) isWrite()      {}
-func (SetRowState) isWrite()     {}
-func (SetRowSession) isWrite()   {}
-func (SetRowFlaps) isWrite()     {}
-func (PutPolicy) isWrite()       {}
-func (SetActivePolicy) isWrite() {}
+func (PutStream) isWrite()        {}
+func (SetStreamHeld) isWrite()    {}
+func (PutCard) isWrite()          {}
+func (SetCardState) isWrite()     {}
+func (SetCardHolder) isWrite()    {}
+func (SetCardResult) isWrite()    {}
+func (SetRowWidth) isWrite()      {}
+func (SetCardAttempt) isWrite()   {}
+func (SetCardBranch) isWrite()    {}
+func (SetCardHead) isWrite()      {}
+func (SetCardPR) isWrite()        {}
+func (SetCardReason) isWrite()    {}
+func (SetCardScore) isWrite()     {}
+func (SetCardAuthor) isWrite()    {}
+func (SetCardBaseSHA) isWrite()   {}
+func (SetCardNeeds) isWrite()     {}
+func (SetCardAfter) isWrite()     {}
+func (SetCardPriorHead) isWrite() {}
+func (SetCardBounces) isWrite()   {}
+func (SetCardCost) isWrite()      {}
+func (SetCardPriority) isWrite()  {}
+func (PutRow) isWrite()           {}
+func (SetRowHeld) isWrite()       {}
+func (SetRowState) isWrite()      {}
+func (SetRowSession) isWrite()    {}
+func (SetRowFlaps) isWrite()      {}
+func (PutPolicy) isWrite()        {}
+func (SetActivePolicy) isWrite()  {}
 
 // field names one field one write sets; two writes to one field in an op are
 // invalid.
@@ -238,7 +273,7 @@ func fields(w Write) (fs []field, ok bool) {
 	case SetStreamHeld:
 		return of("stream", v.Stream, "held"), true
 	case PutCard:
-		return of("card", v.ID, "kind", "of", "stream", "score", "needs", "after", "brief", "holder"), true
+		return of("card", v.ID, "kind", "of", "stream", "score", "needs", "after", "brief", "holder", "priority"), true
 	case PutRow:
 		return of("row", v.Name, "kind", "width", "session"), true
 	case PutPolicy:
@@ -280,6 +315,14 @@ func cardSet(w Write) (id, column string, set func(*Card), ok bool) {
 		return v.Card, "needs", func(c *Card) { c.Needs = v.Needs }, true
 	case SetCardAfter:
 		return v.Card, "after", func(c *Card) { c.After = v.After }, true
+	case SetCardPriorHead:
+		return v.Card, "prior_head", func(c *Card) { c.Prior = v.Head }, true
+	case SetCardBounces:
+		return v.Card, "bounces", func(c *Card) { c.Bounces = v.Bounces }, true
+	case SetCardCost:
+		return v.Card, "cost", func(c *Card) { c.Cost, c.Priced = v.Cost, v.Priced }, true
+	case SetCardPriority:
+		return v.Card, "priority", func(c *Card) { c.Priority = v.Priority }, true
 	}
 	return "", "", nil, false
 }

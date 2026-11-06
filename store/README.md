@@ -10,8 +10,9 @@ package does with it.
   naming both numbers, and is safe to run concurrently (it holds one advisory
   lock). The binary knows schema version 2: version 1 plus the two card kinds
   (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
-  `done`), the card columns `author` and `base_sha` (layer 2's), and row
-  `gen` and `held`. There is no upgrade path: a store at
+  `done`), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
+  `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
+  lessons of v1), and row `gen` and `held`. There is no upgrade path: a store at
   version 1 is refused like any other version.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
@@ -30,11 +31,11 @@ if err := s.Migrate(ctx); err != nil { return err } // refuses another schema ve
 
 snap, err := s.Snapshot(ctx) // the caller's own copy
 if err != nil { return err }
-c := snap.Cards["c1"]
+u := snap.Cards["u1"] // a work consumer of producer c1, ready and held by row w1
 op := store.Op{
-    ID: "take-c1-7", Epoch: snap.Epoch, Actor: "w1", Kind: "take", At: now,
-    Expect: []store.Expect{store.CardGen{Card: "c1", Gen: c.Gen}},
-    Writes: []store.Write{store.SetCardState{Card: "c1", State: "working"}, store.SetCardHolder{Card: "c1", Holder: "w1"}},
+    ID: "take-u1-7", Epoch: snap.Epoch, Actor: "w1", Kind: "take", At: now,
+    Expect: []store.Expect{store.CardGen{Card: "u1", Gen: u.Gen}, store.RowHeld{Row: "w1", Held: false}},
+    Writes: []store.Write{store.SetCardState{Card: "u1", State: "working"}}, // refused when w1 is at width
 }
 r, err := s.Apply(ctx, op)
 switch {
@@ -63,7 +64,7 @@ default: // accepted: r.Seq is the event, r.After the touched rows
    the kinds: a producer or sentinel has no `of` and no holder, a sentinel
    no brief, a consumer has an `of` naming a card of the same epoch (a
    foreign key; that it is a producer, not a sentinel, is Go's check) and no
-   needs or after. `of` is the
+   needs, after or priority of its own. `of` is the
    one column besides `holder` that is NULL for "none" (the foreign key needs
    it); the Go side reads both as `""`.
 5. The log matches the state: folding every accepted event from the first
@@ -89,69 +90,83 @@ against; required, epochs start at 1), `Actor`, `Kind` (a label for the log),
 
 Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
 (every need of the card, read from the card inside the transaction, is
-landed), `RowIs`, `RowGen`, `StreamHeld`, `CardAbsent`, `AtSeq` (the last
-event's seq is N: nothing changed since a snapshot). There is no width
-condition: the holder write is the check.
+landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`, `AtSeq`
+(the last event's seq is N: nothing changed since a snapshot). There is no
+width condition: the writes are the check.
 
 Cards are of two kinds. A `producer` is the work itself (it has needs, a
-branch, a head, a PR, and lands); it never has a holder. A `sentinel` is a
-producer with no brief and no consumers (a release gate or a phase mark: its
-needs are what it waits for). A consumer (`work` or `read`) is one attempt
-at, or one read of, a producer: its `of` names that producer (never a
-sentinel), it has no needs and no after, it may have a holder, and it records
-a `result` (`""`, `ok`, `fix`, `fail`). Kind and of are set by `PutCard` and
-never change. `needs` is hard order (cannot start until they landed),
-`after` soft (cannot land until they landed); layer 2 and 3 read them, the
-store only checks that they name other cards of the epoch, once each.
+branch, a head, a PR, a bounce count and a priority, and lands); it never has
+a holder. A `sentinel` is a producer with no brief and no consumers (a
+release gate or a phase mark: its needs are what it waits for). A consumer
+(`work` or `read`) is one attempt at, or one read of, a producer: its `of`
+names that producer (never a sentinel), it has no needs, no after and no
+priority of its own (its column stays `normal`; it is ordered by its
+producer's), it may have a holder, and it records a `result` (`""`, `ok`,
+`fix`, `fail`, `fault`), its `cost` in micro-dollars with `priced` (false
+when its route has no price, never shown as $0), and on a work consumer the
+`prior_head` it continues from. Kind and of are set by `PutCard` and never
+change. `needs` is hard order (cannot start until they landed), `after` soft
+(orders the landing only); layers 2 and 3 read them, the store only checks
+that they name other cards of the epoch, once each. A priority is one of
+`low`, `normal` (the default), `high`, `critical`, `blocker`; the `read` rung
+of the deal order is layer 2's, never a level. Which kind uses `bounces`,
+`cost` and `prior_head` is layer 2's; the store refuses only a priority on a
+consumer.
 
 The card states are `waiting`, `ready`, `working`, `review`, `merging`,
-`landed`, `fail`, `blocked`, `done`. `ready` and `working` are live: a row's
-width counts only the live cards it holds, so a held card that is waiting,
-done or anything else takes no room. Which kind may use which state is layer
-2's; the store refuses only a state outside the set.
+`landed`, `fail`, `blocked`, `done`. Width caps work in progress, not what is
+queued: a row's width counts only the cards it holds in `working`, so a held
+card that is ready, waiting, done or anything else takes no room. Which kind
+may use which state is layer 2's; the store refuses only a state outside the
+set. Rows are `up` or `down`; the coordinator's hold is `held`, apart from
+the state.
 
 Writes, one field each, applied in order: `PutStream` (repo, base, pos;
 insert or overwrite), `SetStreamHeld`, `PutCard` (kind, of, stream, score,
-needs, after, brief, holder; the card must not exist; it starts waiting, gen
-0, attempt 0, result `""`; a producer or sentinel is refused an `of` and a
-holder, a sentinel a brief, a consumer needs, after and an `of` that is
-missing or is not a producer; a
-consumer's holder is checked as `SetCardHolder` checks it), `SetCardState` (a
-held card moving into a live state is refused when its row is already full),
-`SetCardHolder` (refused on a producer or sentinel, and refused when the row already holds
-as many live cards as its width, counted at the moment of the write and
-excluding the card written, so a second holder write in one op counts the
-first and nothing lands; re-setting the same holder is a no-op),
-`SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
+needs, after, brief, holder, priority; the card must not exist; it starts
+waiting, gen 0, attempt 0, result `""`; a producer or sentinel is refused an
+`of` and a holder, a sentinel a brief, a consumer needs, after, a priority
+other than normal and an `of` that is missing or is not a producer; the
+holder row must exist), `SetCardState` (a held card moving into `working` is
+refused when its row already holds as many working cards as its width),
+`SetCardHolder` (refused on a producer or sentinel and on a row that does not
+exist; on a card already in `working`, refused when the row is full the same
+way), `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
-`SetCardResult`, `SetCardNeeds` and `SetCardAfter` (each refused on a
-consumer), `PutRow` (kind, width, session; insert or overwrite; a new row is
-down and not held; state, flaps and held are kept on overwrite),
-`SetRowWidth` (the width alone), `SetRowHeld` (the coordinator's hold: no
-deals to the row while true, whatever its state), `SetRowState`, `SetRowSession`, `SetRowFlaps`, `PutPolicy`,
-`SetActivePolicy`. A width below the live cards the row holds is refused;
-width 0 is a row that takes nothing. An op that writes a card or a row raises
-its gen by one, however many of its writes touch it (gen counts the
-operations that changed it; a card or row the op adds is at gen 0), so
-`CardGen` and `RowGen` fence a plan against any change since its snapshot.
-Needs and after must name other cards of the same epoch, once each.
+`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardCost` (cost
+and priced together, one field), `SetCardPriority` (refused on a consumer),
+`SetCardNeeds` and `SetCardAfter` (each refused on a consumer), `PutRow`
+(kind, width, session; insert or overwrite; a new row is down and not held;
+state, flaps and held are kept on overwrite), `SetRowWidth` (the width
+alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
+true, whatever its state), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
+`PutPolicy`, `SetActivePolicy`. The working count is taken at the moment of
+the write and excludes the card written, so two takes onto a width-one row in
+one op are refused on the second and nothing lands; re-setting the same
+holder, or the same state, is a no-op. A width below the working cards the
+row holds is refused; width 0 is a row that takes nothing into working (it
+may still hold queued cards). An op that writes a card or a row raises its
+gen by one, however many of its writes touch it (gen counts the operations
+that changed it; a card or row the op adds is at gen 0), so `CardGen` and
+`RowGen` fence a plan against any change since its snapshot.
 
 The value limits, each `ErrInvalid` from both stores, naming the field:
 
-- every integer a write carries (pos, score, attempt, pr, width, flaps,
-  policy version) is in 0..2147483647 (a PostgreSQL `integer`, nothing
-  meaningful below 0); the op's epoch is in 1..2147483647;
-- every text (ids, names, actor, kind, note, brief, reason, head, branch,
-  author, base sha, needs, after, policy name and body) is valid UTF-8 with no NUL
-  byte;
+- every integer a write carries (pos, score, attempt, pr, bounces, width,
+  flaps, policy version) is in 0..2147483647 (a PostgreSQL `integer`,
+  nothing meaningful below 0); cost is in 0..9223372036854775807 (a
+  `bigint`); the op's epoch is in 1..2147483647;
+- every text (ids, names, actor, kind, note, brief, reason, head, prior head,
+  branch, author, base sha, needs, after, priority, policy name and body) is
+  valid UTF-8 with no NUL byte;
 - `At` is set and falls in the years 0..9999.
 
 `Clear` takes an op of kind `clear` with no writes and at most an `AtSeq`
 condition. It opens epoch n + 1 and carries every row into it (same name,
 kind, width, session and held; state down, no flaps, gen raised by one);
-streams and cards stay behind in the old epoch, policy is kept. The event carries the epoch it closed; the
-receipt's `NewEpoch` is the one it opened.
+streams and cards stay behind in the old epoch, policy is kept. The event
+carries the epoch it closed; the receipt's `NewEpoch` is the one it opened.
 
 ## The four outcomes of Apply (and Clear)
 

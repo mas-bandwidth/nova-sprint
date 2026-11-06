@@ -15,7 +15,7 @@ type txn interface {
 	row(name string) (Row, bool, error)
 	policy(version int) (PolicyVersion, bool, error)
 	policies() (last int, active []PolicyVersion, err error)
-	held(row string) (int, error) // live cards (ready or working) whose holder is row
+	held(row string) (int, error) // cards in working whose holder is row: what width counts
 	lastSeq() (int64, error)
 	rows() ([]Row, error) // every row of the epoch
 	open() error          // epoch n = n + 1; later puts go to the new epoch
@@ -164,6 +164,9 @@ func (w *work) expect(e Expect) (string, error) {
 	case RowGen:
 		row, r, err := w.mustRow(c.Row)
 		return cmp.Or(r, when(err == nil && row.Gen != c.Gen, "row %s is at gen %d, expected gen %d", c.Row, row.Gen, c.Gen)), err
+	case RowHeld:
+		row, r, err := w.mustRow(c.Row)
+		return cmp.Or(r, when(err == nil && row.Held != c.Held, "row %s is %s, expected %s", c.Row, heldWord(row.Held), heldWord(c.Held))), err
 	case StreamHeld:
 		s, r, err := w.mustStream(c.Stream)
 		return cmp.Or(r, when(err == nil && s.Held != c.Held, "stream %s is %s, expected %s", c.Stream, heldWord(s.Held), heldWord(c.Held))), err

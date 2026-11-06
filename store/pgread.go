@@ -11,7 +11,7 @@ import (
 
 const (
 	streamCols = "name, repo, base, held, pos"
-	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result`
+	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority`
 	rowCols    = "name, kind, width, state, session, flaps, held, gen"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
@@ -24,7 +24,7 @@ func scanStream(r pgx.Row) (Stream, error) {
 
 func scanCard(r pgx.Row) (Card, error) {
 	var c Card
-	err := r.Scan(&c.ID, &c.Kind, &c.Of, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.After, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason, &c.Author, &c.BaseSHA, &c.Result)
+	err := r.Scan(&c.ID, &c.Kind, &c.Of, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.After, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason, &c.Author, &c.BaseSHA, &c.Result, &c.Prior, &c.Bounces, &c.Cost, &c.Priced, &c.Priority)
 	c.Needs, c.After = needs(c.Needs), needs(c.After)
 	return c, err
 }
@@ -174,7 +174,7 @@ func (t *pgTx) policies() (int, []PolicyVersion, error) {
 
 func (t *pgTx) held(row string) (int, error) {
 	var n int
-	err := t.tx.QueryRow(t.ctx, "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = ANY($3)", t.epoch, row, LiveStates).Scan(&n)
+	err := t.tx.QueryRow(t.ctx, "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = 'working'", t.epoch, row).Scan(&n)
 	return n, err
 }
 
@@ -210,12 +210,13 @@ func (t *pgTx) putStream(s Stream) error {
 
 func (t *pgTx) putCard(c Card) error {
 	// kind and of are set on insert only: no write changes them.
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, kind, "of", stream, state, gen, attempt, score, needs, after, holder, branch, head, pr, brief, reason, author, base_sha, result)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, kind, "of", stream, state, gen, attempt, score, needs, after, holder, branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 		ON CONFLICT (epoch, id) DO UPDATE SET stream = EXCLUDED.stream, state = EXCLUDED.state, gen = EXCLUDED.gen, attempt = EXCLUDED.attempt,
 		score = EXCLUDED.score, needs = EXCLUDED.needs, after = EXCLUDED.after, holder = EXCLUDED.holder, branch = EXCLUDED.branch, head = EXCLUDED.head,
-		pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason, author = EXCLUDED.author, base_sha = EXCLUDED.base_sha, result = EXCLUDED.result`,
-		t.epoch, c.ID, c.Kind, c.Of, c.Stream, c.State, c.Gen, c.Attempt, c.Score, list0(c.Needs), list0(c.After), c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason, c.Author, c.BaseSHA, c.Result)
+		pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason, author = EXCLUDED.author, base_sha = EXCLUDED.base_sha, result = EXCLUDED.result,
+		prior_head = EXCLUDED.prior_head, bounces = EXCLUDED.bounces, cost = EXCLUDED.cost, priced = EXCLUDED.priced, priority = EXCLUDED.priority`,
+		t.epoch, c.ID, c.Kind, c.Of, c.Stream, c.State, c.Gen, c.Attempt, c.Score, list0(c.Needs), list0(c.After), c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason, c.Author, c.BaseSHA, c.Result, c.Prior, c.Bounces, c.Cost, c.Priced, c.Priority)
 	return err
 }
 

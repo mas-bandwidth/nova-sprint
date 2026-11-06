@@ -194,7 +194,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	}
 }
 
-// Two deals on a width-1 row: the holder write counts the live cards it holds inside the
+// Two deals on a width-1 row: the write into working counts the working cards it holds inside the
 // transaction, so one is accepted and one refused, with no width condition.
 func TestFunctionalWidthRace(t *testing.T) {
 	t.Parallel()
@@ -210,7 +210,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
 		for _, r := range []Receipt{a, b} {
 			if !r.Accepted {
-				assert.Equal(t, "row "+row+" holds 1 live cards, its width is 1", r.Reason)
+				assert.Equal(t, "row "+row+" holds 1 working cards, its width is 1", r.Reason)
 			}
 		}
 	}
@@ -544,6 +544,13 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		`UPDATE sprint.cards SET "of" = NULL WHERE id = 'u1'`:                                                   "cards_of_check",
 		`UPDATE sprint.cards SET "of" = 'c9' WHERE id = 'u1'`:                                                   "cards_epoch_of_fkey",
 		"UPDATE sprint.cards SET needs = '{c1}' WHERE id = 'u1'":                                                "cards_needs_check",
+		"UPDATE sprint.cards SET priority = 'read' WHERE id = 'c1'":                                             "cards_priority_check",
+		"UPDATE sprint.cards SET priority = 'high' WHERE id = 'u1'":                                             "cards_consumer_priority_check",
+		"UPDATE sprint.cards SET priority = NULL WHERE id = 'c1'":                                               `"priority"`,
+		"UPDATE sprint.cards SET prior_head = NULL WHERE id = 'u1'":                                             `"prior_head"`,
+		"UPDATE sprint.cards SET bounces = NULL WHERE id = 'c1'":                                                `"bounces"`,
+		"UPDATE sprint.cards SET cost = NULL WHERE id = 'u1'":                                                   `"cost"`,
+		"UPDATE sprint.cards SET priced = NULL WHERE id = 'u1'":                                                 `"priced"`,
 		"UPDATE sprint.cards SET after = '{c1}' WHERE id = 'u1'":                                                "cards_after_check",
 		"UPDATE sprint.cards SET after = NULL WHERE id = 'c1'":                                                  `"after"`,
 		"UPDATE sprint.cards SET kind = 'sentinel' WHERE id = 'c1'":                                             "cards_brief_check",
@@ -555,6 +562,7 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 1)":                   `"kind"`,
 		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":                    "rows_kind_check",
 		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)":                  "rows_state_check",
+		"UPDATE sprint.rows SET state = 'blocked'":                                                              "rows_state_check",
 		"UPDATE sprint.rows SET session = NULL":                                                                 `"session"`,
 		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                                        "epoch_id_check",
 		"INSERT INTO sprint.meta (id, schema) VALUES (2, 1)":                                                    "meta_id_check",

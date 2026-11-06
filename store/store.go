@@ -56,10 +56,10 @@ var (
 var (
 	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "blocked", "done"}
 	CardKinds   = []string{"producer", "sentinel", "work", "read"}
-	CardResults = []string{"", "ok", "fix", "fail"}
-	LiveStates  = []string{"ready", "working"} // a live card counts against its holder's width
+	CardResults = []string{"", "ok", "fix", "fail", "fault"}
+	Priorities  = []string{"low", "normal", "high", "critical", "blocker"} // a producer's or sentinel's level, lowest first
 	RowKinds    = []string{"worker", "kin"}
-	RowStates   = []string{"up", "down", "blocked"}
+	RowStates   = []string{"up", "down"}
 	PolicyKinds = []string{"script", "data"}
 )
 
@@ -88,25 +88,30 @@ type Stream struct {
 // Card is a row of sprint.cards. Holder "" is no holder; Of "" is a producer's
 // (a consumer's Of is its producer).
 type Card struct {
-	ID      string   `json:"id"`
-	Kind    string   `json:"kind"`
-	Of      string   `json:"of,omitempty"`
-	Stream  string   `json:"stream"`
-	State   string   `json:"state"`
-	Gen     int      `json:"gen"`
-	Attempt int      `json:"attempt"`
-	Score   int      `json:"score"`
-	Needs   []string `json:"needs,omitempty"` // hard: cannot start until these landed
-	After   []string `json:"after,omitempty"` // soft: cannot land until these landed
-	Holder  string   `json:"holder,omitempty"`
-	Branch  string   `json:"branch"`
-	Head    string   `json:"head"`
-	PR      int      `json:"pr"`
-	Brief   string   `json:"brief"`
-	Reason  string   `json:"reason"`
-	Author  string   `json:"author"`   // the row whose work the head is (schema 2)
-	BaseSHA string   `json:"base_sha"` // the base commit the attempt started from (schema 2)
-	Result  string   `json:"result"`   // "", ok, fix or fail
+	ID       string   `json:"id"`
+	Kind     string   `json:"kind"`
+	Of       string   `json:"of,omitempty"`
+	Stream   string   `json:"stream"`
+	State    string   `json:"state"`
+	Gen      int      `json:"gen"`
+	Attempt  int      `json:"attempt"`
+	Score    int      `json:"score"`
+	Needs    []string `json:"needs,omitempty"` // hard: cannot start until these landed
+	After    []string `json:"after,omitempty"` // soft: cannot land until these landed
+	Holder   string   `json:"holder,omitempty"`
+	Branch   string   `json:"branch"`
+	Head     string   `json:"head"`
+	PR       int      `json:"pr"`
+	Brief    string   `json:"brief"`
+	Reason   string   `json:"reason"`
+	Author   string   `json:"author"`     // the row whose work the head is (schema 2)
+	BaseSHA  string   `json:"base_sha"`   // the base commit the attempt started from (schema 2)
+	Prior    string   `json:"prior_head"` // on a work consumer: the head the attempt continues from
+	Result   string   `json:"result"`     // "", ok, fix, fail or fault
+	Bounces  int      `json:"bounces"`    // on a producer: the returns that count toward blocked
+	Cost     int64    `json:"cost"`       // on a consumer: what its run cost, in micro-dollars
+	Priced   bool     `json:"priced"`     // false when the run's route has no price
+	Priority string   `json:"priority"`   // a producer's level; normal on a consumer
 }
 
 // Row is a row of sprint.rows: a worker or a kin.
