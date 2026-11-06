@@ -175,81 +175,77 @@ type field struct{ table, key, name string }
 
 // fields are the fields a write sets; ok is false for a write outside the set.
 func fields(w Write) (fs []field, ok bool) {
-	card := func(id, name string) []field { return []field{{"card", id, name}} }
-	row := func(name, f string) []field { return []field{{"row", name, f}} }
+	if id, column, _, ok := cardSet(w); ok {
+		return []field{{"card", id, column}}, true
+	}
+	if name, column, _, ok := rowSet(w); ok {
+		return []field{{"row", name, column}}, true
+	}
+	of := func(table, key string, names ...string) []field {
+		for _, n := range names {
+			fs = append(fs, field{table, key, n})
+		}
+		return fs
+	}
 	switch v := w.(type) {
 	case PutStream:
-		return []field{{"stream", v.Name, "repo"}, {"stream", v.Name, "base"}, {"stream", v.Name, "pos"}}, true
+		return of("stream", v.Name, "repo", "base", "pos"), true
 	case SetStreamHeld:
-		return []field{{"stream", v.Stream, "held"}}, true
+		return of("stream", v.Stream, "held"), true
 	case PutCard:
-		return append(append(card(v.ID, "stream"), card(v.ID, "score")...), append(card(v.ID, "needs"), card(v.ID, "brief")...)...), true
-	case SetCardState:
-		return card(v.Card, "state"), true
-	case SetCardHolder:
-		return card(v.Card, "holder"), true
-	case SetCardAttempt:
-		return card(v.Card, "attempt"), true
-	case SetCardBranch:
-		return card(v.Card, "branch"), true
-	case SetCardHead:
-		return card(v.Card, "head"), true
-	case SetCardPR:
-		return card(v.Card, "pr"), true
-	case SetCardReason:
-		return card(v.Card, "reason"), true
-	case SetCardScore:
-		return card(v.Card, "score"), true
-	case SetCardAuthor:
-		return card(v.Card, "author"), true
-	case SetCardBaseSHA:
-		return card(v.Card, "base_sha"), true
-	case SetCardNeeds:
-		return card(v.Card, "needs"), true
+		return of("card", v.ID, "stream", "score", "needs", "brief"), true
 	case PutRow:
-		return append(append(row(v.Name, "kind"), row(v.Name, "width")...), row(v.Name, "session")...), true
-	case SetRowState:
-		return row(v.Row, "state"), true
-	case SetRowSession:
-		return row(v.Row, "session"), true
-	case SetRowFlaps:
-		return row(v.Row, "flaps"), true
+		return of("row", v.Name, "kind", "width", "session"), true
 	case PutPolicy:
 		return nil, true
 	case SetActivePolicy:
-		return []field{{"policy", "", "active"}}, true
+		return of("policy", "", "active"), true
 	}
 	return nil, false
 }
 
-// namedInt is one integer a write carries, named by its column.
-type namedInt struct {
-	name string
-	v    int
+// cardSet is a set-card write as one field of one card: the card it names,
+// the column it sets and the change. ok is false for any other write. It is
+// the one table of the set-card writes.
+func cardSet(w Write) (id, column string, set func(*Card), ok bool) {
+	switch v := w.(type) {
+	case SetCardState:
+		return v.Card, "state", func(c *Card) { c.State = v.State }, true
+	case SetCardHolder:
+		return v.Card, "holder", func(c *Card) { c.Holder = v.Holder }, true
+	case SetCardAttempt:
+		return v.Card, "attempt", func(c *Card) { c.Attempt = v.Attempt }, true
+	case SetCardBranch:
+		return v.Card, "branch", func(c *Card) { c.Branch = v.Branch }, true
+	case SetCardHead:
+		return v.Card, "head", func(c *Card) { c.Head = v.Head }, true
+	case SetCardPR:
+		return v.Card, "pr", func(c *Card) { c.PR = v.PR }, true
+	case SetCardReason:
+		return v.Card, "reason", func(c *Card) { c.Reason = v.Reason }, true
+	case SetCardScore:
+		return v.Card, "score", func(c *Card) { c.Score = v.Score }, true
+	case SetCardAuthor:
+		return v.Card, "author", func(c *Card) { c.Author = v.Author }, true
+	case SetCardBaseSHA:
+		return v.Card, "base_sha", func(c *Card) { c.BaseSHA = v.SHA }, true
+	case SetCardNeeds:
+		return v.Card, "needs", func(c *Card) { c.Needs = v.Needs }, true
+	}
+	return "", "", nil, false
 }
 
-// ints are the integers a write carries; each must fit the column, a
-// PostgreSQL integer (32-bit signed).
-func ints(w Write) []namedInt {
+// rowSet is cardSet for the set-row writes.
+func rowSet(w Write) (name, column string, set func(*Row), ok bool) {
 	switch v := w.(type) {
-	case PutStream:
-		return []namedInt{{"pos", v.Pos}}
-	case PutCard:
-		return []namedInt{{"score", v.Score}}
-	case SetCardAttempt:
-		return []namedInt{{"attempt", v.Attempt}}
-	case SetCardPR:
-		return []namedInt{{"pr", v.PR}}
-	case SetCardScore:
-		return []namedInt{{"score", v.Score}}
-	case PutRow:
-		return []namedInt{{"width", v.Width}}
+	case SetRowState:
+		return v.Row, "state", func(r *Row) { r.State = v.State }, true
+	case SetRowSession:
+		return v.Row, "session", func(r *Row) { r.Session = v.Session }, true
 	case SetRowFlaps:
-		return []namedInt{{"flaps", v.Flaps}}
-	case SetActivePolicy:
-		return []namedInt{{"version", v.Version}}
+		return v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, true
 	}
-	return nil
+	return "", "", nil, false
 }
 
 // normalize is an op with its times and lists as the store keeps them.

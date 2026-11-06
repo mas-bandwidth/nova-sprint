@@ -305,8 +305,8 @@ func TestFunctionalLostReplyAfterCommit(t *testing.T) {
 	h, p, _ := pgHarness(t)
 	h.seed()
 	var failed atomic.Bool
-	p.afterCommit = func() error {
-		if failed.CompareAndSwap(false, true) {
+	p.fault = func(stage string) error {
+		if stage == "committed" && failed.CompareAndSwap(false, true) {
 			return fmt.Errorf("test: reply lost after commit")
 		}
 		return nil
@@ -329,6 +329,97 @@ func TestFunctionalLostReplyAfterCommit(t *testing.T) {
 	}
 	assert.Equal(t, 1, n, "one event for the op")
 	assert.Equal(t, 1, h.snap().Cards["c1"].Gen, "the gen moved once")
+}
+
+// A panic inside a write's transaction, with the writer lock held, rolls the
+// transaction back and is re-raised: the next writer proceeds (the cold
+// read's TestColdFarFutureAtPG left every later writer blocked).
+func TestFunctionalPanicReleasesLock(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	var once atomic.Bool
+	p.fault = func(stage string) error {
+		if stage == "locked" && once.CompareAndSwap(false, true) {
+			panic("test: panic with the writer lock held")
+		}
+		return nil
+	}
+	o := h.op("boom", nil, SetCardState{"c1", "ready"})
+	assert.PanicsWithValue(t, "test: panic with the writer lock held", func() { _, _ = p.Apply(h.ctx, o) })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	r, err := p.Apply(ctx, h.op("next", nil, SetCardState{"c2", "ready"}))
+	require.NoError(t, err, "the next writer after the panic")
+	assert.True(t, r.Accepted)
+	_, ok, err := p.Replay(h.ctx, o.ID)
+	require.NoError(t, err)
+	assert.False(t, ok, "the op that panicked did not land")
+	assert.Equal(t, "waiting", h.snap().Cards["c1"].State)
+}
+
+// Eight Migrates of one fresh store at once all succeed: each holds the
+// advisory lock (the cold read's TestFunctionalColdConcurrentMigrate).
+func TestFunctionalConcurrentMigrate(t *testing.T) {
+	t.Parallel()
+	dsn := startPG(t)
+	const n = 8
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		p, err := Open(context.Background(), dsn, "")
+		require.NoError(t, err)
+		t.Cleanup(p.Close)
+		wg.Go(func() { errs[i] = p.Migrate(context.Background()) })
+	}
+	wg.Wait()
+	for i, err := range errs {
+		assert.NoError(t, err, "migrate %d", i)
+	}
+}
+
+// Corrupt JSON in an event's image is an error naming the seq from Events,
+// never a panic (Emma's read, 2026-11-06).
+func TestFunctionalEventsCorruptImage(t *testing.T) {
+	t.Parallel()
+	h, p, dsn := pgHarness(t)
+	h.seed()
+	_, err := connect(t, dsn).Exec(context.Background(), `UPDATE sprint.events SET after = '"not a state"' WHERE seq = 1`)
+	require.NoError(t, err)
+	assert.NotPanics(t, func() {
+		_, err = p.Events(context.Background(), 0, 0)
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "after-image of seq 1")
+}
+
+// A tail on Events while eight writers race never sees a gap (the cold
+// read's TestFunctionalColdEventsTailNoGap).
+func TestFunctionalEventsTailNoGap(t *testing.T) {
+	t.Parallel()
+	h, p, _ := pgHarness(t)
+	h.seed()
+	const writers, each = 8, 25
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Go(func() {
+			for i := range each {
+				_, err := p.Apply(context.Background(), Op{ID: fmt.Sprintf("w%d-%d", w, i), Epoch: 1, Actor: "t", Kind: "s", At: t0, Writes: []Write{PutStream{Name: fmt.Sprintf("s%d-%d", w, i)}}})
+				assert.NoError(t, err)
+			}
+		})
+	}
+	var cursor int64
+	for deadline := time.Now().Add(wait); cursor < 1+writers*each && time.Now().Before(deadline); {
+		page, err := p.Events(context.Background(), cursor, 7)
+		require.NoError(t, err)
+		for _, e := range page {
+			require.Equal(t, cursor+1, e.Seq, "the tail skipped an event")
+			cursor = e.Seq
+		}
+	}
+	wg.Wait()
+	assert.Equal(t, int64(1+writers*each), cursor)
 }
 
 // Guarantee 6: snapshots taken while 50 ops land are each one consistent

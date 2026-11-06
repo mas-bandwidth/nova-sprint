@@ -1,10 +1,12 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"slices"
 	"sync"
 )
 
@@ -50,67 +52,50 @@ func (f *Fake) Drop(opID string, landed bool) {
 	f.drops[opID] = landed
 }
 
-// Apply runs op against a copy of the state and keeps the copy only when it is
-// accepted; the event is appended either way.
+// Apply runs op in a transaction of the fake's own (protocol, apply.go).
 func (f *Fake) Apply(_ context.Context, op Op) (Receipt, error) {
-	if err := check(op); err != nil {
+	if err := checkID(op); err != nil {
 		return Receipt{}, err
 	}
 	op = normalize(op)
-	return f.do(op, func(tx *fakeTx) (string, *State, *State, error) { return run(tx, f.epoch, op) })
+	return f.do(op, check, func(tx txn, epoch int) (string, *State, *State, error) { return run(tx, epoch, op) })
 }
 
 // Clear opens a new epoch, carrying the rows, and logs itself.
 func (f *Fake) Clear(_ context.Context, op Op) (Receipt, error) {
-	op, err := checkClear(op)
-	if err != nil {
+	if err := checkID(op); err != nil {
 		return Receipt{}, err
 	}
 	op = normalize(op)
-	return f.do(op, func(tx *fakeTx) (string, *State, *State, error) {
-		r, after, err := runClear(tx, f.epoch, op)
-		return r, nil, after, err
-	})
+	op.Kind = cmp.Or(op.Kind, "clear")
+	return f.do(op, checkClear, func(tx txn, epoch int) (string, *State, *State, error) { return runClear(tx, epoch, op) })
 }
 
-// do is the protocol both share: the stored receipt for a known id, else the
-// rules against a copy, kept when accepted, and the event.
-func (f *Fake) do(op Op, rules func(*fakeTx) (string, *State, *State, error)) (Receipt, error) {
+// do runs protocol against a copy of the state under the mutex, and keeps the
+// copy and the event only when protocol returns no error. Drop's faults come
+// first (not landed) or after the commit (landed).
+func (f *Fake) do(op Op, valid func(Op) error, rule rules) (Receipt, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if i, ok := f.ops[op.ID]; ok {
-		return decodeReceipt(f.events[i].receipt), nil
-	}
 	landed, dropped := f.drops[op.ID]
 	delete(f.drops, op.ID)
 	if dropped && !landed {
 		return Receipt{}, fmt.Errorf("%w: fake: connection dropped", ErrUnknown)
 	}
-	next := f.clone()
-	reason, before, after, err := rules(&fakeTx{f: next, events: len(f.events)})
+	tx := &fakeTx{base: f, st: f.clone(), events: slices.Clone(f.events)}
+	r, err := protocol(tx, f.epoch, op, valid, rule)
 	if err != nil {
 		return Receipt{}, err
 	}
-	epoch := f.epoch
-	if reason == "" {
-		f.epoch, f.streams, f.cards, f.rows, f.policies = next.epoch, next.streams, next.cards, next.rows, next.policies
-	} else {
-		before, after = nil, nil
+	f.epoch, f.streams, f.cards, f.rows, f.policies = tx.st.epoch, tx.st.streams, tx.st.cards, tx.st.rows, tx.st.policies
+	if len(tx.events) > len(f.events) {
+		f.events = tx.events
+		f.ops[op.ID] = len(f.events) - 1
 	}
-	r := f.log(op, reason, before, after, epoch)
 	if dropped {
 		return Receipt{}, fmt.Errorf("%w: fake: connection dropped after commit", ErrUnknown)
 	}
-	return r, nil
-}
-
-func (f *Fake) log(op Op, reason string, before, after *State, epoch int) Receipt {
-	seq := int64(len(f.events)) + 1
-	r := receipt(op, reason, after, seq)
-	e := Event{Seq: seq, Op: op.ID, Actor: op.Actor, Kind: op.Kind, Accepted: reason == "", Reason: reason, At: op.At, Epoch: epoch}
-	f.events = append(f.events, fakeEvent{Event: e, before: encode(before), after: encode(after), receipt: encode(r)})
-	f.ops[op.ID] = len(f.events) - 1
-	return decodeReceipt(encode(r))
+	return decodeReceipt(encode(r)), nil
 }
 
 // Replay returns the stored receipt of an op id.
@@ -196,38 +181,40 @@ func (f *Fake) clone() *Fake {
 	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies)}
 }
 
-// fakeTx is the txn of a Fake's copy; events is the count of events before it.
+// fakeTx is the txn of one Fake transaction: st is the working copy of the
+// state, events a copy of the log; do keeps both only when protocol succeeds.
 type fakeTx struct {
-	f      *Fake
-	events int
+	base   *Fake // the committed store, read only
+	st     *Fake
+	events []fakeEvent
 }
 
-func (t *fakeTx) k(name string) key { return key{t.f.epoch, name} }
+func (t *fakeTx) k(name string) key { return key{t.st.epoch, name} }
 
 func (t *fakeTx) card(id string) (Card, bool, error) {
-	c, ok := t.f.cards[t.k(id)]
+	c, ok := t.st.cards[t.k(id)]
 	c.Needs = needs(c.Needs)
 	return c, ok, nil
 }
 
 func (t *fakeTx) stream(name string) (Stream, bool, error) {
-	s, ok := t.f.streams[t.k(name)]
+	s, ok := t.st.streams[t.k(name)]
 	return s, ok, nil
 }
 
 func (t *fakeTx) row(name string) (Row, bool, error) {
-	r, ok := t.f.rows[t.k(name)]
+	r, ok := t.st.rows[t.k(name)]
 	return r, ok, nil
 }
 
 func (t *fakeTx) policy(v int) (PolicyVersion, bool, error) {
-	p, ok := t.f.policies[v]
+	p, ok := t.st.policies[v]
 	return p, ok, nil
 }
 
 func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 	last, active := 0, []PolicyVersion(nil)
-	for v, p := range t.f.policies {
+	for v, p := range t.st.policies {
 		last = max(last, v)
 		if p.Active {
 			active = append(active, p)
@@ -238,59 +225,88 @@ func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 
 func (t *fakeTx) held(row string) (int, error) {
 	n := 0
-	for k, c := range t.f.cards {
-		if k.epoch == t.f.epoch && c.Holder == row {
+	for k, c := range t.st.cards {
+		if k.epoch == t.st.epoch && c.Holder == row {
 			n++
 		}
 	}
 	return n, nil
 }
 
-func (t *fakeTx) lastSeq() (int64, error) { return int64(t.events), nil }
+func (t *fakeTx) lastSeq() (int64, error) { return int64(len(t.events)), nil }
 
 func (t *fakeTx) rows() ([]Row, error) {
 	var out []Row
-	for k, r := range t.f.rows {
-		if k.epoch == t.f.epoch {
+	for k, r := range t.st.rows {
+		if k.epoch == t.st.epoch {
 			out = append(out, r)
 		}
 	}
 	return out, nil
 }
 
-func (t *fakeTx) open() error { t.f.epoch++; return nil }
+func (t *fakeTx) open() error { t.st.epoch++; return nil }
 
 func (t *fakeTx) putCard(c Card) error {
 	c.Needs = needs(c.Needs)
-	t.f.cards[t.k(c.ID)] = c
+	t.st.cards[t.k(c.ID)] = c
 	return nil
 }
 
-func (t *fakeTx) putStream(s Stream) error        { t.f.streams[t.k(s.Name)] = s; return nil }
-func (t *fakeTx) putRow(r Row) error              { t.f.rows[t.k(r.Name)] = r; return nil }
-func (t *fakeTx) putPolicy(p PolicyVersion) error { t.f.policies[p.Version] = p; return nil }
+func (t *fakeTx) putStream(s Stream) error        { t.st.streams[t.k(s.Name)] = s; return nil }
+func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = r; return nil }
+func (t *fakeTx) putPolicy(p PolicyVersion) error { t.st.policies[p.Version] = p; return nil }
 
-// encode is a value as JSON, or nil for a nil *State.
+func (t *fakeTx) replay(opID string) (Receipt, bool, error) {
+	i, ok := t.base.ops[opID]
+	if !ok {
+		return Receipt{}, false, nil
+	}
+	return decodeReceipt(t.base.events[i].receipt), true, nil
+}
+
+func (t *fakeTx) mark() error    { return nil } // st is already a copy of the committed state
+func (t *fakeTx) discard() error { t.st = t.base.clone(); return nil }
+
+func (t *fakeTx) appendEvent(e Event) error {
+	before, after, rec := encode(e.Before), encode(e.After), encode(e.Receipt)
+	e.Before, e.After, e.Receipt = nil, nil, Receipt{}
+	t.events = append(t.events, fakeEvent{Event: e, before: before, after: after, receipt: rec})
+	return nil
+}
+
+// encode is a value as JSON, or nil for a nil *State. The store's own types
+// always encode: every time a receipt carries has passed check (years 0..9999).
 func encode(v any) []byte {
 	if s, ok := v.(*State); ok && s == nil {
 		return nil
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
-		panic(err) // the store's own types always encode
+		panic(err)
 	}
 	return b
 }
 
 func decodeState(b []byte) *State {
+	s, err := readState(b)
+	if err != nil {
+		panic(err) // the fake's images are written by encode
+	}
+	return s
+}
+
+// readState is an image as stored, or nil for none; an error for bytes that
+// are not one (PG's events read it and return the error, never panic).
+func readState(b []byte) (*State, error) {
 	if len(b) == 0 {
-		return nil
+		return nil, nil
 	}
 	var s State
 	if err := json.Unmarshal(b, &s); err != nil {
-		panic(err) // written by encode
+		return nil, err
 	}
-	return &s
+	return &s, nil
 }
 
 func decodeReceipt(b []byte) Receipt {

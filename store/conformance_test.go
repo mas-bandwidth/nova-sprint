@@ -39,6 +39,9 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"author and base sha":     authorAndBase,
 		"width in one op":         widthInOneOp,
 		"int range":               intRange,
+		"nul bytes":               nulBytes,
+		"text and time":           textAndTime,
+		"known id, invalid body":  knownIDInvalidBody,
 		"snapshot is a copy":      snapshotIsCopy,
 		"same id concurrent":      sameIDConcurrent,
 		"clear races apply":       clearRacesApply,
@@ -447,13 +450,18 @@ func intRange(h *harness) {
 		w      Write
 		reason string
 	}{
-		"score over":  {PutCard{ID: "c3", Stream: "s1", Score: math.MaxInt32 + 1}, "score 2147483648 is outside the 32-bit integer range -2147483648..2147483647"},
-		"score under": {SetCardScore{"c1", math.MinInt32 - 1}, "score -2147483649 is outside the 32-bit integer range -2147483648..2147483647"},
-		"width":       {PutRow{"w2", "kin", math.MaxInt32 + 1, ""}, "width 2147483648 is outside the 32-bit integer range -2147483648..2147483647"},
-		"attempt":     {SetCardAttempt{"c1", math.MaxInt32 + 1}, "attempt 2147483648 is outside"},
-		"pr":          {SetCardPR{"c1", math.MaxInt32 + 1}, "pr 2147483648 is outside"},
-		"flaps":       {SetRowFlaps{"w1", math.MaxInt32 + 1}, "flaps 2147483648 is outside"},
-		"pos":         {PutStream{"s2", "", "", math.MaxInt32 + 1}, "pos 2147483648 is outside"},
+		"score over":       {PutCard{ID: "c3", Stream: "s1", Score: math.MaxInt32 + 1}, "score 2147483648 is outside the range 0..2147483647"},
+		"score negative":   {SetCardScore{"c1", -1}, "score -1 is outside the range 0..2147483647"},
+		"width over":       {PutRow{"w2", "kin", math.MaxInt32 + 1, ""}, "width 2147483648 is outside the range 0..2147483647"},
+		"width negative":   {PutRow{"w2", "kin", -1, ""}, "width -1 is outside the range 0..2147483647"},
+		"width overwrite":  {PutRow{"w1", "worker", -1, "sess-a"}, "width -1 is outside"},
+		"attempt":          {SetCardAttempt{"c1", math.MaxInt32 + 1}, "attempt 2147483648 is outside"},
+		"attempt negative": {SetCardAttempt{"c1", -1}, "attempt -1 is outside"},
+		"pr":               {SetCardPR{"c1", -1}, "pr -1 is outside"},
+		"flaps":            {SetRowFlaps{"w1", math.MaxInt32 + 1}, "flaps 2147483648 is outside"},
+		"flaps negative":   {SetRowFlaps{"w1", -1}, "flaps -1 is outside"},
+		"pos":              {PutStream{"s2", "", "", -1}, "pos -1 is outside"},
+		"policy version":   {SetActivePolicy{-1}, "version -1 is outside"},
 	} {
 		_, err := h.s.Apply(h.ctx, h.op("big", nil, c.w))
 		require.ErrorIs(h.t, err, ErrInvalid, name)
@@ -465,8 +473,96 @@ func intRange(h *harness) {
 	require.ErrorIs(h.t, err, ErrInvalid)
 	assert.Contains(h.t, err.Error(), "epoch 2147483648 is outside")
 	assert.Len(h.t, h.events(), n, "nothing out of range is logged")
-	h.ok(h.op("edge", nil, SetCardScore{"c1", math.MaxInt32}, PutRow{"w2", "kin", math.MaxInt32, ""}))
+	h.ok(h.op("edge", nil, SetCardScore{"c1", math.MaxInt32}, PutRow{"w2", "kin", math.MaxInt32, ""}, SetCardAttempt{"c1", 0}))
 	assert.Equal(h.t, math.MaxInt32, h.snap().Cards["c1"].Score)
+}
+
+// A NUL byte in any text is ErrInvalid before the transaction, from both
+// stores: PostgreSQL text cannot hold one (Emma's read, 2026-11-06: it
+// surfaced as ErrUnknown).
+func nulBytes(h *harness) {
+	h.seed()
+	n := len(h.events())
+	for name, o := range map[string]Op{
+		"id":         {ID: "x\x00", Epoch: 1},
+		"actor":      {ID: "x", Epoch: 1, At: t0, Actor: "a\x00"},
+		"note":       {ID: "x", Epoch: 1, At: t0, Note: "\x00"},
+		"card id":    h.op("x", nil, PutCard{ID: "c\x00", Stream: "s1"}),
+		"need":       h.op("x", nil, SetCardNeeds{"c1", []string{"c0\x00"}}),
+		"brief":      h.op("x", nil, PutCard{ID: "c3", Stream: "s1", Brief: "b\x00"}),
+		"reason":     h.op("x", nil, SetCardReason{"c1", "r\x00"}),
+		"head":       h.op("x", nil, SetCardHead{"c1", "\x00"}),
+		"branch":     h.op("x", nil, SetCardBranch{"c1", "b\x00"}),
+		"author":     h.op("x", nil, SetCardAuthor{"c1", "w\x00"}),
+		"row name":   h.op("x", nil, PutRow{"w\x00", "kin", 1, ""}),
+		"stream":     h.op("x", nil, PutStream{"s\x00", "", "", 0}),
+		"policy":     h.op("x", nil, PutPolicy{"data", "p", "{\x00}"}),
+		"condition":  h.op("x", []Expect{CardState{"c1", "ready\x00"}}),
+		"row in cnd": h.op("x", []Expect{RowIs{"w\x00", "up"}}),
+	} {
+		_, err := h.s.Apply(h.ctx, o)
+		require.ErrorIs(h.t, err, ErrInvalid, name)
+		assert.Contains(h.t, err.Error(), "NUL byte", name)
+	}
+	o := h.op("clear", nil)
+	o.Note = "\x00"
+	_, err := h.s.Clear(h.ctx, o)
+	assert.ErrorIs(h.t, err, ErrInvalid, "a clear too")
+	assert.Len(h.t, h.events(), n, "nothing with a NUL is logged")
+}
+
+// Text must be valid UTF-8 and a time must fall in the years 0..9999, or the
+// op is ErrInvalid from both stores (the cold read: Fake kept raw bytes its
+// JSON image rewrote, so Rebuild diverged; a far At panicked inside encode).
+func textAndTime(h *harness) {
+	h.seed()
+	n := len(h.events())
+	bad := map[string]Op{
+		"utf8 reason": h.op("x", nil, SetCardReason{"c1", "\xff\xfe"}),
+		"utf8 id":     {ID: "\xff", Epoch: 1, At: t0},
+		"utf8 kind":   {ID: "y", Epoch: 1, Kind: "\xff", At: t0},
+		"zero at":     {ID: "z", Epoch: 1},
+	}
+	for name, at := range map[string]time.Time{"year 10000": time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), "year -1": time.Date(-1, 1, 1, 0, 0, 0, 0, time.UTC)} {
+		o := h.op("far", nil, SetCardState{"c1", "ready"})
+		o.At = at
+		bad[name] = o
+	}
+	for name, o := range bad {
+		_, err := h.s.Apply(h.ctx, o)
+		require.ErrorIs(h.t, err, ErrInvalid, name)
+	}
+	assert.Len(h.t, h.events(), n, "nothing invalid is logged")
+	o := h.op("edge", nil, SetCardReason{"c1", "naïve ✓"})
+	o.At = time.Date(9999, 12, 31, 23, 0, 0, 0, time.UTC)
+	h.ok(o)
+	assert.Equal(h.t, Rebuild(h.events()), h.snap())
+	assert.Equal(h.t, "waiting", h.snap().Cards["c1"].State)
+}
+
+// A known id returns its stored receipt whatever its body says, invalid
+// included: the lookup comes before the body is checked; only a missing id
+// is refused first (the cold read's TestColdKnownIDInvalidBody).
+func knownIDInvalidBody(h *harness) {
+	h.seed()
+	o := h.op("take", nil, SetCardState{"c1", "ready"})
+	first := h.ok(o)
+	for name, mutate := range map[string]func(*Op){
+		"epoch 0":          func(o *Op) { o.Epoch = 0 },
+		"two state writes": func(o *Op) { o.Writes = []Write{SetCardState{"c1", "a"}, SetCardState{"c1", "b"}} },
+		"nul reason":       func(o *Op) { o.Writes = []Write{SetCardReason{"c1", "\x00"}} },
+		"zero at":          func(o *Op) { o.At = time.Time{} },
+		"nil condition":    func(o *Op) { o.Expect = []Expect{nil} },
+	} {
+		again := o
+		mutate(&again)
+		r, err := h.s.Apply(h.ctx, again)
+		require.NoError(h.t, err, name)
+		assert.Equal(h.t, first, r, name)
+	}
+	_, err := h.s.Apply(h.ctx, Op{Epoch: 1, At: t0})
+	assert.ErrorIs(h.t, err, ErrInvalid, "a missing id")
+	assert.Len(h.t, h.events(), 2)
 }
 
 // A snapshot is the caller's own copy (Stella's probe
@@ -616,6 +712,8 @@ func policy(h *harness) {
 	assert.Equal(h.t, p2, got)
 	_, err = h.s.Policy(h.ctx, 9)
 	assert.ErrorIs(h.t, err, ErrNotFound)
+	_, err = h.s.Policy(h.ctx, 1<<40)
+	assert.ErrorIs(h.t, err, ErrNotFound, "a version past int32 is not found on both (the cold read)")
 	r = h.ok(h.op("pol", nil, PutPolicy{"data", "limits", `{"a":1}`}))
 	assert.Equal(h.t, 3, r.After.Policies[3].Version)
 	assert.Equal(h.t, 2, h.snap().Policy, "a new version is inactive")

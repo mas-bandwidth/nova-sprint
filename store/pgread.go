@@ -116,7 +116,14 @@ func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, erro
 		if err := rows.Scan(&e.Seq, &e.Op, &e.Actor, &e.Kind, &e.Accepted, &e.Reason, &before, &after, &rec, &e.At, &e.Epoch); err != nil {
 			return nil, fmt.Errorf("store: events: %w", err)
 		}
-		e.At, e.Before, e.After = at(e.At), decodeState(before), decodeState(after)
+		e.At = at(e.At)
+		var err error
+		if e.Before, err = readState(before); err != nil {
+			return nil, fmt.Errorf("store: events: before-image of seq %d: %w", e.Seq, err)
+		}
+		if e.After, err = readState(after); err != nil {
+			return nil, fmt.Errorf("store: events: after-image of seq %d: %w", e.Seq, err)
+		}
 		if err := json.Unmarshal(rec, &e.Receipt); err != nil {
 			return nil, fmt.Errorf("store: events: receipt of %s: %w", e.Op, err)
 		}
@@ -220,6 +227,25 @@ func (t *pgTx) putRow(r Row) error {
 		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state,
 		session = EXCLUDED.session, flaps = EXCLUDED.flaps`,
 		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps)
+	return err
+}
+
+func (t *pgTx) replay(opID string) (Receipt, bool, error) { return replayTx(t.ctx, t.tx, opID) }
+
+func (t *pgTx) mark() error {
+	_, err := t.tx.Exec(t.ctx, "SAVEPOINT writes")
+	return err
+}
+
+func (t *pgTx) discard() error {
+	_, err := t.tx.Exec(t.ctx, "ROLLBACK TO SAVEPOINT writes")
+	return err
+}
+
+func (t *pgTx) appendEvent(e Event) error {
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		e.Seq, e.Op, e.Actor, e.Kind, e.Accepted, e.Reason, jsonArg(e.Before), jsonArg(e.After), string(encode(e.Receipt)), e.At, e.Epoch)
 	return err
 }
 

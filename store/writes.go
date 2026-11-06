@@ -19,10 +19,11 @@ func (w *work) write(wr Write) (string, error) {
 		return w.addCard(v)
 	case PutRow:
 		return w.writePutRow(v)
-	case SetRowState, SetRowSession, SetRowFlaps:
-		return w.writeRow(wr)
 	case PutPolicy, SetActivePolicy:
 		return w.writePolicy(wr)
+	}
+	if _, _, _, ok := rowSet(wr); ok {
+		return w.writeRow(wr)
 	}
 	return w.writeCard(wr)
 }
@@ -61,108 +62,51 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	return "", w.putRow(old, ok, next)
 }
 
+// writeRow is the set-row writes (rowSet).
 func (w *work) writeRow(wr Write) (string, error) {
-	var name string
-	switch v := wr.(type) {
-	case SetRowState:
+	name, _, set, _ := rowSet(wr)
+	if v, ok := wr.(SetRowState); ok {
 		if r := oneOf("row state", v.State, RowStates); r != "" {
 			return r, nil
 		}
-		name = v.Row
-	case SetRowSession:
-		name = v.Row
-	case SetRowFlaps:
-		name = v.Row
 	}
 	row, r, err := w.mustRow(name)
 	if r != "" || err != nil {
 		return r, err
 	}
 	next := row
-	switch v := wr.(type) {
-	case SetRowState:
-		next.State = v.State
-	case SetRowSession:
-		next.Session = v.Session
-	case SetRowFlaps:
-		next.Flaps = v.Flaps
-	}
+	set(&next)
 	return "", w.putRow(row, true, next)
 }
 
-// cardTarget is the card a set-card write names.
-func cardTarget(wr Write) string {
-	switch v := wr.(type) {
-	case SetCardState:
-		return v.Card
-	case SetCardHolder:
-		return v.Card
-	case SetCardAttempt:
-		return v.Card
-	case SetCardBranch:
-		return v.Card
-	case SetCardHead:
-		return v.Card
-	case SetCardPR:
-		return v.Card
-	case SetCardReason:
-		return v.Card
-	case SetCardScore:
-		return v.Card
-	case SetCardAuthor:
-		return v.Card
-	case SetCardBaseSHA:
-		return v.Card
-	case SetCardNeeds:
-		return v.Card
-	}
-	return ""
-}
-
-// writeCard is the writes that set one field of an existing card; putCard
+// writeCard is the set-card writes (cardSet) on an existing card; putCard
 // sets the gen, once per op.
 func (w *work) writeCard(wr Write) (string, error) {
-	card, r, err := w.mustCard(cardTarget(wr))
+	id, _, set, _ := cardSet(wr)
+	card, r, err := w.mustCard(id)
+	if r != "" || err != nil {
+		return r, err
+	}
+	switch v := wr.(type) {
+	case SetCardState:
+		r = oneOf("card state", v.State, CardStates)
+	case SetCardHolder:
+		r, err = w.holderFits(card, v.Holder)
+	case SetCardNeeds:
+		r, err = w.checkNeeds(card.ID, v.Needs)
+	}
 	if r != "" || err != nil {
 		return r, err
 	}
 	next := card
-	switch v := wr.(type) {
-	case SetCardState:
-		r = oneOf("card state", v.State, CardStates)
-		next.State = v.State
-	case SetCardHolder:
-		r, err = w.holderFits(card, v.Holder)
-		next.Holder = v.Holder
-	case SetCardAttempt:
-		next.Attempt = v.Attempt
-	case SetCardBranch:
-		next.Branch = v.Branch
-	case SetCardHead:
-		next.Head = v.Head
-	case SetCardPR:
-		next.PR = v.PR
-	case SetCardReason:
-		next.Reason = v.Reason
-	case SetCardScore:
-		next.Score = v.Score
-	case SetCardAuthor:
-		next.Author = v.Author
-	case SetCardBaseSHA:
-		next.BaseSHA = v.SHA
-	case SetCardNeeds:
-		r, err = w.checkNeeds(card.ID, v.Needs)
-		next.Needs = v.Needs
-	}
-	if r != "" || err != nil {
-		return r, err
-	}
+	set(&next)
 	return "", w.putCard(card, true, next)
 }
 
 // holderFits refuses a holder row that does not exist or already holds as
-// many cards as its width, counted now, so earlier writes of the same op are
-// counted too. A card already held by the row adds nothing and fits.
+// many cards as its width, counted now (earlier writes of the op included).
+// The count excludes the card being written: setting a card's holder to the
+// row that holds it already is a no-op, never a refusal.
 func (w *work) holderFits(card Card, holder string) (string, error) {
 	if holder == "" || holder == card.Holder {
 		return "", nil
@@ -188,7 +132,7 @@ func (w *work) checkNeeds(id string, needs []string) (string, error) {
 		}
 		seen[n] = true
 		if _, ok, err := w.tx.card(n); !ok || err != nil {
-			return fmt.Sprintf("need %s of card %s does not exist", n, id), err
+			return when(err == nil, "need %s of card %s does not exist", n, id), err
 		}
 	}
 	return "", nil
@@ -199,7 +143,7 @@ func (w *work) addCard(v PutCard) (string, error) {
 		return "a card needs an id", nil
 	}
 	if _, ok, err := w.tx.card(v.ID); ok || err != nil {
-		return fmt.Sprintf("card %s exists", v.ID), err
+		return when(err == nil, "card %s exists", v.ID), err
 	}
 	if _, r, err := w.mustStream(v.Stream); r != "" || err != nil {
 		return r, err
@@ -216,30 +160,28 @@ func (w *work) writePolicy(wr Write) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	switch v := wr.(type) {
-	case PutPolicy:
+	if v, ok := wr.(PutPolicy); ok {
 		if r := oneOf("policy kind", v.Kind, PolicyKinds); r != "" {
 			return r, nil
 		}
 		p := PolicyVersion{Version: last + 1, Kind: v.Kind, Name: v.Name, Body: v.Body, Actor: w.op.Actor, At: w.op.At}
 		return "", w.putPolicy(PolicyVersion{}, false, p)
-	case SetActivePolicy:
-		p, ok, err := w.tx.policy(v.Version)
-		if err != nil || !ok {
-			return when(err == nil, "policy version %d does not exist", v.Version), err
-		}
-		for _, a := range active {
-			if a.Version != p.Version {
-				off := a
-				off.Active = false
-				if err := w.putPolicy(a, true, off); err != nil {
-					return "", err
-				}
+	}
+	v := wr.(SetActivePolicy)
+	p, ok, err := w.tx.policy(v.Version)
+	if err != nil || !ok {
+		return when(err == nil, "policy version %d does not exist", v.Version), err
+	}
+	for _, a := range active {
+		if a.Version != p.Version {
+			off := a
+			off.Active = false
+			if err := w.putPolicy(a, true, off); err != nil {
+				return "", err
 			}
 		}
-		on := p
-		on.Active = true
-		return "", w.putPolicy(p, true, on)
 	}
-	return "", nil
+	on := p
+	on.Active = true
+	return "", w.putPolicy(p, true, on)
 }
