@@ -111,16 +111,18 @@ Heads   == 1..MaxHead
 
 NoCons == [st |-> "none", kind |-> "-", row |-> NoR, att |-> 0, head |-> 0,
            res |-> "-", author |-> None, review |-> 0, prior |-> 0, finding |-> "-"]
-\* finding: the last failure the producer returned with (Broken: fail,
-\* Faulted: fault, ReadFix: fix); Start copies it to the work consumer.
-Findings == {"-", "fail", "fault", "fix"}
+\* finding: the reader's finding, written only by ReadFix (round 4: a fault
+\* never writes it, and Broken keeps it); Start copies it to the work
+\* consumer. red: a recorded Red (the producers-only card column red), set
+\* by Red, cleared by Finished and Start, required by WaiveRed.
+Findings == {"-", "fix"}
 NewProd(p) == [st |-> IF p \in Added THEN "absent" ELSE "waiting", att |-> 0, head |-> 0,
                author |-> None, bounces |-> 0, score |-> 0, prio |-> "normal",
                needs |-> Needs0[p], after |-> After0[p], review |-> 0, ncut |-> 0,
-               finding |-> "-"]
+               finding |-> "-", red |-> FALSE]
 
 VARIABLES
-  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding]
+  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding, red]
   cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review, prior, finding]
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
@@ -204,7 +206,7 @@ StepRule(n, ev, p, c, r) ==
              /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "ok"
              /\ cs[k].head = ps[p].head /\ cs[k].review + 1 = ps[p].review
     [] n = "FixCarriesFailure" ->
-         /\ ev \in {"Broken", "Faulted"} => ps'[p].finding = cs[c].res
+         /\ ev \in {"Broken", "Faulted"} => ps'[p].finding = ps[p].finding
          /\ ev \in {"Start", "Preempt"} => cs'[NextSlot(p)].finding = ps[p].finding
     [] n = "WithdrawReleasesInOneStep" ->
          (ev \in {"Withdraw", "Preempt"} /\ cs[c].kind = "work"
@@ -218,14 +220,14 @@ StepRule(n, ev, p, c, r) ==
          \A s \in Sentinels :
            (ps[s].st # "landed" /\ ps'[s].st = "landed")
              => (ev = "Reached" /\ \A x \in ps[s].needs : ps[x].st = "landed")
-    [] n = "AfterKept" -> ev = "Landed" => \A a \in ps[p].after : ps[a].st # "merging"
+    [] n = "WaiveRedNeedsRed" -> ev = "WaiveRed" => ps[p].red
 
 StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
               "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs",
               "ReadYesNeedsYes", "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
               "WaiveRedNeedsPriorRead", "FixCarriesFailure", "ReplaceByLive", "HeadNeverRepeats",
               "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
-              "SentinelLandsByReached", "AfterKept"}
+              "SentinelLandsByReached", "WaiveRedNeedsRed"}
 
 \* The monitor's value after a step: the rules it broke, and its name only
 \* when a reach check needs it (every other step is "-", so states are not
@@ -291,7 +293,7 @@ StartGuard(p, r) ==
 Start(p, r) ==
   /\ StartGuard(p, r)
   /\ ps'   = [ps EXCEPT ![p].st = "working", ![p].att = @ + 1, ![p].author = None,
-                        ![p].ncut = @ + 1]
+                        ![p].ncut = @ + 1, ![p].red = FALSE]
   /\ cs'   = [cs EXCEPT ![NextSlot(p)] = StartCut(p, r)]
   /\ last' = L("Start", p, NextSlot(p), r)
   /\ UNCHANGED <<rs, held>>
@@ -302,7 +304,8 @@ Finished(p, c) ==
   /\ cs[c].st = "done"
   /\ cs[c].res = "ok"
   /\ PStep("Finished", p, c, [ps[p] EXCEPT !.st = "review", !.head = cs[c].head,
-                                           !.author = cs[c].row, !.review = @ + 1])
+                                           !.author = cs[c].row, !.review = @ + 1,
+                                           !.red = FALSE])
 
 \* A pushed head is kept on the producer; a report with no head keeps p's.
 KeptHead(p, c) == IF cs[c].head # 0 THEN cs[c].head ELSE ps[p].head
@@ -313,7 +316,7 @@ Broken(p, c) ==
   /\ cs[c].st = "done"
   /\ cs[c].res = "fail"
   /\ PStep("Broken", p, c, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
-                                         !.head = KeptHead(p, c), !.finding = "fail"])
+                                         !.head = KeptHead(p, c)])
 
 Faulted(p, c) ==
   /\ ps[p].st = "working"
@@ -321,7 +324,7 @@ Faulted(p, c) ==
   /\ cs[c].st = "done"
   /\ cs[c].res = "fault"
   /\ PStep("Faulted", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),
-                                          !.finding = "fault", !.bounces = @ + 1])   \* FAULT: bounces+1
+                                          !.bounces = @ + 1])   \* FAULT: bounces+1
 
 \* AskRead refuses a sentinel, the author, and a row that already holds a
 \* live read of this head (the first cold read).
@@ -405,8 +408,10 @@ ReadFix(p) ==
 \* WaiveRed (the second cold read): a producer that a Red sent back to
 \* review goes on to merging without a new read, when a done ok read of the
 \* previous review at the same head exists (the coordinator's judgement
-\* that the red was not the code's). Such a read exists only after a Red:
-\* a Finished brings a new head (an ok head is never the prior head).
+\* that the red was not the code's), and the Red is still recorded (round
+\* 4). Without the red guard such a read also exists after a Finished that
+\* comes back to an already-read head: a ReadFix, an attempt that moves the
+\* head (Faulted or Broken), then an attempt reporting the old head again.
 PrevYes(p) ==
   \E c \in ConsOf(p) :
     /\ cs[c].kind = "read" /\ cs[c].st = "done" /\ cs[c].res = "ok"
@@ -415,22 +420,22 @@ PrevYes(p) ==
 WaiveRed(p) ==
   /\ ps[p].st = "review"
   /\ NoLive(p)
+  /\ ps[p].red   \* the code: "no red on review N"
   /\ PrevYes(p)
   /\ PStep("WaiveRed", p, NoC, [ps[p] EXCEPT !.st = "merging"])
 
-\* Soft order: p lands only when no producer it names in after is merging.
-AfterClear(p) == \A a \in ps[p].after : ps[a].st # "merging"
-
+\* Landed has no after check (round 4): a landing never holding on a soft
+\* after is the landing step's rule (layer 3).
 Landed(p, h) ==
   /\ ps[p].st = "merging"
   /\ h = ps[p].head
-  /\ AfterClear(p)
   /\ PStep("Landed", p, NoC, [ps[p] EXCEPT !.st = "landed"])
 
 Red(p, h) ==
   /\ ps[p].st = "merging"
   /\ h = ps[p].head
-  /\ PStep("Red", p, NoC, [ps[p] EXCEPT !.st = "review", !.review = @ + 1])
+  /\ PStep("Red", p, NoC, [ps[p] EXCEPT !.st = "review", !.review = @ + 1,
+                                      !.red = TRUE])
 
 Released(p, c) ==
   /\ ps[p].st = "working"
@@ -471,7 +476,7 @@ Relink(p, n, to) ==
   /\ ps[p].st = "waiting"
   /\ n \in ps[p].needs
   /\ ps[n].st = "fail"
-  /\ to \in Prods \ {p}   \* the code: a need is relinked only to a producer
+  /\ to \in P \ {p}   \* the code (round 4): a producer or a sentinel
   /\ NonFinal(to)
   /\ to \notin ps[p].needs
   /\ Acyclic([OrderGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])   \* needs and after (the code)
@@ -487,7 +492,7 @@ InThisOpGuard(n, p, m, to) ==
   /\ CASE m = "NeedFailed" -> NonFinal(p) /\ NoLive(p)
        [] m = "Waive"      -> ps[p].st = "waiting"
        [] OTHER            -> /\ ps[p].st = "waiting"
-                              /\ to \in Prods \ {p, n}
+                              /\ to \in P \ {p, n}
                               /\ NonFinal(to)
                               /\ to \notin ps[p].needs
                               /\ Acyclic([OrderGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])
@@ -614,7 +619,8 @@ Preempt(b, c, r) ==
   /\ cs[c].row = r
   /\ c \notin ConsOf(b)
   /\ ps'   = [ReleasedBy(c, 0) EXCEPT ![b].st = "working", ![b].att = @ + 1,
-                                      ![b].author = None, ![b].ncut = @ + 1]
+                                      ![b].author = None, ![b].ncut = @ + 1,
+                                      ![b].red = FALSE]
   /\ cs'   = [cs EXCEPT ![c] = Withdrawn(c, 0), ![NextSlot(b)] = StartCut(b, r)]
   /\ last' = L("Preempt", b, c, r)
   /\ UNCHANGED <<rs, held>>
@@ -708,7 +714,8 @@ Spec == Init /\ [][Next]_vars
 
 ProdRec == [st : PStates, att : 0..MaxAttempt, head : 0..MaxHead, author : Rows \cup {None},
             bounces : 0..MaxBounce, score : 0..1, prio : Prios, needs : SUBSET P,
-            after : SUBSET P, review : 0..(MaxAttempt + MaxEnv), ncut : 0..K, finding : Findings]
+            after : SUBSET P, review : 0..(MaxAttempt + MaxEnv), ncut : 0..K, finding : Findings,
+            red : BOOLEAN]
 ConsRec == [st : CStates, kind : {"-", "work", "read"}, row : Rows \cup {NoR},
             att : 0..MaxAttempt, head : 0..MaxHead, res : Results,
             author : Rows \cup {None}, review : 0..(MaxAttempt + MaxEnv), prior : 0..MaxHead,
@@ -835,11 +842,6 @@ NeedsAcyclic == Acyclic(NeedsGraph)
 (* and after (the code at v2-card-fix3).                                 *)
 OrderAcyclic == Acyclic(OrderGraph)
 
-(* Soft order never holds a landing whose target is not queued: a         *)
-(* merging producer whose after-targets are not merging can land.         *)
-AfterNeverHolds ==
-  \A p \in P : (ps[p].st = "merging" /\ AfterClear(p)) => ENABLED Landed(p, ps[p].head)
-
 (* The step invariants: each says the last step kept its rule (StepRule). *)
 FinalNeverMoves        == "FinalNeverMoves" \notin last.bad
 AttemptOnlyOnStart     == "AttemptOnlyOnStart" \notin last.bad
@@ -859,7 +861,7 @@ FaultSpendsNothing     == "FaultSpendsNothing" \notin last.bad
 BlockNoLive            == "BlockNoLive" \notin last.bad
 EditNoLive             == "EditNoLive" \notin last.bad
 SentinelLandsByReached == "SentinelLandsByReached" \notin last.bad
-AfterKept              == "AfterKept" \notin last.bad
+WaiveRedNeedsRed       == "WaiveRedNeedsRed" \notin last.bad
 
 -----------------------------------------------------------------------------
 (* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each    *)
