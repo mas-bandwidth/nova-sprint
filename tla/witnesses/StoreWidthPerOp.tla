@@ -18,8 +18,10 @@
 (* under its own rule; then either everything lands and an accepted event  *)
 (* is appended, or nothing changes and a refused event is appended. Clear  *)
 (* is an op with no writes: it opens the next epoch, carries the rows      *)
-(* forward (state down, gen + 1, width, held and tiers kept) and leaves    *)
-(* the cards, judgements and cursors behind (all three are epoch-scoped).  *)
+(* forward (state down, gen + 1, width, held and tiers kept), keeps the    *)
+(* cursors (global, as the log's seq is) and leaves the cards and          *)
+(* judgements behind (both are epoch-scoped). The event log is append-only *)
+(* (a trigger refuses UPDATE and DELETE on events).                        *)
 (* An op id is remembered forever (applied); a second Apply of a           *)
 (* remembered id, and a Replay, return the stored receipt and change       *)
 (* nothing. A transport failure is the caller not learning the outcome     *)
@@ -32,21 +34,26 @@
 (* inherits its tier. A consumer's holder is set at add and never changes  *)
 (* (there is no holder write); a producer or sentinel has none. A row's    *)
 (* width counts the consumers it holds in working only: a state write that *)
-(* takes a held card into working is refused on a row with width other    *)
+(* takes a held card into working is refused on a row with width other     *)
 (* working holders (WorkEntryOK), and put row and set row width refuse a   *)
 (* width below them. Rows have a gen (once per op that writes the row,     *)
-(* fenced by RowGen), a held flag (RowHeld) and the tiers they serve       *)
-(* (RowServes). Judgements are open, answered or expired, fenced by        *)
-(* JudgementOpen. A cursor never moves back.                               *)
+(* fenced by RowGen), a held flag (RowHeld) and the tiers they serve. The  *)
+(* writes keep the tiers: put card refuses a consumer on a row that does   *)
+(* not serve its tier, as does a move into ready or working, and put row   *)
+(* and set row tiers refuse to drop a tier a live (ready or working)       *)
+(* consumer of the row needs. Judgements are open, answered or expired; a  *)
+(* close is refused unless the judgement is open (and JudgementOpen fences *)
+(* a plan). A cursor never moves back and never passes the log's last seq. *)
 (*                                                                         *)
-(* Small instance: 6 cards (2 producers, 1 sentinel, 3 consumers), 2 rows  *)
-(* of width 1, one judgement, one cursor, 26 fixed ops. A setup caller     *)
-(* runs s1..s12 in order, covering the deterministic rules once each; then *)
+(* Small instance: 7 cards (2 producers, 1 sentinel, 4 consumers), 2 rows  *)
+(* of width 1, one judgement, one cursor, 31 fixed ops. A setup caller     *)
+(* runs s1..s16 in order, covering the deterministic rules once each; then *)
 (* the callers of one Scenario run concurrently: "deal" (cards and rows)   *)
 (* or "records" (judgements and cursors). The two never interact, and      *)
 (* splitting them keeps each run small. Transport failures (at most        *)
 (* MaxLoss each) only on a1 and k1 (Lossy). Streams, policy, the seq       *)
-(* fence, the soft after list, and the fields no rule reads (attempt,      *)
+(* fence, op times (and so the close-before-opened_at refusal), the soft   *)
+(* after list, and the fields no rule reads (attempt,                      *)
 (* author, branch, base_sha, prior_head, head, pr, result, bounces, cost,  *)
 (* priced, priority, brief, paths, done_when, prose, reason, score, model, *)
 (* harness, row kind, session, flaps, and a judgement's kind, about,       *)
@@ -58,7 +65,7 @@ EXTENDS Naturals, Sequences, FiniteSets
 CONSTANT MaxLoss,   \* transport failures allowed per lossy op (bounds the model)
          Scenario   \* "deal" or "records": which concurrent callers run
 
-Cards      == {"p1", "p2", "t1", "u1", "u2", "u3"}
+Cards      == {"p1", "p2", "t1", "u1", "u2", "u3", "u4"}
 Rows       == {"r1", "r2"}
 Judgements == {"j1"}
 Cursors    == {"c1"}
@@ -69,6 +76,8 @@ Consumers  == {"work", "read"}
 Unheld     == {"producer", "sentinel"}   \* kinds that never have a holder
 RowStates  == {"up", "down"}
 Tiers      == {"flash", "pro", "heavy", "frontier"}
+Live       == {"ready", "working"}   \* the consumer states that hold their row's tier
+MaxSeq     == 40   \* m3 sets a cursor here: past any log this instance can write
 JStates    == {"open", "answered", "expired"}
 Absent     == "absent"   \* the state of a card, row or judgement that does not exist
 NoHolder   == "none"
@@ -76,8 +85,9 @@ None       == "-"        \* an unused field
 
 (* Conditions and writes are uniform records so TLC can compare them. In a *)
 (* condition, g is the gen for CardGen and RowGen, and 1 or 0 for RowHeld; *)
-(* s is the state for CardState and RowIs, and the tier for RowServes; c   *)
-(* is the card, or the judgement for JudgementOpen.                        *)
+(* s is the state for CardState and RowIs; c is the card, or the           *)
+(* judgement for JudgementOpen. There is no tier condition: the writes     *)
+(* keep tiers served.                                                      *)
 Cnd(k, c, r, s, g) == [k |-> k, c |-> c, r |-> r, s |-> s, g |-> g]
 CardGen(c, g)     == Cnd("cardGen",     c,    None, None, g)
 CardState(c, s)   == Cnd("cardState",   c,    None, s,    0)
@@ -87,7 +97,6 @@ CardAbsent(c)     == Cnd("cardAbsent",  c,    None, None, 0)
 RowIs(r, s)       == Cnd("rowIs",       None, r,    s,    0)
 RowGen(r, g)      == Cnd("rowGen",      None, r,    None, g)
 RowHeld(r, h)     == Cnd("rowHeld",     None, r,    None, IF h THEN 1 ELSE 0)
-RowServes(r, t)   == Cnd("rowServes",   None, r,    t,    0)
 JudgementOpen(j)  == Cnd("judgeOpen",   j,    None, None, 0)
 
 (* A write: k the kind; c the card, judgement or cursor; r the row (and a  *)
@@ -112,22 +121,28 @@ RowWrites  == {"putRow", "setRowWidth", "setRowState", "setRowHeld", "setRowTier
 Op(e, x, w)  == [kind |-> "op",    epoch |-> e, expect |-> x,  writes |-> w]
 ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 
-(* Setup, in order: s1, s2 put rows r1 and r2, width 1, up, serving pro.  *)
-(* s3 adds producer p1 with a holder, s4 sentinel t1 with a holder: both  *)
-(* refused. s5 adds p1 (tier pro). s6 adds producer p2 (needs p1) and     *)
-(* sentinel t1 (needs p2). s7 readies p2 before its need is landed:       *)
+(* Setup, in order: s1, s2 put rows r1 and r2, width 1, up, serving pro.   *)
+(* s3 adds producer p1 with a holder, s4 sentinel t1 with a holder: both   *)
+(* refused. s5 adds p1 (tier pro). s6 adds producer p2 (needs p1) and      *)
+(* sentinel t1 (needs p2). s7 readies p2 before its need is landed:        *)
 (* refused. s8 lands p1. s9 readies p2. s10 adds consumers u1 and u2 on    *)
-(* the width-1 row r2 and makes both working, in one op: refused on the   *)
-(* second state write, so nothing lands. s11 adds consumer u3 on r1 and   *)
-(* readies it: it stays queued (ready, not counted). s12 opens j1.         *)
+(* the width-1 row r2 and makes both working, in one op: refused on the    *)
+(* second state write, so nothing lands. s11 adds consumer u3 on r1 and    *)
+(* readies it: it stays queued (ready, not counted). s12 opens j1. s13     *)
+(* adds consumer u4 waiting on r2; s14 makes r2 serve flash only (u4 is    *)
+(* not live, so nothing needs pro); s15 readies u4: refused, r2 does not   *)
+(* serve its tier; s16 adds u1 on r2: refused for the same reason.         *)
 (* Scenario "deal": a1 deals new consumer u1 to r1 and makes it working,   *)
-(* fenced on r1 up, not held and serving pro; a2 marks it done (it keeps   *)
-(* r1, the slot frees). b1 adds consumer u2 ready on r1, b2 makes it       *)
-(* working (the work-entry check). e1 lowers r1's width to 0 and g1 holds  *)
-(* r1, both fenced on RowGen(r1, 0). v1 sets r1 to serve flash only,       *)
-(* fenced only by its epoch. k1 clears epoch 1; k2 adds p1 again in epoch *)
-(* 2. Scenario "records": h1 and h2 answer j1, y1 expires it, each fenced  *)
-(* on JudgementOpen(j1); m1 sets cursor c1 to 2, m2 to 1.                  *)
+(* fenced on r1 up and not held; a2 marks it done (it keeps r1, the slot   *)
+(* frees). b1 adds consumer u2 ready on r1, b2 makes it working (the       *)
+(* work-entry check). e1 lowers r1's width to 0 and g1 holds r1, both      *)
+(* fenced on RowGen(r1, 0). v1 sets r1 to serve flash only, fenced only by *)
+(* its epoch: refused while a pro consumer on r1 is live (u3 is ready      *)
+(* there). k1 clears epoch 1; k2 adds p1 again in epoch 2. Scenario        *)
+(* "records": h1 answers j1 and y1 expires it, each fenced on              *)
+(* JudgementOpen(j1); h2 answers j1 with no fence (the write refuses a     *)
+(* second close); m1 sets cursor c1 to 2, m2 to 1, m3 to MaxSeq (past the  *)
+(* log); k1 clears epoch 1 (the cursor is kept).                           *)
 Ops == [
   s1  |-> Op(1, {}, <<PutRow("r1", 1, {"pro"}), SetRowState("r1", "up")>>),
   s2  |-> Op(1, {}, <<PutRow("r2", 1, {"pro"}), SetRowState("r2", "up")>>),
@@ -143,7 +158,11 @@ Ops == [
                       AddCard("u2", "read", "p2", {}, "r2", None), SetState("u2", "working")>>),
   s11 |-> Op(1, {}, <<AddCard("u3", "work", "p2", {}, "r1", None), SetState("u3", "ready")>>),
   s12 |-> Op(1, {}, <<PutJudgement("j1")>>),
-  a1  |-> Op(1, {CardAbsent("u1"), RowIs("r1", "up"), RowHeld("r1", FALSE), RowServes("r1", "pro")},
+  s13 |-> Op(1, {}, <<AddCard("u4", "work", "p2", {}, "r2", None)>>),
+  s14 |-> Op(1, {}, <<SetRowTiers("r2", {"flash"})>>),
+  s15 |-> Op(1, {}, <<SetState("u4", "ready")>>),
+  s16 |-> Op(1, {}, <<AddCard("u1", "work", "p2", {}, "r2", None)>>),
+  a1  |-> Op(1, {CardAbsent("u1"), RowIs("r1", "up"), RowHeld("r1", FALSE)},
               <<AddCard("u1", "work", "p2", {}, "r1", None), SetState("u1", "working")>>),
   a2  |-> Op(1, {CardState("u1", "working")}, <<SetState("u1", "done")>>),
   b1  |-> Op(1, {CardAbsent("u2")}, <<AddCard("u2", "read", "p2", {}, "r1", None), SetState("u2", "ready")>>),
@@ -154,17 +173,19 @@ Ops == [
   k1  |-> ClearOp(1),
   k2  |-> Op(2, {CardAbsent("p1")}, <<AddCard("p1", "producer", None, {}, NoHolder, "pro")>>),
   h1  |-> Op(1, {JudgementOpen("j1")}, <<AnswerJudgement("j1")>>),
-  h2  |-> Op(1, {JudgementOpen("j1")}, <<AnswerJudgement("j1")>>),
+  h2  |-> Op(1, {}, <<AnswerJudgement("j1")>>),
   y1  |-> Op(1, {JudgementOpen("j1")}, <<ExpireJudgement("j1")>>),
   m1  |-> Op(1, {}, <<SetCursor("c1", 2)>>),
-  m2  |-> Op(1, {}, <<SetCursor("c1", 1)>>)
+  m2  |-> Op(1, {}, <<SetCursor("c1", 1)>>),
+  m3  |-> Op(1, {}, <<SetCursor("c1", MaxSeq)>>)
 ]
 OpIds == DOMAIN Ops
-SetupSeq == <<"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12">>
+SetupSeq == <<"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12",
+              "s13", "s14", "s15", "s16">>
 Setup == {SetupSeq[i] : i \in DOMAIN SetupSeq}
 Active == Setup \cup (IF Scenario = "deal"
                       THEN {"a1", "a2", "b1", "b2", "e1", "g1", "v1", "k1", "k2"}
-                      ELSE {"h1", "h2", "y1", "m1", "m2"})
+                      ELSE {"h1", "h2", "y1", "m1", "m2", "m3", "k1"})
 Lossy == {"a1", "k1"}   \* ops whose transport can fail: one deal, the clear
 
 (* Program order: an op is asked for only once these ops are done.         *)
@@ -183,7 +204,7 @@ Empty  == [epoch |-> 1, cards |-> [c \in Cards |-> NoCard], rows |-> [r \in Rows
 
 Exists(st, c) == st.cards[c].state # Absent
 
-(* The cards row r holds whose state is in L (the counted states).        *)
+(* The cards row r holds whose state is in L (the counted states).         *)
 CountedIn(st, r, L) == {c \in Cards : st.cards[c].holder = r /\ st.cards[c].state \in L}
 
 Cond(st, x) ==
@@ -196,15 +217,29 @@ Cond(st, x) ==
     [] x.k = "rowIs"       -> st.rows[x.r].state = x.s
     [] x.k = "rowGen"      -> st.rows[x.r].state # Absent /\ st.rows[x.r].gen = x.g
     [] x.k = "rowHeld"     -> st.rows[x.r].state # Absent /\ st.rows[x.r].held = (x.g = 1)
-    [] x.k = "rowServes"   -> st.rows[x.r].state # Absent /\ x.s \in st.rows[x.r].tiers
     [] x.k = "judgeOpen"   -> st.judgements[x.c] = "open"
 
 Holds(st, conds) == \A x \in conds : Cond(st, x)
 
-(* Room on row r for card c: fewer than width counted holders other than c. *)
+(* Room on row r for card c: fewer than width counted holders besides c.   *)
 Room(st, r, c, L) == Cardinality(CountedIn(st, r, L) \ {c}) < st.rows[r].width
 
-(* A state write that takes a held card into working needs room on its    *)
+(* Row r serves tier t. The one serving check, at add and on a move into   *)
+(* ready or working.                                                       *)
+Serves(st, r, t) == t \in st.rows[r].tiers
+
+(* A state write that takes a held consumer into ready or working needs    *)
+(* its holder row to serve its tier.                                       *)
+ServesOK(st, w) ==
+  LET card == st.cards[w.c]
+  IN (w.s \in Live /\ card.state \notin Live /\ card.holder # NoHolder)
+       => Serves(st, card.holder, card.tier)
+
+(* New tiers ts for row r keep every tier a live consumer of r needs.      *)
+TiersFit(st, r, ts) ==
+  \A c \in Cards : (st.cards[c].holder = r /\ st.cards[c].state \in Live) => st.cards[c].tier \in ts
+
+(* A state write that takes a held card into working needs room on its     *)
 (* holder row ("no path over-fills a row").                                *)
 WorkEntryOK(st, w, L) ==
   LET card == st.cards[w.c]
@@ -214,12 +249,15 @@ WorkEntryOK(st, w, L) ==
 (* The write rules, with L the set of states a width counts. A card is     *)
 (* added only if absent, with needs that name other cards of this epoch; a *)
 (* consumer names an existing producer, has no needs and is added with a   *)
-(* holder, a row of this epoch (the foreign key); a producer or sentinel   *)
-(* names no producer, has no holder and carries a tier. A set write needs  *)
-(* its target. A state is in the closed set. Put row and set row width     *)
-(* never set a width below the row's working holders. A judgement is put   *)
-(* only if absent; answer and expire need it to exist (the fence is the    *)
-(* JudgementOpen condition). A cursor never moves back.                    *)
+(* holder, a row of this epoch (the foreign key) that serves its           *)
+(* producer's tier; a producer or sentinel names no producer, has no       *)
+(* holder and carries a tier. A set write needs its target. A state is in  *)
+(* the closed set and differs from the card's own. Put row and set row     *)
+(* width never set a width below the row's working holders; put row (on    *)
+(* an existing row) and set row tiers never drop a tier a live consumer of *)
+(* the row needs. A judgement is put only if absent; answer and expire     *)
+(* need it open. A cursor never moves back (its upper bound, the log's     *)
+(* last seq, is checked in Outcome, which sees the log).                   *)
 RuleLegal(st, w, L) ==
   \* A bulleted list, so a quantifier's body ends at its own line.
   CASE w.k = "addCard"     -> /\ ~Exists(st, w.c)
@@ -236,26 +274,30 @@ RuleLegal(st, w, L) ==
                                       /\ st.cards[w.p].kind = "producer"
                                       /\ w.r \in Rows
                                       /\ st.rows[w.r].state # Absent
-    [] w.k = "setState"    -> Exists(st, w.c) /\ w.s \in CardStates /\ WorkEntryOK(st, w, L)
+                                      /\ Serves(st, w.r, st.cards[w.p].tier)
+    [] w.k = "setState"    -> /\ Exists(st, w.c) /\ w.s \in CardStates /\ WorkEntryOK(st, w, L)
+                              /\ w.s # st.cards[w.c].state
+                              /\ ServesOK(st, w)
     [] w.k = "putRow"      -> /\ w.n \subseteq Tiers
                               /\ st.rows[w.r].state = Absent \/ w.w >= Cardinality(CountedIn(st, w.r, L))
+                              /\ st.rows[w.r].state = Absent \/ TiersFit(st, w.r, w.n)
     [] w.k = "setRowWidth" -> st.rows[w.r].state # Absent /\ w.w >= Cardinality(CountedIn(st, w.r, L))
     [] w.k = "setRowState" -> st.rows[w.r].state # Absent /\ w.s \in RowStates
     [] w.k = "setRowHeld"  -> st.rows[w.r].state # Absent
-    [] w.k = "setRowTiers" -> st.rows[w.r].state # Absent /\ w.n \subseteq Tiers
+    [] w.k = "setRowTiers" -> st.rows[w.r].state # Absent /\ w.n \subseteq Tiers /\ TiersFit(st, w.r, w.n)
     [] w.k = "putJudge"    -> st.judgements[w.c] = Absent
-    [] w.k = "closeJudge"  -> st.judgements[w.c] # Absent
+    [] w.k = "closeJudge"  -> st.judgements[w.c] = "open"
     [] w.k = "setCursor"   -> w.w >= st.cursors[w.c]
 
-(* The store's rules (what runs) and the spec's rules (what the design    *)
-(* says). They are the same here; a witness changes only Legal, so        *)
-(* NoSpuriousRefusal can catch a rule that refuses what the spec allows.  *)
+(* The store's rules (what runs) and the spec's rules (what the design     *)
+(* says). They are the same here; a witness changes only Legal, so         *)
+(* NoSpuriousRefusal can catch a rule that refuses what the spec allows.   *)
 Legal(st, w)     == RuleLegal(st, w, Counted)
 SpecLegal(st, w) == RuleLegal(st, w, Counted)
 
-(* gen is raised once per op, in RunOp below. A put row inserts a row as  *)
-(* down, not held, at gen 0 (the design's default: up once the run loop   *)
-(* sees its hook) or overwrites its width and tiers. A consumer takes its *)
+(* gen is raised once per op, in RunOp below. A put row inserts a row as   *)
+(* down, not held, at gen 0 (the design's default: up once the run loop    *)
+(* sees its hook) or overwrites its width and tiers. A consumer takes its  *)
 (* producer's tier at add.                                                 *)
 Do(st, w) ==
   CASE w.k = "addCard"     -> [st EXCEPT !.cards[w.c] =
@@ -289,6 +331,8 @@ PreLegal(pre, st, w) ==
   THEN LET card == st.cards[w.c]
        IN /\ Exists(st, w.c)
           /\ w.s \in CardStates
+          /\ w.s # card.state
+          /\ ServesOK(st, w)
           /\ (w.s \in Counted /\ card.state \notin Counted /\ card.holder # NoHolder)
                => Room(pre, card.holder, w.c, Counted)
   ELSE RuleLegal(st, w, Counted)
@@ -305,9 +349,9 @@ SpecRun(st, ws) ==
   ELSE IF SpecLegal(st, Head(ws)) THEN SpecRun(Do(st, Head(ws)), Tail(ws))
   ELSE [ok |-> FALSE, st |-> st]
 
-(* The cards and rows an op writes. An op that writes a card or row that  *)
-(* existed before it raises that gen by one, however many of its writes   *)
-(* touch it; one the op itself creates stays at gen 0.                    *)
+(* The cards and rows an op writes. An op that writes a card or row that   *)
+(* existed before it raises that gen by one, however many of its writes    *)
+(* touch it; one the op itself creates stays at gen 0.                     *)
 CardsWritten(ws) == {ws[i].c : i \in {j \in DOMAIN ws : ws[j].k \in CardWrites}}
 RowsWritten(ws)  == {ws[i].r : i \in {j \in DOMAIN ws : ws[j].k \in RowWrites}}
 
@@ -330,24 +374,32 @@ RunOp(st, ws) ==
 RECURSIVE DoAll(_, _)
 DoAll(st, ws) == IF ws = <<>> THEN st ELSE DoAll(Do(st, Head(ws)), Tail(ws))
 
-(* Clear: the next epoch, the rows carried forward as down with gen + 1   *)
-(* (the clear writes them) and width, held and tiers kept; no cards,      *)
-(* judgements or cursors (each is keyed by epoch and is not carried).     *)
+(* Clear: the next epoch, the rows carried forward as down with gen + 1    *)
+(* (the clear writes them) and width, held and tiers kept; no cards or     *)
+(* judgements (keyed by epoch, not carried); the cursors kept (global).    *)
 ClearState(st) ==
   [epoch |-> st.epoch + 1,
    cards |-> [c \in Cards |-> NoCard],
    rows  |-> [r \in Rows |-> IF st.rows[r].state = Absent THEN NoRow
                              ELSE [st.rows[r] EXCEPT !.state = "down", !.gen = @ + 1]],
    judgements |-> [j \in Judgements |-> Absent],
-   cursors |-> [x \in Cursors |-> 0]]
+   cursors |-> st.cursors]
 
-(* What the store does with op o in state st: accept with a new state, or  *)
-(* refuse. The epoch check comes first.                                    *)
-Outcome(st, o) ==
+(* Every cursor write of ws stays at or below last, the seq of the last    *)
+(* event logged before the op (events are numbered 1, 2, ... in the log,   *)
+(* refused ones included).                                                 *)
+CursorsFit(ws, last) ==
+  \A k \in DOMAIN ws : ws[k].k = "setCursor" => ws[k].w <= last
+
+(* What the store does with op o in state st, last being the seq of the    *)
+(* last event: accept with a new state, or refuse. The epoch check comes   *)
+(* first.                                                                  *)
+Outcome(st, o, last) ==
   IF Ops[o].epoch # st.epoch THEN [acc |-> FALSE, st |-> st]
   ELSE IF Ops[o].kind = "clear" THEN [acc |-> TRUE, st |-> ClearState(st)]
   ELSE LET run == RunOp(st, Ops[o].writes)
-       IN IF Holds(st, Ops[o].expect) /\ run.ok THEN [acc |-> TRUE, st |-> run.st]
+       IN IF Holds(st, Ops[o].expect) /\ run.ok /\ CursorsFit(Ops[o].writes, last)
+          THEN [acc |-> TRUE, st |-> run.st]
           ELSE [acc |-> FALSE, st |-> st]
 
 (* Rebuild applies an accepted event's writes (a clear the same way the    *)
@@ -364,18 +416,19 @@ VARIABLES
   rows,       \* row name -> [state, width, gen, held, tiers] in the current epoch
   judgements, \* judgement id -> Absent | open | answered | expired in the current epoch
   cursors,    \* cursor name -> seq (0 when never set) in the current epoch
-  events,     \* sequence of [id, accepted, epoch, before, after]
+  events,     \* the events table: a sequence of [id, accepted, epoch, before, after]
+  ledger,     \* ghost: every event as it was committed, in order (what LogAppendOnly compares)
   applied,    \* op ids the store has seen (the unique op column of events)
   phase,      \* op id -> "idle" | "unknown" | "done": what the caller knows
   receipt,    \* op id -> the receipt the caller holds (NoReceipt until done)
   lost        \* op id -> transport failures so far (bounded by MaxLoss)
 
 store == <<epoch, cards, rows, judgements, cursors>>
-vars == <<epoch, cards, rows, judgements, cursors, events, applied, phase, receipt, lost>>
+vars == <<epoch, cards, rows, judgements, cursors, events, ledger, applied, phase, receipt, lost>>
 Current == [epoch |-> epoch, cards |-> cards, rows |-> rows, judgements |-> judgements,
             cursors |-> cursors]
 (* The state the log says held just before event i: empty before the       *)
-(* first, otherwise the after-state of the one before it.                   *)
+(* first, otherwise the after-state of the one before it.                  *)
 Before(i) == IF i = 1 THEN Empty ELSE events[i - 1].after
 
 StoredEvent(o) == events[CHOOSE i \in DOMAIN events : events[i].id = o]
@@ -387,6 +440,7 @@ Init ==
   /\ judgements = Empty.judgements
   /\ cursors    = Empty.cursors
   /\ events     = <<>>
+  /\ ledger     = <<>>
   /\ applied    = {}
   /\ phase      = [o \in OpIds |-> "idle"]
   /\ receipt    = [o \in OpIds |-> NoReceipt]
@@ -402,12 +456,12 @@ Outcomes(o) == IF CanLose(o) THEN {"done", "unknown"} ELSE {"done"}
 ReplayEffect(o) ==
   /\ phase'   = [phase EXCEPT ![o] = "done"]
   /\ receipt' = [receipt EXCEPT ![o] = StoredEvent(o)]
-  /\ UNCHANGED <<store, events, applied, lost>>
+  /\ UNCHANGED <<store, events, ledger, applied, lost>>
 
 (* One transaction, lock to commit: epoch, conditions, writes, event.      *)
 Execute(o) ==
   LET pre  == Current
-      out  == Outcome(pre, o)
+      out  == Outcome(pre, o, Len(events))
       post == out.st
       ev   == [id |-> o, accepted |-> out.acc, epoch |-> pre.epoch, before |-> pre, after |-> post]
   IN /\ epoch'      = post.epoch
@@ -416,6 +470,7 @@ Execute(o) ==
      /\ judgements' = post.judgements
      /\ cursors'    = post.cursors
      /\ events'  = Append(events, ev)
+     /\ ledger'  = Append(ledger, ev)
      /\ applied' = applied \cup {o}
      /\ \E res \in Outcomes(o) :
           /\ phase'   = [phase EXCEPT ![o] = res]
@@ -436,11 +491,11 @@ LoseRequest(o) ==
   /\ CanLose(o)
   /\ phase' = [phase EXCEPT ![o] = "unknown"]
   /\ lost'  = [lost EXCEPT ![o] = @ + 1]
-  /\ UNCHANGED <<store, events, applied, receipt>>
+  /\ UNCHANGED <<store, events, ledger, applied, receipt>>
 
 (* Replay after unknown. When the id is not in applied, Replay says "not   *)
 (* found" and changes nothing; the caller then calls Apply again, which    *)
-(* stays enabled in phase "unknown", so that branch is not a separate step. *)
+(* stays enabled in phase "unknown", so that is not a separate step.       *)
 Replay(o) ==
   /\ phase[o] = "unknown"
   /\ o \in applied
@@ -468,7 +523,7 @@ StoreState ==
    rows : [Rows -> [state : RowStates \cup {Absent}, width : 0..2, gen : Gens, held : BOOLEAN,
                     tiers : SUBSET Tiers]],
    judgements : [Judgements -> JStates \cup {Absent}],
-   cursors : [Cursors -> 0..2]]
+   cursors : [Cursors -> 0..MaxSeq]]
 
 TypeOK ==
   /\ Current \in StoreState
@@ -487,11 +542,11 @@ SingleStateSingleHolder ==
     /\ cards[c].holder # NoHolder => rows[cards[c].holder].state # Absent
     /\ cards[c].state = Absent => cards[c] = NoCard
 
-(* A producer or a sentinel never has a holder.                           *)
+(* A producer or a sentinel never has a holder.                            *)
 ProducerNeverHeld ==
   \A c \in Cards : cards[c].kind \in Unheld => cards[c].holder = NoHolder
 
-(* A consumer names an existing producer of this epoch, has no needs, has *)
+(* A consumer names an existing producer of this epoch, has no needs, has  *)
 (* a holder and has its producer's tier; a producer or sentinel names no   *)
 (* producer.                                                               *)
 ConsumersWellFormed ==
@@ -504,7 +559,7 @@ ConsumersWellFormed ==
          /\ cards[c].holder \in Rows
          /\ cards[c].tier = cards[cards[c].prod].tier
 
-(* No row has more working holders than its width.                       *)
+(* No row has more working holders than its width.                         *)
 WidthKept ==
   \A r \in Rows : rows[r].state # Absent => Cardinality(CountedIn(Current, r, Counted)) <= rows[r].width
 
@@ -536,22 +591,20 @@ OpsInTheirEpoch ==
   \A i \in DOMAIN events :
     events[i].accepted => Ops[events[i].id].epoch = Before(i).epoch
 
-(* An accepted op's conditions held against the state immediately before  *)
-(* its own writes (where the event before it ended): no lost update.      *)
+(* An accepted op's conditions held against the state immediately before   *)
+(* its own writes (where the event before it ended): no lost update.       *)
 ConditionsAtomic ==
   \A i \in DOMAIN events :
     events[i].accepted => Holds(Before(i), Ops[events[i].id].expect)
 
-(* An accepted op whose plan carried RowServes(R, T) had R serving T at   *)
-(* that moment (the tier fence; a special case of ConditionsAtomic, kept  *)
-(* separate so a stale tier read is named).                               *)
+(* Every live (ready or working) consumer's row serves its tier, in every  *)
+(* state.                                                                  *)
 ServesHeld ==
-  \A i \in DOMAIN events :
-    events[i].accepted =>
-      \A x \in Ops[events[i].id].expect :
-        x.k = "rowServes" => x.s \in Before(i).rows[x.r].tiers
+  \A c \in Cards :
+    (cards[c].kind \in Consumers /\ cards[c].state \in Live)
+      => cards[c].tier \in rows[cards[c].holder].tiers
 
-(* A refused op changed nothing: its before and after are equal and are   *)
+(* A refused op changed nothing: its before and after are equal and are    *)
 (* the state immediately before it.                                        *)
 NoChangeOnRefusal ==
   \A i \in DOMAIN events :
@@ -569,6 +622,7 @@ NoSpuriousRefusal ==
         \/ Ops[o].epoch # Before(i).epoch
         \/ (Ops[o].kind = "op" /\ ~Holds(Before(i), Ops[o].expect))
         \/ (Ops[o].kind = "op" /\ ~SpecRun(Before(i), Ops[o].writes).ok)
+        \/ (Ops[o].kind = "op" /\ ~CursorsFit(Ops[o].writes, i - 1))
 
 (* gen counts the ops that changed a card or row: each accepted op raises  *)
 (* the gen of every card and row it writes that existed before it by       *)
@@ -590,15 +644,15 @@ GenPerOp ==
                                 ELSE b.rows[r].gen
 
 (* A clear carries every row forward: the same width, held flag and tiers, *)
-(* state down; a row that did not exist stays absent; no card, judgement   *)
-(* or cursor survives.                                                     *)
+(* state down; a row that did not exist stays absent; no card or judgement *)
+(* survives; every cursor is kept.                                         *)
 ClearCarriesRows ==
   \A i \in DOMAIN events :
     LET b == events[i].before  a == events[i].after IN
     (events[i].accepted /\ Ops[events[i].id].kind = "clear") =>
       /\ \A c \in Cards : a.cards[c] = NoCard
       /\ a.judgements = Empty.judgements
-      /\ a.cursors = Empty.cursors
+      /\ a.cursors = b.cursors
       /\ \A r \in Rows :
            IF b.rows[r].state = Absent THEN a.rows[r] = NoRow
            ELSE /\ a.rows[r].state = "down"
@@ -617,21 +671,30 @@ JudgementClosedOnce ==
     (i # k /\ events[i].accepted /\ events[k].accepted
      /\ Closes(events[i].id, j) /\ Closes(events[k].id, j)) => events[i].epoch # events[k].epoch
 
-(* A cursor never moves back within an epoch.                              *)
+(* A cursor never moves back, a clear included.                            *)
 CursorMonotone ==
   \A i \in DOMAIN events :
-    (events[i].accepted /\ Ops[events[i].id].kind = "op") =>
+    events[i].accepted =>
       \A x \in Cursors : events[i].after.cursors[x] >= events[i].before.cursors[x]
 
-(* A caller that says it knows the outcome holds the stored receipt:      *)
-(* unknown is never reported as unchanged or as a different answer.       *)
+(* No cursor is past the log: at most the seq of the last event.           *)
+CursorWithinLog == \A x \in Cursors : cursors[x] <= Len(events)
+
+(* The events table holds exactly what was committed, in order: no event   *)
+(* was updated or deleted. Structural here (only Execute writes events,    *)
+(* and only by Append); StoreLogTampered adds the UPDATE the trigger       *)
+(* refuses.                                                                *)
+LogAppendOnly == events = ledger
+
+(* A caller that says it knows the outcome holds the stored receipt:       *)
+(* unknown is never reported as unchanged or as a different answer.        *)
 ReceiptMatches ==
   \A o \in OpIds :
     phase[o] = "done" => (o \in applied /\ receipt[o] = StoredEvent(o))
 
 -----------------------------------------------------------------------------
-(* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each    *)
-(* violation shows that the passing run above is not vacuous.             *)
+(* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each     *)
+(* violation shows that the passing run above is not vacuous.              *)
 
 AcceptedIds == {events[i].id : i \in {j \in DOMAIN events : events[j].accepted}}
 RefusedIds  == {events[i].id : i \in {j \in DOMAIN events : ~events[j].accepted}}
@@ -663,8 +726,12 @@ NeverSentinelRefused  == "s4" \notin RefusedIds
 NeverHeldCarried      == ~(epoch = 2 /\ rows["r1"].held)
 \* a1 is refused because g1 held r1 first (RowHeld)
 NeverHeldRefused      == ~FencedBy("a1", RowHeld("r1", FALSE))
-\* a1 is refused because v1 made r1 serve flash only (RowServes)
-NeverServesRefused    == ~FencedBy("a1", RowServes("r1", "pro"))
+\* s15 readies u4 on r2, which no longer serves its tier: refused by the move check
+NeverReadyServesRefused == "s15" \notin RefusedIds
+\* s16 adds u1 on r2, which does not serve its tier: refused by put card
+NeverAddServesRefused   == "s16" \notin RefusedIds
+\* v1 drops pro from r1 while the ready u3 needs it: refused
+NeverTiersRefused       == ~RuleRefused("v1")
 \* r1 holds a ready consumer and a working one on width 1: ready is queued, not counted
 NeverQueuedPastWidth  ==
   ~(Cardinality({c \in Cards : cards[c].holder = "r1" /\ cards[c].state \in {"ready", "working"}}) > rows["r1"].width)
@@ -677,9 +744,15 @@ NeverSlotReused ==
       /\ events[i].before.cards["u1"].state = "done"
       /\ events[i].before.cards["u1"].holder = "r1")
 NeverAnswered         == judgements["j1"] # "answered"
-\* a second close (answer or expire) is refused by the JudgementOpen fence
+\* a second fenced close (h1 or y1) is refused by the JudgementOpen fence
 NeverJudgementFenced  ==
-  \A o \in {"h1", "h2", "y1"} : ~FencedBy(o, JudgementOpen("j1"))
+  \A o \in {"h1", "y1"} : ~FencedBy(o, JudgementOpen("j1"))
 NeverCursorRefused    == ~RuleRefused("m2")
+\* h2 (no fence) is refused by the write itself after h1 or y1 closed j1
+NeverCloseRefused     == ~RuleRefused("h2")
+\* m3 is refused: it would pass the log
+NeverCursorPastRefused == ~RuleRefused("m3")
+\* the clear keeps the cursor
+NeverCursorCarried    == ~(epoch = 2 /\ cursors["c1"] > 0)
 
 =============================================================================

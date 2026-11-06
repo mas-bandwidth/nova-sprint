@@ -1,9 +1,8 @@
 # tla/: the store model (layer 1)
 
-`Store.tla` models the contract in `docs/LAYER-1-STORE.md` (v2 at 77efc985;
-the layer 1 text is unchanged at 25ab8e9d). Each operation is one atomic
-step over `epoch`, `cards`, `rows`, `judgements`, `cursors`, `events` and
-`applied`. In order, the step:
+`Store.tla` models the contract in `docs/LAYER-1-STORE.md` (v2 at abefee69).
+Each operation is one atomic step over `epoch`, `cards`, `rows`,
+`judgements`, `cursors`, `events` and `applied`. In order, the step:
 1. checks the op's epoch against the store's epoch;
 2. checks its conditions;
 3. runs its writes in order, each under its own rule;
@@ -12,28 +11,40 @@ step over `epoch`, `cards`, `rows`, `judgements`, `cursors`, `events` and
 
 Epochs start at 1. `Clear` is an op with no writes and its epoch is checked
 too. It opens the next epoch and carries the rows forward: same width, held
-flag and tiers, state `down`, gen + 1. It leaves the cards, judgements and
-cursors behind (all three are keyed by epoch). It is idempotent by id and
-logged with the epoch it closed.
+flag and tiers, state `down`, gen + 1. It keeps the cursors (global, as the
+log's seq is, so a subscriber resumes where it was) and leaves the cards and
+judgements behind (keyed by epoch). It is idempotent by id and logged with
+the epoch it closed. The event log is append-only: a trigger refuses UPDATE
+and DELETE on events.
 
 Cards have a kind: `producer`, `sentinel`, or a consumer (`work` or `read`).
 A consumer names its producer (`prod`, the design's `of`), takes its
 producer's tier at add, and has no needs. A consumer's holder is set at add
 and never changes: there is no holder write. Add card refuses a holder on a
-producer or a sentinel, and refuses a consumer without one.
+producer or a sentinel, and refuses a consumer without one. A state write to the state the card is
+already in is refused.
 
 Rows carry a width, a gen, a held flag, and the set of tiers they serve.
-Judgements are `open`, `answered` or `expired`: put judgement opens one, and
-answer and expire close it. A cursor holds a sequence number that set cursor
-never moves back.
+Tier serving is kept by the writes, with no condition: put card refuses a
+consumer whose holder row does not serve its tier, as does a move into
+`ready` or `working`, and put row and set row tiers refuse to drop a tier
+that a live (`ready` or `working`) consumer of the row needs. A waiting
+consumer does not hold its tier, so a row may drop it, and the consumer's
+move into ready is then refused.
+
+Judgements are `open`, `answered` or `expired`: put judgement opens one (refused
+if it exists), and answer and expire close it. A close is refused inside the
+write unless the judgement is open, so it closes once whatever the plan
+carried; `JudgementOpen` still fences a plan. A cursor holds a seq that set
+cursor never moves back and never moves past the last event's seq (events
+are numbered from 1, refused ones included); an absent cursor reads as 0.
 
 The conditions are:
 - `CardGen`, `CardState`, `HolderIs` and `CardAbsent` on a card;
 - `NeedsLanded`: every need of the card is landed, read from the store in the
   step;
-- `RowIs`, `RowGen`, `RowHeld` and `RowServes` (the row serves tier T) on a
-  row;
-- `JudgementOpen` on a judgement: the fence that makes a close happen once.
+- `RowIs`, `RowGen` and `RowHeld` on a row;
+- `JudgementOpen` on a judgement.
 
 There is no width condition. A row's width counts the consumers it holds in
 `working`, never `ready`, `done` or `fail`, so a row may hold ready (queued)
@@ -50,6 +61,11 @@ writes touch it. A card or row the op itself adds stays at gen 0. A row's
 held flag and its tiers are set by their own writes (`SetRowHeld`,
 `SetRowTiers`), which raise the row's gen.
 
+`ledger` is a ghost: every event as it was committed. The store appends to
+`events` and `ledger` together and never changes `events` otherwise, so
+LogAppendOnly (`events = ledger`) holds by construction here; the witness
+StoreLogTampered adds the UPDATE the trigger refuses.
+
 The caller's view is modelled too:
 - `phase` per op: `idle`, `unknown` or `done`;
 - `receipt`: the receipt the caller holds;
@@ -65,22 +81,20 @@ One model step = one SQL transaction from `LOCK TABLE sprint.epoch` to COMMIT
 at READ COMMITTED; the lock is what makes the atomic step real. The epoch,
 the conditions, the writes with their rules, and the event row are all
 inside it. Without the lock, two transactions at READ COMMITTED can each
-read the rows, decide, and then write. Three witnesses are exactly that
+read the rows, decide, and then write. Two witnesses are exactly that
 interleaving:
 - **StoreStaleCheck:** the conditions are judged on an earlier read, so a1
   deals to r1 after g1 held it.
 - **StoreWidthStale:** the width check is judged on an earlier read, so a1
   lands a working consumer after e1 lowered the width to 0.
-- **StoreServesStale:** RowServes is judged on an earlier read, so a1 deals
-  a pro consumer to r1 after v1 made r1 serve flash only.
 
 With the lock, writers run one at a time and each one reads the state the
 previous one committed. That serial order is the order of `events` here.
 
 ## The instance
 
-6 cards (producers p1, p2; sentinel t1; consumers u1, u2, u3), 2 rows of
-width 1, one judgement j1, one cursor c1, 26 fixed ops. Callers issue their
+7 cards (producers p1, p2; sentinel t1; consumers u1, u2, u3, u4), 2 rows
+of width 1, one judgement j1, one cursor c1, 31 fixed ops. Callers issue their
 ops in program order (`Pred`). A setup caller goes first, covering each
 deterministic rule once:
 - s1, s2 put r1 and r2, width 1, up, serving pro;
@@ -92,7 +106,10 @@ deterministic rule once:
 - s10 adds u1 and u2 on the width-1 r2 and makes both working, in one op:
   refused on its second work entry;
 - s11 adds u3 on r1 and readies it, where it stays queued;
-- s12 opens judgement j1.
+- s12 opens judgement j1;
+- s13 adds consumer u4 (pro) waiting on r2; s14 makes r2 serve flash only
+  (accepted: u4 is not live); s15 readies u4: refused, r2 does not serve
+  pro; s16 adds u1 on r2: refused by put card for the same reason.
 
 Then the callers of one scenario run concurrently. The constant `Scenario`
 picks it. The two scenarios touch disjoint tables, so splitting them keeps
@@ -102,11 +119,11 @@ Scenario `deal` (`Store.cfg`):
 
 | Caller | Ops | What it does |
 |---|---|---|
-| a | a1, a2 | a1 deals new consumer u1 working to r1, fenced on RowIs(r1, up), RowHeld(r1, false) and RowServes(r1, pro); a2 marks it done (it keeps r1, the slot frees) |
+| a | a1, a2 | a1 deals new consumer u1 working to r1, fenced on RowIs(r1, up) and RowHeld(r1, false); a2 marks it done (it keeps r1, the slot frees) |
 | b | b1, b2 | b1 adds u2 ready on r1; b2 makes it working (the work-entry check) |
 | e | e1 | lowers r1's width to 0, fenced on RowGen(r1, 0) |
 | g | g1 | holds r1, fenced on RowGen(r1, 0) |
-| v | v1 | sets r1 to serve flash only, fenced only by its epoch |
+| v | v1 | sets r1 to serve flash only, fenced only by its epoch: refused in epoch 1, where the pro consumer u3 is ready on r1 |
 | k | k1, k2 | k1 clears epoch 1; k2 adds p1 in epoch 2 |
 
 Transport failures happen only on a1 and k1 (`Lossy`, `MaxLoss = 1`).
@@ -116,13 +133,16 @@ Scenario `records` (`StoreRecords.cfg`):
 | Caller | Ops | What it does |
 |---|---|---|
 | h | h1 | answers j1, fenced on JudgementOpen(j1) |
-| h' | h2 | answers j1 again, same fence |
-| y | y1 | expires j1, same fence |
+| h' | h2 | answers j1 with no fence: the write itself refuses a second close |
+| y | y1 | expires j1, fenced on JudgementOpen(j1) |
 | m | m1 | sets c1 to 2 |
 | m' | m2 | sets c1 to 1 |
+| m'' | m3 | sets c1 to 40, past any log this instance writes |
+| k | k1 | clears epoch 1 (c1 is kept) |
 
 Left out:
 - streams, policy and the seq fence;
+- op times, and so the refusal of a close timed before `opened_at`;
 - the soft `after` list (it follows the needs rule; no store rule reads it);
 - the fields no rule reads. On cards and rows: attempt, author, branch,
   base_sha, prior_head, head, pr, result, bounces, cost, priced, priority,
@@ -134,13 +154,13 @@ Left out:
 
 - `Store.tla`, `Store.cfg`, `StoreRecords.cfg`: the model and its two
   passing runs.
-- `witnesses/`: sixteen reversed witnesses, each `Store.tla` with one fault.
+- `witnesses/`: nineteen reversed witnesses, each `Store.tla` with one fault.
   They are generated: `python3 make-witnesses.py` writes every witness and
   every cfg (`Store.cfg`, `StoreRecords.cfg`, `witnesses/*.cfg`,
   `reach/*.cfg`) from `Store.tla` and the fault list in the script. Each
   fault is a set of exact text replacements; one that no longer matches
   stops the script. Edit `Store.tla`, rerun the script, commit both.
-- `reach/`: twenty-one reachability checks on `Store.tla`. Each must be
+- `reach/`: twenty-six reachability checks on `Store.tla`. Each must be
   violated, which shows the passing runs are not vacuous.
 
 In each witness cfg the target invariant is listed first: when one state
@@ -154,6 +174,10 @@ holder write, there is no write that could give a card a second holder:
 SingleStateSingleHolder holds by construction. A second consumer taking the
 same slot is not a holder fault but a width one, and is covered by
 StoreWorkEntryUnchecked, StoreWidthPerOp and StoreWidthStale.
+
+`StoreServesStale` is retired with the RowServes condition: serving is now
+read by the writes inside the transaction, and the tier witnesses are
+StoreServesUnchecked and StoreTiersNarrowed.
 
 ## Running
 
@@ -208,9 +232,8 @@ The helper scripts:
   the epoch the store was at when it applied.
 - **ConditionsAtomic**: every accepted op's conditions held in the state
   immediately before its own writes.
-- **ServesHeld**: an accepted op whose plan carried RowServes(R, T) had R
-  serving T at that moment. This is a named special case of
-  ConditionsAtomic, so a stale tier read is reported as such.
+- **ServesHeld**: in every state, every live (`ready` or `working`)
+  consumer's row serves its tier.
 - **NoChangeOnRefusal**: a refused op changed nothing.
 - **NoSpuriousRefusal**: every refusal has a cause in the spec (the epoch, a
   condition, or a write rule as the design states it), so a store rule
@@ -219,11 +242,14 @@ The helper scripts:
   writes that existed before it by exactly one; one it creates is at 0; a
   clear raises every carried row's gen by one.
 - **ClearCarriesRows**: a clear keeps every row's width, held flag and
-  tiers, sets it down, and leaves no card, judgement or cursor.
+  tiers, sets it down, leaves no card or judgement, and keeps every cursor.
 - **JudgementClosedOnce**: within an epoch, at most one accepted op answers
   or expires a given judgement: no second answer, and never both answered
   and expired.
-- **CursorMonotone**: no accepted op moves a cursor back.
+- **CursorMonotone**: no accepted op, a clear included, moves a cursor back.
+- **CursorWithinLog**: no cursor is past the seq of the last event.
+- **LogAppendOnly**: the events table is exactly what was committed, in
+  order (`events = ledger`): no event was updated or deleted.
 - **ReceiptMatches**: a caller that thinks it knows the outcome holds exactly
   the stored receipt.
 
@@ -246,9 +272,12 @@ The helper scripts:
 | `StoreWidthCountsDone` | done and fail holders are counted | NoSpuriousRefusal violated |
 | `StoreWidthCountsReady` | ready holders are counted | NoSpuriousRefusal violated |
 | `StoreRowStale` | RowGen is not checked | ConditionsAtomic violated |
-| `StoreServesStale` | RowServes judged on a snapshot (no lock) | ServesHeld violated |
-| `StoreJudgementTwice` | JudgementOpen is not checked | JudgementClosedOnce violated |
+| `StoreServesUnchecked` | no serving check at put card or on the move into ready/working | ServesHeld violated |
+| `StoreTiersNarrowed` | put row and set row tiers may drop a tier a live consumer needs | ServesHeld violated |
+| `StoreJudgementTwice` | answer and expire refuse only an absent judgement | JudgementClosedOnce violated |
 | `StoreCursorBack` | set cursor accepts a lower value | CursorMonotone violated |
+| `StoreCursorPastLog` | set cursor is not bounded by the log | CursorWithinLog violated |
+| `StoreLogTampered` | an UPDATE on events (no append-only trigger) | LogAppendOnly violated |
 | reach `NeverTaken` | none | a1 is accepted |
 | reach `NeverRecovered` | none | a caller left unknown reaches done |
 | reach `NeverStaleEpochRefused` | none | an old-epoch op after the clear is refused |
@@ -262,69 +291,83 @@ The helper scripts:
 | reach `NeverSentinelRefused` | none | s4 is refused |
 | reach `NeverHeldCarried` | none | r1's hold survives the clear |
 | reach `NeverHeldRefused` | none | a1 is refused on RowHeld after g1 |
-| reach `NeverServesRefused` | none | a1 is refused on RowServes after v1 |
+| reach `NeverReadyServesRefused` | none | s15 is refused: r2 no longer serves u4's tier |
+| reach `NeverAddServesRefused` | none | s16 is refused by put card: r2 does not serve pro |
+| reach `NeverTiersRefused` | none | v1 is refused: the ready u3 needs pro on r1 |
 | reach `NeverQueuedPastWidth` | none | r1 holds a ready and a working consumer at width 1 |
 | reach `NeverWorkEntryRefused` | none | b2 is refused by the work-entry check |
 | reach `NeverRowFenced` | none | e1 is refused on a stale RowGen |
 | reach `NeverSlotReused` | none | b2 goes working while the done u1 still holds r1 |
 | reach `NeverAnswered` (records) | none | j1 is answered |
-| reach `NeverJudgementFenced` (records) | none | a second close of j1 is refused on JudgementOpen |
+| reach `NeverJudgementFenced` (records) | none | a second fenced close of j1 is refused on JudgementOpen |
 | reach `NeverCursorRefused` (records) | none | m2 is refused below c1's value |
+| reach `NeverCloseRefused` (records) | none | the unfenced h2 is refused by the write after j1 closed |
+| reach `NeverCursorPastRefused` (records) | none | m3 is refused past the log |
+| reach `NeverCursorCarried` (records) | none | c1 keeps its value across the clear |
 
 ## Results, tla2tools v1.8.0 (the CI jar; it prints "TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)") on hetzner2, 2026-11-06
 
-All 39 ran in one parallel pass with `run-tlc.sh`. The numbers below are
+All 47 ran in one parallel pass with `run-tlc.sh`. The numbers below are
 from `summarize-logs.sh` on those logs. `ci-tlc.sh` then passed
-twice in a row in the same tree (39 ok, 0 FAIL, exit 0 both times). The
+twice in a row in the same tree (47 ok, 0 FAIL, exit 0 both times). The
 negative test (StoreNoEvent replaced by the fault-free model, and
 StoreProducerHolds' cfg given WidthKept as its first invariant) failed
 exactly those two and exited non-zero.
 
 | Module | Result | States generated / distinct | Depth | Time |
 |---|---|---|---|---|
-| `Store` | No error has been found | 1035195 / 618638 | 24 | 01min 44s |
-| `StoreRecords` | No error has been found | 458 / 338 | 18 | 05s |
-| `StoreCursorBack` | Invariant CursorMonotone is violated | 34 / 34 | 15 | 05s |
-| `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated | 92 / 85 | 15 | 05s |
-| `StoreJudgementTwice` | Invariant JudgementClosedOnce is violated | 19 / 19 | 15 | 04s |
+| `Store` | No error has been found | 1035199 / 618642 | 28 | 02min 47s |
+| `StoreRecords` | No error has been found | 74681 / 39159 | 25 | 19s |
+| `StoreCursorBack` | Invariant CursorMonotone is violated | 78 / 72 | 19 | 08s |
+| `StoreCursorPastLog` | Invariant CursorWithinLog is violated | 26 / 26 | 18 | 07s |
+| `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated | 96 / 89 | 19 | 08s |
+| `StoreJudgementTwice` | Invariant JudgementClosedOnce is violated | 51 / 48 | 19 | 08s |
+| `StoreLogTampered` | Invariant LogAppendOnly is violated | 4 / 4 | 3 | 05s |
 | `StoreNoEvent` | Invariant LogMatchesState is violated | 2 / 2 | 2 | 03s |
-| `StoreProducerHolds` | Invariant ProducerNeverHeld is violated | 4 / 4 | 4 | 03s |
-| `StoreReplayApplies` | Invariant IdempotentById is violated | 32 / 32 | 15 | 05s |
-| `StoreRowStale` | Invariant ConditionsAtomic is violated | 63 / 59 | 15 | 05s |
+| `StoreProducerHolds` | Invariant ProducerNeverHeld is violated | 4 / 4 | 4 | 04s |
+| `StoreReplayApplies` | Invariant IdempotentById is violated | 36 / 36 | 19 | 07s |
+| `StoreRowStale` | Invariant ConditionsAtomic is violated | 67 / 63 | 19 | 07s |
 | `StoreSentinelHolds` | Invariant ProducerNeverHeld is violated | 5 / 5 | 5 | 04s |
-| `StoreServesStale` | Invariant ServesHeld is violated | 642 / 415 | 29 | 06s |
-| `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 597 / 382 | 29 | 06s |
-| `StoreWidthCountsDone` | Invariant NoSpuriousRefusal is violated | 112 / 95 | 16 | 05s |
-| `StoreWidthCountsReady` | Invariant NoSpuriousRefusal is violated | 14 / 14 | 14 | 05s |
+| `StoreServesUnchecked` | Invariant ServesHeld is violated | 16 / 16 | 16 | 07s |
+| `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 605 / 385 | 37 | 08s |
+| `StoreTiersNarrowed` | Invariant ServesHeld is violated | 24 / 24 | 18 | 07s |
+| `StoreWidthCountsDone` | Invariant NoSpuriousRefusal is violated | 116 / 99 | 20 | 08s |
+| `StoreWidthCountsReady` | Invariant NoSpuriousRefusal is violated | 18 / 18 | 18 | 06s |
 | `StoreWidthPerOp` | Invariant WidthKept is violated | 11 / 11 | 11 | 05s |
-| `StoreWidthStale` | Invariant WidthKept is violated | 544 / 342 | 29 | 06s |
-| `StoreWidthUnchecked` | Invariant WidthKept is violated | 26 / 26 | 15 | 05s |
-| `StoreWorkEntryUnchecked` | Invariant WidthKept is violated | 11 / 11 | 11 | 03s |
-| reach `NeverAnswered` | violated | 14 / 14 | 14 | 05s |
-| reach `NeverCursorRefused` | violated | 34 / 34 | 15 | 05s |
-| reach `NeverHeldCarried` | violated | 74 / 69 | 15 | 05s |
-| reach `NeverHeldRefused` | violated | 68 / 64 | 15 | 05s |
+| `StoreWidthStale` | Invariant WidthKept is violated | 552 / 345 | 37 | 08s |
+| `StoreWidthUnchecked` | Invariant WidthKept is violated | 30 / 30 | 19 | 08s |
+| `StoreWorkEntryUnchecked` | Invariant WidthKept is violated | 11 / 11 | 11 | 06s |
+| reach `NeverAddServesRefused` | violated | 17 / 17 | 17 | 06s |
+| reach `NeverAnswered` | violated | 21 / 21 | 18 | 07s |
+| reach `NeverCloseRefused` | violated | 51 / 48 | 19 | 07s |
+| reach `NeverCursorCarried` | violated | 72 / 67 | 19 | 08s |
+| reach `NeverCursorPastRefused` | violated | 26 / 26 | 18 | 07s |
+| reach `NeverCursorRefused` | violated | 78 / 72 | 19 | 08s |
+| reach `NeverHeldCarried` | violated | 78 / 73 | 19 | 07s |
+| reach `NeverHeldRefused` | violated | 72 / 68 | 19 | 08s |
 | reach `NeverInOpWidthRefused` | violated | 11 / 11 | 11 | 05s |
-| reach `NeverJudgementFenced` | violated | 19 / 19 | 15 | 05s |
+| reach `NeverJudgementFenced` | violated | 52 / 49 | 19 | 07s |
 | reach `NeverNeedsReady` | violated | 10 / 10 | 10 | 05s |
-| reach `NeverNewEpochOp` | violated | 93 / 86 | 15 | 05s |
+| reach `NeverNewEpochOp` | violated | 97 / 90 | 19 | 07s |
 | reach `NeverProducerRefused` | violated | 4 / 4 | 4 | 04s |
-| reach `NeverQueuedPastWidth` | violated | 14 / 14 | 14 | 04s |
-| reach `NeverRecovered` | violated | 32 / 32 | 15 | 05s |
-| reach `NeverRowFenced` | violated | 72 / 67 | 15 | 05s |
-| reach `NeverSentinelRefused` | violated | 5 / 5 | 5 | 03s |
-| reach `NeverServesRefused` | violated | 77 / 72 | 15 | 04s |
-| reach `NeverSlotReused` | violated | 646 / 507 | 17 | 05s |
-| reach `NeverStaleEpochRefused` | violated | 86 / 80 | 15 | 05s |
-| reach `NeverTaken` | violated | 14 / 14 | 14 | 04s |
-| reach `NeverWidthFull` | violated | 14 / 14 | 14 | 05s |
-| reach `NeverWidthLowered` | violated | 18 / 18 | 14 | 05s |
-| reach `NeverWidthRefused` | violated | 26 / 26 | 15 | 05s |
-| reach `NeverWorkEntryRefused` | violated | 119 / 102 | 16 | 04s |
+| reach `NeverQueuedPastWidth` | violated | 18 / 18 | 18 | 06s |
+| reach `NeverReadyServesRefused` | violated | 16 / 16 | 16 | 07s |
+| reach `NeverRecovered` | violated | 36 / 36 | 19 | 07s |
+| reach `NeverRowFenced` | violated | 76 / 71 | 19 | 07s |
+| reach `NeverSentinelRefused` | violated | 5 / 5 | 5 | 05s |
+| reach `NeverSlotReused` | violated | 650 / 511 | 21 | 08s |
+| reach `NeverStaleEpochRefused` | violated | 90 / 84 | 19 | 07s |
+| reach `NeverTaken` | violated | 18 / 18 | 18 | 05s |
+| reach `NeverTiersRefused` | violated | 24 / 24 | 18 | 07s |
+| reach `NeverWidthFull` | violated | 18 / 18 | 18 | 07s |
+| reach `NeverWidthLowered` | violated | 22 / 22 | 18 | 07s |
+| reach `NeverWidthRefused` | violated | 30 / 30 | 19 | 07s |
+| reach `NeverWorkEntryRefused` | violated | 123 / 106 | 20 | 07s |
 
 The counterexamples were checked by hand with `show-all-traces.sh`. After
 setup:
 - **StoreNoEvent:** s1 lands with no event.
+- **StoreLogTampered:** s1's event is updated from accepted to refused.
 - **StoreReplayApplies:** a1 is accepted, its reply is lost, and the retried
   Apply runs a1 again (refused, u1 exists) and logs it a second time.
 - **StoreStaleCheck:** a1 begins with r1 not held, g1 holds r1, a1 lands.
@@ -343,7 +386,11 @@ setup:
 - **StoreWidthCountsReady:** a1 is refused with only the ready u3 on r1.
 - **StoreRowStale:** e1 lands, then g1 lands on RowGen(r1, 0) although e1
   raised r1's gen to 1.
-- **StoreServesStale:** a1 begins while r1 serves pro, v1 sets r1 to flash,
-  a1 lands.
-- **StoreJudgementTwice:** h1 answers j1, then h2 answers it again.
+- **StoreServesUnchecked:** s15 (in setup) readies u4 on r2, which serves
+  flash only.
+- **StoreTiersNarrowed:** v1 makes r1 serve flash only while the pro u3 is
+  ready there.
+- **StoreJudgementTwice:** h1 answers j1, then the unfenced h2 answers it
+  again.
 - **StoreCursorBack:** m1 sets c1 to 2, then m2 sets it to 1.
+- **StoreCursorPastLog:** m3 sets c1 to 40 with 16 events in the log.
