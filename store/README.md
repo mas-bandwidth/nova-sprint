@@ -9,8 +9,9 @@ package does with it.
   `Migrate` refuses a store at a schema version other than `SchemaVersion`,
   naming both numbers, and is safe to run concurrently (it holds one advisory
   lock). The binary knows schema version 2: version 1 plus the two card kinds
-  (`kind`, `of`, `result`, the state `done`), the card columns `author` and
-  `base_sha` (layer 2's), and row `gen`. There is no upgrade path: a store at
+  (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
+  `done`), the card columns `author` and `base_sha` (layer 2's), and row
+  `gen` and `held`. There is no upgrade path: a store at
   version 1 is refused like any other version.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
@@ -59,8 +60,10 @@ default: // accepted: r.Seq is the event, r.After the touched rows
 4. A card is in exactly one state and has at most one holder. The schema holds
    this (one `NOT NULL` `state` column with a CHECK, one `holder` column with
    a foreign key to a row of the same epoch), not Go. The schema also holds
-   the kinds: a producer has no `of` and no holder, a consumer has an `of`
-   naming a card of the same epoch (a foreign key) and no needs. `of` is the
+   the kinds: a producer or sentinel has no `of` and no holder, a sentinel
+   no brief, a consumer has an `of` naming a card of the same epoch (a
+   foreign key; that it is a producer, not a sentinel, is Go's check) and no
+   needs or after. `of` is the
    one column besides `holder` that is NULL for "none" (the foreign key needs
    it); the Go side reads both as `""`.
 5. The log matches the state: folding every accepted event from the first
@@ -91,39 +94,48 @@ event's seq is N: nothing changed since a snapshot). There is no width
 condition: the holder write is the check.
 
 Cards are of two kinds. A `producer` is the work itself (it has needs, a
-branch, a head, a PR, and lands); it never has a holder. A consumer (`work`
-or `read`) is one attempt at, or one read of, a producer: its `of` names that
-producer, it has no needs, it may have a holder, and it records a `result`
-(`""`, `ok`, `fix`, `fail`). Kind and of are set by `PutCard` and never change.
+branch, a head, a PR, and lands); it never has a holder. A `sentinel` is a
+producer with no brief and no consumers (a release gate or a phase mark: its
+needs are what it waits for). A consumer (`work` or `read`) is one attempt
+at, or one read of, a producer: its `of` names that producer (never a
+sentinel), it has no needs and no after, it may have a holder, and it records
+a `result` (`""`, `ok`, `fix`, `fail`). Kind and of are set by `PutCard` and
+never change. `needs` is hard order (cannot start until they landed),
+`after` soft (cannot land until they landed); layer 2 and 3 read them, the
+store only checks that they name other cards of the epoch, once each.
 
 The card states are `waiting`, `ready`, `working`, `review`, `merging`,
-`landed`, `fail`, `done`. `ready` and `working` are live: a row's width counts
-only the live cards it holds, so a held card that is waiting, done or anything
-else takes no room.
+`landed`, `fail`, `blocked`, `done`. `ready` and `working` are live: a row's
+width counts only the live cards it holds, so a held card that is waiting,
+done or anything else takes no room. Which kind may use which state is layer
+2's; the store refuses only a state outside the set.
 
 Writes, one field each, applied in order: `PutStream` (repo, base, pos;
 insert or overwrite), `SetStreamHeld`, `PutCard` (kind, of, stream, score,
-needs, brief, holder; the card must not exist; it starts waiting, gen 0,
-attempt 0, result `""`; a producer is refused an `of` and a holder, a consumer
-is refused needs and an `of` that is missing or is not a producer; a
+needs, after, brief, holder; the card must not exist; it starts waiting, gen
+0, attempt 0, result `""`; a producer or sentinel is refused an `of` and a
+holder, a sentinel a brief, a consumer needs, after and an `of` that is
+missing or is not a producer; a
 consumer's holder is checked as `SetCardHolder` checks it), `SetCardState` (a
 held card moving into a live state is refused when its row is already full),
-`SetCardHolder` (refused on a producer, and refused when the row already holds
+`SetCardHolder` (refused on a producer or sentinel, and refused when the row already holds
 as many live cards as its width, counted at the moment of the write and
 excluding the card written, so a second holder write in one op counts the
 first and nothing lands; re-setting the same holder is a no-op),
 `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
-`SetCardResult`, `SetCardNeeds` (refused on a consumer), `PutRow` (kind,
-width, session; insert or overwrite; a new row is down), `SetRowWidth` (the
-width alone), `SetRowState`, `SetRowSession`, `SetRowFlaps`, `PutPolicy`,
+`SetCardResult`, `SetCardNeeds` and `SetCardAfter` (each refused on a
+consumer), `PutRow` (kind, width, session; insert or overwrite; a new row is
+down and not held; state, flaps and held are kept on overwrite),
+`SetRowWidth` (the width alone), `SetRowHeld` (the coordinator's hold: no
+deals to the row while true, whatever its state), `SetRowState`, `SetRowSession`, `SetRowFlaps`, `PutPolicy`,
 `SetActivePolicy`. A width below the live cards the row holds is refused;
 width 0 is a row that takes nothing. An op that writes a card or a row raises
 its gen by one, however many of its writes touch it (gen counts the
 operations that changed it; a card or row the op adds is at gen 0), so
 `CardGen` and `RowGen` fence a plan against any change since its snapshot.
-Needs must name other cards of the same epoch, once each.
+Needs and after must name other cards of the same epoch, once each.
 
 The value limits, each `ErrInvalid` from both stores, naming the field:
 
@@ -131,15 +143,14 @@ The value limits, each `ErrInvalid` from both stores, naming the field:
   policy version) is in 0..2147483647 (a PostgreSQL `integer`, nothing
   meaningful below 0); the op's epoch is in 1..2147483647;
 - every text (ids, names, actor, kind, note, brief, reason, head, branch,
-  author, base sha, needs, policy name and body) is valid UTF-8 with no NUL
+  author, base sha, needs, after, policy name and body) is valid UTF-8 with no NUL
   byte;
 - `At` is set and falls in the years 0..9999.
 
 `Clear` takes an op of kind `clear` with no writes and at most an `AtSeq`
 condition. It opens epoch n + 1 and carries every row into it (same name,
-kind, width and session; state down, no flaps, gen raised by one); streams
-and cards stay behind
-in the old epoch, policy is kept. The event carries the epoch it closed; the
+kind, width, session and held; state down, no flaps, gen raised by one);
+streams and cards stay behind in the old epoch, policy is kept. The event carries the epoch it closed; the
 receipt's `NewEpoch` is the one it opened.
 
 ## The four outcomes of Apply (and Clear)
