@@ -209,7 +209,7 @@ func TestFunctionalColdRead5ParityICU(t *testing.T) {
 	assert.Equal(t, fake, pg, "Fake and PG differ under ICU en-US")
 }
 
-// A comment edit never changes the hash; a change to a literal always does.
+// A comment edit never changes the hash; a change to a literal does, except for indentation inside a literal that spans lines, which the scanner strips (see hashSchema).
 func TestColdRead5SchemaHash(t *testing.T) {
 	t.Parallel()
 	// a -- inside a literal that spans lines is hashed

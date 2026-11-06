@@ -43,7 +43,10 @@ var schemaHash = hashSchema(schemaSQL)
 // quotes ($$ ... $$) are scanned as code, since the schema's are all function
 // bodies: their comments are stripped and their literals kept, so a -- in a
 // $$ string literal would be stripped (the schema has none). E-prefixed
-// escape strings are not read (the schema has none).
+// escape strings are not read (the schema has none). Two more limits, both
+// absent from the schema and asserted by the tests: a quote inside a /* */
+// comment opens a literal, and indentation inside a literal that spans lines
+// is stripped.
 func hashSchema(sql string) string {
 	var b strings.Builder
 	var quote byte // the open quote: ' a literal, " an identifier, 0 none

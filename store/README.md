@@ -14,7 +14,7 @@ package does with it.
   (it holds one advisory lock). A schema `sprint` that holds any object
   at all (anything PostgreSQL records as depending on the namespace: a
   relation, type, function, operator, collation, text search object,
-  operator family, ...) but no `sprint.meta` is refused: "schema sprint exists and was not made by
+  operator family, and also a publication or default privileges that name the schema, so such an "empty" schema is refused too, ...) but no `sprint.meta` is refused: "schema sprint exists and was not made by
   nova-sprint; drop it or point NOVA_PG_DSN elsewhere" (an empty one is an
   empty store). It also checks the shape: `sprint.meta` keeps the sha256 of
   the schema text that made the store, with comments, indentation and blank
