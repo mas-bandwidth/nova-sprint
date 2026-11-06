@@ -34,6 +34,43 @@ The live v1 board was captured on 2026-11-06 at 21:50 UTC, in `America/New_York`
 
 With no blocked cards, the full eleven-column Work table fits at both 2000 and 2800 px: its gutter is 35 px at 2000 and 40 px at 2800. At 2000, 36 px did not fit, so the five-pixel reduction is the smallest whole-pixel reduction measured. When blocked is present the twelve-column layout uses the earlier responsive clamp; at 375 px Work is compact. The [round-three browser probe](testdata/round3-browser-probe.json) checks conditional blocked/fail, zero cost and zero percent, string cells, redirects, DONE, clock skew and stale-poll recovery; its synthetic cases are not a live-store capture. The [ok% comparison](testdata/okpct-comparison.json) checks every row; the [gutter measurements](testdata/gutter-measurement.json) record the fit checks. The browser checks report loaded fonts, no horizontal overflow, no console or HTTP errors, and a one-second poll timer (actual request intervals have browser jitter).
 
+## A/B report at 2000 px
+
+The unmodified `abshot` harness at `f70cf5e1` compared the live v1 board with the `be777a82` synthetic v2 fixture at all six widths. It exited **1 (DIFF)** under its default channel tolerance of 8 and pixel tolerance of 64: at 2000 px it measured **661,233 / 12,800,000 pixels (5.17%)**. This is a difference report, not a pixel-parity pass. The [full report](testdata/round3-abshot/report.md), [provenance and command](testdata/round3-abshot/provenance.md), [exit status](testdata/round3-abshot/exit.txt), and raw captures are retained beside the pairs above.
+
+At 2000 px, the report identifies the added fail column and legend entry, the omitted Last 24 hours panel, STOP/ETA and load data absent from the v2 store, and the ruled `-` for rows without verdicts. The v2 fixture also has different version, coordinator, epoch and clock values. Work-row pixels differ around the fail column and gutter; the footer is displaced by the omitted panel. The comparison uses absolute pixel positions, so layout shifts also mark otherwise unchanged content. Metadata and timestamps were not normalized. At 1440 px the shorter fixture metadata permits the wordmark; at 375 px the shorter version keeps the clock on the first line. At 760 px the fail legend wraps and shifts the panels below by 48 px.
+
+| Width | Live v1 | v2 fixture | Diff overlay |
+|---|---|---|---|
+| 2000 | [A](testdata/round3-abshot/2000-a.png) | [B](testdata/round3-abshot/2000-b.png) | [diff](testdata/round3-abshot/2000-diff.png) |
+| 1440 | [A](testdata/round3-abshot/1440-a.png) | [B](testdata/round3-abshot/1440-b.png) | [diff](testdata/round3-abshot/1440-diff.png) |
+| 2800 | [A](testdata/round3-abshot/2800-a.png) | [B](testdata/round3-abshot/2800-b.png) | [diff](testdata/round3-abshot/2800-diff.png) |
+| 1100 | [A](testdata/round3-abshot/1100-a.png) | [B](testdata/round3-abshot/1100-b.png) | [diff](testdata/round3-abshot/1100-diff.png) |
+| 760 | [A](testdata/round3-abshot/760-a.png) | [B](testdata/round3-abshot/760-b.png) | [diff](testdata/round3-abshot/760-diff.png) |
+| 375 | [A](testdata/round3-abshot/375-a.png) | [B](testdata/round3-abshot/375-b.png) | [diff](testdata/round3-abshot/375-diff.png) |
+
+<details>
+<summary>Full abshot report for 2000 px</summary>
+
+```markdown
+## Width 2000
+
+- **Differing pixels**: 661233 / 12800000 (5.17%, tolerance <= 64 px at channel delta <= 8)
+- **Viewport captures**: `2000-a.png` (2000x6400), `2000-b.png` (2000x6254), `2000-diff.png`
+
+- 2000: Work table header (x=746, y=1675, w=1214, h=23, diff_px=10131): A has 'stream status waiting ready working review fix merging landed cost', B has 'stream status waiting ready working review fix merging landed fail cost'
+- 2000: Last 24 hours (x=32, y=6154, w=1936, h=98, diff_px=188503): A has 'Last 24 hours', B has '(absent)'
+- 2000: Top bar (x=769, y=68, w=1106, h=48, diff_px=5620): A has 'nova-sprint version v1.6.29 coordinator rowan epoch 2 5:00:46 PM EST', B has 'nova-sprint version dev coordinator - epoch 1 5:00:48 PM EST'
+- 2000: Hero: ETA (x=724, y=275, w=207, h=54, diff_px=5986): A has 'ETA STOP', B has 'ETA -'
+- 2000: Cards by state (x=519, y=1390, w=1009, h=85, diff_px=14207): A has 'CARDS BY STATE landed 151 merging 0 fix 5 review 19 working 3 ready 23 waiting 175', B has 'CARDS BY STATE landed 151 fail 0 merging 0 fix 5 review 19 working 3 ready 23 waiting 175'
+- 2000: Work table rows (x=780, y=1744, w=1179, h=2424, diff_px=135647): A has 'schema-main landed 0 0 0 0 0 0 5 / 5 $0.54 | schema-python landed 0 0 0 0 0 0 3 / 3 $0.02 | serialize-audit-c landed 0 0 0 0 0 0 1 / 1 $0...', B has 'schema-main landed 0 0 0 0 0 0 5 / 5 0 $0.54 | schema-python landed 0 0 0 0 0 0 3 / 3 0 $0.02 | serialize-audit-c landed 0 0 0 0 0 0 1 / ...'
+- 2000: Fleet table rows (x=1709, y=4452, w=227, h=898, diff_px=8430): A has 'amd-1 up 2 0 / 8 72 33.3% 2.9% | amd-2 up 2 0 / 8 75 33.3% 3.9% | amd-3 up 3 0 / 8 55 38.5% 0.2% | captain up 0 0 / 8 0 0.0% 0.0% | hetzn...', B has 'amd-1 up 2 0 / 8 72 33.3% | amd-2 up 2 0 / 8 75 33.3% | amd-3 up 3 0 / 8 55 38.5% | captain up 0 0 / 8 0 - | hetzner1 up 2 0 / 16 56 33.3...'
+- 2000: Friends table rows (x=1709, y=5718, w=222, h=252, diff_px=709): A has 'alex down 0 0 / 2 0 0.0% - | emma down 0 0 / 16 94 49.2% - | rowan down 2 0 / 32 309 61.8% - | stella down 0 0 / 64 240 67.4% - | Total 2...', B has 'alex down 0 0 / 2 0 - | emma down 0 0 / 16 94 49.2% | rowan down 2 0 / 32 309 61.8% | stella down 0 0 / 64 240 67.4% | Total 2 0 / 114 64...'
+- 2000: Footer (x=32, y=6154, w=1936, h=182, diff_px=347255): A has 'https://github.com/mas-bandwidth/nova-sprint', B has 'https://github.com/mas-bandwidth/nova-sprint'
+```
+
+</details>
+
 ## Validation
 
 On Linux amd-1 with Go 1.26.10 and PostgreSQL 18.6, format, build, vet, unit race and PG functional race checks passed. One earlier full functional run saw a PostgreSQL connection reset in the store's rebuild test; the targeted test and subsequent full functional run passed ([failure](testdata/gates5.log), [recheck](testdata/functional-recheck.log)). Rowan's independent cold read reported approximately 14 ms for a one-event tick and 29 ms under race at 5,000 producers. Our 5,000-producer PostgreSQL bench measured a worst one-event advance of 5.98 ms without race and 15.61 ms under race over 20 iterations, with one Snapshot ([log](testdata/round3-pg5000.log)). Each event rebuilds the cached copy and view; this bounded measurement is not fleet-scale acceptance.
