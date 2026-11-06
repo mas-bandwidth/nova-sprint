@@ -2,7 +2,8 @@
 # CI run of the store model: bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
-#   Store.tla with Store.cfg           must pass            (TLC exit 0)
+#   Store.tla with Store.cfg and with StoreRecords.cfg (the two scenarios)
+#                                      must pass            (TLC exit 0)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
 #   Store.tla with reach/*.cfg         must report a violation (TLC exit 12)
 # Exits non-zero if Store fails, if any witness or reach run passes, or if any
@@ -92,6 +93,7 @@ run() {
 }
 
 run Store pass . Store.cfg Store.tla 4
+run StoreRecords pass . StoreRecords.cfg Store.tla 4
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
