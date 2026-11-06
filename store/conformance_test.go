@@ -46,6 +46,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"blocked":                 blockedState,
 		"row held":                rowHeld,
 		"lesson columns":          lessonColumns,
+		"review and row reason":   reviewAndRowReason,
 		"int range":               intRange,
 		"nul bytes":               nulBytes,
 		"text and time":           textAndTime,
@@ -323,7 +324,7 @@ func invalidOps(h *harness) {
 		"row then session":  h.op("x", nil, PutRow{Name: "w1", Kind: "kin", Width: 1, Session: ""}, SetRowSession{"w1", "s"}),
 		"activate twice":    h.op("x", nil, SetActivePolicy{1}, SetActivePolicy{2}),
 		"add then after":    h.op("x", nil, PutCard{Tier: "pro", Kind: "producer", ID: "c3", Stream: "s1"}, SetCardAfter{"c3", []string{"c0"}}),
-		"held twice":        h.op("x", nil, SetRowHeld{"w1", true}, SetRowHeld{"w1", false}),
+		"held twice":        h.op("x", nil, SetRowHeld{"w1", true, ""}, SetRowHeld{"w1", false, ""}),
 		"nul in after":      h.op("x", nil, SetCardAfter{"c1", []string{"c\x000"}}),
 	} {
 		_, err := h.s.Apply(h.ctx, o)
@@ -781,7 +782,7 @@ func rebuild(h *harness) {
 	h.seed()
 	h.ok(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}, SetCardState{"u1", "working"}, SetCardResult{"u2", "fix"}))
 	h.refused(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), "card c1 is at gen 1, expected gen 0")
-	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowWidth{"w1", 4}, SetRowHeld{"w1", true},
+	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowWidth{"w1", 4}, SetRowHeld{"w1", true, ""},
 		SetCardAfter{"c2", []string{"c0"}}, PutCard{Tier: "pro", Kind: "sentinel", ID: "g1", Stream: "s1", Needs: []string{"c2"}}, SetCardState{"c0", "blocked"}))
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 	h.clear()
@@ -856,13 +857,13 @@ func blockedState(h *harness) {
 // carried by a clear, and it raises the row's gen.
 func rowHeld(h *harness) {
 	h.seed()
-	h.ok(h.op("hold", []Expect{RowGen{"w1", 0}}, SetRowHeld{"w1", true}))
+	h.ok(h.op("hold", []Expect{RowGen{"w1", 0}}, SetRowHeld{"w1", true, ""}))
 	h.ok(h.op("put", nil, PutRow{Name: "w1", Kind: "worker", Width: 3, Session: "sess-b"}, PutRow{Name: "w2", Kind: "kin", Width: 1, Session: ""}))
 	s := h.snap()
 	assert.Equal(h.t, Row{Name: "w1", Kind: "worker", Width: 3, State: "up", Session: "sess-b", Held: true, Gen: 2}, s.Rows["w1"], "put row keeps held")
 	assert.False(h.t, s.Rows["w2"].Held, "a new row is not held")
-	h.refused(h.op("stale", []Expect{RowGen{"w1", 0}}, SetRowHeld{"w1", false}), "row w1 is at gen 2, expected gen 0")
-	h.refused(h.op("bad", nil, SetRowHeld{"w9", true}), "row w9 does not exist")
+	h.refused(h.op("stale", []Expect{RowGen{"w1", 0}}, SetRowHeld{"w1", false, ""}), "row w1 is at gen 2, expected gen 0")
+	h.refused(h.op("bad", nil, SetRowHeld{"w9", true, ""}), "row w9 does not exist")
 	h.clear()
 	got := h.snap()
 	assert.True(h.t, got.Rows["w1"].Held, "a clear carries the hold")
@@ -870,7 +871,7 @@ func rowHeld(h *harness) {
 	h.ok(h.op("deal", []Expect{RowHeld{"w1", true}}, SetRowState{"w1", "up"}))
 	h.refused(h.op("deal", []Expect{RowHeld{"w1", false}}, SetRowState{"w1", "down"}), "row w1 is held, expected not held")
 	h.refused(h.op("deal", []Expect{RowHeld{"w9", false}}), "row w9 does not exist")
-	h.ok(h.op("unhold", []Expect{RowGen{"w1", 4}}, SetRowHeld{"w1", false}))
+	h.ok(h.op("unhold", []Expect{RowGen{"w1", 4}}, SetRowHeld{"w1", false, ""}))
 	h.ok(h.op("deal", []Expect{RowHeld{"w1", false}}))
 	h.refused(h.op("deal", []Expect{RowHeld{"w1", true}}), "row w1 is not held, expected held")
 	assert.False(h.t, h.snap().Rows["w1"].Held)
@@ -954,6 +955,46 @@ func lessonColumns(h *harness) {
 		assert.ErrorIs(h.t, err, ErrInvalid, name)
 	}
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry every new column")
+}
+
+// Round 13, from building layer 2: a producer's review counts its entries
+// into review (SetCardReview, +1, producers only); a read consumer is cut at
+// its producer's current review and keeps it; a row carries the reason it was
+// held or released (SetRowHeld), kept by PutRow.
+func reviewAndRowReason(h *harness) {
+	h.seed()
+	r := h.ok(h.op("review", []Expect{CardGen{"c1", 0}}, SetCardReview{"c1"}, SetRowHeld{"w1", true, "maintenance"}))
+	assert.Equal(h.t, 1, r.After.Cards["c1"].Review)
+	assert.Equal(h.t, Row{Name: "w1", Kind: "worker", Width: 2, State: "up", Session: "sess-a", Held: true, Reason: "maintenance", Gen: 1, Tiers: []string{"pro"}}, r.After.Rows["w1"])
+	h.ok(h.op("unhold", nil, SetRowHeld{"w1", false, "back"}, PutRow{Name: "w1", Kind: "worker", Width: 3, Session: "sess-a", Tiers: []string{"pro"}}))
+	assert.Equal(h.t, "back", h.snap().Rows["w1"].Reason, "PutRow keeps the reason")
+	r = h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "read", ID: "k1", Of: "c1", Stream: "s1", Holder: "w1", Review: 1}))
+	assert.Equal(h.t, 1, r.After.Cards["k1"].Review, "a read is cut at its producer's review")
+	h.ok(h.op("again", nil, SetCardReview{"c1"}, SetCardState{"k1", "ready"}))
+	assert.Equal(h.t, []int{2, 1}, []int{h.snap().Cards["c1"].Review, h.snap().Cards["k1"].Review}, "the read keeps the review it was cut at")
+	for _, c := range []struct {
+		w      Write
+		reason string
+	}{
+		{SetCardReview{"c9"}, "card c9 does not exist"},
+		{SetCardReview{"u2"}, "card u2 is of kind read; SetCardReview is only for a producer"},
+		{SetCardReview{"u1"}, "card u1 is of kind work; SetCardReview is only for a producer"},
+		{PutCard{Tier: "pro", Kind: "read", ID: "k2", Of: "c1", Stream: "s1", Holder: "w1", Review: 1}, "card k2 is cut at review 1, its producer c1 is at review 2; a read takes its producer's review"},
+		{PutCard{Tier: "pro", Kind: "work", ID: "k2", Of: "c1", Stream: "s1", Holder: "w1", Review: 2}, "card k2 is a work; only a read consumer is cut at a review (a producer's starts at 0 and is raised by SetCardReview)"},
+		{PutCard{Tier: "pro", Kind: "producer", ID: "c4", Stream: "s1", Review: 1}, "card c4 is a producer; only a read consumer is cut at a review (a producer's starts at 0 and is raised by SetCardReview)"},
+		{SetRowHeld{"w1", false, "other reason"}, "row w1 is already not held"},
+	} {
+		h.refused(h.op("bad", nil, c.w), c.reason)
+	}
+	for name, o := range map[string]Op{
+		"review twice":    h.op("x", nil, SetCardReview{"c1"}, SetCardReview{"c1"}),
+		"negative review": h.op("x", nil, PutCard{Tier: "pro", Kind: "read", ID: "k3", Of: "c1", Stream: "s1", Holder: "w1", Review: -1}),
+		"nul row reason":  h.op("x", nil, SetRowHeld{"w1", true, "a\x00"}),
+	} {
+		_, err := h.s.Apply(h.ctx, o)
+		assert.ErrorIs(h.t, err, ErrInvalid, name)
+	}
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry review and the row reason")
 }
 
 func eventsPaging(h *harness) {
@@ -1384,7 +1425,7 @@ func coldRead4(h *harness) {
 		{SetCardState{"", "ready"}, "a card needs an id"},
 		{SetCardReason{"", "r"}, "a card needs an id"},
 		{SetRowState{"", "up"}, "a row needs a name"},
-		{SetRowHeld{"", true}, "a row needs a name"},
+		{SetRowHeld{"", true, ""}, "a row needs a name"},
 		{PutCard{Tier: "pro", ID: "c3", Kind: "job", Stream: "s1"}, `card kind "job" is not one of`},
 		{PutCard{Tier: "top", ID: "c3", Kind: "producer", Stream: "s1"}, `card tier "top" is not one of`},
 		{PutCard{Tier: "pro", ID: "c3", Kind: "producer", Stream: "s1", Priority: "top"}, `card priority "top" is not one of`},
@@ -1417,7 +1458,7 @@ func coldRead4(h *harness) {
 	h.refusedAll([]refusal{
 		{SetCardState{"c1", "waiting"}, "card c1 is already waiting"},
 		{SetRowState{"w1", "up"}, "row w1 is already up"},
-		{SetRowHeld{"w1", false}, "row w1 is already not held"},
+		{SetRowHeld{"w1", false, ""}, "row w1 is already not held"},
 		{SetStreamHeld{"s1", false}, "stream s1 is already not held"},
 		{SetActivePolicy{1}, "policy version 1 is already active"},
 		{SetCursor{"feed", 1}, "cursor feed is already at 1"},
@@ -1455,12 +1496,12 @@ func coldRead4(h *harness) {
 		assert.Nil(h.t, e.Before, e.Op)
 		assert.Nil(h.t, e.After, e.Op)
 	}
-	r := h.ok(h.op("change", nil, SetCardScore{"c1", 11}, SetCardCost{"u1", 0, true}, SetRowHeld{"w1", true}, SetStreamHeld{"s1", true}))
+	r := h.ok(h.op("change", nil, SetCardScore{"c1", 11}, SetCardCost{"u1", 0, true}, SetRowHeld{"w1", true, ""}, SetStreamHeld{"s1", true}))
 	assert.Equal(h.t, 1, r.After.Cards["c1"].Gen)
 	assert.True(h.t, r.After.Cards["u1"].Priced, "a priced run at $0 is a change from unpriced")
 	assert.Equal(h.t, 1, r.After.Rows["w1"].Gen)
 	h.refusedAll([]refusal{
-		{SetRowHeld{"w1", true}, "row w1 is already held"},
+		{SetRowHeld{"w1", true, ""}, "row w1 is already held"},
 		{SetStreamHeld{"s1", true}, "stream s1 is already held"},
 	})
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())

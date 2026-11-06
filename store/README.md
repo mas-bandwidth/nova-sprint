@@ -28,7 +28,7 @@ package does with it.
   (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
   `done`), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
-  lessons of v1), the card columns `tier`, `paths`, `done_when` and `prose`, row `gen`, `held`, `tiers`, `model` and `harness`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
+  lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose` and `review`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
   version 1 is refused like any other version.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
@@ -168,12 +168,21 @@ the `cards_fixed` trigger). `needs` is hard order (cannot start until they lande
 that they name other cards of the epoch, once each. A priority is one of
 `low`, `normal` (the default), `high`, `critical`, `blocker`; the `read` rung
 of the deal order is layer 2's, never a level. The store enforces whose each column
-is, in Go and by a CHECK: prior head a work consumer's, bounces a producer's, cost,
+is, in Go and by a CHECK: prior head a work consumer's, bounces a producer's, review a producer's or a read consumer's, cost,
 priced and result a consumer's, priority, needs and after a producer's or sentinel's, a holder a consumer's,
 and SetCardAttempt is refused on a consumer (its attempt is set at add by PutCard). The check is on the kind, before
 the value is looked at: a kind-specific write on the wrong kind is refused whatever its value, no-op values included
 (`SetCardPriority` normal, `SetCardNeeds` or `SetCardAfter` nil, `SetCardPaths` nil, `SetCardBounces` 0), so it
 never raises a gen or logs an accepted event. At add a consumer may name only the default priority (`""` or normal).
+
+Review (round 13, from building layer 2). A producer's `review` counts its
+entries into review: it starts at 0 and `SetCardReview{card}` raises it by
+one (producers only). A read consumer is cut with `PutCard{Review}` equal to
+its producer's current review ("card k2 is cut at review 1, its producer c1
+is at review 2; a read takes its producer's review"), and keeps it: the
+cards_fixed trigger refuses an update of a read's review. Every other kind's
+review is 0 (a CHECK). Layer 2's ReadYes counts only a read whose review is
+the producer's current one.
 
 Tier. Every card names its tier at add, one of `flash`, `pro`, `heavy`,
 `frontier` (a CHECK in the schema; in Go a tier outside the four is a
@@ -246,14 +255,14 @@ when its row already holds as many working cards as its width),
 `SetCardPaths`, `SetCardDoneWhen`, `SetCardProse`, `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
-`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardCost` (cost
+`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardReview` (+1, a producer's), `SetCardCost` (cost
 and priced together, one field), `SetCardPriority` (refused on a consumer,
 normal included; `""` is normal, as at put card), `SetCardNeeds` and `SetCardAfter` (each refused on a
 consumer, nil included), `PutRow`
 (kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
-state, flaps and held are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
+state, flaps, held and the row's reason are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
-true, whatever its state), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
+true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
 `SetRowTiers` (refused when it drops a tier a live consumer of the row needs), `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
 `PutJudgement`, `AnswerJudgement`, `ExpireJudgement`, `SetCursor`. `PutPolicy` takes no version: the store
 gives it the next one, and the caller learns it from the receipt,

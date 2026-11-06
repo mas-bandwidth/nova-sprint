@@ -22,9 +22,9 @@ var schemaSQL string
 // SchemaVersion is the version of schema.sql, kept in sprint.meta with the
 // schema's hash. Version 2 adds to version 1: the card columns kind (with
 // sentinel), of, after, author, base_sha, prior_head, result (with fault),
-// bounces, cost, priced, priority, tier, paths, done_when and prose; the card
-// states blocked and done; the row columns gen, held, tiers, model and
-// harness; the tables judgements and cursors; the events' policy; the meta
+// bounces, cost, priced, priority, tier, paths, done_when, prose and review; the card
+// states blocked and done; the row columns gen, held, tiers, model, harness
+// and reason; the tables judgements and cursors; the events' policy; the meta
 // hash; the triggers that keep a card's kind, of, stream, holder, tier, id
 // and epoch, a row's, stream's or judgement's key and epoch, a policy version's
 // columns but active, and the log (TRUNCATE included)

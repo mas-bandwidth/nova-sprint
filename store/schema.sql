@@ -6,8 +6,8 @@
 -- seq is). Every count is 0 or more by a CHECK. Version 2 is the
 -- version with the two card kinds (kind with sentinel, of, after, author,
 -- base_sha, result, the states blocked and done; prior_head, bounces, cost,
--- priced, priority, the result fault; tier, paths, done_when, prose), row
--- gen, held, tiers, model and harness, the judgements and cursors tables and
+-- priced, priority, the result fault; tier, paths, done_when, prose,
+-- review), row gen, held, tiers, model, harness and reason, the judgements and cursors tables and
 -- the events' policy; there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
     tiers   text[]  NOT NULL DEFAULT '{}' CHECK (tiers <@ ARRAY['flash', 'pro', 'heavy', 'frontier']::text[]),
     model   text    NOT NULL DEFAULT '',
     harness text    NOT NULL DEFAULT '',
+    reason  text    NOT NULL DEFAULT '',
     epoch   integer NOT NULL,
     PRIMARY KEY (epoch, name)
 );
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     paths    text[]  NOT NULL DEFAULT '{}',
     done_when text[] NOT NULL DEFAULT '{}',
     prose    text    NOT NULL DEFAULT '',
+    review   integer NOT NULL DEFAULT 0 CONSTRAINT cards_review_min_check CHECK (review >= 0),
     epoch    integer NOT NULL,
     PRIMARY KEY (epoch, id),
     CONSTRAINT cards_of_check CHECK ((kind IN ('producer', 'sentinel')) = ("of" IS NULL)),
@@ -99,6 +101,7 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     CONSTRAINT cards_holder_check CHECK ((kind IN ('work', 'read')) = (holder IS NOT NULL)),
     CONSTRAINT cards_prior_head_check CHECK (kind = 'work' OR prior_head = ''),
     CONSTRAINT cards_bounces_check CHECK (kind = 'producer' OR bounces = 0),
+    CONSTRAINT cards_review_check CHECK (kind IN ('producer', 'read') OR review = 0),
     CONSTRAINT cards_producer_cost_check CHECK (kind IN ('work', 'read') OR (cost = 0 AND NOT priced)),
     CONSTRAINT cards_producer_result_check CHECK (kind IN ('work', 'read') OR result = ''),
     FOREIGN KEY (epoch, stream) REFERENCES sprint.streams (epoch, name),
@@ -109,15 +112,16 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;
 -- Johnny's review 2026-11-06: a working card could drop its holder and keep
--- the slot), and a consumer's of names a producer of its own stream and tier
+-- the slot), nor does a read consumer's review (the producer's at cut), and a consumer's of names a producer of its own stream and tier
 -- (the foreign key says only that it names a card). A consumer's attempt is fixed at add
 -- too, but a trigger cannot tell the store's own writes from a caller's, so
 -- that rule is the store's alone.
 CREATE OR REPLACE FUNCTION sprint.cards_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF TG_OP = 'UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.epoch IS DISTINCT FROM OLD.epoch OR NEW.kind IS DISTINCT FROM OLD.kind
-            OR NEW."of" IS DISTINCT FROM OLD."of" OR NEW.stream IS DISTINCT FROM OLD.stream OR NEW.holder IS DISTINCT FROM OLD.holder OR NEW.tier IS DISTINCT FROM OLD.tier) THEN
-        RAISE EXCEPTION 'card % changes its id, epoch, kind, of, stream, holder or tier; they are fixed when the card is added', OLD.id
+            OR NEW."of" IS DISTINCT FROM OLD."of" OR NEW.stream IS DISTINCT FROM OLD.stream OR NEW.holder IS DISTINCT FROM OLD.holder OR NEW.tier IS DISTINCT FROM OLD.tier
+            OR (OLD.kind = 'read' AND NEW.review IS DISTINCT FROM OLD.review)) THEN
+        RAISE EXCEPTION 'card % changes its id, epoch, kind, of, stream, holder, tier or a read''s review; they are fixed when the card is added', OLD.id
             USING ERRCODE = 'check_violation', CONSTRAINT = 'cards_fixed_check';
     END IF;
     IF NEW."of" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM sprint.cards c WHERE c.epoch = NEW.epoch AND c.id = NEW."of" AND c.kind = 'producer') THEN

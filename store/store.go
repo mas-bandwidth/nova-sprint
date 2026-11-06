@@ -110,6 +110,7 @@ type Card struct {
 	Prior    string   `json:"prior_head"` // on a work consumer: the head the attempt continues from
 	Result   string   `json:"result"`     // "", ok, fix, fail or fault
 	Bounces  int      `json:"bounces"`    // on a producer: the returns that count toward blocked
+	Review   int      `json:"review"`     // on a producer: its entries into review; on a read consumer: its producer's at cut, fixed
 	Cost     int64    `json:"cost"`       // on a consumer: what its run cost, in micro-dollars
 	Priced   bool     `json:"priced"`     // false when the run's route has no price
 	Priority string   `json:"priority"`   // a producer's level; normal on a consumer
@@ -127,7 +128,8 @@ type Row struct {
 	State   string   `json:"state"`
 	Session string   `json:"session"`
 	Flaps   int      `json:"flaps"`
-	Held    bool     `json:"held"` // the coordinator's hold: no deals while true
+	Held    bool     `json:"held"`   // the coordinator's hold: no deals while true
+	Reason  string   `json:"reason"` // why it was held or released (SetRowHeld)
 	Gen     int      `json:"gen"`
 	Tiers   []string `json:"tiers,omitempty"` // the tiers this row serves
 	Model   string   `json:"model"`           // a label for policy and the dashboard

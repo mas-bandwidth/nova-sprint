@@ -62,7 +62,7 @@ func cr5Scenario(h *harness) []string {
 	w("result empty on a producer", nil, SetCardResult{"c1", ""})
 	w("result same", nil, SetCardResult{"u1", ""})
 	w("width same", nil, SetRowWidth{"w1", 2})
-	w("held same", nil, SetRowHeld{"w1", false})
+	w("held same", nil, SetRowHeld{"w1", false, ""})
 	w("flaps same", nil, SetRowFlaps{"w1", 0})
 	w("score same", nil, SetCardScore{"c1", 10})
 	w("attempt same", nil, SetCardAttempt{"c1", 0})

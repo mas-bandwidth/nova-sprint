@@ -93,7 +93,7 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 		if r, err := w.tiersFit(v.Name, v.Tiers); r != "" || err != nil {
 			return r, err
 		}
-		next.State, next.Flaps, next.Held = old.State, old.Flaps, old.Held
+		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
 	}
 	return "", w.putRow(old, ok, next)
 }
@@ -228,7 +228,7 @@ func (w *work) addCard(v PutCard) (string, error) {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
 	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: normSet(v.Needs), After: normSet(v.After), Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
-		Holder: v.Holder, Tier: v.Tier, Paths: normList(v.Paths), DoneWhen: normList(v.DoneWhen), Prose: v.Prose}
+		Holder: v.Holder, Tier: v.Tier, Paths: normList(v.Paths), DoneWhen: normList(v.DoneWhen), Prose: v.Prose, Review: v.Review}
 	if c.Priority != "normal" {
 		if r := producersOnly(c); r != "" {
 			return r, nil
@@ -236,6 +236,9 @@ func (w *work) addCard(v PutCard) (string, error) {
 	}
 	if v.Attempt != 0 && !consumer(v.Kind) {
 		return fmt.Sprintf("card %s is a %s; its attempt starts at 0 and is raised by SetCardAttempt", v.ID, v.Kind), nil
+	}
+	if v.Review != 0 && v.Kind != "read" {
+		return fmt.Sprintf("card %s is a %s; only a read consumer is cut at a review (a producer's starts at 0 and is raised by SetCardReview)", v.ID, v.Kind), nil
 	}
 	if r, err := w.checkOf(c); r != "" || err != nil {
 		return r, err
@@ -273,7 +276,8 @@ func (w *work) checkOf(c Card) (string, error) {
 		return fmt.Sprintf("card %s is a consumer of %s, which is not a producer", c.ID, c.Of), nil
 	}
 	return cmp.Or(when(p.Stream != c.Stream, "card %s is in stream %s, its producer %s is in stream %s; a consumer takes its producer's stream", c.ID, c.Stream, c.Of, p.Stream),
-		when(p.Tier != c.Tier, "card %s is tier %s, its producer %s is tier %s; a consumer takes its producer's tier", c.ID, c.Tier, c.Of, p.Tier)), nil
+		when(p.Tier != c.Tier, "card %s is tier %s, its producer %s is tier %s; a consumer takes its producer's tier", c.ID, c.Tier, c.Of, p.Tier),
+		when(c.Kind == "read" && p.Review != c.Review, "card %s is cut at review %d, its producer %s is at review %d; a read takes its producer's review", c.ID, c.Review, c.Of, p.Review)), nil
 }
 
 func (w *work) openJudgement(v PutJudgement) (string, error) {

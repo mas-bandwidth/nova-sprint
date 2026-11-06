@@ -2,6 +2,7 @@ package store
 
 import (
 	"cmp"
+	"math"
 	"strings"
 	"time"
 )
@@ -101,12 +102,15 @@ type SetStreamHeld struct {
 // epoch that serves its tier), has
 // no needs and no after, and carries the Attempt it belongs to (a producer's
 // starts at 0); its paths, done-when and prose are copies set here. Kind, of,
-// stream, holder and tier never change after. Prior head, bounces, cost and
+// stream, holder and tier never change after. A read consumer carries the
+// Review it was cut at: its producer's current review, fixed; every other
+// kind's is 0. Prior head, bounces, cost and
 // result are never set at add.
 type PutCard struct {
 	ID, Kind, Of, Stream string
 	Score                int
 	Attempt              int      // a consumer's attempt, set here and never after
+	Review               int      // a read consumer's: its producer's review now; 0 on every other kind
 	Needs                []string // hard: cannot start until these landed
 	After                []string // soft: may start any time; orders its landing only behind targets that are themselves queued to land, never behind one that is not
 	Brief                string
@@ -195,6 +199,11 @@ type SetCardBounces struct {
 	Card    string
 	Bounces int
 }
+
+// SetCardReview raises a producer's review by one: it entered review again
+// (layer 2 says when); refused on any other kind. A read cut at an earlier
+// review no longer counts for ReadYes.
+type SetCardReview struct{ Card string }
 
 // SetCardCost sets what a consumer's run cost, in micro-dollars, and whether
 // its route had a price at all: one field, so an unpriced run is never $0.
@@ -287,11 +296,13 @@ type SetRowState struct{ Row, State string }
 // SetRowSession sets a row's session.
 type SetRowSession struct{ Row, Session string }
 
-// SetRowHeld sets a row's held flag: the coordinator's hold, no deals to the
-// row while true, whatever its state.
+// SetRowHeld sets a row's held flag and the reason it was held or released:
+// the coordinator's hold, no deals to the row while true, whatever its state.
+// Refused when the row is already held (or not held), whatever the reason.
 type SetRowHeld struct {
-	Row  string
-	Held bool
+	Row    string
+	Held   bool
+	Reason string
 }
 
 // SetRowFlaps sets a row's flap count.
@@ -325,6 +336,7 @@ func (SetCardNeeds) isWrite()     {}
 func (SetCardAfter) isWrite()     {}
 func (SetCardPriorHead) isWrite() {}
 func (SetCardBounces) isWrite()   {}
+func (SetCardReview) isWrite()    {}
 func (SetCardCost) isWrite()      {}
 func (SetCardPriority) isWrite()  {}
 func (PutRow) isWrite()           {}
@@ -382,9 +394,9 @@ func specOf(w Write) spec {
 		return put("stream", v.Stream, nil, "held").then(func(w *work) (string, error) { return w.setStreamHeld(v) })
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
-			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("score", v.Score).
+			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
-		}, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
+		}, "kind", "of", "stream", "attempt", "review", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
 		return put("row", v.Name, func(c *checker) {
 			c.text(v.Session, v.Model, v.Harness).num("width", v.Width).oneOf("row kind", v.Kind, RowKinds).tiers(v.Tiers)
@@ -453,6 +465,16 @@ func setSpec(w Write) spec {
 		return card(v.Card, "prior_head", func(k *Card) { k.Prior = v.Head }, func(c *checker) { c.text(v.Head) }).kinds("SetCardPriorHead", "a work consumer", func(k string) bool { return k == "work" })
 	case SetCardBounces:
 		return card(v.Card, "bounces", func(k *Card) { k.Bounces = v.Bounces }, func(c *checker) { c.num("bounces", v.Bounces) }).kinds("SetCardBounces", "a producer", func(k string) bool { return k == "producer" })
+	case SetCardReview:
+		s := card(v.Card, "review", func(k *Card) { k.Review++ }, nil).kinds("SetCardReview", "a producer", func(k string) bool { return k == "producer" })
+		kind := s.cardIf
+		s.cardIf = func(w *work, k Card) (string, error) {
+			if r, err := kind(w, k); r != "" || err != nil {
+				return r, err
+			}
+			return when(k.Review >= math.MaxInt32, "card %s is at review %d, the most there is", k.ID, k.Review), nil
+		}
+		return s
 	case SetCardCost:
 		return card(v.Card, "cost", func(k *Card) { k.Cost, k.Priced = v.Cost, v.Priced }, func(c *checker) { c.num64("cost", v.Cost) }).kinds("SetCardCost", "a consumer", consumer)
 	case SetCardPriority:
@@ -480,8 +502,10 @@ func rowSpec(w Write) spec {
 		s.rowIf = func(w *work, r Row) (string, error) { return w.widthFits(r.Name, v.Width) }
 		return s
 	case SetRowHeld:
-		s := row(v.Row, "held", func(r *Row) { r.Held = v.Held }, nil)
-		s.is = "is already " + heldWord(v.Held)
+		s := row(v.Row, "held", func(r *Row) { r.Held, r.Reason = v.Held, v.Reason }, func(c *checker) { c.text(v.Reason) })
+		s.rowIf = func(_ *work, r Row) (string, error) {
+			return when(r.Held == v.Held, "row %s is already %s", r.Name, heldWord(v.Held)), nil
+		}
 		return s
 	case SetRowTiers:
 		s := row(v.Row, "tiers", func(r *Row) { r.Tiers = normSet(v.Tiers) }, func(c *checker) { c.tiers(v.Tiers) })
