@@ -295,7 +295,10 @@ NeedFailedTakesDependants ==
 NeverLanded     == \A c \in Cards : cs[c].state # "landed"
 NeverFixed      == last.ev # "ReadFix"
 NeverRed        == last.ev # "Red"
-NeverNeedFailed == last.ev # "NeedFailed"
+(* NeedFailed fires for a dependant whose need has really failed (the     *)
+(* design's guard also allows it earlier; that is not the path shown).    *)
+NeverNeedFailed ==
+  ~(last.ev = "NeedFailed" /\ \A n \in Needs[last.c] : cs[n].state = "fail")
 NeverBlocked    == \A r \in Rows : rs[r].state # "blocked"
 
 =============================================================================
