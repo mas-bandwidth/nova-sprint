@@ -17,12 +17,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Every invariant of the passing runs, in cfg order.
 INVARIANTS = [
     "TypeOK", "ProducerNeverHeld", "SlotsDense", "WorkingOneWorkConsumer",
-    "WorkingLeavesInOneStep", "ParkedUnderHold", "ReadOnlyInReview",
+    "WorkingLeavesInOneStep", "ParkedUnderHold", "NeverStranded", "ReadOnlyInReview",
     "ReaderNeverAuthor", "WidthKept", "TakeBelowWidth", "NeedFailedTakesDependants",
     "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "AfterNeverHolds",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
-    "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
+    "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "AfterKept",
 ]
 
@@ -33,7 +33,7 @@ INVARIANTS = [
 # one behaviour.
 SCENARIOS = {
     "life": {"K": 3, "MaxHead": 2, "MaxAttempt": 2, "MaxBounce": 1, "MaxEnv": 2},
-    "deps": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 2},
+    "deps": {"K": 3, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
     "pre":  {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 2},
 }
 
@@ -52,6 +52,10 @@ REACH = {
     "NeverNeedFailed": ("deps", "NeedFailed takes a dependant"),
     "NeverRelinked": ("deps", "a failed need is relinked"),
     "NeverAdded": ("deps", "Add puts a sentinel with a need and an after"),
+    "NeverSentinelNeeded": ("deps", "a sentinel is a need"),
+    "NeverAskReads": ("deps", "AskReads cuts two reads in one step"),
+    "NeverWaivedRed": ("life", "WaiveRed merges after a Red without a new read"),
+    "NeverFindingCarried": ("life", "a fix attempt carries the failure it fixes"),
     "NeverPreempted": ("pre", "a blocker preempts a live consumer"),
 }
 
@@ -101,14 +105,16 @@ WITNESSES = [
        "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was YesRead(p)\n", 1)]),
     ("CardFaultBumpsAttempt", "FaultSpendsNothing", "life",
      "Faulted raises the producer's attempt.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
+       "                                          !.finding = \"fault\"])",
        "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
-       "                                          !.att = @ + 1])   \\* FAULT: attempt+1", 1)]),
+       "                                          !.finding = \"fault\", !.att = @ + 1])   \\* FAULT: attempt+1", 1)]),
     ("CardFaultBounces", "FaultSpendsNothing", "life",
      "Faulted raises bounces, so a fault counts toward Block.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
+       "                                          !.finding = \"fault\"])",
        "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
-       "                                          !.bounces = @ + 1])   \\* FAULT: bounces+1", 1)]),
+       "                                          !.finding = \"fault\", !.bounces = @ + 1])   \\* FAULT: bounces+1", 1)]),
     ("CardEditUnderLive", "EditNoLive", "life",
      "Edit is accepted while the producer has a live consumer.",
      [("  /\\ NonFinal(p)\n  /\\ NoLive(p)\n  /\\ PStep(\"Edit\"",
@@ -142,6 +148,11 @@ WITNESSES = [
      [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = Back,",
        "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = \"ready\",   \\* FAULT: was Back\n"
        "                                        ", 1)]),
+    ("CardWaiveRedWithoutRead", "WaiveRedNeedsPriorRead", "life",
+     "WaiveRed does not require a done ok read of the previous review at\n"
+     "the same head: a producer in review goes to merging on no read.",
+     [("  /\\ NoLive(p)\n  /\\ PrevYes(p)\n",
+       "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was PrevYes(p)\n", 1)]),
 ]
 
 
