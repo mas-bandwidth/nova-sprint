@@ -310,7 +310,13 @@ func (st *Store) reconcilePlan(ctx context.Context, id string, acceptProps bool)
 			res.add(e)
 			continue
 		}
+		// an entry that creates its card expects it absent: it comes from
+		// no place, at no revision (a created member is at revision 1)
+		created := k.expected == "absent" || strings.HasPrefix(k.expected, "absent, ")
 		xr, xp, okx := placeRev(k.expected)
+		if created {
+			xr, xp, okx = 0, "", true
+		}
 		fr, fp, okf := placeRev(k.found)
 		e.Expected, e.Found = xp, fp
 		if !okx || !okf {
@@ -357,9 +363,11 @@ func (st *Store) reconcilePlan(ctx context.Context, id string, acceptProps bool)
 			e.Outcome, e.Why = SkipSettled, "its move line is restored already"
 		case before != nil && before.Op == opID && before.To == fp:
 			e.Outcome, e.Why = SkipSettled, "the repair kept its move line (a set line whose first card was another)"
-		case before == nil:
+		case created && before != nil && !before.Removed:
+			e.Outcome, e.Why = SkipRefused, fmt.Sprintf("the entry created the card, and the log placed it before the repair (%s, %s, at %s)", before.Op, before.Verb, before.To)
+		case before == nil && !created:
 			e.Outcome, e.Why = SkipRefused, "the log has no move line of the card before the repair: nothing says where the entry took it from"
-		case before.To != xp:
+		case !created && before.To != xp:
 			e.Outcome, e.Why = SkipRefused, fmt.Sprintf("the card's last move line before the repair (%s, %s) leaves it at %s, not at %s where the entry expected it", before.Op, before.Verb, before.To, xp)
 		case len(queued) == 0:
 			e.Outcome, e.Why = SkipRefused, "no queued line of the card names the change the drain applied: nothing to restore the line from"
