@@ -3,8 +3,7 @@
 With **nova-sprint**, your AI team can:
 
 * Keep all the work in cards outside any model's context, so nothing is forgotten
-* Run API-rate work across a fleet of machines
-* Run work across multiple models and harnesses
+* Run work across multiple models, harnesses and machines
 * Get work done as quickly as possible, respecting dependencies
 * Have every change reviewed and merged into main automatically
 * Show your humans the sprint's progress in a dashboard, so they can see the work moving
