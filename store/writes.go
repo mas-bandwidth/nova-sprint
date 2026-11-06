@@ -52,6 +52,10 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	}
 	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down"}
 	if ok {
+		n, err := w.tx.held(v.Name)
+		if n > v.Width || err != nil {
+			return when(err == nil, "row %s holds %d cards, more than width %d", v.Name, n, v.Width), err
+		}
 		next.State, next.Flaps = old.State, old.Flaps
 	}
 	return "", w.putRow(old, ok, next)
@@ -111,8 +115,8 @@ func cardTarget(wr Write) string {
 	return ""
 }
 
-// writeCard is the writes that set one field of an existing card; each
-// raises its gen by one.
+// writeCard is the writes that set one field of an existing card; putCard
+// sets the gen, once per op.
 func (w *work) writeCard(wr Write) (string, error) {
 	card, r, err := w.mustCard(cardTarget(wr))
 	if r != "" || err != nil {
@@ -145,7 +149,6 @@ func (w *work) writeCard(wr Write) (string, error) {
 	if r != "" || err != nil {
 		return r, err
 	}
-	next.Gen++
 	return "", w.putCard(card, true, next)
 }
 
