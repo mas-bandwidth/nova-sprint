@@ -1,5 +1,13 @@
 # Nova Sprint
 
+[![CI](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml/badge.svg?branch=v2)](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml?query=branch%3Av2)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/nova-sprint-banner-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="assets/nova-sprint-banner-light.png">
+  <img alt="Nova Sprint — five AI robots sprinting together down a track." src="assets/nova-sprint-banner-light.png">
+</picture>
+
 With **nova-sprint**, your AIs can:
 
 * Keep all the work in cards outside any model's context, so nothing is forgotten
