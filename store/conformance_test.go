@@ -48,6 +48,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"lesson columns":          lessonColumns,
 		"review and row reason":   reviewAndRowReason,
 		"finding":                 finding,
+		"red":                     red,
 		"int range":               intRange,
 		"nul bytes":               nulBytes,
 		"text and time":           textAndTime,
@@ -1033,6 +1034,57 @@ func finding(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the finding")
 }
 
+// Round 17: a producer records a red read verdict (SetCardRed) so a later
+// waiver can require it, and CardRed fences a plan on it. Every outcome:
+// accepted (in the receipt and the event's images), refused as changing
+// nothing, refused on a consumer and a sentinel naming the fix, refused on a
+// missing card, ErrInvalid for a malformed op, and rebuild equal to the
+// snapshot.
+func red(h *harness) {
+	h.seed()
+	h.ok(h.op("gate", nil, PutCard{Tier: "pro", Kind: "sentinel", ID: "t1", Stream: "s1"}))
+	assert.False(h.t, h.snap().Cards["c1"].Red, "a card is added not red")
+	h.ok(h.op("check", []Expect{CardRed{"c1", false}}))
+	h.refused(h.op("check", []Expect{CardRed{"c1", true}}), "card c1 is not red, expected red")
+	r := h.ok(h.op("red", []Expect{CardRed{"c1", false}, CardGen{"c1", 0}}, SetCardRed{"c1", true}))
+	assert.True(h.t, r.After.Cards["c1"].Red)
+	assert.Equal(h.t, 1, r.After.Cards["c1"].Gen, "the write moves gen")
+	ev := h.events()
+	last := ev[len(ev)-1]
+	require.True(h.t, last.Accepted)
+	assert.False(h.t, last.Before.Cards["c1"].Red, "the before-image")
+	assert.True(h.t, last.After.Cards["c1"].Red, "the after-image carries red")
+	h.ok(h.op("check", []Expect{CardRed{"c1", true}}))
+	h.refused(h.op("check", []Expect{CardRed{"c1", false}}), "card c1 is red, expected not red")
+	h.refused(h.op("check", []Expect{CardRed{"c9", true}}), "card c9 does not exist")
+	for _, c := range []struct {
+		w      Write
+		reason string
+	}{
+		{SetCardRed{"c1", true}, "card c1 already has the given red"},
+		{SetCardRed{"c9", true}, "card c9 does not exist"},
+		{SetCardRed{"u1", true}, "card u1 is of kind work; SetCardRed is only for a producer: record the verdict on its producer c1"},
+		{SetCardRed{"u2", false}, "card u2 is of kind read; SetCardRed is only for a producer: record the verdict on its producer c1"},
+		{SetCardRed{"t1", true}, "card t1 is of kind sentinel; SetCardRed is only for a producer, and a sentinel is never read"},
+	} {
+		h.refused(h.op("bad", nil, c.w), c.reason)
+	}
+	assert.Equal(h.t, 1, h.snap().Cards["c1"].Gen, "no refusal moved gen")
+	n := len(h.events())
+	for name, o := range map[string]Op{
+		"red twice":      h.op("x", nil, SetCardRed{"c1", false}, SetCardRed{"c1", true}),
+		"empty card":     h.op("x", nil, SetCardRed{"", true}),
+		"empty cond key": h.op("x", []Expect{CardRed{"", true}}),
+	} {
+		_, err := h.s.Apply(h.ctx, o)
+		assert.ErrorIs(h.t, err, ErrInvalid, name)
+	}
+	assert.Len(h.t, h.events(), n, "nothing invalid is logged")
+	h.ok(h.op("waive", []Expect{CardRed{"c1", true}}, SetCardRed{"c1", false}, SetCardState{"c1", "ready"}))
+	assert.False(h.t, h.snap().Cards["c1"].Red)
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry red")
+}
+
 func eventsPaging(h *harness) {
 	for i := range 5 {
 		h.ok(h.op("s", nil, PutStream{Name: fmt.Sprint("s", i)}))
@@ -1476,7 +1528,7 @@ func coldRead4(h *harness) {
 	conds := map[string]Expect{
 		"card gen": CardGen{"", 0}, "card state": CardState{"", "ready"}, "card holder": CardHolder{"", ""}, "needs landed": NeedsLanded{""},
 		"row is": RowIs{"", "up"}, "row gen": RowGen{"", 0}, "row held": RowHeld{"", false}, "stream held": StreamHeld{"", false},
-		"card absent": CardAbsent{""}, "judgement open": JudgementOpen{""},
+		"card absent": CardAbsent{""}, "judgement open": JudgementOpen{""}, "card red": CardRed{"", true},
 	}
 	n := len(h.events())
 	for name, e := range conds {

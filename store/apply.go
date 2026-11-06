@@ -194,6 +194,14 @@ func heldWord(held bool) string {
 	return "not held"
 }
 
+// redWord is a red flag in a reason: "red" or "not red".
+func redWord(red bool) string {
+	if red {
+		return "red"
+	}
+	return "not red"
+}
+
 // cond is one condition's entry in the one table of the conditions: the
 // check of its body (keys, ranges and closed sets, by the writes' rules) and
 // its test inside the transaction. The zero cond is a value outside the
@@ -218,6 +226,10 @@ func condOf(e Expect) cond {
 	case CardHolder: // holder "" is none, not an empty key
 		return cardCond(v.Card, func(c *checker) { c.name(v.Holder) }, func(k Card) string {
 			return when(k.Holder != v.Holder, "card %s has holder %s, expected %s", v.Card, noneIfEmpty(k.Holder), noneIfEmpty(v.Holder))
+		})
+	case CardRed:
+		return cardCond(v.Card, func(*checker) {}, func(k Card) string {
+			return when(k.Red != v.Red, "card %s is %s, expected %s", v.Card, redWord(k.Red), redWord(v.Red))
 		})
 	case NeedsLanded:
 		return cond{func(c *checker) { c.key("card", v.Card) }, func(w *work) (string, error) { return w.needsLanded(v.Card) }}

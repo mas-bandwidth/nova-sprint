@@ -117,6 +117,39 @@ func TestFunctionalMigrateTwice(t *testing.T) {
 	assert.Equal(t, emptySnapshot(1), s)
 }
 
+// Round 17: a store made by round 16's schema (its hash, no red column, a
+// card in it) is upgraded by Migrate: red is added false on every card with
+// its CHECK, the new hash is recorded, a second Migrate is a no-op, and the
+// new write works on the old card.
+func TestFunctionalMigrateRound16(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round16.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round16Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
+		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c1', 'producer', 'pro', 's1', 'waiting', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	var n int
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'cards' AND column_name = 'red'").Scan(&n))
+	require.Equal(t, 0, n, "a round-16 store has no red column")
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	var hash string
+	require.NoError(t, c.QueryRow(ctx, "SELECT hash FROM sprint.meta").Scan(&hash))
+	assert.Equal(t, schemaHash, hash, "the new hash is recorded")
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM pg_constraint WHERE conname = 'cards_red_check'").Scan(&n))
+	assert.Equal(t, 1, n, "the CHECK came with the column, once")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.False(t, h.snap().Cards["c1"].Red, "an old card reads not red")
+	h.ok(h.op("red", []Expect{CardRed{"c1", false}}, SetCardRed{"c1", true}))
+	assert.True(t, h.snap().Cards["c1"].Red)
+}
+
 func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	t.Parallel()
 	_, p, dsn := pgHarness(t)
@@ -716,6 +749,8 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.cards SET finding = 'x' WHERE id = 'u2'":  "cards_finding_check",
 		"UPDATE sprint.cards SET finding = 'x' WHERE id = 'u1'":  "cards_fixed_check",
 		"UPDATE sprint.cards SET finding = NULL WHERE id = 'c1'": `"finding"`,
+		"UPDATE sprint.cards SET red = true WHERE id = 'u1'":     "cards_red_check",
+		"UPDATE sprint.cards SET red = NULL WHERE id = 'c1'":     `"red"`,
 		"UPDATE sprint.rows SET reason = NULL":                   `"reason"`,
 		"UPDATE sprint.cards SET cost = -1 WHERE id = 'u1'":      "cards_cost_check",
 		"UPDATE sprint.events SET accepted = NOT accepted":       "events_append_only_check",

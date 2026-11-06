@@ -112,6 +112,7 @@ type Card struct {
 	Bounces  int      `json:"bounces"`    // on a producer: the returns that count toward blocked
 	Finding  string   `json:"finding"`    // on a producer: the last read's finding; on a work consumer: its producer's at cut, fixed
 	Review   int      `json:"review"`     // on a producer: its entries into review; on a read consumer: its producer's at cut, fixed
+	Red      bool     `json:"red"`        // on a producer: the last read's verdict was red (SetCardRed, round 17); false on every other kind
 	Cost     int64    `json:"cost"`       // on a consumer: what its run cost, in micro-dollars
 	Priced   bool     `json:"priced"`     // false when the run's route has no price
 	Priority string   `json:"priority"`   // a producer's level; normal on a consumer

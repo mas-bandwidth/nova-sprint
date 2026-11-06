@@ -140,6 +140,19 @@ func producersOnly(card Card) string {
 	return when(consumer(card.Kind), "card %s is of kind %s; priority is a producer's", card.ID, card.Kind)
 }
 
+// redOnProducer refuses a red write on any card but a producer, whatever
+// the value, naming the fix: a read's verdict is recorded on the producer it
+// read, and a sentinel is never read (round 17).
+func redOnProducer(k Card) string {
+	switch k.Kind {
+	case "producer":
+		return ""
+	case "sentinel":
+		return fmt.Sprintf("card %s is of kind sentinel; SetCardRed is only for a producer, and a sentinel is never read", k.ID)
+	}
+	return fmt.Sprintf("card %s is of kind %s; SetCardRed is only for a producer: record the verdict on its producer %s", k.ID, k.Kind, k.Of)
+}
+
 // consumer is true for the kinds a row is handed (work and read); the other
 // kinds (producer and sentinel) are bookkeeping and are never held.
 func consumer(kind string) bool { return kind == "work" || kind == "read" }
