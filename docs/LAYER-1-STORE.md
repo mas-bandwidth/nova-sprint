@@ -456,3 +456,8 @@ Recorded with round 10 (2026-11-06, the lock round): tier serving is the writes'
 Recorded with round 11 (2026-11-06, from the fourth cold read): reasons that depend on an order of names use byte order in both stores (PG `COLLATE "C"`), checked by the whole conformance suite on an ICU en-US database; the log and the policy versions refuse TRUNCATE, and a policy version is immutable but for `active` and never deleted; Migrate's foreign-schema check counts types and functions as well as relations; a value outside its closed set and an empty key are `ErrInvalid` in a write exactly as in a condition; every set write that would change nothing is refused (no gen moves); the schema hash strips a `--` comment only outside a single-quoted literal; each write is one entry in the write table (`specOf`).
 
 Recorded with round 12 (2026-11-06, from the fifth cold read): every name an op points at (a card's stream, needs and after) takes the key rule; tiers, needs and after are sets kept in canonical order in both stores; Migrate's foreign-schema check counts any object that depends on the namespace (`pg_depend`); integer conditions are range-checked like writes; `SetCardPriority{""}` is normal; each condition is one entry in the condition table (`condOf`); the schema hash also skips double-quoted identifiers, and scans dollar quotes as code (the stated limit).
+
+Round 13 (2026-11-06, from building layer 2): `cards.review integer` (a
+producer's count of entries into review; a read consumer's copy at cut, fixed)
+with `SetCardReview` (producer only, +1), and `rows.reason text` written by
+`SetRowHeld`. Schema version 2 still (no live store).
