@@ -191,7 +191,7 @@ def main():
     for name, (scenario, what) in REACH.items():
         if "\n" + name + " " not in base:
             die("reach check " + name + " is not defined in CardMachine.tla")
-        with open(os.path.join(HERE, "reach", name + ".cfg"), "w") as f:
+        with open(os.path.join(HERE, "reach", "Card" + name + ".cfg"), "w") as f:
             f.write("\\* Reachability on CardMachine: TLC must report %s violated (%s).\n" % (name, what)
                     + constants(scenario) + "INVARIANT %s\n" % name)
 
