@@ -7,10 +7,16 @@ package does with it.
 - `PG` is the store in PostgreSQL, schema `sprint` (`schema.sql`, embedded,
   applied by `Migrate`). Open it with `Open(ctx, $NOVA_PG_DSN, $NOVA_PG_PASSWORD)`.
   `Migrate` refuses a store at a schema version other than `SchemaVersion`,
-  naming both numbers, and is safe to run concurrently (it holds one advisory
-  lock). It also checks the shape: `sprint.meta` keeps the sha256 of the
-  schema text that made the store, and a store at version 2 whose hash
-  differs from this binary's (or has none) is refused naming both hashes:
+  naming both numbers and the fix ("run a binary built for schema version 1,
+  or recreate the store"), and is safe to run concurrently (it holds one
+  advisory lock). A schema `sprint` that holds any relation but no
+  `sprint.meta` is refused: "schema sprint exists and was not made by
+  nova-sprint; drop it or point NOVA_PG_DSN elsewhere" (an empty one is an
+  empty store). It also checks the shape: `sprint.meta` keeps the sha256 of
+  the schema text that made the store, with comments, indentation and blank
+  lines stripped (so a comment edit refuses nothing), and a store at version
+  2 whose hash differs from this binary's (or has none) is refused naming
+  both hashes:
   "this store was made by a different build of schema 2; recreate it (no live
   store is at v2 yet)". The binary knows schema version 2: version 1 plus the two card kinds
   (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
@@ -21,7 +27,9 @@ package does with it.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
-  receipts are PG's. Time comes from `Op.At`; it never reads a clock.
+  receipts are PG's. Time comes from `Op.At`; it never reads a clock. It
+  clones every table and the log on every op (O(n) per op, O(n^2) over a
+  long log): it is for tests only.
   `Fake.Drop(opID, landed)` makes the next Apply or Clear of that id report
   `ErrUnknown`, landed or not, so callers can test their replay path.
 
@@ -58,23 +66,32 @@ default: // accepted: r.Seq is the event, r.After the touched rows
 2. An op id applies at most once. A second Apply with a known id returns the
    receipt the first one got, whatever the second one asks for, an invalid
    body included: only a missing id is refused before the lookup.
-3. The unknown rule: Apply returns `ErrUnknown` only when the server did not
-   answer: a connection error (a FATAL or PANIC from the server, or a
-   connection exception, class 08, included), a timeout or a cancelled
-   context once the request was sent, or any error during or after COMMIT.
-   It never says nothing changed then. Every error the server itself
-   returned before COMMIT, whatever its SQLSTATE, is known: a transaction
-   with an error in it cannot commit, so nothing landed, and it comes back as
-   a plain error naming the SQLSTATE and the message. An invalid body is
-   known too (`ErrInvalid`).
+3. The unknown rule: Apply returns `ErrUnknown` only when ctx is done, when
+   the connection was lost after a request may have reached the server (a
+   FATAL or PANIC from the server, or a connection exception, class 08,
+   included; `pgconn.SafeToRetry` says when nothing was sent, and that is
+   known), or on any error during or after COMMIT. It never says nothing
+   changed then. Every other error inside the transaction, before COMMIT, is
+   known and comes back as a plain error, because the transaction rolls back
+   and nothing landed: any error the server returned (named with its
+   SQLSTATE and message), and any the client raised (a scan into a column
+   whose type changed, an encode, a stored receipt that does not decode, a
+   gen, epoch or policy version at the top of its column, named). An invalid
+   body is known too (`ErrInvalid`).
 4. A card is in exactly one state and has at most one holder. The schema holds
    this (one `NOT NULL` `state` column with a CHECK, one `holder` column with
    a foreign key to a row of the same epoch), not Go. The schema also holds
    the kinds: a producer or sentinel has no `of` and no holder, a consumer always has one, a sentinel
    no brief, a consumer has an `of` naming a producer of the same epoch (a
-   foreign key and the `cards_fixed` trigger) and no needs, after or priority
-   of its own; the trigger also refuses any UPDATE that changes a card's
-   `kind`, `of` or `stream`. A consumer's attempt is fixed at add by the
+   foreign key and the `cards_fixed` trigger) in its own stream and of its
+   own tier, and no needs, after or priority of its own; the trigger also
+   refuses any UPDATE that changes a card's `id`, `epoch`, `kind`, `of`,
+   `stream`, `holder` or `tier`, and a second trigger refuses one that
+   changes a stream's, row's or judgement's key or epoch. The log is
+   append-only (a trigger refuses UPDATE and DELETE on `sprint.events`), every
+   count (pos, width, flaps, gen, attempt, score, pr, bounces, cost, a
+   cursor's seq) is 0 or more by a CHECK, and a judgement closes no earlier
+   than it opened. A consumer's attempt is fixed at add by the
    store alone (the schema cannot tell the store's writes from a caller's). `of` is the
    one column besides `holder` that is NULL for "none" (the foreign key needs
    it); the Go side reads both as `""`.
@@ -102,10 +119,14 @@ against; required, epochs start at 1), `Actor`, `Kind` (a label for the log),
 Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
 (every need of the card, read from the card inside the transaction, is
 landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`,
-`JudgementOpen`, `AtSeq` (the last event's seq is N: nothing changed since a
-snapshot). There is no width condition and no tier condition: the writes are
-the checks (the state write into working for width; put card, the state
-write into ready or working, and the row writes for tiers).
+`JudgementOpen`, `AtSeq` (the last event's seq is N: nothing at all entered
+the store since a snapshot at N, a refused op included, since a refusal is an
+event and moves seq too). A `CardState` or `RowIs` naming a state outside its
+set can never hold, so it is `ErrInvalid` ("card state \"flying\" is not one
+of ..."), not a refusal. There is no width condition and no tier condition:
+the writes are the checks (the state write into working for width; put
+card, the state write into ready or working, and the row writes for
+tiers).
 
 Cards are of two kinds. A `producer` is the work itself (it has needs, a
 branch, a head, a PR, a bounce count and a priority, and lands); it never has
@@ -165,17 +186,22 @@ stream or row), question, command (the verb that answers it), group key
 opens one (refused when it exists; opened at the op's `At`);
 `AnswerJudgement{ID, Answer, Actor}` and `ExpireJudgement{ID, Reason}` close
 an open one at the op's `At` (the reason is kept as the answer; an empty
-actor is the op's), refused on any other state. A judgement has no gen:
+actor is the op's), refused unless it is open, and when the op's `At` is
+before it opened ("judgement j1 opened at T1, cannot close at T0"). A judgement has no gen:
 fence a plan on `JudgementOpen`. It belongs to the epoch, so a clear drops
 it; the images and `Rebuild` carry it, and `Snapshot.Judgements` lists the
 epoch's.
 
 Cursors (`sprint.cursors`). A subscriber's place in the event log (a row's
 push cursor, the dashboard's feed), so a restart resumes where it stopped:
-`SetCursor{Name, Seq}` inserts it when absent and is refused below the
-stored seq ("cursor push-w1 is at 42, cannot move back to 7"). It belongs to
-the epoch, so a clear drops it; the images and `Rebuild` carry it, and
-`Snapshot.Cursors` maps each name to its seq. Every event also records
+`SetCursor{Name, Seq}` (the last seq it read) inserts it when absent (an
+absent cursor reads as 0) and is refused below the stored seq ("cursor
+push-w1 is at 42, cannot move back to 7") and above the last event's seq
+before the op ("cursor push-w1 cannot pass the log at 42"). Seq is global,
+so cursors are too: a clear carries them, and after a clear a subscriber
+resumes from its cursor, reading the clear's event and the new epoch's
+after it. The images and `Rebuild` carry them, and `Snapshot.Cursors` maps
+each name to its seq. Every event also records
 `policy`, the active policy version when its op was checked (0 when none);
 `Rebuild` ignores it.
 
@@ -193,8 +219,8 @@ needs, after, brief, holder, priority, tier, paths, done when, prose, and a
 consumer's attempt; the card must not exist; it starts
 waiting, gen 0, attempt 0, result `""`; a producer or sentinel is refused an
 `of` and a holder, a sentinel a brief, a consumer needs, after, a priority
-other than normal, a missing holder, a tier other than its producer's and
-an `of` that is missing or is not a producer; the
+other than normal, a missing holder, a stream or tier other than its
+producer's and an `of` that is missing or is not a producer; the
 holder row must exist and serve its tier), `SetCardState` (a consumer moving into ready or working is refused when its row does not serve its tier; into `working` also
 when its row already holds as many working cards as its width),
 `SetCardPaths`, `SetCardDoneWhen`, `SetCardProse`, `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
@@ -214,8 +240,10 @@ gives it the next one, and the caller learns it from the receipt,
 `r.After.Policies` (keyed by version; the new version is the one not in
 the snapshot it planned from). The working count is taken at the moment of
 the write and excludes the card written, so two takes onto a width-one row in
-one op are refused on the second and nothing lands; re-setting the same
-state is a no-op. A width below the working cards the
+one op are refused on the second and nothing lands. Setting a card to the
+state it is in is refused ("card u1 is already working"): nothing moves
+without a change, so no gen rises and no accepted event logs for nothing. A
+width below the working cards the
 row holds is refused; width 0 is a row that takes nothing into working (it
 may still hold queued cards). An op that writes a card or a row raises its
 gen by one, however many of its writes touch it (gen counts the operations
@@ -239,11 +267,20 @@ The value limits, each `ErrInvalid` from both stores, naming the field:
   valid UTF-8 with no NUL byte;
 - `At` is set and falls in the years 0..9999.
 
+A refusal reason, or an `ErrInvalid` message, quotes at most `MaxName`
+bytes of a value the caller sent, then `...`. A gen, the epoch or a policy
+version at 2147483647 cannot rise: the op fails with a plain error naming it
+("store: card c1 gen is 2147483647, the most its column holds; it cannot
+rise"), nothing lands, in both stores.
+
 `Clear` takes an op of kind `clear` with no writes and at most an `AtSeq`
 condition. It opens epoch n + 1 and carries every row into it (same name,
 kind, width, session and held; state down, no flaps, gen raised by one);
-streams and cards stay behind in the old epoch, policy is kept. The event
-carries the epoch it closed; the receipt's `NewEpoch` is the one it opened.
+streams, cards and judgements stay behind in the old epoch, policy and
+cursors are kept. The event carries the epoch it closed; the receipt's
+`NewEpoch` is the one it opened. Like Apply, Clear with an op id already
+used returns that op's stored receipt and does nothing: an earlier Apply's
+receipt (`NewEpoch` 0) when the id was an Apply's.
 
 ## The four outcomes of Apply (and Clear)
 
@@ -255,11 +292,13 @@ carries the epoch it closed; the receipt's `NewEpoch` is the one it opened.
 | an error wrapping `ErrUnknown` | The server did not answer: the connection failed, ctx timed out or was cancelled once the request was sent, or an error came during or after COMMIT. Nothing is known. | `Replay(opID)`: if it comes back, that is the receipt; if not, `Apply` again with the same id. Exit 2 at the CLI. |
 
 Any other error means nothing happened, and `Replay` is not needed: the
-request did not reach the store, or the server returned an error before
+request did not reach the store, the server returned an error before
 COMMIT, whatever its SQLSTATE (a CHECK the rules do not know, a value too
-large for an index, a column that is gone, ...). The transaction is rolled
-back, nothing is logged, and the error names the SQLSTATE, the constraint,
-column or table, and the server's message.
+large for an index, a column that is gone, a lock timeout, ...), or the
+client failed inside the transaction (a scan, an encode, a receipt that does
+not decode, a counter at the top of its column). The transaction is rolled
+back, nothing is logged, and the error names the cause: for the server, the
+SQLSTATE, the constraint, column or table, and its message.
 
 `Events(afterSeq, max)` is exclusive of `afterSeq`, ascending, and returns at
 most `MaxEvents` (1000) events; a larger `max`, or `max <= 0`, is capped
@@ -282,4 +321,5 @@ there (docs/TESTING.md). `RunConformance` (conformance_test.go) is
 the same set of scenarios run against both, so Fake and PG cannot drift.
 `PG.fault` is a fault-injection seam the functional tests set to lose a reply
 after COMMIT (guarantee 3) or to panic with the writer lock held; it is nil
-in the binary.
+in the binary. The functional tests that corrupt an event turn the log's
+append-only trigger off for the one statement (`unguardLog`).

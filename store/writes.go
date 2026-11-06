@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // write performs one write, or returns the reason it is refused.
@@ -35,10 +36,11 @@ func (w *work) write(wr Write) (string, error) {
 	case SetCursor:
 		return w.writeCursor(v)
 	}
-	if _, _, _, ok := rowSet(wr); ok {
-		return w.writeRow(wr)
+	sp, _ := specOf(wr)
+	if sp.row != nil {
+		return w.writeRow(wr, sp.fields[0].key, sp.row)
 	}
-	return w.writeCard(wr)
+	return w.writeCard(wr, sp.fields[0].key, sp.card)
 }
 
 func (w *work) writePutStream(v PutStream) (string, error) {
@@ -64,7 +66,7 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down", Tiers: v.Tiers, Model: v.Model, Harness: v.Harness}
+	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down", Tiers: needs(v.Tiers), Model: v.Model, Harness: v.Harness}
 	if ok {
 		if r, err := w.widthFits(v.Name, v.Width); r != "" || err != nil {
 			return r, err
@@ -111,9 +113,8 @@ func workingCards(n int) string {
 	return fmt.Sprintf("%d working cards", n)
 }
 
-// writeRow is the set-row writes (rowSet).
-func (w *work) writeRow(wr Write) (string, error) {
-	name, _, set, _ := rowSet(wr)
+// writeRow is the set-row writes (specOf): set changes row name.
+func (w *work) writeRow(wr Write, name string, set func(*Row)) (string, error) {
 	switch v := wr.(type) {
 	case SetRowState:
 		if r := oneOf("row state", v.State, RowStates); r != "" {
@@ -143,19 +144,18 @@ func (w *work) writeRow(wr Write) (string, error) {
 	return "", w.putRow(row, true, next)
 }
 
-// writeCard is the set-card writes (cardSet) on an existing card; putCard
-// sets the gen, once per op. A kind-specific write is refused on the wrong
-// kind before its value is looked at, a no-op value included, so it never
-// bumps a gen or logs an accepted event.
-func (w *work) writeCard(wr Write) (string, error) {
-	id, _, set, _ := cardSet(wr)
+// writeCard is the set-card writes (specOf) on an existing card: set changes
+// card id; putCard sets the gen, once per op. A kind-specific write is
+// refused on the wrong kind before its value is looked at, a no-op value
+// included, so it never bumps a gen or logs an accepted event.
+func (w *work) writeCard(wr Write, id string, set func(*Card)) (string, error) {
 	card, r, err := w.mustCard(id)
 	if r != "" || err != nil {
 		return r, err
 	}
 	switch v := wr.(type) {
 	case SetCardState:
-		r = oneOf("card state", v.State, CardStates)
+		r = cmp.Or(oneOf("card state", v.State, CardStates), when(card.State == v.State, "card %s is already %s", id, v.State))
 		if r == "" && card.Holder != "" && !live(card.State) && live(v.State) {
 			r, err = w.rowServes(card)
 		}
@@ -163,11 +163,11 @@ func (w *work) writeCard(wr Write) (string, error) {
 			r, err = w.rowFits(card.Holder)
 		}
 	case SetCardPaths:
-		r = onlyFor(card, "SetCardPaths", "a producer or sentinel (a consumer's copy is set at add)", !consumer(card.Kind))
+		r = onlyFor(card, "SetCardPaths", copied, !consumer(card.Kind))
 	case SetCardDoneWhen:
-		r = onlyFor(card, "SetCardDoneWhen", "a producer or sentinel (a consumer's copy is set at add)", !consumer(card.Kind))
+		r = onlyFor(card, "SetCardDoneWhen", copied, !consumer(card.Kind))
 	case SetCardProse:
-		r = onlyFor(card, "SetCardProse", "a producer or sentinel (a consumer's copy is set at add)", !consumer(card.Kind))
+		r = onlyFor(card, "SetCardProse", copied, !consumer(card.Kind))
 	case SetCardResult:
 		r = cmp.Or(onlyFor(card, "SetCardResult", "a consumer", consumer(card.Kind)), oneOf("card result", v.Result, CardResults))
 	case SetCardPriorHead:
@@ -202,6 +202,10 @@ func (w *work) writeCard(wr Write) (string, error) {
 func producersOnly(card Card) string {
 	return when(consumer(card.Kind), "card %s is of kind %s; priority is a producer's", card.ID, card.Kind)
 }
+
+// copied is the kinds whose contract fields are set after add: a consumer
+// carries the copies it was added with.
+const copied = "a producer or sentinel (a consumer's copy is set at add)"
 
 // onlyFor refuses a write on a card whose kind does not carry the column,
 // naming the card's kind and the write.
@@ -301,8 +305,8 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if v.Kind == "sentinel" && v.Brief != "" {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
-	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: v.Needs, After: v.After, Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
-		Holder: v.Holder, Tier: v.Tier, Paths: v.Paths, DoneWhen: v.DoneWhen, Prose: v.Prose}
+	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: needs(v.Needs), After: needs(v.After), Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
+		Holder: v.Holder, Tier: v.Tier, Paths: needs(v.Paths), DoneWhen: needs(v.DoneWhen), Prose: v.Prose}
 	if r := cmp.Or(oneOf("card priority", c.Priority, Priorities), oneOf("card tier", c.Tier, Tiers)); r != "" {
 		return r, nil
 	}
@@ -317,10 +321,10 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if r, err := w.checkOf(c); r != "" || err != nil {
 		return r, err
 	}
-	if r, err := w.checkList(c, needList, v.Needs); r != "" || err != nil {
+	if r, err := w.checkList(c, needList, c.Needs); r != "" || err != nil {
 		return r, err
 	}
-	if r, err := w.checkList(c, afterList, v.After); r != "" || err != nil {
+	if r, err := w.checkList(c, afterList, c.After); r != "" || err != nil {
 		return r, err
 	}
 	if r, err := w.checkHolder(c); r != "" || err != nil {
@@ -330,7 +334,8 @@ func (w *work) addCard(v PutCard) (string, error) {
 }
 
 // checkOf refuses a producer or sentinel that names an of, and a consumer
-// whose of is not a producer of the epoch (a sentinel has no consumers).
+// whose of is not a producer of the epoch (a sentinel has no consumers), or
+// whose stream or tier is not its producer's.
 func (w *work) checkOf(c Card) (string, error) {
 	if !consumer(c.Kind) {
 		return when(c.Of != "", "card %s is a %s; a %s has no of", c.ID, c.Kind, c.Kind), nil
@@ -348,7 +353,8 @@ func (w *work) checkOf(c Card) (string, error) {
 	if p.Kind != "producer" {
 		return fmt.Sprintf("card %s is a consumer of %s, which is not a producer", c.ID, c.Of), nil
 	}
-	return when(p.Tier != c.Tier, "card %s is tier %s, its producer %s is tier %s; a consumer takes its producer's tier", c.ID, c.Tier, c.Of, p.Tier), nil
+	return cmp.Or(when(p.Stream != c.Stream, "card %s is in stream %s, its producer %s is in stream %s; a consumer takes its producer's stream", c.ID, c.Stream, c.Of, p.Stream),
+		when(p.Tier != c.Tier, "card %s is tier %s, its producer %s is tier %s; a consumer takes its producer's tier", c.ID, c.Tier, c.Of, p.Tier)), nil
 }
 
 func (w *work) openJudgement(v PutJudgement) (string, error) {
@@ -358,11 +364,12 @@ func (w *work) openJudgement(v PutJudgement) (string, error) {
 	if _, ok, err := w.tx.judgement(v.ID); ok || err != nil {
 		return when(err == nil, "judgement %s exists", v.ID), err
 	}
-	j := Judgement{ID: v.ID, Kind: v.Kind, About: v.About, Question: v.Question, Command: v.Command, Group: v.Group, State: "open", Deadline: v.Deadline, OpenedAt: w.op.At}
+	j := Judgement{ID: v.ID, Kind: v.Kind, About: v.About, Question: v.Question, Command: v.Command, Group: v.Group, State: "open", Deadline: at(v.Deadline), OpenedAt: w.op.At}
 	return "", w.putJudgement(Judgement{}, false, j)
 }
 
-// closeJudgement moves an open judgement to answered or expired.
+// closeJudgement moves an open judgement to answered or expired, at the op's
+// At, never before it opened.
 func (w *work) closeJudgement(id, state, answer, actor string) (string, error) {
 	j, r, err := w.mustJudgement(id)
 	if r != "" || err != nil {
@@ -370,6 +377,9 @@ func (w *work) closeJudgement(id, state, answer, actor string) (string, error) {
 	}
 	if j.State != "open" {
 		return fmt.Sprintf("judgement %s is %s; only an open judgement can be %s", id, j.State, state), nil
+	}
+	if w.op.At.Before(j.OpenedAt) {
+		return fmt.Sprintf("judgement %s opened at %s, cannot close at %s", id, j.OpenedAt.Format(time.RFC3339Nano), w.op.At.Format(time.RFC3339Nano)), nil
 	}
 	next := j
 	next.State, next.Answer, next.Actor, next.ClosedAt = state, answer, actor, w.op.At
@@ -381,11 +391,17 @@ func (w *work) writeCursor(v SetCursor) (string, error) {
 		return "a cursor needs a name", nil
 	}
 	seq, ok, err := w.tx.cursor(v.Name)
+	if err != nil {
+		return "", err
+	}
+	last, err := w.tx.lastSeq()
 	switch {
 	case err != nil:
 		return "", err
-	case ok && v.Seq < seq:
+	case v.Seq < seq:
 		return fmt.Sprintf("cursor %s is at %d, cannot move back to %d", v.Name, seq, v.Seq), nil
+	case v.Seq > last:
+		return fmt.Sprintf("cursor %s cannot pass the log at %d", v.Name, last), nil
 	}
 	return "", w.putCursor(v.Name, seq, ok, v.Seq)
 }
@@ -399,7 +415,11 @@ func (w *work) writePolicy(wr Write) (string, error) {
 		if r := oneOf("policy kind", v.Kind, PolicyKinds); r != "" {
 			return r, nil
 		}
-		p := PolicyVersion{Version: last + 1, Kind: v.Kind, Name: v.Name, Body: v.Body, Actor: w.op.Actor, At: w.op.At}
+		version, err := next("policy version", last)
+		if err != nil {
+			return "", err
+		}
+		p := PolicyVersion{Version: version, Kind: v.Kind, Name: v.Name, Body: v.Body, Actor: w.op.Actor, At: w.op.At}
 		return "", w.putPolicy(PolicyVersion{}, false, p)
 	}
 	v := wr.(SetActivePolicy)

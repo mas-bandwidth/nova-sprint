@@ -115,13 +115,17 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   (promise 1), the dashboard's "needs you" column reads this table (promise
   5), and the coordinator is told once per group (promise 6). Writes: put
   judgement; answer judgement (state answered, answer, actor); expire
-  judgement (state expired, reason in answer). Condition: judgement `J` is
-  open. Layer 3 opens them, layer 6 answers them.
-- `sprint.cursors`: `name text`, `seq bigint`, `epoch integer`. Primary key
-  `(epoch, name)`. A subscriber's place in the event log (the run loop's push
-  cursor per row, the dashboard's feed cursor), saved so a restart resumes
-  where it stopped and never pushes twice or skips (promise 6). Write: set
-  cursor (refused below the cursor's current value).
+  judgement (state expired, reason in answer); put is refused when it
+  exists, and closing is refused unless it is open and when the op's time is
+  before it opened ("judgement J opened at T1, cannot close at T0").
+  Condition: judgement `J` is open. Layer 3 opens them, layer 6 answers them.
+- `sprint.cursors`: `name text` (primary key), `seq bigint`. A subscriber's
+  place in the event log (the run loop's push cursor per row, the
+  dashboard's feed cursor), saved so a restart resumes where it stopped and
+  never pushes twice or skips (promise 6). Global, as seq is: a clear carries
+  it, and a subscriber resumes where it was. Write: set cursor (refused below
+  the cursor's current value, and above the last event's seq: "cursor X
+  cannot pass the log at 42"); an absent cursor reads as 0.
 
 Two columns for the tier (Glenn 2026-11-06: "flash, pro, heavy, frontier ...
 making sure the right models did the work"): on cards, `tier text` (one of
@@ -257,16 +261,18 @@ one slow call never stalls every writer (LESSONS 3.23).
 3. `ErrInvalid`: the op never entered the store (no id, no epoch, a write type
    outside the closed set, two writes to one field). Nothing is logged. A
    caller bug.
-4. `ErrUnknown`: the server did not answer, so the outcome is not known: a
-   connection error, a timeout or a cancelled context after the request was
-   sent, or any error during or after COMMIT. The caller calls
-   `Replay(opID)`: if the op landed, its receipt comes back; if not, the
-   caller may `Apply` again with the same id. Exit code 2 at the CLI. An
-   error the server itself returned before COMMIT, whatever its SQLSTATE,
-   means the transaction rolled back and the outcome is known: it is a plain
-   error naming the SQLSTATE and the message, never `ErrUnknown` (the second
-   cold read found a 3 KB id and a missing column reported as unknown, which
-   sends a caller into a replay loop that can never end).
+4. `ErrUnknown`: the outcome is not known: the context is done, the
+   connection was lost after a request may have reached the server, or any
+   error came during or after COMMIT. The caller calls `Replay(opID)`: if the
+   op landed, its receipt comes back; if not, the caller may `Apply` again
+   with the same id. Exit code 2 at the CLI. Every other error inside the
+   transaction, before COMMIT, means it rolled back and the outcome is known:
+   an error the server returned, whatever its SQLSTATE, or one the client
+   raised (a scan, an encode, a stored receipt that does not decode, a
+   counter at the top of its column). It is a plain error naming the cause,
+   never `ErrUnknown` (the second cold read found a 3 KB id and a missing
+   column reported as unknown, the third a scan error and a full gen, each of
+   which sends a caller into a replay loop that can never end).
 
 Ids and names (op id, card id, row and stream names, actor, kind label,
 policy name) are at most 128 bytes, `ErrInvalid` above, so no index can
@@ -412,3 +418,5 @@ snapshot, replay, fake). An estimate from the operation count, not a measure.
   start under a shell with no valid locale.
 
 Recorded with round 9 (2026-11-06): `events.policy` is the version active when the op was checked, before its writes, so the op that activates a policy records the version before it; opening and answering a judgement in one op is `ErrInvalid` (two writes to one state); `tier` on a card is fixed at add (in the trigger), a consumer's equal to its producer's; the schema hash in `sprint.meta` is computed from `schema.sql` at build.
+
+Recorded with round 10 (2026-11-06, the lock round): tier serving is the writes' own check (put card, a move into ready or working, and the row writes; no condition); a consumer's stream is its producer's; cursors are global and carried by a clear; the unknown rule is the one above; a gen, epoch or policy version that would pass 2147483647 is a plain error naming it, in both stores; Migrate refuses a schema `sprint` it did not make; the schema hash ignores comments, indentation and blank lines; a condition on a state outside its set is `ErrInvalid`; setting a card to the state it is in is refused; the triggers fix every key and epoch and keep the log append-only, and every count is 0 or more by a CHECK.

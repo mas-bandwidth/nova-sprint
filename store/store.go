@@ -216,7 +216,8 @@ type Event struct {
 }
 
 // Snapshot is the whole current epoch: the last event seq when it was read,
-// the epoch, the active policy version (0 when none) and the rows.
+// the epoch, the active policy version (0 when none) and the rows; Cursors
+// are every cursor, whatever epoch set it (an absent one reads as 0).
 type Snapshot struct {
 	Seq        int64
 	Epoch      int
@@ -233,9 +234,10 @@ func emptySnapshot(epoch int) Snapshot {
 }
 
 // Rebuild folds events, in seq order from the first, into the snapshot they
-// produce: a clear empties the streams, cards, rows, judgements and cursors, every other accepted
-// event lays its after-images over them, policy included. Guarantee 5 is
-// Rebuild(every event) == Snapshot().
+// produce: a clear empties the streams, cards, rows and judgements (its
+// after-image carries the rows) and keeps the cursors, which are global as
+// seq is; every other accepted event lays its after-images over them,
+// policy included. Guarantee 5 is Rebuild(every event) == Snapshot().
 func Rebuild(events []Event) Snapshot {
 	s := emptySnapshot(1)
 	policies := map[int]PolicyVersion{}
@@ -245,9 +247,9 @@ func Rebuild(events []Event) Snapshot {
 			continue
 		}
 		if e.After.Epoch != 0 {
-			seq := s.Seq
+			seq, cursors := s.Seq, s.Cursors
 			s = emptySnapshot(e.After.Epoch)
-			s.Seq = seq
+			s.Seq, s.Cursors = seq, cursors
 		}
 		overlay(s.Streams, e.After.Streams)
 		overlay(s.Cards, e.After.Cards)

@@ -3,6 +3,7 @@ package store
 import (
 	"cmp"
 	"fmt"
+	"math"
 )
 
 // txn is one transaction as the shared rules see it, run with the writer
@@ -46,7 +47,7 @@ func applyOp(do writer, op Op) (Receipt, error) {
 	if err := checkID(op); err != nil {
 		return Receipt{}, err
 	}
-	op = normalize(op)
+	op.At = at(op.At)
 	return do(op, check, func(tx txn, epoch int) (string, *State, *State, error) { return run(tx, epoch, op) })
 }
 
@@ -55,7 +56,7 @@ func clearOp(do writer, op Op) (Receipt, error) {
 	if err := checkID(op); err != nil {
 		return Receipt{}, err
 	}
-	op = normalize(op)
+	op.At = at(op.At)
 	op.Kind = cmp.Or(op.Kind, "clear")
 	return do(op, checkClear, func(tx txn, epoch int) (string, *State, *State, error) { return runClear(tx, epoch, op) })
 }
@@ -123,7 +124,7 @@ type work struct {
 func run(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	w := &work{tx: tx, op: op}
 	if op.Epoch != epoch {
-		return fmt.Sprintf("the op is for epoch %d, the store is at epoch %d", op.Epoch, epoch), nil, nil, nil
+		return fmt.Sprintf("the op is for epoch %d, the store is at epoch %d: take a new snapshot", op.Epoch, epoch), nil, nil, nil
 	}
 	for _, e := range op.Expect {
 		if r, err := w.expect(e); r != "" || err != nil {
@@ -150,12 +151,19 @@ func runClear(tx txn, epoch int, op Op) (string, *State, *State, error) {
 	if err != nil {
 		return "", nil, nil, err
 	}
+	n, err := next("epoch", epoch)
+	if err != nil {
+		return "", nil, nil, err
+	}
 	if err := tx.open(); err != nil {
 		return "", nil, nil, err
 	}
-	after := &State{Epoch: epoch + 1}
+	after := &State{Epoch: n}
 	for _, row := range rows {
-		row.State, row.Flaps, row.Gen = "down", 0, row.Gen+1
+		row.State, row.Flaps = "down", 0
+		if row.Gen, err = next("row "+row.Name+" gen", row.Gen); err != nil {
+			return "", nil, nil, err
+		}
 		if err := tx.putRow(row); err != nil {
 			return "", nil, nil, err
 		}
@@ -165,6 +173,16 @@ func runClear(tx txn, epoch int, op Op) (string, *State, *State, error) {
 		after.Rows[row.Name] = row
 	}
 	return "", nil, after, nil
+}
+
+// next is n + 1 for a counter kept in a PostgreSQL integer (a gen, the
+// epoch, a policy version), or a plain error naming it when n + 1 would not
+// fit: the op fails, nothing lands, and the store says which counter is full.
+func next(what string, n int) (int, error) {
+	if n >= math.MaxInt32 {
+		return 0, fmt.Errorf("store: %s is %d, the most its column holds; it cannot rise", what, n)
+	}
+	return n + 1, nil
 }
 
 func noneIfEmpty(holder string) string { return cmp.Or(holder, "none") }
@@ -283,7 +301,10 @@ func (w *work) putCard(old Card, existed bool, c Card) error {
 	w.before.Cards, w.after.Cards = touch(w.before.Cards, w.after.Cards, c.ID, old, existed, c)
 	c.Gen = 0
 	if b, ok := w.before.Cards[c.ID]; ok {
-		c.Gen = b.Gen + 1
+		var err error
+		if c.Gen, err = next("card "+c.ID+" gen", b.Gen); err != nil {
+			return err
+		}
 	}
 	w.after.Cards[c.ID] = c
 	return w.tx.putCard(c)
@@ -294,7 +315,10 @@ func (w *work) putRow(old Row, existed bool, r Row) error {
 	w.before.Rows, w.after.Rows = touch(w.before.Rows, w.after.Rows, r.Name, old, existed, r)
 	r.Gen = 0
 	if b, ok := w.before.Rows[r.Name]; ok {
-		r.Gen = b.Gen + 1
+		var err error
+		if r.Gen, err = next("row "+r.Name+" gen", b.Gen); err != nil {
+			return err
+		}
 	}
 	w.after.Rows[r.Name] = r
 	return w.tx.putRow(r)

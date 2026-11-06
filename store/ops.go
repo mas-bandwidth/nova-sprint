@@ -1,6 +1,9 @@
 package store
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, NeedsLanded,
 // RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen, AtSeq. There
@@ -93,7 +96,8 @@ type SetStreamHeld struct {
 // same epoch, once. Every card names its Tier (flash, pro, heavy, frontier).
 // A producer or sentinel has no Of and no Holder; a sentinel has no Brief. A
 // consumer (work or read) names its producer in Of (a producer of the same
-// epoch), its producer's tier, and its Holder (a row of the same epoch), has
+// epoch), its producer's tier and stream, and its Holder (a row of the same
+// epoch that serves its tier), has
 // no needs and no after, and carries the Attempt it belongs to (a producer's
 // starts at 0); its paths, done-when and prose are copies set here. Kind, of,
 // stream, holder and tier never change after. Prior head, bounces, cost and
@@ -113,10 +117,12 @@ type PutCard struct {
 	Prose                string
 }
 
-// SetCardState sets a card's state. A consumer moved into working counts
-// against its holder's width: refused when the row already holds as many
-// working cards as its width, counted at the moment of the write (earlier
-// writes of the op included). No other state counts. There is no holder
+// SetCardState sets a card's state; refused when the card is already in it,
+// so nothing moves without a change. A consumer moved into ready or working
+// is refused when its holder does not serve its tier, and one moved into
+// working counts against its holder's width: refused when the row already
+// holds as many working cards as its width, counted at the moment of the
+// write (earlier writes of the op included). No other state counts. There is no holder
 // write: a consumer's holder is fixed at add (Johnny's review, 2026-11-06:
 // a working card could drop its holder and keep the slot).
 type SetCardState struct{ Card, State string }
@@ -228,7 +234,9 @@ type PutRow struct {
 	Harness    string
 }
 
-// SetRowTiers replaces the tiers a row serves, under the rules of PutRow.
+// SetRowTiers replaces the tiers a row serves, under the rules of PutRow;
+// refused when it drops a tier a live (ready or working) consumer held by
+// the row needs.
 type SetRowTiers struct {
 	Row   string
 	Tiers []string
@@ -246,16 +254,20 @@ type PutJudgement struct {
 }
 
 // AnswerJudgement answers an open judgement: state answered, the answer, the
-// actor ("" is the op's actor), closed at the op's At. Refused unless open.
+// actor ("" is the op's actor), closed at the op's At. Refused unless open,
+// and when the op's At is before the judgement opened.
 type AnswerJudgement struct{ ID, Answer, Actor string }
 
 // ExpireJudgement expires an open judgement: state expired, the reason kept
-// as its answer, the op's actor, closed at the op's At. Refused unless open.
+// as its answer, the op's actor, closed at the op's At. Refused as
+// AnswerJudgement is.
 type ExpireJudgement struct{ ID, Reason string }
 
-// SetCursor sets a subscriber's place in the event log, inserting it when
-// absent; refused below its stored seq. It belongs to the epoch: a clear
-// does not carry it.
+// SetCursor sets a subscriber's place in the event log (the last seq it has
+// read), inserting it when absent (an absent cursor reads as 0); refused
+// below its stored seq, and above the last event's seq before the op. Seq is
+// global, so cursors are too: a clear carries them, and a subscriber resumes
+// where it was.
 type SetCursor struct {
 	Name string
 	Seq  int64
@@ -335,144 +347,131 @@ func (SetCursor) isWrite()        {}
 // invalid.
 type field struct{ table, key, name string }
 
-// fields are the fields a write sets; ok is false for a write outside the set.
-func fields(w Write) (fs []field, ok bool) {
-	if id, column, _, ok := cardSet(w); ok {
-		return []field{{"card", id, column}}, true
-	}
-	if name, column, _, ok := rowSet(w); ok {
-		return []field{{"row", name, column}}, true
-	}
-	of := func(table, key string, names ...string) []field {
-		for _, n := range names {
-			fs = append(fs, field{table, key, n})
-		}
-		return fs
-	}
+func (f field) String() string {
+	return strings.Join(strings.Fields(f.table+" "+f.key), " ") + " field " + f.name
+}
+
+// spec is one write as the rules see it: the fields it sets, the check of
+// its body (names, text, ranges), and for a set-card or set-row write the
+// change it makes.
+type spec struct {
+	fields []field
+	check  func(c *checker)
+	card   func(*Card) // a set-card write
+	row    func(*Row)  // a set-row write
+}
+
+// specOf is the one table of the writes, keyed by type; ok is false for a
+// value outside the closed set (a pointer or an embedding type included).
+func specOf(w Write) (s spec, ok bool) {
 	switch v := w.(type) {
 	case PutStream:
-		return of("stream", v.Name, "repo", "base", "pos"), true
+		return put("stream", v.Name, func(c *checker) { c.text(v.Repo, v.Base).num("pos", v.Pos) }, "repo", "base", "pos"), true
 	case SetStreamHeld:
-		return of("stream", v.Stream, "held"), true
+		return put("stream", v.Stream, func(*checker) {}, "held"), true
 	case PutCard:
-		return of("card", v.ID, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose"), true
+		return put("card", v.ID, func(c *checker) {
+			c.name(v.Of, v.Stream, v.Holder).name(v.Needs...).name(v.After...).text(v.Kind, v.Brief, v.Priority, v.Tier, v.Prose).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("score", v.Score)
+		}, "kind", "of", "stream", "attempt", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose"), true
 	case PutRow:
-		return of("row", v.Name, "kind", "width", "session", "tiers", "labels"), true
+		return put("row", v.Name, func(c *checker) { c.text(v.Kind, v.Session, v.Model, v.Harness).text(v.Tiers...).num("width", v.Width) }, "kind", "width", "session", "tiers", "labels"), true
 	case PutJudgement:
-		return of("judgement", v.ID, "state"), true
+		return put("judgement", v.ID, func(c *checker) {
+			c.name(v.Kind, v.About, v.Group).text(v.Question, v.Command).time("deadline", v.Deadline, true)
+		}, "state"), true
 	case AnswerJudgement:
-		return of("judgement", v.ID, "state"), true
+		return put("judgement", v.ID, func(c *checker) { c.name(v.Actor).text(v.Answer) }, "state"), true
 	case ExpireJudgement:
-		return of("judgement", v.ID, "state"), true
+		return put("judgement", v.ID, func(c *checker) { c.text(v.Reason) }, "state"), true
 	case SetCursor:
-		return of("cursor", v.Name, "seq"), true
+		return put("cursor", v.Name, func(c *checker) { c.num64("cursor seq", v.Seq) }, "seq"), true
 	case PutPolicy:
-		return nil, true
+		return spec{check: func(c *checker) { c.name(v.Name).text(v.Kind, v.Body) }}, true
 	case SetActivePolicy:
-		return of("policy", "", "active"), true
+		return put("policy", "", func(c *checker) { c.num("version", v.Version) }, "active"), true
 	}
-	return nil, false
+	return setSpec(w)
 }
 
-// cardSet is a set-card write as one field of one card: the card it names,
-// the column it sets and the change. ok is false for any other write. It is
-// the one table of the set-card writes.
-func cardSet(w Write) (id, column string, set func(*Card), ok bool) {
+// setSpec is specOf for the set-card and set-row writes: one column each.
+func setSpec(w Write) (spec, bool) {
 	switch v := w.(type) {
 	case SetCardState:
-		return v.Card, "state", func(c *Card) { c.State = v.State }, true
+		return card(v.Card, "state", func(k *Card) { k.State = v.State }, func(c *checker) { c.text(v.State) }), true
 	case SetCardPaths:
-		return v.Card, "paths", func(c *Card) { c.Paths = v.Paths }, true
+		return card(v.Card, "paths", func(k *Card) { k.Paths = needs(v.Paths) }, func(c *checker) { c.text(v.Paths...) }), true
 	case SetCardDoneWhen:
-		return v.Card, "done_when", func(c *Card) { c.DoneWhen = v.DoneWhen }, true
+		return card(v.Card, "done_when", func(k *Card) { k.DoneWhen = needs(v.DoneWhen) }, func(c *checker) { c.text(v.DoneWhen...) }), true
 	case SetCardProse:
-		return v.Card, "prose", func(c *Card) { c.Prose = v.Prose }, true
+		return card(v.Card, "prose", func(k *Card) { k.Prose = v.Prose }, func(c *checker) { c.text(v.Prose) }), true
 	case SetCardResult:
-		return v.Card, "result", func(c *Card) { c.Result = v.Result }, true
+		return card(v.Card, "result", func(k *Card) { k.Result = v.Result }, func(c *checker) { c.text(v.Result) }), true
 	case SetCardAttempt:
-		return v.Card, "attempt", func(c *Card) { c.Attempt = v.Attempt }, true
+		return card(v.Card, "attempt", func(k *Card) { k.Attempt = v.Attempt }, func(c *checker) { c.num("attempt", v.Attempt) }), true
 	case SetCardBranch:
-		return v.Card, "branch", func(c *Card) { c.Branch = v.Branch }, true
+		return card(v.Card, "branch", func(k *Card) { k.Branch = v.Branch }, func(c *checker) { c.text(v.Branch) }), true
 	case SetCardHead:
-		return v.Card, "head", func(c *Card) { c.Head = v.Head }, true
+		return card(v.Card, "head", func(k *Card) { k.Head = v.Head }, func(c *checker) { c.text(v.Head) }), true
 	case SetCardPR:
-		return v.Card, "pr", func(c *Card) { c.PR = v.PR }, true
+		return card(v.Card, "pr", func(k *Card) { k.PR = v.PR }, func(c *checker) { c.num("pr", v.PR) }), true
 	case SetCardReason:
-		return v.Card, "reason", func(c *Card) { c.Reason = v.Reason }, true
+		return card(v.Card, "reason", func(k *Card) { k.Reason = v.Reason }, func(c *checker) { c.text(v.Reason) }), true
 	case SetCardScore:
-		return v.Card, "score", func(c *Card) { c.Score = v.Score }, true
+		return card(v.Card, "score", func(k *Card) { k.Score = v.Score }, func(c *checker) { c.num("score", v.Score) }), true
 	case SetCardAuthor:
-		return v.Card, "author", func(c *Card) { c.Author = v.Author }, true
+		return card(v.Card, "author", func(k *Card) { k.Author = v.Author }, func(c *checker) { c.name(v.Author) }), true
 	case SetCardBaseSHA:
-		return v.Card, "base_sha", func(c *Card) { c.BaseSHA = v.SHA }, true
+		return card(v.Card, "base_sha", func(k *Card) { k.BaseSHA = v.SHA }, func(c *checker) { c.text(v.SHA) }), true
 	case SetCardNeeds:
-		return v.Card, "needs", func(c *Card) { c.Needs = v.Needs }, true
+		return card(v.Card, "needs", func(k *Card) { k.Needs = needs(v.Needs) }, func(c *checker) { c.name(v.Needs...) }), true
 	case SetCardAfter:
-		return v.Card, "after", func(c *Card) { c.After = v.After }, true
+		return card(v.Card, "after", func(k *Card) { k.After = needs(v.After) }, func(c *checker) { c.name(v.After...) }), true
 	case SetCardPriorHead:
-		return v.Card, "prior_head", func(c *Card) { c.Prior = v.Head }, true
+		return card(v.Card, "prior_head", func(k *Card) { k.Prior = v.Head }, func(c *checker) { c.text(v.Head) }), true
 	case SetCardBounces:
-		return v.Card, "bounces", func(c *Card) { c.Bounces = v.Bounces }, true
+		return card(v.Card, "bounces", func(k *Card) { k.Bounces = v.Bounces }, func(c *checker) { c.num("bounces", v.Bounces) }), true
 	case SetCardCost:
-		return v.Card, "cost", func(c *Card) { c.Cost, c.Priced = v.Cost, v.Priced }, true
+		return card(v.Card, "cost", func(k *Card) { k.Cost, k.Priced = v.Cost, v.Priced }, func(c *checker) { c.num64("cost", v.Cost) }), true
 	case SetCardPriority:
-		return v.Card, "priority", func(c *Card) { c.Priority = v.Priority }, true
-	}
-	return "", "", nil, false
-}
-
-// rowSet is cardSet for the set-row writes.
-func rowSet(w Write) (name, column string, set func(*Row), ok bool) {
-	switch v := w.(type) {
+		return card(v.Card, "priority", func(k *Card) { k.Priority = v.Priority }, func(c *checker) { c.text(v.Priority) }), true
 	case SetRowState:
-		return v.Row, "state", func(r *Row) { r.State = v.State }, true
+		return row(v.Row, "state", func(r *Row) { r.State = v.State }, func(c *checker) { c.text(v.State) }), true
 	case SetRowSession:
-		return v.Row, "session", func(r *Row) { r.Session = v.Session }, true
+		return row(v.Row, "session", func(r *Row) { r.Session = v.Session }, func(c *checker) { c.text(v.Session) }), true
 	case SetRowFlaps:
-		return v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, true
+		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) }), true
 	case SetRowWidth:
-		return v.Row, "width", func(r *Row) { r.Width = v.Width }, true
+		return row(v.Row, "width", func(r *Row) { r.Width = v.Width }, func(c *checker) { c.num("width", v.Width) }), true
 	case SetRowHeld:
-		return v.Row, "held", func(r *Row) { r.Held = v.Held }, true
+		return row(v.Row, "held", func(r *Row) { r.Held = v.Held }, func(*checker) {}), true
 	case SetRowTiers:
-		return v.Row, "tiers", func(r *Row) { r.Tiers = v.Tiers }, true
+		return row(v.Row, "tiers", func(r *Row) { r.Tiers = needs(v.Tiers) }, func(c *checker) { c.text(v.Tiers...) }), true
 	case SetRowLabels:
-		return v.Row, "labels", func(r *Row) { r.Model, r.Harness = v.Model, v.Harness }, true
+		return row(v.Row, "labels", func(r *Row) { r.Model, r.Harness = v.Model, v.Harness }, func(c *checker) { c.text(v.Model, v.Harness) }), true
 	}
-	return "", "", nil, false
+	return spec{}, false
 }
 
-// normalize is an op with its times and lists as the store keeps them.
-func normalize(op Op) Op {
-	op.At = at(op.At)
-	op.Writes = append([]Write(nil), op.Writes...)
-	for i, w := range op.Writes {
-		switch v := w.(type) {
-		case PutCard:
-			v.Needs, v.After, v.Paths, v.DoneWhen = needs(v.Needs), needs(v.After), needs(v.Paths), needs(v.DoneWhen)
-			op.Writes[i] = v
-		case SetCardPaths:
-			v.Paths = needs(v.Paths)
-			op.Writes[i] = v
-		case SetCardDoneWhen:
-			v.DoneWhen = needs(v.DoneWhen)
-			op.Writes[i] = v
-		case PutRow:
-			v.Tiers = needs(v.Tiers)
-			op.Writes[i] = v
-		case SetRowTiers:
-			v.Tiers = needs(v.Tiers)
-			op.Writes[i] = v
-		case PutJudgement:
-			v.Deadline = at(v.Deadline)
-			op.Writes[i] = v
-		case SetCardNeeds:
-			v.Needs = needs(v.Needs)
-			op.Writes[i] = v
-		case SetCardAfter:
-			v.After = needs(v.After)
-			op.Writes[i] = v
-		}
+// put is the spec of a write to the record key of table, setting columns;
+// key is a name (checked as one).
+func put(table, key string, check func(*checker), columns ...string) spec {
+	s := spec{check: func(c *checker) { check(c.name(key)) }}
+	for _, col := range columns {
+		s.fields = append(s.fields, field{table, key, col})
 	}
-	return op
+	return s
+}
+
+// card is the spec of a set-card write: one column of card id.
+func card(id, column string, set func(*Card), check func(*checker)) spec {
+	s := put("card", id, check, column)
+	s.card = set
+	return s
+}
+
+// row is the spec of a set-row write: one column of row name.
+func row(name, column string, set func(*Row), check func(*checker)) spec {
+	s := put("row", name, check, column)
+	s.row = set
+	return s
 }

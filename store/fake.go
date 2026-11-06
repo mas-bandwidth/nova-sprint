@@ -12,7 +12,9 @@ import (
 // Fake is an in-memory Store with the semantics of PG: the same conditions,
 // writes, refusal reasons, receipts and idempotency, because both run the
 // rules in apply.go and writes.go. It is for unit tests of the layers above
-// only. Time comes from Op.At; the fake never reads a clock. Use NewFake.
+// only: every op clones every table and the log (O(n) per op, O(n^2) over a
+// long log), which is right for a test and wrong for a sprint. Time comes
+// from Op.At; the fake never reads a clock. Use NewFake.
 type Fake struct {
 	mu       sync.Mutex
 	epoch    int
@@ -21,7 +23,7 @@ type Fake struct {
 	rows     map[key]Row
 	policies map[int]PolicyVersion
 	judges   map[key]Judgement
-	cursors  map[key]int64
+	cursors  map[string]int64 // global, as seq is: a clear carries them
 	events   []fakeEvent
 	ops      map[string]int // op id -> index in events
 	drops    map[string]bool
@@ -42,7 +44,7 @@ type fakeEvent struct {
 
 // NewFake is an empty store at epoch 1.
 func NewFake() *Fake {
-	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, judges: map[key]Judgement{}, cursors: map[key]int64{}, ops: map[string]int{}, drops: map[string]bool{}}
+	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, judges: map[key]Judgement{}, cursors: map[string]int64{}, ops: map[string]int{}, drops: map[string]bool{}}
 }
 
 // Drop makes the next Apply or Clear of op id report ErrUnknown, as if the
@@ -149,7 +151,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 		s.Rows[name] = r
 	}
 	pick(s.Judgements, f.judges, f.epoch)
-	pick(s.Cursors, f.cursors, f.epoch)
+	maps.Copy(s.Cursors, f.cursors)
 	for v, p := range f.policies {
 		if p.Active {
 			s.Policy = v
@@ -210,11 +212,11 @@ func (t *fakeTx) judgement(id string) (Judgement, bool, error) {
 func (t *fakeTx) putJudgement(j Judgement) error { t.st.judges[t.k(j.ID)] = j; return nil }
 
 func (t *fakeTx) cursor(name string) (int64, bool, error) {
-	seq, ok := t.st.cursors[t.k(name)]
+	seq, ok := t.st.cursors[name]
 	return seq, ok, nil
 }
 
-func (t *fakeTx) putCursor(name string, seq int64) error { t.st.cursors[t.k(name)] = seq; return nil }
+func (t *fakeTx) putCursor(name string, seq int64) error { t.st.cursors[name] = seq; return nil }
 
 func (t *fakeTx) stream(name string) (Stream, bool, error) {
 	s, ok := t.st.streams[t.k(name)]
