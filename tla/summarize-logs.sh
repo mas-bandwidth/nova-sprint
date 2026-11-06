@@ -1,10 +1,13 @@
 #!/bin/sh
 # Print the result lines of each TLC log written by run-tlc.sh.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-for m in Store StoreNoEvent StoreReplayApplies StoreStaleCheck StoreTwoHolders \
-         StoreEpochUnfenced StoreWidthStale \
-         reach-NeverTaken reach-NeverRecovered reach-NeverStaleEpochRefused \
-         reach-NeverNeedsReady reach-NeverNewEpochOp reach-NeverWidthFull; do
+names="Store"
+for f in "$HERE"/witnesses/*.tla; do
+    case "$f" in *_TTrace_*) continue ;; esac
+    names="$names $(basename "$f" .tla)"
+done
+for f in "$HERE"/reach/*.cfg; do names="$names reach-$(basename "$f" .cfg)"; done
+for m in $names; do
     echo "== $m"
     grep -e 'is violated' -e 'No error has been found' -e 'states generated,' \
          -e 'depth of the complete' -e 'Finished in' -e '^exit' -e '^Error: [A-Z]' \

@@ -59,13 +59,20 @@ trap 'rm -rf "$WORK"' EXIT
 # EXPECT is pass or violate. Writes $WORK/NAME.log and $WORK/NAME.result.
 run() {
     name="$1"; expect="$2"; dir="$3"; cfg="$4"; mod="$5"; workers="$6"
+    echo "$name" >> "$WORK/expected"
     if [ "$DRY" = 1 ]; then
         echo "dry run: (cd tla/$dir && java -XX:+UseParallelGC -cp $JAR tlc2.TLC -workers $workers -metadir \$WORK/states/$name -config $cfg $mod)  expect $expect"
         return
     fi
     (
         cd "$HERE/$dir" || exit 1
-        "$JAVA" -XX:+UseParallelGC -cp "$JAR" tlc2.TLC -workers "$workers" \
+        # Own java.io.tmpdir per run: TLC unpacks the standard modules there,
+        # and parallel runs sharing /tmp race on it (a parser NPE, exit 150).
+        mkdir -p "$WORK/tmp/$name" || exit 1
+        # -noGenerateSpecTE: no *_TTrace_*.tla trace modules beside the spec,
+        # which the witnesses/*.tla glob would otherwise run on the next pass.
+        "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC \
+            -noGenerateSpecTE -workers "$workers" \
             -metadir "$WORK/states/$name" -config "$cfg" "$mod" > "$WORK/$name.log" 2>&1
         code=$?
         if [ "$expect" = pass ] && [ "$code" -eq 0 ]; then
@@ -83,6 +90,7 @@ run Store pass . Store.cfg Store.tla 4
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
+    case "$m" in *_TTrace_*) continue ;; esac   # TLC trace output, not a witness
     run "witness-$m" violate witnesses "$m.cfg" "$m.tla" 1
 done
 
@@ -95,6 +103,15 @@ wait
 [ "$DRY" = 1 ] && exit 0
 
 status=0
+# A run that ended before writing its result (a failed cd or mkdir) is a
+# failure too, never a silent skip.
+while read -r name; do
+    if [ ! -f "$WORK/$name.result" ]; then
+        echo "FAIL $name: no result written" > "$WORK/$name.result"
+        echo 1 > "$WORK/$name.failed"
+        touch "$WORK/$name.log"
+    fi
+done < "$WORK/expected"
 for r in "$WORK"/*.result; do
     cat "$r"
     if [ -f "${r%.result}.failed" ]; then
