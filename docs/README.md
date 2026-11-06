@@ -16,7 +16,7 @@ are all required.
 3. The steps: one legal move each, a pure function from snapshot and request to plan or refusal.
 4. The edges: nova-bus, git and GitHub, the worker runner.
 5. Policy: Starlark scripts, versioned in the store, changed during a sprint.
-6. Run, worker, verbs and the dashboard.
+6. Run, worker, verbs, the dashboard, and setup: `nova-sprint up` ships the setup in [SETUP.md](SETUP.md) as part of the tool.
 
 A layer is secured when it is modelled in TLA+ with reversed witnesses, every
 refusal is tested on a real store, a cold reader is green, and it has been used

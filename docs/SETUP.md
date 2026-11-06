@@ -34,3 +34,19 @@ once by the human at a hidden prompt the AI runs for them, and everything
 past that point is automatic.** The key goes into nova-secrets; the AI makes
 the seats, the grants, the worker rows and the service rows. The human never
 types a second thing for that service.
+
+## 4. The setup is part of the tool, and it is dogfooded
+
+Glenn, 2026-11-06: "The whole point of nova-sprint is to deliver this sprint
+system on top of nova tools, help the human configure it, and setup the
+dashboard. Just like the whole fleet and tailscale stuff and github ci
+runners, it's useless if we don't ship this setup stuff as part of the tool,
+and we must dogfood this setup to make sure it's simple and repeatable."
+
+So: the setup above is a verb of the tool (`nova-sprint up`, running the
+plays through nova-fleet: the store schema and role, the dashboard service
+where the human chose, the worker services, the API-rate seats), not a page
+of instructions. The gate before v2 is called done: an AI with no memory of
+this project takes a fresh fleet (VMs are enough) from zero to a running
+sprint with a dashboard, using only docs/README.md and the tool's own help,
+and then does it again. Simple and repeatable, or not done.
