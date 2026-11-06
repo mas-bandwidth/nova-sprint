@@ -1,4 +1,8 @@
-# tla/: the store model (layer 1)
+# tla/: the store model (layer 1) and the card machine (layer 2)
+
+Two models live here: `Store.tla` (layer 1, below) and `CardMachine.tla`
+(layer 2, in its own section after the store's results). `ci-tlc.sh` runs
+both, with all their witnesses and reach checks, in one parallel pass.
 
 `Store.tla` models the contract in `docs/LAYER-1-STORE.md` (v2 at abefee69).
 Each operation is one atomic step over `epoch`, `cards`, `rows`,
@@ -185,8 +189,11 @@ Run TLC on a bench host, never on the working machine. `ci-tlc.sh` is the
 gate. It runs every module in parallel:
 - `Store.tla` must pass with `Store.cfg` and with `StoreRecords.cfg` (TLC
   exit 0);
+- `CardMachine.tla` must pass with `CardMachine.cfg`, `CardDeps.cfg` and
+  `CardPreempt.cfg` (its three scenarios);
 - every `witnesses/*.tla` and every `reach/*.cfg` must report a violation
-  (TLC exit 12) of the first invariant in its cfg.
+  (TLC exit 12) of the first invariant in its cfg. `reach/Card*.cfg` run on
+  `CardMachine.tla`, every other reach cfg on `Store.tla`.
 
 It exits non-zero on any other outcome: a pass where a violation is
 required, a violation of a different invariant, a parse error, a crash, or a
@@ -394,3 +401,210 @@ setup:
   again.
 - **StoreCursorBack:** m1 sets c1 to 2, then m2 sets it to 1.
 - **StoreCursorPastLog:** m3 sets c1 to 40 with 16 events in the log.
+
+# The card machine (layer 2)
+
+`CardMachine.tla` models `docs/LAYER-2-CARD-MACHINE.md` (v2 at fa775f55):
+producer and consumer cards, every event of the producer, consumer and row
+tables as an action, blocker preemption, the stream's hold with Park in the
+same op, hard needs with Waive and Relink, soft `after` on landing, and the
+sentinel. An action's guard is the design's from-state plus its conditions;
+an event that does not match is not enabled (the Go code refuses it with a
+value, which changes nothing). The model is the reachable state space of
+accepted moves.
+
+Consumers are slots: producer p's i-th cut consumer is `<<p, i>>`. Start and
+AskRead cut the next slot, so a producer is never in `working` without its
+consumer. Width is the store's write guard on Take: working consumers only,
+never ready ones. A producer carries `review`, its count of entries into
+review (Finished and Red raise it); a read carries the producer's `review` at
+cut, and ReadYes needs a done ok read whose `review` equals the producer's.
+
+`last` is a step monitor. `StepRule` reads the state before and after each
+step and records the step rules it broke (`last.bad`). It is shared by every
+action and part of none, so a fault in an action is caught there; it keeps
+only two event names (NeedFailed, Preempt, for their reach checks), so states
+are not split by the move that reached them.
+
+## The instance: three scenarios
+
+| cfg | Scenario | producers | needs | K | heads | attempts | env moves |
+|---|---|---|---|---|---|---|---|
+| `CardMachine.cfg` | `life` | p1, sentinel s | s needs p1 | 3 | 2 | 2 | 2 |
+| `CardDeps.cfg` | `deps` | p1, p2, sentinel s | p2 needs p1, s needs p2 | 2 | 1 | 1 | 1 |
+| `CardPreempt.cfg` | `pre` | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 2 |
+
+- `life` carries the whole lifecycle: a fix, a Red with a yes after it, a
+  fault re-dealt, the sentinel reached.
+- `deps` is the brief's pair (c2 needs c1) plus the sentinel: NeedFailed,
+  Waive, Relink and the cycle check.
+- `pre` exists because a blocker can only preempt the consumer of another
+  producer live at the same time, which the `deps` pair never is (p2 waits
+  for p1 to land). Its environment budget goes to SetPriority, the row table
+  and the stream's hold; Edit and Rescore are checked in the other two.
+
+Bounds that are the model's, not the design's: K consumer slots per
+producer; attempt stops at the attempts column (Start is not enabled past
+it); bounces stop at 1 (Broken and ReadFix are not enabled past it); flaps
+stop at 1; scores are 0..1; widths 1..2; priority is normal or blocker. The
+environment and coordinator moves (Rescore, SetPriority, Edit, Seen, Gone,
+Width, Hold, Unhold, the stream's hold) share a budget per behaviour; every
+card and consumer move is unbounded but for the slots. Rows start up, width
+1, not held. Head 0 is "no head" and the base commit, so an ok work head
+always differs from base_sha.
+
+Left out, because no guard reads them: branch, base_sha, prior_head, reason,
+brief, cost, priced, the by of Replace. Edit writes only prose, so in the
+model it moves nothing but the monitor.
+
+## Files
+
+- `CardMachine.tla` and its three passing cfgs.
+- `witnesses/Card*.tla`: thirteen reversed witnesses; `reach/Card*.cfg`: ten
+  reachability checks. Generated with every card cfg by
+  `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
+  in the script, in the same shape as `make-witnesses.py`: a replacement
+  that no longer matches stops the script.
+- `card-trace.py`: `python3 -I card-trace.py logs/<name>.log` prints a card
+  counterexample one line per state (TLC names every step `<Next>`, so the
+  move is read off the diff).
+
+## Invariants
+
+State invariants:
+- **TypeOK**, **SlotsDense** (the cut slots are 1..ncut).
+- **ProducerNeverHeld**: the holder lives on the consumer only (structural).
+- **WorkingOneWorkConsumer**: at most one live work consumer; a live one is
+  the current attempt's and its producer is working; a working producer has
+  its current attempt's work consumer. This is the form of "working ⇔ one
+  live work consumer" that the tables keep (see the holes below).
+- **ReadOnlyInReview**: a live read only in review, of the current head and
+  review count.
+- **ReaderNeverAuthor**: a live read's holder is never the producer's author.
+- **WidthKept**: working consumers per row ≤ width.
+- **TakeBelowWidth**: a ready consumer can always take while its row's
+  working count is below width (ready ones are not counted).
+- **NeedFailedTakesDependants**: when a need has failed and the dependant is
+  not final, NeedFailed is enabled.
+- **SentinelShape**: a sentinel is only waiting, landed or fail (it never has
+  a consumer).
+- **NeedsAcyclic**: the needs graph stays acyclic.
+- **AfterNeverHolds**: a merging producer whose after-targets are not merging
+  can land.
+
+Step invariants (each: the last step kept its rule):
+- **FinalNeverMoves**: no landed/fail producer and no done/fail consumer
+  changes.
+- **AttemptOnlyOnStart**: attempt rises by one on Start (and Preempt's Start)
+  of that producer, and on nothing else.
+- **RedNeverAdvances**: a Red step never ends in merging or landed.
+- **FixKeepsScore**: ReadFix keeps the score.
+- **HolderNeverChanges**: a cut consumer's holder never changes.
+- **OldAttemptNeverMoves**: Finished, Broken, Faulted and Released accept only
+  the work consumer of the current attempt.
+- **OnlyHolderActs**: Take and Report only from the consumer's holder.
+- **ReadYesNeedsYes**: ReadYes only with a done ok read of the current head
+  whose review equals the producer's.
+- **FaultSpendsNothing**: Faulted keeps attempt and bounces.
+- **BlockNoLive**, **EditNoLive**: Block and Edit only with no live consumer.
+- **SentinelLandsByReached**: a sentinel lands only by Reached, needs landed.
+- **AfterKept**: Landed never passes a merging after-target.
+
+## Expected results
+
+| Module | Scenario | Fault | Expected result |
+|---|---|---|---|
+| `CardMachine` / `CardDeps` / `CardPreempt` | life / deps / pre | none | pass |
+| `witnesses/CardLandedMoves` | life | Rescore has no final check | FinalNeverMoves |
+| `witnesses/CardAuthorReads` | life | AskRead does not refuse the author | ReaderNeverAuthor |
+| `witnesses/CardRedAdvances` | life | Red moves merging to landed | RedNeverAdvances |
+| `witnesses/CardNeedFailedIgnored` | deps | NeedFailed reads the dependant's state for the need's | NeedFailedTakesDependants |
+| `witnesses/CardNonHolderReports` | life | Report does not check the holder | OnlyHolderActs |
+| `witnesses/CardTwoWorkConsumers` | life | Start accepted from working | WorkingOneWorkConsumer |
+| `witnesses/CardStaleReport` | life | Faulted accepts any work consumer of p | OldAttemptNeverMoves |
+| `witnesses/CardYesOnZero` | life | ReadYes without the yes-read check | ReadYesNeedsYes |
+| `witnesses/CardFaultBumpsAttempt` | life | Faulted raises attempt | FaultSpendsNothing |
+| `witnesses/CardFaultBounces` | life | Faulted raises bounces (a fault counted toward Block) | FaultSpendsNothing |
+| `witnesses/CardEditUnderLive` | life | Edit under a live consumer | EditNoLive |
+| `witnesses/CardReadyCounted` | life | Take counts ready consumers against width | TakeBelowWidth |
+| `witnesses/CardNeedsCycle` | deps | Relink without the cycle check | NeedsAcyclic |
+| `reach/CardNeverLanded` | life | none | violated: a producer lands |
+| `reach/CardNeverFixed` | life | none | violated: a review ends in ReadFix |
+| `reach/CardNeverRed` | life | none | violated: merging goes red |
+| `reach/CardNeverYesAfterRed` | life | none | violated: a yes after a Red, on a new read |
+| `reach/CardNeverFaultRedealt` | life | none | violated: a faulted producer is started again |
+| `reach/CardNeverBlocked` | life | none | violated: a producer is blocked |
+| `reach/CardNeverSentinelReached` | life | none | violated: the sentinel lands on its landed need |
+| `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |
+| `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |
+| `reach/CardNeverPreempted` | pre | none | violated: a blocker preempts a live consumer |
+
+## Results, the CI jar on hetzner2, 2026-11-06
+
+All 73 runs (store and card) ran in one parallel pass with `run-tlc.sh`, the
+passing runs on 4 workers each and the rest on 1, so the times are under
+full contention. `ci-tlc.sh` then passed.
+
+| Module | Result | Generated / distinct | Depth | Time |
+|---|---|---|---|---|
+| `CardMachine` (life) | No error has been found | 12015736 / 2590651 | 24 | 1min 59s |
+| `CardDeps` (deps) | No error has been found | 2055701 / 435265 | 29 | 49s |
+| `CardPreempt` (pre) | No error has been found | 12844670 / 1946578 | 29 | 2min 02s |
+| `CardLandedMoves` | FinalNeverMoves violated | 22 / 18 | 3 | 0s |
+| `CardAuthorReads` | ReaderNeverAuthor violated | 8973 / 2745 | 7 | 17s |
+| `CardRedAdvances` | RedNeverAdvances violated | 230205 / 66825 | 11 | 28s |
+| `CardNeedFailedIgnored` | NeedFailedTakesDependants violated | 6 / 4 | 2 | 7s |
+| `CardNonHolderReports` | OnlyHolderActs violated | 1705 / 565 | 5 | 13s |
+| `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 421 / 195 | 4 | 11s |
+| `CardStaleReport` | OldAttemptNeverMoves violated | 21472 / 6371 | 8 | 17s |
+| `CardYesOnZero` | ReadYesNeedsYes violated | 8970 / 2742 | 7 | 16s |
+| `CardFaultBumpsAttempt` | FaultSpendsNothing violated | 4105 / 1212 | 6 | 15s |
+| `CardFaultBounces` | FaultSpendsNothing violated | 4105 / 1212 | 6 | 16s |
+| `CardEditUnderLive` | EditNoLive violated | 425 / 199 | 4 | 9s |
+| `CardReadyCounted` | TakeBelowWidth violated | 36 / 29 | 3 | 9s |
+| `CardNeedsCycle` | NeedsAcyclic violated | 82 / 53 | 3 | 9s |
+| reach `CardNeverLanded` | violated | 230204 / 66824 | 11 | 26s |
+| reach `CardNeverFixed` | violated | 8970 / 2742 | 7 | 15s |
+| reach `CardNeverRed` | violated | 230205 / 66825 | 11 | 26s |
+| reach `CardNeverYesAfterRed` | violated | 2444409 / 628657 | 15 | 1min 26s |
+| reach `CardNeverFaultRedealt` | violated | 8534 / 2568 | 7 | 16s |
+| reach `CardNeverBlocked` | violated | 35 / 28 | 3 | 7s |
+| reach `CardNeverSentinelReached` | violated | 568907 / 161243 | 13 | 3s |
+| reach `CardNeverNeedFailed` | violated | 80 / 51 | 3 | 9s |
+| reach `CardNeverRelinked` | violated | 99 / 66 | 3 | 6s |
+| reach `CardNeverPreempted` | violated | 27430 / 7534 | 8 | 17s |
+
+Run alone on 16 workers, the three passing runs take 28s (life), 6s (deps)
+and 27s (pre). The sentinel reach row is its rerun alone, after it was
+tightened to need the original need landed.
+
+The counterexamples were checked by hand with `card-trace.py`:
+- **CardLandedMoves:** s is cancelled (fail), then Rescore changes its score.
+- **CardAuthorReads:** r2 produces head 1; a read of it is cut to r2.
+- **CardRedAdvances:** deal, finish, read ok, ReadYes; then Red lands it.
+- **CardNeedFailedIgnored:** p1 fails; NeedFailed is not enabled for p2.
+- **CardNonHolderReports:** p1.1 is held by r2 and reported by another row.
+- **CardTwoWorkConsumers:** Start again from working: two ready work
+  consumers of p1.
+- **CardStaleReport:** attempt 1 reports fault, Faulted, attempt 2 is cut;
+  attempt 1's report moves p1 to ready again.
+- **CardYesOnZero:** Finished, then ReadYes with no read cut.
+- **CardFaultBumpsAttempt / CardFaultBounces:** a fault report; Faulted takes
+  attempt to 2 / bounces to 1.
+- **CardEditUnderLive:** Edit while p1.1 is ready on r2.
+- **CardReadyCounted:** p1.1 is ready on r2 with nothing working, and Take is
+  refused (it counts itself).
+- **CardNeedsCycle:** p1 fails; p2's need p1 is relinked to s, which needs p2.
+- **reach:** Landed runs deal, finish, read ok, ReadYes, Landed. Fixed ends
+  review → ready with bounces 1. Red goes merging → review with review 2.
+  YesAfterRed then cuts a new read at review 2 and merges on it (the review-1
+  read no longer counts). FaultRedealt: fault, Faulted, Start of attempt 2.
+  Blocked: Block from ready. SentinelReached: p1 lands, then Reached. NeedFailed:
+  p1 fails, NeedFailed takes p2. Relinked: p2 fails, s's need is relinked to
+  p1. Preempted: p1.1 works on r2, r1 goes down, the blocker p2 withdraws
+  p1.1 and is dealt to r2 in one step.
+
+Not modelled: the liveness half of "How it is checked" (nothing stalls, with
+fairness on the rows, the tick and the coordinator, and its three witnesses),
+and "no producer stays in ready across a tick in a held stream", which needs
+a tick.
