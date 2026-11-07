@@ -9,20 +9,17 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/roster"
 )
 
-// BenchProviders are the providers the bench workers (harness nova-worker)
-// reach on API keys, billed per token: the take receipt's tier map and the
-// worker's opencode model ids (verbs/take.go takeModel_local,
-// edge/worker/harness.go; LOCAL DOGFOOD: the policy's tier rows are to
-// answer this, defect 57).
-var BenchProviders = []string{"deepseek", "inception"}
-
 // apiProviders are the providers whose runs are billed at API rate: the
-// benches', and the provider of any roster row on an API harness (api, the
-// catalog's API-rate adapter, or nova-worker) whose model names one.
-func apiProviders(ro roster.Roster) map[string]bool {
+// providers of the catalog's bench models (a bench reaches its provider on an
+// API key, billed per token), and the provider of any roster row on an API
+// harness (api, the catalog's API-rate adapter, or nova-worker) whose model
+// names one.
+func apiProviders(c Catalog, ro roster.Roster) map[string]bool {
 	out := map[string]bool{}
-	for _, p := range BenchProviders {
-		out[p] = true
+	for _, m := range c.Bench {
+		if p, _, ok := strings.Cut(m, "/"); ok && p != "" {
+			out[p] = true
+		}
 	}
 	for _, k := range ro.Kin {
 		if k.Harness != "api" && k.Harness != roster.WorkerHarness {
@@ -41,7 +38,7 @@ func apiProviders(ro roster.Roster) map[string]bool {
 // A price is found as the engine finds it: under provider/model or the
 // model alone.
 func PriceWarnings(a Answers, ro roster.Roster) []string {
-	api := apiProviders(ro)
+	api := apiProviders(a.Catalog, ro)
 	var out []string
 	for _, provider := range slices.Sorted(maps.Keys(a.Catalog.Models)) {
 		if !api[provider] {

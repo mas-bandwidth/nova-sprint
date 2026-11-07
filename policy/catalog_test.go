@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -10,21 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCatalogDefault: the built-in's catalog, and the same read from v1
-// after up, naming its version.
+// TestCatalogDefault: the built-in's catalog names no provider, model or
+// bench model (they are the sprint's own), read from v1 after up the same,
+// naming its version; a catalog the coordinator sets is read and answered.
 func TestCatalogDefault(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
-	want := Catalog{Models: map[string][]Model{
-		"anthropic":        {{"haiku", "flash"}, {"sonnet", "pro"}, {"opus", "heavy"}, {"fable", "frontier"}},
-		"openai":           {{"luna", "flash"}, {"sol", "heavy"}},
-		"google":           {{"terra", "pro"}, {"argon", "frontier"}},
-		"deepseek":         {{"deepseek-flash", "flash"}, {"deepseek-flash", "heavy"}, {"deepseek-v4-pro", "frontier"}},
-		"inception":        {{"mercury-3", "pro"}, {"mercury-2.5", "flash"}},
-		"paperinstruments": {{"ultramarine-1-flash", "flash"}},
-		"unknown":          {{"astra", "frontier"}},
-	}, Harnesses: []string{"claude", "codex", "opencode", "api"},
-		Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-v4-pro"}}
+	want := Catalog{Models: map[string][]Model{}, Harnesses: []string{"claude", "codex", "opencode", "api"}, Bench: map[string]string{}}
 	c, err := ReadCatalog(w.ctx(), w.st, testEngine(), 0)
 	require.NoError(t, err)
 	assert.Equal(t, want, c)
@@ -33,18 +26,53 @@ func TestCatalogDefault(t *testing.T) {
 	require.NoError(t, err)
 	want.Version = 1
 	assert.Equal(t, want, c)
-	assert.Empty(t, c.Unknown("opus", "claude"))
-	assert.Empty(t, c.Unknown("mercury-3", "api"))
-	assert.Equal(t, `model "gemini" is not in the catalog of policy v1 (models: haiku sonnet opus fable deepseek-flash deepseek-v4-pro terra argon mercury-3 mercury-2.5 luna sol ultramarine-1-flash astra)`, c.Unknown("gemini", "api"))
+	assert.Empty(t, c.ForTier("flash"))
+	assert.Empty(t, c.BenchModel("flash"), "no bench model: no bench deal until the sprint names one")
+	assert.Equal(t, `model "a-flash" is not in the catalog of policy v1 (models: )`, c.Unknown("a-flash", "api"))
 	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, want.Models, a.Catalog.Models, "the tick validates catalog like every answer")
-	// A worker's candidates for a tier: provider/model, providers in name order.
-	assert.Equal(t, []string{"anthropic/haiku", "deepseek/deepseek-flash", "inception/mercury-2.5", "openai/luna", "paperinstruments/ultramarine-1-flash"}, c.ForTier("flash"))
-	assert.Equal(t, []string{"anthropic/sonnet", "google/terra", "inception/mercury-3"}, c.ForTier("pro"))
-	assert.Empty(t, c.ForTier("none"))
-	assert.Equal(t, "inception/mercury-3", c.BenchModel("pro"), "a bench's one model for a tier")
 	assert.Equal(t, want.Bench, a.Catalog.Bench)
+
+	v := w.set("filled.star", withTestCatalog(defaultBody))
+	c, err = ReadCatalog(w.ctx(), w.st, testEngine(), v)
+	require.NoError(t, err)
+	assert.Empty(t, c.Unknown("a-heavy", "claude"))
+	assert.Empty(t, c.Unknown("z-pro", "api"))
+	assert.Equal(t, `model "gemini" is not in the catalog of policy v2 (models: a-flash a-heavy z-flash z-pro)`, c.Unknown("gemini", "api"))
+	// A worker's candidates for a tier: provider/model, providers in name order.
+	assert.Equal(t, []string{"acme/a-flash", "zeta/z-flash"}, c.ForTier("flash"))
+	assert.Equal(t, []string{"zeta/z-pro"}, c.ForTier("pro"))
+	assert.Empty(t, c.ForTier("none"))
+	assert.Equal(t, "zeta/z-pro", c.BenchModel("pro"), "a bench's one model for a tier")
+}
+
+// withTestCatalog is body with a filled catalog of made-up providers and
+// models: acme serves flash and heavy, zeta flash and pro; the bench runs
+// acme's flash and zeta's pro.
+func withTestCatalog(body string) string {
+	def := `def catalog():
+    return {
+        "models": {
+            "acme": [{"name": "a-flash", "tier": "flash"}, {"name": "a-heavy", "tier": "heavy"}],
+            "zeta": [{"name": "z-flash", "tier": "flash"}, {"name": "z-pro", "tier": "pro"}],
+        },
+        "harnesses": ["claude", "codex", "opencode", "api"],
+        "bench": {"flash": "acme/a-flash", "pro": "zeta/z-pro"},
+    }`
+	start := strings.Index(body, "def catalog():")
+	end := strings.Index(body[start:], "\n    }\n") + start + len("\n    }\n")
+	return body[:start] + def + "\n" + body[end:]
+}
+
+// TestDefaultPolicyNamesNoVendorOrModel: the built-in policy names nothing
+// of ours or anyone's: no provider, no model, no org.
+func TestDefaultPolicyNamesNoVendorOrModel(t *testing.T) {
+	t.Parallel()
+	body := strings.ToLower(defaultBody)
+	for _, name := range []string{"anthropic", "openai", "google", "deepseek", "inception", "paperinstruments", "haiku", "sonnet", "opus", "fable", "luna", "terra", "argon", "astra", "mercury", "ultramarine", "gemini", "gpt", "mas-bandwidth", "the human's"} {
+		assert.NotContains(t, body, name)
+	}
 }
 
 // TestCatalogOmitsProvider: a version with no google provider; its models

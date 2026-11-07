@@ -979,11 +979,11 @@ What the stitch changed in layer 5 and why:
   `Catalog.BenchModel(tier)`; run passes the active version's map to the
   steps as `Answers.Models`, and the deal writes the model on the consumer
   (LAYER-3's Built). A tier with no bench model leaves bench rows undealt
-  for it with a `no-model` judgement, never a guess. The default names
-  deepseek/deepseek-flash at flash and heavy, inception/mercury-3 at pro,
-  deepseek/deepseek-v4-pro at frontier (the coordinator's mapping of
-  2026-11-07; guesses, unmeasured), and lists deepseek-flash at heavy and
-  deepseek-v4-pro at frontier so the bench key names models of the tier.
+  for it with a `no-model` judgement, never a guess. The default names no
+  provider, model or bench model (2026-11-07, fix list L5.1): they are the
+  sprint's own, set with `policy set`; `check` and `up` name each tier a
+  bench serves that has none. The providers billed at API rate for
+  `PriceWarnings` are the bench models' providers, read from the catalog.
   `next --json`'s `tier_models` is kept as the probe's input and now holds
   that one model per tier for a bench; the take receipt's `models` (the
   candidates) is gone: the receipt carries the deal's `model` only.

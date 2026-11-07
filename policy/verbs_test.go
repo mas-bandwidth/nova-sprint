@@ -206,19 +206,23 @@ func testShow(t *testing.T, w *world) {
 func testCheck(t *testing.T, w *world) {
 	e := testEngine()
 	w.up()
-	rep, err := Check(w.ctx(), w.st, w.ro, e, w.file("two.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)))
+	body := withTestCatalog(defaultBody)
+	rep, err := Check(w.ctx(), w.st, w.ro, e, w.file("two.star", strings.Replace(body, "return 1  #", "return 2  #", 1)))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"reads(p3): 1 -> 2", "reads(p5): 1 -> 2"}, rep.Changes)
+	assert.Contains(t, rep.Changes, "reads(p3): 1 -> 2")
+	assert.Contains(t, rep.Changes, "reads(p5): 1 -> 2")
 	assert.Equal(t, 0, rep.Code())
 	warn := []string{
-		`POLICY WARNING prices(): deepseek/deepseek-flash (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-flash": {"in": <micro-USD per million>, "out": <...>}`,
-		`POLICY WARNING prices(): deepseek/deepseek-v4-pro (tier frontier) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-v4-pro": {"in": <micro-USD per million>, "out": <...>}`,
-		`POLICY WARNING prices(): inception/mercury-3 (tier pro) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-3": {"in": <micro-USD per million>, "out": <...>}`,
-		`POLICY WARNING prices(): inception/mercury-2.5 (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-2.5": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): acme/a-flash (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "a-flash": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): acme/a-heavy (tier heavy) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "a-heavy": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): zeta/z-flash (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "z-flash": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): zeta/z-pro (tier pro) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "z-pro": {"in": <micro-USD per million>, "out": <...>}`,
 	}
-	assert.Equal(t, warn, rep.Warnings, "the default prices nothing: every API model is a defect found at creation")
-	assert.Equal(t, "policy check two.star: 2 answer(s) change, 0 refused, 4 warning(s)\n  reads(p3): 1 -> 2\n  reads(p5): 1 -> 2\n"+strings.Join(warn, "\n")+"\n", rep.Text())
-	priced := strings.Replace(defaultBody, "    return {}\n\ndef catalog", "    return {\"deepseek/deepseek-flash\": {\"in\": 270000, \"out\": 1100000}, \"deepseek-v4-pro\": {\"in\": 270000, \"out\": 1100000}, \"mercury-3\": {\"in\": 250000, \"out\": 1000000}, \"mercury-2.5\": {\"in\": 250000, \"out\": 1000000}}\n\ndef catalog", 1)
+	assert.Equal(t, warn, rep.Warnings, "the bench's providers are billed at API rate: every unpriced model of theirs is a defect found at creation")
+	rep, err = Check(w.ctx(), w.st, w.ro, e, w.file("default.star", defaultBody))
+	require.NoError(t, err)
+	assert.Empty(t, rep.Warnings, "the built-in names no model, so it warns of none")
+	priced := strings.Replace(body, "    return {}\n\ndef catalog", "    return {\"acme/a-flash\": {\"in\": 270000, \"out\": 1100000}, \"a-heavy\": {\"in\": 270000, \"out\": 1100000}, \"z-flash\": {\"in\": 250000, \"out\": 1000000}, \"zeta/z-pro\": {\"in\": 250000, \"out\": 1000000}}\n\ndef catalog", 1)
 	rep, err = Check(w.ctx(), w.st, w.ro, e, w.file("priced.star", priced))
 	require.NoError(t, err)
 	assert.Empty(t, rep.Warnings, "a price under provider/model or the model alone is found")
