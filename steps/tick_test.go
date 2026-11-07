@@ -137,6 +137,23 @@ func TestTickLandJudgementEveryOutcome(t *testing.T) {
 	}
 }
 
+// TestTickLandInheritedRedIsAGlance (directive 59): red that is all red on
+// the base too is still a land judgement (never a landing), worded so the
+// coordinator answers it at a glance: only inherited red, the facts, and
+// the hand landing's command for this card.
+func TestTickLandInheritedRedIsAGlance(t *testing.T) {
+	s := newSim(t)
+	first := toMerging(s)
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: InheritedRed, Reason: "inherited red (red on the base too, not this card's): hostile-corpus (the merge base cccccccccccc)"})
+	s.tick()
+	s.requireState("p1", "merging")
+	j := s.snap().Judgements["land.p1.1"]
+	assert.Equal(t, "open", j.State)
+	assert.Contains(t, j.Question, "card p1 (stream s1 onto ")
+	assert.Contains(t, j.Question, ") has only inherited red (its run ended; every failing workflow is red on the base too, so not this card's): land it with nova-sprint land p1 --reason <why>. Facts: inherited red (red on the base too, not this card's): hostile-corpus")
+	assert.Contains(t, j.Command, "choices: land | fix | retry")
+}
+
 // TestTickLandAnswers: fix sends the producer to fix with the finding (a
 // red: review +1); retry asks a new landing; land records it landed.
 func TestTickLandAnswers(t *testing.T) {

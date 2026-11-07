@@ -753,3 +753,21 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   for its beat only after reading), and the test waits on it before its first tick. No
   production code changed; `go test -run TestServeTicksPushesAndLogs -count=2000 -cpu 1,4 ./run/`
   and 100 runs under `-race` pass.
+
+## Built: the landing's red split in the facts; the host identity (stitch w3L, 2026-11-07)
+
+Directives 59, 63, 76; LANDING.md "Red that is not the card's".
+`run/edges.go`: `landFacts` leads a red judgement's facts with `NEW red (not
+red on the base)` (each workflow, what the base was read from, "its run
+still going", each failed job's runner, page and first error lines), then
+`inherited red (red on the base too, not this card's)`, then the PR's
+commit authors when an agreement check failed, then the merge base; the
+rest is as before. `landItem` hands layer 4's `ci_red_inherited` to layer 3
+as `steps.InheritedRed`. Waiting for the run behind inherited red is layer
+4's `ci_pending`, asked again every `LandPoll` like any pending CI.
+`cmd/nova-sprint/edges.go`: the forge's `Identity` is `identity(env)`
+(`forge.HostLogin`, or `GH_GATE_TOKEN` named as the override), and git's
+github.com credential is always gh as the host's login (no switch on
+`GH_TOKEN`/`GH_CONFIG_DIR`); `admit.go`'s `hostForge` runs gh in
+`forge.HostEnv()`. Tests: `TestLandItemSplitsRedByTheBase`,
+`TestIdentityNamesTheChoice`.

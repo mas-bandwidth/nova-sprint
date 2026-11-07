@@ -179,15 +179,15 @@ stream names its repository by URL or path); a form a forge cannot address
 is refused naming the form. Run's land and heads clone through it (one clone
 per address under `ReposDir`), `stream add`, `finish` and `check` read tips
 at it (`Client.Tip`: one `git ls-remote <address> refs/heads/<branch>`, no
-clone). The scheme is https, not ssh: the sprint's GitHub identity is a token
-nova-secrets exec puts in the process (`GH_TOKEN`, or the identity's
-`GH_CONFIG_DIR`), the forge edge already runs as it, and an ssh key
-registered with GitHub on every bench is a second credential to keep. With
-either set, the git edge makes `gh auth git-credential` git's one credential
-helper for `https://github.com` (`Config.GitHubCredential`, through
-`GIT_CONFIG_COUNT`; an empty helper first clears the host's own list, so a
-person's keychain never answers for the sprint); the environment names no
-secret. Without either, the host's own git configuration answers.
+clone). The scheme is https, not ssh: the sprint's GitHub identity is the
+host's gh login (w3L: or the `GH_GATE_TOKEN` override), the forge edge
+already runs as it, and an ssh key registered with GitHub is a second
+credential to keep. The git edge makes `gh auth git-credential`, run with
+every GitHub credential of the process unset (`env -u ...`), git's one
+credential helper for `https://github.com` (`Config.GitHubCredential`,
+through `GIT_CONFIG_COUNT`; an empty helper first clears the host's own
+list, so a person's keychain never answers for the sprint); the
+environment names no secret.
 
 A landing never: force-pushes base; merges a sha CI did not pass; puts two
 streams in one branch (LPM M5); rebases a card's branch; resolves a
@@ -202,8 +202,10 @@ removes a landing host (LANDING step 9).
 
 ## The GitHub edge
 
-`Forge` has four methods: `PR(head, base)` (find), `OpenPR`, `Checks(shas)`
-and `Merge(pr, sha)`.
+`Forge` has `PR(head, base)` (find), `OpenPR`, `Checks(shas)`,
+`Merge(pr, sha)`, `FailedLines(url)`, `Inheritance(base, baseTip, head)`
+(a red head's failing workflows split by the base) and `Authors(pr)` (see
+Built, "w3L").
 
 Credentials. The landing's `gh` runs as the host's own gh login (the run's
 host; intent rule 32, 2026-11-07: "the run does the forge work with the
@@ -867,3 +869,73 @@ clock), mostly in `edge/worker/probe_test.go`.
 - Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
   and carries no numbers) and not a read verb that writes. Tests: `edge/worker/beat_test.go`.
 
+### Built: the landing's red split, its timing, and the host identity (stitch w3L, 2026-11-07)
+
+Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
+
+- *`forge` (`edge/forge/actions.go`, new).* `Inheritance(repo, base,
+  baseTip, head)`: the merge base (`gh api repos/<r>/compare/<tip>...<head>
+  --jq .merge_base_commit.sha`), the workflow runs at the head and at the
+  merge base (`actions/runs?head_sha=`, `--jq`-projected so a page of 100
+  runs fits the 64 KiB output cap), the jobs of each failed or still
+  running run at the head (`actions/runs/<id>/jobs`), and for a failing
+  workflow with no completed run at the merge base the base branch's last
+  completed run of it (`actions/workflows/<id>/runs?branch=&status=completed`).
+  A workflow fails at the head when a run failed or is running with a
+  failed job. Returns `RedSplit{MergeBase, Inherited, New}`; each
+  `WorkflowRed` carries its `Basis` (what the base side was read from),
+  `Running`, and its failed jobs (`FailedJob{Name, Runner, URL, Lines}`).
+  Only new red's logs are read: `JobLines(id)` (`actions/jobs/<id>/logs`,
+  readable once the job ends, `LogMaxBytes` 8 MiB, timestamps stripped,
+  `FirstFailing` 5 lines of `LineMax` 240 bytes) for the first `NewJobsMax`
+  3 jobs; all three bounds are guesses. `Authors(pr)` is the PR's distinct
+  commit authors (`gh pr view --json commits`); `IsAgreement(check)`
+  names a CLA/CAA/contributor-agreement check. `CheckRollup.Waiting`: a red
+  rollup with a check still queued or running.
+- *`LandPass`* (`edge/git/land.go`): a red rollup goes through
+  `splitRed_internal`: an agreement check failing reads `Authors` into
+  `LandResult.Unsigned`; the split fills `MergeBase`, `Inherited`, `NewRed`
+  (plus each failing check that is no failed job of any workflow: new, not
+  compared). New red is `ci_red` at once, even while the run goes on; all
+  inherited while waiting is `ci_pending` ("waiting for the run"); all
+  inherited with the run ended is the new outcome `ci_red_inherited` (a
+  judgement); a split that cannot be read waits while the run goes on, then
+  is `ci_red` with `FailingLines` and the cause. Run's `landFacts` leads
+  with NEW red, inherited red and the authors; layer 3 words
+  `ci_red_inherited` for a glance (`steps.InheritedRed`).
+- *Identity (59).* gh runs with `forge.HostEnv()`: the process's
+  environment less `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`,
+  `GITHUB_ENTERPRISE_TOKEN` and `GH_CONFIG_DIR` (`CleanEnv`), plus the
+  `GH_GATE_TOKEN` override as `GH_TOKEN` when set: before this a
+  `GH_CONFIG_DIR` in run's environment made the landing act as that
+  directory's login, not the host's. git's github.com helper is always gh
+  as the host's login (`!env -u ... gh auth git-credential`; the
+  `githubCredential` switch on `GH_TOKEN`/`GH_CONFIG_DIR` is gone), and
+  admission's `hostForge` runs gh the same way. `Identity.Name` is the
+  choice (`forge.HostLogin`, "this host's gh login", or `GH_GATE_TOKEN
+  (the override of ...)`), never "sprint"; the missing-gh fix says `gh auth
+  login on this host`. Already done at the base: the "identity sprint" and
+  "expected sprint" refusals (`ExpectedLogin`, `Ready`) had been removed by
+  w2L; what remained was the environment and the name.
+- *Model.* `LandEdge.tla` unchanged and TLC not rerun: in the model every
+  non-green, non-absent gate is one judgement, which `ci_red_inherited`
+  still is, and waiting for the run is the re-ask a pending CI already is
+  (a `Pass` is atomic up to its final outcome). The trace walk's truthful
+  fake reports red as new (`fakeForge_internal.Inheritance`), so
+  `walkOutcomes` is unchanged.
+- *Tests (unit, no network).* `edge/forge/actions_test.go`: gh with canned
+  JSON for compare, runs, workflow runs, jobs and logs
+  (`TestInheritanceSplitsByTheMergeBase`: inherited at the merge base,
+  inherited by the base branch's last run, new at the merge base, new with
+  no run on the base, a running workflow with a failed job, inherited logs
+  never read), compare faults, an unread log, `Authors` and `IsAgreement`.
+  `edge/git/red_test.go`: inherited-only, waiting, new while waiting, the
+  agreement check, an uncompared split. `run/edges_land_test.go`
+  `TestLandItemSplitsRedByTheBase`; `steps/tick_test.go`
+  `TestTickLandInheritedRedIsAGlance`; `cmd/nova-sprint/edges_test.go`
+  `TestIdentityNamesTheChoice`; `edge/forge` `TestForgeActsAsTheHostsGh`
+  now sets `GH_TOKEN` and `GH_CONFIG_DIR` and requires neither reaches gh.
+- *Not done.* Which author is unsigned is not parsed from the agreement
+  check's output (every author is named); no functional test against a real
+  repository's Actions API (the calls mirror a hand tool used on the live
+  fleet, not run here).

@@ -161,3 +161,24 @@ func (f *Fake) FailedLines(_ context.Context, _, url string) ([]string, error) {
 	}
 	return nil, fmt.Errorf("forge: %s names no Actions job, so its log cannot be read", url)
 }
+
+// Inheritance is every failing check of head's rollup as new red: the fake
+// has no base runs.
+func (f *Fake) Inheritance(_ context.Context, repo, _, baseTip, head string) (RedSplit, error) {
+	f.call_internal("Inheritance")
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	split := RedSplit{MergeBase: baseTip}
+	for _, name := range f.world.checks[repo][head].Failing {
+		split.New = append(split.New, WorkflowRed{Workflow: name, Basis: "the merge base " + short(baseTip)})
+	}
+	return split, nil
+}
+
+// Authors is one fixed author.
+func (f *Fake) Authors(_ context.Context, _ string, _ int) ([]string, error) {
+	f.call_internal("Authors")
+	return []string{"A Writer <a@example.invalid> (a-writer)"}, nil
+}
+
+var _ Forge = (*Fake)(nil)

@@ -18,17 +18,18 @@ type LandOutcome string
 
 const (
 	OutcomeLanded     LandOutcome = "landed"
-	OutcomePending    LandOutcome = "ci_pending"    // checks queued or running
-	OutcomeAbsent     LandOutcome = "ci_absent"     // no check reported yet: the caller bounds the wait
-	OutcomeBaseMoved  LandOutcome = "base_moved"    // base moved after the gate: the pass runs again
-	OutcomeRed        LandOutcome = "ci_red"        // a check failed
-	OutcomeCIFault    LandOutcome = "ci_fault"      // a check was cancelled, timed out or never started
-	OutcomeConflict   LandOutcome = "conflict"      // the heads do not merge onto base
-	OutcomeRefused    LandOutcome = "merge_refused" // GitHub refused the merge
-	OutcomeUnopenable LandOutcome = "pr_unopenable" // the PR could not be opened or read
-	OutcomeBranch     LandOutcome = "branch_failed" // the group branch could not be created or pushed
-	OutcomeMissing    LandOutcome = "missing_head"  // a card's branch is not on origin
-	OutcomeMoved      LandOutcome = "head_moved"    // a card's branch is no longer at the head the read passed
+	OutcomePending    LandOutcome = "ci_pending"       // checks queued or running
+	OutcomeAbsent     LandOutcome = "ci_absent"        // no check reported yet: the caller bounds the wait
+	OutcomeBaseMoved  LandOutcome = "base_moved"       // base moved after the gate: the pass runs again
+	OutcomeRed        LandOutcome = "ci_red"           // a check failed that is not red on the base (new red), or one not compared
+	OutcomeInherited  LandOutcome = "ci_red_inherited" // the run ended and every failing check is red on the base too
+	OutcomeCIFault    LandOutcome = "ci_fault"         // a check was cancelled, timed out or never started
+	OutcomeConflict   LandOutcome = "conflict"         // the heads do not merge onto base
+	OutcomeRefused    LandOutcome = "merge_refused"    // GitHub refused the merge
+	OutcomeUnopenable LandOutcome = "pr_unopenable"    // the PR could not be opened or read
+	OutcomeBranch     LandOutcome = "branch_failed"    // the group branch could not be created or pushed
+	OutcomeMissing    LandOutcome = "missing_head"     // a card's branch is not on origin
+	OutcomeMoved      LandOutcome = "head_moved"       // a card's branch is no longer at the head the read passed
 )
 
 // LandRequest is one landing: the stream's heads (in landing order) and the
@@ -39,13 +40,20 @@ type LandRequest struct {
 	Ledgers                     []LedgerRule
 }
 
-// LandResult is one pass's outcome with the facts a judgement shows.
+// LandResult is one pass's outcome with the facts a judgement shows. A red
+// one carries the split by the base (directive 59): MergeBase, the
+// workflows red on the base too (Inherited) and the ones that are not
+// (NewRed: failed jobs, runners, first error lines; a failing check that is
+// no Actions workflow is new, since nothing on the base compares with it);
+// with a failing agreement check, Unsigned is the PR's commit authors.
 type LandResult struct {
 	Outcome                                          LandOutcome
 	Rung                                             int
 	BaseTip, GroupTip, GatedSHA, MergeSHA, PR, CIURL string
-	Reason                                           string
+	Reason, MergeBase                                string
 	LandedHeads, Conflicts, FailingCI, FailingLines  []string
+	Inherited, NewRed                                []forge.WorkflowRed
+	Unsigned                                         []string
 }
 
 // LandPass is one pass of the landing (LANDING.md, "The ladder"). Heads all
@@ -201,7 +209,7 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 		res.Outcome, res.Reason = OutcomeConflict, "GitHub says "+res.PR+" conflicts with "+req.Base
 		return res, nil
 	}
-	if done := readChecks_internal(ctx, fg, req.Repo, &res); done {
+	if done := readChecks_internal(ctx, fg, req, pr.Number, &res); done {
 		return res, nil
 	}
 	now, ok, err := g.LsRemote(ctx, req.RepoDir, "refs/heads/"+req.Base)
@@ -222,17 +230,18 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 }
 
 // readChecks_internal reads the gated sha's checks into res: true (with
-// res's outcome) unless they are green. A red one carries its failing
-// checks, the first one's URL and its first failing lines; a log that
-// cannot be read is said in the lines, never dropped.
-func readChecks_internal(ctx context.Context, fg forge.Forge, repo string, res *LandResult) bool {
-	rollups, err := fg.Checks(ctx, repo, []string{res.GatedSHA})
+// res's outcome) unless they are green. A red one is split by the base
+// (splitRed_internal); while the run goes on and every red so far is
+// inherited, the pass is pending (directive 76).
+func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, pr int, res *LandResult) bool {
+	rollups, err := fg.Checks(ctx, req.Repo, []string{res.GatedSHA})
 	if err != nil {
 		res.Outcome, res.Reason = OutcomeCIFault, "the checks of "+res.GatedSHA+" could not be read: "+edge.RedactN(err.Error(), edge.FailureMax)
 		return true
 	}
 	r := rollups[res.GatedSHA]
 	res.CIURL, res.FailingCI = r.URL, r.Failing
+	res.Reason = cmp.Or(r.Reason, string(r.State))
 	switch r.State {
 	case forge.CheckGreen:
 		return false
@@ -243,15 +252,85 @@ func readChecks_internal(ctx context.Context, fg forge.Forge, repo string, res *
 	case forge.CheckFault:
 		res.Outcome = OutcomeCIFault
 	default:
-		res.Outcome = OutcomeRed
-		lines, err := fg.FailedLines(ctx, repo, r.URL)
-		if err != nil {
-			lines = []string{"(the failing log was not read: " + edge.RedactN(err.Error(), edge.FailureMax) + ")"}
-		}
-		res.FailingLines = lines
+		res.Outcome = splitRed_internal(ctx, fg, req, pr, r, res)
 	}
-	res.Reason = cmp.Or(r.Reason, string(r.State))
 	return true
+}
+
+// splitRed_internal is a red rollup's outcome and facts. New red (or red
+// that could not be compared) is ci_red at once, even while the run goes
+// on; red that is all inherited waits for the run (pending), then is
+// ci_red_inherited, still a judgement: red never lands by itself. A
+// failing agreement check names the PR's commit authors.
+func splitRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, pr int, r forge.CheckRollup, res *LandResult) LandOutcome {
+	if slices.ContainsFunc(r.Failing, forge.IsAgreement) {
+		who, err := fg.Authors(ctx, req.Repo, pr)
+		if err != nil {
+			who = []string{"(the PR's commit authors were not read: " + edge.RedactN(err.Error(), edge.FailureMax) + ")"}
+		}
+		res.Unsigned = who
+	}
+	split, err := fg.Inheritance(ctx, req.Repo, req.Base, res.BaseTip, res.GatedSHA)
+	if err != nil {
+		res.Reason = "not compared with the base (" + edge.RedactN(err.Error(), edge.FailureMax) + "): " + res.Reason
+		if r.Waiting {
+			return OutcomePending
+		}
+		res.FailingLines = failedLines_internal(ctx, fg, req.Repo, r.URL)
+		return OutcomeRed
+	}
+	res.MergeBase, res.Inherited = split.MergeBase, split.Inherited
+	res.NewRed = append(split.New, unmatched_internal(r, split)...)
+	switch {
+	case len(res.NewRed) > 0:
+		res.Reason = "new red: " + workflows_internal(res.NewRed)
+		return OutcomeRed
+	case r.Waiting:
+		res.Reason = "waiting for the run: the red so far is all inherited (" + workflows_internal(res.Inherited) + ")"
+		return OutcomePending
+	}
+	res.Reason = "only inherited red: " + workflows_internal(res.Inherited)
+	return OutcomeInherited
+}
+
+// failedLines_internal is the first failing lines of the check at url; a
+// log that cannot be read is said in the lines, never dropped.
+func failedLines_internal(ctx context.Context, fg forge.Forge, repo, url string) []string {
+	lines, err := fg.FailedLines(ctx, repo, url)
+	if err != nil {
+		return []string{"(the failing log was not read: " + edge.RedactN(err.Error(), edge.FailureMax) + ")"}
+	}
+	return lines
+}
+
+// unmatched_internal is each failing check of the rollup that is no failed
+// job of a workflow in split: a status or another app's check, which
+// nothing on the base compares with, so new red.
+func unmatched_internal(r forge.CheckRollup, split forge.RedSplit) []forge.WorkflowRed {
+	var out []forge.WorkflowRed
+	for _, name := range r.Failing {
+		known := false
+		for _, w := range append(slices.Clone(split.Inherited), split.New...) {
+			known = known || w.Workflow == name || slices.ContainsFunc(w.Jobs, func(j forge.FailedJob) bool { return j.Name == name })
+		}
+		if !known {
+			job := forge.FailedJob{Name: name}
+			if name == r.Failing[0] {
+				job.URL = r.URL // the rollup's URL is its first failing check's
+			}
+			out = append(out, forge.WorkflowRed{Workflow: name, Basis: "a check that is no Actions workflow, not compared with the base", Jobs: []forge.FailedJob{job}})
+		}
+	}
+	return out
+}
+
+// workflows_internal is ws's names, each with what the base was read from.
+func workflows_internal(ws []forge.WorkflowRed) string {
+	var names []string
+	for _, w := range ws {
+		names = append(names, w.Workflow+" ("+w.Basis+")")
+	}
+	return strings.Join(names, ", ")
 }
 
 func allAncestors_internal(ctx context.Context, g Git, repoDir string, heads []string, target string) (bool, error) {

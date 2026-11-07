@@ -33,6 +33,9 @@ type fakeForge_internal struct {
 	OpenErr   error  // OpenPR fails with it
 	Mergeable string // the PR's mergeable state ("" is MERGEABLE)
 	prs       []forge.PRInfo
+	Split     *forge.RedSplit // Inheritance's answer when set
+	SplitErr  error           // Inheritance fails with it
+	AuthorsOf []string        // Authors' answer
 }
 
 func (f *fakeForge_internal) calls_internal() []string { return f.calls }
@@ -118,6 +121,34 @@ func (f *fakeForge_internal) Merge(_ context.Context, _ string, pr int, sha stri
 		return f.OnMerge(sha)
 	}
 	return strings.Repeat("e", 40), nil
+}
+
+// Inheritance is the split the test set (Split), else every failing check
+// of the head's rollup as new red at a merge base equal to baseTip.
+func (f *fakeForge_internal) Inheritance(_ context.Context, repo, _, baseTip, head string) (forge.RedSplit, error) {
+	f.call_internal("Inheritance")
+	if f.SplitErr != nil {
+		return forge.RedSplit{}, f.SplitErr
+	}
+	if f.Split != nil {
+		return *f.Split, nil
+	}
+	split := forge.RedSplit{MergeBase: baseTip}
+	if f.world != nil {
+		f.world.mu.Lock()
+		defer f.world.mu.Unlock()
+		for _, name := range f.world.checks[repo+"\x00"+head].Failing {
+			job := forge.FailedJob{Name: name, Runner: "runner-1", Lines: []string{"--- FAIL: TestX", "FAIL"}}
+			split.New = append(split.New, forge.WorkflowRed{Workflow: name, Basis: "the merge base", Jobs: []forge.FailedJob{job}})
+		}
+	}
+	return split, nil
+}
+
+// Authors is the PR's commit authors the test set.
+func (f *fakeForge_internal) Authors(_ context.Context, _ string, _ int) ([]string, error) {
+	f.call_internal("Authors")
+	return f.AuthorsOf, nil
 }
 
 func (f *fakeForge_internal) FailedLines(_ context.Context, _, url string) ([]string, error) {

@@ -626,3 +626,13 @@ routes. With none, the `unserved` judgement's About is the tier plus
 tier-only row no longer clears it each tick. Test:
 `TestTickRoutesDealOnlyToServingRows`. No TLA model names routes; the
 candidate filter narrows the row set the model already chooses from.
+
+## Built: inherited red worded for a glance (stitch w3L, 2026-11-07)
+
+Directive 59; LANDING.md "Red that is not the card's". `landJudge` words the
+land outcome `ci_red_inherited` (`InheritedRed`: layer 4 found every failing
+workflow red on the base too and the run ended) as "card <c> (...) has only
+inherited red (...): land it with nova-sprint land <c> --reason <why>.
+Facts: ...". It is still one land judgement with the choices land, fix and
+retry: red never lands by itself, and no state or transition changed, so
+`Steps.tla` is untouched. Test: `TestTickLandInheritedRedIsAGlance`.
