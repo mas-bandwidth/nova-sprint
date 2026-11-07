@@ -772,10 +772,10 @@ question reads, kind, width, tiers, model and harness, now comes from a
 name. The roster is a tick input beside the snapshot: `AnswerContext`,
 `Answer`, `Judgements`, `Check`, `Set`, `Activate`, `TraceState` take it
 (and `ReadCatalog` takes the engine). A row the snapshot holds and the
-roster does not name is in no question (no `width`, never a candidate) and
-`Judgements` opens one judgement for it while none is open: kind `roster`,
-about the row, "row <name> is not in nova-config", group `roster:<name>`,
-answered by `nova-sprint answer <id>`. A worker has no model (the roster's
+roster does not name is in no question (no `width`, never a candidate).
+Its judgement is the steps' alone (`steps` unlisted: kind `roster`, about
+the row, group `roster:<name>`); `Judgements` opens none for it (the e2e
+found two for one coordinator when both did). A worker has no model (the roster's
 `Worker` has none): `model` is "" for a worker, its harness `nova-worker`.
 `Rank` takes the tiers. The trace walk's drift moves a row's width in the
 roster (nova-config changing under the sprint), as it moved the store's.

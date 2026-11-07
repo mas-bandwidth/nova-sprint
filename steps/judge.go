@@ -103,6 +103,9 @@ func (t *tick) put(j judgement) store.Write {
 	if j.kind == "policy" {
 		w.Group = fmt.Sprintf("policy:v%d", t.o.a.Version)
 	}
+	if j.kind == "roster" {
+		w.Group = RosterGroup(j.about)
+	}
 	if j.kind != "blocked" {
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
