@@ -27,8 +27,8 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		return "", misuse("stream add", "a stream's name is 1 to 128 of a-z A-Z 0-9 . _ -")
 	case repo == "":
 		return "", misuse("stream add", "stream add names its repository: --repo <org/repo>")
-	case mode == store.StreamAuto && forge == "":
-		return "", misuse("stream add", "mode auto merges through a forge, and this stream has none: pass --forge github, or --mode hand to land it by hand")
+	case autoWithoutForge(mode, forge):
+		return "", misuse("stream add", errAutoNeedsForge)
 	}
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
@@ -105,6 +105,9 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if err != nil {
 		return "", err
 	}
+	if autoWithoutForge(mode, forge) {
+		return "", misuse("stream set", errAutoNeedsForge)
+	}
 	var ws []store.Write
 	if mode != orWord(s.Mode, store.StreamAuto) {
 		ws = append(ws, store.SetStreamMode{Stream: name, Mode: mode})
@@ -123,6 +126,12 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	}
 	return done(waitNext, fmt.Sprintf("STREAM %s mode=%s forge=%s applied at seq %d", name, mode, orWord(forge, "none"), r.Seq)), nil
 }
+
+// errAutoNeedsForge is the refusal of a stream that would merge by itself
+// with no forge to merge through.
+const errAutoNeedsForge = "mode auto merges through a forge, and this stream has none: pass --forge github, or --mode hand to land it by hand"
+
+func autoWithoutForge(mode, forge string) bool { return mode == store.StreamAuto && forge == "" }
 
 // streamSettings is --mode and --forge over the stream's own; `--forge
 // none` clears the forge.

@@ -37,6 +37,14 @@ func TestStreamRefusals(t *testing.T) {
 		{name: "no base at origin", as: "carol", args: []string{"stream", "add", "t", "--repo", "o/r", "--base", "dev", "--mode", "hand"}, exit: 1, want: []string{"branch dev is not at o/r's origin"}},
 		{name: "origin fails", as: "carol", args: []string{"stream", "add", "t", "--repo", "o/r", "--mode", "hand"}, exit: 2,
 			prep: func(_ *testing.T, w *world) { w.origin.err = errBroken }, want: []string{"git ls-remote of o/r failed"}},
+		{name: "set auto on an unforged stream", as: "carol", args: []string{"stream", "set", "t", "--mode", "auto"}, exit: 2, want: []string{"mode auto merges through a forge", "--mode hand"},
+			prep: func(t *testing.T, w *world) {
+				want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--mode", "hand"), 0, "STREAM t")
+			}},
+		{name: "unforge an auto stream", as: "carol", args: []string{"stream", "set", "t", "--forge", "none"}, exit: 2, want: []string{"mode auto merges through a forge", "--forge github"},
+			prep: func(t *testing.T, w *world) {
+				want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--forge", "github"), 0, "STREAM t")
+			}},
 		{name: "set of no stream", as: "carol", args: []string{"stream", "set", "t", "--mode", "hand"}, exit: 1, want: []string{"no stream t", "nova-sprint stream add t"}},
 		{name: "set of nothing", as: "carol", args: []string{"stream", "set", "s"}, exit: 2, want: []string{"stream set changes --mode, --forge"}},
 		{name: "a worker", as: "alice", args: []string{"stream", "add", "t", "--repo", "o/r"}, exit: 1, want: []string{"stream add is the coordinator's"}},

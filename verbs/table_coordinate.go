@@ -6,7 +6,7 @@ func coordinateVerbs() []*verb {
 			about: "adds a stream: its repository (<org>/<repo> with --forge github, reached at https://github.com/<org>/<repo>.git as the process's GitHub identity; or a clone URL or path), base branch, landing mode (auto by default, which needs --forge github; without a forge pass --mode hand) and forge (none: no PR or CI, landed by hand)",
 			needs: []string{"the stream exists: nova-sprint show <s>", "the base branch is not at origin: push it, or pass --base", "card branches sprint/<s>/<card> cannot be created (a bad name, or a branch sprint or sprint/<s>): rename or delete it", "with --forge github, this host's gh cannot write the repository: gh auth login as an identity that can"}},
 		{name: "stream set", group: "coordinate", role: roleCoordinator, usage: "<s> [--mode auto|group|hand] [--forge github|none]", flags: "mode= forge=", min: 1, max: 1, run: runStreamSet,
-			about: "changes a stream's landing mode or forge",
+			about: "changes a stream's landing mode or forge; mode auto needs a forge, so --mode auto on a stream with none, or --forge none on an auto stream, is refused: pass --forge github, or --mode hand",
 			needs: []string{"an unknown stream: nova-sprint stream add <s> --repo <org/repo>"}},
 		{name: "add", group: "coordinate", role: roleCoordinator, usage: "--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a,b>] [--priority <level>] [--dry-run] | --stream <s> --sentinel <id> --needs <a,b>", flags: "stream= brief-file=* needs= after= priority= sentinel= dry-run", max: 0, run: runAdd,
 			about: "adds producers from briefs that pass the card contract, or a sentinel that lands when its needs land",
