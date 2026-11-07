@@ -614,6 +614,30 @@ fails; a dump with its last event cut is refused ("... differs from the
 snapshot in judgements, cursors": seq is the log's own, so it agrees). No
 model change: the restore runs no op and changes no rule the model holds.
 
+Recorded with round 21 (2026-11-06): `store.ValidateHistory(ctx, tx pgx.Tx)
+error`, the whole-history check, which RestoreEnd now runs in place of the
+rebuild comparison alone, and which a verb can run on a live store in a
+REPEATABLE READ transaction (it only reads). It refuses naming the first
+mismatch, in this order: the events run from seq 1 to the last with no gap
+("the log has no event at seq 3 (the next is seq 4)"); each event's stored
+receipt is its own, its op, seq, kind, actor, accepted and time equal to the
+row's (receipts are a column of `sprint.events`, so an orphan receipt is one
+that names another event: "the receipt stored with event seq 4 (op reason-4)
+is not its own: it names op ghost at seq 4"); each event is in the epoch the
+log is in at that point (1, then each accepted clear's new epoch) and the
+epoch row is the log's last ("the epoch row is 3, but the log's last epoch is
+2"); the stored policy versions are exactly the ones the log's after-images
+wrote, each equal to its last image, active flag included, so the active one
+is the log's last activation ("policy version 2 is stored, but no event in
+the log wrote it", "the log wrote policy version 2, but it is not stored");
+every cursor is at or below the last seq ("cursor feed is at seq 99, past the
+log's last seq 5"); and `checkRebuild` as before. RestoreEnd prefixes "the
+dump does not hold together: "; ValidateHistory "store: history: ". Tests: the
+round-20 restore tests unchanged, a live store passes, and one mutation of a
+loaded dump per check (a dropped event, an orphan receipt, the epoch row, a
+policy version missing from the log, a cursor past the end), each refused
+with its message. No model change: a read.
+
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
