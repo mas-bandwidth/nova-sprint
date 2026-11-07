@@ -59,7 +59,7 @@ package does with it.
   schema's owner needs no CREATE on the database: an admin role creates
   `sprint` owned by `nova_sprint`, and `nova_sprint` migrates it. The hash is
   still of the whole file. A store with no schema still needs CREATE.
-- Restore (round 20, `restore.go`): `RestoreBegin(ctx, tx)` and
+- Restore (round 20, `restore.go`): `RestoreBegin(ctx, tx, digest)` and
   `RestoreEnd(ctx, tx)` restore a `pg_dump --data-only --schema=sprint` dump
   in one transaction on one connection. Begin takes Migrate's advisory lock,
   refuses a foreign schema or one with any row, and creates every table,
@@ -89,9 +89,12 @@ package does with it.
   sprint's stop (`Snapshot.Stopped`, kept by a clear, refused when
   unchanged; the store refuses nothing for it). `EventIdentity(ctx, seq)`
   reads an event's op id and epoch without its images. Migrate takes a
-  round-21 store in place. `RestoreEnd` records the restore
-  (`sprint.meta.restored_at`, read by `Restored(ctx)`) and unhooks the
-  dump's hooks in one logged op inside the restore's transaction. A cursor
+  round-21 store in place. `RestoreBegin(ctx, tx, digest)` takes the
+  dump's sha256; `RestoreEnd` records it and the time
+  (`sprint.meta.restored_digest`, `restored_at`, read by `Restored(ctx)`),
+  unhooks the dump's hooks in one logged op (`restore-unhook-<digest>-<seq>`)
+  inside the restore's transaction, and refuses the restore if a row is
+  still hooked. A cursor
   set to its current value is refused, an absent one counting as 0.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,

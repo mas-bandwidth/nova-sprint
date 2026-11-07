@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -22,6 +23,14 @@ const (
 	seedEpoch = "INSERT INTO sprint.epoch (id, n) VALUES (1, 1) ON CONFLICT (id) DO NOTHING;"
 )
 
+// digestRE is a dump's digest: sha256 in lowercase hex, as sprint.meta's
+// CHECK has it.
+var digestRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// digestSetting carries the digest from RestoreBegin to RestoreEnd for the
+// transaction only (set_config with is_local).
+const digestSetting = "nova_sprint.restore_digest"
+
 // restoreDDL is schema.sql with no CREATE SCHEMA and no seed rows: every
 // table, function, trigger, index and CHECK, and nothing in any table.
 var restoreDDL = strings.NewReplacer(seedMeta, "", seedEpoch, "").Replace(schemaObjects)
@@ -37,8 +46,17 @@ var restoreDDL = strings.NewReplacer(seedMeta, "", seedEpoch, "").Replace(schema
 // consumer's producer row by row. RestoreEnd enables it again and re-checks
 // every card with it, in the same transaction, so no other session ever sees
 // it disabled (ALTER TABLE holds an ACCESS EXCLUSIVE lock until the end).
-func RestoreBegin(ctx context.Context, tx pgx.Tx) error {
+// digest is the sha256 of the dump's bytes in lowercase hex, computed by the
+// caller: it is the restore's identity, kept for the transaction (a
+// transaction-local setting) and recorded by RestoreEnd in sprint.meta.
+func RestoreBegin(ctx context.Context, tx pgx.Tx, digest string) error {
+	if !digestRE.MatchString(digest) {
+		return fmt.Errorf("store: restore: the dump's digest %q is not a sha256 in lowercase hex (64 digits): pass the sha256 of the dump's bytes", digest)
+	}
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateLock); err != nil {
+		return fmt.Errorf("store: restore: %w", err)
+	}
+	if _, err := tx.Exec(ctx, "SELECT set_config($1, $2, true)", digestSetting, digest); err != nil {
 		return fmt.Errorf("store: restore: %w", err)
 	}
 	present, meta, used, _, err := namespace(ctx, tx)
@@ -125,45 +143,64 @@ func RestoreEnd(ctx context.Context, tx pgx.Tx) (SchemaIdentity, error) {
 }
 
 // unhookRestored records the restore in sprint.meta (restored_at, the
-// transaction's time: the store's Go code reads no clock) and unhooks every
-// row of the current epoch that the dump has hooked, so no hook from the dump
-// is live: one op of PutRow{Name} writes (unhookOp), run through the
-// protocol inside tx, so it is logged like any write and the log still
-// rebuilds the state. A dump with no hooked row logs nothing.
+// transaction's time: the store's Go code reads no clock; restored_digest,
+// RestoreBegin's digest) and unhooks every row of the current epoch that the
+// dump has hooked, so no hook from the dump is live: one op of PutRow{Name}
+// writes (unhookOp), run through the protocol inside tx, so it is logged like
+// any write and the log still rebuilds the state. A dump with no hooked row
+// logs nothing. Then it checks that no row of the epoch is hooked, refusing
+// the restore and naming the row otherwise (a replayed id, say, would leave
+// one hooked).
 func unhookRestored(ctx context.Context, tx pgx.Tx) error {
+	var digest string
 	var at time.Time
-	if err := tx.QueryRow(ctx, "UPDATE sprint.meta SET restored_at = transaction_timestamp() WHERE id = 1 RETURNING restored_at").Scan(&at); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT coalesce(current_setting($1, true), '')", digestSetting).Scan(&digest); err != nil {
+		return err
+	}
+	if !digestRE.MatchString(digest) {
+		return errors.New("RestoreBegin did not run in this transaction (no dump digest): run RestoreBegin, the load and RestoreEnd in one transaction")
+	}
+	if err := tx.QueryRow(ctx, "UPDATE sprint.meta SET restored_at = transaction_timestamp(), restored_digest = $1 WHERE id = 1 RETURNING restored_at", digest).Scan(&at); err != nil {
 		return err
 	}
 	snap, err := snapshotTx(ctx, tx)
 	if err != nil {
 		return err
 	}
-	op, ok := unhookOp(snap, at)
-	if !ok {
-		return nil
+	if op, ok := unhookOp(snap, digest, at); ok {
+		r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+		switch {
+		case err != nil:
+			return fmt.Errorf("unhooking the dump's hooks: %w", err)
+		case !r.Accepted:
+			return fmt.Errorf("unhooking the dump's hooks was refused: %s", r.Reason)
+		}
 	}
-	r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+	var row string
+	err = tx.QueryRow(ctx, `SELECT name FROM sprint.rows WHERE epoch = (SELECT n FROM sprint.epoch WHERE id = 1)
+		AND (session <> '' OR role <> '') ORDER BY name COLLATE "C" LIMIT 1`).Scan(&row)
 	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil
 	case err != nil:
-		return fmt.Errorf("unhooking the dump's hooks: %w", err)
-	case !r.Accepted:
-		return fmt.Errorf("unhooking the dump's hooks was refused: %s", r.Reason)
+		return err
 	}
-	return nil
+	return fmt.Errorf("row %s is still hooked after the unhook: the restore would leave a hook from the dump live", row)
 }
 
 // unhookOp is the op that unhooks every hooked row of s (PutRow with no
 // session and no role, in name order), and false when no row is hooked. Its
-// id names the seq it follows, so it is unique in the log.
-func unhookOp(s Snapshot, when time.Time) (Op, bool) {
+// id is the restore's identity, the dump's digest, with the seq it follows:
+// unique against the dump's own log, which may hold a restore-unhook of the
+// dump it was itself restored from.
+func unhookOp(s Snapshot, digest string, when time.Time) (Op, bool) {
 	var writes []Write
 	for _, name := range slices.Sorted(maps.Keys(s.Rows)) {
 		if s.Rows[name].Session != "" || s.Rows[name].Role != "" {
 			writes = append(writes, PutRow{Name: name})
 		}
 	}
-	op := Op{ID: fmt.Sprintf("restore-unhook-%d", s.Seq), Epoch: s.Epoch, Actor: "store-restore", Kind: "unhook", At: at(when), Writes: writes}
+	op := Op{ID: fmt.Sprintf("restore-unhook-%s-%d", digest, s.Seq), Epoch: s.Epoch, Actor: "store-restore", Kind: "unhook", At: at(when), Writes: writes}
 	return op, len(writes) > 0
 }
 
