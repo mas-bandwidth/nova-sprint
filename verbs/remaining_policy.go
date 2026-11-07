@@ -99,13 +99,7 @@ func (e *Engine) policy(ctx context.Context, args []string) Result {
 	if !ok || e.Env == nil {
 		return unavailable(verb)
 	}
-	coordinator, err := e.Env.Coordinator(ctx)
-	if err != nil {
-		return operationalFailure(verb, err)
-	}
-	if in.actor != coordinator {
-		return refused(verb, "policy is the coordinator's", "ask "+coordinator+" over the bus")
-	}
+
 	hooked, recipe, err := e.Env.Hooked(ctx, in.actor)
 	if err != nil {
 		return operationalFailure(verb, err)

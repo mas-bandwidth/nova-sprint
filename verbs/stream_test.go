@@ -15,11 +15,13 @@ func (repoFake) Readable(context.Context, string, string, bool) error { return n
 func TestStreamAdd(t *testing.T) {
 	f := store.NewFake()
 	e := Engine{Store: f, Env: fakeEnv{schema: true, hooked: true}, Repositories: repoFake{}, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
+	wireFixture(t, &e, f, "rowan")
+	before, _ := f.Snapshot(context.Background())
 	r := e.Execute(context.Background(), []string{"stream", "add", "docs", "--repo", "owner/repo", "--pr"})
 	if r.Exit != 0 || r.Output != "STREAM ADDED docs repo=owner/repo base=main branch=sprint/docs\nnext: nova-sprint add --stream docs --brief-file <file>\n" {
 		t.Fatal(r)
 	}
-	events, _ := f.Events(context.Background(), 0, 100)
+	events, _ := f.Events(context.Background(), before.Seq, 100)
 	if len(events) != 1 || events[0].After == nil || len(events[0].After.Policies) != 1 {
 		t.Fatal(events)
 	}
@@ -45,6 +47,7 @@ func TestStreamAdd(t *testing.T) {
 func TestStreamModeSet(t *testing.T) {
 	f := store.NewFake()
 	e := Engine{Store: f, Env: fakeEnv{schema: true, hooked: true}, Repositories: repoFake{}, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
+	wireFixture(t, &e, f, "rowan")
 	r := e.Execute(context.Background(), []string{"stream", "add", "docs", "--repo", "owner/repo", "--pr"})
 	if r.Exit != 0 {
 		t.Fatal(r)

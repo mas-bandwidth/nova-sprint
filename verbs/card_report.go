@@ -19,7 +19,7 @@ func (CardReportPlanner) PlanReport(s store.Snapshot, c store.Card, r card.Repor
 	}
 	rows := make(map[string]card.Row, len(s.Rows))
 	for id, row := range s.Rows {
-		rows[id] = card.RowFromStore(row)
+		rows[id] = card.RowFromStore(row, 0, nil)
 	}
 	all := make(map[string]card.Card, len(s.Cards))
 	for id, item := range s.Cards {

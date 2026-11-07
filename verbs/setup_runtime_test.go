@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -195,8 +194,8 @@ func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 		}
 	}
 	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: command, Getenv: func(string) string { return "" }}, Pin: "v1.6.20"}, Store: &runtimeStore{ready: true}}
-	result := (&Engine{Actor: "rowan", Setup: runtime, SetupLock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
-	want := fmt.Sprintf("UP 1/8 nova-tools: fleet green; nova-tools v1.6.29 at or above pin v1.6.20: VERIFIED\nUP 2/8 store: schema sprint version %d and backup: VERIFIED\nUP 3/8 coordinator rowan: not hooked\nSPRINT REFUSED up: rowan is not hooked in: run nova-bus hook --as rowan under your session's Monitor tool\n", store.SchemaVersion)
+	result := (&Engine{Actor: "rowan", Env: runtime.Prerequisites.Env, Setup: runtime, SetupLock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
+	want := "SPRINT REFUSED up: hook in to the bus first: run NOVA_BUS_REDIS=<addr> nova-bus hook --as rowan as the Monitor tool command, then hook in to the sprint again\n"
 	if result.Exit != 1 || result.Output != want {
 		t.Fatal(result)
 	}

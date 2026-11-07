@@ -29,7 +29,7 @@ func TestFleetMachinesRejectsInvalidResponse(t *testing.T) {
 func TestSprintSeatsExcludePublicAndUseServiceSeat(t *testing.T) {
 	machines := []FleetMachine{{Name: "studio", Roles: []string{"services"}}, {Name: "amd-1", Roles: []string{"bench"}}, {Name: "public", Roles: []string{"services"}}}
 	seats, err := SprintSeats(machines, FleetService{Machine: "studio", Seat: "studio"}, "public")
-	if err != nil || len(seats) != 2 || seats[0] != (SprintSeat{Seat: "studio", Machine: "studio"}) || seats[1] != (SprintSeat{Seat: "swarm-amd-1", Machine: "amd-1"}) {
+	if err != nil || len(seats) != 2 || seats[0] != (SprintSeat{Seat: "studio", Machine: "studio"}) || seats[1] != (SprintSeat{Seat: "amd-1", Machine: "amd-1"}) {
 		t.Fatal(seats, err)
 	}
 	if _, err = SprintSeats(machines, FleetService{Machine: "public", Seat: "public"}, "public"); err == nil {

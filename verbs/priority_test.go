@@ -13,6 +13,7 @@ func TestPriorityOnFake(t *testing.T) {
 	at := time.Unix(1000, 0)
 	applyTest(t, f, store.Op{ID: "seed", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "brief"}}})
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "worker", Now: func() time.Time { return at }}
+	wireFixture(t, &e, f, "worker")
 	r := e.Execute(context.Background(), []string{"priority", "p", "high", "--reason", "urgent"})
 	if r.Exit != 0 || r.Output != "PRIORITY p high\nnext: nothing; wait for the bus\n" {
 		t.Fatal(r)

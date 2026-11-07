@@ -31,6 +31,7 @@ func TestBreakReadOfFinishedWorkExitsZero(t *testing.T) {
 	ctx := context.Background()
 	f, at := breakEpoch(t)
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "worker", Now: func() time.Time { return at }, Reports: CardReportPlanner{}, Heads: headFake{}}
+	wireFixture(t, &e, f, "worker")
 	if r := e.Execute(ctx, []string{"take", "p.w1@0", "--epoch", "2"}); r.Exit != 0 {
 		t.Fatal(r)
 	}
@@ -54,6 +55,7 @@ func TestBreakReadByAuthorExitsZero(t *testing.T) {
 	ctx := context.Background()
 	f, at := breakEpoch(t)
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "worker", Now: func() time.Time { return at }, Reports: CardReportPlanner{}, Heads: headFake{}}
+	wireFixture(t, &e, f, "worker")
 	if r := e.Execute(ctx, []string{"take", "p.w1@0", "--epoch", "2"}); r.Exit != 0 {
 		t.Fatal(r)
 	}
@@ -61,12 +63,12 @@ func TestBreakReadByAuthorExitsZero(t *testing.T) {
 	if r := e.Execute(ctx, []string{"finish", "p.w1@1", "--head", head, "--as", "worker", "--epoch", "2"}); r.Exit != 0 {
 		t.Fatal(r)
 	}
-	applyTest(t, f, store.Op{ID: "reader-row", Epoch: 2, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "reader", Kind: "worker", Width: 1, Tiers: []string{"pro"}}}})
+	applyTest(t, f, store.Op{ID: "reader-row", Epoch: 2, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "reader", Session: "fixture", Role: "worker"}}})
 	snap, err := f.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seen, why := card.MoveRow(card.RowFromStore(snap.Rows["reader"]), card.Seen{})
+	seen, why := card.MoveRow(card.RowFromStore(snap.Rows["reader"], 2, []string{"pro"}), card.Seen{})
 	if why != nil {
 		t.Fatal(why)
 	}
@@ -74,7 +76,7 @@ func TestBreakReadByAuthorExitsZero(t *testing.T) {
 	snap, _ = f.Snapshot(ctx)
 	rows := map[string]card.Row{}
 	for name, row := range snap.Rows {
-		rows[name] = card.RowFromStore(row)
+		rows[name] = card.RowFromStore(row, 2, []string{"pro"})
 	}
 	p := snap.Cards["p"]
 	ask, why := card.Move(card.FromStore(p), consumers(snap, p.ID), rows, card.StreamFromStore(snap.Streams[p.Stream]), nil, card.AskRead{Row: "reader"})
@@ -105,6 +107,7 @@ func TestBreakNextDoneStreamHidesEmpty(t *testing.T) {
 		},
 	}
 	e := Engine{Store: fakeReader{snap}, Env: fakeEnv{green: true, schema: true, hooked: true}, Actor: "rowan"}
+	e.Roles = testRoles{role: "coordinator"}
 	got := e.Execute(context.Background(), []string{"next"})
 	if got.Exit != 0 || !strings.Contains(got.Output, "stream b has no cards") || !strings.Contains(got.Output, "nova-sprint add --stream b") {
 		t.Fatalf("empty stream b should be the unsettled next, got %+v", got)
@@ -124,6 +127,7 @@ func TestBreakNextPartialDoneIsNotEverything(t *testing.T) {
 		},
 	}
 	e := Engine{Store: fakeReader{snap}, Env: fakeEnv{green: true, schema: true, hooked: true}, Actor: "rowan"}
+	e.Roles = testRoles{role: "coordinator"}
 	got := e.Execute(context.Background(), []string{"next"})
 	if got.Exit != 0 || strings.Contains(got.Output, "is done") || !strings.Contains(got.Output, "nothing needs you") {
 		t.Fatalf("partial landing must not answer done, got %+v", got)

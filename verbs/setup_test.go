@@ -39,7 +39,7 @@ func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 }
 func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	f := &setupFake{stop: 5}
-	e := Engine{Actor: "rowan", Setup: f, SetupLock: setupLeaseFake{}}
+	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, SetupHook: func(context.Context, SetupInput) Result { return Result{} }, Setup: f, SetupLock: setupLeaseFake{}}
 	first := e.Execute(context.Background(), []string{"up"})
 	if first.Exit != 1 || !strings.Contains(first.Output, "ASK dashboard\nnext:") {
 		t.Fatal(first)

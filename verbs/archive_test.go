@@ -39,7 +39,9 @@ func (f *archiveFake) Check(context.Context) error                    { return f
 func (f *archiveFake) Close() error                                   { return f.step("close") }
 func TestRestoreOrdering(t *testing.T) {
 	a := &archiveFake{empty: true, info: BackupInfo{Verified: &VerifiedDump{}}}
-	e := Engine{Archive: a}
+	f := store.NewFake()
+	e := Engine{Archive: a, Store: f, Env: fakeEnv{hooked: true}, Actor: "rowan"}
+	wireFixture(t, &e, f, "rowan")
 	got := e.Execute(context.Background(), []string{"restore", "backup.dump"})
 	if got.Exit != 0 {
 		t.Fatal(got)
@@ -59,15 +61,18 @@ func TestClearRequiresMatchingVerifiedBackup(t *testing.T) {
 	f := store.NewFake()
 	a := &archiveFake{info: BackupInfo{Epoch: 1, Seq: 1, Path: "x"}}
 	e := Engine{Store: f, Archive: a, Env: fakeEnv{hooked: true}, Preview: func(context.Context, string) error { return nil }, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
+	wireFixture(t, &e, f, "rowan")
+	snap, _ := f.Snapshot(context.Background())
+	a.info.Seq = snap.Seq + 1
 	r := e.Execute(context.Background(), []string{"clear", "--confirm", "1"})
 	if r.Exit != 1 {
 		t.Fatal(r)
 	}
-	snap, _ := f.Snapshot(context.Background())
+	snap, _ = f.Snapshot(context.Background())
 	if snap.Epoch != 1 {
 		t.Fatal(snap.Epoch)
 	}
-	a.info.Seq = 0
+	a.info.Seq = snap.Seq
 	r = e.Execute(context.Background(), []string{"clear", "--confirm", "1"})
 	if r.Exit != 0 {
 		t.Fatal(r)
@@ -94,5 +99,26 @@ func TestPostgresSubprocessEnvironmentIsAllowlisted(t *testing.T) {
 	joined := strings.Join(env, "\n")
 	if strings.Contains(joined, "synthetic") || strings.Contains(joined, "unrelated") || !strings.Contains(joined, "PGPASSWORD=dedicated") {
 		t.Fatal(env)
+	}
+}
+
+func TestArchiveArgumentsAcceptExplicitActor(t *testing.T) {
+	cases := []struct {
+		args   []string
+		backup bool
+		value  string
+		ok     bool
+	}{
+		{[]string{"--as", "alice", "--out", "dir"}, true, "dir", true},
+		{[]string{"file", "--as", "alice"}, false, "file", true},
+		{[]string{"--as", "alice", "file"}, false, "file", true},
+		{[]string{"file", "--as", "alice", "--as", "bob"}, false, "", false},
+		{[]string{"--out"}, true, "", false},
+	}
+	for _, tc := range cases {
+		got, ok := archiveArgs(tc.args, tc.backup)
+		if got != tc.value || ok != tc.ok {
+			t.Fatal(tc, got, ok)
+		}
 	}
 }

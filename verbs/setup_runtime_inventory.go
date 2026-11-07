@@ -92,7 +92,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 		if machine.Name == publicHost || !slices.Contains(machine.Roles, "bench") {
 			continue
 		}
-		seat := "swarm-" + machine.Name
+		seat := machine.Name
 		if !fleetName.MatchString(seat) {
 			return nil, fmt.Errorf("bench seat unavailable")
 		}

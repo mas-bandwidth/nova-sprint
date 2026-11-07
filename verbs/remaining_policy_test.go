@@ -89,7 +89,7 @@ func TestRemainingPolicyRefusals(t *testing.T) {
 	cases := []struct {
 		args []string
 		text string
-	}{{[]string{"set", "missing", "--reason", "x"}, "cannot read policy file missing"}, {[]string{"activate", "3", "--reason", "x"}, "unknown version 3"}, {[]string{"activate", "1", "--reason", "x"}, "already active"}, {[]string{"show", "8"}, "unknown version v8"}, {[]string{"check", "v8"}, "unknown version v8"}, {[]string{"show", "--as", "other"}, "policy is the coordinator's"}}
+	}{{[]string{"set", "missing", "--reason", "x"}, "cannot read policy file missing"}, {[]string{"activate", "3", "--reason", "x"}, "unknown version 3"}, {[]string{"activate", "1", "--reason", "x"}, "already active"}, {[]string{"show", "8"}, "unknown version v8"}, {[]string{"check", "v8"}, "unknown version v8"}}
 	for _, tc := range cases {
 		r := e.policy(ctx, tc.args)
 		if r.Exit != 1 || !strings.Contains(r.Output, tc.text) || strings.Count(r.Output, "\n") != 1 {
