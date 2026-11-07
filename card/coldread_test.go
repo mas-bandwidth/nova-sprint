@@ -337,77 +337,9 @@ func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
 	}
 	switch n := rng.Intn(60); {
 	case n < 34:
-		var prods []string
-		for _, id := range ids {
-			if !consumer(all[id].Kind) {
-				prods = append(prods, id)
-			}
-		}
-		p := all[pick(prods)]
-		cs := cons[p.ID]
-		cid := workID(p.ID, p.Attempt)
-		if len(cs) > 0 && rng.Intn(4) == 0 {
-			cid = cs[rng.Intn(len(cs))].ID
-		}
-		heads := []string{p.Head, p.Head, h1, coldH3}
-		evs := []Event{Resolve{}, Resolve{}, Park{}, Reached{}, Start{Row: row, Branch: "b-" + p.ID, Base: base}, Start{Row: row, Branch: "b-" + p.ID, Base: base},
-			Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskReads{Rows: []string{row}},
-			ReadYes{}, ReadYes{}, ReadFix{Finding: "fix it"}, Landed{Head: pick(heads)}, Red{Head: pick(heads), Reason: "red"}, Red{Head: p.Head, Reason: "red"}, Released{},
-			Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
-			Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
-		if rng.Intn(120) == 0 {
-			evs = []Event{Cancel{Reason: "c"}, Replace{By: "p3", Reason: "r"}, NeedFailed{Need: "p1"}, Waive{Need: "p1"}, Relink{Need: "p1", To: "p3"}}
-		}
-		if legal := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return !slices.Contains(coldAllowed[name(e)], p.State) }); len(legal) > 0 && rng.Intn(5) > 0 {
-			evs = legal // mostly events whose from-state matches, so the walk gets deep
-		}
-		side := []string{"Rescore", "SetPriority", "Edit", "Block"}
-		if moves := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return slices.Contains(side, name(e)) }); len(moves) > 0 && rng.Intn(10) > 0 {
-			evs = moves // the side verbs are legal everywhere and would crowd out the path
-		}
-		if p.State == Merging && rng.Intn(3) > 0 {
-			evs = []Event{Landed{Head: p.Head}, Landed{Head: p.Head}, Red{Head: p.Head, Reason: "red"}}
-		}
-		e := evs[rng.Intn(len(evs))]
-		st := w.snap().Streams[p.Stream]
-		plan, r := Move(p, cs, w.rows(), Stream{Name: st.Name, Held: st.Held}, all, e)
-		return plan, name(e) + " " + p.ID, p.ID, r == nil
+		return w.coldStepCard(rng, ids, all, cons, row, pick)
 	case n < 56:
-		var cids []string
-		for _, id := range ids {
-			if consumer(all[id].Kind) {
-				cids = append(cids, id)
-			}
-		}
-		if len(cids) == 0 {
-			return Plan{}, "", "", false
-		}
-		if live := slices.DeleteFunc(slices.Clone(cids), func(id string) bool { return final(all[id].Kind, all[id].State) }); len(live) > 0 && rng.Intn(5) > 0 {
-			cids = live
-		}
-		c := all[pick(cids)]
-		p := all[c.Of]
-		at := c.Holder
-		if rng.Intn(6) == 0 {
-			at = row
-		}
-		head := pick([]string{p.Head, p.Head, h1, h2, coldH3, base, "", "abc"})
-		result := pick([]string{"ok", "ok", "ok", "fix", "fail", "fault", "maybe"})
-		if c.Kind == "read" && rng.Intn(4) > 0 {
-			head = p.Head
-		}
-		evs := []Event{Take{Row: at}, Take{Row: at}, Report{Row: at, Result: result, Head: head, Reason: "r", Cost: int64(rng.Intn(3)), Priced: rng.Intn(2) == 0},
-			Report{Row: at, Result: result, Head: head}, Report{Row: at, Result: result, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
-		if rng.Intn(3) > 0 {
-			evs = evs[:5]
-		}
-		e := evs[rng.Intn(len(evs))]
-		if v, ok := e.(Withdraw); ok { // the producer's stream, as layer 3 reads it
-			v.Stream = StreamFromStore(w.snap().Streams[p.Stream])
-			e = v
-		}
-		plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
-		return plan, name(e) + " " + c.ID, c.ID, r == nil
+		return w.coldStepConsumer(rng, ids, all, row, pick)
 	case n < 59:
 		r := w.rows()[pick(rowNames[:3])]
 		e := []Event{Seen{}, Gone{}, Width{N: 1 + rng.Intn(3)}, Hold{Reason: "h"}, Unhold{Reason: "u"}}[rng.Intn(5)]
@@ -416,6 +348,82 @@ func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
 	}
 	held := w.snap().Streams["s1"].Held
 	return Plan{Writes: []store.Write{store.SetStreamHeld{Stream: "s1", Held: !held}}}, "HoldStream s1", "", true
+}
+
+func (w *world) coldStepCard(rng *rand.Rand, ids []string, all map[string]Card, cons map[string][]Card, row string, pick func([]string) string) (Plan, string, string, bool) {
+	var prods []string
+	for _, id := range ids {
+		if !consumer(all[id].Kind) {
+			prods = append(prods, id)
+		}
+	}
+	p := all[pick(prods)]
+	cs := cons[p.ID]
+	cid := workID(p.ID, p.Attempt)
+	if len(cs) > 0 && rng.Intn(4) == 0 {
+		cid = cs[rng.Intn(len(cs))].ID
+	}
+	heads := []string{p.Head, p.Head, h1, coldH3}
+	evs := []Event{Resolve{}, Resolve{}, Park{}, Reached{}, Start{Row: row, Branch: "b-" + p.ID, Base: base}, Start{Row: row, Branch: "b-" + p.ID, Base: base},
+		Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskReads{Rows: []string{row}},
+		ReadYes{}, ReadYes{}, ReadFix{Finding: "fix it"}, Landed{Head: pick(heads)}, Red{Head: pick(heads), Reason: "red"}, Red{Head: p.Head, Reason: "red"}, Released{},
+		Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
+		Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
+	if rng.Intn(120) == 0 {
+		evs = []Event{Cancel{Reason: "c"}, Replace{By: "p3", Reason: "r"}, NeedFailed{Need: "p1"}, Waive{Need: "p1"}, Relink{Need: "p1", To: "p3"}}
+	}
+	if legal := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return !slices.Contains(coldAllowed[name(e)], p.State) }); len(legal) > 0 && rng.Intn(5) > 0 {
+		evs = legal // mostly events whose from-state matches, so the walk gets deep
+	}
+	side := []string{"Rescore", "SetPriority", "Edit", "Block"}
+	if moves := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return slices.Contains(side, name(e)) }); len(moves) > 0 && rng.Intn(10) > 0 {
+		evs = moves // the side verbs are legal everywhere and would crowd out the path
+	}
+	if p.State == Merging && rng.Intn(3) > 0 {
+		evs = []Event{Landed{Head: p.Head}, Landed{Head: p.Head}, Red{Head: p.Head, Reason: "red"}}
+	}
+	e := evs[rng.Intn(len(evs))]
+	st := w.snap().Streams[p.Stream]
+	plan, r := Move(p, cs, w.rows(), Stream{Name: st.Name, Held: st.Held}, all, e)
+	return plan, name(e) + " " + p.ID, p.ID, r == nil
+}
+
+func (w *world) coldStepConsumer(rng *rand.Rand, ids []string, all map[string]Card, row string, pick func([]string) string) (Plan, string, string, bool) {
+	var cids []string
+	for _, id := range ids {
+		if consumer(all[id].Kind) {
+			cids = append(cids, id)
+		}
+	}
+	if len(cids) == 0 {
+		return Plan{}, "", "", false
+	}
+	if live := slices.DeleteFunc(slices.Clone(cids), func(id string) bool { return final(all[id].Kind, all[id].State) }); len(live) > 0 && rng.Intn(5) > 0 {
+		cids = live
+	}
+	c := all[pick(cids)]
+	p := all[c.Of]
+	at := c.Holder
+	if rng.Intn(6) == 0 {
+		at = row
+	}
+	head := pick([]string{p.Head, p.Head, h1, h2, coldH3, base, "", "abc"})
+	result := pick([]string{"ok", "ok", "ok", "fix", "fail", "fault", "maybe"})
+	if c.Kind == "read" && rng.Intn(4) > 0 {
+		head = p.Head
+	}
+	evs := []Event{Take{Row: at}, Take{Row: at}, Report{Row: at, Result: result, Head: head, Reason: "r", Cost: int64(rng.Intn(3)), Priced: rng.Intn(2) == 0},
+		Report{Row: at, Result: result, Head: head}, Report{Row: at, Result: result, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
+	if rng.Intn(3) > 0 {
+		evs = evs[:5]
+	}
+	e := evs[rng.Intn(len(evs))]
+	if v, ok := e.(Withdraw); ok { // the producer's stream, as layer 3 reads it
+		v.Stream = StreamFromStore(w.snap().Streams[p.Stream])
+		e = v
+	}
+	plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
+	return plan, name(e) + " " + c.ID, c.ID, r == nil
 }
 
 // coldFences: the moved card is fenced by its gen; every cut consumer by
