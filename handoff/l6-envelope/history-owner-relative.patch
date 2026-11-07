@@ -1,0 +1,62 @@
+--- /Volumes/nova/ai/stella/working/nova-sprint-v2-l6-run-20261106/run/push_history_test.go	2026-11-06 21:55:36
++++ run/push_history_test.go	2026-11-06 21:53:30
+@@ -110,22 +110,22 @@
+ 	applyOK(t, f, op("seed", store.PutStream{Name: "s"}, store.PutCard{ID: "a", Kind: "producer", Tier: "pro", Stream: "s"}))
+ 	applyOK(t, f, op("land", store.SetCardState{Card: "a", State: "landed"}))
+ 	snap, _ := f.Snapshot(ctx)
+-	sender := &testSender{failAt: 2}
++	sender := &testSender{failAt: 1}
+ 	p := NewPusher(f, EventNotices{Coordinator: "rowan"}, sender)
+ 	if err := p.Push(ctx, "rowan", snap, time.Unix(1000, 0)); err == nil {
+-		t.Fatal("expected second batch to fail")
++		t.Fatal("expected envelope send to fail")
+ 	}
+-	if len(sender.sends) != 2 || !strings.HasPrefix(sender.sends[1], "STREAM LANDED:") {
++	if len(sender.sends) != 1 || !strings.Contains(sender.sends[0], "STREAM LANDED:") {
+ 		t.Fatalf("first=%v", sender.sends)
+ 	}
+-	first := sender.sends[1]
++	first := sender.sends[0]
+ 	applyOK(t, f, op("later", store.PutCard{ID: "b", Kind: "producer", Tier: "pro", Stream: "s"}))
+ 	snap, _ = f.Snapshot(ctx)
+ 	sender.failAt = 0
+ 	if err := p.Push(ctx, "rowan", snap, time.Unix(1000, 0)); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if len(sender.sends) != 4 || sender.sends[3] != first {
++	if len(sender.sends) != 2 || sender.sends[1] != first {
+ 		t.Fatalf("first=%q retry=%v", first, sender.sends)
+ 	}
+ }
+@@ -146,7 +146,7 @@
+ 	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if len(sender.sends) != 2 || !strings.Contains(sender.sends[0], "epoch 1 cleared: 1 pending notices dropped (some may have reached you)") || !strings.Contains(sender.sends[1], "--epoch 2") || strings.Contains(sender.sends[1], "--epoch 1") {
++	if len(sender.sends) != 1 || !strings.Contains(sender.sends[0], "epoch 1 cleared: 1 pending notices dropped (some may have reached you)") || !strings.Contains(sender.sends[0], "--epoch 2") || strings.Contains(sender.sends[0], "--epoch 1") {
+ 		t.Fatalf("sends=%v", sender.sends)
+ 	}
+ 	fresh, _ := f.Snapshot(ctx)
+@@ -159,11 +159,11 @@
+ 	f := store.NewFake()
+ 	pushSeed(t, f, "a", "old")
+ 	snap, _ := f.Snapshot(ctx)
+-	sender := &testSender{failAt: 2}
++	sender := &testSender{failAt: 1}
+ 	notices := noticeMap{"old": {{Subject: "DEAL", Line: "old deal"}, {Subject: "NEEDS YOU", Line: "old judgement"}}}
+ 	p := NewPusher(f, notices, sender)
+ 	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err == nil {
+-		t.Fatal("expected partial failure")
++		t.Fatal("expected send failure")
+ 	}
+ 	if _, err := f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "test", Kind: "clear", At: time.Unix(1000, 0)}); err != nil {
+ 		t.Fatal(err)
+@@ -173,7 +173,7 @@
+ 	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if len(sender.sends) != 3 || !strings.Contains(sender.sends[2], "epoch 1 cleared: 2 pending notices dropped (some may have reached you)") {
++	if len(sender.sends) != 2 || !strings.Contains(sender.sends[1], "epoch 1 cleared: 2 pending notices dropped (some may have reached you)") {
+ 		t.Fatalf("sends=%v", sender.sends)
+ 	}
+ }

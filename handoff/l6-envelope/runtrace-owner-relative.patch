@@ -1,0 +1,15 @@
+--- /Volumes/nova/ai/stella/working/nova-sprint-v2-l6-run-20261106/run/run_trace_test.go	2026-11-06 21:55:36
++++ run/run_trace_test.go	2026-11-06 21:57:29
+@@ -287,10 +287,10 @@
+ 	var lines []string
+ 	for _, e := range events {
+ 		if e.Accepted && (e.Kind == "trace-report" || e.Kind == "trace-move") {
+-			lines = append(lines, e.Op)
++			lines = append(lines, "TRACE: "+e.Op)
+ 		}
+ 	}
+-	if to != "r1" || subject != "TRACE" || body != strings.Join(lines, "\n") || len(lines) == 0 {
++	if to != "r1" || subject != "SPRINT" || body != strings.Join(lines, "\n") || len(lines) == 0 {
+ 		return Delivery{}, fmt.Errorf("unexpected single-batch body %q", body)
+ 	}
+ 	r.pushCount = len(lines)

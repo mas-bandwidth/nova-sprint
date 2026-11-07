@@ -1,0 +1,641 @@
+diff --git a/docs/LAYER-6-RUN.md b/docs/LAYER-6-RUN.md
+index e5313b66..16a0dab1 100644
+--- a/docs/LAYER-6-RUN.md
++++ b/docs/LAYER-6-RUN.md
+@@ -67,8 +67,8 @@ push cursor (`push:<name>` in `sprint.cursors`) and sends one message per recipi
+ tick, one line per item (always batch), by `nova-bus send --as sprint --to <name> <subject>
+ <body>`, and sets the cursor only after the send exits 0. A crash in between resends on
+ restart, and every line is safe twice (`take` of a card already held prints the same brief).
+-Bodies are bounded: logs, diffs and findings travel as the command that shows them (LESSONS
+-4.4). No send, exec, git or HTTP call runs under the store's writer lock (LESSONS 3.23).
++Bodies are bounded to 4 KB: logs, diffs and findings travel as the command that shows them (LESSONS
++4.4). Overflow names `nova-sprint next --as <recipient>` for current actionable obligations; it does not recover every historical informational notice. An unconsumed cursor prefix is sent on the next tick, without a separate delivery retry queue, backoff, or inbox. No send, exec, git or HTTP call runs under the store's writer lock (LESSONS 3.23).
+ 
+ **What it logs**, to `~/.local/state/nova-sprint/run.log`, one line per tick, `TICK n=8812
+ seq=125044 took=131ms folded=212 moves=388/0 pushed=17 putback=0`, and when they happen:
+@@ -523,7 +523,7 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
+ - Layer 3 owns ordering, budget, packing and carry. Its provisional consumed seam returns ordered ops, effects and answers with `After` op IDs, and carried edge results. Run applies the ops in order and emits an effect only after all of its named ops accept; refused op IDs and edge results return for replanning. An unknown outcome pins the op until Replay or a same-ID retry. Edge facts are assumed re-queryable by stable key after restart; layer 4 must validate that assumption. The real layer 3 and 4 interfaces are not wired yet.
+ - The scheduler reads nova-bus presence once per tick, checks the `sprint` name is present and observes its hook process for exit; `who` does not expose a lease token, so this is not proof that the live process owns that name after a disconnect. The checkpoint still passes folded store rows to its provisional steps seam. Rowan’s later ruling makes nova-config the authoritative machine and friend roster; store round 22 and roster integration are pending, so this checkpoint is not compliant with that later ruling.
+ - Policy is loaded by snapshot version. A tick op's note records `planned_policy=<n>`; the event's Policy is the version active at commit. There is no atomic policy cutover. The store's conditions and generation checks still apply.
+-- The pusher sends by recipient, subject and judgement group, requires a matching recipient and bus message ID, and advances its cursor only after all batches in the prefix succeed. A message is bounded to 4 KB and 20 card lines, with `and N more: nova-sprint next --as <row>` for overflow. The no-loss interpretation of this summary depends on the future `next` enumerating every outstanding obligation; that integration is not yet tested. The key is `push:<name>` when it fits 128 bytes; longer names use `push-hash:<full SHA-256>` (Rowan's ruling), avoiding a store change.
++- The pusher sends one envelope per recipient with subject and judgement-group labels, requires a matching recipient and bus message ID, and advances its cursor only after the envelope succeeds. A message is bounded to 4 KB and 20 card lines, with `and N more: nova-sprint next --as <row>` for overflow. The no-loss interpretation of this summary depends on the future `next` enumerating every outstanding obligation; that integration is not yet tested. The key is `push:<name>` when it fits 128 bytes; longer names use `push-hash:<full SHA-256>` (Rowan's ruling), avoiding a store change.
+ - For terminal stream notices, the pusher reconstructs a recipient's historical cursor once in bounded pages and folds forward. It renders the notice at the event's sequence, not from the latest state: all landed gives `STREAM LANDED`; failures give `STREAM DONE WITH FAILURES` with landed/failed counts and bounded failed IDs. The stitch detail is requested by `show <stream> --stitch` rather than embedded in the bounded push. Once Clear is seen, old-epoch pending notices are cancelled and the recipient gets `epoch <n> cleared: <k> pending notices dropped (some may have reached you); run nova-sprint next`. This is the explicit exception to individual delivery; partial sends can make the count include a notice already received.
+ - Run's dashboard adapter publishes only completed event folds, including successful idle folds; a failed fold does not refresh the clock. The no-viewer monitor raises the existing stale alarm without another store read. The page assets are unchanged; the baseline golden's two build hashes were corrected separately for the already-merged page.
+ - Restore's chooser-lock primitive opens one session, uses store `RestoreBegin` and `RestoreEnd` inside one transaction, preserves an existing empty owned schema, and passes parser-verified individual SQL statements to that same session. Its extended-protocol guard rejects multiple commands, but the parser must validate dump grammar, reject psql directives and all transaction control; the leading-word check is not a parser. The verified dump parser and an isolated populated backup/verify/restore round trip are built and tested. Full run and setup integration is still open; this primitive alone is not a complete deployment.
+diff --git a/run/clear_trace_test.go b/run/clear_trace_test.go
+index d6ff9a26..711b7025 100644
+--- a/run/clear_trace_test.go
++++ b/run/clear_trace_test.go
+@@ -1,13 +1,13 @@
+ package run
+ 
+-// The Clear fixture binds one notice per batch and derives the cancelled old
+-// notice from the actual summary. It does not cover overflow or partial sends.
++// The Clear fixture binds actual confirmed envelope members; overflow and failed sends are excluded.
+ import (
+ 	"context"
+ 	"fmt"
+ 	"github.com/mas-bandwidth/nova-sprint/store"
+ 	"os"
+ 	"path/filepath"
++	"reflect"
+ 	"strings"
+ 	"testing"
+ 	"time"
+@@ -46,10 +46,15 @@ func (r *clearTrace) global() string {
+ 	}
+ 	return fmt.Sprintf(", epoch |-> %d, log |-> <<%s>>", snap.Epoch, strings.Join(a, ","))
+ }
+-func (r *clearTrace) confirm(n int) {
+-	r.sent = append(r.sent, n)
+-	value := "{" + strings.Trim(traceSeq(r.sent), "<>") + "}"
+-	r.add("Send", fmt.Sprintf(", n |-> %d, sent |-> %s, acknowledged |-> %s", n, value, value))
++func (r *clearTrace) confirmed(d pushDelivery) {
++	r.t.Helper()
++	summary := "epoch 1 cleared: 1 pending notices dropped (some may have reached you); run nova-sprint next"
++	want := []Notice{{Subject: "EPOCH CLEARED", Line: summary}, {Subject: "NOTICE", Line: "new"}}
++	if d.Recipient != "r1" || d.Confirmation.Recipient != "r1" || d.Confirmation.ID != "1000-1" || d.From != 0 || d.End != 3 || d.Through != 3 || d.Epoch != 2 || d.Envelope.Subject != "SPRINT" || d.Envelope.Body != "EPOCH CLEARED: "+summary+"\nNOTICE: new" || !reflect.DeepEqual(d.Envelope.Included, want) || len(d.Envelope.Omitted) != 0 {
++		r.t.Fatalf("bad confirmed envelope: %+v", d)
++	}
++	r.sent = []int{2, 3}
++	r.add("EnvelopeConfirmed", `, members |-> {2,3}, omitted |-> {}, recipient |-> "r1", messageID |-> "1000-1", sent |-> {2,3}, acknowledged |-> {2,3}`)
+ }
+ 
+ type clearNotice struct{}
+@@ -64,35 +69,13 @@ func (clearNotice) ForEvent(e store.Event, _ store.Snapshot, _ string) ([]Notice
+ type clearSender struct{ r *clearTrace }
+ 
+ func (s clearSender) Send(_ context.Context, to, subject, body string) (Delivery, error) {
+-	r := s.r
+-	r.calls++
+-	if r.calls == 1 && (subject != "EPOCH CLEARED" || body != "epoch 1 cleared: 1 pending notices dropped (some may have reached you); run nova-sprint next") {
+-		return Delivery{}, fmt.Errorf("unexpected clear summary %q %q", subject, body)
+-	}
+-	if r.calls == 2 {
+-		r.confirm(2)
+-		if subject != "NOTICE" || body != "new" {
+-			return Delivery{}, fmt.Errorf("unexpected new notice %q %q", subject, body)
+-		}
+-	}
+-	if r.calls > 2 || to != "r1" {
++	s.r.calls++
++	if s.r.calls != 1 || to != "r1" || subject != "SPRINT" {
+ 		return Delivery{}, fmt.Errorf("unexpected send")
+ 	}
+ 	return Delivery{Recipient: to, ID: "1000-1"}, nil
+ }
+ 
+-type clearStore struct {
+-	store.Store
+-	r *clearTrace
+-}
+-
+-func (s clearStore) Replay(ctx context.Context, id string) (store.Receipt, bool, error) {
+-	if s.r.calls == 2 && len(s.r.sent) == 1 {
+-		s.r.confirm(3)
+-	}
+-	return s.Store.Replay(ctx, id)
+-}
+-
+ func clearCollect(t *testing.T, r *clearTrace, c pushCollection) {
+ 	t.Helper()
+ 	if c.Recipient != "r1" || c.From != 0 || c.Through != 3 || c.End != 3 || c.Epoch != 2 || len(c.Batches) != 2 {
+@@ -140,8 +123,9 @@ func TestEmitClearTrace(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	r.add("Prepare", fmt.Sprintf(`, snapshotEpoch |-> %d, through |-> %d, scan |-> %d, phase |-> "scan"`, snap.Epoch, snap.Seq, snap.Cursors["push:r1"]))
+-	p := NewPusher(clearStore{Store: base, r: r}, clearNotice{}, clearSender{r: r})
++	p := NewPusher(base, clearNotice{}, clearSender{r: r})
+ 	p.observeCollect = func(c pushCollection) { clearCollect(t, r, c) }
++	p.observeDelivery = r.confirmed
+ 	if err = p.Push(ctx, "r1", snap, time.Unix(1000, 0)); err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/run/push.go b/run/push.go
+index b578b50f..996c5ef6 100644
+--- a/run/push.go
++++ b/run/push.go
+@@ -4,7 +4,6 @@ import (
+ 	"context"
+ 	"crypto/sha256"
+ 	"fmt"
+-	"strings"
+ 	"sync"
+ 	"time"
+ 
+@@ -33,13 +32,14 @@ type pushPending struct {
+ // Pusher runs off the tick path and serializes sends across all recipients. Its cursors
+ // trail confirmed sends; crash recovery starts from the store's cursors.
+ type Pusher struct {
+-	mu             sync.Mutex
+-	store          store.Store
+-	notices        Notifications
+-	sender         Sender
+-	views          map[string]pushPosition
+-	pending        map[string]pushPending
+-	observeCollect func(pushCollection)
++	mu              sync.Mutex
++	store           store.Store
++	notices         Notifications
++	sender          Sender
++	views           map[string]pushPosition
++	pending         map[string]pushPending
++	observeCollect  func(pushCollection)
++	observeDelivery func(pushDelivery)
+ }
+ 
+ func NewPusher(s store.Store, n Notifications, b Sender) *Pusher {
+@@ -77,14 +77,16 @@ func (p *Pusher) Push(ctx context.Context, recipient string, snap store.Snapshot
+ 		p.views[recipient] = next
+ 		return nil
+ 	}
+-	for _, batch := range batches {
+-		delivered, err := p.sender.Send(ctx, recipient, batch.subject, strings.Join(batch.lines, "\n"))
+-		if err != nil {
+-			return fmt.Errorf("run: push to %s: %w", recipient, err)
+-		}
+-		if delivered.Recipient != recipient || !validDeliveryID(delivered.ID) {
+-			return fmt.Errorf("run: push to %s: missing recipient/id confirmation", recipient)
+-		}
++	envelope := renderPushEnvelope(recipient, batches, p.observeDelivery != nil)
++	delivered, err := p.sender.Send(ctx, recipient, envelope.Subject, envelope.Body)
++	if err != nil {
++		return fmt.Errorf("run: push to %s: %w", recipient, err)
++	}
++	if delivered.Recipient != recipient || !validDeliveryID(delivered.ID) {
++		return fmt.Errorf("run: push to %s: missing recipient/id confirmation", recipient)
++	}
++	if p.observeDelivery != nil {
++		p.observeDelivery(pushDelivery{Recipient: recipient, From: cursor, Through: snap.Seq, End: end, Epoch: snap.Epoch, Envelope: envelope, Confirmation: delivered})
+ 	}
+ 	sum := sha256.Sum256([]byte(recipient))
+ 	id := fmt.Sprintf("push.%x.%d", sum[:], end)
+diff --git a/run/push_collect.go b/run/push_collect.go
+index 195bba88..c04175b0 100644
+--- a/run/push_collect.go
++++ b/run/push_collect.go
+@@ -17,9 +17,11 @@ type pushBatch struct {
+ 	subject, group string
+ 	lines          []string
+ 	bytes, omitted int
++	skipped        []Notice
+ }
+ type pushBuilder struct {
+ 	recipient string
++	observe   bool
+ 	batches   []pushBatch
+ 	indexes   map[pushKey]int
+ }
+@@ -28,7 +30,7 @@ type pushBuilder struct {
+ func (p *Pusher) collect(ctx context.Context, recipient string, position pushPosition, through int64, epoch int) (int64, []pushBatch, pushPosition, error) {
+ 	position = copyPosition(position)
+ 	end := position.state.Seq
+-	b := pushBuilder{recipient: recipient, indexes: map[pushKey]int{}}
++	b := pushBuilder{recipient: recipient, observe: p.observeDelivery != nil, indexes: map[pushKey]int{}}
+ 	for page := 0; page < maxFoldPages && end < through; page++ {
+ 		if err := ctx.Err(); err != nil {
+ 			return end, nil, position, err
+@@ -101,6 +103,9 @@ func (b *pushBuilder) add(n Notice) error {
+ 	}
+ 	if len(batch.lines) >= maxPushLines || batch.bytes+size+reserve > maxPushBytes {
+ 		batch.omitted++
++		if b.observe {
++			batch.skipped = append(batch.skipped, n)
++		}
+ 		return nil
+ 	}
+ 	batch.lines = append(batch.lines, n.Line)
+@@ -119,3 +124,52 @@ func (b *pushBuilder) finish() []pushBatch {
+ 	}
+ 	return b.batches
+ }
++
++// renderPushEnvelope preserves group counts while applying one recipient-wide limit.
++func renderPushEnvelope(recipient string, batches []pushBatch, observe bool) pushEnvelope {
++	lines := make([]string, 0, maxPushLines+1)
++	bytes, omitted := 0, 0
++	envelope := pushEnvelope{}
++	reserve := len(fmt.Sprintf("and %d more: nova-sprint next --as %s", int64(math.MaxInt64), recipient)) + 1
++	for _, batch := range batches {
++		items := batch.lines
++		if batch.group != "" {
++			items = items[1:]
++		}
++		if batch.omitted > 0 {
++			items = items[:len(items)-1]
++		}
++		omitted += batch.omitted
++		if observe {
++			envelope.Omitted = append(envelope.Omitted, batch.skipped...)
++		}
++		label := batch.subject
++		if batch.group != "" {
++			label += fmt.Sprintf(" group=%s n=%d", batch.group, len(items)+batch.omitted)
++		}
++		for _, item := range items {
++			line := label + ": " + item
++			size := len(line)
++			if len(lines) > 0 {
++				size++
++			}
++			if len(lines) >= maxPushLines || bytes+size+reserve > maxPushBytes {
++				omitted++
++				if observe {
++					envelope.Omitted = append(envelope.Omitted, Notice{Subject: batch.subject, Group: batch.group, Line: item})
++				}
++				continue
++			}
++			lines = append(lines, line)
++			if observe {
++				envelope.Included = append(envelope.Included, Notice{Subject: batch.subject, Group: batch.group, Line: item})
++			}
++			bytes += size
++		}
++	}
++	if omitted > 0 {
++		lines = append(lines, fmt.Sprintf("and %d more: nova-sprint next --as %s", omitted, recipient))
++	}
++	envelope.Subject, envelope.Body = "SPRINT", strings.Join(lines, "\n")
++	return envelope
++}
+diff --git a/run/push_functional_test.go b/run/push_functional_test.go
+index 3a372517..50eca53d 100644
+--- a/run/push_functional_test.go
++++ b/run/push_functional_test.go
+@@ -110,14 +110,14 @@ func TestFunctionalPushRealBusAndPostgres(t *testing.T) {
+ 	fresh, err := pg.Snapshot(ctx)
+ 	require.NoError(t, err)
+ 	require.Equal(t, int64(2), fresh.Cursors["push:alice"])
+-	require.Len(t, sender.receipts, 2)
++	require.Len(t, sender.receipts, 1)
+ 	require.Eventually(t, func() bool {
+ 		data, err := os.ReadFile(received)
+ 		if err != nil {
+ 			return false
+ 		}
+ 		text := string(data)
+-		return strings.Contains(text, sender.receipts[0].ID+"\t"+"take") && strings.Contains(text, sender.receipts[1].ID+"\t"+"judge")
++		return strings.Contains(text, sender.receipts[0].ID+"\t"+"DEAL: take") && strings.Contains(text, "NEEDS YOU: judge")
+ 	}, 5*time.Second, 25*time.Millisecond)
+ }
+ 
+diff --git a/run/push_observe.go b/run/push_observe.go
+index 847bec39..9927a8a8 100644
+--- a/run/push_observe.go
++++ b/run/push_observe.go
+@@ -14,6 +14,20 @@ func collectionSnapshot(recipient string, from, through int64, epoch int, end in
+ 	for i, b := range batches {
+ 		out.Batches[i] = b
+ 		out.Batches[i].lines = append([]string(nil), b.lines...)
++		out.Batches[i].skipped = append([]Notice(nil), b.skipped...)
+ 	}
+ 	return out
+ }
++
++// pushEnvelope records exact membership only when a trace observer is enabled.
++type pushEnvelope struct {
++	Subject, Body     string
++	Included, Omitted []Notice
++}
++type pushDelivery struct {
++	Recipient          string
++	From, Through, End int64
++	Epoch              int
++	Envelope           pushEnvelope
++	Confirmation       Delivery
++}
+diff --git a/run/push_observe_test.go b/run/push_observe_test.go
+index 30920e1f..92ad7047 100644
+--- a/run/push_observe_test.go
++++ b/run/push_observe_test.go
+@@ -2,6 +2,7 @@ package run
+ 
+ import (
+ 	"context"
++	"fmt"
+ 	"testing"
+ 	"time"
+ 
+@@ -26,7 +27,47 @@ func TestCollectionObserverCannotMutateDelivery(t *testing.T) {
+ 	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if !called || len(sender.sends) != 1 || sender.sends[0] != "DEAL:original" {
++	if !called || len(sender.sends) != 1 || sender.sends[0] != "SPRINT:DEAL: original" {
+ 		t.Fatalf("called=%v sends=%v", called, sender.sends)
+ 	}
+ }
++
++func TestDeliveryObserverMatchesBoundedConfirmedEnvelope(t *testing.T) {
++	ctx := context.Background()
++	s := store.NewFake()
++	pushSeed(t, s, "a", "many")
++	snap, _ := s.Snapshot(ctx)
++	notices := []Notice{}
++	for i := 0; i < 25; i++ {
++		notices = append(notices, Notice{Subject: "DEAL", Line: fmt.Sprintf("item-%d", i)})
++	}
++	sender := &testSender{failAt: 1}
++	p := NewPusher(s, noticeMap{"many": notices}, sender)
++	var deliveries []pushDelivery
++	p.observeDelivery = func(d pushDelivery) { deliveries = append(deliveries, d) }
++	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err == nil {
++		t.Fatal("send succeeded")
++	}
++	if len(deliveries) != 0 {
++		t.Fatal("failed send reported confirmation")
++	}
++	sender.failAt = 0
++	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
++		t.Fatal(err)
++	}
++	if len(deliveries) != 1 {
++		t.Fatal(deliveries)
++	}
++	d := deliveries[0]
++	if d.Recipient != "alice" || d.Confirmation.Recipient != "alice" || d.Confirmation.ID != "1000-1" || d.End != 1 || d.Envelope.Subject != "SPRINT" || d.Envelope.Subject+":"+d.Envelope.Body != sender.sends[1] {
++		t.Fatalf("delivery=%+v", d)
++	}
++	if len(d.Envelope.Included) != 20 || len(d.Envelope.Omitted) != 5 {
++		t.Fatalf("delivery=%+v", d)
++	}
++	for i, n := range append(d.Envelope.Included, d.Envelope.Omitted...) {
++		if n != notices[i] {
++			t.Fatalf("notice %d: %+v", i, n)
++		}
++	}
++}
+diff --git a/run/push_test.go b/run/push_test.go
+index 9dd7affc..89f706b9 100644
+--- a/run/push_test.go
++++ b/run/push_test.go
+@@ -42,7 +42,7 @@ func pushSeed(t *testing.T, s store.Store, id, kind string) {
+ 		t.Fatalf("seed %s: %+v %v", id, r, err)
+ 	}
+ }
+-func TestPushBatchesOnlyAdvanceAfterAllConfirm(t *testing.T) {
++func TestPushEnvelopeOnlyAdvancesAfterConfirm(t *testing.T) {
+ 	ctx := context.Background()
+ 	base := store.NewFake()
+ 	pushSeed(t, base, "a", "deal")
+@@ -52,16 +52,16 @@ func TestPushBatchesOnlyAdvanceAfterAllConfirm(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	sender := &testSender{failAt: 2}
++	sender := &testSender{failAt: 1}
+ 	p := NewPusher(base, noticeMap{"deal": {{Subject: "DEAL", Line: "one"}}, "judgement": {{Subject: "NEEDS YOU", Line: "judge"}}}, sender)
+ 	if err = p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err == nil {
+-		t.Fatal("partial failure accepted")
++		t.Fatal("failed send accepted")
+ 	}
+ 	after, _ := base.Snapshot(ctx)
+ 	if after.Cursors["push:alice"] != 0 {
+-		t.Fatal("advanced after partial send")
++		t.Fatal("advanced after failed send")
+ 	}
+-	if len(sender.sends) != 2 || sender.sends[0] != "DEAL:one\none" {
++	if len(sender.sends) != 1 || sender.sends[0] != "SPRINT:DEAL: one\nDEAL: one\nNEEDS YOU: judge" {
+ 		t.Fatalf("batches=%v", sender.sends)
+ 	}
+ 	sender.failAt = 0
+@@ -69,7 +69,7 @@ func TestPushBatchesOnlyAdvanceAfterAllConfirm(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	after, _ = base.Snapshot(ctx)
+-	if after.Cursors["push:alice"] != 3 || len(sender.sends) != 4 {
++	if after.Cursors["push:alice"] != 3 || len(sender.sends) != 2 {
+ 		t.Fatalf("cursor=%d sends=%v", after.Cursors["push:alice"], sender.sends)
+ 	}
+ }
+@@ -144,12 +144,12 @@ func TestPushBoundsOneEventAndGroups(t *testing.T) {
+ 	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if len(sender.sends) != 3 {
++	if len(sender.sends) != 1 {
+ 		t.Fatalf("groups: %v", sender.sends)
+ 	}
+ 	_, body, _ := strings.Cut(sender.sends[0], ":")
+ 	lines := strings.Split(body, "\n")
+-	if len(lines) != 21 || lines[20] != "and 5 more: nova-sprint next --as alice" || len(body) > 4096 {
++	if len(lines) != 21 || lines[20] != "and 7 more: nova-sprint next --as alice" || len(body) > 4096 {
+ 		t.Fatalf("lines=%d body=%q", len(lines), body)
+ 	}
+ 	fresh, _ := base.Snapshot(ctx)
+@@ -167,7 +167,7 @@ func TestPushOversizeSingleLineSummarized(t *testing.T) {
+ 	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if len(sender.sends) != 1 || sender.sends[0] != "DEAL:and 1 more: nova-sprint next --as alice" {
++	if len(sender.sends) != 1 || sender.sends[0] != "SPRINT:and 1 more: nova-sprint next --as alice" {
+ 		t.Fatalf("sends=%v", sender.sends)
+ 	}
+ 	fresh, _ := base.Snapshot(ctx)
+@@ -175,3 +175,42 @@ func TestPushOversizeSingleLineSummarized(t *testing.T) {
+ 		t.Fatalf("cursor=%d", fresh.Cursors["push:alice"])
+ 	}
+ }
++
++func TestPushEnvelopePreservesMixedGroups(t *testing.T) {
++	ctx := context.Background()
++	base := store.NewFake()
++	pushSeed(t, base, "a", "mixed")
++	snap, _ := base.Snapshot(ctx)
++	sender := &testSender{}
++	p := NewPusher(base, noticeMap{"mixed": {{Subject: "DEAL", Line: "nova-sprint take a"}, {Subject: "NEEDS YOU", Group: "g1", Line: "nova-sprint judge j1"}, {Subject: "NEEDS YOU", Group: "g1", Line: "nova-sprint judge j2"}, {Subject: "NEEDS YOU", Group: "g2", Line: "nova-sprint judge j3"}}}, sender)
++	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
++		t.Fatal(err)
++	}
++	want := "SPRINT:DEAL: nova-sprint take a\nNEEDS YOU group=g1 n=2: nova-sprint judge j1\nNEEDS YOU group=g1 n=2: nova-sprint judge j2\nNEEDS YOU group=g2 n=1: nova-sprint judge j3"
++	if len(sender.sends) != 1 || sender.sends[0] != want {
++		t.Fatalf("sends=%v", sender.sends)
++	}
++}
++
++func TestPushEnvelopeBoundsLongLabelsAcrossGroups(t *testing.T) {
++	ctx := context.Background()
++	base := store.NewFake()
++	pushSeed(t, base, "a", "mixed")
++	snap, _ := base.Snapshot(ctx)
++	notices := make([]Notice, 0, 25)
++	for i := 0; i < 25; i++ {
++		notices = append(notices, Notice{Subject: strings.Repeat("s", 256), Group: fmt.Sprintf("%s%d", strings.Repeat("g", 120), i), Line: "nova-sprint judge j"})
++	}
++	sender := &testSender{}
++	p := NewPusher(base, noticeMap{"mixed": notices}, sender)
++	if err := p.Push(ctx, "alice", snap, time.Unix(1000, 0)); err != nil {
++		t.Fatal(err)
++	}
++	if len(sender.sends) != 1 {
++		t.Fatal(sender.sends)
++	}
++	_, body, _ := strings.Cut(sender.sends[0], ":")
++	if len(body) > maxPushBytes || !strings.Contains(body, "nova-sprint next --as alice") {
++		t.Fatalf("body bytes=%d body=%q", len(body), body)
++	}
++}
+diff --git a/run/walk_trace_test.go b/run/walk_trace_test.go
+index d509bb22..0f03ab84 100644
+--- a/run/walk_trace_test.go
++++ b/run/walk_trace_test.go
+@@ -2,7 +2,7 @@ package run
+ 
+ // This bounded walk chooses fixture actions from observed store state, never
+ // from the model. It uses one recipient, two notices and one Clear; each
+-// emitted batch has one obligation, and overflow/failed sends are excluded.
++// confirmed envelope is mapped to actual members; overflow/failed sends are excluded.
+ import (
+ 	"context"
+ 	"fmt"
+@@ -17,13 +17,16 @@ import (
+ )
+ 
+ type walkTrace struct {
+-	t       *testing.T
+-	base    *store.Fake
+-	lines   []string
+-	sent    map[int]bool
+-	ack     []int
+-	pending int
+-	events  []store.Event
++	t                  *testing.T
++	base               *store.Fake
++	lines              []string
++	sent               map[int]bool
++	ack                []int
++	expected           map[Notice]int
++	body               string
++	from, through, end int64
++	epoch              int
++	events             []store.Event
+ }
+ 
+ func (w *walkTrace) add(action, fields string) {
+@@ -77,18 +80,28 @@ func walkSet(v map[int]bool) string {
+ 	}
+ 	return "{" + strings.Join(a, ",") + "}"
+ }
+-func (w *walkTrace) confirm() {
+-	if w.pending == 0 {
+-		return
++func (w *walkTrace) confirmed(d pushDelivery) {
++	w.t.Helper()
++	if d.Recipient != "r1" || d.Confirmation.Recipient != "r1" || d.Confirmation.ID != "1000-1" || d.From != w.from || d.Through != w.through || d.End != w.end || d.Epoch != w.epoch || d.Envelope.Subject != "SPRINT" || d.Envelope.Body != w.body || len(d.Envelope.Omitted) != 0 {
++		w.t.Fatalf("bad confirmed envelope %+v", d)
++	}
++	members := map[int]bool{}
++	for _, notice := range d.Envelope.Included {
++		id, ok := w.expected[notice]
++		if !ok || members[id] {
++			w.t.Fatalf("unexpected or duplicate member %+v", notice)
++		}
++		members[id] = true
++	}
++	if len(members) != len(w.expected) {
++		w.t.Fatalf("missing members %+v", d.Envelope.Included)
+ 	}
+-	w.sent[w.pending] = true
+-	w.ack = append(w.ack, w.pending)
+ 	ack := map[int]bool{}
+-	for _, n := range w.ack {
+-		ack[n] = true
++	for id := range members {
++		w.sent[id] = true
++		ack[id] = true
+ 	}
+-	w.add("Send", fmt.Sprintf(", n |-> %d, sent |-> %s, acknowledged |-> %s", w.pending, walkSet(w.sent), walkSet(ack)))
+-	w.pending = 0
++	w.add("EnvelopeConfirmed", fmt.Sprintf(`, members |-> %s, omitted |-> {}, recipient |-> "r1", messageID |-> "1000-1", sent |-> %s, acknowledged |-> %s`, walkSet(members), walkSet(w.sent), walkSet(ack)))
+ }
+ 
+ type walkNotices struct{}
+@@ -103,28 +116,10 @@ func (walkNotices) ForEvent(e store.Event, _ store.Snapshot, _ string) ([]Notice
+ type walkSender struct{ w *walkTrace }
+ 
+ func (s walkSender) Send(_ context.Context, to, subject, body string) (Delivery, error) {
+-	w := s.w
+-	w.confirm()
+-	if to != "r1" {
+-		return Delivery{}, fmt.Errorf("recipient %q", to)
+-	}
+-	for i, e := range w.events {
+-		if (e.Kind == "walk-notice" && e.Op == subject && body == e.Op) || (e.Kind == "clear" && subject == "EPOCH CLEARED") {
+-			w.pending = i + 1
+-			return Delivery{Recipient: to, ID: "1000-1"}, nil
+-		}
++	if to != "r1" || subject != "SPRINT" || body != s.w.body {
++		return Delivery{}, fmt.Errorf("unexpected envelope")
+ 	}
+-	return Delivery{}, fmt.Errorf("unmapped batch %q %q", subject, body)
+-}
+-
+-type walkStore struct {
+-	store.Store
+-	w *walkTrace
+-}
+-
+-func (s walkStore) Replay(ctx context.Context, id string) (store.Receipt, bool, error) {
+-	s.w.confirm()
+-	return s.Store.Replay(ctx, id)
++	return Delivery{Recipient: to, ID: "1000-1"}, nil
+ }
+ 
+ func (w *walkTrace) collected(c pushCollection) {
+@@ -144,13 +139,22 @@ func (w *walkTrace) collected(c pushCollection) {
+ 		}
+ 	}
+ 	observed := map[int]bool{}
++	w.expected = map[Notice]int{}
++	var body []string
++	w.from, w.through, w.end, w.epoch = c.From, c.Through, c.End, c.Epoch
+ 	for _, b := range c.Batches {
+ 		if len(b.lines) != 1 {
+ 			w.t.Fatalf("batch has %d obligations", len(b.lines))
+ 		}
++		notice := Notice{Subject: b.subject, Group: b.group, Line: b.lines[0]}
++		body = append(body, b.subject+": "+b.lines[0])
+ 		for i, e := range w.events {
+ 			if e.Kind == "walk-notice" && e.Op == b.subject && b.lines[0] == e.Op {
+ 				observed[i+1] = true
++				if _, exists := w.expected[notice]; exists {
++					w.t.Fatal("duplicate notice")
++				}
++				w.expected[notice] = i + 1
+ 			}
+ 			if e.Kind == "clear" && b.subject == "EPOCH CLEARED" {
+ 				expected := fmt.Sprintf("epoch %d cleared: %d pending notices dropped (some may have reached you); run nova-sprint next", e.Epoch, len(cancelled))
+@@ -158,9 +162,14 @@ func (w *walkTrace) collected(c pushCollection) {
+ 					w.t.Fatalf("summary %q expected %q", b.lines[0], expected)
+ 				}
+ 				observed[i+1] = true
++				if _, exists := w.expected[notice]; exists {
++					w.t.Fatal("duplicate notice")
++				}
++				w.expected[notice] = i + 1
+ 			}
+ 		}
+ 	}
++	w.body = strings.Join(body, "\n")
+ 	if walkSet(needed) != walkSet(observed) {
+ 		w.t.Fatalf("needed %v batches %v", needed, observed)
+ 	}
+@@ -171,15 +180,15 @@ func (w *walkTrace) push(ctx context.Context, s store.Snapshot) {
+ 	w.t.Helper()
+ 	cursor := w.rank(s.Cursors["push:r1"])
+ 	through := w.rank(s.Seq)
+-	w.ack = nil
+ 	w.add("Prepare", fmt.Sprintf(`, snapshotEpoch |-> %d, through |-> %d, scan |-> %d, phase |-> "scan"`, s.Epoch, through, cursor))
+-	p := NewPusher(walkStore{Store: w.base, w: w}, walkNotices{}, walkSender{w: w})
++	p := NewPusher(w.base, walkNotices{}, walkSender{w: w})
+ 	p.observeCollect = w.collected
++	p.observeDelivery = w.confirmed
+ 	if err := p.Push(ctx, "r1", s, time.Unix(2000+int64(s.Seq), 0)); err != nil {
+ 		w.t.Fatal(err)
+ 	}
+ 	after := w.read()
+-	if w.pending != 0 || after.Cursors["push:r1"] != s.Seq {
++	if after.Cursors["push:r1"] != s.Seq {
+ 		w.t.Fatalf("cursor or confirmation missing")
+ 	}
+ 	w.add("SaveCursor", fmt.Sprintf(`, cursor |-> %d, phase |-> "idle"`, w.rank(after.Cursors["push:r1"])))
