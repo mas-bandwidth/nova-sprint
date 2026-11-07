@@ -68,7 +68,7 @@
 (* seen there; each step invariant says its rule is not in last.bad. The  *)
 (* monitor keeps no predecessor, so it does not split states by them.     *)
 (***************************************************************************)
-EXTENDS Naturals, FiniteSets, TLC
+EXTENDS Naturals, FiniteSets, Sequences, TLC
 
 CONSTANTS
   Scenario,    \* "life", "deps" or "pre"
