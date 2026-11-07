@@ -123,7 +123,9 @@ func TestFunctionalMigrateTwice(t *testing.T) {
 	assert.Equal(t, 10, tables, "nine and round 25's sprint.balances")
 	s, err := p.Snapshot(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, emptySnapshot(1), s)
+	fresh := emptySnapshot(1)
+	fresh.Stopped, fresh.StopReason = true, NeverStarted // a fresh store is stopped until its first start
+	assert.Equal(t, fresh, s)
 }
 
 // Round 17: a store made by round 16's schema (its hash, no red column, a
@@ -157,8 +159,8 @@ func TestFunctionalMigrateRound16(t *testing.T) {
 	assert.False(t, h.snap().Cards["c1"].Red, "an old card reads not red")
 	h.ok(h.op("red", []Expect{CardRed{"c1", false}}, SetCardRed{"c1", true}))
 	assert.True(t, h.snap().Cards["c1"].Red)
-	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
-	assert.Equal(t, 0, n, "round 22's columns are gone from a round-16 store too")
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'model', 'harness')").Scan(&n))
+	assert.Equal(t, 0, n, "round 22's columns (but tiers, which the heartbeat brought back) are gone from a round-16 store too")
 }
 
 // Round 22: a store made by round 17's schema, which every round to 21
@@ -188,8 +190,8 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	p := openPG(t, dsn) // Migrate
 	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
 	var n int
-	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
-	assert.Equal(t, 0, n, "the five configuration columns are dropped")
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'model', 'harness')").Scan(&n))
+	assert.Equal(t, 0, n, "the configuration columns (but tiers, which the heartbeat brought back) are dropped")
 	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM pg_indexes WHERE schemaname = 'sprint' AND indexname = 'cards_live'").Scan(&n))
 	assert.Equal(t, 0, n, "cards_live is dropped")
 	id, err = CheckSchema(ctx, dsn)
