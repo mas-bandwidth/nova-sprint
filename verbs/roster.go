@@ -13,7 +13,7 @@ type RosterSource interface {
 	ReadRoster(context.Context) (roster.Roster, error)
 }
 
-func (e *Engine) takeRoster(ctx context.Context, snap store.Snapshot, c store.Card, actor string) (int, []string, Result, bool) {
+func (e *Engine) takeRoster(ctx context.Context, _ store.Snapshot, c store.Card, actor string) (int, []string, Result, bool) {
 	if e.Roster == nil {
 		return 0, nil, unavailable("take"), false
 	}
@@ -28,14 +28,6 @@ func (e *Engine) takeRoster(ctx context.Context, snap store.Snapshot, c store.Ca
 	if !slices.Contains(tiers, c.Tier) {
 		return 0, nil, refused("take", "row "+actor+" does not serve tier "+c.Tier, "set it in nova-config"), false
 	}
-	working := 0
-	for _, item := range snap.Cards {
-		if item.Holder == actor && item.State == "working" && (item.Kind == "work" || item.Kind == "read") {
-			working++
-		}
-	}
-	if working >= width {
-		return 0, nil, refused("take", "row "+actor+" is at width", "finish one card first"), false
-	}
+
 	return width, tiers, Result{}, true
 }

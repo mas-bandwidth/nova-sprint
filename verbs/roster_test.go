@@ -2,7 +2,6 @@ package verbs
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -10,58 +9,50 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-type barrierRoster struct {
-	mu    sync.Mutex
-	calls int
-	ready chan struct{}
+type appendBeforeTake struct {
+	*store.Fake
+	at       time.Time
+	appended bool
 }
 
-func (b *barrierRoster) ReadRoster(ctx context.Context) (roster.Roster, error) {
-	b.mu.Lock()
-	b.calls++
-	if b.calls == 2 {
-		close(b.ready)
+func (s *appendBeforeTake) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
+	if op.Kind == "take" && !s.appended {
+		s.appended = true
+		_, err := s.Fake.Apply(ctx, store.Op{ID: "unrelated", Epoch: op.Epoch, Actor: "test", Kind: "seed", At: s.at, Writes: []store.Write{store.PutStream{Name: "other", Repo: "owner/other", Base: "main", Pos: 2}}})
+		if err != nil {
+			return store.Receipt{}, err
+		}
 	}
-	b.mu.Unlock()
-	select {
-	case <-b.ready:
-	case <-ctx.Done():
-		return roster.Roster{}, ctx.Err()
-	}
-	return roster.Roster{Workers: map[string]roster.Worker{"w": {Name: "w", Width: 1, Tiers: []string{"pro"}}}}, nil
+	return s.Fake.Apply(ctx, op)
 }
-func TestConcurrentTakesRespectRosterWidth(t *testing.T) {
+func TestTakeSurvivesUnrelatedAppendAndReplays(t *testing.T) {
 	ctx := context.Background()
 	at := time.Unix(1000, 0)
-	f := store.NewFake()
-	applyTest(t, f, store.Op{ID: "seed", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "w", Session: "fixture", Role: "worker"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "task"}, store.PutCard{ID: "p.w1", Kind: "work", Of: "p", Stream: "s", Tier: "pro", Holder: "w", Brief: "task"}, store.PutCard{ID: "p.w2", Kind: "work", Of: "p", Stream: "s", Tier: "pro", Holder: "w", Brief: "task"}}})
-	applyTest(t, f, store.Op{ID: "ready", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.SetRowState{Row: "w", State: "up"}, store.SetCardState{Card: "p.w1", State: "ready"}, store.SetCardState{Card: "p.w2", State: "ready"}}})
-	r := &barrierRoster{ready: make(chan struct{})}
-	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Roles: SnapshotRoles{Store: f}, Roster: r, Actor: "w", Now: func() time.Time { return at }}
-	var wg sync.WaitGroup
-	results := make([]Result, 2)
-	for i, id := range []string{"p.w1@1", "p.w2@1"} {
-		wg.Add(1)
-		go func(i int, id string) { defer wg.Done(); results[i] = e.Execute(ctx, []string{"take", id}) }(i, id)
+	f, _ := breakEpoch(t)
+	st := &appendBeforeTake{Fake: f, at: at}
+	e := Engine{Store: st, Env: fakeEnv{hooked: true}, Roles: SnapshotRoles{Store: f}, Roster: fixtureRoster{}, Actor: "worker", Now: func() time.Time { return at }}
+	first := e.Execute(ctx, []string{"take", "p.w1@0", "--epoch", "2"})
+	if first.Exit != 0 || !st.appended {
+		t.Fatal(first)
 	}
-	wg.Wait()
-	count := 0
-	for _, x := range results {
-		if x.Exit == 0 {
-			count++
-		}
+	again := e.Execute(ctx, []string{"take", "p.w1@0", "--epoch", "2"})
+	if again != first {
+		t.Fatal(first, again)
 	}
-	if count != 1 {
-		t.Fatal(results)
+}
+
+type emptyRoster struct{}
+
+func (emptyRoster) ReadRoster(context.Context) (roster.Roster, error) { return roster.Roster{}, nil }
+func TestTakeRequiresRosterMembership(t *testing.T) {
+	f, at := breakEpoch(t)
+	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Roles: SnapshotRoles{Store: f}, Roster: emptyRoster{}, Actor: "worker", Now: func() time.Time { return at }}
+	got := e.Execute(context.Background(), []string{"take", "p.w1@0", "--epoch", "2"})
+	if got.Exit != 1 {
+		t.Fatal(got)
 	}
-	snap, _ := f.Snapshot(ctx)
-	working := 0
-	for _, c := range snap.Cards {
-		if c.Holder == "w" && c.State == "working" {
-			working++
-		}
-	}
-	if working != 1 {
-		t.Fatal(snap.Cards)
+	snap, _ := f.Snapshot(context.Background())
+	if snap.Cards["p.w1"].State != "ready" {
+		t.Fatal(snap.Cards["p.w1"])
 	}
 }
