@@ -977,7 +977,7 @@ func (w *world) cold4Preempt(rng *rand.Rand) []cold4Step {
 	if rng.Intn(4) == 0 {
 		row = []string{"r1", "r2", "r3"}[rng.Intn(3)]
 	}
-	return []cold4Step{cold4C(c.ID, Withdraw{Reason: "preempted by blocker " + b}), cold4P(b, Start{Row: row, Branch: "b-" + b, Base: base})}
+	return []cold4Step{cold4C(c.ID, Withdraw{Reason: "preempted by blocker " + b, Preempt: true}), cold4P(b, Start{Row: row, Branch: "b-" + b, Base: base})}
 }
 
 // cold4ReviewPair is a read cut (AskRead or AskReads) of a producer in

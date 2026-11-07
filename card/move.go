@@ -644,6 +644,9 @@ func (m *mover) readFix(e ReadFix) *Refusal {
 	if m.count("fix") == 0 {
 		return no("producer %s has no read of review %d that said fix; ReadFix needs one", m.p.ID, m.p.Review)
 	}
+	if e.Finding == "" {
+		return no("a fix read says what to fix")
+	}
 	if r := m.back(); r != nil {
 		return r
 	}
@@ -792,6 +795,9 @@ func (m *mover) failedNeed(n string, inThisOp bool) *Refusal {
 	case inThisOp && need.State == LandedState:
 		return no("need %s of %s is landed; it cannot fail in this op", n, who)
 	case inThisOp:
+		// The fence is what refuses the plan applied alone. Merge drops it
+		// when an earlier write of the op fails the need.
+		m.expect(store.CardState{Card: n, State: Fail})
 		return nil
 	case need.State != Fail:
 		return no("need %s of %s is %s, not fail", n, who, need.State)
@@ -823,7 +829,7 @@ func (m *mover) relink(e Relink) *Refusal {
 	to, ok := m.needs[e.To]
 	switch {
 	case !ok:
-		return no("card %s does not exist", e.To)
+		return no("card %s is not among the cards passed", e.To)
 	case to.Kind != "producer" && to.Kind != "sentinel":
 		return no("card %s is a %s; a need is relinked only to a producer or a sentinel that is not final", e.To, kindName(to.Kind))
 	case final(to.Kind, to.State):
@@ -897,13 +903,19 @@ func (m *mover) edit(e Edit) *Refusal {
 	}); r != nil {
 		return r
 	}
-	if e.Prose != "" && e.Prose != m.p.Prose {
+	prose := e.Prose != "" && e.Prose != m.p.Prose
+	paths := e.Paths != nil && !slices.Equal(e.Paths, m.p.Paths)
+	done := e.DoneWhen != nil && !slices.Equal(e.DoneWhen, m.p.DoneWhen)
+	if m.p.State == Waiting && m.s.Held && !prose && !paths && !done && e.Reason != "" && e.Reason != m.p.Reason {
+		return no("reason is the hold's while parked")
+	}
+	if prose {
 		m.write(store.SetCardProse{Card: m.p.ID, Prose: e.Prose})
 	}
-	if e.Paths != nil && !slices.Equal(e.Paths, m.p.Paths) {
+	if paths {
 		m.write(store.SetCardPaths{Card: m.p.ID, Paths: e.Paths})
 	}
-	if e.DoneWhen != nil && !slices.Equal(e.DoneWhen, m.p.DoneWhen) {
+	if done {
 		m.write(store.SetCardDoneWhen{Card: m.p.ID, DoneWhen: e.DoneWhen})
 	}
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
@@ -1110,7 +1122,7 @@ func (m *mover) withdraw(e Withdraw, p Card) *Refusal {
 	if r := m.from(e, Ready, Working); r != nil {
 		return r
 	}
-	if strings.HasPrefix(e.Reason, "preempt") && c.State != Working {
+	if e.Preempt && c.State != Working {
 		return no("consumer %s is %s; a preempt withdraws a working consumer, and the step chooses the youngest on the row", c.ID, c.State)
 	}
 	if e.Head != "" {

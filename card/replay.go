@@ -20,20 +20,32 @@ type records struct {
 // rerun is that move. Nil on a hand-built plan: Merge keeps its writes.
 type rerun func(records) (Plan, *Refusal)
 
-// Merge applies plans as one op, in order. A plan the machine built is run
-// again against the writes of the plans ahead of it (one extra move per plan
-// after the first), and the result carries that same replay, so a merged
-// plan composes with the next one. A refusal names every plan and the
-// condition. The conditions are each plan's, from the snapshot it was read
-// on, except a condition on a field an earlier plan of this op writes.
-// A hand-built plan, with no move to run again, is kept as written. Two
-// writes to one field are still refused. Several reads of one head are
-// AskReads, not two AskReads merged.
+// Merge applies plans as one op, in order. Nested merges flatten to the
+// moves first. Every move the machine built, the first included, is planned
+// again against the records read before any write of this op, with each
+// earlier move's writes folded in. The last write of a field is the one
+// emitted. The merged plan's seen is that pre-write read, so a later merge
+// does not see this op's own writes. A hand-built plan is folded onto those
+// records, or refused when it writes a card no plan read. A refusal names
+// the plans and the condition. Two AskReads of one head still collide.
 func Merge(plans ...Plan) (Plan, *Refusal) {
-	if !needsReplay(plans) {
-		return mergeConcat(plans)
+	flat := flatten(nil, plans)
+	if !needsReplay(flat) {
+		return mergeConcat(flat)
 	}
-	return compose(plans, records{}, false)
+	return compose(flat, records{})
+}
+
+// flatten is the ordered moves of plans. A merge stores its moves in parts.
+func flatten(dst, plans []Plan) []Plan {
+	for _, p := range plans {
+		if len(p.parts) > 0 {
+			dst = flatten(dst, p.parts)
+			continue
+		}
+		dst = append(dst, p)
+	}
+	return dst
 }
 
 func needsReplay(plans []Plan) bool {
@@ -58,77 +70,361 @@ func mergeConcat(plans []Plan) (Plan, *Refusal) {
 	return checked(m)
 }
 
-// compose is Merge of plans the machine built. rerunFirst is set when the
-// caller already folded earlier plans into base: every plan, the first
-// included, is read against base. Otherwise the first plan stands as built.
-func compose(plans []Plan, base records, rerunFirst bool) (Plan, *Refusal) {
+// compose plans each move against the fold. base is what an outer merge
+// already wrote; the seen stored on the result is the pre-write read.
+func compose(plans []Plan, base records) (Plan, *Refusal) {
 	labels := planLabels(plans)
-	named := func(r *Refusal, runs int) (Plan, *Refusal) {
-		return Plan{replays: runs}, no("merge of %s refused: %s", andList(labels), r.Reason)
-	}
 	// Two plans that each create the same card refuse before the re-run. A
-	// re-run would allocate the next id and hide it, and several reads of
-	// one head are AskReads. A later write the re-run drops (Hold after
-	// Start no longer parks that producer) is checked on what is emitted.
+	// re-run would allocate the next id and hide it.
 	if r := dupNewCards(plans); r != nil {
-		return named(r, 0)
+		return namedMerge(labels, 0, r)
 	}
+	read := readsOf(base, plans)
 	cur := cloneRecords(base)
-	if !rerunFirst {
-		cur = cloneRecords(plans[0].seen)
-	}
-	out, runs, r := foldPlans(plans, labels, cur, rerunFirst)
+	out, runs, r := foldPlans(plans, labels, read, cur)
 	if r != nil {
 		return Plan{replays: runs}, r
 	}
 	if r := dupWrites(out.Writes); r != nil {
-		return named(r, runs)
+		return namedMerge(labels, runs, r)
 	}
 	if r := preemptGuard(plans); r != nil {
-		return named(r, runs)
+		return namedMerge(labels, runs, r)
 	}
 	done, r := checked(out)
 	if r != nil {
-		return named(r, runs)
+		return namedMerge(labels, runs, r)
 	}
-	done.replays = runs
-	done.seen = cur
-	done.label = strings.Join(labels, "+")
-	saved := append([]Plan(nil), plans...)
-	done.again = func(next records) (Plan, *Refusal) {
-		return compose(saved, next, true)
-	}
-	return done, nil
+	return sealCompose(done, plans, labels, read, runs), nil
 }
 
-// foldPlans re-runs each plan after the first (and the first too, when
-// rerunFirst) and keeps the conditions that still describe the snapshot.
-func foldPlans(plans []Plan, labels []string, cur records, rerunFirst bool) (Plan, int, *Refusal) {
+func namedMerge(labels []string, runs int, r *Refusal) (Plan, *Refusal) {
+	return Plan{replays: runs}, no("merge of %s refused: %s", andList(labels), r.Reason)
+}
+
+// foldPlans re-runs every machine move against the fold so far. A hand-built
+// move is kept. Expects stay the ones read off the snapshot.
+func foldPlans(plans []Plan, labels []string, read, cur records) (Plan, int, *Refusal) {
 	var out Plan
 	written := map[[3]string]bool{}
+	created := map[string]bool{}
 	runs := 0
 	for i, p := range plans {
 		unionMissing(&cur, p.seen)
-		next, ran, r := takePlan(p, cur, i == 0 && !rerunFirst)
+		if r := leafGate(p, read, cur, created); r != nil {
+			return refusedLeaf(labels, i, runs, r)
+		}
+		next, ran, r := rerunPlan(p, cur)
 		runs += ran
 		if r != nil {
-			names := append(append([]string{}, labels[:i]...), labels[i])
-			return Plan{}, runs, no("merge of %s refused: %s", andList(names), r.Reason)
+			return refusedLeaf(labels, i, runs, r)
 		}
-		out.Expect = append(out.Expect, keepExpects(p.Expect, written)...)
-		out.Writes = append(out.Writes, next.Writes...)
+		out.Expect = append(out.Expect, keepExpects(p.Expect, written, created)...)
+		out.Expect = append(out.Expect, addedExpects(next.Expect, p.Expect, written, created)...)
+		// A move into working is the store's width check. Covering it with a
+		// later state write would hide a take the row has no room for, so
+		// that pair is refused. Every other field, state included, keeps its
+		// last write: Merge(Resolve, HoldStream) parks.
+		if r := coveredWorking(out.Writes, next.Writes); r != nil {
+			return refusedLeaf(labels, i, runs, r)
+		}
+		out.Writes = absorb(out.Writes, next.Writes)
 		noteFields(written, next.Writes)
-		foldWrites(cur, next.Writes)
-		unionMissing(&cur, next.seen)
+		noteCreated(created, next.Writes)
+		foldOnto(&cur, read, next.Writes)
 	}
+	out.Writes = quietWrites(out.Writes, read)
 	return out, runs, nil
 }
 
-func takePlan(p Plan, cur records, keep bool) (Plan, int, *Refusal) {
-	if keep {
-		return p, 0, nil
+// quietWrites drops a write that puts a field back to the value the pre-op
+// snapshot already holds. The store refuses a write that changes nothing,
+// and it checks each write against the record the writes ahead of it left,
+// which starts at that snapshot. Resolve then Hold parks p2 back to waiting;
+// emitting that state write is "card p2 is already waiting".
+func quietWrites(ws []store.Write, read records) []store.Write {
+	cur := cloneRecords(read)
+	var out []store.Write
+	for _, w := range ws {
+		if idleWrite(w, cur) {
+			continue
+		}
+		out = append(out, w)
+		foldWrite(cur, w)
 	}
-	return rerunPlan(p, cur)
+	return out
+}
+
+func idleWrite(w store.Write, cur records) bool {
+	switch x := w.(type) {
+	case store.SetStreamHeld:
+		st, ok := cur.streams[x.Stream]
+		return ok && st.Held == x.Held
+	case store.SetRowState:
+		r, ok := cur.rows[x.Row]
+		return ok && r.State == x.State
+	case store.SetRowWidth:
+		r, ok := cur.rows[x.Row]
+		return ok && r.Width == x.Width
+	case store.SetRowFlaps:
+		r, ok := cur.rows[x.Row]
+		return ok && r.Flaps == x.Flaps
+	case store.SetRowHeld:
+		r, ok := cur.rows[x.Row]
+		return ok && r.Held == x.Held
+	default:
+		return idleCard(w, cur)
+	}
+}
+
+func idleCard(w store.Write, cur records) bool {
+	id := writeCardID(w)
+	c, ok := cur.cards[id]
+	if id == "" || !ok {
+		return false
+	}
+	switch x := w.(type) {
+	case store.SetCardReview:
+		return false
+	case store.SetCardState:
+		return c.State == x.State
+	case store.SetCardReason:
+		return c.Reason == x.Reason
+	case store.SetCardHead:
+		return c.Head == x.Head
+	case store.SetCardFinding:
+		return c.Finding == x.Finding
+	case store.SetCardAuthor:
+		return c.Author == x.Author
+	case store.SetCardBranch:
+		return c.Branch == x.Branch
+	case store.SetCardBaseSHA:
+		return c.BaseSHA == x.SHA
+	case store.SetCardPriorHead:
+		return c.PriorHead == x.Head
+	case store.SetCardResult:
+		return c.Result == x.Result
+	case store.SetCardProse:
+		return c.Prose == x.Prose
+	case store.SetCardRed:
+		return c.Red == x.Red
+	case store.SetCardPriority:
+		return normPriority(c.Priority) == normPriority(x.Priority)
+	case store.SetCardScore:
+		return c.Score == x.Score
+	case store.SetCardAttempt:
+		return c.Attempt == x.Attempt
+	case store.SetCardBounces:
+		return c.Bounces == x.Bounces
+	case store.SetCardCost:
+		return c.Cost == x.Cost && c.Priced == x.Priced
+	default:
+		return idleLists(w, c)
+	}
+}
+
+func idleLists(w store.Write, c Card) bool {
+	switch x := w.(type) {
+	case store.SetCardNeeds:
+		return sameSet(c.Needs, x.Needs)
+	case store.SetCardAfter:
+		return sameSet(c.After, x.After)
+	case store.SetCardPaths:
+		return slices.Equal(c.Paths, x.Paths)
+	case store.SetCardDoneWhen:
+		return slices.Equal(c.DoneWhen, x.DoneWhen)
+	default:
+		return false
+	}
+}
+
+func normPriority(p string) string {
+	if p == "" {
+		return "normal"
+	}
+	return p
+}
+
+func sameSet(a, b []string) bool {
+	aa, bb := slices.Clone(a), slices.Clone(b)
+	slices.Sort(aa)
+	slices.Sort(bb)
+	return slices.Equal(slices.Compact(aa), slices.Compact(bb))
+}
+
+func refusedLeaf(labels []string, i, runs int, r *Refusal) (Plan, int, *Refusal) {
+	return Plan{}, runs, no("merge of %s refused: %s", andList(labels[:i+1]), r.Reason)
+}
+
+func leafGate(p Plan, read, cur records, created map[string]bool) *Refusal {
+	if r := unreadWrite(p, read, created); r != nil {
+		return r
+	}
+	// InThisOp alone is refused. A one-plan merge has no earlier write, so
+	// the need is still not fail and this is the refusal. Merged after the
+	// drop, the fold already shows the need failed.
+	return inThisOpOpen(p.ev, cur)
+}
+
+// readsOf is every record the moves read, before this op writes.
+func readsOf(base records, plans []Plan) records {
+	s := cloneRecords(base)
+	for _, p := range plans {
+		unionMissing(&s, p.seen)
+	}
+	return s
+}
+
+func sealCompose(done Plan, plans []Plan, labels []string, seen records, runs int) Plan {
+	done.replays = runs
+	done.seen = seen
+	done.label = strings.Join(labels, "+")
+	done.parts = append([]Plan(nil), plans...)
+	saved := append([]Plan(nil), plans...)
+	done.again = func(next records) (Plan, *Refusal) {
+		return compose(saved, next)
+	}
+	return done
+}
+
+// absorb keeps the later write of a field, state included. The store refuses
+// two writes of one field, so the path cannot be replayed inside the op.
+// coveredWorking refuses the one path that must not be collapsed.
+func absorb(dst, add []store.Write) []store.Write {
+	cover := map[[3]string]bool{}
+	for _, w := range add {
+		for _, f := range writeFields(w) {
+			cover[f] = true
+		}
+	}
+	var kept []store.Write
+	for _, w := range dst {
+		if !covered(w, cover) {
+			kept = append(kept, w)
+		}
+	}
+	return append(kept, add...)
+}
+
+// coveredWorking refuses a later state write that would erase a move into
+// working. That write is what the store uses to count the row's width.
+func coveredWorking(dst, add []store.Write) *Refusal {
+	later := map[string]bool{}
+	for _, w := range add {
+		if s, ok := w.(store.SetCardState); ok {
+			later[s.Card] = true
+		}
+	}
+	for _, w := range dst {
+		s, ok := w.(store.SetCardState)
+		if ok && s.State == Working && later[s.Card] {
+			return secondWrite([3]string{"card", s.Card, "state"})
+		}
+	}
+	return nil
+}
+
+func covered(w store.Write, cover map[[3]string]bool) bool {
+	fs := writeFields(w)
+	if len(fs) == 0 {
+		return false
+	}
+	for _, f := range fs {
+		if !cover[f] {
+			return false
+		}
+	}
+	return true
+}
+
+func noteCreated(dst map[string]bool, ws []store.Write) {
+	for _, w := range ws {
+		if p, ok := w.(store.PutCard); ok {
+			dst[p.ID] = true
+		}
+	}
+}
+
+// unreadWrite refuses a hand-built write to a card no plan of the op read
+// and no earlier write created. A machine move reads what it writes.
+func unreadWrite(p Plan, read records, created map[string]bool) *Refusal {
+	if p.again != nil {
+		return nil
+	}
+	for _, w := range p.Writes {
+		id := writeCardID(w)
+		if id == "" || created[id] {
+			continue
+		}
+		if c, ok := read.cards[id]; ok && c.Kind != "" {
+			continue
+		}
+		return no("writes card %s, which no plan read", id)
+	}
+	return nil
+}
+
+// inThisOpOpen refuses NeedFailed, Waive or Relink with InThisOp unless an
+// earlier write of this op has already failed that need.
+func inThisOpOpen(e Event, cur records) *Refusal {
+	need, ok := inThisOpNeed(e)
+	if !ok {
+		return nil
+	}
+	if c, has := cur.cards[need]; has && c.State == Fail {
+		return nil
+	}
+	return no("need %s was not failed by an earlier write of this op; merge it with the drop", need)
+}
+
+func inThisOpNeed(e Event) (string, bool) {
+	switch v := e.(type) {
+	case NeedFailed:
+		return v.Need, v.InThisOp
+	case Waive:
+		return v.Need, v.InThisOp
+	case Relink:
+		return v.Need, v.InThisOp
+	default:
+		return "", false
+	}
+}
+
+func writeCardID(w store.Write) string {
+	if p, ok := w.(store.PutCard); ok {
+		return p.ID
+	}
+	if a, ok := w.(store.SetCardAfter); ok {
+		return a.Card
+	}
+	id, _, ok := oneField(w)
+	if !ok {
+		return ""
+	}
+	return id
+}
+
+// foldOnto applies writes to cur. A card only a plan read, not yet in the
+// fold, is copied from that read first so the write edits the real record.
+func foldOnto(cur *records, read records, ws []store.Write) {
+	for _, w := range ws {
+		if id := writeCardID(w); id != "" {
+			fillCard(cur, read, id)
+		}
+		foldWrite(*cur, w)
+	}
+}
+
+func fillCard(dst *records, read records, id string) {
+	if dst.cards == nil {
+		dst.cards = map[string]Card{}
+	}
+	if c, ok := dst.cards[id]; ok && c.Kind != "" {
+		return
+	}
+	if c, ok := read.cards[id]; ok && c.Kind != "" {
+		dst.cards[id] = cloneCard(c)
+	}
 }
 
 func planLabels(plans []Plan) []string {
@@ -154,18 +450,63 @@ func dupNewCards(plans []Plan) *Refusal {
 	return dupWrites(ws)
 }
 
-// keepExpects drops a condition on a field an earlier plan of this op writes.
-// The store checks every condition before any write, so a fence read off the
-// folded state would contradict the one read off the snapshot.
-func keepExpects(es []store.Expect, written map[[3]string]bool) []store.Expect {
+// keepExpects drops a condition on a field an earlier plan of this op writes,
+// and any condition on a card this op creates: the store checks every
+// condition before any write, so a gen fence on a card PutCard has not
+// inserted yet is "card does not exist".
+func keepExpects(es []store.Expect, written map[[3]string]bool, created map[string]bool) []store.Expect {
 	var out []store.Expect
 	for _, e := range es {
+		if id := expectCard(e); id != "" && created[id] {
+			continue
+		}
 		if f, ok := expectField(e); ok && written[f] {
 			continue
 		}
 		out = append(out, e)
 	}
 	return out
+}
+
+// addedExpects keeps a fence the re-run added and the original plan did not
+// have. Relink's acyclic walk reads cards the earlier writes of this op made
+// reachable; those gens have to be fenced or a concurrent relink closes a cycle.
+func addedExpects(next, orig []store.Expect, written map[[3]string]bool, created map[string]bool) []store.Expect {
+	have := map[string]bool{}
+	for _, e := range orig {
+		have[fmt.Sprintf("%#v", e)] = true
+	}
+	var out []store.Expect
+	for _, e := range next {
+		if have[fmt.Sprintf("%#v", e)] {
+			continue
+		}
+		if id := expectCard(e); id != "" && created[id] {
+			continue
+		}
+		if f, ok := expectField(e); ok && written[f] {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+func expectCard(e store.Expect) string {
+	switch x := e.(type) {
+	case store.CardGen:
+		return x.Card
+	case store.CardState:
+		return x.Card
+	case store.CardAbsent:
+		return x.Card
+	case store.NeedsLanded:
+		return x.Card
+	case store.CardRed:
+		return x.Card
+	default:
+		return ""
+	}
 }
 
 func noteFields(dst map[[3]string]bool, ws []store.Write) {
@@ -195,36 +536,65 @@ func expectField(e store.Expect) ([3]string, bool) {
 	}
 }
 
-// preemptGuard is the model's preempt, read off the events: the starter's
-// priority is blocker, and the withdrawn consumer is working on that row.
-// A row with no open width is layer 3's, not this check.
+// preemptGuard is the model's preempt, read off the flattened moves. Only a
+// Withdraw with Preempt set is checked; a plain withdraw is an ordinary
+// release, whatever its reason. The starter's priority includes a
+// SetPriority earlier in this op. A row with no open width is layer 3's.
 func preemptGuard(plans []Plan) *Refusal {
+	prio := map[string]string{}
 	for i, p := range plans {
-		st, ok := p.ev.(Start)
+		if st, ok := p.ev.(Start); ok {
+			if b, ok := starter(p, prio); ok && b.Priority == "blocker" {
+				if r := preemptAgainst(plans, i, b, st.Row); r != nil {
+					return r
+				}
+			}
+		}
+		notePriority(prio, p.Writes)
+	}
+	return nil
+}
+
+func starter(p Plan, prio map[string]string) (Card, bool) {
+	b, ok := p.seen.cards[lastID(p.label)]
+	if !ok {
+		return Card{}, false
+	}
+	if v, has := prio[b.ID]; has {
+		b.Priority = v
+	}
+	return b, true
+}
+
+func preemptAgainst(plans []Plan, i int, b Card, row string) *Refusal {
+	for j, q := range plans {
+		if i == j {
+			continue
+		}
+		wd, ok := q.ev.(Withdraw)
 		if !ok {
 			continue
 		}
-		b, ok := p.seen.cards[lastID(p.label)]
-		if !ok || b.Priority != "blocker" {
+		c, ok := q.seen.cards[lastID(q.label)]
+		if !ok || !consumer(c.Kind) || c.Of == b.ID {
 			continue
 		}
-		for j, q := range plans {
-			if i == j {
-				continue
-			}
-			if _, ok := q.ev.(Withdraw); !ok {
-				continue
-			}
-			c, ok := q.seen.cards[lastID(q.label)]
-			if !ok || !consumer(c.Kind) || c.Of == b.ID {
-				continue
-			}
-			if r := preemptPair(b, c, st.Row); r != nil {
-				return r
-			}
+		if !wd.Preempt {
+			continue
+		}
+		if r := preemptPair(b, c, row); r != nil {
+			return r
 		}
 	}
 	return nil
+}
+
+func notePriority(dst map[string]string, ws []store.Write) {
+	for _, w := range ws {
+		if s, ok := w.(store.SetCardPriority); ok {
+			dst[s.Card] = normPriority(s.Priority)
+		}
+	}
 }
 
 func preemptPair(b, c Card, row string) *Refusal {
@@ -544,8 +914,8 @@ func foldWrite(s records, w store.Write) {
 }
 
 func cardFromPut(p store.PutCard) Card {
-	return Card{ID: p.ID, Kind: p.Kind, Of: p.Of, Stream: p.Stream, Holder: p.Holder, Tier: p.Tier,
-		Attempt: p.Attempt, Review: p.Review, Finding: p.Finding, Score: p.Score, Priority: p.Priority,
+	return Card{ID: p.ID, Kind: p.Kind, Of: p.Of, Stream: p.Stream, State: Waiting, Holder: p.Holder, Tier: p.Tier,
+		Attempt: p.Attempt, Review: p.Review, Finding: p.Finding, Score: p.Score, Priority: normPriority(p.Priority),
 		Needs: slices.Clone(p.Needs), After: slices.Clone(p.After), Brief: p.Brief, Prose: p.Prose,
 		Paths: slices.Clone(p.Paths), DoneWhen: slices.Clone(p.DoneWhen)}
 }

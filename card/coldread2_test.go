@@ -187,14 +187,21 @@ func TestCold2SuspectWithdrawFromAStaleProducerStrands(t *testing.T) {
 	assert.Equal(t, []string{Working, Ready}, []string{w.card("p1").State, w.card("p1.w1").State})
 }
 
-// S4. NeedFailed{InThisOp} alone asserts nothing about the need: applied
-// without the drop it fails a dependant whose need is merely waiting.
+// S4. NeedFailed{InThisOp} alone is refused. The plan fences the need as
+// fail, so the store rejects it without the drop, and Merge of that one
+// plan refuses it too. The dependant stays waiting.
 func TestCold2SuspectNeedFailedInThisOpAlone(t *testing.T) {
 	w := newWorld(t, producer("n1"), producer("p3", "n1"))
 	plan, r := w.plan("p3", NeedFailed{Need: "n1", InThisOp: true})
 	require.Nil(t, r)
-	w.op("needfailed", plan)
-	assert.Equal(t, []string{Fail, Waiting}, []string{w.card("p3").State, w.card("n1").State})
+	_, mr := Merge(plan)
+	require.NotNil(t, mr)
+	assert.Contains(t, mr.Reason, "merge it with the drop")
+	rec, err := w.apply("needfailed", plan)
+	require.NoError(t, err)
+	assert.False(t, rec.Accepted, rec.Reason)
+	assert.Contains(t, rec.Reason, "expected fail")
+	assert.Equal(t, []string{Waiting, Waiting}, []string{w.card("p3").State, w.card("n1").State})
 }
 
 // S5. Withdraw{Head} accepts the base itself as the pushed head; it becomes
@@ -326,7 +333,7 @@ func TestCold2PreemptionMerge(t *testing.T) {
 	w.move("b1", SetPriority{Level: "blocker", Reason: "asked"})
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
 	w.consume("p1.w1", Take{Row: "r2"})
-	withdraw := w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker b1", Head: h2})
+	withdraw := w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker b1", Head: h2, Preempt: true})
 	start, r := w.plan("b1", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
 	w.op("preempt", mustMerge(t, withdraw, start))
@@ -553,7 +560,7 @@ func (w *world) cold2Preempt(rng *rand.Rand, all map[string]Card, cons map[strin
 	if rng.Intn(2) == 0 {
 		head = coldH3
 	}
-	wd, r := MoveConsumer(c, all[c.Of], w.rows()[c.Holder], Withdraw{Reason: "preempted by blocker " + b.ID, Head: head, Stream: stream})
+	wd, r := MoveConsumer(c, all[c.Of], w.rows()[c.Holder], Withdraw{Reason: "preempted by blocker " + b.ID, Head: head, Stream: stream, Preempt: true})
 	if r != nil {
 		return Plan{}, "", "", false
 	}
