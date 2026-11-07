@@ -1,7 +1,9 @@
 package main
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -72,6 +74,7 @@ type productionWorkload struct {
 	store    verbs.Reader
 	present  func(context.Context) (map[string]bool, error)
 	lastLine func(ctx context.Context, machine, service string) string
+	version  func(ctx context.Context, machine string) error // nil: this bench runs this binary's version
 }
 
 // ServicesReady is true: step 6's keys are proven by their model probe
@@ -152,7 +155,11 @@ func (w productionWorkload) benchStates(ctx context.Context) ([]benchState, erro
 }
 
 // WorkersReady is every worker bench hooked on the bus and up in the
-// store; else the benches that are not, each with its unit's last log line.
+// store, and running this binary's version; else the benches that are not,
+// each with its unit's last log line. A worker probes its harness with the
+// policy's models, its seat's provider keys in hand, before it hooks
+// (worker.Runner.ServeRow), so hooked and up is probed (admission, intent
+// rule 34).
 func (w productionWorkload) WorkersReady(ctx context.Context) (bool, error) {
 	states, err := w.benchStates(ctx)
 	if err != nil {
@@ -164,10 +171,40 @@ func (w productionWorkload) WorkersReady(ctx context.Context) (bool, error) {
 			down = append(down, b)
 		}
 	}
-	if len(down) == 0 {
+	if len(down) > 0 {
+		return false, &verbs.WorkloadNotReady{Why: w.downWhy(ctx, down), Fix: "read the unit's log on each bench named (~/" + serviceLogPath("sprint-worker-<bench>") + ") and fix what it says (a probe refusal names the model or key it lacks), or take the bench role off a machine that is gone; then nova-sprint up again"}
+	}
+	return w.versionsReady(ctx, states)
+}
+
+// versionsReady is every bench's nova-sprint at this binary's version, the
+// benches read at once (step 5's check, over ssh).
+func (w productionWorkload) versionsReady(ctx context.Context, states []benchState) (bool, error) {
+	if w.version == nil {
+		return false, fmt.Errorf("worker setup unavailable: no version check is wired")
+	}
+	errs := make([]error, len(states))
+	var wg sync.WaitGroup
+	for i, b := range states {
+		wg.Go(func() { errs[i] = w.version(ctx, b.name) })
+	}
+	wg.Wait()
+	var why []string
+	var first error
+	for _, err := range errs {
+		if err != nil {
+			why, first = append(why, err.Error()), cmp.Or(first, err)
+		}
+	}
+	if len(why) == 0 {
 		return true, nil
 	}
-	return false, &verbs.WorkloadNotReady{Why: w.downWhy(ctx, down), Fix: "read the unit's log on each bench named (~/" + serviceLogPath("sprint-worker-<bench>") + ") and fix what it says, or take the bench role off a machine that is gone; then nova-sprint up again"}
+	fix := "nova-fleet install --repo <org/repo> --tag <this version> <bench> for each bench named, then nova-sprint up again"
+	var op *verbs.OperationError
+	if errors.As(first, &op) {
+		fix = op.Fix
+	}
+	return false, &verbs.WorkloadNotReady{Why: strings.Join(why, "; "), Fix: fix}
 }
 
 // downWhy names each bench that is not up and its unit's last log line,

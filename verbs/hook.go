@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -22,11 +23,38 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	if err := e.onBus(ctx, in.actor); err != nil {
 		return "", err
 	}
-	snap, err := e.snapshot(ctx)
+	snap, err := e.snapshot(ctx) // the store credential finish and read need: without it, CredentialFix
 	if err != nil {
 		return "", err
 	}
+	if err := e.originsReadable(ctx, snap); err != nil {
+		return "", err
+	}
 	return e.hookAs(ctx, snap, in.actor, r)
+}
+
+// originsReadable is hook's admission (intent rule 34): the hooking
+// process has what finish and read will need. The store credential is
+// proved by the read before this; finish also reads the card's head and
+// the group branch at the stream's origin, so every stream's repository
+// must be readable from this process, all read at once. No forge token is
+// asked of a row: the run does the forge work.
+func (e *Engine) originsReadable(ctx context.Context, snap store.Snapshot) error {
+	ss := streamsInOrder(snap)
+	errs := make([]error, len(ss))
+	var wg sync.WaitGroup
+	for i, s := range ss {
+		wg.Go(func() { _, errs[i] = e.baseTip(ctx, s, "hook again") })
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			f := *classify(err)
+			f.What = "finish and read could not reach stream " + ss[i].Name + " from this process: " + f.What
+			return &f
+		}
+	}
+	return nil
 }
 
 // hookAs records name's session and role on snap and prints its playbook:
