@@ -570,3 +570,14 @@ the same way; the burst scenario's MaxAtt is 2 (it was 1) so a red's fix is
 dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
 (the fix attempt carries the finding), `TestTickNoCIJudges`.
 
+
+## Built: routes in the deal (stitch w2A, 2026-11-07)
+
+A producer whose brief carries `NEEDS-ROUTE: <name>` lines (read once, by
+`card.NeedsRoutes`) is a candidate only for rows that serve its tier and
+every route (`Roster.ServesRoutes`); the candidate cache keys on tier and
+routes. With none, the `unserved` judgement's About is the tier plus
+`+<route>` per route, and it clears only when a row serves all of them, so a
+tier-only row no longer clears it each tick. Test:
+`TestTickRoutesDealOnlyToServingRows`. No TLA model names routes; the
+candidate filter narrows the row set the model already chooses from.
