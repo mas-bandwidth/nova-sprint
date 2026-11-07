@@ -1,4 +1,4 @@
-package dash
+package main
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/dash"
 )
 
 func TestFunctionalPublicDashboardRealHTTPAndShutdown(t *testing.T) {
@@ -22,7 +24,7 @@ func TestFunctionalPublicDashboardRealHTTPAndShutdown(t *testing.T) {
 		_, _ = io.WriteString(w, `{"ok":true,"data":{"at":"1970-01-01T00:16:40Z","tables":{"fleet":{},"friends":{},"merge":{},"readers":{},"work":{}},"streams":[],"epoch":1},"dataAgeSeconds":0}`)
 	}))
 	defer upstream.Close()
-	cache, err := NewPullCache(upstream.URL, nil, nil)
+	cache, err := dash.NewPullCache(upstream.URL, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +38,7 @@ func TestFunctionalPublicDashboardRealHTTPAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- serveDashboardListener(ctx, listener, cache.Handler(), func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() })
+		done <- serveBoardOn(ctx, listener, cache.Handler(), func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() })
 	}()
 	client := &http.Client{Timeout: time.Second}
 	for i := 0; i < 20; i++ {
@@ -67,10 +69,5 @@ func TestFunctionalPublicDashboardRealHTTPAndShutdown(t *testing.T) {
 	}
 	if _, err = client.Get("http://" + listener.Addr().String() + "/api/sprint"); err == nil {
 		t.Fatal("server remained reachable")
-	}
-}
-func TestPullCommandRejectsConflictingStoreFlag(t *testing.T) {
-	if err := Command(context.Background(), []string{"--pull", "http://example.test", "--pg", "secret"}); err == nil {
-		t.Fatal("expected conflicting flags refusal")
 	}
 }

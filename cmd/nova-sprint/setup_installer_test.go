@@ -15,7 +15,7 @@ func TestFleetPublicInstallerArgs(t *testing.T) {
 	if err := f.Install(context.Background(), "public-host", "v2.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"nova-fleet", "install", "--repo", "mas-bandwidth/nova-sprint", "--tag", "v2.0.0", "--names", "nova-sprint,nova-sprint-dash", "public-host"}
+	want := []string{"nova-fleet", "install", "--repo", "mas-bandwidth/nova-sprint", "--tag", "v2.0.0", "--names", "nova-sprint", "public-host"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %q want %q", got, want)
 	}

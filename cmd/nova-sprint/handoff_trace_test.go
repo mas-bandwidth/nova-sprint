@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/run/filestore"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
@@ -31,15 +30,6 @@ type handoffTraceFixture struct {
 	validated    bool
 	walkActivity bool
 }
-
-type handoffTraceEnv struct{}
-
-func (handoffTraceEnv) Fleet(context.Context) (bool, string, error) { return true, "", nil }
-func (handoffTraceEnv) Schema(context.Context) (bool, error)        { return true, nil }
-func (handoffTraceEnv) Hooked(_ context.Context, name string) (bool, string, error) {
-	return name == "alice", "", nil
-}
-func (handoffTraceEnv) Coordinator(context.Context) (string, error) { return "alice", nil }
 
 func (f *handoffTraceFixture) add(action, fields string) {
 	f.records = append(f.records, fmt.Sprintf("action |-> %q%s", action, fields))
@@ -102,7 +92,7 @@ func (f *handoffTraceFixture) PrepareHandoff(ctx context.Context, in verbs.Setup
 	if !f.held || !f.ready[2] {
 		return "", false, fmt.Errorf("prerequisites absent")
 	}
-	st, err := filestore.Open(f.path)
+	st, err := openFileStore(f.path)
 	if err != nil {
 		return "", false, err
 	}
@@ -131,7 +121,7 @@ func (f *handoffTraceFixture) PrepareHandoff(ctx context.Context, in verbs.Setup
 	return id, true, nil
 }
 func (f *handoffTraceFixture) ValidateHandoff(ctx context.Context, id string, in verbs.SetupInput) error {
-	st, err := filestore.Open(f.path)
+	st, err := openFileStore(f.path)
 	if err != nil {
 		return err
 	}
@@ -196,17 +186,16 @@ func TestHandoffTraceChild(t *testing.T) {
 		}
 		args = append(args, "--continuation", id)
 	}
-	st, err := filestore.Open(state)
+	st, err := openFileStore(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := verbs.Engine{Actor: "alice", Store: st, Env: handoffTraceEnv{}, Roles: verbs.SnapshotRoles{Store: st}, Now: func() time.Time { return time.Unix(1002, 0) }, Setup: f, SetupLock: f, ReportContinuation: func(ctx context.Context, id string, in verbs.SetupInput) error {
+	e := verbs.Engine{Actor: "alice", Store: st, Bus: present{"alice"}, Now: func() time.Time { return time.Unix(1002, 0) }, Setup: f, Lock: f, ReportContinuation: func(ctx context.Context, id string, in verbs.SetupInput) error {
 		if f.held {
 			return fmt.Errorf("lease still held")
 		}
 		return reportHandoff(ctx, id, in)
 	}}
-	e.SetupHook = e.EnsureCoordinatorHook
 	result := e.Execute(context.Background(), args)
 	handoffChildFinish(t, f, result, events)
 }
@@ -273,7 +262,7 @@ func TestEmitHandoffTrace(t *testing.T) {
 	dir := t.TempDir()
 	state, events, child := handoffTraceScripts(t, dir)
 	t.Setenv("PATH", dir)
-	st, err := filestore.Open(state)
+	st, err := openFileStore(state)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -98,10 +98,3 @@ func (e ExecEnvironment) Hooked(ctx context.Context, actor string) (bool, string
 	}
 	return false, recipe, nil
 }
-func (e ExecEnvironment) Coordinator(ctx context.Context) (string, error) {
-	if e.Choices.Store == nil {
-		return "", fmt.Errorf("setup choices unavailable")
-	}
-	value, _, err := e.Choices.Get(ctx, "coordinator")
-	return value, err
-}

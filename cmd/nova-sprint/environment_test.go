@@ -4,23 +4,19 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
 func TestProductionStoreRejectsAmbientCredentials(t *testing.T) {
 	t.Setenv("PGPASSWORD", "ambient-should-not-be-used")
-	s := &lazyStore{dsn: "postgres://nova_config@localhost/db"}
+	s := &lazyStore{creds: credentials{dsn: "postgres://nova_config@localhost/db"}}
 	if _, err := s.Snapshot(context.Background()); err == nil || !strings.Contains(err.Error(), "NOVA_SPRINT_PG_PASSWORD") {
 		t.Fatalf("missing credential: %v", err)
 	}
-	s.password = "explicit"
-	s.dsn = "postgres://nova_config:secret@localhost/db"
+	s.creds = credentials{dsn: "postgres://nova_config:secret@localhost/db", password: "explicit"}
 	if _, err := s.Snapshot(context.Background()); err == nil || !strings.Contains(err.Error(), "passwordless") {
 		t.Fatalf("embedded credential: %v", err)
 	}
-	env := credentialEnvironment{inner: verbs.ExecEnvironment{DSN: "postgres://nova_config@localhost/db"}}
-	if _, err := env.Schema(context.Background()); err == nil {
+	if _, err := (doctor{creds: credentials{dsn: "postgres://nova_config@localhost/db"}}).Schema(context.Background()); err == nil {
 		t.Fatal("schema accepted ambient credential")
 	}
 }
