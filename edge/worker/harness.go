@@ -275,6 +275,10 @@ type WallConfig struct {
 }
 
 func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
+	if os.Getenv("NOVA_WORKER_NO_WALL") == "1" { // LOCAL DOGFOOD STOPGAP (Glenn 2026-11-07 "fleet up"): opencode's write tool dies inside nova-sandbox (defect 33); the harness runs unwalled under nova-reserve only
+		argv := []string{cmp.Or(cfg.ReserveBin, "nova-reserve"), "run", "--wait", cmp.Or(cfg.ReserveWait, 5*time.Second).String(), "--why", cmp.Or(j.Consumer, "probe"), "--"}
+		return append(argv, harnessArgv...)
+	}
 	argv := []string{cmp.Or(cfg.ReserveBin, "nova-reserve")}
 	if cfg.ReserveDir != "" {
 		argv = append(argv, "--dir", cfg.ReserveDir)
