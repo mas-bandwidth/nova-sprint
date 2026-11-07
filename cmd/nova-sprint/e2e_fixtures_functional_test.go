@@ -295,14 +295,25 @@ func (x *e2e) storeSetup() {
 		why = append(why, fmt.Sprintf("schema after: %+v %v", id, serr))
 		dir := filepath.Join(x.dir, "backups-diagnosis")
 		_ = os.MkdirAll(dir, 0o700)
-		_, berr := (verbs.PGBackups{DSN: x.sprintDSN, Password: sprintPassword, Directory: dir, Version: versionString(), Loader: verbs.PGSQLLoader{}}).Backup(ctx, dir)
+		_, berr := (verbs.PGBackups{DSN: x.sprintDSN, Password: sprintPassword, Directory: dir, Version: x.version, Loader: verbs.PGSQLLoader{}}).Backup(ctx, dir)
 		why = append(why, fmt.Sprintf("backup: %v", berr))
 		pg.Close()
 	}
-	ready, err := verbs.SprintStoreChild(ctx, true, versionString())
+	ready, err := verbs.SprintStoreChild(ctx, true, x.version)
 	why = append(why, fmt.Sprintf("SprintStoreChild: ready=%v err=%v", ready, err))
 	x.tr.record("up's store step in process, for the reason", exitOf(err), strings.Join(why, "\n"))
 	x.t.Fatalf("the store step failed: exit %d %s; in process:\n%s", code, out, strings.Join(why, "\n"))
+}
+
+// devVersion is this checkout's development version, dev+<12 hex>: the
+// form a backup records (a bare "dev" build cannot back up).
+func devVersion(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	if err != nil || len(strings.TrimSpace(string(out))) < 12 {
+		t.Fatalf("git rev-parse HEAD: %v", err)
+	}
+	return "dev+" + strings.TrimSpace(string(out))[:12]
 }
 
 // configSchema is nova-config's schema.sql from the nova-tools module this

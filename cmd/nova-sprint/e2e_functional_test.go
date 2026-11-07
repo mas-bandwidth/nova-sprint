@@ -39,6 +39,7 @@ type e2e struct {
 	fg                *fakeForge
 	board, work       string
 	schema            []byte // nova-config's schema.sql
+	version           string // the build's, dev+<commit>
 }
 
 const sprintPassword = "e2e-sprint-password" // trust auth: the server never checks it
@@ -81,7 +82,8 @@ func (x *e2e) setUp() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(x.dir, "nova-sprint")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	x.version = devVersion(t)
+	if out, err := exec.Command("go", "build", "-ldflags", "-X main.binaryVersion="+x.version, "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 	x.schema = configSchema(t)
@@ -95,7 +97,7 @@ func (x *e2e) setUp() {
 		t.Setenv(kv[0], kv[1])
 	}
 	x.c = &cli{t: t, bin: bin, env: x.busEnv, tr: x.tr}
-	x.tr.note("nova-sprint end to end: the binary %s for the verbs, run.Serve in the test process with a fake forge", versionString())
+	x.tr.note("nova-sprint end to end: the binary %s for the verbs, run.Serve in the test process with a fake forge", x.version)
 	x.seedOrigin()
 }
 
