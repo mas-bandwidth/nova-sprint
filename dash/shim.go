@@ -47,7 +47,7 @@ type fleetRow struct {
 	Reason   string // why the roster refused or held the row ("" otherwise)
 	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
 	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
-	Tokens   int64 // every token its runs reported (package usage), kin and benches alike
+	Tokens   int64  // every token its runs reported (package usage), kin and benches alike
 }
 type streamLine struct{ Stream, State string }
 
