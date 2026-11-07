@@ -42,6 +42,7 @@ func TestAtomicWorkReportAndReplay(t *testing.T) {
 	}
 	recreateWork(t, f, at)
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "worker", Now: func() time.Time { return at }, Reports: CardReportPlanner{}, Heads: headFake{}}
+	wireFixture(t, &e, f, "worker")
 	if r := e.Execute(ctx, []string{"take", "p.w1@0", "--epoch", "2"}); r.Exit != 0 {
 		t.Fatal(r)
 	}

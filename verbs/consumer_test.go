@@ -28,7 +28,7 @@ func (s *replayStore) Apply(context.Context, store.Op) (store.Receipt, error) {
 }
 func TestTakeReplayBeforeStateAndActorPrivacy(t *testing.T) {
 	st := &replayStore{receipt: store.Receipt{Actor: "worker", Kind: "take", Accepted: true, Seq: 8}}
-	e := Engine{Store: st, Env: fakeEnv{}, Actor: "worker", Now: func() time.Time { return time.Unix(1000, 0) }}
+	e := Engine{Store: st, Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, Actor: "worker", Now: func() time.Time { return time.Unix(1000, 0) }}
 	got := e.Execute(context.Background(), []string{"take", "p.w1@0"})
 	if got.Exit != 0 || st.snapshots != 1 {
 		t.Fatalf("%+v snapshots=%d", got, st.snapshots)
@@ -45,7 +45,7 @@ func TestTakeAndReleaseOnFake(t *testing.T) {
 	at := time.Unix(1000, 0)
 	seed := store.Op{ID: "seed", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{
 		store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1},
-		store.PutRow{Name: "worker", Kind: "worker", Width: 2, Tiers: []string{"pro"}},
+		store.PutRow{Name: "worker", Session: "fixture", Role: "worker"},
 		store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "make it"},
 	}}
 	applyTest(t, f, seed)
@@ -64,13 +64,14 @@ func TestTakeAndReleaseOnFake(t *testing.T) {
 	applyTest(t, f, store.Op{ID: "resolve", Epoch: 1, Actor: "test", Kind: "resolve", At: at, Expect: resolve.Expect, Writes: resolve.Writes})
 	snap, _ = f.Snapshot(ctx)
 	p = card.FromStore(snap.Cards["p"])
-	row := card.RowFromStore(snap.Rows["worker"])
+	row := card.RowFromStore(snap.Rows["worker"], 2, []string{"pro"})
 	start, why := card.Move(p, nil, map[string]card.Row{"worker": row}, stream, nil, card.Start{Row: "worker", Branch: "sprint/p", Base: strings.Repeat("a", 40)})
 	if why != nil {
 		t.Fatal(why)
 	}
 	applyTest(t, f, store.Op{ID: "start", Epoch: 1, Actor: "test", Kind: "start", At: at, Expect: start.Expect, Writes: start.Writes})
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "worker", Now: func() time.Time { return at }}
+	wireFixture(t, &e, f, "worker")
 	first := e.Execute(ctx, []string{"take", "p.w1@0"})
 	again := e.Execute(ctx, []string{"take", "p.w1@0"})
 	if first.Exit != 0 || first != again || !strings.Contains(first.Output, "make it") {
@@ -123,6 +124,7 @@ func TestOldEpochRefusesBeforeReplay(t *testing.T) {
 	}
 	recreateWork(t, f, at)
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "worker", Now: func() time.Time { return at }}
+	wireFixture(t, &e, f, "worker")
 	got := e.Execute(ctx, []string{"take", "p.w1@0", "--epoch", "1"})
 	want := "SPRINT REFUSED take: epoch 1 is over: this card was recreated in epoch 2: run nova-sprint next\n"
 	if got.Exit != 1 || got.Output != want {
@@ -136,9 +138,9 @@ func TestOldEpochRefusesBeforeReplay(t *testing.T) {
 
 func recreateWork(t *testing.T, f *store.Fake, at time.Time) {
 	ctx := context.Background()
-	applyTest(t, f, store.Op{ID: "reseed", Epoch: 2, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "worker", Kind: "worker", Width: 2, Tiers: []string{"pro"}}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "make it"}}})
+	applyTest(t, f, store.Op{ID: "reseed", Epoch: 2, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "worker", Session: "fixture", Role: "worker"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "make it"}}})
 	snap, _ := f.Snapshot(ctx)
-	rp, why := card.MoveRow(card.RowFromStore(snap.Rows["worker"]), card.Seen{})
+	rp, why := card.MoveRow(card.RowFromStore(snap.Rows["worker"], 2, []string{"pro"}), card.Seen{})
 	if why != nil {
 		t.Fatal(why)
 	}
@@ -153,7 +155,7 @@ func recreateWork(t *testing.T, f *store.Fake, at time.Time) {
 	applyTest(t, f, store.Op{ID: "reresolve", Epoch: 2, Actor: "test", Kind: "resolve", At: at, Expect: plan.Expect, Writes: plan.Writes})
 	snap, _ = f.Snapshot(ctx)
 	p = card.FromStore(snap.Cards["p"])
-	row := card.RowFromStore(snap.Rows["worker"])
+	row := card.RowFromStore(snap.Rows["worker"], 2, []string{"pro"})
 	plan, why = card.Move(p, nil, map[string]card.Row{"worker": row}, stream, nil, card.Start{Row: "worker", Branch: "sprint/p", Base: strings.Repeat("a", 40)})
 	if why != nil {
 		t.Fatal(why)

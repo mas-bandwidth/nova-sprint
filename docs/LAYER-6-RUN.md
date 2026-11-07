@@ -98,14 +98,16 @@ put-backs re-planned within two ticks, the dashboard advancing every second.
 v2 keeps the verbs the six promises need. Every verb takes `--as <name>` (else
 `NOVA_SPRINT_AS`), ends with `next:`, exits 0, 1 or 2, and refuses in one line, `SPRINT
 REFUSED <verb>: <what is not true>: <the command that makes it true>`, naming any unknown
-card, row, stream or sha (LESSONS 2.26). "Hooked" is presence in `nova-bus who`; its
-refusal prints the hook-in recipe for the harness detected.
+card, row, stream or sha (LESSONS 2.26). "Hooked" is presence in `nova-bus who` and a role
+recorded by `hook` (below); its refusal prints the step that is missing.
 
 | verb | arguments | refuses, and the fix it names | next it prints | exit |
 |---|---|---|---|---|
 | (none) | | runs `next --as <me>` | | 0 |
 | `next` | `[--as <name>]` | never; a broken prerequisite is its answer | the one command (section 4) | 0; 2 if it cannot look |
 | `help` | `[<verb>\|<group>]`, or `-h` | unknown verb: the index | `nova-sprint` | 0 |
+| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded | `next --as <name>` | 0, 1 |
+| `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
 | `check` | `[--integrity]` | fleet not green: each `nova-fleet` fix; a tool below the pin: `nova-fleet up`; `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable | `up`, or what next says | 0, 1 |
 | `up` | `[--as <coordinator>] [--dash tailnet\|public=<host>] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
 | `stream add` | `<s> --repo <owner/name> [--base main] [--pr]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>` | `add --stream <s> --brief-file <f>` | 0, 1 |
@@ -128,6 +130,21 @@ refusal prints the hook-in recipe for the harness detected.
 | `clear` | `--confirm <epoch> [--dry-run]` | wrong epoch; a live consumer, listing them; the backup it takes first failed | `stream add` | 0, 1, 2 |
 | `policy` | layer 5's design | | | |
 | `report` | `<card>@<gen> --result ok\|fail\|fault [--head <sha>] [--cost <usd>] --reason <why> --as <row>` (nova-worker's form of `finish`) | as `finish`; `fault` only for a harness, bench or route failure | `nothing; wait for the bus` | 0, 1 |
+
+`hook` does not run the bus hook: the bus hook (`nova-bus hook --as <name>` under the session's
+Monitor) is the earlier step it requires, because every push of the sprint travels over the bus
+(Glenn, 2026-11-06: "you have to be hooked in to the message bus FIRST before you hook into the
+sprint"). `hook` is the one defined entry point where an AI is fed how to use the sprint: it
+records the name and role in the row's session state in the store, which subscribes the name to
+the sprint's pushes over the bus (deals, read asks, withdraws, landing results, and for the
+coordinator every judgement), and prints the role's playbook first: `HOOKED <name> role=<role>`,
+then docs/PLAYBOOK-WORKER.md for a worker, or docs/PLAYBOOK-WORKER.md followed by
+docs/PLAYBOOK-COORDINATOR.md for the coordinator, who is a worker too ("so they get both
+playbooks!", Glenn 2026-11-06), then its `next:` line. Until it has run, every acting verb
+refuses with `hook in first: nova-sprint hook --as <name> --role worker` (or `coordinator` for a
+coordinator verb). `help playbook <role>` prints the same text for reading, compiled into the
+binary from those files, and a test holds every command line in them to a verb and flag that
+exists (LESSONS 6.7).
 
 Every verb that can withdraw or fail other cards (`drop`, `hold` of a row, `clear`) takes
 explicit ids, never "all", has `--dry-run`, and prints what it withdraws and which

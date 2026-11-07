@@ -47,7 +47,7 @@ func goldenSetup(t *testing.T, out *strings.Builder) {
 		return nil, nil
 	}
 	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v2.0.0"}, Store: &runtimeStore{ready: true}}
-	r := (&Engine{Actor: "rowan", Setup: runtime, SetupLock: setupLeaseFake{}}).Execute(context.Background(), []string{"up", "--as", "rowan"})
+	r := (&Engine{Actor: "rowan", Env: runtime.Prerequisites.Env, Setup: runtime, SetupLock: setupLeaseFake{}}).Execute(context.Background(), []string{"up", "--as", "rowan"})
 	if r.Exit != 1 {
 		t.Fatal(r)
 	}
@@ -57,9 +57,10 @@ func goldenCards(t *testing.T, out *strings.Builder) {
 	ctx := context.Background()
 	at := time.Unix(1000, 0)
 	f := store.NewFake()
-	applyTest(t, f, store.Op{ID: "rows", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "worker", Kind: "worker", Width: 1, Tiers: []string{"pro"}}, store.PutRow{Name: "reader", Kind: "worker", Width: 1, Tiers: []string{"pro"}}}})
+	applyTest(t, f, store.Op{ID: "rows", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "worker", Session: "fixture", Role: "worker"}, store.PutRow{Name: "reader", Session: "fixture", Role: "worker"}}})
 	applyTest(t, f, store.Op{ID: "up", Epoch: 1, Actor: "test", Kind: "up", At: at, Writes: []store.Write{store.SetRowState{Row: "worker", State: "up"}, store.SetRowState{Row: "reader", State: "up"}}})
 	e := Engine{Store: f, Env: fakeEnv{green: true, schema: true, hooked: true}, Actor: "rowan", Now: func() time.Time { return at }, Repositories: repoFake{}, Briefs: briefsFake{"card": {ID: "fix-typos", Kind: "producer", Tier: "pro", Brief: "Fix the typos."}}, Reports: CardReportPlanner{}, Heads: headFake{}}
+	wireFixture(t, &e, f, "rowan", "worker", "reader")
 	r := e.Execute(ctx, []string{"stream", "add", "docs", "--repo", "owner/repo"})
 	if r.Exit != 0 {
 		t.Fatal(r)
@@ -90,7 +91,7 @@ func goldenDeal(t *testing.T, f *store.Fake, at time.Time, row string, events ..
 	for i, event := range events {
 		snap, _ := f.Snapshot(context.Background())
 		p := snap.Cards["fix-typos"]
-		plan, why := card.Move(card.FromStore(p), consumers(snap, p.ID), map[string]card.Row{row: card.RowFromStore(snap.Rows[row])}, card.StreamFromStore(snap.Streams[p.Stream]), nil, event)
+		plan, why := card.Move(card.FromStore(p), consumers(snap, p.ID), map[string]card.Row{row: card.RowFromStore(snap.Rows[row], 2, []string{"pro"})}, card.StreamFromStore(snap.Streams[p.Stream]), nil, event)
 		if why != nil {
 			t.Fatal(why)
 		}

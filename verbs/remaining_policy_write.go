@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -27,7 +28,7 @@ func (e *Engine) policySet(ctx context.Context, st store.Store, s store.Snapshot
 		}
 	}
 	name := policyBase(in.args[0])
-	if !validRowText(name) {
+	if !validPolicyName(name) {
 		return refused("policy set", "invalid policy file name", "provide a named policy file")
 	}
 	checked, err := e.evaluatePolicy(ctx, s, body)
@@ -120,4 +121,8 @@ func policyClosureComplete(s store.Snapshot, plan card.Plan) bool {
 		}
 	}
 	return true
+}
+
+func validPolicyName(s string) bool {
+	return s != "" && len(s) <= 128 && utf8.ValidString(s) && !strings.ContainsRune(s, 0)
 }

@@ -23,6 +23,7 @@ func TestJudgeClosesOnce(t *testing.T) {
 	ctx := context.Background()
 	applyTest(t, f, store.Op{ID: "j", Epoch: 1, Actor: "step", Kind: "open", At: at, Writes: []store.Write{store.PutJudgement{ID: "j1", Kind: "red", About: "p", Group: "g", Question: "kind=red card=p group=g CI failed", Command: "nova-sprint judge j1 retry --reason <why>"}}})
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Judges: judgeFake{}, Actor: "rowan", Now: func() time.Time { return at }}
+	wireFixture(t, &e, f, "rowan")
 	r := e.Execute(ctx, []string{"judge", "j1", "retry", "--reason", "ready"})
 	if r.Exit != 0 {
 		t.Fatal(r)

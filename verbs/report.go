@@ -127,7 +127,7 @@ func (e *Engine) report(ctx context.Context, verb string, args []string) Result 
 	if in.epoch != 0 && in.epoch != snap.Epoch {
 		return epochRefusal(verb, in.epoch, snap.Epoch)
 	}
-	opID := consumerOpID("report", snap.Epoch, in.id, in.gen)
+	opID := consumerOpID(verb, snap.Epoch, in.id, in.gen)
 	r, found, err := st.Replay(ctx, opID)
 	if err != nil {
 		return operationalFailure(verb, err)
@@ -149,13 +149,13 @@ func (e *Engine) report(ctx context.Context, verb string, args []string) Result 
 	if !ok || c.Gen != in.gen || c.Holder != in.actor {
 		return refused(verb, in.id+" is not held by "+in.actor, "nova-sprint show "+in.id)
 	}
-	if result, stop := e.checkReport(ctx, verb, c, &in); stop {
+	if result, stop := e.checkReport(ctx, verb, snap, c, &in); stop {
 		return result
 	}
 	return e.applyReport(ctx, st, snap, c, in, opID, verb)
 }
 
-func (e *Engine) checkReport(ctx context.Context, verb string, c store.Card, in *reportInput) (Result, bool) {
+func (e *Engine) checkReport(ctx context.Context, verb string, snap store.Snapshot, c store.Card, in *reportInput) (Result, bool) {
 	if in.result == "fault" {
 		if e.Faults == nil {
 			return unavailable(verb), true
@@ -176,6 +176,15 @@ func (e *Engine) checkReport(ctx context.Context, verb string, c store.Card, in 
 	}
 	if verb == "read" && c.Kind != "read" {
 		return refused(verb, in.id+" is not a read", "nova-sprint show "+in.id), true
+	}
+	if c.Kind == "read" {
+		p, found := snap.Cards[c.Of]
+		if !found {
+			return refused(verb, "producer "+c.Of+" is missing", "nova-sprint show "+in.id), true
+		}
+		if in.actor == p.Author || in.actor == c.Author {
+			return refused(verb, in.actor+" wrote the head and cannot read it", "nova-sprint next"), true
+		}
 	}
 	if in.result == "fix" && in.reason == "" {
 		return refused(verb, "a fix needs a finding", "nova-sprint read "+in.id+"@"+strconv.Itoa(in.gen)+" fix --finding <text>"), true
@@ -199,6 +208,9 @@ func (e *Engine) applyReport(ctx context.Context, st ApplyStore, snap store.Snap
 	plan, why := e.Reports.PlanReport(snap, c, card.Report{Row: in.actor, Result: in.result, Head: in.head, Reason: in.reason, Cost: in.cost, Priced: in.priced})
 	if why != nil {
 		return refused(verb, why.Reason, "nova-sprint show "+in.id)
+	}
+	if c.Kind == "read" {
+		plan.Expect = append(plan.Expect, store.AtSeq{Seq: snap.Seq})
 	}
 	next := "nothing; wait for the bus"
 	if len(obligations(snap, in.actor)) > 1 {

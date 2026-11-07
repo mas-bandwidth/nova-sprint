@@ -54,13 +54,7 @@ func (e *Engine) releaseRow(ctx context.Context, args []string) Result {
 	if !ok || e.Env == nil || e.Now == nil || e.Preview == nil {
 		return unavailable("release")
 	}
-	coordinator, err := e.Env.Coordinator(ctx)
-	if err != nil {
-		return operationalFailure("release", err)
-	}
-	if in.actor != coordinator {
-		return refused("release", "only the coordinator can release a row", "ask "+coordinator+" over the bus")
-	}
+
 	hooked, recipe, err := e.Env.Hooked(ctx, in.actor)
 	if err != nil {
 		return operationalFailure("release", err)
