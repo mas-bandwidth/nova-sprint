@@ -948,7 +948,9 @@ ParkedUnderHold == held => \A p \in P : ps[p].st # "ready"
 (* than the coordinator's Cancel, Replace, Block, Edit, Rescore and       *)
 (* SetPriority; or waits on a need that can still move, on an after-      *)
 (* target that is merging, or (for the moves rows and holds gate) on a    *)
-(* row coming back or a hold lifting. A ready producer at the model's     *)
+(* row coming back, a hold lifting or a full row's room (the deal is the  *)
+(* take, defect 52: a deal waits for a working consumer to report). A     *)
+(* ready producer at the model's                                          *)
 (* attempt bound, or one with no consumer slot left, is exempt: that is   *)
 (* the model's limit, not the design's.                                   *)
 OwnMove(p) ==
@@ -962,7 +964,7 @@ OwnMove(p) ==
   \/ \E c \in CIds, r \in Rows : Preempt(p, c, r)
 Gated(p) ==
   /\ ps[p].st \in {"waiting", "ready", "review"}
-  /\ (held \/ \E r \in Rows : rs[r].st = "down" \/ rs[r].held)
+  /\ (held \/ \E r \in Rows : rs[r].st = "down" \/ rs[r].held \/ ~RoomOn(r, {}))
 ModelBound(p) ==
   \/ ps[p].st = "ready" /\ (ps[p].att >= MaxAttempt \/ ps[p].ncut >= K)
   \/ ps[p].st = "review" /\ ps[p].ncut >= K

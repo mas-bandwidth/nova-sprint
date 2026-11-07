@@ -76,9 +76,14 @@ REACH = {
 WITNESSES = [
     ("StepsDealtTwice", "NeverDealtTwice", "pre",
      "The deal does not skip a blocker the preemption step claimed: one\n"
-     "tick plans the preemption and a plain Start for the same blocker.",
+     "tick plans the preemption and a plain Start for the same blocker.\n"
+     "Since the deal is the take (defect 52) a blocker preempts only when\n"
+     "no row has room, so the deal could not place it either; the second\n"
+     "fault, a preemption that fires with free width, makes the first\n"
+     "reachable, and the Free guard is what then keeps the deal off it.",
      [("LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ Free(p, cl))",
-       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE)   \\* FAULT: was Free(p, cl)", 1)]),
+       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE)   \\* FAULT: was Free(p, cl)", 1),
+      ("  /\\ NoFreeWidth(W, b)\n", "  /\\ TRUE   \\* FAULT 2: was NoFreeWidth(W, b)\n", 1)]),
     ("StepsTwoGroups", "OneGroupPerCard", "land",
      "The land-result step ignores cards already claimed: a result\n"
      "delivered twice plans two groups on one producer in one tick.",

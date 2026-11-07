@@ -84,6 +84,7 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 | L2-M21 | `LAYER-2-CARD-MACHINE.md` Consumer `Withdraw` & Preemption (`LESSONS 3.10`) | `Withdraw` moves a `ready` or `working` consumer to `fail` (recording a pushed `head` on a work consumer and releasing a `working` producer in the same plan); blocker preemption merges `Withdraw` + `Start` into one atomic op | `invariant CardMachine.WorkingOneWorkConsumer`, `invariant CardMachine.WithdrawReleasesInOneStep`, `witness CardWithdrawLeavesWorking`, `witness CardNeverPreempted`, `test TestConsumerTable/Withdraw_work`, `test TestWithdrawReleases`, `test TestMerge`, `test TestColdPreemptARead`, `test TestColdDefectWithdrawnHeadIsUnrecordable`, `test TestConformanceReleaseAndWithdraw`, `test TestConformancePreemption` |
 | L2-M22 | `LAYER-2-CARD-MACHINE.md` Row `Seen`, `Gone`, `Width`, `Hold`, `Unhold` | Row moves transition `down -> up` (`Seen`), `up -> down` with `flaps + 1` (`Gone`), update `width` (`Width`), and toggle `held` (`Hold`/`Unhold`), each fenced on `RowGen` | `test TestRowTable`, `test TestColdRowsEveryState`, `test TestConformanceRows`, `test TestFences` |
 | L2-M23 | `LAYER-2-CARD-MACHINE.md` Stream `HoldStream` (`LESSONS 2.20`) | `HoldStream` sets the stream's `held = true` and parks every `ready` producer in the stream to `waiting` in the same op | `invariant CardMachine.ParkedUnderHold`, `witness CardHeldStreamReady`, `test TestHoldStream`, `test TestConformanceHoldStream` |
+| L2-M24 | `LAYER-2-CARD-MACHINE.md` Deal is take, defects 48 and 47 | A work fault whose reason starts `missing-route:` blocks its producer on the first fault, never back to ready; `Block` (the coordinator's card hold, reason `held: <why>`) is allowed from waiting and refused for a sentinel | `invariant CardMachine.RouteFaultBlocks`, `witness CardRouteRedealt`, `witness CardNeverRouteBlocked`, `test TestHandRouteFaultBlocks`, `test TestHandPlainFaultRedeals` |
 
 ---
 
@@ -165,16 +166,17 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 | L3-E3 | `LAYER-3-STEPS.md` list item 1 | After any fold the view equals a fresh build at the same seq | `test TestViewFoldEqualsBuild`, `test TestViewRefusedEventMovesSeqOnly` |
 | L3-E4 | `LAYER-3-STEPS.md` list item 2, `BUILD-RULES` | The package reads no clock and no outside world; every function under 60 lines | `test TestLintPure` |
 | L3-E5 | `LAYER-3-STEPS.md` Requests | A verb refused for its actor writes nothing; coordinator verbs, the holder's report, the run loop's row facts | `test TestVerbActorTable`, `test TestVerbAddReport`, `test TestVerbDropNamesItsDependants`, `test TestVerbJudgementAnswer` |
+| L3-G10 | `LAYER-3-STEPS.md` In hand (intent rule 33) | A consumer is in its row's hand from the deal; an unacknowledged one is nudged from `NudgeAfter` and judged `unacked` at `UnackedAfter`; a ready producer with an open serving row with room is dealt within `UndealtAfter`, or an `undealt` judgement names the row and the card | `invariant Steps.DealIsTake`, `invariant Steps.DealtWithinKTicks`, `witness StepsCutReady`, `witness StepsUndealtSilent`, `test TestHandNudgesThenJudgesUnacked`, `test TestHandUndealtJudged`, `test TestHandNoUndealtWithoutRoom` |
 | L3-T1 | `BUILD-RULES` 2026-11-07 (the lock gate) | The code is bound to the model: the walk's traces are behaviours of `Steps.tla` | `test TestTraceFixtures`, `test TestTraceWalk` |
 
 ---
 
 ## Summary Counts
 
-Total rules audited: 108
+Total rules audited: 110
 
-- held by a model: 54
-- held by a test: 87
+- held by a model: 56
+- held by a test: 89
 - held by the schema: 16
 - held by nothing: 20
 
