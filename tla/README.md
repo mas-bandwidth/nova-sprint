@@ -1132,6 +1132,11 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsDealOneShort` | pre | the deal leaves one slot of width unused | ReadyDealtWhenRoom (liveness, TLC exit 13) |
 | `witnesses/StepsCutReady` | pre | the deal cuts its consumer ready | DealIsTake |
 | `witnesses/StepsUndealtSilent` | burst | no undealt judgement | DealtWithinKTicks |
+| `witnesses/StepsLandAfterHoldsUntilLanded` | land | the after hold lasts until the earlier card lands | MergingCovered |
+| `witnesses/StepsDealsWithoutPolicy` | pre | the policy gate ignored | NoDealWithoutPolicy |
+| `witnesses/StepsResolveOnEvent` | deal | resolve only on a landed result's event | ResolveFromState |
+| `witnesses/StepsGlobOverlaps` | pre | a glob both list counts as overlap | ResolveFromState |
+| `witnesses/StepsHeldUnshown` | deal | no overlap judgement for a held producer | HeldBehindShown |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
 | `reach/StepsNeverRefused` | pre | none | violated: an op is refused by a race |
@@ -1148,10 +1153,14 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `reach/StepsNeverCannotRead` | deal | none | violated: cannot-read is opened |
 | `reach/StepsNeverLandRequested` | land | none | violated: a land request |
 | `reach/StepsNeverLanded` | land | none | violated: Landed |
-| `reach/StepsNeverRed` | land | none | violated: Red |
+| `reach/StepsNeverRed` | land | none | violated: the coordinator's fix sends a judged producer to fix (Red) |
 | `reach/StepsNeverAfterHeld` | land | none | violated: a landing waits on a queued after target |
 | `reach/StepsNeverCarried` | burst | none | violated: the budget carries inbox items |
 | `reach/StepsNeverUndealt` | burst | none | violated: an undealt judgement is opened |
+| `reach/StepsNeverLandJudged` | land | none | violated: a land judgement is opened |
+| `reach/StepsNeverGated` | pre | none | violated: the policy gate opens no-policy |
+| `reach/StepsNeverHeldBehind` | deal | none | violated: an overlap judgement is opened |
+| `reach/StepsNeverHandLanded` | deal | none | violated: a store op lands a producer by hand |
 
 `python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
 five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`
