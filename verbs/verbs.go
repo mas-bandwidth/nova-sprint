@@ -32,6 +32,7 @@ type Engine struct {
 	Answers  Answerer    // the active policy's limits and timeouts
 	Policy   *policy.Engine
 	Origin   Origin   // a stream's repository at origin
+	Landing  Landing  // the forge for the coordinator's hand landing (land)
 	Doctor   Doctor   // nova-fleet, nova-tools and the store's schema
 	Archive  Archive  // backup and restore
 	Services Services // run, worker and dash
@@ -71,7 +72,6 @@ type Answerer interface {
 type Origin interface {
 	Tip(ctx context.Context, repo, branch string) (sha string, ok bool, err error)
 	Contains(ctx context.Context, repo, ancestor, head string) (bool, error)
-	PR(ctx context.Context, repo, branch, base string) (head string, ok bool, err error)
 }
 
 // Doctor is what `check` and `next` look at outside the store.

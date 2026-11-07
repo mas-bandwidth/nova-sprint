@@ -20,6 +20,7 @@ var choices = map[string]string{
 	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "conflict": "by-hand | drop",
 	"base-red": "retry", "stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
+	"land": "land | fix | retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once).
@@ -103,7 +104,7 @@ func (t *tick) put(j judgement) store.Write {
 	if j.kind == "policy" {
 		w.Group = fmt.Sprintf("policy:v%d", t.o.a.Version)
 	}
-	if j.kind != "blocked" {
+	if j.kind != "blocked" && j.kind != "land" { // a landing escalated waits for the coordinator: no default lands or fixes
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
 	return w
@@ -151,6 +152,14 @@ func (t *tick) cleared(j store.Judgement) string {
 			if r != c.Author {
 				return "row " + r + " may read " + j.About
 			}
+		}
+	case "land":
+		if _, stream := t.v.Streams[j.About]; stream {
+			if t.streamFacts(j.About).Merging == 0 {
+				return "stream " + j.About + " has nothing merging"
+			}
+		} else if c, ok := t.v.Cards[j.About]; !ok || c.State != "merging" {
+			return j.About + " is no longer merging"
 		}
 	case "stall":
 		if at, ok := t.v.Landed[j.About]; ok && at.After(j.OpenedAt) {

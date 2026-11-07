@@ -42,20 +42,18 @@ func TestQueueEmpty(t *testing.T) {
 	want(t, w.do("carol", "next"), 0, "every card is final")
 }
 
-func TestFinishEdgeFailures(t *testing.T) {
+// Finish needs only the head on origin (INTENT rule 16, Glenn 2026-11-07):
+// a forge stream with no PR, a group branch elsewhere and a failing
+// merge-base all finish; the landing opens the PR.
+func TestFinishNeedsOnlyTheHeadOnOrigin(t *testing.T) {
 	withForge := func(s *store.Snapshot) { st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st }
 	finish := []string{"finish", "p1.w1@2", "--head", head}
 	runCases(t, []tcase{
-		{name: "merge-base fails", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) {
+		{name: "no PR on a forge stream", as: "alice", snap: withForge, args: finish, exit: 0, prep: takeW1, want: []string{"FINISHED p1.w1"}},
+		{name: "group elsewhere, merge-base failing", as: "alice", args: finish, exit: 0, prep: func(t *testing.T, w *world) {
 			takeW1(t, w)
 			w.e.Origin = &failingContains{w.origin}
-		}, want: []string{"git merge-base of o/r failed"}},
-		{name: "the forge fails", as: "alice", snap: withForge, args: finish, exit: 2, prep: func(t *testing.T, w *world) {
-			takeW1(t, w)
-			w.e.Origin = &failingPR{w.origin}
-		}, want: []string{"the forge did not answer"}},
-		{name: "a PR at the head", as: "alice", snap: withForge, args: finish, exit: 0, prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.pr = head },
-			want: []string{"FINISHED p1.w1"}},
+		}, want: []string{"FINISHED p1.w1"}},
 		{name: "no git edge", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.e.Origin = nil }, want: []string{"the git edge is not configured"}},
 	})
 }
@@ -72,13 +70,6 @@ func (o *failingContains) Tip(ctx context.Context, repo, branch string) (string,
 
 func (o *failingContains) Contains(context.Context, string, string, string) (bool, error) {
 	return false, errBroken
-}
-
-// failingPR is origin with the forge failing.
-type failingPR struct{ *fakeOrigin }
-
-func (o *failingPR) PR(context.Context, string, string, string) (string, bool, error) {
-	return "", false, errBroken
 }
 
 // Each brief rule is refused, by line, without quoting the brief.

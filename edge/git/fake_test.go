@@ -380,7 +380,7 @@ func (f *Fake) Push(_ context.Context, _, sha, ref, expectOld string) error {
 	defer f.world.mu.Unlock()
 	var isStream bool
 	var err error
-	ref, isStream, err = classifyPushRef_internal(ref)
+	ref, isStream, err = classifyPushRef_internal(ref, expectOld)
 	if err != nil {
 		return err
 	}

@@ -40,6 +40,8 @@ type LandResult struct {
 	Reason                                                       string
 	LandedHeads, GreenHeads, Conflicts, FailingCI                []string
 	Remerged, ReusedCI                                           bool
+	NoChecks                                                     bool // pending with no check reported on GatedSHA: no CI run has started
+	PR                                                           int  // the group's PR into the base, once opened
 }
 
 func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (LandResult, error) {
@@ -156,19 +158,11 @@ func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req La
 	case forge.CheckGreen:
 		return prNum, LandResult{}, false, nil
 	case forge.CheckPending, "":
-		return prNum, LandResult{Outcome: OutcomeCIPending, BaseTip: baseTip, GatedSHA: merged.SHA, Reason: r.Reason}, true, nil
+		return prNum, LandResult{Outcome: OutcomeCIPending, BaseTip: baseTip, GatedSHA: merged.SHA, NoChecks: r.Runs == 0, PR: prNum, Reason: r.Reason}, true, nil
 	case forge.CheckFault:
-		return prNum, LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: merged.SHA, CIURL: r.URL, Reason: r.Reason}, true, nil
+		return prNum, LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: merged.SHA, CIURL: r.URL, PR: prNum, Reason: r.Reason}, true, nil
 	default:
-		if len(req.Heads) > 1 {
-			bRes, bErr := BisectRedGroup(ctx, g, fg, req, baseTip, streamRef, merged.SHA)
-			return prNum, bRes, true, bErr
-		}
-		blamed := ""
-		if len(req.Heads) == 1 {
-			blamed = req.Heads[0]
-		}
-		return prNum, LandResult{Outcome: OutcomeCIRed, BaseTip: baseTip, GatedSHA: merged.SHA, BlamedHead: blamed, FailingCI: r.Failing, CIURL: r.URL, Reason: r.Reason}, true, nil
+		return prNum, redResult_internal(req, baseTip, merged.SHA, r, prNum), true, nil
 	}
 }
 func classifyForgeErr_internal(err error, baseTip, sha string) LandResult {
@@ -232,77 +226,26 @@ func remergeOnMovedBase_internal(ctx context.Context, g Git, fg forge.Forge, req
 	case forge.CheckGreen:
 		return merged, LandResult{Remerged: true}, false, nil
 	case forge.CheckPending, "":
-		return merged, LandResult{Outcome: OutcomeCIPending, BaseTip: newBase, GatedSHA: merged.SHA, Remerged: true, Reason: r.Reason}, true, nil
+		return merged, LandResult{Outcome: OutcomeCIPending, BaseTip: newBase, GatedSHA: merged.SHA, NoChecks: r.Runs == 0, Remerged: true, Reason: r.Reason}, true, nil
 	case forge.CheckFault:
 		return merged, LandResult{Outcome: OutcomeCIFault, BaseTip: newBase, GatedSHA: merged.SHA, CIURL: r.URL, Remerged: true, Reason: r.Reason}, true, nil
 	default:
-		// Red on the moved base blames a head as the first pass does: the one
-		// head of a group of one, else the bisection's.
-		if len(req.Heads) > 1 {
-			bRes, bErr := BisectRedGroup(ctx, g, fg, req, newBase, streamRef, merged.SHA)
-			bRes.Remerged = true
-			return merged, bRes, true, bErr
-		}
-		return merged, LandResult{Outcome: OutcomeCIRed, BaseTip: newBase, GatedSHA: merged.SHA, BlamedHead: req.Heads[0], FailingCI: r.Failing, CIURL: r.URL, Remerged: true, Reason: r.Reason}, true, nil
+		res := redResult_internal(req, newBase, merged.SHA, r, 0)
+		res.Remerged = true
+		return merged, res, true, nil
 	}
 }
-func BisectRedGroup(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseTip, streamRef, curStreamSHA string) (LandResult, error) {
-	candidates, streamSHA := slices.Clone(req.Heads), curStreamSHA
-	for len(candidates) > 1 {
-		left, right := candidates[:len(candidates)/2], candidates[len(candidates)/2:]
-		state, nextSHA, res, done, err := gateSubset_internal(ctx, g, fg, req, baseTip, streamRef, streamSHA, left)
-		if err != nil || done {
-			return res, err
-		}
-		streamSHA = nextSHA
-		if state == forge.CheckRed {
-			candidates = left
-			continue
-		}
-		if len(right) == 1 {
-			rState, rSHA, rRes, rDone, rErr := gateSubset_internal(ctx, g, fg, req, baseTip, streamRef, streamSHA, right)
-			if rErr != nil || rDone {
-				return rRes, rErr
-			}
-			streamSHA = rSHA
-			if rState != forge.CheckRed {
-				// Each half is green alone and red together: the right head is
-				// the one whose arrival made it red, so it is blamed (a red
-				// result always blames a head; the left lands on the next pass).
-				return LandResult{Outcome: OutcomeCIRed, BaseTip: baseTip, GatedSHA: streamSHA, BlamedHead: right[0], GreenHeads: slices.Clone(left), Reason: "cross-card red interaction: " + right[0] + " is red with " + strings.Join(left, ",")}, nil
-			}
-		}
-		candidates = right
+
+// redResult_internal is CI red on the group: the failing checks, no
+// bisection and no blame across heads (INTENT rule 16, Glenn 2026-11-07:
+// red on the group is the coordinator's, who decides which head to pull).
+// A group of one names its head, the only head the red can be.
+func redResult_internal(req LandRequest, baseTip, sha string, r forge.CheckRollup, pr int) LandResult {
+	blamed := ""
+	if len(req.Heads) == 1 {
+		blamed = req.Heads[0]
 	}
-	blamed := candidates[0]
-	var green []string
-	for _, h := range req.Heads {
-		if h != blamed {
-			green = append(green, h)
-		}
-	}
-	return LandResult{Outcome: OutcomeCIRed, BaseTip: baseTip, GatedSHA: streamSHA, BlamedHead: blamed, GreenHeads: green, Reason: fmt.Sprintf("bisected red batch to head %s", blamed)}, nil
-}
-func gateSubset_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseTip, streamRef, expectOld string, subset []string) (forge.CheckState, string, LandResult, bool, error) {
-	subReq := req
-	subReq.Heads = subset
-	merged, res, done, err := mergeAndPushStream_internal(ctx, g, subReq, baseTip, streamRef, expectOld)
-	if err != nil || done {
-		return "", expectOld, res, true, err
-	}
-	rollups, err := fg.Checks(ctx, req.Repo, []string{merged.SHA})
-	if err != nil {
-		return "", merged.SHA, classifyForgeErr_internal(err, baseTip, merged.SHA), true, nil
-	}
-	r := rollups[merged.SHA]
-	switch r.State {
-	case forge.CheckFault:
-		return r.State, merged.SHA, LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: merged.SHA, CIURL: r.URL, Reason: r.Reason}, true, nil
-	case forge.CheckPending, "":
-		return r.State, merged.SHA, LandResult{Outcome: OutcomeCIPending, BaseTip: baseTip, GatedSHA: merged.SHA, Reason: r.Reason}, true, nil
-	default:
-		return r.State, merged.SHA, LandResult{}, false, nil
-	}
+	return LandResult{Outcome: OutcomeCIRed, BaseTip: baseTip, GatedSHA: sha, BlamedHead: blamed, FailingCI: r.Failing, CIURL: r.URL, PR: pr, Reason: r.Reason}
 }
 
 type RemoteLandResult struct {

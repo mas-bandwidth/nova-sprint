@@ -329,17 +329,21 @@ func ValidateCardBranch(stream, branch string) error {
 	}
 	return nil
 }
-func classifyPushRef_internal(ref string) (string, bool, error) {
+
+// classifyPushRef_internal refuses a blind push to a bare sprint/<x> ref;
+// one with a lease is a base fast-forward (streams' bases are named
+// sprint/<x>-v1, sprint/schema-100 and the like) and is checked as one.
+func classifyPushRef_internal(ref, expectOld string) (string, bool, error) {
 	if !strings.HasPrefix(ref, "refs/heads/") {
 		ref = "refs/heads/" + strings.TrimPrefix(ref, "/")
 	}
-	if strings.HasPrefix(ref, "refs/heads/sprint/") && !strings.Contains(strings.TrimPrefix(ref, "refs/heads/sprint/"), "/") {
+	if expectOld == "" && strings.HasPrefix(ref, "refs/heads/sprint/") && !strings.Contains(strings.TrimPrefix(ref, "refs/heads/sprint/"), "/") {
 		return "", false, fmt.Errorf("git refused: bare stream ref %s is forbidden: use %s/group for the stream branch or %s/<producer> for a card branch", ref, ref, ref)
 	}
 	return ref, strings.HasPrefix(ref, "refs/heads/sprint/") && strings.HasSuffix(ref, "/group"), nil
 }
 func (c *Client) Push(ctx context.Context, repoDir, sha, ref, expectOld string) error {
-	ref, isStream, err := classifyPushRef_internal(ref)
+	ref, isStream, err := classifyPushRef_internal(ref, expectOld)
 	if err != nil {
 		return err
 	}

@@ -34,6 +34,8 @@ func (t *tick) landResults() {
 		case "conflict":
 			t.judge("conflict", req.Stream, fmt.Sprintf("stream %s cannot merge heads %s onto %s: a conflict across streams", req.Stream, strings.Join(req.Heads, ","), req.Base))
 			t.consume(it.ID)
+		case "escalate":
+			t.escalate(it, req)
 		case "base-red":
 			t.baseRed(it, req)
 		case "base-green":
@@ -81,6 +83,36 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	if g := t.group("land", about, moves...); g != nil {
 		g.key.Item = it.ID
 	}
+}
+
+// escalate is a landing that did not land easily (Glenn 2026-11-07: "doesn't
+// land easily, it must escalate to you"): CI red on the group, no CI run
+// within the bound, a merge or fast-forward refused, a PR that cannot be
+// opened. One land judgement on the coordinator, carrying the edge's facts:
+// about the card for rung 1, about the stream for rung 2 (no bisection: the
+// coordinator decides which head to pull). The stream lands nothing more
+// while it is open (queued). The answers are land (the coordinator's hand
+// merge: nova-sprint land), fix (LandFix, back to the worker with the
+// finding) and retry (the answer alone: the next tick requests again).
+func (t *tick) escalate(it InboxItem, req EdgeRequest) {
+	facts := it.Facts
+	if facts == "" {
+		facts = "the landing did not land and said nothing more"
+	}
+	var at []string
+	for i, p := range req.Cards {
+		if c, ok := t.v.Cards[p]; ok && c.State == "merging" && i < len(req.Heads) && c.Head == req.Heads[i] {
+			at = append(at, p+"@"+c.Head)
+		}
+	}
+	switch {
+	case len(at) == 0: // nothing of the request still merging at its head: the result is stale
+	case len(req.Cards) == 1:
+		t.judge("land", req.Cards[0], fmt.Sprintf("%s did not land on %s of stream %s: %s", at[0], req.Base, req.Stream, facts))
+	default:
+		t.judge("land", req.Stream, fmt.Sprintf("stream %s's group of %s did not land on %s: %s; answer fix --card <id> to send one back, land after resolving by hand, or retry", req.Stream, strings.Join(at, ","), req.Base, facts))
+	}
+	t.consume(it.ID)
 }
 
 // baseRed opens one judgement per base meeting (LANDING step 8): the third
@@ -139,12 +171,19 @@ func (t *tick) readyIn(stream string) []card.Card {
 }
 
 // landRequests is the land requests step (LAYER-3 "Land"; the model's
-// LandPicks; AfterKept, AfterNeverHolds): per stream with no land request
-// in flight, flowing, the first merging producer none of whose after
-// targets is merging; backed up (merging at or past policy's landing
-// number), every eligible one in score order as one group with one CI. An
-// after orders only producers both queued to land and never holds on one
-// that is not (LESSONS 2.15). A hold never touches landing (LANDING 9).
+// LandPicks; AfterKept, AfterNeverHolds), the ladder of INTENT rule 16: per
+// stream with no land request in flight, flowing (one eligible merging
+// producer) it alone, rung 1: the landing opens its PR from the card's
+// branch into the base and merges it when the PR's checks are green; backed
+// up (more than one), every eligible one in after order as one request,
+// rung 2: merged into the stream's group branch, one PR into the base, one
+// CI. Whatever does not land easily is a land judgement (escalate), rung 3,
+// and the stream lands nothing more until it is answered. Each tick re-derives the requests
+// from state, so a restart re-requests every merging producer. A stream
+// whose merging producers get no request and no judgement is a defect,
+// judged (an engine judgement). An after orders only producers both queued
+// to land and never holds on one that is not (LESSONS 2.15). A hold never
+// touches landing (LANDING 9).
 func (t *tick) landRequests() {
 	for _, s := range sortedKeys(t.v.Streams) {
 		if t.busy(s) {
@@ -156,12 +195,10 @@ func (t *tick) landRequests() {
 		}
 		picks := t.eligible(queued)
 		if len(picks) == 0 {
+			t.engine(queued[0].ID, fmt.Sprintf("%s is merging in stream %s with no land request and no land judgement: every merging producer waits behind an after target that is not landing (%s)", queued[0].ID, s, strings.Join(queued[0].After, ",")))
 			continue
 		}
-		if t.o.landing(t.streamFacts(s)).BackedUp > len(queued) {
-			picks = picks[:1]
-		}
-		t.landRequest(s, picks)
+		t.landRequest(s, picks) // one pick: rung 1 (the card's PR); more: rung 2 (the group's PR)
 	}
 }
 
@@ -169,11 +206,18 @@ func (t *tick) busy(s string) bool {
 	return slices.ContainsFunc(t.in.Inflight, func(r EdgeRequest) bool { return r.Kind == "land" && r.Stream == s })
 }
 
-// queued is the unclaimed merging producers of s in score order, then id.
+// escalated says a land judgement about a card or a stream is open or
+// opening this tick: the landing does not touch it until it is answered.
+func (t *tick) escalated(about string) bool {
+	return t.isOpen("land", about) || t.pending("land", about)
+}
+
+// queued is the unclaimed merging producers of s in score order, then id,
+// without those whose landing escalated and waits for the coordinator.
 func (t *tick) queued(s string) []store.Card {
 	var out []store.Card
 	for _, p := range t.v.Producers("merging") {
-		if c := t.v.Cards[p]; c.Stream == s && t.free(p) {
+		if c := t.v.Cards[p]; c.Stream == s && t.free(p) && !t.escalated(p) && !t.escalated(s) {
 			out = append(out, c)
 		}
 	}
@@ -222,7 +266,7 @@ func (t *tick) landRequest(s string, picks []store.Card) {
 	base := t.in.Heads[s]
 	h := sha256.New()
 	fmt.Fprintf(h, "%d|%s|%s|", t.v.Epoch, s, base)
-	req := EdgeRequest{Kind: "land", Stream: s, Base: base}
+	req := EdgeRequest{Kind: "land", Stream: s, Base: base, Branch: t.v.Cards[workID(picks[0])].Branch}
 	for _, c := range picks {
 		fmt.Fprintf(h, "%s@%s/%d|", c.ID, c.Head, c.Review)
 		req.Cards = append(req.Cards, c.ID)

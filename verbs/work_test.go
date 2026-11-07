@@ -107,20 +107,12 @@ func TestFinishFailedAndReportForms(t *testing.T) {
 }
 
 func TestFinishRefusals(t *testing.T) {
-	withForge := func(s *store.Snapshot) { st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st }
 	finish := []string{"finish", "p1.w1@2", "--head", head}
 	runCases(t, []tcase{
 		{name: "no head", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2"}, exit: 1, want: []string{"a finish names its head", "--head"}},
 		{name: "not a sha", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", "abc"}, exit: 1, want: []string{"head abc is not a full commit sha"}},
 		{name: "the base", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", base}, exit: 1, want: []string{"where this attempt started"}},
 		{name: "not pushed", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", tip}, exit: 1, want: []string{"is not the tip of sprint/s/p1", "git push origin sprint/s/p1"}},
-		{name: "behind the stream", as: "alice", args: finish, exit: 1, prep: func(t *testing.T, w *world) {
-			takeW1(t, w)
-			w.origin.tips["o/r sprint/s/group"] = tip
-		}, want: []string{"bring sprint/s/p1 up to the stream head", "git rebase origin/sprint/s/group"}},
-		{name: "no PR", as: "alice", snap: withForge, prep: takeW1, args: finish, exit: 1, want: []string{"the stream wants a PR", "gh pr create --base sprint/s/group --head sprint/s/p1"}},
-		{name: "a PR behind", as: "alice", snap: withForge, args: finish, exit: 1, prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.pr = tip },
-			want: []string{"the PR of sprint/s/p1 is at " + tip}},
 		{name: "origin fails", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.err = errBroken }, want: []string{"git ls-remote of o/r failed"}},
 		{name: "failed with no reason", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--failed"}, exit: 1, want: []string{"a fail needs its reason"}},
 		{name: "not the holder", as: "bob", prep: takeW1, args: finish, exit: 1, want: []string{"p1.w1 is not held by bob"}},
