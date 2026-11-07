@@ -173,13 +173,12 @@ WITNESSES = [
      "not (v1's frozen LAND-AFTER).",
      [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
        "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT", 1)]),
-    ("StepsLandJudgementHoldsAll", "MergingCovered", "land",
-     "An open land judgement holds every stream: while any card is under\n"
-     "one, no landing is asked for any other, so a merging producer of\n"
-     "another stream sits with no request and no judgement.",
+    ("StepsLandAfterHoldsUntilLanded", "MergingCovered", "land",
+     "The after hold lasts until the earlier card lands, not while it\n"
+     "merges: a card sent back to fix leaves the card after it merging\n"
+     "with no request and no judgement.",
      [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
-       "LandElig(V, s, cl, J) == IF \\E x \\in Prods : Judged(J, x) THEN {}   \\* FAULT: one judgement holds all\n"
-       "  ELSE {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}", 1)]),
+       "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT: was # \"merging\"", 1)]),
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",
