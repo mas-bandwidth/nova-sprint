@@ -107,7 +107,7 @@ func TestTraceCursorZero(t *testing.T) {
 // The breaker's script: a row is held, then a deal fenced on it not being
 // held. The honest Fake refuses the deal; the breaker lands it.
 func breakerScript(w *storeWalk) {
-	w.script(nil, PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1}, PutRow{Name: "r1", Kind: "worker", Width: 1, Tiers: []string{"pro"}},
+	w.script(nil, PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1}, PutRow{Name: "r1"},
 		SetRowState{Row: "r1", State: "up"}, PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"})
 	w.script(nil, SetRowHeld{Row: "r1", Held: true, Reason: "h"})
 	w.script([]Expect{RowHeld{Row: "r1", Held: false}}, PutCard{ID: "u1", Kind: "work", Of: "p1", Stream: "s1", Tier: "pro", Holder: "r1"}, SetCardState{Card: "u1", State: "working"})

@@ -266,8 +266,6 @@ func TestRowTable(t *testing.T) {
 	}{
 		{Seen{}, down, []store.Write{store.SetRowState{Row: "r3", State: Up}}},
 		{Gone{}, up, []store.Write{store.SetRowState{Row: "r1", State: Down}, store.SetRowFlaps{Row: "r1", Flaps: 1}}},
-		{Width{N: 3}, up, []store.Write{store.SetRowWidth{Row: "r1", Width: 3}}},
-		{Width{N: 3}, down, []store.Write{store.SetRowWidth{Row: "r3", Width: 3}}},
 		{Hold{Reason: "maintenance"}, up, []store.Write{store.SetRowHeld{Row: "r1", Held: true, Reason: "maintenance"}}},
 		{Hold{}, down, []store.Write{store.SetRowHeld{Row: "r3", Held: true}}},
 		{Unhold{Reason: "back"}, held, []store.Write{store.SetRowHeld{Row: "r4", Held: false, Reason: "back"}}},
@@ -280,8 +278,7 @@ func TestRowTable(t *testing.T) {
 	for _, c := range []refusal{
 		{rowMove(up, Seen{}), "row r1 is up, Seen needs down"},
 		{rowMove(down, Gone{}), "row r3 is down, Gone needs up"},
-		{rowMove(up, Width{N: 2}), "row r1 already has width 2"},
-		{rowMove(up, Width{N: -1}), "width -1 is below 0"},
+		{rowMove(up, Width{N: 3}), "row r1's width is the roster's (nova-config); no op sets it, 3 not applied"},
 		{rowMove(held, Hold{}), "row r4 is already held"},
 		{rowMove(up, Unhold{}), "row r1 is already not held"},
 		{rowMove(up, Resolve{}), "Resolve is not a row event; MoveRow takes Seen, Gone, Width, Hold and Unhold"},
@@ -676,8 +673,7 @@ func TestValueRules(t *testing.T) {
 	far.State = Merging
 	_, red := Move(far, nil, rows(), Stream{Name: "s1"}, nil, Red{Head: h1})
 	_, cost := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
-	_, width := MoveRow(rows()["r1"], Width{N: math.MaxInt32 + 1})
-	_, noName := MoveRow(Row{}, Width{N: 1})
+	_, noName := MoveRow(Row{}, Hold{})
 	bounced := pr(Review)
 	bounced.Bounces = math.MaxInt32
 	_, bounces := Move(bounced, []Card{rd(Done, "fix")}, rows(), Stream{Name: "s1"}, nil, ReadFix{Finding: "x"})
@@ -688,7 +684,6 @@ func TestValueRules(t *testing.T) {
 		{mv(Ready, nil, SetPriority{Level: "high", Reason: "\x00"}), `reason "\x00" is not valid UTF-8 or holds a NUL byte`},
 		{red, "producer p1 is at review 2147483647, the most there is"},
 		{cost, "cost -1 is below 0"},
-		{width, "width 2147483648 is outside the range 0..2147483647"},
 		{noName, "a row needs a name"},
 		{bounces, "bounces 2147483648 is outside the range 0..2147483647"},
 	} {

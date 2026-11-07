@@ -75,6 +75,9 @@ func (w *storeWalk) write(s Snapshot) Write {
 	case 12:
 		return w.cursorWrite(s)
 	case 13:
+		if w.rng.IntN(3) == 0 {
+			return SetStopped{Stopped: w.rng.IntN(2) == 0, Reason: "walk"}
+		}
 		return PutPolicy{Kind: "data", Name: "rules", Body: w.pick(twBodies)}
 	}
 	return w.putConsumer(s)
@@ -132,24 +135,25 @@ func (w *storeWalk) some(s Snapshot, names []string) string {
 
 func (w *storeWalk) rowWrite(s Snapshot) Write {
 	r := w.pick(twRows)
-	tiers := []string{w.pick(twTiers)}
-	if w.rng.IntN(2) == 0 {
-		tiers = twTiers
-	}
 	if _, ok := s.Rows[r]; !ok && w.rng.IntN(4) > 0 {
-		return PutRow{Name: r, Kind: "worker", Width: 1 + w.rng.IntN(2), Tiers: tiers}
+		return w.hook(r)
 	}
-	switch w.rng.IntN(6) {
+	switch w.rng.IntN(4) {
 	case 0:
-		return PutRow{Name: r, Kind: "worker", Width: w.rng.IntN(3), Tiers: tiers}
-	case 1:
-		return SetRowWidth{Row: r, Width: w.rng.IntN(3)}
-	case 2, 3:
+		return w.hook(r)
+	case 1, 2:
 		return SetRowState{Row: r, State: w.pick(RowStates)}
-	case 4:
-		return SetRowHeld{Row: r, Held: w.rng.IntN(2) == 0, Reason: "h"}
 	}
-	return SetRowTiers{Row: r, Tiers: tiers}
+	return SetRowHeld{Row: r, Held: w.rng.IntN(2) == 0, Reason: "h"}
+}
+
+// hook is the sprint hook's write on row r: a session of the model's (x,
+// y) with a role, or unhook.
+func (w *storeWalk) hook(r string) Write {
+	if w.rng.IntN(3) == 0 {
+		return PutRow{Name: r}
+	}
+	return PutRow{Name: r, Session: w.pick([]string{"x", "y"}), Role: w.pick(RowRoles)}
 }
 
 func (w *storeWalk) judgementWrite(s Snapshot) Write {

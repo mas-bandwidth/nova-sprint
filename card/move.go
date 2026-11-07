@@ -1017,8 +1017,9 @@ func (m *mover) holder(row string) *Refusal {
 	return nil
 }
 
-// take moves a dealt consumer into working; layer 1's state write refuses it
-// when the row already holds as many working consumers as its width.
+// take moves a dealt consumer into working. The row's width is the
+// roster's (round 22): layer 1 no longer counts it, and a take past width is
+// refused by the caller that reads the roster, not here.
 func (m *mover) take(e Take, r Row) *Refusal {
 	if rr := firstOf(m.from(e, Ready), m.holder(e.Row)); rr != nil {
 		return rr
@@ -1245,7 +1246,7 @@ func MoveRow(r Row, e Event) (Plan, *Refusal) {
 			w = store.SetRowFlaps{Row: r.Name, Flaps: r.Flaps + 1}
 		}
 	case Width:
-		w, refusal = store.SetRowWidth{Row: r.Name, Width: v.N}, rowWidth(r, v.N)
+		refusal = no("row %s's width is the roster's (nova-config); no op sets it, %d not applied", r.Name, v.N)
 	case Hold:
 		w, refusal = store.SetRowHeld{Row: r.Name, Held: true, Reason: v.Reason}, rowHeld(r, true)
 	case Unhold:
@@ -1263,16 +1264,6 @@ func MoveRow(r Row, e Event) (Plan, *Refusal) {
 func rowFrom(r Row, e Event, state string) *Refusal {
 	if r.State != state {
 		return no("row %s is %s, %s needs %s", r.Name, r.State, name(e), state)
-	}
-	return nil
-}
-
-func rowWidth(r Row, n int) *Refusal {
-	switch {
-	case n < 0:
-		return no("width %d is below 0", n)
-	case n == r.Width:
-		return no("row %s already has width %d", r.Name, n)
 	}
 	return nil
 }

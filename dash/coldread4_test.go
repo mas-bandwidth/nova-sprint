@@ -126,7 +126,7 @@ func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", Tier: "pro", State: "done", Cost: 1000, Priced: true},
 		"u": {ID: "u", Kind: "work", Of: "p", Stream: "s", Tier: "pro", State: "waiting"},
 	}}
-	cache := &Cache{view: mapSnapshot(s, time.Time{}), at: time.Now(), now: time.Now}
+	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}), at: time.Now(), now: time.Now}
 	b, err := json.Marshal(cache.pageSnapshot())
 	if err != nil {
 		t.Fatal(err)
@@ -224,10 +224,10 @@ func TestColdread4Measure5000(t *testing.T) {
 	f := store.NewFake()
 	var w []store.Write
 	for i := 0; i < 12; i++ {
-		w = append(w, store.PutRow{Name: fmt.Sprintf("m%02d", i), Kind: "worker", Width: 16, Tiers: []string{"pro"}})
+		w = append(w, store.PutRow{Name: fmt.Sprintf("m%02d", i)})
 	}
 	for i := 0; i < 4; i++ {
-		w = append(w, store.PutRow{Name: fmt.Sprintf("k%d", i), Kind: "kin", Width: 32, Tiers: []string{"pro"}})
+		w = append(w, store.PutRow{Name: fmt.Sprintf("k%d", i)})
 	}
 	for i := 0; i < 50; i++ {
 		w = append(w, store.PutStream{Name: fmt.Sprintf("s%02d", i)})

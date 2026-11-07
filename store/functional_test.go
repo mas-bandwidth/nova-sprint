@@ -148,6 +148,50 @@ func TestFunctionalMigrateRound16(t *testing.T) {
 	assert.False(t, h.snap().Cards["c1"].Red, "an old card reads not red")
 	h.ok(h.op("red", []Expect{CardRed{"c1", false}}, SetCardRed{"c1", true}))
 	assert.True(t, h.snap().Cards["c1"].Red)
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
+	assert.Equal(t, 0, n, "round 22's columns are gone from a round-16 store too")
+}
+
+// Round 22: a store made by round 17's schema, which every round to 21
+// carried (round21Hash, a row and a consumer it holds in it), is upgraded by
+// Migrate: the five configuration columns of sprint.rows and the cards_live
+// index are dropped in one transaction, the new hash is recorded, the row's
+// sprint state is kept, a second Migrate is a no-op, and CheckSchema reads it
+// as round 17's before and current after.
+func TestFunctionalMigrateRound21(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round21.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round21Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
+		"INSERT INTO sprint.rows (name, kind, width, state, session, flaps, held, gen, tiers, model, harness, reason, epoch) VALUES ('w1', 'worker', 8, 'up', 'sess', 2, true, 3, '{pro}', 'm', 'h', 'why', 1)",
+		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c1', 'producer', 'pro', 's1', 'waiting', 1)",
+		"INSERT INTO sprint.cards (id, kind, \"of\", tier, stream, state, holder, epoch) VALUES ('u1', 'work', 'c1', 'pro', 's1', 'working', 'w1', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round21Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 17}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	var n int
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
+	assert.Equal(t, 0, n, "the five configuration columns are dropped")
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM pg_indexes WHERE schemaname = 'sprint' AND indexname = 'cards_live'").Scan(&n))
+	assert.Equal(t, 0, n, "cards_live is dropped")
+	id, err = CheckSchema(ctx, dsn)
+	require.NoError(t, err)
+	want := currentSchema
+	want.Owner = "nova"
+	assert.Equal(t, want, id)
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, Row{Name: "w1", State: "up", Session: "sess", Role: "worker", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept")
+	h.ok(h.op("put", nil, PutRow{Name: "w1", Session: "sess-2", Role: "worker"}))
+	assert.Equal(t, "working", h.snap().Cards["u1"].State)
 }
 
 func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
@@ -297,7 +341,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
-	h.ok(h.op("wide", nil, PutRow{Name: "w1", Kind: "worker", Width: 10, Session: "sess-a", Tiers: []string{"pro"}})) // room for every take: the take checks width
+	h.ok(h.op("wide", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"})) // room for every take: the take checks width
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
 		h.ok(h.op("add", nil, PutCard{Tier: "pro", Kind: "work", ID: id, Of: "c1", Stream: "s1", Holder: "w1"}))
@@ -323,7 +367,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 	h.seed()
 	for i := range 10 {
 		row := fmt.Sprintf("r%d", i)
-		h.ok(h.op("row", nil, PutRow{Name: row, Kind: "worker", Width: 1, Tiers: []string{"pro"}}, SetRowState{row, "up"}, PutCard{Tier: "pro", Kind: "work", ID: row + "a", Of: "c1", Stream: "s1", Holder: row}, PutCard{Tier: "pro", Kind: "work", ID: row + "b", Of: "c1", Stream: "s1", Holder: row}))
+		h.ok(h.op("row", nil, PutRow{Name: row}, SetRowState{row, "up"}, PutCard{Tier: "pro", Kind: "work", ID: row + "a", Of: "c1", Stream: "s1", Holder: row}, PutCard{Tier: "pro", Kind: "work", ID: row + "b", Of: "c1", Stream: "s1", Holder: row}))
 		deal := func(card string) Op {
 			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, row}}, SetCardState{card, "working"})
 		}
