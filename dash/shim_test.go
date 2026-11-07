@@ -30,7 +30,7 @@ func TestStreamStates(t *testing.T) {
 	for _, row := range d.Streams {
 		got[row.Stream] = row.State
 	}
-	for k, v := range map[string]string{"empty": "waiting", "held": "held", "blocked": "waiting", "failed": "waiting"} {
+	for k, v := range map[string]string{"empty": "waiting", "held": "held", "blocked": "waiting", "failed": "fail"} {
 		if got[k] != v {
 			t.Errorf("%s state=%q want=%q", k, got[k], v)
 		}

@@ -73,3 +73,32 @@ func TestStreamCostWireExact(t *testing.T) {
 		t.Fatalf("unpriced only = %s, %v", empty, err)
 	}
 }
+
+func TestStreamCostPartitionsRoundedTotal(t *testing.T) {
+	cases := []struct {
+		work, read                int64
+		total, wantWork, wantRead string
+	}{
+		{1000, 1000, "$0.01", "$0.00", "$0.01"},
+		{9000, 1000, "$0.01", "$0.01", "$0.00"},
+		{1234567, 1000, "$1.24", "$1.24", "$0.00"},
+		{0, 0, "$0.00", "$0.00", "$0.00"},
+	}
+	for _, tc := range cases {
+		s := &streamCost{amounts: map[string]*big.Int{}}
+		s.add("work_cost", tc.work)
+		s.add("read_cost", tc.read)
+		s.add("total_cost", tc.work+tc.read)
+		b, err := json.Marshal(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]string
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got["total_cost"] != tc.total || got["work_cost"] != tc.wantWork || got["read_cost"] != tc.wantRead {
+			t.Errorf("work=%d read=%d: %s", tc.work, tc.read, b)
+		}
+	}
+}
