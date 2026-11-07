@@ -89,7 +89,18 @@ setup 1, handoff 2, choices 2, install 64.
 
 Checked on hetzner2 at d8d7bd29 (2026-11-06): `run-0` TRACE OK steps=130,
 `run-1` 112, `run-2` 109, `run-stop` 148 (emitted by this helper with -race).
-The full gate cannot pass at this base: `cmd/nova-sprint` does not build
-(engine.go and handoff_trace_test.go import the deleted run/filestore), so the
-two handoff emitters fail; that is the stitch's wiring of the run verb, not a
-trace change.
+At 3f59b99c: `setup` TRACE OK steps=49; installer walks 000 and 063 TRACE OK
+(2 and 4 steps; the other 62 were emitted, not checked one by one).
+
+The full gate cannot pass at this base, for two reasons outside the traces:
+- `cmd/nova-sprint` does not build (engine.go and handoff_trace_test.go
+  import the deleted run/filestore), so the two handoff emitters fail; that
+  is the stitch's wiring of the run verb.
+- the choices emitter (`TestSetupChoicesActualTrace`) fails at setup step 6
+  for both cases: `setup answer refused: row rowan does not exist` (the
+  services answer; its fixture predates e0887b13's role hooks).
+
+`ci-tlc.sh` now runs layer 6 too (the models, witnesses/layer6, and the Setup
+and Install witnesses beside their models). On hetzner2 at d8d7bd29 (TLC_JOBS=6):
+234 results, all `ok`, exit 0; RunTickWhileStoppedGate and
+RunTickWhileStoppedFence each violate NoTickWhileStopped, and RunFailover passes.
