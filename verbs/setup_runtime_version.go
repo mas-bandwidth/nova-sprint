@@ -17,6 +17,7 @@ type VersionAdoption struct {
 	Binary      string
 	Command     CommandOutput
 	MatchesPath func(string) bool
+	ResolvePath func() (string, error)
 	Secrets     NovaSecrets
 	Keys        []string
 }
@@ -35,7 +36,16 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 	if !validRelease(version) || !filepath.IsAbs(v.Binary) {
 		return false, fmt.Errorf("version adoption configuration invalid")
 	}
-	out, err := v.command(ctx, v.Binary, "version")
+	resolve := v.ResolvePath
+	if resolve == nil {
+		resolve = resolvedSprintPath
+	}
+	binary, err := resolve()
+	if err != nil || !filepath.IsAbs(binary) {
+		return false, fmt.Errorf("installed version unavailable")
+	}
+	v.Binary = binary
+	out, err := v.command(ctx, binary, "version")
 	if err != nil {
 		return false, fmt.Errorf("installed version unavailable")
 	}
@@ -53,6 +63,18 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 		return false, fmt.Errorf("updated sprint shadow failed")
 	}
 	return true, nil
+}
+
+func resolvedSprintPath() (string, error) {
+	path, err := exec.LookPath("nova-sprint")
+	if err != nil {
+		return "", err
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Abs(path)
 }
 
 func (v VersionAdoption) secretCommand(ctx context.Context, args ...string) error {

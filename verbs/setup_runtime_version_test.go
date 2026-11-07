@@ -12,7 +12,7 @@ func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
 	calls := []string{}
 	installed := "v2.0.0"
 	shadowErr := false
-	a := VersionAdoption{Binary: "/bin/nova-sprint", Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+	a := VersionAdoption{Binary: "/bin/nova-sprint", ResolvePath: func() (string, error) { return "/bin/nova-sprint", nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, strings.Join(append([]string{name}, args...), " "))
 		if args[0] == "version" {
 			return []byte(installed + "\n"), nil
@@ -41,6 +41,26 @@ func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
 	ok, err = a.Ready(context.Background(), "v2.0.0")
 	if err == nil || ok {
 		t.Fatal(ok, err)
+	}
+}
+func TestVersionAdoptionChecksActivatedPath(t *testing.T) {
+	path := "/releases/old/nova-sprint"
+	commands := []string{}
+	a := VersionAdoption{Binary: path, ResolvePath: func() (string, error) { return path, nil }, MatchesPath: func(s string) bool { return s == path }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		commands = append(commands, strings.Join(append([]string{name}, args...), " "))
+		if name == "nova-update" {
+			path = "/releases/new/nova-sprint"
+		} else if len(args) == 1 && args[0] == "version" {
+			return []byte("v2.0.0\n"), nil
+		}
+		return nil, nil
+	}}
+	if err := a.Apply(context.Background(), "v2.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := a.Ready(context.Background(), "v2.0.0")
+	if err != nil || !ok || len(commands) != 4 || !strings.HasPrefix(commands[1], path+" version") || !strings.Contains(commands[2], path+" check") || !strings.Contains(commands[3], path+" run --shadow") {
+		t.Fatal("activated binary was not checked", err, commands)
 	}
 }
 func TestFunctionalVersionAdoptionManifest(t *testing.T) {
