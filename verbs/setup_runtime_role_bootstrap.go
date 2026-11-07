@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -13,6 +13,9 @@ import (
 
 // SprintRoleBootstrap stores one generated credential before distributing it
 // and invokes a child that rereads the durable values under nova-secrets exec.
+// The fresh child may set only the up-owned nova_sprint role. A later run
+// verifies the stored credential and refuses a mismatch; if interrupted after
+// saving but before setting it, the same stale-secret recovery is required.
 type SprintRoleBootstrap struct {
 	Sink    SecretSink
 	Grants  FleetGrants
@@ -20,7 +23,6 @@ type SprintRoleBootstrap struct {
 	Binary  string
 	Random  io.Reader
 	Execute func(context.Context, string, ...string) error
-	Inspect CommandOutput
 }
 type SprintSeat struct{ Seat, Machine string }
 
@@ -41,16 +43,26 @@ func (s SprintRoleBootstrap) Run(ctx context.Context, seats []SprintSeat) error 
 		return err
 	}
 	if !has {
-		exists, err := s.roleExists(ctx)
-		if err != nil {
-			return err
-		}
-		if exists {
-			return &OperationError{Problem: "sprint role exists but its credential is missing", Fix: "recover NOVA_SPRINT_PG_PASSWORD in the control seat", Exit: 1}
-		}
 		if err = s.savePassword(ctx); err != nil {
 			return err
 		}
+	}
+
+	mode := "--internal-setup-role"
+	if !has {
+		mode = "--internal-setup-role-fresh"
+	}
+	args := []string{"exec", "--only", "NOVA_PG_ADMIN_PASSWORD," + sprintPasswordName, "--store", s.Secrets.Store, "--key", s.Secrets.KeyFile, "--as", s.Secrets.Seat, "--", s.Binary, mode}
+	run := s.Execute
+	if run == nil {
+		run = quietCommand
+	}
+	if err = run(ctx, "nova-secrets", args...); err != nil {
+		var exit interface{ ExitCode() int }
+		if errors.As(err, &exit) && exit.ExitCode() == SprintRoleCredentialMismatchExit {
+			return &OperationError{Problem: "stored sprint credential was rejected", Fix: "delete the stale NOVA_SPRINT_PG_PASSWORD secret and run nova-sprint up again", Exit: 1}
+		}
+		return fmt.Errorf("role setup failed")
 	}
 	for _, seat := range seats {
 		if err = s.GrantSeat(ctx, seat); err != nil {
@@ -58,14 +70,6 @@ func (s SprintRoleBootstrap) Run(ctx context.Context, seats []SprintSeat) error 
 		}
 	}
 
-	args := []string{"exec", "--only", "NOVA_PG_ADMIN_PASSWORD," + sprintPasswordName, "--store", s.Secrets.Store, "--key", s.Secrets.KeyFile, "--as", s.Secrets.Seat, "--", s.Binary, "--internal-setup-role"}
-	run := s.Execute
-	if run == nil {
-		run = quietCommand
-	}
-	if err = run(ctx, "nova-secrets", args...); err != nil {
-		return fmt.Errorf("role setup failed")
-	}
 	return nil
 }
 func (s SprintRoleBootstrap) savePassword(ctx context.Context) error {
@@ -103,23 +107,4 @@ func (s SprintRoleBootstrap) GrantSeat(ctx context.Context, seat SprintSeat) err
 		}
 	}
 	return s.Grants.Refresh(ctx, seat.Seat, seat.Machine, sprintPasswordName)
-}
-
-func (s SprintRoleBootstrap) roleExists(ctx context.Context) (bool, error) {
-	args := []string{"exec", "--only", "NOVA_PG_ADMIN_PASSWORD", "--store", s.Secrets.Store, "--key", s.Secrets.KeyFile, "--as", s.Secrets.Seat, "--", s.Binary, "--internal-role-exists"}
-	cmd := s.Inspect
-	if cmd == nil {
-		cmd = toolOutput
-	}
-	out, err := cmd(ctx, "nova-secrets", args...)
-	if err != nil {
-		return false, fmt.Errorf("role inspection unavailable")
-	}
-	var result struct {
-		Exists *bool `json:"exists"`
-	}
-	if len(out) > 1024 || json.Unmarshal(out, &result) != nil || result.Exists == nil {
-		return false, fmt.Errorf("role inspection unavailable")
-	}
-	return *result.Exists, nil
 }

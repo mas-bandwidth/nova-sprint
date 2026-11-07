@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -48,7 +49,7 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) {
 		t.Fatal(err)
 	}
 	dsn := fmt.Sprintf("postgres://nova_admin@127.0.0.1:%d/postgres?sslmode=disable", port)
-	if err = ProvisionSprintRole(ctx, dsn, "fixture-admin", "fixture-sprint"); err != nil {
+	if err = provisionSprintRole(ctx, dsn, "fixture-admin", "fixture-sprint", true); err != nil {
 		t.Fatal(err)
 	}
 	var canSet bool
@@ -123,5 +124,132 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) {
 	files, err = filepath.Glob(filepath.Join(dir, "backups", "attempt-*", "sprint-e*-s*.sql"))
 	if err != nil || len(files) != 2 {
 		t.Fatal("old backup evidence not preserved", err)
+	}
+}
+
+func roleAdoptionFixture(t *testing.T) (context.Context, *pgx.Conn, string) {
+	t.Helper()
+	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
+		t.Skip("requires isolated PostgreSQL")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	t.Cleanup(cancel)
+	dir := t.TempDir()
+	data := filepath.Join(dir, "pg")
+	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(data, "pg_hba.conf"), []byte("local all all trust\nhost all all 127.0.0.1/32 scram-sha-256\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+	opts := fmt.Sprintf("-k %s -p %d -c listen_addresses=127.0.0.1", dir, port)
+	if err = runPG(ctx, "", "pg_ctl", "-D", data, "-l", filepath.Join(dir, "pg.log"), "-o", opts, "-w", "start"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runPG(context.Background(), "", "pg_ctl", "-D", data, "-m", "immediate", "-w", "stop") })
+	super, err := pgx.Connect(ctx, fmt.Sprintf("host=%s port=%d dbname=postgres sslmode=disable", dir, port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = super.Close(context.Background()) })
+	if _, err = super.Exec(ctx, "CREATE ROLE nova_admin CREATEDB CREATEROLE LOGIN PASSWORD 'fixture-admin'; ALTER DATABASE postgres OWNER TO nova_admin"); err != nil {
+		t.Fatal(err)
+	}
+	dsn := fmt.Sprintf("postgres://nova_admin@127.0.0.1:%d/postgres?sslmode=disable", port)
+	if err = provisionSprintRole(ctx, dsn, "fixture-admin", "initial-password", true); err != nil {
+		t.Fatal(err)
+	}
+	sprintURL, err := sprintDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pg, err := store.Open(ctx, sprintURL, "initial-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = pg.Migrate(ctx); err != nil {
+		pg.Close()
+		t.Fatal(err)
+	}
+	pg.Close()
+	t.Setenv("NOVA_PG_DSN", dsn)
+	t.Setenv("NOVA_PG_ADMIN_PASSWORD", "fixture-admin")
+	return ctx, super, dsn
+}
+
+func roleAdoptionExec(t *testing.T, ctx context.Context, conn *pgx.Conn, sql string) {
+	t.Helper()
+	if _, err := conn.Exec(ctx, sql); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) {
+	ctx, super, dsn := roleAdoptionFixture(t)
+	// Password checks use host SCRAM; the local trusted socket is superuser-only fixture setup.
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err == nil {
+		t.Fatal("schema unreadable by admin was accepted")
+	}
+	roleAdoptionExec(t, ctx, super, "GRANT USAGE ON SCHEMA sprint TO nova_admin; GRANT SELECT ON sprint.meta TO nova_admin")
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err != nil {
+		t.Fatal("fresh adoption failed", err)
+	}
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", false); err != nil {
+		t.Fatal("repeat failed", err)
+	}
+	var before, after string
+	if err := super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "wrong-password", false); !errors.Is(err, errSprintCredentialMismatch) {
+		t.Fatalf("wrong secret: %v", err)
+	}
+	if err := super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&after); err != nil || before != after {
+		t.Fatal("stored mismatch changed role", err)
+	}
+}
+
+func TestFunctionalSprintRoleRejectsForeignSchema(t *testing.T) {
+	ctx, super, dsn := roleAdoptionFixture(t)
+	roleAdoptionExec(t, ctx, super, "GRANT USAGE ON SCHEMA sprint TO nova_admin; GRANT SELECT ON sprint.meta TO nova_admin")
+	var originalHash string
+	if err := super.QueryRow(ctx, "SELECT hash FROM sprint.meta WHERE id=1").Scan(&originalHash); err != nil {
+		t.Fatal(err)
+	}
+	roleAdoptionExec(t, ctx, super, "UPDATE sprint.meta SET hash='foreign'")
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err == nil {
+		t.Fatal("mismatched schema accepted")
+	}
+	if _, err := super.Exec(ctx, "UPDATE sprint.meta SET hash=$1", originalHash); err != nil {
+		t.Fatal(err)
+	}
+	roleAdoptionExec(t, ctx, super, "ALTER SCHEMA sprint OWNER TO nova_admin")
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err == nil {
+		t.Fatal("foreign owner accepted")
+	}
+	roleAdoptionExec(t, ctx, super, "ALTER SCHEMA sprint OWNER TO nova_sprint; GRANT USAGE ON SCHEMA sprint TO nova_admin")
+	roleAdoptionExec(t, ctx, super, "ALTER TABLE sprint.meta RENAME TO foreign_meta")
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err == nil {
+		t.Fatal("foreign schema accepted")
+	}
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "initial-password", false); err != nil {
+		t.Fatal("prior password changed", err)
+	}
+}
+
+func TestFunctionalSprintRoleSetsUnsetPassword(t *testing.T) {
+	ctx, super, dsn := roleAdoptionFixture(t)
+	roleAdoptionExec(t, ctx, super, "GRANT USAGE ON SCHEMA sprint TO nova_admin; GRANT SELECT ON sprint.meta TO nova_admin; ALTER ROLE nova_sprint PASSWORD NULL")
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err != nil {
+		t.Fatal("fresh unset role failed", err)
+	}
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", false); err != nil {
+		t.Fatal("set password did not authenticate", err)
 	}
 }
