@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/roster"
 )
 
 // The log says each failure's cause, redacted: a name, never a secret's
@@ -25,5 +27,28 @@ func TestWriterLoggerReportsCountsAndRedactedCauses(t *testing.T) {
 	l.Log(TickMetrics{Number: 2, Err: errors.New("connect postgres://sprint:hunter2@db/nova NOVA_PG_PASSWORD=hunter2 refused")})
 	if got := out.String(); strings.Contains(got, "hunter2") || !strings.Contains(got, "status=error err=") || !strings.Contains(got, "NOVA_PG_PASSWORD=<redacted> refused") || l.Err() != nil {
 		t.Fatalf("log=%q err=%v", got, l.Err())
+	}
+}
+
+// TestRosterRefusedLogsOncePerChange: the same refused rows read each tick
+// are logged once; a change logs the new set; an empty set says none.
+func TestRosterRefusedLogsOncePerChange(t *testing.T) {
+	var out bytes.Buffer
+	l := NewWriterLogger(&out)
+	bad := []roster.Refused{{Name: "bench-1", Kind: roster.KindWorker, Reason: "machine bench-1 has 0 cores; set its cores in nova-config"}}
+	l.RosterRefused(nil)
+	if out.Len() != 0 {
+		t.Fatalf("nothing refused, nothing was logged before: %q", out.String())
+	}
+	l.RosterRefused(bad)
+	l.RosterRefused(bad)
+	l.RosterRefused(bad)
+	if got := strings.Count(out.String(), "ROSTER REFUSED"); got != 1 || !strings.Contains(out.String(), `ROSTER REFUSED worker name="bench-1" reason="machine bench-1 has 0 cores`) {
+		t.Fatalf("want one line, log %q", out.String())
+	}
+	l.RosterRefused(nil)
+	l.RosterRefused(nil)
+	if !strings.HasSuffix(out.String(), "ROSTER REFUSED none\n") || strings.Count(out.String(), "none") != 1 {
+		t.Fatalf("log %q", out.String())
 	}
 }

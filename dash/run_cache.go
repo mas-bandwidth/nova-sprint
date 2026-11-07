@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -54,6 +55,7 @@ func (c *Cache) publish(f Feed) {
 	c.view = mapSnapshot(f.Snap, ro, f.At)
 	if f.RosterErr != nil {
 		c.view.Error = "roster: " + f.RosterErr.Error()
+		c.view.RosterNotes = append([]string{"nova-config roster could not be read: " + edge.RedactN(f.RosterErr.Error(), edge.FailureMax)}, c.view.RosterNotes...)
 	}
 }
 

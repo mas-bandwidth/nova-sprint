@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/roster"
 )
 
 // TickMetrics is one tick's line: its number, the seq it folded to, how
@@ -25,9 +27,10 @@ type TickMetrics struct {
 // (edge.RedactN: no DSN password, provider key or token value, names only),
 // because a failure that is not said cannot be fixed (audit row 28).
 type WriterLogger struct {
-	mu  sync.Mutex
-	out io.Writer
-	err error
+	mu      sync.Mutex
+	out     io.Writer
+	err     error
+	refused string // the refused rows last logged, as one key
 }
 
 func NewWriterLogger(out io.Writer) *WriterLogger { return &WriterLogger{out: out} }
@@ -63,6 +66,34 @@ func (l *WriterLogger) EdgeFault(what string, cause error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	_, err := fmt.Fprintf(l.out, "EDGE FAULT %s%s\n", edge.RedactN(what, 120), errField(cause))
+	if err != nil {
+		l.err = err
+	}
+}
+
+// RosterRefused logs the rows the roster read refused, once per change: a
+// line per refused row when the set changes, and "ROSTER REFUSED none" when
+// it empties; the same set read again each tick logs nothing.
+func (l *WriterLogger) RosterRefused(refused []roster.Refused) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var key strings.Builder
+	for _, r := range refused {
+		fmt.Fprintf(&key, "%s\x00%s\x00%s\x00", r.Name, r.Kind, r.Reason)
+	}
+	if key.String() == l.refused {
+		return
+	}
+	l.refused = key.String()
+	var err error
+	if len(refused) == 0 {
+		_, err = fmt.Fprintln(l.out, "ROSTER REFUSED none")
+	}
+	for _, r := range refused {
+		if err == nil {
+			_, err = fmt.Fprintf(l.out, "ROSTER REFUSED %s name=%q reason=%q\n", r.Kind, edge.RedactN(r.Name, 120), edge.RedactN(r.Reason, edge.FailureMax))
+		}
+	}
 	if err != nil {
 		l.err = err
 	}

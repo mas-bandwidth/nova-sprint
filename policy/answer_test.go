@@ -218,10 +218,5 @@ func TestRosterIsTheSourceOfRowFacts(t *testing.T) {
 	require.Empty(t, fs)
 	assert.NotContains(t, a.Width, "r1", "no width question for a row nova-config does not name")
 	assert.Empty(t, a.Rows[RowsQuestion{"p3", KindRead}], "p3's read: r1 is no candidate, r2 is its author")
-	js := Judgements(snap, w.ro, fs)
-	require.Len(t, js, 1)
-	assert.Equal(t, store.PutJudgement{ID: fmt.Sprintf("roster-s%d-0", snap.Seq), Kind: "roster", About: "r1", Question: "row r1 is not in nova-config",
-		Command: fmt.Sprintf("nova-config friend add r1 (or nova-sprint judge roster-s%d-0 retry --reason <why> once it is)", snap.Seq), Group: "roster:r1"}, js[0])
-	w.apply(js[0])
-	assert.Empty(t, Judgements(w.snap(), w.ro, fs), "reported once: none while one is open")
+	assert.Empty(t, Judgements(snap, w.ro, fs), "a row nova-config does not name is the steps' roster judgement, not the policy's too")
 }

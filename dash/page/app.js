@@ -256,7 +256,7 @@ function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill 
 function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
 // One vocabulary across the tables (SPEC.md, the owner 8:04 AM: "change 'asleep' to 'down' so we have
 // consistency across all tables"): a store that still says "asleep" is shown as "down", in red.
-var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
+var STATUS_TONE = { up: "good", held: "warning", down: "critical", refused: "critical" };
 // the status word alone (up, held, down): the server may carry a reason after it ("held (why)"), which is the coordinator's view, never the pill's (the owner 2026-10-04 10:40 PM)
 function shownStatus(st) { var w = String(st || "").trim().split(/[\s(]/)[0]; return w === "asleep" ? "down" : w; }
 // A bud shows as its person: "rowan-next" is "rowan (next)" when "rowan" is a friend too
@@ -431,7 +431,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function shownWorking(m) { var w = int(m.working); return clamp ? Math.min(w, int(m.width)) : w; }
   var names = Object.keys(table || {});
   // rows by status (up, held, down), then by name
-  var rank = { up: 0, held: 1, down: 2 };
+  var rank = { up: 0, held: 1, down: 2, refused: 3 };
   function rk(n) { var r = rank[shownStatus(table[n].status)]; return r == null ? 3 : r; }
   names.sort(function (a, b) { return rk(a) - rk(b) || a.localeCompare(b); });
   if (!box._head) {
@@ -443,7 +443,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     box._total._c.push(el("div"));
     box._total._c.forEach(function (c) { box._total.appendChild(c); });
   }
-  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, upWidth: 0, upWorking: 0, fix: 0 };
+  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, refused: 0, upWidth: 0, upWorking: 0, fix: 0 };
   scale = scale || tableScale(table);
   // the track column is exactly the widest track, so the figure sits right after it
   var tw = TRACK_SPAN.toFixed(3) + "rem";
@@ -481,7 +481,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     if (st in t) t[st]++;
     if (shownStatus(m.status) === "up") { t.upWidth += width; t.upWorking += working; }
     setText(r.name, budLabel(k, table));
-    setPill(r.pill, st || "-", STATUS_TONE[st] || "neutral");
+    setPill(r.pill, st || "-", STATUS_TONE[st] || "neutral", m.reason ? st + " · " + m.reason : "");
     setTrack(r.track, working, width, scale, m);
     t.fix += int(m.fix_working != null ? m.fix_working : m.fix);
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
@@ -501,7 +501,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
 
 function renderFleet(d) {
   var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d), false, sharedDigits(d));
-  setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
+  setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + (r.t.refused ? " · " + r.t.refused + " refused" : "") + sideWord(d.fleet_work, null));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
 }
@@ -510,7 +510,7 @@ function renderFriends(d) {
   var box = $("friends"), table = d.tables.friends;
   if (!table || typeof table !== "object") table = {};
   var r = fleetLike(box, table, "friend", sharedScale(d), true, sharedDigits(d));
-  setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.friends_work, d.friends_tiers));
+  setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + (r.t.refused ? " · " + r.t.refused + " refused" : "") + sideWord(d.friends_work, d.friends_tiers));
   setSideOff(box.closest("section"), d.friends_work);
 }
 // A side (fleet, friends) can be switched off or limited to some tiers (set --fleet on|off,
@@ -614,6 +614,13 @@ function renderHero(d, s, ft) {
   var stopBanner = $("stop-banner");
   stopBanner.hidden = !d.stopped;
   $("stop-reason").textContent = d.stopped ? String(d.stop_reason || "") : "";
+  // the roster's own failures, under the title beside a stop: a read that failed, a row it refused
+  var rosterBanner = $("roster-banner"), notes = Array.isArray(d.roster_notes) ? d.roster_notes : [];
+  if (rosterBanner) {
+    rosterBanner.hidden = notes.length === 0;
+    setCount(rosterBanner, notes.length, function () { return el("div"); });
+    notes.forEach(function (n, i) { rosterBanner.children[i].textContent = String(n); });
+  }
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
   setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)
@@ -873,7 +880,7 @@ function digitsOf(n) { return String(Math.max(0, n)).length; }
 function makePill() { var p = el("span", "pill neutral"); p.appendChild(el("span", "dot")); p._t = quiet(el("span")); p.appendChild(p._t); return p; }
 function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill " + tone); setTitle(p, title || text); }
 function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
-var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
+var STATUS_TONE = { up: "good", held: "warning", down: "critical", refused: "critical" };
 
 // ---------- sections ----------
 function streamOrder(d) {
