@@ -26,6 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks",
+    "FaultIsNoRead", "FaultsShown", "DealSpread", "NoRetryOnly",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom"]
 
@@ -37,6 +38,11 @@ SCENARIOS = {
     "deal":  {"K": 4, "MaxAtt": 2, "MaxBounce": 1, "MaxEnv": 1, "MaxArrive": 1, "Budget": 2, "Pack": 2},
     "land":  {"K": 2, "MaxAtt": 1, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 3, "Budget": 2, "Pack": 2},
     "burst": {"K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 0, "MaxArrive": 4, "Budget": 1, "Pack": 1},
+    # p's reads fault: two faults, the coordinator's read, a third read, or
+    # its yes or fix (directive 58).
+    "faults": {"K": 4, "MaxAtt": 2, "MaxBounce": 1, "MaxEnv": 0, "MaxArrive": 1, "Budget": 2, "Pack": 2},
+    # two rows of one rank, two producers dealt in one tick (directive 62).
+    "spread": {"K": 2, "MaxAtt": 1, "MaxBounce": 0, "MaxEnv": 0, "MaxArrive": 2, "Budget": 2, "Pack": 2},
     # pre packed one group per op: a tick of several ops, so an op reads
     # cards an earlier op of the same tick wrote (the predicted fence).
     "pre1":  {"Scenario": "pre", "K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 2,
@@ -46,7 +52,7 @@ SCENARIOS = {
 # The passing runs: cfg name -> scenario. Each checks every invariant and,
 # under FairSpec, the liveness property.
 PASSING = {"StepsPre": "pre", "StepsPrePack1": "pre1", "StepsDeal": "deal", "StepsLand": "land",
-           "StepsBurst": "burst"}
+           "StepsBurst": "burst", "StepsFaults": "faults", "StepsSpread": "spread"}
 
 # Reachability checks on Steps.tla: name -> (scenario, what).
 REACH = {
@@ -74,6 +80,11 @@ REACH = {
     "StepsNeverAfterHeld": ("land", "a landing waits on a queued after target"),
     "StepsNeverCarried": ("burst", "the budget carries inbox items to the next tick"),
     "StepsNeverUndealt": ("burst", "a producer left ready with room two ticks opens undealt"),
+    "StepsNeverFaultsJudged": ("faults", "faulted reads at the cap open read-faults"),
+    "StepsNeverFaultRead": ("faults", "the coordinator answers read and the read is owed again"),
+    "StepsNeverFaultYes": ("faults", "the coordinator's yes sends a faulted review to merging"),
+    "StepsNeverFaultFix": ("faults", "the coordinator's fix sends a faulted review to fix"),
+    "StepsNeverSpread": ("spread", "one tick deals policy's two equal rows one card each"),
 }
 
 # (name, target, scenario, fault, replacements). A target in PROPERTIES is a
@@ -178,8 +189,8 @@ WITNESSES = [
     ("StepsTierUnchecked", "NeverBelowTier", "deal",
      "The tier is checked nowhere: policy's rows answer is taken for any up\n"
      "row, and Start does not check that the row serves the card's tier.",
-     [("InDomain(V, x, ar, t) == ar \\in Rows /\\ Eligible(V, x, ar, t)",
-       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar]   \\* FAULT: was Eligible(V, x, ar, t)", 1),
+     [("AnsElig(V, x, ar, t) == SelectSeq(AnsRows(ar), LAMBDA r : Eligible(V, x, r, t))",
+       "AnsElig(V, x, ar, t) == SelectSeq(AnsRows(ar), LAMBDA r : V.up[r])   \\* FAULT: was Eligible(V, x, r, t)", 1),
       ("  /\\ ~W.sh[Stream[p]]\n  /\\ Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n",
        "  /\\ ~W.sh[Stream[p]]\n  /\\ TRUE   \\* FAULT: was Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n", 1)]),
     ("StepsAfterIgnored", "AfterKept", "land",
@@ -201,8 +212,8 @@ WITNESSES = [
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",
-     [("RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN ar ELSE DefaultRow(V, x, t)",
-       "RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN ar\n"
+     [("RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN SpreadRow(V, x, t, ar) ELSE DefaultRow(V, x, t)",
+       "RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN SpreadRow(V, x, t, ar)\n"
        "                       ELSE IF ar = \"failed\" THEN NoR ELSE DefaultRow(V, x, t)   \\* FAULT", 1)]),
     ("StepsOldestVictim", "PreemptYoungest", "pre",
      "The victim default is the oldest working consumer, not the youngest.",
@@ -239,6 +250,30 @@ WITNESSES = [
      "waits for a slot the deal never fills.",
      [("  /\\ Used(V, r, t) < Width[r]\n",
        "  /\\ Used(V, r, t) + 1 < Width[r]   \\* FAULT: was Used(V, r, t) < Width[r]\n", 1)]),
+    ("StepsFaultCountsAsRead", "FaultIsNoRead", "faults",
+     "A faulted read counts as a read (before directive 58): a review\n"
+     "whose only read faulted is settled, and the verdict sends it to\n"
+     "merging on no read at all.",
+     [("Settled(W, p) == W.ps[p].st = \"review\" /\\ NoLive(W, p) /\\ \\E c \\in CurReads(W, p) : Said(W, c)",
+       "Settled(W, p) == W.ps[p].st = \"review\" /\\ NoLive(W, p) /\\ \\E c \\in CurReads(W, p) : W.cs[c].st = \"done\"   \\* FAULT: was Said(W, c)", 1)]),
+    ("StepsFaultsUnjudged", "FaultsShown", "faults",
+     "The tick never opens the read-faults judgement: a review whose\n"
+     "reads faulted to the cap sits with no read owed and nothing asking\n"
+     "the coordinator.",
+     [("                   \\cup FaultsOpen(V, cl2)\n",
+       "                   \\cup {}   \\* FAULT: was the read-faults judgements\n", 1)]),
+    ("StepsRetryOnly", "NoRetryOnly", "pre",
+     "A notice offers retry alone (before directive 60): a policy\n"
+     "judgement whose only answer asks the same thing again.",
+     [("    [] kind = \"policy\"      -> {\"wait\"}",
+       "    [] kind = \"policy\"      -> {\"retry\"}   \\* FAULT: was {\"wait\"}", 1)]),
+    ("StepsDealFills", "DealSpread", "spread",
+     "The deal takes policy's answered rows in order (before directive\n"
+     "62): both cards of one tick go to the first row while the second,\n"
+     "of the same rank, stays empty.",
+     [("  IN CHOOSE r \\in S : \\A s \\in S \\ {r} : Used(V, r, t) < Used(V, s, t)\n"
+       "                                         \\/ Used(V, r, t) = Used(V, s, t) /\\ Pos(L, r) < Pos(L, s)",
+       "  IN L[1]   \\* FAULT: was the fewest live cards among S", 1)]),
 ]
 
 
