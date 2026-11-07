@@ -116,16 +116,12 @@ func holdRequest(hold bool, name, reason string, snap store.Snapshot) (steps.Req
 			return steps.Request{}, refuse(name+" is a "+c.Kind+" card; hold its producer", "nova-sprint hold "+cmp.Or(c.Of, name)+" --reason \"<why>\"")
 		}
 		if hold {
-			return steps.Request{Card: name, Event: card.Block{Reason: HeldPrefix + reason}}, nil
+			return steps.Request{Card: name, Event: card.Block{Reason: card.HeldPrefix + reason}}, nil
 		}
 		return steps.Request{Card: name, Event: card.Unblock{Reason: "unheld: " + reason}}, nil
 	}
 	return steps.Request{}, refuse("no row, stream or card "+name, "nova-sprint show")
 }
-
-// HeldPrefix starts the reason of a producer the coordinator holds: the
-// board lists it with its blocked cards under that reason.
-const HeldPrefix = "held: "
 
 // nextAfter is a person's move's next line: the same command without
 // --dry-run after a dry run, else the bus.

@@ -160,9 +160,9 @@ WITNESSES = [
      "waits on its row's session to take it.",
      [("StartCut(p, r) ==\n  [st |-> \"working\", kind |-> \"work\",",
        "StartCut(p, r) ==\n  [st |-> \"ready\", kind |-> \"work\",   \\* FAULT: was working", 1)]),
-    ("CardDealOverWidth", "WidthKept", "life",
-     "Start does not check the row's width: with the deal the take, a\n"
-     "second Start on a full row puts it over width.",
+    ("CardDealOverWidth", "WidthKept", "pre",
+     "Start does not check the row's width: with the deal the take, p2's\n"
+     "Start on the row p1's work holds puts it over width 1.",
      [("  /\\ StartGuard(p, r)\n  /\\ RoomOn(r, {})\n",
        "  /\\ StartGuard(p, r)\n  /\\ TRUE   \\* FAULT: was RoomOn(r, {})\n", 1)]),
     ("CardNeedsCycle", "NeedsAcyclic", "deps",

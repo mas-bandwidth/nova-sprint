@@ -154,6 +154,15 @@ proved its harness serves. `next --as <row> --json` carries the same per
 tier as `tier_models` (the probe's input). The worker holds no deadline,
 model or forge of its own.
 
+The deal is the take (defect 52): a consumer is `working` in the row's hand
+from the deal, so the worker runs every card `next --json` lists under
+`working` that has no job of its own yet, each in its own job, all at once;
+`take` is the row's acknowledgement (a cursor, the card's gen unchanged) and
+prints the receipt, and a repeat prints the same. A card the row has not
+acknowledged is nudged (`NUDGE card=<id> ...`) each tick from ten seconds
+after the deal. A fault whose reason starts `missing-route:` blocks the
+producer for the coordinator instead of dealing it again (defect 48).
+
 ## 7. dash -> run
 
 ```go

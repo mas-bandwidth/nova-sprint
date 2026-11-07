@@ -125,7 +125,7 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
 // (LAYER-3 "Retire and fail limits", 3, unmeasured). NudgeAfter and
 // UnackedAfter are the seconds after a deal at which an unacknowledged card
-// is nudged each tick and judged (LAYER-3 "In hand"; Glenn's numbers,
+// is nudged each tick and judged (LAYER-3 "In hand"; the human's numbers,
 // 2026-11-07, owed to policy's timeouts); UndealtAfter is the seconds a
 // producer may stay ready with a serving row with room before it is judged
 // (more than one one-second tick; LAYER-3 "Undealt").

@@ -281,6 +281,11 @@ func RouteFault(reason string) (string, bool) {
 	return strings.TrimSpace(what), ok
 }
 
+// HeldPrefix starts the reason of a producer the coordinator holds with
+// `hold <card>` (defect 47): a Block whose reason is "held: <why>". The
+// board lists it with the other blocked producers under its reason.
+const HeldPrefix = "held: "
+
 // The levels a producer's priority may take, lowest first; read consumers
 // occupy a rung between high and critical in the deal order (policy's).
 var Levels = []string{"low", "normal", "high", "critical", "blocker"}
