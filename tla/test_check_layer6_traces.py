@@ -57,19 +57,35 @@ class GateFailures(unittest.TestCase):
             root = Path(tmp)
             (root / 'emit-logs').mkdir()
             fake_go = root / 'fake-go'
-            fake_go.write_text('#!' + sys.executable + '\nimport os,json\nprint(json.dumps([os.getenv("NOVA_UNUSED_TRACE_SEED"),os.getenv("NOVA_RUN_TRACE_SEED")]))\n')
+            fake_go.write_text('#!' + sys.executable + '\nimport os,json\nprint(json.dumps([os.getenv("NOVA_UNUSED_TRACE_SEED"),os.getenv("NOVA_RUN_TRACE_SEED"),os.getenv("NOVA_RUN_TRACE_STOP")]))\n')
             fake_go.chmod(0o700)
-            with patch.dict(os.environ, {'NOVA_UNUSED_TRACE_SEED': 'stray', 'NOVA_RUN_TRACE_SEED': 'wrong'}):
+            with patch.dict(os.environ, {'NOVA_UNUSED_TRACE_SEED': 'stray', 'NOVA_RUN_TRACE_SEED': 'wrong', 'NOVA_RUN_TRACE_STOP': '1'}):
                 gate.run_emit(root, root, 'fixture', './run', 'TestFixture',
                               {'NOVA_RUN_TRACE_SEED': '1'}, SimpleNamespace(go=str(fake_go), emit_timeout=5))
-            self.assertEqual(json.loads((root / 'emit-logs/fixture.log').read_text()), [None, '1'])
+            self.assertEqual(json.loads((root / 'emit-logs/fixture.log').read_text()), [None, '1', None])
+
+    def test_stopped_case_has_explicit_seed_and_mode(self):
+        self.assertEqual(len(gate.expected_cases()), 84)
+        self.assertEqual(gate.expected_cases()['run-stop'], 'Run')
+        cases = []
+        with patch.object(gate, 'run_emit') as emit, patch.object(
+                gate, 'case', side_effect=lambda repo, out, name, model, trace: dict(name=name, model=model)):
+            gate.emit_simple(Path('/source'), Path('/output'), SimpleNamespace(), cases)
+        calls = {call.args[2]: call.args for call in emit.call_args_list}
+        stopped = calls['run-stop']
+        self.assertEqual(stopped[3:5], ('./run', 'TestEmitRunTrace'))
+        self.assertEqual(stopped[5], {'NOVA_RUN_TRACE_SEED': '0', 'NOVA_RUN_TRACE_STOP': '1',
+                                      'NOVA_RUN_TRACE_PATH': '/output/emitted/run-stop.tla'})
+        for seed in range(3):
+            self.assertNotIn('NOVA_RUN_TRACE_STOP', calls['run-' + str(seed)][5])
+        self.assertEqual(sum(c['name'] == 'run-stop' for c in cases), 1)
 
     def test_empty_case_manifest_cannot_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / 'emission.json').write_text(json.dumps(dict(cases=[], hashes={})))
             with patch.object(gate.socket, 'gethostname', return_value='vision-test'):
-                with self.assertRaisesRegex(RuntimeError, 'all 83'):
+                with self.assertRaisesRegex(RuntimeError, 'all 84'):
                     gate.check(root, SimpleNamespace(check_timeout=5))
 
     def test_only_verified_ci_host_runner_pairs_are_allowed(self):
