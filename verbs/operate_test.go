@@ -79,6 +79,21 @@ func TestRestore(t *testing.T) {
 	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "(as restored)")
 }
 
+// TestRestoreHoldsCardsToAdmission: a restored producer not yet dealt is
+// held to today's admission; the restore stands and the line names the card
+// and its fix.
+func TestRestoreHoldsCardsToAdmission(t *testing.T) {
+	s := emptySprint()
+	s.Streams["s"] = store.Stream{Name: "s", Repo: "o/r", Base: "main", Mode: "auto"}
+	s.Cards["q1"] = store.Card{ID: "q1", Kind: "producer", Stream: "s", State: "ready", Tier: "pro", Priority: "normal", Brief: "tier: pro", Paths: []string{"gone/x.go"}}
+	w := worldFrom(t, s)
+	dumped(w)
+	w.origin.tree = []string{"README.md"}
+	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "RESTORED /b/1.dump", "ADMIT RED card q1: PATHS gone/x.go: neither it nor its directory gone/ is there")
+	delete(w.origin.tips, "o/r main")
+	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "ADMIT RED card q1: stream s: branch main is not at o/r's origin")
+}
+
 func TestRestoreRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "not on the bus", as: "erin", args: []string{"restore", "/b/1.dump"}, exit: 1, prep: func(_ *testing.T, w *world) { dumped(w) }, want: []string{"erin is not on the bus"}},

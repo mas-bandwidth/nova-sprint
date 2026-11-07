@@ -56,10 +56,38 @@ func TestConfineDataRejectsExecutableValuesAndDDL(t *testing.T) {
 func TestConfineDataOrdersCardsWithEscapedIdentifiers(t *testing.T) {
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=dev+abcdef123456\n"
-	consumer := "INSERT INTO sprint.cards VALUES (E'child\\'id', 'work', 'parent');\n"
-	producer := "INSERT INTO sprint.cards VALUES ('parent', 'producer', NULL);\n"
+	consumer := "INSERT INTO sprint.cards VALUES (E'child\\'id', 'work', 'parent', 's', 'ready');\n"
+	producer := "INSERT INTO sprint.cards VALUES ('parent', 'producer', NULL, 's', 'working');\n"
 	statements, err := ConfineData([]byte(header+consumer+producer), hash)
 	if err != nil || len(statements) != 2 || !strings.Contains(statements[0], "'producer'") {
 		t.Fatal(statements, err)
+	}
+}
+
+// TestConfineDataRefusesAnUnmappedCardState: a record whose state this
+// build does not map (an importer's carried-over terminal state, here a v1
+// landed timestamp) is refused naming the record and the one fix, before
+// the verification cluster's CHECK would refuse it unnamed.
+func TestConfineDataRefusesAnUnmappedCardState(t *testing.T) {
+	hash := strings.Repeat("a", 64)
+	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
+	for _, record := range []string{
+		"INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', '2026-10-01 12:00:00+00', 0);\n",
+		"INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', 'merged', 0);\n",
+		"INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', NULL, 0);\n",
+	} {
+		_, err := ConfineData([]byte(header+record), hash)
+		r := AsRefusal(err)
+		if r == nil || !strings.Contains(r.Error(), "record sprint.cards 'c7': state") || !strings.Contains(classify(r).Fix, "map the record's state to one of those in the importer") {
+			t.Fatalf("%q: %v", record, err)
+		}
+	}
+	short := "INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL);\n"
+	if _, err := ConfineData([]byte(header+short), hash); AsRefusal(err) == nil {
+		t.Fatalf("accepted a card with no state: %v", err)
+	}
+	good := "INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', 'landed', 0);\n"
+	if _, err := ConfineData([]byte(header+good), hash); err != nil {
+		t.Fatal(err)
 	}
 }

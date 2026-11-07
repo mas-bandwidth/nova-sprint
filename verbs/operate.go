@@ -169,7 +169,26 @@ func runRestore(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (st
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("RESTORED %s epoch=%d seq=%d digest=%s\n", info.Path, info.Epoch, info.Seq, digest) + text, nil
+	return fmt.Sprintf("RESTORED %s epoch=%d seq=%d digest=%s\n", info.Path, info.Epoch, info.Seq, digest) + text + e.restoreAdmission(ctx), nil
+}
+
+// restoreAdmission holds the restored producers not yet dealt (waiting or
+// ready) to today's admission (checkCards), one ADMIT line each. The data is
+// in and the restore stands (a recovery refused for a moved path would leave
+// no store at all); a red line names the card and its fix, and check repeats
+// it, red, until it is fixed.
+func (e *Engine) restoreAdmission(ctx context.Context) string {
+	r := &checkReport{}
+	if snap, err := e.snapshot(ctx); err != nil {
+		r.red(RefusalOr(err, broken("the restored store cannot be read for admission ("+errText(err)+")", "nova-sprint check")))
+	} else {
+		e.checkCards(ctx, r, snap)
+	}
+	var b strings.Builder
+	for _, line := range r.lines {
+		b.WriteString("ADMIT " + strings.TrimPrefix(line, "CHECK ") + "\n")
+	}
+	return b.String()
 }
 
 // load runs the verified dump under the chooser lock, in its session.
