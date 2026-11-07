@@ -41,7 +41,9 @@ type traceWalk struct {
 	phase    string // idle or snapped
 	pref     string // the asker's preferred row, "" for failed
 	raced    bool   // a move came after the fold
-	counting bool   // picks count toward the depth: a producer is not final
+	truth    *View  // the store as it is, for the records; the tick's view (w.v) is folded only at Snap
+	tcursor  int64
+	counting bool // picks count toward the depth: a producer is not final
 	picked   int
 	legal    int
 	heads    int
@@ -133,17 +135,30 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	return w
 }
 
+// truthView is the store as it is now, folded from every event (the tick's
+// own view, w.v, stays as the last Snap left it, so a tick plans on a stale
+// view exactly as the model's does).
+func (w *traceWalk) truthView() *View {
+	w.t.Helper()
+	if w.truth == nil {
+		w.truth = Build(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{}, Cards: map[string]store.Card{}, Rows: map[string]store.Row{}, Judgements: map[string]store.Judgement{}}, t0)
+	}
+	for {
+		es, err := w.f.Events(w.t.Context(), w.tcursor, 0)
+		require.NoError(w.t, err)
+		if len(es) == 0 {
+			return w.truth
+		}
+		w.truth.Fold(es)
+		w.tcursor = es[len(es)-1].Seq
+	}
+}
+
 // record appends one record: the action, its arguments and the model's
 // variables projected from the store as the fake holds it now.
 func (w *traceWalk) record(action string, args []string) {
 	w.t.Helper()
-	v := Build(w.snap(), w.now)
-	for id, at := range w.v.TakenAt { // the fold's facts, which Build lacks
-		v.TakenAt[id] = at
-	}
-	for id, seq := range w.v.born {
-		v.born[id] = seq
-	}
+	v := w.truthView()
 	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
 	fields = append(fields, args...)
 	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
@@ -239,7 +254,6 @@ func (w *traceWalk) moved(action string, args []string) {
 	if w.phase == "snapped" {
 		w.raced = true
 	}
-	w.fold()
 	w.record(action, args)
 }
 
@@ -393,7 +407,7 @@ func (w *traceWalk) edgeOne() {
 	w.moved("EdgeResult", []string{"id |-> " + w.reqID[req.ID], fmt.Sprintf("out |-> %q", it.Outcome), fmt.Sprintf("n |-> %d", n)})
 }
 
-func (w *traceWalk) view() *View { w.fold(); return w.v }
+func (w *traceWalk) view() *View { return w.truthView() }
 
 func (w *traceWalk) pick() {
 	if w.counting {
