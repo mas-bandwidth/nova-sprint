@@ -25,7 +25,7 @@ INVARIANTS = [
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "ReplaceByLive", "HeadNeverRepeats",
-    "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed",
+    "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
 ]
 
 # The instance of each scenario (see the module header). "life": one
@@ -42,10 +42,13 @@ SCENARIOS = {
     # life, sized for the one witness whose fault needs a third attempt
     # (CardWaiveRedWithoutRed); never a passing run.
     "redw":  {"Scenario": "life", "K": 5, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 1, "MaxEnv": 0},
+    # life with Merge: ops of up to three moves, at small bounds.
+    "merge": {"Scenario": "life", "K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1,
+              "MaxOp": 3},
 }
 
 # The passing runs: cfg name -> scenario.
-PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads"}
+PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads", "CardMerge": "merge"}
 
 # Reachability checks on CardMachine.tla: name -> (scenario, what).
 REACH = {
@@ -193,6 +196,35 @@ WITNESSES = [
      "review by a Finished at an already-read head goes to merging.",
      [("  /\\ ps[p].red   \\* the code: \"no red on review N\"\n",
        "  /\\ TRUE   \\* FAULT: was ps[p].red\n", 1)]),
+    ("CardMergeCutUnseen", "BlockNoLive", "merge",
+     "Merge: a consumer cut earlier in the op is invisible to the next\n"
+     "move (overlayCons before round 6): AskRead then Block in one op, and\n"
+     "Block's no-live check does not see the read just cut.",
+     [("  /\\ NoLive(p)\n  /\\ PStep(\"Block\"",
+       "  /\\ \\A k \\in LiveOf(p) : op > 0 /\\ snap.cs[k].st = \"none\"   \\* FAULT: cut unseen\n"
+       "  /\\ PStep(\"Block\"", 1)]),
+    ("CardMergeHeldUnseen", "ParkedUnderHold", "merge",
+     "Merge: a Withdraw's release reads the stream from the snapshot, not\n"
+     "the folded state (before round 6): HoldStream then Withdraw in one op\n"
+     "readies the producer in a held stream.",
+     [("THEN [ps EXCEPT ![c[1]].st = Back,",
+       "THEN [ps EXCEPT ![c[1]].st = IF (IF op > 0 THEN snap.held ELSE held)   \\* FAULT\n"
+       "                             THEN \"waiting\" ELSE \"ready\",", 1)]),
+    ("CardMergeNoRerun", "FinalNeverMoves", "merge",
+     "Merge: a merged plan merged again is kept as built on the snapshot,\n"
+     "not run again on the earlier plans' writes (before round 6): Cancel\n"
+     "then a merged Rescore in one op rescores the failed card.",
+     [("  /\\ p \\in Prods\n  /\\ NonFinal(p)\n  /\\ s # ps[p].score\n",
+       "  /\\ p \\in Prods\n"
+       "  /\\ (IF op > 0 THEN snap.ps[p].st ELSE ps[p].st) \\notin PFinal \\cup {\"absent\"}   \\* FAULT\n"
+       "  /\\ s # ps[p].score\n", 1)]),
+    ("CardMergeFenceFolded", "FencesOnSnapshot", "merge",
+     "Merge: a later move keeps its condition on a state an earlier move of\n"
+     "the op wrote, read off the folded state (before round 6): Start then\n"
+     "Rescore fences p1 working against a snapshot where it is ready, and\n"
+     "the store refuses the op.",
+     [("PFence(p) == IF op > 0 /\\ ps[p].st # snap.ps[p].st THEN {} ELSE {ps[p].st}",
+       "PFence(p) == {ps[p].st}   \\* FAULT: was keepExpects", 1)]),
 ]
 
 
@@ -222,6 +254,7 @@ def constants(scenario):
     out = "CONSTANT Scenario = \"%s\"\n" % s.get("Scenario", scenario)
     for k in ["K", "MaxHead", "MaxAttempt", "MaxBounce", "MaxEnv"]:
         out += "CONSTANT %s = %d\n" % (k, s[k])
+    out += "CONSTANT MaxOp = %d\n" % s.get("MaxOp", 1)
     return out + "SPECIFICATION Spec\n"
 
 

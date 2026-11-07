@@ -18,6 +18,7 @@ sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 &
 sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardDeps.cfg CardDeps &
 sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardPreempt.cfg CardPreempt &
 sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardReads.cfg CardReads &
+sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardMerge.cfg CardMerge &
 for f in "$HERE"/witnesses/*.tla; do
     case "$f" in *_TTrace_*) continue ;; esac   # TLC trace output, not a witness
     sh "$ONE" "$JAR" "$JAVA" witnesses "$(basename "$f" .tla)" 1 &
