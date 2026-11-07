@@ -3,6 +3,7 @@ package steps
 import (
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -104,4 +105,21 @@ func TestAskerInDomain(t *testing.T) {
 	assert.Equal(t, l, o.limits())
 	assert.Equal(t, tm, o.timeouts())
 	assert.Empty(t, o.missed())
+}
+
+// benchAsk is the engine's defaults with a bench model for every tier, as an
+// active policy's catalog names them (defect 57: a bench deal names its
+// model, and a version with none deals to no bench).
+type benchAsk struct{}
+
+func (benchAsk) Ask(Questions) Answers { return Answers{Models: benchModels()} }
+
+// benchModels is a model for every tier, provider/model, as the catalog's
+// bench key has them.
+func benchModels() map[string]string {
+	out := map[string]string{}
+	for _, t := range store.Tiers {
+		out[t] = "test/" + t
+	}
+	return out
 }

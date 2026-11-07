@@ -67,7 +67,7 @@ type traceAsker struct{ w *traceWalk }
 func (a traceAsker) Ask(q Questions) Answers {
 	w := a.w
 	out := Answers{Version: 1, Order: map[string][]any{}, Rows: map[string][]string{}, Reads: map[string]int{}, Verdict: map[string]string{},
-		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}}
+		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}, Models: benchModels()}
 	for _, c := range q.Order {
 		out.Order[c.ID] = []any{} // id order, as the model
 	}

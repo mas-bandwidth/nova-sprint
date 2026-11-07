@@ -120,6 +120,8 @@ def catalog():
             ],
             "deepseek": [
                 {"name": "deepseek-flash", "tier": "flash"},
+                {"name": "deepseek-flash", "tier": "heavy"},  # the bench mapping below: a guess
+                {"name": "deepseek-v4-pro", "tier": "frontier"},  # the bench mapping below: a guess
             ],
             "inception": [
                 {"name": "mercury-3", "tier": "pro"},
@@ -133,4 +135,14 @@ def catalog():
             ],
         },
         "harnesses": ["claude", "codex", "opencode", "api"],
+        # The one model a bench runs per tier, as its harness names it
+        # (provider/model); the deal names it and the take receipt carries it.
+        # The coordinator's mapping (2026-11-07), what opencode lists tonight:
+        # guesses until the probe measures each bench.
+        "bench": {
+            "flash": "deepseek/deepseek-flash",
+            "pro": "inception/mercury-3",
+            "heavy": "deepseek/deepseek-flash",
+            "frontier": "deepseek/deepseek-v4-pro",
+        },
     }

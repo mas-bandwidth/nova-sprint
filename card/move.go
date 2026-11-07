@@ -354,8 +354,9 @@ func (m *mover) readID() string {
 // cut adds a consumer of p, held by row, in state ready: put card, then its
 // own columns, then the state (layer 1 checks the row serves its tier). The
 // consumer carries copies of p's brief, prose, paths and done_when, and p's
-// stream and tier; a read is cut at p's current review.
-func (m *mover) cut(id, kind, row string, attempt int, cols ...store.Write) *Refusal {
+// stream and tier, and the model its deal named; a read is cut at p's
+// current review.
+func (m *mover) cut(id, kind, row, model string, attempt int, cols ...store.Write) *Refusal {
 	if len(id) > store.MaxName {
 		return no("producer %s's id is too long to name its consumer %s", m.p.ID, id)
 	}
@@ -363,7 +364,7 @@ func (m *mover) cut(id, kind, row string, attempt int, cols ...store.Write) *Ref
 		m.expect(absent) // fenced already when noLive read the review's next read
 	}
 	put := store.PutCard{ID: id, Kind: kind, Of: m.p.ID, Stream: m.p.Stream, Holder: row, Tier: m.p.Tier, Attempt: attempt,
-		Brief: m.p.Brief, Prose: m.p.Prose, Paths: slices.Clone(m.p.Paths), DoneWhen: slices.Clone(m.p.DoneWhen)} // the task handed off, copied (Stella's read of a822dfc7)
+		Brief: m.p.Brief, Prose: m.p.Prose, Paths: slices.Clone(m.p.Paths), DoneWhen: slices.Clone(m.p.DoneWhen), Model: model} // the task handed off, copied (Stella's read of a822dfc7)
 	if kind == "read" {
 		put.Review = m.p.Review
 	} else {
@@ -405,7 +406,7 @@ func (m *mover) start(e Start) *Refusal {
 	if m.p.Head != "" {
 		cols = append(cols, store.SetCardPriorHead{Card: id, Head: m.p.Head})
 	}
-	return m.cut(id, "work", e.Row, n, cols...)
+	return m.cut(id, "work", e.Row, e.Model, n, cols...)
 }
 
 // firstOf is the first refusal of checks run in order; a check that passed
@@ -523,7 +524,7 @@ func (m *mover) askRead(e AskRead) *Refusal {
 	if r := m.readGate(e); r != nil {
 		return r
 	}
-	return m.oneRead(e.Row, map[string]bool{})
+	return m.oneRead(e.Row, e.Model, map[string]bool{})
 }
 
 func (m *mover) askReads(e AskReads) *Refusal {
@@ -533,9 +534,16 @@ func (m *mover) askReads(e AskReads) *Refusal {
 	if len(e.Rows) == 0 {
 		return no("AskReads of producer %s needs a row", m.p.ID)
 	}
+	if e.Models != nil && len(e.Models) != len(e.Rows) {
+		return no("AskReads of producer %s names %d rows and %d models; name one model per row", m.p.ID, len(e.Rows), len(e.Models))
+	}
 	seen := map[string]bool{}
-	for _, row := range e.Rows {
-		if r := m.oneRead(row, seen); r != nil {
+	for i, row := range e.Rows {
+		model := ""
+		if e.Models != nil {
+			model = e.Models[i]
+		}
+		if r := m.oneRead(row, model, seen); r != nil {
 			return r
 		}
 	}
@@ -557,8 +565,9 @@ func (m *mover) readGate(e Event) *Refusal {
 	return firstOf(m.stream(true), m.liveRefused(m.liveWork))
 }
 
-// oneRead cuts one read of p's head on row. seen refuses a row named twice.
-func (m *mover) oneRead(row string, seen map[string]bool) *Refusal {
+// oneRead cuts one read of p's head on row with model. seen refuses a row
+// named twice.
+func (m *mover) oneRead(row, model string, seen map[string]bool) *Refusal {
 	switch {
 	case seen[row]:
 		return no("row %s is named twice in AskReads of producer %s; name each row once", row, m.p.ID)
@@ -583,7 +592,7 @@ func (m *mover) oneRead(row string, seen map[string]bool) *Refusal {
 	if m.p.Author != "" {
 		cols = append(cols, store.SetCardAuthor{Card: id, Author: m.p.Author})
 	}
-	return m.cut(id, "read", row, m.p.Attempt, cols...)
+	return m.cut(id, "read", row, model, m.p.Attempt, cols...)
 }
 
 // liveWork refuses only a live work consumer: reads of one review may be

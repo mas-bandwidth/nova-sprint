@@ -148,6 +148,7 @@ type PutCard struct {
 	Paths                []string
 	DoneWhen             []string
 	Prose                string
+	Model                string // a consumer's: the model its deal named (round 23); "" on a producer or sentinel
 }
 
 // SetCardState sets a card's state; refused when the card is already in it,
@@ -432,9 +433,9 @@ func specOf(w Write) spec {
 		})
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
-			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
+			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding, v.Model).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
-		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
+		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose", "model").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
 		return put("row", v.Name, func(c *checker) { c.text(v.Session).hook(v.Session, v.Role) }, "session", "role").then(func(w *work) (string, error) { return w.writePutRow(v) })
 	case PutJudgement:

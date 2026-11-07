@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -15,7 +16,24 @@ func started(t *testing.T) *store.Fake {
 	t.Helper()
 	f := store.NewFake()
 	must(t, f, "start", store.SetStopped{Stopped: false, Reason: "test"})
+	must(t, f, "policy", activePolicy()...)
 	return f
+}
+
+// activePolicy is v1 stored and active: the run deals nothing without an
+// active policy (defect 53).
+func activePolicy() []store.Write {
+	return []store.Write{store.PutPolicy{Kind: "script", Name: "test.star", Body: "# test"}, store.SetActivePolicy{Version: 1}}
+}
+
+// benchCatalog is a catalog naming a bench model for every tier (defect
+// 57: a bench deal names its model).
+func benchCatalog() policy.Catalog {
+	c := policy.Catalog{Bench: map[string]string{}}
+	for _, t := range store.Tiers {
+		c.Bench[t] = "test/" + t
+	}
+	return c
 }
 
 // A fresh store is stopped, never started, and a run that comes up on it
@@ -27,6 +45,7 @@ func TestFreshStoreTicksNothingUntilStart(t *testing.T) {
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
+	must(t, f, "policy", activePolicy()...)
 	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"flash", "pro", "heavy", "frontier"}}}}
 	p := &answering{}
 	tk, err := NewTicker(context.Background(), f, &healthy{}, p, t0)

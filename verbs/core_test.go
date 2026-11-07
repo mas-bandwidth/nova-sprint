@@ -192,9 +192,9 @@ func TestNextJSONIsTheInventory(t *testing.T) {
 	if v.Width != 1 || len(v.Ready) != 1 || v.Ready[0].ID != "p1.w1" || v.Working == nil || v.Final == nil || v.Judgements == nil {
 		t.Fatalf("%+v", v)
 	}
-	// A bench's models by tier are the catalog's, provider/model
-	// (the probe's and the take's candidates); a friend's, its own model.
-	if got := v.TierModels["pro"]; !slices.Equal(got, []string{"deepseek/deepseek-flash", "inception/mercury-3"}) || len(v.TierModels) != 4 {
+	// A bench's model by tier is the one the deal names, the catalog's bench
+	// model in provider/model form (the probe's input); a friend's, its own.
+	if got := v.TierModels["pro"]; !slices.Equal(got, []string{"inception/mercury-3"}) || len(v.TierModels) != 4 || len(v.TierModels["heavy"]) != 0 {
 		t.Fatalf("tier_models %v", v.TierModels)
 	}
 	want(t, w.do("carol", "next", "--json"), 0, `"tier_models":{"flash":["m-carol"]`)

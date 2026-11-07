@@ -20,7 +20,7 @@ var choices = map[string]string{
 	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "conflict": "by-hand | drop",
 	"base-red": "retry", "stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
-	"no-ci": "retry", "forge": "retry",
+	"no-ci": "retry", "forge": "retry", "overlap": "retry", "no-model": "retry", "no-policy": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once).
@@ -107,7 +107,7 @@ func (t *tick) put(j judgement) store.Write {
 	if j.kind == "roster" {
 		w.Group = RosterGroup(j.about)
 	}
-	if j.kind != "blocked" {
+	if j.kind != "blocked" && j.kind != "no-policy" { // both block until answered or cleared
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
 	return w
@@ -167,6 +167,31 @@ func (t *tick) cleared(j store.Judgement) string {
 	case "land-rate":
 		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= Engine.LandTarget {
 			return "land rate back at target"
+		}
+	}
+	return t.clearedDeal(j)
+}
+
+// clearedDeal is cleared for the deal's own kinds: a held producer no longer
+// held behind the card its judgement names, a tier a model can now be named
+// for, the policy gate lifted (or the coordinator's row changed).
+func (t *tick) clearedDeal(j store.Judgement) string {
+	switch j.Kind {
+	case "overlap":
+		c, ok := t.v.Cards[j.About]
+		if !ok || c.State != "waiting" || t.heldBehind(c) != j.Question {
+			return j.About + " is no longer " + j.Question
+		}
+	case "no-model":
+		if t.modelServed(j.About) {
+			return "an open row serving " + j.About + " can be named a model"
+		}
+	case "no-policy":
+		if t.o.a.NoDeal == "" {
+			return "a policy is active and answered; the run deals"
+		}
+		if j.About != t.coordinatorRow() {
+			return "the coordinator's row is now " + t.coordinatorRow()
 		}
 	}
 	return ""

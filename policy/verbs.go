@@ -40,9 +40,10 @@ func (r *Refusal) Error() string {
 
 // Result is what a verb that writes did, and the next command.
 type Result struct {
-	Version int
-	Changes int // activate: the answers that change on the current snapshot
-	Next    string
+	Version   int
+	Changes   int  // activate: the answers that change on the current snapshot
+	Activated bool // set: none was active, so the version stored is active (defect 53)
+	Next      string
 }
 
 // Up stores the built-in default as the next version and activates it, in
@@ -70,7 +71,10 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 // snapshot read with ro, and stores it as the next version, not active
 // (tla/Policy.tla Set), in an op fenced at the snapshot's seq: a set that
 // lands first (the same file from another shell) refuses this one, as
-// "already stored" when it stored this body (rowan2's probe).
+// "already stored" when it stored this body (rowan2's probe). When no
+// version is active the same op activates it (defect 53: a fresh store took
+// a policy only from up, and the run deals nothing without one) and answers
+// the built-in's open policy judgements, as Activate does.
 func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Caller, path, reason string) (Result, error) {
 	if r := coordinator("set", c, reason); r != nil {
 		return Result{}, r
@@ -83,8 +87,8 @@ func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Cal
 		return Result{}, r
 	}
 	snap, err := st.Snapshot(ctx)
-	if err != nil || snap.Policy == 0 {
-		return Result{}, upFirst("set", err)
+	if err != nil {
+		return Result{}, err
 	}
 	if err := sameBody(ctx, st, body, "has this body"); err != nil {
 		return Result{}, err
@@ -92,16 +96,43 @@ func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Cal
 	if _, fs := e.runFile(name, body, snap, ro); len(fs) > 0 {
 		return Result{}, &Refusal{"set", fs[0].Error(), "nova-sprint policy check " + path}
 	}
+	writes, err := setWrites(ctx, st, snap, store.PutPolicy{Kind: "script", Name: name, Body: body}, reason)
+	if err != nil {
+		return Result{}, err
+	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: reason,
-		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "script", Name: name, Body: body}}}
+		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: writes}
 	after, err := apply(ctx, st, op, "set")
 	for v := range after.Policies { // the one version the op stored
+		if snap.Policy == 0 {
+			return Result{Version: v, Activated: true, Next: "nova-sprint next"}, nil
+		}
 		return Result{Version: v, Next: fmt.Sprintf("nova-sprint policy check v%d", v)}, nil
 	}
 	if serr := sameBody(ctx, st, body, "already stores this body"); serr != nil {
 		return Result{}, serr
 	}
 	return Result{}, err
+}
+
+// setWrites is a set's writes: the version stored, and when none is active
+// its activation (the next version's number, as Up numbers it) with the
+// built-in's open policy judgements answered.
+func setWrites(ctx context.Context, st store.Store, snap store.Snapshot, put store.PutPolicy, reason string) ([]store.Write, error) {
+	writes := []store.Write{put}
+	if snap.Policy != 0 {
+		return writes, nil
+	}
+	all, err := versions(ctx, st)
+	if err != nil {
+		return nil, err
+	}
+	v := len(all) + 1
+	writes = append(writes, store.SetActivePolicy{Version: v})
+	for _, id := range OpenJudgements(snap, 0) {
+		writes = append(writes, store.AnswerJudgement{ID: id, Answer: fmt.Sprintf("v%d set and activated: %s", v, reason)})
+	}
+	return writes, nil
 }
 
 // sameBody is the refusal of body when a stored script version has it (a
