@@ -40,7 +40,7 @@ func TestColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
 	snap := w.snap()
 	body, _ := override("reads", "def reads(card):\n    return min(1, len(sorted(range(50000000))))")
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	require.NotEmpty(t, fs)
 	assert.Equal(t, 0, a.Version)
@@ -58,7 +58,7 @@ func TestColdread2DefectCompileOutsideTickTime(t *testing.T) {
 	snap := w.snap()
 	body := "_X = len([0 for _i in range(20000) if sorted(range(2000))])\n" + defaultBody
 	start := time.Now()
-	_, _ = NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil)) // ignored: only the time is probed
+	_, _ = NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil)) // ignored: only the time is probed
 	took := time.Since(start)
 	assert.Less(t, took, TickTime+coldread2Margin, "compiling a version in a tick must be inside TickTime, took %s", took)
 }
@@ -73,8 +73,8 @@ func TestColdread2DefectJudgementTextCostUnbounded(t *testing.T) {
 	snap := w.snap()
 	body, _ := override("verdict", "def verdict(card, reads):\n    return \"\\x00\" * 100000000")
 	start := time.Now()
-	_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
-	js := Judgements(snap, fs)
+	_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+	js := Judgements(snap, w.ro, fs)
 	took := time.Since(start)
 	require.Len(t, js, 1)
 	assert.LessOrEqual(t, len(js[0].Question), maxQuestion)
@@ -92,8 +92,9 @@ func TestColdread2DefectJudgementTextCostUnbounded(t *testing.T) {
 // 100,000-byte strings, 5 MB, which are refused.
 func TestColdread2DefectCacheRetainsUnboundedBytes(t *testing.T) {
 	t.Parallel()
+	ro := handRoster(rc{"r", "worker", 2, store.Tiers, ""})
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},
-		Rows: map[string]store.Row{"r": {Name: "r", Kind: "worker", Width: 2, State: "up", Tiers: store.Tiers}}}
+		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}}}
 	body, _ := override("order", "def order(card):\n    return (\"x\" * 60000 + card.id,)")
 	e := NewEngine()
 	for tick := range 10 {
@@ -101,13 +102,13 @@ func TestColdread2DefectCacheRetainsUnboundedBytes(t *testing.T) {
 			id := fmt.Sprintf("p%02d", i)
 			snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: "s", State: "ready", Tier: "pro", Score: tick*1000 + i, Priority: "normal"}
 		}
-		a, fs := e.Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+		a, fs := e.Answer(Versions{Active: pv(2, body)}, snap, ro, FullQuestions(snap, nil))
 		require.Empty(t, fs)
 		require.Equal(t, 2, a.Version)
 		assert.LessOrEqual(t, cachedBytes(e), maxTickBytes, "tick %d", tick)
 	}
 	over, _ := override("order", "def order(card):\n    return (\"x\" * 100000 + card.id,)")
-	_, fs := e.Answer(Versions{Active: pv(3, over)}, snap, FullQuestions(snap, nil))
+	_, fs := e.Answer(Versions{Active: pv(3, over)}, snap, ro, FullQuestions(snap, nil))
 	require.NotEmpty(t, fs)
 	assert.Contains(t, fs[0].Msg, fmt.Sprintf("over %d bytes", maxTickBytes))
 }
@@ -159,7 +160,9 @@ func TestColdread2DefectBrokenBuiltinCatalogPanics(t *testing.T) {
 	w := fakeWorld(t)
 	snap := w.snap()
 	var a Answers
-	assert.NotPanics(t, func() { a, _ = NewEngine().Answer(Versions{Active: pv(2, active)}, snap, FullQuestions(snap, nil)) }) // ignored: the failures are the fallback's
+	assert.NotPanics(t, func() {
+		a, _ = NewEngine().Answer(Versions{Active: pv(2, active)}, snap, w.ro, FullQuestions(snap, nil))
+	}) // ignored: the failures are the fallback's
 	assert.Equal(t, -1, a.Version, "the built-in's catalog failing is the last resort: the tick deals nothing")
 }
 
@@ -196,7 +199,7 @@ func TestColdread2RaceVerbsAndAnswer(t *testing.T) {
 				if !assert.NoError(t, err) {
 					return
 				}
-				a, fs := e.Answer(vs, snap, FullQuestions(snap, nil))
+				a, fs := e.Answer(vs, snap, w.ro, FullQuestions(snap, nil))
 				assert.Empty(t, fs)
 				assert.Equal(t, want[a.Version], a.Reads["p5"], "answered by v%d", a.Version)
 			}
@@ -204,7 +207,7 @@ func TestColdread2RaceVerbsAndAnswer(t *testing.T) {
 	}
 	for i := range 12 {
 		v := []int{v2, v3, 1}[i%3]
-		_, err := Activate(w.ctx(), w.st, e, w.caller(), v, "race")
+		_, err := Activate(w.ctx(), w.st, w.ro, e, w.caller(), v, "race")
 		require.NoError(t, err)
 	}
 	close(stop)

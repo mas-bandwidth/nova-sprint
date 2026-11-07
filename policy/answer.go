@@ -2,11 +2,13 @@ package policy
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 
 	"go.starlark.net/starlark"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -28,8 +30,8 @@ func (vs Versions) tried(builtin string) []source {
 }
 
 // Answer is AnswerContext with no deadline but the tick's own, TickTime.
-func (e *Engine) Answer(vs Versions, snap store.Snapshot, q Questions) (Answers, []Failure) {
-	return e.AnswerContext(context.Background(), vs, snap, q)
+func (e *Engine) Answer(vs Versions, snap store.Snapshot, ro roster.Roster, q Questions) (Answers, []Failure) {
+	return e.AnswerContext(context.Background(), vs, snap, ro, q)
 }
 
 // AnswerContext is the tick's answer (docs/LAYER-5-POLICY.md, "The tick's
@@ -40,12 +42,15 @@ func (e *Engine) Answer(vs Versions, snap store.Snapshot, q Questions) (Answers,
 // returned, one per failing version, for the policy judgements
 // (Judgements). It never stalls: when even the built-in fails,
 // Answers.Version is -1 and the tick applies every move that needs no
-// answer. A subject the snapshot does not hold is not asked.
-func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snapshot, q Questions) (Answers, []Failure) {
+// answer. A subject the snapshot does not hold is not asked. Every row fact
+// a question reads (kind, width, tiers, model, harness) is ro's, by the
+// row's name; a row ro does not name is in no question (Judgements reports
+// it).
+func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snapshot, ro roster.Roster, q Questions) (Answers, []Failure) {
 	ctx, cancel := context.WithTimeout(ctx, TickTime)
 	defer cancel()
 	tried := vs.tried(e.builtin)
-	asks := newIndex(snap).asks(ctx, q)
+	asks := newIndex(snap, ro).asks(ctx, q)
 	if ctx.Err() != nil { // the inputs alone spent the deadline: no version can answer
 		b := tried[len(tried)-1]
 		return Answers{Version: -1}, []Failure{{Version: b.version, Label: b.label, Line: 1, Msg: overTime() + " building the tick's inputs"}}
@@ -53,18 +58,35 @@ func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snap
 	return e.race(ctx, tried, asks)
 }
 
-// Judgements are the policy judgements the failures open: one per failing
-// version with none open (its group key), named by the snapshot's seq so an
-// id is never reused after an answer.
-func Judgements(snap store.Snapshot, failed []Failure) []store.PutJudgement {
+// Judgements are the judgements a tick opens: one per failing version with
+// none open (its group key), and one per row of the snapshot ro does not
+// name with none open ("row <name> is not in nova-config", group key
+// roster:<name>), each named by the snapshot's seq so an id is never reused
+// after an answer.
+func Judgements(snap store.Snapshot, ro roster.Roster, failed []Failure) []store.PutJudgement {
 	var out []store.PutJudgement
 	for _, f := range failed {
 		if len(OpenJudgements(snap, f.Version)) == 0 {
 			out = append(out, f.Judgement(snap.Seq))
 		}
 	}
+	open := map[string]bool{}
+	for _, j := range snap.Judgements {
+		open[j.Group] = open[j.Group] || j.State == "open"
+	}
+	for i, name := range slices.Sorted(maps.Keys(snap.Rows)) {
+		if _, ok := rosterOf(ro, snap.Rows[name]); !ok && !open[RosterGroup(name)] {
+			id := fmt.Sprintf("roster-s%d-%d", snap.Seq, i)
+			out = append(out, store.PutJudgement{ID: id, Kind: "roster", About: name, Question: "row " + name + " is not in nova-config",
+				Command: "nova-sprint answer " + id, Group: RosterGroup(name)})
+		}
+	}
 	return out
 }
+
+// RosterGroup is the group key of the judgement that row name is not in
+// nova-config.
+func RosterGroup(name string) string { return "roster:" + name }
 
 // ask is one question about one subject, with the check that validates its
 // answer into what it sets (for rows, into names the tick interns), and for
@@ -110,7 +132,7 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 		catalogAsk(ctx),
 	}
 	for _, r := range ix.rows {
-		out = append(out, askOf("width", r.Name, starlark.Tuple{row(r)}, func(v starlark.Value) (Width, string) { return checkWidth(v, r.Width) },
+		out = append(out, askOf("width", r.Name, starlark.Tuple{row(r)}, func(v starlark.Value) (Width, string) { return checkWidth(v, r.width) },
 			func(a *Answers, w Width) { a.Width[r.Name] = w }))
 	}
 	for _, id := range q.Order {
@@ -134,7 +156,7 @@ func (ix *index) rowsAsk(c store.Card, rq RowsQuestion) ask {
 	card := ix.card(c)
 	return ask{q: "rows", subject: rq.Card + " " + rq.Kind, args: starlark.Tuple{card, starlark.String(rq.Kind), set.list},
 		digest: digestOf("rows", card.String()+" "+rq.Kind+" "+set.digest), rq: &rq,
-		acceptRows: func(v starlark.Value) ([]string, string) { return checkRows(v, c, set, ix.snap.Rows) },
+		acceptRows: func(v starlark.Value) ([]string, string) { return checkRows(v, c, set, ix.facts) },
 		joint: func(a *Answers) string {
 			for _, n := range a.Rows[rq] {
 				if a.Width[n].Work > 0 {
@@ -142,7 +164,7 @@ func (ix *index) rowsAsk(c store.Card, rq RowsQuestion) ask {
 				}
 			}
 			for _, r := range set.rows {
-				if r.Width > 0 {
+				if r.width > 0 {
 					return refuse("every row named has work 0 in width, while row %s could take it", r.Name)
 				}
 			}

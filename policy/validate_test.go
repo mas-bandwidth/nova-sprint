@@ -10,13 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // refusedBy runs a tick with body as v2 on w and returns its one failure.
 func refusedBy(t *testing.T, w *world, body string) Failure {
 	t.Helper()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), FullQuestions(w.snap(), nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Len(t, fs, 1)
 	assert.Equal(t, 0, a.Version, "the default answered the tick")
 	return fs[0]
@@ -99,7 +100,7 @@ func TestRefuseYesWithNoOk(t *testing.T) {
 	body, line := override("verdict", "def verdict(card, reads):\n    return \"yes\"")
 	f := refusedBy(t, w, body)
 	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "yes" with no ok read`, line), f.Error())
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, defaultBody)}, w.snap(), FullQuestions(w.snap(), nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, defaultBody)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, "fix", a.Verdict["p3"], "the default: any fix read means fix")
 }
@@ -174,10 +175,10 @@ func FuzzAnswers(f *testing.F) {
 		for _, q := range questionNames {
 			fmt.Fprintf(&body, "def %s(%s):\n    return %s\n\n", q, params[q], g.lit(0))
 		}
-		a, fs := NewEngine().Answer(Versions{Active: pv(2, body.String())}, snap, FullQuestions(snap, nil))
+		a, fs := NewEngine().Answer(Versions{Active: pv(2, body.String())}, snap, w.ro, FullQuestions(snap, nil))
 		if a.Version == 2 {
 			require.Empty(t, fs)
-			inDomain(t, snap, a)
+			inDomain(t, snap, w.ro, a)
 			return
 		}
 		require.Len(t, fs, 1, body.String())
@@ -189,16 +190,16 @@ func FuzzAnswers(f *testing.F) {
 
 // inDomain: widths at or below each row's, rows only candidates at or above
 // the card's tier.
-func inDomain(t *testing.T, snap store.Snapshot, a Answers) {
+func inDomain(t *testing.T, snap store.Snapshot, ro roster.Roster, a Answers) {
 	for name, wd := range a.Width {
-		r := snap.Rows[name]
-		assert.True(t, wd.Work >= 0 && wd.Work <= r.Width && wd.Ahead >= 0 && wd.Ahead <= 4*r.Width, name)
+		r, _ := rosterOf(ro, snap.Rows[name])
+		assert.True(t, wd.Work >= 0 && wd.Work <= r.width && wd.Ahead >= 0 && wd.Ahead <= 4*r.width, name)
 	}
 	for q, names := range a.Rows {
 		c := snap.Cards[q.Card]
 		for _, n := range names {
-			r := snap.Rows[n]
-			assert.True(t, slices.Contains(r.Tiers, c.Tier) && r.State == "up" && !r.Held, "%v %s", q, n)
+			r, _ := rosterOf(ro, snap.Rows[n])
+			assert.True(t, slices.Contains(r.tiers, c.Tier) && r.State == "up" && !r.Held, "%v %s", q, n)
 		}
 	}
 }

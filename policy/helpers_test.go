@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -22,17 +24,55 @@ var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 type world struct {
 	t  testing.TB
 	st store.Store
+	ro roster.Roster // the tick's roster, beside the store (round 5)
 	n  int
 }
 
+// rc is one row's configuration in a test roster, built by hand: a worker
+// serves the tiers the test names (roster.Load gives a worker every tier),
+// kin has a model.
+type rc struct {
+	name, kind string
+	width      int
+	tiers      []string
+	model      string
+}
+
+// handRoster is the roster of rcs.
+func handRoster(rcs ...rc) roster.Roster {
+	ro := roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{}}
+	for _, c := range rcs {
+		if c.kind == roster.KindKin {
+			ro.Kin[c.name] = roster.Kin{Name: c.name, Model: c.model, Harness: "claude", Width: c.width, Tiers: c.tiers}
+		} else {
+			ro.Workers[c.name] = roster.Worker{Name: c.name, Width: c.width, Tiers: c.tiers, Harness: roster.WorkerHarness}
+		}
+	}
+	return ro
+}
+
+// configure adds c to the world's roster, as nova-config would.
+func (w *world) configure(c rc) {
+	one := handRoster(c)
+	maps.Copy(w.ro.Workers, one.Workers)
+	maps.Copy(w.ro.Kin, one.Kin)
+}
+
+// seedRoster is the seeded rows' roster (seed).
+func seedRoster() roster.Roster {
+	return handRoster(rc{"r1", "worker", 2, []string{"flash", "pro", "heavy"}, ""}, rc{"r2", "worker", 1, []string{"flash"}, ""},
+		rc{"r3", "kin", 1, []string{"frontier"}, "m-frontier"}, rc{"r4", "worker", 1, []string{"pro"}, ""})
+}
+
 func fakeWorld(t testing.TB) *world {
-	w := &world{t: t, st: store.NewFake()}
+	w := &world{t: t, st: store.NewFake(), ro: seedRoster()}
 	w.seed()
 	return w
 }
 
 // seed: streams s1 and s2; rows r1 (flash pro heavy, width 2), r2 (flash,
-// width 1), r3 (frontier kin, width 1), r4 (pro, width 1, held), all up;
+// width 1), r3 (frontier kin, width 1), r4 (pro, width 1, held), all up,
+// their configuration in w.ro (seedRoster);
 // producers p1 (s1 pro, ready), p2 (s1 heavy, ready, 2 bounces, a prior
 // head), p3 (s2 flash, review 1, author r2, one ok read by r1 done), p4 (s2
 // pro, waiting), p5 (s1 pro, review, author r1, no read yet).
@@ -40,10 +80,7 @@ func (w *world) seed() {
 	writes := []store.Write{
 		store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1},
 		store.PutStream{Name: "s2", Repo: "git@example.com:r.git", Base: "main", Pos: 2},
-		store.PutRow{Name: "r1", Kind: "worker", Width: 2, Tiers: []string{"flash", "pro", "heavy"}, Model: "m-heavy"},
-		store.PutRow{Name: "r2", Kind: "worker", Width: 1, Tiers: []string{"flash"}, Model: "m-flash"},
-		store.PutRow{Name: "r3", Kind: "kin", Width: 1, Tiers: []string{"frontier"}, Model: "m-frontier"},
-		store.PutRow{Name: "r4", Kind: "worker", Width: 1, Tiers: []string{"pro"}, Model: "m-pro"},
+		store.PutRow{Name: "r1"}, store.PutRow{Name: "r2"}, store.PutRow{Name: "r3"}, store.PutRow{Name: "r4"},
 	}
 	for _, p := range [][2]string{{"p1", "pro"}, {"p2", "heavy"}, {"p3", "flash"}, {"p4", "pro"}, {"p5", "pro"}} {
 		stream := map[bool]string{true: "s2", false: "s1"}[p[0] == "p3" || p[0] == "p4"]
@@ -106,7 +143,7 @@ func (w *world) file(name, body string) string {
 // set stores body as the next version and requires it; it returns the version.
 func (w *world) set(name, body string) int {
 	w.t.Helper()
-	r, err := Set(w.ctx(), w.st, NewEngine(), w.caller(), w.file(name, body), "test")
+	r, err := Set(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), w.file(name, body), "test")
 	require.NoError(w.t, err)
 	return r.Version
 }
