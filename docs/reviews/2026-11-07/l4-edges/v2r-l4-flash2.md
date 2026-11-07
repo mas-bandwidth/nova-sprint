@@ -37,9 +37,9 @@ Ranked, most severe first. Severity: blocker | serious | minor | nit.
 ## Promise gaps
 
 - LAYER-4-EDGES.md:26-27: "a failure is a typed result (conflict with files, push refused, host silent)". The code has conflict (`MergeConflict`, git/git.go:334), push refused (`PushRefusedError`, git.go:543), and no host-silent type; network failures fall into the first two (git.go:151, 543). See defect 2.
-- LAYER-4-EDGES.md item 4: "merges only the exact sha CI passed, only onto the base it was gated on". The sha is checked by GitHub (`--match-head-commit`, forge.go:447). The base is checked by the code at land.go:219, but not at the merge itself. See defect 1.
+- LAYER-4-EDGES.md item 4: "merges only the exact sha CI passed, only onto the base it was gated on". The sha is checked by GitHub (`--match-head-commit`, forge.go:443). The base is checked by the code at land.go:219, but not at the merge itself. See defect 1.
 - LAYER-4-EDGES.md item 2: "Checked by `tla/Push.tla`". There is no `tla/Push.tla` in the tree (`ls tla` lists LandEdge, Runner, Setup and others, no Push). The bus cursor rule has no model in this tree.
-- LAYER-4-EDGES.md item 1: "a timeout or missing binary is an error naming the program and the fix". This holds: exec.go:145-154 builds it, and a non-zero exit is returned as a result, not an error (exec.go:157-159). No gap found.
+- LAYER-4-EDGES.md item 1: "a timeout or missing binary is an error naming the program and the fix". This holds: exec.go:142-165 builds it, and a non-zero exit is returned as a result, not an error (exec.go:158-160). No gap found.
 
 ## Model vs code
 
@@ -49,8 +49,8 @@ Ranked, most severe first. Severity: blocker | serious | minor | nit.
 
 ## Simplifications
 
-- Two git runners exist side by side: `OSGitOps.runGit_internal` (runner.go:1055-1068) with its own environment and `git.Client` (git/git.go:122-136) with the token environment. Both carry timeout and error wrapping. One runner would have one place to get git right (the clean env, the hook disabling, the credential path).
-- `edge/exec.go:186-196`: the `max < 64` branch in `cappedBuffer.Write` is a second code path. Requiring a minimum cap would delete it.
+- Two git runners exist side by side: `OSGitOps.runGit_internal` (runner.go:1056-1069) with its own environment and `git.Client` (git/git.go:122-136) with the token environment. Both carry timeout and error wrapping. One runner would have one place to get git right (the clean env, the hook disabling, the credential path).
+- `edge/exec.go:180-190`: the `max < 64` branch in `cappedBuffer.Write` is a second code path. Requiring a minimum cap would delete it.
 - `edge/exec.go:classifyExecErr_internal`: sets `res.ExitCode = -1` in four branches; set it once before the switch.
 - `edge/git/git.go:133-135` and `:146-151`: `failed_internal` is built at four sites with the same argument shape; a single helper over (argv, code, out, err) would do.
 
