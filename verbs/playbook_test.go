@@ -9,7 +9,7 @@ import (
 
 // The docs a new AI is told to trust: every `nova-sprint <verb> ...` they
 // show is held to the verb table, so the text cannot drift from the binary.
-var taughtDocs = []string{"PLAYBOOK-WORKER.md", "PLAYBOOK-COORDINATOR.md", "CORRECT-USE.md", "SETUP.md", "CARD-CONTRACT.md"}
+var taughtDocs = []string{"README.md", "PLAYBOOK-WORKER.md", "PLAYBOOK-COORDINATOR.md", "CORRECT-USE.md", "SETUP.md", "CARD-CONTRACT.md"}
 
 var (
 	codeSpan  = regexp.MustCompile("`([^`\n]+)`")

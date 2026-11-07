@@ -9,215 +9,563 @@ With nova-sprint, your AIs can:
 * Show your humans the sprint's progress in a dashboard, so they can see the work moving
 * Be told when a judgement is needed, and change the rules of the sprint while it runs
 
-Those six promises are what every layer below serves. The work a sprint is
-for is a lot of unrelated work done quickly: unrelated is what parallelizes,
-and a card is one-off work in a fresh context.
+nova-sprint coordinates work in Git repositories. A coordinator writes cards,
+workers receive them over nova-bus, and the run service arranges independent
+reviews and landing. PostgreSQL keeps the cards, attempts, findings and decisions
+outside the workers' contexts. The dashboard shows that same work moving.
 
-nova-sprint is being rewritten from an empty tree, one layer at a time from
-the bottom. This page grows a section per layer as each is secured, with the
-lines the first try prints and the refusal you are most likely to meet.
+This guide is for an AI with a shell, starting without project knowledge.
+If you were invited to an existing sprint, start at [Join as a worker](#join-as-a-worker).
+If you are setting up the system, start at [Set up a sprint](#set-up-a-sprint).
+Replace every `<placeholder>` before running an example. Output examples show
+the shape of receipts; your names, generations, hashes and sequence numbers
+come from your own sprint.
 
-It stands on [nova-tools](https://github.com/mas-bandwidth/nova-tools):
-PostgreSQL holds the state, nova-bus carries each deal to the row that does the
-work, nova-fleet installs the workers. Tailscale, Redis, PostgreSQL and Ansible
-are all required.
+## The concepts you need
 
-## The layers
+| Term | Meaning |
+| --- | --- |
+| Stream | A repository and its base branch, plus the rules for landing work there. One sprint can have several streams. |
+| Card | One bounded task with a brief, allowed paths, gates and dependencies. This durable task is a **producer**. Work and read attempts are its **consumers**. |
+| Row | A participant's bus name. A friend row is an AI session; a bench row is a worker service. Its configured width limits the work and reads it holds together. |
+| Deal | The run service puts an attempt in a row's hand and sends its command over the bus. Its deadline starts at the deal. |
+| Take | The row acknowledges the deal and obtains the full brief. Taking does not allocate another card or change its generation. |
+| Finish | The worker reports a pushed commit, or a failure. A successful finish starts review; it does not mean the change has landed. |
+| Read | Another row reviews the specified head and answers `yes` or `fix` with a finding. |
+| Land | The reviewed work reaches the stream's base. With the GitHub forge enabled, automatic landing opens the PR and checks CI at the required head. |
+| Judgement | A decision the engine cannot make mechanically. The coordinator receives the question and the choices the engine accepts. |
+| Policy | Versioned Starlark rules for scheduling, tiers, reviews, deadlines, model selection and pricing. Changing the active version changes the running sprint. |
 
-1. [The store](LAYER-1-STORE.md): PostgreSQL, one transaction per operation, every operation logged. **Locked 2026-11-06 at 81bc9c24**: 12 rounds, 6 cold reads, the three friends at 10/10, the model at 47 runs; see "What the lock approves" in the design. **Re-locked 2026-11-06 at 18edc1da** after rounds 13 to 16 (the performance rounds, the seventh cold read, the receipt image copy and the index trim): Stella, Emma and Johnny each LOCK at that head from a fresh clone with the store suite under race on PostgreSQL 18. Round 17 (the `red` column for layer 2) reopened it for that one column; **re-locked 2026-11-06 at 1894ced3**: Stella, Emma and Johnny each LOCK at that head the same way (Store model 194 runs). Rounds 18 to 21 (read-only: `CheckSchema`, `NewFakeFrom`, `RestoreBegin`/`RestoreEnd`, `ValidateHistory`; no schema or model change) landed after it; Johnny, Stella and Emma LOCK at ddee4495 (2026-11-07; Emma from a fresh clone on vision under nova-reserve, PostgreSQL 18).
-2. [The card machine](LAYER-2-CARD-MACHINE.md): the states of one card and the legal moves between them.
-3. [The steps](LAYER-3-STEPS.md): one legal move each, a pure function from snapshot and request to plan or refusal. Design approved by Glenn 2026-11-06 ("This is fine. Go"), with 4, 5 and 6.
-4. [The edges](LAYER-4-EDGES.md): nova-bus, git and GitHub, and the worker runner: a service per bench in the shape nova-swarm already proved (a slot from nova-reserve, nova-sandbox, a worktree per card), dealt over the bus (Glenn 2026-11-06: "you need actual runners ... that was pretty reliable already").
-5. [Policy](LAYER-5-POLICY.md): Starlark scripts, versioned in the store, changed during a sprint.
-6. [Run, worker, verbs, the dashboard, and setup](LAYER-6-RUN.md): `nova-sprint up` ships the setup in [SETUP.md](SETUP.md) as part of the tool.
+A producer normally goes from `waiting` to `ready`, `working`, `review`,
+`merging`, then `landed`. A fix can send it back for another attempt. A hold
+can make it `blocked`; a failure makes it `fail`. Dependencies become usable
+when their producers land, not when a worker finishes them.
 
-Landing, approved 2026-11-06: [LANDING.md](LANDING.md). The card contract the lint enforces: [CARD-CONTRACT.md](CARD-CONTRACT.md). The hard-earned rules of v1 (priority, merge, tiers) are gathered in [LESSONS-PRIORITY-AND-MERGE.md](LESSONS-PRIORITY-AND-MERGE.md) as they are extracted.
+Every dealt attempt has an id and generation, written `<card>@<gen>`, and a
+sprint epoch. Copy these from the latest receipt. They prevent an old session
+from reporting into a newer attempt or a different sprint.
 
-A layer is secured when it is correct and performant: modelled in TLA+ with reversed witnesses, every
-refusal is tested on a real store, a cold reader is green, and it has been used
-for real work.
+## Set up a sprint
 
-## The standards every verb meets (Glenn, 2026-11-06)
+### 1. Set up nova-tools first
 
-How the first standard is applied, verb by verb: [CORRECT-USE.md](CORRECT-USE.md).
+Start with the [nova-tools guide](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/README.md).
+Follow its fleet walkthrough to provision Tailscale, Redis, PostgreSQL, Ansible,
+nova-config and nova-secrets. Keep its control seat, encrypted secrets store
+and inventory: nova-sprint uses them rather than creating a separate fleet.
+Finish that walkthrough with a green check:
 
-1. **The tool enforces the order of doing things.** As nova-bus makes you hook in
-   before you can send, nova-sprint refuses a step whose prerequisite has not
-   happened and says, nicely, what to do first. This one is the key: it is how
-   correct use is enforced by the tool, instead of relying on an LLM to
-   remember to do the right thing.
-2. **A great first-time experience that guides an AI toward using the tool
-   correctly as it works.** Every verb's output says what it did and what the
-   next verb is; help and refusals are written for an AI meeting the tool cold.
-3. **No error is ever silent.** Every error is printed with what went wrong and
-   how to resolve it, and the exit code says which kind it was.
+```sh
+nova-fleet check
+```
 
-## Lessons owed to layers 3 to 6
+Choose the machine that will run the sprint. Run setup on that machine, which
+must be in the inventory with the `services` role. Remote placement through
+`--run-on` is not supported by the current setup implementation. Machines with
+the `bench` role receive worker services, including the run machine if it also
+has that role. A bench needs its core count recorded, a supported harness,
+model routes and the appropriate credentials. An unused machine should not
+be marked as a bench for this setup.
 
-v1's lessons are listed one per line in [LESSONS.md](LESSONS.md), each
-marked PLACED (with the file that holds it) or MISSING. The ones for layers 1
-and 2, landing and the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md))
-are placed in those designs. The rest are owed to the layers not yet
-designed, and each layer's design is checked against its group before it is
-approved:
+Install a nova-sprint release on the control machine and participating machines
+using the fleet installer. Here `<release-repository>` is the repository that
+publishes your nova-sprint release and its checksums; `<release-tag>` is the
+version you intend to run:
 
-- The steps (layer 3): 6 MISSING, 1 placed in part (LESSONS section 3).
-- The edges (layer 4): 11 MISSING, 4 placed in part (LESSONS section 4).
-- Policy (layer 5): 8 MISSING, 1 placed in part (LESSONS section 5), with
-  the deal order, merging wide and tiers in
-  [LESSONS-PRIORITY-AND-MERGE.md](LESSONS-PRIORITY-AND-MERGE.md). The
-  priority ladder is Glenn's, lowest to highest (2026-11-06): "There is low,
-  normal, high, read, critical, blocker in specific order." `read` is the
-  rung every read consumer occupies; "reads are below blocker and critical.
-  the idea is that when something is blocker and critical it must be done
-  ahead of current work in flight (that resulted in the reads)." Levels are
-  declared, never computed: "Priorities are manually set by request."
-  "Default is normal." And "blocker is so high, it'll kick out the youngest
-  work or read task on a worker to get started right away" (the preemption
-  move is in LAYER-2).
-- Run, worker, verbs, dashboard and setup (layer 6): 15 MISSING, 1 placed in
-  part (LESSONS section 6).
-- How we work: 14 MISSING (LESSONS "How we work"), owed to this repository's
-  practice and its CI rather than to a layer.
-- Placed in part inside layers 1 and 2, the rest owed a decision: running-
-  time deadlines (LESSONS 1.14) and what a ready producer that cannot start
-  for a reason other than a held stream becomes (LESSONS 2.20).
+```sh
+nova-fleet install --repo '<release-repository>' --tag '<release-tag>' --names nova-sprint '<machine>'
+nova-sprint version
+nova-sprint help up
+```
 
-## The dashboard shim is on v2 (2026-11-06)
+The sprint binary carries a minimum nova-tools version. Its check names the
+required version if yours is too old. For streams using GitHub, the run service
+also needs Git and `gh` authenticated with an account able to read, push,
+create PRs and merge in the target repositories. Keep the service's credentials
+and repository access available after your interactive shell exits.
 
-`dash/` is v1's page carried as is over a shim from the store (one cold
-Snapshot, Events folded into a local copy, the page polling the copy every
-second), served by `cmd/nova-sprint-dash` until layer 6 serves it. Six rounds
-by Stella, five cold reads; the fifth (a real browser on a bench with a real
-scrollbar, every cell compared against the live v1 board) scored 9/10 with
-one one-line defect, fixed in round 6 and merged on my read of the diff. The
-agreed differences from v1: the missing cells (coordinator chip, machine
-state and ETA, load, summary, window, stuck and CI), the `fail` column and
-legend entry (black), `blocked` shown only when present, no Last 24 hours
-panel. Measured: at 5,000 producers an idle tick is under 1 ms, a one-event
-tick about 11 ms, the JSON answer 0.5 ms. Nativizing the page is the final
-step after everything else is correct (Glenn).
+### 2. Select your seat and connect to the bus
 
-## The release gate for v2.0.0 (Glenn, 2026-11-06)
+Use the values established by nova-tools. These variables are locations and
+connection details, not secret values. The PostgreSQL URL must have no password.
+The control seat's name must match this machine's short hostname and inventory
+name; your participant row is a separate name.
 
-"I really want to land nova-sprint v2 tonight if possible." "For this one we
-need to dogfood it a bit, but also, I think it's OK to release v2.0.0 even if
-we haven't dogfooded it fully." So v2.0.0 ships when every layer is built,
-modelled, cold-read and green, and one real dogfood run has happened: our own
-sprint on the v2 tool, the dashboard live, at least one card dealt, worked,
-read, merged and shown landed. The full gates (a cold AI sets up a fresh fleet
-from the tool's help twice; the friends adopt it; the six promises and 10/10
-across all friends and models; the vanilla-versus-sprint measurement) are
-2.0.x point releases, each one a gate met.
+```sh
+export NOVA_SECRETS_STORE='<absolute-path-to-encrypted-store>'
+export NOVA_SECRETS_KEY='<absolute-path-to-seat-key>'
+export NOVA_SECRETS_PINS='<absolute-path-to-seat-pins>'
+export NOVA_SECRETS_SEAT='<machine-seat>'
+export NOVA_PG_DSN='postgres://nova_config@<database-host>:<port>/<database>?sslmode=<mode>'
+export NOVA_BUS_REDIS='<redis-host>:<port>'
+export NOVA_BUS_USER='<bus-user>'
+export NOVA_SPRINT_AS='<coordinator-row>'
+```
 
-After v2.0.0 there are only point releases, never a big refactor again
-(Glenn, 2026-11-06: "We just have to make sure it's only point releases, not
-any big refactor ever again. That's the important thing now."). What makes
-that holdable: each layer stays locked and a change inside one reopens it
-only for that fix; a change of behaviour goes into policy as a new version,
-never into the engine; the line budget and the enforcement ledger refuse
-growth; every fix ships as 2.0.x with its model, tests and cold read kept
-green.
+The control seat must be granted the fleet's `NOVA_PG_ADMIN_PASSWORD`,
+`NOVA_PG_PASSWORD` and, for an authenticated bus, `NOVA_BUS_PASSWORD` through
+nova-secrets. Setup creates and grants the separate `NOVA_SPRINT_PG_PASSWORD`.
+Do not put passwords or API keys in a command, a brief, a chat or the database URL.
 
-## Two ideas from the field, deferred (Glenn, 2026-11-06)
+Define these shell helpers once in this shell. `seat_exec` injects only the
+named secrets. It restores the non-secret seat configuration so child fleet
+commands can find it. `sprint_env` is the wrapper used for ordinary sprint
+commands below; it is a shell function, not a nova-sprint verb. Save these
+non-secret settings and helpers in a local shell file and source it in each
+fresh command shell if your harness does not keep one shell open.
 
-From the Hacker News thread "Ask HN: What's your current AI agentic setup?"
-(2026-11-04, item 50366117), read in full. Glenn: "i like better sandboxing,
-and control from a mobile phone or even my ipad or apple watch over tailscale.
-yes. not right now, but yes."
+```sh
+seat_exec() {
+  local sprint_keys="$1"
+  shift
+  nova-secrets exec --only "$sprint_keys" \
+    --store "$NOVA_SECRETS_STORE" --key "$NOVA_SECRETS_KEY" \
+    --as "$NOVA_SECRETS_SEAT" -- \
+    env NOVA_SECRETS_STORE="$NOVA_SECRETS_STORE" \
+        NOVA_SECRETS_KEY="$NOVA_SECRETS_KEY" \
+        NOVA_SECRETS_PINS="$NOVA_SECRETS_PINS" \
+        NOVA_SECRETS_SEAT="$NOVA_SECRETS_SEAT" "$@"
+}
+sprint_env() {
+  seat_exec NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD "$@"
+}
+```
 
-- **Sandboxed workers (layer 4).** Several setups run unattended agents only
-  inside a microVM or container with an egress allowlist. Our workers run
-  with the host's access on the tailnet, and a card's branch can carry a
-  malicious test. The nova-worker design brings a containment option.
-- **Control from a phone, iPad or watch over Tailscale (layer 6).**
-  Judgements already push one way over the message bus; nothing yet puts
-  "needs you" in a pocket or lets the answer come back from there. The
-  layer 6 design names the channel and what can be answered from it.
+Hook your row into nova-bus before hooking into the sprint. Run the form for
+your harness from `nova-bus help hook`. For a session with a Monitor tool, run
+this command under that Monitor, not as a background shell job or into a file:
 
-## The stitch pass (Glenn, 2026-11-06)
+```sh
+nova-secrets exec --only NOVA_BUS_PASSWORD --store "$NOVA_SECRETS_STORE" --key "$NOVA_SECRETS_KEY" --as "$NOVA_SECRETS_SEAT" -- nova-bus hook --as "$NOVA_SPRINT_AS"
+```
 
-"The only thing we can improve is the stitch together passes after the
-patchwork work." Code from many models working in isolation is a pastiche
-(Glenn's own word in the thread). The stitch pass is not a sprint card:
-"it's more that we just go back to do this manually after using just bus."
-The sprint does the wide work; then Glenn and the models go back over the
-result directly, coordinated over the message bus, and make it read as one
-hand wrote it. "The trick is that we have more in context vs. cards that
-are one off": a card runs in a fresh context that sees only its brief, so
-it cannot know how the card beside it named things; the stitch is done in
-a long session with the whole result in context, which a card never has.
-"It's a trade off, holistic vs. cold work. Cold work is faster, then we pass
-over it afterwards holistically." Width without memory, then memory without
-width. What the sprint owes that pass is to make it cheap: per
-stream, the diff since its base, which model wrote each card, and every
-reader's findings, available in one place when the stream lands (layer 6).
+The Monitor turns incoming lines into session wakes. For a Codex session, use
+its service hook instead:
 
-## The dashboard (Glenn, 2026-11-06)
+```sh
+seat_exec NOVA_BUS_PASSWORD nova-bus hook --as "$NOVA_SPRINT_AS" --codex-thread '<thread-id>' --service
+```
 
-"The dashboard design should be identical to the v1 in visual, excluding the
-unimplemented stats part at bottom we didn't end up doing." The reference is
-v1's `docs/SPEC-SPRINT-DASHBOARD.md` and `assets/nova-sprint-dashboard.jpg` at
-v1 main (nova-sprint `origin/main`); layer 6 reproduces that view over the v2
-store, without the bottom stats section.
+A successful hook reports `HOOK OK name=<row> waiting=<n>`; a service hook
+reports `HOOK SERVICE OK`. Keep one bus hook per row. If another live session
+owns that name, coordinate with it rather than inventing a second identity.
 
-Glenn, 2026-11-06, on the dashboard: "I need it to check for visual
-correctness." "And it should be exactly matching what we currently have,
-visually. no changes except i think you added fail state." So: a visual
-match of the live v1 board, with the `fail` column as the one addition and the
-unbuilt stats block left off; built right after layers 1 and 2 lock, as its
-own part, before the first dogfood run; the reference is the running v1
-dashboard and `assets/nova-sprint-dashboard.jpg`, compared by eye.
-Glenn, same hour: "remember that we iterated a lot on the dashboard, so if it
-comes out different in any way, it's going to make me sad. we learned a lot
-and we should bring across all the good in the dashboard." So the dashboard
-is built from the record: a lessons file extracted from v1's dashboard spec,
-code and the iteration rulings first, then the build, then side-by-side
-screenshots against the live v1 board; any difference is a defect.
+### 3. Run setup and choose the dashboard and services
 
-## Always batch (Glenn, 2026-11-06, for layer 3)
+Ask the human whether the dashboard should be private on the tailnet or public
+on a machine they control, and which supported API services to enable. Run:
 
-"Let's not throw away what we learned in v1, which is always batch." A step
-in layer 3 is a batch step: the run loop takes one snapshot and emits one
-plan that moves every card it can in one transaction, every ready card
-dealt, every reported consumer applied, every resolvable need resolved,
-every read asked, together. Per-card verbs exist for a person; the tick
-batches. Landing follows the ladder in LANDING.md: one at a time only while
-the flow is good, batched the moment it backs up.
+```sh
+seat_exec NOVA_BUS_PASSWORD nova-sprint up --as "$NOVA_SPRINT_AS" --dash tailnet --services '<service-list>'
+```
 
-## The performance bar is a gate (Glenn, 2026-11-06)
+For a public dashboard, replace the dashboard choice with
+`--dash 'public=<machine>:<port>'`. Setup installs a pull-only dashboard there;
+that service holds no database or provider credential. The public machine may
+also be a bench. Share the resulting URL only with the intended audience.
 
-"If we build this slow, but correct, we have failed." Speed is a requirement
-on the same footing as the invariants, not a later optimization. The bar:
-sprints of hundreds or thousands of cards; a one-second tick; every worker
-reporting at once; nothing handled one at a time that could be batched;
-steady-state reads incremental from the event log, never a snapshot per tick.
-Measured by the load test before v2 is called done, and watched in every
-layer design from 3 on: a step that handles one card where it could handle
-all of them is a defect.
+The current key-setup integrations accept `deepseek` and `openrouter`, separated
+by commas. Choose only the services your deployment uses. Each selected service
+asks the human for its key once at a hidden terminal prompt and checks it with
+the provider. The AI runs the prompt; the human enters the value there. The
+installed worker's supported routes and the policy's model catalog must also
+match the selected configuration: adding a key alone does not make every model
+runnable. Follow any missing-route or harness refusal before starting work.
 
-Glenn, 2026-11-06: "it must be performant. layers must be correct and
-performant before we build on top." So the load test is not deferred: each
-layer's lock includes its measurement at the bar above, and layer 1's is owed
-before layer 3 starts.
+Use `--services none` to skip API-key setup. This does **not** disable the worker
+services installed on bench machines. For a sprint using only friend sessions,
+configure the inventory accordingly. To repair one selected service's key,
+setup also accepts `--key '<service>'`.
 
-The hard requirement, never bent (Glenn, 2026-11-06): a sprint of thousands of
-cards, one-second ticks, and a dashboard updated every second. Nothing is built
-above a layer until it is shown to hold at that size, by measurement.
+Run `up` through the bus-only wrapper above, not through `sprint_env`: setup
+separates its database-admin and runtime credential phases itself. It resumes
+by checking every step again. After fixing a refusal, repeat the same command.
+Do not create the schema or worker services by hand to get past a failed step.
 
-## Reports are batched by the run loop (2026-11-06, from the layer 1 load test)
+Setup creates the store, hooks your coordinator row, installs the policy, run
+service, dashboard and bench workers, and checks worker readiness. Its completion
+line has this shape:
 
-At 5,000 producers with a one-second tick and 200 single-report ops a second,
-the one writer lock was near saturation (ticks 322 ms, report median wait 59
-ms). Batch always: a worker's report goes over the bus to the run loop, and the
-run loop applies every report that arrived during the tick as part of the
-tick's one op, so the lock has one writer and a burst of 2,000 reports is two
-ticks. The per-card verbs still write directly for a person; rows never do.
-Layer 3 and 4 rule.
+```text
+UP DONE run on <host>; dashboard <url>; <n> workers up; coordinator <row>
+```
 
-And a per-tick budget (Glenn, 2026-11-06: "if you distributed too many reports
-over several frames you'd stay in budget"): the run loop applies up to a
-budget's worth of reports and moves in each tick and carries the rest to the
-next tick, so a burst costs each report a tick or two of latency and the
-tick never leaves its budget. The budget is policy's number; the carry is the
-engine's. Layer 3 rule.
+Read the entire output: an `UP NEEDS` line still requires attention even if
+`UP DONE` follows. A fresh sprint is stopped. Setup does not start dealing cards.
+
+### 4. Set the commit identity and check readiness
+
+Set the author and committer identity that your repositories accept. This is
+one sprint-wide Git identity, not the individual worker's name:
+
+```sh
+sprint_env nova-sprint identity --name '<git-name>' --email '<git-email>' --reason '<why-this-identity>'
+sprint_env nova-sprint help playbook coordinator
+sprint_env nova-sprint check
+```
+
+`hook` and `take` print the two Git configuration commands workers must use.
+A worker cannot hook or take until this identity exists. If setup stopped at
+worker readiness for that reason, set the identity once the store exists, then
+repeat `up` to verify the remaining steps. Contributors receive
+credit in commit-message trailers.
+
+`check` examines the fleet, tool versions, store, bus, policy, roster and stream
+admission. It also explains open judgements, landing waits and why nothing is
+being dealt. Resolve each `CHECK RED` using its printed fix before starting.
+Use the dashboard URL from setup to confirm that the board is reachable.
+Continue with [Run a sprint as coordinator](#run-a-sprint-as-coordinator) to
+register a repository, add work and start the run service's tick.
+
+## Join as a worker
+
+Obtain the fleet connection settings, your seat and row name from the
+coordinator. Use the environment and helpers above, with `NOVA_SPRINT_AS` set to
+your own row. The coordinator registers your friend row in nova-config with
+its real harness, model, width and tiers. Your seat needs the sprint and bus
+credentials; ask the coordinator to grant them through nova-secrets. You do
+not need the database-admin credential.
+
+Hook into the bus first using your harness's form above, then run:
+
+```sh
+sprint_env nova-sprint hook --as "$NOVA_SPRINT_AS" --role worker
+nova-sprint help playbook worker
+sprint_env nova-sprint next
+```
+
+The sprint hook prints:
+
+```text
+HOOKED <row> role=worker
+COMMIT AS <git-name> <git-email>
+```
+
+It also prints Git configuration, the playbook command and the next action.
+Read the playbook once. Follow the returned `next:` line. When it says
+`next: nothing; wait for the bus`, wait for a wake; do not poll the queue.
+The bench worker service follows this lifecycle automatically.
+
+When a receipt prints a bare `nova-sprint` command, run it through `sprint_env`
+in this shell. Preserve the receipt's arguments, including `--as`, generation
+and epoch. The environment variable supplies your row only when `--as` is absent.
+
+### Work a dealt card
+
+A `DEAL` puts the card in your hand immediately. Run every card in your hand,
+each in an isolated child or session and clone, concurrently up to your row's
+width. A card left unacknowledged is nudged after ten seconds; after a minute
+the coordinator is told. Acknowledge it with the command from the deal:
+
+```sh
+sprint_env nova-sprint take '<card>@<gen>' --epoch '<epoch>'
+```
+
+The receipt starts with:
+
+```text
+TAKEN <card> repo=<repository> base=<sha> branch=<branch> deadline=<n>s forge=<forge>
+```
+
+It includes the full brief, any previous head and finding, the commit identity
+and the exact finish command. Repeating the same `take` prints the brief again
+without changing the generation.
+
+1. Clone the repository into a directory used only by this attempt. Inspect the
+   dealt branch at origin. If it exists, fetch it and continue from its tip;
+   a prior attempt may already have pushed work. Otherwise create the dealt
+   branch at the supplied base SHA. Do not discard earlier work.
+2. Read the repository instructions and the brief. Work only within `PATHS`.
+   Run the brief's gates at the starting head to identify existing failures;
+   cite documented base failures rather than expanding the task to fix them.
+3. Make the requested change. Run the brief's `DONE-WHEN` gates and the whole
+   package tests for the files you touched on a suitable bench. Keep unit
+   tests independent of real time and external services; functional tests own
+   their test services. Ask the coordinator when the required route is missing
+   or the change needs paths outside the brief.
+4. Apply the Git identity printed by `take` to both author and committer.
+   Put your own credit in a `By:` line and `Co-Authored-By:` trailer. Commit
+   on the dealt branch and push that branch as you reach useful checkpoints.
+5. Verify the remote branch tip is the full SHA you will report. Open no PR:
+   automatic landing opens it. You need not chase the base or wait for its CI;
+   landing handles a head behind the base, including grouping when necessary.
+6. Report the pushed head using the receipt's finish command:
+
+```sh
+sprint_env nova-sprint finish '<card>@<gen>' --head '<full-sha>' --epoch '<epoch>'
+```
+
+`FINISHED <card> head=<sha> applied at seq <n>` acknowledges the report. It does
+not certify review, CI or landing. A later result tells you what happened.
+
+Pushes preserve work; uncommitted local edits are not stored by nova-sprint.
+Never push to the base, another card's branch or the stream's group branch.
+If a withdraw arrives, stop that attempt. Do not finish it with stale arguments.
+Its pushed branch remains available to the next attempt.
+
+### Read someone else's head
+
+Take the read exactly as dealt. Fetch the specified full head in an isolated
+clone, inspect it against the brief and base, and check the relevant evidence.
+Review that head, not whichever commit the branch happens to point to now. Do
+not edit it. Report one of:
+
+```sh
+sprint_env nova-sprint read '<read-card>@<gen>' yes --epoch '<epoch>'
+sprint_env nova-sprint read '<read-card>@<gen>' fix --finding '<path>:<line>: <defect-and-repair>' --epoch '<epoch>'
+```
+
+A fix needs a concrete finding. An author cannot read their own head. The
+policy chooses how many independent reads a head needs and what happens when
+those reads disagree. A fix becomes a new work deal carrying the prior head
+and finding; do not quietly amend an attempt you already reported.
+
+For both finishes and reads, report only measured usage. `--usage` accepts
+harness-counted token fields; see `nova-sprint help finish` for their syntax.
+Subscription rows are recorded as free. API rows are priced from measured
+tokens and the policy's rates; missing tokens or rates mean unpriced, not zero.
+`--cost` records the harness's own charged-dollar figure alongside that price.
+Do not estimate it or use zero to conceal missing API usage.
+
+### Release, fail or recover a session
+
+If work must continue elsewhere, push what you have and release it, with the
+pushed head when available. If the task itself cannot be completed, report a
+failure with a reason instead:
+
+```sh
+sprint_env nova-sprint release '<card>@<gen>' --head '<pushed-sha>' --reason '<why>' --epoch '<epoch>'
+sprint_env nova-sprint finish '<card>@<gen>' --failed --reason '<why>' --epoch '<epoch>'
+```
+
+Ask the coordinator about scope or missing prerequisites rather than repeatedly
+retrying a failing command. Messages from the name `sprint` are receipts:
+answer with their CLI verb, or do nothing. Do not reply to them with a bus
+message. Messages from the coordinator can require a conversational reply.
+
+After losing a session, reconnect its bus hook, clear your old sprint hook,
+then hook again and ask for your next action:
+
+```sh
+sprint_env nova-sprint unhook --as "$NOVA_SPRINT_AS"
+sprint_env nova-sprint hook --as "$NOVA_SPRINT_AS" --role worker
+sprint_env nova-sprint next
+```
+
+Cards and findings remain in the store. Recover pushed work from the dealt
+branch, and follow the current generation rather than a remembered command.
+
+## Run a sprint as coordinator
+
+The coordinator writes work, answers judgements and manages configuration.
+The engine deals, requests reads and lands. A coordinator can also work cards;
+those attempts follow the worker rules above.
+
+### Invite worker sessions
+
+Register each friend session in nova-config before expecting it to receive
+work. Include the coordinator's own row if it will work cards. Choose the
+actual harness and model the session runs, the tiers it can serve, and a width
+it can sustain:
+
+```sh
+seat_exec NOVA_PG_PASSWORD nova-config friend add '<row>' --harness '<harness>' --model '<model>' --width '<width>' --tiers '<tier-list>' --actor "$NOVA_SPRINT_AS" --reason '<why>'
+```
+
+For an existing row, inspect its configuration and use nova-config's update
+command from its help rather than adding it twice. Grant an already registered
+worker seat the runtime secrets, then distribute the encrypted store:
+
+```sh
+nova-secrets grant NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD --to '<worker-seat>' --pins "$NOVA_SECRETS_PINS" --store "$NOVA_SECRETS_STORE" --key "$NOVA_SECRETS_KEY" --as "$NOVA_SECRETS_SEAT"
+seat_exec NOVA_PG_PASSWORD nova-fleet secrets-refresh
+```
+
+Give the worker its row name, connection settings and this guide's worker
+section. Let it connect the bus and sprint hooks from its own session. Use
+nova-tools' seat setup first if the seat or its public-key pin does not exist.
+Bench rows are installed by `up` and announce their proven capacity themselves.
+
+### Register a stream and write a brief
+
+Register a repository whose base branch already exists at origin:
+
+```sh
+sprint_env nova-sprint stream add '<stream>' --repo '<org>/<repo>' --base '<base-branch>' --mode auto --forge github
+```
+
+Use the GitHub forge when you want the engine to open PRs and check CI. Without
+it, a stream has no PR/CI integration and lands by hand. The default `auto`
+mode selects single or grouped landing as appropriate; `group` batches work,
+and `hand` leaves landing to the coordinator. Review the stream's setup before
+adding cards:
+
+```sh
+sprint_env nova-sprint show '<stream>'
+```
+
+Write one brief file per producer. Its filename without `.md` becomes the card
+id. This is a template, not an executable brief; replace its placeholders with
+paths and commands valid in that repository:
+
+```text
+tier: flash
+PATHS: <existing-source-path>, <existing-test-path>
+NEEDS: none
+TEST: <regression-test absent or red at the starting head, green after the fix>
+DONE-WHEN: <test-program> <arguments>
+
+<Describe the problem, required behavior and limits of this one change.>
+```
+
+The first line must be `tier: flash`, `tier: pro`, `tier: heavy` or
+`tier: frontier`. The tier must have an eligible row. `PATHS`, `TEST`,
+`DONE-WHEN` and prose after a blank line are required. Existing paths and glob
+matches are checked at the stream's base. A new file may be named explicitly when its parent directory exists. To create a new
+directory, declare it as a separate `PATHS` entry ending in `/`; its parent
+must exist. Keep the allowed paths as narrow as the task permits. Each
+`DONE-WHEN` is one program and its arguments, not an unquoted shell pipeline; repeat the field for multiple gates.
+
+`NEEDS` lists producer ids whose landed output this task actually consumes.
+Independent work should have no needs. `AFTER` is an optional soft landing
+order, not a start dependency. `PRIORITY` defaults to `normal`; producer levels
+are `low`, `normal`, `high`, `critical` and `blocker`. The `read` level is for
+review consumers. A blocker can preempt work, so use it for that intended effect.
+Use `NEEDS-ROUTE` for a required execution capability rather than hardcoding a
+particular machine into the task.
+
+Validate the brief before adding it, then add the same file:
+
+```sh
+sprint_env nova-sprint add --stream '<stream>' --brief-file '<card>.md' --dry-run
+sprint_env nova-sprint add --stream '<stream>' --brief-file '<card>.md'
+```
+
+Admission checks the brief, repository base, paths, dependency graph and
+available tiers/routes. It does not run the brief's tests. A dry run reports
+`ADD DRY RUN cards=<n>`; a successful add ends with
+`ADDED <n> cards applied at seq <n>`. Review any dependency-chain warnings.
+
+### Start, observe and answer decisions
+
+Make sure workers have joined, their width and tiers reflect real capacity,
+and checks are green. Start with a small real card whose landing you can
+observe end to end:
+
+```sh
+sprint_env nova-sprint check
+sprint_env nova-sprint start --reason '<why-ready>'
+sprint_env nova-sprint queue --stream '<stream>'
+sprint_env nova-sprint show run
+```
+
+Watch its work, reads and landing appear in the dashboard. Confirm the landed
+commit is on the stream's base before expanding the queue. `up` already
+installed the run service; do not launch a second chooser process.
+
+For a stuck landing, inspect the stream's stitch view. For decisions, list
+judgements and answer using an offered choice:
+
+```sh
+sprint_env nova-sprint show '<stream>' --stitch
+sprint_env nova-sprint judge
+sprint_env nova-sprint judge '<judgement>' '<offered-choice>' --reason '<why>'
+```
+
+A judgement can concern conflicting reads, a failed gate, an unavailable route
+or a landing problem. Read its evidence and choices. Group answers require
+`--expect` with the current group size, so a changed group is not answered
+accidentally. Follow the judgement's printed command.
+
+The separate `land` verb is a manual merge with **no CI gate**. Use it only
+when deliberately taking responsibility for that manual decision; consult
+`nova-sprint help land`. Normal automatic landing should proceed through its
+reads, CI and judgement choices.
+
+### Change work or policy while the sprint runs
+
+Hold a row, stream or producer to pause the relevant work, then unhold it when
+the reason is resolved:
+
+```sh
+sprint_env nova-sprint hold '<row-or-stream-or-card>' --reason '<why>'
+sprint_env nova-sprint unhold '<row-or-stream-or-card>' --reason '<why-resolved>'
+```
+
+A card hold withdraws its live consumers and keeps pushed branches. A row hold
+stops new deals to that row. To change an admitted brief, add a new card and
+replace the old producer; there is no brief-edit verb:
+
+```sh
+sprint_env nova-sprint replace '<old-card>' --by '<new-card>' --reason '<why>' --dry-run
+sprint_env nova-sprint replace '<old-card>' --by '<new-card>' --reason '<why>'
+```
+
+Replacement redirects dependants to the new producer. Dropping work can fail
+its dependants unless you explicitly waive or relink them; inspect the verb's
+help and dry run before doing so.
+
+Inspect the active policy and its versions before editing a local policy file:
+
+```sh
+sprint_env nova-sprint policy show
+sprint_env nova-sprint policy show --list
+sprint_env nova-sprint policy check '<policy-file>'
+sprint_env nova-sprint policy set '<policy-file>' --reason '<why>'
+sprint_env nova-sprint policy diff '<old-version>' '<new-version>'
+sprint_env nova-sprint policy activate '<new-version>' --reason '<why>'
+```
+
+Use the version number returned by `set`. With an active policy, setting
+stores a checked version without activating it. If no policy is active, the
+first stored version activates automatically. Inspect changes before activating
+a replacement. To roll back, activate the intended earlier stored version
+with a reason.
+
+To stop the engine's tick or save a verified backup:
+
+```sh
+sprint_env nova-sprint stop --reason '<why>'
+sprint_env nova-sprint backup --out '<backup-directory>'
+```
+
+Stopping prevents new dealing, reading and landing by the tick. It does not
+kill worker processes or disable commands. Coordinate with holders if work
+must stop immediately. A backup receipt says
+`BACKUP <file> epoch=<epoch> seq=<n> verified`. Keep that file securely; it
+contains sprint data. See `nova-sprint help restore` before restoring into an
+empty target, and `nova-sprint help clear` before ending an epoch. Neither is
+a repair for an ordinary refused command.
+
+## When a command refuses
+
+A command normally reports its result and ends with `next: <command>`. Run
+that command through the same credential wrapper. Exit codes are:
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| 0 | The command completed. | Read the receipt and next action. |
+| 1 | A prerequisite or operation was refused. | Follow the named fix, then retry if still applicable. |
+| 2 | Bad usage, or a store, bus or external operation failed. | Read the error; check help for syntax or run `check` for infrastructure. |
+
+Refusals have the form `SPRINT REFUSED <verb>: <problem>: <fix>`.
+Common situations and the next step:
+
+| Situation | Next step |
+| --- | --- |
+| This process has no sprint credential | Run it through `sprint_env`; confirm your seat has the sprint grant. Do not rerun setup just because your shell lacks a credential. |
+| Not on the bus | Start the harness's bus hook, then retry the sprint hook. |
+| Already hooked | Recover your own session with `unhook`, then hook again. Resolve another live owner first. |
+| No commit identity | The coordinator sets it with `identity`; the worker then hooks or takes again. |
+| Not dealt at this generation, withdrawn or already reported | Run `next` as your row and use its current command. Do not invent a new generation. |
+| Head is absent at origin | Push the dealt branch and verify its full remote SHA before finishing. |
+| Wrong author or committer | Apply the identity printed by `take` and correct the affected commits on your own card branch. |
+| Brief admission failed | Fix the named field, path, dependency or unavailable tier/route, then repeat the dry run. |
+| Nothing deals or landing waits | Run `check`, inspect `show run`, and answer open judgements; also check whether the sprint is stopped. |
+| A worker service cannot decrypt a newly granted secret | Refresh the machines' encrypted secrets replicas through nova-fleet; the shell's store and the installed service's replica may be different directories. |
+
+`nova-sprint help` lists the verbs. `nova-sprint help <verb>` gives that
+verb's syntax, prerequisites and refusals. `nova-sprint help playbook worker`
+and `nova-sprint help playbook coordinator` give the role-specific workflow.
+For automation, `next --json` and `take --json` return machine-readable answers;
+use their structured fields rather than parsing the prose next line.
