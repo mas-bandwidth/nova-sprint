@@ -171,7 +171,8 @@ ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red boolean NOT NULL DEFAULT f
 
 -- model (round 23): on a consumer, the model the deal named for it (the
 -- policy's bench model for its tier, or a friend's own), carried to the take
--- receipt; '' on a producer or sentinel. Fixed at add like holder. Added by
+-- receipt; '' on a producer or sentinel. Set at add and not fixed by cards_fixed (the
+-- cards_model_check CHECK is its only rule). Added by
 -- ALTER, as red is, so a round-22 store that Migrate upgrades gets it the
 -- same way as a new one.
 ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
