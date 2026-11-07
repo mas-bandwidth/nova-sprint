@@ -81,7 +81,7 @@ func (a traceAsker) Ask(q Questions) Answers {
 		}
 	}
 	for _, r := range q.Width {
-		out.Width[r.Name] = WidthAnswer{Work: r.Width, Ahead: 2 * r.Width} // the model's Ahead
+		out.Width[r.Name] = WidthAnswer{Work: r.Width}
 	}
 	for _, s := range q.Landing {
 		out.Landing[s.Name] = LandingAnswer{BackedUp: 4, Flowing: 1}
@@ -225,9 +225,6 @@ func (w *traceWalk) step() {
 		moves = append(moves, w.tickOnce, w.tickOnce)
 	}
 	blind := w.rng.Intn(4) == 0 // one pick in four is blind, so refusals are met too
-	if w.phase == "idle" && (blind || len(w.consumersIn("ready")) > 0) {
-		moves = append(moves, w.takeOne)
-	}
 	if blind || len(w.consumersIn("working")) > 0 {
 		moves = append(moves, w.reportOne)
 	}
@@ -271,24 +268,8 @@ func (w *traceWalk) moved(action string, args []string) {
 	w.record(action, args)
 }
 
-func (w *traceWalk) takeOne() {
-	ids := w.consumersIn("ready")
-	w.pick()
-	if len(ids) == 0 {
-		return
-	}
-	id := ids[w.rng.Intn(len(ids))]
-	c := w.snap().Cards[id]
-	if !w.roomToTake(c.Holder) {
-		return
-	}
-	pl, r := w.consumer(id, card.Take{Row: c.Holder})
-	if r != nil || !w.apply("take", pl.Expect, pl.Writes...).Accepted {
-		return
-	}
-	w.ok()
-	w.moved("Take", []string{"card |-> " + SlotTLA(w.view(), id)})
-}
+// The walk has no take: the deal is the take (defect 52), and a row's
+// acknowledgement moves no card, so the model has no action for it.
 
 // results are the scenario's result sets: work ok (and fail for p in deal),
 // read ok (and fix for p in deal).

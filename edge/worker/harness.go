@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
@@ -244,6 +245,7 @@ func buildPrompt_internal(j Job) string {
 		b.WriteString("\n" + body + "\n")
 	}
 	fmt.Fprintf(&b, "\nWrite final verdict JSON to %s/result.json.\n", j.JobDir)
+	fmt.Fprintf(&b, "If the work needs a route or device this bench lacks (a tool, a device, a network), write {\"result\":\"fault\",\"reason\":\"%s <what is missing>\"}: the card waits for the coordinator instead of being dealt again.\n", card.MissingRoute)
 	return b.String()
 }
 func classifyExitAndTail_internal(exit int, tail []byte) Outcome {

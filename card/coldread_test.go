@@ -63,7 +63,7 @@ var coldAllowed = map[string][]string{
 	"Finished": {Working}, "Broken": {Working}, "Faulted": {Working}, "Released": {Working},
 	"AskRead": {Review}, "AskReads": {Review}, "ReadYes": {Review}, "ReadFix": {Review}, "WaiveRed": {Review}, "Landed": {Merging}, "Red": {Merging},
 	"Cancel": nonFinal, "Replace": nonFinal, "NeedFailed": nonFinal, "Edit": nonFinal, "Rescore": nonFinal,
-	"SetPriority": nonFinal, "Waive": {Waiting}, "Relink": {Waiting}, "Block": {Ready, Review, Working}, "Unblock": {Blocked},
+	"SetPriority": nonFinal, "Waive": {Waiting}, "Relink": {Waiting}, "Block": {Waiting, Ready, Review, Working}, "Unblock": {Blocked},
 }
 
 // Final states never move, Rescore, SetPriority and Edit included, for every
@@ -84,7 +84,7 @@ func TestColdFinalNeverMoves(t *testing.T) {
 		}
 	}
 	for _, s := range []string{Done, Fail} {
-		for _, e := range []Event{Take{Row: "r1"}, Report{Row: "r1", Result: "ok", Head: h2}, Withdraw{}} {
+		for _, e := range []Event{Report{Row: "r1", Result: "ok", Head: h2}, Withdraw{}} {
 			for _, c := range []Card{wk(s, "ok", h2), rd(s, "ok")} {
 				_, r := MoveConsumer(c, pr(Review), rows()["r1"], e)
 				assert.NotNil(t, r, "%s %s %s", c.Kind, s, name(e))
@@ -244,17 +244,15 @@ func TestColdPreemptARead(t *testing.T) {
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
 	w.move("p1", AskRead{Row: "r2"})
-	w.consume("p1.r1.1", Take{Row: "r2"})
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
 	w.op("preempt", mustMerge(t, w.consumerPlan("p1.r1.1", Withdraw{Reason: "preempted by blocker p2", Preempt: true}), start))
-	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p1", Review)
 	assert.Zero(t, w.card("p1").Bounces)
 	w.refused("p1", ReadYes{}, "producer p1 has no read of review 1 that said ok; ReadYes needs one")
 	w.move("p1", AskRead{Row: "r3"})
-	w.is("p1.r1.2", Ready)
+	w.is("p1.r1.2", Working)
 }
 
 // The random walk: seeded sequences of every event with random arguments,
@@ -280,7 +278,7 @@ func TestColdWalk(t *testing.T) {
 	})
 	// Released is not in the list: a Withdraw of the work consumer releases
 	// its producer in the same plan, so the walk never finds one to release.
-	for _, e := range []string{"Resolve", "Start", "Take", "Report", "Finished", "Broken", "Faulted", "AskRead", "ReadYes", "ReadFix",
+	for _, e := range []string{"Resolve", "Start", "Report", "Finished", "Broken", "Faulted", "AskRead", "ReadYes", "ReadFix",
 		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
 		assert.Positive(t, seen[e], "the walk never accepted %s", e)
 	}
@@ -422,10 +420,10 @@ func (w *world) coldStepConsumer(rng *rand.Rand, ids []string, all map[string]Ca
 	if c.Kind == "read" && rng.Intn(4) > 0 {
 		head = p.Head
 	}
-	evs := []Event{Take{Row: at}, Take{Row: at}, Report{Row: at, Result: result, Head: head, Reason: "r", Cost: int64(rng.Intn(3)), Priced: rng.Intn(2) == 0},
-		Report{Row: at, Result: result, Head: head}, Report{Row: at, Result: result, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
+	evs := []Event{Report{Row: at, Result: result, Head: head, Reason: "r", Cost: int64(rng.Intn(3)), Priced: rng.Intn(2) == 0},
+		Report{Row: at, Result: result, Head: head}, Report{Row: at, Result: result, Head: head, Reason: MissingRoute + " no adb on this row"}, Withdraw{Reason: "silent"}}
 	if rng.Intn(3) > 0 {
-		evs = evs[:5]
+		evs = evs[:3]
 	}
 	e := evs[rng.Intn(len(evs))]
 	if v, ok := e.(Withdraw); ok { // the producer's stream, as layer 3 reads it
@@ -585,7 +583,6 @@ func TestColdDefectOmittedLiveConsumerIsNotFenced(t *testing.T) {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r1"})
 	all, _ := w.all()
 	plan, r := Move(all["p1"], nil, w.rows(), Stream{Name: "s1"}, all, Cancel{Reason: "x"})
 	refusal{r, "producer p1 is working; its work consumer p1.w1 was not passed (the consumer list must be complete)"}.check(t)
@@ -676,7 +673,6 @@ func TestColdDefectWithdrawnHeadIsUnrecordable(t *testing.T) {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r1"})
 	w.consume("p1.w1", Withdraw{Reason: "preempted by blocker p2", Head: coldH3, Preempt: true}) // releases p1 in the same plan
 	w.is("p1", Ready)
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
@@ -693,7 +689,6 @@ func TestColdDefectPlansTheStoreFindsInvalid(t *testing.T) {
 	}{
 		{"cost -1", func(w *world) (Plan, *Refusal) {
 			w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-			w.consume("p1.w1", Take{Row: "r1"})
 			c := w.card("p1.w1")
 			return MoveConsumer(c, w.card("p1"), w.rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
 		}},
@@ -740,7 +735,6 @@ func TestColdSuspectOkHeadEqualsPriorHead(t *testing.T) {
 	w.read("p1", "r2", "fix", "rename x")
 	w.move("p1", ReadFix{Finding: "rename x"})
 	w.move("p1", Start{Row: "r3", Branch: "b", Base: base})
-	w.consume("p1.w2", Take{Row: "r3"})
 	c := w.card("p1.w2")
 	_, r := MoveConsumer(c, w.card("p1"), w.rows()["r3"], Report{Row: "r3", Result: "ok", Head: h1})
 	refusal{r, "head " + h1 + " is the prior head; nothing new was pushed"}.check(t)

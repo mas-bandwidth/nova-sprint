@@ -225,13 +225,6 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 			}
 		}
 	}
-	for _, w := range next.Working {
-		if _, onDisk := disk[w.ID]; !onDisk && !r.isRunningInFlight_internal(w.ID) {
-			if err := r.reportLostJob_internal(ctx, next.Epoch, row, w); err != nil && !errors.Is(err, ErrStoreDown) {
-				return err
-			}
-		}
-	}
 	return nil
 }
 func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) {
@@ -285,14 +278,6 @@ func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id stri
 		return err
 	}
 	return r.sendReportAndClean_internal(ctx, jobDir, rec)
-}
-func (r *Runner) reportLostJob_internal(ctx context.Context, epoch int, row string, w ConsumerSummary) error {
-	_, err := r.Sprint.Report(ctx, ReportRequest{
-		Epoch: epoch, Row: row, Consumer: w.ID, Gen: w.Gen,
-		ResultID: FormatResultID(epoch, w.ID, w.Attempt, w.Gen), Result: "fault", Reason: "runner lost the job",
-	})
-	r.logStep_internal(row, w.ID, "lost-job", "fault", 0)
-	return err
 }
 func (r *Runner) withdrawRunningJob_internal(ctx context.Context, rec JobRecord) {
 	r.cancelRunning_internal(rec.Consumer)
@@ -471,14 +456,13 @@ func (r *Runner) StepRow(ctx context.Context, row string) error {
 	if err != nil || next.State != card.Up || next.Held {
 		return ignoreStoreDown_internal(err)
 	}
-	workingCount := len(next.Working)
+	// The deal is the take (defect 52): every card in hand is working from
+	// its deal, within the row's width, so the pass runs each one with no
+	// job of its own yet, each in its own job, all at once. One with a job
+	// on disk is RecoverRow's.
 	var toLaunch []ConsumerSummary
-	for _, c := range next.Ready {
-		if workingCount >= next.Width {
-			break
-		}
-		if !r.isRunningInFlight_internal(c.ID) {
-			workingCount++
+	for _, c := range next.Working {
+		if _, err := os.Stat(filepath.Join(r.RootDir, "jobs", c.ID)); os.IsNotExist(err) && !r.isRunningInFlight_internal(c.ID) {
 			toLaunch = append(toLaunch, c)
 		}
 	}

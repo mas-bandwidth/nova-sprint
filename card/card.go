@@ -8,6 +8,8 @@
 package card
 
 import (
+	"strings"
+
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -134,9 +136,11 @@ type (
 	Unblock     struct{ Reason string }
 )
 
-// Consumer events, one per row of the consumer table.
+// Consumer events, one per row of the consumer table. There is no Take: a
+// consumer is cut in working, in its row's hand at the deal (defect 52,
+// intent rule 33); the row's acknowledgement is not a card move (LAYER-2
+// "Deal is take").
 type (
-	Take   struct{ Row string }
 	Report struct {
 		Row, Result, Head, Reason string
 		Cost                      int64
@@ -238,7 +242,6 @@ func (Rescore) isEvent()     {}
 func (SetPriority) isEvent() {}
 func (Block) isEvent()       {}
 func (Unblock) isEvent()     {}
-func (Take) isEvent()        {}
 func (Report) isEvent()      {}
 func (Withdraw) isEvent()    {}
 func (Seen) isEvent()        {}
@@ -263,6 +266,20 @@ const (
 
 // LandedState is the producer's final state of success (Landed is its event).
 const LandedState = "landed"
+
+// MissingRoute is the reason kind of a fault that names a route or device
+// the row lacks (defect 48): a work consumer's fault whose reason starts
+// with it ("missing-route: no adb on this bench") blocks its producer on a
+// judgement instead of a re-deal. The rest of the reason names what is
+// missing.
+const MissingRoute = "missing-route:"
+
+// RouteFault says whether reason is a missing-route fault's, and what it
+// names as missing.
+func RouteFault(reason string) (string, bool) {
+	what, ok := strings.CutPrefix(strings.TrimSpace(reason), MissingRoute)
+	return strings.TrimSpace(what), ok
+}
 
 // The levels a producer's priority may take, lowest first; read consumers
 // occupy a rung between high and critical in the deal order (policy's).

@@ -29,7 +29,7 @@ func TestAskerAbsent(t *testing.T) {
 	assert.Equal(t, 1, o.reads(CardFacts{ID: "p1"}))
 	assert.Equal(t, "fix", o.verdict(VerdictQuestion{Reads: []ReadFacts{{Result: "ok"}, {Result: "fix"}}}), "any fix read means fix")
 	assert.Equal(t, "yes", o.verdict(VerdictQuestion{Reads: []ReadFacts{{Result: "ok"}}}))
-	assert.Equal(t, WidthAnswer{2, 2}, o.width(RowFacts{Name: "r1", Width: 2}))
+	assert.Equal(t, WidthAnswer{2}, o.width(RowFacts{Name: "r1", Width: 2}))
 	assert.Equal(t, Engine.Landing, o.landing(StreamFacts{Name: "s1"}))
 	assert.Equal(t, Engine.Limits, o.limits())
 	assert.Equal(t, Engine.Timeouts, o.timeouts())
@@ -68,7 +68,7 @@ func TestAskerOutOfRange(t *testing.T) {
 		Rows:     map[string][]string{"p1": {"r9"}, "p2": {}, "p3": {"r2", "r1"}},
 		Reads:    map[string]int{"p1": 9, "p2": 5},
 		Verdict:  map[string]string{"p1": "yes", "p2": "maybe", "p3": "fix"},
-		Width:    map[string]WidthAnswer{"r1": {Work: 3, Ahead: 1}, "r2": {Work: 1, Ahead: 9}, "r3": {Work: 2, Ahead: 0}},
+		Width:    map[string]WidthAnswer{"r1": {Work: 3}, "r2": {Work: 1}, "r3": {Work: 2}},
 		Landing:  map[string]LandingAnswer{"s1": {BackedUp: 2, Flowing: 2}, "s2": {BackedUp: 3, Flowing: 0}},
 		Limits:   &bad,
 		Timeouts: &tmo,
@@ -86,9 +86,9 @@ func TestAskerOutOfRange(t *testing.T) {
 	assert.Equal(t, "fix", o.verdict(VerdictQuestion{Card: CardFacts{ID: "p1"}, Reads: fixOnly}), "yes with no ok read is refused")
 	assert.Equal(t, "fix", o.verdict(VerdictQuestion{Card: CardFacts{ID: "p2"}, Reads: fixOnly}))
 	assert.Equal(t, "fix", o.verdict(VerdictQuestion{Card: CardFacts{ID: "p3"}, Reads: fixOnly}))
-	assert.Equal(t, WidthAnswer{2, 2}, o.width(RowFacts{Name: "r1", Width: 2}), "work over the width")
-	assert.Equal(t, WidthAnswer{2, 2}, o.width(RowFacts{Name: "r2", Width: 2}), "ahead over 4 x width")
-	assert.Equal(t, WidthAnswer{2, 0}, o.width(RowFacts{Name: "r3", Width: 2}))
+	assert.Equal(t, WidthAnswer{2}, o.width(RowFacts{Name: "r1", Width: 2}), "work over the width")
+	assert.Equal(t, WidthAnswer{1}, o.width(RowFacts{Name: "r2", Width: 2}))
+	assert.Equal(t, WidthAnswer{2}, o.width(RowFacts{Name: "r3", Width: 2}))
 	assert.Equal(t, Engine.Landing, o.landing(StreamFacts{Name: "s1"}), "flowing must be below backed up")
 	assert.Equal(t, LandingAnswer{3, 0}, o.landing(StreamFacts{Name: "s2"}))
 	assert.Equal(t, Engine.Limits, o.limits())

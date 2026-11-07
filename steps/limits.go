@@ -26,6 +26,7 @@ func (t *tick) limits() {
 			}
 		}
 	}
+	t.routeBlocked()
 	for _, n := range t.rowNames {
 		t.rowLimits(n)
 	}

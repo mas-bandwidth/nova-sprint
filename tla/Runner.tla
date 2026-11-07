@@ -2,6 +2,9 @@
 (***************************************************************************)
 (* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md,  *)
 (* Guarantees 7 to 11). Size: 2 consumers, width 2, 1 slot, 1 Crash.       *)
+(* The deal is the take (defect 52): both consumers are dealt working, in  *)
+(* the row's hand, at Init; Take is the row's acknowledgement (a cursor)  *)
+(* and the start of its job, and moves no store state.                    *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -23,7 +26,7 @@ ResIDFor(c) == IF c = "c1" THEN 1 ELSE 2
 PidFor(c) == IF c = "c1" THEN 101 ELSE 102
 
 Init ==
-  /\ storeState = [c \in Consumers |-> "ready"]
+  /\ storeState = [c \in Consumers |-> "working"]
   /\ jobState = [c \in Consumers |-> "none"]
   /\ slotsInUse = 0
   /\ width = Width
@@ -41,12 +44,10 @@ Wake ==
 Take(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
-  /\ storeState[c] = "ready"
+  /\ storeState[c] = "working"
   /\ jobState[c] = "none"
-  /\ Cardinality(WorkingSet) < width
-  /\ storeState' = [storeState EXCEPT ![c] = "working"]
   /\ jobState' = [jobState EXCEPT ![c] = "taken"]
-  /\ UNCHANGED <<slotsInUse, width, jobDir, harnessAlive, appliedOps, env>>
+  /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env>>
 
 Stage(c) ==
   /\ ~env.crashed

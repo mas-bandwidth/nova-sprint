@@ -85,7 +85,7 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 		a.Rows[q.Card] = rows
 	}
 	for row, w := range p.Width {
-		a.Width[row] = steps.WidthAnswer{Work: w.Work, Ahead: w.Ahead}
+		a.Width[row] = steps.WidthAnswer{Work: w.Work}
 	}
 	for s, l := range p.Landing {
 		a.Landing[s] = steps.LandingAnswer{BackedUp: l.BackedUp, Flowing: l.Flowing}

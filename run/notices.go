@@ -26,8 +26,8 @@ func (n EventNotices) ForEvent(event store.Event, afterView store.Snapshot, reci
 			before, exists = event.Before.Cards[id]
 		}
 		if (after.Kind == "work" || after.Kind == "read") && after.Holder == recipient {
-			if after.State == "ready" && (!exists || before.State != "ready") {
-				out = append(out, dealNotice(after, event.Epoch))
+			if !exists && (after.State == "working" || after.State == "ready") { // cut: in the row's hand at the deal
+				out = append(out, dealNotice(after, afterView.Streams[after.Stream], event.Epoch))
 			}
 			if after.State == "fail" && exists && (before.State == "ready" || before.State == "working") {
 				out = append(out, withdrawNotice(after))
@@ -60,10 +60,20 @@ func sortedCardIDs(cards map[string]store.Card) []string {
 	slices.Sort(keys)
 	return keys
 }
-func dealNotice(c store.Card, epoch int) Notice {
-	line := fmt.Sprintf("card=%s attempt=%d kind=%s stream=%s tier=%s epoch=%d", c.ID, c.Attempt, c.Kind, c.Stream, c.Tier, epoch)
+
+// dealNotice tells the row what it now holds (defect 52: the deal is the
+// take): the card, where to work (repo, base, branch; a read's head), the
+// brief clipped, the finish or read command, and take, the acknowledgement
+// that stops the nudges and prints the whole brief.
+func dealNotice(c store.Card, s store.Stream, epoch int) Notice {
+	ref, row := shellWord(fmt.Sprintf("%s@%d", c.ID, c.Gen)), shellWord(c.Holder)
+	line := fmt.Sprintf("DEAL card=%s attempt=%d kind=%s stream=%s tier=%s epoch=%d repo=%s", c.ID, c.Attempt, c.Kind, c.Stream, c.Tier, epoch, s.Repo)
+	finish := fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, epoch)
 	if c.Kind == "read" {
 		line += " head=" + c.Head
+		finish = fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, epoch)
+	} else {
+		line += " base=" + c.BaseSHA + " branch=" + c.Branch
 	}
 	if c.Prior != "" {
 		line += " prior=" + c.Prior
@@ -75,7 +85,8 @@ func dealNotice(c store.Card, epoch int) Notice {
 	if reason != "" {
 		line += " reason=" + clipText(reason, c.ID)
 	}
-	line += fmt.Sprintf("; run: nova-sprint take %s --epoch %d --as %s", shellWord(fmt.Sprintf("%s@%d", c.ID, c.Gen)), epoch, shellWord(c.Holder))
+	line += " brief=" + clipWith(c.Brief, "nova-sprint take "+ref)
+	line += fmt.Sprintf("; in your hand now: run nova-sprint take %s --epoch %d --as %s (acknowledges, prints the whole brief), then do it and run: %s", ref, epoch, row, finish)
 	return Notice{Subject: "DEAL", Line: line}
 }
 func withdrawNotice(c store.Card) Notice {

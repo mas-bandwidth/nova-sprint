@@ -24,7 +24,7 @@ func TestStartThenHoldDealsInTheOp(t *testing.T) {
 	merged, mr := Merge(start, hold)
 	require.Nil(t, mr, "Start then Hold")
 	w.op("start-hold", merged)
-	assert.Equal(t, []any{true, Working, Waiting, Ready}, []any{w.snap().Streams["s1"].Held, w.card("p1").State, w.card("p2").State, w.card("p1.w1").State})
+	assert.Equal(t, []any{true, Working, Waiting, Working}, []any{w.snap().Streams["s1"].Held, w.card("p1").State, w.card("p2").State, w.card("p1.w1").State})
 }
 
 func TestHoldThenStartRefusesHeld(t *testing.T) {

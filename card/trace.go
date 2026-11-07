@@ -34,6 +34,8 @@ import (
 //     gives (heads[0] is the base); a head not in it is an error.
 //   - finding: text in the code, "-" or "fix" in the model (whether a read
 //     asked for a fix): any non-empty finding is "fix".
+//   - A fault whose reason names a missing route (RouteFault) is the
+//     model's result "route"; the reason is otherwise left out.
 //   - Score and priority are carried as they are (any number, any level);
 //     the model's bounds on them (0..1; normal or blocker) are on its
 //     environment's choices, not on its moves.
@@ -129,7 +131,11 @@ func traceCons(c store.Card, head func(string) (int, error)) (ModelCons, error) 
 		return ModelCons{}, err
 	}
 	prior, err := head(c.Prior)
-	return ModelCons{St: c.State, Kind: c.Kind, Row: c.Holder, Att: c.Attempt, Head: h, Res: cmp.Or(c.Result, "-"),
+	res := cmp.Or(c.Result, "-")
+	if _, route := RouteFault(c.Reason); route && res == "fault" && c.Kind == "work" {
+		res = "route" // the model's name for a fault naming a missing route (defect 48)
+	}
+	return ModelCons{St: c.State, Kind: c.Kind, Row: c.Holder, Att: c.Attempt, Head: h, Res: res,
 		Author: cmp.Or(c.Author, "none"), Review: c.Review, Prior: prior, Finding: fixOrNone(c.Finding)}, err
 }
 

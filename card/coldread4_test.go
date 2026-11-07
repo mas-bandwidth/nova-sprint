@@ -122,7 +122,6 @@ func TestColdread4DefectMergedHoldThenWithdrawReadiesInAHeldStream(t *testing.T)
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
-	w.consume("p1.w1", Take{Row: "r1"})
 	s := w.snap()
 	hold, r := MoveStream(StreamFromStore(s.Streams["s1"]), HoldStream{Reason: "freeze", Seq: s.Seq})
 	require.Nil(t, r)
@@ -196,7 +195,6 @@ func TestColdread4DefectMergedFencesContradict(t *testing.T) {
 		hold, r := MoveStream(StreamFromStore(s.Streams["s1"]), HoldStream{Reason: "freeze", Seq: s.Seq})
 		require.Nil(t, r)
 		w.op("hold", hold)
-		w.consume("p1.w1", Take{Row: "r1"})
 		w.consume("p1.w1", Report{Row: "r1", Result: "fail", Head: h1, Reason: "tests red"})
 		unhold, r := MoveStream(StreamFromStore(w.snap().Streams["s1"]), UnholdStream{Reason: "thaw"})
 		require.Nil(t, r)
@@ -729,7 +727,7 @@ func (w *world) cold4One(rng *rand.Rand) cold4Step {
 			head = c.Head
 		}
 		res := []string{"ok", "ok", "fix", "fail", "fault"}[rng.Intn(5)]
-		evs := []Event{Take{Row: c.Holder}, Report{Row: c.Holder, Result: res, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
+		evs := []Event{Report{Row: c.Holder, Result: res, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
 		return cold4C(c.ID, evs[rng.Intn(len(evs))])
 	case n < 18:
 		e := []Event{Seen{}, Gone{}, Hold{Reason: "h"}, Unhold{Reason: "u"}}[rng.Intn(4)]
@@ -780,8 +778,6 @@ func (w *world) cold4Drive(rng *rand.Rand) (cold4Step, bool) {
 	case Working:
 		c := all[workID(p.ID, p.Attempt)]
 		switch c.State {
-		case Ready:
-			return cold4C(c.ID, Take{Row: c.Holder}), true
 		case Working:
 			h := []string{h1, h2, coldH3}[rng.Intn(3)]
 			return cold4C(c.ID, Report{Row: c.Holder, Result: []string{"ok", "ok", "fail", "fault"}[rng.Intn(4)], Head: h, Reason: "r"}), true
@@ -803,8 +799,6 @@ func (w *world) cold4ReviewDrive(rng *rand.Rand, p Card, cons []Card) cold4Step 
 	for _, c := range cons {
 		switch {
 		case c.Kind != "read":
-		case c.State == Ready:
-			return cold4C(c.ID, Take{Row: c.Holder})
 		case c.State == Working:
 			return cold4C(c.ID, Report{Row: c.Holder, Result: []string{"ok", "fix"}[rng.Intn(2)], Head: p.Head, Reason: "finding"})
 		case c.State == Done && c.Review == p.Review && c.Result == "ok":
@@ -1010,7 +1004,7 @@ func (w *world) cold4ReviewPair(rng *rand.Rand) []cold4Step {
 
 // ---- ReportPlan (37047a14) ----
 
-// cold4Taken is p1 working on r1 with p1.w1 taken; held holds s1 first.
+// cold4Taken is p1 working on r1 with p1.w1 in hand; held holds s1 after.
 func cold4Taken(t *testing.T, held bool) *world {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
@@ -1021,7 +1015,6 @@ func cold4Taken(t *testing.T, held bool) *world {
 		require.Nil(t, r)
 		w.op("hold", hold)
 	}
-	w.consume("p1.w1", Take{Row: "r1"})
 	return w
 }
 
@@ -1073,7 +1066,6 @@ func TestColdread4ReportPlanEqualsOneByOne(t *testing.T) {
 			w.consume("p1.w1", Report{Row: "r1", Result: "fail", Head: h2, Reason: "half"})
 			w.move("p1", Broken{Consumer: "p1.w1"})
 			w.move("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
-			w.consume("p1.w2", Take{Row: "r1"})
 			return w
 		}
 		one, two := mk(), mk()
@@ -1108,7 +1100,6 @@ func TestColdread4ReportPlanStale(t *testing.T) {
 	w2.consume("p1.w1", Report{Row: "r1", Result: "fail", Head: h2})
 	w2.move("p1", Broken{Consumer: "p1.w1"})
 	w2.move("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
-	w2.consume("p1.w2", Take{Row: "r1"})
 	_, r = w2.cold4ReportPlan("p1.w2", Report{Row: "r1", Result: "ok", Head: h2})
 	refusal{r, "head " + h2 + " is the prior head; nothing new was pushed"}.check(t)
 }
@@ -1119,7 +1110,6 @@ func TestColdread4ReportPlanStale(t *testing.T) {
 func TestColdread4ReportPlanReadIsTheConsumerAlone(t *testing.T) {
 	w := cold4Review(t)
 	w.move("p1", AskRead{Row: "r2"})
-	w.consume("p1.r1.1", Take{Row: "r2"})
 	rep := Report{Row: "r2", Result: "ok", Head: h1, Reason: "fine"}
 	plan, r := w.cold4ReportPlan("p1.r1.1", rep)
 	require.Nil(t, r)

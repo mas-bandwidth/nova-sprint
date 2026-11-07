@@ -227,9 +227,9 @@ func TestColdread2DefectWallGrantsWriteToCommonGitDir(t *testing.T) {
 // exited while runner was down" (runner.go:297-304).
 func TestColdread2DefectNoSlotBecomesFaultReport(t *testing.T) {
 	t.Parallel()
-	sp := &cr2Sprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
+	sp := &cr2Sprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
 	r := cr2Runner_internal(t, sp, &cr2Wall{err: ErrNoSlot}, &cr2Procs{}, time.Unix(1000, 0))
-	if err := r.RunConsumer(context.Background(), sp.next, sp.next.Ready[0]); !errors.Is(err, ErrNoSlot) {
+	if err := r.RunConsumer(context.Background(), sp.next, sp.next.Working[0]); !errors.Is(err, ErrNoSlot) {
 		t.Fatalf("want ErrNoSlot, got %v", err)
 	}
 	sp.mu.Lock()
@@ -252,9 +252,9 @@ func TestColdread2DefectNoSlotBecomesFaultReport(t *testing.T) {
 func TestColdread2DefectRefusedReportResentEveryWake(t *testing.T) {
 	t.Parallel()
 	sp := &cr2Sprint{reportErr: fmt.Errorf("%w: consumer p1.r1 is held by amd-2.ds", ErrRefused),
-		next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
+		next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
 	r := cr2Runner_internal(t, sp, &cr2Wall{}, &cr2Procs{}, time.Unix(1000, 0))
-	_ = r.RunConsumer(context.Background(), sp.next, sp.next.Ready[0])
+	_ = r.RunConsumer(context.Background(), sp.next, sp.next.Working[0])
 	sp.mu.Lock()
 	sp.next.Ready, sp.next.Working = nil, []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2, Attempt: 1}}
 	sp.mu.Unlock()
@@ -279,9 +279,9 @@ func TestColdread2DefectRefusedReportResentEveryWake(t *testing.T) {
 // (runner.go:590) and a work consumer is reported ok with no head.
 func TestColdread2DefectNoGitReportsOkWithoutHead(t *testing.T) {
 	t.Parallel()
-	sp := &cr2Sprint{kind: "work", next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 2}}}}
+	sp := &cr2Sprint{kind: "work", next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 2}}}}
 	r := cr2Runner_internal(t, sp, &cr2Wall{}, &cr2Procs{}, time.Unix(1000, 0))
-	_ = r.RunConsumer(context.Background(), sp.next, sp.next.Ready[0])
+	_ = r.RunConsumer(context.Background(), sp.next, sp.next.Working[0])
 	for _, rep := range sp.reported() {
 		if rep.Result == "ok" && rep.Head == "" {
 			t.Errorf("work consumer %s reported ok with no pushed head", rep.Consumer)

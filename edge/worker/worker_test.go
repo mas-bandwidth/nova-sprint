@@ -18,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -697,12 +698,12 @@ func TestReportRequiresAcceptedMatchingReceiptBeforeClean(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	sp := &rejectReceiptSprint{
-		crSprint: crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}},
+		crSprint: crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}},
 		receipt:  store.Receipt{Accepted: false, Op: "res-e1-p1.r1-a0-g2", Reason: "gen mismatch"},
 	}
 	r := crRunner_internal(t, sp, &crWall{})
 	jobDir := filepath.Join(r.RootDir, "jobs", "p1.r1")
-	if err := r.RunConsumer(ctx, sp.next, sp.next.Ready[0]); !errors.Is(err, ErrRefused) {
+	if err := r.RunConsumer(ctx, sp.next, sp.next.Working[0]); !errors.Is(err, ErrRefused) {
 		t.Fatalf("unaccepted receipt must refuse and not clean: got %v", err)
 	}
 	rec, err := ReadJobRecord(jobDir)
@@ -775,7 +776,7 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	}
 
 	// Verify RunConsumer propagates *FetchError and reports nothing.
-	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 1}}}}
+	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 1}}}}
 	fGit := newFakeGit_internal()
 	fGit.rebaseErr = &FetchError{StreamRef: "sprint/s1/group", Cause: errors.New("network down")}
 	wall := &fakeWall{
@@ -795,7 +796,7 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runErr := r.RunConsumer(ctx, sp.next, sp.next.Ready[0])
+	runErr := r.RunConsumer(ctx, sp.next, sp.next.Working[0])
 	if !errors.As(runErr, &fe) {
 		t.Fatalf("expected RunConsumer to propagate *FetchError, got %v", runErr)
 	}
@@ -818,7 +819,7 @@ func (s *workTakeSprint) Take(_ context.Context, _, id string, gen int) (TakeInf
 
 func TestConcurrentWidthWithdrawStopsRunningHarness(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 2, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}}}}
+	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}}}}
 	started := make(chan struct{})
 	canceled := make(chan error, 1)
 	wall := &cancelWaitWall{started: started, canceled: canceled}
@@ -911,8 +912,10 @@ func TestRunnerHooksInAsWorkerBeforeFirstTake(t *testing.T) {
 	if err := runner.RunOnce(ctx, row); err == nil || !strings.Contains(err.Error(), "hook in to the bus first") {
 		t.Fatalf("a bus hook that did not claim the name must stop the start, got %v", err)
 	}
-	if snap, _ := st.Snapshot(ctx); snap.Cards["p1.w1"].State == card.Working || snap.Cards["p1.w1"].State == card.Done {
-		t.Fatalf("a card moved before the row was hooked in")
+	// The card is in hand from the deal (defect 52); before the hook the
+	// row neither acknowledges it nor reports it.
+	if snap, _ := st.Snapshot(ctx); snap.Cards["p1.w1"].State != card.Working || snap.Cursors[steps.AckCursor(1, "p1.w1")] != 0 {
+		t.Fatalf("the row acted on a card before it was hooked in: %+v %v", snap.Cards["p1.w1"], snap.Cursors)
 	}
 	claim = true
 	if err := runner.RunOnce(ctx, row); err != nil {

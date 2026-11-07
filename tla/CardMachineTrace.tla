@@ -42,7 +42,7 @@ traceVars == <<vars, l>>
 
 CardMoves == {"Resolve", "Park", "Reached", "Start", "Finished", "Broken", "Faulted", "Released",
               "AskRead", "AskReads", "ReadYes", "ReadFix", "WaiveRed", "Landed", "Cancel", "Replace",
-              "NeedFailed", "Waive", "Relink", "Block", "Unblock", "Take", "Report", "Withdraw"}
+              "NeedFailed", "Waive", "Relink", "Block", "Unblock", "Report", "Withdraw"}
 EnvMoves  == {"Edit", "Rescore", "SetPriority", "Red", "Seen", "Gone", "Width", "Hold", "Unhold",
               "HoldStream", "UnholdStream", "RawHold"}
 TraceActions == {"Init"} \cup CardMoves \cup EnvMoves
@@ -85,7 +85,6 @@ CardStep(r) ==
     [] r.action = "Relink"     -> Relink(r.p, r.n, r.to)
     [] r.action = "Block"      -> Block(r.p)
     [] r.action = "Unblock"    -> Unblock(r.p)
-    [] r.action = "Take"       -> Take(r.c, r.r)
     [] r.action = "Report"     -> Report(r.c, r.r, r.res, r.h)
     [] r.action = "Withdraw"   -> Withdraw(r.c, r.h)
     [] OTHER                   -> FALSE
