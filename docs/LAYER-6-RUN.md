@@ -806,3 +806,12 @@ github.com credential is always gh as the host's login (no switch on
 - `release` gains `--head <sha>`: a row releasing a working work card it holds names the partial
   head it pushed, checked as a finish's head is; the producer goes back at that head with no
   bounce. nova-worker uses it for a job its restart cannot rebuild.
+
+### Built: the installer's model retired (stitch, 2026-11-07)
+
+- The installer (`verbs/install*.go`) went with the verbs rewrite (c8b859a6): installing a release
+  onto a machine is nova-fleet's install, and `make install` places a local build through
+  `tools/placebin`. Its model (`tla/Install*.tla`, its witnesses, `Install-runs.json`) and the 64
+  install trace cases in `tla/check-layer6-traces.py` described code that no longer exists, and
+  the trace script failed before checking anything (its emitter `TestInstallTraceWalk` was gone).
+  Both are removed; the layer 6 trace check now emits and checks run, setup, handoff and choices.

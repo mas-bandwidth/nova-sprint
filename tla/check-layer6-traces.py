@@ -22,7 +22,7 @@ import tarfile
 SPEC_FILES = (
     'Run.tla RunTrace.tla RunClear.tla RunClearTrace.tla Setup.tla SetupWalk.tla '
     'SetupTrace.tla SetupChoices.tla SetupChoicesWalk.tla SetupChoicesTrace.tla '
-    'Install.tla InstallTrace.tla SetupHandoff.tla SetupHandoffTrace.tla check-trace.sh '
+    'SetupHandoff.tla SetupHandoffTrace.tla check-trace.sh '
     'check-layer6-traces.py'
 ).split()
 
@@ -70,8 +70,7 @@ def expected_cases():
                 + [('run-stop', 'Run')]
                 + [('setup', 'Setup')]
                 + [('handoff-' + str(s), 'SetupHandoff') for s in (0, 1)]
-                + [('choices-' + s, 'SetupChoices') for s in ('none', 'configured')]
-                + [(f'install-{s:03d}', 'Install') for s in range(64)])
+                + [('choices-' + s, 'SetupChoices') for s in ('none', 'configured')])
 
 
 def run_emit(repo, out, name, package, test, env_values, args):
@@ -121,15 +120,6 @@ def emit_groups(repo, out, args, cases):
              {'NOVA_SETUP_CHOICES_TRACE_DIR': str(choices)}, args)
     for name in ('none', 'configured'):
         cases.append(case(repo, out, 'choices-' + name, 'SetupChoices', choices / (name + '.tla')))
-    installs = out / 'emitted' / 'install'
-    installs.mkdir()
-    run_emit(repo, out, 'install', './verbs', 'TestInstallTraceWalk',
-             {'NOVA_INSTALL_TRACE_DIR': str(installs)}, args)
-    expected = [installs / f'walk-{i:03d}' / 'InstallTraceLog.tla' for i in range(64)]
-    if set(installs.glob('*/InstallTraceLog.tla')) != set(expected):
-        raise RuntimeError('installer did not emit exactly 64 expected trace inputs')
-    for index, trace in enumerate(expected):
-        cases.append(case(repo, out, f'install-{index:03d}', 'Install', trace))
 
 
 def emit(repo, out, args):
