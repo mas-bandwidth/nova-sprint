@@ -102,12 +102,17 @@ func (e *Engine) look(ctx context.Context, v *nextView, inventory bool) error {
 	return nil
 }
 
-// unready is next's answer when the store cannot be read: the fleet down or
-// the store not set up is guidance; anything else is a failure to look.
+// unready is next's answer when the store cannot be read: the fleet down,
+// the store not set up or a refusal (no sprint credential in this process)
+// is guidance; anything else is a failure to look.
 func (e *Engine) unready(ctx context.Context, v *nextView, cause error) error {
 	if errors.Is(cause, ErrNotSetUp) {
 		v.Message, v.Next = "the sprint is not set up", "nova-sprint up --as "+cmp.Or(v.Row, "<coordinator>")
 		return nil
+	}
+	var op *OperationError
+	if errors.As(cause, &op) && op.Exit != exitFailed {
+		return guidance(v, op)
 	}
 	if e.Doctor == nil {
 		return cause
@@ -184,6 +189,9 @@ func answer(v *nextView, snap store.Snapshot) {
 		v.Message, v.Next = "judgement "+v.Judgements[0].ID+" needs you", v.Judgements[0].Command
 	} else {
 		v.Message, v.Next = streamsAnswer(snap)
+		if snap.Stopped && (v.Next == waitNext || v.Role != "coordinator") {
+			v.Message, v.Next = stoppedAnswer(snap, v.Row, v.Role)
+		}
 	}
 	if more := len(v.Working) + len(v.Ready) + len(v.Judgements) - 1; more > 0 {
 		v.Message += fmt.Sprintf(" (%d more: nova-sprint next --as %s --json lists them)", more, v.Row)
@@ -209,6 +217,18 @@ func stepOf(c store.Card, row string, epoch int) string {
 		return fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, epoch)
 	}
 	return fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, epoch)
+}
+
+// stoppedAnswer is a stopped sprint's answer when nothing else is owed: a
+// fresh store is stopped, never started, until the coordinator starts it.
+// The coordinator is told to start once the streams need nothing first; a
+// worker waits, whatever the streams need.
+func stoppedAnswer(snap store.Snapshot, row, role string) (string, string) {
+	msg := "the sprint is stopped (" + orWord(snap.StopReason, "no reason given") + "): nothing is dealt, read or landed until it starts"
+	if role == "coordinator" {
+		return msg, "nova-sprint start --as " + row + " --reason \"<why>\""
+	}
+	return msg, waitNext
 }
 
 // streamsAnswer is the sprint's state when nothing is owed: no stream, an

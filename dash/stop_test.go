@@ -18,6 +18,7 @@ func TestAdvanceSnapshotKeepsStopAcrossOrdinaryEvent(t *testing.T) {
 			t.Fatalf("%s: %+v %v", id, r, err)
 		}
 	}
+	write("start", store.SetStopped{Stopped: false, Reason: "go"})
 	write("stop", store.SetStopped{Stopped: true, Reason: "pause"})
 	s, err := f.Snapshot(ctx)
 	if err != nil {
@@ -31,5 +32,17 @@ func TestAdvanceSnapshotKeepsStopAcrossOrdinaryEvent(t *testing.T) {
 	got := store.Fold(s, events)
 	if !got.Stopped || got.StopReason != "pause" || got.Cursors["reader"] != s.Seq {
 		t.Fatalf("snapshot: %+v", got)
+	}
+}
+
+// The board of a fresh store shows STOPPED with its reason, never started,
+// until the coordinator's first start (Glenn, 2026-11-07).
+func TestFreshStoreShowsStoppedNeverStarted(t *testing.T) {
+	s, err := store.NewFake().Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := machineLine(s); got != "machine: STOPPED never started" || !s.Stopped || s.StopReason != store.NeverStarted {
+		t.Fatalf("a fresh store's board: %q (stopped %v, reason %q)", got, s.Stopped, s.StopReason)
 	}
 }

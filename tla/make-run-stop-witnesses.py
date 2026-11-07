@@ -33,6 +33,11 @@ def main():
         ('RunStoppedFenceDropped', 'NoAcceptedTickWhileStopped', False, 1,
          '/\\ sequenceFresh[p] \\* Atomic store AtSeq condition',
          '/\\ TRUE \\* FAULT: precheck cannot fence an in-flight write'),
+        # The defect of 2026-11-07: a fresh store ran, and the run dealt while
+        # up was at step 7 with no start given.
+        ('RunFreshRunning', 'NeverStartedMovesNothing', True, 0,
+         '/\\ sprintStopped = InitiallyStopped /\\ stopCount = 0',
+         '/\\ sprintStopped = FALSE /\\ stopCount = 0 \\* FAULT: a fresh store runs'),
     ]
     for name, target, stopped, stops, before, after in faults:
         assert source.count(before) == 1, name

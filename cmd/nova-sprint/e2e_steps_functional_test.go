@@ -19,6 +19,9 @@ func (x *e2e) coordinatorHooks() {
 	}
 	busHook(x.t, x.tr, x.busEnv, "carol", x.inbox("carol"))
 	x.c.must([]string{"hook", "--as", "carol", "--role", "coordinator"}, "HOOKED carol role=coordinator")
+	x.tr.note("a fresh store is stopped, never started; the coordinator starts it")
+	x.c.must([]string{"show", "--as", "carol"}, `"StopReason": "never started"`)
+	x.c.must([]string{"start", "--reason", "e2e", "--as", "carol"}, "STARTED applied at seq")
 }
 
 // streamAndCard adds the stream (the local origin, --forge github) and one

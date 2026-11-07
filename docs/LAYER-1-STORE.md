@@ -794,3 +794,34 @@ and cold-rebuild bars on every head: its disks are consumer NVMe (Samsung
 are datacenter NVMe (PM9A3) with it. The bars are judged on hetzner2's
 numbers above; vision's are for the comparison only. pg_stat_statements is
 not loadable on vision, so its logs have no STMT lines.
+
+## Built: a fresh store is stopped, never started (2026-11-07)
+
+A run could tick, deal and push on a store `up` had made at its step 2
+while `up` was still at step 7 of 8, and nothing could stop it. A fresh
+store now begins stopped, its reason `never started` (`store.NeverStarted`,
+`store.FreshStop`), until the coordinator runs `nova-sprint start`.
+
+- `Migrate` writes the stop into the epoch row in the same transaction that
+  creates the schema, and only when no meta row existed before it; a store
+  migrated again keeps whatever stop it has. The schema hash is unchanged.
+- `Rebuild` folds from the fresh image (`Fold(freshSnapshot(), events)`),
+  so a log with no stop or start event rebuilds stopped "never started", as
+  the store reads. `NewFake` starts the same way. A store made before this
+  change has no stop event and reads running: run `nova-sprint stop` (or
+  `start`) on it once, so the log and the row agree, before
+  `check --integrity` or a backup's verification compares them.
+- The streaming fold the backup verification uses (`verbs/rebuild.go`) did
+  not fold the stop at all; any stopped sprint would have failed its backup
+  check. It now starts from `FreshStop`, keeps the stop across a clear and
+  folds each event's stop.
+- A fenced op on the fresh store refuses `the sprint is stopped (never
+  started): nova-sprint start`; the conformance suite runs this on both the
+  Fake and PostgreSQL (refused fresh tick, refused fresh stop "already
+  stopped", accepted first start, then the old sequence).
+- `tla/Store.tla`: `Empty.stopped` is TRUE; two ops run first, `n1` (a
+  Running-fenced write, refused) and `n2` (the start). The invariant
+  `FreshMovesNothing` says an accepted Running-fenced op needs an accepted
+  start before it; the witness `StoreFreshRunning` (the fresh store running)
+  violates it, and the reach `NeverFreshRefused` shows `n1` is refused. The
+  store traces were regenerated from the code.

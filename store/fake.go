@@ -46,9 +46,10 @@ type fakeEvent struct {
 	before, after, receipt []byte
 }
 
-// NewFake is an empty store at epoch 1.
+// NewFake is an empty store at epoch 1, stopped as a fresh store is
+// (FreshStop: nothing moves until a start).
 func NewFake() *Fake {
-	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, judges: map[key]Judgement{}, cursors: map[string]int64{}, ops: map[string]int{}, drops: map[string]bool{}}
+	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, judges: map[key]Judgement{}, cursors: map[string]int64{}, ops: map[string]int{}, drops: map[string]bool{}, stop: FreshStop}
 }
 
 // Drop makes the next Apply or Clear of op id report ErrUnknown, as if the

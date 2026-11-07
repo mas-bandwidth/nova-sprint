@@ -224,6 +224,16 @@ type Stop struct {
 	Reason  string `json:"reason"`
 }
 
+// NeverStarted is a fresh store's stop reason: a store begins stopped, and
+// nothing moves until the coordinator's first `nova-sprint start` (Glenn,
+// 2026-11-07: the run ticked on a fresh store while up was at step 7).
+const NeverStarted = "never started"
+
+// FreshStop is the stop every store begins with, which no event records:
+// Migrate writes it into a new store's epoch row, NewFake starts with it and
+// Rebuild folds the log over it (Store.tla Empty.stopped; Run.tla Init).
+var FreshStop = Stop{Stopped: true, Reason: NeverStarted}
+
 // Receipt is what an operation got. It is stored with its event, so Replay
 // and a repeated Apply return it exactly. It carries the original op's id,
 // kind, actor, epoch, at and note.
@@ -281,9 +291,18 @@ func emptySnapshot(epoch int) Snapshot {
 	return Snapshot{Epoch: epoch, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
 }
 
-// Rebuild folds events, in seq order from the first, into the snapshot they
-// produce. Guarantee 5 is Rebuild(every event) == Snapshot().
-func Rebuild(events []Event) Snapshot { return Fold(emptySnapshot(1), events) }
+// Rebuild folds events, in seq order from the first, over a fresh store
+// (epoch 1, FreshStop) into the snapshot they produce. Guarantee 5 is
+// Rebuild(every event) == Snapshot().
+func Rebuild(events []Event) Snapshot { return Fold(freshSnapshot(), events) }
+
+// freshSnapshot is a store before its first event: epoch 1, empty, stopped
+// with FreshStop's reason.
+func freshSnapshot() Snapshot {
+	s := emptySnapshot(1)
+	s.Stopped, s.StopReason = FreshStop.Stopped, FreshStop.Reason
+	return s
+}
 
 // Fold lays events, in seq order, over s, the snapshot before them, and
 // returns the snapshot after them (s's maps are reused): a clear empties the

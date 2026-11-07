@@ -122,9 +122,10 @@ func TestRebuildCarriesClearImage(t *testing.T) {
 		{Seq: 4, Accepted: true, After: &State{Epoch: 2, Rows: map[string]Row{"w1": row}}},
 		{Seq: 5, Reason: "no"},
 	}
-	want := Snapshot{Seq: 5, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{"w1": row}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
-	assert.Equal(t, want, Rebuild(events))
-	assert.Equal(t, emptySnapshot(1), Rebuild(nil))
+	want := Snapshot{Seq: 5, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{"w1": row}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}, Stopped: true, StopReason: NeverStarted}
+	assert.Equal(t, want, Rebuild(events), "a clear keeps the fresh stop")
+	fresh := Snapshot{Epoch: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}, Stopped: true, StopReason: "never started"}
+	assert.Equal(t, fresh, Rebuild(nil), "no events: a fresh store, stopped, never started")
 }
 
 func TestSchemaIsEmbedded(t *testing.T) {

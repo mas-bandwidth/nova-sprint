@@ -160,7 +160,8 @@ func (h *harness) seed() {
 }
 
 func (h *harness) seeded() Snapshot {
-	return Snapshot{Epoch: 1, Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": w1}, Cards: map[string]Card{"c0": c0, "c1": c1, "c2": c2, "u1": u1, "u2": u2, "u3": u3}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
+	return Snapshot{Epoch: 1, Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": w1}, Cards: map[string]Card{"c0": c0, "c1": c1, "c2": c2, "u1": u1, "u2": u2, "u3": u3}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{},
+		Stopped: true, StopReason: NeverStarted}
 }
 
 func conditions(h *harness) {
@@ -404,7 +405,7 @@ func clearCarriesRows(h *harness) {
 	r := h.clear(AtSeq{3})
 	carried := map[string]Row{"w1": {Name: "w1", State: "down", Session: "sess-a", Role: "worker", Gen: 2}, "k1": {Name: "k1", State: "down", Session: "sess-k", Role: "worker", Gen: 1}}
 	assert.Equal(h.t, Receipt{Op: r.Op, Kind: "clear", Actor: "tester", Epoch: 1, At: r.At, Note: r.Note, Accepted: true, Seq: 4, NewEpoch: 2, After: &State{Epoch: 2, Rows: carried}}, r)
-	assert.Equal(h.t, Snapshot{Seq: 4, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: carried, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}},
+	assert.Equal(h.t, Snapshot{Seq: 4, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: carried, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}, Stopped: true, StopReason: NeverStarted},
 		h.snap(), "rows are carried down with no flaps; streams and cards are not; policy is kept")
 	ev := h.events()
 	require.Len(h.t, ev, 4)
@@ -489,10 +490,15 @@ func hook(h *harness) {
 
 // stop: the sprint's stop is one value for the store, set by SetStopped,
 // refused when unchanged, kept by a clear, and in the log's images so a
-// rebuild has it. The store refuses nothing on it (ops still land) except
-// an op fenced on Running, which run's tick ops are.
+// rebuild has it. A fresh store is stopped, never started, until its first
+// start. The store refuses nothing on it (ops still land) except an op
+// fenced on Running, which run's tick ops are.
 func stop(h *harness) {
+	assert.Equal(h.t, []any{true, NeverStarted}, []any{h.snap().Stopped, h.snap().StopReason}, "a fresh store is stopped, never started")
 	h.seed()
+	h.refused(h.op("fresh-tick", []Expect{Running{}}, SetCardReason{"c1", "a tick op"}), "the sprint is stopped (never started): nova-sprint start")
+	h.refused(h.op("fresh-stop", nil, SetStopped{true, "again"}), "the sprint is already stopped")
+	h.ok(h.op("first-start", nil, SetStopped{false, "go"}))
 	r := h.ok(h.op("stop", nil, SetStopped{true, "glenn: pause"}))
 	assert.Equal(h.t, &State{Stop: &Stop{true, "glenn: pause"}}, r.After)
 	assert.Equal(h.t, []any{true, "glenn: pause"}, []any{h.snap().Stopped, h.snap().StopReason})

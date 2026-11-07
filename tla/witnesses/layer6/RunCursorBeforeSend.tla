@@ -29,6 +29,14 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
  facts must be requeryable by stable (kind, card, sha): steps reemit queries
  for awaiting cards. L4 tests that assumption; this module does not prove it.
 
+ Init is the store the run comes up on, not a set-up sprint: up starts the
+ run service at step 4 of its 8, so a run may take the lock and tick before
+ the walk is done. InitiallyStopped=TRUE is a fresh store (stopped, reason
+ "never started", store.FreshStop), as every store begins; started records
+ the coordinator's first Start, and nothing moves before it
+ (NeverStartedMovesNothing). InitiallyStopped=FALSE is a store whose sprint
+ was started before this run came up (a restart, a failover).
+
  MaxFailures bounds crashes/lock losses/hook failures; MaxReports bounds
  reports. Liveness assumes eventual stability, fair scheduling, successful
  sends and a nonzero budget. It does not prove the one-second/two-tick bar.
@@ -53,17 +61,18 @@ Blank == [phase |-> "down", seen |-> {}, copy |-> [c \in Cards |-> 0],
           tickApplied |-> 0, checked |-> FALSE, control |-> "unknown"]
 EmptyPush == [stage |-> "idle", lo |-> 0, hi |-> 0]
 
-VARIABLES sprintStopped, stopCount, tickCallSafe, tickStopSafe, sequenceFresh, observedFresh, fenceFrozen,
+VARIABLES sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, sequenceFresh, observedFresh, fenceFrozen,
           lock, hook, local, gens, done, counts, events, reports, failures,
           cursor, sent, push, commitOwned, commitFresh, pushCommitted,
           fifoKept, observedStop, edgeDone
-vars == <<sprintStopped, stopCount, tickCallSafe, tickStopSafe, sequenceFresh, observedFresh, fenceFrozen,
+vars == <<sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, sequenceFresh, observedFresh, fenceFrozen,
           lock, hook, local, gens, done, counts, events, reports, failures,
           cursor, sent, push, commitOwned, commitFresh, pushCommitted,
           fifoKept, observedStop, edgeDone>>
 Active(p) == lock = p /\ hook = p
 Init ==
   /\ sprintStopped = InitiallyStopped /\ stopCount = 0
+  /\ started = ~InitiallyStopped
   /\ tickCallSafe = TRUE /\ tickStopSafe = TRUE
   /\ sequenceFresh = [p \in Processes |-> FALSE]
   /\ observedFresh = [p \in Processes |-> FALSE]
@@ -82,7 +91,7 @@ Init ==
 Take(p) ==
   /\ lock = NoOwner /\ local[p].phase = "down"
   /\ lock' = p /\ local' = [local EXCEPT ![p].phase = "hook"]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, hook, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, hook, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 Hook(p) ==
@@ -90,7 +99,7 @@ Hook(p) ==
   /\ hook' = p
   /\ local' = [local EXCEPT ![p] = [Blank EXCEPT !.phase = "ready"]]
   /\ fenceFrozen' = [fenceFrozen EXCEPT ![p] = FALSE]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 HookFailure(p) ==
@@ -98,7 +107,7 @@ HookFailure(p) ==
   /\ lock' = NoOwner /\ local' = [local EXCEPT ![p] = Blank]
   /\ failures' = failures + 1
   /\ fenceFrozen' = [fenceFrozen EXCEPT ![p] = FALSE]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, tickCallSafe, tickStopSafe, hook, gens, done, counts, events, reports, cursor, sent,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, hook, gens, done, counts, events, reports, cursor, sent,
        push, commitOwned, commitFresh, pushCommitted, fifoKept, observedStop, edgeDone>>
 
 \* The PG connection dies before this process notices. The bus hook can
@@ -107,12 +116,12 @@ LoseLock(p) ==
   /\ lock = p /\ failures < MaxFailures
   /\ lock' = NoOwner /\ hook' = IF hook = p THEN NoOwner ELSE hook
   /\ failures' = failures + 1
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, local, gens, done, counts, events, reports, cursor, sent,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, local, gens, done, counts, events, reports, cursor, sent,
        push, commitOwned, commitFresh, pushCommitted, fifoKept, observedStop, edgeDone>>
 LoseHook(p) ==
   /\ hook = p /\ failures < MaxFailures
   /\ hook' = NoOwner /\ failures' = failures + 1
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, local, gens, done, counts, events, reports, cursor, sent,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, local, gens, done, counts, events, reports, cursor, sent,
        push, commitOwned, commitFresh, pushCommitted, fifoKept, observedStop, edgeDone>>
 Crash(p) ==
   /\ local[p].phase # "down" /\ failures < MaxFailures
@@ -122,7 +131,7 @@ Crash(p) ==
   /\ push' = [push EXCEPT ![p] = [r \in Recipients |-> EmptyPush]]
   /\ failures' = failures + 1
   /\ fenceFrozen' = [fenceFrozen EXCEPT ![p] = FALSE]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, tickCallSafe, tickStopSafe, gens, done, counts, events, reports, cursor, sent,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, gens, done, counts, events, reports, cursor, sent,
        commitOwned, commitFresh, pushCommitted, fifoKept, observedStop, edgeDone>>
 NoticeLost(p) ==
   /\ local[p].phase # "down" /\ ~Active(p)
@@ -131,7 +140,7 @@ NoticeLost(p) ==
   /\ lock' = IF lock = p THEN NoOwner ELSE lock
   /\ hook' = IF hook = p THEN NoOwner ELSE hook
   /\ fenceFrozen' = [fenceFrozen EXCEPT ![p] = FALSE]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, tickCallSafe, tickStopSafe, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 
@@ -150,13 +159,14 @@ Stop ==
   /\ observedFresh' = [q \in Processes |-> FALSE]
   /\ ~sprintStopped /\ stopCount < MaxStops
   /\ sprintStopped' = TRUE /\ stopCount' = stopCount + 1
-  /\ UNCHANGED <<fenceFrozen, lock, hook, local, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<started, fenceFrozen, lock, hook, local, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone, tickCallSafe, tickStopSafe>>
 Start ==
   /\ sequenceFresh' = [q \in Processes |-> FALSE]
   /\ observedFresh' = [q \in Processes |-> FALSE]
   /\ sprintStopped /\ sprintStopped' = FALSE
+  /\ started' = TRUE
   /\ UNCHANGED <<fenceFrozen, lock, hook, local, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone, stopCount, tickCallSafe, tickStopSafe>>
@@ -166,7 +176,7 @@ ReadControl(p) ==
   /\ observedFresh' = [observedFresh EXCEPT ![p] = TRUE]
   /\ UNCHANGED <<sequenceFresh, fenceFrozen, lock, hook, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
-       fifoKept, observedStop, edgeDone, sprintStopped, stopCount, tickCallSafe, tickStopSafe>>
+       fifoKept, observedStop, edgeDone, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe>>
 
 \* Capture the exact observed seq ONCE for this op, before its first Apply.
 \* A later fold after an unknown outcome must not replace the captured fence.
@@ -178,7 +188,7 @@ CaptureFence(p) ==
   /\ UNCHANGED <<observedFresh, lock, hook, local, gens, done, counts,
        events, reports, failures, cursor, sent, push, commitOwned, commitFresh,
        pushCommitted, fifoKept, observedStop, edgeDone, sprintStopped,
-       stopCount, tickCallSafe, tickStopSafe>>
+       stopCount, started, tickCallSafe, tickStopSafe>>
 
 Fold(p) ==
   /\ Active(p) /\ local[p].phase = "ready"
@@ -189,7 +199,7 @@ Fold(p) ==
      IN local' = [local EXCEPT ![p].phase = "select", ![p].copy = gens,
           ![p].fold = Len(events), ![p].carry = q, ![p].seen = Jobs,
           ![p].checked = TRUE, ![p].tickApplied = 0]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 Select(p) ==
@@ -200,7 +210,7 @@ Select(p) ==
               ![p].batch = SubSeq(q, 1, n),
               ![p].carry = SubSeq(q, n+1, Len(q))]
         /\ fifoKept' = (fifoKept /\ SubSeq(q, 1, n) \o SubSeq(q,n+1,Len(q)) = q)
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted, observedStop, edgeDone>>
 
 Report(c) ==
@@ -210,7 +220,7 @@ Report(c) ==
   /\ gens' = [gens EXCEPT ![c] = @ + 1]
   /\ reports' = reports + 1
   /\ events' = Append(events, [kind |-> "report", id |-> WorkCount + reports + 1])
-  /\ UNCHANGED <<fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, local, done, counts, failures, cursor, sent,
+  /\ UNCHANGED <<fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, local, done, counts, failures, cursor, sent,
        push, commitOwned, commitFresh, pushCommitted, fifoKept, observedStop, edgeDone>>
 Stale(p,j) == local[p].copy[Card(j)] # gens[Card(j)] \/ j \in done
 \* L3 receives the whole refused op; run never decomposes its writes.
@@ -224,7 +234,7 @@ Refuse(p) ==
        ![p].putback = Append(local[p].putback, Head(local[p].batch)),
        ![p].batch = Tail(local[p].batch)]
   /\ fenceFrozen' = [fenceFrozen EXCEPT ![p] = FALSE]
-  /\ UNCHANGED <<sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 \* Accepted append: running observation plus atomic physical-sequence fence.
@@ -250,14 +260,14 @@ Apply(p) ==
   /\ sequenceFresh' = [q \in Processes |-> FALSE]
   /\ observedFresh' = [q \in Processes |-> FALSE]
   /\ fenceFrozen' = [fenceFrozen EXCEPT ![p] = FALSE]
-  /\ UNCHANGED <<sprintStopped, stopCount, tickCallSafe, lock, hook, reports, failures, cursor, sent, push,
+  /\ UNCHANGED <<sprintStopped, stopCount, started, tickCallSafe, lock, hook, reports, failures, cursor, sent, push,
        pushCommitted, fifoKept, edgeDone>>
 EndTick(p) ==
   /\ local[p].phase = "apply" /\ local[p].batch = <<>>
   /\ local' = [local EXCEPT ![p].phase = "ready",
        ![p].carry = local[p].putback \o local[p].carry,
        ![p].putback = <<>>, ![p].checked = FALSE, ![p].control = "unknown"]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 
@@ -267,7 +277,7 @@ PreparePush(p,r) ==
   /\ Active(p) /\ push[p][r].stage = "idle" /\ cursor[r] < Len(events)
   /\ push' = [push EXCEPT ![p][r] =
                   [stage |-> "sending", lo |-> cursor[r]+1, hi |-> Len(events)]]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports,
        failures, cursor, sent, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 SendOK(p,r) ==
@@ -275,7 +285,7 @@ SendOK(p,r) ==
   /\ sent' = [sent EXCEPT ![r] = @ \cup (push[p][r].lo..push[p][r].hi)]
   /\ pushCommitted' = (pushCommitted /\ push[p][r].hi <= Len(events))
   /\ push' = [push EXCEPT ![p][r].stage = "sent"]
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports,
        failures, cursor, commitOwned, commitFresh, fifoKept, observedStop, edgeDone>>
 SaveCursor(p,r) ==
   /\ push[p][r].stage \in {"sending", "sent"}
@@ -283,7 +293,7 @@ SaveCursor(p,r) ==
   /\ push' = [push EXCEPT ![p][r] = EmptyPush]
   /\ sequenceFresh' = [q \in Processes |-> FALSE]
   /\ observedFresh' = [q \in Processes |-> FALSE]
-  /\ UNCHANGED <<fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports,
+  /\ UNCHANGED <<fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports,
        failures, sent, commitOwned, commitFresh, pushCommitted,
        fifoKept, observedStop, edgeDone>>
 
@@ -292,7 +302,7 @@ SaveCursor(p,r) ==
 DeliverEdge(j) ==
   /\ j \in done
   /\ edgeDone' = edgeDone \cup {j}
-  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports, failures,
+  /\ UNCHANGED <<sequenceFresh, observedFresh, fenceFrozen, sprintStopped, stopCount, started, tickCallSafe, tickStopSafe, lock, hook, local, gens, done, counts, events, reports, failures,
        cursor, sent, push, commitOwned, commitFresh, pushCommitted, fifoKept, observedStop>>
 
 Progress(p) == Take(p) \/ Hook(p) \/ NoticeLost(p) \/ ReadControl(p) \/ CaptureFence(p) \/ Fold(p) \/ Select(p)
@@ -309,7 +319,7 @@ Spec == Init /\ [][Next]_vars
 TypeOK == /\ sequenceFresh \in [Processes -> BOOLEAN]
           /\ observedFresh \in [Processes -> BOOLEAN]
           /\ fenceFrozen \in [Processes -> BOOLEAN]
-          /\ sprintStopped \in BOOLEAN /\ stopCount \in 0..MaxStops
+          /\ sprintStopped \in BOOLEAN /\ stopCount \in 0..MaxStops /\ started \in BOOLEAN
           /\ lock \in Processes \cup {NoOwner} /\ hook \in Processes \cup {NoOwner}
           /\ done \subseteq Jobs /\ reports \in 0..MaxReports
           /\ failures \in 0..MaxFailures
@@ -336,6 +346,20 @@ NoDroppedPlan == \A p \in Processes : local[p].phase # "down" =>
 EdgesAfterCommit == edgeDone \subseteq done
 NoTickAfterObservedStop == tickCallSafe
 NoAcceptedTickWhileStopped == tickStopSafe
+\* The brief's name (BRIEF-V2-STITCH step 3): nothing ticks while Stopped,
+\* neither a tick begun after the stop was seen nor one accepted under it.
+\* run.Ticker.Tick returns before steps.Tick when its folded copy is
+\* stopped (run/tick.go; TestNoTickWhileStopped).
+NoTickWhileStopped == NoTickAfterObservedStop /\ NoAcceptedTickWhileStopped
+\* A fresh store is stopped, its reason "never started" (store.FreshStop),
+\* and a run may come up on it before up's walk is done (up starts the run
+\* service at step 4 of 8): until the coordinator's first Start it moves
+\* nothing, no tick applied, no edge dispatched (Glenn, 2026-11-07).
+\* RunFreshRunning starts the fresh store running and violates it.
+NeverStartedMovesNothing ==
+  ~started => /\ done = {} /\ edgeDone = {}
+              /\ \A j \in Jobs : counts[j] = 0
+              /\ \A p \in Processes : local[p].tickApplied = 0
 \* Intentionally stopped service is not promised eventual work completion.
 WorkWhenRunning == (<>[](~sprintStopped)) => <>(done = Jobs)
 AllWork == <>(done = Jobs)

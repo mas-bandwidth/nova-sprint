@@ -210,8 +210,26 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, "UPDATE sprint.meta SET hash = $1 WHERE id = 1", schemaHash); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
+	if err := freshStop(ctx, tx, meta); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
+	}
+	return nil
+}
+
+// freshStop stops a store Migrate has just made (there was no sprint.meta
+// before it), with FreshStop's reason, in Migrate's transaction: a fresh
+// store moves nothing until the coordinator's first start. The column's
+// default stays false, so the schema hash is unchanged and a store made
+// before this keeps its own stop.
+func freshStop(ctx context.Context, tx pgx.Tx, existed bool) error {
+	if existed {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, "UPDATE sprint.epoch SET stopped = $1, stop_reason = $2 WHERE id = 1", FreshStop.Stopped, FreshStop.Reason); err != nil {
+		return fmt.Errorf("store: migrate: the fresh store's stop (%s) was not written: %w", FreshStop.Reason, err)
 	}
 	return nil
 }

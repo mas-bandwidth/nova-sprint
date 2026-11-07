@@ -27,11 +27,12 @@ func credentialsFromEnv() credentials {
 	return credentials{dsn: os.Getenv("NOVA_PG_DSN"), password: os.Getenv("NOVA_SPRINT_PG_PASSWORD")}
 }
 
-// sprint is the DSN as nova_sprint, or the fix: without the sprint's own
-// credential the sprint is not set up (verbs.ErrNotSetUp; up is the fix).
+// sprint is the DSN as nova_sprint, or the refusal of a process without the
+// sprint's own credential (verbs.NoCredential: the store may well be set
+// up; "not set up" is for a store without the schema, defect 22).
 func (c credentials) sprint() (string, error) {
 	if c.password == "" {
-		return "", verbs.ErrNotSetUp
+		return "", verbs.NoCredential()
 	}
 	dsn, err := setupRoleDSN(c.dsn, "nova_sprint")
 	if err != nil {

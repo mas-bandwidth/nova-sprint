@@ -66,6 +66,10 @@ refusal is the tool doing its job, not an error to work around.
    Its first line is `HOOKED <you> role=worker`, then this playbook, then a `next:` line. Before
    step 1 it refuses with `SPRINT REFUSED hook: <you> is not on the bus: hook in to the bus first:
    NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> under your session's Monitor tool`.
+   Every nova-sprint verb needs the sprint's credential in its process: run it under
+   `nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint <verb> ...`.
+   Without it a verb refuses with `this process has no sprint credential: run under nova-secrets
+   exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...`.
    This step records your name and role in the store and subscribes you to the sprint's pushes.
    Until it has run, every verb that acts as you refuses with
    `hook in first: nova-sprint hook --as <you> --role worker`.

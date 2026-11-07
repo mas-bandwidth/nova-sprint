@@ -178,14 +178,14 @@ Left out:
 
 - `Store.tla`, `Store.cfg`, `StoreRecords.cfg`: the model and its two
   passing runs.
-- `witnesses/Store*`: sixteen reversed witnesses, each `Store.tla` with one
+- `witnesses/Store*`: seventeen reversed witnesses, each `Store.tla` with one
   fault. They are generated: `python3 make-witnesses.py` writes every
   witness and every cfg (`Store.cfg`, `StoreRecords.cfg`,
   `witnesses/*.cfg`, `reach/*.cfg`) from `Store.tla` and the fault list in
   the script. Each fault is a set of exact text replacements; one that no
   longer matches stops the script. Edit `Store.tla`, rerun the script,
   commit both.
-- `reach/Never*`: twenty-six reachability checks on `Store.tla`. Each must
+- `reach/Never*`: twenty-eight reachability checks on `Store.tla`. Each must
   be violated, which shows the passing runs are not vacuous.
 
 In each witness cfg the target invariant is listed first: when one state
