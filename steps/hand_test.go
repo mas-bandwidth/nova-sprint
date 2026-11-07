@@ -25,24 +25,23 @@ func dealOne(t *testing.T) *sim {
 }
 
 // TestHandNudgesThenJudgesUnacked: a card in hand the row has not
-// acknowledged is nudged each tick from NudgeAfter after the deal, naming
-// the card and its command; at UnackedAfter one judgement names the row and
-// the card; the acknowledgement stops both. The clock is the world's.
+// acknowledged is nudged each tick from timeouts ready_nag after the deal,
+// in the human's words with the row's counts, naming the card and its
+// command; at ready_take, with no other row to deal it to, one judgement
+// names the row and the card; the acknowledgement stops both. The clock is
+// the world's.
 func TestHandNudgesThenJudgesUnacked(t *testing.T) {
 	s := dealOne(t)
-	p := s.tick()
-	assert.Empty(t, p.Nudges, "inside NudgeAfter: no nudge")
-	s.now = s.now.Add(seconds(Engine.NudgeAfter))
-	p = s.tick()
+	p := s.tick() // the first one-second tick after the deal: ready_nag is 1 s
 	require.Len(t, p.Nudges, 1)
 	n := p.Nudges[0]
 	assert.Equal(t, Nudge{Row: "r1", Card: "p1.w1"}, Nudge{Row: n.Row, Card: n.Card})
-	assert.True(t, strings.HasPrefix(n.Line, "NUDGE card=p1.w1 "), n.Line)
+	assert.True(t, strings.HasPrefix(n.Line, "NUDGE you have a new ready card. you have 1 ready cards, you are currently working on 0, and your width is 1. Please work to width! card=p1.w1 "), n.Line)
 	assert.Contains(t, n.Line, "nova-sprint take p1.w1@")
 	assert.Empty(t, s.openJudgements("unacked"), "a nudge, not yet a judgement")
 	p = s.tick()
 	assert.Len(t, p.Nudges, 1, "a nudge each tick")
-	s.now = s.now.Add(seconds(Engine.UnackedAfter))
+	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
 	s.tick()
 	js := s.openJudgements("unacked")
 	require.Len(t, js, 1)
@@ -61,12 +60,46 @@ func TestHandNudgesThenJudgesUnacked(t *testing.T) {
 func TestHandNoNudgeAfterTheReport(t *testing.T) {
 	s := dealOne(t)
 	s.report("p1.w1", "ok", sha(1), "done")
-	s.now = s.now.Add(seconds(Engine.UnackedAfter))
+	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
 	p := s.tick()
 	for _, n := range p.Nudges {
 		assert.NotEqual(t, "p1.w1", n.Card)
 	}
 	assert.Empty(t, s.openJudgements("unacked"))
+}
+
+// TestHandReadyTakeRedeals: a work card in hand, not acknowledged past
+// timeouts ready_take, is withdrawn and its producer dealt, in the same op,
+// to another row with room, never the slow row; one under the deadline is
+// nudged and left where it is (the human, 2026-11-07: "By leaving cards in
+// ready we are violating this promise").
+func TestHandReadyTakeRedeals(t *testing.T) {
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	slow := s.card("p1.w1").Holder
+	s.now = s.now.Add(time.Duration(Engine.Timeouts.ReadyTake-2) * time.Second)
+	p := s.tick()
+	require.Empty(t, s.tickOps(), "under the deadline: nudged, left alone")
+	require.Len(t, p.Nudges, 1)
+	s.requireState("p1.w1", "working")
+	s.now = s.now.Add(2 * time.Second)
+	p = s.tick()
+	require.Empty(t, s.rejected)
+	require.Len(t, s.tickOps(), 1, "the withdraw and the re-deal are one op")
+	assert.Empty(t, p.Nudges, "a re-dealt card is not nudged")
+	assert.Empty(t, s.openJudgements("unacked"), "re-dealt, not judged")
+	s.requireState("p1.w1", "fail")
+	assert.Regexp(t, `^in `+slow+`'s hand 18\d s, not taken; dealt again$`, s.card("p1.w1").Reason)
+	s.requireState("p1", "working")
+	s.requireState("p1.w2", "working")
+	assert.NotEqual(t, slow, s.card("p1.w2").Holder, "the slow row is excluded")
 }
 
 // TestHandUndealtJudged: a ready producer left undealt past UndealtAfter
