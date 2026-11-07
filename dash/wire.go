@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+
+	"github.com/mas-bandwidth/nova-sprint/usage"
 )
 
 func integer(n int) string { return strconv.Itoa(n) }
@@ -36,7 +38,8 @@ func (f fleetRow) MarshalJSON() ([]byte, error) {
 	if f.OK+f.Failed > 0 {
 		pct = fmt.Sprintf("%.1f%%", f.OKPct)
 	}
-	m := map[string]string{"status": f.Status, "width": integer(f.Width), "ready": integer(f.Ready), "working": integer(f.Working), "done": integer(f.Done), "blocker_working": integer(f.Blocker), "critical_working": integer(f.Critical), "fix_working": integer(f.Fix), "reads_working": integer(f.Reads), "ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct}
+	m := map[string]string{"status": f.Status, "width": integer(f.Width), "ready": integer(f.Ready), "working": integer(f.Working), "done": integer(f.Done), "blocker_working": integer(f.Blocker), "critical_working": integer(f.Critical), "fix_working": integer(f.Fix), "reads_working": integer(f.Reads), "ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct,
+		"tokens": usage.Compact(f.Tokens), "tokens_n": strconv.FormatInt(f.Tokens, 10)}
 	for k, v := range map[string]string{"reason": f.Reason, "load": f.Load, "slots": f.Slots} {
 		if v != "" {
 			m[k] = v

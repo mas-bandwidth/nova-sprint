@@ -1,11 +1,15 @@
 package dash
 
 import (
+	"cmp"
+	"maps"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/usage"
 )
 
 type tierPart struct {
@@ -58,51 +62,71 @@ func finishCosts(w *workRow) {
 	w.Cost, w.ByTier = partitionCents(w.tierMicros)
 }
 
-// costSummary is the sprint's whole spend as the top strip shows it. Amounts
-// are currency strings; "-" where no priced run exists, never a false $0.
+// costSummary is the sprint's whole spend as the top strip shows it: the API
+// spend (the owner, 2026-11-07: "api rate work should be priced *exactly*.
+// friend sub rate should be free."), beside the tokens kin spent on their
+// subscription seats. Amounts are currency strings; "-" where no priced API
+// run exists, never a false $0.
 type costSummary struct {
-	Total       string            `json:"total"`
+	Total       string            `json:"total"`    // every priced API run's cost
 	PerCard     string            `json:"per_card"` // total over the priced landed cards
 	ByTier      map[string]string `json:"by_tier"`
-	Priced      int               `json:"priced_runs"`
-	Unpriced    int               `json:"unpriced_runs"` // finished runs (done or fail) that reported no cost
-	Landed      int               `json:"landed_cards"`  // cards landed in this run
-	PricedCards int               `json:"priced_cards"`  // of those, the cards whose own runs carried cost: the per-card divisor
+	Priced      int               `json:"priced_runs"`   // API runs priced from their tokens
+	Unpriced    int               `json:"unpriced_runs"` // finished API runs with no price: NoTokens + NoPrice
+	NoTokens    int               `json:"unpriced_no_tokens"`
+	NoPrice     int               `json:"unpriced_no_price"`
+	Missing     []string          `json:"missing_prices"` // the models of the no-price runs, which prices() leaves out
+	Landed      int               `json:"landed_cards"`   // cards landed in this run
+	PricedCards int               `json:"priced_cards"`   // of those, the cards whose own API runs were priced: the per-card divisor
+	APITokens   string            `json:"api_tokens"`     // tokens of the priced API runs, compact (1.2M)
+	SeatRuns    int               `json:"seat_runs"`      // runs on subscription seats: free
+	SeatTokens  string            `json:"seat_tokens"`    // their tokens, compact; "0" when none reported
 }
 
-// summarizeCost sums every priced consumer (work and read) in any state, by
-// tier, and divides by the landed cards whose own runs carried cost (imported
-// v1 landings, and landed cards no run of which reported a cost, are left out
-// of the divisor).
+// summarizeCost sums every priced API consumer (work and read) in any state,
+// by tier, and divides by the landed cards whose own API runs were priced
+// (imported v1 landings, and landed cards no API run of which was priced, are
+// left out of the divisor). A subscription run adds its tokens, never
+// dollars. A record from before round 25 (no usage) counts as it was
+// recorded: priced or not.
 func summarizeCost(s store.Snapshot) *costSummary {
-	out := &costSummary{ByTier: map[string]string{}}
+	out := &costSummary{ByTier: map[string]string{}, Missing: []string{}}
 	micros := map[string]*big.Int{}
 	total := new(big.Int)
 	pricedOf := map[string]bool{}
+	missing := map[string]bool{}
+	var apiTokens, seatTokens int64
 	for _, c := range s.Cards {
-		switch c.Kind {
-		case "work", "read":
-			if c.Priced {
-				pricedOf[c.Of] = true
-				out.Priced++
-				if micros[c.Tier] == nil {
-					micros[c.Tier] = new(big.Int)
-				}
-				micros[c.Tier].Add(micros[c.Tier], big.NewInt(c.Cost))
-				total.Add(total, big.NewInt(c.Cost))
-			} else if c.State == "done" || c.State == "fail" {
-				out.Unpriced++
+		if c.Kind != "work" && c.Kind != "read" {
+			continue
+		}
+		r := usage.MustParse(c.Usage)
+		switch {
+		case r.Billing == usage.BillingSubscription:
+			out.SeatRuns++
+			seatTokens += r.Tokens.Total()
+		case c.Priced:
+			pricedOf[c.Of] = true
+			out.Priced++
+			apiTokens += r.Tokens.Total()
+			if micros[c.Tier] == nil {
+				micros[c.Tier] = new(big.Int)
+			}
+			micros[c.Tier].Add(micros[c.Tier], big.NewInt(c.Cost))
+			total.Add(total, big.NewInt(c.Cost))
+		case c.State == "done" || c.State == "fail":
+			out.Unpriced++
+			if r.Unpriced == usage.WhyNoPrice {
+				out.NoPrice++
+				missing[cmp.Or(r.Model, "(no model)")] = true
+			} else {
+				out.NoTokens++
 			}
 		}
 	}
-	for _, c := range s.Cards {
-		if c.Kind == "producer" && c.State == "landed" && !strings.HasPrefix(c.Reason, store.ImportedReason) {
-			out.Landed++
-			if pricedOf[c.ID] {
-				out.PricedCards++
-			}
-		}
-	}
+	out.Missing = append(out.Missing, slices.Sorted(maps.Keys(missing))...)
+	out.APITokens, out.SeatTokens = usage.Compact(apiTokens), usage.Compact(seatTokens)
+	out.Landed, out.PricedCards = landedCards(s, pricedOf)
 	if out.Priced == 0 {
 		out.Total, out.PerCard = "-", "-"
 		return out
@@ -120,4 +144,18 @@ func summarizeCost(s store.Snapshot) *costSummary {
 		out.PerCard = moneyCell(per.Div(per, big.NewInt(int64(out.PricedCards))))
 	}
 	return out
+}
+
+// landedCards counts the cards landed in this run (imported v1 landings left
+// out), and of those the cards with a priced API run (pricedOf).
+func landedCards(s store.Snapshot, pricedOf map[string]bool) (landed, priced int) {
+	for _, c := range s.Cards {
+		if c.Kind == "producer" && c.State == "landed" && !strings.HasPrefix(c.Reason, store.ImportedReason) {
+			landed++
+			if pricedOf[c.ID] {
+				priced++
+			}
+		}
+	}
+	return landed, priced
 }
