@@ -124,7 +124,7 @@ func testActivateRefusals(t *testing.T, w *world) {
 	assert.Equal(t, "SPRINT REFUSED policy activate: policy version 1 is already active: nova-sprint policy show", refusal(t, err))
 	w.apply(store.PutPolicy{Kind: "data", Name: "table", Body: "{}"})
 	_, err = Activate(w.ctx(), w.st, e, w.caller(), 2, "r")
-	assert.Equal(t, "SPRINT REFUSED policy activate: v2 is of kind data, which policy does not run: activate a script version: nova-sprint policy show --list", refusal(t, err))
+	assert.Equal(t, "SPRINT REFUSED policy activate: v2 is of kind data, which policy does not run: name a script version: nova-sprint policy show --list", refusal(t, err))
 	breaks, line := override("landing", "def landing(stream):\n    return {\"backed_up\": 4 // (0 if stream.name == \"s3\" else 1), \"flowing\": 1}")
 	v := w.set("breaks.star", breaks)
 	w.apply(store.PutStream{Name: "s3", Repo: "git@example.com:r.git", Base: "main", Pos: 3})

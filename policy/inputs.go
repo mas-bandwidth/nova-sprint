@@ -18,7 +18,7 @@ type index struct {
 	snap    store.Snapshot
 	rows    []store.Row         // by name, byte order
 	load    map[string][2]int   // row -> working, ready consumers it holds
-	reads   map[string][]string // producer -> its done reads of its current review, by id
+	reads   map[string][]string // producer -> its done reads of its current review and head, by id
 	streams map[string]*streamCount
 	sets    map[string]*candidateSet // by tier, kind and (for a read) author
 }
@@ -60,7 +60,7 @@ func (ix *index) count(c store.Card) {
 		l[0] += b2i(c.State == "working")
 		l[1] += b2i(c.State == "ready")
 		ix.load[c.Holder] = l
-		if p, ok := ix.snap.Cards[c.Of]; ok && c.Kind == "read" && c.State == "done" && c.Review == p.Review {
+		if p, ok := ix.snap.Cards[c.Of]; ok && c.Kind == "read" && c.State == "done" && c.Review == p.Review && c.Head == p.Head {
 			ix.reads[c.Of] = append(ix.reads[c.Of], c.ID)
 		}
 	case "producer":

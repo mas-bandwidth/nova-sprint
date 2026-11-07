@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -14,8 +15,9 @@ import (
 // prefer(candidates, rank) is the default's choice of rows, in Go so that a
 // tick's rows work is linear in its producers, not producers x rows: the
 // names of the candidates at rank and up, nearest first, then those below
-// it, highest first; those with room (working < width) first, every one
-// when none has room. Candidates come by rank, lowest first, then by name.
+// it, highest first; every candidate, those with room (working < width)
+// first (Emma's probe: dropping the busy ones could leave a card no row
+// with work above 0). Candidates come by rank, lowest first, then by name.
 // It is memoised for the thread (one version's tick) per candidate list
 // and rank, and the list it returns is frozen.
 func prefer(th *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -51,7 +53,7 @@ func prefer(th *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwarg
 // preferred is prefer's answer: the candidates by the default's order,
 // those with room first.
 func preferred(cands starlark.Tuple, want int) (*starlark.List, error) {
-	var up, below, room []starlark.Value
+	var up, below []starlark.Value
 	roomy := map[starlark.Value]bool{}
 	for _, c := range cands {
 		s, ok := c.(*starlarkstruct.Struct)
@@ -69,19 +71,10 @@ func preferred(cands starlark.Tuple, want int) (*starlark.List, error) {
 		}
 		roomy[name] = has
 	}
-	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
-		below[i], below[j] = below[j], below[i]
-	}
+	slices.Reverse(below)
 	all := append(up, below...)
-	for _, n := range all {
-		if roomy[n] {
-			room = append(room, n)
-		}
-	}
-	if len(room) == 0 {
-		room = all
-	}
-	l := starlark.NewList(room)
+	slices.SortStableFunc(all, func(a, b starlark.Value) int { return b2i(roomy[b]) - b2i(roomy[a]) })
+	l := starlark.NewList(all)
 	l.Freeze()
 	return l, nil
 }
