@@ -643,7 +643,11 @@ engine's cached bytes against the 4 MiB cap.
 
 **The model.** `tla/Policy.tla` unchanged in its actions: the deadline is
 one more way a version is in `breaks` on a tick, and the early fallback
-does not change `Pick`; only its header names the round 3 code.
+does not change `Pick`; only its header names the round 3 code. TLC on hetzner2,
+`bash tla/ci-tlc.sh` at 4e8969fb: the 17 Policy runs all as required
+(Policy.cfg no error, 10 witnesses, 6 reach checks); 114 of 115 runs ok,
+the one failure `CardDeps` (layer 2's model, not this layer's), killed
+with exit 137 after 8 minutes and 3.85M distinct states.
 
 **Owed.** The trace check binding `tla/Policy.tla` to the code (Glenn,
 2026-11-07: the code's random walk emits traces, TLC checks them in CI) is
