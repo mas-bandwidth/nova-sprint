@@ -80,6 +80,8 @@ def timeouts():
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
         "tick": 10,                   # guess: run's budget for one tick
+        "ready_nag": 1,               # Glenn 2026-11-07: nag a row holding ready cards every second
+        "ready_take": 180,            # Glenn 2026-11-07: a card ready this long is dealt elsewhere
         "consumer": {                 # a consumer's deadline by tier: nova-worker's old literals, guesses
             "flash": 900,
             "pro": 2700,

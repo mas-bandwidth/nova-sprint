@@ -68,6 +68,7 @@ type loop struct {
 	mu      sync.Mutex
 	streams map[string]store.Stream
 	hourly  cost.Hourly
+	nag     Nagger
 }
 
 func serve(ctx context.Context, cfg Config, h Health) error {
@@ -163,6 +164,9 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	}
 	for _, r := range l.ticker.Push(ctx, l.cfg.Bus, start) {
 		l.log.PushFailed(r)
+	}
+	if rerr == nil {
+		l.nag.Nag(ctx, l.cfg.Bus, l.ticker.Snapshot(), ro, time.Duration(max(1, l.ticker.Timeouts().ReadyNag))*time.Second, start)
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)

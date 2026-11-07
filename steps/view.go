@@ -34,6 +34,7 @@ type View struct {
 	paths      map[string]map[string]set // stream -> path -> producers ready or started
 
 	TakenAt map[string]time.Time   // consumer -> when it went working
+	ReadyAt map[string]time.Time   // consumer -> when it was dealt (ready)
 	Landed  map[string]time.Time   // stream -> when a producer of it last landed
 	Down    map[string]time.Time   // row -> when it last went down
 	Faults  map[string][]time.Time // row -> when its consumers reported fault
@@ -75,7 +76,7 @@ func (v *View) reset(epoch int) {
 	v.byState, v.byRung, v.consOf = map[string]set{}, map[string]set{}, map[string]set{}
 	v.liveOnRow, v.dependants = map[string]set{}, map[string]set{}
 	v.paths = map[string]map[string]set{}
-	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
+	v.TakenAt, v.ReadyAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
 	v.Faults, v.born, v.touched = map[string][]time.Time{}, map[string]int64{}, map[string]int64{}
 }
 
@@ -130,6 +131,8 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 	v.touched[c.ID] = e.Seq
 	v.index(c)
 	switch {
+	case isConsumer(c) && c.State == "ready" && (!had || old.State != "ready"):
+		v.ReadyAt[c.ID] = e.At
 	case isConsumer(c) && c.State == "working" && (!had || old.State != "working"):
 		v.TakenAt[c.ID] = e.At
 	case isConsumer(c) && c.State == "done" && c.Result == "fault" && (!had || old.State != "done"):

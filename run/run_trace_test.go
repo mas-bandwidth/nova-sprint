@@ -352,7 +352,7 @@ type tracePolicy struct{ r *runTrace }
 func (p tracePolicy) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, _ roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
 	out := policy.Answers{Version: 1, Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
 		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 100, RouteRestWindow: 10, RouteRestAfter: 3, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
-		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, BaseRegate: []int{120}}}
+		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyTake: 180, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
 		out.Order[id] = []any{int64(0), id}
 	}
