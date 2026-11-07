@@ -31,7 +31,7 @@ func TestRound7CursorFailurePublishesRead(t *testing.T) {
 	if err := c.Advance(ctx, cursorUnavailable{f}); err == nil {
 		t.Fatal("missing cursor warning")
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if !d.OK || d.Landed != 1 || !c.pending {
 		t.Fatalf("view=%+v pending=%v", d, c.pending)
 	}
@@ -59,7 +59,7 @@ func TestRound7OlderLogResnapshots(t *testing.T) {
 	if err := c.Advance(ctx, older); err != nil {
 		t.Fatal(err)
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if !d.OK || d.Landed != 0 || d.All != 0 || len(d.Streams) != 1 || d.Streams[0].Stream != "old" {
 		t.Fatalf("view=%+v", d)
 	}
@@ -147,7 +147,7 @@ func TestRound7StartupRecovers(t *testing.T) {
 	}
 	rec = httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if rec.Code != 200 || !d.OK || d.All != 1 {
 		t.Fatalf("recovered health=%d data=%+v", rec.Code, d)
 	}

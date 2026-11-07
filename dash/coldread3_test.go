@@ -163,7 +163,7 @@ func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
 			t.Fatalf("cursor did not resume exactly: %v", s.calls)
 		}
 	}
-	if d := c.pageSnapshot().Data.(envelope); d.Epoch != 2 || d.All != 1 {
+	if d := c.pageSnapshot().Data; d.Epoch != 2 || d.All != 1 {
 		t.Fatalf("view after clear epoch=%d all=%d", d.Epoch, d.All)
 	}
 }
@@ -208,7 +208,7 @@ func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
 	if err = c.Advance(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	if d := c.pageSnapshot().Data.(envelope); !d.OK {
+	if d := c.pageSnapshot().Data; !d.OK {
 		t.Fatal("not recovered")
 	}
 }
@@ -446,7 +446,7 @@ func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
 			t.Fatal("advance succeeded with the store down")
 		}
 	}
-	if d := c.pageSnapshot().Data.(envelope); d.OK {
+	if d := c.pageSnapshot().Data; d.OK {
 		t.Fatal("ok while the store is down")
 	}
 	g.start(t)
@@ -469,7 +469,7 @@ func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(c.state, fresh) || s.snapshots != 1 || !c.pageSnapshot().Data.(envelope).OK {
+	if !reflect.DeepEqual(c.state, fresh) || s.snapshots != 1 || !c.pageSnapshot().Data.OK {
 		t.Fatalf("after restart: equal=%v snapshots=%d", reflect.DeepEqual(c.state, fresh), s.snapshots)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

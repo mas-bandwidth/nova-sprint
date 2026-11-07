@@ -133,7 +133,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	transport := dashboardRoundTrip(func(req *http.Request) (*http.Response, error) {
 		body := "ok"
 		if req.URL.Path == "/api/sprint" {
-			body = `{"ok":true,"epoch":1}`
+			body = `{"ok":true,"data":{"epoch":1}}`
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})

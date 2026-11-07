@@ -89,7 +89,7 @@ func TestRowan2UnknownProducerCountsAndAlarms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	w := d.Tables["work"].(map[string]*workRow)["s"]
 	if d.All != 2 || d.Done || w.Waiting != 1 || w.Landed != 1 {
 		t.Fatalf("all=%d done=%v work=%+v", d.All, d.Done, w)

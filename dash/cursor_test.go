@@ -122,12 +122,12 @@ func TestCursorClearRaceRecovers(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	before := c.pageSnapshot().Data.(envelope)
+	before := c.pageSnapshot().Data
 	apply(t, f, "change", 1, store.SetStreamHeld{Stream: "s", Held: true})
 	if e = c.Advance(ctx, s); e == nil {
 		t.Fatal("stale epoch cursor was not refused")
 	}
-	after := c.pageSnapshot().Data.(envelope)
+	after := c.pageSnapshot().Data
 	if after.At.Before(before.At) || after.Epoch != before.Epoch || !after.OK {
 		t.Fatal("cursor refusal did not publish the read prefix")
 	}
