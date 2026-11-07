@@ -111,7 +111,7 @@ v2.0.3, `config.Open(ctx, dsn, password)`) for its life, takes **one**
 `(*config.Store).Snapshot(ctx)` per tick (machines and friends in one
 REPEATABLE READ transaction), and hands it to `roster.Load` through
 `snapshotSource`, which maps `config.Machine.Roles` and `config.Friend.Tiers`
-(comma lists) and `Cores *int` (nil is 0, which Load refuses for a bench).
+(comma lists) and `Cores *int` (nil is 0: Load holds such a bench at width 0, `Worker.Held` = `roster.NoCores`, and the board shows it held with that reason).
 Calls are serialized by run (one tick at a time). A failed read is the
 tick's: no tick that second, and the board shows the failure (section 7).
 
