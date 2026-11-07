@@ -1,6 +1,7 @@
 package dash
 
 import (
+	"log"
 	"math/big"
 	"sort"
 	"time"
@@ -198,6 +199,9 @@ func countWork(w *workRow, c store.Card) {
 		w.Fail++
 	case "fix":
 		w.Fix++
+	default:
+		w.Waiting++
+		log.Printf("ALARM dashboard: producer %q has unknown state %q; counted as waiting", c.ID, c.State)
 	}
 }
 func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]*streamCost) {

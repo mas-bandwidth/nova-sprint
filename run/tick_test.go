@@ -54,18 +54,18 @@ func TestTickFoldCarryAndRefusalSuppressesEdges(t *testing.T) {
 	bad := op("bad", store.PutStream{Name: "s"})
 	bad.Expect = []store.Expect{store.StreamHeld{Stream: "s", Held: true}}
 	last := op("never", store.PutStream{Name: "other"})
-	steps := &tickSteps{plans: []TickPlan{{Ops: []store.Op{good, bad, last}, Carry: []EdgeResult{{ID: "carry"}}, Edges: []EdgeRequest{{ID: "yes", After: []string{"good"}}, {ID: "no", After: []string{"bad"}}, {ID: "not-run", After: []string{"never"}}}}}}
+	steps := &tickSteps{plans: []TickPlan{{Ops: []store.Op{good, bad, last}, Carry: []EdgeResult{{ID: "carry", Epoch: 1}}, Edges: []EdgeRequest{{ID: "yes", After: []string{"good"}}, {ID: "no", After: []string{"bad"}}, {ID: "not-run", After: []string{"never"}}}}}}
 	e, err := NewEngine(ctx, f, guard, steps, edges)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = e.Tick(ctx, []EdgeResult{{ID: "incoming"}}); err != nil {
+	if err = e.Tick(ctx, []EdgeResult{{ID: "incoming", Epoch: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	if len(edges.plans) != 1 || len(edges.plans[0].Edges) != 2 || edges.plans[0].Edges[0].ID != "yes" || edges.plans[0].Edges[1].ID != "not-run" {
 		t.Fatalf("edges=%+v", edges.plans)
 	}
-	if err = e.Tick(ctx, []EdgeResult{{ID: "later"}}); err != nil {
+	if err = e.Tick(ctx, []EdgeResult{{ID: "later", Epoch: 1}}); err != nil {
 		t.Fatal(err)
 	}
 	if len(steps.inputs) != 2 || len(steps.inputs[1].Refused) != 1 || steps.inputs[1].Refused[0].Op.ID != "bad" {
@@ -194,7 +194,7 @@ func (mutatingSteps) Tick(_ context.Context, s store.Snapshot, _ TickInput) (Tic
 	c.Needs[0] = "changed"
 	s.Cards["p"] = c
 	r := s.Rows["r"]
-	r.Tiers[0] = "changed"
+	r.State = "changed"
 	s.Rows["r"] = r
 	delete(s.Streams, "s")
 	return TickPlan{}, nil
@@ -202,7 +202,7 @@ func (mutatingSteps) Tick(_ context.Context, s store.Snapshot, _ TickInput) (Tic
 func TestTickPlannerCannotMutateRetainedSnapshot(t *testing.T) {
 	ctx := context.Background()
 	f := store.NewFake()
-	seed := op("seed", store.PutStream{Name: "s"}, store.PutCard{ID: "q", Kind: "producer", Tier: "pro", Stream: "s"}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s", Needs: []string{"q"}}, store.PutRow{Name: "r", Kind: "worker", Width: 1, Tiers: []string{"pro"}})
+	seed := op("seed", store.PutStream{Name: "s"}, store.PutCard{ID: "q", Kind: "producer", Tier: "pro", Stream: "s"}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s", Needs: []string{"q"}}, store.PutRow{Name: "r"})
 	if r, err := f.Apply(ctx, seed); err != nil || !r.Accepted {
 		t.Fatalf("seed=%+v err=%v", r, err)
 	}
@@ -213,7 +213,7 @@ func TestTickPlannerCannotMutateRetainedSnapshot(t *testing.T) {
 	if err = e.Tick(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if e.state.Cards["p"].Needs[0] != "q" || e.state.Rows["r"].Tiers[0] != "pro" || e.state.Streams["s"].Name != "s" {
+	if e.state.Cards["p"].Needs[0] != "q" || e.state.Rows["r"].State != "down" || e.state.Streams["s"].Name != "s" {
 		t.Fatalf("state=%+v", e.state)
 	}
 }

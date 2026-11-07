@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -33,5 +34,20 @@ func TestRunCacheMonitoringAndCopy(t *testing.T) {
 	}
 	if err := c.PublishSnapshot(s, now); err == nil {
 		t.Fatal("older snapshot accepted")
+	}
+}
+
+func TestRunCacheCopiesPublishedRoster(t *testing.T) {
+	at := time.Unix(1000, 0)
+	c := NewFromSnapshot(store.Snapshot{Epoch: 1}, func() time.Time { return at })
+	r := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 2, Tiers: []string{"pro"}}}}
+	if err := c.PublishSnapshotWithRoster(store.Snapshot{Epoch: 1, Seq: 1}, r, at); err != nil {
+		t.Fatal(err)
+	}
+	w := r.Workers["alice"]
+	w.Tiers[0] = "changed"
+	delete(r.Workers, "alice")
+	if got := c.roster.Workers["alice"]; got.Width != 2 || got.Tiers[0] != "pro" {
+		t.Fatalf("roster aliases input: %+v", got)
 	}
 }

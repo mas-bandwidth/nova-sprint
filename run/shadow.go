@@ -47,7 +47,6 @@ func Shadow(ctx context.Context, s store.Store, steps Steps, input TickInput) (S
 	if err != nil {
 		return ShadowResult{}, fmt.Errorf("shadow: steps: %w", err)
 	}
-	plan.Ops = annotatePolicy(plan.Ops, snap.Policy)
 	versions := make([]store.PolicyVersion, 0, len(policies))
 	for _, p := range policies {
 		versions = append(versions, p)

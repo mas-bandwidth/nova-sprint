@@ -17,7 +17,7 @@ import (
 )
 
 // toolPin is set by release builds with -ldflags.
-var toolPin = "v2.0.0"
+var toolPin = "v2.0.2"
 
 func versionString() string {
 	if binaryVersion != "dev" {
@@ -58,6 +58,7 @@ func executeVerb(ctx context.Context, args []string, phase string) int {
 	if mode == "" {
 		e = &verbs.Engine{Store: st, Env: env, Actor: actor, Now: time.Now, Reports: verbs.CardReportPlanner{}, Version: versionString(), ToolPin: toolPin, Preview: preview}
 		configureProduction(e, st, env.(verbs.ExecEnvironment))
+		if closer, ok := e.Roster.(interface{ Close() }); ok { defer closer.Close() }
 		if phase == "phase1" {
 			e.ReportContinuation = reportHandoff
 		}
@@ -108,7 +109,15 @@ func simulationEngine(st store.Store, mode, actor string, preview func(context.C
 	return e, nil
 }
 func configureProduction(e *verbs.Engine, st store.Store, env verbs.ExecEnvironment) {
+	if cfg, err := productionSetupConfigFromEnv(); err == nil {
+		env.Command = setupCommandWithBus(cfg, productionFleetCommand(cfg))
+	} else {
+		env.Command = func(context.Context, string, ...string) ([]byte, error) { return nil, err }
+	}
 	e.Env = credentialEnvironment{inner: env}
+	e.Roles = verbs.SnapshotRoles{Store: st}
+	e.SetupHook = e.EnsureCoordinatorHook
+	e.Roster = &lazyRoster{dsn: env.DSN, password: env.Password}
 	e.Install = verbs.ReleaseInstaller{}
 	e.PolicyFiles = verbs.LocalPolicyFiles{}
 	e.RunInfo = pgRunInfo{dsn: env.DSN, password: env.Password}

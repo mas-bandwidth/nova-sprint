@@ -46,6 +46,9 @@ func (e *Engine) fold(ctx context.Context) error {
 		if len(events) > 0 {
 			collectStreamPolicies(e.streamPolicies, events)
 			e.state = foldSnapshot(e.state, events)
+			if observer, ok := e.steps.(StepEvents); ok {
+				observer.Fold(events)
+			}
 			e.counts.Folded += len(events)
 		}
 		if len(events) < store.MaxEvents {
@@ -60,7 +63,7 @@ func foldSnapshot(s store.Snapshot, events []store.Event) store.Snapshot {
 	if s.Policy != 0 {
 		policies[s.Policy] = store.PolicyVersion{Active: true}
 	}
-	image := &store.State{Epoch: s.Epoch, Streams: s.Streams, Cards: s.Cards, Rows: s.Rows, Judgements: s.Judgements, Cursors: s.Cursors, Policies: policies}
+	image := &store.State{Epoch: s.Epoch, Streams: s.Streams, Cards: s.Cards, Rows: s.Rows, Judgements: s.Judgements, Cursors: s.Cursors, Policies: policies, Stop: &store.Stop{Stopped: s.Stopped, Reason: s.StopReason}}
 	batch := make([]store.Event, 0, len(events)+1)
 	batch = append(batch, store.Event{Seq: s.Seq, Accepted: true, After: image})
 	batch = append(batch, events...)

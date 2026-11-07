@@ -18,6 +18,10 @@ import (
 )
 
 type Store struct{ path string }
+
+// FormatVersion distinguishes the roster-backed schema from older fake files.
+const FormatVersion = 2
+
 type disk struct {
 	Version  int            `json:"version"`
 	Snapshot store.Snapshot `json:"snapshot"`
@@ -73,7 +77,7 @@ func (s *Store) withLock(ctx context.Context, fn func() error) error {
 func (s *Store) read() (disk, error) {
 	b, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return disk{Version: 1, Snapshot: store.Rebuild(nil)}, nil
+		return disk{Version: FormatVersion, Snapshot: store.Rebuild(nil)}, nil
 	}
 	if err != nil {
 		return disk{}, fmt.Errorf("filestore: read: %w", err)
@@ -89,7 +93,7 @@ func (s *Store) read() (disk, error) {
 }
 
 func validate(d disk) error {
-	if d.Version != 1 {
+	if d.Version != FormatVersion {
 		return fmt.Errorf("unsupported format version %d", d.Version)
 	}
 	seen := map[string]bool{}
@@ -256,6 +260,11 @@ func (s *Store) EventIdentity(ctx context.Context, seq int64) (op string, epoch 
 		return nil
 	})
 	return
+}
+// Restored is false because file-backed Fake restore is unavailable.
+func (s *Store) Restored(ctx context.Context) (time.Time, bool, error) {
+	if err := ctx.Err(); err != nil { return time.Time{}, false, err }
+	return time.Time{}, false, nil
 }
 func (s *Store) Events(ctx context.Context, after int64, max int) (out []store.Event, err error) {
 	err = s.withLock(ctx, func() error {

@@ -80,7 +80,6 @@ func applyHistory(s *store.Snapshot, e store.Event) {
 		s.Cards[k] = v
 	}
 	for k, v := range a.Rows {
-		v.Tiers = slices.Clone(v.Tiers)
 		s.Rows[k] = v
 	}
 	for k, v := range a.Judgements {
