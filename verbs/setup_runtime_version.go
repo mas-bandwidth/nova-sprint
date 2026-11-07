@@ -10,19 +10,16 @@ import (
 	"strings"
 )
 
-// VersionAdoption installs through the approved nova-update TSV row and checks
-// the newly installed binary and its validated shadow. Automatic rollback is
-// deferred to 2.0.x.
+// VersionAdoption checks that the nova-sprint on PATH is the release up was
+// asked for (--version), then its check and validated shadow. It installs
+// nothing: nova-fleet installs nova-sprint, and Apply names that command.
 type VersionAdoption struct {
 	Binary      string
 	Command     CommandOutput
-	MatchesPath func(string) bool
 	ResolvePath func() (string, error)
 	Secrets     NovaSecrets
 	Keys        []string
 }
-
-const sprintUpdateManifest = "name\tkind\tinstalled\tlatest\tapply\towner\nnova-sprint\ttool\tnova-sprint version\tgithub:mas-bandwidth/nova-sprint\tnova-sprint install --version {version}\trowan\n"
 
 func (v VersionAdoption) command(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if v.Command != nil {
@@ -112,57 +109,12 @@ func validRelease(v string) bool {
 	_, err := releaseVersion(v)
 	return err == nil
 }
-func (v VersionAdoption) Apply(ctx context.Context, version string) error {
-	if !validRelease(version) || !filepath.IsAbs(v.Binary) {
+
+// Apply refuses: the release asked for is not the one on PATH, and only
+// nova-fleet installs it.
+func (v VersionAdoption) Apply(_ context.Context, version string) error {
+	if !validRelease(version) {
 		return fmt.Errorf("version adoption configuration invalid")
 	}
-	match := v.MatchesPath
-	if match == nil {
-		match = matchesSprintPath
-	}
-	if !match(v.Binary) {
-		return fmt.Errorf("nova-sprint on PATH differs from this binary")
-	}
-	dir, err := os.MkdirTemp("", "nova-sprint-update-")
-	if err != nil {
-		return fmt.Errorf("update manifest unavailable")
-	}
-	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "versions.tsv")
-	if err = os.WriteFile(path, []byte(sprintUpdateManifest), 0600); err != nil {
-		return fmt.Errorf("update manifest unavailable")
-	}
-	args := []string{"apply", "--file", path, "nova-sprint", "--version", version}
-	if v.Command != nil {
-		_, err = v.Command(ctx, "nova-update", args...)
-	} else {
-		cmd := exec.CommandContext(ctx, "nova-update", args...)
-		cmd.Env = safeProcessEnv(os.Environ())
-		err = cmd.Run()
-	}
-	if err != nil {
-		return fmt.Errorf("nova-update apply failed")
-	}
-	return nil
-}
-
-func matchesSprintPath(binary string) bool {
-	path, err := exec.LookPath("nova-sprint")
-	if err != nil {
-		return false
-	}
-	a, err := filepath.EvalSymlinks(binary)
-	if err != nil {
-		return false
-	}
-	b, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return false
-	}
-	a, err = filepath.Abs(a)
-	if err != nil {
-		return false
-	}
-	b, err = filepath.Abs(b)
-	return err == nil && a == b
+	return &OperationError{Problem: "nova-sprint " + version + " is not the one installed here", Fix: "nova-fleet install --repo <org/repo> --tag " + version + " --names nova-sprint <machine>, then nova-sprint up again", Exit: 1}
 }
