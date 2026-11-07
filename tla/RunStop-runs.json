@@ -1,0 +1,28 @@
+[
+  {
+    "name": "RunStopStart",
+    "module": "Run.tla",
+    "cfg": "RunStopStart.cfg",
+    "expect": "pass"
+  },
+  {
+    "name": "RunInitiallyStopped",
+    "module": "Run.tla",
+    "cfg": "RunInitiallyStopped.cfg",
+    "expect": "pass"
+  },
+  {
+    "name": "RunStoppedTickGateDropped",
+    "module": "witnesses/layer6/RunStoppedTickGateDropped.tla",
+    "cfg": "witnesses/layer6/RunStoppedTickGateDropped.cfg",
+    "expect": "invariant",
+    "target": "NoTickAfterObservedStop"
+  },
+  {
+    "name": "RunStoppedFenceDropped",
+    "module": "witnesses/layer6/RunStoppedFenceDropped.tla",
+    "cfg": "witnesses/layer6/RunStoppedFenceDropped.cfg",
+    "expect": "invariant",
+    "target": "NoAcceptedTickWhileStopped"
+  }
+]

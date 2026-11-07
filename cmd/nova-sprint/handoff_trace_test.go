@@ -32,6 +32,15 @@ type handoffTraceFixture struct {
 	walkActivity bool
 }
 
+type handoffTraceEnv struct{}
+
+func (handoffTraceEnv) Fleet(context.Context) (bool, string, error) { return true, "", nil }
+func (handoffTraceEnv) Schema(context.Context) (bool, error)        { return true, nil }
+func (handoffTraceEnv) Hooked(_ context.Context, name string) (bool, string, error) {
+	return name == "alice", "", nil
+}
+func (handoffTraceEnv) Coordinator(context.Context) (string, error) { return "alice", nil }
+
 func (f *handoffTraceFixture) add(action, fields string) {
 	f.records = append(f.records, fmt.Sprintf("action |-> %q%s", action, fields))
 }
@@ -187,12 +196,17 @@ func TestHandoffTraceChild(t *testing.T) {
 		}
 		args = append(args, "--continuation", id)
 	}
-	e := verbs.Engine{Actor: "alice", Setup: f, SetupLock: f, ReportContinuation: func(ctx context.Context, id string, in verbs.SetupInput) error {
+	st, err := filestore.Open(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := verbs.Engine{Actor: "alice", Store: st, Env: handoffTraceEnv{}, Roles: verbs.SnapshotRoles{Store: st}, Now: func() time.Time { return time.Unix(1002, 0) }, Setup: f, SetupLock: f, ReportContinuation: func(ctx context.Context, id string, in verbs.SetupInput) error {
 		if f.held {
 			return fmt.Errorf("lease still held")
 		}
 		return reportHandoff(ctx, id, in)
 	}}
+	e.SetupHook = e.EnsureCoordinatorHook
 	result := e.Execute(context.Background(), args)
 	handoffChildFinish(t, f, result, events)
 }

@@ -32,18 +32,6 @@ func (e *Engine) activePolicy(ctx context.Context) (*store.PolicyVersion, error)
 	return &p, nil
 }
 
-// Planned policy is trace data, distinct from Event.Policy at commit time.
-func annotatePolicy(ops []store.Op, version int) []store.Op {
-	out := append([]store.Op(nil), ops...)
-	for i := range out {
-		marker := fmt.Sprintf("planned_policy=%d", version)
-		if out[i].Note != "" {
-			out[i].Note += "; "
-		}
-		out[i].Note += marker
-	}
-	return out
-}
 func (e *Engine) plannedPolicy() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()

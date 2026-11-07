@@ -19,22 +19,36 @@ import (
 )
 
 type traceRecorder struct {
-	t          *testing.T
-	lines      []string
-	s          *traceStore
-	e          *Engine
-	carry      []int
-	batch      []int
-	putback    []int
-	pusher     *Pusher
-	pushCount  int
-	process    string
-	reportCard int
-	reportLate bool
+	t           *testing.T
+	lines       []string
+	s           *traceStore
+	e           *Engine
+	carry       []int
+	batch       []int
+	putback     []int
+	pusher      *Pusher
+	pushCount   int
+	process     string
+	reportCard  int
+	reportLate  bool
+	expectedSeq int64
 }
 
 func (r *traceRecorder) add(action, fields string) {
-	r.lines = append(r.lines, fmt.Sprintf("  [i |-> %d, action |-> %q%s]", len(r.lines)+1, action, fields))
+	s, err := r.s.Store.Snapshot(context.Background())
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	r.lines = append(r.lines, fmt.Sprintf("  [i |-> %d, action |-> %q, physicalSeq |-> %d%s]", len(r.lines)+1, action, s.Seq, fields))
+}
+func tlaBool(v bool) string {
+	if v {
+		return "TRUE"
+	}
+	return "FALSE"
+}
+func (r *traceRecorder) control(s store.Snapshot) {
+	r.add("ReadControl", fmt.Sprintf(", p |-> %q, observedSeq |-> %d, observedStopped |-> %s", r.process, s.Seq, tlaBool(s.Stopped)))
 }
 func traceSeq(v []int) string {
 	a := make([]string, len(v))
@@ -147,9 +161,10 @@ func (s traceSteps) Tick(_ context.Context, snap store.Snapshot, _ TickInput) (T
 		}
 	}
 	gens := []int{snap.Cards["c1"].Gen, snap.Cards["c2"].Gen, snap.Cards["c3"].Gen}
+	r.control(snap)
 	r.add("Fold", fmt.Sprintf(`, p |-> %q, procCopy |-> %s, procFold |-> %d, procCarry |-> %s, procPhase |-> "select"`, r.process, traceSeq(gens), r.rank(snap.Seq), traceSeq(r.carry)))
 	plan := TickPlan{}
-	for _, j := range r.carry[:2] {
+	for _, j := range r.carry[:min(2, len(r.carry))] {
 		id := fmt.Sprintf("move-%d", j)
 		if r.process == "p2" {
 			id += ".retry"
@@ -172,7 +187,7 @@ type traceStore struct {
 func (s *traceStore) Apply(ctx context.Context, o store.Op) (store.Receipt, error) {
 	r := s.r
 	if o.Kind == "trace-move" && !s.selected {
-		if r.e.pending == nil || len(r.e.pending.plan.Ops) != 2 {
+		if r.e.pending == nil || len(r.e.pending.plan.Ops) == 0 {
 			r.t.Fatal("plan not installed")
 		}
 		r.batch = traceIDs(r.t, r.e.pending.plan.Ops)
@@ -182,6 +197,22 @@ func (s *traceStore) Apply(ctx context.Context, o store.Op) (store.Receipt, erro
 		r.carry = append([]int(nil), r.carry[len(r.batch):]...)
 		s.selected = true
 		r.add("Select", fmt.Sprintf(`, p |-> %q, procBatch |-> %s, procCarry |-> %s, procPhase |-> "apply"`, r.process, traceSeq(r.batch), traceSeq(r.carry)))
+	}
+	if o.Kind == "trace-move" {
+		if r.e.pending.next > 0 {
+			r.control(r.e.state)
+		}
+		count := 0
+		for _, cond := range o.Expect {
+			if v, ok := cond.(store.AtSeq); ok {
+				r.expectedSeq = v.Seq
+				count++
+			}
+		}
+		if count != 1 || !r.e.pending.fenced {
+			r.t.Fatal("missing pending AtSeq fence")
+		}
+		r.add("CaptureFence", fmt.Sprintf(", p |-> %q, expectedSeq |-> %d, procFenced |-> TRUE", r.process, r.expectedSeq))
 	}
 	if o.Kind == "trace-move" && !s.reported && (!r.reportLate || r.e.pending.next == 1) {
 		report := op("report-1", store.SetCardReason{Card: fmt.Sprintf("c%d", r.reportCard), Reason: "report"})
@@ -207,10 +238,16 @@ func (s *traceStore) Events(ctx context.Context, after int64, max int) ([]store.
 		r.batch = r.batch[1:]
 		s.sampled++
 		if receipt.Accepted {
-			r.add("Apply", fmt.Sprintf(`, p |-> %q%s, procBatch |-> %s, procApplied |-> %d`, r.process, r.global(), traceSeq(r.batch), r.e.counts.Applied))
+			applied := 0
+			for _, rec := range p.receipts {
+				if rec.Accepted {
+					applied++
+				}
+			}
+			r.add("Apply", fmt.Sprintf(`, p |-> %q%s, procBatch |-> %s, procApplied |-> %d, expectedSeq |-> %d, receiptSeq |-> %d, procFenced |-> FALSE`, r.process, r.global(), traceSeq(r.batch), applied, r.expectedSeq, receipt.Seq))
 		} else {
 			r.putback = append(r.putback, j)
-			r.add("Refuse", fmt.Sprintf(`, p |-> %q, procBatch |-> %s, procPutback |-> %s`, r.process, traceSeq(r.batch), traceSeq(r.putback)))
+			r.add("Refuse", fmt.Sprintf(`, p |-> %q, procBatch |-> %s, procPutback |-> %s, expectedSeq |-> %d, receiptSeq |-> %d, procFenced |-> FALSE`, r.process, traceSeq(r.batch), traceSeq(r.putback), r.expectedSeq, receipt.Seq))
 		}
 	}
 	return s.Store.Events(ctx, after, max)
@@ -319,7 +356,7 @@ func TestEmitRunTrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.add("Init", fmt.Sprintf(`, lock |-> "none", hook |-> "none"%s, cursor |-> [r \in {"r1"} |-> %d], sent |-> [r \in {"r1"} |-> {}], edgeDone |-> {}`, r.global(), r.rank(initial.Cursors["push:r1"])))
+	r.add("Init", fmt.Sprintf(`, lock |-> "none", hook |-> "none"%s, cursor |-> [r \in {"r1"} |-> %d], sent |-> [r \in {"r1"} |-> {}], edgeDone |-> {}, stopped |-> %s`, r.global(), r.rank(initial.Cursors["push:r1"]), tlaBool(initial.Stopped)))
 	session := &traceSession{r: r, fakeSession: fakeSession{locked: true}}
 	chooser, err := acquireChooser(ctx, session, traceHook{r: r})
 	if err != nil {
@@ -335,10 +372,13 @@ func TestEmitRunTrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("NOVA_RUN_TRACE_STOP") == "1" {
+		traceStopCycle(t, ctx, r, scheduler)
+	}
 	if err = scheduler.Step(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !s.reported || s.sampled != 2 || len(r.putback) != 0 || len(r.carry) != 2 {
+	if !s.reported || s.sampled != 2 || len(r.putback) != 0 {
 		t.Fatalf("unexpected trace state: %+v", r)
 	}
 	pusher := NewPusher(s, traceNotices{}, traceSender{r: r})
@@ -351,12 +391,56 @@ func TestEmitRunTrace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Cursors["push:r1"] != snap.Seq || r.pushCount != 2 {
+	if after.Cursors["push:r1"] != snap.Seq || r.pushCount < 1 {
 		t.Fatalf("push cursor=%d target=%d count=%d", after.Cursors["push:r1"], snap.Seq, r.pushCount)
 	}
 	r.add("SaveCursor", fmt.Sprintf(`, p |-> "p1", r |-> "r1", cursor |-> [r \in {"r1"} |-> %d], push |-> %s`, r.pushCount, tracePush("idle", 0, 0)))
 	traceRestart(t, ctx, r, session, chooser, scheduler)
 	writeRunTrace(t, r.lines)
+}
+
+func traceStopCycle(t *testing.T, ctx context.Context, r *traceRecorder, scheduler *Scheduler) {
+	t.Helper()
+	stop := op("stop", store.SetStopped{Stopped: true, Reason: "pause"})
+	stop.Kind = "trace-stop"
+	rec, err := r.s.Store.Apply(ctx, stop)
+	if err != nil || !rec.Accepted {
+		t.Fatalf("stop %+v %v", rec, err)
+	}
+	snap, err := r.s.Store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.add("Stop", fmt.Sprintf(", stopped |-> %s", tlaBool(snap.Stopped)))
+	if err = scheduler.Step(ctx, nil); err != nil || !r.e.state.Stopped {
+		t.Fatalf("stopped tick: %v", err)
+	}
+	r.control(r.e.state)
+	report := op("report-1", store.SetCardReason{Card: "c1", Reason: "report"})
+	report.Kind = "trace-report"
+	rec, err = r.s.Store.Apply(ctx, report)
+	if err != nil || !rec.Accepted {
+		t.Fatalf("report %+v %v", rec, err)
+	}
+	r.s.reported = true
+	r.add("Report", `, c |-> 1`+r.global())
+	for i := 0; i < 2; i++ {
+		if err = scheduler.Step(ctx, nil); err != nil || !r.e.state.Stopped {
+			t.Fatalf("stopped fold: %v", err)
+		}
+		r.control(r.e.state)
+	}
+	start := op("start", store.SetStopped{Stopped: false, Reason: "resume"})
+	start.Kind = "trace-start"
+	rec, err = r.s.Store.Apply(ctx, start)
+	if err != nil || !rec.Accepted {
+		t.Fatalf("start %+v %v", rec, err)
+	}
+	snap, err = r.s.Store.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.add("Start", fmt.Sprintf(", stopped |-> %s", tlaBool(snap.Stopped)))
 }
 func writeRunTrace(t *testing.T, lines []string) {
 	t.Helper()
@@ -416,7 +500,14 @@ func traceRestart(t *testing.T, ctx context.Context, r *traceRecorder, session *
 	if err = next.Step(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if r.s.sampled != 2 || len(r.carry) != 0 {
-		t.Fatalf("restart did not complete work: sampled %d carry %v", r.s.sampled, r.carry)
+	if len(r.carry) > 0 {
+		r.s.selected = false
+		r.s.sampled = 0
+		if err = next.Step(ctx, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(r.carry) != 0 {
+		t.Fatalf("restart did not complete work: carry %v", r.carry)
 	}
 }

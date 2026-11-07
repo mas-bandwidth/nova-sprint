@@ -67,7 +67,7 @@ def run_process(command, cwd, env, timeout, output=None):
 
 def expected_cases():
     return dict([('run-' + str(s), 'Run') for s in (0, 1, 2)]
-                + [('clear', 'RunClear')]
+                + [('run-stop', 'Run'), ('clear', 'RunClear')]
                 + [('clear-walk-' + str(s), 'RunClear') for s in range(10)]
                 + [('setup', 'Setup')]
                 + [('handoff-' + str(s), 'SetupHandoff') for s in (0, 1)]
@@ -101,6 +101,8 @@ def case(repo, out, name, model, trace):
 def emit_simple(repo, out, args, cases):
     jobs = [('run-' + str(s), 'Run', './run', 'TestEmitRunTrace',
              'NOVA_RUN_TRACE_PATH', {'NOVA_RUN_TRACE_SEED': str(s)}) for s in (0, 1, 2)]
+    jobs += [('run-stop', 'Run', './run', 'TestEmitRunTrace', 'NOVA_RUN_TRACE_PATH',
+              {'NOVA_RUN_TRACE_SEED': '0', 'NOVA_RUN_TRACE_STOP': '1'})]
     jobs += [('clear', 'RunClear', './run', 'TestEmitClearTrace', 'NOVA_CLEAR_TRACE_PATH', {})]
     jobs += [('clear-walk-' + str(s), 'RunClear', './run', 'TestEmitClearActionWalk',
               'NOVA_WALK_TRACE_PATH', {'NOVA_WALK_TRACE_SEED': str(s)}) for s in range(10)]
@@ -153,8 +155,8 @@ def emit(repo, out, args):
     emit_groups(repo, out, args, cases)
     if snapshot(repo) != before or git(repo, 'rev-parse', 'HEAD').strip() != head:
         raise RuntimeError('source changed during trace emission')
-    if len(cases) != 83:
-        raise RuntimeError('expected exactly 83 actual trace cases')
+    if len(cases) != 84:
+        raise RuntimeError('expected exactly 84 actual trace cases')
     hashes = {str(p.relative_to(out)): digest(p) for p in sorted(out.rglob('*')) if p.is_file()}
     save(out / 'emission.json', dict(head=head, host=socket.gethostname(), cases=cases, hashes=hashes))
     print(f'EMITTED head={head} cases={len(cases)}', flush=True)
@@ -179,8 +181,8 @@ def check(out, args):
     manifest_hash = digest(out / 'emission.json')
     manifest = json.loads((out / 'emission.json').read_text())
     cases = manifest['cases']
-    if len(cases) != 83 or {c['name']: c['model'] for c in cases} != expected_cases():
-        raise RuntimeError('manifest must contain all 83 fixed trace cases exactly once')
+    if len(cases) != 84 or {c['name']: c['model'] for c in cases} != expected_cases():
+        raise RuntimeError('manifest must contain all 84 fixed trace cases exactly once')
     for name, want in manifest['hashes'].items():
         if digest(out / name) != want:
             raise RuntimeError('artifact changed before check: ' + name)

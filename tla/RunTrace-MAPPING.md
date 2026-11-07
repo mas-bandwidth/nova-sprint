@@ -52,7 +52,7 @@ for irrelevant reads/replay-only rows, not state-changing tracked operations.
 
 ## Scope and refusal
 
-The checked three seeded schedules bind tick/refusal/push, observed lock loss,
+The historical checked three seeded schedules bound tick/refusal/push, observed lock loss,
 and restart with a fresh chooser under fake dependencies. Clear is separately
 bound by RunClearTrace, including ten enabled-action selection walks. Unknown
 Apply/replay outcomes and overflow summaries remain explicit gaps unless
@@ -66,3 +66,54 @@ first refusal is the record after the last matched index l. A finite matched
 trace is evidence about that execution only, not general implementation safety
 or liveness. Preserve failures and diagnose model/source/refinement mismatches;
 do not broaden Next or weaken invariants merely to accept a trace.
+
+## Stopped service and the physical AtSeq fence
+
+The stopped-service extension changes the trace interface; the earlier 83-case
+receipt remains evidence for its retained source/spec bytes. New code-bound
+acceptance requires fresh emission and checking with this interface.
+
+Every record includes `physicalSeq`, the actual store sequence, separately from
+the relevant-event rank used by `events`, `cursor`, and `procFold`. Init captures
+the initial physical sequence and authoritative `stopped` value. Each accepted
+Stop/Start, report, tick outcome (accepted or refused), and cursor write advances
+it by exactly one. Physical metadata cannot be silently omitted or disguised as
+a card-generation conflict. Other write types require an explicit mapping before
+being admitted to this fixture.
+
+`ReadControl` observes the completed Engine fold: `observedSeq` and
+`observedStopped` come from `Engine.state`, not an independent authoritative read.
+The checker requires that observation to correspond to the currently recorded
+store state. This deliberately detects a fold that drops Stopped after an ordinary
+report/cursor delta. The fixture must expose intervening accepted events rather
+than invent a current observation. Steps.Tick entry may sample ReadControl and
+Fold at the same actual callback boundary; this is a stated projection of the
+observed snapshot and actual planner invocation, not evidence for an unobserved
+internal loop order. A stopped Tick return can sample the folded state without
+emitting Fold: Fold represents planner invocation, not the read itself.
+
+`CaptureFence` samples the first actual appended AtSeq of a new pending operation.
+Its `expectedSeq` must equal the previously observed snapshot sequence and
+`procFenced` must be true. It occurs once per pending op. Later ReadControl updates
+only the current observation, never this captured value. A Stop/Start and later
+fold therefore cannot refresh a frozen uncertain operation. Apply/Refuse records
+contain the unchanged expectedSeq, the actual receiptSeq, and procFenced=false;
+the checker binds receiptSeq to physicalSeq+1 and tests the stored AtSeq equality
+against the pre-append physical sequence. A refusal still advances the sequence.
+`SequenceProjection` checks both abstract freshness maps against those numeric
+observed/captured values at every recorded state.
+
+Uncommitted unknown attempts can leave a frozen operation unchanged; the isolated
+model admits that stuttering boundary. A possibly committed unknown outcome and
+its later Replay are not proved here and must not be emitted as a second Apply.
+The byte-identical retry functional test is separate evidence until its actual
+observations are mapped. Accepted tick writes while stopped are prohibited;
+external dispatch has a separate Stop/check/use race and is not claimed atomic.
+The stopped control model assumes the store's existing atomic AtSeq semantics.
+
+The stopped-service checkpoint now has four matched finite traces from the exact
+archived dirty source described in `layer6-evidence/stopped-traces/README.md`:
+three seeded schedules (29, 29 and 35 records) and a 31-record Stop/report/fold/
+Start schedule. These bind actual folded stop state and actual captured AtSeq;
+they do not bind unknown committed Replay, prove arbitrary implementation
+behavior, or constitute the final integrated GitHub Actions gate.

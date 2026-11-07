@@ -87,7 +87,7 @@ func TestSchedulerInputsAndPolicyIsolation(t *testing.T) {
 	if err != nil || !r.Accepted {
 		t.Fatalf("policy %v %+v", err, r)
 	}
-	r, err = base.Apply(ctx, op("row", store.PutRow{Name: "alice", Kind: "worker", Width: 2, Tiers: []string{"pro"}}))
+	r, err = base.Apply(ctx, op("row", store.PutRow{Name: "alice"}))
 	if err != nil || !r.Accepted {
 		t.Fatalf("row %v %+v", err, r)
 	}
@@ -111,14 +111,14 @@ func TestSchedulerInputsAndPolicyIsolation(t *testing.T) {
 	}
 	for i := 0; i < 3; i++ {
 		if i == 1 {
-			applyOK(t, base, op("width", store.SetRowWidth{Row: "alice", Width: 3}))
+			applyOK(t, base, op("row-up", store.SetRowState{Row: "alice", State: "up"}))
 		}
 		if err = sched.Step(ctx, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if steps.views[0].Rows["alice"].Width != 2 || steps.views[1].Rows["alice"].Width != 3 {
-		t.Fatalf("folded row widths: %d, %d", steps.views[0].Rows["alice"].Width, steps.views[1].Rows["alice"].Width)
+	if steps.views[0].Rows["alice"].State != "down" || steps.views[1].Rows["alice"].State != "up" {
+		t.Fatalf("folded row states: %s, %s", steps.views[0].Rows["alice"].State, steps.views[1].Rows["alice"].State)
 	}
 	if presence.calls != 3 || storeView.reads != 1 {
 		t.Fatalf("presence=%d policy=%d", presence.calls, storeView.reads)
@@ -145,7 +145,7 @@ func TestSchedulerRetriesFailedPresenceAndKeepsResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = sched.Step(ctx, []EdgeResult{{ID: "edge"}}); err == nil {
+	if err = sched.Step(ctx, []EdgeResult{{ID: "edge", Epoch: 1}}); err == nil {
 		t.Fatal("expected presence error")
 	}
 	presence.err = nil
@@ -216,7 +216,9 @@ func TestPlannedAndCommittedPolicyAreDistinct(t *testing.T) {
 	applyOK(t, base, op("p2", store.PutPolicy{Kind: "script", Name: "two", Body: "two"}))
 	applyOK(t, base, op("activate", store.SetActivePolicy{Version: 1}))
 	source := &policyRaceStore{Store: base}
-	steps := &tickSteps{plans: []TickPlan{{Ops: []store.Op{op("planned", store.PutStream{Name: "s"})}}}}
+	planned := op("planned", store.PutStream{Name: "s"})
+	planned.Note = `[{"kind":"work","cards":["p"]}]`
+	steps := &tickSteps{plans: []TickPlan{{Ops: []store.Op{planned}}}}
 	engine, err := NewEngine(ctx, source, &tickGuard{}, steps, &tickEdges{})
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +231,7 @@ func TestPlannedAndCommittedPolicyAreDistinct(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := events[len(events)-1]
-	if last.Policy != 2 || !strings.Contains(last.Receipt.Note, "planned_policy=1") || engine.plannedPolicy() != 1 {
+	if last.Policy != 2 || last.Receipt.Note != planned.Note || engine.plannedPolicy() != 1 {
 		t.Fatalf("event=%+v planned=%d", last, engine.plannedPolicy())
 	}
 }
