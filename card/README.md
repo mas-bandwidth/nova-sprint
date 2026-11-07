@@ -47,9 +47,13 @@ store's records into the machine's.
 - `Merge(plans...) (Plan, *Refusal)`: sequential composition. The first plan's
   writes are applied to a copy of what it read, and each later plan the machine
   built is run again against that state, one extra move per plan after the
-  first. A hand-built plan is kept as written. A refusal names the plans and
-  the condition. A second write to one field is still refused. Two AskReads of
-  one head still collide, and that refusal names AskReads.
+  first. The merged plan itself runs again the same way, so nested merges
+  compose. Conditions are each plan's, taken on the snapshot it was read on,
+  minus a condition on a field an earlier plan of the op writes (the store
+  checks every condition before any write). A hand-built plan is kept as
+  written. A refusal names the plans and the condition. A second write to one
+  field is still refused. Two AskReads of one head still collide, and that
+  refusal names the plans.
 
 Events carry no actor. Who may Unblock, Waive, Relink, SetPriority or WaiveRed
 is layer 3's; the machine does not.
@@ -68,10 +72,12 @@ layer 1 refuses.
   working; the normal path never needs it.
 - **Preemption.** The step chooses the consumer, the youngest on the blocker's
   row; the machine does not. A Withdraw whose reason starts with "preempt"
-  refuses unless that consumer is working. "no width" is counted over open
-  rows (up and not held). The step merges that consumer's `Withdraw` (which
-  releases its producer) and the blocker's `Start`; sequential Merge composes
-  them.
+  refuses unless that consumer is working. Merged with a blocker's `Start`,
+  the machine also checks the event fields: the starter's priority is
+  `blocker`, and the withdrawn consumer is working on the row `Start` names.
+  A row with no open width is layer 3's. The step merges that consumer's
+  `Withdraw` (which releases its producer) and the blocker's `Start`;
+  sequential Merge composes them.
 - **A drop.** When a need fails in the same op that moves its dependants,
   each dependant's `NeedFailed`, `Waive` or `Relink` is planned with
   `InThisOp: true` and merged with the drop: the need is not yet fail in the
