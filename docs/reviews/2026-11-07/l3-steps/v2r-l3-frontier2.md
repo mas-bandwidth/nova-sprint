@@ -28,9 +28,9 @@ The layer is not sound. The worst defect is `steps/land.go`: reordering merging 
 
 `steps/land.go:203` (`eligible`). Severity: blocker.
 
-The reorder is `for changed := true; changed; { ... }` with no bound. On each pass, for `i, c := range out`, it swaps `out[i]` with a later `out[j]` when `c.After` names `out[j]`. `c` is the card from the start of that iteration, and a swap does not stop the scan. Two merging cards in one stream that name each other (or a longer cycle) swap forever. A direct simulation of this loop on `["A","B"]` with `A` after `B` and `B` after `A` does not finish. Acyclic graphs I tried do finish.
+The reorder is `for changed := true; changed; { ... }` with no bound. On each pass, for `i, c := range out`, it swaps `out[i]` with a later `out[j]` when `c.After` names `out[j]`. `c` is the card from the start of that iteration, and a swap does not stop the scan. Reading that loop, two cards in `out` that name each other (or a longer cycle) leave `changed` true on every pass, so the scan does not stop. That non-termination, and that an acyclic `after` graph would finish, is source reasoning from `steps/land.go:203`. This report has no command or output for a run of the loop on `["A","B"]` with `A` after `B` and `B` after `A`, and no such receipt is in the tree.
 
-Layer 3 reads `after` off the view. `docs/ENFORCED.md` lists the cycle check as unheld (`L2-U1`: nothing checks `after` acyclicity). A tick that does not return never lands, deals, or judges.
+Layer 3 reads `after` off the view. Admission already refuses a cycle through needs or after: `MoveAdd` returns the plan refused at `card/add.go:28-32` when `addCycle` finds a loop. `docs/ENFORCED.md` line 95 (`L2-U1`) does not say nothing checks `after` acyclicity. It leaves unheld only acyclicity of `after` on later `SetCardAfter` writes, beyond self-dependency in `store` and `MoveAdd` in `card`, and in `tla/CardMachine.tla`. The unbounded reorder is reachable only on a path past that admission guard: a cycle written by a later `SetCardAfter`, which `L2-U1` leaves unchecked. A tick that does not return on that view never lands, deals, or judges.
 
 Repair: order with a bounded topological walk and, on a cycle, stop and open an `engine` judgement instead of swapping again.
 
