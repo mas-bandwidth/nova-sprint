@@ -187,3 +187,36 @@ func TestRound16Hash(t *testing.T) {
 	assert.NotEqual(t, round16Hash, schemaHash)
 	assert.NotContains(t, string(old), " red ")
 }
+
+// checkEventIdentity: EventIdentity names the op and epoch Events holds at
+// every seq, a refused op and a clear included, and finds nothing at 0, past
+// the tail or below 0. Shared by the Fake (unit) and PG (functional) tests.
+func checkEventIdentity(t *testing.T, h *harness) {
+	h.seed()
+	r, err := h.s.Apply(h.ctx, h.op("stale", []Expect{CardGen{"c1", 7}}, SetCardState{"c1", "working"}))
+	require.NoError(t, err)
+	require.False(t, r.Accepted, "the stale op is refused and logged")
+	h.clear()
+	events := h.events()
+	require.GreaterOrEqual(t, len(events), 3)
+	for _, e := range events {
+		op, epoch, found, err := h.s.EventIdentity(h.ctx, e.Seq)
+		require.NoError(t, err)
+		assert.True(t, found, "seq %d", e.Seq)
+		assert.Equal(t, e.Op, op, "seq %d", e.Seq)
+		assert.Equal(t, e.Epoch, epoch, "seq %d", e.Seq)
+	}
+	for _, seq := range []int64{0, -1, events[len(events)-1].Seq + 1} {
+		op, epoch, found, err := h.s.EventIdentity(h.ctx, seq)
+		require.NoError(t, err)
+		assert.False(t, found, "seq %d", seq)
+		assert.Equal(t, "", op)
+		assert.Equal(t, 0, epoch)
+	}
+}
+
+func TestEventIdentityFake(t *testing.T) {
+	t.Parallel()
+	h, _ := newHarness(t)
+	checkEventIdentity(t, h)
+}
