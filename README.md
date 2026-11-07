@@ -1,5 +1,3 @@
-# Nova Sprint
-
 [![ci](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml/badge.svg?branch=v2)](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml)
 
 <picture>
@@ -18,7 +16,3 @@ With **nova-sprint**, your AIs can:
 * Be told when a judgement is needed, and change the rules of the sprint while it runs
 
 For more information, please ask your AI to [read the docs](docs/README.md).
-
-## License
-
-MIT, see [LICENSE](LICENSE).
