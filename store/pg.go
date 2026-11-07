@@ -64,16 +64,23 @@ var schemaHash = hashSchema(schemaSQL)
 // hash is still of the whole file.
 const createSchema = "CREATE SCHEMA IF NOT EXISTS sprint;"
 
-var schemaObjects = strings.Replace(schemaSQL, createSchema, "", 1)
-
 // rowLoadColumns adds the row heartbeat's four columns (SetRowLoad) to
-// sprint.rows, in Migrate's transaction after schema.sql. They are outside
-// schema.sql on purpose: that file is hashed, and a live store made before
-// them must keep its identity and take them here, as a no-op once added.
+// sprint.rows. They are outside schema.sql on purpose: that file is hashed,
+// and a live store made before them must keep its identity and take them on
+// its next Migrate. Everything that applies schema.sql (Migrate, a restore's
+// DDL) applies them after it (fullSchema, schemaObjects); ADD COLUMN IF NOT
+// EXISTS makes a second run a no-op.
 const rowLoadColumns = `ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS load1_centi integer NOT NULL DEFAULT 0 CHECK (load1_centi >= 0),
     ADD COLUMN IF NOT EXISTS cores integer NOT NULL DEFAULT 0 CHECK (cores >= 0),
     ADD COLUMN IF NOT EXISTS slots_used integer NOT NULL DEFAULT 0 CHECK (slots_used >= 0),
     ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0)`
+
+// fullSchema is every DDL statement of a new store: schema.sql, then the
+// columns outside it. schemaObjects is the same without CREATE SCHEMA.
+var (
+	fullSchema    = schemaSQL + "\n" + rowLoadColumns + ";\n"
+	schemaObjects = strings.Replace(schemaSQL, createSchema, "", 1) + "\n" + rowLoadColumns + ";\n"
+)
 
 // hashSchema strips a -- comment only outside a single-quoted string literal
 // and a double-quoted identifier (a doubled quote closes and reopens, so it
@@ -209,15 +216,12 @@ func (p *PG) Migrate(ctx context.Context) error {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
 	}
-	sql := schemaSQL
+	sql := fullSchema
 	if present {
 		sql = schemaObjects // no CREATE SCHEMA: the owner may lack CREATE on the database
 	}
 	if _, err := tx.Exec(ctx, sql); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
-	}
-	if _, err := tx.Exec(ctx, rowLoadColumns); err != nil {
-		return fmt.Errorf("store: migrate: the row load columns: %w", err)
 	}
 	if _, err := tx.Exec(ctx, "UPDATE sprint.meta SET hash = $1 WHERE id = 1", schemaHash); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
