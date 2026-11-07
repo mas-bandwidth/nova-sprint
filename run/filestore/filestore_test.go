@@ -76,6 +76,15 @@ func TestReopenReplayAndClear(t *testing.T) {
 	if err != nil || len(events) != 2 || events[0].Op != "cursor" || events[1].Op != "refused" {
 		t.Fatalf("events %+v %v", events, err)
 	}
+	for _, event := range events {
+		id, epoch, found, e := s.EventIdentity(ctx, event.Seq)
+		if e != nil || !found || id != event.Op || epoch != event.Epoch {
+			t.Fatalf("identity: %q %d %v %v, event %+v", id, epoch, found, e, event)
+		}
+	}
+	if _, _, found, e := s.EventIdentity(ctx, 99); e != nil || found {
+		t.Fatalf("missing identity: found=%v err=%v", found, e)
+	}
 	p, err := s.Policy(ctx, 1)
 	if err != nil || !p.Active {
 		t.Fatalf("policy %+v %v", p, err)

@@ -241,6 +241,22 @@ func (s *Store) Replay(ctx context.Context, id string) (out store.Receipt, found
 	})
 	return
 }
+func (s *Store) EventIdentity(ctx context.Context, seq int64) (op string, epoch int, found bool, err error) {
+	err = s.withLock(ctx, func() error {
+		d, e := s.read()
+		if e != nil {
+			return e
+		}
+		for _, v := range d.Events {
+			if v.Seq == seq {
+				op, epoch, found = v.Op, v.Epoch, true
+				break
+			}
+		}
+		return nil
+	})
+	return
+}
 func (s *Store) Events(ctx context.Context, after int64, max int) (out []store.Event, err error) {
 	err = s.withLock(ctx, func() error {
 		d, e := s.read()
