@@ -203,6 +203,9 @@ type Row struct {
 	Cores      int `json:"cores"`
 	SlotsUsed  int `json:"slots_used"`
 	SlotsTotal int `json:"slots_total"`
+	// CPUPeakDeci is the highest CPU busy percent over the last 10 seconds before the
+	// beat, in tenths (1000: every core busy); the board's CPU cell.
+	CPUPeakDeci int `json:"cpu_peak_deci"`
 	// Tiers is what the worker's harness adapter serves, as it advertised in
 	// its heartbeat: a comma list in Tiers' order, "" when it advertised
 	// none in this session (a PutRow that changes the session clears it).

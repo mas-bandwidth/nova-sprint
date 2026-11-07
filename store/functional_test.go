@@ -368,6 +368,38 @@ func TestFunctionalMigrateRound25(t *testing.T) {
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated live store's order: a positional dump of either loads into the other")
 }
 
+// Round 27: a store made by round 26's schema (round26Hash: the heartbeat
+// without cpu_peak_deci, a beaten row in it) is upgraded by Migrate: the column
+// is added (0 on the row), the new hash recorded, a second Migrate is a no-op,
+// the beat's values are kept, a beat then sets the peak, and the columns are in
+// a new store's order.
+func TestFunctionalMigrateRound26(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round26.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round26Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.rows (name, state, session, role, load1_centi, cores, slots_used, slots_total, tiers, epoch) VALUES ('w1', 'up', 'sess', 'worker', 250, 8, 2, 8, 'flash', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round26Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 26}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	r := h.snap().Rows["w1"]
+	assert.Equal(t, []int{250, 8, 2, 8, 0}, []int{r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.CPUPeakDeci}, "the beat is kept and the peak starts at 0")
+	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873}))
+	assert.Equal(t, 873, h.snap().Rows["w1"].CPUPeakDeci)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
 // columns is every sprint table's columns in their order, the order a
 // positional INSERT (pg_dump --inserts) fills them in.
 func columns(t *testing.T, c *pgx.Conn) map[string][]string {
