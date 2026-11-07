@@ -48,10 +48,10 @@ Model `HoldStream` is specified to park every ready producer (`docs/ENFORCED.md`
 
 ## Missing tests
 
-Command, on hulk, from the review clone. `go build ./card/...` and `go vet ./card/...` both exited 0. The test alarm fired inside `TestFunctionalColdread5PG`.
+Command, on a fleet Linux bench, from the review clone. `go build ./card/...` and `go vet ./card/...` both exited 0. The test alarm fired inside `TestFunctionalColdread5PG`.
 
 ```
-ssh -o BatchMode=yes hulk 'cd /home/gaffer/johnny-jobs/v2r-l2-frontier1.w1 && mkdir -p .gocache && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go build ./card/... && echo BUILD_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go vet ./card/... && echo VET_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go test -p 2 -count=1 -timeout 600s ./card/... && echo TEST_OK'
+ssh -o BatchMode=yes <fleet-linux-bench> 'cd <review-clone> && mkdir -p .gocache && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go build ./card/... && echo BUILD_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go vet ./card/... && echo VET_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go test -p 2 -count=1 -timeout 600s ./card/... && echo TEST_OK'
 ```
 
 ```
