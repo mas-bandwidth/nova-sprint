@@ -434,15 +434,15 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function rk(n) { var r = rank[shownStatus(table[n].status)]; return r == null ? 3 : r; }
   names.sort(function (a, b) { return rk(a) - rk(b) || a.localeCompare(b); });
   if (!box._head) {
-    var cols = [[nameLabel], ["status"], ["ready", "num"], ["working"], ["", "frac"], ["done", "num"], ["ok%", "num"], ["load", "num"]];
+    var cols = [[nameLabel], ["status"], ["ready", "num"], ["working"], ["", "frac"], ["done", "num"], ["ok%", "num"], ["tokens", "num"]];
     box._head = headRow(cols);
     var wh = box._head.children[4]; wh.textContent = ""; wh.appendChild(el("span", "alt", "working"));
     box._total = el("div", "row total");
     box._total._c = [el("div", "", "Total"), el("div"), quiet(numCell()), el("div"), quiet(numCell("frac")), quiet(numCell()), quiet(numCell())];
-    box._total._c.push(el("div"));
+    box._total._c.push(quiet(numCell()));
     box._total._c.forEach(function (c) { box._total.appendChild(c); });
   }
-  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, upWidth: 0, upWorking: 0, fix: 0 };
+  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, upWidth: 0, upWorking: 0, fix: 0, tokens: 0n };
   scale = scale || tableScale(table);
   // the track column is exactly the widest track, so the figure sits right after it
   var tw = TRACK_SPAN.toFixed(3) + "rem";
@@ -486,7 +486,9 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
     setNum(r.ready, int(m.ready)); setNum(r.done, done);
     setOk(r.ok, pct(okv), done);
-    if (r.load) { var lp = pct(m.load); setText(r.load, lp === null ? "" : lp.toFixed(1) + "%"); setClass(r.load, "num" + (lp === null ? " zero" : "")); }
+    // the tokens its runs reported, kin and benches alike (the column load once held; v2 serves no load)
+    var tn = bigOf(m.tokens_n); t.tokens += tn;
+    if (r.load) { setText(r.load, m.tokens != null ? m.tokens : "-"); setTitle(r.load, tn ? tn.toString() + " tokens" : ""); setClass(r.load, "num" + (tn ? "" : " zero")); }
   }, box._total);
   var c = box._total._c;
   setNum(c[2], t.ready);
@@ -495,7 +497,27 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   setHTML(c[4], frac(t.working, t.width, digits, Math.max(digits, totalDigits)));
   setNum(c[5], t.done);
   setOk(c[6], t.okd ? t.okn / t.okd * 100 : null, t.okd);
+  setText(c[7], compactTokens(t.tokens)); setTitle(c[7], t.tokens.toString() + " tokens"); setClass(c[7], "num" + (t.tokens ? "" : " zero"));
   return { t: t, n: names.length };
+}
+
+// bigOf is an exact count the server sends as a string (tokens_n), 0n when absent.
+function bigOf(v) { try { return v == null || v === "" ? 0n : BigInt(v); } catch (e) { return 0n; } }
+
+// compactTokens is usage.Compact: under a thousand as itself, else one decimal
+// place, half up, with a 1000-based suffix (1.2M); a count that rounds up to
+// the next suffix takes it.
+function compactTokens(n) {
+  if (n < 0n) n = 0n;
+  var units = [[1000n, "K"], [1000000n, "M"], [1000000000n, "B"], [1000000000000n, "T"]];
+  for (var i = units.length - 1; i >= 0; i--) {
+    var div = units[i][0];
+    if (n < div) continue;
+    var scaled = (n * 10n + div / 2n) / div, whole = scaled / 10n, frac = scaled % 10n;
+    if (whole >= 1000n && i + 1 < units.length) return compactTokens(units[i + 1][0]);
+    return whole.toString() + (frac ? "." + frac.toString() : "") + units[i][1];
+  }
+  return n.toString();
 }
 
 function renderFleet(d) {
@@ -641,10 +663,15 @@ function renderHero(d, s, ft) {
   setText($("cost"), recorded === null ? "-" : money(recorded));
   setText($("cost-whole"), recorded === null ? "-" : dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z)
   var perC = cs ? cents(cs.per_card) : null;
-  var per = perC !== null ? money(perC) + " per priced card" : (unp ? "" : "");
+  // the tile is the API spend; kin on subscription seats are free, and their tokens are shown beside
+  // the dollars (the owner 2026-11-07: "api rate work should be priced *exactly*. friend sub rate should be free.")
+  var per = recorded !== null ? "API" : "";
+  if (perC !== null) per += " \u00b7 " + money(perC) + " per priced card";
+  if (cs && int(cs.seat_runs)) per = (per ? per + " \u00b7 " : "") + (cs.seat_tokens || "0") + " tokens on seats";
   if (unp) per = (per ? per + " \u00b7 " : "") + unp + " unpriced";
   setText($("cost-per"), per || " ");
-  setTitle($("cost"), cs ? int(cs.priced_runs) + " priced runs, " + unp + " finished runs with no cost reported; per priced card is over the " + int(cs.priced_cards) + " of " + int(cs.landed_cards) + " cards landed in this run whose own runs carried a cost" : "");
+  var missing = cs && cs.missing_prices && cs.missing_prices.length ? " (no price for " + cs.missing_prices.join(", ") + ")" : "";
+  setTitle($("cost"), cs ? int(cs.priced_runs) + " API runs priced from their tokens (" + (cs.api_tokens || "0") + " tokens); " + unp + " finished API runs unpriced: " + int(cs.unpriced_no_tokens) + " reported no tokens, " + int(cs.unpriced_no_price) + " have no price in the policy" + missing + "; " + int(cs.seat_runs) + " runs on subscription seats, free (" + (cs.seat_tokens || "0") + " tokens); per priced card is over the " + int(cs.priced_cards) + " of " + int(cs.landed_cards) + " cards landed in this run whose own API runs were priced" : "");
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
   inflightLast = s.sum; renderInflight(s.sum);
   // throughput: cards landed per hour over the last hour, from the server's samples
