@@ -34,7 +34,7 @@
 (* trace at l and TraceMatched is violated (TLC exit 13), so record l + 1 *)
 (* is the step the model refuses.                                          *)
 (***************************************************************************)
-EXTENDS CardMachine, CardMachineTraceLog, TLC
+EXTENDS CardMachine, CardMachineTraceLog, Sequences, TLC
 
 VARIABLE l
 
