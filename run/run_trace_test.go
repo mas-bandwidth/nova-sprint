@@ -350,7 +350,7 @@ func (r *runTrace) applyTick(ctx context.Context, op store.Op) (store.Receipt, e
 type tracePolicy struct{ r *runTrace }
 
 func (p tracePolicy) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, _ roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
-	out := policy.Answers{Version: 1, Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
+	out := policy.Answers{Version: 1, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
 		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 100, RouteRestWindow: 10, RouteRestAfter: 3, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
 		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
@@ -590,6 +590,7 @@ func traceSetup(t *testing.T, f *store.Fake, at time.Time) {
 		store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"},
 		store.PutRow{Name: "r1", Session: "sess-1", Role: "worker"}, store.SetRowState{Row: "r1", State: "up"},
 		store.PutRow{Name: "r2"}, store.SetRowState{Row: "r2", State: "up"})
+	apply("setup-policy", activePolicy()...)
 	var ws []store.Write
 	for i, c := range append(slices.Clone(tracked), "p0", "p9") {
 		tier := "pro"

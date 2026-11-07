@@ -67,7 +67,7 @@ type traceAsker struct{ w *traceWalk }
 func (a traceAsker) Ask(q Questions) Answers {
 	w := a.w
 	out := Answers{Version: 1, Order: map[string][]any{}, Rows: map[string][]string{}, Reads: map[string]int{}, Verdict: map[string]string{},
-		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}}
+		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}, Models: benchModels()}
 	for _, c := range q.Order {
 		out.Order[c.ID] = []any{} // id order, as the model
 	}
@@ -116,8 +116,8 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	} else if scen == "deal" {
 		qPath = "a/x"
 	}
-	w.producer("p", "s1", "pro", "a/x")
-	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath}}
+	w.producer("p", "s1", "pro", "a/x", "a/*") // the model's glob a/* both list: never an overlap
+	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath, "a/*"}}
 	if landLike {
 		q.After = []string{"p"}
 	}

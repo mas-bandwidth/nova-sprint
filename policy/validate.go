@@ -357,15 +357,21 @@ func checkPrices(ctx context.Context, v starlark.Value) (map[string]Price, strin
 
 // dictOf is v as a dict of exactly keys, by name.
 func dictOf(v starlark.Value, keys ...string) (map[string]starlark.Value, string) {
+	return dictWith(v, keys)
+}
+
+// dictWith is dictOf with optional keys: a key of optional may be absent.
+func dictWith(v starlark.Value, keys []string, optional ...string) (map[string]starlark.Value, string) {
 	d, ok := v.(*starlark.Dict)
+	all := slices.Concat(keys, optional)
 	if !ok {
-		return nil, refuse("the answer is %s, not a dict of %s", kind(v), strings.Join(keys, " "))
+		return nil, refuse("the answer is %s, not a dict of %s", kind(v), strings.Join(all, " "))
 	}
 	out := map[string]starlark.Value{}
 	for _, kv := range d.Items() {
 		k, ok := kv[0].(starlark.String)
-		if !ok || !slices.Contains(keys, string(k)) {
-			return nil, refuse("key %s is not one of %s", brief(kv[0]), strings.Join(keys, " "))
+		if !ok || !slices.Contains(all, string(k)) {
+			return nil, refuse("key %s is not one of %s", brief(kv[0]), strings.Join(all, " "))
 		}
 		out[string(k)] = kv[1]
 	}

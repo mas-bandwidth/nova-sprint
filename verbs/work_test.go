@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -41,13 +42,14 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "main" {
 		t.Fatalf("%+v", got)
 	}
-	// A bench has no model of its own: the policy's candidates for the tier.
-	if got.Model != "" || !slices.Equal(got.Models, []string{"deepseek/deepseek-flash", "inception/mercury-3"}) {
-		t.Fatalf("a bench's receipt: model %q models %v", got.Model, got.Models)
+	// The model is the one the deal named, carried by the consumer (defect
+	// 57); take never reads it from the roster.
+	if got.Model != "inception/mercury-3" || strings.Contains(r.Output, `"models"`) {
+		t.Fatalf("a bench's receipt: model %q\n%s", got.Model, r.Output)
 	}
 	delete(w.roster.ro.Workers, "bob")
 	w.roster.ro.Kin["bob"] = roster.Kin{Name: "bob", Model: "m-bob", Width: 2, Tiers: []string{"pro"}}
-	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"m-bob"`, `"models":[]`)
+	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"inception/mercury-3"`)
 }
 
 func TestTakeRefusals(t *testing.T) {
@@ -68,6 +70,8 @@ func TestTakeRefusals(t *testing.T) {
 			},
 			want: []string{"row alice does not serve tier pro", "nova-sprint release p1.w1@1 --as alice"}},
 		{name: "at width", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: busyAlice, want: []string{"row alice is at width 1", "finish p3.w1 first"}},
+		{name: "dealt with no model", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.Model = "" }),
+			want: []string{"p1.w1 was dealt with no model", `nova-sprint release p1.w1@1 --as alice --reason "dealt with no model"`}},
 		{name: "taken by another", as: "bob", args: []string{"take", "p1.w1@1"}, exit: 1, prep: takeW1, want: []string{"p1.w1 was taken by alice", "nova-sprint next --as bob"}},
 		{name: "a working card", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State = "working" }), want: []string{"finish p1.w1 first"}},
 		{name: "the roster fails", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 2,

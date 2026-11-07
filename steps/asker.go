@@ -87,6 +87,8 @@ type Answers struct {
 	Limits   *Limits
 	Timeouts *Timeouts
 	Failed   map[string]string // question -> why; "*" when the budget was spent
+	Models   map[string]string // tier -> the model a bench runs (the catalog's bench key); none: no bench deal
+	NoDeal   string            // layer 6's gate: why nothing is dealt this tick ("" deals; model.go)
 }
 
 // WidthAnswer is width(row): how many the row works (at most its width) and

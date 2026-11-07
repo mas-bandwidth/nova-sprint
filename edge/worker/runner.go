@@ -9,6 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -584,24 +585,23 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 	return r.sendReportAndClean_internal(runCtx, jobDir, rec)
 }
 
-// chooseModel_internal is the model a job runs: a friend-shaped receipt's
-// own, else the first of a bench's candidates its probe proved this harness
-// serves (the policy decides the models per tier; the worker only drops
-// those it cannot serve). None is a fault naming the candidates and the fix.
+// chooseModel_internal is the model a job runs: the one the deal named and
+// the receipt carries (defect 57: the worker never picks one). A harness
+// that takes a model and whose probe proved models, none of them this one,
+// is a fault naming the model and the fix.
 func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, error) {
 	h, err := r.harnessFor_internal(harness)
-	if err != nil || info.Model != "" || !h.Needs().Model {
+	if err != nil || !h.Needs().Model {
 		return info.Model, err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, m := range info.Models {
-		if r.served[m] {
-			return m, nil
-		}
+	proved := slices.DeleteFunc(slices.Sorted(maps.Keys(r.served)), func(m string) bool { return m == "" || !r.served[m] })
+	if len(proved) == 0 || r.served[info.Model] {
+		return info.Model, nil
 	}
-	return "", fmt.Errorf("this bench's %s serves none of the policy's models for tier %s (%s): give the tier a model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for one (nova-worker --providers)",
-		h.Name(), info.Tier, strings.Join(info.Models, ", "))
+	return "", fmt.Errorf("this bench's %s does not serve %s, the model the deal named for tier %s (its probe proved %s): give the tier a bench model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for it (nova-worker --providers)",
+		h.Name(), info.Model, info.Tier, strings.Join(proved, ", "))
 }
 
 // refuseReceipt_internal reports the card taken under a receipt the worker

@@ -48,8 +48,7 @@ type (
 		DoneWhen                                                                                []string `json:"done_when"`
 		Epoch, Gen, Attempt, Review                                                             int
 		Model, Forge                                                                            string
-		Models                                                                                  []string // a bench's candidates for the tier, when Model is ""
-		Deadline                                                                                int      // seconds, from policy's timeouts().consumer[tier]
+		Deadline                                                                                int // seconds, from policy's timeouts().consumer[tier]
 	}
 	ReportRequest struct {
 		Epoch, Gen                                             int
@@ -171,11 +170,11 @@ func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen in
 }
 
 // checkReceipt_internal is what the runner needs from a receipt before it
-// stages anything: a model (or a bench's candidates) and a deadline (a
-// forge of "" means none).
+// stages anything: the model the deal named and a deadline (a forge of ""
+// means none).
 func checkReceipt_internal(info TakeInfo) error {
 	var missing []string
-	if info.Model == "" && len(info.Models) == 0 {
+	if info.Model == "" {
 		missing = append(missing, "model")
 	}
 	if info.Deadline <= 0 {

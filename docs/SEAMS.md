@@ -162,11 +162,14 @@ seam: `{consumer, producer, kind, stream, repo, base, branch, head, tier,
 brief, prose, finding, stream_ref (the stream's base branch), base_sha, prior_head, paths, done_when,
 epoch, gen, attempt, review, model, models, deadline, forge}`, `deadline` in
 seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream.
-`model` is a friend's own, from the roster; a bench has none, and `models`
-is the active policy's candidates for the card's tier in provider/model form
-(`policy.Catalog.ForTier`), of which the worker runs the first its probe
-proved its harness serves. `next --as <row> --json` carries the same per
-tier as `tier_models` (the probe's input). The worker holds no deadline,
+`model` is the one the deal named and wrote on the consumer (store round
+23's `cards.model`): a friend's own, from the roster, or for a bench the
+active policy's `catalog().bench[tier]` in provider/model form; take reads
+it from the consumer and never chooses one, and a consumer dealt with no
+model is refused at take. The worker runs it, and faults naming the model
+and the tier when its probe proved the harness does not serve it.
+`next --as <row> --json` carries the bench model per tier as `tier_models`
+(the probe's input). The worker holds no deadline,
 model or forge of its own.
 
 ## 7. dash -> run

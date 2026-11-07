@@ -67,9 +67,9 @@ func sprint() store.Snapshot {
 		Rows:    map[string]store.Row{"alice": row("alice", "worker"), "bob": row("bob", "worker"), "carol": row("carol", "coordinator"), "dave": {Name: "dave", State: "up", Gen: 1}},
 		Cards: map[string]store.Card{
 			"p1":    {ID: "p1", Kind: "producer", Stream: "s", State: "working", Gen: 1, Attempt: 1, Tier: "pro", Priority: "normal", Brief: "tier: pro", Branch: "sprint/s/p1"},
-			"p1.w1": {ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s", State: "ready", Gen: 1, Attempt: 1, Holder: "alice", Tier: "pro", Branch: "sprint/s/p1", BaseSHA: base, Brief: "do p1", Priority: "normal"},
+			"p1.w1": {ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s", State: "ready", Gen: 1, Attempt: 1, Holder: "alice", Tier: "pro", Branch: "sprint/s/p1", BaseSHA: base, Brief: "do p1", Priority: "normal", Model: "inception/mercury-3"},
 			"p2":    {ID: "p2", Kind: "producer", Stream: "s", State: "review", Gen: 1, Attempt: 1, Review: 1, Tier: "pro", Priority: "normal", Head: head, Author: "alice", Branch: "sprint/s/p2"},
-			"p2.r1": {ID: "p2.r1", Kind: "read", Of: "p2", Stream: "s", State: "ready", Gen: 1, Attempt: 1, Review: 1, Holder: "bob", Tier: "pro", Head: head, Author: "alice", Branch: "sprint/s/p2", Priority: "normal"},
+			"p2.r1": {ID: "p2.r1", Kind: "read", Of: "p2", Stream: "s", State: "ready", Gen: 1, Attempt: 1, Review: 1, Holder: "bob", Tier: "pro", Head: head, Author: "alice", Branch: "sprint/s/p2", Priority: "normal", Model: "inception/mercury-3"},
 		},
 		Judgements: map[string]store.Judgement{},
 		Cursors:    map[string]int64{},
@@ -168,7 +168,8 @@ type fakeAnswers struct{}
 
 func (fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
 	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}},
-		Catalog: policy.Catalog{Models: map[string][]policy.Model{"inception": {{Name: "mercury-3", Tier: "pro"}}, "deepseek": {{Name: "deepseek-flash", Tier: "flash"}, {Name: "deepseek-flash", Tier: "pro"}}}}}, nil
+		Catalog: policy.Catalog{Models: map[string][]policy.Model{"inception": {{Name: "mercury-3", Tier: "pro"}}, "deepseek": {{Name: "deepseek-flash", Tier: "flash"}, {Name: "deepseek-flash", Tier: "pro"}}},
+			Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3"}}}, nil
 }
 
 // fakeLander is the hand landing and the group branch's creation: Land
