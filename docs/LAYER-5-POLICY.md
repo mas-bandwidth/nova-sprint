@@ -494,5 +494,5 @@ five reach checks are each reached: 13 runs, run one by one with
 `regrace`, `budget`, `pack` and `deadline(kind)` have no question here and are
 owed to the layer 3 and 6 wiring.
 
-**Size.** 1,701 lines of non-test Go, over the 1.5k budget by about 200; 74
+**Size.** 1,703 lines of non-test Go, over the 1.5k budget by about 200; 74
 lines of Starlark.
