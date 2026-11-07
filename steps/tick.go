@@ -32,6 +32,8 @@ type tick struct {
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
 	judges    []judgement
+	pend      set               // kind and about of every judgement in judges (addJudge)
+	jidx      judgedIndex       // the view's judgements by kind and about (judged)
 	expires   map[string]string // judgement id -> why it expires
 }
 

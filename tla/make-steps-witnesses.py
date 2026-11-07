@@ -24,7 +24,8 @@ INVARIANTS = [
     "NeverBelowTier", "CarryFIFO", "EdgeAfterAccepted",
     "OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
-    "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds",
+    "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "NoDealWithoutPolicy",
+    "ResolveFromState", "HeldBehindShown",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom"]
 
@@ -55,6 +56,7 @@ REACH = {
     "StepsNeverSplit": ("pre", "a group of a refused op is packed as an op of its own"),
     "StepsNeverStopAcked": ("pre", "a runner's stop ack is consumed"),
     "StepsNeverPolicyJudged": ("pre", "a failed policy answer opens a policy judgement"),
+    "StepsNeverGated": ("pre", "the policy gate opens a no-policy judgement"),
     "StepsNeverResolved": ("deal", "Resolve makes a producer ready"),
     "StepsNeverDealt": ("deal", "the deal starts a producer"),
     "StepsNeverReadAsked": ("deal", "the deal cuts a read"),
@@ -63,6 +65,8 @@ REACH = {
     "StepsNeverEscalated": ("deal", "a bounced producer is dealt one rank up"),
     "StepsNeverNeedReleased": ("deal", "a need lands and its dependant resolves"),
     "StepsNeverCannotRead": ("deal", "a review no row may read opens cannot-read"),
+    "StepsNeverHeldBehind": ("deal", "a producer held behind another on a file opens overlap"),
+    "StepsNeverHandLanded": ("deal", "a store op lands a producer by hand"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "a red result sends a producer to fix"),
@@ -188,6 +192,31 @@ WITNESSES = [
      "under width plus ahead waits on takes that need not come.",
      [("  /\\ Used(V, r, t) < Width[r] + Ahead[r]\n",
        "  /\\ Used(V, r, t) < Width[r]   \\* FAULT: was Width[r] + Ahead[r]\n", 1)]),
+    ("StepsDealsWithoutPolicy", "NoDealWithoutPolicy", "pre",
+     "The policy gate is ignored: the tick preempts and deals on the\n"
+     "default rows while no active policy answers.",
+     [("         pre  == IF V.pol THEN PreStep(V, a) ELSE NoPlan",
+       "         pre  == PreStep(V, a)   \\* FAULT: was gated on V.pol", 1),
+      ("         dl   == IF V.pol THEN DealStep(V, cl3, a.rows, TRUE) ELSE NoPlan",
+       "         dl   == DealStep(V, cl3, a.rows, TRUE)   \\* FAULT: was gated on V.pol", 1)]),
+    ("StepsResolveOnEvent", "ResolveFromState", "deal",
+     "Resolve is driven by the land step's events, not the state: a\n"
+     "producer with needs resolves only in a tick that consumes its need's\n"
+     "landed result, so a need landed by a store op never releases it.",
+     [("         res  == ResolveFold(V, inb.cl, 1, {})",
+       "         res  == {p \\in ResolveFold(V, inb.cl, 1, {}) :   \\* FAULT: on the event only\n"
+       "                    \\A n \\in Needs[p] : \\E i \\in 1..Len(inbox) :\n"
+       "                      inbox[i].out = \"landed\" /\\ inbox[i].id[3][1] = n}", 1)]),
+    ("StepsGlobOverlaps", "ResolveFromState", "pre",
+     "Overlap counts a glob both cards list (a directory both add to): q\n"
+     "is held behind p on a/* though they name no file in common.",
+     [("Shared(p, q) == {f \\in Paths[p] \\cap Paths[q] : f \\notin Globs}",
+       "Shared(p, q) == Paths[p] \\cap Paths[q]   \\* FAULT: was files only", 1)]),
+    ("StepsHeldUnshown", "HeldBehindShown", "deal",
+     "A producer held behind another on a file opens no judgement: it\n"
+     "sits waiting with nothing saying why.",
+     [("                   \\cup {[kind |-> \"overlap\", about |-> p] : p \\in Held(V, inb.cl, res)}\n",
+       "                   \\cup {}   \\* FAULT: was the overlap judgements\n", 1)]),
 ]
 
 
