@@ -21,7 +21,7 @@ $ go test -count=1 ./edge/worker/          -> ok   8.526s
 $ go test -count=1 ./cmd/nova-worker/      -> FAIL 8.405s  (TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot: "no report reached nova-sprint (exit 0 ... sprint log "unhook ... next --as r1 --json\nnext --as r1 --json\n")")
 ```
 
-Two packages are red at the base commit (defects 24 and 25 below). The
+Two packages are red at the base commit (defects 22 and 23 below). The
 "unit" run is not clean of real time, sockets or processes: `edge/bus`
 starts a throwaway `redis-server` and the real `nova-bus` with no gate but
 binary presence (`edge/bus/functional_test.go:20-70`); `edge/worker` runs
@@ -309,18 +309,7 @@ the repair.
     and a wall death in the backoff window is still "stopped" late. Repair:
     `wait_internal(ctx, d)` (`pass.go:109-118`) in both.
 
-22. **nit** `edge/worker/proxy.go:88-91, 216-223`. `X-Nova-Route` and
-    `X-Target-Host` let the harness inside the wall pick another route or
-    another port of the allowed host; nothing in the adapters sets either.
-    Repair: delete both; the first path segment is the one route selector.
-
-23. **nit** `edge/worker/runner.go:31-36, 540-543, 1133-1134`. A made-up pid
-    (`40000+n`) and nonce `n-<that pid>` are written to the record before the
-    real child starts, and the counter restarts at 40001 in every worker
-    process, so the nonce is not unique across restarts. Repair: write the
-    pid once, from `OnStart`, and derive the nonce from a random source.
-
-24. **minor** (red test) `cmd/nova-worker/break_test.go:59`. The fake
+22. **minor** (red test) `cmd/nova-worker/break_test.go:59`. The fake
     `nova-sprint`'s `next` lists the consumer under `"ready"`; since the
     deal is the take (`pass.go:208-222` runs only `next.Working`) the
     worker takes nothing, runs two passes and exits 0, and the test fails
@@ -328,7 +317,7 @@ the repair.
     the consumer under `"working"` (and gate the test as functional: it
     runs real git and shell).
 
-25. **minor** (red test) `edge/bus/functional_test.go:92-123`. Starts a
+23. **minor** (red test) `edge/bus/functional_test.go:92-123`. Starts a
     real `redis-server` and two real `nova-bus hook` processes in the
     default `go test` run; here `nova-bus who` never listed the hooks within
     5 s. Whether the installed `nova-bus` (`/Users/glenn/.local/bin`) has
@@ -336,6 +325,24 @@ the repair.
     on an environment flag like `TestFunctionalScratchForge`
     (`edge/forge/functional_test.go:21`) and print `who`'s output in the
     failure.
+
+24. **nit** `edge/worker/proxy.go:88-91, 216-223`. `X-Nova-Route` and
+    `X-Target-Host` let the harness inside the wall pick another route or
+    another port of the allowed host; nothing in the adapters sets either.
+    Repair: delete both; the first path segment is the one route selector.
+
+25. **nit** `edge/worker/runner.go:31-36, 540-544, 1133-1135, 1139-1146`.
+    Before the child starts, `runAndHarvest_internal` writes a made-up pid
+    (`40000+n`) and timestamped pre-start nonce `n-<pid>-<UnixNano>`
+    (`runner.go:540-544`); `runWallCmd_internal` then allocates a second
+    counter value and counter-only nonce `n-<fallbackPID>`
+    (`runner.go:1133-1135`) and persists that counter-only nonce (with the
+    real or fallback pid) in `OnStart` after the child starts
+    (`runner.go:1139-1146`). Because `nextWallPID_internal` restarts at
+    40001 in every worker process, the persisted post-start nonce
+    `n-<fallbackPID>` is not unique across worker restarts. Repair: write
+    the pid once, from `OnStart`, and derive the persisted nonce from a
+    random or timestamped source rather than the per-process counter alone.
 
 26. **nit** `docs/LAYER-4-EDGES.md:23, 465-467, 545, 585-586` still cite
     `tla/Push.tla` and `PushCursorBeforeConfirm`, which the stitch deleted;
@@ -438,9 +445,11 @@ Doc sentence, then what the code does.
 - `WorkingWithinWidth` (`:388-389`) is vacuous: `Init` has exactly `Width`
   consumers working and no action adds one. It checks nothing.
 - `PidRecordedAtStart` (`:367-368`) says the pid is `PidFor(c)` while
-  running; the code writes a made-up pid first (`runner.go:540-543`), the
-  real one from `OnStart` (`:1139-1148`), and a different nonce after the
-  run (`:555`). The projection in the walk never shows this because the walk
+  running; the code writes a made-up pid and pre-start nonce
+  `n-<pid>-<UnixNano>` first (`runner.go:540-544`), then overwrites the
+  record in `OnStart` (`:1139-1148`) with the real pid and counter-only
+  nonce `n-<fallbackPID>` created at `:1133-1135` (and re-persists after the
+  run at `:554-557`). The projection in the walk never shows this because the walk
   writes the pid itself (`trace_test.go:322`).
 - The trace walk (`edge/worker/trace_test.go`) re-enacts the model in the
   test for every lifecycle step but three (defect 8), so "the code's own
