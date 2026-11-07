@@ -157,9 +157,23 @@ func (t *tick) withRoom(rows []string) []string {
 
 func (t *tick) used(r string) int { return len(t.v.liveOnRow[r]) + t.tally[r] }
 
+// room is policy's work plus ahead for row r, read once per tick.
 func (t *tick) room(r string) int {
+	if n, ok := t.roomCache[r]; ok {
+		return n
+	}
 	w := t.o.width(t.rowFacts(t.v.Rows[r]))
-	return w.Work + w.Ahead
+	t.roomCache[r] = w.Work + w.Ahead
+	return t.roomCache[r]
+}
+
+// rankIndex is row r's rank as an index into store.Tiers, once per tick.
+func (t *tick) rankIndex(r string) int {
+	if n, ok := t.rankCache[r]; ok {
+		return n
+	}
+	t.rankCache[r] = tierIndex(t.rank(r))
+	return t.rankCache[r]
 }
 
 // rowsAnswer is policy's rows answer for c, read once per candidate (the
@@ -196,14 +210,11 @@ func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
 			out = append(out, r)
 		}
 	}
-	for _, r := range t.ranked(c, kindOf(c), rows) {
-		if len(out) >= n {
-			break
-		}
-		if !slices.Contains(out, r) {
-			out = append(out, r)
-		}
+	if len(out) >= n {
+		return out
 	}
+	rest := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return slices.Contains(out, r) })
+	out = append(out, t.ranked(c, kindOf(c), rest, n-len(out))[:min(n-len(out), len(rest))]...)
 	return out
 }
 
@@ -217,10 +228,12 @@ func kindOf(c store.Card) string {
 // ranked is rows in the engine's order (the model's DefaultRow): the desired
 // rank exactly, then above it, then an idle lane, then most room, then name;
 // a row the card was withdrawn from last, when another remains (LPM D22).
-func (t *tick) ranked(c store.Card, kind string, rows []string) []string {
+// rows come in name order, so a stable sort keeps the name tie-break; a
+// single candidate's best row is one pass (the deal's common case).
+func (t *tick) ranked(c store.Card, kind string, rows []string, n int) []string {
 	want := t.desired(c, kind)
 	score := func(r string) int {
-		rk := tierIndex(t.rank(r))
+		rk := t.rankIndex(r)
 		s := 0
 		switch {
 		case rk == want:
@@ -236,8 +249,17 @@ func (t *tick) ranked(c store.Card, kind string, rows []string) []string {
 		}
 		return s + t.room(r) - t.used(r)
 	}
+	if n == 1 {
+		best, bestScore := "", 0
+		for _, r := range rows {
+			if s := score(r); best == "" || s > bestScore {
+				best, bestScore = r, s
+			}
+		}
+		return []string{best}
+	}
 	out := slices.Clone(rows)
-	slices.SortStableFunc(out, func(a, b string) int { return cmp.Or(cmp.Compare(score(b), score(a)), cmp.Compare(a, b)) })
+	slices.SortStableFunc(out, func(a, b string) int { return cmp.Compare(score(b), score(a)) })
 	return out
 }
 

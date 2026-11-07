@@ -17,14 +17,18 @@ type tick struct {
 	tmo Timeouts
 
 	rowsCache map[string]card.Row
-	rowNames  []string             // every row, by name, once
-	rfacts    map[string]RowFacts  // rowFacts, once per row per tick
-	roster    map[string]RosterRow // the roster's facts, once per row per tick
-	planned   int                  // cards touched by the non-blocker groups planned so far
-	claimed   set                  // cards and rows an earlier step claimed
-	resolved  set                  // producers resolved this tick: started, for the overlap tally
-	tally     map[string]int       // consumers dealt per row this tick
-	rested    set                  // rows resting after faults (LPM R34): a deal filter
+	rowNames  []string              // every row, by name, once
+	rfacts    map[string]RowFacts   // rowFacts, once per row per tick
+	roster    map[string]RosterRow  // the roster's facts, once per row per tick
+	planned   int                   // cards touched by the non-blocker groups planned so far
+	candCache map[string][]RowFacts // candidates per tier for work, once per tick
+	roomCache map[string]int        // room per row (policy's work plus ahead), once per tick
+	rankCache map[string]int        // rank index per row, once per tick
+	resolvedP map[string]set        // stream + path -> producers resolved this tick (the overlap tally)
+	claimed   set                   // cards and rows an earlier step claimed
+	resolved  set                   // producers resolved this tick: started, for the overlap tally
+	tally     map[string]int        // consumers dealt per row this tick
+	rested    set                   // rows resting after faults (LPM R34): a deal filter
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
 	judges    []judgement
@@ -58,7 +62,8 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 
 func newTick(v *View, in Inputs) *tick {
 	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{},
-		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{}}
+		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{},
+		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{}, resolvedP: map[string]set{}}
 }
 
 // overBudget says whether the non-blocker groups planned so far touch the
@@ -198,18 +203,29 @@ func (t *tick) streamFacts(s string) StreamFacts {
 
 // candidates is the rows policy may name for c: open (up, not held), not
 // resting, serving c's tier, and for a read not c's author and not holding
-// a live read of c's head. Room is the engine's check at the deal.
+// a live read of c's head. Room is the engine's check at the deal. The work
+// list is built once per tier per tick (row claims are made before the
+// deal); a read's is filtered from it.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
+	work, ok := t.candCache[c.Tier]
+	if !ok {
+		for _, n := range t.rowNames {
+			r := t.v.Rows[n]
+			if _, resting := t.rested[n]; resting || !t.v.Open(r) || !slices.Contains(t.tiers(n), c.Tier) || !t.unclaimed(n) {
+				continue
+			}
+			work = append(work, t.rowFacts(r))
+		}
+		t.candCache[c.Tier] = work
+	}
+	if kind != "read" {
+		return work
+	}
 	var out []RowFacts
-	for _, n := range t.rowNames {
-		r := t.v.Rows[n]
-		if _, resting := t.rested[n]; resting || !t.v.Open(r) || !slices.Contains(t.tiers(n), c.Tier) || !t.unclaimed(n) {
-			continue
+	for _, f := range work {
+		if f.Name != c.Author && !t.readingOn(c, f.Name) {
+			out = append(out, f)
 		}
-		if kind == "read" && (n == c.Author || t.readingOn(c, n)) {
-			continue
-		}
-		out = append(out, t.rowFacts(r))
 	}
 	return out
 }

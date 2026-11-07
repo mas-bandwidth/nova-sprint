@@ -32,6 +32,9 @@ func (t *tick) needs() {
 			continue
 		}
 		t.resolved[p] = struct{}{} // the overlap tally counts it whether or not the budget admits it
+		for _, path := range c.Paths {
+			add(t.resolvedP, c.Stream+"\x00"+path, p)
+		}
 		t.group("resolve", p, t.producerMove(p, card.Resolve{}))
 	}
 }
@@ -49,9 +52,11 @@ func (t *tick) needsLanded(c store.Card) bool {
 // tick, sharing a path with c (LANDING step 2).
 func (t *tick) overlap(c store.Card) []string {
 	out := t.v.Overlaps(c)
-	for q := range t.resolved {
-		if x := t.v.Cards[q]; x.Stream == c.Stream && shares(x.Paths, c.Paths) {
-			out = append(out, q)
+	for _, path := range c.Paths {
+		for q := range t.resolvedP[c.Stream+"\x00"+path] {
+			if !slices.Contains(out, q) {
+				out = append(out, q)
+			}
 		}
 	}
 	slices.Sort(out)

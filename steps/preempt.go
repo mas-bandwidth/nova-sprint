@@ -63,14 +63,12 @@ func (t *tick) preemptOn(b store.Card, row, victim string) {
 }
 
 // serving is the open (up, not held), unclaimed, unrested rows serving c's
-// tier, by name.
+// tier, by name (the candidates' names).
 func (t *tick) serving(c store.Card) []string {
-	var out []string
-	for _, n := range t.rowNames {
-		r := t.v.Rows[n]
-		if _, resting := t.rested[n]; !resting && t.v.Open(r) && t.unclaimed(n) && slices.Contains(t.tiers(n), c.Tier) {
-			out = append(out, n)
-		}
+	cands := t.candidates(c, "work")
+	out := make([]string, len(cands))
+	for i, f := range cands {
+		out[i] = f.Name
 	}
 	return out
 }
