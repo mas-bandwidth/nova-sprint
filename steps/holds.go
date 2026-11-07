@@ -7,10 +7,14 @@ import (
 )
 
 // holds is the holds step (LAYER-3 "Holds"): Park for a ready producer of a
-// held stream that the hold's op missed; Withdraw of a held row's untaken
-// consumers at once and of a down row's after the grace (the gone bound),
-// releasing their producers to be dealt elsewhere; working consumers stay.
-// A hold never touches landing (LANDING step 9).
+// held stream that the hold's op missed; Withdraw of every ready consumer,
+// releasing its producer to be dealt again in hand (a ready consumer is one
+// dealt before the deal became the take, defect 52: nothing cuts one now);
+// and of a held row's unacknowledged consumers at once and a down row's
+// after the grace (the gone bound): the row never acknowledged them, as the
+// untaken ones these rules were for. A consumer the row acknowledged stays
+// (a hold stops new deals, not work in hand; a silent row's are the limits
+// step's). A hold never touches landing (LANDING step 9).
 func (t *tick) holds() {
 	for _, p := range t.v.Producers("ready") {
 		if c := t.v.Cards[p]; t.v.Streams[c.Stream].Held && t.free(p) {
@@ -18,18 +22,22 @@ func (t *tick) holds() {
 		}
 	}
 	for _, n := range t.rowNames {
-		r := t.v.Rows[n]
-		why := ""
+		r, why := t.v.Rows[n], ""
 		switch {
 		case r.Held:
 			why = "row " + n + " is held; redealt"
 		case r.State == "down" && !t.in.Now.Before(t.downAt(n).Add(seconds(t.tmo.RowSilentGone))):
 			why = "row " + n + " is down; redealt"
-		default:
-			continue
 		}
 		for _, id := range t.v.Live(n) {
-			if c := t.v.Cards[id]; c.State == "ready" && t.unclaimed(id) && t.free(c.Of) {
+			c := t.v.Cards[id]
+			if !t.unclaimed(id) || !t.free(c.Of) {
+				continue
+			}
+			switch {
+			case c.State == "ready":
+				t.group("withdraw", id, t.withdraw(id, "dealt to "+n+" before the deal became the take; dealt again, in hand"))
+			case why != "" && !t.v.Acked(id):
 				t.group("withdraw", id, t.withdraw(id, why))
 			}
 		}

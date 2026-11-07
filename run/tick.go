@@ -168,6 +168,7 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster}
 	a := t.asker(ctx, o.Roster)
 	plan := steps.Tick(t.view, in, a)
+	t.push.Nudge(plan.Nudges)
 	if a.asked {
 		t.limits, t.timeouts = a.answers.Limits, a.answers.Timeouts
 	}

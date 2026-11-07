@@ -42,7 +42,7 @@ func TestCheckAllGreen(t *testing.T) {
 	r := w.do("", "check")
 	wantLines := []string{"CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK store at schema", "CHECK bus answering (5 present)",
 		"CHECK stream s: o/r reachable, base main at bbbbbbbbbbbb", "CHECK judgements: none open", "CHECK run on studio (pid 41)",
-		"CHECK width: working 0 (2 dealt) of 4 open on 3 rows; 0 ready", "CHECK landings: none waiting", "next: nova-sprint next --as <you>"}
+		"CHECK width: working 2 (2 dealt) of 4 open on 3 rows; 0 ready", "CHECK landings: none waiting", "next: nova-sprint next --as <you>"}
 	if r.Exit != 0 || r.Output != strings.Join(wantLines, "\n")+"\n" {
 		t.Fatalf("exit %d:\n%s", r.Exit, r.Output)
 	}

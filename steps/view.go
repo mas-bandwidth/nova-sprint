@@ -33,10 +33,12 @@ type View struct {
 	dependants map[string]set            // producers whose needs name the key
 	paths      map[string]map[string]set // stream -> path -> producers ready or started
 
-	TakenAt map[string]time.Time   // consumer -> when it went working
+	TakenAt map[string]time.Time   // consumer -> when it went working: when it was dealt
+	ReadyAt map[string]time.Time   // producer -> when it last went ready
 	Landed  map[string]time.Time   // stream -> when a producer of it last landed
 	Down    map[string]time.Time   // row -> when it last went down
 	Faults  map[string][]time.Time // row -> when its consumers reported fault
+	acks    set                    // the acknowledgement cursors written (AckCursor)
 	born    map[string]int64       // card -> the seq that put it (0: before the view)
 	touched map[string]int64       // card -> the seq that last wrote it (0: before the view)
 }
@@ -65,6 +67,9 @@ func Build(s store.Snapshot, now time.Time) *View {
 		v.Cards[c.ID] = c
 		v.index(c)
 	}
+	for name := range s.Cursors {
+		v.acks[name] = struct{}{}
+	}
 	return v
 }
 
@@ -76,8 +81,16 @@ func (v *View) reset(epoch int) {
 	v.liveOnRow, v.dependants = map[string]set{}, map[string]set{}
 	v.paths = map[string]map[string]set{}
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
+	v.ReadyAt = map[string]time.Time{}
 	v.Faults, v.born, v.touched = map[string][]time.Time{}, map[string]int64{}, map[string]int64{}
+	if v.acks == nil { // the store keeps cursors across epochs; so does the view
+		v.acks = set{}
+	}
 }
+
+// Acked says whether consumer c's row has acknowledged it (its take wrote
+// AckCursor(c) in this epoch).
+func (v *View) Acked(c string) bool { _, ok := v.acks[AckCursor(v.Epoch, c)]; return ok }
 
 // Fold advances the view by events, in seq order: an accepted event lays its
 // after-images over the records and the indexes follow; a clear starts the
@@ -103,6 +116,9 @@ func (v *View) Fold(events []store.Event) {
 		}
 		for _, c := range e.After.Cards {
 			v.foldCard(c, e)
+		}
+		for name := range e.After.Cursors {
+			v.acks[name] = struct{}{}
 		}
 		for ver, p := range e.After.Policies {
 			if p.Active {
@@ -134,6 +150,8 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 		v.TakenAt[c.ID] = e.At
 	case isConsumer(c) && c.State == "done" && c.Result == "fault" && (!had || old.State != "done"):
 		v.Faults[c.Holder] = append(v.Faults[c.Holder], e.At)
+	case !isConsumer(c) && c.State == "ready" && (!had || old.State != "ready"):
+		v.ReadyAt[c.ID] = e.At
 	case !isConsumer(c) && c.State == "landed" && (!had || old.State != "landed"):
 		v.Landed[c.Stream] = e.At
 	}
@@ -300,8 +318,9 @@ type viewCore struct {
 	Judgements                             map[string]store.Judgement
 	ByState, ByRung, ConsOf, Live, Depends map[string]set
 	Paths                                  map[string]map[string]set
+	Acks                                   set
 }
 
 func (v *View) core() viewCore {
-	return viewCore{v.Seq, v.Epoch, v.Policy, v.Streams, v.Cards, v.Rows, v.Judgements, v.byState, v.byRung, v.consOf, v.liveOnRow, v.dependants, v.paths}
+	return viewCore{v.Seq, v.Epoch, v.Policy, v.Streams, v.Cards, v.Rows, v.Judgements, v.byState, v.byRung, v.consOf, v.liveOnRow, v.dependants, v.paths, v.acks}
 }

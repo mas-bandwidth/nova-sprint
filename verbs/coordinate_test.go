@@ -158,7 +158,7 @@ func TestHoldRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "no reason", as: "carol", args: []string{"hold", "alice"}, exit: 1, want: []string{"a hold needs its reason"}},
 		{name: "no name", as: "carol", args: []string{"hold", "--reason", "r"}, exit: 2, want: []string{"hold takes"}},
-		{name: "no such row", as: "carol", args: []string{"hold", "zz", "--reason", "r"}, exit: 1, want: []string{"no row or stream zz"}},
+		{name: "no such row", as: "carol", args: []string{"hold", "zz", "--reason", "r"}, exit: 1, want: []string{"no row, stream or card zz"}},
 		{name: "an unhold of nothing held", as: "carol", args: []string{"unhold", "alice", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show alice"}},
 	})
 }

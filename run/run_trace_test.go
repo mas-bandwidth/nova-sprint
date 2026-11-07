@@ -16,8 +16,11 @@ package run
 // express (each restriction is listed in the mapping document):
 //   - three tracked producers p1, p2, p3 (the model's jobs and cards 1..3),
 //     ready at Init; p0 (flash) with its consumer w0 working on r1, the
-//     preemption's victim; p9 (flash) with w9 working on r2, so the idle
-//     alarm never fires; r2 serves only flash and has no room.
+//     preemption's victim; p9 (flash) with w9 working on r2; r2 serves only
+//     flash and has no room. r1's width is 3: w0 and two jobs (the deal is
+//     the take, defect 52, so a dealt job is working on r1). The engine's
+//     idle floor and its nudge, unacked and undealt bounds are set past the
+//     walk (the model has no action for them).
 //   - the policy answers one deal of room on r1 per tick, so one tracked
 //     op per tick: the model's Budget is 1.
 //   - outside writes (a report, Stop, Start) land between ticks, or a report
@@ -28,6 +31,9 @@ package run
 //   - p3 is raised to blocker only when it is the last job, so the deal
 //     order stays the model's FIFO; it then preempts w0 and the tick
 //     returns the stop request (DeliverEdge) only once that op is accepted.
+//     Just before the raise w0 is set ready and working again (two
+//     untracked ops, no model event), so it is the youngest working
+//     consumer on r1 and the victim, not a job's consumer.
 //   - a push is attempted only when the last tracked event raised r1 a
 //     notice (reports raise none), so the envelope covers the whole log.
 import (
@@ -300,7 +306,7 @@ func (r *runTrace) applyTick(ctx context.Context, op store.Op) (store.Receipt, e
 		for _, c := range g.Cards {
 			if j := jobOf(c); j > 0 {
 				if job != 0 && job != j {
-					r.t.Fatalf("op %s moves two tracked cards", op.ID)
+					r.t.Fatalf("op %s moves two tracked cards: %+v", op.ID, steps.OpGroups(op))
 				}
 				job = j
 			}
@@ -371,9 +377,9 @@ func (p tracePolicy) AnswerContext(_ context.Context, _ policy.Versions, snap st
 			}
 		}
 		if name == "r1" {
-			out.Width[name] = policy.Width{Work: 1, Ahead: live} // room for one more deal
+			out.Width[name] = policy.Width{Work: min(live+1, 3)} // room for one more deal, to the roster's width
 		} else {
-			out.Width[name] = policy.Width{Work: 1, Ahead: 0}
+			out.Width[name] = policy.Width{Work: 1}
 		}
 	}
 	if p.r.inTick { // the tick's ask (the cold start's seed asks nothing)
@@ -427,7 +433,7 @@ func tracePush(proc, stage string, lo, hi int) string {
 // --- the walk's actions --------------------------------------------------
 
 var traceRoster = roster.Roster{Workers: map[string]roster.Worker{
-	"r1": {Name: "r1", Width: 1, Tiers: []string{"pro"}},
+	"r1": {Name: "r1", Width: 3, Tiers: []string{"pro"}}, // w0 and two jobs: the deal is the take
 	"r2": {Name: "r2", Width: 1, Tiers: []string{"flash"}},
 }}
 
@@ -452,6 +458,13 @@ func (r *runTrace) report(card string) {
 
 func (r *runTrace) raise() {
 	r.t.Helper()
+	for i, st := range []string{"ready", "working"} {
+		op := store.Op{ID: fmt.Sprintf("retake-w0-%d", i), Epoch: 1, Actor: "person", Kind: "trace-retake", At: r.at,
+			Writes: []store.Write{store.SetCardState{Card: "w0", State: st}}}
+		if rec, err := r.base.Apply(r.ctx, op); err != nil || !rec.Accepted {
+			r.t.Fatalf("retake w0: %+v %v", rec, err)
+		}
+	}
 	r.reports++
 	r.outside(fmt.Sprintf("report-%d", r.reports), store.SetCardPriority{Card: "p3", Priority: "blocker"})
 	r.add("Report", ", c |-> 3"+r.global())
@@ -632,6 +645,11 @@ func traceSeed(t *testing.T) int64 {
 }
 
 func TestEmitRunTrace(t *testing.T) {
+	// The run model has no nudge, unacked, undealt or idle action: the
+	// fixture keeps the engine's bounds past the walk (restored after; no
+	// unit test of this package runs in parallel).
+	defer func(e steps.Defaults) { steps.Engine = e }(steps.Engine)
+	steps.Engine.NudgeAfter, steps.Engine.UnackedAfter, steps.Engine.UndealtAfter, steps.Engine.IdleFloor = 1<<30, 1<<30, 1<<30, 0
 	ctx := context.Background()
 	seed := traceSeed(t)
 	r := &runTrace{t: t, ctx: ctx, rnd: rand.New(rand.NewSource(seed)), base: store.NewFake(), at: time.Unix(1_800_000_000, 0).UTC(), opJob: map[string]int{}}

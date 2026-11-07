@@ -152,8 +152,6 @@ func (tr *cardTrace) consumerArgs(subject string, slot func(string) (string, err
 		id, rest = e.Consumer, []string{"Faulted", "p", p}
 	case Released:
 		id, rest = workID(subject, tr.w.snap().Cards[subject].Attempt), []string{"Released", "p", p}
-	case Take:
-		id, rest = subject, []string{"Take", "r", quoted(e.Row)}
 	case Report:
 		id, rest = subject, []string{"Report", "r", quoted(e.Row), "res", quoted(e.Result), "h", head(e.Head)}
 	case Withdraw:

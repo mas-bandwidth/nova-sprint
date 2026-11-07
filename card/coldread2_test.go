@@ -49,8 +49,8 @@ func TestCold2DefectTwoReadsInOneTick(t *testing.T) {
 	plan, r := w.plan("p1", AskReads{Rows: []string{"r2", "r3"}})
 	require.Nil(t, r)
 	w.op("askreads", plan)
-	assert.Equal(t, Ready, w.card("p1.r1.1").State)
-	assert.Equal(t, Ready, w.card("p1.r1.2").State)
+	assert.Equal(t, Working, w.card("p1.r1.1").State)
+	assert.Equal(t, Working, w.card("p1.r1.2").State)
 }
 
 // E2. HoldStream with a ready producer named twice emits two state writes to
@@ -184,7 +184,7 @@ func TestCold2SuspectWithdrawFromAStaleProducerStrands(t *testing.T) {
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
 	_, r := MoveConsumer(w.card("p1.w1"), stale, w.rows()["r1"], Withdraw{Reason: "silent", Stream: Stream{Name: "s1"}})
 	refusal{r, "producer p1 is ready; withdrawing live work consumer p1.w1 would leave it working; pass the producer in working, so the withdraw releases it"}.check(t)
-	assert.Equal(t, []string{Working, Ready}, []string{w.card("p1").State, w.card("p1.w1").State})
+	assert.Equal(t, []string{Working, Working}, []string{w.card("p1").State, w.card("p1.w1").State})
 }
 
 // S4. NeedFailed{InThisOp} alone is refused. The plan fences the need as
@@ -210,7 +210,6 @@ func TestCold2SuspectWithdrawHeadIsTheBase(t *testing.T) {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r1"})
 	c := w.card("p1.w1")
 	_, r := MoveConsumer(c, w.card("p1"), w.rows()["r1"], Withdraw{Reason: "silent", Head: base, Stream: StreamFromStore(w.snap().Streams["s1"])})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
@@ -231,8 +230,6 @@ func TestCold2Rulings(t *testing.T) {
 	})
 	t.Run("wrong actor", func(t *testing.T) {
 		_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r2"], Report{Row: "r2", Result: "ok", Head: h2})
-		refusal{r, "consumer p1.w1 is held by r1, not r2"}.check(t)
-		_, r = MoveConsumer(wk(Ready, "", ""), pr(Working), rows()["r2"], Take{Row: "r2"})
 		refusal{r, "consumer p1.w1 is held by r1, not r2"}.check(t)
 		refusal{mv(Review, nil, AskRead{Row: "r2"}), "r2 wrote producer p1's head and may not read it"}.check(t)
 	})
@@ -270,14 +267,14 @@ func TestCold2RulingsReplaceAndReads(t *testing.T) {
 		_, r := Move(g, nil, rows(), Stream{Name: "s1"}, nil, AskRead{Row: "r1"})
 		refusal{r, "sentinel g1 never has a consumer"}.check(t)
 	})
-	t.Run("take on down and held rows", func(t *testing.T) {
-		c := wk(Ready, "", "")
-		c.Holder = "r3"
-		_, r := MoveConsumer(c, pr(Working), rows()["r3"], Take{Row: "r3"})
-		refusal{r, "row r3 is down; it cannot take"}.check(t)
-		c.Holder = "r4"
-		_, r = MoveConsumer(c, pr(Working), rows()["r4"], Take{Row: "r4"})
-		assert.Nil(t, r, "a held row takes what it was dealt")
+	t.Run("report from down and held rows", func(t *testing.T) {
+		// the deal is the take: what a row holds it may report, down or held
+		for _, row := range []string{"r3", "r4"} {
+			c := wk(Working, "", "")
+			c.Holder = row
+			_, r := MoveConsumer(c, pr(Working), rows()[row], Report{Row: row, Result: "fault", Reason: "x"})
+			assert.Nil(t, r, row)
+		}
 	})
 	t.Run("readfix on zero fix reads and an old review", func(t *testing.T) {
 		refusal{mv(Review, nil, ReadFix{Finding: "x"}), "producer p1 has no read of review 1 that said fix; ReadFix needs one"}.check(t)
@@ -332,14 +329,12 @@ func TestCold2PreemptionMerge(t *testing.T) {
 	w.move("b1", Resolve{})
 	w.move("b1", SetPriority{Level: "blocker", Reason: "asked"})
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r2"})
 	withdraw := w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker b1", Head: h2, Preempt: true})
 	start, r := w.plan("b1", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
 	w.op("preempt", mustMerge(t, withdraw, start))
 	w.is("p1", Ready)
 	assert.Equal(t, []any{h2, 0}, []any{w.card("p1").Head, w.card("p1").Bounces})
-	w.consume("b1.w1", Take{Row: "r2"})
 }
 
 // ---- the random walk, extended ----

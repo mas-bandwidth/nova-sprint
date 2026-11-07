@@ -42,7 +42,7 @@ FIXTURES = {
     "ok-red":           ("r-StepsNeverRed.log", "land", "ok"),
     "ok-carried":       ("r-StepsNeverCarried.log", "burst", "ok"),
     "bad-dealt-twice":  ("w-StepsDealtTwice.log", "pre", "forbidden"),
-    "bad-width-over":   ("w-StepsWidthOver.log", "pre", "forbidden"),
+    "bad-width-over":   ("w-StepsWidthOver.log", "burst", "forbidden"),
     "bad-stop-early":   ("w-StepsStopEarly.log", "pre", "forbidden"),
     "bad-no-overlap":   ("w-StepsNoOverlapCheck.log", "deal", "forbidden"),
     "bad-tier":         ("w-StepsTierUnchecked.log", "deal", "forbidden"),

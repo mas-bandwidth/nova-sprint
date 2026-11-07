@@ -142,17 +142,13 @@ func (b *bk) P(id string, e Event) cold4Step { return cold4P(id, e) }
 
 func (b *bk) holder(cid string) string { return b.c(cid).Holder }
 
-// C is a consumer move by its holder (Take and Report carry the row), the row
+// C is a consumer move by its holder (Report carries the row), the row
 // read when the step is planned.
 func (b *bk) C(cid string, e Event) cold4Step {
 	return cold4Step{name(e) + " " + cid, func(w *world) (Plan, *Refusal) {
 		ev := e
 		row := w.snap().Cards[cid].Holder
-		switch v := e.(type) {
-		case Take:
-			v.Row = row
-			ev = v
-		case Report:
+		if v, ok := e.(Report); ok {
 			v.Row = row
 			ev = v
 		}
@@ -166,7 +162,8 @@ func (b *bk) start(id, row string) string {
 	return workID(id, b.c(id).Attempt)
 }
 
-func (b *bk) take(cid string) { b.t.Helper(); b.ok(b.C(cid, Take{})) }
+// take checks cid is in its row's hand: the deal is the take (defect 52).
+func (b *bk) take(cid string) { b.t.Helper(); b.is(cid, Working) }
 func (b *bk) report(cid, result, head, reason string) {
 	b.t.Helper()
 	b.ok(b.C(cid, Report{Result: result, Head: head, Reason: reason}))

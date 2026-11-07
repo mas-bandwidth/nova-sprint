@@ -22,7 +22,7 @@ type tick struct {
 	roster    map[string]RosterRow  // the roster's facts, once per row per tick
 	planned   int                   // cards touched by the non-blocker groups planned so far
 	candCache map[string][]RowFacts // candidates per tier for work, once per tick
-	roomCache map[string]int        // room per row (policy's work plus ahead), once per tick
+	roomCache map[string]int        // room per row (policy's work), once per tick
 	rankCache map[string]int        // rank index per row, once per tick
 	resolvedP map[string]set        // stream + path -> producers resolved this tick (the overlap tally)
 	claimed   set                   // cards and rows an earlier step claimed
@@ -55,9 +55,13 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 	t.limits()
 	t.fix()
 	t.deal()
+	t.undealt()
 	t.landRequests()
+	nudges := t.unacked()
 	t.judgements()
-	return t.pack()
+	plan := t.pack()
+	plan.Nudges = nudges
+	return plan
 }
 
 func newTick(v *View, in Inputs) *tick {

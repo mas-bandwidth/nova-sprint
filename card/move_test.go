@@ -97,7 +97,7 @@ func producerTable() []pcase {
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Working}, store.SetCardAttempt{Card: "p1", Attempt: 2}, store.SetCardAuthor{Card: "p1"},
 				store.PutCard{ID: "p1.w2", Kind: "work", Of: "p1", Stream: "s1", Holder: "r1", Tier: "pro", Attempt: 2},
 				store.SetCardBranch{Card: "p1.w2", Branch: "b2"}, store.SetCardBaseSHA{Card: "p1.w2", SHA: base}, store.SetCardPriorHead{Card: "p1.w2", Head: h1},
-				store.SetCardState{Card: "p1.w2", State: Ready}}},
+				store.SetCardState{Card: "p1.w2", State: Working}}},
 		{event: Finished{Consumer: "p1.w1"}, from: []string{Working}, cons: []Card{wk(Done, "ok", h2)}, expect: []store.Expect{p1, gen("p1.w1", 6)},
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Review}, store.SetCardReview{Card: "p1"}, store.SetCardHead{Card: "p1", Head: h2}, store.SetCardAuthor{Card: "p1", Author: "r1"}}},
 		{event: Broken{Consumer: "p1.w1"}, from: []string{Working}, cons: []Card{wk(Done, "fail", h2)}, expect: []store.Expect{p1, gen("p1.w1", 6), store.StreamHeld{Stream: "s1"}},
@@ -107,7 +107,7 @@ func producerTable() []pcase {
 		{event: AskRead{Row: "r1"}, from: []string{Review}, cons: []Card{wk(Done, "ok", h1)},
 			expect: append(append([]store.Expect{p1, free}, r1...), gen("p1.w1", 6), store.CardAbsent{Card: "p1.r1.1"}),
 			writes: []store.Write{store.PutCard{ID: "p1.r1.1", Kind: "read", Of: "p1", Stream: "s1", Holder: "r1", Tier: "pro", Attempt: 1, Review: 1},
-				store.SetCardHead{Card: "p1.r1.1", Head: h1}, store.SetCardAuthor{Card: "p1.r1.1", Author: "r2"}, store.SetCardState{Card: "p1.r1.1", State: Ready}}},
+				store.SetCardHead{Card: "p1.r1.1", Head: h1}, store.SetCardAuthor{Card: "p1.r1.1", Author: "r2"}, store.SetCardState{Card: "p1.r1.1", State: Working}}},
 		{event: ReadYes{}, from: []string{Review}, cons: reads, expect: readFence, writes: []store.Write{store.SetCardState{Card: "p1", State: Merging}}},
 		{event: ReadFix{Finding: "fix x"}, from: []string{Review}, cons: fixes, expect: append(slices.Clone(readFence), store.StreamHeld{Stream: "s1"}),
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}, store.SetCardFinding{Card: "p1", Finding: "fix x"}, store.SetCardBounces{Card: "p1", Bounces: 1}}},
@@ -131,7 +131,7 @@ func producerTable() []pcase {
 		{event: Rescore{Score: 9}, expect: []store.Expect{p1}, writes: []store.Write{store.SetCardScore{Card: "p1", Score: 9}}},
 		{event: SetPriority{Level: "blocker", Reason: "release"}, expect: []store.Expect{p1},
 			writes: []store.Write{store.SetCardPriority{Card: "p1", Priority: "blocker"}, store.SetCardReason{Card: "p1", Reason: "release"}}},
-		{event: Block{Reason: "bounced"}, from: []string{Ready, Review, Working}, cons: gone, expect: goneFence,
+		{event: Block{Reason: "bounced"}, from: []string{Waiting, Ready, Review, Working}, cons: gone, expect: goneFence,
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Blocked}, store.SetCardReason{Card: "p1", Reason: "bounced"}}},
 		{event: Unblock{Reason: "reviewed"}, from: []string{Blocked}, expect: []store.Expect{p1, store.StreamHeld{Stream: "s1"}},
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Waiting}, store.SetCardReason{Card: "p1", Reason: "reviewed"}}},
@@ -209,8 +209,6 @@ type ccase struct {
 func TestConsumerTable(t *testing.T) {
 	read := rd(Working, "")
 	for _, c := range []ccase{
-		{event: Take{Row: "r1"}, from: []string{Ready}, c: wk(Ready, "", ""), expect: []store.Expect{gen("p1.w1", 6), store.RowGen{Row: "r1", Gen: 4}, store.RowIs{Row: "r1", State: Up}},
-			writes: []store.Write{store.SetCardState{Card: "p1.w1", State: Working}}},
 		{event: Report{Row: "r1", Result: "ok", Head: h2, Reason: "done", Cost: 12, Priced: true}, from: []string{Working}, c: wk(Working, "", ""),
 			expect: []store.Expect{gen("p1.w1", 6)},
 			writes: []store.Write{store.SetCardState{Card: "p1.w1", State: Done}, store.SetCardResult{Card: "p1.w1", Result: "ok"}, store.SetCardHead{Card: "p1.w1", Head: h2},
@@ -331,7 +329,7 @@ func TestProducerRefusals(t *testing.T) {
 	_, oldAttempt := Move(later, []Card{wk(Done, "ok", h2)}, rows(), Stream{Name: "s1"}, nil, Finished{Consumer: "p1.w1"})
 	for _, c := range []refusal{
 		{onConsumer, "card p1.w1 is a work consumer; Move is for producers"},
-		{mv(Waiting, nil, Take{Row: "r1"}), "Take is not a producer event; Move takes the producer table's events"},
+		{mv(Waiting, nil, Report{Row: "r1"}), "Report is not a producer event; Move takes the producer table's events"},
 		{sentResolve, "sentinel p1 is landed by Reached, never resolved"},
 		{sentStart, "sentinel p1 never has a consumer"},
 		{mv(Waiting, nil, Reached{}), "producer p1 is not a sentinel; Reached is for sentinels"},
@@ -421,13 +419,10 @@ func TestConsumerRefusals(t *testing.T) {
 	work, read := wk(Working, "", ""), rd(Working, "")
 	other := pr(Review)
 	other.ID = "p2"
-	_, wrongProducer := MoveConsumer(work, other, rows()["r1"], Take{Row: "r1"})
-	_, wrongRow := MoveConsumer(wk(Ready, "", ""), pr(Review), rows()["r2"], Take{Row: "r1"})
+	_, wrongProducer := MoveConsumer(work, other, rows()["r1"], Withdraw{Reason: "x"})
 	for _, c := range []refusal{
-		{cm(pr(Ready), Take{Row: "r1"}), "card p1 is a producer; MoveConsumer is for consumers"},
+		{cm(pr(Ready), Withdraw{Reason: "x"}), "card p1 is a producer; MoveConsumer is for consumers"},
 		{wrongProducer, "consumer p1.w1 belongs to p1, not p2"},
-		{wrongRow, "MoveConsumer was passed row r2 for a take on r1; pass the consumer's holder row"},
-		{cm(wk(Ready, "", ""), Take{Row: "r2"}), "consumer p1.w1 is held by r1, not r2"},
 		{cm(work, Report{Row: "r2", Result: "ok", Head: h2}), "consumer p1.w1 is held by r1, not r2"},
 		{cm(work, Report{Row: "r1", Result: "ok", Head: "abc"}), "head abc is not a full commit sha"},
 		{cm(work, Report{Row: "r1", Result: "ok"}), "head is empty; it needs a full commit sha"},
@@ -436,7 +431,7 @@ func TestConsumerRefusals(t *testing.T) {
 		{cm(work, Report{Row: "r1", Result: "maybe"}), `result "maybe" is not ok, fix, fail or fault`},
 		{cm(read, Report{Row: "r1", Result: "ok", Head: h2}), "read p1.r1.1 was cut at " + h1 + ", the report names " + h2},
 		{cm(work, Report{Row: "r1", Result: "fail", Head: base}), "head " + base + " is the base; nothing was done"},
-		{cm(work, Resolve{}), "Resolve is not a consumer event; MoveConsumer takes Take, Report and Withdraw"},
+		{cm(work, Resolve{}), "Resolve is not a consumer event; MoveConsumer takes Report and Withdraw (a dealt consumer is in hand: there is no take)"},
 	} {
 		c.check(t)
 	}
@@ -655,15 +650,44 @@ func TestSentinelGuards(t *testing.T) {
 	refusal{sm(AskRead{Row: "r1"}, nil), "sentinel p1 never has a consumer"}.check(t)
 }
 
-func TestTakeRowState(t *testing.T) {
-	c := wk(Ready, "", "")
-	c.Holder = "r3"
-	_, r := MoveConsumer(c, pr(Working), rows()["r3"], Take{Row: "r3"})
-	refusal{r, "row r3 is down; it cannot take"}.check(t)
-	c.Holder = "r4"
-	plan, r := MoveConsumer(c, pr(Working), rows()["r4"], Take{Row: "r4"})
-	require.Nil(t, r, "a hold stops new deals, not work already dealt")
-	assert.Contains(t, plan.Expect, store.Expect(store.RowIs{Row: "r4", State: Up}))
+// Defect 52: the deal is the take. A cut consumer is working, in its row's
+// hand, and a report needs no take before it.
+func TestDealIsTake(t *testing.T) {
+	plan, r := Move(pr(Ready), nil, rows(), Stream{Name: "s1"}, nil, Start{Row: "r1", Branch: "b", Base: base})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1.w2", State: Working}))
+	assert.NotContains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1.w2", State: Ready}))
+	_, r = MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r4"], Report{Row: "r1", Result: "fail", Reason: "x"})
+	require.Nil(t, r, "a held row reports what it holds: a hold stops new deals, not work in hand")
+}
+
+// Defect 48: a fault naming a missing route blocks the producer at once,
+// head kept, no bounce; any other fault returns it to ready.
+func TestRouteFaultBlocks(t *testing.T) {
+	faulted := wk(Done, "fault", h2)
+	faulted.Reason = MissingRoute + " no adb on this bench"
+	plan, r := Move(pr(Working), []Card{faulted}, rows(), Stream{Name: "s1"}, nil, Faulted{Consumer: "p1.w1"})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Blocked}))
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardReason{Card: "p1", Reason: faulted.Reason}))
+	for _, w := range plan.Writes {
+		_, bounce := w.(store.SetCardBounces)
+		assert.False(t, bounce, "a route fault spends no bounce")
+	}
+	what, ok := RouteFault(faulted.Reason)
+	assert.True(t, ok)
+	assert.Equal(t, "no adb on this bench", what)
+	faulted.Reason = "harness killed with exit 137"
+	plan, r = Move(pr(Working), []Card{faulted}, rows(), Stream{Name: "s1"}, nil, Faulted{Consumer: "p1.w1"})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Ready}))
+}
+
+// Defect 47: the coordinator's hold of one card is Block, from waiting too.
+func TestBlockFromWaiting(t *testing.T) {
+	plan, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, nil, Block{Reason: "held: needs a tablet"})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Blocked}))
 }
 
 // D10: layer 1's value rules are refusals, so no plan is ErrInvalid.

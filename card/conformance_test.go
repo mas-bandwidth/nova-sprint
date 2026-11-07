@@ -101,8 +101,9 @@ func (w *world) apply(kind string, plan Plan) (store.Receipt, error) {
 }
 
 // overWidth is the dealer's width check on plan: the first consumer it
-// moves into working on a row that already holds the row's roster width of
-// working consumers, or "".
+// moves into working, a cut one included (the deal is the take, defect 52),
+// on a row that already holds the row's roster width of working consumers,
+// or "".
 func (w *world) overWidth(plan Plan) string {
 	s := w.snap()
 	working := map[string]int{} // per row, counted at each write as the store's old rule did
@@ -111,9 +112,18 @@ func (w *world) overWidth(plan Plan) string {
 			working[o.Holder]++
 		}
 	}
+	cut := map[string]store.Card{}
+	for _, x := range plan.Writes {
+		if put, ok := x.(store.PutCard); ok {
+			cut[put.ID] = store.Card{ID: put.ID, Holder: put.Holder}
+		}
+	}
 	for _, x := range plan.Writes {
 		v, ok := x.(store.SetCardState)
 		c, held := s.Cards[v.Card]
+		if n, isCut := cut[v.Card]; isCut {
+			c, held = n, true
+		}
 		if !ok || !held || c.Holder == "" || (v.State == Working) == (c.State == Working) {
 			continue
 		}
@@ -303,7 +313,6 @@ func (w *world) work(id, row, result, head, reason string) string {
 	w.t.Helper()
 	w.move(id, Start{Row: row, Branch: "b-" + id, Base: base})
 	c := workID(id, w.card(id).Attempt)
-	w.consume(c, Take{Row: row})
 	w.consume(c, Report{Row: row, Result: result, Head: head, Reason: reason, Cost: 7, Priced: true})
 	return c
 }
@@ -319,7 +328,6 @@ func (w *world) read(id, row, result, reason string) string {
 			c = k
 		}
 	}
-	w.consume(c, Take{Row: row})
 	w.consume(c, Report{Row: row, Result: result, Head: w.card(id).Head, Reason: reason})
 	return c
 }
@@ -369,7 +377,6 @@ func TestConformanceFix(t *testing.T) {
 	c := w.card("p1.w2")
 	assert.Equal(t, []any{2, h1, "rename x", ""}, []any{c.Attempt, c.PriorHead, c.Finding, c.Reason}, "the fix continues from the head, with the finding")
 	assert.Equal(t, "", w.card("p1").Author, "a new attempt clears the author")
-	w.consume("p1.w2", Take{Row: "r3"})
 	w.consume("p1.w2", Report{Row: "r3", Result: "ok", Head: h2})
 	w.move("p1", Finished{Consumer: "p1.w2"})
 	assert.Equal(t, []any{h2, "r3"}, []any{w.card("p1").Head, w.card("p1").Author})
@@ -415,7 +422,6 @@ func TestConformanceReleaseAndWithdraw(t *testing.T) {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r1"})
 	w.refused("p1", Released{}, "consumer p1.w1 is working; Released needs it withdrawn (fail)")
 	w.refused("p1", Cancel{}, "producer p1 has live consumer p1.w1 on row r1; withdraw it first")
 	w.consume("p1.w1", Withdraw{Reason: "row r1 went silent", Head: h2}) // releases p1 in the same plan
@@ -486,12 +492,10 @@ func TestConformancePreemption(t *testing.T) {
 	w := newWorld(t, producer("p1"), store.PutCard{ID: "p2", Priority: "blocker"})
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r2"})
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
 	w.op("preempt", mustMerge(t, w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2", Preempt: true}), start))
-	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p2.w1", Working)
 	assert.Equal(t, []any{Ready, "preempted by blocker p2"}, []any{w.card("p1").State, w.card("p1").Reason})
 }
@@ -556,7 +560,6 @@ func TestConformanceWorkFixRefused(t *testing.T) {
 	w := newWorld(t, producer("p"))
 	w.move("p", Resolve{})
 	w.move("p", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume("p.w1", Take{Row: "r1"})
 	c := w.card("p.w1")
 	_, r := MoveConsumer(c, w.card("p"), w.rows()["r1"], Report{Row: "r1", Result: "fix", Reason: "fix"})
 	refusal{r, "a work consumer reports ok, fail or fault; fix is a read's result"}.check(t)
@@ -623,7 +626,6 @@ func TestConformanceReturnIntoHeldStreamParks(t *testing.T) {
 	w.raw("unhold", store.SetStreamHeld{Stream: "s1", Held: false})
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume("p1.w2", Take{Row: "r1"})
 	w.raw("hold", store.SetStreamHeld{Stream: "s1", Held: true})
 	w.consume("p1.w2", Withdraw{Reason: "silent"})
 	w.is("p1", Waiting)
