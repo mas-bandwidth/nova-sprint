@@ -84,7 +84,9 @@ type ModelRow struct {
 // TraceState is the refinement mapping: the snapshot's cards, rows and
 // stream projected onto CardMachine.tla's ps, cs, rs and held. heads is the
 // head table: heads[0] is the base (head 0), heads[i] is head i.
-func TraceState(s store.Snapshot, stream string, heads []string) (ModelState, error) {
+// widths is each row's width, read from the roster (round 22: the store
+// keeps none).
+func TraceState(s store.Snapshot, stream string, heads []string, widths map[string]int) (ModelState, error) {
 	m := ModelState{Ps: map[string]ModelProd{}, Cs: map[Slot]ModelCons{}, Rs: map[string]ModelRow{}, Held: s.Streams[stream].Held}
 	head := func(h string) (int, error) {
 		if h == "" {
@@ -108,7 +110,7 @@ func TraceState(s store.Snapshot, stream string, heads []string) (ModelState, er
 		}
 	}
 	for n, r := range s.Rows {
-		m.Rs[n] = ModelRow{St: r.State, Flaps: r.Flaps, Width: r.Width, Held: r.Held}
+		m.Rs[n] = ModelRow{St: r.State, Flaps: r.Flaps, Width: widths[n], Held: r.Held}
 	}
 	return m, nil
 }

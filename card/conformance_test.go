@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -22,20 +23,27 @@ import (
 var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 
 type world struct {
-	t  *testing.T
-	f  *store.Fake
-	n  int
-	ev Event // the walk's last event, for its trace (trace_test.go)
+	t     *testing.T
+	f     *store.Fake
+	n     int
+	ev    Event          // the walk's last event, for its trace (trace_test.go)
+	width map[string]int // the roster's widths (round 22: the store keeps none)
 }
 
-// newWorld is stream s1 with rows r1 (width 2), r2 and r3 (width 1), all up
-// and serving pro, and the given producers (id, needs) of tier pro.
+// worldTiers is every row's tiers in the roster.
+var worldTiers = []string{"pro"}
+
+// worldWidth is every row's width in the roster; no event changes it.
+var worldWidth = map[string]int{"r1": 2, "r2": 1, "r3": 1}
+
+// newWorld is stream s1 with rows r1 (width 2), r2 and r3 (width 1) in its
+// roster, all up and serving pro, and the given producers (id, needs) of
+// tier pro.
 func newWorld(t *testing.T, cards ...store.PutCard) *world {
-	w := &world{t: t, f: store.NewFake()}
+	w := &world{t: t, f: store.NewFake(), width: maps.Clone(worldWidth)}
 	seed := []store.Write{store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1}}
-	for _, r := range []store.PutRow{{Name: "r1", Kind: "worker", Width: 2}, {Name: "r2", Kind: "worker", Width: 1}, {Name: "r3", Kind: "worker", Width: 1}} {
-		r.Tiers = []string{"pro"}
-		seed = append(seed, r)
+	for _, r := range []string{"r1", "r2", "r3"} {
+		seed = append(seed, store.PutRow{Name: r})
 	}
 	for _, c := range cards {
 		c.Stream, c.Tier = "s1", "pro"
@@ -79,12 +87,46 @@ func (w *world) raw(kind string, writes ...store.Write) {
 }
 
 // apply applies plan as one op: epoch from the snapshot, At passed in; the
-// receipt and error unchecked.
+// receipt and error unchecked. A take past the roster's width is refused
+// here, as layer 3's dealer refuses it (round 22: layer 1 no longer counts
+// width), with a reason naming width, and never reaches the store.
 func (w *world) apply(kind string, plan Plan) (store.Receipt, error) {
+	if reason := w.overWidth(plan); reason != "" {
+		return store.Receipt{Reason: reason}, nil
+	}
 	w.n++
 	op := store.Op{ID: fmt.Sprintf("op%d", w.n), Epoch: w.snap().Epoch, Actor: "card", Kind: kind, At: t0.Add(time.Duration(w.n) * time.Second),
 		Expect: plan.Expect, Writes: plan.Writes}
 	return w.f.Apply(context.Background(), op)
+}
+
+// overWidth is the dealer's width check on plan: the first consumer it
+// moves into working on a row that already holds the row's roster width of
+// working consumers, or "".
+func (w *world) overWidth(plan Plan) string {
+	s := w.snap()
+	working := map[string]int{} // per row, counted at each write as the store's old rule did
+	for _, o := range s.Cards {
+		if o.Holder != "" && o.State == Working {
+			working[o.Holder]++
+		}
+	}
+	for _, x := range plan.Writes {
+		v, ok := x.(store.SetCardState)
+		c, held := s.Cards[v.Card]
+		if !ok || !held || c.Holder == "" || (v.State == Working) == (c.State == Working) {
+			continue
+		}
+		if v.State != Working {
+			working[c.Holder]--
+			continue
+		}
+		if n := working[c.Holder]; n >= w.width[c.Holder] {
+			return fmt.Sprintf("width: row %s holds %d working, its roster width is %d", c.Holder, n, w.width[c.Holder])
+		}
+		working[c.Holder]++
+	}
+	return ""
 }
 
 func kind(e Event) string { return strings.ToLower(name(e)) }
@@ -102,7 +144,7 @@ func fromStore(c store.Card) Card { return FromStore(c) }
 func (w *world) rows() map[string]Row {
 	rs := map[string]Row{}
 	for n, r := range w.snap().Rows {
-		rs[n] = RowFromStore(r)
+		rs[n] = RowFromStore(r, w.width[n], worldTiers)
 	}
 	return rs
 }
@@ -246,8 +288,6 @@ func (w *world) landedRow(s store.Snapshot, x store.Write) bool {
 		assert.Equal(w.t, v.Flaps, s.Rows[v.Row].Flaps, "flaps of %s", v.Row)
 	case store.SetRowState:
 		assert.Equal(w.t, v.State, s.Rows[v.Row].State, "state of %s", v.Row)
-	case store.SetRowWidth:
-		assert.Equal(w.t, v.Width, s.Rows[v.Row].Width, "width of %s", v.Row)
 	case store.SetRowHeld:
 		assert.Equal(w.t, []any{v.Held, v.Reason}, []any{s.Rows[v.Row].Held, s.Rows[v.Row].Reason}, "held of %s", v.Row)
 	default:
@@ -462,7 +502,6 @@ func TestConformanceRows(t *testing.T) {
 	assert.Equal(t, "maintenance", w.rows()["r1"].Reason)
 	w.refused("p1", Start{Row: "r1", Branch: "b", Base: base}, "row r1 is held; nothing is dealt to a held row")
 	w.row("r1", Unhold{Reason: "back"})
-	w.row("r1", Width{N: 3})
 	w.row("r1", Gone{})
 	assert.Equal(t, 1, w.rows()["r1"].Flaps)
 	w.refused("p1", Start{Row: "r1", Branch: "b", Base: base}, "row r1 is down; a consumer is dealt only to a row that is up")
