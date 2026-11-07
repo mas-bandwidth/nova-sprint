@@ -154,7 +154,7 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 func CheckLoopbackAddr(addr string) error {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(addr))
 	if err != nil {
-		return fmt.Errorf("proxy refused: invalid listen address %q: use 127.0.0.1:0", addr)
+		return fmt.Errorf("proxy refused: invalid listen address %q (%s): use 127.0.0.1:0", addr, edge.Redact(err.Error()))
 	}
 	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
 		return fmt.Errorf("proxy refused: listen address %s is not loopback: use 127.0.0.1:0", addr)
