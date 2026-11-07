@@ -265,7 +265,11 @@ func TestRound21Hash(t *testing.T) {
 	assert.NotEqual(t, round21Hash, schemaHash)
 	for _, col := range []string{"kind", "width", "tiers", "model", "harness"} {
 		assert.Contains(t, string(old), "\n    "+col+" ", "round 21's rows table has %s", col)
-		assert.Contains(t, schemaSQL, "DROP COLUMN IF EXISTS "+col, "round 22 drops %s", col)
+		drop := "DROP COLUMN IF EXISTS " + col
+		if col == "tiers" {
+			drop = "DROP COLUMN tiers" // only as round 17's text[]: round 23's text tiers stays
+		}
+		assert.Contains(t, schemaSQL, drop, "round 22 drops %s", col)
 	}
 }
 
