@@ -44,6 +44,9 @@
 (* consumers needs a third producer. Heads are attempt numbers (an ok     *)
 (* report of attempt n pushes head n), so a head never needs choosing.    *)
 (*                                                                         *)
+(* The preemption's victim is the youngest working consumer on the row,  *)
+(* the engine's fixed rule (LAYER-5's boundary, LESSONS 5.12); policy      *)
+(* answers rows alone.                                                     *)
 (* Scenarios (one module, each small enough to check whole):              *)
 (* - "pre": b a blocker in stream s2, held at the start; p and q in s1    *)
 (*   with disjoint paths; r1 down, r2 width 2. p and q are dealt to r2;   *)
@@ -136,18 +139,17 @@ W0 == [ps  |-> [p \in Prods |-> P0(p)],
        sh  |-> [s \in Streams |-> Scenario = "pre" /\ s = "s2"],
        tko |-> <<>>]
 
-\* The oracle's answers: victim(blocker, candidates) and rows(candidates,
-\* rows). A policy that answers answers both: "oldest" is an in-domain
-\* victim other than the default (the youngest), and a row is preferred
-\* for every candidate (in domain for a candidate when that row is
-\* eligible for it, else that candidate's answer is out of domain).
+\* The oracle's answer: rows(candidates, rows). A policy that answers
+\* prefers one row for every candidate (in domain for a candidate when that
+\* row is eligible for it, else that candidate's answer is out of domain).
 \* "failed" stands for every answer the engine cannot use: none in the
-\* tick's policy time, an error, out of range, or naming a row or a
-\* consumer not offered (one path in the engine). The oracle branches only
-\* when a question has subjects (Asked).
-Answers == {[victim |-> "oldest", rows |-> "r1"], [victim |-> "oldest", rows |-> "r2"],
-            [victim |-> "failed", rows |-> "failed"]}
-Unasked == [victim |-> "failed", rows |-> "failed"]
+\* tick's policy time, an error, out of range, or naming a row not offered
+\* (one path in the engine). The oracle branches only when a question has
+\* subjects (Asked). The preemption's victim is not policy's: the youngest
+\* working consumer on the row is the engine's fixed rule (LAYER-5, the
+\* boundary; LESSONS 5.12).
+Answers == {[rows |-> "r1"], [rows |-> "r2"], [rows |-> "failed"]}
+Unasked == [rows |-> "failed"]
 
 VARIABLES
   w,         \* the store: [ps, cs, up, sh, tko]
@@ -184,7 +186,6 @@ Pos(s, x) == CHOOSE i \in 1..Len(s) : s[i] = x
 Drop(s, x) == SelectSeq(s, LAMBDA y : y # x)
 First(seq, S) == seq[CHOOSE i \in 1..Len(seq) : seq[i] \in S /\ \A j \in 1..(i - 1) : seq[j] \notin S]
 Youngest(W, S) == CHOOSE c \in S : \A d \in S : Pos(W.tko, d) <= Pos(W.tko, c)
-Oldest(W, S)   == CHOOSE c \in S : \A d \in S : Pos(W.tko, c) <= Pos(W.tko, d)
 
 \* Start (CardMachine Start): p to working, attempt + 1, a work consumer
 \* cut ready on r.
@@ -329,7 +330,7 @@ BlockerDue(W, b) ==
   /\ NoFreeWidth(W, b)
 Victims(W, b, r) == {c \in Working(W, r) : c[1] # b}
 PreRows(W, b)    == {r \in ServingOpen(W, b) : Victims(W, b, r) # {}}
-VictimFor(W, S, av) == Oldest(W, S)   \* FAULT: the default was Youngest(W, S)
+VictimFor(W, S) == CHOOSE c \in S : \A d \in S : Pos(W.tko, c) <= Pos(W.tko, d)   \* FAULT: the oldest, not Youngest(W, S)
 
 \* acc: [gs, used (rows preempted this tick), uns (tiers unserved), miss]
 RECURSIVE PreFold(_, _, _, _)
@@ -339,7 +340,7 @@ PreFold(V, a, i, acc) ==
     LET b == ProdSeq[i]
         R == PreRows(V, b) \ acc.used
         r == IF a.rows \in R THEN a.rows ELSE First(RowSeq, R)
-        c == VictimFor(V, Victims(V, b, r), a.victim)
+        c == VictimFor(V, Victims(V, b, r))
         g == Grp("pre", b, c, r, 0, 0, V)
     IN IF ~BlockerDue(V, b) THEN PreFold(V, a, i + 1, acc)
        ELSE IF ServingOpen(V, b) = {}
@@ -347,8 +348,7 @@ PreFold(V, a, i, acc) ==
        ELSE IF R = {} THEN PreFold(V, a, i + 1, acc)
        ELSE PreFold(V, a, i + 1,
                     [acc EXCEPT !.gs = Append(@, g), !.used = @ \cup {r},
-                                !.miss = @ \cup (IF a.rows \notin R THEN {"rows"} ELSE {})
-                                           \cup (IF a.victim # "oldest" THEN {"victim"} ELSE {})])
+                                !.miss = @ \cup (IF a.rows \notin R THEN {"rows"} ELSE {})])
 PreStep(V, a) == PreFold(V, a, 1, [gs |-> <<>>, used |-> {}, uns |-> {}, miss |-> {}])
 
 \* Land results, in arrival order. A result for a producer still merging
@@ -545,9 +545,7 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, picks) ==
                \/ \E g \in pres : g.p = b
                \/ ServingOpen(V, b) = {} /\ [kind |-> "unserved", about |-> TierName(Tier[b])] \in jsn
         [] n = "PreemptYoungest" ->
-             \A g \in pres :
-               g.c = (IF a.victim = "oldest" THEN Oldest(V, Victims(V, g.p, g.r))
-                                             ELSE Youngest(V, Victims(V, g.p, g.r)))
+             \A g \in pres : g.c = Youngest(V, Victims(V, g.p, g.r))
         [] n = "PolicyFailsToDefault" ->
              /\ a.rows \notin Rows => dl.gs = DealStep(V, cl3, a.rows, FALSE).gs
              /\ \A q \in pre.miss \cup dl.miss : [kind |-> "policy", about |-> q] \in jsn

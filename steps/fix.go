@@ -14,6 +14,7 @@ import (
 // byte-equal to the producer's current one opens a brief judgement
 // (LESSONS 5.9). A producer back from Broken or Faulted needs no plan here.
 func (t *tick) fix() {
+	var fixes []string
 	for _, p := range t.v.Producers("review") {
 		c := t.v.Cards[p]
 		if !t.free(p) {
@@ -27,7 +28,11 @@ func (t *tick) fix() {
 			t.group("yes", p, t.producerMove(p, card.ReadYes{}))
 			continue
 		}
-		finding := joinFindings(reads)
+		fixes = append(fixes, p)
+	}
+	for _, p := range fixes { // every yes before every fix, as the model orders them
+		c := t.v.Cards[p]
+		finding := joinFindings(t.settled(c))
 		if finding == c.Finding {
 			t.judge("brief", p, "the read of "+p+" found the same thing twice: "+finding+"; the brief is wrong, not the worker")
 		}
