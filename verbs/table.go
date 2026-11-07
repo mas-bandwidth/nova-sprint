@@ -33,6 +33,7 @@ type verb struct {
 	role                             role
 	min, max                         int
 	needs                            []string
+	more                             []string // help lines after about: what a flag's words are
 	run                              func(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error)
 }
 
@@ -108,14 +109,14 @@ func workVerbs() []*verb {
 		{name: "take", group: "work", role: roleWorker, usage: "<card>@<gen> --as <row> [--epoch <e>] [--id <op>] [--json]", flags: "epoch= id= json", min: 1, max: 1, run: runTake,
 			about: "starts work on a card dealt to you; prints the brief, the repository and the finish or read command",
 			needs: []string{"not dealt to this row at this generation: nova-sprint show <card>", "at width: finish a card first", "the row not in nova-config, or not serving the tier: nova-config"}},
-		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport,
-			about: "reports a work card done at a head pushed to its branch, or failed with the reason",
+		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport,
+			about: "reports a work card done at a head pushed to its branch, or failed with the reason", more: usageHelp,
 			needs: []string{"not the holder: nova-sprint show <card>", "not a full sha", "not on the dealt branch at origin: git push origin <branch>", "the stream wants a PR and there is none: gh pr create", "the head is the base: do the work", "behind the stream head: rebase onto sprint/<s>/group"}},
-		{name: "read", group: "work", role: roleWorker, usage: "<card>@<gen> yes|fix [--finding <text>] --as <row> [--epoch <e>] [--cost <usd>]", flags: reportFlags, min: 2, max: 2, run: runReport,
-			about: "answers a read of someone else's head",
+		{name: "read", group: "work", role: roleWorker, usage: "<card>@<gen> yes|fix [--finding <text>] --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>]", flags: reportFlags, min: 2, max: 2, run: runReport,
+			about: "answers a read of someone else's head", more: usageHelp,
 			needs: []string{"you wrote the head: wait for the bus", "fix with no finding: --finding \"<path>:<line>: <defect and repair>\""}},
-		{name: "report", group: "work", role: roleWorker, usage: "<card>@<gen> --result ok|fix|fail|fault [--head <sha>] [--reason <why>] [--finding <text>] [--cost-microusd <n> --priced true|false | --cost <usd>] --as <row> [--epoch <e>] [--id <op>] [--json]", flags: reportFlags + " result=", min: 1, max: 1, run: runReport,
-			about: "nova-worker's form of finish and read; fault is for a harness, bench or route failure",
+		{name: "report", group: "work", role: roleWorker, usage: "<card>@<gen> --result ok|fix|fail|fault [--head <sha>] [--reason <why>] [--finding <text>] [--usage '<words>'] [--cost-microusd <n> --priced true|false | --cost <usd>] --as <row> [--epoch <e>] [--id <op>] [--json]", flags: reportFlags + " result=", min: 1, max: 1, run: runReport,
+			about: "nova-worker's form of finish and read; fault is for a harness, bench or route failure", more: usageHelp,
 			needs: []string{"as finish and read", "--cost mixed with --cost-microusd or --priced: give one form"}},
 		{name: "release", group: "work", role: roleWorker, usage: "<card>@<gen> --reason <why> --as <you> [--epoch <e>] | --row <row> --all --reason <why> [--dry-run]", flags: "reason= epoch= row= all dry-run", max: 1, run: runRelease,
 			about: "gives a card back to the queue, its pushed branch kept; another row's card, or a whole row's, is the coordinator's",
@@ -129,4 +130,15 @@ func workVerbs() []*verb {
 }
 
 // reportFlags are finish's, read's and report's shared flags.
-const reportFlags = "head= reason= finding= cost= cost-microusd= priced= epoch= id= json"
+const reportFlags = "head= reason= finding= cost= cost-microusd= priced= usage= epoch= id= json"
+
+// usageHelp is what --usage and --cost are, for finish, read and report.
+var usageHelp = []string{
+	"--usage is the run's tokens as its harness counted them, one quoted string of words:",
+	"  input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model>",
+	"  (leave out a class the harness did not count; never write a guess as 0)",
+	"the engine prices it, never the row: your row's harness decides the billing.",
+	"  a bench (nova-worker, API keys): the tokens at the policy's prices(), exactly; no tokens or no price is recorded unpriced, never $0",
+	"  a kin on a subscription seat (claude, codex, ...): free; pass nothing, or --usage to have your tokens counted",
+	"--cost <usd> is the harness's own dollar figure, kept as charged= evidence beside the price, never as the price",
+}
