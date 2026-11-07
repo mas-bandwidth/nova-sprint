@@ -50,7 +50,7 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 	pol := policy.NewEngine(policy.RealClock{})
 	git, fg := gitEdge(), forgeEdge()
 	e := &verbs.Engine{Store: st, Bus: busEdge(), Roster: ro, Answers: pol, Policy: pol, Origin: &origin{git: git, forge: fg, dir: reposDir()}, Landing: fg,
-		Doctor: doctor{creds: creds}, Archive: newArchive(creds), Now: time.Now, Actor: actor, Version: versionString(), ToolPin: toolPin}
+		Doctor: doctor{creds: creds}, Archive: newArchive(creds), Now: time.Now, Stdin: os.Stdin, Actor: actor, Version: versionString(), ToolPin: toolPin}
 	e.Services = services{creds: creds, store: st, roster: ro, policy: pol, git: git, forge: fg}
 	env := verbs.ExecEnvironment{DSN: creds.dsn, Password: creds.password, Choices: verbs.Choices{Store: st, Actor: actor, Now: time.Now}, Command: toolCommand}
 	e.Setup, e.Lock = buildProductionSetup(st, env, actor, toolPin)
