@@ -1,0 +1,487 @@
+package steps
+
+import (
+	"fmt"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// The trace walk: the Go steps driving one of tla/Steps.tla's scenarios on
+// store.Fake, each step one of the model's actions (Snap, Tick, Take, Report,
+// an environment move, an edge result), each recorded with the model's
+// variables projected from the code's state (trace.go). tla/check-trace.sh
+// runs TLC on the records: a trace the model refuses names the first record
+// it cannot take. TestTraceWalk runs the walk for depth; TestTraceFixtures
+// writes the fixed seed set CI checks (NOVA_TRACES=<dir>).
+
+// traceScenarios are the model's four, with the constants its cfgs carry.
+var traceScenarios = map[string]struct {
+	budget, pack int
+}{"pre": {2, 2}, "deal": {2, 2}, "land": {2, 2}, "burst": {1, 1}}
+
+// traceWalk is one scenario's world and its trace.
+type traceWalk struct {
+	*sim
+	scen     string
+	sc       TraceScenario
+	rng      *rand.Rand
+	records  []string
+	stamp    map[string]int
+	reqID    map[string]string
+	phase    string // idle or snapped
+	pref     string // the asker's preferred row, "" for failed
+	raced    bool   // a move came after the fold
+	counting bool   // picks count toward the depth: a producer is not final
+	picked   int
+	legal    int
+	heads    int
+}
+
+// traceAsker answers as the model's oracle: every question in domain from
+// the engine's own defaults (so the steps use the version's answers, never a
+// miss), rows as the walk prefers, or failed.
+type traceAsker struct{ w *traceWalk }
+
+func (a traceAsker) Ask(q Questions) Answers {
+	w := a.w
+	out := Answers{Version: 1, Order: map[string][]any{}, Rows: map[string][]string{}, Reads: map[string]int{}, Verdict: map[string]string{},
+		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}}
+	for _, c := range q.Order {
+		out.Order[c.ID] = []any{} // id order, as the model
+	}
+	for _, c := range q.Reads {
+		out.Reads[c.ID] = 1
+	}
+	for _, v := range q.Verdict {
+		out.Verdict[v.Card.ID] = "yes"
+		if slices.ContainsFunc(v.Reads, func(r ReadFacts) bool { return r.Result == "fix" }) {
+			out.Verdict[v.Card.ID] = "fix"
+		}
+	}
+	for _, r := range q.Width {
+		out.Width[r.Name] = WidthAnswer{Work: r.Width, Ahead: 2 * r.Width} // the model's Ahead
+	}
+	for _, s := range q.Landing {
+		out.Landing[s.Name] = LandingAnswer{BackedUp: 4, Flowing: 1}
+	}
+	for _, r := range q.Rows {
+		if w.pref == "" {
+			out.Failed["rows"] = "the walk's policy failed"
+		} else {
+			out.Rows[r.Card.ID] = []string{w.pref}
+		}
+	}
+	day := 86400
+	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
+		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
+	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, BaseRegate: []int{day}}
+	return out
+}
+
+func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
+	w := &traceWalk{sim: newSim(t), scen: scen, sc: TraceScenario{Tiers: []string{"pro", "heavy"}}, rng: rand.New(rand.NewSource(seed)),
+		stamp: map[string]int{}, reqID: map[string]string{}, phase: "idle"}
+	w.ask = traceAsker{w}
+	landLike := scen == "land" || scen == "burst"
+	w.stream("s1")
+	w.stream("s2")
+	w.row("r1", 1, "pro")
+	w.row("r2", 2, "pro", "heavy")
+	qStream, qPath := "s1", "a/z"
+	if landLike {
+		qStream = "s2"
+	} else if scen == "deal" {
+		qPath = "a/x"
+	}
+	w.producer("p", "s1", "pro", "a/x")
+	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath}}
+	if landLike {
+		q.After = []string{"p"}
+	}
+	w.must("add", q)
+	if !landLike {
+		b := store.PutCard{ID: "b", Kind: "producer", Stream: "s2", Tier: "pro", Brief: "do b", Paths: []string{"a/y"}}
+		if scen == "deal" {
+			b.Tier, b.Needs = "heavy", []string{"p"}
+		} else {
+			b.Priority = "blocker"
+		}
+		w.must("add", b)
+	}
+	if landLike { // p and q merging at head 1, author r1, review 1
+		for _, id := range []string{"p", "q"} {
+			w.must("merging", store.SetCardState{Card: id, State: "merging"}, store.SetCardHead{Card: id, Head: Sha(1)},
+				store.SetCardAuthor{Card: id, Author: "r1"}, store.SetCardAttempt{Card: id, Attempt: 1}, store.SetCardReview{Card: id})
+		}
+	}
+	if scen == "pre" {
+		w.must("r1 down", store.SetRowState{Row: "r1", State: "down"})
+		w.must("s2 held", store.SetStreamHeld{Stream: "s2", Held: true})
+	}
+	w.fold()
+	w.record("Init", nil)
+	return w
+}
+
+// record appends one record: the action, its arguments and the model's
+// variables projected from the store as the fake holds it now.
+func (w *traceWalk) record(action string, args []string) {
+	w.t.Helper()
+	v := Build(w.snap(), w.now)
+	for id, at := range w.v.TakenAt { // the fold's facts, which Build lacks
+		v.TakenAt[id] = at
+	}
+	for id, seq := range w.v.born {
+		v.born[id] = seq
+	}
+	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
+	fields = append(fields, args...)
+	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
+		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc))
+	w.records = append(w.records, "["+strings.Join(fields, ", ")+"]")
+}
+
+// asked says whether a question has subjects now (the model's Asked): a
+// ready producer, a read owed.
+func (w *traceWalk) asked() bool {
+	for _, c := range w.v.Cards {
+		if isConsumer(c) {
+			continue
+		}
+		if c.State == "ready" && c.Kind == "producer" {
+			return true
+		}
+		if c.State == "review" {
+			owed := true
+			for _, r := range w.v.Consumers(c.ID) {
+				if r.Kind == "read" && r.Review == c.Review && r.State != "fail" {
+					owed = false
+				}
+			}
+			if owed {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// step takes one model action at random: in idle Snap or a take; in snapped
+// Tick; reports, environment moves and edge results in either phase. Picks
+// count toward the depth only while a producer is not final (the scenario's
+// world is three cards; once every one has landed nothing is legal but the
+// tick).
+func (w *traceWalk) step() {
+	w.t.Helper()
+	w.counting = false
+	for _, c := range w.v.Cards {
+		if !isConsumer(c) && c.State != "landed" && c.State != "fail" {
+			w.counting = true
+		}
+	}
+	var moves []func()
+	if w.phase == "idle" {
+		moves = append(moves, w.snapAction, w.snapAction)
+	} else {
+		moves = append(moves, w.tickOnce, w.tickOnce)
+	}
+	blind := w.rng.Intn(4) == 0 // one pick in four is blind, so refusals are met too
+	if w.phase == "idle" && (blind || len(w.consumersIn("ready")) > 0) {
+		moves = append(moves, w.takeOne)
+	}
+	if blind || len(w.consumersIn("working")) > 0 {
+		moves = append(moves, w.reportOne)
+	}
+	if blind || slices.ContainsFunc(w.inflight, func(r EdgeRequest) bool { _, sent := w.sent[r.ID]; return !sent }) {
+		moves = append(moves, w.edgeOne)
+	}
+	if blind || w.scen != "burst" {
+		moves = append(moves, w.envOne)
+	}
+	moves[w.rng.Intn(len(moves))]()
+}
+
+func (w *traceWalk) snapAction() {
+	w.fold()
+	w.phase, w.raced = "snapped", false
+	w.record("Snap", nil)
+}
+
+func (w *traceWalk) tickOnce() {
+	w.t.Helper()
+	answer := "failed"
+	if w.asked() && w.pref != "" {
+		answer = w.pref
+	}
+	w.planTick()
+	if !w.raced {
+		require.Empty(w.t, w.rejected, "%s: an op refused with no race: %+v", w.scen, w.rejected)
+	}
+	for _, e := range w.last.Edges {
+		w.reqID[e.ID] = ReqID(w.v, e)
+	}
+	w.phase = "idle"
+	w.record("Tick", []string{fmt.Sprintf("answer |-> [rows |-> %q]", answer)})
+	w.pref = []string{"r1", "r2", ""}[w.rng.Intn(3)]
+}
+
+func (w *traceWalk) moved(action string, args []string) {
+	if w.phase == "snapped" {
+		w.raced = true
+	}
+	w.fold()
+	w.record(action, args)
+}
+
+func (w *traceWalk) takeOne() {
+	ids := w.consumersIn("ready")
+	w.pick()
+	if len(ids) == 0 {
+		return
+	}
+	id := ids[w.rng.Intn(len(ids))]
+	c := w.snap().Cards[id]
+	pl, r := w.consumer(id, card.Take{Row: c.Holder})
+	if r != nil || !w.apply("take", pl.Expect, pl.Writes...).Accepted {
+		return
+	}
+	w.ok()
+	w.moved("Take", []string{"card |-> " + SlotTLA(w.view(), id)})
+}
+
+// results are the scenario's result sets: work ok (and fail for p in deal),
+// read ok (and fix for p in deal).
+func (w *traceWalk) results(c store.Card) []string {
+	bounce := w.scen == "deal" && c.Of == "p"
+	if c.Kind == "work" {
+		if bounce {
+			return []string{"ok", "fail"}
+		}
+		return []string{"ok"}
+	}
+	if bounce {
+		return []string{"ok", "fix"}
+	}
+	return []string{"ok"}
+}
+
+func (w *traceWalk) reportOne() {
+	ids := w.consumersIn("working")
+	w.pick()
+	if len(ids) == 0 {
+		return
+	}
+	id := ids[w.rng.Intn(len(ids))]
+	c := w.snap().Cards[id]
+	results := w.results(c)
+	res := results[w.rng.Intn(len(results))]
+	head := c.Head
+	if c.Kind == "work" {
+		head = ""
+		if res == "ok" {
+			head = Sha(c.Attempt)
+		}
+	}
+	pl, r := w.reportPlan(id, res, head, res+" by the walk")
+	if r != nil || !w.apply("report", pl.Expect, pl.Writes...).Accepted {
+		return
+	}
+	w.ok()
+	w.moved("Report", []string{"card |-> " + SlotTLA(w.view(), id), fmt.Sprintf("res |-> %q", res)})
+}
+
+// envOne is the scenario's environment: pre lifts s2's hold and flips r2;
+// deal flips r1; land holds and lifts s1; burst has none.
+func (w *traceWalk) envOne() {
+	w.pick()
+	s := w.snap()
+	switch w.scen {
+	case "pre":
+		if w.rng.Intn(2) == 0 && s.Streams["s2"].Held {
+			w.unhold("s2")
+			return
+		}
+		w.flip("r2")
+	case "deal":
+		w.flip("r1")
+	case "land":
+		if s.Streams["s1"].Held {
+			w.unhold("s1")
+		} else {
+			w.hold("s1")
+		}
+	}
+}
+
+func (w *traceWalk) hold(stream string) {
+	s := w.snap()
+	pl, r := card.MoveStream(card.StreamFromStore(s.Streams[stream]), card.HoldStream{Reason: "walk", Ready: w.readyOf(stream), Seq: s.Seq})
+	if r == nil && w.apply("hold", pl.Expect, pl.Writes...).Accepted {
+		w.ok()
+		w.moved("Hold", nil)
+	}
+}
+
+func (w *traceWalk) unhold(stream string) {
+	pl, r := card.MoveStream(card.StreamFromStore(w.snap().Streams[stream]), card.UnholdStream{Reason: "walk"})
+	if r == nil && w.apply("unhold", pl.Expect, pl.Writes...).Accepted {
+		w.ok()
+		w.moved("Unhold", nil)
+	}
+}
+
+func (w *traceWalk) flip(row string) {
+	r := card.RowFromStore(w.snap().Rows[row])
+	var e card.Event = card.Gone{}
+	action := "Gone"
+	if r.State == "down" {
+		e, action = card.Seen{}, "Seen"
+	}
+	pl, ref := card.MoveRow(r, e)
+	if ref == nil && w.apply("row", pl.Expect, pl.Writes...).Accepted {
+		w.ok()
+		w.moved(action, nil)
+	}
+}
+
+func (w *traceWalk) readyOf(stream string) []card.Card {
+	var out []card.Card
+	for _, id := range sortedKeys(w.snap().Cards) {
+		if c := w.snap().Cards[id]; c.Kind == "producer" && c.Stream == stream && c.State == "ready" {
+			out = append(out, card.FromStore(c))
+		}
+	}
+	return out
+}
+
+// edgeOne answers a request in flight not yet answered, once or twice.
+func (w *traceWalk) edgeOne() {
+	w.pick()
+	var open []EdgeRequest
+	for _, r := range w.inflight {
+		if _, sent := w.sent[r.ID]; !sent {
+			open = append(open, r)
+		}
+	}
+	if len(open) == 0 {
+		return
+	}
+	req := open[w.rng.Intn(len(open))]
+	it := InboxItem{Kind: req.Kind, Request: req.ID, Outcome: "ack"}
+	if req.Kind == "land" {
+		it.Outcome, it.Landed = "landed", req.Heads
+		if (w.scen == "land" || w.scen == "burst") && w.rng.Intn(2) == 0 {
+			it.Outcome, it.Landed, it.Blamed = "red", nil, req.Heads[0]
+		}
+	}
+	n := 1 + w.rng.Intn(2)
+	for i := 0; i < n; i++ {
+		w.arrive(it)
+		w.stamp[w.inbox[len(w.inbox)-1].ID] = w.arrived
+	}
+	w.ok()
+	w.moved("EdgeResult", []string{"id |-> " + w.reqID[req.ID], fmt.Sprintf("out |-> %q", it.Outcome), fmt.Sprintf("n |-> %d", n)})
+}
+
+func (w *traceWalk) view() *View { w.fold(); return w.v }
+
+func (w *traceWalk) pick() {
+	if w.counting {
+		w.picked++
+	}
+}
+
+func (w *traceWalk) ok() {
+	if w.counting {
+		w.legal++
+	}
+}
+
+func (w *traceWalk) consumersIn(state string) []string {
+	var out []string
+	for _, c := range w.snap().Cards {
+		if isConsumer(c) && c.State == state {
+			out = append(out, c.ID)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// module is the StepsTraceLog module of the records, and cfg the trace cfg:
+// the scenario's constants, the model's bounds above anything the walk
+// reaches.
+func (w *traceWalk) module() string {
+	return "---- MODULE StepsTraceLog ----\n\\* Written by the steps trace walk (steps/trace_test.go); do not edit.\nEXTENDS TLC\n\nTraceLog == <<\n  " +
+		strings.Join(w.records, ",\n  ") + "\n>>\n====\n"
+}
+
+func (w *traceWalk) cfg() string {
+	c := traceScenarios[w.scen]
+	return fmt.Sprintf("\\* Written by the steps trace walk; do not edit.\n\\* expect: matched\nCONSTANT Scenario = %q\nCONSTANT K = 60\nCONSTANT MaxAtt = 30\nCONSTANT MaxBounce = 30\nCONSTANT MaxEnv = 1000\nCONSTANT MaxArrive = 1000\nCONSTANT Budget = %d\nCONSTANT Pack = %d\nSPECIFICATION TraceSpec\nPROPERTY TraceMatched\nCHECK_DEADLOCK FALSE\n", w.scen, c.budget, c.pack)
+}
+
+// TestTraceWalk: every scenario, 100 seeds, 2,000 steps; at least 40% of the
+// picked moves legal; no op refused without a race.
+func TestTraceWalk(t *testing.T) {
+	steps, seeds := 2000, int64(100)
+	if testing.Short() {
+		steps, seeds = 300, 10
+	}
+	for scen := range traceScenarios {
+		t.Run(scen, func(t *testing.T) {
+			var mu sync.Mutex
+			picked, legal := 0, 0
+			for seed := int64(1); seed <= seeds; seed++ {
+				t.Run(fmt.Sprint(seed), func(t *testing.T) {
+					t.Parallel()
+					w := newTraceWalk(t, scen, seed)
+					for i := 0; i < steps; i++ {
+						w.step()
+					}
+					mu.Lock()
+					defer mu.Unlock()
+					picked += w.picked
+					legal += w.legal
+				})
+			}
+			t.Cleanup(func() {
+				t.Logf("%s: %d picked, %d legal (%.0f%%)", scen, picked, legal, 100*float64(legal)/float64(max(picked, 1)))
+				assert.GreaterOrEqual(t, float64(legal), 0.4*float64(picked), "depth")
+			})
+		})
+	}
+}
+
+// TestTraceFixtures writes the fixed seed set's traces under NOVA_TRACES
+// (steps-walk-<scenario>-<seed>), for tla/check-trace.sh; without it the
+// walk runs and writes nothing.
+func TestTraceFixtures(t *testing.T) {
+	dir := os.Getenv("NOVA_TRACES")
+	for _, scen := range []string{"pre", "deal", "land", "burst"} {
+		for seed := int64(1); seed <= 3; seed++ {
+			w := newTraceWalk(t, scen, seed)
+			for i := 0; i < 150; i++ {
+				w.step()
+			}
+			if dir == "" {
+				continue
+			}
+			d := filepath.Join(dir, fmt.Sprintf("steps-walk-%s-%d", scen, seed))
+			require.NoError(t, os.MkdirAll(d, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(d, "StepsTraceLog.tla"), []byte(w.module()), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(d, "StepsTrace.cfg"), []byte(w.cfg()), 0o644))
+			t.Logf("%s: %d records", d, len(w.records))
+		}
+	}
+}
