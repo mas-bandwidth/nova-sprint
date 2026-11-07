@@ -263,7 +263,7 @@ function shownStatus(st) { var w = String(st || "").trim().split(/[\s(]/)[0]; re
 // (the owner 2026-10-04 ~4:24 PM: "this enforces it is one person, but multiple buds").
 function budLabel(name, table) {
   var i = name.indexOf("-");
-  if (i > 0 && table && table[name.slice(0, i)]) return name.slice(0, i) + " (" + name.slice(i + 1) + ")";
+  if (i > 0 && table && Object.prototype.hasOwnProperty.call(table, name.slice(0, i))) return name.slice(0, i) + " (" + name.slice(i + 1) + ")";
   return name;
 }
 function tableScale(table) { return Math.max(1, Object.keys(table || {}).reduce(function (a, n) { return Math.max(a, int(table[n].width)); }, 0)); }

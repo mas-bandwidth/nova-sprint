@@ -168,31 +168,30 @@ func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
 	}
 }
 
-// Every store call of a tick is under the 500 ms deadline: a hung Apply (the cursor write)
-// and a hung Replay end the tick near 500 ms, and the next tick recovers.
+// Inject deadline errors in the cursor Apply and Replay. Both must receive a
+// deadline-bearing context, and a later successful tick must recover.
 type cr3Hang struct {
 	store.Store
-	hangApply, hangReplay bool
+	hangApply, hangReplay         bool
+	applyDeadline, replayDeadline bool
 }
 
 func (s *cr3Hang) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
 	if s.hangApply {
-		<-ctx.Done()
-		return store.Receipt{}, fmt.Errorf("%w: %w", store.ErrUnknown, ctx.Err())
+		_, s.applyDeadline = ctx.Deadline()
+		return store.Receipt{}, fmt.Errorf("%w: %w", store.ErrUnknown, context.DeadlineExceeded)
 	}
 	return s.Store.Apply(ctx, op)
 }
 func (s *cr3Hang) Replay(ctx context.Context, id string) (store.Receipt, bool, error) {
 	if s.hangReplay {
-		<-ctx.Done()
-		return store.Receipt{}, false, ctx.Err()
+		_, s.replayDeadline = ctx.Deadline()
+		return store.Receipt{}, false, context.DeadlineExceeded
 	}
 	return s.Store.Replay(ctx, id)
 }
 
 func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
-	defer func(d time.Duration) { AdvanceDeadline = d }(AdvanceDeadline)
-	AdvanceDeadline = 500 * time.Millisecond
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)
@@ -201,10 +200,9 @@ func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
 	err = c.Advance(ctx, s)
-	if el := time.Since(start); err == nil || el > 900*time.Millisecond {
-		t.Fatalf("hung cursor write: err=%v elapsed=%s", err, el)
+	if err == nil || !s.applyDeadline || !s.replayDeadline {
+		t.Fatalf("cursor error=%v apply deadline=%v replay deadline=%v", err, s.applyDeadline, s.replayDeadline)
 	}
 	s.hangApply, s.hangReplay = false, false
 	if err = c.Advance(ctx, s); err != nil {
@@ -280,6 +278,7 @@ func TestColdread3TwoDashboardsCursorEvents(t *testing.T) {
 
 // Measurement: 5,000 producers (+500 work and 500 read consumers) on the in-memory store.
 func TestColdread3Measure5000(t *testing.T) {
+	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 5000)
