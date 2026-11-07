@@ -16,6 +16,7 @@ import (
 // TestFoldMatchesSnapshotAndRebuild checks that one Snapshot is taken, the read position advances by at
 // most one event per call, and the folded state equals both a fresh Snapshot and Rebuild of every event.
 func TestFoldMatchesSnapshotAndRebuild(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 200)
@@ -80,6 +81,7 @@ func TestFoldMatchesSnapshotAndRebuild(t *testing.T) {
 // TestClearEmptiesViewAndUnknownOpFolds checks that a clear empties the view and moves the epoch, and that
 // an op kind the fold has never seen still folds.
 func TestClearEmptiesViewAndUnknownOpFolds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -87,7 +89,7 @@ func TestClearEmptiesViewAndUnknownOpFolds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := f.Apply(ctx, store.Op{ID: "odd", Epoch: 1, Actor: "x", Kind: "frobnicate", At: time.Now(), Writes: []store.Write{store.SetCardState{Card: "p00001", State: "landed"}}})
+	r, err := f.Apply(ctx, store.Op{ID: "odd", Epoch: 1, Actor: "x", Kind: "frobnicate", At: t1000, Writes: []store.Write{store.SetCardState{Card: "p00001", State: "landed"}}})
 	if err != nil || !r.Accepted {
 		t.Fatalf("odd op: %v %+v", err, r)
 	}
@@ -97,7 +99,7 @@ func TestClearEmptiesViewAndUnknownOpFolds(t *testing.T) {
 	if d := c.pageSnapshot().Data; d.Landed != 1 || d.All != 20 {
 		t.Fatalf("after odd kind landed=%d all=%d", d.Landed, d.All)
 	}
-	if _, err = f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
+	if _, err = f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "x", Kind: "clear", At: t1000}); err != nil {
 		t.Fatal(err)
 	}
 	if err = c.Advance(ctx, f); err != nil {
@@ -112,6 +114,7 @@ func TestClearEmptiesViewAndUnknownOpFolds(t *testing.T) {
 // TestLostConnectionKeepsViewThenRecovers checks that a lost connection keeps the copy and its clock,
 // observes the health grace, and recovers on the next successful advance.
 func TestLostConnectionKeepsViewThenRecovers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -153,6 +156,7 @@ func TestLostConnectionKeepsViewThenRecovers(t *testing.T) {
 // TestRefreshCountsAndShape is a small deterministic counterpart to the load measurements: one Snapshot,
 // an incremental fold equal to it, and the page envelope's shape.
 func TestRefreshCountsAndShape(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -213,6 +217,7 @@ func (s *eventSpy) Events(ctx context.Context, after int64, max int) ([]store.Ev
 // Snapshot when one Events page carries a policy activation, a clear and writes after it, and that the cursors
 // resume exactly where the previous call ended, never re-reading or skipping.
 func TestFoldAcrossPolicyActivationAndClear(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 30)
@@ -226,7 +231,7 @@ func TestFoldAcrossPolicyActivationAndClear(t *testing.T) {
 	mustApply(t, f, "pol2", 1, store.PutPolicy{Kind: "data", Name: "b", Body: "{}"})
 	mustApply(t, f, "act2", 1, store.SetActivePolicy{Version: 2})
 	mustApply(t, f, "land", 1, store.SetCardState{Card: "p00003", State: "landed"})
-	if _, err = f.Clear(ctx, store.Op{ID: "clr", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
+	if _, err = f.Clear(ctx, store.Op{ID: "clr", Epoch: 1, Actor: "x", Kind: "clear", At: t1000}); err != nil {
 		t.Fatal(err)
 	}
 	mustApply(t, f, "after", 2, store.PutStream{Name: "n"}, store.PutCard{ID: "q", Kind: "producer", Tier: "pro", Stream: "n"})
@@ -281,6 +286,7 @@ func (s *deadlineProbeStore) Replay(ctx context.Context, id string) (store.Recei
 // TestCursorWriteRunsUnderDeadline checks that the cursor Apply and Replay both receive a context with a
 // deadline, and that a later successful tick recovers.
 func TestCursorWriteRunsUnderDeadline(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)
@@ -305,6 +311,7 @@ func TestCursorWriteRunsUnderDeadline(t *testing.T) {
 // TestConcurrentTicksAndReads runs concurrent advances and page reads (meant for -race) and checks the fold
 // still equals a fresh Snapshot.
 func TestConcurrentTicksAndReads(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 200)
@@ -345,6 +352,7 @@ func TestConcurrentTicksAndReads(t *testing.T) {
 // TestTwoDashboardsOnOneStoreCursorEvents logs how many cursor events two idle dashboards on one store
 // write; a store is meant to have one dashboard. It asserts nothing.
 func TestTwoDashboardsOnOneStoreCursorEvents(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)

@@ -76,10 +76,10 @@ At 2000 and 2800 px the ten-column Work table (no blocked cards) fits its row; w
 - Unit tests (`go test -skip Functional ./dash`) use fake stores and controlled clocks: `fold_test.go`, `cursor_test.go`, `cursor_race_test.go`, `wire_format_test.go`, `cost_wire_test.go`, `throughput_*_test.go`, `board_*_test.go`, `startup_*_test.go`, `history_anchor_test.go`, `page_source_test.go` (checks of the embedded JavaScript and HTML), `work_grid_layout_test.go`, `source_rules_test.go` (function length, unused symbols, deadlines on `store.Open`, this README's track rule).
 - `testdata/reference-envelope.json` is a minimal envelope whose value types the wire-format tests compare against. `testdata/seed.json` is the golden for `TestFunctionalJSONGolden`; regenerate it with `UPDATE_GOLDEN=1 go test -run TestFunctionalJSONGolden ./dash` with PostgreSQL's `initdb` and `pg_ctl` on `PATH`. It carries the page's build hash, so it changes whenever anything under `page/` changes.
 - Functional tests (`TestFunctional*`) run against a throwaway PostgreSQL where they need a store: the JSON golden, restart and terminated-backend recovery, and the pool surviving a cancelled open context. `TestFunctionalPublicDashboardThousandRequests` drives a pull board with a thousand loopback requests and runs only with `NOVA_DASH_LOAD=1`.
-- Timing measurements (`TestLoad*`, `TestFunctionalPG5000IncrementalAdvance`, `TestDashboardIncremental5000`) run only with `NOVA_LOAD=1`, on a quiet Linux bench:
+- Timing measurements (`TestFunctionalLoad*`, `TestFunctionalPG5000IncrementalAdvance`, `TestFunctionalDashboardIncremental5000`) run only with `NOVA_LOAD=1`, on a quiet Linux bench:
 
 ```sh
-NOVA_LOAD=1 go test -count=1 -race -v -run '^(TestLoadRefresh5000|TestFunctionalPG5000IncrementalAdvance)$' ./dash
+NOVA_LOAD=1 go test -count=1 -race -v -run '^(TestFunctionalLoadRefresh5000|TestFunctionalPG5000IncrementalAdvance)$' ./dash
 ```
 
 Both assert that one advance at 5,000 producers stays under 100 ms; the 20,000-producer pass only logs.

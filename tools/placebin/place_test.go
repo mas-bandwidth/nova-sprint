@@ -34,6 +34,7 @@ func entries(t *testing.T, dir string) []string {
 // old file keeps its content for whoever holds it open, the new one is
 // signed before it is renamed in, and no temporary file stays.
 func TestPlaceReplacesNeverOverwrites(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src, dst := filepath.Join(dir, "src"), filepath.Join(dir, "bin", "nova-sprint")
 	if err := os.Mkdir(filepath.Join(dir, "bin"), 0o755); err != nil {
@@ -87,6 +88,7 @@ func TestPlaceReplacesNeverOverwrites(t *testing.T) {
 // source and a missing directory each leave the old file and no new one, and
 // the error carries its cause.
 func TestPlaceFailureLeavesTheDestination(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	src, dst := filepath.Join(dir, "src"), filepath.Join(dir, "nova-sprint")
 	write(t, src, "new")
@@ -111,6 +113,7 @@ func TestPlaceFailureLeavesTheDestination(t *testing.T) {
 
 // TestCodesignArgv: the signing is ad hoc, of the new file.
 func TestCodesignArgv(t *testing.T) {
+	t.Parallel()
 	if got := codesignArgv("/x/y"); !slices.Equal(got, []string{"codesign", "--force", "--sign", "-", "/x/y"}) {
 		t.Fatalf("%v", got)
 	}

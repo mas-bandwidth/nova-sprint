@@ -14,7 +14,8 @@ import (
 // origin prunes the object. LandPass asked to land c1 reports the
 // missing_head outcome: the landing reads each card's branch at origin, never
 // a full sha that happens to be in the local clone.
-func TestLandDeletedCardBranchStillLands(t *testing.T) {
+func TestFunctionalLandDeletedCardBranchStillLands(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	originDir, workDir, b0, runGit := setupBareAndWorkRepo_internal(t)
 	c1 := commitBranch_internal(t, runGit, workDir, "c1", b0, "c1.txt", "card 1\n", "refs/heads/sprint/s1/c1")

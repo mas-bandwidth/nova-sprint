@@ -14,6 +14,7 @@ import (
 // TestThroughputReportedAfterLandings checks that the throughput figure is a rate once cards have landed
 // over more than the ten-minute warmup.
 func TestThroughputReportedAfterLandings(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -44,6 +45,7 @@ func TestThroughputReportedAfterLandings(t *testing.T) {
 // TestThroughputWarmupRestartsAfterClear checks that a clear restarts the ten-minute throughput warmup
 // even when the landed count does not fall across it (0 landed before, 1 after).
 func TestThroughputWarmupRestartsAfterClear(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)

@@ -10,6 +10,7 @@ import (
 // names, and the consumer is cut with it, working in its row's hand, so the take
 // receipt reads it from the consumer and never invents it. Unit: store.Fake.
 func TestModelCarriedByTheDeal(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b-p1", Base: base, Model: "deepseek/deepseek-flash"})

@@ -20,7 +20,9 @@
 set -u
 
 VERSION=v1.8.0
-URL="https://github.com/tlaplus/tlaplus/releases/download/$VERSION/tla2tools.jar"
+# This repository's copy of the v1.8.0 jar (release tla-tools-1.8.0): upstream
+# replaced its v1.8.0 asset with a different binary, so the pin is kept here.
+URL="https://github.com/mas-bandwidth/nova-sprint/releases/download/tla-tools-1.8.0/tla2tools.jar"
 SHA256=7a0a1e90628ebff2e3e8733375f8b684fa59504d2e02bddc4cb51a7679bb7e04
 
 [ $# -eq 2 ] || { echo "usage: check-trace.sh <model> <trace dir>" >&2; exit 2; }
@@ -44,7 +46,7 @@ JAVA="$HOME/sdk/bin/java"
 [ -n "$JAVA" ] || { echo "no java on this host" >&2; exit 2; }
 mkdir -p "$CACHE" || exit 2
 if [ ! -f "$JAR" ] || [ "$(sha256_of "$JAR")" != "$SHA256" ]; then
-    curl -fsSL -o "$JAR.part" "$URL" && mv "$JAR.part" "$JAR" || { echo "download of $URL failed" >&2; exit 2; }
+    curl -fsSL -o "$JAR.part.$$" "$URL" && mv -f "$JAR.part.$$" "$JAR" || { echo "download of $URL failed" >&2; exit 2; }
 fi
 [ "$(sha256_of "$JAR")" = "$SHA256" ] || { echo "tla2tools.jar sha256 mismatch" >&2; rm -f "$JAR"; exit 2; }
 

@@ -11,6 +11,7 @@ import (
 // TestTickHappyPath: one producer from waiting to landed, tick by tick,
 // every op accepted (conformance, happy).
 func TestTickHappyPath(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -62,6 +63,7 @@ func TestTickHappyPath(t *testing.T) {
 // TestTickFixPath: a read says fix; the producer goes back to ready with
 // the finding, is dealt again carrying its head, and a second read says yes.
 func TestTickFixPath(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -114,6 +116,7 @@ func toMerging(s *sim) EdgeRequest {
 // the facts and the choices land, fix and retry; nothing moves, nothing is
 // blamed, and no new request is asked while it is open.
 func TestTickLandJudgementEveryOutcome(t *testing.T) {
+	t.Parallel()
 	for _, outcome := range []string{"ci_red", "no-ci", "conflict", "merge_refused", "pr_unopenable", "branch_failed", "ci_fault", "missing_head", "head_moved", "hand", "fault"} {
 		s := newSim(t)
 		first := toMerging(s)
@@ -140,6 +143,7 @@ func TestTickLandJudgementEveryOutcome(t *testing.T) {
 // coordinator answers it at a glance: only inherited red, the facts, and
 // the hand landing's command for this card.
 func TestTickLandInheritedRedIsAGlance(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	first := toMerging(s)
 	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: InheritedRed, Reason: "inherited red (red on the base too, not this card's): hostile-corpus (the merge base cccccccccccc)"})
@@ -155,6 +159,7 @@ func TestTickLandInheritedRedIsAGlance(t *testing.T) {
 // TestTickLandAnswers: fix sends the producer to fix with the finding (a
 // red: review +1); retry asks a new landing; land records it landed.
 func TestTickLandAnswers(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	first := toMerging(s)
 	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", Reason: "failing unit"})
@@ -190,6 +195,7 @@ func TestTickLandAnswers(t *testing.T) {
 // at policy's backed_up (2 by default) every waiting head is one request
 // (rung 2), and the request names each head's branch and the CI wait.
 func TestTickLadderRungs(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 4, "pro")
@@ -216,6 +222,7 @@ func TestTickLadderRungs(t *testing.T) {
 // TestTickFaultSpendsNothing: a fault report returns the producer to ready
 // with no bounce, and the next deal carries the pushed head.
 func TestTickFaultSpendsNothing(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -233,6 +240,7 @@ func TestTickFaultSpendsNothing(t *testing.T) {
 // never a yes), the faulted read is not counted, and the next tick deals a
 // new read while the producer stays in review.
 func TestTickFaultedReadIsOwedAgain(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")

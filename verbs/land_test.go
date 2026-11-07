@@ -21,6 +21,7 @@ func landJudged2(s *store.Snapshot) {
 // land merges the card's own head by hand and records it landed with the
 // merge sha and the reason, in one op.
 func TestLandByHand(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	merging2(&s)
 	w := worldFrom(t, s)
@@ -35,6 +36,7 @@ func TestLandByHand(t *testing.T) {
 }
 
 func TestLandRefusals(t *testing.T) {
+	t.Parallel()
 	land := []string{"land", "p2", "--reason", "r"}
 	runCases(t, []tcase{
 		{name: "no reason", as: "carol", snap: merging2, args: []string{"land", "p2"}, exit: 1, want: []string{"needs its reason", "--reason"}},
@@ -55,6 +57,7 @@ func TestLandRefusals(t *testing.T) {
 // finding, retry is a new landing
 // request (the card stays merging; the next tick asks).
 func TestJudgeLandAnswers(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ choice, state string }{{"land", "landed"}, {"fix", "ready"}, {"retry", "merging"}}
 	for _, c := range cases {
 		t.Run(c.choice, func(t *testing.T) {
@@ -80,6 +83,7 @@ func TestJudgeLandAnswers(t *testing.T) {
 // stream add creates sprint-group/<stream> at the base tip for a stream
 // that lands through a forge, and refuses, naming the fix, when it cannot.
 func TestStreamAddCreatesTheGroupBranch(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--forge", "github"), 0, "STREAM t")
 	if got := w.lander.created; len(got) != 1 || got[0] != "t@"+base {

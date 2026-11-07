@@ -12,6 +12,7 @@ import (
 )
 
 func TestSetupCompletionReportsVerifiedState(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := store.NewFake()
 	setIdentity(t, db)

@@ -91,6 +91,7 @@ func testWorkload(f *fleetFake, rows map[string]store.Row, present map[string]bo
 // the keys and environment sprint-run's store and bus need; one
 // nova-fleet play limited to those benches applies them all.
 func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
+	t.Parallel()
 	f := &fleetFake{machines: workloadMachines, rows: 3}
 	if err := testWorkload(f, nil, nil).InstallWorkers(context.Background()); err != nil {
 		t.Fatal(err)
@@ -127,6 +128,7 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 // A failed play is a refusal naming the benches and nova-fleet's cause; a
 // record that differs is the record's own refusal, before any play.
 func TestInstallWorkersRefusals(t *testing.T) {
+	t.Parallel()
 	f := &fleetFake{machines: workloadMachines, rows: 3, fail: map[string]error{"nova-fleet services": errors.New("amd-2: UNREACHABLE")}}
 	err := testWorkload(f, nil, nil).InstallWorkers(context.Background())
 	var op *verbs.OperationError
@@ -146,6 +148,7 @@ func TestInstallWorkersRefusals(t *testing.T) {
 // the store; through RuntimeSetup it is an act first, then a refusal
 // naming each bench that is not, with its unit's last log line.
 func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
+	t.Parallel()
 	f := &fleetFake{machines: workloadMachines, rows: 3}
 	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up", Role: "worker"}, "amd-2": {Name: "amd-2", State: "down", Role: "worker"}}
 	w := testWorkload(f, rows, map[string]bool{"amd-1": true})
@@ -192,6 +195,7 @@ func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
 // Step 8: every worker row dealable; a bench with no cores is named, held
 // at width 0, with the nova-config command that gives it cores.
 func TestSmokeReadyNeedsEveryWorkerDealable(t *testing.T) {
+	t.Parallel()
 	f := &fleetFake{machines: workloadMachines, rows: 3}
 	rows := map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}, "amd-2": {Name: "amd-2", State: "up"}}
 	present := map[string]bool{"amd-1": true, "amd-2": true}
@@ -215,6 +219,7 @@ func TestSmokeReadyNeedsEveryWorkerDealable(t *testing.T) {
 
 // "none" is a valid services choice and verifies.
 func TestServicesNoneVerifies(t *testing.T) {
+	t.Parallel()
 	w := productionWorkload{}
 	if ok, err := w.ServicesReady(context.Background(), nil); !ok || err != nil {
 		t.Fatal(ok, err)
@@ -226,6 +231,7 @@ func TestServicesNoneVerifies(t *testing.T) {
 
 // The unit's last log line comes over the inventory's pinned ssh.
 func TestLastServiceLogLineReadsTheUnitLogOverSSH(t *testing.T) {
+	t.Parallel()
 	var seen [][]string
 	p := productionSetup{cfg: configForSetup(), command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		seen = append(seen, append([]string{name}, args...))
@@ -251,6 +257,7 @@ func TestLastServiceLogLineReadsTheUnitLogOverSSH(t *testing.T) {
 // The Setup the engine really gets forwards every seam it type-asserts
 // (section 40: up refused "the setup walk has no completion").
 func TestProductionSetupForwardsEverySeam(t *testing.T) {
+	t.Parallel()
 	st := store.NewFake()
 	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
 	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", configForSetup())
@@ -265,6 +272,7 @@ func TestProductionSetupForwardsEverySeam(t *testing.T) {
 // The worker service records name their directories under the login's
 // home; the worker takes a relative one there, never under its cwd.
 func TestWorkerDirectoriesAreUnderHome(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{".local/state": "/home/nova/.local/state", "/abs/dir": "/abs/dir", "": ""} {
 		if got := underHome("/home/nova", in); got != want {
 			t.Fatalf("%q: %q, want %q", in, got, want)

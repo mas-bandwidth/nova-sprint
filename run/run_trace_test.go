@@ -649,10 +649,10 @@ func traceSeed(t *testing.T) int64 {
 	return seed
 }
 
-func TestEmitRunTrace(t *testing.T) {
+func TestEmitRunTrace(t *testing.T) { // unitlint: serial, it writes steps.Engine, which every tick reads
 	// The run model has no nudge, unacked, undealt or idle action: the
-	// fixture keeps the engine's bounds past the walk (restored after; no
-	// unit test of this package runs in parallel), and tracePolicy's
+	// fixture keeps the engine's bounds past the walk (restored after; the
+	// test is serial, so it ends before any parallel test starts), and tracePolicy's
 	// ready_nag and ready_take are a day.
 	defer func(e steps.Defaults) { steps.Engine = e }(steps.Engine)
 	steps.Engine.UndealtAfter, steps.Engine.IdleFloor = 1<<30, 0

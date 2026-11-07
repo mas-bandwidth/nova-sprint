@@ -104,7 +104,8 @@ func proseSnap(size int) (store.Snapshot, roster.Roster) {
 // Sequence: Answer(Versions{}, proseSnap(16 KiB), FullQuestions).
 // Design: "One deadline per tick: ... TickTime ...
 // from the first byte of input construction to the last answer returned".
-func TestProseMakesTheInputsOutrunTheTickDeadline(t *testing.T) {
+func TestFunctionalProseMakesTheInputsOutrunTheTickDeadline(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	snap, ro := proseSnap(16 << 10)
 	q := FullQuestions(snap, nil)
@@ -123,6 +124,7 @@ func TestProseMakesTheInputsOutrunTheTickDeadline(t *testing.T) {
 // Design: guarantee 4, "Every tick is answered by the active, the previous
 // or the built-in version"; the default policy "answers every snapshot".
 func TestProseLeavesTheBuiltInUnableToAnswer(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	snap, ro := proseSnap(16 << 10)
 	a, fs := timedEngine().Answer(Versions{}, snap, ro, FullQuestions(snap, nil))
@@ -158,7 +160,8 @@ func hungLimits() string {
 // never changes which version answers (the model's Pick)"; tla/Policy.tla
 // Tick: answered by the first of active, prev, Default not in breaks
 // (Default does not break on this snapshot), TickAlwaysAnswered.
-func TestFallbackTimerStartsAfterTheInputs(t *testing.T) {
+func TestFunctionalFallbackTimerStartsAfterTheInputs(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	var snap store.Snapshot
 	var ro roster.Roster

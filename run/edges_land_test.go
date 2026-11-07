@@ -17,6 +17,7 @@ import (
 // last, and an absent CI (no check at all on the gated sha) only until the
 // request's wait; everything else goes to layer 3 at once.
 func TestAskAgainBoundsAnAbsentCI(t *testing.T) {
+	t.Parallel()
 	pending := git.LandResult{Outcome: git.OutcomePending}
 	moved := git.LandResult{Outcome: git.OutcomeBaseMoved}
 	absent := git.LandResult{Outcome: git.OutcomeAbsent, GatedSHA: strings.Repeat("a", 40)}
@@ -53,6 +54,7 @@ func TestAskAgainBoundsAnAbsentCI(t *testing.T) {
 // A red pass's item carries the facts the judgement shows: rung, base tip,
 // group tip, gated sha, PR, failing checks, their URL and first lines.
 func TestLandItemRedCarriesTheFacts(t *testing.T) {
+	t.Parallel()
 	res := git.LandResult{Outcome: git.OutcomeRed, Rung: 2, BaseTip: "b1", GroupTip: "g1", GatedSHA: "g1", PR: "https://pr/7", FailingCI: []string{"unit (linux)"}, CIURL: "https://ci/1", FailingLines: []string{"--- FAIL: TestX"}, Reason: "failure"}
 	it := landItem("land.s1.x", res, nil, time.Minute)
 	if it.Outcome != string(git.OutcomeRed) || len(it.Landed) != 0 {
@@ -78,6 +80,7 @@ func TestLandItemRedCarriesTheFacts(t *testing.T) {
 // the authors of a PR whose agreement check failed; all-inherited red is
 // layer 3's glance outcome.
 func TestLandItemSplitsRedByTheBase(t *testing.T) {
+	t.Parallel()
 	newRed := []forge.WorkflowRed{{Workflow: "Gates", Basis: "the merge base cccccccccccc",
 		Jobs: []forge.FailedJob{{Name: "Linux Debug", Runner: "bench-b", URL: "https://ci/121", Lines: []string{"--- FAIL: TestX", "FAIL"}}}}}
 	inherited := []forge.WorkflowRed{{Workflow: "hostile-corpus", Basis: "the merge base cccccccccccc"}}
@@ -98,6 +101,7 @@ func TestLandItemSplitsRedByTheBase(t *testing.T) {
 // A stream that lands by hand (mode hand, or no forge) merges and pushes
 // nothing: it answers hand at once, which layer 3 opens as one judgement.
 func TestLandByHandStreamTouchesNothing(t *testing.T) {
+	t.Parallel()
 	for _, s := range []store.Stream{{Name: "s1", Mode: "hand", Forge: "github"}, {Name: "s1", Mode: "auto"}} {
 		e := &Edges{} // a nil Git and Forge: any call would panic
 		e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{"h"}, Branches: []string{"sprint/s1/x"}}, s)

@@ -60,6 +60,7 @@ func verifierOf(t *testing.T, password string) *string {
 // The role's password is proven or set from the seat; a pg_hba
 // trust line never passes a role with no password or another password.
 func TestEnsureSprintPassword(t *testing.T) {
+	t.Parallel()
 	for name, c := range map[string]struct {
 		db   roleDBFake
 		sets int
@@ -88,6 +89,7 @@ func TestEnsureSprintPassword(t *testing.T) {
 // The refusal names which of the two failed: setting the password, or
 // verifying it once set.
 func TestEnsureSprintPasswordRefusalNamesTheFailure(t *testing.T) {
+	t.Parallel()
 	denied := &pgconn.PgError{Code: "42501", Message: "permission denied to alter role"}
 	db := &roleDBFake{setErr: denied}
 	err := ensureSprintPassword(context.Background(), db, "seat", bytes.NewReader(make([]byte, 16)))
@@ -114,6 +116,7 @@ func (n *neverVerifies) Login(context.Context, string, bool) error {
 }
 
 func TestScramMatchesRefusesMalformed(t *testing.T) {
+	t.Parallel()
 	good := *verifierOf(t, "seat")
 	if same, why := scramMatches(good, "seat"); !same {
 		t.Fatal(why)

@@ -89,6 +89,7 @@ func applyWithRetry(t *testing.T, s store.Store, id string, w ...store.Write) {
 // TestFunctionalPGRestartRecovers checks that terminated backends and a full PostgreSQL restart are
 // recovered by later ticks without a second Snapshot, and that the copy equals a fresh Snapshot.
 func TestFunctionalPGRestartRecovers(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_SKIP_PG") != "" {
 		t.Skip()
 	}
@@ -177,6 +178,7 @@ func TestFunctionalPGRestartRecovers(t *testing.T) {
 // TestFunctionalPoolSurvivesOpenContextCancel checks that the pool opened under a context that is then
 // cancelled stays usable: Snapshot, Events and the cursor write all succeed afterwards.
 func TestFunctionalPoolSurvivesOpenContextCancel(t *testing.T) {
+	t.Parallel()
 	dsn := startPG(t)
 	var s *store.PG
 	var err error

@@ -11,6 +11,7 @@ import (
 // TestIdleFirstPollOnEmptyStoreWritesNoCursor checks that the first poll of an empty store, with no
 // events to consume, writes no cursor event.
 func TestIdleFirstPollOnEmptyStoreWritesNoCursor(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := store.NewFake()
 	c, err := New(ctx, s)
@@ -52,6 +53,7 @@ func (s *hookApplyStore) Apply(ctx context.Context, op store.Op) (store.Receipt,
 // applies e3, so the cursor lands after it. The fold then holds e3, so the durable cursor must be at least
 // e3's sequence after the following poll.
 func TestCursorCoversEventAppliedDuringCursorWrite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	mustApply(t, f, "e1", 1,
@@ -110,6 +112,7 @@ func (s cursorUnavailable) Apply(ctx context.Context, op store.Op) (store.Receip
 // TestCursorFailureStillPublishesRead checks that a failed cursor write still publishes the read view
 // and leaves the cursor pending until a later advance saves it.
 func TestCursorFailureStillPublishesRead(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})

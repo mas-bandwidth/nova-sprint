@@ -14,7 +14,7 @@ import (
 
 // TestUnknownProducerStateCountsAsWaitingAndAlarms checks that a producer in a state the board does not
 // know counts as waiting, keeps the sprint from being done, and logs an ALARM naming the card and state.
-func TestUnknownProducerStateCountsAsWaitingAndAlarms(t *testing.T) {
+func TestUnknownProducerStateCountsAsWaitingAndAlarms(t *testing.T) { // unitlint: serial, it captures the process's log output (log.SetOutput)
 	ctx := context.Background()
 	f := store.NewFake()
 	mustApply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro"}, store.PutCard{ID: "p2", Kind: "producer", Stream: "s", Tier: "pro"})
@@ -40,6 +40,7 @@ func TestUnknownProducerStateCountsAsWaitingAndAlarms(t *testing.T) {
 // TestStaleViewServes200WhileHealthzFails503 checks that after 30 seconds of failed polls /healthz
 // returns 503 while /api/sprint keeps serving the last good view.
 func TestStaleViewServes200WhileHealthzFails503(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)

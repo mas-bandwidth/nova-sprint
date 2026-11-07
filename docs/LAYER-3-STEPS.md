@@ -571,11 +571,11 @@ streams, <unserved> with no serving row; <command>`.
 | Unit (`go test -skip Functional ./steps/...`) | each step's table of view and inputs to groups; every refusal's words; every question absent, failing, slow and lying (`asker_test.go`); the view (a fold per event kind equals a fresh build, `view_test.go`); the purity lint (`lint_test.go`); the paths (happy, fix, red, fault, preemption, drop, hold, block, budget and carry, refused op split by group, unlisted and unhooked rows, silent row and flap, stable op ids); hand (`hand_test.go`); routes; waits; the request table of every verb and actor (`request_test.go`). Time is `Inputs.Now`; no sockets, no network, no store but `store.Fake`. |
 | Random walk (`walk_test.go`) | 100 seeds of 2,000 steps on `store.Fake`; the model's state invariants after every step and its tick invariants on every plan |
 | Trace walk (`trace_test.go`) | the model's scenarios driven on `store.Fake`, one record per action, projected onto `tla/Steps.tla` (`trace.go` is the refinement mapping) and checked as behaviours by TLC |
-| Load (`load_test.go`) | skipped unless `NOVA_LOAD=1`; run on a Linux bench, never in per-commit CI. 5,000 producers in 20 streams over 100 rows of width 4: fold, plan and apply timed apart at steady state, with 200 reports/s and a 2,000-report burst; `TestLoadResolve` times the needs step alone |
+| Load (`load_test.go`) | skipped unless `NOVA_LOAD=1`; run on a Linux bench, never in per-commit CI. 5,000 producers in 20 streams over 100 rows of width 4: fold, plan and apply timed apart at steady state, with 200 reports/s and a 2,000-report burst; `TestFunctionalLoadResolve` times the needs step alone |
 
 ```
 go test -count=1 -skip Functional ./steps/...
-NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestLoad -v ./steps/   # a bench host
+NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestFunctionalLoad -v ./steps/   # a bench host
 bash tla/ci-tlc.sh                                                    # models, witnesses, reach checks
 bash tla/make-traces.sh check                                         # trace fixtures against the model
 ```

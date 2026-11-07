@@ -17,10 +17,10 @@ import (
 )
 
 func TestFunctionalBackupRoundTrip(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("requires isolated PostgreSQL")
 	}
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dir, dsn := startBackupPG(ctx, t)
@@ -145,10 +145,10 @@ const olderStoreSchemaHash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e
 // pg_dump --inserts is positional, so a new store's columns must be in the
 // migrated store's order.
 func TestFunctionalBackupMigratedOlderStore(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("initdb"); err != nil {
 		t.Skip("requires PostgreSQL's initdb on PATH")
 	}
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dir, dsn := startBackupPG(ctx, t)

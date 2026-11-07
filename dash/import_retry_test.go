@@ -41,6 +41,7 @@ func (s *importRetryStore) EventIdentity(ctx context.Context, seq int64) (string
 	return s.Store.EventIdentity(ctx, seq)
 }
 func TestImportCursorRetryUsesIdentity(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	c, err := New(ctx, f)

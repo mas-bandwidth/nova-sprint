@@ -31,6 +31,7 @@ import (
 // harness, and the producer is dealt again while the old harness still
 // works.
 func TestRestartDuringHarnessReportsFaultAndRemovesLiveJobDir(t *testing.T) {
+	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
@@ -91,6 +92,7 @@ func (g *blockingRebaseGit_internal) RebaseOntoStream(ctx context.Context, wt, r
 // ran. The same record exists after a kill anywhere between harvest and
 // verification.
 func TestRestartAfterHarvestReportsOkWithoutRebaseOrTests(t *testing.T) {
+	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	base := newFakeGit_internal()
@@ -141,6 +143,7 @@ func TestRestartAfterHarvestReportsOkWithoutRebaseOrTests(t *testing.T) {
 // epoch 2's p1.w1 is never taken or reported and its producer never leaves
 // working.
 func TestStaleEpochJobReplaysOldReceipts(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
@@ -210,6 +213,7 @@ func TestStaleEpochJobReplaysOldReceipts(t *testing.T) {
 // without limit, or a harness that prints without end exhausts the runner's
 // memory.
 func TestHarnessOutputIsBounded(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	w := &OSReserveWall{}
 	res, err := w.RunHarness(context.Background(), Job{Consumer: "p1.w1", JobDir: dir, WorktreeDir: dir},
@@ -232,7 +236,8 @@ func TestHarnessOutputIsBounded(t *testing.T) {
 // process group and not wait on an output pipe a background process keeps
 // open, or cmd.Run blocks until the grandchild exits (20 s here, forever for
 // a server) and the runner is stuck past every deadline.
-func TestHarnessTimeoutKillsBackgroundChild(t *testing.T) {
+func TestFunctionalHarnessTimeoutKillsBackgroundChild(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	w := &OSReserveWall{}
 	done := make(chan time.Duration, 1)

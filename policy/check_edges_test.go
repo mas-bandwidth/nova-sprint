@@ -178,6 +178,7 @@ func TestCheckBlindToBackedUpRung(t *testing.T) {
 // The design bounds an abandoned run only by what one step allocates.
 // Reads the wall clock: the deadline it probes is one.
 func TestAbandonedRunOutlivesDeadline(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	stuck := func() int {
 		buf := make([]byte, 1<<20)

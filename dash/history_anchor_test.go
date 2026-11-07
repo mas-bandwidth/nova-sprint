@@ -10,6 +10,7 @@ import (
 // TestOlderLogTakesNewSnapshot checks that when the store's log is restored behind the dashboard's
 // position, the dashboard takes a new Snapshot.
 func TestOlderLogTakesNewSnapshot(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})
@@ -35,6 +36,7 @@ func TestOlderLogTakesNewSnapshot(t *testing.T) {
 // TestChangedHistoryFailsClosed checks that a store whose history differs at the dashboard's anchor fails
 // the read and reports unhealthy.
 func TestChangedHistoryFailsClosed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"})

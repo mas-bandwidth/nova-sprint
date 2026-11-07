@@ -12,6 +12,7 @@ import (
 // never the identity, and the name in messages is the
 // choice, never a login it expects.
 func TestIdentityNamesTheChoice(t *testing.T) {
+	t.Parallel()
 	env := func(kv map[string]string) func(string) string { return func(k string) string { return kv[k] } }
 	host := identity(env(map[string]string{"GH_TOKEN": "x", "GH_CONFIG_DIR": "/d"}))
 	if host.Token != "" || host.Name != forge.HostLogin {

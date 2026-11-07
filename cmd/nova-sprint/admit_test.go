@@ -13,6 +13,7 @@ import (
 // write, and a gh that cannot read, naming the fix; PR reads head and state.
 // gh is a fake (forge.ExecFunc): no network.
 func TestHostForge(t *testing.T) {
+	t.Parallel()
 	out, code := "WRITE\n", 0
 	var argv []string
 	f := hostForge{exec: forge.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
@@ -46,6 +47,7 @@ func TestHostForge(t *testing.T) {
 // protection's contexts and the rulesets' contexts, joined without repeats;
 // either read failing is an error. gh is a fake: no network.
 func TestHostForgeRequiredChecks(t *testing.T) {
+	t.Parallel()
 	var argvs []string
 	fail := ""
 	f := hostForge{exec: forge.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {

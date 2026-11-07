@@ -17,6 +17,7 @@ import (
 // ready again with its branch kept (BlockerPreemptsInOneTick,
 // PreemptYoungest, EdgeAfterAccepted).
 func TestTickPreemption(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -48,6 +49,7 @@ func TestTickPreemption(t *testing.T) {
 // is not dispatched, and the next tick deals the blocker to the width the
 // report freed (RefusalChangesNothing, NeverHalfApplied).
 func TestTickPreemptionRefusedByRace(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")
@@ -80,6 +82,7 @@ func TestTickPreemptionRefusedByRace(t *testing.T) {
 // TestTickDropTakesDependants: a failed need fails the closure of its
 // dependants in one group, their live consumers withdrawn first, and a sentinel with it.
 func TestTickDropTakesDependants(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -108,6 +111,7 @@ func TestTickDropTakesDependants(t *testing.T) {
 // row's after the grace; working consumers stay; the hold never touches a
 // landing.
 func TestTickHolds(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -139,6 +143,7 @@ func TestTickHolds(t *testing.T) {
 // TestTickRowHoldAndDown: a held row's unacknowledged consumers are
 // withdrawn at once, a down row's after the grace; acknowledged ones stay.
 func TestTickRowHoldAndDown(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -171,6 +176,7 @@ func TestTickRowHoldAndDown(t *testing.T) {
 // TestTickBlockAtLimit: a producer at the bounce limit is blocked with its
 // judgement in the same op; a fault never counts.
 func TestTickBlockAtLimit(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")
@@ -199,6 +205,7 @@ func TestTickBlockAtLimit(t *testing.T) {
 // TestTickBudgetAndCarry: results over the budget are carried in arrival
 // order, nothing lost, through in ceil(B/N) ticks (BudgetKept, CarryFIFO).
 func TestTickBudgetAndCarry(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 1, Pack: 1}}}
 	s.row("r1", 4, "pro")
@@ -242,6 +249,7 @@ func TestTickBudgetAndCarry(t *testing.T) {
 // split by group next tick: the unraced group lands alone, the raced one
 // is planned again from the folded view.
 func TestTickRefusedOpSplitByGroup(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.stream("s2")
@@ -268,6 +276,7 @@ func TestTickRefusedOpSplitByGroup(t *testing.T) {
 // TestTickUnlistedRow: a store row the roster lacks is dealt nothing and is
 // a judgement (nova-config is the one source).
 func TestTickUnlistedRow(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -283,6 +292,7 @@ func TestTickUnlistedRow(t *testing.T) {
 // TestTickUnhookedRow: a row up on the bus but not hooked in to the sprint
 // is never dealt to; hooking in opens it.
 func TestTickUnhookedRow(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -301,6 +311,7 @@ func TestTickUnhookedRow(t *testing.T) {
 // consumers withdrawn with the branch kept; past the gone bound it goes
 // down; a flap judgement at the limit.
 func TestTickSilentRow(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")
@@ -339,6 +350,7 @@ func TestTickSilentRow(t *testing.T) {
 
 // TestTickStableOpIDs: the same view and inputs name the same ops.
 func TestTickStableOpIDs(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")

@@ -6,7 +6,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"reflect"
 	"testing"
-	"time"
 )
 
 type interveningStore struct {
@@ -17,7 +16,7 @@ type interveningStore struct {
 func (s *interveningStore) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
 	if op.Kind == "cursor" && !s.injected {
 		s.injected = true
-		r, e := s.Store.Apply(ctx, store.Op{ID: "intervening", Epoch: 1, Actor: "test", Kind: "change", At: time.Now(), Writes: []store.Write{store.SetCardReason{Card: "p", Reason: "intervening"}}})
+		r, e := s.Store.Apply(ctx, store.Op{ID: "intervening", Epoch: 1, Actor: "test", Kind: "change", At: t1000, Writes: []store.Write{store.SetCardReason{Card: "p", Reason: "intervening"}}})
 		if e != nil || !r.Accepted {
 			panic("intervening write failed")
 		}
@@ -25,6 +24,7 @@ func (s *interveningStore) Apply(ctx context.Context, op store.Op) (store.Receip
 	return s.Store.Apply(ctx, op)
 }
 func TestCursorIncludesInterveningEvent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s"})
@@ -76,7 +76,7 @@ type cursorFaultStore struct {
 func (s *cursorFaultStore) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
 	if op.Kind == "cursor" && s.clear {
 		s.clear = false
-		_, e := s.Store.Clear(ctx, store.Op{ID: "clear-race", Epoch: 1, Actor: "test", Kind: "clear", At: time.Now()})
+		_, e := s.Store.Clear(ctx, store.Op{ID: "clear-race", Epoch: 1, Actor: "test", Kind: "clear", At: t1000})
 		if e != nil {
 			return store.Receipt{}, e
 		}
@@ -93,6 +93,7 @@ func (s *cursorFaultStore) Replay(ctx context.Context, id string) (store.Receipt
 	return s.Store.Replay(ctx, id)
 }
 func TestCursorUnknownReplay(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"})
@@ -114,6 +115,7 @@ func TestCursorUnknownReplay(t *testing.T) {
 	}
 }
 func TestCursorClearRaceRecovers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"})
@@ -143,6 +145,7 @@ func TestCursorClearRaceRecovers(t *testing.T) {
 	}
 }
 func TestCursorColdStartIdle(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	c, e := New(ctx, f)
@@ -182,6 +185,7 @@ func (s *deadlineStore) Events(ctx context.Context, after int64, max int) ([]sto
 	return nil, context.DeadlineExceeded
 }
 func TestAdvanceDeadline(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	c, e := New(ctx, f)

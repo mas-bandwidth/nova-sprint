@@ -11,6 +11,7 @@ import (
 // A failed child's error names the command, its exit code and the first
 // lines of stdout and stderr, and never a secret's value: names only.
 func TestFailedCarriesCommandExitAndOutputWithNoSecret(t *testing.T) {
+	t.Parallel()
 	cmd := Cmd{
 		Argv: []string{"/usr/local/bin/nova-secrets", "exec", "--key", "AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQ", "NOVA_PG_PASSWORD=hunter2", "postgres://sprint:pw@db/x"},
 		Env:  []string{"GH_TOKEN=ghp_abcdefABCDEF0123456789", "NOVA_PG_PASSWORD=hunter2"},
@@ -42,6 +43,7 @@ func TestFailedCarriesCommandExitAndOutputWithNoSecret(t *testing.T) {
 }
 
 func TestParseFailureNamesTheByteAndWhatItSaw(t *testing.T) {
+	t.Parallel()
 	out := []byte("SECRETS EXEC STARTING NOVA_KEY=AGE-SECRET-KEY-1ABCDEFGHIJKLMNOPQRST\n{\"a\":1}")
 	var v map[string]any
 	got := ParseFailure(json.Unmarshal(out, &v), out)
@@ -59,6 +61,7 @@ func TestParseFailureNamesTheByteAndWhatItSaw(t *testing.T) {
 }
 
 func TestCauseKeepsTheCauseRedactedAndUnwraps(t *testing.T) {
+	t.Parallel()
 	base := errors.New("dial postgres://u:secretpw@db:5432/nova failed: password: hunter2 rejected; password authentication failed for user")
 	err := Cause("store unavailable", base)
 	if !errors.Is(err, base) || !strings.HasPrefix(err.Error(), "store unavailable: dial postgres://<redacted>@db") || strings.Contains(err.Error(), "secretpw") || strings.Contains(err.Error(), "hunter2") || !strings.Contains(err.Error(), "password authentication failed") {
@@ -69,6 +72,7 @@ func TestCauseKeepsTheCauseRedactedAndUnwraps(t *testing.T) {
 // Redaction is idempotent: a redacted line redacted again is the same line,
 // so a wrapped CommandError keeps its quotes.
 func TestRedactIsIdempotent(t *testing.T) {
+	t.Parallel()
 	in := `x: exit 1; stderr "NOVA_KEY=abc password: hunter2 at /Users/someone/f.txt postgres://u:p@h/d"`
 	once := RedactN(in, 0)
 	if twice := RedactN(once, 0); twice != once || !strings.HasSuffix(once, `"`) {
@@ -80,6 +84,7 @@ func TestRedactIsIdempotent(t *testing.T) {
 // line but nova-secrets' banner, joined, redacted, the first lines kept
 // when it is cut; nova-secrets' own refusals stay.
 func TestFailureCarriesEveryStderrLineButTheBanner(t *testing.T) {
+	t.Parallel()
 	stderr := "SECRETS EXEC STARTING as=x keys=1 cmd=nova-sprint\n! SECRETS EXEC OK as=x keys=1\nnova-sprint: refused: one\n\nnova-sprint: fix: two\nthree NOVA_PG_PASSWORD=hunter2\nfour\nSECRETS EXEC FAIL invocation: missing '--'\n"
 	err := Failure([]string{"nova-secrets", "exec"}, nil, 1, "", stderr, nil)
 	if err.Stderr != "nova-sprint: refused: one | nova-sprint: fix: two | three NOVA_PG_PASSWORD=<redacted> | four | SECRETS EXEC FAIL invocation: missing '--'" {
@@ -97,6 +102,7 @@ func TestFailureCarriesEveryStderrLineButTheBanner(t *testing.T) {
 // A harness that paints its output ends with a bare reset; the cause is the
 // error line above it (the probe reported "\x1b[0m").
 func TestCauseLineSkipsEscapesAndKeepsTheErrorLine(t *testing.T) {
+	t.Parallel()
 	out := "\x1b[91m\x1b[1mError: \x1b[0mInsufficient credits. Add more\n\x1b[0m\n\x1b[0m"
 	if got := CauseLine(out, 200); got != "Error: Insufficient credits. Add more" {
 		t.Fatalf("CauseLine = %q", got)

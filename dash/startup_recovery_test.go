@@ -42,7 +42,8 @@ func (s *startupRetryRecorder) Events(ctx context.Context, after int64, max int)
 // TestStartupRetryDeadlineExceedsEventRead checks that the startup retry's Snapshot gets the longer
 // startup deadline (at least 10 s of budget) and that Events gets a shorter one. It reads the deadlines and
 // waits for nothing.
-func TestStartupRetryDeadlineExceedsEventRead(t *testing.T) {
+func TestFunctionalStartupRetryDeadlineExceedsEventRead(t *testing.T) {
+	t.Parallel()
 	if startupSnapshotDeadline != 30*time.Second {
 		t.Fatal("startup deadline changed")
 	}
@@ -67,6 +68,7 @@ func TestStartupRetryDeadlineExceedsEventRead(t *testing.T) {
 // TestStartupRetryRespectsCancellation checks that an Advance with a cancelled parent context returns
 // context.Canceled.
 func TestStartupRetryRespectsCancellation(t *testing.T) {
+	t.Parallel()
 	f := store.NewFake()
 	s := &startupRetryRecorder{Store: f, failFirst: true}
 	c, err := NewRecovering(context.Background(), s)
@@ -96,6 +98,7 @@ func (s *unavailableSnapshot) Snapshot(ctx context.Context) (store.Snapshot, err
 // TestStartupRecovers checks that a dashboard whose startup Snapshot fails serves an unavailable cache
 // (/healthz 503), keeps failing while the store is down, and recovers once it returns.
 func TestStartupRecovers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})

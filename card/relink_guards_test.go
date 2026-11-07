@@ -21,6 +21,7 @@ import (
 )
 
 func TestRelinkGuardsRelinkAfterCycleAndInThisOp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"), producer("p3", "p1"))
 	w.raw("p2-after-p3", store.SetCardAfter{Card: "p2", After: []string{"p3"}})
 	w.move("p1", Cancel{Reason: "dropped"})
@@ -45,6 +46,7 @@ func TestRelinkGuardsRelinkAfterCycleAndInThisOp(t *testing.T) {
 }
 
 func TestRelinkGuardsReadConsumerHeadBypass(t *testing.T) {
+	t.Parallel()
 	p := Card{
 		ID: "p1", Kind: "producer", Stream: "s1", State: Review, Tier: "pro", Priority: "normal",
 		Review: 1, BaseSHA: base, Head: h2, Author: "r1", Brief: "do p1", Gen: 5,
@@ -62,6 +64,7 @@ func TestRelinkGuardsReadConsumerHeadBypass(t *testing.T) {
 }
 
 func TestRelinkGuardsWorkHeadAndWithdrawGuards(t *testing.T) {
+	t.Parallel()
 	p := Card{
 		ID: "p1", Kind: "producer", Stream: "s1", State: Working, Tier: "pro", Priority: "normal",
 		BaseSHA: base, Head: h1, Author: "r1", Attempt: 2, Brief: "do p1", Gen: 3,
@@ -81,6 +84,7 @@ func TestRelinkGuardsWorkHeadAndWithdrawGuards(t *testing.T) {
 }
 
 func TestRelinkGuardsValueRulesAndBatchAskRead(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p2", Resolve{})

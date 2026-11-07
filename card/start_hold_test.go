@@ -11,6 +11,7 @@ import (
 // Start then Hold deals the work and parks the other ready
 // producers in the same op. Hold then Start refuses, and the reason says held.
 func TestStartThenHoldDealsInTheOp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p2", Resolve{})
@@ -28,6 +29,7 @@ func TestStartThenHoldDealsInTheOp(t *testing.T) {
 }
 
 func TestHoldThenStartRefusesHeld(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	s := w.snap()
@@ -44,12 +46,14 @@ func TestHoldThenStartRefusesHeld(t *testing.T) {
 
 // A preempt withdraws a working consumer. The youngest on the row is the step's choice.
 func TestPreemptWithdrawNeedsWorking(t *testing.T) {
+	t.Parallel()
 	ready := wk(Ready, "", "")
 	_, r := MoveConsumer(ready, pr(Working), rows()["r1"], Withdraw{Reason: "preempted by blocker p2", Stream: Stream{Name: "s1"}, Preempt: true})
 	refusal{r, "consumer p1.w1 is ready; a preempt withdraws a working consumer, and the step chooses the youngest on the row"}.check(t)
 }
 
 func TestWaiveRedOnReviewZero(t *testing.T) {
+	t.Parallel()
 	p := pr(Ready)
 	p.Review = 0
 	_, r := Move(p, nil, rows(), Stream{Name: "s1"}, nil, WaiveRed{Reason: "x"})
@@ -59,6 +63,7 @@ func TestWaiveRedOnReviewZero(t *testing.T) {
 // Red is recorded on the producer's red column. WaiveRed accepts while it is
 // set and fences the plan on it. Start and Finished clear it.
 func TestRedRecorded(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
@@ -72,6 +77,7 @@ func TestRedRecorded(t *testing.T) {
 }
 
 func TestStartAndFinishedClearRed(t *testing.T) {
+	t.Parallel()
 	p := pr(Ready)
 	p.Red = true
 	plan, r := Move(p, nil, rows(), Stream{Name: "s1"}, nil, Start{Row: "r1", Branch: "b", Base: base})

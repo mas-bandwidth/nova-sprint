@@ -9,6 +9,7 @@ import (
 // dataAgeSeconds plus the client's monotonic elapsed time, never by comparing the viewer's clock with the
 // server's time, so viewer clock skew does not change it.
 func TestPageJudgesPulseByServerReportedAge(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -27,6 +28,7 @@ func TestPageJudgesPulseByServerReportedAge(t *testing.T) {
 // TestInflightTooltipOmitsBlockedWhenZero checks that the In flight tooltip appends ", N blocked" only
 // when a card is blocked.
 func TestInflightTooltipOmitsBlockedWhenZero(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +41,7 @@ func TestInflightTooltipOmitsBlockedWhenZero(t *testing.T) {
 // TestEtaFallbackSublineIsBlank checks that the ETA tile's subline is blank when there is no ETA, not
 // stopped and not done.
 func TestEtaFallbackSublineIsBlank(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -54,6 +57,7 @@ func TestEtaFallbackSublineIsBlank(t *testing.T) {
 // Object.prototype members: a bud named "toString-1" is not "toString (1)", and a stream named "constructor"
 // is not archived.
 func TestPageIgnoresObjectPrototypeNames(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)

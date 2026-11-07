@@ -11,6 +11,7 @@ import (
 // ---- a fault spends neither attempt nor bounces nor bounces ----
 
 func TestSequenceFault(t *testing.T) {
+	t.Parallel()
 	t.Run("three faults in a row, then a fail, then a fault", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
@@ -88,6 +89,7 @@ func TestSequenceFault(t *testing.T) {
 // ---- red only on producers, cleared by Finished and Start ----
 
 func TestSequenceRed(t *testing.T) {
+	t.Parallel()
 	t.Run("red, waive, red again: the second waive needs a read of the review before it", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.review("p1", "r1", hA)
@@ -168,6 +170,7 @@ func TestSequenceRed(t *testing.T) {
 // ---- an Edit never lands while a consumer is live ----
 
 func TestSequenceEdit(t *testing.T) {
+	t.Parallel()
 	t.Run("every state with a live consumer", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"))
 		b.ok(b.P("p1", Resolve{}))
@@ -224,6 +227,7 @@ func TestSequenceEdit(t *testing.T) {
 // ---- needs and after stay acyclic ----
 
 func TestSequenceCycles(t *testing.T) {
+	t.Parallel()
 	t.Run("the loop is named", func(t *testing.T) {
 		b := newBk(t, producer("n1"), producer("p1", "n1"), producer("p2", "p1"))
 		b.ok(b.P("n1", Cancel{Reason: "dropped"}))
@@ -269,6 +273,7 @@ func TestSequenceCycles(t *testing.T) {
 // ---- a Withdraw of a working producer's live consumer releases it in the same plan ----
 
 func TestSequenceWithdraw(t *testing.T) {
+	t.Parallel()
 	t.Run("ready and working consumers", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"))
 		b.ok(b.P("p1", Resolve{}))
@@ -332,6 +337,7 @@ func TestSequenceWithdraw(t *testing.T) {
 // ---- a sentinel reaches exactly when every need landed ----
 
 func TestSequenceSentinel(t *testing.T) {
+	t.Parallel()
 	t.Run("one need at a time", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"), producer("p3"))
 		b.ok(b.sentinel("g", []string{"p1", "p2", "p3"}))
@@ -393,6 +399,7 @@ func TestSequenceSentinel(t *testing.T) {
 // ---- a producer never lands twice; a card in fail or landed never moves ----
 
 func TestSequenceLandsOnce(t *testing.T) {
+	t.Parallel()
 	t.Run("landed, landed, red", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.land("p1", hA)
@@ -449,6 +456,7 @@ func TestSequenceLandsOnce(t *testing.T) {
 // ---- review counts every review, ReadYes never skips one ----
 
 func TestSequenceReviewCount(t *testing.T) {
+	t.Parallel()
 	t.Run("a new attempt's review needs its own read", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.review("p1", "r1", hA)
@@ -509,6 +517,7 @@ func TestSequenceReviewCount(t *testing.T) {
 // ---- a blocker preempts only a working consumer on its own row ----
 
 func TestSequencePreempt(t *testing.T) {
+	t.Parallel()
 	setup := func(t *testing.T) *bk {
 		b := newBk(t, producer("p2"), producer("p3"), producer("pb"), producer("pr"))
 		b.w.raw("prio", store.SetCardPriority{Card: "pb", Priority: "blocker"})
@@ -560,6 +569,7 @@ func TestSequencePreempt(t *testing.T) {
 // ---- a refused op leaves nothing half-applied; Merge equals one by one ----
 
 func TestSequenceRefusedLeavesNothing(t *testing.T) {
+	t.Parallel()
 	t.Run("the first plan of a merge would write before the second fails", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"), producer("p3"))
 		b.ok(b.P("p1", Resolve{}))
@@ -587,6 +597,7 @@ func TestSequenceRefusedLeavesNothing(t *testing.T) {
 }
 
 func TestSequenceMergeEqualsOneByOne(t *testing.T) {
+	t.Parallel()
 	dropSetup := func(t *testing.T) *bk {
 		b := newBk(t, producer("n1"), producer("m1"), producer("p2", "n1"), producer("p3", "n1"), producer("p4", "n1"), producer("p5", "n1"), producer("s0"))
 		return b

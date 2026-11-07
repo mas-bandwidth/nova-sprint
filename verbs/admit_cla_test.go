@@ -11,6 +11,7 @@ import (
 // TestAgreementChecks: a required check looks like a contributor agreement
 // by its name; an ordinary check does not.
 func TestAgreementChecks(t *testing.T) {
+	t.Parallel()
 	got := agreementChecks([]string{"Gates", "Contributor Assignment Agreement", "cla/google", "license/cla", "CLA", "build (CLAng)", "Linux Debug", "Individual License Agreement", "Contributor Assignment Agreement"})
 	want := []string{"Contributor Assignment Agreement", "cla/google", "license/cla", "CLA", "Individual License Agreement"}
 	if !slices.Equal(got, want) {
@@ -24,6 +25,7 @@ func TestAgreementChecks(t *testing.T) {
 // with no such check, or no forge, prints none; a forge that cannot be read
 // says so.
 func TestStreamAddWarnsOfAnAgreement(t *testing.T) {
+	t.Parallel()
 	add := []string{"stream", "add", "t", "--repo", "o/r", "--forge", "github"}
 	cla := func(_ *testing.T, w *world) { w.forge.checks = []string{"Gates", "Contributor Assignment Agreement"} }
 	runCases(t, []tcase{

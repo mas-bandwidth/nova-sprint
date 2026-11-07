@@ -12,6 +12,7 @@ import (
 )
 
 func TestRunFeedMonitoringAndOrder(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1000, 0)
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"p": {ID: "p", Kind: "producer", Stream: "s", State: "waiting"}}}
 	c := NewFromFeed(Feed{Snap: s, At: now}, func() time.Time { return now })
@@ -41,6 +42,7 @@ func TestRunFeedMonitoringAndOrder(t *testing.T) {
 // TestRunFeedShowsStoppedWithReason: the machine line says STOPPED and the
 // reason; the page strips the reason (app.js), /api/sprint carries it.
 func TestRunFeedShowsStoppedWithReason(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1000, 0)
 	c := NewFromFeed(Feed{Snap: store.Snapshot{Epoch: 1, Seq: 3, Stopped: true, StopReason: "base red"}, At: now}, func() time.Time { return now })
 	b, err := json.Marshal(c.view)
@@ -56,6 +58,7 @@ func TestRunFeedShowsStoppedWithReason(t *testing.T) {
 // row at width 0, the alarm raised, the error on the envelope; the store's
 // lines stay fresh.
 func TestRunFeedRosterFailureIsNotAnOldRoster(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1000, 0)
 	snap := store.Snapshot{Epoch: 1, Seq: 2, Stopped: true, StopReason: "x", Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}}}
 	ro := roster.Roster{Workers: map[string]roster.Worker{"amd-1": {Name: "amd-1", Width: 8, Tiers: store.Tiers}}}
@@ -79,6 +82,7 @@ func TestRunFeedRosterFailureIsNotAnOldRoster(t *testing.T) {
 // poller: four in the last hour give an ETA over the hour, and a Publish that
 // adds landings moves it.
 func TestRunFeedCarriesLandingsForTheEta(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	snap := store.Snapshot{Epoch: 1, Seq: 5, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{}}
 	for i := 0; i < 40; i++ { // 40 cards waiting

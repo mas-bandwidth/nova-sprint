@@ -356,7 +356,7 @@ func outOfDomainOnce(a Answers) string {
 type fuzzResult struct {
 	idx   int
 	ops   string
-	class string // see TestFuzzPolicyRandom2000
+	class string // see TestFunctionalFuzzPolicyRandom2000
 	msg   string
 }
 
@@ -449,9 +449,10 @@ func fuzzJobs() []fuzzJob {
 	return jobs
 }
 
-// TestFuzzPolicyReplay reruns files 5 and 76 of the 2000 one at a time, and the
+// TestFunctionalFuzzPolicyReplay reruns files 5 and 76 of the 2000 one at a time, and the
 // default alone, with the tick timed, to tell a policy fault from load.
-func TestFuzzPolicyReplay(t *testing.T) {
+func TestFunctionalFuzzPolicyReplay(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	jobs := fuzzJobs()
 	for _, i := range []int{5, 76} {
@@ -467,8 +468,9 @@ func TestFuzzPolicyReplay(t *testing.T) {
 	}
 }
 
-// TestFuzzPolicyRandom2000 generates fuzzFiles mutated policies and runs each.
-func TestFuzzPolicyRandom2000(t *testing.T) {
+// TestFunctionalFuzzPolicyRandom2000 generates fuzzFiles mutated policies and runs each.
+func TestFunctionalFuzzPolicyRandom2000(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_POLICY_FUZZ") != "1" {
 		t.Skip("a survey of 2,000 files; set NOVA_POLICY_FUZZ=1 to run it")
 	}
@@ -543,6 +545,7 @@ func setMissing(t *testing.T) *Refusal {
 // table), so this holds it to the file's name, and to the form for what is
 // missing, "line N, end of file".
 func TestFuzzPolicyRefusalNamesVersion(t *testing.T) {
+	t.Parallel()
 	rf := setMissing(t)
 	if !regexp.MustCompile(`POLICY REFUSED limits-missing\.star line \d+, end of file: `).MatchString(rf.What) {
 		t.Errorf("refusal names no file: %s", rf.Error())
@@ -552,16 +555,18 @@ func TestFuzzPolicyRefusalNamesVersion(t *testing.T) {
 // TestFuzzPolicyRefusalNamesLine: a refusal names the line. The default minus
 // limits is refused with no line at all (246 of the random run's refusals).
 func TestFuzzPolicyRefusalNamesLine(t *testing.T) {
+	t.Parallel()
 	rf := setMissing(t)
 	if !fuzzLineRE.MatchString(rf.What) {
 		t.Errorf("refusal names no line: %s", rf.Error())
 	}
 }
 
-// TestFuzzPolicyDefaultTickUnderLoad: the built-in's cold tick on the suite's
+// TestFunctionalFuzzPolicyDefaultTickUnderLoad: the built-in's cold tick on the suite's
 // largest snapshot must fit TickTime while the machine is busy. Eight ticks at
 // once (the fuzz's own parallelism) on the default: none may fail.
-func TestFuzzPolicyDefaultTickUnderLoad(t *testing.T) {
+func TestFunctionalFuzzPolicyDefaultTickUnderLoad(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	big, ro := fuzzBigSnapshot()
 	var wg sync.WaitGroup

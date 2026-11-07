@@ -23,7 +23,7 @@ import (
 // The shipped wiring (edge/worker.Serve) must give the runner's Wall a
 // ReserveBin and sandbox, and set Runner.Procs so a restart can adopt a live
 // harness.
-func TestFunctionalShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) {
+func TestFunctionalShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	tmp := t.TempDir()
 	git := func(dir string, args ...string) string {
 		t.Helper()

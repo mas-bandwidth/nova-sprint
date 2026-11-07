@@ -99,6 +99,7 @@ func tickN(t *testing.T, tk *Ticker, ro roster.Roster, n int) {
 }
 
 func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
@@ -139,6 +140,7 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 // run loop's Seen) and the deal follows; a row down and absent from the bus
 // stays down, and a row already up raises nothing.
 func TestTickRaisesSeenForAHookedRow(t *testing.T) {
+	t.Parallel()
 	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
@@ -178,6 +180,7 @@ func TestTickRaisesSeenForAHookedRow(t *testing.T) {
 }
 
 func TestPushFailureLeavesTheCursor(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
@@ -201,6 +204,7 @@ func TestPushFailureLeavesTheCursor(t *testing.T) {
 }
 
 func TestNoTickWhileStopped(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	must(t, f, "stop", store.SetStopped{Stopped: true, Reason: "maintenance"})
 	p := &answering{}
@@ -216,6 +220,7 @@ func TestNoTickWhileStopped(t *testing.T) {
 }
 
 func TestLostLockAppliesNothing(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	h := &healthy{}
 	tk, err := NewTicker(context.Background(), f, h, &answering{}, t0)
@@ -233,6 +238,7 @@ func TestLostLockAppliesNothing(t *testing.T) {
 }
 
 func TestEnvelopeIsBoundedWithNext(t *testing.T) {
+	t.Parallel()
 	var q []pending
 	for i := range 200 {
 		q = append(q, pending{int64(i + 1), Notice{Subject: "DEAL", Line: strings.Repeat("x", 60)}})
@@ -244,6 +250,7 @@ func TestEnvelopeIsBoundedWithNext(t *testing.T) {
 }
 
 func TestLandResultMapping(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		res  git.LandResult
 		err  error
@@ -268,6 +275,7 @@ func TestLandResultMapping(t *testing.T) {
 }
 
 func TestStopIsOneMessageThenAck(t *testing.T) {
+	t.Parallel()
 	b := &fakeBus{}
 	e := &Edges{Bus: b}
 	e.stop(context.Background(), steps.EdgeRequest{ID: "stop.1", Kind: "stop", Row: "alice", Consumer: "p1.w1"})
@@ -337,6 +345,7 @@ func (stillGit) LsRemote(context.Context, string, string) (string, bool, error) 
 }
 
 func TestServeTicksPushesAndLogs(t *testing.T) {
+	t.Parallel()
 	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
@@ -388,6 +397,7 @@ func (s *stopFirst) Apply(ctx context.Context, op store.Op) (store.Receipt, erro
 }
 
 func TestStopBetweenFoldAndApplyRefusesTheOp(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	st := &stopFirst{Fake: f}
 	tk, err := NewTicker(context.Background(), st, &healthy{}, &answering{}, t0)
@@ -414,6 +424,7 @@ func (a *failingActive) AnswerContext(ctx context.Context, vs policy.Versions, s
 // failing, the run deals nothing and one blocking no-policy judgement says
 // why; the first activation lets the next tick deal.
 func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
+	t.Parallel()
 	for name, c := range map[string]struct {
 		policy Asking
 		active bool

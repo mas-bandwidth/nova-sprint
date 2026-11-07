@@ -52,6 +52,7 @@ func rollupJSON_internal(state string, nodes []map[string]string) string {
 // checks passed at that exact sha, so the rollup's own state counts even when
 // every visible node is green.
 func TestChecksGreenWhileRollupFails(t *testing.T) {
+	t.Parallel()
 	nodes := make([]map[string]string, 100)
 	for i := range nodes {
 		nodes[i] = map[string]string{"__typename": "CheckRun", "name": fmt.Sprintf("job-%03d", i), "status": "COMPLETED", "conclusion": "SUCCESS"}
@@ -72,6 +73,7 @@ func TestChecksGreenWhileRollupFails(t *testing.T) {
 // response must not be classified as FaultRateLimit, which would rest the
 // identity and fault the stream's landing forever on a green sha.
 func TestCheckNamedRateLimitRestsIdentity(t *testing.T) {
+	t.Parallel()
 	nodes := []map[string]string{{"__typename": "CheckRun", "name": "API rate limit test", "status": "COMPLETED", "conclusion": "SUCCESS"}}
 	c, _ := rollupClient_internal(rollupJSON_internal("SUCCESS", nodes))
 	m, err := c.Checks(context.Background(), "mas-bandwidth/nova-sprint", []string{rollupSHA})
@@ -90,6 +92,7 @@ func TestCheckNamedRateLimitRestsIdentity(t *testing.T) {
 // `oid` and parseChecksGraphQL_internal checks that the object answered is
 // the sha asked (defence in depth: GitHub resolves object(oid:) exactly).
 func TestChecksTrustsResponseForOtherSHA(t *testing.T) {
+	t.Parallel()
 	other := strings.Repeat("0", 40)
 	raw := fmt.Sprintf(`{"data":{"repository":{"c0":{"oid":%q,"statusCheckRollup":{"state":"SUCCESS","contexts":{"nodes":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}}}}}}`, other)
 	c, fex := rollupClient_internal(raw)

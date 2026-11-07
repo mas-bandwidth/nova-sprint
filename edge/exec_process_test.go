@@ -17,7 +17,8 @@ import (
 // ErrTimeout and the backgrounded sleep it started is dead afterwards. A
 // timeout ends the whole process group (SIGTERM, then SIGKILL after the
 // grace), not only the direct child.
-func TestExecTimeoutLeavesGrandchildRunning(t *testing.T) {
+func TestFunctionalExecTimeoutLeavesGrandchildRunning(t *testing.T) {
+	t.Parallel()
 	res, err := NewOSExec().Run(context.Background(), Cmd{
 		Argv:    []string{"sh", "-c", "sleep 5 & echo $!; sleep 5"},
 		Timeout: 300 * time.Millisecond,
@@ -54,6 +55,7 @@ func TestExecTimeoutLeavesGrandchildRunning(t *testing.T) {
 // ErrStart means the program could not be started (exec.go
 // classifyExecErr_internal).
 func TestExecSuccessWithBackgroundChildIsStartFailure(t *testing.T) {
+	t.Parallel()
 	res, err := NewOSExec().Run(context.Background(), Cmd{
 		Argv:    []string{"sh", "-c", "(sleep 2 &); exit 0"},
 		Timeout: 10 * time.Second,

@@ -17,6 +17,7 @@ func apply(t *testing.T, s store.Store, id string, epoch int, w ...store.Write) 
 	return r
 }
 func TestFoldSnapshot(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := store.NewFake()
 	apply(t, s, "seed", 1, store.PutStream{Name: "s"}, store.PutRow{Name: "r"}, store.PutPolicy{Kind: "data", Name: "p", Body: "x"}, store.SetActivePolicy{Version: 1})

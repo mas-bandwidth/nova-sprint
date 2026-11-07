@@ -14,6 +14,7 @@ import (
 // TestTierCellsSumToStreamCost checks that a stream's tier cells partition its rounded total: three
 // tiers of 0.1 cent each must not each show 1 cent beside a 1-cent total.
 func TestTierCellsSumToStreamCost(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "working", Tier: "pro"},
 		"a": {ID: "a", Kind: "work", Of: "p", Stream: "s", Tier: "flash", Cost: 1000, Priced: true},
@@ -34,6 +35,7 @@ func TestTierCellsSumToStreamCost(t *testing.T) {
 // total_cost, work_cost and read_cost are currency strings, unpriced_runs a number, and work and read
 // partition the rounded total.
 func TestStreamCostsFieldsAreCurrencyStrings(t *testing.T) {
+	t.Parallel()
 	ref := readJSON(t, "testdata/reference-envelope.json")["data"].(map[string]any)["stream_costs"].(map[string]any)
 	var refCosts map[string]any
 	for _, v := range ref {
@@ -51,7 +53,7 @@ func TestStreamCostsFieldsAreCurrencyStrings(t *testing.T) {
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", Tier: "pro", State: "done", Cost: 1000, Priced: true},
 		"u": {ID: "u", Kind: "work", Of: "p", Stream: "s", Tier: "pro", State: "waiting"},
 	}}
-	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}), at: time.Now(), now: time.Now}
+	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}), at: t1000, now: at1000}
 	b, err := json.Marshal(cache.pageSnapshot())
 	if err != nil {
 		t.Fatal(err)
@@ -75,6 +77,7 @@ func TestStreamCostsFieldsAreCurrencyStrings(t *testing.T) {
 // to its total_cost: a 0.1 cent work run and a 0.1 cent read run must not each round up to 1 cent beside a
 // 1-cent total.
 func TestWorkAndReadCostsSumToStreamTotal(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{
 		Epoch:   1,
 		Streams: map[string]store.Stream{"s1": {Name: "s1", Pos: 1}},
@@ -126,6 +129,7 @@ func TestWorkAndReadCostsSumToStreamTotal(t *testing.T) {
 // TestExactWorkCostOnTheWire checks that a work cost beyond float64 precision stays exact in cents and in
 // the grouped currency cell.
 func TestExactWorkCostOnTheWire(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {Kind: "work", Stream: "s", Tier: "pro", Priced: true, Cost: 9_000_000_000_000_010_000}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
@@ -141,6 +145,7 @@ func TestExactWorkCostOnTheWire(t *testing.T) {
 // TestUnpricedRunKeepsPricedTotal checks that a priced sum stays visible when a stream also has unpriced
 // work, in both the view and the page source.
 func TestUnpricedRunKeepsPricedTotal(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]

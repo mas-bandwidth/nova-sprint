@@ -34,6 +34,7 @@ func schemaIdentity(h *harness) {
 }
 
 func TestSchemaFake(t *testing.T) {
+	t.Parallel()
 	id, err := NewFake().Schema(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, currentSchema, id)

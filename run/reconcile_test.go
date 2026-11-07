@@ -19,6 +19,7 @@ func (c *setClock) Every(time.Duration) Beat { return nil }
 // The run loop reconciles on its first beat, then once an hour, with the
 // snapshot it holds; a failure is logged and waits for the next hour.
 func TestLoopReconcilesHourly(t *testing.T) {
+	t.Parallel()
 	f, _ := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {

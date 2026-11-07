@@ -13,6 +13,7 @@ import (
 )
 
 func TestUnitDiffAndRegionsFromFixturePNGs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	pathA := filepath.Join(dir, "fixture-a.png")
 	pathB := filepath.Join(dir, "fixture-b.png")
@@ -80,6 +81,7 @@ func fillRect(img *image.RGBA, r image.Rectangle, c color.RGBA) {
 }
 
 func TestUnitToleranceAndUnlabeledClustering(t *testing.T) {
+	t.Parallel()
 	imgA := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	imgB := image.NewRGBA(image.Rect(0, 0, 100, 100))
 	fillRect(imgA, image.Rect(0, 0, 100, 100), color.RGBA{R: 20, G: 20, B: 20, A: 255})
@@ -95,6 +97,7 @@ func TestUnitToleranceAndUnlabeledClustering(t *testing.T) {
 }
 
 func TestFunctionalBrowserABShot(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("ABSHOT_BROWSER_TEST") == "" {
 		t.Skip("set ABSHOT_BROWSER_TEST=1 to run headless browser functional test")
 	}

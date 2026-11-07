@@ -57,6 +57,7 @@ func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 	return nil
 }
 func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
+	t.Parallel()
 	f := &setupFake{stop: 5}
 	e := Engine{Actor: "coord", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: f, Lock: setupLeaseFake{}}
 	first := e.Execute(context.Background(), []string{"up"})
@@ -83,6 +84,7 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	}
 }
 func TestSetupArguments(t *testing.T) {
+	t.Parallel()
 	e := Engine{Actor: "coord"}
 	got := e.Execute(context.Background(), []string{"up", "--dash", "invalid"})
 	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<machine>[:<port>]: nova-sprint help up\n" {
@@ -94,6 +96,7 @@ func TestSetupArguments(t *testing.T) {
 // which may name no bench model for a tier a bench serves; up names it with
 // the policy's fix, beside the identity.
 func TestSetupNamesTheBenchModel(t *testing.T) {
+	t.Parallel()
 	f := upStore(true)
 	applyTest(t, f, store.Op{ID: "policy-up", Epoch: 1, Actor: "coord", Kind: "policy", At: t0,
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "old", Body: "script"}, store.SetActivePolicy{Version: 1}, store.SetIdentity{Name: "Bot", Email: "1+bot@users.noreply.example.test"}}})

@@ -27,7 +27,8 @@ import (
 // modelDefaults sets the engine's escalation to the model's (EscalateAfter
 // 1: the model bounds bounces at MaxBounce, so it escalates after one) for
 // the test and restores it after; the trace tests are the only ones that
-// write it, and top-level tests run one at a time.
+// write it, and they are serial: a serial top-level test ends before any
+// parallel one starts.
 func modelDefaults(t *testing.T) {
 	was := Engine.EscalateAfter
 	Engine.EscalateAfter = 1
@@ -499,7 +500,7 @@ func (w *traceWalk) cfg() string {
 
 // TestTraceWalk: every scenario, 100 seeds, 2,000 steps; at least 40% of the
 // picked moves legal; no op refused without a race.
-func TestTraceWalk(t *testing.T) {
+func TestTraceWalk(t *testing.T) { // unitlint: serial, modelDefaults writes the package's Engine, which every tick reads
 	modelDefaults(t)
 	steps, seeds := 2000, int64(100)
 	if testing.Short() {
@@ -533,7 +534,7 @@ func TestTraceWalk(t *testing.T) {
 // TestTraceFixtures writes the fixed seed set's traces under NOVA_TRACE_DIR
 // (steps-walk-<scenario>-<seed>), for tla/make-traces.sh and check-trace.sh;
 // without it the walk runs and writes nothing.
-func TestTraceFixtures(t *testing.T) {
+func TestTraceFixtures(t *testing.T) { // unitlint: serial, modelDefaults writes the package's Engine, which every tick reads
 	modelDefaults(t)
 	dir := os.Getenv("NOVA_TRACE_DIR") // make-traces.sh's, absolute
 	if dir != "" && !filepath.IsAbs(dir) {

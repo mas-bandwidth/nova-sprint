@@ -19,6 +19,7 @@ import (
 // checks that viewers cause no extra upstream pulls. It runs only with
 // NOVA_DASH_LOAD=1.
 func TestFunctionalPublicDashboardThousandRequests(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_DASH_LOAD") != "1" {
 		t.Skip("set NOVA_DASH_LOAD=1 for the bounded HTTP load")
 	}

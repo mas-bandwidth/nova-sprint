@@ -100,6 +100,7 @@ func TestJudgementTextNotStorable(t *testing.T) {
 // "bounded steps"; a huge allocation or unbounded work must fail the version
 // (open a judgement), never stall the tick or exhaust the process.
 func TestBuiltinWorkUnbounded(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	// The tick's deadline is the bound and no memory bound exists, so one
 	// 512 MiB string (about 40 ms on the studio) may answer; this allocates
@@ -126,6 +127,7 @@ func TestBuiltinWorkUnbounded(t *testing.T) {
 // CallSteps, 60M in all), which only the deadline can end. Design, "The embedding";
 // guarantee 4.
 func TestTickStepsUnbounded(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	ro := handRoster(rc{"r", "worker", 2, store.Tiers, ""})
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},

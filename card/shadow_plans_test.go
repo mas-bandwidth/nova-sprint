@@ -91,6 +91,7 @@ func shadowWorking(t *testing.T) *world {
 // lands. (The fourth read's TestSequencedReportPlanMergedAfterAHold
 // passes only because the merge is refused.)
 func TestShadowPlansNestedPlanReadsItsOwnWrites(t *testing.T) {
+	t.Parallel()
 	t.Run("HoldThenReportPlan", func(t *testing.T) {
 		w := seqTaken(t, false)
 		s := w.snap()
@@ -173,6 +174,7 @@ func (w *world) shadowNarrow1(id string, e Event) (Plan, *Refusal) { return shad
 // blocker p2 is dealt to r1"; nested, the same two moves land: r2's
 // consumer is withdrawn and the blocker is dealt to another row.
 func TestShadowPlansNestedStartSkipsThePreemptGuard(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b-p1", Base: base})
@@ -208,6 +210,7 @@ func TestShadowPlansNestedStartSkipsThePreemptGuard(t *testing.T) {
 // cycle walk reads a card whose needs it never had. The merge below lands
 // the cycle p -> x -> y -> z -> p; one by one the Relink is refused.
 func TestShadowPlansHandBuiltPlanBlindsTheReRun(t *testing.T) {
+	t.Parallel()
 	t.Run("Cycle", func(t *testing.T) {
 		w := newWorld(t, producer("a"), producer("z"), producer("y", "z"), producer("x", "y"), producer("p", "a"))
 		w.move("a", Cancel{Reason: "dropped"})
@@ -245,6 +248,7 @@ func TestShadowPlansHandBuiltPlanBlindsTheReRun(t *testing.T) {
 // withdraws a working consumer", though nothing was preempted and the two
 // moves apply one by one.
 func TestShadowPlansAnyWithdrawIsReadAsAPreempt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b-p1", Base: base})
@@ -264,6 +268,7 @@ func TestShadowPlansAnyWithdrawIsReadAsAPreempt(t *testing.T) {
 // reads and fixes neither. (The walk: "merge of Start # and Start #
 // refused: ... several reads of one head are AskReads".)
 func TestShadowPlansSecondCutNamesTheWrongFix(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	a, r := w.plan("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
@@ -1033,22 +1038,28 @@ func mplanKeys2(m map[string]int) []string {
 
 // TestShadowPlansWalk: 100 seeds x 2,000 steps; every merged op the machine
 // builds is applied one by one on the shadow and compared; every op is
-// checked against the design's invariants.
+// checked against the design's invariants. Under -short it runs a quarter of
+// the seeds and a third of the steps, which still land every kind.
 func TestShadowPlansWalk(t *testing.T) {
-	runs := make([]*shadowRun, shadowSeeds)
+	t.Parallel()
+	seeds, steps := int64(shadowSeeds), shadowSteps
+	if testing.Short() {
+		seeds, steps = shadowSeeds/4, shadowSteps/3
+	}
+	runs := make([]*shadowRun, seeds)
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= shadowSeeds; seed++ {
+		for seed := int64(1); seed <= seeds; seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel() // each seed its own Fakes
 				r := newShadowRun(t, seed, nil, true)
-				for i := 0; i < shadowSteps; i++ {
+				for i := 0; i < steps; i++ {
 					r.step()
 				}
 				runs[seed-1] = r
 			})
 		}
 	})
-	shadowReport(t, runs, shadowSeeds, shadowSteps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
+	shadowReport(t, runs, int(seeds), steps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
 }
 
 // ---- PostgreSQL: the same walk mirrored on a real store ----
@@ -1101,6 +1112,7 @@ func shadowStartPG(t *testing.T) string {
 // cards, rows and streams equal the Fake's, gens included (a refused op
 // leaves nothing half-applied on either).
 func TestFunctionalShadowPlansPG(t *testing.T) {
+	t.Parallel()
 	const seeds, steps = 4, 800
 	runs := make([]*shadowRun, seeds)
 	t.Run("seeds", func(t *testing.T) {

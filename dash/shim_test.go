@@ -10,6 +10,7 @@ import (
 )
 
 func TestMapRepresentative(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Rows: map[string]store.Row{"kin": {Name: "kin", State: "up", Held: true}}, Cards: map[string]store.Card{
 		"blocked": {ID: "blocked", Kind: "producer", Stream: "s", State: "blocked"},
 		"failed":  {ID: "failed", Kind: "producer", Stream: "s", State: "fail"}, "fix": {ID: "fix", Kind: "producer", Stream: "s", State: "ready", Attempt: 1, Tier: "pro"},
@@ -27,6 +28,7 @@ func TestMapRepresentative(t *testing.T) {
 }
 
 func TestStreamStates(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"empty": {Name: "empty"}, "held": {Name: "held", Held: true}, "blocked": {Name: "blocked"}, "failed": {Name: "failed"}}, Cards: map[string]store.Card{"b": {ID: "b", Kind: "producer", Stream: "blocked", State: "blocked"}, "f": {ID: "f", Kind: "producer", Stream: "failed", State: "fail"}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	got := map[string]string{}
@@ -44,6 +46,7 @@ func TestStreamStates(t *testing.T) {
 // with its reason, so a card the coordinator held reads "held: <why>"; a
 // stream with none has no list.
 func TestBlockedCardsWithReason(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}, "t": {Name: "t"}}, Cards: map[string]store.Card{
 		"p1": {ID: "p1", Kind: "producer", Stream: "s", State: "blocked", Reason: "held: wrong brief"},
 		"p2": {ID: "p2", Kind: "producer", Stream: "s", State: "blocked", Reason: "missing-route: no adb"},

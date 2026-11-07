@@ -28,6 +28,7 @@ func (g *cloneGit) LsRemote(context.Context, string, string) (string, bool, erro
 // clone address is cloned as it is; a repo a forge cannot address is the
 // stream's heads failure, said once, with no head.
 func TestHeadsCloneTheStreamsCloneAddress(t *testing.T) {
+	t.Parallel()
 	g := &cloneGit{}
 	var said []string
 	e := &Edges{Git: g, ReposDir: t.TempDir(), Fault: func(what string, err error) { said = append(said, what+": "+err.Error()) }}

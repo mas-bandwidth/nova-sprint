@@ -90,6 +90,7 @@ func startHookProcess_internal(t *testing.T, novaBusBin, redisAddr, name, execCm
 }
 
 func TestFunctionalNovaBusWhoAndSend(t *testing.T) {
+	t.Parallel()
 	novaBusBin := findNovaBusBinary_internal(t)
 	redisAddr := startThrowawayRedis_internal(t)
 	inboxFile := filepath.Join(t.TempDir(), "inbox.txt")

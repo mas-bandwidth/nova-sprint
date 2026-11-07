@@ -60,7 +60,8 @@ func loadSnap(producers, rows int) (store.Snapshot, roster.Roster) {
 // Sequence: Answer with an active version whose top level sorts 30M ints.
 // Design: "the engine must answer in bounded time"; "a tick in which
 // every version spends its budget takes at most three budgets".
-func TestTopLevelHasNoTimeBudget(t *testing.T) {
+func TestFunctionalTopLevelHasNoTimeBudget(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	body := defaultBody + "\n_T = len(sorted(range(30000000), reverse = True))\n"
 	w := fakeWorld(t)
@@ -77,7 +78,8 @@ func TestTopLevelHasNoTimeBudget(t *testing.T) {
 // then set by the largest builtin, not by TickTime: range takes int32, so
 // sorted(range(2**31-1)) is reachable. Sequence: limits() sorts 30M ints.
 // Design: the tick bound of three budgets.
-func TestOneBuiltinOutlastsTickTime(t *testing.T) {
+func TestFunctionalOneBuiltinOutlastsTickTime(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	body, _ := override("limits", `def limits():
     _n = len(sorted(range(30000000), reverse = True))
@@ -95,7 +97,8 @@ func TestOneBuiltinOutlastsTickTime(t *testing.T) {
 // decimal by intIn (i.String()), which is superlinear in the int's size.
 // Sequence: width answers work = a ~16 Mbit int built in 15 squarings.
 // Design: the tick bound; the refusal is reached only after the print.
-func TestHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
+func TestFunctionalHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	body, _ := override("width", `def width(row):
     x = 1 << 500
@@ -117,7 +120,8 @@ func TestHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
 // and catalog() is validated every tick, cached or not. Sequence: catalog()
 // lists 40,000 distinct models under one provider (about 600k steps, under
 // CallSteps). Design: the tick bound.
-func TestCatalogValidationQuadratic(t *testing.T) {
+func TestFunctionalCatalogValidationQuadratic(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	body, _ := override("catalog", `def catalog():
     return {"models": {"p": [{"name": "m" + str(i), "tier": "flash"} for i in range(40000)]}, "harnesses": ["claude"]}`)
@@ -145,6 +149,7 @@ func TestCatalogValidationQuadratic(t *testing.T) {
 // input give one answer ... check on a snapshot predicts the tick on that
 // snapshot"; answered_by differs for one snapshot.
 func TestBudgetOutcomeDependsOnCacheHistory(t *testing.T) {
+	t.Parallel()
 	snap, ro := loadSnap(80, 2)
 	body, _ := override("order", "def order(card):\n    for _i in range(50000):\n        pass\n    return (card.score,)")
 	e := testEngine()
@@ -169,7 +174,8 @@ func TestBudgetOutcomeDependsOnCacheHistory(t *testing.T) {
 // built-in, cold, at 5,000 producers over 100 rows that all serve every
 // tier. Design: 5.6 "no default leaves the sprint unable to deal"; the
 // default "answers every snapshot".
-func TestDefaultSpendsTickBudgetAt100Rows(t *testing.T) {
+func TestFunctionalDefaultSpendsTickBudgetAt100Rows(t *testing.T) {
+	t.Parallel()
 	wallClockTest(t)
 	snap, ro := loadSnap(5000, 100)
 	start := time.Now()

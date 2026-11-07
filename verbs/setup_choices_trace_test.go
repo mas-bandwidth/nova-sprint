@@ -170,6 +170,7 @@ func (*choiceTraceSetup) Completion(context.Context) (string, error) {
 }
 
 func TestSetupChoicesActualTrace(t *testing.T) {
+	t.Parallel()
 	dir := os.Getenv("NOVA_SETUP_CHOICES_TRACE_DIR")
 	if dir == "" {
 		t.Skip("trace emission requested explicitly")

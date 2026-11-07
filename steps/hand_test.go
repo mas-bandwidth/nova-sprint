@@ -31,6 +31,7 @@ func dealOne(t *testing.T) *sim {
 // names the row and the card; the acknowledgement stops both. The clock is
 // the world's.
 func TestHandNudgesThenJudgesUnacked(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	p := s.tick() // the first one-second tick after the deal: ready_nag is 1 s
 	require.Len(t, p.Nudges, 1)
@@ -58,6 +59,7 @@ func TestHandNudgesThenJudgesUnacked(t *testing.T) {
 // TestHandNoNudgeAfterTheReport: a row that reports without a take is not
 // nudged; the report is the first word the nudges wait for.
 func TestHandNoNudgeAfterTheReport(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.report("p1.w1", "ok", sha(1), "done")
 	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
@@ -73,6 +75,7 @@ func TestHandNoNudgeAfterTheReport(t *testing.T) {
 // to another row with room, never the slow row; one under the deadline is
 // nudged and left where it is.
 func TestHandReadyTakeRedeals(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")
@@ -106,6 +109,7 @@ func TestHandReadyTakeRedeals(t *testing.T) {
 // past ready_take, with another row with room, it is neither nudged,
 // withdrawn nor judged, and stays in its row's hand.
 func TestHandModellessIsAcked(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")
@@ -129,7 +133,7 @@ func TestHandModellessIsAcked(t *testing.T) {
 // while a serving row has room opens one undealt judgement naming the row,
 // the card and the cause. Here the tick budget (1 card) is spent each tick
 // by the next producer's Resolve, so the deal never comes to p1.
-func TestHandUndealtJudged(t *testing.T) {
+func TestHandUndealtJudged(t *testing.T) { // unitlint: serial, it writes the package's Engine, which every tick reads
 	was := Engine.Limits
 	Engine.Limits.Budget = 1
 	t.Cleanup(func() { Engine.Limits = was })
@@ -155,6 +159,7 @@ func TestHandUndealtJudged(t *testing.T) {
 // TestHandNoUndealtWithoutRoom: a ready producer with no serving row with
 // room is waiting for room, not stalled: no judgement.
 func TestHandNoUndealtWithoutRoom(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.producer("p2", "s1", "pro", "a/y")
 	s.tick()
@@ -169,6 +174,7 @@ func TestHandNoUndealtWithoutRoom(t *testing.T) {
 // producer on the first fault, opens a blocked judgement naming the row and
 // what is missing, and the producer is never dealt again by itself.
 func TestHandRouteFaultBlocks(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.report("p1.w1", "fault", "", card.MissingRoute+" adb no device on this row")
 	s.requireState("p1", "blocked")
@@ -189,6 +195,7 @@ func TestHandRouteFaultBlocks(t *testing.T) {
 // TestHandPlainFaultRedeals: a fault that names no route goes back to
 // ready and is dealt again, as before.
 func TestHandPlainFaultRedeals(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.report("p1.w1", "fault", "", "exit 137")
 	s.requireState("p1", "ready")

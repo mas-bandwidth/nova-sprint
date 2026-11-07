@@ -61,7 +61,7 @@ type sandboxWall struct {
 	running     int
 	maxRunning  int
 	pidsSeen    []int
-	barrier     chan struct{}
+	barrier     chan struct{} // closed when two harnesses run at once
 	barrierOnce sync.Once
 }
 
@@ -74,17 +74,14 @@ func (w *sandboxWall) RunHarness(_ context.Context, j Job, _, _ []string, _ time
 	if rec, err := ReadJobRecord(j.JobDir); err == nil {
 		w.pidsSeen = append(w.pidsSeen, rec.PID)
 	}
+	if w.barrier != nil && w.running >= 2 {
+		w.barrierOnce.Do(func() { close(w.barrier) })
+	}
 	w.mu.Unlock()
 	if w.barrier != nil {
-		w.barrierOnce.Do(func() {
-			select {
-			case <-w.barrier:
-			case <-time.After(2 * time.Second): // bound only; a serial runner never meets the barrier
-			}
-		})
 		select {
-		case w.barrier <- struct{}{}:
-		default:
+		case <-w.barrier:
+		case <-time.After(2 * time.Second): // unitlint: a hang guard, not a measurement; a serial runner never meets the barrier
 		}
 	}
 	_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
@@ -189,7 +186,7 @@ func TestPidRecordedWhileHarnessRuns(t *testing.T) {
 // A verb is retried with its id until it exits 0 or 1. A refusal (exit 1)
 // must not be classified as the store being down, or it is retried forever
 // instead of ending the retry.
-func TestCLIRefusalIsNotStoreDown(t *testing.T) {
+func TestFunctionalCLIRefusalIsNotStoreDown(t *testing.T) {
 	t.Parallel()
 	bin := filepath.Join(t.TempDir(), "nova-sprint")
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'SPRINT REFUSED report: consumer p1.w1 is held by amd-2.ds'\nexit 1\n"), 0o755); err != nil {

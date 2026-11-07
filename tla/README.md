@@ -27,11 +27,17 @@ Run TLC on a bench host, never on the working machine.
 bash tla/ci-tlc.sh
 ```
 
-`ci-tlc.sh` is the gate. It downloads a pinned, sha256-checked `tla2tools.jar` (v1.8.0) to `$TLA_CACHE` (default `~/.cache/nova-sprint`), then runs every module in parallel, one TLC invocation each:
+`ci-tlc.sh` is the gate. It downloads a pinned, sha256-checked `tla2tools.jar` (v1.8.0, from this repository's `tla-tools-1.8.0` release) to `$TLA_CACHE` (default `~/.cache/nova-sprint`), then runs every module in parallel, one TLC invocation each:
 
 - every passing run must exit 0;
 - every witness and reach check must report a violation of the first `INVARIANT` or `PROPERTY` in its cfg (a `PROPERTY` target must end in exit 13 with "Temporal property <target> was violated" and no invariant violated);
 - any other outcome (a pass where a violation is required, a violation of another invariant, a parse error, a crash, a run that wrote no result) fails the gate.
+
+`TLC_SHARD=i/n` runs only every n-th run, starting at the i-th (1-based); `TLC_CORES` caps every run's `-workers` and the sum of the live runs' workers. The nightly runs six shards, each on half its host's cores:
+
+```sh
+TLC_SHARD=2/6 TLC_CORES=8 bash tla/ci-tlc.sh
+```
 
 `TLC_JOBS` bounds concurrent runs (default: the cores), `TLC_HEAP` each JVM's heap (default `2g`, twice that for multi-worker runs), `DRY_RUN=1` prints the commands and runs nothing. Each run gets its own `java.io.tmpdir` and `-noGenerateSpecTE`, so a rerun in the same tree never sees trace modules.
 

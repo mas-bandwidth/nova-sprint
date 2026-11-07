@@ -25,6 +25,7 @@ func workGridWidths(vw float64) (grid, content float64) {
 // 2000 and 2800 px. The widths are computed from the rules in page/index.html, which the test also checks
 // are unchanged.
 func TestWorkGridFitsAt2000And2800(t *testing.T) {
+	t.Parallel()
 	css, err := page.ReadFile("page/index.html")
 	if err != nil {
 		t.Fatal(err)
@@ -52,6 +53,7 @@ func TestWorkGridFitsAt2000And2800(t *testing.T) {
 // 15 px vertical scrollbar: the no-blocked grid must not exceed the row's content box, or the table goes
 // compact. The content box excludes the scrollbar; vw units include it.
 func TestWorkGridFitsAt2000WithClassicScrollbar(t *testing.T) {
+	t.Parallel()
 	const rem, vw, scrollbar = 16.0, 2000.0, 15.0
 	clamp := func(lo, v, hi float64) float64 { return max(lo, min(v, hi)) }
 	css, err := page.ReadFile("page/index.html")

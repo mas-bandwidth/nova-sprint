@@ -64,6 +64,7 @@ func seqLiveReads(s store.Snapshot, p string) []string {
 // store accepts, and the producer leaves review (or is edited) with a live
 // read. Applied one by one, the second move is refused "withdraw it first".
 func TestSequencedPlansMergedCutIsInvisibleToTheNextMove(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, read string
 		e          Event
@@ -114,6 +115,7 @@ func TestSequencedPlansMergedCutIsInvisibleToTheNextMove(t *testing.T) {
 // ready. The op holds s1 and leaves p1 ready in it. Broken, Faulted,
 // ReadFix and Released re-read the stream and park.
 func TestSequencedPlansMergedHoldThenWithdrawReadiesInAHeldStream(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
@@ -139,6 +141,7 @@ func TestSequencedPlansMergedHoldThenWithdrawReadiesInAHeldStream(t *testing.T) 
 // and keeps its writes. Merge(one, Merge(two)) of the two
 // relinks lands the cycle p1 needs x needs y needs z needs p1.
 func TestSequencedPlansNestedMergeSkipsTheReRun(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("a"), producer("b"), producer("y", "b"), producer("x", "y"), producer("p1", "a"), producer("z", "p1"))
 	w.move("a", Cancel{Reason: "dropped"})
 	w.move("b", Cancel{Reason: "dropped"})
@@ -170,6 +173,7 @@ func TestSequencedPlansNestedMergeSkipsTheReRun(t *testing.T) {
 // Broken) is accepted and parks p1. The same with UnholdStream before a
 // Broken in a held stream, and with Faulted, ReadFix, Released and Unblock.
 func TestSequencedPlansMergedFencesContradict(t *testing.T) {
+	t.Parallel()
 	t.Run("HoldThenBroken", func(t *testing.T) {
 		w := newWorld(t, producer("p1"))
 		w.move("p1", Resolve{})
@@ -224,6 +228,7 @@ func seqContradiction(t *testing.T, w *world, first, second Plan, want string) {
 // two AskReads of one head are refused "a second write to card p1.r1.1
 // field kind; ...", with no "AskRead p1" in it.
 func TestSequencedPlansSecondWriteRefusalNamesNoPlan(t *testing.T) {
+	t.Parallel()
 	w := seqReview(t)
 	a, r := w.plan("p1", AskRead{Row: "r2"})
 	require.Nil(t, r)
@@ -401,7 +406,8 @@ func seqDiff(a, b store.Snapshot) string {
 const seqCheckSteps, seqCheckOneIn = 1000, 1
 
 func TestSequencedPlansWalk(t *testing.T) {
-	const seeds, steps = 60, 1000
+	t.Parallel()
+	seeds, steps := walkSeeds(60, 6), 1000
 	var mu sync.Mutex
 	accepted, kinds := map[string]int{}, map[string]int{}
 	broken, notes := map[string]*mplanBreak{}, map[string]*mplanBreak{}
@@ -1022,6 +1028,7 @@ func (w *world) seqReportPlan(id string, rep Report) (Plan, *Refusal) {
 // a head, and on a fix attempt (prior head set): every card, the stream and
 // the rows, gens included.
 func TestSequencedReportPlanEqualsOneByOne(t *testing.T) {
+	t.Parallel()
 	follow := map[string]func(string) Event{
 		"ok":    func(id string) Event { return Finished{Consumer: id} },
 		"fail":  func(id string) Event { return Broken{Consumer: id} },
@@ -1075,6 +1082,7 @@ func TestSequencedReportPlanEqualsOneByOne(t *testing.T) {
 // any plan; a plan built from a snapshot that moved is refused by the store
 // on its gens, and nothing lands.
 func TestSequencedReportPlanStale(t *testing.T) {
+	t.Parallel()
 	w := seqTaken(t, false)
 	_, r := w.seqReportPlan("p1.w1", Report{Row: "r1", Result: "ok", Head: base})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
@@ -1100,6 +1108,7 @@ func TestSequencedReportPlanStale(t *testing.T) {
 // producer, fenced on its gen, and a read head other than the producer's is
 // refused.
 func TestSequencedReportPlanReadIsTheConsumerAlone(t *testing.T) {
+	t.Parallel()
 	w := seqReview(t)
 	w.move("p1", AskRead{Row: "r2"})
 	rep := Report{Row: "r2", Result: "ok", Head: h1, Reason: "fine"}
@@ -1118,6 +1127,7 @@ func TestSequencedReportPlanReadIsTheConsumerAlone(t *testing.T) {
 // the Broken un-re-run: p1 ready in the held stream (the card model's
 // ParkedUnderHold). One by one, the Broken parks it.
 func TestSequencedReportPlanMergedAfterAHold(t *testing.T) {
+	t.Parallel()
 	w := seqTaken(t, false)
 	s := w.snap()
 	hold, r := MoveStream(StreamFromStore(s.Streams["s1"]), HoldStream{Reason: "freeze", Seq: s.Seq})

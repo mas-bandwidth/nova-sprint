@@ -14,6 +14,7 @@ import (
 // TestStoreOpenRunsUnderDeadline checks that cmd/nova-sprint/open.go calls store.Open with a context that
 // has a deadline, so an unreachable PostgreSQL cannot hold startup for the OS connect timeout.
 func TestStoreOpenRunsUnderDeadline(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join("..", "cmd", "nova-sprint", "open.go")
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
@@ -56,6 +57,7 @@ func TestStoreOpenRunsUnderDeadline(t *testing.T) {
 // TestReadmeStatesTrackFixRule checks that README.md has a sentence stating the Fleet and Friends track's
 // fix rule (a working work consumer at attempt 2 or more).
 func TestReadmeStatesTrackFixRule(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile("README.md")
 	if err != nil {
 		t.Fatal(err)
@@ -72,6 +74,7 @@ func TestReadmeStatesTrackFixRule(t *testing.T) {
 // TestNoUnusedDashboardSymbols checks that three symbols with no reader stay out of the non-test code:
 // Cache.Data, workRow.Unpriced and the unreachable "-" branch of fleetRow.MarshalJSON.
 func TestNoUnusedDashboardSymbols(t *testing.T) {
+	t.Parallel()
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
@@ -107,6 +110,7 @@ func TestNoUnusedDashboardSymbols(t *testing.T) {
 // TestFunctionsAreUnder60Lines checks that no production function in this package is over 60 lines; test
 // functions over the limit are only logged.
 func TestFunctionsAreUnder60Lines(t *testing.T) {
+	t.Parallel()
 	for _, pattern := range []string{"*.go"} {
 		files, err := filepath.Glob(pattern)
 		if err != nil {

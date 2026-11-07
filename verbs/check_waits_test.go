@@ -41,6 +41,7 @@ func landTwo(t *testing.T, w *world) {
 // overlaps, each stream says why its producers wait, and a chain of four
 // or more warns with its time at the stream's land rate.
 func TestCheckSaysWhyTheFleetIsIdle(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no land rate yet", args: []string{"check"}, exit: 0, snap: chained,
 			prep: then(healthy, func(_ *testing.T, w *world) { w.origin.tree = []string{"x.go"} }),
@@ -58,6 +59,7 @@ func TestCheckSaysWhyTheFleetIsIdle(t *testing.T) {
 // TestCheckQuietWithoutWaits: a sprint with nothing waiting and no long
 // chain prints no waits or chain line.
 func TestCheckQuietWithoutWaits(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	healthy(t, w)
 	r := w.do("", "check")
@@ -71,6 +73,7 @@ func TestCheckQuietWithoutWaits(t *testing.T) {
 // longest NEEDS chain once the cards are in; at four cards or more it is a
 // warning naming the fix, never a refusal.
 func TestAddReportsTheLongestChain(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	healthy(t, w)
 	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a1", "p1")), 0, "CHAIN stream s: its longest NEEDS chain is 2 cards: p1 -> a1\n")
@@ -84,6 +87,7 @@ func TestAddReportsTheLongestChain(t *testing.T) {
 // TestChainTime: the land rate over the landings' span, none below two
 // landings or over no time, and an unreadable history said with its cause.
 func TestChainTime(t *testing.T) {
+	t.Parallel()
 	at := []time.Time{t0, t0.Add(30 * time.Minute), t0.Add(time.Hour)}
 	if got := chainTime(at, 6, nil); got != "at the stream's land rate (2.0 an hour over its last 3 landings) that is about 3.0 hours" {
 		t.Fatal(got)
@@ -102,6 +106,7 @@ func TestChainTime(t *testing.T) {
 // it into landed, in the snapshot's epoch, accepted; never a consumer, a
 // repeat or a refused op.
 func TestLandingsCountsEachLandingOnce(t *testing.T) {
+	t.Parallel()
 	landed := store.Card{ID: "p", Kind: "producer", Stream: "s", State: "landed"}
 	before := store.Card{ID: "p", Kind: "producer", Stream: "s", State: "merging"}
 	ev := func(accepted bool, epoch int, b *store.Card, a store.Card) store.Event {
@@ -131,6 +136,7 @@ func TestLandingsCountsEachLandingOnce(t *testing.T) {
 // billing) the --cost is charged evidence and the card is priced from its
 // tokens alone, so with none it is unpriced (priceReport).
 func TestReadTakesCost(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.04"), 0, "READ p2.r1")
 	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || c.Priced || c.Usage != "billing=api charged=0.04 unpriced=no-tokens" {

@@ -154,6 +154,7 @@ func orElse(a, b string) string {
 }
 
 func TestProducerTable(t *testing.T) {
+	t.Parallel()
 	for _, c := range producerTable() {
 		t.Run(name(c.event), func(t *testing.T) {
 			from := cmpList(c.from, nonFinal)
@@ -207,6 +208,7 @@ type ccase struct {
 }
 
 func TestConsumerTable(t *testing.T) {
+	t.Parallel()
 	read := rd(Working, "")
 	for _, c := range []ccase{
 		{event: Report{Row: "r1", Result: "ok", Head: h2, Reason: "done", Cost: 12, Priced: true}, from: []string{Working}, c: wk(Working, "", ""),
@@ -258,6 +260,7 @@ func TestConsumerTable(t *testing.T) {
 }
 
 func TestRowTable(t *testing.T) {
+	t.Parallel()
 	up, down := rows()["r1"], rows()["r3"]
 	held := rows()["r4"]
 	fence := func(r Row) []store.Expect { return []store.Expect{store.RowGen{Row: r.Name, Gen: r.Gen}} }
@@ -310,6 +313,7 @@ func mv(state string, cons []Card, e Event) *Refusal {
 }
 
 func TestProducerRefusals(t *testing.T) {
+	t.Parallel()
 	heldStream := func(e Event) *Refusal {
 		_, r := Move(pr(Ready), nil, rows(), Stream{Name: "s1", Held: true}, needs(LandedState), e)
 		return r
@@ -398,6 +402,7 @@ func TestProducerRefusals(t *testing.T) {
 // Relink: the target must exist and be a live producer, and the new needs
 // must make no cycle, named as the loop.
 func TestRelinkRefusals(t *testing.T) {
+	t.Parallel()
 	relink := func(to string, graph map[string]Card) *Refusal {
 		graph["n1"] = Card{ID: "n1", Kind: "producer", State: Fail}
 		_, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, graph, Relink{Need: "n1", To: to})
@@ -419,6 +424,7 @@ func TestRelinkRefusals(t *testing.T) {
 }
 
 func TestConsumerRefusals(t *testing.T) {
+	t.Parallel()
 	cm := func(c Card, e Event) *Refusal { _, r := MoveConsumer(c, pr(Review), rows()["r1"], e); return r }
 	work, read := wk(Working, "", ""), rd(Working, "")
 	other := pr(Review)
@@ -447,6 +453,7 @@ func TestConsumerRefusals(t *testing.T) {
 // A Start in review fences the next read's id once; noLive fences every
 // consumer it read.
 func TestFences(t *testing.T) {
+	t.Parallel()
 	plan, r := Move(pr(Review), []Card{rd(Done, "ok"), wk(Done, "ok", h1)}, rows(), Stream{Name: "s1"}, nil, AskRead{Row: "r1"})
 	require.Nil(t, r)
 	n := 0
@@ -461,6 +468,7 @@ func TestFences(t *testing.T) {
 }
 
 func TestMerge(t *testing.T) {
+	t.Parallel()
 	a := Plan{Expect: []store.Expect{p1}, Writes: []store.Write{store.SetCardScore{Card: "p1", Score: 1}}}
 	b := Plan{Expect: []store.Expect{gen("p2", 1)}, Writes: []store.Write{store.SetCardScore{Card: "p2", Score: 2}}}
 	got, r := Merge(a, b)
@@ -475,6 +483,7 @@ func TestMerge(t *testing.T) {
 // with a working work consumer (a state the machine never makes, which it must
 // still refuse to build on) and a ready read, in both orders.
 func TestNoLiveReadsEveryConsumer(t *testing.T) {
+	t.Parallel()
 	work := Card{ID: "p1.w9", Kind: "work", Of: "p1", State: Working, Gen: 1, Attempt: 1, Holder: "r3"}
 	read := rd(Ready, "")
 	for _, cons := range [][]Card{{work, read}, {read, work}} {
@@ -495,6 +504,7 @@ func TestNoLiveReadsEveryConsumer(t *testing.T) {
 
 // Results by consumer kind.
 func TestReportResultByKind(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		c      Card
 		result string
@@ -524,6 +534,7 @@ func TestReportResultByKind(t *testing.T) {
 
 // A cut consumer carries the task, in slices of its own.
 func TestCutCopiesTask(t *testing.T) {
+	t.Parallel()
 	p := pr(Ready)
 	p.Brief, p.Prose, p.Paths, p.DoneWhen = "do p1", "write it", []string{"src/"}, []string{"tests pass"}
 	plan, r := Move(p, nil, rows(), Stream{Name: "s1"}, nil, Start{Row: "r1", Branch: "b", Base: base})
@@ -543,6 +554,7 @@ func TestCutCopiesTask(t *testing.T) {
 // Relink fences every card its cycle walk read, and refuses a
 // walk that needs a card it was not given.
 func TestRelinkFencesTheWalk(t *testing.T) {
+	t.Parallel()
 	graph := map[string]Card{
 		"n1": {ID: "n1", Kind: "producer", State: Fail, Gen: 1},
 		"q":  {ID: "q", Kind: "producer", State: Waiting, Gen: 4, Needs: []string{"r"}},
@@ -558,6 +570,7 @@ func TestRelinkFencesTheWalk(t *testing.T) {
 }
 
 func TestHoldStream(t *testing.T) {
+	t.Parallel()
 	a, b := pr(Ready), pr(Ready)
 	b.ID, b.Gen, b.Reason = "p2", 8, "stream s1 is held"
 	plan, r := MoveStream(Stream{Name: "s1"}, HoldStream{Ready: []Card{a, b}})
@@ -583,6 +596,7 @@ func TestHoldStream(t *testing.T) {
 }
 
 func TestBlockFromWorking(t *testing.T) {
+	t.Parallel()
 	for result, apply := range map[string]string{"ok": "Finished", "fail": "Broken", "fault": "Faulted"} {
 		refusal{mv(Working, []Card{wk(Done, result, h2)}, Block{}), "consumer p1.w1 reported " + result + "; apply it with " + apply + " before Block"}.check(t)
 	}
@@ -593,6 +607,7 @@ func TestBlockFromWorking(t *testing.T) {
 // A Withdraw of the working producer's work consumer releases the producer
 // in the same plan; any other withdraw does not.
 func TestWithdrawReleases(t *testing.T) {
+	t.Parallel()
 	_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted", Preempt: true})
 	refusal{r, `Withdraw of p1.w1 releases producer p1; it needs p1's stream s1, not ""`}.check(t)
 	plan, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted", Head: h2, Stream: Stream{Name: "s1", Held: true}, Preempt: true})
@@ -620,6 +635,7 @@ func TestWithdrawReleases(t *testing.T) {
 }
 
 func TestNeedFailedInThisOp(t *testing.T) {
+	t.Parallel()
 	plan, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, needs(Waiting), NeedFailed{Need: "n1", InThisOp: true})
 	require.Nil(t, r)
 	assert.Equal(t, []store.Expect{p1, store.CardState{Card: "n1", State: Fail}}, plan.Expect, "the fence refuses the plan applied alone; Merge drops it after the drop")
@@ -631,6 +647,7 @@ func TestNeedFailedInThisOp(t *testing.T) {
 
 // Sentinel guards, and Take on a down row.
 func TestSentinelGuards(t *testing.T) {
+	t.Parallel()
 	g := pr(Waiting)
 	g.Kind = "sentinel"
 	sm := func(e Event, ns map[string]Card) *Refusal {
@@ -653,6 +670,7 @@ func TestSentinelGuards(t *testing.T) {
 // The deal is the take. A cut consumer is working, in its row's
 // hand, and a report needs no take before it.
 func TestDealIsTake(t *testing.T) {
+	t.Parallel()
 	plan, r := Move(pr(Ready), nil, rows(), Stream{Name: "s1"}, nil, Start{Row: "r1", Branch: "b", Base: base})
 	require.Nil(t, r)
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1.w2", State: Working}))
@@ -664,6 +682,7 @@ func TestDealIsTake(t *testing.T) {
 // A fault naming a missing route blocks the producer at once,
 // head kept, no bounce; any other fault returns it to ready.
 func TestRouteFaultBlocks(t *testing.T) {
+	t.Parallel()
 	faulted := wk(Done, "fault", h2)
 	faulted.Reason = MissingRoute + " adb no device on this bench"
 	plan, r := Move(pr(Working), []Card{faulted}, rows(), Stream{Name: "s1"}, nil, Faulted{Consumer: "p1.w1"})
@@ -688,6 +707,7 @@ func TestRouteFaultBlocks(t *testing.T) {
 
 // The coordinator's hold of one card is Block, from waiting too.
 func TestBlockFromWaiting(t *testing.T) {
+	t.Parallel()
 	plan, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, nil, Block{Reason: "held: needs a tablet"})
 	require.Nil(t, r)
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Blocked}))
@@ -695,6 +715,7 @@ func TestBlockFromWaiting(t *testing.T) {
 
 // Layer 1's value rules are refusals, so no plan is ErrInvalid.
 func TestValueRules(t *testing.T) {
+	t.Parallel()
 	far := pr(Ready)
 	far.Review = math.MaxInt32
 	far.State = Merging
@@ -723,6 +744,7 @@ func TestValueRules(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
+	t.Parallel()
 	cards := map[string]Card{
 		"n1": {ID: "n1", Kind: "producer", State: Waiting},
 		"n2": {ID: "n2", Kind: "producer", State: Waiting, Needs: []string{"n1"}, After: []string{"g1"}},
@@ -772,6 +794,7 @@ func TestAdd(t *testing.T) {
 // ReadFix needs a done fix read of this review, as
 // ReadYes needs an ok one.
 func TestReadFixNeedsAFixRead(t *testing.T) {
+	t.Parallel()
 	stale := rd(Done, "fix")
 	stale.Review = 0
 	for _, cons := range [][]Card{nil, {rd(Done, "ok")}, {stale}, {rd(Fail, "")}} {

@@ -87,6 +87,7 @@ func (c *setupTraceCapture) record(action string, k int) {
 	c.records = append(c.records, traceRecord{action: action, k: k, state: c.state})
 }
 func TestSetupActualTrace(t *testing.T) {
+	t.Parallel()
 	path := os.Getenv("NOVA_SETUP_TRACE_OUT")
 	if path == "" {
 		t.Skip("trace emission requested explicitly")

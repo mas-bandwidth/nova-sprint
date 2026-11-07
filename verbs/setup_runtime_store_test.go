@@ -8,6 +8,7 @@ import (
 )
 
 func TestSprintDSNChangesOnlyUserAndRejectsSecrets(t *testing.T) {
+	t.Parallel()
 	got, err := sprintDSN("postgres://nova_admin@host:5432/nova?sslmode=require")
 	if err != nil || got != "postgres://nova_sprint@host:5432/nova?sslmode=require" {
 		t.Fatal(got, err)
@@ -19,6 +20,7 @@ func TestSprintDSNChangesOnlyUserAndRejectsSecrets(t *testing.T) {
 	}
 }
 func TestSetupStoreChildUsesOnlyKeyName(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{saved: true, value: "fixture-secret"}
 	var argsSeen []string
 	p := PGSetupStore{Role: SprintRoleBootstrap{Sink: sink, Binary: "/bin/nova-sprint", Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}}, Binary: "/bin/nova-sprint", Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -47,6 +49,7 @@ func TestSetupStoreChildUsesOnlyKeyName(t *testing.T) {
 // pg_hba trust host whatever the password is); the role child's false or
 // refusal stops it before the store probe.
 func TestSetupStoreReadyChecksTheRolePasswordFirst(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{saved: true, value: "fixture-secret"}
 	var modes, only []string
 	answer := map[string]string{"--internal-setup-role-password": `{"ready":true}`, "--internal-store-probe": `{"ready":true}`}

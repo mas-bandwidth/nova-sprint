@@ -14,7 +14,8 @@ import (
 
 // TestLoadRefresh5000 measures the refresh path at 5,000 and 20,000 producers: an idle tick, a one-event
 // tick and the HTTP JSON. The 5,000-producer worst case must stay under 100 ms.
-func TestLoadRefresh5000(t *testing.T) {
+func TestFunctionalLoadRefresh5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	for _, n := range []int{5000, 20000} {
 		ctx := context.Background()
@@ -54,7 +55,8 @@ func TestLoadRefresh5000(t *testing.T) {
 
 // TestLoadMeasure5000 logs the idle tick, one-event tick and JSON (plain and gzip) times at 5,000 producers on
 // the in-memory store.
-func TestLoadMeasure5000(t *testing.T) {
+func TestFunctionalLoadMeasure5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
@@ -104,7 +106,8 @@ func TestLoadMeasure5000(t *testing.T) {
 
 // TestLoadMeasure5000WithRowsAndConsumers logs the startup, tick and JSON times at 5,000 producers in 50
 // streams with a work and a read consumer for each (10,000 consumers) and 16 rows, on the in-memory store.
-func TestLoadMeasure5000WithRowsAndConsumers(t *testing.T) {
+func TestFunctionalLoadMeasure5000WithRowsAndConsumers(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
@@ -177,6 +180,7 @@ func TestLoadMeasure5000WithRowsAndConsumers(t *testing.T) {
 // TestFunctionalPG5000IncrementalAdvance runs against a throwaway PostgreSQL with 5,000 producers: one
 // cold Snapshot, then incremental advances that must each stay under 100 ms.
 func TestFunctionalPG5000IncrementalAdvance(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	dsn := startPG(t)
 	ctx := context.Background()

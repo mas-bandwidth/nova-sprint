@@ -33,6 +33,7 @@ func mergeReview(t *testing.T) *world {
 // refuses that, and the plan is not applied (the store would reject it as
 // store.ErrInvalid).
 func TestMergeTwoReadsInOneTick(t *testing.T) {
+	t.Parallel()
 	w := mergeReview(t)
 	a, r := w.plan("p1", AskRead{Row: "r2"})
 	require.Nil(t, r)
@@ -54,6 +55,7 @@ func TestMergeTwoReadsInOneTick(t *testing.T) {
 // HoldStream with a ready producer named twice emits two state writes to
 // one field: ErrInvalid, against "no plan it emits is ErrInvalid".
 func TestMergeHoldStreamNamesAProducerTwice(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	p := w.card("p1")
@@ -69,6 +71,7 @@ func TestMergeHoldStreamNamesAProducerTwice(t *testing.T) {
 // need fail, so a relink can never ride in the drop's op: the dependant must
 // be failed first and revived, or wait a tick on a need that is fail.
 func TestMergeRelinkInTheDropsOp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("x"), producer("p3", "n1"))
 	drop, r := w.plan("n1", Cancel{Reason: "dropped, x replaces it"})
 	require.Nil(t, r)
@@ -83,6 +86,7 @@ func TestMergeRelinkInTheDropsOp(t *testing.T) {
 // Start copies that finding, not the reason. The failure the work reported
 // does not ride into the next attempt.
 func TestMergeBrokenReasonNeverReachesTheNextAttempt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Broken{Consumer: w.work("p1", "r1", "fail", h1, "TestFoo panics on nil map")})
@@ -101,6 +105,7 @@ func TestMergeBrokenReasonNeverReachesTheNextAttempt(t *testing.T) {
 // the Withdraw release) and Unblock write waiting with the consumer's or the
 // event's reason, or none at all, never the hold.
 func TestMergeParkedWithoutNamingTheHold(t *testing.T) {
+	t.Parallel()
 	hold := func(w *world) { w.raw("hold", store.SetStreamHeld{Stream: "s1", Held: true}) }
 	cases := map[string]func(w *world){
 		"Broken": func(w *world) {
@@ -136,6 +141,7 @@ func TestMergeParkedWithoutNamingTheHold(t *testing.T) {
 // tick"; nothing stalls). Reads stall the same way later, when
 // ".r<review>.<n>" grows a digit.
 func TestMergeAddedIdTooLongToStart(t *testing.T) {
+	t.Parallel()
 	id := strings.Repeat("p", store.MaxName-1)
 	_, r := MoveAdd(Add{ID: id, Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do it"}, map[string]Card{})
 	if assert.NotNil(t, r) {
@@ -154,6 +160,7 @@ func TestMergeAddedIdTooLongToStart(t *testing.T) {
 // not a card". A card of phase 2 cannot need the phase-1 mark;
 // it must list every card the mark lists.
 func TestMergeSentinelIsNeverANeed(t *testing.T) {
+	t.Parallel()
 	cards := map[string]Card{"g1": {ID: "g1", Kind: "sentinel", State: Waiting}}
 	_, r := MoveAdd(Add{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "b", Needs: []string{"g1"}}, cards)
 	assert.Nil(t, r, "a sentinel may be a need")
@@ -163,6 +170,7 @@ func TestMergeSentinelIsNeverANeed(t *testing.T) {
 // consumer (even the producer's own) and a failed card are accepted as the
 // replacement, and `by` is not fenced.
 func TestMergeReplaceByAConsumer(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Faulted{Consumer: w.work("p1", "r1", "fault", "", "bench")})
@@ -176,6 +184,7 @@ func TestMergeReplaceByAConsumer(t *testing.T) {
 // producer record that is not the one the store holds; the plan then lands
 // and strands the producer in working with its consumer fail.
 func TestMergeWithdrawFromAStaleProducerStrands(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	stale := w.card("p1") // ready, attempt 0
@@ -189,6 +198,7 @@ func TestMergeWithdrawFromAStaleProducerStrands(t *testing.T) {
 // fail, so the store rejects it without the drop, and Merge of that one
 // plan refuses it too. The dependant stays waiting.
 func TestMergeNeedFailedInThisOpAlone(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("p3", "n1"))
 	plan, r := w.plan("p3", NeedFailed{Need: "n1", InThisOp: true})
 	require.Nil(t, r)
@@ -205,6 +215,7 @@ func TestMergeNeedFailedInThisOpAlone(t *testing.T) {
 // Withdraw{Head} accepts the base itself as the pushed head; it becomes
 // the producer's head and the next attempt's prior_head.
 func TestMergeWithdrawHeadIsTheBase(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
@@ -218,6 +229,7 @@ func TestMergeWithdrawHeadIsTheBase(t *testing.T) {
 // ---- rules, each from the right and the wrong state and actor ----
 
 func TestMergeRules(t *testing.T) {
+	t.Parallel()
 	t.Run("work reports ok fail fault, read ok fix fault", func(t *testing.T) {
 		for _, res := range []string{"ok", "fail", "fault"} {
 			_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Report{Row: "r1", Result: res, Head: h2})
@@ -248,6 +260,7 @@ func TestMergeRules(t *testing.T) {
 }
 
 func TestMergeRulesReplaceAndReads(t *testing.T) {
+	t.Parallel()
 	t.Run("replace by self and unknown", func(t *testing.T) {
 		refusal{mv(Ready, nil, Replace{By: "p1"}), "producer p1 cannot be replaced by itself"}.check(t)
 		refusal{mv(Ready, nil, Replace{By: "zz"}), "card zz does not exist (Replace takes the card it is replaced by among the cards passed)"}.check(t)
@@ -286,6 +299,7 @@ func TestMergeRulesReplaceAndReads(t *testing.T) {
 }
 
 func TestMergeRulesValues(t *testing.T) {
+	t.Parallel()
 	t.Run("values refused before a plan", func(t *testing.T) {
 		for _, c := range []struct {
 			e    Event
@@ -322,6 +336,7 @@ func TestMergeRulesValues(t *testing.T) {
 // deal the blocker to it, as one op, on the Fake; the withdrawn producer goes
 // back to ready with its head kept, no bounce.
 func TestMergePreemption(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("b1"))
 	w.move("p1", Resolve{})
 	w.move("b1", Resolve{})
@@ -338,10 +353,11 @@ func TestMergePreemption(t *testing.T) {
 // ---- the random walk, extended ----
 
 func TestMergeWalk(t *testing.T) {
+	t.Parallel()
 	seen := map[string]int{}
 	var mu sync.Mutex
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= 120; seed++ {
+		for seed := int64(1); seed <= walkSeeds(120, 24); seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel()
 				got := mergeWalk(t, seed, 900)

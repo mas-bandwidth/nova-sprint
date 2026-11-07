@@ -19,6 +19,7 @@ func takeW1(t *testing.T, w *world) { w.ok(t, "alice", "take", "p1.w1@1") }
 func takeR1(t *testing.T, w *world) { w.ok(t, "bob", "take", "p2.r1@1") }
 
 func TestTake(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	first := w.do("alice", "take", "p1.w1@1", "--epoch", "1")
 	want(t, first, 0, "TAKEN p1.w1 repo=o/r base="+base+" branch=sprint/s/p1 deadline=1800s forge=none", "do p1",
@@ -32,6 +33,7 @@ func TestTake(t *testing.T) {
 }
 
 func TestTakeJSONIsTheReceipt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.f.Apply(t.Context(), store.Op{ID: "forge", Epoch: 1, Actor: "carol", Kind: "stream-set", At: t0, Writes: []store.Write{store.SetStreamForge{Stream: "s", Forge: "github"}}})
 	r := w.do("bob", "take", "p2.r1@1", "--json")
@@ -56,6 +58,7 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 // A consumer dealt by an earlier release has no model and is working in its row's
 // hand: take does not refuse it.
 func TestTakeModelless(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "dealt with no model", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 0, snap: setCard("p1.w1", func(c *store.Card) { c.Model = "" }),
 			want: []string{"TAKEN p1.w1"}},
@@ -63,6 +66,7 @@ func TestTakeModelless(t *testing.T) {
 }
 
 func TestTakeRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no gen", as: "alice", args: []string{"take", "p1.w1"}, exit: 2, want: []string{"<card>@<gen>"}},
 		{name: "a bad gen", as: "alice", args: []string{"take", "p1.w1@x"}, exit: 2, want: []string{"<card>@<gen>"}},
@@ -100,6 +104,7 @@ func busyAlice(s *store.Snapshot) {
 }
 
 func TestFinish(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	takeW1(t, w)
 	first := w.do("alice", "finish", "p1.w1@1", "--head", head, "--cost", "0.04")
@@ -114,6 +119,7 @@ func TestFinish(t *testing.T) {
 }
 
 func TestFinishFailedAndReportForms(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	takeW1(t, w)
 	want(t, w.do("alice", "finish", "p1.w1@1", "--failed", "--reason", "gate red: go test exit 1"), 0, "FAILED p1.w1")
@@ -127,6 +133,7 @@ func TestFinishFailedAndReportForms(t *testing.T) {
 }
 
 func TestFinishRefusals(t *testing.T) {
+	t.Parallel()
 	finish := []string{"finish", "p1.w1@1", "--head", head}
 	runCases(t, []tcase{
 		{name: "no head", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@1"}, exit: 1, want: []string{"a finish names its head", "--head"}},
@@ -145,6 +152,7 @@ func TestFinishRefusals(t *testing.T) {
 }
 
 func TestRead(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	takeR1(t, w)
 	want(t, w.do("bob", "read", "p2.r1@1", "fix", "--finding", "a.go:1: off by one; use <="), 0, "READ p2.r1 head="+head+" result=fix")
@@ -154,6 +162,7 @@ func TestRead(t *testing.T) {
 // engine: a kin on a subscription seat is free (priced, $0), its --cost kept
 // as charged evidence.
 func TestReadCarriesCost(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.roster.ro.Kin["bob"] = roster.Kin{Name: "bob", Model: "m-bob", Width: 2, Tiers: []string{"pro"}, Harness: "claude"}
 	delete(w.roster.ro.Workers, "bob")
@@ -171,6 +180,7 @@ func TestReadCarriesCost(t *testing.T) {
 }
 
 func TestReadRefusals(t *testing.T) {
+	t.Parallel()
 	aliceReads := both(setCard("p2.r1", func(c *store.Card) { c.Holder, c.State = "alice", "working" }))
 	runCases(t, []tcase{
 		{name: "no answer", as: "bob", prep: takeR1, args: []string{"read", "p2.r1@1", "maybe"}, exit: 2, want: []string{"a read answers yes or fix"}},
@@ -185,6 +195,7 @@ func TestReadRefusals(t *testing.T) {
 }
 
 func TestRelease(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "tier"), 0, "RELEASED p1.w1", "branch sprint/s/p1 kept", "next: "+waitNext)
 	w = newWorld(t)
@@ -198,6 +209,7 @@ func TestRelease(t *testing.T) {
 // A release is neither ok nor fail: the consumer keeps no result and says
 // released, and the producer goes back with no bounce (no blame).
 func TestReleaseIsNoBlame(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	before := w.snap(t).Cards["p1"]
 	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "tier"), 0, "RELEASED p1.w1")
@@ -215,6 +227,7 @@ func TestReleaseIsNoBlame(t *testing.T) {
 // head it pushed (--head), checked as a finish's is; the producer goes back
 // at that head with no bounce.
 func TestReleaseCarriesThePushedHead(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	takeW1(t, w)
 	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "runner restarted", "--head", tip), 1, "is not the tip of sprint/s/p1")
@@ -225,6 +238,7 @@ func TestReleaseCarriesThePushedHead(t *testing.T) {
 }
 
 func TestReleaseRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no reason", as: "alice", args: []string{"release", "p1.w1@1"}, exit: 1, want: []string{"a release needs its reason"}},
 		{name: "no card", as: "alice", args: []string{"release", "--reason", "r"}, exit: 2, want: []string{"<card>@<gen>"}},
@@ -238,6 +252,7 @@ func TestReleaseRefusals(t *testing.T) {
 }
 
 func TestShowAndQueue(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("alice", "show", "p1"), 0, `"id": "p1"`)
 	want(t, w.do("alice", "show", "s"), 0, `"repo": "o/r"`)
@@ -250,6 +265,7 @@ func TestShowAndQueue(t *testing.T) {
 }
 
 func TestShowAndQueueRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no record", as: "alice", args: []string{"show", "zz"}, exit: 1, want: []string{"no card, stream or row zz", "nova-sprint show"}},
 		{name: "a stitch of no stream", as: "alice", args: []string{"show", "zz", "--stitch"}, exit: 2, want: []string{"--stitch names a stream"}},
@@ -260,6 +276,7 @@ func TestShowAndQueueRefusals(t *testing.T) {
 // beat is the worker's heartbeat: it sets the row's load columns, a repeat
 // writes nothing, and a bad flag is bad usage that names the flag.
 func TestBeat(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	args := []string{"beat", "--load1", "2.505", "--cores", "8", "--slots-used", "3", "--slots-total", "8"}
 	want(t, w.do("alice", args...), 0, "BEAT alice applied at seq", "next: ")
@@ -280,6 +297,7 @@ func TestBeat(t *testing.T) {
 }
 
 func TestBeatRefusals(t *testing.T) {
+	t.Parallel()
 	good := []string{"--load1", "1", "--cores", "4", "--slots-used", "1", "--slots-total", "4"}
 	with := func(flag, val string) []string {
 		out := slices.Clone(good)
@@ -302,6 +320,7 @@ func TestBeatRefusals(t *testing.T) {
 // A model the policy has no price for is unpriced=no-price, never $0, and
 // words that do not read are refused before anything is applied.
 func TestReadPricedFromUsage(t *testing.T) {
+	t.Parallel()
 	sheet := map[string]policy.Price{"deepseek-flash": {In: 270_000, CacheRead: 70_000, CacheWrite: 270_000, Out: 1_100_000}}
 	w := newWorld(t)
 	w.e.Answers = fakeAnswers{prices: sheet}
