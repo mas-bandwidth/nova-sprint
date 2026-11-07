@@ -1093,6 +1093,9 @@ func (m *mover) report(e Report, p Card) *Refusal {
 	if e.Cost != c.Cost || e.Priced != c.Priced {
 		m.write(store.SetCardCost{Card: c.ID, Cost: e.Cost, Priced: e.Priced})
 	}
+	if e.Usage != c.Usage {
+		m.write(store.SetCardUsage{Card: c.ID, Usage: e.Usage})
+	}
 	return nil
 }
 

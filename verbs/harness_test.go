@@ -169,19 +169,20 @@ type fakeRoster struct {
 func newRoster() *fakeRoster {
 	all := []string{"flash", "pro", "heavy", "frontier"}
 	return &fakeRoster{ro: roster.Roster{
-		Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all}, "bob": {Name: "bob", Width: 2, Tiers: all}},
-		Kin:     map[string]roster.Kin{"carol": {Name: "carol", Model: "m-carol", Width: 1, Tiers: all}, "dave": {Name: "dave", Model: "m-dave", Width: 1, Tiers: all}},
+		Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all, Harness: roster.WorkerHarness}, "bob": {Name: "bob", Width: 2, Tiers: all, Harness: roster.WorkerHarness}},
+		Kin:     map[string]roster.Kin{"carol": {Name: "carol", Model: "m-carol", Width: 1, Tiers: all, Harness: "claude"}, "dave": {Name: "dave", Model: "m-dave", Width: 1, Tiers: all, Harness: "codex"}},
 	}}
 }
 
 func (r *fakeRoster) ReadRosterAt(context.Context, int) (roster.Roster, error) { return r.ro, r.err }
 
-type fakeAnswers struct{}
+// fakeAnswers answers limits and timeouts, and prices() from prices.
+type fakeAnswers struct{ prices map[string]policy.Price }
 
-func (fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
+func (f fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
 	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}},
 		Catalog: policy.Catalog{Models: map[string][]policy.Model{"inception": {{Name: "mercury-3", Tier: "pro"}}, "deepseek": {{Name: "deepseek-flash", Tier: "flash"}, {Name: "deepseek-flash", Tier: "pro"}}},
-			Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3"}}}, nil
+			Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3"}}, Prices: f.prices}, nil
 }
 
 // fakeLander is the hand landing and the group branch's creation: Land

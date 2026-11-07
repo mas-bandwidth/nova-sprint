@@ -88,6 +88,8 @@ func TestRefusals(t *testing.T) {
 		{"prices", `{"m": {"in": 1, "out": 1.0}}`, "prices(): m out is a float, not an int"},
 		{"prices", `{"m": {"in": 1}}`, "prices(): m: key out is missing"},
 		{"prices", `{1: {"in": 1, "out": 1}}`, "prices(): a key is an int, not a model name"},
+		{"prices", `{"m": {"in": 1, "out": 1, "cache": 1}}`, "prices(): m: key \"cache\" is not one of in out cache_read cache_write"},
+		{"prices", `{"m": {"in": 1, "out": 1, "cache_read": -2}}`, "prices(): m cache_read -2 is outside 0..9223372036854775807"},
 		{"width", `{"work": 0, "ahead": 0}`, "rows(p1 work): every row named has work 0 in width, while row r1 could take it"},
 	} {
 		body, line := override(tc.q, fmt.Sprintf("def %s(%s):\n    return %s", tc.q, params[tc.q], tc.ret))
@@ -231,4 +233,18 @@ func steeringValue(key string) string {
 		}
 	}
 	panic(key)
+}
+
+// TestPricesCacheDefaults: prices() takes in and out, and cache_read and
+// cache_write each default to in when not named.
+func TestPricesCacheDefaults(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	body, _ := override("prices", "def prices():\n    return {\"deepseek-flash\": {\"in\": 270000, \"out\": 1100000, \"cache_read\": 70000}, \"inception/mercury-3\": {\"in\": 250000, \"out\": 1000000}}")
+	a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	require.Empty(t, fs)
+	assert.Equal(t, map[string]Price{
+		"deepseek-flash":      {In: 270000, CacheRead: 70000, CacheWrite: 270000, Out: 1100000},
+		"inception/mercury-3": {In: 250000, CacheRead: 250000, CacheWrite: 250000, Out: 1000000},
+	}, a.Prices)
 }
