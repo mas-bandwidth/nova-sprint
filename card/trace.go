@@ -125,16 +125,23 @@ func traceProd(c store.Card, ncut int, head func(string) (int, error)) (ModelPro
 		Finding: fixOrNone(c.Finding), Red: c.Red}, err
 }
 
+// TraceResult is a consumer's result as the model names it: a work fault
+// whose reason names a missing route (RouteFault) is "route" (defect 48),
+// every other result itself.
+func TraceResult(kind, result, reason string) string {
+	if _, route := RouteFault(reason); route && result == "fault" && kind == "work" {
+		return "route"
+	}
+	return result
+}
+
 func traceCons(c store.Card, head func(string) (int, error)) (ModelCons, error) {
 	h, err := head(c.Head)
 	if err != nil {
 		return ModelCons{}, err
 	}
 	prior, err := head(c.Prior)
-	res := cmp.Or(c.Result, "-")
-	if _, route := RouteFault(c.Reason); route && res == "fault" && c.Kind == "work" {
-		res = "route" // the model's name for a fault naming a missing route (defect 48)
-	}
+	res := TraceResult(c.Kind, cmp.Or(c.Result, "-"), c.Reason)
 	return ModelCons{St: c.State, Kind: c.Kind, Row: c.Holder, Att: c.Attempt, Head: h, Res: res,
 		Author: cmp.Or(c.Author, "none"), Review: c.Review, Prior: prior, Finding: fixOrNone(c.Finding)}, err
 }
