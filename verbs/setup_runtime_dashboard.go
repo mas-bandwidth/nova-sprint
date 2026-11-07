@@ -23,7 +23,7 @@ var errDashboardReach = errors.New("dashboard could not be reached")
 // ("GET http://<address>/healthz") and the transport's cause.
 type DashboardUnreachable struct{ Request, Cause string }
 
-func (d *DashboardUnreachable) Error() string { return d.Request + ": " + d.Cause }
+func (d *DashboardUnreachable) Error() string        { return d.Request + ": " + d.Cause }
 func (d *DashboardUnreachable) Is(target error) bool { return target == errDashboardReach }
 
 // DashboardNotReady is a dashboard that answered but does not serve this
