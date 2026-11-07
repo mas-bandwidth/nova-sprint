@@ -729,7 +729,7 @@ candidate filter narrows the row set the model already chooses from.
   quadratic (measured on the working machine, not quiet: 52 ms p50 for
   4,908 opens). They are now lookups: a per-tick index of the planned ones
   and one of the view's, built on first use.
-- *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestLoadResolve
+- *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestFunctionalLoadResolve
   ./steps/`; the needs step alone, 5,000 waiting producers whose needs a
   store op landed, 20 streams, 100 rows, 20 ticks; ms p50/p95). On the
   working machine (darwin, not quiet): free (all 5,000 resolve) 7.97/10.57;

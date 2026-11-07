@@ -6,6 +6,7 @@ import (
 )
 
 func TestFleetMachinesReadsActualRoles(t *testing.T) {
+	t.Parallel()
 	raw := `{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":2},"items":[{"kind":"machine","fields":{"name":"b","address":"b.example","roles":"bench,runner","cores":16}},{"kind":"machine","fields":{"name":"a","address":"","roles":"services"}}]}`
 	f := FleetServices{Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		if name != "nova-config" || len(args) != 3 || args[0] != "machine" || args[1] != "list" || args[2] != "--json" {
@@ -19,6 +20,7 @@ func TestFleetMachinesReadsActualRoles(t *testing.T) {
 	}
 }
 func TestFleetMachinesRejectsInvalidResponse(t *testing.T) {
+	t.Parallel()
 	f := FleetServices{Command: func(context.Context, string, ...string) ([]byte, error) {
 		return []byte(`{"result":{"verb":"machine list","status":"ok"},"facts":{"kind":"machine","rows":2},"items":[]}`), nil
 	}}
@@ -27,6 +29,7 @@ func TestFleetMachinesRejectsInvalidResponse(t *testing.T) {
 	}
 }
 func TestSprintSeatsUseServiceSeatAndKeepPublicBench(t *testing.T) {
+	t.Parallel()
 	machines := []FleetMachine{{Name: "studio", Roles: []string{"services"}}, {Name: "amd-1", Roles: []string{"bench"}}, {Name: "public", Roles: []string{"services"}}}
 	seats, err := SprintSeats(machines, FleetService{Machine: "studio", Seat: "studio"}, "public")
 	if err != nil || len(seats) != 2 || seats[0] != (SprintSeat{Seat: "studio", Machine: "studio"}) || seats[1] != (SprintSeat{Seat: "amd-1", Machine: "amd-1"}) {
@@ -43,6 +46,7 @@ func TestSprintSeatsUseServiceSeatAndKeepPublicBench(t *testing.T) {
 	}
 }
 func TestPublicDashboardRejectsCredentials(t *testing.T) {
+	t.Parallel()
 	service := &FleetService{Name: "sprint-public", Machine: "public", Argv: []string{"/bin/nova-sprint", "dash", "--pull", "http://private:8080", "--listen", ":443"}}
 	if !validPublicTarget(service) {
 		t.Fatal("valid pull service refused")
@@ -61,6 +65,7 @@ func TestPublicDashboardRejectsCredentials(t *testing.T) {
 }
 
 func TestPublicDashboardEnvHasExactProgram(t *testing.T) {
+	t.Parallel()
 	service := &FleetService{Name: "sprint-public", Machine: "public", Argv: []string{"/usr/bin/env", "nova-sprint", "dash", "--pull", "http://private:8080", "--listen", ":8080"}}
 	if !validPublicTarget(service) {
 		t.Fatal("env-backed pull service refused")

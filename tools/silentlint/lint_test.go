@@ -21,6 +21,7 @@ func lint(t *testing.T, src string) []string {
 }
 
 func TestEachRuleFindsItsSilentForm(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, src string
 		want      string
@@ -48,6 +49,7 @@ func TestEachRuleFindsItsSilentForm(t *testing.T) {
 }
 
 func TestCarriedErrorsAndAllowedFormsAreClean(t *testing.T) {
+	t.Parallel()
 	for _, src := range []string{
 		`func f() error { if err := g(); err != nil { return fmt.Errorf("schema creation failed: %w", err) }; return nil }`,
 		`func f() error { if err := g(); err != nil { return fmt.Errorf("x (%v)", err) }; return nil }`,
@@ -72,6 +74,7 @@ func TestCarriedErrorsAndAllowedFormsAreClean(t *testing.T) {
 }
 
 func TestRunPrintsFindingsAndExits(t *testing.T) {
+	t.Parallel()
 	var out, errOut bytes.Buffer
 	if code := run([]string{"testdata/silent"}, &out, &errOut); code != 1 || !strings.Contains(out.String(), "silent.go:7: S1:") || !strings.Contains(errOut.String(), "1 silent form(s) in 1 file(s)") {
 		t.Fatalf("%d %q %q", code, out.String(), errOut.String())

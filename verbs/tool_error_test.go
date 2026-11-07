@@ -15,6 +15,7 @@ import (
 // nova-secrets' banner, with nothing that may be a secret and no home
 // directory.
 func TestStderrLineKeepsTheErrorAndNoSecret(t *testing.T) {
+	t.Parallel()
 	stderr := []byte("SECRETS EXEC STARTING as=x keys=1 cmd=nova-sprint\nstarting\nnova-secrets: open /Users/someone/.config/nova/store.age: AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQ NOVA_PG_PASSWORD=hunter2 postgres://u:pw@db/x token ghp_abcdefABCDEF0123456789 c2VjcmV0LWtleS0xMjM0NTY3ODkwYWJj\n\n")
 	line := StderrLine(stderr)
 	if !strings.HasPrefix(line, "starting | nova-secrets: open .../store.age:") {
@@ -43,6 +44,7 @@ func TestStderrLineKeepsTheErrorAndNoSecret(t *testing.T) {
 // lines and read back by the parent as the same Problem and Fix, through
 // nova-secrets' banner, never re-wrapped as the parent's own failure.
 func TestChildRefusalPassesProblemAndFixThrough(t *testing.T) {
+	t.Parallel()
 	inner := &OperationError{Problem: `pg_dump is older than the server (pg_dump 14 vs server 18; saw "pg_dump (PostgreSQL) 14.9")`, Fix: "put PostgreSQL 18's bin directory first on PATH, then run nova-sprint up again", Exit: 1}
 	var stderr bytes.Buffer
 	stderr.WriteString("SECRETS EXEC STARTING as=x keys=1 cmd=nova-sprint\n")
@@ -72,6 +74,7 @@ func TestChildRefusalPassesProblemAndFixThrough(t *testing.T) {
 
 // The setup walk's refusal is one line carrying the tool's own error.
 func TestFailedBusProbeNamesTheToolError(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.bus.err = fmt.Errorf("bus secret names unavailable%s", ToolDetail(Failure("nova-secrets", errors.New("exit status 1"), []byte("nova-secrets: the seat key does not open the store\n"))))
 	r := w.e.Execute(t.Context(), []string{"check"})
@@ -81,6 +84,7 @@ func TestFailedBusProbeNamesTheToolError(t *testing.T) {
 }
 
 func TestParseFailureNamesTheByteAndWhatItSaw(t *testing.T) {
+	t.Parallel()
 	out := []byte("SECRETS EXEC STARTING as=x keys=1 cmd=env\n{\"result\":{}}")
 	var v map[string]any
 	got := ParseFailure(json.Unmarshal(out, &v), out)
@@ -92,6 +96,7 @@ func TestParseFailureNamesTheByteAndWhatItSaw(t *testing.T) {
 // A refusal built from a failing command whose argv and environment carry
 // secret-looking values names them and never shows a value.
 func TestRefusalFromFailingCommandNamesSecretsNotValues(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	argv := []string{"/usr/local/bin/nova-secrets", "exec", "--", "env", "NOVA_PG_PASSWORD=hunter2", "postgres://u:pw@db/x", "--token", "ghp_abcdefABCDEF0123456789"}
 	env := []string{"NOVA_SPRINT_PG_PASSWORD=s3cr3t-value", "GH_TOKEN=ghp_ZYXWVUTSRQ0123456789ab"}

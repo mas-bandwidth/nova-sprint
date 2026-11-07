@@ -650,6 +650,7 @@ func traceSeed(t *testing.T) int64 {
 }
 
 func TestEmitRunTrace(t *testing.T) {
+	t.Parallel()
 	// The run model has no nudge, unacked, undealt or idle action: the
 	// fixture keeps the engine's bounds past the walk (restored after; no
 	// unit test of this package runs in parallel), and tracePolicy's

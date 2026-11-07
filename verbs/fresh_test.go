@@ -31,6 +31,7 @@ func midUp(t *testing.T) *world {
 // whatever up's step (Glenn, 2026-11-07: "A sprint that can move must be
 // stoppable"); the fresh store is stopped, never started, until start.
 func TestVerbsWorkMidUp(t *testing.T) {
+	t.Parallel()
 	w := midUp(t)
 	if s := w.snap(t); !s.Stopped || s.StopReason != store.NeverStarted {
 		t.Fatalf("a fresh store: stopped %v (%q)", s.Stopped, s.StopReason)
@@ -55,6 +56,7 @@ func TestVerbsWorkMidUp(t *testing.T) {
 // A stopped sprint with nothing owed tells the coordinator to start it and
 // a worker to wait; its own card still comes first.
 func TestNextNamesStartOnAStoppedSprint(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	s.Stopped, s.StopReason = true, store.NeverStarted
 	w := worldFrom(t, s)
@@ -65,6 +67,7 @@ func TestNextNamesStartOnAStoppedSprint(t *testing.T) {
 // Before the store exists (no epoch: up at step 1), every verb that reads
 // it refuses naming up, and next answers up (exit 0).
 func TestVerbsBeforeTheStore(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{"stop", "--reason", "r"}, {"start"}, {"hook", "--role", "worker"}, {"show"}, {"queue"}, {"stream", "add", "s", "--repo", "o/r"}, {"take", "p1.w1@1"}} {
 		w := newWorld(t)
 		w.e.Store, w.doctor.schema = failingStore{w.f}, false
@@ -78,6 +81,7 @@ func TestVerbsBeforeTheStore(t *testing.T) {
 // Defect 23: start on a running sprint says it is already running, a
 // success that changes nothing, with the next verb.
 func TestStartOnARunningSprint(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	seq := w.snap(t).Seq
 	want(t, w.do("carol", "start", "--reason", "again"), 0, "RUNNING already: the sprint is already running", "next: nova-sprint next --as carol")
@@ -88,6 +92,7 @@ func TestStartOnARunningSprint(t *testing.T) {
 
 // The help says what each verb needs from up.
 func TestHelpSaysWhatUpGives(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("", "help", "stop"), 0, "up: the store up makes at step 2 (an epoch), at any later step of up")
 	want(t, w.do("", "help", "check"), 0, "up: nothing")

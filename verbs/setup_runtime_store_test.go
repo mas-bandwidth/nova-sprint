@@ -49,6 +49,7 @@ func TestSetupStoreChildUsesOnlyKeyName(t *testing.T) {
 // pg_hba trust host whatever the password is); the role child's false or
 // refusal stops it before the store probe.
 func TestSetupStoreReadyChecksTheRolePasswordFirst(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{saved: true, value: "fixture-secret"}
 	var modes, only []string
 	answer := map[string]string{"--internal-setup-role-password": `{"ready":true}`, "--internal-store-probe": `{"ready":true}`}

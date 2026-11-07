@@ -51,6 +51,7 @@ func judgement(id, kind, about string, at time.Time) store.Judgement {
 
 // TestCheckAllGreen is every line of a healthy sprint, in order, exit 0.
 func TestCheckAllGreen(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	healthy(t, w)
 	r := w.do("", "check")
@@ -69,6 +70,7 @@ func TestCheckAllGreen(t *testing.T) {
 // TestCheckRedLines is each red line, and that it makes the exit non-zero
 // with every other line still printed.
 func TestCheckRedLines(t *testing.T) {
+	t.Parallel()
 	at := t0.Add(-time.Hour)
 	runCases(t, []tcase{
 		{name: "a repository git cannot read", args: []string{"check"}, exit: 2, prep: then(healthy, func(_ *testing.T, w *world) { w.origin.err = errBroken }),
@@ -126,6 +128,7 @@ func (n noBench) AnswerContext(ctx context.Context, vs policy.Versions, snap sto
 // TestCheckWhyNothingDeals is the width line red with each cause the deal
 // meets, the first one's fix on the refusal line.
 func TestCheckWhyNothingDeals(t *testing.T) {
+	t.Parallel()
 	width := "nothing deals: width: working 0 (0 dealt) of 4 open on 3 rows; 1 ready; why: "
 	runCases(t, []tcase{
 		{name: "a held stream", args: []string{"check"}, exit: 1, prep: healthy,
@@ -175,6 +178,7 @@ func TestCheckWhyNothingDeals(t *testing.T) {
 // TestCheckLandingWaits is each landing's wait, red when a person or a
 // stopped piece must act.
 func TestCheckLandingWaits(t *testing.T) {
+	t.Parallel()
 	merging := func(s *store.Snapshot) {
 		c := s.Cards["p2"]
 		c.State = "merging"
@@ -218,6 +222,7 @@ func (f failingAnswers) AnswerContext(ctx context.Context, vs policy.Versions, s
 // failing a question, a working card with no live job, a card that would
 // not be admitted today, and a stream whose card branches cannot be made.
 func TestCheckReprovesAdmission(t *testing.T) {
+	t.Parallel()
 	ready := func(s *store.Snapshot) {
 		undealtSprint(s)
 		c := s.Cards["p1"]

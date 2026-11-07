@@ -96,6 +96,7 @@ func TestSetupArguments(t *testing.T) {
 // which may name no bench model for a tier a bench serves; up names it with
 // the policy's fix, beside the identity (PR 641 F6).
 func TestSetupNamesTheBenchModel(t *testing.T) {
+	t.Parallel()
 	f := upStore(true)
 	applyTest(t, f, store.Op{ID: "policy-up", Epoch: 1, Actor: "rowan", Kind: "policy", At: t0,
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "old", Body: "script"}, store.SetActivePolicy{Version: 1}, store.SetIdentity{Name: "Bot", Email: "1+bot@users.noreply.example.test"}}})

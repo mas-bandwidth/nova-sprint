@@ -46,6 +46,7 @@ func TestStreamStates(t *testing.T) {
 // with its reason, so a card the coordinator held reads "held: <why>"
 // (defect 47); a stream with none has no list.
 func TestBlockedCardsWithReason(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}, "t": {Name: "t"}}, Cards: map[string]store.Card{
 		"p1": {ID: "p1", Kind: "producer", Stream: "s", State: "blocked", Reason: "held: wrong brief"},
 		"p2": {ID: "p2", Kind: "producer", Stream: "s", State: "blocked", Reason: "missing-route: no adb"},

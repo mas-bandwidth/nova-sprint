@@ -223,6 +223,7 @@ func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) { // unitlint: se
 // login proves nothing; a role with no password is set from the seat's
 // value all the same, and the stored verifier is the seat's.
 func TestFunctionalSprintRolePasswordOnATrustHost(t *testing.T) {
+	t.Parallel()
 	ctx, super, dsn := roleAdoptionFixture(t)
 	var hba string
 	if err := super.QueryRow(ctx, "SELECT setting FROM pg_settings WHERE name='hba_file'").Scan(&hba); err != nil {

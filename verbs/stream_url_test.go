@@ -9,6 +9,7 @@ import (
 // GitHub's https address and kept as <org>/<repo>; a form a forge cannot
 // address, and a hand stream named <org>/<repo>, are refused naming the fix.
 func TestStreamAddReachesTheCloneAddress(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "org/repo through github", as: "carol", args: []string{"stream", "add", "t", "--repo", "o/r", "--forge", "github"}, exit: 0,
 			want: []string{"STREAM t repo=o/r base=main"}},

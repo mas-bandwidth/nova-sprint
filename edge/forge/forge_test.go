@@ -23,7 +23,7 @@ const (
 // override gh gets the process's environment without any GitHub credential
 // of its own, so a GH_TOKEN or a GH_CONFIG_DIR there cannot make it someone
 // else (directive 59).
-func TestForgeActsAsTheHostsGh(t *testing.T) {
+func TestForgeActsAsTheHostsGh(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	t.Setenv("GH_TOKEN", "inherited-token")
 	t.Setenv("GH_CONFIG_DIR", "/home/someone/.config/gh")
 	var seen []edge.Cmd
@@ -48,7 +48,7 @@ func TestForgeActsAsTheHostsGh(t *testing.T) {
 // The optional override: a GH_GATE_TOKEN given to the forge replaces any
 // GitHub credential the process inherited, in the environment only, never
 // in argv.
-func TestForgeOverrideToken(t *testing.T) {
+func TestForgeOverrideToken(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	t.Setenv("GH_TOKEN", "inherited-token")
 	t.Setenv("GITHUB_TOKEN", "inherited-github")
 	t.Setenv("GH_CONFIG_DIR", "/home/someone/.config/gh")

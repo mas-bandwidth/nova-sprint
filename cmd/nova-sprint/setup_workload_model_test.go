@@ -19,6 +19,7 @@ import (
 // step that is not ready is always a *verbs.WorkloadNotReady (the model's
 // repair phase), never another error.
 func TestWorkloadStepsMatchTheSetupModel(t *testing.T) {
+	t.Parallel()
 	benches := []string{"amd-1", "amd-2"}
 	for mask := 0; mask < 1<<(3*len(benches)); mask++ {
 		bit := func(i int) bool { return mask&(1<<i) != 0 }

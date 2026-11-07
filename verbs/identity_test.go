@@ -15,6 +15,7 @@ import (
 // missing reason or a missing identity is refused naming the fix; a worker
 // may not set it.
 func TestIdentityVerb(t *testing.T) {
+	t.Parallel()
 	set := func(name, email string) []string {
 		return []string{"identity", "--name", name, "--email", email, "--reason", "the allowlisted account"}
 	}
@@ -43,6 +44,7 @@ func TestIdentityVerb(t *testing.T) {
 // identity for the worker, and take's text gives a friend the two git config
 // lines and the By:/Co-Authored-By: rule; with no identity take refuses.
 func TestTakeCarriesTheIdentity(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	var got takeReceipt
 	if err := json.Unmarshal([]byte(w.ok(t, "alice", "take", "p1.w1@1", "--json")), &got); err != nil {
@@ -64,6 +66,7 @@ func TestTakeCarriesTheIdentity(t *testing.T) {
 // the fix; the identity's email in another case passes; a log that cannot be
 // read is the edge's failure.
 func TestFinishRefusesAnotherIdentity(t *testing.T) {
+	t.Parallel()
 	mine := git.Commit{SHA: strings.Repeat("1", 40), AuthorEmail: testIdentity.Email, CommitterEmail: strings.ToUpper(testIdentity.Email)}
 	theirs := git.Commit{SHA: strings.Repeat("2", 40), AuthorEmail: "aurora@example.test", CommitterEmail: testIdentity.Email}
 	committed := git.Commit{SHA: strings.Repeat("3", 40), AuthorEmail: testIdentity.Email, CommitterEmail: "alice@nova-sprint.local"}

@@ -24,6 +24,7 @@ func (w *world) kin(name, model string, width int, tiers ...string) {
 // policy's bench model for the card's tier, a friend's with its own model,
 // and a read the same way per row (defect 57).
 func TestTickDealNamesTheModel(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 1, "pro")
 	s.kin("f1", "m-friend", 1, "pro")
@@ -49,6 +50,7 @@ func TestTickDealNamesTheModel(t *testing.T) {
 // per tier says why; a friend with a model still takes it; the judgement
 // clears once a model can be named (defect 57).
 func TestTickNoModelNoDeal(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	models := benchModels()
 	delete(models, "heavy")
@@ -75,6 +77,7 @@ func TestTickNoModelNoDeal(t *testing.T) {
 // no-policy judgement on the coordinator's row says why; resolve still runs;
 // once the gate lifts the deal resumes and the judgement clears (defect 53).
 func TestTickNoDealWithoutPolicy(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.ask = scripted{Answers{Models: benchModels(), NoDeal: "no policy is active: nova-sprint policy set <file> --reason <why>"}}
 	s.row("b1", 1, "pro")
@@ -101,6 +104,7 @@ func TestTickNoDealWithoutPolicy(t *testing.T) {
 // next tick, and so is one in a view built cold from such a snapshot (a
 // restore): resolve reads state, never landed events (section 64b).
 func TestTickResolvesFromState(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 4, "pro")
 	s.stream("s1")
@@ -126,6 +130,7 @@ func TestTickResolvesFromState(t *testing.T) {
 // started producer names is held, with an overlap judgement saying "held
 // behind <card> on <path>", which clears when it resolves (defect 50).
 func TestTickOverlapIsAFile(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 8, "pro")
 	s.stream("s1")

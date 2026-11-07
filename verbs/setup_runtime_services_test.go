@@ -71,6 +71,7 @@ func TestFleetServicesCreateOnceAndTargetPlay(t *testing.T) {
 // A nova-config write without an actor is refused before anything runs; a
 // tool failure stays reachable under the setup's own words.
 func TestFleetServicesWriteNeedsActorAndWrapsToolFailure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := FleetService{Name: "sprint-run", Machine: "bench-a", Argv: []string{"/bin/nova-sprint", "run"}}
 	empty := []byte(`{"result":{"verb":"service list","status":"ok","exit":0},"facts":{"kind":"service","rows":0},"items":[]}`)

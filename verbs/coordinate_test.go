@@ -60,6 +60,7 @@ func brief(t *testing.T, id, needs string) string {
 // plan's replay reads the cards as they were before the add, so the new
 // card is not refused as existing.
 func TestAddIntoAnEmptySprint(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	s.Cards = map[string]store.Card{}
 	w := worldFrom(t, s)
@@ -215,6 +216,7 @@ func TestDropAndReplace(t *testing.T) {
 // releases the work consumer in the same op, recorded released (no result, no
 // blame) with the drop's reason, and fails the producer.
 func TestDropReleasesItsLiveConsumers(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	before := w.snap(t).Cards["p1.w1"]
 	if before.State != "ready" && before.State != "working" {
@@ -305,6 +307,7 @@ func TestPolicyRefusals(t *testing.T) {
 // TestHoldCard: hold parks one producer blocked with the reason, its live
 // consumer withdrawn in the same op; unhold sends it to waiting (defect 47).
 func TestHoldCard(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "hold", "p1", "--reason", "wrong brief"), 0, "p1", "next: "+waitNext)
 	s := w.snap(t)
@@ -321,6 +324,7 @@ func TestHoldCard(t *testing.T) {
 }
 
 func TestHoldCardRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "a consumer", as: "carol", args: []string{"hold", "p1.w1", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is a work card; hold its producer", "nova-sprint hold p1 --reason"}},
 		{name: "an unhold of a card not held", as: "carol", args: []string{"unhold", "p2", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p2"}},

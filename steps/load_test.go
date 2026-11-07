@@ -240,7 +240,7 @@ func bar(t *testing.T, name string, ok bool, format string, args ...any) {
 	}
 }
 
-// TestLoadResolve times the needs step alone (section 64b: the tick resolves
+// TestFunctionalLoadResolve times the needs step alone (section 64b: the tick resolves
 // from the state, every tick) on 5,000 waiting producers whose needs a store
 // op landed (no land step, no edge result), in three worlds: free (every
 // producer names its own file, so all 5,000 resolve), held (each names two
@@ -249,7 +249,8 @@ func bar(t *testing.T, name string, ok bool, format string, args ...any) {
 // after one tick applied: the overlap judgements open, each checked for
 // clearing). The view is not applied between the timed ticks, so every tick
 // is the same worst case.
-func TestLoadResolve(t *testing.T) {
+func TestFunctionalLoadResolve(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (on a Linux bench, never in per-commit CI)")
 	}

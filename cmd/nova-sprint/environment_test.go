@@ -9,7 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
-func TestProductionStoreRejectsAmbientCredentials(t *testing.T) {
+func TestProductionStoreRejectsAmbientCredentials(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	t.Setenv("PGPASSWORD", "ambient-should-not-be-used")
 	s := &lazyStore{creds: credentials{dsn: "postgres://nova_config@localhost/db"}}
 	if _, err := s.Snapshot(context.Background()); !isNoCredential(err) {
@@ -34,6 +34,7 @@ func isNoCredential(err error) bool {
 }
 
 func TestToolEnvironmentExcludesDatabaseSecrets(t *testing.T) {
+	t.Parallel()
 	env := toolEnvironment([]string{"PATH=/bin", "NOVA_BUS_PASSWORD=bus-fixture", "NOVA_SPRINT_PG_PASSWORD=secret", "NOVA_PG_ADMIN_PASSWORD=secret", "PGPASSWORD=secret"}, "nova-bus")
 	joined := strings.Join(env, "\n")
 	if !strings.Contains(joined, "NOVA_BUS_PASSWORD=bus-fixture") || strings.Contains(joined, "PG_PASSWORD") || strings.Contains(joined, "PGPASSWORD") {
@@ -50,6 +51,7 @@ func TestToolEnvironmentExcludesDatabaseSecrets(t *testing.T) {
 // next answers the same (exit 0); "not set up" is kept for a store without
 // the schema, which the credential cannot tell.
 func TestNoCredentialNamesSecretsExec(t *testing.T) {
+	t.Parallel()
 	creds := credentials{dsn: "postgres://nova_sprint@localhost/db"}
 	e := verbs.Engine{Store: &lazyStore{creds: creds}, Bus: present{"alice"}, Doctor: doctor{creds: creds}, Actor: "alice"}
 	const line = "this process has no sprint credential: run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ..."

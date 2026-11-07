@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// TestBreakLandDeletedCardBranchStillLands
+// TestFunctionalBreakLandDeletedCardBranchStillLands
 //
 // Sequence: card c1 is pushed to sprint/s1/c1; the lander's clone fetches it
 // (an earlier pass, or any fetch). The card's branch is then deleted on origin
@@ -20,7 +20,8 @@ import (
 // was in the local clone, so a head on no ref of origin landed. Now the
 // landing reads each card's branch at origin, and a missing branch is the
 // missing_head judgement.
-func TestBreakLandDeletedCardBranchStillLands(t *testing.T) {
+func TestFunctionalBreakLandDeletedCardBranchStillLands(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	originDir, workDir, b0, runGit := setupBareAndWorkRepo_internal(t)
 	c1 := commitBranch_internal(t, runGit, workDir, "c1", b0, "c1.txt", "card 1\n", "refs/heads/sprint/s1/c1")

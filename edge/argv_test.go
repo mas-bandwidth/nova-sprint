@@ -10,6 +10,7 @@ import (
 // and hide everything, shell syntax outside a quote is refused, and the first
 // word must be a program.
 func TestParseGate(t *testing.T) {
+	t.Parallel()
 	good := map[string][]string{
 		`go test ./...`:                         {"go", "test", "./..."},
 		`sh -c 'a | b && c > d; $(e) ` + "`f`'": {"sh", "-c", "a | b && c > d; $(e) `f`"},
@@ -71,6 +72,7 @@ func TestParseGate(t *testing.T) {
 
 // TestParseGateFixNamesShC: the fix says to wrap the line in sh -c.
 func TestParseGateFixNamesShC(t *testing.T) {
+	t.Parallel()
 	if !strings.Contains(GateFix, "sh -c '...'") {
 		t.Fatalf("GateFix %q", GateFix)
 	}

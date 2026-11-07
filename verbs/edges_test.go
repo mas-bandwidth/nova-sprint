@@ -14,6 +14,7 @@ import (
 // An unknown outcome never leaks: a take (the acknowledgement) whose commit
 // was lost is applied again; one that landed is its stored receipt.
 func TestUnknownOutcomeReplaysOrApplies(t *testing.T) {
+	t.Parallel()
 	for _, landed := range []bool{false, true} {
 		w := newWorld(t)
 		w.f.Drop(consumerOpID("take", 1, "p1.w1", 1), landed)
@@ -29,6 +30,7 @@ func TestUnknownOutcomeReplaysOrApplies(t *testing.T) {
 }
 
 func TestNextOrdersAndCounts(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	busyAlice(&s)
 	w := worldFrom(t, s)
@@ -36,6 +38,7 @@ func TestNextOrdersAndCounts(t *testing.T) {
 }
 
 func TestQueueEmpty(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	for _, id := range []string{"p1", "p2"} {
 		setCard(id, func(c *store.Card) { c.State = "fail" })(&s)
@@ -47,6 +50,7 @@ func TestQueueEmpty(t *testing.T) {
 }
 
 func TestFinishEdgeFailures(t *testing.T) {
+	t.Parallel()
 	withForge := func(s *store.Snapshot) { st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st }
 	finish := []string{"finish", "p1.w1@1", "--head", head}
 	runCases(t, []tcase{
@@ -59,6 +63,7 @@ func TestFinishEdgeFailures(t *testing.T) {
 
 // Each brief rule is refused, by line, without quoting the brief.
 func TestBriefLint(t *testing.T) {
+	t.Parallel()
 	good := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: it works\n\nDo it.\n"
 	cases := map[string]string{
 		"must be tier: <flash|pro|heavy|frontier>":   "PATHS: a.go\n",
@@ -84,6 +89,7 @@ func TestBriefLint(t *testing.T) {
 }
 
 func TestPolicyCheckRefusesAFileThatFails(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	withPolicy(t, w)
 	file := filepath.Join(t.TempDir(), "bad.star")

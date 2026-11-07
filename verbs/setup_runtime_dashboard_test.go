@@ -59,6 +59,7 @@ func TestDashboardProbeChecksHealthEpochAndPublicCache(t *testing.T) {
 // The probe reads what the dash's own handler serves: the real envelope,
 // round-tripped through dash.Handler on a recorder (no socket).
 func TestDashboardProbeReadsTheDashHandler(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := store.NewFake()
 	snap, err := st.Snapshot(ctx)
@@ -94,6 +95,7 @@ func TestDashboardProbeReadsTheDashHandler(t *testing.T) {
 
 // A transport failure carries the request and its cause.
 func TestDashboardProbeUnreachableNamesRequestAndCause(t *testing.T) {
+	t.Parallel()
 	p := DashboardProbe{Transport: dashboardRoundTrip(func(r *http.Request) (*http.Response, error) {
 		return nil, errors.New("dial tcp 203.0.113.7:8080: i/o timeout")
 	})}
@@ -107,6 +109,7 @@ func TestDashboardProbeUnreachableNamesRequestAndCause(t *testing.T) {
 // Step 5 still failing after its act prints the probe's error and its fix,
 // never "step 5 is not verified".
 func TestRuntimeDashboardRefusalIsTheProbeError(t *testing.T) {
+	t.Parallel()
 	public := &FleetService{Name: "sprint-dashboard", Machine: "edge-1"}
 	r := RuntimeSetup{RunService: FleetService{Name: "sprint-run", Machine: "studio"}}
 	unreachable := &DashboardUnreachable{Request: "GET http://203.0.113.7:8080/healthz", Cause: "dial tcp 203.0.113.7:8080: i/o timeout"}

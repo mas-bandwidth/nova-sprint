@@ -11,6 +11,7 @@ import (
 // judgement, not one from the steps and another from the policy (the e2e
 // found two for one coordinator): the steps own it, group roster:<name>.
 func TestOneUnlistedCoordinatorIsOneJudgement(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	must(t, f, "coord", store.PutRow{Name: "coord-1", Session: "sess-2", Role: "coordinator"})
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)

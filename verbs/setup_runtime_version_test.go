@@ -133,6 +133,7 @@ func versionOutput(t *testing.T, version string) []byte {
 
 // The parser reads the verb's own output, and nothing else.
 func TestParseVersionOutputReadsTheVerb(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"v2.0.0", "v12.0.4", "dev+0123456789ab"} {
 		if got, err := ParseVersionOutput(versionOutput(t, v)); err != nil || got != v {
 			t.Fatal(v, got, err)

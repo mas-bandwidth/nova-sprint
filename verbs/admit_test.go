@@ -15,6 +15,7 @@ import (
 // forge github, the host's gh identity able to act; each refusal names its
 // one fix (intent rule 34).
 func TestStreamAdmission(t *testing.T) {
+	t.Parallel()
 	add := func(name string, more ...string) []string {
 		return append([]string{"stream", "add", name, "--repo", "o/r"}, more...)
 	}
@@ -51,6 +52,7 @@ func briefFile(t *testing.T, dir, id, text string) string {
 // and routes served, its PATHS at the base, DONE-WHEN parsing, no retired
 // mechanic or named bench, and its work not already at the base.
 func TestCardAdmission(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	b := func(id, meta string) []string {
 		text := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: go test ./...\n" + meta + "\nDo it.\n"
@@ -103,6 +105,7 @@ func (o *failingTree) Tree(context.Context, string, string) ([]string, error) { 
 // TestBriefContractLint: the parser refuses the new fields' bad forms and
 // the retired mechanics, naming the line and the fix.
 func TestBriefContractLint(t *testing.T) {
+	t.Parallel()
 	good := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: go test ./...\n\nDo it.\n"
 	for rule, text := range map[string]string{
 		`line 4 DONE-WHEN echo "open is not one command: a " is left open`:                                       strings.Replace(good, "DONE-WHEN: go test ./...", `DONE-WHEN: echo "open`, 1),
@@ -137,6 +140,7 @@ func TestBriefContractLint(t *testing.T) {
 // TestGateFixSaysShC: a brief refused for a gate that needs a shell says to
 // wrap it in sh -c; a stored card is re-linted by the same parser (check).
 func TestGateFixSaysShC(t *testing.T) {
+	t.Parallel()
 	_, err := parseBrief("b1", "tier: pro\nPATHS: a.go\nTEST: t\nDONE-WHEN: `make` ; true\n\nDo it.\n")
 	if f := classify(err); !strings.Contains(f.Fix, "sh -c '...'") || !strings.Contains(f.What, "a backquote is shell syntax") {
 		t.Fatalf("%+v", f)
