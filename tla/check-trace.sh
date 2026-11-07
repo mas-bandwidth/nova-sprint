@@ -19,36 +19,23 @@
 # TLA_CACHE is where the pinned tla2tools.jar is kept (default ~/.cache/nova-sprint).
 set -u
 
-VERSION=v1.8.0
-# This repository's copy of the v1.8.0 jar (release tla-tools-1.8.0): upstream
-# replaced its v1.8.0 asset with a different binary, so the pin is kept here.
-URL="https://github.com/mas-bandwidth/nova-sprint/releases/download/tla-tools-1.8.0/tla2tools.jar"
-SHA256=7a0a1e90628ebff2e3e8733375f8b684fa59504d2e02bddc4cb51a7679bb7e04
-
 [ $# -eq 2 ] || { echo "usage: check-trace.sh <Store|CardMachine> <trace dir>" >&2; exit 2; }
 MODEL="$1"
 TRACE="$(cd "$2" && pwd)" || exit 2
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CACHE="${TLA_CACHE:-$HOME/.cache/nova-sprint}"
-JAR="$CACHE/tla2tools-$VERSION.jar"
+. "$HERE/tla-jar.sh"
 CFG="$TRACE/${MODEL}Trace.cfg"
 # A walk that writes no cfg (the layer 4 walks) is checked with its model's own.
 [ -f "$CFG" ] || [ ! -f "$HERE/${MODEL}Trace.cfg" ] || cp "$HERE/${MODEL}Trace.cfg" "$CFG" || exit 2
 LOGMOD="$TRACE/${MODEL}TraceLog.tla"
 [ -f "$CFG" ] && [ -f "$LOGMOD" ] || { echo "no $CFG or $LOGMOD" >&2; exit 2; }
 
-sha256_of() {
-    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
-    else shasum -a 256 "$1" | cut -d' ' -f1; fi
-}
 JAVA="$HOME/sdk/bin/java"
 [ -x "$JAVA" ] || JAVA="$(command -v java || true)"
 [ -n "$JAVA" ] || { echo "no java on this host" >&2; exit 2; }
-mkdir -p "$CACHE" || exit 2
-if [ ! -f "$JAR" ] || [ "$(sha256_of "$JAR")" != "$SHA256" ]; then
-    curl -fsSL -o "$JAR.part.$$" "$URL" && mv -f "$JAR.part.$$" "$JAR" || { echo "download of $URL failed" >&2; exit 2; }
-fi
-[ "$(sha256_of "$JAR")" = "$SHA256" ] || { echo "tla2tools.jar sha256 mismatch" >&2; rm -f "$JAR"; exit 2; }
+tla_jar_ensure "$CACHE" || exit 2
+JAR="$TLA_JAR"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

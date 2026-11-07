@@ -45,22 +45,11 @@
 # TLA_CACHE is where the pinned tla2tools.jar is kept (default ~/.cache/nova-sprint).
 set -u
 
-VERSION=v1.8.0
-# This repository's copy of the v1.8.0 jar (release tla-tools-1.8.0): upstream
-# replaced its v1.8.0 asset with a different binary, so the pin is kept here.
-URL="https://github.com/mas-bandwidth/nova-sprint/releases/download/tla-tools-1.8.0/tla2tools.jar"
-# The jar's sha256 (the release asset's "digest" in the releases API).
-SHA256=7a0a1e90628ebff2e3e8733375f8b684fa59504d2e02bddc4cb51a7679bb7e04
-
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CACHE="${TLA_CACHE:-$HOME/.cache/nova-sprint}"
-JAR="$CACHE/tla2tools-$VERSION.jar"
+. "$HERE/tla-jar.sh"
+JAR="$CACHE/tla2tools-$TLA_VERSION.jar"
 DRY="${DRY_RUN:-0}"
-
-sha256_of() {
-    if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
-    else shasum -a 256 "$1" | cut -d' ' -f1; fi
-}
 
 find_java() {
     if [ -x "$HOME/sdk/bin/java" ]; then echo "$HOME/sdk/bin/java"; return; fi
@@ -69,21 +58,12 @@ find_java() {
 
 JAVA="$(find_java)"
 if [ "$DRY" = 1 ]; then
-    echo "dry run: would use jar $JAR (sha256 $SHA256) from $URL"
+    echo "dry run: would use jar $JAR (sha256 $TLA_SHA256) from $TLA_URL"
     echo "dry run: java = ${JAVA:-none found}"
 else
     [ -n "$JAVA" ] || { echo "no java on this runner" >&2; exit 1; }
-    mkdir -p "$CACHE" || exit 1
-    if [ ! -f "$JAR" ] || [ "$(sha256_of "$JAR")" != "$SHA256" ]; then
-        curl -fsSL -o "$JAR.part.$$" "$URL" || { echo "download of $URL failed" >&2; exit 1; }
-        mv "$JAR.part.$$" "$JAR" || exit 1
-    fi
-    got="$(sha256_of "$JAR")"
-    if [ "$got" != "$SHA256" ]; then
-        echo "tla2tools.jar sha256 is $got, want $SHA256" >&2
-        rm -f "$JAR"
-        exit 1
-    fi
+    tla_jar_ensure "$CACHE" || exit 1
+    JAR="$TLA_JAR"
 fi
 
 WORK="$(mktemp -d)"
