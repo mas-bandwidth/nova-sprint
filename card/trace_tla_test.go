@@ -109,8 +109,6 @@ func (tr *cardTrace) args(label string, plan Plan) ([]string, error) {
 		return act("SetPriority", "p", p, "lv", quoted(e.Level)), nil
 	case Seen, Gone, Hold, Unhold:
 		return act(name(e), "r", p), nil
-	case Width:
-		return act("Width", "r", p, "n", strconv.Itoa(e.N)), nil
 	}
 	return tr.consumerArgs(subject, slot, head, act)
 }

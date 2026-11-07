@@ -732,7 +732,7 @@ func (w *world) cold4One(rng *rand.Rand) cold4Step {
 		evs := []Event{Take{Row: c.Holder}, Report{Row: c.Holder, Result: res, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
 		return cold4C(c.ID, evs[rng.Intn(len(evs))])
 	case n < 18:
-		e := []Event{Seen{}, Gone{}, Width{N: 1 + rng.Intn(3)}, Hold{Reason: "h"}, Unhold{Reason: "u"}}[rng.Intn(5)]
+		e := []Event{Seen{}, Gone{}, Hold{Reason: "h"}, Unhold{Reason: "u"}}[rng.Intn(4)]
 		return cold4R(row, e)
 	}
 	if w.snap().Streams["s1"].Held {
@@ -980,7 +980,7 @@ func (w *world) cold4Preempt(rng *rand.Rand) []cold4Step {
 	if rng.Intn(4) == 0 {
 		row = []string{"r1", "r2", "r3"}[rng.Intn(3)]
 	}
-	return []cold4Step{cold4C(c.ID, Withdraw{Reason: "preempted by blocker " + b}), cold4P(b, Start{Row: row, Branch: "b-" + b, Base: base})}
+	return []cold4Step{cold4C(c.ID, Withdraw{Reason: "preempted by blocker " + b, Preempt: true}), cold4P(b, Start{Row: row, Branch: "b-" + b, Base: base})}
 }
 
 // cold4ReviewPair is a read cut (AskRead or AskReads) of a producer in

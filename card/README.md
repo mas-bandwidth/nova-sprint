@@ -44,16 +44,22 @@ store's records into the machine's.
 - `MoveAdd(e, cards)`: a new producer or sentinel; `cards` is every card its
   needs and after reach. A card id is at most 104 bytes, so a consumer suffix
   still fits in 128. A need is a producer or a sentinel.
-- `Merge(plans...) (Plan, *Refusal)`: sequential composition. The first plan's
-  writes are applied to a copy of what it read, and each later plan the machine
-  built is run again against that state, one extra move per plan after the
-  first. The merged plan itself runs again the same way, so nested merges
-  compose. Conditions are each plan's, taken on the snapshot it was read on,
-  minus a condition on a field an earlier plan of the op writes (the store
-  checks every condition before any write). A hand-built plan is kept as
-  written. A refusal names the plans and the condition. A second write to one
-  field is still refused. Two AskReads of one head still collide, and that
-  refusal names the plans.
+- `Merge(plans...) (Plan, *Refusal)`: sequential composition of moves. Nested
+  merges flatten to one ordered list, and every move the machine built, the
+  first included, is planned again against the records read before any write
+  of this op, with each earlier move's writes folded in. The merged plan's
+  seen is that pre-write read, so a nested merge composes like the flat list.
+  The last write of a field wins, state included: the store refuses two
+  writes of one field, so a path cannot be replayed inside the op.
+  Merge(Resolve, HoldStream) parks the producer the resolve readied. A later
+  write that would erase a move into working is refused (that write is the
+  store's width check). A write that changes nothing is not emitted.
+  A hand-built plan is folded onto those records, or refused when it writes a
+  card no plan read. Conditions are each plan's, taken on the snapshot it was
+  read on, minus a condition on a field an earlier plan of the op writes (the
+  store checks every condition before any write). A refusal names the plans
+  and the condition. Two AskReads of one head still collide. Two Starts of one
+  producer, or two Adds of one id, name that fix.
 
 Events carry no actor. Who may Unblock, Waive, Relink, SetPriority or WaiveRed
 is layer 3's; the machine does not.
@@ -71,20 +77,22 @@ layer 1 refuses.
   kept for recovery of a store where a withdrawn consumer's producer is still
   working; the normal path never needs it.
 - **Preemption.** The step chooses the consumer, the youngest on the blocker's
-  row; the machine does not. A Withdraw whose reason starts with "preempt"
-  refuses unless that consumer is working. Merged with a blocker's `Start`,
-  the machine also checks the event fields: the starter's priority is
-  `blocker`, and the withdrawn consumer is working on the row `Start` names.
-  A row with no open width is layer 3's. The step merges that consumer's
-  `Withdraw` (which releases its producer) and the blocker's `Start`;
-  sequential Merge composes them.
+  row; the machine does not. `Withdraw{Preempt: true}` refuses unless that
+  consumer is working. The reason text is not that signal. Merged with a
+  blocker's `Start`, the check runs on the flattened moves: the starter's
+  priority is `blocker`, and the withdrawn consumer is working on the row
+  `Start` names. A withdraw without `Preempt` merges with that Start with no
+  such check. A row with no open width is layer 3's. The step merges that
+  consumer's `Withdraw` (which releases its producer) and the blocker's
+  `Start`.
 - **A drop.** When a need fails in the same op that moves its dependants,
   each dependant's `NeedFailed`, `Waive` or `Relink` is planned with
-  `InThisOp: true` and merged with the drop: the need is not yet fail in the
-  snapshot, so the plan carries no CardState condition, and a need that is
-  landed is refused. The caller merges the drop that fails it; a plan with
-  `InThisOp` alone asserts nothing about the need. Relink's `InThisOp`
-  defaults false, and that plan still fences the need as fail.
+  `InThisOp: true` and merged with the drop. The plan fences the need as
+  fail. Merge drops that fence when an earlier move of the op wrote the
+  need to fail, and refuses `InThisOp` otherwise (`merge it with the drop`),
+  including a merge of that plan alone. Applied alone, the fence is still
+  there and the store refuses it. A need that is landed is refused. A lone
+  Move still returns the plan. Relink's `InThisOp` defaults false.
 
 ### The invariant, as the tables keep it
 

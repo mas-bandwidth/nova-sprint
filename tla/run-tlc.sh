@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run TLC on Store.tla (two scenarios) and CardMachine.tla (three scenarios),
+# Run TLC on Store.tla (two scenarios) and CardMachine.tla (seven scenarios),
 # every reversed witness and every reach check, in parallel, one log each
 # under logs/. Run from this directory on a bench host, never on the working
 # machine:  sh run-tlc.sh /path/to/tla2tools.jar [java]
@@ -18,6 +18,9 @@ sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 &
 sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardDeps.cfg CardDeps &
 sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardPreempt.cfg CardPreempt &
 sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardReads.cfg CardReads &
+sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardMerge.cfg CardMerge &
+sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardMergePre.cfg CardMergePre &
+sh "$ONE" "$JAR" "$JAVA" . CardMachine 4 CardMergeDeps.cfg CardMergeDeps &
 for f in "$HERE"/witnesses/*.tla; do
     case "$f" in *_TTrace_*) continue ;; esac   # TLC trace output, not a witness
     sh "$ONE" "$JAR" "$JAVA" witnesses "$(basename "$f" .tla)" 1 &
