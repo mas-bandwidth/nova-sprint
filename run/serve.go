@@ -3,13 +3,14 @@ package run
 import (
 	"context"
 	"errors"
-
+	"fmt"
 	"io"
 	"maps"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/cost"
 	"github.com/mas-bandwidth/nova-sprint/dash"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
@@ -42,6 +43,9 @@ type Config struct {
 	Host          string
 	PID           int
 	ReposDir      string
+	// Reconcile is the hourly provider-balance check (cost.Reconcile; nil:
+	// none), given the beat's time and the snapshot it follows.
+	Reconcile func(ctx context.Context, now time.Time, snap store.Snapshot) error
 }
 
 // Serve is the `run` verb: the chooser lock and the sprint hook, the cold
@@ -64,6 +68,7 @@ type loop struct {
 	log     *WriterLogger
 	mu      sync.Mutex
 	streams map[string]store.Stream
+	hourly  cost.Hourly
 }
 
 func serve(ctx context.Context, cfg Config, h Health) error {
@@ -91,6 +96,7 @@ func serve(ctx context.Context, cfg Config, h Health) error {
 		if err := l.tick(ctx, n); errors.Is(err, ErrLockLost) {
 			return err
 		}
+		l.reconcile(ctx)
 	}
 }
 
@@ -170,6 +176,18 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	}
 	l.log.Log(TickMetrics{Number: n, Seq: snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})
 	return err
+}
+
+// reconcile runs cfg.Reconcile on the first beat and then hourly
+// (cost.Every); a failure is logged and waits for the next hour.
+func (l *loop) reconcile(ctx context.Context) {
+	now := l.cfg.Clock.Now()
+	if l.cfg.Reconcile == nil || !l.hourly.Due(now) {
+		return
+	}
+	if err := l.cfg.Reconcile(ctx, now, l.ticker.Snapshot()); err != nil && l.cfg.Log != nil {
+		fmt.Fprintf(l.cfg.Log, "COST reconcile failed: %v\n", err)
+	}
 }
 
 // present is who is on the bus, by name; a failed read is no one seen.
