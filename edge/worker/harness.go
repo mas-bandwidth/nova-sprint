@@ -294,7 +294,7 @@ func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
 			argv = append(argv, "--read", rp)
 		}
 	}
-	if cfg.NetDeny {
+	if cfg.NetDeny && j.ProxyAddr != "" { // LOCAL DOGFOOD STOPGAP: no proxy route tonight, so the harness reaches its provider directly
 		argv = append(argv, "--net-deny")
 		if j.ProxyAddr != "" {
 			argv = append(argv, "--net-allow", j.ProxyAddr)
