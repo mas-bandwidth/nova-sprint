@@ -90,5 +90,17 @@ func (s *pgChooser) Check(ctx context.Context) error {
 func (s *pgChooser) Close(_ context.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return s.conn.Close(ctx)
+	var unlockErr error
+	if !s.conn.IsClosed() {
+		var released bool
+		unlockErr = s.conn.QueryRow(ctx, "SELECT pg_advisory_unlock($1::integer, $2::integer)", chooserClass, chooserObject).Scan(&released)
+	}
+	closeErr := s.conn.Close(ctx)
+	if unlockErr != nil {
+		return fmt.Errorf("run: release chooser lock: %w", unlockErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("run: close chooser session: %w", closeErr)
+	}
+	return nil
 }
