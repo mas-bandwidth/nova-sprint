@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"unicode"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // ParseDump parses one statement at a time and accepts only matched pg_dump wrappers.
@@ -17,24 +19,25 @@ func ParseDump(r io.Reader, emit func(string) error) error {
 		if len(line) > 0 {
 			state.line++
 			if problem := state.consume(line); problem != nil {
-				return fmt.Errorf("line %d: %w", state.line, problem)
+				return fmt.Errorf("line %d (byte %d): %w; the line starts %q", state.line, state.offset, problem, edge.FirstBytes([]byte(line)))
 			}
+			state.offset += len(line)
 		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return err
+			return edge.Cause(fmt.Sprintf("line %d (byte %d): read", state.line+1, state.offset), err)
 		}
 	}
 	if state.token != "" && !state.closed {
-		return fmt.Errorf("line %d: unclosed restrict wrapper", state.line)
+		return fmt.Errorf("line %d (byte %d, the end): unclosed restrict wrapper", state.line, state.offset)
 	}
 	if state.split.mode != sqlNormal && state.split.mode != sqlLineComment {
-		return fmt.Errorf("line %d: unterminated SQL construct", state.line)
+		return fmt.Errorf("line %d (byte %d, the end): unterminated SQL construct; it starts %q", state.line, state.offset, edge.FirstBytes([]byte(state.split.buf.String())))
 	}
 	if hasSQL(state.split.buf.String()) {
-		return fmt.Errorf("line %d: unterminated SQL statement", state.line)
+		return fmt.Errorf("line %d (byte %d, the end): unterminated SQL statement; it starts %q", state.line, state.offset, edge.FirstBytes([]byte(state.split.buf.String())))
 	}
 	return nil
 }
@@ -44,6 +47,7 @@ type dumpReader struct {
 	token  string
 	closed bool
 	line   int
+	offset int // bytes before the current line
 }
 
 func (d *dumpReader) consume(line string) error {
@@ -58,7 +62,7 @@ func (d *dumpReader) consume(line string) error {
 func (d *dumpReader) directive(line string) error {
 	cmd := strings.Fields(line)
 	if len(cmd) != 2 || !validRestrictToken(cmd[1]) {
-		return fmt.Errorf("unsupported psql directive")
+		return fmt.Errorf("unsupported psql directive (want \\restrict or \\unrestrict and one alphanumeric token)")
 	}
 	switch cmd[0] {
 	case `\restrict`:
@@ -72,7 +76,7 @@ func (d *dumpReader) directive(line string) error {
 		}
 		d.closed = true
 	default:
-		return fmt.Errorf("unsupported psql directive")
+		return fmt.Errorf("unsupported psql directive %q", cmd[0])
 	}
 	return nil
 }
@@ -269,10 +273,10 @@ func (s *sqlSplitter) statement() error {
 	}
 	switch first {
 	case "BEGIN", "COMMIT", "END", "ROLLBACK", "ABORT", "SAVEPOINT", "RELEASE", "COPY":
-		return fmt.Errorf("unsupported transaction or COPY statement")
+		return fmt.Errorf("unsupported transaction or COPY statement %s", first)
 	}
 	if len(words) > 1 && ((first == "START" && words[1] == "TRANSACTION") || (first == "PREPARE" && words[1] == "TRANSACTION") || (first == "SET" && (words[1] == "TRANSACTION" || words[1] == "SESSION"))) {
-		return fmt.Errorf("unsupported transaction statement")
+		return fmt.Errorf("unsupported transaction statement %s %s", first, words[1])
 	}
 
 	s.statements++

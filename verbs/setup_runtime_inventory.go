@@ -74,10 +74,10 @@ func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 // swarm seat for each configured bench. Public pull hosts receive no DSN.
 func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) ([]SprintSeat, error) {
 	if !fleetName.MatchString(run.Machine) || !fleetName.MatchString(run.Seat) {
-		return nil, fmt.Errorf("run seat unavailable")
+		return nil, fmt.Errorf("run seat unavailable: sprint-run machine %q seat %q is not a fleet name", Redact(run.Machine), Redact(run.Seat))
 	}
 	if publicHost != "" && publicHost == run.Machine {
-		return nil, fmt.Errorf("public dashboard host cannot hold the sprint credential")
+		return nil, fmt.Errorf("public dashboard host cannot hold the sprint credential: %s also runs sprint-run", publicHost)
 	}
 	seats := []SprintSeat{{Seat: run.Seat, Machine: run.Machine}}
 	seen := map[string]bool{run.Seat + "\x00" + run.Machine: true}
@@ -85,7 +85,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 	for _, machine := range machines {
 		if machine.Name == run.Machine {
 			if !slices.Contains(machine.Roles, "services") {
-				return nil, fmt.Errorf("run host lacks services role")
+				return nil, fmt.Errorf("run host %s lacks services role (roles %s)", machine.Name, strings.Join(machine.Roles, ","))
 			}
 			found = true
 		}
@@ -97,7 +97,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 		}
 		seat := machine.Name
 		if !fleetName.MatchString(seat) {
-			return nil, fmt.Errorf("bench seat unavailable")
+			return nil, fmt.Errorf("bench seat unavailable: machine %q is not a fleet name", Redact(seat))
 		}
 		key := seat + "\x00" + machine.Name
 		if !seen[key] {
@@ -106,7 +106,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("run host absent from inventory")
+		return nil, fmt.Errorf("run host %s absent from inventory of %d machines", run.Machine, len(machines))
 	}
 	return seats, nil
 }
