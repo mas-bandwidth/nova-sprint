@@ -108,9 +108,6 @@ func heldBy(snap store.Snapshot, ro roster.Roster, row, id string, gen int) (sto
 	if !ok {
 		return c, refuse("row "+row+" is not in nova-config", "add it to nova-config (nova-config friend add, or a bench machine), then take again")
 	}
-	if c.Model == "" { // dealt before the deal named models: never invented here
-		return c, refuse(id+" was dealt with no model", "nova-sprint release "+fmtCard(id, gen)+" --as "+row+" --reason \"dealt with no model\"; the next deal names one")
-	}
 	if !slices.Contains(tiers, c.Tier) {
 		return c, refuse(fmt.Sprintf("row %s does not serve tier %s", row, c.Tier), "nova-sprint release "+fmtCard(id, gen)+" --as "+row+" --reason \"tier "+c.Tier+" not served\"")
 	}

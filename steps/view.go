@@ -90,8 +90,17 @@ func (v *View) reset(epoch int) {
 }
 
 // Acked says whether consumer c's row has acknowledged it (its take wrote
-// AckCursor(c) in this epoch).
-func (v *View) Acked(c string) bool { _, ok := v.acks[AckCursor(v.Epoch, c)]; return ok }
+// AckCursor(c) in this epoch). A consumer with no model was dealt before
+// the deal named models and before take wrote the cursor (the line before
+// v2.0.1): its row has it in hand already, so it counts as acknowledged and
+// is never nudged or dealt again. Every deal since names a model (named).
+func (v *View) Acked(c string) bool {
+	if v.Cards[c].Model == "" {
+		return true
+	}
+	_, ok := v.acks[AckCursor(v.Epoch, c)]
+	return ok
+}
 
 // Fold advances the view by events, in seq order: an accepted event lays its
 // after-images over the records and the indexes follow; a clear starts the

@@ -102,6 +102,31 @@ func TestHandReadyTakeRedeals(t *testing.T) {
 	assert.NotEqual(t, slow, s.card("p1.w2").Holder, "the slow row is excluded")
 }
 
+// TestHandModellessIsAcked: the live store at the upgrade to v2.0.1 (PR
+// 641 F2): a consumer the line before dealt is working with no model and
+// no take cursor, which that line never wrote. It counts as acknowledged:
+// past ready_take, with another row with room, it is neither nudged,
+// withdrawn nor judged, and stays in its row's hand.
+func TestHandModellessIsAcked(t *testing.T) {
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.move(s.plan("p1", card.Resolve{}))
+	s.move(s.plan("p1", card.Start{Row: "r1", Branch: "sprint/s1/p1", Base: base})) // the old deal: no model
+	require.Equal(t, []string{"p1.w1"}, s.unacked(), "no take cursor")
+	require.Empty(t, s.card("p1.w1").Model)
+	s.now = s.now.Add(2 * seconds(Engine.Timeouts.ReadyTake))
+	p := s.tick()
+	require.Empty(t, s.rejected)
+	assert.Empty(t, p.Nudges)
+	assert.Empty(t, s.tickOps(), "nothing withdrawn or dealt again")
+	assert.Empty(t, s.openJudgements("unacked"))
+	s.requireState("p1.w1", "working")
+	assert.Equal(t, "r1", s.card("p1.w1").Holder)
+}
+
 // TestHandUndealtJudged: a ready producer left undealt past UndealtAfter
 // while a serving row has room opens one undealt judgement naming the row,
 // the card and the cause. Here the tick budget (1 card) is spent each tick

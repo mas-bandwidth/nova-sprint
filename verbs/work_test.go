@@ -53,6 +53,15 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"inception/mercury-3"`)
 }
 
+// A consumer dealt before v2.0.1 has no model and is working in its row's
+// hand: take does not refuse it (PR 641 F2).
+func TestTakeModelless(t *testing.T) {
+	runCases(t, []tcase{
+		{name: "dealt with no model", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 0, snap: setCard("p1.w1", func(c *store.Card) { c.Model = "" }),
+			want: []string{"TAKEN p1.w1"}},
+	})
+}
+
 func TestTakeRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "no gen", as: "alice", args: []string{"take", "p1.w1"}, exit: 2, want: []string{"<card>@<gen>"}},
@@ -71,8 +80,6 @@ func TestTakeRefusals(t *testing.T) {
 			},
 			want: []string{"row alice does not serve tier pro", "nova-sprint release p1.w1@1 --as alice"}},
 		{name: "another row's acknowledgement", as: "bob", args: []string{"take", "p1.w1@1"}, exit: 1, prep: takeW1, want: []string{"p1.w1 is not dealt to this row", "nova-sprint next --as bob"}},
-		{name: "dealt with no model", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.Model = "" }),
-			want: []string{"p1.w1 was dealt with no model", `nova-sprint release p1.w1@1 --as alice --reason "dealt with no model"`}},
 		{name: "dealt before the deal was the take", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State = "ready" }),
 			want: []string{"the next tick withdraws it and deals it again, in hand"}},
 		{name: "a finished card", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State, c.Reason = "done", "" }),
