@@ -61,7 +61,9 @@ func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []ca
 		if err := cardLint(f, ro); err != nil {
 			out[f.ID] = err
 		} else if err := serr[f.Stream]; err != nil {
-			out[f.ID] = err
+			named := admissionWhat(f.Stream, err)
+			named.What = "card " + f.ID + ": " + named.What
+			out[f.ID] = named
 		} else if err := e.cardAtBase(ctx, streams[f.Stream], f); err != nil {
 			out[f.ID] = err
 		}
