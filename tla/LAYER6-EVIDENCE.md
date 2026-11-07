@@ -4,6 +4,10 @@ Written alongside layer 6 from v2 `2432fd0e`, on branch `v2-l6-models`.
 A model result does not establish an implementation commit, runtime gate,
 or completion of layer 6.
 
+The original seventeen cases below exclude Clear. The cancellation refinement
+and later setup/source correspondence are in [LAYER6-CLEAR-EVIDENCE.md](LAYER6-CLEAR-EVIDENCE.md);
+they qualify delivery across epochs without changing this original evidence.
+
 ## Scope and boundaries
 
 `Run.tla` composes chooser, delegated L3 scheduling, store contract, and pusher.
