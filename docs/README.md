@@ -24,12 +24,12 @@ are all required.
 
 ## The layers
 
-1. [The store](LAYER-1-STORE.md): PostgreSQL, one transaction per operation, every operation logged. **Locked 2026-11-06 at 81bc9c24**: 12 rounds, 6 cold reads, the three friends at 10/10, the model at 47 runs; see "What the lock approves" in the design. **Re-locked 2026-11-06 at 18edc1da** after rounds 13 to 16 (the performance rounds, the seventh cold read, the receipt image copy and the index trim): Stella, Emma and Johnny each LOCK at that head from a fresh clone with the store suite under race on PostgreSQL 18. Round 17 (the `red` column for layer 2) reopens it for that one column and re-locks the same way.
+1. [The store](LAYER-1-STORE.md): PostgreSQL, one transaction per operation, every operation logged. **Locked 2026-11-06 at 81bc9c24**: 12 rounds, 6 cold reads, the three friends at 10/10, the model at 47 runs; see "What the lock approves" in the design. **Re-locked 2026-11-06 at 18edc1da** after rounds 13 to 16 (the performance rounds, the seventh cold read, the receipt image copy and the index trim): Stella, Emma and Johnny each LOCK at that head from a fresh clone with the store suite under race on PostgreSQL 18. Round 17 (the `red` column for layer 2) reopened it for that one column; **re-locked 2026-11-06 at 1894ced3**: Stella, Emma and Johnny each LOCK at that head the same way (Store model 194 runs). Rounds 18 to 21 (read-only: `CheckSchema`, `NewFakeFrom`, `RestoreBegin`/`RestoreEnd`, `ValidateHistory`; no schema or model change) landed after it; Johnny, Stella and Emma LOCK at ddee4495 (2026-11-07; Emma from a fresh clone on vision under nova-reserve, PostgreSQL 18).
 2. [The card machine](LAYER-2-CARD-MACHINE.md): the states of one card and the legal moves between them.
-3. The steps: one legal move each, a pure function from snapshot and request to plan or refusal.
-4. The edges: nova-bus, git and GitHub, and the worker runner: a service per bench in the shape nova-swarm already proved (a slot from nova-reserve, nova-sandbox, a worktree per card), dealt over the bus (Glenn 2026-11-06: "you need actual runners ... that was pretty reliable already").
-5. Policy: Starlark scripts, versioned in the store, changed during a sprint.
-6. Run, worker, verbs, the dashboard, and setup: `nova-sprint up` ships the setup in [SETUP.md](SETUP.md) as part of the tool.
+3. [The steps](LAYER-3-STEPS.md): one legal move each, a pure function from snapshot and request to plan or refusal. Design approved by Glenn 2026-11-06 ("This is fine. Go"), with 4, 5 and 6.
+4. [The edges](LAYER-4-EDGES.md): nova-bus, git and GitHub, and the worker runner: a service per bench in the shape nova-swarm already proved (a slot from nova-reserve, nova-sandbox, a worktree per card), dealt over the bus (Glenn 2026-11-06: "you need actual runners ... that was pretty reliable already").
+5. [Policy](LAYER-5-POLICY.md): Starlark scripts, versioned in the store, changed during a sprint.
+6. [Run, worker, verbs, the dashboard, and setup](LAYER-6-RUN.md): `nova-sprint up` ships the setup in [SETUP.md](SETUP.md) as part of the tool.
 
 Landing, approved 2026-11-06: [LANDING.md](LANDING.md). The card contract the lint enforces: [CARD-CONTRACT.md](CARD-CONTRACT.md). The hard-earned rules of v1 (priority, merge, tiers) are gathered in [LESSONS-PRIORITY-AND-MERGE.md](LESSONS-PRIORITY-AND-MERGE.md) as they are extracted.
 
