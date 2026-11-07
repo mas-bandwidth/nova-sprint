@@ -611,12 +611,15 @@ function renderReaders(d) {
 }
 
 function renderHero(d, s, ft) {
+  var stopBanner = $("stop-banner");
+  stopBanner.hidden = !d.stopped;
+  $("stop-reason").textContent = d.stopped ? String(d.stop_reason || "") : "";
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
   setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)
   var pctSuffix = $("pct-suffix"); if (pctSuffix) pctSuffix.style.display = all ? "" : "none"; var ofAll2 = $("of-all2"); if (ofAll2) ofAll2.style.display = all ? "" : "none"; // an empty sprint says only "not started" (the owner ~01:22Z)
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
-  var machineStopped = /STOPPED/.test(String(d.machine || "")) && !(d.done);
+  var machineStopped = !!d.stopped || /STOPPED/.test(String(d.machine || ""));
   if (machineStopped) { setHTML($("eta"), "<span class=\"eta-stopped\">STOP</span>"); /* STOP at every width (the owner ~01:32Z: "cleaner") */ etaAtLast = null; setText($("eta-at"), "\u00a0"); } /* the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red" */
   else if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -641,7 +644,7 @@ function renderHero(d, s, ft) {
   setText($("tput"), throughput == null ? "\u2014" : String(Math.round(throughput)));
   setTitle($("tput"), throughput == null ? "needs ten minutes of samples" : "over the last " + Math.round(throughputMinutes) + " min");
   
-  setMachine(d.machine || (cacheHealthy ? "running" : ""));
+  setMachine(d.stopped ? "STOPPED" : (d.machine || (cacheHealthy ? "running" : "")));
   setText($("coord"), d.coordinator || "-"); $("coord-chip").hidden = false;
   // the running sprint server's version (server.py reads it from the process; absent when unknown) and the epoch (the owner ~01:20Z)
   var vc = $("ver-chip"); if (vc) { vc.hidden = !d.server_version; if (d.server_version) setText($("ver"), d.server_version); }
@@ -917,7 +920,7 @@ function accept(j) {
   ageAt = performance.now();
   cacheHealthy = !!j.ok && isFinite(lastAge) && lastAge < 2;
   var d = j.tables ? j : j.data;
-  lastMachine = d && d.machine || "";
+  lastMachine = d && d.stopped ? "STOPPED" : (d && d.machine || "");
   setMachine(lastMachine || (cacheHealthy ? "running" : ""));
   if (j.build) { if (build == null) build = j.build; else if (build !== j.build) { try { sessionStorage.setItem("dash-scroll", String(window.scrollY)); } catch (e) {} location.reload(); return; } }
   if (!d || !d.tables) return;
