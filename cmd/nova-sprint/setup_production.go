@@ -607,6 +607,7 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	}
 	return rows, nil
 }
+
 // serviceConfigFailure is err when it already is a refusal with its own
 // problem and fix (errors.As), else a service configuration refusal
 // carrying err's text after what.
@@ -1069,6 +1070,7 @@ func (p productionSetup) runAddress(ctx context.Context, address string) string 
 func isTailnetIP(ip netip.Addr) bool {
 	return netip.MustParsePrefix("100.64.0.0/10").Contains(ip) || netip.MustParsePrefix("fd7a:115c:a1e0::/48").Contains(ip)
 }
+
 // publicDashboardTarget is the board for --dash public=<machine>[:<port>]:
 // the machine by its nova-config name, its public address (nova-config's
 // optional machine field "public"; fleet addresses are MagicDNS names by
