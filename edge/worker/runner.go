@@ -293,7 +293,18 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 }
 func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSummary, rec JobRecord) error {
 	jobDir := filepath.Join(r.RootDir, "jobs", w.ID)
-	if rec.State == JobCleaned || rec.State == JobRecorded || rec.State == JobTaken || rec.State == JobStaged {
+	if rec.State == JobCleaned || rec.State == JobRecorded {
+		return nil
+	}
+	if rec.State == JobTaken || rec.State == JobStaged {
+		// Defect 70: a job taken or staged but never run (the runner went down
+		// in between) was skipped here and sat "working" forever with no
+		// process. "No slot within the wait is no start yet, never a failure"
+		// holds for a fresh one; one still not running after the grace is the
+		// runner's fault: report it so the card deals again.
+		if rec.StartedAt > 0 && r.Now().Unix()-rec.StartedAt > int64(2*time.Minute/time.Second) {
+			return r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "restart: job "+rec.State+" but never run")
+		}
 		return nil
 	}
 	if rec.State == JobHarvested && rec.Outcome.Result == "ok" && rec.Kind == "work" {
