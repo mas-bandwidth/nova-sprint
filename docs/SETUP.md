@@ -11,6 +11,9 @@ PostgreSQL, Ansible, the tools on every machine (`nova-fleet check`, the
 human's one paste of the Tailscale API token, `nova-fleet up`). Nothing in
 nova-sprint works without that fleet, and nothing in nova-sprint repeats it.
 
+The store is PostgreSQL 16 or newer (`up` refuses an older server by its
+version), and `pg_dump` on PATH is at least the server's major version.
+
 ## 2. Then: where does the dashboard run?
 
 Once the fleet is up, the next question to the human is where they want the
