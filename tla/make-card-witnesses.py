@@ -244,9 +244,10 @@ WITNESSES = [
      [("     IN /\\ PreemptGuard(pw2, bs2)\n",
        "     IN /\\ TRUE   \\* FAULT: was PreemptGuard(pw2, bs2)\n", 1)]),
     # Round 7 (the rulings after the fifth cold read).
-    ("CardDottedId", "IdsDistinct", "deps",
-     "Add takes an id with a dot: the sentinel p1.w1 is added, and p1's\n"
-     "first work consumer is cut under the same id (ruling 1).",
+    ("CardDottedId", "NeverStranded", "deps",
+     "Add takes an id with a dot: the sentinel p1.w1 is added before p1\n"
+     "starts, and p1's first work consumer can never be cut under its id\n"
+     "(fenced absent), so p1 is stranded in ready (ruling 1).",
      [("  /\\ p \\notin Dotted   \\* round 7, ruling 1: an id may not contain \".\"\n",
        "  /\\ TRUE   \\* FAULT: was p \\notin Dotted\n", 1)]),
     ("CardInThisOpAlone", "InThisOpOnFailedNeed", "mergedeps",
