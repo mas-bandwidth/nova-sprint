@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"os"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -71,6 +72,11 @@ type (
 )
 
 func ReadProviderKey(ex edge.Exec, secretsBin, name string) string {
+	// LOCAL DOGFOOD STOPGAP: the worker runs under nova-secrets exec, so the
+	// key is in its own environment; nova-tools v2 has no `get` verb.
+	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+		return v
+	}
 	res, err := cmp.Or[edge.Exec](ex, edge.NewOSExec()).Run(context.Background(), edge.Cmd{
 		Argv: []string{cmp.Or(secretsBin, "nova-secrets"), "get", name}, CleanEnv: true, Timeout: 5 * time.Second,
 	})

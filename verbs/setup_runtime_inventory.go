@@ -89,9 +89,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 			}
 			found = true
 		}
-		if machine.Name == publicHost && slices.Contains(machine.Roles, "bench") {
-			return nil, &OperationError{Problem: "public dashboard host is also a bench", Fix: "remove the bench role from " + machine.Name, Exit: 1}
-		}
+
 		if machine.Name == publicHost || !slices.Contains(machine.Roles, "bench") {
 			continue
 		}

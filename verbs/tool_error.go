@@ -64,7 +64,7 @@ func ToolDetail(err error) string {
 	return ""
 }
 
-const stderrLineMax = 200
+const stderrLineMax = 2000
 
 var (
 	// A token that looks like a key: an age secret key, a known token
@@ -80,13 +80,15 @@ var (
 // assignments, URL credentials, key-like tokens; and absolute paths cut to
 // their base name (a home directory names a person).
 func StderrLine(stderr []byte) string {
+	// LOCAL DIAGNOSTIC: every non-empty stderr line, joined; the last line alone hid initdb's reason.
 	lines := strings.Split(strings.TrimSpace(string(stderr)), "\n")
-	line := ""
-	for i := len(lines) - 1; i >= 0; i-- {
-		if line = strings.TrimSpace(lines[i]); line != "" {
-			break
+	kept := []string{}
+	for _, l := range lines {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "SECRETS EXEC STARTING") {
+			kept = append(kept, l)
 		}
 	}
+	line := strings.Join(kept, " | ")
 	if line == "" {
 		return ""
 	}

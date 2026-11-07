@@ -150,6 +150,18 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 			fleet[n] = f
 		}
 	}
+	// LOCAL DOGFOOD PATCH (Glenn 2026-11-07 "we definitely need all that stuff back"):
+	// every roster row is on the board, down until the store knows it hooked.
+	for n, w := range ros.Workers {
+		if _, ok := fleet[n]; !ok {
+			fleet[n] = &fleetRow{Status: "down", Width: w.Width}
+		}
+	}
+	for n, k := range ros.Kin {
+		if _, ok := friends[n]; !ok {
+			friends[n] = &fleetRow{Status: "down", Width: k.Width}
+		}
+	}
 }
 func countRead(readers map[string]numberCells, c store.Card) {
 	if c.Holder == "" || (c.State != "ready" && c.State != "working" && !(c.State == "done" && (c.Result == "ok" || c.Result == "fix"))) {

@@ -101,7 +101,7 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 		if !install && errors.As(err, &pe) && pe.Code == "28P01" {
 			return false, nil
 		}
-		return false, fmt.Errorf("sprint store unavailable")
+		return false, fmt.Errorf("sprint store unavailable: %w", err)
 	}
 	defer pg.Close()
 	ok, err := ensureStoreSchema(ctx, pg, install)
@@ -117,15 +117,15 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 		return ok, nil
 	}
 	if err = os.MkdirAll(dir, 0700); err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, fmt.Errorf("backup directory unavailable: %w", err)
 	}
 	attempt, err := os.MkdirTemp(dir, "attempt-")
 	if err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, fmt.Errorf("backup directory unavailable: %w", err)
 	}
 	if _, err = archive.Backup(ctx, attempt); err != nil {
 		_ = os.Remove(attempt) // only removes an empty attempt, never evidence
-		return false, fmt.Errorf("first backup failed")
+		return false, fmt.Errorf("first backup failed: %w", err)
 	}
 	return verifiedFirstBackup(ctx, pg, archive, dir)
 }
@@ -181,11 +181,11 @@ func sprintDSN(dsn string) (string, error) {
 func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, dir string) (bool, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "sprint-e*-s*.sql"))
 	if err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, fmt.Errorf("backup directory unavailable: %w", err)
 	}
 	attempts, err := filepath.Glob(filepath.Join(dir, "attempt-*", "sprint-e*-s*.sql"))
 	if err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, fmt.Errorf("backup directory unavailable: %w", err)
 	}
 	files = append(files, attempts...)
 	id, err := pg.Schema(ctx)
@@ -194,7 +194,7 @@ func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, d
 	}
 	snap, err := pg.Snapshot(ctx)
 	if err != nil {
-		return false, fmt.Errorf("store snapshot unavailable")
+		return false, fmt.Errorf("store snapshot unavailable: %w", err)
 	}
 	for _, file := range files {
 		info, err := archive.Verify(ctx, file)
@@ -209,7 +209,7 @@ func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, d
 		}
 		digest, err := EventPrefixDigest(ctx, pg, info.Seq)
 		if err != nil {
-			return false, fmt.Errorf("event history unavailable")
+			return false, fmt.Errorf("event history unavailable: %w", err)
 		}
 		if digest == info.PrefixDigest {
 			return true, nil

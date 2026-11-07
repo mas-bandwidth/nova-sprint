@@ -40,14 +40,17 @@ func dashboardGet(ctx context.Context, client *http.Client, base *url.URL, path 
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, errDashboardReach
+		return false, fmt.Errorf("%w: GET %s: %v", errDashboardReach, target.String(), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return false, nil
+		return false, fmt.Errorf("GET %s: HTTP %d", target.String(), resp.StatusCode)
 	}
 	if check != nil {
-		return check(resp), nil
+		if !check(resp) {
+			return false, fmt.Errorf("GET %s: body or headers not as the dashboard contract requires (ETag=%q Cache-Control=%q)", target.String(), resp.Header.Get("ETag"), resp.Header.Get("Cache-Control"))
+		}
+		return true, nil
 	}
 	return true, nil
 }
@@ -55,12 +58,15 @@ func dashboardBody(resp *http.Response, epoch int, public bool) bool {
 	if public && (resp.Header.Get("ETag") == "" || !dashboardCache(resp.Header.Values("Cache-Control"))) {
 		return false
 	}
+	// LOCAL DIAGNOSTIC: the dashboard's /api/sprint envelope is {build, data:{epoch,...}, attemptAt,...}
+	// (dash/server.go payload), not {ok, epoch}; decode the shape the dash really serves.
 	var body struct {
-		OK    bool `json:"ok"`
-		Epoch int  `json:"epoch"`
+		Data struct {
+			Epoch int `json:"epoch"`
+		} `json:"data"`
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
-	return err == nil && len(data) <= 4<<20 && json.Unmarshal(data, &body) == nil && body.OK && body.Epoch == epoch
+	return err == nil && len(data) <= 4<<20 && json.Unmarshal(data, &body) == nil && body.Data.Epoch == epoch
 }
 func dashboardCache(headers []string) bool {
 	maxAge := false
