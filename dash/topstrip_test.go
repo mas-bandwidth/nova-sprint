@@ -150,7 +150,7 @@ func TestCostSummaryNothingPricedIsDashNotZero(t *testing.T) {
 }
 
 // Landed cards no run of which carried a cost are not in the per-card divisor.
-func TestPerCardDividesByPricedLandedCards(t *testing.T) {
+func TestPerCardDividesByEveryLandedCard(t *testing.T) {
 	s := store.Snapshot{Cards: map[string]store.Card{
 		"p1":   {ID: "p1", Kind: "producer", State: "landed"},
 		"p2":   {ID: "p2", Kind: "producer", State: "landed"}, // landed, its runs unpriced
@@ -163,7 +163,7 @@ func TestPerCardDividesByPricedLandedCards(t *testing.T) {
 		"p2.r": {ID: "p2.r", Kind: "read", Of: "p2", State: "done", Tier: "pro"},
 	}}
 	c := summarizeCost(s)
-	if c.Total != "$6.00" || c.Landed != 3 || c.PricedCards != 2 || c.PerCard != "$3.00" || c.Unpriced != 2 {
+	if c.Total != "$6.00" || c.Landed != 3 || c.PricedCards != 2 || c.PerCard != "$2.00" || c.Unpriced != 2 {
 		t.Fatalf("%+v", c)
 	}
 }
