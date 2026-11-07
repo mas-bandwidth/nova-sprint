@@ -16,8 +16,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Every invariant of the passing runs, in cfg order.
 INVARIANTS = [
     "TypeOK", "SingleStateSingleHolder", "ProducerNeverHeld", "ConsumersWellFormed",
-    "WidthKept", "IdempotentById", "AppliedIsLog", "LogMatchesState", "OpsInTheirEpoch",
-    "ConditionsAtomic", "ServesHeld", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
+    "IdempotentById", "AppliedIsLog", "LogMatchesState", "OpsInTheirEpoch",
+    "ConditionsAtomic", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
     "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "CursorWithinLog",
     "LogAppendOnly", "PolicyImmutable", "ReceiptMatches", "RedOnlyOnProducers",
 ]
@@ -32,27 +32,17 @@ REACH = {
     "NeverStaleEpochRefused": ("deal", "an op planned against a closed epoch is refused"),
     "NeverNeedsReady": ("deal", "a card whose needs landed becomes ready (s9)"),
     "NeverNewEpochOp": ("deal", "an op in the new epoch is accepted (k2)"),
-    "NeverWidthFull": ("deal", "a row holds width working cards"),
-    "NeverWidthLowered": ("deal", "a width is lowered (e1)"),
-    "NeverWidthRefused": ("deal", "a width below the working holders is refused (e1)"),
-    "NeverInOpWidthRefused": ("deal", "an op is refused on its own second work entry (s10)"),
+    "NeverTwoWorking": ("deal", "the store takes two working consumers on one row (a1, b2): width is the roster's"),
     "NeverProducerRefused": ("deal", "a producer added with a holder is refused (s3)"),
     "NeverSentinelRefused": ("deal", "a sentinel added with a holder is refused (s4)"),
     "NeverHeldCarried": ("deal", "a row's hold survives the clear"),
-    "NeverWorkEntryRefused": ("deal", "a held card going working on a full row is refused (b2)"),
-    "NeverQueuedPastWidth": ("deal", "a row holds a ready consumer past its width (r1)"),
     "NeverHeldRefused": ("deal", "a deal is refused on RowHeld after a hold (a1)"),
-    "NeverReadyServesRefused": ("deal", "a move into ready on a row that no longer serves the tier is refused (s15)"),
-    "NeverAddServesRefused": ("deal", "put card of a consumer on a row that does not serve its tier is refused (s16)"),
-    "NeverTiersRefused": ("deal", "dropping a tier a live consumer needs is refused (v1)"),
-    "NeverSameValueRefused": ("deal", "a set write that changes nothing is refused (s17)"),
-    "NeverTwoPolicies": ("deal", "a second policy version is put beside the first (s19)"),
-    "NeverSameTiersRefused": ("deal", "a tiers write equal to the row's set is refused (s20)"),
-    "NeverRed": ("deal", "a producer is set red (s21)"),
-    "NeverRedKindRefused": ("deal", "a red write on a consumer (s22) and on a sentinel (s23) is refused"),
-    "NeverSameRedRefused": ("deal", "a red write equal to the producer's flag is refused (s24)"),
+    "NeverRowDown": ("deal", "a fenced row state write is accepted (e1)"),
+    "NeverTwoPolicies": ("deal", "a second policy version is put beside the first (s13)"),
+    "NeverRed": ("deal", "a producer is set red (s14)"),
+    "NeverRedKindRefused": ("deal", "a red write on a consumer (s15) and on a sentinel (s16) is refused"),
+    "NeverSameRedRefused": ("deal", "a red write equal to the producer's flag is refused (s17)"),
     "NeverRowFenced": ("deal", "a row write is refused on a stale RowGen (e1)"),
-    "NeverSlotReused": ("deal", "a done consumer's slot is reused while it keeps its holder (b2)"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
     "NeverJudgementFenced": ("records", "a second close of a judgement is refused on JudgementOpen"),
     "NeverCursorRefused": ("records", "a cursor write below the current value is refused (m2)"),
@@ -164,62 +154,12 @@ WITNESSES = [
     ("StoreEpochUnfenced", "OpsInTheirEpoch", "deal",
      "Ops other than clear are not checked against the store's epoch, so an\n"
      "op planned against epoch 1 arriving after the clear lands in epoch 2\n"
-     "(v1 sets r1's tiers in epoch 2).",
+     "(e1 sets r1 down in epoch 2).",
      [("  IF Ops[o].epoch # st.epoch THEN [acc |-> FALSE, st |-> st]\n"
        "  ELSE IF Ops[o].kind = \"clear\"",
        "  \\* FAULT: only the clear is fenced by epoch.\n"
        "  IF Ops[o].kind = \"clear\" /\\ Ops[o].epoch # st.epoch THEN [acc |-> FALSE, st |-> st]\n"
        "  ELSE IF Ops[o].kind = \"clear\"", 1)]),
-    ("StoreWidthStale", "WidthKept", "deal",
-     "Apply is two steps, and the width check (count and width) is read\n"
-     "on the snapshot Begin took, plus this op's own writes: a1 begins,\n"
-     "e1 lowers r1's width to 0, and a1 lands u1 working on the stale\n"
-     "width 1.",
-     STALE_INFRA + [
-         ("Room(st, r, c, L) == Cardinality(CountedIn(st, r, L) \\ {c}) < st.rows[r].width\n",
-          "\\* FAULT: counted on the snapshot, plus the working holders this op added.\n"
-          "Room(st, r, c, L) ==\n"
-          "  IF \"sn\" \\in DOMAIN st\n"
-          "  THEN Cardinality(CountedIn(st.sn, r, L) \\ {c})\n"
-          "         + Cardinality((CountedIn(st, r, L) \\ CountedIn(st.p0, r, L)) \\ {c})\n"
-          "       < st.sn.rows[r].width\n"
-          "  ELSE Cardinality(CountedIn(st, r, L) \\ {c}) < st.rows[r].width\n", 1)]),
-    ("StoreWidthUnchecked", "WidthKept", "deal",
-     "Put row and set row width accept any width, whatever the row holds:\n"
-     "a1 deals u1 working to r1, then e1 lowers r1's width to 0 and is\n"
-     "accepted.",
-     [("                              /\\ st.rows[w.r].state = Absent \\/ w.w >= Cardinality(CountedIn(st, w.r, L))\n"
-       "                              /\\ st.rows[w.r].state = Absent \\/ TiersFit(st, w.r, w.n)\n"
-       "    [] w.k = \"setRowWidth\" -> st.rows[w.r].state # Absent /\\ w.w >= Cardinality(CountedIn(st, w.r, L))\n",
-       "                              /\\ st.rows[w.r].state = Absent \\/ TiersFit(st, w.r, w.n)\n"
-       "    \\* FAULT: any width is accepted, whatever the row holds.\n"
-       "    [] w.k = \"setRowWidth\" -> st.rows[w.r].state # Absent\n", 1)]),
-    ("StoreWidthPerOp", "WidthKept", "deal",
-     "The work-entry check counts the row's working holders as at the start\n"
-     "of the op, not at the moment of the write: s10 makes two consumers\n"
-     "working on the width-1 row r2 in one op and is accepted.",
-     [("RECURSIVE SpecRun(_, _)\n",
-       "\\* FAULT: the work-entry count is read in pre, the state before the op.\n"
-       "PreLegal(pre, st, w) ==\n"
-       "  IF w.k = \"setState\"\n"
-       "  THEN LET card == st.cards[w.c]\n"
-       "       IN /\\ Exists(st, w.c)\n"
-       "          /\\ w.s \\in CardStates\n"
-       "          /\\ w.s # card.state\n"
-       "          /\\ ServesOK(st, w)\n"
-       "          /\\ (w.s \\in Counted /\\ card.state \\notin Counted /\\ card.holder # NoHolder)\n"
-       "               => Room(pre, card.holder, w.c, Counted)\n"
-       "  ELSE RuleLegal(st, w, Counted)\n"
-       "\n"
-       "RECURSIVE RunPre(_, _, _)\n"
-       "RunPre(pre, st, ws) ==\n"
-       "  IF ws = <<>> THEN [ok |-> TRUE, st |-> st]\n"
-       "  ELSE IF PreLegal(pre, st, Head(ws)) THEN RunPre(pre, Do(st, Head(ws)), Tail(ws))\n"
-       "  ELSE [ok |-> FALSE, st |-> st]\n"
-       "\n"
-       "RECURSIVE SpecRun(_, _)\n", 1),
-      ("  LET r == Run(st, ws)\n",
-       "  LET r == RunPre(st, st, ws)   \\* FAULT\n", 1)]),
     ("StoreProducerHolds", "ProducerNeverHeld", "deal",
      "Add card does not refuse a holder on a producer (or a sentinel): s3\n"
      "adds producer p1 held by r1 and is accepted.",
@@ -230,39 +170,26 @@ WITNESSES = [
      "on kind == producer): s4 adds sentinel t1 held by r1 and is accepted.",
      [("                                      /\\ w.r = NoHolder\n",
        "                                      /\\ (w.kd = \"producer\" => w.r = NoHolder)   \\* FAULT: sentinels pass\n", 1)]),
-    ("StoreWidthCountsDone", "NoSpuriousRefusal", "deal",
-     "The store's width count also counts done and fail holders (the design:\n"
-     "they keep their holder and do not count): once u1 is done on r1, e1\n"
-     "lowering r1's width to 0 is refused although r1 holds no working card.\n"
-     "(b2 making u2 working on r1 is refused the same way.) The\n"
-     "design's rule (SpecLegal) counts working only, so the refusal has no\n"
-     "cause in the spec: an invariant, NoSpuriousRefusal, not a reach check.",
-     [("Legal(st, w)     == RuleLegal(st, w, Counted)\n",
-       "\\* FAULT: done and fail holders are counted too.\n"
-       "Legal(st, w)     == RuleLegal(st, w, Counted \\cup {\"done\", \"fail\"})\n", 1)]),
-    ("StoreWidthCountsReady", "NoSpuriousRefusal", "deal",
-     "The store's width count also counts ready holders (the design: ready\n"
-     "is queued, not counted): with u3 ready on r1, a1 making u1 working is\n"
-     "refused although r1 has no working holder. An invariant,\n"
-     "NoSpuriousRefusal, as in StoreWidthCountsDone.",
-     [("Legal(st, w)     == RuleLegal(st, w, Counted)\n",
-       "\\* FAULT: ready holders are counted too.\n"
-       "Legal(st, w)     == RuleLegal(st, w, Counted \\cup {\"ready\"})\n", 1)]),
     ("StoreRowStale", "ConditionsAtomic", "deal",
      "The store does not check RowGen: g1 holds r1 (its gen rises to 1), and\n"
-     "e1, fenced on RowGen(r1, 0), still lowers r1's width.",
+     "e1, fenced on RowGen(r1, 0), still sets r1 down.",
      [(OUTCOME_HOLDS,
        "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
        "       \\* FAULT: RowGen conditions are not checked.\n"
        "       IN IF (\\A x \\in Ops[o].expect : x.k = \"rowGen\" \\/ Cond(st, x)) /\\ run.ok\n"
        "             /\\ CursorsFit(Ops[o].writes, last)", 1)]),
-    ("StoreWorkEntryUnchecked", "WidthKept", "deal",
-     "No work-entry check: a state write that takes a held card into\n"
-     "working is not width-checked: s10 makes u1 and u2 working on the\n"
-     "width-1 row r2 in one op and is accepted (the shallowest of several\n"
-     "over-fills; e1 then a1 on r1 is another).",
-     [("Exists(st, w.c) /\\ w.s \\in CardStates /\\ WorkEntryOK(st, w, L)",
-       "Exists(st, w.c) /\\ w.s \\in CardStates   \\* FAULT: no WorkEntryOK", 1)]),
+    ("StoreWidthInStore", "NoSpuriousRefusal", "deal",
+     "The store still caps a row at one working consumer (the width check\n"
+     "round 22 moved to the roster): with a1's u1 working on r1, b2 making\n"
+     "u2 working on r1 is refused. The design's rule (SpecLegal) has no\n"
+     "width, so the refusal has no cause in the spec.",
+     [("Legal(st, w)     == RuleLegal(st, w)\n",
+       "\\* FAULT: a width of one per row, enforced by the store.\n"
+       "Legal(st, w)     ==\n"
+       "  /\\ RuleLegal(st, w)\n"
+       "  /\\ (w.k = \"setState\" /\\ w.s = \"working\" /\\ st.cards[w.c].holder # NoHolder)\n"
+       "       => ~\\E x \\in Cards \\ {w.c} : /\\ st.cards[x].holder = st.cards[w.c].holder\n"
+       "                                   /\\ st.cards[x].state = \"working\"\n", 1)]),
     ("StoreJudgementTwice", "JudgementClosedOnce", "records",
      "Answer and expire refuse only an absent judgement, not a closed one:\n"
      "h1 answers j1, and h2, which carries no JudgementOpen fence, answers\n"
@@ -278,26 +205,15 @@ WITNESSES = [
      "event's seq and is accepted.",
      [("  \\A k \\in DOMAIN ws : ws[k].k = \"setCursor\" => ws[k].w <= last",
        "  TRUE   \\* FAULT: no upper bound", 1)]),
-    ("StoreServesUnchecked", "ServesHeld", "deal",
-     "No serving check: put card and the move into ready or working do not\n"
-     "read the holder row's tiers: s15 readies u4 on r2, which serves flash\n"
-     "only, and is accepted.",
-     [("Serves(st, r, t) == t \\in st.rows[r].tiers",
-       "Serves(st, r, t) == TRUE   \\* FAULT: no serving check", 1)]),
-    ("StoreTiersNarrowed", "ServesHeld", "deal",
-     "Put row and set row tiers may drop a tier a live consumer needs: v1\n"
-     "makes r1 serve flash only while the pro consumer u3 is ready there.",
-     [("  \\A c \\in Cards : (st.cards[c].holder = r /\\ st.cards[c].state \\in Live) => st.cards[c].tier \\in ts",
-       "  TRUE   \\* FAULT: any tiers are accepted", 1)]),
     ("StorePolicyRewritten", "PolicyImmutable", "deal",
      "Put policy writes the latest version instead of adding the next (or\n"
-     "the immutability trigger is missing): s19 overwrites version 1's body.",
+     "the immutability trigger is missing): s13 overwrites version 1's body.",
      [("NextVersion(st) == Cardinality({v \\in Versions : st.policies[v] # Absent}) + 1",
        "\\* FAULT: the latest version, not the next.\n"
        "NextVersion(st) == LET n == Cardinality({v \\in Versions : st.policies[v] # Absent})\n"
        "                   IN IF n = 0 THEN 1 ELSE n", 1)]),
     ("StoreRedOnConsumer", "RedOnlyOnProducers", "deal",
-     "The red write checks only that the card exists, not its kind: s22\n"
+     "The red write checks only that the card exists, not its kind: s15\n"
      "sets the consumer u3 red and is accepted.",
      [("    [] w.k = \"setRed\"      -> Exists(st, w.c) /\\ st.cards[w.c].kind = \"producer\"",
        "    [] w.k = \"setRed\"      -> Exists(st, w.c)   \\* FAULT: no kind check", 1)]),
@@ -340,11 +256,7 @@ def header(name, fault, target):
 # Invariants a witness leaves out of its cfg, with the reason, because its
 # fault breaks them in a shallower state than its target and TLC stops at
 # the first violation.
-DROP = {
-    "StoreWidthStale": (["NoSpuriousRefusal"],
-                        "a stale count also refuses a deal the live state allows (NoSpuriousRefusal),\n"
-                        "\\* found before the over-fill; left out so the over-fill is the one reported."),
-}
+DROP = {}
 
 
 def constants(scenario):
