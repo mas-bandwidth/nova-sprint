@@ -56,3 +56,22 @@ func TestTakeRequiresRosterMembership(t *testing.T) {
 		t.Fatal(snap.Cards["p.w1"])
 	}
 }
+
+type widthOneRoster struct{}
+
+func (widthOneRoster) ReadRoster(context.Context) (roster.Roster, error) {
+	return roster.Roster{Workers: map[string]roster.Worker{"worker": {Name: "worker", Width: 1, Tiers: []string{"pro"}}}}, nil
+}
+func TestTakeCountsWorkingAgainstWidth(t *testing.T) {
+	e := Engine{Roster: widthOneRoster{}}
+	snap := store.Snapshot{Cards: map[string]store.Card{"busy": {ID: "busy", Holder: "worker", Kind: "work", State: "working"}, "queued": {ID: "queued", Holder: "worker", Kind: "read", State: "ready"}}}
+	_, _, got, ok := e.takeRoster(context.Background(), snap, store.Card{Tier: "pro"}, "worker")
+	want := "SPRINT REFUSED take: row worker is at width 1: finish a card first\n"
+	if ok || got.Output != want || got.Exit != 1 {
+		t.Fatal(got)
+	}
+	snap.Cards["busy"] = store.Card{ID: "busy", Holder: "other", Kind: "work", State: "working"}
+	if _, _, got, ok = e.takeRoster(context.Background(), snap, store.Card{Tier: "pro"}, "worker"); !ok {
+		t.Fatal(got)
+	}
+}
