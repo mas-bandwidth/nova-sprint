@@ -1,6 +1,0 @@
-{
-  "archive": "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/handoff-source/source.tar",
-  "sha256": "44fd93b909d040a58baf71621b1117a59b31bed49767ccae62a3b1bec58ce255",
-  "bench": "amd-1:/var/tmp/stella-l6-handoff-both-20261107/source.tar",
-  "emitter_sha256": "8bab9f8d617b267a0bc5b6aa75075e6fb9a24b2e870bb473b0306ab3505493d2"
-}

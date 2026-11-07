@@ -116,10 +116,9 @@ observations are mapped. Accepted tick writes while stopped are prohibited;
 external dispatch has a separate Stop/check/use race and is not claimed atomic.
 The stopped control model assumes the store's existing atomic AtSeq semantics.
 
-The stopped-service checkpoint now has four matched finite traces from the exact
-archived dirty source described in `layer6-evidence/stopped-traces/README.md`:
-three seeded schedules (29, 29 and 35 records) and a 31-record Stop/report/fold/
-Start schedule. These bind actual folded stop state and actual captured AtSeq;
+The stopped-service checkpoint has four matched finite traces: three seeded
+schedules (29, 29 and 35 records) and a 31-record Stop/report/fold/Start
+schedule. These bind actual folded stop state and actual captured AtSeq;
 they do not bind unknown committed Replay, prove arbitrary implementation
 behavior, or constitute the final integrated GitHub Actions gate.
 

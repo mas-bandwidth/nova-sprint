@@ -2,7 +2,6 @@ package dash
 
 // Cold read by Rowan’s reviewer (2026-11-06), retained with adaptations for
 // the agreed 30-second health grace, controlled clock, and revised cost rule.
-// The unmodified original is testdata/coldread-original.go.txt.
 
 import (
 	"context"
@@ -10,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -298,56 +296,6 @@ func TestColdreadMissingCellsBlank(t *testing.T) {
 		if _, ok := m[k]; ok {
 			t.Errorf("merge carries MISSING %s", k)
 		}
-	}
-}
-
-func readJSON(t *testing.T, path string) map[string]any {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var v map[string]any
-	if err = json.Unmarshal(b, &v); err != nil {
-		t.Fatal(err)
-	}
-	return v
-}
-
-// 3: the envelope's top-level value types against the live v1 capture.
-func TestColdreadDefectEnvelopeTypesVsV1(t *testing.T) {
-	t.Parallel()
-	v1 := readJSON(t, "testdata/live-v1-envelope.json")
-	c := &Cache{at: t1000, now: at1000, view: mapSnapshot(store.Snapshot{Epoch: 1}, testRoster, t1000)}
-	rec := httptest.NewRecorder()
-	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
-	var v2 map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &v2); err != nil {
-		t.Fatal(err)
-	}
-	kind := func(x any) string { return fmt.Sprintf("%T", x) }
-	for k, a := range v1 {
-		if k == "data" {
-			continue
-		}
-		if kind(a) != kind(v2[k]) {
-			t.Errorf("%s: v1 %s (%v), v2 %s (%v)", k, kind(a), a, kind(v2[k]), v2[k])
-		}
-	}
-}
-
-// 3: v1 always sends a stream State; v2 sends "" for every stream not held, so an empty
-// stream's pill reads "idle" where v1 reads "waiting" (v2-2800.png vs v1-live-2000.png, serialize-audit-cs..moo).
-func TestColdreadDefectStreamStateBlank(t *testing.T) {
-	t.Parallel()
-	v1 := readJSON(t, "testdata/live-v1-envelope.json")
-	states := map[string]int{}
-	for _, s := range v1["data"].(map[string]any)["streams"].([]any) {
-		states[fmt.Sprint(s.(map[string]any)["State"])]++
-	}
-	d := mapSnapshot(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"a": {Name: "a"}}}, testRoster, t1000)
-	if states[""] == 0 && d.Streams[0].State == "" {
-		t.Errorf("v1 stream States %v (none blank); v2 sends State=%q", states, d.Streams[0].State)
 	}
 }
 

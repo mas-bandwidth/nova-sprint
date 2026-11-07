@@ -1,9 +1,0 @@
-nova-reserve: HELD mode=shared slot=1/16 pid=367268
-..run-0: TRACE OK steps=1
-.run-0: TRACE OK steps=1
-.run-0: TRACE OK steps=1
-..
-----------------------------------------------------------------------
-Ran 6 tests in 0.952s
-
-OK

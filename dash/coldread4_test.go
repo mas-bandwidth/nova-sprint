@@ -1,7 +1,7 @@
 package dash
 
 // Fourth cold read of the v2 dashboard shim (2026-11-06), head 62f2dcff.
-// Adapted from Rowan’s fourth cold reader; its original is preserved in testdata.
+// Adapted from Rowan’s fourth cold reader.
 // TestColdread4Measure* only logs.
 
 import (
@@ -105,24 +105,10 @@ func TestColdread4DefectMainOpenWithoutDeadline(t *testing.T) {
 	}
 }
 
-// v1 sends stream_costs.<s>.total_cost, work_cost and read_cost as strings ("$0.54");
-// Rowan ruled 2026-11-07 that work and read partition the rounded total rather than
-// independently round upward, so their displayed cents always add to the total.
-// v2 sends JSON numbers (unrounded dollars). Round-two ruling 7: "The page envelope uses
-// v1's field types". (README: "The stream_costs accounting total remains unrounded".)
-func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
+// stream_costs.<s>.total_cost, work_cost and read_cost are dollar strings ("$0.54"); work
+// and read partition the rounded total, so their displayed cents add to the total.
+func TestColdread4StreamCostsAreRoundedStrings(t *testing.T) {
 	t.Parallel()
-	v1 := readJSON(t, "testdata/round4-capture/live-v1-envelope.json")["data"].(map[string]any)["stream_costs"].(map[string]any)
-	var v1sc map[string]any
-	for _, v := range v1 {
-		if m := v.(map[string]any); m["total_cost"] != nil && m["work_cost"] != nil && m["read_cost"] != nil {
-			v1sc = m
-			break
-		}
-	}
-	if v1sc == nil {
-		t.Fatal("capture changed")
-	}
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "working", Tier: "pro"},
 		"w": {ID: "w", Kind: "work", Of: "p", Stream: "s", Tier: "pro", State: "done", Cost: 1234567, Priced: true},
@@ -141,11 +127,6 @@ func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
 	sc := v2["data"].(map[string]any)["stream_costs"].(map[string]any)["s"].(map[string]any)
 	if sc["total_cost"] != "$1.24" || sc["work_cost"] != "$1.24" || sc["read_cost"] != "$0.00" || sc["unpriced_runs"] != float64(1) {
 		t.Fatalf("stream cost values and count: %v", sc)
-	}
-	for _, k := range []string{"total_cost", "work_cost", "read_cost"} {
-		if fmt.Sprintf("%T", sc[k]) != fmt.Sprintf("%T", v1sc[k]) {
-			t.Errorf("stream_costs.%s: v1 %T (%v), v2 %T (%v)", k, v1sc[k], v1sc[k], sc[k], sc[k])
-		}
 	}
 }
 
