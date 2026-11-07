@@ -34,7 +34,6 @@ type TickInput struct {
 	Refused  []RefusedOp
 	At       time.Time
 	Presence []string
-	Config   []ConfiguredRow
 	Policy   *store.PolicyVersion
 }
 type TickPlan struct {
@@ -116,7 +115,7 @@ func (e *Engine) tick(ctx context.Context, incoming []EdgeResult, obs observatio
 	if err != nil {
 		return err
 	}
-	plan, err := e.steps.Tick(ctx, snapshotCopy(e.state), TickInput{Inbox: e.inbox, Refused: e.refused, At: obs.at, Presence: append([]string(nil), obs.presence...), Config: copyConfig(obs.config), Policy: policy})
+	plan, err := e.steps.Tick(ctx, snapshotCopy(e.state), TickInput{Inbox: e.inbox, Refused: e.refused, At: obs.at, Presence: append([]string(nil), obs.presence...), Policy: policy})
 	if err != nil {
 		return fmt.Errorf("run: steps: %w", err)
 	}
