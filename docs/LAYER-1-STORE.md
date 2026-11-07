@@ -548,6 +548,29 @@ next transaction id are unchanged for two seconds after. The schema and its
 hash do not change. No model change: it is a read, and changes no state the
 model holds.
 
+Recorded with round 19 (2026-11-06): two changes, neither a model change.
+`store.NewFakeFrom(s Snapshot, policies ...PolicyVersion) (*Fake, error)`, a
+test and dry-run seam: a Fake whose streams, cards, rows, judgements,
+cursors, epoch and seq are the snapshot's, with the policy versions given
+(the snapshot names only the active one, `Policy`, which is set active), so
+an op built from the snapshot is checked exactly as the Fake checks it. Its
+`Snapshot` equals the input and its next event is the snapshot's seq plus 1;
+the earlier log is not carried (`Events` starts after it, `Replay` of an
+earlier id is unknown). An input that is not a snapshot is `ErrInvalid`. The
+signature differs from the one asked for (`NewFakeFrom(s) *Fake`) on purpose:
+the policy versions, which a snapshot does not carry, and an error for an
+inconsistent input. The conformance scenario "fake from snapshot" runs on
+Fake, PG and the ICU database: the snapshot round-trips, and the same four
+ops (accepted, refused, a policy add and switch, a judgement answer with a
+cursor) give the store and the Fake the same receipts, events and
+snapshot. `NewFake` is unchanged. Second: Migrate runs `CREATE SCHEMA IF NOT
+EXISTS sprint` only when the schema is absent (`pg_namespace`, read by the
+same `namespace` helper as the foreign check, which is unchanged), because
+PostgreSQL checks CREATE on the database before IF NOT EXISTS and refused
+(42501) a role that owns an existing `sprint` but may not create schemas,
+the least-privilege setup `up` makes. The schema hash is still of the whole
+`schema.sql` and does not change.
+
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
