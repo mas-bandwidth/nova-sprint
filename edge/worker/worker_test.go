@@ -817,6 +817,7 @@ func (s *workTakeSprint) Take(_ context.Context, _, id string, gen int) (TakeInf
 		Epoch: 1, Consumer: id, Producer: "p1", Kind: "work", Stream: "s1",
 		StreamRef: "sprint/s1/group", Branch: "sprint/s1/p1", BaseSHA: testBaseSHA,
 		Tier: "pro", Model: "m1", Deadline: 900, Gen: gen, Attempt: 1,
+		CommitName: testCommitName, CommitEmail: testCommitEmail,
 	}, nil
 }
 

@@ -11,16 +11,17 @@ import (
 )
 
 // schemaRound is the review round whose schema.sql this binary carries: round
-// 23 added cards.model and the row heartbeat's four columns of sprint.rows (22 dropped the five configuration columns of
+// 24 added the epoch row's commit_name and commit_email (the sprint's commit
+// identity); 23 added cards.model and the row heartbeat's four columns of sprint.rows (22 dropped the five configuration columns of
 // sprint.rows; 17 added cards.red; no round between changed the schema).
-const schemaRound = 23
+const schemaRound = 24
 
 // SchemaIdentity is what CheckSchema found in a database. Expected is the
 // schema hash this binary carries, the one Migrate records (the only place it
 // is computed, hashSchema); Hash is the one sprint.meta records ("" when there
 // is none). Present is schema sprint existing at all. Current is a store at
 // SchemaVersion made by this binary's schema; KnownOlder is one Migrate
-// upgrades in place (round16Hash, round21Hash, round22Hash). Round is the round whose schema made the
+// upgrades in place (round16Hash, round21Hash, round22Hash, round23Hash). Round is the round whose schema made the
 // store (0 when it is neither). Owner is the role that owns schema sprint.
 type SchemaIdentity struct {
 	Present    bool
@@ -163,12 +164,12 @@ func identify(ctx context.Context, q queryRower) (SchemaIdentity, error) {
 		return id, fmt.Errorf("store: check schema: %w", err)
 	}
 	id.Current, id.KnownOlder = hash == schemaHash, knownOlder(hash)
-	id.Round = map[string]int{schemaHash: schemaRound, round16Hash: 16, round21Hash: 17, round22Hash: 22}[hash] // round 17's schema, carried to 21
+	id.Round = map[string]int{schemaHash: schemaRound, round16Hash: 16, round21Hash: 17, round22Hash: 22, round23Hash: 23}[hash] // round 17's schema, carried to 21
 	return id, nil
 }
 
 // knownOlder says whether hash is an earlier build of this version that
 // Migrate upgrades in place.
 func knownOlder(hash string) bool {
-	return hash == round16Hash || hash == round21Hash || hash == round22Hash
+	return hash == round16Hash || hash == round21Hash || hash == round22Hash || hash == round23Hash
 }

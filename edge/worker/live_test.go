@@ -161,14 +161,15 @@ func TestLiveOkWithALeftTreeIsCommittedByTheWorker(t *testing.T) {
 }
 
 // 68: JOB.md holds the card's facts and the finish rules, and the prompt
-// carries the same rules word for word; neither lets the harness push.
+// carries the same rules word for word; neither lets the harness push; a
+// work card's rules carry the sprint's commit identity (round 24).
 func TestLiveJobMDAndPromptAgree(t *testing.T) {
 	t.Parallel()
 	for _, kind := range []string{"read", "work"} {
 		dir := t.TempDir()
 		j := Job{Consumer: "p1.c1", Producer: "p1", Kind: kind, Tier: "t1", Stream: "s1", Repo: "o/r", Base: "main", BaseSHA: strings.Repeat("b", 40),
 			Branch: "sprint/s1/p1", Head: strings.Repeat("a", 40), JobDir: dir, WorktreeDir: filepath.Join(dir, "repo"),
-			Paths: []string{"x/y.go"}, DoneWhen: []string{"go test ./x"}, Prose: "do the thing"}
+			Paths: []string{"x/y.go"}, DoneWhen: []string{"go test ./x"}, Prose: "do the thing", CommitName: testCommitName, CommitEmail: testCommitEmail}
 		if err := writeJobMD_internal(j); err != nil {
 			t.Fatal(err)
 		}
@@ -187,6 +188,10 @@ func TestLiveJobMDAndPromptAgree(t *testing.T) {
 		}
 		if !strings.Contains(rules, "no git push and no gh") {
 			t.Errorf("%s finish rules must forbid push and gh:\n%s", kind, rules)
+		}
+		identity := strings.Contains(rules, `git config user.email "`+testCommitEmail+`"`) && strings.Contains(rules, `"Co-Authored-By: <your name> <your email>" trailer`)
+		if identity != (kind == "work") {
+			t.Errorf("%s finish rules carry the commit identity: %v, want %v:\n%s", kind, identity, kind == "work", rules)
 		}
 	}
 }

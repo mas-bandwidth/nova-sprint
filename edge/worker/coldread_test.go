@@ -32,7 +32,7 @@ func (s *crSprint) Next(context.Context, string) (NextResponse, error) {
 	return s.next, nil
 }
 func (s *crSprint) Take(_ context.Context, row, id string, gen int) (TakeInfo, error) {
-	return TakeInfo{Consumer: id, Producer: "p", Kind: "read", Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, Gen: gen, Head: strings.Repeat("a", 40)}, nil
+	return TakeInfo{Consumer: id, Producer: "p", Kind: "read", Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, CommitName: testCommitName, CommitEmail: testCommitEmail, Gen: gen, Head: strings.Repeat("a", 40)}, nil
 }
 func (s *crSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, error) {
 	s.mu.Lock()

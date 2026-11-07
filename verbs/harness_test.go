@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/run"
@@ -40,6 +41,13 @@ func applyTest(t *testing.T, f *store.Fake, op store.Op) {
 	}
 }
 
+// setIdentity gives f the fixtures' commit identity (the coordinator's
+// nova-sprint identity), as up's step 7 needs.
+func setIdentity(t *testing.T, f *store.Fake) {
+	t.Helper()
+	applyTest(t, f, store.Op{ID: "identity", Epoch: 1, Actor: "alice", Kind: "identity", At: t0, Writes: []store.Write{store.SetIdentity{Name: testIdentity.Name, Email: testIdentity.Email}}})
+}
+
 // world is an Engine over store.Fake and fakes of every edge, with the
 // sprint below: stream s; alice and bob workers, carol coordinator, all
 // hooked; dave on the bus, not hooked. p1 is a producer with work consumer
@@ -58,13 +66,17 @@ type world struct {
 	forge  *fakeForge
 }
 
+// testIdentity is the sprint's commit identity in the fixtures.
+var testIdentity = store.Identity{Name: "Sprint Bot", Email: "1+sprint-bot@users.noreply.example.test"}
+
 func sprint() store.Snapshot {
 	row := func(n, role string) store.Row {
 		return store.Row{Name: n, State: "up", Session: "s-" + n, Role: role, Gen: 1}
 	}
 	return store.Snapshot{Seq: 10, Epoch: 1,
-		Streams: map[string]store.Stream{"s": {Name: "s", Repo: "o/r", Base: "main", Mode: "auto"}},
-		Rows:    map[string]store.Row{"alice": row("alice", "worker"), "bob": row("bob", "worker"), "carol": row("carol", "coordinator"), "dave": {Name: "dave", State: "up", Gen: 1}},
+		Streams:  map[string]store.Stream{"s": {Name: "s", Repo: "o/r", Base: "main", Mode: "auto"}},
+		Identity: testIdentity,
+		Rows:     map[string]store.Row{"alice": row("alice", "worker"), "bob": row("bob", "worker"), "carol": row("carol", "coordinator"), "dave": {Name: "dave", State: "up", Gen: 1}},
 		Cards: map[string]store.Card{
 			"p1":    {ID: "p1", Kind: "producer", Stream: "s", State: "working", Gen: 1, Attempt: 1, Tier: "pro", Priority: "normal", Brief: "tier: pro", Branch: "sprint/s/p1"},
 			"p1.w1": {ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s", State: "working", Gen: 1, Attempt: 1, Holder: "alice", Tier: "pro", Branch: "sprint/s/p1", BaseSHA: base, Brief: "do p1", Priority: "normal", Model: "inception/mercury-3"},
@@ -205,8 +217,14 @@ func (l *fakeLander) CreateGroup(_ context.Context, s store.Stream, sha string) 
 type fakeOrigin struct {
 	tips     map[string]string // "<clone address> branch" -> sha
 	contains bool
-	tree     []string // every file at any base (nil: the root only)
+	tree     []string     // every file at any base (nil: the root only)
+	commits  []git.Commit // the head's commits since the base (nil: none)
+	commitsE error
 	err      error
+}
+
+func (o *fakeOrigin) Commits(context.Context, string, string, string, string) ([]git.Commit, error) {
+	return o.commits, o.commitsE
 }
 
 func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, error) {

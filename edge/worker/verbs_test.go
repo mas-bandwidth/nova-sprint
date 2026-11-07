@@ -139,6 +139,13 @@ func fakeRowHarness_internal(row string) (harness, model string) {
 // real number is policy's, and the worker takes whatever the receipt says.
 const fakeTierDeadline = 900
 
+// testCommitName and testCommitEmail are the sprint's commit identity every
+// test receipt carries.
+const (
+	testCommitName  = "Sprint Bot"
+	testCommitEmail = "1+sprint-bot@users.noreply.example.test"
+)
+
 func sortConsumers_internal(list []ConsumerSummary) {
 	slices.SortFunc(list, func(a, b ConsumerSummary) int {
 		if c := priorityRank_internal(b.Priority) - priorityRank_internal(a.Priority); c != 0 {
@@ -221,6 +228,7 @@ func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, model, 
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding,
 		Paths: cloneStrings_internal(c.Paths), DoneWhen: cloneStrings_internal(c.DoneWhen),
 		Gen: c.Gen, Attempt: c.Attempt, Review: c.Review, Model: model, Deadline: fakeTierDeadline, Forge: forge,
+		CommitName: testCommitName, CommitEmail: testCommitEmail,
 	}
 }
 func (s *StoreSprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
@@ -427,7 +435,7 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 		Run: func(_ context.Context, argv []string) ([]byte, int, error) {
 			calls = append(calls, slices.Clone(argv))
 			if slices.Contains(argv, "take") {
-				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4,"model":"m1","deadline":900,"forge":""}`), 0, nil
+				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4,"model":"m1","deadline":900,"forge":"","commit_name":"Sprint Bot","commit_email":"1+sprint-bot@users.noreply.example.test"}`), 0, nil
 			}
 			opID := FormatResultID(3, "p1.w1", 1, 4)
 			return []byte(fmt.Sprintf(`{"accepted":true,"op":%q}`, opID)), 0, nil

@@ -141,7 +141,8 @@ func TestInstallWorkersRefusals(t *testing.T) {
 	}
 }
 
-// Step 7 verifies only when every worker bench is on the bus and up in
+// Step 7 asks the human for the sprint's commit identity when there is
+// none, and then verifies only when every worker bench is on the bus and up in
 // the store; through RuntimeSetup it is an act first, then a refusal
 // naming each bench that is not, with its unit's last log line.
 func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
@@ -153,13 +154,21 @@ func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
 	if ok || !errors.As(err, &nr) || !strings.Contains(nr.Why, `1 of the worker benches are not hooked and up: amd-2 (not on the bus, store row down; last log line: "last of sprint-worker-amd-2 on amd-2")`) || strings.Contains(nr.Why, "amd-1 (") {
 		t.Fatal(ok, err)
 	}
-	check, err := (verbs.RuntimeSetup{Workload: w}).Verify(context.Background(), 7, verbs.SetupInput{})
+	// No commit identity yet: a question for the human, no act, before any
+	// bench is looked at.
+	check, err := (verbs.RuntimeSetup{Workload: w, Snapshot: snapReader{store.Snapshot{Epoch: 1}}}).Verify(context.Background(), 7, verbs.SetupInput{})
+	if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "the sprint has no commit identity\nASK the human") || !strings.HasPrefix(check.Next, "nova-sprint identity --name") {
+		t.Fatalf("%+v %v", check, err)
+	}
+	withID := snapReader{store.Snapshot{Epoch: 1, Identity: store.Identity{Name: "Sprint Bot", Email: "1+bot@users.noreply.example.test"}}}
+	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{})
 	if err != nil || check.Verified || !check.Action || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-2 (not on the bus") || !strings.Contains(check.Refusal.Fix, "sprint-worker-<bench>") {
 		t.Fatalf("%+v %v", check, err)
 	}
 	rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Role: "worker"}
 	w = testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
-	if check, err = (verbs.RuntimeSetup{Workload: w}).Verify(context.Background(), 7, verbs.SetupInput{}); err != nil || !check.Verified || !strings.Contains(check.Line, "probed with the policy's models") {
+	if check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{}); err != nil || !check.Verified || !strings.Contains(check.Line, "probed with the policy's models") ||
+		!strings.Contains(check.Line, "each committing as Sprint Bot <1+bot@users.noreply.example.test>: VERIFIED") {
 		t.Fatalf("%+v %v", check, err)
 	}
 	// Every bench up, one at another version: not verified, naming it and
@@ -170,7 +179,7 @@ func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
 		}
 		return nil
 	}
-	check, err = (verbs.RuntimeSetup{Workload: w}).Verify(context.Background(), 7, verbs.SetupInput{})
+	check, err = (verbs.RuntimeSetup{Workload: w, Snapshot: withID}).Verify(context.Background(), 7, verbs.SetupInput{})
 	if err != nil || check.Verified || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-2 reports v2.0.9") || !strings.Contains(check.Refusal.Fix, "--tag v2.1.0 amd-2") {
 		t.Fatalf("%+v %v", check, err)
 	}

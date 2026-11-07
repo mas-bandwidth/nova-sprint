@@ -353,6 +353,11 @@ type SetStopped struct {
 	Reason  string
 }
 
+// SetIdentity sets the git identity the sprint commits as (Identity), both
+// parts non-empty. Refused when it is already that identity, like every set
+// write.
+type SetIdentity struct{ Name, Email string }
+
 // SetActivePolicy makes one existing version the active one and deactivates
 // the one active before it.
 type SetActivePolicy struct{ Version int }
@@ -389,6 +394,7 @@ func (SetRowLoad) isWrite()       {}
 func (PutPolicy) isWrite()        {}
 func (SetActivePolicy) isWrite()  {}
 func (SetStopped) isWrite()       {}
+func (SetIdentity) isWrite()      {}
 func (SetCardPaths) isWrite()     {}
 func (SetCardDoneWhen) isWrite()  {}
 func (SetCardProse) isWrite()     {}
@@ -468,6 +474,8 @@ func specOf(w Write) spec {
 		return spec{check: func(c *checker) { c.name(v.Name).text(v.Body).oneOf("policy kind", v.Kind, PolicyKinds) }}.then(func(w *work) (string, error) { return w.addPolicy(v) })
 	case SetStopped:
 		return spec{fields: []field{{"stop", "", "stopped"}}, check: func(c *checker) { c.text(v.Reason) }}.then(func(w *work) (string, error) { return w.writeStop(v) })
+	case SetIdentity:
+		return spec{fields: []field{{"identity", "", "identity"}}, check: func(c *checker) { c.name(v.Name, v.Email).given("an identity's name and email", v.Name, v.Email) }}.then(func(w *work) (string, error) { return w.writeIdentity(v) })
 	case SetActivePolicy:
 		return spec{fields: []field{{"policy", "", "active"}}, check: func(c *checker) { c.num("version", v.Version) }}.then(func(w *work) (string, error) { return w.activate(v) })
 	}

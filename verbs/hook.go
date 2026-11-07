@@ -13,7 +13,9 @@ import (
 
 // runHook is `hook` (Stella's rulings, 2026-11-06): the name on the bus
 // first; the sprint mints the session; one hook per name and one
-// coordinator per sprint; the role's playbook printed. A worker's restart
+// coordinator per sprint; a worker only once the sprint has a commit
+// identity; the identity's two git config lines and the role's playbook
+// printed. A worker's restart
 // is the bus hook, its own unhook, this hook, then next.
 func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	r := in.str("role")
@@ -26,6 +28,9 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	snap, err := e.snapshot(ctx) // the store credential finish and read need: without it, CredentialFix
 	if err != nil {
 		return "", err
+	}
+	if r == "worker" && !snap.Identity.Set() { // nothing commits until the sprint knows as whom
+		return "", noIdentity()
 	}
 	if err := e.originsReadable(ctx, snap); err != nil {
 		return "", err
@@ -57,7 +62,8 @@ func (e *Engine) originsReadable(ctx context.Context, snap store.Snapshot) error
 	return nil
 }
 
-// hookAs records name's session and role on snap and prints its playbook:
+// hookAs records name's session and role on snap and prints the sprint's
+// commit identity (the two git config lines) and its playbook:
 // the hook verb's, and up's and restore's for their coordinator.
 func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string) (string, error) {
 	if row := snap.Rows[name]; row.Session != "" {
@@ -79,7 +85,7 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 		return "", err
 	}
 	text, _ := docs.Playbook(r)
-	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), text), nil
+	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), identityLines(snap), text), nil
 }
 
 func (e *Engine) newSession() (string, error) {

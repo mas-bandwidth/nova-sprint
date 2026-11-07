@@ -23,7 +23,7 @@ func midUp(t *testing.T) *world {
 			t.Fatal(err)
 		}
 	}
-	want(t, w.do("carol", "hook", "--role", "coordinator"), 0, "HOOKED carol role=coordinator")
+	want(t, w.do("carol", "hook", "--role", "coordinator"), 0, "HOOKED carol role=coordinator", "NO COMMIT IDENTITY: no worker can hook until one is set: nova-sprint identity --name")
 	return w
 }
 
@@ -37,7 +37,11 @@ func TestVerbsWorkMidUp(t *testing.T) {
 	}
 	want(t, w.do("carol", "show"), 0, `"Stopped": true`, `"StopReason": "never started"`)
 	want(t, w.do("carol", "next"), 0, "NEXT no stream exists", "next: nova-sprint stream add")
-	want(t, w.do("dave", "hook", "--role", "worker"), 0, "HOOKED dave role=worker")
+	want(t, w.do("dave", "hook", "--role", "worker"), 1, "SPRINT REFUSED hook: the sprint has no commit identity", "ask the coordinator to run nova-sprint identity --name")
+	want(t, w.do("carol", "identity", "--name", "Sprint Bot", "--email", "1+sprint-bot@users.noreply.example.test", "--reason", "the allowlisted account"), 0,
+		"IDENTITY Sprint Bot <1+sprint-bot@users.noreply.example.test> applied at seq", `git config user.email "1+sprint-bot@users.noreply.example.test"`)
+	want(t, w.do("dave", "hook", "--role", "worker"), 0, "HOOKED dave role=worker", "COMMIT AS Sprint Bot <1+sprint-bot@users.noreply.example.test>",
+		`git config user.name "Sprint Bot"`, `a "By: <your name>" line and a "Co-Authored-By: <your name> <your email>" trailer`)
 	want(t, w.do("dave", "next"), 0, "NEXT the sprint is stopped (never started)", "next: nothing; wait for the bus")
 	want(t, w.do("dave", "show", "dave"), 0, `"role": "worker"`)
 	want(t, w.do("carol", "stop", "--reason", "hold it"), 0, "STOPPED already: the sprint is already stopped (never started)", "next: nova-sprint start --as carol")

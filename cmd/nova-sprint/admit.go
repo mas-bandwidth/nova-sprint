@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
@@ -25,6 +26,20 @@ func (o *origin) Tree(ctx context.Context, url, sha string) ([]string, error) {
 		return nil, err
 	}
 	return o.git.ListTree(ctx, dir, sha)
+}
+
+// Commits is every commit on head not on base at origin nor reachable from
+// since, in the address's clone under the state dir, fetched first (the
+// head and the base are there): one git log.
+func (o *origin) Commits(ctx context.Context, url, head, base, since string) ([]git.Commit, error) {
+	dir, err := o.clone(ctx, url)
+	if err == nil {
+		err = o.git.Fetch(ctx, dir)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return o.git.Commits(ctx, dir, head, "refs/remotes/origin/"+base, since)
 }
 
 // Branches is the branches under prefix at the address: one ls-remote.

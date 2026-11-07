@@ -335,6 +335,20 @@ func (w *work) addPolicy(v PutPolicy) (string, error) {
 	return "", w.putPolicy(PolicyVersion{}, false, p)
 }
 
+// writeIdentity sets the identity the sprint commits as; the same identity
+// again is refused.
+func (w *work) writeIdentity(v SetIdentity) (string, error) {
+	old, err := w.tx.identity()
+	if err != nil {
+		return "", err
+	}
+	id := Identity{Name: v.Name, Email: v.Email}
+	if old == id {
+		return fmt.Sprintf("the sprint already commits as %s <%s>", v.Name, v.Email), nil
+	}
+	return "", w.putIdentity(old, id)
+}
+
 // writeStop stops or starts the sprint; one already in that state is
 // refused.
 func (w *work) writeStop(v SetStopped) (string, error) {

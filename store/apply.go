@@ -29,6 +29,8 @@ type txn interface {
 	putCursor(name string, seq int64) error
 	stop() (Stop, error) // the sprint's stop, one value for the store
 	putStop(s Stop) error
+	identity() (Identity, error) // the identity the sprint commits as, one value for the store
+	putIdentity(i Identity) error
 	replay(opID string) (Receipt, bool, error) // the stored receipt of an op id
 	discard() error                            // back to the state the transaction began with: a refusal changes nothing
 	appendEvent(e Event) error                 // the op's event, at lastSeq + 1
@@ -402,6 +404,14 @@ func (w *work) putStop(old, s Stop) error {
 	return w.tx.putStop(s)
 }
 
+func (w *work) putIdentity(old, i Identity) error {
+	if w.before.Identity == nil {
+		w.before.Identity = &old
+	}
+	w.after.Identity = &i
+	return w.tx.putIdentity(i)
+}
+
 func touch[K comparable, V any](before, after map[K]V, k K, old V, existed bool, v V) (map[K]V, map[K]V) {
 	if before == nil {
 		before, after = map[K]V{}, map[K]V{}
@@ -417,7 +427,7 @@ func touch[K comparable, V any](before, after map[K]V, k K, old V, existed bool,
 func (s State) compact() *State {
 	s.Streams, s.Cards, s.Rows, s.Policies = nilIfEmpty(s.Streams), nilIfEmpty(s.Cards), nilIfEmpty(s.Rows), nilIfEmpty(s.Policies)
 	s.Judgements, s.Cursors = nilIfEmpty(s.Judgements), nilIfEmpty(s.Cursors)
-	if s.Epoch == 0 && s.Streams == nil && s.Cards == nil && s.Rows == nil && s.Policies == nil && s.Judgements == nil && s.Cursors == nil && s.Stop == nil {
+	if s.Epoch == 0 && s.Streams == nil && s.Cards == nil && s.Rows == nil && s.Policies == nil && s.Judgements == nil && s.Cursors == nil && s.Stop == nil && s.Identity == nil {
 		return nil
 	}
 	return &s

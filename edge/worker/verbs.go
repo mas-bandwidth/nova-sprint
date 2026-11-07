@@ -48,7 +48,9 @@ type (
 		DoneWhen                                                                                []string `json:"done_when"`
 		Epoch, Gen, Attempt, Review                                                             int
 		Model, Forge                                                                            string
-		Deadline                                                                                int // seconds, from policy's timeouts().consumer[tier]
+		Deadline                                                                                int    // seconds, from policy's timeouts().consumer[tier]
+		CommitName                                                                              string `json:"commit_name"`  // the sprint's commit identity (store.Identity): every
+		CommitEmail                                                                             string `json:"commit_email"` // commit of the job is authored and committed as it
 	}
 	ReportRequest struct {
 		Epoch, Gen                                             int
@@ -184,13 +186,16 @@ func checkReceipt_internal(info TakeInfo) error {
 	if info.Deadline <= 0 {
 		missing = append(missing, "deadline")
 	}
+	if info.CommitName == "" || info.CommitEmail == "" {
+		missing = append(missing, "commit identity (commit_name, commit_email)")
+	}
 	if len(missing) > 0 {
 		return receiptError_internal(info.Consumer, missing)
 	}
 	return nil
 }
 func receiptError_internal(consumer string, missing []string) error {
-	return fmt.Errorf("%w: the receipt for %s has no %s: update nova-sprint, then check that `nova-sprint take <card>@<gen> --as <row> --json` prints model, deadline and forge", ErrReceipt, consumer, strings.Join(missing, ", "))
+	return fmt.Errorf("%w: the receipt for %s has no %s: update nova-sprint, then check that `nova-sprint take <card>@<gen> --as <row> --json` prints model, deadline, forge, commit_name and commit_email", ErrReceipt, consumer, strings.Join(missing, ", "))
 }
 func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
 	ep := cmp.Or(req.Epoch, c.Epoch, 1)

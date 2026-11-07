@@ -18,7 +18,7 @@ func TestTheVerbsAreExactlyTheList(t *testing.T) {
 		"take", "finish", "read", "report", "release", "beat", "show", "queue",
 		"stream add", "stream set", "add", "judge", "land", "hold", "unhold", "priority", "drop", "relink", "replace",
 		"policy set", "policy activate", "policy show", "policy diff", "policy check",
-		"run", "worker", "dash", "stop", "start", "backup", "restore", "clear"}
+		"run", "worker", "dash", "stop", "start", "identity", "backup", "restore", "clear"}
 	var got []string
 	for _, v := range table {
 		got = append(got, v.name)
@@ -32,7 +32,7 @@ func TestTheVerbsAreExactlyTheList(t *testing.T) {
 func TestRoleMatrix(t *testing.T) {
 	coordinator := map[string]bool{"stream add": true, "stream set": true, "add": true, "judge": true, "land": true, "hold": true, "unhold": true,
 		"priority": true, "drop": true, "relink": true, "replace": true, "policy set": true, "policy activate": true,
-		"stop": true, "start": true, "backup": true, "clear": true}
+		"stop": true, "start": true, "identity": true, "backup": true, "clear": true}
 	worker := map[string]bool{"beat": true, "take": true, "finish": true, "read": true, "report": true, "release": true, "show": true, "queue": true,
 		"policy show": true, "policy diff": true, "policy check": true}
 	for _, v := range table {

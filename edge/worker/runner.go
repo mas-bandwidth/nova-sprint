@@ -472,8 +472,8 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		Prose: info.Prose, Finding: info.Finding, Paths: info.Paths,
 		DoneWhen: info.DoneWhen, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
-		ProxyAddr: proxyAddr, CommitName: rowInfo.Row,
-		CommitEmail: rowInfo.Row + "@" + CommitEmailDomain, Forge: info.Forge, Deadline: deadline,
+		ProxyAddr: proxyAddr, CommitName: info.CommitName,
+		CommitEmail: info.CommitEmail, Forge: info.Forge, Deadline: deadline,
 	}
 	rec := JobRecord{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
@@ -946,7 +946,8 @@ func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 }
 
 // checkoutJob_internal checks out j's base (a read: detached at its head,
-// with no push URL) and sets the row's commit identity.
+// with no push URL) and sets the sprint's commit identity from the
+// receipt; a job with none is refused, never committed as the bench.
 func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j Job) (string, error) {
 	baseRef := cmp.Or(j.PriorHead, j.BaseSHA, "HEAD")
 	if j.Kind == "read" {
@@ -959,11 +960,12 @@ func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j
 	} else if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "-B", j.Branch, baseRef); err != nil {
 		return "", err
 	}
+	if j.CommitName == "" || j.CommitEmail == "" { // a receipt from before the sprint's identity: never the bench's own
+		return "", fmt.Errorf("stage: %s has no commit identity in its receipt (taken from an older nova-sprint): the coordinator sets it with nova-sprint identity, and the next deal carries it", j.Consumer)
+	}
 	for _, kv := range [][2]string{{"user.name", j.CommitName}, {"user.email", j.CommitEmail}} {
-		if kv[1] != "" {
-			if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1]); err != nil {
-				return "", err
-			}
+		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1]); err != nil {
+			return "", err
 		}
 	}
 	return g.HeadSHA(ctx, j.WorktreeDir)

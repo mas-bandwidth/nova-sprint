@@ -131,8 +131,12 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 		if r.Workload == nil {
 			return SetupCheck{}, fmt.Errorf("worker setup unavailable")
 		}
+		id, check, err := r.commitIdentity(ctx)
+		if err != nil || !id.Set() {
+			return check, err
+		}
 		ok, err := r.Workload.WorkersReady(ctx)
-		return workloadReady(ctx, ok, "UP 7/8 workers: every worker bench at this version, its harness probed with the policy's models and its seat's provider keys, hooked on the bus and up in the store: VERIFIED", err)
+		return workloadReady(ctx, ok, "UP 7/8 workers: every worker bench at this version, its harness probed with the policy's models and its seat's provider keys, hooked on the bus and up in the store, each committing as "+id.Name+" <"+id.Email+">: VERIFIED", err)
 	case 8:
 		if r.Workload == nil {
 			return SetupCheck{}, fmt.Errorf("smoke setup unavailable")
@@ -142,6 +146,24 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 	}
 	return SetupCheck{}, fmt.Errorf("invalid setup step")
 }
+
+// commitIdentity is step 7's first condition: the sprint's commit identity
+// (store.Identity) is set, since a worker hooks only once it is (hook
+// refuses) and each job's clone takes it from the take receipt. None set is
+// a question for the human, like an unchosen dashboard: up stops with the
+// command that sets it, and no act can make it true.
+func (r RuntimeSetup) commitIdentity(ctx context.Context) (store.Identity, SetupCheck, error) {
+	if r.Snapshot == nil {
+		return store.Identity{}, SetupCheck{}, fmt.Errorf("store unavailable")
+	}
+	snap, err := r.Snapshot.Snapshot(ctx)
+	if err != nil || snap.Identity.Set() {
+		return snap.Identity, SetupCheck{}, err
+	}
+	return snap.Identity, SetupCheck{Line: "UP 7/8 workers: the sprint has no commit identity\nASK the human which forge account on the repositories' contributor-agreement allowlist every commit is made as (its git user.name and user.email, typically its noreply address)",
+		Next: identityFix + "   then nova-sprint up again"}, nil
+}
+
 func setupReady(ok bool, line string, err error) (SetupCheck, error) {
 	if err != nil {
 		return SetupCheck{}, err

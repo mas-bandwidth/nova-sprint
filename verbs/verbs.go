@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge/worker"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/run"
@@ -78,6 +79,10 @@ type Origin interface {
 	// Branches is every branch at origin under prefix (a/b/ lists a/b/*),
 	// by name, with its tip: one ls-remote.
 	Branches(ctx context.Context, url, prefix string) (map[string]string, error)
+	// Commits is every commit on head that is neither on the base branch at
+	// origin nor reachable from since ("" none), with its author and
+	// committer: finish's check of the sprint's commit identity.
+	Commits(ctx context.Context, url, head, base, since string) ([]git.Commit, error)
 }
 
 // Doctor is what `check` and `next` look at outside the store.
