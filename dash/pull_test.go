@@ -135,7 +135,7 @@ func TestAcceptsGzipHonorsTokenAndQuality(t *testing.T) {
 		header string
 		want   bool
 	}{{"gzip", true}, {"br, gzip;q=0.5", true}, {"gzip;q=0", false}, {"xgzip", false}, {"gzip;q=NaN", false}, {"gzip;q=bogus", false}, {"br", false}} {
-		if got := acceptsGzip(tc.header); got != tc.want {
+		if got := acceptsGzip([]string{tc.header}); got != tc.want {
 			t.Errorf("%q = %v", tc.header, got)
 		}
 	}
