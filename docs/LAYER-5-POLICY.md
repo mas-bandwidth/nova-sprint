@@ -86,12 +86,18 @@ question, the subject and the line of the function's `def`
 POLICY REFUSED v7 line 31 rows(c12): row r4 has rank pro, below the card's tier heavy
 ```
 
+Before a file is stored (`policy check` and `policy set`) it has no version,
+so the refusal names the file instead (`POLICY REFUSED mine.star line 31 ...`);
+after storage, the version. Something the file does not define (a missing
+question, a file over the size cap) is refused at its last line, as `line N,
+end of file` (ruled 2026-11-07).
+
 | question | inputs | answer and domain | the engine also refuses | default |
 |---|---|---|---|---|
 | `order(card)` | id, stream, score, priority, tier, attempt, bounces, prior_head | a tuple of up to 4 ints or strings; the engine sorts by (rung, answer, id) | a tuple of other types or longer than 4 | fix attempts first, then score |
-| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), prose, attempt, bounces, priority, and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width, working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; nearest rank first, falling back to any rank at or above the card's tier when no row has the wanted rank |
+| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), prose, attempt, bounces, priority, and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width, working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; every candidate listed: the wanted rank and up, nearest first, then the ranks between the tier and the wanted one, highest first; those with room first, all of them when none has room (ruled 2026-11-06, so the joint check passes whenever any row could take the card) |
 | `reads(card)` | as `rows`' card | the count n, 1 <= n <= 5 | n out of range | 1 |
-| `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok or fix, finding) | `"yes"` or `"fix"` | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules) | any fix read means fix |
+| `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
 | `width(row)` | name, kind, width (nova-config's), tiers, model, harness, flaps | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
 | `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window | out of range, a missing key | below |
 | `landing(stream)` | name, merging, review, rung | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000 | f >= b | backed up at 4 merging, flowing again at 1 |
@@ -397,3 +403,253 @@ An estimate: 1,300 lines of Go, 80 of Starlark, 150 of TLA+, 1,000 of tests.
 - One version answers a whole tick, so the receipt names one set of rules;
   kind `data` stays unused; a data table later is a question, not a second
   mechanism. Prices ship empty rather than invented.
+
+## Built (2026-11-06, branch v2-l5-policy)
+
+Package `policy/` and `tla/Policy.tla`. What differs from the design, and why;
+every number is marked measured or guess.
+
+**The embedding.** As designed: `ExecFileOptions` with zero `FileOptions`,
+`Thread.Load` nil, `Thread.Print` discarding, globals frozen, the universe plus
+`TIERS` and `LEVELS`. One compile per stored version, cached by number (an
+unstored file in `check` or `set` is compiled fresh and never cached). The step
+budget is per call, not per tick: each call gets a fresh thread with
+`CallSteps` = 1,000,000 (guess), and the file's top level gets the same. Two
+Starlark texts the design did not fix, as the library prints them: `set` is
+"this Starlark dialect does not support sets"; `load` is "load not implemented
+by this application". A syntax error at the end of a line names the next line
+("got newline"), as Starlark reports it.
+
+**The inputs.** The fields the design lists, with these readings of the
+snapshot types: `order`'s `prior_head` is the producer's `head` (a producer has
+no prior-head column; layer 2 copies its head into the work consumer's at
+`Start`); `writer_rank` is on every `rows`, `reads` and `verdict` card, the
+rank of the row named by `author`, or the card's tier when that row is unknown
+or there is no author; a read's `finding` is the read consumer's `reason` (a
+read has no finding column). Candidates are computed here from the snapshot
+(up, not held, serving the card's tier, the author excluded for a read; by
+name) and shared by every `rows` question with the same tier, kind and author.
+`landing`'s `rung` is layer 3's state, so `LandingQuestion` carries it; check
+and `FullQuestions` use `flowing` unless given. `width` is asked for every row
+and the argument-free questions once, every tick (the joint check needs every
+width). A subject the snapshot does not hold is not asked; its answer is absent.
+
+**The validator.** Every refusal in the design, plus: an `order` answer must be
+a tuple (a list is refused) of ints fitting 64 bits or strings, compared int
+before string (`CompareOrder`); a `rows` answer naming a row twice is refused;
+"rank below the card's tier" fires for a known row that is not a candidate (a
+candidate always lists the card's tier, so is never below it). The joint check
+as built: a `rows` answer with candidates must name at least one row whose
+`width` work is above 0 whenever some candidate has a configured width above 0;
+it is reported at the line of `rows`. Dicts are closed: an extra key is refused.
+
+**The tick's answer.** `Engine.Answer(Versions, Snapshot, Questions) (Answers,
+[]Failure)`: tried in order active, previous active (when different), built-in;
+the first version with no error and no refusal answers everything. Each failing
+version tried is one `Failure`, so a failing previous version also gets its own
+judgement. `Answers.Version` is the version that answered (`answered_by`; 0 the
+built-in, -1 when even the built-in failed). `Judgements(snap, failures)`
+builds the `PutJudgement` for each failing version with none open (group
+`policy:v<n>`, id `policy-v<n>-s<seq>` so an id is never reused after an
+answer, command `nova-sprint policy check v<n>`); its deadline is left to layer
+3, which holds the clock (now plus `timeouts().judgement`). The answer cache is
+keyed by version, question and input (the arguments as printed; for `rows`, a
+sha256 of the shared candidate list), bounded at 200,000 entries (guess) and
+emptied when full. Load, measured on amd-3 without -race, 5,000 ready producers
+over 50 rows, every question: cold 132 ms, warm 68 ms, against the 100 ms
+budget (a guess); cold is over it.
+
+**The verbs.** `Up`, `Set`, `Activate`, `Show`, `List`, `Diff`, `Check` and
+`LoadVersions`/`PrevOf`, taking a `Caller` whose `Coordinator` is layer 6's
+answer. Refusals are `*Refusal` in the CORRECT-USE form (`SPRINT REFUSED policy
+<verb>: <what>: <fix>`). The reason goes in `Op.Note` (kept in the receipt; the
+events' `reason` column is the refusal's), and an empty reason is refused. `up`
+stores and activates the built-in in one op. `activate` pre-checks "already
+active" with the store's own text and answers the open policy judgements of
+both the old active and the version it activates; it has no `AtSeq` fence (the
+snapshot moves every tick; a version that breaks after its check is caught by
+the fallback). `Show`, `List` and `LoadVersions` walk the whole log; layer 6
+should call `PrevOf` as it folds events rather than `LoadVersions` per tick.
+
+**The default.** `policy/default.star` is the design's text unchanged. Not
+marked v1 or guess, because they are rules rather than tunables: the 0/1 fix
+flag in `order`, "one rank" in `_up(..., 1)`, and "more than one card" in
+`stitch`.
+
+**Tests.** Conformance shapes are the suite's own (empty; seeded; escalated
+with a security prose and a down row; landed and merging with a narrowed row):
+layer 2's builders are unexported test code in `card/`. The mid-sprint break
+and every verb row run on Fake and on PostgreSQL. `FuzzAnswers` checks no
+panic, in-domain answers or a named refusal with the built-in answering; the
+design's "the store never returning ErrInvalid" is not checked here, since a
+tick's answers reach the store only through layer 3's ops.
+
+**The model.** As designed, with `FallbackWasActive` added (the never-active
+fallback witness needs an invariant to break), a seventh witness
+(`PolicyWaitRebound` for `WaitKeepsItsBound`), and five reach checks. There is
+no separate `Answer` action: answering the judgement is part of `Activate`, as
+in the code. TLC on hetzner2, MaxVersion 3: `Policy.cfg` passes (34,945
+distinct states); the seven witnesses each break their target invariant; the
+five reach checks are each reached: 13 runs, run one by one with
+`tla/run-one.sh` because hetzner2 was rebooting every few minutes; the full
+`tla/ci-tlc.sh`, which now includes them, was not run end to end.
+
+**Names.** Layer 3's design names its questions differently (`regrace`,
+`victim`, `rung`, `bounce_limit`, `escalate_after`, `budget`, `pack`,
+`deadline`). Layer 6 defers to this design for policy, so these names stand;
+`regrace`, `budget`, `pack` and `deadline(kind)` have no question here and are
+owed to the layer 3 and 6 wiring.
+
+**The catalog** (added at the coordinator's request, 2026-11-06, for the row
+verbs). Neither a `models` question nor a data section existed, so `catalog()`
+joined the question set: `{"models": {provider: [{"name": n, "tier": t}]},
+"harnesses": [h]}`, names non-empty, tiers from `TIERS`, nothing listed twice,
+validated every tick like the others. `policy.ReadCatalog(ctx, store, version)`
+(0 the built-in) returns `Catalog{Version, Models map[string][]Model{Name,
+Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
+give a function and a type one name. `Catalog.Unknown(model, harness)` is the
+row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
+(`nova-sprint policy set <file> --reason <why>`). The default's tier map is Glenn's (Hacker News, 2026-11-05),
+quoted in `default.star`: haiku, luna and deepseek-flash-4.1 at flash; sonnet,
+terra and mercury-3 at pro; opus and sol at heavy; fable, astra and argon at
+frontier. The providers are the coordinator's mapping (anthropic, openai,
+google, deepseek, inception); openai and google are guesses, and astra sits
+under `unknown`, a guess. Harnesses: claude, codex, opencode and api (the
+API-rate adapter).
+
+**Size.** At round 3: 2,529 lines of non-test Go, over the 1.5k budget by
+about 1,030; 117 lines of Starlark.
+
+**After the cold read of e33eea61** (seven defects; the probes are
+`policy/coldread_test.go`, copied from the cold reader's clone; the rulings
+are the coordinator's, 2026-11-06):
+
+1. The answer cache keys by label (`v<n>` or `default`) and only a stored
+   version or the built-in is cached (`program.cached`); `check` and `set`
+   compile files uncached, so a file named `default` is just a file.
+2. The default's `rows` lists every serving row as the question table now
+   says, so a heavy card wanting a width-0 frontier row is dealt to the heavy
+   row. Candidates reach `rows` by rank, lowest first, then by name (the
+   default needs no sort; 140 ms cold, measured, against 214 ms with two
+   sorts under load). The joint check stays as the guard.
+3. `verdict` gains `retry`, in the question table above.
+4. A judgement's question is made storable: invalid UTF-8 and NUL replaced
+   by U+FFFD, at most 4,096 bytes, cut at a rune with " [cut at 4096 bytes]".
+5. and 6. One thread per version per tick, with the per-call step budget
+   kept, a per-tick step budget `TickSteps` = 10,000,000 (a guess: 1.5 x the
+   default's 6,550,740 steps, measured at 5,000 producers over 50 rows), and a
+   per-tick wall clock `TickTime` = 250 ms (the ruling; the cold tick measured
+   129 ms, 140 ms after this change, on amd-3) enforced by `Thread.Cancel` from
+   a timer. A spent budget is that version's failure: one judgement and the
+   fallback, which gets a budget of its own, so a tick in which every version
+   spends its budget takes at most three budgets. Starlark has no memory
+   limit, so the wall clock is the only bound on what a policy allocates: one
+   builtin step (a 512 MiB string) runs to its end and is refused after it,
+   not interrupted. A `-race` build scales `TickTime` by 3 (`race.go`; the race
+   detector runs Starlark five to ten times slower, measured), and the load
+   test skips its timing under -race. The load test runs alone, not parallel,
+   and now requires the cold tick inside `TickTime`.
+7. `ReadCatalog` refuses an unknown, negative or data-kind version naming
+   `nova-sprint policy show --list`; a model under two providers is refused;
+   `catalog()` is optional in a version, and one without it has the built-in's
+   catalog (in `ReadCatalog` and in the tick), so versions from before catalog
+   stay valid.
+
+The model now lets the built-in fail too: `Drift` may break `Default`; when
+active, previous and built-in all fail, the tick is answered by `NoAnswer`
+(`Answers.Version` -1), still applies the moves that need no answer, and deals
+nothing. `TickAlwaysAnswered` is now proved against that case (`NoAnswer` only
+when every version tried failed), with a new invariant `NoAnswerStartsNothing`,
+three new witnesses (`PolicyDefaultSkipped`, `PolicyBrokenDefaultUsed`,
+`PolicyNoAnswerDeals`), `PolicyTickStalls` re-cut against the new last resort,
+and the reach check `NeverNoAnswer`.
+
+Checked on vision (hetzner2 was down), `bash tla/ci-tlc.sh` at a9661204: 115 runs
+all as required, 17 of them Policy (Policy.cfg no error; 10 witnesses each
+violating their first invariant; 6 reach checks violated). Race suite green on
+amd-3; cold tick 133 ms at 5,000 producers over 50 rows, without -race.
+
+**Round 3** (2026-11-07; rulings 1 to 7 from the Haiku fuzz, Stella's source
+review and cold read 2, and the Opus breaker's ruling; the probes are
+`policy/coldread2_test.go` and `policy/fuzz_break_test.go`, folded in with
+their readers' attribution in the headers). What each ruling became:
+
+1. A refusal before storage names the file (`check`, `set`: the `Label` of
+   an unstored source is its file name, its `Version` 0); after storage, the
+   version (`v7`, `default`). Said under the refusal form above.
+2. Every refusal has a line. Something the file does not define (a missing
+   question, a file over `MaxBody`) is refused at the file's last line,
+   printed `line N, end of file`; an unknown top-level name or a name bound
+   to a non-function is refused at its own line, found from the parsed file
+   (the engine now uses `SourceProgramOptions` and `Program.Init`, so the
+   syntax tree gives every top-level binding's line). A failure the engine
+   cannot place in a function (the top level running over the deadline) is
+   at line 1 and names the range, "running the top level, lines 1 to N".
+3. `TickTime` is 500 ms, marked measured (the ruling's cold 217 ms on amd-3,
+   margin 2x); -race still scales it by 3.
+4. One deadline per tick: `AnswerContext(ctx, ...)` takes the caller's
+   context and adds `TickTime` with `context.WithTimeout`, from the first
+   byte of input construction to the last answer returned; `Answer` is
+   `AnswerContext` on `context.Background()`. The deadline is checked at
+   every phase boundary (inputs, each version's top level, each question,
+   the joint check) and inside the validator's loops (`late(ctx, i)`), and
+   `context.AfterFunc` cancels the running thread. Each version runs in its
+   own goroutine and thread; the versions after the one being waited on
+   start at `fallbackAfter` = `TickTime`/2 (a guess) if it has not answered,
+   and the first version in order that passes answers, so starting early
+   never changes which version answers (the model's `Pick`). The per-tick
+   step budget `TickSteps` is gone: the deadline is the one bound;
+   `CallSteps` stays per call. The `TickTime` comment is corrected: no
+   memory bound exists in-process; one builtin step (a large allocation)
+   cannot be interrupted, and its goroutine is abandoned at the deadline,
+   its version failed. The separate evaluator process that would bound
+   memory is the 2.0.x item, so the child-process worker started in the
+   half-finished round 3 was set aside, not built. Result and cache bytes
+   are capped at 4 MiB per tick (`maxTickBytes`; an answer's weight plus
+   `entryBytes` = 96 per entry, a guess); a version over the cap fails with
+   "over 4194304 bytes". The answer cache now holds only the last passing
+   tick's answers, committed when the whole tick passes (committing empties
+   every other version's), so it is bounded by the same 4 MiB; equal `rows`
+   answers share one slice per tick, read-only.
+5. `Diff` is linear-space (Hirschberg's LCS after trimming the common
+   prefix and suffix) and refuses either side above 10,000 lines.
+6. Bounded readers: a policy file is read through a `LimitReader` at
+   `MaxBody`+1 and refused as "over 65536 bytes".
+7. `ReadCatalog` and a tick's `Answers.Catalog` are isolated copies (each
+   call clones the maps and slices), and the effective version is named the
+   same way in both: a version with no `catalog()` has the built-in's, and
+   `Catalog.Version` is 0 in both.
+
+**The breaker's ruling.** The built-in's `rows` walked candidates x
+producers in Starlark and spent its step budget at 5,000 producers over 100
+rows. The candidate ranking is now a Go builtin, `prefer(candidates,
+rank)` (`policy/prefer.go`), memoised per candidate list and rank for one
+version's tick; the script hands it the short list and the wanted rank.
+The default's text otherwise stands. Load, measured on amd-3 without -race,
+5,000 ready producers over 100 rows that all serve every tier, every
+question: cold 56.8 ms, warm 22.0 ms, inside the 500 ms budget.
+
+**Probes.** Each `TestColdread2Defect*` and fuzz probe passes as written,
+except where a ruling changed the expected text: the fuzz probes match
+`line \d+, end of file: ` for a missing question; cold read 1's alloc probe
+asks for 32 GiB in 128 MiB steps, since no memory bound exists and the
+deadline is what refuses it; its unbounded-steps probe now expects "time
+budget" (2,000 producers x range(30000)); the cache probe measures the
+engine's cached bytes against the 4 MiB cap.
+
+**API.** Kept: `Arity`, `CompareOrder`, `RungBackedUp`, `DefaultBody`,
+`Answer`, `Judgements`, `ReadCatalog`. Added: `AnswerContext`. Removed:
+`TickSteps`. The question set's names and types are unchanged.
+
+**The model.** `tla/Policy.tla` unchanged in its actions: the deadline is
+one more way a version is in `breaks` on a tick, and the early fallback
+does not change `Pick`; only its header names the round 3 code. TLC on hetzner2,
+`bash tla/ci-tlc.sh` at 4e8969fb: the 17 Policy runs all as required
+(Policy.cfg no error, 10 witnesses, 6 reach checks); 114 of 115 runs ok,
+the one failure `CardDeps` (layer 2's model, not this layer's), killed
+with exit 137 after 8 minutes and 3.85M distinct states.
+
+**Owed.** The trace check binding `tla/Policy.tla` to the code (Glenn,
+2026-11-07: the code's random walk emits traces, TLC checks them in CI) is
+not built here; until it is, this layer does not lock. Layer 3 is told the
+budget is 500 ms and that `AnswerContext` carries its deadline.
