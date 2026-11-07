@@ -28,9 +28,13 @@ const (
 	CheckGreen              CheckState = "green"
 	CheckRed                CheckState = "red"
 	CheckPending            CheckState = "pending"
-	CheckFault              CheckState = "fault"
-	FaultRateLimit          FaultKind  = "rate_limit"
-	FaultGate               FaultKind  = "gate_fault"
+	// CheckAbsent is a commit with no check rollup at all: no workflow has
+	// even queued a job for it. Queued and running jobs are pending; a
+	// rollup that stays absent means no CI listens to the branch (defect 40).
+	CheckAbsent    CheckState = "absent"
+	CheckFault     CheckState = "fault"
+	FaultRateLimit FaultKind  = "rate_limit"
+	FaultGate      FaultKind  = "gate_fault"
 )
 
 var (
@@ -73,7 +77,19 @@ type Forge interface {
 	Checks(ctx context.Context, repo string, shas []string) (map[string]CheckRollup, error)
 	Merge(ctx context.Context, repo string, pr int, sha, base string) error
 }
-type Identity struct{ Name, ExpectedLogin, Token, ConfigDir string }
+
+// Identity is who the forge acts as: always an explicit token, never the
+// gh login of whoever runs the process (defect 39: the first landing merged
+// as the human's own account through the host's bare gh). Name is for the
+// refusals; ExpectedLogin, when set, is checked against gh auth status.
+type Identity struct{ Name, ExpectedLogin, Token string }
+
+// TokenEnv is the environment variable the sprint's own GitHub token comes
+// in: the control seat's secret of that name, handed to nova-sprint by
+// nova-secrets exec --only GH_GATE_TOKEN,... (the sprint-run service's unit
+// does this).
+const TokenEnv = "GH_GATE_TOKEN"
+
 type Config struct {
 	Identity           Identity
 	Binary             string
@@ -103,15 +119,28 @@ func NewClient(ex edge.Exec, cfg Config) *Client {
 	return &Client{cfg: cfg, tokens: float64(cfg.Burst), lastTick: cfg.Now()}
 }
 func (c *Client) RestedUntil() int64 { c.mu.Lock(); defer c.mu.Unlock(); return c.restTill }
-func (c *Client) checkCredentials_internal(ctx context.Context) error {
+
+// Ready refuses, with its one fix and without running anything, a client
+// with no token: the forge never acts as the host's own gh login.
+func (c *Client) Ready() error {
 	id := c.cfg.Identity
 	name := cmp.Or(id.Name, "unknown")
 	switch {
-	case strings.TrimSpace(id.Token) == "" && strings.TrimSpace(id.ConfigDir) == "":
-		return fmt.Errorf("forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity %s: run nova-secrets exec or set GH_CONFIG_DIR", name)
+	case strings.TrimSpace(id.Token) == "":
+		return &edge.Refusal{Problem: "the forge has no GitHub token for " + name + " (" + TokenEnv + " is not in this process) and never acts as whoever gh is logged in as",
+			Fix: "run it under nova-secrets exec --only " + TokenEnv + ",... -- nova-sprint ..., so the control seat's token is the identity"}
 	case isForbiddenLogin_internal(id.ExpectedLogin):
-		return fmt.Errorf("forge refused: gh auth login is %s, expected an identity other than the human's (the human's own credentials are never used): set GH_CONFIG_DIR for %s", id.ExpectedLogin, name)
+		return &edge.Refusal{Problem: "the forge identity " + name + " expects the login " + id.ExpectedLogin + ", the human's own account, which is never used",
+			Fix: "set NOVA_SPRINT_FORGE_LOGIN to the sprint's own GitHub login"}
 	}
+	return nil
+}
+func (c *Client) checkCredentials_internal(ctx context.Context) error {
+	if err := c.Ready(); err != nil {
+		return err
+	}
+	id := c.cfg.Identity
+	name := cmp.Or(id.Name, "unknown")
 	c.mu.Lock()
 	already := c.verified
 	c.mu.Unlock()
@@ -124,11 +153,12 @@ func (c *Client) checkCredentials_internal(ctx context.Context) error {
 	login := parseAuthLogin_internal(combined)
 	if (err != nil || !res.OK()) && login == "" {
 		// The environment is the whole process's: the failure names none of it.
-		return fmt.Errorf("forge refused: gh auth status for %s: %w: set GH_CONFIG_DIR for %s", name, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err), name)
+		return fmt.Errorf("forge refused: gh auth status for %s: %w: check the token in %s", name, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err), TokenEnv)
 	}
 	want := cmp.Or(id.ExpectedLogin, name)
 	if isForbiddenLogin_internal(login) || (id.ExpectedLogin != "" && !strings.EqualFold(login, id.ExpectedLogin)) {
-		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (the human's own credentials are never used): set GH_CONFIG_DIR for %s", cmp.Or(login, "unknown"), want, want)
+		return &edge.Refusal{Problem: "the token in " + TokenEnv + " is " + cmp.Or(login, "an unknown login") + "'s, expected " + want + " (the human's own credentials are never used)",
+			Fix: "put " + want + "'s token in the control seat's " + TokenEnv}
 	}
 	c.mu.Lock()
 	c.verified = true
@@ -151,17 +181,12 @@ func parseAuthLogin_internal(s string) string {
 func (c *Client) env_internal() []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GH_TOKEN=") && !strings.HasPrefix(kv, "GITHUB_TOKEN=") && !strings.HasPrefix(kv, "GH_CONFIG_DIR=") {
+		if !strings.HasPrefix(kv, "GH_TOKEN=") && !strings.HasPrefix(kv, "GITHUB_TOKEN=") && !strings.HasPrefix(kv, "GH_ENTERPRISE_TOKEN=") && !strings.HasPrefix(kv, "GH_CONFIG_DIR=") {
 			env = append(env, kv)
 		}
 	}
-	if c.cfg.Identity.Token != "" {
-		env = append(env, "GH_TOKEN="+c.cfg.Identity.Token)
-	}
-	if c.cfg.Identity.ConfigDir != "" {
-		env = append(env, "GH_CONFIG_DIR="+c.cfg.Identity.ConfigDir)
-	}
-	return append(env, "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
+	// gh reads GH_TOKEN before its own login; Ready refused an empty one.
+	return append(env, "GH_TOKEN="+c.cfg.Identity.Token, "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
 }
 func (c *Client) takeToken_internal() error {
 	c.mu.Lock()
@@ -318,7 +343,7 @@ func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, r
 	for i, sha := range shas {
 		commit := env.Data.Repository[fmt.Sprintf("c%d", i)]
 		if commit == nil || commit.StatusCheckRollup == nil {
-			out[sha] = CheckRollup{SHA: sha, State: CheckPending, Reason: "no check rollup reported yet"}
+			out[sha] = CheckRollup{SHA: sha, State: CheckAbsent, Reason: "no check has been reported for this commit"}
 			continue
 		}
 		if commit.OID != "" && !strings.EqualFold(commit.OID, sha) {

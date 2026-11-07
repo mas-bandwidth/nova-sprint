@@ -20,22 +20,25 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
-func gitEdge() *git.Client { return git.New(git.Config{}) }
+// gitEdge is git as the sprint: with the control seat's token in the
+// process, every git call (the landing's pushes too) authenticates with it
+// and never with the host's own credential helper (defect 39).
+func gitEdge() *git.Client { return git.New(git.Config{Token: os.Getenv(forge.TokenEnv)}) }
 
-// forgeEdge is GitHub through gh, as the identity nova-secrets exec gave
-// this process (GH_TOKEN or GH_CONFIG_DIR; never Glenn's).
+// forgeEdge is GitHub through gh, as the token nova-secrets exec gave this
+// process in GH_GATE_TOKEN (the control seat's); with none it refuses, and
+// it never falls back to the host's gh login (defect 39).
 func forgeEdge() *forge.Client {
 	login := os.Getenv("NOVA_SPRINT_FORGE_LOGIN")
-	return forge.New(forge.Config{Identity: forge.Identity{Name: cmp.Or(login, "sprint"), ExpectedLogin: login, Token: os.Getenv("GH_TOKEN"), ConfigDir: os.Getenv("GH_CONFIG_DIR")}})
+	return forge.New(forge.Config{Identity: forge.Identity{Name: cmp.Or(login, "sprint"), ExpectedLogin: login, Token: os.Getenv(forge.TokenEnv)}})
 }
 
 // origin is a stream's repository at origin, read through one clone per
 // repository under the state dir (the git edge has no clone-free
 // ls-remote): run keeps its own the same way.
 type origin struct {
-	git   *git.Client
-	forge *forge.Client
-	dir   string
+	git *git.Client
+	dir string
 }
 
 func (o *origin) clone(ctx context.Context, repo string) (string, error) {
@@ -64,11 +67,6 @@ func (o *origin) Contains(ctx context.Context, repo, ancestor, head string) (boo
 		return false, err
 	}
 	return o.git.IsAncestor(ctx, dir, ancestor, head)
-}
-
-func (o *origin) PR(ctx context.Context, repo, branch, base string) (string, bool, error) {
-	pr, ok, err := o.forge.PR(ctx, repo, branch, base)
-	return pr.HeadSHA, ok, err
 }
 
 // doctor is check's and show run's view outside the verbs' own reads.

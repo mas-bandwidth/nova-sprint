@@ -73,7 +73,27 @@ type Config struct {
 	Binary, AuthorName, AuthorEmail string
 	Exec                            edge.Exec
 	PushTimeout, RebaseTimeout      time.Duration
+	// Token, when set, is the one credential git uses over https: the host's
+	// credential helpers are reset and replaced by one that answers with it,
+	// so a push is the token's identity and never the host's own login
+	// (defect 39). It reaches git in the environment, never in argv.
+	Token string
 }
+
+// tokenEnv_internal is the credential helper that answers git with the
+// token: credential.helper reset to empty (which drops every helper the
+// host's config names), then a shell helper reading the token from the
+// child's environment, as GIT_CONFIG_* command-line config.
+func tokenEnv_internal(token string) []string {
+	if token == "" {
+		return nil
+	}
+	helper := `!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$NOVA_SPRINT_GIT_TOKEN"; }; f`
+	return []string{"NOVA_SPRINT_GIT_TOKEN=" + token, "GIT_CONFIG_COUNT=2",
+		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=",
+		"GIT_CONFIG_KEY_1=credential.helper", "GIT_CONFIG_VALUE_1=" + helper}
+}
+
 type Client struct{ cfg Config }
 
 func New(cfg Config) *Client {
@@ -86,7 +106,8 @@ func New(cfg Config) *Client {
 	return &Client{cfg: cfg}
 }
 func (c *Client) gitEnv_internal(extra ...string) []string {
-	return append([]string{"GIT_TERMINAL_PROMPT=0", "GIT_AUTHOR_NAME=" + c.cfg.AuthorName, "GIT_AUTHOR_EMAIL=" + c.cfg.AuthorEmail, "GIT_COMMITTER_NAME=" + c.cfg.AuthorName, "GIT_COMMITTER_EMAIL=" + c.cfg.AuthorEmail}, extra...)
+	env := append([]string{"GIT_TERMINAL_PROMPT=0", "GIT_AUTHOR_NAME=" + c.cfg.AuthorName, "GIT_AUTHOR_EMAIL=" + c.cfg.AuthorEmail, "GIT_COMMITTER_NAME=" + c.cfg.AuthorName, "GIT_COMMITTER_EMAIL=" + c.cfg.AuthorEmail}, tokenEnv_internal(c.cfg.Token)...)
+	return append(env, extra...)
 }
 
 // runGitEnv_internal runs git; a run that could not complete (a timeout, a

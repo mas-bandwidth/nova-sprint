@@ -72,7 +72,7 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 		return err
 	}
 	defer func() { _ = srv.Close() }()
-	fg := forge.New(forge.Config{Identity: forge.Identity{Name: c.Row, Token: os.Getenv("GH_TOKEN"), ConfigDir: os.Getenv("GH_CONFIG_DIR")}, Exec: ex, Timeout: timeouts.GH})
+	fg := forge.New(forge.Config{Identity: forge.Identity{Name: c.Row, Token: os.Getenv("GH_TOKEN")}, Exec: ex, Timeout: timeouts.GH})
 	r, err := NewRunner(Runner{
 		Host: c.Host, CoordinatorHosts: c.CoordinatorHosts,
 		RootDir:  cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row)),

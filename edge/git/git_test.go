@@ -284,3 +284,37 @@ func TestRedTogetherGreenAloneBlamesTheLaterHead(t *testing.T) {
 		t.Fatalf("want red blaming %s with %s green, got %+v err=%v", h2, h1, res, err)
 	}
 }
+
+// With a token, every git call answers credentials with it alone: the
+// host's helpers are reset (an empty credential.helper) and the token is in
+// the environment, never in argv (defect 39: the landing's push was the
+// host's own login). Without one, nothing is added.
+func TestTokenIsTheOnlyCredential(t *testing.T) {
+	t.Parallel()
+	sha := strings.Repeat("a", 40)
+	var seen []edge.Cmd
+	runner := ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		seen = append(seen, cmd)
+		return edge.Result{}, nil
+	})
+	c := New(Config{Exec: runner, Token: "tok-sprint"})
+	if err := c.Push(context.Background(), "/repo", sha, StreamRef("s1"), ""); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if len(seen) != 1 || strings.Contains(strings.Join(seen[0].Argv, " "), "tok-sprint") {
+		t.Fatalf("push argv %v", seen)
+	}
+	env := strings.Join(seen[0].Env, "\n")
+	for _, want := range []string{"NOVA_SPRINT_GIT_TOKEN=tok-sprint", "GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=credential.helper\nGIT_CONFIG_VALUE_0=\n", "GIT_CONFIG_KEY_1=credential.helper", `password=$NOVA_SPRINT_GIT_TOKEN`} {
+		if !strings.Contains(env+"\n", want) {
+			t.Fatalf("push env lacks %q:\n%s", want, env)
+		}
+	}
+	seen = nil
+	if err := New(Config{Exec: runner}).Push(context.Background(), "/repo", sha, StreamRef("s1"), ""); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if strings.Contains(strings.Join(seen[0].Env, "\n"), "credential.helper") {
+		t.Fatalf("a client with no token changed the credential helpers: %v", seen[0].Env)
+	}
+}
