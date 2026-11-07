@@ -1,8 +1,9 @@
-# tla/: the store model (layer 1) and the card machine (layer 2)
+# tla/: the store model (layer 1), the card machine (layer 2) and the steps (layer 3)
 
-Two models live here: `Store.tla` (layer 1, below) and `CardMachine.tla`
-(layer 2, in its own section after the store's results). `ci-tlc.sh` runs
-both, with all their witnesses and reach checks, in one parallel pass.
+Three models live here: `Store.tla` (layer 1, below), `CardMachine.tla`
+(layer 2, in its own section after the store's results) and `Steps.tla`
+(layer 3, last). `ci-tlc.sh` runs all three, with all their witnesses and
+reach checks, in one parallel pass.
 
 `Store.tla` models the contract in `docs/LAYER-1-STORE.md` (v2 at 3c9b5155).
 Each operation is one atomic step over `epoch`, `cards`, `rows`,
@@ -806,3 +807,372 @@ Not modelled: the liveness obligation "nothing stalls", which the card
 model's rulings make layer 3's (with the tick); NeverStranded is its state
 half here. The reasons ("held: ..."), Merge's two-writes-to-one-field
 refusal and Add's id length cap are value checks with no state of their own.
+
+# The steps (layer 3)
+
+`Steps.tla` models the tick of `docs/LAYER-3-STEPS.md` (v2 at 21798cc0),
+with the inputs as LAYER-6 and the build rules have them: reports and takes
+are the rows' own store ops, and the inbox holds edge results only. The Go
+in `steps/` cites it by the invariant names below.
+
+The state is the store `w` (producers, consumer slots, rows up or down, each
+stream's hold, and the take order of working consumers), the view `snap`,
+`inbox` (edge results: a landing outcome, landed or red with its CI, and a
+runner's stop ack), `inflight` (edge requests: id `<<epoch, kind, card,
+sha>>`, stream, sent), `js` (open judgements, kind and subject), `split` (the
+groups of the last tick's refused ops of two groups or more) and a monitor
+`last` of the last tick.
+
+`Snap` copies the store to the view (the fold). Between `Snap` and `Tick`
+the store moves under the tick: a row's `Report` (its verb's own op: a work
+consumer's report moves its producer in the same plan), the coordinator's
+hold (with Park of the stream's ready producers in the same op) and its
+lifting, a row's Gone and Seen. `Take` comes only between ticks: a take
+changes nothing a tick fences. `EdgeResult` delivers an in-flight request's
+result once or twice (layer 4 may redeliver).
+
+`Tick(a)` is one atomic action. From the view alone, in the design's order:
+1. **Preemption**: a ready blocker with every open serving row at width
+   (working consumers only) is one group: Withdraw of the victim on the
+   chosen row (releasing its producer), the blocker's Start there, and a
+   stop request for the victim's runner. The row is policy's `rows` answer
+   when it is a preemptable row, else the first by name; the victim is
+   policy's `victim` answer when in domain, else the youngest by take. No
+   open serving row: an `unserved` judgement for the tier.
+2. **Land results**, in arrival order: Landed or Red for a producer still
+   merging at the request's head; an ack, a stale or a repeated result is
+   consumed with no move.
+3. **Needs**: Resolve in id order: needs landed, stream not held, no
+   producer of the stream overlapping its paths that is started (working,
+   review, merging) or ready, counting those resolved earlier in the tick.
+   Never a function of rows.
+4. **Fix**: ReadYes or ReadFix (the default verdict) once every read of the
+   current review is final and one is done.
+5. **Deal and reads**: blocker work, every read owed, normal work, in id
+   order; a row is dealt while ready plus working is under width plus
+   `ahead` (2 x width), with the in-tick tally. The row is policy's `rows`
+   answer when it is eligible for the candidate, else the default: the
+   desired rank exactly (the card's tier; one up once its bounces reach
+   `escalate_after`; for a read, the rank above its author's row), then
+   above it, then an idle lane, most room, name. A row below the card's
+   tier is never eligible. No open serving row: `unserved`; a review no
+   row may read: `cannot-read`.
+6. **Land requests**: per stream with none in flight, the first merging
+   producer none of whose `after` targets is merging (a hold never touches
+   landing).
+7. **Judgements**: `unserved`, `cannot-read`, and one `policy` judgement
+   per question whose answer failed for a subject; `unserved` and
+   `cannot-read` expire when the cause clears in the view.
+
+A card claimed by an earlier step is skipped by the later ones. Then the
+order (blocker groups, never cut; land results; needs; fix; the deal), the
+budget (cards touched; the first non-blocker group always goes, so a group
+larger than the budget is not starved; stop at the first group that does
+not fit, so the inbox is consumed as a prefix), the packing (up to `Pack`
+groups per op; a group touching a card of a `split` group is an op of its
+own), and the apply: each op in order is accepted whole if every record its
+groups read is as the plan expects it (the view with this tick's accepted
+ops applied) and every move passes layer 2's guard on the store as it is,
+else refused whole. A stop request is dispatched only with its accepted op
+(its After); a land request has an empty After. An inbox item is consumed
+when admitted and its op accepted (or it has no move); a refused op's items
+are put back in place; the rest carry, in arrival order.
+
+The oracle `a` is the asker: when a question has subjects, policy answers
+in domain (an alternative victim, the oldest, with either row preferred for
+every candidate) or fails ("failed": no answer in the tick's policy time,
+an error, out of range, or a row or consumer not offered, which is one path
+in the engine).
+
+The per-card moves are layer 2's, written at the grain the steps read: each
+guard (`Legal`) and write (`ApplyG`) is the `CardMachine.tla` action of the
+same name. `CardMachine.tla` cannot be INSTANCEd here: its card sets are
+fixed by its `Scenario` constant (`Prods` is `{p1}` or `{p1, p2}`), and
+preemption of the youngest of two working consumers needs three producers.
+Heads are attempt numbers (an ok report of attempt n pushes head n).
+
+## The instance: four scenarios
+
+Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and 2
+(rank 2); `ahead` is 2 x width.
+
+| Scenario | Cards | Start | Environment | Constants |
+|---|---|---|---|---|
+| pre | b blocker (s2), p, q (s1, disjoint paths) | all waiting, s2 held, r1 down | lift s2's hold; r2 down and up | K 2, MaxAtt 2, MaxEnv 2, MaxArrive 2, Budget 2, Pack 2 |
+| pre1 | as pre | as pre | as pre | as pre, Pack 1 |
+| deal | p, q (s1, overlapping), b (s2, tier 2, needs p) | all waiting | r1 down and up | K 4, MaxAtt 2, MaxBounce 1 (p only), MaxEnv 1, MaxArrive 1, Budget 2, Pack 2 |
+| land | p (s1), q (s2, after p) | both merging at head 1 | hold and lift s1 | K 2, MaxAtt 1, MaxEnv 2, MaxArrive 3, Budget 2, Pack 2 |
+| burst | as land | as land | none | K 1, MaxAtt 1, MaxArrive 4, Budget 1, Pack 1 |
+
+Red results come only in land and burst; work and read reports are ok but
+in deal, where p may fail and a read of p may say fix. A fault report is a
+fail that spends no bounce, so no scenario needs it.
+
+## Invariants and the liveness property
+
+Named as the design names its guarantees. State invariants:
+
+| Invariant | Design | Says |
+|---|---|---|
+| `NeverDealtTwice` | guarantee 1 | at most one live work consumer per producer, of its current attempt, only while it works |
+| `WidthKept` | guarantee 2 | working consumers on a row never exceed its width |
+| `ReadyNeverFlipsWithLoad` | guarantee 8, LESSONS 2.20, 3.2 | the ready rule answers the same for the store and for the store with no consumers and every row down |
+| `NeverOverlapStarted` | Sentinels and needs (LESSONS 2.20) | two producers of one stream with overlapping paths are never ready or started together |
+| `NeverBelowTier` | Escalation | every live consumer is on a row that serves its card's tier (no tier is ever written) |
+| `CarryFIFO` | guarantee 7, list item 6 | the inbox is in arrival order and nothing that arrived is lost |
+| `EdgeAfterAccepted` | Plan.Edges | an in-flight stop names a withdrawn consumer; an in-flight land a producer merging at that head |
+
+Tick invariants, each a check of the last tick computed from the view, the
+store before and after and the plan (`TickChecks`), apart from the planning
+operators where the check is about them:
+
+| Invariant | Design | Says |
+|---|---|---|
+| `OneGroupPerCard` | list item 4, guarantee 1 | no card is in two of the tick's groups |
+| `GroupWhole` | list item 4, guarantee 5 | each group's cards are all as applied or all unchanged |
+| `NeverHalfApplied` | guarantee 5 | each op's groups are all applied or none |
+| `RefusalChangesNothing` | tick step 7 | a refused op changes none of its cards |
+| `RefusedOnlyByRace` | list item 5 | an op is refused only when a record it read moved between the fold and the tick |
+| `BudgetKept` | tick step 3, list item 6 | past the first non-blocker group, the cards touched stay within the budget |
+| `BlockerPreemptsInOneTick` | guarantee 4 | a ready blocker with every open serving row at width has a preemption group in the tick, or no open serving row and an `unserved` judgement |
+| `PreemptYoungest` | Preemption | the victim is the youngest by take, unless policy named another in domain |
+| `PolicyFailsToDefault` | guarantee 10 | a failed rows answer deals exactly what no policy deals, and every failed question has its `policy` judgement |
+| `AfterKept` | guarantee 3, ENFORCED L2-U19 | a land request never goes out for a producer whose `after` target is merging |
+| `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
+
+`ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
+under weak fairness on `Snap` and `Tick` only (rows need not take or
+report): a ready producer with room on an open serving row (under width
+plus `ahead`) is eventually dealt, unless the room goes. The model's bounds
+(attempts, slots) are exempt, as in `CardMachine`.
+
+## Expected results
+
+| Module | Scenario | Fault | Expected result |
+|---|---|---|---|
+| `StepsPre` / `StepsPrePack1` / `StepsDeal` / `StepsLand` / `StepsBurst` | pre / pre1 / deal / land / burst | none | pass, liveness included |
+| `witnesses/StepsDealtTwice` | pre | the deal does not skip a blocker the preemption claimed | NeverDealtTwice |
+| `witnesses/StepsTwoGroups` | land | the land-result step ignores claimed cards | OneGroupPerCard |
+| `witnesses/StepsWidthOver` | pre | Take checks width plus ahead | WidthKept |
+| `witnesses/StepsBlockerQueued` | pre | preemption counts queue room as free width | BlockerPreemptsInOneTick |
+| `witnesses/StepsHalfWrites` | pre | a refused preemption's Withdraw half is applied | GroupWhole |
+| `witnesses/StepsPartialOp` | pre | a refused op applies its unraced groups | NeverHalfApplied |
+| `witnesses/StepsRefusedApplied` | pre | a refused op is applied anyway | RefusalChangesNothing |
+| `witnesses/StepsSelfRefusal` | deal | the deal does not pre-check that a row is up | RefusedOnlyByRace |
+| `witnesses/StepsFenceOnView` | pre1 | ops fenced on the view, not the view plus the tick's accepted ops | RefusedOnlyByRace |
+| `witnesses/StepsBudgetIgnored` | burst | no budget | BudgetKept |
+| `witnesses/StepsCarryDropped` | burst | the carry drops what the budget left | CarryFIFO |
+| `witnesses/StepsCarryNewestFirst` | burst | the carry is put back newest first | CarryFIFO |
+| `witnesses/StepsStopEarly` | pre | stop requests from refused ops too | EdgeAfterAccepted |
+| `witnesses/StepsReadyOnRoom` | deal | Resolve requires room on a row | ReadyNeverFlipsWithLoad |
+| `witnesses/StepsNoOverlapCheck` | deal | Resolve without the overlap check | NeverOverlapStarted |
+| `witnesses/StepsTierUnchecked` | deal | the tier checked nowhere (answer and Start) | NeverBelowTier |
+| `witnesses/StepsAfterIgnored` | land | the land step ignores after | AfterKept |
+| `witnesses/StepsAfterHolds` | land | the land step holds on any target not landed | AfterNeverHolds |
+| `witnesses/StepsPolicyStall` | deal | a failed rows answer plans nothing | PolicyFailsToDefault |
+| `witnesses/StepsOldestVictim` | pre | the victim default is the oldest | PreemptYoungest |
+| `witnesses/StepsReadyCountedAgainstWidth` | pre | the deal counts ready against width | ReadyDealtWhenRoom (liveness, TLC exit 13) |
+| `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
+| `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
+| `reach/StepsNeverRefused` | pre | none | violated: an op is refused by a race |
+| `reach/StepsNeverSplit` | pre | none | violated: a group of a refused op is an op of its own |
+| `reach/StepsNeverStopAcked` | pre | none | violated: a stop ack is consumed |
+| `reach/StepsNeverPolicyJudged` | pre | none | violated: a policy judgement is opened |
+| `reach/StepsNeverResolved` | deal | none | violated: Resolve |
+| `reach/StepsNeverDealt` | deal | none | violated: Start |
+| `reach/StepsNeverReadAsked` | deal | none | violated: a read is cut |
+| `reach/StepsNeverMerged` | deal | none | violated: ReadYes |
+| `reach/StepsNeverFixed` | deal | none | violated: a producer back from a bounce |
+| `reach/StepsNeverEscalated` | deal | none | violated: a bounced producer dealt one rank up |
+| `reach/StepsNeverNeedReleased` | deal | none | violated: a need lands and its dependant resolves |
+| `reach/StepsNeverCannotRead` | deal | none | violated: cannot-read is opened |
+| `reach/StepsNeverLandRequested` | land | none | violated: a land request |
+| `reach/StepsNeverLanded` | land | none | violated: Landed |
+| `reach/StepsNeverRed` | land | none | violated: Red |
+| `reach/StepsNeverAfterHeld` | land | none | violated: a landing waits on a queued after target |
+| `reach/StepsNeverCarried` | burst | none | violated: the budget carries inbox items |
+
+`python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
+five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`
+and the fault list in the script, as the other two generators do.
+`ci-tlc.sh` runs them with the rest: a liveness witness's cfg lists its
+PROPERTY first and must end in TLC exit 13 with "Temporal property
+ReadyDealtWhenRoom was violated" and no invariant violated.
+
+## Results
+
+TLC 1.8.0 on vision (Linux), 2026-11-07 UTC; passing runs with 4 workers
+(`ci-tlc.sh` uses 8 for pre and deal), witnesses and reach checks with 1.
+
+| Run | Result | Generated / distinct | Depth | Time |
+|---|---|---|---|---|
+| StepsPre | pass | 55,234 / 15,302 | 26 | 2m24s |
+| StepsPrePack1 | pass | 55,188 / 15,284 | 26 | 2m28s |
+| StepsDeal | pass | 27,019 / 11,006 | 48 | 47s |
+| StepsLand | pass | 16,821 / 7,125 | 38 | 23s |
+| StepsBurst | pass | 3,796 / 1,923 | 28 | 9s |
+| StepsDealtTwice | NeverDealtTwice | 3,224 / 1,332 | 14 | 20s |
+| StepsTwoGroups | OneGroupPerCard | 63 / 38 | 6 | 1s |
+| StepsWidthOver | WidthKept | 2,459 / 1,088 | 13 | 14s |
+| StepsBlockerQueued | BlockerPreemptsInOneTick | 3,224 / 1,332 | 14 | 20s |
+| StepsHalfWrites | GroupWhole | 4,231 / 1,680 | 15 | 26s |
+| StepsPartialOp | NeverHalfApplied | 146 / 96 | 7 | 5s |
+| StepsRefusedApplied | RefusalChangesNothing | 58 / 41 | 6 | 2s |
+| StepsSelfRefusal | RefusedOnlyByRace | 28 / 25 | 6 | 1s |
+| StepsFenceOnView | RefusedOnlyByRace | 5 / 5 | 3 | 1s |
+| StepsBudgetIgnored | BudgetKept | 444 / 255 | 13 | 5s |
+| StepsCarryDropped | CarryFIFO | 1,524 / 903 | 18 | 9s |
+| StepsCarryNewestFirst | CarryFIFO | 1,526 / 905 | 18 | 9s |
+| StepsStopEarly | EdgeAfterAccepted | 4,231 / 1,680 | 15 | 26s |
+| StepsReadyOnRoom | ReadyNeverFlipsWithLoad | initial state | 1 | 1s |
+| StepsNoOverlapCheck | NeverOverlapStarted | 4 / 4 | 3 | 1s |
+| StepsTierUnchecked | NeverBelowTier | 1,755 / 986 | 22 | 8s |
+| StepsAfterIgnored | AfterKept | 4 / 4 | 3 | 1s |
+| StepsAfterHolds | AfterNeverHolds | 152 / 82 | 8 | 3s |
+| StepsPolicyStall | PolicyFailsToDefault | 13 / 11 | 5 | 1s |
+| StepsOldestVictim | PreemptYoungest | 3,226 / 1,333 | 14 | 22s |
+| StepsReadyCountedAgainstWidth | ReadyDealtWhenRoom (exit 13) | 8,052 / 2,965 | 19 | 1m04s |
+
+All 19 reach checks are violated, in 1s to 30s each (StepsNeverStopAcked the
+longest, 6,384 generated at depth 17).
+
+## The counterexamples, checked by hand
+
+Each trace was read state by state; the move the fault lets through is one
+the correct model never makes (the passing runs show that).
+- **StepsDealtTwice:** p and q resolve, are dealt to r2 (r1 is down) over
+  two ticks and taken; s2's hold is lifted, b resolves. The next tick
+  preempts p1 for b on r2 and, the claim ignored, also deals b a plain
+  Start in the same op: b at attempt 2 with two ready work consumers.
+- **StepsTwoGroups:** p's land request goes out, its red result arrives
+  twice; one tick plans Red for p from both items (the second should have
+  been consumed with no move): review raised twice.
+- **StepsWidthOver:** p is dealt and taken on r2; s2 is lifted and b, then
+  q, are dealt to r2 while p works (r2 has free width, so no preemption);
+  the takes of q and b both pass: three working on a row of width 2.
+- **StepsBlockerQueued:** p and q work on r2, b becomes ready with no free
+  width; the faulted step sees queue room and skips preemption, and the
+  deal queues b as a ready consumer behind two working ones.
+- **StepsHalfWrites:** b is due; the tick plans preempting p1, but p1
+  reports ok between the fold and the tick, so the op is refused; the
+  fault still writes p1 withdrawn (fail over its done report) without b's
+  Start.
+- **StepsPartialOp:** s2 lifted, b and p resolve; r2 goes down between the
+  fold and the tick, whose first op is b's Start on r2 with q's Resolve; the
+  op is refused on r2's fence and the fault applies q's Resolve alone.
+- **StepsRefusedApplied:** r2 goes down between the fold and the tick; the
+  tick's Start of p on r2 is refused, and applied anyway: p working, its
+  consumer cut on a down row.
+- **StepsSelfRefusal:** r1 goes down; the tick plans p's Start on r1 (the
+  default's first choice for a tier-1 card) without the up check, and the
+  store refuses it with nothing having moved since the fold.
+- **StepsFenceOnView:** the first tick resolves p and q, one op each (pack
+  1); q's Resolve reads its stream's producers, p's record was written by
+  the tick's own first op, and the fence on the view refuses it with no
+  race.
+- **StepsBudgetIgnored:** p is red, re-read and settled while q's red
+  result waits; one tick admits p's ReadYes and q's Red with a budget of 1.
+- **StepsCarryDropped:** three results wait (p's red, q's red twice after
+  a redelivery); the tick takes p's and drops the rest: two items lost.
+- **StepsCarryNewestFirst:** the same inbox; the carry is put back as
+  stamps 4, 3.
+- **StepsStopEarly:** as StepsHalfWrites, p1 reports between the fold and
+  the tick and the preemption op is refused, but the stop request for p1's
+  runner goes out: in flight for a consumer that is done, not withdrawn.
+- **StepsReadyOnRoom:** the initial state: p is resolvable, and the
+  faulted rule says ready with rows up and not ready with them down.
+- **StepsNoOverlapCheck:** the first tick resolves p and q, whose paths
+  overlap: both ready.
+- **StepsTierUnchecked:** p is dealt to r1, finishes, is read on r2, merges
+  and lands; b (tier 2) and q resolve, and policy's answer r1 deals b to r1,
+  which serves tier 1 only.
+- **StepsAfterIgnored:** the first tick sends both p and q to land, though
+  q is after p and p is merging.
+- **StepsAfterHolds:** p's result is red (review again, not queued), q is
+  merging after p; the next tick sends nothing for s2.
+- **StepsPolicyStall:** p is ready, the rows answer fails, and the tick
+  deals nothing (the default deals p to r1).
+- **StepsOldestVictim:** p1 then q1 taken on r2, b due, the victim answer
+  fails, and the tick withdraws p1, the older.
+- **StepsReadyCountedAgainstWidth:** p and q are dealt to r2 and b
+  preempts p1; p is ready again with r2 at 2 of 6 (width plus ahead), but
+  the faulted deal sees 2 of 2. The lasso is the tick looping on that
+  state with q1 and b1 working forever (rows are not fair): p never dealt.
+- **reach:** Preempted: p1 and q1 working on r2, b lifted and due, p1 or q1
+  withdrawn and b dealt in one op, p released to ready. Unserved: r2 goes
+  down with b due. Refused: r2 down between fold and tick. Split: a refused
+  two-group op's groups each alone next tick. StopAcked: the preemption's
+  stop request answered and consumed. PolicyJudged: a failed answer at the
+  first deal. Resolved, Dealt, ReadAsked, Merged: p's path through deal.
+  Fixed: p's read says fix or its work fails, back to ready with a bounce.
+  Escalated: p, bounced once, dealt to r2 (rank 2). NeedReleased: p lands,
+  b leaves waiting. CannotRead: r1 down while p (author r2) owes a read.
+  LandRequested, Landed, Red: the first land request and its two results.
+  AfterHeld: q held while p merges. Carried: two results, budget 1.
+
+## Not modelled, and what the model found in the design
+
+Not modelled: holds' Withdraw of untaken consumers after the grace, the
+retire and fail limits (Block at the bounce limit, Withdraw on silence,
+Gone, flap), sentinels and `landed-sentinel`, drops (NeedFailed over a
+closure, Waive, Relink), backed-up landing groups and the rungs, `conflict`
+and `base-red`, the alarms (`stall`, `idle`, `land-rate`), judgement
+deadlines and expiry defaults, the per-card request verbs and their actor
+rule, op ids (an op is its body here; distinct bodies in one tick follow
+from OneGroupPerCard), and the `Park` step: the hold parks in its own op and
+every return to ready under a hold writes waiting (CardMachine `Back`), so a
+ready producer the hold's op missed does not arise; the step is a defence.
+The engine judgement for a group refused on fresh state is not modelled
+either: RefusedOnlyByRace shows no op is refused but by a race when the
+steps pre-check every store rule, so that path is a defence for a defect
+(StepsSelfRefusal shows what takes it). Guarantee 6 (a stale report) is the
+report verb's under LAYER-6 and `CardMachine`'s `OldAttemptNeverMoves`.
+
+What the model found, each with the design line:
+1. **The fence must be on the gens the plan predicts.** Tick step 7: "Apply
+   the ops in order, each fenced on the gens its groups read." Read as the
+   view's gens, an op whose group read a card an earlier op of the same
+   tick wrote is refused by the tick itself (StepsFenceOnView: a Resolve
+   reads its stream's producers). The model fences on the view with the
+   tick's accepted ops applied.
+2. **A group can be larger than the budget.** Tick step 3: the budget is a
+   count of cards touched (a Start touches two, a preemption four), with
+   no rule for a group over it; step 4's "A group larger than the packing
+   size is an op of its own" cannot apply, since `pack` counts groups. The
+   model always admits the first non-blocker group of a tick.
+3. **A refused op's inbox items.** Step 5: "Only the inbox carries ...
+   every other move is derived again from the store". A land result whose
+   op was refused cannot be derived again; the model puts it back in place
+   (CarryFIFO holds with it).
+4. **The order list omits needs and fix.** Step 3 lists blocker groups,
+   reports and takes, landing groups, drops and holds, limits, judgements,
+   the deal; Resolve and ReadYes/ReadFix groups are not placed. The model
+   puts them after landing groups, before the deal.
+5. **Guarantee 4 says "no room", the step says "no free width".**
+   Guarantee 4: "A ready blocker with no room is dealt by preemption";
+   Preemption: "with no free width on an open serving row". Room elsewhere
+   is width plus `ahead`; read that way the blocker is queued behind full
+   rows (StepsBlockerQueued). The model takes free width (working under
+   width).
+6. **Inputs: LAYER-3 against LAYER-6.** LAYER-3 Reports: "Takes ride the
+   same inbox", step 5 and guarantee 7 carry reports and takes; LAYER-6
+   section 2: "Reports are ordinary ops ... Nothing reaches run over the
+   bus". The model follows LAYER-6 (the build rules: layer 6 wins).
+7. **Apply and carry: LAYER-3 against LAYER-6.** LAYER-6 tick steps 5 and
+   6: "Apply the merged plan as one op", "the plans fenced on that card are
+   put back, and the rest is applied again", "a plan past the budget is
+   carried"; LAYER-3 steps 4, 5 and 7 pack into ops, split a refused op by
+   group next tick, and carry only the inbox. The model follows LAYER-3.
+8. **Edge request ids.** The brief's `<<epoch, kind, card, sha>>` and
+   Land's "Request ids hash stream, heads and base" both give the second
+   landing of one head after a red the id of the first (with the base
+   unchanged), so a late redelivery of the first result reads as the
+   second's. The model does not redeliver after a result is consumed, so
+   it does not show this.
+9. **Escalation's fallback.** "a work consumer at the card's own tier
+   first" does not say what follows when no row of that rank has room; the
+   model falls back to higher ranks, then lower ones that still serve the
+   tier.
+10. **CardMachine is not composable.** Its card sets are fixed by
+    `Scenario`; a `Prods` and `Rows` constant there would let this model
+    INSTANCE its guards and invariants instead of restating them.
