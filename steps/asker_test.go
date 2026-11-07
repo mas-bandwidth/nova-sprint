@@ -62,7 +62,7 @@ func TestAskerSlow(t *testing.T) {
 // judgement, and the valid ones stand.
 func TestAskerOutOfRange(t *testing.T) {
 	bad := Limits{Bounces: 0}
-	tmo := Timeouts{RowSilentGone: 600, RowSilentWithdraw: 10, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, BaseRegate: []int{120}}
+	tmo := Timeouts{RowSilentGone: 600, RowSilentWithdraw: 10, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyTake: 180, BaseRegate: []int{120}}
 	a := Answers{Version: 5,
 		Order:    map[string][]any{"p1": {1, 2, 3, 4, 5}, "p2": {1.5}, "p3": {"a", 2}},
 		Rows:     map[string][]string{"p1": {"r9"}, "p2": {}, "p3": {"r2", "r1"}},
@@ -99,7 +99,7 @@ func TestAskerOutOfRange(t *testing.T) {
 // TestAskerInDomain: valid answers of a version are used as given.
 func TestAskerInDomain(t *testing.T) {
 	l := Limits{Bounces: 3, Faults: 2, SameFinding: 1, ReportsPerTick: 100, RouteRestWindow: 5, RouteRestAfter: 2, Budget: 40, Pack: 5}
-	tm := Timeouts{RowSilentGone: 60, RowSilentWithdraw: 60, LandingStall: 30, Judgement: 86400, RouteRestFor: 1, BaseRegate: []int{1, 2, 3}}
+	tm := Timeouts{RowSilentGone: 60, RowSilentWithdraw: 60, LandingStall: 30, Judgement: 86400, RouteRestFor: 1, ReadyTake: 1, BaseRegate: []int{1, 2, 3}}
 	o := newOracle(Answers{Version: 1, Limits: &l, Timeouts: &tm}, Engine)
 	assert.Equal(t, l, o.limits())
 	assert.Equal(t, tm, o.timeouts())
