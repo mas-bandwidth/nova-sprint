@@ -187,7 +187,7 @@ func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
 }
 func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 	db := store.NewFake()
-	choices := Choices{Store: db, Actor: "friendF", Now: func() time.Time { return time.Unix(1000, 0) }}
+	choices := Choices{Store: db, Actor: "coord", Now: func() time.Time { return time.Unix(1000, 0) }}
 	command := func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
 		case "nova-bus":
@@ -197,8 +197,8 @@ func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 		}
 	}
 	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: command, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Store: &runtimeStore{ready: true}}
-	result := (&Engine{Actor: "friendF", Store: upStore(true), Bus: &fakeBus{}, Now: upNow, Setup: runtime, Lock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
-	want := "SPRINT REFUSED up: friendF is not on the bus: " + busRecipe("friendF") + "\n"
+	result := (&Engine{Actor: "coord", Store: upStore(true), Bus: &fakeBus{}, Now: upNow, Setup: runtime, Lock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
+	want := "SPRINT REFUSED up: coord is not on the bus: " + busRecipe("coord") + "\n"
 	if result.Exit != 1 || result.Output != want {
 		t.Fatal(result)
 	}

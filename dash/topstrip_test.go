@@ -8,7 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-func TestEtaFollowsV1(t *testing.T) {
+func TestEtaMinutesAndForms(t *testing.T) {
 	cases := []struct {
 		left     int
 		rate     float64
@@ -82,7 +82,7 @@ func TestEtaFallsBackToTheSprintAverage(t *testing.T) {
 func TestLandedInCountsProducersBecomingLanded(t *testing.T) {
 	pre := store.Card{ID: "a", Kind: "producer", State: "merging"}
 	post := store.Card{ID: "a", Kind: "producer", State: "landed"}
-	imp := store.Card{ID: "i", Kind: "producer", State: "landed", Reason: "its producer landed in v1"}
+	imp := store.Card{ID: "i", Kind: "producer", State: "landed", Reason: store.ImportedReason}
 	wk := store.Card{ID: "a.w", Kind: "work", State: "landed"}
 	e := store.Event{Accepted: true, Before: &store.State{Cards: map[string]store.Card{"a": pre}}, After: &store.State{Cards: map[string]store.Card{"a": post, "i": imp, "a.w": wk}}}
 	if got := store.LandedIn(e); got != 1 {
@@ -95,15 +95,15 @@ func TestLandedInCountsProducersBecomingLanded(t *testing.T) {
 }
 
 func TestCoordinatorName(t *testing.T) {
-	rows := map[string]store.Row{"w": {Name: "w", Role: "worker"}, "friendF": {Name: "friendF", Role: "coordinator"}, "zed": {Name: "zed", Role: "coordinator"}}
-	if got := coordinatorOf(rows); got != "friendF" {
+	rows := map[string]store.Row{"w": {Name: "w", Role: "worker"}, "coord": {Name: "coord", Role: "coordinator"}, "zed": {Name: "zed", Role: "coordinator"}}
+	if got := coordinatorOf(rows); got != "coord" {
 		t.Fatalf("coordinator %q", got)
 	}
 	if got := coordinatorOf(map[string]store.Row{"w": {Role: "worker"}}); got != "" {
 		t.Fatalf("no coordinator is blank, got %q", got)
 	}
 	d := mapSnapshot(store.Snapshot{Rows: rows}, testRoster, time.Time{})
-	if d.Coordinator != "friendF" {
+	if d.Coordinator != "coord" {
 		t.Fatalf("envelope coordinator %q", d.Coordinator)
 	}
 }
@@ -111,8 +111,8 @@ func TestCoordinatorName(t *testing.T) {
 func TestVersionRidesTheEnvelope(t *testing.T) {
 	old := Version
 	defer func() { Version = old }()
-	Version = "v2-stitch+abc123def456"
-	if d := mapSnapshot(store.Snapshot{}, testRoster, time.Time{}); d.ServerVersion != "v2-stitch+abc123def456" {
+	Version = "v1.2.3+abc123def456"
+	if d := mapSnapshot(store.Snapshot{}, testRoster, time.Time{}); d.ServerVersion != "v1.2.3+abc123def456" {
 		t.Fatalf("version %q", d.ServerVersion)
 	}
 }
@@ -121,7 +121,7 @@ func TestCostSummaryPricedAndUnpriced(t *testing.T) {
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p1":   {ID: "p1", Kind: "producer", Stream: "s", State: "landed", Tier: "flash"},
 		"p2":   {ID: "p2", Kind: "producer", Stream: "s", State: "landed", Tier: "pro"},
-		"old":  {ID: "old", Kind: "producer", Stream: "s", State: "landed", Reason: "its producer landed in v1"},
+		"old":  {ID: "old", Kind: "producer", Stream: "s", State: "landed", Reason: store.ImportedReason},
 		"p1.w": {ID: "p1.w", Kind: "work", Of: "p1", Stream: "s", State: "done", Tier: "flash", Cost: 300000, Priced: true},
 		"p1.r": {ID: "p1.r", Kind: "read", Of: "p1", Stream: "s", State: "done", Tier: "flash", Cost: 100000, Priced: true},
 		"p2.w": {ID: "p2.w", Kind: "work", Of: "p2", Stream: "s", State: "done", Tier: "pro", Cost: 600000, Priced: true},
@@ -155,7 +155,7 @@ func TestPerCardDividesByEveryLandedCard(t *testing.T) {
 		"p1":   {ID: "p1", Kind: "producer", State: "landed"},
 		"p2":   {ID: "p2", Kind: "producer", State: "landed"}, // landed, its runs unpriced
 		"p3":   {ID: "p3", Kind: "producer", State: "landed"},
-		"p4":   {ID: "p4", Kind: "producer", State: "landed", Reason: "its producer landed in v1"},
+		"p4":   {ID: "p4", Kind: "producer", State: "landed", Reason: store.ImportedReason},
 		"p1.w": {ID: "p1.w", Kind: "work", Of: "p1", State: "done", Tier: "pro", Cost: 3000000, Priced: true},
 		"p3.w": {ID: "p3.w", Kind: "work", Of: "p3", State: "done", Tier: "pro", Cost: 1000000, Priced: true},
 		"p3.r": {ID: "p3.r", Kind: "read", Of: "p3", State: "done", Tier: "pro", Cost: 2000000, Priced: true},

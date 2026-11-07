@@ -73,8 +73,8 @@ type Config struct {
 	PushTimeout, RebaseTimeout      time.Duration
 	// Token, when set, is the one credential git uses over https: the host's
 	// credential helpers are reset and replaced by one that answers with it,
-	// so a push is the token's identity and never the host's own login
-	// (defect 39). It reaches git in the environment, never in argv.
+	// so a push is the token's identity and never the host's own login.
+	// It reaches git in the environment, never in argv.
 	Token string
 	// GitHubCredential is the gh binary git asks for https://github.com's
 	// credential (`gh auth git-credential` as the host's gh login, every
@@ -109,12 +109,11 @@ func New(cfg Config) *Client {
 
 type identityKey struct{}
 
-// WithIdentity is ctx carrying the sprint's commit identity (store.Identity,
-// round 24): every commit git makes under it (the landing's merge commits)
+// WithIdentity is ctx carrying the sprint's commit identity (store.Identity):
+// every commit git makes under it (the landing's merge commits)
 // is authored and committed as name <email>, over Config's. The landing
 // passes the store's identity this way, read in the same snapshot as the
-// request, so a merge commit never carries a made-up identity (fix list
-// L4.8; defect 80: the CAA refused merge commits authored by a literal).
+// request, so a merge commit never carries a made-up identity.
 func WithIdentity(ctx context.Context, name, email string) context.Context {
 	return context.WithValue(ctx, identityKey{}, [2]string{name, email})
 }
@@ -300,7 +299,7 @@ func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []s
 		}
 	}
 	if _, _, ok := c.identity_internal(ctx); !ok {
-		return MergeResult{}, fmt.Errorf("git refused: MergeGroup makes merge commits and has no commit identity (the sprint's, round 24); set it with nova-sprint identity --name --email --reason")
+		return MergeResult{}, fmt.Errorf("git refused: MergeGroup makes merge commits and has no commit identity; set it with nova-sprint identity --name --email --reason")
 	}
 	if stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "checkout", "--detach", onto); err != nil || code != 0 {
 		return MergeResult{}, cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "checkout", "--detach", onto))
@@ -465,7 +464,7 @@ func (c *Client) Rebase(ctx context.Context, worktree, onto string) (RebaseResul
 // GroupPrefix is the group branches' namespace: sprint-group/<stream>,
 // beside sprint/ and never inside it, so neither a base named
 // sprint/<stream> nor a card branch sprint/<stream>/<card> can block it
-// (git keeps no ref that is both a leaf and a directory; defect 46).
+// (git keeps no ref that is both a leaf and a directory).
 const GroupPrefix = "sprint-group/"
 
 // GroupBranch is stream's group branch, where rung 2 merges its heads.

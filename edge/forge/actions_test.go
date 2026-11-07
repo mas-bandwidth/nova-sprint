@@ -59,7 +59,7 @@ func actionsCanned_internal() map[string]string {
 	}
 }
 
-// TestInheritanceSplitsByTheMergeBase (directives 59, 76): the head's
+// TestInheritanceSplitsByTheMergeBase: the head's
 // failing workflows split by the merge base (compare, then runs at both);
 // a workflow with no completed run at the merge base is compared with the
 // base branch's last completed run of it and says so; one with none there
@@ -130,7 +130,7 @@ func TestInheritanceUnreadLogIsSaid(t *testing.T) {
 	}
 }
 
-// TestAuthorsAndAgreements (directive 63): an agreement check is named
+// TestAuthorsAndAgreements: an agreement check is named
 // like one; Authors is the PR's distinct commit authors.
 func TestAuthorsAndAgreements(t *testing.T) {
 	for name, want := range map[string]bool{"Contributor Assignment Agreement": true, "license/cla": true, "CLA": true, "cla-check": true,
@@ -140,10 +140,10 @@ func TestAuthorsAndAgreements(t *testing.T) {
 		}
 	}
 	var paths []string
-	canned := map[string]string{"pr 2830": `[{"login":"friendB-x","name":"Aurora","email":"friendB@example.invalid"},
-		{"login":"","name":"Bench","email":"bench@example.invalid"},{"login":"friendB-x","name":"Aurora","email":"friendB@example.invalid"}]`}
+	canned := map[string]string{"pr 2830": `[{"login":"bob-x","name":"Alice","email":"bob@example.invalid"},
+		{"login":"","name":"Bench","email":"bench@example.invalid"},{"login":"bob-x","name":"Alice","email":"bob@example.invalid"}]`}
 	got, err := actionsGH_internal(canned, &paths).Authors(context.Background(), "o/r", 2830)
-	want := []string{"Aurora <friendB@example.invalid> (friendB-x)", "Bench <bench@example.invalid>"}
+	want := []string{"Alice <bob@example.invalid> (bob-x)", "Bench <bench@example.invalid>"}
 	if err != nil || !slices.Equal(got, want) {
 		t.Fatalf("Authors = %q, %v; want %q", got, err, want)
 	}

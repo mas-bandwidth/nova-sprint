@@ -9,7 +9,7 @@ import (
 
 // TestIdentityNamesTheChoice: the forge acts as the host's gh login unless
 // GH_GATE_TOKEN is set; a GH_TOKEN or GH_CONFIG_DIR in the environment is
-// never the identity (directive 59), and the name in messages is the
+// never the identity, and the name in messages is the
 // choice, never a login it expects.
 func TestIdentityNamesTheChoice(t *testing.T) {
 	env := func(kv map[string]string) func(string) string { return func(k string) string { return kv[k] } }

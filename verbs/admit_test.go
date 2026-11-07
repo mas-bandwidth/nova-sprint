@@ -13,7 +13,7 @@ import (
 // TestStreamAdmission: stream add proves the card branches creatable (git's
 // ref-name rules, no base or origin branch that is their parent) and, with
 // forge github, the host's gh identity able to act; each refusal names its
-// one fix (intent rule 34).
+// one fix.
 func TestStreamAdmission(t *testing.T) {
 	add := func(name string, more ...string) []string {
 		return append([]string{"stream", "add", name, "--repo", "o/r"}, more...)

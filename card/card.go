@@ -1,4 +1,4 @@
-// Package card is layer 2 of nova-sprint v2: every legal move of a producer
+// Package card is layer 2: every legal move of a producer
 // card, a consumer card and a row, and nothing else. Pure Go: no store, no
 // clock, no bus. Given the records an event touches, Move, MoveConsumer,
 // MoveRow, MoveStream and MoveAdd return the plan layer 1 applies (conditions
@@ -39,8 +39,7 @@ type Card struct {
 }
 
 // Row is a row of sprint.rows as the machine reads it, with its width and
-// tiers from the roster (round 22: nova-config is their one source and the
-// store keeps neither).
+// tiers from the roster (the store keeps neither).
 type Row struct {
 	Name, State string
 	Width, Gen  int
@@ -108,7 +107,7 @@ type (
 	Landed struct{ Head, Merge, Reason string }
 	// Red is a red landing: merging -> fix (ready, waiting when held) with
 	// Reason, the CI finding, as the finding; review +1, so reads before it
-	// no longer count (intent rule 30: no terminal fail).
+	// do not count (a red landing is never terminal).
 	Red      struct{ Head, Reason string }
 	Released struct{ Reason string } // the work consumer of this attempt was withdrawn
 	Cancel   struct{ Reason string }
@@ -144,9 +143,8 @@ type (
 )
 
 // Consumer events, one per row of the consumer table. There is no Take: a
-// consumer is cut in working, in its row's hand at the deal (defect 52,
-// intent rule 33); the row's acknowledgement is not a card move (LAYER-2
-// "Deal is take").
+// consumer is cut in working, in its row's hand at the deal; the row's
+// acknowledgement is not a card move (LAYER-2 "Deal is take").
 type (
 	// Report is a row's result. Cost, Priced and Usage are the run's usage
 	// record as the engine priced it (package usage): the machine stores
@@ -193,7 +191,7 @@ func FromStore(c store.Card) Card {
 }
 
 // RowFromStore is a store row as the machine reads it, with width and
-// tiers passed in from the roster (round 22).
+// tiers passed in from the roster.
 func RowFromStore(r store.Row, width int, tiers []string) Row {
 	return Row{Name: r.Name, State: r.State, Width: width, Gen: r.Gen, Flaps: r.Flaps, Held: r.Held, Reason: r.Reason, Tiers: tiers}
 }
@@ -279,7 +277,7 @@ const (
 const LandedState = "landed"
 
 // MissingRoute is the reason kind of a fault that names a route or device
-// the row lacks (defect 48): a work consumer's fault whose reason starts
+// the row lacks: a work consumer's fault whose reason starts
 // with it ("missing-route: adb no device attached") blocks its producer on
 // a judgement instead of a re-deal. The first word after it is the route's
 // name, the one vocabulary of routes: the name a brief declares with
@@ -305,7 +303,7 @@ func RouteName(reason string) string {
 }
 
 // HeldPrefix starts the reason of a producer the coordinator holds with
-// `hold <card>` (defect 47): a Block whose reason is "held: <why>". The
+// `hold <card>`: a Block whose reason is "held: <why>". The
 // board lists it with the other blocked producers under its reason.
 const HeldPrefix = "held: "
 

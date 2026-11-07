@@ -101,13 +101,13 @@ func TestCatalogRefusals(t *testing.T) {
 	require.NoError(t, err)
 	want, err := ReadCatalog(w.ctx(), w.st, testEngine(), 0)
 	require.NoError(t, err)
-	want.Version = 0 // ruling 7: the catalog that answered, the built-in one
+	want.Version = 0 // the catalog that answered, the built-in one
 	assert.Equal(t, want, c, "a version from before catalog has the built-in's")
 }
 
 // TestCatalogBenchRefused: a bench model that is not one of its tier's
 // models, or a tier not in TIERS, is refused at set, naming the tier's
-// models (defect 57: the deal names a model a harness accepts).
+// models (the deal names a model a harness accepts).
 func TestCatalogBenchRefused(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CI run of the store model (layer 1), the card machine (layer 2), the steps
-# (layer 3), the policy model (layer 5) and layer 6 (run, setup, install):
+# (layer 3), the landing and runner models (layer 4), the policy model
+# (layer 5) and layer 6 (run, setup):
 # bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
@@ -84,8 +85,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 # At most TLC_JOBS runs at once (default: the machine's cores), each JVM capped at
 # TLC_HEAP (default 2g; the main scenarios get twice that). Unbounded, the 200+
-# runs each took TLC's default quarter of RAM and the kernel killed them
-# (amd-3, 30 GB, 2026-11-07: "Out of memory: Killed process (java)").
+# runs would each take TLC's default quarter of RAM and the kernel would kill them.
 cores() {
     if command -v nproc >/dev/null 2>&1; then nproc
     else sysctl -n hw.ncpu 2>/dev/null || echo 4; fi
@@ -158,7 +158,7 @@ run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 
-# Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
+# Layer 6: the run (chooser, tick, pusher), its clear, and setup.
 run Run pass . Run.cfg Run.tla 2
 run RunReports pass . RunReports.cfg Run.tla 2
 run RunInitiallyStopped pass . RunInitiallyStopped.cfg Run.tla 2

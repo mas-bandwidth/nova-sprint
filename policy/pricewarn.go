@@ -12,8 +12,7 @@ import (
 // BenchProviders are the providers the bench workers (harness nova-worker)
 // reach on API keys, billed per token: the take receipt's tier map and the
 // worker's opencode model ids (verbs/take.go takeModel_local,
-// edge/worker/harness.go; LOCAL DOGFOOD: the policy's tier rows are to
-// answer this, defect 57).
+// edge/worker/harness.go).
 var BenchProviders = []string{"deepseek", "inception"}
 
 // apiProviders are the providers whose runs are billed at API rate: the
@@ -36,7 +35,7 @@ func apiProviders(ro roster.Roster) map[string]bool {
 }
 
 // PriceWarnings are the catalog models billed at API rate that prices()
-// leaves out (the owner, 2026-11-07: find defects at creation): each run of
+// leaves out: each run of
 // one is recorded unpriced=no-price, never $0, until the policy prices it.
 // A price is found as the engine finds it: under provider/model or the
 // model alone.

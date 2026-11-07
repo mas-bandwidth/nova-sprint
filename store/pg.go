@@ -19,68 +19,65 @@ import (
 var schemaSQL string
 
 // SchemaVersion is the version of schema.sql, kept in sprint.meta with the
-// schema's hash. Version 2 adds to version 1: the card columns kind (with
-// sentinel), of, after, author, base_sha, prior_head, result (with fault),
-// bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding and red; the card
-// states blocked and done; the row columns gen, held and reason (round 22
-// dropped kind, width, tiers, model and harness: configuration, the
-// roster's); the tables judgements and cursors; the events' policy; the meta
-// hash; the triggers that keep a card's kind, of, stream, holder, tier, id
-// and epoch, a row's, stream's or judgement's key and epoch, a policy version's
-// columns but active, and the log (TRUNCATE included)
-// fixed; and the CHECKs that keep every count at 0 or more. There is no
-// upgrade path from version 1: a store at version 1 is refused like any
-// other version. Within version 2 there are three: a store made by round 16's
-// schema (round16Hash) or by round 17's, the one every round to 21 carried
-// (round21Hash), or by round 22's (round22Hash), or by round 23's
-// (round23Hash), is upgraded by Migrate (round 17's red column, round 22's
-// dropped row columns, round 23's model column and row heartbeat columns,
-// round 24's commit identity columns).
+// schema's hash. Version 2 has the card columns kind (with sentinel), of,
+// after, author, base_sha, prior_head, result (with fault), bounces, cost,
+// priced, usage, priority, tier, paths, done_when, prose, review, finding,
+// red and model; the card states blocked and done; the row columns gen,
+// held, reason and the heartbeat's (width, tiers and the like are the
+// roster's, not the store's); the tables judgements, cursors and balances;
+// the events' policy; the meta hash; the triggers that keep a card's kind,
+// of, stream, holder, tier, id and epoch, a row's, stream's or judgement's
+// key and epoch, a policy version's columns but active, and the log
+// (TRUNCATE included) fixed; and the CHECKs that keep every count at 0 or
+// more. A store at any other version is refused. Within version 2, Migrate
+// also upgrades a store made by one of six earlier builds of its schema
+// (olderSchema1Hash to olderSchema6Hash), and refuses any other hash.
 const SchemaVersion = 2
 
-// round16Hash is the schema hash of round 16's schema.sql
-// (testdata/schema-round16.sql, 36c1bbd6), an earlier build of version 2
-// Migrate upgrades: running schema.sql on it adds cards.red (false on every
-// card, with its CHECK), drops round 22's five row columns and the
-// cards_live index, and changes nothing else, then the new hash is
-// recorded. Any hash but these two and schemaHash is still refused.
-const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f0434187373e"
+// olderSchema1Hash is the schema hash of the earliest build Migrate upgrades
+// (testdata/schema-older-1.sql): it has no cards.red and still has the five
+// configuration columns of sprint.rows. Running schema.sql on it adds
+// cards.red (false on every card, with its CHECK), drops the five row
+// columns and the cards_live index, and changes nothing else, then the new
+// hash is recorded.
+const olderSchema1Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f0434187373e"
 
-// round21Hash is the schema hash of round 17's schema.sql, which every
-// round to 21 carried (testdata/schema-round21.sql): running schema.sql on
-// it drops sprint.rows' kind, width, tiers, model and harness (ALTER TABLE
-// DROP COLUMN, round 22) and the cards_live index, in Migrate's one
-// transaction, then the new hash is recorded.
-const round21Hash = "cbe47774a69cf22749b6d414e1bc5689104820199313088df41975ef1771d491"
+// olderSchema2Hash is the schema hash of the build with cards.red that still
+// has the five configuration columns of sprint.rows
+// (testdata/schema-older-2.sql): running schema.sql on it drops sprint.rows'
+// kind, width, tiers, model and harness (ALTER TABLE DROP COLUMN) and the
+// cards_live index, in Migrate's one transaction, then the new hash is
+// recorded.
+const olderSchema2Hash = "cbe47774a69cf22749b6d414e1bc5689104820199313088df41975ef1771d491"
 
-// round22Hash is the schema hash of round 22's schema.sql
-// (testdata/schema-round22.sql): running schema.sql on it adds cards.model
-// (” on every card, with its CHECK; round 23, the model a deal names) and the
-// row heartbeat's four columns of sprint.rows, in Migrate's one transaction,
-// then the new hash is recorded.
-const round22Hash = "eb754483470ba67cfe6aa6c36646c19b4503a2fb10fd0344b3aa2fdff6a15b7e"
-
-// round23Hash is the schema hash of round 23's schema.sql
-// (testdata/schema-round23.sql): running schema.sql on it adds the epoch
-// row's commit_name and commit_email (empty on the one row: no identity set;
-// round 24, the identity every commit of the sprint is made as), in
+// olderSchema3Hash is the schema hash of the build without cards.model and
+// without the row heartbeat columns (testdata/schema-older-3.sql): running
+// schema.sql on it adds cards.model (” on every card, with its CHECK; the
+// model a deal names) and the heartbeat's four columns of sprint.rows, in
 // Migrate's one transaction, then the new hash is recorded.
-const round23Hash = "e4d87e423396c701797836720e749b0d8ea81f8879cf2811f89275970a684b01"
+const olderSchema3Hash = "eb754483470ba67cfe6aa6c36646c19b4503a2fb10fd0344b3aa2fdff6a15b7e"
 
-// round24Hash is the schema hash of v2-stitch's round 24 schema.sql
-// (testdata/schema-round24.sql: model, the heartbeat and the commit
-// identity, no usage and no balances): running schema.sql on it adds
-// cards.usage and sprint.balances (round 25), in Migrate's one transaction,
-// then the new hash is recorded.
-const round24Hash = "e7561ffcff21033ff3b0a7dd615e32b6c9f0c33278278fe30e1912fec5e57aca"
+// olderSchema4Hash is the schema hash of the build without the epoch row's
+// commit identity (testdata/schema-older-4.sql): running schema.sql on it
+// adds the epoch row's commit_name and commit_email (empty on the one row:
+// no identity set; the identity every commit of the sprint is made as), in
+// Migrate's one transaction, then the new hash is recorded.
+const olderSchema4Hash = "e4d87e423396c701797836720e749b0d8ea81f8879cf2811f89275970a684b01"
 
-// round25Hash is the schema hash of round 25's schema.sql
-// (testdata/schema-round25.sql), the deployed line's: round 22's schema
-// plus cards.usage and sprint.balances, the live store's on 2026-11-07.
-// Running schema.sql on it adds cards.model, the row heartbeat's columns
-// (round 23) and the epoch row's commit identity (round 26), in Migrate's
-// one transaction, then the new hash is recorded.
-const round25Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f4433d0e"
+// olderSchema5Hash is the schema hash of the build with the model, the
+// heartbeat and the commit identity but no usage and no balances
+// (testdata/schema-older-5.sql): running schema.sql on it adds cards.usage
+// and sprint.balances, in Migrate's one transaction, then the new hash is
+// recorded.
+const olderSchema5Hash = "e7561ffcff21033ff3b0a7dd615e32b6c9f0c33278278fe30e1912fec5e57aca"
+
+// olderSchema6Hash is the schema hash of the build with cards.usage and
+// sprint.balances but without cards.model, the row heartbeat's columns and
+// the commit identity (testdata/schema-older-6.sql). Running schema.sql on
+// it adds cards.model, the row heartbeat's columns and the epoch row's
+// commit identity, in Migrate's one transaction, then the new hash is
+// recorded.
+const olderSchema6Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f4433d0e"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
@@ -199,14 +196,14 @@ func (p *PG) Close() { p.pool.Close() }
 // sprint that holds anything but no sprint.meta (not made by nova-sprint):
 // any object of any kind in the namespace, which PostgreSQL records as a
 // pg_depend row on it (a relation, type, function, operator, collation, text
-// search object, operator family, ...). The other hashes it takes are
-// round16Hash, round21Hash, round22Hash and round23Hash: schema.sql adds cards.red to a round 16
-// store, drops the five configuration columns of sprint.rows from either of the first two
-// (round 22), adds cards.model and the row heartbeat's columns to the first three (round 23)
-// and the epoch row's commit identity to all four (round 24), and the new hash is recorded, in the same transaction. When schema sprint already exists it
+// search object, operator family, ...). It also takes the six earlier
+// builds olderSchema1Hash to olderSchema6Hash: schema.sql is run on the
+// store (adding what the older schema lacks and dropping the five
+// configuration columns of sprint.rows from the first two), and the new hash
+// is recorded, in the same transaction. When schema sprint already exists it
 // skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
-// on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
-// advisory lock.
+// on the database. Twice is a no-op, and concurrent Migrates are safe: each
+// holds one advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {

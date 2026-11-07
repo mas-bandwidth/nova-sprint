@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// ImportedReason starts the reason of a producer the v1 import carried over
-// as landed: it landed before this run, so it is no landing of the sprint.
+// ImportedReason starts the reason of a producer that was imported
+// as already landed: it landed before this run, so it is no landing of the sprint.
 const ImportedReason = "its producer landed in v1"
 
 // LandedIn is how many producers an accepted event moved to landed (the

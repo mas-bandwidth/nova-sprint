@@ -134,17 +134,17 @@ func startBackupPG(ctx context.Context, t *testing.T) (string, string) {
 	return dir, "host=" + dir + " dbname=postgres sslmode=disable"
 }
 
-// round25Hash is the live store's schema hash on 2026-11-07, the deployed
-// line's round 25 (store's round25Hash, for its testdata/schema-round25.sql).
-const round25Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f4433d0e"
+// olderStoreSchemaHash is the schema hash of the older build whose schema is
+// store's testdata/schema-older-6.sql (store's olderStoreSchemaHash).
+const olderStoreSchemaHash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f4433d0e"
 
-// The live store's upgrade path (PR 641, F1): a round 25 store, Migrated,
+// An older store, Migrated,
 // holds a consumer with a model and a usage; its backup verifies (loaded
 // into a new store, the rebuild equals the snapshot) and loads into a fresh
 // store with the source's snapshot, model and usage each in its own column.
 // pg_dump --inserts is positional, so a new store's columns must be in the
 // migrated store's order.
-func TestFunctionalBackupMigratedRound25(t *testing.T) {
+func TestFunctionalBackupMigratedOlderStore(t *testing.T) {
 	if _, err := exec.LookPath("initdb"); err != nil {
 		t.Skip("requires PostgreSQL's initdb on PATH")
 	}
@@ -152,7 +152,7 @@ func TestFunctionalBackupMigratedRound25(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dir, dsn := startBackupPG(ctx, t)
-	old, err := os.ReadFile("../store/testdata/schema-round25.sql")
+	old, err := os.ReadFile("../store/testdata/schema-older-6.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestFunctionalBackupMigratedRound25(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round25Hash + "' WHERE id = 1", "CREATE DATABASE target"} {
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + olderStoreSchemaHash + "' WHERE id = 1", "CREATE DATABASE target"} {
 		if _, err = conn.Exec(ctx, q); err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +174,7 @@ func TestFunctionalBackupMigratedRound25(t *testing.T) {
 	if err = pg.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// The stop is logged: a round 25 store starts running, and the rebuild
+	// The stop is logged: an older store starts running, and the rebuild
 	// starts never started (store.FreshStop), so a log with no stop in it
 	// would not rebuild to the store's running state.
 	r, err := pg.Apply(ctx, store.Op{ID: "seed", Epoch: 1, Actor: "test", Kind: "seed", At: time.Unix(1000, 0), Writes: []store.Write{

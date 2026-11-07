@@ -6,9 +6,7 @@
 <title>stream · nova-sprint</title>
 <link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png">
 <style>
-/* A stream's own page (the owner, 2026-10-18: "Maybe we can click on a work stream by name, and this
-   takes you to a page showing all details for that work stream, including all its cards, sankey for
-   all cards if applicable, dependencies between cards etc etc etc."), in the dashboard's dark tokens. */
+/* A stream's own page, in the dashboard's dark tokens. */
 :root, :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0d0f12;
@@ -23,12 +21,12 @@
   /* the seven card states */
   --s-waiting: #4a4f58;
   --s-ready: #7d8490;
-  --s-working: #3d9bff;  /* brighter, to sit with the reader orange (the owner 2026-10-06) */
+  --s-working: #3d9bff;  /* brighter, to sit with the reader orange */
   --s-fix: #8b5cf6;
-  --s-review: #fb8321;   /* review is the reader orange, the colour of a read card (the owner 2026-10-06) */
+  --s-review: #fb8321;   /* review is the reader orange, the colour of a read card */
   --s-merging: #d55181;  /* merging takes the pink review had */
   --s-landed: #199e70;
-  /* a row's working cells by level (SPEC.md): a read card orange, blocker and critical red */
+  /* a row's working cells by level: a read card orange, blocker and critical red */
   --p-fix: var(--s-fix);
   --s-read: #fb8321;
   --s-blocker: #ff1a1a;
@@ -45,7 +43,7 @@
   --cell-h: 1rem;
   --flash: #7cb4ff;
   --flash-tint: rgba(57,135,229,.24);
-  /* the Landings chart's two series (live/SPEC.md): fleet blue, friends violet; never a state */
+  /* the Landings chart's two series: fleet blue, friends violet; never a state */
   --series-fleet: #3987e5;
   --series-friends: #b48cff;
 }

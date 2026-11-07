@@ -55,7 +55,7 @@ func versionedIndex() []byte {
 }
 
 // PageEnvelope is what GET /api/sprint serves: the board (Data) and how
-// fresh it is. Exported so a reader (up's dashboard probe) decodes the
+// fresh it is. Exported so a reader (the up verb's dashboard probe) decodes the
 // served shape itself, never a guess at it.
 type PageEnvelope struct {
 	OK                bool      `json:"ok"`
@@ -156,7 +156,7 @@ func acceptsGzip(headers []string) bool {
 	return wildcard != nil && *wildcard > 0
 }
 
-// Handler serves the v1 page and its in-memory data.
+// Handler serves the page and its in-memory data.
 func Handler(c *Cache) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/sprint", func(w http.ResponseWriter, r *http.Request) { dataHandler(c, w, r) })

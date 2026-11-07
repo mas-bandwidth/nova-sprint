@@ -75,7 +75,7 @@ func TestVerbsBeforeTheStore(t *testing.T) {
 	want(t, w.do("carol", "next"), 0, "NEXT the sprint is not set up", "next: nova-sprint up --as carol")
 }
 
-// Defect 23: start on a running sprint says it is already running, a
+// Start on a running sprint says it is already running, a
 // success that changes nothing, with the next verb.
 func TestStartOnARunningSprint(t *testing.T) {
 	w := newWorld(t)

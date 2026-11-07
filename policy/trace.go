@@ -27,7 +27,7 @@ import (
 //   - judgements: the open policy judgements of each version, by group key.
 //   - everActive: the versions ever active: the active one and every one an
 //     accepted event of the log (up to the snapshot's seq) deactivated
-//     (PrevOf), so FallbackWasActive is checked against the code (round 5).
+//     (PrevOf), so FallbackWasActive is checked against the code.
 //   - card: the state of one producer of the store (ready, working, done),
 //     moved by the walk's ticks, as layer 3 would: the one card of the model.
 //   - tickBreaks, cardBefore, waitBound, startBound, lastOp: the model's own
@@ -35,7 +35,7 @@ import (
 //     (the trace module checks it as it computes it). waitBound and
 //     startBound are layer 3's waits, which this layer holds no state of:
 //     WaitKeepsItsBound is the model's statement about layer 3, and no
-//     ledger row claims it of this code (round 5).
+//     ledger row claims it of this code.
 type ModelState struct {
 	Stored, Breaks []int
 	EverActive     []int

@@ -41,8 +41,8 @@ func TestStreamStates(t *testing.T) {
 }
 
 // TestBlockedCardsWithReason: the work table lists each blocked producer
-// with its reason, so a card the coordinator held reads "held: <why>"
-// (defect 47); a stream with none has no list.
+// with its reason, so a card the coordinator held reads "held: <why>"; a
+// stream with none has no list.
 func TestBlockedCardsWithReason(t *testing.T) {
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}, "t": {Name: "t"}}, Cards: map[string]store.Card{
 		"p1": {ID: "p1", Kind: "producer", Stream: "s", State: "blocked", Reason: "held: wrong brief"},

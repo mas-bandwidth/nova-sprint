@@ -1,4 +1,4 @@
-// Package policy is layer 5 of nova-sprint v2 (docs/LAYER-5-POLICY.md): the
+// Package policy is layer 5 of nova-sprint (docs/LAYER-5-POLICY.md): the
 // rules the coordinator changes while the sprint runs, as a Starlark file
 // stored as an immutable version in sprint.policy. It answers a closed set
 // of questions the steps ask, checks every answer against its domain, and
@@ -89,13 +89,13 @@ type Answers struct {
 type Width struct{ Work, Ahead int }
 
 // Limits are the counts the steps compare against, and the steering
-// numbers layer 3 reads (round 5): EscalateAfter and FrontierAfter are the
+// numbers layer 3 reads: EscalateAfter and FrontierAfter are the
 // bounces at which work goes one rank up and to frontier, FlapLimit the
 // flaps that open a flap judgement, IdleFloor the fraction of the open width
 // working under which the idle alarm opens, LandTarget the first-time land
 // rate under which the land-rate alarm opens.
 // FleetWidthCap bounds a worker machine's width (its cores, at most this):
-// the roster's cap, policy's number (drift row 26).
+// the roster's cap, policy's number.
 type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
 	EscalateAfter, FrontierAfter, FlapLimit, FleetWidthCap                        int
@@ -108,11 +108,11 @@ type Limits struct {
 type Landing struct{ BackedUp, Flowing, CIWait int }
 
 // Timeouts are seconds of running time; BaseRegate is a rising list. Tick
-// is run's budget for one tick (drift row 26); ReadyNag is how often run
+// is run's budget for one tick; ReadyNag is how often run
 // nags a row holding ready cards (optional, default 1); ReadyTake is how
 // long a work consumer may sit ready before it is dealt elsewhere (optional,
 // default 180); Consumer is the deadline of a
-// consumer by its tier, every tier of store.Tiers named (drift row 15: the
+// consumer by its tier, every tier of store.Tiers named (the
 // worker reads it from the take receipt, never a Go literal).
 type Timeouts struct {
 	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick, ReadyNag, ReadyTake int

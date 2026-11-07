@@ -38,8 +38,8 @@ func TestRunFeedMonitoringAndOrder(t *testing.T) {
 	}
 }
 
-// Drift row 4: the machine line says STOPPED and the reason; the human page
-// strips the reason (app.js), /api/sprint carries it.
+// TestRunFeedShowsStoppedWithReason: the machine line says STOPPED and the
+// reason; the page strips the reason (app.js), /api/sprint carries it.
 func TestRunFeedShowsStoppedWithReason(t *testing.T) {
 	now := time.Unix(1000, 0)
 	c := NewFromFeed(Feed{Snap: store.Snapshot{Epoch: 1, Seq: 3, Stopped: true, StopReason: "base red"}, At: now}, func() time.Time { return now })
@@ -52,7 +52,7 @@ func TestRunFeedShowsStoppedWithReason(t *testing.T) {
 	}
 }
 
-// Stella's finding 6: a roster that failed is never shown as current: every
+// A roster that failed is never shown as current: every
 // row at width 0, the alarm raised, the error on the envelope; the store's
 // lines stay fresh.
 func TestRunFeedRosterFailureIsNotAnOldRoster(t *testing.T) {

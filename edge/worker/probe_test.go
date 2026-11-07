@@ -18,14 +18,14 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The worker's defects from the first bench runs (directives 42-45, 47-49,
-// 52, 53, 55, 59): unit tier, a fake wall, a fake exec, no process, no
+// Probe, wall grants, key proxy, sprint verbs and stage guarantees: unit
+// tier, a fake wall, a fake exec, no process, no
 // socket, no clock.
 
 // probeSprint is a sprint that answers next with tier models and records
 // judgements and unhooks.
 type probeSprint struct {
-	cr2Sprint
+	pidSprint
 	judgeErr   error
 	judgements []store.Judgement
 	unhooks    int
@@ -75,12 +75,12 @@ func threeProviders_internal(t *testing.T, env map[string]string) *KeyProxy {
 
 var allKeys_internal = map[string]string{"DEEPSEEK_API_KEY": "sk-d", "INCEPTION_API_KEY": "sk-i", "PAPERINSTRUMENTS_API_KEY": "sk-p"}
 
-// 27, 36: the probe runs the policy's model for each tier (the first
+// The probe runs the policy's model for each tier (the first
 // candidate the harness serves, passed as --model in provider/model form),
 // and a tier with no model is refused by name.
 func TestProbeRunsThePolicysModelPerTier(t *testing.T) {
 	t.Parallel()
-	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{Row: "b1", TierModels: map[string][]string{
+	sp := &probeSprint{pidSprint: pidSprint{next: NextResponse{Row: "b1", TierModels: map[string][]string{
 		"flash": {"anthropic/haiku", "deepseek/deepseek-flash"}, "pro": {"inception/mercury-3"}, "frontier": {"anthropic/fable"},
 	}}}}
 	var mu sync.Mutex
@@ -110,11 +110,11 @@ func TestProbeRunsThePolicysModelPerTier(t *testing.T) {
 	}
 }
 
-// 36: a model the harness does not list is not served; with none served the
+// A model the harness does not list is not served; with none served the
 // refusal names the policy's models and the harness's list.
 func TestProbeRefusesAPolicyModelTheHarnessDoesNotList(t *testing.T) {
 	t.Parallel()
-	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-chat"}}}}}
+	sp := &probeSprint{pidSprint: pidSprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-chat"}}}}}
 	r := probeRunner_internal(t, sp, &fakeWall{}, listingExec_internal("deepseek/deepseek-flash", "deepseek/deepseek-v4-pro", "inception/mercury-3"), threeProviders_internal(t, allKeys_internal))
 	err := r.ProbeRow(context.Background(), "b1", "opencode")
 	for _, want := range []string{"deepseek/deepseek-chat: not in the harness's model list", "deepseek/deepseek-flash deepseek/deepseek-v4-pro"} {
@@ -127,11 +127,11 @@ func TestProbeRefusesAPolicyModelTheHarnessDoesNotList(t *testing.T) {
 	}
 }
 
-// 26, 29: every route's key comes from the environment; a route whose key
+// Every route's key comes from the environment; a route whose key
 // is absent refuses at the probe, naming the key.
 func TestProbeRefusesARouteWithNoKey(t *testing.T) {
 	t.Parallel()
-	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
+	sp := &probeSprint{pidSprint: pidSprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
 	wall := &fakeWall{}
 	r := probeRunner_internal(t, sp, wall, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, map[string]string{"DEEPSEEK_API_KEY": "sk-d"}))
 	err := r.ProbeRow(context.Background(), "b1", "opencode")
@@ -148,14 +148,14 @@ func TestProbeRefusesARouteWithNoKey(t *testing.T) {
 	}
 }
 
-// 25, 28, 30, 31, 32: a failed probe says the harness's error line (not a
+// A failed probe says the harness's error line (not a
 // bare reset), keeps stdout.log, stderr.log and command.txt, names a death
 // inside the wall before the harness's log with the command that shows the
 // wall, names the harness's known limits, and says the judgement it could
 // not open.
 func TestProbeFailureIsReadable(t *testing.T) {
 	t.Parallel()
-	sp := &probeSprint{judgeErr: errors.New("unknown verb"), cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
+	sp := &probeSprint{judgeErr: errors.New("unknown verb"), pidSprint: pidSprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
 	fx := listingExec_internal("deepseek/deepseek-flash")
 	fx.On("nova-reserve", func(edge.FakeCall) edge.FakeOutcome {
 		return edge.FakeOutcome{ExitCode: 1, Stdout: "", Stderr: "WALL grants=/job net=denied\n\x1b[91mError: \x1b[0mUnexpected server error\n\x1b[0m\n", Duration: 300 * time.Millisecond}
@@ -191,7 +191,7 @@ func TestProbeFailureIsReadable(t *testing.T) {
 	}
 }
 
-// 24, 32: the wall reads the harness binary's directory and its symlink's
+// The wall reads the harness binary's directory and its symlink's
 // target's; each adapter's needs reach the argv, and nothing else's.
 func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 	t.Parallel()
@@ -245,7 +245,7 @@ func TestWallGrantsTheHarnessAndHonoursEachAdaptersNeeds(t *testing.T) {
 	}
 }
 
-// 29: one proxy, a route per provider, chosen by the base URL's provider
+// One proxy, a route per provider, chosen by the base URL's provider
 // segment; each upstream gets its own key and the segment is cut.
 func TestKeyProxyRoutesByProviderPrefix(t *testing.T) {
 	t.Parallel()
@@ -280,7 +280,7 @@ func TestKeyProxyRoutesByProviderPrefix(t *testing.T) {
 	}
 }
 
-// 35: a sprint verb runs directly, inheriting the worker's environment (the
+// A sprint verb runs directly, inheriting the worker's environment (the
 // seat's credentials); never a bare nova-secrets exec, which nova-tools v2
 // refuses.
 func TestSprintVerbsRunDirectly(t *testing.T) {
@@ -310,7 +310,7 @@ func TestSprintVerbsRunDirectly(t *testing.T) {
 	}
 }
 
-// Take: a receipt carries the one model its deal named (defect 57); the job
+// Take: a receipt carries the one model its deal named; the job
 // runs it, and one the probe did not prove (when it proved any) is a fault
 // naming it and the fix.
 func TestTakeRunsTheDealsModelOrFaults(t *testing.T) {
@@ -329,7 +329,7 @@ func TestTakeRunsTheDealsModelOrFaults(t *testing.T) {
 	}
 }
 
-// 42: a work clone and a mirror per stream repo, made on first use under
+// A work clone and a mirror per stream repo, made on first use under
 // the roots, the repo from the receipt; a second card of the repo reuses
 // them; a clone of another repo in the way is refused.
 func TestStagePerStreamRepo(t *testing.T) {
@@ -403,7 +403,7 @@ func TestStagePerStreamRepo(t *testing.T) {
 // probe hooks once.
 func TestServeRowProbesBeforeTheSprintHook(t *testing.T) {
 	t.Parallel()
-	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {}}}}}
+	sp := &probeSprint{pidSprint: pidSprint{next: NextResponse{TierModels: map[string][]string{"flash": {}}}}}
 	hook := newFakeWakeHook()
 	r := probeRunner_internal(t, sp, &fakeWall{}, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, allKeys_internal))
 	r.BusHook = func(context.Context, string) (WakeHook, error) { return hook, nil }

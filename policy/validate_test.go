@@ -224,7 +224,7 @@ func inDomain(t *testing.T, snap store.Snapshot, ro roster.Roster, a Answers) {
 	}
 }
 
-// steering is limits' steering keys at the built-in's values (round 5).
+// steering is limits' steering keys at the built-in's values.
 const steering = `"escalate_after": 2, "frontier_after": 4, "flap_limit": 3, "fleet_width_cap": 8, "idle_floor": 0.5, "land_target": 0.9`
 
 // steeringValue is key's entry in steering.

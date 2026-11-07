@@ -1,36 +1,37 @@
 # Correct use, enforced by the tool
 
-"The key is #1. This is how we enforce correct usage,
-instead of relying on LLMs to unreliably remember to do the right thing." And:
-"Make a new AI, unsure of how to use nova-sprint, get walked through the
-actual best practice way to use it, every time."
+nova-sprint enforces correct use instead of relying on a model to remember it. Every verb checks
+what must already be true, refuses if it is not, and says what to do first. A new AI that does not
+know the tool is walked through the intended order every time: it types `nova-sprint` and is told
+the next command.
 
-This page is the policy. Layer 6 (the verbs) implements it; layers 1 to 3
-already refuse the moves below that are about state. Nothing here relies on an
-AI remembering anything: every verb checks what must already be true, refuses
-if it is not, and says what to do first.
+This page is the policy. [LAYER-6-RUN.md](LAYER-6-RUN.md) describes the verbs that implement it;
+layers 1 to 3 refuse the moves that are about state.
 
 ## The one rule
 
-Every verb runs its prerequisite table before doing anything. A prerequisite
-that does not hold is a refusal, exit 1, one line, in the nova-fleet form:
+Every verb runs its prerequisite table before doing anything. A prerequisite that does not hold is
+a refusal: exit 1, one line, in the nova-fleet form:
 
 ```
 SPRINT REFUSED <verb>: <what is not true>: <the command that makes it true>
 ```
 
-A name, id or sha that does not exist (a row, a card, a stream, a commit)
-is a refusal naming it, never an empty answer: v1's `queue --as <typo>`
-returned `cards=0` (LESSONS 2.26).
+A name, id or sha that does not exist (a row, a card, a stream, a commit) is a refusal naming it,
+never an empty answer.
 
-Every successful verb ends with one line, `next: <the command to run now>`,
-or `next: nothing; wait for the bus` when the next move is someone else's.
+Every successful verb ends with one line, `next: <the command to run now>`, or
+`next: nothing; wait for the bus` when the next move is someone else's.
 
-`nova-sprint` with no arguments does not print usage. It runs `nova-sprint
-next --as <me>`: it looks at the machine, the bus and the store, and prints
-the one thing to do now with its command. A cold AI types the tool's name and
-is told what to do. `help` and `-h` exist for reading, not for finding the
-way.
+Exit codes: 0 done; 1 refused, with the fix; 2 could not run (bad usage, or the store, bus or an
+edge failed), with the fix. Never a silent zero.
+
+`nova-sprint` with no arguments does not print usage. It runs `nova-sprint next --as <me>`: it
+looks at the machine, the bus and the store, and prints the one thing to do now with its command.
+`help` and `-h` exist for reading, not for finding the way.
+
+An unknown outcome (a reply lost after a commit) is handled inside the verb: it replays by op id and
+prints the real result. A caller never sees an op id.
 
 ## The chain
 
@@ -38,250 +39,166 @@ Each step refuses until the one before it has happened.
 
 | step | verb | refuses until | the refusal names |
 |---|---|---|---|
-| 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); nova-tools at the pin; `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers; then the sprint's health: every stream's repository and base at origin, no open judgement, run serving, something dealt while producers are ready, no landing waiting on a person; a policy active and answering the ready producers' questions; every waiting or ready producer admitted as `add` would admit it; every working consumer on a row that is hooked, up and on the bus | every line it checked; each `CHECK RED` line names its fix; exit non-zero while any is red |
-| 2 | `up` | `check` passes | `nova-sprint check` |
-| 3 | `stream add` | the store is at the schema `up` makes; the repository clones and its base is there; the card branches `sprint/<s>/<card>` can be created (git's ref-name rules, no parent branch at origin); with forge github, this host's gh identity can push, open and merge | `nova-sprint up`; the name to change, the branch to delete, or the gh login to make |
-| 4 | `add` | the stream exists and its base is at origin; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)), DONE-WHEN as one command and no retired mechanic; a row serves its tier and every NEEDS-ROUTE; its PATHS are at the base; its work is not already there; every need names a card | `stream add <s>`; the missing sections of the brief by name; the row to give the tier or route; the path; the unknown need |
-| 5 | rows | a row hooks in (`nova-sprint worker --as <row>` on a bench; `nova-bus hook --as <name>` for a kin) | the recipe for the harness it detects |
-| 6 | deals | `run` is a service (made by `up`) and at least one row is up | `nova-sprint up`; "no row is hooked in" with step 5's recipe |
-| 7 | `take` | the name is hooked in; the card was dealt to this row at this gen | the hook recipe; "card X moved: run `nova-sprint show X`" |
-| 8 | `finish` | this row holds the card; the head is a full sha; it exists on the card's branch at origin (no PR is asked: the landing opens the stream's) | the holder; "not a full sha"; "push first: `git push origin <branch>`" |
-| 9 | `read` | the reader is hooked; the reader is not the author; the head is the card's | the author; "card X is at <head>" |
-| 10 | landing | a read said yes to this head; CI is green at this head | "read owed"; "CI red at <head>: see <url>" |
+| 1 | `check` | (reports; its own fix per red line) | every line it checked; each `CHECK RED` line names its fix; exit non-zero while any is red |
+| 2 | `up` | nova-tools' fleet is up (`nova-fleet check` green); nova-tools at or above the pin; the caller is on the bus | the first step that does not verify, with its fix |
+| 3 | `stream add` | the store is at the schema `up` makes; the repository is readable and its base is there; the card branches `sprint/<s>/<card>` can be created (git's ref-name rules; no branch `sprint` or `sprint/<s>` at origin); with `--forge github`, this host's gh identity can write the repository and the group branch can be created | `nova-sprint up`; the name to change, the branch to delete, or the gh login to make |
+| 4 | `add` | the stream exists and its base is at origin; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)); a row serves its tier and every NEEDS-ROUTE; its PATHS are at the base; its work is not already there; every need names a card | `stream add <s>`; the missing sections of the brief by name; the row to give the tier or route; the path; the unknown need |
+| 5 | rows | each row hooks in: `nova-bus hook --as <name>`, then `nova-sprint hook --as <name> --role worker\|coordinator` (a bench runs `nova-sprint worker --as <row>`, which hooks itself) | the hook-in recipe |
+| 6 | deals | `run` is a service (installed by `up`), the sprint is started (`start`), a policy is active, and a row is hooked, up and has room | `nova-sprint up`; `nova-sprint start`; "no row is hooked in" with step 5's recipe |
+| 7 | `take` | the name is hooked in; the card was dealt to this row at this generation | the hook recipe; "not dealt to this row at this generation: `next --as <row>`" |
+| 8 | `finish` | this row holds the card; the head is a full sha; it is the tip of the card's branch at origin; every commit on it is made as the sprint's commit identity | the holder; "not a full sha"; "push first: `git push origin <branch>`"; the identity's two `git config` lines |
+| 9 | `read` | the reader is hooked; the reader is not the author; the head is the card's | the author; the producer's current head |
+| 10 | landing | a read said yes to this head; CI is green at this head (or the coordinator lands it by hand) | a `land` judgement with the facts and `judge ... land\|fix\|retry`; see [LANDING.md](LANDING.md) |
 
-Steps 7 to 10 are also refused by the card machine on state (a finish before a
-take, a read by the author, a landed card moving), with the holder and the
-state named. The chain is enforced twice: by the verb's table before it acts,
-and by the engine when the move is applied.
-
-## Keep everybody at width
-
-The promise is parallel to width: every friend and bench busy while there is
-work. Cards decide whether that can happen; the deal cannot deal a card that
-waits. A dogfood board had 5 working of 74 width with 144 waiting, 136 of
-them on NEEDS not yet landed (long chains) and 8 on a shared file. So:
-
-- **Flat chains.** A NEEDS only when the card consumes the other's output,
-  never for order or overlap. A chain of N cards lands one after another
-  while the rest of the fleet waits. `add` prints the stream's longest NEEDS
-  chain once the cards are in (`CHAIN ...`), a `WARN CHAIN` from 4 cards with
-  what it takes at the stream's land rate; `--dry-run` prints it before
-  anything is added. It warns, never refuses: flatten it before `start`.
-- **Concrete PATHS.** Overlap is a file both cards name (a glob or a
-  directory both add to holds nothing); a card waiting behind another's file
-  is "held behind <file> of <card>". List the files a card edits.
-- **One card per file set.** Cards that edit the same file run one at a
-  time; split work so independent cards name different files.
-
-Before `start`, and whenever the fleet is under width, run `nova-sprint check`
-and read its lines: the width line (a `WARN ... nothing dealable: N chains
-(longest K, top: <card> blocks M), H overlaps` when nothing is ready), one
-`waits <stream>:` line per stream ("53 wait on <card> (<state>); 3 held behind
-<file> of <card>"), and a `WARN stream <s>: its longest NEEDS chain is K
-cards` line per long chain. The board's Why waiting panel and the steps'
-idle judgement say the same thing, from the same function (`steps.Waits`).
+Steps 7 to 10 are also refused by the card machine on state (a finish before a take, a read by the
+author, a landed card moving), with the holder and the state named. The chain is enforced twice: by
+the verb's table before it acts, and by the engine when the move is applied.
 
 ## Hooked before anything that acts as you
 
-As nova-bus does: `take`, `finish`, `read`, `release`, `run` and every other
-verb that acts as a name refuse until that name is hooked in on the bus, and
-print the hook-in recipe for the harness they detect. A row that cannot be
-reached cannot hold work.
+`take`, `finish`, `read`, `release`, `beat` and every other verb that acts as a name refuse until
+that name is on the bus (`nova-bus who`) and hooked in to the sprint, and name the hook-in
+recipe. Coordinator verbs additionally need the name to be the sprint's one
+coordinator. A row that cannot be reached cannot hold work.
 
 ## The deal message is the walkthrough
 
-The one bus message a deal sends is the whole instruction. Its body:
+The bus message a deal sends is the whole instruction:
 
 ```
-DEAL card=<id> attempt=<n> kind=work|read stream=<s> epoch=<e>
-run: nova-sprint take <id>@<gen> --as <you>
+DEAL card=<id> attempt=<n> kind=work|read stream=<s> tier=<t> model=<m> epoch=<e> repo=<r> base=<sha> branch=<b> ... brief=<clipped>; in your hand now: run nova-sprint take <id>@<gen> --epoch <e> --as <you> (acknowledges, prints the whole brief), then do it and run: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>
 ```
 
-`take` prints the brief, the repository, the base commit, the branch this row
-may push, the done-when lines, where tests may run, and ends with
-`next: nova-sprint finish <id> --head <sha> --as <you>` (or `read … yes|fix`
-for a read). Nothing is carried in a model's memory between steps; every
-output names the next command.
+The card is in the row's hand from the deal. `take` is the acknowledgement: it stops the nudges and
+prints the brief, the repository, the base commit, the branch this row may push, the done-when
+lines, the commit-identity rule, and ends with
+`next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>` (or `read ... yes|fix`
+for a read). A row that does not acknowledge is nudged every tick and, at the policy's `ready_take`,
+the card is dealt elsewhere or an `unacked` judgement is opened. Nothing is carried in a model's
+memory between steps; every output names the next command.
+
+A friend hooked with `nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>'` has its
+deals taken before its session wakes: each `take` line in a message from the sprint is replaced by
+the `TAKEN` receipt.
 
 ## Finish is checked, not trusted
 
-`finish` refuses, naming which: a head that is not forty hex characters; a
-head not on the card's branch at origin; a branch other than the one dealt; a
-row that is not the holder,
-naming who is. v1 accepted `finish --head abc` and printed OK (
-2026-11-06); v2 never does.
+`finish` refuses, naming which:
 
-## Unknown outcomes never leak
+- a row that is not the holder (naming who is), or a generation that is not current;
+- a head that is not a full 40-hex sha;
+- a head that is not the tip of the card's branch at origin (`git push origin <branch>` first);
+- a head equal to where the attempt started (nothing was done);
+- a commit since the base whose author or committer email is not the sprint's commit identity
+  (compared case-folded; the refusal names up to ten commits and both emails).
 
-The store's unknown outcome (a reply lost after commit) is handled inside the
-verb: it replays by op id and prints the real result. An AI never sees an op
-id. Three exit codes: 0 done, 1 refused with the fix, 2 could not run with
-the fix. Never a silent zero.
+It asks for no PR, no forge and no token: the landing opens the stream's PR.
+
+## One commit identity for the whole sprint
+
+A repository's contributor agreement (CAA, CLA) keys off the forge account, and its allowlist holds
+accounts, never people. So every agent, friend and bench worker of a sprint commits as one
+configured identity: the git `user.name` and `user.email` of an account on the allowlist, typically
+its noreply address. A contributor's own name goes only in the message, as a `By: <name>` line and a
+`Co-Authored-By: <name> <email>` trailer.
+
+The identity is the sprint's state, never a literal in the code. The coordinator sets it with
+`nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason "<why>"`, and the
+tool enforces it in order: `up` step 7 asks the human for it; `hook --role worker` and `take` refuse
+until it is set, and both print the rule and the two `git config` lines (the `take` receipt carries
+`commit_name` and `commit_email` for the bench worker, which writes them into the job's clone);
+`finish` refuses a commit by any other identity, with the fix (the two config lines and a
+`--reset-author` rebase); `check` has a line for it, red when unset. `stream add` and `check` warn
+when the base requires a contributor-agreement check, naming the identity to sign.
+
+## Keep everybody at width
+
+The promise is parallel to width: every friend and bench busy while there is work. Cards decide
+whether that can happen; the deal cannot deal a card that waits.
+
+- **Flat chains.** A NEEDS only when the card consumes the other's output, never for order or
+  overlap. A chain of N cards lands one after another while the rest of the fleet waits. `add`
+  prints the stream's longest NEEDS chain once the cards are in (`CHAIN ...`), and a `WARN CHAIN`
+  from 4 cards (`steps.ChainWarn`) with what it takes at the stream's land rate; `--dry-run` prints
+  it before anything is added. It warns, never refuses: flatten it before `start`.
+- **Concrete PATHS.** Overlap is a file both cards name (a glob or a directory both add to holds
+  nothing); a card waiting behind another's file is "held behind <file> of <card>". List the files a
+  card edits.
+- **One card per file set.** Cards that edit the same file run one at a time; split work so
+  independent cards name different files.
+
+Before `start`, and whenever the fleet is under width, run `nova-sprint check` and read its lines:
+the width line (a `WARN ... nothing dealable: N chains (longest K, top: <card> blocks M), H
+overlaps` when nothing is ready), one `waits <stream>:` line per stream ("53 wait on <card>
+(<state>); 3 held behind <file> of <card>"), and a `WARN stream <s>: its longest NEEDS chain is K
+cards` line per long chain. The board's Why waiting panel and the steps' idle judgement say the same
+thing from the same function (`steps.Waits`), which groups each stream's waiting producers by the
+front of the NEEDS chain they wait on and by the producer and file they are held behind, and finds
+the longest chain of cards not landed (sentinels add no length). The land rate behind the hours
+estimate is the stream's landings over the store's last 5,000 events of the epoch; under two
+landings it says "no land rate yet".
 
 ## Notifications name their verb
 
-Every judgement that reaches the coordinator (a red CI, a producer sent back to ready by its reads, a producer
-blocked after too many bounces, a row that flapped, a card that cannot land) is a stored record in the store, pushed from that record, and carries the exact command that answers it:
+Every judgement that reaches the coordinator (a red CI, a producer sent back by its reads, a
+producer blocked after too many bounces, a row that flapped, a card that cannot land) is a stored
+record, pushed from that record, and carries the exact command that answers it:
 
 ```
-NEEDS YOU judgement=<n> card=<id>: CI red at <head>: see <url>
-choices: rework | waive | drop
-run: nova-sprint judge <n> <choice> --reason "<why>"
+NEEDS YOU id=land.fix-typos.1: card fix-typos (...) did not land: ci_red: ...; run: nova-sprint judge land.fix-typos.1 <choice> --reason <why>   choices: land | fix | retry
 ```
 
-`judge` is the one verb that answers a judgement; its choices are what v1
-spread over `rework`, `accept`, `unblock` and `drop` (LAYER-6, 2026-11-06). The
-board does not show a "needs you" column (it stays an exact match of v1 until
-it is nativized); the coordinator's `next` prints the oldest open judgement,
-and the bus push carries the same line.
+`judge` is the one verb that answers a judgement, and its choices are those the judgement offers
+(LAYER-6-RUN section 7). The board has no "needs you" column; the coordinator's `next` prints the
+oldest open judgement, and the bus push carries the same line.
 
 ## What `next` looks at, in order
 
-1. Is nova-tools' fleet up? If not: the nova-fleet command.
-2. Is the store at the schema this binary knows? If not: `up`.
-3. Is this name hooked in? If not: the recipe.
-4. Does this name hold a card? If so: the step it is at and its command.
-5. Is a judgement owed to this name? If so: its command.
-6. Is a stream empty or everything landed? If so: `add`, or `done`.
-7. Otherwise: `nothing; wait for the bus`.
+1. Can the store be read? If not: the nova-fleet command, `up`, or the `nova-secrets exec` line.
+2. Is a name given? If not: choose one.
+3. Is this name on the bus? If not: the `nova-bus hook` recipe.
+4. Is this name hooked in? If not: `nova-sprint hook --as <name> --role worker`.
+5. Does this name hold a card? If so: the step it is at and its command.
+6. (Coordinator) is a judgement open? If so: its command, oldest first.
+7. Is the sprint stopped? If so: `start` for the coordinator, wait for a worker.
+8. Is there a stream, and cards in it? Otherwise `stream add`, `add`, or `nothing needs you`.
 
-## Everything moves by push, over nova-bus, and there is one way
+## There is one way
 
-"it's important for AIs to be given structure and get push
-notifications, esp. as coordinator. You should not need to keep polling or
-remember to do things, things should move forward mechanically, and notify
-you via push notification." "Similarly, for friends (and yourself) doing
-work, you should be driven forward to accept ready cards, do work, mark the
-work done automatically via push notifications." "And all push notification
-should come through the nova-bus. There is ONE WAY. Do not re-implement the
-nova bus in nova-sprint! Verboten!"
+Everything that needs someone to act moves by push, over nova-bus, and there is one way.
 
-So:
+- Every change of state that needs someone is one bus message to that someone, sent by the run loop
+  after the change commits: a deal to the row; a withdrawal; a landing, a finished stream and a
+  judgement to the coordinator. The message carries the one command that answers it.
+- Nobody polls. `next` is for a cold start or a lost session; the mechanism is the hook waking the
+  session.
+- nova-sprint sends by running `nova-bus send` and reads presence with `nova-bus who`. It never
+  opens Redis, never defines a stream, never keeps an inbox, never retries delivery on its own: a
+  failed send is resent from the unmoved push cursor on the next tick.
+- The coordinator is a row like any other: hooked in, driven by pushes, with judgement verbs instead
+  of `take` and `finish`.
+- The sprint's own bus hook answers only with receipts. A reply (a `re` set, or a REPLY subject) is
+  never answered; a subject that is not a verb is logged once on its stderr and gets no reply; a
+  verb sent to `sprint` is answered once with the command to run instead, because the sprint takes
+  no verbs over the bus.
 
-- Every change of state that needs someone to act is one bus message to that
-  someone, sent by the run loop the moment the change lands: a deal to the
-  row; a read owed to the reader; a judgement to the coordinator; a landing,
-  a red, a block. The message carries the one command that answers it.
-- Nobody polls. `next` is for a cold start or a lost session, never the
-  mechanism; the mechanism is the hook waking the session.
-- nova-sprint sends by running `nova-bus send` and reads presence with
-  `nova-bus who`. It never opens Redis, never defines a stream, never keeps
-  an inbox, never retries delivery on its own: nova-bus is the one way, and
-  a second way is forbidden.
-- The coordinator is a row like any other: hooked in, driven by pushes, with
-  judgement verbs instead of take and finish.
+## What the tool refuses early
 
-## Built (stitch, 2026-11-07)
+What can be found at `add` is found at `add`, and each refusal names its one fix (the list is in
+[CARD-CONTRACT.md](CARD-CONTRACT.md), "Admission"). `stream add` proves the repository, the base,
+the card branch names and the forge identity; `add` proves each producer against the roster and the
+base tree; `hook` proves the store credential and that every stream's base is readable from this
+process, and asks no forge token of a worker; `up` step 7 says VERIFIED only when every worker
+bench runs this version and its worker has probed its harness for the policy's model ids and its
+seat's provider keys; `restore` prints an `ADMIT` line per restored waiting or ready producer and
+refuses a card record whose state this build does not map; `check` re-proves all of it, one line
+each, and also says: no policy active (the tick would run on the built-in default and deal
+nothing), a policy that fails a question the tick asks, and a working card whose row is unhooked,
+down or off the bus.
 
-- `check` says the sprint's health, not only the plumbing's (it once printed
-  four green lines while 24 of 25 streams could not be cloned, 28 judgements
-  were open and nothing dealt). It prints every line and exits non-zero when
-  any is red; each red line names its one fix. The lines, in order: the
-  fleet; nova-tools against the pin (below is red, above is a `CHECK WARN`,
-  exit 0); the store at schema; the bus; with `--integrity` the history; then,
-  only with the store at schema, one line per stream (its repository reached
-  at its clone address by `git ls-remote` and its base branch there), one line
-  per kind of open judgement (the ids, the oldest's question, the `judge`
-  command), who runs the sprint (the chooser lock, and the name `sprint` on
-  the bus), the width (working and dealt against the open width, and when
-  producers are ready and none is dealt, why: stopped, no run, no open row,
-  held streams, streams with no base head, tiers no open row serves, and the
-  steps' own idle judgement), and one line per stream with producers
-  merging (what its landing waits for: a judgement about it, run, its hold, a
-  hand landing, the lander's merge into its group branch, or CI at the group
-  branch's tip). `check` stays a client verb: it reads the store and calls the
-  edges, and starts nothing.
-- A stream named `<org>/<repo>` with `--forge github` is reached at
-  `https://github.com/<org>/<repo>.git` (`git.CloneURL`, LAYER-4 "Clone
-  addresses"); `stream add` checks its base there, and a hand stream named
-  `<org>/<repo>` is told to give the stream a forge.
-- Admission (intent rule 34): what can be found at add is found at add,
-  and each refusal names its one fix. The checks as built are listed in
-  [CARD-CONTRACT.md](CARD-CONTRACT.md) "Admission". `stream add` proves the
-  repository, the base, the card branch names and the forge identity; `add`
-  proves each producer against the roster and the base tree; `hook` proves
-  the store credential (the snapshot read) and that every stream's base is
-  readable from this process (finish and read need it), and asks no forge
-  token of a worker; `up` step 7 says VERIFIED only when every worker bench
-  runs this version and its worker has probed its harness for the policy's
-  model ids and its seat's provider keys (the worker probes before its
-  sprint hook, so a hooked row is a probed row); `restore` prints an `ADMIT`
-  line per restored waiting or ready producer, and refuses a card record
-  whose state this build does not map; `check` re-proves all of it, one line
-  each.
-- `check` also says: no policy active (the tick runs on the built-in
-  default, which once worked a night with nothing dealt); a policy that fails
-  a question the tick asks; and a working card whose row is unhooked, down or
-  off the bus. A job dead on a hooked, present bench is not visible: no
-  per-job heartbeat reaches the store, and the ok line says so.
-- The sprint's bus messages are receipts. Its hook answers nothing that is a
-  reply (a `re` set, or a REPLY subject), so a REPLY is never answered with a
-  REPLY; a subject that is not a verb is logged once on its stderr and gets
-  no reply; a verb is answered once with the command to run instead (the
-  sprint takes no verbs over the bus).
+A DONE-WHEN is one argv, not a shell line: `add` and `check` refuse a backticked chain, `a && b`, a
+pipe, a redirection or a sentence, and the fix says to wrap it in `sh -c '...'`. The same parser
+runs the gate on the bench.
 
-## Built: gates are one command; a drop releases; the agreement warning (stitch w3A, 2026-11-07)
-
-- A DONE-WHEN is one argv, not a shell line: `add` and `check` refuse a backticked
-  chain, `a && b`, a pipe, a redirection, or a sentence, and the fix says to
-  wrap it in `sh -c '...'` (CARD-CONTRACT "Admission"). The same parser runs
-  the gate on the bench.
-- `drop` (and `replace`, and a judgement answered `drop`) releases the dropped
-  producer's live consumers itself, in the same op, recorded released with the
-  drop's reason (no result, no blame, as `release` records it); it no longer
-  asks the human to release first.
-- `stream add` and `check` warn when the base requires a contributor-agreement
-  check, naming the identities to sign (CARD-CONTRACT "Admission").
-- `make install` puts the commands in `~/.local/bin` as a new file, signed ad
-  hoc on macOS, renamed over the old one (`tools/placebin`). Installing a
-  release onto a bench is nova-fleet's install, which is another repository's
-  and is not changed here.
-
-## Built: one commit identity for the whole sprint (stitch w4I, 2026-11-07)
-
-A repository's contributor agreement (CAA, CLA) keys off the forge account, and its allowlist
-holds accounts, never people. So every agent, friend and bench worker of a sprint commits as
-ONE configured identity: the git `user.name` and `user.email` of an account on the allowlist,
-typically its noreply address. A contributor's own name goes only in the message, a
-`By: <name>` line and a `Co-Authored-By: <name> <email>` trailer. Before this, each bench job
-committed as `<row> <row@nova-sprint.local>` and friends as themselves, and heads sat in
-merging behind a red agreement check.
-
-The identity is the sprint's own state, never a literal in the code: the coordinator sets it
-with `nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason
-"<why>"`, and the store holds it (round 24, beside the stop). The tool enforces it in order:
-
-- `up` step 7 asks the human for it before it looks at any bench (`ASK the human which forge
-  account ...`, next: the identity command); no act can make it true.
-- `hook --role worker` refuses until it is set; every hook prints `COMMIT AS <name> <email>`,
-  the two `git config` lines and the By:/Co-Authored-By: rule.
-- `take` refuses until it is set; its text repeats the rule for a friend, and its receipt
-  carries `commit_name` and `commit_email` for the bench worker, which writes them into the
-  job's clone (JOB.md and the prompt say so). A receipt without them ends the worker
-  (`update nova-sprint`); staging a job with none is refused, never committed as the bench.
-- `finish` reads the head's commits since the base (the attempt's base sha and the stream's
-  base at origin excluded) with `git log` in a clone and refuses any commit whose author or
-  committer email is not the identity's (compared case-folded), naming each commit and both
-  emails; the fix is the two config lines and a `--reset-author` rebase.
-- `check` has a line naming it, red when unset; the agreement warning at `stream add` and in
-  `check` names it as the identity to sign for.
-
-## Built: why the fleet is idle (stitch w4V, 2026-11-07)
-
-- `steps.Waits` groups each stream's waiting producers by the front of the
-  NEEDS chain they wait on (the first need not landed, followed while that
-  need itself waits on a need) and by the producer and file they are held
-  behind (`leastHolder`, the needs step's own overlap rule, now shared), and
-  finds the stream's longest NEEDS chain of cards not landed (sentinels add
-  no length). `check`, the board and the idle judgement all read it. Its cost
-  is 3.9 ms for 5,000 producers on the working machine (measured, one
-  benchmark run, `BenchmarkWaits5000`).
-- The chain warning starts at 4 cards (`steps.ChainWarn`, a guess). The land
-  rate is the stream's landings over the store's last 5,000 events (a guess:
-  about an hour of a busy sprint), (landings - 1) over their span; under two
-  landings it says "no land rate yet". A chain's hours are its cards over that
-  rate: an estimate, since a chain's cards land one after another and the
-  stream's rate counts all its landings.
-- The idle judgement's text names the chains and overlaps only when no ready
-  producer is dealable and none resolved that tick; otherwise it keeps its
-  held/unserved counts.
+`drop` (and `replace`, and a judgement answered `drop`) releases the dropped producer's live
+consumers itself, in the same op, recorded released with the drop's reason (no result, no blame).

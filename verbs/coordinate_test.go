@@ -166,7 +166,7 @@ func TestHoldRefusals(t *testing.T) {
 
 func TestPriority(t *testing.T) {
 	w := newWorld(t)
-	want(t, w.do("carol", "priority", "p1", "high", "--reason", "owner asked"), 0, "p1 priority=high")
+	want(t, w.do("carol", "priority", "p1", "high", "--reason", "coordinator asked"), 0, "p1 priority=high")
 	if c := w.snap(t).Cards["p1"]; c.Priority != "high" {
 		t.Fatalf("card %+v", c)
 	}
@@ -287,7 +287,7 @@ func TestPolicyRefusals(t *testing.T) {
 }
 
 // TestHoldCard: hold parks one producer blocked with the reason, its live
-// consumer withdrawn in the same op; unhold sends it to waiting (defect 47).
+// consumer withdrawn in the same op; unhold sends it to waiting.
 func TestHoldCard(t *testing.T) {
 	w := newWorld(t)
 	want(t, w.do("carol", "hold", "p1", "--reason", "wrong brief"), 0, "p1", "next: "+waitNext)

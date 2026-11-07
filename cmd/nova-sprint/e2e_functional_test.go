@@ -164,7 +164,7 @@ func (x *e2e) up() {
 }
 
 // seedConfig applies nova-config's schema (nova-tools, the version this
-// module requires) and adds a bench (bench1) and a friend (kim).
+// module requires) and adds a bench (bench1) and a friend (friend1).
 func (x *e2e) seedConfig() {
 	t := x.t
 	ctx := context.Background()
@@ -176,12 +176,12 @@ func (x *e2e) seedConfig() {
 	for _, q := range []string{string(x.schema),
 		`GRANT USAGE ON SCHEMA config TO nova_sprint`, `GRANT SELECT ON ALL TABLES IN SCHEMA config TO nova_sprint`,
 		`INSERT INTO config.machines (name, "user", roles, cores, os, arch) VALUES ('bench1', 'bench', 'bench', 1, 'linux', 'amd64')`,
-		`INSERT INTO config.friends (name, harness, model, width, tiers, enabled) VALUES ('kim', 'claude', 'm-kim', 1, 'flash,frontier,heavy,pro', true)`} {
+		`INSERT INTO config.friends (name, harness, model, width, tiers, enabled) VALUES ('friend1', 'claude', 'm-friend1', 1, 'flash,frontier,heavy,pro', true)`} {
 		if _, err := conn.Exec(ctx, q, pgx.QueryExecModeSimpleProtocol); err != nil {
 			t.Fatalf("nova-config seed: %v", err)
 		}
 	}
-	x.tr.note("nova-config: schema applied; machine bench1 (bench, 1 core); friend kim (claude, model m-kim, width 1)")
+	x.tr.note("nova-config: schema applied; machine bench1 (bench, 1 core); friend friend1 (claude, model m-friend1, width 1)")
 }
 
 // startRun is run.Serve over the real store, nova-config, bus, policy

@@ -154,7 +154,7 @@ func (r *Runner) beatLoop_internal(ctx context.Context, row string) {
 	}
 }
 
-// advertise_internal is the worker's advertisement at hook (defect 74): the
+// advertise_internal is the worker's advertisement at hook: the
 // tiers its probe proved its harness serves (a tier whose policy models the
 // adapter cannot reach is not among them) go in every heartbeat with the
 // nova-reserve slots, and the first beat is pushed now, before the first

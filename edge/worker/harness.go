@@ -27,8 +27,8 @@ type Harness interface {
 	Needs() Needs
 }
 
-// Needs is what a harness's wall needs, declared by its adapter (intent rule
-// 31): BuildWallArgv honours it, and nothing else widens a wall.
+// Needs is what a harness's wall needs, declared by its adapter:
+// BuildWallArgv honours it, and nothing else widens a wall.
 type Needs struct {
 	// Unix leaves AF_UNIX sockets open (nova-sandbox --unix), which reopens
 	// the sandbox's same-uid escape (any local socket reachable by path). An
@@ -207,7 +207,7 @@ func (h *CodexHarness) Needs() Needs {
 
 // Needs: opencode's own in-process server listens on an AF_UNIX socket;
 // without --unix the wall kills it at startup ("Unexpected server error")
-// before it writes its log (measured on a bench, 2026-11-07). --unix reopens
+// before it writes its log. --unix reopens
 // nova-sandbox's same-uid escape (any local socket reachable by path): that
 // trade is accepted for this adapter only. It reaches providers through the
 // key proxy (one loopback --net-allow), logs under its data home, and lists
@@ -534,7 +534,7 @@ func SandboxShow(argv []string) string {
 }
 
 // HarnessDirs are the directories the wall must grant --read for the
-// harness binary to start (defect 24): the directory lookPath finds it in
+// harness binary to start: the directory lookPath finds it in
 // and, when that is a symlink, the directory of the file it names. A name
 // lookPath cannot find is nil: the wall then refuses it, naming the path.
 func HarnessDirs(name string, lookPath func(string) (string, error)) []string {

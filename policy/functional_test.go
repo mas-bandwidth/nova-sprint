@@ -86,13 +86,13 @@ func pgBin(t testing.TB) string {
 }
 
 // TestFunctionalLoad: policy's share of a tick at 5,000 ready producers
-// over 100 rows that all serve every tier (the breaker's case: every rows
+// over 100 rows that all serve every tier (every rows
 // question has 100 candidates), with a cold cache and a warm one; the cold
 // tick must fit TickTime. It runs alone, before the parallel tests, since a
-// timing contends for the cores. The number is in LAYER-5's Built section.
+// timing contends for the cores.
 func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for the cores
 	if raceSlowdown > 1 {
-		breakTiming(t)
+		wallClockTest(t)
 		t.Skip("timing under -race measures the race detector")
 	}
 	snap, ro := loadSnap(5000, 100)

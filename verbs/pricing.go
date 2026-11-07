@@ -9,9 +9,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/usage"
 )
 
-// priceReport is the engine pricing a row's report (package usage; the
-// owner, 2026-11-07: "api rate work should be priced *exactly*. friend sub
-// rate should be free."). The verb carries the row's words and its --cost;
+// priceReport is the engine pricing a row's report (package usage): API work is priced
+// exactly and a subscription seat is free. The verb carries the row's words and its --cost;
 // the price is made here, never by the row: the holder row's harness in the
 // roster decides the billing (nova-worker is a bench on API keys; any other
 // harness a kin's subscription seat), and an API run is priced by the

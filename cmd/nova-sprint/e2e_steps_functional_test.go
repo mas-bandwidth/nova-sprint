@@ -70,7 +70,7 @@ func (x *e2e) dealt(row, kind string) (string, int) {
 		}
 		var v struct {
 			Ready   []dealtCard `json:"ready"`
-			Working []dealtCard `json:"working"` // the deal puts it in the row's hand, working (defect 52)
+			Working []dealtCard `json:"working"` // the deal puts it in the row's hand, working
 		}
 		if code != 0 || json.Unmarshal([]byte(out), &v) != nil {
 			return false
@@ -88,14 +88,14 @@ func (x *e2e) dealt(row, kind string) (string, int) {
 	return id, gen
 }
 
-// workerTakes hooks kim (on the bus first), waits for the deal, and takes
+// workerTakes hooks friend1 (on the bus first), waits for the deal, and takes
 // it; the receipt carries model, deadline and forge.
 func (x *e2e) workerTakes() (string, int, int) {
-	x.tr.note("a worker row hooks in: kim, a friend in nova-config")
-	busHook(x.t, x.tr, x.busEnv, "kim", x.inbox("kim"))
-	x.c.must([]string{"hook", "--as", "kim", "--role", "worker"}, "HOOKED kim role=worker")
-	id, gen := x.dealt("kim", "work")
-	out := x.c.must([]string{"take", fmt.Sprintf("%s@%d", id, gen), "--as", "kim", "--json"})
+	x.tr.note("a worker row hooks in: friend1, a friend in nova-config")
+	busHook(x.t, x.tr, x.busEnv, "friend1", x.inbox("friend1"))
+	x.c.must([]string{"hook", "--as", "friend1", "--role", "worker"}, "HOOKED friend1 role=worker")
+	id, gen := x.dealt("friend1", "work")
+	out := x.c.must([]string{"take", fmt.Sprintf("%s@%d", id, gen), "--as", "friend1", "--json"})
 	var r struct {
 		Consumer, Branch, Model, Forge string
 		BaseSHA                        string `json:"base_sha"`
@@ -104,7 +104,7 @@ func (x *e2e) workerTakes() (string, int, int) {
 	if err := json.Unmarshal([]byte(out), &r); err != nil {
 		x.t.Fatalf("take receipt: %v\n%s", err, out)
 	}
-	if r.Model != "m-kim" || r.Deadline <= 0 || r.Forge != "github" || r.Branch != "sprint/s/e2e1" {
+	if r.Model != "m-friend1" || r.Deadline <= 0 || r.Forge != "github" || r.Branch != "sprint/s/e2e1" {
 		x.t.Fatalf("the take receipt lacks model, deadline or forge: %+v", r)
 	}
 	x.tr.note("receipt: model=%s deadline=%ds forge=%s branch=%s", r.Model, r.Deadline, r.Forge, r.Branch)
@@ -116,8 +116,8 @@ func (x *e2e) workerTakes() (string, int, int) {
 // finishes at the pushed head.
 func (x *e2e) workerFinishes(id string, gen, epoch int) string {
 	t, env := x.t, x.busEnv
-	x.tr.note("kim does the work: a commit on sprint/s/e2e1 from the dealt base, pushed to origin")
-	clone := filepath.Join(x.dir, "kim")
+	x.tr.note("friend1 does the work: a commit on sprint/s/e2e1 from the dealt base, pushed to origin")
+	clone := filepath.Join(x.dir, "friend1")
 	sh(t, x.tr, env, "git", "clone", "-q", x.origin, clone)
 	sh(t, x.tr, env, "git", "-C", clone, "checkout", "-q", "-b", "sprint/s/e2e1", x.work)
 	if err := os.WriteFile(filepath.Join(clone, "e2e.txt"), []byte("done\n"), 0o644); err != nil {
@@ -127,7 +127,7 @@ func (x *e2e) workerFinishes(id string, gen, epoch int) string {
 	sh(t, x.tr, env, "git", "-C", clone, "commit", "-q", "-m", "e2e1: write e2e.txt")
 	sh(t, x.tr, env, "git", "-C", clone, "push", "-q", "origin", "sprint/s/e2e1")
 	head := sh(t, x.tr, env, "git", "-C", clone, "rev-parse", "HEAD")
-	x.c.must([]string{"finish", fmt.Sprintf("%s@%d", id, gen), "--head", head, "--as", "kim", "--epoch", fmt.Sprint(epoch)}, "FINISHED "+id, "head="+head)
+	x.c.must([]string{"finish", fmt.Sprintf("%s@%d", id, gen), "--head", head, "--as", "friend1", "--epoch", fmt.Sprint(epoch)}, "FINISHED "+id, "head="+head)
 	return head
 }
 

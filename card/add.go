@@ -13,7 +13,7 @@ import (
 // over 104 bytes (so a consumer suffix still fits in 128), a sentinel with a
 // brief or a score, a need that is not a producer or a sentinel, an after
 // that is not a producer or sentinel, a name given twice, and a cycle through
-// needs or after (the first cold read of layer 2). The new card is fenced
+// needs or after. The new card is fenced
 // absent. No other card is fenced: layer 1 refuses a need or after naming a
 // card that does not exist, so no card of the store can name the new id
 // before it lands, and a loop can close only through its own lists, which the
@@ -69,7 +69,7 @@ func addShape(e Add, cards map[string]Card) *Refusal {
 }
 
 // maxCardID leaves room in store.MaxName for the longest consumer suffix,
-// ".r" plus two int32s (the second cold read of layer 2).
+// ".r" plus two int32s.
 const maxCardID = 104
 
 // addLists refuses a need that is not a producer or a sentinel, an after

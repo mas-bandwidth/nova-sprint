@@ -18,7 +18,7 @@ import (
 // Unknown, naming the version and CatalogFix. Bench is the optional "bench"
 // key: the one model a bench runs for each tier, in provider/model form (a
 // harness's model id), each one of the tier's models; the deal names it
-// (defect 57) and a tier it lacks deals to no bench.
+// and a tier it lacks deals to no bench.
 type Catalog struct {
 	Version   int
 	Models    map[string][]Model
@@ -36,9 +36,9 @@ const CatalogFix = "nova-sprint policy set <file> --reason <why>"
 // compiled, run and validated under a tick's deadline like every other
 // answer; a version that fails is a *Failure. A version with no catalog()
 // has the built-in's, and its Version is 0, the catalog that answered, as
-// in a tick's Answers (ruling 7). An unknown or negative version, or one of
+// in a tick's Answers. An unknown or negative version, or one of
 // kind data, is a Refusal naming the list. Each call returns its own copy.
-// e runs it (round 5: on e's clock, and in e's evaluator).
+// e runs it.
 func ReadCatalog(ctx context.Context, st store.Store, e *Engine, v int) (Catalog, error) {
 	pv := store.PolicyVersion{Body: defaultBody}
 	if v != 0 {

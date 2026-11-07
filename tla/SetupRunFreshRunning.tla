@@ -1,12 +1,11 @@
 ------------------------ MODULE SetupRunFreshRunning ------------------------
 \* REVERSED WITNESS (made from SetupRun.tla by one replacement): a fresh store
-\* begins running, the defect of 2026-11-07. Must violate NothingMovesUnstarted.
+\* begins running. Must violate NothingMovesUnstarted.
 EXTENDS Setup
 
 (***************************************************************************
  up's walk (Setup.tla, unchanged) with the sprint's stop and the run's
- ticks beside it (the run ticked, dealt and pushed while
- up was at step 7 of 8, and stop refused until step 8; "seems bad").
+ ticks beside it.
 
  Step 2's action makes the store, once. A fresh store is stopped, its
  reason "never started" (FreshSprint; store.FreshStop, written by Migrate).
@@ -15,8 +14,7 @@ EXTENDS Setup
  setup completes. A tick moves something only while the sprint runs
  (run.Ticker.Tick returns before steps.Tick when its copy is stopped;
  Run.tla NoTickWhileStopped). The coordinator's start and stop need only a
- store with an epoch, at any step of the walk (verbs upNeed, LAYER-6
- section 3); they are not fair: a sprint never started is allowed.
+ store with an epoch, at any step of the walk (verbs upNeed, docs/LAYER-6-RUN.md); they are not fair: a sprint never started is allowed.
 
  NothingMovesUnstarted: nothing moves before the coordinator's first
  start. SetupRunFreshRunning makes the fresh store running and violates

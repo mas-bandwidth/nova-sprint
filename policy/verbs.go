@@ -42,14 +42,14 @@ func (r *Refusal) Error() string {
 type Result struct {
 	Version   int
 	Changes   int  // activate: the answers that change on the current snapshot
-	Activated bool // set: none was active, so the version stored is active (defect 53)
+	Activated bool // set: none was active, so the version stored is active
 	Next      string
 }
 
 // Up stores the built-in default as the next version and activates it, in
 // one op fenced at the snapshot's seq, when no version is active; otherwise
-// it changes nothing. A data row stored first (stream data) is only counted
-// (Emma's probe: up once left no active version after one).
+// it changes nothing. A data row stored first (stream data) is not a policy
+// version: Up still stores and activates the default.
 func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 	snap, err := st.Snapshot(ctx)
 	if err != nil || snap.Policy > 0 {
@@ -71,8 +71,8 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 // snapshot read with ro, and stores it as the next version, not active
 // (tla/Policy.tla Set), in an op fenced at the snapshot's seq: a set that
 // lands first (the same file from another shell) refuses this one, as
-// "already stored" when it stored this body (rowan2's probe). When no
-// version is active the same op activates it (defect 53: a fresh store took
+// "already stored" when it stored this body. When no
+// version is active the same op activates it (a fresh store took
 // a policy only from up, and the run deals nothing without one) and answers
 // the built-in's open policy judgements, as Activate does.
 func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Caller, path, reason string) (Result, error) {
@@ -136,7 +136,7 @@ func setWrites(ctx context.Context, st store.Store, snap store.Snapshot, put sto
 }
 
 // sameBody is the refusal of body when a stored script version has it (a
-// data row is never named: activate refuses it; cold read 3's probe), or
+// data row is never named: activate refuses it), or
 // the store's error.
 func sameBody(ctx context.Context, st store.Store, body, what string) error {
 	all, err := versions(ctx, st)
@@ -158,7 +158,7 @@ type field struct {
 
 // unstorable refuses, before any op is built, a string the store would
 // refuse as invalid: text that is not valid UTF-8 or holds a NUL byte, a
-// name over store.MaxName bytes (rowan2's probes: the verb's refusal names
+// name over store.MaxName bytes (the verb's refusal names
 // the field, never the store's ErrInvalid).
 func unstorable(verb string, fs ...field) *Refusal {
 	for _, f := range fs {
@@ -303,7 +303,7 @@ func versions(ctx context.Context, st store.Store) ([]store.PolicyVersion, error
 // LoadVersions are the active version and the one active before it in snap
 // (the previous from the log's last activation up to snap's seq; PrevOf),
 // with Seq snap's seq: a tick answers with the snapshot its versions were
-// read at, or AnswerContext refuses it (cold read 3's probe).
+// read at, or AnswerContext refuses it.
 func LoadVersions(ctx context.Context, st store.Store, snap store.Snapshot) (Versions, error) {
 	vs := Versions{Seq: snap.Seq}
 	if snap.Policy == 0 {
@@ -343,7 +343,7 @@ func PrevOf(e store.Event) (int, bool) {
 }
 
 // walk calls fn on every event in seq order up to seq to (a snapshot's,
-// so what it folds is what the snapshot holds: Emma's probe), or every
+// so what it folds is what the snapshot holds), or every
 // event when to is 0.
 func walk(ctx context.Context, st store.Store, to int64, fn func(store.Event)) error {
 	for after := int64(0); ; {

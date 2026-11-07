@@ -62,8 +62,8 @@ func sortedCardIDs(cards map[string]store.Card) []string {
 	return keys
 }
 
-// dealNotice tells the row what it now holds (defect 52: the deal is the
-// take): the card, the one model its deal named (defect 57; "none" for a
+// dealNotice tells the row what it now holds (the deal is the
+// take): the card, the one model its deal named ("none" for a
 // card dealt before models were named), where to work (repo, base, branch;
 // a read's head), the brief clipped, the finish or read command, and take,
 // the acknowledgement that stops the nudges and prints the whole brief.

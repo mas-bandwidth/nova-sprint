@@ -11,11 +11,11 @@ import (
 )
 
 // JobMDName is the file the worker writes in a card's job directory at
-// stage (defect 68): what the card is, where its checkout is, and exactly
+// stage: what the card is, where its checkout is, and exactly
 // how it finishes. The prompt points the harness at it and carries the same
 // finish rules (finishRules_internal), so the two never disagree. It is the
 // worker's file for the harness, not a mechanic a brief may name (a brief
-// that asks for a JOB.md is refused at add as a retired v1 mechanic).
+// that asks for a JOB.md is refused at add).
 const JobMDName = "JOB.md"
 
 // writeJobMD_internal writes j's JOB.md in its job directory.
@@ -84,7 +84,7 @@ func commitIdentity_internal(j Job) string {
 
 // routeFault_internal is the finish rule for a route or device this bench
 // lacks: a fault whose reason starts card.MissingRoute blocks the card for the
-// coordinator instead of dealing it again (defect 48).
+// coordinator instead of dealing it again.
 func routeFault_internal() string {
 	return fmt.Sprintf("   {\"result\":\"fault\",\"reason\":\"%s <route> <what is missing>\"}: the work needs a route or device this bench lacks (a tool, a device, a network); <route> is one word, the name a brief declares with %s: <route>. The card waits for the coordinator instead of being dealt again.\n", card.MissingRoute, card.RouteField)
 }

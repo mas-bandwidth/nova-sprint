@@ -8,8 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Why the fleet is idle (intent rule 33: nothing sits unexplained; the owner,
-// 2026-11-07: "keep everybody working at width"). A waiting producer waits
+// Why the fleet is idle: nothing sits unexplained. A waiting producer waits
 // for one of two things: a need not landed, or a file a ready or started
 // producer of its stream names (the needs step's heldBehind). Waits groups
 // the waiting producers of each stream by the card whose landing would free

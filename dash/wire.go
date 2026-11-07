@@ -34,7 +34,7 @@ func (w workRow) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 func (f fleetRow) MarshalJSON() ([]byte, error) {
-	pct := "-" // no finished work yet: nothing to be a percent of (directive 63b)
+	pct := "-" // no finished work yet: nothing to be a percent of
 	if f.OK+f.Failed > 0 {
 		pct = fmt.Sprintf("%.1f%%", f.OKPct)
 	}
@@ -58,7 +58,7 @@ func (m numberCells) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v)
 }
 
-// streamCost accumulates exact micro-dollars; v1 sends currency strings and a numeric count.
+// streamCost accumulates exact micro-dollars; the wire carries currency strings and a numeric count.
 type streamCost struct {
 	amounts  map[string]*big.Int
 	unpriced int

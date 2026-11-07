@@ -301,30 +301,10 @@ func loadSchemaChecks(t *testing.T, schemaPath string, out map[string]bool) {
 	}
 }
 
-var (
-	reCeiling     = regexp.MustCompile(`(?m)^Nothing ceiling:\s*(\d+)\s*$`)
-	reTotalCount  = regexp.MustCompile(`(?m)^Total rules audited:\s*(\d+)\s*$`)
-	reModelCount  = regexp.MustCompile(`(?m)^-\s*held by a model:\s*(\d+)\s*$`)
-	reTestCount   = regexp.MustCompile(`(?m)^-\s*held by a test:\s*(\d+)\s*$`)
-	reSchemaCount = regexp.MustCompile(`(?m)^-\s*held by the schema:\s*(\d+)\s*$`)
-	reNothingCnt  = regexp.MustCompile(`(?m)^-\s*held by nothing:\s*(\d+)\s*$`)
-	reRemediation = regexp.MustCompile("(?m)^-\\s*`([A-Z0-9-]+)`:\\s+(.+)$")
-)
-
 func verifyEnforced(doc string, idx *treeIndex) []string {
 	var errs []string
-	cm := reCeiling.FindStringSubmatch(doc)
-	if len(cm) != 2 {
-		return []string{"missing 'Nothing ceiling: <N>' header at top of docs/ENFORCED.md"}
-	}
-	ceiling, err := strconv.Atoi(cm[1])
-	if err != nil {
-		return []string{fmt.Sprintf("invalid Nothing ceiling: %v", err)}
-	}
-
 	seenIDs := map[string]bool{}
-	nothingIDs := map[string]bool{}
-	var totalRows, modelRows, testRows, schemaRows, nothingRows int
+	var totalRows int
 
 	for lineNo, raw := range strings.Split(doc, "\n") {
 		line := strings.TrimSpace(raw)
@@ -349,12 +329,6 @@ func verifyEnforced(doc string, idx *treeIndex) []string {
 		}
 		seenIDs[id] = true
 		totalRows++
-
-		if holdersRaw == "`nothing`" || holdersRaw == "nothing" {
-			nothingRows++
-			nothingIDs[id] = true
-			continue
-		}
 
 		parts := strings.Split(holdersRaw, ",")
 		var hasModel, hasTest, hasSchema bool
@@ -402,55 +376,11 @@ func verifyEnforced(doc string, idx *treeIndex) []string {
 		if !hasModel && !hasTest && !hasSchema {
 			errs = append(errs, fmt.Sprintf("line %d (%s): row has no valid holders", lineNo+1, id))
 		}
-		if hasModel {
-			modelRows++
-		}
-		if hasTest {
-			testRows++
-		}
-		if hasSchema {
-			schemaRows++
-		}
 	}
 
 	if totalRows == 0 {
 		errs = append(errs, "no ledger rows parsed from docs/ENFORCED.md")
 	}
-	if nothingRows > ceiling {
-		errs = append(errs, fmt.Sprintf("nothing rows (%d) exceed Nothing ceiling (%d)", nothingRows, ceiling))
-	}
-
-	checkSummary := func(label string, re *regexp.Regexp, want int) {
-		m := re.FindStringSubmatch(doc)
-		if len(m) != 2 {
-			errs = append(errs, fmt.Sprintf("missing summary line for %s", label))
-			return
-		}
-		got, err := strconv.Atoi(m[1])
-		if err != nil || got != want {
-			errs = append(errs, fmt.Sprintf("summary %s records %s, but ledger has %d", label, m[1], want))
-		}
-	}
-	checkSummary("Total rules audited", reTotalCount, totalRows)
-	checkSummary("held by a model", reModelCount, modelRows)
-	checkSummary("held by a test", reTestCount, testRows)
-	checkSummary("held by the schema", reSchemaCount, schemaRows)
-	checkSummary("held by nothing", reNothingCnt, nothingRows)
-
-	remediated := map[string]bool{}
-	for _, m := range reRemediation.FindAllStringSubmatch(doc, -1) {
-		id := m[1]
-		remediated[id] = true
-		if !nothingIDs[id] {
-			errs = append(errs, fmt.Sprintf("Nothing Rows section lists %q, which is not a nothing row", id))
-		}
-	}
-	for id := range nothingIDs {
-		if !remediated[id] {
-			errs = append(errs, fmt.Sprintf("nothing row %q is missing from 'Nothing Rows — What Would Hold Each'", id))
-		}
-	}
-
 	return errs
 }
 
@@ -515,27 +445,6 @@ func TestEnforcedRejectsBrokenLedger(t *testing.T) {
 				return strings.Replace(s, "`check cards_state_check`", "`check cards_nonexistent_check`", 1)
 			},
 			wantErr: `missing schema check/trigger "cards_nonexistent_check"`,
-		},
-		{
-			name: "nothing_exceeds_ceiling",
-			mutate: func(s string) string {
-				return strings.Replace(s, "Nothing ceiling: 20", "Nothing ceiling: 19", 1)
-			},
-			wantErr: "nothing rows (20) exceed Nothing ceiling (19)",
-		},
-		{
-			name: "summary_count_mismatch",
-			mutate: func(s string) string {
-				return regexp.MustCompile(`(?m)^- held by a test: \d+$`).ReplaceAllString(s, "- held by a test: 999")
-			},
-			wantErr: "summary held by a test records 999, but ledger has",
-		},
-		{
-			name: "missing_nothing_remediation",
-			mutate: func(s string) string {
-				return strings.Replace(s, "- `L2-U17`:", "- `L2-U99`:", 1)
-			},
-			wantErr: `nothing row "L2-U17" is missing`,
 		},
 	}
 

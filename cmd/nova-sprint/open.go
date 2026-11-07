@@ -29,7 +29,7 @@ func credentialsFromEnv() credentials {
 
 // sprint is the DSN as nova_sprint, or the refusal of a process without the
 // sprint's own credential (verbs.NoCredential: the store may well be set
-// up; "not set up" is for a store without the schema, defect 22).
+// up; "not set up" is for a store without the schema).
 func (c credentials) sprint() (string, error) {
 	if c.password == "" {
 		return "", verbs.NoCredential()
@@ -140,7 +140,7 @@ func (s *lazyStore) Snapshot(ctx context.Context) (store.Snapshot, error) {
 }
 
 // Landings forwards the board's landing times to the store (dash and run look
-// for it by interface): without this the run's board had no ETA (2026-11-07).
+// for it by interface): without this the run's board has no ETA.
 func (s *lazyStore) Landings(ctx context.Context, epoch int, upToSeq int64) ([]time.Time, error) {
 	return with(s, ctx, func(p *store.PG) ([]time.Time, error) { return p.Landings(ctx, epoch, upToSeq) })
 }

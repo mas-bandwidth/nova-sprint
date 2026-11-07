@@ -1,4 +1,4 @@
-# CI for nova-sprint v2: lint, the unit tier, the functional tier and TLC.
+# CI for nova-sprint: lint, the unit tier, the functional tier, trace validation and TLC.
 # Each step is one plain command; docs/TESTING.md lists the same commands to run
 # by hand. Pull requests run on the self-hosted runners, and only for branches
 # of this repository: a fork's code never runs on them.
@@ -55,9 +55,9 @@ jobs:
       - name: silentlint (every layer, bottom up)
         run: go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
 
-  # The card package's race run takes about 556 s on vision (2026-11-06), near
-  # go test's default 10-minute per-package bound: each package gets 20 minutes
-  # (about twice the slowest), the job 30 (packages build and run in parallel).
+  # The card package's race run takes about 9 minutes, near go test's default
+  # 10-minute per-package bound: each package gets 20 minutes (about twice the
+  # slowest), the job 30 (packages build and run in parallel).
   unit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]
@@ -96,7 +96,7 @@ jobs:
   # fixed seeds, each trace checked by TLC against its model, and the
   # breakers refused. Layer 6 (tla/CHECK-LAYER6-TRACES.md): the Run fixtures
   # (run.Ticker and run.Pusher on three seeds and the stop cycle) and the
-  # Setup fixtures (setup, handoff, choices, the 64 installer walks).
+  # Setup fixtures (setup, handoff, choices).
   trace:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]
@@ -130,8 +130,8 @@ jobs:
           NOVA_TRACE_PG: "1"
 
   tlc:
-    # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
-    # ("if you are out of memory, do it on the studio").
+    # The 200+ TLC runs need a large-memory runner: on a 30 GB bench they were
+    # OOM-killed.
     if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
     runs-on: [self-hosted, tlc]
     timeout-minutes: 180

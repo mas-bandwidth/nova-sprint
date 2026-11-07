@@ -25,7 +25,7 @@ var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 type world struct {
 	t  testing.TB
 	st store.Store
-	ro roster.Roster // the tick's roster, beside the store (round 5)
+	ro roster.Roster // the tick's roster, beside the store
 	n  int
 }
 
@@ -143,10 +143,10 @@ func (w *world) snap() store.Snapshot {
 	return s
 }
 
-// caller is the coordinator friendF with the next op id and time.
+// caller is the coordinator coord with the next op id and time.
 func (w *world) caller() Caller {
 	id, at := w.next()
-	return Caller{Actor: "friendF", Coordinator: true, OpID: id, At: at}
+	return Caller{Actor: "coord", Coordinator: true, OpID: id, At: at}
 }
 
 // up runs Up and requires it.

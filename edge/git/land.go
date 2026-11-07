@@ -41,7 +41,7 @@ type LandRequest struct {
 }
 
 // LandResult is one pass's outcome with the facts a judgement shows. A red
-// one carries the split by the base (directive 59): MergeBase, the
+// one carries the split by the base: MergeBase, the
 // workflows red on the base too (Inherited) and the ones that are not
 // (NewRed: failed jobs, runners, first error lines; a failing check that is
 // no Actions workflow is new, since nothing on the base compares with it);
@@ -141,7 +141,7 @@ func fetchHeads_internal(ctx context.Context, g Git, req LandRequest) (string, [
 func gatedHead_internal(ctx context.Context, g Git, req LandRequest, baseTip string, tips []string, res *LandResult) (string, string, bool, error) {
 	// Every card branch must be at the head the read passed, on either
 	// rung: a moved branch is the coordinator's judgement, never landed at
-	// a sha its branch has left (the deployed line's check, 2026-11-07).
+	// a sha its branch has left.
 	for i, tip := range tips {
 		if tip != req.Heads[i] {
 			res.Outcome = OutcomeMoved
@@ -237,7 +237,7 @@ func gateAndMerge_internal(ctx context.Context, g Git, fg forge.Forge, req LandR
 // readChecks_internal reads the gated sha's checks into res: true (with
 // res's outcome) unless they are green. A red one is split by the base
 // (splitRed_internal); while the run goes on and every red so far is
-// inherited, the pass is pending (directive 76).
+// inherited, the pass is pending.
 func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, pr int, res *LandResult) bool {
 	rollups, err := fg.Checks(ctx, req.Repo, []string{res.GatedSHA})
 	if err != nil {

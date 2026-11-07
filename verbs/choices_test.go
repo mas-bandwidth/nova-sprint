@@ -12,9 +12,9 @@ func TestChoicesAreDurableAndInactive(t *testing.T) {
 	f := store.NewFake()
 	ctx := context.Background()
 	at := time.Unix(1000, 0)
-	applyTest(t, f, store.Op{ID: "policy", Epoch: 1, Actor: "friendF", Kind: "policy", At: at, Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default", Body: "script"}}})
-	applyTest(t, f, store.Op{ID: "activate", Epoch: 1, Actor: "friendF", Kind: "activate", At: at, Writes: []store.Write{store.SetActivePolicy{Version: 1}}})
-	c := Choices{Store: f, Actor: "friendF", Now: func() time.Time { return at }}
+	applyTest(t, f, store.Op{ID: "policy", Epoch: 1, Actor: "coord", Kind: "policy", At: at, Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default", Body: "script"}}})
+	applyTest(t, f, store.Op{ID: "activate", Epoch: 1, Actor: "coord", Kind: "activate", At: at, Writes: []store.Write{store.SetActivePolicy{Version: 1}}})
+	c := Choices{Store: f, Actor: "coord", Now: func() time.Time { return at }}
 	if err := c.Save(ctx, "dashboard", "tailnet"); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestChoicesAreDurableAndInactive(t *testing.T) {
 	if err = c.Save(ctx, "secret-key", "bad"); err == nil {
 		t.Fatal("stored a secret")
 	}
-	r, err := f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "friendF", Kind: "clear", At: at})
+	r, err := f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "coord", Kind: "clear", At: at})
 	if err != nil || !r.Accepted {
 		t.Fatal(r, err)
 	}

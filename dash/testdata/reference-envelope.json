@@ -1,0 +1,109 @@
+{
+  "attemptAt": "2026-01-01T00:00:00Z",
+  "build": "0123456789ab",
+  "data": {
+    "stream_costs": {
+      "stream-a": {
+        "cost_by_tier": {
+          "heavy": "$1.63",
+          "pro": "$0.50"
+        },
+        "decide_unpriced": 11,
+        "dropped_cards": 1,
+        "in_flight": "$0.21",
+        "landed_usd": "1.925642151",
+        "per_landed": "$0.15",
+        "read_cost": "$0.57",
+        "reads_no_tokens": 8,
+        "tiers": {
+          "heavy": 14,
+          "pro": 9
+        },
+        "total_cost": "$2.13",
+        "total_usd": "2.128340019000000002",
+        "unpriced_runs": 29,
+        "work_cost": "$1.57"
+      }
+    },
+    "streams": [
+      {
+        "Display": "Stream A",
+        "Progress": "2026-01-01T00:00:00Z",
+        "Quiet": "2026-01-01T00:00:00Z",
+        "Since": "2026-01-01T00:00:00Z",
+        "State": "landed",
+        "Stream": "stream-a"
+      },
+      {
+        "Display": "Stream B",
+        "Progress": "2026-01-01T00:00:00Z",
+        "Quiet": "2026-01-01T00:00:00Z",
+        "Since": "2026-01-01T00:00:00Z",
+        "State": "waiting",
+        "Stream": "stream-b"
+      }
+    ],
+    "tables": {
+      "fleet": {
+        "bench-1": {
+          "blocker_working": "0",
+          "critical_working": "0",
+          "defect": "0",
+          "done": "72",
+          "failed": "14",
+          "finished": "1",
+          "fix_working": "0",
+          "high_working": "0",
+          "load": "0.3%",
+          "low_working": "0",
+          "normal_working": "0",
+          "ok": "7",
+          "okpct": "33.3%",
+          "reads_ready": "2",
+          "reads_working": "0",
+          "ready": "2",
+          "redealt": "0",
+          "status": "up",
+          "width": "8",
+          "withdrawn": "0",
+          "working": "0"
+        }
+      },
+      "work": {
+        "stream-a": {
+          "cost": "$2.13",
+          "cost_by_tier": {
+            "heavy": "$1.63",
+            "pro": "$0.50"
+          },
+          "decide_unpriced": 11,
+          "dropped_cards": 1,
+          "in_flight": "$0.21",
+          "landed": "13",
+          "landed_usd": "1.925642151",
+          "merging": "0",
+          "per_landed": "$0.15",
+          "priority": "normal",
+          "read_cost": "$0.57",
+          "reads_no_tokens": 8,
+          "ready": "1",
+          "review": "1",
+          "total_cost": "$2.13",
+          "total_usd": "2.128340019000000002",
+          "unpriced_runs": 29,
+          "waiting": "8",
+          "work_cost": "$1.57",
+          "working": "0"
+        }
+      }
+    }
+  },
+  "dataAgeSeconds": 0.2,
+  "error": null,
+  "fetchedAt": "2026-01-01T00:00:00Z",
+  "minInterval": 1,
+  "ok": true,
+  "readSeconds": 0.04,
+  "throughput": 0,
+  "throughputMinutes": 60
+}

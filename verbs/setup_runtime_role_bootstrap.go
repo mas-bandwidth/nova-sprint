@@ -14,7 +14,7 @@ import (
 // and invokes a child that rereads the durable values under nova-secrets exec.
 // The child may set only the up-owned nova_sprint role. Every run proves the
 // role's password is the stored credential, and sets it from the stored
-// credential when it is not (defect 37: the seat's value is the one every
+// credential when it is not (the seat's value is the one every
 // service reads), so a run interrupted after saving and before setting
 // recovers by running again.
 type SprintRoleBootstrap struct {

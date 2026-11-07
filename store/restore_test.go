@@ -1,6 +1,6 @@
 package store
 
-// Round 20: RestoreBegin and RestoreEnd, layer 6's restore of a data-only
+// RestoreBegin and RestoreEnd, layer 6's restore of a data-only
 // dump on one connection in one transaction the caller owns.
 
 import (
@@ -150,7 +150,7 @@ func TestFunctionalRestore(t *testing.T) {
 
 	id, err := restore(t, target, d)
 	require.NoError(t, err)
-	assert.Equal(t, SchemaIdentity{Present: true, Hash: schemaHash, Expected: schemaHash, Current: true, Owner: "nova", Round: schemaRound}, id)
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: schemaHash, Expected: schemaHash, Current: true, Owner: "nova", Generation: schemaGeneration}, id)
 	q, err := Open(ctx, target, "")
 	require.NoError(t, err)
 	t.Cleanup(q.Close)

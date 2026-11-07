@@ -78,8 +78,7 @@ func TestTickPreemptionRefusedByRace(t *testing.T) {
 }
 
 // TestTickDropTakesDependants: a failed need fails the closure of its
-// dependants in one group, their live consumers withdrawn first (LESSONS
-// 2.4), and a sentinel with it.
+// dependants in one group, their live consumers withdrawn first, and a sentinel with it.
 func TestTickDropTakesDependants(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")

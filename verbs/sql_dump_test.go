@@ -65,7 +65,7 @@ func TestConfineDataOrdersCardsWithEscapedIdentifiers(t *testing.T) {
 }
 
 // TestConfineDataRefusesAnUnmappedCardState: a record whose state this
-// build does not map (an importer's carried-over terminal state, here a v1
+// build does not map (an importer's carried-over terminal state, here a
 // landed timestamp) is refused naming the record and the one fix, before
 // the verification cluster's CHECK would refuse it unnamed.
 func TestConfineDataRefusesAnUnmappedCardState(t *testing.T) {
@@ -92,11 +92,10 @@ func TestConfineDataRefusesAnUnmappedCardState(t *testing.T) {
 	}
 }
 
-// TestConfineDataCarriesRound25Balances: a backup of a round 25 store holds
+// TestConfineDataCarriesBalances: a backup of a store with balances holds
 // sprint.balances and its id sequence; both are sprint data and pass, after
-// everything else, while another sequence is still refused (the e2e's
-// backup step refused setval('sprint.balances_id_seq') before this).
-func TestConfineDataCarriesRound25Balances(t *testing.T) {
+// everything else, while another sequence is still refused.
+func TestConfineDataCarriesBalances(t *testing.T) {
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
 	balance := "INSERT INTO sprint.balances VALUES (1, 'deepseek', '2026-11-07 12:00:00+00', 5, 12.5, '');\n"

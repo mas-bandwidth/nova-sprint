@@ -44,20 +44,20 @@ type (
 	GitOps interface {
 		// Fetch brings j's repo's work clone up to date from its origin
 		// (making it on first use). A pass fetches each repo it stages from
-		// once, before any of its jobs stage (defect 72).
+		// once, before any of its jobs stage.
 		Fetch(ctx context.Context, j Job) error
 		// StageWorktree makes j's worktree from the work clone as the last
 		// Fetch left it; it fetches nothing.
 		StageWorktree(ctx context.Context, j Job) (headSHA string, err error)
 		// BranchTip is j's branch on origin as the last Fetch left it in the
 		// work clone: its sha, or "" when the branch does not exist. A work
-		// job's first push leases from it (defect 78).
+		// job's first push leases from it.
 		BranchTip(ctx context.Context, j Job) (string, error)
 		HeadSHA(ctx context.Context, worktree string) (string, error)
 		// Push moves branch on the worktree's origin to headSHA only while
 		// the branch is at expect ("" : the branch does not exist yet), by
 		// lease (--force-with-lease=refs/heads/<branch>:<expect>); never a
-		// plain force (defect 78: a stale job's force push rewound the new
+		// plain force (a stale job's force push rewound the new
 		// holder's branch).
 		Push(ctx context.Context, worktree, branch, headSHA, expect string) error
 		RebaseOntoStream(ctx context.Context, worktree, streamRef string) (newSHA string, err error)
@@ -166,7 +166,7 @@ type Runner struct {
 }
 
 // NewRunner is a runner on any machine nova-config gives the bench role;
-// the worker holds no list of machines of its own (directive 41: the
+// the worker holds no list of machines of its own (the
 // coordinator's machine may be a bench too).
 func NewRunner(cfg Runner) (*Runner, error) {
 	if strings.TrimSpace(cfg.RootDir) == "" {
@@ -248,7 +248,7 @@ func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id stri
 
 // withdrawRunningJob_internal stops the harness of a job whose consumer is
 // final (withdrawn): it pushes nothing, since the branch is the next
-// holder's (defect 78); the caller retires the directory.
+// holder's; the caller retires the directory.
 func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
 	r.markGone_internal(rec.Epoch, rec.Consumer, math.MaxInt)
 	r.cancelRunning_internal(rec.Consumer)
@@ -298,7 +298,7 @@ func (r *Runner) cancelRunning_internal(id string) {
 	}
 }
 
-// Start is the startup order (drift row 20): the bus hook, which claims the
+// Start is the startup order: the bus hook, which claims the
 // row's name; then a self-unhook of any sprint hook a dead worker left (a
 // refusal means there was none); then `nova-sprint hook --as <row> --role
 // worker`. Nothing acts before it returns, and the caller owns the hook.
@@ -371,8 +371,8 @@ func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
 // then the sprint hook, then one pass (once) or the wake loop. Probing
 // before the sprint hook makes a hooked row a probed one: its harness
 // lists the policy's models and its seat's provider keys reached it, which
-// is what up's step 7 proves by the row being hooked and up (admission,
-// intent rule 34). A failed probe leaves the row unhooked: once, it is the
+// is what up's step 7 proves by the row being hooked and up (admission).
+// A failed probe leaves the row unhooked: once, it is the
 // exit; served, the row is held and the probe retried (probeHeld_internal).
 func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) error {
 	hook, err := r.busHook_internal(ctx, row)
@@ -403,7 +403,7 @@ func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) e
 }
 
 // chooseModel_internal is the model a job runs: the one the deal named and
-// the receipt carries (defect 57: the worker never picks one). A harness
+// the receipt carries (the worker never picks one). A harness
 // that takes a model and whose probe proved models, none of them this one,
 // is a fault naming the model and the fix.
 func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, error) {
@@ -602,7 +602,7 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 
 // harvestWorkHead_internal pushes the head a work job left. A harness that
 // said ok with its changes uncommitted and HEAD where it started has its
-// tree committed here (the harness note of 2026-11-07); ok with nothing to
+// tree committed here; ok with nothing to
 // commit is a fail naming it.
 func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *JobRecord, out Outcome) Outcome {
 	if r.Git == nil {
@@ -790,7 +790,7 @@ func (r *Runner) evalEdgeQuery_internal(ctx context.Context, id string, req Edge
 	return res, nil
 }
 
-// OSGitOps stages from one work clone per stream repo (directive 42): the
+// OSGitOps stages from one work clone per stream repo: the
 // repo is the deal receipt's; its bare mirror is <MirrorRoot>/<name>.git,
 // the layout mirror-refresh keeps, cloned on first use when absent; its work
 // clone is <WorkRoot>/<name>, made on first use borrowing the mirror's
@@ -837,7 +837,7 @@ func (g *OSGitOps) to_internal(d time.Duration) time.Duration { return cmp.Or(g.
 // cloneLock_internal is url's lock: its write side makes the work clone and
 // fetches into it, its read side clones a job's worktree from it, so no
 // fetch races another on the clone's refs and no worktree is cloned from a
-// half-made one (defect 72).
+// half-made one.
 func (g *OSGitOps) cloneLock_internal(url string) *sync.RWMutex {
 	g.mu.Lock()
 	defer g.mu.Unlock()

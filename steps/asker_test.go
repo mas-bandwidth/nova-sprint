@@ -20,8 +20,7 @@ func rowsQ(cands ...string) RowsQuestion {
 	return q
 }
 
-// TestAskerAbsent: no policy at all is every default and no judgement
-// (list item 3: absent).
+// TestAskerAbsent: no policy at all is every default and no judgement.
 func TestAskerAbsent(t *testing.T) {
 	o := newOracle(Default{}.Ask(Questions{}), Engine)
 	assert.Equal(t, []any{1, 7}, o.order(CardFacts{ID: "p1", Score: 7}))
@@ -108,7 +107,7 @@ func TestAskerInDomain(t *testing.T) {
 }
 
 // benchAsk is the engine's defaults with a bench model for every tier, as an
-// active policy's catalog names them (defect 57: a bench deal names its
+// active policy's catalog names them (a bench deal names its
 // model, and a version with none deals to no bench).
 type benchAsk struct{}
 

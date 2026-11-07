@@ -1,6 +1,6 @@
 package store
 
-// Round 18: CheckSchema and Schema, the read-only schema identity. The
+// CheckSchema and Schema, the read-only schema identity. The
 // conformance scenario runs on Fake and PG; the functional tests are the
 // outcomes on a real PostgreSQL and the proof that it writes nothing.
 
@@ -17,7 +17,7 @@ import (
 )
 
 // currentSchema is the identity of a store made by this binary.
-var currentSchema = SchemaIdentity{Present: true, Hash: schemaHash, Expected: schemaHash, Current: true, Round: schemaRound}
+var currentSchema = SchemaIdentity{Present: true, Hash: schemaHash, Expected: schemaHash, Current: true, Generation: schemaGeneration}
 
 // schemaIdentity is the conformance scenario: both stores report the current
 // schema (Fake has no owner; PG's is its role, so it is not compared).
@@ -38,7 +38,7 @@ func TestSchemaFake(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, currentSchema, id)
 	assert.Equal(t, hashSchema(schemaSQL), id.Expected, "the expectation is the hash Migrate records")
-	t.Logf("schema hash %s, round %d", id.Expected, id.Round)
+	t.Logf("schema hash %s, round %d", id.Expected, id.Generation)
 }
 
 func TestFunctionalCheckSchemaCurrent(t *testing.T) {
@@ -56,20 +56,20 @@ func TestFunctionalCheckSchemaCurrent(t *testing.T) {
 
 // A round-16 store is a known older one before Migrate and the current one
 // after it.
-func TestFunctionalCheckSchemaRound16(t *testing.T) {
+func TestFunctionalCheckSchemaOlderSchema1(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	old, err := os.ReadFile("testdata/schema-round16.sql")
+	old, err := os.ReadFile("testdata/schema-older-1.sql")
 	require.NoError(t, err)
 	dsn := startPG(t)
 	c := connect(t, dsn)
-	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round16Hash + "' WHERE id = 1"} {
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + olderSchema1Hash + "' WHERE id = 1"} {
 		_, err = c.Exec(ctx, q)
 		require.NoError(t, err, q)
 	}
 	id, err := CheckSchema(ctx, dsn)
 	require.NoError(t, err, "Migrate would take it")
-	assert.Equal(t, SchemaIdentity{Present: true, Hash: round16Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 16}, id)
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: olderSchema1Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Generation: 1}, id)
 	openPG(t, dsn) // Migrate
 	id, err = CheckSchema(ctx, dsn)
 	require.NoError(t, err)

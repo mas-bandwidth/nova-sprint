@@ -101,8 +101,7 @@ def emit_simple(repo, out, args, cases):
              'NOVA_RUN_TRACE_PATH', {'NOVA_RUN_TRACE_SEED': str(s)}) for s in (0, 1, 2)]
     jobs += [('run-stop', 'Run', './run', 'TestEmitRunTrace', 'NOVA_RUN_TRACE_PATH',
               {'NOVA_RUN_TRACE_SEED': '0', 'NOVA_RUN_TRACE_STOP': '1'})]
-    # The RunClear cases (clear, clear-walk-0..9) are owed: their emitters went
-    # with the old pusher (f697b05f), and run.Pusher has no clear summary to bind.
+    # RunClear has no emitted trace: run.Pusher has no clear summary to bind.
     jobs += [('setup', 'Setup', './verbs', 'TestSetupActualTrace', 'NOVA_SETUP_TRACE_OUT', {})]
     jobs += [('handoff-' + str(s), 'SetupHandoff', './cmd/nova-sprint', 'TestEmitHandoffTrace',
               'NOVA_HANDOFF_TRACE_PATH', {'NOVA_HANDOFF_TRACE_STALE': str(s)}) for s in (0, 1)]

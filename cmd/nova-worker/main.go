@@ -1,4 +1,4 @@
-// Command nova-worker is the per-bench runner service of nova-sprint v2;
+// Command nova-worker is the per-bench runner service of nova-sprint;
 // `nova-sprint worker` is the same worker (edge/worker.Serve).
 package main
 

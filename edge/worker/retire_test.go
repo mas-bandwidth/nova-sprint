@@ -16,11 +16,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
-// Defect 78 (tla/Runner.tla: Retire, HolderPush, NoPushAfterFinal,
-// BranchOnlyByHolder). A withdrawn bench job pushed its dirty head to the
-// card's branch with a plain force on every recovery pass, rewinding the new
-// holder's branch, because its directory (a dirty tree, a read-only Go module
-// cache) was never removed.
+// A withdrawn job must never push its dirty head to the card's branch, which
+// would rewind the new holder's branch, and its directory (a dirty tree, a
+// read-only Go module cache) must be removed. Model: tla/Runner.tla (Retire,
+// HolderPush, NoPushAfterFinal, BranchOnlyByHolder).
 
 const (
 	testHolderSHA = "6666666666666666666666666666666666666666"
@@ -79,7 +78,7 @@ func TestWorkerSourcesHaveNoPlainForce(t *testing.T) {
 		}
 		for i, line := range strings.Split(string(data), "\n") {
 			if plain.MatchString(line) {
-				t.Errorf("%s:%d: a plain --force (defect 78: a push moves a branch only by lease): %s", f, i+1, strings.TrimSpace(line))
+				t.Errorf("%s:%d: a plain --force(a push moves a branch only by lease): %s", f, i+1, strings.TrimSpace(line))
 			}
 		}
 	}
@@ -114,13 +113,13 @@ func TestJobPushesLeaseFromStartTipThenFromItsOwnHead(t *testing.T) {
 }
 
 // retireRig_internal is a row whose consumer p1.w1 (gen 1) has a job
-// directory on disk as the live defect left it: a work job at running with
+// directory on disk as a withdrawn job leaves it: a work job at running with
 // its harness gone, a dirty tree whose head is a stale commit, a read-only
 // module cache inside it, and the card's branch already moved by the new
 // holder.
 type retireRig_internal struct {
 	r       *Runner
-	sp      *crSprint
+	sp      *sandboxSprint
 	git     *fakeGit
 	jobDir  string
 	removes int
@@ -131,7 +130,7 @@ type retireRig_internal struct {
 func newRetireRig_internal(t *testing.T, next NextResponse, rec JobRecord) *retireRig_internal {
 	t.Helper()
 	root := t.TempDir()
-	g := &retireRig_internal{sp: &crSprint{next: next}, git: newFakeGit_internal(), jobDir: filepath.Join(root, "jobs", rec.Consumer)}
+	g := &retireRig_internal{sp: &sandboxSprint{next: next}, git: newFakeGit_internal(), jobDir: filepath.Join(root, "jobs", rec.Consumer)}
 	if err := WriteJobRecord(g.jobDir, rec); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +171,7 @@ func staleWorkRecord_internal(state string, gen int) JobRecord {
 	}
 }
 
-// The defect's own path: the consumer is final (withdrawn, the card re-dealt);
+// The withdrawn path: the consumer is final (withdrawn, the card re-dealt);
 // three recovery passes push nothing, remove the directory once, and keep
 // the retired record outside it.
 func TestWithdrawnJobPushesNothingAndIsRemovedOnce(t *testing.T) {

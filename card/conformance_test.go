@@ -27,7 +27,7 @@ type world struct {
 	f     *store.Fake
 	n     int
 	ev    Event          // the walk's last event, for its trace (trace_test.go)
-	width map[string]int // the roster's widths (round 22: the store keeps none)
+	width map[string]int // the roster's widths
 }
 
 // worldTiers is every row's tiers in the roster.
@@ -88,7 +88,7 @@ func (w *world) raw(kind string, writes ...store.Write) {
 
 // apply applies plan as one op: epoch from the snapshot, At passed in; the
 // receipt and error unchecked. A take past the roster's width is refused
-// here, as layer 3's dealer refuses it (round 22: layer 1 no longer counts
+// here, as layer 3's dealer refuses it (layer 1 does not count
 // width), with a reason naming width, and never reaches the store.
 func (w *world) apply(kind string, plan Plan) (store.Receipt, error) {
 	if reason := w.overWidth(plan); reason != "" {
@@ -101,7 +101,7 @@ func (w *world) apply(kind string, plan Plan) (store.Receipt, error) {
 }
 
 // overWidth is the dealer's width check on plan: the first consumer it
-// moves into working, a cut one included (the deal is the take, defect 52),
+// moves into working, a cut one included (the deal is the take),
 // on a row that already holds the row's roster width of working consumers,
 // or "".
 func (w *world) overWidth(plan Plan) string {
@@ -148,7 +148,7 @@ func (w *world) card(id string) Card {
 	return FromStore(c)
 }
 
-// fromStore is FromStore, the name the cold read's probes use.
+// fromStore is FromStore, the short name tests use.
 func fromStore(c store.Card) Card { return FromStore(c) }
 
 func (w *world) rows() map[string]Row {
@@ -218,8 +218,7 @@ func (w *world) row(name string, e Event) {
 }
 
 // landed checks the store holds what each write of plan names, for every
-// write type the machine makes (the cold read: an unchecked type hides an
-// omission).
+// write type the machine makes (an unchecked type hides an omission).
 func (w *world) landed(plan Plan) {
 	w.t.Helper()
 	s := w.snap()
@@ -394,7 +393,7 @@ func TestConformanceRed(t *testing.T) {
 	w.read("p1", "r2", "ok", "")
 	w.move("p1", ReadYes{})
 	w.move("p1", Red{Head: h1, Reason: "ci red"})
-	w.is("p1", Ready) // a red goes to fix with the CI finding (intent rule 30)
+	w.is("p1", Ready) // a red goes to fix with the CI finding
 	assert.Equal(t, 2, w.card("p1").Review, "Finished and Red each raise the review")
 	assert.Equal(t, "ci red", w.card("p1").Finding)
 	w.refused("p1", ReadYes{}, "producer p1 is in ready, ReadYes needs review")
@@ -514,9 +513,7 @@ func TestConformanceRows(t *testing.T) {
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
 }
 
-// Round 2, from Stella's and Johnny's reads of a822dfc7.
-
-// Stella's probe TestReviewConcurrentRelinkCycle, inverted: p relinks a to
+// p relinks a to
 // q and r relinks b to p, both planned from one snapshot. Applied in turn,
 // the second is refused by its gen fence on r (its walk read q, r and b), so
 // no cycle forms.
@@ -538,7 +535,7 @@ func TestConformanceRelinkStale(t *testing.T) {
 	w.refused("p", Relink{Need: "a", To: "q"}, "p needs q needs r needs p")
 }
 
-// Stella's probe TestReviewStartTaskCopy, for both cut kinds: a consumer
+// For both cut kinds, a consumer
 // carries its producer's brief, prose, paths, done_when, stream and tier.
 func TestConformanceCutCopiesTask(t *testing.T) {
 	w := newWorld(t, store.PutCard{ID: "p", Prose: "write the feature", Paths: []string{"src/"}, DoneWhen: []string{"go test ./..."}})
@@ -554,7 +551,7 @@ func TestConformanceCutCopiesTask(t *testing.T) {
 	assert.Equal(t, "do p", w.snap().Cards[work].Brief)
 }
 
-// Stella's probe TestReviewWorkFixDeadend, inverted: a work consumer cannot
+// A work consumer cannot
 // report fix, so no work card is left done with a result nothing handles.
 func TestConformanceWorkFixRefused(t *testing.T) {
 	w := newWorld(t, producer("p"))
@@ -566,8 +563,7 @@ func TestConformanceWorkFixRefused(t *testing.T) {
 	w.is("p.w1", Working)
 }
 
-// Stella's probe TestReviewParkWithStreamHold, as the planner it asked for:
-// the hold and the parks of the ready producers are one op the store accepts.
+// The hold and the parks of the ready producers are one op the store accepts.
 func TestConformanceHoldStream(t *testing.T) {
 	w := newWorld(t, producer("p1"), producer("p2"), producer("p3"))
 	w.move("p1", Resolve{})
@@ -614,7 +610,7 @@ func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
 	w.is("p2", Waiting)
 }
 
-// The card model's ruling: a return to ready while the stream is held parks
+// A return to ready while the stream is held parks
 // the producer in the same plan.
 func TestConformanceReturnIntoHeldStreamParks(t *testing.T) {
 	w := newWorld(t, producer("p1"))

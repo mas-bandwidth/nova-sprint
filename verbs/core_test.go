@@ -67,7 +67,7 @@ func TestCoreRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "unknown verb", args: []string{"edit"}, exit: 2, want: []string{"SPRINT REFUSED nova-sprint: unknown verb edit: nova-sprint help"}},
 		{name: "help of no verb", args: []string{"help", "edit"}, exit: 2, want: []string{"no verb edit"}},
-		{name: "help of no playbook", args: []string{"help", "playbook", "owner"}, exit: 2, want: []string{"worker and coordinator"}},
+		{name: "help of no playbook", args: []string{"help", "playbook", "admin"}, exit: 2, want: []string{"worker and coordinator"}},
 		{name: "unknown flag", as: "alice", args: []string{"queue", "--bogus"}, exit: 2, want: []string{"unknown flag --bogus"}},
 		{name: "a switch given a value", as: "alice", args: []string{"next", "--json=yes"}, exit: 2, want: []string{"--json takes no value"}},
 		{name: "a flag with no value", as: "alice", args: []string{"queue", "--stream"}, exit: 2, want: []string{"--stream needs a value"}},
@@ -110,7 +110,7 @@ func TestHook(t *testing.T) {
 func TestHookRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "no role", as: "dave", args: []string{"hook"}, exit: 2, want: []string{"--role is worker or coordinator"}},
-		{name: "a bad role", as: "dave", args: []string{"hook", "--role", "owner"}, exit: 2, want: []string{"--role is worker or coordinator"}},
+		{name: "a bad role", as: "dave", args: []string{"hook", "--role", "admin"}, exit: 2, want: []string{"--role is worker or coordinator"}},
 		{name: "not on the bus", as: "erin", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"erin is not on the bus"}},
 		{name: "a second hook", as: "alice", args: []string{"hook", "--role", "worker"}, exit: 1, want: []string{"alice is already hooked in as worker", "nova-sprint unhook --as alice"}},
 		{name: "a second coordinator", as: "dave", args: []string{"hook", "--role", "coordinator"}, exit: 1, want: []string{"the sprint's coordinator is carol", "nova-sprint unhook --as carol"}},

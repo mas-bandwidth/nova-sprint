@@ -1,5 +1,0 @@
-=== RUN   TestEmitClearActionWalk
-    walk_trace_test.go:279: seed=8 actions=[notice notice push clear push] records=13 path=/var/tmp/friendG-l6-trace-finalfmt-20261107/walk8.tla
---- PASS: TestEmitClearActionWalk (0.00s)
-PASS
-ok  	github.com/mas-bandwidth/nova-sprint/run	1.018s

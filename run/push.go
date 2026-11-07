@@ -23,15 +23,14 @@ type pending struct {
 	notice Notice
 }
 
-// Pusher is the one pusher (drift row 6): each committed event that needs
+// Pusher is the one pusher: each committed event that needs
 // someone becomes a notice for that recipient as run folds it, and each
 // tick each recipient gets at most one envelope of at most 4 KB with every
 // notice since its cursor; past the bound, one line names `next`
-// (overflow-to-next, the envelope model 4eecaadd). The cursor `push:<name>`
+// (overflow-to-next, the envelope model). The cursor `push:<name>`
 // moves to the last seq the envelope covers only after `nova-bus send`
 // exits 0 and names the message (LAYER-6 guarantee 4); a failed send is not
-// sent again within the tick, and the unmoved cursor is the only resend
-// (drift row 19). Nothing is pushed for an event before its op commits:
+// sent again within the tick, and the unmoved cursor is the only resend. Nothing is pushed for an event before its op commits:
 // the notices come from the log. A nudge (steps.Nudge: a card in a row's
 // hand it has not acknowledged) is the one notice not from the log: the
 // tick derives it from the view, it rides in that tick's envelope and moves

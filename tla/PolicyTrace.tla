@@ -14,7 +14,7 @@
 (* Each record carries the whole projected state, which is small; the     *)
 (* model's own bookkeeping (tickBreaks, cardBefore, waitBound, startBound, *)
 (* lastOp) is not projected: the action computes it. everActive is        *)
-(* projected (round 5), so FallbackWasActive is checked against the code. *)
+(* projected, so FallbackWasActive is checked against the code.           *)
 (*                                                                         *)
 (* The trace adds nothing to the model: the actions are called with the   *)
 (* record's argument, and Drift's choice of breaks is fixed by the record. *)

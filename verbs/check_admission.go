@@ -17,7 +17,7 @@ import (
 // questions the tick asks of the ready producers (order and rows) without
 // a failure. With none active the tick runs on the built-in default, which
 // is how a fleet once worked a night on defaults with nothing dealt
-// (directive 75): red, naming up, which stores and activates the default.
+// : red, naming up, which stores and activates the default.
 // It returns benchModelCheck's refusal, also a red line, for up to name.
 func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Snapshot) *Fail {
 	if snap.Policy == 0 {

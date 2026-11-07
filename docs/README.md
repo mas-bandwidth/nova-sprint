@@ -80,8 +80,8 @@ approved:
 - How we work: 14 MISSING (LESSONS "How we work"), owed to this repository's
   practice and its CI rather than to a layer.
 - Placed in part inside layers 1 and 2, the rest owed a decision: running-
-  time deadlines (LESSONS 1.14) and what a ready producer that cannot start
-  for a reason other than a held stream becomes (LESSONS 2.20).
+  time deadlines and what a ready producer that cannot start
+  for a reason other than a held stream becomes.
 
 ## The dashboard shim is on v2 (2026-11-06)
 

@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// TestStreamAddReachesTheCloneAddress is defect 21 at the verb: the form
+// TestStreamAddReachesTheCloneAddress is the verb's check: the form
 // the help prints (--repo <org>/<repo> --forge github) is checked at
 // GitHub's https address and kept as <org>/<repo>; a form a forge cannot
 // address, and a hand stream named <org>/<repo>, are refused naming the fix.

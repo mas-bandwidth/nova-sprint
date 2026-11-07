@@ -111,7 +111,7 @@ func refuseRows(ctx context.Context, tx pgx.Tx) error {
 // caller rolls back. It enables cards_fixed and runs it over every card (an
 // UPDATE that changes nothing, so the trigger's own text is the check), then
 // requires sprint.meta at this binary's version and hash, the epoch row, and
-// the whole history to hold together (ValidateHistory, round 21).
+// the whole history to hold together (ValidateHistory).
 func RestoreEnd(ctx context.Context, tx pgx.Tx) (SchemaIdentity, error) {
 	for _, q := range []string{"ALTER TABLE sprint.cards ENABLE TRIGGER cards_fixed", "UPDATE sprint.cards SET id = id"} {
 		if _, err := tx.Exec(ctx, q); err != nil {

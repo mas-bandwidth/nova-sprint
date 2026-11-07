@@ -189,8 +189,8 @@ WITNESSES = [
        "       IN IF (\\A x \\in Ops[o].expect : x.k = \"rowGen\" \\/ Cond(st, x)) /\\ run.ok\n"
        "             /\\ CursorsFit(Ops[o].writes, last)", 1)]),
     ("StoreWidthInStore", "NoSpuriousRefusal", "deal",
-     "The store still caps a row at one working consumer (the width check\n"
-     "round 22 moved to the roster): with a1's u1 working on r1, b2 making\n"
+     "The store caps a row at one working consumer (the width check is the\n"
+     "roster's): with a1's u1 working on r1, b2 making\n"
      "u2 working on r1 is refused. The design's rule (SpecLegal) has no\n"
      "width, so the refusal has no cause in the spec.",
      [("Legal(st, w)     == RuleLegal(st, w)\n",
@@ -214,8 +214,7 @@ WITNESSES = [
      [("   policies |-> st.policies,\n   stopped |-> st.stopped]",
        "   policies |-> st.policies,\n   stopped |-> FALSE]   \\* FAULT: the stop is not carried", 1)]),
     ("StoreFreshRunning", "FreshMovesNothing", "deal",
-     "A fresh store begins running (the defect of 2026-11-07: the run\n"
-     "ticked while up was at step 7): n1, a tick op fenced on Running,\n"
+     "A fresh store begins running: n1, a tick op fenced on Running,\n"
      "lands before any start.",
      [("policies |-> [v \\in Versions |-> Absent], stopped |-> TRUE]   \\* a fresh store: never started",
        "policies |-> [v \\in Versions |-> Absent], stopped |-> FALSE]   \\* FAULT: a fresh store runs", 1)]),

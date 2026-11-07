@@ -1,6 +1,6 @@
 package store
 
-// Round 21: ValidateHistory, the whole-history check RestoreEnd runs. One
+// ValidateHistory, the whole-history check RestoreEnd runs. One
 // mutation of a loaded dump per check, each refused naming the first
 // mismatch; a live store passes.
 

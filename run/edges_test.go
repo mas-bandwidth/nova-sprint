@@ -23,7 +23,7 @@ func (g *cloneGit) LsRemote(context.Context, string, string) (string, bool, erro
 	return strings.Repeat("a", 40), true, nil
 }
 
-// TestHeadsCloneTheStreamsCloneAddress is defect 21 at run: a stream named
+// TestHeadsCloneTheStreamsCloneAddress checks at run that a stream named
 // <org>/<repo> with forge github is cloned from GitHub's https address; a
 // clone address is cloned as it is; a repo a forge cannot address is the
 // stream's heads failure, said once, with no head.

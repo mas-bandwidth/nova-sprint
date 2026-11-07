@@ -15,8 +15,8 @@ import (
 
 // Report is what check found: every answer that would differ from the
 // active version's on the current snapshot, by question and subject, then
-// every refusal, then every warning (PriceWarnings: a defect found at
-// creation that refuses nothing). Code is 0 when nothing is refused, 1
+// every refusal, then every warning (PriceWarnings: a missing price
+// that refuses nothing). Code is 0 when nothing is refused, 1
 // otherwise; a warning never changes it.
 type Report struct {
 	Label    string
@@ -107,7 +107,7 @@ func (e *Engine) checkRun(ctx context.Context, src source, snap store.Snapshot, 
 }
 
 // bothRungs is q with landing asked on both rungs for every stream, flowing
-// then backed up: check predicts a tick on either (cold read 3's probe).
+// then backed up: check predicts a tick on either.
 func bothRungs(q Questions) Questions {
 	var out []LandingQuestion
 	for _, lq := range q.Landing {

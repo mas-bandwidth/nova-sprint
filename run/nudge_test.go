@@ -12,7 +12,7 @@ import (
 
 // TestDealNoticeTellsTheHand: the deal's push names the card, the repo,
 // base and branch, the brief, take (the acknowledgement) and the finish
-// command (defect 52: the deal is the take).
+// command (the deal is the take).
 func TestDealNoticeTellsTheHand(t *testing.T) {
 	e := store.Event{Accepted: true, Epoch: 3, Before: &store.State{Cards: map[string]store.Card{}}, After: &store.State{Cards: map[string]store.Card{
 		"p.w1": {ID: "p.w1", Kind: "work", Of: "p", Stream: "s", State: "working", Holder: "alice", Tier: "pro", Attempt: 1, Gen: 1,

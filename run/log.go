@@ -25,7 +25,7 @@ type TickMetrics struct {
 // WriterLogger serializes short tick, push and edge lines. It never logs
 // message bodies; an error's text is logged redacted and bounded
 // (edge.RedactN: no DSN password, provider key or token value, names only),
-// because a failure that is not said cannot be fixed (audit row 28).
+// because a failure that is not said cannot be fixed.
 type WriterLogger struct {
 	mu      sync.Mutex
 	out     io.Writer

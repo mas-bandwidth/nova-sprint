@@ -206,7 +206,7 @@ func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) {
 	if err := super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	// The seat's value is the one every service reads (defect 37): a role
+	// The seat's value is the one every service reads: a role
 	// whose password is not it is set to it, and a SCRAM login proves it.
 	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "seat-password", false); err != nil {
 		t.Fatalf("seat secret not set on the role: %v", err)
@@ -219,7 +219,7 @@ func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) {
 	}
 }
 
-// Defect 37: on a host whose pg_hba trusts nova_sprint's connection, a
+// On a host whose pg_hba trusts nova_sprint's connection, a
 // login proves nothing; a role with no password is set from the seat's
 // value all the same, and the stored verifier is the seat's.
 func TestFunctionalSprintRolePasswordOnATrustHost(t *testing.T) {

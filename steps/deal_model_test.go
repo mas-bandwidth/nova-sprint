@@ -10,8 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// What the deal carries and when the tick deals: defects 50, 53, 54, 57 and
-// section 64b. Unit: store.Fake, the clock an argument.
+// What the deal carries and when the tick deals. Unit: store.Fake, the clock an argument.
 
 // kin is a friend row with its own model in the roster, hooked in.
 func (w *world) kin(name, model string, width int, tiers ...string) {
@@ -22,7 +21,7 @@ func (w *world) kin(name, model string, width int, tiers ...string) {
 
 // TestTickDealNamesTheModel: a bench's work consumer is cut with the
 // policy's bench model for the card's tier, a friend's with its own model,
-// and a read the same way per row (defect 57).
+// and a read the same way per row.
 func TestTickDealNamesTheModel(t *testing.T) {
 	s := newSim(t)
 	s.row("b1", 1, "pro")
@@ -47,7 +46,7 @@ func TestTickDealNamesTheModel(t *testing.T) {
 // TestTickNoModelNoDeal: a bench serving a tier the policy names no bench
 // model for is not dealt to; the card stays ready and one no-model judgement
 // per tier says why; a friend with a model still takes it; the judgement
-// clears once a model can be named (defect 57).
+// clears once a model can be named.
 func TestTickNoModelNoDeal(t *testing.T) {
 	s := newSim(t)
 	models := benchModels()
@@ -73,7 +72,7 @@ func TestTickNoModelNoDeal(t *testing.T) {
 // TestTickNoDealWithoutPolicy: while layer 6 says no policy is active (or
 // the active one failed), nothing is dealt, read or preempted; one blocking
 // no-policy judgement on the coordinator's row says why; resolve still runs;
-// once the gate lifts the deal resumes and the judgement clears (defect 53).
+// once the gate lifts the deal resumes and the judgement clears.
 func TestTickNoDealWithoutPolicy(t *testing.T) {
 	s := newSim(t)
 	s.ask = scripted{Answers{Models: benchModels(), NoDeal: "no policy is active: nova-sprint policy set <file> --reason <why>"}}
@@ -124,7 +123,7 @@ func TestTickResolvesFromState(t *testing.T) {
 // TestTickOverlapIsAFile: producers that list the same glob or directory
 // are not held behind each other (they add files); one naming a file a
 // started producer names is held, with an overlap judgement saying "held
-// behind <card> on <path>", which clears when it resolves (defect 50).
+// behind <card> on <path>", which clears when it resolves.
 func TestTickOverlapIsAFile(t *testing.T) {
 	s := newSim(t)
 	s.row("b1", 8, "pro")

@@ -72,11 +72,10 @@ func (a *asker) Ask(q steps.Questions) steps.Answers {
 	return out
 }
 
-// noDeal is the deal's gate (defect 53): why the run deals nothing this
+// noDeal is the deal's gate: why the run deals nothing this
 // tick, "" when the active version answered. With no version active the
 // built-in's defaults still run the rest of the tick, but nothing is dealt:
-// a deal on defaults carried no model and moved nothing (the fleet's idle
-// night of 2026-11-07). An active version that failed, so that another
+// a deal on defaults carried no model and moved nothing. An active version that failed, so that another
 // answered, names its failure.
 func noDeal(vs policy.Versions, p policy.Answers, fs []policy.Failure) string {
 	if vs.Active == nil {

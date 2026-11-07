@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-// Opt-in bounded loopback load evidence; each client has its own source IP.
+// TestFunctionalPublicDashboardThousandRequests drives a pull board with a
+// thousand loopback requests, each client from its own source address, and
+// checks that viewers cause no extra upstream pulls. It runs only with
+// NOVA_DASH_LOAD=1.
 func TestFunctionalPublicDashboardThousandRequests(t *testing.T) {
 	if os.Getenv("NOVA_DASH_LOAD") != "1" {
 		t.Skip("set NOVA_DASH_LOAD=1 for the bounded HTTP load")

@@ -109,7 +109,7 @@ func toMerging(s *sim) EdgeRequest {
 	return s.request("land", "s1")
 }
 
-// TestTickLandJudgementEveryOutcome: anything but landed (intent rule 32)
+// TestTickLandJudgementEveryOutcome: anything but landed
 // is one land judgement per card on the coordinator's row, that tick, with
 // the facts and the choices land, fix and retry; nothing moves, nothing is
 // blamed, and no new request is asked while it is open.
@@ -135,7 +135,7 @@ func TestTickLandJudgementEveryOutcome(t *testing.T) {
 	}
 }
 
-// TestTickLandInheritedRedIsAGlance (directive 59): red that is all red on
+// TestTickLandInheritedRedIsAGlance: red that is all red on
 // the base too is still a land judgement (never a landing), worded so the
 // coordinator answers it at a glance: only inherited red, the facts, and
 // the hand landing's command for this card.
@@ -159,14 +159,14 @@ func TestTickLandAnswers(t *testing.T) {
 	first := toMerging(s)
 	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", Reason: "failing unit"})
 	s.run(2)
-	_, ref := s.verb(Request{Actor: "friendF", Judgement: "land.p1.1", Answer: "retry"})
+	_, ref := s.verb(Request{Actor: "coord", Judgement: "land.p1.1", Answer: "retry"})
 	require.Nil(t, ref)
 	s.run(2)
 	second := s.request("land", "s1")
 	assert.Equal(t, first.Heads, second.Heads, "retry asks the landing again")
 	s.arrive(InboxItem{Kind: "land", Request: second.ID, Outcome: "ci_red", Reason: "failing unit again"})
 	s.run(2)
-	_, ref = s.verb(Request{Actor: "friendF", Card: "p1", Event: card.Red{Head: sha(1), Reason: "unit fails: fix TestX"}, Judgement: "land.p1.2", Answer: "fix"})
+	_, ref = s.verb(Request{Actor: "coord", Card: "p1", Event: card.Red{Head: sha(1), Reason: "unit fails: fix TestX"}, Judgement: "land.p1.2", Answer: "fix"})
 	require.Nil(t, ref)
 	s.requireState("p1", "ready")
 	assert.True(t, s.card("p1").Red)
@@ -180,7 +180,7 @@ func TestTickLandAnswers(t *testing.T) {
 	req := toMerging(h)
 	h.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "conflict"})
 	h.run(2)
-	_, ref = h.verb(Request{Actor: "friendF", Card: "p1", Event: card.Landed{Head: sha(1), Merge: sha(7), Reason: "by hand: merged"}, Judgement: "land.p1.1", Answer: "land"})
+	_, ref = h.verb(Request{Actor: "coord", Card: "p1", Event: card.Landed{Head: sha(1), Merge: sha(7), Reason: "by hand: merged"}, Judgement: "land.p1.1", Answer: "land"})
 	require.Nil(t, ref)
 	h.requireState("p1", "landed")
 	assert.Equal(t, "landed at "+sha(7)+": by hand: merged", h.card("p1").Reason)
@@ -229,8 +229,7 @@ func TestTickFaultSpendsNothing(t *testing.T) {
 	s.requireState("p1.w2", "working")
 }
 
-// TestTickFaultedReadIsOwedAgain (defect 58, PR 641 F3): a review whose
-// only read faulted is not stuck: the verdict is retry (no ok read, so
+// TestTickFaultedReadIsOwedAgain: a review whose only read faulted is not stuck: the verdict is retry (no ok read, so
 // never a yes), the faulted read is not counted, and the next tick deals a
 // new read while the producer stays in review.
 func TestTickFaultedReadIsOwedAgain(t *testing.T) {

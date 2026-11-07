@@ -8,7 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Admission (intent rule 34, defect 49; CORRECT-USE "Admission"): what can
+// Admission (CORRECT-USE "Admission"): what can
 // be found when a stream, a card or a row is added is found then, each
 // refusal naming its one fix, and check re-proves it on demand.
 
@@ -83,7 +83,7 @@ func refNameProblem(name string) string {
 
 // noParentBranches refuses a branch sprint or sprint/<stream> at origin:
 // git keeps a branch as a file, so either makes sprint/<stream>/<card>
-// uncreatable (the 2026-11-07 dogfood met a base named sprint/<stream>).
+// uncreatable.
 func (e *Engine) noParentBranches(ctx context.Context, s store.Stream, again string) error {
 	url, err := streamURL(s)
 	if err != nil {

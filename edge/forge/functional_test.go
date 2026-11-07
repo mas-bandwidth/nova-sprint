@@ -11,7 +11,7 @@ import (
 )
 
 // TestFunctionalScratchForge exercises Client against a real GitHub repository using
-// non-the owner credentials (e.g. friendF-claude via NOVA_FORGE_TEST_TOKEN).
+// credentials other than the host's own (e.g. ci-bot via NOVA_FORGE_TEST_TOKEN).
 // When NOVA_FORGE_SCRATCH_WRITE=1 is also set (for a scratch repo with a write-scoped token),
 // it pushes a throwaway branch scratch/forge-<id>, opens a PR, reads its CI status, and closes
 // the PR and deletes the branch in cleanup.
@@ -51,7 +51,7 @@ func TestFunctionalScratchForge(t *testing.T) {
 func newScratchClient_internal() (*Client, string, string, string) {
 	login := os.Getenv("NOVA_FORGE_TEST_LOGIN")
 	if login == "" {
-		login = "friendF-claude"
+		login = "ci-bot"
 	}
 	repo := os.Getenv("NOVA_FORGE_SCRATCH_REPO")
 	if repo == "" {
@@ -108,10 +108,10 @@ func pushScratchBranch_internal(t *testing.T, ctx context.Context, c *Client, re
 		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = tmp
 		cmd.Env = append(c.env_internal(),
-			"GIT_AUTHOR_NAME=Rowan Scratch",
-			"GIT_AUTHOR_EMAIL=friendF@mas-bandwidth.com",
-			"GIT_COMMITTER_NAME=Rowan Scratch",
-			"GIT_COMMITTER_EMAIL=friendF@mas-bandwidth.com",
+			"GIT_AUTHOR_NAME=Scratch Author",
+			"GIT_AUTHOR_EMAIL=coord@example.invalid",
+			"GIT_COMMITTER_NAME=Scratch Author",
+			"GIT_COMMITTER_EMAIL=coord@example.invalid",
 		)
 		out, err := cmd.CombinedOutput()
 		if err != nil {

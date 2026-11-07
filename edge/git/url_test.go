@@ -9,7 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
-// TestCloneURL is defect 21: an <org>/<repo> with forge github is GitHub's
+// TestCloneURL: an <org>/<repo> with forge github is GitHub's
 // https address; a clone address passes as it is; a hand stream's repo is
 // its own; a form a forge cannot address is refused naming the form.
 func TestCloneURL(t *testing.T) {
@@ -73,8 +73,7 @@ func TestTipIsOneLsRemoteOfTheAddress(t *testing.T) {
 
 // TestGitHubCredentialIsGhAndNamesNoSecret: with gh set, git's only
 // github.com helper is gh as the host's login (the host's list cleared
-// first; every GitHub credential of the process unset for gh, directive
-// 59); the environment names no token; unset, git's own configuration
+// first; every GitHub credential of the process unset for gh); the environment names no token; unset, git's own configuration
 // answers.
 func TestGitHubCredentialIsGhAndNamesNoSecret(t *testing.T) {
 	t.Parallel()

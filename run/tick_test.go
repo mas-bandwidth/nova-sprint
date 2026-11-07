@@ -401,7 +401,7 @@ func TestStopBetweenFoldAndApplyRefusesTheOp(t *testing.T) {
 }
 
 // failingActive is a policy whose active version fails, so the built-in
-// answers (defect 53's second case).
+// answers.
 type failingActive struct{ answering }
 
 func (a *failingActive) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
@@ -410,7 +410,7 @@ func (a *failingActive) AnswerContext(ctx context.Context, vs policy.Versions, s
 	return out, []policy.Failure{{Version: 1, Label: "v1", Question: "order", Msg: "division by zero"}}
 }
 
-// The deal's gate (defect 53): with no policy active, or the active one
+// The deal's gate: with no policy active, or the active one
 // failing, the run deals nothing and one blocking no-policy judgement says
 // why; the first activation lets the next tick deal.
 func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {

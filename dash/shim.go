@@ -27,8 +27,8 @@ type workRow struct {
 	Cost       *big.Int
 	ByTier     map[string]*big.Int
 	// BlockedCards is each blocked producer's reason, by id: a card the
-	// coordinator holds reads "held: <why>" (card.HeldPrefix; defect 47), a
-	// missing route "missing-route: <what>" (defect 48).
+	// coordinator holds reads "held: <why>" (card.HeldPrefix), a
+	// missing route "missing-route: <what>".
 	BlockedCards map[string]string
 }
 type fleetRow struct {
@@ -68,7 +68,7 @@ type envelope struct {
 	Streams       []streamLine           `json:"streams"`
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
 	Coordinator   string                 `json:"coordinator"`        // the roster row whose role is coordinator ("" when none is hooked)
-	Summary       string                 `json:"summary"`            // v1's headline: "landed/all pct -> ETA 1h12m" (set per read, with the rate)
+	Summary       string                 `json:"summary"`            // the headline: "landed/all pct -> ETA 1h12m" (set per read, with the rate)
 	Eta           string                 `json:"eta"`                // the ETA alone, or "-"
 	EtaWindow     float64                `json:"eta_window_minutes"` // minutes of landings the rate was measured over
 	EtaBasis      string                 `json:"eta_basis"`          // "last hour" or "sprint average"
@@ -80,7 +80,7 @@ type envelope struct {
 }
 
 // mapSnapshot is the page's view of s. A row's kind and width are the
-// roster's (round 22: the store keeps neither); a row the roster does not
+// roster's (the store keeps neither); a row the roster does not
 // name is shown in the fleet at width 0.
 func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 	work := map[string]*workRow{}
@@ -141,7 +141,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 }
 
 // coordinatorOf is the name of the row whose role is coordinator; the first
-// by name when there are several, "" when none is hooked (v1 showed "-").
+// by name when there are several, "" when none is hooked.
 func coordinatorOf(rows map[string]store.Row) string {
 	name := ""
 	for n, r := range rows {
@@ -167,9 +167,8 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 
 // mapRows fills the Fleet and Friends tables. Every roster worker is a Fleet
 // row and every roster kin a Friends row, at its roster width, down until the
-// store has the row (the human, 2026-11-07: "we definitely need all that stuff
-// back"); a store row the roster does not name is shown as down (
-// v2-l6). The tables are maps, so the order is by name.
+// store has the row; a store row the roster does not name is shown as down.
+// The tables are maps, so the order is by name.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, w := range ros.Workers {
 		fleet[n] = &fleetRow{Status: "down", Width: w.Width}
@@ -183,7 +182,7 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 			status = "held"
 		}
 		kind, width, _, found := ros.Row(n)
-		if !found { // not in nova-config: down, whatever the store says (v2-l6)
+		if !found { // not in nova-config: down, whatever the store says
 			status = "down"
 		}
 		f := &fleetRow{Status: status, Width: width}
@@ -194,7 +193,7 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 
 // loadCells is the board's load cell and its slots title from the row's last
 // heartbeat: the 1-minute load average over the cores, as a percent of all of
-// them (v1's cell), and the nova-reserve slots in use of the total. A row that
+// them, and the nova-reserve slots in use of the total. A row that
 // is down shows none, and so does one that has never beaten (no cores).
 func loadCells(r store.Row) (load, slots string) {
 	if r.State != "up" || r.Cores < 1 {
@@ -293,8 +292,8 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 	}
 }
 
-// countResult is the OK% count of a done consumer (directive 64a, the human:
-// "reads count as the reader's done but never in ok%"). Only a work card
+// countResult is the OK% count of a done consumer. A read counts as the
+// reader's done but never in ok%. Only a work card
 // counts, for its holder, the moment it is done: ok is OK; fail and fix are
 // Failed; a fault (a harness, bench, route or device failure), a result that
 // is none or not one of those (a close, a release) is not counted. A read
@@ -353,9 +352,8 @@ func setPercent(f *fleetRow) {
 	f.OKPct = p
 }
 
-// machineLine is the page's machine line (v1's): RUNNING, or STOPPED and the
-// reason (drift row 4). The human page shows only STOPPED (
-// 2026-10-04: "STOPPED is plenty"); /api/sprint carries the reason.
+// machineLine is the page's machine line: RUNNING, or STOPPED and the
+// reason. The page shows only STOPPED; /api/sprint carries the reason.
 func machineLine(s store.Snapshot) string {
 	if s.Stopped {
 		return "machine: STOPPED " + s.StopReason

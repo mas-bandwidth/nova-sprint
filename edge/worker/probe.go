@@ -72,7 +72,7 @@ func (r *Runner) probeRefusal_internal(ctx context.Context, row string, cause er
 // every route's key present first, then for a harness given a model, of
 // each tier's candidates the first it serves. A tier with no candidate is a
 // refusal; a tier whose candidates it serves none of is a warning and not
-// among the tiers (the worker advertises the rest, defect 74), and none
+// among the tiers (the worker advertises the rest), and none
 // served at all a refusal naming each tier's reasons. A harness given no
 // model serves every tier.
 func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness) ([]string, []string, error) {

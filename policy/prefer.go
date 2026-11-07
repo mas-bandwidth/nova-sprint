@@ -16,7 +16,7 @@ import (
 // tick's rows work is linear in its producers, not producers x rows: the
 // names of the candidates at rank and up, nearest first, then those below
 // it, highest first; every candidate, those with room (working < width)
-// first (Emma's probe: dropping the busy ones could leave a card no row
+// first (dropping the busy ones could leave a card no row
 // with work above 0). Candidates come by rank, lowest first, then by name.
 // It is memoised for the thread (one version's tick) per candidate list
 // and rank, and the list it returns is frozen.

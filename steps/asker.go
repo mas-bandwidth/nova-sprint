@@ -16,8 +16,7 @@ type Asker interface {
 	Ask(Questions) Answers
 }
 
-// AskBudget is the policy time a tick allows (policy round 3; the measured
-// cold tick was 217 ms).
+// AskBudget is the policy time a tick allows.
 const AskBudget = 500 * time.Millisecond
 
 // Questions is every question of one tick with its subjects. Limits and
@@ -92,9 +91,8 @@ type Answers struct {
 }
 
 // WidthAnswer is width(row): how many the row works at once, at most its
-// width. There is no queue ahead of it: a dealt card is in the row's hand
-// (defect 52), so the deal fills a row to Work and no further; policy's
-// "ahead" is read by no step since.
+// width. There is no queue ahead of it: a dealt card is in the row's hand, so the deal fills a row to Work and no
+// further.
 type WidthAnswer struct{ Work int }
 
 // LandingAnswer is landing(stream): backed up (rung 2) at BackedUp merging
@@ -131,8 +129,7 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
 // (LAYER-3 "Retire and fail limits", 3, unmeasured). The seconds after a
 // deal at which an unacknowledged card is nudged each tick and withdrawn are
-// policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"; the human's
-// numbers, 2026-11-07), default.star's 1 and 180; Engine's are those a
+// policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"), default.star's 1 and 180; Engine's are those a
 // tick with no usable timeouts() answer runs on, as for every timeout.
 // UndealtAfter is the seconds a
 // producer may stay ready with a serving row with room before it is judged
@@ -151,7 +148,7 @@ type Defaults struct {
 }
 
 // Engine is the defaults as the designs give them. Budget 250 and Pack 50
-// are measured (the load test, vision 2026-11-07: a tick of 250 cards at
+// are measured (the load test: a tick of 250 cards at
 // 5,000 producers is about 265 ms p50 as 5 ops of 50; see the Built
 // section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
 // guesses, marked there.
@@ -273,8 +270,7 @@ func (o *oracle) verdict(q VerdictQuestion) string {
 		}
 		o.refuse("verdict")
 	}
-	// Default (dogfood 2026-11-07, defect 58): yes needs an ok read, fix a fix
-	// read; every read faulted means one more read, never a yes.
+	// Default: yes needs an ok read, fix a fix read; every read faulted means one more read, never a yes.
 	if has("fix") {
 		return "fix"
 	}

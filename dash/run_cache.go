@@ -9,8 +9,8 @@ import (
 )
 
 // Feed is what run publishes each tick: the snapshot of its fold and the
-// roster read with it, one pair, never one without the other (Stella's
-// handoff finding 6: a fresh snapshot is never shown beside an old roster).
+// roster read with it, one pair, never one without the other
+// (a fresh snapshot is never shown beside an old roster).
 // RosterErr is the roster read's failure, if it failed: the board then shows
 // every row at width 0 and raises the stale alarm, and still shows the
 // store's own lines (STOPPED among them) as fresh.
@@ -19,7 +19,7 @@ type Feed struct {
 	Roster    roster.Roster
 	RosterErr error
 	At        time.Time
-	// Landings is the epoch's landing times (the v1 import's excluded), every
+	// Landings is the epoch's landing times (imported landings excluded), every
 	// one, that run keeps from the store's events. nil means run could not
 	// read them (the ETA then reads "-"); non-nil, even empty, is the store's
 	// answer.

@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Balance is one read of a provider's balance (sprint.balances, round 25):
+// Balance is one read of a provider's balance (sprint.balances):
 // when it was read, the store's seq at the read (the window's edge in the
 // log), the balance in dollars as an exact decimal, and the provider's
 // answer as read. Rows are only added: spend over a window is the fall

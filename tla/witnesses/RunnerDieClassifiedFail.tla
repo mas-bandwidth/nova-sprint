@@ -1,7 +1,7 @@
 ---------------------- MODULE RunnerDieClassifiedFail -----------------------
 (***************************************************************************)
-(* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md,  *)
-(* Guarantees 7 to 11). Size: 2 consumers, width 2, 1 slot, 1 Crash.       *)
+(* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md). *)
+(* Size: 2 consumers, width 2, 1 slot, 1 Crash.                            *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -22,7 +22,7 @@ AliveSlots == (IF harnessAlive["c1"] > 0 THEN harnessAlive["c1"] ELSE 0) +
 ResIDFor(c) == IF c = "c1" THEN 1 ELSE 2
 
 Init ==
-  /\ storeState = [c \in Consumers |-> "working"]   \* dealt in hand (defect 52)
+  /\ storeState = [c \in Consumers |-> "working"]   \* dealt in hand
   /\ jobState = [c \in Consumers |-> "none"]
   /\ slotsInUse = 0
   /\ width = Width

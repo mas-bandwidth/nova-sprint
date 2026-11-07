@@ -9,7 +9,7 @@ import (
 )
 
 // A failed gh names its command, exit code and stderr, and never the token
-// in its environment (audit row 28).
+// in its environment.
 func TestFailedGHCarriesCommandNotToken(t *testing.T) {
 	t.Parallel()
 	c := New(Config{
@@ -17,7 +17,7 @@ func TestFailedGHCarriesCommandNotToken(t *testing.T) {
 		Now:      func() int64 { return 1000 },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 			if cmd.Argv[1] == "auth" {
-				return edge.Result{Stdout: "Logged in to github.com account friendF-claude (keyring)\n"}, nil
+				return edge.Result{Stdout: "Logged in to github.com account ci-bot (keyring)\n"}, nil
 			}
 			return edge.Result{ExitCode: 4, Stderr: "HTTP 404: Not Found (https://api.github.com/repos/x/y/pulls)\n"}, nil
 		}),

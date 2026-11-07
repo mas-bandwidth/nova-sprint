@@ -18,7 +18,7 @@
 #                       model's own fixtures (make-steps-traces.py), checked too
 #   store-breaker, card-breaker, policy-breaker   the divergence breakers (committed fixtures,
 #                       rewritten here; each must be refused at its last record)
-# Run it on a bench host (hetzner2 for the TLC half), never on the working machine.
+# Run it on a bench host, never on the working machine.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"

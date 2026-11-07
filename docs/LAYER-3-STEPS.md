@@ -1,910 +1,641 @@
 # Layer 3: the steps
 
-A draft for the owner, 2026-11-06, not yet approved. It stands on layer 1
-(locked at 81bc9c24) and layer 2 as built, and asks layer 2 for one
-addition ("Asked of the layers below").
-
-Pure Go, package `steps`: no store, clock, bus or git. From one view of the
-sprint, the tick's inputs (the clock value, what arrived on the bus, the git
-facts the run loop read) and policy's answers, `Tick` returns one tick's
-plans: ops for layer 1, edge requests for layer 4, answers owed to rows.
-Layer 6's run loop gathers the inputs, applies the ops, hands on the edge
-requests and pushes over nova-bus. Every move is a layer 2 move; a step
-decides only which moves this tick holds, in what order, within what budget.
-"Let's not throw away what we learned in v1, which is always batch."
-
-## The list for the owner
-
-The structures of this layer, bottom up, each secured before the next:
-
-1. **The view**: the snapshot plus indexes (producers by state and rung,
-   consumers by row, dependants by need, live paths by stream, counters),
-   advanced by folding `Events`. Guarantees: after any fold it equals a
-   fresh build at the same seq. Checked: a fold test per event kind; the
-   random walk on `store.Fake`.
-2. **The inputs**: `Now`, the inbox (reports, takes, CI and land results,
-   in arrival order), stream heads, presence, edge requests in flight.
-   Guarantees: no other time or outside read. Checked: a lint (no
-   `time.Now`, `net`, `os/exec`, `store.Store` in the package).
-3. **The asker**: one interface over layer 5, a default per question.
-   Guarantees: an absent, failing, slow or out-of-range answer is the
-   default for this tick, recorded once; never an illegal move, never a
-   stall. Checked: unit tests with a policy that errors, times out and lies.
-4. **The group**: a producer with the consumers its move touches (a report
-   with its `Finished`, `Broken` or `Faulted`; a preemption with its deal; a
-   drop with its dependants), as one `card.Merge`. Guarantees: one group per
-   card per tick; never split across ops. Checked: the model
-   (`OneGroupPerCard`, `GroupWhole`).
-5. **The steps**: one function each, below. Guarantees: only layer 2 moves,
-   and every predictable store rule pre-checked, so an op is refused only
-   by a race. Checked: table tests; conformance on Fake and PG.
-6. **The packer**: orders groups, fills the tick budget, packs groups into
-   ops up to the packing size, names each op by a hash of its body, carries
-   the rest. Guarantees: budget kept, carry never lost or reordered, one
-   body one id. Checked: the model (`BudgetKept`, `CarryFIFO`); unit tests.
-7. **The tick**: step order, the refused-op rule, the cost bound.
-   Guarantees: the invariants below. Checked: `tla/Steps.tla`; the load
-   test at 5,000 producers.
-8. **The requests**: the per-card verbs, with the actor rule layer 2 left
-   here. Guarantees: a verb refused for its actor writes nothing. Checked:
-   a table test of every verb and actor.
+Package `steps`. Pure Go: no store, clock, bus, git or `os/exec`. From one view of
+the sprint, the tick's inputs (the clock value, what arrived on the bus, the git
+facts the run loop read) and policy's answers, `Tick` returns one tick's plans:
+ops for layer 1, edge requests for layer 4, answers owed to rows. Layer 6's run
+loop gathers the inputs, applies the ops, hands on the edge requests and pushes
+over nova-bus. Every move is a layer 2 move (package `card`); a step decides only
+which moves this tick holds, in what order, within what budget.
 
 ```go
 func Tick(v *View, in Inputs, ask Asker) Plan
+func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) // one coordinator or row request as one op
+
 type Plan struct {
-    Ops     []store.Op      // packed groups, in priority order
-    Edges   []EdgeRequest   // merge, gate, push, stop a runner: layer 4
-    Answers []RowAnswer     // acks and refusals to rows, by result id
-    Carry   []InboxItem     // what the budget left, in arrival order
+    Ops     []store.Op     // packed groups in priority order, then the judgement op
+    Edges   []EdgeRequest  // land and stop requests: layer 4
+    Answers []RowAnswer    // acks and refusals owed to rows, by result id
+    Carry   []InboxItem    // what the budget left, in arrival order
+    Nudges  []Nudge        // pushes to rows outside the event log
 }
 ```
 
-`Asker` asks each question once per tick with all its subjects. The view is
-folded after every apply; a snapshot per tick is a defect (LAYER-1).
+- [View](#the-view)
+- [Inputs and Plan](#inputs-and-plan)
+- [The asker and policy defaults](#the-asker-and-policy-defaults)
+- [The tick](#the-tick)
+- [The steps](#the-steps)
+- [Groups, packing and refused ops](#groups-packing-and-refused-ops)
+- [Requests (Verb)](#requests-verb)
+- [Judgements](#judgements)
+- [Why the fleet is idle](#why-the-fleet-is-idle)
+- [Guarantees](#guarantees)
+- [Testing](#testing)
 
-## The steps (a refusal is one line naming the fix)
+The division of labour: if being wrong could corrupt, it is in the engine; if it
+can only be slow, it is policy. Legality, needs, holds, width, overlap, the
+coordinator set, op ids and the refused-op rule stay in the engine. Policy
+answers ordering, row choice, verdicts, limits and timeouts, and an absent or
+bad answer is always the engine's default.
 
-### Reports
+## The view
 
-- Inputs: inbox reports (result id, row, session, consumer, result, head,
-  reason, cost) in arrival order; the consumer, producer and row.
-- Plans: `MoveConsumer(Report)`; for the current work consumer of a working
-  producer the same group moves the producer (`Finished`, `Broken`,
-  `Faulted`; one plan, asked of layer 2 below), so no producer is left
-  working under a reported consumer. A read report moves only the read.
-- Refusals: unknown consumer ("card C does not exist: run `nova-sprint next
-  --as R`"); not the holder; a session the row no longer has ("report from
-  session S1; row R is now S2; nothing applied"); withdrawn ("consumer C was
-  withdrawn: preempted by blocker X; branch B is kept"); an old attempt or
-  an old head; not taken ("take it first: `nova-sprint take C@G`"). A report
-  matching a done consumer's result and head is acked from the record
-  ("applied at seq N"), never applied twice, so layer 4 may redeliver.
-- Takes ride the same inbox: `MoveConsumer(Take)`, at most width minus
-  working per row by an in-tick tally, so the store's width write never
-  refuses an op; the excess is refused ("row R is at width 2: finish
-  C first").
-- Policy: none; reports are facts.
+`View` is the snapshot's records plus the indexes the steps read: producers by
+state and by priority rung, consumers by producer and by row, dependants by need,
+live concrete paths by stream. It is built once (`Build(snapshot, now)`) and
+advanced by `Fold(events)`, the same fold as `store.Fold`: after any fold it
+equals a fresh `Build` at the same seq. A snapshot per tick is a defect; the run
+loop folds `Events` and keeps one view.
 
-### Sentinels and needs
+Facts a snapshot does not carry are witnessed by the fold and are zero for records
+older than the view, in which case every bound they feed is measured from
+`View.Since` (Build's clock):
 
-- Inputs: dependants of each need landed or failed since the last tick.
-- Plans: `Resolve`; `Reached` for a sentinel, with a `landed-sentinel`
-  judgement in the group; for a failed need, one group with
-  `NeedFailed{InThisOp}` over the whole closure of dependants, or the
-  `Waive` or `Relink` the drop named.
-- Ready, deciding LESSONS 2.20: every hard need landed, the stream not
-  held, and no started producer of its stream (working, review, merging)
-  overlapping its paths, ledgers aside (LANDING step 2). Room on a row is
-  not a condition: ready producers queue and the deal fills rows, so ready
-  never flips with row load (LESSONS 3.2). Resolve counts the stream's
-  ready producers as started for the overlap check, so two overlapping
-  producers are never ready together and a start never strands a ready
-  one; so `Park` stays for held streams only. Until ready, the view names
-  the cause (held, overlap with X). Policy: none; needs are hard.
+| Field | Meaning |
+|---|---|
+| `TakenAt[consumer]` | when it went `working`: when it was dealt |
+| `ReadyAt[producer]` | when it last went `ready` |
+| `Landed[stream]` | when a producer of the stream last landed |
+| `Down[row]` | when the row last went down |
+| `Faults[row]` | when the row's consumers reported `fault` |
+| acknowledgements | the `took:<epoch>:<consumer>` cursors (`AckCursor`), kept across epochs |
 
-### Holds
+A cold view lists a producer's consumers in id order, a folded one in cut order.
 
-- Plans: `Park` for a ready producer of a held stream that the hold's op
-  missed; `Withdraw` of a held row's unacknowledged consumers at once and a
-  down row's after the grace, releasing their producers to be dealt
-  elsewhere; acknowledged consumers stay (a hold stops new deals, not work
-  in hand); `Withdraw` of any consumer still `ready` (dealt before the deal
-  became the take), dealt again in hand. A hold never touches landing
-  (LANDING step 9).
-- Policy: `regrace(row)`: 0 held, 10 minutes down (unmeasured).
+**Open row.** A row may be dealt to when it is `up`, not held, and hooked in to the
+sprint: its `Session` set and its `Role` `worker` or `coordinator` (who counts as
+a worker). A row not in the roster is never dealt to.
 
-### Preemption
+**Overlap is a file.** Two producers of a stream overlap only on a path both name
+that is a *concrete* file (`Concrete`: non-empty, no `*?[`, no trailing `/`). A
+glob or a directory both list never holds one back; a true conflict under a
+shared directory is the landing's rebase and the read's job. The view indexes
+only concrete paths of producers that are `ready`, `working`, `review` or
+`merging`.
 
-- Plans: with no free width on an open serving row, one group: `Withdraw` of a
-  working consumer there (releasing its producer, score and branch kept)
-  merged with the blocker's `Start` to that row, and an edge request to stop
-  the runner. "blocker is so high, it'll kick out the
-  youngest work or read task on a worker to get started right away." At
-  most one per row per tick. No serving row at all: an `unserved` judgement
-  per tier, and the blocker stays ready.
-- Policy: `victim(blocker, candidates)`; default the youngest by take time.
+## Inputs and Plan
 
-### Deal and reads
+```go
+type Inputs struct {
+    Now      time.Time
+    Inbox    []InboxItem          // arrival order; the last tick's Carry first
+    Inflight []EdgeRequest        // edge requests dispatched, not yet answered by a consumed result
+    Heads    map[string]string    // stream -> head of its branch: the base a Start records
+    Seen     map[string]time.Time // row -> when last seen on the bus; a row absent from it fires nothing
+    Refused  []RefusedOp          // the last tick's refused ops, from their receipts (OpGroups)
+    Roster   roster.Roster        // nova-config: each row's kind, width, tiers, model and routes, by name
+}
+```
 
-One candidate list down the owner's ladder, "low, normal, high, read, critical,
-blocker in specific order": blocker work, critical work, every read owed,
-high, normal, low; within a rung, policy's order.
+Nothing else is read (`TestLintPure`: no `time.Now`, `net`, `os/exec` or
+`store.Store`, and no function over 60 lines).
 
-- Inputs: ready producers; producers in review owed reads; open rows (up,
-  not held, not rested) with tiers, rank, model, width, working and ready
-  counts; stream heads (the `base` a `Start` records).
-- Plans: `Start{row, branch, base}`, branch `sprint/<stream>/<producer>` (the stream group branch is `sprint-group/<stream>`, beside `sprint/` and never in it, so git never meets a ref that is both a file and a directory; defect 46, 2026-11-07);
-  `AskReads{rows}` cutting every read a head needs in one plan, to distinct
-  rows, none the author (LESSONS 3.4). The deal is the take (below, "In
-  hand"): a row is dealt while its working consumers are under policy's
-  `work` answer, at most its width, and the consumer is cut working
-  (LESSONS 3.3). A ready producer no row has room for stays ready, queued.
-- A ready producer whose tier no open row lists opens an `unserved`
-  judgement per tier (LPM R31); a review no row may read opens
-  `cannot-read`, so a review never waits on nothing.
-- Policy: `order(rung, producers)` (score, then id); `ahead(row)` is no
-  longer read (nothing waits ready in a hand; its answer is owed to layer 5
-  to retire); `rows(candidates, rows)`, which picks each candidate's
-  rank and row (below, Escalation; then an idle lane first, most room,
-  name, never a row the card was withdrawn from, LPM D22; for a read, one
-  read on a row whose model differs from the author's when one is open,
-  LESSONS 3.8); `may_take(row, stream)` (every serving row). Width is the
-  store's row column, set from config by the row verbs, never policy's
-  (LESSONS 1.12).
+The roster is nova-config, the one source of fleet facts; nothing of it is in the
+store. A store row the roster lacks is never dealt to and gets a `roster`
+judgement. Width, tiers, kind, model and routes are looked up by name through
+the roster.
 
-### In hand (defect 52, intent rule 33: nothing sits unworked)
+**Inbox items** (`InboxItem{ID, Kind, ...}`): `report` (a row's report: Row,
+Session, Consumer, Result, Head, Reason, Cost, Priced, Usage), `land` (an edge
+result: Request, Outcome, Landed heads, Merge sha, Reason) and `stop` (a runner
+stop's ack). Rows normally apply their own reports as ops and the fold shows
+them; the `report` path is for a layer 6 that routes them through the tick. There
+is no `take` item: the deal is the take (below).
 
-- The deal is the take: a consumer is in its row's hand, `working`, from the
-  op that cuts it, and the deal's push (layer 6) names the card, the repo,
-  base and branch (a read's head), the brief clipped, `take` and the finish
-  or read command. The deadline runs from the deal.
-- The row's `take` is its acknowledgement: a cursor, `AckCursor(epoch, c)`,
-  written once; it moves no card.
-- Nudge: a working consumer its row has not acknowledged, timeouts
-  `ready_nag` (1 s, the human's number, 2026-11-07) after the deal and until
-  the row's first report, gets a `NUDGE` line each tick in the human's words
-  ("you have a new ready card. you have x ready cards, you are currently
-  working on y, and your width is z. Please work to width!") naming the
-  card, how long ago it was dealt and the `take` command. Nudges are
-  `Plan.Nudges`: run pushes them outside the event log, and they move no
-  cursor.
-- Ready timeout: at timeouts `ready_take` (180 s, the human's number) a work
-  card still not acknowledged is withdrawn and its producer dealt, in the
-  same group, to another row with room, never the slow one (`redeal`).
-- `unacked`: at `ready_take`, for a card no other row can take (a read, or
-  no room elsewhere), one judgement for the coordinator naming the row and
-  the card (choices as any judgement's; `release` deals it again).
-- `undealt`: a ready producer still ready `UndealtAfter` (2 s: more than one
-  one-second tick; a guess) after it went ready, while an open row serving
-  its tier has room, opens one judgement naming the row, the card and the
-  cause (the tick's budget spent before it, or an engine defect). Checked
-  after the deal, so a producer dealt this tick is skipped.
-- `blocked` for a route: a producer a `missing-route:` fault blocked
-  (LAYER-2, defect 48) gets one `blocked` judgement naming the row, the card
-  and what is missing; it waits blocked, never dealt again by itself, until
-  the coordinator answers (`unblock` or `drop`).
+**EdgeRequest** is work for layer 4: `land` (Heads of Cards on their Branches in
+stream `Stream`, `Base` the stream's tip as the tick saw it, `Wait` seconds a
+gated sha may have no CI) or `stop` (the `Row`'s run of `Consumer`, after a
+preemption). `ID` is stable across ticks so a restart reissues the same request
+and results match by id. `After` names the op whose acceptance a request waits
+for ("" for none): a stop goes out only with its preemption.
 
-### Fix
+**GroupKey** (`Kind, Cards, Gens, Row, Item`) is what a group touched. An op's
+`Note` carries its groups' keys as JSON (`OpGroups`), so layer 6 can split a
+refused op by group.
 
-- Plans: `ReadYes` or `ReadFix{finding}` once every read of the current
-  review is done or withdrawn, from policy's verdict over all of them
-  (LESSONS 3.7). A producer back from `Broken` or `Faulted` needs no plan:
-  its score puts it at the head of its queue and `Start` carries its prior
-  head and finding (LESSONS 3.9). A finding byte-equal to the producer's
-  current one opens a `brief` judgement (LESSONS 5.9, in part).
-- Policy: `verdict(producer, reads)`; default yes when every done read says
-  ok, else fix with every finding joined; a split never merges by default.
+## The asker and policy defaults
 
-### Land
+`Asker.Ask(Questions) Answers` is layer 5 as the steps consume it: one call per
+tick with every question the tick has subjects for (`AskBudget` = 500 ms of policy
+time). A subject absent from an answer map is a failure for that subject. An
+answer the engine cannot use (absent, failed, out of its domain, naming a row or
+card not offered, or the budget spent) is the engine's default for this tick,
+recorded once as a `policy` judgement per question and version. Version 0 is no
+policy: every default and no judgement.
 
-(Rebuilt to intent rule 32, 2026-11-07; LANDING.md "The ladder, as built".)
+| Question | Subjects | Domain checked | Default |
+|---|---|---|---|
+| `order(card)` | ready producers, reviews | tuple of at most 4 ints or strings | `(0, score)` for a fix attempt (has a prior head), else `(1, score)`; then id |
+| `rows(card, kind, candidates)` | work and read candidates | a non-empty list of offered rows | the engine's ranking (below) |
+| `reads(card)` | reviews | 1..5 | 1 |
+| `verdict(card, reads)` | reviews whose reads are settled | `yes` needs a read that said ok; `fix` a fix read; `retry` when none said either | any fix read: `fix`; else any ok: `yes`; else `retry` (every read faulted: ask one more, never a yes) |
+| `width(row)` | rows | `0 <= work <= width` | `work` = the roster width |
+| `landing(stream)` | streams with merging heads | `0 <= flowing < backed_up <= 1000`, `ci_wait` 0..86400 | backed_up 2, flowing 1 (unused), ci_wait 600 |
+| `limits()` | none | every count in range, else the defaults whole | below |
+| `timeouts()` | none | every bound 1..86400 s, `row_silent_withdraw >= row_silent_gone`, `base_regate` a rising list | below |
+| `Models` (`Answers.Models`) | tiers | tier -> the model a bench runs, `provider/model` form | none: a bench cannot be dealt |
 
-- Plans: an edge request per stream with none in flight, from the merging
-  producers not under a land judgement: fewer than `backed_up` waiting, the
-  first in score order alone (rung 1); `backed_up` or more, all of them in
-  score order as one request (rung 2). An `after` orders only producers
-  both queued and never holds on one that is not (LESSONS 2.15). From a
-  result: `landed` is one group of `Landed{Head, Merge}` for every card
-  still merging at its head; anything else is one `land` judgement per such
-  card with the facts and the choices land, fix and retry, and nothing
-  moves. A merging producer left with no request, no judgement and no
-  after target merging is reported as an `engine` judgement.
-- The mechanics (PR, group branch, gate, merge) are layer 4's; there is no
-  bisection and no blame. Request ids hash epoch, stream, base, cards,
-  heads and reviews, so a restart reissues the same request (LPM R22).
-- Policy: `landing(stream)`: `backed_up` (default 2), `flowing` (validated,
-  unused), `ci_wait` (default 600 s, a guess); `ledgers(repo)` (none).
+Engine defaults (`Engine`):
 
-### Retire and fail limits
+| Setting | Value |
+|---|---|
+| `Limits.Bounces` | 6 (a producer at or past it is blocked) |
+| `Limits.Faults` / `SameFinding` / `ReportsPerTick` / `RouteRestWindow` | 3 / 2 / 1000 / 10 (accepted by `limits()`; the steps read no other field than `Bounces`, `RouteRestAfter`, `Budget`, `Pack`) |
+| `Limits.RouteRestAfter` | 3 (faults within the rest window that rest a row) |
+| `Limits.Budget` | 250 (cards touched per tick) |
+| `Limits.Pack` | 50 (groups per op) |
+| `Timeouts.RowSilentGone` | 600 s |
+| `Timeouts.RowSilentWithdraw` | 1800 s |
+| `Timeouts.LandingStall` | 60 s |
+| `Timeouts.Judgement` | 3600 s (the deadline of a judgement) |
+| `Timeouts.RouteRestFor` | 1800 s |
+| `Timeouts.ReadyNag` / `ReadyTake` | 1 s / 180 s |
+| `Timeouts.BaseRegate` | 120, 300 (read by the edge) |
+| `EscalateAfter` / `FrontierAfter` | 2 / 4 bounces |
+| `UndealtAfter` | 2 s |
+| `FlapLimit` | 3 |
+| `IdleFloor` / `IdleCeiling` | 0.5 / 0.75 |
+| `LandTarget` / `LandSample` | 0.9 / 20 |
 
-- Plans: `Block` with a `blocked` judgement when bounces reach the limit (a
-  fault never counts; LESSONS 2.24); `Withdraw` of a working consumer whose
-  row is silent past the bound, branch kept; `Gone` for a row whose session
-  has not acked past its bound, never for one missed challenge in a long
-  turn (LESSONS 4.7); a `flap` judgement past the flap limit.
-- Policy: `bounce_limit` (3; v1 left it unsourced, LPM G1); `silence`
-  (2 hours of running time, unmeasured); `gone_after` (10 minutes);
-  `flap_limit` (3); `fault_limit` (3 faults of the last 10 on a row in 30
-  minutes rest it 30 minutes, LPM R34: a deal filter in the view, never a
-  stored hold, since rows are never narrowed to steer deals, R37).
+`Budget` and `Pack` were chosen by the load test (below); the others are layer 5's
+defaults or unmeasured guesses. `escalate_after`, `frontier_after`, the flap and
+alarm numbers are the engine's, not policy's.
 
-### Escalation
-
-No tier is ever written: a card's tier is fixed at add and is its minimum.
-Escalation and read tier are row choice. A row lists every tier it serves,
-and its rank is the highest it lists; policy's `rows` answer picks the rank
-for each candidate, and the engine refuses one below the card's tier.
-
-- Default ranks: a work consumer at the card's own tier first; one rank up
-  once the producer's bounces reach `escalate_after` (default 2,
-  unmeasured), one more per further step; a read at the rank above the
-  writer's row (frontier stays frontier).
-- Policy: `rows`, `escalate_after`; an answer below the card's tier or off
-  the row's list is the default.
-
-### Judgements
-
-- Plans: `PutJudgement` with id `kind.about.episode` (a cause opens once), a
-  group key (one push for a shared cause; LESSONS 4.9), policy's deadline and
-  the command that answers it; `ExpireJudgement` when the cause clears, or
-  at the deadline with the kind's safe default, which never drops, accepts,
-  merges or lands (LESSONS 5.7).
-- The closed list a step opens: `blocked`, `unserved`, `cannot-read`,
-  `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
-  `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,
-  `no-policy`, `unacked`, `undealt` (`conflict`, `base-red`,
-  `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
-  work, bounds, lateness, rebase conflicts, read broken) is a rule move in
-  the tick (LESSONS 3.17).
-- Alarms: `stall`, nothing landed in the bound while producers wait in
-  review or merging, cause per stream; `idle`, working under half the open
-  width while producers wait, causes by count, closed back over three
-  quarters (LESSONS 3.18); `land-rate`, a stream's or model's landed with no
-  bounce over landed, under target over a sample (LESSONS 3.21).
-- Policy: `deadline(kind)` (none for `blocked` by the owner's ruling, else one
-  hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
-
-### Requests
-
-Each per-card verb is one step: event, actor check, `card.Move`, one op. The actor rule LAYER-2 left here: Unblock, Waive,
-Relink, SetPriority, WaiveRed, Cancel, Replace, Edit, Rescore, the holds
-(of a row, a stream, or a producer card: `Block` with reason `held: <why>`
-and its live consumers withdrawn in one op; `unhold` is its `Unblock`) and
-judgement answers are the coordinator's (the rows nova-config names; an
-engine fact, since a wrong coordinator could corrupt); Report is the
-holder's, through the inbox (there is no Take event; `take` is the
-acknowledgement cursor); Add is anyone hooked in. Refused:
-"SetPriority is the coordinator's; ask on the bus: `nova-bus send ...`".
-
-## Policy questions and their defaults
-
-the owner's rule: if being wrong could corrupt, it is in the engine; if only
-slow, it is policy. Layer 3 delegates exactly the questions named above plus
-`budget` and `pack`; legality, needs, holds, width, overlap, the coordinator set, op ids
-and the refused-op rule stay in the engine. Policy absent: every default.
-An answer that fails (a Starlark error, the tick's 100 ms of policy time
-spent, out of range, naming a row or card not offered) is the default for
-this tick, with one `policy` judgement per version and question. Each
-default deals, reads, lands or names a cause; none stalls.
+**The gate.** When `Answers.NoDeal` is set (no policy active, or the active one
+failed as a whole), the tick deals nothing: no preemption, no `Start`, no read.
+One `no-policy` judgement on the coordinator's row says why. Reports, the inbox,
+resolve, fix, landing and judgements still run. This is the one case where a
+policy failure stops an action; a single failed question still falls to its
+default.
 
 ## The tick
 
-1. Fold events into the view; read the inputs.
-2. Run the steps in this order: preemption, reports and takes, land
-   results, needs and sentinels, holds, retire and fail limits, escalation,
-   fix, deal and reads, land requests, judgements. A card claimed by an
-   earlier step is skipped by the later ones until the next tick.
-3. Order, then budget: blocker groups (never cut; one per row), reports
-   and takes in arrival order, landing groups, drops and holds, limits,
-   judgements, then the deal list by rung. The tick budget is policy's
-   count of cards touched per tick, default 250 until the load test sets it
-   (unmeasured; a measured burst cost about 1.4 ms a report). the owner,
-   2026-11-06: "if you distributed too many reports over several frames
-   you'd stay in budget".
-4. Pack: groups go into ops in that order, up to the packing size (`pack`,
-   groups per op, a policy number whose default the load test measures; 50
-   until then, unmeasured). A group larger than the packing size is an op
-   of its own. The packing size is the lever the load test sets.
-5. Carry. Only the inbox carries, in arrival order, at the head of the next
-   tick's inbox; every other move is derived again from the store, so a
-   carried deal is never stale.
-6. Name. An op's id is `t<epoch>.<seq>.<hash of its body>`: one view, one
-   id, applied once. An unknown outcome is replayed by id before the next
-   tick plans.
-7. Apply the ops in order, each fenced on the gens its groups read. A
-   refused op changed nothing; the next tick rebuilds from the folded view,
-   never resends the old body, and applies the groups of the refused op
-   each as an op of its own: split by group, never by halves of writes. A
-   group refused alone on fresh state is left out until its cards change,
-   with an `engine` judgement naming the plan and the store's reason (a
-   defect here or in layer 2).
+`Tick` runs these steps in order; each skips cards (and rows) an earlier step
+claimed, so a card moves once per tick:
+
+1. `rest` marks rows resting after faults (a deal filter, never a stored hold).
+2. `unlisted`: a `roster` judgement for each store row the roster lacks.
+3. `reports`: inbox reports.
+4. `preempt`: blockers with no free width.
+5. `landResults`: inbox land and stop results.
+6. `needs`: failed-need drops, sentinels, resolve.
+7. `holds`: park, and withdraw from held and down rows.
+8. `limits`: bounce limit, silent rows, flaps.
+9. `fix`: verdicts on settled reviews.
+10. `deal`: ready producers and owed reads, down the ladder.
+11. `undealt`: the stall check, after the deal.
+12. `landRequests`: edge requests for merging producers.
+13. `unacked`: nudges and the ready timeout.
+14. `judgements`: alarms, policy misses, expiries.
+
+Then the groups are ordered, budgeted, packed into ops, named, and the rest of the
+inbox is carried. Planning is bounded by the budget: once the non-blocker groups
+planned touch the budget's count, no more are planned, while tallies, claims and
+judgements continue so the admitted plan is the same.
+
+**Order.** Blocker groups first (preemptions, then blockers' starts; never cut
+by the budget), then the rest as planned: inbox reports in arrival order, land
+results, needs, holds, limits, fix, the deal by rung, land requests.
+
+**Budget.** Admit every blocker group; the first non-blocker group always (so a
+group larger than the budget is not starved); then each while the cards touched
+stay within `Limits.Budget`, stopping at the first that does not fit, so the inbox
+is consumed as a prefix.
+
+**Carry.** Only inbox items carry, in arrival order, at the head of the next
+tick's inbox. Every other move is derived again from the store, so a carried
+deal is never stale. A burst of B items over budget N is through in ceil(B/N)
+ticks, reports before deals.
+
+**Packing.** Groups go into ops in order up to `Limits.Pack` groups per op. A group
+larger than the pack is an op of its own. A group touching a card of a group of
+the last tick's refused ops is an op of its own.
+
+**Naming.** An op's id is `t<epoch>.<seq>.<hash of its body>`: one view, one id,
+applied once. The tick's judgement op is `j<epoch>.<seq>.<hash>`; a verb's is
+`v<epoch>.<seq>.<hash>`. Every op carries its groups' keys in `Note`, kind `tick`,
+actor `sprint` (`steps.Actor`).
+
+**Fences.** Each op carries the conditions its groups' plans built (card and row
+gens, hold flags, `NeedsLanded`, `CardAbsent` for new consumers). Layer 6 applies
+the ops in order, replaying an unknown outcome by id before the next tick plans.
+
+**Refused ops.** A refused op changed nothing. The next tick rebuilds from the
+folded view (never resends the old body) and packs the groups of the refused op
+each as an op of its own: split by group, never by halves of writes. A group
+refused alone on fresh state is a defect here or in layer 2 and is left out
+with an `engine` judgement naming the plan and the store's reason. A machine
+refusal while planning is likewise an `engine` judgement, never an op.
+
+## The steps
+
+### Reports
+
+Inbox reports in arrival order, each one group (a work report with the producer's
+`Finished`/`Broken`/`Faulted`, built by `card.ReportPlan`; a read report moves
+only the read) or one answer. Refusals are answered to the row and consume the
+item:
+
+| Cause | Answer |
+|---|---|
+| unknown consumer | `card C does not exist: run nova-sprint next --as R` |
+| not the holder | `consumer C is held by r1, not r2` |
+| a session the row no longer has | `report from session S1; row R is now S2; nothing applied` |
+| withdrawn | `consumer C was withdrawn: <reason>; branch B is kept` |
+| a done consumer with a different result | `consumer C reported <result> at head H already; a report is applied once` |
+| an old attempt | `consumer C is of attempt N; producer P is at attempt M` |
+| an old head | `read C was cut at H1; producer P is at H2` |
+
+A report matching a done consumer's result and head is acked from the record
+(`applied at seq N`) and never applied twice, so layer 4 may redeliver. A report
+for a consumer a group of this tick moves waits for the folded result (carried).
+Policy has no say: reports are facts. An answer rides with its group and goes out
+only when the budget admits the group.
+
+### Preemption
+
+A ready blocker whose stream is free, with open serving rows (up, not held, not
+resting, unclaimed, serving its tier and routes, nameable a model) none of which
+has free width (every one works at its width; ready consumers hold no width),
+gets one group on one such row: `Withdraw` of the youngest working consumer there
+(latest `TakenAt`, then id) merged with the blocker's `Start`, plus a `stop` edge
+request for that consumer's runner, dispatched only with the op. The withdraw
+releases the victim's producer to `ready` with its score and pushed branch kept;
+a preempted read's producer stays in review and is asked again. At most one
+preemption per row per tick. The row is policy's `rows` answer when it names one,
+else the first by name. No serving row at all: the deal opens `unserved` and the
+blocker stays ready. A blocker with room anywhere is simply dealt.
+
+### Land: results
+
+For each `land` result in arrival order whose request is in flight:
+
+- `landed`: one group of `Landed{Head, Merge}` for every card of the request still
+  `merging` at the head requested, unclaimed, whose head is among `Landed`.
+- anything else (`ci_red`, `ci_red_inherited`, `no_ci`, `conflict`, `merge_refused`,
+  `pr_unopenable`, `branch_failed`, `ci_fault`, `missing_head`, `head_moved`, `hand`,
+  `fault`, ...): one `land` judgement per card still merging at its head, naming
+  the card, stream, base and tip, branch, head, outcome, the edge's facts and the
+  cards landing together, with choices `land | fix | retry`. Nothing moves and
+  nothing is blamed. `ci_red_inherited` (every failing workflow is red on the base
+  too and the run ended) is worded so it reads at a glance: land it with
+  `nova-sprint land <card> --reason <why>`.
+
+A `stop` ack, or a result for a request no longer in flight (a repeat), is consumed
+with no move.
+
+### Sentinels and needs
+
+Every tick, from the view's state (never from land events, so a need landed by a
+store op or a restore resolves too):
+
+- **Drops.** For each `fail` producer, the whole closure of its non-final dependants
+  fails as one group: each dependant's live consumers are withdrawn, then
+  `NeedFailed` (marked `InThisOp` for dependants past the first hop).
+- In id order, a `waiting` producer whose needs have all landed and whose stream is
+  free is processed: a sentinel gets `Reached` with a `landed-sentinel` judgement
+  riding in the op; a producer that names a concrete file a `ready` or started
+  producer of its stream names (those resolved earlier this tick counted) opens an
+  `overlap` judgement `held behind <card> on <path>` (the least such card by id,
+  the first shared file); otherwise it is `Resolve`d.
+
+Room on a row is never a condition for ready: ready producers queue and the deal
+fills rows, so ready never flips with row load. Until ready, the view names the
+cause (held stream, overlap with X). No policy question: needs are hard.
+
+### Holds
+
+- `Park` a ready producer in a held stream that the hold's op missed.
+- `Withdraw` every consumer still `ready` (a leftover, since consumers are cut
+  working): the producer is dealt again in hand.
+- A **held** row's unacknowledged consumers are withdrawn at once, and a **down**
+  row's after `row_silent_gone` (measured from `Down`, else `Since`), releasing
+  their producers to be dealt elsewhere. Acknowledged consumers stay: a hold stops
+  new deals, not work in hand. A hold never touches landing.
+
+### Retire and fail limits
+
+- `Block` with a `blocked` judgement riding in the op, for a `ready` or `review`
+  producer with no live consumer whose `bounces` reach `Limits.Bounces`
+  (`bounced N times, the limit is M`). A fault never counts.
+- A producer a `missing-route:` fault blocked gets one `blocked` judgement naming
+  the row, the card and what is missing, plus the fix (declare `NEEDS-ROUTE`, or
+  fix the row that serves the route without having it); it is never dealt again by
+  itself until the coordinator answers `unblock` or `drop`.
+- Per row (only a row present in `Seen`): `Withdraw` of a `working` consumer when the
+  row has been silent for `row_silent_withdraw` (branch kept); `Gone` when it is
+  `up` and silent for `row_silent_gone`, never for one missed challenge in a long
+  turn; a `flap` judgement when `Flaps >= FlapLimit` (episode = the flap count).
+- **Resting.** A row with `RouteRestAfter` or more consumer faults within
+  `route_rest_for` is resting until that long after its last fault: it is dropped
+  from candidates. It is a deal filter in the tick, never a stored hold, since rows
+  are never narrowed to steer deals.
+
+### Fix
+
+For each producer in `review` whose reads of the current review are all final and at
+least one is done (`settled`), policy's `verdict` over all of them decides: `yes` is
+`ReadYes`; `fix` is `ReadFix{finding}` with every fix read's finding joined (a fix
+read that said nothing is named as such); `retry` plans nothing (`owed` deals one
+more read). Every yes is planned before every fix. A finding byte-equal to the
+producer's current one opens a `brief` judgement: the brief is wrong, not the
+worker. A producer back from `Broken` or `Faulted` needs no plan: its score keeps it
+at the head of its queue and `Start` carries its prior head and finding.
+
+### Deal and reads
+
+One candidate list down the ladder `blocker, critical, read, high, normal, low`:
+blocker work, critical work, every read owed, then high, normal, low work. Within a
+rung, policy's `order` tuple then id. `read` is the rung every read consumer
+occupies; a producer's level is declared, never computed.
+
+**Work** (`Start{Row, Branch, Base, Model}`), for a ready producer in a free stream:
+
+1. Candidate rows are open, unclaimed, not resting, serve the card's tier, and
+   serve every route in the brief's `NEEDS-ROUTE:` lines (`card.NeedsRoutes`,
+   `Roster.ServesRoutes`).
+2. None: an `unserved` judgement about the tier plus `+<route>` per route
+   (`flash+adb`); it clears only when a row serves all of them.
+3. Of those, only rows the deal can name a model for: a kin's own model from the
+   roster, a bench's from `Answers.Models[tier]`. None: a `no-model` judgement
+   about the tier says whether the bench policy or a friend's nova-config model is
+   missing, and the card stays.
+4. The row is policy's first answered row with room, else the engine's ranking.
+   **Room** is the width check: live consumers on the row plus this tick's deals are
+   under policy's `width.work`, at most the roster width. A card no row has room for
+   stays `ready`, queued.
+5. Branch `sprint/<stream>/<producer>` (a stream's group branch is
+   `sprint-group/<stream>`, outside `sprint/`, so git never meets a ref that is both
+   a file and a directory), base the stream's head from `Inputs.Heads`. A stream
+   with no head is an `engine` judgement.
+
+**Reads** (`AskReads{Rows, Models}`): a review owed `reads()` minus the reads of the
+current review that are live or done (a withdrawn or faulted read is owed again) is
+asked all in one plan, to distinct rows, none the author, none already holding a
+live read of this head. No eligible row: a `cannot-read` judgement, so a review
+never waits on nothing.
+
+**Escalation, and the engine ranking** (policy absent or its answer unusable): the desired rank exactly
+(100), then above it (50), plus 10 for an idle row, minus 1000 for a row the card
+was withdrawn from, plus remaining room; ties by name. Desired rank: a work
+consumer at the card's own tier; one rank up at `escalate_after` bounces, the top
+rank at `frontier_after`; a read at the rank above the writer's row (the top stays
+the top). A row's rank is the highest tier it lists. No tier is ever written: a
+card's tier is fixed at add and is its minimum, and a row below it is never offered.
+
+Past the budget nothing more is dealt (the judgements above are still opened).
+
+### In hand
+
+The deal is the take: a consumer is cut `working` and is in its row's hand from the
+op that cuts it, and the deal's push (layer 6) names the card, repo, base, branch
+(a read's head), brief and the finish or read command. The row's `take` is its
+**acknowledgement**: a cursor `took:<epoch>:<consumer>` (`AckCursor`; hashed when it
+would pass 128 bytes) written once, moving no card. A consumer with no model was
+dealt before models were named and counts as acknowledged.
+
+- **Nudge.** A working consumer not yet acknowledged, from `ready_nag` after the
+  deal, gets a `NUDGE` line each tick (`Plan.Nudges`, pushed outside the log, no
+  cursor moved): the row's counts of untaken and held cards and its width, the card,
+  how long ago it was dealt and the `take` command.
+- **Ready timeout.** At `ready_take`, a work card still unacknowledged is withdrawn
+  and its producer dealt to another row with room (never the slow one), in one group
+  (`redeal`). If no other serving row has room, the producer is claimed this tick,
+  the base is unknown, or the stream is held, the card stays and one `unacked`
+  judgement for the coordinator names the row and the card (`release` deals it
+  again).
+- **Undealt.** A ready producer still ready `UndealtAfter` after it went ready, with
+  an open row serving its tier (and nameable a model) with room, opens one
+  `undealt` judgement naming the row, the card and the cause (the tick's budget was
+  spent, or an engine defect). Checked after the deal, so a producer dealt this tick
+  is skipped; not checked while the gate deals nothing.
+
+### Land: requests
+
+Per stream with no land request in flight: the `merging` producers not under a land
+judgement and not claimed, in score order. An `after` orders only producers both
+queued, and never holds on a target that is not (an `after` target merging outside
+the list holds its dependant; targets inside the list are moved ahead of their
+dependants). Fewer than `backed_up` waiting: one request for the first alone
+(rung 1); `backed_up` or more: all of them in score order as one request (rung 2).
+`ci_wait` is passed as the request's `Wait`. The request id hashes epoch, stream,
+base, and each card's `id@head/review`, so a restart reissues the same request and a
+changed head gets a new id. A held stream never stops landing. A merging producer
+left with no request, no land judgement and no after target holding it is reported as
+an `engine` judgement (`answer retry to ask the landing again`); by construction
+there is none.
+
+The mechanics (PR, group branch, gate, merge) are layer 4's. There is no bisection and
+no blame.
+
+## Groups, packing and refused ops
+
+A **group** is one producer's move with the consumers it touches, composed as one
+`card.Merge` of the plans each move builds on the view (a report with its
+`Finished`; a preemption with its deal; a drop with its dependants; a redeal's
+withdraw with its start). It is the unit the packer orders and never splits across
+ops. Its key is every card its plan writes plus the card it is about, with the gens it
+read them at; the row it wrote (`Gone`) is claimed like a card. A later step skips a
+claimed card until the next tick, so no two groups of a tick fence a record another
+writes. A card moves once per tick, so a chain of engine hops takes a tick per hop.
+
+Before planning, the steps check every store rule they can predict, so an op is
+refused only by a race (a coordinator verb between snapshot and apply).
+
+## Requests (Verb)
+
+`Verb(view, inputs, Request)` turns one per-card request into one op: the actor check,
+the move through the card machine, one op. A verb refused for its actor writes nothing.
+
+```go
+type Request struct {
+    Actor        string
+    Coordinators []string          // the rows nova-config names as coordinators
+    Card, Row, Stream string
+    Event        card.Event        // the move
+    Judgement, Answer string       // an open judgement this request answers, and the choice
+    Drop         map[string]card.Event // per dependant of a Cancel/Replace: its chosen Waive or Relink
+}
+```
+
+Actor rules (an engine fact, since a wrong coordinator could corrupt):
+
+| Events | Who |
+|---|---|
+| `Block`, `Unblock`, `Waive`, `Relink`, `SetPriority`, `WaiveRed`, `Cancel`, `Replace`, `Edit`, `Rescore`, `Hold`, `Unhold`, `HoldStream`, `UnholdStream`, `Landed`, `Red`, and every judgement answer | a coordinator |
+| `Seen`, `Gone` | the run loop (`steps.Actor`) |
+| `Report` | the consumer's holder |
+| `Add` | anyone hooked in |
+
+Refusal text: `SetPriority is the coordinator's; ask on the bus: nova-bus send --as A --to C ...`.
+
+- **Hold of a card.** `Block` as a request is the coordinator's hold: each live consumer
+  is withdrawn, then `Block`, in one op, so the card is never dealt again between.
+- **Hold of a stream.** `HoldStream` parks every ready producer of the stream in the
+  same op, fenced at the view's seq; `UnholdStream` lifts it.
+- **Drop** (`Cancel` or `Replace`): the producer's live consumers are withdrawn as
+  released (reason `released: <the drop's reason>`, no result), then the producer's
+  move; every dependant, transitively, gets its chosen `Waive` or `Relink` from `Drop`
+  or else `NeedFailed`, all `InThisOp`, in the same op.
+- **Answering a judgement** rides beside the move outside the card machine's merge:
+  fenced `JudgementOpen`, refused when the judgement does not exist (`run nova-sprint
+  judge`), is not open (`judgement J was answered by A; nothing to answer` (or `expired`)), or has no
+  choice (`judgement J needs a choice: ...`).
+
+## Judgements
+
+A judgement is a stored question owed to a person (layer 1), opened by a step. Its id
+is `kind.about.episode`; a cause opens once while one is open; its group key is its
+kind (`policy:v<n>` for policy, `roster:<row>` for roster) so related ones are pushed
+as one; its command is `nova-sprint judge <id> <choice> --reason <why>`. The deadline
+is `timeouts.judgement` except for `blocked`, `land` and `no-policy`, which wait until
+answered or cleared. At the deadline a judgement expires with its kind's safe default:
+nothing is dropped, accepted, merged or landed. A judgement whose cause has cleared in
+the view is expired by the tick.
+
+| Kind | Opened when | Cleared when | Choices |
+|---|---|---|---|
+| `blocked` | a producer reached the bounce limit or a missing-route fault | it is no longer blocked | unblock, drop |
+| `unserved` | a ready producer's tier (plus routes) has no open serving row | a row serves all of it | retry |
+| `no-model` | serving rows exist but none can be named a model | one can | retry |
+| `cannot-read` | no open row may read an owed review | one may, or no read is owed | retry, drop |
+| `land` | a land result other than `landed` | answered | land, fix, retry |
+| `overlap` | a waiting producer is held behind another on a file | no longer waiting, or the holder changed | retry |
+| `unacked` | a card is unacknowledged past `ready_take` with no other row to take it | acknowledged or no longer in hand | retry |
+| `undealt` | a ready producer is not dealt though a row has room | dealt or no longer ready | retry |
+| `brief` | a fix read found the same thing twice | | rework, drop |
+| `landed-sentinel` | a sentinel was reached (rides in its op) | | retry |
+| `flap` | a row's flaps reached the limit | | retry |
+| `stall` | nothing landed for `landing_stall` while producers wait in review or merging | the stream lands | retry |
+| `idle` | working under `idle_floor` of the open width while producers wait | back above `idle_ceiling` | retry |
+| `land-rate` | a stream's first-time land rate (landed with no bounce over landed) is under `land_target` over `land_sample` | back at target | retry |
+| `policy` | a policy question failed (one per version and question) | | retry |
+| `roster` | a store row is not in nova-config | | retry |
+| `no-policy` | no active policy answers (the gate) | the gate lifts | retry |
+| `engine` | a plan the card machine or the store refused on fresh state, or a stream with no head | | retry |
+
+What older designs escalated otherwise (failed work, bounds, lateness, rebase
+conflicts, read broken) is a rule move in the tick, not a judgement.
+
+## Why the fleet is idle
+
+`steps.Waits(cards)` explains each stream's waiting producers for the idle judgement,
+`nova-sprint check` and the board, so the three say one thing. Each waiting producer is
+counted once, on the front of the `NEEDS` chain it waits on (its first need not landed,
+followed while that need is itself waiting; a need naming no card is `missing`) or,
+with every need landed, on the least producer and first file it is held behind (the
+needs step's own `leastHolder`). It also finds each stream's longest `NEEDS` chain
+over cards not landed or failed (a sentinel adds no length; a cycle a store op wrote
+ends). `IdleWhy` is the summary (`N chains (longest K, top: <card> blocks M), H overlaps
+(top: <card> holds C on <file>)`) with the command that moves the most: show it when
+in flight, judge it when blocked, relink away from it when missing or failed, and
+`replace` for a `NEEDS` that is not a consumed output; never a priority, which is set
+by request only. `ChainWarn` (4 cards) is the chain length at which add, check and
+the board warn. The idle judgement's text is built only when it would open: when no
+ready producer is dealable and none resolved this tick it reads `working W of O open
+width while R ready and N waiting: nothing dealable: <IdleWhy>; ready: <held> in held
+streams, <unserved> with no serving row; <command>`.
 
 ## Guarantees
 
-1. No producer is dealt twice: at most one group touches a card in a tick,
-   and every `Start` is fenced on the producer's gen.
-2. No row is over width: deals (the deal is the take) are tallied against
-   width minus working, and every cut is checked by the card machine
-   against the row's roster width.
+1. No producer is dealt twice: at most one group touches a card in a tick, and every
+   `Start` is fenced on the producer's gen.
+2. No row is over width: deals are tallied against width minus working, and the card
+   machine's guards check the row's roster entry.
 3. No landing holds on an unqueued soft `after`.
-4. A ready blocker with no room is dealt by preemption in the tick that
-   finds it ready, unless no row serves its tier, which is a judgement in
-   the same tick.
-5. A refused op never half-applies: an op is one transaction, and a group is
-   never split across ops, so no preemption lands without its deal and no
-   drop without its dependants.
-6. A report for a stale head, attempt or session is refused to the row and
-   moves nothing; a repeated report is acknowledged and applied once.
-7. Every report and take that arrives is applied or answered: the carry is
-   arrival order and reports come before deals, so a burst of B over budget
-   N is through in ceil(B/N) ticks.
-8. Ready never depends on row load; a ready producer is started when a row
-   serving it has room under its width, in rung order, or an `undealt`
-   judgement names it within `UndealtAfter`; a waiting
-   producer whose needs landed has a named cause (held, or overlap with X).
-9. Every non-final producer is waited on by a named actor, the next tick or
-   an open judgement (LAYER-2, nothing stalls).
-10. No policy answer, absence or error makes a step plan an illegal move or
-    plan nothing where the default would have planned.
-11. The tick's cost is the snapshot plus ops x per-op cost: the fold of the
-    events since the last tick (the steady-state snapshot), planning
-    O(G log C + R) for G groups (at most the budget), C cards and R rows,
-    and ceil(G / pack) ops at the measured per-op cost. Nothing per tick is
-    O(C) after the cold build, which is O(C + events).
+4. A ready blocker with no room is dealt by preemption in the tick that finds it ready,
+   unless no row serves its tier, which is a judgement in the same tick.
+5. A refused op never half-applies: an op is one transaction and a group is never split
+   across ops, so no preemption lands without its deal and no drop without its
+   dependants.
+6. A report for a stale head, attempt or session is refused to the row and moves
+   nothing; a repeated report is acknowledged and applied once.
+7. Every report that arrives is applied or answered: the carry is arrival order and
+   reports come before deals.
+8. Ready never depends on row load. A ready producer is started when a row serving it has
+   room, in rung order, or an `undealt` judgement names it within `UndealtAfter`; a waiting
+   producer whose needs landed has a named cause (held stream, or overlap with X).
+9. Every non-final producer is waited on by a named actor, the next tick or an open
+   judgement (nothing stalls).
+10. No policy answer, absence or error makes a step plan an illegal move or plan nothing
+    where the default would have planned (the gate is the one exception, and it says so).
+11. The tick's cost is the fold of events since the last tick, planning O(G log C + R) for
+    G groups (at most the budget), C cards and R rows, and ceil(G / pack) ops. Nothing per
+    tick is O(C) after the cold build.
 
-## The model: tla/Steps.tla
+## Testing
 
-CardMachine.tla holds the per-card rules; the step model composes it: its
-variables (producers, consumer slots, rows, the hold) plus `snap` (the view
-at tick start), `inbox`, `inflight`, `js` (judgements), `now` and a monitor
-of the last tick's groups.
-
-- Actions: `Snap`; `Tick` (groups from `snap` by the step rules, under
-  `Budget`, packed by `Pack` into ops applied in order, each atomic and
-  fenced against the current state, else refused whole); `Verb` (a coordinator move between `Snap` and `Tick`);
-  `Arrive` (a report or take, duplicates included); `EdgeResult`; `Clock`;
-  `PolicyFails` (no answer or any answer; the default used).
-- Invariants: guarantees 1 to 6 and 8, `OneGroupPerCard`, `GroupWhole`,
-  `BudgetKept`, `CarryFIFO`, `RefusalChangesNothing`, and every
-  CardMachine invariant. Liveness, weak fairness on `Tick`, rows and edges:
-  guarantees 7 and 9 (the nothing-stalls obligation layer 2 handed here).
-- Reversed witnesses, each a required violation: two groups on one card; a
-  deal counting ready against width; a carry that drops overflow; a carry
-  newest first (a report starves); a refused op resent blind; a refused op
-  split by halves of writes (a preemption lands without its deal); an unqueued `after` holding a landing; a step that
-  plans nothing when policy fails; a stale report applied; resolve without
-  the overlap check (two overlapping producers ready); ready conditioned
-  on room (ready flips with row load).
-- Sizes: three producers (one a blocker), two rows of width 1 and 2, three
-  slots, budget and pack 1 and 2, inbox 3; scenarios `deal`, `land`,
-  `burst`; `tla/ci-tlc.sh` on hetzner2, never the working machine. The inbox
-  is a Go slice, so the sequence is its layout (no ring, no layout model).
-
-## Tests
-
-- Unit, package `steps`: each step's table of view and inputs to groups,
-  exactly; every refusal's words; every question absent, failing, slow and
-  lying; stable op ids; packing, carry and the split by group. Time is
-  `Inputs.Now`; no sockets, no network, no store but values.
-- Conformance on `store.Fake` and PostgreSQL: happy, fix, red, fault,
-  preemption, drop, hold, block and burst paths tick by tick, every op
-  accepted; an op refused by a racing verb, then split by group; an unknown
-  outcome replayed; each fold equal to a fresh snapshot; a random walk
-  checking the model's invariants after every op.
-- Load, extending `store/load_test.go`: 5,000 producers; fold, plan and
-  apply timed apart at steady state, 200 reports/s, and a 2,000 burst.
-  The bar: the full tick under one second at p99 and planning under 50 ms;
-  the result is the per-op cost by packing size, which sets `pack` and the
-  budget. Today the store tick alone is 119 ms
-  at p50.
-- Cold read questions: can one card be in two groups of a tick; what does a
-  refused op do next tick; where does a report over budget wait; what if
-  policy throws on `rows`; can a hold stop a landing; why can a waiting
-  producer not oscillate; how does a card escalate with no tier write; which judgements are answered by rule; what is
-  the tick at 10,000 cards; can an old session's report move anything?
-
-## Size
-
-About 3,000 lines of Go, tests excluded (view 600, steps 1,500, packer 250,
-asker 300, requests 350): an estimate; layer 1's first was half its size.
-
-## Asked of the layers below
-
-- Layer 2: a current work consumer's `Report` carries the producer's
-  `Finished`, `Broken` or `Faulted` in one plan, as `Withdraw` already folds
-  the release; checked in `card/move.go`, `report` writes the consumer only.
-
-## Lessons placed (LESSONS section 3, and the decisions owed here)
-
-| lesson | where |
+| Tier | What |
 |---|---|
-| 3.4 all reads in one tick to distinct readers | Deal and reads (`AskReads`) |
-| 3.5 the reader's done-when judgement | deferred: the reader's per-item result is layer 4's report form, its weight layer 5's `verdict` |
-| 3.6 broken only for a real defect | deferred: a typed defect field on a read report (layer 4) that `verdict` reads (layer 5); never matched from text |
-| 3.8 reader a different model, adversarial brief | Deal and reads (`readers` default prefers another model); the adversarial read brief is layer 4's deal text |
-| 3.17 mechanical judgements answered by rule | Judgements (the closed list) |
-| 3.18 the idle alarm | Judgements (`idle`) |
-| 3.21 first-time land rate | Judgements (`land-rate`) |
-| 2.20 ready that cannot start | Sentinels and needs (ready: needs, hold, overlap; never room) |
-| 2.21 nothing stalls, with the tick | the model's liveness; guarantee 9 |
-| 1.14 running-time deadlines | in part: every bound is compared in one function of `Now`; excluding stopped spans is owed to layer 6's stop and start |
-| 4.5 who redelivers | in part: the ack from the record (Reports); redelivery is layer 4's |
-| 4.9 grouped notifications | Judgements (group keys) |
-| 4.24 resting a route | Retire and fail limits (`fault_limit`) |
-| 5.3 order within a level, tiers, escalation | the questions `order`, `rows` (rank by row choice); their scripts are layer 5's |
-| 5.7 deadlines with safe defaults | Judgements (`deadline`, expiry default) |
-| 5.12 blocker preemption | Preemption |
+| Unit (`go test -skip Functional ./steps/...`) | each step's table of view and inputs to groups; every refusal's words; every question absent, failing, slow and lying (`asker_test.go`); the view (a fold per event kind equals a fresh build, `view_test.go`); the purity lint (`lint_test.go`); the paths (happy, fix, red, fault, preemption, drop, hold, block, budget and carry, refused op split by group, unlisted and unhooked rows, silent row and flap, stable op ids); hand (`hand_test.go`); routes; waits; the request table of every verb and actor (`request_test.go`). Time is `Inputs.Now`; no sockets, no network, no store but `store.Fake`. |
+| Random walk (`walk_test.go`) | 100 seeds of 2,000 steps on `store.Fake`; the model's state invariants after every step and its tick invariants on every plan |
+| Trace walk (`trace_test.go`) | the model's scenarios driven on `store.Fake`, one record per action, projected onto `tla/Steps.tla` (`trace.go` is the refinement mapping) and checked as behaviours by TLC |
+| Load (`load_test.go`) | skipped unless `NOVA_LOAD=1`; run on a Linux bench, never in per-commit CI. 5,000 producers in 20 streams over 100 rows of width 4: fold, plan and apply timed apart at steady state, with 200 reports/s and a 2,000-report burst; `TestLoadResolve` times the needs step alone |
 
-## Decided inside the layer, easy to overrule
+```
+go test -count=1 -skip Functional ./steps/...
+NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestLoad -v ./steps/   # a bench host
+bash tla/ci-tlc.sh                                                    # models, witnesses, reach checks
+bash tla/make-traces.sh check                                         # trace fixtures against the model
+```
 
-- Ops are packed groups, applied in priority order: a refusal costs only
-  its op, split by group next tick. Only the inbox carries.
-- A card moves once per tick (conditions are checked before writes, so two
-  hops of one card cannot share an op): a tick per engine hop.
-- Policy is asked per question per tick, a dozen calls whatever the size.
+**Measured** at 5,000 producers on a Linux bench, quiet: the fold of a tick's events
+about 13 ms p50; planning at a 250-card budget with 2,500 producers ready about 47 ms p50;
+the same tick applied on PostgreSQL (fsync on) as 250 ops of one group takes about 457 ms,
+as 5 ops of 50 about 203 ms, as one op of 250 about 207 ms. The per-op fixed cost is about
+1.1 ms, so packing 50 groups per op takes 98% of the gain of one op while a refusal costs
+50 groups, not 250: that is why `Pack` is 50 and `Budget` 250. The full tick at 5,000 producers is
+about 265 ms p50, under the one-second p99 bar. The needs step alone at 5,000 waiting
+producers is under 10 ms.
 
-## Built (friendF's child, 2026-11-07; branch `v2-l3-steps`, package `steps`)
+**The model.** `tla/Steps.tla` composes `CardMachine.tla` with the tick: variables are the
+producers, consumer slots, rows, the hold, `snap` (the view at tick start), `inbox`,
+`inflight`, judgements (`js`, `jsnap`), `now`, policy availability, how long each producer
+has been ready, and a monitor of the last tick's groups. Actions: `Snap`, `Tick` (groups
+from the snapshot by the step rules, under the budget, packed into ops applied in order,
+each atomic and fenced against the current state, else refused whole), `Verb` (a
+coordinator move between `Snap` and `Tick`), `Arrive`, `EdgeResult`, `Clock`,
+`PolicyFails`, `Answer`. Scenarios (cfgs `StepsPre`, `StepsPrePack1`, `StepsDeal`,
+`StepsLand`, `StepsBurst`): three producers (one a blocker), two rows of width 1 and 2,
+three slots, budget and pack 1 and 2, an inbox of 3.
 
-What the code is, where it differs from the text above and why, every number
-marked measured or guess. The model is `tla/Steps.tla`; the code follows its
-tick order and cites its invariants (`tla/README.md`, "The steps (layer 3)").
+Invariants include `OneGroupPerCard`, `GroupWhole`, `BudgetKept`, `CarryFIFO`,
+`NeverDealtTwice`, `WidthKept`, `NeverBelowTier`, `BlockerPreemptsInOneTick`,
+`PreemptYoungest`, `RefusalChangesNothing`, `RefusedOnlyByRace`, `NeverHalfApplied`,
+`AfterKept`, `AfterNeverHolds`, `NeverOverlapStarted`, `ReadyNeverFlipsWithLoad`,
+`ResolveFromState`, `HeldBehindShown`, `PolicyFailsToDefault`, `NoDealWithoutPolicy`,
+`MergingCovered`, `DealIsTake`, `EdgeAfterAccepted`, and every CardMachine invariant.
+Liveness (weak fairness on `Tick`, rows and edges): `DealtWithinKTicks` and
+`ReadyDealtWhenRoom`, plus nothing stalls. Each rule has a reversed witness in
+`tla/witnesses/Steps*.tla` that TLC must fail (two groups on one card; a carry that
+drops overflow or runs newest first; a refused op resent blind or split by halves of
+writes; an unqueued `after` holding a landing; a step that plans nothing when policy
+fails; a stale report applied; resolve without the overlap check; ready conditioned on
+room; a consumer cut `ready`; no `undealt` judgement; a glob counted as overlap; a deal
+with no policy; and so on), and reach checks in `tla/reach/Steps*.cfg` show the passing
+run reaches each action. The inbox is a Go slice, so the sequence is its layout (no
+ring, no layout model).
 
-**Inputs.** `Inputs{Now, Inbox, Inflight, Heads, Seen, Refused, Roster}`.
-Reports and takes are the rows' own ops (LAYER-6 wins; the fold shows them);
-the inbox path for them (`Kind report`, `take`) is built with every refusal
-of "Reports" in its words, for a layer 6 that routes them here, and is not
-in the model. Edge results (`land`, `stop`) are the model's inbox. `Seen` is
-when each row was last on the bus (layer 6 keeps it; a row absent from it
-fires nothing). `Refused` is the last tick's refused ops from their
-receipts: an op's `Note` carries its groups' keys as JSON (`OpGroups`), so
-layer 6 splits a refused op by group and puts its items back in place; `Plan`
-has the four fields exactly. `Roster` is nova-config (the
-one true source; nothing of it in the store): a row's kind, width and tiers
-are read by name, a store row the roster lacks is never dealt to and is a
-`roster` judgement. `Inputs.Roster` is package roster's `Roster` (store
-round 22, merged from `v2-integrate-22`); `card.RowFromStore(r, width,
-tiers)` takes them from it. An open row is up, not held and hooked in to the
-sprint (the hook is the subscription to the pushes): the
-row's `Session` and `Role` set, the role worker or coordinator (who counts
-as a worker). Round 22 took width out of the store and `card.Take` does not
-check it, so width at a take is held only by the tick's inbox path
-(`takeItem`'s tally) and must be the take verb's check in layer 6: the
-tests take as that verb would (`roomToTake`); one line for friendF.
+Not bound by the trace: the `undealt` judgement is counted in ticks in the model and in
+seconds in the code; nudges and `unacked` are outside the model (it has no clock for
+them); the policy gate flag is not logged (the walk's asker always answers); reports
+arriving through the inbox are not in the model.
 
-**The asker.** Layer 5's question set, names and types as that doc has them
-(`Questions`, `Answers`), one call per tick with every subject; `budget` and
-`pack` are layer 3's keys in `limits`. Absent, failed (`Failed[q]`, or `*`
-for the budget spent), out-of-domain or not-offered answers are the default
-for the subject with one `policy` judgement per question and version; no
-policy (version 0) is every default and no judgement. The engine's own
-numbers (`Engine`): `escalate_after` 2 and `frontier_after` 4 (guesses),
-`flap_limit` 3 (unmeasured), `idle_floor` 0.5 and closing at 0.75,
-`land_target` 0.9 over 20, and layer 5's defaults for `limits` (bounces 6,
-not the 3 this text guessed: layer 5 is the later word), `timeouts`,
-`landing` (backed up at 4, flowing at 1) and `width` (ahead = width, where
-the model's instance uses 2 x width; the trace walk's asker answers the
-model's). `victim` is not a question: the youngest working consumer on the
-row is the engine's fixed rule (LAYER-5's boundary, LESSONS 5.12); the model
-lost its `victim` oracle to match. `escalate_after` is the engine's, not
-policy's, since layer 5's set has no such question (its `rows` default
-carries it). The tick budget (cards touched) is 250 and `pack` 50, both
-measured below.
+## Source map
 
-**The steps.** Planned in this order, each skipping claimed cards: reports
-and takes (so a consumer that has reported is never preempted), preemption,
-land results, needs (drops, Reached with a `landed-sentinel` judgement in
-the op, Resolve with the overlap tally), holds (Park, withdraw of untaken
-consumers on held rows at once and down rows after `row_silent_gone`),
-limits (Block with its judgement in the op, withdraw of a silent row's
-working consumers, Gone, flap), fix (every yes before every fix, as the
-model orders them), the deal by rung (blocker, critical, read, high,
-normal, low; within a rung policy's `order` then id), land requests,
-judgements. The packer orders blocker groups first (preemptions, then
-blockers' starts), then the rest as planned: the model's `E`. A machine
-refusal while planning is an `engine` judgement, never an op. Planning is
-bounded by the budget (guarantee 11): once the non-blocker groups planned
-touch the budget's count no more are planned, while the tally, the claims
-and the judgements go on as the model's folds do, so the admitted plan is
-the same. Rows written by a group (Gone) are claimed like cards, so no
-group of a tick fences a record another group writes and the fence is the
-view's gens (the model's predicted fence reduces to it). Land request ids
-hash epoch, stream, cards, heads, reviews and base (model finding 8). The
-landing rung has no hysteresis: backed up at or past `backed_up` merging,
-else flowing (`flowing` unused). Since 2026-11-07 (below) every result but
-`landed` is a `land` judgement; `base-red`, `base-green`, `conflict`,
-`no-ci` and `forge` are gone.
-Judgement ids are `kind.about.episode` (a cause opens once while one is
-open; a flap's episode is its count), group key the kind (`policy:v<n>` for
-policy), deadline `timeouts.judgement` except `blocked`; at the deadline
-the expiry is the kind's safe default, nothing moves. The closed list gains
-`roster` (above). Facts a snapshot lacks (when a consumer was taken, a row
-went down, a row faulted, a stream last landed) are witnessed by the fold
-and are unknown for records older than the view; bounds then run from
-`Since` (Build's clock) and the victim among unwitnessed takes is by id. A
-cold view's consumers are in id order, a folded one's in cut order (the
-model's slots). Drops: a failed need's closure fails through `NeedFailed`
-(`InThisOp` past the first hop); a dependant with a live consumer is
-unreachable (a dependant is waiting), the withdraw is kept as defence.
-`Park` is a defence too (the hold's own op parks). Requests (`Verb`): the
-actor table (coordinator verbs, the holder's take and report, the run
-loop's row facts, anyone's Add), a drop with its dependants' chosen Waive or
-Relink or their `NeedFailed` in one op, a judgement answered with its move
-beside it (the answer's condition is not one the card machine merges, so
-it rides outside `Merge`). Stella's two findings (read of 03f44371): a
-later report or take of a consumer a group of this tick moves is carried,
-never acked from a pending group; an item's answer rides with its group and
-goes out only when the budget admits it.
-
-**The group.** `groupOp` composes a group's moves as one `card.Merge` of
-the plans each move builds on the view (built against `card.Merge` of
-`v2-card-fix4`, b2b0b8c2); card round 7's `Merge` over moves is an edit in
-that one function. A group's key is the cards its plan writes plus the card
-it is about, with the gens read, the row written and the inbox item.
-
-**Trace validation.** `steps/trace.go` is the refinement mapping to
-`Steps.tla`; `steps/trace_test.go` walks the model's four scenarios on
-`store.Fake` (every seed and scenario: 100 x 2,000 for depth; 4 x 3 x 150 as
-the fixed fixtures CI checks with `tla/check-trace.sh`); `StepsTrace.tla`
-logs `w` in parts. All 12 walk fixtures and the model's 13 own fixtures
-match (hetzner2, 2026-11-07). What it found: the first walk folded the
-tick's view after every outside move, so the tick planned on fresh state
-where the model planned on the snapshot (the walk, not the code); and the
-model fenced a row by its up flag where the store fences its gen, so a row
-that went down and came back passed the model's fence and failed the
-store's (the model, fixed: `rg`).
-
-**Measured** (vision, Linux, quiet under `nova-reserve --exclusive`,
-2026-11-07; 5,000 producers in 20 streams over 100 rows of width 4;
-`NOVA_LOAD=1 go test -run TestLoad ./steps/`): the fold of a tick's events 12.9 ms p50
-(13.5 p95); the plan at a budget of 250 cards with 2,500 producers ready
-47 ms p50, 71 p95, 78 max (the bar of 50 ms p50 met; before the planning
-was bounded by the budget it was 1,342 ms: the deal ranked every ready
-producer and the overlap tally was O(waiting x resolved)); the ops per tick
-at pack 1/10/50/250: 244/25/5/2. On PostgreSQL (fsync on) the same tick
-applied as 250 ops of 1 group: 1.83 ms p50 per op, 457 ms the tick; 25 of
-10: 9.8 ms, 246 ms; 5 of 50: 35 ms, 203 ms; 1 of 250: 207 ms, 207 ms. So
-the per-op fixed cost is about 1.1 ms and packing 50 groups per op takes
-98% of the gain of one op while a refusal costs 50 groups, not 250: `pack`
-is 50 (measured) and the budget stays 250 (measured: the full tick at
-5,000 producers is fold 13 + plan 47 + apply 203 = about 265 ms p50, under
-the one-second p99 bar with room; the layer 1 tick alone was 119 ms p50 at
-the same size).
-
-**Tests.** Unit (`go test ./steps/`, no clock, sockets, network or store but
-`store.Fake`): the view (a fold per event kind equals a fresh build), the
-purity lint (also every function under 60 lines), the asker (absent,
-erroring, slow, out of range, in domain), the paths (happy, fix, red and
-retry, fault, preemption, preemption refused by a race, drop, holds, row
-hold and down, block at the limit, budget and carry, refused op split by
-group, unlisted row, unhooked row, silent row and flap, stable op ids), the
-verbs (the actor table, Add/Take/Report, a drop's dependants, a judgement
-answered), the random walk (100 seeds x 2,000 steps, 50% of picked moves
-legal, the model's state invariants after every step and its tick
-invariants on every plan, every op accepted since the sim folds and applies
-at once), the trace walk. The suite is green under race on vision
-(2026-11-07, `go test -race -skip Functional ./...`, steps 185 s).
-
-**Size.** 3,435 lines of non-test Go (view 290, inputs 110, asker 300,
-roster 100, group 230, tick 220, pack 170, reports 130, preempt 130, land
-210, needs 115, holds 45, limits 100, fix 100, deal 300, judge 260, request
-230, trace 195): over the 3,000 budget by 15%; the requests, the roster and
-the trace mapping were not in the first estimate's 3,000.
-
-**Not built as written.** The ledger test (`tests/enforced`) indexes the
-steps; its remaining failures after the merge are policy's rows (tests the
-ledger does not index while policy does not build on the integration
-branch). `same_finding` is not a count: the `brief`
-judgement opens when a fix read's finding is byte-equal to the producer's
-(LESSONS 5.9 in part). The route rest is per row, from the faults the fold
-saw. `land-rate` is per stream, not per route. `base_regate`'s timing is the
-edge's. `stitch` and `prices` are not consumed here. Reports arriving
-through the inbox are not in the model (LAYER-6's path is).
-
-**Stitch, landing results (2026-11-07, branch `v2-stitch-c3`).** A `red`
-land result's `Reason` (the failing checks, the first failing URL, the gate's
-reason and the gated sha, from run's edges) is written into the `card.Red`
-reason as `CI red at <head> on <base>: ...`, and layer 2 now sends the
-producer to fix with it as the finding (intent rule 30; it was `review`).
-Two outcomes are new: `no-ci` (the gated group sha got no check within run's
-`CIAbsentWait`, defect 40) opens one `no-ci` judgement about the stream naming
-`sprint/<stream>/group` and the fix; `forge` (run's forge has no token,
-defect 39) opens one `forge` judgement with the refusal's fix. Neither moves
-a card; the request leaves flight and is asked again under the open
-judgement. `Steps.tla`'s red result moves the producer to `BackOf` (fix)
-the same way; the burst scenario's MaxAtt is 2 (it was 1) so a red's fix is
-dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
-(the fix attempt carries the finding), `TestTickNoCIJudges`.
-
-**Stitch, the landing to intent rule 32 (2026-11-07, branch
-`v2-stitch-w2L`).** Superseding the stitch above where they differ. The
-landing's automatic path is green-and-merge only: `landResults` moves cards
-only on `landed` (with `card.Landed{Head, Merge}`, the merge sha), and every
-other outcome (`ci_red`, `no-ci`, `conflict`, `merge_refused`,
-`pr_unopenable`, `branch_failed`, `ci_fault`, `missing_head`, `head_moved`,
-`hand`, `fault`) opens one `land` judgement per card still merging at the
-request's head (`land.<card>.<n>`, group key `land`, no deadline; choices
-`land | fix | retry`), with the question naming the card, stream, base and
-its tip, branch, head, outcome, the edge's facts, and the cards landing
-together. Nothing is blamed: the `red`, `no-ci`, `conflict`, `base-red` and
-`forge` kinds and their handling are removed. A judged card is left out of
-the next request, so a judgement holds that card only, not its stream. The
-answers are a coordinator `Request`: `land` carries `card.Landed` (the
-merge sha from the hand merge), `fix` carries `card.Red` with the reason as
-the finding, `retry` is the answer alone (the next tick asks a new
-request). `landRequests` now names the card branch `sprint/<stream>/<id>`
-(it was the producer's empty `Branch`), passes policy's `ci_wait` as the
-request's `Wait`, and ends with `unlanded`, the engine report of a merging
-producer with no request, no judgement and no after hold (intent rule 32;
-by construction none). Policy's default `backed_up` is 2 (it was 4), so
-rung 2 is "more than one head waiting". `Steps.tla`: `LandJ`, `Judged`,
-`LandJudged` (a result's judged items), `Answer(p, choice)` in any phase,
-the check `MergingCovered`, the reach `StepsNeverLandJudged` and the
-reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the
-earlier card lands, not while it merges); `jsnap`, the open judgements as the tick's snapshot
-read them, which the tick's picks and its checks use (the code plans on its
-view, so an answer between the snapshot and the tick is seen by the next
-tick; the first bench trace check refused three walks at that race until
-the model carried it); `ItemGroup` moves only on `landed`, the red result's `ApplyG`
-went, and `EdgeAfterAccepted` is weakened to state the stale-request race
-(LANDING.md, "Known gaps"). The trace walk answers open land judgements
-(`answerOne`) and `StepsTrace.tla` maps `Answer`. Tests:
-`TestTickLandJudgementEveryOutcome`, `TestTickLandAnswers`,
-`TestTickLadderRungs`; the trace fixtures `steps-ok-*` and `steps-bad-*`
-regenerated from TLC on a bench, with `steps-ok-land-judged` new.
-Measured on the bench (TLC 1.8.0, at the `jsnap` model): the witness
-`StepsLandAfterHoldsUntilLanded` violates `MergingCovered` after 186
-distinct states (330 generated); a first fault, one open land judgement
-holding every stream, found no violation (1,016 distinct states,
-exhaustive), because in the land scenario the other card is after-held by
-the judged one, so it was replaced; `make-traces.sh check`: 81 traces, the
-`ok` ones `TRACE OK` and the six `steps-bad-*` refused as they must be.
-
-## Built: a drop releases its consumers (stitch w3A, 2026-11-07; directive 77)
-
-`dropMoves` (a Cancel or Replace request) now begins with `withdraw` of each live
-consumer of the dropped producer, reason `card.ReleasedPrefix + <the drop's reason>`
-(no result: released is neither ok nor fail), and plans the producer's move
-with those consumers read as failed, so the one op is Withdraw (which releases a
-working producer to ready), then Cancel. A dependant waits on a need and has no
-live consumer, so only the dropped producer is released. Tests:
-`TestVerbDropReleasesLiveConsumers` (a ready and a working consumer). The model
-`Steps.tla` has no coordinator drop verb; the machine's Withdraw and Cancel are
-`CardMachine.tla`'s, composed as `CardMerge.cfg` checks.
-
-## Built: routes in the deal (stitch w2A, 2026-11-07)
-
-A producer whose brief carries `NEEDS-ROUTE: <name>` lines (read once, by
-`card.NeedsRoutes`) is a candidate only for rows that serve its tier and
-every route (`Roster.ServesRoutes`); the candidate cache keys on tier and
-routes. With none, the `unserved` judgement's About is the tier plus
-`+<route>` per route, and it clears only when a row serves all of them, so a
-tier-only row no longer clears it each tick. Test:
-`TestTickRoutesDealOnlyToServingRows`. No TLA model names routes; the
-candidate filter narrows the row set the model already chooses from.
-
-**Stitch, what the deal carries and when the tick deals (2026-11-07, branch
-`v2-stitch-w2D1`).**
-- *The deal names the model (defects 54, 57).* A consumer is cut with the
-  model its deal named (`card.Start.Model`, `card.AskRead.Model`,
-  `AskReads.Models` one per row; store round 23's `cards.model`), so the
-  take receipt reads it from the consumer and take never chooses one. A
-  friend's model is the roster's (`Roster.Kin[row].Model`); a bench's is
-  the active policy's answer for the card's tier, `catalog().bench[tier]`,
-  in provider/model form, passed in `Answers.Models` (`steps/model.go`). A
-  candidate row with no model to name is not dealt to; when no serving row
-  can be named one, the card stays where it is and one `no-model`
-  judgement about the tier says why (tier, the row kinds, the policy
-  version, and the fix: `bench` in the policy, or the friend's model in
-  nova-config). It clears when an open serving row can be named one.
-- *The policy gate (defect 53).* While no policy is active, or the active
-  one fails as a whole (run's `Answers.NoDeal`, layer 6), the tick deals
-  nothing: no preemption, no Start, no read. One `no-policy` judgement on
-  the coordinator's row (the first hooked coordinator, else `sprint`) says
-  so with the fix, with no deadline (it blocks until it clears: a policy
-  answers again). Reports, the inbox, resolve, fix, landing and judgements
-  go on. This is the one exception to guarantee 10: a question one active
-  version fails still falls to the default with a `policy` judgement; only
-  no version, or a version that fails whole, stops the deal.
-- *Overlap is a file (defect 50).* Two producers of a stream overlap only
-  on a path both name that is a file (`Concrete`: not empty, no `*?[`, no
-  trailing `/`); a glob or a directory both list never holds one back. The
-  view indexes only concrete paths. A producer held behind another opens
-  one `overlap` judgement about it whose question is `held behind <card>
-  on <path>` (the least such card by id, its first shared file), where
-  the board and `check` show open judgements; it clears when the card is
-  no longer waiting or the reason changes.
-- *Resolve from state (section 64b).* Already so in the steps before this
-  change: `needs()` reads every waiting producer of the view each tick and
-  resolves one whose needs are all landed, whatever landed them (the land
-  step, a store op such as the reconcile's `SetCardState`, a restore). The
-  22-producer stall the section reports was not reproduced here; a stall of
-  that shape is what the old overlap rule (a glob or directory both listed)
-  produces, which the overlap change removes. Tests:
-  `TestTickResolvesFromState` (a need landed by a store op, and a cold
-  view), `TestTickOverlapIsAFile`, `TestTickDealNamesTheModel`,
-  `TestTickNoModelNoDeal`, `TestTickNoDealWithoutPolicy`.
-- *Judgements indexed.* `pending`, `isOpen` and `episodes` were scans (of
-  the tick's planned judgements and of the view's); with thousands of held
-  producers each opening an overlap judgement the needs step was
-  quadratic (measured on the working machine, not quiet: 52 ms p50 for
-  4,908 opens). They are now lookups: a per-tick index of the planned ones
-  and one of the view's, built on first use.
-- *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestLoadResolve
-  ./steps/`; the needs step alone, 5,000 waiting producers whose needs a
-  store op landed, 20 streams, 100 rows, 20 ticks; ms p50/p95). On the
-  working machine (darwin, not quiet): free (all 5,000 resolve) 7.97/10.57;
-  held (92 resolve, 4,908 open an overlap judgement) 4.67/7.98; held-open
-  (4,908 waiting, their judgements open and checked for clearing)
-  3.47/3.81; the whole plan 10.5, 12.6 and 10.8 p50. On a Linux bench
-  under other runs' load (load average 92 on 32 cores, so an upper bound,
-  not a quiet number): 28.4/52.3, 37.3/74.3 and 32.0/57.7; the plan 31,
-  110 and 85 p50. Every tick re-reads the state, so no incremental index
-  is kept: at 5,000 waiting it is under 10 ms on the working machine; no
-  quiet Linux bench number was taken.
-- *The model.* `Steps.tla`: `w.pol` (an active policy answers; in pre it
-  fails and is fixed as an environment move) gates `PreStep` and
-  `DealStep` (`NoPlan`) and opens `no-policy`; `NoDealWithoutPolicy`
-  checks no preemption, Start or read is accepted while it is down and the
-  judgement is open. Paths carry the glob `a/*` (p and q both list it);
-  `Overlap` counts only files (`Shared`); a held producer opens `overlap`
-  (`HeldBehindShown`). In deal a store op may land p by hand between ticks
-  (`HandLandOK`: no land request in flight for it); `ResolveFromState`
-  checks, stated apart from `Overlap` and `ResolveOK`, that every producer
-  the view's state makes ready is resolved or held behind one resolved
-  this tick on a file. `ReadyDealtWhenRoom` exempts a run with no active
-  policy. Reversed witnesses: `StepsDealsWithoutPolicy` (the gate ignored),
-  `StepsResolveOnEvent` (resolve only in the tick that consumes the need's
-  landed result), `StepsGlobOverlaps` (a glob both list counts),
-  `StepsHeldUnshown` (no overlap judgement); reach checks
-  `StepsNeverGated`, `StepsNeverHeldBehind`, `StepsNeverHandLanded`. The
-  trace maps `overlap` and `no-policy` judgements; `pol` is not logged
-  (the walk's asker always answers). TLC on the bench (2026-11-07,
-  `bash tla/ci-tlc.sh`): 251 runs ok, none failed; the five Steps scenarios
-  pass, the four new witnesses violate their targets, the three new reach
-  checks are reached. `StepsResolveOnEvent`'s counterexample is the hand
-  land (no edge result arrived) then a tick: the store-op path. The steps
-  trace fixtures were regenerated from the new model's TLC logs, and
-  `make-traces.sh check` matched all 82 traces (the Go walks included).
-**Stitch, deal is take (2026-11-07, branch `v2-stitch-w2D2`; intent rule
-33).** The deal cuts the consumer working (LAYER-2 "Deal is take"), so the
-steps changed with it:
-
-- `deal.go`: only `room` changed in logic (policy's `work` answer, no
-  longer plus `ahead`: a row has room while its working consumers are under
-  it), plus the doc comments of `deal` and `withRoom`. Nothing else in that
-  file changed.
-- `hand.go` (new): `AckCursor`, `Nudge`, `unacked` (nudges and the
-  `unacked` judgement), `undealt`, `routeBlocked`. `tick.go` runs `unacked`,
-  `undealt` (after the deal) and `routeBlocked` and returns the nudges in
-  `Plan.Nudges`. `holds.go` withdraws consumers left `ready`, and on a held
-  or down row only the unacknowledged ones. `view.go` keeps `TakenAt` (when
-  a consumer went working, the deal), `ReadyAt` and `Acked`. `request.go`
-  takes a card hold (`holdMoves`: the `Block` merged with the `Withdraw` of
-  each live consumer). `asker.go`: timeouts `ReadyNag` 1 s and `ReadyTake`
-  180 s (the human's numbers, 2026-11-07, policy's `timeouts()`),
-  `UndealtAfter` 2 s (a guess).
-- Model: `tla/Steps.tla` has no `Take` and no `Ahead`; cuts are working and
-  their slots join the taken order; `Eligible` is `Used < Width`. New
-  variables `rdy` (ticks each producer has been ready) and `ju` (open
-  undealt judgements), and the property `DealtWithinKTicks`: a producer
-  ready `UndealtTicks` (2) ticks is dealt or has an undealt judgement. New
-  invariant `DealIsTake`. Reversed witnesses: `StepsCutReady`,
-  `StepsUndealtSilent` (no undealt judgement: the property breaks in burst,
-  budget 1), `StepsDealOneShort` (replacing `StepsReadyCountedAgainstWidth`);
-  reach check `StepsNeverUndealt`. `StepsWidthOver` now runs in burst.
-- Not trace-bound: the undealt judgement is counted in ticks in the model
-  and in seconds in the code, and `ju` is not in the trace record (the
-  trace's judgements are `unserved`, `cannot-read` and `policy`); nudges and
-  `unacked` are outside the model (it has no clock for them). The steps
-  trace walk has no take: an acknowledgement moves no card.
-- TLC and traces (measured, bench host, cd960636): the full `ci-tlc.sh`
-  run passed (250 as expected), with `DealtWithinKTicks`, `DealIsTake`,
-  `StepsCutReady`, `StepsUndealtSilent`, `StepsDealOneShort` and
-  `StepsNeverUndealt` as required. `StepsDealtTwice` stopped violating once
-  a blocker preempts only when no row has room (the deal cannot then place
-  it either); it gained a second fault, a preemption with free width. The
-  trace check refused `steps-walk-land-1` at a Tick: the model asked a read
-  of a review in a held stream, so a failed `rows` answer opened a policy
-  judgement the code never opens (its `dealRead` returns first); the model
-  now skips held streams' reads. The `steps-ok-*` and `steps-bad-*`
-  fixtures are regenerated from that run's logs.
-- Seen in the tests: with a tick budget of 1, each tick's `Resolve` of the
-  next producer spends the budget and the deal never reaches the first
-  ready producer; the `undealt` judgement names it with the budget as the
-  cause (`TestHandUndealtJudged`). At the default budget (250) this needs a
-  burst of over 250 resolves in a tick; not measured.
-- Tests: `hand_test.go` (nudge then unacked, no nudge after a report,
-  undealt with and without room, a route fault blocks and is never dealt
-  again, a plain fault re-deals); the sims' `take` is the acknowledgement.
-
-
-**Stitch w3I: the landing, the deal's model and deal-is-take together
-(2026-11-07, branch `v2-stitch-w3I`).** w2D1 and w2D2 were built apart from
-the landing (w2L); merged, superseding them where they differ:
-- The closed list of judgement kinds is the landing's (`land`; no
-  `conflict`, `base-red`, `no-ci`, `forge`) with w2D1's `overlap`,
-  `no-model`, `no-policy` and w2D2's `unacked`, `undealt`. No deadline:
-  `blocked`, `land`, `no-policy`. The view's judgement index (w2D1) is
-  `jindex()`; `judged(p)` stays the landing's land-judgement test.
-- `unserved` is opened by the deal only (w2D1), with w2A's routes in its
-  About (`unservedAbout`); the coordinator events take the landing's
-  `Landed` and `Red` and w2D2's `Block` (the card hold).
-- `undealt` counts room only on rows the deal can name a model for, and
-  nothing while the policy gate deals nothing: `no-model` and `no-policy`
-  already say why those cards wait (before this, a gated or model-less
-  ready card also opened an `undealt` judgement calling it an engine
-  defect; `TestTickNoDealWithoutPolicy`, `TestTickNoModelNoDeal`).
-- One vocabulary of routes: a `missing-route:` fault's first word is the
-  route's name (`card.RouteName`), the name a brief declares with
-  `NEEDS-ROUTE:` (w2A) and a machine serves as `route:<name>`; the blocked
-  judgement's fix says so (replace the card with a brief that declares the
-  route; or, when it already declares it, fix the row that serves it
-  without having it). The harness prompt asks for that form.
-- Model (`Steps.tla`): w2D2's deal-is-take (no `Take`, no `Ahead`, `rdy`
-  and `ju`, `DealIsTake`, `DealtWithinKTicks`) with the landing's `jsnap`,
-  `Answer` and `MergingCovered` and w2D1's `pol`, hand land, `NoPlan`,
-  `ResolveFromState`, `HeldBehindShown`. `und` counts nothing while
-  `~V.pol` (the code's gate); `RoomFor` is `w.pol /\ RoomIn(w, p)`. The
-  hand land (EnvMove) needs no open land judgement: a judged card's hand
-  land answers the judgement in the same op (verbs `handLand`), which is
-  `Answer(p, "land")`. Every witness and cfg regenerated by
-  `make-steps-witnesses.py`; `StepsReadyCountedAgainstWidth` stays retired
-  (w2D2's `StepsDealOneShort`).
-- The stream fence (`rsx`) covers the groups that read the stream (pre,
-  start, read, fix, resolve), not `yes` or `landed`: CardMachine's ReadYes
-  and Landed and `card/move.go` read no stream. Found by the trace check
-  (`steps-walk-land-1`, record 38): a Hold between the Snap and the Tick
-  refused the model's yes op on the fence while the code moved p to
-  merging. The model followed the code and the card machine, which agree.
-- Checked at `ca1c7d28` on a bench (measured): `tla/ci-tlc.sh` 260 of 260
-  runs ok (every passing cfg clean; every witness and reach check
-  violated as required, among them `DealIsTake`, `DealtWithinKTicks`,
-  `MergingCovered`, `NoDealWithoutPolicy`, `ResolveFromState`,
-  `HeldBehindShown`, `StepsNeverGated`, `StepsNeverHeldBehind`,
-  `StepsNeverHandLanded`, `StepsNeverUndealt`); `make-traces.sh check` 88
-  of 88 ok (the 12 Steps walks, the 8 `steps-ok-*` fixtures matched, the
-  6 `steps-bad-*` refused at their last record). The Steps fixtures from
-  that commit's TLC logs are byte-identical to those of `e8852d30`.
-## Built: inherited red worded for a glance (stitch w3L, 2026-11-07)
-
-Directive 59; LANDING.md "Red that is not the card's". `landJudge` words the
-land outcome `ci_red_inherited` (`InheritedRed`: layer 4 found every failing
-workflow red on the base too and the run ended) as "card <c> (...) has only
-inherited red (...): land it with nova-sprint land <c> --reason <why>.
-Facts: ...". It is still one land judgement with the choices land, fix and
-retry: red never lands by itself, and no state or transition changed, so
-`Steps.tla` is untouched. Test: `TestTickLandInheritedRedIsAGlance`.
-
-## Built: why the fleet is idle (stitch w4V, 2026-11-07)
-
-`steps.Waits(cards)` (`waits.go`) explains each stream's waiting producers for
-the idle judgement, `check` and the board, so the three say one thing: each
-waiting producer is counted once, on the front of the NEEDS chain it waits on
-(its first need not landed, followed while that need is itself waiting on a
-need not landed; a need naming no card is "missing") or, with every need
-landed, on the least producer and first file it is held behind. The holder
-rule is the needs step's own: `heldBehind` now calls `leastHolder`, shared
-with `Waits` (no change in behaviour; `TestTickOverlapIsAFile` unchanged).
-`Waits` also finds each stream's longest NEEDS chain over cards not landed or
-failed (a sentinel adds no length and is not listed; a cycle a store op
-wrote ends). `IdleWhy` is the summary ("N chains (longest K, top: <card>
-blocks M), H overlaps (top: <card> holds C on <file>)") and the command for
-the top card: show it when in flight, judge it when blocked, relink away from
-it when missing or failed, and `replace` for a NEEDS that is not a consumed
-output; never a priority (intent rule 14: set by request only).
-
-The idle judgement's text (one function, `idleCauses` in `judge.go`; the
-alarm's condition, `cleared` and the choices are unchanged): when no ready
-producer is dealable (every ready one in a held stream or unserved) and none
-resolved this tick, it reads "working W of O open width while R ready and N
-waiting: nothing dealable: <IdleWhy>; ready: <held> in held streams,
-<unserved> with no serving row; <command>"; otherwise it keeps the held and
-unserved counts. It is built only when the judgement would open (one open or
-pending skips it). No action, state or judgement kind changed, so
-`Steps.tla` and its generators are untouched.
-
-Cost: `BenchmarkWaits5000` (5,000 producers in 50 streams, a chain of 20
-and 40 on one front per stream) is 3.9 ms on the working machine (measured,
-one run, Apple M3 Ultra). Tests (unit, no clock): `TestWaitsGroupsByChainFrontAndHolder`,
-`TestWaitsLineNamesThreeAndCounts`, `TestWaitsSurvivesACycle`,
-`TestIdleWhyAndFix`, `TestIdleJudgementSaysWhyNothingDeals`.
+| File | |
+|---|---|
+| `tick.go` | `Tick`, the tick state, the questions |
+| `view.go` | the view, `Build`, `Fold`, overlap |
+| `inputs.go` | `Inputs`, `InboxItem`, `EdgeRequest`, `Plan`, `GroupKey` |
+| `asker.go` | `Asker`, the question types, `Engine` defaults, the oracle that validates answers |
+| `group.go`, `pack.go` | groups, ordering, budget, packing, op ids |
+| `reports.go`, `preempt.go`, `needs.go`, `holds.go`, `limits.go`, `fix.go` | the steps |
+| `deal.go`, `hand.go`, `model.go` | the deal, rows and ranking, acknowledgement and nudges, models and the gate |
+| `land.go` | land results and requests |
+| `judge.go` | judgements and alarms |
+| `request.go` | `Verb` and the actor table |
+| `roster.go` | roster lookups |
+| `waits.go` | why the fleet is idle |
+| `trace.go` | the refinement mapping to `tla/Steps.tla` |

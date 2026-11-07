@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Deal is take (defect 52, intent rule 33; LAYER-3 "In hand"): a consumer is
+// Deal is take (LAYER-3 "In hand"): a consumer is
 // cut working, in its row's hand at the deal, and the deal's push tells the
 // row what it holds. The row's acknowledgement is its `take`, which writes
 // AckCursor once; until then the steps nudge the row each tick from
@@ -45,9 +45,7 @@ func (t *tick) dealtAt(c string) time.Time {
 	return t.v.Since
 }
 
-// unacked is the nudges and the ready timeout (LAYER-3 "In hand"; the
-// human, 2026-11-07: "nag every second until taken", "ready_take withdraws
-// and re-deals"): a working consumer its row has not acknowledged is nudged
+// unacked is the nudges and the ready timeout (LAYER-3 "In hand"): a working consumer its row has not acknowledged is nudged
 // each tick from timeouts ready_nag after the deal, with the row's count of
 // such cards, the cards it has taken and its width; at ready_take a work
 // card is withdrawn and its producer dealt in the same group, by the
@@ -134,7 +132,7 @@ func (t *tick) readyAt(p string) time.Time {
 	return t.v.Since
 }
 
-// undealt is the stall of a single card (defect 52's twin, directive 65):
+// undealt is the stall of a single card:
 // a ready producer still ready UndealtAfter after it went ready (more than
 // one one-second tick) while an open row serving its tier has room opens
 // one judgement naming the row and the card, whatever kept the deal from it.
@@ -169,7 +167,7 @@ func (t *tick) undealt() {
 }
 
 // routeBlocked opens the blocked judgement of a producer a missing-route
-// fault blocked (card.RouteFault; defect 48): the report is the row's own
+// fault blocked (card.RouteFault): the report is the row's own
 // op, so the judgement is the next tick's. It names the row, the card and
 // what is missing; the producer waits blocked until the coordinator answers.
 func (t *tick) routeBlocked() {

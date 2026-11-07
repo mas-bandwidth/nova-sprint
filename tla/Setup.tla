@@ -2,7 +2,7 @@
 EXTENDS Naturals, Sequences, FiniteSets
 
 (***************************************************************************
- Eight-step resumable setup, LAYER-6-RUN section 5 and docs/SETUP.
+ Eight-step resumable setup (docs/LAYER-6-RUN.md and docs/SETUP.md).
  verified is evidence from THIS walk, not a durable completion bitmap.
  Restart always begins at step 1. World regressions are separate from the
  last successful probe: a regression after a probe cannot be magically

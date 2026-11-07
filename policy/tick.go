@@ -11,7 +11,7 @@ import (
 	"go.starlark.net/starlark"
 )
 
-// A tick's one deadline (ruling 4, 2026-11-06): each version runs on its own
+// A tick's one deadline: each version runs on its own
 // goroutine and thread under the tick's context; the deadline cancels the
 // thread, every phase (compile, each answer, each validation loop, the joint
 // check) checks it, and the caller stops waiting at it, so a single builtin
@@ -68,7 +68,7 @@ func (e *Engine) start(ctx context.Context, src source, asks []ask, all bool) *r
 
 // race answers a tick: tried in order, each started when the one before it
 // fails, or at fallbackAfter from start (the tick's first byte, before its
-// inputs were built: rowan2's probe) when it has not answered; the first in
+// inputs were built) when it has not answered; the first in
 // order that passes before the deadline answers. Each failing version
 // before it is one Failure; when none passes, Version is -1.
 func (e *Engine) race(ctx context.Context, start time.Time, tried []source, asks []ask) (Answers, []Failure) {
@@ -214,7 +214,7 @@ func (r *run) fresh(p *program, k *ask, o *outcome) (cached, *Failure) {
 }
 
 // refuse records f, and for check marks k's answer refused, so a refused
-// answer is never shown as a change of value (Emma's probe).
+// answer is never shown as a change of value.
 func (o *outcome) refuse(k *ask, f Failure) {
 	o.fs = append(o.fs, f)
 	if o.a.shown != nil {
@@ -225,7 +225,7 @@ func (o *outcome) refuse(k *ask, f Failure) {
 // joint runs each rows answer's joint check once every answer is in. When
 // a width was refused (check goes on past it) the joint check has nothing
 // to stand on and is not run: the width's refusal is the report's, not a
-// rows refusal per card (Emma's probe).
+// rows refusal per card.
 func (r *run) joint(p *program, o *outcome) {
 	widths := 0
 	for i := range r.asks {
@@ -249,7 +249,7 @@ func (r *run) joint(p *program, o *outcome) {
 }
 
 // inherit is the catalog of a version without catalog(): the built-in's,
-// whose version it names (the catalog that answered: ruling 7), in a tick
+// whose version it names (the catalog that answered), in a tick
 // and in ReadCatalog alike. The built-in failing is p's failure at its last
 // line, never a panic.
 func (r *run) inherit(p *program, k *ask) (cached, *Failure) {

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate layer 6 cfgs and reversed witnesses with exact replacement counts.
 
-No TLC runs here. Invoke TLC on hetzner2 under nova-reserve; see run-layer6.py.
+No TLC runs here; see run-layer6.py.
 RunLockCheckRace records the accepted gap between the last health check
-and committing on a separate store session; it is not a code defect.
+and committing on a separate store session; it is a documented limit of the design.
 """
 from pathlib import Path
 

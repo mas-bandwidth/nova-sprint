@@ -1,7 +1,0 @@
-=== RUN   TestDashboardIncremental5000
-    performance_test.go:49: trial=0 advance=920.125µs json=148.615µs bytes=670
-    performance_test.go:49: trial=1 advance=1.521819ms json=70.521µs bytes=670
-    performance_test.go:49: trial=2 advance=904.355µs json=34.374µs bytes=670
---- PASS: TestDashboardIncremental5000 (0.07s)
-PASS
-ok  	github.com/mas-bandwidth/nova-sprint/dash	0.072s

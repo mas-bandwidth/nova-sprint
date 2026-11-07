@@ -392,10 +392,9 @@ func (t *pgTx) putPolicy(p PolicyVersion) error {
 }
 
 // readReceipt is a stored receipt with its after-image, a copy of the
-// event's after column (the receipt column leaves it out since round 15), so
-// an event's After and its Receipt.After are two values, as on the Fake (the
-// seventh cold read). A receipt stored before round 15 carries its own
-// after, the same image; the column's copy replaces it.
+// event's after column (the receipt column leaves it out), so an event's
+// After and its Receipt.After are two values, as on the Fake. A receipt
+// stored by an earlier build carries its own after, the same image; the column's copy replaces it.
 func readReceipt(b []byte, after *State) (Receipt, error) {
 	var r Receipt
 	if err := json.Unmarshal(b, &r); err != nil {

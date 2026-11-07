@@ -13,7 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// runHook is `hook` (Stella's rulings, 2026-11-06): the name on the bus
+// runHook is `hook`: the name on the bus
 // first; the sprint mints the session; one hook per name and one
 // coordinator per sprint; a worker only once the sprint has a commit
 // identity; the identity's two git config lines and the role's playbook
@@ -40,7 +40,7 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	return e.hookAs(ctx, snap, in.actor, r)
 }
 
-// originsReadable is hook's admission (intent rule 34): the hooking
+// originsReadable is hook's admission: the hooking
 // process has what finish and read will need. The store credential is
 // proved by the read before this; finish also reads the card's head and
 // the group branch at the stream's origin, so every stream's repository
@@ -138,8 +138,7 @@ func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor 
 	return done("nova-sprint hook --as "+target+" --role worker", "UNHOOKED "+target), nil
 }
 
-// runWake is `wake`, nova-bus hook's --exec (Stella's and Johnny's ask,
-// 2026-11-07): the hook takes, the friend works. Each deal line of a
+// runWake is `wake`, nova-bus hook's --exec (nova-bus hook's --exec): the hook takes, the friend works. Each deal line of a
 // message from sprint that names this row is taken here, before the session
 // wakes, and replaced by take's own output (TAKEN with the brief, or the
 // refusal); every other line, and every other message, passes unchanged.

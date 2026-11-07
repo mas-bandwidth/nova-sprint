@@ -6,8 +6,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/roster"
 )
 
-// testRoster is the roster the tests' rows come from (round 22: a row's kind
-// and width are the roster's, never the store's).
+// testRoster is the roster the tests' rows come from (a row's kind and
+// width are the roster's, never the store's).
 var testRoster = func() roster.Roster {
 	r := roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{}}
 	worker := func(name string, width int) { r.Workers[name] = roster.Worker{Name: name, Width: width} }

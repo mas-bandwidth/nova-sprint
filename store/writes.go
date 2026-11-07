@@ -138,7 +138,7 @@ func producersOnly(card Card) string {
 
 // redOnProducer refuses a red write on any card but a producer, whatever
 // the value, naming the fix: a read's verdict is recorded on the producer it
-// read, and a sentinel is never read (round 17).
+// read, and a sentinel is never read.
 func redOnProducer(k Card) string {
 	switch k.Kind {
 	case "producer":
@@ -157,7 +157,7 @@ func consumer(kind string) bool { return kind == "work" || kind == "read" }
 // sentinel has none, and a consumer names a row of the epoch (read inside the
 // transaction; the foreign key says the same). Whether that row serves the
 // card's tier and has room for it is the roster's to say, at the deal (card
-// package), never the store's: width and tiers are configuration (round 22).
+// package), never the store's: width and tiers are configuration.
 func (w *work) checkHolder(c Card) (string, error) {
 	switch {
 	case !consumer(c.Kind):

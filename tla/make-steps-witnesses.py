@@ -82,7 +82,7 @@ WITNESSES = [
     ("StepsDealtTwice", "NeverDealtTwice", "pre",
      "The deal does not skip a blocker the preemption step claimed: one\n"
      "tick plans the preemption and a plain Start for the same blocker.\n"
-     "Since the deal is the take (defect 52) a blocker preempts only when\n"
+     "Since the deal is the take, a blocker preempts only when\n"
      "no row has room, so the deal could not place it either; the second\n"
      "fault, a preemption that fires with free width, makes the first\n"
      "reachable, and the Free guard is what then keeps the deal off it.",
@@ -99,7 +99,7 @@ WITNESSES = [
      [("  /\\ Used(V, r, t) < Width[r]\n",
        "  /\\ TRUE   \\* FAULT: was Used(V, r, t) < Width[r]\n", 1)]),
     ("StepsCutReady", "DealIsTake", "pre",
-     "Start cuts its work consumer ready, as before defect 52.",
+     "Start cuts its work consumer ready.",
      [("StartCut(W, p, r) == [st |-> \"working\", kind |-> \"work\",",
        "StartCut(W, p, r) == [st |-> \"ready\", kind |-> \"work\",   \\* FAULT: was working\n                     ", 1)]),
     ("StepsUndealtSilent", "DealtWithinKTicks", "burst",
@@ -189,7 +189,7 @@ WITNESSES = [
        "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p)}   \\* FAULT: after ignored", 1)]),
     ("StepsAfterHolds", "AfterNeverHolds", "land",
      "The land step holds on any after target not yet landed, queued or\n"
-     "not (v1's frozen LAND-AFTER).",
+     "not.",
      [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
        "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT", 1)]),
     ("StepsLandAfterHoldsUntilLanded", "MergingCovered", "land",

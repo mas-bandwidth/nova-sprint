@@ -1,18 +1,18 @@
 ------------------------------ MODULE RunnerForcePushRewinds ------------------------------
 (***************************************************************************)
-(* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md,  *)
-(* Guarantees 7 to 11). Size: 2 consumers, width 2, 1 slot, 1 Crash.       *)
+(* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md). *)
+(* Size: 2 consumers, width 2, 1 slot, 1 Crash.                            *)
 (*                                                                         *)
-(* The deal is the take (defect 52): both consumers are dealt working, in  *)
+(* The deal is the take: both consumers are dealt working, in              *)
 (* the row's hand, at Init; there is no ready state to take from. Take is  *)
 (* the row's acknowledgement (a cursor) and the start of its job, and it   *)
 (* moves no store state.                                                   *)
 (*                                                                         *)
-(* Passes and jobs are separate processes (defect 66, 2026-11-07): pass is *)
+(* Passes and jobs are separate processes: pass is                         *)
 (* the wake loop's pass (idle or planning); it acknowledges the cards in   *)
 (* its hand and ends whatever its jobs are doing (PassNeverWaitsOnJobs). A *)
 (* job is the rest of each consumer's actions. Stop is the worker's own    *)
-(* stop (defect 73): each live harness is killed, its job kept at staged   *)
+(* stop: each live harness is killed, its job kept at staged               *)
 (* (stopped) to be resumed, never a fault (StopIsNeverAFault). Release is  *)
 (* the restart's no-blame give-back of a job it cannot resume (a job       *)
 (* directory with no receipt): its commits pushed, the consumer withdrawn  *)
@@ -20,7 +20,7 @@
 (* is a new consumer, the card machine's. A dealt card with no job         *)
 (* directory is no release: the pass acknowledges it and runs it.          *)
 (*                                                                         *)
-(* A branch is its holder's (defect 78, 2026-11-07): branch[c] is consumer *)
+(* A branch is its holder's: branch[c] is consumer                         *)
 (* c's card branch on origin: who wrote its tip (none, this job, or the    *)
 (* card's next holder after a withdraw re-dealt it), whether that holder   *)
 (* wrote it, and how many times this job pushed after its consumer was     *)
@@ -307,7 +307,7 @@ Done ==
   /\ \A c \in Consumers : jobState[c] = "cleaned"
   /\ UNCHANGED vars
 
-\* REVERSED WITNESS (defect 78): the live bug: a withdrawn job's directory is never removed (a dirty tree kept, a read-only module cache), and every recovery pass pushes its stale head with a plain --force, rewinding the new holder's branch.
+\* REVERSED WITNESS: a withdrawn job's directory is never removed (a dirty tree kept, a read-only module cache), and every recovery pass pushes its stale head with a plain --force, rewinding the new holder's branch.
 StalePush(c) ==
   /\ ~env.crashed
   /\ pass = "planning"
@@ -400,25 +400,25 @@ WorkingWithinWidth ==
 SlotsWithinCapacity ==
   slotsInUse <= MaxSlots
 
-\* Defect 66: a pass can always end, whatever its jobs are doing; so a wake
+\* A pass can always end, whatever its jobs are doing; so a wake
 \* that arrives while a job runs gets its own pass, and a card dealt into
 \* the hand is acknowledged without waiting for that job.
 PassNeverWaitsOnJobs ==
   (pass = "planning" /\ ~env.crashed) => ENABLED PassEnd
 
-\* Defect 73: a job the worker's stop cut short carries no outcome and no
+\* A job the worker's stop cut short carries no outcome and no
 \* report until it runs again.
 StopIsNeverAFault ==
   \A c \in Consumers : jobDir[c].stopped =>
     /\ jobDir[c].outcome = "none"
     /\ ~(\E op \in appliedOps : op.c = c)
 
-\* Defect 78: a job never pushes once its consumer is final (withdrawn,
+\* A job never pushes once its consumer is final (withdrawn,
 \* released, done): the branch is the card's next holder's.
 NoPushAfterFinal ==
   \A c \in Consumers : branch[c].finalPushes = 0
 
-\* Defect 78: once the card's next holder wrote the branch, the tip stays
+\* Once the card's next holder wrote the branch, the tip stays
 \* the holder's; no job of this worker rewinds it.
 BranchOnlyByHolder ==
   \A c \in Consumers : branch[c].holderWrote => branch[c].tip = "holder"
@@ -435,7 +435,7 @@ NeverHolderPushedOverJob == ~(\E c \in Consumers : branch[c].holderWrote /\ jobD
 Liveness ==
   \A c \in Consumers : [](storeState[c] = "working" => <>(jobState[c] \in {"recorded", "cleaned"}))
 
-\* Defect 78: a withdrawn job's directory is removed, not kept for ever.
+\* A withdrawn job's directory is removed, not kept for ever.
 FinalDirRemoved ==
   \A c \in Consumers : [](storeState[c] = "fail" /\ jobDir[c].exists => <>(~jobDir[c].exists))
 =============================================================================

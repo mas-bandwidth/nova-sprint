@@ -11,7 +11,7 @@ import (
 )
 
 // The log says each failure's cause, redacted: a name, never a secret's
-// value (audit row 28: errors are reported, never swallowed).
+// value (errors are reported, never swallowed).
 func TestWriterLoggerReportsCountsAndRedactedCauses(t *testing.T) {
 	var out bytes.Buffer
 	l := NewWriterLogger(&out)

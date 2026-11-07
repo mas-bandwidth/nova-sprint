@@ -2,7 +2,7 @@
 # Check one recorded trace against its model:
 #   bash tla/check-trace.sh <model> <trace dir>
 # <model> is a model with a <model>Trace.tla (Store, CardMachine, Steps, Policy,
-# Push, LandEdge, Runner, ...); <trace dir> holds <model>TraceLog.tla and
+# LandEdge, Runner, Run, Setup, SetupChoices, SetupHandoff, ...); <trace dir> holds <model>TraceLog.tla and
 # <model>Trace.cfg (tla/make-traces.sh writes them under tla/traces/).
 #
 # Runs TLC on tla/<model>Trace.tla with the trace dir on the TLA-Library
@@ -15,7 +15,7 @@
 # the trace should do ("matched", or "forbidden at K" for a breaker);
 # the exit code is 0 when the outcome is the expected one, 1 when it is not,
 # 2 when TLC ended any other way (a parse error, a crash).
-# Run it on a bench host (hetzner2), never on the working machine.
+# Run it on a bench host, never on the working machine.
 # TLA_CACHE is where the pinned tla2tools.jar is kept (default ~/.cache/nova-sprint).
 set -u
 
@@ -23,7 +23,7 @@ VERSION=v1.8.0
 URL="https://github.com/tlaplus/tlaplus/releases/download/$VERSION/tla2tools.jar"
 SHA256=7a0a1e90628ebff2e3e8733375f8b684fa59504d2e02bddc4cb51a7679bb7e04
 
-[ $# -eq 2 ] || { echo "usage: check-trace.sh <Store|CardMachine> <trace dir>" >&2; exit 2; }
+[ $# -eq 2 ] || { echo "usage: check-trace.sh <model> <trace dir>" >&2; exit 2; }
 MODEL="$1"
 TRACE="$(cd "$2" && pwd)" || exit 2
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -54,7 +54,7 @@ cd "$HERE" || exit 2
 "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK" -DTLA-Library="$TRACE" -cp "$JAR" tlc2.TLC \
     -noGenerateSpecTE -workers 1 -metadir "$WORK/states" -config "$CFG" "${MODEL}Trace.tla" > "$WORK/tlc.log" 2>&1
 code=$?
-# Optional retained raw evidence; verdict semantics are unchanged.
+# TRACE_LOG keeps TLC's raw output; the verdict does not depend on it.
 if [ -n "${TRACE_LOG:-}" ]; then
     cp "$WORK/tlc.log" "$TRACE_LOG" || exit 2
 fi

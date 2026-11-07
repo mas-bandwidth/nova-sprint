@@ -15,7 +15,7 @@ var toolsModule = regexp.MustCompile(`^github\.com/mas-bandwidth/nova-tools(/v[0
 // InstalledTools is nova-tools' release as the installed binaries carry it:
 // the module version Go stamps into nova-config (the build info a release
 // build records from its tag), read from the binary on PATH without running
-// it. nova-version, which used to answer this, is retired.
+// it.
 func InstalledTools(context.Context) (string, error) {
 	path, err := exec.LookPath("nova-config")
 	if err != nil {

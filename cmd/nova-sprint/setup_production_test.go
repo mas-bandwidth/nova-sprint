@@ -37,7 +37,7 @@ func TestProductionSetupConstructsRealDependenciesWithoutNetwork(t *testing.T) {
 	if _, ok := p.runtime.Adoption.(verbs.VersionAdoption); !ok {
 		t.Fatal("missing adoption adapter")
 	}
-	if p.forInput(verbs.SetupInput{Actor: "friendF"}).Prerequisites.Env.Choices.Actor != "friendF" {
+	if p.forInput(verbs.SetupInput{Actor: "coord"}).Prerequisites.Env.Choices.Actor != "coord" {
 		t.Fatal("input actor not carried")
 	}
 }

@@ -87,8 +87,7 @@ type ModelRow struct {
 // TraceState is the refinement mapping: the snapshot's cards, rows and
 // stream projected onto CardMachine.tla's ps, cs, rs and held. heads is the
 // head table: heads[0] is the base (head 0), heads[i] is head i.
-// widths is each row's width, read from the roster (round 22: the store
-// keeps none).
+// widths is each row's width, read from the roster (the store keeps none).
 func TraceState(s store.Snapshot, stream string, heads []string, widths map[string]int) (ModelState, error) {
 	m := ModelState{Ps: map[string]ModelProd{}, Cs: map[Slot]ModelCons{}, Rs: map[string]ModelRow{}, Held: s.Streams[stream].Held}
 	head := func(h string) (int, error) {
@@ -126,8 +125,8 @@ func traceProd(c store.Card, ncut int, head func(string) (int, error)) (ModelPro
 }
 
 // TraceResult is a consumer's result as the model names it: a work fault
-// whose reason names a missing route (RouteFault) is "route" (defect 48),
-// every other result itself.
+// whose reason names a missing route (RouteFault) is "route", every other
+// result itself.
 func TraceResult(kind, result, reason string) string {
 	if _, route := RouteFault(reason); route && result == "fault" && kind == "work" {
 		return "route"

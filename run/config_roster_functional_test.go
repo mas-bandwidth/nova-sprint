@@ -13,7 +13,7 @@ import (
 	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
 )
 
-// The env path must name config/schema.sql from nova-tools v2.0.2. The
+// The env path must name config/schema.sql from the pinned nova-tools v2.0.2. The
 // fixture applies it only to chooserTestPG's isolated temporary database.
 func configSchemaFixture(t *testing.T) []byte {
 	t.Helper()

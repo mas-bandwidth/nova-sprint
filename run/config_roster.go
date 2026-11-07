@@ -35,7 +35,7 @@ func (r *ConfigRoster) ReadRoster(ctx context.Context) (roster.Roster, error) {
 }
 
 // ReadRosterAt reads the roster at width cap widthCap (the active policy's
-// Limits.FleetWidthCap, drift row 26): one config snapshot, one Load.
+// Limits.FleetWidthCap): one config snapshot, one Load.
 func (r *ConfigRoster) ReadRosterAt(ctx context.Context, widthCap int) (roster.Roster, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -1,8 +1,7 @@
 // Package roster is the sprint's view of who can work: the fleet's bench
 // machines (workers) and the enabled friends (kin), read from nova-config,
 // the one true source of that configuration. nova-sprint never copies it
-// into its store (round 22: a store row is sprint state only); the deal
-// guards take each row's width and tiers from a Roster value instead.
+// into its store; the deal guards take each row's width and tiers from a Roster value instead.
 //
 // The roster is read through a Source. The real one reads nova-config's
 // PostgreSQL through nova-tools' config package (source.go). Layer 6 owns
@@ -70,8 +69,7 @@ type Worker struct {
 
 // RoutePrefix is how a machine serves a route or a device in nova-config
 // today: a role `route:<name>` beside `bench` (nova-config has no routes
-// field; a first-class one on machines and friends is owed upstream, and a
-// friend serves no route until it exists). A card declares the routes it
+// field, so a friend serves no route). A card declares the routes it
 // needs (card.NeedsRoutes) and is dealt only to rows that serve them all.
 const RoutePrefix = "route:"
 
@@ -130,10 +128,10 @@ func (r Roster) RefusedNamed(name string) (Refused, bool) {
 
 // Load reads src once: every machine with the bench role is a worker at
 // width min(cores, cap) serving every tier; every enabled friend is kin at
-// its own width and tiers. cap is policy's limits().fleet_width_cap (drift
-// row 26; the built-in says 8). A cap below 1 and a failed read are errors.
-// A bench with no cores loads at width 0, Held NoCores (
-// 2026-11-07: a machine with no core count is held, never refused). A row
+// its own width and tiers. cap is policy's limits().fleet_width_cap (the
+// built-in says 8). A cap below 1 and a failed read are errors.
+// A bench with no cores loads at width 0, Held NoCores (a machine
+// with no core count is held, never refused). A row
 // that cannot be loaded (no name, a name given twice, a negative width, an
 // unknown tier) is skipped and named in Refused: the roster is not
 // guessed, and one bad row never empties it.
@@ -254,7 +252,7 @@ func routesOf(roles []string) []string {
 }
 
 // Advertised is r with each worker's width and tiers as its own row says
-// it can serve (defect 74): a worker's heartbeat advertises the tiers its
+// it can serve: a worker's heartbeat advertises the tiers its
 // harness adapter serves and its nova-reserve slots (store.Row Tiers and
 // SlotsTotal). A worker that advertised serves exactly those tiers, at width
 // min(its width, its slots) when it read its slots (0 of 0 when it could

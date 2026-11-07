@@ -41,7 +41,7 @@ func (e *Engine) headReady(ctx context.Context, snap store.Snapshot, c store.Car
 	return e.madeAsIdentity(ctx, snap, s, url, c, head)
 }
 
-// madeAsIdentity is finish's admission of the head's commits (round 24):
+// madeAsIdentity is finish's admission of the head's commits:
 // every commit on head that is neither in the attempt's base nor on the
 // stream's base at origin is authored and committed as the sprint's
 // identity, by email (case folded), read in a clone through the git edge.

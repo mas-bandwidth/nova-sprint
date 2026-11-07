@@ -19,7 +19,7 @@ func landJudged2(s *store.Snapshot) {
 }
 
 // land merges the card's own head by hand and records it landed with the
-// merge sha and the reason, in one op (intent rule 32).
+// merge sha and the reason, in one op.
 func TestLandByHand(t *testing.T) {
 	s := sprint()
 	merging2(&s)

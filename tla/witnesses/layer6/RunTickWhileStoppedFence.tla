@@ -9,13 +9,13 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
  through the next L3 fold/replan; run continues the independently packed
  ops in order. Run never splits members of a packed atomic op.
 
- AtomicChooser=FALSE implements the coordinator ruling: check session health
+ AtomicChooser=FALSE: check session health
  at tick start, stop after observing loss, but permit the check/use window.
  At most one owns the PG advisory lock. The old process may still Apply or
  push before observing loss; gen/condition fences are the store contract.
  RunLockCheckRace violates the deliberately STRONGER CommitUnderCurrentLock
- property, recording the accepted limitation rather than an implementation
- bug. AtomicChooser=TRUE is only a comparison contract, not implemented.
+ property, recording the accepted limitation of the check/use window.
+ AtomicChooser=TRUE is only a comparison contract, not implemented.
 
  Fold/Select/Refuse/EndTick compose the L3 scheduling interface: L3 owns
  ordering, budgets, packing and carry. Run applies returned ops in order,

@@ -27,7 +27,7 @@ type index struct {
 }
 
 // rostered is a store row with its configuration from the roster, by its
-// name (store round 22: a row is sprint state only; nova-config, read by
+// name (a row is sprint state only; nova-config, read by
 // roster.Load, is the one source of kind, width, tiers, model and harness).
 type rostered struct {
 	store.Row
@@ -182,7 +182,7 @@ func orderCard(c store.Card) starlark.Value {
 // card is the subject of rows, reads and verdict: id, stream, tier (its
 // minimum), attempt, bounces, priority and writer_rank (the rank of the row
 // that wrote the head; the card's tier when that row is unknown). Never the
-// prose (rowan2's ruling 4 and 5): a brief of any size would enter every
+// prose: a brief of any size would enter every
 // input and the answer cache's key, so the inputs would grow with the briefs
 // and not with the card count.
 func (ix *index) card(c store.Card) starlark.Value {

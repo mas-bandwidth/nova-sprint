@@ -213,8 +213,8 @@ func (f failingAnswers) AnswerContext(ctx context.Context, vs policy.Versions, s
 	return a, []policy.Failure{{Version: 1, Label: "v1", Question: "order", Subject: q.Order[0], Line: 3, Msg: "boom"}}
 }
 
-// TestCheckReprovesAdmission: check re-proves admission (intent rule 34)
-// and says what directive 75 found it silent on: no policy active, a policy
+// TestCheckReprovesAdmission: check re-proves admission
+// and says what it would otherwise be silent on: no policy active, a policy
 // failing a question, a working card with no live job, a card that would
 // not be admitted today, and a stream whose card branches cannot be made.
 func TestCheckReprovesAdmission(t *testing.T) {

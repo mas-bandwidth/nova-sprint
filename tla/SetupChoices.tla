@@ -2,7 +2,7 @@
 EXTENDS Naturals, Sequences, FiniteSets
 
 (***************************************************************************
- Explicit durable-choice contract. Old Setup evidence remains unchanged.
+ Explicit durable-choice contract.
  KeyQuestions identifies provider keys separately. None discharges the key
  obligation without inventing a saved key or prompt. Ask samples prompt plus
  successful save; failures inside that pair require a finer model. Supply and

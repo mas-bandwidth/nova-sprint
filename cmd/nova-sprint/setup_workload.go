@@ -40,8 +40,7 @@ func workerArgv(machine, _ string) []string {
 
 // workerProviders is the worker's key-proxy routes (edge/worker
 // ParseProviders; an upstream is given without /v1): DeepSeek and
-// Inception (Mercury). Paper Instruments (Ultramarine) is left out until
-// its upstream is known; adding a route is this string and its key in
+// Inception (Mercury). Adding a route is this string and its key in
 // workerProviderKeys.
 const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY"
 

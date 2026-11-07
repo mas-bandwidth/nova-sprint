@@ -97,7 +97,7 @@ func testBrokenMidSprint(t *testing.T, w *world) {
 	a, fs = tick()
 	require.Empty(t, fs)
 	assert.Equal(t, 3, a.Version)
-	// Round 3: a tick keeps no answer text (only check does), so check's own
+	// A tick keeps no answer text (only check does), so check's own
 	// answers on the tick's snapshot are compared with the tick's.
 	checked, cfs := e.checkRun(w.ctx(), storedSource(v3, fixed), w.snap(), w.ro)
 	require.Empty(t, cfs)
@@ -143,7 +143,7 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	assert.Equal(t, []any{int64(1), int64(10)}, a.Order["p1"])
 	assert.Equal(t, []any{int64(0), int64(10)}, a.Order["p2"], "a fix attempt first")
 	assert.Equal(t, "yes", a.Verdict["p3"])
-	assert.Equal(t, Width{Work: 2, Ahead: 0}, a.Width["r1"], "no deal-ahead for a worker (defect 74)")
+	assert.Equal(t, Width{Work: 2, Ahead: 0}, a.Width["r1"], "no deal-ahead for a worker")
 	assert.Equal(t, Landing{BackedUp: 2, Flowing: 1, CIWait: 600}, a.Landing["s1"])
 	assert.Equal(t, map[string]bool{"s1": true, "s2": true}, a.Stitch)
 	a, _ = testEngine().Answer(Versions{}, shapes[2], w.ro, FullQuestions(shapes[2], nil))
@@ -194,7 +194,7 @@ func TestVerdictRetry(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "retry" with a done ok or fix read`, line), fs[0].Error())
 }
 
-// TestRosterIsTheSourceOfRowFacts (round 5): every row fact a question
+// TestRosterIsTheSourceOfRowFacts: every row fact a question
 // reads is the roster's, by the row's name; a row the roster does not name
 // is in no question and is reported once, as a judgement.
 func TestRosterIsTheSourceOfRowFacts(t *testing.T) {

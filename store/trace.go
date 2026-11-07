@@ -25,7 +25,7 @@ import (
 // What the code has that the model does not (the abstractions):
 //
 //   - Streams and every stream write (PutStream, SetStreamHeld,
-//     SetStreamMode, SetStreamForge; mode and forge are round 22's) and the
+//     SetStreamMode, SetStreamForge; mode and forge are stream state) and the
 //     StreamHeld condition: the model has no streams. PutStream is dropped
 //     from a projected op (it is never refused for a value it carries); an
 //     op with another stream write or StreamHeld is not projected (TraceOp
@@ -47,10 +47,10 @@ import (
 //   - Row flaps and reason, and the write on them (SetRowFlaps): TraceOp
 //     refuses it. A row's session and role (the hook, PutRow) are projected
 //     as sess and role; a walk's sessions are the model's (x, y).
-//   - The sprint's commit identity (SetIdentity, round 24): TraceOp refuses
+//   - The sprint's commit identity (SetIdentity): TraceOp refuses
 //     it; no store rule reads it, and a clear keeps it as it keeps the stop.
 //   - The stop's reason: only Stopped is projected (SetStopped's flag). A row has no kind, width, tiers, model or harness in the
-//     store or the model since round 22: they are the roster's (the tiers
+//     store or the model: they are the roster's (the tiers
 //     a worker advertises in its heartbeat are telemetry, above).
 //   - Judgement kind, about, question, command, group, deadline, answer,
 //     actor and times: only the state is projected; a close before

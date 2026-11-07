@@ -57,7 +57,7 @@ func verifierOf(t *testing.T, password string) *string {
 	return &v
 }
 
-// Defect 37: the role's password is proven or set from the seat; a pg_hba
+// The role's password is proven or set from the seat; a pg_hba
 // trust line never passes a role with no password or another password.
 func TestEnsureSprintPassword(t *testing.T) {
 	for name, c := range map[string]struct {

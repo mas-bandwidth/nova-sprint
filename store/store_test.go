@@ -79,7 +79,7 @@ func TestFakeRaces(t *testing.T) {
 	h.ok(h.op("ready", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
-		"deal": {h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u1", "working"}, SetRowFlaps{"w1", 1}), h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u2", "working"}, SetRowFlaps{"w1", 2})}, // the row gen fences a deal; width is the roster's (round 22)
+		"deal": {h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u1", "working"}, SetRowFlaps{"w1", 1}), h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u2", "working"}, SetRowFlaps{"w1", 2})}, // the row gen fences a deal; width is the roster's
 	} {
 		got := make([]Receipt, 2)
 		var wg sync.WaitGroup
@@ -177,72 +177,71 @@ func TestSchemaHash(t *testing.T) {
 	assert.Equal(t, hashSchema("SELECT 1;\nSELECT 2;\n"), hashSchema("SELECT 1; -- 'x\nSELECT 2;\n"), "a quote inside a comment opens nothing")
 }
 
-// round16Hash is the hash of round 16's schema.sql, kept in testdata, and
-// not this build's: Migrate upgrades exactly that one earlier build. Unit:
-// reads a file in the package, no store.
-func TestRound16Hash(t *testing.T) {
+// olderSchema1Hash is the hash of the earliest schema.sql Migrate upgrades,
+// kept in testdata: it has no cards.red. Unit: reads a file in the package,
+// no store.
+func TestOlderSchema1Hash(t *testing.T) {
 	t.Parallel()
-	old, err := os.ReadFile("testdata/schema-round16.sql")
+	old, err := os.ReadFile("testdata/schema-older-1.sql")
 	require.NoError(t, err)
-	assert.Equal(t, round16Hash, hashSchema(string(old)))
-	assert.NotEqual(t, round16Hash, schemaHash)
+	assert.Equal(t, olderSchema1Hash, hashSchema(string(old)))
+	assert.NotEqual(t, olderSchema1Hash, schemaHash)
 	assert.NotContains(t, string(old), " red ")
 }
 
-// round22Hash is the hash of round 22's schema.sql, kept in testdata: it
-// has no cards.model, which this build's schema adds (round 23). Unit: reads
-// a file in the package, no store.
-func TestRound22Hash(t *testing.T) {
+// olderSchema3Hash is the hash of an older schema.sql, kept in testdata: it
+// has no cards.model, which this build's schema adds. Unit: reads a file in
+// the package, no store.
+func TestOlderSchema3Hash(t *testing.T) {
 	t.Parallel()
-	old, err := os.ReadFile("testdata/schema-round22.sql")
+	old, err := os.ReadFile("testdata/schema-older-3.sql")
 	require.NoError(t, err)
-	assert.Equal(t, round22Hash, hashSchema(string(old)))
-	assert.NotEqual(t, round22Hash, schemaHash)
+	assert.Equal(t, olderSchema3Hash, hashSchema(string(old)))
+	assert.NotEqual(t, olderSchema3Hash, schemaHash)
 	assert.NotContains(t, string(old), "model text")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS model text")
 }
 
-// round23Hash is the hash of round 23's schema.sql, kept in testdata: it
-// has no commit identity on the epoch row, which this build's schema adds
-// (round 24). Unit: reads a file in the package, no store.
-func TestRound23Hash(t *testing.T) {
+// olderSchema4Hash is the hash of an older schema.sql, kept in testdata: it
+// has no commit identity on the epoch row, which this build's schema adds.
+// Unit: reads a file in the package, no store.
+func TestOlderSchema4Hash(t *testing.T) {
 	t.Parallel()
-	old, err := os.ReadFile("testdata/schema-round23.sql")
+	old, err := os.ReadFile("testdata/schema-older-4.sql")
 	require.NoError(t, err)
-	assert.Equal(t, round23Hash, hashSchema(string(old)))
-	assert.NotEqual(t, round23Hash, schemaHash)
+	assert.Equal(t, olderSchema4Hash, hashSchema(string(old)))
+	assert.NotEqual(t, olderSchema4Hash, schemaHash)
 	assert.NotContains(t, string(old), "commit_email")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS commit_email text")
-	assert.True(t, knownOlder(round23Hash))
+	assert.True(t, knownOlder(olderSchema4Hash))
 }
 
-// round24Hash is the hash of v2-stitch's round 24 schema.sql, kept in
-// testdata: it has no cards.usage and no sprint.balances, which round 25
-// adds. Unit: reads a file in the package, no store.
-func TestRound24Hash(t *testing.T) {
+// olderSchema5Hash is the hash of an older schema.sql, kept in testdata: it
+// has no cards.usage and no sprint.balances, which this build's schema adds.
+// Unit: reads a file in the package, no store.
+func TestOlderSchema5Hash(t *testing.T) {
 	t.Parallel()
-	old, err := os.ReadFile("testdata/schema-round24.sql")
+	old, err := os.ReadFile("testdata/schema-older-5.sql")
 	require.NoError(t, err)
-	assert.Equal(t, round24Hash, hashSchema(string(old)))
-	assert.NotEqual(t, round24Hash, schemaHash)
+	assert.Equal(t, olderSchema5Hash, hashSchema(string(old)))
+	assert.NotEqual(t, olderSchema5Hash, schemaHash)
 	assert.NotContains(t, string(old), "usage")
 	assert.NotContains(t, string(old), "sprint.balances")
 	assert.Contains(t, string(old), "commit_email")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS usage")
-	assert.True(t, knownOlder(round24Hash))
+	assert.True(t, knownOlder(olderSchema5Hash))
 }
 
-// round25Hash is the hash of round 25's schema.sql (the deployed line's,
-// the live store's on 2026-11-07), kept in testdata: it has cards.usage and
-// sprint.balances and no cards.model, no heartbeat and no commit identity,
-// which this build's schema adds. Unit: reads a file in the package, no
-// store.
-func TestRound25Hash(t *testing.T) {
+// olderSchema6Hash is the hash of an older schema.sql, kept in testdata: it
+// has cards.usage and sprint.balances and no cards.model, no heartbeat and no
+// commit identity, which this build's schema adds. Unit: reads a file in the
+// package, no store.
+func TestOlderSchema6Hash(t *testing.T) {
 	t.Parallel()
-	old, err := os.ReadFile("testdata/schema-round25.sql")
+	old, err := os.ReadFile("testdata/schema-older-6.sql")
 	require.NoError(t, err)
-	assert.Equal(t, round25Hash, hashSchema(string(old)))
-	assert.NotEqual(t, round25Hash, schemaHash)
+	assert.Equal(t, olderSchema6Hash, hashSchema(string(old)))
+	assert.NotEqual(t, olderSchema6Hash, schemaHash)
 	assert.Contains(t, string(old), "ADD COLUMN IF NOT EXISTS usage")
 	assert.Contains(t, string(old), "sprint.balances")
 	assert.NotContains(t, string(old), "model text")
@@ -250,26 +249,26 @@ func TestRound25Hash(t *testing.T) {
 	assert.NotContains(t, string(old), "load1_centi")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS model text")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS commit_email text")
-	assert.True(t, knownOlder(round25Hash))
+	assert.True(t, knownOlder(olderSchema6Hash))
 }
 
-// round21Hash is the hash of round 17's schema.sql, which every round to 21
-// carried, kept in testdata: it has the five configuration columns of
-// sprint.rows that round 22 drops, and this build's schema has none of them.
-// Unit: reads a file in the package, no store.
-func TestRound21Hash(t *testing.T) {
+// olderSchema2Hash is the hash of an older schema.sql, kept in testdata: it
+// has the five configuration columns of sprint.rows that Migrate drops, and
+// this build's schema has none of them. Unit: reads a file in the package,
+// no store.
+func TestOlderSchema2Hash(t *testing.T) {
 	t.Parallel()
-	old, err := os.ReadFile("testdata/schema-round21.sql")
+	old, err := os.ReadFile("testdata/schema-older-2.sql")
 	require.NoError(t, err)
-	assert.Equal(t, round21Hash, hashSchema(string(old)))
-	assert.NotEqual(t, round21Hash, schemaHash)
+	assert.Equal(t, olderSchema2Hash, hashSchema(string(old)))
+	assert.NotEqual(t, olderSchema2Hash, schemaHash)
 	for _, col := range []string{"kind", "width", "tiers", "model", "harness"} {
-		assert.Contains(t, string(old), "\n    "+col+" ", "round 21's rows table has %s", col)
+		assert.Contains(t, string(old), "\n    "+col+" ", "the older rows table has %s", col)
 		drop := "DROP COLUMN IF EXISTS " + col
 		if col == "tiers" {
-			drop = "DROP COLUMN tiers" // only as round 17's text[]: round 23's text tiers stays
+			drop = "DROP COLUMN tiers" // only as the old text[]: the text tiers stays
 		}
-		assert.Contains(t, schemaSQL, drop, "round 22 drops %s", col)
+		assert.Contains(t, schemaSQL, drop, "Migrate drops %s", col)
 	}
 }
 

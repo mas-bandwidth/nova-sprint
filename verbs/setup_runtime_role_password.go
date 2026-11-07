@@ -15,7 +15,7 @@ import (
 )
 
 // sprintRoleDB is the role step's view of PostgreSQL for the sprint role's
-// password (defect 37): a login as nova_sprint, the stored verifier read
+// password: a login as nova_sprint, the stored verifier read
 // through the admin connection, and setting a verifier. pgRoleDB is the
 // real one; the unit tests use a fake.
 type sprintRoleDB interface {
@@ -100,7 +100,7 @@ func scramMatches(stored, password string) (bool, string) {
 	return true, ""
 }
 
-// ensureSprintPassword is the role step's password half (defect 37): prove
+// ensureSprintPassword is the role step's password half: prove
 // it; when it is not proven, set it from the seat's value (a SCRAM verifier
 // with a fresh salt from random) and prove it again. The refusal names
 // which failed, the set or the verify. On an unprovable host (pg_hba trust,

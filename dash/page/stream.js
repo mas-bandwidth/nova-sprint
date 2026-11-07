@@ -1,6 +1,4 @@
-// A stream's own page (the owner, 2026-10-18: "Maybe we can click on a work stream by name, and this
-// takes you to a page showing all details for that work stream, including all its cards, sankey for
-// all cards if applicable, dependencies between cards etc etc etc."): /api/stream/<name>, drawn with
+// A stream's own page, with all its cards and the dependencies between them: /api/stream/<name>, drawn with
 // the charts' pieces (charts.js) and Pele.
 (function () {
   "use strict";

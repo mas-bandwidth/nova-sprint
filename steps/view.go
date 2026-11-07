@@ -91,8 +91,7 @@ func (v *View) reset(epoch int) {
 
 // Acked says whether consumer c's row has acknowledged it (its take wrote
 // AckCursor(c) in this epoch). A consumer with no model was dealt before
-// the deal named models and before take wrote the cursor (the line before
-// v2.0.1): its row has it in hand already, so it counts as acknowledged and
+// the deal named models and before take wrote the cursor (a consumer dealt by an earlier release): its row has it in hand already, so it counts as acknowledged and
 // is never nudged or dealt again. Every deal since names a model (named).
 func (v *View) Acked(c string) bool {
 	if v.Cards[c].Model == "" {
@@ -296,7 +295,7 @@ func (v *View) Dependants(card string) []string { return sorted(v.dependants[car
 
 // Concrete says whether a listed path names one file: no glob character
 // (* ? [) and no trailing slash. Overlap is a file both cards edit, never a
-// directory or glob both add to (defect 50: ten audits that each add their
+// directory or glob both add to (ten audits that each add their
 // own files under one corpus glob were serialised behind one); a true
 // conflict under a shared directory is the landing's rebase and the read's.
 func Concrete(path string) bool {
@@ -304,7 +303,7 @@ func Concrete(path string) bool {
 }
 
 // Overlaps is every other producer of p's stream, ready or started, that
-// names a file p names (Concrete; LANDING step 2; LESSONS 2.20), in id order.
+// names a file p names (Concrete), in id order.
 func (v *View) Overlaps(p store.Card) []string {
 	found := set{}
 	for _, path := range p.Paths {
@@ -320,7 +319,7 @@ func (v *View) Overlaps(p store.Card) []string {
 // Open says whether row r may be dealt to: up on the bus, not held, and
 // hooked in to the sprint (the hook is the subscription
 // to the sprint's pushes; a row not hooked in is never dealt to and nothing
-// is pushed to it). The hook is the row's Session and Role (store round 22).
+// is pushed to it). The hook is the row's Session and Role.
 func (v *View) Open(r store.Row) bool { return r.State == "up" && !r.Held && Hooked(r) }
 
 // Hooked says whether row r is hooked in to the sprint with a role that

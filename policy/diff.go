@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// diffLines is the most lines a body may have for diff (ruling 5): above
+// diffLines is the most lines a body may have for diff: above
 // it the diff is refused, naming the body. The diff itself is in linear
 // space, so the bound is on its time, about two comparisons per pair of
 // lines (a guess at what a verb may take: 10,000 x 10,000 in about a second).

@@ -6,7 +6,7 @@ import (
 )
 
 // TestBusAnswer: the sprint's pushes are receipts. A reply is never
-// answered (the REPLY-to-REPLY loop of directive 61 item 45), a message
+// answered (no REPLY-to-REPLY loop), a message
 // that is not a verb is ignored with one log line, and a verb is pointed
 // at once; its own name and no sender are nothing.
 func TestBusAnswer(t *testing.T) {

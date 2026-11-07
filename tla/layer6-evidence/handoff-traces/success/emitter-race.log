@@ -1,5 +1,0 @@
-=== RUN   TestEmitHandoffTrace
-    handoff_trace_test.go:314: trace /var/tmp/friendG-l6-handoff-both-20261107/success.tla records=13
---- PASS: TestEmitHandoffTrace (2.04s)
-PASS
-ok  	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint	3.056s

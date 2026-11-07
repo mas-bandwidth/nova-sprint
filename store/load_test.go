@@ -544,7 +544,7 @@ func (l *load) ticks(t *testing.T) {
 }
 
 // resync rebuilds the planner's view (pool, states, attempts) from the local
-// copy, so a probe op that was built and never applied leaves no trace.
+// copy, so an op that was built and never applied leaves no trace.
 func (l *load) resync(t *testing.T) {
 	if _, _, _ = l.catchUp(t); t.Failed() {
 		return

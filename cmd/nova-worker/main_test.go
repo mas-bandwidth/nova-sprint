@@ -16,8 +16,8 @@ func TestWorkerCLIFlagRefusals(t *testing.T) {
 	if code := run_internal([]string{"--host", "b1", "--as", "amd-1", "--harness", "nonexistent", "--root", t.TempDir()}, &out, &errBuf); code != 1 || !strings.Contains(errBuf.String(), "unknown harness") {
 		t.Fatalf("expected unknown harness refusal, got code=%d err=%q", code, errBuf.String())
 	}
-	// The flags of one work clone and of a coordinator list are gone
-	// (directives 41, 42): the flag set refuses them.
+	// The flags of one work clone and of a coordinator list are gone:
+	// the flag set refuses them.
 	for _, gone := range []string{"--coordinator-hosts", "--work-clone", "--mirror", "--origin", "--provider-upstream", "--secrets-bin"} {
 		errBuf.Reset()
 		if code := run_internal([]string{"--as", "amd-1", gone, "x"}, &out, &errBuf); code != 2 {
@@ -26,7 +26,7 @@ func TestWorkerCLIFlagRefusals(t *testing.T) {
 	}
 }
 
-// The worker holds no provider route of its own (drift row 15): a route is
+// The worker holds no provider route of its own: a route is
 // <name>=<url>@<KEY>, and a malformed one is refused naming the form.
 func TestWorkerCLIProviderRoutesAreFlags(t *testing.T) {
 	t.Parallel()

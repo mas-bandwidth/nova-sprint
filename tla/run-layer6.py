@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run layer 6 TLC on reserved hetzner2 or authorized vision fallback.
+"""Run layer 6 TLC on a reserved bench.
 
 Use nova-reserve run with the host capacity (hetzner2: 8; vision: 16),
---wait 60s --why friendG-l6-tlc -- python3 PATH.
+--wait 60s --why layer6-tlc -- python3 PATH.
 Each invocation is sequential with two TLC workers, isolated tmp/state paths,
 and a two-minute timeout. No parse error or timeout counts as a witness.
 """
@@ -28,7 +28,7 @@ def main():
     jar = Path.home() / ".cache/nova-sprint/tla2tools-v1.8.0.jar"
     assert hashlib.sha256(jar.read_bytes()).hexdigest() == SHA, "TLC jar hash mismatch"
     java = Path.home() / "sdk/bin/java"
-    out = HERE / "layer6-evidence" / args.tag
+    out = HERE / "layer6-results" / args.tag
     out.mkdir(parents=True, exist_ok=False)
     results = []
     for case in json.loads((HERE / args.manifest).read_text()):
@@ -57,7 +57,7 @@ def main():
         results.append(result)
         print(json.dumps(result), flush=True)
     (out / "results.json").write_text(json.dumps(results, indent=2) + "\n")
-    print("evidence=" + str(out), flush=True)
+    print("results=" + str(out), flush=True)
     return 0 if results and all(result["checked"] for result in results) else 1
 
 if __name__ == "__main__":

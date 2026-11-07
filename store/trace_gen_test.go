@@ -172,7 +172,7 @@ func (w *storeWalk) judgementWrite(s Snapshot) Write {
 }
 
 // cursorWrite moves c1 around the log's end, 0 on a cursor never set
-// included (refused as unchanged since round 22's ruling on cursor zero).
+// included (refused as unchanged).
 func (w *storeWalk) cursorWrite(s Snapshot) Write {
 	seq := max(0, s.Cursors["c1"]+int64(w.rng.IntN(4))-1)
 	if w.rng.IntN(2) == 0 {

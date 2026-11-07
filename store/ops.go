@@ -32,7 +32,7 @@ type CardState struct{ Card, State string }
 type CardHolder struct{ Card, Holder string }
 
 // CardRed holds when card Card's red flag is Red: a plan that waives a red
-// read fences on the producer being red (round 17).
+// read fences on the producer being red.
 type CardRed struct {
 	Card string
 	Red  bool
@@ -148,7 +148,7 @@ type PutCard struct {
 	Paths                []string
 	DoneWhen             []string
 	Prose                string
-	Model                string // a consumer's: the model its deal named (round 23); "" on a producer or sentinel
+	Model                string // a consumer's: the model its deal named; "" on a producer or sentinel
 }
 
 // SetCardState sets a card's state; refused when the card is already in it,
@@ -157,8 +157,8 @@ type PutCard struct {
 // working counts against its holder's width: refused when the row already
 // holds as many working cards as its width, counted at the moment of the
 // write (earlier writes of the op included). No other state counts. There is no holder
-// write: a consumer's holder is fixed at add (Johnny's review, 2026-11-06:
-// a working card could drop its holder and keep the slot).
+// write: a consumer's holder is fixed at add (a working card could otherwise
+// drop its holder and keep the slot).
 type SetCardState struct{ Card, State string }
 
 // SetCardPaths replaces a producer's or sentinel's paths; refused on a
@@ -240,7 +240,7 @@ type SetCardReview struct{ Card string }
 type SetCardFinding struct{ Card, Finding string }
 
 // SetCardRed records on a producer whether its last read's verdict was red,
-// so a later waiver can require it (round 17). Refused on any other kind,
+// so a later waiver can require it. Refused on any other kind,
 // naming the fix: a consumer's verdict is recorded on its producer, and a
 // sentinel is never read.
 type SetCardRed struct {
@@ -259,7 +259,7 @@ type SetCardCost struct {
 
 // SetCardUsage sets a consumer's usage record: the words of package usage
 // (tokens by class, model, billing, the harness's charged dollars, why it is
-// unpriced), as the engine priced them (round 25). The store keeps the
+// unpriced), as the engine priced them. The store keeps the
 // words; it reads none of them. Refused on a producer or sentinel.
 type SetCardUsage struct{ Card, Usage string }
 
@@ -288,7 +288,7 @@ type SetCardAfter struct {
 // not in RowRoles). Hooking a row another session holds is refused: unhook
 // it first. State, flaps and held are kept on overwrite, and down, 0 and
 // false on insert. Its kind, width, tiers, model and harness are
-// configuration, the roster's, never the store's (round 22).
+// configuration, the roster's, never the store's.
 type PutRow struct{ Name, Session, Role string }
 
 // PutJudgement opens a judgement: refused when it exists. Its state is

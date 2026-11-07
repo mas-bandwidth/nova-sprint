@@ -29,7 +29,7 @@ type tick struct {
 	claimed   set                   // cards and rows an earlier step claimed
 	resolved  set                   // producers resolved this tick: started, for the overlap tally
 	tally     map[string]int        // consumers dealt per row this tick
-	rested    set                   // rows resting after faults (LPM R34): a deal filter
+	rested    set                   // rows resting after faults: a deal filter
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
 	judges    []judgement

@@ -28,7 +28,8 @@ func round1(n float64) float64 {
 	return v
 }
 
-// rate matches v1 sampling, with zero during the warmup.
+// rate is landings per hour over the sampled window, with zero during the
+// ten-minute warmup.
 func (c *Cache) rate() (float64, float64) {
 	r, m, _ := c.rateWindow()
 	return r, m
@@ -37,7 +38,7 @@ func (c *Cache) rate() (float64, float64) {
 // rateWindow is rate plus the landings inside the window (0 in the warmup).
 func (c *Cache) rateWindow() (float64, float64, int) {
 	// the store's landings when the cache has them (the samples start empty
-	// after every run restart and read 0 for ten minutes: the owner 2026-11-07)
+	// after every run restart and would read 0 for ten minutes)
 	if c.landingsOK {
 		if r, w, n, _ := landingRate(c.landings, c.clock()); r > 0 {
 			return r, w, n
@@ -56,11 +57,10 @@ func (c *Cache) rateWindow() (float64, float64, int) {
 }
 
 // MinEtaLandings is the fewest landings in the rate window an ETA is given
-// from (v1 asked five landed in the epoch; v2 measures a one-hour window, so
-// three in it is the floor).
+// from: the rate is measured over a one-hour window, so three in it is the floor.
 const MinEtaLandings = 3
 
-// etaMinutes is v1's estimate: the cards left at rate cards an hour, in whole
+// etaMinutes is the estimate: the cards left at rate cards an hour, in whole
 // minutes rounded up; 0 for none (no rate, too few landings, nothing left).
 func etaMinutes(left int, rate float64, landings int) int64 {
 	if rate <= 0 || landings < MinEtaLandings || left <= 0 {
@@ -69,7 +69,7 @@ func etaMinutes(left int, rate float64, landings int) int64 {
 	return int64(math.Ceil(float64(left) * 60 / rate))
 }
 
-// etaString is v1's form: "47m", "1h12m", and from a day on "52d2h" (hours
+// etaString is the display form: "47m", "1h12m", and from a day on "52d2h" (hours
 // rounded up); "-" for no estimate.
 func etaString(m int64) string {
 	switch {
@@ -119,7 +119,7 @@ func landingRate(landings []time.Time, now time.Time) (rate, window float64, n i
 	return 0, 60, n, false
 }
 
-// summaryLine is v1's headline, which the page reads the ETA from.
+// summaryLine is the headline, which the page reads the ETA from.
 func summaryLine(d envelope, eta string) string {
 	pct := "0.0%"
 	if d.All > 0 {

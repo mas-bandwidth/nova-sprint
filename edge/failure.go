@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// The one way an error names a failed child or a failed parse (audit row 28:
-// "We should not be swallowing errors... we should be reporting errors").
+// The one way an error names a failed child or a failed parse: errors are
+// reported, never swallowed.
 // A failed child's error carries its command line, its exit code and the
 // first lines of its stdout and stderr; a parse failure carries the byte
 // where it failed and the first bytes it saw. Everything is redacted on the

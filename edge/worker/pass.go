@@ -12,14 +12,14 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/card"
 )
 
-// Passes and jobs are separate (defect 66, tla/Runner.tla): a pass reads the
+// Passes and jobs are separate (tla/Runner.tla): a pass reads the
 // row, sends what is owed, and starts what it can; the jobs it starts run on
 // their own, and the next pass never waits for them. A job is one consumer
 // from take to report (or to a resume of one the runner stopped).
 
 // WakeEvery is how often the wake loop runs a pass without a wake, beside
 // the bus hook's wakes, so a missed push never leaves a dealt card sitting
-// (defect 66). A guess (the stopgap's 10 s), not measured.
+// until the next wake. A guess, not measured.
 const WakeEvery = 10 * time.Second
 
 type (
@@ -51,7 +51,7 @@ type (
 // coalesce into one more pass. It returns nil when ctx ends, the hook's
 // error when the bus hook dies, and a refused receipt (ErrReceipt) from a
 // pass or a job; each way it stops the jobs and waits for them, and each
-// stopped job keeps its record to be resumed (defect 73).
+// stopped job keeps its record to be resumed.
 func (r *Runner) wakeLoop_internal(ctx context.Context, row string, hook WakeHook) error {
 	loopCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -126,7 +126,7 @@ const (
 	ProbeBackoffMax = 10 * time.Minute
 )
 
-// probeHeld_internal probes the row until its harness passes (defect 61): a
+// probeHeld_internal probes the row until its harness passes: a
 // failed probe never exits the worker. The row stays unhooked (dealt
 // nothing) and is held with the probe's reason, raised on stderr; the probe
 // runs again after a backoff. True when it passed, false when ctx ended.
@@ -208,7 +208,7 @@ func (r *Runner) planPass_internal(ctx context.Context, row string) (NextRespons
 	if next.State != card.Up || next.Held {
 		return next, launches, nil
 	}
-	// The deal is the take (defect 52): every card in hand is working from
+	// The deal is the take: every card in hand is working from
 	// its deal, within the row's width, so the pass starts a job for each
 	// one with none yet (on disk, in flight, or set aside); its take is the
 	// acknowledgement. One with a job on disk is recovery's.
@@ -251,8 +251,8 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 }
 
 // runBatch_internal runs one pass's launches: each is prepared (taken, or
-// its record read back), every repo they stage is fetched once (defect 72:
-// no two fetches into one work clone at once, and one per repo per pass),
+// its record read back), every repo they stage is fetched once (no two
+// fetches into one work clone at once, and one per repo per pass),
 // then each job runs on its own. The first error that is not a missing
 // slot or a down store is returned; each launch's claim ends with its job.
 func (r *Runner) runBatch_internal(ctx context.Context, next NextResponse, launches []launch_internal) error {
@@ -439,7 +439,7 @@ func (r *Runner) runAndHarvest_internal(p *prepared_internal) (bool, error) {
 }
 
 // stopped_internal keeps a job the worker's stop cut short where it stood,
-// with no harness, to be resumed by the next start (defect 73): never a
+// with no harness, to be resumed by the next start: never a
 // report, never a fault, never the wall's timeout.
 func (r *Runner) stopped_internal(p *prepared_internal) error {
 	if p.rec.State == JobReporting && p.rec.Outcome.Result != "" {

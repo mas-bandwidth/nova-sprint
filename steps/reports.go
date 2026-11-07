@@ -11,7 +11,7 @@ import (
 // Finished, Broken or Faulted; a read report alone) or one answer. LAYER-6
 // applies a row's report as the row's own op, so this inbox path is for a
 // layer 6 that routes them here; the fold shows either way. There is no
-// take item: a dealt consumer is in hand at the deal (defect 52).
+// take item: a dealt consumer is in hand at the deal.
 func (t *tick) reports() {
 	for _, it := range t.in.Inbox {
 		if it.Kind == "report" {
@@ -22,7 +22,7 @@ func (t *tick) reports() {
 
 // refuse answers an item with a refusal and consumes it; nothing moves. The
 // answer rides with the item's group and goes out only when the budget
-// admits it (03f44371); a carried item is answered when it is
+// admits it ; a carried item is answered when it is
 // consumed.
 func (t *tick) refuse(it InboxItem, format string, args ...any) {
 	t.groups = append(t.groups, group{kind: "none", none: true, key: GroupKey{Kind: "none", Item: it.ID},
@@ -45,7 +45,7 @@ func (t *tick) reportItem(it InboxItem) {
 		return
 	}
 	if !t.unclaimed(c.ID) {
-		return // a group of this tick moves it: the item waits for the folded result (03f44371)
+		return // a group of this tick moves it: the item waits for the folded result
 	}
 	row, p := t.v.Rows[c.Holder], t.v.Cards[c.Of]
 	switch {

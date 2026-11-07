@@ -1,6 +1,4 @@
-// The charts (the owner, 2026-10-18: "I would like it if you could create a stats page showing me all
-// the things you can do with https://pele.run for the sprint dashboard. You could put these things
-// below the existing stuff we have at the bottom."). The server writes every chart as Mermaid source
+// The charts below the tables. The server writes every chart as Mermaid source
 // for the stream page; this file hands each to Pele (pele.js) and inserts the SVG.
 (function () {
   "use strict";
@@ -92,9 +90,7 @@
   }
   function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
-  // the stream names in the Work table open the stream's page (the owner, 2026-10-18: "Maybe we can
-  // click on a work stream by name, and this takes you to a page showing all details for that work
-  // stream"): one listener on the table; the table itself is drawn as before
+  // the stream names in the Work table open the stream's page: one listener on the table
   function streamLinks(table) {
     table.addEventListener("click", function (e) {
       var span = e.target.closest && e.target.closest(".row .name > span:first-child");

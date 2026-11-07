@@ -9,14 +9,13 @@ import (
 
 // needs is the sentinels and needs step (LAYER-3 "Sentinels and needs"; the
 // model's ResolveFold; NeverOverlapStarted, ReadyNeverFlipsWithLoad). A
-// failed need takes the closure of its dependants in one group (LESSONS
-// 2.4). Then, in id order: a waiting sentinel whose needs landed is Reached
+// failed need takes the closure of its dependants in one group. Then, in id order: a waiting sentinel whose needs landed is Reached
 // with a landed-sentinel judgement; a waiting producer whose needs landed,
 // whose stream is not held and who names no file a producer of its stream
 // that is ready or started names (those resolved this tick counted) is
 // Resolved; one held behind such a producer opens an overlap judgement
-// saying "held behind <card> on <path>" (defect 50). Room on a row is never
-// a condition (LESSONS 3.2). It reads the view's state every tick, never
+// saying "held behind <card> on <path>". Room on a row is never
+// a condition. It reads the view's state every tick, never
 // the land step's events, so a need landed by a store op or a restore
 // resolves too (section 64b; the model's ResolveFromState).
 func (t *tick) needs() {

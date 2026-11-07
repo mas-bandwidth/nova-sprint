@@ -26,7 +26,7 @@ type cand struct {
 // DealStep; NeverDealtTwice, NeverBelowTier, guarantee 8). One candidate
 // list down the ladder, within a rung in policy's order then id; each
 // candidate is dealt to a row with room (working under policy's work, at
-// most the width: the deal is the take, defect 52), the
+// most the width: the deal is the take), the
 // row from policy's rows answer, else the engine's ranking; a candidate no
 // row has room for stays ready, queued. Escalation is row choice: a work
 // consumer at the card's own rank, one up at escalate_after bounces, the
@@ -250,7 +250,7 @@ func kindOf(c store.Card) string {
 
 // ranked is rows in the engine's order (the model's DefaultRow): the desired
 // rank exactly, then above it, then an idle lane, then most room, then name;
-// a row the card was withdrawn from last, when another remains (LPM D22).
+// a row the card was withdrawn from last, when another remains.
 // rows come in name order, so a stable sort keeps the name tie-break; a
 // single candidate's best row is one pass (the deal's common case).
 func (t *tick) ranked(c store.Card, kind string, rows []string, n int) []string {

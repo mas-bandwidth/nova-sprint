@@ -11,8 +11,7 @@ import (
 )
 
 // Layer 1's value rules, applied as refusals before a plan leaves the
-// machine, so no plan it emits is ErrInvalid (the first cold read of layer 2,
-// D10): every key names something and fits store.MaxName bytes; every text is
+// machine, so no plan it emits is ErrInvalid: every key names something and fits store.MaxName bytes; every text is
 // valid UTF-8 with no NUL; every count fits a PostgreSQL integer, a cost a
 // bigint, at or above 0. The rules mirror store/check.go, which exports none.
 

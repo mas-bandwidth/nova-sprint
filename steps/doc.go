@@ -1,4 +1,4 @@
-// Package steps is layer 3 of nova-sprint v2: the steps (docs/LAYER-3-STEPS.md).
+// Package steps is layer 3 of nova-sprint: the steps (docs/LAYER-3-STEPS.md).
 // Pure Go: no store, clock, bus, git or exec. From one View of the sprint (the
 // snapshot plus the indexes the steps read, advanced by Fold), the tick's
 // Inputs (Now, the inbox in arrival order, the edge requests in flight, the

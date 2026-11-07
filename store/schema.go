@@ -10,22 +10,18 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// schemaRound is the review round whose schema.sql this binary carries: round
-// 26 added the epoch row's commit_name and commit_email (the sprint's commit
-// identity; v2-stitch's round 24, renumbered past the deployed line's 25 at
-// the merge of 2026-11-07); 25 added cards.usage and sprint.balances; 23
-// added cards.model and the row heartbeat's four columns of sprint.rows (22
-// dropped the five configuration columns of sprint.rows; 17 added
-// cards.red; no round between changed the schema).
-const schemaRound = 26
+// schemaGeneration numbers the schema builds Migrate knows, oldest first: 1
+// to 6 are the earlier builds (olderSchema1Hash to olderSchema6Hash) and 7 is
+// the schema.sql this binary carries.
+const schemaGeneration = 7
 
 // SchemaIdentity is what CheckSchema found in a database. Expected is the
 // schema hash this binary carries, the one Migrate records (the only place it
 // is computed, hashSchema); Hash is the one sprint.meta records ("" when there
 // is none). Present is schema sprint existing at all. Current is a store at
 // SchemaVersion made by this binary's schema; KnownOlder is one Migrate
-// upgrades in place (round16Hash, round21Hash, round22Hash, round23Hash, round24Hash, round25Hash). Round is the round whose schema made the
-// store (0 when it is neither). Owner is the role that owns schema sprint.
+// upgrades in place (olderSchema1Hash to olderSchema6Hash). Generation is the
+// schema build that made the store (schemaGeneration; 0 when it is neither). Owner is the role that owns schema sprint.
 type SchemaIdentity struct {
 	Present    bool
 	Hash       string
@@ -33,7 +29,7 @@ type SchemaIdentity struct {
 	Current    bool
 	KnownOlder bool
 	Owner      string
-	Round      int
+	Generation int
 }
 
 // errForeign is the refusal of a schema sprint nova-sprint did not make.
@@ -79,7 +75,7 @@ func metaRefusal(version int, hash string) error {
 		return fmt.Errorf("the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", version, SchemaVersion, version)
 	}
 	if hash != schemaHash && !knownOlder(hash) {
-		return fmt.Errorf("the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
+		return fmt.Errorf("the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it", cmp.Or(hash, "none"), schemaHash)
 	}
 	return nil
 }
@@ -123,7 +119,7 @@ func (p *PG) Schema(ctx context.Context) (SchemaIdentity, error) {
 // Schema is the Fake's identity: it is always the current schema, made by
 // nothing (no owner).
 func (f *Fake) Schema(context.Context) (SchemaIdentity, error) {
-	return SchemaIdentity{Present: true, Hash: schemaHash, Expected: schemaHash, Current: true, Round: schemaRound}, nil
+	return SchemaIdentity{Present: true, Hash: schemaHash, Expected: schemaHash, Current: true, Generation: schemaGeneration}, nil
 }
 
 // identifyIn runs identify in a read-only transaction begun by begin and
@@ -167,7 +163,7 @@ func identify(ctx context.Context, q queryRower) (SchemaIdentity, error) {
 		return id, fmt.Errorf("store: check schema: %w", err)
 	}
 	id.Current, id.KnownOlder = hash == schemaHash, knownOlder(hash)
-	id.Round = map[string]int{schemaHash: schemaRound, round16Hash: 16, round21Hash: 17, round22Hash: 22, round23Hash: 23, round24Hash: 24, round25Hash: 25}[hash] // round 17's schema, carried to 21
+	id.Generation = map[string]int{schemaHash: schemaGeneration, olderSchema1Hash: 1, olderSchema2Hash: 2, olderSchema3Hash: 3, olderSchema4Hash: 4, olderSchema5Hash: 5, olderSchema6Hash: 6}[hash]
 	return id, nil
 }
 
@@ -175,7 +171,7 @@ func identify(ctx context.Context, q queryRower) (SchemaIdentity, error) {
 // Migrate upgrades in place.
 func knownOlder(hash string) bool {
 	switch hash {
-	case round16Hash, round21Hash, round22Hash, round23Hash, round24Hash, round25Hash:
+	case olderSchema1Hash, olderSchema2Hash, olderSchema3Hash, olderSchema4Hash, olderSchema5Hash, olderSchema6Hash:
 		return true
 	}
 	return false

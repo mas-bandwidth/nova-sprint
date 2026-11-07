@@ -35,7 +35,7 @@ func (p PGSetupStore) Ready(ctx context.Context) (bool, error) {
 	if err != nil || !has {
 		return false, err
 	}
-	// The role's password first (defect 37): a store probe as nova_sprint
+	// The role's password first: a store probe as nova_sprint
 	// passes on a pg_hba trust host whatever the password is.
 	ok, err := p.childWith(ctx, "--internal-setup-role-password", "NOVA_PG_ADMIN_PASSWORD,"+sprintPasswordName)
 	if err != nil || !ok {

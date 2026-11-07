@@ -45,7 +45,7 @@ func TestToolEnvironmentExcludesDatabaseSecrets(t *testing.T) {
 	}
 }
 
-// A process without NOVA_SPRINT_PG_PASSWORD (defect 22, 2026-11-07): every
+// A process without NOVA_SPRINT_PG_PASSWORD: every
 // verb refuses naming nova-secrets exec, the problem and the fix split, and
 // next answers the same (exit 0); "not set up" is kept for a store without
 // the schema, which the credential cannot tell.

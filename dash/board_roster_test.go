@@ -9,12 +9,11 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The roster has rows the store lacks and the store has a row the roster
-// lacks (the human, 2026-11-07: "we definitely need all that stuff back"):
-// Fleet lists every roster worker and Friends every roster kin at the roster
-// width, down when the store has no row; the store's row the roster no longer
-// names stays, down; the
-// order is by name.
+// TestBoardListsTheWholeRoster covers a roster with rows the store lacks and
+// a store with a row the roster lacks: Fleet lists every roster worker and
+// Friends every roster kin at the roster width, down when the store has no
+// row; a store row the roster does not name stays, down; the order is by
+// name.
 func TestBoardListsTheWholeRoster(t *testing.T) {
 	ros := roster.Roster{
 		Workers: map[string]roster.Worker{"b-bench": {Name: "b-bench", Width: 8}, "a-bench": {Name: "a-bench", Width: 4}, "c-bench": {Name: "c-bench", Width: 2}},
@@ -51,9 +50,10 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 	}
 }
 
-// OK% (directive 64a) is a worker's own finished work cards with result ok
-// over those with result ok, fail or fix, known the moment a card is done. A
-// fault, a close or release with no such result and every read are not in it.
+// TestOKPercentIsKnownWhenTheCardIsDone: OK% is a worker's own finished work
+// cards with result ok over those with result ok, fail or fix, known the
+// moment a card is done. A fault, a close or release with no such result and
+// every read are not in it.
 func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 	ros := roster.Roster{Kin: map[string]roster.Kin{"friendC": {Name: "friendC", Width: 2}, "friendA": {Name: "friendA", Width: 2}, "bob": {Name: "bob", Width: 2}}}
 	card := func(id, kind, holder, author, result string) store.Card {
@@ -90,9 +90,9 @@ func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 	}
 }
 
-// The load cell is the row's last heartbeat (directive 63a): the 1-minute load
-// average over the cores as a percent of all of them, v1's cell, with the
-// slots in its title; a row that is down, or has never beaten, has none.
+// TestLoadCellIsTheLastHeartbeat: the load cell is the row's last heartbeat,
+// the 1-minute load average over the cores as a percent of all of them, with
+// the slots in its title; a row that is down, or has never beaten, has none.
 func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 	ros := roster.Roster{Workers: map[string]roster.Worker{"a": {Name: "a", Width: 4}, "b": {Name: "b", Width: 4}, "c": {Name: "c", Width: 4}}}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{

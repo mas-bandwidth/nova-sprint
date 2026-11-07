@@ -43,8 +43,8 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "main" {
 		t.Fatalf("%+v", got)
 	}
-	// The model is the one the deal named, carried by the consumer (defect
-	// 57); take never reads it from the roster.
+	// The model is the one the deal named, carried by the consumer;
+	// take never reads it from the roster.
 	if got.Model != "inception/mercury-3" || strings.Contains(r.Output, `"models"`) {
 		t.Fatalf("a bench's receipt: model %q\n%s", got.Model, r.Output)
 	}
@@ -53,8 +53,8 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"inception/mercury-3"`)
 }
 
-// A consumer dealt before v2.0.1 has no model and is working in its row's
-// hand: take does not refuse it (PR 641 F2).
+// A consumer dealt by an earlier release has no model and is working in its row's
+// hand: take does not refuse it.
 func TestTakeModelless(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "dealt with no model", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 0, snap: setCard("p1.w1", func(c *store.Card) { c.Model = "" }),
@@ -152,8 +152,7 @@ func TestRead(t *testing.T) {
 
 // A read's spend reaches its consumer card as a finish's does, priced by the
 // engine: a kin on a subscription seat is free (priced, $0), its --cost kept
-// as charged evidence (the owner, 2026-11-07: "friend sub rate should be
-// free").
+// as charged evidence.
 func TestReadCarriesCost(t *testing.T) {
 	w := newWorld(t)
 	w.roster.ro.Kin["bob"] = roster.Kin{Name: "bob", Model: "m-bob", Width: 2, Tiers: []string{"pro"}, Harness: "claude"}

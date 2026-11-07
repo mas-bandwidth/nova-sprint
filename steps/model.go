@@ -8,7 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// What the deal carries and when the tick deals (defects 53, 54, 57).
+// What the deal carries and when the tick deals.
 //
 // The model: every consumer is cut with the model its deal names, and the
 // take receipt reads it from the consumer, never inventing one. A friend's

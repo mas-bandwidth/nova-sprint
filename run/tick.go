@@ -45,7 +45,7 @@ type Ticker struct {
 	prev       int
 	counts     TickCounts
 	push       *Pusher
-	landings   []time.Time // the epoch's landings (not the v1 import's), from the events run folds
+	landings   []time.Time // the epoch's landings from the events run folds
 	landingsOK bool
 	limits     policy.Limits
 	timeouts   policy.Timeouts
@@ -80,7 +80,7 @@ func judgementOp(a *asker, o Observed) (store.Op, bool) {
 }
 
 // NewTicker reads the one cold snapshot; later reads are Events only
-// (LAYER-1 "Scale"; no walk from seq 0, drift row 23).
+// (LAYER-1 "Scale"; no walk from seq 0).
 func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time.Time) (*Ticker, error) {
 	if err := h.Check(ctx); err != nil {
 		return nil, err
@@ -120,8 +120,8 @@ func (t *Ticker) Counts() TickCounts { return t.counts }
 
 // Fold reads the events since the last fold, in pages, into the View and
 // the copy. A clear (a new epoch) drops everything layer 3 carried for the
-// old one: the inbox, the requests in flight and the refusals (Stella's
-// finding 2: an old effect never reaches the new epoch).
+// old one: the inbox, the requests in flight and the refusals, so an effect of
+// the old epoch never reaches the new one.
 func (t *Ticker) Fold(ctx context.Context) error {
 	for {
 		events, err := t.store.Events(ctx, t.snap.Seq, store.MaxEvents)
@@ -173,7 +173,7 @@ type Observed struct {
 // plan with layer 3 and apply the plan's ops in order (LAYER-6 section 2).
 // It returns the edge requests to dispatch: those whose After op was
 // accepted. While stopped it plans and applies nothing and returns none
-// (drift row 4; Run.tla NoTickAfterObservedStop): the results that arrive
+// (Run.tla NoTickAfterObservedStop): the results that arrive
 // wait in the inbox for the start.
 func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, error) {
 	t.counts = TickCounts{}
@@ -193,7 +193,7 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	if err := t.raiseSeen(ctx, o); err != nil {
 		return nil, err
 	}
-	o.Roster = o.Roster.Advertised(t.snap.Rows) // a worker's own width and tiers (defect 74)
+	o.Roster = o.Roster.Advertised(t.snap.Rows) // a worker's own width and tiers
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
 		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster}
 	a := t.asker(ctx, o.Roster)
@@ -218,8 +218,8 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 // fact; Steps.tla EnvMove's flip up): each row down in the store and present
 // on the bus this tick comes up, one op each, applied before the plan so a
 // row that has just hooked in is open for this tick's deal. Gone, the flip
-// down, is the steps' silence rule. Without this a hooked row stayed down
-// and nothing was ever dealt (the end-to-end test, 2026-11-07).
+// down, is the steps' silence rule. Without this a hooked row stays down
+// and nothing is ever dealt.
 func (t *Ticker) raiseSeen(ctx context.Context, o Observed) error {
 	var ops []store.Op
 	for _, name := range o.Present {

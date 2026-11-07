@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// A repository's contributor agreement (directive 63): a commit whose author
+// A repository's contributor agreement: a commit whose author
 // has not signed fails the repository's agreement check, and the card sits
 // red at the landing. A forge shows who has signed only where the agreement's
 // bot exposes it, and most do not, so admission does the closest correct

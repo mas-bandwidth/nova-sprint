@@ -12,8 +12,8 @@ and handoff lease ordering belong to a separate SetupHandoff binding. Initial
 world/answers are observed fixture state, verified is empty, pc=1, phase=probe.
 Asked counters and key-sink history start at zero/empty for this execution;
 pre-existing answers do not imply invented earlier prompts. SetupWalk.WalkInit
-is a new, explicitly admitted initial condition. Setup.Init and Setup.Next
-remain unchanged. SetupWalk.cfg checks invariants and model liveness under all
+is an explicitly admitted initial condition; Setup.Init and Setup.Next
+are used as they are. SetupWalk.cfg checks invariants and model liveness under all
 8-step initial boolean worlds and all subsets of four initial answers, with
 one bounded disruption. That is model evidence, distinct from actual traces.
 
@@ -43,7 +43,7 @@ is never mislabeled Crash. A completed walk's next invocation may also Restart.
 
 Unchanged projections may use Stutter only for genuinely hidden callbacks or
 read-only transport steps. A changed world, answer, receipt, counter or walk
-position cannot be silently hidden. The first emitter checkpoint uses already
+position cannot be silently hidden. The emitter uses already
 saved answers, a stable ready step1 prefix, random other world bits and actual
 repairs/regressions/repeated invocations. It therefore does not bind Ask,
 secret transports, cancellation, or two-child handoff effects.

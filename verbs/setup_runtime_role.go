@@ -84,7 +84,7 @@ func ProvisionSprintRole(ctx context.Context, dsn, adminPassword, password strin
 
 // provisionSprintRole is the role step: the role nova_sprint and its schema
 // made when missing, then its password proven, or set from the seat's value
-// and proven (ensureSprintPassword, defect 37). The seat's value is the one
+// and proven (ensureSprintPassword). The seat's value is the one
 // every service reads, so a role whose password is not it is set to it.
 // fresh (the credential was minted by this up) also checks an existing
 // owned schema is the sprint's before adopting it.
@@ -255,8 +255,8 @@ func internalSprintRole(ctx context.Context, fresh bool) int {
 	return 0
 }
 
-// InternalSprintRolePassword is step 2's verify of the role's password
-// (defect 37), in its own child under nova-secrets exec with both
+// InternalSprintRolePassword is step 2's verify of the role's password,
+// in its own child under nova-secrets exec with both
 // credentials: false when the role does not exist yet (the act makes it);
 // else the password proven, or set from the seat and proven
 // (ensureSprintPassword), or the refusal naming which failed.

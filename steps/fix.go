@@ -9,10 +9,9 @@ import (
 
 // fix is the fix step (LAYER-3 "Fix"; the model's FixSet): once every read
 // of a producer's current review is done or withdrawn and one is done,
-// policy's verdict over all of them (LESSONS 3.7) is ReadYes or
+// policy's verdict over all of them is ReadYes or
 // ReadFix{finding}, the finding every fix read's joined. A finding
-// byte-equal to the producer's current one opens a brief judgement
-// (LESSONS 5.9). A producer back from Broken or Faulted needs no plan here.
+// byte-equal to the producer's current one opens a brief judgement. A producer back from Broken or Faulted needs no plan here.
 func (t *tick) fix() {
 	var fixes []string
 	for _, p := range t.v.Producers("review") {
@@ -83,7 +82,7 @@ func (t *tick) owed(c store.Card) int {
 	}
 	have := 0
 	for _, r := range t.v.Consumers(c.ID) {
-		// a done read that faulted is not a read (defect 58): it is owed again
+		// a done read that faulted is not a read: it is owed again
 		if r.Kind == "read" && r.Review == c.Review && r.State != "fail" && !(r.State == "done" && r.Result == "fault") {
 			have++
 		}

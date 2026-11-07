@@ -18,7 +18,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The evaluator (cold read 3's ruling 1): every version a process engine
+// The evaluator: every version a process engine
 // runs (a tick's, check's, the catalog's) runs in a child process, this
 // binary as `<binary> policy-eval` (EvalArg), one per engine and reused
 // across ticks, fed one request at a time on its stdin and answering on its
@@ -147,7 +147,7 @@ func (e *Engine) sibling() *Engine {
 func (s source) wire() wireSource { return wireSource{s.version, s.label, s.body, s.stored} }
 
 // unworded is snap with every card's brief and prose dropped: no question
-// reads them (rowan2's ruling 4 and 5), so what crosses to the child grows
+// reads them, so what crosses to the child grows
 // with the card count, not with the briefs.
 func unworded(snap store.Snapshot) store.Snapshot {
 	cards := make(map[string]store.Card, len(snap.Cards))

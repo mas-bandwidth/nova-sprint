@@ -64,9 +64,8 @@ func finishCosts(w *workRow) {
 }
 
 // costSummary is the sprint's whole spend as the top strip shows it: the API
-// spend (the owner, 2026-11-07: "api rate work should be priced *exactly*.
-// friend sub rate should be free."), beside the tokens kin spent on their
-// subscription seats. Amounts are currency strings; "-" where no priced API
+// spend (priced exactly; subscription seats are free), beside the tokens kin
+// spent on their subscription seats. Amounts are currency strings; "-" where no priced API
 // run exists, never a false $0.
 type costSummary struct {
 	Total       string            `json:"total"`    // every priced API run's cost
@@ -86,10 +85,9 @@ type costSummary struct {
 
 // summarizeCost sums every priced API consumer (work and read) in any state,
 // by tier, and divides by every card landed in this run, a card with no
-// priced API run (a seat card) counting at $0 (imported v1 landings are left
+// priced API run (a seat card) counting at $0 (imported landings are left
 // out of the divisor). A subscription run adds its tokens, never
-// dollars. A record from before round 25 (no usage) counts as it was
-// recorded: priced or not.
+// dollars. A record with no usage counts as it was recorded: priced or not.
 func summarizeCost(s store.Snapshot) *costSummary {
 	out := &costSummary{ByTier: map[string]string{}, Missing: []string{}}
 	micros := map[string]*big.Int{}
@@ -139,8 +137,8 @@ func summarizeCost(s store.Snapshot) *costSummary {
 			out.ByTier[tier] = moneyCell(cents)
 		}
 	}
-	// the true average, API spend over every landed card,
-	// seat cards at $0 ("with sub cards being free").
+	// the true average: API spend over every landed card,
+	// seat cards at $0.
 	out.PerCard = "-"
 	if out.Landed > 0 {
 		out.PerCard = perCardCell(micros, out.Landed)
@@ -148,7 +146,7 @@ func summarizeCost(s store.Snapshot) *costSummary {
 	return out
 }
 
-// landedCards counts the cards landed in this run (imported v1 landings left
+// landedCards counts the cards landed in this run (imported landings left
 // out), and of those the cards with a priced API run (pricedOf).
 func landedCards(s store.Snapshot, pricedOf map[string]bool) (landed, priced int) {
 	for _, c := range s.Cards {
@@ -163,8 +161,8 @@ func landedCards(s store.Snapshot, pricedOf map[string]bool) (landed, priced int
 }
 
 // perCardCell is the average in micro-dollars per card, to the nearest cent, or
-// to the nearest hundredth of a cent when the average is under a cent (the owner
-// 2026-11-07: never rounded up; $0.28 over 237 cards is not "$0.01").
+// to the nearest hundredth of a cent when the average is under a cent (never
+// rounded up: $0.28 over 237 cards is not "$0.01").
 func perCardCell(micros map[string]*big.Int, cards int) string {
 	total := new(big.Int)
 	for _, m := range micros {

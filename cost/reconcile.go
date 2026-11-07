@@ -1,8 +1,7 @@
-// Package cost is the cost reconciliation (v1's cost_reconcile.go in v2's
-// shape; the owner, 2026-10-04: "we MUST track the complete cost of what we
-// do on the fleet and friends on API plans"): each provider's own count of
-// what its key spent, set beside the store's priced API records of that
-// provider over the same window. A provider's count is its balance's fall
+// Package cost is the cost reconciliation: the sprint tracks the complete
+// cost of what runs on the fleet and on friends' API plans. Each provider's
+// own count of what its key spent is set beside the store's priced API
+// records of that provider over the same window. A provider's count is its balance's fall
 // between two reads (sprint.balances); the store's is the cost of every API
 // run of that provider whose price was recorded in the log between the two
 // reads' seqs. A gap over 5% of the provider's figure and over $1 opens ONE
@@ -124,14 +123,14 @@ func (d DeepSeek) Read(ctx context.Context) Reading {
 }
 
 // Inception is mercury's provider: it publishes no balance or usage
-// endpoint (docs.inceptionlabs.ai/api-reference, read 2026-11-07: chat, FIM,
-// edit, decisions and models; usage only per response), so its reading is
+// endpoint (docs.inceptionlabs.ai/api-reference: chat, FIM, edit, decisions
+// and models; usage only per response), so its reading is
 // unknown and its spend is the store's records alone.
 type Inception struct{}
 
 // Read is unknown, with why.
 func (Inception) Read(context.Context) Reading {
-	return Reading{Provider: "inception", Why: "inception publishes no balance or usage endpoint (docs.inceptionlabs.ai/api-reference, 2026-11-07): its spend is the store's records alone"}
+	return Reading{Provider: "inception", Why: "inception publishes no balance or usage endpoint (docs.inceptionlabs.ai/api-reference): its spend is the store's records alone"}
 }
 
 // Readers are the providers reconciled, with the DeepSeek transport t (nil

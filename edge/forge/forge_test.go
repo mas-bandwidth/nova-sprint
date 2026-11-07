@@ -19,10 +19,10 @@ const (
 	shaD = "4444444444444444444444444444444444444444"
 )
 
-// The forge acts as the host's own gh login (intent rule 32): with no
+// The forge acts as the host's own gh login: with no
 // override gh gets the process's environment without any GitHub credential
 // of its own, so a GH_TOKEN or a GH_CONFIG_DIR there cannot make it someone
-// else (directive 59).
+// else.
 func TestForgeActsAsTheHostsGh(t *testing.T) {
 	t.Setenv("GH_TOKEN", "inherited-token")
 	t.Setenv("GH_CONFIG_DIR", "/home/someone/.config/gh")
@@ -89,7 +89,7 @@ func TestClientGraphQLBatchAndClassifications(t *testing.T) {
 	now := int64(1000)
 
 	c := New(Config{
-		Identity: Identity{Name: "sprint", Token: "tok-rowan"},
+		Identity: Identity{Name: "sprint", Token: "tok-sprint"},
 		Now:      func() int64 { return now },
 		Exec:     ExecFunc(fakeGraphQLExec_internal),
 	})
@@ -126,7 +126,7 @@ func TestClientGraphQLBatchAndClassifications(t *testing.T) {
 func fakeGraphQLExec_internal(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 	hasToken := false
 	for _, kv := range cmd.Env {
-		if kv == "GH_TOKEN=tok-rowan" {
+		if kv == "GH_TOKEN=tok-sprint" {
 			hasToken = true
 		}
 	}
@@ -134,7 +134,7 @@ func fakeGraphQLExec_internal(_ context.Context, cmd edge.Cmd) (edge.Result, err
 		return edge.Result{Stderr: "missing GH_TOKEN", ExitCode: 1}, nil
 	}
 	if len(cmd.Argv) >= 3 && cmd.Argv[1] == "auth" && cmd.Argv[2] == "status" {
-		return edge.Result{Stdout: "Logged in to github.com account friendF-claude"}, nil
+		return edge.Result{Stdout: "Logged in to github.com account ci-bot"}, nil
 	}
 	if len(cmd.Argv) >= 3 && cmd.Argv[1] == "api" && cmd.Argv[2] == "graphql" {
 		return edge.Result{Stdout: `{"data":{"repository":{` +
@@ -206,7 +206,7 @@ func TestRateLimitRestsIdentity(t *testing.T) {
 		Now:      func() int64 { return now },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 			if len(cmd.Argv) >= 3 && cmd.Argv[1] == "auth" {
-				return edge.Result{Stdout: "Logged in to github.com account friendF-claude"}, nil
+				return edge.Result{Stdout: "Logged in to github.com account ci-bot"}, nil
 			}
 			if now < 1045 {
 				return edge.Result{Stderr: "HTTP 429: secondary rate limit exceeded\nRetry-After: 45", ExitCode: 1}, nil

@@ -103,12 +103,12 @@ type (
 		Cost                                                                                                 Cost
 		// Refusals counts the sends of this record's report the sprint
 		// refused the same way in a row (LastRefusal); at RefusalLimit the
-		// record is set aside for a reader (defect 69).
+		// record is set aside for a reader.
 		Refusals    int    `json:",omitempty"`
 		LastRefusal string `json:",omitempty"`
 		// StartTip is the card's branch on origin when the job was staged
 		// ("" with StartTipRead: absent). Every push leases from PushedHead,
-		// the head this job last pushed, or else from StartTip (defect 78).
+		// the head this job last pushed, or else from StartTip.
 		StartTip     string `json:",omitempty"`
 		StartTipRead bool   `json:",omitempty"`
 	}

@@ -20,7 +20,7 @@ func (w *world) same(what string) {
 }
 
 // TestViewFoldEqualsBuild folds one event of every kind the store logs and
-// checks the view after each equals a fresh build (list item 1).
+// checks the view after each equals a fresh build.
 func TestViewFoldEqualsBuild(t *testing.T) {
 	w := newWorld(t)
 	w.stream("s1")

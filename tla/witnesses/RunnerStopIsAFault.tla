@@ -1,18 +1,18 @@
 ------------------------------ MODULE RunnerStopIsAFault ------------------------------
 (***************************************************************************)
-(* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md,  *)
-(* Guarantees 7 to 11). Size: 2 consumers, width 2, 1 slot, 1 Crash.       *)
+(* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md). *)
+(* Size: 2 consumers, width 2, 1 slot, 1 Crash.                            *)
 (*                                                                         *)
-(* The deal is the take (defect 52): both consumers are dealt working, in  *)
+(* The deal is the take: both consumers are dealt working, in              *)
 (* the row's hand, at Init; there is no ready state to take from. Take is  *)
 (* the row's acknowledgement (a cursor) and the start of its job, and it   *)
 (* moves no store state.                                                   *)
 (*                                                                         *)
-(* Passes and jobs are separate processes (defect 66, 2026-11-07): pass is *)
+(* Passes and jobs are separate processes: pass is                         *)
 (* the wake loop's pass (idle or planning); it acknowledges the cards in   *)
 (* its hand and ends whatever its jobs are doing (PassNeverWaitsOnJobs). A *)
 (* job is the rest of each consumer's actions. Stop is the worker's own    *)
-(* stop (defect 73): each live harness is killed, its job kept at staged   *)
+(* stop: each live harness is killed, its job kept at staged               *)
 (* (stopped) to be resumed, never a fault (StopIsNeverAFault). Release is  *)
 (* the restart's no-blame give-back of a job it cannot resume (a job       *)
 (* directory with no receipt): its commits pushed, the consumer withdrawn  *)
@@ -337,13 +337,13 @@ WorkingWithinWidth ==
 SlotsWithinCapacity ==
   slotsInUse <= MaxSlots
 
-\* Defect 66: a pass can always end, whatever its jobs are doing; so a wake
+\* A pass can always end, whatever its jobs are doing; so a wake
 \* that arrives while a job runs gets its own pass, and a card dealt into
 \* the hand is acknowledged without waiting for that job.
 PassNeverWaitsOnJobs ==
   (pass = "planning" /\ ~env.crashed) => ENABLED PassEnd
 
-\* Defect 73: a job the worker's stop cut short carries no outcome and no
+\* A job the worker's stop cut short carries no outcome and no
 \* report until it runs again.
 StopIsNeverAFault ==
   \A c \in Consumers : jobDir[c].stopped =>

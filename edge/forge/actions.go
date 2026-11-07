@@ -65,7 +65,7 @@ type RedSplit struct {
 }
 
 // IsAgreement is whether a check's name is a contributor or license
-// agreement's (directive 63): its red is about who wrote the commits.
+// agreement's: its red is about who wrote the commits.
 func IsAgreement(check string) bool { return claRe.MatchString(check) }
 
 type actionsRun struct {
@@ -90,8 +90,8 @@ const (
 	jobsJQ = `[.jobs[] | {id, name, conclusion, runner_name, html_url}]`
 )
 
-// Inheritance compares head's failing Actions workflows with the base
-// (directives 59 and 76): the merge base of baseTip and head (gh api
+// Inheritance compares head's failing Actions workflows with the base:
+// the merge base of baseTip and head (gh api
 // repos/<r>/compare), each side's workflow runs (actions/runs?head_sha=),
 // and, for a workflow with no completed run at the merge base, the base
 // branch's last completed run of the same workflow. A workflow is failing
@@ -261,7 +261,7 @@ func (c *Client) JobLines(ctx context.Context, repo string, id int64) ([]string,
 }
 
 // Authors is the distinct commit author identities of PR pr, as "name
-// <email> (login)" in first-seen order (directive 63: a failing agreement
+// <email> (login)" in first-seen order (a failing agreement
 // check names who must sign).
 func (c *Client) Authors(ctx context.Context, repo string, pr int) ([]string, error) {
 	stdout, _, err := c.runGH_internal(ctx, "pr", "view", strconv.Itoa(pr), "--repo", repo, "--json", "commits", "--jq", `[.commits[].authors[] | {login, name, email}]`)

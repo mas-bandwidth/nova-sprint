@@ -1,5 +1,0 @@
-{
-  "source": "/Volumes/nova/ai/friendG/working/nova-sprint-v2-l6-verbs-20261106/verbs/setup.go",
-  "sha256": "ec049b77f61fc5bdb28e76a00fee678a8a6ef7ccb741def70d5f4f49736a71f3",
-  "scope": "Walker ordering only; concrete Setup adapter, durable answers and terminal secret transport are not implemented/checked here"
-}

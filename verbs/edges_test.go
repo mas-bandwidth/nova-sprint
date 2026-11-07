@@ -50,7 +50,7 @@ func TestFinishEdgeFailures(t *testing.T) {
 	withForge := func(s *store.Snapshot) { st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st }
 	finish := []string{"finish", "p1.w1@1", "--head", head}
 	runCases(t, []tcase{
-		// defect 34: no PR is asked of a card; the landing opens the group's
+		// no PR is asked of a card; the landing opens the group's
 		{name: "a forge stream, no PR", as: "alice", snap: withForge, args: finish, exit: 0, prep: takeW1,
 			want: []string{"FINISHED p1.w1"}},
 		{name: "no git edge", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.e.Origin = nil }, want: []string{"the git edge is not configured"}},

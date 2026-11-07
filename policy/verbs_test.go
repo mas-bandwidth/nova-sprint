@@ -57,7 +57,7 @@ func testUp(t *testing.T, w *world) {
 }
 
 // testSetFirst: with no version active, the first set stores and activates
-// in one op (defect 53: a fresh store took a policy only from up) and
+// in one op (a fresh store took a policy only from up) and
 // answers the built-in's open policy judgements; a second set only stores.
 func testSetFirst(t *testing.T, w *world) {
 	e := testEngine()
@@ -125,7 +125,7 @@ func testSet(t *testing.T, w *world) {
 	assert.Equal(t, before.Rows, after.Rows)
 	pv, err := w.st.Policy(w.ctx(), 2)
 	require.NoError(t, err)
-	assert.Equal(t, store.PolicyVersion{Version: 2, Kind: "script", Name: "two-reads.star", Body: pv.Body, Actor: "friendF", At: pv.At}, pv)
+	assert.Equal(t, store.PolicyVersion{Version: 2, Kind: "script", Name: "two-reads.star", Body: pv.Body, Actor: "coord", At: pv.At}, pv)
 }
 
 func testActivateRefusals(t *testing.T, w *world) {
@@ -134,7 +134,7 @@ func testActivateRefusals(t *testing.T, w *world) {
 	kin := w.caller()
 	kin.Coordinator = false
 	_, err := Activate(w.ctx(), w.st, w.ro, e, kin, 1, "r")
-	assert.Equal(t, "SPRINT REFUSED policy activate: policy is the coordinator's: ask over the bus: nova-bus send --as friendF --to <coordinator>", refusal(t, err))
+	assert.Equal(t, "SPRINT REFUSED policy activate: policy is the coordinator's: ask over the bus: nova-bus send --as coord --to <coordinator>", refusal(t, err))
 	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), 9, "r")
 	assert.Equal(t, "SPRINT REFUSED policy activate: policy version 9 does not exist: nova-sprint policy show --list", refusal(t, err))
 	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), 1, "r")
@@ -146,7 +146,7 @@ func testActivateRefusals(t *testing.T, w *world) {
 	v := w.set("breaks.star", breaks)
 	w.apply(store.PutStream{Name: "s3", Repo: "git@example.com:r.git", Base: "main", Pos: 3})
 	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), v, "r")
-	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy activate: POLICY REFUSED v3 line %d landing(s3): floored division by zero; POLICY REFUSED v3 line %d landing(s3 backed_up): floored division by zero: nova-sprint policy check 3", line+1, line+1), refusal(t, err), "check asks landing on both rungs (round 5)")
+	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy activate: POLICY REFUSED v3 line %d landing(s3): floored division by zero; POLICY REFUSED v3 line %d landing(s3 backed_up): floored division by zero: nova-sprint policy check 3", line+1, line+1), refusal(t, err), "check asks landing on both rungs")
 	assert.Equal(t, 1, w.snap().Policy)
 }
 
@@ -180,7 +180,7 @@ func testShow(t *testing.T, w *world) {
 	require.NoError(t, err)
 	pv, err := w.st.Policy(w.ctx(), v)
 	require.NoError(t, err)
-	assert.Equal(t, "  v2 script two-reads.star by friendF at "+pv.At.Format("2006-01-02T15:04:05Z")+": test\n\n"+pv.Body, out)
+	assert.Equal(t, "  v2 script two-reads.star by coord at "+pv.At.Format("2006-01-02T15:04:05Z")+": test\n\n"+pv.Body, out)
 	_, err = Show(w.ctx(), w.st, 7)
 	assert.Equal(t, "SPRINT REFUSED policy show: policy version 7 does not exist: nova-sprint policy show --list", refusal(t, err))
 	list, err := List(w.ctx(), w.st)
@@ -193,7 +193,7 @@ func testShow(t *testing.T, w *world) {
 	d, err := Diff(w.ctx(), w.st, "default", "v2")
 	require.NoError(t, err)
 	assert.Contains(t, d, "--- default\n+++ v2\n")
-	assert.Contains(t, d, "\n-     return 1  # v1 standing rule, 2026-10-20\n+     return 2  # v1 standing rule, 2026-10-20\n")
+	assert.Contains(t, d, "\n-     return 1  # one read per review\n+     return 2  # one read per review\n")
 	_, err = Diff(w.ctx(), w.st, "8", "")
 	assert.Equal(t, "SPRINT REFUSED policy diff: policy version 8 does not exist: nova-sprint policy show --list", refusal(t, err))
 	_, err = Diff(w.ctx(), w.st, "x", "")
@@ -216,7 +216,7 @@ func testCheck(t *testing.T, w *world) {
 		`POLICY WARNING prices(): inception/mercury-3 (tier pro) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-3": {"in": <micro-USD per million>, "out": <...>}`,
 		`POLICY WARNING prices(): inception/mercury-2.5 (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-2.5": {"in": <micro-USD per million>, "out": <...>}`,
 	}
-	assert.Equal(t, warn, rep.Warnings, "the default prices nothing: every API model is a defect found at creation")
+	assert.Equal(t, warn, rep.Warnings, "the default prices nothing: every API model is warned about")
 	assert.Equal(t, "policy check two.star: 2 answer(s) change, 0 refused, 4 warning(s)\n  reads(p3): 1 -> 2\n  reads(p5): 1 -> 2\n"+strings.Join(warn, "\n")+"\n", rep.Text())
 	priced := strings.Replace(defaultBody, "    return {}\n\ndef catalog", "    return {\"deepseek/deepseek-flash\": {\"in\": 270000, \"out\": 1100000}, \"deepseek-v4-pro\": {\"in\": 270000, \"out\": 1100000}, \"mercury-3\": {\"in\": 250000, \"out\": 1000000}, \"mercury-2.5\": {\"in\": 250000, \"out\": 1000000}}\n\ndef catalog", 1)
 	rep, err = Check(w.ctx(), w.st, w.ro, e, w.file("priced.star", priced))

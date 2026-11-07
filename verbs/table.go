@@ -40,7 +40,7 @@ type verb struct {
 // groups is the help index's order.
 var groups = []string{"start", "work", "coordinate", "operate"}
 
-// table is every verb. Nothing else is a verb (LAYER-6 "v1 verbs dropped").
+// table is every verb. Nothing else is a verb.
 var table []*verb
 
 func init() {

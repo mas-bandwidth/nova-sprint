@@ -10,14 +10,13 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Request is one per-card verb asked of the engine (LAYER-3 "Requests"; list
-// item 8): who asks and what. Event is the move: a producer event on Card, a
+// Request is one per-card verb asked of the engine (LAYER-3 "Requests"): who asks and what. Event is the move: a producer event on Card, a
 // consumer event (Take, Report) on Card, a row event on Row, a stream event
 // on Stream, or card.Add. Judgement names an open judgement the request
 // answers with Event as the chosen move (Event nil: the answer alone). Drop
 // names, per dependant of a Cancel or Replace, the Waive or Relink the drop
 // chose; a dependant not named fails with its need, the whole closure in
-// the same op (LESSONS 2.4, 2.18).
+// the same op.
 type Request struct {
 	Actor        string
 	Coordinators []string // the rows nova-config names as coordinators
@@ -156,7 +155,7 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 	return []move{t.producerMove(r.Card, r.Event, extra...)}, nil
 }
 
-// holdMoves is the coordinator's hold of one producer (defect 47): each
+// holdMoves is the coordinator's hold of one producer: each
 // live consumer withdrawn with the hold's reason (a work consumer's withdraw
 // releases its producer, its pushed branch kept), then Block, in one op, so
 // the card is never dealt again between the two. Block is planned on the

@@ -5,11 +5,11 @@ import (
 	"time"
 )
 
-// Clock is a tick's time (cold read 3's ruling): Now and After, as package
+// Clock is a tick's time: Now and After, as package
 // time has them. The deadline (TickTime) and the early fallback
 // (fallbackAfter) are measured on it. RealClock is the binary's, which
 // layer 6 wires; every unit test passes a fake, so no unit test reads the
-// wall clock (the timing probes, behind NOVA_LOAD, are the exception).
+// wall clock (the wall-clock tests, behind NOVA_LOAD, are the exception).
 type Clock interface {
 	Now() time.Time
 	After(d time.Duration) <-chan time.Time

@@ -82,7 +82,7 @@ type (
 
 // argv_internal is a sprint verb's command line. The worker runs under the
 // bench seat's nova-secrets exec, which put the sprint's credentials in its
-// environment; each verb is run directly and inherits them (defect 35: a
+// environment; each verb is run directly and inherits them (a
 // bare nova-secrets exec is refused by nova-tools v2, which wants --only,
 // --store and --key).
 func (c *CLISprintClient) argv_internal(args ...string) []string {

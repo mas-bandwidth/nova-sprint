@@ -49,7 +49,7 @@ func (w *WorkloadNotReady) Error() string { return "not ready: " + w.Why }
 
 // WorkerBenches is the machines a sprint worker runs on: every bench, the
 // run machine too when it is one (nova-config's bench role is the only
-// word, 2026-11-07), by name, sorted as machines are.
+// word), by name, sorted as machines are.
 func WorkerBenches(machines []FleetMachine) []string {
 	var benches []string
 	for _, m := range machines {

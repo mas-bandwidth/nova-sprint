@@ -17,7 +17,7 @@ func redPass_internal(t *testing.T, r forge.CheckRollup, split *forge.RedSplit, 
 	gf, ff, root, c1, _ := landWorld_internal()
 	ff.SetCheck("o/r", c1, r)
 	ff.Split, ff.SplitErr = split, splitErr
-	ff.AuthorsOf = []string{"Aurora <friendB@example.invalid> (friendB-x)"}
+	ff.AuthorsOf = []string{"Alice <bob@example.invalid> (bob-x)"}
 	res, err := LandPass(context.Background(), gf, ff, one_internal(c1))
 	if err != nil || gf.OriginRef("v2") != root {
 		t.Fatalf("pass %+v err=%v: red never lands", res, err)
@@ -30,7 +30,7 @@ var (
 	newGates        = forge.WorkflowRed{Workflow: "Gates", Basis: "the merge base cccccccccccc", Jobs: []forge.FailedJob{{Name: "Linux Debug", Runner: "bench-b", Lines: []string{"--- FAIL: TestX"}}}}
 )
 
-// Directive 59: red that is all red on the base too, the run ended, is
+// Red that is all red on the base too, the run ended, is
 // ci_red_inherited: still a judgement (base unmoved), its facts the
 // inherited workflows and the merge base.
 func TestLandInheritedOnlyIsAGlanceJudgement(t *testing.T) {
@@ -43,7 +43,7 @@ func TestLandInheritedOnlyIsAGlanceJudgement(t *testing.T) {
 	}
 }
 
-// Directive 76: while the run goes on, red that is all inherited waits
+// While the run goes on, red that is all inherited waits
 // (pending); red that is new escalates at once.
 func TestLandWaitsForTheRunUnlessRedIsNew(t *testing.T) {
 	t.Parallel()

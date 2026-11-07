@@ -143,7 +143,7 @@ func (tr *policyTrace) drift(i int) {
 
 // doTick answers a tick and applies, in one op, the judgements its failures
 // open and, when advance, the card's next state; a deal needs an answer.
-// The breaker drops the previous active from the versions (one line).
+// The divergent walk drops the previous active from the versions (one line).
 func (tr *policyTrace) doTick(advance, broken bool) {
 	snap := tr.w.snap()
 	vs, err := LoadVersions(tr.w.ctx(), tr.w.st, snap)
@@ -213,10 +213,10 @@ func (tr *policyTrace) write(dir, expect string) error {
 	return os.WriteFile(filepath.Join(dir, "PolicyTrace.cfg"), []byte(cfg), 0o644)
 }
 
-// breakerWalk is up, v2 set and activated, row x2 at width 2 (v2 breaks),
+// divergentWalk is up, v2 set and activated, row x2 at width 2 (v2 breaks),
 // then a tick: the honest engine falls back to v1, the previous active; the
-// breaker, with the previous active dropped, to the built-in.
-func breakerWalk(t *testing.T, broken bool) *policyTrace {
+// divergent walk, with the previous active dropped, to the built-in.
+func divergentWalk(t *testing.T, broken bool) *policyTrace {
 	tr := newPolicyTrace(t)
 	tr.set()
 	tr.activate(2)
@@ -225,12 +225,12 @@ func breakerWalk(t *testing.T, broken bool) *policyTrace {
 	return tr
 }
 
-// TestTraceRefusesDivergence holds the breaker: its trace is the fixture
+// TestTraceRefusesDivergence holds the divergent walk: its trace is the fixture
 // tla/traces/policy-breaker, which check-trace.sh must refuse at its last
 // record, the tick (the trace job runs it).
 func TestTraceRefusesDivergence(t *testing.T) {
 	t.Parallel()
-	honest, broken := breakerWalk(t, false), breakerWalk(t, true)
+	honest, broken := divergentWalk(t, false), divergentWalk(t, true)
 	require.Len(t, honest.recs, 5)
 	require.Contains(t, honest.recs[4], `action |-> "Tick"`)
 	require.Contains(t, honest.recs[4], "answeredBy |-> 1,")

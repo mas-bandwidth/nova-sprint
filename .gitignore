@@ -2,6 +2,8 @@
 /tla/states/
 *.out
 /tla/logs/
+/tla/layer6-results/
+/run/testdata/e2e-transcript.txt
 *_TTrace_*.tla
 *_TTrace_*.bin
 /nova-sprint

@@ -1,7 +1,7 @@
 package card
 
 // Trace validation of the card machine (tla/README.md, "Trace
-// validation"). The card walk (coldWalk, TestColdWalk's) records, after
+// validation"). The card walk (machineWalk, TestMachineWalk's) records, after
 // every accepted op, the move and the store's state projected by TraceState;
 // tla/CardMachineTrace.tla checks the recording is a behaviour of
 // tla/CardMachine.tla. The walk writes its traces only when NOVA_TRACE_DIR
@@ -22,18 +22,18 @@ import (
 
 const traceEnv = "NOVA_TRACE_DIR"
 
-// The walk's fixed seed set (20 seeds, TestColdWalk's 800 steps each).
+// The walk's fixed seed set (20 seeds, TestMachineWalk's 800 steps each).
 const traceSeeds, traceSteps = 20, 800
 
-// TestTraceColdWalk writes the card walk's traces (card-walk-<seed>).
-func TestTraceColdWalk(t *testing.T) {
+// TestTraceMachineWalk writes the card walk's traces (card-walk-<seed>).
+func TestTraceMachineWalk(t *testing.T) {
 	if os.Getenv(traceEnv) == "" {
 		t.Skip("trace walks run under tla/make-traces.sh (" + traceEnv + " unset)")
 	}
 	for seed := int64(1); seed <= traceSeeds; seed++ {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) {
 			t.Parallel()
-			coldWalkTraced(t, seed, traceSteps, true)
+			machineWalkTraced(t, seed, traceSteps, true)
 		})
 	}
 }
@@ -46,9 +46,9 @@ func startWithoutAttempt(plan Plan) Plan {
 	return plan
 }
 
-// breakerWalk is p1 resolved and started on r1; broken drops Start's
+// divergentWalk is p1 resolved and started on r1; broken drops Start's
 // attempt write.
-func breakerWalk(t *testing.T, broken bool) *cardTrace {
+func divergentWalk(t *testing.T, broken bool) *cardTrace {
 	w := newWorld(t, producer("p1"))
 	tr := newCardTrace(w, true)
 	for _, e := range []Event{Resolve{}, Start{Row: "r1", Branch: "b-p1", Base: base}} {
@@ -69,7 +69,7 @@ func breakerWalk(t *testing.T, broken bool) *cardTrace {
 // attempt 0, and its trace is the fixture tla/traces/card-breaker, which
 // check-trace.sh must refuse at its last record (the trace job runs it).
 func TestTraceRefusesDivergence(t *testing.T) {
-	honest, broken := breakerWalk(t, false), breakerWalk(t, true)
+	honest, broken := divergentWalk(t, false), divergentWalk(t, true)
 	require.Contains(t, honest.recs[len(honest.recs)-1], `"p1" :> [st |-> "working", att |-> 1`)
 	require.Contains(t, broken.recs[len(broken.recs)-1], `"p1" :> [st |-> "working", att |-> 0`)
 	expect := fmt.Sprintf("forbidden at %d", len(broken.recs))
@@ -88,7 +88,7 @@ func TestTraceRefusesDivergence(t *testing.T) {
 }
 
 // traceHeads is the walk's head table: the base is head 0.
-var traceHeads = []string{base, h1, h2, coldH3}
+var traceHeads = []string{base, h1, h2, machineH3}
 
 // cardTrace is a recording in tla/CardMachineTrace.tla's shape.
 type cardTrace struct {

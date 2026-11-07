@@ -95,7 +95,7 @@ func TestFailureCarriesEveryStderrLineButTheBanner(t *testing.T) {
 }
 
 // A harness that paints its output ends with a bare reset; the cause is the
-// error line above it (defect 25: the probe reported "\x1b[0m").
+// error line above it (the probe reported "\x1b[0m").
 func TestCauseLineSkipsEscapesAndKeepsTheErrorLine(t *testing.T) {
 	out := "\x1b[91m\x1b[1mError: \x1b[0mInsufficient credits. Add more\n\x1b[0m\n\x1b[0m"
 	if got := CauseLine(out, 200); got != "Error: Insufficient credits. Add more" {

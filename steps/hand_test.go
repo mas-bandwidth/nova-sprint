@@ -11,7 +11,7 @@ import (
 )
 
 // dealOne is a sim with p1 dealt to r1 (width 1, tier pro): in r1's hand,
-// working, from the deal (defect 52).
+// working, from the deal.
 func dealOne(t *testing.T) *sim {
 	s := newSim(t)
 	s.stream("s1")
@@ -71,8 +71,7 @@ func TestHandNoNudgeAfterTheReport(t *testing.T) {
 // TestHandReadyTakeRedeals: a work card in hand, not acknowledged past
 // timeouts ready_take, is withdrawn and its producer dealt, in the same op,
 // to another row with room, never the slow row; one under the deadline is
-// nudged and left where it is (the human, 2026-11-07: "By leaving cards in
-// ready we are violating this promise").
+// nudged and left where it is.
 func TestHandReadyTakeRedeals(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")
@@ -102,9 +101,8 @@ func TestHandReadyTakeRedeals(t *testing.T) {
 	assert.NotEqual(t, slow, s.card("p1.w2").Holder, "the slow row is excluded")
 }
 
-// TestHandModellessIsAcked: the live store at the upgrade to v2.0.1 (PR
-// 641 F2): a consumer the line before dealt is working with no model and
-// no take cursor, which that line never wrote. It counts as acknowledged:
+// TestHandModellessIsAcked: a consumer dealt by an earlier release is working with no model and
+// no take cursor, which that release never wrote. It counts as acknowledged:
 // past ready_take, with another row with room, it is neither nudged,
 // withdrawn nor judged, and stays in its row's hand.
 func TestHandModellessIsAcked(t *testing.T) {
@@ -169,8 +167,7 @@ func TestHandNoUndealtWithoutRoom(t *testing.T) {
 
 // TestHandRouteFaultBlocks: a work fault naming a missing route blocks the
 // producer on the first fault, opens a blocked judgement naming the row and
-// what is missing, and the producer is never dealt again by itself
-// (defect 48).
+// what is missing, and the producer is never dealt again by itself.
 func TestHandRouteFaultBlocks(t *testing.T) {
 	s := dealOne(t)
 	s.report("p1.w1", "fault", "", card.MissingRoute+" adb no device on this row")

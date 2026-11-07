@@ -154,7 +154,7 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 // width) as it needs, one for work and the reads answer for a read (layer 3
 // deals a read to that many distinct rows; the names are distinct
 // candidates, so never the author), when the candidates could (a configured
-// width above 0): rowan2's and cold read 3's probe.
+// width above 0).
 func (ix *index) rowsAsk(c store.Card, rq RowsQuestion) ask {
 	set := ix.candidateSet(c, rq.Kind)
 	card := ix.card(c)

@@ -11,10 +11,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// runBeat is `beat`, the worker's heartbeat (INTENT 7, push: the bench says
+// runBeat is `beat`, the worker's heartbeat (push: the bench says
 // what it is carrying; nobody asks it): the bench's 1-minute load average,
 // its logical cores, its nova-reserve slots in use and in all, and the
-// tiers its harness serves (--tiers, defect 74). It sets the row's load
+// tiers its harness serves (--tiers). It sets the row's load
 // columns, which the board's load cell reads and the roster takes the row's
 // width and tiers from (roster.Advertised); it moves nothing else. A beat that repeats the last one is a success that writes
 // nothing, so a quiet bench makes no events.

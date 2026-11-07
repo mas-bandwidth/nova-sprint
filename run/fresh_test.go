@@ -20,14 +20,14 @@ func started(t *testing.T) *store.Fake {
 	return f
 }
 
-// activePolicy is v1 stored and active: the run deals nothing without an
-// active policy (defect 53).
+// activePolicy is policy version 1, stored and active: the run deals nothing without an
+// active policy.
 func activePolicy() []store.Write {
 	return []store.Write{store.PutPolicy{Kind: "script", Name: "test.star", Body: "# test"}, store.SetActivePolicy{Version: 1}}
 }
 
-// benchCatalog is a catalog naming a bench model for every tier (defect
-// 57: a bench deal names its model).
+// benchCatalog is a catalog naming a bench model for every tier: a bench
+// deal names its model.
 func benchCatalog() policy.Catalog {
 	c := policy.Catalog{Bench: map[string]string{}}
 	for _, t := range store.Tiers {
@@ -39,7 +39,7 @@ func benchCatalog() policy.Catalog {
 // A fresh store is stopped, never started, and a run that comes up on it
 // (up starts the run service at step 4, before the walk is done) ticks
 // nothing: no op, no question to policy, no push. The first start lets the
-// next tick deal (Run.tla NeverStartedMovesNothing; the owner, 2026-11-07).
+// next tick deal (Run.tla NeverStartedMovesNothing).
 func TestFreshStoreTicksNothingUntilStart(t *testing.T) {
 	f := store.NewFake()
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})

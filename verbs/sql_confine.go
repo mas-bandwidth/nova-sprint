@@ -150,7 +150,7 @@ func literalEnd(s string, i int) (int, bool) {
 		i++
 	}
 	if i > digits && i+1 < len(s) && s[i] == '.' && s[i+1] >= '0' && s[i+1] <= '9' {
-		// a numeric's fraction (sprint.balances.balance_usd, round 25)
+		// a numeric's fraction (sprint.balances.balance_usd)
 		for i++; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
 		}
 	}
@@ -234,7 +234,7 @@ func insertCardKind(s string) (string, bool) {
 
 // cardStateMapped refuses a card record whose state this build does not
 // map (store.CardStates): an importer that carried a terminal state over
-// from another shape, a v1 landed say, names the record and the one fix
+// from another shape, a landed timestamp say, names the record and the one fix
 // here, before the verification cluster's CHECK refuses it unnamed.
 func cardStateMapped(s string) error {
 	if !strings.HasPrefix(s, "INSERT INTO sprint.cards ") {

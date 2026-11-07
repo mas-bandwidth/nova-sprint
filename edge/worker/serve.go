@@ -14,8 +14,8 @@ import (
 
 // Config is one worker as a binary starts it: `nova-worker` and
 // `nova-sprint worker` both build it from their flags and call Serve, so the
-// two are one worker (drift rows 14, 15, 20: no host, model, deadline or
-// provider literal; those come from the flags and the take receipt). Any
+// two are one worker (no host, model, deadline or provider
+// literal; those come from the flags and the take receipt). Any
 // machine nova-config gives the bench role runs one, the coordinator's too.
 type Config struct {
 	Row, Host, Root, StateDir, Harness string
@@ -75,7 +75,7 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 
 // newOSRunner_internal is the runner on the real clock, git, wall and bus.
 // It holds no forge: the worker's contract ends at a pushed head, and the
-// run's landing opens the PR with the host's identity (intent rules 16, 32).
+// run's landing opens the PR with the host's identity.
 func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr string, out func(string)) (*Runner, error) {
 	h, err := NewHarness(cmp.Or(c.Harness, "claude"))
 	if err != nil {

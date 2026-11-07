@@ -5,9 +5,9 @@
 "use strict";
 
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
-// rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
-// 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"]; // Owner 2026-11-07: no fail state on the board
+// rework, purple, between review and merging; the view (dashboard.go) counts it on the copy.
+// There is no fail state on the board.
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"];
 // Columns of the streams table, in flow order.
 var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
@@ -16,7 +16,7 @@ var POLL_MS = 1000;
 var MIN_CELL = 4;  // px: a cell never gets narrower; cards per cell grows instead
 var GAP = 2;       // px between cells
 var TRACK_CELL = 1.6875, TRACK_GAP = 0.25; // rem: a fleet track cell and its gap (27 px and 4 px on a desktop), never scaled
-// the owner 2026-10-04 ~4:08 PM: the widest track always spans what 16 cells used to, "so no matter the size, it works out"
+// the widest track always spans 16 cells at the base size, so a track fills the same width whatever its scale
 var TRACK_SPAN = 16 * (TRACK_CELL + TRACK_GAP) - TRACK_GAP;
 function trackCell(scale) { scale = Math.max(1, scale); return (TRACK_SPAN - (scale - 1) * TRACK_GAP) / scale; }
 var $ = function (id) { return document.getElementById(id); };
@@ -64,12 +64,12 @@ function timeParts(d) {
   var get = function (t) { var x = parts.filter(function (q) { return q.type === t; })[0]; return x ? x.value : ""; };
   return { hms: get("hour") + ":" + get("minute") + ":" + get("second"), ampm: get("dayPeriod") };
 }
-// "around 11:36 PM EDT"; a day or more out it names the weekday, "around Sun 3:15 AM EDT" (SPEC.md)
+// "around 11:36 PM EDT"; a day or more out it names the weekday, "around Sun 3:15 AM EDT"
 function etaAround(when, ms) {
   var day = ms >= 86400000 ? when.toLocaleDateString("en-US", { weekday: "short" }) + " " : "";
   return ("around " + day + clockShort(when) + " " + zoneAbbr(when)).trim();
 }
-// a tile's subline stays on one line (the owner 2026-10-04 3:20 PM): when it does not fit the tile,
+// a tile's subline stays on one line: when it does not fit the tile,
 // the shorter forms in turn
 function fits(e) { return e.scrollWidth <= e.clientWidth + 1; }
 var etaAtLast = null;
@@ -80,12 +80,12 @@ function fitEtaAt() {
 }
 function clock(d) { return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" }); }
 function clockShort(d) { return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); }
-function etaMs(s) { // "2h20m" or "2d17h" -> ms (the day form arrives with PR 5183; SPEC.md)
+function etaMs(s) { // "2h20m" or "2d17h" -> ms
   var m = String(s).match(/^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
   if (!m || !(m[1] || m[2] || m[3] || m[4])) return null;
   return (((int(m[1]) * 24 + int(m[2])) * 60 + int(m[3])) * 60 + int(m[4])) * 1000;
 }
-// One ordinary space between the parts of a figure (SPEC.md, the owner 10:00 and 10:03 PM): the
+// One ordinary space between the parts of a figure: the
 // space is set in the proportional face, because a monospace space is a full digit wide and
 // reads as a double space beside the digits.
 var SP = "<span class=\"sp\"> </span>";
@@ -217,12 +217,10 @@ function allocate(counts, total, n) {
 // VU meter track: exactly `slots` cells (the machine's width), on a grid of
 // `scale` columns (the widest member's width) so the cells line up down the
 // column; the lit cells first, the rest dark; nothing past the width. The lit cells run in the
-// priority ladder, highest on the left (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
-// 2026-10-07: "to the left of read cards, and to the right of critical cards"): blocker,
+// priority ladder, highest on the left: blocker,
 // critical, fix (purple), reads (one orange cell a read), then the working blue; a row's counts
 // are where's <level>_working and the view's fix. One cell is one card or read on the row, so the
-// lit cells always number the row's working figure (half-cell reads drew 24 cells for a friend's
-// "31 / 32", the owner 2026-10-09: "Something is wrong with the rendering for a friend").
+// lit cells always number the row's working figure.
 var TRACK_LEVELS = [["blocker_working", "p-blocker", "blocker"], ["critical_working", "p-critical", "critical"], ["fix", "p-fix", "fix"]];
 function trackSegs(m) {
   var working = int(m.working), segs = [], words = [], cards = 0;
@@ -254,20 +252,18 @@ function digitsOf(n) { return String(Math.max(0, n)).length; }
 function makePill() { var p = el("span", "pill neutral"); p.appendChild(el("span", "dot")); p._t = quiet(el("span")); p.appendChild(p._t); return p; }
 function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill " + tone); setTitle(p, title || text); }
 function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
-// One vocabulary across the tables (SPEC.md, the owner 8:04 AM: "change 'asleep' to 'down' so we have
-// consistency across all tables"): a store that still says "asleep" is shown as "down", in red.
+// One vocabulary across the tables: a store that says "asleep" is shown as "down", in red.
 var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
-// the status word alone (up, held, down): the server may carry a reason after it ("held (why)"), which is the coordinator's view, never the pill's (the owner 2026-10-04 10:40 PM)
+// the status word alone (up, held, down): the server may carry a reason after it ("held (why)"), which is the coordinator's view, never the pill's
 function shownStatus(st) { var w = String(st || "").trim().split(/[\s(]/)[0]; return w === "asleep" ? "down" : w; }
-// A bud shows as its person: "friendF-next" is "friendF (next)" when "friendF" is a friend too
-// (the owner 2026-10-04 ~4:24 PM: "this enforces it is one person, but multiple buds").
+// A bud shows as its person: "alice-next" is "alice (next)" when "alice" is a friend too.
 function budLabel(name, table) {
   var i = name.indexOf("-");
   if (i > 0 && table && Object.prototype.hasOwnProperty.call(table, name.slice(0, i))) return name.slice(0, i) + " (" + name.slice(i + 1) + ")";
   return name;
 }
 function tableScale(table) { return Math.max(1, Object.keys(table || {}).reduce(function (a, n) { return Math.max(a, int(table[n].width)); }, 0)); }
-// the bar scale is shared with the friends table only while that table is shown; hidden, the fleet's own widest lane sets it (the owner 2026-10-12 ~01:42Z)
+// the bar scale is shared with the friends table only while that table is shown; hidden, the fleet's own widest lane sets it
 function friendsShown() { var p = document.querySelector(".panel.friends"); return !!(p && getComputedStyle(p).display !== "none"); }
 // the widest "n / width" digit count across Fleet and Friends, so both tables' slashes align
 function sharedDigits(d) {
@@ -289,8 +285,7 @@ function streamStatus(state, c, total) {
   if (total > 0 && c.landed === total) return ["landed", "done"];
   if (state === "stopped") return ["stopped", "critical"];
   // held only for a hold set on the stream (the server's State "held", hold <stream>): cards that all
-  // wait on their needs are waiting, never held (the owner 2026-10-13: "don't show held on a work stream
-  // just because all its cards are in waiting state")
+  // wait on their needs are waiting, never held
   if (state === "held") return ["held", "warning"];
   if (total > 0 && c.waiting === total) return ["waiting", "neutral"];
   if (c.ready + c.working + c.review + (c.fix || 0) + c.merging > 0) return ["working", "active"];
@@ -390,7 +385,7 @@ function renderStreams(d) {
   FLOW.forEach(function (st, i) { all += sum[st]; if (st !== "landed") setNum(tc[2 + i], sum[st]); });
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
   setText(tc[COST_AT], money(sum.cost));
-  // stream counts, never cards: "landed" here read as cards beside the table's landed column (Owner 2026-10-14), so it names its unit
+  // stream counts, never cards: "landed" here read as cards beside the table's landed column, so it names its unit
   setText($("streams-sub"), keys.length + " streams · " + landedStreams + " landed · " + held + " held");
   // the "landed" header is centred over its n / total cell: same width as the cell, text centred
   var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
@@ -419,13 +414,10 @@ function renderOverall(sum, all) {
 }
 window.addEventListener("resize", function () { if (overallLast) renderOverall(overallLast.sum, overallLast.all); });
 
-// One renderer for Fleet and Friends (SPEC.md, the owner 8:07 PM: "the friends table should LOOK
-// exactly like the fleet table"): same columns, cells, pills (the fleet's up / held / down),
-// sort, total row and load column (a friend's load is "-" until it is measured: the owner 8:08 PM,
-// "for now, just put load as \"-\""). `scale` is the cell grid both
+// One renderer for Fleet and Friends: the same columns, cells, pills (up / held / down),
+// sort, total row and load column (a row's load is "-" until it is measured). `scale` is the cell grid both
 // tables share, so their columns have the same widths.
-// `clamp` (Friends only, SPEC.md "Friends working, clamped to width, soft", the owner 2026-10-03 12:14 PM):
-// a friend's working figure never exceeds its width; the raw count is the cell's title only.
+// `clamp` (Friends only): a friend's working figure never exceeds its width; the raw count is the cell's title only.
 function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function shownWorking(m) { var w = int(m.working); return clamp ? Math.min(w, int(m.width)) : w; }
   var names = Object.keys(table || {});
@@ -446,17 +438,15 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   // the track column is exactly the widest track, so the figure sits right after it
   var tw = TRACK_SPAN.toFixed(3) + "rem";
   if (box.style.getPropertyValue("--track-w") !== tw) box.style.setProperty("--track-w", tw);
-  box.style.removeProperty("--frac-w"); // a measured fraction column (9:31 PM) broke the layout; the column is fixed in CSS (the owner 9:34 PM: "undo that last one")
+  box.style.removeProperty("--frac-w"); // the fraction column is fixed in CSS, never measured
   // one digit width for every "n / width" figure in the table, the Total's sums included, so the slashes line up
   // the rows' fraction is as wide as the widest row's figure, not the total's: the total sits
   // below with no bar beside it, so reserving its digits per row left a gap to the right of the
-  // bars (the owner 2026-10-06 9:25 PM); the total row uses its own digits
-  // the Total row's slash sits on the same line as the rows' (the owner 9:28 PM: "the totals are
-  // slightly misaligned"): every row's numerator, the total's included, is as wide as the widest
+  // bars; the total row uses its own digits
+  // the Total row's slash sits on the same line as the rows': every row's numerator, the total's included, is as wide as the widest
   // numerator; only the total's denominator may be wider
   // the digit width is shared by Fleet and Friends (minDigits, from both tables), so their
-  // slashes sit on one vertical line (the owner 2026-11-06: "the / is supposed to be horizontally
-  // aligned between the fleet and friend tables"); widths of 8 beside widths of 16 had split them
+  // slashes sit on one vertical line; widths of 8 beside widths of 16 would otherwise split them
   var digits = names.reduce(function (a, n) { return Math.max(a, digitsOf(shownWorking(table[n])), digitsOf(int(table[n].width))); }, minDigits || 1);
   digits = Math.max(digits, digitsOf(names.reduce(function (a, n) { return a + shownWorking(table[n]); }, 0)));
   var totalDigits = digitsOf(names.reduce(function (a, n) { return a + int(table[n].width); }, 0));
@@ -471,7 +461,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     var m = table[k], raw = int(m.working), working = shownWorking(m), width = int(m.width), done = int(m.done);
     var okv = m.okpct != null ? m.okpct : m["ok%"];
     t.ready += int(m.ready); t.working += working; t.width += width; t.done += done; t.ok += int(m.ok);
-    // the total ok% weighs each row by its own ok% denominator (ok + failed), never by done, a different count (the owner 2026-10-14: "they lie")
+    // the total ok% weighs each row by its own ok% denominator (ok + failed), never by done, a different count
     var okn = int(m.ok), okf = m.failed != null ? int(m.failed) : (pct(okv) > 0 ? Math.round(okn * 100 / pct(okv)) - okn : 0);
     t.okn = (t.okn || 0) + okn; t.okd = (t.okd || 0) + okn + okf;
     var st = shownStatus(m.status);
@@ -481,14 +471,14 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     setPill(r.pill, st || "-", STATUS_TONE[st] || "neutral");
     setTrack(r.track, working, width, scale, m);
     t.fix += int(m.fix_working != null ? m.fix_working : m.fix);
-    setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
+    setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and a label would widen the column and break the alignment
     setNum(r.ready, int(m.ready)); setNum(r.done, done);
     setOk(r.ok, pct(okv), done);
   }, box._total);
   var c = box._total._c;
   setNum(c[2], t.ready);
-  setText(c[3], ""); setClass(c[3], "num zero"); // no fix count here (the owner 2026-10-10: "Remove \"1 fix\"")
-  // working as "x / y": the sum of working over the sum of width (SPEC.md, the owner 8:10 PM)
+  setText(c[3], ""); setClass(c[3], "num zero"); // no fix count here
+  // working as "x / y": the sum of working over the sum of width
   setHTML(c[4], frac(t.working, t.width, digits, Math.max(digits, totalDigits)));
   setNum(c[5], t.done);
   setOk(c[6], t.okd ? t.okn / t.okd * 100 : null, t.okd);
@@ -510,8 +500,7 @@ function renderFriends(d) {
   setSideOff(box.closest("section"), d.friends_work);
 }
 // A side (fleet, friends) can be switched off or limited to some tiers (set --fleet on|off,
-// --fleet-tiers; the same for friends; the owner 2026-10-06 8:02 PM: "When [disabled], the table greys
-// out a bit visually", "both chevron'd and open"): the head says "· off" or "· tiers flash, pro",
+// --fleet-tiers; the same for friends): the head says "· off" or "· tiers flash, pro",
 // and an off side's whole panel is dimmed, open or collapsed.
 function sideWord(work, tiers) {
   var w = "";
@@ -520,23 +509,23 @@ function sideWord(work, tiers) {
 }
 function setSideOff(sec, work) { if (sec) sec.classList.toggle("off", String(work || "on") === "off"); }
 
-// the machine pill: red when the machine line says every provider is out of credit (SPEC.md)
+// the machine pill: red when the machine line says every provider is out of credit
 function setMachine(line) {
   var text = String(line || "-").replace(/^machine:\s*/, "");
-  // the human page shows RUNNING, STOPPED or STALE; tick lateness is the coordinator's view only (the owner 2026-10-04 2:55 PM)
+  // the page shows RUNNING, STOPPED or STALE; tick lateness is not shown
   var late = /^running\b.*tick late (\d+)s/i.exec(text);
   if (late) text = Number(late[1]) >= 60 ? "STALE" : "running";
   else if (/^running\b/i.test(text)) text = "running";
   var stopped = /STOPPED/.test(text);
-  // the human page says STOPPED and nothing more; the reason is the coordinator's view (the owner 2026-10-04 10:15 PM: "STOPPED is plenty")
+  // the machine chip says STOPPED and nothing more; the reason has its own line
   if (stopped) text = "STOPPED";
-  // the machine chip is gone (the owner 2026-10-12 ~00:58Z): STOPPED shows in the ETA tile instead
-  // the bar pulses only while the machine runs (the owner 2026-10-04 9:14 AM)
+  // STOPPED also shows in the ETA tile
+  // the bar pulses only while the machine runs
   var running = /^(running|STALE)\b/.test(text);
   var box = $("overall"); if (box) box.classList.toggle("stopped", !running);
 }
 
-// Providers (SPEC.md, the owner 8:03 and 8:18 AM): shown only when the store carries tables.providers
+// Providers: shown only when the store carries tables.providers
 var PROVIDER_STATE = { up: ["up", "good"], resting: ["resting", "warning"], "out of credit": ["out of credit", "critical"],
   out: ["out of credit", "critical"], out_of_credit: ["out of credit", "critical"], unknown: ["unknown", "dim"] };
 function providerState(st) { return PROVIDER_STATE[String(st || "unknown").toLowerCase()] || [String(st), "neutral"]; }
@@ -612,35 +601,35 @@ function renderHero(d, s, ft) {
   $("stop-reason").textContent = d.stopped ? String(d.stop_reason || "") : "";
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
-  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)
-  var pctSuffix = $("pct-suffix"); if (pctSuffix) pctSuffix.style.display = all ? "" : "none"; var ofAll2 = $("of-all2"); if (ofAll2) ofAll2.style.display = all ? "" : "none"; // an empty sprint says only "not started" (the owner ~01:22Z)
+  setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so
+  var pctSuffix = $("pct-suffix"); if (pctSuffix) pctSuffix.style.display = all ? "" : "none"; var ofAll2 = $("of-all2"); if (ofAll2) ofAll2.style.display = all ? "" : "none"; // an empty sprint says only "not started"
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
   var machineStopped = !!d.stopped || /STOPPED/.test(String(d.machine || ""));
-  if (machineStopped) { setHTML($("eta"), "<span class=\"eta-stopped\">STOP</span>"); /* STOP at every width (the owner ~01:32Z: "cleaner") */ etaAtLast = null; setText($("eta-at"), "\u00a0"); } /* the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red" */
+  if (machineStopped) { setHTML($("eta"), "<span class=\"eta-stopped\">STOP</span>"); /* STOP at every width */ etaAtLast = null; setText($("eta-at"), "\u00a0"); }
   else if (m) {
     setHTML($("eta"), etaText(m[1]));
     setTitle($("eta"), m[1] === "-" ? "needs 3 landings in the sprint (" + int(d.eta_landings) + " in the last hour); " + int(d.left) + " cards left" : int(d.left) + " cards left at " + Math.round(throughput || 0) + " per hour, measured over " + (d.eta_basis === "sprint average" ? "the sprint so far (" + Math.round(d.eta_window_minutes || 0) + " min, " + int(d.eta_landings) + " landings) (sprint average)" : "the last " + Math.round(d.eta_window_minutes || 0) + " min (" + int(d.eta_landings) + " landings)"));
     var ms = etaMs(m[1]);
-    // the viewer's zone after the time, the same source as the Updated clock (SPEC.md, the owner 10:00 PM)
+    // the viewer's zone after the time, the same source as the Updated clock
     var etaAt = new Date(at.getTime() + ms);
     if (ms != null && !isNaN(at)) { etaAtLast = [etaAt, ms]; fitEtaAt(); } else { etaAtLast = null; setText($("eta-at"), "\u00a0"); }
-  } else if (d.done) { setHTML($("eta"), "<span class=\"eta-done\">DONE</span>");  /* the owner 2026-10-12 ~00:32Z: "DONE with done in bright green" */ setText($("eta-at"), tookText(d));  /* the owner 2026-10-12 ~00:35Z: "Below DONE show the time it took in days, hours, minutes" */ }
+  } else if (d.done) { setHTML($("eta"), "<span class=\"eta-done\">DONE</span>"); setText($("eta-at"), tookText(d)); }
   else { setText($("eta"), "-"); setText($("eta-at"), ""); }
-  // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
+  // the cost tile and its tooltip cover one scope: the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
   // card is that over the cards that landed
-  // The server's cost summary (docs: v1 summary line): the total over priced runs, the per card over
+  // The server's cost summary: the total over priced runs, the per card over
   // the cards landed in this run, and the count of finished runs that reported no cost. "-" where
   // nothing is priced: never a false $0.
   var cs = d.cost || null, unp = cs ? int(cs.unpriced_runs) : 0;
   var recorded = cs ? cents(cs.total) : null;
   setText($("cost"), recorded === null ? "-" : money(recorded));
-  setText($("cost-whole"), recorded === null ? "-" : dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z)
+  setText($("cost-whole"), recorded === null ? "-" : dollars(recorded));  // the phone layout shows whole dollars, rounded up
   var perC = cs ? cents(cs.per_card) : null;
   // the tile is the API spend; kin on subscription seats are free, and their tokens are shown beside
-  // the dollars (the owner 2026-11-07: "api rate work should be priced *exactly*. friend sub rate should be free.")
-  // Owner 2026-11-07: the line under the total is "$x per card" and nothing else, ever.
+  // the dollars
+  // the line under the total is "$x per card" and nothing else
   var per = perC !== null ? money(perC) + " per-card" : "";
   setText($("cost-per"), per || " ");
   var missing = cs && cs.missing_prices && cs.missing_prices.length ? " (no price for " + cs.missing_prices.join(", ") + ")" : "";
@@ -653,10 +642,10 @@ function renderHero(d, s, ft) {
   
   setMachine(d.stopped ? "STOPPED" : (d.machine || (cacheHealthy ? "running" : "")));
   setText($("coord"), d.coordinator || "-"); $("coord-chip").hidden = false;
-  // the running sprint server's version (server.py reads it from the process; absent when unknown) and the epoch (the owner ~01:20Z)
+  // the running sprint server's version (absent when unknown) and the epoch
   var vc = $("ver-chip"); if (vc) { vc.hidden = !d.server_version; if (d.server_version) setText($("ver"), d.server_version); }
   setText($("epoch"), d.epoch != null ? d.epoch : "-");
-  fitMetaChips(); // the coordinator's name in its chip beside the logo (the owner 2026-10-12 ~01:00Z)
+  fitMetaChips(); // the coordinator's name in its chip beside the logo
 }
 
 // ---------- poll loop ----------
@@ -687,7 +676,7 @@ function renderRelease(j) {
 }
 function setLive(since) {
   setClass($("live"), "live ok");
-  // the viewer's zone after the time, from the browser (SPEC.md, the owner 9:59 PM): EDT now, EST after the change
+  // the viewer's zone after the time, from the browser: EDT now, EST after the change
   // "10:00:02 PM EDT": the digits right-aligned in a fixed 8ch box (no jump from 9 to 10 o'clock),
   // then one ordinary (proportional) space before PM and one before the zone. The browser's own time string
   // may put a narrow no-break space before PM, which the monospace face draws wide; so the
@@ -713,7 +702,7 @@ function fitTables() {
       // a number's flash tint bleeds 6 px into the gutter by design (.fv), so numbers get 7 px of slack
       return [].some.call(r.children, function (c) {
         var slack = (c.classList.contains("num") || c.classList.contains("frac")) ? 7 : 1;
-        // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout (the owner 11:50 AM)
+        // a name that does not fit is ellipsized (full text on hover), never a reason for the compact layout
         if (c.classList.contains("name")) { if (c.scrollWidth > c.clientWidth + 1) c.title = c.textContent; return false; }
         return c.offsetParent !== null && !c.classList.contains("cells") && c.scrollWidth > c.clientWidth + slack;
       });
@@ -722,7 +711,7 @@ function fitTables() {
   });
 }
 window.addEventListener("resize", fitTables);
-// Spend row (the owner 2026-10-04 10:15 AM): the pie of cards by tier and the ten most expensive streams.
+// Spend row: the pie of cards by tier and the ten most expensive streams.
 var TIERS = ["flash", "pro", "heavy", "frontier"], topN = 10, lastSpendData = null;
 window.addEventListener("resize", function () { if (lastSpendData) renderTopStreams(lastSpendData); });
 function tierColor(t) { return "var(--tier-" + (TIERS.indexOf(t) >= 0 ? t : "other") + ")"; }
@@ -733,7 +722,7 @@ function tierCounts(obj) { // {flash: "12", pro: 3} -> [[tier, n], ...] sorted b
   out.sort(function (a, b) { var ia = TIERS.indexOf(a[0]), ib = TIERS.indexOf(b[0]); if (ia < 0) ia = 99; if (ib < 0) ib = 99; return ia - ib || b[1] - a[1]; });
   return out;
 }
-// The Cost breakdown (the owner 2026-10-04 2:43 to 3:05 PM): the pie is the spend by tier and the
+// The Cost breakdown: the pie is the spend by tier and the
 // tier line in the panel's header shows rounded whole dollars. The table below
 // retains cents. The pie follows the rounded legend values.
 function tierSpend(d) {
@@ -744,7 +733,7 @@ function tierSpend(d) {
   }
   Object.keys(work).forEach(function (k) {
     var b = work[k].cost_by_tier; if (!b || typeof b !== "object") return;
-    // the four tiers alone: a record with no tier ("untiered") is no tier and is left out (the owner 2026-10-04 3:10 PM)
+    // the four tiers alone: a record with no tier ("untiered") is no tier and is left out
     TIERS.forEach(function (t) { var c = cents(b[t]); if (c) byTier[t] = (byTier[t] || 0n) + c; });
   });
   var order = Object.keys(byTier).sort(function (a, b) { return byTier[b] > byTier[a] ? 1 : byTier[b] < byTier[a] ? -1 : a.localeCompare(b); });
@@ -780,8 +769,8 @@ function renderPie(d) {
     a0 = a1;
   });
 }
-// the In flight tile's subline (the owner 2026-10-04 3:20 and 3:25 PM): one line, two parts,
-// "<working> working · <review+fix+merging> verify" (the owner 2026-10-10: review, fix and merge are one global state, verify), each number white and its words grey;
+// the In flight tile's subline: one line, two parts,
+// "<working> working · <review+fix+merging> verify", each number white and its words grey;
 // the separate review and merging counts are in the tooltip
 var inflightLast = null;
 function renderInflight(sum) {
@@ -794,7 +783,7 @@ function renderInflight(sum) {
     var parts = [[sum.working, w[0]], [sum.review + (sum.fix || 0) + sum.merging, w[1]]].filter(function (p) { return p[0] > 0; });
     if (sum.blocked) parts.push([sum.blocked,"blocked"]);
     box.textContent = "";
-    if (!parts.length) box.textContent = "\u00a0"; // blank when nothing is in flight; the line keeps its height (the owner 2026-10-12 ~01:10Z)
+    if (!parts.length) box.textContent = "\u00a0"; // blank when nothing is in flight; the line keeps its height
     parts.forEach(function (p, i) {
       if (i) box.appendChild(el("span", "pw", " \u00b7 "));
       box.appendChild(el("span", "pn", String(p[0]))); box.appendChild(el("span", "pw", " " + p[1]));
@@ -827,7 +816,7 @@ function renderTopStreams(d) {
   setCount(head, cellCount, function () { return quiet(el("div")); });
   putKid(head, 0, "", "stream");
   order.forEach(function (t, i) { putKid(head, 1 + i, "num", t); }); // plain headers, as every table's: the color keys are the legend's alone
-  putKid(head, cellCount - 1, "num", window.matchMedia("(max-width: 1100px)").matches ? "cost" : "total"); // the phone shows only stream | its cost (the owner 2026-10-12 ~00:55Z: "it's the cost per stream")
+  putKid(head, cellCount - 1, "num", window.matchMedia("(max-width: 1100px)").matches ? "cost" : "total"); // the phone shows only stream | its cost
   var shown = rows.slice(0, n);
   var byName = Object.create(null); shown.forEach(function (r) { byName[r.name] = r; });
   syncRows(box, head, shown.map(function (r) { return r.name; }), function () {
@@ -842,7 +831,7 @@ function renderTopStreams(d) {
     });
     putKid(r.node, cellCount - 1, "num", money(row.cost));
   });
-  // with no stream spending, the table keeps its row lines and stays blank: no message (the owner 2026-10-12 ~01:07Z)
+  // with no stream spending, the table keeps its row lines and stays blank: no message
   var blankN = rows.length ? 0 : (pie && pie.clientWidth ? Math.max(3, Math.round((pie.clientWidth - rem) / (5 * rem))) : 10);
   if (!box._blank) box._blank = [];
   while (box._blank.length < blankN) {
@@ -923,7 +912,7 @@ function render(d) {
 }
 // One snapshot, from the poll or the stream: shown only when its `at` is newer than the one on
 // screen, so a slow response that arrives after a faster later one never moves the page backwards
-// (SPEC.md, the owner 11:30 AM). Accepts the /api/sprint envelope ({data, build, throughput}) or a bare
+// Accepts the /api/sprint envelope ({data, build, throughput}) or a bare
 // `where --json` snapshot.
 function accept(j) {
   if (!j) return;
@@ -965,14 +954,14 @@ function startPoll() { if (pollTimer == null) { poll(); pollTimer = setInterval(
 // The top bar's centre line is static CSS (index.html): nothing here moves the title, the
 // pills, the clock or the button after load.
 
-// theme: always dark (the owner 2026-10-04 2:21 PM: no light theme, no toggle)
+// theme: always dark
 startPoll();
 
 // the version and epoch chips stay only while the header holds them and the clock on one line;
-// the clock has priority, so the last chip goes first (the owner 2026-10-12 ~01:20Z)
+// the clock has priority, so the last chip goes first
 function fitMetaChips() {
-  // the version always stays; epoch, then the coordinator, go while the header cannot hold them and the clock on one line (the owner ~01:25Z)
-  var order = [$("wordmark"), $("epoch-chip"), $("coord-chip")].filter(Boolean)  /* the wordmark goes first (the owner 2026-10-12 ~03:08Z: "only when it fits, hide otherwise") */, live = $("live"), ver = $("ver-chip"), logo = $("logo");
+  // the version always stays; epoch, then the coordinator, go while the header cannot hold them and the clock on one line
+  var order = [$("wordmark"), $("epoch-chip"), $("coord-chip")].filter(Boolean)  /* the wordmark goes first */, live = $("live"), ver = $("ver-chip"), logo = $("logo");
   if (!live || !logo) return;
   order.forEach(function (c) { c.classList.remove("nofit"); });
   var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;

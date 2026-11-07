@@ -11,8 +11,8 @@ import (
 const GitHubHost = "https://github.com/"
 
 // CloneURL is the one place a stream's repository becomes what git clones
-// and ls-remotes (DEFECT 21: `stream add --repo <org>/<repo> --forge github`
-// handed git the bare org/repo). The stream keeps repo as it was given: it
+// and ls-remotes (git cannot clone the bare org/repo that `stream add --repo
+// <org>/<repo> --forge github` records). The stream keeps repo as it was given: it
 // is the forge's identity of the repository (gh -R <org>/<repo>).
 //
 //   - a URL (scheme://...), an scp-like address (user@host:path) or an
@@ -79,8 +79,7 @@ func isCloneAddress_internal(repo string) bool {
 // empty helper first clears the host's own, so a person's keychain never
 // answers for the sprint). gh runs through env(1) with every GitHub
 // credential of the process unset (forge.Unset), so a GH_TOKEN or a
-// GH_CONFIG_DIR in the environment cannot make it someone else (directive
-// 59). It names no secret.
+// GH_CONFIG_DIR in the environment cannot make it someone else. It names no secret.
 func credentialEnv_internal(gh string) []string {
 	if gh == "" {
 		return nil

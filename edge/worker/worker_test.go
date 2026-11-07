@@ -247,7 +247,7 @@ func seedFakeStore_internal(t *testing.T, clock func() time.Time) (*store.Fake, 
 	ctx := context.Background()
 	row := "amd-1.ds"
 	rec, err := st.Apply(ctx, store.Op{
-		ID: "setup-1", Epoch: 1, Actor: "friendF", Kind: "setup", At: clock(),
+		ID: "setup-1", Epoch: 1, Actor: "coord", Kind: "setup", At: clock(),
 		Writes: []store.Write{
 			store.PutStream{Name: "s1", Repo: "mas-bandwidth/nova-sprint", Base: "main", Pos: 1, Forge: "github"},
 			store.PutRow{Name: row},
@@ -283,7 +283,7 @@ func seedFakeStore_internal(t *testing.T, clock func() time.Time) (*store.Fake, 
 	return st, row
 }
 
-// Directive 41: nova-config's bench role is the only word on where a worker
+// The bench role in nova-config is the only word on where a worker
 // runs; the worker refuses no host, the coordinator's included.
 func TestRunnerRunsOnAnyHostTheCoordinatorsToo(t *testing.T) {
 	t.Parallel()
@@ -427,7 +427,7 @@ func TestStoreSprintClientReportRefusalsAndIdempotency(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "not on branch sprint/s1/p1 at origin") {
 		t.Fatalf("expected origin refusal, got %v", err)
 	}
-	// Finish needs only the head on origin (intent rule 32): no PR, no
+	// Finish needs only the head on origin: no PR, no
 	// checks; the landing opens the PR and reads its checks.
 	git.originHeads["sprint/s1/p1"] = testWorkSHA
 	rec1, err := sc.Report(ctx, ReportRequest{Row: row, Consumer: "p1.w1", Gen: taken.Gen, ResultID: "r1", Result: "ok", Head: testWorkSHA, Cost: 500, Priced: true})
@@ -586,7 +586,7 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 	}
 	assertEpochSeparatedQueryEdge_internal(t, ctx, r3, req, res1)
 	snap, _ := st.Snapshot(ctx)
-	// Defect 73: one the restart cannot resume (no receipt) is released with no blame.
+	// One the restart cannot resume (no receipt) is released with no blame.
 	if snap.Cards["p1"].State != "ready" || snap.Cards["p1"].Bounces != 0 || snap.Cards["p1"].Head != testPriorSHA {
 		t.Fatalf("dead harness on restart must release with no blame (0 bounces) and keep partial head %s: %+v", testPriorSHA, snap.Cards["p1"])
 	}
@@ -686,7 +686,7 @@ func TestWallEnvExactAllowlistPerName(t *testing.T) {
 }
 
 type rejectReceiptSprint struct {
-	crSprint
+	sandboxSprint
 	receipt store.Receipt
 }
 
@@ -701,10 +701,10 @@ func TestReportRequiresAcceptedMatchingReceiptBeforeClean(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	sp := &rejectReceiptSprint{
-		crSprint: crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}},
-		receipt:  store.Receipt{Accepted: false, Op: "res-e1-p1.r1-a0-g2", Reason: "gen mismatch"},
+		sandboxSprint: sandboxSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}},
+		receipt:       store.Receipt{Accepted: false, Op: "res-e1-p1.r1-a0-g2", Reason: "gen mismatch"},
 	}
-	r := crRunner_internal(t, sp, &crWall{})
+	r := sandboxRunner_internal(t, sp, &sandboxWall{})
 	jobDir := filepath.Join(r.RootDir, "jobs", "p1.r1")
 	if err := r.RunConsumer(ctx, sp.next, sp.next.Working[0]); !errors.Is(err, ErrRefused) {
 		t.Fatalf("unaccepted receipt must refuse and not clean: got %v", err)
@@ -736,7 +736,7 @@ func TestReportRequiresAcceptedMatchingReceiptBeforeClean(t *testing.T) {
 func TestRecoveryMatchesFullJobIdentityEpochConsumerAttemptGen(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	sp := &crSprint{next: NextResponse{
+	sp := &sandboxSprint{next: NextResponse{
 		Epoch: 2, Row: "vision.ds", State: card.Up, Width: 1,
 		Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Attempt: 2, Gen: 5}},
 	}}
@@ -747,7 +747,7 @@ func TestRecoveryMatchesFullJobIdentityEpochConsumerAttemptGen(t *testing.T) {
 		Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: "vision.ds",
 		Attempt: 1, Gen: 3, ResultID: "res-e1-p1.w1-a1-g3", State: JobRunning, PID: 888, Nonce: "nonce-stale",
 	})
-	r, err := NewRunner(Runner{Now: testClock_internal(), Sleep: noSleep_internal, Host: "vision", RootDir: root, Sprint: sp, Procs: procs, Wall: &crWall{}})
+	r, err := NewRunner(Runner{Now: testClock_internal(), Sleep: noSleep_internal, Host: "vision", RootDir: root, Sprint: sp, Procs: procs, Wall: &sandboxWall{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -779,7 +779,7 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	}
 
 	// Verify RunConsumer propagates *FetchError and reports nothing.
-	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 1}}}}
+	sp := &sandboxSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 1}}}}
 	fGit := newFakeGit_internal()
 	fGit.rebaseErr = &FetchError{StreamRef: "sprint/s1/group", Cause: errors.New("network down")}
 	wall := &fakeWall{
@@ -793,7 +793,7 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	}
 	r, err := NewRunner(Runner{
 		Host: "vision", RootDir: t.TempDir(),
-		Sprint: &workTakeSprint{crSprint: sp},
+		Sprint: &workTakeSprint{sandboxSprint: sp},
 		Git:    fGit, Wall: wall, DefaultHarness: &ScriptHarness{}, Now: testClock_internal(), Sleep: noSleep_internal,
 	})
 	if err != nil {
@@ -809,7 +809,7 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 }
 
 type workTakeSprint struct {
-	*crSprint
+	*sandboxSprint
 }
 
 func (s *workTakeSprint) Take(_ context.Context, _, id string, gen int) (TakeInfo, error) {
@@ -823,11 +823,11 @@ func (s *workTakeSprint) Take(_ context.Context, _, id string, gen int) (TakeInf
 
 func TestConcurrentWidthWithdrawStopsRunningHarness(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}}}}
+	sp := &sandboxSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}}}}
 	started := make(chan struct{})
 	canceled := make(chan error, 1)
 	wall := &cancelWaitWall{started: started, canceled: canceled}
-	r := crRunner_internal(t, sp, wall)
+	r := sandboxRunner_internal(t, sp, wall)
 
 	done := make(chan error, 1)
 	go func() {
@@ -916,7 +916,7 @@ func TestRunnerHooksInAsWorkerBeforeFirstTake(t *testing.T) {
 	if err := runner.RunOnce(ctx, row); err == nil || !strings.Contains(err.Error(), "hook in to the bus first") {
 		t.Fatalf("a bus hook that did not claim the name must stop the start, got %v", err)
 	}
-	// The card is in hand from the deal (defect 52); before the hook the
+	// The card is in hand from the deal; before the hook the
 	// row neither acknowledges it nor reports it.
 	if snap, _ := st.Snapshot(ctx); snap.Cards["p1.w1"].State != card.Working || snap.Cursors[steps.AckCursor(1, "p1.w1")] != 0 {
 		t.Fatalf("the row acted on a card before it was hooked in: %+v %v", snap.Cards["p1.w1"], snap.Cursors)

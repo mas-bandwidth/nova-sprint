@@ -19,7 +19,7 @@ import (
 // run a consumer. Model is the one the deal named and the consumer carries
 // (a friend's own; a bench's the active policy's bench model for the card's
 // tier, in provider/model form); take reads it from the consumer and never
-// invents one (defect 57). Deadline (seconds) is the active policy's
+// invents one. Deadline (seconds) is the active policy's
 // timeouts().consumer[tier], Forge the stream's, CommitName and CommitEmail
 // the sprint's; the worker holds none of its own.
 type takeReceipt struct {
@@ -54,7 +54,7 @@ type takeReceipt struct {
 }
 
 // runTake is `take`: the row's acknowledgement of a card dealt to it. The
-// deal is the take (defect 52): the consumer is in the row's hand, working,
+// deal is the take: the consumer is in the row's hand, working,
 // from the deal, and the deadline runs from there. take writes the
 // acknowledgement once (steps.AckCursor), which stops the nudges, and
 // prints the receipt; a repeat, or a take after the acknowledgement, prints

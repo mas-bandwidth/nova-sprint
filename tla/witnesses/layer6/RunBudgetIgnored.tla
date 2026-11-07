@@ -4,20 +4,20 @@
 EXTENDS Naturals, Sequences, FiniteSets, TLC
 
 (***************************************************************************
- Layer 6's chooser, FIFO tick and pusher; see LAYER-6-RUN sections 2, 8, 9.
+ Layer 6's chooser, FIFO tick and pusher; see docs/LAYER-6-RUN.md.
  Ops are numbered by first FIFO admission, not by card id. This bounded
  instance uses one move per packed atomic op (store owns multi-write atomicity).
  A report changes a card gen between fold and apply. A refused op goes back
  through the next L3 fold/replan; run continues the independently packed
  ops in order. Run never splits members of a packed atomic op.
 
- AtomicChooser=FALSE implements the coordinator ruling: check session health
+ AtomicChooser=FALSE: check session health
  at tick start, stop after observing loss, but permit the check/use window.
  At most one owns the PG advisory lock. The old process may still Apply or
  push before observing loss; gen/condition fences are the store contract.
  RunLockCheckRace violates the deliberately STRONGER CommitUnderCurrentLock
- property, recording the accepted limitation rather than an implementation
- bug. AtomicChooser=TRUE is only a comparison contract, not implemented.
+ property, recording the accepted limitation of the check/use window.
+ AtomicChooser=TRUE is only a comparison contract, not implemented.
 
  Fold/Select/Refuse/EndTick compose the L3 scheduling interface: L3 owns
  ordering, budgets, packing and carry. Run applies returned ops in order,
@@ -346,7 +346,7 @@ NoDroppedPlan == \A p \in Processes : local[p].phase # "down" =>
 EdgesAfterCommit == edgeDone \subseteq done
 NoTickAfterObservedStop == tickCallSafe
 NoAcceptedTickWhileStopped == tickStopSafe
-\* The brief's name (BRIEF-V2-STITCH step 3): nothing ticks while Stopped,
+\* Nothing ticks while Stopped,
 \* neither a tick begun after the stop was seen nor one accepted under it.
 \* run.Ticker.Tick returns before steps.Tick when its folded copy is
 \* stopped (run/tick.go; TestNoTickWhileStopped).

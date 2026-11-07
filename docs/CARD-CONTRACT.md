@@ -1,181 +1,124 @@
-# The card contract
+# Card contract
 
-What a brief must be before `add` accepts it. the quality
-of the cards into the system "was a BIG PART" of whether a sprint went
-smoothly or was rough. `add` lints every brief against this page on every
-path, with no bypass, and refuses naming the section; `check` lints a brief
-directory before a sprint starts (LESSONS C.1; CORRECT-USE.md step 4). Every
-line below is a lesson v1 paid for, cited as LESSONS (section.line) or
-PRIORITY (LESSONS-PRIORITY-AND-MERGE.md). Nothing here is new.
+A card is a typed record in the store (`store/schema.sql` defines its table and checks; the Go types mirror the columns). Its markdown form is a brief. `nova-sprint add --stream <s> --brief-file <f>... [--dry-run]` parses each brief into the record, then proves it against origin and the roster ("Admission"). Every path through `add` runs the same lint; `check` re-proves every waiting or ready producer the same way, and `restore` prints an `ADMIT` line per restored card. Each refusal names the line or section and its fix.
 
-## What a brief has
+The card id is the brief file's name without `.md`.
 
-A cold card is complete: closed PATHS, done-when as checkable commands, the
-only ref the row may push, and, for a read, the sha and "do not edit"
-(LESSONS C.13). Its line 1 is its tier (`tier: <t>`, one of flash, pro,
-heavy, frontier); the card's stored field is authoritative after that, and a
-card is at its tier from its first deal (PRIORITY T1, T2, T17). An optional
-`PRIORITY: <level>` line declares its level, one of `low`, `normal`,
-`high`, `critical` or `blocker`; without it the level is `normal`, and any
-other spelling, `read` included (the rung of read consumers, never a
-brief's), is refused (PRIORITY D5). "There is low, normal,
-high, read, critical, blocker in specific order." "Default is normal." and
-"Priorities are manually set by request.": the line is written by the
-person or the coordinator who asked for that level, and nothing computes it.
+## Brief format
+
+    tier: pro
+    PATHS: store/x.go, store/x_test.go
+    NEEDS: none
+    AFTER: other-card
+    PRIORITY: high
+    TEST: go test -run TestX ./store
+    DONE-WHEN: go test ./store
+    DONE-WHEN: go vet ./store
+    NEEDS-ROUTE: adb
+
+    <task prose>
+
+- Line 1 is `tier: <flash|pro|heavy|frontier>`. The tier is the card's minimum and is never lowered.
+- Metadata lines follow, one `KEY: value` per line, up to the first blank line. A key is upper case; a value is not empty.
+- A blank line, then the task prose (required, not empty).
+- A key outside the table below is refused as `must be a recognized metadata field`. `DEPENDS-ON`, `DEPENDENCIES` and `NEED` are refused as an invalid NEEDS section: the only spelling is `NEEDS`.
+
+| Key | Required | Repeatable | Value |
+|---|---|---|---|
+| `PATHS` | yes | no | Comma-separated plain paths relative to the repository root. No spaces, parentheses or notes inside an entry; no absolute path; no `..`. |
+| `TEST` | yes | yes | The command naming the test the card adds. |
+| `DONE-WHEN` | yes | yes | One command per line ("Gates"). |
+| `NEEDS` | no | no | Comma-separated card ids, or `none`. |
+| `AFTER` | no | no | Comma-separated card ids, or `none`. |
+| `PRIORITY` | no | no | `low`, `normal`, `high`, `critical` or `blocker`; `normal` by default. `read` is refused: it is the rung of read consumers, never a brief's. |
+| `NEEDS-ROUTE` | no | yes | One route name per line: 1 to 128 of `a-z A-Z 0-9 . _ -`. |
+| `HEAD` | no | no | Full 40-hex sha of work the card already has. |
+| `PR` | no | no | Pull request number (at least 1) of work the card already has. |
+
+`WHO`, `LOCK` and `JOB` lines are refused ("Retired mechanics").
 
 ## Paths
 
-Every card declares its paths, so the lander never meets the E12 refusals
-v1 met after every gate had passed (LESSONS C.2). PATHS is plain comma-separated paths, and scope
-notes go on a NOTE line, never inside PATHS: a space-joined PATHS became one
-bad entry, and a "(note)" inside it was read as a path (LESSONS C.3). PATHS
-is written from the build: generated outputs, registry rows, pinned digests,
-the tests and docs that pin the rule, and TLA cfgs, because v1 widened PATHS
-by machine 57 times in one day (LESSONS C.4).
+PATHS lists every file the card may edit, written from the build: generated outputs, registry rows, pinned digests, the tests and docs that pin the rule, TLA configs. A worker edits only these files; `finish` and the landing do not extend them. Scope notes go in the task prose, never in PATHS.
+
+Each entry must be at the stream's base:
+
+- A glob (`*`, `?`, `[`) must match a file or directory there.
+- A literal path must exist, or its directory must.
+- A new directory is declared as its own PATHS entry ending in `/`, and that directory's parent must exist.
 
 ## Needs and after
 
-There is one needs form and one parser, which refuses every other spelling:
-in v1 `Needs: none` overrode `DEPENDS-ON:` and 15 dependants were dealt at
-once (LESSONS C.5). A need is written only when the card consumes the other
-card's output, never for file overlap or rank order: 151 of 466 v1 edges
-were overlap only, and one held a whole tree (LESSONS C.6; PRIORITY D29).
-A cycle through needs or after is refused at add, naming the loop (LESSONS
-2.19). `after` is soft and orders landing only (LAYER-2-CARD-MACHINE.md;
-LESSONS 2.15).
+`NEEDS` is written only when the card consumes the other card's output, never for file overlap or order. A need keeps the card `waiting` until the needed card lands. A cycle through `NEEDS` or `AFTER` is refused, naming the loop. An unknown id is refused by name.
 
-## Done-when and its gates
+`AFTER` is soft: it orders landing among cards both queued to land and never holds a start.
 
-Each done-when is run at the base before the deal, and a gate that would
-stay red after a correct fix is a brief defect, refused at add (LESSONS
-C.7). Every gate's negative control plants its fault in the real artifact
-the gate covers; a gate that skips, cannot compile, or excludes by default
-fails the lint, because three v1 schema gates passed while checking nothing
-(LESSONS C.8). The TEST line names a test absent at base, and the system
-runs it red at base and green at head as a gate (LESSONS C.9). A gate names
-the facts it needs (an OS, a tool), never a host: the lint refuses "ssh to
-hetzner2" (LESSONS C.11). Every gate keeps its command, exit code and full
-log; a finding names the path, and a read verdict without a file:line
-finding is refused (LESSONS C.16).
+Overlap between cards is not a need. A card whose PATHS name a file also named by a started card of its stream waits until that card lands; `show <id>` names the card and file.
 
-## What the brief tells the worker
+`add --needs`, `--after` and `--priority` set the same fields from flags.
 
-The brief tells the worker to cite the base-reds table instead of
-re-running the tree at base, and a fix card never edits that table (LESSONS
-C.17). It tells the worker to run the whole package of every file it
-touches, never a subset (LESSONS C.18).
+## Gates
 
-A brief never names a commit identity: the sprint has one (`nova-sprint identity`), which
-hook and take print and the bench worker writes into the job's clone, and every commit of
-every card is authored and committed as it; the contributor's own name goes only in a
-`By:` line and a `Co-Authored-By:` trailer of the message. A brief that tells a worker to
-commit as itself or as a row is wrong; `finish` refuses such a head (CORRECT-USE, "one commit
-identity").
+Each `DONE-WHEN` is one argv: words split at white space, a single or double quote joining what it encloses, run directly with no shell. A line is refused when:
+
+- it carries shell syntax outside a quote: a backquote, `;`, `&`, `&&`, `|`, `||`, `<`, `>`, `(`, `)`, a backslash, `$(`, `${`, or `$` before a letter or `_` (a lone `$`, as in `^TestX$`, is literal);
+- a quote is left open;
+- its first word is not a program: a path (it holds a `/`), or a name that starts with a lower-case letter or digit, holds only letters, digits and `. _ + - @`, does not end in a dot, and is not a shell builtin (`cd`, `export`, `source`, ...).
+
+The fix line is `write the gate as one command ...; wrap a gate that needs a shell: sh -c '...'`. A sentence (`Verify the tests pass`) fails the form check; a lower-case sentence is not detectable, and a name of the right form that is not on the bench fails where the gate runs. `edge.ParseGate` is the one parser: `add`, `check`, `restore` and the worker's test runner all call it, so what is admitted is what runs. Nothing is run at `add`.
+
+A gate names facts it needs (an OS, a tool), never a host: a DONE-WHEN or TEST that names a bench from nova-config as a word, or runs `ssh`, is refused.
+
+Gate requirements on the brief author (not mechanically checked at `add`):
+
+- A gate that would stay red after a correct change is a brief defect; a worker reports it with `finish --failed` and the coordinator replaces the brief.
+- Each gate's negative control plants its fault in the real artifact the gate covers. A gate that skips, cannot compile, or excludes by default checks nothing.
+- `TEST` names a test absent at the base: red at the base, green at the head.
+
+## What the task prose tells the worker
+
+- Cite the base-reds table instead of re-running the tree at the base; a fix card never edits that table.
+- Run the whole package of every file touched, never a subset.
+- Name a landed worked example for every piece after the first.
+- Never name a commit identity. The sprint has one (`nova-sprint identity`), which `hook` and `take` print and the bench worker writes into the job's clone; every commit of every card is authored and committed as it, and the contributor's own name goes only in a `By:` line and a `Co-Authored-By:` trailer. A brief that tells a worker to commit as itself or as a row is wrong; `finish` refuses such a head.
 
 ## Size and kind
 
-Cards are pro-sized from the start: the design piece lands first, and each
-later piece names a landed worked example; heavy is for design, model and
-standard pieces only (LESSONS C.12; PRIORITY D38, T5). A card that writes a
-new TLA+ model is admitted at heavy at least (PRIORITY T4). A card's base is
-its stream branch, never another card's branch (LESSONS C.10). A read is
-staged detached at the exact head with push disabled (LESSONS C.14). A card
-whose work is already on its base is a duplicate brief, refused at add,
-never dealt and failed as a worker's fault (LESSONS 3.22).
+Cards are pro-sized: the design piece lands first and each later piece names a landed worked example. `heavy` is for design, model and standard pieces; a card that writes a new TLA+ model is at least heavy. A card's base is its stream branch, never another card's branch.
 
-## Reports
+A read is staged detached at the exact head with push disabled. A report is machine-read: a hold is a report with its reason, not a commit message or a file; a read verdict `fix` without a `<path>:<line>:` finding is refused.
 
-A report is machine-read: verdict and full head first; a hold is a report
-with its reason, not a commit message or a file (LESSONS C.15). A HOLD is
-honest: LAND only with every done-when gate green at the exact head
-(LESSONS C.19).
+## Admission
 
-## The card is a structured record (decided 2026-11-06)
+`add` (dry run too) parses the brief, then proves:
 
-"There is some value in having things *structured* that was an idea we
-learned from v1." "As long as the *structure* exists and things aren't free form text, I'm happy." "So the structure we choose here is the SQL database." So the card contract above is a typed record, defined once
-in `store/schema.sql` (the table and its checks are the structure; the Go types mirror the columns; there is no second definition): the markdown brief is a serialization of it, `add` parses
-the brief into the record and the lint is the parser's refusals naming the
-field; the store keeps as columns the fields the engine reads (needs, after,
-paths, tier, priority, done-when) and the prose as text; the deal message, the
-report and the dashboard feed carry the same fields as JSON, and the dashboard reads the table;
-the only free text is the prose a mind reads: the task itself and the reason lines;
-v1's 400k generated lines came from making every internal message a record,
-and the engine's internals stay plain Go.
+**From the brief alone**
 
-## Admission: what add proves before a card exists (built 2026-11-07)
+- Retired mechanics, each named with its line and refused with the fix `remove it: the deal names the row, the take receipt is the job, a gate names the facts it needs (an OS, a tool) and never a host, and nothing is locked by hand`:
+  - a `WHO:`, `LOCK:` or `JOB:` key, or the text `JOB.md`;
+  - a lock (`winlock`, `flock`, `lockfile`, `captain lock`, `bench lock`);
+  - `ssh to|into|on <host>`;
+  - a DONE-WHEN or TEST that runs `ssh`.
+- A DONE-WHEN that is not one command (above).
+- A tier line outside `flash|pro|heavy|frontier`, a missing `PATHS`, `TEST` or `DONE-WHEN`, or empty task prose.
 
-Intent rule 34: whatever can be found at add is found at add, and each
-refusal names its one fix. `add` (dry run too) parses the brief, then proves
-against origin and the roster; `check` re-proves every waiting or ready
-producer the same way, and `restore` prints the same proof for the cards it
-restored (an `ADMIT` line each). The parse refuses:
+**Against the roster (nova-config) and origin**
 
-- **NEEDS-ROUTE: <name>** (repeatable). The card is dealt only to a row that
-  serves every route it names. A machine serves a route through a
-  `route:<name>` role in nova-config (`--roles bench,route:<name>`); kin
-  serve no routes. The one parse is `card.NeedsRoutes`, which the tick, the
-  unserved judgement and admission all read. Uppercase like every other key.
-- **HEAD: <full sha>** and **PR: <number>** (once each, optional): the work
-  the brief carries, read only by admission (the brief keeps them).
-- **DONE-WHEN** that is not one command. A DONE-WHEN is one argv: words
-  split at white space, a single or double quote joining what it encloses,
-  run directly with no shell. So the line is refused (decided 2026-11-07,
-  directive 77) when it carries shell syntax outside a quote (a backquote,
-  `;`, `&`, `&&`, `|`, `||`, `<`, `>`, `(`, `)`, a backslash, `$(`, `${`, or
-  `$` before a letter or `_`; a lone `$`, as in `^TestX$`, is a literal), when
-  a quote is left open, or when its first word is not a program: a path (it
-  holds a `/`), or a name that starts with a lower-case letter or digit, holds
-  only letters, digits and `. _ + - @`, does not end in a dot, and is not a
-  shell builtin (`cd`, `export`, `source`, ...). A sentence is caught by
-  that form (`Verify the tests pass`, `tests, pass`), a lower-case sentence is
-  not: what the coordinator can check is the form, because the bench's PATH
-  is not readable from it. A name of the right form that is not on the bench
-  is met where the gate runs, as the wall's own command-not-found. The fix
-  line says to wrap a gate that needs a shell: `sh -c '...'`. The one parser
-  is `edge.ParseGate`; admission (add, check, restore) and the worker's
-  `RunTest` both call it, so what is admitted is what runs. Nothing is run
-  at add.
-- **Retired mechanics**, named with the line: a `WHO:`, `LOCK:` or `JOB:`
-  key; `JOB.md`; a lock (winlock, flock, lockfile, a bench or captain lock);
-  `ssh to <host>`; a DONE-WHEN or TEST that runs ssh. The take receipt is the
-  job, the deal is the who, and a gate names facts, never a host.
+- The stream is in the store and its base is at origin.
+- A row at width above zero serves the card's tier and every `NEEDS-ROUTE` route. A machine serves a route through a role `route:<name>` in nova-config (`nova-config machine set <bench> --roles bench,route:<name> --actor <you> --reason <why>`); kin serve no routes. The fix when no row serves the tier: `nova-config friend set <name> --tiers ...,<tier>`, give a bench cores, or change the tier line.
+- The work is not already at the base: the card's branch at origin, a `HEAD` line, or a `PR`'s head is not an ancestor of the base tip, and the PR has not merged. Otherwise the card is a duplicate and is refused.
 
-Then, against the roster and origin:
+## Streams
 
-- the stream is in the store and its base is at origin;
-- a row up at width above zero serves the card's tier and every route;
-- no DONE-WHEN or TEST names a roster bench as a word;
-- each PATHS entry is at the base: a glob (`*`, `?`, `[`) matches a file or
-  directory there; a literal exists, or its directory does, or its directory
-  is declared in PATHS as `dir/` and that directory's parent exists (a new
-  directory is declared, never implied);
-- the work is not already at the base: the card's branch at origin, a HEAD
-  line, or a PR's head is not an ancestor of the base tip, and the PR has not
-  merged.
+`nova-sprint stream add <s> --repo <org/repo> [--base main] [--mode auto|group|hand] [--forge github]` refuses when:
 
-`stream add` (and `check`, per stream) also reads the status checks the base
-branch requires (branch protection and rulesets, one `gh api` each) and,
-when one is named like a contributor agreement (`CLA`, `CAA`, "contributor",
-"assignment agreement", "license agreement"), prints a warning, never a
-refusal: the check, and the git identities the benches author commits as
-(`<row> <row@nova-sprint.local>`, from nova-config's benches with cores), for
-the human to sign before the first card lands; kin commit as their own git
-identity. Decided 2026-11-07 (directive 63): a forge exposes who has signed
-only where the agreement's bot does, and most do not, so the signed identities
-are not listed and an unsigned one is not refused at add; the warning is the
-closest correct thing. A required-checks read that fails is itself a warning.
-Routing a stream's cards away from a row whose identity cannot land is the
-deal's, not admission's, and is not built here.
+- the stream exists;
+- the base branch is not at origin;
+- the card branch names `sprint/<s>/<card>` cannot be created: the name fails git's ref-name rules, the base is `sprint` or `sprint/<s>`, or a branch at origin is their parent (git refuses a branch under a branch);
+- with `--forge github`, this host's `gh` identity lacks write, maintain or admin on the repository.
 
-`stream add` proves the card branches `sprint/<stream>/<card>` can be
-created: the name passes git's ref-name rules, the base is not `sprint` or
-`sprint/<stream>`, no branch at origin is their parent (git refuses a branch
-under a branch), the base is at origin, and with forge github this host's gh
-identity has write, maintain or admin on the repository.
+It also reads the base branch's required status checks (branch protection and rulesets, one `gh api` each). When one is named like a contributor agreement (`CLA`, `CAA`, "contributor", "assignment agreement", "license agreement"), it prints a warning, never a refusal: the check name, and the git identities the benches author commits as (`<row> <row@nova-sprint.local>`, from nova-config's benches with cores), for the human to sign before the first card lands. A forge exposes who has signed only where the agreement's bot does, so unsigned identities are not refused. A required-checks read that fails is itself a warning. `check` repeats these per stream.
 
-A restore refuses a card record whose state this build does not map (one of
-waiting, ready, working, review, merging, landed, fail, blocked, done),
-naming the record. A dump of another shape (a v1 store with a `landed`
-timestamp column) is refused before that by the backup header's schema
-hash; there is no import verb.
+## Restore
+
+A restore refuses a card record whose state this build does not map (one of `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`, `blocked`, `done`), naming the record. A dump of another schema is refused earlier by the backup header's schema hash.

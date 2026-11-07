@@ -9,7 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The sprint's commit identity (store.Identity, round 24). A repository's
+// The sprint's commit identity (store.Identity). A repository's
 // contributor agreement keys off the forge account, so every agent, friend
 // and bench worker commits as ONE account on the agreement's allowlist (its
 // git user.name and user.email, typically the account's noreply address);

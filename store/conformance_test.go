@@ -23,57 +23,57 @@ var t0 = time.Date(2026, 11, 6, 12, 0, 0, 123456789, time.UTC)
 // and the functional tests against PG, so the two cannot drift.
 func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 	for name, scenario := range map[string]func(h *harness){
-		"conditions":              conditions,
-		"seq fence and epoch":     fences,
-		"writes":                  writes,
-		"write refusals":          writeRefusals,
-		"invalid":                 invalidOps,
-		"refusal changes nothing": refusalChangesNothing,
-		"idempotent":              idempotent,
-		"clear":                   clearCarriesRows,
-		"clear refusals":          clearRefusals,
-		"rebuild":                 rebuild,
-		"events":                  eventsPaging,
-		"policy":                  policy,
-		"times":                   times,
-		"gen once per op":         genOncePerOp,
-		"no width in the store":   noWidthInStore,
-		"author and base sha":     authorAndBase,
-		"working count":           workingCount,
-		"row gen race":            rowGenRace,
-		"row load":                rowLoad,
-		"sentinels":               sentinels,
-		"after":                   afterOrder,
-		"blocked":                 blockedState,
-		"row held":                rowHeld,
-		"hook":                    hook,
-		"stop":                    stop,
-		"identity":                identity,
-		"stream settings":         streamSettings,
-		"lesson columns":          lessonColumns,
-		"review and row reason":   reviewAndRowReason,
-		"finding":                 finding,
-		"model":                   model,
-		"red":                     red,
-		"usage":                   usageColumn,
-		"int range":               intRange,
-		"nul bytes":               nulBytes,
-		"text and time":           textAndTime,
-		"known id, invalid body":  knownIDInvalidBody,
-		"snapshot is a copy":      snapshotIsCopy,
-		"same id concurrent":      sameIDConcurrent,
-		"clear races apply":       clearRacesApply,
-		"name lengths":            nameLengths,
-		"check order":             checkOrder,
-		"judgements":              judgements,
-		"cursors":                 cursors,
-		"tiers":                   tiers,
-		"card contract":           cardContract,
-		"event policy":            eventPolicy,
-		"cold read 3":             coldRead3,
-		"cold read 4":             coldRead4,
-		"schema identity":         schemaIdentity,
-		"fake from snapshot":      fakeFromSnapshot,
+		"conditions":                      conditions,
+		"seq fence and epoch":             fences,
+		"writes":                          writes,
+		"write refusals":                  writeRefusals,
+		"invalid":                         invalidOps,
+		"refusal changes nothing":         refusalChangesNothing,
+		"idempotent":                      idempotent,
+		"clear":                           clearCarriesRows,
+		"clear refusals":                  clearRefusals,
+		"rebuild":                         rebuild,
+		"events":                          eventsPaging,
+		"policy":                          policy,
+		"times":                           times,
+		"gen once per op":                 genOncePerOp,
+		"no width in the store":           noWidthInStore,
+		"author and base sha":             authorAndBase,
+		"working count":                   workingCount,
+		"row gen race":                    rowGenRace,
+		"row load":                        rowLoad,
+		"sentinels":                       sentinels,
+		"after":                           afterOrder,
+		"blocked":                         blockedState,
+		"row held":                        rowHeld,
+		"hook":                            hook,
+		"stop":                            stop,
+		"identity":                        identity,
+		"stream settings":                 streamSettings,
+		"lesson columns":                  lessonColumns,
+		"review and row reason":           reviewAndRowReason,
+		"finding":                         finding,
+		"model":                           model,
+		"red":                             red,
+		"usage":                           usageColumn,
+		"int range":                       intRange,
+		"nul bytes":                       nulBytes,
+		"text and time":                   textAndTime,
+		"known id, invalid body":          knownIDInvalidBody,
+		"snapshot is a copy":              snapshotIsCopy,
+		"same id concurrent":              sameIDConcurrent,
+		"clear races apply":               clearRacesApply,
+		"name lengths":                    nameLengths,
+		"check order":                     checkOrder,
+		"judgements":                      judgements,
+		"cursors":                         cursors,
+		"tiers":                           tiers,
+		"card contract":                   cardContract,
+		"event policy":                    eventPolicy,
+		"consumer stream and closed sets": consumerStreamAndClosedSets,
+		"empty keys and no-op sets":       emptyKeysAndNoopSets,
+		"schema identity":                 schemaIdentity,
+		"fake from snapshot":              fakeFromSnapshot,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -476,7 +476,7 @@ func genOncePerOp(h *harness) {
 	assert.Equal(h.t, 0, r.After.Rows["w2"].Gen, "a row the op adds is at gen 0")
 }
 
-// hook: PutRow is the sprint hook's one write (round 22). A row is hooked
+// hook: PutRow is the sprint hook's one write. A row is hooked
 // by one session at a time: another session's hook is refused, naming the
 // fix; the same session may hook again, with a new role; unhook (both "")
 // frees it, and the state, flaps and hold are kept throughout.
@@ -503,12 +503,12 @@ func stop(h *harness) {
 	h.refused(h.op("fresh-tick", []Expect{Running{}}, SetCardReason{"c1", "a tick op"}), "the sprint is stopped (never started): nova-sprint start")
 	h.refused(h.op("fresh-stop", nil, SetStopped{true, "again"}), "the sprint is already stopped")
 	h.ok(h.op("first-start", nil, SetStopped{false, "go"}))
-	r := h.ok(h.op("stop", nil, SetStopped{true, "owner: pause"}))
-	assert.Equal(h.t, &State{Stop: &Stop{true, "owner: pause"}}, r.After)
-	assert.Equal(h.t, []any{true, "owner: pause"}, []any{h.snap().Stopped, h.snap().StopReason})
+	r := h.ok(h.op("stop", nil, SetStopped{true, "maintenance: pause"}))
+	assert.Equal(h.t, &State{Stop: &Stop{true, "maintenance: pause"}}, r.After)
+	assert.Equal(h.t, []any{true, "maintenance: pause"}, []any{h.snap().Stopped, h.snap().StopReason})
 	h.refused(h.op("stop", nil, SetStopped{true, "again"}), "the sprint is already stopped")
 	h.ok(h.op("people", nil, SetCardReason{"c1", "still lands"}))
-	h.refused(h.op("tick", []Expect{Running{}}, SetCardReason{"c1", "a tick op"}), "the sprint is stopped (owner: pause): nova-sprint start")
+	h.refused(h.op("tick", []Expect{Running{}}, SetCardReason{"c1", "a tick op"}), "the sprint is stopped (maintenance: pause): nova-sprint start")
 	h.clear()
 	assert.True(h.t, h.snap().Stopped, "a clear keeps the stop")
 	ev := h.events()
@@ -523,7 +523,7 @@ func stop(h *harness) {
 	assert.ErrorIs(h.t, err, ErrInvalid, "one stop write per op")
 }
 
-// identity (round 24): the git identity the sprint commits as is one value
+// identity: the git identity the sprint commits as is one value
 // for the store, not set on a fresh store, set by SetIdentity with both
 // parts, refused when unchanged, kept by a clear, and in the log's images so
 // a rebuild has it.
@@ -543,10 +543,10 @@ func identity(h *harness) {
 	assert.ErrorIs(h.t, err, ErrInvalid, "one identity write per op")
 }
 
-// Round 22: a stream's landing settings are stream state. A stream starts
+// A stream's landing settings are stream state. A stream starts
 // in mode auto with no forge; put stream takes both; set mode and set forge
 // change one each, refused when unchanged or (mode) out of the closed set;
-// the images carry them, and an image logged before round 22 reads as auto.
+// the images carry them, and an image logged by an earlier build reads as auto.
 func streamSettings(h *harness) {
 	h.seed()
 	assert.Equal(h.t, Stream{Name: "s1", Repo: s1.Repo, Base: s1.Base, Pos: 1, Mode: "auto"}, h.snap().Streams["s1"], "auto, no forge, by default")
@@ -570,10 +570,10 @@ func streamSettings(h *harness) {
 	})
 	var old Stream
 	require.NoError(h.t, json.Unmarshal([]byte(`{"name":"s1","repo":"r","base":"main","held":false,"pos":1}`), &old))
-	assert.Equal(h.t, Stream{Name: "s1", Repo: "r", Base: "main", Pos: 1, Mode: "auto"}, old, "an image from before round 22 reads as auto")
+	assert.Equal(h.t, Stream{Name: "s1", Repo: "r", Base: "main", Pos: 1, Mode: "auto"}, old, "an image from an earlier build reads as auto")
 }
 
-// Round 22: a row's width and tiers are configuration, the roster's, read
+// A row's width and tiers are configuration, the roster's, read
 // from nova-config each tick; the store never holds them, so it takes any
 // number of working consumers of any tier on a row that exists. The deal
 // guards (card package) refuse a deal past the roster's width or outside its
@@ -642,7 +642,7 @@ func rowLoad(h *harness) {
 	h.refused(h.op("same", nil, SetRowLoad{"w1", 250, 8, 2, 8, ""}), "row w1 already has the given load")
 	h.ok(h.op("next", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 300, 8, 3, 8, ""}))
 	h.ok(h.op("advertise", nil, SetRowLoad{"w1", 300, 8, 3, 8, "flash,pro"}))
-	assert.Equal(h.t, "flash,pro", h.snap().Rows["w1"].Tiers, "the beat carries the advertised tiers (defect 74)")
+	assert.Equal(h.t, "flash,pro", h.snap().Rows["w1"].Tiers, "the beat carries the advertised tiers")
 	h.ok(h.op("hook again", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}))
 	assert.Equal(h.t, []any{300, "flash,pro"}, []any{h.snap().Rows["w1"].Load1Centi, h.snap().Rows["w1"].Tiers}, "PutRow keeps the beat")
 	h.ok(h.op("unhook", nil, PutRow{Name: "w1"}))
@@ -672,8 +672,8 @@ func cmpRefused(a, b Receipt) Receipt {
 }
 
 // Every integer a write carries fits a PostgreSQL integer; outside it the op
-// is ErrInvalid from both stores (Stella's probe score_range_test.go: Fake
-// accepted 2^31 and PG reported ErrUnknown).
+// is ErrInvalid from both stores (Fake must not accept 2^31 while PG
+// reports ErrUnknown).
 func intRange(h *harness) {
 	h.seed()
 	n := len(h.events())
@@ -706,8 +706,8 @@ func intRange(h *harness) {
 }
 
 // A NUL byte in any text is ErrInvalid before the transaction, from both
-// stores: PostgreSQL text cannot hold one (Emma's read, 2026-11-06: it
-// surfaced as ErrUnknown).
+// stores: PostgreSQL text cannot hold one (it would otherwise
+// surface as ErrUnknown).
 func nulBytes(h *harness) {
 	h.seed()
 	n := len(h.events())
@@ -740,8 +740,9 @@ func nulBytes(h *harness) {
 }
 
 // Text must be valid UTF-8 and a time must fall in the years 0..9999, or the
-// op is ErrInvalid from both stores (the cold read: Fake kept raw bytes its
-// JSON image rewrote, so Rebuild diverged; a far At panicked inside encode).
+// op is ErrInvalid from both stores (Fake must not keep raw bytes its
+// JSON image rewrites, which would make Rebuild diverge, and a far At must
+// not panic inside encode).
 func textAndTime(h *harness) {
 	h.seed()
 	n := len(h.events())
@@ -770,7 +771,7 @@ func textAndTime(h *harness) {
 
 // A known id returns its stored receipt whatever its body says, invalid
 // included: the lookup comes before the body is checked; only a missing id
-// is refused first (the cold read's TestColdKnownIDInvalidBody).
+// is refused first.
 func knownIDInvalidBody(h *harness) {
 	h.seed()
 	o := h.op("take", nil, SetCardState{"c1", "ready"})
@@ -793,9 +794,8 @@ func knownIDInvalidBody(h *harness) {
 	assert.Len(h.t, h.events(), 2)
 }
 
-// A snapshot is the caller's own copy (Stella's probe
-// snapshot_isolation_test.go: editing a Fake snapshot's needs changed the
-// store without an event, and Rebuild then diverged).
+// A snapshot is the caller's own copy (editing a Fake snapshot's needs must not
+// change the store without an event, or Rebuild would diverge).
 func snapshotIsCopy(h *harness) {
 	h.seed()
 	s := h.snap()
@@ -814,7 +814,7 @@ func snapshotIsCopy(h *harness) {
 	assert.Equal(h.t, []string{"c0"}, h.events()[1].After.Cards["c1"].Needs, "an event image is a copy too")
 }
 
-// Stella's probe (concurrency_review_test.go): sixteen concurrent applies of
+// Sixteen concurrent applies of
 // one op id give one receipt and one event.
 func sameIDConcurrent(h *harness) {
 	h.ok(h.op("stream", nil, PutStream{"s", "repo", "main", 0, "", ""}))
@@ -837,7 +837,7 @@ func sameIDConcurrent(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 }
 
-// Stella's probe (concurrency_review_test.go): a clear racing an apply
+// A clear racing an apply
 // planned against the old epoch follows serial order: the apply lands only
 // when it is logged before the clear.
 func clearRacesApply(h *harness) {
@@ -985,7 +985,7 @@ func rowHeld(h *harness) {
 	assert.False(h.t, h.snap().Rows["w1"].Held)
 }
 
-// usage (round 25): a consumer's usage record, words the store keeps and
+// usage: a consumer's usage record, words the store keeps and
 // never reads; refused on a producer or sentinel, "already has the given
 // usage" when unchanged, and kept by rebuild.
 func usageColumn(h *harness) {
@@ -1006,7 +1006,7 @@ func usageColumn(h *harness) {
 	assert.Equal(h.t, h.snap().Cards, Rebuild(h.events()).Cards, "the log carries the usage")
 }
 
-// The columns the lessons of v1 placed: prior_head (a work consumer's
+// The columns prior_head (a work consumer's
 // continued head), bounces (a producer's count toward blocked), cost and
 // priced (a consumer's run, one field), priority (a producer's or sentinel's
 // level; a consumer's is always normal) and the result fault.
@@ -1051,7 +1051,7 @@ func lessonColumns(h *harness) {
 		{SetCardAttempt{"u1", 2}, "card u1 is of kind work; SetCardAttempt is only for a producer or sentinel (a consumer's attempt is set at add)"},
 		{PutCard{Tier: "pro", Kind: "producer", ID: "c4", Stream: "s1", Attempt: 1}, "card c4 is a producer; its attempt starts at 0 and is raised by SetCardAttempt"},
 		// the kind decides, before the value is looked at: a no-op value on
-		// the wrong kind is refused too (Emma's second read, defect 1)
+		// the wrong kind is refused too
 		{SetCardPriority{"u1", "normal"}, "card u1 is of kind work; priority is a producer's"},
 		{SetCardPriority{"u2", "normal"}, "card u2 is of kind read; priority is a producer's"},
 		{SetCardNeeds{"u1", nil}, "card u1 is of kind work; SetCardNeeds is only for a producer or sentinel"},
@@ -1086,7 +1086,7 @@ func lessonColumns(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry every new column")
 }
 
-// Round 13, from building layer 2: a producer's review counts its entries
+// A producer's review counts its entries
 // into review (SetCardReview, +1, producers only); a read consumer is cut at
 // its producer's current review and keeps it; a row carries the reason it was
 // held or released (SetRowHeld), kept by PutRow.
@@ -1126,7 +1126,7 @@ func reviewAndRowReason(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry review and the row reason")
 }
 
-// Round 14, from the first cold read of layer 2: a producer's finding is
+// A producer's finding is
 // set by SetCardFinding (producers only); a work consumer is cut with its
 // producer's finding and keeps it.
 func finding(h *harness) {
@@ -1161,7 +1161,7 @@ func finding(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the finding")
 }
 
-// Round 23: a consumer is cut with the model its deal named and keeps it
+// A consumer is cut with the model its deal named and keeps it
 // (no write changes it); a producer or sentinel carries none.
 func model(h *harness) {
 	h.seed()
@@ -1175,7 +1175,7 @@ func model(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the model")
 }
 
-// Round 17: a producer records a red read verdict (SetCardRed) so a later
+// A producer records a red read verdict (SetCardRed) so a later
 // waiver can require it, and CardRed fences a plan on it. Every outcome:
 // accepted (in the receipt and the event's images), refused as changing
 // nothing, refused on a consumer and a sentinel naming the fix, refused on a
@@ -1265,7 +1265,7 @@ func policy(h *harness) {
 	_, err = h.s.Policy(h.ctx, 9)
 	assert.ErrorIs(h.t, err, ErrNotFound)
 	_, err = h.s.Policy(h.ctx, 1<<40)
-	assert.ErrorIs(h.t, err, ErrNotFound, "a version past int32 is not found on both (the cold read)")
+	assert.ErrorIs(h.t, err, ErrNotFound, "a version past int32 is not found on both")
 	r = h.ok(h.op("pol", nil, PutPolicy{"data", "limits", `{"a":1}`}))
 	assert.Equal(h.t, 3, r.After.Policies[3].Version)
 	assert.Equal(h.t, 2, h.snap().Policy, "a new version is inactive")
@@ -1281,9 +1281,8 @@ func times(h *harness) {
 }
 
 // Ids and names are at most MaxName (128) bytes, ErrInvalid above, so no
-// index can refuse one; brief and reason are unbounded. From the second cold
-// read's cr2LongIDs, which found an 8000-byte id or name unknown on PG and
-// accepted on Fake.
+// index can refuse one; brief and reason are unbounded. An 8000-byte id or
+// name is invalid on both stores.
 func nameLengths(h *harness) {
 	h.seed()
 	n := func(c string, size int) string { return strings.Repeat(c, size) }
@@ -1329,8 +1328,7 @@ func nameLengths(h *harness) {
 // The order of checks: after the known-id lookup the whole body is checked,
 // before the epoch and before any condition, so an op outside the closed sets
 // is ErrInvalid whatever its epoch or its other conditions say, and nothing is
-// logged. From the second cold read's cr2UnknownCondition, which found a nil
-// condition refused for its epoch rather than invalid.
+// logged. A nil condition is invalid, not refused for its epoch.
 func checkOrder(h *harness) {
 	h.seed()
 	logged := len(h.events())
@@ -1398,7 +1396,7 @@ type refusal struct {
 
 // A judgement is a stored question: put opens it, answer and expire close
 // it once, JudgementOpen fences it (it has no gen), the images carry it, and
-// a clear drops it with the epoch (promise reviews 2026-11-06).
+// a clear drops it with the epoch.
 func judgements(h *harness) {
 	h.seed()
 	deadline := t0.Add(time.Hour)
@@ -1416,9 +1414,9 @@ func judgements(h *harness) {
 		{ExpireJudgement{"j9", "x"}, "judgement j9 does not exist"},
 	})
 	h.invalidAll([]refusal{{PutJudgement{Kind: "red"}, "a judgement needs an id"}})
-	a := h.op("answer", []Expect{JudgementOpen{"j1"}}, AnswerJudgement{"j1", "yes, revert", "owner"})
+	a := h.op("answer", []Expect{JudgementOpen{"j1"}}, AnswerJudgement{"j1", "yes, revert", "coord"})
 	r = h.ok(a)
-	j1.State, j1.Answer, j1.Actor, j1.ClosedAt = "answered", "yes, revert", "owner", at(a.At)
+	j1.State, j1.Answer, j1.Actor, j1.ClosedAt = "answered", "yes, revert", "coord", at(a.At)
 	assert.Equal(h.t, j1, r.After.Judgements["j1"])
 	h.refused(h.op("again", []Expect{JudgementOpen{"j1"}}, AnswerJudgement{"j1", "no", ""}), "judgement j1 is answered, expected open")
 	h.refusedAll([]refusal{
@@ -1484,7 +1482,7 @@ func cursors(h *harness) {
 }
 
 // Tiers: a card names one (a consumer its producer's), one of the four.
-// Which tiers a row serves is the roster's since round 22 (nova-config, read
+// Which tiers a row serves is the roster's (nova-config, read
 // each tick); the deal guards check it, the store does not, so a consumer of
 // any tier is added to any row of the epoch.
 func tiers(h *harness) {
@@ -1561,13 +1559,12 @@ func eventPolicy(h *harness) {
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 }
 
-// Round 10, from the third cold read (cr3Kinds, cr3Order, cr3Judgements,
-// cr3Width and cr3Names in coldread3_test.go): a consumer takes its
+// A consumer takes its
 // producer's stream; a condition on a value outside its closed set is
 // invalid; a reason quotes at most MaxName bytes of a caller's value; a
 // judgement never closes before it opened; nothing moves without a change;
 // Clear with an earlier op's id returns that op's receipt.
-func coldRead3(h *harness) {
+func consumerStreamAndClosedSets(h *harness) {
 	h.seed()
 	h.ok(h.op("s2", nil, PutStream{Name: "s2"}))
 	h.refused(h.op("add", nil, PutCard{Tier: "pro", Kind: "read", ID: "k2", Of: "c1", Stream: "s2", Holder: "w1"}),
@@ -1604,12 +1601,12 @@ func coldRead3(h *harness) {
 	assert.Equal(h.t, 1, h.snap().Epoch, "and opens nothing")
 }
 
-// Round 11, from the fourth cold read (coldread4_test.go): one rule for a
+// One rule for a
 // value outside its closed set and for an empty key, in a write exactly as
 // in a condition (ErrInvalid, nothing logged, and no reason that names
 // nothing); and every set write that would change nothing is refused, so no
 // gen moves and the refusal carries no image.
-func coldRead4(h *harness) {
+func emptyKeysAndNoopSets(h *harness) {
 	h.seed()
 	h.ok(h.op("setup", nil, PutJudgement{ID: "j1", Kind: "red"}, PutPolicy{"data", "p", ""}, SetActivePolicy{1}, SetCursor{"feed", 1}))
 	h.invalidAll([]refusal{

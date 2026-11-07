@@ -755,7 +755,7 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 	// run records the chooser lock under the machine's nova-config name,
 	// handed here, never under the raw hostname (run.ResolveMachine).
 	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis, run.MachineEnv: host}
-	// run's forge and git act as the host's gh identity (intent rule 32);
+	// run's forge and git act as the host's gh identity;
 	// no GitHub token is required of the service.
 	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
 	if p.cfg.BusUser != "" {

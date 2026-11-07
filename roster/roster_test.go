@@ -24,8 +24,8 @@ func fleet() Fake {
 			{Name: "studio", Roles: []string{"keeper"}, Cores: 24},
 		},
 		Fs: []Friend{
-			{Name: "friendG", Harness: "codex", Model: "m1", Width: 16, Tiers: []string{"pro", "heavy"}, Pronouns: "she/her", Enabled: true},
-			{Name: "friendA", Harness: "claude", Model: "m2", Width: 2, Tiers: []string{"flash"}, Pronouns: "he/him", Enabled: true},
+			{Name: "grace", Harness: "codex", Model: "m1", Width: 16, Tiers: []string{"pro", "heavy"}, Pronouns: "she/her", Enabled: true},
+			{Name: "alice", Harness: "claude", Model: "m2", Width: 2, Tiers: []string{"flash"}, Pronouns: "he/him", Enabled: true},
 			{Name: "off", Harness: "x", Width: 4, Tiers: []string{"pro"}, Enabled: false},
 		},
 	}
@@ -41,8 +41,8 @@ func TestLoad(t *testing.T) {
 		"eight": {Name: "eight", Width: 8, Tiers: all, Harness: "nova-worker"},
 	}, r.Workers, "bench machines only; width min(cores, 8)")
 	assert.Equal(t, map[string]Kin{
-		"friendG": {Name: "friendG", Model: "m1", Harness: "codex", Width: 16, Tiers: []string{"pro", "heavy"}},
-		"friendA": {Name: "friendA", Model: "m2", Harness: "claude", Width: 2, Tiers: []string{"flash"}},
+		"grace": {Name: "grace", Model: "m1", Harness: "codex", Width: 16, Tiers: []string{"pro", "heavy"}},
+		"alice": {Name: "alice", Model: "m2", Harness: "claude", Width: 2, Tiers: []string{"flash"}},
 	}, r.Kin, "enabled friends only, at their own width: no cap")
 }
 
@@ -61,10 +61,10 @@ func TestRow(t *testing.T) {
 	t.Parallel()
 	r, err := Load(context.Background(), fleet(), 8)
 	require.NoError(t, err)
-	kind, width, tiers, ok := r.Row("friendG")
+	kind, width, tiers, ok := r.Row("grace")
 	assert.Equal(t, []any{KindKin, 16, []string{"pro", "heavy"}, true}, []any{kind, width, tiers, ok})
 	tiers[0] = "changed"
-	assert.Equal(t, []string{"pro", "heavy"}, r.Kin["friendG"].Tiers, "Row returns a copy")
+	assert.Equal(t, []string{"pro", "heavy"}, r.Kin["grace"].Tiers, "Row returns a copy")
 	for _, name := range []string{"studio", "off", "nobody", ""} {
 		kind, width, tiers, ok := r.Row(name)
 		assert.Equal(t, []any{"", 0, []string(nil), false}, []any{kind, width, tiers, ok}, name)
@@ -113,7 +113,7 @@ func TestLoadSkipsABadRow(t *testing.T) {
 		r, err := Load(context.Background(), f, 8)
 		require.NoError(t, err, name)
 		assert.Equal(t, c.want, r.Refused, name)
-		for _, good := range []string{"hulk", "mini", "eight", "friendG", "friendA"} {
+		for _, good := range []string{"hulk", "mini", "eight", "grace", "alice"} {
 			_, _, _, ok := r.Row(good)
 			assert.True(t, ok, "%s: %s still loads", name, good)
 		}
@@ -179,7 +179,7 @@ func TestRoutesFromRoles(t *testing.T) {
 	assert.Equal(t, "ipad", r.Workers["b1"].Routes[0], "a clone keeps its own routes")
 }
 
-// Defect 74: a worker that advertised in its heartbeat is dealt its own
+// A worker that advertised in its heartbeat is dealt its own
 // tiers at width min(width, slots); one that advertised nothing, or read no
 // slots, keeps nova-config's shape; kin are untouched; the input is not
 // changed.

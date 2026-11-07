@@ -471,9 +471,7 @@ func TestMerge(t *testing.T) {
 	refusal{r, "merge of plan 1 and plan 2 refused: a second write to card p1 field state; one op writes a field once"}.check(t)
 }
 
-// Round 2, from Stella's and Johnny's reads of a822dfc7.
-
-// Johnny's probe TestProbeAskReadLiveWorkBehindLiveRead: a producer in review
+// A producer in review
 // with a working work consumer (a state the machine never makes, which it must
 // still refuse to build on) and a ready read, in both orders.
 func TestNoLiveReadsEveryConsumer(t *testing.T) {
@@ -495,7 +493,7 @@ func TestNoLiveReadsEveryConsumer(t *testing.T) {
 	assert.Subset(t, plan.Expect, []store.Expect{gen("p1.r1.1", 2), gen("p1.w1", 6), store.CardAbsent{Card: "p1.r1.2"}})
 }
 
-// Stella's P2: results by consumer kind.
+// Results by consumer kind.
 func TestReportResultByKind(t *testing.T) {
 	for _, c := range []struct {
 		c      Card
@@ -524,7 +522,7 @@ func TestReportResultByKind(t *testing.T) {
 	}
 }
 
-// Stella's P1: a cut consumer carries the task, in slices of its own.
+// A cut consumer carries the task, in slices of its own.
 func TestCutCopiesTask(t *testing.T) {
 	p := pr(Ready)
 	p.Brief, p.Prose, p.Paths, p.DoneWhen = "do p1", "write it", []string{"src/"}, []string{"tests pass"}
@@ -542,7 +540,7 @@ func TestCutCopiesTask(t *testing.T) {
 	assert.Equal(t, []any{"do p1", "write it", []string{"changed/"}, 1}, []any{read.Brief, read.Prose, read.Paths, read.Review})
 }
 
-// Stella's P1: Relink fences every card its cycle walk read, and refuses a
+// Relink fences every card its cycle walk read, and refuses a
 // walk that needs a card it was not given.
 func TestRelinkFencesTheWalk(t *testing.T) {
 	graph := map[string]Card{
@@ -583,8 +581,6 @@ func TestHoldStream(t *testing.T) {
 	_, r = MoveStream(Stream{Name: "s1"}, Resolve{})
 	refusal{r, "Resolve is not a stream event; MoveStream takes HoldStream and UnholdStream"}.check(t)
 }
-
-// Round 2, from the first cold read of layer 2 and Emma's read of a822dfc7.
 
 func TestBlockFromWorking(t *testing.T) {
 	for result, apply := range map[string]string{"ok": "Finished", "fail": "Broken", "fault": "Faulted"} {
@@ -633,7 +629,7 @@ func TestNeedFailedInThisOp(t *testing.T) {
 	refusal{mv(Waiting, nil, NeedFailed{Need: "n1", InThisOp: true}), "need n1 of producer p1 is landed; it cannot fail in this op"}.check(t)
 }
 
-// Emma's defect 5, as ruled: sentinel guards, and Take on a down row.
+// Sentinel guards, and Take on a down row.
 func TestSentinelGuards(t *testing.T) {
 	g := pr(Waiting)
 	g.Kind = "sentinel"
@@ -654,7 +650,7 @@ func TestSentinelGuards(t *testing.T) {
 	refusal{sm(AskRead{Row: "r1"}, nil), "sentinel p1 never has a consumer"}.check(t)
 }
 
-// Defect 52: the deal is the take. A cut consumer is working, in its row's
+// The deal is the take. A cut consumer is working, in its row's
 // hand, and a report needs no take before it.
 func TestDealIsTake(t *testing.T) {
 	plan, r := Move(pr(Ready), nil, rows(), Stream{Name: "s1"}, nil, Start{Row: "r1", Branch: "b", Base: base})
@@ -665,7 +661,7 @@ func TestDealIsTake(t *testing.T) {
 	require.Nil(t, r, "a held row reports what it holds: a hold stops new deals, not work in hand")
 }
 
-// Defect 48: a fault naming a missing route blocks the producer at once,
+// A fault naming a missing route blocks the producer at once,
 // head kept, no bounce; any other fault returns it to ready.
 func TestRouteFaultBlocks(t *testing.T) {
 	faulted := wk(Done, "fault", h2)
@@ -690,14 +686,14 @@ func TestRouteFaultBlocks(t *testing.T) {
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Ready}))
 }
 
-// Defect 47: the coordinator's hold of one card is Block, from waiting too.
+// The coordinator's hold of one card is Block, from waiting too.
 func TestBlockFromWaiting(t *testing.T) {
 	plan, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, nil, Block{Reason: "held: needs a tablet"})
 	require.Nil(t, r)
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Blocked}))
 }
 
-// D10: layer 1's value rules are refusals, so no plan is ErrInvalid.
+// Layer 1's value rules are refusals, so no plan is ErrInvalid.
 func TestValueRules(t *testing.T) {
 	far := pr(Ready)
 	far.Review = math.MaxInt32
@@ -773,7 +769,7 @@ func TestAdd(t *testing.T) {
 	refusal{r, "p1 needs n2 needs n1 needs p1"}.check(t)
 }
 
-// The card model's ruling: ReadFix needs a done fix read of this review, as
+// ReadFix needs a done fix read of this review, as
 // ReadYes needs an ok one.
 func TestReadFixNeedsAFixRead(t *testing.T) {
 	stale := rd(Done, "fix")

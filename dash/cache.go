@@ -27,13 +27,13 @@ type Cache struct {
 	pending     bool
 	initialized bool
 	anchor      historyAnchor
-	landings    []time.Time // this epoch's landings (not the v1 import's), from the store's events: the ETA's rate, independent of uptime
+	landings    []time.Time // this epoch's landings (imported ones excluded), from the store's events: the ETA's rate, independent of uptime
 	landingsOK  bool
-	roster      roster.Roster // each row's kind and width (round 22); SetRoster
+	roster      roster.Roster // each row's kind and width; SetRoster
 }
 
 // SetRoster sets the roster the page reads each row's kind and width from
-// (round 22: they are nova-config's, never the store's); the next Advance
+// (they come from the configuration, never the store); the next Advance
 // shows it. Until it is set every row is in the fleet at width 0.
 func (c *Cache) SetRoster(r roster.Roster) {
 	c.mu.Lock()
@@ -57,9 +57,8 @@ func New(ctx context.Context, s store.Store) (*Cache, error) {
 	return c, nil
 }
 
-// AdvanceDeadline bounds one Advance. 500 ms held on the studio; a page from a store an
-// ocean away (hetzner2 to the studio, 121 ms RTT, 2026-11-07) did not fit it and the board
-// stayed stale, so it is five seconds: a late advance lands on a later tick.
+// AdvanceDeadline bounds one Advance. It is long enough for a store across
+// an ocean (over 100 ms round trip); a late advance lands on a later tick.
 var AdvanceDeadline = 5 * time.Second
 
 // NewRecovering keeps an unavailable cache when the initial snapshot fails.

@@ -42,7 +42,7 @@ func (f *Fail) Unwrap() error { return f.cause }
 
 // ErrNotSetUp is a store without this build's schema (no epoch yet): the fix
 // is up. A process without the sprint's credential is NoCredential, not
-// this: the store may well be set up (defect 22, 2026-11-07).
+// this: the store may well be set up.
 var ErrNotSetUp = errors.New("the sprint is not set up")
 
 // CredentialFix is how a verb gets the sprint's credentials into its

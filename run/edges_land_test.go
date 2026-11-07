@@ -73,7 +73,7 @@ func TestLandItemRedCarriesTheFacts(t *testing.T) {
 	}
 }
 
-// Directive 59: a red item leads with its split by the base, NEW red first
+// A red item leads with its split by the base, NEW red first
 // with each failed job's runner and first lines, then inherited red, then
 // the authors of a PR whose agreement check failed; all-inherited red is
 // layer 3's glance outcome.
@@ -81,11 +81,11 @@ func TestLandItemSplitsRedByTheBase(t *testing.T) {
 	newRed := []forge.WorkflowRed{{Workflow: "Gates", Basis: "the merge base cccccccccccc",
 		Jobs: []forge.FailedJob{{Name: "Linux Debug", Runner: "bench-b", URL: "https://ci/121", Lines: []string{"--- FAIL: TestX", "FAIL"}}}}}
 	inherited := []forge.WorkflowRed{{Workflow: "hostile-corpus", Basis: "the merge base cccccccccccc"}}
-	res := git.LandResult{Outcome: git.OutcomeRed, Rung: 1, MergeBase: "c1", NewRed: newRed, Inherited: inherited, Unsigned: []string{"Aurora <a@x> (a)"}, Reason: "new red: Gates"}
+	res := git.LandResult{Outcome: git.OutcomeRed, Rung: 1, MergeBase: "c1", NewRed: newRed, Inherited: inherited, Unsigned: []string{"Alice <a@x> (a)"}, Reason: "new red: Gates"}
 	it := landItem("land.s1.x", res, nil, time.Minute)
 	want := "NEW red (not red on the base): Gates (the merge base cccccccccccc) [job Linux Debug on bench-b https://ci/121: --- FAIL: TestX | FAIL]; " +
 		"inherited red (red on the base too, not this card's): hostile-corpus (the merge base cccccccccccc); " +
-		"an agreement check failed; the PR's commit authors, one of them unsigned: Aurora <a@x> (a); merge base c1"
+		"an agreement check failed; the PR's commit authors, one of them unsigned: Alice <a@x> (a); merge base c1"
 	if it.Outcome != string(git.OutcomeRed) || !strings.HasPrefix(it.Reason, want) {
 		t.Fatalf("red item %q\nwant prefix %q", it.Reason, want)
 	}

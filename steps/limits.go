@@ -9,9 +9,9 @@ import (
 
 // limits is the retire and fail limits step (LAYER-3 "Retire and fail
 // limits"): Block with a blocked judgement when bounces reach the limit (a
-// fault never counts, LESSONS 2.24); Withdraw of a working consumer whose
+// fault never counts); Withdraw of a working consumer whose
 // row is silent past the bound, branch kept; Gone for a row unseen past its
-// bound, never for one missed challenge (LESSONS 4.7: the bound is policy's
+// bound, never for one missed challenge (the bound is policy's
 // and long); a flap judgement at the flap limit.
 func (t *tick) limits() {
 	for _, state := range []string{"ready", "review"} {
@@ -65,7 +65,7 @@ func (t *tick) rowLimits(n string) {
 	}
 }
 
-// rest marks the rows resting after faults (LPM R34, LESSONS 4.24): the
+// rest marks the rows resting after faults: the
 // limit's count of faults within the rest bound rests the row for the rest
 // bound after the last; a deal filter, never a stored hold (R37).
 func (t *tick) rest() {

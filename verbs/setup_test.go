@@ -10,11 +10,11 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// upStore is a store with friendF hooked in as coordinator, or with no rows.
+// upStore is a store with coord hooked in as coordinator, or with no rows.
 func upStore(hooked bool) *store.Fake {
 	rows := map[string]store.Row{}
 	if hooked {
-		rows["friendF"] = store.Row{Name: "friendF", State: "up", Session: "s-rowan", Role: "coordinator", Gen: 1}
+		rows["coord"] = store.Row{Name: "coord", State: "up", Session: "s-coord", Role: "coordinator", Gen: 1}
 	}
 	f, err := store.NewFakeFrom(store.Snapshot{Epoch: 1, Rows: rows, Streams: map[string]store.Stream{}, Cards: map[string]store.Card{}, Judgements: map[string]store.Judgement{}, Cursors: map[string]int64{}})
 	if err != nil {
@@ -23,7 +23,7 @@ func upStore(hooked bool) *store.Fake {
 	return f
 }
 
-func upBus() *fakeBus  { return &fakeBus{present: map[string]bool{"friendF": true}} }
+func upBus() *fakeBus  { return &fakeBus{present: map[string]bool{"coord": true}} }
 func upNow() time.Time { return t0 }
 
 type setupLeaseFake struct{}
@@ -42,7 +42,7 @@ type setupFake struct {
 }
 
 func (f *setupFake) Completion(context.Context) (string, error) {
-	return "UP DONE run on studio; dashboard http://studio; 4 workers up; coordinator friendF", nil
+	return "UP DONE run on studio; dashboard http://studio; 4 workers up; coordinator coord", nil
 }
 func (f *setupFake) Verify(_ context.Context, n int, _ SetupInput) (SetupCheck, error) {
 	f.trace = append(f.trace, fmt.Sprintf("verify%d", n))
@@ -58,7 +58,7 @@ func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 }
 func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	f := &setupFake{stop: 5}
-	e := Engine{Actor: "friendF", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: f, Lock: setupLeaseFake{}}
+	e := Engine{Actor: "coord", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: f, Lock: setupLeaseFake{}}
 	first := e.Execute(context.Background(), []string{"up"})
 	if first.Exit != 1 || !strings.Contains(first.Output, "ASK dashboard\nSPRINT REFUSED up: step 5 is not verified: nova-sprint up --dash tailnet\n") {
 		t.Fatal(first)
@@ -73,17 +73,17 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	if second.Exit != 0 || !strings.HasPrefix(strings.Join(f.trace, ","), "verify1,verify1,verify2,act2,verify2") {
 		t.Fatal(second, f.trace)
 	}
-	// up names what the walk does not set: here the commit identity (PR 641 F6)
+	// up names what the walk does not set: here the commit identity
 	if !strings.Contains(second.Output, "UP 8/8\nUP NEEDS the sprint has no commit identity: no worker can hook and nothing can be committed: nova-sprint identity --name ") {
 		t.Fatal(second.Output)
 	}
 	// UP DONE tells a new coordinator to read check's width lines before adding cards
-	if !strings.Contains(second.Output, "coordinator friendF\nBEFORE CARDS: keep everybody at width: ") || !strings.Contains(second.Output, "then nova-sprint check and read its width, waits and NEEDS chain lines before start") {
+	if !strings.Contains(second.Output, "coordinator coord\nBEFORE CARDS: keep everybody at width: ") || !strings.Contains(second.Output, "then nova-sprint check and read its width, waits and NEEDS chain lines before start") {
 		t.Fatal(second.Output)
 	}
 }
 func TestSetupArguments(t *testing.T) {
-	e := Engine{Actor: "friendF"}
+	e := Engine{Actor: "coord"}
 	got := e.Execute(context.Background(), []string{"up", "--dash", "invalid"})
 	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<machine>[:<port>]: nova-sprint help up\n" {
 		t.Fatal(got)
@@ -92,12 +92,12 @@ func TestSetupArguments(t *testing.T) {
 
 // TestSetupNamesTheBenchModel: a store Migrate upgraded keeps its policy,
 // which may name no bench model for a tier a bench serves; up names it with
-// the policy's fix, beside the identity (PR 641 F6).
+// the policy's fix, beside the identity.
 func TestSetupNamesTheBenchModel(t *testing.T) {
 	f := upStore(true)
-	applyTest(t, f, store.Op{ID: "policy-up", Epoch: 1, Actor: "friendF", Kind: "policy", At: t0,
+	applyTest(t, f, store.Op{ID: "policy-up", Epoch: 1, Actor: "coord", Kind: "policy", At: t0,
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "old", Body: "script"}, store.SetActivePolicy{Version: 1}, store.SetIdentity{Name: "Bot", Email: "1+bot@users.noreply.example.test"}}})
-	e := Engine{Actor: "friendF", Store: f, Bus: upBus(), Now: upNow, Setup: &setupFake{}, Lock: setupLeaseFake{}, Answers: noBench{"frontier"}, Roster: newRoster()}
+	e := Engine{Actor: "coord", Store: f, Bus: upBus(), Now: upNow, Setup: &setupFake{}, Lock: setupLeaseFake{}, Answers: noBench{"frontier"}, Roster: newRoster()}
 	r := e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
 	if r.Exit != 0 || !strings.Contains(r.Output, "UP 8/8\nUP NEEDS policy v1 names no bench model for tier frontier, so no bench is dealt a card of it: give the policy's catalog() a \"bench\"") ||
 		strings.Contains(r.Output, "commit identity") {

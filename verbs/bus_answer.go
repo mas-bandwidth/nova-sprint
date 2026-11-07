@@ -5,11 +5,10 @@ import (
 )
 
 // BusAnswer is what the sprint does with a message sent to its name on the
-// bus (run's hook execs `nova-sprint bus-reply` for each one; directive 61
-// item 45). The sprint's pushes are receipts, never answered on the bus:
+// bus (run's hook execs `nova-sprint bus-reply` for each one). The sprint's pushes are receipts, never answered on the bus:
 // the verbs are the answers. So a reply (a message that answers another, or
-// one whose subject is REPLY) is never answered, which is what kept a loop
-// going when the sprint answered a REPLY with a REPLY; a message that is
+// one whose subject is REPLY) is never answered, which would otherwise loop
+// when the sprint answered a REPLY with a REPLY; a message that is
 // not a verb is ignored; a message whose subject is a verb is answered once
 // with where verbs run (a REPLY, which the sender's answer to will not
 // get). log is the one line the hook's log keeps for an ignored message,

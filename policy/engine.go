@@ -31,12 +31,11 @@ const (
 	// a thousand times what the default's rows takes.
 	CallSteps = 1_000_000
 	// TickTime is a tick's one deadline, from the first byte of its input
-	// to the last answer returned (ruling 4, 2026-11-06): measured, the
+	// to the last answer returned: measured, the
 	// built-in's cold tick at 5,000 producers was 217 ms on amd-3, and 500 ms
-	// is that with a margin of 2x (ruling 3). It bounds time only: Starlark
+	// is that with a margin of 2x. It bounds time only: Starlark
 	// has no memory limit and none exists here, so a version may allocate
-	// what one builtin step allocates before the deadline stops it (a
-	// separate evaluator process is the 2.0.x item that would bound memory).
+	// what one builtin step allocates before the deadline stops it (the evaluator process bounds memory: evalmem.go).
 	// A -race build runs several times slower and scales it (race.go).
 	TickTime = 500 * time.Millisecond * raceSlowdown
 	// fallbackAfter is when a tick starts the versions after the one it is
@@ -44,7 +43,7 @@ const (
 	// so the built-in (217 ms cold, measured) still has time to answer.
 	fallbackAfter = TickTime / 2
 	// maxTickBytes caps one tick's answers, and so the answer cache, which
-	// holds one tick's (ruling 4): 4 MiB.
+	// holds one tick's: 4 MiB.
 	maxTickBytes = 4 << 20
 )
 
@@ -208,7 +207,7 @@ func lastLine(body string) int { return strings.Count(strings.TrimRight(body, "\
 // topLines are the lines where the file's top level binds each name, so a
 // refusal of a name that is not a function names its line too: a def, and
 // every name an assignment binds, plain, augmented, or in a tuple or list
-// (cold read 3's probe). The first binding's line is kept.
+// The first binding's line is kept.
 func topLines(f *syntax.File) map[string]int {
 	out := map[string]int{}
 	for _, s := range f.Stmts {

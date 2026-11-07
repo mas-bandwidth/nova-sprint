@@ -9,9 +9,8 @@ import (
 )
 
 // TestMergeCommitsTakeTheStoreIdentity: the landing's merge commits are made
-// as the identity the landing passes (the store's, round 24), and with none
-// MergeGroup refuses before it makes a commit, never a made-up author
-// (fix list L4.8; defect 80: the CAA refused "nova-sprint <sprint@...>").
+// as the identity the landing passes, and with none MergeGroup refuses
+// before it makes a commit, never a made-up author.
 func TestMergeCommitsTakeTheStoreIdentity(t *testing.T) {
 	t.Parallel()
 	sha := strings.Repeat("b", 40)

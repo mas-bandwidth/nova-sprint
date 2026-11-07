@@ -10,12 +10,10 @@ import (
 	"path/filepath"
 )
 
-// A branch belongs to the consumer that holds the card now (defect 78). A
-// withdrawn bench job once pushed its dirty head to the card's branch with
-// a plain force on every recovery pass, because its directory was never
-// removed (a dirty tree was kept, and the Go module cache inside it is
-// read-only), and so rewound the new holder's branch again and again. Now:
-// every push goes through pushBranch_internal, which refuses a job that no
+// A branch belongs to the consumer that holds the card now. A
+// withdrawn job whose directory is kept (a dirty tree is kept, and the Go
+// module cache inside it is read-only) must not push its head to the card's
+// branch again and rewind the new holder's. So every push goes through pushBranch_internal, which refuses a job that no
 // longer holds its consumer and moves the branch only by lease from the head
 // the job last pushed; and a job whose consumer is final, or whose
 // generation is stale, has its directory retired on the first pass that

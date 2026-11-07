@@ -7,9 +7,9 @@ import (
 
 // ReadOutcome is a read's report: ok, fix or fault, and nothing else. The
 // store refuses "fail" for a read ("a read consumer reports ok, fix or
-// fault", defect 67: a read whose harness wrote no verdict became "fail",
-// was refused at every send, and its card sat working with no process), so
-// a read's report is built only from a ReadOutcome, and none holds "fail":
+// fault"): a read whose harness wrote no verdict would otherwise report
+// "fail", be refused at every send, and leave its card working with no
+// process. So a read's report is built only from a ReadOutcome, and none holds "fail":
 // its value is unexported and the three below are the only ones.
 type ReadOutcome struct{ v string }
 
@@ -60,8 +60,7 @@ func reportOutcome_internal(rec JobRecord) Outcome {
 }
 
 // noVerdict_internal is the outcome of a harness that wrote no verdict
-// (no result.json): "fail: no verdict" for a work job (the harness note of
-// 2026-11-07), with why and the harness's last output as the reason. A read
+// (no result.json): "fail: no verdict" for a work job, with why and the harness's last output as the reason. A read
 // maps it to a fault (ReadOutcomeOf).
 func noVerdict_internal(why, tail string) Outcome {
 	reason := "no verdict: " + why

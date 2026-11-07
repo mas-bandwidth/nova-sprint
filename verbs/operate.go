@@ -37,8 +37,7 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 }
 
 // alreadyStopped is stop on a stopped sprint, or start on a running one: a
-// success that changes nothing, saying the state and the next verb (defect
-// 23: start on a running sprint printed "STARTED already").
+// success that changes nothing, saying the state and the next verb.
 func alreadyStopped(snap store.Snapshot, actor string) string {
 	reason := orWord(snap.StopReason, "no reason given")
 	if snap.Stopped {

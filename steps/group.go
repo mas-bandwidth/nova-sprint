@@ -11,8 +11,8 @@ import (
 
 // group is one producer's move with the consumers it touches (a preemption
 // with its deal, a report with its Finished, a drop with its dependants), as
-// one card.Merge: the unit the packer orders and never splits across ops
-// (list item 4; OneGroupPerCard, GroupWhole). Its key is what it claims:
+// one card.Merge: the unit the packer orders and never splits across ops.
+// Its key is what it claims:
 // every card its plan writes plus the card it is about, with the gens it
 // read them at; a later step skips a claimed card until the next tick.
 type group struct {
@@ -36,11 +36,8 @@ type move struct {
 	plan  func() (card.Plan, *card.Refusal)
 }
 
-// groupOp composes a group's moves as one plan. Today each move plans on the
-// view and card.Merge composes the plans sequentially (card round 4); card
-// round 7 makes Merge take the moves themselves, each planned against the
-// folded state, and this is the one place that changes. Built against
-// card.Merge of v2-card-fix4 (b2b0b8c2).
+// groupOp composes a group's moves as one plan. Each move plans on the
+// view and card.Merge composes the plans sequentially.
 func groupOp(moves ...move) (card.Plan, *card.Refusal) {
 	plans := make([]card.Plan, 0, len(moves))
 	for _, m := range moves {

@@ -70,7 +70,7 @@ func effects(op store.Op) string {
 }
 
 // runHold is `hold` and `unhold` of rows, streams and producer cards, one
-// op each. Holding a card (defect 47) parks that one producer blocked with
+// op each. Holding a card parks that one producer blocked with
 // the reason "held: <why>", its live consumers withdrawn in the same op
 // (their pushed branches kept); unhold is its Unblock, back to waiting,
 // whence it resolves and is dealt as any other. It is never a drop.

@@ -179,7 +179,7 @@ func TestLandBaseMovedAfterTheGate(t *testing.T) {
 }
 
 // The group branch's name never collides with a base sprint/<stream> or a
-// card branch sprint/<stream>/<card> (defect 46); what blocks it is named.
+// card branch sprint/<stream>/<card>; what blocks it is named.
 func TestGroupBranchNamespace(t *testing.T) {
 	t.Parallel()
 	if GroupBranch("s1") != "sprint-group/s1" || GroupRef("s1") != "refs/heads/sprint-group/s1" {
@@ -218,7 +218,7 @@ func TestGroupBranchNamespace(t *testing.T) {
 
 // With a token, every git call answers credentials with it alone: the
 // host's helpers are reset (an empty credential.helper) and the token is in
-// the environment, never in argv (defect 39: the landing's push was the
+// the environment, never in argv (the landing's push was the
 // host's own login). Without one, nothing is added.
 func TestTokenIsTheOnlyCredential(t *testing.T) {
 	t.Parallel()

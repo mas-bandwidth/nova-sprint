@@ -1,4 +1,4 @@
-// Package edge is the foundation of layer 4 of nova-sprint v2: the one way an edge runs an outside program (Exec).
+// Package edge is the foundation of layer 4 of nova-sprint: the one way an edge runs an outside program (Exec).
 package edge
 
 import (
@@ -23,7 +23,7 @@ const (
 	ErrTimeout, ErrStart             = "timeout", "start_failed"
 	// ErrCanceled is a run whose caller's context was cancelled before it
 	// ended: the caller stopped it (a worker shutting down), never its own
-	// timeout (defect 73: a stopped job was reported "timed out after 1h30m"
+	// timeout (a stopped job was reported "timed out after 1h30m"
 	// after 70 s).
 	ErrCanceled = "canceled"
 )

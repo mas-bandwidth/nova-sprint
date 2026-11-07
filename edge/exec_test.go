@@ -263,7 +263,7 @@ func TestRestartRequeryIdempotencyPerFactKind(t *testing.T) {
 	}
 }
 
-// Defect 73: a command its caller cancels is "canceled", never a timeout;
+// A command its caller cancels is "canceled", never a timeout;
 // a deadline that passes is the timeout.
 func TestExecCanceledIsNotATimeout(t *testing.T) {
 	t.Parallel()

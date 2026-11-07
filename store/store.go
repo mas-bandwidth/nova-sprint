@@ -1,4 +1,4 @@
-// Package store is layer 1 of nova-sprint v2: the one place the sprint's state
+// Package store is layer 1 of nova-sprint: the one place the sprint's state
 // lives (docs/LAYER-1-STORE.md). It holds streams, cards, rows, judgements, cursors and policy
 // versions, applies one checked operation at a time in one transaction, and
 // logs every operation that entered it, accepted or refused.
@@ -116,7 +116,7 @@ type Op struct {
 }
 
 // Stream is a row of sprint.streams. Mode and Forge are its landing
-// settings (round 22): stream state, read with the snapshot, never policy
+// settings: stream state, read with the snapshot, never policy
 // data or a scan of the log. Mode is how its producers land, one of
 // StreamModes (auto when unset); Forge is the forge it lands through, ""
 // for none.
@@ -131,7 +131,7 @@ type Stream struct {
 }
 
 // UnmarshalJSON reads a stream image, a mode the image does not carry (one
-// logged before round 22) as auto, the column's default, so the log still
+// logged by an earlier build) as auto, the column's default, so the log still
 // rebuilds the tables of a migrated store.
 func (s *Stream) UnmarshalJSON(b []byte) error {
 	type plain Stream
@@ -170,22 +170,22 @@ type Card struct {
 	Bounces  int      `json:"bounces"`         // on a producer: the returns that count toward blocked
 	Finding  string   `json:"finding"`         // on a producer: the last read's finding; on a work consumer: its producer's at cut, fixed
 	Review   int      `json:"review"`          // on a producer: its entries into review; on a read consumer: its producer's at cut, fixed
-	Red      bool     `json:"red"`             // on a producer: the last read's verdict was red (SetCardRed, round 17); false on every other kind
+	Red      bool     `json:"red"`             // on a producer: the last read's verdict was red (SetCardRed); false on every other kind
 	Cost     int64    `json:"cost"`            // on a consumer: what its run cost, in micro-dollars
 	Priced   bool     `json:"priced"`          // false when the run's route has no price
-	Usage    string   `json:"usage,omitempty"` // on a consumer: its run's usage record, package usage's words (round 25); "" on every other kind
+	Usage    string   `json:"usage,omitempty"` // on a consumer: its run's usage record, package usage's words; "" on every other kind
 	Priority string   `json:"priority"`        // a producer's level; normal on a consumer
 	Tier     string   `json:"tier"`            // flash, pro, heavy or frontier; a consumer's is its producer's
 	Paths    []string `json:"paths,omitempty"`
 	DoneWhen []string `json:"done_when,omitempty"`
 	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given
-	Model    string   `json:"model"` // on a consumer: the model its deal named (round 23); "" on a producer or sentinel
+	Model    string   `json:"model"` // on a consumer: the model its deal named; "" on a producer or sentinel
 }
 
 // Row is a row of sprint.rows: a worker's or a kin's sprint state, and
 // nothing else. What a row is (kind, width, tiers, model, harness) is
 // configuration, read from nova-config through the roster each tick, never
-// copied here (round 22: "nova-config is the one true source").
+// copied here (nova-config is the one true source).
 type Row struct {
 	Name    string `json:"name"`
 	State   string `json:"state"`
@@ -206,8 +206,7 @@ type Row struct {
 	// Tiers is what the worker's harness adapter serves, as it advertised in
 	// its heartbeat: a comma list in Tiers' order, "" when it advertised
 	// none in this session (a PutRow that changes the session clears it).
-	// With SlotsTotal it is the roster's input for the row (defect 74:
-	// roster.Advertised); no store rule reads it.
+	// With SlotsTotal it is the roster's input for the row (roster.Advertised); no store rule reads it.
 	Tiers string `json:"tiers"`
 }
 
@@ -265,7 +264,7 @@ type Stop struct {
 }
 
 // Identity is the git identity every commit of the sprint is authored and
-// committed under (round 24): one value for the whole store, as the stop
+// committed under: one value for the whole store, as the stop
 // is, kept by a clear. A repository's contributor agreement keys off the
 // forge account, so every agent, friend and bench worker commits as one
 // account on the agreement's allowlist and names itself only in the
@@ -279,8 +278,8 @@ type Identity struct {
 func (i Identity) Set() bool { return i.Name != "" && i.Email != "" }
 
 // NeverStarted is a fresh store's stop reason: a store begins stopped, and
-// nothing moves until the coordinator's first `nova-sprint start` (
-// 2026-11-07: the run ticked on a fresh store while up was at step 7).
+// nothing moves until the coordinator's first `nova-sprint start`, so
+// a run cannot tick on a fresh store while setup is still under way.
 const NeverStarted = "never started"
 
 // FreshStop is the stop every store begins with, which no event records:

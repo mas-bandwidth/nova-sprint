@@ -18,7 +18,7 @@ package run
 //     ready at Init; p0 (flash) with its consumer w0 working on r1, the
 //     preemption's victim; p9 (flash) with w9 working on r2; r2 serves only
 //     flash and has no room. r1's width is 3: w0 and two jobs (the deal is
-//     the take, defect 52, so a dealt job is working on r1). The engine's
+//     the take, so a dealt job is working on r1). The engine's
 //     idle floor and its nudge, unacked and undealt bounds are set past the
 //     walk (the model has no action for them).
 //   - the policy answers one deal of room on r1 per tick, so one tracked
@@ -680,7 +680,7 @@ func TestEmitRunTrace(t *testing.T) {
 
 	switch {
 	case os.Getenv("NOVA_RUN_TRACE_MIDSTOP") == "1":
-		// The finding: a Stop between the tick's fold and its apply does not
+		// A Stop between the tick's fold and its apply does not
 		// stop the op (no AtSeq fence). RunTrace refuses the Apply record.
 		r.midStop = true
 		r.tick()

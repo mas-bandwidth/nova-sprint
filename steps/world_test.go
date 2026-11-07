@@ -56,7 +56,7 @@ func (w *world) apply(kind string, expect []store.Expect, writes ...store.Write)
 }
 
 // ack is a row's take: its acknowledgement of consumer c, in its hand from
-// the deal (defect 52); a cursor, no card move (LAYER-3 "In hand").
+// the deal; a cursor, no card move (LAYER-3 "In hand").
 func (w *world) ack(c string) store.Receipt {
 	s := w.snap()
 	return w.apply("take", []store.Expect{store.CardGen{Card: c, Gen: s.Cards[c].Gen}}, store.SetCursor{Name: AckCursor(s.Epoch, c), Seq: max(s.Seq, 1)})

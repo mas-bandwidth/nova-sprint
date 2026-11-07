@@ -31,9 +31,8 @@ func (s Sheet) Lookup(model string) (Rate, bool) {
 	return Rate{}, false
 }
 
-// Billing is how a run on a row of harness is billed (the owner,
-// 2026-11-07: "api rate work should be priced *exactly*. friend sub rate
-// should be free."): a bench, harness nova-worker, runs on API keys; every
+// Billing is how a run on a row of harness is billed (API work is priced
+// exactly, a subscription seat is free): a bench, harness nova-worker, runs on API keys; every
 // other harness is a kin's subscription seat.
 func Billing(harness string) string {
 	if harness == "nova-worker" {

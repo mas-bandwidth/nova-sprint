@@ -93,7 +93,7 @@ func (t *tick) landJudge(it InboxItem, req EdgeRequest) {
 }
 
 // InheritedRed is the land outcome of red that is all red on the base too,
-// the run ended (layer 4's ci_red_inherited, directive 59): still a
+// the run ended (layer 4's ci_red_inherited): still a
 // judgement, never a landing, worded so the coordinator can answer it at a
 // glance.
 const InheritedRed = "ci_red_inherited"
@@ -118,9 +118,9 @@ func (t *tick) readyIn(stream string) []card.Card {
 // (the first in score order) while fewer than policy's backed_up wait
 // (rung 1), every one of them as one request while backed up (rung 2). An
 // after orders only producers both queued to land and never holds on one
-// that is not (LESSONS 2.15). A hold never touches landing (LANDING 9). The
+// that is not. A hold never touches landing. The
 // requests are rebuilt from the store's state every tick, so a restart
-// loses none (defect 51).
+// loses none.
 func (t *tick) landRequests() {
 	for _, s := range sortedKeys(t.v.Streams) {
 		if t.busy(s) {
@@ -143,7 +143,7 @@ func (t *tick) landRequests() {
 // unlanded reports, as an engine judgement, a merging producer the tick
 // leaves with no land request in flight or planned for its stream, no land
 // judgement, and no after target holding it: a card that would sit in
-// merging unexplained (intent rule 32). By construction landRequests leaves
+// merging unexplained. By construction landRequests leaves
 // none; this is the check that it did.
 func (t *tick) unlanded() {
 	for _, p := range t.v.Producers("merging") {
@@ -217,7 +217,7 @@ func (t *tick) eligible(queued []store.Card) []store.Card {
 // landRequest is one edge request for the heads of picks in order: its id
 // hashes the epoch, stream, cards, heads, reviews and base, so a restart
 // reissues the same request and a second landing of one head after a
-// retry has an id of its own when anything changed (LPM R22; the model's
+// retry has an id of its own when anything changed (the model's
 // finding 8).
 func (t *tick) landRequest(s string, picks []store.Card, wait int) {
 	base := t.in.Heads[s]

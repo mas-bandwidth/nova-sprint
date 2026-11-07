@@ -30,7 +30,7 @@ const (
 	CheckPending            CheckState = "pending"
 	// CheckAbsent is a commit with no check rollup at all: no workflow has
 	// even queued a job for it. Queued and running jobs are pending; a
-	// rollup that stays absent means no CI listens to the branch (defect 40).
+	// rollup that stays absent means no CI listens to the branch.
 	CheckAbsent    CheckState = "absent"
 	CheckFault     CheckState = "fault"
 	FaultRateLimit FaultKind  = "rate_limit"
@@ -49,7 +49,7 @@ func (f ExecFunc) Run(ctx context.Context, cmd edge.Cmd) (edge.Result, error) { 
 
 // CheckRollup is a commit's checks: State, the failing checks with the
 // first one's URL, and Waiting, some check still queued or running (a red
-// rollup can still be waiting: directive 76).
+// rollup can still be waiting).
 type CheckRollup struct {
 	SHA, URL, Reason string
 	State            CheckState
@@ -98,7 +98,7 @@ type Forge interface {
 
 // Identity is who the forge acts as: the host's own gh login (the run on
 // the coordinator's host, deliberately: the one identity that can act on
-// every stream repository, intent rule 32), unless Token is set, an
+// every stream repository), unless Token is set, an
 // optional override that gh gets as GH_TOKEN. Name is for the refusals: it
 // names the choice (HostLogin or TokenEnv), never a login it expects.
 type Identity struct{ Name, Token string }
@@ -108,8 +108,8 @@ const HostLogin = "this host's gh login"
 
 // credentialEnv lists the environment that would make gh act as someone
 // other than the identity chosen: the host's login is gh's own config
-// under the user's home, so none of these may reach it (directive 59: a
-// GH_CONFIG_DIR in the environment defeated the host identity).
+// under the user's home, so none of these may reach it (GH_CONFIG_DIR
+// would redirect it to another account).
 var credentialEnv = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_CONFIG_DIR"}
 
 // HostEnv is the process's environment without any GitHub credential of

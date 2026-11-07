@@ -15,13 +15,13 @@ import (
 )
 
 // RefusalLimit is how many identical refusals of one record's report the
-// worker takes before it sets the record aside for a reader (defect 69). A
+// worker takes before it sets the record aside for a reader. A
 // guess, not measured.
 const RefusalLimit = 3
 
 // ReceiptName is the take receipt as the worker read it, kept in the job
 // directory from the take on, so a job the runner stopped can be resumed
-// (defects 61, 70) without asking the sprint for it again.
+// without asking the sprint for it again.
 const ReceiptName = "receipt.json"
 
 // RecoverRow is one recovery of the row's jobs, run to the end: what is
@@ -47,7 +47,7 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 
 // recoverRow_internal does a pass's recovery and returns the jobs to
 // resume (not yet claimed). One record the sprint keeps refusing never
-// ends it (defect 69): it is logged, kept, and sent again next pass.
+// ends it: it is logged, kept, and sent again next pass.
 func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_internal, error) {
 	next, err := r.Sprint.Next(ctx, row)
 	if err != nil {
@@ -99,7 +99,7 @@ func (r *Runner) holders_internal(next NextResponse) (map[string]ConsumerSummary
 
 // finalJob_internal ends a job whose card is final, on the first pass that
 // sees it: a harness left running is stopped, nothing is pushed (the branch
-// is the card's next holder's), and the directory is retired (defect 78).
+// is the card's next holder's), and the directory is retired.
 func (r *Runner) finalJob_internal(f ConsumerSummary, rec JobRecord) {
 	if rec.State == JobRunning {
 		r.withdrawRunningJob_internal(rec)
@@ -179,7 +179,7 @@ func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal)
 // holds the card (by lease from the head it last pushed), then `release`
 // (no result, no fault, no bounce: neither ok nor fail) with that head. The
 // directory is retired once the release is recorded, and nothing is pushed
-// after it (defect 78); a release that fails is said and tried again by the
+// after it; a release that fails is said and tried again by the
 // next pass, whose push of the same head is skipped.
 func (r *Runner) releaseNoBlame_internal(ctx context.Context, rec JobRecord, why string) {
 	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)

@@ -8,8 +8,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The cost tile is the API spend alone (the owner, 2026-11-07: "api rate work
-// should be priced *exactly*. friend sub rate should be free."): a kin's run
+// TestCostSummaryAPIOnlyWithSeatTokens: the cost tile is the API spend alone
+// (priced exactly; subscription seats are free): a kin's run
 // on a subscription seat adds its tokens and never a dollar; an API run with
 // no price is counted unpriced, split no-tokens / no-price with the models
 // prices() leaves out named; every holder's tokens reach its fleet or
@@ -31,7 +31,7 @@ func TestCostSummaryAPIOnlyWithSeatTokens(t *testing.T) {
 		"p2.r1": {ID: "p2.r1", Kind: "read", Of: "p2", Stream: "s", State: "done", Holder: "r", Tier: "pro", Usage: "billing=api charged=- unpriced=no-tokens"},
 		"p2.r2": {ID: "p2.r2", Kind: "read", Of: "p2", Stream: "s", State: "done", Holder: "r", Tier: "pro", Usage: "input=10 output=5 model=inception/mercury-3 billing=api charged=- unpriced=no-price"},
 		"p2.r3": {ID: "p2.r3", Kind: "read", Of: "p2", Stream: "s", State: "fail", Holder: "w", Tier: "pro", Usage: "input=3 model=openai/sol billing=api charged=- unpriced=no-price"},
-		// a record from before round 25: priced as it was recorded
+		// a record with no usage: priced as it was recorded
 		"p2.r4": {ID: "p2.r4", Kind: "read", Of: "p2", Stream: "s", State: "done", Holder: "w", Tier: "pro", Cost: 1342, Priced: true},
 	}
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: cards,

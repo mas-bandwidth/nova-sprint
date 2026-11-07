@@ -87,11 +87,10 @@ func (g guardDropped) Apply(ctx context.Context, op Op) (Receipt, error) {
 	return g.Fake.Apply(ctx, op)
 }
 
-// TestTraceCursorZero holds the ruling on the one divergence the walks
-// found between the store and Store.tla (tla/README.md, "Trace
-// validation"): setting a cursor that was never set to 0. The store used to
-// accept it; it was ruled the code's fault, and the store now refuses it as
-// a write that changes nothing (an absent cursor is 0), as the model does.
+// TestTraceCursorZero holds the one divergence the walks found between the
+// store and Store.tla (tla/README.md, "Trace validation"): setting a cursor
+// that was never set to 0. The store refuses it as a write that changes
+// nothing (an absent cursor is 0), as the model does.
 // The fixture tla/traces/store-cursor-zero must match.
 func TestTraceCursorZero(t *testing.T) {
 	w := newStoreWalk(t, NewFake(), nil, 0)
@@ -105,7 +104,7 @@ func TestTraceCursorZero(t *testing.T) {
 
 // The breaker's script: a row is held, then a deal fenced on it not being
 // held. The honest Fake refuses the deal; the breaker lands it.
-func breakerScript(w *storeWalk) {
+func divergentScript(w *storeWalk) {
 	w.script(nil, PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1}, PutRow{Name: "r1"},
 		SetRowState{Row: "r1", State: "up"}, PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"})
 	w.script(nil, SetRowHeld{Row: "r1", Held: true, Reason: "h"})
@@ -118,10 +117,10 @@ func breakerScript(w *storeWalk) {
 // check-trace.sh must refuse at its last step (the trace job runs it).
 func TestTraceRefusesDivergence(t *testing.T) {
 	honest := newStoreWalk(t, NewFake(), nil, 0)
-	breakerScript(honest)
+	divergentScript(honest)
 	f := NewFake()
 	broken := newStoreWalk(t, guardDropped{f}, nil, 0)
-	breakerScript(broken)
+	divergentScript(broken)
 	require.Contains(t, honest.tr.recs[len(honest.tr.recs)-1], "accepted |-> FALSE")
 	require.Contains(t, broken.tr.recs[len(broken.tr.recs)-1], "accepted |-> TRUE")
 	expect := fmt.Sprintf("forbidden at %d", len(broken.tr.recs))

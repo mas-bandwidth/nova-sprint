@@ -12,7 +12,7 @@ import (
 )
 
 // lander is verbs.Lander: the hand landing and the stream's group branch,
-// as the host's gh identity (intent rule 32). Its clones are its own (a
+// as the host's gh identity. Its clones are its own (a
 // directory apart from run's), since a hand merge checks a commit out.
 type lander struct {
 	clones *origin

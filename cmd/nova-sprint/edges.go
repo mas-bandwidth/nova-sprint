@@ -20,17 +20,16 @@ import (
 )
 
 // gitEdge is git as the sprint. The landing's forge work runs as the host's
-// gh login (intent rule 32), and so does git: gh is its one credential
+// gh login, and so does git: gh is its one credential
 // helper for https://github.com (the address git.CloneURL gives a github
 // stream), run with no GitHub credential of the process, so a GH_TOKEN or
-// GH_CONFIG_DIR in the environment never makes it someone else (directive
-// 59). GH_GATE_TOKEN, when nova-secrets exec puts it in the process, is the
+// GH_CONFIG_DIR in the environment never makes it someone else. GH_GATE_TOKEN, when nova-secrets exec puts it in the process, is the
 // optional override: every git call then authenticates with it.
 func gitEdge() *git.Client {
 	return git.New(git.Config{Token: os.Getenv(forge.TokenEnv), GitHubCredential: "gh"})
 }
 
-// forgeEdge is GitHub through the host's gh login (intent rule 32); a
+// forgeEdge is GitHub through the host's gh login; a
 // GH_GATE_TOKEN in the process is an optional override gh then acts as.
 // The identity's name in messages is the choice, never a login.
 func forgeEdge() *forge.Client {
@@ -95,7 +94,7 @@ func (d doctor) Fleet(ctx context.Context) error {
 }
 
 // ToolsVersion is nova-tools' release, read from the installed binaries'
-// build info (nova-version is retired).
+// build info.
 func (d doctor) ToolsVersion(ctx context.Context) (string, error) {
 	return verbs.InstalledTools(ctx)
 }

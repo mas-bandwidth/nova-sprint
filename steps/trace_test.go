@@ -272,7 +272,7 @@ func (w *traceWalk) moved(action string, args []string) {
 	w.record(action, args)
 }
 
-// The walk has no take: the deal is the take (defect 52), and a row's
+// The walk has no take: the deal is the take, and a row's
 // acknowledgement moves no card, so the model has no action for it.
 
 // results are the scenario's result sets: work ok (and fail for p in deal),
@@ -431,7 +431,7 @@ func (w *traceWalk) answerOne() {
 	}
 	p := ps[w.rng.Intn(len(ps))]
 	choice := []string{"land", "fix", "retry"}[w.rng.Intn(3)]
-	r := Request{Actor: "friendF", Judgement: "land." + p + "." + fmt.Sprint(w.episodes("land", p)), Answer: choice}
+	r := Request{Actor: "coord", Judgement: "land." + p + "." + fmt.Sprint(w.episodes("land", p)), Answer: choice}
 	head := w.snap().Cards[p].Head
 	switch choice {
 	case "land":
@@ -439,7 +439,7 @@ func (w *traceWalk) answerOne() {
 	case "fix":
 		r.Card, r.Event = p, card.Red{Head: head, Reason: "the walk's finding"}
 	}
-	r.Coordinators = []string{"friendF"}
+	r.Coordinators = []string{"coord"}
 	op, ref := Verb(Build(w.snap(), w.now), Inputs{Now: w.now}, r)
 	if ref != nil || !w.apply("answer", op.Expect, op.Writes...).Accepted {
 		return

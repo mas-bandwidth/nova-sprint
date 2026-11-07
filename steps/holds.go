@@ -8,13 +8,12 @@ import (
 
 // holds is the holds step (LAYER-3 "Holds"): Park for a ready producer of a
 // held stream that the hold's op missed; Withdraw of every ready consumer,
-// releasing its producer to be dealt again in hand (a ready consumer is one
-// dealt before the deal became the take, defect 52: nothing cuts one now);
+// releasing its producer to be dealt again in hand;
 // and of a held row's unacknowledged consumers at once and a down row's
 // after the grace (the gone bound): the row never acknowledged them, as the
 // untaken ones these rules were for. A consumer the row acknowledged stays
 // (a hold stops new deals, not work in hand; a silent row's are the limits
-// step's). A hold never touches landing (LANDING step 9).
+// step's). A hold never touches landing.
 func (t *tick) holds() {
 	for _, p := range t.v.Producers("ready") {
 		if c := t.v.Cards[p]; t.v.Streams[c.Stream].Held && t.free(p) {

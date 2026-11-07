@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// The deal's model (defect 57): Start and AskReads carry the model the deal
-// names, and the consumer is cut with it, working in its row's hand (store round 23), so the take
+// The deal's model: Start and AskReads carry the model the deal
+// names, and the consumer is cut with it, working in its row's hand, so the take
 // receipt reads it from the consumer and never invents it. Unit: store.Fake.
 func TestModelCarriedByTheDeal(t *testing.T) {
 	w := newWorld(t, producer("p1"))

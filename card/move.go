@@ -290,7 +290,7 @@ func tierList(ts []string) string {
 // adds a consumer without writing the producer). It reads every consumer
 // passed, whatever their order: a live card refuse allows (a read, for
 // AskRead) never hides one it refuses, and the refusal names the refused card
-// with the lowest id (Johnny's read of a822dfc7).
+// with the lowest id.
 func (m *mover) noLive(refuse func(c Card) *Refusal) *Refusal {
 	if r := m.liveRefused(refuse); r != nil {
 		return r
@@ -352,9 +352,8 @@ func (m *mover) readID() string {
 }
 
 // cut adds a consumer of p, held by row, in state working: in the row's
-// hand at the deal (defect 52, intent rule 33: the deal is the take; the
-// row's width is the deal's check, in layer 3, since the machine sees one
-// producer's consumers). Put card, then its own columns, then the state. The
+// hand at the deal (the deal is the take; the row's width is the deal's
+// check, in layer 3, since the machine sees one producer's consumers). Put card, then its own columns, then the state. The
 // consumer carries copies of p's brief, prose, paths and done_when, and p's
 // stream and tier, and the model its deal named; a read is cut at p's
 // current review.
@@ -366,7 +365,7 @@ func (m *mover) cut(id, kind, row, model string, attempt int, cols ...store.Writ
 		m.expect(absent) // fenced already when noLive read the review's next read
 	}
 	put := store.PutCard{ID: id, Kind: kind, Of: m.p.ID, Stream: m.p.Stream, Holder: row, Tier: m.p.Tier, Attempt: attempt,
-		Brief: m.p.Brief, Prose: m.p.Prose, Paths: slices.Clone(m.p.Paths), DoneWhen: slices.Clone(m.p.DoneWhen), Model: model} // the task handed off, copied (Stella's read of a822dfc7)
+		Brief: m.p.Brief, Prose: m.p.Prose, Paths: slices.Clone(m.p.Paths), DoneWhen: slices.Clone(m.p.DoneWhen), Model: model} // the task handed off, copied
 	if kind == "read" {
 		put.Review = m.p.Review
 	} else {
@@ -383,7 +382,7 @@ func (m *mover) start(e Start) *Refusal {
 		return no("sentinel %s never has a consumer", m.p.ID)
 	}
 	// The stream before the state: Hold then Start, the producer already parked,
-	// refuses "held" (round 4). A free stream still refuses on the state.
+	// refuses "held". A free stream still refuses on the state.
 	if r := m.stream(true); r != nil {
 		return r
 	}
@@ -467,7 +466,7 @@ func (m *mover) finished(e Finished) *Refusal {
 }
 
 // back returns p to ready, or parked (waiting) when its stream is held, in
-// the same plan, fencing the hold either way (the card model's ruling).
+// the same plan, fencing the hold either way.
 func (m *mover) back() *Refusal {
 	if m.s.Name != m.p.Stream {
 		return no("stream %s is not producer %s's stream %s", m.s.Name, m.p.ID, m.p.Stream)
@@ -478,7 +477,7 @@ func (m *mover) back() *Refusal {
 }
 
 // holdPhrase names a park into a held stream. A stream has no reason column,
-// so the phrase names the stream (the second cold read of layer 2).
+// so the phrase names the stream.
 func holdPhrase(s Stream) string { return "held: stream " + s.Name + " is held" }
 
 // returnReason is the producer's reason on a return: the hold when the
@@ -491,7 +490,7 @@ func (m *mover) returnReason(consumer string) string {
 }
 
 // raiseReview moves p into review and raises its review by one: reads cut
-// before no longer count.
+// before do not count.
 func (m *mover) raiseReview() *Refusal {
 	if m.p.Review >= math.MaxInt32 {
 		return no("producer %s is at review %d, the most there is", m.p.ID, m.p.Review)
@@ -513,8 +512,8 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 	}
 	if _, route := RouteFault(c.Reason); route && !bounce {
 		// A fault naming a missing route or device blocks the producer on
-		// the first fault, never a re-deal (defect 48, intent rule 33): the
-		// same kind of row would fault the same way. Layer 3 opens the
+		// the first fault, never a re-deal: the same kind of row would
+		// fault the same way. Layer 3 opens the
 		// blocked judgement; the coordinator's Unblock deals it again.
 		m.state(m.p.ID, Blocked)
 		m.reason(m.p.ID, m.p.Reason, c.Reason)
@@ -745,7 +744,7 @@ func (m *mover) landed(e Landed) *Refusal {
 	return nil
 }
 
-// red is a red landing sent to fix (intent rule 30: no terminal fail): the
+// red is a red landing sent to fix (a red landing is never terminal): the
 // producer goes back to ready (waiting when its stream is held) carrying
 // the CI finding, as ReadFix carries a read's, so the next Start continues
 // from its head with the failing checks named. The review rises, so reads
@@ -890,7 +889,7 @@ func (m *mover) relink(e Relink) *Refusal {
 	case loop != nil:
 		return no("%s", strings.Join(append([]string{m.p.ID}, loop...), " needs "))
 	}
-	for _, id := range read { // every card the acyclic proof read (Stella's read of a822dfc7)
+	for _, id := range read { // every card the acyclic proof read
 		m.expect(store.CardGen{Card: id, Gen: m.needs[id].Gen})
 	}
 	needs := slices.Clone(m.p.Needs)
@@ -1001,7 +1000,7 @@ func (m *mover) setPriority(e SetPriority) *Refusal {
 }
 
 // block parks a producer for the coordinator: policy's bounce limit, or the
-// coordinator's hold of one card (defect 47; from waiting too, so a card
+// coordinator's hold of one card (from waiting too, so a card
 // can be held before it is ready). From working the attempt's consumer must
 // have been withdrawn (fail): one that has reported is applied first, never
 // discarded.
@@ -1209,7 +1208,7 @@ func (m *mover) withdrawHead(e Withdraw, c Card) *Refusal {
 
 // MoveStream is a stream's move on event e. HoldStream holds s and parks
 // every ready producer it names, once, in the same op, fenced at the
-// snapshot's seq (Stella's read of a822dfc7, and the second cold read).
+// snapshot's seq.
 // UnholdStream clears the hold and parks nothing.
 func MoveStream(s Stream, e Event) (Plan, *Refusal) {
 	switch v := e.(type) {

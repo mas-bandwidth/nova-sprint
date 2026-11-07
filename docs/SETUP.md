@@ -1,90 +1,63 @@
-# Setting up nova-sprint: the contract
+# Setting up nova-sprint
 
-the owner, 2026-11-06. This is what the setup must be; layer 6 makes it exact and
-this page becomes the walkthrough an AI runs.
+`nova-sprint up` sets a sprint up and verifies it. It is idempotent: every run re-verifies from step 1, acts at the first step that does not verify, and stops at a step that needs an answer from the human, printing the question and the command that supplies the answer.
 
-## 1. nova-tools first
+nova-sprint runs on a fleet built by nova-tools (Tailscale, Redis, PostgreSQL, Ansible, and the tools on every machine). Set the fleet up first with nova-tools (`nova-fleet check`, then `nova-fleet up`); nova-sprint does not repeat that work.
 
-nova-sprint is built on nova-tools. The AI setting it up is told so at the
-start, and sets up the fleet first with nova-tools: Tailscale, Redis,
-PostgreSQL, Ansible, the tools on every machine (`nova-fleet check`, the
-human's one paste of the Tailscale API token, `nova-fleet up`). Nothing in
-nova-sprint works without that fleet, and nothing in nova-sprint repeats it.
+## Command
 
-## 2. Then: where does the dashboard run?
+    nova-sprint up --as <coordinator> [--dash tailnet|public=<machine>[:<port>]] [--services <a,b>|none] [--key <service>] [--run-on <host>] [--version <v>]
 
-Once the fleet is up, the next question to the human is where they want the
-dashboard. There is one dashboard, in one place:
+- `--as <coordinator>`: the coordinator's bus name. It must already be on the bus (`NOVA_BUS_REDIS=<host:port> nova-bus hook --as <coordinator>` under the session's Monitor tool); `up` refuses otherwise, with that command as the fix.
+- `--dash`: where the dashboard runs (step 5). The answer is stored; later runs need not repeat it.
+- `--services`: the API-rate services to set up (step 6), comma separated, or `none`. Supported: `deepseek`, `openrouter`.
+- `--key <service>`: names a service; refused unless it is one of the selected services (`key service is not selected`).
+- `--run-on <host>`: the machine the run service runs on (step 4); defaults to this machine.
+- `--version <v>`: adopt a build (step 2; see "Upgrading").
 
-- private, on the tailnet (the default), or
-- public, if the human has a machine with a public IP and wants it.
+`check`, `help` and `version` run anywhere. `up` hooks you in as coordinator once the store exists (after step 2).
 
-A public dashboard must be robust: it caches, and it is not taken down by a
-lot of traffic.
+## Steps
 
-## 3. Then: the API-rate workers
+Each step prints `UP <n>/8 <name>: ...: VERIFIED` when it holds.
 
-After the dashboard, configuration is about the API-rate services the sprint
-will run work on: DeepSeek, Mercury, OpenCode, OpenRouter, and the like. The
-AI offers to set these up by default and the human chooses which ones they
-want.
+1. **nova-tools.** `nova-fleet check` is green and the installed nova-tools is at or above the pin this build carries. Fix: `nova-fleet check`; below the pin, `nova-fleet install --tag <pin> <machine>`.
+2. **Store.** The PostgreSQL role and database exist and the schema is at this build's version. The role's password is proven on every run by a SCRAM login (or, where the database trusts the connection, by its stored verifier); when it is not the sprint's credential, `up` sets it.
+3. **Coordinator.** `--as` names the coordinator and is hooked in. `up` records the name; it is the only name that may use coordinator verbs.
+4. **Run.** The `sprint-run` service (`nova-sprint run --listen <address>:8080`) is installed through nova-fleet on the run machine and running: the policy is active (the built-in default is stored and activated if none is), the chooser lock is held, and the sprint name is hooked on the bus. The service opens its secrets from nova-fleet's secrets store on the run machine, as its own seat.
+5. **Dashboard.** One dashboard, in one place:
+   - `--dash tailnet` (default choice offered): the run service serves the board on the tailnet at `http://<run-machine>:8080`.
+   - `--dash public=<machine>[:<port>]`: a pull-only `sprint-dashboard` service (`nova-sprint dash --pull <private url> --listen :8080`) on a machine that has a public IP set in nova-config (`nova-config machine set <machine> --public <ip> --actor <you> --reason <why>`). It holds no secret and caches the board, so traffic never reaches the store. `:<port>` is the port a front serves on (for example 80); the service itself keeps listening on 8080. The public machine cannot be the run machine.
+   - Without an answer `up` stops: `UP 5/8 dashboard: not chosen`, with both forms.
+   - Verification fetches the board and checks it. If the board is unreachable the refusal names the port to open on the serving machine (`open 8080/tcp on <machine> for the dashboard`).
+6. **Services.** Without an answer `up` stops: `UP 6/8 services: not chosen`, with the command `nova-sprint up --services <names|none>`. For each chosen service with no saved key, `up` runs a hidden prompt on the terminal where the human pastes the API key once; `up` stores it in nova-secrets and proves it with one model-list request (`https://api.deepseek.com/models`, `https://openrouter.ai/api/v1/models`). A failure prints the endpoint and the status. `up` then makes the seats, grants and service rows: the human types nothing else for that service. `--services none` is valid.
+7. **Workers.** The sprint needs its commit identity first; without one `up` stops with `UP 7/8 workers: the sprint has no commit identity` and the command to run:
 
-The rule, the same as the Tailscale key: **one API key per service, pasted
-once by the human at a hidden prompt the AI runs for them, and everything
-past that point is automatic.** The key goes into nova-secrets; the AI makes
-the seats, the grants, the worker rows and the service rows. The human never
-types a second thing for that service.
+        nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason "<why>"
 
-## 4. The setup is part of the tool, and it is dogfooded
+   The identity is the forge account on the repositories' contributor-agreement allowlist that every commit is authored and committed as; ask the human which. Then every machine with the bench role, except the one the sprint runs on, gets a worker: its seat is granted the sprint's database credential, and nova-config gets one service record `sprint-worker-<machine>` running `nova-sprint worker --as <machine>` under that seat (with the sprint and bus credentials and the provider keys the seat holds). nova-fleet applies them in one play. The step verifies that each worker bench is at this version, its harness probed with the policy's models and the seat's keys, hooked on the bus and up in the store. Otherwise it names each machine that is not and the last line of its worker log.
+8. **First deal.** `up` checks that every worker row can be dealt to: on the bus, up, and with its core count in nova-config. A bench without cores is held at width 0 and named with `nova-config machine set <machine> --cores <n>`. A new sprint is stopped, so `up` deals nothing.
 
-"The whole point of nova-sprint is to deliver this sprint
-system on top of nova tools, help the human configure it, and setup the
-dashboard. Just like the whole fleet and tailscale stuff and github ci
-runners, it's useless if we don't ship this setup stuff as part of the tool,
-and we must dogfood this setup to make sure it's simple and repeatable."
+The last line when all eight verify:
 
-So: the setup above is a verb of the tool (`nova-sprint up`, running the
-plays through nova-fleet: the store schema and role, the dashboard service
-where the human chose, the worker services, the API-rate seats), not a page
-of instructions. The gate before v2 is called done: an AI with no memory of
-this project takes a fresh fleet (VMs are enough) from zero to a running
-sprint with a dashboard, using only docs/README.md and the tool's own help,
-and then does it again. Simple and repeatable, or not done.
+    UP DONE run on <host>; dashboard <url>; <n> workers up; coordinator <name>
 
-the owner, 2026-11-06, the dogfood gate in his words: "we need to dogfood the new user
-experience at least once, that means we set up our own sprint with it, and we
-successfully run that sprint with the dashboard working and it works." So two
-runs are owed before v2 is done: a cold AI's setup on a fresh fleet from the
-docs alone (above), and our own real sprint set up with v2 through this same
-walkthrough, run to completion with the dashboard live, by Rowan and the kin as
-rows.
+Then the coordinator runs `nova-sprint start --as <coordinator> --reason "<why>"` (coordinator playbook, section 1). `nova-sprint check` re-verifies the whole setup and the health of the running sprint at any time.
 
-nova-sprint and nova-tools release separately ("We no longer
-pin nova-sprint and nova-tools together ... we'll need a pin to the nova-tools
-version the nova-sprint release wants"). The binary carries the minimum
-nova-tools version it needs; `nova-sprint check` reads the installed tools'
-versions (`nova-bus -h`, `nova-fleet -h`, and the rest) and refuses below the
-pin, naming the `nova-fleet up` that brings them up.
+## Notes
 
-## 5. What `nova-sprint up` does past the store (steps 6 to 8)
+- Keys: one API key per service, pasted once at the hidden prompt; it goes into nova-secrets and never into a file, log or command line. All later steps are automatic.
+- A bench can also serve the public dashboard: the public service is pull-only and holds no secret.
+- A second `up` while one runs waits on the setup lock, held on the database.
+- nova-sprint and nova-tools release separately. The nova-sprint binary carries the minimum nova-tools version it needs; `nova-sprint check` reads the installed tools' versions, warns above the pin and refuses below it, naming the `nova-fleet install` that fixes it.
 
-Nothing in this section is typed by the human.
+## Upgrading
 
-- **Services (6).** `--services none` is a valid answer. A chosen service's key is
-  pasted once at a hidden prompt and proven by one model-list request.
-- **Workers (7).** Every machine with the bench role, except the one the sprint runs on,
-  gets a worker: its seat is granted the sprint's database credential, and nova-config
-  gets one service record `sprint-worker-<machine>` running `nova-sprint worker --as
-  <machine>` under that seat (the sprint and bus credentials and the provider keys the
-  bench's seat holds). nova-fleet applies them all in one play. The step verifies when
-  every worker is on the bus and up in the sprint; otherwise it names each machine that
-  is not and the last line of its worker's log.
-- **First deal (8).** A new sprint is stopped until the coordinator runs `nova-sprint
-  start`, so up deals nothing. It checks every worker can be dealt to: on the bus, up,
-  and with its core count in nova-config (a bench without one is held at width 0, named
-  with the `nova-config machine set <machine> --cores <n>` that fixes it).
-- **The public dashboard** may go on a bench: the public service is pull-only and holds
-  no secret, and the bench still works cards.
-- **The database role's password** is proven on every up by a SCRAM login, or, where
-  the database trusts the connection without a password, by its stored verifier; when
-  it is not the sprint's credential, up sets it.
+`nova-sprint up --as <coordinator> --version <v>` installs the build beside the old, runs one shadow tick against the live store, swaps, watches three ticks, and swaps back on an overrun, crash or refused tick, saying why. Never copy a binary by hand.
+
+## Backup and restore
+
+    nova-sprint backup [--out <dir>]          BACKUP <file> epoch=<e> seq=<n> verified
+    nova-sprint restore <file> --as <you>     loads a verified dump into an empty store; the same dump again only hooks you in
+
+`backup` needs a `pg_dump` no older than the server.

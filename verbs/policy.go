@@ -58,7 +58,7 @@ func policyWrite(ctx context.Context, e *Engine, in *input, snap store.Snapshot,
 	}
 	word := map[string]string{"policy set": "STORED", "policy activate": "ACTIVE"}[in.verb]
 	if r.Activated {
-		word = "STORED AND ACTIVE" // the first set: none was active (defect 53)
+		word = "STORED AND ACTIVE" // the first set: none was active
 	}
 	return done(r.Next, fmt.Sprintf("POLICY %s v%d changes=%d", word, r.Version, r.Changes)), nil
 }

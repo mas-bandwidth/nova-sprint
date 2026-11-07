@@ -1,8 +1,7 @@
 // Package usage is a consumer run's usage record: the tokens it spent by
 // class, the model, how it is billed, the harness's own dollar figure, and,
-// when it has no price, why. It is v1's record (nova-tools pkg/cardcost,
-// internal/sprint/cost.go) in v2's shape: one line of key=value words, kept
-// in the card's usage column beside cost and priced (store round 25).
+// when it has no price, why. The record is one line of key=value words, kept
+// in the card's usage column beside cost and priced.
 //
 //	input=19541 cache_read=36336 cache_write=0 output=692 reasoning=70
 //	model=deepseek/deepseek-flash billing=api charged=0.042196
@@ -212,7 +211,7 @@ func USD(micro int64) string {
 	return d
 }
 
-// Compact is a token count as a table shows it (v1's CompactTokens): under
+// Compact is a token count as a table shows it: under
 // a thousand as itself, else one decimal place, half up, with a 1000-based
 // suffix (1.2M, 2M, 48.1M); a count that rounds up to the next suffix takes
 // it (999950 is 1M, not 1000K).

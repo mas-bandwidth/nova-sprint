@@ -12,7 +12,7 @@ import (
 
 // Lander is the landing as the verbs drive it by hand (layer 4's git and
 // forge edges, adapted in cmd/nova-sprint), acting as the host's gh
-// identity (intent rule 32).
+// identity.
 type Lander interface {
 	// Land merges head, the tip of the card's branch, into the stream's
 	// base with no check gate (the coordinator looked), and is the merge
@@ -30,7 +30,7 @@ type Lander interface {
 }
 
 // runLand is `land <card> --reason <why> [--head <sha>]`: the hand merge of
-// a merging producer's read-ok head (intent rule 32), recorded as landed
+// a merging producer's read-ok head, recorded as landed
 // with the merge sha in one op; an open land judgement on the card is
 // answered land in the same op.
 func runLand(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
@@ -59,7 +59,7 @@ func (e *Engine) handLand(ctx context.Context, in *input, snap store.Snapshot, i
 	case e.Lander == nil:
 		return "", broken("the landing edge is not configured", "nova-sprint check")
 	}
-	// a merge the hand landing makes is the store's identity (round 24), never a literal
+	// a merge the hand landing makes is the store's identity, never a literal
 	merge, err := e.Lander.Land(git.WithIdentity(ctx, snap.Identity.Name, snap.Identity.Email), snap.Streams[c.Stream], branchOf(snap, c), c.Head)
 	if err != nil {
 		return "", RefusalOr(err, broken("the hand landing of "+id+" failed: "+errText(err), "fix what it names, then nova-sprint land "+id+" --reason \"<why>\" again"))
@@ -100,7 +100,7 @@ func openLand(snap store.Snapshot, id string) string {
 	return ""
 }
 
-// ensureGroup is stream add's group branch (defect 46): for a stream that
+// ensureGroup is stream add's group branch: for a stream that
 // lands through a forge, sprint-group/<stream> must be a name git accepts
 // and no branch at origin may keep it from being created; absent, it is
 // created at the base tip. A stream landed by hand has none.

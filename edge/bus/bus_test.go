@@ -49,13 +49,13 @@ func TestEdgeSendAndWhoOverFakeExec(t *testing.T) {
 	// 4. Who parses present rows and optional detail column.
 	fex.Enqueue("nova-bus", edge.FakeOutcome{
 		ExitCode: 0,
-		Stdout:   "WHO OK present=2\namd-1.ds\t14s\nrowan\t5m\trecv holding 99-0\n",
+		Stdout:   "WHO OK present=2\namd-1.ds\t14s\ncoord\t5m\trecv holding 99-0\n",
 	})
 	who, err := b.Who(ctx)
 	require.NoError(t, err)
 	require.Len(t, who, 2)
 	assert.Equal(t, Presence{Name: "amd-1.ds", Uptime: "14s"}, who["amd-1.ds"])
-	assert.Equal(t, Presence{Name: "friendF", Uptime: "5m", Detail: "recv holding 99-0"}, who["friendF"])
+	assert.Equal(t, Presence{Name: "coord", Uptime: "5m", Detail: "recv holding 99-0"}, who["coord"])
 
 	// 5. A body over the cap is refused before nova-bus runs.
 	_, err = b.Send(ctx, "amd-1.ds", "DEAL", strings.Repeat("x", MaxMessageBytes+1))

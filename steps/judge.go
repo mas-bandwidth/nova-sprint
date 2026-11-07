@@ -9,7 +9,7 @@ import (
 
 // judgement is one a step opens: kind.about.episode, a cause opening once
 // (an open one of the same kind and about is not opened again), a group key
-// for one push per shared cause (LESSONS 4.9), the deadline policy states
+// for one push per shared cause, the deadline policy states
 // (none for bruling) and the command that answers it.
 type judgement struct {
 	kind, about, question string
@@ -131,7 +131,7 @@ func (t *tick) put(j judgement) store.Write {
 	}
 	// A blocked card, a land judgement and the no-policy gate sit until
 	// answered or cleared: a land judgement's producer stays merging with no
-	// request until the coordinator says land, fix or retry (intent rule 32).
+	// request until the coordinator says land, fix or retry.
 	if j.kind != "blocked" && j.kind != "land" && j.kind != "no-policy" {
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
@@ -141,8 +141,7 @@ func (t *tick) put(j judgement) store.Write {
 // judgements is the judgements step (LAYER-3 "Judgements"; the model's jnew
 // and Expired): the alarms, one policy judgement per missed question, and
 // the expiries: a cause that cleared in the view, or a deadline passed with
-// the kind's safe default, which never drops, accepts, merges or lands
-// (LESSONS 5.7).
+// the kind's safe default, which never drops, accepts, merges or lands.
 func (t *tick) judgements() {
 	t.alarms()
 	for _, q := range t.o.missed() {

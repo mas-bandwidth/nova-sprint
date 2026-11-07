@@ -43,7 +43,7 @@ type runnerEnvState_internal struct {
 
 // runnerBranch_internal is Runner.tla's branch[c]: who wrote the card
 // branch's tip on origin (none, job, holder), whether the next holder did,
-// and the job's pushes after its consumer was final (defect 78).
+// and the job's pushes after its consumer was final.
 type runnerBranch_internal struct {
 	tip         string
 	holderWrote bool
@@ -105,7 +105,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 			store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
 			store.PutCard{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro"},
 			store.PutCard{ID: "c1", Kind: "work", Of: "p1", Stream: "s1", Holder: "vision.ds", Tier: "pro", Attempt: 1},
-			store.SetCardState{Card: "c1", State: "working"}, // the deal is the take (defect 52)
+			store.SetCardState{Card: "c1", State: "working"}, // the deal is the take
 			store.PutCard{ID: "c2", Kind: "work", Of: "p2", Stream: "s1", Holder: "vision.ds", Tier: "pro", Attempt: 1},
 			store.SetCardState{Card: "c2", State: "working"},
 		},
@@ -420,7 +420,7 @@ func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
 	h.env.released = true
 }
 
-// branchStep_internal is defect 78's three steps: the sprint withdraws c
+// branchStep_internal is the withdrawn-job sequence: the sprint withdraws c
 // (and re-deals its card to another row); the next pass retires c's job
 // through the worker's own finalJob_internal, which must push nothing; the
 // new holder, on another row, pushes c's branch.
@@ -576,7 +576,7 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 // acknowledgement of a card dealt working) only in a pass; a release only
 // after a restart, of a job left staged or harvested; a job's own moves only
 // while its consumer is working; the withdraw, the retire and the holder's
-// push of defect 78 (branchMoves_internal).
+// push (branchMoves_internal).
 func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_internal {
 	moves := branchMoves_internal(st, c)
 	if st.storeState[c] != "working" && runnerRetireStates_internal[st.jobState[c]] {
@@ -744,7 +744,7 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 		}
 	}
 	// The seeds, together, walk every path the model checks the code on,
-	// defect 78's withdraw, retire and holder's push among them.
+	// the withdraw, retire and holder's push among them.
 	for _, a := range []string{"Push", "Report", "Clean", "Release", "Stop", "Withdraw", "Retire", "HolderPush"} {
 		if !seen[a] {
 			t.Errorf("no seed walks %s: the trace binding does not cover it", a)
