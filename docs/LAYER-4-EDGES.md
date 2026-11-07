@@ -58,7 +58,7 @@ Sent the moment the op that caused it commits:
 | subject | to | when | answered by |
 |---|---|---|---|
 | `DEAL` | the row | consumers were cut for it (`Start`, `AskRead`) | `nova-sprint take` |
-| `WITHDRAWN` | the row | a consumer it holds was withdrawn (preempted, silence) | stop; the runner pushes what it has |
+| `WITHDRAWN` | the row | a consumer it holds was withdrawn (preempted, silence) | stop; the runner pushes nothing (the branch is the next holder's, defect 78) and retires the job directory |
 | `NEEDS YOU` | the coordinator | a judgement opened, one per `group_key` per episode | the verb the judgement names |
 | `LANDED` | the coordinator | a landing into base (LESSONS 3.20) | nothing; it is the record |
 
@@ -273,8 +273,13 @@ Deal to report:
    stdin closed. The model is nova-config's for (row, tier), chosen by code
    and recorded in the report (LPM T3, T28).
 5. **Harvest** outside the wall: read the result file, push the branch with
-   the row's token. On a wall death, a kill or a withdraw, push whatever
-   commits the worktree holds, so the next attempt continues from them.
+   the row's token. On a wall death or a kill past the deadline, while the
+   job still holds its card, push whatever commits the worktree holds, so
+   the next attempt continues from them. Every push is a lease
+   (`--force-with-lease=refs/heads/<branch>:<expect>`, from the head the job
+   last pushed or the tip it found at stage), never a plain force, and none
+   once the consumer is final or a newer generation holds it: a withdrawn
+   job pushes nothing (defect 78).
 6. **Rebase** onto the stream head as it is now and re-run the card's test
    command, inside a slot, bounded by the two-minute rule; push. A conflict
    is a `fail` naming the files.
@@ -283,7 +288,8 @@ Deal to report:
 8. **Report** with a result id written to `job.json` before the first try;
    retry the verb with that id until it exits 0 or 1 (LESSONS 4.5).
 9. **Clean** the job directory only after the report is recorded and the
-   head is on origin; a worktree with uncommitted changes is logged and kept.
+   head is on origin; a worktree with uncommitted changes is logged and kept
+   until the next pass, which retires it (the consumer is final then).
 
 Results, classified by the adapter. `ok`: the result file says ok and a head
 past `base_sha` and `prior_head` is pushed (a harness that said ok and left
@@ -357,8 +363,11 @@ taken, run again if it was staged or running, harvested if it left its
 result file; no fault. One with a recorded result id is reported again
 under that id. A `working` consumer with no job directory, or one whose
 job cannot be rebuilt, is released with no blame (`nova-sprint release`,
-with the partial head it pushed). A job directory whose consumer is final
-is cleaned. A record the sprint refuses three times the same way is moved
+with the partial head it pushed). A job directory whose consumer is final,
+or whose generation is stale, is retired on the first pass that sees it:
+nothing pushed, the directory made writable and removed, its record kept in
+`<root>/retired/`; a removal that fails is raised once and moved to
+`<root>/quarantine/`. A record the sprint refuses three times the same way is moved
 to `<root>/quarantine/` and raised. Ready consumers are taken as at a wake. The runner gates on no
 other daemon (LESSONS 4.25): with the store unreachable its harnesses run
 on and its reports wait to retry.
@@ -429,18 +438,28 @@ result id, pushed head), harness alive, the store's applied op ids. Actions:
 Wake (duplicated, lost), PassStart and PassEnd (the pass, a process of its
 own: only a pass takes, and it ends whatever its jobs do), Take, Stage,
 StageFail, Run, Die, Harvest, Rebase, Conflict, Push, Report, ReplyLost,
-Clean, Withdraw, Release (the restart's no-blame give-back), Stop (the
+Clean, Withdraw (the sprint's: the store moves, the job does not), Retire
+(the next pass removes a withdrawn job's directory, pushing nothing),
+HolderPush (the card's next holder pushes its branch from another row),
+Release (the restart's no-blame give-back), Stop (the
 worker's own stop: harnesses killed, jobs kept at staged), Crash and
-Restart (at any step), StoreDown. Invariants: guarantees 7 to 11; `working`
+Restart (at any step), StoreDown; and the card's branch on origin (who
+wrote its tip, the next holder's write, the job's pushes after final).
+Invariants: guarantees 7 to 11; `working`
 within width; slots within capacity; `PassNeverWaitsOnJobs`;
-`StopIsNeverAFault`. Liveness: every `working` consumer of the row
-ends recorded or withdrawn. Reversed witnesses: a slot freed while its
+`StopIsNeverAFault`; `NoPushAfterFinal`; `BranchOnlyByHolder`. Liveness:
+every `working` consumer of the row ends recorded or withdrawn, and a
+withdrawn job's directory is removed (`FinalDirRemoved`). Reversed witnesses: a slot freed while its
 harness lives; a reused job directory; Clean before Report (work lost on a
 crash); a fresh result id on retry (two reports); Restart taking a working
 consumer as new (two harnesses on one card); a Die classified `fail` (a
 fault that bounces); a pass that waits on its jobs (`RunnerPassWaitsOnJobs`);
-a stop reported as a fault (`RunnerStopIsAFault`). Reach checks: a take
-while another job runs, a stop, a stopped job back in a pass, a release.
+a stop reported as a fault (`RunnerStopIsAFault`); a withdrawn job that
+pushes (`RunnerWithdrawnPushes`), again on a later pass
+(`RunnerWithdrawnPushesRepeatedly`), and by plain force over the next
+holder's branch (`RunnerForcePushRewinds`). Reach checks: a take
+while another job runs, a stop, a stopped job back in a pass, a release, a
+retire, the next holder's push over a head the job pushed.
 Size: 2 consumers, width 2, 1 slot, 1 Crash.
 
 `tla/Push.tla`, the cursor: events, cursor, sends, lost replies, a crash.
@@ -1089,3 +1108,93 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   generated, 4,245 distinct. The whole of `ci-tlc.sh`: 266 ok, 0 FAIL (Runner, the eight Runner
   witnesses and the four Runner reach checks among them). `make-traces.sh check`: 88 ok, 0
   FAIL; the runner walks check at 22, 29 and 30 steps.
+
+### Built: a branch is its holder's (stitch w4W, 2026-11-07, defect 78)
+
+What happened on the live fleet: a bench's work consumer was withdrawn and
+its card re-dealt to another row. Every recovery pass found the consumer
+final and called `withdrawRunningJob_internal`, which ran
+`harvestPartialPush_internal`: `git push --force` of the job's dirty head to
+the card's branch. `cleanJobDir_internal` kept the directory (a dirty tree;
+the Go module cache inside it is read-only, so a plain remove fails too),
+so this happened again on every pass for as long as the worker lived, each
+time rewinding the new holder's branch to the stale head. Files:
+`edge/worker/retire.go` (new), `runner.go`, `recover.go`, `pass.go`,
+`worker.go`.
+
+- **One push, by lease.** `OSGitOps.Push` (the worker's only `git push`)
+  is `push --force-with-lease=refs/heads/<branch>:<expect> origin
+  <sha>:refs/heads/<branch>`; `GitOps.Push` takes `expect` ("" : the
+  branch must not exist). Every push goes through `pushBranch_internal`,
+  which refuses a job that no longer holds its consumer and leases from
+  `leaseFrom_internal`: the head this job last pushed (`PushedHead`), or
+  before its first push the tip it found at stage (`StartTip`, read by the
+  new `GitOps.BranchTip` from the work clone the pass fetched; a record
+  from before it falls back to `PriorHead`). Why the stage tip and not
+  only the last pushed sha: a never-pushed job has no sha of its own, and a
+  card branch can already exist (a cleared sprint's next epoch reuses card
+  ids and branch names; the breaker `TestBreakStaleEpochJobReplaysOldReceipts`
+  found it); leasing on an older tip than origin's can only refuse, never
+  overwrite. A lint test (`TestWorkerSourcesHaveNoPlainForce`) fails on a
+  plain `--force` in the worker's non-test sources.
+- **The push sites, each now.** `harvestWorkHead_internal` (the harness's
+  head): `pushBranch_internal`, lease from the stage tip. `rebaseAndTestStep_internal`
+  (the rebased head): lease from the head just pushed; a refused push is a
+  fault that reports the head that did land, so the next attempt's prior
+  head is the branch as it stands. `harvestPartialPush_internal`: only for
+  a job that still holds its card (`faultAndReportJob_internal`, an adopted
+  harness past its deadline; `releaseNoBlame_internal`, once before the
+  release, skipping a head already pushed). `withdrawRunningJob_internal`:
+  pushes nothing (it stops the harness only).
+- **Who holds.** `holds_internal`: the worker records, per epoch and
+  consumer, the generation below which its jobs hold nothing
+  (`markGone_internal`): every final consumer in a `next` read (all
+  generations), every working one (below its generation), a release once
+  recorded, a retired job.
+- **Retire.** `finalJob_internal` (a final consumer's job, not in flight),
+  a job of a stale generation (same epoch, `rec.Gen < w.Gen`: the store
+  refuses its report anyway), the in-flight job withdrawn while its harness
+  ran, and a recorded release all go to `retireJob_internal`: the record is
+  written to `<root>/retired/e<epoch>/<consumer>@<gen>/job.json`, the
+  directory made writable (`chmod` 0700 on every directory under it,
+  symbolic links not followed) and removed. A removal that fails is raised
+  once (a WORKER WARNING and the step log, with the hand fix) and the
+  directory moved to `<root>/quarantine/`; the retired record means it is
+  never tried again. A job of a stale generation retired frees its card for
+  the pass to run at its new generation (before, it sat with
+  "identity-mismatch-kept" every pass). An epoch mismatch is still kept.
+- **Model.** `Runner.tla` gains `branch[c]` (tip writer none / job /
+  holder, the next holder's write, the job's pushes after final), `Retire`,
+  `HolderPush`, the holder guard on the job's own steps, the lease on
+  `Push` and `Release`; `Withdraw` no longer cleans the job (that was the
+  model hiding the bug). Invariants `NoPushAfterFinal`, `BranchOnlyByHolder`;
+  liveness `FinalDirRemoved`; `CleanOnlyAfterRecordedAndPushed` now asks
+  for the push only of a job that ended done (a retired one pushed nothing).
+  Reversed witnesses `RunnerWithdrawnPushes`, `RunnerWithdrawnPushesRepeatedly`,
+  `RunnerForcePushRewinds` (the live bug: no retire, no lease); reach checks
+  `RunnerNeverRetired`, `RunnerNeverHolderPushedOverJob`. The trace walk
+  binds Withdraw, Retire (the worker's own `finalJob_internal`, on a fake
+  origin that records every push) and HolderPush; every walk push goes
+  through `pushBranch_internal`; eight seeds are written, and the test
+  fails if together they miss any of Push, Report, Clean, Release, Stop,
+  Withdraw, Retire, HolderPush.
+- **Tests.** `retire_test.go`: the lease argv; the lint; a normal job's
+  two leases; the defect's path (three passes over a final consumer: no
+  push, the holder's branch untouched, one removal of a tree with a
+  read-only module cache, the retired record kept); a failed removal
+  raised once and quarantined; a stale generation retired with no push;
+  the gate after final (and not across epochs); the release's one leased
+  push, refused when the holder moved the branch.
+- **Checked (measured, a bench host, TLC v1.8.0, 2026-11-07, head b5f98342).** `Runner.tla`
+  with `Runner.cfg` (both new invariants, `Liveness` and `FinalDirRemoved`): no error, 67,836
+  states generated, 16,839 distinct (was 16,928 and 4,245). Each new witness reports its
+  target violated, and its counterexample was checked against the base code by hand:
+  `RunnerForcePushRewinds` is Take, Stage, Withdraw, HolderPush, StalePush (the live
+  sequence: the withdrawn job's pass force-pushes over the new holder);
+  `RunnerWithdrawnPushesRepeatedly` is Take, Stage, Withdraw, StalePush, StalePush;
+  `RunnerWithdrawnPushes` is Take, Stage, Withdraw, StalePush. (The live job was at running
+  with a harness gone; the model's Withdraw takes a job with no harness, so the witness
+  withdraws it at staged: the same push, from the same kept directory.) The eight older
+  Runner witnesses and all six Runner reach checks (the two new ones among them) are violated
+  as required. `make-traces.sh check`: 93 ok, 0 FAIL; the eight runner walks check at 22 to
+  28 steps. The whole of `ci-tlc.sh`: 263 ok, 0 FAIL.
