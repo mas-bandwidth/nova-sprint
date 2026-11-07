@@ -549,7 +549,12 @@ DefaultRow(V, x, t) ==
 \* Policy's rows answer in its order: one row, both, or none (failed).
 AnsRows(ar) == CASE ar = "both" -> <<"r1", "r2">> [] ar \in Rows -> <<ar>> [] OTHER -> <<>>
 AnsElig(V, x, ar, t) == SelectSeq(AnsRows(ar), LAMBDA r : Eligible(V, x, r, t))
-InDomain(V, x, ar, t) == AnsElig(V, x, ar, t) # <<>>
+\* A candidate the question offered (the code's candidates): up, serving the
+\* card's tier, never a read's author. An answer naming a row not offered
+\* is refused whole, and one naming no row with room is a miss too.
+Cand(V, x, r) == V.up[r] /\ Serves(r, x.p) /\ (x.kind = "read" => r # V.ps[x.p].author)
+InDomain(V, x, ar, t) == /\ \A i \in 1..Len(AnsRows(ar)) : Cand(V, x, AnsRows(ar)[i])
+                         /\ AnsElig(V, x, ar, t) # <<>>
 \* The answered rows with room, spread (the code's spread): among those of
 \* the first one's rank, the fewest live cards, policy's order breaking ties.
 SpreadRow(V, x, t, ar) ==

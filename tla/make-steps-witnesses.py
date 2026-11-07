@@ -191,6 +191,8 @@ WITNESSES = [
      "row, and Start does not check that the row serves the card's tier.",
      [("AnsElig(V, x, ar, t) == SelectSeq(AnsRows(ar), LAMBDA r : Eligible(V, x, r, t))",
        "AnsElig(V, x, ar, t) == SelectSeq(AnsRows(ar), LAMBDA r : V.up[r])   \\* FAULT: was Eligible(V, x, r, t)", 1),
+      ("Cand(V, x, r) == V.up[r] /\\ Serves(r, x.p) /\\ (x.kind = \"read\" => r # V.ps[x.p].author)",
+       "Cand(V, x, r) == V.up[r]   \\* FAULT: was V.up[r] /\\ Serves(r, x.p) /\\ not the author", 1),
       ("  /\\ ~W.sh[Stream[p]]\n  /\\ Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n",
        "  /\\ ~W.sh[Stream[p]]\n  /\\ TRUE   \\* FAULT: was Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n", 1)]),
     ("StepsAfterIgnored", "AfterKept", "land",
