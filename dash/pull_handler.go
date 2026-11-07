@@ -2,11 +2,8 @@ package dash
 
 import (
 	"fmt"
-	"math"
 	"net"
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -93,7 +90,7 @@ func (p *PullCache) serveJSON(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	if acceptsGzip(r.Header.Get("Accept-Encoding")) {
+	if acceptsGzip(r.Header.Values("Accept-Encoding")) {
 		w.Header().Set("Content-Encoding", "gzip")
 		body = compressed
 	}
@@ -111,34 +108,4 @@ func (p *PullCache) serveHealth(w http.ResponseWriter) {
 		return
 	}
 	_, _ = fmt.Fprintln(w, "ok")
-}
-
-func acceptsGzip(header string) bool {
-	accepted := false
-	for _, item := range strings.Split(header, ",") {
-		parts := strings.Split(item, ";")
-		if !strings.EqualFold(strings.TrimSpace(parts[0]), "gzip") {
-			continue
-		}
-		quality := 1.0
-		if len(parts) > 2 {
-			return false
-		}
-		if len(parts) == 2 {
-			pair := strings.SplitN(strings.TrimSpace(parts[1]), "=", 2)
-			if len(pair) != 2 || !strings.EqualFold(strings.TrimSpace(pair[0]), "q") {
-				return false
-			}
-			q, err := strconv.ParseFloat(strings.TrimSpace(pair[1]), 64)
-			if err != nil || math.IsNaN(q) || q < 0 || q > 1 {
-				return false
-			}
-			quality = q
-		}
-		if quality <= 0 {
-			return false
-		}
-		accepted = true
-	}
-	return accepted
 }
