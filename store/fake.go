@@ -132,7 +132,9 @@ func (f *Fake) Events(_ context.Context, afterSeq int64, max int) ([]Event, erro
 }
 
 // Restored is false: a Fake is never restored (RestoreEnd is PostgreSQL's).
-func (f *Fake) Restored(context.Context) (time.Time, bool, error) { return time.Time{}, false, nil }
+func (f *Fake) Restored(context.Context) (string, time.Time, bool, error) {
+	return "", time.Time{}, false, nil
+}
 
 // EventIdentity returns the op id and epoch of the event at seq.
 func (f *Fake) EventIdentity(_ context.Context, seq int64) (string, int, bool, error) {

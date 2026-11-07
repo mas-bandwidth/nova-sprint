@@ -22,10 +22,12 @@ CREATE TABLE IF NOT EXISTS sprint.meta (
     hash   text    NOT NULL DEFAULT ''
 );
 INSERT INTO sprint.meta (id, schema) VALUES (1, 2) ON CONFLICT (id) DO NOTHING;
--- Round 22: the last restore into this store (RestoreEnd sets it in the
--- restore's own transaction; null when the store was never restored).
--- Restored reads it, so a retried restore can tell the data is already in.
-ALTER TABLE sprint.meta ADD COLUMN IF NOT EXISTS restored_at timestamptz;
+-- Round 22: the last restore into this store, and the sha256 of the dump it
+-- loaded (RestoreEnd sets both in the restore's own transaction; null and ''
+-- when the store was never restored). Restored reads them, so a retried
+-- restore of the same dump can tell the data is already in.
+ALTER TABLE sprint.meta ADD COLUMN IF NOT EXISTS restored_at timestamptz,
+    ADD COLUMN IF NOT EXISTS restored_digest text NOT NULL DEFAULT '' CHECK (restored_digest ~ '^([0-9a-f]{64})?$');
 
 CREATE TABLE IF NOT EXISTS sprint.epoch (
     id integer PRIMARY KEY CHECK (id = 1),

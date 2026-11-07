@@ -168,17 +168,18 @@ func (p *PG) EventIdentity(ctx context.Context, seq int64) (string, int, bool, e
 	return op, epoch, true, nil
 }
 
-// Restored returns when the store was last restored (RestoreEnd), and false
-// when it never was. It only reads.
-func (p *PG) Restored(ctx context.Context) (time.Time, bool, error) {
+// Restored returns the digest of the dump the store was last restored from
+// and when (RestoreEnd), and false when it never was. It only reads.
+func (p *PG) Restored(ctx context.Context) (string, time.Time, bool, error) {
+	var digest string
 	var at *time.Time
-	if err := p.pool.QueryRow(ctx, "SELECT restored_at FROM sprint.meta WHERE id = 1").Scan(&at); err != nil {
-		return time.Time{}, false, fmt.Errorf("store: restored: %w", err)
+	if err := p.pool.QueryRow(ctx, "SELECT restored_digest, restored_at FROM sprint.meta WHERE id = 1").Scan(&digest, &at); err != nil {
+		return "", time.Time{}, false, fmt.Errorf("store: restored: %w", err)
 	}
 	if at == nil {
-		return time.Time{}, false, nil
+		return "", time.Time{}, false, nil
 	}
-	return at.UTC(), true, nil
+	return digest, at.UTC(), true, nil
 }
 
 // readEvents is Events on q: the pool, or a transaction (RestoreEnd).

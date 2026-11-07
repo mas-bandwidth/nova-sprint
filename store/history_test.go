@@ -46,7 +46,7 @@ func TestFunctionalValidateHistoryRefuses(t *testing.T) {
 			tx, err := connect(t, newDatabase(t, dsn, c.db)).Begin(ctx)
 			require.NoError(t, err)
 			defer func() { _ = tx.Rollback(ctx) }() // ignored: refused
-			require.NoError(t, RestoreBegin(ctx, tx))
+			require.NoError(t, RestoreBegin(ctx, tx, digestOf(d)))
 			require.NoError(t, loadDump(ctx, tx, d))
 			_, err = tx.Exec(ctx, c.mutate)
 			require.NoError(t, err, c.mutate)

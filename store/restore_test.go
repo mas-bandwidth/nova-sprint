@@ -5,6 +5,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -84,14 +86,25 @@ func loadDump(ctx context.Context, tx pgx.Tx, dump string) error {
 	return nil
 }
 
+// digestOf is the dump's digest as layer 6 computes it: sha256 of its bytes.
+func digestOf(dump string) string {
+	sum := sha256.Sum256([]byte(dump))
+	return hex.EncodeToString(sum[:])
+}
+
 // restore runs Begin, the load and End in one transaction on one
 // connection to dsn, committing only when End accepts.
 func restore(t *testing.T, dsn, dump string) (SchemaIdentity, error) {
+	return restoreAs(t, dsn, dump, digestOf(dump))
+}
+
+// restoreAs is restore with the digest the caller passes.
+func restoreAs(t *testing.T, dsn, dump, digest string) (SchemaIdentity, error) {
 	ctx := context.Background()
 	tx, err := connect(t, dsn).Begin(ctx)
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }() // ignored: a no-op after the commit
-	require.NoError(t, RestoreBegin(ctx, tx))
+	require.NoError(t, RestoreBegin(ctx, tx, digest))
 	require.NoError(t, loadDump(ctx, tx, dump))
 	id, err := RestoreEnd(ctx, tx)
 	if err == nil {
@@ -123,13 +136,13 @@ func TestFunctionalRestore(t *testing.T) {
 			t.Log(line)
 		}
 	}
-	assert.Contains(t, d, "COPY sprint.meta (id, schema, hash, restored_at) FROM stdin;\n1\t2\t"+schemaHash+"\t\\N\n")
+	assert.Contains(t, d, "COPY sprint.meta (id, schema, hash, restored_at, restored_digest) FROM stdin;\n1\t2\t"+schemaHash+"\t\\N\t\n")
 	assert.Contains(t, d, "COPY sprint.epoch (id, n, stopped, stop_reason) FROM stdin;\n1\t2\tf\t\n")
 
 	target := newDatabase(t, dsn, "restored")
 	tx, err := connect(t, target).Begin(ctx)
 	require.NoError(t, err)
-	require.NoError(t, RestoreBegin(ctx, tx))
+	require.NoError(t, RestoreBegin(ctx, tx, digestOf(d)))
 	_, err = tx.Exec(ctx, "ALTER TABLE sprint.cards ENABLE TRIGGER cards_fixed")
 	require.NoError(t, err)
 	require.ErrorContains(t, loadDump(ctx, tx, d), "card u1 is a consumer of c1, which is not a producer", "a consumer's row comes before its updated producer's")
@@ -141,18 +154,19 @@ func TestFunctionalRestore(t *testing.T) {
 	q, err := Open(ctx, target, "")
 	require.NoError(t, err)
 	t.Cleanup(q.Close)
-	_, ok, err := p.Restored(ctx)
+	_, _, ok, err := p.Restored(ctx)
 	require.NoError(t, err)
 	assert.False(t, ok, "the original was never restored")
-	restoredAt, ok, err := q.Restored(ctx)
+	digest, restoredAt, ok, err := q.Restored(ctx)
 	require.NoError(t, err)
 	require.True(t, ok, "the restore is recorded in sprint.meta")
+	assert.Equal(t, digestOf(d), digest, "with the dump's digest: a retry of the same dump can tell it is in")
 	assert.False(t, restoredAt.IsZero())
 	// The restore unhooked w1 (the seed's sess-a) in one logged op at the
 	// restore's time; the same op on the original makes the two stores one.
-	unhook, ok := unhookOp(want, restoredAt)
+	unhook, ok := unhookOp(want, digest, restoredAt)
 	require.True(t, ok)
-	assert.Equal(t, fmt.Sprintf("restore-unhook-%d", want.Seq), unhook.ID)
+	assert.Equal(t, fmt.Sprintf("restore-unhook-%s-%d", digest, want.Seq), unhook.ID)
 	u, err := p.Apply(ctx, unhook)
 	require.NoError(t, err)
 	require.True(t, u.Accepted, u.Reason)
@@ -179,7 +193,7 @@ func TestFunctionalRestore(t *testing.T) {
 	tx, err = connect(t, target).Begin(ctx)
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }() // ignored: refused, nothing to keep
-	err = RestoreBegin(ctx, tx)
+	err = RestoreBegin(ctx, tx, digestOf(d))
 	require.Error(t, err)
 	assert.Equal(t, "store: restore: sprint.cards has rows; a restore loads only into an empty store: use a new database, or drop schema sprint", err.Error())
 }
@@ -210,9 +224,49 @@ func TestFunctionalRestoreRefuses(t *testing.T) {
 	tx, err := connect(t, foreign).Begin(ctx)
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }() // ignored: refused
-	err = RestoreBegin(ctx, tx)
+	err = RestoreBegin(ctx, tx, digestOf(d))
 	require.Error(t, err)
 	assert.Equal(t, "store: restore: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere", err.Error())
+}
+
+// The restore's identity: Begin refuses a digest that is not a sha256, End
+// refuses a transaction Begin's digest is not in, and End refuses a restore
+// that would leave a row hooked, naming it. The last is a dump whose own log
+// already holds the unhook's id (made here on purpose; a restore-unhook of
+// another restore at the same seq would do it): the replayed id unhooks
+// nothing.
+func TestFunctionalRestoreIdentity(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h, _, dsn := pgHarness(t)
+	restoreSeed(h)
+	d := dump(t, dsn)
+	tx, err := connect(t, newDatabase(t, dsn, "baddigest")).Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback(ctx) }() // ignored: refused
+	for _, bad := range []string{"", "abc", strings.ToUpper(digestOf(d))} {
+		err = RestoreBegin(ctx, tx, bad)
+		require.Error(t, err, bad)
+		assert.Equal(t, fmt.Sprintf("store: restore: the dump's digest %q is not a sha256 in lowercase hex (64 digits): pass the sha256 of the dump's bytes", bad), err.Error())
+	}
+
+	tx, err = connect(t, newDatabase(t, dsn, "nodigest")).Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback(ctx) }() // ignored: refused
+	require.NoError(t, RestoreBegin(ctx, tx, digestOf(d)))
+	require.NoError(t, loadDump(ctx, tx, d))
+	_, err = tx.Exec(ctx, "SELECT set_config($1, '', true)", digestSetting)
+	require.NoError(t, err)
+	_, err = RestoreEnd(ctx, tx)
+	require.Error(t, err)
+	assert.Equal(t, "store: restore: RestoreBegin did not run in this transaction (no dump digest): run RestoreBegin, the load and RestoreEnd in one transaction", err.Error())
+
+	other := strings.Repeat("ab", 32)
+	h.ok(Op{ID: fmt.Sprintf("restore-unhook-%s-%d", other, h.snap().Seq+1), Epoch: h.epoch, Actor: "tester", Kind: "hook", At: t0,
+		Writes: []Write{PutRow{Name: "w9", Session: "sess-z", Role: "worker"}}})
+	_, err = restoreAs(t, newDatabase(t, dsn, "collide"), dump(t, dsn), other)
+	require.Error(t, err)
+	assert.Equal(t, "store: restore: row w1 is still hooked after the unhook: the restore would leave a hook from the dump live", err.Error())
 }
 
 // unhookOp unhooks every hooked row of a snapshot in one op, raising each
@@ -229,9 +283,10 @@ func TestUnhookOp(t *testing.T) {
 	require.True(t, r.Accepted, r.Reason)
 	before, err := f.Snapshot(ctx)
 	require.NoError(t, err)
-	op, ok := unhookOp(before, when)
+	digest := strings.Repeat("0f", 32)
+	op, ok := unhookOp(before, digest, when)
 	require.True(t, ok)
-	assert.Equal(t, Op{ID: "restore-unhook-1", Epoch: 1, Actor: "store-restore", Kind: "unhook", At: when, Writes: []Write{PutRow{Name: "w1"}, PutRow{Name: "w3"}}}, op)
+	assert.Equal(t, Op{ID: "restore-unhook-" + digest + "-1", Epoch: 1, Actor: "store-restore", Kind: "unhook", At: when, Writes: []Write{PutRow{Name: "w1"}, PutRow{Name: "w3"}}}, op)
 	r, err = f.Apply(ctx, op)
 	require.NoError(t, err)
 	require.True(t, r.Accepted, r.Reason)
@@ -240,9 +295,9 @@ func TestUnhookOp(t *testing.T) {
 	assert.Equal(t, Row{Name: "w1", State: "up", Gen: 1}, after.Rows["w1"])
 	assert.Equal(t, before.Rows["w2"], after.Rows["w2"], "an unhooked row is not written")
 	assert.Equal(t, Row{Name: "w3", State: "down", Gen: 1}, after.Rows["w3"])
-	_, ok = unhookOp(after, when)
+	_, ok = unhookOp(after, digest, when)
 	assert.False(t, ok, "nothing hooked: no op")
-	_, ok, err = f.Restored(ctx)
+	_, _, ok, err = f.Restored(ctx)
 	require.NoError(t, err)
 	assert.False(t, ok, "a Fake is never restored")
 }

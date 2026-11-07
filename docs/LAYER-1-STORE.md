@@ -573,7 +573,7 @@ the least-privilege setup `up` makes. The schema hash is still of the whole
 `schema.sql` and does not change.
 
 Recorded with round 20 (2026-11-06): layer 6's restore of a data-only dump,
-`store.RestoreBegin(ctx, tx pgx.Tx) error` and `store.RestoreEnd(ctx, tx
+`store.RestoreBegin(ctx, tx pgx.Tx, digest string) error` (digest since round 22) and `store.RestoreEnd(ctx, tx
 pgx.Tx) (SchemaIdentity, error)`, on one connection in one transaction the
 caller owns (`pgx.Tx`, so it cannot be called outside one). What the dump
 carries, read from `pg_dump --data-only --schema=sprint` of a seeded store
@@ -693,9 +693,23 @@ model and harness wherever they are named).
   protocol inside the transaction, so the log still rebuilds the state; a
   dump with no hooked row logs nothing. `Restored(ctx) (at, ok, err)` on the
   Store interface reads it (the Fake is never restored), so a retried
-  restore can tell the data is already in. No source hash is recorded:
-  RestoreEnd is given none. The model needs no new variable (the unhook is
-  PutRow ops; `restored_at` is outside the ops' state).
+  restore can tell the data is already in. The model needs no new variable
+  (the unhook is PutRow ops; `restored_at` is outside the ops' state).
+- The restore's identity (round 22, second refinement): `RestoreBegin(ctx,
+  tx, digest)` takes the dump's digest (sha256 of its bytes, lowercase hex,
+  computed by the caller; anything else is refused) and keeps it for the
+  transaction (`set_config`, local); `RestoreEnd` records it in
+  `sprint.meta.restored_digest` beside `restored_at` (a CHECK keeps it a
+  sha256 or ''), and refuses a transaction without it. The unhook op's id is
+  `restore-unhook-<digest>-<seq>`, unique against the dump's own log (which
+  may hold the unhook of the restore it came from). Before it returns,
+  `RestoreEnd` checks inside the transaction that no row of the current
+  epoch is hooked, and refuses the restore naming the row otherwise (a
+  replayed id would leave one hooked). `Restored(ctx)` returns `(digest, at,
+  ok, err)`. Layer 6's restore uses it: an empty schema is imported; a
+  non-empty one with the same digest skips the import and only hooks; a
+  different digest, or none, is refused ("schema holds a restore of
+  <digest> at <time>: clear it first").
 - Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
   value is refused as unchanged, an absent cursor counting as 0, so
   `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already
