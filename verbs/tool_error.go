@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
@@ -83,6 +84,12 @@ func runTool(cmd *exec.Cmd, out io.Writer) error {
 	}
 	cmd.Stdout = io.MultiWriter(out, &stdout)
 	cmd.Stderr = &stderr
+	if cmd.WaitDelay == 0 {
+		// a descendant that keeps the child's stdout or stderr open (a
+		// daemon it started) cannot hang the caller: Wait gives up after
+		// this, and the failure says so (exec.ErrWaitDelay)
+		cmd.WaitDelay = 10 * time.Second
+	}
 	err := cmd.Run()
 	if err == nil {
 		return nil
