@@ -203,7 +203,7 @@ func JudgementsTLA(v *View, sc TraceScenario) string {
 	var out []string
 	for _, id := range sortedKeys(v.Judgements) {
 		j := v.Judgements[id]
-		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy"}, j.Kind) {
+		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy", "land"}, j.Kind) {
 			continue
 		}
 		about := j.About

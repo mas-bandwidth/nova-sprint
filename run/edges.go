@@ -48,17 +48,16 @@ type Edges struct {
 }
 
 // LandPoll is the pause before a pending CI is asked again; HeadsEvery how
-// often the base tips are read again. CIAbsentWait bounds the wait for the
-// first check on a pushed group sha: GitHub queues a workflow's jobs as
-// check runs within seconds of a push (a queued job is pending, not
-// absent), so a sha with no check at all after this long has no CI
-// listening to the group branch, and the landing stops with a judgement
-// instead of waiting for ever (defect 40). 10 minutes is a guess, not
-// measured.
+// often the base tips are read again. CIWait bounds the wait for the first
+// check on a gated sha when the request names no wait of its own (policy's
+// landing(stream).ci_wait): GitHub queues a workflow's jobs as checks within
+// seconds of a push, so a sha with no check at all after this long has no
+// CI coming, and the landing is a judgement instead of a wait for ever. 10
+// minutes is a guess, not measured.
 const (
-	LandPoll     = 30 * time.Second
-	HeadsEvery   = 10 * time.Second
-	CIAbsentWait = 10 * time.Minute
+	LandPoll   = 30 * time.Second
+	HeadsEvery = 10 * time.Second
+	CIWait     = 10 * time.Minute
 )
 
 // Results drains the results that finished since the last call.
@@ -115,41 +114,38 @@ func (e *Edges) fault(what string, err error) {
 	}
 }
 
-// land runs LandPass until it is not pending. A hand stream (mode hand, or
-// no forge) gets no result: its producers land by hand.
+// land runs LandPass until it is not pending (LANDING.md). A stream that
+// lands by hand (mode hand, or no forge) is answered at once with outcome
+// hand: its cards are the coordinator's judgement.
 func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	if s.Mode == "hand" || s.Forge == "" || e.Forge == nil {
+		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "hand", Reason: "stream " + r.Stream + " lands by hand (mode " + cmp.Or(s.Mode, "auto") + ", forge " + cmp.Or(s.Forge, "none") + ")"})
 		return
-	}
-	if ready, ok := e.Forge.(interface{ Ready() error }); ok {
-		// No token, no landing: nothing is merged or pushed as anyone else
-		// (defect 39); one judgement says the fix.
-		if err := ready.Ready(); err != nil {
-			e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "forge", Reason: err.Error()})
-			return
-		}
 	}
 	dir, err := e.clone(ctx, s)
 	if err != nil {
 		e.fault("land "+r.ID+" stream "+r.Stream+": clone", err)
-		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault"})
+		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault", Reason: "the clone of " + s.Repo + " failed: " + err.Error()})
 		return
 	}
-	req := git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Mode: s.Mode, Heads: r.Heads}
-	absent := 0 // consecutive passes with no check at all on the gated sha
+	req := git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Heads: r.Heads, Branches: r.Branches}
+	wait := time.Duration(r.Wait) * time.Second
+	if wait <= 0 {
+		wait = CIWait
+	}
+	absent := time.Duration(0)
 	for {
 		res, err := git.LandPass(ctx, e.Git, e.Forge, req)
-		var wait bool
-		if wait, absent = waitAgain_internal(res, err, absent); wait {
+		if again, waited := askAgain_internal(res, err, absent, wait); again {
+			absent = waited
 			if e.Pause(ctx, LandPoll) != nil {
 				return
 			}
 			continue
 		}
-		it := landItem(r.ID, res, err)
-		if it.Outcome == "fault" {
-			// Layer 3 reissues a fault with no move; the cause is said here.
-			e.fault("land "+r.ID+" stream "+r.Stream, cmp.Or(err, landFault(res)))
+		it := landItem(r.ID, res, err, wait)
+		if err != nil {
+			e.fault("land "+r.ID+" stream "+r.Stream, err)
 		}
 		e.result(it)
 		if res.Outcome == git.OutcomeLanded {
@@ -159,68 +155,65 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 }
 
-// waitAgain_internal says whether a landing pass asks CI again after
-// LandPoll, and the count of consecutive passes that found no check at all.
-// A pending CI is waited for (the stall judgement covers a slow one); an
-// absent one only until CIAbsentWait, after which the pass's absent outcome
-// goes to layer 3 as no-ci (defect 40).
-func waitAgain_internal(res git.LandResult, err error, absent int) (bool, int) {
+// askAgain_internal says whether a pass is asked again after LandPoll, and
+// how long the gated sha has had no check at all. Pending CI and a base
+// that moved after the gate are asked again; an absent CI only until wait,
+// after which the pass goes to layer 3 as no-ci.
+func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, 0
 	}
 	switch res.Outcome {
-	case git.OutcomeCIPending:
+	case git.OutcomePending, git.OutcomeBaseMoved:
 		return true, 0
-	case git.OutcomeCIAbsent:
-		absent++
-		return time.Duration(absent)*LandPoll < CIAbsentWait, absent
+	case git.OutcomeAbsent:
+		absent += LandPoll
+		return absent < wait, absent
 	}
 	return false, 0
 }
 
-// landFault is a fault outcome's reason as an error.
-func landFault(res git.LandResult) error {
-	return fmt.Errorf("%s: %s", cmp.Or(string(res.Outcome), "no outcome"), cmp.Or(res.Reason, "no reason given"))
-}
-
-// landItem is LandResult as layer 3 reads it (SEAMS 6).
-func landItem(id string, res git.LandResult, err error) steps.InboxItem {
-	it := steps.InboxItem{Kind: "land", Request: id, Outcome: "fault"}
-	if err != nil {
+// landItem is LandResult as layer 3 reads it (SEAMS 6): landed with the
+// heads and the merge sha, or the outcome and its facts for the
+// coordinator's judgement (an error is the outcome fault).
+func landItem(id string, res git.LandResult, err error, wait time.Duration) steps.InboxItem {
+	it := steps.InboxItem{Kind: "land", Request: id, Outcome: string(res.Outcome)}
+	switch {
+	case err != nil:
+		it.Outcome, it.Reason = "fault", err.Error()
 		return it
-	}
-	switch res.Outcome {
-	case git.OutcomeLanded:
-		it.Outcome, it.Landed = "landed", res.LandedHeads
-	case git.OutcomeCIRed:
-		// the green heads are not on the base: they land again; the blamed
-		// one goes to fix with this finding
-		it.Outcome, it.Blamed, it.Reason = "red", res.BlamedHead, ciFinding(res)
-	case git.OutcomeCIAbsent:
+	case res.Outcome == git.OutcomeLanded:
+		it.Landed, it.Merge = res.LandedHeads, res.MergeSHA
+		return it
+	case res.Outcome == git.OutcomeAbsent:
 		it.Outcome = "no-ci"
-		it.Reason = fmt.Sprintf("no check was reported on %s within %s of its push", cmp.Or(res.GatedSHA, "the gated sha"), CIAbsentWait)
-	case git.OutcomeRung3Conflict, git.OutcomeLedgerFailed:
-		it.Outcome = "conflict"
+		res.Reason = fmt.Sprintf("no check was reported on %s within %s", res.GatedSHA, wait)
 	}
+	it.Reason = landFacts(res)
 	return it
 }
 
-// ciFinding is a red gate as a fix attempt reads it: the failing checks,
-// the first failing check's URL, and the gate's own reason.
-func ciFinding(res git.LandResult) string {
+// landFacts is a pass's facts as the judgement shows them: the rung, the
+// base and its tip, the group tip, the gated sha, the PR, the failing checks
+// with the first one's URL and its first failing lines, the conflicting
+// files, and the pass's own reason.
+func landFacts(res git.LandResult) string {
 	var parts []string
-	if len(res.FailingCI) > 0 {
-		parts = append(parts, "failing: "+strings.Join(res.FailingCI, ", "))
+	add := func(label, v string) {
+		if v != "" {
+			parts = append(parts, label+" "+v)
+		}
 	}
-	if res.CIURL != "" {
-		parts = append(parts, res.CIURL)
-	}
-	if res.Reason != "" {
-		parts = append(parts, res.Reason)
-	}
-	if res.GatedSHA != "" {
-		parts = append(parts, "gated "+res.GatedSHA)
-	}
+	add("rung", map[int]string{1: "1", 2: "2"}[res.Rung])
+	add("base tip", res.BaseTip)
+	add("group tip", res.GroupTip)
+	add("gated", res.GatedSHA)
+	add("PR", res.PR)
+	add("failing", strings.Join(res.FailingCI, ", "))
+	add("at", res.CIURL)
+	add("first failing lines:", strings.Join(res.FailingLines, " | "))
+	add("conflicts:", strings.Join(res.Conflicts, ", "))
+	add("reason:", res.Reason)
 	return strings.Join(parts, "; ")
 }
 

@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
-	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -154,7 +153,7 @@ func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Rost
 	}
 	s := snap.Streams[c.Stream]
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
-		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: git.StreamBranch(c.Stream), BaseSHA: c.BaseSHA,
+		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
 		PriorHead: c.Prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: r.Epoch, Gen: c.Gen, Attempt: c.Attempt,
 		Review: c.Review, Model: ro.Kin[in.actor].Model, Models: nonNil(nil), Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge}
 	if _, bench := ro.Workers[in.actor]; bench {

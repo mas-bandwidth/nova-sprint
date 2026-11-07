@@ -3,7 +3,6 @@ package forge
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 
@@ -28,24 +27,7 @@ func crClient_internal(fe *edge.FakeExec) *Client {
 		return edge.FakeOutcome{}
 	})
 	n := int64(1000)
-	return New(Config{Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, Exec: fe, Timeout: 30e9, Now: func() int64 { return n }})
-}
-
-// Ruling: landing is fast-forward only and base gets the exact sha CI
-// passed. Merge runs `gh pr merge --merge` (forge.go:465), which writes a new
-// merge commit on base: base advances to a sha no check ran at.
-func TestColdreadDefectForgeMergeIsNotFastForward(t *testing.T) {
-	t.Parallel()
-	fe := edge.NewFakeExec()
-	c := crClient_internal(fe)
-	if err := c.Merge(context.Background(), "mas-bandwidth/nova-sprint", 7, crSHA, "v2"); err != nil {
-		t.Fatal(err)
-	}
-	for _, call := range fe.Calls() {
-		if slices.Contains(call.Cmd.Argv, "merge") && slices.Contains(call.Cmd.Argv, "--merge") {
-			t.Errorf("forge merge argv %q creates a GitHub merge commit; base tip will not be %s", strings.Join(call.Cmd.Argv, " "), crSHA)
-		}
-	}
+	return New(Config{Identity: Identity{Name: "sprint", Token: "tok"}, Exec: fe, Timeout: 30e9, Now: func() int64 { return n }})
 }
 
 // Design: "A 403 or 429 with a retry time rests that identity". The detector

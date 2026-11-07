@@ -43,7 +43,7 @@ VARIABLE l
 traceVars == <<vars, l>>
 
 TraceActions == {"Init", "Snap", "Tick", "Take", "Report", "Hold", "Unhold", "Gone", "Seen",
-                 "EnvMove", "EdgeResult"}
+                 "EnvMove", "EdgeResult", "Answer"}
 
 Has(r, f) == f \in DOMAIN r
 
@@ -97,6 +97,7 @@ StepAs(r) ==
     [] r.action = "Report"     -> Report(r.card, r.res)
     [] r.action \in {"Hold", "Unhold", "Gone", "Seen", "EnvMove"} -> EnvMove /\ EnvKind(r)
     [] r.action = "EdgeResult" -> \E f \in inflight : f.id = r.id /\ EdgeResult(f, r.out, r.n)
+    [] r.action = "Answer"     -> Answer(r.p, r.choice)
     [] OTHER                   -> FALSE
 
 TraceInit ==

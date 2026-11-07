@@ -93,9 +93,10 @@ type Answers struct {
 // how many it queues ahead (at most 4 x width).
 type WidthAnswer struct{ Work, Ahead int }
 
-// LandingAnswer is landing(stream): backed up at BackedUp merging, flowing
-// again at Flowing.
-type LandingAnswer struct{ BackedUp, Flowing int }
+// LandingAnswer is landing(stream): backed up (rung 2) at BackedUp merging
+// heads waiting, flowing again at Flowing; CIWait the seconds a gated sha
+// may have no CI at all before it is a judgement (0: the engine's).
+type LandingAnswer struct{ BackedUp, Flowing, CIWait int }
 
 // Limits is limits(): the counts. Budget (cards touched per tick) and Pack
 // (groups per op) are layer 3's keys in the same dict (LAYER-3, "Policy
@@ -144,7 +145,7 @@ var Engine = Defaults{
 	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
 	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
 	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, BaseRegate: []int{120, 300}},
-	Landing:  LandingAnswer{BackedUp: 4, Flowing: 1},
+	Landing:  LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
 }
 
 // oracle is one tick's answers: the version's where usable, the defaults
@@ -276,11 +277,12 @@ func (o *oracle) width(r RowFacts) WidthAnswer {
 	return WidthAnswer{Work: r.Width, Ahead: r.Width}
 }
 
-// landing is landing(stream): 0 <= flowing < backed_up <= 1000.
+// landing is landing(stream): 0 <= flowing < backed_up <= 1000, a CI wait
+// of at most a day.
 func (o *oracle) landing(s StreamFacts) LandingAnswer {
 	l, ok := o.a.Landing[s.Name]
 	if o.usable("landing", ok) {
-		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 {
+		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 {
 			return l
 		}
 		o.refuse("landing")

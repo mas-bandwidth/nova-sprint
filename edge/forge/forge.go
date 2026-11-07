@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"os"
@@ -38,9 +37,8 @@ const (
 )
 
 var (
-	ErrStaleHead = errors.New("forge: stale head commit")
-	ErrBaseMoved = errors.New("forge: base branch moved")
-	accountRe    = regexp.MustCompile(`(?i)account\s+([A-Za-z0-9_.-]+)`)
+	jobRe        = regexp.MustCompile(`/job/(\d+)`)
+	failLineRe   = regexp.MustCompile(`(?i)(error|fail|panic)`)
 	retryAfterRe = regexp.MustCompile(`(?i)retry-after[:\s]+(\d+)`)
 )
 
@@ -53,13 +51,17 @@ type CheckRollup struct {
 	State            CheckState
 	Failing          []string
 }
+
+// PRInfo is an open PR as gh pr list prints it. Mergeable is GitHub's
+// MERGEABLE, CONFLICTING or UNKNOWN (still computing).
 type PRInfo struct {
-	Number                        int
-	URL, HeadRefName, BaseRefName string
-	State                         string
-	HeadRef                       string `json:"headRefName"`
-	HeadSHA                       string `json:"headRefOid"`
-	BaseRef                       string `json:"baseRefName"`
+	Number    int
+	URL       string `json:"url"`
+	State     string `json:"state"`
+	HeadRef   string `json:"headRefName"`
+	HeadSHA   string `json:"headRefOid"`
+	BaseRef   string `json:"baseRefName"`
+	Mergeable string `json:"mergeable"`
 }
 type FaultError struct {
 	Kind             FaultKind
@@ -71,23 +73,28 @@ func (e *FaultError) Error() string {
 	return fmt.Sprintf("forge fault (%s) for %s until %d: %s", e.Kind, e.Identity, e.RetryAfter, e.Reason)
 }
 
+// Forge is the landing's GitHub (LANDING.md): a PR and its checks, the
+// merge by the repository's allowed method at the exact head CI passed, and
+// the first failing lines of a red check for the coordinator's judgement.
 type Forge interface {
 	PR(ctx context.Context, repo, head, base string) (PRInfo, bool, error)
 	OpenPR(ctx context.Context, repo, head, base, title, body string) (PRInfo, error)
 	Checks(ctx context.Context, repo string, shas []string) (map[string]CheckRollup, error)
-	Merge(ctx context.Context, repo string, pr int, sha, base string) error
+	// Merge merges PR pr only while its head is sha, and returns the merge
+	// commit base now has.
+	Merge(ctx context.Context, repo string, pr int, sha string) (string, error)
+	FailedLines(ctx context.Context, repo, url string) ([]string, error)
 }
 
-// Identity is who the forge acts as: always an explicit token, never the
-// gh login of whoever runs the process (defect 39: the first landing merged
-// as the human's own account through the host's bare gh). Name is for the
-// refusals; ExpectedLogin, when set, is checked against gh auth status.
-type Identity struct{ Name, ExpectedLogin, Token string }
+// Identity is who the forge acts as: the host's own gh login (the run on
+// the coordinator's host, deliberately: the one identity that can act on
+// every stream repository, intent rule 32), unless Token is set, an
+// optional override that gh gets as GH_TOKEN. Name is for the refusals.
+type Identity struct{ Name, Token string }
 
-// TokenEnv is the environment variable the sprint's own GitHub token comes
-// in: the control seat's secret of that name, handed to nova-sprint by
-// nova-secrets exec --only GH_GATE_TOKEN,... (the sprint-run service's unit
-// does this).
+// TokenEnv is the optional override's environment variable: when it is set
+// in nova-sprint's process, the forge and git act as that token instead of
+// the host's gh login.
 const TokenEnv = "GH_GATE_TOKEN"
 
 type Config struct {
@@ -101,9 +108,9 @@ type Config struct {
 type Client struct {
 	cfg                Config
 	mu                 sync.Mutex
-	verified           bool
 	tokens             float64
 	lastTick, restTill int64
+	methods            map[string]string // repo -> the merge method it allows
 }
 
 func New(cfg Config) *Client { return NewClient(cfg.Exec, cfg) }
@@ -116,77 +123,24 @@ func NewClient(ex edge.Exec, cfg Config) *Client {
 	if cfg.Now == nil {
 		cfg.Now = func() int64 { return time.Now().Unix() }
 	}
-	return &Client{cfg: cfg, tokens: float64(cfg.Burst), lastTick: cfg.Now()}
+	return &Client{cfg: cfg, tokens: float64(cfg.Burst), lastTick: cfg.Now(), methods: map[string]string{}}
 }
 func (c *Client) RestedUntil() int64 { c.mu.Lock(); defer c.mu.Unlock(); return c.restTill }
 
-// Ready refuses, with its one fix and without running anything, a client
-// with no token: the forge never acts as the host's own gh login.
-func (c *Client) Ready() error {
-	id := c.cfg.Identity
-	name := cmp.Or(id.Name, "unknown")
-	switch {
-	case strings.TrimSpace(id.Token) == "":
-		return &edge.Refusal{Problem: "the forge has no GitHub token for " + name + " (" + TokenEnv + " is not in this process) and never acts as whoever gh is logged in as",
-			Fix: "run it under nova-secrets exec --only " + TokenEnv + ",... -- nova-sprint ..., so the control seat's token is the identity"}
-	case isForbiddenLogin_internal(id.ExpectedLogin):
-		return &edge.Refusal{Problem: "the forge identity " + name + " expects the login " + id.ExpectedLogin + ", the human's own account, which is never used",
-			Fix: "set NOVA_SPRINT_FORGE_LOGIN to the sprint's own GitHub login"}
+// env_internal is gh's environment: the process's own (the host's gh
+// login), or, with the override, the process's without any GitHub
+// credential of its own and GH_TOKEN set to the override.
+func (c *Client) env_internal() ([]string, bool) {
+	if c.cfg.Identity.Token == "" {
+		return []string{"GH_PROMPT_DISABLED=1", "NO_COLOR=1"}, false
 	}
-	return nil
-}
-func (c *Client) checkCredentials_internal(ctx context.Context) error {
-	if err := c.Ready(); err != nil {
-		return err
-	}
-	id := c.cfg.Identity
-	name := cmp.Or(id.Name, "unknown")
-	c.mu.Lock()
-	already := c.verified
-	c.mu.Unlock()
-	if already {
-		return nil
-	}
-	cmd := edge.Cmd{Argv: []string{c.cfg.Binary, "auth", "status"}, Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout}
-	res, err := c.cfg.Exec.Run(ctx, cmd)
-	combined := res.Stdout + "\n" + res.Stderr
-	login := parseAuthLogin_internal(combined)
-	if (err != nil || !res.OK()) && login == "" {
-		// The environment is the whole process's: the failure names none of it.
-		return fmt.Errorf("forge refused: gh auth status for %s: %w: check the token in %s", name, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err), TokenEnv)
-	}
-	want := cmp.Or(id.ExpectedLogin, name)
-	if isForbiddenLogin_internal(login) || (id.ExpectedLogin != "" && !strings.EqualFold(login, id.ExpectedLogin)) {
-		return &edge.Refusal{Problem: "the token in " + TokenEnv + " is " + cmp.Or(login, "an unknown login") + "'s, expected " + want + " (the human's own credentials are never used)",
-			Fix: "put " + want + "'s token in the control seat's " + TokenEnv}
-	}
-	c.mu.Lock()
-	c.verified = true
-	c.mu.Unlock()
-	return nil
-}
-func isForbiddenLogin_internal(login string) bool {
-	switch strings.ToLower(strings.TrimSpace(login)) {
-	case "glenn", "gaffer", "gafferongames", "glennfiedler":
-		return true
-	}
-	return false
-}
-func parseAuthLogin_internal(s string) string {
-	if m := accountRe.FindStringSubmatch(s); len(m) == 2 {
-		return m[1]
-	}
-	return ""
-}
-func (c *Client) env_internal() []string {
 	var env []string
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "GH_TOKEN=") && !strings.HasPrefix(kv, "GITHUB_TOKEN=") && !strings.HasPrefix(kv, "GH_ENTERPRISE_TOKEN=") && !strings.HasPrefix(kv, "GH_CONFIG_DIR=") {
 			env = append(env, kv)
 		}
 	}
-	// gh reads GH_TOKEN before its own login; Ready refused an empty one.
-	return append(env, "GH_TOKEN="+c.cfg.Identity.Token, "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
+	return append(env, "GH_TOKEN="+c.cfg.Identity.Token, "GH_PROMPT_DISABLED=1", "NO_COLOR=1"), true
 }
 func (c *Client) takeToken_internal() error {
 	c.mu.Lock()
@@ -208,19 +162,16 @@ func (c *Client) takeToken_internal() error {
 	return nil
 }
 func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, string, error) {
-	if err := c.checkCredentials_internal(ctx); err != nil {
-		return "", "", err
-	}
 	if err := c.takeToken_internal(); err != nil {
 		return "", "", err
 	}
-	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout}
+	env, clean := c.env_internal()
+	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: env, CleanEnv: clean, Timeout: c.cfg.Timeout}
 	res, err := c.cfg.Exec.Run(ctx, cmd)
 	if err == nil && res.OK() {
 		return res.Stdout, res.Stderr, nil
 	}
-	// The environment is the whole process's (with GH_TOKEN): the failure
-	// names none of it.
+	// The failure names none of the environment (it may hold a token).
 	failed := edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	if retrySec, ok := detectRateLimit_internal(res.Stderr); ok {
 		c.mu.Lock()
@@ -249,7 +200,7 @@ func (c *Client) PR(ctx context.Context, repo, head, base string) (PRInfo, bool,
 	if repo == "" || head == "" || base == "" {
 		return PRInfo{}, false, fmt.Errorf("forge refused: PR lookup requires repo, head, and base")
 	}
-	stdout, _, err := c.runGH_internal(ctx, "pr", "list", "--repo", repo, "--head", head, "--base", base, "--state", "open", "--json", "number,url,headRefName,headRefOid,baseRefName,state")
+	stdout, _, err := c.runGH_internal(ctx, "pr", "list", "--repo", repo, "--head", head, "--base", base, "--state", "open", "--json", "number,url,headRefName,headRefOid,baseRefName,state,mergeable")
 	if err != nil {
 		return PRInfo{}, false, err
 	}
@@ -435,36 +386,108 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 		return CheckRollup{SHA: sha, State: CheckGreen}
 	}
 }
-func (c *Client) Merge(ctx context.Context, repo string, pr int, sha, base string) error {
-	if pr <= 0 || !isFullSHA_internal(sha) || base == "" {
-		return fmt.Errorf("forge refused: Merge requires pr > 0, 40-hex sha, and base")
+
+// Merge merges PR pr by the repository's allowed method (merge commit,
+// then squash, then rebase, the first it allows), refused by GitHub unless
+// the PR's head is still sha (--match-head-commit), and returns the merge
+// commit GitHub recorded. A PR left open (a merge queue took it) is a
+// refusal: the landing records only a merge it saw.
+func (c *Client) Merge(ctx context.Context, repo string, pr int, sha string) (string, error) {
+	if pr <= 0 || !isFullSHA_internal(sha) || repo == "" {
+		return "", fmt.Errorf("forge refused: Merge requires a repo, pr > 0 and a 40-hex sha")
 	}
-	stdout, _, err := c.runGH_internal(ctx, "pr", "view", strconv.Itoa(pr), "--repo", repo, "--json", "number,url,headRefName,headRefOid,baseRefName,state")
+	method, err := c.method_internal(ctx, repo)
 	if err != nil {
-		return err
+		return "", err
 	}
-	var info PRInfo
-	if err := json.Unmarshal([]byte(stdout), &info); err != nil {
-		return fmt.Errorf("forge: decode gh pr view --json: %s", edge.ParseFailure(err, []byte(stdout)))
+	n := strconv.Itoa(pr)
+	if _, _, err := c.runGH_internal(ctx, "pr", "merge", n, "--repo", repo, "--"+method, "--match-head-commit", sha); err != nil {
+		return "", err
+	}
+	stdout, _, err := c.runGH_internal(ctx, "pr", "view", n, "--repo", repo, "--json", "state,mergeCommit")
+	if err != nil {
+		return "", fmt.Errorf("forge: merged PR #%d on %s but could not read its merge commit: %w", pr, repo, err)
+	}
+	var v struct {
+		State       string `json:"state"`
+		MergeCommit *struct {
+			OID string `json:"oid"`
+		} `json:"mergeCommit"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+		return "", fmt.Errorf("forge: decode gh pr view --json state,mergeCommit: %s", edge.ParseFailure(err, []byte(stdout)))
+	}
+	if v.State != "MERGED" || v.MergeCommit == nil || !isFullSHA_internal(v.MergeCommit.OID) {
+		return "", fmt.Errorf("forge: gh pr merge %d on %s returned, but the PR is %s with no merge commit (a merge queue or an auto-merge holds it)", pr, repo, cmp.Or(v.State, "in no state"))
+	}
+	return strings.ToLower(v.MergeCommit.OID), nil
+}
+
+// method_internal is the first merge method repo allows, read once per repo.
+func (c *Client) method_internal(ctx context.Context, repo string) (string, error) {
+	c.mu.Lock()
+	m, ok := c.methods[repo]
+	c.mu.Unlock()
+	if ok {
+		return m, nil
+	}
+	stdout, _, err := c.runGH_internal(ctx, "repo", "view", repo, "--json", "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed")
+	if err != nil {
+		return "", err
+	}
+	var v struct{ MergeCommitAllowed, SquashMergeAllowed, RebaseMergeAllowed bool }
+	if err := json.Unmarshal([]byte(stdout), &v); err != nil {
+		return "", fmt.Errorf("forge: decode gh repo view --json merge methods: %s", edge.ParseFailure(err, []byte(stdout)))
 	}
 	switch {
-	case info.BaseRef != base:
-		return fmt.Errorf("%w: PR #%d base is %s, expected %s: re-target PR to %s", ErrBaseMoved, pr, info.BaseRef, base, base)
-	case info.HeadSHA != "" && !strings.EqualFold(info.HeadSHA, sha):
-		return fmt.Errorf("%w: PR #%d head is %s, expected gated sha %s: re-gate before merge", ErrStaleHead, pr, info.HeadSHA, sha)
+	case v.MergeCommitAllowed:
+		m = "merge"
+	case v.SquashMergeAllowed:
+		m = "squash"
+	case v.RebaseMergeAllowed:
+		m = "rebase"
+	default:
+		return "", fmt.Errorf("forge refused: %s allows no merge method (merge commit, squash and rebase are all off)", repo)
 	}
-	_, stderr, err := c.runGH_internal(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, base), "-X", "PATCH", "-f", "sha="+sha)
+	c.mu.Lock()
+	c.methods[repo] = m
+	c.mu.Unlock()
+	return m, nil
+}
+
+// FailedLines is the first failing lines of the GitHub Actions job a red
+// check's url names (gh run view --job <id> --log-failed): the first five
+// lines that say error, fail or panic, else the last five. A url that names
+// no job has no lines to read.
+func (c *Client) FailedLines(ctx context.Context, repo, url string) ([]string, error) {
+	m := jobRe.FindStringSubmatch(url)
+	if m == nil {
+		return nil, fmt.Errorf("forge: %s names no Actions job, so its log cannot be read", cmp.Or(url, "the check's url"))
+	}
+	stdout, _, err := c.runGH_internal(ctx, "run", "view", "--repo", repo, "--job", m[1], "--log-failed")
 	if err != nil {
-		low := strings.ToLower(stderr + " " + err.Error())
-		switch {
-		case strings.Contains(low, "head branch was modified"):
-			return fmt.Errorf("%w: %v", ErrStaleHead, err)
-		case strings.Contains(low, "base branch was modified") || strings.Contains(low, "out-of-date") || strings.Contains(low, "not up to date") || strings.Contains(low, "fast-forward") || strings.Contains(low, "fast forward"):
-			return fmt.Errorf("%w: %v", ErrBaseMoved, err)
-		}
-		return err
+		return nil, err
 	}
-	return nil
+	return FirstFailing(stdout, 5), nil
+}
+
+// FirstFailing is the first n lines of log that say error, fail or panic,
+// else its last n lines, each trimmed.
+func FirstFailing(log string, n int) []string {
+	var all, hits []string
+	for _, l := range strings.Split(log, "\n") {
+		if l = strings.TrimSpace(l); l == "" {
+			continue
+		}
+		all = append(all, l)
+		if len(hits) < n && failLineRe.MatchString(l) {
+			hits = append(hits, l)
+		}
+	}
+	if len(hits) > 0 {
+		return hits
+	}
+	return all[max(0, len(all)-n):]
 }
 func isFullSHA_internal(s string) bool {
 	if len(s) != 40 {

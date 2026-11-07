@@ -275,8 +275,7 @@ func (w *walk) edgeOne() bool {
 	if req.Kind == "land" {
 		switch w.rng.Intn(6) {
 		case 0:
-			it.Outcome, it.Blamed = "red", req.Heads[w.rng.Intn(len(req.Heads))]
-			it.Landed = slices.DeleteFunc(slices.Clone(req.Heads), func(h string) bool { return h == it.Blamed })
+			it.Outcome = "ci_red"
 		case 1:
 			it.Outcome = "fault"
 		case 2:

@@ -245,18 +245,19 @@ func TestLandResultMapping(t *testing.T) {
 		err  error
 		want steps.InboxItem
 	}{
-		{git.LandResult{Outcome: git.OutcomeLanded, LandedHeads: []string{"h1"}}, nil, steps.InboxItem{Outcome: "landed", Landed: []string{"h1"}}},
-		{git.LandResult{Outcome: git.OutcomeCIRed, BlamedHead: "h2", GreenHeads: []string{"h1"}}, nil, steps.InboxItem{Outcome: "red", Blamed: "h2"}},
-		{git.LandResult{Outcome: git.OutcomeRung3Conflict}, nil, steps.InboxItem{Outcome: "conflict"}},
-		{git.LandResult{Outcome: git.OutcomeLedgerFailed}, nil, steps.InboxItem{Outcome: "conflict"}},
-		{git.LandResult{Outcome: git.OutcomePushRefused}, nil, steps.InboxItem{Outcome: "fault"}},
-		{git.LandResult{Outcome: git.OutcomeMissingHead}, nil, steps.InboxItem{Outcome: "fault"}},
+		{git.LandResult{Outcome: git.OutcomeLanded, LandedHeads: []string{"h1"}, MergeSHA: "m1"}, nil, steps.InboxItem{Outcome: "landed", Landed: []string{"h1"}, Merge: "m1"}},
+		{git.LandResult{Outcome: git.OutcomeRed}, nil, steps.InboxItem{Outcome: "ci_red"}},
+		{git.LandResult{Outcome: git.OutcomeConflict}, nil, steps.InboxItem{Outcome: "conflict"}},
+		{git.LandResult{Outcome: git.OutcomeRefused}, nil, steps.InboxItem{Outcome: "merge_refused"}},
+		{git.LandResult{Outcome: git.OutcomeUnopenable}, nil, steps.InboxItem{Outcome: "pr_unopenable"}},
+		{git.LandResult{Outcome: git.OutcomeBranch}, nil, steps.InboxItem{Outcome: "branch_failed"}},
+		{git.LandResult{Outcome: git.OutcomeAbsent}, nil, steps.InboxItem{Outcome: "no-ci"}},
 		{git.LandResult{}, errors.New("land refused"), steps.InboxItem{Outcome: "fault"}},
 	}
 	for _, c := range cases {
-		got := landItem("land.s.x", c.res, c.err)
+		got := landItem("land.s.x", c.res, c.err, time.Minute)
 		c.want.Kind, c.want.Request = "land", "land.s.x"
-		if got.Outcome != c.want.Outcome || got.Blamed != c.want.Blamed || !slices.Equal(got.Landed, c.want.Landed) || got.Request != c.want.Request {
+		if got.Outcome != c.want.Outcome || got.Merge != c.want.Merge || !slices.Equal(got.Landed, c.want.Landed) || got.Request != c.want.Request {
 			t.Fatalf("%v %v: got %+v want %+v", c.res.Outcome, c.err, got, c.want)
 		}
 	}

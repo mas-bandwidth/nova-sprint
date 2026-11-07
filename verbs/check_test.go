@@ -148,13 +148,9 @@ func TestCheckLandingWaits(t *testing.T) {
 		delete(s.Cards, "p2.r1")
 	}
 	runCases(t, []tcase{
-		{name: "waits for the merge", args: []string{"check"}, exit: 0, prep: healthy,
+		{name: "waits for its landing", args: []string{"check"}, exit: 0, prep: healthy,
 			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st },
-			want: []string{"CHECK landing s: 1 merging (p2) waits for run to merge its heads into sprint/s/group"}},
-		{name: "waits for CI at the group tip", args: []string{"check"}, exit: 0,
-			prep: then(healthy, func(_ *testing.T, w *world) { w.origin.tips[gh+" sprint/s/group"] = tip }),
-			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st },
-			want: []string{"CHECK landing s: 1 merging (p2) waits for CI on sprint/s/group at dddddddddddd (run asks every 30s)"}},
+			want: []string{"CHECK landing s: 1 merging (p2) waits for its landing PR's CI (rung 1 the card's branch, rung 2 sprint-group/s; run asks every 30s)"}},
 		{name: "a hand stream", args: []string{"check"}, exit: 0, prep: healthy,
 			snap: func(s *store.Snapshot) { merging(s); st := s.Streams["s"]; st.Mode = "hand"; s.Streams["s"] = st },
 			want: []string{"CHECK landing s: 1 merging (p2) waits for a hand landing (mode hand, forge none)"}},

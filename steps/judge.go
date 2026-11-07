@@ -17,10 +17,9 @@ type judgement struct {
 
 // The closed list a step opens, with the choices judge offers for each.
 var choices = map[string]string{
-	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "conflict": "by-hand | drop",
-	"base-red": "retry", "stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
+	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
+	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
-	"no-ci": "retry", "forge": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once).
@@ -107,7 +106,10 @@ func (t *tick) put(j judgement) store.Write {
 	if j.kind == "roster" {
 		w.Group = RosterGroup(j.about)
 	}
-	if j.kind != "blocked" {
+	// A blocked card and a land judgement sit until answered: a land
+	// judgement's producer stays merging with no request until the
+	// coordinator says land, fix or retry (intent rule 32).
+	if j.kind != "blocked" && j.kind != "land" {
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
 	return w

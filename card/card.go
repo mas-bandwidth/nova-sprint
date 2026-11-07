@@ -96,7 +96,10 @@ type (
 	// recorded and a done ok read of the previous review at the same head
 	// exists. Who may waive is layer 3's; the event carries no actor.
 	WaiveRed struct{ Reason string }
-	Landed   struct{ Head string }
+	// Landed is merging -> landed at Head. Merge is the merge commit base
+	// has (the landing's, or the hand landing's base tip), recorded in the
+	// producer's reason with Reason (a hand landing's why).
+	Landed struct{ Head, Merge, Reason string }
 	// Red is a red landing: merging -> fix (ready, waiting when held) with
 	// Reason, the CI finding, as the finding; review +1, so reads before it
 	// no longer count (intent rule 30: no terminal fail).

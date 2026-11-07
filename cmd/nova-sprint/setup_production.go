@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
@@ -756,9 +755,9 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 	// run records the chooser lock under the machine's nova-config name,
 	// handed here, never under the raw hostname (run.ResolveMachine).
 	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis, run.MachineEnv: host}
-	// GH_GATE_TOKEN is the control seat's GitHub token: run's forge and
-	// git act as it and never as the host's own login (defect 39).
-	keys := []string{"NOVA_SPRINT_PG_PASSWORD", forge.TokenEnv}
+	// run's forge and git act as the host's gh identity (intent rule 32);
+	// no GitHub token is required of the service.
+	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
 	if p.cfg.BusUser != "" {
 		env["NOVA_BUS_USER"] = p.cfg.BusUser
 		keys = append(keys, "NOVA_BUS_PASSWORD")

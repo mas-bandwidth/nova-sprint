@@ -88,7 +88,7 @@ type stitchEntry struct {
 // stitchOf is a stream's producers, each with its consumers, for the
 // coordinator's stitch read.
 func stitchOf(snap store.Snapshot, s store.Stream) stitchView {
-	out := stitchView{Stream: s.Name, DiffRange: "origin/" + s.Base + "..origin/" + git.StreamBranch(s.Name), Cards: []stitchEntry{}}
+	out := stitchView{Stream: s.Name, DiffRange: "origin/" + s.Base + "..origin/" + git.GroupBranch(s.Name), Cards: []stitchEntry{}}
 	for _, p := range producers(snap, s.Name) {
 		e := stitchEntry{ID: p.ID, State: p.State, Head: p.Head, Author: p.Author, Finding: p.Finding, Reads: []store.Card{}, Work: []store.Card{}}
 		var cost int64

@@ -54,6 +54,7 @@ type world struct {
 	svc    *fakeServices
 	arch   *fakeArchive
 	roster *fakeRoster
+	lander *fakeLander
 }
 
 func sprint() store.Snapshot {
@@ -87,9 +88,9 @@ func worldFrom(t *testing.T, s store.Snapshot) *world {
 	}
 	w := &world{f: f, bus: &fakeBus{present: map[string]bool{"alice": true, "bob": true, "carol": true, "dave": true}},
 		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head, gh + " main": base, gh + " sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true, run: run.ChooserStatus{Held: true, Operation: "run", Host: "studio", PID: 41}},
-		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster()}
+		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster(), lander: &fakeLander{merge: strings.Repeat("e", 40)}}
 	n := 0
-	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch,
+	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch, Lander: w.lander,
 		Now: func() time.Time { return t0 }, Version: "v2.0.0-test", ToolPin: "v2.0.2",
 		Session: func() (string, error) { n++; return "minted-" + string(rune('0'+n)), nil }}
 	return w
@@ -169,19 +170,44 @@ func (fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapsho
 		Catalog: policy.Catalog{Models: map[string][]policy.Model{"inception": {{Name: "mercury-3", Tier: "pro"}}, "deepseek": {{Name: "deepseek-flash", Tier: "flash"}, {Name: "deepseek-flash", Tier: "pro"}}}}}, nil
 }
 
+// fakeLander is the hand landing and the group branch's creation: Land
+// returns merge (or landErr) and records each branch@head it landed.
+type fakeLander struct {
+	merge            string
+	heads            map[string]string
+	landErr, headErr error
+	createErr        error
+	landed, created  []string
+}
+
+func (l *fakeLander) Land(_ context.Context, _ store.Stream, branch, head string) (string, error) {
+	if l.landErr != nil {
+		return "", l.landErr
+	}
+	l.landed = append(l.landed, branch+"@"+head)
+	return l.merge, nil
+}
+
+func (l *fakeLander) Heads(context.Context, store.Stream) (map[string]string, error) {
+	return l.heads, l.headErr
+}
+
+func (l *fakeLander) CreateGroup(_ context.Context, s store.Stream, sha string) error {
+	if l.createErr != nil {
+		return l.createErr
+	}
+	l.created = append(l.created, s.Name+"@"+sha)
+	return nil
+}
+
 type fakeOrigin struct {
-	tips     map[string]string // "<clone address> branch" -> sha
-	contains bool
-	err      error
+	tips map[string]string // "<clone address> branch" -> sha
+	err  error
 }
 
 func (o *fakeOrigin) Tip(_ context.Context, repo, branch string) (string, bool, error) {
 	sha, ok := o.tips[repo+" "+branch]
 	return sha, ok, o.err
-}
-
-func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, error) {
-	return o.contains, o.err
 }
 
 type fakeDoctor struct {

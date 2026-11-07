@@ -1,6 +1,7 @@
 package git
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,7 +25,23 @@ func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
 type fakeForge_internal struct {
 	world    *fakeForgeWorld_internal
 	OnCall   func(op string)
+	calls    []string
 	allGreen bool
+	// OnMerge, when set, is the merge: it returns the merge sha (a test
+	// advances base in the git fake); nil merges to a fixed sha.
+	OnMerge   func(sha string) (string, error)
+	OpenErr   error  // OpenPR fails with it
+	Mergeable string // the PR's mergeable state ("" is MERGEABLE)
+	prs       []forge.PRInfo
+}
+
+func (f *fakeForge_internal) calls_internal() []string { return f.calls }
+
+func (f *fakeForge_internal) call_internal(op string) {
+	f.calls = append(f.calls, op)
+	if f.OnCall != nil {
+		f.OnCall(op)
+	}
 }
 
 func newFakeForge_internal() *fakeForge_internal {
@@ -43,23 +60,28 @@ func (f *fakeForge_internal) SetCheck(repo, sha string, r forge.CheckRollup) {
 }
 
 func (f *fakeForge_internal) PR(_ context.Context, _, head, base string) (forge.PRInfo, bool, error) {
-	if f.OnCall != nil {
-		f.OnCall("PR")
+	f.call_internal("PR")
+	for _, p := range f.prs {
+		if p.HeadRef == head && p.BaseRef == base && p.State == "OPEN" {
+			p.Mergeable = cmp.Or(f.Mergeable, "MERGEABLE")
+			return p, true, nil
+		}
 	}
-	return forge.PRInfo{Number: 1, HeadRef: head, BaseRef: base, State: "OPEN"}, true, nil
+	return forge.PRInfo{}, false, nil
 }
 
 func (f *fakeForge_internal) OpenPR(_ context.Context, _, head, base, _, _ string) (forge.PRInfo, error) {
-	if f.OnCall != nil {
-		f.OnCall("OpenPR")
+	f.call_internal("OpenPR")
+	if f.OpenErr != nil {
+		return forge.PRInfo{}, f.OpenErr
 	}
-	return forge.PRInfo{Number: 1, HeadRef: head, BaseRef: base, State: "OPEN"}, nil
+	p := forge.PRInfo{Number: len(f.prs) + 1, HeadRef: head, BaseRef: base, State: "OPEN", Mergeable: cmp.Or(f.Mergeable, "MERGEABLE")}
+	f.prs = append(f.prs, p)
+	return p, nil
 }
 
 func (f *fakeForge_internal) Checks(_ context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error) {
-	if f.OnCall != nil {
-		f.OnCall("Checks")
-	}
+	f.call_internal("Checks")
 	out := make(map[string]forge.CheckRollup, len(shas))
 	if f.world == nil {
 		st := forge.CheckPending
@@ -79,17 +101,30 @@ func (f *fakeForge_internal) Checks(_ context.Context, repo string, shas []strin
 		} else if f.allGreen {
 			out[sha] = forge.CheckRollup{SHA: sha, State: forge.CheckGreen}
 		} else {
-			out[sha] = forge.CheckRollup{SHA: sha, State: forge.CheckPending}
+			out[sha] = forge.CheckRollup{SHA: sha, State: forge.CheckAbsent}
 		}
 	}
 	return out, nil
 }
 
-func (f *fakeForge_internal) Merge(_ context.Context, _ string, _ int, _, _ string) error {
-	if f.OnCall != nil {
-		f.OnCall("Merge")
+func (f *fakeForge_internal) Merge(_ context.Context, _ string, pr int, sha string) (string, error) {
+	f.call_internal("Merge")
+	for i := range f.prs {
+		if f.prs[i].Number == pr {
+			f.prs[i].State = "MERGED"
+		}
 	}
-	return nil
+	if f.OnMerge != nil {
+		return f.OnMerge(sha)
+	}
+	return strings.Repeat("e", 40), nil
+}
+
+func (f *fakeForge_internal) FailedLines(_ context.Context, _, url string) ([]string, error) {
+	if url == "" {
+		return nil, fmt.Errorf("forge: the check's url names no Actions job, so its log cannot be read")
+	}
+	return []string{"--- FAIL: TestX", "FAIL"}, nil
 }
 
 type FakeCommit struct {
@@ -378,12 +413,7 @@ func (f *Fake) Rebase(_ context.Context, worktree, onto string) (RebaseResult, e
 func (f *Fake) Push(_ context.Context, _, sha, ref, expectOld string) error {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
-	var isStream bool
-	var err error
-	ref, isStream, err = classifyPushRef_internal(ref)
-	if err != nil {
-		return err
-	}
+	ref, isStream := classifyPushRef_internal(ref)
 	if !isStream && expectOld != "" && !f.isAncestorLocked_internal(expectOld, sha) {
 		return fmt.Errorf("git refused: force-with-lease is forbidden on base branch %s: base pushes must fast-forward", ref)
 	}

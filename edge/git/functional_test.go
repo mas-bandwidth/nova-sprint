@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 )
 
 func setupBareAndWorkRepo_internal(t *testing.T) (originDir, workDir, baseSHA string, runGit func(dir string, args ...string) string) {
@@ -120,13 +118,10 @@ func verifyRebaseAndPush_internal(t *testing.T, ctx context.Context, client *Cli
 		t.Fatalf("expected Rebase conflict on a.go, got %+v err=%v", rebConflict, err)
 	}
 
-	if err := client.Push(ctx, workDir, sha1, "refs/heads/sprint/s1", ""); err == nil {
-		t.Fatalf("expected bare refs/heads/sprint/s1 push to be refused")
+	if err := client.Push(ctx, workDir, sha1, GroupRef("s1"), ""); err != nil {
+		t.Fatalf("initial group push: %v", err)
 	}
-	if err := client.Push(ctx, workDir, sha1, "refs/heads/sprint/s1/group", ""); err != nil {
-		t.Fatalf("initial stream push: %v", err)
-	}
-	if err := client.Push(ctx, workDir, sha2, "refs/heads/sprint/s1/group", baseSHA); !errors.Is(err, ErrPushRefused) {
+	if err := client.Push(ctx, workDir, sha2, GroupRef("s1"), baseSHA); !errors.Is(err, ErrPushRefused) {
 		t.Fatalf("expected ErrPushRefused on stale stream lease, got %v", err)
 	}
 	if err := client.Push(ctx, workDir, sha1, "refs/heads/v2", ""); err != nil {
@@ -137,56 +132,51 @@ func verifyRebaseAndPush_internal(t *testing.T, ctx context.Context, client *Cli
 	}
 }
 
+// Rung 2 on real git: two cards merged onto the base tip in the group
+// branch; base moves after the gate, so the first pass merges nothing and
+// the second rebuilds the group on the new tip, gates it and merges it (the
+// fake forge's merge fast-forwards base to the gated sha, as a merge of a PR
+// whose head contains the base would leave the same tree).
 func TestFunctionalLandPassEndToEndAndBaseMoved(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	originDir, workDir, baseSHA, runGit := setupBareAndWorkRepo_internal(t)
-	landerClone := filepath.Join(t.TempDir(), "lander")
-	runGit(filepath.Dir(landerClone), "clone", originDir, landerClone)
-
-	c1SHA := commitBranch_internal(t, runGit, workDir, "c1", baseSHA, "c1.txt", "card 1\n", "refs/heads/sprint/s1/c1")
-	c2SHA := commitBranch_internal(t, runGit, workDir, "c2", baseSHA, "c2.txt", "card 2\n", "refs/heads/sprint/s1/c2")
-	otherBaseSHA := commitBranch_internal(t, runGit, workDir, "other-stream", baseSHA, "other.txt", "other stream\n", "")
+	lander := filepath.Join(t.TempDir(), "lander")
+	runGit(filepath.Dir(lander), "clone", originDir, lander)
+	c1 := commitBranch_internal(t, runGit, workDir, "c1", baseSHA, "c1.txt", "card 1\n", "refs/heads/sprint/s1/c1")
+	c2 := commitBranch_internal(t, runGit, workDir, "c2", baseSHA, "c2.txt", "card 2\n", "refs/heads/sprint/s1/c2")
+	other := commitBranch_internal(t, runGit, workDir, "other", baseSHA, "other.txt", "other stream\n", "")
 
 	client := New(Config{})
 	ff := newFakeForge_internal()
-
-	movedBase := false
+	ff.allGreen = true
+	moved := false
 	ff.OnCall = func(op string) {
-		if op == "Checks" && !movedBase {
-			movedBase = true
-			runGit(workDir, "push", "origin", otherBaseSHA+":refs/heads/v2")
-		}
-		curSHA := runGit(landerClone, "rev-parse", "HEAD")
-		ff.SetCheck("mas-bandwidth/nova-sprint", curSHA, forge.CheckRollup{State: forge.CheckGreen})
-	}
-
-	req := LandRequest{RepoDir: landerClone, Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{c1SHA, c2SHA}}
-	res, err := LandPass(ctx, client, ff, req)
-	if err != nil || res.Outcome != OutcomeLanded || !res.Remerged {
-		t.Fatalf("expected OutcomeLanded with Remerged=true, got %+v err=%v", res, err)
-	}
-	assertLandedStateAndRestart_internal(t, ctx, client, ff, landerClone, req, res, []string{c1SHA, c2SHA, otherBaseSHA})
-}
-
-func assertLandedStateAndRestart_internal(t *testing.T, ctx context.Context, client *Client, ff forge.Forge, landerClone string, req LandRequest, res LandResult, heads []string) {
-	t.Helper()
-	v2Remote, ok, err := client.LsRemote(ctx, landerClone, "refs/heads/v2")
-	if err != nil || !ok || v2Remote != res.BaseTip {
-		t.Fatalf("origin/v2 = %s (ok=%v err=%v), want %s", v2Remote, ok, err, res.BaseTip)
-	}
-	streamRemote, ok, err := client.LsRemote(ctx, landerClone, "refs/heads/sprint/s1/group")
-	if err != nil || !ok || streamRemote != res.BaseTip {
-		t.Fatalf("origin/sprint/s1/group = %s, want fast-forwarded to %s", streamRemote, res.BaseTip)
-	}
-	for _, h := range heads {
-		if anc, err := client.IsAncestor(ctx, landerClone, h, res.BaseTip); err != nil || !anc {
-			t.Fatalf("expected %s to be ancestor of %s", h, res.BaseTip)
+		if op == "Checks" && !moved {
+			moved = true
+			runGit(workDir, "push", "origin", other+":refs/heads/v2")
 		}
 	}
-	freshClient := New(Config{})
-	resAgain, err := LandPass(ctx, freshClient, ff, req)
-	if err != nil || resAgain.Outcome != OutcomeLanded || resAgain.BaseTip != res.BaseTip {
-		t.Fatalf("restart LandPass = %+v err=%v, want Landed at %s", resAgain, err, res.BaseTip)
+	ff.OnMerge = func(sha string) (string, error) {
+		runGit(lander, "push", "origin", sha+":refs/heads/v2")
+		return sha, nil
+	}
+	req := LandRequest{RepoDir: lander, Repo: "o/r", Stream: "s1", Base: "v2", Heads: []string{c1, c2}, Branches: []string{"sprint/s1/c1", "sprint/s1/c2"}}
+	first, err := LandPass(ctx, client, ff, req)
+	if err != nil || first.Outcome != OutcomeBaseMoved {
+		t.Fatalf("pass 1 = %+v err=%v, want base_moved", first, err)
+	}
+	second, err := LandPass(ctx, client, ff, req)
+	if err != nil || second.Outcome != OutcomeLanded || second.BaseTip != other || second.Rung != 2 {
+		t.Fatalf("pass 2 = %+v err=%v, want landed on %s at rung 2", second, err, other)
+	}
+	for _, h := range []string{c1, c2, other} {
+		if ok, err := client.IsAncestor(ctx, lander, h, second.MergeSHA); err != nil || !ok {
+			t.Fatalf("%s is not in the landed %s (err %v)", h, second.MergeSHA, err)
+		}
+	}
+	again, err := LandPass(ctx, New(Config{}), ff, req)
+	if err != nil || again.Outcome != OutcomeLanded || len(again.LandedHeads) != 2 {
+		t.Fatalf("a pass after landing = %+v err=%v, want landed (every head on base)", again, err)
 	}
 }

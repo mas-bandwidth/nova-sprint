@@ -253,7 +253,7 @@ func (f *fakeForge) OpenPR(_ context.Context, _, head, base, title, _ string) (f
 	f.log("OpenPR %s -> %s %q", head, base, title)
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	pr := forge.PRInfo{Number: len(f.prs) + 1, HeadRefName: head, HeadRef: head, BaseRefName: base, BaseRef: base, State: "OPEN"}
+	pr := forge.PRInfo{Number: len(f.prs) + 1, HeadRef: head, BaseRef: base, State: "OPEN"}
 	f.prs[head+" "+base] = pr
 	return pr, nil
 }
@@ -267,10 +267,23 @@ func (f *fakeForge) Checks(_ context.Context, _ string, shas []string) (map[stri
 	return out, nil
 }
 
-func (f *fakeForge) Merge(_ context.Context, _ string, pr int, sha, base string) error {
+func (f *fakeForge) Merge(_ context.Context, _ string, pr int, sha string) (string, error) {
+	f.mu.Lock()
+	base := ""
+	for _, p := range f.prs {
+		if p.Number == pr {
+			base = p.BaseRef
+		}
+	}
+	f.mu.Unlock()
 	out, err := exec.Command("git", "--git-dir", f.origin, "update-ref", "refs/heads/"+base, sha).CombinedOutput()
 	f.log("Merge #%d %s into %s: %v %s", pr, sha, base, err, strings.TrimSpace(string(out)))
-	return err
+	return sha, err
+}
+
+func (f *fakeForge) FailedLines(_ context.Context, _, url string) ([]string, error) {
+	f.log("FailedLines %s", url)
+	return nil, nil
 }
 
 // storeSetup is up's store step through the binary. The binary's internal

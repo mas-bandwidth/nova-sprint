@@ -10,9 +10,13 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// runRelease is `release` (Stella's ruling): a row gives back its own held
-// card with a reason; another holder's card, or a whole row's (--row), is
-// the coordinator's. The consumer is withdrawn and its branch kept.
+// runRelease is `release`: a row gives back its own held card with a
+// reason; another holder's card, or a whole row's (--row), is the
+// coordinator's. The consumer is withdrawn and its branch kept. A release is
+// recorded as released, neither ok nor fail: the consumer keeps no result
+// (so no row's OK% counts it) and its reason starts "released: "; the
+// producer goes back with its bounces and score unchanged, and the redeal is
+// a new attempt with no blame.
 func runRelease(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	reason := in.str("reason")
 	if reason == "" {
@@ -80,6 +84,10 @@ func (e *Engine) releaseRow(ctx context.Context, in *input, snap store.Snapshot,
 	return done(waitNext, what, fmt.Sprintf("RELEASED row=%s consumers=%d", row, len(cards))), nil
 }
 
+// ReleasedPrefix starts a released consumer's reason: the record that it was
+// given back, not failed.
+const ReleasedPrefix = "released: "
+
 // withdraw is one plan withdrawing cards, each with its producer's stream
 // (a release into a held stream parks) and its last pushed head.
 func withdraw(snap store.Snapshot, cards []store.Card, reason string) (card.Plan, error) {
@@ -90,7 +98,7 @@ func withdraw(snap store.Snapshot, cards []store.Card, reason string) (card.Plan
 		if c.Kind == "work" && c.State == card.Working {
 			head = c.Head
 		}
-		ev := card.Withdraw{Reason: reason, Head: head, Stream: card.StreamFromStore(snap.Streams[p.Stream])}
+		ev := card.Withdraw{Reason: ReleasedPrefix + reason, Head: head, Stream: card.StreamFromStore(snap.Streams[p.Stream])}
 		plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(snap.Rows[c.Holder], 0, nil), ev)
 		if why != nil {
 			return card.Plan{}, moved(why, c.ID)

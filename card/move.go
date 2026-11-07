@@ -713,6 +713,14 @@ func (m *mover) landed(e Landed) *Refusal {
 		return r
 	}
 	m.state(m.p.ID, LandedState)
+	why := ""
+	if e.Merge != "" {
+		why = "landed at " + e.Merge
+	}
+	if e.Reason != "" {
+		why = strings.TrimPrefix(why+": "+e.Reason, ": ")
+	}
+	m.reason(m.p.ID, m.p.Reason, why)
 	return nil
 }
 

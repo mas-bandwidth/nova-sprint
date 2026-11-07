@@ -24,7 +24,7 @@ INVARIANTS = [
     "NeverBelowTier", "CarryFIFO", "EdgeAfterAccepted",
     "OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
-    "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds",
+    "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom"]
 
@@ -65,7 +65,8 @@ REACH = {
     "StepsNeverCannotRead": ("deal", "a review no row may read opens cannot-read"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
-    "StepsNeverRed": ("land", "a red result sends a producer to fix"),
+    "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
+    "StepsNeverLandJudged": ("land", "a result other than landed opens a land judgement"),
     "StepsNeverAfterHeld": ("land", "a landing waits on a queued after target"),
     "StepsNeverCarried": ("burst", "the budget carries inbox items to the next tick"),
 }
@@ -165,13 +166,20 @@ WITNESSES = [
     ("StepsAfterIgnored", "AfterKept", "land",
      "The land step ignores after: a producer is sent to land while its\n"
      "after target is queued to land.",
-     [("LandElig(V, s, cl) == {p \\in Merging(V, s, cl) : \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
-       "LandElig(V, s, cl) == Merging(V, s, cl)   \\* FAULT: after ignored", 1)]),
+     [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
+       "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p)}   \\* FAULT: after ignored", 1)]),
     ("StepsAfterHolds", "AfterNeverHolds", "land",
      "The land step holds on any after target not yet landed, queued or\n"
      "not (v1's frozen LAND-AFTER).",
-     [("LandElig(V, s, cl) == {p \\in Merging(V, s, cl) : \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
-       "LandElig(V, s, cl) == {p \\in Merging(V, s, cl) : \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT", 1)]),
+     [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
+       "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT", 1)]),
+    ("StepsLandJudgementExpires", "MergingCovered", "land",
+     "A land judgement expires one tick after it opens, as the timed\n"
+     "kinds do: the tick that drops it asks no landing, so its producer\n"
+     "sits merging with no request and no judgement.",
+     [("  {j \\in J : \\/ j.kind = \"unserved\"",
+       "  {j \\in J : \\/ j.kind = \"land\"   \\* FAULT: land judgements expire\n"
+       "             \\/ j.kind = \"unserved\"", 1)]),
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",

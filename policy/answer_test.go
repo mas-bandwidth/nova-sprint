@@ -144,7 +144,7 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	assert.Equal(t, []any{int64(0), int64(10)}, a.Order["p2"], "a fix attempt first")
 	assert.Equal(t, "yes", a.Verdict["p3"])
 	assert.Equal(t, Width{Work: 2, Ahead: 2}, a.Width["r1"])
-	assert.Equal(t, Landing{BackedUp: 4, Flowing: 1}, a.Landing["s1"])
+	assert.Equal(t, Landing{BackedUp: 2, Flowing: 1, CIWait: 600}, a.Landing["s1"])
 	assert.Equal(t, map[string]bool{"s1": true, "s2": true}, a.Stitch)
 	a, _ = testEngine().Answer(Versions{}, shapes[2], w.ro, FullQuestions(shapes[2], nil))
 	assert.Equal(t, []string{"r1"}, a.Rows[RowsQuestion{"p1", KindWork}], "p1 at 4 bounces wants frontier; none is up, so any rank at or above pro")

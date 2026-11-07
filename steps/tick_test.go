@@ -94,11 +94,9 @@ func TestTickFixPath(t *testing.T) {
 	s.requireState("p1", "merging")
 }
 
-// TestTickRedAndRetry: a red result sends the producer to fix with the CI
-// finding (intent rule 30); the fix attempt carries it, then a new read,
-// yes, and a second land request with an id of its own.
-func TestTickRedAndRetry(t *testing.T) {
-	s := newSim(t)
+// toMerging takes p1 of s1 through one work and one ok read to merging,
+// with its land request in flight.
+func toMerging(s *sim) EdgeRequest {
 	s.stream("s1")
 	s.row("r1", 2, "pro")
 	s.row("r2", 1, "pro", "heavy")
@@ -110,71 +108,91 @@ func TestTickRedAndRetry(t *testing.T) {
 	s.take("p1.r1.1")
 	s.report("p1.r1.1", "ok", sha(1), "fine")
 	s.run(2)
-	first := s.request("land", "s1")
-	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "red", Blamed: sha(1), Reason: "unit (linux) https://ci/1"})
-	s.tick()
-	require.Empty(t, s.rejected)
+	return s.request("land", "s1")
+}
+
+// TestTickLandJudgementEveryOutcome: anything but landed (intent rule 32)
+// is one land judgement per card on the coordinator's row, that tick, with
+// the facts and the choices land, fix and retry; nothing moves, nothing is
+// blamed, and no new request is asked while it is open.
+func TestTickLandJudgementEveryOutcome(t *testing.T) {
+	for _, outcome := range []string{"ci_red", "no-ci", "conflict", "merge_refused", "pr_unopenable", "branch_failed", "ci_fault", "missing_head", "head_moved", "hand", "fault"} {
+		s := newSim(t)
+		first := toMerging(s)
+		s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: outcome, Reason: "rung 1; base tip " + base + "; failing unit; first failing lines: --- FAIL: TestX"})
+		p := s.tick()
+		require.Empty(t, s.rejected, outcome)
+		s.requireState("p1", "merging")
+		j := s.snap().Judgements["land.p1.1"]
+		assert.Equal(t, "open", j.State, outcome)
+		assert.Contains(t, j.Question, outcome)
+		assert.Contains(t, j.Question, "--- FAIL: TestX")
+		assert.Contains(t, j.Command, "choices: land | fix | retry")
+		assert.Empty(t, p.Edges, outcome)
+		s.run(3)
+		assert.Empty(t, s.inflight, "no request while the judgement is open (%s)", outcome)
+		assert.Empty(t, s.openJudgements("engine"), "a judged card is not unlanded (%s)", outcome)
+	}
+}
+
+// TestTickLandAnswers: fix sends the producer to fix with the finding (a
+// red: review +1); retry asks a new landing; land records it landed.
+func TestTickLandAnswers(t *testing.T) {
+	s := newSim(t)
+	first := toMerging(s)
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "ci_red", Reason: "failing unit"})
+	s.run(2)
+	_, ref := s.verb(Request{Actor: "rowan", Judgement: "land.p1.1", Answer: "retry"})
+	require.Nil(t, ref)
+	s.run(2)
+	second := s.request("land", "s1")
+	assert.Equal(t, first.Heads, second.Heads, "retry asks the landing again")
+	s.arrive(InboxItem{Kind: "land", Request: second.ID, Outcome: "ci_red", Reason: "failing unit again"})
+	s.run(2)
+	_, ref = s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Red{Head: sha(1), Reason: "unit fails: fix TestX"}, Judgement: "land.p1.2", Answer: "fix"})
+	require.Nil(t, ref)
 	s.requireState("p1", "ready")
 	assert.True(t, s.card("p1").Red)
 	assert.Equal(t, 2, s.card("p1").Review)
-	finding := "CI red at " + sha(1) + " on " + first.Base + ": unit (linux) https://ci/1"
-	assert.Equal(t, finding, s.card("p1").Finding)
+	assert.Equal(t, "unit fails: fix TestX", s.card("p1").Finding)
 	s.run(2)
-	s.requireState("p1.w2", "ready")
-	assert.Equal(t, finding, s.card("p1.w2").Finding, "the fix attempt carries the CI finding")
-	s.take("p1.w2")
-	s.report("p1.w2", "ok", sha(2), "fixed")
-	s.tick()
-	read := ""
-	for id, c := range s.snap().Cards {
-		if c.Kind == "read" && c.Of == "p1" && c.Review == 3 {
-			read = id
-		}
-	}
-	require.NotEmpty(t, read, "a read of the fix's review")
-	s.take(read)
-	s.report(read, "ok", sha(2), "fine again")
-	s.run(2)
-	second := s.request("land", "s1")
-	assert.NotEqual(t, first.ID, second.ID, "the second landing of one head has its own id")
+	assert.Equal(t, "unit fails: fix TestX", s.card("p1.w2").Finding, "the fix attempt carries the finding")
+
+	h := newSim(t)
+	req := toMerging(h)
+	h.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "conflict"})
+	h.run(2)
+	_, ref = h.verb(Request{Actor: "rowan", Card: "p1", Event: card.Landed{Head: sha(1), Merge: sha(7), Reason: "by hand: merged"}, Judgement: "land.p1.1", Answer: "land"})
+	require.Nil(t, ref)
+	h.requireState("p1", "landed")
+	assert.Equal(t, "landed at "+sha(7)+": by hand: merged", h.card("p1").Reason)
 }
 
-// TestTickNoCIJudges: a landing whose group sha never got a check (defect
-// 40) opens one no-ci judgement naming the branch and the fix; the producer
-// stays merging, nothing lands, and the request is asked again.
-func TestTickNoCIJudges(t *testing.T) {
+// TestTickLadderRungs: one head waiting is a request of its own (rung 1);
+// at policy's backed_up (2 by default) every waiting head is one request
+// (rung 2), and the request names each head's branch and the CI wait.
+func TestTickLadderRungs(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")
-	s.row("r1", 2, "pro")
-	s.row("r2", 1, "pro", "heavy")
+	s.row("r1", 4, "pro")
+	s.row("r2", 4, "pro", "heavy")
 	s.producer("p1", "s1", "pro", "a/x")
+	s.producer("p2", "s1", "pro", "a/y")
 	s.run(2)
-	s.take("p1.w1")
-	s.report("p1.w1", "ok", sha(1), "done")
+	for i, p := range []string{"p1", "p2"} {
+		s.take(p + ".w1")
+		s.report(p+".w1", "ok", sha(i+1), "done")
+	}
 	s.tick()
-	s.take("p1.r1.1")
-	s.report("p1.r1.1", "ok", sha(1), "fine")
+	for _, p := range []string{"p1", "p2"} {
+		s.take(p + ".r1.1")
+		s.report(p+".r1.1", "ok", s.card(p).Head, "fine")
+	}
 	s.run(2)
-	first := s.request("land", "s1")
-	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "no-ci", Reason: "no check was reported on " + sha(9) + " within 10m0s of its push"})
-	s.run(2)
-	require.Empty(t, s.rejected)
-	s.requireState("p1", "merging")
-	j := s.snap().Judgements["no-ci.s1.1"]
-	assert.Equal(t, "open", j.State)
-	assert.Contains(t, j.Question, "sprint/s1/group")
-	assert.Contains(t, j.Question, "push to sprint/**")
-	assert.Equal(t, first.ID, s.request("land", "s1").ID, "asked again under the one judgement")
-	s.arrive(InboxItem{Kind: "land", Request: s.request("land", "s1").ID, Outcome: "no-ci"})
-	s.run(2) // consumed with no op: the run stops after that tick
-	s.run(2) // and the next tick asks again
-	_, second := s.snap().Judgements["no-ci.s1.2"]
-	assert.False(t, second, "one judgement while it is open")
-	// a forge with no token (defect 39) is its own judgement, the fix in it
-	s.arrive(InboxItem{Kind: "land", Request: s.request("land", "s1").ID, Outcome: "forge", Reason: "the forge has no GitHub token for sprint: run it under nova-secrets exec --only GH_GATE_TOKEN"})
-	s.run(2)
-	s.requireState("p1", "merging")
-	assert.Contains(t, s.snap().Judgements["forge.s1.1"].Question, "nova-secrets exec --only GH_GATE_TOKEN")
+	req := s.request("land", "s1")
+	assert.Equal(t, []string{"p1", "p2"}, req.Cards, "backed up: one request for both")
+	assert.Equal(t, []string{"sprint/s1/p1", "sprint/s1/p2"}, req.Branches)
+	assert.Equal(t, Engine.Landing.CIWait, req.Wait)
 }
 
 // TestTickFaultSpendsNothing: a fault report returns the producer to ready

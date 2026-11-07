@@ -22,8 +22,17 @@
 (* Inputs (LAYER-6's reading, which the build rules make win): reports    *)
 (* and takes are the rows' own store ops (Report, Take), already in the   *)
 (* store when the tick folds; the inbox holds edge results only: a        *)
-(* landing outcome (landed or red, CI included) and a runner's ack of a   *)
-(* stop. EdgeResult delivers one, or the same twice (layer 4 may          *)
+(* landing outcome and a runner's ack of a stop. A landing outcome is     *)
+(* landed (the one automatic move) or red, which stands for every other   *)
+(* outcome (red CI, no CI, a conflict, a refused merge, an unopenable PR, *)
+(* a branch not created, a fault): one land judgement per card on the    *)
+(* coordinator's row, nothing moved (intent rule 32). Answer is the      *)
+(* coordinator's: land (merged by hand), fix (Red: to fix, review + 1)   *)
+(* or retry (a new landing). The request picks one producer per stream  *)
+(* (rung 1); rung 2's picking of every eligible one at backed_up is      *)
+(* tested in Go (TestTickLadderRungs) and its landing modelled in        *)
+(* LandEdge.tla; the trace walk answers backed_up above the scenario's   *)
+(* producers, so its requests are rung 1's. EdgeResult delivers one, or the same twice (layer 4 may          *)
 (* redeliver). Edge requests are records [id, stream, sent]: id is        *)
 (* <<epoch, kind, card, sha>>; a stop request rides in its preemption     *)
 (* group and is dispatched only if that group's op was accepted (its      *)
@@ -50,8 +59,9 @@
 (*   p. Resolve's overlap rule, escalation by row rank, reads, a fix, a   *)
 (*   landing and the need it releases. Only p bounces (fail, fix).        *)
 (* - "land": p (s1) and q (s2, after p) both merging: AfterKept,          *)
-(*   AfterNeverHolds, landed and red results, the read after a red, a    *)
-(*   hold on s1 that landing ignores.                                     *)
+(*   AfterNeverHolds, landed and judged results, the coordinator's land,  *)
+(*   fix and retry, the read after a fix, a hold on s1 that landing      *)
+(*   ignores.                                                             *)
 (* - "burst": land with budget 1, pack 1 and redelivered results: the    *)
 (*   carry.                                                               *)
 (* A fault report is a fail that spends no bounce, so no scenario needs  *)
@@ -280,7 +290,7 @@ Legal(W, g) ==
     [] g.kind = "yes"     -> Settled(W, g.p) /\ AllOk(W, g.p)
     [] g.kind = "fix"     -> Settled(W, g.p) /\ ~AllOk(W, g.p)
     [] g.kind = "resolve" -> W.ps[g.p].st = "waiting" /\ NeedsLanded(W, g.p) /\ ~W.sh[Stream[g.p]]
-    [] g.kind \in {"landed", "red"} -> W.ps[g.p].st = "merging" /\ W.ps[g.p].head = g.sha
+    [] g.kind = "landed"  -> W.ps[g.p].st = "merging" /\ W.ps[g.p].head = g.sha
     [] OTHER              -> TRUE
 
 \* The writes. pre is CardMachine Preempt: Withdraw of the victim (which
@@ -303,8 +313,6 @@ ApplyG(W, g) ==
     [] g.kind = "fix"     -> [W EXCEPT !.ps[g.p].st = BackOf(W, g.p), !.ps[g.p].bounces = @ + 1]
     [] g.kind = "resolve" -> [W EXCEPT !.ps[g.p].st = "ready"]
     [] g.kind = "landed"  -> [W EXCEPT !.ps[g.p].st = "landed"]
-    [] g.kind = "red"     -> [W EXCEPT !.ps[g.p].st = BackOf(W, g.p), !.ps[g.p].review = @ + 1,
-                                       !.ps[g.p].red = TRUE]   \* to fix (intent rule 30)
     [] OTHER              -> W
 
 -----------------------------------------------------------------------------
@@ -348,16 +356,26 @@ PreFold(V, a, i, acc) ==
                                 !.miss = @ \cup (IF a.rows \notin R THEN {"rows"} ELSE {})])
 PreStep(V, a) == PreFold(V, a, 1, [gs |-> <<>>, used |-> {}, uns |-> {}, miss |-> {}])
 
-\* Land results, in arrival order. A result for a producer still merging
-\* at the request's head is its Landed or Red; anything else (an ack, a
-\* stale or repeated result) is consumed with no move.
+\* Land results, in arrival order. A landed result for a producer still
+\* merging at the request's head is its Landed; anything else (a judged
+\* outcome, an ack, a stale or repeated result) is consumed with no move.
 ItemGroup(V, it, cl) ==
   LET p == it.id[3][1]
-  IN IF /\ it.id[2] = "land"
+  IN IF /\ it.id[2] = "land" /\ it.out = "landed"
         /\ V.ps[p].st = "merging" /\ V.ps[p].head = it.id[4]
         /\ PKey(p) \notin cl
      THEN Grp(it.out, p, NoC, NoR, it.stamp, it.id[4], V)
      ELSE NoneG(it.stamp, V)
+
+\* The land judgements a tick opens: every judged result in the inbox for a
+\* request in flight whose producer is merging at its head in the view.
+LandJ(p) == [kind |-> "land", about |-> p]
+Judged(J, p) == LandJ(p) \in J
+LandJudged(V, I, F) ==
+  {LandJ(I[i].id[3][1]) : i \in {i \in 1..Len(I) :
+      /\ I[i].id[2] = "land" /\ I[i].out # "landed"
+      /\ \E f \in F : f.id = I[i].id
+      /\ V.ps[I[i].id[3][1]].st = "merging" /\ V.ps[I[i].id[3][1]].head = I[i].id[4]}}
 RECURSIVE InboxFold(_, _, _, _)
 InboxFold(V, I, i, acc) ==
   IF i > Len(I) THEN acc
@@ -440,13 +458,13 @@ DealStep(V, cl, ar, useAns) ==
            [gs |-> <<>>, t |-> [r \in Rows |-> 0], miss |-> {}, uns |-> {}, cr |-> {}], ar, useAns)
 
 \* Land requests: per stream with none in flight, flowing: the first
-\* merging producer none of whose after targets is merging. A hold never
-\* touches landing.
+\* merging producer under no land judgement (J, open or opened this tick)
+\* none of whose after targets is merging. A hold never touches landing.
 Merging(V, s, cl) == {p \in Prods : Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin cl}
 Busy(F, s) == \E f \in F : f.stream = s /\ f.id[2] = "land"
-LandElig(V, s, cl) == {p \in Merging(V, s, cl) : \A t \in After[p] : V.ps[t].st # "merging"}
-LandPicks(V, cl, F) ==
-  {First(ProdSeq, LandElig(V, s, cl)) : s \in {s \in Streams : ~Busy(F, s) /\ LandElig(V, s, cl) # {}}}
+LandElig(V, s, cl, J) == {p \in Merging(V, s, cl) : ~Judged(J, p) /\ \A t \in After[p] : V.ps[t].st # "merging"}
+LandPicks(V, cl, F, J) ==
+  {First(ProdSeq, LandElig(V, s, cl, J)) : s \in {s \in Streams : ~Busy(F, s) /\ LandElig(V, s, cl, J) # {}}}
 
 -----------------------------------------------------------------------------
 (* Order, budget, pack, apply                                             *)
@@ -514,14 +532,14 @@ DueByDesign(V, b) ==
 RECURSIVE SumSize(_, _)
 SumSize(s, k) == IF k = 0 THEN 0 ELSE Size(s[k]) + SumSize(s, k - 1)
 
-TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, picks) ==
+TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, picks, cl4) ==
   LET nb  == SelectSeq(adm, LAMBDA g : ~g.blk)
       bt  == SumSize(SelectSeq(adm, LAMBDA g : g.blk), Len(SelectSeq(adm, LAMBDA g : g.blk)))
       gs  == SelectSeq(E, LAMBDA g : g.kind # "none")
       pres == {adm[i] : i \in {i \in 1..Len(adm) : adm[i].kind = "pre"}}
   IN {n \in {"OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
              "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
-             "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds"} :
+             "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -552,8 +570,15 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, picks) ==
              \A s \in Streams :
                (~Busy(inflight, s) /\ \E p \in Prods :
                    Stream[p] = s /\ V.ps[p].st = "merging" /\ PKey(p) \notin Cards(gs)
-                   /\ \A t \in After[p] : V.ps[t].st # "merging")
-                 => \E p \in picks : Stream[p] = s}
+                   /\ ~Judged(jsn, p) /\ \A t \in After[p] : V.ps[t].st # "merging")
+                 => \E p \in picks : Stream[p] = s
+        [] n = "MergingCovered" ->
+             \A p \in Prods :
+               (V.ps[p].st = "merging" /\ PKey(p) \notin cl4) =>
+                 \/ Busy(inflight, Stream[p])
+                 \/ \E q \in picks : Stream[q] = Stream[p]
+                 \/ Judged(jsn, p)
+                 \/ \E t \in After[p] : V.ps[t].st = "merging"}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
@@ -605,7 +630,8 @@ Tick(a) ==
          dblk == SelectSeq(dl.gs, LAMBDA g : g.blk)
          drst == SelectSeq(dl.gs, LAMBDA g : ~g.blk)
          cl4  == cl3 \cup Cards(dl.gs)
-         picks == LandPicks(V, cl4, inflight)
+         jl   == LandJudged(V, inbox, inflight)
+         picks == LandPicks(V, cl4, inflight, js \cup jl)
          E    == pre.gs \o dblk \o inb.es \o rgs \o fyes \o ffix \o drst
          adm  == Admit(E)
          ops  == PackOps(adm, split)
@@ -622,6 +648,7 @@ Tick(a) ==
          jnew == {[kind |-> "unserved", about |-> t] : t \in pre.uns \cup dl.uns}
                    \cup {[kind |-> "cannot-read", about |-> p] : p \in dl.cr}
                    \cup {[kind |-> "policy", about |-> q] : q \in pre.miss \cup dl.miss}
+                   \cup jl
          jsn  == (js \ Expired(V, js)) \cup jnew
          accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
          tags == (IF \E g \in accd : g.kind = "pre" THEN {"pre"} ELSE {})
@@ -629,8 +656,10 @@ Tick(a) ==
                  \cup (IF \E i \in 1..Len(Real(adm)) : Alone(Real(adm)[i], split) THEN {"split"} ELSE {})
                  \cup (IF \E i \in 1..Len(inbox) : inbox[i].stamp \notin ustamps THEN {"carry"} ELSE {})
                  \cup (IF picks # {} THEN {"landreq"} ELSE {})
-                 \cup (IF \E s \in Streams : Merging(V, s, cl4) \ LandElig(V, s, cl4) # {}
+                 \cup (IF \E s \in Streams : \E p \in Merging(V, s, cl4) \ LandElig(V, s, cl4, js \cup jl) :
+                          ~Judged(js \cup jl, p)
                        THEN {"afterheld"} ELSE {})
+                 \cup (IF jl \ js # {} THEN {"judged"} ELSE {})
                  \cup (IF \E i \in 1..Len(inbox) : inbox[i].stamp \in ustamps /\ inbox[i].out = "ack"
                        THEN {"ack"} ELSE {})
                  \cup (IF \E g \in accd : g.kind = "start" /\ Rank[g.r] > Tier[g.p]
@@ -643,7 +672,7 @@ Tick(a) ==
         /\ js' = jsn
         /\ split' = UNION {GroupsIn(ops[i]) : i \in {i \in ap.ref : Len(ops[i]) > 1}}
         /\ last' = [tags |-> tags,
-                    bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, picks)]
+                    bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, picks, cl4)]
   /\ phase' = "idle"
   /\ snap' = W0
   /\ UNCHANGED <<arrived, env>>
@@ -715,12 +744,30 @@ EdgeResult(f, out, n) ==
   /\ last' = Clean
   /\ UNCHANGED <<w, snap, phase, js, split, processed, env>>
 
+\* The coordinator answers a land judgement (intent rule 32): land is the
+\* hand merge (Landed at its head), fix the producer to fix with the
+\* finding (Red: review + 1, red recorded), retry the answer alone (the
+\* next tick asks a new landing). Each is one verb op, fenced on the
+\* judgement open and the producer merging.
+Answer(p, choice) ==
+  /\ Judged(js, p)
+  /\ choice \in {"land", "fix", "retry"}
+  /\ choice # "retry" => w.ps[p].st = "merging"
+  /\ w' = CASE choice = "land" -> [w EXCEPT !.ps[p].st = "landed"]
+            [] choice = "fix"  -> [w EXCEPT !.ps[p].st = BackOf(w, p), !.ps[p].review = @ + 1,
+                                            !.ps[p].red = TRUE]   \* to fix (intent rule 30)
+            [] OTHER           -> w
+  /\ js' = js \ {LandJ(p)}
+  /\ last' = Clean
+  /\ UNCHANGED <<snap, phase, inbox, inflight, split, arrived, processed, env>>
+
 Next ==
   \/ Snap
   \/ \E a \in AnswersFor(snap) : Tick(a)
   \/ \E c \in CIds : Take(c) \/ \E res \in WorkResults \cup ReadResults : Report(c, res)
   \/ EnvMove
   \/ \E f \in inflight, out \in {"landed", "red", "ack"}, n \in 1..2 : EdgeResult(f, out, n)
+  \/ \E p \in Prods, choice \in {"land", "fix", "retry"} : Answer(p, choice)
 
 Spec == Init /\ [][Next]_vars
 
@@ -785,11 +832,19 @@ CarryFIFO ==
 
 (* An edge request is dispatched only after every op in its After was    *)
 (* accepted: an in-flight stop names a withdrawn consumer; an in-flight  *)
-(* land names a producer merging at that head.                           *)
+(* land names a producer merging at that head, unless the coordinator    *)
+(* answered its land judgement (land or fix) between the fold and the    *)
+(* tick that planned it: a land request has no After, so a tick planned  *)
+(* on a view from before the answer may ask one landing more. Its result *)
+(* moves nothing (ItemGroup and LandJudged need the producer merging at  *)
+(* that head); a green one can still merge a head the coordinator sent  *)
+(* to fix, which the base keeps (LANDING.md, "Known gaps").              *)
 EdgeAfterAccepted ==
   \A f \in inflight :
     /\ f.id[2] = "stop" => w.cs[f.id[3]].st = "fail"
-    /\ f.id[2] = "land" => (w.ps[f.id[3][1]].st = "merging" /\ w.ps[f.id[3][1]].head = f.id[4])
+    /\ f.id[2] = "land" => \/ w.ps[f.id[3][1]].st = "merging" /\ w.ps[f.id[3][1]].head = f.id[4]
+                          \/ w.ps[f.id[3][1]].st = "landed" \/ w.ps[f.id[3][1]].red
+                          \/ w.ps[f.id[3][1]].att > f.id[4]
 
 (* The tick's checks (TickChecks), each kept by the last tick:           *)
 (* OneGroupPerCard and GroupWhole (the group, list item 4);              *)
@@ -797,7 +852,10 @@ EdgeAfterAccepted ==
 (* (the steps pre-check every store rule, item 5); BudgetKept (item 6);  *)
 (* BlockerPreemptsInOneTick (guarantee 4) and PreemptYoungest;           *)
 (* PolicyFailsToDefault (guarantee 10); AfterKept and AfterNeverHolds    *)
-(* (guarantee 3).                                                         *)
+(* (guarantee 3); MergingCovered (intent rule 32: after a tick, every    *)
+(* merging producer of the view it planned on is in a land request in    *)
+(* flight or planned for its stream, under a land judgement, or held by  *)
+(* a merging after target).                                               *)
 OneGroupPerCard          == "OneGroupPerCard" \notin last.bad
 GroupWhole               == "GroupWhole" \notin last.bad
 NeverHalfApplied         == "NeverHalfApplied" \notin last.bad
@@ -809,6 +867,7 @@ PreemptYoungest          == "PreemptYoungest" \notin last.bad
 PolicyFailsToDefault     == "PolicyFailsToDefault" \notin last.bad
 AfterKept                == "AfterKept" \notin last.bad
 AfterNeverHolds          == "AfterNeverHolds" \notin last.bad
+MergingCovered           == "MergingCovered" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width plus   *)
@@ -840,6 +899,7 @@ StepsNeverMerged      == \A p \in Prods : w.ps[p].st # "merging"
 StepsNeverFixed       == \A p \in Prods : w.ps[p].st = "ready" => w.ps[p].bounces = 0
 StepsNeverLanded      == \A p \in Prods : w.ps[p].st # "landed"
 StepsNeverRed         == \A p \in Prods : ~w.ps[p].red
+StepsNeverLandJudged  == "judged" \notin last.tags
 StepsNeverNeedReleased == ~\E p \in Prods : Needs[p] # {} /\ w.ps[p].st # "waiting"
 StepsNeverUnserved    == ~\E j \in js : j.kind = "unserved"
 StepsNeverCannotRead  == ~\E j \in js : j.kind = "cannot-read"

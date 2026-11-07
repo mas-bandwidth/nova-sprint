@@ -40,6 +40,7 @@ FIXTURES = {
     "ok-escalated":     ("r-StepsNeverEscalated.log", "deal", "ok"),
     "ok-need-released": ("r-StepsNeverNeedReleased.log", "deal", "ok"),
     "ok-red":           ("r-StepsNeverRed.log", "land", "ok"),
+    "ok-land-judged":   ("r-StepsNeverLandJudged.log", "land", "ok"),
     "ok-carried":       ("r-StepsNeverCarried.log", "burst", "ok"),
     "bad-dealt-twice":  ("w-StepsDealtTwice.log", "pre", "forbidden"),
     "bad-width-over":   ("w-StepsWidthOver.log", "pre", "forbidden"),
@@ -105,7 +106,26 @@ def action(a, b):
     ta, tb = tko(a["w"]), tko(b["w"])
     if len(tb) == len(ta) + 1:
         return ("Take", {"card": '<<"%s", %s>>' % tb[-1]})
+    gone = landed_judged(a["js"]) - landed_judged(b["js"])
+    if len(gone) == 1:
+        p = gone.pop()
+        st, red = producer(b["w"], p)
+        choice = "land" if st == "landed" else "fix" if red and st != "merging" else "retry"
+        return ("Answer", {"p": '"%s"' % p, "choice": '"%s"' % choice})
     raise SystemExit("cannot name the step between two states")
+
+
+def landed_judged(js):
+    """The producers with a land judgement in a printed js."""
+    return set(re.findall(r'kind \|-> "land", about \|-> "(\w+)"', js)) | \
+        set(re.findall(r'about \|-> "(\w+)", kind \|-> "land"', js))
+
+
+def producer(wtext, p):
+    """(st, red) of producer p in a printed w."""
+    m = re.search(r'\b%s \|-> \[(.*?)\]' % re.escape(p), wtext)
+    f = dict(re.findall(r'(\w+) \|-> ("[^"]*"|\w+)', m.group(1)))
+    return f["st"].strip('"'), f["red"] == "TRUE"
 
 
 def record(i, act, args, st):

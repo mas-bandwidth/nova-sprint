@@ -32,6 +32,7 @@ type Engine struct {
 	Answers  Answerer    // the active policy's limits and timeouts
 	Policy   *policy.Engine
 	Origin   Origin   // a stream's repository at origin
+	Lander   Lander   // the hand landing and the group branch
 	Doctor   Doctor   // nova-fleet, nova-tools and the store's schema
 	Archive  Archive  // backup and restore
 	Services Services // run, worker and dash
@@ -66,12 +67,10 @@ type Answerer interface {
 }
 
 // Origin is a stream's repository as the verbs check it (layer 4's git
-// edge, adapted in cmd/nova-sprint): the tip of a branch and whether one
-// commit contains another, both at the clone address (git.CloneURL of the
-// stream's repo and forge).
+// edge, adapted in cmd/nova-sprint): the tip of a branch at the clone
+// address (git.CloneURL of the stream's repo and forge).
 type Origin interface {
 	Tip(ctx context.Context, url, branch string) (sha string, ok bool, err error)
-	Contains(ctx context.Context, url, ancestor, head string) (bool, error)
 }
 
 // Doctor is what `check` and `next` look at outside the store.
