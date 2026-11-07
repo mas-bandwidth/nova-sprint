@@ -151,7 +151,14 @@ func scanCursor(r pgx.Row) (cursorRow, error) {
 // Events returns up to max (capped at MaxEvents) events after afterSeq, in
 // seq order.
 func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, error) {
-	rows, err := p.pool.Query(ctx, `SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy
+	return readEvents(ctx, p.pool, afterSeq, max)
+}
+
+// readEvents is Events on q: the pool, or a transaction (RestoreEnd).
+func readEvents(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, afterSeq int64, max int) ([]Event, error) {
+	rows, err := q.Query(ctx, `SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy
 		FROM sprint.events WHERE seq > $1 ORDER BY seq LIMIT $2`, afterSeq, capEvents(max))
 	if err != nil {
 		return nil, fmt.Errorf("store: events: %w", err)
