@@ -145,7 +145,7 @@ func (x *e2e) up() {
 	if code, out := x.c.run(false, []string{"NOVA_PG_ADMIN_PASSWORD=e2e-admin"}, "--internal-setup-role-fresh"); code != 0 {
 		t.Fatalf("sprint role: exit %d\n%s", code, out)
 	}
-	x.c.must([]string{"--internal-store-setup"}, `"ready":true`)
+	x.storeSetup()
 	x.seedConfig()
 	ctx := context.Background()
 	st, err := store.Open(ctx, x.sprintDSN, sprintPassword)

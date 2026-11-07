@@ -18,6 +18,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
 // TestMain serves the policy engine's child when the test binary is started
@@ -269,6 +271,38 @@ func (f *fakeForge) Merge(_ context.Context, _ string, pr int, sha, base string)
 	out, err := exec.Command("git", "--git-dir", f.origin, "update-ref", "refs/heads/"+base, sha).CombinedOutput()
 	f.log("Merge #%d %s into %s: %v %s", pr, sha, base, err, strings.TrimSpace(string(out)))
 	return err
+}
+
+// storeSetup is up's store step through the binary. The binary's internal
+// mode prints no reason on failure (its JSON is the parent's), so a failure
+// is run once more in this process, the same function, for the reason.
+func (x *e2e) storeSetup() {
+	code, out := x.c.run(false, nil, "--internal-store-setup")
+	if code == 0 && strings.Contains(out, `"ready":true`) {
+		return
+	}
+	for _, kv := range [][2]string{{"NOVA_PG_DSN", x.adminDSN}, {"NOVA_SPRINT_PG_PASSWORD", sprintPassword}, {"NOVA_SPRINT_BACKUP_DIR", filepath.Join(x.dir, "backups")}} {
+		x.t.Setenv(kv[0], kv[1])
+	}
+	ctx := context.Background()
+	var why []string
+	if pg, err := store.Open(ctx, x.sprintDSN, sprintPassword); err != nil {
+		why = append(why, "open: "+err.Error())
+	} else {
+		id, serr := pg.Schema(ctx)
+		why = append(why, fmt.Sprintf("schema before: %+v %v", id, serr), fmt.Sprintf("migrate: %v", pg.Migrate(ctx)))
+		id, serr = pg.Schema(ctx)
+		why = append(why, fmt.Sprintf("schema after: %+v %v", id, serr))
+		dir := filepath.Join(x.dir, "backups-diagnosis")
+		_ = os.MkdirAll(dir, 0o700)
+		_, berr := (verbs.PGBackups{DSN: x.sprintDSN, Password: sprintPassword, Directory: dir, Version: versionString(), Loader: verbs.PGSQLLoader{}}).Backup(ctx, dir)
+		why = append(why, fmt.Sprintf("backup: %v", berr))
+		pg.Close()
+	}
+	ready, err := verbs.SprintStoreChild(ctx, true, versionString())
+	why = append(why, fmt.Sprintf("SprintStoreChild: ready=%v err=%v", ready, err))
+	x.tr.record("up's store step in process, for the reason", exitOf(err), strings.Join(why, "\n"))
+	x.t.Fatalf("the store step failed: exit %d %s; in process:\n%s", code, out, strings.Join(why, "\n"))
 }
 
 // configSchema is nova-config's schema.sql from the nova-tools module this
