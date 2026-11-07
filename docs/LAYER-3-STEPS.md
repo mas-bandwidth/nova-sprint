@@ -620,7 +620,16 @@ dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
   and one of the view's, built on first use.
 - *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestLoadResolve
   ./steps/`; the needs step alone, 5,000 waiting producers whose needs a
-  store op landed, 20 streams, 100 rows, 20 ticks): RESOLVE-MEASURED
+  store op landed, 20 streams, 100 rows, 20 ticks; ms p50/p95). On the
+  working machine (darwin, not quiet): free (all 5,000 resolve) 7.97/10.57;
+  held (92 resolve, 4,908 open an overlap judgement) 4.67/7.98; held-open
+  (4,908 waiting, their judgements open and checked for clearing)
+  3.47/3.81; the whole plan 10.5, 12.6 and 10.8 p50. On a Linux bench
+  under other runs' load (load average 92 on 32 cores, so an upper bound,
+  not a quiet number): 28.4/52.3, 37.3/74.3 and 32.0/57.7; the plan 31,
+  110 and 85 p50. Every tick re-reads the state, so no incremental index
+  is kept: at 5,000 waiting it is under 10 ms on the working machine; no
+  quiet Linux bench number was taken.
 - *The model.* `Steps.tla`: `w.pol` (an active policy answers; in pre it
   fails and is fixed as an environment move) gates `PreStep` and
   `DealStep` (`NoPlan`) and opens `no-policy`; `NoDealWithoutPolicy`
@@ -638,4 +647,10 @@ dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
   `StepsHeldUnshown` (no overlap judgement); reach checks
   `StepsNeverGated`, `StepsNeverHeldBehind`, `StepsNeverHandLanded`. The
   trace maps `overlap` and `no-policy` judgements; `pol` is not logged
-  (the walk's asker always answers). TLC on the bench: TLC-RESULT
+  (the walk's asker always answers). TLC on the bench (2026-11-07,
+  `bash tla/ci-tlc.sh`): 251 runs ok, none failed; the five Steps scenarios
+  pass, the four new witnesses violate their targets, the three new reach
+  checks are reached. `StepsResolveOnEvent`'s counterexample is the hand
+  land (no edge result arrived) then a tick: the store-op path. The steps
+  trace fixtures were regenerated from the new model's TLC logs, and
+  `make-traces.sh check` matched all 82 traces (the Go walks included).
