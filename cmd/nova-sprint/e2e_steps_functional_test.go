@@ -24,6 +24,36 @@ func (x *e2e) coordinatorHooks() {
 	x.c.must([]string{"start", "--reason", "e2e", "--as", "carol"}, "STARTED applied at seq")
 	x.tr.note("the coordinator sets the commit identity every worker commits as (the e2e's git identity)")
 	x.c.must([]string{"identity", "--name", "e2e", "--email", "e2e@sprint.test", "--reason", "e2e", "--as", "carol"}, "IDENTITY e2e <e2e@sprint.test> applied at seq")
+	x.tr.note("the coordinator sets the sprint's own catalog: the built-in names no model, so no bench is dealt until one does")
+	x.c.must([]string{"policy", "set", x.catalogPolicy(), "--reason", "e2e", "--as", "carol"}, "POLICY STORED v2")
+	x.c.must([]string{"policy", "activate", "2", "--reason", "e2e", "--as", "carol"}, "POLICY ACTIVE v2")
+}
+
+// catalogPolicy is the built-in policy with a made-up catalog: one
+// provider, acme, with a model and a bench model for every tier.
+func (x *e2e) catalogPolicy() string {
+	body, err := os.ReadFile("../../policy/default.star")
+	if err != nil {
+		x.t.Fatal(err)
+	}
+	src := string(body)
+	start := strings.Index(src, "def catalog():")
+	if start < 0 {
+		x.t.Fatal("the built-in policy has no catalog()")
+	}
+	catalog := `def catalog():
+    return {
+        "models": {"acme": [{"name": "a-flash", "tier": "flash"}, {"name": "a-pro", "tier": "pro"}, {"name": "a-heavy", "tier": "heavy"}, {"name": "a-frontier", "tier": "frontier"}]},
+        "harnesses": ["claude", "codex", "opencode", "api"],
+        "bench": {"flash": "acme/a-flash", "pro": "acme/a-pro", "heavy": "acme/a-heavy", "frontier": "acme/a-frontier"},
+        "providers": {"acme": {"url": "https://api.acme.test", "key": "ACME_API_KEY", "probe": "https://api.acme.test/v1/key"}},
+    }
+`
+	path := filepath.Join(x.t.TempDir(), "sprint.star")
+	if err := os.WriteFile(path, []byte(src[:start]+catalog), 0o600); err != nil {
+		x.t.Fatal(err)
+	}
+	return path
 }
 
 // streamAndCard adds the stream (the local origin, --forge github) and one

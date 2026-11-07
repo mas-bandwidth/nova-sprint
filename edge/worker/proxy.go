@@ -129,7 +129,7 @@ var (
 )
 
 // ParseProviders reads --providers: <name>=<upstream url>@<KEY NAME>, comma
-// separated, e.g. deepseek=https://api.example.com@DEEPSEEK_API_KEY. The
+// separated, e.g. acme=https://api.acme.example@ACME_API_KEY. The
 // key's value is never a flag: the worker reads it from its environment,
 // where nova-secrets exec put it.
 func ParseProviders(s string) ([]Provider, error) {
@@ -138,7 +138,7 @@ func ParseProviders(s string) ([]Provider, error) {
 		name, rest, _ := strings.Cut(spec, "=")
 		at := strings.LastIndex(rest, "@")
 		if at < 0 {
-			return nil, fmt.Errorf("worker refused: --providers entry %q is not <name>=<url>@<KEY>: write it as deepseek=<upstream url>@DEEPSEEK_API_KEY", edge.Redact(spec))
+			return nil, fmt.Errorf("worker refused: --providers entry %q is not <name>=<url>@<KEY>: write it as <provider>=<upstream url>@<PROVIDER>_API_KEY", edge.Redact(spec))
 		}
 		p := Provider{Name: name, Upstream: rest[:at], Key: rest[at+1:]}
 		u, err := url.Parse(p.Upstream)
@@ -148,7 +148,7 @@ func ParseProviders(s string) ([]Provider, error) {
 		case err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil:
 			return nil, fmt.Errorf("worker refused: --providers %s upstream %q is not an http(s) URL with a host and no credentials: pass the provider's API base URL", p.Name, edge.Redact(p.Upstream))
 		case !keyName_internal.MatchString(p.Key):
-			return nil, fmt.Errorf("worker refused: --providers %s key %q is not an environment variable name: pass the name nova-secrets exec sets, e.g. DEEPSEEK_API_KEY", p.Name, edge.Redact(p.Key))
+			return nil, fmt.Errorf("worker refused: --providers %s key %q is not an environment variable name: pass the name nova-secrets exec sets, e.g. ACME_API_KEY", p.Name, edge.Redact(p.Key))
 		case slices.ContainsFunc(out, func(q Provider) bool { return q.Name == p.Name }):
 			return nil, fmt.Errorf("worker refused: --providers names %s twice: name each provider once", p.Name)
 		}

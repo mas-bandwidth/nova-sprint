@@ -5,7 +5,7 @@
 // in the card's usage column beside cost and priced (store round 25).
 //
 //	input=19541 cache_read=36336 cache_write=0 output=692 reasoning=70
-//	model=deepseek/deepseek-flash billing=api charged=0.042196
+//	model=acme/a-flash billing=api charged=0.042196
 //
 // A token class the harness did not report is left out, never written as 0;
 // charged is "-" when the harness reported no dollars; unpriced=<why> closes
