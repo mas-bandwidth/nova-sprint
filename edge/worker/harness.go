@@ -91,6 +91,11 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
+	if j.JobDir != "" { // LOCAL DOGFOOD STOPGAP: opencode's config lives in the wall home; without it every write outside the worktree asks for permission and the run dies
+		dir := filepath.Join(j.JobDir, "home", ".config", "opencode")
+		_ = os.MkdirAll(dir, 0o755)
+		_ = os.WriteFile(filepath.Join(dir, "opencode.json"), []byte(`{"$schema":"https://opencode.ai/config.json","permission":{"edit":"allow","bash":"allow","webfetch":"allow","external_directory":"allow","doom_loop":"allow"}}`+"\n"), 0o644)
+	}
 	model := modelFlag_internal(j)
 	if len(model) == 0 { // LOCAL DOGFOOD STOPGAP: a probe carries no model
 		model = []string{"--model", "deepseek/deepseek-chat"}
