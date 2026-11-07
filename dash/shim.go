@@ -145,6 +145,7 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 		}
 	}
 }
+
 // mapRows puts each store row in its table: a rostered row by its roster
 // kind; a row the roster refused as refused, with the reason, by the kind it
 // was read as; a row the roster does not name as down (Stella, v2-l6), by
