@@ -45,9 +45,12 @@ func main() {
 		log.Fatal(err)
 	}
 	defer s.Close()
-	cache, err := dash.New(ctx, s)
+	cache, err := dash.NewRecovering(ctx, s)
 	if err != nil {
-		log.Fatal(err)
+		if ctx.Err() != nil {
+			return
+		}
+		log.Printf("dashboard startup: %v; retrying", err)
 	}
 	go cache.Run(ctx, s)
 	server := &http.Server{Addr: *listen, Handler: dash.Handler(cache), ReadHeaderTimeout: 5 * time.Second}

@@ -1,8 +1,7 @@
 // The charts (the owner, 2026-10-18: "I would like it if you could create a stats page showing me all
 // the things you can do with https://pele.run for the sprint dashboard. You could put these things
 // below the existing stuff we have at the bottom."). The server writes every chart as Mermaid source
-// (/api/history); this file hands each to Pele (pele.js, loaded only when the charts are about to be
-// seen) and inserts the SVG. Nothing here touches the page above the charts.
+// for the stream page; this file hands each to Pele (pele.js) and inserts the SVG.
 (function () {
   "use strict";
   var REFRESH_MS = 60000; // the server recomputes at most once a minute
@@ -32,7 +31,6 @@
     ".chart, .chart .svg { --pele-bg: var(--bg); --pele-fg: var(--text); --pele-muted: var(--text-2); --pele-line: var(--text-3); --pele-surface: var(--surface); --pele-surface-alt: #181b20; --pele-border: var(--border-strong); --pele-accent: var(--s-working); --pele-critical: var(--critical); --pele-error: var(--critical); }",
     "#streams .row:not(.head):not(.total) .name > span:first-child { cursor: pointer; }",
     "#streams .row:not(.head):not(.total) .name > span:first-child:hover { text-decoration: underline; text-underline-offset: .25em; text-decoration-color: var(--text-3); }",
-    ".history-sub b { color: var(--text); font-weight: 550; }",
     "@media (max-width: 600px) { .charts { padding: 1rem 16px 16px; gap: 12px; } .chart { padding: 12px; } }"
   ].join("\n");
   var style = el("style"); style.textContent = css; document.head.appendChild(style);
@@ -94,28 +92,6 @@
   }
   function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
 
-  // the dashboard: the last 24 hours, drawn when the panel comes near the view
-  function history(panel) {
-    var box = document.getElementById("history"), sub = document.getElementById("history-sub"), started = false;
-    function load() {
-      return Promise.all([loadPele(), getJSON("/api/history")]).then(function (r) {
-        var h = r[1];
-        if (h.unavailable) { box.textContent = ""; box.appendChild(el("div", "chart wide")).appendChild(el("div", "empty", h.unavailable)); return; }
-        var t = h.totals || {}, pct = t.finished ? Math.round(100 * t.ok / t.finished) : 0;
-        sub.textContent = plural(t.landed || 0, "landed", "landed") + " · " + plural(t.finished || 0, "attempt finished", "attempts finished") + " (" + pct + "% ok) · " + plural(t.reads || 0, "read", "reads") + " · " + plural(t.workers || 0, "worker", "workers");
-        drawCharts(box, h.charts || [], h.start, h.hours);
-      }).catch(function (e) { console.warn("history: " + e.message); });
-    }
-    var go = function () { if (!started) { started = true; every(load); } };
-    // the page above is short until its first data arrives: watch only once it has drawn, so the
-    // charts load when they come near the view, never with the page
-    setTimeout(function () {
-      if (!("IntersectionObserver" in window)) { go(); return; }
-      var io = new IntersectionObserver(function (es) { if (es.some(function (e) { return e.isIntersecting; })) { io.disconnect(); go(); } }, { rootMargin: "600px 0px" });
-      io.observe(panel);
-    }, 3000);
-  }
-
   // the stream names in the Work table open the stream's page (the owner, 2026-10-18: "Maybe we can
   // click on a work stream by name, and this takes you to a page showing all details for that work
   // stream"): one listener on the table; the table itself is drawn as before
@@ -135,8 +111,6 @@
   // the pieces a stream's page (stream.js) draws with
   window.novaCharts = { el: el, loadPele: loadPele, drawCharts: drawCharts, getJSON: getJSON, every: every, plural: plural };
 
-  var panel = document.getElementById("history-panel");
-  if (panel) history(panel);
   var table = document.getElementById("streams");
   if (table) streamLinks(table);
 })();
