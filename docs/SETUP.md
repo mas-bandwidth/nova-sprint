@@ -3,6 +3,22 @@
 Glenn, 2026-11-06. This is what the setup must be; layer 6 makes it exact and
 this page becomes the walkthrough an AI runs.
 
+## 0. What `nova-sprint up` needs before its first step
+
+`nova-sprint up` refuses the first of these that is missing, naming it and printing its
+line; `nova-sprint help up` prints the same table. `nova-fleet check` makes the secrets
+paths, and `nova-fleet up` prints the store and bus lines.
+
+| Needs | What it is | The line that sets it |
+|---|---|---|
+| `nova-tools` | nova-tools <the release nova-sprint check names> or later, the fleet nova-sprint runs on: nova-fleet, nova-secrets, nova-config, nova-bus on PATH | `git clone -b <the release nova-sprint check names> https://github.com/mas-bandwidth/nova-tools && for t in fleet secrets config bus; do go build -C nova-tools -o ~/.local/bin/nova-$t ./$t; done; then nova-fleet check` |
+| `NOVA_SECRETS_STORE` | this machine's nova-secrets store (unset: ~/.config/nova-secrets/store, as nova-secrets) | `nova-fleet check (it prints the line that makes it), then nova-sprint up again` |
+| `NOVA_SECRETS_KEY` | this machine's seat key (unset: ~/.config/nova-secrets/<seat>.key, as nova-secrets) | `nova-fleet check (it prints the line that makes it), then nova-sprint up again` |
+| `NOVA_SECRETS_PINS` | the pinned seat keys (unset: ~/.config/nova-secrets/pins, as nova-secrets) | `nova-fleet check (it prints the line that makes it), then nova-sprint up again` |
+| `NOVA_SECRETS_SEAT` | this machine's seat, the control seat: its name in nova-config (unset: the short hostname) | `unset NOVA_SECRETS_SEAT, or export NOVA_SECRETS_SEAT=<this machine's name in nova-config machine list>` |
+| `NOVA_PG_DSN` | the fleet store's PostgreSQL (16 or later) URL, with no password: nova-fleet up prints it | `export NOVA_PG_DSN=postgres://nova_config@<the store machine>:5432/nova` |
+| `NOVA_BUS_REDIS` | the fleet bus's Redis host:port, on the store machine: nova-fleet up prints it (UP BUS OK) | `export NOVA_BUS_REDIS=<the store machine>:6379 NOVA_BUS_USER=bus` |
+
 ## 1. nova-tools first
 
 nova-sprint is built on nova-tools. The AI setting it up is told so at the
@@ -25,9 +41,9 @@ lot of traffic.
 ## 3. Then: the API-rate workers
 
 After the dashboard, configuration is about the API-rate services the sprint
-will run work on: DeepSeek, Mercury, OpenCode, OpenRouter, and the like. The
-AI offers to set these up by default and the human chooses which ones they
-want.
+will run work on. The AI offers to set these up by default and the human
+chooses which ones they want. `nova-sprint up --services` accepts `deepseek`, `openrouter`, or `none`. Each worker
+bench gets the chosen services' keys and routes, and nothing else.
 
 The rule, the same as the Tailscale key: **one API key per service, pasted
 once by the human at a hidden prompt the AI runs for them, and everything
@@ -72,11 +88,11 @@ Nothing in this section is typed by the human.
 
 - **Services (6).** `--services none` is a valid answer. A chosen service's key is
   pasted once at a hidden prompt and proven by one model-list request.
-- **Workers (7).** Every machine with the bench role, except the one the sprint runs on,
-  gets a worker: its seat is granted the sprint's database credential, and nova-config
+- **Workers (7).** Every machine with the bench role (the one the sprint runs on too, when it is one)
+  gets a worker: its seat is granted the sprint's database credential and the chosen services' keys, and nova-config
   gets one service record `sprint-worker-<machine>` running `nova-sprint worker --as
-  <machine>` under that seat (the sprint and bus credentials and the provider keys the
-  bench's seat holds). nova-fleet applies them all in one play. The step verifies when
+  <machine>` under that seat (the sprint and bus credentials and the chosen services'
+  keys, with one key-proxy route per chosen service). nova-fleet applies them all in one play. The step verifies when
   every worker is on the bus and up in the sprint; otherwise it names each machine that
   is not and the last line of its worker's log.
 - **First deal (8).** A new sprint is stopped until the coordinator runs `nova-sprint

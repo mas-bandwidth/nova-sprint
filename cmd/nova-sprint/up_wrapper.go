@@ -64,6 +64,10 @@ func runUpWrapper(ctx context.Context, args []string) int {
 		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: setup configuration unavailable: "+edge.RedactN(err.Error(), edge.CommandMax))
 		return 1
 	}
+	if err = verbs.UpNeedRefusal(toolPin, cfg.upEnv()); err != nil {
+		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: "+err.Error())
+		return 1
+	}
 	p := productionSetup{cfg: cfg}
 	if err = p.configError(); err != nil {
 		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: "+edge.RedactN(err.Error(), edge.CommandMax))

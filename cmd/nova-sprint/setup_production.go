@@ -49,11 +49,22 @@ func productionSetupConfigFromEnv() (productionSetupConfig, error) {
 		return productionSetupConfig{}, edge.Cause("cannot determine control machine", err)
 	}
 	host = strings.SplitN(host, ".", 2)[0]
-	seat := os.Getenv("NOVA_SECRETS_SEAT")
-	if seat == "" {
-		seat = host
-	}
-	return productionSetupConfig{Binary: binary, BinaryVersion: versionString(), Host: host, DSN: os.Getenv("NOVA_PG_DSN"), AdminPassword: os.Getenv("NOVA_PG_ADMIN_PASSWORD"), SprintPassword: os.Getenv("NOVA_SPRINT_PG_PASSWORD"), BusUser: os.Getenv("NOVA_BUS_USER"), BusRedis: os.Getenv("NOVA_BUS_REDIS"), Secrets: verbs.NovaSecrets{Store: os.Getenv("NOVA_SECRETS_STORE"), KeyFile: os.Getenv("NOVA_SECRETS_KEY"), Pins: os.Getenv("NOVA_SECRETS_PINS"), Seat: seat}}, nil
+	seat := cmp.Or(os.Getenv("NOVA_SECRETS_SEAT"), host)
+	// Unset, the secrets paths are nova-secrets' own defaults, as nova-fleet
+	// check reads them (verbs.UpNeeds).
+	home, _ := os.UserHomeDir() // ignored: no home leaves the default relative, and up refuses it by name
+	dir := filepath.Join(home, ".config", "nova-secrets")
+	secrets := verbs.NovaSecrets{Store: cmp.Or(os.Getenv("NOVA_SECRETS_STORE"), filepath.Join(dir, "store")), KeyFile: cmp.Or(os.Getenv("NOVA_SECRETS_KEY"), filepath.Join(dir, seat+".key")), Pins: cmp.Or(os.Getenv("NOVA_SECRETS_PINS"), filepath.Join(dir, "pins")), Seat: seat}
+	return productionSetupConfig{Binary: binary, BinaryVersion: versionString(), Host: host, DSN: os.Getenv("NOVA_PG_DSN"), AdminPassword: os.Getenv("NOVA_PG_ADMIN_PASSWORD"), SprintPassword: os.Getenv("NOVA_SPRINT_PG_PASSWORD"), BusUser: os.Getenv("NOVA_BUS_USER"), BusRedis: os.Getenv("NOVA_BUS_REDIS"), Secrets: secrets}, nil
+}
+
+// upEnv is what verbs.UpNeedRefusal observes for this configuration: the
+// variables as up uses them, PATH and the file system.
+func (c productionSetupConfig) upEnv() verbs.UpEnv {
+	vars := map[string]string{"NOVA_SECRETS_STORE": c.Secrets.Store, "NOVA_SECRETS_KEY": c.Secrets.KeyFile, "NOVA_SECRETS_PINS": c.Secrets.Pins, "NOVA_SECRETS_SEAT": c.Secrets.Seat, "NOVA_PG_DSN": c.DSN, "NOVA_BUS_REDIS": c.BusRedis}
+	return verbs.UpEnv{Env: func(name string) string { return vars[name] }, Host: c.Host,
+		OnPath: func(program string) bool { _, err := exec.LookPath(program); return err == nil },
+		Exists: func(path string) bool { _, err := os.Stat(path); return filepath.IsAbs(path) && err == nil }}
 }
 
 // buildProductionSetup is called only by production CLI composition. It does
@@ -212,10 +223,10 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 func (p productionSetup) configError() error {
 	s := p.cfg.Secrets
 	if !filepath.IsAbs(s.Store) || !filepath.IsAbs(s.KeyFile) || !filepath.IsAbs(s.Pins) || s.Seat == "" {
-		return &verbs.OperationError{Problem: "control-seat secrets configuration is incomplete", Fix: "set NOVA_SECRETS_STORE, NOVA_SECRETS_KEY, NOVA_SECRETS_PINS and NOVA_SECRETS_SEAT; run nova-secrets -h", Exit: 1}
+		return &verbs.OperationError{Problem: "the secrets store, key and pins must be absolute paths", Fix: "unset NOVA_SECRETS_STORE, NOVA_SECRETS_KEY and NOVA_SECRETS_PINS (nova-secrets' defaults) or export each as an absolute path, then nova-fleet check", Exit: 1}
 	}
 	if s.Seat != p.cfg.Host {
-		return &verbs.OperationError{Problem: "control seat must match the inventory machine name", Fix: "use the default machine seat and run nova-sprint up again", Exit: 1}
+		return &verbs.OperationError{Problem: fmt.Sprintf("NOVA_SECRETS_SEAT is %q, not this machine's name %q", edge.Redact(s.Seat), p.cfg.Host), Fix: "unset NOVA_SECRETS_SEAT, or export NOVA_SECRETS_SEAT=" + p.cfg.Host + ", then nova-sprint up again", Exit: 1}
 	}
 	return nil
 }

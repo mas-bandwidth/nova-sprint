@@ -35,13 +35,14 @@ func (e ExecEnvironment) command(ctx context.Context, name string, args ...strin
 	return toolOutput(ctx, name, args...)
 }
 func (e ExecEnvironment) Fleet(ctx context.Context) (bool, string, error) {
-	_, err := e.command(ctx, "nova-fleet", "check")
+	out, err := e.command(ctx, "nova-fleet", "check")
 	if err != nil {
 		if ctx.Err() != nil {
 			return false, "", ctx.Err()
 		}
-		// Not ready, and why: nova-fleet check's own words.
-		return false, errText(err), nil
+		// Not ready, and why: the names nova-fleet check says are missing
+		// (a name is not a value), then its own words.
+		return false, strings.TrimPrefix(FleetMissing(out)+"; ", "; ") + errText(err), nil
 	}
 	return true, "", nil
 }

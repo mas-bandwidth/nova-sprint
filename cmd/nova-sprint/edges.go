@@ -85,11 +85,12 @@ type doctor struct{ creds credentials }
 
 // Fleet is nova-fleet check, green or a refusal naming it.
 func (d doctor) Fleet(ctx context.Context) error {
-	if _, err := toolCommand(ctx, "nova-fleet", "check"); err != nil {
+	if out, err := toolCommand(ctx, "nova-fleet", "check"); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return verbs.RefusalOr(err, &verbs.OperationError{Problem: edge.RedactN("nova-fleet check is not green: "+err.Error(), edge.CommandMax), Fix: "fix what nova-fleet check names", Exit: 1})
+		missing := verbs.FleetMissing(out) // names, never values: not redacted
+		return verbs.RefusalOr(err, &verbs.OperationError{Problem: strings.TrimPrefix(missing+"; ", "; ") + edge.RedactN("nova-fleet check is not green: "+err.Error(), edge.CommandMax), Fix: "nova-fleet check (each CHECK MISSING line is the command that fixes it)", Exit: 1})
 	}
 	return nil
 }

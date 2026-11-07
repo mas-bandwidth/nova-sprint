@@ -13,7 +13,7 @@ import (
 // one verb's table (usage, what it does, who, what refuses it and the fix),
 // a verb's subcommands, or a role's playbook. It is built from the verb
 // table, so it lists only real verbs.
-func runHelp(_ *Engine, _ context.Context, in *input, _ store.Snapshot) (string, error) {
+func runHelp(e *Engine, _ context.Context, in *input, _ store.Snapshot) (string, error) {
 	name := strings.Join(in.args, " ")
 	switch {
 	case name == "":
@@ -26,6 +26,11 @@ func runHelp(_ *Engine, _ context.Context, in *input, _ store.Snapshot) (string,
 		return done("nova-sprint next --as <you>", text), nil
 	}
 	if v := find(name); v != nil {
+		if v.name == "up" { // what up needs before its first step, from the table its refusals use
+			c := *v
+			c.more = append(append([]string{}, v.more...), UpNeedsHelp(e.ToolPin)...)
+			v = &c
+		}
 		return helpVerb(v), nil
 	}
 	if subs := sub(name); len(subs) > 0 {
