@@ -62,9 +62,17 @@ violation). Run it on a bench host, never on the working machine:
 
     bash tla/ci-tlc.sh
 
+The nightly splits the set into six jobs on the runners labelled `tlc`
+(`TLC_SHARD=i/6`, every sixth run), each held to half its host's cores
+(`TLC_CORES`, which caps every run's `-workers` and the live runs' sum):
+
+    TLC_SHARD=2/6 TLC_CORES=8 bash tla/ci-tlc.sh
+
 Print the TLC commands without fetching or running anything:
 
     DRY_RUN=1 bash tla/ci-tlc.sh
 
-`tla/ci-tlc.sh` downloads the pinned `tla2tools.jar` (v1.8.0) to
-`~/.cache/nova-sprint` (override with `TLA_CACHE`) and checks its sha256.
+`tla/ci-tlc.sh` downloads the pinned `tla2tools.jar` (v1.8.0) from this
+repository's `tla-tools-1.8.0` release (upstream replaced its v1.8.0 asset
+with a different binary) to `~/.cache/nova-sprint` (override with
+`TLA_CACHE`) and checks its sha256.

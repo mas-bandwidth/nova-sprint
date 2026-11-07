@@ -3,7 +3,8 @@
 #   unit        every seed and step of the walks and sweeps (no -short), with -race
 #   trace       the 500-step store walks, and the Layer 6 traces (run, setup,
 #               handoff, choices, the 64 installer walks), each checked by TLC
-#   tlc         every model, witness and reach check (tla/ci-tlc.sh)
+#   tlc         every model, witness and reach check (tla/ci-tlc.sh), split
+#               over six jobs on the runners labelled tlc
 # The functional tier runs per commit in full; it is not repeated here.
 
 name: nightly
@@ -66,7 +67,7 @@ jobs:
         env:
           NOVA_TRACE_PG: "1"
       - name: Emit and check fixed-seed Layer 6 traces
-        run: nova-reserve run --slots 4 --wait 15m --why "Layer 6 trace nightly" -- nice -n 19 python3 tla/check-layer6-traces.py --mode all --repo "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/layer6-traces-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        run: nova-reserve run --wait 15m --why "Layer 6 trace nightly" -- nice -n 19 python3 tla/check-layer6-traces.py --mode all --repo "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/layer6-traces-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         env:
           GOMAXPROCS: "4"
       - name: Retain Layer 6 trace evidence
@@ -78,11 +79,26 @@ jobs:
           if-no-files-found: error
 
   tlc:
-    # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
-    # (Glenn, 2026-11-06: "if you are out of memory, do it on the studio").
+    # Never on one host, never on the studio: the 263 runs are dealt round
+    # robin into six shards (TLC_SHARD), each a job on a runner labelled tlc
+    # (hetzner2, amd-3, hulk today; label more bench runners to go wider).
+    # Each job takes half its host's cores (TLC_CORES): no run gets more
+    # -workers than that, and its live runs' workers stay within it, so a
+    # host shared with other work is not swamped.
     runs-on: [self-hosted, tlc]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - *clean
       - *checkout
-      - name: TLC on Store (must pass), the witnesses and the reach checks (must be violated)
-        run: bash tla/ci-tlc.sh
+      - name: this job's share of the host
+        shell: bash
+        run: |
+          n=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+          echo "TLC_CORES=$(( n / 2 > 0 ? n / 2 : 1 ))" >> "$GITHUB_ENV"
+      - name: TLC shard ${{ matrix.shard }} of 6 (models must pass; witnesses and reach checks must be violated)
+        run: nice -n 19 bash tla/ci-tlc.sh
+        env:
+          TLC_SHARD: ${{ matrix.shard }}/6

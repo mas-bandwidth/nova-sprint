@@ -216,11 +216,12 @@ gate. It runs every module in parallel:
 It exits non-zero on any other outcome: a pass where a violation is
 required, a violation of a different invariant, a parse error, a crash, or a
 run that wrote no result. It uses a pinned, sha256-checked `tla2tools.jar`
-(v1.8.0), gives each run its own `java.io.tmpdir`, and passes
+(v1.8.0, from this repository's `tla-tools-1.8.0` release), gives each run its own `java.io.tmpdir`, and passes
 `-noGenerateSpecTE`, so a rerun in the same tree never sees trace modules.
 
 ```
 bash ci-tlc.sh
+TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run, 8 cores
 ```
 
 The helper scripts:
