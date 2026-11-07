@@ -660,11 +660,12 @@ func (m *mover) readFix(e ReadFix) *Refusal {
 	return nil
 }
 
-// waiveRed sends a producer a Red returned to review on to merging, when that
-// Red is still recorded and a done ok read of the previous review at this
-// head exists. It does not raise the review. A live consumer is refused.
+// waiveRed sends a producer a Red sent to fix (ready, or waiting in a held
+// stream) on to merging, when that Red is still recorded (no Start since)
+// and a done ok read of the previous review at this head exists. It does
+// not raise the review. A live consumer is refused.
 func (m *mover) waiveRed(e WaiveRed) *Refusal {
-	if r := m.from(e, Review); r != nil {
+	if r := m.from(e, Ready, Waiting); r != nil {
 		return r
 	}
 	if r := m.noLive(m.liveRefusal); r != nil {
@@ -715,14 +716,30 @@ func (m *mover) landed(e Landed) *Refusal {
 	return nil
 }
 
+// red is a red landing sent to fix (intent rule 30: no terminal fail): the
+// producer goes back to ready (waiting when its stream is held) carrying
+// the CI finding, as ReadFix carries a read's, so the next Start continues
+// from its head with the failing checks named. The review rises, so reads
+// before the red never count again, and the red is recorded for WaiveRed.
+// A red spends no bounce: the bounce limit stays the reads' and reports'.
 func (m *mover) red(e Red) *Refusal {
 	if r := m.atHead(e, e.Head); r != nil {
 		return r
 	}
-	if r := m.raiseReview(); r != nil {
+	if m.p.Review >= math.MaxInt32 {
+		return no("producer %s is at review %d, the most there is", m.p.ID, m.p.Review)
+	}
+	if e.Reason == "" {
+		return no("a red says what failed: the failing checks and their URLs")
+	}
+	if r := m.back(); r != nil {
 		return r
 	}
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
+	m.write(store.SetCardReview{Card: m.p.ID})
+	m.reason(m.p.ID, m.p.Reason, m.returnReason(e.Reason))
+	if e.Reason != m.p.Finding {
+		m.write(store.SetCardFinding{Card: m.p.ID, Finding: e.Reason})
+	}
 	m.markRed()
 	return nil
 }

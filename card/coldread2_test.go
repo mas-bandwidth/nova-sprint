@@ -603,12 +603,13 @@ func (w *world) cold2Reached(rng *rand.Rand, all map[string]Card, sents []string
 	return plan, "Reached " + g.ID, g.ID, r == nil
 }
 
-// cold2WaiveRed attempts WaiveRed whenever a producer in review has a done
-// ok read of the previous review at the same head, so the walk accepts it.
+// cold2WaiveRed attempts WaiveRed whenever a producer a Red sent to fix
+// (ready or waiting, red recorded) has a done ok read of the previous review
+// at the same head, so the walk accepts it.
 func (w *world) cold2WaiveRed(rng *rand.Rand, all map[string]Card, cons map[string][]Card, prods []string) (Plan, string, string, bool, bool) {
 	var targets []string
 	for _, id := range prods {
-		if all[id].State == Review && cold2PriorOK(cons[id], all[id]) {
+		if (all[id].State == Ready || all[id].State == Waiting) && all[id].Red && cold2PriorOK(cons[id], all[id]) {
 			targets = append(targets, id)
 		}
 	}

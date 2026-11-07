@@ -479,20 +479,21 @@ ReadFix(p) ==
   /\ PStep("ReadFix", p, NoC, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
                                             !.finding = "fix"])
 
-\* WaiveRed (the second cold read): a producer that a Red sent back to
-\* review goes on to merging without a new read, when a done ok read of the
-\* previous review at the same head exists (the coordinator's judgement
-\* that the red was not the code's), and the Red is still recorded (round
-\* 4). Without the red guard such a read also exists after a Finished that
-\* comes back to an already-read head: a ReadFix, an attempt that moves the
-\* head (Faulted or Broken), then an attempt reporting the old head again.
+\* WaiveRed (the second cold read): a producer that a Red sent to fix
+\* (ready, or waiting when held) goes on to merging without a new read, when
+\* a done ok read of the previous review at the same head exists (the
+\* coordinator's judgement that the red was not the code's), and the Red is
+\* still recorded (round 4; Start clears it). Without the red guard such a
+\* read also exists after a ReadFix that comes back to an already-read
+\* head: a ReadFix, an attempt that moves the head (Faulted or Broken), an
+\* attempt reporting the old head again, and a second ReadFix.
 PrevYes(p) ==
   \E c \in ConsOf(p) :
     /\ cs[c].kind = "read" /\ cs[c].st = "done" /\ cs[c].res = "ok"
     /\ cs[c].head = ps[p].head /\ cs[c].review + 1 = ps[p].review
 
 WaiveRed(p) ==
-  /\ ps[p].st = "review"
+  /\ ps[p].st \in {"ready", "waiting"}
   /\ NoLive(p)
   /\ ps[p].red   \* the code: "no red on review N"
   /\ PrevYes(p)
@@ -505,11 +506,15 @@ Landed(p, h) ==
   /\ h = ps[p].head
   /\ PStep("Landed", p, NoC, [ps[p] EXCEPT !.st = "landed"])
 
+\* Red{head, reason}: a red landing goes to fix (intent rule 30, no terminal
+\* fail): back to ready (waiting when held) carrying the CI finding, as a
+\* ReadFix carries a read's; the review rises, so reads before it never
+\* count again, and the red is recorded for WaiveRed. No bounce is spent.
 Red(p, h) ==
   /\ ps[p].st = "merging"
   /\ h = ps[p].head
-  /\ PStep("Red", p, NoC, [ps[p] EXCEPT !.st = "review", !.review = @ + 1,
-                                      !.red = TRUE])
+  /\ PStep("Red", p, NoC, [ps[p] EXCEPT !.st = Back, !.review = @ + 1,
+                                      !.red = TRUE, !.finding = "fix"])
 
 Released(p, c) ==
   /\ ps[p].st = "working"
@@ -1101,13 +1106,9 @@ NeverFaultRedealt ==
      /\ i < j
      /\ cs[<<p, i>>].kind = "work" /\ cs[<<p, i>>].res = "fault"
      /\ cs[<<p, j>>].kind = "work"
-(* A yes after a Red needs a new read: the producer is merging again      *)
-(* after a Red, on an ok read cut in the current review (a new read; the  *)
-(* pre-Red one is from an earlier review).                                *)
-NeverYesAfterRed ==
-  ~\E p \in Prods :
-     /\ ps[p].st = "merging"
-     /\ AfterRed(p)
-     /\ \E k \in ConsOf(p) : OkRead(p, k) /\ cs[k].review = ps[p].review
+(* A red goes to fix with the finding (intent rule 30): only Red sets red, *)
+(* and only Red and ReadFix write a finding.                              *)
+NeverRedToFix ==
+  ~\E p \in Prods : ps[p].red /\ ps[p].st \in {"ready", "waiting"} /\ ps[p].finding = "fix"
 
 =============================================================================
