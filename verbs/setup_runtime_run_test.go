@@ -118,3 +118,40 @@ type notReadyRun struct{}
 func (notReadyRun) Ready(context.Context, string, string) (bool, error) {
 	return false, &RunNotReady{Why: "run service holds no chooser lock", Fix: "read the log"}
 }
+
+// Step 4 stores and activates the built-in default policy before run
+// starts, once: a second act changes nothing. Its line names the secrets
+// store the run service opens.
+func TestRuntimeRunStoresDefaultPolicyOnce(t *testing.T) {
+	ctx := context.Background()
+	db := store.NewFake()
+	now := func() time.Time { return time.Unix(1000, 0) }
+	r := RuntimeSetup{Run: &runtimeRun{ready: true}, PolicyStore: db, Now: now, RunService: FleetService{Name: "sprint-run", Machine: "bench-a", Seat: "bench-a", Keys: []string{sprintPasswordName}}, DefaultRunHost: "bench-a"}
+	r.Prerequisites.Env.Choices = Choices{Store: db, Actor: "alice", Now: now}
+	if err := r.Prerequisites.Env.Choices.Save(ctx, "run-on", "bench-a"); err != nil {
+		t.Fatal(err)
+	}
+	check, err := r.runCheck(ctx, SetupInput{Actor: "alice"})
+	if err != nil || check.Verified || !check.Action {
+		t.Fatal(check, err)
+	}
+	var first store.Snapshot
+	for i := range 2 {
+		if err = r.ensurePolicy(ctx, "alice"); err != nil {
+			t.Fatal(err)
+		}
+		snap, err := db.Snapshot(ctx)
+		if err != nil || snap.Policy == 0 {
+			t.Fatal(snap.Policy, err)
+		}
+		if i == 0 {
+			first = snap
+		} else if snap.Policy != first.Policy || snap.Seq != first.Seq {
+			t.Fatalf("a second up changed the store: policy %d seq %d, was %d %d", snap.Policy, snap.Seq, first.Policy, first.Seq)
+		}
+	}
+	check, err = r.runCheck(ctx, SetupInput{Actor: "alice"})
+	if err != nil || !check.Verified || !strings.Contains(check.Line, "from nova-fleet's secrets store on bench-a (~/.local/share/nova/secrets, seat bench-a), not this shell's NOVA_SECRETS_STORE") {
+		t.Fatal(check, err)
+	}
+}

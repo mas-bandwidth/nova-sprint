@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 )
 
 // SetupStore implements role, schema identity/ownership, migration and the
@@ -62,6 +64,10 @@ type RuntimeSetup struct {
 	RunService     FleetService
 	DefaultRunHost string
 	Dashboards     map[string]DashboardTarget
+	// PolicyStore is where step 4 stores and activates the built-in
+	// default policy (policy.Up) before run starts; nil skips it.
+	PolicyStore store.Store
+	Now         func() time.Time // nil: time.Now
 }
 
 func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (SetupCheck, error) {
@@ -144,14 +150,68 @@ func (r RuntimeSetup) runCheck(ctx context.Context, in SetupInput) (SetupCheck, 
 	if r.Run == nil {
 		return SetupCheck{}, fmt.Errorf("run readiness unavailable")
 	}
+	active, err := r.policyActive(ctx)
+	if err != nil {
+		return SetupCheck{}, err
+	}
+	if !active {
+		return SetupCheck{Action: true, Refusal: &OperationError{Problem: "no policy version is active after storing the built-in default", Fix: "nova-sprint policy show --list", Exit: 1}}, nil
+	}
+	secrets := "UP 4/8 run: on " + host + "; " + runSecretsLine(r.RunService)
 	ok, err := r.Run.Ready(ctx, host, r.RunService.Name)
 	var notReady *RunNotReady
 	if err != nil && ctx.Err() == nil && errors.As(err, &notReady) {
 		// Not up yet: act; when it still is not after the act, the
 		// refusal names each false condition, never "not verified".
-		return SetupCheck{Action: true, Refusal: &OperationError{Problem: edge.RedactN("run on "+host+": "+notReady.Why, edge.FailureMax+200), Fix: notReady.Fix, Exit: 1}}, nil
+		return SetupCheck{Action: true, Line: secrets, Refusal: &OperationError{Problem: edge.RedactN("run on "+host+": "+notReady.Why, edge.FailureMax+200), Fix: notReady.Fix, Exit: 1}}, nil
 	}
-	return setupReady(ok, "UP 4/8 run: on "+host+"; chooser lock held; sprint hooked: VERIFIED", err)
+	return setupReady(ok, secrets+"; policy active; chooser lock held; sprint hooked: VERIFIED", err)
+}
+
+// runSecretsLine says which secrets store the run service opens: nova-fleet
+// renders its unit to exec nova-secrets on the run machine's own default
+// replica (nova_secrets_store), as the service's seat, never the store
+// path this shell's NOVA_SECRETS_STORE names.
+func runSecretsLine(s FleetService) string {
+	if len(s.Keys) == 0 {
+		return "the service opens no secrets"
+	}
+	keys := append([]string(nil), s.Keys...)
+	slices.Sort(keys)
+	return "the service opens " + strings.Join(keys, ",") + " from nova-fleet's secrets store on " + s.Machine + " (~/.local/share/nova/secrets, seat " + s.Seat + "), not this shell's NOVA_SECRETS_STORE"
+}
+
+// policyActive is true when a policy version is active (or no store is
+// wired for it).
+func (r RuntimeSetup) policyActive(ctx context.Context) (bool, error) {
+	if r.PolicyStore == nil {
+		return true, nil
+	}
+	snap, err := r.PolicyStore.Snapshot(ctx)
+	if err != nil {
+		return false, err
+	}
+	return snap.Policy > 0, nil
+}
+
+// ensurePolicy stores and activates the built-in default policy when no
+// version is active (policy.Up, idempotent: it changes nothing once one
+// is), so run starts on a policy.
+func (r RuntimeSetup) ensurePolicy(ctx context.Context, actor string) error {
+	if r.PolicyStore == nil {
+		return nil
+	}
+	snap, err := r.PolicyStore.Snapshot(ctx)
+	if err != nil || snap.Policy > 0 {
+		return err
+	}
+	now := time.Now
+	if r.Now != nil {
+		now = r.Now
+	}
+	c := policy.Caller{Actor: actor, Coordinator: true, OpID: fmt.Sprintf("up-policy-%d-%d", snap.Epoch, snap.Seq), At: now()}
+	_, err = policy.Up(ctx, r.PolicyStore, c)
+	return err
 }
 func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupCheck, error) {
 	choice, saved, err := r.answer(ctx, "dashboard", in.Dash, "")
@@ -328,6 +388,9 @@ func (r RuntimeSetup) runAct(ctx context.Context, in SetupInput) error {
 		if err = r.Prerequisites.Env.Choices.Save(ctx, "run-on", host); err != nil {
 			return err
 		}
+	}
+	if err = r.ensurePolicy(ctx, in.Actor); err != nil {
+		return err
 	}
 	if !slices.Contains(r.RunService.Keys, sprintPasswordName) {
 		return fmt.Errorf("run service lacks sprint credential")
