@@ -19,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
 // binaryVersion is set with -ldflags -X main.binaryVersion=<version> by
@@ -63,17 +64,24 @@ func executeVerb(ctx context.Context, args []string, phase string) int {
 	return r.Exit
 }
 
-// busReply answers a message sent to sprint (run's hook names this binary's
-// bus-reply): a pointer at the verbs, its body unread.
+// busReply is what the sprint does with a message sent to its name (run's
+// hook names this binary's bus-reply): verbs.BusAnswer decides from the
+// sender, the message it answers and its subject, the body unread. A reply
+// or a message that is not a verb is logged (one line on the hook's
+// stderr) and not answered; a verb is pointed at, once.
 func busReply() int {
 	sender, id := os.Getenv("NOVA_BUS_FROM"), os.Getenv("NOVA_BUS_ID")
-	if sender == "" || sender == "sprint" || id == "" {
+	reply, log := verbs.BusAnswer(sender, os.Getenv("NOVA_BUS_RE"), os.Getenv("NOVA_BUS_SUBJECT"))
+	if log != "" {
+		fmt.Fprintln(os.Stderr, "nova-sprint bus-reply: "+edge.RedactN(log, edge.CommandMax))
+	}
+	if reply == "" || id == "" {
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	b := bus.New(bus.Config{Bin: busBinary(), Sender: "sprint", Env: toolEnvironment(os.Environ(), "nova-bus")})
-	if _, err := b.Reply(ctx, sender, id, "REPLY", "replies are verbs: run nova-sprint next --as "+sender); err != nil {
+	if _, err := b.Reply(ctx, sender, id, "REPLY", reply); err != nil {
 		fmt.Fprintln(os.Stderr, "nova-sprint bus-reply: cannot reply to "+edge.Redact(sender)+": "+edge.RedactN(err.Error(), edge.CommandMax))
 		return 1
 	}

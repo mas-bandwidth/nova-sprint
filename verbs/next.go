@@ -91,14 +91,14 @@ func (e *Engine) look(ctx context.Context, v *nextView, inventory bool) error {
 	}
 	row := snap.Rows[v.Row]
 	v.State, v.Role, v.Held = row.State, row.Role, row.Held
+	if inventory { // before the hook too: a worker probes its models before it hooks (up step 7)
+		e.fillRoster(ctx, v, snap)
+	}
 	if row.Session == "" {
 		v.Message, v.Next = v.Row+" is not hooked in to the sprint", "nova-sprint hook --as "+v.Row+" --role worker"
 		return nil
 	}
 	fillInventory(v, snap)
-	if inventory {
-		e.fillRoster(ctx, v, snap)
-	}
 	answer(v, snap)
 	return nil
 }

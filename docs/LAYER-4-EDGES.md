@@ -46,8 +46,10 @@ edge keeps `Send` and `Who`. See Built, "Stitch".)
 `nova-bus who`. The run loop sends as its own name (`sprint`). nova-bus
 refuses a send from a name that is not hooked, so `up` hooks it with
 `nova-bus hook --as sprint --service --exec 'nova-sprint bus-reply'`;
-`bus-reply` reads only the sender and answers once: "replies are verbs: run
-nova-sprint next --as <you>". The engine never parses a bus message; every
+`bus-reply` reads only the sender, the message it answers and the subject
+(verbs.BusAnswer): the sprint's pushes are receipts, so a reply is never
+answered and a message that is not a verb is ignored (one log line each); a
+verb is answered once with where to run it. The engine never parses a bus message; every
 answer is a verb a row runs against the store (CORRECT-USE: "There is ONE
 WAY").
 
@@ -834,3 +836,21 @@ clock), mostly in `edge/worker/probe_test.go`.
   which fault and return to ready; the roster (or policy) needs a bench's
   served tiers. `rebaseAndPRSteps_internal` is 67 lines (over the 60 rule;
   untouched here).
+
+## Built: admission reads and the probe before the hook (stitch w2A, 2026-11-07)
+
+- `git.Client.Branches(url, prefix)`: one `git ls-remote --heads` for the
+  branches under a prefix, by name with their tips; a line that is not
+  `<sha> refs/heads/<prefix>...` is refused, never skipped.
+  `git.Client.ListTree(dir, rev)`: `git ls-tree -r --name-only -z`. Both are
+  the reads admission uses (CARD-CONTRACT.md "Admission").
+- The worker's start order is now bus hook, probe, sprint hook
+  (`busHook_internal`, `ProbeRow`, `sprintHook_internal`): a failed probe
+  leaves the row off the sprint, with no hook to undo, and up's step 7 can
+  read "hooked" as "probed". Test: `TestServeRowProbesBeforeTheSprintHook`.
+- `roster.Worker.Routes`: a machine's `route:<name>` roles, sorted and
+  unique; `Roster.ServesRoutes`. Kin serve no routes. A first-class routes
+  field in nova-config is owed upstream.
+- Still open (recorded above under "Judgement errors (30)"): no
+  `judge-open` verb exists, so a failed probe opens no judgement; with this
+  order the row stays unhooked and its worker log says why.

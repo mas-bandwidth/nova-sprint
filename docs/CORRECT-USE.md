@@ -38,10 +38,10 @@ Each step refuses until the one before it has happened.
 
 | step | verb | refuses until | the refusal names |
 |---|---|---|---|
-| 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); nova-tools at the pin; `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers; then the sprint's health: every stream's repository and base at origin, no open judgement, run serving, something dealt while producers are ready, no landing waiting on a person | every line it checked; each `CHECK RED` line names its fix; exit non-zero while any is red |
+| 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); nova-tools at the pin; `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers; then the sprint's health: every stream's repository and base at origin, no open judgement, run serving, something dealt while producers are ready, no landing waiting on a person; a policy active and answering the ready producers' questions; every waiting or ready producer admitted as `add` would admit it; every working consumer on a row that is hooked, up and on the bus | every line it checked; each `CHECK RED` line names its fix; exit non-zero while any is red |
 | 2 | `up` | `check` passes | `nova-sprint check` |
-| 3 | `stream add` | the store is at the schema `up` makes | `nova-sprint up` |
-| 4 | `add` | the stream exists; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)); every need names a card | `stream add <s>`; the missing sections of the brief by name; the unknown need |
+| 3 | `stream add` | the store is at the schema `up` makes; the repository clones and its base is there; the card branches `sprint/<s>/<card>` can be created (git's ref-name rules, no parent branch at origin); with forge github, this host's gh identity can push, open and merge | `nova-sprint up`; the name to change, the branch to delete, or the gh login to make |
+| 4 | `add` | the stream exists and its base is at origin; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)), DONE-WHEN parsing and no retired mechanic; a row serves its tier and every NEEDS-ROUTE; its PATHS are at the base; its work is not already there; every need names a card | `stream add <s>`; the missing sections of the brief by name; the row to give the tier or route; the path; the unknown need |
 | 5 | rows | a row hooks in (`nova-sprint worker --as <row>` on a bench; `nova-bus hook --as <name>` for a kin) | the recipe for the harness it detects |
 | 6 | deals | `run` is a service (made by `up`) and at least one row is up | `nova-sprint up`; "no row is hooked in" with step 5's recipe |
 | 7 | `take` | the name is hooked in; the card was dealt to this row at this gen | the hook recipe; "card X moved: run `nova-sprint show X`" |
@@ -168,3 +168,27 @@ So:
   `https://github.com/<org>/<repo>.git` (`git.CloneURL`, LAYER-4 "Clone
   addresses"); `stream add` checks its base there, and a hand stream named
   `<org>/<repo>` is told to give the stream a forge.
+- Admission (intent rule 34): what can be found at add is found at add,
+  and each refusal names its one fix. The checks as built are listed in
+  [CARD-CONTRACT.md](CARD-CONTRACT.md) "Admission". `stream add` proves the
+  repository, the base, the card branch names and the forge identity; `add`
+  proves each producer against the roster and the base tree; `hook` proves
+  the store credential (the snapshot read) and that every stream's base is
+  readable from this process (finish and read need it), and asks no forge
+  token of a worker; `up` step 7 says VERIFIED only when every worker bench
+  runs this version and its worker has probed its harness for the policy's
+  model ids and its seat's provider keys (the worker probes before its
+  sprint hook, so a hooked row is a probed row); `restore` prints an `ADMIT`
+  line per restored waiting or ready producer, and refuses a card record
+  whose state this build does not map; `check` re-proves all of it, one line
+  each.
+- `check` also says: no policy active (the tick runs on the built-in
+  default, which once worked a night with nothing dealt); a policy that fails
+  a question the tick asks; and a working card whose row is unhooked, down or
+  off the bus. A job dead on a hooked, present bench is not visible: no
+  per-job heartbeat reaches the store, and the ok line says so.
+- The sprint's bus messages are receipts. Its hook answers nothing that is a
+  reply (a `re` set, or a REPLY subject), so a REPLY is never answered with a
+  REPLY; a subject that is not a verb is logged once on its stderr and gets
+  no reply; a verb is answered once with the command to run instead (the
+  sprint takes no verbs over the bus).

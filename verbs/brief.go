@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
@@ -51,14 +52,19 @@ func parseBrief(id, text string) (card.Add, error) {
 	if p.a.Prose == "" {
 		return p.a, lintAt(id, len(lines), "task prose")
 	}
+	if n, what, fix := retiredMechanic(lines); what != "" {
+		return p.a, &BriefLintError{Brief: id, Line: n, Rule: "names " + what + ", a retired mechanic", Fix: fix}
+	}
 	return p.a, nil
 }
 
-// BriefLintError is the first brief rule broken, without quoting the brief.
+// BriefLintError is the first brief rule broken, without quoting the brief;
+// Fix is the rule's own fix when it has one (else: fix the brief).
 type BriefLintError struct {
 	Brief string
 	Line  int
 	Rule  string
+	Fix   string
 }
 
 func (e *BriefLintError) Error() string {
@@ -74,6 +80,16 @@ func lintAt(id string, line int, field string) error {
 		rule = "must be a recognized metadata field"
 	case "task prose":
 		rule = "must include task prose after a blank line"
+	case "DONE-WHEN":
+		rule = "must contain a valid DONE-WHEN section (a shell command that parses: quotes, parentheses and backquotes closed, no dangling | & ; or \\)"
+	case card.RouteField:
+		rule = "must contain a valid " + card.RouteField + " section (one route name per line, 1 to 128 of a-z A-Z 0-9 . _ -)"
+	case "HEAD":
+		rule = "must contain a valid HEAD section (the full 40-hex sha the work already has)"
+	case "PR":
+		rule = "must contain a valid PR section (the forge's pull request number the work already has)"
+	case "retired WHO", "retired LOCK", "retired JOB":
+		return &BriefLintError{Brief: id, Line: line, Rule: "is a " + field + " line, a retired mechanic", Fix: retiredFix}
 	}
 	return &BriefLintError{Brief: id, Line: line, Rule: rule}
 }
@@ -88,8 +104,10 @@ func (p *briefParts) line(line string) string {
 	switch strings.ToUpper(key) {
 	case "DEPENDS-ON", "DEPENDENCIES", "NEED":
 		return "NEEDS"
-	case "PATHS", "NEEDS", "AFTER", "PRIORITY", "TEST", "DONE-WHEN":
-		if key != strings.ToUpper(key) || value == "" || (p.seen[key] && key != "DONE-WHEN" && key != "TEST") {
+	case "WHO", "LOCK", "JOB":
+		return "retired " + strings.ToUpper(key)
+	case "PATHS", "NEEDS", "AFTER", "PRIORITY", "TEST", "DONE-WHEN", card.RouteField, "HEAD", "PR":
+		if key != strings.ToUpper(key) || value == "" || (p.seen[key] && !repeatable[key]) {
 			return strings.ToUpper(key)
 		}
 		p.seen[key] = true
@@ -121,10 +139,28 @@ func (p *briefParts) field(key, value string) string {
 		}
 		p.a.Priority = value
 	case "DONE-WHEN":
+		if shellProblem(value) != "" {
+			return "DONE-WHEN"
+		}
 		p.a.DoneWhen = append(p.a.DoneWhen, value)
+	case card.RouteField:
+		if !validName(value) {
+			return card.RouteField
+		}
+	case "HEAD":
+		if !fullSHA(value) {
+			return "HEAD"
+		}
+	case "PR":
+		if n, err := strconv.Atoi(value); err != nil || n < 1 {
+			return "PR"
+		}
 	}
 	return ""
 }
+
+// repeatable are the metadata fields a brief may give more than once.
+var repeatable = map[string]bool{"DONE-WHEN": true, "TEST": true, card.RouteField: true}
 
 func validPath(path string) bool {
 	return path != "" && !filepath.IsAbs(path) && !strings.ContainsAny(path, " \t()") && path != ".." && !strings.HasPrefix(filepath.Clean(path), "../")

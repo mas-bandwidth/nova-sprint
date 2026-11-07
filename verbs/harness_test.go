@@ -55,6 +55,7 @@ type world struct {
 	arch   *fakeArchive
 	roster *fakeRoster
 	lander *fakeLander
+	forge  *fakeForge
 }
 
 func sprint() store.Snapshot {
@@ -88,9 +89,9 @@ func worldFrom(t *testing.T, s store.Snapshot) *world {
 	}
 	w := &world{f: f, bus: &fakeBus{present: map[string]bool{"alice": true, "bob": true, "carol": true, "dave": true}},
 		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head, gh + " main": base, gh + " sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true, run: run.ChooserStatus{Held: true, Operation: "run", Host: "studio", PID: 41}},
-		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster(), lander: &fakeLander{merge: strings.Repeat("e", 40)}}
+		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster(), lander: &fakeLander{merge: strings.Repeat("e", 40)}, forge: &fakeForge{}}
 	n := 0
-	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch, Lander: w.lander,
+	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Forge: w.forge, Doctor: w.doctor, Services: w.svc, Archive: w.arch, Lander: w.lander,
 		Now: func() time.Time { return t0 }, Version: "v2.0.0-test", ToolPin: "v2.0.2",
 		Session: func() (string, error) { n++; return "minted-" + string(rune('0'+n)), nil }}
 	return w
@@ -201,8 +202,47 @@ func (l *fakeLander) CreateGroup(_ context.Context, s store.Stream, sha string) 
 }
 
 type fakeOrigin struct {
-	tips map[string]string // "<clone address> branch" -> sha
-	err  error
+	tips     map[string]string // "<clone address> branch" -> sha
+	contains bool
+	tree     []string // every file at any base (nil: the root only)
+	err      error
+}
+
+func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, error) {
+	return o.contains, o.err
+}
+
+func (o *fakeOrigin) Tree(context.Context, string, string) ([]string, error) {
+	return o.tree, o.err
+}
+
+// Branches is the tips at the address under prefix.
+func (o *fakeOrigin) Branches(_ context.Context, url, prefix string) (map[string]string, error) {
+	out := map[string]string{}
+	for k, sha := range o.tips {
+		if name, ok := strings.CutPrefix(k, url+" "+prefix); ok {
+			out[prefix+name] = sha
+		}
+	}
+	return out, o.err
+}
+
+// fakeForge is the host's gh identity: act is CanAct's answer; prs maps a
+// PR number to its head, merged lists the merged ones.
+type fakeForge struct {
+	act    error
+	prs    map[int]string
+	merged map[int]bool
+}
+
+func (f *fakeForge) CanAct(context.Context, string) error { return f.act }
+
+func (f *fakeForge) PR(_ context.Context, _ string, n int) (string, bool, error) {
+	h, ok := f.prs[n]
+	if !ok {
+		return "", false, errors.New("no pull requests found")
+	}
+	return h, f.merged[n], nil
 }
 
 func (o *fakeOrigin) Tip(_ context.Context, repo, branch string) (string, bool, error) {

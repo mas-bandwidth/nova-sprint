@@ -123,10 +123,27 @@ func TestHookRefusals(t *testing.T) {
 		{name: "no sprint credential", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
 			prep: func(_ *testing.T, w *world) { w.e.Store = notSetUpStore{w.f} },
 			want: []string{"SPRINT REFUSED hook: the sprint is not set up: nova-sprint up --as dave"}},
+		{name: "no sprint credential in the process", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
+			prep: func(_ *testing.T, w *world) { w.e.Store = credentiallessStore{w.f} },
+			want: []string{"SPRINT REFUSED hook: this process has no sprint credential: " + CredentialFix}},
+		{name: "a stream finish could not read", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
+			prep: func(_ *testing.T, w *world) { delete(w.origin.tips, "o/r main") },
+			want: []string{"finish and read could not reach stream s from this process: branch main is not at o/r's origin"}},
+		{name: "a stream finish could not reach", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 2,
+			prep: func(_ *testing.T, w *world) { w.origin.err = errBroken },
+			want: []string{"finish and read could not reach stream s from this process: git ls-remote of o/r failed", "then hook again"}},
 		{name: "no sprint credential, next", as: "dave", args: []string{"next"},
 			prep: func(_ *testing.T, w *world) { w.e.Store = notSetUpStore{w.f} },
 			want: []string{"NEXT the sprint is not set up", "next: nova-sprint up --as dave"}},
 	})
+}
+
+// credentiallessStore is the store as a process without
+// NOVA_SPRINT_PG_PASSWORD reads it (cmd/nova-sprint: NoCredential).
+type credentiallessStore struct{ *store.Fake }
+
+func (credentiallessStore) Snapshot(context.Context) (store.Snapshot, error) {
+	return store.Snapshot{}, NoCredential()
 }
 
 type notSetUpStore struct{ *store.Fake }

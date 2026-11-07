@@ -25,7 +25,7 @@ func (t *tick) preempt() {
 		}
 		serving := t.serving(c)
 		if len(serving) == 0 {
-			t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+b+" waits")
+			t.judge("unserved", unservedAbout(c), "no open row serves tier "+c.Tier+routesClause(c)+"; ready "+b+" waits")
 			continue
 		}
 		if !t.noFreeWidth(serving) {

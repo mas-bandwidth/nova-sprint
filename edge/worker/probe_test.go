@@ -29,6 +29,7 @@ type probeSprint struct {
 	judgeErr   error
 	judgements []store.Judgement
 	unhooks    int
+	hooks      int
 }
 
 func (s *probeSprint) OpenJudgement(_ context.Context, j store.Judgement) error {
@@ -38,6 +39,7 @@ func (s *probeSprint) OpenJudgement(_ context.Context, j store.Judgement) error 
 	return s.judgeErr
 }
 func (s *probeSprint) Unhook(context.Context, string) error { s.unhooks++; return nil }
+func (s *probeSprint) Hook(context.Context, string) error   { s.hooks++; return nil }
 
 // listingExec answers `opencode models` with models, and everything else ok.
 func listingExec_internal(models ...string) *edge.FakeExec {
@@ -379,10 +381,12 @@ func TestStagePerStreamRepo(t *testing.T) {
 	}
 }
 
-// The binary's order: hook in, probe (next --json answers only a hooked
-// row), and a failed probe unhooks the row and stops the bus hook, so no
-// bench is left up with no worker behind it.
-func TestServeRowProbesAfterTheHookAndUnhooksOnFailure(t *testing.T) {
+// The binary's order: the bus hook and the self-unhook, the probe, and
+// only then the sprint hook: a failed probe never hooks the row in to the
+// sprint and stops the bus hook, so no bench is up with no worker able to
+// run (and a hooked row is a probed one: up's step 7, admission). A passed
+// probe hooks once.
+func TestServeRowProbesBeforeTheSprintHook(t *testing.T) {
 	t.Parallel()
 	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {}}}}}
 	hook := newFakeWakeHook()
@@ -392,7 +396,20 @@ func TestServeRowProbesAfterTheHookAndUnhooksOnFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no model for tier flash") {
 		t.Fatalf("ServeRow: %v", err)
 	}
-	if sp.unhooks != 2 || hook.stops() != 1 {
-		t.Fatalf("unhooks %d (a stale hook's, then the failed probe's), bus hook stops %d", sp.unhooks, hook.stops())
+	if sp.unhooks != 1 || sp.hooks != 0 || hook.stops() != 1 {
+		t.Fatalf("unhooks %d (a stale hook's only), sprint hooks %d (none: the probe failed), bus hook stops %d", sp.unhooks, sp.hooks, hook.stops())
+	}
+	sp.next.TierModels["flash"] = []string{"deepseek/deepseek-flash"}
+	wall := &fakeWall{runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
+		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
+		return WallRunResult{Elapsed: time.Second}, nil
+	}}
+	r = probeRunner_internal(t, sp, wall, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, allKeys_internal))
+	r.BusHook = func(context.Context, string) (WakeHook, error) { return newFakeWakeHook(), nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the pass after the hook sees a cancelled context: only the order is under test
+	_ = r.ServeRow(ctx, "b1", "opencode", true)
+	if sp.hooks != 1 {
+		t.Fatalf("a passed probe hooks the row once: %d", sp.hooks)
 	}
 }
