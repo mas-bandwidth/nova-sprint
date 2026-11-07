@@ -484,7 +484,7 @@ func TestEnforcedRejectsBrokenLedger(t *testing.T) {
 		{
 			name: "missing_top_level_test",
 			mutate: func(s string) string {
-				return strings.Replace(s, "`test TestLoad/build`", "`test TestDoesNotExistAnywhere/build`", 1)
+				return strings.Replace(s, "`test TestFunctionalLoad/build`", "`test TestDoesNotExistAnywhere/build`", 1)
 			},
 			wantErr: `missing top-level test "TestDoesNotExistAnywhere"`,
 		},
