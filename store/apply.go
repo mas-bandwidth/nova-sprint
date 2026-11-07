@@ -260,6 +260,11 @@ func condOf(e Expect) cond {
 			j, r, err := w.mustJudgement(v.ID)
 			return cmp.Or(r, when(err == nil && j.State != "open", "judgement %s is %s, expected open", v.ID, j.State)), err
 		}}
+	case Running:
+		return cond{func(*checker) {}, func(w *work) (string, error) {
+			st, err := w.tx.stop()
+			return when(st.Stopped, "the sprint is stopped (%s): nova-sprint start", st.Reason), err
+		}}
 	case AtSeq:
 		return cond{func(c *checker) { c.num64("seq", v.Seq) }, func(w *work) (string, error) {
 			seq, err := w.tx.lastSeq()

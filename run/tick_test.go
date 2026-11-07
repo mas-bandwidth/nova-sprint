@@ -291,3 +291,32 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 		t.Fatalf("no envelope to bench: %+v\n%s", b.sent, log.String())
 	}
 }
+
+// stopFirst commits a stop just before the first op it is asked to apply.
+type stopFirst struct {
+	*store.Fake
+	done bool
+}
+
+func (s *stopFirst) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
+	if !s.done && op.Actor != "test" {
+		s.done = true
+		if _, err := s.Fake.Apply(ctx, store.Op{ID: "midstop", Epoch: 1, Actor: "test", Kind: "test", At: t0, Writes: []store.Write{store.SetStopped{Stopped: true, Reason: "mid"}}}); err != nil {
+			return store.Receipt{}, err
+		}
+	}
+	return s.Fake.Apply(ctx, op)
+}
+
+func TestStopBetweenFoldAndApplyRefusesTheOp(t *testing.T) {
+	f, ro := seeded(t)
+	st := &stopFirst{Fake: f}
+	tk, err := NewTicker(context.Background(), st, &healthy{}, &answering{}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tickN(t, tk, ro, 1)
+	if !st.done || tk.Counts().Applied != 0 || tk.Counts().Refused == 0 {
+		t.Fatalf("a tick op was accepted after the stop committed: %+v", tk.Counts())
+	}
+}

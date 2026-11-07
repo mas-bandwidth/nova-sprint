@@ -152,6 +152,10 @@ func (l *loop) tick(ctx context.Context, n int) error {
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
 	cancel()
+	if errors.Is(err, ErrLockLost) { // nothing more under a lost lock: no push, no board (Run.tla PreparePush)
+		l.log.Log(TickMetrics{Number: n, Seq: l.ticker.snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})
+		return err
+	}
 	for _, r := range l.ticker.Push(ctx, l.cfg.Bus, start) {
 		l.log.PushFailed(r)
 	}
