@@ -28,14 +28,14 @@ type SprintSeat struct{ Seat, Machine string }
 
 func (s SprintRoleBootstrap) Run(ctx context.Context, seats []SprintSeat) error {
 	if s.Sink == nil || !filepath.IsAbs(s.Binary) || len(seats) == 0 || s.Secrets.Store == "" || s.Secrets.KeyFile == "" || s.Secrets.Seat == "" {
-		return fmt.Errorf("role setup configuration unavailable")
+		return fmt.Errorf("role setup configuration unavailable: secret sink set %t, binary %q absolute %t, %d seat(s), secrets store, key file and seat set %t/%t/%t", s.Sink != nil, Redact(s.Binary), filepath.IsAbs(s.Binary), len(seats), s.Secrets.Store != "", s.Secrets.KeyFile != "", s.Secrets.Seat != "")
 	}
 	if s.Secrets.Seat != s.Grants.ControlSeat || s.Secrets.Store != s.Grants.Store || s.Secrets.KeyFile != s.Grants.KeyFile {
-		return fmt.Errorf("role setup configuration unavailable")
+		return fmt.Errorf("role setup configuration unavailable: the secrets seat %q, store and key file are not the grants' (control seat %q; store same %t, key file same %t)", s.Secrets.Seat, s.Grants.ControlSeat, s.Secrets.Store == s.Grants.Store, s.Secrets.KeyFile == s.Grants.KeyFile)
 	}
 	for _, seat := range seats {
 		if !s.Grants.valid(seat.Seat, seat.Machine, sprintPasswordName) {
-			return fmt.Errorf("role setup configuration unavailable")
+			return fmt.Errorf("role setup configuration unavailable: seat %q on machine %q is not a valid grant target for %s", seat.Seat, seat.Machine, sprintPasswordName)
 		}
 	}
 	has, err := s.Sink.Has(ctx, sprintPasswordName)

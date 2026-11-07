@@ -39,7 +39,7 @@ func (p PGSetupStore) Ready(ctx context.Context) (bool, error) {
 }
 func (p PGSetupStore) Install(ctx context.Context) error {
 	if !p.configured() || !fleetName.MatchString(p.ControlMachine) || !fleetName.MatchString(p.Secrets.Seat) {
-		return fmt.Errorf("control seat unavailable")
+		return fmt.Errorf("control seat unavailable: store and role setup share one binary, seat, store and key %t; control machine %q and seat %q are fleet names %t/%t", p.configured(), Redact(p.ControlMachine), Redact(p.Secrets.Seat), fleetName.MatchString(p.ControlMachine), fleetName.MatchString(p.Secrets.Seat))
 	}
 	if err := p.Role.Run(ctx, []SprintSeat{{Seat: p.Secrets.Seat, Machine: p.ControlMachine}}); err != nil {
 		return err
@@ -50,13 +50,13 @@ func (p PGSetupStore) Install(ctx context.Context) error {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("store setup did not verify")
+		return fmt.Errorf("store setup did not verify: the store child answered ready false after --internal-store-setup with no error (a bug: take it to the project's own tracker with this line)")
 	}
 	return nil
 }
 func (p PGSetupStore) child(ctx context.Context, mode string) (bool, error) {
 	if !filepath.IsAbs(p.Binary) || p.Secrets.Store == "" || p.Secrets.KeyFile == "" || p.Secrets.Seat == "" {
-		return false, fmt.Errorf("store child configuration unavailable")
+		return false, fmt.Errorf("store child configuration unavailable: binary %q absolute %t; secrets store, key file and seat set %t/%t/%t", Redact(p.Binary), filepath.IsAbs(p.Binary), p.Secrets.Store != "", p.Secrets.KeyFile != "", p.Secrets.Seat != "")
 	}
 	args := []string{"exec", "--only", sprintPasswordName, "--store", p.Secrets.Store, "--key", p.Secrets.KeyFile, "--as", p.Secrets.Seat, "--", p.Binary, mode}
 	cmd := p.Command
