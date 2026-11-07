@@ -155,3 +155,22 @@ func TestRuntimeRunStoresDefaultPolicyOnce(t *testing.T) {
 		t.Fatal(check, err)
 	}
 }
+
+// A run machine or dashboard target that does not fit names why.
+func TestRuntimeTargetRefusalsNameTheirCause(t *testing.T) {
+	if err := runHostMatches("amd-2", "amd-1"); err == nil || !strings.Contains(err.Error(), `run machine "amd-2" is not "amd-1"`) {
+		t.Fatal(err)
+	}
+	if err := runHostMatches("", "amd-1"); err == nil || !strings.Contains(err.Error(), "no run machine is chosen") {
+		t.Fatal(err)
+	}
+	r := RuntimeSetup{Dashboards: map[string]DashboardTarget{"public=edge-1": {Public: true, Service: &FleetService{Name: "sprint-dashboard", Machine: "edge-1", Seat: "edge-1"}}}}
+	for choice, want := range map[string]string{
+		"tailnet":       `dashboard choice "tailnet" has no configured target`,
+		"public=edge-1": "the public dashboard service on edge-1 is not a pull-only nova-sprint dash without secrets",
+	} {
+		if _, err := r.dashboardTarget(choice); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatal(choice, err)
+		}
+	}
+}
