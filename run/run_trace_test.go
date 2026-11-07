@@ -358,7 +358,7 @@ type tracePolicy struct{ r *runTrace }
 func (p tracePolicy) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, _ roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
 	out := policy.Answers{Version: 1, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
 		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 100, RouteRestWindow: 10, RouteRestAfter: 3, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
-		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, BaseRegate: []int{120}}}
+		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyNag: 86400, ReadyTake: 86400, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
 		out.Order[id] = []any{int64(0), id}
 	}
@@ -652,9 +652,10 @@ func traceSeed(t *testing.T) int64 {
 func TestEmitRunTrace(t *testing.T) {
 	// The run model has no nudge, unacked, undealt or idle action: the
 	// fixture keeps the engine's bounds past the walk (restored after; no
-	// unit test of this package runs in parallel).
+	// unit test of this package runs in parallel), and tracePolicy's
+	// ready_nag and ready_take are a day.
 	defer func(e steps.Defaults) { steps.Engine = e }(steps.Engine)
-	steps.Engine.NudgeAfter, steps.Engine.UnackedAfter, steps.Engine.UndealtAfter, steps.Engine.IdleFloor = 1<<30, 1<<30, 1<<30, 0
+	steps.Engine.UndealtAfter, steps.Engine.IdleFloor = 1<<30, 0
 	ctx := context.Background()
 	seed := traceSeed(t)
 	r := &runTrace{t: t, ctx: ctx, rnd: rand.New(rand.NewSource(seed)), base: store.NewFake(), at: time.Unix(1_800_000_000, 0).UTC(), opJob: map[string]int{}}

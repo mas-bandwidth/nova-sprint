@@ -14,8 +14,9 @@ import (
 // cut working, in its row's hand at the deal, and the deal's push tells the
 // row what it holds. The row's acknowledgement is its `take`, which writes
 // AckCursor once; until then the steps nudge the row each tick from
-// NudgeAfter, and open an unacked judgement for the coordinator at
-// UnackedAfter, naming the row and the card.
+// timeouts ready_nag, and at ready_take withdraw the card and deal it to
+// another row with room, or open an unacked judgement for the coordinator
+// naming the row and the card when no other row can take it.
 
 // AckCursor is the cursor a row's take writes on consumer c of epoch: the
 // row's acknowledgement that it holds c. A cursor, not a card column, so
@@ -44,31 +45,84 @@ func (t *tick) dealtAt(c string) time.Time {
 	return t.v.Since
 }
 
-// unacked is the nudges and the unacked judgements (LAYER-3 "In hand"): a
-// working consumer its row has not acknowledged, NudgeAfter after the deal
-// a nudge each tick, UnackedAfter after it one judgement for the
-// coordinator naming the row and the card.
+// unacked is the nudges and the ready timeout (LAYER-3 "In hand"; the
+// human, 2026-11-07: "nag every second until taken", "ready_take withdraws
+// and re-deals"): a working consumer its row has not acknowledged is nudged
+// each tick from timeouts ready_nag after the deal, with the row's count of
+// such cards, the cards it has taken and its width; at ready_take a work
+// card is withdrawn and its producer dealt in the same group, by the
+// engine's ranking, to another row with room, never the slow one, and a
+// card no other row can take (a read, or no room elsewhere) is one
+// judgement for the coordinator naming the row and the card.
 func (t *tick) unacked() []Nudge {
 	var out []Nudge
 	for _, n := range t.rowNames {
-		for _, id := range t.v.Live(n) {
+		live := t.v.Live(n)
+		untaken := 0
+		for _, id := range live {
+			if t.v.Cards[id].State == "working" && !t.v.Acked(id) {
+				untaken++
+			}
+		}
+		for _, id := range live {
 			c := t.v.Cards[id]
 			if c.State != "working" || t.v.Acked(id) {
 				continue
 			}
 			since := t.in.Now.Sub(t.dealtAt(id))
-			if since < seconds(Engine.NudgeAfter) {
+			if since < seconds(t.tmo.ReadyNag) {
+				continue
+			}
+			if since >= seconds(t.tmo.ReadyTake) && t.redeal(n, c, since) {
 				continue
 			}
 			cmd := fmt.Sprintf("nova-sprint take %s@%d --as %s --epoch %d", id, c.Gen, n, t.v.Epoch)
-			out = append(out, Nudge{Row: n, Card: id, Line: fmt.Sprintf("NUDGE card=%s dealt %s ago is in your hand, not acknowledged; run: %s", id, since.Truncate(time.Second), cmd)})
-			if since >= seconds(Engine.UnackedAfter) {
-				t.judge("unacked", id, fmt.Sprintf("row %s has not acknowledged card %s, dealt %s ago and nudged each tick since %ds: is the row's session alive? (nova-sprint release %s@%d --reason <why> deals it again)",
-					n, id, since.Truncate(time.Second), Engine.NudgeAfter, id, c.Gen))
+			out = append(out, Nudge{Row: n, Card: id, Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
+				untaken, len(live)-untaken, t.room(n), id, since.Truncate(time.Second), cmd)})
+			if since >= seconds(t.tmo.ReadyTake) {
+				t.judge("unacked", id, fmt.Sprintf("row %s has not acknowledged card %s, dealt %s ago and nudged each tick since %ds, and no other row with room serves it: is the row's session alive? (nova-sprint release %s@%d --reason <why> deals it again)",
+					n, id, since.Truncate(time.Second), t.tmo.ReadyNag, id, c.Gen))
 			}
 		}
 	}
 	return out
+}
+
+// redeal withdraws work consumer c, unacknowledged on row n past
+// ready_take, and plans its producer's Start to another row with room in
+// the same group; false when no other serving row has room, the producer
+// is claimed this tick, the base is unknown or the stream is held, and
+// the card stays where it is.
+func (t *tick) redeal(n string, c store.Card, since time.Duration) bool {
+	p, base := t.v.Cards[c.Of], t.in.Heads[c.Stream]
+	if c.Kind != "work" || !t.unclaimed(c.ID) || !t.free(c.Of) || base == "" || t.v.Streams[c.Stream].Held {
+		return false
+	}
+	row := t.pickRow(p, nil, t.withRoom(slices.DeleteFunc(t.named(p, t.serving(p)), func(r string) bool { return r == n })))
+	if row == "" {
+		return false
+	}
+	t.tally[row]++
+	t.group("withdraw", c.ID, t.withdraw(c.ID, fmt.Sprintf("in %s's hand %d s, not taken; dealt again", n, int(since/time.Second))),
+		t.releasedStart(p, c.ID, card.Start{Row: row, Branch: branch(p), Base: base, Model: t.model(p, row)}))
+	return true
+}
+
+// releasedStart is producer p's Start planned on the records the withdraw
+// of its consumer c leaves (p ready, c fail); the group's Merge plans it
+// again on the withdraw's writes.
+func (t *tick) releasedStart(p store.Card, c string, e card.Start) move {
+	return move{label: "Start " + p.ID, plan: func() (card.Plan, *card.Refusal) {
+		pc := card.FromStore(p)
+		pc.State = card.Ready
+		cons := t.consOf(p.ID)
+		for i := range cons {
+			if cons[i].ID == c {
+				cons[i].State = card.Fail
+			}
+		}
+		return card.Move(pc, cons, t.rows(), t.streamOf(p.Stream), t.needsOf(p.ID), e)
+	}}
 }
 
 // readyAt is when producer p went ready: the fold's witness, else the view's

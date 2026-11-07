@@ -110,10 +110,13 @@ type Limits struct {
 	Budget, Pack                                                                  int
 }
 
-// Timeouts is timeouts(): seconds of running time, each 1..86400.
+// Timeouts is timeouts(): seconds of running time, each 1..86400. ReadyNag
+// is the seconds after a deal from which a row is nagged each tick for a
+// card in hand it has not taken; ReadyTake the seconds after which such a
+// card is withdrawn and dealt to another row with room.
 type Timeouts struct {
-	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor int
-	BaseRegate                                                              []int
+	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, ReadyNag, ReadyTake int
+	BaseRegate                                                                                   []int
 }
 
 // Default answers nothing: the engine's defaults answer the tick.
@@ -126,15 +129,14 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // number marked there). EscalateAfter and FrontierAfter are the bounces at
 // which a work consumer is dealt one rank up and to the top rank (guesses,
 // LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
-// (LAYER-3 "Retire and fail limits", 3, unmeasured). NudgeAfter and
-// UnackedAfter are the seconds after a deal at which an unacknowledged card
-// is nudged each tick and judged (LAYER-3 "In hand"; the human's numbers,
-// 2026-11-07, owed to policy's timeouts); UndealtAfter is the seconds a
+// (LAYER-3 "Retire and fail limits", 3, unmeasured). The seconds after a
+// deal at which an unacknowledged card is nudged each tick and withdrawn are
+// policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"; the human's
+// numbers, 2026-11-07); UndealtAfter is the seconds a
 // producer may stay ready with a serving row with room before it is judged
 // (more than one one-second tick; LAYER-3 "Undealt").
 type Defaults struct {
 	EscalateAfter, FrontierAfter int
-	NudgeAfter, UnackedAfter     int
 	UndealtAfter                 int
 	Reads                        int
 	FlapLimit                    int
@@ -152,10 +154,10 @@ type Defaults struct {
 // section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
 // guesses, marked there.
 var Engine = Defaults{
-	EscalateAfter: 2, FrontierAfter: 4, NudgeAfter: 10, UnackedAfter: 60, UndealtAfter: 2, Reads: 1, FlapLimit: 3,
+	EscalateAfter: 2, FrontierAfter: 4, UndealtAfter: 2, Reads: 1, FlapLimit: 3,
 	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
 	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
-	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, BaseRegate: []int{120, 300}},
+	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300}},
 	Landing:  LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
 }
 
@@ -333,7 +335,7 @@ func (o *oracle) timeouts() Timeouts {
 
 func timeoutsOK(t Timeouts) bool {
 	day := func(n int) bool { return n >= 1 && n <= 86400 }
-	ok := day(t.RowSilentGone) && day(t.RowSilentWithdraw) && day(t.LandingStall) && day(t.Judgement) && day(t.RouteRestFor) &&
+	ok := day(t.RowSilentGone) && day(t.RowSilentWithdraw) && day(t.LandingStall) && day(t.Judgement) && day(t.RouteRestFor) && day(t.ReadyNag) && day(t.ReadyTake) &&
 		t.RowSilentWithdraw >= t.RowSilentGone && len(t.BaseRegate) > 0
 	for i, n := range t.BaseRegate {
 		ok = ok && day(n) && (i == 0 || n > t.BaseRegate[i-1])

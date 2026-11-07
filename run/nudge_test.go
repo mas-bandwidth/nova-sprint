@@ -70,7 +70,7 @@ func TestPusherNudgesOutsideTheLog(t *testing.T) {
 }
 
 // TestTickNudgesAnUnacknowledgedDeal: the run loop pushes the steps' nudge
-// for a card dealt and not acknowledged past NudgeAfter (clock passed in).
+// for a card dealt and not acknowledged past timeouts ready_nag (clock passed in).
 func TestTickNudgesAnUnacknowledgedDeal(t *testing.T) {
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
@@ -80,13 +80,13 @@ func TestTickNudgesAnUnacknowledgedDeal(t *testing.T) {
 	tickN(t, tk, ro, 3)
 	b := &fakeBus{}
 	tk.Push(context.Background(), b, t0)
-	now := t0.Add(time.Duration(4+steps.Engine.NudgeAfter) * time.Second)
+	now := t0.Add(time.Duration(4+testReadyNag) * time.Second)
 	if _, err := tk.Tick(context.Background(), Observed{Now: now, Present: []string{"alice"}, Roster: ro, Heads: map[string]string{"s": strings.Repeat("a", 40)}}); err != nil {
 		t.Fatal(err)
 	}
 	b.sent = nil
 	tk.Push(context.Background(), b, now)
-	if len(b.sent) != 1 || b.sent[0].to != "alice" || !strings.Contains(b.sent[0].body, "NUDGE card=p1.w1") || !strings.Contains(b.sent[0].body, "nova-sprint take p1.w1@") {
+	if len(b.sent) != 1 || b.sent[0].to != "alice" || !strings.Contains(b.sent[0].body, "NUDGE you have a new ready card.") || !strings.Contains(b.sent[0].body, "card=p1.w1") || !strings.Contains(b.sent[0].body, "nova-sprint take p1.w1@") {
 		t.Fatalf("sent %+v", b.sent)
 	}
 }

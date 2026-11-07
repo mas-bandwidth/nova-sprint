@@ -101,7 +101,7 @@ end of file` (ruled 2026-11-07).
 | `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
 | `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses; `fleet_width_cap` 1..256 (the most consumers a worker machine works, its cores at most this; the roster's cap, drift row 26), 8, a guess |
 | `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000, optional `"ci_wait"`: seconds 1..86400 | f >= b, ci_wait outside 1..86400 | backed up (rung 2) at 2 merging, flowing again at 1; ci_wait 600 (a guess) |
-| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for` | zero, negative, absent: no wait is ever unbounded | below |
+| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (the seconds after a deal from which a row is nagged each tick for a card in hand it has not taken: Glenn 2026-11-07, default 1) and `ready_take` (the seconds after which such a card is withdrawn and dealt to another row with room: default 180) | zero, negative, absent: no wait is ever unbounded | below |
 | `stitch(stream)` | name, cards, landed | `True` or `False` | a non-bool | `True` when the stream has more than one card |
 | `prices()` | none | dict: model name to `{"in": n, "out": n}`, micro-dollars per million tokens, n >= 0 | a negative or non-int price | `{}`: every run unpriced until the coordinator sets them |
 
@@ -190,6 +190,7 @@ def timeouts():
         "base_regate": [120, 300],    # v1 (LANDING step 8)
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
+        "ready_nag": 1,               # Glenn 2026-11-07
     }
 
 def stitch(stream):

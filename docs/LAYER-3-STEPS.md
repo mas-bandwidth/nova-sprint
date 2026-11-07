@@ -160,14 +160,20 @@ high, normal, low; within a rung, policy's order.
   or read command. The deadline runs from the deal.
 - The row's `take` is its acknowledgement: a cursor, `AckCursor(epoch, c)`,
   written once; it moves no card.
-- Nudge: a working consumer its row has not acknowledged, `NudgeAfter`
-  (10 s, the human's number, unmeasured) after the deal and until the row's
-  first report, gets a `NUDGE` line each tick naming the card, how long ago
-  it was dealt and the `take` command. Nudges are `Plan.Nudges`: run pushes
-  them outside the event log, and they move no cursor.
-- `unacked`: at `UnackedAfter` (60 s, the human's number, unmeasured) one
-  judgement for the coordinator naming the row and the card (choices as any
-  judgement's; `release` deals it again).
+- Nudge: a working consumer its row has not acknowledged, timeouts
+  `ready_nag` (1 s, the human's number, 2026-11-07) after the deal and until
+  the row's first report, gets a `NUDGE` line each tick in the human's words
+  ("you have a new ready card. you have x ready cards, you are currently
+  working on y, and your width is z. Please work to width!") naming the
+  card, how long ago it was dealt and the `take` command. Nudges are
+  `Plan.Nudges`: run pushes them outside the event log, and they move no
+  cursor.
+- Ready timeout: at timeouts `ready_take` (180 s, the human's number) a work
+  card still not acknowledged is withdrawn and its producer dealt, in the
+  same group, to another row with room, never the slow one (`redeal`).
+- `unacked`: at `ready_take`, for a card no other row can take (a read, or
+  no room elsewhere), one judgement for the coordinator naming the row and
+  the card (choices as any judgement's; `release` deals it again).
 - `undealt`: a ready producer still ready `UndealtAfter` (2 s: more than one
   one-second tick; a guess) after it went ready, while an open row serving
   its tier has room, opens one judgement naming the row, the card and the
@@ -774,8 +780,9 @@ steps changed with it:
   or down row only the unacknowledged ones. `view.go` keeps `TakenAt` (when
   a consumer went working, the deal), `ReadyAt` and `Acked`. `request.go`
   takes a card hold (`holdMoves`: the `Block` merged with the `Withdraw` of
-  each live consumer). `asker.go`: `NudgeAfter` 10 s and `UnackedAfter` 60 s
-  (the human's numbers, unmeasured), `UndealtAfter` 2 s (a guess).
+  each live consumer). `asker.go`: timeouts `ReadyNag` 1 s and `ReadyTake`
+  180 s (the human's numbers, 2026-11-07, policy's `timeouts()`),
+  `UndealtAfter` 2 s (a guess).
 - Model: `tla/Steps.tla` has no `Take` and no `Ahead`; cuts are working and
   their slots join the taken order; `Eligible` is `Used < Width`. New
   variables `rdy` (ticks each producer has been ready) and `ju` (open

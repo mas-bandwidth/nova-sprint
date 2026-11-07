@@ -77,6 +77,8 @@ func TestRefusals(t *testing.T) {
 		{"timeouts", "{" + strings.Replace(times, `"tick": 10`, `"tick": 0`, 1) + `, "row_silent_withdraw": 1800, "base_regate": [120]}`, "timeouts(): tick 0 is outside 1..86400"},
 		{"timeouts", "{" + strings.Replace(times, `"heavy": 5400, `, "", 1) + `, "row_silent_withdraw": 1800, "base_regate": [120]}`, "timeouts(): consumer: key heavy is missing"},
 		{"timeouts", "{" + strings.Replace(times, `"pro": 2700`, `"pro": 0`, 1) + `, "row_silent_withdraw": 1800, "base_regate": [120]}`, "timeouts(): consumer pro 0 is outside 1..86400"},
+		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "ready_nag": 0}`, "timeouts(): ready_nag 0 is outside 1..86400"},
+		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": [120], "ready_take": 86401}`, "timeouts(): ready_take 86401 is outside 1..86400"},
 		{"limits", steer("fleet_width_cap", "0"), "limits(): fleet_width_cap 0 is outside 1..256"},
 		{"landing", `{"backed_up": 4, "flowing": 4}`, "landing(s1): flowing 4 is outside 0..3 (below backed_up)"},
 		{"landing", `{"backed_up": 1001, "flowing": 1}`, "landing(s1): backed_up 1001 is outside 1..1000"},

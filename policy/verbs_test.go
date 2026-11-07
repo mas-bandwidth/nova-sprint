@@ -211,12 +211,14 @@ func testCheck(t *testing.T, w *world) {
 	assert.Equal(t, []string{"reads(p3): 1 -> 2", "reads(p5): 1 -> 2"}, rep.Changes)
 	assert.Equal(t, 0, rep.Code())
 	warn := []string{
-		`POLICY WARNING prices(): deepseek/deepseek-flash-4.1 (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-flash-4.1": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): deepseek/deepseek-flash (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-flash": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): deepseek/deepseek-v4-pro (tier frontier) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-v4-pro": {"in": <micro-USD per million>, "out": <...>}`,
 		`POLICY WARNING prices(): inception/mercury-3 (tier pro) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-3": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): inception/mercury-2.5 (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-2.5": {"in": <micro-USD per million>, "out": <...>}`,
 	}
 	assert.Equal(t, warn, rep.Warnings, "the default prices nothing: every API model is a defect found at creation")
-	assert.Equal(t, "policy check two.star: 2 answer(s) change, 0 refused, 2 warning(s)\n  reads(p3): 1 -> 2\n  reads(p5): 1 -> 2\n"+strings.Join(warn, "\n")+"\n", rep.Text())
-	priced := strings.Replace(defaultBody, "    return {}\n\ndef catalog", "    return {\"deepseek/deepseek-flash-4.1\": {\"in\": 270000, \"out\": 1100000}, \"mercury-3\": {\"in\": 250000, \"out\": 1000000}}\n\ndef catalog", 1)
+	assert.Equal(t, "policy check two.star: 2 answer(s) change, 0 refused, 4 warning(s)\n  reads(p3): 1 -> 2\n  reads(p5): 1 -> 2\n"+strings.Join(warn, "\n")+"\n", rep.Text())
+	priced := strings.Replace(defaultBody, "    return {}\n\ndef catalog", "    return {\"deepseek/deepseek-flash\": {\"in\": 270000, \"out\": 1100000}, \"deepseek-v4-pro\": {\"in\": 270000, \"out\": 1100000}, \"mercury-3\": {\"in\": 250000, \"out\": 1000000}, \"mercury-2.5\": {\"in\": 250000, \"out\": 1000000}}\n\ndef catalog", 1)
 	rep, err = Check(w.ctx(), w.st, w.ro, e, w.file("priced.star", priced))
 	require.NoError(t, err)
 	assert.Empty(t, rep.Warnings, "a price under provider/model or the model alone is found")
