@@ -145,12 +145,12 @@ func (tr *policyTrace) drift(i int) {
 // open and, when advance, the card's next state; a deal needs an answer.
 // The breaker drops the previous active from the versions (one line).
 func (tr *policyTrace) doTick(advance, broken bool) {
-	vs, err := LoadVersions(tr.w.ctx(), tr.w.st)
+	snap := tr.w.snap()
+	vs, err := LoadVersions(tr.w.ctx(), tr.w.st, snap)
 	require.NoError(tr.w.t, err)
 	if broken {
 		vs.Prev = nil
 	}
-	snap := tr.w.snap()
 	a, fs := tr.e.Answer(vs, snap, tr.w.ro, FullQuestions(snap, nil))
 	var writes []store.Write
 	for _, j := range Judgements(snap, tr.w.ro, fs) {

@@ -48,7 +48,7 @@ func TraceState(ctx context.Context, st store.Store, ro roster.Roster, e *Engine
 	if err != nil {
 		return ModelState{}, err
 	}
-	vs, err := LoadVersions(ctx, st)
+	vs, err := LoadVersions(ctx, st, snap)
 	if err != nil || vs.Active == nil {
 		return ModelState{}, upFirst("trace", err)
 	}

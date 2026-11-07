@@ -292,7 +292,9 @@ func TestBreakLoadVersionsWalksPastSnapshotSeqCollapsingPrevIntoActive(t *testin
 		},
 	}
 
-	vs, err := LoadVersions(w.ctx(), st)
+	snap, err := st.Snapshot(w.ctx()) // round 5: LoadVersions reads at the snapshot it is given
+	require.NoError(t, err)
+	vs, err := LoadVersions(w.ctx(), st, snap)
 	require.NoError(t, err)
 	require.NotNil(t, vs.Active)
 	require.NotNil(t, vs.Prev)

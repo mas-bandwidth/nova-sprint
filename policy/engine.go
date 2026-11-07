@@ -198,20 +198,42 @@ func compile(version int, label, body string, th *starlark.Thread) (*program, *F
 func lastLine(body string) int { return strings.Count(strings.TrimRight(body, "\n"), "\n") + 1 }
 
 // topLines are the lines where the file's top level binds each name, so a
-// refusal of a name that is not a function names its line too.
+// refusal of a name that is not a function names its line too: a def, and
+// every name an assignment binds, plain, augmented, or in a tuple or list
+// (cold read 3's probe). The first binding's line is kept.
 func topLines(f *syntax.File) map[string]int {
 	out := map[string]int{}
 	for _, s := range f.Stmts {
 		switch x := s.(type) {
 		case *syntax.DefStmt:
-			out[x.Name.Name] = int(x.Name.NamePos.Line)
+			bindsAt(out, x.Name)
 		case *syntax.AssignStmt:
-			if id, ok := x.LHS.(*syntax.Ident); ok {
-				out[id.Name] = int(id.NamePos.Line)
-			}
+			bindsAt(out, x.LHS)
+		case *syntax.ForStmt:
+			bindsAt(out, x.Vars)
 		}
 	}
 	return out
+}
+
+// bindsAt records the line of each name target e binds.
+func bindsAt(out map[string]int, e syntax.Expr) {
+	switch x := e.(type) {
+	case *syntax.Ident:
+		if _, ok := out[x.Name]; !ok {
+			out[x.Name] = int(x.NamePos.Line)
+		}
+	case *syntax.ParenExpr:
+		bindsAt(out, x.X)
+	case *syntax.TupleExpr:
+		for _, y := range x.List {
+			bindsAt(out, y)
+		}
+	case *syntax.ListExpr:
+		for _, y := range x.List {
+			bindsAt(out, y)
+		}
+	}
 }
 
 // bind checks one top-level name, bound at line: a helper, or a question
@@ -227,7 +249,7 @@ func (p *program) bind(name string, v starlark.Value, line int, fail func(int, s
 		return fail(line, "unknown top-level name %s: a question is one of %s, a helper starts with _", name, strings.Join(questionNames, " "))
 	case !isFn:
 		return fail(line, "%s is a %s, not a function: define def %s(%s)", name, v.Type(), name, params[name])
-	case fn.NumParams() != n || fn.HasVarargs() || fn.HasKwargs():
+	case fn.NumParams() != n || fn.NumKwonlyParams() > 0 || fn.HasVarargs() || fn.HasKwargs():
 		return fail(line, "%s takes %d parameter(s): def %s(%s)", name, n, name, params[name])
 	}
 	p.fns[name] = fn
