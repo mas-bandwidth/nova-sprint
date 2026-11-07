@@ -359,7 +359,7 @@ func TestCold2Walk(t *testing.T) {
 	seen := map[string]int{}
 	var mu sync.Mutex
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= walkSeeds(120); seed++ {
+		for seed := int64(1); seed <= walkSeeds(120, 24); seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel()
 				got := cold2Walk(t, seed, 900)

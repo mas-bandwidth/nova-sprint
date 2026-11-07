@@ -320,10 +320,10 @@ func TestBreakSweepTriples(t *testing.T) {
 	}
 	// 12000 samples per setup, in 8 shards of 1500 run in parallel, each
 	// shard its own seed (7..14): the same coverage in an eighth of the time.
-	// -short (the per-commit unit job) samples a fifth; the nightly all.
+	// -short (the per-commit unit job) samples a tenth; the nightly all.
 	samples := 1500
 	if testing.Short() {
-		samples = 300
+		samples = 150
 	}
 	for n, f := range setups {
 		for shard := int64(0); shard < 8; shard++ {

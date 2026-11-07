@@ -415,7 +415,7 @@ const cold4CheckSteps, cold4CheckOneIn = 1000, 1
 
 func TestColdread4Walk(t *testing.T) {
 	t.Parallel()
-	seeds, steps := walkSeeds(60), 1000
+	seeds, steps := walkSeeds(60, 6), 1000
 	var mu sync.Mutex
 	accepted, kinds := map[string]int{}, map[string]int{}
 	broken, notes := map[string]*cold3Break{}, map[string]*cold3Break{}

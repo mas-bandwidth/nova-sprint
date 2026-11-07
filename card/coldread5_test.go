@@ -1045,9 +1045,9 @@ func cold3Keys2(m map[string]int) []string {
 // defects above.
 func TestColdread5Walk(t *testing.T) {
 	t.Parallel()
-	seeds, steps := walkSeeds(cold5Seeds), cold5Steps
-	if testing.Short() { // half the seeds, a third of the steps: a seed's walk is the critical path, and these still land every kind
-		seeds, steps = cold5Seeds/2, cold5Steps/3
+	seeds, steps := int64(cold5Seeds), cold5Steps
+	if testing.Short() { // a quarter of the seeds, a third of the steps: these still land every kind
+		seeds, steps = cold5Seeds/4, cold5Steps/3
 	}
 	runs := make([]*cold5Run, seeds)
 	t.Run("seeds", func(t *testing.T) {
