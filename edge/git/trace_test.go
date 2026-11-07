@@ -320,11 +320,11 @@ func (w *landWalk_internal) done_internal() bool {
 // sent to fix, no request in flight) and returns the trace log module.
 func walkLandEdge_internal(t *testing.T, seed int64) (string, []string) {
 	w := newLandWalk_internal(t, seed)
-	records := []string{w.record_internal(walkMove_internal{act: "Init"})}
+	records := []string{w.record_internal(1, walkMove_internal{act: "Init"})}
 	acts := []string{"Init"}
 	for i := 0; i < 400 && !w.done_internal(); i++ {
 		m := w.step_internal()
-		records = append(records, w.record_internal(m))
+		records = append(records, w.record_internal(len(records)+1, m))
 		acts = append(acts, m.act+":"+m.arg+":"+m.choice)
 	}
 	if !w.done_internal() {
@@ -362,8 +362,8 @@ func (w *landWalk_internal) tree_internal(sha string) string {
 	return fmt.Sprintf("[cards |-> %s, ext |-> %d]", tlaSet_internal(cards), ext)
 }
 
-// record_internal is one TraceLog record: the move and the state after it.
-func (w *landWalk_internal) record_internal(m walkMove_internal) string {
+// record_internal is TraceLog record n: the move and the state after it.
+func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
 	base := make([]string, len(w.base))
 	for i, e := range w.base {
 		base[i] = fmt.Sprintf("[tree |-> %s, how |-> %q, gated |-> %s]", w.tree_internal(e.sha), e.how, w.tree_internal(e.gated))
@@ -377,8 +377,8 @@ func (w *landWalk_internal) record_internal(m walkMove_internal) string {
 		r := w.req[s]
 		req[i] = fmt.Sprintf("%s |-> [cards |-> %s, st |-> %q, out |-> %q, rung |-> %d]", s, tlaSet_internal(r.cards), r.st, r.out, r.rung)
 	}
-	return fmt.Sprintf("  [action |-> %q, arg |-> %q, choice |-> %q, base |-> << %s >>, cs |-> [%s], req |-> [%s], js |-> %s, held |-> %s, ticked |-> %s, passes |-> %d]",
-		m.act, m.arg, m.choice, strings.Join(base, ", "), strings.Join(cs, ", "), strings.Join(req, ", "),
+	return fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, choice |-> %q, base |-> << %s >>, cs |-> [%s], req |-> [%s], js |-> %s, held |-> %s, ticked |-> %s, passes |-> %d]",
+		n, m.act, m.arg, m.choice, strings.Join(base, ", "), strings.Join(cs, ", "), strings.Join(req, ", "),
 		tlaKeys_internal(w.js), tlaKeys_internal(w.held), strings.ToUpper(fmt.Sprint(w.ticked)), w.passes)
 }
 
