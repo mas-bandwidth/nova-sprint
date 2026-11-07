@@ -157,7 +157,8 @@ on one card holds its whole stream, so the stream's other merging cards
 are left with neither a request nor a judgement). Reach checks show rung 2, a
 judgement, a hand landing and a red gate. `tla/Steps.tla` carries the land
 judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
-`MergingCovered` and the reversed witness `StepsLandJudgementExpires`. The
+`MergingCovered` (judgements as the tick's snapshot saw them) and the
+reversed witness `StepsLandJudgementHoldsAll`. The
 code is bound to `LandEdge.tla` by `edge/git/trace_test.go`
 (`TestLandEdgeTraceRefinementWalk`: `LandPass` on the git fake and a
 truthful forge, with the tick, outside commits and the answers played by

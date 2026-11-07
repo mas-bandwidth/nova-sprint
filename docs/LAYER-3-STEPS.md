@@ -596,8 +596,12 @@ by construction none). Policy's default `backed_up` is 2 (it was 4), so
 rung 2 is "more than one head waiting". `Steps.tla`: `LandJ`, `Judged`,
 `LandJudged` (a result's judged items), `Answer(p, choice)` in any phase,
 the check `MergingCovered`, the reach `StepsNeverLandJudged` and the
-reversed witness `StepsLandJudgementExpires` (a land judgement given a
-deadline); `ItemGroup` moves only on `landed`, the red result's `ApplyG`
+reversed witness `StepsLandJudgementHoldsAll` (one open land judgement
+holds every stream); `jsnap`, the open judgements as the tick's snapshot
+read them, which the tick's picks and its checks use (the code plans on its
+view, so an answer between the snapshot and the tick is seen by the next
+tick; the first bench trace check refused three walks at that race until
+the model carried it); `ItemGroup` moves only on `landed`, the red result's `ApplyG`
 went, and `EdgeAfterAccepted` is weakened to state the stale-request race
 (LANDING.md, "Known gaps"). The trace walk answers open land judgements
 (`answerOne`) and `StepsTrace.tla` maps `Answer`. Tests:

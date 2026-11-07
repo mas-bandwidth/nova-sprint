@@ -173,13 +173,13 @@ WITNESSES = [
      "not (v1's frozen LAND-AFTER).",
      [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
        "LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st = \"landed\"}   \\* FAULT", 1)]),
-    ("StepsLandJudgementExpires", "MergingCovered", "land",
-     "A land judgement expires one tick after it opens, as the timed\n"
-     "kinds do: the tick that drops it asks no landing, so its producer\n"
-     "sits merging with no request and no judgement.",
-     [("  {j \\in J : \\/ j.kind = \"unserved\"",
-       "  {j \\in J : \\/ j.kind = \"land\"   \\* FAULT: land judgements expire\n"
-       "             \\/ j.kind = \"unserved\"", 1)]),
+    ("StepsLandJudgementHoldsAll", "MergingCovered", "land",
+     "An open land judgement holds every stream: while any card is under\n"
+     "one, no landing is asked for any other, so a merging producer of\n"
+     "another stream sits with no request and no judgement.",
+     [("LandElig(V, s, cl, J) == {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}",
+       "LandElig(V, s, cl, J) == IF \\E x \\in Prods : Judged(J, x) THEN {}   \\* FAULT: one judgement holds all\n"
+       "  ELSE {p \\in Merging(V, s, cl) : ~Judged(J, p) /\\ \\A t \\in After[p] : V.ps[t].st # \"merging\"}", 1)]),
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",
