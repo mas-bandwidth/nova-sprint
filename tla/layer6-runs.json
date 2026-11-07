@@ -1,0 +1,117 @@
+[
+  {
+    "name": "Run",
+    "module": "Run.tla",
+    "cfg": "Run.cfg",
+    "expect": "pass"
+  },
+  {
+    "name": "RunFailover",
+    "module": "Run.tla",
+    "cfg": "RunFailover.cfg",
+    "expect": "pass"
+  },
+  {
+    "name": "RunReports",
+    "module": "Run.tla",
+    "cfg": "RunReports.cfg",
+    "expect": "pass"
+  },
+  {
+    "name": "Setup",
+    "module": "Setup.tla",
+    "cfg": "Setup.cfg",
+    "expect": "pass"
+  },
+  {
+    "name": "RunLockCheckRace",
+    "module": "witnesses/layer6/RunLockCheckRace.tla",
+    "cfg": "witnesses/layer6/RunLockCheckRace.cfg",
+    "expect": "invariant",
+    "target": "CommitUnderCurrentLock"
+  },
+  {
+    "name": "RunIgnoresObservedLoss",
+    "module": "witnesses/layer6/RunIgnoresObservedLoss.tla",
+    "cfg": "witnesses/layer6/RunIgnoresObservedLoss.cfg",
+    "expect": "invariant",
+    "target": "NoApplyAfterObservedLoss"
+  },
+  {
+    "name": "RunFenceDropped",
+    "module": "witnesses/layer6/RunFenceDropped.tla",
+    "cfg": "witnesses/layer6/RunFenceDropped.cfg",
+    "expect": "invariant",
+    "target": "NoStaleMove"
+  },
+  {
+    "name": "RunCursorBeforeSend",
+    "module": "witnesses/layer6/RunCursorBeforeSend.tla",
+    "cfg": "witnesses/layer6/RunCursorBeforeSend.cfg",
+    "expect": "invariant",
+    "target": "CursorTrailsSent"
+  },
+  {
+    "name": "RunBudgetIgnored",
+    "module": "witnesses/layer6/RunBudgetIgnored.tla",
+    "cfg": "witnesses/layer6/RunBudgetIgnored.cfg",
+    "expect": "invariant",
+    "target": "BudgetKept"
+  },
+  {
+    "name": "RunCarryDropped",
+    "module": "witnesses/layer6/RunCarryDropped.tla",
+    "cfg": "witnesses/layer6/RunCarryDropped.cfg",
+    "expect": "temporal",
+    "target": "AllWork"
+  },
+  {
+    "name": "RunRefusedLost",
+    "module": "witnesses/layer6/RunRefusedLost.tla",
+    "cfg": "witnesses/layer6/RunRefusedLost.cfg",
+    "expect": "temporal",
+    "target": "AllWork"
+  },
+  {
+    "name": "RunPushBeforeCommit",
+    "module": "witnesses/layer6/RunPushBeforeCommit.tla",
+    "cfg": "witnesses/layer6/RunPushBeforeCommit.cfg",
+    "expect": "invariant",
+    "target": "PushAfterCommit"
+  },
+  {
+    "name": "RunEdgeBeforeCommit",
+    "module": "witnesses/layer6/RunEdgeBeforeCommit.tla",
+    "cfg": "witnesses/layer6/RunEdgeBeforeCommit.cfg",
+    "expect": "invariant",
+    "target": "EdgesAfterCommit"
+  },
+  {
+    "name": "SetupUnverified",
+    "module": "witnesses/layer6/SetupUnverified.tla",
+    "cfg": "witnesses/layer6/SetupUnverified.cfg",
+    "expect": "invariant",
+    "target": "OnlyVerified"
+  },
+  {
+    "name": "SetupAnswersLost",
+    "module": "witnesses/layer6/SetupAnswersLost.tla",
+    "cfg": "witnesses/layer6/SetupAnswersLost.cfg",
+    "expect": "invariant",
+    "target": "AskedOnce"
+  },
+  {
+    "name": "SetupResumeSkips",
+    "module": "witnesses/layer6/SetupResumeSkips.tla",
+    "cfg": "witnesses/layer6/SetupResumeSkips.cfg",
+    "expect": "invariant",
+    "target": "RestartFromOne"
+  },
+  {
+    "name": "SetupKeyInArgv",
+    "module": "witnesses/layer6/SetupKeyInArgv.tla",
+    "cfg": "witnesses/layer6/SetupKeyInArgv.cfg",
+    "expect": "invariant",
+    "target": "KeyNeverPrinted"
+  }
+]

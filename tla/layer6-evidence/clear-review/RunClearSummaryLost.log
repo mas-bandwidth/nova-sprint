@@ -1,0 +1,155 @@
+TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)
+Running breadth-first search Model-Checking with fp 21 and seed -3186450966376159526 with 2 workers on 64 cores with 981MB heap and 64MB offheap memory [pid: 88798] (Linux 7.0.0-43-generic amd64, Eclipse Adoptium 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/glenn/jobs/stella-v2-l6-clear-model-20261106/tla/witnesses/layer6/RunClearSummaryLost.tla
+Parsing file /home/glenn/jobs/stella-v2-l6-clear-model-20261106/tla/layer6-evidence/clear-witness-review/RunClearSummaryLost-tmp/tlc-954425711466116198/Naturals.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /home/glenn/jobs/stella-v2-l6-clear-model-20261106/tla/layer6-evidence/clear-witness-review/RunClearSummaryLost-tmp/tlc-954425711466116198/Sequences.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Sequences.tla)
+Parsing file /home/glenn/jobs/stella-v2-l6-clear-model-20261106/tla/layer6-evidence/clear-witness-review/RunClearSummaryLost-tmp/tlc-954425711466116198/FiniteSets.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module RunClearSummaryLost
+Linting of module RunClearSummaryLost
+Starting... (2026-11-07 00:01:52)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-07 00:01:52.
+Error: Invariant CursorHasCoverage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ through = 0
+/\ snapshotEpoch = 1
+/\ cancelled = {}
+/\ epoch = 1
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 0
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "idle"
+/\ acknowledged = {}
+/\ cursor = 0
+/\ ambiguousCount = FALSE
+/\ log = <<>>
+/\ made = 0
+
+State 2: <AppendNotice line 46, col 3 to line 50, col 74 of module RunClearSummaryLost>
+/\ through = 0
+/\ snapshotEpoch = 1
+/\ cancelled = {}
+/\ epoch = 1
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 0
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "idle"
+/\ acknowledged = {}
+/\ cursor = 0
+/\ ambiguousCount = FALSE
+/\ log = <<[epoch |-> 1, kind |-> "notice"]>>
+/\ made = 1
+
+State 3: <Clear line 52, col 3 to line 56, col 74 of module RunClearSummaryLost>
+/\ through = 0
+/\ snapshotEpoch = 1
+/\ cancelled = {}
+/\ epoch = 2
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 0
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "idle"
+/\ acknowledged = {}
+/\ cursor = 0
+/\ ambiguousCount = FALSE
+/\ log = <<[epoch |-> 1, kind |-> "notice"], [epoch |-> 1, kind |-> "clear"]>>
+/\ made = 1
+
+State 4: <Prepare line 58, col 3 to line 61, col 83 of module RunClearSummaryLost>
+/\ through = 2
+/\ snapshotEpoch = 2
+/\ cancelled = {}
+/\ epoch = 2
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 0
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "scan"
+/\ acknowledged = {}
+/\ cursor = 0
+/\ ambiguousCount = FALSE
+/\ log = <<[epoch |-> 1, kind |-> "notice"], [epoch |-> 1, kind |-> "clear"]>>
+/\ made = 1
+
+State 5: <Scan line 63, col 3 to line 70, col 55 of module RunClearSummaryLost>
+/\ through = 2
+/\ snapshotEpoch = 2
+/\ cancelled = {1}
+/\ epoch = 2
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 1
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "scan"
+/\ acknowledged = {}
+/\ cursor = 0
+/\ ambiguousCount = FALSE
+/\ log = <<[epoch |-> 1, kind |-> "notice"], [epoch |-> 1, kind |-> "clear"]>>
+/\ made = 1
+
+State 6: <Scan line 63, col 3 to line 70, col 55 of module RunClearSummaryLost>
+/\ through = 2
+/\ snapshotEpoch = 2
+/\ cancelled = {1}
+/\ epoch = 2
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 2
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "scan"
+/\ acknowledged = {}
+/\ cursor = 0
+/\ ambiguousCount = FALSE
+/\ log = <<[epoch |-> 1, kind |-> "notice"], [epoch |-> 1, kind |-> "clear"]>>
+/\ made = 1
+
+State 7: <FinishScan line 72, col 3 to line 75, col 74 of module RunClearSummaryLost>
+/\ through = 2
+/\ snapshotEpoch = 2
+/\ cancelled = {1}
+/\ epoch = 2
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 2
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "send"
+/\ acknowledged = {}
+/\ cursor = 0
+/\ ambiguousCount = FALSE
+/\ log = <<[epoch |-> 1, kind |-> "notice"], [epoch |-> 1, kind |-> "clear"]>>
+/\ made = 1
+
+State 8: <SaveCursor line 85, col 3 to line 89, col 66 of module RunClearSummaryLost>
+/\ through = 2
+/\ snapshotEpoch = 2
+/\ cancelled = {1}
+/\ epoch = 2
+/\ needed = {}
+/\ oldSent = FALSE
+/\ scan = 2
+/\ crashes = 0
+/\ sent = {}
+/\ phase = "idle"
+/\ acknowledged = {}
+/\ cursor = 2
+/\ ambiguousCount = FALSE
+/\ log = <<[epoch |-> 1, kind |-> "notice"], [epoch |-> 1, kind |-> "clear"]>>
+/\ made = 1
+
+351 states generated, 228 distinct states found, 55 states left on queue.
+The depth of the complete state graph search is 9.
+Finished in 00s at (2026-11-07 00:01:52)
