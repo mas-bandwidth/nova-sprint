@@ -1002,8 +1002,16 @@ ReadyDealtWhenRoom was violated" and no invariant violated.
 
 ## Results
 
-TLC 1.8.0 on vision (Linux), 2026-11-07 UTC; passing runs with 4 workers
-(`ci-tlc.sh` uses 8 for pre and deal), witnesses and reach checks with 1.
+The CI jar on hetzner2, 2026-11-07, after the two changes layer 3's build
+made to the model (the `victim` oracle dropped; rows fenced by generation,
+`rg`): `ci-tlc.sh` ran every Steps row: 5 passing cfgs pass (StepsPre,
+StepsPrePack1 and StepsDeal rerun alone with 8 workers after the OOM killer
+took them in the full parallel run of 168 JVMs; StepsLand and StepsBurst in
+the run), all 21 witnesses violated as required, all 19 reach checks
+violated, all 25 trace fixtures as their cfgs expect (13 of the model's own,
+12 of the walk's). The table below is the model child's run before those
+two changes (vision, 2026-11-07 UTC, 4 workers for the passing runs, 1 for
+witnesses and reach checks); state counts move a little with `rg`.
 
 | Run | Result | Generated / distinct | Depth | Time |
 |---|---|---|---|---|
