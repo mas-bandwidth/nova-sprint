@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -17,29 +18,30 @@ import (
 // a failure. With none active the tick runs on the built-in default, which
 // is how a fleet once worked a night on defaults with nothing dealt
 // (directive 75): red, naming up, which stores and activates the default.
-func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Snapshot) {
+// It returns benchModelCheck's refusal, also a red line, for up to name.
+func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Snapshot) *Fail {
 	if snap.Policy == 0 {
 		r.red(refuse("no policy is active: the tick runs on the built-in default", "nova-sprint up --as <coordinator> (its step 4 stores and activates the default), or nova-sprint policy activate <version> --reason \"<why>\""))
-		return
+		return nil
 	}
 	if e.Answers == nil || e.Store == nil {
 		r.red(broken("the policy engine is not configured", "take it to the project's own tracker with this line"))
-		return
+		return nil
 	}
 	pv, err := e.Store.Policy(ctx, snap.Policy)
 	if err != nil {
 		r.red(RefusalOr(err, broken(fmt.Sprintf("policy v%d cannot be read (%s)", snap.Policy, errText(err)), "nova-sprint policy show --list")))
-		return
+		return nil
 	}
 	lim, _, err := e.rules(ctx, snap)
 	if err != nil {
 		r.red(err)
-		return
+		return nil
 	}
 	ro, err := e.roster(ctx, lim, snap)
 	if err != nil {
 		r.red(err)
-		return
+		return nil
 	}
 	q := policy.Questions{}
 	for _, c := range snap.Cards {
@@ -53,9 +55,35 @@ func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Sna
 	if len(failures) > 0 {
 		r.red(refuse(fmt.Sprintf("policy v%d fails %d question(s); the first: %s", snap.Policy, len(failures), clipN(failures[0].Error(), 200)),
 			fmt.Sprintf("nova-sprint policy check v%d, then fix the file and nova-sprint policy set <file> --reason \"<why>\"", snap.Policy)))
-		return
+		return nil
 	}
 	r.ok("policy v%d active (answered by v%d; %d ready producers asked)", snap.Policy, a.Version, len(q.Order))
+	f := benchModelCheck(snap.Policy, a.Catalog, ro)
+	if f != nil {
+		r.red(f)
+	}
+	return f
+}
+
+// benchModelCheck is red when a bench row serves a tier the policy's
+// catalog names no bench model for: the deal names a model, so no card of
+// that tier is ever dealt to a bench (a policy stored before the catalog
+// had a bench). nil when every served tier has one.
+func benchModelCheck(version int, cat policy.Catalog, ro roster.Roster) *Fail {
+	var missing []string
+	for _, w := range ro.Workers {
+		for _, t := range w.Tiers {
+			if cat.BenchModel(t) == "" && !slices.Contains(missing, t) {
+				missing = append(missing, t)
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	slices.Sort(missing)
+	return refuse(fmt.Sprintf("policy v%d names no bench model for tier %s, so no bench is dealt a card of it", version, strings.Join(missing, ", ")),
+		"give the policy's catalog() a \"bench\": {\"<tier>\": \"<provider/model>\"} entry for each, then nova-sprint policy set <file> --reason \"<why>\"")
 }
 
 // checkCards re-proves each producer not yet dealt (waiting or ready)

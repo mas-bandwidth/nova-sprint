@@ -102,9 +102,25 @@ func TestCheckRedLines(t *testing.T) {
 			want: []string{"CHECK RED nova-tools v2.0.1 is below the pin v2.0.2: nova-fleet install --tag v2.0.2 <machine>", "CHECK landings: none waiting"}},
 		{name: "tools above the pin warn", args: []string{"check"}, exit: 0, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.tools = "v2.0.3" }),
 			want: []string{"CHECK WARN nova-tools v2.0.3 is above the pin v2.0.2 (this build was checked against v2.0.2): install the nova-sprint release that pins v2.0.3, or nova-fleet install --tag v2.0.2 <machine>"}},
+		{name: "no commit identity", args: []string{"check"}, exit: 1, prep: healthy, snap: func(s *store.Snapshot) { s.Identity = store.Identity{} },
+			want: []string{"CHECK RED the sprint has no commit identity: no worker can hook and nothing can be committed: nova-sprint identity --name \"<git user.name>\" --email \"<git user.email>\" --reason \"<why>\""}},
+		{name: "a bench tier with no bench model", args: []string{"check"}, exit: 1, prep: then(healthy, func(_ *testing.T, w *world) { w.e.Answers = noBench{"heavy", "frontier"} }),
+			want: []string{"CHECK RED policy v1 names no bench model for tier frontier, heavy, so no bench is dealt a card of it: give the policy's catalog() a \"bench\": {\"<tier>\": \"<provider/model>\"} entry for each, then nova-sprint policy set <file> --reason \"<why>\""}},
 		{name: "the store not set up skips the sprint", args: []string{"check"}, exit: 1, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.schema = false }),
 			want: []string{"CHECK RED the store is not at this build's schema: nova-sprint up --as <coordinator>", "CHECK bus answering"}},
 	})
+}
+
+// noBench answers as fakeAnswers with no bench model for its tiers (a
+// policy stored before the catalog had a bench).
+type noBench []string
+
+func (n noBench) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
+	a, fs := fakeAnswers{}.AnswerContext(ctx, vs, snap, ro, q)
+	for _, t := range n {
+		delete(a.Catalog.Bench, t)
+	}
+	return a, fs
 }
 
 // TestCheckWhyNothingDeals is the width line red with each cause the deal

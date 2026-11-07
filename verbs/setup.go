@@ -282,7 +282,27 @@ func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strin
 	if !strings.HasPrefix(line, "UP DONE ") || strings.ContainsAny(line, "\r\n") {
 		return "", "", broken("the setup walk's completion is not one UP DONE line", "nova-sprint up again")
 	}
+	e.upNeeds(ctx, out)
 	return done("nova-sprint stream add <name> --repo <org/repo>", out.String()+line, widthAdvice), "", nil
+}
+
+// upNeeds names, before UP DONE, what keeps the sprint from working that
+// the walk does not set: the commit identity (no worker hooks without it)
+// and a bench model for each tier a bench serves (no bench is dealt
+// without it), each with its fix, as check's red lines say them. A store
+// Migrate upgraded has neither until the coordinator sets them.
+func (e *Engine) upNeeds(ctx context.Context, out *strings.Builder) {
+	snap, err := e.snapshot(ctx)
+	if err != nil {
+		return // check says why the store cannot be read
+	}
+	_, identity := identityCheck(snap)
+	bench := e.checkPolicy(ctx, &checkReport{}, snap) // its other lines are check's to print
+	for _, f := range []*Fail{identity, bench} {
+		if f != nil {
+			out.WriteString("UP NEEDS " + oneLine(f.What) + ": " + oneLine(f.Fix) + "\n")
+		}
+	}
 }
 
 // widthAdvice is what UP DONE tells a new coordinator before the first
