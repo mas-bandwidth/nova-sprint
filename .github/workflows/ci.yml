@@ -84,28 +84,37 @@ jobs:
       - name: functional tests
         run: go test -count=1 -race -run Functional ./...
 
-  tlc:
+  # Trace validation (tla/README.md, "Trace validation"): the store's walks
+  # (the Fake, and PostgreSQL), the card walk and the policy walk on their
+  # fixed seeds, each trace checked by TLC against its model, and the
+  # breakers refused.
+  trace:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]
+    timeout-minutes: 10
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: postgres on PATH
+        shell: bash
+        run: |
+          command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || { sudo -n apt-get update -qq && sudo -n apt-get install -y -qq postgresql; }
+          for d in /usr/lib/postgresql/*/bin; do [ -x "$d/initdb" ] && echo "$d" >> "$GITHUB_PATH"; done
+          true
+      - name: the walks write their traces, TLC checks each (a missing initdb fails the job)
+        run: bash tla/make-traces.sh check
+        env:
+          NOVA_TRACE_PG: "1"
+
+  tlc:
+    # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
+    # (Glenn, 2026-11-06: "if you are out of memory, do it on the studio").
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, tlc]
     timeout-minutes: 180
     steps:
       - *clean
       - *checkout
       - name: TLC on Store (must pass), the witnesses and the reach checks (must be violated)
         run: bash tla/ci-tlc.sh
-
-  # Trace validation (the lock gate since 2026-11-07): the steps' random walk
-  # on store.Fake writes one trace per fixed seed and scenario, and TLC
-  # checks each is a behaviour of tla/Steps.tla (tla/StepsTrace.tla).
-  trace:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, bench]
-    timeout-minutes: 60
-    steps:
-      - *clean
-      - *checkout
-      - *go
-      - name: the steps walk writes the fixed seed set's traces
-        run: NOVA_TRACES=tla/traces go test -count=1 -run TestTraceFixtures ./steps/
-      - name: TLC matches every trace to the model
-        run: bash tla/check-trace.sh tla/traces/steps-walk-*

@@ -1,10 +1,12 @@
 package dash
 
 import (
-	"github.com/mas-bandwidth/nova-sprint/store"
 	"math/big"
 	"sort"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/roster"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 type workRow struct {
@@ -18,8 +20,8 @@ type workRow struct {
 	Merging    int
 	Landed     int
 	Fail       int
-	Cost       *float64
-	ByTier     map[string]float64
+	Cost       *big.Int
+	ByTier     map[string]*big.Int
 }
 type fleetRow struct {
 	Status   string
@@ -55,7 +57,10 @@ type envelope struct {
 	Error         string                 `json:"error,omitempty"`
 }
 
-func mapSnapshot(s store.Snapshot, at time.Time) envelope {
+// mapSnapshot is the page's view of s. A row's kind and width are the
+// roster's (round 22: the store keeps neither); a row the roster does not
+// name is shown in the fleet at width 0.
+func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 	work := map[string]*workRow{}
 	fleet := map[string]*fleetRow{}
 	friends := map[string]*fleetRow{}
@@ -64,7 +69,7 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 	readers := map[string]numberCells{}
 	merge := map[string]numberCells{}
 	for n, v := range s.Streams {
-		work[n] = &workRow{ByTier: map[string]float64{}, tierMicros: map[string]*big.Int{}}
+		work[n] = &workRow{ByTier: map[string]*big.Int{}, tierMicros: map[string]*big.Int{}}
 		costs[n] = &streamCost{amounts: map[string]*big.Int{}}
 		merge[n] = numberCells{}
 		state := "waiting"
@@ -74,7 +79,7 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 		streams = append(streams, streamLine{n, state})
 	}
 	sort.Slice(streams, func(i, j int) bool { return streams[i].Stream < streams[j].Stream })
-	mapRows(s.Rows, fleet, friends)
+	mapRows(s.Rows, ros, fleet, friends)
 	for _, c := range s.Cards {
 		if c.Kind == "producer" {
 			if w := work[c.Stream]; w != nil {
@@ -117,19 +122,22 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 		total := w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 		if total > 0 && w.Landed == total {
 			streams[i].State = "landed"
+		} else if total > 0 && w.Fail > 0 && w.Landed+w.Fail == total {
+			streams[i].State = "fail"
 		} else if streams[i].State != "held" && w.Ready+w.Working+w.Review+w.Fix+w.Merging > 0 {
 			streams[i].State = "working"
 		}
 	}
 }
-func mapRows(rows map[string]store.Row, fleet, friends map[string]*fleetRow) {
+func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, r := range rows {
 		status := r.State
 		if r.State == "up" && r.Held {
 			status = "held"
 		}
-		f := &fleetRow{Status: status, Width: r.Width}
-		if r.Kind == "kin" {
+		kind, width, _, _ := ros.Row(n)
+		f := &fleetRow{Status: status, Width: width}
+		if kind == roster.KindKin {
 			friends[n] = f
 		} else {
 			fleet[n] = f
@@ -220,12 +228,9 @@ func countCost(w *workRow, c store.Card, costs *streamCost) {
 		costs.unpriced++
 		return
 	}
-	d := float64(c.Cost) / 1e6
 	if w.Cost == nil {
-		z := 0.0
-		w.Cost = &z
+		w.Cost = new(big.Int)
 	}
-	*w.Cost += d
 	if w.tierMicros[c.Tier] == nil {
 		w.tierMicros[c.Tier] = new(big.Int)
 	}

@@ -133,7 +133,22 @@ func (s *sim) run(n int) {
 func (s *sim) take(c string) {
 	s.t.Helper()
 	cc := s.card(c)
+	require.True(s.t, s.roomToTake(cc.Holder), "row %s is at width", cc.Holder)
 	s.move(s.consumer(c, cardTake(cc.Holder)))
+}
+
+// roomToTake is the take verb's width check (layer 6): working under the
+// roster's width. Store round 22 took width out of the store, so the verb
+// holds it.
+func (w *world) roomToTake(row string) bool {
+	_, width, _, _ := w.roster.Row(row)
+	n := 0
+	for _, c := range w.snap().Cards {
+		if isConsumer(c) && c.State == "working" && c.Holder == row {
+			n++
+		}
+	}
+	return n < width
 }
 
 func (s *sim) land(req EdgeRequest) {

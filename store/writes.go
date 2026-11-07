@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 )
@@ -85,53 +84,14 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down", Tiers: normSet(v.Tiers), Model: v.Model, Harness: v.Harness}
+	if ok && old.Session != "" && v.Session != "" && old.Session != v.Session {
+		return fmt.Sprintf("row %s is hooked by session %s; unhook it first", v.Name, old.Session), nil
+	}
+	next := Row{Name: v.Name, Session: v.Session, Role: v.Role, State: "down"}
 	if ok {
-		if r, err := w.widthFits(v.Name, v.Width); r != "" || err != nil {
-			return r, err
-		}
-		if r, err := w.tiersFit(v.Name, v.Tiers); r != "" || err != nil {
-			return r, err
-		}
 		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
 	}
 	return "", w.putRow(old, ok, next)
-}
-
-// widthFits refuses a width below the working cards the row holds.
-func (w *work) widthFits(row string, width int) (string, error) {
-	n, err := w.tx.working(row)
-	return when(err == nil && n > width, "row %s holds %s, more than width %d; wait for a card to finish before narrowing it", row, workingCards(n), width), err
-}
-
-// tiersFit refuses tiers that drop one a live (ready or working) consumer
-// held by the row needs, as widthFits refuses narrowing below its working
-// cards: a consumer's holder never changes, so its row keeps serving it.
-func (w *work) tiersFit(row string, tiers []string) (string, error) {
-	c, found, err := w.tx.needed(row, tiers)
-	return when(err == nil && found, "row %s holds consumer %s (%s); cannot drop %s", row, c.ID, c.Tier, c.Tier), err
-}
-
-func workingCards(n int) string {
-	if n == 1 {
-		return "1 working card"
-	}
-	return fmt.Sprintf("%d working cards", n)
-}
-
-// move is the rule of SetCardState for a held card: moving into ready or
-// working needs its row to serve its tier (rowServes), moving into working
-// needs room on the row (rowFits).
-func (w *work) move(card Card, state string) (string, error) {
-	if card.Holder != "" && !live(card.State) && live(state) {
-		if r, err := w.rowServes(card); r != "" || err != nil {
-			return r, err
-		}
-	}
-	if card.Holder != "" && card.State != "working" && state == "working" {
-		return w.rowFits(card.Holder)
-	}
-	return "", nil
 }
 
 // producersOnly refuses a priority write on a consumer, whatever the value: a
@@ -158,9 +118,10 @@ func redOnProducer(k Card) string {
 func consumer(kind string) bool { return kind == "work" || kind == "read" }
 
 // checkHolder is the holder at add, the only time it is set: a producer or
-// sentinel has none, and a consumer names a row of the epoch that serves its
-// tier (the row's tiers, read inside the transaction). The card is added
-// waiting, so it takes no room; width is checked when it moves into working.
+// sentinel has none, and a consumer names a row of the epoch (read inside the
+// transaction; the foreign key says the same). Whether that row serves the
+// card's tier and has room for it is the roster's to say, at the deal (card
+// package), never the store's: width and tiers are configuration (round 22).
 func (w *work) checkHolder(c Card) (string, error) {
 	switch {
 	case !consumer(c.Kind):
@@ -168,33 +129,8 @@ func (w *work) checkHolder(c Card) (string, error) {
 	case c.Holder == "":
 		return fmt.Sprintf("card %s is a consumer; a consumer names its holder row at add, and it never changes", c.ID), nil
 	}
-	return w.rowServes(c)
-}
-
-// rowServes refuses a consumer whose holder row does not exist or does not
-// serve its tier, read now (earlier writes of the op included). It is checked
-// at add and on every move into ready or working, and tiersFit keeps a live
-// consumer's tier on its row, so a live consumer's row always serves it.
-func (w *work) rowServes(c Card) (string, error) {
-	row, r, err := w.mustRow(c.Holder)
-	return cmp.Or(r, when(err == nil && !slices.Contains(row.Tiers, c.Tier), "row %s serves %s; consumer needs %s", c.Holder, tierList(row.Tiers), c.Tier)), err
-}
-
-// live is a consumer state that holds its row's tier: ready or working.
-func live(state string) bool { return state == "ready" || state == "working" }
-
-// tierList is a row's tiers for a reason: "flash,pro", or none.
-func tierList(tiers []string) string { return cmp.Or(strings.Join(tiers, ","), "none") }
-
-// rowFits refuses a row that does not exist or has no room for one more
-// working card, counted now (earlier writes of the op included).
-func (w *work) rowFits(name string) (string, error) {
-	row, r, err := w.mustRow(name)
-	if r != "" || err != nil {
-		return r, err
-	}
-	n, err := w.tx.working(name)
-	return when(err == nil && n >= row.Width, "row %s holds %s, its width is %d; raise the width with set row width, or wait for a card to finish", name, workingCards(n), row.Width), err
+	_, r, err := w.mustRow(c.Holder)
+	return r, err
 }
 
 // cardList is one of a card's lists of other cards: needs (hard) or after
@@ -356,6 +292,19 @@ func (w *work) addPolicy(v PutPolicy) (string, error) {
 	}
 	p := PolicyVersion{Version: version, Kind: v.Kind, Name: v.Name, Body: v.Body, Actor: w.op.Actor, At: w.op.At}
 	return "", w.putPolicy(PolicyVersion{}, false, p)
+}
+
+// writeStop stops or starts the sprint; one already in that state is
+// refused.
+func (w *work) writeStop(v SetStopped) (string, error) {
+	old, err := w.tx.stop()
+	if err != nil {
+		return "", err
+	}
+	if old.Stopped == v.Stopped {
+		return fmt.Sprintf("the sprint is already %s", map[bool]string{true: "stopped", false: "running"}[v.Stopped]), nil
+	}
+	return "", w.putStop(old, Stop{Stopped: v.Stopped, Reason: v.Reason})
 }
 
 // activate makes one version the active one and deactivates the others; the

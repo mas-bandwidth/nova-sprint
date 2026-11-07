@@ -70,7 +70,6 @@ func TestViewFoldEqualsBuild(t *testing.T) {
 	w.must("gone", store.SetRowState{Row: "r2", State: "down"}, store.SetRowFlaps{Row: "r2", Flaps: 1})
 	w.same("row hold and gone")
 	assert.Equal(t, w.now, w.v.Down["r2"])
-	w.must("width", store.SetRowWidth{Row: "r1", Width: 3})
 	w.must("judge", store.PutJudgement{ID: "unserved.heavy.1", Kind: "unserved", About: "heavy", Question: "?", Command: "judge", Group: "unserved"})
 	w.same("judgement")
 	w.must("answer", store.AnswerJudgement{ID: "unserved.heavy.1", Answer: "ok"})

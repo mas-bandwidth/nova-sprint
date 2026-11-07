@@ -159,8 +159,6 @@ func writtenRow(w store.Write) string {
 		return x.Row
 	case store.SetRowFlaps:
 		return x.Row
-	case store.SetRowWidth:
-		return x.Row
 	case store.SetRowHeld:
 		return x.Row
 	}

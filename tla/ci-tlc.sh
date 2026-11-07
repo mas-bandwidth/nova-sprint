@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# CI run of the store model (layer 1), the card machine (layer 2) and the
-# steps (layer 3):
+# CI run of the store model (layer 1), the card machine (layer 2), the steps
+# (layer 3) and the policy model (layer 5):
 # bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
@@ -11,16 +11,15 @@
 #   Steps.tla with StepsPre.cfg, StepsPrePack1.cfg, StepsDeal.cfg, StepsLand.cfg,
 #     StepsBurst.cfg (its scenarios, invariants and the liveness property)
 #                                      must pass            (TLC exit 0)
+#   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
 #     reach/Card*.cfg on CardMachine.tla, reach/Steps*.cfg on Steps.tla,
-#     every other one on Store.tla
-#   StepsTrace.tla on each traces/steps-*/ fixture: "expect: matched" must
-#     match whole (TLC exit 0); "expect: forbidden at K" must violate
-#     TraceMatched (exit 13) with record K - 1 the last matched
+#     reach/Policy*.cfg on Policy.tla, every other one on Store.tla
 # A witness's target is the first INVARIANT or PROPERTY line of its cfg; a
 # PROPERTY target (a liveness witness) must end in TLC exit 13 with
 # "Temporal property <target> was violated" and no invariant violated.
+# The trace fixtures (traces/*) are checked by make-traces.sh, not here.
 # Exits non-zero if a model fails, if any witness or reach run passes, or if any
 # run ends any other way (a parse error, a crash, a timeout is not a violation).
 # Run it on a bench host, never on the working machine.
@@ -71,6 +70,21 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# At most TLC_JOBS runs at once (default: the machine's cores), each JVM capped at
+# TLC_HEAP (default 2g; the main scenarios get twice that). Unbounded, the 200+
+# runs each took TLC's default quarter of RAM and the kernel killed them
+# (amd-3, 30 GB, 2026-11-07: "Out of memory: Killed process (java)").
+cores() {
+    if command -v nproc >/dev/null 2>&1; then nproc
+    else sysctl -n hw.ncpu 2>/dev/null || echo 4; fi
+}
+JOBS="${TLC_JOBS:-$(cores)}"
+HEAP="${TLC_HEAP:-2g}"
+# slot: wait until fewer than JOBS runs are live (bash 4.3+: wait -n).
+slot() {
+    while [ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$JOBS" ]; do wait -n 2>/dev/null || sleep 1; done
+}
+
 # run NAME EXPECT DIR CONFIG MODULE WORKERS: one TLC invocation.
 # EXPECT is pass or violate. Writes $WORK/NAME.log and $WORK/NAME.result.
 run() {
@@ -80,6 +94,8 @@ run() {
         echo "dry run: (cd tla/$dir && java -XX:+UseParallelGC -cp $JAR tlc2.TLC -workers $workers -metadir \$WORK/states/$name -config $cfg $mod)  expect $expect"
         return
     fi
+    heap="$HEAP"; [ "$workers" -gt 1 ] && heap="$(( ${HEAP%g} * 2 ))g"
+    slot
     (
         cd "$HERE/$dir" || exit 1
         # Own java.io.tmpdir per run: TLC unpacks the standard modules there,
@@ -87,7 +103,7 @@ run() {
         mkdir -p "$WORK/tmp/$name" || exit 1
         # -noGenerateSpecTE: no *_TTrace_*.tla trace modules beside the spec,
         # which the witnesses/*.tla glob would otherwise run on the next pass.
-        "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC \
+        "$JAVA" -XX:+UseParallelGC -Xmx"$heap" -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC \
             -noGenerateSpecTE -workers "$workers" \
             -metadir "$WORK/states/$name" -config "$cfg" "$mod" > "$WORK/$name.log" 2>&1
         code=$?
@@ -112,41 +128,6 @@ run() {
     ) &
 }
 
-# trace NAME FIXTURE: StepsTrace.tla on one recorded trace, traces/FIXTURE
-# (its StepsTraceLog.tla is found on the TLA-Library path, its cfg says
-# "expect: matched" or "expect: forbidden at K"). Matched: TLC exit 0.
-# Forbidden at K: TraceMatched violated (exit 13), no invariant violated,
-# and the last record matched is K - 1, so record K is the forbidden step.
-trace() {
-    name="$1"; fx="$2"
-    echo "$name" >> "$WORK/expected"
-    if [ "$DRY" = 1 ]; then
-        echo "dry run: (cd tla && java -DTLA-Library=traces/$fx -cp $JAR tlc2.TLC -config traces/$fx/StepsTrace.cfg StepsTrace.tla)"
-        return
-    fi
-    (
-        cd "$HERE" || exit 1
-        mkdir -p "$WORK/tmp/$name" || exit 1
-        "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK/tmp/$name" -DTLA-Library="$HERE/traces/$fx" \
-            -cp "$JAR" tlc2.TLC -noGenerateSpecTE -workers 1 -metadir "$WORK/states/$name" \
-            -config "traces/$fx/StepsTrace.cfg" StepsTrace.tla > "$WORK/$name.log" 2>&1
-        code=$?
-        want="$(sed -n 's/^\\\* expect: //p' "traces/$fx/StepsTrace.cfg")"
-        lastl="$(grep -E '^/\\ l = [0-9]+$' "$WORK/$name.log" | tail -n 1 | awk '{print $4}')"
-        if [ "$want" = matched ] && [ "$code" -eq 0 ]; then
-            echo "ok   $name: trace matched whole" > "$WORK/$name.result"
-        elif [ "${want% *}" = "forbidden at" ] && [ "$code" -eq 13 ] \
-            && grep -q "Temporal property TraceMatched was violated" "$WORK/$name.log" \
-            && ! grep -q "Invariant .* is violated" "$WORK/$name.log" \
-            && [ "$lastl" = "$(( ${want##* } - 1 ))" ]; then
-            echo "ok   $name: record ${want##* } forbidden, as required" > "$WORK/$name.result"
-        else
-            echo "FAIL $name: TLC exit $code, last record matched ${lastl:-none}, wanted $want (log below)" > "$WORK/$name.result"
-            echo 1 > "$WORK/$name.failed"
-        fi
-    ) &
-}
-
 run Store pass . Store.cfg Store.tla 4
 run StoreRecords pass . StoreRecords.cfg Store.tla 4
 run CardMachine pass . CardMachine.cfg CardMachine.tla 4
@@ -158,6 +139,7 @@ run StepsPrePack1 pass . StepsPrePack1.cfg Steps.tla 8
 run StepsDeal pass . StepsDeal.cfg Steps.tla 8
 run StepsLand pass . StepsLand.cfg Steps.tla 4
 run StepsBurst pass . StepsBurst.cfg Steps.tla 4
+run Policy pass . Policy.cfg Policy.tla 4
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
@@ -170,14 +152,10 @@ for f in "$HERE"/reach/*.cfg; do
     case "$m" in
         Card*) mod=CardMachine.tla ;;   # the card machine's reach checks
         Steps*) mod=Steps.tla ;;        # the steps' reach checks
+        Policy*) mod=Policy.tla ;;      # the policy model's
         *) mod=Store.tla ;;
     esac
     run "reach-$m" violate . "reach/$m.cfg" "$mod" 1
-done
-
-for d in "$HERE"/traces/steps-*/; do
-    fx="$(basename "$d")"
-    trace "trace-$fx" "$fx"
 done
 
 wait

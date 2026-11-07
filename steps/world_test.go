@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +19,7 @@ type world struct {
 	t      *testing.T
 	f      *store.Fake
 	v      *View
-	roster FakeRoster
+	roster roster.Roster
 	cursor int64
 	n      int
 	now    time.Time
@@ -32,7 +33,7 @@ const base = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 func sha(n int) string { return fmt.Sprintf("%040x", n+1) }
 
 func newWorld(t *testing.T) *world {
-	w := &world{t: t, f: store.NewFake(), now: t0, roster: FakeRoster{}}
+	w := &world{t: t, f: store.NewFake(), now: t0, roster: roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{}}}
 	w.v = Build(w.snap(), t0)
 	return w
 }
@@ -88,8 +89,8 @@ func (w *world) stream(name string) {
 }
 
 func (w *world) row(name string, width int, tiers ...string) {
-	w.roster[name] = RosterRow{Kind: "worker", Width: width, Tiers: tiers}
-	w.must("row", store.PutRow{Name: name, Kind: "worker", Width: width, Tiers: tiers, Model: "m-" + name, Session: "hook-" + name})
+	w.roster.Workers[name] = roster.Worker{Name: name, Width: width, Tiers: tiers}
+	w.must("row", store.PutRow{Name: name, Session: "hook-" + name, Role: "worker"})
 	w.must("seen", store.SetRowState{Row: name, State: "up"})
 }
 
@@ -117,16 +118,23 @@ func (w *world) plan(p string, e card.Event) (card.Plan, *card.Refusal) {
 	}
 	rows := map[string]card.Row{}
 	for _, r := range s.Rows {
-		rows[r.Name] = card.RowFromStore(r)
+		rows[r.Name] = w.cardRow(r)
 	}
 	pc := card.FromStore(s.Cards[p])
 	return card.Move(pc, cons, rows, card.StreamFromStore(s.Streams[pc.Stream]), needs, e)
 }
 
+// cardRow is a store row as the card machine reads it, width and tiers from
+// the test's roster.
+func (w *world) cardRow(r store.Row) card.Row {
+	_, width, tiers, _ := w.roster.Row(r.Name)
+	return card.RowFromStore(r, width, tiers)
+}
+
 func (w *world) consumer(c string, e card.Event) (card.Plan, *card.Refusal) {
 	s := w.snap()
 	cc := card.FromStore(s.Cards[c])
-	return card.MoveConsumer(cc, card.FromStore(s.Cards[cc.Of]), card.RowFromStore(s.Rows[cc.Holder]), e)
+	return card.MoveConsumer(cc, card.FromStore(s.Cards[cc.Of]), w.cardRow(s.Rows[cc.Holder]), e)
 }
 
 // report applies a row's report with its producer move (ReportPlan).
@@ -150,7 +158,7 @@ func (w *world) reportPlan(c, result, head, reason string) (card.Plan, *card.Ref
 	}
 	rows := map[string]card.Row{}
 	for _, r := range s.Rows {
-		rows[r.Name] = card.RowFromStore(r)
+		rows[r.Name] = w.cardRow(r)
 	}
 	return card.ReportPlan(cc, p, cons, rows, card.StreamFromStore(s.Streams[p.Stream]), needs, card.Report{Row: cc.Holder, Result: result, Head: head, Reason: reason})
 }
