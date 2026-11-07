@@ -65,3 +65,14 @@ initial states. TraceMatched is finite reachability of the last record, not
 implementation liveness. At a temporal refusal with last matched index l, the
 first refused record is l+1. Malformed records/initial conditions fail their own
 invariants or parsing and must not be reported as a behavioral counterexample.
+
+## The workload steps (7 and 8)
+
+world[7] and world[8] are bound to the production workload adapter
+(cmd/nova-sprint/setup_workload.go) by TestWorkloadStepsMatchTheSetupModel,
+over every state of a two-bench fleet: world[7] is every worker bench on the
+bus and up in the store; world[8] is world[7] and every worker bench with
+cores. A step that is not ready is a `*verbs.WorkloadNotReady`, the model's
+repair phase: up acts once (InstallWorkers at 7, nothing at 8), and the
+second not-ready is the refusal naming each bench. That binding checks the
+step conditions, not a trace: the walk's traces still use the fake world.
