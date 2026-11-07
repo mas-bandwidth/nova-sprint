@@ -1093,11 +1093,17 @@ operators where the check is about them:
 | `PolicyFailsToDefault` | guarantee 10 | a failed rows answer deals exactly what no policy deals, and every failed question has its `policy` judgement |
 | `AfterKept` | guarantee 3, ENFORCED L2-U19 | a land request never goes out for a producer whose `after` target is merging |
 | `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
+| `VerdictHasItsRead` | Fix | a yes has a done ok read of the review and no fix read, a fix a done fix read; a faulted read is neither |
 
 `ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
 under weak fairness on `Snap` and `Tick` only (rows need not take or
 report): a ready producer with room on an open serving row (under its
 width) is eventually dealt, unless the room goes.
+
+`FaultedReadReadAgain`, under the same fairness: a review whose done reads
+all faulted (a faulted read is not a read: it is owed again and the
+verdict is retry, which moves nothing) is eventually read again, or
+leaves review, unless the room for a read goes.
 
 `DealtWithinKTicks` (intent rule 33, an invariant over the counters `rdy`
 and `ju`): a producer ready for `UndealtTicks` (2) ticks with an open
@@ -1138,6 +1144,8 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsResolveOnEvent` | deal | resolve only on a landed result's event | ResolveFromState |
 | `witnesses/StepsGlobOverlaps` | pre | a glob both list counts as overlap | ResolveFromState |
 | `witnesses/StepsHeldUnshown` | deal | no overlap judgement for a held producer | HeldBehindShown |
+| `witnesses/StepsYesOnFault` | deal | the verdict default is yes unless a read said fix | VerdictHasItsRead |
+| `witnesses/StepsFaultCounted` | deal | a faulted read counts as a read | FaultedReadReadAgain (liveness, TLC exit 13) |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
 | `reach/StepsNeverRefused` | pre | none | violated: an op is refused by a race |
@@ -1162,6 +1170,7 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `reach/StepsNeverGated` | pre | none | violated: the policy gate opens no-policy |
 | `reach/StepsNeverHeldBehind` | deal | none | violated: an overlap judgement is opened |
 | `reach/StepsNeverHandLanded` | deal | none | violated: a store op lands a producer by hand |
+| `reach/StepsNeverReadAgain` | deal | none | violated: a review whose read faulted is read again |
 
 `python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
 five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`

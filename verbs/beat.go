@@ -13,7 +13,8 @@ import (
 
 // runBeat is `beat`, the worker's heartbeat (INTENT 7, push: the bench says
 // what it is carrying; nobody asks it): the bench's 1-minute load average,
-// its logical cores, its nova-reserve slots in use and in all, and the
+// the highest CPU busy percent of its last 10 seconds (--cpu-peak, across all
+// cores, 100 is every core busy; the board's CPU cell), its logical cores, its nova-reserve slots in use and in all, and the
 // tiers its harness serves (--tiers, defect 74). It sets the row's load
 // columns, which the board's load cell reads and the roster takes the row's
 // width and tiers from (roster.Advertised); it moves nothing else. A beat that repeats the last one is a success that writes
@@ -23,7 +24,7 @@ func runBeat(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if f != nil {
 		return "", f
 	}
-	if r := snap.Rows[in.actor]; r.Load1Centi == w.Load1Centi && r.Cores == w.Cores && r.SlotsUsed == w.SlotsUsed && r.SlotsTotal == w.SlotsTotal && r.Tiers == w.Tiers {
+	if r := snap.Rows[in.actor]; r.Load1Centi == w.Load1Centi && r.Cores == w.Cores && r.SlotsUsed == w.SlotsUsed && r.SlotsTotal == w.SlotsTotal && r.CPUPeakDeci == w.CPUPeakDeci && r.Tiers == w.Tiers {
 		return done(waitNext, "BEAT "+in.actor+" unchanged"), nil
 	}
 	op := e.newOp("beat", in.actor, snap, w)
@@ -43,6 +44,13 @@ func beatWrite(in *input) (store.SetRowLoad, *Fail) {
 		return w, misuse("beat", "--load1 takes the 1-minute load average as a number, 0 or more ("+badNumber(in.str("load1"), err)+")")
 	}
 	w.Load1Centi = int(math.Round(load * 100))
+	if s := in.str("cpu-peak"); s != "" {
+		peak, err := strconv.ParseFloat(s, 64)
+		if err != nil || math.IsNaN(peak) || peak < 0 || peak > 100 {
+			return w, misuse("beat", "--cpu-peak takes the CPU busy percent as a number from 0 to 100 ("+badNumber(s, err)+")")
+		}
+		w.CPUPeakDeci = int(math.Round(peak * 10))
+	}
 	for _, c := range []struct {
 		flag string
 		to   *int

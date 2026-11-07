@@ -114,7 +114,12 @@ ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS load1_centi integer NOT NULL DE
     ADD COLUMN IF NOT EXISTS cores integer NOT NULL DEFAULT 0 CHECK (cores >= 0),
     ADD COLUMN IF NOT EXISTS slots_used integer NOT NULL DEFAULT 0 CHECK (slots_used >= 0),
     ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0),
-    ADD COLUMN IF NOT EXISTS tiers text NOT NULL DEFAULT '';
+    ADD COLUMN IF NOT EXISTS tiers text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS cpu_peak_deci integer NOT NULL DEFAULT 0 CHECK (cpu_peak_deci BETWEEN 0 AND 1000);
+-- cpu_peak_deci (round 27): the highest CPU busy percent the worker measured over the
+-- last 10 seconds before the beat, across all its cores, in tenths of a percent (1000 is
+-- every core busy); telemetry for the board, read by no rule. Appended last so a migrated
+-- store and a new one list the columns in the same order.
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by
