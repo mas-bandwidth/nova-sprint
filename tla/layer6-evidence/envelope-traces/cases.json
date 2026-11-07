@@ -1,0 +1,139 @@
+[
+  {
+    "name": "case-00",
+    "trace_sha256": "66f38a6019260962f730aed2df58374d00d139c5ea52434a67a973612547299f",
+    "original_inputs": [
+      "RunClearTraceLog.tla",
+      "walk-16.tla"
+    ]
+  },
+  {
+    "name": "case-01",
+    "trace_sha256": "60b79c985eb93e64b7c1951a5d3a76e9bb394bf4b76d915cfe800df3cca5223b",
+    "original_inputs": [
+      "walk-0.tla",
+      "walk-7.tla",
+      "walk-8.tla",
+      "walk-13.tla",
+      "walk-28.tla",
+      "walk-56.tla"
+    ]
+  },
+  {
+    "name": "case-02",
+    "trace_sha256": "06cb79c73429b1a789babd86ab21710da939ef0113fc085596d949fca04d96ca",
+    "original_inputs": [
+      "walk-1.tla",
+      "walk-22.tla",
+      "walk-26.tla",
+      "walk-43.tla",
+      "walk-46.tla",
+      "walk-62.tla"
+    ]
+  },
+  {
+    "name": "case-03",
+    "trace_sha256": "f263607512626ca7eb5e0b27459903ec02e6e6438645767d2ddf197839946a95",
+    "original_inputs": [
+      "walk-2.tla",
+      "walk-20.tla",
+      "walk-31.tla",
+      "walk-36.tla"
+    ]
+  },
+  {
+    "name": "case-04",
+    "trace_sha256": "cf06f5b2d8e2bee2ecee06690eb82ed6c59664843b15cac2001d3113d563b51d",
+    "original_inputs": [
+      "walk-3.tla",
+      "walk-6.tla",
+      "walk-33.tla",
+      "walk-51.tla",
+      "walk-52.tla",
+      "walk-63.tla"
+    ]
+  },
+  {
+    "name": "case-05",
+    "trace_sha256": "48ee972eb0bfe61c49515ac160c82bec3f9289131e414b3ec9bc4376465bf264",
+    "original_inputs": [
+      "walk-4.tla",
+      "walk-14.tla",
+      "walk-18.tla",
+      "walk-23.tla",
+      "walk-24.tla",
+      "walk-25.tla",
+      "walk-34.tla",
+      "walk-44.tla",
+      "walk-45.tla",
+      "walk-50.tla",
+      "walk-53.tla",
+      "walk-54.tla"
+    ]
+  },
+  {
+    "name": "case-06",
+    "trace_sha256": "6db72ee9106a47cfa2e61600c511d76ff6bdedcf684f2e21561354298cd1eae2",
+    "original_inputs": [
+      "walk-5.tla",
+      "walk-10.tla",
+      "walk-21.tla",
+      "walk-30.tla",
+      "walk-32.tla",
+      "walk-40.tla",
+      "walk-41.tla",
+      "walk-61.tla"
+    ]
+  },
+  {
+    "name": "case-07",
+    "trace_sha256": "078b1cadbb1b96fb8cf9d90f70719e4e0fb8390474bca964615dc0eb9716639e",
+    "original_inputs": [
+      "walk-9.tla",
+      "walk-15.tla",
+      "walk-19.tla",
+      "walk-29.tla",
+      "walk-39.tla",
+      "walk-49.tla",
+      "walk-59.tla"
+    ]
+  },
+  {
+    "name": "case-08",
+    "trace_sha256": "6ac7bc652a50fd8962b5335326ab434093c0d8a9a73cd179d09fe769d2aebfba",
+    "original_inputs": [
+      "walk-11.tla",
+      "walk-27.tla",
+      "walk-57.tla"
+    ]
+  },
+  {
+    "name": "case-09",
+    "trace_sha256": "bb5e588ca7f8f0655cbc07c389e9b9a3194a279995c2f8cf3f2e24f711667043",
+    "original_inputs": [
+      "walk-12.tla",
+      "walk-17.tla",
+      "walk-42.tla",
+      "walk-48.tla"
+    ]
+  },
+  {
+    "name": "case-10",
+    "trace_sha256": "b90b162a15ec8b139a5ff9d405c2e5b21eab710cd1ae1babd1497dbef327bf0b",
+    "original_inputs": [
+      "walk-35.tla",
+      "walk-37.tla"
+    ]
+  },
+  {
+    "name": "case-11",
+    "trace_sha256": "321b1f83d56d4a808166d9e773ddef38c42b7409ecf19ff27ab67d016af3ec1c",
+    "original_inputs": [
+      "walk-38.tla",
+      "walk-47.tla",
+      "walk-55.tla",
+      "walk-58.tla",
+      "walk-60.tla"
+    ]
+  }
+]

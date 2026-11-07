@@ -1,7 +1,8 @@
 # Clear collector trace relation
 
 Input: RunClearTraceLog.TraceLog, records i/action plus Required(r) fields.
-Send also carries n, the one actually confirmed obligation in that batch.
+Historical Send rows also carry n, the one actually confirmed obligation in
+that batch. The recipient-envelope extension below uses a confirmed member set.
 Bounds: two notice events, one Clear, one crash. Physical store positions map
 to rank among actual recipient-relevant notices and Clear events. Irrelevant
 seed/cursor/refusal rows do not enter that rank; source checks still observe
@@ -25,7 +26,7 @@ matching successor; TraceMatched refuses that record. Original invariants apply
 to every hidden state. This is a deterministic macro-step refinement, not a
 claim about internal Go loop order or invented intermediate implementation rows.
 
-The checked stable fixture and ten seeded action-selection walks require the
+The historical checked stable fixture and ten seeded action-selection walks required the
 prefix fit the real scan budget and one
 obligation per batch. Send(n) follows actual intended-recipient/message-ID
 confirmation; no model Sends are hidden. Cursor success/refusal follows the
@@ -40,3 +41,38 @@ The ten walks select enabled append-notice, Clear, or Push from actual fixture
 store state and cursor ranks. They may perform several push rounds. No-work Push
 is not an enabled emitted action. The initial stable case and these walks do
 not exercise an in-flight Clear, actual crash, or refused cursor write.
+
+## One confirmed recipient envelope
+
+The recipient-envelope extension uses `EnvelopeConfirmed` records containing
+`members`, `omitted`, `recipient`, `messageID`, cumulative `sent`, and the current
+collection's `acknowledged` set. The actual post-validation pushDelivery hook
+supplies collection identity (From/Through/End/Epoch), exact rendered Subject/Body,
+original Included/Omitted Notice values, and validated recipient/message ID.
+The fixture matches original Notice.Line values uniquely to actual immutable
+obligations, checks their presence in the exact body, and rejects ambiguous IDs.
+It also binds the delivery to the previously observed collection. Merely seeing
+the pre-render collector groups cannot establish final envelope membership.
+
+One concrete confirmed envelope corresponds to a finite sequence of existing
+abstract RunClear.Send transitions. With the next trace record fixed, the wrapper
+chooses the least remaining member ID, acknowledges it, and repeats until every
+member has been acknowledged. Only then does it match that single concrete row
+and advance the trace index. No append, Clear, scan, cursor, crash or other external
+action can interleave with this expansion. All original invariants hold at every
+intermediate abstract state. These are not fabricated per-group physical sends.
+The relation preserves the existing RunClear.Next and its invariants unchanged.
+
+Members must belong to the actual collection's needed set, and omitted must equal
+the remaining needed IDs. Omitted actionable IDs are never marked sent. The
+initial bounded envelope fixtures require omitted={} and fit the real body budget.
+Production intentionally advances its cursor over renderer omissions after
+sending a summary that directs the recipient to `next`. The current model has no
+retrievability/summary coverage branch: such an omitted actionable obligation is
+not sent or Clear-cancelled, so that intended cursor advance would not match.
+This is an explicit model-scope mismatch, not a claim that production prevents
+that advance or a demonstrated implementation bug. General overflow and
+`next` discoverability need a separately reviewed relation and remain outside
+this checkpoint. Existing Send(n) trace records remain interpretable for the
+historical one-obligation-per-send evidence; new recipient-envelope emission
+records exactly one EnvelopeConfirmed row per actual validated message.
