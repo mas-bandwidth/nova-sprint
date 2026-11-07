@@ -80,7 +80,10 @@ func (s *sim) planTick() Plan {
 	}
 	for _, e := range plan.Edges {
 		if _, ok := okOps[e.After]; e.After == "" || ok {
+			// a request asked again (a land judgement's retry: the same id)
+			// is a new dispatch, not yet answered
 			s.inflight = append(s.inflight, e)
+			delete(s.sent, e.ID)
 		}
 	}
 	var next []InboxItem

@@ -34,6 +34,9 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if _, err := e.baseTip(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
 		return "", err
 	}
+	if err := e.ensureGroup(ctx, store.Stream{Name: name, Repo: repo, Base: base, Mode: mode, Forge: forge}); err != nil {
+		return "", err
+	}
 	pos := 0
 	for _, s := range snap.Streams {
 		pos = max(pos, s.Pos+1)

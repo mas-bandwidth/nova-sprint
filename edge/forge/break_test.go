@@ -32,7 +32,7 @@ func breakClient_internal(graphql string) (*Client, *edge.FakeExec) {
 		return edge.FakeOutcome{ExitCode: 1, Stderr: "unexpected gh call"}
 	})
 	now := int64(1000)
-	c := New(Config{Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, Exec: fex, Now: func() int64 { return now }})
+	c := New(Config{Identity: Identity{Name: "sprint", Token: "tok"}, Exec: fex, Now: func() int64 { return now }})
 	return c, fex
 }
 

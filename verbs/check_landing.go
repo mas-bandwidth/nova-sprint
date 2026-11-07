@@ -77,23 +77,11 @@ func landingJudgement(snap store.Snapshot, s store.Stream, ids []string) (store.
 	return found[0], true
 }
 
-// groupWait is what an unblocked landing waits for, from its group branch
-// at origin: the lander's merge when the branch is not there, else the CI
-// the lander reads at its tip.
-func (e *Engine) groupWait(ctx context.Context, s store.Stream) string {
-	group := git.StreamBranch(s.Name)
-	url, err := git.CloneURL(s.Repo, s.Forge)
-	if err != nil {
-		return "waits for its repository (" + errText(err) + ")"
-	}
-	sha, ok, err := e.Origin.Tip(ctx, url, group)
-	switch {
-	case err != nil:
-		return "waits for the lander; " + group + " cannot be read (" + errText(err) + ")"
-	case !ok:
-		return "waits for run to merge its heads into " + group
-	}
-	return fmt.Sprintf("waits for CI on %s at %s (run asks every %s)", group, shortSHA(sha), run.LandPoll)
+// groupWait is what an unblocked landing waits for: run's landing, which
+// opens the PR (rung 1 the card's own branch, rung 2 the group branch) and
+// reads its CI, and opens a judgement for anything that is not green.
+func (e *Engine) groupWait(_ context.Context, s store.Stream) string {
+	return fmt.Sprintf("waits for its landing PR's CI (rung 1 the card's branch, rung 2 %s; run asks every %s)", git.GroupBranch(s.Name), run.LandPoll)
 }
 
 // firstN is up to n names, then how many more.

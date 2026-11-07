@@ -69,7 +69,8 @@ def limits():
     }
 
 def landing(stream):
-    return {"backed_up": 4, "flowing": 1}  # guess
+    # rung 2 at more than one head waiting (intent rule 32); ci_wait a guess
+    return {"backed_up": 2, "flowing": 1, "ci_wait": 600}
 
 def timeouts():
     return {

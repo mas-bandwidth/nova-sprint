@@ -117,7 +117,7 @@ func (x *e2e) environment(home, ghDir string) []string {
 		"XDG_STATE_HOME="+filepath.Join(x.dir, "xdg-state"), "XDG_CONFIG_HOME="+filepath.Join(x.dir, "xdg-config"),
 		"NOVA_BUS_REDIS="+x.busAddr, "NOVA_PG_DSN="+x.adminDSN, "NOVA_SPRINT_PG_PASSWORD="+sprintPassword,
 		"NOVA_SPRINT_BACKUP_DIR="+filepath.Join(x.dir, "backups"), "GH_CONFIG_DIR="+filepath.Join(x.dir, "gh"),
-		"NOVA_SPRINT_FORGE_LOGIN=sprint-bot", "FAKE_GH_ORIGIN="+x.origin, "GIT_CONFIG_NOSYSTEM=1",
+		"FAKE_GH_ORIGIN="+x.origin, "GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=e2e", "GIT_AUTHOR_EMAIL=e2e@sprint.test", "GIT_COMMITTER_NAME=e2e", "GIT_COMMITTER_EMAIL=e2e@sprint.test")
 }
 

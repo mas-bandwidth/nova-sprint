@@ -9,11 +9,10 @@ import (
 )
 
 // headReady is finish's check of the head at origin (CORRECT-USE, "Finish
-// is checked, not trusted"): a full sha, not the base or the prior head, the
-// tip of the dealt branch at origin, and containing the stream's group head.
-// No PR is asked of a card: the landing merges heads into the group branch
-// by git and opens the one group PR itself, as the sprint (LANDING, "PRs
-// and the group branch"; defect 34).
+// is checked, not trusted"): a full sha, not the base or the prior head, and
+// the tip of the dealt branch at origin. That is all finish needs (intent
+// rule 32): no PR, no forge and no token on the worker; the landing opens
+// the PR and reads its CI on the run's host.
 func (e *Engine) headReady(ctx context.Context, snap store.Snapshot, c store.Card, head string) error {
 	if !fullSHA(head) {
 		return refuse("head "+head+" is not a full commit sha", "pass the 40-hex sha git ls-remote origin "+c.Branch+" prints")
@@ -35,26 +34,6 @@ func (e *Engine) headReady(ctx context.Context, snap store.Snapshot, c store.Car
 	}
 	if !ok || tip != head {
 		return refuse("head "+head+" is not the tip of "+c.Branch+" at origin", "push first: git push origin "+c.Branch)
-	}
-	return e.upToGroup(ctx, s, url, c, head)
-}
-
-// upToGroup refuses a head that does not contain the stream's group head.
-func (e *Engine) upToGroup(ctx context.Context, s store.Stream, url string, c store.Card, head string) error {
-	group := git.StreamBranch(s.Name)
-	tip, ok, err := e.Origin.Tip(ctx, url, group)
-	if err != nil {
-		return RefusalOr(err, broken("git ls-remote of "+s.Repo+" failed ("+errText(err)+")", "finish again"))
-	}
-	if !ok {
-		return nil
-	}
-	in, err := e.Origin.Contains(ctx, url, tip, head)
-	if err != nil {
-		return RefusalOr(err, broken("git merge-base of "+s.Repo+" failed ("+errText(err)+")", "finish again"))
-	}
-	if !in {
-		return refuse("bring "+c.Branch+" up to the stream head", "git fetch origin "+group+", git rebase origin/"+group+", run the gates, git push --force-with-lease origin "+c.Branch)
 	}
 	return nil
 }

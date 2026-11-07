@@ -34,24 +34,26 @@ type InboxItem struct {
 	Priced                 bool
 
 	Request string   // an edge result: the request it answers
-	Outcome string   // land: landed, red, fault, conflict, no-ci, forge, base-red, base-green; stop: ack
-	Landed  []string // land: the heads that landed (a bisected batch lands a part)
-	Blamed  string   // red: the head the bisection blamed
-	Base    string   // base-red, base-green: the base
+	Outcome string   // land: landed, or what kept it from landing (a judgement); stop: ack
+	Landed  []string // land: the heads that landed (all of the request's)
+	Merge   string   // land: the merge commit base has now
 }
 
-// EdgeRequest is work for layer 4: a landing (Kind land: merge Heads of
-// Cards onto Base and gate them, one CI) or a runner stop (Kind stop: the
-// Row's run of Consumer, after a preemption). After names the op whose
-// acceptance it waits for ("" waits for none): a stop goes out only with
-// its preemption (EdgeAfterAccepted). ID is stable across ticks, so a
-// restart reissues the same request and a result is matched by id.
+// EdgeRequest is work for layer 4: a landing (Kind land: Heads of Cards on
+// their Branches, one head rung 1, more rung 2; Base the stream's base tip
+// as the tick saw it; Wait the seconds a gated sha may have no CI at all,
+// policy's) or a runner stop (Kind stop: the Row's run of Consumer, after a
+// preemption). After names the op whose acceptance it waits for ("" waits
+// for none): a stop goes out only with its preemption (EdgeAfterAccepted).
+// ID is stable across ticks, so a restart reissues the same request and a
+// result is matched by id.
 type EdgeRequest struct {
-	ID, Kind, Stream string
-	Cards, Heads     []string
-	Base             string
-	Row, Consumer    string
-	After            string
+	ID, Kind, Stream       string
+	Cards, Heads, Branches []string
+	Base                   string
+	Wait                   int
+	Row, Consumer          string
+	After                  string
 }
 
 // RefusedOp is an op of the last tick that layer 1 refused: its groups (from

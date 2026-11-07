@@ -26,7 +26,8 @@
 #                                      must report a violation (exit 12 or 13)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
 #     reach/Card*.cfg on CardMachine.tla, reach/Steps*.cfg on Steps.tla,
-#     reach/Policy*.cfg on Policy.tla, every other one on Store.tla
+#     reach/Policy*.cfg on Policy.tla, reach/LandEdge*.cfg on LandEdge.tla,
+#     every other one on Store.tla
 # A witness's target is the first INVARIANT or PROPERTY line of its cfg; a
 # PROPERTY target (a liveness witness) must end in TLC exit 13 with
 # "Temporal property <target> was violated" and no invariant violated.
@@ -214,6 +215,7 @@ for f in "$HERE"/reach/*.cfg; do
         Card*) mod=CardMachine.tla ;;   # the card machine's reach checks
         Steps*) mod=Steps.tla ;;        # the steps' reach checks
         Policy*) mod=Policy.tla ;;      # the policy model's
+        LandEdge*) mod=LandEdge.tla ;;  # the landing model's
         *) mod=Store.tla ;;
     esac
     run "reach-$m" violate . "reach/$m.cfg" "$mod" 1

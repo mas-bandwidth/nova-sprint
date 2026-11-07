@@ -38,7 +38,7 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.Output), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "sprint/s/group" {
+	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "main" {
 		t.Fatalf("%+v", got)
 	}
 	// A bench has no model of its own: the policy's candidates for the tier.
@@ -119,10 +119,6 @@ func TestFinishRefusals(t *testing.T) {
 		{name: "not a sha", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", "abc"}, exit: 1, want: []string{"head abc is not a full commit sha"}},
 		{name: "the base", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", base}, exit: 1, want: []string{"where this attempt started"}},
 		{name: "not pushed", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", tip}, exit: 1, want: []string{"is not the tip of sprint/s/p1", "git push origin sprint/s/p1"}},
-		{name: "behind the stream", as: "alice", args: finish, exit: 1, prep: func(t *testing.T, w *world) {
-			takeW1(t, w)
-			w.origin.tips["o/r sprint/s/group"] = tip
-		}, want: []string{"bring sprint/s/p1 up to the stream head", "git rebase origin/sprint/s/group"}},
 		{name: "origin fails", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.err = errBroken }, want: []string{"git ls-remote of o/r failed"}},
 		{name: "failed with no reason", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--failed"}, exit: 1, want: []string{"a fail needs its reason"}},
 		{name: "not the holder", as: "bob", prep: takeW1, args: finish, exit: 1, want: []string{"p1.w1 is not held by bob"}},
@@ -165,6 +161,22 @@ func TestRelease(t *testing.T) {
 	want(t, w.do("carol", "release", "--row", "alice", "--all", "--reason", "r"), 0, "holds nothing")
 }
 
+// A release is neither ok nor fail: the consumer keeps no result and says
+// released, and the producer goes back with no bounce (no blame).
+func TestReleaseIsNoBlame(t *testing.T) {
+	w := newWorld(t)
+	before := w.snap(t).Cards["p1"]
+	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "tier"), 0, "RELEASED p1.w1")
+	snap := w.snap(t)
+	c, p := snap.Cards["p1.w1"], snap.Cards["p1"]
+	if c.Result != "" || c.Reason != ReleasedPrefix+"tier" {
+		t.Fatalf("released consumer result %q reason %q", c.Result, c.Reason)
+	}
+	if p.State != "ready" || p.Bounces != before.Bounces || p.Score != before.Score {
+		t.Fatalf("producer after release %s bounces %d score %d, before %d %d", p.State, p.Bounces, p.Score, before.Bounces, before.Score)
+	}
+}
+
 func TestReleaseRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "no reason", as: "alice", args: []string{"release", "p1.w1@1"}, exit: 1, want: []string{"a release needs its reason"}},
@@ -185,7 +197,7 @@ func TestShowAndQueue(t *testing.T) {
 	want(t, w.do("alice", "show", "bob"), 0, `"role": "worker"`)
 	want(t, w.do("alice", "show", "run"), 0, `"studio"`)
 	want(t, w.do("alice", "show"), 0, `"Seq": 10`)
-	want(t, w.do("carol", "show", "s", "--stitch"), 0, `"diff_range": "origin/main..origin/sprint/s/group"`, `"id": "p2"`)
+	want(t, w.do("carol", "show", "s", "--stitch"), 0, `"diff_range": "origin/main..origin/sprint-group/s"`, `"id": "p2"`)
 	want(t, w.do("alice", "queue"), 0, "p1 stream=s state=working", "holders=alice", "p2 stream=s state=review")
 	want(t, w.do("alice", "queue", "--stream", "s"), 0, "p1 stream=s")
 }

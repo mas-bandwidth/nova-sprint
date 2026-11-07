@@ -84,7 +84,8 @@ func (a traceAsker) Ask(q Questions) Answers {
 		out.Width[r.Name] = WidthAnswer{Work: r.Width, Ahead: 2 * r.Width} // the model's Ahead
 	}
 	for _, s := range q.Landing {
-		out.Landing[s.Name] = LandingAnswer{BackedUp: 4, Flowing: 1}
+		// above the scenario's producers: the model's requests are rung 1's
+		out.Landing[s.Name] = LandingAnswer{BackedUp: 1000, Flowing: 1, CIWait: 600}
 	}
 	for _, r := range q.Rows {
 		if w.pref == "" {
@@ -236,6 +237,9 @@ func (w *traceWalk) step() {
 	}
 	if blind || w.scen != "burst" {
 		moves = append(moves, w.envOne)
+	}
+	if len(w.openLand()) > 0 { // the coordinator answers only what is open
+		moves = append(moves, w.answerOne)
 	}
 	moves[w.rng.Intn(len(moves))]()
 }
@@ -412,7 +416,7 @@ func (w *traceWalk) edgeOne() {
 	if req.Kind == "land" {
 		it.Outcome, it.Landed = "landed", req.Heads
 		if (w.scen == "land" || w.scen == "burst") && w.rng.Intn(2) == 0 {
-			it.Outcome, it.Landed, it.Blamed = "red", nil, req.Heads[0]
+			it.Outcome, it.Landed = "red", nil
 		}
 	}
 	n := 1 + w.rng.Intn(2)
@@ -422,6 +426,56 @@ func (w *traceWalk) edgeOne() {
 	}
 	w.ok()
 	w.moved("EdgeResult", []string{"id |-> " + w.reqID[req.ID], fmt.Sprintf("out |-> %q", it.Outcome), fmt.Sprintf("n |-> %d", n)})
+}
+
+// openLand is the producers with an open land judgement, by id.
+func (w *traceWalk) openLand() []string {
+	js := w.truthView().Judgements
+	var out []string
+	for _, id := range sortedKeys(js) {
+		if j := js[id]; j.Kind == "land" && j.State == "open" {
+			out = append(out, j.About)
+		}
+	}
+	return out
+}
+
+// answerOne is the coordinator's answer to a land judgement (the model's
+// Answer): land, fix or retry, one verb op.
+func (w *traceWalk) answerOne() {
+	ps := w.openLand()
+	w.pick()
+	if len(ps) == 0 {
+		return
+	}
+	p := ps[w.rng.Intn(len(ps))]
+	choice := []string{"land", "fix", "retry"}[w.rng.Intn(3)]
+	r := Request{Actor: "rowan", Judgement: "land." + p + "." + fmt.Sprint(w.episodes("land", p)), Answer: choice}
+	head := w.snap().Cards[p].Head
+	switch choice {
+	case "land":
+		r.Card, r.Event = p, card.Landed{Head: head, Merge: Sha(90), Reason: "by hand: the walk"}
+	case "fix":
+		r.Card, r.Event = p, card.Red{Head: head, Reason: "the walk's finding"}
+	}
+	r.Coordinators = []string{"rowan"}
+	op, ref := Verb(Build(w.snap(), w.now), Inputs{Now: w.now}, r)
+	if ref != nil || !w.apply("answer", op.Expect, op.Writes...).Accepted {
+		return
+	}
+	w.ok()
+	w.moved("Answer", []string{fmt.Sprintf("p |-> %q", p), fmt.Sprintf("choice |-> %q", choice)})
+}
+
+// episodes is how many land judgements p has had (the open one is the last).
+func (w *traceWalk) episodes(kind, about string) int {
+	n := 0
+	for _, j := range w.truthView().Judgements {
+		if j.Kind == kind && j.About == about {
+			n++
+		}
+	}
+	return n
 }
 
 func (w *traceWalk) view() *View { return w.truthView() }

@@ -15,15 +15,13 @@ import (
 )
 
 const (
-	DefaultRebaseTimeout        = 2 * time.Minute
-	DefaultPushTimeout          = 60 * time.Second
-	DefaultSSHConnectTimeoutSec = 10
+	DefaultRebaseTimeout = 2 * time.Minute
+	DefaultPushTimeout   = 60 * time.Second
 )
 
 var (
-	ErrMissingRef    = errors.New("git: ref not on origin")
-	ErrPushRefused   = errors.New("git: push refused")
-	ErrNoLandingHost = errors.New("git: no landing host answered")
+	ErrMissingRef  = errors.New("git: ref not on origin")
+	ErrPushRefused = errors.New("git: push refused")
 )
 
 type PushRefusedError struct{ Ref, SHA, Reason string }
@@ -436,29 +434,93 @@ func (c *Client) Rebase(ctx context.Context, worktree, onto string) (RebaseResul
 	}
 	return RebaseResult{OK: false, Conflicts: conflicts, Reason: reason + cleanup}, nil
 }
-func StreamBranch(stream string) string { return "sprint/" + strings.TrimSpace(stream) + "/group" }
-func StreamRef(stream string) string    { return "refs/heads/" + StreamBranch(stream) }
+
+// GroupPrefix is the group branches' namespace: sprint-group/<stream>,
+// beside sprint/ and never inside it, so neither a base named
+// sprint/<stream> nor a card branch sprint/<stream>/<card> can block it
+// (git keeps no ref that is both a leaf and a directory; defect 46).
+const GroupPrefix = "sprint-group/"
+
+// GroupBranch is stream's group branch, where rung 2 merges its heads.
+func GroupBranch(stream string) string { return GroupPrefix + strings.TrimSpace(stream) }
+
+// GroupRef is GroupBranch as a ref.
+func GroupRef(stream string) string { return "refs/heads/" + GroupBranch(stream) }
+
+// GroupBlocker is the branch among heads (refs/heads/<name> -> sha, as
+// Heads reads them) that keeps stream's group branch from being created:
+// sprint-group itself (a leaf where the directory must be) or a branch
+// under sprint-group/<stream>/ (a directory where the leaf must be); "" when
+// none does. An existing group branch blocks nothing.
+func GroupBlocker(stream string, heads map[string]string) string {
+	leaf := "refs/heads/" + strings.TrimSuffix(GroupPrefix, "/")
+	under := GroupRef(stream) + "/"
+	var out []string
+	for ref := range heads {
+		if ref == leaf || strings.HasPrefix(ref, under) {
+			out = append(out, strings.TrimPrefix(ref, "refs/heads/"))
+		}
+	}
+	slices.Sort(out)
+	return strings.Join(out, ", ")
+}
+
+// GroupNameProblem is why sprint-group/<stream> is not a branch name git
+// accepts (a component starting or ending with a dot, a "..", a ".lock"
+// end), or "" when it is one.
+func GroupNameProblem(stream string) string {
+	switch {
+	case stream == "":
+		return "the stream has no name"
+	case strings.HasPrefix(stream, "."), strings.HasSuffix(stream, "."):
+		return "a branch name component cannot start or end with a dot"
+	case strings.Contains(stream, ".."):
+		return "a branch name cannot contain .."
+	case strings.HasSuffix(stream, ".lock"):
+		return "a branch name cannot end with .lock"
+	}
+	return ""
+}
+
+// Heads is every branch at the clone address url, one `git ls-remote
+// --heads` and no clone: refs/heads/<name> -> sha.
+func (c *Client) Heads(ctx context.Context, url string) (map[string]string, error) {
+	stdout, stderr, code, err := c.runGit_internal(ctx, "", c.cfg.PushTimeout, "ls-remote", "--heads", url)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, c.failed_internal(code, stdout, stderr, nil, "ls-remote", "--heads", url)
+	}
+	out := map[string]string{}
+	for _, line := range strings.Split(stdout, "\n") {
+		if f := strings.Fields(line); len(f) == 2 && isFullSHA_internal(f[0]) {
+			out[f[1]] = strings.ToLower(f[0])
+		}
+	}
+	return out, nil
+}
+
+// ValidateCardBranch refuses a card branch that is a group branch.
 func ValidateCardBranch(stream, branch string) error {
 	b := strings.TrimPrefix(strings.TrimSpace(branch), "refs/heads/")
-	if b == "group" || strings.HasSuffix(b, "/group") || b == "sprint/"+stream {
-		return fmt.Errorf("git refused: card branch %q cannot use reserved stream integration branch %s", branch, StreamBranch(stream))
+	if b == "" || strings.HasPrefix(b, GroupPrefix) {
+		return fmt.Errorf("git refused: card branch %q of stream %s is empty or under %s, the group branches' namespace", branch, stream, GroupPrefix)
 	}
 	return nil
 }
-func classifyPushRef_internal(ref string) (string, bool, error) {
+
+// classifyPushRef_internal is ref as refs/heads/..., and whether it is a
+// group branch (rewritten with a lease) rather than one that only
+// fast-forwards.
+func classifyPushRef_internal(ref string) (string, bool) {
 	if !strings.HasPrefix(ref, "refs/heads/") {
 		ref = "refs/heads/" + strings.TrimPrefix(ref, "/")
 	}
-	if strings.HasPrefix(ref, "refs/heads/sprint/") && !strings.Contains(strings.TrimPrefix(ref, "refs/heads/sprint/"), "/") {
-		return "", false, fmt.Errorf("git refused: bare stream ref %s is forbidden: use %s/group for the stream branch or %s/<producer> for a card branch", ref, ref, ref)
-	}
-	return ref, strings.HasPrefix(ref, "refs/heads/sprint/") && strings.HasSuffix(ref, "/group"), nil
+	return ref, strings.HasPrefix(ref, "refs/heads/"+GroupPrefix)
 }
 func (c *Client) Push(ctx context.Context, repoDir, sha, ref, expectOld string) error {
-	ref, isStream, err := classifyPushRef_internal(ref)
-	if err != nil {
-		return err
-	}
+	ref, isStream := classifyPushRef_internal(ref)
 	if !isStream && expectOld != "" {
 		ok, err := c.IsAncestor(ctx, repoDir, expectOld, sha)
 		if err != nil {

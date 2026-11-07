@@ -67,9 +67,8 @@ func newScratchClient_internal() (*Client, string, string, string) {
 	}
 	c := New(Config{
 		Identity: Identity{
-			Name:          "scratch-test",
-			ExpectedLogin: login,
-			Token:         os.Getenv("NOVA_FORGE_TEST_TOKEN"),
+			Name:  "scratch-test",
+			Token: os.Getenv("NOVA_FORGE_TEST_TOKEN"),
 		},
 		Binary:  ghBin,
 		Timeout: 30 * time.Second,
@@ -108,7 +107,8 @@ func pushScratchBranch_internal(t *testing.T, ctx context.Context, c *Client, re
 	runGit := func(args ...string) string {
 		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = tmp
-		cmd.Env = append(c.env_internal(),
+		env, _ := c.env_internal()
+		cmd.Env = append(append(os.Environ(), env...),
 			"GIT_AUTHOR_NAME=Rowan Scratch",
 			"GIT_AUTHOR_EMAIL=rowan@mas-bandwidth.com",
 			"GIT_COMMITTER_NAME=Rowan Scratch",
@@ -120,7 +120,10 @@ func pushScratchBranch_internal(t *testing.T, ctx context.Context, c *Client, re
 		}
 		return strings.TrimSpace(string(out))
 	}
-	remoteURL := fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", c.cfg.Identity.Token, repo)
+	remoteURL := fmt.Sprintf("https://github.com/%s.git", repo)
+	if c.cfg.Identity.Token != "" {
+		remoteURL = fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", c.cfg.Identity.Token, repo)
+	}
 	runGit("init")
 	runGit("remote", "add", "origin", remoteURL)
 	runGit("fetch", "--depth=1", "origin", baseSHA)

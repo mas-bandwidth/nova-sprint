@@ -5,79 +5,82 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// A landing waits on a pending CI for as long as it runs, and on an absent
-// one (no check at all on the gated sha) only until CIAbsentWait (defect 40).
-func TestWaitAgainBoundsAnAbsentCI(t *testing.T) {
-	pending := git.LandResult{Outcome: git.OutcomeCIPending}
-	absent := git.LandResult{Outcome: git.OutcomeCIAbsent, GatedSHA: strings.Repeat("a", 40)}
-	if w, n := waitAgain_internal(pending, nil, 7); !w || n != 0 {
-		t.Fatalf("pending: wait %v count %d, want true 0", w, n)
-	}
-	n, passes := 0, 0
-	for {
-		var w bool
-		w, n = waitAgain_internal(absent, nil, n)
-		passes++
-		if !w {
-			break
+// A landing asks a pending CI and a moved base again for as long as they
+// last, and an absent CI (no check at all on the gated sha) only until the
+// request's wait; everything else goes to layer 3 at once.
+func TestAskAgainBoundsAnAbsentCI(t *testing.T) {
+	pending := git.LandResult{Outcome: git.OutcomePending}
+	moved := git.LandResult{Outcome: git.OutcomeBaseMoved}
+	absent := git.LandResult{Outcome: git.OutcomeAbsent, GatedSHA: strings.Repeat("a", 40)}
+	for _, res := range []git.LandResult{pending, moved} {
+		if again, _ := askAgain_internal(res, nil, 0, time.Minute); !again {
+			t.Fatalf("%s is not asked again", res.Outcome)
 		}
+	}
+	wait := 5 * LandPoll
+	passes, waited := 0, time.Duration(0)
+	for again := true; again; passes++ {
+		again, waited = askAgain_internal(absent, nil, waited, wait)
 		if passes > 1000 {
 			t.Fatal("an absent CI is waited for without bound")
 		}
 	}
-	if want := int(CIAbsentWait / LandPoll); passes != want {
-		t.Fatalf("an absent CI stopped after %d passes, want %d", passes, want)
+	if passes != 5 {
+		t.Fatalf("an absent CI stopped after %d passes, want 5", passes)
 	}
-	if w, _ := waitAgain_internal(absent, errors.New("boom"), 0); w {
-		t.Fatal("a failed pass waits")
+	if again, _ := askAgain_internal(absent, errors.New("boom"), 0, wait); again {
+		t.Fatal("a failed pass is asked again")
 	}
-	if w, _ := waitAgain_internal(git.LandResult{Outcome: git.OutcomeCIRed}, nil, 3); w {
-		t.Fatal("a red pass waits")
+	for _, o := range []git.LandOutcome{git.OutcomeRed, git.OutcomeConflict, git.OutcomeRefused, git.OutcomeUnopenable, git.OutcomeBranch, git.OutcomeCIFault, git.OutcomeMissing, git.OutcomeMoved, git.OutcomeLanded} {
+		if again, _ := askAgain_internal(git.LandResult{Outcome: o}, nil, 0, wait); again {
+			t.Fatalf("%s is asked again", o)
+		}
 	}
-	it := landItem("land.s1.x", absent, nil)
-	if it.Outcome != "no-ci" || !strings.Contains(it.Reason, absent.GatedSHA) {
+	it := landItem("land.s1.x", absent, nil, wait)
+	if it.Outcome != "no-ci" || !strings.Contains(it.Reason, absent.GatedSHA) || !strings.Contains(it.Reason, wait.String()) {
 		t.Fatalf("absent item %+v", it)
 	}
 }
 
-// A red gate's item carries the failing checks and the URL to the fix.
-func TestLandItemRedCarriesTheFinding(t *testing.T) {
-	res := git.LandResult{Outcome: git.OutcomeCIRed, BlamedHead: "h1", FailingCI: []string{"unit (linux)", "ci-ok"}, CIURL: "https://ci/1", Reason: "CI red: unit (linux), ci-ok"}
-	it := landItem("land.s1.x", res, nil)
-	if it.Outcome != "red" || it.Blamed != "h1" {
+// A red pass's item carries the facts the judgement shows: rung, base tip,
+// group tip, gated sha, PR, failing checks, their URL and first lines.
+func TestLandItemRedCarriesTheFacts(t *testing.T) {
+	res := git.LandResult{Outcome: git.OutcomeRed, Rung: 2, BaseTip: "b1", GroupTip: "g1", GatedSHA: "g1", PR: "https://pr/7", FailingCI: []string{"unit (linux)"}, CIURL: "https://ci/1", FailingLines: []string{"--- FAIL: TestX"}, Reason: "failure"}
+	it := landItem("land.s1.x", res, nil, time.Minute)
+	if it.Outcome != string(git.OutcomeRed) || len(it.Landed) != 0 {
 		t.Fatalf("red item %+v", it)
 	}
-	for _, want := range []string{"unit (linux)", "ci-ok", "https://ci/1"} {
+	for _, want := range []string{"rung 2", "base tip b1", "group tip g1", "gated g1", "https://pr/7", "unit (linux)", "https://ci/1", "--- FAIL: TestX"} {
 		if !strings.Contains(it.Reason, want) {
-			t.Fatalf("red finding %q lacks %q", it.Reason, want)
+			t.Fatalf("red facts %q lack %q", it.Reason, want)
 		}
+	}
+	landed := landItem("land.s1.y", git.LandResult{Outcome: git.OutcomeLanded, MergeSHA: "m1", LandedHeads: []string{"h1"}}, nil, time.Minute)
+	if landed.Outcome != "landed" || landed.Merge != "m1" || len(landed.Landed) != 1 {
+		t.Fatalf("landed item %+v", landed)
+	}
+	fault := landItem("land.s1.z", git.LandResult{}, errors.New("git: boom"), time.Minute)
+	if fault.Outcome != "fault" || !strings.Contains(fault.Reason, "boom") {
+		t.Fatalf("fault item %+v", fault)
 	}
 }
 
-// readyForge is a forge that refuses before anything runs.
-type readyForge struct {
-	forge.Forge
-	err error
-}
-
-func (f readyForge) Ready() error { return f.err }
-
-// A landing with no forge token merges and pushes nothing: it answers forge
-// with the refusal, which layer 3 opens as one judgement (defect 39).
-func TestLandRefusesWithoutAToken(t *testing.T) {
-	refusal := &edge.Refusal{Problem: "the forge has no GitHub token for sprint", Fix: "run it under nova-secrets exec --only GH_GATE_TOKEN"}
-	e := &Edges{Forge: readyForge{err: refusal}} // a nil Git: any git call would panic
-	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{"h"}}, store.Stream{Name: "s1", Forge: "github", Mode: "auto"})
-	got := e.Results()
-	if len(got) != 1 || got[0].Outcome != "forge" || !strings.Contains(got[0].Reason, "nova-secrets exec --only GH_GATE_TOKEN") {
-		t.Fatalf("results %+v", got)
+// A stream that lands by hand (mode hand, or no forge) merges and pushes
+// nothing: it answers hand at once, which layer 3 opens as one judgement.
+func TestLandByHandStreamTouchesNothing(t *testing.T) {
+	for _, s := range []store.Stream{{Name: "s1", Mode: "hand", Forge: "github"}, {Name: "s1", Mode: "auto"}} {
+		e := &Edges{} // a nil Git and Forge: any call would panic
+		e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{"h"}, Branches: []string{"sprint/s1/x"}}, s)
+		got := e.Results()
+		if len(got) != 1 || got[0].Outcome != "hand" || !strings.Contains(got[0].Reason, "by hand") {
+			t.Fatalf("results %+v", got)
+		}
 	}
 }

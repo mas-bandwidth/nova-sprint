@@ -90,7 +90,7 @@ func TestAskerOutOfRange(t *testing.T) {
 	assert.Equal(t, WidthAnswer{2, 2}, o.width(RowFacts{Name: "r2", Width: 2}), "ahead over 4 x width")
 	assert.Equal(t, WidthAnswer{2, 0}, o.width(RowFacts{Name: "r3", Width: 2}))
 	assert.Equal(t, Engine.Landing, o.landing(StreamFacts{Name: "s1"}), "flowing must be below backed up")
-	assert.Equal(t, LandingAnswer{3, 0}, o.landing(StreamFacts{Name: "s2"}))
+	assert.Equal(t, LandingAnswer{BackedUp: 3}, o.landing(StreamFacts{Name: "s2"}))
 	assert.Equal(t, Engine.Limits, o.limits())
 	assert.Equal(t, Engine.Timeouts, o.timeouts(), "withdraw below gone")
 	assert.Equal(t, []string{"landing", "limits", "order", "reads", "rows", "timeouts", "verdict", "width"}, o.missed())

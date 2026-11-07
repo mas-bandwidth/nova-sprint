@@ -3,285 +3,201 @@ package git
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 )
 
-func TestLandPassSingleHeadReuseAndFastForward(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	now := int64(1000)
-	gf := NewFake(func() int64 { return now })
-	ff := newFakeForge_internal()
-
-	base := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
-	head1 := gf.AddCommit(base, map[string]string{"a.go": "package a\n"}, "sprint/s1/c1")
-
-	res, err := LandPass(ctx, gf, ff, LandRequest{
-		Repo:       "mas-bandwidth/nova-sprint",
-		Stream:     "s1",
-		Base:       "v2",
-		Heads:      []string{head1},
-		PassedSHAs: map[string]bool{head1: true},
-	})
-	if err != nil {
-		t.Fatalf("LandPass: %v", err)
-	}
-	if res.Outcome != OutcomeLanded || !res.ReusedCI || res.BaseTip != head1 || res.StreamTip != head1 {
-		t.Fatalf("unexpected single-head LandResult: %+v", res)
-	}
-}
-
-func TestLandPassRemergeWhenBaseMoved(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	now := int64(1000)
-	gf := NewFake(func() int64 { return now })
-	ff := newFakeForge_internal()
-
-	base0 := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
-	head1 := gf.AddCommit(base0, map[string]string{"a.go": "package a\n"}, "sprint/s1/c1")
-	head2 := gf.AddCommit(base0, map[string]string{"b.go": "package b\n"}, "sprint/s1/c2")
-	base1 := gf.AddCommit(base0, map[string]string{"other.go": "package other\n"}, "")
-
-	movedOnce := false
-	ff.OnCall = func(op string) {
-		if op == "Checks" {
-			gf.world.mu.Lock()
-			for sha := range gf.world.commits {
-				ff.SetCheck("mas-bandwidth/nova-sprint", sha, forge.CheckRollup{State: forge.CheckGreen})
-			}
-			gf.world.mu.Unlock()
-			if !movedOnce {
-				movedOnce = true
-				gf.SetOriginRef("v2", base1)
-			}
-		}
-	}
-
-	res, err := LandPass(ctx, gf, ff, LandRequest{
-		Repo:   "mas-bandwidth/nova-sprint",
-		Stream: "s1",
-		Base:   "v2",
-		Heads:  []string{head1, head2},
-	})
-	if err != nil {
-		t.Fatalf("LandPass: %v", err)
-	}
-	if res.Outcome != OutcomeLanded || !res.Remerged || gf.OriginRef("v2") != res.BaseTip || gf.OriginRef("sprint/s1/group") != res.BaseTip {
-		t.Fatalf("unexpected remerge LandResult: %+v", res)
-	}
-	for _, h := range []string{base1, head1, head2} {
-		if ok, _ := gf.IsAncestor(ctx, "", h, res.BaseTip); !ok {
-			t.Fatalf("expected %s to be ancestor of landed base %s", h, res.BaseTip)
-		}
-	}
-}
-
-func TestLedgerMergeConflictAndMissingHeadRefusals(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	now := int64(1000)
-	gf := NewFake(func() int64 { return now })
-	ff := newFakeForge_internal()
-	ff.OnCall = func(op string) {
-		if op == "Checks" {
-			gf.world.mu.Lock()
-			for sha := range gf.world.commits {
-				ff.SetCheck("mas-bandwidth/nova-sprint", sha, forge.CheckRollup{State: forge.CheckGreen})
-			}
-			gf.world.mu.Unlock()
-		}
-	}
-
-	base := gf.AddCommit("", map[string]string{"tla/RUNS.tsv": "row0\n", "code.go": "v0\n"}, "v2")
-	h1 := gf.AddCommit(base, map[string]string{"tla/RUNS.tsv": "row0\nrow1\n"}, "sprint/s1/c1")
-	h2 := gf.AddCommit(base, map[string]string{"tla/RUNS.tsv": "row0\nrow2\n"}, "sprint/s1/c2")
-
-	res, err := LandPass(ctx, gf, ff, LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1, h2}})
-	if err != nil || res.Outcome != OutcomeRung3Conflict || len(res.Conflicts) != 1 || res.Conflicts[0] != "tla/RUNS.tsv" {
-		t.Fatalf("expected Rung3Conflict on tla/RUNS.tsv, got %+v err=%v", res, err)
-	}
-
-	res, err = LandPass(ctx, gf, ff, LandRequest{
-		Repo:    "mas-bandwidth/nova-sprint",
-		Stream:  "s1",
-		Base:    "v2",
-		Heads:   []string{h1, h2},
-		Ledgers: []LedgerRule{{Path: "tla/RUNS.tsv"}},
-	})
-	if err != nil || res.Outcome != OutcomeLanded {
-		t.Fatalf("expected ledger merge to land, got %+v err=%v", res, err)
-	}
-
-	missingSHA := "9999999999999999999999999999999999999999"
-	res, err = LandPass(ctx, gf, ff, LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{missingSHA}})
-	if err != nil || res.Outcome != OutcomeMissingHead || res.MissingHead != missingSHA || !strings.Contains(res.Reason, "not on origin") {
-		t.Fatalf("expected OutcomeMissingHead, got %+v err=%v", res, err)
-	}
-
-	if err := gf.Push(ctx, "", h1, "refs/heads/v2", h2); err == nil || !strings.Contains(err.Error(), "force-with-lease is forbidden on base branch") {
-		t.Fatalf("expected force-with-lease refusal on base branch, got %v", err)
-	}
-}
-
-func TestBisectRedGroupAndFaultNoBlame(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	now := int64(1000)
-	gf := NewFake(func() int64 { return now })
-	ff := newFakeForge_internal()
-
-	base := gf.AddCommit("", map[string]string{"base.txt": "1\n"}, "v2")
-	h1 := gf.AddCommit(base, map[string]string{"f1.txt": "1\n"}, "sprint/s1/c1")
-	h2 := gf.AddCommit(base, map[string]string{"f2.txt": "2\n"}, "sprint/s1/c2")
-	h3 := gf.AddCommit(base, map[string]string{"f3.txt": "3\n"}, "sprint/s1/c3")
-
-	ff.OnCall = func(op string) {
-		if op == "Checks" {
-			gf.world.mu.Lock()
-			for sha, c := range gf.world.commits {
-				st := forge.CheckGreen
-				if c.Files["f2.txt"] == "2\n" {
-					st = forge.CheckRed
-				}
-				ff.SetCheck("mas-bandwidth/nova-sprint", sha, forge.CheckRollup{State: st, Failing: []string{"unit"}})
-			}
-			gf.world.mu.Unlock()
-		}
-	}
-
-	req := LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1, h2, h3}}
-	res, err := LandPass(ctx, gf, ff, req)
-	if err != nil || res.Outcome != OutcomeCIRed || res.BlamedHead != h2 || len(res.GreenHeads) != 2 {
-		t.Fatalf("expected BisectRedGroup to blame h2 (%s), got %+v err=%v", h2, res, err)
-	}
-
-	ff.OnCall = func(op string) {
-		if op == "Checks" {
-			gf.world.mu.Lock()
-			for sha := range gf.world.commits {
-				ff.SetCheck("mas-bandwidth/nova-sprint", sha, forge.CheckRollup{State: forge.CheckFault, Reason: "runner cancelled"})
-			}
-			gf.world.mu.Unlock()
-		}
-	}
-	resFault, err := LandPass(ctx, gf, ff, req)
-	if err != nil || resFault.Outcome != OutcomeCIFault || resFault.BlamedHead != "" {
-		t.Fatalf("gate fault must blame no head, got %+v err=%v", resFault, err)
-	}
-}
-
-func TestRemoteLandHostFailover(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	runner := ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
-		for _, a := range cmd.Argv {
-			if a == "amd-1" {
-				return edge.Result{Stderr: "ssh: connect timed out", ExitCode: 255}, nil
-			}
-			if a == "vision" {
-				return edge.Result{Stdout: "LANDED ok"}, nil
-			}
-		}
-		return edge.Result{Stderr: "unreachable", ExitCode: 255}, nil
-	})
-
-	res, err := RunRemoteLandStep(ctx, runner, []string{"amd-1", "vision", "hulk"}, 10, 30*time.Second, "--stream", "s1")
-	if err != nil || res.Host != "vision" || len(res.SkippedHosts) != 1 || res.SkippedHosts[0] != "amd-1" {
-		t.Fatalf("unexpected failover result: %+v err=%v", res, err)
-	}
-	if _, err := RunRemoteLandStep(ctx, runner, []string{"amd-1"}, 10, 30*time.Second, "--stream", "s1"); !errors.Is(err, ErrNoLandingHost) {
-		t.Fatalf("expected ErrNoLandingHost, got %v", err)
-	}
-}
-
-func TestLandPassRestartIdempotence(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	now := int64(1000)
-	gitWorld := NewFakeWorld()
-	forgeWorld := newFakeForgeWorld_internal()
-
-	g1 := NewFakeWithWorld(gitWorld, func() int64 { return now })
-	f1 := newFakeForgeWithWorld_internal(forgeWorld)
-	base := g1.AddCommit("", map[string]string{"a.txt": "0\n"}, "v2")
-	h1 := g1.AddCommit(base, map[string]string{"b.txt": "1\n"}, "sprint/s1/c1")
-	f1.SetCheck("mas-bandwidth/nova-sprint", h1, forge.CheckRollup{State: forge.CheckGreen})
-
-	lReq := LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1}}
-	res1, err := LandPass(ctx, g1, f1, lReq)
-	if err != nil || res1.Outcome != OutcomeLanded {
-		t.Fatalf("g1 LandPass: %+v err=%v", res1, err)
-	}
-
-	g2 := NewFakeWithWorld(gitWorld, func() int64 { return now })
-	f2 := newFakeForgeWithWorld_internal(forgeWorld)
-	res2, err := LandPass(ctx, g2, f2, lReq)
-	if err != nil || res1.Outcome != res2.Outcome || res1.BaseTip != res2.BaseTip {
-		t.Fatalf("restart idempotence mismatch: res1=%+v res2=%+v err=%v", res1, res2, err)
-	}
-}
-
-func TestStreamGroupAndCardRefHierarchy(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
+// landWorld_internal is base v2 at root and two cards cut from it, c1 and
+// c2, on their branches; base has not moved.
+func landWorld_internal() (*Fake, *fakeForge_internal, string, string, string) {
 	gf := NewFake(func() int64 { return 1000 })
-	base := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
-	h1 := gf.AddCommit(base, map[string]string{"a.go": "package a\n"}, "sprint/s1/p1")
+	root := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
+	c1 := gf.AddCommit(root, map[string]string{"a.go": "package a\n"}, "sprint/s1/c1")
+	c2 := gf.AddCommit(root, map[string]string{"b.go": "package b\n"}, "sprint/s1/c2")
+	ff := newFakeForge_internal()
+	ff.OnMerge = func(sha string) (string, error) { gf.SetOriginRef("v2", sha); return sha, nil }
+	return gf, ff, root, c1, c2
+}
 
-	if StreamBranch("s1") != "sprint/s1/group" || StreamRef("s1") != "refs/heads/sprint/s1/group" {
-		t.Fatalf("unexpected StreamBranch/StreamRef: %s / %s", StreamBranch("s1"), StreamRef("s1"))
+func one_internal(c1 string) LandRequest {
+	return LandRequest{Repo: "o/r", Stream: "s1", Base: "v2", Heads: []string{c1}, Branches: []string{"sprint/s1/c1"}}
+}
+
+// Rung 1: one head that contains the base tip is gated on its own branch's
+// PR at that exact head and merged when green.
+func TestLandRungOneGatesTheCardsOwnPR(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	gf, ff, root, c1, _ := landWorld_internal()
+	res, err := LandPass(ctx, gf, ff, one_internal(c1))
+	if err != nil || res.Outcome != OutcomeAbsent || res.GatedSHA != c1 || res.Rung != 1 || res.BaseTip != root {
+		t.Fatalf("pass 1 = %+v err=%v, want ci_absent at %s", res, err, c1)
 	}
-	if err := ValidateCardBranch("s1", "sprint/s1/p1"); err != nil {
-		t.Fatalf("ValidateCardBranch(sprint/s1/p1): %v", err)
+	if ff.prs[0].HeadRef != "sprint/s1/c1" || ff.prs[0].BaseRef != "v2" {
+		t.Fatalf("the PR is %+v, want sprint/s1/c1 -> v2", ff.prs[0])
 	}
-	for _, bad := range []string{"group", "sprint/s1/group", "refs/heads/sprint/s1/group", "sprint/s1"} {
-		if err := ValidateCardBranch("s1", bad); err == nil {
-			t.Fatalf("expected ValidateCardBranch(%q) to be refused", bad)
-		}
-		if _, err := LandPass(ctx, gf, nil, LandRequest{Stream: "s1", Base: "v2", Heads: []string{bad}}); err == nil {
-			t.Fatalf("expected LandPass with head %q to be refused", bad)
-		}
+	ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckPending})
+	if res, _ = LandPass(ctx, gf, ff, one_internal(c1)); res.Outcome != OutcomePending {
+		t.Fatalf("pass 2 = %+v, want ci_pending", res)
 	}
-	if err := gf.Push(ctx, "", h1, "refs/heads/sprint/s1", ""); err == nil {
-		t.Fatalf("expected bare stream ref push refs/heads/sprint/s1 to be refused")
+	ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckGreen})
+	res, err = LandPass(ctx, gf, ff, one_internal(c1))
+	if err != nil || res.Outcome != OutcomeLanded || res.MergeSHA != c1 || !slices.Equal(res.LandedHeads, []string{c1}) || len(ff.prs) != 1 {
+		t.Fatalf("pass 3 = %+v err=%v, want landed with one PR", res, err)
+	}
+	if again, _ := LandPass(ctx, gf, ff, one_internal(c1)); again.Outcome != OutcomeLanded || again.MergeSHA != c1 {
+		t.Fatalf("a pass after the merge = %+v, want landed (the head is on base)", again)
 	}
 }
 
-// Drift row 27: a red result always blames a head. Two heads each green alone
-// and red together: the bisection blames the later head and the earlier is green.
-func TestRedTogetherGreenAloneBlamesTheLaterHead(t *testing.T) {
+// Rung 2: more than one head are merged onto the base tip in the group
+// branch (never under sprint/), one PR from it, landed together.
+func TestLandRungTwoGatesTheGroup(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	now := int64(1000)
-	gf := NewFake(func() int64 { return now })
-	ff := newFakeForge_internal()
-	base := gf.AddCommit("", map[string]string{"base.txt": "1\n"}, "v2")
-	h1 := gf.AddCommit(base, map[string]string{"f1.txt": "1\n"}, "sprint/s1/c1")
-	h2 := gf.AddCommit(base, map[string]string{"f2.txt": "2\n"}, "sprint/s1/c2")
-	ff.OnCall = func(op string) {
-		if op != "Checks" {
-			return
-		}
-		gf.world.mu.Lock()
-		for sha, c := range gf.world.commits {
-			st := forge.CheckGreen
-			if c.Files["f1.txt"] != "" && c.Files["f2.txt"] != "" {
-				st = forge.CheckRed
-			}
-			ff.SetCheck("mas-bandwidth/nova-sprint", sha, forge.CheckRollup{State: st, Failing: []string{"unit"}})
-		}
-		gf.world.mu.Unlock()
+	gf, ff, root, c1, c2 := landWorld_internal()
+	req := LandRequest{Repo: "o/r", Stream: "s1", Base: "v2", Heads: []string{c1, c2}, Branches: []string{"sprint/s1/c1", "sprint/s1/c2"}}
+	res, err := LandPass(ctx, gf, ff, req)
+	if err != nil || res.Outcome != OutcomeAbsent || res.Rung != 2 || res.GatedSHA == "" || gf.OriginRef(GroupRef("s1")) != res.GatedSHA {
+		t.Fatalf("pass 1 = %+v err=%v, want ci_absent on the pushed group", res, err)
 	}
-	res, err := LandPass(ctx, gf, ff, LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1, h2}})
-	if err != nil || res.Outcome != OutcomeCIRed || res.BlamedHead != h2 || len(res.GreenHeads) != 1 || res.GreenHeads[0] != h1 {
-		t.Fatalf("want red blaming %s with %s green, got %+v err=%v", h2, h1, res, err)
+	if ff.prs[0].HeadRef != "sprint-group/s1" {
+		t.Fatalf("the PR's head is %s, want sprint-group/s1", ff.prs[0].HeadRef)
+	}
+	gated := res.GatedSHA
+	ff.SetCheck("o/r", gated, forge.CheckRollup{State: forge.CheckGreen})
+	res, err = LandPass(ctx, gf, ff, req)
+	if err != nil || res.Outcome != OutcomeLanded || res.GatedSHA != gated || res.MergeSHA != gated || len(res.LandedHeads) != 2 {
+		t.Fatalf("pass 2 = %+v err=%v, want landed at the same gated %s", res, err, gated)
+	}
+	if ok, _ := gf.IsAncestor(ctx, "", root, gated); !ok {
+		t.Fatal("the group does not contain the base it merged onto")
+	}
+}
+
+// One head behind base goes through the group, so the gated sha contains
+// the base tip it merges onto.
+func TestLandOneHeadBehindBaseGoesThroughTheGroup(t *testing.T) {
+	t.Parallel()
+	gf, ff, root, c1, _ := landWorld_internal()
+	moved := gf.AddCommit(root, map[string]string{"m.go": "package m\n"}, "v2")
+	res, err := LandPass(context.Background(), gf, ff, one_internal(c1))
+	if err != nil || res.Outcome != OutcomeAbsent || res.Rung != 2 || res.GatedSHA == c1 || ff.prs[0].HeadRef != "sprint-group/s1" {
+		t.Fatalf("pass = %+v err=%v, want the group gated", res, err)
+	}
+	if ok, _ := gf.IsAncestor(context.Background(), "", moved, res.GatedSHA); !ok {
+		t.Fatal("the gated sha does not contain the moved base")
+	}
+}
+
+// Anything not green-and-merge is an outcome with its facts, and nothing
+// lands: red (with the failing lines), a CI fault, a conflict, a PR that
+// cannot be opened, a refused merge, a moved branch, a missing branch.
+func TestLandEveryOtherOutcomeLandsNothing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cases := []struct {
+		name string
+		set  func(gf *Fake, ff *fakeForge_internal, c1 string)
+		want LandOutcome
+	}{
+		{"red", func(_ *Fake, ff *fakeForge_internal, c1 string) {
+			ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckRed, Failing: []string{"unit"}, URL: "https://github.com/o/r/actions/runs/1/job/2"})
+		}, OutcomeRed},
+		{"fault", func(_ *Fake, ff *fakeForge_internal, c1 string) {
+			ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckFault})
+		}, OutcomeCIFault},
+		{"conflicting", func(_ *Fake, ff *fakeForge_internal, _ string) { ff.Mergeable = "CONFLICTING" }, OutcomeConflict},
+		{"unopenable", func(_ *Fake, ff *fakeForge_internal, _ string) { ff.OpenErr = errors.New("HTTP 403") }, OutcomeUnopenable},
+		{"refused", func(_ *Fake, ff *fakeForge_internal, c1 string) {
+			ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckGreen})
+			ff.OnMerge = func(string) (string, error) { return "", errors.New("required reviews missing") }
+		}, OutcomeRefused},
+		{"moved", func(gf *Fake, _ *fakeForge_internal, c1 string) {
+			gf.SetOriginRef("sprint/s1/c1", gf.AddCommit(c1, map[string]string{"z": "z\n"}, ""))
+		}, OutcomeMoved},
+		{"missing", func(gf *Fake, _ *fakeForge_internal, _ string) { gf.RemoveFromOrigin("refs/heads/sprint/s1/c1") }, OutcomeMissing},
+	}
+	for _, c := range cases {
+		gf, ff, root, c1, _ := landWorld_internal()
+		c.set(gf, ff, c1)
+		res, err := LandPass(ctx, gf, ff, one_internal(c1))
+		if err != nil || res.Outcome != c.want || res.Reason == "" || gf.OriginRef("v2") != root {
+			t.Fatalf("%s: %+v err=%v, want %s with a reason and base unmoved", c.name, res, err, c.want)
+		}
+		if c.want == OutcomeRed && (!slices.Equal(res.FailingCI, []string{"unit"}) || len(res.FailingLines) == 0) {
+			t.Fatalf("red carries no failing checks or lines: %+v", res)
+		}
+	}
+}
+
+// A group whose heads do not merge onto base is a conflict naming the files.
+func TestLandGroupConflict(t *testing.T) {
+	t.Parallel()
+	gf, ff, root, c1, _ := landWorld_internal()
+	c3 := gf.AddCommit(root, map[string]string{"a.go": "package other\n"}, "sprint/s1/c3")
+	req := LandRequest{Repo: "o/r", Stream: "s1", Base: "v2", Heads: []string{c1, c3}, Branches: []string{"sprint/s1/c1", "sprint/s1/c3"}}
+	res, err := LandPass(context.Background(), gf, ff, req)
+	if err != nil || res.Outcome != OutcomeConflict || !slices.Equal(res.Conflicts, []string{"a.go"}) || len(ff.prs) != 0 {
+		t.Fatalf("pass = %+v err=%v, want a conflict on a.go and no PR", res, err)
+	}
+}
+
+// Base moving between the gate and the merge merges nothing.
+func TestLandBaseMovedAfterTheGate(t *testing.T) {
+	t.Parallel()
+	gf, ff, root, c1, _ := landWorld_internal()
+	ff.SetCheck("o/r", c1, forge.CheckRollup{State: forge.CheckGreen})
+	ff.OnCall = func(op string) {
+		if op == "Checks" {
+			gf.AddCommit(root, map[string]string{"m.go": "package m\n"}, "v2")
+		}
+	}
+	res, err := LandPass(context.Background(), gf, ff, one_internal(c1))
+	if err != nil || res.Outcome != OutcomeBaseMoved || slices.Contains(ff.calls_internal(), "Merge") {
+		t.Fatalf("pass = %+v err=%v, want base_moved and no merge", res, err)
+	}
+}
+
+// The group branch's name never collides with a base sprint/<stream> or a
+// card branch sprint/<stream>/<card> (defect 46); what blocks it is named.
+func TestGroupBranchNamespace(t *testing.T) {
+	t.Parallel()
+	if GroupBranch("s1") != "sprint-group/s1" || GroupRef("s1") != "refs/heads/sprint-group/s1" {
+		t.Fatalf("GroupBranch = %s, GroupRef = %s", GroupBranch("s1"), GroupRef("s1"))
+	}
+	for _, ok := range []string{"sprint/s1/p1", "sprint/s1"} {
+		if err := ValidateCardBranch("s1", ok); err != nil {
+			t.Fatalf("ValidateCardBranch(%q): %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "sprint-group/s1", "refs/heads/sprint-group/s1/x"} {
+		if err := ValidateCardBranch("s1", bad); err == nil {
+			t.Fatalf("ValidateCardBranch(%q) was not refused", bad)
+		}
+	}
+	heads := map[string]string{"refs/heads/sprint/s1": "a", "refs/heads/sprint-group/s2": "b"}
+	if b := GroupBlocker("s1", heads); b != "" {
+		t.Fatalf("GroupBlocker = %q with only a base sprint/s1 and another stream's group", b)
+	}
+	heads["refs/heads/sprint-group"] = "c"
+	heads["refs/heads/sprint-group/s1/x"] = "d"
+	if b := GroupBlocker("s1", heads); b != "sprint-group, sprint-group/s1/x" {
+		t.Fatalf("GroupBlocker = %q", b)
+	}
+	for _, ok := range []string{"s1", "a.b", "a_b-c"} {
+		if p := GroupNameProblem(ok); p != "" {
+			t.Fatalf("GroupNameProblem(%q) = %q", ok, p)
+		}
+	}
+	for _, bad := range []string{"", ".s", "s.", "a..b", "s.lock"} {
+		if GroupNameProblem(bad) == "" {
+			t.Fatalf("GroupNameProblem(%q) said nothing", bad)
+		}
 	}
 }
 
@@ -298,7 +214,7 @@ func TestTokenIsTheOnlyCredential(t *testing.T) {
 		return edge.Result{}, nil
 	})
 	c := New(Config{Exec: runner, Token: "tok-sprint"})
-	if err := c.Push(context.Background(), "/repo", sha, StreamRef("s1"), ""); err != nil {
+	if err := c.Push(context.Background(), "/repo", sha, GroupRef("s1"), ""); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 	if len(seen) != 1 || strings.Contains(strings.Join(seen[0].Argv, " "), "tok-sprint") {
@@ -311,7 +227,7 @@ func TestTokenIsTheOnlyCredential(t *testing.T) {
 		}
 	}
 	seen = nil
-	if err := New(Config{Exec: runner}).Push(context.Background(), "/repo", sha, StreamRef("s1"), ""); err != nil {
+	if err := New(Config{Exec: runner}).Push(context.Background(), "/repo", sha, GroupRef("s1"), ""); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 	if strings.Contains(strings.Join(seen[0].Env, "\n"), "credential.helper") {

@@ -13,7 +13,7 @@ import (
 func TestFailedGHCarriesCommandNotToken(t *testing.T) {
 	t.Parallel()
 	c := New(Config{
-		Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "ghp_SECRETsecret0123456789abcdef"},
+		Identity: Identity{Name: "sprint", Token: "ghp_SECRETsecret0123456789abcdef"},
 		Now:      func() int64 { return 1000 },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 			if cmd.Argv[1] == "auth" {

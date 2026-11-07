@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,73 +18,44 @@ const (
 	shaD = "4444444444444444444444444444444444444444"
 )
 
-func TestCredentialsRefusals(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	now := int64(1000)
-
-	missing := New(Config{
-		Identity: Identity{Name: "amd-1.ds"},
-		Now:      func() int64 { return now },
-		Exec: ExecFunc(func(_ context.Context, _ edge.Cmd) (edge.Result, error) {
-			t.Fatal("gh must not run without credentials")
-			return edge.Result{}, nil
+// The forge acts as the host's own gh login (intent rule 32): with no
+// override it passes nothing of its own and inherits the environment.
+func TestForgeActsAsTheHostsGh(t *testing.T) {
+	var seen []edge.Cmd
+	c := New(Config{
+		Identity: Identity{Name: "sprint"},
+		Now:      func() int64 { return 1000 },
+		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+			seen = append(seen, cmd)
+			return edge.Result{Stdout: "[]"}, nil
 		}),
 	})
-	_, _, err := missing.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
-	var refusal *edge.Refusal
-	if !errors.As(err, &refusal) || !strings.Contains(refusal.Problem, "no GitHub token for amd-1.ds") || !strings.Contains(refusal.Fix, "nova-secrets exec --only GH_GATE_TOKEN") {
-		t.Fatalf("a missing token is not a refusal with its fix: %v", err)
+	if _, _, err := c.PR(context.Background(), "mas-bandwidth/nova-sprint", "sprint-group/s1", "v2"); err != nil {
+		t.Fatalf("PR: %v", err)
 	}
-	if missing.Ready() == nil {
-		t.Fatal("Ready accepted a client with no token")
-	}
-
-	glennClient := New(Config{
-		Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-rowan"},
-		Now:      func() int64 { return now },
-		Exec: ExecFunc(func(_ context.Context, _ edge.Cmd) (edge.Result, error) {
-			return edge.Result{Stdout: "  ✓ Logged in to github.com account gafferongames (GH_TOKEN)"}, nil
-		}),
-	})
-	_, _, err = glennClient.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
-	if !errors.As(err, &refusal) || !strings.Contains(refusal.Problem, "gafferongames's, expected rowan-claude") {
-		t.Fatalf("the human's login was not refused: %v", err)
-	}
-
-	wrongFake := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-rowan"}, func() int64 { return now })
-	wrongFake.SetAuthLogin("stella-codex")
-	_, _, err = wrongFake.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
-	if err == nil || !strings.Contains(err.Error(), "is stella-codex's, expected rowan-claude") {
-		t.Fatalf("unexpected wrong login error: %v", err)
+	if len(seen) != 1 || seen[0].CleanEnv || strings.Contains(strings.Join(seen[0].Env, " "), "GH_TOKEN") {
+		t.Fatalf("gh ran %d times with %+v; want one pr list on the host's own environment", len(seen), seen)
 	}
 }
 
-// The forge acts only as its token: a GH_TOKEN, GITHUB_TOKEN or
-// GH_CONFIG_DIR the process inherited never reaches gh, so the host's own
-// login is never the identity (defect 39), and the token is in the
-// environment only, never in argv.
-func TestForgeActsOnlyAsItsToken(t *testing.T) {
+// The optional override: a GH_GATE_TOKEN given to the forge replaces any
+// GitHub credential the process inherited, in the environment only, never
+// in argv.
+func TestForgeOverrideToken(t *testing.T) {
 	t.Setenv("GH_TOKEN", "inherited-token")
 	t.Setenv("GITHUB_TOKEN", "inherited-github")
 	t.Setenv("GH_CONFIG_DIR", "/home/someone/.config/gh")
 	var seen []edge.Cmd
 	c := New(Config{
-		Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-sprint"},
+		Identity: Identity{Name: "sprint", Token: "tok-sprint"},
 		Now:      func() int64 { return 1000 },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 			seen = append(seen, cmd)
-			if cmd.Argv[1] == "auth" {
-				return edge.Result{Stdout: "Logged in to github.com account rowan-claude (GH_TOKEN)"}, nil
-			}
 			return edge.Result{Stdout: "[]"}, nil
 		}),
 	})
-	if _, _, err := c.PR(context.Background(), "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2"); err != nil {
+	if _, _, err := c.PR(context.Background(), "mas-bandwidth/nova-sprint", "sprint-group/s1", "v2"); err != nil {
 		t.Fatalf("PR: %v", err)
-	}
-	if len(seen) != 2 {
-		t.Fatalf("gh ran %d times, want auth status then pr list", len(seen))
 	}
 	for _, cmd := range seen {
 		if !cmd.CleanEnv {
@@ -110,7 +82,7 @@ func TestClientGraphQLBatchAndClassifications(t *testing.T) {
 	now := int64(1000)
 
 	c := New(Config{
-		Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-rowan"},
+		Identity: Identity{Name: "sprint", Token: "tok-rowan"},
 		Now:      func() int64 { return now },
 		Exec:     ExecFunc(fakeGraphQLExec_internal),
 	})
@@ -168,33 +140,52 @@ func fakeGraphQLExec_internal(_ context.Context, cmd edge.Cmd) (edge.Result, err
 	return edge.Result{Stderr: "unexpected command", ExitCode: 1}, nil
 }
 
-func TestMergeExactSHA(t *testing.T) {
+// Merge reads the repository's allowed method once, merges only at the
+// gated head (--match-head-commit), and returns the merge commit GitHub
+// recorded; a PR left open (a merge queue) is an error, never landed.
+func TestMergeByAllowedMethodAtTheGatedHead(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	now := int64(1000)
-	f := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-rowan"}, func() int64 { return now })
-	repo := "mas-bandwidth/nova-sprint"
+	var argv []string
+	state := "MERGED"
+	c := New(Config{
+		Identity: Identity{Name: "sprint"},
+		Now:      func() int64 { return 1000 },
+		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+			a := strings.Join(cmd.Argv[1:], " ")
+			argv = append(argv, a)
+			switch {
+			case strings.HasPrefix(a, "repo view"):
+				return edge.Result{Stdout: `{"mergeCommitAllowed":false,"squashMergeAllowed":true,"rebaseMergeAllowed":true}`}, nil
+			case strings.HasPrefix(a, "pr view"):
+				return edge.Result{Stdout: `{"state":"` + state + `","mergeCommit":{"oid":"` + shaD + `"}}`}, nil
+			}
+			return edge.Result{}, nil
+		}),
+	})
+	got, err := c.Merge(context.Background(), "o/r", 7, shaB)
+	if err != nil || got != shaD {
+		t.Fatalf("Merge = %q, %v; want %s", got, err, shaD)
+	}
+	if !slices.Contains(argv, "pr merge 7 --repo o/r --squash --match-head-commit "+shaB) {
+		t.Fatalf("no squash merge at the gated head in %q", argv)
+	}
+	state = "OPEN"
+	if _, err := c.Merge(context.Background(), "o/r", 7, shaB); err == nil || !strings.Contains(err.Error(), "merge queue") {
+		t.Fatalf("an unmerged PR was not an error: %v", err)
+	}
+	if n := len(slices.DeleteFunc(slices.Clone(argv), func(a string) bool { return !strings.HasPrefix(a, "repo view") })); n != 1 {
+		t.Fatalf("the merge method was read %d times, want once", n)
+	}
+}
 
-	pr, err := f.OpenPR(ctx, repo, "sprint/s1/group", "v2", "sprint/s1 batch", "body")
-	if err != nil {
-		t.Fatalf("OpenPR: %v", err)
+func TestFirstFailing(t *testing.T) {
+	t.Parallel()
+	log := "setup\nok 1\n--- FAIL: TestX (0.00s)\n    x_test.go:9: want 1\nFAIL\n"
+	if got := FirstFailing(log, 5); !slices.Equal(got, []string{"--- FAIL: TestX (0.00s)", "FAIL"}) {
+		t.Fatalf("FirstFailing = %q", got)
 	}
-	f.SetBaseTip(repo, "v2", shaA)
-	f.SetPRHead(repo, pr.Number, shaB, shaA)
-
-	if err := f.Merge(ctx, repo, pr.Number, shaC, "v2"); !errors.Is(err, ErrStaleHead) {
-		t.Fatalf("expected ErrStaleHead on wrong SHA, got %v", err)
-	}
-	if err := f.Merge(ctx, repo, pr.Number, shaB, "main"); !errors.Is(err, ErrBaseMoved) {
-		t.Fatalf("expected ErrBaseMoved on wrong base, got %v", err)
-	}
-	f.SetBaseTip(repo, "v2", shaD)
-	if err := f.Merge(ctx, repo, pr.Number, shaB, "v2"); !errors.Is(err, ErrBaseMoved) {
-		t.Fatalf("expected ErrBaseMoved when base tip moved since gate, got %v", err)
-	}
-	f.SetBaseTip(repo, "v2", shaA)
-	if err := f.Merge(ctx, repo, pr.Number, shaB, "v2"); err != nil {
-		t.Fatalf("Merge at matching SHA and base: %v", err)
+	if got := FirstFailing("a\nb\nc", 2); !slices.Equal(got, []string{"b", "c"}) {
+		t.Fatalf("no failing line: last lines = %q", got)
 	}
 }
 
@@ -204,7 +195,7 @@ func TestRateLimitRestsIdentity(t *testing.T) {
 	now := int64(1000)
 
 	c := New(Config{
-		Identity: Identity{Name: "amd-1.ds", ExpectedLogin: "rowan-claude", Token: "tok-1"},
+		Identity: Identity{Name: "amd-1.ds", Token: "tok-1"},
 		Now:      func() int64 { return now },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 			if len(cmd.Argv) >= 3 && cmd.Argv[1] == "auth" {
@@ -238,18 +229,17 @@ func TestRestartRequeryIdempotence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
-	id := Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-sprint"}
-	world := NewFakeWorld("rowan-claude")
+	world := NewFakeWorld()
 	repo := "mas-bandwidth/nova-sprint"
 
-	edge1 := NewFakeWithWorld(world, id, func() int64 { return now })
+	edge1 := NewFakeWithWorld(world, func() int64 { return now })
 	edge1.SetCheck(repo, shaA, CheckRollup{SHA: shaA, State: CheckGreen})
 
 	res1, err := edge1.Checks(ctx, repo, []string{shaA})
 	if err != nil {
 		t.Fatalf("edge1 Checks: %v", err)
 	}
-	edge2 := NewFakeWithWorld(world, id, func() int64 { return now })
+	edge2 := NewFakeWithWorld(world, func() int64 { return now })
 	res2, err := edge2.Checks(ctx, repo, []string{shaA})
 	if err != nil || res1[shaA].State != res2[shaA].State || res2[shaA].State != CheckGreen {
 		t.Fatalf("restart query mismatch: res1=%+v res2=%+v err=%v", res1, res2, err)

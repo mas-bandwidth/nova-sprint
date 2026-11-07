@@ -41,11 +41,11 @@ func runJudge(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 		if snap, err = e.again(ctx, snap, i); err != nil {
 			return "", err
 		}
-		r, err := answerRequest(j, choice, reason)
+		r, err := answerRequest(j, choice, reason, snap)
 		if err != nil {
 			return "", err
 		}
-		line, err := e.move(ctx, in, snap, r, j.About)
+		line, err := e.answer(ctx, in, snap, j, r, reason)
 		if err != nil {
 			return "", err
 		}
@@ -91,9 +91,21 @@ func choicesOf(j store.Judgement) []string {
 	return out
 }
 
+// answer is one judgement's answer applied: a land judgement's land is the
+// hand landing (runLand), every other answer one move.
+func (e *Engine) answer(ctx context.Context, in *input, snap store.Snapshot, j store.Judgement, r steps.Request, reason string) (string, error) {
+	if j.Kind == "land" && r.Answer == "land" {
+		return e.handLand(ctx, in, snap, j.About, "", reason, j.ID)
+	}
+	return e.move(ctx, in, snap, r, j.About)
+}
+
 // answerRequest is the answer as a request: unblock and drop move the card
-// the judgement is about; every other choice is the answer alone.
-func answerRequest(j store.Judgement, choice, reason string) (steps.Request, error) {
+// the judgement is about, and a land judgement's fix sends its producer to
+// fix with the reason as the finding (card.Red at its head); every other
+// choice (a land judgement's retry: the next tick asks the landing again)
+// is the answer alone.
+func answerRequest(j store.Judgement, choice, reason string, snap store.Snapshot) (steps.Request, error) {
 	cs := choicesOf(j)
 	if !slices.Contains(cs, choice) {
 		return steps.Request{}, misuse("judge", "judgement "+j.ID+" takes one of: "+strings.Join(cs, " "))
@@ -104,6 +116,10 @@ func answerRequest(j store.Judgement, choice, reason string) (steps.Request, err
 		r.Card, r.Event = j.About, card.Unblock{Reason: reason}
 	case "drop":
 		r.Card, r.Event = j.About, card.Cancel{Reason: reason}
+	case "fix":
+		if j.Kind == "land" {
+			r.Card, r.Event = j.About, card.Red{Head: snap.Cards[j.About].Head, Reason: reason}
+		}
 	}
 	return r, nil
 }

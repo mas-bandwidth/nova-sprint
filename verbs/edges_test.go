@@ -1,7 +1,6 @@
 package verbs
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -46,29 +45,11 @@ func TestFinishEdgeFailures(t *testing.T) {
 	withForge := func(s *store.Snapshot) { st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st }
 	finish := []string{"finish", "p1.w1@2", "--head", head}
 	runCases(t, []tcase{
-		{name: "merge-base fails", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) {
-			takeW1(t, w)
-			w.e.Origin = &failingContains{w.origin}
-		}, want: []string{"git merge-base of o/r failed"}},
 		// defect 34: no PR is asked of a card; the landing opens the group's
 		{name: "a forge stream, no PR", as: "alice", snap: withForge, args: finish, exit: 0, prep: takeW1,
 			want: []string{"FINISHED p1.w1"}},
 		{name: "no git edge", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.e.Origin = nil }, want: []string{"the git edge is not configured"}},
 	})
-}
-
-// failingContains is origin with the group branch at tip and merge-base failing.
-type failingContains struct{ *fakeOrigin }
-
-func (o *failingContains) Tip(ctx context.Context, repo, branch string) (string, bool, error) {
-	if branch == "sprint/s/group" {
-		return tip, true, nil
-	}
-	return o.fakeOrigin.Tip(ctx, repo, branch)
-}
-
-func (o *failingContains) Contains(context.Context, string, string, string) (bool, error) {
-	return false, errBroken
 }
 
 // Each brief rule is refused, by line, without quoting the brief.

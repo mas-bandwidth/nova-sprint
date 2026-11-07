@@ -12,42 +12,29 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// landResults is the land results step (LAYER-3 "Land", from a result; the
-// model's InboxFold): inbox items of kind land and stop in arrival order. A
-// landed result is one group of Landed for every head that landed and Red
-// for the head the bisection blamed; a bench fault moves nothing (the
-// request leaves flight and is reissued); a conflict and a red base are
-// judgements. A stop ack, and a result for a request no longer in flight (a
-// repeat), is consumed with no move.
+// landResults is the land results step (LAYER-3 "Land", from a result;
+// LANDING.md; the model's InboxFold): inbox items of kind land and stop in
+// arrival order. landed is the one automatic move: Landed, with the merge
+// sha, for every card of the request still merging at its head, as one
+// group. Anything else (red, no CI, a conflict, a refused merge, a PR that
+// cannot be opened, a branch that cannot be pushed, a stream that lands by
+// hand, a fault) is one land judgement per card on the coordinator's row,
+// this tick, with the facts and the choices land, fix and retry; nothing
+// moves and nothing is blamed. A stop ack, and a result for a request no
+// longer in flight (a repeat), is consumed with no move.
 func (t *tick) landResults() {
 	for _, it := range t.in.Inbox {
 		if it.Kind != "land" && it.Kind != "stop" {
 			continue
 		}
 		req, ok := t.request(it.Request)
-		if it.Kind == "stop" || !ok {
+		switch {
+		case it.Kind == "stop" || !ok:
 			t.consume(it.ID)
-			continue
-		}
-		switch it.Outcome {
-		case "landed", "red":
+		case it.Outcome == "landed":
 			t.landGroup(it, req)
-		case "conflict":
-			t.judge("conflict", req.Stream, fmt.Sprintf("stream %s cannot merge heads %s onto %s: a conflict across streams", req.Stream, strings.Join(req.Heads, ","), req.Base))
-			t.consume(it.ID)
-		case "no-ci":
-			// Nothing merged into base; the request leaves flight and is asked
-			// again next tick, under this one open judgement (defect 40).
-			t.judge("no-ci", req.Stream, fmt.Sprintf("stream %s: %s on %s: no CI runs on that branch, so nothing can land: make the repository's workflow run on push to sprint/** (LANDING, \"CI on the group branch\"), then re-run CI on that sha or answer retry", req.Stream, cmp.Or(it.Reason, "no check was reported"), groupBranch(req.Stream)))
-			t.consume(it.ID)
-		case "forge":
-			t.judge("forge", req.Stream, fmt.Sprintf("stream %s cannot land: %s", req.Stream, cmp.Or(it.Reason, "the forge refused")))
-			t.consume(it.ID)
-		case "base-red":
-			t.baseRed(it, req)
-		case "base-green":
-			t.baseGreen(it)
 		default:
+			t.landJudge(it, req)
 			t.consume(it.ID)
 		}
 	}
@@ -61,28 +48,19 @@ func (t *tick) request(id string) (EdgeRequest, bool) {
 	return t.in.Inflight[i], true
 }
 
-// landGroup plans Landed for each head that landed and Red for the blamed
-// one, for producers still merging at those heads and unclaimed. Red sends
-// the producer to fix with the CI finding (intent rule 30).
+// landGroup plans Landed, with the merge sha, for each card of the request
+// still merging at the head it was requested at and unclaimed, as one
+// group: the request landed whole.
 func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	var moves []move
 	about := ""
-	for _, p := range req.Cards {
+	for i, p := range req.Cards {
 		c, ok := t.v.Cards[p]
-		if !ok || c.State != "merging" || !t.free(p) {
+		if !ok || c.State != "merging" || !t.free(p) || c.Head != req.Heads[i] || !slices.Contains(it.Landed, c.Head) {
 			continue
 		}
-		switch {
-		case slices.Contains(it.Landed, c.Head):
-			moves = append(moves, t.producerMove(p, card.Landed{Head: c.Head}))
-		case it.Blamed != "" && it.Blamed == c.Head:
-			moves = append(moves, t.producerMove(p, card.Red{Head: c.Head, Reason: redFinding(c.Head, req.Base, it.Reason)}))
-		default:
-			continue
-		}
-		if about == "" {
-			about = p
-		}
+		moves = append(moves, t.producerMove(p, card.Landed{Head: c.Head, Merge: it.Merge}))
+		about = cmp.Or(about, p)
 	}
 	if len(moves) == 0 {
 		t.consume(it.ID)
@@ -93,65 +71,25 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	}
 }
 
-// groupBranch is a stream's integration branch (layer 4's git.StreamBranch;
-// layer 3 does not import the edges).
-func groupBranch(stream string) string { return "sprint/" + stream + "/group" }
-
-// redFinding is a red landing's finding, the fix attempt's brief addition
-// (intent rule 30): the head, the base, and the failing checks with their
-// URLs as the edge read them.
-func redFinding(head, base, ci string) string {
-	f := "CI red at " + head + " on " + base
-	if ci != "" {
-		f += ": " + ci
-	}
-	return f
-}
-
-// baseRed opens one judgement per base meeting (LANDING step 8): the third
-// stops the stream that met it, by holding it, and the judgement says so.
-func (t *tick) baseRed(it InboxItem, req EdgeRequest) {
-	n := t.episodes("base-red", it.Base)
-	why := fmt.Sprintf("base %s is red (meeting %d); a head that fixes it lands first", it.Base, n+1)
-	if n+1 >= 3 && !t.v.Streams[req.Stream].Held {
-		why = fmt.Sprintf("base %s is red for the third time; stream %s is stopped until the base is green", it.Base, req.Stream)
-		t.group("hold", req.Stream, move{label: "HoldStream " + req.Stream, plan: func() (card.Plan, *card.Refusal) {
-			return card.MoveStream(t.streamOf(req.Stream), card.HoldStream{Reason: why, Ready: t.readyIn(req.Stream), Seq: t.v.Seq})
-		}})
-	}
-	t.judgeAgain("base-red", it.Base, why)
-	t.consume(it.ID)
-}
-
-// baseGreen expires the base's red judgements and resumes every stream
-// stopped only on that red.
-func (t *tick) baseGreen(it InboxItem) {
-	for _, id := range sortedKeys(t.v.Judgements) {
-		j := t.v.Judgements[id]
-		if j.Kind == "base-red" && j.About == it.Base && j.State == "open" {
-			t.expires[id] = "base " + it.Base + " is green"
+// landJudge opens a land judgement for each card of the request still
+// merging at its head: what kept it from landing, the facts the edge read,
+// and the cards that were in the landing with it.
+func (t *tick) landJudge(it InboxItem, req EdgeRequest) {
+	for i, p := range req.Cards {
+		c, ok := t.v.Cards[p]
+		if !ok || c.State != "merging" || c.Head != req.Heads[i] {
+			continue
 		}
-	}
-	for _, s := range sortedKeys(t.v.Streams) {
-		if st := t.v.Streams[s]; st.Held && t.stoppedOn(s, it.Base) && t.unclaimed(s) {
-			t.group("unhold", s, move{label: "UnholdStream " + s, plan: func() (card.Plan, *card.Refusal) {
-				return card.MoveStream(t.streamOf(s), card.UnholdStream{Reason: "base " + it.Base + " is green"})
-			}})
+		with := ""
+		if len(req.Cards) > 1 {
+			with = "; landing together: " + strings.Join(req.Cards, ", ")
 		}
+		t.judge("land", p, fmt.Sprintf("card %s (stream %s, branch %s, head %s) did not land: %s: %s%s. land: you looked, merge it by hand; fix: back to its producer with your finding as the reason; retry: a new landing", p, req.Stream, req.Branches[i], c.Head, it.Outcome, cmp.Or(it.Reason, "no facts given"), with))
 	}
-	t.consume(it.ID)
 }
 
-// stoppedOn says whether stream s was held by the tick for base's red: the
-// judgement that says so is open.
-func (t *tick) stoppedOn(s, base string) bool {
-	for _, j := range t.v.Judgements {
-		if j.Kind == "base-red" && j.About == base && j.State == "open" && strings.Contains(j.Question, "stream "+s+" is stopped") {
-			return true
-		}
-	}
-	return false
-}
+// judged is whether card p has a land judgement open, or opened this tick.
+func (t *tick) judged(p string) bool { return t.isOpen("land", p) || t.pending("land", p) }
 
 func (t *tick) readyIn(stream string) []card.Card {
 	var out []card.Card
@@ -163,31 +101,58 @@ func (t *tick) readyIn(stream string) []card.Card {
 	return out
 }
 
-// landRequests is the land requests step (LAYER-3 "Land"; the model's
-// LandPicks; AfterKept, AfterNeverHolds): per stream with no land request
-// in flight, flowing, the first merging producer none of whose after
-// targets is merging; backed up (merging at or past policy's landing
-// number), every eligible one in score order as one group with one CI. An
+// landRequests is the land requests step (LAYER-3 "Land"; LANDING.md "The
+// ladder"; the model's LandPicks; AfterKept, AfterNeverHolds): per stream
+// with no land request in flight, the merging producers not under a land
+// judgement, without those held by an after target merging elsewhere: one
+// (the first in score order) while fewer than policy's backed_up wait
+// (rung 1), every one of them as one request while backed up (rung 2). An
 // after orders only producers both queued to land and never holds on one
-// that is not (LESSONS 2.15). A hold never touches landing (LANDING 9).
+// that is not (LESSONS 2.15). A hold never touches landing (LANDING 9). The
+// requests are rebuilt from the store's state every tick, so a restart
+// loses none (defect 51).
 func (t *tick) landRequests() {
 	for _, s := range sortedKeys(t.v.Streams) {
 		if t.busy(s) {
 			continue
 		}
-		queued := t.queued(s)
-		if len(queued) == 0 {
-			continue
-		}
+		queued := slices.DeleteFunc(t.queued(s), func(c store.Card) bool { return t.judged(c.ID) })
 		picks := t.eligible(queued)
 		if len(picks) == 0 {
 			continue
 		}
-		if t.o.landing(t.streamFacts(s)).BackedUp > len(queued) {
+		l := t.o.landing(t.streamFacts(s))
+		if l.BackedUp > len(picks) {
 			picks = picks[:1]
 		}
-		t.landRequest(s, picks)
+		t.landRequest(s, picks, l.CIWait)
 	}
+	t.unlanded()
+}
+
+// unlanded reports, as an engine judgement, a merging producer the tick
+// leaves with no land request in flight or planned for its stream, no land
+// judgement, and no after target holding it: a card that would sit in
+// merging unexplained (intent rule 32). By construction landRequests leaves
+// none; this is the check that it did.
+func (t *tick) unlanded() {
+	for _, p := range t.v.Producers("merging") {
+		c := t.v.Cards[p]
+		if !t.free(p) || t.judged(p) || t.busy(c.Stream) || t.plannedLand(c.Stream) || t.afterHeld(c) {
+			continue
+		}
+		t.engine(p, "card "+p+" is merging with no land request and no land judgement: answer retry to ask the landing again")
+	}
+}
+
+// plannedLand is whether this tick planned a land request for stream s.
+func (t *tick) plannedLand(s string) bool {
+	return slices.ContainsFunc(t.edges, func(r EdgeRequest) bool { return r.Kind == "land" && r.Stream == s })
+}
+
+// afterHeld is whether c waits for an after target that is merging.
+func (t *tick) afterHeld(c store.Card) bool {
+	return slices.ContainsFunc(c.After, func(a string) bool { x, ok := t.v.Cards[a]; return ok && x.State == "merging" })
 }
 
 func (t *tick) busy(s string) bool {
@@ -241,17 +206,19 @@ func (t *tick) eligible(queued []store.Card) []store.Card {
 
 // landRequest is one edge request for the heads of picks in order: its id
 // hashes the epoch, stream, cards, heads, reviews and base, so a restart
-// reissues the same request and a second landing of one head after a red
-// has an id of its own (LPM R22; the model's finding 8).
-func (t *tick) landRequest(s string, picks []store.Card) {
+// reissues the same request and a second landing of one head after a
+// retry has an id of its own when anything changed (LPM R22; the model's
+// finding 8).
+func (t *tick) landRequest(s string, picks []store.Card, wait int) {
 	base := t.in.Heads[s]
 	h := sha256.New()
 	fmt.Fprintf(h, "%d|%s|%s|", t.v.Epoch, s, base)
-	req := EdgeRequest{Kind: "land", Stream: s, Base: base}
+	req := EdgeRequest{Kind: "land", Stream: s, Base: base, Wait: wait}
 	for _, c := range picks {
 		fmt.Fprintf(h, "%s@%s/%d|", c.ID, c.Head, c.Review)
 		req.Cards = append(req.Cards, c.ID)
 		req.Heads = append(req.Heads, c.Head)
+		req.Branches = append(req.Branches, branch(c))
 	}
 	req.ID = "land." + s + "." + hex.EncodeToString(h.Sum(nil))[:12]
 	t.edges = append(t.edges, req)

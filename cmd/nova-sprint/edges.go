@@ -1,7 +1,6 @@
 package main
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -20,11 +19,13 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
-// gitEdge is git as the sprint: with the control seat's token in the
-// process, every git call (the landing's pushes too) authenticates with it
-// and never with the host's own credential helper (defect 39); otherwise,
-// with GH_TOKEN or GH_CONFIG_DIR set, gh is git's one credential helper for
-// https://github.com, the address git.CloneURL gives a github stream.
+// gitEdge is git as the sprint. The landing's forge work runs as the host's
+// gh identity (intent rule 32); GH_GATE_TOKEN, when nova-secrets exec puts it
+// in the process, is an optional override: every git call then authenticates
+// with it and never with the host's own credential helper. Otherwise, with
+// GH_TOKEN or GH_CONFIG_DIR set, gh is git's one credential helper for
+// https://github.com, the address git.CloneURL gives a github stream, and
+// with neither the host's git config answers.
 func gitEdge() *git.Client {
 	return git.New(git.Config{Token: os.Getenv(forge.TokenEnv), GitHubCredential: githubCredential(os.Getenv)})
 }
@@ -38,12 +39,10 @@ func githubCredential(env func(string) string) string {
 	return "gh"
 }
 
-// forgeEdge is GitHub through gh, as the token nova-secrets exec gave this
-// process in GH_GATE_TOKEN (the control seat's); with none it refuses, and
-// it never falls back to the host's gh login (defect 39).
+// forgeEdge is GitHub through the host's gh login (intent rule 32); a
+// GH_GATE_TOKEN in the process is an optional override gh then acts as.
 func forgeEdge() *forge.Client {
-	login := os.Getenv("NOVA_SPRINT_FORGE_LOGIN")
-	return forge.New(forge.Config{Identity: forge.Identity{Name: cmp.Or(login, "sprint"), ExpectedLogin: login, Token: os.Getenv(forge.TokenEnv)}})
+	return forge.New(forge.Config{Identity: forge.Identity{Name: "sprint", Token: os.Getenv(forge.TokenEnv)}})
 }
 
 // origin is a stream's repository at origin, by its clone address
@@ -66,17 +65,6 @@ func (o *origin) clone(ctx context.Context, repo string) (string, error) {
 
 func (o *origin) Tip(ctx context.Context, url, branch string) (string, bool, error) {
 	return o.git.Tip(ctx, url, branch)
-}
-
-func (o *origin) Contains(ctx context.Context, repo, ancestor, head string) (bool, error) {
-	dir, err := o.clone(ctx, repo)
-	if err == nil {
-		err = o.git.Fetch(ctx, dir)
-	}
-	if err != nil {
-		return false, err
-	}
-	return o.git.IsAncestor(ctx, dir, ancestor, head)
 }
 
 // doctor is check's and show run's view outside the verbs' own reads.

@@ -224,11 +224,24 @@ func fraction(what string, v starlark.Value) (float64, string) {
 	return f, ""
 }
 
-// checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000.
+// checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000, and
+// an optional "ci_wait": seconds, 1..86400 (absent is the engine's 600).
 func checkLanding(v starlark.Value) (Landing, string) {
-	d, msg := dictOf(v, "backed_up", "flowing")
+	keys := []string{"backed_up", "flowing"}
+	if d, ok := v.(*starlark.Dict); ok {
+		if _, found, _ := d.Get(starlark.String("ci_wait")); found {
+			keys = append(keys, "ci_wait")
+		}
+	}
+	d, msg := dictOf(v, keys...)
 	if msg != "" {
 		return Landing{}, msg
+	}
+	w := 0
+	if d["ci_wait"] != nil {
+		if w, msg = intIn("ci_wait", d["ci_wait"], 1, 86400); msg != "" {
+			return Landing{}, msg
+		}
 	}
 	b, msg := intIn("backed_up", d["backed_up"], 1, 1000)
 	if msg != "" {
@@ -238,7 +251,7 @@ func checkLanding(v starlark.Value) (Landing, string) {
 	if msg != "" {
 		return Landing{}, msg + " (below backed_up)"
 	}
-	return Landing{BackedUp: b, Flowing: f}, ""
+	return Landing{BackedUp: b, Flowing: f, CIWait: w}, ""
 }
 
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the
