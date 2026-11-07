@@ -65,3 +65,26 @@ version the nova-sprint release wants"). The binary carries the minimum
 nova-tools version it needs; `nova-sprint check` reads the installed tools'
 versions (`nova-bus -h`, `nova-fleet -h`, and the rest) and refuses below the
 pin, naming the `nova-fleet up` that brings them up.
+
+## 5. What `nova-sprint up` does past the store (steps 6 to 8)
+
+Nothing in this section is typed by the human.
+
+- **Services (6).** `--services none` is a valid answer. A chosen service's key is
+  pasted once at a hidden prompt and proven by one model-list request.
+- **Workers (7).** Every machine with the bench role, except the one the sprint runs on,
+  gets a worker: its seat is granted the sprint's database credential, and nova-config
+  gets one service record `sprint-worker-<machine>` running `nova-sprint worker --as
+  <machine>` under that seat (the sprint and bus credentials and the provider keys the
+  bench's seat holds). nova-fleet applies them all in one play. The step verifies when
+  every worker is on the bus and up in the sprint; otherwise it names each machine that
+  is not and the last line of its worker's log.
+- **First deal (8).** A new sprint is stopped until the coordinator runs `nova-sprint
+  start`, so up deals nothing. It checks every worker can be dealt to: on the bus, up,
+  and with its core count in nova-config (a bench without one is held at width 0, named
+  with the `nova-config machine set <machine> --cores <n>` that fixes it).
+- **The public dashboard** may go on a bench: the public service is pull-only and holds
+  no secret, and the bench still works cards.
+- **The database role's password** is proven on every up by a SCRAM login, or, where
+  the database trusts the connection without a password, by its stored verifier; when
+  it is not the sprint's credential, up sets it.

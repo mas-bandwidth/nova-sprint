@@ -35,6 +35,12 @@ func (p PGSetupStore) Ready(ctx context.Context) (bool, error) {
 	if err != nil || !has {
 		return false, err
 	}
+	// The role's password first (defect 37): a store probe as nova_sprint
+	// passes on a pg_hba trust host whatever the password is.
+	ok, err := p.childWith(ctx, "--internal-setup-role-password", "NOVA_PG_ADMIN_PASSWORD,"+sprintPasswordName)
+	if err != nil || !ok {
+		return false, err
+	}
 	return p.child(ctx, "--internal-store-probe")
 }
 func (p PGSetupStore) Install(ctx context.Context) error {
@@ -55,10 +61,16 @@ func (p PGSetupStore) Install(ctx context.Context) error {
 	return nil
 }
 func (p PGSetupStore) child(ctx context.Context, mode string) (bool, error) {
+	return p.childWith(ctx, mode, sprintPasswordName)
+}
+
+// childWith runs mode under nova-secrets exec with only the names in only
+// (comma-separated) and reads its {"ready": bool}.
+func (p PGSetupStore) childWith(ctx context.Context, mode, only string) (bool, error) {
 	if !filepath.IsAbs(p.Binary) || p.Secrets.Store == "" || p.Secrets.KeyFile == "" || p.Secrets.Seat == "" {
 		return false, fmt.Errorf("store child configuration unavailable: binary %q absolute %t; secrets store, key file and seat set %t/%t/%t", Redact(p.Binary), filepath.IsAbs(p.Binary), p.Secrets.Store != "", p.Secrets.KeyFile != "", p.Secrets.Seat != "")
 	}
-	args := []string{"exec", "--only", sprintPasswordName, "--store", p.Secrets.Store, "--key", p.Secrets.KeyFile, "--as", p.Secrets.Seat, "--", p.Binary, mode}
+	args := []string{"exec", "--only", only, "--store", p.Secrets.Store, "--key", p.Secrets.KeyFile, "--as", p.Secrets.Seat, "--", p.Binary, mode}
 	cmd := p.Command
 	if cmd == nil {
 		cmd = toolOutput

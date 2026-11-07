@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -82,7 +83,22 @@ func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 	host, _ := os.Hostname()
 	w.Host = cmp.Or(strings.TrimSpace(w.Host), host)
 	w.SprintBin = self
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("worker: home directory (a relative --work-clone, --root or --state-dir is under it): %w", err)
+	}
+	w.WorkClone, w.Root, w.StateDir = underHome(home, w.WorkClone), underHome(home, w.Root), underHome(home, w.StateDir)
 	return worker.Serve(ctx, w, func(line string) { fmt.Println(line) })
+}
+
+// underHome is dir, a relative one taken under home ("" stays "": the
+// worker's own default). up's worker service records name their
+// directories relative to the bench login's home (setup_workload.go).
+func underHome(home, dir string) string {
+	if dir == "" || filepath.IsAbs(dir) {
+		return dir
+	}
+	return filepath.Join(home, dir)
 }
 
 // Dash is the board: a pulled copy of run's on a public host (--pull), or

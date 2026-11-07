@@ -3,7 +3,6 @@ package verbs
 import (
 	"context"
 	"fmt"
-	"slices"
 )
 
 // Completion reports only re-observed setup state and durable answers; it is
@@ -51,11 +50,6 @@ func (r RuntimeSetup) Completion(ctx context.Context) (string, error) {
 	if _, err = SprintSeats(machines, r.RunService, publicHost); err != nil {
 		return "", err
 	}
-	workers := 0
-	for _, machine := range machines {
-		if slices.Contains(machine.Roles, "bench") {
-			workers++
-		}
-	}
+	workers := len(WorkerBenches(machines, r.RunService.Machine))
 	return fmt.Sprintf("UP DONE run on %s; dashboard %s; %d workers up; coordinator %s", host, target.URL, workers, actor), nil
 }

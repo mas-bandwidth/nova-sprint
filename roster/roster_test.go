@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -94,8 +95,6 @@ func TestLoadSkipsABadRow(t *testing.T) {
 		src  Source
 		want []Refused
 	}{
-		"no cores": {Fake{Ms: []Machine{{Name: "m", Roles: bench}}},
-			[]Refused{{"m", KindWorker, "machine m has 0 cores; set its cores in nova-config"}}},
 		"twice": {Fake{Ms: []Machine{{Name: "m", Roles: bench, Cores: 1}, {Name: "m", Roles: bench, Cores: 2}}},
 			[]Refused{{"m", KindWorker, "machine m is named twice"}}},
 		"machine and friend": {Fake{Ms: []Machine{{Name: "f1", Roles: bench, Cores: 1}}, Fs: []Friend{{Name: "f1", Enabled: true}}},
@@ -119,6 +118,24 @@ func TestLoadSkipsABadRow(t *testing.T) {
 			assert.True(t, ok, "%s: %s still loads", name, good)
 		}
 	}
+}
+
+// A bench with no cores in nova-config loads at width 0, held with the
+// reason, never refused; the rest of the roster loads (Glenn, 2026-11-07).
+func TestLoadHoldsABenchWithNoCores(t *testing.T) {
+	t.Parallel()
+	f := fleet()
+	f.Ms = append(f.Ms, Machine{Name: "m", Roles: []string{"bench"}})
+	r, err := Load(context.Background(), f, 8)
+	require.NoError(t, err)
+	assert.Empty(t, r.Refused)
+	assert.Equal(t, Worker{Name: "m", Width: 0, Tiers: store.Tiers, Harness: WorkerHarness, Held: NoCores}, r.Workers["m"])
+	kind, width, _, ok := r.Row("m")
+	assert.True(t, ok)
+	assert.Equal(t, KindWorker, kind)
+	assert.Equal(t, 0, width)
+	_, _, _, ok = r.Row("hulk")
+	assert.True(t, ok, "the rest still loads")
 }
 
 func TestCloneCopiesRefused(t *testing.T) {
