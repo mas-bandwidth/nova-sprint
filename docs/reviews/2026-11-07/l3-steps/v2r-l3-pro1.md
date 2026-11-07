@@ -6,7 +6,7 @@ Reviewer: rowan (sonnet). Base 43d849e2 (v2-stitch). Read: docs/LAYER-3-STEPS.md
 
 The layer is structurally sound: pure, deterministic, one group per card per tick, ops named by body hash, the budget and carry logic matches the model, and the happy, fix, land, hold and preemption paths are well tested. It is not yet sound at its edges. The single worst thing is the per-tick candidate cache (`steps/tick.go:216-228`) that is filled while the tick gathers its policy questions (`tick.go:49`), before the rested rows (`tick.go:51`) and before any row claim exist, so the deal offers rows that the same tick has just marked Gone or rested: a card is cut working on a row that goes down in the same op (reproduced), and the LPM R34 fault rest never filters anything (reproduced). Behind that stand a documented promise that is not implemented (a group refused alone on fresh state is to be left out with an `engine` judgement; the code retries it every tick forever), a valid policy answer that is reported as a policy failure, a blocker that waits silently when policy's `work` is under the row width, and the layer 2 preemption pair guard that is never engaged because the steps never set `Withdraw.Preempt`.
 
-Count: blocker 0, serious 6, minor 8, nit 1.
+Count: blocker 0, serious 6, minor 7, nit 2.
 
 ## Defects
 
@@ -61,8 +61,9 @@ Ranked, most severe first. "Reproduced" means a throwaway test in `steps/` (remo
     Doc: "`fault_limit` (3 faults of the last 10 on a row in 30 minutes rest it 30 minutes ...)". `limits.go:71-87` counts any faults in the last `RouteRestFor` seconds and never reads `RouteRestWindow`; `view.go:153` appends every fault forever (`Faults map[string][]time.Time`), re-scanned in full per row per tick (`limits.go:72-82`). It also reads `t.lim.RouteRestAfter` for the count, not `lim.Faults` (finding 6). Together with finding 1 the rest does not act at all today.
     Repair: keep the last `RouteRestWindow` stamps per row in the fold.
 
-13. **minor. The overlap tally resolves in id order, so a blocker can be held behind a lower-priority lower-id card.**
-    `needs.go:24-48`: waiting producers are resolved in id order and `leastHolder` (`needs.go:79-93`) picks the least id; rung and score are not consulted, so for two waiting producers sharing a file, the one with the lower id resolves first even if the other is `blocker`. The ladder (LESSONS "blocker first") applies only to the already-ready list. Not run; follows from the lines. See Questions.
+13. **nit. The overlap tally resolves waiting producers in id order, so the lower id holds a shared file even when the other is a `blocker`.**
+    `steps/needs.go:24-48` loops `t.v.Producers("waiting")` in id order and adds each resolved producer to `t.resolvedP` (`needs.go:41-45`); `heldBehind`/`leastHolder` (`needs.go:79-93`) then hold every later producer naming the same concrete file behind it, and neither reads rung or score. So of two waiting producers with landed needs sharing a file, the lower id resolves first even if the higher id is a `blocker`. The doc only fixes the holder as "the least such card by id" for naming (LAYER-3 defect 50 text); it makes no promise that the tally follows the ladder, so this is an observed order, not a broken sentence (see Questions 3). Not run; follows from the cited lines.
+    Repair: iterate the waiting producers in deal-ladder order (rung, score, then id) in `needs()` instead of id order, if the coordinator confirms the ladder should govern overlap.
 
 14. **minor. `actorOK` is a deny list.**
     `request.go:35-38,81-109`: only the named events need a coordinator, `Seen`/`Gone` the run loop and `Report` the holder; every other `card.Event` (Start, Resolve, Withdraw, NeedFailed, Park, Reached, ReadYes, ReadFix, AskReads, Released, Finished, Broken, Faulted) passes `actorOK` for any actor. Today the only callers are `verbs/moves.go:20` (a table of verbs with their own roles) and `run/tick.go:200`, so no hole is reachable; but the layer's own claim "a verb refused for its actor writes nothing" (list item 8) depends on callers never building those events. Repair: an allow list (default refuse).
@@ -122,7 +123,7 @@ Ranked, most severe first. "Reproduced" means a throwaway test in `steps/` (remo
 
 1. Reports before preemption: is the Built text ("a consumer that has reported is never preempted") the intended rule, in which case `Steps.tla` should change to match, or the model's? I could not decide which one is canonical; the doc contradicts itself.
 2. Should `escalate_after`, `frontier_after`, `flap_limit`, `idle_floor` and `land_target` be policy's (layer 5 requires them) or the engine's (Built says the engine's)? One of layer 3 or layer 5 is wrong.
-3. Finding 13: should the overlap tally resolve in rung/score order rather than id order? The ladder promises blocker work first; the tally can invert it. I did not see a requirement either way.
+3. Finding 13 (uncertain priority policy, so a nit with a conditional repair): should the overlap tally resolve in rung/score order rather than id order? The ladder promises blocker work first among ready cards; the tally can invert it for waiting ones. The doc has no sentence either way (only "the least such card by id" for naming the holder), so I have no contract basis to call it a defect.
 4. `Seen` absent for a row (`limits.go:51-54`): "nothing fires on it" means a row layer 6 never reports as seen holds acknowledged work for ever (the `unacked` path covers only unacknowledged cards). Is that intended, and does layer 6 always put every row in `Seen`?
 5. `RowFacts.Model` and `Harness` are declared (`asker.go:45`) but never set by the steps; does layer 5 read them from its own roster (as `policy/inputs.go:43-46` suggests) so the fields can go?
 6. Is the 86 s unit-test run acceptable as "unit", or should the 100-seed TestWalk/TestTraceWalk move to the functional tier? They use no real time or sockets, so I treated them as unit.
