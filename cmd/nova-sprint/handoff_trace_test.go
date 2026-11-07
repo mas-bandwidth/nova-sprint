@@ -259,7 +259,7 @@ exec "$@"
 	return state, events, filepath.Join(dir, "child")
 }
 
-func TestEmitHandoffTrace(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
+func TestFunctionalEmitHandoffTrace(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	dir := t.TempDir()
 	state, events, child := handoffTraceScripts(t, dir)
 	t.Setenv("PATH", dir)
