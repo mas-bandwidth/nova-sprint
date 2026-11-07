@@ -30,9 +30,13 @@ const (
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base, Mode string
 	Heads, After, RemoteHosts         []string
-	Ledgers                           []LedgerRule
-	PassedSHAs                        map[string]bool
-	Exec                              edge.Exec
+	// Branches is each head's card branch at origin, in Heads order (the group
+	// landing's heads are shas, which ls-remote cannot name; 2026-11-07: every
+	// backed-up landing escalated as missing_head because of that).
+	Branches   []string
+	Ledgers    []LedgerRule
+	PassedSHAs map[string]bool
+	Exec       edge.Exec
 }
 type LandResult struct {
 	Outcome                                                      LandOutcome
@@ -86,10 +90,14 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 	return landAndRecord_internal(ctx, g, fg, req, baseRef, streamRef, baseTip, merged, prNum, gateRes.ReusedCI)
 }
 func fetchAndCheckHeads_internal(ctx context.Context, g Git, req LandRequest, baseRef, streamRef string) (string, string, string, error) {
-	for _, h := range req.Heads {
-		if _, ok, err := g.LsRemote(ctx, req.RepoDir, h); err != nil {
+	for i, h := range req.Heads {
+		ref := h
+		if len(req.Branches) == len(req.Heads) {
+			ref = "refs/heads/" + req.Branches[i]
+		}
+		if tip, ok, err := g.LsRemote(ctx, req.RepoDir, ref); err != nil {
 			return "", "", "", err
-		} else if !ok {
+		} else if !ok || (ref != h && tip != h) {
 			return "", "", h, nil
 		}
 	}

@@ -276,7 +276,7 @@ func (e *Edges) rung2(ctx context.Context, repo string, s store.Stream, r steps.
 	if err := e.Git.Clone(ctx, s.Repo, dir); err != nil {
 		return pass{}, err
 	}
-	res, err := git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: repo, Stream: r.Stream, Base: s.Base, Mode: s.Mode, Heads: r.Heads})
+	res, err := git.LandPass(ctx, e.Git, e.Forge, git.LandRequest{RepoDir: dir, Repo: repo, Stream: r.Stream, Base: s.Base, Mode: s.Mode, Heads: r.Heads, Branches: cardBranches(r)})
 	if err != nil {
 		return pass{}, err
 	}
@@ -379,4 +379,14 @@ func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) 
 	e.mu.Lock()
 	e.heads = heads
 	e.mu.Unlock()
+}
+
+// cardBranches is each landing card's branch at origin, in the request's
+// card order (the same name steps gives a deal: sprint/<stream>/<card>).
+func cardBranches(r steps.EdgeRequest) []string {
+	out := make([]string, 0, len(r.Cards))
+	for _, c := range r.Cards {
+		out = append(out, "sprint/"+r.Stream+"/"+c)
+	}
+	return out
 }
