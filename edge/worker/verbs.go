@@ -87,6 +87,9 @@ func ReadProviderKey(ex edge.Exec, secretsBin, name string) string {
 }
 func (c *CLISprintClient) wrap_internal(args ...string) []string {
 	sb := cmp.Or(c.SprintBin, "nova-sprint")
+	if os.Getenv("NOVA_WORKER_NO_WRAP") == "1" { // LOCAL DOGFOOD STOPGAP: the worker already runs under nova-secrets exec; v2 exec needs --store/--key/--only (defect 35)
+		return append([]string{sb}, args...)
+	}
 	if c.SecretsBin != "" && (c.Run != nil || c.SecretsBin != "nova-secrets" || fileExists_internal(filepath.Join(filepath.Dir(resolveToolBin_internal(sb)), "nova-secrets"))) {
 		return append([]string{c.SecretsBin, "exec", "--", sb}, args...)
 	}
