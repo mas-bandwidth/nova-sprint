@@ -95,12 +95,12 @@ end of file` (ruled 2026-11-07).
 | question | inputs | answer and domain | the engine also refuses | default |
 |---|---|---|---|---|
 | `order(card)` | id, stream, score, priority, tier, attempt, bounces, prior_head | a tuple of up to 4 ints or strings; the engine sorts by (rung, answer, id) | a tuple of other types or longer than 4 | fix attempts first, then score |
-| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), prose, attempt, bounces, priority, and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width, working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; every candidate listed: the wanted rank and up, nearest first, then the ranks between the tier and the wanted one, highest first; those with room first, all of them when none has room (ruled 2026-11-06, so the joint check passes whenever any row could take the card) |
+| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), attempt, bounces, priority (no prose: round 5), and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width (the roster's, from nova-config: round 5), working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; every candidate listed: the wanted rank and up, nearest first, then the ranks between the tier and the wanted one, highest first; those with room first, all of them when none has room (ruled 2026-11-06, so the joint check passes whenever any row could take the card); within a rank, by name (round 5) |
 | `reads(card)` | as `rows`' card | the count n, 1 <= n <= 5 | n out of range | 1 |
 | `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
-| `width(row)` | name, kind, width (nova-config's), tiers, model, harness, flaps | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
-| `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window | out of range, a missing key | below |
-| `landing(stream)` | name, merging, review, rung | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000 | f >= b | backed up at 4 merging, flowing again at 1 |
+| `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
+| `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses |
+| `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000 | f >= b | backed up at 4 merging, flowing again at 1 |
 | `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for` | zero, negative, absent: no wait is ever unbounded | below |
 | `stitch(stream)` | name, cards, landed | `True` or `False` | a non-bool | `True` when the stream has more than one card |
 | `prices()` | none | dict: model name to `{"in": n, "out": n}`, micro-dollars per million tokens, n >= 0 | a negative or non-int price | `{}`: every run unpriced until the coordinator sets them |
@@ -760,3 +760,169 @@ Tests: `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
 -race: the built-in at 5,000 producers over 100 rows, cold 61.7 ms, warm
 27.6 ms (measured; up from 56.8 ms, since `prefer` now orders every
 candidate).
+
+**Round 5** (2026-11-06, on v2-integrate-22 after store round 22). Six
+parts: the roster, rowan2's seven probes, cold read 3's eight, the rulings
+on its contradictions, layer 3's steering numbers in `limits`, and the
+ledger.
+
+*The roster.* A store row is sprint state only (round 22); every row fact a
+question reads, kind, width, tiers, model and harness, now comes from a
+`roster.Roster` (nova-config, read by `roster.Load` in layer 6) by the row's
+name. The roster is a tick input beside the snapshot: `AnswerContext`,
+`Answer`, `Judgements`, `Check`, `Set`, `Activate`, `TraceState` take it
+(and `ReadCatalog` takes the engine). A row the snapshot holds and the
+roster does not name is in no question (no `width`, never a candidate) and
+`Judgements` opens one judgement for it while none is open: kind `roster`,
+about the row, "row <name> is not in nova-config", group `roster:<name>`,
+answered by `nova-sprint answer <id>`. A worker has no model (the roster's
+`Worker` has none): `model` is "" for a worker, its harness `nova-worker`.
+`Rank` takes the tiers. The trace walk's drift moves a row's width in the
+roster (nova-config changing under the sprint), as it moved the store's.
+
+*Rowan2's probes* (`policy/break_rowan2_test.go`, from origin/v2-break-rowan2
+113e1fc0, adapted only to the round 5 API, as its header lists):
+
+1. and 2. `TestBreakSetBodyOrNameTheStoreRefusesReachesItAsErrInvalid`,
+   `TestBreakReasonInInvalidUTF8ReachesTheStoreAsErrInvalid`: every string a
+   verb puts in an op (the actor, the op id, the reason, the file's name,
+   the body) is checked as the store checks it before the op is built
+   (`unstorable`, verbs.go): a `*Refusal` naming the field, never
+   `ErrInvalid`.
+3. `TestBreakSetRaceStoresOneBodyTwice`: `set` is fenced `AtSeq` at its
+   snapshot, as `up` is; a set that loses the race is refused as "v<n>
+   already stores this body" when the winner stored its body.
+4. and 5. `TestBreakProseMakesTheInputsOutrunTheTickDeadline`,
+   `TestBreakProseLeavesTheBuiltInUnableToAnswer`: the prose is no input
+   and no part of the answer cache's key, and the evaluator's request drops
+   briefs and prose (`unworded`). **One conflict with the ruling's premise**:
+   the built-in's `_security` read `"security" in card.prose`, so a
+   question did read it; following the ruling, a security card is now only
+   one of `_SECURITY_STREAMS` (empty by default), so a card whose prose
+   says "security" no longer gets frontier reads by default. A Go-side
+   `security` bool on the card would restore it at a cost linear in the
+   briefs; Rowan's call. Measured on amd-3 (exclusive, NOVA_LOAD, through
+   the evaluator, cold engine): 5,000 producers in review with 16 KiB
+   prose each, answered by the built-in in 113 ms (was 952 ms and no
+   answer on the studio at f62551fe).
+6. `TestBreakFallbackTimerStartsAfterTheInputs`: the fallback's wait and
+   the deadline are both counted from the tick's first byte
+   (`AnswerContext` reads the clock before the inputs are built; `race`
+   waits `fallbackAfter` minus the time spent). The probe now skips on
+   amd-3: its precondition, inputs over TickTime/2 that grow with prose, no
+   longer exists after 4 and 5. `TestFallbackCountsFromTheFirstByte`
+   checks the waits on a stepping fake clock.
+7. `TestBreakJointCheckIgnoresTheReadCount` (and cold read 3's 2): the
+   joint check (`jointRows`) needs as many named rows with work above 0 as
+   the card needs, one for work and the `reads` answer for a read (the
+   names are distinct candidates, so never the author), capped by the
+   candidates with a configured width above 0: "reads is 2, and 1 row(s)
+   named have work above 0 in width, while 2 candidate(s) could take a
+   read".
+
+*Cold read 3's probes* (`policy/coldread3_test.go`, adapted only to the
+round 5 API, as its header lists, and one line, below):
+
+1. `TestColdread3DefectAbandonedRunOutlivesDeadline`: **the evaluator**
+   (`policy/evaluator.go`). `NewEngine(clock)` runs every version (a tick's,
+   check's, the catalog's) in a child process, this binary as
+   `<binary> policy-eval`, one per engine and reused across ticks, gob on
+   its stdin and stdout. The child runs the in-process engine with the
+   budget the parent leaves it, so a late version still fails there naming
+   the question in hand. The child reports when a run it abandoned is still
+   running, and the parent kills it; a child that has not answered by the
+   deadline plus `evalGrace` (100 ms, a guess) is killed and every version
+   it ran fails. The next request starts a new child; a cleanup stops it
+   when the engine goes. `newLocal` (in-process) is the unit tests' engine
+   and the child's own. Layer 6 owes: its `main` calls `policy.ServeMain()`
+   when `os.Args[1] == policy.EvalArg` (the tests' `TestMain` does). No
+   memory limit is set in the child (round 3's RLIMIT_DATA is not carried):
+   a child that allocates without bound is still killed at the deadline.
+   Concurrent ticks on one process engine are served one at a time.
+2. `TestColdread3DefectJointCheckIgnoresReadCount`: as rowan2's 7. The
+   probe's first line required `a.Rows` to hold v2's answer `["b"]`, which
+   no passing run allows once v2 is refused (the built-in answers); it now
+   requires the refusal's text instead. The only probe line changed.
+3. `TestColdread3DefectCheckBlindToBackedUpRung`: check (and `activate`,
+   `set`, the trace's `breaks`) asks `landing` on both rungs; a backed-up
+   ask's subject is `<stream> backed_up`.
+4. `TestColdread3DefectKeywordOnlyParamPassesArity`: a question with a
+   keyword-only parameter is refused at its arity.
+5. `TestColdread3DefectExpiredContextJudgesOnlyTheBuiltin`: an expired
+   caller context fails every version tried, one failure (and judgement)
+   each, as the model's `Failing`.
+6. `TestColdread3DefectAnswerTakesVersionsTheSnapshotDoesNotHold`:
+   `LoadVersions(ctx, st, snap)` reads at the snapshot it is given and
+   records its seq (`Versions.Seq`); `AnswerContext` refuses a Versions read
+   at another seq ("versions read at seq N, snapshot at M: reload",
+   Version -1, a failure of no version, which opens no judgement). A
+   Versions built by hand (Seq 0, the tests) is not checked.
+7. `TestColdread3DefectTupleBoundNameRefusedWithoutLine`: every name a
+   top-level assignment binds (plain, augmented, tuple, list, for) records
+   its line.
+8. `TestColdread3DefectSetEqualBodyNamesDataVersion`: the equal-body
+   refusal compares script versions only.
+
+*The contradictions, as ruled.* `TraceState` projects `everActive` (the
+active version and every version the log deactivated), so
+`FallbackWasActive` is checked against the code; `waitBound` and
+`startBound` are layer 3's waits, which this layer holds no state of, so
+the ledger no longer claims `WaitKeepsItsBound` of this code (L5-8).
+`Activate` is one op fenced `AtSeq` at its snapshot, the model's one step.
+The clock seam: `Clock` (Now, After), `RealClock` the binary's; every unit
+test is on a fake (`testEngine`); the wall-clock timing probes run only
+with `NOVA_LOAD` set (and never under -race or -short). Any clean
+activation answers the open `policy:v0` judgement, in the code and in
+`Policy.tla` (`Activate` sets `judgements[Default]` to 0). `Policy.tla`'s
+Init comment follows the code (up stores the default as the next version;
+the model has no data rows, so 1). `DefaultBody` and `CompareOrder` have
+tests. `prefer`'s order within a rank is by name (the candidate list
+comes by rank, then by name, and the room sort is stable).
+
+*Layer 3's steering numbers.* `limits` gains five keys (names exact, the
+bounce limit stays `bounces`), each required, with the built-in's values
+from layer 3's engine defaults (origin/v2-l3-steps, `steps/asker.go`
+`Engine` and LAYER-3's Built section): `escalate_after` 2 (guess),
+`frontier_after` 4 (guess, PRIORITY T19), `flap_limit` 3 (unmeasured: a
+guess), `idle_floor` 0.5 (guess, LESSONS 3.18), `land_target` 0.9 (guess,
+over 20 landings), and `bounces` 6 (guess). Domains: `escalate_after`
+1..100, `frontier_after` escalate_after..100, `flap_limit` 1..100, the two
+fractions an int or a float in (0, 1]. The built-in's `_want` reads its
+own `_ESCALATE_AFTER` and `_FRONTIER_AFTER`, the values its `limits`
+gives. One `TestRefusals` row per key.
+
+*The ledger.* `tests/enforced` indexed only store, card and steps after the
+layer 3 merge, so every L5 row's tests read as missing; it now lists
+`./policy` too, and fuzz targets (`FuzzAnswers`). Rows L5-15 (the roster),
+L5-16 (the evaluator and the clock) and L5-17 (the verbs' fields and
+fences) are added; L5-3, L5-4, L5-8 and L5-14 carry the new probes.
+
+*Size.* 3,141 lines of non-test Go (2,402 without comments and blanks),
+from 2,545 (1,971) at round 4; the evaluator is 241 code lines, the clock
+24, the rest the probes' fixes and the roster. Over the 1.5k budget, as
+round 4 said; Glenn's call.
+
+*Tests.* `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
+c0067a27: ok (5.0 s). The timing probes with `NOVA_LOAD=1`, exclusive, on
+amd-3 at a33fb7ef: all pass but `TestBreakFallbackTimerStartsAfterTheInputs`
+(skips, above). Load through the evaluator, 5,000 producers over 100 rows:
+cold 106.7 ms, warm 59.1 ms (measured).
+
+*Checks on hetzner2 at e22c0593.* `tla/ci-tlc.sh`: 149 ok, 0 failing (12
+models with no error found, Policy among them; every Policy witness and
+reach run violated as required). `tla/make-traces.sh check`: 60 ok, 0
+failing; 11 policy traces (10 walks TRACE OK, the breaker refused as
+required).
+
+*STATUS at the end of round 5* (the method moved to one holistic pass over
+all layers; this round stops here). rowan2's seven: all seven built; six
+pass, `TestBreakFallbackTimerStartsAfterTheInputs` skips by construction
+(above) and its ruling is checked by `TestFallbackCountsFromTheFirstByte`.
+Cold read 3's eight: all eight built and pass. Rulings built: every one in
+this section, the contradictions included. Half done or owed: layer 6's
+`main` calling `ServeMain` on `EvalArg` and building
+`NewEngine(RealClock{})` (no nova-sprint main exists on this branch); no
+memory limit in the evaluator child; the built-in's prose security rule
+(Rowan's call, above); the size over budget. The timing probes ran on
+amd-3 at a33fb7ef; the commits after it change only tests and docs, so
+they were not re-run.
