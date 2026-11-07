@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -13,7 +14,7 @@ import (
 type Choices struct {
 	Store store.Store
 	Actor string
-	Now   Clock
+	Now   func() time.Time
 }
 
 func choiceName(question string) (string, error) {
@@ -99,7 +100,7 @@ func (c Choices) Save(ctx context.Context, question, value string) error {
 	}
 	id := consumerOpID("choice:"+c.Actor, snap.Epoch, name+"\x00"+value, int(snap.Seq))
 	op := store.Op{ID: id, Epoch: snap.Epoch, Actor: c.Actor, Kind: "setup answer", At: c.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: name, Body: value}}}
-	r, err := applyExact(ctx, c.Store, op)
+	r, err := applyOnce(ctx, c.Store, op, c.Store.Apply)
 	if err != nil {
 		return err
 	}

@@ -206,7 +206,7 @@ func emitChoiceTrace(t *testing.T, dir, choice string) {
 	if choice == "configured" {
 		input = "deepseek"
 	}
-	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, SetupHook: func(context.Context, SetupInput) Result { return Result{} }, Setup: fake, SetupLock: setupLeaseFake{}, SetupObserver: trace.observe}
+	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, Lock: setupLeaseFake{}, SetupObserver: trace.observe}
 	walkChoices(t, e, trace, work, input)
 	if choice == "none" && (term.asks != 0 || sink.saved) {
 		t.Fatal("none prompted for key")

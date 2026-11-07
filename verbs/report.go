@@ -12,367 +12,220 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// HeadVerifier checks origin branch, PR and other external finish prerequisites.
-// A nonempty problem and fix is a refusal; errors must not carry secrets.
-type HeadVerifier interface {
-	VerifyHead(context.Context, store.Card, string) (problem, fix string, err error)
+// outcome is a row's report as the three verbs give it.
+type outcome struct {
+	id, result, head, reason string
+	gen                      int
+	cost                     int64
+	priced                   bool
 }
 
-// FaultVerifier determines whether a fault is a harness, bench, or route failure.
-type FaultVerifier interface {
-	VerifyFault(context.Context, store.Card, string) (bool, error)
+// runReport is `finish`, `read` and `report`: one op by the row itself, the
+// consumer and its producer together (card.ReportPlan), fenced by gen, its
+// id canonical (LAYER-6 section 2, "Reports are ordinary ops").
+func runReport(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	o, err := readOutcome(in)
+	if err != nil {
+		return "", err
+	}
+	opID, err := machineID(in, snap, "report", o.id, o.gen)
+	if err != nil {
+		return "", err
+	}
+	r, found, err := e.Store.Replay(ctx, opID)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		if r, err = e.report(ctx, in, snap, o, opID); err != nil {
+			return "", err
+		}
+	}
+	return reportOutput(in, snap, r, o.id)
 }
 
-type reportInput struct {
-	id, actor, result, head, reason, finding string
-	gen, epoch                               int
-	cost                                     int64
-	priced                                   bool
-	jsonOutput, pricedSet, microSet, usdSet  bool
-	opID                                     string
-}
-
-func parseReport(verb string, args []string, actor string) (reportInput, bool) {
-	in := reportInput{actor: actor}
-	if len(args) < 1 {
-		return in, false
+// readOutcome parses the verb's form into one outcome.
+func readOutcome(in *input) (outcome, error) {
+	id, gen, f := cardRef(in.verb, in.arg(0))
+	if f != nil {
+		return outcome{}, f
 	}
-	var ok bool
-	in.id, in.gen, ok = cardRef(args[0])
-	if !ok {
-		return in, false
-	}
-	i := 1
-	if verb == "read" {
-		if len(args) < 2 {
-			return in, false
+	o := outcome{id: id, gen: gen, head: in.str("head"), reason: in.str("reason")}
+	switch in.verb {
+	case "finish":
+		o.result = map[bool]string{true: "fail", false: "ok"}[in.has("failed")]
+	case "read":
+		o.result = map[string]string{"yes": "ok", "fix": "fix"}[in.arg(1)]
+		if o.result == "" {
+			return o, misuse("read", "a read answers yes or fix")
 		}
-		switch args[1] {
-		case "yes":
-			in.result = "ok"
-		case "fix":
-			in.result = "fix"
-		default:
-			return in, false
-		}
-		i++
-	}
-	if !parseReportFlags(verb, args[i:], &in) {
-		return in, false
-	}
-	if verb == "read" && in.finding != "" {
-		in.reason = in.finding
-	}
-	if verb == "finish" && in.result == "" {
-		in.result = "ok"
-	}
-	if ((verb == "report" && !in.jsonOutput) || in.result == "fail" || in.result == "fault") && in.reason == "" {
-		return in, false
-	}
-	if in.jsonOutput {
-		if in.epoch == 0 || in.opID == "" || !in.microSet || !in.pricedSet || in.usdSet {
-			return in, false
-		}
-	} else if in.opID != "" || in.microSet || in.pricedSet {
-		return in, false
-	}
-	return in, in.actor != "" && in.result != ""
-}
-
-func parseReportFlags(verb string, args []string, in *reportInput) bool {
-	i := 0
-	seen := map[string]bool{}
-	for ; i < len(args); i++ {
-		if seen[args[i]] {
-			return false
-		}
-		seen[args[i]] = true
-		if args[i] == "--json" {
-			in.jsonOutput = true
-			continue
-		}
-		if args[i] == "--failed" && verb == "finish" {
-			in.result = "fail"
-			continue
-		}
-		if i+1 >= len(args) || args[i+1] == "" {
-			return false
-		}
-		if args[i] == "--result" && verb != "report" {
-			return false
-		}
-		if args[i] == "--finding" && verb != "read" && verb != "report" {
-			return false
-		}
-		if !reportFlag(in, args[i], args[i+1]) {
-			return false
-		}
-		i++
-	}
-	return true
-}
-
-func reportFlag(in *reportInput, key, value string) bool {
-	switch key {
-	case "--as":
-		in.actor = value
-	case "--epoch":
-		var err error
-		in.epoch, err = strconv.Atoi(value)
-		if err != nil || in.epoch < 1 {
-			return false
-		}
-	case "--head":
-		in.head = value
-	case "--reason":
-		in.reason = value
-	case "--finding":
-		in.finding = value
-	case "--result":
-		in.result = value
-	case "--id":
-		in.opID = value
-	case "--cost-microusd":
-		if !decimalDigits(value) {
-			return false
-		}
-		var err error
-		in.cost, err = strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return false
-		}
-		in.microSet = true
-	case "--priced":
-		if value != "true" && value != "false" {
-			return false
-		}
-		in.priced = value == "true"
-		in.pricedSet = true
-	case "--cost":
-		in.usdSet = true
-		var err error
-		in.cost, err = parseCost(value)
-		if err != nil {
-			return false
-		}
-		in.priced = true
 	default:
-		return false
+		o.result = in.str("result")
 	}
-	return true
+	if fd := in.str("finding"); fd != "" {
+		o.reason = fd
+	}
+	if err := o.check(in); err != nil {
+		return o, err
+	}
+	var err error
+	o.cost, o.priced, err = readCost(in)
+	return o, err
 }
 
-func (e *Engine) report(ctx context.Context, verb string, args []string) Result {
-	in, ok := parseReport(verb, args, e.Actor)
-	if !ok {
-		return refused(verb, "invalid arguments", "nova-sprint help "+verb)
+func (o outcome) check(in *input) error {
+	switch {
+	case o.result != "ok" && o.result != "fix" && o.result != "fail" && o.result != "fault":
+		return misuse(in.verb, "--result is ok, fix, fail or fault")
+	case (o.result == "fail" || o.result == "fault") && o.reason == "":
+		return refuse("a "+o.result+" needs its reason", "add --reason \"<what failed, with the command and exit>\"")
+	case o.result == "fix" && o.reason == "":
+		return refuse("a fix needs a finding", "add --finding \"<path>:<line>: <the defect and the repair>\"")
+	case in.verb == "finish" && o.result == "ok" && o.head == "":
+		return refuse("a finish names its head", "add --head <the 40-hex sha git ls-remote origin <branch> prints>")
 	}
-	st, ok := e.Store.(ApplyStore)
-	if !ok || e.Now == nil || e.Env == nil {
-		return unavailable(verb)
-	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return unavailable(verb)
-	}
-	if in.epoch != 0 && in.epoch != snap.Epoch {
-		return epochRefusal(verb, in.epoch, snap.Epoch)
-	}
-	opID := consumerOpID(verb, snap.Epoch, in.id, in.gen)
-	if in.jsonOutput && in.opID != opID {
-		return refused(verb, "op id must be "+opID, "use the derived operation id")
-	}
-	r, found, err := st.Replay(ctx, opID)
-	if err != nil {
-		return operationalFailure(verb, err)
-	}
-	if found {
-		return formatReportReceipt(r, in, verb, opID)
-	}
-	if e.Reports == nil {
-		return unavailable(verb)
-	}
-	hooked, recipe, err := e.Env.Hooked(ctx, in.actor)
-	if err != nil {
-		return unavailable(verb)
-	}
-	if !hooked {
-		return refused(verb, in.actor+" is not hooked in", recipe)
-	}
-	c, ok := snap.Cards[in.id]
-	if !ok || c.Gen != in.gen || c.Holder != in.actor {
-		return refused(verb, in.id+" is not held by "+in.actor, "nova-sprint show "+in.id)
-	}
-	if result, stop := e.checkReport(ctx, verb, snap, c, &in); stop {
-		return result
-	}
-	return e.applyReport(ctx, st, snap, c, in, opID, verb)
+	return nil
 }
 
-func (e *Engine) checkReport(ctx context.Context, verb string, snap store.Snapshot, c store.Card, in *reportInput) (Result, bool) {
-	if in.result == "fault" {
-		if e.Faults == nil {
-			return unavailable(verb), true
-		}
-		allowed, err := e.Faults.VerifyFault(ctx, c, in.reason)
-		if err != nil {
-			return unavailable(verb), true
-		}
-		if !allowed {
-			return refused(verb, "fault needs a harness, bench or route failure", "nova-sprint help report"), true
-		}
+// readCost is the run's cost: --cost-microusd with --priced from a machine,
+// or --cost in dollars from a mind; never both forms.
+func readCost(in *input) (int64, bool, error) {
+	machine := in.has("cost-microusd") || in.has("priced")
+	if machine && in.has("cost") {
+		return 0, false, refuse("--cost mixes with --cost-microusd and --priced", "give --cost <usd>, or --cost-microusd <n> --priced true|false")
 	}
-	if c.Kind == "read" && in.result == "ok" && in.head == "" {
-		in.head = c.Head
+	if machine {
+		n, err := strconv.ParseInt(in.str("cost-microusd"), 10, 64)
+		p := in.str("priced")
+		if err != nil || n < 0 || (p != "true" && p != "false") {
+			return 0, false, misuse(in.verb, "--cost-microusd <n> and --priced true|false go together")
+		}
+		return n, p == "true", nil
 	}
-	if verb == "finish" && c.Kind != "work" {
-		return refused(verb, in.id+" is not a work card", "nova-sprint show "+in.id), true
+	if !in.has("cost") {
+		return 0, false, nil
 	}
-	if verb == "read" && c.Kind != "read" {
-		return refused(verb, in.id+" is not a read", "nova-sprint show "+in.id), true
+	n, err := microUSD(in.str("cost"))
+	if err != nil {
+		return 0, false, misuse(in.verb, "--cost is dollars, at most six decimals: 0.04")
+	}
+	return n, true, nil
+}
+
+// microUSD is a decimal dollar amount in micro-dollars, exactly.
+func microUSD(s string) (int64, error) {
+	whole, frac, _ := strings.Cut(s, ".")
+	if whole == "" || len(frac) > 6 || strings.Trim(whole+frac, "0123456789") != "" {
+		return 0, fmt.Errorf("bad amount")
+	}
+	w, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil || w > math.MaxInt64/1_000_000-1 {
+		return 0, fmt.Errorf("bad amount")
+	}
+	f, _ := strconv.ParseInt((frac + "000000")[:6], 10, 64)
+	return w*1_000_000 + f, nil
+}
+
+// report checks what the verb can see and applies the plan.
+func (e *Engine) report(ctx context.Context, in *input, snap store.Snapshot, o outcome, opID string) (store.Receipt, error) {
+	c, ok := snap.Cards[o.id]
+	if !ok || c.Gen != o.gen || c.Holder != in.actor {
+		return store.Receipt{}, refuse(o.id+" is not held by "+in.actor+" at generation "+strconv.Itoa(o.gen), "nova-sprint show "+o.id)
+	}
+	if err := kindFits(in.verb, c, o); err != nil {
+		return store.Receipt{}, err
 	}
 	if c.Kind == "read" {
-		p, found := snap.Cards[c.Of]
-		if !found {
-			return refused(verb, "producer "+c.Of+" is missing", "nova-sprint show "+in.id), true
+		if err := readable(in.actor, c, snap, &o); err != nil {
+			return store.Receipt{}, err
 		}
-		if in.actor == p.Author || in.actor == c.Author {
-			return refused(verb, in.actor+" wrote the head and cannot read it", "nova-sprint next"), true
-		}
-	}
-	if c.Kind == "read" && in.result == "fix" && in.finding != "" {
-		in.reason = in.finding
-	}
-	if in.result == "fix" && in.reason == "" {
-		return refused(verb, "a fix needs a finding", "nova-sprint read "+in.id+"@"+strconv.Itoa(in.gen)+" fix --finding <text>"), true
-	}
-	if c.Kind == "work" && in.result == "ok" {
-		if e.Heads == nil {
-			return unavailable(verb), true
-		}
-		problem, fix, err := e.Heads.VerifyHead(ctx, c, in.head)
-		if err != nil {
-			return unavailable(verb), true
-		}
-		if problem != "" {
-			return refused(verb, problem, fix), true
+	} else if o.result == "ok" {
+		if err := e.headReady(ctx, snap, c, o.head); err != nil {
+			return store.Receipt{}, err
 		}
 	}
-	return Result{}, false
-}
-
-func (e *Engine) applyReport(ctx context.Context, st ApplyStore, snap store.Snapshot, c store.Card, in reportInput, id, verb string) Result {
-	plan, why := e.Reports.PlanReport(snap, c, card.Report{Row: in.actor, Result: in.result, Head: in.head, Reason: in.reason, Cost: in.cost, Priced: in.priced})
+	plan, why := reportPlan(snap, c, card.Report{Row: in.actor, Result: o.result, Head: o.head, Reason: o.reason, Cost: o.cost, Priced: o.priced})
 	if why != nil {
-		return refused(verb, why.Reason, "nova-sprint show "+in.id)
+		return store.Receipt{}, moved(why, o.id)
 	}
-	if c.Kind == "read" {
-		plan.Expect = append(plan.Expect, store.AtSeq{Seq: snap.Seq})
-	}
-	next := "nothing; wait for the bus"
-	if len(obligations(snap, in.actor)) > 1 {
-		next = "nova-sprint next"
-	}
-	op := store.Op{ID: id, Epoch: snap.Epoch, Actor: in.actor, Kind: "report", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: next}
-	rec, err := applyExact(ctx, st, op)
-	if err != nil {
-		return unavailable(verb)
-	}
-	return formatReportReceipt(rec, in, verb, id)
+	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: in.actor, Kind: "report", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes}
+	return e.commit(ctx, op, "nova-sprint show "+o.id)
 }
 
-func formatReportReceipt(r store.Receipt, in reportInput, verb, opID string) Result {
-	if !in.jsonOutput {
-		return reportReceipt(r, in.actor, verb, in.id)
+func kindFits(verb string, c store.Card, o outcome) error {
+	switch {
+	case verb == "finish" && c.Kind != "work":
+		return refuse(c.ID+" is a "+c.Kind+" card", "nova-sprint read "+fmtCard(c.ID, c.Gen)+" yes|fix")
+	case verb == "read" && c.Kind != "read":
+		return refuse(c.ID+" is a "+c.Kind+" card", "nova-sprint finish "+fmtCard(c.ID, c.Gen)+" --head <sha>")
+	case c.Kind == "work" && o.result == "fix":
+		return misuse(verb, "fix is a read's answer; a work card reports ok, fail or fault")
 	}
-	if r.Op != opID || r.Actor != in.actor || r.Kind != "report" {
-		return refused(verb, "operation cannot be performed", "nova-sprint next --as "+in.actor)
+	return nil
+}
+
+// readable is a read by someone who did not write the head, of the head
+// the producer is at.
+func readable(row string, c store.Card, snap store.Snapshot, o *outcome) error {
+	p := snap.Cards[c.Of]
+	if row == p.Author || row == c.Author {
+		return refuse(row+" wrote the head and cannot read it", waitNext)
+	}
+	if o.head == "" {
+		o.head = c.Head
+	}
+	if o.head != c.Head {
+		return refuse(fmt.Sprintf("producer %s is at head %s, the read was of %s", p.ID, c.Head, o.head), "nova-sprint show "+c.ID)
+	}
+	return nil
+}
+
+// reportPlan is the card machine's one plan for a report, consumer and
+// producer together.
+func reportPlan(s store.Snapshot, c store.Card, r card.Report) (card.Plan, *card.Refusal) {
+	p := s.Cards[c.Of]
+	rows := map[string]card.Row{}
+	for n, row := range s.Rows {
+		rows[n] = card.RowFromStore(row, 0, nil)
+	}
+	all := map[string]card.Card{}
+	for id, x := range s.Cards {
+		all[id] = card.FromStore(x)
+	}
+	return card.ReportPlan(card.FromStore(c), card.FromStore(p), consumersOf(s, p.ID), rows, card.StreamFromStore(s.Streams[p.Stream]), all, r)
+}
+
+func consumersOf(s store.Snapshot, producer string) []card.Card {
+	var out []card.Card
+	for _, c := range s.Cards {
+		if c.Of == producer {
+			out = append(out, card.FromStore(c))
+		}
+	}
+	return out
+}
+
+// reportOutput is the receipt: JSON for a machine, one line for a mind.
+func reportOutput(in *input, snap store.Snapshot, r store.Receipt, id string) (string, error) {
+	if r.Actor != in.actor || r.Kind != "report" {
+		return "", refuse("this report was "+r.Kind+" by "+r.Actor, "nova-sprint next --as "+in.actor)
 	}
 	if !r.Accepted {
-		return refused(verb, r.Reason, "nova-sprint show "+in.id)
+		return "", refuse(r.Reason, "nova-sprint show "+id)
 	}
-	data, err := json.Marshal(r)
-	if err != nil {
-		return unavailable(verb)
+	if in.has("json") {
+		b, err := json.Marshal(r)
+		return string(b) + "\n", err
 	}
-	return Result{string(data) + "\n", 0}
-}
-
-func parseCost(s string) (int64, error) {
-	parts := strings.Split(s, ".")
-	if len(parts) > 2 || !decimalDigits(parts[0]) {
-		return 0, fmt.Errorf("invalid cost")
-	}
-	whole, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil || whole > math.MaxInt64/1000000 {
-		return 0, fmt.Errorf("invalid cost")
-	}
-	frac := ""
-	if len(parts) == 2 {
-		frac = parts[1]
-		if !decimalDigits(frac) || len(frac) > 6 {
-			return 0, fmt.Errorf("invalid cost")
-		}
-	}
-	frac += strings.Repeat("0", 6-len(frac))
-	fraction, err := strconv.ParseInt(frac, 10, 64)
-	if err != nil || whole*1000000 > math.MaxInt64-fraction {
-		return 0, fmt.Errorf("invalid cost")
-	}
-	return whole*1000000 + fraction, nil
-}
-
-func reportReceipt(r store.Receipt, actor, verb, id string) Result {
-	if r.Actor != actor || r.Kind != "report" {
-		return refused(verb, "operation cannot be performed", "nova-sprint next --as "+actor)
-	}
-	if !r.Accepted {
-		return refused(verb, r.Reason, "nova-sprint show "+id)
-	}
-	if r.After == nil {
-		return unavailable(verb)
-	}
-	c, ok := r.After.Cards[id]
-	if !ok {
-		return unavailable(verb)
-	}
-	label := "REPORTED"
+	c := r.After.Cards[id]
+	label := map[string]string{"ok": "FINISHED", "fail": "FAILED", "fault": "FAULTED"}[c.Result]
+	line := fmt.Sprintf("%s %s head=%s applied at seq %d", label, id, c.Head, r.Seq)
 	if c.Kind == "read" {
-		label = "READ"
-	} else {
-		switch c.Result {
-		case "ok":
-			label = "FINISHED"
-		case "fail":
-			label = "FAILED"
-		case "fault":
-			label = "FAULTED"
-		}
+		line = fmt.Sprintf("READ %s head=%s result=%s applied at seq %d", id, c.Head, c.Result, r.Seq)
 	}
-	head := ""
-	if c.Head != "" {
-		head = " head=" + c.Head
+	next := waitNext
+	if len(working(snap, in.actor)) > 1 {
+		next = "nova-sprint next --as " + in.actor
 	}
-	result := ""
-	if c.Kind == "read" {
-		result = " result=" + c.Result
-	}
-
-	next := r.Note
-	if next == "" {
-		next = "nothing; wait for the bus"
-	}
-	return Result{fmt.Sprintf("%s %s%s%s applied at seq %d\nnext: %s\n", label, id, head, result, r.Seq, next), 0}
-}
-
-func decimalDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
+	return done(next, line), nil
 }

@@ -16,12 +16,17 @@ type StatementWriter interface {
 // VerifiedDump holds the exact statements that passed schema and rebuild checks.
 // Its statements are private so restore cannot accidentally re-read a changed file.
 type VerifiedDump struct {
- statements []string
- digest string
+	statements []string
+	digest     string
 }
 
 // Digest identifies the exact verified dump bytes, including its header.
-func (v *VerifiedDump) Digest() string { if v == nil { return "" }; return v.digest }
+func (v *VerifiedDump) Digest() string {
+	if v == nil {
+		return ""
+	}
+	return v.digest
+}
 
 func (v *VerifiedDump) Execute(ctx context.Context, w StatementWriter) error {
 	if v == nil || w == nil {

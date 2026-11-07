@@ -2,8 +2,10 @@ package verbs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -11,226 +13,162 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Briefs parses and verifies every field and gate required by CARD-CONTRACT.
-// It supplies a refusal with a named repair on any failed contract check.
-type Briefs interface {
-	Parse(context.Context, string, store.Stream) (card.Add, error)
+// runAdd is `add`: producers from brief files (each card's id its file's
+// name without .md), or one sentinel over --needs, into a stream, in one op
+// fenced at the snapshot's seq.
+func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	adds, err := readAdds(in, snap)
+	if err != nil {
+		return "", err
+	}
+	plan, err := planAdds(snap, adds)
+	if err != nil {
+		return "", err
+	}
+	lines := make([]string, len(adds))
+	for i, a := range adds {
+		lines[i] = fmt.Sprintf("ADD %s kind=%s stream=%s tier=%s priority=%s needs=%s", a.ID, a.Kind, a.Stream, a.Tier, orWord(a.Priority, "normal"), orWord(strings.Join(a.Needs, ","), "-"))
+	}
+	if in.has("dry-run") {
+		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
+	}
+	op := e.newOp("add", in.actor, snap, adds)
+	op.Expect, op.Writes = append(plan.Expect, store.AtSeq{Seq: snap.Seq}), plan.Writes
+	r, err := e.commit(ctx, op, "nova-sprint queue --stream "+in.str("stream"))
+	if err != nil {
+		return "", err
+	}
+	return done(waitNext, append(lines, fmt.Sprintf("ADDED %d cards applied at seq %d", len(adds), r.Seq))...), nil
 }
 
-type addInput struct {
-	stream, actor, priority, sentinel string
-	files, needs, after               []string
-	dry                               bool
-}
-
-func parseAdd(args []string, actor string) (addInput, bool) {
-	in := addInput{actor: actor}
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--dry-run" {
-			in.dry = true
-			continue
-		}
-		if i+1 >= len(args) || args[i+1] == "" {
-			return in, false
-		}
-		v := args[i+1]
-		switch args[i] {
-		case "--stream":
-			in.stream = v
-		case "--brief-file":
-			in.files = append(in.files, v)
-		case "--as":
-			in.actor = v
-		case "--priority":
-			in.priority = v
-		case "--needs":
-			in.needs = strings.Split(v, ",")
-		case "--after":
-			in.after = strings.Split(v, ",")
-		case "--sentinel":
-			in.sentinel = v
-		default:
-			return in, false
-		}
-		i++
+// readAdds is the cards the flags name.
+func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
+	stream, sentinel, files := in.str("stream"), in.str("sentinel"), in.list("brief-file")
+	needs, f := names("add", "needs", in.str("needs"))
+	if f != nil {
+		return nil, f
 	}
-	return in, in.actor != "" && in.stream != "" && (len(in.files) > 0 || in.sentinel != "")
-}
-func (e *Engine) add(ctx context.Context, args []string) Result {
-	in, ok := parseAdd(args, e.Actor)
-	if !ok {
-		return refused("add", "invalid arguments", "nova-sprint help add")
+	after, f := names("add", "after", in.str("after"))
+	if f != nil {
+		return nil, f
 	}
-	if in.sentinel != "" && len(in.files) > 0 {
-		return refused("add", "--sentinel cannot be mixed with --brief-file", "choose one form")
+	switch {
+	case stream == "":
+		return nil, misuse("add", "add names its stream: --stream <s>")
+	case (sentinel == "") == (len(files) == 0):
+		return nil, misuse("add", "add takes --brief-file <f>... or --sentinel <id> --needs <cards>, one of them")
+	case sentinel != "" && len(needs) == 0:
+		return nil, refuse("a sentinel needs the cards it waits for", "nova-sprint add --stream "+stream+" --sentinel "+sentinel+" --needs <a,b>")
 	}
-	if in.sentinel != "" && len(in.needs) == 0 {
-		return refused("add", "a sentinel needs at least one card", "nova-sprint add --stream "+in.stream+" --sentinel "+in.sentinel+" --needs <cards>")
+	if _, ok := snap.Streams[stream]; !ok {
+		return nil, refuse("no stream "+stream, "nova-sprint stream add "+stream+" --repo <owner/name>")
 	}
-	st, ok := e.Store.(ApplyStore)
-	if !ok || e.Env == nil || e.Now == nil || (len(in.files) > 0 && e.Briefs == nil) {
-		return unavailable("add")
+	if sentinel != "" {
+		return []card.Add{{ID: sentinel, Kind: "sentinel", Stream: stream, Tier: "flash", Priority: in.str("priority"), Needs: needs, After: after}}, nil
 	}
-	hooked, recipe, err := e.Env.Hooked(ctx, in.actor)
-	if err != nil {
-		return operationalFailure("add", err)
-	}
-	if !hooked {
-		return refused("add", in.actor+" is not hooked in", recipe)
-	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return operationalFailure("add", err)
-	}
-	stream, ok := snap.Streams[in.stream]
-	if !ok {
-		return refused("add", "unknown stream "+in.stream, "nova-sprint stream add "+in.stream+" --repo <owner/name>")
-	}
-	adds := make([]card.Add, 0, len(in.files)+1)
-	if in.sentinel != "" {
-		adds = append(adds, card.Add{ID: in.sentinel, Kind: "sentinel", Stream: in.stream, Tier: "flash", Priority: in.priority, Needs: in.needs, After: in.after})
-	}
-	for _, file := range in.files {
-		a, err := e.Briefs.Parse(ctx, file, stream)
+	adds := make([]card.Add, 0, len(files))
+	for _, f := range files {
+		a, err := readBrief(f)
 		if err != nil {
-			return operationalFailure("add", err)
+			return nil, err
 		}
-		if a.ID == "group" {
-			return refused("add", "card group is reserved for the stream group branch", "choose another card id")
+		a.Stream, a.Needs, a.After = stream, append(a.Needs, needs...), append(a.After, after...)
+		if p := in.str("priority"); p != "" {
+			a.Priority = p
 		}
-		a.Stream = in.stream
-		if in.priority != "" {
-			a.Priority = in.priority
-		}
-		a.Needs = append(a.Needs, in.needs...)
-		a.After = append(a.After, in.after...)
 		adds = append(adds, a)
 	}
-	return e.applyAdds(ctx, st, snap, in, adds)
+	return adds, nil
 }
 
-func (e *Engine) applyAdds(ctx context.Context, st ApplyStore, snap store.Snapshot, in addInput, adds []card.Add) Result {
-	plans, why := planAdds(snap, adds)
-	if why != "" {
-		return refused("add", why, "nova-sprint help add")
-	}
-	if in.dry {
-		return Result{fmt.Sprintf("ADD DRY RUN cards=%d\nnext: nova-sprint add --stream %s --brief-file <file>\n", len(adds), in.stream), 0}
-	}
-	plan, mergeRefusal := card.Merge(plans...)
-	if mergeRefusal != nil {
-		return refused("add", mergeRefusal.Reason, "nova-sprint help add")
-	}
-	plan.Expect = append(plan.Expect, store.AtSeq{Seq: snap.Seq})
-	key, _ := json.Marshal(adds)
-	id := consumerOpID("add:"+in.actor, snap.Epoch, string(key), int(snap.Seq))
-	op := store.Op{ID: id, Epoch: snap.Epoch, Actor: in.actor, Kind: "add", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes}
-	rec, err := applyExact(ctx, st, op)
-	if err != nil {
-		return operationalFailure("add", err)
-	}
-	if !rec.Accepted {
-		return refused("add", rec.Reason, "nova-sprint help add")
-	}
-	var out strings.Builder
-	for _, a := range adds {
-		fmt.Fprintf(&out, "ADDED %s stream=%s tier=%s priority=%s needs=%s\n", a.ID, a.Stream, a.Tier, defaultPriority(a.Priority), formatNeeds(a.Needs))
-	}
-	next := "nothing; wait for the bus"
-	up := false
-	for _, r := range snap.Rows {
-		if r.State == "up" {
-			up = true
-			break
-		}
-	}
-	if !up {
-		next = "nova-sprint up"
-	}
-	fmt.Fprintln(&out, "next: "+next)
-	return Result{out.String(), 0}
-}
-func defaultPriority(s string) string {
+func orWord(s, or string) string {
 	if s == "" {
-		return "normal"
+		return or
 	}
 	return s
 }
-func formatNeeds(s []string) string {
-	if len(s) == 0 {
-		return "-"
+
+// readBrief is one brief file as a producer.
+func readBrief(path string) (card.Add, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return card.Add{}, broken("cannot read brief "+path, "pass a readable --brief-file")
 	}
-	return strings.Join(s, ",")
+	id := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if id == "group" {
+		return card.Add{}, refuse("card id group is the stream's group branch", "rename the brief file")
+	}
+	return parseBrief(id, string(data))
 }
 
-func planAdds(s store.Snapshot, adds []card.Add) ([]card.Plan, string) {
-	existing := map[string]card.Card{}
+// planAdds is the one plan putting every card, each after the cards of
+// this add it needs or comes after.
+func planAdds(s store.Snapshot, adds []card.Add) (card.Plan, error) {
+	known := map[string]card.Card{}
 	for id, c := range s.Cards {
-		existing[id] = card.FromStore(c)
+		known[id] = card.FromStore(c)
 	}
 	pending := map[string]card.Add{}
 	for _, a := range adds {
-		if _, ok := existing[a.ID]; ok {
-			return nil, "card " + a.ID + " exists"
+		if _, ok := known[a.ID]; ok {
+			return card.Plan{}, refuse("card "+a.ID+" exists", "nova-sprint show "+a.ID)
 		}
 		if _, ok := pending[a.ID]; ok {
-			return nil, "card " + a.ID + " is named twice"
+			return card.Plan{}, misuse("add", "card "+a.ID+" is named twice")
 		}
 		pending[a.ID] = a
-
 	}
-	order, why := addOrder(pending)
-	if why != "" {
-		return nil, why
+	order, err := addOrder(pending)
+	if err != nil {
+		return card.Plan{}, err
 	}
-	plans := make([]card.Plan, 0, len(adds))
+	plans := make([]card.Plan, 0, len(order))
 	for _, id := range order {
 		a := pending[id]
-		plan, r := card.MoveAdd(a, existing)
-		if r != nil {
-			return nil, r.Reason
+		p, why := card.MoveAdd(a, known)
+		if why != nil {
+			return card.Plan{}, refuse(why.Reason, "fix the brief or the flags and add again")
 		}
-		plans = append(plans, plan)
-		existing[id] = card.Card{ID: a.ID, Kind: a.Kind, Stream: a.Stream, Needs: a.Needs, After: a.After}
+		plans = append(plans, p)
+		known[id] = card.Card{ID: a.ID, Kind: a.Kind, Stream: a.Stream, Needs: a.Needs, After: a.After}
 	}
-	return plans, ""
+	plan, why := card.Merge(plans...)
+	if why != nil {
+		return card.Plan{}, refuse(why.Reason, "add the cards in smaller groups")
+	}
+	return plan, nil
 }
-func addOrder(pending map[string]card.Add) ([]string, string) {
+
+// addOrder is the pending cards, each after those of them it needs or comes
+// after, or the cycle.
+func addOrder(pending map[string]card.Add) ([]string, error) {
 	state := map[string]int{}
-	order := []string{}
-	stack := []string{}
-	var visit func(string) string
-	visit = func(id string) string {
-		if state[id] == 2 {
-			return ""
-		}
-		if state[id] == 1 {
-			return "cycle through " + strings.Join(append(stack, id), " -> ")
+	var order, stack []string
+	var visit func(string) error
+	visit = func(id string) error {
+		switch state[id] {
+		case 2:
+			return nil
+		case 1:
+			return refuse("the cards need each other: "+strings.Join(append(stack, id), " -> "), "break the cycle in NEEDS or AFTER")
 		}
 		state[id] = 1
 		stack = append(stack, id)
-		a := pending[id]
-		for _, dep := range append(append([]string{}, a.Needs...), a.After...) {
+		for _, dep := range slices.Concat(pending[id].Needs, pending[id].After) {
 			if _, ok := pending[dep]; ok {
-				if why := visit(dep); why != "" {
-					return why
+				if err := visit(dep); err != nil {
+					return err
 				}
 			}
 		}
-		stack = stack[:len(stack)-1]
-		state[id] = 2
+		stack, state[id] = stack[:len(stack)-1], 2
 		order = append(order, id)
-		return ""
+		return nil
 	}
-	names := make([]string, 0, len(pending))
-	for id := range pending {
-		names = append(names, id)
-	}
-	slices.Sort(names)
-	for _, id := range names {
-		if why := visit(id); why != "" {
-			return nil, why
+	for _, id := range slices.Sorted(maps.Keys(pending)) {
+		if err := visit(id); err != nil {
+			return nil, err
 		}
 	}
-	return order, ""
+	return order, nil
 }

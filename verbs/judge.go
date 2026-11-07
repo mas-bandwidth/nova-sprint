@@ -2,163 +2,195 @@ package verbs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// JudgePlanner is layer 3's typed choices and fenced choice-plus-close plan.
-type JudgePlanner interface {
-	Judge(store.Snapshot, string, string, string, string, []string) (card.Plan, *card.Refusal)
-}
-
-type judgeInput struct {
-	id, choice, reason, actor string
-	expected                  []string
-	hasExpect                 bool
-}
-
-func parseJudge(args []string, actor string) (judgeInput, bool) {
-	in := judgeInput{actor: actor}
-	if len(args) == 0 {
-		return in, actor != ""
+// runJudge is `judge`: with no argument the open judgements, with one the
+// judgement (or group) and its choices, with two the answer. A choice that
+// moves a card (unblock, drop) rides in the answer's op; the others are the
+// answer alone, which the next tick reads. A group is answered member by
+// member, one op each, after --expect <n> confirms how many.
+func runJudge(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	if len(in.args) == 0 {
+		return judgementList(snap), nil
 	}
-	if len(args) == 2 && args[0] == "--as" {
-		in.actor = args[1]
-		return in, in.actor != ""
-	}
-	if len(args) < 2 {
-		return in, false
-	}
-	in.id, in.choice = args[0], args[1]
-	for i := 2; i < len(args); i++ {
-		if i+1 >= len(args) || args[i+1] == "" {
-			return in, false
-		}
-		switch args[i] {
-		case "--reason":
-			in.reason = args[i+1]
-		case "--as":
-			in.actor = args[i+1]
-		case "--expect":
-			in.expected = strings.Split(args[i+1], ",")
-			in.hasExpect = true
-		default:
-			return in, false
-		}
-		i++
-	}
-	return in, in.actor != "" && in.reason != ""
-}
-func (e *Engine) judge(ctx context.Context, args []string) Result {
-	in, ok := parseJudge(args, e.Actor)
-	if !ok {
-		return refused("judge", "invalid arguments", "nova-sprint help judge")
-	}
-	st, ok := e.Store.(ApplyStore)
-	if !ok || e.Env == nil || e.Now == nil {
-		return unavailable("judge")
-	}
-
-	hooked, recipe, err := e.Env.Hooked(ctx, in.actor)
+	members, err := judgementsOf(snap, in.arg(0))
 	if err != nil {
-		return operationalFailure("judge", err)
+		return "", err
 	}
-	if !hooked {
-		return refused("judge", in.actor+" is not hooked in", recipe)
+	if len(in.args) == 1 {
+		return judgementShow(members), nil
 	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return operationalFailure("judge", err)
+	choice, reason := in.arg(1), in.str("reason")
+	if reason == "" {
+		return "", refuse("a judgement's answer needs its reason", "add --reason \"<why>\"")
 	}
-	if in.id == "" {
-		return listJudgements(snap, in.actor, in.actor)
-	}
-	members, problem := judgeMembers(snap, in)
-	if problem != "" {
-		return refused("judge", problem, "nova-sprint judge")
-	}
-	for _, j := range members {
-		if !validJudgementHeader(j) {
-			return unavailable("judge")
+	if len(members) > 1 {
+		if n, f := in.num("expect"); f != nil || n != len(members) {
+			return "", refuse(fmt.Sprintf("group %s has %d open judgements", in.arg(0), len(members)), fmt.Sprintf("confirm with --expect %d", len(members)))
 		}
 	}
-
-	if e.Judges == nil {
-		return unavailable("judge")
+	var lines []string
+	for i, j := range members {
+		if snap, err = e.again(ctx, snap, i); err != nil {
+			return "", err
+		}
+		r, err := answerRequest(j, choice, reason)
+		if err != nil {
+			return "", err
+		}
+		line, err := e.move(ctx, in, snap, r, j.About)
+		if err != nil {
+			return "", err
+		}
+		lines = append(lines, line)
 	}
-	return e.applyJudge(ctx, st, snap, in, len(members))
-}
-func validJudgementHeader(j store.Judgement) bool {
-	fields := strings.Fields(j.Question)
-	return len(fields) >= 3 && fields[0] == "kind="+j.Kind && fields[1] == "card="+j.About && fields[2] == "group="+j.Group
-}
-func listJudgements(snap store.Snapshot, actor, coordinator string) Result {
-	list := openJudgements(snap, actor, coordinator)
-	if len(list) == 0 {
-		return Result{"JUDGEMENTS none\nnext: nothing; wait for the bus\n", 0}
-	}
-	var out strings.Builder
-	for _, j := range list {
-		fmt.Fprintf(&out, "JUDGEMENT %s %s\n", j.ID, j.Question)
-	}
-	fmt.Fprintln(&out, "next: "+list[0].Command)
-	return Result{out.String(), 0}
-}
-func (e *Engine) applyJudge(ctx context.Context, st ApplyStore, snap store.Snapshot, in judgeInput, memberCount int) Result {
-	plan, why := e.Judges.Judge(snap, in.id, in.choice, in.reason, in.actor, in.expected)
-	if why != nil {
-		return refused("judge", why.Reason, "nova-sprint judge")
-	}
-	key, _ := json.Marshal([]string{"judge", in.actor, in.id, in.choice, in.reason})
-	op := store.Op{ID: consumerOpID(string(key), snap.Epoch, in.id, int(snap.Seq)), Epoch: snap.Epoch, Actor: in.actor, Kind: "judge", At: e.Now(), Expect: append(plan.Expect, store.AtSeq{Seq: snap.Seq}), Writes: plan.Writes}
-	rec, err := applyExact(ctx, st, op)
-	if err != nil {
-		return operationalFailure("judge", err)
-	}
-	if !rec.Accepted {
-		return refused("judge", rec.Reason, "nova-sprint judge")
-	}
-	next := "nothing; wait for the bus"
-	if len(openJudgements(snap, in.actor, in.actor)) > memberCount {
-		next = "nova-sprint judge"
-	}
-	return Result{fmt.Sprintf("ANSWERED judgement=%s by=%s choice=%s\nnext: %s\n", in.id, in.actor, in.choice, next), 0}
+	return done("nova-sprint judge --as "+in.actor, lines...), nil
 }
 
-func judgeMembers(s store.Snapshot, in judgeInput) ([]store.Judgement, string) {
-	if j, ok := s.Judgements[in.id]; ok {
+// judgementsOf is the open judgement named, or every open member of the
+// group named.
+func judgementsOf(snap store.Snapshot, name string) ([]store.Judgement, error) {
+	if j, ok := snap.Judgements[name]; ok {
 		if j.State != "open" {
-			return nil, "judgement " + j.ID + " is " + j.State + " by " + j.Actor
+			return nil, refuse(fmt.Sprintf("judgement %s was %s by %s", j.ID, j.State, j.Actor), "nova-sprint judge")
 		}
-		if in.hasExpect {
-			return nil, "--expect is for a group"
-		}
-		return []store.Judgement{j}, ""
+		return []store.Judgement{j}, nil
 	}
-	members := []store.Judgement{}
-	ids := []string{}
-	for _, j := range s.Judgements {
-		if j.Group == in.id && j.State == "open" {
-			members = append(members, j)
-			ids = append(ids, j.ID)
+	var out []store.Judgement
+	for _, j := range snap.Judgements {
+		if j.Group == name && j.State == "open" {
+			out = append(out, j)
 		}
 	}
-	if len(members) == 0 {
-		return nil, "unknown judgement or group " + in.id
+	if len(out) == 0 {
+		return nil, refuse("no open judgement or group "+name, "nova-sprint judge")
 	}
-	if !in.hasExpect {
-		return nil, "group " + in.id + " needs --expect <member ids>"
+	slices.SortFunc(out, func(a, b store.Judgement) int { return strings.Compare(a.ID, b.ID) })
+	return out, nil
+}
+
+// choicesOf is a judgement's choices, as its command lists them.
+func choicesOf(j store.Judgement) []string {
+	_, list, ok := strings.Cut(j.Command, "choices:")
+	if !ok {
+		return []string{"retry"}
 	}
-	expected := slices.Clone(in.expected)
-	slices.Sort(expected)
-	slices.Sort(ids)
-	if !slices.Equal(expected, ids) {
-		return nil, "judgement group membership changed"
+	var out []string
+	for _, c := range strings.Split(list, "|") {
+		if c = strings.TrimSpace(c); c != "" {
+			out = append(out, c)
+		}
 	}
-	return members, ""
+	return out
+}
+
+// answerRequest is the answer as a request: unblock and drop move the card
+// the judgement is about; every other choice is the answer alone.
+func answerRequest(j store.Judgement, choice, reason string) (steps.Request, error) {
+	cs := choicesOf(j)
+	if !slices.Contains(cs, choice) {
+		return steps.Request{}, misuse("judge", "judgement "+j.ID+" takes one of: "+strings.Join(cs, " "))
+	}
+	r := steps.Request{Judgement: j.ID, Answer: choice}
+	switch choice {
+	case "unblock":
+		r.Card, r.Event = j.About, card.Unblock{Reason: reason}
+	case "drop":
+		r.Card, r.Event = j.About, card.Cancel{Reason: reason}
+	}
+	return r, nil
+}
+
+func judgementList(snap store.Snapshot) string {
+	var open []store.Judgement
+	for _, j := range snap.Judgements {
+		if j.State == "open" {
+			open = append(open, j)
+		}
+	}
+	if len(open) == 0 {
+		return done(waitNext, "no open judgements")
+	}
+	slices.SortFunc(open, func(a, b store.Judgement) int { return a.OpenedAt.Compare(b.OpenedAt) })
+	return done("nova-sprint judge <id> to see one", judgementLines(open)...)
+}
+
+func judgementShow(members []store.Judgement) string {
+	lines := judgementLines(members)
+	if len(members) > 1 {
+		return done(fmt.Sprintf("nova-sprint judge %s <choice> --expect %d --reason \"<why>\"", members[0].Group, len(members)), lines...)
+	}
+	return done(members[0].Command, append(lines, "question: "+oneLine(members[0].Question))...)
+}
+
+func judgementLines(js []store.Judgement) []string {
+	out := make([]string, len(js))
+	for i, j := range js {
+		out[i] = fmt.Sprintf("JUDGEMENT %s kind=%s about=%s group=%s choices=%s", j.ID, j.Kind, j.About, j.Group, strings.Join(choicesOf(j), "|"))
+	}
+	return out
+}
+
+// runDrop is `drop` and `replace`: a producer cancelled (or replaced by
+// another), every dependant failed with its need in the same op unless
+// --waive <dependant> or --relink <dependant>=<card> chose otherwise. A
+// dry run prints what fails.
+func runDrop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	reason := in.str("reason")
+	if reason == "" {
+		return "", refuse("a "+in.verb+" needs its reason", "add --reason \"<why>\"")
+	}
+	var ev card.Event = card.Cancel{Reason: reason}
+	if in.verb == "replace" {
+		by := in.str("by")
+		if by == "" {
+			return "", misuse("replace", "replace names the card that replaces it: --by <card>")
+		}
+		ev = card.Replace{By: by, Reason: reason}
+	}
+	chosen, err := dropChoices(in, reason)
+	if err != nil {
+		return "", err
+	}
+	var lines []string
+	for i, id := range in.args {
+		if snap, err = e.again(ctx, snap, i); err != nil {
+			return "", err
+		}
+		if c, ok := snap.Cards[id]; ok && c.Of != "" {
+			return "", refuse(id+" is a consumer; a drop is of its producer", "nova-sprint "+in.verb+" "+c.Of+" --reason \"<why>\"")
+		}
+		line, err := e.move(ctx, in, snap, steps.Request{Card: id, Event: ev, Drop: chosen}, id)
+		if err != nil {
+			return "", err
+		}
+		lines = append(lines, line)
+	}
+	return done(nextAfter(in), lines...), nil
+}
+
+// dropChoices is --waive <dependant> and --relink <dependant>=<card>.
+func dropChoices(in *input, reason string) (map[string]card.Event, error) {
+	out := map[string]card.Event{}
+	for _, d := range in.list("waive") {
+		out[d] = card.Waive{Reason: reason}
+	}
+	for _, x := range in.list("relink") {
+		d, to, ok := strings.Cut(x, "=")
+		if !ok || d == "" || to == "" {
+			return nil, misuse(in.verb, "--relink is <dependant>=<card>")
+		}
+		if _, dup := out[d]; dup {
+			return nil, misuse(in.verb, d+" is both waived and relinked")
+		}
+		out[d] = card.Relink{To: to, Reason: reason}
+	}
+	return out, nil
 }

@@ -48,7 +48,7 @@ func TestSetupHandoffClosesLeaseBeforeSignal(t *testing.T) {
 	s := &handoffSetup{}
 	lock := &handoffLock{}
 	called := false
-	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, SetupHook: func(context.Context, SetupInput) Result { return Result{} }, Setup: s, SetupLock: lock, ReportContinuation: func(_ context.Context, id string, in SetupInput) error {
+	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: s, Lock: lock, ReportContinuation: func(_ context.Context, id string, in SetupInput) error {
 		if lock.held || id != strings.Repeat("a", 64) || in.Actor != "rowan" {
 			t.Fatal(lock.held, id, in)
 		}
@@ -72,7 +72,7 @@ func TestSetupHandoffClosesLeaseBeforeSignal(t *testing.T) {
 func TestSetupObservationsFollowActualCalls(t *testing.T) {
 	s := &setupFake{stop: 5}
 	var seen []SetupObservation
-	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, SetupHook: func(context.Context, SetupInput) Result { return Result{} }, Setup: s, SetupLock: setupLeaseFake{}, SetupObserver: func(o SetupObservation) { seen = append(seen, o) }}
+	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: s, Lock: setupLeaseFake{}, SetupObserver: func(o SetupObservation) { seen = append(seen, o) }}
 	r := e.Execute(context.Background(), []string{"up"})
 	if r.Exit != 1 {
 		t.Fatal(r)
@@ -105,7 +105,7 @@ func (*rejectingHandoff) ValidateHandoff(context.Context, string, SetupInput) er
 func TestSetupRejectsContinuationBeforeLockedSteps(t *testing.T) {
 	s := &rejectingHandoff{}
 	lock := &handoffLock{}
-	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, SetupHook: func(context.Context, SetupInput) Result { return Result{} }, Setup: s, SetupLock: lock}
+	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: s, Lock: lock}
 	got := e.Execute(context.Background(), []string{"up", "--continuation", strings.Repeat("a", 64)})
 	if got.Exit != 1 || lock.held || lock.acquired != 0 || len(s.trace) != 0 {
 		t.Fatal(got, s.trace, lock.held)
@@ -117,7 +117,7 @@ func TestSetupHandoffCancellationBeforeSignal(t *testing.T) {
 	defer cancel()
 	lock := &handoffLock{onClose: cancel}
 	called := false
-	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Setup: &handoffSetup{}, SetupLock: lock, ReportContinuation: func(context.Context, string, SetupInput) error {
+	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: &handoffSetup{}, Lock: lock, ReportContinuation: func(context.Context, string, SetupInput) error {
 		called = true
 		return nil
 	}}
@@ -130,11 +130,15 @@ func TestSetupHandoffCancellationBeforeSignal(t *testing.T) {
 func TestContinuationHooksAfterStepTwoBeforeStepThree(t *testing.T) {
 	s := &handoffSetup{}
 	lock := &handoffLock{}
-	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, Setup: s, SetupLock: lock}
-	e.SetupHook = func(context.Context, SetupInput) Result { s.trace = append(s.trace, "hook"); return Result{} }
+	st := upStore(false)
+	e := Engine{Actor: "rowan", Store: st, Bus: upBus(), Now: upNow, Setup: s, Lock: lock}
 	got := e.Execute(context.Background(), []string{"up", "--continuation", strings.Repeat("a", 64)})
 	calls := strings.Join(s.trace, ",")
-	if got.Exit != 0 || !strings.Contains(calls, "verify2,act2,verify2,hook,verify3") || s.validations != 2 {
+	if got.Exit != 0 || !strings.Contains(calls, "verify2,act2,verify2,verify3") || s.validations != 2 || !strings.Contains(got.Output, "HOOKED rowan role=coordinator") {
 		t.Fatal(got, calls, s.validations)
+	}
+	snap, _ := st.Snapshot(context.Background())
+	if r := snap.Rows["rowan"]; r.Role != "coordinator" || r.Session == "" {
+		t.Fatal(r)
 	}
 }
