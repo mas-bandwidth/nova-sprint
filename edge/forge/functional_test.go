@@ -11,7 +11,7 @@ import (
 )
 
 // TestFunctionalScratchForge exercises Client against a real GitHub repository using
-// non-Glenn credentials (e.g. rowan-claude via GH_GATE_TOKEN or NOVA_FORGE_TEST_CONFIG_DIR).
+// non-Glenn credentials (e.g. rowan-claude via NOVA_FORGE_TEST_TOKEN).
 // When NOVA_FORGE_SCRATCH_WRITE=1 is also set (for a scratch repo with a write-scoped token),
 // it pushes a throwaway branch scratch/forge-<id>, opens a PR, reads its CI status, and closes
 // the PR and deletes the branch in cleanup.
@@ -70,7 +70,6 @@ func newScratchClient_internal() (*Client, string, string, string) {
 			Name:          "scratch-test",
 			ExpectedLogin: login,
 			Token:         os.Getenv("NOVA_FORGE_TEST_TOKEN"),
-			ConfigDir:     os.Getenv("NOVA_FORGE_TEST_CONFIG_DIR"),
 		},
 		Binary:  ghBin,
 		Timeout: 30 * time.Second,

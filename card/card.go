@@ -91,14 +91,17 @@ type (
 	AskReads struct{ Rows []string } // several reads of this head, one plan, distinct indices
 	ReadYes  struct{}
 	ReadFix  struct{ Finding string } // the read's finding, kept in its own column
-	// WaiveRed moves a producer a Red sent back to review on to merging
-	// without a new read, when that Red is still recorded and a done ok read
-	// of the previous review at the same head exists. Who may waive is layer
-	// 3's; the event carries no actor.
+	// WaiveRed moves a producer a Red sent to fix (ready, or waiting in a
+	// held stream) on to merging without a new read, when that Red is still
+	// recorded and a done ok read of the previous review at the same head
+	// exists. Who may waive is layer 3's; the event carries no actor.
 	WaiveRed struct{ Reason string }
 	Landed   struct{ Head string }
-	Red      struct{ Head, Reason string } // review +1: reads before it no longer count
-	Released struct{ Reason string }       // the work consumer of this attempt was withdrawn
+	// Red is a red landing: merging -> fix (ready, waiting when held) with
+	// Reason, the CI finding, as the finding; review +1, so reads before it
+	// no longer count (intent rule 30: no terminal fail).
+	Red      struct{ Head, Reason string }
+	Released struct{ Reason string } // the work consumer of this attempt was withdrawn
 	Cancel   struct{ Reason string }
 	Replace  struct{ By, Reason string }
 	// NeedFailed takes a dependant with its failed need. InThisOp says the

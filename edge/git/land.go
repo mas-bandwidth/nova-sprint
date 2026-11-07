@@ -22,6 +22,7 @@ const (
 	OutcomeLedgerFailed  LandOutcome = "ledger_failed"
 	OutcomePushRefused   LandOutcome = "push_refused"
 	OutcomeCIPending     LandOutcome = "ci_pending"
+	OutcomeCIAbsent      LandOutcome = "ci_absent" // no check reported yet for the gated sha: the caller waits a bounded time
 	OutcomeCIRed         LandOutcome = "ci_red"
 	OutcomeCIFault       LandOutcome = "ci_fault"
 	OutcomeNoLandingHost LandOutcome = "no_landing_host"
@@ -166,8 +167,8 @@ func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req La
 	switch r.State {
 	case forge.CheckGreen:
 		return prNum, LandResult{}, false, nil
-	case forge.CheckPending, "":
-		return prNum, LandResult{Outcome: OutcomeCIPending, BaseTip: baseTip, GatedSHA: merged.SHA, Reason: r.Reason}, true, nil
+	case forge.CheckPending, forge.CheckAbsent, "":
+		return prNum, LandResult{Outcome: pendingOutcome_internal(r.State), BaseTip: baseTip, GatedSHA: merged.SHA, Reason: r.Reason}, true, nil
 	case forge.CheckFault:
 		return prNum, LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: merged.SHA, CIURL: r.URL, Reason: r.Reason}, true, nil
 	default:
@@ -181,6 +182,16 @@ func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req La
 		}
 		return prNum, LandResult{Outcome: OutcomeCIRed, BaseTip: baseTip, GatedSHA: merged.SHA, BlamedHead: blamed, FailingCI: r.Failing, CIURL: r.URL, Reason: r.Reason}, true, nil
 	}
+}
+
+// pendingOutcome_internal is a gate with no verdict yet: absent (no check
+// reported at all) is told apart from pending, so the caller can bound the
+// wait for a CI that may never run (LANDING, "CI on the group branch").
+func pendingOutcome_internal(st forge.CheckState) LandOutcome {
+	if st == forge.CheckAbsent {
+		return OutcomeCIAbsent
+	}
+	return OutcomeCIPending
 }
 func classifyForgeErr_internal(err error, baseTip, sha string) LandResult {
 	return LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: sha, Reason: err.Error()}
@@ -254,8 +265,8 @@ func remergeOnMovedBase_internal(ctx context.Context, g Git, fg forge.Forge, req
 	switch r.State {
 	case forge.CheckGreen:
 		return merged, LandResult{Remerged: true}, false, nil
-	case forge.CheckPending, "":
-		return merged, LandResult{Outcome: OutcomeCIPending, BaseTip: newBase, GatedSHA: merged.SHA, Remerged: true, Reason: r.Reason}, true, nil
+	case forge.CheckPending, forge.CheckAbsent, "":
+		return merged, LandResult{Outcome: pendingOutcome_internal(r.State), BaseTip: newBase, GatedSHA: merged.SHA, Remerged: true, Reason: r.Reason}, true, nil
 	case forge.CheckFault:
 		return merged, LandResult{Outcome: OutcomeCIFault, BaseTip: newBase, GatedSHA: merged.SHA, CIURL: r.URL, Remerged: true, Reason: r.Reason}, true, nil
 	default:
@@ -321,8 +332,8 @@ func gateSubset_internal(ctx context.Context, g Git, fg forge.Forge, req LandReq
 	switch r.State {
 	case forge.CheckFault:
 		return r.State, merged.SHA, LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: merged.SHA, CIURL: r.URL, Reason: r.Reason}, true, nil
-	case forge.CheckPending, "":
-		return r.State, merged.SHA, LandResult{Outcome: OutcomeCIPending, BaseTip: baseTip, GatedSHA: merged.SHA, Reason: r.Reason}, true, nil
+	case forge.CheckPending, forge.CheckAbsent, "":
+		return r.State, merged.SHA, LandResult{Outcome: pendingOutcome_internal(r.State), BaseTip: baseTip, GatedSHA: merged.SHA, Reason: r.Reason}, true, nil
 	default:
 		return r.State, merged.SHA, LandResult{}, false, nil
 	}

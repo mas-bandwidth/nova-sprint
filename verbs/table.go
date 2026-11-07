@@ -110,7 +110,7 @@ func workVerbs() []*verb {
 			needs: []string{"not dealt to this row at this generation: nova-sprint show <card>", "at width: finish a card first", "the row not in nova-config, or not serving the tier: nova-config"}},
 		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport,
 			about: "reports a work card done at a head pushed to its branch, or failed with the reason",
-			needs: []string{"not the holder: nova-sprint show <card>", "not a full sha", "not on the dealt branch at origin: git push origin <branch>", "the stream wants a PR and there is none: gh pr create", "the head is the base: do the work", "behind the stream head: rebase onto sprint/<s>/group"}},
+			needs: []string{"not the holder: nova-sprint show <card>", "not a full sha", "not on the dealt branch at origin: git push origin <branch>", "the head is the base: do the work", "behind the stream head: rebase onto sprint/<s>/group"}},
 		{name: "read", group: "work", role: roleWorker, usage: "<card>@<gen> yes|fix [--finding <text>] --as <row> [--epoch <e>]", flags: reportFlags, min: 2, max: 2, run: runReport,
 			about: "answers a read of someone else's head",
 			needs: []string{"you wrote the head: wait for the bus", "fix with no finding: --finding \"<path>:<line>: <defect and repair>\""}},

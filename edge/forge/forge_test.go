@@ -31,28 +31,76 @@ func TestCredentialsRefusals(t *testing.T) {
 		}),
 	})
 	_, _, err := missing.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
-	if err == nil || !strings.Contains(err.Error(), "forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity amd-1.ds: run nova-secrets exec or set GH_CONFIG_DIR") {
-		t.Fatalf("unexpected missing cred error: %v", err)
+	var refusal *edge.Refusal
+	if !errors.As(err, &refusal) || !strings.Contains(refusal.Problem, "no GitHub token for amd-1.ds") || !strings.Contains(refusal.Fix, "nova-secrets exec --only GH_GATE_TOKEN") {
+		t.Fatalf("a missing token is not a refusal with its fix: %v", err)
+	}
+	if missing.Ready() == nil {
+		t.Fatal("Ready accepted a client with no token")
 	}
 
 	glennClient := New(Config{
-		Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", ConfigDir: "/path/rowan-gh"},
+		Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-rowan"},
 		Now:      func() int64 { return now },
 		Exec: ExecFunc(func(_ context.Context, _ edge.Cmd) (edge.Result, error) {
 			return edge.Result{Stdout: "  ✓ Logged in to github.com account gafferongames (GH_TOKEN)"}, nil
 		}),
 	})
 	_, _, err = glennClient.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
-	wantGlenn := "forge refused: gh auth login is gafferongames, expected rowan-claude (the human's own credentials are never used): set GH_CONFIG_DIR for rowan-claude"
-	if err == nil || err.Error() != wantGlenn {
-		t.Fatalf("got %v, want %s", err, wantGlenn)
+	if !errors.As(err, &refusal) || !strings.Contains(refusal.Problem, "gafferongames's, expected rowan-claude") {
+		t.Fatalf("the human's login was not refused: %v", err)
 	}
 
-	wrongFake := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", ConfigDir: "/path/rowan-gh"}, func() int64 { return now })
+	wrongFake := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-rowan"}, func() int64 { return now })
 	wrongFake.SetAuthLogin("stella-codex")
 	_, _, err = wrongFake.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
-	if err == nil || !strings.Contains(err.Error(), "gh auth login is stella-codex, expected rowan-claude") {
+	if err == nil || !strings.Contains(err.Error(), "is stella-codex's, expected rowan-claude") {
 		t.Fatalf("unexpected wrong login error: %v", err)
+	}
+}
+
+// The forge acts only as its token: a GH_TOKEN, GITHUB_TOKEN or
+// GH_CONFIG_DIR the process inherited never reaches gh, so the host's own
+// login is never the identity (defect 39), and the token is in the
+// environment only, never in argv.
+func TestForgeActsOnlyAsItsToken(t *testing.T) {
+	t.Setenv("GH_TOKEN", "inherited-token")
+	t.Setenv("GITHUB_TOKEN", "inherited-github")
+	t.Setenv("GH_CONFIG_DIR", "/home/someone/.config/gh")
+	var seen []edge.Cmd
+	c := New(Config{
+		Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-sprint"},
+		Now:      func() int64 { return 1000 },
+		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+			seen = append(seen, cmd)
+			if cmd.Argv[1] == "auth" {
+				return edge.Result{Stdout: "Logged in to github.com account rowan-claude (GH_TOKEN)"}, nil
+			}
+			return edge.Result{Stdout: "[]"}, nil
+		}),
+	})
+	if _, _, err := c.PR(context.Background(), "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2"); err != nil {
+		t.Fatalf("PR: %v", err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("gh ran %d times, want auth status then pr list", len(seen))
+	}
+	for _, cmd := range seen {
+		if !cmd.CleanEnv {
+			t.Fatalf("%v inherits the environment", cmd.Argv)
+		}
+		tokens := 0
+		for _, kv := range cmd.Env {
+			switch {
+			case kv == "GH_TOKEN=tok-sprint":
+				tokens++
+			case strings.HasPrefix(kv, "GH_TOKEN="), strings.HasPrefix(kv, "GITHUB_TOKEN="), strings.HasPrefix(kv, "GH_CONFIG_DIR="):
+				t.Fatalf("%v carries the inherited %s", cmd.Argv, kv)
+			}
+		}
+		if tokens != 1 || strings.Contains(strings.Join(cmd.Argv, " "), "tok-sprint") {
+			t.Fatalf("%v: the token is not exactly once in the environment and never in argv", cmd.Argv)
+		}
 	}
 }
 
@@ -124,7 +172,7 @@ func TestMergeExactSHA(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
-	f := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", ConfigDir: "/rowan/gh"}, func() int64 { return now })
+	f := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok-rowan"}, func() int64 { return now })
 	repo := "mas-bandwidth/nova-sprint"
 
 	pr, err := f.OpenPR(ctx, repo, "sprint/s1/group", "v2", "sprint/s1 batch", "body")

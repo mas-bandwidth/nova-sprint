@@ -50,11 +50,8 @@ func TestFinishEdgeFailures(t *testing.T) {
 			takeW1(t, w)
 			w.e.Origin = &failingContains{w.origin}
 		}, want: []string{"git merge-base of o/r failed"}},
-		{name: "the forge fails", as: "alice", snap: withForge, args: finish, exit: 2, prep: func(t *testing.T, w *world) {
-			takeW1(t, w)
-			w.e.Origin = &failingPR{w.origin}
-		}, want: []string{"the forge did not answer"}},
-		{name: "a PR at the head", as: "alice", snap: withForge, args: finish, exit: 0, prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.pr = head },
+		// defect 34: no PR is asked of a card; the landing opens the group's
+		{name: "a forge stream, no PR", as: "alice", snap: withForge, args: finish, exit: 0, prep: takeW1,
 			want: []string{"FINISHED p1.w1"}},
 		{name: "no git edge", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.e.Origin = nil }, want: []string{"the git edge is not configured"}},
 	})
@@ -72,13 +69,6 @@ func (o *failingContains) Tip(ctx context.Context, repo, branch string) (string,
 
 func (o *failingContains) Contains(context.Context, string, string, string) (bool, error) {
 	return false, errBroken
-}
-
-// failingPR is origin with the forge failing.
-type failingPR struct{ *fakeOrigin }
-
-func (o *failingPR) PR(context.Context, string, string, string) (string, bool, error) {
-	return "", false, errBroken
 }
 
 // Each brief rule is refused, by line, without quoting the brief.

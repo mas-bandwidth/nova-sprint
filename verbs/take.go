@@ -172,9 +172,6 @@ func takenText(t takeReceipt, row string) string {
 	if t.PriorHead != "" {
 		lines = append(lines, "continue from "+t.PriorHead+" (git fetch origin "+t.Branch+"); the finding: "+t.Finding)
 	}
-	if t.Forge != "" {
-		lines = append(lines, "the stream wants a PR: gh pr create --base "+t.StreamRef+" --head "+t.Branch)
-	}
 	lines = append(lines, t.Brief)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
 }

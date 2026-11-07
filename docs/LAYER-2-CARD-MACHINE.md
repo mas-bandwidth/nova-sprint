@@ -102,7 +102,7 @@ Producer events:
 | `ReadYes` | review | merging | state | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy, which reads all of them (LESSONS 3.7) |
 | `ReadFix{reason}` | review | ready | state, reason=the findings policy chose, bounces+1 | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy from all the reads of that head, never automatically on the first fix (LESSONS 3.7); p.head is kept, so the next `Start` continues from it (LESSONS 3.9) |
 | `Landed{head}` | merging | landed | state | head equals p.head |
-| `Red{head, reason}` | merging | review | state, reason | head equals p.head |
+| `Red{head, reason}` | merging | ready (waiting when the stream is held): **fix** | state, review+1, red=true, finding=reason (the failing checks and their URLs), reason; bounces unchanged | head equals p.head; reason is not empty (intent rule 30: a red landing goes to fix, never to a terminal state) |
 | `Released` | working | ready | state, reason, head=the consumer's last pushed head when there is one; score and bounces unchanged | p's work consumer of this attempt is `fail` (withdrawn, after a silence or preempted by a blocker) |
 | `Cancel{reason}` / `Replace{by, reason}` | any non-final | fail | state, reason | no live consumer of p |
 | `NeedFailed{need}` | any non-final | fail | state, reason naming the need | need is in p's needs and is `fail`; no live consumer of p |
@@ -150,8 +150,10 @@ Rules the tables encode, each checked by the model and tested one by one:
   raises `bounces`. Which consumer is youngest is policy's choice; the
   withdraw and the deal are the engine's moves (LESSONS 5.12).
 - A red CI result never advances a producer: the step retreats
-  `merging → review` and is reported (layer 3 raises the notification; this
-  layer only moves). A later read may say yes again; that is legal.
+  `merging → ready` (fix; `waiting` in a held stream) with the CI finding,
+  and the next `Start` continues from the head with that finding (intent
+  rule 30, 2026-11-07; it was `merging → review`, where a reader re-read the
+  same red head and could send it straight back to land red again).
 - A fix keeps the score, so a fixed producer is at the head of its queue
   without any priority rule (Glenn, 2026-09-29).
 - `attempt` rises only on `Start`. A consumer carries its attempt, and a
@@ -443,7 +445,8 @@ with a design change, never a special case):
   producer in the same plan (a withdraw that leaves it working is refused);
   `Withdraw{head}` equal to `base_sha` is refused (nothing was pushed).
 - `UnholdStream{reason}` is an event; `WaiveRed{reason}` moves a producer
-  that a Red sent back to `review` on to `merging` without a new read when a
+  that a Red sent to fix (`ready`, or `waiting` when held; before 2026-11-07
+  `review`) on to `merging` without a new read when a
   done ok read of the previous review at the same head exists (the
   coordinator's judgement that the red was not the code's).
 - Actor rulings (who may Unblock, Waive, Relink, SetPriority, WaiveRed) are
@@ -480,3 +483,31 @@ with a design change, never a special case):
   equal to it); `reason`, `brief`, `cost`, `priced`, `prose`, `paths` and
   `done_when` are data no transition reads. Its holes are listed in
   `tla/README.md`; the ones above are the rulings on them.
+
+## Red goes to fix (2026-11-07, intent rule 30)
+
+Glenn, 2026-11-07: no terminal fail state for a producer; a failed card goes
+to fix or review, where a mind looks at it. Until the `fail` state itself is
+reworked (after the first landing), a red landing goes to fix:
+
+- `Red{head, reason}`: `merging -> ready` (`waiting` when the stream is held),
+  review +1 (reads before the red never count), `red = true`, and the reason
+  (layer 3 writes the head, the base, and the failing checks with their URLs
+  as the forge read them) written as the `finding`, so the fix attempt's work
+  consumer carries it from `Start`. An empty reason is refused. No bounce is
+  spent: a red is not a reader's or a worker's verdict, and the bounce limit
+  stays theirs (Rowan's call; easy to overrule).
+- `WaiveRed` now moves from `ready` or `waiting` (where a Red leaves the
+  producer) to `merging`, with the same guards: the red still recorded (no
+  `Start` since; `Start` clears it) and a done ok read of the previous review
+  at the same head.
+- Model: `CardMachine.tla` `Red` and `WaiveRed` changed with the code; the
+  reach check `NeverYesAfterRed` (a yes after a Red on a new read of the same
+  attempt) is no longer reachable and is replaced by `NeverRedToFix`; the
+  witness `CardWaiveRedWithoutRed` now needs two ReadFix rounds to reach a
+  ready producer with an earlier ok read at its head, so its scenario `redw`
+  is K = 6 and MaxBounce = 2. `Steps.tla`'s red result moves the producer the
+  same way. TLC on a bench: see the Built note of this change in the commit.
+- Not changed tonight: the `fail` state, `Cancel`, `Replace`, `NeedFailed`,
+  and the board's and playbooks' state lists (intent rule 30 lists them).
+
