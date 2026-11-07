@@ -4,7 +4,7 @@ The same commands CI runs, from the repository root. Per commit
 (`.github/workflows/ci.yml`) every job finishes inside 2 minutes; the long runs
 are nightly (`.github/workflows/nightly.yml`, no time limit).
 
-The rules (Glenn, 2026-11-07): unit tests run in parallel, under 2 minutes
+The rules: unit tests run in parallel, under 2 minutes
 (under 1 minute is the aim), and use no real time, sleep, network or process;
 functional tests (a name containing `Functional`) run in parallel, under 2
 minutes, and may. Every test calls `t.Parallel()` first. `tools/unitlint`

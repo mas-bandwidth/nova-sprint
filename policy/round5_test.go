@@ -152,10 +152,9 @@ func TestFunctionalEvaluatorMemoryCap(t *testing.T) {
 	w.up()
 	snap := w.snap()
 	e := NewEngine(newFakeClock())
-	// The cap is the production path at a 64 MiB cap: three 32 MiB strings
-	// cross it in milliseconds. At 512 MiB, building the strings under -race
-	// on a loaded runner (about 1 s per 256 MiB) ran out the tick's 1.5 s
-	// budget first (CI and amd-2, 2026-11-07).
+	// The production path at a 64 MiB cap: three 32 MiB strings cross it in
+	// milliseconds. At 512 MiB, building the strings under -race on a loaded
+	// host (about 1 s per 256 MiB) runs out the tick's 1.5 s budget first.
 	e.proc.memory = 64 << 20
 	big, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(3):\n        x.append(\"a\" * (1 << 25))\n    return len(x) > 0")
 	a, fs := e.Answer(Versions{Active: pv(2, big)}, snap, w.ro, FullQuestions(snap, nil))

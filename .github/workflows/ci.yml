@@ -60,9 +60,9 @@ jobs:
       - name: every test is parallel; no unit test uses real time, sleep, network or processes
         run: go run ./tools/unitlint
 
-  # -short: the random walks and sweeps take a fifth of their seeds (the nightly
-  # runs them all). Every test is parallel and packages run at the core count;
-  # with -race this is about 35 s on a 16-core bench (2026-11-07).
+  # -short: the random walks and sweeps take fewer seeds or steps (the nightly
+  # runs them all). Every test is parallel and packages run at the core count,
+  # so -race fits inside the 2-minute job.
   unit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]
