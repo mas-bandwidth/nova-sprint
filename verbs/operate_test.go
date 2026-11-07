@@ -160,6 +160,17 @@ func TestServices(t *testing.T) {
 	}
 }
 
+// A friend's row is hooked by nova-bus, so its machine runs the worker with
+// --beat-only: the flag reaches the service.
+func TestWorkerBeatOnlyReachesTheService(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	want(t, w.do("alice", "worker", "--beat-only"), 0, "WORKER alice ended")
+	if !slices.Equal(w.svc.ran, []string{"worker alice", "beat-only"}) {
+		t.Fatalf("ran %v", w.svc.ran)
+	}
+}
+
 func TestServicesRefusals(t *testing.T) {
 	t.Parallel()
 	none := func(_ *testing.T, w *world) { w.e.Services = nil }

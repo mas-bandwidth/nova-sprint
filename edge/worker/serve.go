@@ -27,6 +27,10 @@ type Config struct {
 	// Providers is --providers: the key proxy's routes (ParseProviders).
 	Providers string
 	Once      bool
+	// BeatOnly serves no jobs: it only pushes the row's heartbeat (the CPU peak
+	// and the load) for a row hooked some other way, as a friend's is by
+	// `nova-bus hook`. The row is hooked and up before it starts.
+	BeatOnly bool
 }
 
 // Check refuses a config that cannot run, one line naming the fix.
@@ -45,6 +49,9 @@ func (c Config) Check() error {
 // probe, then one pass or the wake loop) until ctx ends or the bus hook
 // dies. It writes the one-pass receipt to out.
 func Serve(ctx context.Context, c Config, out func(string)) error {
+	if c.BeatOnly {
+		return serveBeats(ctx, c, out)
+	}
 	if err := c.Check(); err != nil {
 		return err
 	}
@@ -70,6 +77,21 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 		return err
 	}
 	out(fmt.Sprintf("WORKER PASS %s host=%s\nnext: nothing; wait for the bus", c.Row, c.Host))
+	return nil
+}
+
+// serveBeats pushes the row's heartbeat every BeatEvery until ctx ends, and
+// samples the CPU once a second for its peak: the whole of a BeatOnly worker.
+func serveBeats(ctx context.Context, c Config, out func(string)) error {
+	if strings.TrimSpace(c.Row) == "" {
+		return fmt.Errorf("worker refused: missing --as <row>: pass --as <row>")
+	}
+	ex := edge.NewOSExec()
+	sprint := &CLISprintClient{Exec: ex, Timeout: DefaultTimeouts().Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
+	cpu := NewOSCPUSampler(ex)
+	r := &Runner{Beater: sprint, Meter: OSMeter{Exec: ex, ReserveBin: "nova-reserve", CPU: cpu}, Warn: out, Now: time.Now, Sleep: time.Sleep}
+	go cpu.Run(ctx, time.Now, time.Sleep)
+	r.beatLoop_internal(ctx, c.Row)
 	return nil
 }
 

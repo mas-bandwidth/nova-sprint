@@ -116,6 +116,14 @@ func TestBeatLoopBeatsEveryPeriod(t *testing.T) {
 	}
 }
 
+// A BeatOnly worker serves no jobs and still needs its row.
+func TestServeBeatOnlyWantsARow(t *testing.T) {
+	t.Parallel()
+	if err := Serve(t.Context(), Config{BeatOnly: true}, func(string) {}); err == nil || !strings.Contains(err.Error(), "missing --as <row>") {
+		t.Fatalf("Serve with no row: %v", err)
+	}
+}
+
 // A failure is one warning per distinct cause, and none when the load could
 // not be read at all sends no beat.
 func TestBeatWarnsOncePerCause(t *testing.T) {

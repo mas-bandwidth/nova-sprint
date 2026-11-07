@@ -913,6 +913,10 @@ clock), mostly in `edge/worker/probe_test.go`.
   keeps only the last warning's text; a beat that repeats the last one writes nothing.
 - Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
   and carries no numbers) and not a read verb that writes. Tests: `edge/worker/beat_test.go`.
+- A kin's row is hooked by `nova-bus hook`, and nothing of the sprint's runs on its machine, so its
+  board row had no load. `nova-sprint worker --as <row> --beat-only` (or `nova-worker --beat-only`)
+  runs only the beat loop and the CPU sampler for a row hooked another way: no jobs, no probe, no
+  hook. Test: `TestServeBeatOnlyWantsARow`, `TestWorkerBeatOnlyReachesTheService`.
 
 ### Built: the landing's red split, its timing, and the host identity (stitch w3L, 2026-11-07)
 

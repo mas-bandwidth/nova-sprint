@@ -297,6 +297,9 @@ type fakeServices struct{ ran []string }
 func (s *fakeServices) Run(context.Context, string) error { s.ran = append(s.ran, "run"); return nil }
 func (s *fakeServices) Worker(_ context.Context, w WorkerArgs) error {
 	s.ran = append(s.ran, "worker "+w.Row)
+	if w.BeatOnly {
+		s.ran = append(s.ran, "beat-only")
+	}
 	return nil
 }
 func (s *fakeServices) Dash(context.Context, string, string) error {
