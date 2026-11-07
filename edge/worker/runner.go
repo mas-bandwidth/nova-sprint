@@ -192,9 +192,10 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) e
 		r.probed[row] = false
 		r.mu.Unlock()
 		lastLine := lastNonEmptyLine_internal(string(res.Output), out.Reason)
-		if runErr != nil && lastLine == "" {
-			lastLine = runErr.Error()
+		if runErr != nil {
+			lastLine = strings.TrimSuffix(runErr.Error()+": "+lastLine, ": ")
 		}
+		lastLine = edge.RedactN(fmt.Sprintf("%s: exit %d: %s", edge.CommandLine(argv, nil), res.ExitCode, lastLine), edge.FailureMax)
 		_ = r.Sprint.OpenJudgement(ctx, store.Judgement{
 			ID: "j-probe-" + row, Kind: "probe", About: row, Group: "probe:" + row,
 			Question: fmt.Sprintf("harness probe failed on %s: %s", row, lastLine),
@@ -537,7 +538,7 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 		return nil
 	}
 	if errors.Is(err, ErrNoSlot) {
-		return ErrNoSlot
+		return err
 	}
 	if err := r.harvestStep_internal(runCtx, job, &rec, res, err); err != nil {
 		return err
@@ -654,7 +655,7 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		if errors.Is(runErr, ErrNoSlot) {
 			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
 			_ = WriteJobRecord(job.JobDir, *rec)
-			return last, ErrNoSlot
+			return last, runErr
 		}
 		if last.PID > 0 && last.PID != os.Getpid() {
 			rec.PID, rec.Nonce = last.PID, cmp.Or(last.Nonce, rec.Nonce)
@@ -698,7 +699,11 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	if job.Kind == "work" {
 		if r.Git == nil {
 			out = Outcome{Result: "fault", Reason: "missing git edge (--work-clone) for work consumer"}
-		} else if sha, herr := r.Git.HeadSHA(ctx, job.WorktreeDir); herr == nil && sha != "" && sha != job.BaseSHA && sha != job.PriorHead {
+		} else if sha, herr := r.Git.HeadSHA(ctx, job.WorktreeDir); herr != nil {
+			if out.Result == "ok" {
+				out = Outcome{Result: "fault", Reason: "head fault: " + herr.Error()}
+			}
+		} else if sha != "" && sha != job.BaseSHA && sha != job.PriorHead {
 			if perr := r.Git.Push(ctx, job.WorktreeDir, job.Branch, sha); perr != nil {
 				if out.Result == "ok" {
 					out = Outcome{Result: "fault", Reason: "push fault: " + perr.Error()}
@@ -744,7 +749,11 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 	for _, cmd := range rec.DoneWhen {
 		if strings.TrimSpace(cmd) != "" && r.Wall != nil {
 			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
-				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, TailBytes(tres.Output, MaxReasonBytes))}
+				why := TailBytes(tres.Output, MaxReasonBytes)
+				if err != nil {
+					why = TailBytes([]byte(err.Error()+": "+why), MaxReasonBytes)
+				}
+				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, why)}
 				_ = WriteJobRecord(jobDir, *rec)
 				return nil
 			}
@@ -815,7 +824,11 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 	wt := filepath.Join(jobDir, "repo")
 	if rec.Kind == "work" && rec.PushedHead != "" && r.Git != nil {
 		if ok, err := r.Git.OriginHasHead(ctx, rec.Repo, rec.Branch, rec.PushedHead); err != nil || !ok {
-			r.logStep_internal(rec.Row, rec.Consumer, "clean", "kept-unconfirmed-head", 0)
+			why := "kept-unconfirmed-head"
+			if err != nil {
+				why += ": " + err.Error()
+			}
+			r.logStep_internal(rec.Row, rec.Consumer, "clean", why, 0)
 			return nil
 		}
 	}
@@ -823,6 +836,8 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 		if dirty, err := r.Git.IsDirty(ctx, wt); err == nil && dirty {
 			r.logStep_internal(rec.Row, rec.Consumer, "clean", "DIRTY WORKTREE KEPT", 0)
 			return nil
+		} else if err != nil {
+			r.logStep_internal(rec.Row, rec.Consumer, "clean", "dirty check failed, removing: "+err.Error(), 0)
 		}
 		_ = r.Git.RemoveWorktree(ctx, wt)
 	}
@@ -879,30 +894,43 @@ func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 	if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
 		return "", err
 	}
-	_ = os.RemoveAll(j.WorktreeDir)
+	if err := os.RemoveAll(j.WorktreeDir); err != nil {
+		return "", fmt.Errorf("stage: clear the work tree: %w", err)
+	}
 	if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "clone", "--shared", "--no-checkout", g.WorkCloneDir, j.WorktreeDir); err != nil {
 		return "", err
 	}
 	if alt, err := os.ReadFile(filepath.Join(g.WorkCloneDir, ".git", "objects", "info", "alternates")); err == nil && len(alt) > 0 {
 		wtAlt := filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")
-		cur, _ := os.ReadFile(wtAlt)
-		_ = os.WriteFile(wtAlt, append(cur, alt...), 0o644)
+		cur, err := os.ReadFile(wtAlt)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("stage: read the work tree's alternates: %w", err)
+		}
+		if err := os.WriteFile(wtAlt, append(cur, alt...), 0o644); err != nil {
+			return "", fmt.Errorf("stage: write the work tree's alternates: %w", err)
+		}
 	}
 	if g.OriginURL != "" {
-		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", g.OriginURL)
+		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", g.OriginURL); err != nil {
+			return "", err
+		}
 	}
 	baseRef := cmp.Or(j.PriorHead, j.BaseSHA, "HEAD")
 	if j.Kind == "read" {
 		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "--detach", cmp.Or(j.Head, baseRef)); err != nil {
 			return "", err
 		}
-		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "--push", "origin", "no-push-on-read")
+		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "--push", "origin", "no-push-on-read"); err != nil {
+			return "", err
+		}
 	} else if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "-B", j.Branch, baseRef); err != nil {
 		return "", err
 	}
 	for _, kv := range [][2]string{{"user.name", j.CommitName}, {"user.email", j.CommitEmail}} {
 		if kv[1] != "" {
-			_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1])
+			if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1]); err != nil {
+				return "", err
+			}
 		}
 	}
 	return g.HeadSHA(ctx, j.WorktreeDir)
@@ -921,10 +949,15 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef str
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
-		out, _ := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
-		_, _ = g.runGit_internal(ctx, to, worktree, "rebase", "--abort")
-		if files := strings.Fields(out); len(files) > 0 {
+		out, diffErr := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
+		if _, abortErr := g.runGit_internal(ctx, to, worktree, "rebase", "--abort"); abortErr != nil {
+			err = fmt.Errorf("%w; cleanup: %w", err, abortErr)
+		}
+		if files := strings.Fields(out); diffErr == nil && len(files) > 0 {
 			return "", &ConflictError{Files: files}
+		}
+		if diffErr != nil {
+			err = fmt.Errorf("%w; listing conflicts: %w", err, diffErr)
 		}
 		return "", err
 	}
@@ -945,18 +978,15 @@ func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
 	return os.RemoveAll(worktree)
 }
 func (g *OSGitOps) runGit_internal(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
-	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
+	cmd := edge.Cmd{
 		Argv:     append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}, args...),
 		Dir:      dir,
 		Env:      []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"},
 		CleanEnv: true, Timeout: timeout,
-	})
-	combined := res.Stdout + res.Stderr
-	if err != nil {
-		return combined, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "), err, TailBytes([]byte(combined), 512))
 	}
-	if res.ExitCode != 0 {
-		return combined, fmt.Errorf("git %s: exit %d (%s)", strings.Join(args, " "), res.ExitCode, TailBytes([]byte(combined), 512))
+	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, cmd)
+	if err != nil || res.ExitCode != 0 {
+		return res.Stdout + res.Stderr, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	}
 	return res.Stdout, nil
 }
@@ -1063,7 +1093,12 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, en
 	liveProcNonces_internal.Delete(pid)
 	out := WallRunResult{ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if res.ExitCode == 1 && strings.Contains(combined, "nova-reserve:") && !strings.Contains(combined, "nova-reserve: HELD") {
-		return out, ErrNoSlot
+		return out, fmt.Errorf("%w: %w", ErrNoSlot, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
 	}
-	return out, err
+	if err != nil {
+		// The run never completed (a timeout, a missing binary): the
+		// command, its exit code and its output so far go with it.
+		return out, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
+	}
+	return out, nil
 }

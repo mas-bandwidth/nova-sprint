@@ -370,7 +370,7 @@ func TestKeyProxyAllowlistAndKeyInjection(t *testing.T) {
 				Name:         "deepseek",
 				UpstreamURL:  "https://api.deepseek.com",
 				AllowedHosts: []string{"api.deepseek.com"},
-				Key:          func() string { return "sk-live-secret-999" },
+				Key:          func() (string, error) { return "sk-live-secret-999", nil },
 			},
 		},
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

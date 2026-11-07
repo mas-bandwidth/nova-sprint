@@ -219,7 +219,7 @@ func ParseFailure(err error, out []byte) string {
 	var ne *strconv.NumError
 	switch {
 	case err == nil:
-		return fmt.Sprintf("parse refused; first bytes %q", FirstBytes(out))
+		return ParseRefused("no error given", -1, out)
 	case errors.As(err, &se):
 		off = se.Offset
 	case errors.As(err, &te):
@@ -233,6 +233,12 @@ func ParseFailure(err error, out []byte) string {
 		}
 	}
 	return fmt.Sprintf("parse failed at byte %d: %s; first bytes %q", off, RedactN(err.Error(), 120), FirstBytes(out))
+}
+
+// ParseRefused is a parse the caller refused itself (a header, a field, a
+// shape): why, the byte where it stopped, and the first 200 bytes, redacted.
+func ParseRefused(why string, at int, out []byte) string {
+	return fmt.Sprintf("parse failed at byte %d: %s; first bytes %q", at, why, FirstBytes(out))
 }
 
 // Cause is what plus err's text, redacted and bounded, keeping err for

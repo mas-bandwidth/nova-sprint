@@ -70,14 +70,15 @@ type (
 	}
 )
 
-func ReadProviderKey(ex edge.Exec, secretsBin, name string) string {
-	res, err := cmp.Or[edge.Exec](ex, edge.NewOSExec()).Run(context.Background(), edge.Cmd{
-		Argv: []string{cmp.Or(secretsBin, "nova-secrets"), "get", name}, CleanEnv: true, Timeout: 5 * time.Second,
-	})
+// ReadProviderKey is the provider key from nova-secrets get, or the
+// failure: the command line and stderr, never stdout (stdout is the key).
+func ReadProviderKey(ex edge.Exec, secretsBin, name string) (string, error) {
+	cmd := edge.Cmd{Argv: []string{cmp.Or(secretsBin, "nova-secrets"), "get", name}, CleanEnv: true, Timeout: 5 * time.Second}
+	res, err := cmp.Or[edge.Exec](ex, edge.NewOSExec()).Run(context.Background(), cmd)
 	if err != nil || res.ExitCode != 0 {
-		return ""
+		return "", edge.Failure(cmd.Argv, nil, res.ExitCode, "", res.Stderr, err)
 	}
-	return strings.TrimSpace(res.Stdout)
+	return strings.TrimSpace(res.Stdout), nil
 }
 func (c *CLISprintClient) wrap_internal(args ...string) []string {
 	sb := cmp.Or(c.SprintBin, "nova-sprint")
@@ -86,21 +87,41 @@ func (c *CLISprintClient) wrap_internal(args ...string) []string {
 	}
 	return append([]string{sb}, args...)
 }
+
+// run_internal runs argv for its output (stdout then stderr, as the parsers
+// read it); a failure is an edge.CommandError naming the command, its exit
+// code and its output's first lines.
 func (c *CLISprintClient) run_internal(ctx context.Context, argv []string) ([]byte, int, error) {
 	if c.Run != nil {
-		return c.Run(ctx, argv)
+		out, code, err := c.Run(ctx, argv)
+		if err != nil || code != 0 {
+			return out, code, edge.Failure(argv, nil, code, string(out), "", err)
+		}
+		return out, code, nil
 	}
 	res, err := cmp.Or[edge.Exec](c.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: argv, Timeout: c.Timeout})
-	return []byte(res.Stdout + res.Stderr), res.ExitCode, err
+	if err != nil || res.ExitCode != 0 {
+		return []byte(res.Stdout + res.Stderr), res.ExitCode, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
+	}
+	return []byte(res.Stdout + res.Stderr), res.ExitCode, nil
 }
+
+// classifyCLIError_internal is a sprint verb's failure: exit 1 is the
+// sprint's refusal, in its own words (its one line, redacted), after the
+// command; anything else the store or the run being down, with the
+// command's failure.
 func (c *CLISprintClient) classifyCLIError_internal(out []byte, code int, err error) error {
 	if code == 0 && err == nil {
 		return nil
 	}
-	if code == 1 {
-		return fmt.Errorf("%w: %s", ErrRefused, TailBytes(out, 512))
+	var ce *edge.CommandError
+	if code == 1 && errors.As(err, &ce) {
+		return fmt.Errorf("%w: %s: exit 1: %s", ErrRefused, ce.Command, edge.RedactN(TailBytes(out, 512), 512))
 	}
-	return fmt.Errorf("%w: exit %d (%v): %s", ErrStoreDown, code, err, TailBytes(out, 512))
+	if code == 1 {
+		return fmt.Errorf("%w: %s", ErrRefused, edge.RedactN(TailBytes(out, 512), 512))
+	}
+	return fmt.Errorf("%w: %w", ErrStoreDown, err)
 }
 func (c *CLISprintClient) Hook(ctx context.Context, row string) error {
 	out, code, err := c.run_internal(ctx, c.wrap_internal("hook", "--as", row, "--role", "worker"))
@@ -117,7 +138,7 @@ func (c *CLISprintClient) Next(ctx context.Context, row string) (NextResponse, e
 		return resp, cerr
 	}
 	if err := json.Unmarshal(out, &resp); err != nil {
-		return resp, fmt.Errorf("parse next --json: %w", err)
+		return resp, fmt.Errorf("nova-sprint next --json: %s", edge.ParseFailure(err, out))
 	}
 	c.Epoch = cmp.Or(resp.Epoch, c.Epoch)
 	return resp, nil
@@ -131,11 +152,13 @@ func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen in
 		return info, cerr
 	}
 	if err := json.Unmarshal(out, &info); err != nil {
-		return info, fmt.Errorf("parse take --json: %w", err)
+		return info, fmt.Errorf("nova-sprint take --json: %s", edge.ParseFailure(err, out))
 	}
 	// The forge may be "" (hand), so presence is read from the keys.
 	var keys map[string]json.RawMessage
-	_ = json.Unmarshal(out, &keys)
+	if err := json.Unmarshal(out, &keys); err != nil {
+		return TakeInfo{}, fmt.Errorf("nova-sprint take --json: %s", edge.ParseFailure(err, out))
+	}
 	have := map[string]bool{}
 	for k := range keys {
 		have[strings.ToLower(k)] = true
@@ -188,7 +211,7 @@ func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.
 	}
 	var rec store.Receipt
 	if err := json.Unmarshal(out, &rec); err != nil {
-		return rec, fmt.Errorf("parse report --json: %w", err)
+		return rec, fmt.Errorf("nova-sprint report --json: %s", edge.ParseFailure(err, out))
 	}
 	rec.Op = cmp.Or(rec.Op, id)
 	return rec, nil

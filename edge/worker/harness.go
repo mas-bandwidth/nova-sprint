@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 type Harness interface {
@@ -210,18 +212,25 @@ func ClassifyJob(h Harness, j Job, exit int, elapsed, launchGrace time.Duration,
 	if exit == 134 || exit == 137 {
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
 	}
+	// A result.json that does not parse is said in the reason: the job is
+	// classified as if there were none, but never as "no result.json".
+	badFile := ""
 	if j.JobDir != "" {
 		if data, err := os.ReadFile(filepath.Join(j.JobDir, "result.json")); err == nil {
 			var f Outcome
-			if json.Unmarshal(data, &f) == nil && f.Result != "" {
+			if err := json.Unmarshal(data, &f); err != nil {
+				badFile = "; result.json: " + edge.ParseFailure(err, data)
+			} else if f.Result != "" {
 				return normalizeFileOutcome_internal(f.Result, f.Reason, f.Finding, exit, text)
 			}
 		}
 	}
 	if out, ok := classifyHTTPStatus_internal(j.ProxyStatus, elapsed, launchGrace); ok {
+		out.Reason += badFile
 		return out
 	}
 	out := h.Classify(exit, tail)
+	out.Reason += badFile
 	if out.Result == "fault" && out.Retryable5xx && launchGrace > 0 && elapsed > launchGrace {
 		out.Retryable5xx = false
 	}

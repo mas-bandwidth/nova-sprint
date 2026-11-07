@@ -67,7 +67,9 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 	if missing != "" {
 		return LandResult{Outcome: OutcomeMissingHead, MissingHead: missing, Reason: fmt.Sprintf("land refused: head %s is not on origin: git push origin <branch>", missing)}, nil
 	}
-	if allAncestors_internal(ctx, g, req.RepoDir, req.Heads, baseTip) {
+	// A check that fails here is not a refusal: the merge path below runs
+	// the same git and reports its own failure.
+	if all, _ := allAncestors_internal(ctx, g, req.RepoDir, req.Heads, baseTip); all {
 		if streamOld != baseTip {
 			_ = g.Push(ctx, req.RepoDir, baseTip, streamRef, streamOld)
 		}
@@ -105,13 +107,13 @@ func fetchAndCheckHeads_internal(ctx context.Context, g Git, req LandRequest, ba
 	}
 	return baseTip, streamOld, "", g.Fetch(ctx, req.RepoDir, refs...)
 }
-func allAncestors_internal(ctx context.Context, g Git, repoDir string, heads []string, target string) bool {
+func allAncestors_internal(ctx context.Context, g Git, repoDir string, heads []string, target string) (bool, error) {
 	for _, h := range heads {
 		if ok, err := g.IsAncestor(ctx, repoDir, h, target); err != nil || !ok {
-			return false
+			return false, err
 		}
 	}
-	return true
+	return true, nil
 }
 func mergeAndPushStream_internal(ctx context.Context, g Git, req LandRequest, onto, streamRef, expectOld string) (MergeResult, LandResult, bool, error) {
 	merged, err := g.MergeGroup(ctx, req.RepoDir, onto, req.Heads, req.Ledgers)
@@ -177,7 +179,7 @@ func classifyForgeErr_internal(err error, baseTip, sha string) LandResult {
 func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseRef, streamRef, baseTip string, merged MergeResult, prNum int, reusedCI bool) (LandResult, error) {
 	curBase, ok, err := g.LsRemote(ctx, req.RepoDir, baseRef)
 	if err != nil || !ok {
-		return LandResult{}, fmt.Errorf("land: ls-remote %s: %w", baseRef, err)
+		return LandResult{}, fmt.Errorf("land: ls-remote %s: %w", baseRef, cmp.Or(err, ErrMissingRef))
 	}
 	remerged := false
 	if curBase != baseTip {
@@ -207,7 +209,9 @@ func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req Land
 	if err := g.Push(ctx, req.RepoDir, newBase, streamRef, merged.SHA); err != nil && !errors.Is(err, ErrPushRefused) {
 		return LandResult{}, err
 	}
-	if !allAncestors_internal(ctx, g, req.RepoDir, req.Heads, newBase) {
+	if all, err := allAncestors_internal(ctx, g, req.RepoDir, req.Heads, newBase); err != nil {
+		return LandResult{}, fmt.Errorf("land invariant M21 unchecked: cannot tell whether the group heads are ancestors of pushed base %s: %w", newBase, err)
+	} else if !all {
 		return LandResult{}, fmt.Errorf("land invariant M21 violated: not all group heads are ancestors of pushed base %s", newBase)
 	}
 	return LandResult{Outcome: OutcomeLanded, BaseTip: newBase, StreamTip: newBase, GatedSHA: merged.SHA, LandedHeads: slices.Clone(req.Heads), Remerged: remerged, ReusedCI: reusedCI}, nil
@@ -315,7 +319,7 @@ func RunRemoteLandStep(ctx context.Context, execRunner edge.Exec, hosts []string
 	execRunner = cmp.Or[edge.Exec](execRunner, edge.NewOSExec())
 	connectTimeoutSec = cmp.Or(connectTimeoutSec, DefaultSSHConnectTimeoutSec)
 	stepTimeout = cmp.Or(stepTimeout, DefaultRebaseTimeout)
-	var skipped []string
+	var skipped, causes []string
 	for _, host := range hosts {
 		host = strings.TrimSpace(host)
 		if host == "" || strings.HasPrefix(host, "-") {
@@ -325,13 +329,19 @@ func RunRemoteLandStep(ctx context.Context, execRunner edge.Exec, hosts []string
 		for _, a := range args {
 			argv = append(argv, shellQuote_internal(a))
 		}
-		res, err := execRunner.Run(ctx, edge.Cmd{Argv: argv, Timeout: stepTimeout})
+		cmd := edge.Cmd{Argv: argv, Timeout: stepTimeout}
+		res, err := execRunner.Run(ctx, cmd)
 		if err != nil || res.ExitCode == 255 {
 			skipped = append(skipped, host)
+			causes = append(causes, host+": "+edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err).Error())
 			continue
 		}
 		return RemoteLandResult{Host: host, SkippedHosts: skipped, Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode}, nil
 	}
-	return RemoteLandResult{SkippedHosts: skipped}, fmt.Errorf("%w: land refused: no landing host answered (tried: %s): check nova-fleet check", ErrNoLandingHost, strings.Join(skipped, ", "))
+	last := ""
+	if len(causes) > 0 {
+		last = "; last: " + causes[len(causes)-1]
+	}
+	return RemoteLandResult{SkippedHosts: skipped}, fmt.Errorf("%w: land refused: no landing host answered (tried: %s%s): check nova-fleet check", ErrNoLandingHost, strings.Join(skipped, ", "), last)
 }
 func shellQuote_internal(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

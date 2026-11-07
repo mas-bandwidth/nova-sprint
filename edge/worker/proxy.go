@@ -3,6 +3,7 @@ package worker
 import (
 	"cmp"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"io"
 	"maps"
 	"net"
@@ -19,7 +20,7 @@ type (
 	ProxyRoute struct {
 		Name, UpstreamURL string
 		AllowedHosts      []string
-		Key               func() string
+		Key               func() (string, error)
 	}
 	KeyProxy struct {
 		Routes       map[string]ProxyRoute
@@ -56,11 +57,19 @@ func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var key string
+	var keyErr error
 	if route.Key != nil {
-		key = strings.TrimSpace(route.Key())
+		key, keyErr = route.Key()
+		key = strings.TrimSpace(key)
 	}
 	if key == "" {
-		http.Error(w, fmt.Sprintf("proxy refused: missing API key for route %s: run nova-secrets exec", route.Name), http.StatusServiceUnavailable)
+		cause := "no key source configured"
+		if keyErr != nil {
+			cause = keyErr.Error()
+		} else if route.Key != nil {
+			cause = "the key source returned an empty key"
+		}
+		http.Error(w, fmt.Sprintf("proxy refused: missing API key for route %s: %s", route.Name, edge.RedactN(cause, edge.FailureMax)), http.StatusServiceUnavailable)
 		return
 	}
 	p.forward_internal(w, r, u, key)
@@ -80,7 +89,11 @@ func (p *KeyProxy) resolveRoute_internal(r *http.Request) (ProxyRoute, bool) {
 func resolveTargetURL_internal(route ProxyRoute, r *http.Request) (*url.URL, string, error) {
 	base, err := url.Parse(route.UpstreamURL)
 	if err != nil || base.Scheme == "" || base.Host == "" {
-		return nil, "", fmt.Errorf("proxy refused: invalid upstream URL %q for route %s", route.UpstreamURL, route.Name)
+		why := "no scheme or host"
+		if err != nil {
+			why = err.Error()
+		}
+		return nil, "", fmt.Errorf("proxy refused: invalid upstream URL %q for route %s: %s", edge.Redact(route.UpstreamURL), route.Name, edge.Redact(why))
 	}
 	targetHost := base.Hostname()
 	if override := strings.TrimSpace(r.Header.Get("X-Target-Host")); override != "" {
