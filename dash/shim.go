@@ -146,39 +146,62 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 	}
 }
 
-// mapRows puts each store row in its table: a rostered row by its roster
-// kind; a row the roster refused as refused, with the reason, by the kind it
-// was read as; a row the roster does not name as down (Stella, v2-l6), by
-// its hook role: the coordinator is a person among the friends, never a
-// machine, so an empty roster (a failed read) does not put it in Fleet.
+// mapRows fills the Fleet and Friends tables. Every roster worker is a Fleet
+// row and every roster kin a Friends row, at its roster width, down until the
+// store has the row (the human, 2026-11-07: "we definitely need all that stuff
+// back"); a row the roster refused is shown in its table as refused with the
+// reason, by the kind it was read as; a store row the roster does not name is
+// shown as down (Stella, v2-l6), by its hook role: the coordinator is a person
+// among the friends, never a machine, so an empty roster (a failed read) does
+// not put it in Fleet. The tables are maps, so the order is by name.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
-	for n, r := range rows {
-		status := r.State
-		if r.State == "up" && r.Held {
-			status = "held"
-		}
-		kind, width, _, found := ros.Row(n)
-		f := &fleetRow{Status: status, Width: width}
-		if held := ros.Workers[n].Held; found && held != "" {
-			f.Reason = held
-			if status == "up" {
-				f.Status = "held"
-			}
-		}
-		if !found {
-			f.Status, kind = "down", ""
-			if refused, ok := ros.RefusedNamed(n); ok {
-				f.Status, f.Reason, kind = "refused", refused.Reason, refused.Kind
-			} else if r.Role == "coordinator" {
-				kind = roster.KindKin
-			}
-		}
-		if kind == roster.KindKin {
-			friends[n] = f
-		} else {
-			fleet[n] = f
+	for n, w := range ros.Workers {
+		fleet[n] = &fleetRow{Status: "down", Width: w.Width, Reason: w.Held}
+	}
+	for n, k := range ros.Kin {
+		friends[n] = &fleetRow{Status: "down", Width: k.Width}
+	}
+	for _, x := range ros.Refused {
+		if x.Name != "" {
+			tableOf(x.Kind, fleet, friends)[x.Name] = &fleetRow{Status: "refused", Reason: x.Reason}
 		}
 	}
+	for n, r := range rows {
+		kind, width, _, found := ros.Row(n)
+		if found {
+			status := r.State
+			if r.State == "up" && r.Held {
+				status = "held"
+			}
+			f := &fleetRow{Status: status, Width: width}
+			if held := ros.Workers[n].Held; held != "" {
+				// A bench the roster holds (no cores: width 0) shows held
+				// with the roster's reason.
+				f.Reason = held
+				if status == "up" {
+					f.Status = "held"
+				}
+			}
+			tableOf(kind, fleet, friends)[n] = f
+			continue
+		}
+		if _, refused := ros.RefusedNamed(n); refused {
+			continue
+		}
+		if r.Role == "coordinator" {
+			kind = roster.KindKin
+		}
+		tableOf(kind, fleet, friends)[n] = &fleetRow{Status: "down"}
+	}
+}
+
+// tableOf is the table a row of this roster kind belongs in: Friends for
+// kin, Fleet for anything else.
+func tableOf(kind string, fleet, friends map[string]*fleetRow) map[string]*fleetRow {
+	if kind == roster.KindKin {
+		return friends
+	}
+	return fleet
 }
 func countRead(readers map[string]numberCells, c store.Card) {
 	if c.Holder == "" || (c.State != "ready" && c.State != "working" && !(c.State == "done" && (c.Result == "ok" || c.Result == "fix"))) {
@@ -248,18 +271,37 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 			f.Done++
 		}
 	}
-	if c.Kind == "read" && c.State == "done" {
-		author := fleet[c.Author]
-		if author == nil {
-			author = friends[c.Author]
+	if c.State == "done" {
+		countResult(c, fleet, friends)
+	}
+}
+
+// countResult is the OK% count of a done consumer (the human, 2026-11-07: "OK%
+// should be known as soon as a card is done"). A work card counts for its
+// holder the moment it is done: ok is OK, any other result is Failed (a done
+// card with no result yet is not counted). A read that says fix counts
+// against the work's author as well; a read that says ok adds nothing, for
+// the work was counted ok when it finished.
+func countResult(c store.Card, fleet, friends map[string]*fleetRow) {
+	row := func(name string) *fleetRow {
+		if f := fleet[name]; f != nil {
+			return f
 		}
-		if author != nil {
-			if c.Result == "ok" {
-				author.OK++
-			} else if c.Result == "fix" {
-				author.Failed++
-			}
+		return friends[name]
+	}
+	if c.Kind == "work" {
+		f := row(c.Holder)
+		switch {
+		case f == nil:
+		case c.Result == "ok":
+			f.OK++
+		case c.Result != "":
+			f.Failed++
 		}
+		return
+	}
+	if f := row(c.Author); f != nil && c.Result == "fix" {
+		f.Failed++
 	}
 }
 func countCost(w *workRow, c store.Card, costs *streamCost) {

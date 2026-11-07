@@ -10,7 +10,7 @@ func TestMapRepresentative(t *testing.T) {
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Rows: map[string]store.Row{"kin": {Name: "kin", State: "up", Held: true}}, Cards: map[string]store.Card{
 		"blocked": {ID: "blocked", Kind: "producer", Stream: "s", State: "blocked"},
 		"failed":  {ID: "failed", Kind: "producer", Stream: "s", State: "fail"}, "fix": {ID: "fix", Kind: "producer", Stream: "s", State: "ready", Attempt: 1, Tier: "pro"},
-		"work": {ID: "work", Kind: "work", Of: "fix", Stream: "s", Holder: "kin", State: "done", Tier: "pro", Cost: 1200000, Priced: true},
+		"work": {ID: "work", Kind: "work", Of: "fix", Stream: "s", Holder: "kin", State: "done", Result: "ok", Tier: "pro", Cost: 1200000, Priced: true},
 		"read": {ID: "read", Kind: "read", Of: "fix", Stream: "s", Holder: "kin", Author: "kin", State: "done", Result: "ok", Tier: "pro", Priced: false}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
@@ -18,7 +18,7 @@ func TestMapRepresentative(t *testing.T) {
 	if d.All != 3 || w.Blocked != 1 || w.Fail != 1 || w.Fix != 1 || w.Cost == nil || w.Cost.Int64() != 120 {
 		t.Fatalf("work=%+v all=%d", w, d.All)
 	}
-	if f.Status != "held" || f.Done != 2 || f.OK != 1 || f.OKPct != 100 {
+	if f.Status != "held" || f.Done != 2 || f.OK != 1 || f.Failed != 0 || f.OKPct != 100 {
 		t.Fatalf("kin=%+v", f)
 	}
 }
