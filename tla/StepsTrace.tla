@@ -32,7 +32,8 @@
 (* ([rows |-> r], r a row or "failed"), any of AnswersFor(snap) when       *)
 (* absent. The Go walk logs w in parts: ps, up, sh, tko whole, and cs as  *)
 (* the slots that are not "none" (every other slot must be "none"), so a   *)
-(* record stays small whatever K is; a record may log w whole instead.     *)
+(* record stays small whatever K is; a record may log w whole instead. rg  *)
+(* is each row's generation less its generation at Init.                   *)
 (* A record that logs nothing of w leaves it to the model.                 *)
 (***************************************************************************)
 EXTENDS Steps, StepsTraceLog, TLC
@@ -50,6 +51,7 @@ Has(r, f) == f \in DOMAIN r
 Parts(W, r) ==
   /\ Has(r, "ps")  => W.ps = r.ps
   /\ Has(r, "up")  => W.up = r.up
+  /\ Has(r, "rg")  => W.rg = r.rg
   /\ Has(r, "sh")  => W.sh = r.sh
   /\ Has(r, "tko") => W.tko = r.tko
   /\ Has(r, "cs")  => /\ \A c \in DOMAIN r.cs : c \in CIds /\ W.cs[c] = r.cs[c]

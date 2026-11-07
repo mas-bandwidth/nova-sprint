@@ -28,7 +28,8 @@ import (
 //     state, kind work or read, row its holder, att its attempt, res its
 //     result ("-" for none), review a read's review (0 for work). A slot with
 //     no consumer is the model's "none" record, logged by absence.
-//   - up[r]: the row is up. sh[s]: the stream is held.
+//   - up[r]: the row is up. rg[r]: the row's gen less its gen at Init (every
+//     row write raises it; the fence reads it). sh[s]: the stream is held.
 //   - tko: the working consumers in take order (View.TakenAt).
 // inbox is the items in arrival order as [stamp, id, out], stamp the arrival
 // count the walk keeps, id the request's model id (ReqID), out the outcome
@@ -39,9 +40,11 @@ import (
 // walk's asker prefers, or "failed" (no answer, or no question asked).
 
 // TraceScenario names the model's world in the Go world: the tiers the
-// model numbers 1 and 2, in order.
+// model numbers 1 and 2, in order, and each row's generation at Init (the
+// model's rg counts from 0).
 type TraceScenario struct {
-	Tiers []string // Tiers[i] is model tier i + 1
+	Tiers []string       // Tiers[i] is model tier i + 1
+	Gen0  map[string]int // row -> its gen at Init
 }
 
 // TierName is the model's name of a tier: "t1", "t2"; a tier outside the
@@ -87,15 +90,16 @@ func StoreTLA(v *View, sc TraceScenario) string {
 	if len(cs) > 0 {
 		csTLA = "(" + strings.Join(cs, " @@ ") + ")"
 	}
-	var up, sh []string
+	var up, rg, sh []string
 	for _, r := range sortedKeys(v.Rows) {
 		up = append(up, fmt.Sprintf("%s |-> %s", r, tlaBool(v.Rows[r].State == "up")))
+		rg = append(rg, fmt.Sprintf("%s |-> %d", r, v.Rows[r].Gen-sc.Gen0[r]))
 	}
 	for _, s := range sortedKeys(v.Streams) {
 		sh = append(sh, fmt.Sprintf("%s |-> %s", s, tlaBool(v.Streams[s].Held)))
 	}
-	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], sh |-> [%s], tko |-> <<%s>>",
-		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "))
+	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], rg |-> [%s], sh |-> [%s], tko |-> <<%s>>",
+		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(rg, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "))
 }
 
 func producerTLA(v *View, c store.Card) string {

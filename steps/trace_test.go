@@ -24,6 +24,16 @@ import (
 // it cannot take. TestTraceWalk runs the walk for depth; TestTraceFixtures
 // writes the fixed seed set CI checks (NOVA_TRACES=<dir>).
 
+// modelDefaults sets the engine's escalation to the model's (EscalateAfter
+// 1: the model bounds bounces at MaxBounce, so it escalates after one) for
+// the test and restores it after; the trace tests are the only ones that
+// write it, and top-level tests run one at a time.
+func modelDefaults(t *testing.T) {
+	was := Engine.EscalateAfter
+	Engine.EscalateAfter = 1
+	t.Cleanup(func() { Engine.EscalateAfter = was })
+}
+
 // traceScenarios are the model's four, with the constants its cfgs carry.
 var traceScenarios = map[string]struct {
 	budget, pack int
@@ -131,6 +141,10 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 		w.must("s2 held", store.SetStreamHeld{Stream: "s2", Held: true})
 	}
 	w.fold()
+	w.sc.Gen0 = map[string]int{}
+	for n, r := range w.v.Rows {
+		w.sc.Gen0[n] = r.Gen
+	}
 	w.record("Init", nil)
 	return w
 }
@@ -448,6 +462,7 @@ func (w *traceWalk) cfg() string {
 // TestTraceWalk: every scenario, 100 seeds, 2,000 steps; at least 40% of the
 // picked moves legal; no op refused without a race.
 func TestTraceWalk(t *testing.T) {
+	modelDefaults(t)
 	steps, seeds := 2000, int64(100)
 	if testing.Short() {
 		steps, seeds = 300, 10
@@ -481,6 +496,7 @@ func TestTraceWalk(t *testing.T) {
 // (steps-walk-<scenario>-<seed>), for tla/check-trace.sh; without it the
 // walk runs and writes nothing.
 func TestTraceFixtures(t *testing.T) {
+	modelDefaults(t)
 	dir := os.Getenv("NOVA_TRACES")
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = filepath.Join("..", dir) // relative to the repository root, as CI gives it
