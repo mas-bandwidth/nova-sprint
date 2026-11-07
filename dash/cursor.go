@@ -12,10 +12,8 @@ import (
 const CursorName = "dashboard"
 
 func (c *Cache) saveCursor(ctx context.Context, s store.Store) error {
-	c.mu.RLock()
 	seq, epoch := c.state.Seq, c.state.Epoch
 	old, exists := c.state.Cursors[CursorName]
-	c.mu.RUnlock()
 	if exists && seq == old {
 		return nil
 	}
@@ -48,9 +46,7 @@ func recoverCursor(ctx context.Context, s store.Store, op store.Op) (store.Recei
 }
 func (c *Cache) catchCursor(ctx context.Context, s store.Store, target int64) error {
 	for {
-		c.mu.RLock()
 		seq := c.state.Seq
-		c.mu.RUnlock()
 		if seq >= target {
 			return nil
 		}
@@ -71,8 +67,7 @@ func (c *Cache) catchCursor(ctx context.Context, s store.Store, target int64) er
 		if len(batch) == 0 {
 			return fmt.Errorf("dashboard cursor event %d missing", target)
 		}
-		c.mu.Lock()
 		c.state = advanceSnapshot(c.state, batch)
-		c.mu.Unlock()
+		c.anchor = anchorOf(batch[len(batch)-1])
 	}
 }
