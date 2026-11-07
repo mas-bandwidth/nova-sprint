@@ -165,7 +165,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
-	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro, RosterErr: rerr, At: start}); perr != nil && err == nil {
+	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows), RosterErr: rerr, At: start}); perr != nil && err == nil {
 		err = perr
 	}
 	l.log.Log(TickMetrics{Number: n, Seq: snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})

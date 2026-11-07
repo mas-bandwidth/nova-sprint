@@ -64,7 +64,7 @@ var schemaHash = hashSchema(schemaSQL)
 // hash is still of the whole file.
 const createSchema = "CREATE SCHEMA IF NOT EXISTS sprint;"
 
-// rowLoadColumns adds the row heartbeat's four columns (SetRowLoad) to
+// rowLoadColumns adds the row heartbeat's five columns (SetRowLoad) to
 // sprint.rows. They are outside schema.sql on purpose: that file is hashed,
 // and a live store made before them must keep its identity and take them on
 // its next Migrate. Everything that applies schema.sql (Migrate, a restore's
@@ -73,7 +73,8 @@ const createSchema = "CREATE SCHEMA IF NOT EXISTS sprint;"
 const rowLoadColumns = `ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS load1_centi integer NOT NULL DEFAULT 0 CHECK (load1_centi >= 0),
     ADD COLUMN IF NOT EXISTS cores integer NOT NULL DEFAULT 0 CHECK (cores >= 0),
     ADD COLUMN IF NOT EXISTS slots_used integer NOT NULL DEFAULT 0 CHECK (slots_used >= 0),
-    ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0)`
+    ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0),
+    ADD COLUMN IF NOT EXISTS tiers text NOT NULL DEFAULT ''`
 
 // fullSchema is every DDL statement of a new store: schema.sql, then the
 // columns outside it. schemaObjects is the same without CREATE SCHEMA.

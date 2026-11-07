@@ -41,13 +41,15 @@ import (
 //   - A consumer's tier: the model takes its producer's at add and ignores
 //     the write's; the store refuses one that differs. A walk sends the
 //     producer's.
-//   - Row load, cores and slots (the heartbeat, SetRowLoad): a write TraceOp
-//     refuses; it moves no gen and no rule reads it.
+//   - Row load, cores, slots and advertised tiers (the heartbeat,
+//     SetRowLoad): a write TraceOp refuses; it moves no gen and no store
+//     rule reads it (the roster reads slots and tiers, outside the store).
 //   - Row flaps and reason, and the write on them (SetRowFlaps): TraceOp
 //     refuses it. A row's session and role (the hook, PutRow) are projected
 //     as sess and role; a walk's sessions are the model's (x, y).
 //   - The stop's reason: only Stopped is projected (SetStopped's flag). A row has no kind, width, tiers, model or harness in the
-//     store or the model since round 22: they are the roster's.
+//     store or the model since round 22: they are the roster's (the tiers
+//     a worker advertises in its heartbeat are telemetry, above).
 //   - Judgement kind, about, question, command, group, deadline, answer,
 //     actor and times: only the state is projected; a close before
 //     opened_at is outside the model (a walk's At only rises).

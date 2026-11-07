@@ -164,6 +164,7 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	if err := t.raiseSeen(ctx, o); err != nil {
 		return nil, err
 	}
+	o.Roster = o.Roster.Advertised(t.snap.Rows) // a worker's own width and tiers (defect 74)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
 		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster}
 	a := t.asker(ctx, o.Roster)

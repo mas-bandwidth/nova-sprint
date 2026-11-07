@@ -28,7 +28,7 @@ func runPolicy(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (
 	if err != nil {
 		return "", err
 	}
-	ro, err := e.roster(ctx, lim)
+	ro, err := e.roster(ctx, lim, snap)
 	if err != nil {
 		return "", err
 	}

@@ -62,7 +62,7 @@ func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if err != nil {
 		return "", err
 	}
-	ro, err := e.roster(ctx, a.Limits)
+	ro, err := e.roster(ctx, a.Limits, snap)
 	if err != nil {
 		return "", err
 	}

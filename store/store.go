@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -75,6 +76,28 @@ var (
 	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier
 	StreamModes = []string{StreamAuto, "group", "hand"}         // how a stream's producers land
 )
+
+// JoinTiers is tiers as a row's advertised list: the known ones in Tiers'
+// order, each once, comma-joined; a name not in Tiers is dropped. A list
+// that does not come back from JoinTiers(SplitTiers(s)) unchanged was not
+// in that form.
+func JoinTiers(tiers []string) string {
+	var out []string
+	for _, t := range Tiers {
+		if slices.Contains(tiers, t) {
+			out = append(out, t)
+		}
+	}
+	return strings.Join(out, ",")
+}
+
+// SplitTiers is a row's advertised list as tiers (nil for "").
+func SplitTiers(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
 
 // StreamAuto is a stream's mode when none is given.
 const StreamAuto = "auto"
@@ -173,11 +196,17 @@ type Row struct {
 	// The worker's last heartbeat (SetRowLoad): its 1-minute load average
 	// in hundredths, the logical cores it was measured over (0: the row has
 	// never beaten), and the nova-reserve slots in use and in all. Telemetry
-	// for the board: no rule reads it and a write of it moves no gen.
+	// for the board: no store rule reads it and a write of it moves no gen.
 	Load1Centi int `json:"load1_centi"`
 	Cores      int `json:"cores"`
 	SlotsUsed  int `json:"slots_used"`
 	SlotsTotal int `json:"slots_total"`
+	// Tiers is what the worker's harness adapter serves, as it advertised in
+	// its heartbeat: a comma list in Tiers' order, "" when it advertised
+	// none in this session (a PutRow that changes the session clears it).
+	// With SlotsTotal it is the roster's input for the row (defect 74:
+	// roster.Advertised); no store rule reads it.
+	Tiers string `json:"tiers"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,

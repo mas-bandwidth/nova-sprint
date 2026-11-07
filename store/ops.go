@@ -339,6 +339,7 @@ type SetRowFlaps struct {
 type SetRowLoad struct {
 	Row                                      string
 	Load1Centi, Cores, SlotsUsed, SlotsTotal int
+	Tiers                                    string // the tiers the worker serves, a comma list of Tiers ("" none advertised)
 }
 
 // PutPolicy adds the next policy version, inactive; actor and at come from the op.
@@ -562,6 +563,9 @@ func rowSpec(w Write) spec {
 			c.num("load1_centi", v.Load1Centi).num("cores", v.Cores).num("slots_used", v.SlotsUsed).num("slots_total", v.SlotsTotal)
 			if v.Cores < 1 || v.SlotsUsed > v.SlotsTotal {
 				c.fail("load needs cores of at least 1 and slots_used no more than slots_total, got cores %d, slots %d of %d", v.Cores, v.SlotsUsed, v.SlotsTotal)
+			}
+			if v.Tiers != JoinTiers(SplitTiers(v.Tiers)) {
+				c.fail("load tiers %q are not a comma list of %s in that order, each once", v.Tiers, strings.Join(Tiers, ", "))
 			}
 		}, "load").then(func(w *work) (string, error) { return w.setRowLoad(v) })
 	case SetRowHeld:

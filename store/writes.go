@@ -103,7 +103,7 @@ func (w *work) setRowLoad(v SetRowLoad) (string, error) {
 		return r, err
 	}
 	next := old
-	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal
+	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.Tiers = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal, v.Tiers
 	if next == old {
 		return "row " + v.Row + " already has the given load", nil
 	}
@@ -123,6 +123,9 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if ok {
 		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
 		next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal = old.Load1Centi, old.Cores, old.SlotsUsed, old.SlotsTotal
+		if old.Session == v.Session { // an advertisement holds for the session that made it
+			next.Tiers = old.Tiers
+		}
 	}
 	return "", w.putRow(old, ok, next)
 }
