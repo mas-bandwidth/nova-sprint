@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
@@ -40,7 +41,8 @@ var actingPermissions = []string{"ADMIN", "MAINTAIN", "WRITE"}
 
 func (f hostForge) gh(ctx context.Context, args ...string) (string, error) {
 	argv := append([]string{"gh"}, args...)
-	res, err := f.exec.Run(ctx, edge.Cmd{Argv: argv, Env: []string{"GH_PROMPT_DISABLED=1", "NO_COLOR=1"}, Timeout: 30 * time.Second})
+	// As the run's forge: the host's login, never a credential in the environment.
+	res, err := f.exec.Run(ctx, edge.Cmd{Argv: argv, Env: append(forge.HostEnv(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1"), CleanEnv: true, Timeout: 30 * time.Second})
 	if err != nil || !res.OK() {
 		return "", edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	}

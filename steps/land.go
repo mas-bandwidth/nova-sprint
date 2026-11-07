@@ -84,9 +84,19 @@ func (t *tick) landJudge(it InboxItem, req EdgeRequest) {
 		if len(req.Cards) > 1 {
 			with = "; landing together: " + strings.Join(req.Cards, ", ")
 		}
-		t.judge("land", p, fmt.Sprintf("card %s (stream %s onto %s at %s, branch %s, head %s) did not land: %s: %s%s. land: you looked, merge it by hand; fix: back to its producer with your finding as the reason; retry: a new landing", p, req.Stream, t.v.Streams[req.Stream].Base, req.Base, req.Branches[i], c.Head, it.Outcome, cmp.Or(it.Reason, "no facts given"), with))
+		what := fmt.Sprintf("did not land: %s: %s", it.Outcome, cmp.Or(it.Reason, "no facts given"))
+		if it.Outcome == InheritedRed {
+			what = fmt.Sprintf("has only inherited red (its run ended; every failing workflow is red on the base too, so not this card's): land it with nova-sprint land %s --reason <why>. Facts: %s", p, cmp.Or(it.Reason, "no facts given"))
+		}
+		t.judge("land", p, fmt.Sprintf("card %s (stream %s onto %s at %s, branch %s, head %s) %s%s. land: you looked, merge it by hand; fix: back to its producer with your finding as the reason; retry: a new landing", p, req.Stream, t.v.Streams[req.Stream].Base, req.Base, req.Branches[i], c.Head, what, with))
 	}
 }
+
+// InheritedRed is the land outcome of red that is all red on the base too,
+// the run ended (layer 4's ci_red_inherited, directive 59): still a
+// judgement, never a landing, worded so the coordinator can answer it at a
+// glance.
+const InheritedRed = "ci_red_inherited"
 
 // judged is whether card p has a land judgement open, or opened this tick.
 func (t *tick) judged(p string) bool { return t.isOpen("land", p) || t.pending("land", p) }

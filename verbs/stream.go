@@ -66,7 +66,7 @@ func (e *Engine) baseTip(ctx context.Context, s store.Stream, again string) (str
 	}
 	sha, ok, err := e.Origin.Tip(ctx, url, s.Base)
 	if err != nil {
-		fix := "make " + url + " readable from this host (GH_TOKEN or GH_CONFIG_DIR under nova-secrets exec for GitHub), then " + again
+		fix := "make " + url + " readable from this host (for GitHub: gh auth login on this host as an identity that can read it), then " + again
 		if s.Forge == "" && git.IsOrgRepo(s.Repo) {
 			fix = "an <org>/<repo> is cloned through its forge: give stream " + s.Name + " --forge github, then " + again
 		}
