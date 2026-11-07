@@ -216,6 +216,7 @@ for f in "$HERE"/reach/*.cfg; do
         Steps*) mod=Steps.tla ;;        # the steps' reach checks
         Policy*) mod=Policy.tla ;;      # the policy model's
         LandEdge*) mod=LandEdge.tla ;;  # the landing model's
+        Runner*) mod=Runner.tla ;;      # the runner model's (passes, stop, release)
         *) mod=Store.tla ;;
     esac
     run "reach-$m" violate . "reach/$m.cfg" "$mod" 1
