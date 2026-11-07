@@ -194,6 +194,7 @@ type Store interface {
     Apply(ctx, Op) (Receipt, error)                 // one transaction
     Replay(ctx, opID string) (Receipt, bool, error) // the receipt an op already got
     Events(ctx, afterSeq int64, max int) ([]Event, error) // afterSeq exclusive, seq order, max capped at 1000
+    EventIdentity(ctx, seq int64) (op string, epoch int, found bool, err error) // the op id and epoch at seq; reads no image
     Clear(ctx, Op) (Receipt, error)                 // n = n + 1; same protocol as Apply
     Policy(ctx, version int) (PolicyVersion, error) // the body layer 5 runs
 }
