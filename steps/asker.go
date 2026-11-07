@@ -106,9 +106,10 @@ type Limits struct {
 }
 
 // Timeouts is timeouts(): seconds of running time, each 1..86400.
+// ReadyTake is how long a consumer may sit ready before it is withdrawn.
 type Timeouts struct {
-	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor int
-	BaseRegate                                                              []int
+	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, ReadyTake int
+	BaseRegate                                                                         []int
 }
 
 // Default answers nothing: the engine's defaults answer the tick.
@@ -143,7 +144,7 @@ var Engine = Defaults{
 	EscalateAfter: 2, FrontierAfter: 4, Reads: 1, FlapLimit: 3,
 	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
 	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
-	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, BaseRegate: []int{120, 300}},
+	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyTake: 180, BaseRegate: []int{120, 300}},
 	Landing:  LandingAnswer{BackedUp: 4, Flowing: 1},
 }
 
@@ -326,7 +327,7 @@ func (o *oracle) timeouts() Timeouts {
 
 func timeoutsOK(t Timeouts) bool {
 	day := func(n int) bool { return n >= 1 && n <= 86400 }
-	ok := day(t.RowSilentGone) && day(t.RowSilentWithdraw) && day(t.LandingStall) && day(t.Judgement) && day(t.RouteRestFor) &&
+	ok := day(t.RowSilentGone) && day(t.RowSilentWithdraw) && day(t.LandingStall) && day(t.Judgement) && day(t.RouteRestFor) && day(t.ReadyTake) &&
 		t.RowSilentWithdraw >= t.RowSilentGone && len(t.BaseRegate) > 0
 	for i, n := range t.BaseRegate {
 		ok = ok && day(n) && (i == 0 || n > t.BaseRegate[i-1])

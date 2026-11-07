@@ -96,7 +96,7 @@ func (a traceAsker) Ask(q Questions) Answers {
 	day := 86400
 	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
 		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
-	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, BaseRegate: []int{day}}
+	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyTake: day, BaseRegate: []int{day}}
 	return out
 }
 

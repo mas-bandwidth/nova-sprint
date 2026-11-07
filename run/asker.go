@@ -95,7 +95,7 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 		RouteRestWindow: l.RouteRestWindow, RouteRestAfter: l.RouteRestAfter, Budget: d.Budget, Pack: d.Pack}
 	tm := p.Timeouts
 	a.Timeouts = &steps.Timeouts{RowSilentGone: tm.RowSilentGone, RowSilentWithdraw: tm.RowSilentWithdraw, LandingStall: tm.LandingStall,
-		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, BaseRegate: tm.BaseRegate}
+		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, ReadyTake: tm.ReadyTake, BaseRegate: tm.BaseRegate}
 	for _, f := range fs {
 		if f.Question != "" {
 			a.Failed[f.Question] = f.Msg

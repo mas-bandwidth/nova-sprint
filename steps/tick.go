@@ -54,6 +54,7 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 	t.holds()
 	t.limits()
 	t.fix()
+	t.readyTimeout()
 	t.deal()
 	t.landRequests()
 	t.judgements()
