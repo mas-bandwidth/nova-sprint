@@ -384,6 +384,9 @@ func (c *Client) Clone(ctx context.Context, repo, dir string) error {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		return nil
 	}
+	if !strings.Contains(repo, "://") && !strings.Contains(repo, "@") && strings.Count(repo, "/") == 1 { // LOCAL DOGFOOD STOPGAP (defect 21): org/repo with forge github is a GitHub clone URL
+		repo = "https://github.com/" + strings.TrimSuffix(repo, ".git")
+	}
 	_, stderr, code, err := c.runGit_internal(ctx, "", c.cfg.RebaseTimeout, "clone", "--no-tags", repo, dir)
 	if err != nil {
 		return err
