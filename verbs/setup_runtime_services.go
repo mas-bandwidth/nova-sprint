@@ -51,7 +51,30 @@ var fleetName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,127}$`)
 var fleetKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // FleetServices uses only the public nova-config and nova-fleet commands.
-type FleetServices struct{ Command CommandOutput }
+// Actor and Reason are the --actor and --reason every nova-config write
+// carries (nova-config v2 refuses a write without them): the up actor's
+// row and "nova-sprint up <step>".
+type FleetServices struct {
+	Command       CommandOutput
+	Actor, Reason string
+}
+
+// For is f writing as actor for reason.
+func (f FleetServices) For(actor, reason string) FleetServices {
+	f.Actor, f.Reason = actor, reason
+	return f
+}
+
+// writeArgs is args with the --actor and --reason a nova-config write
+// needs; an empty actor or reason is refused before anything is written.
+func (f FleetServices) writeArgs(args ...string) ([]string, error) {
+	if !fleetActor.MatchString(f.Actor) || strings.TrimSpace(f.Reason) == "" {
+		return nil, &OperationError{Problem: fmt.Sprintf("nova-config %s needs an actor and a reason (actor %q, reason %q)", strings.Join(args[:min(2, len(args))], " "), Redact(f.Actor), Redact(f.Reason)), Fix: "nova-sprint up --as <your row>", Exit: 1}
+	}
+	return append(args, "--actor", f.Actor, "--reason", f.Reason), nil
+}
+
+var fleetActor = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
 func (f FleetServices) command(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if f.Command != nil {
@@ -189,8 +212,11 @@ func (f FleetServices) Ensure(ctx context.Context, s FleetService) (bool, error)
 	if len(keys) > 0 {
 		args = append(args, "--keys", strings.Join(keys, ","))
 	}
+	if args, err = f.writeArgs(args...); err != nil {
+		return false, err
+	}
 	if _, err = f.command(ctx, "nova-config", args...); err != nil {
-		return false, cause("nova-config service add failed", err)
+		return false, cause("nova-config service add "+s.Name+" failed", err)
 	}
 	return true, nil
 }
@@ -209,7 +235,7 @@ func (f FleetServices) Apply(ctx context.Context, s FleetService) error {
 	}
 	_, err = f.command(ctx, "nova-fleet", "services", "--", "-l", s.Machine, "-e", "nova_service_only="+s.Name)
 	if err != nil {
-		return cause("nova-fleet services failed", err)
+		return cause("nova-fleet services "+s.Name+" on "+s.Machine+" failed", err)
 	}
 	return nil
 }
