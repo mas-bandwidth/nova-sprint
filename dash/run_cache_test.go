@@ -87,7 +87,7 @@ func TestRunFeedCarriesLandingsForTheEta(t *testing.T) {
 	}
 	ls := []time.Time{now.Add(-50 * time.Minute), now.Add(-30 * time.Minute), now.Add(-20 * time.Minute), now.Add(-5 * time.Minute)}
 	c := NewFromFeed(Feed{Snap: snap, Landings: ls, At: now}, func() time.Time { return now })
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if d.Eta != "10h0m" || d.EtaBasis != "last hour" || d.EtaLandings != 4 {
 		t.Fatalf("eta=%q basis=%q landings=%d", d.Eta, d.EtaBasis, d.EtaLandings)
 	}
@@ -96,7 +96,7 @@ func TestRunFeedCarriesLandingsForTheEta(t *testing.T) {
 	if err := c.Publish(Feed{Snap: snap, Landings: append(ls, now.Add(-time.Minute)), At: now}); err != nil {
 		t.Fatal(err)
 	}
-	d = c.pageSnapshot().Data.(envelope)
+	d = c.pageSnapshot().Data
 	if d.EtaLandings != 5 || d.Eta != "8h0m" {
 		t.Fatalf("after a landing: eta=%q landings=%d", d.Eta, d.EtaLandings)
 	}
@@ -106,7 +106,7 @@ func TestRunFeedCarriesLandingsForTheEta(t *testing.T) {
 	if err := c.Publish(Feed{Snap: snap, At: now}); err != nil {
 		t.Fatal(err)
 	}
-	if d = c.pageSnapshot().Data.(envelope); d.Eta != "-" || d.EtaBasis != "" {
+	if d = c.pageSnapshot().Data; d.Eta != "-" || d.EtaBasis != "" {
 		t.Fatalf("unknown landings: eta=%q basis=%q", d.Eta, d.EtaBasis)
 	}
 	now = now.Add(time.Minute)
@@ -114,7 +114,7 @@ func TestRunFeedCarriesLandingsForTheEta(t *testing.T) {
 	if err := c.Publish(Feed{Snap: snap, Landings: []time.Time{}, At: now}); err != nil {
 		t.Fatal(err)
 	}
-	if d = c.pageSnapshot().Data.(envelope); d.Eta != "-" || d.EtaBasis != "last hour" {
+	if d = c.pageSnapshot().Data; d.Eta != "-" || d.EtaBasis != "last hour" {
 		t.Fatalf("empty known landings: eta=%q basis=%q", d.Eta, d.EtaBasis)
 	}
 }

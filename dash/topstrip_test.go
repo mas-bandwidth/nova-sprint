@@ -45,7 +45,7 @@ func TestEtaSurvivesARestart(t *testing.T) {
 	now := base
 	c := &Cache{now: func() time.Time { return now }, landingsOK: true, landings: at(base, -50, -30, -20, -5)} // 4 in the hour
 	c.view = envelope{Landed: 4, All: 44, Left: 40, At: base}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if d.Eta != "10h" && d.Eta != "10h0m" || d.EtaLandings != 4 || d.EtaWindow != 60 || d.EtaBasis != "last hour" || !strings.Contains(d.Summary, "-> ETA 10h0m") {
 		t.Fatalf("eta=%q landings=%d window=%v basis=%q summary=%q", d.Eta, d.EtaLandings, d.EtaWindow, d.EtaBasis, d.Summary)
 	}
@@ -61,20 +61,20 @@ func TestEtaFallsBackToTheSprintAverage(t *testing.T) {
 	}
 	c := &Cache{now: func() time.Time { return base }, landingsOK: true, landings: ls}
 	c.view = envelope{Left: 12, All: 18, Landed: 6, At: base}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if d.Eta != "12h0m" || d.EtaBasis != "sprint average" {
 		t.Fatalf("eta=%q basis=%q", d.Eta, d.EtaBasis)
 	}
 	// before the third landing of the sprint: no ETA
 	c.landings = at(base, -30, -10)
 	c.view = envelope{Left: 12, All: 14, At: base}
-	if d := c.pageSnapshot().Data.(envelope); d.Eta != "-" {
+	if d := c.pageSnapshot().Data; d.Eta != "-" {
 		t.Fatalf("two landings give %q", d.Eta)
 	}
 	// a store that cannot give landings: no ETA, never a guess
 	c = &Cache{now: func() time.Time { return base }}
 	c.view = envelope{Left: 12, All: 14, At: base}
-	if d := c.pageSnapshot().Data.(envelope); d.Eta != "-" {
+	if d := c.pageSnapshot().Data; d.Eta != "-" {
 		t.Fatalf("unread landings give %q", d.Eta)
 	}
 }

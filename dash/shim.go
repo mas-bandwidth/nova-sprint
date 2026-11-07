@@ -10,6 +10,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/usage"
 )
 
 type workRow struct {
@@ -46,6 +47,7 @@ type fleetRow struct {
 	Reason   string // why the roster refused or held the row ("" otherwise)
 	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
 	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
+	Tokens   int64 // every token its runs reported (package usage), kin and benches alike
 }
 type streamLine struct{ Stream, State string }
 
@@ -312,6 +314,7 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 		f = friends[c.Holder]
 	}
 	if f != nil {
+		f.Tokens += usage.MustParse(c.Usage).Tokens.Total()
 		switch c.State {
 		case "ready":
 			f.Ready++
