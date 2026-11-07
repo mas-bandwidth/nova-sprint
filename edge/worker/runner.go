@@ -261,14 +261,18 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 			if !jobMatchesSummary_internal(next, w, rec) {
 				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
 			} else if err := r.recoverWorkingJob_internal(ctx, w, rec); err != nil && !errors.Is(err, ErrStoreDown) {
-				return err
+				// Defect 69: one record the sprint keeps refusing must not end the
+				// pass before it has taken anything (it wedged a row for an hour).
+				// The record stays on disk and is tried again next pass; the pass
+				// goes on to the other records and to the ready cards.
+				r.logStep_internal(row, id, "recover", "refused: "+err.Error(), 0)
 			}
 		}
 	}
 	for _, w := range next.Working {
 		if _, onDisk := disk[w.ID]; !onDisk && !r.isRunningInFlight_internal(w.ID) {
 			if err := r.reportLostJob_internal(ctx, next.Epoch, row, w); err != nil && !errors.Is(err, ErrStoreDown) {
-				return err
+				r.logStep_internal(row, w.ID, "recover", "lost-job report refused: "+err.Error(), 0)
 			}
 		}
 	}
@@ -892,6 +896,15 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 	return nil
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
+	// Defect 67, also for records written before the fix: a read reports ok,
+	// fix or fault; a stored "fail" on a read is a fault (no verdict) or a fix.
+	if rec.Kind == "read" && rec.Outcome.Result == "fail" {
+		if strings.Contains(rec.Outcome.Reason, "result.json") {
+			rec.Outcome.Result = "fault"
+		} else {
+			rec.Outcome.Result, rec.Outcome.Finding = "fix", cmp.Or(rec.Outcome.Finding, rec.Outcome.Reason)
+		}
+	}
 	rec.State = JobReporting
 	rec.ResultID = cmp.Or(rec.ResultID, FormatResultID(rec.Epoch, rec.Consumer, rec.Attempt, rec.Gen))
 	if err := WriteJobRecord(jobDir, rec); err != nil {
