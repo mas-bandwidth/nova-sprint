@@ -24,6 +24,7 @@ type group struct {
 	edges   []EdgeRequest // dispatched only with this group's op (EdgeAfterAccepted)
 	judge   []store.Write // judgement writes that ride in this group's op
 	none    bool          // an inbox item consumed with no move
+	answer  *RowAnswer    // the answer to the item, out only with the group
 }
 
 // size is the cards the group touches: the budget's unit.
@@ -45,6 +46,9 @@ func groupOp(moves ...move) (card.Plan, *card.Refusal) {
 	for _, m := range moves {
 		p, r := m.plan()
 		if r != nil {
+			if len(moves) == 1 {
+				return card.Plan{}, r
+			}
 			return card.Plan{}, &card.Refusal{Reason: m.label + ": " + r.Reason}
 		}
 		plans = append(plans, p)
@@ -67,6 +71,7 @@ func (t *tick) newGroup(kind, about string, moves ...move) (group, *card.Refusal
 	}
 	g := group{kind: kind, about: about, plan: plan}
 	g.key = keyOf(plan, about)
+	g.key.Kind = kind
 	return g, nil
 }
 

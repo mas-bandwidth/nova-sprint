@@ -23,17 +23,20 @@ func (t *tick) reports() {
 	}
 }
 
-// refuse answers an item with a refusal and consumes it; nothing moves.
+// refuse answers an item with a refusal and consumes it; nothing moves. The
+// answer rides with the item's group and goes out only when the budget
+// admits it (Stella, 03f44371); a carried item is answered when it is
+// consumed.
 func (t *tick) refuse(it InboxItem, format string, args ...any) {
-	t.answers = append(t.answers, RowAnswer{Result: it.ID, Row: it.Row, Text: fmt.Sprintf(format, args...), Refused: true})
-	t.consume(it.ID)
+	t.groups = append(t.groups, group{kind: "none", none: true, key: GroupKey{Kind: "none", Item: it.ID},
+		answer: &RowAnswer{Result: it.ID, Row: it.Row, Text: fmt.Sprintf(format, args...), Refused: true}})
 }
 
 // ack answers an item from the record and consumes it; nothing is applied
-// twice, so layer 4 may redeliver.
+// twice, so layer 4 may redeliver. The answer rides as a refusal's does.
 func (t *tick) ack(it InboxItem, format string, args ...any) {
-	t.answers = append(t.answers, RowAnswer{Result: it.ID, Row: it.Row, Text: fmt.Sprintf(format, args...)})
-	t.consume(it.ID)
+	t.groups = append(t.groups, group{kind: "none", none: true, key: GroupKey{Kind: "none", Item: it.ID},
+		answer: &RowAnswer{Result: it.ID, Row: it.Row, Text: fmt.Sprintf(format, args...)}})
 }
 
 // reportItem plans one report: the refusals of the design, in its order,
@@ -45,8 +48,7 @@ func (t *tick) reportItem(it InboxItem) {
 		return
 	}
 	if !t.unclaimed(c.ID) {
-		t.ack(it, "consumer %s is moved by this tick already; nothing applied twice", c.ID)
-		return
+		return // a group of this tick moves it: the item waits for the folded result (Stella, 03f44371)
 	}
 	row, p := t.v.Rows[c.Holder], t.v.Cards[c.Of]
 	switch {
@@ -98,8 +100,7 @@ func (t *tick) takeItem(it InboxItem, taken map[string]int) {
 		t.refuse(it, "card %s does not exist: run `nova-sprint next --as %s`", it.Consumer, it.Row)
 		return
 	case !t.unclaimed(c.ID):
-		t.ack(it, "consumer %s is moved by this tick already; nothing applied twice", c.ID)
-		return
+		return // as a report's: the item waits for the folded result
 	case c.Holder != it.Row:
 		t.refuse(it, "consumer %s is held by %s, not %s", c.ID, c.Holder, it.Row)
 		return

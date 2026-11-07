@@ -65,6 +65,7 @@ type RefusedOp struct {
 // the row it wrote, and the inbox item it answered ("" for none). An op's
 // Note carries its groups' keys as JSON.
 type GroupKey struct {
+	Kind  string         `json:"kind,omitempty"`
 	Cards []string       `json:"cards"`
 	Gens  map[string]int `json:"gens,omitempty"`
 	Row   string         `json:"row,omitempty"`

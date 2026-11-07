@@ -147,9 +147,11 @@ func (s *sim) request(kind, stream string) EdgeRequest {
 func (s *sim) state(id string) string { return s.card(id).State }
 
 // tickOps is the last plan's ops of groups (the judgement op aside).
-func (s *sim) tickOps() []store.Op {
+func (s *sim) tickOps() []store.Op { return tickOnly(s.last.Ops) }
+
+func tickOnly(ops []store.Op) []store.Op {
 	var out []store.Op
-	for _, op := range s.last.Ops {
+	for _, op := range ops {
 		if op.Kind == "tick" {
 			out = append(out, op)
 		}
