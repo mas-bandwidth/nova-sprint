@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // A failed tool's stderr reaches the refusal as its last line, with nothing
@@ -50,5 +52,29 @@ func TestParseFailureNamesTheByteAndWhatItSaw(t *testing.T) {
 	got := ParseFailure(json.Unmarshal(out, &v), out)
 	if !strings.Contains(got, "byte 1") || !strings.Contains(got, "SECRETS EXEC STARTING") {
 		t.Fatalf("%s", got)
+	}
+}
+
+// A refusal built from a failing command whose argv and environment carry
+// secret-looking values names them and never shows a value.
+func TestRefusalFromFailingCommandNamesSecretsNotValues(t *testing.T) {
+	w := newWorld(t)
+	argv := []string{"/usr/local/bin/nova-secrets", "exec", "--", "env", "NOVA_PG_PASSWORD=hunter2", "postgres://u:pw@db/x", "--token", "ghp_abcdefABCDEF0123456789"}
+	env := []string{"NOVA_SPRINT_PG_PASSWORD=s3cr3t-value", "GH_TOKEN=ghp_ZYXWVUTSRQ0123456789ab"}
+	failed := edge.Failure(argv, env, 3, "", "nova-secrets: key AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQ rejected\n", errors.New("exit status 3"))
+	w.bus.err = fmt.Errorf("bus secret names unavailable%s", ToolDetail(failed))
+	r := w.e.Execute(t.Context(), []string{"check"})
+	if r.Exit != 2 || strings.Count(r.Output, "\n") != 1 {
+		t.Fatalf("%+v", r)
+	}
+	for _, want := range []string{"nova-secrets exec", "NOVA_PG_PASSWORD=<redacted>", "NOVA_SPRINT_PG_PASSWORD", "GH_TOKEN", "exit 3", "rejected"} {
+		if !strings.Contains(r.Output, want) {
+			t.Fatalf("%q lacks %q", r.Output, want)
+		}
+	}
+	for _, leak := range []string{"hunter2", "u:pw", "ghp_", "s3cr3t", "AGE-SECRET-KEY", "/usr/local"} {
+		if strings.Contains(r.Output, leak) {
+			t.Fatalf("%q leaks %q", r.Output, leak)
+		}
 	}
 }
