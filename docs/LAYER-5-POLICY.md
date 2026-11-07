@@ -997,3 +997,25 @@ What the stitch changed in layer 5 and why:
   tells the steps to deal nothing (`Answers.NoDeal`) and the steps open one
   `no-policy` judgement on the coordinator's row. Tests: `testSetFirst`,
   `TestCatalogBenchRefused`, run's `TestTickDealsNothingWithoutAnActivePolicy`.
+
+**Stitch w4E: the verdict's vocabulary and the spread (2026-11-07, branch `v2-stitch-w4E`).**
+- *The verdict is `yes | fix` (directive 58).* A faulted read is not a read.
+  `verdict`'s reads are the done reads of this review and head that said ok
+  or fix (`inputs.go`), so the question is never asked on faults alone.
+  `retry` is gone from `default.star` and from `checkVerdict` ("the answer is
+  X, not "yes" or "fix""). The engine's oracle accepts the same two answers,
+  so no answer policy may give is refused by the engine. What the faults
+  leave undecided is the coordinator's `read-faults` judgement (layer 3).
+  Tests: `TestVerdictFaultIsNoRead`, which replaces `TestVerdictRetry`, and
+  the refusal table's new `retry` case.
+- *Every refusal carries its text.* `refusalTextLint` runs on every
+  refusal in `validate_test.go`. The refusal's message must be non-empty and
+  must appear in its judgement's question, so an empty refusal text is a
+  test failure.
+- *`prefer` spreads by load (directive 62).* Within each run of rows of
+  equal rank, the preferred order is the fewest working cards first, then
+  the order the rows had before. Before, it was room first, then name, so
+  one row filled to width while an equal row sat idle. This is sorted per
+  run of equal rank because a comparator across runs was not transitive.
+  A row's load1 over cores is not a row fact (the roster does not carry
+  it), so it is not a key. Test: `TestPreferSpreadsByLoad`.

@@ -367,7 +367,7 @@ same op as the move that raised it.
   ```
   NEEDS YOU judgement=j-0412 kind=red about=docs/fix-typos due=15:40
   CI red at 9c41e0...: run nova-sprint show fix-typos --ci
-  run: nova-sprint judge j-0412 rework --reason "<why>"   choices: rework | drop | retry
+  run: nova-sprint judge j-0412 rework --reason "<why>"   choices: rework | drop
   ```
 
   A group of n is one message, `NEEDS YOU group=<key> size=<n> ids=<j-1,...>`, answered by

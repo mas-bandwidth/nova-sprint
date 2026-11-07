@@ -867,3 +867,110 @@ inherited red (...): land it with nova-sprint land <c> --reason <why>.
 Facts: ...". It is still one land judgement with the choices land, fix and
 retry: red never lands by itself, and no state or transition changed, so
 `Steps.tla` is untouched. Test: `TestTickLandInheritedRedIsAGlance`.
+
+## Built: faulted reads, judgements with real choices, the deal's spread (stitch w4E, 2026-11-07)
+
+Directives 58, 60, 62 and 78. Branch `v2-stitch-w4E`.
+
+**A faulted read is not a read (directive 58).** These changes are in `fix.go` and `asker.go`.
+
+- `owed` no longer counts a done read that faulted, so the read is owed again. `settled`
+  passes only reads that said ok or fix, so policy's verdict is never asked on faults alone.
+- When the faults of the current review and head reach `limits().faults`, the step stops
+  dealing reads. The count runs from the coordinator's last `read` answer to this card's
+  `read-faults` judgement; a read dealt at or after that answer counts. The engine's default
+  is 3 (a guess). With no live read, the step opens one `read-faults` judgement on the
+  coordinator's row. Its choices are `read | yes | fix`, and it has no deadline:
+  - `read` is the answer alone. The count starts again and a read is dealt.
+  - `yes` is `card.JudgedYes` with the reason.
+  - `fix` is `card.JudgedFix` with the reason as the finding.
+- The judgement expires when the card leaves review or is no longer capped.
+- The verdict's vocabulary is `yes | fix` in the oracle, the policy validator and
+  `default.star`. `retry` is gone. No answer policy may give is refused by the engine
+  without saying why.
+- `oracle.miss` keeps each question's first reason. The `policy` judgement now says "policy
+  vN failed question q: <why>", never an empty why. `TestOracleRefusalsSayWhy` refuses every
+  question three ways (failed, absent, out of domain, verdict `retry` included) and requires
+  text for each.
+
+**Judgements with real choices (directives 60 and 78).** These changes are in `judge.go`,
+`land.go`, `tick.go` and `view.go`.
+
+- **Choices per kind.** Every kind's choices are in the `choices` table, and none offers
+  `retry` alone (`TestJudgeChoicesNeverRetryOnly`). The notices (unserved, idle, policy,
+  roster, no-model, no-policy, unacked, landed-sentinel) offer `wait`. `stall`, `land-rate`
+  and `flap` offer `wait | hold`. `cannot-read` and `overlap` offer `wait | drop`.
+  `undealt` offers `wait | hold | drop`. The verbs map `hold` to the hold verb's request for
+  a row, a stream or a producer.
+- **Quiet.** `wait`, or any answer that is not a re-ask (`retry`, `read`), or a passed
+  deadline closes the judgement. The same cause is then not raised again until a tick has
+  seen it gone (`quiet`, `rearm`, `View.rearmed`). After a restart, a cause still holding
+  stays quiet until it clears once. Why: before this, a notice answered `retry` reopened on
+  the next tick, and a deadline-expired one reopened every Judgement timeout.
+- **Engine judgements.** They have no deadline (`sitting`). While one is open, the tick
+  claims its card (`claimEngine`), so the refused plan is not met again every tick.
+  - `retry` closes it, and the next tick plans the card afresh from the state, never
+    replaying the refused op.
+  - The other choices depend on what it is about. A producer that may be blocked gets
+    `retry | hold | drop`, any other card `retry | drop`, and a stream or row `retry | hold`.
+- **Stall.** One per stream per stall, with no deadline, closed by the stream's landing. It
+  is never raised while a card of the stream has a land judgement open or opened that tick
+  (`landJudgedIn`). That judgement is the stall's cause, already on the board.
+- **After.** A merging card whose after target is merging under a land judgement is shown by
+  an `after` judgement naming the target, with choices `land | wait`. `land` is the hand
+  landing, out of after order. It is never an engine judgement. It clears when the target
+  leaves merging. The old engine judgement could not be reproduced at the base, because
+  `afterHeld` already skipped the chain. This change makes the chain visible on the board.
+- `judgeAgain` was dead code and is gone.
+- Tests: `TestTickEngineSitsOnce` (a stream with no head), `TestTickEngineClaimsItsCard`,
+  `TestTickStallOncePerStall`, `TestTickNoStallUnderLandJudgement`, `TestTickAfterIsShown`,
+  `TestTickFaultedReadIsOwedAgain` and `TestTickReadFaultsAnswers`.
+
+**The deal spreads by load (directive 62).** These changes are in `deal.go`.
+
+- `ranked` is lexicographic: the desired rank, then above it, then the fewest live cards
+  (this tick's deals counted), then most room, then name. Before, a weighted score could let
+  room outweigh load.
+- `pickRows` takes policy's answered rows through `spread`. Among rows of the first
+  answered row's rank and kind, the one with the fewest live cards goes first, and policy's
+  order breaks ties. Policy answers once per tick on the counts before the deal, so only the
+  engine can spread within a tick.
+- A row's load1 over cores is not in the roster, so it is not a key. Adding it is roster
+  work, outside this change.
+- Tests: `TestTickDealSpreadsByLoad` (default and policy-answered) and
+  `TestTickDealSpreadKeepsRank`.
+
+**The model, `Steps.tla`.**
+
+- **Faults.**
+  - `ReadOwed` and `Settled` exclude faulted reads.
+  - `FaultCap` (2, the walk's `faults`) and `fa`/`fasnap` (the coordinator's read answer,
+    and that answer as the view read it) give `Capped`. `FaultsOpen` opens `read-faults`,
+    and not again while it is open in the view.
+  - `AnswerFaults(p, read|yes|fix)` is the coordinator's answer.
+- **Choices.** `Choices(kind)` gives every kind's choices, and the land and fault answers
+  draw from it. `NoRetryOnly` is checked.
+- **Rows.** `DefaultRow` is the lexicographic `Before`, and policy's answered rows go
+  through `SpreadRow`. In the new spread scenario policy may answer `both`.
+- **New scenarios.** `faults` has p alone, with reads that may fault. `spread` has two rows
+  of rank 1, width 2.
+- **New checks**, each with a reversed witness:
+  - `FaultIsNoRead`: no yes or fix on faults alone. Witness `StepsFaultCountsAsRead`.
+  - `FaultsShown`: a capped review has its judgement, open in the tick's view or opened by
+    it. Witness `StepsFaultsUnjudged`.
+  - `DealSpread`: with no single row from policy, no card goes to a row while an eligible
+    row of the same rank has fewer live cards. Witness `StepsDealFills`, which takes
+    answered rows in order.
+  - `NoRetryOnly`. Witness `StepsRetryOnly`, a policy notice with retry alone.
+- **New reach checks:** `StepsNeverFaultsJudged`, `StepsNeverFaultRead`,
+  `StepsNeverFaultYes`, `StepsNeverFaultFix` and `StepsNeverSpread`.
+- `PolicyFailsToDefault` now reads `a.rows = "failed"`.
+- **Bugs TLC found.** The first `StepsFaults` run (measured) found `FaultsShown` violated
+  when the coordinator answered between the fold and the tick. The code does not reopen a
+  judgement open in its view, so the check now accepts that case. A parse error in
+  `SpreadRow` was fixed before that run.
+- **The trace walk** (`trace_test.go`) drives both new scenarios. In faults, reads return ok
+  or fault and the coordinator answers `read-faults`. In spread, policy may answer both rows.
+  `JudgementsTLA` projects `read-faults`, and `StepsTrace.tla` takes `AnswerFaults`.
+- Every Steps witness and cfg was regenerated by `make-steps-witnesses.py`. The new cfgs are
+  `StepsFaults.cfg` and `StepsSpread.cfg`, and both are in `ci-tlc.sh`.
