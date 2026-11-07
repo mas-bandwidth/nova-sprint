@@ -280,13 +280,14 @@ func checkPrices(ctx context.Context, v starlark.Value) (map[string]Price, strin
 		case !ok:
 			return nil, refuse("a key is %s, not a model name", kind(kv[0]))
 		}
+		name := cut(string(model), 64)
 		p, msg := dictOf(kv[1], "in", "out")
 		if msg != "" {
-			return nil, cut(string(model), 64) + ": " + msg
+			return nil, name + ": " + msg
 		}
 		var price Price
-		if price.In, msg = int64In(cut(string(model), 64)+" in", p["in"]); msg == "" {
-			price.Out, msg = int64In(cut(string(model), 64)+" out", p["out"])
+		if price.In, msg = intIn(name+" in", p["in"], 0, int64(math.MaxInt64)); msg == "" {
+			price.Out, msg = intIn(name+" out", p["out"], 0, int64(math.MaxInt64))
 		}
 		if msg != "" {
 			return nil, msg
@@ -319,7 +320,7 @@ func dictOf(v starlark.Value, keys ...string) (map[string]starlark.Value, string
 }
 
 // intIn is v as an int in lo..hi.
-func intIn(what string, v starlark.Value, lo, hi int) (int, string) {
+func intIn[T int | int64](what string, v starlark.Value, lo, hi T) (T, string) {
 	i, ok := v.(starlark.Int)
 	if !ok {
 		return 0, refuse("%s is %s, not an int", what, kind(v))
@@ -328,18 +329,5 @@ func intIn(what string, v starlark.Value, lo, hi int) (int, string) {
 	if !ok || n < int64(lo) || n > int64(hi) {
 		return 0, refuse("%s %s is outside %d..%d", what, brief(i), lo, hi)
 	}
-	return int(n), ""
-}
-
-// int64In is v as an int in 0..MaxInt64.
-func int64In(what string, v starlark.Value) (int64, string) {
-	i, ok := v.(starlark.Int)
-	if !ok {
-		return 0, refuse("%s is %s, not an int", what, kind(v))
-	}
-	n, ok := i.Int64()
-	if !ok || n < 0 {
-		return 0, refuse("%s %s is outside 0..%d", what, brief(i), int64(math.MaxInt64))
-	}
-	return n, ""
+	return T(n), ""
 }

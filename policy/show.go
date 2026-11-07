@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -104,7 +105,7 @@ func (e *Engine) report(ctx context.Context, st store.Store, snap store.Snapshot
 		}
 	}
 	was, _ := e.checkRun(ctx, storedSource(active.Version, active.Body), snap) // ignored: the active's own refusals are not this report's
-	for _, k := range sortedKeys(a.shown) {
+	for _, k := range slices.Sorted(maps.Keys(a.shown)) {
 		if old, ok := was.shown[k]; !ok || old != a.shown[k] {
 			r.Changes = append(r.Changes, fmt.Sprintf("%s: %s -> %s", k, cmp.Or(old, "(refused)"), a.shown[k]))
 		}

@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -67,7 +68,7 @@ func (c Catalog) clone() Catalog {
 // is not, naming the policy version; the fix is CatalogFix.
 func (c Catalog) Unknown(model, harness string) string {
 	var names []string
-	for _, p := range sortedKeys(c.Models) {
+	for _, p := range slices.Sorted(maps.Keys(c.Models)) {
 		for _, m := range c.Models[p] {
 			if m.Name == model {
 				return c.unknownHarness(harness)
@@ -119,7 +120,7 @@ func checkCatalog(ctx context.Context, v starlark.Value) (Catalog, string) {
 // twice refuses a model listed under two providers: nothing is listed twice.
 func twice(ms map[string][]Model) string {
 	seen := map[string]string{}
-	for _, p := range sortedKeys(ms) {
+	for _, p := range slices.Sorted(maps.Keys(ms)) {
 		for _, m := range ms[p] {
 			if q, ok := seen[m.Name]; ok && q != p {
 				return refuse("model %s is listed under both %s and %s", cut(m.Name, 64), cut(q, 64), cut(p, 64))

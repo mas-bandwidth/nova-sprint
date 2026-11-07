@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"maps"
 	"slices"
 
 	"go.starlark.net/starlark"
@@ -93,20 +94,9 @@ func Rank(r store.Row) string {
 
 func rung(tier string) int { return slices.Index(store.Tiers, tier) }
 
-// candidates are the rows that may take producer c's next consumer of kind:
-// up, not held, serving the card's tier, and for a read not its author; by
-// name (rows' argument is these by rank, lowest first, then by name).
-func (ix *index) candidates(c store.Card, kind string) []store.Row {
-	var out []store.Row
-	for _, r := range ix.rows {
-		if r.State == "up" && !r.Held && slices.Contains(r.Tiers, c.Tier) && (kind != KindRead || r.Name != c.Author) {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-// candidateSet is the candidates of producer c for kind, as rows' third argument.
+// candidateSet is rows' third argument for producer c and kind: the rows
+// that may take its next consumer (up, not held, serving the card's tier,
+// and for a read not its author), by rank, lowest first, then by name.
 func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 	key := c.Tier + " " + kind
 	if kind == KindRead {
@@ -115,7 +105,12 @@ func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 	if s, ok := ix.sets[key]; ok {
 		return s
 	}
-	s := &candidateSet{rows: ix.candidates(c, kind)}
+	s := &candidateSet{}
+	for _, r := range ix.rows {
+		if r.State == "up" && !r.Held && slices.Contains(r.Tiers, c.Tier) && (kind != KindRead || r.Name != c.Author) {
+			s.rows = append(s.rows, r)
+		}
+	}
 	slices.SortStableFunc(s.rows, func(a, b store.Row) int { return cmp.Compare(rung(Rank(a)), rung(Rank(b))) })
 	s.list, s.names = make(starlark.Tuple, len(s.rows)), map[string]int{}
 	for i, r := range s.rows {
@@ -209,7 +204,7 @@ func (ix *index) stitchStream(name string) starlark.Value {
 func FullQuestions(snap store.Snapshot, rungs map[string]string) Questions {
 	var q Questions
 	ix := newIndex(snap)
-	for _, id := range sortedKeys(snap.Cards) {
+	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
 		c := snap.Cards[id]
 		switch {
 		case c.Kind != "producer":
@@ -224,18 +219,9 @@ func FullQuestions(snap store.Snapshot, rungs map[string]string) Questions {
 			}
 		}
 	}
-	for _, s := range sortedKeys(snap.Streams) {
+	for _, s := range slices.Sorted(maps.Keys(snap.Streams)) {
 		q.Landing = append(q.Landing, LandingQuestion{s, cmp.Or(rungs[s], RungFlowing)})
 		q.Stitch = append(q.Stitch, s)
 	}
 	return q
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return keys
 }

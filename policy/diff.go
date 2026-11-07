@@ -94,7 +94,7 @@ func hirschberg(out *strings.Builder, x, y []string) {
 		write(out, "+ ", y[j+1:])
 	default:
 		mid := len(x) / 2
-		fwd, bwd := lcsLengths(x[:mid], y, false), lcsLengths(x[mid:], y, true)
+		fwd, bwd := lcsLengths(x[:mid], y), lcsLengths(reversed(x[mid:]), reversed(y))
 		k, best := 0, int32(-1)
 		for j := range len(y) + 1 {
 			if s := fwd[j] + bwd[len(y)-j]; s > best {
@@ -106,21 +106,19 @@ func hirschberg(out *strings.Builder, x, y []string) {
 	}
 }
 
+func reversed(s []string) []string {
+	s = slices.Clone(s)
+	slices.Reverse(s)
+	return s
+}
+
 // lcsLengths is, for each j, the length of the longest common subsequence
-// of x and the first j lines of y; reversed, of x and the last j lines of
-// y, both read backwards. Two rows of len(y)+1.
-func lcsLengths(x, y []string, reversed bool) []int32 {
-	at := func(s []string, i int) string {
-		if reversed {
-			return s[len(s)-1-i]
-		}
-		return s[i]
-	}
+// of x and the first j lines of y. Two rows of len(y)+1.
+func lcsLengths(x, y []string) []int32 {
 	prev, cur := make([]int32, len(y)+1), make([]int32, len(y)+1)
-	for i := range x {
-		xi := at(x, i)
+	for _, xi := range x {
 		for j := range y {
-			if xi == at(y, j) {
+			if xi == y[j] {
 				cur[j+1] = prev[j] + 1
 			} else {
 				cur[j+1] = max(prev[j+1], cur[j])

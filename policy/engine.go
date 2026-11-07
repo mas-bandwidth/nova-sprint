@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -173,7 +174,8 @@ func compile(version int, label, body string, th *starlark.Thread) (*program, *F
 		globals, err = prog.Init(th, predeclared)
 	}
 	if err != nil {
-		return nil, fail(errLine(err), "%s", errMsg(th, 0, err))
+		line, msg := errAt(th, 0, err)
+		return nil, fail(line, "%s", msg)
 	}
 	globals.Freeze()
 	lines := topLines(file)
@@ -182,7 +184,7 @@ func compile(version int, label, body string, th *starlark.Thread) (*program, *F
 			return nil, f
 		}
 	}
-	for _, q := range questionNames() {
+	for _, q := range questionNames {
 		if p.fns[q] == nil && q != "catalog" { // catalog is optional: a version without it uses the built-in's
 			f := fail(p.last, "question %s is missing: define def %s(%s)", q, q, params[q])
 			f.eof = true
@@ -222,7 +224,7 @@ func (p *program) bind(name string, v starlark.Value, line int, fail func(int, s
 	fn, isFn := v.(*starlark.Function)
 	switch {
 	case !ok:
-		return fail(line, "unknown top-level name %s: a question is one of %s, a helper starts with _", name, strings.Join(questionNames(), " "))
+		return fail(line, "unknown top-level name %s: a question is one of %s, a helper starts with _", name, strings.Join(questionNames, " "))
 	case !isFn:
 		return fail(line, "%s is a %s, not a function: define def %s(%s)", name, v.Type(), name, params[name])
 	case fn.NumParams() != n || fn.HasVarargs() || fn.HasKwargs():
@@ -232,14 +234,8 @@ func (p *program) bind(name string, v starlark.Value, line int, fail func(int, s
 	return nil
 }
 
-func questionNames() []string {
-	names := make([]string, 0, len(Arity))
-	for q := range Arity {
-		names = append(names, q)
-	}
-	slices.Sort(names)
-	return names
-}
+// questionNames are the questions, sorted.
+var questionNames = slices.Sorted(maps.Keys(Arity))
 
 // fail is p's refusal of ask k: at line, or at the question's def when line
 // is 0, or at the file's last line when it has no def (catalog).
@@ -264,47 +260,32 @@ func call(th *starlark.Thread, p *program, k *ask) (starlark.Value, *Failure) {
 	th.SetMaxExecutionSteps(start + CallSteps)
 	v, err := starlark.Call(th, p.fns[k.q], k.args, nil)
 	if err != nil {
-		return nil, p.fail(k, errLine(err), errMsg(th, start, err))
+		line, msg := errAt(th, start, err)
+		return nil, p.fail(k, line, msg)
 	}
 	return v, nil
 }
 
-// errLine is the line an error names: a syntax or resolve error's own, a
-// runtime error's innermost frame in the file.
-func errLine(err error) int {
+// errAt is the line an error names (a syntax or resolve error's own, a
+// runtime error's innermost frame in the file) and its message without the
+// position, or the step budget when the call (begun at step start) spent it.
+func errAt(th *starlark.Thread, start uint64, err error) (line int, msg string) {
 	var se syntax.Error
 	var re resolve.ErrorList
 	var ee *starlark.EvalError
-	switch {
+	switch msg = err.Error(); {
 	case errors.As(err, &se):
-		return int(se.Pos.Line)
+		line, msg = int(se.Pos.Line), se.Msg
 	case errors.As(err, &re):
-		return int(re[0].Pos.Line)
+		line, msg = int(re[0].Pos.Line), re[0].Msg
 	case errors.As(err, &ee):
-		for i := len(ee.CallStack) - 1; i >= 0; i-- {
-			if l := ee.CallStack[i].Pos.Line; l > 0 {
-				return int(l)
-			}
+		for i := len(ee.CallStack) - 1; i >= 0 && line == 0; i-- {
+			line = int(ee.CallStack[i].Pos.Line)
 		}
+		msg = strings.TrimPrefix(ee.Msg, "Starlark computation cancelled: ")
 	}
-	return 0
-}
-
-// errMsg is an error's message without its position, which the refusal
-// names, or the step budget when the call (begun at step start) spent it.
-func errMsg(th *starlark.Thread, start uint64, err error) string {
-	var se syntax.Error
-	var re resolve.ErrorList
-	var ee *starlark.EvalError
-	switch {
-	case th.ExecutionSteps() >= start+CallSteps:
-		return fmt.Sprintf("over the step budget of %d", CallSteps)
-	case errors.As(err, &se):
-		return se.Msg
-	case errors.As(err, &re):
-		return re[0].Msg
-	case errors.As(err, &ee):
-		return strings.TrimPrefix(ee.Msg, "Starlark computation cancelled: ")
+	if th.ExecutionSteps() >= start+CallSteps {
+		msg = fmt.Sprintf("over the step budget of %d", CallSteps)
 	}
-	return err.Error()
+	return line, msg
 }

@@ -43,11 +43,13 @@ type outcome struct {
 }
 
 // cached is one validated answer: what it sets in Answers and the bytes it
-// holds; for rows, the answer's names joined, interned per tick.
+// holds; for rows, the answer's names and their key (joined by NUL), which
+// each tick interns.
 type cached struct {
 	set    func(*Answers)
 	weight int
-	rows   *string
+	key    string
+	names  []string
 }
 
 // overTime is a run's failure when the deadline passed first.
@@ -161,12 +163,12 @@ func (r *run) one(p *program, k *ask, cache map[[32]byte]cached, t *tally, o *ou
 	c, ok := cache[k.digest]
 	if !ok {
 		var f *Failure
-		if c, f = r.fresh(p, k, t, o); f != nil {
+		if c, f = r.fresh(p, k, o); f != nil {
 			return f
 		}
 	}
-	if c.rows != nil {
-		names := t.intern(*c.rows, nil)
+	if k.rq != nil {
+		names := t.intern(c.key, c.names)
 		c.set = func(a *Answers) { a.Rows[*k.rq] = names }
 	}
 	if t.bytes += c.weight + entryBytes; t.bytes > maxTickBytes {
@@ -178,7 +180,7 @@ func (r *run) one(p *program, k *ask, cache map[[32]byte]cached, t *tally, o *ou
 }
 
 // fresh is ask k called on the program and validated; for check, its text.
-func (r *run) fresh(p *program, k *ask, t *tally, o *outcome) (cached, *Failure) {
+func (r *run) fresh(p *program, k *ask, o *outcome) (cached, *Failure) {
 	if p.fns[k.q] == nil { // catalog, which a version may leave out
 		return r.inherit(p, k)
 	}
@@ -192,11 +194,8 @@ func (r *run) fresh(p *program, k *ask, t *tally, o *outcome) (cached, *Failure)
 	var c cached
 	var msg string
 	if k.rq != nil {
-		var names []string
-		if names, msg = k.acceptRows(v); msg == "" {
-			key := strings.Join(names, "\x00")
-			t.intern(key, names)
-			c.rows = &key
+		if c.names, msg = k.acceptRows(v); msg == "" {
+			c.key = strings.Join(c.names, "\x00")
 		}
 	} else if c.set, msg = k.accept(v); msg == "" {
 		c.weight = weight(v)
@@ -283,18 +282,11 @@ type tally struct {
 	rows  map[string][]string
 }
 
-// intern is the tick's one slice for the rows answer key (names joined by
-// NUL); names, when given, is it already split.
+// intern is the tick's one slice for the rows answer names, whose key is
+// the names joined by NUL.
 func (t *tally) intern(key string, names []string) []string {
 	if s, ok := t.rows[key]; ok {
 		return s
-	}
-	switch {
-	case names != nil:
-	case key == "":
-		names = []string{}
-	default:
-		names = strings.Split(key, "\x00")
 	}
 	t.rows[key] = names
 	t.bytes += len(key) + 16*len(names) + entryBytes
@@ -308,13 +300,7 @@ func weight(v starlark.Value) int {
 	switch x := v.(type) {
 	case starlark.String:
 		return 16 + len(x)
-	case starlark.Tuple:
-		n := 24
-		for _, y := range x {
-			n += weight(y)
-		}
-		return n
-	case *starlark.List:
+	case starlark.Indexable: // a tuple or a list
 		n := 24
 		for i := range x.Len() {
 			n += weight(x.Index(i))
