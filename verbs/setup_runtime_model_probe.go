@@ -3,18 +3,42 @@ package verbs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
 
-// Known endpoints are the model-list and key pairs in nova-tools'
-// internal/doctor/check_providers.go. Unknown providers fail closed.
-var modelProbeProviders = map[string]struct{ endpoint, key, keyEndpoint string }{
-	"deepseek":   {"https://api.deepseek.com/models", "DEEPSEEK_API_KEY", "https://api.deepseek.com/user/balance"},
-	"openrouter": {"https://openrouter.ai/api/v1/models", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1/key"},
+// modelProbeProviders is every API-rate service up step 6 offers, the one
+// table: its model-list and key endpoints (as nova-tools'
+// internal/doctor/check_providers.go), its key's name, and the upstream the
+// worker's key proxy routes the service's models to (edge/worker
+// ParseProviders: without /v1). Unknown services fail closed; a service is
+// added here and nowhere else.
+var modelProbeProviders = map[string]struct{ endpoint, key, keyEndpoint, upstream string }{
+	"deepseek":   {"https://api.deepseek.com/models", "DEEPSEEK_API_KEY", "https://api.deepseek.com/user/balance", "https://api.deepseek.com"},
+	"openrouter": {"https://openrouter.ai/api/v1/models", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1/key", "https://openrouter.ai/api"},
+}
+
+// SetupServiceNames is every service up --services accepts, sorted.
+func SetupServiceNames() []string { return slices.Sorted(maps.Keys(modelProbeProviders)) }
+
+// ServiceRoutes is what a worker needs for the services up step 6 saved:
+// its --providers routes (one per service, named as the service, the
+// provider prefix of its model ids) and the key names its seat is granted.
+// No service is no route and no key.
+func ServiceRoutes(services []string) (routes string, keys []string) {
+	parts := make([]string, 0, len(services))
+	for _, name := range services {
+		if p, ok := modelProbeProviders[name]; ok {
+			parts = append(parts, name+"="+p.upstream+"@"+p.key)
+			keys = append(keys, p.key)
+		}
+	}
+	return strings.Join(parts, ","), keys
 }
 
 // ModelListProbe is run in a dedicated child under nova-secrets exec. It

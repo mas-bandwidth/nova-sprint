@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ func (s *runtimeStore) Install(context.Context) error       { s.ready = true; s.
 type runtimeWork struct {
 	services, workers, smoke bool
 	actions                  int
+	installed                []string // the services InstallWorkers was given
 }
 
 func (w *runtimeWork) ServicesReady(context.Context, []string) (bool, error) { return w.services, nil }
@@ -33,7 +35,8 @@ func (w *runtimeWork) InstallServices(context.Context, []string) error {
 	return nil
 }
 func (w *runtimeWork) WorkersReady(context.Context) (bool, error) { return w.workers, nil }
-func (w *runtimeWork) InstallWorkers(context.Context) error {
+func (w *runtimeWork) InstallWorkers(_ context.Context, services []string) error {
+	w.installed = services
 	w.workers = true
 	w.actions++
 	return nil
@@ -72,14 +75,52 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 	}
 }
 func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"unknown", "deepseek,deepseek", "deepseek,"} {
-		if _, err := setupServices(value); err == nil {
-			t.Fatal(value)
+		_, err := setupServices(value)
+		var op *OperationError
+		if !errors.As(err, &op) || !strings.Contains(op.Problem, "deepseek, openrouter, or none") || op.Fix != "nova-sprint up --services <deepseek|openrouter>[,...] or --services none" {
+			t.Fatal(value, err)
 		}
 	}
 	names, err := setupServices("openrouter,deepseek")
 	if err != nil || len(names) != 2 || names[0] != "deepseek" {
 		t.Fatal(names, err)
+	}
+}
+
+// Step 7 grants each worker bench's own seat the keys of the services
+// step 6 saved, beside the sprint credential, and installs the workers for
+// exactly those services; no other seat gets a service key.
+func TestWorkersActGrantsServiceKeysToBenchSeats(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	var calls []string
+	cmd := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name == "nova-config" {
+			return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":2},"items":[{"kind":"machine","fields":{"name":"studio","roles":"services"}},{"kind":"machine","fields":{"name":"amd-1","roles":"bench"}}]}`), nil
+		}
+		if name == "nova-secrets" {
+			calls = append(calls, args[1]+"->"+args[3])
+		}
+		return nil, nil
+	}
+	c := Choices{Store: store.NewFake(), Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
+	for _, kv := range [][2]string{{"dashboard", "tailnet"}, {"services", "deepseek"}} {
+		if err := c.Save(ctx, kv[0], kv[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	work := &runtimeWork{}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c}}, Workload: work, Services: FleetServices{Command: cmd},
+		Role:       SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "control", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "control", Command: cmd}},
+		RunService: FleetService{Name: "sprint-run", Machine: "studio", Seat: "swarm-studio"}, Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}}
+	if err := r.workersAct(ctx); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{sprintPasswordName + "->swarm-studio", sprintPasswordName + "->amd-1", "DEEPSEEK_API_KEY->amd-1"}
+	if !slices.Equal(calls, want) || !slices.Equal(work.installed, []string{"deepseek"}) {
+		t.Fatalf("grants %q, workers for %q; want %q for [deepseek]", calls, work.installed, want)
 	}
 }
 

@@ -27,7 +27,8 @@ type SetupRun interface {
 }
 
 // SetupWorkload is supplied by the binary for steps 6 to 8 (services,
-// workers, first deal). WorkersReady proves every worker bench
+// workers, first deal). InstallWorkers writes the workers for the services
+// step 6 saved (their routes and keys, ServiceRoutes). WorkersReady proves every worker bench
 // (WorkerBenches) is hooked on the bus and up in the store; SmokeReady
 // proves every worker row is dealable when the sprint starts. A not-ready
 // answer is (false, *WorkloadNotReady) naming what is not: up acts, and
@@ -36,7 +37,7 @@ type SetupWorkload interface {
 	ServicesReady(context.Context, []string) (bool, error)
 	InstallServices(context.Context, []string) error
 	WorkersReady(context.Context) (bool, error)
-	InstallWorkers(context.Context) error
+	InstallWorkers(ctx context.Context, services []string) error
 	SmokeReady(context.Context) (bool, error)
 	RunSmoke(context.Context) error
 }
@@ -370,7 +371,7 @@ func setupServices(value string) ([]string, error) {
 	seen := map[string]bool{}
 	for _, name := range names {
 		if _, ok := modelProbeProviders[name]; !ok || seen[name] {
-			return nil, fmt.Errorf("unsupported or duplicate service")
+			return nil, &OperationError{Problem: fmt.Sprintf("service %q is unknown or named twice; up offers %s, or none", Redact(name), strings.Join(SetupServiceNames(), ", ")), Fix: "nova-sprint up --services <" + strings.Join(SetupServiceNames(), "|") + ">[,...] or --services none", Exit: 1}
 		}
 		seen[name] = true
 	}
@@ -547,12 +548,28 @@ func (r RuntimeSetup) workersAct(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	value, found, err := r.answer(ctx, "services", "", "")
+	if err != nil {
+		return err
+	}
+	services, err := setupServices(value)
+	if err != nil || !found {
+		return errors.Join(fmt.Errorf("services choice unavailable"), err)
+	}
+	// A worker's seat (the bench's own, named as it) opens the keys of the
+	// services its routes name, beside the sprint credential.
+	_, keys := ServiceRoutes(services)
+	benches := WorkerBenches(machines)
 	for _, seat := range seats {
-		if err = r.Role.GrantSeat(ctx, seat); err != nil {
+		var grant []string
+		if seat.Seat == seat.Machine && slices.Contains(benches, seat.Machine) {
+			grant = keys
+		}
+		if err = r.Role.GrantSeat(ctx, seat, grant...); err != nil {
 			return err
 		}
 	}
-	return r.Workload.InstallWorkers(ctx)
+	return r.Workload.InstallWorkers(ctx, services)
 }
 
 // runHostMatches refuses a chosen run machine that is not the one the

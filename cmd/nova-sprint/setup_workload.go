@@ -15,48 +15,40 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
-// workerHarness is the harness a worker service runs cards with:
-// nova-config's machines carry no harness field, so this one default.
+// workerHarness is the harness a worker service runs cards with: the one
+// that runs an API-rate service's models through the worker's key proxy
+// (the routes of the services up step 6 saved).
 const workerHarness = "opencode"
 
-// workerProviderKeys are the provider keys a worker service opens from
-// its bench's own seat, beside the sprint and bus credentials.
-func workerProviderKeys() []string {
-	return []string{"DEEPSEEK_API_KEY", "INCEPTION_API_KEY"}
-}
-
-// workerArgv is the one place the worker service's command line is built.
+// workerArgv is the one place the worker service's command line is built:
+// routes is its key-proxy routes (verbs.ServiceRoutes), none for none.
 // The directories are under the login's home on the bench (the worker
 // resolves a relative directory there, services.Worker); a worker that
 // stages one clone per stream repo changes --work-clone here only.
-func workerArgv(machine, _ string) []string {
-	return []string{"nova-sprint", "worker", "--as", machine,
+func workerArgv(machine, routes string) []string {
+	argv := []string{"nova-sprint", "worker", "--as", machine,
 		"--work-root", ".local/share/nova-sprint/work",
-		"--harness", workerHarness,
-		"--providers", workerProviders,
-		"--root", ".local/state/nova-worker/" + machine,
-		"--state-dir", ".local/state"}
+		"--harness", workerHarness}
+	if routes != "" {
+		argv = append(argv, "--providers", routes)
+	}
+	return append(argv, "--root", ".local/state/nova-worker/"+machine, "--state-dir", ".local/state")
 }
 
-// workerProviders is the worker's key-proxy routes (edge/worker
-// ParseProviders; an upstream is given without /v1): DeepSeek and
-// Inception (Mercury). Paper Instruments (Ultramarine) is left out until
-// its upstream is known; adding a route is this string and its key in
-// workerProviderKeys.
-const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY"
-
 // workerService is the nova-config service record of the worker on a
-// bench: its seat is the bench's own, its keys the sprint credential, the
-// bus password when the bus has a user (as sprint-run's), and the provider
-// keys; its environment names the same store and bus as sprint-run's.
-func workerService(machine string, run verbs.FleetService) verbs.FleetService {
+// bench for the services up step 6 saved: its seat is the bench's own, its
+// keys the sprint credential, the bus password when the bus has a user (as
+// sprint-run's), and those services' keys; its environment names the same
+// store and bus as sprint-run's.
+func workerService(machine string, run verbs.FleetService, services []string) verbs.FleetService {
 	env := map[string]string{"NOVA_PG_DSN": run.Env["NOVA_PG_DSN"], "NOVA_BUS_REDIS": run.Env["NOVA_BUS_REDIS"]}
-	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD"}, workerProviderKeys()...)
+	routes, serviceKeys := verbs.ServiceRoutes(services)
+	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD"}, serviceKeys...)
 	if user := run.Env["NOVA_BUS_USER"]; user != "" {
 		env["NOVA_BUS_USER"] = user
 		keys = append(keys, "NOVA_BUS_PASSWORD")
 	}
-	return verbs.FleetService{Name: "sprint-worker-" + machine, Machine: machine, Seat: machine, Argv: workerArgv(machine, run.Machine), Keys: keys, Env: env}
+	return verbs.FleetService{Name: "sprint-worker-" + machine, Machine: machine, Seat: machine, Argv: workerArgv(machine, routes), Keys: keys, Env: env}
 }
 
 // serviceLogPath is where nova-fleet's unit for service appends its output
@@ -79,17 +71,20 @@ type productionWorkload struct {
 }
 
 // ServicesReady is true: step 6's keys are proven by their model probe
-// (verbs.ServiceKey) and "none" needs nothing; the worker records that
-// open the provider keys are step 7's, proven by the workers coming up.
+// (verbs.ServiceKey) and "none" needs nothing; the keys reach the workers
+// at step 7 (InstallWorkers writes each record's routes and keys from the
+// saved services, and up grants those keys to each bench's seat), proven
+// by the workers coming up.
 func (productionWorkload) ServicesReady(context.Context, []string) (bool, error) { return true, nil }
 
 // InstallServices has nothing past the keys to install (ServicesReady).
 func (productionWorkload) InstallServices(context.Context, []string) error { return nil }
 
-// InstallWorkers writes one worker service record per worker bench (the
-// seats were granted the sprint credential first, verbs.RuntimeSetup) and
-// applies them all in one nova-fleet play limited to those benches.
-func (w productionWorkload) InstallWorkers(ctx context.Context) error {
+// InstallWorkers writes one worker service record per worker bench for
+// services (the seats were granted the sprint credential and the services'
+// keys first, verbs.RuntimeSetup) and applies them all in one nova-fleet
+// play limited to those benches.
+func (w productionWorkload) InstallWorkers(ctx context.Context, services []string) error {
 	machines, err := w.services.Machines(ctx)
 	if err != nil {
 		return serviceConfigFailure("cannot inspect machine inventory: ", err)
@@ -103,7 +98,7 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	}
 	names := make([]string, 0, len(benches))
 	for _, bench := range benches {
-		s := workerService(bench, w.run)
+		s := workerService(bench, w.run, services)
 		if _, err = w.services.Ensure(ctx, s); err != nil {
 			return err
 		}

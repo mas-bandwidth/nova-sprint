@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
@@ -92,7 +93,7 @@ func testWorkload(f *fleetFake, rows map[string]store.Row, present map[string]bo
 // nova-fleet play limited to those benches applies them all.
 func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 	f := &fleetFake{machines: workloadMachines, rows: 3}
-	if err := testWorkload(f, nil, nil).InstallWorkers(context.Background()); err != nil {
+	if err := testWorkload(f, nil, nil).InstallWorkers(context.Background(), []string{"deepseek"}); err != nil {
 		t.Fatal(err)
 	}
 	var adds, plays [][]string
@@ -105,10 +106,10 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		}
 	}
 	want := []string{"nova-config", "service", "add", "sprint-worker-amd-1", "--machine", "amd-1",
-		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--harness","opencode","--providers","deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,inception=https://api.inceptionlabs.ai@INCEPTION_API_KEY","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
+		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--harness","opencode","--providers","deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
-		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
+		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
 		"--actor", "rowan", "--reason", "nova-sprint up 7/8 workers"}
 	if len(adds) != 2 || !slices.Equal(adds[0], want) || adds[1][3] != "sprint-worker-amd-2" {
 		t.Fatalf("records:\n%q\nwant\n%q", adds, want)
@@ -119,8 +120,43 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 	}
 	// Again: the records exist and match, nothing is added, the play runs.
 	f.calls = nil
-	if err := testWorkload(f, nil, nil).InstallWorkers(context.Background()); err != nil || slices.ContainsFunc(f.calls, func(c []string) bool { return len(c) > 2 && c[2] == "add" }) {
+	if err := testWorkload(f, nil, nil).InstallWorkers(context.Background(), []string{"deepseek"}); err != nil || slices.ContainsFunc(f.calls, func(c []string) bool { return len(c) > 2 && c[2] == "add" }) {
 		t.Fatal(err, f.calls)
+	}
+}
+
+// The worker record follows the services up step 6 saved: their routes
+// and keys only, nothing for none; no service is hard-wired.
+func TestWorkerRecordFollowsServicesChoice(t *testing.T) {
+	t.Parallel()
+	run := verbs.FleetService{Machine: "studio", Env: map[string]string{"NOVA_PG_DSN": "postgres://nova_sprint@db:5432/nova", "NOVA_BUS_REDIS": "db:6379"}}
+	for _, c := range []struct {
+		services []string
+		routes   string
+		keys     []string
+	}{
+		{nil, "", []string{"NOVA_SPRINT_PG_PASSWORD"}},
+		{[]string{"deepseek"}, "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY", []string{"NOVA_SPRINT_PG_PASSWORD", "DEEPSEEK_API_KEY"}},
+		{[]string{"openrouter"}, "openrouter=https://openrouter.ai/api@OPENROUTER_API_KEY", []string{"NOVA_SPRINT_PG_PASSWORD", "OPENROUTER_API_KEY"}},
+		{[]string{"deepseek", "openrouter"}, "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,openrouter=https://openrouter.ai/api@OPENROUTER_API_KEY", []string{"NOVA_SPRINT_PG_PASSWORD", "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY"}},
+	} {
+		s := workerService("amd-1", run, c.services)
+		i := slices.Index(s.Argv, "--providers")
+		routes := ""
+		if i >= 0 {
+			routes = s.Argv[i+1]
+		}
+		if routes != c.routes || !slices.Equal(s.Keys, c.keys) {
+			t.Errorf("%v: routes %q keys %q, want %q %q", c.services, routes, s.Keys, c.routes, c.keys)
+		}
+		if _, err := worker.ParseProviders(routes); err != nil {
+			t.Errorf("%v: the worker refuses its own routes: %v", c.services, err)
+		}
+		for _, word := range []string{"inception", "INCEPTION"} {
+			if strings.Contains(strings.Join(s.Argv, " ")+strings.Join(s.Keys, " "), word) {
+				t.Errorf("%v: record names %s, which was not chosen: %q %q", c.services, word, s.Argv, s.Keys)
+			}
+		}
 	}
 }
 
@@ -128,14 +164,14 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 // record that differs is the record's own refusal, before any play.
 func TestInstallWorkersRefusals(t *testing.T) {
 	f := &fleetFake{machines: workloadMachines, rows: 3, fail: map[string]error{"nova-fleet services": errors.New("amd-2: UNREACHABLE")}}
-	err := testWorkload(f, nil, nil).InstallWorkers(context.Background())
+	err := testWorkload(f, nil, nil).InstallWorkers(context.Background(), []string{"deepseek"})
 	var op *verbs.OperationError
 	if !errors.As(err, &op) || !strings.Contains(op.Problem, "amd-1,amd-2 failed: amd-2: UNREACHABLE") || !strings.Contains(op.Fix, "nova-fleet check") {
 		t.Fatal(err)
 	}
 	f = &fleetFake{machines: workloadMachines, rows: 3}
 	f.services = []map[string]any{{"name": "sprint-worker-amd-1", "machine": "amd-1", "seat": "amd-1", "keys": "", "argv": []string{"nova-sprint", "old"}, "keepalive": true, "enabled": true, "env": map[string]string{}}}
-	err = testWorkload(f, nil, nil).InstallWorkers(context.Background())
+	err = testWorkload(f, nil, nil).InstallWorkers(context.Background(), []string{"deepseek"})
 	if !errors.As(err, &op) || !strings.Contains(op.Problem, "sprint-worker-amd-1 conflicts with setup") || slices.ContainsFunc(f.calls, func(c []string) bool { return c[0] == "nova-fleet" }) {
 		t.Fatal(err, f.calls)
 	}
