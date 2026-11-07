@@ -83,7 +83,8 @@ func testWorkload(f *fleetFake, rows map[string]store.Row, present map[string]bo
 		present: func(context.Context) (map[string]bool, error) { return present, nil },
 		lastLine: func(_ context.Context, machine, service string) string {
 			return fmt.Sprintf("%q", "last of "+service+" on "+machine)
-		}}
+		},
+		version: func(context.Context, string) error { return nil }}
 }
 
 // One record per worker bench, exactly the worker's flags, its own seat,
@@ -158,8 +159,24 @@ func TestWorkersReadyNamesEachBenchAndItsLog(t *testing.T) {
 	}
 	rows["amd-2"] = store.Row{Name: "amd-2", State: "up", Role: "worker"}
 	w = testWorkload(f, rows, map[string]bool{"amd-1": true, "amd-2": true})
-	if check, err = (verbs.RuntimeSetup{Workload: w}).Verify(context.Background(), 7, verbs.SetupInput{}); err != nil || !check.Verified {
+	if check, err = (verbs.RuntimeSetup{Workload: w}).Verify(context.Background(), 7, verbs.SetupInput{}); err != nil || !check.Verified || !strings.Contains(check.Line, "probed with the policy's models") {
 		t.Fatalf("%+v %v", check, err)
+	}
+	// Every bench up, one at another version: not verified, naming it and
+	// the install that fixes it (step 5's check, per bench).
+	w.version = func(_ context.Context, m string) error {
+		if m == "amd-2" {
+			return serviceVersionRefusal("v2.1.0", m, "amd-2 reports v2.0.9, this binary is v2.1.0")
+		}
+		return nil
+	}
+	check, err = (verbs.RuntimeSetup{Workload: w}).Verify(context.Background(), 7, verbs.SetupInput{})
+	if err != nil || check.Verified || check.Refusal == nil || !strings.Contains(check.Refusal.Problem, "amd-2 reports v2.0.9") || !strings.Contains(check.Refusal.Fix, "--tag v2.1.0 amd-2") {
+		t.Fatalf("%+v %v", check, err)
+	}
+	w.version = nil
+	if ok, err := w.WorkersReady(context.Background()); ok || err == nil {
+		t.Fatal("a workload with no version check verified")
 	}
 }
 

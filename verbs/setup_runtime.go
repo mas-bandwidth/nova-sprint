@@ -132,7 +132,7 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 			return SetupCheck{}, fmt.Errorf("worker setup unavailable")
 		}
 		ok, err := r.Workload.WorkersReady(ctx)
-		return workloadReady(ctx, ok, "UP 7/8 workers: every worker bench hooked on the bus and up in the store: VERIFIED", err)
+		return workloadReady(ctx, ok, "UP 7/8 workers: every worker bench at this version, its harness probed with the policy's models and its seat's provider keys, hooked on the bus and up in the store: VERIFIED", err)
 	case 8:
 		if r.Workload == nil {
 			return SetupCheck{}, fmt.Errorf("smoke setup unavailable")
