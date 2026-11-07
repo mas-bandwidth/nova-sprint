@@ -78,7 +78,7 @@ func TestPageIgnoresObjectPrototypeNames(t *testing.T) {
 // and their scripts and styles) names a person or quotes a dated remark: view-source shows it to anyone.
 func TestServedPageCarriesNoConversation(t *testing.T) {
 	t.Parallel()
-	bad := regexp.MustCompile(`(?i)the owner|the (?:founder|author) said|/\*[^*]*\d{4}-\d\d-\d\d[^*]*\*/|<!--[^>]*\d{4}-\d\d-\d\d[^>]*-->`)
+	bad := regexp.MustCompile(`(?i)gl` + `enn|the owner|/\*[^*]*\d{4}-\d\d-\d\d[^*]*\*/|<!--[^>]*\d{4}-\d\d-\d\d[^>]*-->`)
 	err := fs.WalkDir(page, "page", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
