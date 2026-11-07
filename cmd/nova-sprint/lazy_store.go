@@ -80,6 +80,13 @@ func (s *lazyStore) Events(ctx context.Context, seq int64, max int) ([]store.Eve
 	}
 	return p.Events(ctx, seq, max)
 }
+func (s *lazyStore) EventIdentity(ctx context.Context, seq int64) (string, int, bool, error) {
+	p, e := s.get(ctx)
+	if e != nil {
+		return "", 0, false, e
+	}
+	return p.EventIdentity(ctx, seq)
+}
 func (s *lazyStore) Policy(ctx context.Context, v int) (store.PolicyVersion, error) {
 	p, e := s.get(ctx)
 	if e != nil {
