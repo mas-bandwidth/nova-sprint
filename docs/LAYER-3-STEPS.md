@@ -608,3 +608,10 @@ went, and `EdgeAfterAccepted` is weakened to state the stale-request race
 `TestTickLandJudgementEveryOutcome`, `TestTickLandAnswers`,
 `TestTickLadderRungs`; the trace fixtures `steps-ok-*` and `steps-bad-*`
 regenerated from TLC on a bench, with `steps-ok-land-judged` new.
+Measured on the bench (TLC 1.8.0, at the `jsnap` model): the witness
+`StepsLandAfterHoldsUntilLanded` violates `MergingCovered` after 186
+distinct states (330 generated); a first fault, one open land judgement
+holding every stream, found no violation (1,016 distinct states,
+exhaustive), because in the land scenario the other card is after-held by
+the judged one, so it was replaced; `make-traces.sh check`: 81 traces, the
+`ok` ones `TRACE OK` and the six `steps-bad-*` refused as they must be.
