@@ -256,8 +256,10 @@ func checkLanding(v starlark.Value) (Landing, string) {
 
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the
 // withdraw silence at or above the gone one: no wait is ever unbounded.
-// ready_nag (1) and ready_take (180) are optional, so a version stored
-// before them still answers.
+// ready_nag and ready_take are optional: the default policy (default.star)
+// names both, 1 and 180, and a version stored before them (the live
+// store's, before v2.0.1) lacks them, so for it alone the same values are
+// filled in here and it still answers.
 func checkTimeouts(v starlark.Value) (Timeouts, string) {
 	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take")
 	if msg != "" {

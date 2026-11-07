@@ -38,6 +38,9 @@ func TestDefaultBodyIsTheBuiltIn(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, defaultBody, DefaultBody())
 	assert.True(t, strings.HasPrefix(DefaultBody(), "# nova-sprint default policy."))
+	for _, key := range []string{`"ready_nag": 1,`, `"ready_take": 180,`} { // named, not the older-version fallback (checkTimeouts)
+		assert.Contains(t, DefaultBody(), key)
+	}
 	w := fakeWorld(t)
 	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)

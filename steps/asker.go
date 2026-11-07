@@ -132,7 +132,9 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // (LAYER-3 "Retire and fail limits", 3, unmeasured). The seconds after a
 // deal at which an unacknowledged card is nudged each tick and withdrawn are
 // policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"; the human's
-// numbers, 2026-11-07); UndealtAfter is the seconds a
+// numbers, 2026-11-07), default.star's 1 and 180; Engine's are those a
+// tick with no usable timeouts() answer runs on, as for every timeout.
+// UndealtAfter is the seconds a
 // producer may stay ready with a serving row with room before it is judged
 // (more than one one-second tick; LAYER-3 "Undealt").
 type Defaults struct {
