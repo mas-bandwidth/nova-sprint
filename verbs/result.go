@@ -77,7 +77,7 @@ func classify(err error) *Fail {
 	case errors.As(err, &pr):
 		return refuse(pr.What, pr.Fix)
 	case errors.Is(err, store.ErrInvalid):
-		return broken("nova-sprint built an invalid op ("+clip(err.Error())+")", "put it on nova-sprint's owed list with this line")
+		return broken("nova-sprint built an invalid op ("+clip(err.Error())+")", "take it to the project's own tracker with this line")
 	}
 	return broken(clip(err.Error()), "run nova-sprint check, then the verb again")
 }

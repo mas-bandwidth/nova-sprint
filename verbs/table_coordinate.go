@@ -2,12 +2,12 @@ package verbs
 
 func coordinateVerbs() []*verb {
 	return []*verb{
-		{name: "stream add", group: "coordinate", role: roleCoordinator, usage: "<s> --repo <owner/name> [--base main] [--mode auto|group|hand] [--forge github]", flags: "repo= base= mode= forge=", min: 1, max: 1, run: runStreamAdd,
+		{name: "stream add", group: "coordinate", role: roleCoordinator, usage: "<s> --repo <org/repo> [--base main] [--mode auto|group|hand] [--forge github]", flags: "repo= base= mode= forge=", min: 1, max: 1, run: runStreamAdd,
 			about: "adds a stream: its repository, base branch, landing mode (auto by default) and forge (none: no PR or CI, landed by hand)",
 			needs: []string{"the stream exists: nova-sprint show <s>", "the base branch is not at origin: push it, or pass --base"}},
 		{name: "stream set", group: "coordinate", role: roleCoordinator, usage: "<s> [--mode auto|group|hand] [--forge github|none]", flags: "mode= forge=", min: 1, max: 1, run: runStreamSet,
 			about: "changes a stream's landing mode or forge",
-			needs: []string{"an unknown stream: nova-sprint stream add <s> --repo <owner/name>"}},
+			needs: []string{"an unknown stream: nova-sprint stream add <s> --repo <org/repo>"}},
 		{name: "add", group: "coordinate", role: roleCoordinator, usage: "--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a,b>] [--priority <level>] [--dry-run] | --stream <s> --sentinel <id> --needs <a,b>", flags: "stream= brief-file=* needs= after= priority= sentinel= dry-run", max: 0, run: runAdd,
 			about: "adds producers from briefs that pass the card contract, or a sentinel that lands when its needs land",
 			needs: []string{"an unknown stream: nova-sprint stream add", "a brief missing a contract section, by name", "an unknown need, or a cycle, named"}},
@@ -48,7 +48,7 @@ func operateVerbs() []*verb {
 			needs: []string{"another run chooses: names its host and pid", "sprint is hooked elsewhere"}},
 		{name: "worker", group: "operate", usage: "--as <row> --work-clone <dir> --coordinator-hosts <h,h> [--host <h>] [--root <dir>] [--state-dir <dir>] [--harness claude|codex|opencode] [--mirror <dir>] [--origin <url>] [--provider-upstream <url> --provider-hosts <h,h> --provider-key <name>] [--once]", flags: "host= root= state-dir= harness= work-clone= mirror= origin= coordinator-hosts= provider-upstream= provider-hosts= provider-key= once", max: 0, run: runWorker,
 			about: "a bench's runner (nova-worker): hooks its row, takes what is dealt, runs it, reports"},
-		{name: "dash", group: "operate", usage: "--listen <addr> [--pull <tailnet url>]", flags: "listen= pull=", max: 0, run: runDash,
+		{name: "dash", group: "operate", usage: "--listen <addr> [--pull <url>]", flags: "listen= pull=", max: 0, run: runDash,
 			about: "serves the board from the store, or a pulled copy of run's on a public host"},
 		{name: "stop", group: "operate", role: roleCoordinator, usage: "--reason <why>", flags: "reason=", max: 0, run: runStop,
 			about: "stops the tick: nothing is dealt, read or landed until start; verbs still work"},

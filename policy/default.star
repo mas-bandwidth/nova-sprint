@@ -96,10 +96,10 @@ def prices():
 
 def catalog():
     # The models rows may name, by provider, each with the tier it serves, and
-    # the harnesses. The tier map is Glenn's, on Hacker News, 2026-11-05:
-    # "1. flash - deepseek flash 4.1 / luna / haiku; 2. pro - mercury 3 / terra
+    # the harnesses. The tier map is the human's (2026-11-05):
+    # 1. flash - deepseek flash 4.1 / luna / haiku; 2. pro - mercury 3 / terra
     # / sonnet; 3. heavy - opus 5.5 / sol; 4. frontier - fable 5.1 / astra /
-    # argon". The providers are the coordinator's mapping (2026-11-06): openai
+    # argon. The providers are the coordinator's mapping (2026-11-06): openai
     # and google are guesses, astra's provider is unknown (a guess). Harnesses:
     # LAYER-4 "Adapters", api being the API-rate adapter.
     return {

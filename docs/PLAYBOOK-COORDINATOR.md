@@ -50,7 +50,7 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    command for the first. `JUDGEMENTS none` means nothing waits on you.
 6. Look at the sprint: `nova-sprint show run` (the run loop, its host, its last tick) and
    `nova-sprint show <s>` for each stream (its producers by state, its landing rung, what is
-   stuck and why). Open the dashboard on the tailnet address `up` printed.
+   stuck and why). Open the dashboard at the address `up` printed.
 7. Account for every row expected to work. `nova-bus who` lists the names whose hook is running;
    `nova-sprint show <row>` shows a row's state (up or down), its hold, its width and the cards
    it holds. Up, down and held are separate facts: a configured row is not a present one, and a
@@ -77,7 +77,7 @@ present or has a named reason (held, away, broken) that you are repairing.
    or lands; decide whether more is needed.
 5. `ANSWERED judgement=<j> by=<actor> choice=<c>`: someone else answered; nothing to run.
 6. A deal or a read ask for your own row: the worker playbook.
-7. A message from a kin, usually "stuck" with evidence: section 6.
+7. A message from a friend row, usually "stuck" with evidence: section 6.
 
 What each judgement kind asks of you, and where to look before you choose:
 
@@ -98,8 +98,8 @@ What each judgement kind asks of you, and where to look before you choose:
 - `flap`: a row went up and down past the limit; find whose hook is flapping, ours or the row's.
 - `brief`: the same finding came back twice; the brief is wrong (section 4).
 - `policy` or `engine`: a policy version failed (its fallback is already in force), or a planned
-  move was refused on fresh state, which is a defect in the sprint: put it on the owed list
-  (section 11) and answer it.
+  move was refused on fresh state, which is a defect in the sprint: take it to the project's own tracker (section 11)
+  and answer it.
 - `landed-sentinel`: a release gate or phase mark was reached; act on what it gates.
 
 ## 3. Ongoing custody: prove the work is moving
@@ -112,12 +112,12 @@ doing, and the exact blocker when nothing can start.
    that has been `working` long, ask its holder on the bus for the card and gen, the branch head,
    the file or gate in hand, and the command running; check what they say against `show <id>`.
    Never say every row is busy without this check.
-2. Keep custody before you move a card. Read its owner, gen, pushed head and gates before you
+2. Keep custody before you move a card. Read its holder, gen, pushed head and gates before you
    release, drop or re-deal it, and preserve every pushed head and its evidence. A quiet row is
    not a stalled one: classify the stall first.
 3. Check the brief as well as the worker. A brief that passed the lint may still forbid a file or
    a gate its own result needs; fix it in place (section 4) before another attempt. A real
-   design question is a hold and a question to Glenn, never guessed implementation work.
+   design question is a hold and a question to the human, never guessed implementation work.
 4. Inspect each waiting card's effective wait with `show <id>`: its needs, a sentinel, a held
    stream, a path overlap with a started card of its stream. `after` orders landing only and
    never keeps a card from starting. Remove only a wait that is not true (a need written for
@@ -155,10 +155,8 @@ named it:
      is a defect (step 4).
    - `merging`: the stream's rung and stuck column in `nova-sprint show <s>`, and a `red`,
      `conflict`, `base-red` or `stall` judgement.
-4. If none of these explains it, the sprint has a defect: put it on the owed list with what
-   `show` printed (section 11) and tell Glenn. The owed list is nova-sprint's own roadmap,
-   `docs/roadmap.sexp` in the nova-sprint repository, edited with the roadmap tooling, never a
-   sprint card.
+4. If none of these explains it, the sprint has a defect: take it to the project's own tracker with what
+   `show` printed (section 11) and tell the human.
 
 ## 4. Card quality: the contract in one page
 
@@ -189,7 +187,7 @@ The card id is the file's name without `.md`. A brief is:
    base, tells the worker to run the whole package of every file it touches, and names a landed
    worked example for every piece after the first.
 
-A new stream comes first: `nova-sprint stream add <s> --repo <owner/name> [--base main]
+A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base main]
 [--mode auto|group|hand] [--forge github]` prints `STREAM <s> repo=... base=... mode=...
 forge=... applied at seq <n>`; give `--forge github` when the repo requires PRs and CI, and only
 then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either later). Add cards
@@ -206,7 +204,7 @@ the correction to the holder on the bus, or release the card first.
 
 **Priorities.** The ladder, lowest to highest, is low, normal, high, read, critical, blocker.
 `read` is the rung every read occupies; it is never set on a card. Levels are set by request
-only: set one when Glenn or the card's owner asks, never on your own judgement, and never raised
+only: set one when the human or the card's requester asks, never on your own judgement, and never raised
 by a rule. `nova-sprint priority <id> <level> --reason "<who asked, and why>"` prints
 `PRIORITY <id> <level>`. A blocker preempts at once: with no room on a serving row, the youngest
 working card there is withdrawn (its branch kept, its score kept) and the blocker dealt. Priority
@@ -235,7 +233,7 @@ moved is met by re-merging the batch once, never by sending cards back to rebase
 **Known base reds.** When the base itself is red there is one `base-red` judgement for the base,
 not one per stream. A queued head that fixes the red lands first; the base is re-gated; the
 third failure stops the stream that met it; when the tip is green every stream stopped only on
-that red resumes by itself. Fix the base with a card (section 4) at blocker if Glenn asks, and
+that red resumes by itself. Fix the base with a card (section 4) at blocker if the human asks, and
 let the rule resume the streams. A failure two workers reproduce at the base gets one repair
 card, and every worker cites it as pre-existing. Never fast-forward the base by hand, and never
 resolve a conflict on a card's branch, which no reader has read.
@@ -244,12 +242,12 @@ resolve a conflict on a card's branch, which no reader has read.
 
 1. The tick asks every read a finished head needs at once, to distinct rows, none the author, on
    a model other than the author's when one is present. You do not ask reads, and you do not
-   hand-read unless no row can (a `cannot-read` judgement) or the card is urgent and Glenn says.
+   hand-read unless no row can (a `cannot-read` judgement) or the card is urgent and the human says so.
 2. A fix goes back by rule with the prior head and the finding, at the head of its queue. You see
    only what needs a mind: a `blocked` card, the same finding twice (`brief`), a land-rate under
    target.
 3. The same finding twice means the brief is wrong, not the worker: fix the brief with `edit`
-   before another attempt. A third time, stop and take it to Glenn with the evidence.
+   before another attempt. A third time, stop and take it to the human with the evidence.
 4. When a row's first-time land rate falls under target, read its failed cards with `show <id>`
    and put each failure under one cause: an unmet DONE-WHEN, a file outside PATHS, a not-done
    head finished as ok, a red taken on an overloaded bench, or a wrong brief. Tell the row on the
@@ -264,16 +262,16 @@ resolve a conflict on a card's branch, which no reader has read.
 ## 7. Running rows: friends and the fleet
 
 1. A bench worker is installed by `up` through nova-fleet on every bench in the inventory and
-   hooks itself in; a kin hooks in by the worker playbook. There is no `row add`: a worker row
+   hooks itself in; a friend row hooks in by the worker playbook. There is no `row add`: a worker row
    exists because nova-config lists the machine (role bench; width is its cores capped by policy),
    a friend row because nova-config lists the friend (`nova-config friend add <name> --harness <h>
    --width <n> --tiers <a,b>`); the sprint's own row state (session, role, held) is written only by
    `hook`, `unhook`, `hold` and `unhold`. Change a width or a tier in nova-config; the sprint sees it
    on the next tick.
 2. To bring a row up: a bench whose worker is down comes back with `nova-sprint up --as <you>`,
-   which re-verifies every bench's worker (setup step 7) and restarts the ones that fail. A kin
+   which re-verifies every bench's worker (setup step 7) and restarts the ones that fail. A friend row
    is invited on the bus, once, with the bus address and these two commands:
-   `nova-bus send --as <you> --to <kin> --new "join the sprint" "<the two hook-in commands>"`.
+   `nova-bus send --as <you> --to <friend> --new "join the sprint" "<the two hook-in commands>"`.
 3. Width is the number of cards a row works at once; set it from demonstrated capacity, never
    from how many cards it was dealt. A row holding many cards with few running is a hidden
    bottleneck: ask what is actually running (section 3).
@@ -286,7 +284,7 @@ resolve a conflict on a card's branch, which no reader has read.
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
    prints `HOLD applied`. A hold changes future deals only: it never takes back live work and
    never stops landing. `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
-6. Coach for first-pass acceptance. For a kin's first card, or when attempts repeat, follow one
+6. Coach for first-pass acceptance. For a friend row's first card, or when attempts repeat, follow one
    card end to end: the brief, the base, the branch, the first edit, the gates, the finish.
    Classify a failure as tool or version, access or route, brief or scope, gate or bench, report,
    or source, and fix the system or brief cause before the next attempt.
@@ -298,10 +296,10 @@ resolve a conflict on a card's branch, which no reader has read.
 
 Policy is how the rules change while the sprint runs: the order inside a level, which rows take a
 card, how many reads, the verdict, widths at or below config, limits, the landing rung, timeouts,
-the stitch, prices. It is a Starlark file; you change it only when Glenn asks.
+the stitch, prices. It is a Starlark file; you change it only when the human asks.
 
 1. `nova-sprint policy check <file>` prints every answer that would change and every refusal.
-2. `nova-sprint policy set <file> --reason "<Glenn's ask>"` prints `POLICY SET v<n>` and
+2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY SET v<n>` and
    `next: nova-sprint policy check v<n>`.
 3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> answers-changed=<k>`.
 4. A rollback is `policy activate` of an older version; `policy show --list` and `policy diff`
@@ -317,20 +315,20 @@ the stitch, prices. It is a Starlark file; you change it only when Glenn asks.
    needs, which `check` enforces.
 3. `nova-sprint backup` prints `BACKUP <file> epoch=<e> seq=<n> verified`.
 4. A clear ends the epoch: `nova-sprint clear --confirm <e> --dry-run` lists the cards it ends;
-   it takes a verified backup first. Clear only when Glenn asks.
+   it takes a verified backup first. Clear only when the human asks.
 
 ## 10. The daily shape
 
 1. Start with section 1. Then wait for the bus.
 2. Each push: run its command, or decide and answer it. Answer a judgement in the same turn the
    push wakes you; never let one sit because you meant to come back.
-3. Write and add cards as Glenn sets the work: lint, add, and let the deal take them.
+3. Write and add cards as the human sets the work: lint, add, and let the deal take them.
 4. Work your own row's cards by the worker playbook between pushes.
 5. When a stream lands, `show <s> --stitch` gives the diff range, each card's row and model, and
-   every reader's findings: the material for the stitch pass, which is done by hand with Glenn
+   every reader's findings: the material for the stitch pass, which is done by hand with the human
    over the bus, outside the sprint.
-6. Tell Glenn what landed in producer cards only; reads are machinery. Quote his words as his,
-   and mark what is your inference.
+6. Tell the human what landed in producer cards only; reads are machinery. Quote the human's
+   words as theirs, and mark what is your inference.
 
 ## 11. What the coordinator never does
 
@@ -344,20 +342,22 @@ the stitch, prices. It is a Starlark file; you change it only when Glenn asks.
 5. Never take, finish or read another row's card, and never finish a card from someone's
    description of it.
 6. Never work round a refusal, and never weaken or remove a gate marked DO NOT REMOVE (the
-   hooked-before-acting refusal, the one-chooser lock) without Glenn.
-7. Never fix the sprint inside the sprint. A nova-sprint bug found while running a sprint goes on
-   the owed list and is fixed outside it, never as a card and never with a side loop.
+   hooked-before-acting refusal, the one-chooser lock) without the human.
+7. Never fix the sprint inside the sprint. A defect in nova-sprint itself, found while running a sprint, goes to the project's own
+   tracker, whatever that is, with the exact refusal, and is fixed outside the sprint, never as a
+   card and never with a side loop. A worker reports one to you in one bus line with the exact
+   refusal.
 8. Never print, paste or pass a secret on a command line.
-9. Never re-propose a standing rule as a change needing Glenn's word: apply it.
+9. Never re-propose a standing rule as a change needing the human's word: apply it.
 
 ## 12. When you are stuck
 
 1. Look: `nova-sprint next --as <you>`, `nova-sprint judge --as <you>`, `nova-sprint show <id>`.
 2. Count, do not feel: the same problem in another form, the third time in one area, or no more
-   reliable by measurement than three fixes ago means stop and tell Glenn "I am stuck", with the
+   reliable by measurement than three fixes ago means stop and tell the human "I am stuck", with the
    evidence and the attempts written down.
-3. A refusal you believe is wrong is a nova-sprint bug: put it on the owed list with the exact
-   line, and tell Glenn; do not route round it.
-4. A design question (a customer, a ruling, hardware) is Glenn's: leave the card's judgement open
-   (a `blocked` card waits for you by design), ask him with the question named, and answer the
-   judgement with his ruling.
+3. A refusal you believe is wrong is a nova-sprint bug: take it to the project's own tracker with the exact
+   line, and tell the human; do not route round it.
+4. A design question (a customer, a ruling, hardware) is the human's: leave the card's judgement open
+   (a `blocked` card waits for you by design), ask the human with the question named, and answer the
+   judgement with the human's ruling.

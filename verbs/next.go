@@ -210,7 +210,7 @@ func stepOf(c store.Card, row string, epoch int) string {
 // empty stream, everything landed, or waiting.
 func streamsAnswer(s store.Snapshot) (string, string) {
 	if len(s.Streams) == 0 {
-		return "no stream exists", "nova-sprint stream add <name> --repo <owner/name>"
+		return "no stream exists", "nova-sprint stream add <name> --repo <org/repo>"
 	}
 	count, open := map[string]int{}, 0
 	for _, c := range s.Cards {

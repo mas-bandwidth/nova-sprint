@@ -25,7 +25,7 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	case !validName(name):
 		return "", misuse("stream add", "a stream's name is 1 to 128 of a-z A-Z 0-9 . _ -")
 	case repo == "":
-		return "", misuse("stream add", "stream add names its repository: --repo <owner/name>")
+		return "", misuse("stream add", "stream add names its repository: --repo <org/repo>")
 	}
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
@@ -68,7 +68,7 @@ func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	name := in.arg(0)
 	s, ok := snap.Streams[name]
 	if !ok {
-		return "", refuse("no stream "+name, "nova-sprint stream add "+name+" --repo <owner/name>")
+		return "", refuse("no stream "+name, "nova-sprint stream add "+name+" --repo <org/repo>")
 	}
 	if !in.has("mode") && !in.has("forge") {
 		return "", misuse("stream set", "stream set changes --mode, --forge, or both")
