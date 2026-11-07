@@ -65,7 +65,7 @@ func checkOrder(v starlark.Value) ([]any, string) {
 // the card's tier, never empty while a candidate exists, no name twice. It
 // stops at the first refusal, so it reads at most one more name than there
 // are candidates, however long the answer.
-func checkRows(v starlark.Value, c store.Card, set *candidateSet, rows map[string]store.Row) ([]string, string) {
+func checkRows(v starlark.Value, c store.Card, set *candidateSet, rows map[string]rostered) ([]string, string) {
 	var l starlark.Indexable
 	switch x := v.(type) {
 	case *starlark.List:
@@ -88,8 +88,8 @@ func checkRows(v starlark.Value, c store.Card, set *candidateSet, rows map[strin
 		at, candidate := set.names[n]
 		r, known := rows[n]
 		switch {
-		case known && rung(Rank(r)) < rung(c.Tier):
-			return nil, refuse("row %s has rank %s, below the card's tier %s", cut(n, 64), cmp.Or(Rank(r), "none"), c.Tier)
+		case known && rung(Rank(r.tiers)) < rung(c.Tier):
+			return nil, refuse("row %s has rank %s, below the card's tier %s", cut(n, 64), cmp.Or(Rank(r.tiers), "none"), c.Tier)
 		case !candidate:
 			return nil, refuse("row %s is not a candidate (the candidates: %s)", cut(n, 64), cut(cmp.Or(rowNames(set.rows), "none"), maxQuestion/2))
 		case seen[at]:
@@ -101,7 +101,7 @@ func checkRows(v starlark.Value, c store.Card, set *candidateSet, rows map[strin
 	return names, ""
 }
 
-func rowNames(rs []store.Row) string {
+func rowNames(rs []rostered) string {
 	names := make([]string, len(rs))
 	for i, r := range rs {
 		names[i] = r.Name

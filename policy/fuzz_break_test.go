@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -41,10 +42,7 @@ func fuzzSeedWrites() []store.Write {
 	writes := []store.Write{
 		store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1},
 		store.PutStream{Name: "s2", Repo: "git@example.com:r.git", Base: "main", Pos: 2},
-		store.PutRow{Name: "r1", Kind: "worker", Width: 2, Tiers: []string{"flash", "pro", "heavy"}, Model: "m-heavy"},
-		store.PutRow{Name: "r2", Kind: "worker", Width: 1, Tiers: []string{"flash"}, Model: "m-flash"},
-		store.PutRow{Name: "r3", Kind: "kin", Width: 1, Tiers: []string{"frontier"}, Model: "m-frontier"},
-		store.PutRow{Name: "r4", Kind: "worker", Width: 1, Tiers: []string{"pro"}, Model: "m-pro"},
+		store.PutRow{Name: "r1"}, store.PutRow{Name: "r2"}, store.PutRow{Name: "r3"}, store.PutRow{Name: "r4"}, // configured by seedRoster
 	}
 	for _, p := range [][2]string{{"p1", "pro"}, {"p2", "heavy"}, {"p3", "flash"}, {"p4", "pro"}, {"p5", "pro"}} {
 		stream := map[bool]string{true: "s2", false: "s1"}[p[0] == "p3" || p[0] == "p4"]
@@ -87,21 +85,24 @@ func fuzzSeedStore() (store.Store, error) {
 	return st, nil
 }
 
-// fuzzBigSnapshot is TestFunctionalLoad's snapshot: the largest the suite builds.
-func fuzzBigSnapshot() store.Snapshot {
+// fuzzBigSnapshot is TestFunctionalLoad's snapshot, the largest the suite
+// builds, and its roster.
+func fuzzBigSnapshot() (store.Snapshot, roster.Roster) {
+	ro := handRoster()
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{}, Cards: map[string]store.Card{}, Rows: map[string]store.Row{}}
 	for i := range 10 {
 		snap.Streams[fmt.Sprintf("s%d", i)] = store.Stream{Name: fmt.Sprintf("s%d", i)}
 	}
 	for i := range 50 {
 		name := fmt.Sprintf("r%02d", i)
-		snap.Rows[name] = store.Row{Name: name, Kind: "worker", Width: 2, State: "up", Tiers: store.Tiers[i%4:]}
+		snap.Rows[name] = store.Row{Name: name, State: "up"}
+		ro.Workers[name] = roster.Worker{Name: name, Width: 2, Tiers: store.Tiers[i%4:], Harness: roster.WorkerHarness}
 	}
 	for i := range 5000 {
 		id := fmt.Sprintf("p%04d", i)
 		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: fmt.Sprintf("s%d", i%10), State: "ready", Tier: store.Tiers[i%4], Score: i, Priority: "normal"}
 	}
-	return snap
+	return snap, ro
 }
 
 // ---- mutations ----
@@ -285,18 +286,18 @@ func mutateDict(rng *rand.Rand, body string, lines []string, defs []fdef) (strin
 
 // outOfDomain names the first answer, of those the validator passes, that is
 // outside its domain against snap, or "" when every answer is in domain.
-func outOfDomain(a Answers, snap store.Snapshot) string {
+func outOfDomain(a Answers, snap store.Snapshot, ro roster.Roster) string {
 	for name, w := range a.Width {
-		r := snap.Rows[name]
-		if w.Work < 0 || w.Work > r.Width || w.Ahead < 0 || w.Ahead > 4*r.Width {
+		r, _ := rosterOf(ro, snap.Rows[name])
+		if w.Work < 0 || w.Work > r.width || w.Ahead < 0 || w.Ahead > 4*r.width {
 			return fmt.Sprintf("width(%s) = %+v", name, w)
 		}
 	}
 	for q, names := range a.Rows {
 		c := snap.Cards[q.Card]
 		for _, n := range names {
-			r := snap.Rows[n]
-			if !slices.Contains(r.Tiers, c.Tier) || r.State != "up" || r.Held {
+			r, _ := rosterOf(ro, snap.Rows[n])
+			if !slices.Contains(r.tiers, c.Tier) || r.State != "up" || r.Held {
 				return fmt.Sprintf("rows(%s %s) names %s", q.Card, q.Kind, n)
 			}
 		}
@@ -397,7 +398,7 @@ func classify(dir string, idx int, body string, res fuzzResult) fuzzResult {
 		res.class, res.msg = "harness-error", err.Error()
 		return res
 	}
-	r, err := Set(ctx, st, NewEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(2 * time.Hour)}, path, "fuzz")
+	r, err := Set(ctx, st, seedRoster(), NewEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(2 * time.Hour)}, path, "fuzz")
 	if err != nil {
 		var rf *Refusal
 		if !errors.As(err, &rf) {
@@ -415,15 +416,15 @@ func classify(dir string, idx int, body string, res fuzzResult) fuzzResult {
 		}
 		return res
 	}
-	big := fuzzBigSnapshot()
-	a, fs := NewEngine().Answer(Versions{Active: pv(r.Version, body)}, big, FullQuestions(big, nil))
+	big, ro := fuzzBigSnapshot()
+	a, fs := NewEngine().Answer(Versions{Active: pv(r.Version, body)}, big, ro, FullQuestions(big, nil))
 	switch {
 	case len(fs) > 0:
 		res.class, res.msg = "accepted-then-fails", fs[0].Error()
 	case a.Version != r.Version:
 		res.class, res.msg = "accepted-then-fails", fmt.Sprintf("answered by version %d", a.Version)
 	default:
-		if v := outOfDomain(a, big); v != "" {
+		if v := outOfDomain(a, big, ro); v != "" {
 			res.class, res.msg = "out-of-domain", v
 		} else {
 			res.class = "stored-in-domain"
@@ -462,10 +463,10 @@ func TestFuzzPolicyReplay(t *testing.T) {
 		r := runOne(dir, i, jobs[i].body, jobs[i].ops)
 		t.Logf("file %d serial: %s %s", i, r.class, r.msg)
 	}
-	big := fuzzBigSnapshot()
+	big, ro := fuzzBigSnapshot()
 	for k := 0; k < 3; k++ {
 		start := time.Now()
-		_, fs := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, FullQuestions(big, nil))
+		_, fs := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, ro, FullQuestions(big, nil))
 		t.Logf("default cold tick %d: %s, refusals %d", k, time.Since(start), len(fs))
 	}
 }
@@ -530,7 +531,7 @@ func setMissing(t *testing.T) *Refusal {
 	if err := os.WriteFile(path, []byte(fuzzWithoutDef("limits")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Set(context.Background(), st, NewEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(time.Hour)}, path, "fuzz")
+	_, err = Set(context.Background(), st, seedRoster(), NewEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(time.Hour)}, path, "fuzz")
 	var rf *Refusal
 	if !errors.As(err, &rf) {
 		t.Fatalf("want a refusal, got %v", err)
@@ -565,7 +566,7 @@ func TestFuzzPolicyRefusalNamesLine(t *testing.T) {
 // largest snapshot must fit TickTime while the machine is busy. Eight ticks at
 // once (the fuzz's own parallelism) on the default: none may fail.
 func TestFuzzPolicyDefaultTickUnderLoad(t *testing.T) {
-	big := fuzzBigSnapshot()
+	big, ro := fuzzBigSnapshot()
 	var wg sync.WaitGroup
 	errs := make(chan string, 8)
 	for range 8 {
@@ -573,7 +574,7 @@ func TestFuzzPolicyDefaultTickUnderLoad(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			start := time.Now()
-			_, fs := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, FullQuestions(big, nil))
+			_, fs := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, ro, FullQuestions(big, nil))
 			if len(fs) > 0 {
 				errs <- fmt.Sprintf("%s (after %s)", fs[0].Error(), time.Since(start))
 			}

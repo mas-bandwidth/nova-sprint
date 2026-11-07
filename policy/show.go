@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -40,7 +41,8 @@ func (r Report) Code() int { return min(len(r.Refusals), 1) }
 // Check runs a file, a stored version (7 or v7) or default on the current
 // snapshot against the active version. Read-only. A file's refusals name
 // the file (it has no version yet); a stored version's name the version.
-func Check(ctx context.Context, st store.Store, e *Engine, target string) (Report, error) {
+// ro is the roster the snapshot is read with (AnswerContext).
+func Check(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, target string) (Report, error) {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
 		return Report{}, err
@@ -52,14 +54,14 @@ func Check(ctx context.Context, st store.Store, e *Engine, target string) (Repor
 				return Report{}, err
 			}
 		}
-		return check(ctx, st, e, snap, pv)
+		return check(ctx, st, ro, e, snap, pv)
 	}
 	name, body, r := readFile("check", target)
 	if r != nil {
 		return Report{}, r
 	}
-	a, fs := e.checkRun(ctx, source{label: name, body: body}, snap)
-	return e.report(ctx, st, snap, name, a, fs)
+	a, fs := e.checkRun(ctx, source{label: name, body: body}, snap, ro)
+	return e.report(ctx, st, snap, ro, name, a, fs)
 }
 
 // versionArg reads 7, v7 or default (0).
@@ -71,28 +73,28 @@ func versionArg(s string) (int, bool) {
 	return n, err == nil && n > 0
 }
 
-func check(ctx context.Context, st store.Store, e *Engine, snap store.Snapshot, pv store.PolicyVersion) (Report, error) {
-	a, fs := e.checkRun(ctx, storedSource(pv.Version, pv.Body), snap)
-	return e.report(ctx, st, snap, Label(pv.Version), a, fs)
+func check(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, snap store.Snapshot, pv store.PolicyVersion) (Report, error) {
+	a, fs := e.checkRun(ctx, storedSource(pv.Version, pv.Body), snap, ro)
+	return e.report(ctx, st, snap, ro, Label(pv.Version), a, fs)
 }
 
 // runFile runs an unstored file (never cached) on snap, labelled by its name.
-func (e *Engine) runFile(name, body string, snap store.Snapshot) (Answers, []Failure) {
-	return e.checkRun(context.Background(), source{label: name, body: body}, snap)
+func (e *Engine) runFile(name, body string, snap store.Snapshot, ro roster.Roster) (Answers, []Failure) {
+	return e.checkRun(context.Background(), source{label: name, body: body}, snap, ro)
 }
 
 // checkRun runs src on every question snap poses, under a tick's deadline,
 // collecting every failure and the answers' text; nothing is cached.
-func (e *Engine) checkRun(ctx context.Context, src source, snap store.Snapshot) (Answers, []Failure) {
+func (e *Engine) checkRun(ctx context.Context, src source, snap store.Snapshot, ro roster.Roster) (Answers, []Failure) {
 	ctx, cancel := context.WithTimeout(ctx, TickTime)
 	defer cancel()
-	asks := newIndex(snap).asks(ctx, FullQuestions(snap, nil))
+	asks := newIndex(snap, ro).asks(ctx, FullQuestions(snap, nil))
 	o := e.start(ctx, src, asks, true).await(nil, func() {})
 	return o.a, o.fs
 }
 
 // report compares a run's answers with the active version's on snap.
-func (e *Engine) report(ctx context.Context, st store.Store, snap store.Snapshot, label string, a Answers, fs []Failure) (Report, error) {
+func (e *Engine) report(ctx context.Context, st store.Store, snap store.Snapshot, ro roster.Roster, label string, a Answers, fs []Failure) (Report, error) {
 	r := Report{Label: label}
 	for _, f := range fs {
 		r.Refusals = append(r.Refusals, f.Error())
@@ -104,7 +106,7 @@ func (e *Engine) report(ctx context.Context, st store.Store, snap store.Snapshot
 			return r, err
 		}
 	}
-	was, _ := e.checkRun(ctx, storedSource(active.Version, active.Body), snap) // ignored: the active's own refusals are not this report's
+	was, _ := e.checkRun(ctx, storedSource(active.Version, active.Body), snap, ro) // ignored: the active's own refusals are not this report's
 	for _, k := range slices.Sorted(maps.Keys(a.shown)) {
 		if old, ok := was.shown[k]; !ok || old != a.shown[k] {
 			r.Changes = append(r.Changes, fmt.Sprintf("%s: %s -> %s", k, cmp.Or(old, "(refused)"), a.shown[k]))

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -65,8 +66,9 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 }
 
 // Set compiles the file, checks its names and arity, runs it on the current
-// snapshot, and stores it as the next version, not active (tla/Policy.tla Set).
-func Set(ctx context.Context, st store.Store, e *Engine, c Caller, path, reason string) (Result, error) {
+// snapshot read with ro, and stores it as the next version, not active
+// (tla/Policy.tla Set).
+func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Caller, path, reason string) (Result, error) {
 	no := func(what, fix string) (Result, error) { return Result{}, &Refusal{"set", what, fix} }
 	if r := coordinator("set", c, reason); r != nil {
 		return Result{}, r
@@ -86,7 +88,7 @@ func Set(ctx context.Context, st store.Store, e *Engine, c Caller, path, reason 
 	if i := slices.IndexFunc(all, func(v store.PolicyVersion) bool { return v.Body == body }); i >= 0 {
 		return no(fmt.Sprintf("v%d has this body", all[i].Version), fmt.Sprintf("nova-sprint policy activate %d", all[i].Version))
 	}
-	if _, fs := e.runFile(name, body, snap); len(fs) > 0 {
+	if _, fs := e.runFile(name, body, snap, ro); len(fs) > 0 {
 		return no(fs[0].Error(), "nova-sprint policy check "+path)
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: reason,
@@ -98,11 +100,11 @@ func Set(ctx context.Context, st store.Store, e *Engine, c Caller, path, reason 
 	return Result{}, err
 }
 
-// Activate re-runs check on the current snapshot, then in one op moves the
+// Activate re-runs check on the current snapshot (read with ro), then in one op moves the
 // active flag to v and answers the open policy judgements of the old
 // version and of v (v now runs clean). It writes no card (tla/Policy.tla
 // Activate, ActivateMovesNoCard).
-func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, reason string) (Result, error) {
+func Activate(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Caller, v int, reason string) (Result, error) {
 	no := func(what, fix string) (Result, error) { return Result{}, &Refusal{"activate", what, fix} }
 	if r := coordinator("activate", c, reason); r != nil {
 		return Result{}, r
@@ -118,7 +120,7 @@ func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, r
 	if err != nil {
 		return Result{}, err
 	}
-	rep, err := check(ctx, st, e, snap, pv)
+	rep, err := check(ctx, st, ro, e, snap, pv)
 	if err != nil {
 		return Result{}, err
 	}
