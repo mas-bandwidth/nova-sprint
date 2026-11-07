@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
@@ -77,7 +78,7 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 		keys = append(keys, "NOVA_BUS_PASSWORD")
 	}
 	runDSN, _ := setupRoleDSN(cfg.DSN, "nova_sprint")
-	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st}
+	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 
@@ -94,6 +95,7 @@ type productionSetup struct {
 	command   verbs.CommandOutput
 	installer publicInstaller
 	resolve   func(context.Context, string) ([]netip.Addr, error) // nil: the system resolver (MagicDNS)
+	home      string                                              // "": the home directory (where this machine's services find nova-sprint)
 }
 
 func (p productionSetup) forInput(in verbs.SetupInput) verbs.RuntimeSetup {
@@ -138,13 +140,22 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 		if err != nil {
 			return verbs.SetupCheck{}, err
 		}
+		if step == 4 {
+			ready, err := p.ensureServiceVersion(ctx, r.RunService.Machine, false)
+			if err != nil {
+				return verbs.SetupCheck{}, err
+			}
+			if !ready {
+				return verbs.SetupCheck{Action: true}, nil
+			}
+		}
 		if step == 5 {
 			value, found, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
 			if err != nil {
 				return verbs.SetupCheck{}, err
 			}
 			if !found && in.Dash == "" && value == "" {
-				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a host with a public IP?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>"}, nil
+				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
 			}
 			ready, err := p.ensurePublicVersion(ctx, r, in, false)
 			if err != nil {
@@ -174,6 +185,11 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 		r, err := p.configuredRuntime(ctx, in, step >= 5)
 		if err != nil {
 			return err
+		}
+		if step == 4 {
+			if _, err = p.ensureServiceVersion(ctx, r.RunService.Machine, true); err != nil {
+				return err
+			}
 		}
 		if step == 5 {
 			if _, err = p.ensurePublicVersion(ctx, r, in, true); err != nil {
@@ -337,10 +353,7 @@ func (p productionSetup) writeHandoffChild(ctx context.Context, request handoffE
 	err = verbs.OutputWith(cmd, &buf)
 	out := buf.Bytes()
 	if err != nil {
-		if r := verbs.AsRefusal(err); r != nil {
-			return "", r
-		}
-		return "", fmt.Errorf("continuation could not be saved: %w", err)
+		return "", fmt.Errorf("continuation could not be saved%s", verbs.ToolDetail(err))
 	}
 	if len(out) > 128 {
 		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output longer than 128 bytes", 128, out))
@@ -373,20 +386,20 @@ func (p productionSetup) ValidateHandoff(ctx context.Context, id string, in verb
 	}
 	digest, err := handoffDigest(in)
 	if err != nil {
-		return handoffRefusal(edge.RedactN(err.Error(), edge.CommandMax))
+		return handoffRefusal(edge.Redact(err.Error()))
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return handoffRefusal(edge.RedactN(err.Error(), edge.CommandMax))
+		return handoffRefusal(edge.Redact(err.Error()))
 	}
 	pg, err := store.Open(ctx, dsn, p.cfg.SprintPassword)
 	if err != nil {
-		return handoffRefusal("open store: " + edge.RedactN(err.Error(), edge.CommandMax))
+		return handoffRefusal("open store: " + edge.Redact(err.Error()))
 	}
 	defer pg.Close()
 	identity, err := pg.Schema(ctx)
 	if err != nil {
-		return handoffRefusal("schema: " + edge.RedactN(err.Error(), edge.CommandMax))
+		return handoffRefusal("schema: " + edge.Redact(err.Error()))
 	}
 	if !identity.Current || identity.Owner != "nova_sprint" {
 		return handoffRefusal(fmt.Sprintf("schema current %t, owner %q, want current and nova_sprint", identity.Current, identity.Owner))
@@ -396,12 +409,12 @@ func (p productionSetup) ValidateHandoff(ctx context.Context, id string, in verb
 func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, digest string) error {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
-		return handoffRefusal("snapshot: " + edge.RedactN(err.Error(), edge.CommandMax))
+		return handoffRefusal("snapshot: " + edge.Redact(err.Error()))
 	}
 	record, found, err := findSetupContinuation(ctx, st, snap, id)
 	switch {
 	case err != nil:
-		return handoffRefusal(edge.RedactN(err.Error(), edge.CommandMax))
+		return handoffRefusal(edge.Redact(err.Error()))
 	case !found:
 		return handoffRefusal("no continuation recorded with this id")
 	case record.Version != 1 || record.Epoch != snap.Epoch:
@@ -414,7 +427,7 @@ func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, diges
 	return nil
 }
 func handoffRefusal(why string) error {
-	return &verbs.OperationError{Problem: edge.RedactN("setup continuation is invalid or stale: "+why, edge.CommandMax), Fix: "run nova-sprint up again", Exit: 1}
+	return &verbs.OperationError{Problem: edge.RedactN("setup continuation is invalid or stale: "+why, edge.FailureMax), Fix: "run nova-sprint up again", Exit: 1}
 }
 
 // writeSetupContinuation is called in a sprint-secret child while the parent
@@ -571,14 +584,14 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	}
 	out, err := call(ctx, "nova-config", "service", "list", "--json")
 	if err != nil {
-		return nil, verbs.RefusalOr(err, serviceConfigError("cannot inspect fleet services: "+err.Error()))
+		return nil, serviceConfigFailure("cannot inspect fleet services: ", err)
 	}
 	if len(out) > 1<<20 {
 		return nil, serviceConfigError("cannot inspect fleet services: " + edge.ParseRefused("output longer than 1 MiB", 1<<20, out))
 	}
 	var response setupServicesResponse
 	if err := json.Unmarshal(out, &response); err != nil {
-		return nil, verbs.RefusalOr(err, serviceConfigError("fleet service response is invalid: "+edge.ParseFailure(err, out)))
+		return nil, serviceConfigError("fleet service response is invalid: " + edge.ParseFailure(err, out))
 	}
 	if response.Result.Verb != "service list" || response.Result.Status != "ok" || response.Result.Exit != 0 || response.Facts.Kind != "service" || response.Facts.Rows != len(response.Items) {
 		return nil, serviceConfigError(fmt.Sprintf("fleet service response is invalid: result %q %q exit %d, facts kind %q rows %d for %d items", response.Result.Verb, response.Result.Status, response.Result.Exit, response.Facts.Kind, response.Facts.Rows, len(response.Items)))
@@ -594,8 +607,19 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	}
 	return rows, nil
 }
+
+// serviceConfigFailure is err when it already is a refusal with its own
+// problem and fix (errors.As), else a service configuration refusal
+// carrying err's text after what.
+func serviceConfigFailure(what string, err error) error {
+	var op *verbs.OperationError
+	if errors.As(err, &op) {
+		return err
+	}
+	return serviceConfigError(what + err.Error())
+}
 func serviceConfigError(problem string) error {
-	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.CommandMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
+	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.FailureMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
 }
 func workloadUnavailable() error {
 	return &verbs.OperationError{Problem: "worker setup is unavailable in this build", Fix: "install a build with the verified worker setup adapter", Exit: 2}
@@ -617,7 +641,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	}
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return r, verbs.RefusalOr(err, serviceConfigError("cannot inspect machine inventory: "+err.Error()))
+		return r, serviceConfigFailure("cannot inspect machine inventory: ", err)
 	}
 	found := false
 	for _, machine := range machines {
@@ -721,7 +745,9 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 	if err != nil {
 		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("configured sprint DSN is invalid: "+err.Error()))
 	}
-	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis}
+	// run records the chooser lock under the machine's nova-config name,
+	// handed here, never under the raw hostname (run.ResolveMachine).
+	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis, run.MachineEnv: host}
 	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
 	if p.cfg.BusUser != "" {
 		env["NOVA_BUS_USER"] = p.cfg.BusUser
@@ -776,10 +802,18 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	}
 	target, ok := r.Dashboards[choice]
 	if !ok || target.Service == nil {
-		return false, serviceConfigError("public dashboard configuration unavailable")
+		return false, serviceConfigError(fmt.Sprintf("dashboard choice %q has no public service configured", choice))
 	}
-	host := target.Service.Machine
-	if err = p.checkPublicVersion(ctx, host); err == nil {
+	return p.ensureServiceVersion(ctx, target.Service.Machine, install)
+}
+
+// ensureServiceVersion is true when the nova-sprint a service on machine
+// will run is this binary's version. A probe that disagrees is (false,
+// nil) unless install, which installs this version through nova-fleet and
+// probes again; the probe's own refusal is returned when that fails too.
+func (p productionSetup) ensureServiceVersion(ctx context.Context, machine string, install bool) (bool, error) {
+	err := p.checkServiceVersion(ctx, machine)
+	if err == nil {
 		return true, nil
 	}
 	if ctx.Err() != nil {
@@ -788,56 +822,98 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	if !install {
 		return false, nil
 	}
-	if p.installer == nil {
+	if p.installer == nil || !publicRelease.MatchString(p.cfg.BinaryVersion) {
 		return false, err
 	}
-	if installErr := p.installer.Install(ctx, host, p.cfg.BinaryVersion); installErr != nil {
-		return false, verbs.RefusalOr(installErr, publicVersionRefusal(p.cfg.BinaryVersion, host, "install failed: "+installErr.Error()))
+	if installErr := p.installer.Install(ctx, machine, p.cfg.BinaryVersion); installErr != nil {
+		return false, serviceVersionRefusal(p.cfg.BinaryVersion, machine, "nova-fleet install on "+machine+" failed: "+installErr.Error())
 	}
-	if err = p.checkPublicVersion(ctx, host); err != nil {
+	if err = p.checkServiceVersion(ctx, machine); err != nil {
 		return false, err
 	}
 	return true, nil
 }
-func (p productionSetup) checkPublicVersion(ctx context.Context, host string) error {
+
+// serviceBinDir is where a service's bare nova-sprint is found first:
+// nova-fleet's nova_bin_dir, the head of every service unit's PATH and
+// where nova-fleet install puts a release.
+const serviceBinDir = ".local/bin"
+
+// checkServiceVersion is the one check that the nova-sprint a service on
+// machine will run (<home>/.local/bin/nova-sprint) is this binary's
+// version: run here when machine is this one, else over ssh to the
+// inventory's address for it; its output read by the version verb's own
+// parser (verbs.ParseVersionOutput).
+func (p productionSetup) checkServiceVersion(ctx context.Context, machine string) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	data, err := p.smallCommand(ctx, "nova-config", "inventory", "--host", host)
+	want := p.cfg.BinaryVersion
+	if want == "" {
+		return serviceVersionRefusal(want, machine, "this build has no version to compare")
+	}
+	var data []byte
+	var err error
+	destination := machine
+	if run.SameMachine(machine, p.cfg.Host) {
+		home := p.home
+		if home == "" {
+			home, err = os.UserHomeDir()
+			if err != nil {
+				return serviceVersionRefusal(want, machine, "home directory: "+err.Error())
+			}
+		}
+		binary := filepath.Join(home, serviceBinDir, "nova-sprint")
+		if data, err = p.smallCommand(ctx, binary, "version"); err != nil {
+			return serviceVersionRefusal(want, machine, binary+" version: "+err.Error())
+		}
+	} else {
+		if destination, err = p.sshDestination(ctx, machine); err != nil {
+			return serviceVersionRefusal(want, machine, err.Error())
+		}
+		data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "~/"+serviceBinDir+"/nova-sprint", "version")
+		if err != nil {
+			return serviceVersionRefusal(want, machine, "ssh "+destination+": "+err.Error())
+		}
+	}
+	seen, err := verbs.ParseVersionOutput(data)
+	if err != nil {
+		seen = fmt.Sprintf("%q (not a v2 nova-sprint)", strings.TrimSpace(edge.FirstBytes(data)))
+	}
+	if seen != want {
+		return serviceVersionRefusal(want, machine, destination+" reports "+seen+", this binary is "+want)
+	}
+	return nil
+}
+
+// sshDestination is the inventory's [user@]address for machine.
+func (p productionSetup) sshDestination(ctx context.Context, machine string) (string, error) {
+	data, err := p.smallCommand(ctx, "nova-config", "inventory", "--host", machine)
+	if err != nil {
+		return "", fmt.Errorf("nova-config inventory --host %s: %s", machine, err.Error())
+	}
 	var inventory struct {
 		Host string `json:"ansible_host"`
 		User string `json:"ansible_user"`
 	}
-	if err != nil {
-		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+err.Error()))
-	}
 	if err = json.Unmarshal(data, &inventory); err != nil {
-		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+edge.ParseFailure(err, data)))
+		return "", fmt.Errorf("nova-config inventory --host %s: %s", machine, edge.ParseFailure(err, data))
 	}
 	if !safeSSHName(inventory.Host) || (inventory.User != "" && (!safeSSHName(inventory.User) || strings.Contains(inventory.User, ":"))) {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("inventory ansible_host %q or ansible_user %q is not a safe ssh name", inventory.Host, inventory.User))
+		return "", fmt.Errorf("nova-config inventory --host %s: ansible_host %q or ansible_user %q is not a safe ssh name", machine, inventory.Host, inventory.User)
 	}
-	destination := inventory.Host
 	if inventory.User != "" {
-		destination = inventory.User + "@" + destination
+		return inventory.User + "@" + inventory.Host, nil
 	}
-	data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "nova-sprint", "version")
-	if err != nil {
-		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error()))
-	}
-	if p.cfg.BinaryVersion == "" {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, "this build has no version to compare")
-	}
-	remote, err := verbs.ParseVersionOutput(data)
-	if err != nil {
-		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error()))
-	}
-	if remote != p.cfg.BinaryVersion {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("it reports version %s, not %s", remote, p.cfg.BinaryVersion))
-	}
-	return nil
+	return inventory.Host, nil
 }
-func publicVersionRefusal(version, host, why string) error {
-	return &verbs.OperationError{Problem: edge.RedactN("public host nova-sprint version could not be verified: "+why, edge.CommandMax), Fix: "install nova-sprint " + version + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
+func serviceVersionRefusal(version, machine, why string) error {
+	return &verbs.OperationError{Problem: edge.RedactN("nova-sprint on "+machine+" is not this version: "+why, edge.FailureMax), Fix: "nova-fleet install --repo <org/repo> --tag " + orWord(version, "<v>") + " " + machine + ", then nova-sprint up again", Exit: 1}
+}
+func orWord(s, or string) string {
+	if s == "" {
+		return or
+	}
+	return s
 }
 
 func safeSSHName(value string) bool {
@@ -921,9 +997,12 @@ func selectRunService(rows []setupServiceRow, host string) (verbs.FleetService, 
 			return verbs.FleetService{}, false
 		}
 		for key := range row.Env {
-			if key != "NOVA_PG_DSN" && key != "NOVA_BUS_REDIS" && key != "NOVA_BUS_USER" && key != "NOVA_PG_PASSWORD_ENV" {
+			if key != "NOVA_PG_DSN" && key != "NOVA_BUS_REDIS" && key != "NOVA_BUS_USER" && key != "NOVA_PG_PASSWORD_ENV" && key != run.MachineEnv {
 				return verbs.FleetService{}, false
 			}
+		}
+		if value, ok := row.Env[run.MachineEnv]; ok && value != host {
+			return verbs.FleetService{}, false
 		}
 		if value, ok := row.Env["NOVA_PG_PASSWORD_ENV"]; ok && value != "NOVA_SPRINT_PG_PASSWORD" {
 			return verbs.FleetService{}, false
@@ -1006,25 +1085,41 @@ func (p productionSetup) runAddress(ctx context.Context, address string) string 
 func isTailnetIP(ip netip.Addr) bool {
 	return netip.MustParsePrefix("100.64.0.0/10").Contains(ip) || netip.MustParsePrefix("fd7a:115c:a1e0::/48").Contains(ip)
 }
+
+// publicDashboardTarget is the board for --dash public=<machine>[:<port>]:
+// the machine by its nova-config name, its public address (nova-config's
+// optional machine field "public"; fleet addresses are MagicDNS names by
+// design), and the URL the board answers on: <port> when given (a fleet
+// that fronts public services on 80), else the service's own listener. The
+// service keeps listening on its own port (:8080) behind any front.
 func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMachine, rows []setupServiceRow, privateURL string) (verbs.DashboardTarget, error) {
+	name, front, err := splitPublicChoice(chosen)
+	if err != nil {
+		return verbs.DashboardTarget{}, err
+	}
 	var machine *verbs.FleetMachine
 	for i := range machines {
-		if machines[i].Name == chosen || machines[i].Address == chosen {
-			if machine != nil {
-				return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is ambiguous")
-			}
+		if machines[i].Name == name {
 			machine = &machines[i]
 		}
 	}
-	if machine == nil || machine.Name == runMachine || slices.Contains(machine.Roles, "bench") {
-		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is absent, hosts run, or is also a bench")
+	switch {
+	case machine == nil:
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "no machine named " + name + " in nova-config", Fix: "nova-config machine list", Exit: 1}
+	case run.SameMachine(machine.Name, runMachine):
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: machine.Name + " runs the sprint; the public dashboard goes on another machine", Fix: "--dash public=<other>", Exit: 1}
+	case slices.Contains(machine.Roles, "bench"):
+		return verbs.DashboardTarget{}, verbs.PublicBenchRefusal(machine.Name)
+	case machine.Public == "":
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "machine " + machine.Name + " has no public address in nova-config", Fix: "nova-config machine set " + machine.Name + " --public <ip> --actor <you> --reason <why>", Exit: 1}
 	}
-	publicIP, err := netip.ParseAddr(machine.Address)
+	publicFix := "nova-config machine set " + machine.Name + " --public <ip> --actor <you> --reason <why>"
+	publicIP, err := netip.ParseAddr(machine.Public)
 	if err != nil {
-		return verbs.DashboardTarget{}, verbs.RefusalOr(err, serviceConfigError("public dashboard host needs a public IP in inventory: "+err.Error()))
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("machine %s's public address %q in nova-config is not an IP: %s", machine.Name, machine.Public, edge.ParseFailure(err, []byte(machine.Public))), edge.FailureMax), Fix: publicFix, Exit: 1}
 	}
 	if !publicIP.IsGlobalUnicast() || publicIP.IsPrivate() || isTailnetIP(publicIP) {
-		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host needs a public IP in inventory, not " + publicIP.String())
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("machine %s's public address %q in nova-config is not a public IP", machine.Name, machine.Public), edge.FailureMax), Fix: publicFix, Exit: 1}
 	}
 	var candidate *verbs.FleetService
 	port := ""
@@ -1049,7 +1144,29 @@ func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMach
 		service := verbs.FleetService{Name: "sprint-dashboard", Machine: machine.Name, Argv: []string{"/usr/bin/env", "nova-sprint", "dash", "--pull", privateURL, "--listen", ":8080"}}
 		candidate, port = &service, "8080"
 	}
+	if front != "" {
+		port = front
+	}
 	return verbs.DashboardTarget{URL: "http://" + net.JoinHostPort(publicIP.String(), port), Public: true, Service: candidate}, nil
+}
+
+// splitPublicChoice is <machine>[:<port>] from --dash public=: the machine
+// name and the port the board is fronted on ("" when not given).
+func splitPublicChoice(chosen string) (string, string, error) {
+	name, port, hasPort := strings.Cut(chosen, ":")
+	if hasPort {
+		number, err := strconv.Atoi(port)
+		if err != nil {
+			return "", "", &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("--dash public=%s: port %q is not a number: %s", chosen, port, edge.ParseFailure(err, []byte(port))), edge.FailureMax), Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+		}
+		if number < 1 || number > 65535 || strconv.Itoa(number) != port {
+			return "", "", &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("--dash public=%s: port %q is not 1-65535", chosen, port), edge.FailureMax), Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+		}
+	}
+	if name == "" {
+		return "", "", &verbs.OperationError{Problem: "--dash public= names no machine", Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+	}
+	return name, port, nil
 }
 func isDashboardService(argv []string) bool {
 	return (len(argv) > 1 && argv[1] == "dash") || (len(argv) > 2 && argv[0] == "/usr/bin/env" && argv[1] == "nova-sprint" && argv[2] == "dash")

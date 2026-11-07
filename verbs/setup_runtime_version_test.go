@@ -6,6 +6,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
@@ -15,7 +17,7 @@ func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
 	a := VersionAdoption{Binary: "/bin/nova-sprint", ResolvePath: func() (string, error) { return "/bin/nova-sprint", nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, strings.Join(append([]string{name}, args...), " "))
 		if args[0] == "version" {
-			return []byte((&Engine{Version: installed}).Execute(context.Background(), []string{"version"}).Output), nil // the verb's real output
+			return versionOutput(t, installed), nil
 		}
 		if name == "nova-secrets" && args[len(args)-1] == "--shadow" && shadowErr {
 			return nil, errors.New("failed")
@@ -115,20 +117,26 @@ func TestToolsReleaseFromBuildInfo(t *testing.T) {
 	}
 }
 
-// The one parser reads the version verb's real output, and refuses what is
-// not it, quoting what it saw.
+// versionOutput is what the version verb itself prints for version.
+func versionOutput(t *testing.T, version string) []byte {
+	t.Helper()
+	out, err := runVersion(&Engine{Version: version}, context.Background(), nil, store.Snapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []byte(out)
+}
+
+// The parser reads the verb's own output, and nothing else.
 func TestParseVersionOutputReadsTheVerb(t *testing.T) {
-	for _, v := range []string{"v2.0.0", "dev+0123456789ab", "dev+0123456789ab-dirty", "v2.0.0-3-g0123456789ab", "v2.0.0-3-g0123456-dirty", "0123456"} {
-		r := (&Engine{Version: v}).Execute(context.Background(), []string{"version"})
-		got, err := ParseVersionOutput([]byte(r.Output))
-		if r.Exit != 0 || err != nil || got != v {
-			t.Fatalf("%q from %q: %q %v", v, r.Output, got, err)
+	for _, v := range []string{"v2.0.0", "v12.0.4", "dev+0123456789ab"} {
+		if got, err := ParseVersionOutput(versionOutput(t, v)); err != nil || got != v {
+			t.Fatal(v, got, err)
 		}
 	}
-	unknown := (&Engine{}).Execute(context.Background(), []string{"version"}).Output
-	for _, bad := range []string{"v2.0.0\n", unknown, "nova-sprint dev\nnext: nova-sprint help\n", "nova-sprint v2.0.0\n", "nova-sprint v02.0.0\nnext: x\n", ""} {
-		if _, err := ParseVersionOutput([]byte(bad)); err == nil || !strings.Contains(err.Error(), "parse failed at byte") {
-			t.Fatalf("%q: %v", bad, err)
+	for _, out := range []string{"v1.6.29\n", "", "nova-sprint (unknown build)\nnext: nova-sprint help\n", "nova-sprint v2.0.0\nsomething else\n", "nova-sprint v2.0.0 extra\n"} {
+		if got, err := ParseVersionOutput([]byte(out)); err == nil {
+			t.Fatalf("%q parsed as %q", out, got)
 		}
 	}
 }

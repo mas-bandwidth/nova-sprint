@@ -158,7 +158,7 @@ func TestColdreadClearAndUnknownKind(t *testing.T) {
 	if err = c.Advance(ctx, f); err != nil {
 		t.Fatal(err)
 	}
-	if d := c.pageSnapshot().Data.(envelope); d.Landed != 1 || d.All != 20 {
+	if d := c.pageSnapshot().Data; d.Landed != 1 || d.All != 20 {
 		t.Fatalf("after odd kind landed=%d all=%d", d.Landed, d.All)
 	}
 	if _, err = f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
@@ -167,7 +167,7 @@ func TestColdreadClearAndUnknownKind(t *testing.T) {
 	if err = c.Advance(ctx, f); err != nil {
 		t.Fatal(err)
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if d.Epoch != 2 || d.Landed != 0 || d.All != 0 || len(d.Tables["work"].(map[string]*workRow)) != 0 {
 		t.Fatalf("after clear epoch=%d landed=%d all=%d", d.Epoch, d.Landed, d.All)
 	}
@@ -183,13 +183,13 @@ func TestColdreadLostConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := c.pageSnapshot().Data.(envelope)
+	before := c.pageSnapshot().Data
 	s.fail = true
 	mustApply(t, f, "move", 1, store.SetCardState{Card: "p00001", State: "landed"})
 	if err = c.Advance(ctx, s); err == nil {
 		t.Fatal("no error")
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if d.OK || d.At != before.At || d.Landed != 0 {
 		t.Fatalf("on error ok=%v at moved=%v landed=%d", d.OK, d.At != before.At, d.Landed)
 	}
@@ -208,7 +208,7 @@ func TestColdreadLostConnection(t *testing.T) {
 	if err = c.Advance(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	if d = c.pageSnapshot().Data.(envelope); !d.OK || d.Landed != 1 || s.snapshots != 1 {
+	if d = c.pageSnapshot().Data; !d.OK || d.Landed != 1 || s.snapshots != 1 {
 		t.Fatalf("after recovery ok=%v landed=%d snapshots=%d", d.OK, d.Landed, s.snapshots)
 	}
 }
@@ -365,7 +365,7 @@ func TestColdreadDefectThroughputNeverComputed(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
-	var env pageEnvelope
+	var env PageEnvelope
 	if err = json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
 		t.Fatal(err)
 	}

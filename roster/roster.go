@@ -70,10 +70,20 @@ type Kin struct {
 	Tiers                []string
 }
 
-// Roster is one read of the roster, keyed by row name.
+// Refused is a machine or friend nova-config holds that this read could not
+// load, and why; it is skipped, never guessed, and the rest of the roster
+// loads (one bench with 0 cores once emptied the whole board). Kind is the
+// kind it was read as (KindWorker for a machine, KindKin for a friend).
+type Refused struct {
+	Name, Kind, Reason string
+}
+
+// Roster is one read of the roster, keyed by row name. Refused is the rows
+// that could not be loaded, in source order.
 type Roster struct {
 	Workers map[string]Worker
 	Kin     map[string]Kin
+	Refused []Refused
 }
 
 // Clone is a deep copy: a reader that keeps a roster keeps its own.
@@ -88,14 +98,27 @@ func (r Roster) Clone() Roster {
 		k.Tiers = slices.Clone(k.Tiers)
 		r.Kin[n] = k
 	}
+	r.Refused = slices.Clone(r.Refused)
 	return r
+}
+
+// RefusedNamed is the refusal of row name, if this read refused it.
+func (r Roster) RefusedNamed(name string) (Refused, bool) {
+	for _, x := range r.Refused {
+		if x.Name == name {
+			return x, true
+		}
+	}
+	return Refused{}, false
 }
 
 // Load reads src once: every machine with the bench role is a worker at
 // width min(cores, cap) serving every tier; every enabled friend is kin at
 // its own width and tiers. cap is policy's limits().fleet_width_cap (drift
-// row 26; the built-in says 8). A name given twice, a cap below 1, a machine with no cores, a
-// negative width and an unknown tier are errors: the roster is not guessed.
+// row 26; the built-in says 8). A cap below 1 and a failed read are errors.
+// A row that cannot be loaded (no name, a name given twice, a bench with no
+// cores, a negative width, an unknown tier) is skipped and named in Refused:
+// the roster is not guessed, and one bad row never empties it.
 func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 	if cap < 1 {
 		return Roster{}, fmt.Errorf("roster: width cap %d is below 1", cap)
@@ -109,63 +132,66 @@ func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 		return Roster{}, fmt.Errorf("roster: friends: %w", err)
 	}
 	r := Roster{Workers: map[string]Worker{}, Kin: map[string]Kin{}}
-	if err := r.addWorkers(ms, cap); err != nil {
-		return Roster{}, err
-	}
-	if err := r.addKin(fs); err != nil {
-		return Roster{}, err
-	}
+	r.addWorkers(ms, cap)
+	r.addKin(fs)
 	return r, nil
 }
 
-func (r Roster) addWorkers(ms []Machine, cap int) error {
+func (r *Roster) refuse(name, kind, reason string) {
+	r.Refused = append(r.Refused, Refused{Name: name, Kind: kind, Reason: reason})
+}
+
+func (r *Roster) addWorkers(ms []Machine, cap int) {
 	for _, m := range ms {
 		if !slices.Contains(m.Roles, "bench") {
 			continue
 		}
-		if err := r.fresh(m.Name); err != nil {
-			return err
+		if why := r.fresh(m.Name); why != "" {
+			r.refuse(m.Name, KindWorker, "machine "+why)
+			continue
 		}
 		if m.Cores < 1 {
-			return fmt.Errorf("roster: machine %s has %d cores", m.Name, m.Cores)
+			r.refuse(m.Name, KindWorker, fmt.Sprintf("machine %s has %d cores; set its cores in nova-config", m.Name, m.Cores))
+			continue
 		}
 		r.Workers[m.Name] = Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Harness: WorkerHarness}
 	}
-	return nil
 }
 
-func (r Roster) addKin(fs []Friend) error {
+func (r *Roster) addKin(fs []Friend) {
 	for _, f := range fs {
 		if !f.Enabled {
 			continue
 		}
-		if err := r.fresh(f.Name); err != nil {
-			return err
+		if why := r.fresh(f.Name); why != "" {
+			r.refuse(f.Name, KindKin, "friend "+why)
+			continue
 		}
 		if f.Width < 0 {
-			return fmt.Errorf("roster: friend %s has width %d", f.Name, f.Width)
+			r.refuse(f.Name, KindKin, fmt.Sprintf("friend %s has width %d", f.Name, f.Width))
+			continue
 		}
-		for _, t := range f.Tiers {
-			if !slices.Contains(store.Tiers, t) {
-				return fmt.Errorf("roster: friend %s has tier %q, not one of %v", f.Name, t, store.Tiers)
-			}
+		if i := slices.IndexFunc(f.Tiers, func(t string) bool { return !slices.Contains(store.Tiers, t) }); i >= 0 {
+			r.refuse(f.Name, KindKin, fmt.Sprintf("friend %s has tier %q, not one of %v", f.Name, f.Tiers[i], store.Tiers))
+			continue
 		}
 		r.Kin[f.Name] = Kin{Name: f.Name, Model: f.Model, Harness: f.Harness, Width: f.Width, Tiers: slices.Clone(f.Tiers)}
 	}
-	return nil
 }
 
-// fresh refuses an empty name and one already in the roster.
-func (r Roster) fresh(name string) error {
+// fresh is why name cannot be added (empty, or already in the roster or
+// already refused), or "".
+func (r Roster) fresh(name string) string {
 	_, w := r.Workers[name]
 	_, k := r.Kin[name]
+	_, x := r.RefusedNamed(name)
 	switch {
 	case name == "":
-		return fmt.Errorf("roster: a machine or friend with no name")
-	case w || k:
-		return fmt.Errorf("roster: %s is named twice", name)
+		return "with no name"
+	case w || k || x:
+		return name + " is named twice"
 	}
-	return nil
+	return ""
 }
 
 // Row is what the deal guards read for a row: its kind (KindWorker or

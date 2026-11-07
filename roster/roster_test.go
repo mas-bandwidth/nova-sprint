@@ -72,24 +72,64 @@ func TestRow(t *testing.T) {
 
 func TestLoadRefuses(t *testing.T) {
 	t.Parallel()
-	bench := []string{"bench"}
 	boom := errors.New("boom")
 	for want, c := range map[string]struct {
 		src Source
 		cap int
 	}{
-		"roster: width cap 0 is below 1":                                         {Fake{}, 0},
-		"roster: machines: boom":                                                 {Fake{Err: boom}, 8},
-		"roster: machine m has 0 cores":                                          {Fake{Ms: []Machine{{Name: "m", Roles: bench}}}, 8},
-		"roster: m is named twice":                                               {Fake{Ms: []Machine{{Name: "m", Roles: bench, Cores: 1}, {Name: "m", Roles: bench, Cores: 2}}}, 8},
-		"roster: stella is named twice":                                          {Fake{Ms: []Machine{{Name: "stella", Roles: bench, Cores: 1}}, Fs: []Friend{{Name: "stella", Enabled: true}}}, 8},
-		"roster: a machine or friend with no name":                               {Fake{Fs: []Friend{{Enabled: true}}}, 8},
-		"roster: friend f has width -1":                                          {Fake{Fs: []Friend{{Name: "f", Width: -1, Enabled: true}}}, 8},
-		`roster: friend f has tier "big", not one of [flash pro heavy frontier]`: {Fake{Fs: []Friend{{Name: "f", Tiers: []string{"big"}, Enabled: true}}}, 8},
+		"roster: width cap 0 is below 1": {Fake{}, 0},
+		"roster: machines: boom":         {Fake{Err: boom}, 8},
 	} {
 		_, err := Load(context.Background(), c.src, c.cap)
 		assert.EqualError(t, err, want)
 	}
+}
+
+// TestLoadSkipsABadRow: a row that cannot be loaded is skipped and named,
+// and the rest load (live: one bench with 0 cores emptied the whole board).
+func TestLoadSkipsABadRow(t *testing.T) {
+	t.Parallel()
+	bench := []string{"bench"}
+	for name, c := range map[string]struct {
+		src  Source
+		want []Refused
+	}{
+		"no cores": {Fake{Ms: []Machine{{Name: "m", Roles: bench}}},
+			[]Refused{{"m", KindWorker, "machine m has 0 cores; set its cores in nova-config"}}},
+		"twice": {Fake{Ms: []Machine{{Name: "m", Roles: bench, Cores: 1}, {Name: "m", Roles: bench, Cores: 2}}},
+			[]Refused{{"m", KindWorker, "machine m is named twice"}}},
+		"machine and friend": {Fake{Ms: []Machine{{Name: "f1", Roles: bench, Cores: 1}}, Fs: []Friend{{Name: "f1", Enabled: true}}},
+			[]Refused{{"f1", KindKin, "friend f1 is named twice"}}},
+		"no name": {Fake{Fs: []Friend{{Enabled: true}}},
+			[]Refused{{"", KindKin, "friend with no name"}}},
+		"width": {Fake{Fs: []Friend{{Name: "f", Width: -1, Enabled: true}}},
+			[]Refused{{"f", KindKin, "friend f has width -1"}}},
+		"tier": {Fake{Fs: []Friend{{Name: "f", Tiers: []string{"big"}, Enabled: true}}},
+			[]Refused{{"f", KindKin, `friend f has tier "big", not one of [flash pro heavy frontier]`}}},
+	} {
+		f := fleet()
+		src := c.src.(Fake)
+		f.Ms = append(f.Ms, src.Ms...)
+		f.Fs = append(f.Fs, src.Fs...)
+		r, err := Load(context.Background(), f, 8)
+		require.NoError(t, err, name)
+		assert.Equal(t, c.want, r.Refused, name)
+		for _, good := range []string{"hulk", "mini", "eight", "stella", "alex"} {
+			_, _, _, ok := r.Row(good)
+			assert.True(t, ok, "%s: %s still loads", name, good)
+		}
+	}
+}
+
+func TestCloneCopiesRefused(t *testing.T) {
+	t.Parallel()
+	r := Roster{Refused: []Refused{{"m", KindWorker, "why"}}}
+	c := r.Clone()
+	c.Refused[0].Reason = "changed"
+	assert.Equal(t, "why", r.Refused[0].Reason)
+	x, ok := r.RefusedNamed("m")
+	assert.True(t, ok)
+	assert.Equal(t, "why", x.Reason)
 }
 
 type friendsFail struct{ Fake }

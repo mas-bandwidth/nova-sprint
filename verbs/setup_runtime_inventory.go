@@ -10,10 +10,13 @@ import (
 )
 
 // FleetMachine is the setup-relevant, non-secret subset of a nova-config row.
+// Address is its fleet (MagicDNS) address; Public is the optional public
+// address nova-config holds for it (nova-tools 2.0.3, machine set --public),
+// "" when unset.
 type FleetMachine struct {
-	Name, Address string
-	Roles         []string
-	Cores         *int
+	Name, Address, Public string
+	Roles                 []string
+	Cores                 *int
 }
 type configMachines struct {
 	Result struct {
@@ -28,6 +31,7 @@ type configMachines struct {
 		Kind   string `json:"kind"`
 		Fields struct {
 			Name, Address, Roles string
+			Public               string `json:"public"`
 			Cores                *int
 		} `json:"fields"`
 	} `json:"items"`
@@ -64,10 +68,16 @@ func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 				roles = append(roles, role)
 			}
 		}
-		result = append(result, FleetMachine{Name: v.Name, Address: v.Address, Roles: roles, Cores: v.Cores})
+		result = append(result, FleetMachine{Name: v.Name, Address: v.Address, Public: strings.TrimSpace(v.Public), Roles: roles, Cores: v.Cores})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result, nil
+}
+
+// PublicBenchRefusal is the inventory's refusal of a public dashboard on a
+// bench: a bench holds the sprint credential, a public host never does.
+func PublicBenchRefusal(machine string) error {
+	return &OperationError{Problem: "public dashboard host " + machine + " is also a bench", Fix: "remove the bench role from " + machine + ", or --dash public=<other machine>", Exit: 1}
 }
 
 // SprintSeats uses the chosen run service's actual seat plus the existing
@@ -90,7 +100,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 			found = true
 		}
 		if machine.Name == publicHost && slices.Contains(machine.Roles, "bench") {
-			return nil, &OperationError{Problem: "public dashboard host is also a bench", Fix: "remove the bench role from " + machine.Name, Exit: 1}
+			return nil, PublicBenchRefusal(machine.Name)
 		}
 		if machine.Name == publicHost || !slices.Contains(machine.Roles, "bench") {
 			continue

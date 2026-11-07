@@ -47,11 +47,29 @@ func (s services) Run(ctx context.Context, listen string) error {
 	if err != nil {
 		return err
 	}
-	host, _ := os.Hostname()
+	host, err := runMachine(ctx, ro)
+	if err != nil {
+		return err
+	}
 	busEnv := toolEnvironment(os.Environ(), "nova-bus")
 	return run.Serve(ctx, run.Config{Store: s.store, DSN: dsn, Password: s.creds.password, Roster: ro,
 		Bus: busEdge(), Hook: run.SprintHook{Bin: busBinary(), Env: busEnv, Reply: self}, Policy: s.policy,
 		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir()})
+}
+
+// runMachine is the machine run records the chooser lock under: the
+// NOVA_SPRINT_MACHINE up hands the service, else the nova-config machine
+// whose name is the hostname's first label (never the raw hostname).
+func runMachine(ctx context.Context, ro *run.ConfigRoster) (string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", fmt.Errorf("run: hostname: %w", err)
+	}
+	machines, err := ro.MachineNames(ctx)
+	if err != nil {
+		return "", fmt.Errorf("run: nova-config machine names: %w", err)
+	}
+	return run.ResolveMachine(os.Getenv(run.MachineEnv), hostname, machines)
 }
 
 // Worker is nova-worker's runner (edge/worker) for one row, its sprint

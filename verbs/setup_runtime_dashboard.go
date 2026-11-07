@@ -11,11 +11,20 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/dash"
 )
 
 // DashboardProbe checks the actual served health and store epoch. Public mode
 // additionally requires the cache contract. Transport may be faked in tests.
 var errDashboardReach = errors.New("dashboard could not be reached")
+
+// DashboardUnreachable is a probe request that got no answer: the request
+// ("GET http://<address>/healthz") and the transport's cause.
+type DashboardUnreachable struct{ Request, Cause string }
+
+func (d *DashboardUnreachable) Error() string        { return d.Request + ": " + d.Cause }
+func (d *DashboardUnreachable) Is(target error) bool { return target == errDashboardReach }
 
 // DashboardNotReady is a dashboard that answered but does not serve this
 // sprint yet, and why (a status, a cache header, a body that does not parse
@@ -53,7 +62,11 @@ func dashboardGet(ctx context.Context, client *http.Client, base *url.URL, path 
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("%w (%s)", errDashboardReach, errText(err))
+		var u *url.Error
+		if errors.As(err, &u) {
+			err = u.Err
+		}
+		return false, &DashboardUnreachable{Request: "GET " + target.String(), Cause: Redact(err.Error())}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -75,22 +88,26 @@ func dashboardBody(resp *http.Response, epoch int, public bool) string {
 	if public && !dashboardCache(resp.Header.Values("Cache-Control")) {
 		return fmt.Sprintf("a public dashboard needs Cache-Control max-age=1 and no no-store/no-cache/private, got %q", strings.Join(resp.Header.Values("Cache-Control"), ", "))
 	}
-	var body struct {
-		OK    bool `json:"ok"`
-		Epoch int  `json:"epoch"`
-	}
+	var body dash.PageEnvelope
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
 	switch {
 	case err != nil:
-		return "reading the body: " + errText(err)
+		return "reading the body: " + Redact(err.Error())
 	case len(data) > 4<<20:
 		return "the body is over 4 MB"
 	}
 	if err := json.Unmarshal(data, &body); err != nil {
 		return ParseFailure(err, data)
 	}
-	if !body.OK || body.Epoch != epoch {
-		return fmt.Sprintf("ok %v epoch %d, want ok true epoch %d", body.OK, body.Epoch, epoch)
+	switch {
+	case body.Data.Epoch != epoch:
+		return fmt.Sprintf("data.epoch %d, want %d (the board serves another sprint, or none yet)", body.Data.Epoch, epoch)
+	case !body.OK:
+		why := "no error given"
+		if body.Error != nil {
+			why = Redact(*body.Error)
+		}
+		return "ok false: " + why
 	}
 	return ""
 }
