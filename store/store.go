@@ -5,7 +5,9 @@
 package store
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"time"
@@ -71,7 +73,11 @@ var (
 	RowRoles    = []string{"worker", "coordinator"} // a hooked row's role; the coordinator is also a worker
 	PolicyKinds = []string{"script", "data"}
 	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier
+	StreamModes = []string{StreamAuto, "group", "hand"}         // how a stream's producers land
 )
+
+// StreamAuto is a stream's mode when none is given.
+const StreamAuto = "auto"
 
 // Op is one operation: conditions that must all hold and writes that all land,
 // or nothing does.
@@ -86,13 +92,33 @@ type Op struct {
 	Note   string // kept in the receipt
 }
 
-// Stream is a row of sprint.streams.
+// Stream is a row of sprint.streams. Mode and Forge are its landing
+// settings (round 22): stream state, read with the snapshot, never policy
+// data or a scan of the log. Mode is how its producers land, one of
+// StreamModes (auto when unset); Forge is the forge it lands through, ""
+// for none.
 type Stream struct {
-	Name string `json:"name"`
-	Repo string `json:"repo"`
-	Base string `json:"base"`
-	Held bool   `json:"held"`
-	Pos  int    `json:"pos"`
+	Name  string `json:"name"`
+	Repo  string `json:"repo"`
+	Base  string `json:"base"`
+	Held  bool   `json:"held"`
+	Pos   int    `json:"pos"`
+	Mode  string `json:"mode"`
+	Forge string `json:"forge"`
+}
+
+// UnmarshalJSON reads a stream image, a mode the image does not carry (one
+// logged before round 22) as auto, the column's default, so the log still
+// rebuilds the tables of a migrated store.
+func (s *Stream) UnmarshalJSON(b []byte) error {
+	type plain Stream
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*s = Stream(p)
+	s.Mode = cmp.Or(s.Mode, StreamAuto)
+	return nil
 }
 
 // Card is a row of sprint.cards. Holder "" is no holder; Of "" is a producer's

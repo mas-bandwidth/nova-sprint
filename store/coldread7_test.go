@@ -50,7 +50,7 @@ func cr7Steps() []cr7Step {
 	var s []cr7Step
 	add := func(label string, o Op) { s = append(s, cr7Step{label: label, op: o}) }
 	add("seed every table", op(1, nil,
-		PutStream{"s1", "mas-bandwidth/x", "main", 1}, PutStream{"s2", weird, "dev", 2},
+		PutStream{"s1", "mas-bandwidth/x", "main", 1, "", ""}, PutStream{"s2", weird, "dev", 2, "", ""},
 		PutRow{Name: "w1", Session: weird, Role: "coordinator"},
 		PutRow{Name: "k1"}, SetRowState{"w1", "up"},
 		PutCard{Tier: "pro", Kind: "producer", ID: "c0", Stream: "s1", Brief: weird, Paths: []string{"a/b", weird}, DoneWhen: []string{"x"}, Prose: weird, Priority: "high"}, SetCardState{"c0", "landed"},
@@ -76,7 +76,7 @@ func cr7Steps() []cr7Step {
 	add("refused: judgement not open", op(1, []Expect{JudgementOpen{"j1"}}, SetCardScore{"c1", 1}))
 	n++
 	s = append(s, cr7Step{label: "clear", clear: true, op: Op{ID: fmt.Sprintf("cr7-%d", n), Epoch: 1, Actor: "tester", Kind: "clear", At: t0.Add(time.Duration(n) * time.Second), Expect: []Expect{AtSeq{11}}, Note: weird}})
-	add("after the clear", op(2, nil, PutStream{"s1", "r", "main", 0}, PutCard{Tier: "pro", Kind: "producer", ID: "c9", Stream: "s1"}, SetRowFlaps{"w1", 5}, SetCursor{"sub", 11}))
+	add("after the clear", op(2, nil, PutStream{"s1", "r", "main", 0, "", ""}, PutCard{Tier: "pro", Kind: "producer", ID: "c9", Stream: "s1"}, SetRowFlaps{"w1", 5}, SetCursor{"sub", 11}))
 	add("refused: old epoch after the clear", op(1, nil, SetCardScore{"c1", 1}))
 	return s
 }
@@ -282,7 +282,7 @@ func cr7Populate(t *testing.T, h *harness, c *pgx.Conn) {
 			flush()
 		}
 	}
-	push(PutStream{"s1", "r", "main", 0})
+	push(PutStream{"s1", "r", "main", 0, "", ""})
 	for r := range 20 {
 		name := fmt.Sprintf("r%02d", r)
 		push(PutRow{Name: name}, SetRowState{name, "up"})
@@ -364,7 +364,7 @@ func TestFunctionalColdRead7Indexes(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, r.Accepted)
 	h.epoch = 2
-	h.ok(h.op("e2", nil, PutStream{"s1", "r", "main", 0}, PutCard{Tier: "pro", Kind: "producer", ID: "q1", Stream: "s1"},
+	h.ok(h.op("e2", nil, PutStream{"s1", "r", "main", 0, "", ""}, PutCard{Tier: "pro", Kind: "producer", ID: "q1", Stream: "s1"},
 		PutCard{Tier: "pro", Kind: "work", ID: "q2", Of: "q1", Stream: "s1", Holder: "r07"}, SetCardState{"q2", "ready"},
 		PutJudgement{ID: "jj", Kind: "red"}))
 	h.ok(h.op("e2w", nil, SetCardState{"q2", "working"}))

@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS sprint.streams (
     epoch integer NOT NULL,
     PRIMARY KEY (epoch, name)
 );
+-- Round 22: a stream's landing settings are stream state (layer 6 read them
+-- by scanning the log): how its producers land, and the forge it lands
+-- through ('' for none).
+ALTER TABLE sprint.streams ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto', 'group', 'hand')),
+    ADD COLUMN IF NOT EXISTS forge text NOT NULL DEFAULT '';
 
 -- A row is sprint state only (round 22): what a worker or kin is (kind,
 -- width, tiers, model, harness) is configuration, nova-config's, read

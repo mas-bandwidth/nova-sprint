@@ -24,10 +24,12 @@ import (
 //
 // What the code has that the model does not (the abstractions):
 //
-//   - Streams and every stream write (PutStream, SetStreamHeld) and the
+//   - Streams and every stream write (PutStream, SetStreamHeld,
+//     SetStreamMode, SetStreamForge; mode and forge are round 22's) and the
 //     StreamHeld condition: the model has no streams. PutStream is dropped
-//     from a projected op; an op with SetStreamHeld or StreamHeld is not
-//     projected (TraceOp refuses it).
+//     from a projected op (it is never refused for a value it carries); an
+//     op with another stream write or StreamHeld is not projected (TraceOp
+//     refuses it), since each can be refused as unchanged.
 //   - The AtSeq condition, SetActivePolicy, the policy's active flag, kind
 //     and name: not in the model; TraceOp refuses the first two.
 //   - Every card column no rule of the model reads (attempt, score, branch,
