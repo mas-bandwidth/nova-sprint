@@ -30,7 +30,7 @@ func (s *crSprint) Next(context.Context, string) (NextResponse, error) {
 	return s.next, nil
 }
 func (s *crSprint) Take(_ context.Context, row, id string, gen int) (TakeInfo, error) {
-	return TakeInfo{Consumer: id, Producer: "p", Kind: "read", Stream: "s1", Tier: "flash", Gen: gen, Head: strings.Repeat("a", 40)}, nil
+	return TakeInfo{Consumer: id, Producer: "p", Kind: "read", Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, Gen: gen, Head: strings.Repeat("a", 40)}, nil
 }
 func (s *crSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, error) {
 	s.mu.Lock()
@@ -38,6 +38,8 @@ func (s *crSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, 
 	s.reports = append(s.reports, req)
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
+func (s *crSprint) Hook(context.Context, string) error                   { return nil }
+func (s *crSprint) Unhook(context.Context, string) error                 { return nil }
 func (s *crSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
 func (s *crSprint) reported() []ReportRequest {
 	s.mu.Lock()
@@ -88,7 +90,7 @@ func (w *crWall) RunTest(context.Context, Job, string, time.Duration) (WallRunRe
 
 func crRunner_internal(t *testing.T, sp SprintClient, wall ReserveWall) *Runner {
 	t.Helper()
-	r, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, DefaultHarness: &ScriptHarness{}})
+	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Now: testClock_internal(), Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, DefaultHarness: &ScriptHarness{}})
 	if err != nil {
 		t.Fatal(err)
 	}

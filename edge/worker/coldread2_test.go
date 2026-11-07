@@ -59,7 +59,7 @@ func (s *cr2Sprint) Take(_ context.Context, _, id string, gen int) (TakeInfo, er
 	if kind == "" {
 		kind = "read"
 	}
-	return TakeInfo{Consumer: id, Producer: "p1", Kind: kind, Stream: "s1", Tier: "flash", Gen: gen, Epoch: 3, Attempt: 1, Branch: "sprint/s1/p1", BaseSHA: strings.Repeat("b", 40), Head: strings.Repeat("a", 40)}, nil
+	return TakeInfo{Consumer: id, Producer: "p1", Kind: kind, Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, Gen: gen, Epoch: 3, Attempt: 1, Branch: "sprint/s1/p1", BaseSHA: strings.Repeat("b", 40), Head: strings.Repeat("a", 40)}, nil
 }
 func (s *cr2Sprint) Report(_ context.Context, req ReportRequest) (store.Receipt, error) {
 	s.mu.Lock()
@@ -70,6 +70,8 @@ func (s *cr2Sprint) Report(_ context.Context, req ReportRequest) (store.Receipt,
 	}
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
+func (s *cr2Sprint) Hook(context.Context, string) error                   { return nil }
+func (s *cr2Sprint) Unhook(context.Context, string) error                 { return nil }
 func (s *cr2Sprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
 func (s *cr2Sprint) reported() []ReportRequest {
 	s.mu.Lock()
@@ -92,7 +94,7 @@ func (w *cr2Wall) RunTest(context.Context, Job, string, time.Duration) (WallRunR
 
 func cr2Runner_internal(t *testing.T, sp SprintClient, wall ReserveWall, procs ProcessTable, now time.Time) *Runner {
 	t.Helper()
-	r, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, Procs: procs, DefaultHarness: &ScriptHarness{}, Now: func() time.Time { return now }})
+	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, Procs: procs, DefaultHarness: &ScriptHarness{}, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,9 +243,12 @@ func TestColdread2DefectNoSlotBecomesFaultReport(t *testing.T) {
 	}
 }
 
-// Round 2 ruling (worker): "a nova-sprint refusal (exit 1) is final". A
-// refused report leaves job.json at state reporting, and every wake's
-// RecoverRow sends it again (runner.go:287-289).
+// Round 2 ruling (worker): "a nova-sprint refusal (exit 1) is final".
+// Reversed by the stitch (drift row 20, Rowan 2026-11-06): "a report that
+// fails is durable (the job record keeps it; the next wake sends it)", and a
+// report is acknowledged only by exit 0. A refused report stays at state
+// reporting and each wake that still lists the consumer as working sends it
+// again under the same id; the record goes when the consumer turns final.
 func TestColdread2DefectRefusedReportResentEveryWake(t *testing.T) {
 	t.Parallel()
 	sp := &cr2Sprint{reportErr: fmt.Errorf("%w: consumer p1.r1 is held by amd-2.ds", ErrRefused),
@@ -255,8 +260,15 @@ func TestColdread2DefectRefusedReportResentEveryWake(t *testing.T) {
 	sp.mu.Unlock()
 	_ = r.RecoverRow(context.Background(), "vision.ds")
 	_ = r.RecoverRow(context.Background(), "vision.ds")
-	if n := len(sp.reported()); n != 1 {
-		t.Errorf("a refused report was sent %d times: a refusal is final", n)
+	if n := len(sp.reported()); n != 3 {
+		t.Errorf("a refused report was sent %d times over three wakes, want 3", n)
+	}
+	sp.mu.Lock()
+	sp.next.Working, sp.next.Final = nil, []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2, State: card.Fail}}
+	sp.mu.Unlock()
+	_ = r.RecoverRow(context.Background(), "vision.ds")
+	if _, err := os.Stat(filepath.Join(r.RootDir, "jobs", "p1.r1")); !os.IsNotExist(err) {
+		t.Errorf("a consumer that turned final left its job directory: %v", err)
 	}
 }
 
@@ -290,25 +302,6 @@ func TestColdread2DefectUnparsedReportOutputBecomesReceipt(t *testing.T) {
 	rec, err := cli.Report(context.Background(), ReportRequest{Row: "vision.ds", Consumer: "p1.w1", Gen: 3, ResultID: "res-e3-p1.w1-a1-g3", Result: "ok"})
 	if err == nil && rec.Accepted {
 		t.Errorf("output with no receipt became an accepted receipt for %s", rec.Op)
-	}
-}
-
-// Stella, source read: NewRunner defaults Now to a fixed 1970 clock and Sleep
-// to a no-op (runner.go:122-127) and cmd/nova-worker wires neither
-// (main.go:87-93). Round 2 ruling: "jittered backoff as the Built section
-// claims"; the shipped runner never waits between 5xx relaunches, its jitter
-// is a constant, and every deadline is computed from t=1000.
-func TestColdread2DefectRunnerDefaultClockIsDead(t *testing.T) {
-	t.Parallel()
-	r, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.Now().Unix() == 1000 {
-		t.Errorf("a runner built as nova-worker builds it reads the clock as %s", r.Now())
-	}
-	if a, b := r.launchBackoff_internal(1), r.launchBackoff_internal(1); a == b {
-		t.Errorf("launch backoff is not jittered: %s twice", a)
 	}
 }
 

@@ -504,7 +504,7 @@ func driveRunnerEntrypoints_internal(t *testing.T) {
 			return WallRunResult{ExitCode: 0, PID: 101, Nonce: "n101", Elapsed: time.Second}, nil
 		},
 	}
-	r, err := NewRunner(Runner{
+	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal,
 		Host: "vision", RootDir: t.TempDir(), Sprint: sc, Git: git, Wall: wall,
 		Now: clock, Sleep: func(time.Duration) {},
 	})

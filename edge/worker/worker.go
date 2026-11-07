@@ -42,16 +42,18 @@ const (
 	MaxReasonBytes                                         = 4096
 )
 
-var DefaultCoordinatorHosts = []string{"studio", "studio.local"}
-
 func cmpOr_internal(a, b string) string { return cmp.Or(a, b) }
+
+// CheckHost refuses the coordinator's machine (LESSONS 4.18). The worker
+// holds no list of its own: with none given it refuses to run, because a
+// check against nothing would pass on the coordinator.
 func CheckHost(host string, coordinatorHosts []string) error {
 	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(cmpOr_internal(host, ""))), ".")
 	if h == "" {
 		return errors.New("worker refused: host is empty: pass --host <bench> or set HOSTNAME")
 	}
 	if len(coordinatorHosts) == 0 {
-		coordinatorHosts = DefaultCoordinatorHosts
+		return errors.New("worker refused: no coordinator hosts given, so the coordinator's machine cannot be told from a bench: pass --coordinator-hosts <host,host> (the machines nova-config gives the coordinator role)")
 	}
 	short, _, _ := strings.Cut(h, ".")
 	for _, raw := range coordinatorHosts {
@@ -64,10 +66,9 @@ func CheckHost(host string, coordinatorHosts []string) error {
 }
 
 type Timeouts struct {
-	Stage, LaunchGrace                                                                                                                                                 time.Duration
-	LaunchTries                                                                                                                                                        int
-	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, GH, BusSend, SSHConnect, CIWaitExtra, ReserveWait time.Duration
-	TierDeadline                                                                                                                                                       map[string]time.Duration
+	Stage, LaunchGrace                                                                                                                         time.Duration
+	LaunchTries                                                                                                                                int
+	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, GH, BusClaim, ReserveWait time.Duration
 }
 
 func DefaultTimeouts() Timeouts {
@@ -76,9 +77,7 @@ func DefaultTimeouts() Timeouts {
 		LaunchBackoff1Min: 5 * time.Second, LaunchBackoff1Max: 20 * time.Second,
 		LaunchBackoff2Min: 30 * time.Second, LaunchBackoff2Max: 60 * time.Second,
 		TerminateGrace: 3 * time.Second, RebaseAndTest: 2 * time.Minute,
-		Push: 60 * time.Second, GH: 30 * time.Second, BusSend: 5 * time.Second,
-		SSHConnect: 10 * time.Second, CIWaitExtra: 10 * time.Minute, ReserveWait: 5 * time.Second,
-		TierDeadline: map[string]time.Duration{"flash": 15 * time.Minute, "pro": 45 * time.Minute, "heavy": 90 * time.Minute, "frontier": 120 * time.Minute},
+		Push: 60 * time.Second, GH: 30 * time.Second, BusClaim: 60 * time.Second, ReserveWait: 5 * time.Second,
 	}
 }
 func (t Timeouts) WithDefaults() Timeouts {
@@ -87,15 +86,8 @@ func (t Timeouts) WithDefaults() Timeouts {
 	t.LaunchBackoff1Min, t.LaunchBackoff1Max = cmp.Or(t.LaunchBackoff1Min, d.LaunchBackoff1Min), cmp.Or(t.LaunchBackoff1Max, d.LaunchBackoff1Max)
 	t.LaunchBackoff2Min, t.LaunchBackoff2Max = cmp.Or(t.LaunchBackoff2Min, d.LaunchBackoff2Min), cmp.Or(t.LaunchBackoff2Max, d.LaunchBackoff2Max)
 	t.TerminateGrace, t.RebaseAndTest, t.Push = cmp.Or(t.TerminateGrace, d.TerminateGrace), cmp.Or(t.RebaseAndTest, d.RebaseAndTest), cmp.Or(t.Push, d.Push)
-	t.GH, t.BusSend, t.SSHConnect = cmp.Or(t.GH, d.GH), cmp.Or(t.BusSend, d.BusSend), cmp.Or(t.SSHConnect, d.SSHConnect)
-	t.CIWaitExtra, t.ReserveWait = cmp.Or(t.CIWaitExtra, d.CIWaitExtra), cmp.Or(t.ReserveWait, d.ReserveWait)
-	if len(t.TierDeadline) == 0 {
-		t.TierDeadline = d.TierDeadline
-	}
+	t.GH, t.BusClaim, t.ReserveWait = cmp.Or(t.GH, d.GH), cmp.Or(t.BusClaim, d.BusClaim), cmp.Or(t.ReserveWait, d.ReserveWait)
 	return t
-}
-func (t Timeouts) DeadlineFor(tier string) time.Duration {
-	return cmp.Or(t.TierDeadline[tier], 45*time.Minute)
 }
 
 type (
@@ -103,8 +95,8 @@ type (
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, Head, Tier, Model, HarnessName, Brief, Prose, Finding string
 		Paths, DoneWhen, Siblings                                                                                                                       []string
 		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
-		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode                                                                             string
-		RequirePR                                                                                                                                       bool
+		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode, Forge                                                                      string
+		Deadline                                                                                                                                        time.Duration
 	}
 	Outcome struct {
 		Result, Head, Reason, Finding string
@@ -119,9 +111,8 @@ type (
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, TargetHead string
 		DoneWhen                                                                                             []string
 		Epoch, Gen, Attempt, PID, PRNumber                                                                   int
-		ResultID, State, Nonce, PushedHead                                                                   string
+		ResultID, State, Nonce, PushedHead, Forge                                                            string
 		StartedAt, DeadlineAt                                                                                int64
-		RequirePR                                                                                            bool
 		Outcome                                                                                              Outcome
 		Cost                                                                                                 Cost
 	}
