@@ -63,8 +63,18 @@ func (h *ScriptHarness) Probe(j Job) Job {
 	p.ScriptMode = "probe"
 	return p
 }
+
+// modelFlag_internal passes the model the take receipt named. The adapters
+// hold no model of their own: a job with none (the probe) runs the harness's
+// own configured default, since the probe tests the path, not the model.
+func modelFlag_internal(j Job) []string {
+	if j.Model == "" {
+		return nil
+	}
+	return []string{"--model", j.Model}
+}
 func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
-	argv := []string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task", "--model", cmp.Or(j.Model, "claude-sonnet-4-6"), "--", buildPrompt_internal(j)}
+	argv := append(append([]string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task"}, modelFlag_internal(j)...), "--", buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if h.ConfigDir != "" {
 		env = append(env, "CLAUDE_CONFIG_DIR="+h.ConfigDir)
@@ -73,7 +83,7 @@ func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
 }
 func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	wt := cmp.Or(j.WorktreeDir, filepath.Join(j.JobDir, "repo"))
-	argv := []string{"codex", "exec", "--full-auto", "--model", cmp.Or(j.Model, "gpt-5-codex"), "--cd", wt, buildPrompt_internal(j)}
+	argv := append(append([]string{"codex", "exec", "--full-auto"}, modelFlag_internal(j)...), "--cd", wt, buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if h.ConfigDir != "" {
 		env = append(env, "CODEX_HOME="+h.ConfigDir)
@@ -81,7 +91,7 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
-	argv := []string{"opencode", "run", "--model", cmp.Or(j.Model, "deepseek/deepseek-reasoner"), buildPrompt_internal(j)}
+	argv := append(append([]string{"opencode", "run"}, modelFlag_internal(j)...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if j.ProxyAddr != "" {
 		baseURL := j.ProxyAddr
