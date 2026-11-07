@@ -48,10 +48,10 @@ func dump(t *testing.T, dsn string) string {
 	return string(out)
 }
 
-// load runs a plain-format dump on tx's connection as psql would: each
+// loadDump runs a plain-format dump on tx's connection as psql would: each
 // statement by the simple protocol, each COPY ... FROM stdin with its data
 // lines, skipping comments and psql's backslash commands (\restrict).
-func load(ctx context.Context, tx pgx.Tx, dump string) error {
+func loadDump(ctx context.Context, tx pgx.Tx, dump string) error {
 	lines := strings.Split(dump, "\n")
 	var stmt strings.Builder
 	for i := 0; i < len(lines); i++ {
@@ -90,7 +90,7 @@ func restore(t *testing.T, dsn, dump string) (SchemaIdentity, error) {
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }() // ignored: a no-op after the commit
 	require.NoError(t, RestoreBegin(ctx, tx))
-	require.NoError(t, load(ctx, tx, dump))
+	require.NoError(t, loadDump(ctx, tx, dump))
 	id, err := RestoreEnd(ctx, tx)
 	if err == nil {
 		require.NoError(t, tx.Commit(ctx))
@@ -130,7 +130,7 @@ func TestFunctionalRestore(t *testing.T) {
 	require.NoError(t, RestoreBegin(ctx, tx))
 	_, err = tx.Exec(ctx, "ALTER TABLE sprint.cards ENABLE TRIGGER cards_fixed")
 	require.NoError(t, err)
-	require.ErrorContains(t, load(ctx, tx, d), "cards_of_producer_check", "a consumer's row comes before its updated producer's")
+	require.ErrorContains(t, loadDump(ctx, tx, d), "cards_of_producer_check", "a consumer's row comes before its updated producer's")
 	require.NoError(t, tx.Rollback(ctx))
 
 	id, err := restore(t, target, d)
