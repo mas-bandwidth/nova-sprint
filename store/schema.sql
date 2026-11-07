@@ -69,6 +69,9 @@ ALTER TABLE sprint.rows DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS width,
 -- and adds the hook's role (worker or coordinator; '' when not hooked).
 ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT ''
     CHECK (role IN ('', 'worker', 'coordinator'));
+-- A row hooked before round 22 has a session and no role: it is unhooked
+-- (a session and a role are both set or both empty), and hooks again.
+UPDATE sprint.rows SET session = '' WHERE role = '' AND session <> '';
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by

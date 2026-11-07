@@ -189,7 +189,7 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	want.Owner = "nova"
 	assert.Equal(t, want, id)
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
-	assert.Equal(t, Row{Name: "w1", State: "up", Session: "sess", Role: "worker", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept")
+	assert.Equal(t, Row{Name: "w1", State: "up", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept; it is unhooked (no role was recorded), so it hooks again")
 	h.ok(h.op("put", nil, PutRow{Name: "w1", Session: "sess-2", Role: "worker"}))
 	assert.Equal(t, "working", h.snap().Cards["u1"].State)
 }
@@ -752,10 +752,10 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.cards SET holder = 'w1' WHERE id = 'c1'":  "cards_fixed_check",
 		"UPDATE sprint.cards SET tier = 'heavy' WHERE id = 'c1'": "cards_fixed_check",
 		// rows, judgements, cursors and the events' policy
-		"UPDATE sprint.rows SET tiers = '{flash,ultra}'": "rows_tiers_check",
-		"UPDATE sprint.rows SET tiers = NULL":            `"tiers"`,
-		"UPDATE sprint.rows SET model = NULL":            `"model"`,
-		"UPDATE sprint.rows SET harness = NULL":          `"harness"`,
+		"UPDATE sprint.rows SET role = 'boss'":  "rows_role_check",
+		"UPDATE sprint.rows SET tiers = NULL":   `"tiers"`,
+		"UPDATE sprint.rows SET model = NULL":   `"model"`,
+		"UPDATE sprint.rows SET harness = NULL": `"harness"`,
 		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'pending', now(), now(), 1)":                 "judgements_state_check",
 		"INSERT INTO sprint.judgements (id, kind, state, opened_at, epoch) VALUES ('j1', 'red', 'answered', now(), 1)":                                  "judgements_closed_check",
 		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'open', now(), now(), 1)":                    "judgements_closed_check",
@@ -773,7 +773,6 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.rows SET epoch = 2":                       "rows_key_fixed_check",
 		"UPDATE sprint.streams SET name = 'renamed'":             "streams_key_fixed_check",
 		"UPDATE sprint.streams SET epoch = 2":                    "streams_key_fixed_check",
-		"UPDATE sprint.rows SET width = -1":                      "rows_width_check",
 		"UPDATE sprint.rows SET flaps = -1":                      "rows_flaps_check",
 		"UPDATE sprint.rows SET gen = -1":                        "rows_gen_check",
 		"UPDATE sprint.streams SET pos = -1":                     "streams_pos_check",
@@ -829,8 +828,7 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c3', 'producer', 'pro', 's9', 'ready', 1)":                                         "cards_epoch_stream_fkey",
 		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c3', 'producer', 'pro', 's1', 'ready', 2)":                                         "cards_epoch_stream_fkey",
 		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 1)":                                                                        `"kind"`,
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":                                                                         "rows_kind_check",
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)":                                                                       "rows_state_check",
+		"INSERT INTO sprint.rows (name, state, epoch) VALUES ('w2', 'asleep', 1)":                                                                                    "rows_state_check",
 		"UPDATE sprint.rows SET state = 'blocked'":                                                                                                                   "rows_state_check",
 		"UPDATE sprint.rows SET session = NULL":                                                                                                                      `"session"`,
 		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                                                                                             "epoch_id_check",
