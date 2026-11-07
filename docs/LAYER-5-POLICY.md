@@ -86,6 +86,12 @@ question, the subject and the line of the function's `def`
 POLICY REFUSED v7 line 31 rows(c12): row r4 has rank pro, below the card's tier heavy
 ```
 
+Before a file is stored (`policy check` and `policy set`) it has no version,
+so the refusal names the file instead (`POLICY REFUSED mine.star line 31 ...`);
+after storage, the version. Something the file does not define (a missing
+question, a file over the size cap) is refused at its last line, as `line N,
+end of file` (ruled 2026-11-07).
+
 | question | inputs | answer and domain | the engine also refuses | default |
 |---|---|---|---|---|
 | `order(card)` | id, stream, score, priority, tier, attempt, bounces, prior_head | a tuple of up to 4 ints or strings; the engine sorts by (rung, answer, id) | a tuple of other types or longer than 4 | fix attempts first, then score |
@@ -511,8 +517,8 @@ google, deepseek, inception); openai and google are guesses, and astra sits
 under `unknown`, a guess. Harnesses: claude, codex, opencode and api (the
 API-rate adapter).
 
-**Size.** 2022 lines of non-test Go, over the 1.5k budget by about 522; 121
-lines of Starlark.
+**Size.** At round 3: 2,529 lines of non-test Go, over the 1.5k budget by
+about 1,030; 117 lines of Starlark.
 
 **After the cold read of e33eea61** (seven defects; the probes are
 `policy/coldread_test.go`, copied from the cold reader's clone; the rulings
@@ -562,3 +568,84 @@ Checked on vision (hetzner2 was down), `bash tla/ci-tlc.sh` at a9661204: 115 run
 all as required, 17 of them Policy (Policy.cfg no error; 10 witnesses each
 violating their first invariant; 6 reach checks violated). Race suite green on
 amd-3; cold tick 133 ms at 5,000 producers over 50 rows, without -race.
+
+**Round 3** (2026-11-07; rulings 1 to 7 from the Haiku fuzz, Stella's source
+review and cold read 2, and the Opus breaker's ruling; the probes are
+`policy/coldread2_test.go` and `policy/fuzz_break_test.go`, folded in with
+their readers' attribution in the headers). What each ruling became:
+
+1. A refusal before storage names the file (`check`, `set`: the `Label` of
+   an unstored source is its file name, its `Version` 0); after storage, the
+   version (`v7`, `default`). Said under the refusal form above.
+2. Every refusal has a line. Something the file does not define (a missing
+   question, a file over `MaxBody`) is refused at the file's last line,
+   printed `line N, end of file`; an unknown top-level name or a name bound
+   to a non-function is refused at its own line, found from the parsed file
+   (the engine now uses `SourceProgramOptions` and `Program.Init`, so the
+   syntax tree gives every top-level binding's line). A failure the engine
+   cannot place in a function (the top level running over the deadline) is
+   at line 1 and names the range, "running the top level, lines 1 to N".
+3. `TickTime` is 500 ms, marked measured (the ruling's cold 217 ms on amd-3,
+   margin 2x); -race still scales it by 3.
+4. One deadline per tick: `AnswerContext(ctx, ...)` takes the caller's
+   context and adds `TickTime` with `context.WithTimeout`, from the first
+   byte of input construction to the last answer returned; `Answer` is
+   `AnswerContext` on `context.Background()`. The deadline is checked at
+   every phase boundary (inputs, each version's top level, each question,
+   the joint check) and inside the validator's loops (`late(ctx, i)`), and
+   `context.AfterFunc` cancels the running thread. Each version runs in its
+   own goroutine and thread; the versions after the one being waited on
+   start at `fallbackAfter` = `TickTime`/2 (a guess) if it has not answered,
+   and the first version in order that passes answers, so starting early
+   never changes which version answers (the model's `Pick`). The per-tick
+   step budget `TickSteps` is gone: the deadline is the one bound;
+   `CallSteps` stays per call. The `TickTime` comment is corrected: no
+   memory bound exists in-process; one builtin step (a large allocation)
+   cannot be interrupted, and its goroutine is abandoned at the deadline,
+   its version failed. The separate evaluator process that would bound
+   memory is the 2.0.x item, so the child-process worker started in the
+   half-finished round 3 was set aside, not built. Result and cache bytes
+   are capped at 4 MiB per tick (`maxTickBytes`; an answer's weight plus
+   `entryBytes` = 96 per entry, a guess); a version over the cap fails with
+   "over 4194304 bytes". The answer cache now holds only the last passing
+   tick's answers, committed when the whole tick passes (committing empties
+   every other version's), so it is bounded by the same 4 MiB; equal `rows`
+   answers share one slice per tick, read-only.
+5. `Diff` is linear-space (Hirschberg's LCS after trimming the common
+   prefix and suffix) and refuses either side above 10,000 lines.
+6. Bounded readers: a policy file is read through a `LimitReader` at
+   `MaxBody`+1 and refused as "over 65536 bytes".
+7. `ReadCatalog` and a tick's `Answers.Catalog` are isolated copies (each
+   call clones the maps and slices), and the effective version is named the
+   same way in both: a version with no `catalog()` has the built-in's, and
+   `Catalog.Version` is 0 in both.
+
+**The breaker's ruling.** The built-in's `rows` walked candidates x
+producers in Starlark and spent its step budget at 5,000 producers over 100
+rows. The candidate ranking is now a Go builtin, `prefer(candidates,
+rank)` (`policy/prefer.go`), memoised per candidate list and rank for one
+version's tick; the script hands it the short list and the wanted rank.
+The default's text otherwise stands. Load, measured on amd-3 without -race,
+5,000 ready producers over 100 rows that all serve every tier, every
+question: cold 56.8 ms, warm 22.0 ms, inside the 500 ms budget.
+
+**Probes.** Each `TestColdread2Defect*` and fuzz probe passes as written,
+except where a ruling changed the expected text: the fuzz probes match
+`line \d+, end of file: ` for a missing question; cold read 1's alloc probe
+asks for 32 GiB in 128 MiB steps, since no memory bound exists and the
+deadline is what refuses it; its unbounded-steps probe now expects "time
+budget" (2,000 producers x range(30000)); the cache probe measures the
+engine's cached bytes against the 4 MiB cap.
+
+**API.** Kept: `Arity`, `CompareOrder`, `RungBackedUp`, `DefaultBody`,
+`Answer`, `Judgements`, `ReadCatalog`. Added: `AnswerContext`. Removed:
+`TickSteps`. The question set's names and types are unchanged.
+
+**The model.** `tla/Policy.tla` unchanged in its actions: the deadline is
+one more way a version is in `breaks` on a tick, and the early fallback
+does not change `Pick`; only its header names the round 3 code.
+
+**Owed.** The trace check binding `tla/Policy.tla` to the code (Glenn,
+2026-11-07: the code's random walk emits traces, TLC checks them in CI) is
+not built here; until it is, this layer does not lock. Layer 3 is told the
+budget is 500 ms and that `AnswerContext` carries its deadline.
