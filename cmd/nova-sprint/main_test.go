@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 	"runtime/debug"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestSelfBusReplyStopsWithoutSending(t *testing.T) {
@@ -18,9 +18,15 @@ func TestSelfBusReplyStopsWithoutSending(t *testing.T) {
 		t.Fatalf("self callback exit %d", code)
 	}
 }
-func TestDashRejectsConflictingModes(t *testing.T) {
-	if code := command([]string{"dash", "--pull", "http://example.test", "--pg", "fake"}); code != 1 {
+func TestDashRefusesAFlagItDoesNotTake(t *testing.T) {
+	if code := command([]string{"dash", "--pull", "http://example.test", "--pg", "fake"}); code != 2 {
 		t.Fatalf("exit %d", code)
+	}
+}
+
+func TestPolicyEvalIsTheChild(t *testing.T) {
+	if policy.EvalArg != "policy-eval" {
+		t.Fatal(policy.EvalArg)
 	}
 }
 
@@ -38,12 +44,16 @@ func TestHiddenSetupModesFailClosedWithoutCredentials(t *testing.T) {
 
 type oldTools struct{}
 
-func (oldTools) Check(context.Context, bool) ([]verbs.OperationError, error) { return nil, nil }
-func (oldTools) NovaToolsVersion(context.Context) (string, error)            { return "nova-version v1.6.29", nil }
-func TestCheckRefusesToolsBelowV2(t *testing.T) {
-	e := verbs.Engine{Health: oldTools{}, ToolPin: toolPin}
+func (oldTools) Fleet(context.Context) error                    { return nil }
+func (oldTools) ToolsVersion(context.Context) (string, error)   { return "nova-version v1.6.29", nil }
+func (oldTools) Schema(context.Context) (bool, error)           { return true, nil }
+func (oldTools) History(context.Context) error                  { return nil }
+func (oldTools) Run(context.Context) (run.ChooserStatus, error) { return run.ChooserStatus{}, nil }
+
+func TestCheckRefusesToolsBelowThePin(t *testing.T) {
+	e := verbs.Engine{Doctor: oldTools{}, Bus: present{}, ToolPin: toolPin}
 	result := e.Execute(context.Background(), []string{"check"})
-	if result.Exit != 1 || !strings.Contains(result.Output, "below pin v2.0.0") {
+	if result.Exit != 1 || !strings.Contains(result.Output, "below the pin "+toolPin) {
 		t.Fatalf("result=%+v", result)
 	}
 }
@@ -59,22 +69,5 @@ func TestDirtyBuildDoesNotClaimCommitIdentity(t *testing.T) {
 	}
 	if got := sourceVersion(nil); got != "dev" {
 		t.Fatalf("unknown %q", got)
-	}
-}
-
-func TestSimulationCoordinatorIsPersistedChoice(t *testing.T) {
-	ctx := context.Background()
-	s := store.NewFake()
-	choice := verbs.Choices{Store: s, Actor: "rowan", Now: time.Now}
-	if err := choice.Save(ctx, "coordinator", "rowan"); err != nil {
-		t.Fatal(err)
-	}
-	e, err := verbs.Simulation(s, "other", "dev+0123456789ab", toolPin, time.Now, func(context.Context, string) error { return nil }, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := e.Env.Coordinator(ctx)
-	if err != nil || got != "rowan" {
-		t.Fatalf("coordinator=%q err=%v", got, err)
 	}
 }

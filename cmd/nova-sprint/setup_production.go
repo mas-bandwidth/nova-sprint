@@ -703,11 +703,6 @@ func (p productionSetup) configureDashboard(ctx context.Context, in verbs.SetupI
 type publicInstaller interface {
 	Install(context.Context, string, string) error
 }
-type unavailablePublicInstaller struct{}
-
-func (unavailablePublicInstaller) Install(context.Context, string, string) error {
-	return fmt.Errorf("fleet repository installer unavailable")
-}
 
 func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.RuntimeSetup, in verbs.SetupInput, install bool) (bool, error) {
 	choice, saved, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")

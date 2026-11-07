@@ -17,6 +17,6 @@ func (f fleetPublicInstaller) Install(ctx context.Context, host, version string)
 	if f.command == nil || !safeSSHName(host) || !publicRelease.MatchString(version) {
 		return fmt.Errorf("public dashboard installer needs a valid host and release version")
 	}
-	_, err := f.command(ctx, "nova-fleet", "install", "--repo", "mas-bandwidth/nova-sprint", "--tag", version, "--names", "nova-sprint,nova-sprint-dash", host)
+	_, err := f.command(ctx, "nova-fleet", "install", "--repo", "mas-bandwidth/nova-sprint", "--tag", version, "--names", "nova-sprint", host)
 	return err
 }

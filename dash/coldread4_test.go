@@ -58,13 +58,13 @@ func TestColdread4DefectWorkCompactAt2000WithScrollbar(t *testing.T) {
 	}
 }
 
-// cmd/nova-sprint-dash/main.go calls store.Open (pool create + Ping) with the signal
+// cmd/nova-sprint/open.go (the dash verb's store, and every verb's) must call store.Open (pool create + Ping) with a deadline, never the signal
 // context, which has no deadline: an unreachable or blackholed PostgreSQL holds startup for
 // the OS connect timeout (or forever behind a proxy that accepts and stalls). Every other
 // store call has one (New 30 s, Advance 500 ms). Brief: "deadlines not covering every
 // store call".
 func TestColdread4DefectMainOpenWithoutDeadline(t *testing.T) {
-	path := filepath.Join("..", "cmd", "nova-sprint-dash", "main.go")
+	path := filepath.Join("..", "cmd", "nova-sprint", "open.go")
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
@@ -96,10 +96,10 @@ func TestColdread4DefectMainOpenWithoutDeadline(t *testing.T) {
 		return true
 	})
 	if openArg == "" {
-		t.Fatal("store.Open call not found; recheck main.go")
+		t.Fatal("store.Open call not found; recheck open.go")
 	}
 	if !deadlined[openArg] {
-		t.Errorf("main.go: store.Open(%s, ...) has no deadline (%s is not from context.WithTimeout/WithDeadline)", openArg, openArg)
+		t.Errorf("open.go: store.Open(%s, ...) has no deadline (%s is not from context.WithTimeout/WithDeadline)", openArg, openArg)
 	}
 }
 

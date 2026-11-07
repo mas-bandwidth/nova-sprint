@@ -57,7 +57,7 @@ func TestFunctionalLiveHistoryCheck(t *testing.T) {
 	if _, err = admin.Exec(ctx, "CREATE ROLE nova_sprint LOGIN SUPERUSER"); err != nil {
 		t.Fatal(err)
 	}
-	if err = validateLiveHistory(ctx, dsn, "fixture-password"); err != nil {
+	if err = (doctor{creds: credentials{dsn: dsn, password: "fixture-password"}}).History(ctx); err != nil {
 		t.Fatal(err)
 	}
 	conn, err := pgx.Connect(ctx, dsn)
@@ -68,7 +68,7 @@ func TestFunctionalLiveHistoryCheck(t *testing.T) {
 	if _, err = conn.Exec(ctx, "ALTER TABLE sprint.events DISABLE TRIGGER events_append_only; DELETE FROM sprint.events; ALTER TABLE sprint.events ENABLE TRIGGER events_append_only"); err != nil {
 		t.Fatal(err)
 	}
-	if err = validateLiveHistory(ctx, dsn, "fixture-password"); err == nil {
+	if err = (doctor{creds: credentials{dsn: dsn, password: "fixture-password"}}).History(ctx); err == nil {
 		t.Fatal("damaged history passed")
 	}
 }
