@@ -25,6 +25,7 @@ type Fake struct {
 	judges   map[key]Judgement
 	cursors  map[string]int64 // global, as seq is: a clear carries them
 	events   []fakeEvent
+	seq0     int64          // the seq before events[0]: 0, or the snapshot's (NewFakeFrom)
 	ops      map[string]int // op id -> index in events
 	drops    map[string]bool
 }
@@ -139,7 +140,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s := emptySnapshot(f.epoch)
-	s.Seq = int64(len(f.events))
+	s.Seq = f.seq0 + int64(len(f.events))
 	pick(s.Streams, f.streams, f.epoch)
 	pick(s.Cards, f.cards, f.epoch)
 	for id, c := range s.Cards {
@@ -265,7 +266,7 @@ func (t *fakeTx) needed(row string, tiers []string) (Card, bool, error) {
 	return found, found.ID != "", nil
 }
 
-func (t *fakeTx) lastSeq() (int64, error) { return int64(len(t.events)), nil }
+func (t *fakeTx) lastSeq() (int64, error) { return t.base.seq0 + int64(len(t.events)), nil }
 
 func (t *fakeTx) rows() ([]Row, error) {
 	var out []Row
