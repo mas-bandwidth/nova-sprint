@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"net/url"
 	"slices"
@@ -17,9 +18,10 @@ type SetupStore interface {
 	Install(context.Context) error
 }
 
-// SetupRun observes the chooser lock and sprint bus presence.
+// SetupRun observes the chooser lock and sprint bus presence on a machine
+// (by name) for a service (by name); not ready is (false, *RunNotReady).
 type SetupRun interface {
-	Ready(context.Context, string) (bool, error)
+	Ready(ctx context.Context, machine, service string) (bool, error)
 }
 
 // SetupWorkload is supplied by layer 4 for grants, rows, workers and smoke.
@@ -142,7 +144,13 @@ func (r RuntimeSetup) runCheck(ctx context.Context, in SetupInput) (SetupCheck, 
 	if r.Run == nil {
 		return SetupCheck{}, fmt.Errorf("run readiness unavailable")
 	}
-	ok, err := r.Run.Ready(ctx, host)
+	ok, err := r.Run.Ready(ctx, host, r.RunService.Name)
+	var notReady *RunNotReady
+	if err != nil && ctx.Err() == nil && errors.As(err, &notReady) {
+		// Not up yet: act; when it still is not after the act, the
+		// refusal names each false condition, never "not verified".
+		return SetupCheck{Action: true, Refusal: &OperationError{Problem: edge.RedactN("run on "+host+": "+notReady.Why, edge.FailureMax+200), Fix: notReady.Fix, Exit: 1}}, nil
+	}
 	return setupReady(ok, "UP 4/8 run: on "+host+"; chooser lock held; sprint hooked: VERIFIED", err)
 }
 func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupCheck, error) {

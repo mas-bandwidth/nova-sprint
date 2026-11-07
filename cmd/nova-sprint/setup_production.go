@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
@@ -709,7 +710,9 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 	if err != nil {
 		return verbs.FleetService{}, serviceConfigError("configured sprint DSN is invalid")
 	}
-	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis}
+	// run records the chooser lock under the machine's nova-config name,
+	// handed here, never under the raw hostname (run.ResolveMachine).
+	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis, run.MachineEnv: host}
 	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
 	if p.cfg.BusUser != "" {
 		env["NOVA_BUS_USER"] = p.cfg.BusUser
@@ -905,9 +908,12 @@ func selectRunService(rows []setupServiceRow, host string) (verbs.FleetService, 
 			return verbs.FleetService{}, false
 		}
 		for key := range row.Env {
-			if key != "NOVA_PG_DSN" && key != "NOVA_BUS_REDIS" && key != "NOVA_BUS_USER" && key != "NOVA_PG_PASSWORD_ENV" {
+			if key != "NOVA_PG_DSN" && key != "NOVA_BUS_REDIS" && key != "NOVA_BUS_USER" && key != "NOVA_PG_PASSWORD_ENV" && key != run.MachineEnv {
 				return verbs.FleetService{}, false
 			}
+		}
+		if value, ok := row.Env[run.MachineEnv]; ok && value != host {
+			return verbs.FleetService{}, false
 		}
 		if value, ok := row.Env["NOVA_PG_PASSWORD_ENV"]; ok && value != "NOVA_SPRINT_PG_PASSWORD" {
 			return verbs.FleetService{}, false
