@@ -127,7 +127,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `judge` | `[<id> <choice> --reason <why>]` | not the coordinator, or not hooked; judgement not open, naming who closed it; a choice it does not offer, listing them | the next open judgement, or `nothing; wait for the bus` | 0, 1 |
 | `priority` | `<card> <level> --reason <why>` | a consumer id (`priority` is the producer's); a final card; a level outside `low normal high critical blocker` (`read` is a rung, not a level) | `nothing; wait for the bus` | 0, 1 |
 | `edit` | `<card> --brief-file <f> --reason <why>` | a live consumer: `nova-bus send --as <me> --to <holder> ...` instead | `nothing; wait for the bus` | 0, 1 |
-| `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | a live consumer: its holder's `release`; an open judgement on it: `judge <id> drop` | `nothing; wait for the bus` | 0, 1 |
+| `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | an open judgement on it: `judge <id> drop` (a live consumer is released by the drop itself) | `nothing; wait for the bus` | 0, 1 |
 | `hold`, `unhold` | `<row\|stream>... --reason <why> [--dry-run]` | unknown name | `nothing; wait for the bus` | 0, 1 |
 | `dash` | `--listen <addr> [--pull <tailnet addr>]` | no store and no `--pull`; the pulled run not answering | the URL | 0 on SIGTERM |
 | `backup` | `[--out <dir>]` | `pg_dump` missing or older than the server | `nothing` | 0, 1, 2 |
@@ -707,7 +707,7 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   producer is admitted. Streams are read at once (base tip, the tree at the
   tip by `git ls-tree` in the state dir's clone, the card branches by one
   `git ls-remote`); a card is refused for its lint (tier and routes served,
-  DONE-WHEN parse, retired mechanic, a named bench), then its PATHS, then
+  DONE-WHEN as one command, retired mechanic, a named bench), then its PATHS, then
   work already at the base (its branch, HEAD, or PR: `gh pr view`). The brief
   parse (`verbs/brief.go`, `verbs/brief_lint.go`) refuses the bad forms and
   the retired keys with the line.
@@ -740,6 +740,25 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
 - Owed upstream: nova-config has no routes field; routes ride on machine
   roles (`route:<name>`) until one exists, and kin serve none. No per-job
   heartbeat reaches the store.
+## Built: gates, drop and the agreement warning (stitch w3A, 2026-11-07; directives 77, 63)
+
+- DONE-WHEN is one argv (`edge.ParseGate`, shared with the worker): `verbs/brief.go`
+  (the brief parse, with the reason and `edge.GateFix` on the lint) and `cardLint`
+  (`verbs/admit_card.go`, add, check and restore) refuse shell syntax outside quotes
+  and a first word that is not a program; the old `shellProblem` (which allowed
+  `&&` and `|`, so a chain was admitted and then failed on the bench) is gone.
+- `drop`/`replace`: `steps.dropMoves` withdraws the dropped producer's live
+  consumers first (`card.ReleasedPrefix + the drop's reason`), then plans the
+  Cancel or Replace with them gone, all one `card.Merge`. The card machine is
+  unchanged: Cancel still refuses a live consumer, the op carries the Withdraw
+  before it, the same composition the machine's merge model checks. Tests:
+  `TestVerbDropReleasesLiveConsumers`, `TestDropReleasesItsLiveConsumers`.
+- The agreement warning: `verbs.Forge.RequiredChecks` (`hostForge` reads
+  `gh api repos/<r>/branches/<b>` for the protection contexts and
+  `repos/<r>/rules/branches/<b>` for rulesets); `verbs/admit_cla.go` matches the
+  names and prints the identities (`worker.CommitEmailDomain`). Two extra gh
+  reads per github stream at `stream add` and `check` (not measured).
+
 ## Built: the board's load, ok% and ready alarm; a flaky test (stitch, 2026-11-07)
 
 - `beat` is the worker's heartbeat verb (a worker verb, so a row not hooked in is refused): it

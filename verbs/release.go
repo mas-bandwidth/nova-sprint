@@ -86,7 +86,7 @@ func (e *Engine) releaseRow(ctx context.Context, in *input, snap store.Snapshot,
 
 // ReleasedPrefix starts a released consumer's reason: the record that it was
 // given back, not failed.
-const ReleasedPrefix = "released: "
+const ReleasedPrefix = card.ReleasedPrefix
 
 // withdraw is one plan withdrawing cards, each with its producer's stream
 // (a release into a held stream parks) and its last pushed head.

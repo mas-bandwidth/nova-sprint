@@ -111,10 +111,24 @@ restored (an `ADMIT` line each). The parse refuses:
   unserved judgement and admission all read. Uppercase like every other key.
 - **HEAD: <full sha>** and **PR: <number>** (once each, optional): the work
   the brief carries, read only by admission (the brief keeps them).
-- **DONE-WHEN** that does not parse as one shell command line: a quote,
-  backquote or parenthesis left open, a `)` that closes nothing, a command
-  that starts with `|`, `&` or `;`, or ends with `|`, `&&`, `||` or `\`.
-  Form only: nothing is run.
+- **DONE-WHEN** that is not one command. A DONE-WHEN is one argv: words
+  split at white space, a single or double quote joining what it encloses,
+  run directly with no shell. So the line is refused (decided 2026-11-07,
+  directive 77) when it carries shell syntax outside a quote (a backquote,
+  `;`, `&`, `&&`, `|`, `||`, `<`, `>`, `(`, `)`, a backslash, `$(`, `${`, or
+  `$` before a letter or `_`; a lone `$`, as in `^TestX$`, is a literal), when
+  a quote is left open, or when its first word is not a program: a path (it
+  holds a `/`), or a name that starts with a lower-case letter or digit, holds
+  only letters, digits and `. _ + - @`, does not end in a dot, and is not a
+  shell builtin (`cd`, `export`, `source`, ...). A sentence is caught by
+  that form (`Verify the tests pass`, `tests, pass`), a lower-case sentence is
+  not: what the coordinator can check is the form, because the bench's PATH
+  is not readable from it. A name of the right form that is not on the bench
+  is met where the gate runs, as the wall's own command-not-found. The fix
+  line says to wrap a gate that needs a shell: `sh -c '...'`. The one parser
+  is `edge.ParseGate`; admission (add, check, restore) and the worker's
+  `RunTest` both call it, so what is admitted is what runs. Nothing is run
+  at add.
 - **Retired mechanics**, named with the line: a `WHO:`, `LOCK:` or `JOB:`
   key; `JOB.md`; a lock (winlock, flock, lockfile, a bench or captain lock);
   `ssh to <host>`; a DONE-WHEN or TEST that runs ssh. The take receipt is the
@@ -132,6 +146,20 @@ Then, against the roster and origin:
 - the work is not already at the base: the card's branch at origin, a HEAD
   line, or a PR's head is not an ancestor of the base tip, and the PR has not
   merged.
+
+`stream add` (and `check`, per stream) also reads the status checks the base
+branch requires (branch protection and rulesets, one `gh api` each) and,
+when one is named like a contributor agreement (`CLA`, `CAA`, "contributor",
+"assignment agreement", "license agreement"), prints a warning, never a
+refusal: the check, and the git identities the benches author commits as
+(`<row> <row@nova-sprint.local>`, from nova-config's benches with cores), for
+the human to sign before the first card lands; kin commit as their own git
+identity. Decided 2026-11-07 (directive 63): a forge exposes who has signed
+only where the agreement's bot does, and most do not, so the signed identities
+are not listed and an unsigned one is not refused at add; the warning is the
+closest correct thing. A required-checks read that fails is itself a warning.
+Routing a stream's cards away from a row whose identity cannot land is the
+deal's, not admission's, and is not built here.
 
 `stream add` proves the card branches `sprint/<stream>/<card>` can be
 created: the name passes git's ref-name rules, the base is not `sprint` or

@@ -12,8 +12,14 @@ build:
 	mkdir -p bin
 	go build -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
 
-install:
-	go install -ldflags "$(LDFLAGS)" ./cmd/...
+# install puts the built commands where a service finds them first
+# (~/.local/bin, nova-fleet's nova_bin_dir): each as a new file, signed ad hoc
+# on macOS, renamed over the old one, never overwritten in place, which macOS
+# kills (tools/placebin). Releases onto benches are nova-fleet's install.
+BINDIR ?= $(HOME)/.local/bin
+
+install: build
+	go run ./tools/placebin bin/* $(BINDIR)
 
 # the unit tier (docs/TESTING.md): no real time, sockets or network
 test:
