@@ -36,16 +36,15 @@ func cr3WorkGrid(vw float64) (grid, content float64) {
 	name := min(27.75*rem, e-pad-gap-s)                 // --name-w, --name-cap 27.75rem
 	status := e - pad - gap - name                      // --status-w
 	// name status repeat(6, minmax(5.625rem,1fr)) 4rem minmax(5.625rem,1fr) minmax(5.625rem,1fr) minmax(7.5rem,1.25fr)
-	grid = name + status + 6*5.625*rem + 4*rem + 5.625*rem + 5.625*rem + 7.5*rem + 11*gap
+	grid = name + status + 6*5.625*rem + 4*rem + 5.625*rem + 7.5*rem + 10*gap
 	content = vw - 2*2*rem - 2 - 2*pad // body padding 2rem each side, panel border 1px each side, row padding
 	return grid, content
 }
 
-// At 2000 px with no blocked card the full eleven-column Work grid needs 1894 px and its
-// row has 1870 px: it runs 24 px into the row's right padding, so the cost column ends
-// 8 px from the panel edge where v1's ends 32 px from it (v2-2000.png vs v1-live-2000.png,
-// Work and Total rows). fitTables does not trip because the overflow stays inside the
-// padding. README: "the full eleven-column Work table fits at both 2000 and 2800 px".
+// At 2000 px with no blocked card the Work grid, now ten columns (the fail column is gone,
+// the human 2026-11-07), needs 1733 px and its row has 1870 px: it fits. Before the fail
+// column went it needed 1894 px, 24 px more than the row (v2-2000.png vs v1-live-2000.png).
+// README: "the full Work table fits at both 2000 and 2800 px".
 func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
 	css, err := page.ReadFile("page/index.html")
 	if err != nil {
@@ -53,7 +52,7 @@ func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
 	}
 	for _, rule := range []string{
 		".panel { --E: clamp(18.5rem, 45vw, 42rem); }",
-		".streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }",
+		".streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }",
 		".streams .row { --name-cap: 27.75rem; }",
 		"padding: 2rem 2rem 4rem;",
 	} {
