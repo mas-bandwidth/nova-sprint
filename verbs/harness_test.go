@@ -86,7 +86,7 @@ func worldFrom(t *testing.T, s store.Snapshot) *world {
 		t.Fatal(err)
 	}
 	w := &world{f: f, bus: &fakeBus{present: map[string]bool{"alice": true, "bob": true, "carol": true, "dave": true}},
-		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head, gh + " main": base, gh + " sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true},
+		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head, gh + " main": base, gh + " sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true, run: run.ChooserStatus{Held: true, Operation: "run", Host: "studio", PID: 41}},
 		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster()}
 	n := 0
 	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch,
@@ -192,6 +192,8 @@ type fakeDoctor struct {
 	fleet, history error
 	tools          string
 	schema         bool
+	run            run.ChooserStatus
+	runErr         error
 }
 
 func (d *fakeDoctor) Fleet(context.Context) error                  { return d.fleet }
@@ -199,7 +201,7 @@ func (d *fakeDoctor) ToolsVersion(context.Context) (string, error) { return d.to
 func (d *fakeDoctor) Schema(context.Context) (bool, error)         { return d.schema, nil }
 func (d *fakeDoctor) History(context.Context) error                { return d.history }
 func (d *fakeDoctor) Run(context.Context) (run.ChooserStatus, error) {
-	return run.ChooserStatus{Host: "studio"}, nil
+	return d.run, d.runErr
 }
 
 type fakeServices struct{ ran []string }

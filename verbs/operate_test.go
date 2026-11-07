@@ -23,7 +23,8 @@ func TestStopAndStart(t *testing.T) {
 
 func TestCheck(t *testing.T) {
 	w := newWorld(t)
-	want(t, w.do("", "check", "--integrity"), 0, "CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK bus answering (4 present)", "CHECK history rebuilds the tables")
+	healthy(t, w)
+	want(t, w.do("", "check", "--integrity"), 0, "CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK bus answering (5 present)", "CHECK history rebuilds the tables")
 }
 
 func TestCheckRefusals(t *testing.T) {

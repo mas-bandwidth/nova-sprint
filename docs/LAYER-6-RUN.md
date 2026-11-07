@@ -108,7 +108,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `help` | `[<verb>\|<group>]`, or `-h` | unknown verb: the index | `nova-sprint` | 0 |
 | `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded | `next --as <name>` | 0, 1 |
 | `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
-| `check` | `[--integrity]` | fleet not green: each `nova-fleet` fix; a tool below the pin: `nova-fleet up`; `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable | `up`, or what next says | 0, 1 |
+| `check` | `[--integrity]` | prints every line; red (exit 1, or 2 when a read failed): fleet not green; nova-tools below the pin (above: a warning); `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable; a stream whose repository or base cannot be read; an open judgement (one line per kind); nothing runs the sprint; ready producers and nothing dealt (with why); a landing waiting on a judgement, run or a hold | `next`, or the first red line's fix | 0, 1, 2 |
 | `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
 | `stream add` | `<s> --repo <owner/name> [--base main] [--pr]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>` | `add --stream <s> --brief-file <f>` | 0, 1 |
 | `add` | `--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a>] [--sentinel <id>] [--priority <level>] [--dry-run]` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
@@ -514,6 +514,35 @@ Section 6 of LESSONS.md, by line:
 The put-back of fenced plans after a refusal; one push per recipient per tick; setup answers
 as policy data; `up` keeping no progress record; the public dashboard pulling
 with no DSN; `judge` with choices in place of v1's answer verbs.
+
+## Built: check says the sprint's health (stitch, 2026-11-07)
+
+`verbs/check.go`, `check_sprint.go`, `check_width.go`, `check_landing.go`
+(item 43). `check` collected the plumbing only and refused at its first
+failure. It now prints one line per thing checked (`CHECK`, `CHECK WARN`,
+`CHECK RED <what>: <fix>`), every line even when an early one is red, and
+ends with `next:` when nothing is red or with one `SPRINT REFUSED check`
+line naming the first red's fix (exit 2 when a red line is a read that
+failed, else 1). With the store at schema it reads one snapshot and adds:
+each stream's repository and base through the git edge at its clone address
+(`Origin.Tip`, one `git ls-remote` each, no clone, every stream at once); the open judgements, one line
+per kind; who holds the chooser lock and whether the name `sprint` is on the
+bus; the width through the steps' own view (`steps.Build`: `Open`,
+`Working`, `Live`) and the roster at policy's cap, red when producers are
+ready and none is dealt, naming the causes the deal meets (stopped, no run,
+no open row, held streams, streams with no base head or an open engine
+judgement about them, tiers no open row serves, the steps' idle judgement,
+and, when no machine cause applies, the count of ready producers with none);
+and one line per stream with producers merging, from what the store records
+(a judgement about the stream, its base or the producer; run; the hold;
+mode hand or no forge) and the group branch at origin (absent: the lander's
+merge; present: CI at its tip). The landing line reads no in-flight state
+(run keeps it in memory), so "how long" is the judgement's open time when a
+stall judgement says it, and nothing otherwise. Upward the pin: lower is
+red, higher a warning that exits 0. Unit tests (`verbs/check_test.go`): the
+all-green output line for line, and each red line with fakes. Not measured:
+check's time on a fleet with 25 streams (25 ls-remotes in parallel; a guess
+of 1 to 3 s over the network).
 
 ## Built: foundation checkpoint (2026-11-06)
 

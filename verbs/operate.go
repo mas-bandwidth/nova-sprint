@@ -37,61 +37,6 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	return done(next, fmt.Sprintf("%s applied at seq %d", label, r.Seq)), nil
 }
 
-// runCheck is `check`, the one doctor: the fleet, nova-tools at or above
-// the pin, the store at this build's schema, the bus; --integrity also
-// rebuilds the history and compares it with the tables.
-func runCheck(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
-	if e.Doctor == nil || e.Bus == nil {
-		return "", broken("the doctor is not configured", "set NOVA_PG_DSN and NOVA_BUS_REDIS, then check again")
-	}
-	if err := e.Doctor.Fleet(ctx); err != nil {
-		return "", err
-	}
-	tools, err := e.toolsAtPin(ctx)
-	if err != nil {
-		return "", err
-	}
-	current, err := e.Doctor.Schema(ctx)
-	if err != nil {
-		return "", RefusalOr(err, broken("the store did not answer ("+errText(err)+")", "check NOVA_PG_DSN and NOVA_SPRINT_PG_PASSWORD"))
-	}
-	if !current {
-		return "", refuse("the store is not at this build's schema", "nova-sprint up --as <coordinator>")
-	}
-	who, err := e.Bus.Who(ctx)
-	if err != nil {
-		return "", RefusalOr(err, broken("nova-bus who failed ("+errText(err)+")", "check NOVA_BUS_REDIS, then nova-bus who"))
-	}
-	lines := []string{"CHECK fleet green", "CHECK nova-tools " + tools + " (pin " + e.ToolPin + ")", "CHECK store at schema", fmt.Sprintf("CHECK bus answering (%d present)", len(who))}
-	if in.has("integrity") {
-		if err := e.Doctor.History(ctx); err != nil {
-			return "", err
-		}
-		lines = append(lines, "CHECK history rebuilds the tables")
-	}
-	return done("nova-sprint next --as "+orWord(in.actor, "<you>"), lines...), nil
-}
-
-// toolsAtPin is nova-tools' release, refused below this build's pin.
-func (e *Engine) toolsAtPin(ctx context.Context) (string, error) {
-	line, err := e.Doctor.ToolsVersion(ctx)
-	v, ok := parseToolsRelease(line)
-	if err != nil {
-		return "", RefusalOr(err, refuse("nova-tools' version is unknown ("+errText(err)+")", toolsFix(e.ToolPin)))
-	}
-	if !ok {
-		return "", refuse(fmt.Sprintf("nova-tools' version is unknown (%q is not a release vMAJOR.MINOR.PATCH)", Redact(line)), toolsFix(e.ToolPin))
-	}
-	at, err := atLeast(v, e.ToolPin)
-	if err != nil {
-		return "", RefusalOr(err, refuse("nova-tools "+v+" cannot be compared with the pin "+e.ToolPin+" ("+errText(err)+")", toolsFix(e.ToolPin)))
-	}
-	if !at {
-		return "", refuse("nova-tools "+v+" is below the pin "+e.ToolPin, toolsFix(e.ToolPin))
-	}
-	return v, nil
-}
-
 // atLeast compares releases vMAJOR.MINOR.PATCH; a prerelease or a
 // malformed version is an error, never a pass.
 func atLeast(have, pin string) (bool, error) {
