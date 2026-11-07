@@ -1,9 +1,7 @@
 package verbs
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -88,7 +86,7 @@ func (r ReleaseInstaller) installLocked(ctx context.Context, version, dir, home 
 	if arch == "" {
 		arch = runtime.GOARCH
 	}
-	asset := fmt.Sprintf("nova-sprint_%s_%s_%s.tar.gz", version, goos, arch)
+	asset := fmt.Sprintf("nova-sprint_%s_%s_%s", version, goos, arch)
 	base := strings.TrimRight(r.BaseURL, "/")
 	if base == "" {
 		base = "https://github.com/mas-bandwidth/nova-sprint/releases/download"
@@ -101,17 +99,16 @@ func (r ReleaseInstaller) installLocked(ctx context.Context, version, dir, home 
 	if err != nil {
 		return "", installError("release checksum is missing or ambiguous", "check SHA256SUMS for this platform")
 	}
-	archive, err := r.download(ctx, base+"/"+version+"/"+asset, installLimit)
+	binary, err := r.download(ctx, base+"/"+version+"/"+asset, installLimit)
 	if err != nil {
 		return "", installError("cannot download release asset", "check the release and network, then retry")
 	}
-	hash := sha256.Sum256(archive)
+	hash := sha256.Sum256(binary)
 	if !bytes.Equal(hash[:], want) {
 		return "", installError("release checksum mismatch", "check the release asset and SHA256SUMS before retrying")
 	}
-	binary, err := installExtract(archive)
-	if err != nil {
-		return "", installError("release archive is invalid", "check the release archive and retry")
+	if len(binary) == 0 {
+		return "", installError("release asset is empty", "check the release asset before retrying")
 	}
 	target, err := installStage(dir, version, binary)
 	if err != nil {
@@ -201,32 +198,4 @@ func installChecksum(sums []byte, asset string) ([]byte, error) {
 		return nil, errors.New("missing checksum")
 	}
 	return found, nil
-}
-
-func installExtract(data []byte) ([]byte, error) {
-	gz, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	defer gz.Close()
-	tr := tar.NewReader(gz)
-	header, err := tr.Next()
-	if err != nil {
-		return nil, err
-	}
-	if header.Name != "nova-sprint" || header.Typeflag != tar.TypeReg || header.Size < 1 || header.Size > installLimit {
-		return nil, errors.New("invalid archive entry")
-	}
-	binary, err := io.ReadAll(io.LimitReader(tr, installLimit+1))
-	if err != nil || int64(len(binary)) != header.Size {
-		return nil, errors.New("invalid binary")
-	}
-	if _, err = tr.Next(); err != io.EOF {
-		return nil, errors.New("extra archive entry")
-	}
-	padding, err := io.ReadAll(io.LimitReader(gz, (1<<20)+1))
-	if err != nil || len(padding) > 1<<20 || len(bytes.Trim(padding, "\x00")) != 0 {
-		return nil, errors.New("invalid archive padding")
-	}
-	return binary, nil
 }
