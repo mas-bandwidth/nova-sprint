@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Generate the focused Clear refinement and exact negative/limitation cases."""
 from pathlib import Path
-import json
 
 HERE = Path(__file__).resolve().parent
 INV = ["TypeOK", "CursorHasCoverage", "NoUncommittedSend", "CancellationHasClear"]
@@ -30,7 +29,6 @@ def main():
     base = (HERE / "RunClear.tla").read_text()
     (HERE / "RunClear.cfg").write_text(cfg() + "".join("INVARIANT " + x + "\n" for x in INV)
                                         + "".join("PROPERTY " + x + "\n" for x in PROPS))
-    manifest = [{"name": "RunClear", "module": "RunClear.tla", "cfg": "RunClear.cfg", "expect": "pass"}]
     directory = HERE / "witnesses" / "layer6"
     for name, target, kind, label, explanation, replacements in CASES:
         text = base.replace("MODULE RunClear ", "MODULE " + name + " ", 1)
@@ -42,9 +40,6 @@ def main():
         (directory / (name + ".tla")).write_text(text)
         (directory / (name + ".cfg")).write_text("\\* " + label + ": expected " + target + " violation.\n"
             + cfg() + ("INVARIANT " if kind == "invariant" else "PROPERTY ") + target + "\n")
-        manifest.append({"name": name, "module": "witnesses/layer6/" + name + ".tla",
-                         "cfg": "witnesses/layer6/" + name + ".cfg", "expect": kind, "target": target})
-    (HERE / "layer6-clear-runs.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 if __name__ == "__main__":
     main()

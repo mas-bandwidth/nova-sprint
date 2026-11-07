@@ -1,4 +1,0 @@
-=== RUN   TestSetupActualTrace
---- PASS: TestSetupActualTrace (0.00s)
-PASS
-ok  	github.com/mas-bandwidth/nova-sprint/verbs	0.005s

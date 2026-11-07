@@ -1,5 +1,0 @@
-=== RUN   TestColdreadFunctionalPG5000
-    coldread_test.go:445: pg 5000: worst advance=15.417618ms snapshots=1
---- PASS: TestColdreadFunctionalPG5000 (2.62s)
-PASS
-ok  	github.com/mas-bandwidth/nova-sprint/dash	3.640s

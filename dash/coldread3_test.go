@@ -1,7 +1,7 @@
 package dash
 
 // Third cold read of the v2 dashboard shim (2026-11-06), head be777a82.
-// Adapted from Rowan’s cold reader; original is preserved in testdata.
+// Adapted from Rowan’s cold reader.
 // The other tests are checks that passed or measurements (t.Log only).
 
 import (
@@ -85,17 +85,10 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 	}
 }
 
-// v1 sent ok% "0.0%" (grey) for a row whose ok and failed are both 0 (live v1 capture
-// friends.alex). The human ruled otherwise on 2026-11-07 (directive 63b, 64a): the cell
-// is "-" until there is data, as the total already is; the capture is checked only to
-// show it is the old form.
+// A row whose ok and failed are both 0 shows "-" in its ok% cell until there is
+// data, as the total already does.
 func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	t.Parallel()
-	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
-	alex := v1["friends"].(map[string]any)["alex"].(map[string]any)
-	if alex["ok"] != "0" || alex["failed"] != "0" || alex["okpct"] != "0.0%" {
-		t.Fatalf("capture changed: %v", alex)
-	}
 	s := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"alex": {Name: "alex", State: "down"}}}
 	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}).Tables["friends"])
 	if err != nil {
@@ -106,7 +99,7 @@ func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := rows["alex"]["okpct"]; got != "-" {
-		t.Errorf("zero-denominator ok%%: v2 %q, want \"-\" (v1 sent %q)", got, alex["okpct"])
+		t.Errorf("zero-denominator ok%%: %q, want \"-\"", got)
 	}
 }
 

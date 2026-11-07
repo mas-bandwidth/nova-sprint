@@ -1,7 +1,7 @@
 package dash
 
 // Fifth cold read of the v2 dashboard shim (2026-11-06), head 20cf5255.
-// Rowan’s fifth cold-read probes; the original is preserved in testdata.
+// Rowan’s fifth cold-read probes.
 // TestColdread5Check* are checks that passed on this head (they fail only on a regression).
 
 import (
