@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 )
 
 // Config is one worker as a binary starts it: `nova-worker` and
@@ -74,8 +73,9 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 	return nil
 }
 
-// newOSRunner_internal is the runner on the real clock, git, forge, wall and
-// bus.
+// newOSRunner_internal is the runner on the real clock, git, wall and bus.
+// It holds no forge: the worker's contract ends at a pushed head, and the
+// run's landing opens the PR with the host's identity (intent rules 16, 32).
 func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr string, out func(string)) (*Runner, error) {
 	h, err := NewHarness(cmp.Or(c.Harness, "claude"))
 	if err != nil {
@@ -83,7 +83,6 @@ func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr stri
 	}
 	ex, timeouts := edge.NewOSExec(), DefaultTimeouts()
 	root := cmp.Or(c.Root, filepath.Join(home, ".local", "state", "nova-worker", c.Row))
-	fg := forge.New(forge.Config{Identity: forge.Identity{Name: c.Row, Token: os.Getenv("GH_TOKEN")}, Exec: ex, Timeout: timeouts.GH})
 	sprint := &CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SprintBin: cmp.Or(c.SprintBin, "nova-sprint")}
 	return NewRunner(Runner{
 		Host: c.Host, RootDir: root,
@@ -91,8 +90,7 @@ func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr stri
 		Sprint:   sprint, Beater: sprint,
 		Git: &OSGitOps{WorkRoot: cmp.Or(c.WorkRoot, filepath.Join(root, "clones")),
 			MirrorRoot: cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror")), Exec: ex, Timeouts: timeouts},
-		Forges: map[string]ForgeOps{"github": &ForgeAdapter{Client: fg}},
-		Now:    time.Now, Sleep: time.Sleep,
+		Now: time.Now, Sleep: time.Sleep,
 		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
 		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: timeouts.ReserveWait, NetDeny: true}},
 		Procs:   OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,

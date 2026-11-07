@@ -22,10 +22,11 @@ import (
 )
 
 const (
-	testBaseSHA  = "1111111111111111111111111111111111111111"
-	testWorkSHA  = "2222222222222222222222222222222222222222"
-	testRebSHA   = "3333333333333333333333333333333333333333"
-	testPriorSHA = "4444444444444444444444444444444444444444"
+	testBaseSHA   = "1111111111111111111111111111111111111111"
+	testWorkSHA   = "2222222222222222222222222222222222222222"
+	testRebSHA    = "3333333333333333333333333333333333333333"
+	testPriorSHA  = "4444444444444444444444444444444444444444"
+	testCommitSHA = "5555555555555555555555555555555555555555"
 )
 
 func noSleep_internal(time.Duration) {}
@@ -53,6 +54,9 @@ type fakeGit struct {
 	pushErr     error
 	removedWTs  []string
 	stagedJobs  []Job
+	commits     []string
+	fetches     map[string]int // per repo
+	fetchErr    error
 }
 
 func newFakeGit_internal() *fakeGit {
@@ -62,6 +66,16 @@ func newFakeGit_internal() *fakeGit {
 		originHeads: map[string]string{},
 		dirtyByWT:   map[string]bool{},
 	}
+}
+
+func (g *fakeGit) Fetch(_ context.Context, j Job) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.fetches == nil {
+		g.fetches = map[string]int{}
+	}
+	g.fetches[j.Repo]++
+	return g.fetchErr
 }
 
 func (g *fakeGit) StageWorktree(_ context.Context, j Job) (string, error) {
@@ -124,45 +138,23 @@ func (g *fakeGit) IsDirty(_ context.Context, wt string) (bool, error) {
 	return g.dirtyByWT[wt], nil
 }
 
+func (g *fakeGit) CommitAll(_ context.Context, wt, _ string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.dirtyByWT[wt] {
+		return "", fmt.Errorf("nothing to commit in %s", wt)
+	}
+	g.dirtyByWT[wt] = false
+	g.headByWT[wt] = testCommitSHA
+	g.commits = append(g.commits, wt)
+	return testCommitSHA, nil
+}
+
 func (g *fakeGit) RemoveWorktree(_ context.Context, wt string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.removedWTs = append(g.removedWTs, wt)
 	return os.RemoveAll(wt)
-}
-
-type fakeForge struct {
-	mu      sync.Mutex
-	prs     map[string]int
-	green   map[string]bool
-	openErr error
-}
-
-func newFakeForge_internal() *fakeForge {
-	return &fakeForge{prs: map[string]int{}, green: map[string]bool{}}
-}
-
-func (f *fakeForge) EnsurePR(_ context.Context, _, branch, _, sha, _ string) (int, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.openErr != nil {
-		return 0, f.openErr
-	}
-	f.prs[branch+"@"+sha] = 42
-	return 42, nil
-}
-
-func (f *fakeForge) HasPR(_ context.Context, _, branch, _, sha string) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	_, ok := f.prs[branch+"@"+sha]
-	return ok, nil
-}
-
-func (f *fakeForge) ChecksGreen(_ context.Context, _, sha string) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.green[sha], nil
 }
 
 type fakeWall struct {
@@ -235,7 +227,7 @@ func seedFakeStore_internal(t *testing.T, clock func() time.Time) (*store.Fake, 
 	rec, err := st.Apply(ctx, store.Op{
 		ID: "setup-1", Epoch: 1, Actor: "rowan", Kind: "setup", At: clock(),
 		Writes: []store.Write{
-			store.PutStream{Name: "s1", Repo: "mas-bandwidth/nova-sprint", Base: "main", Pos: 1},
+			store.PutStream{Name: "s1", Repo: "mas-bandwidth/nova-sprint", Base: "main", Pos: 1, Forge: "github"},
 			store.PutRow{Name: row},
 			store.SetRowState{Row: row, State: "up"},
 			store.PutCard{
@@ -399,11 +391,7 @@ func TestStoreSprintClientReportRefusalsAndIdempotency(t *testing.T) {
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
-	forge := newFakeForge_internal()
-	sc := &StoreSprintClient{
-		Store: st, Origin: git, Forge: forge,
-		RequirePR: map[string]bool{"s1": true}, RequireGreenAtReport: true, Now: clock,
-	}
+	sc := &StoreSprintClient{Store: st, Origin: git, Now: clock}
 	ctx := context.Background()
 	taken, err := sc.Take(ctx, row, "p1.w1", 0)
 	if err != nil {
@@ -417,17 +405,9 @@ func TestStoreSprintClientReportRefusalsAndIdempotency(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "not on branch sprint/s1/p1 at origin") {
 		t.Fatalf("expected origin refusal, got %v", err)
 	}
+	// Finish needs only the head on origin (intent rule 32): no PR, no
+	// checks; the landing opens the PR and reads its checks.
 	git.originHeads["sprint/s1/p1"] = testWorkSHA
-	_, err = sc.Report(ctx, ReportRequest{Row: row, Consumer: "p1.w1", Gen: taken.Gen, ResultID: "r1", Result: "ok", Head: testWorkSHA})
-	if err == nil || !strings.Contains(err.Error(), "requires a pull request") {
-		t.Fatalf("expected PR refusal, got %v", err)
-	}
-	forge.prs["sprint/s1/p1@"+testWorkSHA] = 7
-	_, err = sc.Report(ctx, ReportRequest{Row: row, Consumer: "p1.w1", Gen: taken.Gen, ResultID: "r1", Result: "ok", Head: testWorkSHA})
-	if err == nil || !strings.Contains(err.Error(), "checks are not green") {
-		t.Fatalf("expected checks green refusal, got %v", err)
-	}
-	forge.green[testWorkSHA] = true
 	rec1, err := sc.Report(ctx, ReportRequest{Row: row, Consumer: "p1.w1", Gen: taken.Gen, ResultID: "r1", Result: "ok", Head: testWorkSHA, Cost: 500, Priced: true})
 	if err != nil || !rec1.Accepted {
 		t.Fatalf("expected accepted report, got rec=%+v err=%v", rec1, err)
@@ -448,13 +428,12 @@ func TestRunnerProbeAndFullLifecycleWithLaunchRetry(t *testing.T) {
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
 	git.rebasedSHA = testRebSHA
-	forge := newFakeForge_internal()
 	wall := &fakeWall{}
-	sc := &StoreSprintClient{Store: st, Origin: git, Forge: forge, RequirePR: map[string]bool{"s1": true}, Now: clock}
+	sc := &StoreSprintClient{Store: st, Origin: git, Now: clock}
 	root := t.TempDir()
 	r, err := NewRunner(Runner{
 		Host: "b1", RootDir: root, StateDir: root, Sprint: sc,
-		Git: git, Forges: map[string]ForgeOps{"github": forge}, Wall: wall, Now: clock, Sleep: func(time.Duration) {},
+		Git: git, Wall: wall, Now: clock, Sleep: func(time.Duration) {},
 	})
 	if err != nil {
 		t.Fatalf("NewRunner: %v", err)
@@ -580,13 +559,18 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryEdge 2: %v", err)
 	}
-	if res1.ID != res2.ID || res1.Epoch != 1 || res1.Outcome != res2.Outcome || res1.SHA != res2.SHA || res1.Outcome != "done" || res1.SHA != testPriorSHA {
+	if res1.ID != res2.ID || res1.Epoch != 1 || res1.Outcome != res2.Outcome || res1.SHA != res2.SHA || res1.Outcome == JobNone || res1.SHA != testPriorSHA {
 		t.Fatalf("QueryEdge not idempotent across Runner restart: res1=%+v res2=%+v", res1, res2)
 	}
 	assertEpochSeparatedQueryEdge_internal(t, ctx, r3, req, res1)
 	snap, _ := st.Snapshot(ctx)
+	// Defect 73: a job the restart cannot resume (no receipt to rebuild it
+	// from) is released with no blame, never reported "runner lost the job".
 	if snap.Cards["p1"].State != "ready" || snap.Cards["p1"].Bounces != 0 || snap.Cards["p1"].Head != testPriorSHA {
-		t.Fatalf("dead harness on restart must report fault (0 bounces) and keep partial head %s: %+v", testPriorSHA, snap.Cards["p1"])
+		t.Fatalf("dead harness on restart must release with no blame (0 bounces) and keep partial head %s: %+v", testPriorSHA, snap.Cards["p1"])
+	}
+	if w := snap.Cards["p1.w1"]; w.Result == "fault" || !strings.HasPrefix(w.Reason, "released: runner restarted") || strings.Contains(w.Reason, "lost") {
+		t.Fatalf("restart must release p1.w1 with no fault and no blame: %+v", w)
 	}
 }
 
@@ -598,7 +582,6 @@ func TestTakeRefusesReservedGroupBranch(t *testing.T) {
 	sprint := &StoreSprintClient{
 		Store:  st,
 		Origin: newFakeGit_internal(),
-		Forge:  newFakeForge_internal(),
 		Now:    clock,
 	}
 	info, err := sprint.Take(ctx, row, "p1.w1", 0)

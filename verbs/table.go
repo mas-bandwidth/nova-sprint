@@ -117,7 +117,7 @@ func workVerbs() []*verb {
 		{name: "report", group: "work", role: roleWorker, usage: "<card>@<gen> --result ok|fix|fail|fault [--head <sha>] [--reason <why>] [--finding <text>] [--cost-microusd <n> --priced true|false | --cost <usd>] --as <row> [--epoch <e>] [--id <op>] [--json]", flags: reportFlags + " result=", min: 1, max: 1, run: runReport,
 			about: "nova-worker's form of finish and read; fault is for a harness, bench or route failure",
 			needs: []string{"as finish and read", "--cost mixed with --cost-microusd or --priced: give one form"}},
-		{name: "release", group: "work", role: roleWorker, usage: "<card>@<gen> --reason <why> --as <you> [--epoch <e>] | --row <row> --all --reason <why> [--dry-run]", flags: "reason= epoch= row= all dry-run", max: 1, run: runRelease,
+		{name: "release", group: "work", role: roleWorker, usage: "<card>@<gen> --reason <why> --as <you> [--epoch <e>] [--head <sha>] | --row <row> --all --reason <why> [--dry-run]", flags: "reason= epoch= head= row= all dry-run", max: 1, run: runRelease,
 			about: "gives a card back to the queue, its pushed branch kept; another row's card, or a whole row's, is the coordinator's",
 			needs: []string{"no reason: --reason <why>", "another holder's card, or --row, and you are not the coordinator: ask the coordinator"}},
 		{name: "beat", group: "work", role: roleWorker, usage: "--load1 <loadavg> --cores <n> --slots-used <n> --slots-total <n> --as <row>", flags: "load1= cores= slots-used= slots-total=", max: 0, run: runBeat,

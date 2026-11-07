@@ -100,6 +100,10 @@ func (s *loopSprint) Report(_ context.Context, req ReportRequest) (store.Receipt
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
 func (s *loopSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
+func (s *loopSprint) Release(_ context.Context, _, id string, gen int, _, _ string) error {
+	s.note(fmt.Sprintf("release %s@%d", id, gen))
+	return nil
+}
 func (s *loopSprint) reported() []ReportRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -399,7 +403,6 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
 	git.rebasedSHA = testRebSHA
-	forge := newFakeForge_internal()
 	wall := &stitchWall{}
 	wall.runFn = func(_ int, j Job, _, _ []string) (WallRunResult, error) {
 		git.mu.Lock()
@@ -408,10 +411,10 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 		return WallRunResult{ExitCode: 0, PID: 500, Nonce: "n5", Elapsed: time.Second}, nil
 	}
-	sc := &StoreSprintClient{Store: st, Origin: git, Forge: forge, RequirePR: map[string]bool{"s1": true}, Now: clock}
+	sc := &StoreSprintClient{Store: st, Origin: git, Now: clock}
 	r, err := NewRunner(Runner{
 		Host: "b1", RootDir: t.TempDir(), Sprint: sc, Git: git,
-		Forges: map[string]ForgeOps{"github": forge}, Wall: wall, DefaultHarness: &OpenCodeHarness{}, Now: clock, Sleep: noSleep_internal,
+		Wall: wall, DefaultHarness: &OpenCodeHarness{}, Now: clock, Sleep: noSleep_internal,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -430,35 +433,11 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 	if wall.job.Model != "deepseek-r1" || !slices.Contains(wall.argv, "deepseek-r1") {
 		t.Errorf("the model is the receipt's: job %q argv %q", wall.job.Model, wall.argv)
 	}
+	// The forge is the receipt's and only names the clone URL (CloneURL):
+	// the worker opens no PR; the landing does (edge/git
+	// TestLandRungOneGatesTheCardsOwnPR).
 	if wall.job.Forge != "github" || wall.rec.Forge != "github" {
 		t.Errorf("the forge is the receipt's: job %q record %q", wall.job.Forge, wall.rec.Forge)
-	}
-	if len(forge.prs) == 0 {
-		t.Errorf("a stream with a forge got no pull request")
-	}
-}
-
-func TestStitchStreamForgeWithNoAdapterIsAFaultNamingIt(t *testing.T) {
-	t.Parallel()
-	clock := testClock_internal()
-	st, row := seedFakeStore_internal(t, clock)
-	git := newFakeGit_internal()
-	git.rebasedSHA = testRebSHA
-	wall := &fakeWall{runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
-		git.mu.Lock()
-		git.headByWT[j.WorktreeDir] = testWorkSHA
-		git.mu.Unlock()
-		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
-		return WallRunResult{ExitCode: 0, PID: 500, Nonce: "n5", Elapsed: time.Second}, nil
-	}}
-	rs := &recordingSprint{StoreSprintClient: &StoreSprintClient{Store: st, Origin: git, RequirePR: map[string]bool{"s1": true}, Now: clock}}
-	r, err := NewRunner(Runner{Host: "b1", RootDir: t.TempDir(), Sprint: rs, Git: git, Wall: wall, Now: clock, Sleep: noSleep_internal})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = r.StepRow(context.Background(), row)
-	if len(rs.reports) != 1 || rs.reports[0].Result != "fault" || !strings.Contains(rs.reports[0].Reason, `"github"`) {
-		t.Fatalf("want one fault naming the forge, got %+v", rs.reports)
 	}
 }
 
