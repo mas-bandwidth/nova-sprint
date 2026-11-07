@@ -564,23 +564,27 @@ type setupServicesResponse struct {
 func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, error) {
 	call := p.command
 	if call == nil {
-		call = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-			return exec.CommandContext(ctx, name, args...).Output()
-		}
+		call = verbs.Output
 	}
 	out, err := call(ctx, "nova-config", "service", "list", "--json")
-	if err != nil || len(out) > 1<<20 {
-		return nil, serviceConfigError("cannot inspect fleet services")
+	if err != nil {
+		return nil, serviceConfigError("cannot inspect fleet services: " + err.Error())
+	}
+	if len(out) > 1<<20 {
+		return nil, serviceConfigError("cannot inspect fleet services: " + edge.ParseRefused("output longer than 1 MiB", 1<<20, out))
 	}
 	var response setupServicesResponse
-	if json.Unmarshal(out, &response) != nil || response.Result.Verb != "service list" || response.Result.Status != "ok" || response.Result.Exit != 0 || response.Facts.Kind != "service" || response.Facts.Rows != len(response.Items) {
-		return nil, serviceConfigError("fleet service response is invalid")
+	if err := json.Unmarshal(out, &response); err != nil {
+		return nil, serviceConfigError("fleet service response is invalid: " + edge.ParseFailure(err, out))
+	}
+	if response.Result.Verb != "service list" || response.Result.Status != "ok" || response.Result.Exit != 0 || response.Facts.Kind != "service" || response.Facts.Rows != len(response.Items) {
+		return nil, serviceConfigError(fmt.Sprintf("fleet service response is invalid: result %q %q exit %d, facts kind %q rows %d for %d items", response.Result.Verb, response.Result.Status, response.Result.Exit, response.Facts.Kind, response.Facts.Rows, len(response.Items)))
 	}
 	rows := make([]setupServiceRow, 0, len(response.Items))
 	seen := map[string]bool{}
-	for _, item := range response.Items {
+	for i, item := range response.Items {
 		if item.Kind != "service" || item.Fields.Name == "" || seen[item.Fields.Name] {
-			return nil, serviceConfigError("fleet service response is invalid")
+			return nil, serviceConfigError(fmt.Sprintf("fleet service response is invalid: item %d kind %q name %q (empty or repeated)", i, item.Kind, item.Fields.Name))
 		}
 		seen[item.Fields.Name] = true
 		rows = append(rows, item.Fields)
@@ -588,7 +592,7 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	return rows, nil
 }
 func serviceConfigError(problem string) error {
-	return &verbs.OperationError{Problem: problem, Fix: "inspect nova-config service list --json and nova-fleet help services", Exit: 1}
+	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.FailureMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
 }
 func workloadUnavailable() error {
 	return &verbs.OperationError{Problem: "worker setup is unavailable in this build", Fix: "install a build with the verified worker setup adapter", Exit: 2}
@@ -610,7 +614,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	}
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return r, serviceConfigError("cannot inspect machine inventory")
+		return r, serviceConfigError("cannot inspect machine inventory: " + err.Error())
 	}
 	found := false
 	for _, machine := range machines {
@@ -772,8 +776,11 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	if !install {
 		return false, nil
 	}
-	if p.installer == nil || p.installer.Install(ctx, host, p.cfg.BinaryVersion) != nil {
+	if p.installer == nil {
 		return false, err
+	}
+	if installErr := p.installer.Install(ctx, host, p.cfg.BinaryVersion); installErr != nil {
+		return false, publicVersionRefusal(p.cfg.BinaryVersion, host, "install failed: "+installErr.Error())
 	}
 	if err = p.checkPublicVersion(ctx, host); err != nil {
 		return false, err
@@ -788,20 +795,33 @@ func (p productionSetup) checkPublicVersion(ctx context.Context, host string) er
 		Host string `json:"ansible_host"`
 		User string `json:"ansible_user"`
 	}
-	if err == nil {
-		err = json.Unmarshal(data, &inventory)
+	if err != nil {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+err.Error())
 	}
-	if err == nil && safeSSHName(inventory.Host) && (inventory.User == "" || (safeSSHName(inventory.User) && !strings.Contains(inventory.User, ":"))) {
-		destination := inventory.Host
-		if inventory.User != "" {
-			destination = inventory.User + "@" + destination
-		}
-		data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "nova-sprint", "version")
-		if err == nil && p.cfg.BinaryVersion != "" && string(data) == p.cfg.BinaryVersion+"\n" {
-			return nil
-		}
+	if err = json.Unmarshal(data, &inventory); err != nil {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+edge.ParseFailure(err, data))
 	}
-	return &verbs.OperationError{Problem: "public host nova-sprint version could not be verified", Fix: "install nova-sprint " + p.cfg.BinaryVersion + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
+	if !safeSSHName(inventory.Host) || (inventory.User != "" && (!safeSSHName(inventory.User) || strings.Contains(inventory.User, ":"))) {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("inventory ansible_host %q or ansible_user %q is not a safe ssh name", inventory.Host, inventory.User))
+	}
+	destination := inventory.Host
+	if inventory.User != "" {
+		destination = inventory.User + "@" + destination
+	}
+	data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "nova-sprint", "version")
+	if err != nil {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error())
+	}
+	if p.cfg.BinaryVersion == "" {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, "this build has no version to compare")
+	}
+	if string(data) != p.cfg.BinaryVersion+"\n" {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("it reports version %q, not %s", edge.FirstBytes(data), p.cfg.BinaryVersion))
+	}
+	return nil
+}
+func publicVersionRefusal(version, host, why string) error {
+	return &verbs.OperationError{Problem: edge.RedactN("public host nova-sprint version could not be verified: "+why, edge.FailureMax), Fix: "install nova-sprint " + version + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
 }
 
 func safeSSHName(value string) bool {
