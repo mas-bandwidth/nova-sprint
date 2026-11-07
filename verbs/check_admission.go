@@ -21,7 +21,7 @@ import (
 // It returns benchModelCheck's refusal, also a red line, for up to name.
 func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Snapshot) *Fail {
 	if snap.Policy == 0 {
-		r.red(refuse("no policy is active: the tick runs on the built-in default", "nova-sprint up --as <coordinator> (its step 4 stores and activates the default), or nova-sprint policy activate <version> --reason \"<why>\""))
+		r.red(noPolicy())
 		return nil
 	}
 	if e.Answers == nil || e.Store == nil {

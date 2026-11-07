@@ -130,6 +130,9 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 		if errors.Is(err, ErrNotSetUp) {
 			return failed(v.name, notSetUp(in.actor))
 		}
+		if errors.Is(err, ErrNoStore) {
+			return failed(v.name, NoStore(in.actor))
+		}
 		return failed(v.name, classify(err))
 	}
 	return Result{Output: out, Exit: exitDone}
@@ -139,6 +142,9 @@ func (e *Engine) call(ctx context.Context, v *verb, in *input) (string, error) {
 	if v.role == roleWorker || v.role == roleCoordinator {
 		snap, err := e.hooked(ctx, in, v.role)
 		if err != nil {
+			return "", err
+		}
+		if err = epochNow(in.epoch(), snap); err != nil {
 			return "", err
 		}
 		return v.run(e, ctx, in, snap)

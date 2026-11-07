@@ -65,7 +65,7 @@ type judgementLine struct {
 // cannot look.
 func runNext(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	v := nextView{Row: in.actor, TierModels: map[string][]string{}, Ready: []consumerLine{}, Working: []consumerLine{}, Final: []consumerLine{}, Judgements: []judgementLine{}}
-	if err := e.look(ctx, &v, in.has("json")); err != nil {
+	if err := e.look(ctx, &v, in.epoch(), in.has("json")); err != nil {
 		return "", err
 	}
 	if in.has("json") {
@@ -75,14 +75,18 @@ func runNext(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	return done(v.Next, "NEXT "+v.Message), nil
 }
 
-// look fills v: the store and its schema, the name, the bus, the hook, then
-// the row's cards, its judgements and the streams.
-func (e *Engine) look(ctx context.Context, v *nextView, inventory bool) error {
+// look fills v: the store and its schema, the epoch, the name, the bus, the
+// hook, then the row's cards, its judgements, what check reds before the
+// sprint can deal, and the streams.
+func (e *Engine) look(ctx context.Context, v *nextView, epoch int, inventory bool) error {
 	snap, err := e.snapshot(ctx)
 	if err != nil {
 		return e.unready(ctx, v, err)
 	}
 	v.Epoch, v.Seq = snap.Epoch, snap.Seq
+	if err := epochNow(epoch, snap); err != nil {
+		return guidance(v, err)
+	}
 	if v.Row == "" {
 		v.Message, v.Next = "choose the name you use in the sprint", "nova-sprint next --as <name>"
 		return nil
@@ -100,21 +104,25 @@ func (e *Engine) look(ctx context.Context, v *nextView, inventory bool) error {
 		return nil
 	}
 	fillInventory(v, snap)
-	answer(v, snap)
+	answer(v, snap, func() *Fail { return e.unmet(ctx, snap, v.Role == "coordinator") })
 	return nil
 }
 
 // unready is next's answer when the store cannot be read: the fleet down,
-// the store not set up or a refusal (no sprint credential in this process)
-// is guidance; anything else is a failure to look.
+// no store named or not set up (up), or a refusal (no sprint credential in
+// this process, a store another build made) is guidance; anything else is a
+// failure to look.
 func (e *Engine) unready(ctx context.Context, v *nextView, cause error) error {
-	if errors.Is(cause, ErrNotSetUp) {
+	switch {
+	case errors.Is(cause, ErrNotSetUp):
 		v.Message, v.Next = "the sprint is not set up", "nova-sprint up --as "+cmp.Or(v.Row, "<coordinator>")
 		return nil
-	}
-	var op *OperationError
-	if errors.As(cause, &op) && op.Exit != exitFailed {
-		return guidance(v, op)
+	case errors.Is(cause, ErrNoStore):
+		f := NoStore(v.Row)
+		v.Message, v.Next = f.What, f.Fix
+		return nil
+	case classify(cause).Exit == exitRefused:
+		return guidance(v, cause)
 	}
 	if e.Doctor == nil {
 		return cause
@@ -183,14 +191,19 @@ func (e *Engine) fillRoster(ctx context.Context, v *nextView, snap store.Snapsho
 	}
 }
 
-// answer is the first of: a card in hand, a judgement owed, a stream's
-// state.
-func answer(v *nextView, snap store.Snapshot) {
+// answer is the first of: a card in hand, a judgement owed, what check
+// reds before the sprint can deal (unmet: the coordinator's to fix, a
+// worker's to wait on), a stream's state.
+func answer(v *nextView, snap store.Snapshot, unmetFn func() *Fail) {
 	if len(v.Working)+len(v.Ready) > 0 {
 		first := append(slices.Clone(v.Working), v.Ready...)[0]
 		v.Message, v.Next = fmt.Sprintf("%s %s is %s with %s", first.Kind, first.ID, inHand(first.State), v.Row), first.Command
 	} else if len(v.Judgements) > 0 {
 		v.Message, v.Next = "judgement "+v.Judgements[0].ID+" needs you", v.Judgements[0].Command
+	} else if unmet := unmetFn(); unmet != nil && v.Role == "coordinator" {
+		v.Message, v.Next = unmet.What, strings.ReplaceAll(unmet.Fix, "<coordinator>", v.Row)
+	} else if unmet != nil {
+		v.Message, v.Next = unmet.What+" (the coordinator's to fix)", waitNext
 	} else {
 		v.Message, v.Next = streamsAnswer(snap)
 		if snap.Stopped && (v.Next == waitNext || v.Role != "coordinator") {

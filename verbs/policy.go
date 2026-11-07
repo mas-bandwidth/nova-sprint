@@ -83,6 +83,11 @@ func policyShow(ctx context.Context, e *Engine, in *input) (string, error) {
 		out, err := policy.List(ctx, e.Store)
 		return done("nova-sprint policy show <version>", out), err
 	}
+	if in.arg(0) == "default" {
+		// the built-in as a file to set; its next line is a comment, so the
+		// whole output is that file (policy.FirstPolicyFix redirects it)
+		return strings.TrimRight(policy.DefaultBody(), "\n") + "\n# next: nova-sprint policy set <file> --reason \"<why>\"\n", nil
+	}
 	v := 0
 	if in.arg(0) != "" {
 		var f *Fail

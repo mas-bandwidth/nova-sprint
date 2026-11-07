@@ -239,7 +239,7 @@ func TestCheckReprovesAdmission(t *testing.T) {
 	}
 	runCases(t, []tcase{
 		{name: "no policy active", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.bus.present["sprint"] = true },
-			want: []string{"CHECK RED no policy is active: the tick runs on the built-in default: nova-sprint up --as <coordinator> (its step 4 stores and activates the default)"}},
+			want: []string{"CHECK RED no policy is active: the tick runs on the built-in default: " + policy.FirstPolicyFix}},
 		{name: "a policy failing a question", args: []string{"check"}, exit: 1, snap: undealtSprint,
 			prep: then(healthy, func(_ *testing.T, w *world) { w.e.Answers = failingAnswers{} }),
 			want: []string{"CHECK RED policy v1 fails 1 question(s); the first: POLICY REFUSED v1 line 3 order(p1): boom", "nova-sprint policy check v1"}},

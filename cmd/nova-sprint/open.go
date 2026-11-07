@@ -29,8 +29,13 @@ func credentialsFromEnv() credentials {
 
 // sprint is the DSN as nova_sprint, or the refusal of a process without the
 // sprint's own credential (verbs.NoCredential: the store may well be set
-// up; "not set up" is for a store without the schema, defect 22).
+// up; "not set up" is for a store without the schema, defect 22). A process
+// with neither the DSN nor the credential names no store at all
+// (verbs.NoStore: up is its next command, never nova-secrets exec).
 func (c credentials) sprint() (string, error) {
+	if c.password == "" && c.dsn == "" {
+		return "", verbs.NoStore("")
+	}
 	if c.password == "" {
 		return "", verbs.NoCredential()
 	}

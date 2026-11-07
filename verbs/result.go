@@ -55,6 +55,18 @@ func NoCredential() *OperationError {
 	return &OperationError{Problem: "this process has no sprint credential", Fix: CredentialFix, Exit: exitRefused}
 }
 
+// ErrNoStore is a process that names no store at all: neither NOVA_PG_DSN
+// nor the sprint's credential. Nothing here points at a sprint, so the next
+// command is up, the one verb run bare (it makes the store and mints the
+// credential); joining a sprint that exists is the DSN and CredentialFix.
+var ErrNoStore = errors.New("no store is configured in this process")
+
+// NoStore is ErrNoStore's refusal (exit 1), naming up for actor.
+func NoStore(actor string) *Fail {
+	return &Fail{What: "no store is configured in this process (NOVA_PG_DSN and NOVA_SPRINT_PG_PASSWORD are unset; to join a sprint that exists, set NOVA_PG_DSN and " + CredentialFix + ")",
+		Fix: "nova-sprint up --as " + orWord(actor, "<you>"), Exit: exitRefused, cause: ErrNoStore}
+}
+
 // notSetUp is ErrNotSetUp's refusal (exit 1), naming up.
 func notSetUp(actor string) *Fail {
 	return &Fail{What: "the sprint is not set up", Fix: "nova-sprint up --as " + orWord(actor, "<you>"), Exit: exitRefused, cause: ErrNotSetUp}
@@ -92,6 +104,8 @@ func classify(err error) *Fail {
 		return f
 	case errors.Is(err, ErrNotSetUp):
 		return notSetUp("")
+	case errors.Is(err, ErrNoStore):
+		return NoStore("")
 	case errors.As(err, &op):
 		if op.Exit == exitFailed {
 			return broken(op.Problem, op.Fix)
