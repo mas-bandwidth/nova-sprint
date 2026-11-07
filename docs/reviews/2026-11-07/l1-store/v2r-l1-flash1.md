@@ -4,7 +4,7 @@ Base: `43d849e29d0e4568ba6a1348a076a59259639938`. Report only; no code was chang
 Read cold: `docs/LAYER-1-STORE.md`, `docs/ENFORCED.md`, every file under `store/`,
 `tla/Store.tla`, `tla/StoreTrace.tla`, and the store witnesses under `tla/witnesses/`.
 
-Commands run (first lines; last lines in the verdict notes below):
+Commands run (first lines; last lines follow):
 
 ```
 $ go build ./...
@@ -15,15 +15,6 @@ $ go test ./store/ -run 'TestFunctionalConformanceICU' -count=1 -timeout 240s
 $ go test ./store/ -run 'TestFunctionalConformanceICU/writes' -count=1 -timeout 120s -v
 $ go test ./store/ -count=1 -timeout 540s -skip 'TestFunctionalConformanceICU'
 ```
-
-## Verdict
-
-Not lock-clean. No blocker was found in the store's transaction logic (the seven
-guarantees hold in the code as read), but one serious integrity-check gap and one
-serious test-suite hang stand, and the mandated full-suite run does not pass on
-this bench. Worst finding: `checkRebuild` never compares the sprint's stop, so
-`ValidateHistory`/`RestoreEnd` accept a dump whose stop disagrees with its log
-(serious). Defects: 0 blocker, 2 serious, 4 minor, 1 nit.
 
 Run results, last lines verbatim:
 
@@ -41,6 +32,15 @@ Run results, last lines verbatim:
   device` under parallel servers, on the PATH PostgreSQL 14). These read as
   bench/environment failures, not store logic; they are NOT RUN-equivalent for
   the PG18 gate and must be re-run on a PG18 bench.
+
+## Verdict
+
+Not lock-clean. No blocker was found in the store's transaction logic (the seven
+guarantees hold in the code as read), but one serious integrity-check gap and one
+serious test-suite hang stand, and the mandated full-suite run does not pass on
+this bench. Worst finding: `checkRebuild` never compares the sprint's stop, so
+`ValidateHistory`/`RestoreEnd` accept a dump whose stop disagrees with its log
+(serious). Defects: 0 blocker, 2 serious, 4 minor, 1 nit.
 
 ## Defects
 
