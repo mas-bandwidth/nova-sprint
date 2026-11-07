@@ -76,10 +76,10 @@ func TestFakeRaces(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 	h.seed()
-	h.ok(h.op("narrow", nil, PutRow{Name: "w1", Kind: "worker", Width: 1, Session: "sess-a", Tiers: []string{"pro"}}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
+	h.ok(h.op("ready", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
-		"deal": {h.op("deal", nil, SetCardState{"u1", "working"}), h.op("deal", nil, SetCardState{"u2", "working"})}, // the state write into working alone is the width check
+		"deal": {h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u1", "working"}, SetRowFlaps{"w1", 1}), h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u2", "working"}, SetRowFlaps{"w1", 2})}, // the row gen fences a deal; width is the roster's (round 22)
 	} {
 		got := make([]Receipt, 2)
 		var wg sync.WaitGroup
@@ -114,7 +114,7 @@ func TestEventsCap(t *testing.T) {
 func TestRebuildCarriesClearImage(t *testing.T) {
 	t.Parallel()
 	card := Card{Tier: "pro", Priority: "normal", ID: "c1", Kind: "producer", Stream: "s1", State: "ready"}
-	row := Row{Name: "w1", Kind: "worker", State: "down"}
+	row := Row{Name: "w1", State: "down"}
 	events := []Event{
 		{Seq: 1, Accepted: true, After: &State{Streams: map[string]Stream{"s1": {Name: "s1"}}, Cards: map[string]Card{"c1": card}}},
 		{Seq: 2, Reason: "no"},
@@ -170,7 +170,7 @@ func TestSchemaHash(t *testing.T) {
 	assert.Equal(t, schemaHash, hashSchema(schemaSQL))
 	assert.Equal(t, schemaHash, hashSchema("-- a new comment\n\n"+strings.ReplaceAll(schemaSQL, "\n", "  -- note\n\n")))
 	assert.Equal(t, schemaHash, hashSchema(strings.ReplaceAll(schemaSQL, "\n    ", "\n\t")))
-	assert.NotEqual(t, schemaHash, hashSchema(strings.Replace(schemaSQL, "width >= 0", "width >= 1", 1)))
+	assert.NotEqual(t, schemaHash, hashSchema(strings.Replace(schemaSQL, "flaps >= 0", "flaps >= 1", 1)))
 	assert.NotEqual(t, hashSchema("SELECT 'a -- b';\n"), hashSchema("SELECT 'a -- c';\n"), "a -- inside a string literal is hashed, not stripped")
 	assert.Equal(t, hashSchema("SELECT 'it''s';\n"), hashSchema("SELECT 'it''s'; -- x\n"), "a doubled quote stays inside the literal")
 	assert.Equal(t, hashSchema("SELECT 1;\nSELECT 2;\n"), hashSchema("SELECT 1; -- 'x\nSELECT 2;\n"), "a quote inside a comment opens nothing")
@@ -186,6 +186,22 @@ func TestRound16Hash(t *testing.T) {
 	assert.Equal(t, round16Hash, hashSchema(string(old)))
 	assert.NotEqual(t, round16Hash, schemaHash)
 	assert.NotContains(t, string(old), " red ")
+}
+
+// round21Hash is the hash of round 17's schema.sql, which every round to 21
+// carried, kept in testdata: it has the five configuration columns of
+// sprint.rows that round 22 drops, and this build's schema has none of them.
+// Unit: reads a file in the package, no store.
+func TestRound21Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round21.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round21Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round21Hash, schemaHash)
+	for _, col := range []string{"kind", "width", "tiers", "model", "harness"} {
+		assert.Contains(t, string(old), "\n    "+col+" ", "round 21's rows table has %s", col)
+		assert.Contains(t, schemaSQL, "DROP COLUMN IF EXISTS "+col, "round 22 drops %s", col)
+	}
 }
 
 // checkEventIdentity: EventIdentity names the op and epoch Events holds at
