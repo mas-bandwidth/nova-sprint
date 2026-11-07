@@ -171,6 +171,9 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .stop-banner { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; margin-bottom: 2rem; padding: 1rem 2rem; border: 1px solid var(--critical); border-radius: 1rem; color: var(--text); font-size: 1.5rem; overflow-wrap: anywhere; }
 .stop-banner strong { color: var(--critical); }
 .stop-banner[hidden] { display: none; }
+/* nova-config rows the roster could not load, or a roster that could not be read: shown, never only in JSON. */
+.roster-banner { display: flex; flex-direction: column; gap: .25rem; margin-bottom: 2rem; padding: 1rem 2rem; border: 1px solid var(--warning); border-radius: 1rem; color: var(--text); font-size: 1.125rem; overflow-wrap: anywhere; }
+.roster-banner[hidden] { display: none; }
 /* hero */
 /* five tiles at full size: one row of five from 2000 px; three and two below that; two per row (the last full width, centred) below 1100 px */
 .hero { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2rem; margin-bottom: 2rem; }
@@ -471,6 +474,7 @@ footer a:hover { color: var(--text); }
 </header>
 
 <div id="stop-banner" class="stop-banner" role="status" hidden><strong>STOPPED</strong><span id="stop-reason"></span></div>
+<div id="roster-banner" class="roster-banner" role="status" hidden></div>
 <section class="hero">
   <div class="tile">
     <div class="label">Landed</div>
