@@ -104,7 +104,7 @@ func TestColdread5CheckFunctionalPoolAfterOpenCancel(t *testing.T) {
 	if err = c.Advance(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if !d.OK || d.All != 1 || c.state.Cursors[CursorName] == 0 {
 		t.Fatalf("after open-cancel: ok=%v all=%d cursor=%d", d.OK, d.All, c.state.Cursors[CursorName])
 	}

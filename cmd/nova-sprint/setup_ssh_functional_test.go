@@ -41,7 +41,7 @@ func TestFunctionalPublicVersionSSH(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSSHFixture(t, filepath.Join(dir, "authorized_keys"), clientPub, 0600)
-	command := "#!/bin/sh\n[ \"$SSH_ORIGINAL_COMMAND\" = 'nova-sprint version' ] || exit 1\nprintf 'v2.0.0\\n'\n"
+	command := "#!/bin/sh\n[ \"$SSH_ORIGINAL_COMMAND\" = '~/.local/bin/nova-sprint version' ] || exit 1\nprintf 'nova-sprint v2.0.0\\nnext: nova-sprint help\\n'\n"
 	writeSSHFixture(t, filepath.Join(dir, "version"), []byte(command), 0700)
 	config := fmt.Sprintf("ListenAddress 127.0.0.1\nPort %d\nHostKey %s/host\nPidFile %s/pid\nAuthorizedKeysFile %s/authorized_keys\nStrictModes no\nUsePAM no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPubkeyAuthentication yes\nAllowUsers %s\nForceCommand %s/version\nLogLevel ERROR\n", port, dir, dir, dir, account.Username, dir)
 	writeSSHFixture(t, filepath.Join(dir, "sshd_config"), []byte(config), 0600)
@@ -55,7 +55,7 @@ func TestFunctionalPublicVersionSSH(t *testing.T) {
 	sshConfig := fmt.Sprintf("Host 127.0.0.1\n  Port %d\n  UserKnownHostsFile %s/known_hosts\n  GlobalKnownHostsFile /dev/null\n  IdentityFile %s/client\n  IdentitiesOnly yes\n", port, dir, dir)
 	configPath := filepath.Join(dir, "ssh_config")
 	writeSSHFixture(t, configPath, []byte(sshConfig), 0600)
-	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.0.0"}}
+	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.0.0", Host: "control"}}
 	p.command = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		if name == "nova-config" {
 			return []byte(fmt.Sprintf(`{"ansible_host":"127.0.0.1","ansible_user":%q}`, account.Username)), nil
@@ -65,16 +65,16 @@ func TestFunctionalPublicVersionSSH(t *testing.T) {
 		}
 		return runSetupCommand(ctx, true, name, append([]string{"-F", configPath}, args...)...)
 	}
-	if err := p.checkPublicVersion(context.Background(), "fixture"); err != nil {
+	if err := p.checkServiceVersion(context.Background(), "fixture"); err != nil {
 		t.Fatalf("private SSH probe failed: %v", err)
 	}
 	p.cfg.BinaryVersion = "v2.0.1"
-	if err := p.checkPublicVersion(context.Background(), "fixture"); err == nil {
+	if err := p.checkServiceVersion(context.Background(), "fixture"); err == nil {
 		t.Fatal("wrong remote version accepted")
 	}
 	writeSSHFixture(t, filepath.Join(dir, "known_hosts"), nil, 0600)
 	p.cfg.BinaryVersion = "v2.0.0"
-	if err := p.checkPublicVersion(context.Background(), "fixture"); err == nil {
+	if err := p.checkServiceVersion(context.Background(), "fixture"); err == nil {
 		t.Fatal("untrusted SSH host accepted")
 	}
 }

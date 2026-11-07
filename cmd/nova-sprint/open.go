@@ -93,7 +93,10 @@ func newArchive(c credentials) verbs.Archive {
 			return nil, err
 		}
 		host, _ := os.Hostname()
-		return run.OpenRestoreLock(ctx, dsn, c.password, host, os.Getpid())
+		if machine := os.Getenv(run.MachineEnv); machine != "" {
+			host = machine
+		}
+		return run.OpenRestoreLock(ctx, dsn, c.password, run.MachineName(host), os.Getpid())
 	})
 }
 

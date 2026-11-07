@@ -50,11 +50,11 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 	v.Binary = binary
 	out, err := v.command(ctx, binary, "version")
 	if err != nil {
-		return false, fmt.Errorf("installed version unavailable: %w", err)
+		return false, cause("installed version unavailable", err)
 	}
 	installed, err := ParseVersionOutput(out)
 	if err != nil {
-		return false, fmt.Errorf("installed version unknown: %w", err)
+		return false, cause("installed version unknown", err)
 	}
 	if installed != version {
 		return false, nil

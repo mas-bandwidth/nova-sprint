@@ -128,33 +128,7 @@ func releaseVersion(s string) ([3]uint64, error) {
 }
 
 func runVersion(e *Engine, _ context.Context, _ *input, _ store.Snapshot) (string, error) {
-	return done("nova-sprint help", versionLine(e.Version)), nil
-}
-
-// versionLine is the version verb's first line, which ParseVersionOutput
-// reads back.
-func versionLine(version string) string {
-	return "nova-sprint " + orWord(version, "(unknown build)")
-}
-
-// ParseVersionOutput is the build version in `nova-sprint version`'s output:
-// "nova-sprint <version>" on its first line, then a "next:" line, nothing
-// else. The one reader of another binary's version (the installed one, a
-// public host's); a refusal names the byte and quotes what it saw.
-func ParseVersionOutput(out []byte) (string, error) {
-	text := string(out)
-	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[1], "next: ") {
-		return "", fmt.Errorf("not nova-sprint version's output: %s", edge.ParseRefused(fmt.Sprintf("%d line(s), want \"nova-sprint <version>\" then a \"next:\" line", len(lines)), 0, out))
-	}
-	version, ok := strings.CutPrefix(lines[0], "nova-sprint ")
-	if !ok || strings.ContainsAny(version, " \t\r") {
-		return "", fmt.Errorf("not nova-sprint version's output: %s", edge.ParseRefused("first line is not \"nova-sprint <version>\"", 0, out))
-	}
-	if !validBuildVersion(version) {
-		return "", fmt.Errorf("not a build version: %s", edge.ParseRefused(fmt.Sprintf("%q is not a release, a git describe or dev+<12 hex>", Redact(version)), len("nova-sprint "), out))
-	}
-	return version, nil
+	return done("nova-sprint help", VersionLine(e.Version)), nil
 }
 
 // runRun, runWorker and runDash are the long-running verbs, the binary's.

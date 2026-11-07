@@ -77,7 +77,7 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 func TestSetupArguments(t *testing.T) {
 	e := Engine{Actor: "rowan"}
 	got := e.Execute(context.Background(), []string{"up", "--dash", "invalid"})
-	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<host>: nova-sprint help up\n" {
+	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<machine>[:<port>]: nova-sprint help up\n" {
 		t.Fatal(got)
 	}
 }

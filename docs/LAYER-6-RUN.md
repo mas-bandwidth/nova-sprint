@@ -109,7 +109,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded | `next --as <name>` | 0, 1 |
 | `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
 | `check` | `[--integrity]` | fleet not green: each `nova-fleet` fix; a tool below the pin: `nova-fleet up`; `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable | `up`, or what next says | 0, 1 |
-| `up` | `[--as <coordinator>] [--dash tailnet\|public=<host>] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
+| `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
 | `stream add` | `<s> --repo <owner/name> [--base main] [--pr]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>` | `add --stream <s> --brief-file <f>` | 0, 1 |
 | `add` | `--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a>] [--sentinel <id>] [--priority <level>] [--dry-run]` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
 | `run` | `[--listen <addr>] [--shadow]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
@@ -211,8 +211,8 @@ SPRINT REFUSED up: rowan is not hooked in: run nova-bus hook --as rowan under yo
 # the AI hooks in and runs up again; steps 1 to 3 verify; up stops where the human chooses
 UP 4/8 run: installed on studio; chooser lock held; sprint hooked: VERIFIED
 UP 5/8 dashboard: not chosen
-ASK the human: the dashboard on the tailnet (default), or public on a host with a public IP?
-next: nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>
+ASK the human: the dashboard on the tailnet (default), or public on a machine with a public address in nova-config?
+next: nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]
 # the human says tailnet; up --dash tailnet verifies 1 to 5 and stops again
 UP 6/8 services: deepseek chosen; key not set
 ASK the human to type the deepseek API key at the hidden prompt in a terminal they can see:

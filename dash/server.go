@@ -54,9 +54,12 @@ func versionedIndex() []byte {
 	return []byte(strings.ReplaceAll(strings.ReplaceAll(html, "<!--LOGO-->", slot), "<!--FAVICON-->", icon))
 }
 
-type pageEnvelope struct {
+// PageEnvelope is what GET /api/sprint serves: the board (Data) and how
+// fresh it is. Exported so a reader (up's dashboard probe) decodes the
+// served shape itself, never a guess at it.
+type PageEnvelope struct {
 	OK                bool      `json:"ok"`
-	Data              any       `json:"data"`
+	Data              Board     `json:"data"`
 	FetchedAt         time.Time `json:"fetchedAt"`
 	DataAgeSeconds    float64   `json:"dataAgeSeconds"`
 	AttemptAt         time.Time `json:"attemptAt"`
@@ -68,7 +71,10 @@ type pageEnvelope struct {
 	Build             string    `json:"build"`
 }
 
-func (c *Cache) pageSnapshot() pageEnvelope {
+// Board is the page's view of the sprint, as PageEnvelope.Data carries it.
+type Board = envelope
+
+func (c *Cache) pageSnapshot() PageEnvelope {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	d := c.view
@@ -82,7 +88,7 @@ func (c *Cache) pageSnapshot() pageEnvelope {
 	if d.Error != "" {
 		msg = &d.Error
 	}
-	return pageEnvelope{OK: d.OK, Data: d, FetchedAt: d.At, DataAgeSeconds: now.Sub(d.At).Seconds(), AttemptAt: d.At, Error: msg, ReadSeconds: c.readSeconds, Throughput: rate, ThroughputMinutes: minutes, MinInterval: 1, Build: buildID}
+	return PageEnvelope{OK: d.OK, Data: d, FetchedAt: d.At, DataAgeSeconds: now.Sub(d.At).Seconds(), AttemptAt: d.At, Error: msg, ReadSeconds: c.readSeconds, Throughput: rate, ThroughputMinutes: minutes, MinInterval: 1, Build: buildID}
 }
 func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
 	result := c.pageSnapshot()

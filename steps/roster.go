@@ -70,6 +70,10 @@ func (t *tick) rowRecord(r store.Row) card.Row {
 	return card.RowFromStore(r, rr.Width, rr.Tiers)
 }
 
+// RosterGroup is the group key of the judgement that row name is not in
+// nova-config: one per row, and the steps' alone (policy opens none).
+func RosterGroup(name string) string { return "roster:" + name }
+
 // unlisted opens the roster judgement for every store row the roster lacks;
 // such a row is dealt nothing.
 func (t *tick) unlisted() {
