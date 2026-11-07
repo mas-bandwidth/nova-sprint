@@ -50,6 +50,7 @@ type envelope struct {
 	All           int                    `json:"all"`
 	At            time.Time              `json:"at"`
 	Epoch         int                    `json:"epoch"`
+	Machine       string                 `json:"machine"`
 	Tables        map[string]any         `json:"tables"`
 	Streams       []streamLine           `json:"streams"`
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
@@ -114,7 +115,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 func setStreamStates(streams []streamLine, work map[string]*workRow) {
 	for i := range streams {
@@ -259,4 +260,14 @@ func setPercent(f *fleetRow) {
 		p = float64(f.OK) * 100 / float64(f.OK+f.Failed)
 	}
 	f.OKPct = p
+}
+
+// machineLine is the page's machine line (v1's): RUNNING, or STOPPED and the
+// reason (drift row 4). The human page shows only STOPPED (Glenn,
+// 2026-10-04: "STOPPED is plenty"); /api/sprint carries the reason.
+func machineLine(s store.Snapshot) string {
+	if s.Stopped {
+		return "machine: STOPPED " + s.StopReason
+	}
+	return "machine: RUNNING"
 }
