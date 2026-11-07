@@ -12,7 +12,7 @@ import (
 
 // The exact verb list (LAYER-6 section 3); clear is kept beside restore.
 func TestTheVerbsAreExactlyTheList(t *testing.T) {
-	want := []string{"next", "check", "up", "hook", "unhook", "help", "version",
+	want := []string{"next", "check", "up", "hook", "wake", "unhook", "help", "version",
 		"take", "finish", "read", "report", "release", "show", "queue",
 		"stream add", "stream set", "add", "judge", "land", "hold", "unhold", "priority", "drop", "relink", "replace",
 		"policy set", "policy activate", "policy show", "policy diff", "cost reconcile", "policy check",
