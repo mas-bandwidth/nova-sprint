@@ -1,0 +1,22 @@
+TRACE REFUSED at 8 of 8: SaveCursor ([i |-> 8, action |-> "SaveCursor", cursor |-> 3, phase |-> "idle"]...)
+-- the model after record 7 (TLC's last state):
+/\ epoch = 2
+/\ cancelled = {1}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 7
+/\ oldSent = FALSE
+/\ acknowledged = {2}
+/\ snapshotEpoch = 2
+/\ needed = {2, 3}
+/\ cursor = 0
+/\ scan = 3
+/\ sent = {2}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+-- record 8 (the code's step and state):
+[i |-> 8, action |-> "SaveCursor", cursor |-> 3, phase |-> "idle"]
