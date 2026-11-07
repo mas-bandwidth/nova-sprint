@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# CI run of the store model (layer 1) and the card machine (layer 2):
+# CI run of the store model (layer 1), the card machine (layer 2) and the
+# policy model (layer 5):
 # bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
@@ -7,9 +8,11 @@
 #                                      must pass            (TLC exit 0)
 #   CardMachine.tla with CardMachine.cfg, CardDeps.cfg, CardPreempt.cfg, CardReads.cfg
 #     (its four scenarios)             must pass            (TLC exit 0)
+#   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
-#     reach/Card*.cfg on CardMachine.tla, every other one on Store.tla
+#     reach/Card*.cfg on CardMachine.tla, reach/Policy*.cfg on Policy.tla,
+#     every other one on Store.tla
 # Exits non-zero if a model fails, if any witness or reach run passes, or if any
 # run ends any other way (a parse error, a crash, a timeout is not a violation).
 # Run it on a bench host, never on the working machine.
@@ -119,6 +122,7 @@ run CardMachine pass . CardMachine.cfg CardMachine.tla 4
 run CardDeps pass . CardDeps.cfg CardMachine.tla 4
 run CardPreempt pass . CardPreempt.cfg CardMachine.tla 4
 run CardReads pass . CardReads.cfg CardMachine.tla 4
+run Policy pass . Policy.cfg Policy.tla 4
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
@@ -130,6 +134,7 @@ for f in "$HERE"/reach/*.cfg; do
     m="$(basename "$f" .cfg)"
     case "$m" in
         Card*) mod=CardMachine.tla ;;   # the card machine's reach checks
+        Policy*) mod=Policy.tla ;;      # the policy model's
         *) mod=Store.tla ;;
     esac
     run "reach-$m" violate . "reach/$m.cfg" "$mod" 1

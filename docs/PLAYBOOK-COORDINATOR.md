@@ -264,9 +264,12 @@ resolve a conflict on a card's branch, which no reader has read.
 ## 7. Running rows: friends and the fleet
 
 1. A bench worker is installed by `up` through nova-fleet on every bench in the inventory and
-   hooks itself in; a kin hooks in by the worker playbook. Width and tiers come from nova-config;
-   on this build a row is added with
-   `nova-sprint row add <name> --kind friend|worker --width <n> --tiers <a,b> --model <m> --harness <h>`.
+   hooks itself in; a kin hooks in by the worker playbook. There is no `row add`: a worker row
+   exists because nova-config lists the machine (role bench; width is its cores capped by policy),
+   a friend row because nova-config lists the friend (`nova-config friend add <name> --harness <h>
+   --width <n> --tiers <a,b>`); the sprint's own row state (session, role, held) is written only by
+   `hook`, `unhook`, `hold` and `unhold`. Change a width or a tier in nova-config; the sprint sees it
+   on the next tick.
 2. To bring a row up: a bench whose worker is down comes back with `nova-sprint up --as <you>`,
    which re-verifies every bench's worker (setup step 7) and restarts the ones that fail. A kin
    is invited on the bus, once, with the bus address and these two commands:
