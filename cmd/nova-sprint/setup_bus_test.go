@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
 func TestSetupBusSecretSelection(t *testing.T) {
@@ -152,5 +154,20 @@ func TestSetupBusMetadataAndCancellationFailClosed(t *testing.T) {
 	probe := setupBusCommand(cfg, func(context.Context) (bool, error) { t.Fatal("inventory after cancellation"); return false, nil }, run)
 	if _, err := probe(ctx, "nova-bus", "who"); err == nil {
 		t.Fatal("cancellation accepted")
+	}
+}
+
+// A failed nova-secrets names reaches up's refusal as the tool's own last
+// stderr line (runSetupCommand keeps it), never a bare "unavailable".
+func TestSetupBusNamesFailureCarriesStderr(t *testing.T) {
+	cfg := configForSetup()
+	cfg.BusRedis = "127.0.0.1:6379"
+	run := func(_ context.Context, _ bool, name string, _ ...string) ([]byte, error) {
+		return nil, verbs.Failure(name, errors.New("exit status 1"), []byte("nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=AGE-SECRET-KEY-1ABCDEFGHIJKLMNOPQRSTUVWXYZ\n"))
+	}
+	bus := setupBusCommand(cfg, func(context.Context) (bool, error) { return false, nil }, run)
+	_, err := bus(context.Background(), "nova-bus", "who")
+	if err == nil || err.Error() != "bus secret names unavailable (nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=<redacted>)" {
+		t.Fatal(err)
 	}
 }

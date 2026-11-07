@@ -28,7 +28,7 @@ func (g FleetGrants) Grant(ctx context.Context, seat, machine, name string) erro
 	}
 	_, err := g.command(ctx, "nova-secrets", "grant", name, "--to", seat, "--pins", g.Pins, "--store", g.Store, "--key", g.KeyFile, "--as", g.ControlSeat)
 	if err != nil {
-		return fmt.Errorf("nova-secrets grant failed")
+		return fmt.Errorf("nova-secrets grant failed%s", ToolDetail(err))
 	}
 	return nil
 }

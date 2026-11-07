@@ -65,7 +65,7 @@ func (p PGSetupStore) child(ctx context.Context, mode string) (bool, error) {
 	}
 	out, err := cmd(ctx, "nova-secrets", args...)
 	if err != nil {
-		return false, fmt.Errorf("store child failed")
+		return false, fmt.Errorf("store child failed%s", ToolDetail(err))
 	}
 	var result struct {
 		Ready *bool `json:"ready"`

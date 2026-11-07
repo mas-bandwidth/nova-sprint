@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,7 +16,12 @@ import (
 type CommandOutput func(context.Context, string, ...string) ([]byte, error)
 
 func toolOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).Output()
+	out, err := exec.CommandContext(ctx, name, args...).Output()
+	var x *exec.ExitError
+	if errors.As(err, &x) {
+		return out, Failure(name, err, x.Stderr)
+	}
+	return out, err
 }
 
 // ExecEnvironment observes fleet, bus and schema state through their owners.
