@@ -19,7 +19,7 @@ INVARIANTS = [
     "TypeOK", "ProducerNeverHeld", "SlotsDense", "WorkingOneWorkConsumer",
     "WorkingLeavesInOneStep", "ParkedUnderHold", "NeverStranded", "ReadOnlyInReview",
     "ReaderNeverAuthor", "WidthKept", "TakeBelowWidth", "NeedFailedTakesDependants",
-    "SentinelShape", "NeedsAcyclic", "OrderAcyclic",
+    "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "PreemptOnBlockerRow",
     "ResultsByKind", "OneLiveReadPerRow",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
@@ -45,10 +45,13 @@ SCENARIOS = {
     # life with Merge: ops of up to three moves, at small bounds.
     "merge": {"Scenario": "life", "K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1,
               "MaxOp": 3},
+    # pre with Merge: a preempt Withdraw and a blocker Start in one op.
+    "mergepre": {"Scenario": "pre", "K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1,
+                 "MaxOp": 2},
 }
 
 # The passing runs: cfg name -> scenario.
-PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads", "CardMerge": "merge"}
+PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads", "CardMerge": "merge", "CardMergePre": "mergepre"}
 
 # Reachability checks on CardMachine.tla: name -> (scenario, what).
 REACH = {
@@ -203,10 +206,10 @@ WITNESSES = [
      [("  /\\ NoLive(p)\n  /\\ PStep(\"Block\"",
        "  /\\ \\A k \\in LiveOf(p) : op > 0 /\\ snap.cs[k].st = \"none\"   \\* FAULT: cut unseen\n"
        "  /\\ PStep(\"Block\"", 1)]),
-    ("CardMergeHeldUnseen", "ParkedUnderHold", "merge",
-     "Merge: a Withdraw's release reads the stream from the snapshot, not\n"
-     "the folded state (before round 6): HoldStream then Withdraw in one op\n"
-     "readies the producer in a held stream.",
+    ("CardMergeNestedHold", "ParkedUnderHold", "merge",
+     "Merge: a release reads the stream from the snapshot, not from what a\n"
+     "hold earlier in the op (nested or not) left: HoldStream then Withdraw\n"
+     "in one op leaves the producer ready in a held stream.",
      [("THEN [ps EXCEPT ![c[1]].st = Back,",
        "THEN [ps EXCEPT ![c[1]].st = IF (IF op > 0 THEN snap.held ELSE held)   \\* FAULT\n"
        "                             THEN \"waiting\" ELSE \"ready\",", 1)]),
@@ -218,13 +221,19 @@ WITNESSES = [
        "  /\\ p \\in Prods\n"
        "  /\\ (IF op > 0 THEN snap.ps[p].st ELSE ps[p].st) \\notin PFinal \\cup {\"absent\"}   \\* FAULT\n"
        "  /\\ s # ps[p].score\n", 1)]),
-    ("CardMergeFenceFolded", "FencesOnSnapshot", "merge",
-     "Merge: a later move keeps its condition on a state an earlier move of\n"
-     "the op wrote, read off the folded state (before round 6): Start then\n"
-     "Rescore fences p1 working against a snapshot where it is ready, and\n"
-     "the store refuses the op.",
+    ("CardMergeOwnWrites", "FencesOnSnapshot", "merge",
+     "Merge: a merged plan's read set includes its own writes: a later move\n"
+     "keeps its condition on a state an earlier move of the op wrote, read\n"
+     "after that write. Resolve then Edit fences p1 ready against a\n"
+     "snapshot where it is waiting, and the store refuses the op.",
      [("PFence(p) == IF op > 0 /\\ ps[p].st # snap.ps[p].st THEN {} ELSE {ps[p].st}",
        "PFence(p) == {ps[p].st}   \\* FAULT: was keepExpects", 1)]),
+    ("CardMergeNestedStart", "PreemptOnBlockerRow", "mergepre",
+     "Merge: the preempt guard sees only the top-level plans, so a blocker\n"
+     "Start nested in a merged plan skips it: a preempt Withdraw on one row\n"
+     "and the blocker's Start on another row are one op.",
+     [("     IN /\\ PreemptGuard(pw2, bs2)\n",
+       "     IN /\\ TRUE   \\* FAULT: was PreemptGuard(pw2, bs2)\n", 1)]),
 ]
 
 

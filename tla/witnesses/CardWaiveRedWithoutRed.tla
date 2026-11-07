@@ -131,9 +131,11 @@ VARIABLES
   last,  \* step monitor: [ev, bad]
   env,   \* environment and coordinator moves so far (bounded by MaxEnv)
   op,    \* moves already in the open op (0: none open); see Merge
-  snap   \* the state the open op started from (NoSnap when none is open)
+  snap,  \* the state the open op started from (NoSnap when none is open)
+  pw,    \* rows of the preempt-flagged Withdraws of the last op
+  bs     \* rows of the blocker Starts of the last op
 
-vars == <<ps, cs, rs, held, last, env, op, snap>>
+vars == <<ps, cs, rs, held, last, env, op, snap, pw, bs>>
 
 Live(c)      == cs[c].st \in LiveSt
 LiveOf(p)    == {c \in ConsOf(p) : Live(c)}
@@ -173,6 +175,8 @@ Init ==
   /\ env  = 0
   /\ op   = 0
   /\ snap = NoSnap
+  /\ pw   = {}
+  /\ bs   = {}
 
 -----------------------------------------------------------------------------
 (* The step monitor. Each rule reads the state before the step (ps, cs)  *)
@@ -725,44 +729,55 @@ EnvMove ==
 \* Every producer final: the run is over (any other deadlock is reported).
 Terminating == (\A p \in P : ps[p].st \in PFinal \cup {"absent"}) /\ UNCHANGED vars
 
------------------------------------------------------------------------------
-(* Merge: up to MaxOp moves composed into one op (round 6: sequential      *)
-(* composition). The moves of an op are consecutive steps of the model:    *)
-(* each later move is checked against, and writes onto, the state the      *)
-(* earlier moves of the op left, which is the code's folded state (a       *)
-(* consumer cut earlier in the op is live for the next move; the stream    *)
-(* and rows are the folded ones; a merged plan is run again in a later     *)
-(* merge). Nothing else interleaves: the model has one actor, and an op is *)
-(* applied by the store in one transaction. snap is the state the op       *)
-(* started from, the snapshot every plan of the op was read on; it is what *)
-(* the store checks the op's conditions against. The op refuses a second   *)
-(* write to one field (the code's dupWrites, which also refuses two cuts   *)
-(* of one card), read here as "a field the op already changed changes      *)
-(* again" (one write per field per op, so a written field differs from the *)
-(* snapshot, but for a write of the value already there). A move's        *)
-(* condition on its card's state is kept only when no earlier move of the  *)
-(* op wrote that state (keepExpects): FencesOnSnapshot.                    *)
-Snap   == [ps |-> ps, cs |-> cs, rs |-> rs, held |-> held]
-
-PFields == {"st", "att", "head", "author", "bounces", "score", "prio", "needs", "after",
-            "review", "finding", "red"}   \* ncut is the model's slot counter, not a column
-CFields == {"st", "kind", "row", "att", "head", "res", "author", "review", "prior", "finding"}
-RFields == {"st", "flaps", "width", "held"}
-
-DupWrite ==
-  \/ \E x \in P, f \in PFields : ps'[x][f] # ps[x][f] /\ ps[x][f] # snap.ps[x][f]
-  \/ \E k \in CIds, f \in CFields : cs'[k][f] # cs[k][f] /\ cs[k][f] # snap.cs[k][f]
-  \/ \E r \in Rows, f \in RFields : rs'[r][f] # rs[r][f] /\ rs[r][f] # snap.rs[r][f]
-  \/ held' # held /\ held # snap.held
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+(* Merge composes moves (the ruling after the fourth cold read): an op is *)
+(* an ordered list of up to MaxOp moves, nested merges flattened first,    *)
+(* each move planned against the state the earlier ones leave. Here the    *)
+(* moves of an op are consecutive steps, so each later move is checked     *)
+(* against, and writes onto, what the earlier moves left (a consumer cut   *)
+(* earlier in the op is live for the next move; the stream, rows and       *)
+(* cards are the folded ones), and a sequence legal one by one is one op,  *)
+(* Red then WaiveRed included: no second write to a field is refused.      *)
+(* Nothing interleaves: the model has one actor, and the store applies an  *)
+(* op in one transaction. snap is the state the op started from: the       *)
+(* op's conditions are the first-read value of each field, minus fields    *)
+(* an earlier move of the op wrote, and the store checks them against      *)
+(* snap (FencesOnSnapshot). The preempt guard runs on the flattened list,  *)
+(* for Withdraws flagged preempt only: with a blocker's Start in the same  *)
+(* op, the withdrawn consumer is working on the row that Start names. pw   *)
+(* and bs keep the rows of the last op's preempt Withdraws and blocker     *)
+(* Starts until the next op starts (PreemptOnBlockerRow reads them).       *)
+Snap == [ps |-> ps, cs |-> cs, rs |-> rs, held |-> held]
 
 Move ==
   \/ CardMove /\ UNCHANGED env
   \/ env < MaxEnv /\ EnvMove /\ env' = env + 1
 
+\* A Withdraw flagged preempt: as Withdraw, of a working consumer (the code
+\* refuses it otherwise). Only in an op that can hold a Start too.
+PreWithdraw(c, h) ==
+  /\ MaxOp > 1
+  /\ cs[c].st = "working"
+  /\ Withdraw(c, h)
+  /\ UNCHANGED env
+
+\* The rows this move starts a blocker on.
+BlockerStarts ==
+  {r \in Rows : \E b \in Prods : /\ ps[b].prio = "blocker" /\ ps[b].st = "ready"
+                                 /\ ps'[b].st = "working" /\ cs'[NextSlot(b)].row = r}
+
+\* The preempt guard on the op so far, this move included.
+PreemptGuard(w, s) == \A x \in w, y \in s : x = y
+
 \* A move closes the op it is in, or (below MaxOp) leaves it open for the
-\* next move; the first move of an op records the snapshot.
-OpStep ==
-  /\ op > 0 => ~DupWrite
+\* next move; the first move of an op records the snapshot. w: the rows of
+\* this move's preempt Withdraw.
+OpStep(w) ==
+  /\ LET pw2 == (IF op = 0 THEN {} ELSE pw) \cup w
+         bs2 == (IF op = 0 THEN {} ELSE bs) \cup (IF MaxOp > 1 THEN BlockerStarts ELSE {})
+     IN /\ PreemptGuard(pw2, bs2)
+        /\ pw' = pw2
+        /\ bs' = bs2
   /\ \/ op' = 0 /\ snap' = NoSnap
      \/ op + 1 < MaxOp /\ op' = op + 1 /\ snap' = IF op = 0 THEN Snap ELSE snap
 
@@ -771,10 +786,11 @@ Commit ==
   /\ op > 0
   /\ op' = 0 /\ snap' = NoSnap
   /\ last' = [ev |-> "-", bad |-> {}]
-  /\ UNCHANGED <<ps, cs, rs, held, env>>
+  /\ UNCHANGED <<ps, cs, rs, held, env, pw, bs>>
 
 Next ==
-  \/ Move /\ OpStep
+  \/ Move /\ OpStep({})
+  \/ \E c \in CIds, h \in 0..MaxHead : PreWithdraw(c, h) /\ OpStep({cs[c].row})
   \/ Commit
   \/ Terminating
 
@@ -799,6 +815,7 @@ TypeOK ==
   /\ held \in BOOLEAN
   /\ env \in 0..MaxEnv
   /\ op \in 0..(MaxOp - 1)
+  /\ pw \subseteq Rows /\ bs \subseteq Rows
   /\ last.bad \subseteq StepRules
 
 (* A producer never has a holder: the holder lives on the consumer only,  *)
@@ -913,6 +930,10 @@ NeedsAcyclic == Acyclic(NeedsGraph)
 (* Needs and after together stay acyclic: Add and Relink both walk needs *)
 (* and after (the code at v2-card-fix3).                                 *)
 OrderAcyclic == Acyclic(OrderGraph)
+
+(* An op's preempt Withdraws are of consumers on the row its blocker      *)
+(* Starts name (the guard, on the flattened op).                          *)
+PreemptOnBlockerRow == \A x \in pw, y \in bs : x = y
 
 (* The step invariants: each says the last step kept its rule (StepRule). *)
 FinalNeverMoves        == "FinalNeverMoves" \notin last.bad
