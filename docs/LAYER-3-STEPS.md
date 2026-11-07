@@ -537,11 +537,11 @@ invariants on every plan, every op accepted since the sim folds and applies
 at once), the trace walk. The suite is green under race on vision
 (2026-11-07, `go test -race -skip Functional ./...`, steps 185 s).
 
-**Size.** 3,387 lines of non-test Go (view 290, inputs 110, asker 300,
-roster 100, group 230, tick 190, pack 170, reports 130, preempt 130, land
-210, needs 110, holds 45, limits 100, fix 100, deal 270, judge 260, request
-230, trace 190): over the 3,000 budget by 13%; the requests and the trace
-mapping were not in the first estimate's 3,000.
+**Size.** 3,435 lines of non-test Go (view 290, inputs 110, asker 300,
+roster 100, group 230, tick 220, pack 170, reports 130, preempt 130, land
+210, needs 115, holds 45, limits 100, fix 100, deal 300, judge 260, request
+230, trace 195): over the 3,000 budget by 15%; the requests, the roster and
+the trace mapping were not in the first estimate's 3,000.
 
 **Not built as written.** `same_finding` is not a count: the `brief`
 judgement opens when a fix read's finding is byte-equal to the producer's
