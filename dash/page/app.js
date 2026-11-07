@@ -434,15 +434,14 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function rk(n) { var r = rank[shownStatus(table[n].status)]; return r == null ? 3 : r; }
   names.sort(function (a, b) { return rk(a) - rk(b) || a.localeCompare(b); });
   if (!box._head) {
-    var cols = [[nameLabel], ["status"], ["ready", "num"], ["working"], ["", "frac"], ["done", "num"], ["ok%", "num"], ["tokens", "num"]];
+    var cols = [[nameLabel], ["status"], ["ready", "num"], ["working"], ["", "frac"], ["done", "num"], ["ok%", "num"]];
     box._head = headRow(cols);
     var wh = box._head.children[4]; wh.textContent = ""; wh.appendChild(el("span", "alt", "working"));
     box._total = el("div", "row total");
     box._total._c = [el("div", "", "Total"), el("div"), quiet(numCell()), el("div"), quiet(numCell("frac")), quiet(numCell()), quiet(numCell())];
-    box._total._c.push(quiet(numCell()));
     box._total._c.forEach(function (c) { box._total.appendChild(c); });
   }
-  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, upWidth: 0, upWorking: 0, fix: 0, tokens: 0n };
+  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, upWidth: 0, upWorking: 0, fix: 0 };
   scale = scale || tableScale(table);
   // the track column is exactly the widest track, so the figure sits right after it
   var tw = TRACK_SPAN.toFixed(3) + "rem";
@@ -467,7 +466,6 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     // fleet and friends: no numeric column flashes, only the cells
     r.wf = quiet(r.wf); r.ready = quiet(numCell()); r.done = quiet(numCell()); r.ok = quiet(numCell());
     [r.name, r.pill, r.ready, r.track, r.wf, r.done, r.ok].forEach(function (c) { r.node.appendChild(c); });
-    r.load = quiet(numCell()); r.node.appendChild(r.load);
     return r;
   }, function (r, k) {
     var m = table[k], raw = int(m.working), working = shownWorking(m), width = int(m.width), done = int(m.done);
@@ -486,9 +484,6 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
     setNum(r.ready, int(m.ready)); setNum(r.done, done);
     setOk(r.ok, pct(okv), done);
-    // the tokens its runs reported, kin and benches alike (the column load once held; v2 serves no load)
-    var tn = bigOf(m.tokens_n); t.tokens += tn;
-    if (r.load) { setText(r.load, m.tokens != null ? m.tokens : "-"); setTitle(r.load, tn ? tn.toString() + " tokens" : ""); setClass(r.load, "num" + (tn ? "" : " zero")); }
   }, box._total);
   var c = box._total._c;
   setNum(c[2], t.ready);
@@ -497,27 +492,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   setHTML(c[4], frac(t.working, t.width, digits, Math.max(digits, totalDigits)));
   setNum(c[5], t.done);
   setOk(c[6], t.okd ? t.okn / t.okd * 100 : null, t.okd);
-  setText(c[7], compactTokens(t.tokens)); setTitle(c[7], t.tokens.toString() + " tokens"); setClass(c[7], "num" + (t.tokens ? "" : " zero"));
   return { t: t, n: names.length };
-}
-
-// bigOf is an exact count the server sends as a string (tokens_n), 0n when absent.
-function bigOf(v) { try { return v == null || v === "" ? 0n : BigInt(v); } catch (e) { return 0n; } }
-
-// compactTokens is usage.Compact: under a thousand as itself, else one decimal
-// place, half up, with a 1000-based suffix (1.2M); a count that rounds up to
-// the next suffix takes it.
-function compactTokens(n) {
-  if (n < 0n) n = 0n;
-  var units = [[1000n, "K"], [1000000n, "M"], [1000000000n, "B"], [1000000000000n, "T"]];
-  for (var i = units.length - 1; i >= 0; i--) {
-    var div = units[i][0];
-    if (n < div) continue;
-    var scaled = (n * 10n + div / 2n) / div, whole = scaled / 10n, frac = scaled % 10n;
-    if (whole >= 1000n && i + 1 < units.length) return compactTokens(units[i + 1][0]);
-    return whole.toString() + (frac ? "." + frac.toString() : "") + units[i][1];
-  }
-  return n.toString();
 }
 
 function renderFleet(d) {
