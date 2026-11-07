@@ -51,9 +51,9 @@ One combination is untested. `TestRouteFaultBlocks` (`card/move_test.go:666`) pa
 - Move `TestFunctionalColdread5PG` behind a functional build tag so `go test ./card/...` matches `docs/LAYER-2-CARD-MACHINE.md:281`?
 - For the hold phrase: amend the layer sentence to `"held: stream <name> is held"`, or add the reason column L2-U11 still asks for?
 
-Cold read of package `card` at `43d849e29d0e4568ba6a1348a076a59259639938` (`v2-stitch`), clone `/home/gaffer/johnny-jobs/v2r-l2-pro2.w1` on hulk. I read `docs/LAYER-2-CARD-MACHINE.md`, `docs/ENFORCED.md`, the files under `card/`, and `tla/CardMachine.tla` (plus the holes `tla/README.md` already names, so I would not re-report them as discoveries). I did not run TLC. This review does not claim a trace match.
+Cold read of package `card` at `43d849e29d0e4568ba6a1348a076a59259639938` (`v2-stitch`), clone on a fleet Linux bench. I read `docs/LAYER-2-CARD-MACHINE.md`, `docs/ENFORCED.md`, the files under `card/`, and `tla/CardMachine.tla` (plus the holes `tla/README.md` already names, so I would not re-report them as discoveries). I did not run TLC. This review does not claim a trace match.
 
-Commands, from that clone, `PATH` prefixed with `/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin`, `GOCACHE` at `$PWD/.gocache`, `GOFLAGS=-mod=readonly`, `nice -n 19`:
+Commands, from that clone, `PATH` prefixed with `sdk/bin:/usr/lib/postgresql/18/bin`, `GOCACHE` at `$PWD/.gocache`, `GOFLAGS=-mod=readonly`, `nice -n 19`:
 
 ```
 go build ./card/...
