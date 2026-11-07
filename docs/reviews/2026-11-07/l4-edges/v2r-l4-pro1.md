@@ -54,11 +54,15 @@ Ranked; severity then breadth.
 
 21. **[minor] The probe's judgement opener calls a verb that does not exist.** `edge/worker/probe.go:60` -> `edge/worker/verbs.go:231-234` (`judge-open`); no such verb in `verbs/` (`verbs/table_coordinate.go:15` has only `judge`). Every failed probe appends "and its judgement could not be opened" and none is created. Verified independently of the earlier row; repair: add the verb in layer 6 or drop the call.
 
-22. **[nit] `Runner.QueryEdge`/`evalEdgeQuery_internal` and `edge.Deduplicator` have no production caller.** `edge/worker/runner.go:762-791`, `edge/request.go:43-101`; only tests reach them. (Note `Deduplicator.Do` would also leave a key in flight forever if `fn` panicked, `request.go:92-100`.)
+22. **[nit] `Runner.QueryEdge`/`evalEdgeQuery_internal` and `edge.Deduplicator` have no production caller.** `edge/worker/runner.go:762-791` and `edge/request.go:43-101` are reached only from tests (`NewDeduplicator` is called once, `runner.go:186`, to feed `QueryEdge` alone). Why it matters: dead surface in a layer meant to be tight, with its own tests to keep. Repair: delete `QueryEdge`, `evalEdgeQuery_internal`, `Deduplicator` and their tests until layer 6 calls them.
+
+22b. **[nit] `Deduplicator.Do` leaves its key in flight forever if `fn` panics.** `edge/request.go:92-100`: `delete(d.inflight, key)` and `close(call.done)` run after `fn` returns, not in a `defer`, so a panic skips both and every later caller of that key blocks until its own context ends. Why it matters: a latent hang should the type ever get a caller. Repair: move the delete-and-close into a `defer` registered before `fn` is called (moot if 22 is taken).
 
 23. **[nit] `ParseGate` splits at newlines.** `edge/argv.go:67` (`unicode.IsSpace`) makes a two-line DONE-WHEN one argv with the second command as arguments, contrary to "one command"; refuse a line holding `\n`.
 
-24. **[nit] Ledger "entry by entry" merge is a line union.** `edge/git/git.go:375-389` keeps both sides of a changed line and drops deletions; a JSON ledger comes out invalid. CI would catch it; a script rule is the doc's other path.
+24. **[nit] The ledger line-union merge keeps a line any side still has, so a deletion on one side is undone.** `edge/git/git.go:375-389` (`unionLines_internal`) takes the union of `:2:` and `:3:` with no base (`:1:`), so a line removed by one head and kept by the other (or a line both changed, old and new together) comes back; this is a defect only against the doc's "merged entry by entry" (`docs/LAYER-4-EDGES.md:137`) and `docs/LESSONS.md:69`, whose motivating case is `BASE-REDS.md` row deletions. Why it matters: deleting a ledger row is silently lost at landing. Repair: do a three-way line merge using `:1:` (drop a line the base had and either side removed) before the union.
+
+The format question is not decided cold: whether sexp or JSON ledgers (fixes.sexp, roadmap) are one entry per line, and so whether a line union can ever be valid for them, is a question for the coordinator (added below), not a defect.
 
 ## Promise gaps
 
@@ -115,3 +119,5 @@ Ranked; severity then breadth.
 - Which merge methods must landing support? If squash/rebase are allowed, M21 cannot be an ancestry check and the "landed" recognition on a later pass (`land.go:85`) needs a different test (defects 8, 9).
 - Are the macOS benches expected to survive a worker restart with harnesses adopted, or is a restart on macOS allowed to rerun (defect 2)?
 - A required-checks race: `classifyRollup_internal` (`forge.go:397-427`) reports green when every check run that exists is green; a slower workflow whose check run is not yet queued is invisible. Is branch protection's required-checks list the guard, and is that stated as a precondition of `stream add`?
+
+- Which ledger files does policy list per repository, and are they one entry per line? If not, a line union cannot be an entry merge for them and the script path (`LedgerRule.Script`, `git.go:344`) must be required (defect 24).
