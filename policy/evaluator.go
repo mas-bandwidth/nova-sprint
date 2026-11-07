@@ -101,7 +101,7 @@ func NewEngine(clock Clock) *Engine {
 // remote is req answered by e's child, the deadline counted from start on
 // e's clock; failing lists the sources failed when the child is killed.
 func (e *Engine) remote(ctx context.Context, start time.Time, req request, failing []source) (Answers, []Failure) {
-	req.Builtin, req.Budget = e.builtin, e.budget-e.clock.Now().Sub(start)
+	req.Builtin, req.Budget, req.Snap = e.builtin, e.budget-e.clock.Now().Sub(start), unworded(req.Snap)
 	if ctx.Err() != nil { // the caller's deadline has passed: every version tried fails
 		return killed(failing, overTime()+" building the tick's inputs")
 	}
@@ -144,6 +144,19 @@ func (e *Engine) sibling() *Engine {
 }
 
 func (s source) wire() wireSource { return wireSource{s.version, s.label, s.body, s.stored} }
+
+// unworded is snap with every card's brief and prose dropped: no question
+// reads them (rowan2's ruling 4 and 5), so what crosses to the child grows
+// with the card count, not with the briefs.
+func unworded(snap store.Snapshot) store.Snapshot {
+	cards := make(map[string]store.Card, len(snap.Cards))
+	for id, c := range snap.Cards {
+		c.Brief, c.Prose = "", ""
+		cards[id] = c
+	}
+	snap.Cards = cards
+	return snap
+}
 
 // killed is the tick's answer when the child is gone: every source failed.
 func killed(failing []source, msg string) (Answers, []Failure) {
