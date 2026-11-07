@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
@@ -116,7 +117,7 @@ func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string
 	if channel {
 		reader, writer, err = os.Pipe()
 		if err != nil {
-			return "", "SPRINT REFUSED up: cannot open continuation channel\n", 2
+			return "", "SPRINT REFUSED up: cannot open continuation channel: " + edge.Redact(err.Error()) + "\n", 2
 		}
 		defer reader.Close()
 		cmd.ExtraFiles = []*os.File{writer}
@@ -126,7 +127,7 @@ func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string
 		if writer != nil {
 			_ = writer.Close()
 		}
-		return "", "SPRINT REFUSED up: cannot start secrets child\n", 2
+		return "", "SPRINT REFUSED up: cannot start secrets child: " + edge.Failure(cmd.Args, cmd.Env, -1, "", "", err).Error() + "\n", 2
 	}
 	var result chan handoffRead
 	if channel {
@@ -135,20 +136,20 @@ func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string
 	err = cmd.Wait()
 	output := out.buf.String() + errOut.buf.String()
 	if out.overflow || errOut.overflow {
-		return "", "SPRINT REFUSED up: child output exceeded limit\n", 2
+		return "", "SPRINT REFUSED up: child output exceeded limit: " + edge.CommandLine(cmd.Args, cmd.Env) + "\n", 2
 	}
 	if err != nil {
 		if e, ok := err.(*exec.ExitError); ok && e.ExitCode() >= 0 {
 			return "", output, e.ExitCode()
 		}
-		return "", "SPRINT REFUSED up: secrets child stopped\n", 2
+		return "", "SPRINT REFUSED up: secrets child stopped: " + edge.Failure(cmd.Args, cmd.Env, -1, out.buf.String(), errOut.buf.String(), err).Error() + "\n", 2
 	}
 	if !channel {
 		return "", output, 0
 	}
 	status, err := waitHandoff(ctx, result)
 	if err != nil {
-		return "", "SPRINT REFUSED up: invalid continuation channel\n", 2
+		return "", "SPRINT REFUSED up: invalid continuation channel: " + edge.Redact(err.Error()) + "\n", 2
 	}
 	return status, output, 0
 }
@@ -164,8 +165,11 @@ func startHandoffReader(reader, writer *os.File) chan handoffRead {
 }
 func readHandoffStatus(r io.Reader) (string, error) {
 	data, err := io.ReadAll(io.LimitReader(r, 257))
-	if err != nil || len(data) > 256 {
-		return "", fmt.Errorf("invalid status")
+	if err != nil {
+		return "", edge.Cause("invalid status: read", err)
+	}
+	if len(data) > 256 {
+		return "", fmt.Errorf("invalid status: %s", edge.ParseRefused("longer than 256 bytes", 256, data))
 	}
 	if len(data) == 0 {
 		return "", nil
@@ -173,12 +177,15 @@ func readHandoffStatus(r io.Reader) (string, error) {
 	var s handoffStatus
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if dec.Decode(&s) != nil || s.Status != "continue" || !continuationID.MatchString(s.ID) {
-		return "", fmt.Errorf("invalid status")
+	if err := dec.Decode(&s); err != nil {
+		return "", fmt.Errorf("invalid status: %s", edge.ParseFailure(err, data))
+	}
+	if s.Status != "continue" || !continuationID.MatchString(s.ID) {
+		return "", fmt.Errorf("invalid status: %s", edge.ParseRefused("status is not continue with a continuation id", 0, data))
 	}
 	var extra any
-	if dec.Decode(&extra) != io.EOF {
-		return "", fmt.Errorf("duplicate status")
+	if err := dec.Decode(&extra); err != io.EOF {
+		return "", fmt.Errorf("duplicate status: %s", edge.ParseRefused("more than one status", int(dec.InputOffset()), data))
 	}
 	return s.ID, nil
 }
@@ -198,12 +205,18 @@ func reportHandoff(ctx context.Context, id string, _ verbs.SetupInput) error {
 		return err
 	}
 	fd, err := strconv.Atoi(os.Getenv("NOVA_SPRINT_HANDOFF_FD"))
-	if err != nil || fd != 3 || !continuationID.MatchString(id) {
-		return fmt.Errorf("continuation channel unavailable")
+	if err != nil {
+		return edge.Cause("continuation channel unavailable: NOVA_SPRINT_HANDOFF_FD", err)
+	}
+	if fd != 3 {
+		return fmt.Errorf("continuation channel unavailable: NOVA_SPRINT_HANDOFF_FD is %d, want 3", fd)
+	}
+	if !continuationID.MatchString(id) {
+		return fmt.Errorf("continuation channel unavailable: continuation id %q is not well formed", edge.Redact(id))
 	}
 	file := os.NewFile(uintptr(fd), "setup-continuation")
 	if file == nil {
-		return fmt.Errorf("continuation channel unavailable")
+		return fmt.Errorf("continuation channel unavailable: fd 3 is not open")
 	}
 	defer file.Close()
 	return json.NewEncoder(file).Encode(handoffStatus{Status: "continue", ID: id})

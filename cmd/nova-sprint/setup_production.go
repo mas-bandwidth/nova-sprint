@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
@@ -35,12 +37,15 @@ type productionSetupConfig struct {
 
 func productionSetupConfigFromEnv() (productionSetupConfig, error) {
 	binary, err := os.Executable()
-	if err != nil || !filepath.IsAbs(binary) {
-		return productionSetupConfig{}, fmt.Errorf("cannot locate nova-sprint")
+	if err != nil {
+		return productionSetupConfig{}, edge.Cause("cannot locate nova-sprint", err)
+	}
+	if !filepath.IsAbs(binary) {
+		return productionSetupConfig{}, fmt.Errorf("cannot locate nova-sprint: %q is not absolute", edge.Redact(binary))
 	}
 	host, err := os.Hostname()
 	if err != nil {
-		return productionSetupConfig{}, fmt.Errorf("cannot determine control machine")
+		return productionSetupConfig{}, edge.Cause("cannot determine control machine", err)
 	}
 	host = strings.SplitN(host, ".", 2)[0]
 	seat := os.Getenv("NOVA_SECRETS_SEAT")
@@ -229,8 +234,14 @@ func (p productionSetupLock) Acquire(ctx context.Context) (verbs.SetupLease, err
 }
 func setupRoleDSN(dsn, role string) (string, error) {
 	u, err := url.Parse(dsn)
-	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
-		return "", fmt.Errorf("invalid database URL")
+	if err != nil {
+		return "", edge.Cause("invalid database URL", err)
+	}
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return "", fmt.Errorf("invalid database URL: scheme %q is not postgres or postgresql", edge.Redact(u.Scheme))
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("invalid database URL: no host")
 	}
 	if u.User != nil {
 		if _, ok := u.User.Password(); ok {
@@ -239,7 +250,7 @@ func setupRoleDSN(dsn, role string) (string, error) {
 	}
 	for key := range u.Query() {
 		if strings.EqualFold(key, "password") || strings.EqualFold(key, "user") {
-			return "", fmt.Errorf("invalid database URL")
+			return "", fmt.Errorf("invalid database URL: query parameter %q is not allowed", key)
 		}
 	}
 	u.User = url.User(role)
@@ -265,11 +276,11 @@ var handoffActor = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 func handoffDigest(in verbs.SetupInput) (string, error) {
 	values := []string{in.Actor, in.Dash, in.Services, in.Key, in.RunOn, in.Version}
 	if !handoffActor.MatchString(in.Actor) {
-		return "", fmt.Errorf("invalid setup actor")
+		return "", fmt.Errorf("invalid setup actor %q: want 1-128 of A-Z a-z 0-9 . _ -", edge.Redact(in.Actor))
 	}
 	for _, v := range values {
 		if len(v) > 512 {
-			return "", fmt.Errorf("setup argument too long")
+			return "", fmt.Errorf("setup argument too long: %d bytes, over 512", len(v))
 		}
 	}
 	raw, err := json.Marshal(values)
@@ -283,13 +294,13 @@ func handoffDigest(in verbs.SetupInput) (string, error) {
 // PrepareHandoff is called only while the first child's setup lease is held.
 func (p productionSetup) PrepareHandoff(ctx context.Context, in verbs.SetupInput) (string, bool, error) {
 	if p.cfg.SprintPassword != "" && p.cfg.AdminPassword != "" {
-		return "", false, fmt.Errorf("setup credential separation unavailable")
+		return "", false, fmt.Errorf("setup credential separation unavailable: NOVA_SPRINT_PG_PASSWORD and NOVA_PG_ADMIN_PASSWORD are both set")
 	}
 	if p.cfg.SprintPassword != "" {
 		return "", false, nil
 	}
 	if p.cfg.AdminPassword == "" {
-		return "", false, fmt.Errorf("setup credential unavailable")
+		return "", false, fmt.Errorf("setup credential unavailable: NOVA_PG_ADMIN_PASSWORD not set")
 	}
 	if err := p.configError(); err != nil {
 		return "", false, err
@@ -300,7 +311,7 @@ func (p productionSetup) PrepareHandoff(ctx context.Context, in verbs.SetupInput
 	}
 	var random [32]byte
 	if _, err = rand.Read(random[:]); err != nil {
-		return "", false, fmt.Errorf("continuation unavailable")
+		return "", false, edge.Cause("continuation unavailable: random id", err)
 	}
 	request := handoffEnvelope{ID: hex.EncodeToString(random[:]), Actor: in.Actor, Digest: digest}
 	result, err := p.writeHandoffChild(ctx, request)
@@ -308,7 +319,7 @@ func (p productionSetup) PrepareHandoff(ctx context.Context, in verbs.SetupInput
 		return "", false, err
 	}
 	if result != request.ID {
-		return "", false, fmt.Errorf("continuation was not saved")
+		return "", false, fmt.Errorf("continuation was not saved: the child returned id %q, not the one sent", edge.Redact(result))
 	}
 	return result, true, nil
 }
@@ -325,12 +336,15 @@ func (p productionSetup) writeHandoffChild(ctx context.Context, request handoffE
 	var buf boundedOutput
 	err = verbs.OutputWith(cmd, &buf)
 	out := buf.Bytes()
-	if err != nil || len(out) > 128 {
+	if err != nil {
 		return "", fmt.Errorf("continuation could not be saved%s", verbs.ToolDetail(err))
+	}
+	if len(out) > 128 {
+		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output longer than 128 bytes", 128, out))
 	}
 	id := strings.TrimSpace(string(out))
 	if !handoffID.MatchString(id) {
-		return "", fmt.Errorf("continuation could not be saved")
+		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output is not a 64-hex id", 0, out))
 	}
 	return id, nil
 }
@@ -348,73 +362,94 @@ func continuationEnv(env []string) []string {
 
 // ValidateHandoff is called again while phase 2 holds its fresh setup lease.
 func (p productionSetup) ValidateHandoff(ctx context.Context, id string, in verbs.SetupInput) error {
-	if !handoffID.MatchString(id) || p.cfg.SprintPassword == "" || p.cfg.AdminPassword != "" {
-		return handoffRefusal()
+	if !handoffID.MatchString(id) {
+		return handoffRefusal("the continuation id is not 64 hex")
+	}
+	if p.cfg.SprintPassword == "" || p.cfg.AdminPassword != "" {
+		return handoffRefusal(fmt.Sprintf("wants NOVA_SPRINT_PG_PASSWORD set and NOVA_PG_ADMIN_PASSWORD unset (sprint set %t, admin set %t)", p.cfg.SprintPassword != "", p.cfg.AdminPassword != ""))
 	}
 	digest, err := handoffDigest(in)
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal(edge.Redact(err.Error()))
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal(edge.Redact(err.Error()))
 	}
 	pg, err := store.Open(ctx, dsn, p.cfg.SprintPassword)
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal("open store: " + edge.Redact(err.Error()))
 	}
 	defer pg.Close()
 	identity, err := pg.Schema(ctx)
-	if err != nil || !identity.Current || identity.Owner != "nova_sprint" {
-		return handoffRefusal()
+	if err != nil {
+		return handoffRefusal("schema: " + edge.Redact(err.Error()))
+	}
+	if !identity.Current || identity.Owner != "nova_sprint" {
+		return handoffRefusal(fmt.Sprintf("schema current %t, owner %q, want current and nova_sprint", identity.Current, identity.Owner))
 	}
 	return validateHandoffRecord(ctx, pg, id, in.Actor, digest)
 }
 func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, digest string) error {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal("snapshot: " + edge.Redact(err.Error()))
 	}
 	record, found, err := findSetupContinuation(ctx, st, snap, id)
-	if err != nil || !found || record.Version != 1 || record.Epoch != snap.Epoch || record.Actor != actor || record.Digest != digest {
-		return handoffRefusal()
+	switch {
+	case err != nil:
+		return handoffRefusal(edge.Redact(err.Error()))
+	case !found:
+		return handoffRefusal("no continuation recorded with this id")
+	case record.Version != 1 || record.Epoch != snap.Epoch:
+		return handoffRefusal(fmt.Sprintf("recorded version %d epoch %d, want version 1 epoch %d", record.Version, record.Epoch, snap.Epoch))
+	case record.Actor != actor:
+		return handoffRefusal(fmt.Sprintf("recorded for actor %q, not %q", edge.Redact(record.Actor), edge.Redact(actor)))
+	case record.Digest != digest:
+		return handoffRefusal("the setup arguments differ from the ones recorded")
 	}
 	return nil
 }
-func handoffRefusal() error {
-	return &verbs.OperationError{Problem: "setup continuation is invalid or stale", Fix: "run nova-sprint up again", Exit: 1}
+func handoffRefusal(why string) error {
+	return &verbs.OperationError{Problem: edge.RedactN("setup continuation is invalid or stale: "+why, edge.FailureMax), Fix: "run nova-sprint up again", Exit: 1}
 }
 
 // writeSetupContinuation is called in a sprint-secret child while the parent
 // holds the setup lease. Only the non-secret ID is returned.
 func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader, at time.Time) (string, error) {
 	data, err := io.ReadAll(io.LimitReader(input, 1025))
-	if err != nil || len(data) > 1024 {
-		return "", fmt.Errorf("invalid continuation request")
+	if err != nil {
+		return "", edge.Cause("invalid continuation request: read", err)
+	}
+	if len(data) > 1024 {
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("longer than 1024 bytes", 1024, data))
 	}
 	var request handoffEnvelope
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&request); err != nil || !handoffID.MatchString(request.ID) || !handoffID.MatchString(request.Digest) || !handoffActor.MatchString(request.Actor) {
-		return "", fmt.Errorf("invalid continuation request")
+	if err := dec.Decode(&request); err != nil {
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseFailure(err, data))
+	}
+	if !handoffID.MatchString(request.ID) || !handoffID.MatchString(request.Digest) || !handoffActor.MatchString(request.Actor) {
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("id, digest or actor is not well formed", 0, data))
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return "", fmt.Errorf("invalid continuation request")
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("more than one request", int(dec.InputOffset()), data))
 	}
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
-		return "", fmt.Errorf("continuation unavailable")
+		return "", edge.Cause("continuation unavailable: snapshot", err)
 	}
 	existing, found, err := findSetupContinuation(ctx, st, snap, request.ID)
 	if err != nil {
-		return "", fmt.Errorf("continuation unavailable")
+		return "", edge.Cause("continuation unavailable", err)
 	}
 	if found {
 		if existing.Version == 1 && existing.Epoch == snap.Epoch && existing.Actor == request.Actor && existing.Digest == request.Digest {
 			return request.ID, nil
 		}
-		return "", fmt.Errorf("continuation unavailable")
+		return "", fmt.Errorf("continuation unavailable: id %s is already recorded with other content", request.ID[:12])
 	}
 	record := handoffRecord{Version: 1, Epoch: snap.Epoch, Actor: request.Actor, Digest: request.Digest}
 	body, err := json.Marshal(record)
@@ -432,25 +467,25 @@ func applyHandoff(ctx context.Context, st store.Store, op store.Op) error {
 		receipt, err := st.Apply(ctx, op)
 		if err == nil {
 			if !receipt.Accepted {
-				return fmt.Errorf("continuation refused")
+				return fmt.Errorf("continuation refused: %s", edge.Redact(cmp.Or(receipt.Reason, "no reason given")))
 			}
 			return nil
 		}
 		if !errors.Is(err, store.ErrUnknown) {
-			return fmt.Errorf("continuation unavailable")
+			return edge.Cause("continuation unavailable: apply", err)
 		}
 		receipt, found, err := st.Replay(ctx, op.ID)
 		if err != nil {
-			return fmt.Errorf("continuation unavailable")
+			return edge.Cause("continuation unavailable: replay", err)
 		}
 		if found {
 			if !receipt.Accepted {
-				return fmt.Errorf("continuation refused")
+				return fmt.Errorf("continuation refused: %s", edge.Redact(cmp.Or(receipt.Reason, "no reason given")))
 			}
 			return nil
 		}
 	}
-	return fmt.Errorf("continuation unavailable")
+	return fmt.Errorf("continuation unavailable: apply outcome unknown after 3 tries and no replay found")
 }
 func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snapshot, id string) (handoffRecord, bool, error) {
 	cursor := int64(0)
@@ -458,8 +493,11 @@ func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snaps
 	var result handoffRecord
 	for cursor < snap.Seq {
 		events, err := st.Events(ctx, cursor, store.MaxEvents)
-		if err != nil || len(events) == 0 {
-			return result, false, fmt.Errorf("continuation history unavailable")
+		if err != nil {
+			return result, false, edge.Cause("continuation history unavailable", err)
+		}
+		if len(events) == 0 {
+			return result, false, fmt.Errorf("continuation history unavailable: no events after seq %d, snapshot at %d", cursor, snap.Seq)
 		}
 		advanced := false
 		for _, event := range events {
@@ -467,7 +505,7 @@ func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snaps
 				break
 			}
 			if event.Seq != cursor+1 {
-				return result, false, fmt.Errorf("continuation history invalid")
+				return result, false, fmt.Errorf("continuation history invalid: seq %d follows %d", event.Seq, cursor)
 			}
 			cursor = event.Seq
 			advanced = true
@@ -478,18 +516,24 @@ func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snaps
 				if policy.Name != "setup:continuation:"+id {
 					continue
 				}
-				if policy.Kind != "data" || policy.Active || json.Unmarshal([]byte(policy.Body), &result) != nil || policy.Actor != result.Actor {
-					return result, false, fmt.Errorf("continuation invalid")
+				if policy.Kind != "data" || policy.Active {
+					return result, false, fmt.Errorf("continuation invalid: seq %d policy kind %q active %t, want data and inactive", event.Seq, policy.Kind, policy.Active)
+				}
+				if err := json.Unmarshal([]byte(policy.Body), &result); err != nil {
+					return result, false, fmt.Errorf("continuation invalid: seq %d: %s", event.Seq, edge.ParseFailure(err, []byte(policy.Body)))
+				}
+				if policy.Actor != result.Actor {
+					return result, false, fmt.Errorf("continuation invalid: seq %d written by %q, records actor %q", event.Seq, edge.Redact(policy.Actor), edge.Redact(result.Actor))
 				}
 				count++
 			}
 		}
 		if !advanced {
-			return result, false, fmt.Errorf("continuation history incomplete")
+			return result, false, fmt.Errorf("continuation history incomplete: stopped at seq %d, snapshot at %d", cursor, snap.Seq)
 		}
 	}
 	if count > 1 {
-		return result, false, fmt.Errorf("continuation duplicated")
+		return result, false, fmt.Errorf("continuation duplicated: %d records", count)
 	}
 	return result, count == 1, nil
 }
@@ -816,7 +860,7 @@ func productionFleetCommandWith(cfg productionSetupConfig, run func(context.Cont
 		}
 		dsn, err := setupRoleDSN(cfg.DSN, "nova_config")
 		if err != nil {
-			return nil, fmt.Errorf("nova-config DSN unavailable")
+			return nil, edge.Cause("nova-config DSN unavailable", err)
 		}
 		s := cfg.Secrets
 		prefix := []string{"exec", "--only", "NOVA_PG_PASSWORD", "--store", s.Store, "--key", s.KeyFile, "--as", s.Seat, "--", "env", "NOVA_PG_DSN=" + dsn, "NOVA_PG_PASSWORD_ENV=NOVA_PG_PASSWORD", name}
@@ -828,7 +872,7 @@ type boundedOutput struct{ bytes.Buffer }
 
 func (b *boundedOutput) Write(data []byte) (int, error) {
 	if b.Len()+len(data) > 1<<20 {
-		return 0, fmt.Errorf("command output exceeds limit")
+		return 0, fmt.Errorf("command output exceeds limit of %d bytes", 1<<20)
 	}
 	return b.Buffer.Write(data)
 }
