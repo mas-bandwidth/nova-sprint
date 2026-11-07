@@ -132,24 +132,16 @@ func (w *storeWalk) some(s Snapshot, names []string) string {
 
 func (w *storeWalk) rowWrite(s Snapshot) Write {
 	r := w.pick(twRows)
-	tiers := []string{w.pick(twTiers)}
-	if w.rng.IntN(2) == 0 {
-		tiers = twTiers
-	}
 	if _, ok := s.Rows[r]; !ok && w.rng.IntN(4) > 0 {
-		return PutRow{Name: r, Kind: "worker", Width: 1 + w.rng.IntN(2), Tiers: tiers}
+		return PutRow{Name: r}
 	}
-	switch w.rng.IntN(6) {
+	switch w.rng.IntN(4) {
 	case 0:
-		return PutRow{Name: r, Kind: "worker", Width: w.rng.IntN(3), Tiers: tiers}
-	case 1:
-		return SetRowWidth{Row: r, Width: w.rng.IntN(3)}
-	case 2, 3:
+		return PutRow{Name: r}
+	case 1, 2:
 		return SetRowState{Row: r, State: w.pick(RowStates)}
-	case 4:
-		return SetRowHeld{Row: r, Held: w.rng.IntN(2) == 0, Reason: "h"}
 	}
-	return SetRowTiers{Row: r, Tiers: tiers}
+	return SetRowHeld{Row: r, Held: w.rng.IntN(2) == 0, Reason: "h"}
 }
 
 func (w *storeWalk) judgementWrite(s Snapshot) Write {

@@ -257,28 +257,11 @@ type SetCardAfter struct {
 	After []string
 }
 
-// PutRow inserts a row or overwrites its kind, width, session, tiers, model
-// and harness; state, flaps and held are kept on overwrite, and down, 0 and
-// false on insert. Each tier is one of the four, once.
-type PutRow struct {
-	Name, Kind string
-	Width      int
-	Session    string
-	Tiers      []string
-	Model      string
-	Harness    string
-}
-
-// SetRowTiers replaces the tiers a row serves, under the rules of PutRow;
-// refused when it drops a tier a live (ready or working) consumer held by
-// the row needs.
-type SetRowTiers struct {
-	Row   string
-	Tiers []string
-}
-
-// SetRowLabels sets a row's model and harness labels: one field.
-type SetRowLabels struct{ Row, Model, Harness string }
+// PutRow inserts a row or overwrites its session: a row is put when it first
+// hooks in or is first dealt to. State, flaps and held are kept on
+// overwrite, and down, 0 and false on insert. Its kind, width, tiers, model
+// and harness are configuration, the roster's, never the store's (round 22).
+type PutRow struct{ Name, Session string }
 
 // PutJudgement opens a judgement: refused when it exists. Its state is
 // open, opened at the op's At; Deadline zero is none. It belongs to the
@@ -306,13 +289,6 @@ type ExpireJudgement struct{ ID, Reason string }
 type SetCursor struct {
 	Name string
 	Seq  int64
-}
-
-// SetRowWidth sets a row's width; a width below the working cards it holds
-// is refused.
-type SetRowWidth struct {
-	Row   string
-	Width int
 }
 
 // SetRowState sets a row's state.
@@ -348,7 +324,6 @@ func (SetStreamHeld) isWrite()    {}
 func (PutCard) isWrite()          {}
 func (SetCardState) isWrite()     {}
 func (SetCardResult) isWrite()    {}
-func (SetRowWidth) isWrite()      {}
 func (SetCardAttempt) isWrite()   {}
 func (SetCardBranch) isWrite()    {}
 func (SetCardHead) isWrite()      {}
@@ -376,8 +351,6 @@ func (SetActivePolicy) isWrite()  {}
 func (SetCardPaths) isWrite()     {}
 func (SetCardDoneWhen) isWrite()  {}
 func (SetCardProse) isWrite()     {}
-func (SetRowTiers) isWrite()      {}
-func (SetRowLabels) isWrite()     {}
 func (PutJudgement) isWrite()     {}
 func (AnswerJudgement) isWrite()  {}
 func (ExpireJudgement) isWrite()  {}
@@ -425,9 +398,7 @@ func specOf(w Write) spec {
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
 		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
-		return put("row", v.Name, func(c *checker) {
-			c.text(v.Session, v.Model, v.Harness).num("width", v.Width).oneOf("row kind", v.Kind, RowKinds).tiers(v.Tiers)
-		}, "kind", "width", "session", "tiers", "labels").then(func(w *work) (string, error) { return w.writePutRow(v) })
+		return put("row", v.Name, func(c *checker) { c.text(v.Session) }, "session").then(func(w *work) (string, error) { return w.writePutRow(v) })
 	case PutJudgement:
 		return put("judgement", v.ID, func(c *checker) {
 			c.name(v.Kind, v.About, v.Group).text(v.Question, v.Command).time("deadline", v.Deadline, true)
@@ -456,7 +427,7 @@ func setSpec(w Write) spec {
 	switch v := w.(type) {
 	case SetCardState:
 		s := card(v.Card, "state", func(k *Card) { k.State = v.State }, func(c *checker) { c.oneOf("card state", v.State, CardStates) })
-		s.cardIf, s.is = func(w *work, k Card) (string, error) { return w.move(k, v.State) }, "is already "+v.State
+		s.is = "is already " + v.State
 		return s
 	case SetCardPaths:
 		return card(v.Card, "paths", func(k *Card) { k.Paths = normList(v.Paths) }, func(c *checker) { c.text(v.Paths...) }).kinds("SetCardPaths", copied, holdless)
@@ -537,22 +508,12 @@ func rowSpec(w Write) spec {
 		return row(v.Row, "session", func(r *Row) { r.Session = v.Session }, func(c *checker) { c.text(v.Session) })
 	case SetRowFlaps:
 		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) })
-	case SetRowWidth:
-		s := row(v.Row, "width", func(r *Row) { r.Width = v.Width }, func(c *checker) { c.num("width", v.Width) })
-		s.rowIf = func(w *work, r Row) (string, error) { return w.widthFits(r.Name, v.Width) }
-		return s
 	case SetRowHeld:
 		s := row(v.Row, "held", func(r *Row) { r.Held, r.Reason = v.Held, v.Reason }, func(c *checker) { c.text(v.Reason) })
 		s.rowIf = func(_ *work, r Row) (string, error) {
 			return when(r.Held == v.Held, "row %s is already %s", r.Name, heldWord(v.Held)), nil
 		}
 		return s
-	case SetRowTiers:
-		s := row(v.Row, "tiers", func(r *Row) { r.Tiers = normSet(v.Tiers) }, func(c *checker) { c.tiers(v.Tiers) })
-		s.rowIf = func(w *work, r Row) (string, error) { return w.tiersFit(r.Name, v.Tiers) }
-		return s
-	case SetRowLabels:
-		return row(v.Row, "labels", func(r *Row) { r.Model, r.Harness = v.Model, v.Harness }, func(c *checker) { c.text(v.Model, v.Harness) })
 	}
 	return spec{}
 }

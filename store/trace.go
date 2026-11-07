@@ -39,9 +39,10 @@ import (
 //   - A consumer's tier: the model takes its producer's at add and ignores
 //     the write's; the store refuses one that differs. A walk sends the
 //     producer's.
-//   - Row kind, session, flaps, reason, model, harness, and the writes on
-//     them (SetRowSession, SetRowFlaps, SetRowLabels): TraceOp refuses
-//     those writes; PutRow's kind and session are dropped.
+//   - Row session, flaps and reason, and the writes on them (SetRowSession,
+//     SetRowFlaps): TraceOp refuses those writes; PutRow's session is
+//     dropped. A row has no kind, width, tiers, model or harness in the
+//     store or the model since round 22: they are the roster's.
 //   - Judgement kind, about, question, command, group, deadline, answer,
 //     actor and times: only the state is projected; a close before
 //     opened_at is outside the model (a walk's At only rises).
@@ -69,12 +70,11 @@ type ModelCard struct {
 	Red                             bool
 }
 
-// ModelRow is Store.tla's row record: [state, width, gen, held, tiers].
+// ModelRow is Store.tla's row record: [state, gen, held].
 type ModelRow struct {
-	State      string
-	Width, Gen int
-	Held       bool
-	Tiers      []string
+	State string
+	Gen   int
+	Held  bool
 }
 
 // TraceState is the refinement mapping of the store's state: the snapshot
@@ -88,7 +88,7 @@ func TraceState(s Snapshot, policies []PolicyVersion) ModelState {
 			Kind: c.Kind, Prod: orDash(c.Of, "-"), Tier: c.Tier, Red: c.Red}
 	}
 	for n, r := range s.Rows {
-		m.Rows[n] = ModelRow{State: r.State, Width: r.Width, Gen: r.Gen, Held: r.Held, Tiers: slices.Clone(r.Tiers)}
+		m.Rows[n] = ModelRow{State: r.State, Gen: r.Gen, Held: r.Held}
 	}
 	for id, j := range s.Judgements {
 		m.Judgements[id] = j.State
@@ -200,15 +200,11 @@ func traceWrite(w Write) (ModelWrite, error) {
 	case SetCardRed:
 		x.K, x.C, x.W = "setRed", v.Card, flag(v.Red)
 	case PutRow:
-		x.K, x.R, x.W, x.N = "putRow", v.Name, v.Width, normSet(v.Tiers)
-	case SetRowWidth:
-		x.K, x.R, x.W = "setRowWidth", v.Row, v.Width
+		x.K, x.R = "putRow", v.Name
 	case SetRowState:
 		x.K, x.R, x.S = "setRowState", v.Row, v.State
 	case SetRowHeld:
 		x.K, x.R, x.W = "setRowHeld", v.Row, flag(v.Held)
-	case SetRowTiers:
-		x.K, x.R, x.N = "setRowTiers", v.Row, normSet(v.Tiers)
 	case PutJudgement:
 		x.K, x.C = "putJudge", v.ID
 	case AnswerJudgement:

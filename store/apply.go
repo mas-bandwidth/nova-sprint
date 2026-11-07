@@ -16,8 +16,6 @@ type txn interface {
 	row(name string) (Row, bool, error)
 	policy(version int) (PolicyVersion, bool, error)
 	policies() (last int, active []PolicyVersion, err error)
-	working(row string) (int, error)                       // cards in working whose holder is row: what width counts
-	needed(row string, tiers []string) (Card, bool, error) // the live (ready or working) consumer held by row, lowest id, whose tier is not in tiers
 	lastSeq() (int64, error)
 	rows() ([]Row, error) // every row of the epoch
 	open() error          // epoch n = n + 1; later puts go to the new epoch

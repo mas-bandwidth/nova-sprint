@@ -58,10 +58,9 @@ var (
 	CardKinds   = []string{"producer", "sentinel", "work", "read"}
 	CardResults = []string{"", "ok", "fix", "fail", "fault"}
 	Priorities  = []string{"low", "normal", "high", "critical", "blocker"} // a producer's or sentinel's level, lowest first
-	RowKinds    = []string{"worker", "kin"}
 	RowStates   = []string{"up", "down"}
 	PolicyKinds = []string{"script", "data"}
-	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier, and the tiers a row serves
+	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier
 )
 
 // Op is one operation: conditions that must all hold and writes that all land,
@@ -122,20 +121,18 @@ type Card struct {
 	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given
 }
 
-// Row is a row of sprint.rows: a worker or a kin.
+// Row is a row of sprint.rows: a worker's or a kin's sprint state, and
+// nothing else. What a row is (kind, width, tiers, model, harness) is
+// configuration, read from nova-config through the roster each tick, never
+// copied here (round 22: "nova-config is the one true source").
 type Row struct {
-	Name    string   `json:"name"`
-	Kind    string   `json:"kind"`
-	Width   int      `json:"width"`
-	State   string   `json:"state"`
-	Session string   `json:"session"`
-	Flaps   int      `json:"flaps"`
-	Held    bool     `json:"held"`   // the coordinator's hold: no deals while true
-	Reason  string   `json:"reason"` // why it was held or released (SetRowHeld)
-	Gen     int      `json:"gen"`
-	Tiers   []string `json:"tiers,omitempty"` // the tiers this row serves
-	Model   string   `json:"model"`           // a label for policy and the dashboard
-	Harness string   `json:"harness"`         // a label for policy and the dashboard
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	Session string `json:"session"`
+	Flaps   int    `json:"flaps"`
+	Held    bool   `json:"held"`   // the coordinator's hold: no deals while true
+	Reason  string `json:"reason"` // why it was held or released (SetRowHeld)
+	Gen     int    `json:"gen"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,

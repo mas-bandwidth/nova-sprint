@@ -15,7 +15,7 @@ import (
 const (
 	streamCols = "name, repo, base, held, pos"
 	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding, red`
-	rowCols    = "name, kind, width, state, session, flaps, held, gen, tiers, model, harness, reason"
+	rowCols    = "name, state, session, flaps, held, gen, reason"
 	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
@@ -35,8 +35,7 @@ func scanCard(r pgx.Row) (Card, error) {
 
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
-	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen, &w.Tiers, &w.Model, &w.Harness, &w.Reason)
-	w.Tiers = normSet(w.Tiers)
+	err := r.Scan(&w.Name, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen, &w.Reason)
 	return w, err
 }
 
@@ -227,22 +226,6 @@ func (t *pgTx) policies() (int, []PolicyVersion, error) {
 	return last, active, err
 }
 
-func (t *pgTx) working(row string) (int, error) {
-	var n int
-	err := t.tx.QueryRow(t.ctx, "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = 'working'", t.epoch, row).Scan(&n)
-	return n, err
-}
-
-func (t *pgTx) needed(row string, tiers []string) (Card, bool, error) {
-	var c Card
-	err := t.tx.QueryRow(t.ctx, "SELECT id, tier FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') AND NOT tier = ANY(coalesce($3::text[], '{}')) ORDER BY id COLLATE \"C\" LIMIT 1",
-		t.epoch, row, tiers).Scan(&c.ID, &c.Tier)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Card{}, false, nil
-	}
-	return c, err == nil, err
-}
-
 func (t *pgTx) lastSeq() (int64, error) {
 	var n int64
 	err := t.tx.QueryRow(t.ctx, "SELECT coalesce(max(seq), 0) FROM sprint.events").Scan(&n)
@@ -289,11 +272,10 @@ func (t *pgTx) putCard(c Card) error {
 }
 
 func (t *pgTx) putRow(r Row) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, session, flaps, held, gen, tiers, model, harness, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state,
-		session = EXCLUDED.session, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen,
-		tiers = EXCLUDED.tiers, model = EXCLUDED.model, harness = EXCLUDED.harness, reason = EXCLUDED.reason`,
-		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps, r.Held, r.Gen, list0(r.Tiers), r.Model, r.Harness, r.Reason)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, state, session, flaps, held, gen, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (epoch, name) DO UPDATE SET state = EXCLUDED.state,
+		session = EXCLUDED.session, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen, reason = EXCLUDED.reason`,
+		t.epoch, r.Name, r.State, r.Session, r.Flaps, r.Held, r.Gen, r.Reason)
 	return err
 }
 
@@ -375,10 +357,6 @@ func readReceipt(b []byte, after *State) (Receipt, error) {
 func (s *State) clone() *State {
 	c := *s
 	c.Streams, c.Rows, c.Policies, c.Judgements, c.Cursors = maps.Clone(s.Streams), maps.Clone(s.Rows), maps.Clone(s.Policies), maps.Clone(s.Judgements), maps.Clone(s.Cursors)
-	for k, r := range c.Rows {
-		r.Tiers = slices.Clone(r.Tiers)
-		c.Rows[k] = r
-	}
 	c.Cards = maps.Clone(s.Cards)
 	for k, v := range c.Cards {
 		v.Needs, v.After, v.Paths, v.DoneWhen = slices.Clone(v.Needs), slices.Clone(v.After), slices.Clone(v.Paths), slices.Clone(v.DoneWhen)
