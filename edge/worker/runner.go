@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -195,6 +196,14 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) e
 		if runErr != nil && lastLine == "" {
 			lastLine = runErr.Error()
 		}
+		// LOCAL DOGFOOD STOPGAP: the whole output, ANSI stripped, bounded, and kept in the probe dir.
+		whole := ansiRe_local.ReplaceAllString(string(res.Output), "")
+		_ = os.WriteFile(filepath.Join(probeDir, "output.txt"), []byte(whole+"\nreason="+out.Reason+"\nexit="+fmt.Sprint(res.ExitCode)+"\n"), 0o644)
+		whole = strings.Join(strings.Fields(whole), " ")
+		if len(whole) > 1500 {
+			whole = whole[:1500]
+		}
+		lastLine = whole + " | reason=" + out.Reason + " exit=" + fmt.Sprint(res.ExitCode)
 		_ = r.Sprint.OpenJudgement(ctx, store.Judgement{
 			ID: "j-probe-" + row, Kind: "probe", About: row, Group: "probe:" + row,
 			Question: fmt.Sprintf("harness probe failed on %s: %s", row, lastLine),
@@ -1067,3 +1076,5 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, en
 	}
 	return out, err
 }
+
+var ansiRe_local = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
