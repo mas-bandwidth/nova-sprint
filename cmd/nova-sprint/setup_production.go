@@ -337,7 +337,10 @@ func (p productionSetup) writeHandoffChild(ctx context.Context, request handoffE
 	err = verbs.OutputWith(cmd, &buf)
 	out := buf.Bytes()
 	if err != nil {
-		return "", fmt.Errorf("continuation could not be saved%s", verbs.ToolDetail(err))
+		if r := verbs.AsRefusal(err); r != nil {
+			return "", r
+		}
+		return "", fmt.Errorf("continuation could not be saved: %w", err)
 	}
 	if len(out) > 128 {
 		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output longer than 128 bytes", 128, out))

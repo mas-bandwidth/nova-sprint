@@ -18,43 +18,54 @@ func internalCommand(ctx context.Context, args []string) (int, bool) {
 	if len(args) == 0 {
 		return 0, false
 	}
-	switch args[0] {
+	mode := args[0]
+	switch mode {
 	case "--internal-up-phase1", "--internal-up-phase2":
-		return executeUpPhase(ctx, args[0], args[1:]), true
+		return executeUpPhase(ctx, mode, args[1:]), true
 	case "--internal-write-continuation":
-		if len(args) != 1 {
-			return 2, true
+		if code, bad := internalArgs(args, 1); bad {
+			return code, true
 		}
 		return writeContinuationChild(ctx), true
 	case "--internal-model-probe":
-		if len(args) != 2 {
-			return 2, true
+		if code, bad := internalArgs(args, 2); bad {
+			return code, true
 		}
 		return (verbs.ModelListProbe{}).Run(ctx, args[1]), true
 	case "--internal-setup-role-fresh":
-		if len(args) != 1 {
-			return 2, true
+		if code, bad := internalArgs(args, 1); bad {
+			return code, true
 		}
 		return verbs.InternalSprintRoleFresh(ctx), true
 	case "--internal-setup-role":
-		if len(args) != 1 {
-			return 2, true
+		if code, bad := internalArgs(args, 1); bad {
+			return code, true
 		}
 		return verbs.InternalSprintRole(ctx), true
 	case "--internal-role-exists":
-		if len(args) != 1 {
-			return 2, true
+		if code, bad := internalArgs(args, 1); bad {
+			return code, true
 		}
 		yes, err := verbs.InternalSprintRoleExists(ctx)
 		return internalJSON("exists", yes, err), true
 	case "--internal-store-probe", "--internal-store-setup":
-		if len(args) != 1 {
-			return 2, true
+		if code, bad := internalArgs(args, 1); bad {
+			return code, true
 		}
-		yes, err := verbs.SprintStoreChild(ctx, args[0] == "--internal-store-setup", versionString())
+		yes, err := verbs.SprintStoreChild(ctx, mode == "--internal-store-setup", versionString())
 		return internalJSON("ready", yes, err), true
 	}
 	return 0, false
+}
+
+// internalArgs refuses an internal mode called with the wrong number of
+// words, on stderr (exit 2): an internal child never exits without saying
+// why.
+func internalArgs(args []string, want int) (int, bool) {
+	if len(args) == want {
+		return 0, false
+	}
+	return verbs.ChildFailed(fmt.Errorf("%s: takes %d word(s) after the binary, got %d (%q); it is run only by nova-sprint itself", args[0], want, len(args), edge.Redact(strings.Join(args, " "))), 2), true
 }
 func internalJSON(key string, value bool, err error) int {
 	if err != nil {
@@ -69,7 +80,7 @@ func internalJSON(key string, value bool, err error) int {
 func executeUpPhase(ctx context.Context, mode string, args []string) int {
 	in, ok := verbs.ParseSetup(args, os.Getenv("NOVA_SPRINT_AS"))
 	if !ok {
-		return verbs.ChildFailed(fmt.Errorf("%s: setup arguments did not parse", mode), 2)
+		return verbs.ChildFailed(fmt.Errorf("%s: setup arguments did not parse (%q): nova-sprint help up", mode, edge.Redact(strings.Join(args, " "))), 2)
 	}
 	admin, sprint := os.Getenv("NOVA_PG_ADMIN_PASSWORD"), os.Getenv("NOVA_SPRINT_PG_PASSWORD")
 	if mode == "--internal-up-phase1" {

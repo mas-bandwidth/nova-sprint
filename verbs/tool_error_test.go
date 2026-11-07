@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,15 +11,16 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
-// A failed tool's stderr reaches the refusal as its last line, with nothing
-// that may be a secret and no home directory.
+// A failed tool's stderr reaches the refusal as every non-empty line but
+// nova-secrets' banner, with nothing that may be a secret and no home
+// directory.
 func TestStderrLineKeepsTheErrorAndNoSecret(t *testing.T) {
-	stderr := []byte("starting\nnova-secrets: open /Users/someone/.config/nova/store.age: AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQ NOVA_PG_PASSWORD=hunter2 postgres://u:pw@db/x token ghp_abcdefABCDEF0123456789 c2VjcmV0LWtleS0xMjM0NTY3ODkwYWJj\n\n")
+	stderr := []byte("SECRETS EXEC STARTING as=x keys=1 cmd=nova-sprint\nstarting\nnova-secrets: open /Users/someone/.config/nova/store.age: AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQ NOVA_PG_PASSWORD=hunter2 postgres://u:pw@db/x token ghp_abcdefABCDEF0123456789 c2VjcmV0LWtleS0xMjM0NTY3ODkwYWJj\n\n")
 	line := StderrLine(stderr)
-	if !strings.HasPrefix(line, "nova-secrets: open .../store.age:") {
+	if !strings.HasPrefix(line, "starting | nova-secrets: open .../store.age:") {
 		t.Fatalf("line %q", line)
 	}
-	for _, leak := range []string{"AGE-SECRET-KEY", "hunter2", "u:pw", "ghp_", "c2VjcmV0", "/Users", "someone", "starting", "\n"} {
+	for _, leak := range []string{"SECRETS EXEC", "AGE-SECRET-KEY", "hunter2", "u:pw", "ghp_", "c2VjcmV0", "/Users", "someone", "\n"} {
 		if strings.Contains(line, leak) {
 			t.Fatalf("%q leaks %q", line, leak)
 		}
@@ -30,9 +32,41 @@ func TestStderrLineKeepsTheErrorAndNoSecret(t *testing.T) {
 	if ToolDetail(errors.New("plain")) != " (plain)" || ToolDetail(nil) != "" || StderrLine(nil) != "" || Failure("x", nil, stderr) != nil {
 		t.Fatal("no tool error is no detail")
 	}
-	long := StderrLine([]byte(strings.Repeat("word ", 100)))
-	if len(long) > stderrLineMax+3 {
-		t.Fatalf("unbounded %d", len(long))
+	long := StderrLine([]byte("first cause\n" + strings.Repeat("word ", 1000) + "\nlast"))
+	if len(long) > stderrLineMax+3 || !strings.HasPrefix(long, "first cause | word") || strings.Contains(long, "last") {
+		t.Fatalf("not bounded with the first lines kept: %d %q...", len(long), long[:40])
+	}
+}
+
+// A refusal deep inside an internal child (an *OperationError: a pg_dump
+// too old, a role the admin does not administer) is written as two stderr
+// lines and read back by the parent as the same Problem and Fix, through
+// nova-secrets' banner, never re-wrapped as the parent's own failure.
+func TestChildRefusalPassesProblemAndFixThrough(t *testing.T) {
+	inner := &OperationError{Problem: `pg_dump is older than the server (pg_dump 14 vs server 18; saw "pg_dump (PostgreSQL) 14.9")`, Fix: "put PostgreSQL 18's bin directory first on PATH, then run nova-sprint up again", Exit: 1}
+	var stderr bytes.Buffer
+	stderr.WriteString("SECRETS EXEC STARTING as=x keys=1 cmd=nova-sprint\n")
+	writeChildFailure(&stderr, cause("first backup failed", inner))
+	child := edge.Failure([]string{"nova-secrets", "exec", "--", "nova-sprint", "--internal-store-setup"}, nil, 1, "", stderr.String(), nil)
+	got := AsRefusal(fmt.Errorf("store child failed: %w", child))
+	op, ok := got.(*OperationError)
+	if !ok || op.Problem != inner.Problem || op.Fix != inner.Fix || op.Exit != 1 {
+		t.Fatalf("%#v from %q", got, child.Stderr)
+	}
+	if f := classify(fmt.Errorf("store child failed: %w", child)); f.What != inner.Problem || f.Exit != exitRefused {
+		t.Fatalf("classify %+v", f)
+	}
+	if AsRefusal(cause("x", inner)) != inner || AsRefusal(errors.New("plain")) != nil || AsRefusal(nil) != nil {
+		t.Fatal("in-process refusal passes as itself; a plain error is none")
+	}
+	plain := edge.Failure([]string{"pg_dump"}, nil, 1, "", "pg_dump: error: connection refused\n", nil)
+	if AsRefusal(plain) != nil {
+		t.Fatal("a tool's own stderr is no refusal")
+	}
+	var w bytes.Buffer
+	writeChildFailure(&w, errors.New("schema creation failed: ERROR: permission denied to create role (SQLSTATE 42501)"))
+	if w.String() != "nova-sprint: schema creation failed: ERROR: permission denied to create role (SQLSTATE 42501)\n" {
+		t.Fatalf("%q", w.String())
 	}
 }
 
