@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -479,7 +480,13 @@ var wallKeeps_internal = []string{"PATH", "HOME", "LANG", "TERM"}
 // open, denied with the proxy's port reopened, or denied), and every name
 // of env passed with --env.
 func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
-	argv := []string{cmp.Or(cfg.ReserveBin, "nova-reserve")}
+	// Card work runs at nice 15, below CI's 0, and the harness, its builds
+	// and its gates inherit it, so a CI job on a shared bench keeps its cap.
+	var argv []string
+	if runtime.GOOS != "windows" {
+		argv = append(argv, "nice", "-n", "15")
+	}
+	argv = append(argv, cmp.Or(cfg.ReserveBin, "nova-reserve"))
 	if cfg.ReserveDir != "" {
 		argv = append(argv, "--dir", cfg.ReserveDir)
 	}
