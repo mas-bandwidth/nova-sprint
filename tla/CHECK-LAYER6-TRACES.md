@@ -1,7 +1,7 @@
 # Fixed-seed Layer6 trace gate
 
 `check-layer6-traces.py` emits traces from the current implementation, then checks
-all 83 inputs through the current shared `check-trace.sh`. Run it only under an
+all 84 inputs through the current shared `check-trace.sh`. Run it only under an
 authorized nova-reserve Linux reservation. It does not acquire another reservation
 inside an existing CI job. Workflow ownership belongs to the main integration.
 
@@ -42,10 +42,10 @@ input/spec/emission hashes are verified again. `check-results.json` preserves ev
 attempted verdict, including the first failure. The shared checker still uses its
 pinned jar; no alternate download pin is introduced here.
 
-The seven focused Linux tests cover false success without a raw log, warning/error
+The eight focused Linux tests cover false success without a raw log, warning/error
 rejection, missing cases, inherited trace-knob removal, and descendant termination
-on timeout, plus approved CI host/runner routing. They use benign fake commands and do not execute TLC. Full integration
-requires running emission and all 83 checks at the exact integrated commit; unit
+on timeout, approved CI host/runner routing, and explicit stopped-case seed/mode selection. They use benign fake commands and do not execute TLC. Full integration
+requires running emission and all 84 checks at the exact integrated commit; unit
 checks alone do not satisfy that gate.
 
 
@@ -56,3 +56,11 @@ with GITHUB_ACTIONS=true. These environment values are routing markers, not a
 security boundary or independent authorization. Local amd TLC remains disallowed;
 vision/hetzner2 local routing is unchanged and Studio remains prohibited. The
 caller still acquires the approved reservation and installs the pinned runtime.
+
+The stopped-service extension adds `run-stop` to the three seeded Run cases. It
+uses seed 0 and an explicit `NOVA_RUN_TRACE_STOP=1`; all inherited NOVA trace knobs
+are cleared before each emitter. That case records Stop, an ordinary worker
+report between stopped scheduler calls, and Start from actual Engine snapshots.
+The suite now has 84 identities. Historical 83-case receipts retain their original
+scope; this helper change requires a fresh integrated-source emission/check before
+claiming current full-suite acceptance.
