@@ -166,3 +166,46 @@ func TestFunctionalEvaluatorMemoryCap(t *testing.T) {
 	require.Empty(t, fs)
 	assert.Equal(t, 0, a.Version, "the next tick starts a new child")
 }
+
+// waitingClock is a fake clock that signals its first After: the evaluator
+// is then waiting on its child.
+type waitingClock struct {
+	*fakeClock
+	waiting chan struct{}
+	once    sync.Once
+}
+
+func (c *waitingClock) After(d time.Duration) <-chan time.Time {
+	c.once.Do(func() { close(c.waiting) })
+	return c.fakeClock.After(d)
+}
+
+// TestFunctionalEvaluatorReleaseMidAnswer: the collector's cleanup of an engine
+// whose child is still answering (release) and the answer's own stop must not
+// race; run with -race. The cleanup waits for the answer, then stops the child.
+func TestFunctionalEvaluatorReleaseMidAnswer(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	snap := w.snap()
+	hung, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(30000):\n        x = [[[[[[[[[[x]]]]]]]]]]\n    return len(str(x)) > 0")
+	clock := &waitingClock{fakeClock: newFakeClock(), waiting: make(chan struct{})}
+	e := NewEngine(clock)
+	done := make(chan []Failure, 1)
+	go func() {
+		_, fs := e.Answer(Versions{Active: pv(2, hung)}, snap, w.ro, FullQuestions(snap, nil))
+		done <- fs
+	}()
+	<-clock.waiting
+	released := make(chan struct{})
+	go func() {
+		e.proc.release()
+		close(released)
+	}()
+	clock.expire()
+	require.NotEmpty(t, <-done)
+	<-released
+	e.proc.mu.Lock()
+	gone := e.proc.cmd == nil
+	e.proc.mu.Unlock()
+	assert.True(t, gone)
+}

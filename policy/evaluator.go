@@ -96,7 +96,7 @@ type evaluator struct {
 func NewEngine(clock Clock) *Engine {
 	e := newLocal(clock)
 	e.proc = &evaluator{}
-	runtime.AddCleanup(e, (*evaluator).stop, e.proc)
+	runtime.AddCleanup(e, (*evaluator).release, e.proc)
 	return e
 }
 
@@ -215,6 +215,14 @@ func (ev *evaluator) startChild() error {
 	}
 	ev.cmd, ev.in, ev.enc, ev.dec = cmd, in, gob.NewEncoder(in), gob.NewDecoder(out)
 	return nil
+}
+
+// release is stop for the collector's cleanup: it waits for a request in
+// flight, which holds mu, so the two stops never overlap.
+func (ev *evaluator) release() {
+	ev.mu.Lock()
+	defer ev.mu.Unlock()
+	ev.stop()
 }
 
 // stop kills the child, if any; the next request starts another.
