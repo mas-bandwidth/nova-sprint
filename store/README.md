@@ -89,7 +89,10 @@ package does with it.
   sprint's stop (`Snapshot.Stopped`, kept by a clear, refused when
   unchanged; the store refuses nothing for it). `EventIdentity(ctx, seq)`
   reads an event's op id and epoch without its images. Migrate takes a
-  round-21 store in place.
+  round-21 store in place. `RestoreEnd` records the restore
+  (`sprint.meta.restored_at`, read by `Restored(ctx)`) and unhooks the
+  dump's hooks in one logged op inside the restore's transaction. A cursor
+  set to its current value is refused, an absent one counting as 0.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and

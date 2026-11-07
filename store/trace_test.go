@@ -87,20 +87,19 @@ func (g guardDropped) Apply(ctx context.Context, op Op) (Receipt, error) {
 	return g.Fake.Apply(ctx, op)
 }
 
-// TestTraceCursorZero records the one divergence the walks found between
-// the store and Store.tla (tla/README.md, "Trace validation"): setting a
-// cursor that was never set to 0. The store accepts it (it inserts the
-// cursor at 0); the model refuses it as a write that changes nothing (an
-// absent cursor is 0 there, as it reads in a snapshot). The fixture
-// tla/traces/store-cursor-zero is refused at its last record until one side
-// is ruled on; the walks do not send this write.
+// TestTraceCursorZero holds the ruling on the one divergence the walks
+// found between the store and Store.tla (tla/README.md, "Trace
+// validation"): setting a cursor that was never set to 0. The store used to
+// accept it; it was ruled the code's fault, and the store now refuses it as
+// a write that changes nothing (an absent cursor is 0), as the model does.
+// The fixture tla/traces/store-cursor-zero must match.
 func TestTraceCursorZero(t *testing.T) {
 	w := newStoreWalk(t, NewFake(), nil, 0)
 	w.script(nil, PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1})
 	w.script(nil, SetCursor{Name: "c1", Seq: 0})
-	require.Contains(t, w.tr.recs[len(w.tr.recs)-1], "accepted |-> TRUE", "the store accepts a cursor set to 0 when it was never set")
+	require.Contains(t, w.tr.recs[len(w.tr.recs)-1], "accepted |-> FALSE", "a cursor never set is at 0: setting it to 0 is refused")
 	if out := os.Getenv(traceEnv); out != "" {
-		require.NoError(t, w.tr.write(filepath.Join(out, "store-cursor-zero"), fmt.Sprintf("forbidden at %d", len(w.tr.recs))))
+		require.NoError(t, w.tr.write(filepath.Join(out, "store-cursor-zero"), "matched"))
 	}
 }
 

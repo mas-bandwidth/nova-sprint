@@ -168,6 +168,19 @@ func (p *PG) EventIdentity(ctx context.Context, seq int64) (string, int, bool, e
 	return op, epoch, true, nil
 }
 
+// Restored returns when the store was last restored (RestoreEnd), and false
+// when it never was. It only reads.
+func (p *PG) Restored(ctx context.Context) (time.Time, bool, error) {
+	var at *time.Time
+	if err := p.pool.QueryRow(ctx, "SELECT restored_at FROM sprint.meta WHERE id = 1").Scan(&at); err != nil {
+		return time.Time{}, false, fmt.Errorf("store: restored: %w", err)
+	}
+	if at == nil {
+		return time.Time{}, false, nil
+	}
+	return at.UTC(), true, nil
+}
+
 // readEvents is Events on q: the pool, or a transaction (RestoreEnd).
 func readEvents(ctx context.Context, q interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)

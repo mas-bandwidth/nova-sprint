@@ -683,8 +683,28 @@ model and harness wherever they are named).
   checks; HookKept, StoreHookStolen, StoreStopDropped, StoreWidthInStore and
   NeverTwoWorking, NeverHookRefused, NeverRehooked, NeverDealtStopped,
   NeverSameStopRefused are new. The trace projects sess, role and stopped.
+- Restore (round 22, v2-integrate-22): `RestoreEnd`, after the history
+  check and in the restore's own transaction, records the restore in
+  `sprint.meta.restored_at` (the transaction's time; null when never
+  restored) and unhooks every hooked row of the current epoch, so no hook
+  from the dump is live. The unhook is one ordinary logged op
+  (`restore-unhook-<seq>`, actor `store-restore`, kind `unhook`, a
+  `PutRow{Name}` per hooked row, each raising the row's gen) run through the
+  protocol inside the transaction, so the log still rebuilds the state; a
+  dump with no hooked row logs nothing. `Restored(ctx) (at, ok, err)` on the
+  Store interface reads it (the Fake is never restored), so a retried
+  restore can tell the data is already in. No source hash is recorded:
+  RestoreEnd is given none. The model needs no new variable (the unhook is
+  PutRow ops; `restored_at` is outside the ops' state).
+- Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
+  value is refused as unchanged, an absent cursor counting as 0, so
+  `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already
+  at 0"), as Store.tla always had it. The trace fixture `store-cursor-zero`
+  now matches, and the walks send the write. The dashboard's cursor save
+  treats an absent cursor as 0 too, so an idle first poll of an empty store
+  writes nothing.
 
-Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
+Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference then, since ruled the code's fault and fixed (round 22): the store inserted an absent cursor set to 0, which the model refuses.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
 
