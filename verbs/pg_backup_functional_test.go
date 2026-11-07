@@ -79,9 +79,9 @@ func TestFunctionalBackupRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, targetDigest, _, err := verifyDatabase(ctx, targetDSN)
-	if err != nil || target.Seq != info.Seq || targetDigest != info.PrefixDigest || len(target.Cards) != 2 {
-		t.Fatal(target, targetDigest, err)
+	target, targetSeq, targetDigest, _, err := verifyDatabase(ctx, targetDSN, info.Verified.Digest())
+	if err != nil || targetSeq != info.Seq || targetDigest != info.PrefixDigest || len(target.Cards) != 2 {
+		t.Fatal(target, targetSeq, targetDigest, err)
 	}
 	verified, err := b.Verify(ctx, info.Path)
 	if err != nil || verified.Epoch != 1 || verified.Seq != r.Seq {
@@ -201,11 +201,56 @@ func TestFunctionalBackupMigratedRound25(t *testing.T) {
 	if err = (&Engine{Archive: archive}).load(ctx, info); err != nil {
 		t.Fatal(err)
 	}
-	target, _, _, err := verifyDatabase(ctx, targetDSN)
+	target, _, _, _, err := verifyDatabase(ctx, targetDSN, info.Verified.Digest())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := target.Cards["p.w1"], source.Cards["p.w1"]; got.Model != "inception/mercury-3" || got.Usage != want.Usage || !reflect.DeepEqual(target.Cards, source.Cards) {
 		t.Fatalf("the restored consumer is %+v, want %+v", got, want)
+	}
+}
+
+// The live store (round 25, the deployed line) runs with no stop in its
+// log: the deployed line's stores began running, with nothing logged. A
+// rebuild starts never started (store.FreshStop), so Migrate logs the stop
+// the store has, and its backup verifies (L1.1's stop comparison holds).
+func TestFunctionalBackupRound25RunningWithNoStopEvent(t *testing.T) {
+	if _, err := exec.LookPath("initdb"); err != nil {
+		t.Skip("requires PostgreSQL's initdb on PATH")
+	}
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	_, dsn := startBackupPG(ctx, t)
+	old, err := os.ReadFile("../store/testdata/schema-round25.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round25Hash + "' WHERE id = 1",
+		`INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy) VALUES (1, 'seed', 'test', 'seed', true, '', '{}', '{}', '{"op":"seed","kind":"seed","actor":"test","epoch":1,"at":"2026-11-07T00:00:00Z","accepted":true,"seq":1,"after":{}}', '2026-11-07T00:00:00Z', 1, 0)`} {
+		if _, err = conn.Exec(ctx, q); err != nil {
+			t.Fatal(q, err)
+		}
+	}
+	pg, err := store.Open(ctx, dsn, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pg.Close()
+	if err = pg.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := pg.Snapshot(ctx)
+	if err != nil || snap.Stopped {
+		t.Fatalf("the live store is running: %+v %v", snap, err)
+	}
+	b := PGBackups{DSN: dsn, Directory: t.TempDir(), Version: "v2.0.1", Loader: PGSQLLoader{}}
+	if _, err = b.Backup(ctx, ""); err != nil {
+		t.Fatal(err)
 	}
 }

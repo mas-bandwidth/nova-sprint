@@ -97,8 +97,8 @@ func TestFunctionalPublishedBackupRoundTrip(t *testing.T) {
 	if err := (&Engine{Archive: archive}).load(ctx, info); err != nil {
 		t.Fatal(err)
 	}
-	snap, digest, _, err := verifyDatabase(ctx, targetDSN)
-	if err != nil || snap.Seq != receipt.Seq || digest != info.PrefixDigest {
-		t.Fatalf("restore: %+v digest=%s err=%v", snap, digest, err)
+	snap, seq, digest, _, err := verifyDatabase(ctx, targetDSN, info.Verified.Digest())
+	if err != nil || seq != receipt.Seq || digest != info.PrefixDigest {
+		t.Fatalf("restore: %+v seq=%d digest=%s err=%v", snap, seq, digest, err)
 	}
 }

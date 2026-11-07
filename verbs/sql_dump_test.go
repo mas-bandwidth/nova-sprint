@@ -116,3 +116,19 @@ func TestConfineDataCarriesRound25Balances(t *testing.T) {
 		t.Fatal("accepted another sequence")
 	}
 }
+
+// pg_dump 18 wraps a plain dump in \restrict/\unrestrict and sets
+// transaction_timeout in its preamble: a verified backup accepts both.
+func TestConfineDataAcceptsPgDump18Preamble(t *testing.T) {
+	t.Parallel()
+	hash := strings.Repeat("a", 64)
+	dump := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n" +
+		"\\restrict Abc123\n" +
+		"SET statement_timeout = 0;\nSET lock_timeout = 0;\nSET idle_in_transaction_session_timeout = 0;\nSET transaction_timeout = 0;\n" +
+		"SET client_encoding = 'UTF8';\nSET standard_conforming_strings = on;\nSELECT pg_catalog.set_config('search_path', '', false);\n" +
+		"INSERT INTO sprint.events VALUES (E'hi', 10, NULL, true);\n" +
+		"\\unrestrict Abc123\n"
+	if _, err := ConfineData([]byte(dump), hash); err != nil {
+		t.Fatal(err)
+	}
+}

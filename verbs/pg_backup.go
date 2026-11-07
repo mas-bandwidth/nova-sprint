@@ -279,11 +279,11 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 	if err = p.Loader.Load(ctx, dsn, validated); err != nil {
 		return BackupInfo{}, fmt.Errorf("dump restore verification failed: %w", err)
 	}
-	snap, digest, schemaHash, err := verifyDatabase(ctx, dsn)
+	snap, seq, digest, schemaHash, err := verifyDatabase(ctx, dsn, validated.Digest())
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	return BackupInfo{Path: path, Epoch: snap.Epoch, Seq: snap.Seq, PrefixDigest: digest, SchemaHash: schemaHash, Verified: validated}, nil
+	return BackupInfo{Path: path, Epoch: snap.Epoch, Seq: seq, PrefixDigest: digest, SchemaHash: schemaHash, Verified: validated}, nil
 }
 
 // verifyServerOptions are the verification cluster's server options: a
@@ -314,30 +314,52 @@ func pidFileExists(dataDir string) bool {
 	return err == nil
 }
 
-func verifyDatabase(ctx context.Context, dsn string) (store.Snapshot, string, string, error) {
+// verifyDatabase checks that the store at dsn, restored from the dump whose
+// digest is dumpDigest, rebuilds from its log to its snapshot, and returns
+// that snapshot, the dump's own last seq and the event prefix digest
+// through it. The restore logs one unhook op after the dump's events when
+// the dump has hooked rows (store.RestoreEnd), so the dump's seq is the one
+// that op names, not the restored store's: a backup's seq and prefix are
+// those of the store it was taken from.
+func verifyDatabase(ctx context.Context, dsn, dumpDigest string) (store.Snapshot, int64, string, string, error) {
 	pg, err := store.Open(ctx, dsn, "")
 	if err != nil {
-		return store.Snapshot{}, "", "", err
+		return store.Snapshot{}, 0, "", "", err
 	}
 	defer pg.Close()
 	schema, err := pg.Schema(ctx)
 	if err != nil {
-		return store.Snapshot{}, "", "", err
+		return store.Snapshot{}, 0, "", "", err
 	}
 	if !schema.Current {
-		return store.Snapshot{}, "", "", fmt.Errorf("backup schema is not current")
+		return store.Snapshot{}, 0, "", "", fmt.Errorf("backup schema is not current")
 	}
 	snap, err := pg.Snapshot(ctx)
 	if err != nil {
-		return store.Snapshot{}, "", "", err
+		return store.Snapshot{}, 0, "", "", err
 	}
 	fold := newEventFold()
 	digest, err := digestEvents(ctx, pg, snap.Seq, fold)
 	if err != nil {
-		return store.Snapshot{}, "", "", err
+		return store.Snapshot{}, 0, "", "", err
 	}
 	if !reflect.DeepEqual(fold.result(), snap) {
-		return store.Snapshot{}, "", "", fmt.Errorf("rebuild does not match snapshot")
+		return store.Snapshot{}, 0, "", "", fmt.Errorf("rebuild does not match snapshot")
 	}
-	return snap, digest, schema.Hash, nil
+	seq := snap.Seq
+	last, err := pg.Events(ctx, snap.Seq-1, 1)
+	if err != nil {
+		return store.Snapshot{}, 0, "", "", err
+	}
+	if len(last) == 1 {
+		if s, ok := strings.CutPrefix(last[0].Op, "restore-unhook-"+dumpDigest+"-"); ok {
+			if seq, err = strconv.ParseInt(s, 10, 64); err != nil || seq < 0 || seq >= snap.Seq {
+				return store.Snapshot{}, 0, "", "", fmt.Errorf("the restore's unhook op %q names no seq before it", last[0].Op)
+			}
+			if digest, err = EventPrefixDigest(ctx, pg, seq); err != nil {
+				return store.Snapshot{}, 0, "", "", err
+			}
+		}
+	}
+	return snap, seq, digest, schema.Hash, nil
 }
