@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/worker"
 
 	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -102,17 +101,15 @@ func runWorker(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (str
 	if e.Services == nil {
 		return "", broken("worker is not configured in this build", "nova-sprint check")
 	}
-	if !validName(in.actor) || in.str("work-clone") == "" || in.str("coordinator-hosts") == "" {
-		return "", misuse("worker", "worker takes --as <row> --work-clone <dir> --coordinator-hosts <h,h>")
+	if !validName(in.actor) {
+		return "", misuse("worker", "worker takes --as <row>")
 	}
 	w := WorkerArgs{Row: in.actor, Host: in.str("host"), Root: in.str("root"), StateDir: in.str("state-dir"), Harness: in.str("harness"),
-		WorkClone: in.str("work-clone"), Mirror: in.str("mirror"), Origin: in.str("origin"), Once: in.has("once"),
-		CoordinatorHosts: worker.SplitList(in.str("coordinator-hosts")), ProviderUpstream: in.str("provider-upstream"),
-		ProviderHosts: worker.SplitList(in.str("provider-hosts")), ProviderKey: in.str("provider-key")}
+		WorkRoot: in.str("work-root"), MirrorRoot: in.str("mirror-root"), Providers: in.str("providers"), Once: in.has("once")}
 	if err := e.Services.Worker(ctx, w); err != nil {
 		return "", err
 	}
-	return done("nova-sprint worker --as "+in.actor+" --work-clone "+w.WorkClone, "WORKER "+in.actor+" ended"), nil
+	return done("nova-sprint worker --as "+in.actor, "WORKER "+in.actor+" ended"), nil
 }
 
 func runDash(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {

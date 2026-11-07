@@ -93,3 +93,21 @@ func TestFailureCarriesEveryStderrLineButTheBanner(t *testing.T) {
 		t.Fatalf("%d %q", len(long), long[:20])
 	}
 }
+
+// A harness that paints its output ends with a bare reset; the cause is the
+// error line above it (defect 25: the probe reported "\x1b[0m").
+func TestCauseLineSkipsEscapesAndKeepsTheErrorLine(t *testing.T) {
+	out := "\x1b[91m\x1b[1mError: \x1b[0mInsufficient credits. Add more\n\x1b[0m\n\x1b[0m"
+	if got := CauseLine(out, 200); got != "Error: Insufficient credits. Add more" {
+		t.Fatalf("CauseLine = %q", got)
+	}
+	if got := CauseLine("starting\nwarming up\n\x1b[0m\n", 200); got != "warming up" {
+		t.Fatalf("no error line: want the last non-empty line, got %q", got)
+	}
+	if got := CauseLine("request FAILED: 502\nretrying\n", 200); got != "request FAILED: 502" {
+		t.Fatalf("case-insensitive match: got %q", got)
+	}
+	if got := StderrLines("\x1b[31mboom\x1b[0m\n"); got != "boom" {
+		t.Fatalf("StderrLines keeps escapes: %q", got)
+	}
+}

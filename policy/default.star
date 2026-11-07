@@ -119,10 +119,14 @@ def catalog():
                 {"name": "argon", "tier": "frontier"},
             ],
             "deepseek": [
-                {"name": "deepseek-flash-4.1", "tier": "flash"},
+                {"name": "deepseek-flash", "tier": "flash"},
             ],
             "inception": [
                 {"name": "mercury-3", "tier": "pro"},
+                {"name": "mercury-2.5", "tier": "flash"},  # guess
+            ],
+            "paperinstruments": [
+                {"name": "ultramarine-1-flash", "tier": "flash"},  # guess
             ],
             "unknown": [  # the provider is unknown: a guess
                 {"name": "astra", "tier": "frontier"},

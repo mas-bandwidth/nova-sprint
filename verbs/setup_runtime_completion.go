@@ -50,6 +50,6 @@ func (r RuntimeSetup) Completion(ctx context.Context) (string, error) {
 	if _, err = SprintSeats(machines, r.RunService, publicHost); err != nil {
 		return "", err
 	}
-	workers := len(WorkerBenches(machines, r.RunService.Machine))
+	workers := len(WorkerBenches(machines))
 	return fmt.Sprintf("UP DONE run on %s; dashboard %s; %d workers up; coordinator %s", host, target.URL, workers, actor), nil
 }

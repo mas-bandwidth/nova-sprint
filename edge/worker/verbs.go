@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +34,10 @@ type (
 		Harness               string
 		Held                  bool
 		Ready, Working, Final []ConsumerSummary
+		// TierModels are the models the row may run by tier it serves, in
+		// provider/model form (a bench's: the policy's candidates).
+		TierModels map[string][]string `json:"tier_models"`
+		RosterErr  string              `json:"roster_error"`
 	}
 	TakeInfo struct {
 		Consumer, Producer, Kind, Stream, Repo, Base, Branch, Head, Tier, Brief, Prose, Finding string
@@ -45,7 +48,8 @@ type (
 		DoneWhen                                                                                []string `json:"done_when"`
 		Epoch, Gen, Attempt, Review                                                             int
 		Model, Forge                                                                            string
-		Deadline                                                                                int // seconds, from policy's timeouts().consumer[tier]
+		Models                                                                                  []string // a bench's candidates for the tier, when Model is ""
+		Deadline                                                                                int      // seconds, from policy's timeouts().consumer[tier]
 	}
 	ReportRequest struct {
 		Epoch, Gen                                             int
@@ -62,30 +66,21 @@ type (
 		OpenJudgement(ctx context.Context, j store.Judgement) error
 	}
 	CLISprintClient struct {
-		Exec                  edge.Exec
-		Timeout               time.Duration
-		Run                   func(ctx context.Context, argv []string) ([]byte, int, error)
-		SecretsBin, SprintBin string
-		Epoch                 int
+		Exec      edge.Exec
+		Timeout   time.Duration
+		Run       func(ctx context.Context, argv []string) ([]byte, int, error)
+		SprintBin string
+		Epoch     int
 	}
 )
 
-// ReadProviderKey is the provider key from nova-secrets get, or the
-// failure: the command line and stderr, never stdout (stdout is the key).
-func ReadProviderKey(ex edge.Exec, secretsBin, name string) (string, error) {
-	cmd := edge.Cmd{Argv: []string{cmp.Or(secretsBin, "nova-secrets"), "get", name}, CleanEnv: true, Timeout: 5 * time.Second}
-	res, err := cmp.Or[edge.Exec](ex, edge.NewOSExec()).Run(context.Background(), cmd)
-	if err != nil || res.ExitCode != 0 {
-		return "", edge.Failure(cmd.Argv, nil, res.ExitCode, "", res.Stderr, err)
-	}
-	return strings.TrimSpace(res.Stdout), nil
-}
-func (c *CLISprintClient) wrap_internal(args ...string) []string {
-	sb := cmp.Or(c.SprintBin, "nova-sprint")
-	if c.SecretsBin != "" && (c.Run != nil || c.SecretsBin != "nova-secrets" || fileExists_internal(filepath.Join(filepath.Dir(resolveToolBin_internal(sb)), "nova-secrets"))) {
-		return append([]string{c.SecretsBin, "exec", "--", sb}, args...)
-	}
-	return append([]string{sb}, args...)
+// argv_internal is a sprint verb's command line. The worker runs under the
+// bench seat's nova-secrets exec, which put the sprint's credentials in its
+// environment; each verb is run directly and inherits them (defect 35: a
+// bare nova-secrets exec is refused by nova-tools v2, which wants --only,
+// --store and --key).
+func (c *CLISprintClient) argv_internal(args ...string) []string {
+	return append([]string{cmp.Or(c.SprintBin, "nova-sprint")}, args...)
 }
 
 // run_internal runs argv for its output (stdout then stderr, as the parsers
@@ -124,15 +119,15 @@ func (c *CLISprintClient) classifyCLIError_internal(out []byte, code int, err er
 	return fmt.Errorf("%w: %w", ErrStoreDown, err)
 }
 func (c *CLISprintClient) Hook(ctx context.Context, row string) error {
-	out, code, err := c.run_internal(ctx, c.wrap_internal("hook", "--as", row, "--role", "worker"))
+	out, code, err := c.run_internal(ctx, c.argv_internal("hook", "--as", row, "--role", "worker"))
 	return c.classifyCLIError_internal(out, code, err)
 }
 func (c *CLISprintClient) Unhook(ctx context.Context, row string) error {
-	out, code, err := c.run_internal(ctx, c.wrap_internal("unhook", "--as", row))
+	out, code, err := c.run_internal(ctx, c.argv_internal("unhook", "--as", row))
 	return c.classifyCLIError_internal(out, code, err)
 }
 func (c *CLISprintClient) Next(ctx context.Context, row string) (NextResponse, error) {
-	out, code, err := c.run_internal(ctx, c.wrap_internal("next", "--as", row, "--json"))
+	out, code, err := c.run_internal(ctx, c.argv_internal("next", "--as", row, "--json"))
 	var resp NextResponse
 	if cerr := c.classifyCLIError_internal(out, code, err); cerr != nil {
 		return resp, cerr
@@ -146,7 +141,7 @@ func (c *CLISprintClient) Next(ctx context.Context, row string) (NextResponse, e
 func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen int) (TakeInfo, error) {
 	ep := cmp.Or(c.Epoch, 1)
 	id := FormatTakeOpID(ep, consumer, gen, row)
-	out, code, err := c.run_internal(ctx, c.wrap_internal("take", fmt.Sprintf("%s@%d", consumer, gen), "--id", id, "--epoch", strconv.Itoa(ep), "--as", row, "--json"))
+	out, code, err := c.run_internal(ctx, c.argv_internal("take", fmt.Sprintf("%s@%d", consumer, gen), "--id", id, "--epoch", strconv.Itoa(ep), "--as", row, "--json"))
 	var info TakeInfo
 	if cerr := c.classifyCLIError_internal(out, code, err); cerr != nil {
 		return info, cerr
@@ -176,10 +171,11 @@ func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen in
 }
 
 // checkReceipt_internal is what the runner needs from a receipt before it
-// stages anything: a model and a deadline (a forge of "" means none).
+// stages anything: a model (or a bench's candidates) and a deadline (a
+// forge of "" means none).
 func checkReceipt_internal(info TakeInfo) error {
 	var missing []string
-	if info.Model == "" {
+	if info.Model == "" && len(info.Models) == 0 {
 		missing = append(missing, "model")
 	}
 	if info.Deadline <= 0 {
@@ -196,7 +192,7 @@ func receiptError_internal(consumer string, missing []string) error {
 func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
 	ep := cmp.Or(req.Epoch, c.Epoch, 1)
 	id := cmp.Or(req.ResultID, FormatResultID(ep, req.Consumer, 0, req.Gen))
-	argv := c.wrap_internal("report", fmt.Sprintf("%s@%d", req.Consumer, req.Gen),
+	argv := c.argv_internal("report", fmt.Sprintf("%s@%d", req.Consumer, req.Gen),
 		"--result", req.Result, "--id", id, "--epoch", strconv.Itoa(ep),
 		"--cost-microusd", strconv.FormatInt(max(0, req.Cost), 10), "--priced", strconv.FormatBool(req.Priced),
 		"--as", req.Row, "--json")
@@ -217,6 +213,6 @@ func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.
 	return rec, nil
 }
 func (c *CLISprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
-	out, code, err := c.run_internal(ctx, c.wrap_internal("judge-open", "--id", j.ID, "--kind", j.Kind, "--about", j.About, "--question", j.Question))
+	out, code, err := c.run_internal(ctx, c.argv_internal("judge-open", "--id", j.ID, "--kind", j.Kind, "--about", j.About, "--question", j.Question))
 	return c.classifyCLIError_internal(out, code, err)
 }

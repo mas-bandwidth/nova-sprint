@@ -42,29 +42,6 @@ const (
 	MaxReasonBytes                                         = 4096
 )
 
-func cmpOr_internal(a, b string) string { return cmp.Or(a, b) }
-
-// CheckHost refuses the coordinator's machine (LESSONS 4.18). The worker
-// holds no list of its own: with none given it refuses to run, because a
-// check against nothing would pass on the coordinator.
-func CheckHost(host string, coordinatorHosts []string) error {
-	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(cmpOr_internal(host, ""))), ".")
-	if h == "" {
-		return errors.New("worker refused: host is empty: pass --host <bench> or set HOSTNAME")
-	}
-	if len(coordinatorHosts) == 0 {
-		return errors.New("worker refused: no coordinator hosts given, so the coordinator's machine cannot be told from a bench: pass --coordinator-hosts <host,host> (the machines nova-config gives the coordinator role)")
-	}
-	short, _, _ := strings.Cut(h, ".")
-	for _, raw := range coordinatorHosts {
-		c := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), ".")
-		if cShort, _, _ := strings.Cut(c, "."); c != "" && (h == c || short == cShort) {
-			return fmt.Errorf("worker refused: host %s is a coordinator host (no card runs on the coordinator's machine): run nova-worker on a worker bench", host)
-		}
-	}
-	return nil
-}
-
 type Timeouts struct {
 	Stage, LaunchGrace                                                                                                                         time.Duration
 	LaunchTries                                                                                                                                int
@@ -97,6 +74,7 @@ type (
 		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
 		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode, Forge                                                                      string
 		Deadline                                                                                                                                        time.Duration
+		Needs                                                                                                                                           Needs // the harness's wall, from its adapter
 	}
 	Outcome struct {
 		Result, Head, Reason, Finding string

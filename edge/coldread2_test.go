@@ -39,7 +39,7 @@ func cr2Sources_internal(t *testing.T, tests bool) map[string]string {
 func TestColdread2DefectDeadCode(t *testing.T) {
 	t.Parallel()
 	src := cr2Sources_internal(t, false)
-	for _, name := range []string{"RunRemoteLandStep", "FormatTakeOpID", "RunArgv", "cmpOr_internal", "JobCIWait", "JobCleaned", "HasHead", "RestedUntil", "NewClient"} {
+	for _, name := range []string{"RunRemoteLandStep", "FormatTakeOpID", "RunArgv", "JobCIWait", "JobCleaned", "HasHead", "RestedUntil", "NewClient"} {
 		re := regexp.MustCompile(`\b` + name + `\b`)
 		n := 0
 		for _, s := range src {

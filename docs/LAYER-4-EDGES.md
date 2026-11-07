@@ -320,8 +320,9 @@ listening server (the wall refuses listen where it can; the card contract
 refuses briefs that ask); write outside its job directory, so no `rm -rf`
 of a home and no crawl of `/`, `~` or `/Volumes`; wait on a prompt (stdin
 is closed; `sudo` has no terminal). Commit text goes in a file, `git
-commit -F`. The coordinator's machine runs no card (LESSONS 4.18):
-`nova-worker` refuses a host policy names as a coordinator host.
+commit -F`. Which machines run cards is nova-config's bench role and
+nothing else: the coordinator's machine runs a worker when it is a bench
+(2026-11-07; LESSONS 4.18's refusal is gone).
 
 Timeouts, each a policy number. From v1, measured: stage 120 s (copies ran
 73 to 79 s median under load); launch grace 15 s, three launches, 5 to 20 s
@@ -481,10 +482,10 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
 - `edge/git` (`edge/git/git.go`, `edge/git/land.go`, `edge/git/fake_test.go`, `edge/git/git_test.go`, `edge/git/coldread_test.go`, `edge/git/coldread2_test.go`, `edge/git/break_test.go`, `edge/git/functional_test.go`, `edge/git/trace_test.go`): `Git` (`Client`, `Fake`, clock starting at `1000`) and `LandPass` (`StreamBranch`, `StreamRef`, `ValidateCardBranch`, `RunRemoteLandStep`). Implements the 6-step landing pass from `LANDING.md` (fetch, merge group in score order with union ledger merge, push `--force-with-lease=<ref>:<old>`, gate at exact SHA, land only while base tip matches the gated parent, fast-forward stream branch). Per `1794011119389-0` (`LANDING.md` step 1), the stream integration branch is `sprint/<stream>/group` (`refs/heads/sprint/<stream>/group`), coexisting cleanly with card branches `sprint/<stream>/<producer>`, and `ValidateCardBranch` / `Take` refuse a card or producer branch named `group` or bare `sprint/<stream>`.
 - `edge/forge` (`edge/forge/forge.go`, `edge/forge/fake_test.go`, `edge/forge/forge_test.go`, `edge/forge/coldread_test.go`, `edge/forge/break_test.go`, `edge/forge/functional_test.go`): `Forge` (`Client`, `NewClient`, `Fake`, clock starting at `1000`), `PR`, `OpenPR`, `EnsurePR`, `Checks`, `Merge`, and `RestedUntil`. Queries `statusCheckRollup` via GraphQL at up to `MaxChecksBatch = 100` exact 40-hex commit SHAs per call with context pagination, classifies outcomes (`green`, `red`, `pending`, `fault`, `rate_limit`), verifies PR base and head SHA before fast-forwarding `refs/heads/<base>` in `Merge`, and enforces non-Glenn identity credentials (`GH_TOKEN` / `GH_CONFIG_DIR`) and per-identity token-bucket rate limiting.
 - `edge/worker` (`edge/worker/worker.go`, `edge/worker/harness.go`, `edge/worker/proxy.go`, `edge/worker/verbs.go`, `edge/worker/runner.go`, `edge/worker/verbs_test.go`, `edge/worker/worker_test.go`, `edge/worker/coldread_test.go`, `edge/worker/coldread2_test.go`, `edge/worker/break_test.go`, `edge/worker/functional_test.go`, `edge/worker/trace_test.go`) and `cmd/nova-worker` (`cmd/nova-worker/main.go`, `cmd/nova-worker/main_test.go`, `cmd/nova-worker/coldread2_test.go`, `cmd/nova-worker/break_test.go`):
-  - Coordinator host refusal (`CheckHost` refuses the hosts given by `--coordinator-hosts`, which is required and has no default, `LESSONS 4.18`), and mandatory `--work-clone` and `--as <row>` flags in `cmd/nova-worker`.
+  - No host refusal: nova-config's bench role is the only word on where a worker runs, the coordinator's machine included (2026-11-07; `CheckHost` and `--coordinator-hosts` are gone, below). `--as <row>` is the one mandatory flag.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `cmd/nova-worker` defaults `--harness` to `claude`. `ScriptHarness.Command` passes card fields as positional arguments (`$1`..`$9`) to a static shell program constant, never interpolating card prose into a shell string. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
-  - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), fetches route keys via `ReadProviderKey` (`nova-secrets get`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
-  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which splits `DoneWhen` command lines into unquoted argv via `splitArgv_internal`) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> --net-deny --net-allow 127.0.0.1:<proxyPort> -- <argv...>` via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
+  - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
+  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which splits `DoneWhen` command lines into unquoted argv via `splitArgv_internal`) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
   - 9-step runner lifecycle (`RunConsumer`, `StepRow`, `ProbeRow`, `RecoverRow`, `RunWakeLoop`, `QueryEdge` in `edge/worker/runner.go`):
     * `FormatTakeOpID(epoch, consumer, gen, row)` (`take-e<epoch>-<consumer>-g<gen>-<row>`) and `FormatResultID(epoch, consumer, attempt, gen)` (`res-e<epoch>-<consumer>-a<attempt>-g<gen>`) fence store operations by epoch, consumer, attempt, and gen (`CLISprintClient.Take` passes `--id`).
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
@@ -672,3 +673,92 @@ receipt.forge)`). Unit tests: `edge/git/url_test.go`,
 `run/edges_test.go`, `verbs/stream_url_test.go`,
 `cmd/nova-sprint/edges_test.go`. Not run here: a clone of a private GitHub
 repository through the gh helper (functional, on a bench).
+### The worker after the first bench runs (2026-11-07, stitch child c4)
+
+The first `nova-sprint worker` runs on a bench found these; each is fixed
+with a unit test (fake wall, fake exec, fake sprint; no process, socket or
+clock), mostly in `edge/worker/probe_test.go`.
+
+- **Harness directory (defect 24).** `OSReserveWall.RunHarness` grants
+  `--read` on the directory `exec.LookPath` finds the harness binary in and,
+  when that is a symlink, on its target's directory (`HarnessDirs`); a binary
+  it cannot find is left to the wall's own refusal, which names the path.
+- **The cause line (25).** `edge.CauseLine`: escapes stripped
+  (`edge.StripANSI`), the first line holding error, refused or failed, else
+  the last non-empty line, bounded; `edge.StderrLines` strips escapes too.
+- **Keys from the environment (26).** `ReadProviderKey` (`nova-secrets get`,
+  a verb nova-tools v2 does not have) is gone: each route's key is the named
+  environment variable, which the bench seat's `nova-secrets exec --only ...`
+  put there. A route whose key is absent refuses at the probe, naming the key
+  and the exec line, before any harness runs; at request time the proxy
+  answers 503 with the same words.
+- **The probe's model (27, 36).** The probe runs after the hook (next
+  --json answers only a hooked row) with, for each tier, the first of the
+  policy's candidates (`tier_models`) the harness serves: through the proxy
+  a route for its provider, else the adapter's one provider, and in the
+  harness's own list when it has one (`opencode models`, run outside the wall
+  under the probe's home). A tier with no candidate refuses ("no model for
+  tier <t>"); a tier none of whose candidates it serves is a warning naming
+  why, and a card of that tier dealt here faults with the candidates; none
+  served at all refuses, naming each tier's reasons and the harness's list for
+  those providers. A take of a bench card runs the first of the receipt's
+  `models` the probe proved (`chooseModel_internal`). A failed probe unhooks
+  the row again (`ServeRow`).
+- **Logs (28).** Every probe and job run keeps `stdout.log`, `stderr.log` and
+  `command.txt` (the wall's command line; the environment's values are never
+  written) in its directory; probe directories are
+  `<root>/probes/<row>/<provider>_<model>` and are kept after a failure. The
+  combined `harness.log` is gone.
+- **Several providers (29).** `--providers <name>=<url>@<KEY>[,...]`; the
+  harness's base URL is `http://<proxy>/<provider>/v1` (`ProxyBaseURL`), and
+  the proxy picks the route by that first path segment and cuts it, so one
+  proxy serves every provider; a route forwards only to its upstream's host.
+- **Judgement errors (30).** At 0832c0c0 the probe already appended the
+  judgement's error to its refusal. Found: nova-sprint v2 has no `judge-open`
+  verb, so `CLISprintClient.OpenJudgement` always fails ("unknown verb") and
+  every probe refusal says its judgement could not be opened. A row-raised
+  judgement needs a verb (layer 6) or an engine judgement for a row that
+  hooks and unhooks; not built here.
+- **Each adapter's wall (32, intent rule 31).** `Harness.Needs()` declares
+  `Unix`, `Proxy`/`NetOpen`, `Writes`, `ListModels`, `LogDir`, `Provider`,
+  `Model` and `Limits`; `BuildWallArgv(cfg, job, env, argv)` honours
+  `job.Needs` and passes every environment name but PATH, HOME, LANG and TERM
+  with `--env` (nova-sandbox drops the rest otherwise; read from its help, not
+  measured). opencode: `--unix` (its server's AF_UNIX socket; measured on a
+  bench) and the proxy's port; the same-uid escape trade is in its comment.
+  claude and codex: network open (each reaches its own provider with its own
+  login), their config directory a `--write`; whether they need `--unix` is
+  not measured. A probe that exits non-zero in its first second with an empty
+  log directory (or, with none declared, no output but the WALL line) says
+  "the harness died inside the wall before writing a log; nova-sandbox show
+  <flags> -- <harness>".
+- **Deferred, said (31, 33).** opencode through the proxy needs a provider
+  config in the wall home (31), and its own write tool dies inside the wall
+  (33). Neither is fixed; the opencode adapter's `Limits` names both in every
+  failed probe's refusal.
+- **Sprint verbs (35).** Run directly (`<sprint-bin> <verb> ...`), inheriting
+  the worker's environment, which the seat's exec filled; `--secrets-bin` is
+  gone.
+- **Any bench (41).** `CheckHost`, `Runner.CoordinatorHosts` and
+  `--coordinator-hosts` are gone.
+- **A clone per stream repo (42).** `OSGitOps{WorkRoot, MirrorRoot}`: the
+  repo is the receipt's, its clone URL a URL or path as it is, or
+  `https://github.com/<owner>/<name>.git` for owner/name on the github forge
+  (`CloneURL`, a local helper; the stream edge's own clone URL is another
+  child's); its mirror `<mirror-root>/<name>.git` (mirror-refresh's layout,
+  cloned `--mirror` on first use), its work clone `<work-root>/<name>`
+  (cloned `--reference` the mirror on first use, once per URL under a lock),
+  and a work clone of another repo in the way is refused. The worktree's
+  origin is the clone URL, so its fetch, push and the clean step's head check
+  go to the repo. Flags: `--work-root` (default `<root>/clones`) and
+  `--mirror-root` (default `~/nova-bench/mirror`) replace `--work-clone`,
+  `--mirror` and `--origin`.
+- **The flag set** of `nova-worker` and `nova-sprint worker`: `--as <row>`,
+  `--host`, `--root`, `--state-dir`, `--harness`, `--work-root`,
+  `--mirror-root`, `--providers`, `--once`, and `--sprint-bin` on
+  `nova-worker` only.
+- **Owed.** A bench's tiers: the roster gives every bench every tier, so a
+  bench whose harness serves no model of a tier is still dealt its cards,
+  which fault and return to ready; the roster (or policy) needs a bench's
+  served tiers. `rebaseAndPRSteps_internal` is 67 lines (over the 60 rule;
+  untouched here).

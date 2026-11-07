@@ -27,14 +27,20 @@ func workerProviderKeys() []string {
 // The directories are under the login's home on the bench (the worker
 // resolves a relative directory there, services.Worker); a worker that
 // stages one clone per stream repo changes --work-clone here only.
-func workerArgv(machine, runMachine string) []string {
+func workerArgv(machine, _ string) []string {
 	return []string{"nova-sprint", "worker", "--as", machine,
-		"--work-clone", ".local/share/nova-sprint/work",
-		"--coordinator-hosts", runMachine,
+		"--work-root", ".local/share/nova-sprint/work",
 		"--harness", workerHarness,
+		"--providers", workerProviders,
 		"--root", ".local/state/nova-worker/" + machine,
 		"--state-dir", ".local/state"}
 }
+
+// workerProviders is the worker's key-proxy routes (edge/worker
+// ParseProviders): only DeepSeek's upstream is known here; Inception's and
+// Paper Instruments' upstreams are owed (their keys are already in the
+// record, so adding a route is this one string).
+const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY"
 
 // workerService is the nova-config service record of the worker on a
 // bench: its seat is the bench's own, its keys the sprint credential, the
@@ -84,7 +90,7 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 	if err != nil {
 		return serviceConfigFailure("cannot inspect machine inventory: ", err)
 	}
-	benches := verbs.WorkerBenches(machines, w.run.Machine)
+	benches := verbs.WorkerBenches(machines)
 	if w.services.Command == nil {
 		return fmt.Errorf("worker setup unavailable: no fleet command is wired")
 	}
@@ -135,7 +141,7 @@ func (w productionWorkload) benchStates(ctx context.Context) ([]benchState, erro
 		cores[m.Name] = m.Cores
 	}
 	var states []benchState
-	for _, bench := range verbs.WorkerBenches(machines, w.run.Machine) {
+	for _, bench := range verbs.WorkerBenches(machines) {
 		row := "no row"
 		if r, ok := snap.Rows[bench]; ok {
 			row = r.State

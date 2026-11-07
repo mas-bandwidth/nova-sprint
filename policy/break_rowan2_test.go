@@ -338,7 +338,7 @@ func TestHeldRowan2BodyAtTheCap(t *testing.T) {
 	var r *Refusal
 	require.True(t, errors.As(err, &r), "%v", err)
 	assert.Contains(t, r.What, "over 65536 bytes")
-	_, fs := testEngine().runFile("deep.star", "_X = "+strings.Repeat("[", 30000)+strings.Repeat("]", 30000)+"\n"+DefaultBody(), w.snap(), w.ro)
+	_, fs := testEngine().runFile("deep.star", "_X = "+strings.Repeat("[", 29000)+strings.Repeat("]", 29000)+"\n"+DefaultBody(), w.snap(), w.ro)
 	require.NotEmpty(t, fs)
 	assert.Contains(t, fs[0].Msg, "excessive nesting")
 }
