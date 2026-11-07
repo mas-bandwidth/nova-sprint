@@ -58,27 +58,31 @@ func overTime() string { return fmt.Sprintf("over the tick's time budget of %s",
 // start runs src's asks on a goroutine of its own; its outcome arrives on ready.
 func (e *Engine) start(ctx context.Context, src source, asks []ask, all bool) *run {
 	r := &run{e: e, ctx: ctx, src: src, all: all, th: newThread(src.label), asks: asks, ready: make(chan outcome, 1)}
-	go func() { r.ready <- r.exec() }()
+	e.live.Add(1)
+	go func() {
+		defer e.live.Add(-1)
+		r.ready <- r.exec()
+	}()
 	return r
 }
 
 // race answers a tick: tried in order, each started when the one before it
-// fails, or at fallbackAfter when it has not answered; the first in order
-// that passes before the deadline answers. Each failing version before it
-// is one Failure; when none passes, Version is -1.
-func (e *Engine) race(ctx context.Context, tried []source, asks []ask) (Answers, []Failure) {
+// fails, or at fallbackAfter from start (the tick's first byte, before its
+// inputs were built: rowan2's probe) when it has not answered; the first in
+// order that passes before the deadline answers. Each failing version
+// before it is one Failure; when none passes, Version is -1.
+func (e *Engine) race(ctx context.Context, start time.Time, tried []source, asks []ask) (Answers, []Failure) {
 	runs := make([]*run, len(tried))
 	launch := func(i int) {
 		if runs[i] == nil {
 			runs[i] = e.start(ctx, tried[i], asks, false)
 		}
 	}
-	spec := time.NewTimer(fallbackAfter)
-	defer spec.Stop()
+	spec := e.clock.After(fallbackAfter - e.clock.Now().Sub(start))
 	var failed []Failure
 	for i := range tried {
 		launch(i)
-		o := runs[i].await(spec.C, func() {
+		o := runs[i].await(spec, func() {
 			for j := i + 1; j < len(tried); j++ {
 				launch(j)
 			}

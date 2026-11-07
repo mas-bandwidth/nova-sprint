@@ -63,8 +63,7 @@ func TraceState(ctx context.Context, st store.Store, ro roster.Roster, e *Engine
 	if tick != nil {
 		m.AnsweredBy = map[bool]int{true: -2, false: tick.Version}[tick.Version == -1]
 	}
-	runs := NewEngine()
-	runs.builtin = e.builtin
+	runs := e.sibling()
 	for _, src := range append([]source{storedSource(0, e.builtin)}, sources(all)...) {
 		if _, fs := runs.checkRun(ctx, src, snap, ro); len(fs) > 0 {
 			m.Breaks = append(m.Breaks, src.version)

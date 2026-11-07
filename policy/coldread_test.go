@@ -28,7 +28,7 @@ func TestColdreadDefectFileNamedDefaultPoisonsBuiltinCache(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	snap := w.snap()
-	e := NewEngine()
+	e := testEngine()
 	body, _ := override("reads", "def reads(card):\n    return 5")
 	_, fs := e.runFile("default", body, snap, w.ro)
 	require.Empty(t, fs)
@@ -51,7 +51,7 @@ func TestColdreadDefectDefaultRefusedByJointCheck(t *testing.T) {
 	w.apply(store.PutRow{Name: "r5"})
 	w.apply(store.SetRowState{Row: "r5", State: "up"})
 	snap := w.snap()
-	a, fs := NewEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
+	a, fs := testEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	assert.Empty(t, fs, "the built-in must answer")
 	assert.Equal(t, 0, a.Version)
 }
@@ -67,7 +67,7 @@ func TestColdreadDefectVerdictOnFaultedReadUnanswerable(t *testing.T) {
 	w.apply(store.PutCard{ID: "p5-r4", Kind: "read", Of: "p5", Stream: "s1", Tier: "pro", Holder: "r4"})
 	w.apply(store.SetCardState{Card: "p5-r4", State: "done"}, store.SetCardResult{Card: "p5-r4", Result: "fault"})
 	snap := w.snap()
-	a, fs := NewEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
+	a, fs := testEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	assert.Empty(t, fs, "the built-in must answer")
 	assert.Equal(t, 0, a.Version)
 }
@@ -87,7 +87,7 @@ func TestColdreadDefectJudgementTextNotStorable(t *testing.T) {
 			t.Parallel()
 			w := fakeWorld(t)
 			snap := w.snap()
-			_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+			_, fs := testEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 			require.NotEmpty(t, fs)
 			js := Judgements(snap, w.ro, fs)
 			require.NotEmpty(t, js)
@@ -103,7 +103,7 @@ func TestColdreadDefectJudgementTextNotStorable(t *testing.T) {
 // "bounded steps"; a huge allocation or unbounded work must fail the version
 // (open a judgement), never stall the tick or exhaust the process.
 func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
-	t.Parallel()
+	breakTiming(t)
 	// Round 3: the ruling (4, 2026-11-06) makes the tick's deadline the bound
 	// and says no memory bound exists, so one 512 MiB string (about 40 ms on
 	// the studio) may answer; the probe now allocates 128 MiB 256 times, 32
@@ -116,7 +116,7 @@ func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
 			t.Parallel()
 			w := fakeWorld(t)
 			snap := w.snap()
-			a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+			a, fs := timedEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 			assert.NotEmpty(t, fs, "the version must fail")
 			assert.NotEqual(t, 2, a.Version, "a version doing unbounded work in one step must not answer")
 		})
@@ -130,7 +130,7 @@ func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
 // all), which only the deadline can end. Design, "The embedding";
 // guarantee 4.
 func TestColdreadDefectTickStepsUnbounded(t *testing.T) {
-	t.Parallel()
+	breakTiming(t)
 	ro := handRoster(rc{"r", "worker", 2, store.Tiers, ""})
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},
 		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}}}
@@ -139,7 +139,7 @@ func TestColdreadDefectTickStepsUnbounded(t *testing.T) {
 		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: "s", State: "ready", Tier: "pro", Score: i, Priority: "normal"}
 	}
 	body, _ := override("order", "def order(card):\n    for _i in range(30000):\n        pass\n    return (card.score,)")
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, ro, FullQuestions(snap, nil))
+	a, fs := timedEngine().Answer(Versions{Active: pv(2, body)}, snap, ro, FullQuestions(snap, nil))
 	require.Len(t, fs, 1, "a tick over TickTime in total must fail the version: %v", fs)
 	assert.Contains(t, fs[0].Msg, "time budget")
 	assert.NotEqual(t, 2, a.Version)
@@ -152,7 +152,7 @@ func TestColdreadDefectReadCatalogUnknownVersion(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	w.up()
-	_, err := ReadCatalog(w.ctx(), w.st, 99)
+	_, err := ReadCatalog(w.ctx(), w.st, testEngine(), 99)
 	var r *Refusal
 	require.ErrorAs(t, err, &r, "got %v", err)
 	assert.Contains(t, r.Error(), "nova-sprint policy show --list")
@@ -164,7 +164,7 @@ func TestColdreadConcurrentAnswer(t *testing.T) {
 	w := fakeWorld(t)
 	snap := w.snap()
 	q := FullQuestions(snap, nil)
-	e := NewEngine()
+	e := testEngine()
 	var wg sync.WaitGroup
 	for g := range 4 {
 		wg.Add(1)

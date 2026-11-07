@@ -36,11 +36,12 @@ const coldread2Margin = 100 * time.Millisecond * raceSlowdown
 // per-tick wall clock TickTime = 250 ms ... enforced by Thread.Cancel";
 // design guarantee 4, "A runtime error never stalls a tick".
 func TestColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
+	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
 	body, _ := override("reads", "def reads(card):\n    return min(1, len(sorted(range(50000000))))")
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+	a, fs := timedEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	require.NotEmpty(t, fs)
 	assert.Equal(t, 0, a.Version)
@@ -54,11 +55,12 @@ func TestColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
 // Built, fix 5 and 6: "a tick in which every version spends its budget takes
 // at most three budgets".
 func TestColdread2DefectCompileOutsideTickTime(t *testing.T) {
+	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
 	body := "_X = len([0 for _i in range(20000) if sorted(range(2000))])\n" + defaultBody
 	start := time.Now()
-	_, _ = NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil)) // ignored: only the time is probed
+	_, _ = timedEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil)) // ignored: only the time is probed
 	took := time.Since(start)
 	assert.Less(t, took, TickTime+coldread2Margin, "compiling a version in a tick must be inside TickTime, took %s", took)
 }
@@ -69,11 +71,12 @@ func TestColdread2DefectCompileOutsideTickTime(t *testing.T) {
 // verdict, with the clock already stopped. Built, fix 4 ("at most 4,096
 // bytes") and fix 5 and 6 (the per-tick wall clock).
 func TestColdread2DefectJudgementTextCostUnbounded(t *testing.T) {
+	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
 	body, _ := override("verdict", "def verdict(card, reads):\n    return \"\\x00\" * 100000000")
 	start := time.Now()
-	_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+	_, fs := timedEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	js := Judgements(snap, w.ro, fs)
 	took := time.Since(start)
 	require.Len(t, js, 1)
@@ -96,7 +99,7 @@ func TestColdread2DefectCacheRetainsUnboundedBytes(t *testing.T) {
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},
 		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}}}
 	body, _ := override("order", "def order(card):\n    return (\"x\" * 60000 + card.id,)")
-	e := NewEngine()
+	e := testEngine()
 	for tick := range 10 {
 		for i := range 50 {
 			id := fmt.Sprintf("p%02d", i)
@@ -161,7 +164,7 @@ func TestColdread2DefectBrokenBuiltinCatalogPanics(t *testing.T) {
 	snap := w.snap()
 	var a Answers
 	assert.NotPanics(t, func() {
-		a, _ = NewEngine().Answer(Versions{Active: pv(2, active)}, snap, w.ro, FullQuestions(snap, nil))
+		a, _ = testEngine().Answer(Versions{Active: pv(2, active)}, snap, w.ro, FullQuestions(snap, nil))
 	}) // ignored: the failures are the fallback's
 	assert.Equal(t, -1, a.Version, "the built-in's catalog failing is the last resort: the tick deals nothing")
 }
@@ -178,7 +181,7 @@ func TestColdread2RaceVerbsAndAnswer(t *testing.T) {
 	b3, _ := override("reads", "def reads(card):\n    return 3")
 	v2, v3 := w.set("two.star", b2), w.set("three.star", b3)
 	want := map[int]int{0: 1, 1: 1, v2: 2, v3: 3}
-	e := NewEngine()
+	e := testEngine()
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 	for range 3 {

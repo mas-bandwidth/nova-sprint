@@ -34,7 +34,7 @@ func TestFallbackOrder(t *testing.T) {
 		{"none at all", Versions{}, 0, nil},
 		{"prev is active", Versions{Active: pv(3, broken), Prev: pv(3, broken)}, 0, []string{"v3"}},
 	} {
-		a, fs := NewEngine().Answer(tc.vs, snap, w.ro, q)
+		a, fs := testEngine().Answer(tc.vs, snap, w.ro, q)
 		assert.Equal(t, tc.by, a.Version, tc.name)
 		var labels []string
 		for _, f := range fs {
@@ -43,7 +43,7 @@ func TestFallbackOrder(t *testing.T) {
 		}
 		assert.Equal(t, tc.failed, labels, tc.name)
 	}
-	e := NewEngine()
+	e := testEngine()
 	e.builtin = broken // the built-in, broken: a bug in the binary
 	a, fs := e.Answer(Versions{Active: pv(3, broken)}, snap, w.ro, q)
 	assert.Equal(t, -1, a.Version, "even the built-in failing returns, it never stalls")
@@ -56,7 +56,7 @@ func TestFallbackOrder(t *testing.T) {
 // and activating a clean version answers it. A policy change never moves a
 // card, and check predicts the next tick.
 func testBrokenMidSprint(t *testing.T, w *world) {
-	e := NewEngine()
+	e := testEngine()
 	w.up()
 	breaks, line := override("landing", "def landing(stream):\n    return {\"backed_up\": 4 // (0 if stream.name == \"s3\" else 1), \"flowing\": 1}")
 	v2 := w.set("breaks.star", breaks)
@@ -124,7 +124,7 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	narrowed.Workers["r1"] = r1
 	ros := []roster.Roster{w.ro, w.ro, w.ro, narrowed}
 	for i, s := range shapes {
-		a, fs := NewEngine().Answer(Versions{}, s, ros[i], FullQuestions(s, nil))
+		a, fs := testEngine().Answer(Versions{}, s, ros[i], FullQuestions(s, nil))
 		require.Empty(t, fs, "shape %d", i)
 		assert.Equal(t, 0, a.Version)
 		assert.Equal(t, Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
@@ -132,7 +132,7 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800}, a.Timeouts)
 		assert.Empty(t, a.Prices)
 	}
-	a, _ := NewEngine().Answer(Versions{}, shapes[1], w.ro, FullQuestions(shapes[1], nil))
+	a, _ := testEngine().Answer(Versions{}, shapes[1], w.ro, FullQuestions(shapes[1], nil))
 	assert.Equal(t, []string{"r1"}, a.Rows[RowsQuestion{"p1", KindWork}], "p1 pro: its own rank, r4 held")
 	assert.Equal(t, []string{"r1"}, a.Rows[RowsQuestion{"p2", KindWork}], "p2 heavy at 2 bounces wants frontier; no frontier row serves heavy, so r1")
 	assert.Equal(t, []string{"r1"}, a.Rows[RowsQuestion{"p3", KindRead}], "p3 by flash r2: the rank above, never the author")
@@ -145,10 +145,10 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	assert.Equal(t, Width{Work: 2, Ahead: 2}, a.Width["r1"])
 	assert.Equal(t, Landing{BackedUp: 4, Flowing: 1}, a.Landing["s1"])
 	assert.Equal(t, map[string]bool{"s1": true, "s2": true}, a.Stitch)
-	a, _ = NewEngine().Answer(Versions{}, shapes[2], w.ro, FullQuestions(shapes[2], nil))
+	a, _ = testEngine().Answer(Versions{}, shapes[2], w.ro, FullQuestions(shapes[2], nil))
 	assert.Equal(t, []string{"r1"}, a.Rows[RowsQuestion{"p1", KindWork}], "p1 at 4 bounces wants frontier; none is up, so any rank at or above pro")
 	assert.Equal(t, []string{"r1"}, a.Rows[RowsQuestion{"p2", KindWork}])
-	a, _ = NewEngine().Answer(Versions{}, shapes[3], narrowed, FullQuestions(shapes[3], nil))
+	a, _ = testEngine().Answer(Versions{}, shapes[3], narrowed, FullQuestions(shapes[3], nil))
 	assert.Empty(t, a.Rows[RowsQuestion{"p2", KindWork}], "no row serves heavy: layer 3's judgement, not a refusal")
 	assert.NotContains(t, a.Order, "p1", "a landed producer is not asked")
 }
@@ -163,7 +163,7 @@ func TestJudgementStorable(t *testing.T) {
 	for name, body := range map[string]string{"nul": nul, "1 MB": huge} {
 		w := fakeWorld(t)
 		snap := w.snap()
-		_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+		_, fs := testEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 		js := Judgements(snap, w.ro, fs)
 		require.Len(t, js, 1, name)
 		assert.LessOrEqual(t, len(js[0].Question), 4096, name)
@@ -183,12 +183,12 @@ func TestVerdictRetry(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	w.apply(store.SetCardResult{Card: "p3-r1", Result: "fault"})
-	a, fs := NewEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, "retry", a.Verdict["p3"])
 	w.apply(store.SetCardResult{Card: "p3-r1", Result: "ok"})
 	body, line := override("verdict", "def verdict(card, reads):\n    return \"retry\"")
-	_, fs = NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	_, fs = testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Len(t, fs, 1)
 	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "retry" with a done ok or fix read`, line), fs[0].Error())
 }
@@ -205,7 +205,7 @@ func TestRosterIsTheSourceOfRowFacts(t *testing.T) {
     if row.name == "r1" and (row.kind, row.width, row.tiers, row.model, row.harness) != ("worker", 2, ("flash", "pro", "heavy"), "", "nova-worker"):
         fail("r1 is %r" % row)
     return {"work": row.width, "ahead": row.width}`)
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, 2, a.Version)
 	assert.Equal(t, Width{Work: 2, Ahead: 2}, a.Width["r1"])
@@ -213,7 +213,7 @@ func TestRosterIsTheSourceOfRowFacts(t *testing.T) {
 
 	delete(w.ro.Workers, "r1") // nova-config drops r1
 	snap := w.snap()
-	a, fs = NewEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
+	a, fs = testEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	require.Empty(t, fs)
 	assert.NotContains(t, a.Width, "r1", "no width question for a row nova-config does not name")
 	assert.Empty(t, a.Rows[RowsQuestion{"p3", KindRead}], "p3's read: r1 is no candidate, r2 is its author")

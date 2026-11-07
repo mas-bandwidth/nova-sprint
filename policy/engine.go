@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.starlark.net/resolve"
@@ -91,10 +92,17 @@ type Engine struct {
 	progs    map[string]*program
 	builtin  string // the built-in's body: defaultBody, or a test's
 	compiles int
+	clock    Clock
+	budget   time.Duration // a tick's deadline: TickTime, or what a parent left its evaluator
+	proc     *evaluator    // nil: every version runs in this process (newLocal)
+	live     atomic.Int64  // runs whose goroutine has not ended (an abandoned one included)
 }
 
-// NewEngine is an engine with empty caches.
-func NewEngine() *Engine { return &Engine{progs: map[string]*program{}, builtin: defaultBody} }
+// newLocal is an engine that runs every version in this process, timed by
+// clock: the unit tests' engine, and the evaluator's inside its child.
+func newLocal(clock Clock) *Engine {
+	return &Engine{progs: map[string]*program{}, builtin: defaultBody, clock: clock, budget: TickTime}
+}
 
 // Compiles counts the compiles this engine ran (a test reads it).
 func (e *Engine) Compiles() int {
