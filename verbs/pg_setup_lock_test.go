@@ -7,6 +7,7 @@ import (
 )
 
 func TestSetupLockMissingDSNRefusesWithoutConnecting(t *testing.T) {
+	t.Parallel()
 	_, err := (PGSetupLock{}).Acquire(context.Background())
 	var op *OperationError
 	if !errors.As(err, &op) || op.Problem != "NOVA_PG_DSN is missing" || op.Fix != "nova-sprint check" {

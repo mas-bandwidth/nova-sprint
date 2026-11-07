@@ -16,6 +16,7 @@ import (
 
 // Opt-in bounded loopback load evidence; each client has its own source IP.
 func TestFunctionalPublicDashboardThousandRequests(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_DASH_LOAD") != "1" {
 		t.Skip("set NOVA_DASH_LOAD=1 for the bounded HTTP load")
 	}

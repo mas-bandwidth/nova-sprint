@@ -846,7 +846,7 @@ func TestConcurrentWidthWithdrawStopsRunningHarness(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected running harness ctx canceled on withdraw, got %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(2 * time.Second): // unitlint: a hang guard, not a measurement
 		t.Fatal("timed out waiting for withdraw to cancel running harness")
 	}
 	if err := <-done; err != nil {

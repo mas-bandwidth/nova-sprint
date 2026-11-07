@@ -27,6 +27,7 @@ func (p *pullTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"data":{"at":"1970-01-01T00:16:40Z","tables":{"fleet":{},"friends":{},"merge":{},"readers":{},"work":{}},"streams":[],"epoch":1},"dataAgeSeconds":0.5}`)), Header: http.Header{}}, nil
 }
 func TestPullCacheHoldsViewAndAgesOnFailure(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1000, 0)
 	transport := &pullTransport{}
 	p, err := NewPullCache("http://tailnet:8080", &http.Client{Transport: transport}, func() time.Time { return now })
@@ -84,6 +85,7 @@ func TestPullCacheHoldsViewAndAgesOnFailure(t *testing.T) {
 	}
 }
 func TestPullCacheRejectsWritesAndLimitsAddress(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1000, 0)
 	p, err := NewPullCache("http://tailnet", &http.Client{Transport: &pullTransport{}}, func() time.Time { return now })
 	if err != nil {
@@ -117,6 +119,7 @@ func TestPullCacheRejectsWritesAndLimitsAddress(t *testing.T) {
 }
 
 func TestPullRejectsMalformedEnvelopes(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		`{"ok":null,"data":{"at":"2026-01-01T00:00:00Z","tables":{"fleet":{},"friends":{},"merge":{},"readers":{},"work":{}},"streams":[],"epoch":1},"dataAgeSeconds":0}`,
 		`{"ok":true,"data":null,"dataAgeSeconds":0}`,
@@ -131,6 +134,7 @@ func TestPullRejectsMalformedEnvelopes(t *testing.T) {
 	}
 }
 func TestAcceptsGzipHonorsTokenAndQuality(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		header string
 		want   bool

@@ -7,6 +7,7 @@ import (
 )
 
 func TestThroughputWindow(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	c := &Cache{}
 	c.addSample(base, 0)
@@ -31,6 +32,7 @@ func TestThroughputWindow(t *testing.T) {
 	}
 }
 func TestThroughputZeroAndRounding(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	c := &Cache{}
 	c.addSample(base, 4)
@@ -44,6 +46,7 @@ func TestThroughputZeroAndRounding(t *testing.T) {
 	}
 }
 func TestHealthGraceClock(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	now := base
 	c := &Cache{at: base, now: func() time.Time { return now }}

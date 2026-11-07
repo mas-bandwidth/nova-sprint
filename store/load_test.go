@@ -7,7 +7,7 @@ package store
 // starts its own PostgreSQL (as functional_test.go does) and is skipped
 // unless NOVA_LOAD=1, so per-commit CI stays fast. Run it on a Linux bench:
 //
-//	NOVA_LOAD=1 go test -count=1 -timeout 90m -run TestLoad -v ./store/
+//	NOVA_LOAD=1 go test -count=1 -timeout 90m -run TestFunctionalLoad -v ./store/
 //
 // NOVA_LOAD_SIZES (default "2000,5000") picks the producer counts;
 // NOVA_LOAD_FSYNC (default "on", as a real store runs) sets the server's
@@ -49,7 +49,8 @@ const (
 	loadPolicy  = 200
 )
 
-func TestLoad(t *testing.T) {
+func TestFunctionalLoad(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (minutes per size, on a Linux bench, never in per-commit CI)")
 	}
@@ -195,7 +196,7 @@ func rowName(r int) string    { return fmt.Sprintf("r%02d", r) }
 func prodIndex(id string) int { n, _ := strconv.Atoi(id[1:]); return n } // ignored: our own ids
 
 func (l *load) op(kind string, expect []Expect, writes ...Write) Op {
-	return Op{ID: fmt.Sprintf("%s-%d", kind, l.ids.Add(1)), Epoch: 1, Actor: "load", Kind: kind, At: time.Now(), Expect: expect, Writes: writes}
+	return Op{ID: fmt.Sprintf("%s-%d", kind, l.ids.Add(1)), Epoch: 1, Actor: "load", Kind: kind, At: time.Now(), Expect: expect, Writes: writes} // unitlint: only TestFunctionalLoad builds a *load (the lint matches a method by its name, and harness has an op too)
 }
 
 // apply applies op, timing it; a refusal or error is a test error (the load

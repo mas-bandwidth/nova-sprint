@@ -10,6 +10,7 @@ import (
 )
 
 func TestStoppedAndRosterProjection(t *testing.T) {
+	t.Parallel()
 	ros := roster.Roster{Workers: map[string]roster.Worker{"worker": {Name: "worker", Width: 8}}, Kin: map[string]roster.Kin{"friend": {Name: "friend", Width: 2}}}
 	snap := store.Snapshot{Epoch: 1, Stopped: true, StopReason: "Scheduled maintenance", Rows: map[string]store.Row{
 		"worker": {Name: "worker", State: "up"}, "friend": {Name: "friend", State: "up", Held: true}, "removed": {Name: "removed", State: "up", Held: true},

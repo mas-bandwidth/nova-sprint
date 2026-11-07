@@ -17,6 +17,7 @@ func (f *fixedReader) Read(context.Context) cost.Reading {
 }
 
 func TestCostReconcile(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.e.CostReaders = []cost.Reader{&fixedReader{usd: []string{"50", "40"}}, cost.Inception{}}
 	want(t, w.do("carol", "cost", "reconcile"), 0, "COST deepseek balance=$50: the first read", "COST inception unknown")

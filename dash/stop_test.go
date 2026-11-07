@@ -9,6 +9,7 @@ import (
 )
 
 func TestAdvanceSnapshotKeepsStopAcrossOrdinaryEvent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	write := func(id string, w store.Write) {

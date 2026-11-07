@@ -10,6 +10,7 @@ import (
 )
 
 func TestEventNoticesUseCommittedImagesAndRecipients(t *testing.T) {
+	t.Parallel()
 	e := store.Event{Accepted: true, Epoch: 2, Before: &store.State{Cards: map[string]store.Card{"p": {ID: "p", Kind: "producer", State: "merging"}}}, After: &store.State{Cards: map[string]store.Card{
 		"p":    {ID: "p", Kind: "producer", Stream: "s", State: "landed", Head: "abc"},
 		"p.w1": {ID: "p.w1", Kind: "work", Stream: "s", State: "working", Holder: "alice", Tier: "pro", Attempt: 1, Gen: 1, Model: "deepseek/deepseek-flash"},
@@ -34,6 +35,7 @@ func TestEventNoticesUseCommittedImagesAndRecipients(t *testing.T) {
 	}
 }
 func TestJudgementCloseAndBoundedText(t *testing.T) {
+	t.Parallel()
 	n := EventNotices{Coordinator: "rowan"}
 	e := store.Event{Accepted: true, Before: &store.State{Judgements: map[string]store.Judgement{"j": {ID: "j", State: "open"}}}, After: &store.State{Judgements: map[string]store.Judgement{"j": {ID: "j", State: "expired", Answer: strings.Repeat("é", 200)}}}}
 	got, err := n.ForEvent(e, store.Snapshot{}, "rowan")

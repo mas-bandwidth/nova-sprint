@@ -40,6 +40,7 @@ func configExec(t *testing.T, ctx context.Context, c *pgx.Conn, sql string) {
 }
 
 func TestFunctionalConfigRosterReadGrantsAndClose(t *testing.T) {
+	t.Parallel()
 	schema := configSchemaFixture(t)
 	dsn := chooserTestPG(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

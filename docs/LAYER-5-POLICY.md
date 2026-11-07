@@ -799,7 +799,7 @@ roster (nova-config changing under the sprint), as it moved the store's.
 3. `TestBreakSetRaceStoresOneBodyTwice`: `set` is fenced `AtSeq` at its
    snapshot, as `up` is; a set that loses the race is refused as "v<n>
    already stores this body" when the winner stored its body.
-4. and 5. `TestBreakProseMakesTheInputsOutrunTheTickDeadline`,
+4. and 5. `TestFunctionalBreakProseMakesTheInputsOutrunTheTickDeadline`,
    `TestBreakProseLeavesTheBuiltInUnableToAnswer`: the prose is no input
    and no part of the answer cache's key, and the evaluator's request drops
    briefs and prose (`unworded`). **One conflict with the ruling's premise**:
@@ -812,7 +812,7 @@ roster (nova-config changing under the sprint), as it moved the store's.
    the evaluator, cold engine): 5,000 producers in review with 16 KiB
    prose each, answered by the built-in in 113 ms (was 952 ms and no
    answer on the studio at f62551fe).
-6. `TestBreakFallbackTimerStartsAfterTheInputs`: the fallback's wait and
+6. `TestFunctionalBreakFallbackTimerStartsAfterTheInputs`: the fallback's wait and
    the deadline are both counted from the tick's first byte
    (`AnswerContext` reads the clock before the inputs are built; `race`
    waits `fallbackAfter` minus the time spent). The probe now skips on
@@ -911,7 +911,7 @@ round 4 said; Glenn's call.
 
 *Tests.* `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
 c0067a27: ok (5.0 s). The timing probes with `NOVA_LOAD=1`, exclusive, on
-amd-3 at a33fb7ef: all pass but `TestBreakFallbackTimerStartsAfterTheInputs`
+amd-3 at a33fb7ef: all pass but `TestFunctionalBreakFallbackTimerStartsAfterTheInputs`
 (skips, above). Load through the evaluator, 5,000 producers over 100 rows:
 cold 106.7 ms, warm 59.1 ms (measured).
 
@@ -923,7 +923,7 @@ required).
 
 *STATUS at the end of round 5* (the method moved to one holistic pass over
 all layers; this round stops here). rowan2's seven: all seven built; six
-pass, `TestBreakFallbackTimerStartsAfterTheInputs` skips by construction
+pass, `TestFunctionalBreakFallbackTimerStartsAfterTheInputs` skips by construction
 (above) and its ruling is checked by `TestFallbackCountsFromTheFirstByte`.
 Cold read 3's eight: all eight built and pass. Rulings built: every one in
 this section, the contradictions included. Half done or owed: layer 6's

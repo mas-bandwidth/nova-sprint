@@ -1,0 +1,88 @@
+# Nightly: what per-commit CI (ci.yml) leaves out to stay inside 2 minutes.
+# No time limit (Glenn, 2026-11-07: "Nightly tests have no time limit"):
+#   unit        every seed and step of the walks and sweeps (no -short), with -race
+#   trace       the 500-step store walks, and the Layer 6 traces (run, setup,
+#               handoff, choices, the 64 installer walks), each checked by TLC
+#   tlc         every model, witness and reach check (tla/ci-tlc.sh)
+# The functional tier runs per commit in full; it is not repeated here.
+
+name: nightly
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  unit:
+    runs-on: [self-hosted, linux, x64, bench]
+    steps:
+      - &clean
+        name: clean the reused workspace
+        shell: bash
+        run: |
+          [ -d "${GITHUB_WORKSPACE:?}/.git" ] || exit 0
+          git -C "$GITHUB_WORKSPACE" reset -q --hard && git -C "$GITHUB_WORKSPACE" clean -ffdxq ||
+            find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+      - &checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - &go
+        name: use the installed Go toolchain
+        shell: bash
+        run: |
+          want=go$(sed -n 's/^go \([0-9.]*\)$/\1/p' go.mod)
+          newest=$(ls -d "$HOME"/sdk/go*/bin 2>/dev/null | sort -V | tail -1 || true)
+          onpath=$(dirname "$(command -v go 2>/dev/null || echo /none/go)")
+          for d in "$HOME/sdk/$want/bin" "$newest" "$HOME/go/bin" /usr/local/go/bin /opt/homebrew/bin "$onpath"; do
+            [ -n "$d" ] && [ -x "$d/go" ] && { echo "$d" >> "$GITHUB_PATH"; "$d/go" version; exit 0; }
+          done
+          echo "no Go toolchain on this runner" >&2; exit 1
+      - name: unit tests, every seed (no -short)
+        run: go test -count=1 -race -timeout 60m -skip Functional ./...
+
+  trace:
+    runs-on: [self-hosted, linux, x64, bench]
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: postgres on PATH
+        shell: bash
+        run: |
+          command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || { sudo -n apt-get update -qq && sudo -n apt-get install -y -qq postgresql; }
+          for d in /usr/lib/postgresql/*/bin; do [ -x "$d/initdb" ] && echo "$d" >> "$GITHUB_PATH"; done
+          true
+      - name: Java is present for Layer 6 traces
+        run: test -x "$HOME/sdk/bin/java" || command -v java
+      - name: the walks at full length write their traces, TLC checks each
+        run: bash tla/make-traces.sh check
+        env:
+          NOVA_TRACE_PG: "1"
+      - name: Emit and check fixed-seed Layer 6 traces
+        run: nova-reserve run --slots 4 --wait 15m --why "Layer 6 trace nightly" -- nice -n 19 python3 tla/check-layer6-traces.py --mode all --repo "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/layer6-traces-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        env:
+          GOMAXPROCS: "4"
+      - name: Retain Layer 6 trace evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: layer6-traces-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/layer6-traces-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+
+  tlc:
+    # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
+    # (Glenn, 2026-11-06: "if you are out of memory, do it on the studio").
+    runs-on: [self-hosted, tlc]
+    steps:
+      - *clean
+      - *checkout
+      - name: TLC on Store (must pass), the witnesses and the reach checks (must be violated)
+        run: bash tla/ci-tlc.sh

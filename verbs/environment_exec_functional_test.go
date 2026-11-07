@@ -12,10 +12,10 @@ import (
 )
 
 func TestFunctionalEnvironmentSchemaIdentity(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("requires isolated PostgreSQL")
 	}
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dir := t.TempDir()

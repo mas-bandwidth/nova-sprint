@@ -23,6 +23,7 @@ import (
 // Contract: docs/DASHBOARD-LESSONS.md ETA tile (d) "else `-` with sub `not in the summary`";
 // dash/README.md round-two ruling 4 "v1's cost, ok%, ETA and throughput fallbacks remain".
 func TestColdread5DefectETAFallbackSubDropped(t *testing.T) {
+	t.Parallel()
 	// Ruled 2026-11-06 (Glenn: "I don't think I ever asked for 'not in the summary' to be
 	// displayed"): v2 has no summary, so the ETA subline is blank. The probe now holds that.
 	js, err := page.ReadFile("page/app.js")
@@ -39,6 +40,7 @@ func TestColdread5DefectETAFallbackSubDropped(t *testing.T) {
 // No production function in dash/ is over 60 lines (the brief's limit); test
 // functions over the limit are logged only.
 func TestColdread5CheckFunctionsUnder60Lines(t *testing.T) {
+	t.Parallel()
 	for _, pattern := range []string{"*.go"} {
 		files, err := filepath.Glob(pattern)
 		if err != nil {
@@ -73,6 +75,7 @@ func TestColdread5CheckFunctionsUnder60Lines(t *testing.T) {
 // pgxpool keeps no use of that context, so the pool must stay usable afterwards: Snapshot,
 // Events and the cursor write all succeed after the open context is cancelled.
 func TestColdread5CheckFunctionalPoolAfterOpenCancel(t *testing.T) {
+	t.Parallel()
 	dsn := startPG(t)
 	var s *store.PG
 	var err error

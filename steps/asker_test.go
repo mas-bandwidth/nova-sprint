@@ -23,6 +23,7 @@ func rowsQ(cands ...string) RowsQuestion {
 // TestAskerAbsent: no policy at all is every default and no judgement
 // (list item 3: absent).
 func TestAskerAbsent(t *testing.T) {
+	t.Parallel()
 	o := newOracle(Default{}.Ask(Questions{}), Engine)
 	assert.Equal(t, []any{1, 7}, o.order(CardFacts{ID: "p1", Score: 7}))
 	assert.Equal(t, []any{0, 7}, o.order(CardFacts{ID: "p1", Score: 7, PriorHead: sha(1)}), "a fix attempt first")
@@ -40,6 +41,7 @@ func TestAskerAbsent(t *testing.T) {
 // TestAskerErroring: a question the version failed is the default for the
 // tick with one judgement; the other questions are still read.
 func TestAskerErroring(t *testing.T) {
+	t.Parallel()
 	a := Answers{Version: 3, Failed: map[string]string{"rows": "division by zero"}, Reads: map[string]int{"p1": 2}}
 	o := newOracle(a, Engine)
 	assert.Nil(t, o.rows(rowsQ("r1", "r2")))
@@ -52,6 +54,7 @@ func TestAskerErroring(t *testing.T) {
 // TestAskerSlow: the budget spent is every default and one judgement; no
 // answer of that version is read, so a half-finished batch never mixes.
 func TestAskerSlow(t *testing.T) {
+	t.Parallel()
 	a := Answers{Version: 2, Failed: map[string]string{"*": "the 500ms of policy time was spent"}, Reads: map[string]int{"p1": 3}}
 	o := newOracle(a, Engine)
 	assert.Equal(t, 1, o.reads(CardFacts{ID: "p1"}))
@@ -62,6 +65,7 @@ func TestAskerSlow(t *testing.T) {
 // TestAskerOutOfRange: every answer outside its domain is the default and a
 // judgement, and the valid ones stand.
 func TestAskerOutOfRange(t *testing.T) {
+	t.Parallel()
 	bad := Limits{Bounces: 0}
 	tmo := Timeouts{RowSilentGone: 600, RowSilentWithdraw: 10, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, BaseRegate: []int{120}}
 	a := Answers{Version: 5,
@@ -99,6 +103,7 @@ func TestAskerOutOfRange(t *testing.T) {
 
 // TestAskerInDomain: valid answers of a version are used as given.
 func TestAskerInDomain(t *testing.T) {
+	t.Parallel()
 	l := Limits{Bounces: 3, Faults: 2, SameFinding: 1, ReportsPerTick: 100, RouteRestWindow: 5, RouteRestAfter: 2, Budget: 40, Pack: 5}
 	tm := Timeouts{RowSilentGone: 60, RowSilentWithdraw: 60, LandingStall: 30, Judgement: 86400, RouteRestFor: 1, ReadyNag: 5, ReadyTake: 90, BaseRegate: []int{1, 2, 3}}
 	o := newOracle(Answers{Version: 1, Limits: &l, Timeouts: &tm}, Engine)

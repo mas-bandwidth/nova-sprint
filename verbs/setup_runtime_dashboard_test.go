@@ -18,6 +18,7 @@ type dashboardRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f dashboardRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func TestDashboardProbeChecksHealthEpochAndPublicCache(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name              string
 		public            bool

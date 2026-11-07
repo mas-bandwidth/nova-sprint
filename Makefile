@@ -23,12 +23,13 @@ install: build
 
 # the unit tier (docs/TESTING.md): no real time, sockets or network
 test:
-	go test -skip Functional ./...
+	go test -race -short -skip Functional ./...
 
 lint:
 	test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 	go vet ./...
 	go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
+	go run ./tools/unitlint
 
 version:
 	@echo $(VERSION)

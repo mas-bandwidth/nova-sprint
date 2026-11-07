@@ -28,7 +28,7 @@ import (
 // ReserveBin), so RunHarness runs the harness argv bare, with no slot and no
 // sandbox, and the card's done-when tests likewise. The same wiring leaves
 // Runner.Procs nil, so a restart can never adopt a live harness.
-func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) {
+func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	tmp := t.TempDir()
 	git := func(dir string, args ...string) string {
 		t.Helper()

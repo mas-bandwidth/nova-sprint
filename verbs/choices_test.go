@@ -9,6 +9,7 @@ import (
 )
 
 func TestChoicesAreDurableAndInactive(t *testing.T) {
+	t.Parallel()
 	f := store.NewFake()
 	ctx := context.Background()
 	at := time.Unix(1000, 0)
@@ -54,6 +55,7 @@ func (b brokenChoiceHistory) Events(context.Context, int64, int) ([]store.Event,
 	return b.events, nil
 }
 func TestChoicesRefusesGappedOrNonProgressingHistory(t *testing.T) {
+	t.Parallel()
 	for _, events := range [][]store.Event{{{Seq: 2}}, {{Seq: 3}}} {
 		c := Choices{Store: brokenChoiceHistory{Store: store.NewFake(), events: events}}
 		if _, _, err := c.getAt(context.Background(), "setup:services", store.Snapshot{Seq: 2}); err == nil {

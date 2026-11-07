@@ -20,6 +20,7 @@ import (
 // per-tier dollars and the page rounds each tier up on its own: three tiers of 0.1 cent each
 // show 1 cent each beside a 1-cent total.
 func TestColdread2DefectTierCentsNotPartitioned(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "working", Tier: "pro"},
 		"a": {ID: "a", Kind: "work", Of: "p", Stream: "s", Tier: "flash", Cost: 1000, Priced: true},
@@ -41,6 +42,7 @@ func TestColdread2DefectTierCentsNotPartitioned(t *testing.T) {
 // the server's d.at). A viewer two seconds ahead of the server never sees the bar pulse; one
 // behind sees it pulse on stale data. The server already sends dataAgeSeconds, which is skew-free.
 func TestColdread2DefectPulseUsesViewerClock(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +61,7 @@ func TestColdread2DefectPulseUsesViewerClock(t *testing.T) {
 // v1's tables carry every cell as a string ("13", "$2.13", "33.3%"; app.js: "every value in the
 // JSON is a string"). v2 sends numbers and null for the same keys.
 func TestColdread2DefectTableValueTypesVsV1(t *testing.T) {
+	t.Parallel()
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}},
 		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}},
@@ -97,8 +100,9 @@ func TestColdread2DefectTableValueTypesVsV1(t *testing.T) {
 
 // v1 served /events (pageview.go ServeHTTP); v2 answers 404 there.
 func TestColdread2DefectV1RouteEvents404(t *testing.T) {
+	t.Parallel()
 	rec := httptest.NewRecorder()
-	Handler(&Cache{at: time.Now()}).ServeHTTP(rec, httptest.NewRequest("GET", "/events", nil))
+	Handler(&Cache{at: t1000, now: at1000}).ServeHTTP(rec, httptest.NewRequest("GET", "/events", nil))
 	if rec.Code == 404 {
 		t.Errorf("/events -> 404; v1 served it")
 	}

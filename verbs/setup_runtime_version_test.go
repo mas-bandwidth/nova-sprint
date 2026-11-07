@@ -11,6 +11,7 @@ import (
 )
 
 func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
+	t.Parallel()
 	calls := []string{}
 	installed := "v2.0.0"
 	shadowErr := false
@@ -50,6 +51,7 @@ func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
 // retired nova-update): up refuses naming nova-fleet install, and runs
 // nothing.
 func TestVersionAdoptionApplyNamesNovaFleet(t *testing.T) {
+	t.Parallel()
 	ran := []string{}
 	a := VersionAdoption{Binary: "/bin/nova-sprint", Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		ran = append(ran, name)
@@ -73,6 +75,7 @@ type adoptionStub struct {
 func (a *adoptionStub) Ready(context.Context, string) (bool, error) { return a.ready, nil }
 func (a *adoptionStub) Apply(context.Context, string) error         { a.applied++; a.ready = true; return nil }
 func TestVersionAdoptionRunsWithStoreStep(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store := &runtimeStore{ready: true}
 	adopt := &adoptionStub{}
@@ -95,6 +98,7 @@ func TestVersionAdoptionRunsWithStoreStep(t *testing.T) {
 // binary's build info; a development or pseudo-version build, or another
 // module's binary, is unknown.
 func TestToolsReleaseFromBuildInfo(t *testing.T) {
+	t.Parallel()
 	info := func(path, version string) *debug.BuildInfo {
 		return &debug.BuildInfo{Main: debug.Module{Path: path, Version: version}}
 	}

@@ -21,6 +21,7 @@ func dealLine(id, ref, row string) string {
 }
 
 func TestWakeTakesEveryDealtCard(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	setCard("p1.w1", func(c *store.Card) { c.Holder = "bob" })(&s)
 	w := worldFrom(t, s)
@@ -41,6 +42,7 @@ func TestWakeTakesEveryDealtCard(t *testing.T) {
 }
 
 func TestWakeRefusedTakeWakesWithTheRefusal(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	seq := w.snap(t).Seq
 	r := wakeOf(w, "alice", "8-0\tsprint\t-\tDEAL\t"+dealLine("p1.w1", "p1.w1@2", "alice"))
@@ -51,6 +53,7 @@ func TestWakeRefusedTakeWakesWithTheRefusal(t *testing.T) {
 }
 
 func TestWakePassesOtherMessagesThrough(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	for _, line := range []string{
 		"9-0\tcarol\t-\tNOTE\thello\\nworld",
