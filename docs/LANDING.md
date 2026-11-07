@@ -52,7 +52,7 @@ answer to a backlog, rung 2.
 
 ## The design
 
-1. **Each stream has an integration branch** (`sprint/<stream>` by default,
+1. **Each stream has an integration branch** (`sprint/<stream>/group` by default (never `sprint/<stream>` itself: git refuses a ref that is both a file and a directory of the card branches `sprint/<stream>/<producer>`; found by Emma 2026-11-06),
    set at `stream add`). Cards branch from it, not from base, and the base
    commit is recorded on the consumer at deal (`base_sha`). How the stream's
    producers reach base is its rung on the ladder above; a group is one PR

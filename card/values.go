@@ -85,6 +85,7 @@ func (v *vals) expect(e store.Expect) {
 	switch x := e.(type) {
 	case store.CardGen:
 		v.key("card", x.Card)
+		v.num("gen", x.Gen)
 	case store.CardState:
 		v.key("card", x.Card)
 	case store.CardAbsent:
@@ -93,12 +94,19 @@ func (v *vals) expect(e store.Expect) {
 		v.key("card", x.Card)
 	case store.RowGen:
 		v.key("row", x.Row)
+		v.num("gen", x.Gen)
 	case store.RowIs:
 		v.key("row", x.Row)
 	case store.RowHeld:
 		v.key("row", x.Row)
 	case store.StreamHeld:
 		v.key("stream", x.Stream)
+	case store.AtSeq:
+		if x.Seq < 0 {
+			v.fail("seq %d is below 0", x.Seq)
+		}
+	case store.CardRed:
+		v.key("card", x.Card)
 	default:
 		v.fail("condition %T is not one the machine makes", e)
 	}
@@ -112,9 +120,6 @@ func (v *vals) write(w store.Write) {
 		v.key("stream", x.Stream)
 	case store.SetRowState:
 		v.key("row", x.Row)
-	case store.SetRowWidth:
-		v.key("row", x.Row)
-		v.num("width", x.Width)
 	case store.SetRowFlaps:
 		v.key("row", x.Row)
 		v.num("flaps", x.Flaps)
@@ -198,6 +203,109 @@ func cardValue(w store.Write) (string, func(v *vals)) {
 				v.fail("cost %d is below 0", x.Cost)
 			}
 		}
+	case store.SetCardRed:
+		return x.Card, func(*vals) {}
 	}
 	return "", nil
+}
+
+// dupWrites refuses a second write to one field, in the store's own words
+// (table, key, column), so Merge never emits a plan the store calls invalid.
+func dupWrites(ws []store.Write) *Refusal {
+	seen := map[[3]string]bool{}
+	for _, w := range ws {
+		for _, f := range writeFields(w) {
+			if seen[f] {
+				if f[2] == "kind" {
+					return no("a second write to %s %s field %s; one op writes a field once; several reads of one head are AskReads", f[0], f[1], f[2])
+				}
+				return no("a second write to %s %s field %s; one op writes a field once", f[0], f[1], f[2])
+			}
+			seen[f] = true
+		}
+	}
+	return nil
+}
+
+func writeFields(w store.Write) [][3]string {
+	switch x := w.(type) {
+	case store.PutCard:
+		return cardCols(x.ID, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose")
+	case store.SetStreamHeld:
+		return [][3]string{{"stream", x.Stream, "held"}}
+	default:
+		if id, col, ok := oneField(w); ok {
+			return [][3]string{{"card", id, col}}
+		}
+		if row, col, ok := rowField(w); ok {
+			return [][3]string{{"row", row, col}}
+		}
+		return nil
+	}
+}
+
+func cardCols(id string, cols ...string) [][3]string {
+	out := make([][3]string, len(cols))
+	for i, c := range cols {
+		out[i] = [3]string{"card", id, c}
+	}
+	return out
+}
+
+func oneField(w store.Write) (id, col string, ok bool) {
+	switch x := w.(type) {
+	case store.SetCardState:
+		return x.Card, "state", true
+	case store.SetCardReview:
+		return x.Card, "review", true
+	case store.SetCardResult:
+		return x.Card, "result", true
+	case store.SetCardPriority:
+		return x.Card, "priority", true
+	case store.SetCardReason:
+		return x.Card, "reason", true
+	case store.SetCardFinding:
+		return x.Card, "finding", true
+	case store.SetCardHead:
+		return x.Card, "head", true
+	case store.SetCardBranch:
+		return x.Card, "branch", true
+	case store.SetCardBaseSHA:
+		return x.Card, "base_sha", true
+	case store.SetCardPriorHead:
+		return x.Card, "prior_head", true
+	case store.SetCardAuthor:
+		return x.Card, "author", true
+	case store.SetCardProse:
+		return x.Card, "prose", true
+	case store.SetCardPaths:
+		return x.Card, "paths", true
+	case store.SetCardDoneWhen:
+		return x.Card, "done_when", true
+	case store.SetCardNeeds:
+		return x.Card, "needs", true
+	case store.SetCardScore:
+		return x.Card, "score", true
+	case store.SetCardAttempt:
+		return x.Card, "attempt", true
+	case store.SetCardBounces:
+		return x.Card, "bounces", true
+	case store.SetCardCost:
+		return x.Card, "cost", true
+	case store.SetCardRed:
+		return x.Card, "red", true
+	}
+	return "", "", false
+}
+
+func rowField(w store.Write) (row, col string, ok bool) {
+	switch x := w.(type) {
+	case store.SetRowState:
+		return x.Row, "state", true
+	case store.SetRowFlaps:
+		return x.Row, "flaps", true
+	case store.SetRowHeld:
+		return x.Row, "held", true
+	}
+	return "", "", false
 }

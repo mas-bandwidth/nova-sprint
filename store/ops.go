@@ -88,11 +88,14 @@ func (JudgementOpen) isExpect() {}
 // value is ErrInvalid. An op that writes a card raises its gen by one, once.
 type Write interface{ isWrite() }
 
-// PutStream inserts a stream or overwrites its repo, base and pos; held is
-// kept on overwrite and false on insert. Pos is the order streams land in.
+// PutStream inserts a stream or overwrites its repo, base, pos, mode and
+// forge; held is kept on overwrite and false on insert. Pos is the order
+// streams land in. Mode is one of StreamModes, "" for auto; Forge is the
+// forge it lands through, "" for none.
 type PutStream struct {
 	Name, Repo, Base string
 	Pos              int
+	Mode, Forge      string
 }
 
 // SetStreamHeld sets a stream's held flag.
@@ -100,6 +103,14 @@ type SetStreamHeld struct {
 	Stream string
 	Held   bool
 }
+
+// SetStreamMode sets how a stream's producers land (one of StreamModes);
+// refused when it is the stream's mode already.
+type SetStreamMode struct{ Stream, Mode string }
+
+// SetStreamForge sets the forge a stream lands through ("" for none);
+// refused when it is the stream's forge already.
+type SetStreamForge struct{ Stream, Forge string }
 
 // PutCard adds a card of a kind (producer, sentinel, work or read): refused
 // when it exists. It starts waiting, gen 0, attempt 0. Its stream must exist;
@@ -257,28 +268,15 @@ type SetCardAfter struct {
 	After []string
 }
 
-// PutRow inserts a row or overwrites its kind, width, session, tiers, model
-// and harness; state, flaps and held are kept on overwrite, and down, 0 and
-// false on insert. Each tier is one of the four, once.
-type PutRow struct {
-	Name, Kind string
-	Width      int
-	Session    string
-	Tiers      []string
-	Model      string
-	Harness    string
-}
-
-// SetRowTiers replaces the tiers a row serves, under the rules of PutRow;
-// refused when it drops a tier a live (ready or working) consumer held by
-// the row needs.
-type SetRowTiers struct {
-	Row   string
-	Tiers []string
-}
-
-// SetRowLabels sets a row's model and harness labels: one field.
-type SetRowLabels struct{ Row, Model, Harness string }
+// PutRow inserts a row or sets its hook, the one write that does: `nova-sprint
+// hook --as <name> --role <r>` puts the bus session the hook recorded and
+// the role (worker or coordinator), and unhook puts "" for both. Session
+// and Role are both set or both "" (ErrInvalid otherwise, and for a role
+// not in RowRoles). Hooking a row another session holds is refused: unhook
+// it first. State, flaps and held are kept on overwrite, and down, 0 and
+// false on insert. Its kind, width, tiers, model and harness are
+// configuration, the roster's, never the store's (round 22).
+type PutRow struct{ Name, Session, Role string }
 
 // PutJudgement opens a judgement: refused when it exists. Its state is
 // open, opened at the op's At; Deadline zero is none. It belongs to the
@@ -300,7 +298,8 @@ type ExpireJudgement struct{ ID, Reason string }
 
 // SetCursor sets a subscriber's place in the event log (the last seq it has
 // read), inserting it when absent (an absent cursor reads as 0); refused
-// below its stored seq, and above the last event's seq before the op. Seq is
+// at its stored seq (0 for an absent one: "already at 0"), below it, and
+// above the last event's seq before the op. Seq is
 // global, so cursors are too: a clear carries them, and a subscriber resumes
 // where it was.
 type SetCursor struct {
@@ -308,18 +307,8 @@ type SetCursor struct {
 	Seq  int64
 }
 
-// SetRowWidth sets a row's width; a width below the working cards it holds
-// is refused.
-type SetRowWidth struct {
-	Row   string
-	Width int
-}
-
 // SetRowState sets a row's state.
 type SetRowState struct{ Row, State string }
-
-// SetRowSession sets a row's session.
-type SetRowSession struct{ Row, Session string }
 
 // SetRowHeld sets a row's held flag and the reason it was held or released:
 // the coordinator's hold, no deals to the row while true, whatever its state.
@@ -339,16 +328,24 @@ type SetRowFlaps struct {
 // PutPolicy adds the next policy version, inactive; actor and at come from the op.
 type PutPolicy struct{ Kind, Name, Body string }
 
+// SetStopped stops the sprint or starts it again, with the reason. Refused
+// when the sprint is already in that state, like every set write.
+type SetStopped struct {
+	Stopped bool
+	Reason  string
+}
+
 // SetActivePolicy makes one existing version the active one and deactivates
 // the one active before it.
 type SetActivePolicy struct{ Version int }
 
 func (PutStream) isWrite()        {}
 func (SetStreamHeld) isWrite()    {}
+func (SetStreamMode) isWrite()    {}
+func (SetStreamForge) isWrite()   {}
 func (PutCard) isWrite()          {}
 func (SetCardState) isWrite()     {}
 func (SetCardResult) isWrite()    {}
-func (SetRowWidth) isWrite()      {}
 func (SetCardAttempt) isWrite()   {}
 func (SetCardBranch) isWrite()    {}
 func (SetCardHead) isWrite()      {}
@@ -369,15 +366,13 @@ func (SetCardPriority) isWrite()  {}
 func (PutRow) isWrite()           {}
 func (SetRowHeld) isWrite()       {}
 func (SetRowState) isWrite()      {}
-func (SetRowSession) isWrite()    {}
 func (SetRowFlaps) isWrite()      {}
 func (PutPolicy) isWrite()        {}
 func (SetActivePolicy) isWrite()  {}
+func (SetStopped) isWrite()       {}
 func (SetCardPaths) isWrite()     {}
 func (SetCardDoneWhen) isWrite()  {}
 func (SetCardProse) isWrite()     {}
-func (SetRowTiers) isWrite()      {}
-func (SetRowLabels) isWrite()     {}
 func (PutJudgement) isWrite()     {}
 func (AnswerJudgement) isWrite()  {}
 func (ExpireJudgement) isWrite()  {}
@@ -416,18 +411,26 @@ type spec struct {
 func specOf(w Write) spec {
 	switch v := w.(type) {
 	case PutStream:
-		return put("stream", v.Name, func(c *checker) { c.text(v.Repo, v.Base).num("pos", v.Pos) }, "repo", "base", "pos").then(func(w *work) (string, error) { return w.writePutStream(v) })
+		return put("stream", v.Name, func(c *checker) {
+			c.text(v.Repo, v.Base, v.Forge).num("pos", v.Pos).oneOf("stream mode", cmp.Or(v.Mode, StreamAuto), StreamModes)
+		}, "repo", "base", "pos", "mode", "forge").then(func(w *work) (string, error) { return w.writePutStream(v) })
 	case SetStreamHeld:
 		return put("stream", v.Stream, nil, "held").then(func(w *work) (string, error) { return w.setStreamHeld(v) })
+	case SetStreamMode:
+		return put("stream", v.Stream, func(c *checker) { c.oneOf("stream mode", v.Mode, StreamModes) }, "mode").then(func(w *work) (string, error) {
+			return w.setStream(v.Stream, "mode", v.Mode, func(s *Stream) *string { return &s.Mode })
+		})
+	case SetStreamForge:
+		return put("stream", v.Stream, func(c *checker) { c.text(v.Forge) }, "forge").then(func(w *work) (string, error) {
+			return w.setStream(v.Stream, "forge", v.Forge, func(s *Stream) *string { return &s.Forge })
+		})
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
 			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
 		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
-		return put("row", v.Name, func(c *checker) {
-			c.text(v.Session, v.Model, v.Harness).num("width", v.Width).oneOf("row kind", v.Kind, RowKinds).tiers(v.Tiers)
-		}, "kind", "width", "session", "tiers", "labels").then(func(w *work) (string, error) { return w.writePutRow(v) })
+		return put("row", v.Name, func(c *checker) { c.text(v.Session).hook(v.Session, v.Role) }, "session", "role").then(func(w *work) (string, error) { return w.writePutRow(v) })
 	case PutJudgement:
 		return put("judgement", v.ID, func(c *checker) {
 			c.name(v.Kind, v.About, v.Group).text(v.Question, v.Command).time("deadline", v.Deadline, true)
@@ -444,6 +447,8 @@ func specOf(w Write) spec {
 		return put("cursor", v.Name, func(c *checker) { c.num64("cursor seq", v.Seq) }, "seq").then(func(w *work) (string, error) { return w.writeCursor(v) })
 	case PutPolicy:
 		return spec{check: func(c *checker) { c.name(v.Name).text(v.Body).oneOf("policy kind", v.Kind, PolicyKinds) }}.then(func(w *work) (string, error) { return w.addPolicy(v) })
+	case SetStopped:
+		return spec{fields: []field{{"stop", "", "stopped"}}, check: func(c *checker) { c.text(v.Reason) }}.then(func(w *work) (string, error) { return w.writeStop(v) })
 	case SetActivePolicy:
 		return spec{fields: []field{{"policy", "", "active"}}, check: func(c *checker) { c.num("version", v.Version) }}.then(func(w *work) (string, error) { return w.activate(v) })
 	}
@@ -456,7 +461,7 @@ func setSpec(w Write) spec {
 	switch v := w.(type) {
 	case SetCardState:
 		s := card(v.Card, "state", func(k *Card) { k.State = v.State }, func(c *checker) { c.oneOf("card state", v.State, CardStates) })
-		s.cardIf, s.is = func(w *work, k Card) (string, error) { return w.move(k, v.State) }, "is already "+v.State
+		s.is = "is already " + v.State
 		return s
 	case SetCardPaths:
 		return card(v.Card, "paths", func(k *Card) { k.Paths = normList(v.Paths) }, func(c *checker) { c.text(v.Paths...) }).kinds("SetCardPaths", copied, holdless)
@@ -533,26 +538,14 @@ func rowSpec(w Write) spec {
 		s := row(v.Row, "state", func(r *Row) { r.State = v.State }, func(c *checker) { c.oneOf("row state", v.State, RowStates) })
 		s.is = "is already " + v.State
 		return s
-	case SetRowSession:
-		return row(v.Row, "session", func(r *Row) { r.Session = v.Session }, func(c *checker) { c.text(v.Session) })
 	case SetRowFlaps:
 		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) })
-	case SetRowWidth:
-		s := row(v.Row, "width", func(r *Row) { r.Width = v.Width }, func(c *checker) { c.num("width", v.Width) })
-		s.rowIf = func(w *work, r Row) (string, error) { return w.widthFits(r.Name, v.Width) }
-		return s
 	case SetRowHeld:
 		s := row(v.Row, "held", func(r *Row) { r.Held, r.Reason = v.Held, v.Reason }, func(c *checker) { c.text(v.Reason) })
 		s.rowIf = func(_ *work, r Row) (string, error) {
 			return when(r.Held == v.Held, "row %s is already %s", r.Name, heldWord(v.Held)), nil
 		}
 		return s
-	case SetRowTiers:
-		s := row(v.Row, "tiers", func(r *Row) { r.Tiers = normSet(v.Tiers) }, func(c *checker) { c.tiers(v.Tiers) })
-		s.rowIf = func(w *work, r Row) (string, error) { return w.tiersFit(r.Name, v.Tiers) }
-		return s
-	case SetRowLabels:
-		return row(v.Row, "labels", func(r *Row) { r.Model, r.Harness = v.Model, v.Harness }, func(c *checker) { c.text(v.Model, v.Harness) })
 	}
 	return spec{}
 }

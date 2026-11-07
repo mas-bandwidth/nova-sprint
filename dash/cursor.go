@@ -11,17 +11,14 @@ import (
 // CursorName is the one dashboard subscriber's durable position.
 const CursorName = "dashboard"
 
-func (c *Cache) saveCursor(ctx context.Context, s store.Store) error {
-	c.mu.RLock()
+func (c *Cache) saveCursor(ctx context.Context, s store.Store) (bool, error) {
 	seq, epoch := c.state.Seq, c.state.Epoch
-	old, exists := c.state.Cursors[CursorName]
-	c.mu.RUnlock()
-	if exists && seq == old {
-		return nil
+	if seq == c.state.Cursors[CursorName] { // an absent cursor is at 0: the store refuses 0 on it as unchanged
+		return false, nil
 	}
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
-		return err
+		return false, err
 	}
 	op := store.Op{ID: fmt.Sprintf("dash-%x", id), Epoch: epoch, Actor: "dashboard", Kind: "cursor", At: c.clock(), Writes: []store.Write{store.SetCursor{Name: CursorName, Seq: seq}}}
 	r, err := s.Apply(ctx, op)
@@ -29,10 +26,10 @@ func (c *Cache) saveCursor(ctx context.Context, s store.Store) error {
 		r, err = recoverCursor(ctx, s, op)
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !r.Accepted {
-		return fmt.Errorf("dashboard cursor refused: %s", r.Reason)
+		return false, fmt.Errorf("dashboard cursor refused: %s", r.Reason)
 	}
 	return c.catchCursor(ctx, s, r.Seq)
 }
@@ -46,17 +43,16 @@ func recoverCursor(ctx context.Context, s store.Store, op store.Op) (store.Recei
 	}
 	return s.Apply(ctx, op)
 }
-func (c *Cache) catchCursor(ctx context.Context, s store.Store, target int64) error {
+func (c *Cache) catchCursor(ctx context.Context, s store.Store, target int64) (bool, error) {
+	intervened := false
 	for {
-		c.mu.RLock()
 		seq := c.state.Seq
-		c.mu.RUnlock()
 		if seq >= target {
-			return nil
+			return intervened, nil
 		}
 		events, err := s.Events(ctx, seq, store.MaxEvents)
 		if err != nil {
-			return err
+			return false, err
 		}
 		batch := make([]store.Event, 0, len(events))
 		for _, e := range events {
@@ -64,15 +60,17 @@ func (c *Cache) catchCursor(ctx context.Context, s store.Store, target int64) er
 				break
 			}
 			if e.Seq != seq+int64(len(batch))+1 {
-				return fmt.Errorf("dashboard cursor event gap after %d", seq)
+				return false, fmt.Errorf("dashboard cursor event gap after %d", seq)
 			}
 			batch = append(batch, e)
+			if e.Seq < target {
+				intervened = true
+			}
 		}
 		if len(batch) == 0 {
-			return fmt.Errorf("dashboard cursor event %d missing", target)
+			return false, fmt.Errorf("dashboard cursor event %d missing", target)
 		}
-		c.mu.Lock()
 		c.state = advanceSnapshot(c.state, batch)
-		c.mu.Unlock()
+		c.anchor = anchorOf(batch[len(batch)-1])
 	}
 }

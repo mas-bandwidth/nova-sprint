@@ -85,7 +85,7 @@ func seedBusTestStore_internal(t *testing.T) (*store.Fake, time.Time) {
 
 	apply("op-init",
 		store.PutStream{Name: "s1", Repo: "repo", Base: "main", Pos: 1},
-		store.PutRow{Name: "amd-1.ds", Kind: "worker", Width: 2, Tiers: []string{"pro"}},
+		store.PutRow{Name: "amd-1.ds"},
 		store.SetRowState{Row: "amd-1.ds", State: "up"},
 		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
 	)
@@ -220,7 +220,7 @@ func TestDeal20CardAnd4KBCapUsesNextVerb(t *testing.T) {
 
 	writes := []store.Write{
 		store.PutStream{Name: "s1", Repo: "repo", Base: "main", Pos: 1},
-		store.PutRow{Name: "amd-1.ds", Kind: "worker", Width: 30, Tiers: []string{"pro"}},
+		store.PutRow{Name: "amd-1.ds"},
 		store.SetRowState{Row: "amd-1.ds", State: "up"},
 	}
 	for i := 1; i <= 25; i++ {
@@ -257,7 +257,7 @@ func TestPushTickSkipsUnhookedRecipients(t *testing.T) {
 	rec, err := st.Apply(ctx, store.Op{
 		ID: "seed-hook", Epoch: 1, Actor: "rowan", Kind: "deal", At: now,
 		Writes: []store.Write{
-			store.SetRowSession{Row: "emma", Session: "worker:1"},
+			store.PutRow{Name: "emma", Session: "worker:1", Role: "worker"},
 			store.PutCard{ID: "c1", Stream: "s1", Kind: "producer", Tier: "pro"},
 			store.PutCard{ID: "c1.w1", Of: "c1", Stream: "s1", Kind: "work", Holder: "emma", Tier: "pro", Attempt: 1},
 			store.SetCardState{Card: "c1.w1", State: "ready"},

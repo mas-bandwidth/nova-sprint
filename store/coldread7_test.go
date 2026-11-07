@@ -11,8 +11,9 @@ package store
 // Folded in round 16 from the seventh cold read's probes (the targeted read
 // of round 15, nsv2-coldread7). Its rulings: an event's After and its
 // Receipt.After no longer alias on PostgreSQL (EventImagesAlias passes);
-// round 16 kept only the two indexes a store query uses (cards_working,
-// cards_live), so the counts below are two, not round 15's seven.
+// round 16 kept only the two indexes a store query used (cards_working,
+// cards_live); round 22 dropped cards_live with the tier check, so the
+// counts below are one.
 
 import (
 	"context"
@@ -49,9 +50,9 @@ func cr7Steps() []cr7Step {
 	var s []cr7Step
 	add := func(label string, o Op) { s = append(s, cr7Step{label: label, op: o}) }
 	add("seed every table", op(1, nil,
-		PutStream{"s1", "mas-bandwidth/x", "main", 1}, PutStream{"s2", weird, "dev", 2},
-		PutRow{Name: "w1", Kind: "worker", Width: 3, Session: weird, Tiers: []string{"pro", "flash"}, Model: weird, Harness: "h"},
-		PutRow{Name: "k1", Kind: "kin", Width: 1, Tiers: []string{"heavy"}}, SetRowState{"w1", "up"},
+		PutStream{"s1", "mas-bandwidth/x", "main", 1, "", ""}, PutStream{"s2", weird, "dev", 2, "", ""},
+		PutRow{Name: "w1", Session: weird, Role: "coordinator"},
+		PutRow{Name: "k1"}, SetRowState{"w1", "up"},
 		PutCard{Tier: "pro", Kind: "producer", ID: "c0", Stream: "s1", Brief: weird, Paths: []string{"a/b", weird}, DoneWhen: []string{"x"}, Prose: weird, Priority: "high"}, SetCardState{"c0", "landed"},
 		PutCard{Tier: "pro", Kind: "producer", ID: "c1", Stream: "s1", Score: 7, Needs: []string{"c0"}, After: []string{"c0"}},
 		PutCard{Tier: "pro", Kind: "sentinel", ID: "z1", Stream: "s1"},
@@ -71,11 +72,11 @@ func cr7Steps() []cr7Step {
 	add("switch policy", op(1, nil, PutPolicy{"script", "p3", "b"}, SetActivePolicy{3}))
 	add("refused: epoch", op(9, nil, SetCardScore{"c1", 1}))
 	add("refused: condition", op(1, []Expect{CardGen{"c1", 0}}, SetCardScore{"c1", 1}))
-	add("refused: write, after earlier writes of the op", op(1, nil, SetCardScore{"c1", 99}, SetRowWidth{"w1", 1}))
+	add("refused: write, after earlier writes of the op", op(1, nil, SetCardScore{"c1", 99}, SetRowState{"w1", "up"}))
 	add("refused: judgement not open", op(1, []Expect{JudgementOpen{"j1"}}, SetCardScore{"c1", 1}))
 	n++
 	s = append(s, cr7Step{label: "clear", clear: true, op: Op{ID: fmt.Sprintf("cr7-%d", n), Epoch: 1, Actor: "tester", Kind: "clear", At: t0.Add(time.Duration(n) * time.Second), Expect: []Expect{AtSeq{11}}, Note: weird}})
-	add("after the clear", op(2, nil, PutStream{"s1", "r", "main", 0}, PutCard{Tier: "pro", Kind: "producer", ID: "c9", Stream: "s1"}, SetRowWidth{"w1", 5}, SetCursor{"sub", 11}))
+	add("after the clear", op(2, nil, PutStream{"s1", "r", "main", 0, "", ""}, PutCard{Tier: "pro", Kind: "producer", ID: "c9", Stream: "s1"}, SetRowFlaps{"w1", 5}, SetCursor{"sub", 11}))
 	add("refused: old epoch after the clear", op(1, nil, SetCardScore{"c1", 1}))
 	return s
 }
@@ -134,7 +135,7 @@ func TestColdRead7ReceiptFidelityFake(t *testing.T) {
 	_, evs := cr7Run(t, f)
 	snap, err := f.Snapshot(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(evs))
+	require.NoError(t, checkRebuild(snap, evs))
 }
 
 func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
@@ -150,7 +151,7 @@ func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
 	}
 	snap, err := p.Snapshot(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(pgEvents), "Rebuild == Snapshot")
+	require.NoError(t, checkRebuild(snap, pgEvents), "Rebuild == Snapshot")
 
 	c := connect(t, dsn)
 	var withAfter, total int
@@ -177,7 +178,7 @@ func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 		assert.Equal(t, cr7JSON(t, want), cr7JSON(t, r), "Replay of an old-shape %s", want.Op)
-		o := Op{ID: want.Op, Epoch: 2, Actor: "someone else", Kind: "x", At: t0, Writes: []Write{SetRowWidth{"w1", 1}}}
+		o := Op{ID: want.Op, Epoch: 2, Actor: "someone else", Kind: "x", At: t0, Writes: []Write{SetRowFlaps{"w1", 1}}}
 		r, err = p.Apply(ctx, o)
 		require.NoError(t, err)
 		assert.Equal(t, cr7JSON(t, want), cr7JSON(t, r), "repeated Apply of an old-shape %s", want.Op)
@@ -190,7 +191,7 @@ func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
 	require.NoError(t, err)
 	snap, err = p.Snapshot(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(all), "Rebuild == Snapshot with old-shape events in the log")
+	require.NoError(t, checkRebuild(snap, all), "Rebuild == Snapshot with old-shape events in the log")
 }
 
 // An Event's receipt and its after-image: on the Fake they are two decoded
@@ -281,10 +282,10 @@ func cr7Populate(t *testing.T, h *harness, c *pgx.Conn) {
 			flush()
 		}
 	}
-	push(PutStream{"s1", "r", "main", 0})
+	push(PutStream{"s1", "r", "main", 0, "", ""})
 	for r := range 20 {
 		name := fmt.Sprintf("r%02d", r)
-		push(PutRow{Name: name, Kind: "worker", Width: 100, Tiers: []string{"flash", "pro", "heavy", "frontier"}}, SetRowState{name, "up"})
+		push(PutRow{Name: name}, SetRowState{name, "up"})
 	}
 	for i := range 2000 {
 		push(PutCard{Tier: "pro", Kind: "producer", ID: fmt.Sprintf("p%04d", i), Stream: "s1"})
@@ -326,28 +327,22 @@ func TestFunctionalColdRead7Indexes(t *testing.T) {
 	cr7Populate(t, h, c)
 
 	// The partial predicates are exactly the state sets the queries use.
-	var working, live string
+	var working string
 	require.NoError(t, c.QueryRow(ctx, `SELECT pg_get_expr(i.indpred, i.indrelid) FROM pg_index i WHERE i.indexrelid = 'sprint.cards_working'::regclass`).Scan(&working))
-	require.NoError(t, c.QueryRow(ctx, `SELECT pg_get_expr(i.indpred, i.indrelid) FROM pg_index i WHERE i.indexrelid = 'sprint.cards_live'::regclass`).Scan(&live))
 	assert.Equal(t, "(state = 'working'::text)", working)
-	assert.Equal(t, "(state = ANY (ARRAY['ready'::text, 'working'::text]))", live)
 
+	// Round 22: the store no longer counts a row's working cards (width is
+	// the roster's); the per-row count is a reader's, and cards_working
+	// serves it.
 	workingSQL := "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = 'working'"
-	neededSQL := "SELECT id, tier FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') AND NOT tier = ANY(coalesce($3::text[], '{}')) ORDER BY id COLLATE \"C\" LIMIT 1"
-	dashSQL := `SELECT r.name, r.width, r.state, r.held, count(c.id) FROM sprint.rows r
-			LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working' WHERE r.epoch = $1 GROUP BY r.name, r.width, r.state, r.held ORDER BY r.name`
+	dashSQL := `SELECT r.name, r.state, r.held, count(c.id) FROM sprint.rows r
+			LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working' WHERE r.epoch = $1 GROUP BY r.name, r.state, r.held ORDER BY r.name`
 	for _, mode := range []string{"force_custom_plan", "force_generic_plan", "auto"} {
 		w := cr7Plan(t, c, mode, workingSQL, "1", "'r07'")
 		assert.Contains(t, strings.Join(w, "|"), "cards_working", "%s width: %v", mode, w)
-		n := cr7Plan(t, c, mode, neededSQL, "1", "'r07'", "'{flash}'")
-		assert.Contains(t, strings.Join(n, "|"), "cards_live", "%s needed: %v", mode, n)
-		n = cr7Plan(t, c, mode, neededSQL, "1", "'r07'", "NULL")
-		assert.Contains(t, strings.Join(n, "|"), "cards_live", "%s needed, no tiers: %v", mode, n)
-		// Reversed witnesses: a state set the predicate does not imply, or the
-		// state as a parameter, loses the partial index; the checks above see it.
-		x := cr7Plan(t, c, mode, strings.Replace(neededSQL, "('ready', 'working')", "('ready', 'working', 'review')", 1), "1", "'r07'", "'{flash}'")
-		assert.NotContains(t, strings.Join(x, "|"), "cards_live", "%s widened set: %v", mode, x)
-		x = cr7Plan(t, c, mode, strings.Replace(workingSQL, "'working'", "$3", 1), "1", "'r07'", "'working'")
+		// Reversed witness: the state as a parameter loses the partial index;
+		// the check above sees it.
+		x := cr7Plan(t, c, mode, strings.Replace(workingSQL, "'working'", "$3", 1), "1", "'r07'", "'working'")
 		if mode == "force_generic_plan" {
 			assert.NotContains(t, strings.Join(x, "|"), "cards_working", "%s state as a parameter: %v", mode, x)
 		}
@@ -369,7 +364,7 @@ func TestFunctionalColdRead7Indexes(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, r.Accepted)
 	h.epoch = 2
-	h.ok(h.op("e2", nil, PutStream{"s1", "r", "main", 0}, PutCard{Tier: "pro", Kind: "producer", ID: "q1", Stream: "s1"},
+	h.ok(h.op("e2", nil, PutStream{"s1", "r", "main", 0, "", ""}, PutCard{Tier: "pro", Kind: "producer", ID: "q1", Stream: "s1"},
 		PutCard{Tier: "pro", Kind: "work", ID: "q2", Of: "q1", Stream: "s1", Holder: "r07"}, SetCardState{"q2", "ready"},
 		PutJudgement{ID: "jj", Kind: "red"}))
 	h.ok(h.op("e2w", nil, SetCardState{"q2", "working"}))
@@ -380,7 +375,6 @@ func TestFunctionalColdRead7Indexes(t *testing.T) {
 			{"SELECT " + cardCols + " FROM sprint.cards WHERE epoch = $1", "2"},
 			{"SELECT " + judgeCols + " FROM sprint.judgements WHERE epoch = $1", "2"},
 			{workingSQL, "2", "'r07'"},
-			{neededSQL, "2", "'r07'", "'{flash}'"},
 			{"SELECT " + cardCols + " FROM sprint.cards WHERE epoch = $1 AND id = $2", "2", "'q2'"},
 			{dashSQL, "2"},
 		} {
@@ -407,7 +401,7 @@ func TestFunctionalColdRead7Indexes(t *testing.T) {
 	assert.Len(t, snap.Cards, 2)
 	events, err := cr7AllEvents(ctx, p)
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(events))
+	require.NoError(t, checkRebuild(snap, events))
 }
 
 func cr7AllEvents(ctx context.Context, s Store) ([]Event, error) {
@@ -444,7 +438,7 @@ func TestColdRead7SchemaHashMoved(t *testing.T) {
 	old := cr7OldSchema()
 	assert.Less(t, len(old), len(schemaSQL))
 	assert.NotEqual(t, hashSchema(old), schemaHash)
-	assert.Equal(t, 2, strings.Count(schemaSQL, "CREATE INDEX IF NOT EXISTS")-strings.Count(old, "CREATE INDEX IF NOT EXISTS"))
+	assert.Equal(t, 1, strings.Count(schemaSQL, "CREATE INDEX IF NOT EXISTS")-strings.Count(old, "CREATE INDEX IF NOT EXISTS"))
 }
 
 func TestFunctionalColdRead7MigrateOldHash(t *testing.T) {
@@ -473,7 +467,7 @@ func TestFunctionalColdRead7MigrateOldHash(t *testing.T) {
 	require.NoError(t, p.Migrate(ctx))
 	c2 := connect(t, dsn2)
 	require.NoError(t, c2.QueryRow(ctx, "SELECT count(*) FROM pg_indexes WHERE schemaname = 'sprint' AND (tablename IN ('cards', 'judgements', 'events')) AND indexname NOT LIKE '%pkey' AND indexname NOT LIKE '%_op_key'").Scan(&n))
-	assert.Equal(t, 2, n, "cards_working and cards_live, and no other secondary index")
+	assert.Equal(t, 1, n, "cards_working, and no other secondary index (round 22 dropped cards_live)")
 	var hash string
 	require.NoError(t, c2.QueryRow(ctx, "SELECT hash FROM sprint.meta").Scan(&hash))
 	assert.Equal(t, schemaHash, hash)

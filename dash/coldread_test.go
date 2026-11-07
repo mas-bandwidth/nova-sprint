@@ -51,8 +51,8 @@ func mustApply(t *testing.T, s store.Store, id string, epoch int, w ...store.Wri
 func seedSprint(t *testing.T, s store.Store, n int) {
 	t.Helper()
 	w := []store.Write{
-		store.PutRow{Name: "amd-1", Kind: "worker", Width: 4000, Tiers: []string{"pro", "heavy"}},
-		store.PutRow{Name: "stella", Kind: "kin", Width: 4000, Tiers: []string{"pro", "heavy"}},
+		store.PutRow{Name: "amd-1"},
+		store.PutRow{Name: "stella"},
 	}
 	for i := 0; i < 50; i++ {
 		w = append(w, store.PutStream{Name: fmt.Sprintf("s%02d", i)})
@@ -72,7 +72,7 @@ func seedSprint(t *testing.T, s store.Store, n int) {
 
 func viewJSON(t *testing.T, s store.Snapshot) string {
 	t.Helper()
-	b, err := json.Marshal(mapSnapshot(s, time.Time{}))
+	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,8 +132,10 @@ func TestColdreadFoldNoClear(t *testing.T) {
 	if s.snapshots != 1 {
 		t.Fatalf("Snapshot calls %d", s.snapshots)
 	}
+	// Each advance first checks that its current sequence still exists, then
+	// reads after it. Cursor catch-up may add a read at the same sequence.
 	for i := 1; i < len(s.cursors); i++ {
-		if s.cursors[i] != s.cursors[i-1]+1 {
+		if s.cursors[i] < s.cursors[i-1] || s.cursors[i] > s.cursors[i-1]+1 {
 			t.Fatalf("cursor did not resume: %v", s.cursors)
 		}
 	}
@@ -213,6 +215,7 @@ func TestColdreadLostConnection(t *testing.T) {
 
 // 5: the refresh path at 5,000 producers (+1,000 consumers): idle tick, one-event tick, HTTP JSON.
 func TestColdreadRefresh5000(t *testing.T) {
+	requireDashLoad(t)
 	for _, n := range []int{5000, 20000} {
 		ctx := context.Background()
 		f := store.NewFake()
@@ -308,7 +311,7 @@ func readJSON(t *testing.T, path string) map[string]any {
 // 3: the envelope's top-level value types against the live v1 capture.
 func TestColdreadDefectEnvelopeTypesVsV1(t *testing.T) {
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")
-	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{Epoch: 1}, time.Now())}
+	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{Epoch: 1}, testRoster, time.Now())}
 	rec := httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
 	var v2 map[string]any
@@ -334,7 +337,7 @@ func TestColdreadDefectStreamStateBlank(t *testing.T) {
 	for _, s := range v1["data"].(map[string]any)["streams"].([]any) {
 		states[fmt.Sprint(s.(map[string]any)["State"])]++
 	}
-	d := mapSnapshot(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"a": {Name: "a"}}}, time.Now())
+	d := mapSnapshot(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"a": {Name: "a"}}}, testRoster, time.Now())
 	if states[""] == 0 && d.Streams[0].State == "" {
 		t.Errorf("v1 stream States %v (none blank); v2 sends State=%q", states, d.Streams[0].State)
 	}
@@ -373,9 +376,9 @@ func TestColdreadDefectThroughputNeverComputed(t *testing.T) {
 // 3: a priced sum remains visible when a stream also has unpriced work.
 func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
-	d := mapSnapshot(s, time.Time{})
+	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
-	if w.Cost == nil || *w.Cost != 1.2 {
+	if w.Cost == nil || w.Cost.Int64() != 120 {
 		t.Fatalf("priced sum lost: %+v", w)
 	}
 	js, _ := page.ReadFile("page/app.js")
@@ -402,6 +405,7 @@ func TestColdreadDefectStreamPagesDead(t *testing.T) {
 
 // 2 + 5, functional: a throwaway PostgreSQL, 5,000 producers, cold snapshot then deltas.
 func TestColdreadFunctionalPG5000(t *testing.T) {
+	requireDashLoad(t)
 	dsn := startPG(t)
 	ctx := context.Background()
 	var pg *store.PG
@@ -444,5 +448,46 @@ func TestColdreadFunctionalPG5000(t *testing.T) {
 	t.Logf("pg 5000: worst advance=%s snapshots=%d", worst, s.snapshots)
 	if s.snapshots != 1 || worst > 100*time.Millisecond {
 		t.Errorf("snapshots=%d worst=%s", s.snapshots, worst)
+	}
+}
+
+// TestRefreshCountsAndShape keeps a small deterministic counterpart to the load measurement.
+func TestRefreshCountsAndShape(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	seedSprint(t, f, 20)
+	s := &tapStore{Store: f}
+	c, err := New(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Advance(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	mustApply(t, f, "shape-land", 1, store.SetCardState{Card: "p00001", State: "landed"})
+	if err := c.Advance(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := f.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.snapshots != 1 || !reflect.DeepEqual(c.state, fresh) {
+		t.Fatal("incremental fold differs from snapshot")
+	}
+	rec := httptest.NewRecorder()
+	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
+	var got struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			All    int `json:"all"`
+			Landed int `json:"landed"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != 200 || !got.OK || got.Data.All != 20 || got.Data.Landed != 1 {
+		t.Fatalf("unexpected page shape: %s", rec.Body.String())
 	}
 }

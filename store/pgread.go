@@ -13,16 +13,16 @@ import (
 )
 
 const (
-	streamCols = "name, repo, base, held, pos"
+	streamCols = "name, repo, base, held, pos, mode, forge"
 	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding, red`
-	rowCols    = "name, kind, width, state, session, flaps, held, gen, tiers, model, harness, reason"
+	rowCols    = "name, state, session, role, flaps, held, gen, reason"
 	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
 
 func scanStream(r pgx.Row) (Stream, error) {
 	var s Stream
-	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos)
+	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos, &s.Mode, &s.Forge)
 	return s, err
 }
 
@@ -35,8 +35,7 @@ func scanCard(r pgx.Row) (Card, error) {
 
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
-	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen, &w.Tiers, &w.Model, &w.Harness, &w.Reason)
-	w.Tiers = normSet(w.Tiers)
+	err := r.Scan(&w.Name, &w.State, &w.Session, &w.Role, &w.Flaps, &w.Held, &w.Gen, &w.Reason)
 	return w, err
 }
 
@@ -113,7 +112,7 @@ func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) {
 func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	var s Snapshot
 	err := tx.QueryRow(ctx, `SELECT n, (SELECT coalesce(max(version), 0) FROM sprint.policy WHERE active),
-		(SELECT coalesce(max(seq), 0) FROM sprint.events) FROM sprint.epoch WHERE id = 1`).Scan(&s.Epoch, &s.Policy, &s.Seq)
+		(SELECT coalesce(max(seq), 0) FROM sprint.events), stopped, stop_reason FROM sprint.epoch WHERE id = 1`).Scan(&s.Epoch, &s.Policy, &s.Seq, &s.Stopped, &s.StopReason)
 	if err != nil {
 		return s, err
 	}
@@ -151,7 +150,43 @@ func scanCursor(r pgx.Row) (cursorRow, error) {
 // Events returns up to max (capped at MaxEvents) events after afterSeq, in
 // seq order.
 func (p *PG) Events(ctx context.Context, afterSeq int64, max int) ([]Event, error) {
-	rows, err := p.pool.Query(ctx, `SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy
+	return readEvents(ctx, p.pool, afterSeq, max)
+}
+
+// EventIdentity returns the op id and epoch of the event at seq, reading
+// only those two columns (never the images or the receipt).
+func (p *PG) EventIdentity(ctx context.Context, seq int64) (string, int, bool, error) {
+	var op string
+	var epoch int
+	err := p.pool.QueryRow(ctx, "SELECT op, epoch FROM sprint.events WHERE seq = $1", seq).Scan(&op, &epoch)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return "", 0, false, nil
+	case err != nil:
+		return "", 0, false, fmt.Errorf("store: event identity: %w", err)
+	}
+	return op, epoch, true, nil
+}
+
+// Restored returns the digest of the dump the store was last restored from
+// and when (RestoreEnd), and false when it never was. It only reads.
+func (p *PG) Restored(ctx context.Context) (string, time.Time, bool, error) {
+	var digest string
+	var at *time.Time
+	if err := p.pool.QueryRow(ctx, "SELECT restored_digest, restored_at FROM sprint.meta WHERE id = 1").Scan(&digest, &at); err != nil {
+		return "", time.Time{}, false, fmt.Errorf("store: restored: %w", err)
+	}
+	if at == nil {
+		return "", time.Time{}, false, nil
+	}
+	return digest, at.UTC(), true, nil
+}
+
+// readEvents is Events on q: the pool, or a transaction (RestoreEnd).
+func readEvents(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, afterSeq int64, max int) ([]Event, error) {
+	rows, err := q.Query(ctx, `SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy
 		FROM sprint.events WHERE seq > $1 ORDER BY seq LIMIT $2`, afterSeq, capEvents(max))
 	if err != nil {
 		return nil, fmt.Errorf("store: events: %w", err)
@@ -220,22 +255,6 @@ func (t *pgTx) policies() (int, []PolicyVersion, error) {
 	return last, active, err
 }
 
-func (t *pgTx) working(row string) (int, error) {
-	var n int
-	err := t.tx.QueryRow(t.ctx, "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = 'working'", t.epoch, row).Scan(&n)
-	return n, err
-}
-
-func (t *pgTx) needed(row string, tiers []string) (Card, bool, error) {
-	var c Card
-	err := t.tx.QueryRow(t.ctx, "SELECT id, tier FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') AND NOT tier = ANY(coalesce($3::text[], '{}')) ORDER BY id COLLATE \"C\" LIMIT 1",
-		t.epoch, row, tiers).Scan(&c.ID, &c.Tier)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Card{}, false, nil
-	}
-	return c, err == nil, err
-}
-
 func (t *pgTx) lastSeq() (int64, error) {
 	var n int64
 	err := t.tx.QueryRow(t.ctx, "SELECT coalesce(max(seq), 0) FROM sprint.events").Scan(&n)
@@ -260,9 +279,10 @@ func (t *pgTx) open() error {
 }
 
 func (t *pgTx) putStream(s Stream) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (epoch, name) DO UPDATE SET repo = EXCLUDED.repo, base = EXCLUDED.base, held = EXCLUDED.held, pos = EXCLUDED.pos`,
-		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos, mode, forge) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (epoch, name) DO UPDATE SET repo = EXCLUDED.repo, base = EXCLUDED.base, held = EXCLUDED.held, pos = EXCLUDED.pos,
+		mode = EXCLUDED.mode, forge = EXCLUDED.forge`,
+		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos, s.Mode, s.Forge)
 	return err
 }
 
@@ -282,11 +302,10 @@ func (t *pgTx) putCard(c Card) error {
 }
 
 func (t *pgTx) putRow(r Row) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, session, flaps, held, gen, tiers, model, harness, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state,
-		session = EXCLUDED.session, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen,
-		tiers = EXCLUDED.tiers, model = EXCLUDED.model, harness = EXCLUDED.harness, reason = EXCLUDED.reason`,
-		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps, r.Held, r.Gen, list0(r.Tiers), r.Model, r.Harness, r.Reason)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, state, session, role, flaps, held, gen, reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (epoch, name) DO UPDATE SET state = EXCLUDED.state, session = EXCLUDED.session,
+		role = EXCLUDED.role, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen, reason = EXCLUDED.reason`,
+		t.epoch, r.Name, r.State, r.Session, r.Role, r.Flaps, r.Held, r.Gen, r.Reason)
 	return err
 }
 
@@ -299,6 +318,17 @@ func (t *pgTx) putJudgement(j Judgement) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (epoch, id) DO UPDATE SET state = EXCLUDED.state, answer = EXCLUDED.answer, actor = EXCLUDED.actor, closed_at = EXCLUDED.closed_at`,
 		t.epoch, j.ID, j.Kind, j.About, j.Question, j.Command, j.Group, j.State, nullTime(j.Deadline), j.Answer, j.Actor, j.OpenedAt, nullTime(j.ClosedAt))
+	return err
+}
+
+func (t *pgTx) stop() (Stop, error) {
+	var s Stop
+	err := t.tx.QueryRow(t.ctx, "SELECT stopped, stop_reason FROM sprint.epoch WHERE id = 1").Scan(&s.Stopped, &s.Reason)
+	return s, err
+}
+
+func (t *pgTx) putStop(s Stop) error {
+	_, err := t.tx.Exec(t.ctx, "UPDATE sprint.epoch SET stopped = $1, stop_reason = $2 WHERE id = 1", s.Stopped, s.Reason)
 	return err
 }
 
@@ -368,11 +398,11 @@ func readReceipt(b []byte, after *State) (Receipt, error) {
 func (s *State) clone() *State {
 	c := *s
 	c.Streams, c.Rows, c.Policies, c.Judgements, c.Cursors = maps.Clone(s.Streams), maps.Clone(s.Rows), maps.Clone(s.Policies), maps.Clone(s.Judgements), maps.Clone(s.Cursors)
-	for k, r := range c.Rows {
-		r.Tiers = slices.Clone(r.Tiers)
-		c.Rows[k] = r
-	}
 	c.Cards = maps.Clone(s.Cards)
+	if s.Stop != nil {
+		stop := *s.Stop
+		c.Stop = &stop
+	}
 	for k, v := range c.Cards {
 		v.Needs, v.After, v.Paths, v.DoneWhen = slices.Clone(v.Needs), slices.Clone(v.After), slices.Clone(v.Paths), slices.Clone(v.DoneWhen)
 		c.Cards[k] = v

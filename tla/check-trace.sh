@@ -47,6 +47,9 @@ fi
 MODEL="$1"
 TRACE="$(cd "$2" && pwd)" || exit 2
 CFG="$TRACE/${MODEL}Trace.cfg"
+if [ ! -f "$CFG" ] && [ -f "$HERE/${MODEL}Trace.cfg" ]; then
+    cp "$HERE/${MODEL}Trace.cfg" "$CFG"
+fi
 LOGMOD="$TRACE/${MODEL}TraceLog.tla"
 [ -f "$CFG" ] && [ -f "$LOGMOD" ] || { echo "no $CFG or $LOGMOD" >&2; exit 2; }
 
@@ -56,38 +59,46 @@ sha256_of() {
 }
 JAVA="$HOME/sdk/bin/java"
 [ -x "$JAVA" ] || JAVA="$(command -v java || true)"
-[ -n "$JAVA" ] || { echo "no java on this host" >&2; exit 2; }
-mkdir -p "$CACHE" || exit 2
+[ -n "$JAVA" ] || { echo "no java on PATH" >&2; exit 2; }
 if [ ! -f "$JAR" ] || [ "$(sha256_of "$JAR")" != "$SHA256" ]; then
-    curl -fsSL -o "$JAR.part" "$URL" && mv "$JAR.part" "$JAR" || { echo "download of $URL failed" >&2; exit 2; }
+    mkdir -p "$CACHE" && curl -fsSL "$URL" -o "$JAR"
+    [ "$(sha256_of "$JAR")" = "$SHA256" ] || { echo "bad sha256 on $JAR" >&2; exit 2; }
 fi
-[ "$(sha256_of "$JAR")" = "$SHA256" ] || { echo "tla2tools.jar sha256 mismatch" >&2; rm -f "$JAR"; exit 2; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cd "$HERE" || exit 2
-"$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK" -DTLA-Library="$TRACE" -cp "$JAR" tlc2.TLC     -noGenerateSpecTE -workers 1 -metadir "$WORK/states" -config "$CFG" "${MODEL}Trace.tla" > "$WORK/tlc.log" 2>&1
+"$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK" -DTLA-Library="$TRACE" -cp "$JAR" tlc2.TLC \
+    -noGenerateSpecTE -workers 1 -metadir "$WORK/states" -config "$CFG" "${MODEL}Trace.tla" > "$WORK/tlc.log" 2>&1
 code=$?
 
+# The records are one per line after "TraceLog == <<"; record k is line start + k.
 start="$(grep -n '^TraceLog == <<$' "$LOGMOD" | cut -d: -f1)"
 n="$(awk -v s="$start" 'NR > s && /^  \[i \|-> /' "$LOGMOD" | wc -l | tr -d ' ')"
 want="$(sed -n 's/^\\\* expect: //p' "$CFG")"
-record() { sed -n "$((start + $1))p" "$LOGMOD" | sed 's/^  //; s/,$//'; }
+record() { sed -n "$((start + $1))p" "$LOGMOD"; }
 
 if [ "$code" -eq 0 ]; then
     echo "TRACE OK steps=$n"
     [ "$want" = matched ] && exit 0
-    echo "UNEXPECTED: wanted $want" >&2; exit 1
+    echo "UNEXPECTED: wanted $want" >&2
+    exit 1
 fi
-if [ "$code" -ne 13 ] || ! grep -q "Temporal property TraceMatched was violated" "$WORK/tlc.log"; then
-    echo "TLC exit $code: not a trace verdict (log tail below)"
-    tail -n 30 "$WORK/tlc.log"
+if [ "$code" -ne 13 ] || ! grep -q "Temporal property TraceAccepted was violated" "$WORK/tlc.log"; then
+    echo "TLC ERROR exit=$code" >&2
+    cat "$WORK/tlc.log" >&2
     exit 2
 fi
 lastl="$(grep -E '^/\\ l = [0-9]+$' "$WORK/tlc.log" | tail -n 1 | awk '{print $4}')"
 k=$((lastl + 1))
-act="$(record "$k" | grep -o 'action |-> "[A-Za-z]*"' | head -n 1 | sed 's/.*"\(.*\)"//')"
+act="$(record "$k" | grep -o 'action |-> "[A-Za-z]*"' | head -n 1 | sed 's/.*"\(.*\)"/\1/')"
 echo "TRACE REFUSED at $k of $n: $act ($(record "$k" | cut -c1-160)...)"
+echo "-- the model after record $lastl (TLC's last state):"
+last="$(grep -n '^State [0-9]*: <' "$WORK/tlc.log" | tail -n 1 | cut -d: -f1)"
+sed -n "$last,\$p" "$WORK/tlc.log" | sed -n '2,/^$/p' \
+    | awk '/^\/\\ [a-z]+ = / { skip = ($2 ~ /^(events|ledger|receipt|last|applied|lost|phase)$/) } !skip' | cut -c1-2000
+echo "-- record $k (the code's step and state):"
+record "$k"
 [ "$want" = "forbidden at $k" ] && exit 0
 echo "UNEXPECTED: wanted $want" >&2
 exit 1

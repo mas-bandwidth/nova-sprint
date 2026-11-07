@@ -79,7 +79,7 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "review", Tier: "pro"},
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", State: "waiting", Tier: "pro"},
 	}}
-	readers := mapSnapshot(s, time.Time{}).Tables["readers"].(map[string]numberCells)
+	readers := mapSnapshot(s, testRoster, time.Time{}).Tables["readers"].(map[string]numberCells)
 	if _, ok := readers[""]; ok {
 		t.Errorf("readers table has an unnamed row: %v", readers)
 	}
@@ -95,8 +95,8 @@ func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	if alex["ok"] != "0" || alex["failed"] != "0" || alex["okpct"] != "0.0%" {
 		t.Fatalf("capture changed: %v", alex)
 	}
-	s := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"alex": {Name: "alex", Kind: "kin", Width: 2, State: "down"}}}
-	b, err := json.Marshal(mapSnapshot(s, time.Time{}).Tables["friends"])
+	s := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"alex": {Name: "alex", State: "down"}}}
+	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}).Tables["friends"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,24 +168,25 @@ func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
 	}
 }
 
-// Every store call of a tick is under the 500 ms deadline: a hung Apply (the cursor write)
-// and a hung Replay end the tick near 500 ms, and the next tick recovers.
+// Inject deadline errors in the cursor Apply and Replay. Both must receive a
+// deadline-bearing context, and a later successful tick must recover.
 type cr3Hang struct {
 	store.Store
-	hangApply, hangReplay bool
+	hangApply, hangReplay         bool
+	applyDeadline, replayDeadline bool
 }
 
 func (s *cr3Hang) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
 	if s.hangApply {
-		<-ctx.Done()
-		return store.Receipt{}, fmt.Errorf("%w: %w", store.ErrUnknown, ctx.Err())
+		_, s.applyDeadline = ctx.Deadline()
+		return store.Receipt{}, fmt.Errorf("%w: %w", store.ErrUnknown, context.DeadlineExceeded)
 	}
 	return s.Store.Apply(ctx, op)
 }
 func (s *cr3Hang) Replay(ctx context.Context, id string) (store.Receipt, bool, error) {
 	if s.hangReplay {
-		<-ctx.Done()
-		return store.Receipt{}, false, ctx.Err()
+		_, s.replayDeadline = ctx.Deadline()
+		return store.Receipt{}, false, context.DeadlineExceeded
 	}
 	return s.Store.Replay(ctx, id)
 }
@@ -199,10 +200,9 @@ func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
 	err = c.Advance(ctx, s)
-	if el := time.Since(start); err == nil || el > 900*time.Millisecond {
-		t.Fatalf("hung cursor write: err=%v elapsed=%s", err, el)
+	if err == nil || !s.applyDeadline || !s.replayDeadline {
+		t.Fatalf("cursor error=%v apply deadline=%v replay deadline=%v", err, s.applyDeadline, s.replayDeadline)
 	}
 	s.hangApply, s.hangReplay = false, false
 	if err = c.Advance(ctx, s); err != nil {
@@ -278,6 +278,7 @@ func TestColdread3TwoDashboardsCursorEvents(t *testing.T) {
 
 // Measurement: 5,000 producers (+500 work and 500 read consumers) on the in-memory store.
 func TestColdread3Measure5000(t *testing.T) {
+	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 5000)

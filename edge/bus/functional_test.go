@@ -120,7 +120,7 @@ func TestFunctionalNovaBusWhoAndPushDelivery(t *testing.T) {
 		ID: "op-func-1", Epoch: 1, Actor: "sprint", Kind: "deal", At: t0,
 		Writes: []store.Write{
 			store.PutStream{Name: "s1", Repo: "repo", Base: "main", Pos: 1},
-			store.PutRow{Name: "amd-1.ds", Kind: "worker", Width: 1, Tiers: []string{"pro"}},
+			store.PutRow{Name: "amd-1.ds"},
 			store.SetRowState{Row: "amd-1.ds", State: "up"},
 			store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
 			store.PutCard{ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s1", Holder: "amd-1.ds", Tier: "pro", Attempt: 1},

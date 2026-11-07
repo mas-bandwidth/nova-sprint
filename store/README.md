@@ -36,6 +36,68 @@ package does with it.
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
   lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose`, `review`, `finding` and `red`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
   version 1 is refused like any other version.
+- `CheckSchema(ctx, dsn)` (round 18, `schema.go`) says what a database holds
+  without changing it, for a status or doctor command, before anything calls
+  Migrate. It returns a `SchemaIdentity`: `Present` (schema `sprint`
+  exists), `Hash` (recorded in `sprint.meta`), `Expected` (this binary's
+  hash, the only way to read it outside the package), `Current`,
+  `KnownOlder` (round 16, which Migrate upgrades), `Owner` and `Round`. It
+  reads in one `READ ONLY` transaction and rolls it back, so a role with
+  only `USAGE` on `sprint` and `SELECT` on `sprint.meta` can run it, and it
+  uses Migrate's own checks (`namespace` for the `pg_depend` foreign check,
+  `readMeta`, `metaRefusal`), so it says "fine" exactly when Migrate would
+  take the store. Anything else comes back with what was found and an error
+  naming the fix: no such database, no schema `sprint` (or an empty one: run
+  Migrate), a foreign schema, a `sprint.meta` the role cannot read (grant it,
+  or check as the owner), or a store Migrate refuses, in Migrate's words. The
+  password comes as pgx takes it (`PGPASSWORD` or a pgpass file). `PG.Schema`
+  is the same read on an open store's pool; `Fake.Schema` always reports the
+  current schema with no owner.
+- Least privilege (round 19): when schema `sprint` already exists, Migrate
+  skips `CREATE SCHEMA IF NOT EXISTS sprint` (PostgreSQL checks CREATE on the
+  database before IF NOT EXISTS) and runs the rest of `schema.sql`, so the
+  schema's owner needs no CREATE on the database: an admin role creates
+  `sprint` owned by `nova_sprint`, and `nova_sprint` migrates it. The hash is
+  still of the whole file. A store with no schema still needs CREATE.
+- Restore (round 20, `restore.go`): `RestoreBegin(ctx, tx, digest)` and
+  `RestoreEnd(ctx, tx)` restore a `pg_dump --data-only --schema=sprint` dump
+  in one transaction on one connection. Begin takes Migrate's advisory lock,
+  refuses a foreign schema or one with any row, and creates every table,
+  function, trigger and index without schema.sql's two seed rows (the dump
+  carries `meta`'s row with its hash and `epoch`'s row), and disables
+  `cards_fixed` for the load, because the dump's cards are in physical order
+  and an updated producer can follow its consumers. Load the dump on the same
+  transaction (each statement as psql would, each COPY by `CopyFrom`), then
+  End enables the trigger and runs it over every card, checks the hash and
+  version, the epoch row, and that Rebuild over the loaded events is the
+  loaded snapshot (`checkRebuild`, the check the tests share), and returns
+  the identity. Commit only when End returns no error.
+- `ValidateHistory(ctx, tx)` (round 21, `history.go`) checks that the log is
+  the whole history of the tables and names the first thing that is not:
+  seqs 1 to the last with no gap, each receipt its own event's, each event in
+  the log's epoch at that point and the epoch row the last, the stored policy
+  versions exactly the log's (each as last written, so the active one is the
+  last activation), every cursor at or below the last seq, and Rebuild equal
+  to the snapshot. RestoreEnd runs it; a verb can run it on a live store in
+  a REPEATABLE READ, read-only transaction.
+- Round 22: a row is sprint state only (`Name, State, Session, Role,
+  Flaps, Held, Reason, Gen`). Kind, width, tiers, model and harness are
+  nova-config's, read through package `roster`; the store neither caps
+  working consumers nor checks tiers (the deal guards do, from the roster).
+  `PutRow{Name, Session, Role}` is the hook's one write (both "" unhooks;
+  another session's hook is refused: unhook first). `SetStopped` sets the
+  sprint's stop (`Snapshot.Stopped`, kept by a clear, refused when
+  unchanged; the store refuses nothing for it). `EventIdentity(ctx, seq)`
+  reads an event's op id and epoch without its images. Migrate takes a
+  round-21 store in place. `RestoreBegin(ctx, tx, digest)` takes the
+  dump's sha256; `RestoreEnd` records it and the time
+  (`sprint.meta.restored_digest`, `restored_at`, read by `Restored(ctx)`),
+  unhooks the dump's hooks in one logged op (`restore-unhook-<digest>-<seq>`)
+  inside the restore's transaction, and refuses the restore if a row is
+  still hooked. A stream carries its landing settings, `Mode` (auto, group
+  or hand) and `Forge` ("" for none), put by `PutStream` and changed by
+  `SetStreamMode` and `SetStreamForge`. A cursor
+  set to its current value is refused, an absent one counting as 0.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
@@ -48,6 +110,19 @@ package does with it.
   long log): it is for tests only.
   `Fake.Drop(opID, landed)` makes the next Apply or Clear of that id report
   `ErrUnknown`, landed or not, so callers can test their replay path.
+- `NewFakeFrom(snapshot, policies...)` (round 19, `fakefrom.go`) is a Fake
+  whose state is a snapshot, for a dry run: build a plan from a snapshot,
+  apply it to `NewFakeFrom` of that snapshot, and it gets the Fake's checks,
+  which are PG's. Pass every policy version the store holds (`Policy` for 1,
+  2, ... until `ErrNotFound`): a snapshot carries only the active version's
+  number, and the next `PutPolicy` number and the policy images need the rest.
+  Its `Snapshot` equals the input, and its first event is at the snapshot's
+  seq plus 1. The log before the snapshot is not carried, so `Events` starts
+  after it and `Replay` of an earlier op id reports unknown: a dry run cannot
+  tell that an id was already used. An input that is not a snapshot (an epoch
+  below 1, a negative seq, a map key that is not the entry's name, a policy
+  version below 1 or given twice, an active version not given) is
+  `ErrInvalid`. `NewFake` is unchanged (it starts at seq 0).
 
 ## A worked example
 
@@ -294,7 +369,7 @@ consumer, nil included), `PutRow`
 (kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
 state, flaps, held and the row's reason are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
-true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
+true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowFlaps`,
 `SetRowTiers` (refused when it drops a tier a live consumer of the row needs), `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
 `PutJudgement`, `AnswerJudgement`, `ExpireJudgement`, `SetCursor`. `PutPolicy` takes no version: the store
 gives it the next one, and the caller learns it from the receipt,

@@ -38,7 +38,7 @@ func loadTree(t *testing.T, root string) *treeIndex {
 	if gr := runtime.GOROOT(); gr != "" {
 		goBin = filepath.Join(gr, "bin", "go")
 	}
-	cmd := exec.Command(goBin, "test", "-list=^Test", "./store", "./card")
+	cmd := exec.Command(goBin, "test", "-list=^(Test|Fuzz)", "./store", "./card", "./steps", "./policy")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -46,12 +46,12 @@ func loadTree(t *testing.T, root string) *treeIndex {
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Test") {
+		if strings.HasPrefix(line, "Test") || strings.HasPrefix(line, "Fuzz") {
 			idx.topTests[line] = true
 		}
 	}
 
-	for _, pkg := range []string{"store", "card"} {
+	for _, pkg := range []string{"store", "card", "steps", "policy"} {
 		files, err := filepath.Glob(filepath.Join(root, pkg, "*_test.go"))
 		if err != nil {
 			t.Fatalf("glob %s: %v", pkg, err)
@@ -159,6 +159,8 @@ func loadTLA(t *testing.T, tlaDir string, idx *treeIndex) {
 		mod := base
 		if strings.HasPrefix(base, "CardMachine") {
 			mod = "CardMachine"
+		} else if strings.HasPrefix(base, "Steps") {
+			mod = "Steps"
 		} else if strings.HasPrefix(base, "Store") {
 			mod = "Store"
 		}

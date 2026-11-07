@@ -234,7 +234,7 @@ func seedFakeStore_internal(t *testing.T, clock func() time.Time) (*store.Fake, 
 		ID: "setup-1", Epoch: 1, Actor: "rowan", Kind: "setup", At: clock(),
 		Writes: []store.Write{
 			store.PutStream{Name: "s1", Repo: "mas-bandwidth/nova-sprint", Base: "main", Pos: 1},
-			store.PutRow{Name: row, Kind: "worker", Width: 1, Tiers: []string{"flash", "pro"}, Model: "deepseek-r1", Harness: "opencode"},
+			store.PutRow{Name: row},
 			store.SetRowState{Row: row, State: "up"},
 			store.PutCard{
 				ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Priority: "normal",
@@ -249,7 +249,7 @@ func seedFakeStore_internal(t *testing.T, clock func() time.Time) (*store.Fake, 
 	}
 	snap, _ := st.Snapshot(ctx)
 	p := card.FromStore(snap.Cards["p1"])
-	r := card.RowFromStore(snap.Rows[row])
+	r := card.RowFromStore(snap.Rows[row], 1, []string{"flash", "pro"})
 	s := card.StreamFromStore(snap.Streams["s1"])
 	plan, ref := card.Move(p, nil, map[string]card.Row{row: r}, s, nil, card.Start{
 		Row: row, Branch: "sprint/s1/p1", Base: testBaseSHA,
@@ -620,7 +620,7 @@ func TestTakeRefusesReservedGroupBranch(t *testing.T) {
 	snap, _ := st.Snapshot(ctx)
 	plan, ref := card.Move(
 		card.FromStore(snap.Cards["p2"]), nil,
-		map[string]card.Row{row: card.RowFromStore(snap.Rows[row])},
+		map[string]card.Row{row: card.RowFromStore(snap.Rows[row], 1, []string{"flash", "pro"})},
 		card.StreamFromStore(snap.Streams["s1"]), nil,
 		card.Start{Row: row, Branch: "sprint/s1/group", Base: testBaseSHA},
 	)

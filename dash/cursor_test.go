@@ -52,8 +52,18 @@ func TestCursorIncludesInterveningEvent(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if fresh.Seq != before {
-		t.Fatalf("idle advance wrote another cursor: %d to %d", before, fresh.Seq)
+	if fresh.Seq != before+1 || fresh.Cursors[CursorName] < before-1 {
+		t.Fatalf("cursor did not acknowledge intervening input: before=%d after=%d cursor=%d", before, fresh.Seq, fresh.Cursors[CursorName])
+	}
+	if e = c.Advance(ctx, s); e != nil {
+		t.Fatal(e)
+	}
+	fresh, e = f.Snapshot(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if fresh.Seq != before+1 {
+		t.Fatal("idle poll rewrote cursor")
 	}
 }
 
@@ -118,8 +128,8 @@ func TestCursorClearRaceRecovers(t *testing.T) {
 		t.Fatal("stale epoch cursor was not refused")
 	}
 	after := c.pageSnapshot().Data.(envelope)
-	if after.At != before.At || after.Epoch != before.Epoch {
-		t.Fatal("failed advance changed last-good view")
+	if after.At.Before(before.At) || after.Epoch != before.Epoch || !after.OK {
+		t.Fatal("cursor refusal did not publish the read prefix")
 	}
 	if e = c.Advance(ctx, s); e != nil {
 		t.Fatal(e)
@@ -146,8 +156,8 @@ func TestCursorColdStartIdle(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, ok := snap.Cursors[CursorName]; !ok {
-		t.Fatal("missing cold cursor")
+	if snap.Seq != 0 {
+		t.Fatal("empty idle poll wrote a cursor")
 	}
 	before := snap.Seq
 	if e = c.Advance(ctx, f); e != nil {
@@ -162,11 +172,14 @@ func TestCursorColdStartIdle(t *testing.T) {
 	}
 }
 
-type blockingStore struct{ store.Store }
+type deadlineStore struct {
+	store.Store
+	observed bool
+}
 
-func (s blockingStore) Events(ctx context.Context, after int64, max int) ([]store.Event, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
+func (s *deadlineStore) Events(ctx context.Context, after int64, max int) ([]store.Event, error) {
+	_, s.observed = ctx.Deadline()
+	return nil, context.DeadlineExceeded
 }
 func TestAdvanceDeadline(t *testing.T) {
 	ctx := context.Background()
@@ -175,10 +188,9 @@ func TestAdvanceDeadline(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	start := time.Now()
-	e = c.Advance(ctx, blockingStore{f})
-	elapsed := time.Since(start)
-	if !errors.Is(e, context.DeadlineExceeded) || elapsed > time.Second {
-		t.Fatalf("error=%v elapsed=%s", e, elapsed)
+	s := &deadlineStore{Store: f}
+	e = c.Advance(ctx, s)
+	if !errors.Is(e, context.DeadlineExceeded) || !s.observed {
+		t.Fatalf("error=%v deadline-present=%v", e, s.observed)
 	}
 }

@@ -181,7 +181,7 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 		t.Fatalf("epoch 2 setup: err=%v reason=%s", err, rec.Reason)
 	}
 	snap, _ = st.Snapshot(ctx)
-	plan, ref := card.Move(card.FromStore(snap.Cards["p1"]), nil, map[string]card.Row{row: card.RowFromStore(snap.Rows[row])},
+	plan, ref := card.Move(card.FromStore(snap.Cards["p1"]), nil, map[string]card.Row{row: card.RowFromStore(snap.Rows[row], 1, []string{"flash", "pro"})},
 		card.StreamFromStore(snap.Streams["s1"]), nil, card.Start{Row: row, Branch: "sprint/s1/p1", Base: testBaseSHA})
 	if ref != nil {
 		t.Fatalf("epoch 2 Start refused: %s", ref.Reason)
