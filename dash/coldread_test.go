@@ -132,8 +132,10 @@ func TestColdreadFoldNoClear(t *testing.T) {
 	if s.snapshots != 1 {
 		t.Fatalf("Snapshot calls %d", s.snapshots)
 	}
+	// Each advance first checks that its current sequence still exists, then
+	// reads after it. Cursor catch-up may add a read at the same sequence.
 	for i := 1; i < len(s.cursors); i++ {
-		if s.cursors[i] != s.cursors[i-1]+1 {
+		if s.cursors[i] < s.cursors[i-1] || s.cursors[i] > s.cursors[i-1]+1 {
 			t.Fatalf("cursor did not resume: %v", s.cursors)
 		}
 	}
@@ -375,7 +377,7 @@ func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
 	d := mapSnapshot(s, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
-	if w.Cost == nil || *w.Cost != 1.2 {
+	if w.Cost == nil || w.Cost.Int64() != 120 {
 		t.Fatalf("priced sum lost: %+v", w)
 	}
 	js, _ := page.ReadFile("page/app.js")
