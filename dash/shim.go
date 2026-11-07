@@ -70,6 +70,7 @@ type envelope struct {
 	Summary       string                 `json:"summary"`            // v1's headline: "landed/all pct -> ETA 1h12m" (set per read, with the rate)
 	Eta           string                 `json:"eta"`                // the ETA alone, or "-"
 	EtaWindow     float64                `json:"eta_window_minutes"` // minutes of landings the rate was measured over
+	EtaBasis      string                 `json:"eta_basis"`          // "last hour" or "sprint average"
 	EtaLandings   int                    `json:"eta_landings"`       // landings inside that window
 	Left          int                    `json:"left"`               // cards not yet landed (blocked, waiting, ready, working, review, fix, merging)
 	Cost          *costSummary           `json:"cost"`

@@ -58,36 +58,32 @@ func finishCosts(w *workRow) {
 	w.Cost, w.ByTier = partitionCents(w.tierMicros)
 }
 
-// importedReason marks a landed producer the v1 import carried over: it
-// landed before this run and has no cost here.
-const importedReason = "its producer landed in v1"
-
 // costSummary is the sprint's whole spend as the top strip shows it. Amounts
 // are currency strings; "-" where no priced run exists, never a false $0.
 type costSummary struct {
-	Total    string            `json:"total"`
-	PerCard  string            `json:"per_card"`
-	ByTier   map[string]string `json:"by_tier"`
-	Priced   int               `json:"priced_runs"`
-	Unpriced int               `json:"unpriced_runs"` // finished runs (done or fail) that reported no cost
-	Landed   int               `json:"landed_cards"`  // cards landed in this run, the per-card divisor
+	Total       string            `json:"total"`
+	PerCard     string            `json:"per_card"` // total over the priced landed cards
+	ByTier      map[string]string `json:"by_tier"`
+	Priced      int               `json:"priced_runs"`
+	Unpriced    int               `json:"unpriced_runs"` // finished runs (done or fail) that reported no cost
+	Landed      int               `json:"landed_cards"`  // cards landed in this run
+	PricedCards int               `json:"priced_cards"`  // of those, the cards whose own runs carried cost: the per-card divisor
 }
 
 // summarizeCost sums every priced consumer (work and read) in any state, by
-// tier, and divides by the cards landed in this run (imported v1 landings
-// carry no cost and are left out of the divisor).
+// tier, and divides by the landed cards whose own runs carried cost (imported
+// v1 landings, and landed cards no run of which reported a cost, are left out
+// of the divisor).
 func summarizeCost(s store.Snapshot) *costSummary {
 	out := &costSummary{ByTier: map[string]string{}}
 	micros := map[string]*big.Int{}
 	total := new(big.Int)
+	pricedOf := map[string]bool{}
 	for _, c := range s.Cards {
 		switch c.Kind {
-		case "producer":
-			if c.State == "landed" && !strings.HasPrefix(c.Reason, importedReason) {
-				out.Landed++
-			}
 		case "work", "read":
 			if c.Priced {
+				pricedOf[c.Of] = true
 				out.Priced++
 				if micros[c.Tier] == nil {
 					micros[c.Tier] = new(big.Int)
@@ -96,6 +92,14 @@ func summarizeCost(s store.Snapshot) *costSummary {
 				total.Add(total, big.NewInt(c.Cost))
 			} else if c.State == "done" || c.State == "fail" {
 				out.Unpriced++
+			}
+		}
+	}
+	for _, c := range s.Cards {
+		if c.Kind == "producer" && c.State == "landed" && !strings.HasPrefix(c.Reason, store.ImportedReason) {
+			out.Landed++
+			if pricedOf[c.ID] {
+				out.PricedCards++
 			}
 		}
 	}
@@ -111,9 +115,9 @@ func summarizeCost(s store.Snapshot) *costSummary {
 		}
 	}
 	out.PerCard = "-"
-	if out.Landed > 0 {
-		per := new(big.Int).Add(rounded, big.NewInt(int64(out.Landed-1)))
-		out.PerCard = moneyCell(per.Div(per, big.NewInt(int64(out.Landed))))
+	if out.PricedCards > 0 {
+		per := new(big.Int).Add(rounded, big.NewInt(int64(out.PricedCards-1)))
+		out.PerCard = moneyCell(per.Div(per, big.NewInt(int64(out.PricedCards))))
 	}
 	return out
 }
