@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -80,7 +81,7 @@ func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
 	result := c.pageSnapshot()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Vary", "Accept-Encoding")
-	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+	if acceptsGzip(r.Header.Values("Accept-Encoding")) {
 		w.Header().Set("Content-Encoding", "gzip")
 		z := gzip.NewWriter(w)
 		defer z.Close()
@@ -88,6 +89,41 @@ func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(result)
+}
+
+// Explicit gzip preferences override wildcard preferences.
+func acceptsGzip(headers []string) bool {
+	var explicit, wildcard *float64
+	for _, header := range headers {
+		for _, item := range strings.Split(header, ",") {
+			parts := strings.Split(item, ";")
+			name := strings.ToLower(strings.TrimSpace(parts[0]))
+			if name != "gzip" && name != "*" {
+				continue
+			}
+			q := 1.0
+			for _, param := range parts[1:] {
+				kv := strings.SplitN(strings.TrimSpace(param), "=", 2)
+				if len(kv) == 2 && strings.EqualFold(strings.TrimSpace(kv[0]), "q") {
+					v, err := strconv.ParseFloat(strings.TrimSpace(kv[1]), 64)
+					if err != nil || v < 0 || v > 1 {
+						q = 0
+					} else {
+						q = v
+					}
+				}
+			}
+			if name == "gzip" {
+				explicit = &q
+			} else {
+				wildcard = &q
+			}
+		}
+	}
+	if explicit != nil {
+		return *explicit > 0
+	}
+	return wildcard != nil && *wildcard > 0
 }
 
 // Handler serves the v1 page and its in-memory data.
@@ -143,13 +179,5 @@ func Handler(c *Cache) http.Handler {
 }
 
 func publicIndex(body []byte) []byte {
-	text := strings.ReplaceAll(string(body), `<script src="charts.js?v=`+buildID+`"></script>`, "")
-	start := strings.Index(text, `<section class="panel history"`)
-	if start >= 0 {
-		end := strings.Index(text[start:], "</section>")
-		if end >= 0 {
-			text = text[:start] + text[start+end+len("</section>"):]
-		}
-	}
-	return []byte(text)
+	return []byte(strings.ReplaceAll(string(body), `<script src="charts.js?v=`+buildID+`"></script>`, ""))
 }

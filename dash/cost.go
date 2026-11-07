@@ -44,9 +44,7 @@ func finishCosts(w *workRow) {
 		if int64(i) < left {
 			p.cents.Add(p.cents, big.NewInt(1))
 		}
-		v, _ := new(big.Float).SetInt(p.cents).Float64()
-		w.ByTier[p.name] = v / 100
+		w.ByTier[p.name] = p.cents
 	}
-	v, _ := new(big.Float).SetInt(rounded).Float64()
-	*w.Cost = v / 100
+	w.Cost = rounded
 }
