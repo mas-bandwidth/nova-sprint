@@ -99,6 +99,11 @@ func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 	model := modelFlag_internal(j)
 	if len(model) == 0 { // LOCAL DOGFOOD STOPGAP: a probe carries no model
 		model = []string{"--model", "deepseek/deepseek-flash"}
+	} else if !strings.Contains(model[1], "/") { // LOCAL DOGFOOD STOPGAP: the policy names models its own way (defect 36); opencode wants provider/model
+		ids := map[string]string{"deepseek-flash-4.1": "deepseek/deepseek-flash", "deepseek-flash": "deepseek/deepseek-flash", "mercury-3": "inception/mercury-3", "mercury-2.5": "inception/mercury-2.5"}
+		if id, ok := ids[model[1]]; ok {
+			model[1] = id
+		}
 	}
 	argv := append(append([]string{"opencode", "run"}, model...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
