@@ -58,7 +58,7 @@ refusal is the tool doing its job, not an error to work around.
 1. Hook in to the bus under your session's Monitor tool. Run this as the Monitor's command,
    never with `&` and never into a file, because the Monitor is what turns each message into a
    wake:
-   `NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you>`
+   `NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>'`
    The address is the fleet's bus, which the coordinator gives you when it invites you.
    Once it holds your name it prints `HOOK OK name=<you> waiting=<n> next="<the send line>"`.
    From then on each message to you is one line, `id<TAB>from<TAB>re<TAB>subject<TAB>body`, with
@@ -109,7 +109,10 @@ is never answered, and a verb sent to `sprint` only gets back where to run it yo
    run nova-sprint take <id>@<gen> --epoch <e> --as <you> (acknowledges, prints the whole
    brief), then do it and run: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`.
    The card is yours already. Start a child for it at once (the first rule), have it run the
-   `take` command exactly as printed, then follow "Work a card" below.
+   `take` command exactly as printed, then follow "Work a card" below. A session hooked with
+   `nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>'` has the take run for it
+   before it wakes: the deal's line arrives as the take's output, `TAKEN <id> ...` and the
+   brief, or its refusal; follow "Work a card" from its step 2.
 2. A read deal: the same with `kind=read` and `head=<40 hex>` in place of base and branch, and
    the read command in place of finish. Start a child for it, then follow "Read a card".
 3. A nudge: `NUDGE card=<id> dealt <time> ago is in your hand, not acknowledged; run: nova-sprint

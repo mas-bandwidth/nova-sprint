@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"strings"
 	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/docs"
@@ -135,3 +137,54 @@ func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor 
 	}
 	return done("nova-sprint hook --as "+target+" --role worker", "UNHOOKED "+target), nil
 }
+
+// runWake is `wake`, nova-bus hook's --exec (Stella's and Johnny's ask,
+// 2026-11-07): the hook takes, the friend works. Each deal line of a
+// message from sprint that names this row is taken here, before the session
+// wakes, and replaced by take's own output (TAKEN with the brief, or the
+// refusal); every other line, and every other message, passes unchanged.
+// It never fails a message: nova-bus would end the hook on a non-zero exit.
+func runWake(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
+	if in.actor == "" {
+		return "", misuse("wake", "pass --as <you>")
+	}
+	raw, err := io.ReadAll(e.Stdin)
+	if err != nil {
+		return "", broken("stdin unreadable ("+clip(err.Error())+")", "nova-bus help hook")
+	}
+	line := strings.TrimSuffix(string(raw), "\n")
+	f := strings.SplitN(line, "\t", 5)
+	if len(f) != 5 || f[1] != "sprint" {
+		return line + "\n", nil
+	}
+	body := strings.Split(busUnescape.Replace(f[4]), "\n")
+	for i, l := range body {
+		if ref, epoch, ok := takeLine(l, in.actor); ok {
+			body[i] = strings.TrimSuffix(e.Execute(ctx, []string{"take", ref, "--epoch", epoch, "--as", in.actor}).Output, "\n")
+		}
+	}
+	f[4] = busEscape.Replace(strings.Join(body, "\n"))
+	return strings.Join(f, "\t") + "\n", nil
+}
+
+// takeLine is the take a sprint line tells row to run ("run nova-sprint
+// take <ref> --epoch <e> --as <row>" in a DEAL, "run: nova-sprint take <ref>
+// --as <row> --epoch <e>" in a NUDGE, either flag order): its ref and epoch.
+func takeLine(l, row string) (ref, epoch string, ok bool) {
+	_, cmd, found := strings.Cut(l, "nova-sprint take ")
+	w := strings.Fields(cmd)
+	if !found || len(w) < 5 {
+		return "", "", false
+	}
+	flags := map[string]string{w[1]: w[2], w[3]: w[4]}
+	if flags["--as"] != row || flags["--epoch"] == "" {
+		return "", "", false
+	}
+	return w[0], flags["--epoch"], true
+}
+
+// nova-bus's line escapes, both ways.
+var (
+	busEscape   = strings.NewReplacer(`\`, `\\`, "\n", `\n`, "\r", `\r`, "\t", `\t`)
+	busUnescape = strings.NewReplacer(`\\`, `\`, `\n`, "\n", `\r`, "\r", `\t`, "\t")
+)
