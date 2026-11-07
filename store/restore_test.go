@@ -137,7 +137,7 @@ func TestFunctionalRestore(t *testing.T) {
 		}
 	}
 	assert.Contains(t, d, "COPY sprint.meta (id, schema, hash, restored_at, restored_digest) FROM stdin;\n1\t2\t"+schemaHash+"\t\\N\t\n")
-	assert.Contains(t, d, "COPY sprint.epoch (id, n, stopped, stop_reason) FROM stdin;\n1\t2\tf\t\n")
+	assert.Contains(t, d, "COPY sprint.epoch (id, n, stopped, stop_reason, commit_name, commit_email) FROM stdin;\n1\t2\tt\t"+NeverStarted+"\t\t\n")
 
 	target := newDatabase(t, dsn, "restored")
 	tx, err := connect(t, target).Begin(ctx)

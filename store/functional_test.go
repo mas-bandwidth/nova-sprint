@@ -110,11 +110,20 @@ func pgHarness(t *testing.T) (*harness, *PG, string) {
 	return &harness{t: t, s: p, ctx: context.Background(), epoch: 1}, p, dsn
 }
 
+// A second Migrate is a no-op: the fresh store stays stopped, never
+// started, and a row's tiers (round 23's text column) survive it.
 func TestFunctionalMigrateTwice(t *testing.T) {
 	t.Parallel()
 	_, p, dsn := pgHarness(t)
-	require.NoError(t, p.Migrate(context.Background()), "a second Migrate is a no-op")
 	c := connect(t, dsn)
+	_, err := c.Exec(context.Background(), "INSERT INTO sprint.rows (name, state, tiers, epoch) VALUES ('w1', 'up', 'pro,heavy', 1)")
+	require.NoError(t, err)
+	require.NoError(t, p.Migrate(context.Background()), "a second Migrate is a no-op")
+	var tiers string
+	require.NoError(t, c.QueryRow(context.Background(), "SELECT tiers FROM sprint.rows WHERE name = 'w1'").Scan(&tiers))
+	assert.Equal(t, "pro,heavy", tiers, "a second Migrate keeps a row's tiers")
+	_, err = c.Exec(context.Background(), "DELETE FROM sprint.rows")
+	require.NoError(t, err)
 	var rows, tables, version int
 	require.NoError(t, c.QueryRow(context.Background(), "SELECT count(*), (SELECT schema FROM sprint.meta) FROM sprint.epoch").Scan(&rows, &version))
 	assert.Equal(t, 1, rows)
@@ -123,8 +132,15 @@ func TestFunctionalMigrateTwice(t *testing.T) {
 	assert.Equal(t, 10, tables, "nine and round 25's sprint.balances")
 	s, err := p.Snapshot(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, emptySnapshot(1), s)
+	want := emptySnapshot(1)
+	want.Stopped, want.StopReason = true, NeverStarted // a fresh store is stopped, never started
+	assert.Equal(t, want, s)
 }
+
+// configColumns counts round 17's five configuration columns of
+// sprint.rows, tiers as its text[] (round 23's text tiers is the heartbeat's).
+const configColumns = "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND " +
+	"(column_name IN ('kind', 'width', 'model', 'harness') OR column_name = 'tiers' AND data_type = 'ARRAY')"
 
 // Round 17: a store made by round 16's schema (its hash, no red column, a
 // card in it) is upgraded by Migrate: red is added false on every card with
@@ -157,7 +173,7 @@ func TestFunctionalMigrateRound16(t *testing.T) {
 	assert.False(t, h.snap().Cards["c1"].Red, "an old card reads not red")
 	h.ok(h.op("red", []Expect{CardRed{"c1", false}}, SetCardRed{"c1", true}))
 	assert.True(t, h.snap().Cards["c1"].Red)
-	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
+	require.NoError(t, c.QueryRow(ctx, configColumns).Scan(&n))
 	assert.Equal(t, 0, n, "round 22's columns are gone from a round-16 store too")
 }
 
@@ -188,7 +204,7 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	p := openPG(t, dsn) // Migrate
 	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
 	var n int
-	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
+	require.NoError(t, c.QueryRow(ctx, configColumns).Scan(&n))
 	assert.Equal(t, 0, n, "the five configuration columns are dropped")
 	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM pg_indexes WHERE schemaname = 'sprint' AND indexname = 'cards_live'").Scan(&n))
 	assert.Equal(t, 0, n, "cards_live is dropped")
@@ -347,6 +363,25 @@ func TestFunctionalMigrateRound25(t *testing.T) {
 	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity)
 	h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "read", ID: "u2", Of: "c1", Stream: "s1", Holder: "w1", Model: "inception/mercury-3"}))
 	assert.Equal(t, "inception/mercury-3", h.snap().Cards["u2"].Model)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated live store's order: a positional dump of either loads into the other")
+}
+
+// columns is every sprint table's columns in their order, the order a
+// positional INSERT (pg_dump --inserts) fills them in.
+func columns(t *testing.T, c *pgx.Conn) map[string][]string {
+	t.Helper()
+	rows, err := c.Query(context.Background(), "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'sprint' ORDER BY table_name, ordinal_position")
+	require.NoError(t, err)
+	out := map[string][]string{}
+	for rows.Next() {
+		var table, column string
+		require.NoError(t, rows.Scan(&table, &column))
+		out[table] = append(out[table], column)
+	}
+	require.NoError(t, rows.Err())
+	return out
 }
 
 func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
