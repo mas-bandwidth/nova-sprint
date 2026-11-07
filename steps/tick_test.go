@@ -13,6 +13,7 @@ func cardTake(row string) card.Event { return card.Take{Row: row} }
 // TestTickHappyPath: one producer from waiting to landed, tick by tick,
 // every op accepted (conformance, happy).
 func TestTickHappyPath(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -64,6 +65,7 @@ func TestTickHappyPath(t *testing.T) {
 // TestTickFixPath: a read says fix; the producer goes back to ready with
 // the finding, is dealt again carrying its head, and a second read says yes.
 func TestTickFixPath(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -97,6 +99,7 @@ func TestTickFixPath(t *testing.T) {
 // TestTickRedAndRetry: a red result sends the producer back to review; a new
 // read, yes, and a second land request with an id of its own.
 func TestTickRedAndRetry(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -129,6 +132,7 @@ func TestTickRedAndRetry(t *testing.T) {
 // TestTickFaultSpendsNothing: a fault report returns the producer to ready
 // with no bounce, and the next deal carries the pushed head.
 func TestTickFaultSpendsNothing(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")

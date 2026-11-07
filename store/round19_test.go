@@ -70,6 +70,7 @@ func fakeFromSnapshot(h *harness) {
 }
 
 func TestNewFakeFromEmptyAndCopy(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := NewFake().Snapshot(ctx)
 	require.NoError(t, err)
@@ -91,6 +92,7 @@ func TestNewFakeFromEmptyAndCopy(t *testing.T) {
 }
 
 func TestNewFakeFromInvalid(t *testing.T) {
+	t.Parallel()
 	bad := func(edit func(*Snapshot)) Snapshot {
 		s := emptySnapshot(1)
 		edit(&s)
@@ -121,6 +123,7 @@ func TestNewFakeFromInvalid(t *testing.T) {
 // The statement Migrate skips on an existing schema is in schema.sql once,
 // and is the only CREATE SCHEMA in it.
 func TestSchemaObjects(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 1, strings.Count(schemaSQL, createSchema))
 	assert.NotContains(t, schemaObjects, "CREATE SCHEMA")
 	assert.Equal(t, len(schemaSQL)-len(createSchema), len(schemaObjects))

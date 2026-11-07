@@ -57,6 +57,7 @@ func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 	return nil
 }
 func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
+	t.Parallel()
 	f := &setupFake{stop: 5}
 	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: f, Lock: setupLeaseFake{}}
 	first := e.Execute(context.Background(), []string{"up"})
@@ -75,6 +76,7 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	}
 }
 func TestSetupArguments(t *testing.T) {
+	t.Parallel()
 	e := Engine{Actor: "rowan"}
 	got := e.Execute(context.Background(), []string{"up", "--dash", "invalid"})
 	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<host>: nova-sprint help up\n" {

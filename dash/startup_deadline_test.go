@@ -20,6 +20,7 @@ func (s *startupBlockingStore) Snapshot(ctx context.Context) (store.Snapshot, er
 	return store.Snapshot{}, ctx.Err()
 }
 func TestStartupSnapshotDeadline(t *testing.T) {
+	t.Parallel()
 	s := &startupBlockingStore{Store: store.NewFake()}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

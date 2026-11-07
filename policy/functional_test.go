@@ -80,7 +80,7 @@ func pgBin(t testing.TB) string {
 // question has 100 candidates), with a cold cache and a warm one; the cold
 // tick must fit TickTime. It runs alone, before the parallel tests, since a
 // timing contends for the cores. The number is in LAYER-5's Built section.
-func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for the cores
+func TestFunctionalLoad(t *testing.T) { // unitlint: not parallel, a timing contends for the cores
 	if raceSlowdown > 1 {
 		breakTiming(t)
 		t.Skip("timing under -race measures the race detector")

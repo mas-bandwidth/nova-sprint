@@ -26,6 +26,7 @@ import (
 // sees pReady.State == Waiting and omits parking pReady. Both card.Merge and
 // store.Apply accept the plan, leaving pReady ready inside held stream s1.
 func TestBreakNestedMergeLeavesReadyProducerInHeldStream(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("pReady"), producer("p1"), producer("p2"))
 	w.move("pReady", Resolve{})
 	w.move("p2", Resolve{})
@@ -74,6 +75,7 @@ func TestBreakNestedMergeLeavesReadyProducerInHeldStream(t *testing.T) {
 //     Merge(other, ReportPlan(...)) where other did not read p1.w1 refuses
 //     ("consumer p1.w1 is done; nothing moves a done card").
 func TestBreakNestedMergeRightAssociatedRefusesValidMoves(t *testing.T) {
+	t.Parallel()
 	t.Run("three independent Resolves right-associated", func(t *testing.T) {
 		w := newWorld(t, producer("p1"), producer("p2"), producer("p3"))
 		s1 := StreamFromStore(w.snap().Streams["s1"])
@@ -135,6 +137,7 @@ func TestBreakNestedMergeRightAssociatedRefusesValidMoves(t *testing.T) {
 //     CardAbsent{Card: "c1"} and CardGen{Card: "c1", Gen: 0} in Expect, which
 //     store.Apply always refuses ("card c1 does not exist").
 func TestBreakMergeAddAndSubsequentMoveBreaksAtCardAndStore(t *testing.T) {
+	t.Parallel()
 	t.Run("MoveAdd followed by Resolve refuses with blank state", func(t *testing.T) {
 		w := newWorld(t)
 		s1 := StreamFromStore(w.snap().Streams["s1"])
@@ -175,6 +178,7 @@ func TestBreakMergeAddAndSubsequentMoveBreaksAtCardAndStore(t *testing.T) {
 // the flattened moves, and it reads a SetPriority earlier in the same op.
 // A plain withdraw of a ready consumer is not a preempt.
 func TestBreakPreemptGuardBypassedByNestedMergeAndSetPriority(t *testing.T) {
+	t.Parallel()
 	t.Run("a plain withdraw is not a preempt", func(t *testing.T) {
 		w := newWorld(t, producer("p1"), producer("b"), producer("p3"))
 		w.move("p1", Resolve{})
@@ -250,6 +254,7 @@ func TestBreakPreemptGuardBypassedByNestedMergeAndSetPriority(t *testing.T) {
 // concurrent op relinks c2 to c3, store.Apply still accepts the merged plan
 // and lands a cycle c3 -> c1 -> c2 -> c3.
 func TestBreakMergeDropsRerunExpectFenceAndLandsCycle(t *testing.T) {
+	t.Parallel()
 	t.Run("foldPlans drops next.Expect CardGen fence and lands cycle in store", func(t *testing.T) {
 		w := newWorld(t, producer("dead"), producer("c1"), producer("c2", "dead"), producer("c3", "dead"))
 		w.move("dead", Cancel{Reason: "gone"})

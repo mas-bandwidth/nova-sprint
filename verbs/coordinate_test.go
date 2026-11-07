@@ -11,6 +11,7 @@ import (
 )
 
 func TestStreamAddAndSet(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--forge", "github"), 0, "STREAM t repo=o/r base=main mode=auto forge=github applied at seq", "next: nova-sprint add --stream t")
 	if s := w.snap(t).Streams["t"]; s.Forge != "github" || s.Mode != "auto" || s.Pos != 1 {
@@ -24,6 +25,7 @@ func TestStreamAddAndSet(t *testing.T) {
 }
 
 func TestStreamRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no repo", as: "carol", args: []string{"stream", "add", "t"}, exit: 2, want: []string{"--repo <org/repo>"}},
 		{name: "a bad name", as: "carol", args: []string{"stream", "add", "a/b", "--repo", "o/r"}, exit: 2, want: []string{"a stream's name"}},
@@ -54,6 +56,7 @@ func brief(t *testing.T, id, needs string) string {
 }
 
 func TestAdd(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	a, b := brief(t, "a1", ""), brief(t, "b1", "a1")
 	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", b, "--brief-file", a, "--dry-run"), 0, "ADD a1", "ADD b1", "(dry run)")
@@ -68,6 +71,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestAddRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no stream", as: "carol", args: []string{"add", "--sentinel", "x", "--needs", "p1"}, exit: 2, want: []string{"add names its stream"}},
 		{name: "neither form", as: "carol", args: []string{"add", "--stream", "s"}, exit: 2, want: []string{"one of them"}},
@@ -95,6 +99,7 @@ func TestAddRefusals(t *testing.T) {
 }
 
 func TestJudge(t *testing.T) {
+	t.Parallel()
 	blocked := withJudgement("blocked.p3.1", "", "blocked", "p3", "unblock | drop")
 	s := sprint()
 	blocked(&s)
@@ -109,6 +114,7 @@ func TestJudge(t *testing.T) {
 }
 
 func TestJudgeAGroup(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	withJudgement("stall.p1.1", "g", "stall", "p1", "retry")(&s)
 	withJudgement("stall.p2.1", "g", "stall", "p2", "retry")(&s)
@@ -119,6 +125,7 @@ func TestJudgeAGroup(t *testing.T) {
 }
 
 func TestJudgeRefusals(t *testing.T) {
+	t.Parallel()
 	blocked := withJudgement("blocked.p3.1", "", "blocked", "p3", "unblock | drop")
 	runCases(t, []tcase{
 		{name: "no judgement", as: "carol", args: []string{"judge", "zz"}, exit: 1, want: []string{"no open judgement or group zz", "nova-sprint judge"}},
@@ -129,6 +136,7 @@ func TestJudgeRefusals(t *testing.T) {
 }
 
 func TestHold(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "hold", "alice", "s", "--reason", "r", "--dry-run"), 0, "row alice held=true (dry run)", "next: nova-sprint hold alice s --reason")
 	want(t, w.do("carol", "hold", "alice", "s", "--reason", "r"), 0, "row alice held=true", "stream s held=true", "next: "+waitNext)
@@ -139,6 +147,7 @@ func TestHold(t *testing.T) {
 }
 
 func TestHoldRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no reason", as: "carol", args: []string{"hold", "alice"}, exit: 1, want: []string{"a hold needs its reason"}},
 		{name: "no name", as: "carol", args: []string{"hold", "--reason", "r"}, exit: 2, want: []string{"hold takes"}},
@@ -148,6 +157,7 @@ func TestHoldRefusals(t *testing.T) {
 }
 
 func TestPriority(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "priority", "p1", "high", "--reason", "glenn asked"), 0, "p1 priority=high")
 	if c := w.snap(t).Cards["p1"]; c.Priority != "high" {
@@ -156,6 +166,7 @@ func TestPriority(t *testing.T) {
 }
 
 func TestPriorityRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "a bad level", as: "carol", args: []string{"priority", "p1", "urgent", "--reason", "r"}, exit: 2, want: []string{"a level is one of"}},
 		{name: "no reason", as: "carol", args: []string{"priority", "p1", "high"}, exit: 1, want: []string{"a priority needs its reason"}},
@@ -171,6 +182,7 @@ func dependant(s *store.Snapshot) {
 }
 
 func TestDropAndReplace(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	dependant(&s)
 	w := worldFrom(t, s)
@@ -183,6 +195,7 @@ func TestDropAndReplace(t *testing.T) {
 }
 
 func TestReplaceAndRelink(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	dependant(&s)
 	w := worldFrom(t, s)
@@ -198,6 +211,7 @@ func TestReplaceAndRelink(t *testing.T) {
 }
 
 func TestDropRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no reason", as: "carol", args: []string{"drop", "p2"}, exit: 1, want: []string{"a drop needs its reason"}},
 		{name: "a consumer", as: "carol", args: []string{"drop", "p1.w1", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is a consumer", "nova-sprint drop p1"}},
@@ -225,6 +239,7 @@ func withPolicy(t *testing.T, w *world) {
 }
 
 func TestPolicy(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	withPolicy(t, w)
 	file := filepath.Join(t.TempDir(), "mine.star")
@@ -240,6 +255,7 @@ func TestPolicy(t *testing.T) {
 }
 
 func TestPolicyRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no engine", as: "carol", args: []string{"policy", "show"}, exit: 2, want: []string{"the policy engine is not configured"}},
 		{name: "a worker sets", as: "alice", args: []string{"policy", "set", "x", "--reason", "r"}, exit: 1, want: []string{"policy set is the coordinator's"}},

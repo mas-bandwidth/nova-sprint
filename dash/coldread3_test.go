@@ -48,6 +48,7 @@ func cr3WorkGrid(vw float64) (grid, content float64) {
 // Work and Total rows). fitTables does not trip because the overflow stays inside the
 // padding. README: "the full eleven-column Work table fits at both 2000 and 2800 px".
 func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
+	t.Parallel()
 	t.Skip("stale since ed7281ae (the fail column left the Work grid); the 2000/2800 px arithmetic is owed a recompute")
 	css, err := page.ReadFile("page/index.html")
 	if err != nil {
@@ -76,6 +77,7 @@ func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
 // countRead creates readers[c.Holder] before its switch (shim.go:151). The ?all=1 Readers
 // table then shows an unnamed row; v1's readers are named rows only.
 func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "review", Tier: "pro"},
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", State: "waiting", Tier: "pro"},
@@ -91,6 +93,7 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 // "0.0%". v2 sends "-". Round-two ruling 4: "v1's cost, ok%, ETA and throughput fallbacks
 // remain". (dash/README.md states the opposite for zero-denominator rows.)
 func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
+	t.Parallel()
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
 	alex := v1["friends"].(map[string]any)["alex"].(map[string]any)
 	if alex["ok"] != "0" || alex["failed"] != "0" || alex["okpct"] != "0.0%" {
@@ -128,6 +131,7 @@ func (s *cr3Tap) Events(ctx context.Context, after int64, max int) ([]store.Even
 }
 
 func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 30)
@@ -141,7 +145,7 @@ func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
 	mustApply(t, f, "pol2", 1, store.PutPolicy{Kind: "data", Name: "b", Body: "{}"})
 	mustApply(t, f, "act2", 1, store.SetActivePolicy{Version: 2})
 	mustApply(t, f, "land", 1, store.SetCardState{Card: "p00003", State: "landed"})
-	if _, err = f.Clear(ctx, store.Op{ID: "clr", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
+	if _, err = f.Clear(ctx, store.Op{ID: "clr", Epoch: 1, Actor: "x", Kind: "clear", At: t1000}); err != nil {
 		t.Fatal(err)
 	}
 	mustApply(t, f, "after", 2, store.PutStream{Name: "n"}, store.PutCard{ID: "q", Kind: "producer", Tier: "pro", Stream: "n"})
@@ -193,6 +197,7 @@ func (s *cr3Hang) Replay(ctx context.Context, id string) (store.Receipt, bool, e
 }
 
 func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)
@@ -216,6 +221,7 @@ func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
 
 // Concurrent ticks and page reads under -race.
 func TestColdread3ConcurrentTicksAndReads(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 200)
@@ -257,6 +263,7 @@ func TestColdread3ConcurrentTicksAndReads(t *testing.T) {
 // design) answer each other's cursor receipts with cursor writes, one event per tick each,
 // forever.
 func TestColdread3TwoDashboardsCursorEvents(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)
@@ -278,7 +285,8 @@ func TestColdread3TwoDashboardsCursorEvents(t *testing.T) {
 }
 
 // Measurement: 5,000 producers (+500 work and 500 read consumers) on the in-memory store.
-func TestColdread3Measure5000(t *testing.T) {
+func TestFunctionalColdread3Measure5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
@@ -378,7 +386,7 @@ func cr3Apply(t *testing.T, s store.Store, id string, w ...store.Write) {
 	t.Helper()
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		r, err := s.Apply(ctx, store.Op{ID: id, Epoch: 1, Actor: "test", Kind: "test", At: time.Now(), Writes: w})
+		r, err := s.Apply(ctx, store.Op{ID: id, Epoch: 1, Actor: "test", Kind: "test", At: t1000, Writes: w})
 		if err == nil && r.Accepted {
 			return
 		}
@@ -393,6 +401,7 @@ func cr3Apply(t *testing.T, s store.Store, id string, w ...store.Write) {
 // Functional: killed backends and a full PostgreSQL restart are recovered by later
 // ticks without a second Snapshot, and the copy equals a fresh Snapshot.
 func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_SKIP_PG") != "" {
 		t.Skip()
 	}

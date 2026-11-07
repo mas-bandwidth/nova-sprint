@@ -7,7 +7,7 @@ package steps
 // cost by packing size, which sets pack. Skipped unless NOVA_LOAD=1; run it
 // on a quiet Linux bench:
 //
-//	NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestLoad -v ./steps/
+//	NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestFunctionalLoad -v ./steps/
 //
 // Every measurement is one line, LOAD <name> n=<count> p50=<ms> p95=<ms>
 // max=<ms> [more=...], every bar one line, BAR <name> PASS|FAIL <why>.
@@ -35,7 +35,8 @@ const (
 	loadStreams   = 20
 )
 
-func TestLoad(t *testing.T) {
+func TestFunctionalLoad(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (minutes, on a Linux bench, never in per-commit CI)")
 	}

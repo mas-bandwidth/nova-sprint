@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// TestBreakExecTimeoutLeavesGrandchildRunning
+// TestFunctionalBreakExecTimeoutLeavesGrandchildRunning
 //
 // Sequence: Exec `sh -c 'sleep 5 & echo $!; sleep 5'` with a 300 ms
 // timeout. The timeout fires, Exec returns ErrTimeout, and the backgrounded
@@ -22,7 +22,8 @@ import (
 // SIGTERM -> SIGKILL grace" and "mandatory policy timeouts": OSExec uses
 // exec.CommandContext with no process group (no Setpgid, no group kill), so
 // only the direct child is killed and every descendant outlives the edge.
-func TestBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
+func TestFunctionalBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
+	t.Parallel()
 	res, err := NewOSExec().Run(context.Background(), Cmd{
 		Argv:    []string{"sh", "-c", "sleep 5 & echo $!; sleep 5"},
 		Timeout: 300 * time.Millisecond,
@@ -62,6 +63,7 @@ func TestBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
 // ErrStart means the program could not be started (exec.go
 // classifyExecErr_internal).
 func TestBreakExecSuccessWithBackgroundChildIsStartFailure(t *testing.T) {
+	t.Parallel()
 	res, err := NewOSExec().Run(context.Background(), Cmd{
 		Argv:    []string{"sh", "-c", "(sleep 2 &); exit 0"},
 		Timeout: 10 * time.Second,

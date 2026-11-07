@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseStringRoundTrip(t *testing.T) {
+	t.Parallel()
 	line := "input=19541 cache_read=36336 cache_write=0 output=692 reasoning=70 model=deepseek/deepseek-flash models=2 billing=api charged=0.042196 unpriced=no-price wall=49s"
 	r, err := Parse(line)
 	require.NoError(t, err)
@@ -22,6 +23,7 @@ func TestParseStringRoundTrip(t *testing.T) {
 }
 
 func TestUnreportedIsNeverZero(t *testing.T) {
+	t.Parallel()
 	r, err := Parse("output=5")
 	require.NoError(t, err)
 	assert.Equal(t, Unreported, r.Tokens.Input)
@@ -35,6 +37,7 @@ func TestUnreportedIsNeverZero(t *testing.T) {
 }
 
 func TestParseRefusesMalformed(t *testing.T) {
+	t.Parallel()
 	for _, bad := range []string{"input=-1", "input=x", "output", "charged=1e3", "charged=-1", "billing=free", "models=0", "=3"} {
 		_, err := Parse(bad)
 		assert.Error(t, err, bad)
@@ -46,6 +49,7 @@ func TestParseRefusesMalformed(t *testing.T) {
 }
 
 func TestDecimalAndUSD(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{"0.0421960": "0.042196", "007": "7", "1.": "", "1.50": "1.5", "0": "0"} {
 		got, err := Decimal(in)
 		if want == "" {
@@ -60,12 +64,14 @@ func TestDecimalAndUSD(t *testing.T) {
 }
 
 func TestTokensAdd(t *testing.T) {
+	t.Parallel()
 	a := Tokens{1, Unreported, 3, Unreported, Unreported}
 	b := Tokens{Unreported, Unreported, 4, 5, Unreported}
 	assert.Equal(t, Tokens{1, Unreported, 7, 5, Unreported}, a.Add(b))
 }
 
 func TestBilling(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, BillingAPI, Billing("nova-worker"))
 	for _, h := range []string{"claude", "codex", "antigravity", "grok", ""} {
 		assert.Equal(t, BillingSubscription, Billing(h), h)
@@ -78,6 +84,7 @@ var sheet = Sheet{
 }
 
 func TestPriceAPIExact(t *testing.T) {
+	t.Parallel()
 	// 19541*0.27 + 36336*0.07 + 0*0.27 + (692+70)*1.1 = 5276.07 + 2543.52 + 838.2 = 8657.79 micro: 8658 rounded half up
 	p, err := Price("input=19541 cache_read=36336 cache_write=0 output=692 reasoning=70 model=deepseek/deepseek-flash", BillingAPI, "0.05", sheet)
 	require.NoError(t, err)
@@ -92,12 +99,14 @@ func TestPriceAPIExact(t *testing.T) {
 }
 
 func TestPriceHalfUp(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, int64(1), Cost(Tokens{Input: 2, CacheRead: -1, CacheWrite: -1, Output: -1, Reasoning: -1}, Rate{In: 250_000})) // 0.5 -> 1
 	assert.Equal(t, int64(0), Cost(Tokens{Input: 1, CacheRead: -1, CacheWrite: -1, Output: -1, Reasoning: -1}, Rate{In: 499_999})) // 0.499999 -> 0
 	assert.Equal(t, int64(math.MaxInt64), Cost(Tokens{Input: math.MaxInt64, CacheRead: -1, CacheWrite: -1, Output: -1, Reasoning: -1}, Rate{In: math.MaxInt64}))
 }
 
 func TestPriceUnpricedNeverZero(t *testing.T) {
+	t.Parallel()
 	p, err := Price("", BillingAPI, "0.01", sheet)
 	require.NoError(t, err)
 	assert.False(t, p.Priced)
@@ -112,6 +121,7 @@ func TestPriceUnpricedNeverZero(t *testing.T) {
 }
 
 func TestPriceSubscriptionIsFree(t *testing.T) {
+	t.Parallel()
 	p, err := Price("input=500 output=20 model=anthropic/opus billing=api unpriced=x", BillingSubscription, "1.25", sheet)
 	require.NoError(t, err)
 	assert.True(t, p.Priced)
@@ -124,6 +134,7 @@ func TestPriceSubscriptionIsFree(t *testing.T) {
 }
 
 func TestPriceRefusesBadWords(t *testing.T) {
+	t.Parallel()
 	_, err := Price("input=lots", BillingAPI, "", sheet)
 	assert.Error(t, err)
 	_, err = Price("", BillingAPI, "1e3", sheet)
@@ -131,6 +142,7 @@ func TestPriceRefusesBadWords(t *testing.T) {
 }
 
 func TestCompact(t *testing.T) {
+	t.Parallel()
 	for n, want := range map[int64]string{0: "0", -5: "0", 999: "999", 1000: "1K", 1049: "1K", 1050: "1.1K", 1_234_567: "1.2M", 2_000_000: "2M",
 		48_149_999: "48.1M", 999_950: "1M", 999_949: "999.9K", 7_500_000_000: "7.5B", 3_000_000_000_000: "3T"} {
 		assert.Equal(t, want, Compact(n), "%d", n)

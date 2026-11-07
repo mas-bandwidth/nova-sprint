@@ -33,6 +33,7 @@ import (
 // captured headless with overlay scrollbars (no scrollbar width). Contract: README "the
 // full eleven-column Work table fits at both 2000 and 2800 px"; Glenn "exactly matching".
 func TestColdread4DefectWorkCompactAt2000WithScrollbar(t *testing.T) {
+	t.Parallel()
 	const rem, vw, scrollbar = 16.0, 2000.0, 15.0
 	clamp := func(lo, v, hi float64) float64 { return max(lo, min(v, hi)) }
 	css, err := page.ReadFile("page/index.html")
@@ -64,6 +65,7 @@ func TestColdread4DefectWorkCompactAt2000WithScrollbar(t *testing.T) {
 // store call has one (New 30 s, Advance 500 ms). Brief: "deadlines not covering every
 // store call".
 func TestColdread4DefectMainOpenWithoutDeadline(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join("..", "cmd", "nova-sprint", "open.go")
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)
@@ -109,6 +111,7 @@ func TestColdread4DefectMainOpenWithoutDeadline(t *testing.T) {
 // v2 sends JSON numbers (unrounded dollars). Round-two ruling 7: "The page envelope uses
 // v1's field types". (README: "The stream_costs accounting total remains unrounded".)
 func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
+	t.Parallel()
 	v1 := readJSON(t, "testdata/round4-capture/live-v1-envelope.json")["data"].(map[string]any)["stream_costs"].(map[string]any)
 	var v1sc map[string]any
 	for _, v := range v1 {
@@ -126,7 +129,7 @@ func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", Tier: "pro", State: "done", Cost: 1000, Priced: true},
 		"u": {ID: "u", Kind: "work", Of: "p", Stream: "s", Tier: "pro", State: "waiting"},
 	}}
-	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}), at: time.Now(), now: time.Now}
+	cache := &Cache{view: mapSnapshot(s, testRoster, time.Time{}), at: t1000, now: at1000}
 	b, err := json.Marshal(cache.pageSnapshot())
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +155,7 @@ func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
 // captured envelopes). README: blocked shows "in the legend only when nonzero"; the only
 // ruled addition elsewhere is its sub-line count, which is conditional.
 func TestColdread4DefectInflightTooltipBlockedWhenAbsent(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -166,6 +170,7 @@ func TestColdread4DefectInflightTooltipBlockedWhenAbsent(t *testing.T) {
 // documents only the producer (Work) fix rule; DASHBOARD-LESSONS lists the track rule as
 // "(rule to confirm)".
 func TestColdread4DefectTrackFixRuleUndocumented(t *testing.T) {
+	t.Parallel()
 	b, err := os.ReadFile("README.md")
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +189,7 @@ func TestColdread4DefectTrackFixRuleUndocumented(t *testing.T) {
 // (written in countCost, never read outside tests; not marshalled), and wire.go's
 // OKPct == nil branch (setPercent always sets OKPct, so "-" is unreachable).
 func TestColdread4DefectDeadCodeRemains(t *testing.T) {
+	t.Parallel()
 	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +224,8 @@ func TestColdread4DefectDeadCodeRemains(t *testing.T) {
 
 // Measurement: 5,000 producers in 50 streams, a work and a read consumer for every
 // producer (10,000 consumers), 12 worker and 4 kin rows, on the in-memory store.
-func TestColdread4Measure5000(t *testing.T) {
+func TestFunctionalColdread4Measure5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()

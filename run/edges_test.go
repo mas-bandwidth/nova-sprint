@@ -122,6 +122,7 @@ func one(t *testing.T, e *Edges) steps.InboxItem {
 // Rung 1: no PR yet, the landing opens it; green and up to date with the
 // base, the base fast-forwards to the exact sha the checks passed.
 func TestLandRung1OpensPRAndFastForwardsGreen(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.checks[sha40("a")] = forge.CheckRollup{State: forge.CheckGreen, Runs: 3}
 	e, _ := landEdges(f, nil)
@@ -135,6 +136,7 @@ func TestLandRung1OpensPRAndFastForwardsGreen(t *testing.T) {
 // Rung 1 behind the base: merged by the repository's method, merge commit
 // first; the merge sha is in the facts.
 func TestLandRung1BehindMergesByMethod(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.behind = 2
 	f.checks[sha40("a")] = forge.CheckRollup{State: forge.CheckGreen, Runs: 3}
@@ -148,6 +150,7 @@ func TestLandRung1BehindMergesByMethod(t *testing.T) {
 
 // A PR already merged at the head (a restart after the merge) is landed.
 func TestLandRung1AlreadyMergedIsLanded(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.prs["sprint/s1/p1"] = &forge.PRState{Number: 7, State: "MERGED", HeadSHA: sha40("a"), Merge: sha40("m")}
 	e, _ := landEdges(f, nil)
@@ -160,6 +163,7 @@ func TestLandRung1AlreadyMergedIsLanded(t *testing.T) {
 // Red is an escalate carrying the failing checks, their first failing
 // lines and the command for the rest.
 func TestLandRung1RedEscalatesWithLines(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.checks[sha40("a")] = forge.CheckRollup{State: forge.CheckRed, Runs: 7, Failing: []string{"unit (linux, x64, bench)", "ci-ok"},
 		URL: "https://github.com/o/r/actions/runs/42347621761/job/128328774832"}
@@ -180,6 +184,7 @@ func TestLandRung1RedEscalatesWithLines(t *testing.T) {
 // NoChecksAfter the landing escalates naming the workflow fix; it does not
 // wait forever.
 func TestLandRung1NoChecksEscalatesWithWorkflowFix(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	e, pauses := landEdges(f, nil)
 	e.land(context.Background(), card1(), s1)
@@ -194,6 +199,7 @@ func TestLandRung1NoChecksEscalatesWithWorkflowFix(t *testing.T) {
 
 // Checks that run but never finish are bounded by PendingMax.
 func TestLandRung1PendingIsBounded(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.checks[sha40("a")] = forge.CheckRollup{State: forge.CheckPending, Runs: 2}
 	e, _ := landEdges(f, nil)
@@ -205,6 +211,7 @@ func TestLandRung1PendingIsBounded(t *testing.T) {
 
 // A refused merge is an escalate with the refusal verbatim.
 func TestLandRung1MergeRefusedEscalatesVerbatim(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.checks[sha40("a")] = forge.CheckRollup{State: forge.CheckGreen, Runs: 1}
 	f.mergeErr = errors.New("GraphQL: Required status check \"ci-ok\" is expected.")
@@ -218,6 +225,7 @@ func TestLandRung1MergeRefusedEscalatesVerbatim(t *testing.T) {
 // gh failing pass after pass (no credential, the network) escalates after
 // LandTries with the error; it never loops silently (the night's defect).
 func TestLandFailingPassesEscalate(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.findErr = errors.New("forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity sprint")
 	e, pauses := landEdges(f, nil)
@@ -229,6 +237,7 @@ func TestLandFailingPassesEscalate(t *testing.T) {
 
 // A hand stream escalates at once: the coordinator lands it.
 func TestLandHandStreamEscalates(t *testing.T) {
+	t.Parallel()
 	e, _ := landEdges(newFakeLandForge(), nil)
 	hand := s1
 	hand.Mode = "hand"
@@ -242,7 +251,7 @@ func TestLandHandStreamEscalates(t *testing.T) {
 // origin, none is in the base, the merge is clean, pushes succeed.
 type fakeGroupGit struct{ pushed []string }
 
-func (g *fakeGroupGit) Clone(context.Context, string, string) error   { return nil }
+func (g *fakeGroupGit) Clone(context.Context, string, string) error    { return nil }
 func (g *fakeGroupGit) Fetch(context.Context, string, ...string) error { return nil }
 func (g *fakeGroupGit) LsRemote(_ context.Context, _, ref string) (string, bool, error) {
 	if ref == git.StreamRef("s1") {
@@ -274,6 +283,7 @@ func (g *fakeGroupGit) Push(_ context.Context, _, sha, ref, _ string) error {
 // Rung 2: a red group is one escalate with the failing checks and no head
 // blamed; nothing reaches the base.
 func TestLandRung2RedGroupEscalatesNoBlame(t *testing.T) {
+	t.Parallel()
 	f := newFakeLandForge()
 	f.checks[sha40("g")] = forge.CheckRollup{State: forge.CheckRed, Runs: 2, Failing: []string{"functional"}}
 	g := &fakeGroupGit{}

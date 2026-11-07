@@ -15,6 +15,7 @@ import (
 // prices() leaves out named; every holder's tokens reach its fleet or
 // friends row.
 func TestCostSummaryAPIOnlyWithSeatTokens(t *testing.T) {
+	t.Parallel()
 	cards := map[string]store.Card{
 		"p1": {ID: "p1", Kind: "producer", Stream: "s", State: "landed", Tier: "flash"},
 		"p2": {ID: "p2", Kind: "producer", Stream: "s", State: "landed", Tier: "pro"},
@@ -59,6 +60,7 @@ func TestCostSummaryAPIOnlyWithSeatTokens(t *testing.T) {
 
 // Nothing priced on the API is "-", never a false $0, even beside seat runs.
 func TestCostSummarySeatsOnlyIsNoDollar(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p1":    {ID: "p1", Kind: "producer", Stream: "s", State: "working", Tier: "pro"},
 		"p1.w1": {ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s", State: "done", Holder: "alex", Tier: "pro", Priced: true, Usage: "input=900 output=100 billing=subscription charged=-"},

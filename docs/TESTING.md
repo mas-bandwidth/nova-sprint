@@ -1,16 +1,30 @@
 # Testing
 
-The same commands CI runs (`.github/workflows/ci.yml`), from the repository root.
+The same commands CI runs, from the repository root. Per commit
+(`.github/workflows/ci.yml`) every job finishes inside 2 minutes; the long runs
+are nightly (`.github/workflows/nightly.yml`, no time limit).
+
+The rules (Glenn, 2026-11-07): unit tests run in parallel, under 2 minutes
+(under 1 minute is the aim), and use no real time, sleep, network or process;
+functional tests (a name containing `Functional`) run in parallel, under 2
+minutes, and may. Every test calls `t.Parallel()` first. `tools/unitlint`
+refuses a test that does not, and a unit test that calls the clock, sleeps,
+dials, listens or starts a process; an exception is a comment on the line that
+says `unitlint:` and why. A clock in a test starts at 1000, never 0.
 
 Lint:
 
     test -z "$(gofmt -l .)" || gofmt -l .
     go build ./...
     go vet ./...
+    go run ./tools/unitlint
 
-Unit tests (no clock, sockets, network or outside service):
+Unit tests (no clock, sockets, network or outside service). Per commit they run
+`-short`: the random walks and sweeps take a fifth of their seeds; the nightly
+runs every seed:
 
-    go test -count=1 -race -skip Functional ./...
+    go test -count=1 -race -short -skip Functional ./...   # per commit
+    go test -count=1 -race -skip Functional ./...          # nightly
 
 Functional tests (each starts its own PostgreSQL with `initdb`; CI fails if `initdb` is missing):
 
@@ -29,8 +43,15 @@ flag.
 
     go test -count=1 -race -parallel 4 -run Functional ./...
 
-TLC (Store must pass; every witness and reach check must report a violation).
-Run it on a bench host, never on the working machine:
+Trace validation (the code's walks against the models). Per commit it is
+short (the store walks at 150 steps); the nightly runs them at 500 and the
+Layer 6 traces too (`tla/check-layer6-traces.py`):
+
+    GOFLAGS=-short NOVA_TRACE_PG=1 bash tla/make-traces.sh check   # per commit
+    NOVA_TRACE_PG=1 bash tla/make-traces.sh check                  # nightly
+
+TLC, nightly (Store must pass; every witness and reach check must report a
+violation). Run it on a bench host, never on the working machine:
 
     bash tla/ci-tlc.sh
 

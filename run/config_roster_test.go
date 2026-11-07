@@ -16,6 +16,7 @@ type fakeConfigSnapshot struct {
 }
 
 func TestConfigRosterSerializesConcurrentReads(t *testing.T) {
+	t.Parallel()
 	f := &fakeConfigSnapshot{}
 	r, err := NewConfigRoster(f, 8)
 	if err != nil {
@@ -45,6 +46,7 @@ func (f *fakeConfigSnapshot) Snapshot(context.Context) (config.Snapshot, error) 
 func (f *fakeConfigSnapshot) Close() { f.closed = true }
 
 func TestConfigRosterReadsOneSnapshotAndCloses(t *testing.T) {
+	t.Parallel()
 	f := &fakeConfigSnapshot{}
 	r, err := NewConfigRoster(f, 8)
 	if err != nil {

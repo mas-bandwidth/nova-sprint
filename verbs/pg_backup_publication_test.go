@@ -14,6 +14,7 @@ import (
 )
 
 func TestPublishDumpPreservesBytesAndDoesNotOverwrite(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "backup.sql")
 	body := []byte("verified bytes\n")
 	if err := publishDump(body, path); err != nil {
@@ -28,7 +29,7 @@ func TestPublishDumpPreservesBytesAndDoesNotOverwrite(t *testing.T) {
 	}
 }
 
-func TestPGProcessEnvUsesExplicitPassword(t *testing.T) {
+func TestPGProcessEnvUsesExplicitPassword(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	t.Setenv("PGPASSWORD", "ambient")
 	for _, password := range []string{"", "explicit"} {
 		env, err := pgProcessEnv([]string{"PATH=/bin", "PGPASSWORD=ambient"}, "host=example user=backup password=embedded dbname=sprint sslmode=disable", password)
@@ -43,6 +44,7 @@ func TestPGProcessEnvUsesExplicitPassword(t *testing.T) {
 }
 
 func TestFunctionalPublishedBackupRoundTrip(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("requires isolated PostgreSQL")
 	}

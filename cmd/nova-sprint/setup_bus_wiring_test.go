@@ -8,6 +8,7 @@ import (
 )
 
 func TestBootstrapBusProbeDoesNotReadUnavailableInventory(t *testing.T) {
+	t.Parallel()
 	var inventory int
 	fleet := func(context.Context, string, ...string) ([]byte, error) {
 		inventory++
@@ -29,6 +30,7 @@ func TestBootstrapBusProbeDoesNotReadUnavailableInventory(t *testing.T) {
 }
 
 func TestEstablishedBusProbeRefusesInventoryFailure(t *testing.T) {
+	t.Parallel()
 	fleet := func(context.Context, string, ...string) ([]byte, error) {
 		return nil, errors.New("inventory unavailable")
 	}

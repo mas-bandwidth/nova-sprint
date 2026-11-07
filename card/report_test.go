@@ -38,6 +38,7 @@ func (w *world) reportPlan(id string, r Report) (Plan, *Refusal) {
 }
 
 func TestReportPlanThreeResults(t *testing.T) {
+	t.Parallel()
 	for _, result := range []string{"ok", "fail", "fault"} {
 		t.Run(result, func(t *testing.T) {
 			w := taken(t)
@@ -65,6 +66,7 @@ func TestReportPlanThreeResults(t *testing.T) {
 }
 
 func TestReportPlanEqualsTwoApplies(t *testing.T) {
+	t.Parallel()
 	for _, result := range []string{"ok", "fail", "fault"} {
 		t.Run(result, func(t *testing.T) {
 			rep := Report{Row: "r1", Result: result, Head: h2, Reason: "because", Cost: 7, Priced: true}
@@ -82,6 +84,7 @@ func TestReportPlanEqualsTwoApplies(t *testing.T) {
 }
 
 func TestReportPlanStaleHead(t *testing.T) {
+	t.Parallel()
 	w := taken(t)
 	_, r := w.reportPlan("p1.w1", Report{Row: "r1", Result: "ok", Head: base})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
@@ -89,6 +92,7 @@ func TestReportPlanStaleHead(t *testing.T) {
 }
 
 func TestReportPlanReadLeavesTheProducer(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.work("p1", "r1", "ok", h2, "done")

@@ -13,6 +13,7 @@ func (s *sqlCollect) Exec(_ context.Context, v string) error {
 	return nil
 }
 func TestDumpParserQuotesAndComments(t *testing.T) {
+	t.Parallel()
 	dump := `-- generated
 \restrict abc123
 SET standard_conforming_strings = on;
@@ -29,6 +30,7 @@ INSERT INTO sprint.t VALUES ('one;two', E'a\'b', "x;y"); -- comment;
 	}
 }
 func TestDumpParserRejectsControlAndDirectives(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{"BEGIN;", "COMMIT/*c*/;", "-- hi\nSTART/*c*/TRANSACTION;", "COPY(sprint.t) TO STDOUT;", "\\! echo no\n", "\\restrict a\nSELECT 1;\n\\unrestrict b\n", "SELECT 'unterminated;", "\\restrict a\nSELECT 1;"} {
 		if err := ParseDump(strings.NewReader(text), nil); err == nil {
 			t.Fatalf("accepted %q", text)
@@ -37,6 +39,7 @@ func TestDumpParserRejectsControlAndDirectives(t *testing.T) {
 }
 
 func TestConfineDataRejectsExecutableValuesAndDDL(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
 	valid := header + "INSERT INTO sprint.events VALUES (E'hi\\'there', 10, NULL, true);\n"
@@ -54,6 +57,7 @@ func TestConfineDataRejectsExecutableValuesAndDDL(t *testing.T) {
 }
 
 func TestConfineDataOrdersCardsWithEscapedIdentifiers(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=dev+abcdef123456\n"
 	consumer := "INSERT INTO sprint.cards VALUES (E'child\\'id', 'work', 'parent');\n"

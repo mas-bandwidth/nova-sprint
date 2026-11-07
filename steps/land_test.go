@@ -42,6 +42,7 @@ func (s *sim) answer(id, choice string, ev card.Event, cardID string) {
 // TestLandRung1IsOneCardWithItsBranch: flowing, one merging producer is
 // requested alone, carrying its work's branch (the PR's head).
 func TestLandRung1IsOneCardWithItsBranch(t *testing.T) {
+	t.Parallel()
 	s := toMerging(t)
 	req := s.request("land", "s1")
 	assert.Equal(t, []string{"p1"}, req.Cards)
@@ -54,6 +55,7 @@ func TestLandRung1IsOneCardWithItsBranch(t *testing.T) {
 // tick requests the merging producer again, by the same id (INTENT 16; the
 // night's defect 51).
 func TestLandRestartRerequests(t *testing.T) {
+	t.Parallel()
 	s := toMerging(t)
 	first := s.request("land", "s1")
 	s.inflight = nil // the run restarted
@@ -67,6 +69,7 @@ func TestLandRestartRerequests(t *testing.T) {
 // nothing is requested for it until the coordinator answers; retry asks
 // again.
 func TestLandEscalateOpensOneJudgementAndStops(t *testing.T) {
+	t.Parallel()
 	s := toMerging(t)
 	req := s.request("land", "s1")
 	s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "escalate", Facts: "PR x is red at h: failing unit; first failing lines: --- FAIL: TestBudgets"})
@@ -91,6 +94,7 @@ func TestLandEscalateOpensOneJudgementAndStops(t *testing.T) {
 // back to ready with the finding, a bounce, and the next attempt continues
 // from the head.
 func TestLandFixAnswerSendsTheCardBack(t *testing.T) {
+	t.Parallel()
 	s := toMerging(t)
 	req := s.request("land", "s1")
 	s.arrive(InboxItem{Kind: "land", Request: req.ID, Outcome: "escalate", Facts: "red"})
@@ -110,6 +114,7 @@ func TestLandFixAnswerSendsTheCardBack(t *testing.T) {
 // eligible producers are one request; an escalate on it is one judgement
 // about the stream (no bisection, no blame) and stops the stream.
 func TestLandRung2GroupRedIsOneStreamJudgement(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 4, "pro")
@@ -142,6 +147,7 @@ func TestLandRung2GroupRedIsOneStreamJudgement(t *testing.T) {
 // TestLandedAndFixAreTheCoordinators: a row that is not a coordinator may
 // not raise Landed or LandFix through a verb.
 func TestLandedAndFixAreTheCoordinators(t *testing.T) {
+	t.Parallel()
 	s := toMerging(t)
 	for _, ev := range []card.Event{card.Landed{Head: sha(1)}, card.LandFix{Head: sha(1), Finding: "x"}} {
 		_, why := Verb(s.v, s.inputs(), Request{Actor: "r1", Coordinators: []string{"coord"}, Card: "p1", Event: ev})

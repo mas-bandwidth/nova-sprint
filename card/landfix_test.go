@@ -10,6 +10,7 @@ import (
 // ready with the finding and one bounce; refused off merging, at another
 // head, or with no finding.
 func TestLandFix(t *testing.T) {
+	t.Parallel()
 	plan, r := Move(pr(Merging), nil, rows(), Stream{Name: "s1"}, nil, LandFix{Head: h1, Finding: "CI red: --- FAIL: TestBudgets"})
 	if r != nil {
 		t.Fatalf("refused: %s", r.Reason)

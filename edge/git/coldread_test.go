@@ -53,7 +53,7 @@ func TestColdreadDefectLandGroupNeverLandsAcrossPasses(t *testing.T) {
 
 // The same fact on real git: two merges of the same heads onto the same base
 // a second apart have different shas (no fixed committer date, git.go:106-113).
-func TestColdreadDefectRealGitMergeShaChangesPerPass(t *testing.T) {
+func TestFunctionalColdreadDefectRealGitMergeShaChangesPerPass(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")

@@ -96,6 +96,7 @@ func cold5Working(t *testing.T) *world {
 // lands. (The fourth read's TestColdread4DefectReportPlanMergedAfterAHold
 // passes only because the merge is refused.)
 func TestColdread5DefectNestedPlanReadsItsOwnWrites(t *testing.T) {
+	t.Parallel()
 	t.Run("HoldThenReportPlan", func(t *testing.T) {
 		w := cold4Taken(t, false)
 		s := w.snap()
@@ -178,6 +179,7 @@ func (w *world) cold5Narrow1(id string, e Event) (Plan, *Refusal) { return cold5
 // blocker p2 is dealt to r1"; nested, the same two moves land: r2's
 // consumer is withdrawn and the blocker is dealt to another row.
 func TestColdread5DefectNestedStartSkipsThePreemptGuard(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b-p1", Base: base})
@@ -214,6 +216,7 @@ func TestColdread5DefectNestedStartSkipsThePreemptGuard(t *testing.T) {
 // cycle walk reads a card whose needs it never had. The merge below lands
 // the cycle p -> x -> y -> z -> p; one by one the Relink is refused.
 func TestColdread5DefectHandBuiltPlanBlindsTheReRun(t *testing.T) {
+	t.Parallel()
 	t.Run("Cycle", func(t *testing.T) {
 		w := newWorld(t, producer("a"), producer("z"), producer("y", "z"), producer("x", "y"), producer("p", "a"))
 		w.move("a", Cancel{Reason: "dropped"})
@@ -251,6 +254,7 @@ func TestColdread5DefectHandBuiltPlanBlindsTheReRun(t *testing.T) {
 // withdraws a working consumer", though nothing was preempted and the two
 // moves apply one by one.
 func TestColdread5DefectAnyWithdrawIsReadAsAPreempt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b-p1", Base: base})
@@ -270,6 +274,7 @@ func TestColdread5DefectAnyWithdrawIsReadAsAPreempt(t *testing.T) {
 // reads and fixes neither. (The walk: "merge of Start # and Start #
 // refused: ... several reads of one head are AskReads".)
 func TestColdread5DefectSecondCutNamesTheWrongFix(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	a, r := w.plan("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
@@ -1042,9 +1047,11 @@ func cold3Keys2(m map[string]int) []string {
 // checked against the design's invariants. It FAILS at b2b0b8c2 with the
 // defects above.
 func TestColdread5Walk(t *testing.T) {
-	runs := make([]*cold5Run, cold5Seeds)
+	t.Parallel()
+	seeds := walkSeeds(cold5Seeds)
+	runs := make([]*cold5Run, seeds)
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= cold5Seeds; seed++ {
+		for seed := int64(1); seed <= seeds; seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel() // each seed its own Fakes
 				r := newCold5Run(t, seed, nil, true)
@@ -1055,7 +1062,7 @@ func TestColdread5Walk(t *testing.T) {
 			})
 		}
 	})
-	cold5Report(t, runs, cold5Seeds, cold5Steps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
+	cold5Report(t, runs, int(seeds), cold5Steps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
 }
 
 // ---- PostgreSQL: the same walk mirrored on a real store ----
@@ -1097,6 +1104,7 @@ func cold5StartPG(t *testing.T) string {
 // cards, rows and streams equal the Fake's, gens included (a refused op
 // leaves nothing half-applied on either).
 func TestFunctionalColdread5PG(t *testing.T) {
+	t.Parallel()
 	const seeds, steps = 4, 800
 	runs := make([]*cold5Run, seeds)
 	t.Run("seeds", func(t *testing.T) {

@@ -22,6 +22,7 @@ func (w *world) same(what string) {
 // TestViewFoldEqualsBuild folds one event of every kind the store logs and
 // checks the view after each equals a fresh build (list item 1).
 func TestViewFoldEqualsBuild(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.same("put stream")
@@ -91,6 +92,7 @@ func TestViewFoldEqualsBuild(t *testing.T) {
 // TestViewRefusedEventMovesSeqOnly: a refused op is an event too; it moves
 // the cursor and nothing else.
 func TestViewRefusedEventMovesSeqOnly(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.fold()
@@ -106,6 +108,7 @@ func TestViewRefusedEventMovesSeqOnly(t *testing.T) {
 // TestViewOverlaps: the paths index holds ready and started producers of
 // one stream, and a path shared across streams is no overlap.
 func TestViewOverlaps(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.stream("s2")
@@ -123,6 +126,7 @@ func TestViewOverlaps(t *testing.T) {
 // TestViewConsumersInCutOrder: consumers come back in the order they were
 // cut, which the model numbers as slots.
 func TestViewConsumersInCutOrder(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")

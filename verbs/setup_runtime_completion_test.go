@@ -12,6 +12,7 @@ import (
 )
 
 func TestSetupCompletionReportsVerifiedState(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := store.NewFake()
 	choices := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}

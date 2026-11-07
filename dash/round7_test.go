@@ -20,6 +20,7 @@ func (s cursorUnavailable) Apply(ctx context.Context, op store.Op) (store.Receip
 	return s.Store.Apply(ctx, op)
 }
 func TestRound7CursorFailurePublishesRead(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})
@@ -43,6 +44,7 @@ func TestRound7CursorFailurePublishesRead(t *testing.T) {
 	}
 }
 func TestRound7OlderLogResnapshots(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})
@@ -65,6 +67,7 @@ func TestRound7OlderLogResnapshots(t *testing.T) {
 	}
 }
 func TestRound7ChangedHistoryFailsClosed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"})
@@ -86,7 +89,8 @@ func TestRound7ChangedHistoryFailsClosed(t *testing.T) {
 	}
 }
 func TestRound7GzipNegotiation(t *testing.T) {
-	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{}, testRoster, time.Now())}
+	t.Parallel()
+	c := &Cache{at: t1000, now: at1000, view: mapSnapshot(store.Snapshot{}, testRoster, t1000)}
 	for _, tc := range []struct {
 		h          string
 		compressed bool
@@ -101,6 +105,7 @@ func TestRound7GzipNegotiation(t *testing.T) {
 	}
 }
 func TestRound7ExactWorkCostWire(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {Kind: "work", Stream: "s", Tier: "pro", Priced: true, Cost: 9_000_000_000_000_010_000}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
@@ -125,6 +130,7 @@ func (s *unavailableSnapshot) Snapshot(ctx context.Context) (store.Snapshot, err
 	return s.Store.Snapshot(ctx)
 }
 func TestRound7StartupRecovers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})

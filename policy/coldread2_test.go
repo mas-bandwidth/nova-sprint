@@ -35,7 +35,8 @@ const coldread2Margin = 100 * time.Millisecond * raceSlowdown
 // no bound but memory) and is refused only after it. Built, fix 5 and 6: "a
 // per-tick wall clock TickTime = 250 ms ... enforced by Thread.Cancel";
 // design guarantee 4, "A runtime error never stalls a tick".
-func TestColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
+func TestFunctionalColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
@@ -54,7 +55,8 @@ func TestColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
 // 2,000, about 120,000 steps) take 0.83 s on amd-3 and the version answers.
 // Built, fix 5 and 6: "a tick in which every version spends its budget takes
 // at most three budgets".
-func TestColdread2DefectCompileOutsideTickTime(t *testing.T) {
+func TestFunctionalColdread2DefectCompileOutsideTickTime(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
@@ -70,7 +72,8 @@ func TestColdread2DefectCompileOutsideTickTime(t *testing.T) {
 // the whole text before it cuts (0.69 s on 100 MB): about 1.25 s for one
 // verdict, with the clock already stopped. Built, fix 4 ("at most 4,096
 // bytes") and fix 5 and 6 (the per-tick wall clock).
-func TestColdread2DefectJudgementTextCostUnbounded(t *testing.T) {
+func TestFunctionalColdread2DefectJudgementTextCostUnbounded(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
@@ -134,6 +137,7 @@ func cachedBytes(e *Engine) int {
 // 64 KiB limit (65,536 newlines) it is about 32 GiB. Design, "The verbs":
 // policy diff is the text diff of two bodies, every body at most 64 KiB.
 func TestColdread2DefectDiffQuadraticMemory(t *testing.T) {
+	t.Parallel()
 	w := fakeWorld(t)
 	w.up()
 	pad := strings.Repeat("\n", 8000)
@@ -153,18 +157,19 @@ func TestColdread2DefectDiffQuadraticMemory(t *testing.T) {
 // reports ..."), a version without catalog() takes builtinCatalog, which
 // panics (catalog.go:62), and sync.OnceValue repeats the panic on every call:
 // every tick of that version panics. Model: TickAlwaysAnswered with NoAnswer.
-// The probe stands in the failing built-in for the embedded one; it is restored.
+// The probe stands in the failing built-in for the embedded one, in its own
+// engine (the engine's built-in is its own, taken from defaultBody when made).
 func TestColdread2DefectBrokenBuiltinCatalogPanics(t *testing.T) {
-	saved := defaultBody
-	t.Cleanup(func() { defaultBody = saved })
+	t.Parallel()
 	active, _ := override("catalog", "")
 	broken, _ := override("catalog", "def catalog():\n    return 1")
-	defaultBody = broken // Round 3: the engine takes the built-in from defaultBody when it is made
+	e := testEngine()
+	e.builtin = broken
 	w := fakeWorld(t)
 	snap := w.snap()
 	var a Answers
 	assert.NotPanics(t, func() {
-		a, _ = testEngine().Answer(Versions{Active: pv(2, active)}, snap, w.ro, FullQuestions(snap, nil))
+		a, _ = e.Answer(Versions{Active: pv(2, active)}, snap, w.ro, FullQuestions(snap, nil))
 	}) // ignored: the failures are the fallback's
 	assert.Equal(t, -1, a.Version, "the built-in's catalog failing is the last resort: the tick deals nothing")
 }

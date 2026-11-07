@@ -11,6 +11,7 @@ import (
 // ---- no row over width (working consumers only) ----
 
 func TestBreakHeldWidth(t *testing.T) {
+	t.Parallel()
 	t.Run("take order inside one op", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"))
 		b.ok(b.P("p1", Resolve{}))
@@ -59,6 +60,7 @@ func TestBreakHeldWidth(t *testing.T) {
 // ---- no live read outside its producer's review ----
 
 func TestBreakHeldLiveRead(t *testing.T) {
+	t.Parallel()
 	t.Run("every way out of review is shut under a live read", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p9"))
 		b.review("p1", "r1", hA)
@@ -174,6 +176,7 @@ func TestBreakHeldLiveRead(t *testing.T) {
 // ---- a live work consumer only under its producer's working state and attempt ----
 
 func TestBreakHeldLiveWork(t *testing.T) {
+	t.Parallel()
 	t.Run("old attempts cannot be revived", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
@@ -245,6 +248,7 @@ func TestBreakHeldLiveWork(t *testing.T) {
 // ---- no ready producer in a held stream ----
 
 func TestBreakHeldHeldStream(t *testing.T) {
+	t.Parallel()
 	t.Run("every return parks", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"), producer("p3"), producer("p4"))
 		for _, id := range []string{"p1", "p2", "p3"} {

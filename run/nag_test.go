@@ -14,6 +14,7 @@ import (
 // t), once each, with Glenn's words and both take lines; after a take
 // leaves nothing ready, never again.
 func TestReadyNagUntilTaken(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Epoch: 3, Rows: map[string]store.Row{"alice": {Name: "alice", Session: "s1"}}, Cards: map[string]store.Card{
 		"p.w1": {ID: "p.w1", Kind: "work", Stream: "s", State: "ready", Holder: "alice", Tier: "pro", Attempt: 1, Gen: 1},
 		"q.w1": {ID: "q.w1", Kind: "work", Stream: "s", State: "ready", Holder: "alice", Tier: "pro", Attempt: 1, Gen: 2},

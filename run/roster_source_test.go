@@ -11,6 +11,7 @@ import (
 )
 
 func TestConfigRosterSourceSnapshotIsolation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cores := 12
 	snap := config.Snapshot{Machines: []config.Machine{{Name: "bench-a", Roles: "bench,runner", Cores: &cores, OS: "linux", Arch: "amd64"}, {Name: "service", Roles: "services"}}, Friends: []config.Friend{{Name: "friend", Enabled: true, Width: 3, Tiers: "flash,pro", Model: "m", Harness: "h", Pronouns: "she/her"}, {Name: "disabled", Enabled: false, Width: 1, Tiers: "pro"}}}
@@ -41,6 +42,7 @@ func TestConfigRosterSourceSnapshotIsolation(t *testing.T) {
 }
 
 func TestConfigRosterSourceUnknownCoresAndCancellation(t *testing.T) {
+	t.Parallel()
 	src := ConfigRosterSource(config.Snapshot{Machines: []config.Machine{{Name: "bench", Roles: "bench"}}})
 	if _, err := roster.Load(context.Background(), src, 8); err == nil {
 		t.Fatal("unknown cores accepted")

@@ -64,6 +64,7 @@ func ds(tr *fakeTransport, key string) DeepSeek {
 }
 
 func TestDeepSeekReadsUSDBalance(t *testing.T) {
+	t.Parallel()
 	tr := &fakeTransport{bodies: []string{balance("110.50")}}
 	r := ds(tr, "sk-1").Read(context.Background())
 	assert.Equal(t, Reading{Provider: "deepseek", Known: true, USD: "110.5", Raw: balance("110.50")}, r)
@@ -83,6 +84,7 @@ func TestDeepSeekReadsUSDBalance(t *testing.T) {
 // run of another provider, and records before the first read do not count.
 // A gap over 5% and $1 opens one judgement, never a second while it is open.
 func TestReconcileWindowAndOneJudgement(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := seeded(t)
 	// before the first read: not in any window
@@ -138,6 +140,7 @@ func TestReconcileWindowAndOneJudgement(t *testing.T) {
 }
 
 func TestOverBothBounds(t *testing.T) {
+	t.Parallel()
 	assert.False(t, over(900_000, 1_000_000), "under $1")
 	assert.False(t, over(1_500_000, 100_000_000), "under 5%")
 	assert.True(t, over(-6_000_000, 100_000_000), "a store over the provider is a gap too")
@@ -145,6 +148,7 @@ func TestOverBothBounds(t *testing.T) {
 }
 
 func TestHourly(t *testing.T) {
+	t.Parallel()
 	var h Hourly
 	assert.True(t, h.Due(t0), "the first beat reconciles")
 	assert.False(t, h.Due(t0.Add(59*time.Minute)))

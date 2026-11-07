@@ -69,6 +69,7 @@ func cold4LiveReads(s store.Snapshot, p string) []string {
 // store accepts, and the producer leaves review (or is edited) with a live
 // read. Applied one by one, the second move is refused "withdraw it first".
 func TestColdread4DefectMergedCutIsInvisibleToTheNextMove(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, read string
 		e          Event
@@ -119,6 +120,7 @@ func TestColdread4DefectMergedCutIsInvisibleToTheNextMove(t *testing.T) {
 // ready. The op holds s1 and leaves p1 ready in it. Broken, Faulted,
 // ReadFix and Released re-read the stream and park.
 func TestColdread4DefectMergedHoldThenWithdrawReadiesInAHeldStream(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
@@ -146,6 +148,7 @@ func TestColdread4DefectMergedHoldThenWithdrawReadiesInAHeldStream(t *testing.T)
 // and keeps its writes. Merge(one, Merge(two)) of the third read's two
 // relinks lands the cycle p1 needs x needs y needs z needs p1.
 func TestColdread4DefectNestedMergeSkipsTheReRun(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("a"), producer("b"), producer("y", "b"), producer("x", "y"), producer("p1", "a"), producer("z", "p1"))
 	w.move("a", Cancel{Reason: "dropped"})
 	w.move("b", Cancel{Reason: "dropped"})
@@ -177,6 +180,7 @@ func TestColdread4DefectNestedMergeSkipsTheReRun(t *testing.T) {
 // Broken) is accepted and parks p1. The same with UnholdStream before a
 // Broken in a held stream, and with Faulted, ReadFix, Released and Unblock.
 func TestColdread4DefectMergedFencesContradict(t *testing.T) {
+	t.Parallel()
 	t.Run("HoldThenBroken", func(t *testing.T) {
 		w := newWorld(t, producer("p1"))
 		w.move("p1", Resolve{})
@@ -234,6 +238,7 @@ func cold4Contradiction(t *testing.T, w *world, first, second Plan, want string)
 // field kind; ...", with no "AskRead p1" in it. (coldread2_test.go pins that
 // text from round 3, before this ruling.)
 func TestColdread4DefectSecondWriteRefusalNamesNoPlan(t *testing.T) {
+	t.Parallel()
 	w := cold4Review(t)
 	a, r := w.plan("p1", AskRead{Row: "r2"})
 	require.Nil(t, r)
@@ -411,7 +416,8 @@ func cold4Diff(a, b store.Snapshot) string {
 const cold4CheckSteps, cold4CheckOneIn = 1000, 1
 
 func TestColdread4Walk(t *testing.T) {
-	const seeds, steps = 60, 1000
+	t.Parallel()
+	seeds, steps := walkSeeds(60), 1000
 	var mu sync.Mutex
 	accepted, kinds := map[string]int{}, map[string]int{}
 	broken, notes := map[string]*cold3Break{}, map[string]*cold3Break{}
@@ -1037,6 +1043,7 @@ func (w *world) cold4ReportPlan(id string, rep Report) (Plan, *Refusal) {
 // a head, and on a fix attempt (prior head set): every card, the stream and
 // the rows, gens included.
 func TestColdread4ReportPlanEqualsOneByOne(t *testing.T) {
+	t.Parallel()
 	follow := map[string]func(string) Event{
 		"ok":    func(id string) Event { return Finished{Consumer: id} },
 		"fail":  func(id string) Event { return Broken{Consumer: id} },
@@ -1091,6 +1098,7 @@ func TestColdread4ReportPlanEqualsOneByOne(t *testing.T) {
 // any plan; a plan built from a snapshot that moved is refused by the store
 // on its gens, and nothing lands.
 func TestColdread4ReportPlanStale(t *testing.T) {
+	t.Parallel()
 	w := cold4Taken(t, false)
 	_, r := w.cold4ReportPlan("p1.w1", Report{Row: "r1", Result: "ok", Head: base})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
@@ -1117,6 +1125,7 @@ func TestColdread4ReportPlanStale(t *testing.T) {
 // producer, fenced on its gen, and a read head other than the producer's is
 // refused.
 func TestColdread4ReportPlanReadIsTheConsumerAlone(t *testing.T) {
+	t.Parallel()
 	w := cold4Review(t)
 	w.move("p1", AskRead{Row: "r2"})
 	w.consume("p1.r1.1", Take{Row: "r2"})
@@ -1136,6 +1145,7 @@ func TestColdread4ReportPlanReadIsTheConsumerAlone(t *testing.T) {
 // the Broken un-re-run: p1 ready in the held stream (the card model's
 // ParkedUnderHold). One by one, the Broken parks it.
 func TestColdread4DefectReportPlanMergedAfterAHold(t *testing.T) {
+	t.Parallel()
 	w := cold4Taken(t, false)
 	s := w.snap()
 	hold, r := MoveStream(StreamFromStore(s.Streams["s1"]), HoldStream{Reason: "freeze", Seq: s.Seq})

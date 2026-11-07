@@ -183,7 +183,6 @@ func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, er
 	return o.contains, o.err
 }
 
-
 type fakeDoctor struct {
 	fleet, history error
 	tools          string

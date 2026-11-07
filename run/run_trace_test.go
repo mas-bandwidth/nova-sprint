@@ -632,6 +632,7 @@ func traceSeed(t *testing.T) int64 {
 }
 
 func TestEmitRunTrace(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	seed := traceSeed(t)
 	r := &runTrace{t: t, ctx: ctx, rnd: rand.New(rand.NewSource(seed)), base: store.NewFake(), at: time.Unix(1_800_000_000, 0).UTC(), opJob: map[string]int{}}

@@ -9,6 +9,7 @@ import (
 )
 
 func TestTierCentsLargestRemainder(t *testing.T) {
+	t.Parallel()
 	v := new(big.Int)
 	w := &workRow{Cost: v, ByTier: map[string]*big.Int{}, tierMicros: map[string]*big.Int{"flash": big.NewInt(11000), "heavy": big.NewInt(9000), "pro": big.NewInt(9000)}}
 	finishCosts(w)
@@ -23,6 +24,7 @@ func TestTierCentsLargestRemainder(t *testing.T) {
 }
 
 func TestExactStreamTotalSeparateFromDisplay(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "flash", Cost: 1000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Cost: 1000, Priced: true}, "c": {ID: "c", Kind: "work", Stream: "s", Tier: "heavy", Cost: 1000, Priced: true}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
@@ -31,6 +33,7 @@ func TestExactStreamTotalSeparateFromDisplay(t *testing.T) {
 	}
 }
 func TestMoneyCellGrouping(t *testing.T) {
+	t.Parallel()
 	v := big.NewInt(123456)
 	if got := moneyCell(v); got != "$1,234.56" {
 		t.Fatalf("money=%q", got)
@@ -38,6 +41,7 @@ func TestMoneyCellGrouping(t *testing.T) {
 }
 
 func TestStreamCostWireExact(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		values []int64
@@ -75,6 +79,7 @@ func TestStreamCostWireExact(t *testing.T) {
 }
 
 func TestStreamCostPartitionsRoundedTotal(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		work, read                int64
 		total, wantWork, wantRead string

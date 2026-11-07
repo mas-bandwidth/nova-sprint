@@ -138,6 +138,7 @@ func TestSchemaIsEmbedded(t *testing.T) {
 // cannot rise, a plain error naming it, and nothing lands (PG's side is
 // TestFunctionalClientErrorIsKnown).
 func TestFakeCounterBound(t *testing.T) {
+	t.Parallel()
 	f := NewFake()
 	h := &harness{t: t, s: f, ctx: context.Background(), epoch: 1}
 	h.seed()
@@ -167,6 +168,7 @@ func TestFakeCounterBound(t *testing.T) {
 // The schema hash ignores comments, indentation and blank lines, so a
 // comment edit does not refuse every store; any change to the SQL does.
 func TestSchemaHash(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, schemaHash, hashSchema(schemaSQL))
 	assert.Equal(t, schemaHash, hashSchema("-- a new comment\n\n"+strings.ReplaceAll(schemaSQL, "\n", "  -- note\n\n")))
 	assert.Equal(t, schemaHash, hashSchema(strings.ReplaceAll(schemaSQL, "\n    ", "\n\t")))

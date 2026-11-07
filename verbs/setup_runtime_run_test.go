@@ -8,6 +8,7 @@ import (
 )
 
 func TestSetupRunRequiresRealOwnerAndPresence(t *testing.T) {
+	t.Parallel()
 	status := run.ChooserStatus{Held: true, Operation: "run", Host: "bench-a"}
 	present := true
 	r := PGSetupRun{Inspect: func(context.Context, string, string) (run.ChooserStatus, error) { return status, nil }, Env: ExecEnvironment{Command: func(context.Context, string, ...string) ([]byte, error) {

@@ -10,6 +10,7 @@ import (
 )
 
 func TestSlug(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"https://github.com/mas-bandwidth/nova-tools": "mas-bandwidth/nova-tools", "git@github.com:o/r.git": "o/r",
 		"mas-bandwidth/schema": "mas-bandwidth/schema", "https://github.com/o/r/": "o/r",
@@ -23,6 +24,7 @@ func TestSlug(t *testing.T) {
 // The first failing lines of a real failed job's log (nova-tools run
 // 42347621761, 2026-11-07), as gh run view --log-failed prints them.
 func TestPickFailing(t *testing.T) {
+	t.Parallel()
 	log := "unit (linux, x64, bench)\tunit tests\t2026-11-07T06:38:36.2060033Z ok  \tgithub.com/mas-bandwidth/nova-tools/v2/sandbox\t(cached)\n" +
 		"unit (linux, x64, bench)\tunit tests\t2026-11-07T06:38:36.2450987Z --- FAIL: TestBudgets (0.00s)\n" +
 		"unit (linux, x64, bench)\tunit tests\t2026-11-07T06:38:36.2452566Z     boundary_test.go:343: bus is 3030 non-test .go lines, budget 3025\n" +
@@ -41,6 +43,7 @@ func TestPickFailing(t *testing.T) {
 // MergePR falls through a method the ruleset refuses and returns the merge
 // commit; Runs counts the reported checks.
 func TestHostIdentityMergePRAndRuns(t *testing.T) {
+	t.Parallel()
 	var calls []string
 	c := New(Config{Identity: Identity{Name: "studio", Host: true}, Now: func() int64 { return 1000 },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {

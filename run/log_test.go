@@ -9,6 +9,7 @@ import (
 )
 
 func TestWriterLoggerReportsMeasuredCountsWithoutErrorText(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	l := NewWriterLogger(&out)
 	l.Log(TickMetrics{Number: 1, Seq: 9, Took: 2 * time.Second, Counts: TickCounts{Folded: 4, Applied: 2, Refused: 1, Edges: 3}, Err: ErrLockLost})

@@ -13,6 +13,7 @@ import (
 // room, never the slow row; one under the deadline is left alone (Glenn
 // 2026-11-07: "By leaving cards in ready we are violating this promise").
 func TestTickReadyTimeout(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")

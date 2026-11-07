@@ -10,6 +10,7 @@ import (
 )
 
 func TestScramVerifierKnownVector(t *testing.T) {
+	t.Parallel()
 	salt, _ := base64.StdEncoding.DecodeString("W22ZaJ0SNY7soEsUEjb6gQ==")
 	got, err := scramVerifier("pencil", salt, 4096)
 	want := "SCRAM-SHA-256$4096:W22ZaJ0SNY7soEsUEjb6gQ==$WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=:wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU="
@@ -19,6 +20,7 @@ func TestScramVerifierKnownVector(t *testing.T) {
 }
 
 func TestRoleBootstrapSavesOnceAndPassesOnlyNames(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{}
 	var calls [][]string
 	var modes []string
@@ -60,6 +62,7 @@ func (e roleFixtureExit) Error() string { return "fixture exit" }
 func (e roleFixtureExit) ExitCode() int { return int(e) }
 
 func TestRoleBootstrapRefusesRejectedStoredSecret(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{saved: true, value: "stored-fixture"}
 	grant := FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: func(context.Context, string, ...string) ([]byte, error) { return nil, nil }}
 	b := SprintRoleBootstrap{Sink: sink, Grants: grant, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Binary: "/bin/nova-sprint", Execute: func(_ context.Context, _ string, args ...string) error {

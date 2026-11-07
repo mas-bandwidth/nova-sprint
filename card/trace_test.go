@@ -27,6 +27,7 @@ const traceSeeds, traceSteps = 20, 800
 
 // TestTraceColdWalk writes the card walk's traces (card-walk-<seed>).
 func TestTraceColdWalk(t *testing.T) {
+	t.Parallel()
 	if os.Getenv(traceEnv) == "" {
 		t.Skip("trace walks run under tla/make-traces.sh (" + traceEnv + " unset)")
 	}
@@ -69,6 +70,7 @@ func breakerWalk(t *testing.T, broken bool) *cardTrace {
 // attempt 0, and its trace is the fixture tla/traces/card-breaker, which
 // check-trace.sh must refuse at its last record (the trace job runs it).
 func TestTraceRefusesDivergence(t *testing.T) {
+	t.Parallel()
 	honest, broken := breakerWalk(t, false), breakerWalk(t, true)
 	require.Contains(t, honest.recs[len(honest.recs)-1], `"p1" :> [st |-> "working", att |-> 1`)
 	require.Contains(t, broken.recs[len(broken.recs)-1], `"p1" :> [st |-> "working", att |-> 0`)

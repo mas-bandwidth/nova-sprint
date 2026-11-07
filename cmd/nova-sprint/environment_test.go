@@ -9,7 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
-func TestProductionStoreRejectsAmbientCredentials(t *testing.T) {
+func TestProductionStoreRejectsAmbientCredentials(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	t.Setenv("PGPASSWORD", "ambient-should-not-be-used")
 	s := &lazyStore{creds: credentials{dsn: "postgres://nova_config@localhost/db"}}
 	if _, err := s.Snapshot(context.Background()); !errors.Is(err, verbs.ErrNotSetUp) {
@@ -26,6 +26,7 @@ func TestProductionStoreRejectsAmbientCredentials(t *testing.T) {
 }
 
 func TestToolEnvironmentExcludesDatabaseSecrets(t *testing.T) {
+	t.Parallel()
 	env := toolEnvironment([]string{"PATH=/bin", "NOVA_BUS_PASSWORD=bus-fixture", "NOVA_SPRINT_PG_PASSWORD=secret", "NOVA_PG_ADMIN_PASSWORD=secret", "PGPASSWORD=secret"}, "nova-bus")
 	joined := strings.Join(env, "\n")
 	if !strings.Contains(joined, "NOVA_BUS_PASSWORD=bus-fixture") || strings.Contains(joined, "PG_PASSWORD") || strings.Contains(joined, "PGPASSWORD") {
@@ -40,6 +41,7 @@ func TestToolEnvironmentExcludesDatabaseSecrets(t *testing.T) {
 // The sprint not set up (no NOVA_SPRINT_PG_PASSWORD): hook refuses naming up,
 // never a secrets command, and next answers up (exit 0).
 func TestNotSetUpNamesUp(t *testing.T) {
+	t.Parallel()
 	creds := credentials{dsn: "postgres://nova_sprint@localhost/db"}
 	e := verbs.Engine{Store: &lazyStore{creds: creds}, Bus: present{"alice"}, Doctor: doctor{creds: creds}, Actor: "alice"}
 	hook := e.Execute(context.Background(), []string{"hook", "--role", "worker"})

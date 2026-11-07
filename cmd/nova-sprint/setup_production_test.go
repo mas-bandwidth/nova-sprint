@@ -19,6 +19,7 @@ func configForSetup() productionSetupConfig {
 	return productionSetupConfig{Binary: "/bin/nova-sprint", Host: "studio", DSN: "postgres://nova_config@db:5432/nova", Secrets: verbs.NovaSecrets{Store: "/secrets", KeyFile: "/keys/studio.key", Pins: "/pins", Seat: "studio"}}
 }
 func TestProductionSetupConstructsRealDependenciesWithoutNetwork(t *testing.T) {
+	t.Parallel()
 	st := store.NewFake()
 	cfg := configForSetup()
 	cfg.SprintPassword = "fixture"
@@ -42,6 +43,7 @@ func TestProductionSetupConstructsRealDependenciesWithoutNetwork(t *testing.T) {
 	}
 }
 func TestProductionSetupRefusesMissingAndUnimplementedConfiguration(t *testing.T) {
+	t.Parallel()
 	st := store.NewFake()
 	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
 	cfg := configForSetup()
@@ -74,6 +76,7 @@ func TestProductionSetupRefusesMissingAndUnimplementedConfiguration(t *testing.T
 	}
 }
 func TestSetupRoleDSNUsesCorrectIdentityWithoutSecrets(t *testing.T) {
+	t.Parallel()
 	got, err := setupRoleDSN("postgres://nova_config@db:5432/nova?sslmode=require", "nova_admin")
 	if err != nil || got != "postgres://nova_admin@db:5432/nova?sslmode=require" {
 		t.Fatal(got, err)
@@ -85,6 +88,7 @@ func TestSetupRoleDSNUsesCorrectIdentityWithoutSecrets(t *testing.T) {
 	}
 }
 func TestContinuationRecordIsReusableAndEpochFenced(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := store.NewFake()
 	in := verbs.SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
@@ -125,6 +129,7 @@ func TestContinuationRecordIsReusableAndEpochFenced(t *testing.T) {
 	}
 }
 func TestContinuationInputBoundsAndNoSecretEnvironment(t *testing.T) {
+	t.Parallel()
 	id := strings.Repeat("a", 64)
 	in := verbs.SetupInput{Actor: "alice"}
 	digest, _ := handoffDigest(in)
@@ -148,12 +153,14 @@ func (g gappedContinuationStore) Events(context.Context, int64, int) ([]store.Ev
 }
 
 func TestContinuationRejectsGappedHistory(t *testing.T) {
+	t.Parallel()
 	st := gappedContinuationStore{store.NewFake()}
 	if _, _, err := findSetupContinuation(context.Background(), st, store.Snapshot{Seq: 2}, strings.Repeat("a", 64)); err == nil {
 		t.Fatal("gapped history accepted")
 	}
 }
 func TestProductionSetupRejectsCombinedSecrets(t *testing.T) {
+	t.Parallel()
 	cfg := configForSetup()
 	cfg.AdminPassword = "fixture-admin"
 	cfg.SprintPassword = "fixture-sprint"
@@ -167,6 +174,7 @@ func TestProductionSetupRejectsCombinedSecrets(t *testing.T) {
 	}
 }
 func TestProductionSetupRequiresCoordinatorBeforeEffects(t *testing.T) {
+	t.Parallel()
 	p := productionSetup{}
 	_, err := p.Verify(context.Background(), 1, verbs.SetupInput{})
 	var op *verbs.OperationError
@@ -175,6 +183,7 @@ func TestProductionSetupRequiresCoordinatorBeforeEffects(t *testing.T) {
 	}
 }
 func TestProductionSetupDerivesRunAndDashboardFromFleetRows(t *testing.T) {
+	t.Parallel()
 	st := store.NewFake()
 	cfg := configForSetup()
 	cfg.SprintPassword = "fixture"
@@ -200,6 +209,7 @@ func TestProductionSetupDerivesRunAndDashboardFromFleetRows(t *testing.T) {
 	}
 }
 func TestProductionSetupRefusesUnsafeOrUnprovenEndpoints(t *testing.T) {
+	t.Parallel()
 	if _, err := privateDashboardURL("0.0.0.0:8080"); err == nil {
 		t.Fatal("public wildcard accepted")
 	}
@@ -226,6 +236,7 @@ func TestProductionSetupRefusesUnsafeOrUnprovenEndpoints(t *testing.T) {
 }
 
 func TestProductionSetupBuildsMissingRunFromInventory(t *testing.T) {
+	t.Parallel()
 	cfg := configForSetup()
 	cfg.BusRedis = "100.100.1.3:6379"
 	cfg.BusUser = "sprint"
@@ -249,6 +260,7 @@ func TestProductionSetupBuildsMissingRunFromInventory(t *testing.T) {
 // not resolve here; a name that resolves off the tailnet, or one that is
 // not a tailnet name, is refused.
 func TestProductionSetupRunHostByTailnetName(t *testing.T) {
+	t.Parallel()
 	cfg := configForSetup()
 	cfg.BusRedis = "100.100.1.3:6379"
 	answers := map[string][]netip.Addr{"studio.example-tailnet.ts.net": {netip.MustParseAddr("fd7a:115c:a1e0::1"), netip.MustParseAddr("100.100.1.2")}, "off.example-tailnet.ts.net": {netip.MustParseAddr("8.8.8.8")}}
@@ -286,6 +298,7 @@ func TestProductionSetupRunHostByTailnetName(t *testing.T) {
 }
 
 func TestProductionSetupBuildsPublicPullService(t *testing.T) {
+	t.Parallel()
 	machines := []verbs.FleetMachine{{Name: "public", Address: "8.8.8.8", Roles: []string{"services"}}}
 	target, err := publicDashboardTarget("public", "studio", machines, nil, "http://100.100.1.2:8080")
 	if err != nil || target.Service == nil || target.URL != "http://8.8.8.8:8080" || strings.Join(target.Service.Argv[:3], " ") != "/usr/bin/env nova-sprint dash" || len(target.Service.Keys) != 0 {
@@ -298,6 +311,7 @@ func TestProductionSetupBuildsPublicPullService(t *testing.T) {
 }
 
 func TestRunServiceRejectsUnsafeListenerAndUnexpectedKeys(t *testing.T) {
+	t.Parallel()
 	p := productionSetup{cfg: productionSetupConfig{Host: "studio", BusRedis: "100.100.1.3:6379"}}
 	service := verbs.FleetService{Machine: "studio", Seat: "studio", Argv: []string{"nova-sprint", "run", "--listen", "0.0.0.0:8080"}, Keys: []string{"NOVA_SPRINT_PG_PASSWORD"}, Env: map[string]string{"NOVA_BUS_REDIS": "100.100.1.3:6379"}}
 	if err := p.validateRunService(service); err == nil {
@@ -315,6 +329,7 @@ func TestRunServiceRejectsUnsafeListenerAndUnexpectedKeys(t *testing.T) {
 }
 
 func TestRemoteRunRefusedBeforeFleetCommands(t *testing.T) {
+	t.Parallel()
 	st := store.NewFake()
 	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Now: func() time.Time { return time.Unix(1000, 0) }}}
 	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", configForSetup())
@@ -335,6 +350,7 @@ func TestRemoteRunRefusedBeforeFleetCommands(t *testing.T) {
 }
 
 func TestPublicVersionUsesFleetInventoryAndPinnedSSH(t *testing.T) {
+	t.Parallel()
 	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.0.0"}}
 	calls := 0
 	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -362,6 +378,7 @@ type fakePublicInstaller struct{ install func() }
 func (f fakePublicInstaller) Install(context.Context, string, string) error { f.install(); return nil }
 
 func TestPublicVersionInstallRequiresRecheck(t *testing.T) {
+	t.Parallel()
 	st := store.NewFake()
 	r := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: verbs.ExecEnvironment{Choices: verbs.Choices{Store: st}}}, Dashboards: map[string]verbs.DashboardTarget{"public=public": {Public: true, Service: &verbs.FleetService{Machine: "public"}}}}
 	version, installs, probes := "v1.0.0", 0, 0
@@ -386,6 +403,7 @@ func TestPublicVersionInstallRequiresRecheck(t *testing.T) {
 }
 
 func TestFleetCommandsUseIsolatedConfigCredential(t *testing.T) {
+	t.Parallel()
 	cfg := configForSetup()
 	calls := 0
 	command := productionFleetCommandWith(cfg, func(_ context.Context, clean bool, name string, args ...string) ([]byte, error) {
@@ -407,6 +425,7 @@ func TestFleetCommandsUseIsolatedConfigCredential(t *testing.T) {
 }
 
 func TestUnwrappedToolsReceiveOnlyTheirOwnInputs(t *testing.T) {
+	t.Parallel()
 	env := []string{"PATH=/bin", "NOVA_PG_ADMIN_PASSWORD=admin", "NOVA_SPRINT_PG_PASSWORD=sprint", "NOVA_PG_PASSWORD=config", "NOVA_BUS_REDIS=127.0.0.1:6379", "NOVA_BUS_USER=bus", "NOVA_BUS_PASSWORD=bus-secret", "NOVA_SECRETS_STORE=/store", "CODEX_THREAD_ID=fixture"}
 	fleet := setupCommandEnv("nova-fleet", env)
 	bus := setupCommandEnv("nova-bus", env)

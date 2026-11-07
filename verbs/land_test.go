@@ -44,7 +44,9 @@ func (f *fakeLanding) MergePR(_ context.Context, _ string, _ int, head string, _
 	f.prs2 = append(f.prs2, head)
 	return "cccccccccccccccccccccccccccccccccccccccc", nil
 }
-func (f *fakeLanding) Behind(context.Context, string, string, string) (int, error) { return f.behind, nil }
+func (f *fakeLanding) Behind(context.Context, string, string, string) (int, error) {
+	return f.behind, nil
+}
 
 const head3 = "3333333333333333333333333333333333333333"
 
@@ -69,6 +71,7 @@ func landWorld(t *testing.T) (*world, *fakeLanding) {
 // land <card>: the PR is opened, fast-forwarded (the head contains the
 // base), the card landed and the open land judgement answered land.
 func TestLandCardByHand(t *testing.T) {
+	t.Parallel()
 	w, f := landWorld(t)
 	want(t, w.do("carol", "land", "p3", "--reason", "looked: the red was the runner"), 0, "fast-forwarded main to "+head3, "p3->landed")
 	if f.opened != 1 || len(f.ff) != 1 {
@@ -83,6 +86,7 @@ func TestLandCardByHand(t *testing.T) {
 // judge <land judgement> land is the same hand landing; behind the base it
 // merges by the repository's method.
 func TestJudgeLandIsTheHandLanding(t *testing.T) {
+	t.Parallel()
 	w, f := landWorld(t)
 	f.behind = 1
 	want(t, w.do("carol", "judge", "land.p3.1", "land", "--reason", "looked"), 0, "merged as cccc", "p3->landed")
@@ -93,6 +97,7 @@ func TestJudgeLandIsTheHandLanding(t *testing.T) {
 
 // judge <land judgement> fix sends the card back with the finding.
 func TestJudgeLandFixSendsBack(t *testing.T) {
+	t.Parallel()
 	w, _ := landWorld(t)
 	want(t, w.do("carol", "judge", "land.p3.1", "fix", "--reason", "bus is over its line budget"), 0, "p3->ready")
 	c := w.snap(t).Cards["p3"]
@@ -104,6 +109,7 @@ func TestJudgeLandFixSendsBack(t *testing.T) {
 // The hand landing refuses a head not on origin and says a refused merge
 // verbatim; nothing moves.
 func TestLandRefusals(t *testing.T) {
+	t.Parallel()
 	w, _ := landWorld(t)
 	delete(w.origin.tips, "o/r sprint/s/p3")
 	want(t, w.do("carol", "land", "p3", "--reason", "x"), 1, "is not the tip of sprint/s/p3 at origin", "git push origin sprint/s/p3")

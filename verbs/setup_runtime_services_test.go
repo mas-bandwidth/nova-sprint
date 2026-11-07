@@ -8,6 +8,7 @@ import (
 )
 
 func TestFleetServiceBareProgramRequiresSecretsWrapper(t *testing.T) {
+	t.Parallel()
 	s := FleetService{Name: "sprint-run", Machine: "studio", Seat: "studio", Keys: []string{"NOVA_SPRINT_PG_PASSWORD"}, Argv: []string{"nova-sprint", "run"}}
 	if !s.valid() {
 		t.Fatal("secret-backed nova-sprint was rejected")
@@ -23,6 +24,7 @@ func TestFleetServiceBareProgramRequiresSecretsWrapper(t *testing.T) {
 }
 
 func TestFleetServicesCreateOnceAndTargetPlay(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := FleetService{Name: "sprint-run", Machine: "bench-a", Seat: "bench-a", Argv: []string{"/opt/nova/bin/nova-sprint", "run"}, Keys: []string{"NOVA_PG_PASSWORD"}}
 	exists := false
@@ -60,6 +62,7 @@ func TestFleetServicesCreateOnceAndTargetPlay(t *testing.T) {
 	}
 }
 func TestFleetServicesRefusesConflictsAndMalformedOutput(t *testing.T) {
+	t.Parallel()
 	s := FleetService{Name: "sprint-run", Machine: "bench-a", Argv: []string{"/bin/nova-sprint", "run"}}
 	for _, out := range []string{`{}`, `{"result":{"verb":"service list","status":"ok","exit":0},"facts":{"kind":"service","rows":1},"items":[{"kind":"service","fields":{"name":"sprint-run","machine":"other"}}]}`} {
 		calls := 0

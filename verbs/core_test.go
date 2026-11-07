@@ -12,6 +12,7 @@ import (
 
 // The exact verb list (LAYER-6 section 3); clear is kept beside restore.
 func TestTheVerbsAreExactlyTheList(t *testing.T) {
+	t.Parallel()
 	want := []string{"next", "check", "up", "hook", "wake", "unhook", "help", "version",
 		"take", "finish", "read", "report", "release", "show", "queue",
 		"stream add", "stream set", "add", "judge", "land", "hold", "unhold", "priority", "drop", "relink", "replace",
@@ -28,6 +29,7 @@ func TestTheVerbsAreExactlyTheList(t *testing.T) {
 
 // The role matrix: who may run each verb.
 func TestRoleMatrix(t *testing.T) {
+	t.Parallel()
 	coordinator := map[string]bool{"cost reconcile": true, "stream add": true, "stream set": true, "add": true, "judge": true, "land": true, "hold": true, "unhold": true,
 		"priority": true, "drop": true, "relink": true, "replace": true, "policy set": true, "policy activate": true,
 		"stop": true, "start": true, "backup": true, "clear": true}
@@ -47,6 +49,7 @@ func TestRoleMatrix(t *testing.T) {
 }
 
 func TestEveryVerbHasHelp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	for _, v := range table {
 		r := w.do("", append([]string{"help"}, strings.Fields(v.name)...)...)
@@ -62,6 +65,7 @@ func TestEveryVerbHasHelp(t *testing.T) {
 }
 
 func TestCoreRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "unknown verb", args: []string{"edit"}, exit: 2, want: []string{"SPRINT REFUSED nova-sprint: unknown verb edit: nova-sprint help"}},
 		{name: "help of no verb", args: []string{"help", "edit"}, exit: 2, want: []string{"no verb edit"}},
@@ -94,10 +98,12 @@ func (failingStore) Snapshot(context.Context) (store.Snapshot, error) {
 }
 
 func TestVersion(t *testing.T) {
+	t.Parallel()
 	want(t, newWorld(t).do("", "version"), 0, "nova-sprint v2.0.0-test")
 }
 
 func TestHook(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("dave", "hook", "--role", "worker"), 0, "HOOKED dave role=worker", "next: nova-sprint next --as dave")
 	if r := w.snap(t).Rows["dave"]; r.Session != "minted-1" || r.Role != "worker" {
@@ -106,6 +112,7 @@ func TestHook(t *testing.T) {
 }
 
 func TestHookRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no role", as: "dave", args: []string{"hook"}, exit: 2, want: []string{"--role is worker or coordinator"}},
 		{name: "a bad role", as: "dave", args: []string{"hook", "--role", "owner"}, exit: 2, want: []string{"--role is worker or coordinator"}},
@@ -135,6 +142,7 @@ func (notSetUpStore) Snapshot(context.Context) (store.Snapshot, error) {
 }
 
 func TestUnhook(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("alice", "unhook"), 0, "UNHOOKED alice", "next: nova-sprint hook --as alice --role worker")
 	want(t, w.do("alice", "unhook"), 0, "nothing to unhook")
@@ -145,6 +153,7 @@ func TestUnhook(t *testing.T) {
 }
 
 func TestUnhookRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no name", args: []string{"unhook"}, exit: 1, want: []string{"no name given"}},
 		{name: "another row as a worker", as: "alice", args: []string{"unhook", "bob"}, exit: 1, want: []string{"unhook is the coordinator's"}},
@@ -153,6 +162,7 @@ func TestUnhookRefusals(t *testing.T) {
 }
 
 func TestNextGuides(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no name", args: []string{"next"}, want: []string{"choose the name", "next: nova-sprint next --as <name>"}},
 		{name: "not on the bus", as: "erin", args: []string{"next"}, want: []string{"erin is not on the bus", "next: hook in to the bus first"}},
@@ -181,6 +191,7 @@ func TestNextGuides(t *testing.T) {
 }
 
 func TestNextJSONIsTheInventory(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	r := w.do("alice", "next", "--json")
 	want(t, r, 0)

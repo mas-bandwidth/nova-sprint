@@ -113,7 +113,7 @@ func sweepPairs(t *testing.T, name string, setup func(*testing.T) *bk) {
 	}
 	for i := range steps {
 		for j := range steps {
-			if i == j {
+			if i == j || testing.Short() && (i*len(steps)+j)%5 != 0 { // -short: every fifth pair
 				continue
 			}
 			a, s := setup(t), setup(t)
@@ -153,6 +153,7 @@ func sweepPairs(t *testing.T, name string, setup func(*testing.T) *bk) {
 }
 
 func TestBreakSweep(t *testing.T) {
+	t.Parallel()
 	worlds := map[string]func(*testing.T) *bk{
 		"fresh": func(t *testing.T) *bk {
 			b := newBk(t, producer("n1"), producer("p1"), producer("p2", "p1"), producer("g", "p1"))
@@ -290,6 +291,7 @@ func sweepReport(t *testing.T, key, format string, args ...any) {
 }
 
 func TestBreakSweepTriples(t *testing.T) {
+	t.Parallel()
 	setups := map[string]func(*testing.T) *bk{
 		"drop": func(t *testing.T) *bk {
 			b := newBk(t, producer("n1"), producer("m1"), producer("p2", "n1"), producer("p3", "n1"), producer("p1"))
@@ -316,10 +318,15 @@ func TestBreakSweepTriples(t *testing.T) {
 	}
 	// 12000 samples per setup, in 8 shards of 1500 run in parallel, each
 	// shard its own seed (7..14): the same coverage in an eighth of the time.
+	// -short (the per-commit unit job) samples a fifth; the nightly all.
+	samples := 1500
+	if testing.Short() {
+		samples = 300
+	}
 	for n, f := range setups {
 		for shard := int64(0); shard < 8; shard++ {
 			n, f, shard := n, f, shard
-			t.Run(fmt.Sprintf("%s/%d", n, shard), func(t *testing.T) { t.Parallel(); sweepTriples(t, n, f, 1500, 7+shard) })
+			t.Run(fmt.Sprintf("%s/%d", n, shard), func(t *testing.T) { t.Parallel(); sweepTriples(t, n, f, samples, 7+shard) })
 		}
 	}
 }

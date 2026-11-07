@@ -10,6 +10,7 @@ import (
 )
 
 func TestStopAndStart(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "stop", "--reason", "deploy"), 0, "STOPPED applied at seq", "next: nova-sprint start")
 	if s := w.snap(t); !s.Stopped || s.StopReason != "deploy" {
@@ -22,11 +23,13 @@ func TestStopAndStart(t *testing.T) {
 }
 
 func TestCheck(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("", "check", "--integrity"), 0, "CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK bus answering (4 present)", "CHECK history rebuilds the tables")
 }
 
 func TestCheckRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "the fleet down", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.fleet = refuse("the fleet is down", "nova-fleet up") }, want: []string{"the fleet is down: nova-fleet up"}},
 		{name: "tools below the pin", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.tools = "v2.0.1" }, want: []string{"nova-tools v2.0.1 is below the pin v2.0.2: nova-fleet install --tag v2.0.2 <machine>"}},
@@ -39,6 +42,7 @@ func TestCheckRefusals(t *testing.T) {
 }
 
 func TestBackup(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
 	want(t, w.do("carol", "backup"), 0, "BACKUP /b/1.dump epoch=1 seq=10 verified")
@@ -68,6 +72,7 @@ func dumped(w *world) {
 }
 
 func TestRestore(t *testing.T) {
+	t.Parallel()
 	w := worldFrom(t, emptySprint())
 	dumped(w)
 	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "RESTORED /b/1.dump epoch=1 seq=10 digest=d1", "HOOKED dave role=coordinator")
@@ -79,6 +84,7 @@ func TestRestore(t *testing.T) {
 }
 
 func TestRestoreRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "not on the bus", as: "erin", args: []string{"restore", "/b/1.dump"}, exit: 1, prep: func(_ *testing.T, w *world) { dumped(w) }, want: []string{"erin is not on the bus"}},
 		{name: "another dump", as: "dave", args: []string{"restore", "/b/1.dump"}, exit: 1, prep: func(_ *testing.T, w *world) {
@@ -101,6 +107,7 @@ func quiet(s *store.Snapshot) {
 }
 
 func TestClear(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	quiet(&s)
 	w := worldFrom(t, s)
@@ -113,6 +120,7 @@ func TestClear(t *testing.T) {
 }
 
 func TestClearRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no confirm", as: "carol", snap: quiet, args: []string{"clear"}, exit: 1, want: []string{"clear confirms the epoch it ends, 1", "nova-sprint clear --confirm 1"}},
 		{name: "a wrong epoch", as: "carol", snap: quiet, args: []string{"clear", "--confirm", "2"}, exit: 1, want: []string{"--confirm 1"}},
@@ -125,6 +133,7 @@ func TestClearRefusals(t *testing.T) {
 }
 
 func TestServices(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("", "run"), 0, "RUN ended")
 	want(t, w.do("alice", "worker", "--work-clone", "/w", "--coordinator-hosts", "c1"), 0, "WORKER alice ended")
@@ -135,6 +144,7 @@ func TestServices(t *testing.T) {
 }
 
 func TestServicesRefusals(t *testing.T) {
+	t.Parallel()
 	none := func(_ *testing.T, w *world) { w.e.Services = nil }
 	runCases(t, []tcase{
 		{name: "a worker with no clone", as: "alice", args: []string{"worker"}, exit: 2, want: []string{"worker takes --as <row> --work-clone <dir>"}},

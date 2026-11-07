@@ -10,6 +10,7 @@ import (
 )
 
 func TestStreamingFoldMatchesStoreRebuild(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	at := time.Unix(1000, 0)
@@ -35,6 +36,7 @@ func TestStreamingFoldMatchesStoreRebuild(t *testing.T) {
 }
 
 func TestEventPrefixDigestStableAfterMoreEvents(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	at := time.Unix(1000, 0)

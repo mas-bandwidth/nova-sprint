@@ -28,7 +28,7 @@ func (g *rewindBeforeBasePush_internal) Push(ctx context.Context, repoDir, sha, 
 	return g.Client.Push(ctx, repoDir, sha, ref, expectOld)
 }
 
-// TestBreakLandResurrectsRewoundBase
+// TestFunctionalBreakLandResurrectsRewoundBase
 //
 // Sequence: base v2 is B0 -> B1 on origin; card c1 is cut from B1. LandPass
 // reads base tip B1, merges c1 onto it (M) and gates M. Before its base
@@ -41,7 +41,8 @@ func (g *rewindBeforeBasePush_internal) Push(ctx context.Context, repoDir, sha, 
 // --force-with-lease=<base>:<gated parent>, and M is a fast-forward of B0, so
 // origin accepts it: base moves from B0 to M, a tip it was not gated on, and
 // the reverted B1 is put back. LandPass reports landed.
-func TestBreakLandResurrectsRewoundBase(t *testing.T) {
+func TestFunctionalBreakLandResurrectsRewoundBase(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	originDir, workDir, b0, runGit := setupBareAndWorkRepo_internal(t)
 	b1 := commitBranch_internal(t, runGit, workDir, "b1", b0, "bad.txt", "reverted later\n", "refs/heads/v2")
@@ -65,7 +66,7 @@ func TestBreakLandResurrectsRewoundBase(t *testing.T) {
 	}
 }
 
-// TestBreakLandDeletedCardBranchStillLands
+// TestFunctionalBreakLandDeletedCardBranchStillLands
 //
 // Sequence: card c1 is pushed to sprint/s1/c1; the lander's clone fetches it
 // (an earlier pass, or any fetch). The card's branch is then deleted on origin
@@ -77,7 +78,8 @@ func TestBreakLandResurrectsRewoundBase(t *testing.T) {
 // network when the object is already in the local clone, so a head that is
 // not on origin is reported present and lands; the lander's push then
 // uploads the withdrawn commit into base.
-func TestBreakLandDeletedCardBranchStillLands(t *testing.T) {
+func TestFunctionalBreakLandDeletedCardBranchStillLands(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	originDir, workDir, b0, runGit := setupBareAndWorkRepo_internal(t)
 	c1 := commitBranch_internal(t, runGit, workDir, "c1", b0, "c1.txt", "card 1\n", "refs/heads/sprint/s1/c1")
