@@ -1,157 +1,37 @@
-## Score: 8/10
+# Tool score: nova-sprint v2 (cold read, row rowan, claude-haiku-5-5)
 
-The engine is the best multi-agent work system I have used: the prerequisite chain, the
-push-not-pull deal, the one refusal shape and the checked finish are all real behaviour, not
-documentation, and `help playbook worker|coordinator` hands a cold AI the operating model from
-inside the binary. It is not 10 because the cold path is unfinished: there is no quickstart or
-documented throwaway store, the `JOB.md` I was told to read is a 15-line envelope rather than
-the card, `check` buries its first action in a redacted wall, `help` names a bad fix, and the
-committed end-to-end transcript is a failed run. I could run a sprint with this today; I would
-not hand it to an AI that had never seen it and expect the first hour to be cheap.
+## Score: 7/10
+
+This is a cold read, not a walk. I built the binary from the pinned checkout (43d849e2), read `help` for the verbs a worker and a coordinator touch (next, check, take, finish, read, show, release, run, hook, up, identity, add, judge, beat, report, queue), and read docs/PLAYBOOK-WORKER.md, docs/SETUP.md and the section headings of docs/CORRECT-USE.md and docs/PLAYBOOK-COORDINATOR.md. I did not stand up a store: docs/SETUP.md needs the nova-tools fleet (Tailscale, Redis, PostgreSQL) and I was not going to touch the live store. The verb tables are the best part of the tool: an AI can act from `help <verb>` alone, and every refusal names its fix. It loses points because the first working step depends on things the verb tables do not say (the secrets wrapper and the bus hook), because the worker playbook is long for a card-sized task, and because the job file the brief tells you to read (JOB.md) is not in the checkout or anywhere I could find on this bench.
 
 ## What is good
 
-- `nova-sprint help` (`verbs/help.go:41`) is a real map, not a usage dump: verbs grouped by
-  start/work/coordinate/operate, each marked with its role, and the exit contract stated first
-  ("Exit 0: done ... Exit 1: refused ... Exit 2: bad usage"). `help <verb>` adds usage, who may
-  run it, what it needs from `up`, and the refusal/fix pairs.
-- The one refusal shape in `docs/CORRECT-USE.md` is the actual output. `take x@1 --as warm`
-  printed `SPRINT REFUSED take: nova-bus who failed (...): nova-sprint check`, exit 2, and
-  `show` with no name printed `SPRINT REFUSED show: no name given: pass --as <you>, or set
-  NOVA_SPRINT_AS=<you>`, exit 1. No stack trace, no silent zero.
-- `docs/CORRECT-USE.md` "The chain" is a table of ten steps, each with the verb, what it
-  refuses until, and what the refusal names. The code enforces the table twice (verb table and
-  card machine), which is why the refusals above are terse and actionable.
-- `docs/PLAYBOOK-WORKER.md` "The first rule: run everything in your hand" and "Push, not pull"
-  are the right model for an AI: cards live outside context, every message carries its command,
-  and `take` prints the brief, branch, done-when and next command. `help playbook worker` served
-  the whole page from `docs/playbooks.go`, so I did not have to find a file path.
-- `docs/CARD-CONTRACT.md` "Admission" is unusually concrete: `verbs/brief.go` requires tier,
-  PATHS, TEST, DONE-WHEN and task prose; `edge.ParseGate` is the one argv parser; retired
-  mechanics (`JOB.md`, `WHO:`, locks, `ssh to <host>`) are named and refused at `add`.
-- The sprint commit identity is enforced where it matters: `hook`, `take`, `finish` and `check`
-  all print or check the one name/email, so an AI cannot accidentally author a head that the
-  repository's contributor agreement will reject at landing.
-- `docs/PLAYBOOK-COORDINATOR.md` "Keep everybody at width" and `steps.Waits` make "the fleet is
-  idle" a set of named facts (longest NEEDS chain, top blocking card, overlaps) that `check`,
-  the board and the idle judgement all read from the same function.
+- The verb table format in `nova-sprint help <verb>`: each verb gives its usage, its role (`who: worker or coordinator`), and a `refuses when (and the fix it names)` list. For example `help finish` lists "the head is the base: do the work" and "not on the dealt branch at origin: git push origin <branch>", so an AI knows the fix before it hits it.
+- `nova-sprint next` as the single chooser ("the one thing this name should do now, and its command; never refuses a missing prerequisite"). It answers "what do I do now" without a playbook read.
+- `nova-sprint check` described as "the one doctor, one line each", with "any CHECK RED line exits non-zero". One command, one exit code.
+- The push model in docs/PLAYBOOK-WORKER.md, section "Who you are now", item 5: "Push, not pull ... never poll, never sleep and check". A worker never has to remember to look.
+- docs/CORRECT-USE.md, "The one rule" and "Finish is checked, not trusted": the tool enforces the process rather than trusting the worker to follow it.
+- `nova-sprint hook` prints `COMMIT AS <name> <email>` with the two git config lines, so the identity problem is handled inside the hook output.
 
 ## What gets it to 10
 
-1. **Ship a quickstart and link it from the first line of `docs/README.md`.** Where:
-   `docs/README.md:16-18` opens with "being rewritten from an empty tree, one layer at a time"
-   and a layer log; `docs/SETUP.md:3-4` says "this page becomes the walkthrough" in the future
-   tense. Add `docs/QUICKSTART.md` (about 40-60 lines) with one copy-paste block per step:
-   `nova-fleet check`, bus hook, `nova-sprint up --as <coordinator>`, identity, `stream add`,
-   `add --dry-run`, worker hook, `next`, `take`, `finish`, read. Done when the cold-setup gate
-   in `docs/SETUP.md` section 4 can be run using only `QUICKSTART.md` plus `nova-sprint help`,
-   reaches `UP DONE` and a `LANDED` line without opening any `LAYER-*.md`, and a docs test fails
-   if the README no longer links it first.
-
-2. **Document and expose a throwaway store and bus.** Where: the only local seam is
-   `run/filestore`, described in `docs/LAYER-6-RUN.md:589` as a test store, and it is reachable
-   only from tests such as `cmd/nova-sprint/filestore_test.go`; no verb, help page or Makefile
-   target exposes it. Add `nova-sprint up --file <dir>` (fake store and fake bus) or a
-   `make demo` target built on it, and document it in `docs/SETUP.md` and `QUICKSTART.md`. Done
-   when one documented command creates a local store, runs bus hook, `stream add`, `add`,
-   `take`, `finish` and a read against it, exits 0, and a `cmd/nova-sprint` test runs the same
-   sequence without touching the live store.
-
-3. **Fix the fix line that `help` prints for bad usage.** Where: `verbs/help.go:38` calls
-   `misuse("help", ...)`, and `verbs/result.go:70` appends `nova-sprint help help`; I got
-   `SPRINT REFUSED help: no verb frobnicate: nova-sprint help help` and the same for
-   `help take extra`, exit 2. Make `misuse` accept the valid next step, and have `help` return
-   `nova-sprint help` with the valid verb names. Done when both invocations print a usable
-   command and exit 2, pinned by a new `verbs/help_test.go` table.
-
-4. **Stop committing a failed end-to-end transcript.** Where: `run/testdata/e2e-transcript.txt`
-   is 23 lines and ends `exit 1` with `column "set_option" does not exist (SQLSTATE 42703)`;
-   `cmd/nova-sprint/e2e_fixtures_functional_test.go:58-70` writes it directly, and
-   `cmd/nova-sprint/e2e_functional_test.go:54` calls `save` from a `defer`, so a failed run
-   overwrites the good one. Save to a temporary path and rename only after the full pass, and
-   refuse to commit a transcript containing `exit 1`, `SQLSTATE` or `REFUSED`. Done when the
-   committed transcript ends with the success note and `LANDED`/`UP DONE`, and a failed test no
-   longer rewrites it.
-
-5. **Make the delivered `JOB.md` the card, not a cover sheet.** Where: the `JOB.md` I was given
-   (`/home/nova/nova-bench/card-jobs/jobs/v2r-score-flash2.w2/JOB.md`) has the id, kind,
-   repository, paths and done-when, but no task prose and none of the five required review
-   sections; `edge/worker/jobmd.go:40-42` already renders `## The card` from `j.Prose`/`j.Brief`
-   when it is present, so the staging path is dropping it or this envelope bypasses that writer.
-   Pass the full brief prose and the section list into the job and assert they were rendered.
-   Done when an AI given only that one `JOB.md` can perform the card cold, including all five
-   review sections, and `TestLiveJobMDAndPromptAgree` in `edge/worker/live_test.go` fails if the
-   prose or any required section is missing.
-
-6. **Gate review cards on their rubric, not on two greps.** Where: `verbs/brief.go` requires
-   tier, PATHS, TEST, DONE-WHEN and prose, and `docs/CARD-CONTRACT.md` has no `RUBRIC:` or
-   `SECTIONS:` key; this card's done-when checks only that the file is non-empty, that the score
-   line matches, and that `## What gets it to 10` exists, although the rubric also requires
-   `## What is good`, `## Where I would be lost cold` and `## Tokens and time` in order. Add a
-   `SECTIONS:`/`RUBRIC:` metadata key that `add` compiles into gates (or require one DONE-WHEN
-   per required header) and refuse a review brief missing a section by name. Done when a review
-   brief without `## Where I would be lost cold` is refused at `add --dry-run`, and this card's
-   own done-when lists all five headers in order.
-
-7. **Make no-name `show` cheap, orienting and documented.** Where: `verbs/look.go:30-31`
-   marshals the entire `store.Snapshot` when `show` has no name, `help show` never says so, and
-   even a single record requires `--as` and a live bus before anything is printed. Make no-name
-   `show` print counts and a short index (with the command for a record or the full dump), make
-   `show all --json` the explicit snapshot, and print one
-   `CARD <id> state=... holder=... needs=...` line before a card's JSON. Done when
-   `show --as <row>` on a 5,000-card store prints under 20 lines and tests pin index, record and
-   full-dump forms.
-
-8. **Make `check`'s first failure actionable without the redacted wall.** Where: on this cold
-   host `nova-sprint check` printed `CHECK RED nova-fleet check is not green: ... missing=<redacted>
-   ... PATH=<redacted> ...` before the useful `CHECK MISSING ansible-playbook`; the redaction
-   hid ordinary paths while the install command was already in nova-fleet's output. Have
-   `check` print one line per missing prerequisite with its exact install or set command, and
-   redact only secrets, not program paths or environment names. Done when a cold host's check
-   prints "install Ansible" and "set TAILSCALE_API_KEY" each on its own line with a fix, and a
-   golden test pins the shape.
-
-9. **Make cold `next` follow its documented order and refuse when it cannot look.** Where:
-   `docs/CORRECT-USE.md` "What `next` looks at, in order" starts with the fleet, then the store;
-   in this empty environment `nova-sprint` and `nova-sprint next --as warm` both printed
-   `NEXT this process has no sprint credential` and exited 0, although neither fleet nor bus
-   was reachable. Either check the fleet before the credential or return exit 2 with the
-   credential/fleet command, as `CORRECT-USE.md` says an exit 2 means "could not run". Done when
-   an empty environment prints the documented intro and `NEXT the fleet is not up` (or the
-   credential refusal) with exit 2, pinned by a test.
+1. Put the secrets wrapper in every verb's help. Today `help finish`, `help take` and the rest omit that every verb needs `nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...`, which is stated only in docs/PLAYBOOK-WORKER.md step 2 of "Hook in". Change: the verb-help template in `cmd/nova-sprint` (the table printer, `playbooks.go` is the adjacent file). Done when `nova-sprint help finish` prints the exec line and a run without the credential refuses with the same line.
+2. Make the bus address discoverable. The worker playbook says the coordinator gives the `NOVA_BUS_REDIS` address; `nova-sprint hook` only says "not on the bus: nova-bus hook ...". Change: `hook` refusal prints the address it expects from nova-config, or says "no bus address in nova-config: ask the coordinator" as its own line. Done when a fresh row with no address gets one line naming where the address comes from.
+3. Name JOB.md in the code path that needs it. The card brief says "read JOB.md first" and the playbook says the harness reads the card from JOB.md, but neither says where it lives or who writes it for a friend row. Change: `take` prints the JOB.md path (or the brief text) alongside the brief, and docs/PLAYBOOK-WORKER.md "Who you are now" says where the file sits. Done when a friend row with only `take` output can find the card text without asking.
+4. Shorten the worker playbook to a card. docs/PLAYBOOK-WORKER.md is 23010 bytes and the coordinator's is 30281; a worker needs the hook steps, the first rule, the finish and read commands, and a link to the rest. Change: split the worker playbook into a first-screen page of about 6 KB and move the rest to docs/CORRECT-USE.md. Done when `wc -c` on the first-screen page is under 8000 bytes and a cold worker finds the hook steps in it.
+5. Add `--dry-run` to `finish` and `report`. Change: the verbs in `cmd/nova-sprint` and their help. A worker can then check that its head is on the dealt branch and that the author identity is right before the finish is accepted or refused. Done when `nova-sprint finish <card>@<gen> --head <sha> --as <row> --dry-run` prints each refusal check and writes nothing.
+6. Say what to do after a commit-identity refusal. `help finish` says "rewrite those commits" for a commit by another author, with no command. Change: the refusal names the rewrite command (for example `git rebase --exec 'git commit --amend --reset-author --no-edit'`), or the playbook has one line for it. Done when the refusal line contains a runnable command.
+7. Show the judge choices on the verb's help, not only on refusal. `help judge` shows the form but not the choices; an AI has to trigger a refusal to see them. Change: `judge` with no arguments lists the choices per open judgement, which the verb already does, and `help judge` gives the group form. Done when `help judge` names one example choice.
+8. Run the cold-AI setup gate from docs/SETUP.md section 4 on a fresh fleet and record it. The gate is already written; it has not been run by a cold AI from the docs. Change: the run's transcript goes under docs/. Done when the record shows a cold run from docs/README.md and the tool's help alone, reaching `nova-sprint check` green.
 
 ## Where I would be lost cold
 
-1. **`JOB.md`, line 1, in the job directory.** I was told to read it first, and it looks like
-   the card, but it is only an envelope: no task prose, no rubric, and its done-when can be
-   satisfied by two sections out of five. A cold AI will do exactly the two greps and report
-   success; the real instructions exist only in the bus prompt it may not have.
-2. **`docs/README.md` first screen and `docs/SETUP.md` section 4.** README opens with a
-   layer-by-layer rewrite log, and SETUP says the page "becomes the walkthrough" rather than
-   being one. I stalled deciding whether the real path was README, SETUP, `LAYER-6-RUN.md`'s
-   step table, `help playbook coordinator`, or `help up`; there is no single first command.
-3. **The first acting verb with no fleet (`take`, `show --as`, `finish`, `judge`).** Every one
-   hits the same `nova-bus who failed ... missing NOVA_BUS_REDIS ...: nova-sprint check` wall,
-   while `next` says only "this process has no sprint credential" and exits 0. With no
-   documented throwaway store I cannot tell whether the store is not set up, the bus is down,
-   or my process is missing a credential, and every probe repeats the same 250-character line.
+1. The hook step in docs/PLAYBOOK-WORKER.md, "Hook in: the bus first, then the sprint". The first command is `NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you>` run under a Monitor tool, and the address comes from the coordinator. Nothing in `help hook` names it, and the refusal text does not say where the Monitor tool lives in my harness.
+2. Every verb after that needs the secrets wrapper. `nova-sprint hook --as <you> --role worker` does not say it needs the wrapper until the refusal "this process has no sprint credential". The first attempt on any verb fails here.
+3. The job file. The brief says to read JOB.md first, and I could not find one in the job directory, the checkout or the scratchpad, so I cannot tell whether a friend row is expected to write one or receive one. The brief for this card assumes it exists.
 
 ## Tokens and time
 
-- Extracting the roughly 20 commands actually needed from `docs/` was the largest cost: 19
-  files, 8,860 lines, with the two playbooks alone at 729 lines. `docs/README.md` is a release
-  and layer history, not a user guide; nothing says which few of the nineteen files a worker or
-  coordinator needs. A single `QUICKSTART.md` would remove most of this.
-- There is no safe store to try the acting verbs on. I exercised `help` for every verb,
-  `version`, `check`, `next`, `show`, `queue`, `take` and `finish` only on their refusal paths;
-  `take`, `finish`, `read` and `show <card>` were never exercised against real state. I did not
-  run `up`, `run`, `worker` or `dash`, because the docs forbid them outside a real fleet and
-  SETUP documents no sandbox.
-- `go` is not on `PATH` in this job; I found it at `/home/nova/sdk/go1.26.6/bin/go`, and the
-  first build downloaded the module graph. A cold AI without that hint would spend working
-  memory locating a toolchain before it could even run `help`.
-- `nova-sprint check` printed a long, heavily redacted `nova-fleet` blob before the one action
-  that mattered (install Ansible, set the Tailscale key), and every refused verb repeated the
-  same bus line. I avoided no-name `show` after reading `verbs/look.go`, since on a real sprint
-  it would put the whole snapshot into context; items 1, 2, 7 and 8 are the token savings I
-  would most want as the AI holding the next card.
+- The most expensive part was the two playbooks (23 KB worker, 30 KB coordinator) and CORRECT-USE (18 KB). A worker reads about 76 KB of docs before the first useful command, and the worker playbook alone is most of it.
+- Building the binary and reading each verb's help cost little (a few seconds per verb). The verb tables were fast to scan.
+- The fleet setup in docs/SETUP.md (nova-tools first, then the dashboard, then the API-rate seats) is long and needs a fleet this card cannot provide, so the live walk was out of reach. The score is a read, not a run.
