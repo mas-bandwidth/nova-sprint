@@ -32,6 +32,11 @@ type Store interface {
 	// false when there is none. It reads neither image nor the receipt, so
 	// a caller verifying a cursor pays for two columns, not the state.
 	EventIdentity(ctx context.Context, seq int64) (op string, epoch int, found bool, err error)
+	// Restored returns when the store was last restored from a dump
+	// (RestoreEnd, in the restore's own transaction), and false when it
+	// never was: a retried restore can tell the data is already in. It only
+	// reads.
+	Restored(ctx context.Context) (at time.Time, ok bool, err error)
 	// Clear opens a new epoch (n = n + 1) with the protocol of Apply: an op of
 	// kind clear, no writes, at most an AtSeq condition. It is logged with the
 	// epoch it closed; the receipt's NewEpoch is the one it opened.

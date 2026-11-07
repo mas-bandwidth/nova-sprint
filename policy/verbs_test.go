@@ -26,7 +26,7 @@ func verbSuite(t *testing.T, mk func(testing.TB) store.Store) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			w := &world{t: t, st: mk(t)}
+			w := &world{t: t, st: mk(t), ro: seedRoster()}
 			w.seed()
 			fn(t, w)
 		})
@@ -64,9 +64,9 @@ func testSetRefusals(t *testing.T, w *world) {
 	w.up()
 	kin := w.caller()
 	kin.Actor, kin.Coordinator = "kin1", false
-	_, err := Set(w.ctx(), w.st, e, kin, good, "r")
+	_, err := Set(w.ctx(), w.st, w.ro, e, kin, good, "r")
 	assert.Equal(t, "SPRINT REFUSED policy set: policy is the coordinator's: ask over the bus: nova-bus send --as kin1 --to <coordinator>", refusal(t, err))
-	_, err = Set(w.ctx(), w.st, e, w.caller(), good, " ")
+	_, err = Set(w.ctx(), w.st, w.ro, e, w.caller(), good, " ")
 	assert.Equal(t, "SPRINT REFUSED policy set: no reason given: nova-sprint policy set ... --reason <why>", refusal(t, err))
 	missing := filepath.Join(t.TempDir(), "none.star")
 	assert.Equal(t, "SPRINT REFUSED policy set: cannot read "+missing+": open "+missing+": no such file or directory: name a readable file", refusal(t, setErr(w, e, missing)))
@@ -92,14 +92,14 @@ func testSetRefusals(t *testing.T, w *world) {
 }
 
 func setErr(w *world, e *Engine, path string) error {
-	_, err := Set(w.ctx(), w.st, e, w.caller(), path, "test")
+	_, err := Set(w.ctx(), w.st, w.ro, e, w.caller(), path, "test")
 	return err
 }
 
 func testSet(t *testing.T, w *world) {
 	w.up()
 	before := w.snap()
-	r, err := Set(w.ctx(), w.st, NewEngine(), w.caller(), w.file("two-reads.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)), "two reads")
+	r, err := Set(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), w.file("two-reads.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)), "two reads")
 	require.NoError(t, err)
 	assert.Equal(t, Result{Version: 2, Next: "nova-sprint policy check v2"}, r)
 	after := w.snap()
@@ -116,20 +116,20 @@ func testActivateRefusals(t *testing.T, w *world) {
 	w.up()
 	kin := w.caller()
 	kin.Coordinator = false
-	_, err := Activate(w.ctx(), w.st, e, kin, 1, "r")
+	_, err := Activate(w.ctx(), w.st, w.ro, e, kin, 1, "r")
 	assert.Equal(t, "SPRINT REFUSED policy activate: policy is the coordinator's: ask over the bus: nova-bus send --as rowan --to <coordinator>", refusal(t, err))
-	_, err = Activate(w.ctx(), w.st, e, w.caller(), 9, "r")
+	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), 9, "r")
 	assert.Equal(t, "SPRINT REFUSED policy activate: policy version 9 does not exist: nova-sprint policy show --list", refusal(t, err))
-	_, err = Activate(w.ctx(), w.st, e, w.caller(), 1, "r")
+	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), 1, "r")
 	assert.Equal(t, "SPRINT REFUSED policy activate: policy version 1 is already active: nova-sprint policy show", refusal(t, err))
 	w.apply(store.PutPolicy{Kind: "data", Name: "table", Body: "{}"})
-	_, err = Activate(w.ctx(), w.st, e, w.caller(), 2, "r")
+	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), 2, "r")
 	assert.Equal(t, "SPRINT REFUSED policy activate: v2 is of kind data, which policy does not run: name a script version: nova-sprint policy show --list", refusal(t, err))
 	breaks, line := override("landing", "def landing(stream):\n    return {\"backed_up\": 4 // (0 if stream.name == \"s3\" else 1), \"flowing\": 1}")
 	v := w.set("breaks.star", breaks)
 	w.apply(store.PutStream{Name: "s3", Repo: "git@example.com:r.git", Base: "main", Pos: 3})
-	_, err = Activate(w.ctx(), w.st, e, w.caller(), v, "r")
-	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy activate: POLICY REFUSED v3 line %d landing(s3): floored division by zero: nova-sprint policy check 3", line+1), refusal(t, err))
+	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), v, "r")
+	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy activate: POLICY REFUSED v3 line %d landing(s3): floored division by zero; POLICY REFUSED v3 line %d landing(s3 backed_up): floored division by zero: nova-sprint policy check 3", line+1, line+1), refusal(t, err), "check asks landing on both rungs (round 5)")
 	assert.Equal(t, 1, w.snap().Policy)
 }
 
@@ -137,19 +137,19 @@ func testActivate(t *testing.T, w *world) {
 	w.up()
 	v := w.set("two-reads.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1))
 	before := w.snap()
-	r, err := Activate(w.ctx(), w.st, NewEngine(), w.caller(), v, "two reads")
+	r, err := Activate(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), v, "two reads")
 	require.NoError(t, err)
 	assert.Equal(t, Result{Version: 2, Changes: 2, Next: "nova-sprint next"}, r, "reads(p3) and reads(p5) change")
 	after := w.snap()
 	assert.Equal(t, 2, after.Policy)
 	assert.Equal(t, before.Cards, after.Cards, "a policy change never moves a card")
-	vs, err := LoadVersions(w.ctx(), w.st)
+	vs, err := LoadVersions(w.ctx(), w.st, w.snap())
 	require.NoError(t, err)
 	require.NotNil(t, vs.Prev)
 	assert.Equal(t, []int{2, 1}, []int{vs.Active.Version, vs.Prev.Version})
-	_, err = Activate(w.ctx(), w.st, NewEngine(), w.caller(), 1, "roll back")
+	_, err = Activate(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), 1, "roll back")
 	require.NoError(t, err, "a rollback is an activation of an old number")
-	vs, err = LoadVersions(w.ctx(), w.st)
+	vs, err = LoadVersions(w.ctx(), w.st, w.snap())
 	require.NoError(t, err)
 	assert.Equal(t, []int{1, 2}, []int{vs.Active.Version, vs.Prev.Version})
 }
@@ -189,25 +189,25 @@ func testShow(t *testing.T, w *world) {
 func testCheck(t *testing.T, w *world) {
 	e := NewEngine()
 	w.up()
-	rep, err := Check(w.ctx(), w.st, e, w.file("two.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)))
+	rep, err := Check(w.ctx(), w.st, w.ro, e, w.file("two.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"reads(p3): 1 -> 2", "reads(p5): 1 -> 2"}, rep.Changes)
 	assert.Equal(t, 0, rep.Code())
 	assert.Equal(t, "policy check two.star: 2 answer(s) change, 0 refused\n  reads(p3): 1 -> 2\n  reads(p5): 1 -> 2\n", rep.Text())
 	bad, line := override("stitch", "def stitch(stream):\n    return 1")
-	rep, err = Check(w.ctx(), w.st, e, w.file("bad.star", bad))
+	rep, err = Check(w.ctx(), w.st, w.ro, e, w.file("bad.star", bad))
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		fmt.Sprintf("POLICY REFUSED bad.star line %d stitch(s1): the answer is an int, not True or False", line),
 		fmt.Sprintf("POLICY REFUSED bad.star line %d stitch(s2): the answer is an int, not True or False", line),
 	}, rep.Refusals, "check prints every refusal")
 	assert.Equal(t, 1, rep.Code())
-	rep, err = Check(w.ctx(), w.st, e, "default")
+	rep, err = Check(w.ctx(), w.st, w.ro, e, "default")
 	require.NoError(t, err)
 	assert.Empty(t, rep.Changes, "v1 is the default")
-	_, err = Check(w.ctx(), w.st, e, "v5")
+	_, err = Check(w.ctx(), w.st, w.ro, e, "v5")
 	assert.Equal(t, "SPRINT REFUSED policy check: policy version 5 does not exist: nova-sprint policy show --list", refusal(t, err))
 	gone := filepath.Join(t.TempDir(), "gone.star")
-	_, err = Check(w.ctx(), w.st, e, gone)
+	_, err = Check(w.ctx(), w.st, w.ro, e, gone)
 	assert.Equal(t, "SPRINT REFUSED policy check: cannot read "+gone+": open "+gone+": no such file or directory: name a readable file", refusal(t, err))
 }

@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -115,7 +118,53 @@ func RestoreEnd(ctx context.Context, tx pgx.Tx) (SchemaIdentity, error) {
 	if err := validateHistory(ctx, tx); err != nil {
 		return SchemaIdentity{Expected: schemaHash, Hash: hash}, fmt.Errorf("store: restore: the dump does not hold together: %w", err)
 	}
+	if err := unhookRestored(ctx, tx); err != nil {
+		return SchemaIdentity{Expected: schemaHash, Hash: hash}, fmt.Errorf("store: restore: %w", err)
+	}
 	return identify(ctx, tx)
+}
+
+// unhookRestored records the restore in sprint.meta (restored_at, the
+// transaction's time: the store's Go code reads no clock) and unhooks every
+// row of the current epoch that the dump has hooked, so no hook from the dump
+// is live: one op of PutRow{Name} writes (unhookOp), run through the
+// protocol inside tx, so it is logged like any write and the log still
+// rebuilds the state. A dump with no hooked row logs nothing.
+func unhookRestored(ctx context.Context, tx pgx.Tx) error {
+	var at time.Time
+	if err := tx.QueryRow(ctx, "UPDATE sprint.meta SET restored_at = transaction_timestamp() WHERE id = 1 RETURNING restored_at").Scan(&at); err != nil {
+		return err
+	}
+	snap, err := snapshotTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	op, ok := unhookOp(snap, at)
+	if !ok {
+		return nil
+	}
+	r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+	switch {
+	case err != nil:
+		return fmt.Errorf("unhooking the dump's hooks: %w", err)
+	case !r.Accepted:
+		return fmt.Errorf("unhooking the dump's hooks was refused: %s", r.Reason)
+	}
+	return nil
+}
+
+// unhookOp is the op that unhooks every hooked row of s (PutRow with no
+// session and no role, in name order), and false when no row is hooked. Its
+// id names the seq it follows, so it is unique in the log.
+func unhookOp(s Snapshot, when time.Time) (Op, bool) {
+	var writes []Write
+	for _, name := range slices.Sorted(maps.Keys(s.Rows)) {
+		if s.Rows[name].Session != "" || s.Rows[name].Role != "" {
+			writes = append(writes, PutRow{Name: name})
+		}
+	}
+	op := Op{ID: fmt.Sprintf("restore-unhook-%d", s.Seq), Epoch: s.Epoch, Actor: "store-restore", Kind: "unhook", At: at(when), Writes: writes}
+	return op, len(writes) > 0
 }
 
 // checkRebuild is the store's log-equals-state check: Rebuild over events,

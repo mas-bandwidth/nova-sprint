@@ -84,17 +84,17 @@ func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for t
 	if raceSlowdown > 1 {
 		t.Skip("timing under -race measures the race detector")
 	}
-	snap := loadSnap(5000, 100)
+	snap, ro := loadSnap(5000, 100)
 	q := FullQuestions(snap, nil)
 	e := NewEngine()
 	vs := Versions{Active: pv(1, defaultBody)}
 	start := time.Now()
-	a, fs := e.Answer(vs, snap, q)
+	a, fs := e.Answer(vs, snap, ro, q)
 	cold := time.Since(start)
 	require.Empty(t, fs)
 	require.Len(t, a.Rows, 5000)
 	start = time.Now()
-	_, fs = e.Answer(vs, snap, q)
+	_, fs = e.Answer(vs, snap, ro, q)
 	warm := time.Since(start)
 	require.Empty(t, fs)
 	t.Logf("policy at 5000 producers, 100 rows: cold %s, warm %s (TickTime %s)", cold, warm, TickTime)

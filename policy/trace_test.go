@@ -67,13 +67,14 @@ type policyTrace struct {
 }
 
 // newPolicyTrace is the walk's world, up, recorded as Init: stream s1; rows
-// x0..x<traceMax>, pro, width 1, up; producer p1 (s1, pro, ready), the card.
+// x0..x<traceMax>, up, in the roster as pro workers of width 1; producer p1 (s1, pro, ready), the card.
 func newPolicyTrace(t testing.TB) *policyTrace {
-	w := &world{t: t, st: store.NewFake()}
+	w := &world{t: t, st: store.NewFake(), ro: handRoster()}
 	writes := []store.Write{store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1},
 		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Score: 1, Brief: "do p1", Prose: "do p1"}}
 	for i := range traceMax + 1 {
-		writes = append(writes, store.PutRow{Name: fmt.Sprintf("x%d", i), Kind: "worker", Width: 1, Tiers: []string{"pro"}, Model: "m"})
+		writes = append(writes, store.PutRow{Name: fmt.Sprintf("x%d", i)})
+		w.configure(rc{fmt.Sprintf("x%d", i), "worker", 1, []string{"pro"}, ""})
 	}
 	w.apply(writes...)
 	writes = []store.Write{store.SetCardState{Card: "p1", State: "ready"}}
@@ -113,7 +114,7 @@ func (tr *policyTrace) set() {
 	if k > traceMax {
 		return
 	}
-	_, err := Set(tr.w.ctx(), tr.w.st, tr.e, tr.w.caller(), tr.w.file(fmt.Sprintf("v%d.star", k), breaking(k)), "walk")
+	_, err := Set(tr.w.ctx(), tr.w.st, tr.w.ro, tr.e, tr.w.caller(), tr.w.file(fmt.Sprintf("v%d.star", k), breaking(k)), "walk")
 	if err != nil {
 		tr.refused(err)
 		return
@@ -122,18 +123,21 @@ func (tr *policyTrace) set() {
 }
 
 func (tr *policyTrace) activate(v int) {
-	if _, err := Activate(tr.w.ctx(), tr.w.st, tr.e, tr.w.caller(), v, "walk"); err != nil {
+	if _, err := Activate(tr.w.ctx(), tr.w.st, tr.w.ro, tr.e, tr.w.caller(), v, "walk"); err != nil {
 		tr.refused(err)
 		return
 	}
 	tr.record("Activate", "v", strconv.Itoa(v))
 }
 
-// drift toggles row x<i>'s width between 1 and 2; a drift that changes no
-// version's outcome changes no variable of the model, a stutter, not recorded.
+// drift toggles row x<i>'s width in the roster between 1 and 2 (nova-config
+// changing under the sprint, an outside event of the model); a drift that
+// changes no version's outcome changes no variable of the model, a stutter,
+// not recorded.
 func (tr *policyTrace) drift(i int) {
-	row := fmt.Sprintf("x%d", i)
-	tr.w.apply(store.SetRowWidth{Row: row, Width: 3 - tr.w.snap().Rows[row].Width})
+	x := tr.w.ro.Workers[fmt.Sprintf("x%d", i)]
+	x.Width = 3 - x.Width
+	tr.w.ro.Workers[x.Name] = x
 	tr.record("Drift")
 }
 
@@ -141,15 +145,15 @@ func (tr *policyTrace) drift(i int) {
 // open and, when advance, the card's next state; a deal needs an answer.
 // The breaker drops the previous active from the versions (one line).
 func (tr *policyTrace) doTick(advance, broken bool) {
-	vs, err := LoadVersions(tr.w.ctx(), tr.w.st)
+	snap := tr.w.snap()
+	vs, err := LoadVersions(tr.w.ctx(), tr.w.st, snap)
 	require.NoError(tr.w.t, err)
 	if broken {
 		vs.Prev = nil
 	}
-	snap := tr.w.snap()
-	a, fs := tr.e.Answer(vs, snap, FullQuestions(snap, nil))
+	a, fs := tr.e.Answer(vs, snap, tr.w.ro, FullQuestions(snap, nil))
 	var writes []store.Write
-	for _, j := range Judgements(snap, fs) {
+	for _, j := range Judgements(snap, tr.w.ro, fs) {
 		writes = append(writes, j)
 	}
 	next := map[string]string{"ready": "working", "working": "done", "done": "ready"}[snap.Cards["p1"].State]
@@ -166,7 +170,7 @@ func (tr *policyTrace) doTick(advance, broken bool) {
 // record appends the step and the state after it; a Drift that leaves the
 // projected state as it was is a stutter and is not recorded.
 func (tr *policyTrace) record(action string, kv ...string) {
-	m, err := TraceState(tr.w.ctx(), tr.w.st, tr.e, tr.tick, "p1", traceMax)
+	m, err := TraceState(tr.w.ctx(), tr.w.st, tr.w.ro, tr.e, tr.tick, "p1", traceMax)
 	require.NoError(tr.w.t, err)
 	if action == "Drift" && reflect.DeepEqual(m, tr.prev) {
 		return

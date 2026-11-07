@@ -30,9 +30,9 @@ func TestColdreadDefectFileNamedDefaultPoisonsBuiltinCache(t *testing.T) {
 	snap := w.snap()
 	e := NewEngine()
 	body, _ := override("reads", "def reads(card):\n    return 5")
-	_, fs := e.runFile("default", body, snap)
+	_, fs := e.runFile("default", body, snap, w.ro)
 	require.Empty(t, fs)
-	a, fs := e.Answer(Versions{}, snap, FullQuestions(snap, nil))
+	a, fs := e.Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	require.Empty(t, fs)
 	require.Equal(t, 0, a.Version)
 	assert.Equal(t, 1, a.Reads["p5"], "the built-in's reads is 1; a checked file's answer must not answer for it")
@@ -47,10 +47,11 @@ func TestColdreadDefectFileNamedDefaultPoisonsBuiltinCache(t *testing.T) {
 func TestColdreadDefectDefaultRefusedByJointCheck(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
-	w.apply(store.PutRow{Name: "r5", Kind: "kin", Width: 0, Tiers: []string{"heavy", "frontier"}, Model: "m-frontier"})
+	w.configure(rc{"r5", "kin", 0, []string{"heavy", "frontier"}, "m-frontier"})
+	w.apply(store.PutRow{Name: "r5"})
 	w.apply(store.SetRowState{Row: "r5", State: "up"})
 	snap := w.snap()
-	a, fs := NewEngine().Answer(Versions{}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	assert.Empty(t, fs, "the built-in must answer")
 	assert.Equal(t, 0, a.Version)
 }
@@ -66,7 +67,7 @@ func TestColdreadDefectVerdictOnFaultedReadUnanswerable(t *testing.T) {
 	w.apply(store.PutCard{ID: "p5-r4", Kind: "read", Of: "p5", Stream: "s1", Tier: "pro", Holder: "r4"})
 	w.apply(store.SetCardState{Card: "p5-r4", State: "done"}, store.SetCardResult{Card: "p5-r4", Result: "fault"})
 	snap := w.snap()
-	a, fs := NewEngine().Answer(Versions{}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	assert.Empty(t, fs, "the built-in must answer")
 	assert.Equal(t, 0, a.Version)
 }
@@ -86,9 +87,9 @@ func TestColdreadDefectJudgementTextNotStorable(t *testing.T) {
 			t.Parallel()
 			w := fakeWorld(t)
 			snap := w.snap()
-			_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+			_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 			require.NotEmpty(t, fs)
-			js := Judgements(snap, fs)
+			js := Judgements(snap, w.ro, fs)
 			require.NotEmpty(t, js)
 			id, at := w.next()
 			_, err := w.st.Apply(w.ctx(), store.Op{ID: id, Epoch: snap.Epoch, Actor: "test", Kind: "tick", At: at, Writes: []store.Write{js[0]}})
@@ -115,7 +116,7 @@ func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
 			t.Parallel()
 			w := fakeWorld(t)
 			snap := w.snap()
-			a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+			a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 			assert.NotEmpty(t, fs, "the version must fail")
 			assert.NotEqual(t, 2, a.Version, "a version doing unbounded work in one step must not answer")
 		})
@@ -130,14 +131,15 @@ func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
 // guarantee 4.
 func TestColdreadDefectTickStepsUnbounded(t *testing.T) {
 	t.Parallel()
+	ro := handRoster(rc{"r", "worker", 2, store.Tiers, ""})
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},
-		Rows: map[string]store.Row{"r": {Name: "r", Kind: "worker", Width: 2, State: "up", Tiers: store.Tiers}}}
+		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}}}
 	for i := range 2000 {
 		id := fmt.Sprintf("p%04d", i)
 		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: "s", State: "ready", Tier: "pro", Score: i, Priority: "normal"}
 	}
 	body, _ := override("order", "def order(card):\n    for _i in range(30000):\n        pass\n    return (card.score,)")
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, ro, FullQuestions(snap, nil))
 	require.Len(t, fs, 1, "a tick over TickTime in total must fail the version: %v", fs)
 	assert.Contains(t, fs[0].Msg, "time budget")
 	assert.NotEqual(t, 2, a.Version)
@@ -169,7 +171,7 @@ func TestColdreadConcurrentAnswer(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range 30 {
-				a, fs := e.Answer(Versions{Active: pv(1+g%2, defaultBody)}, snap, q)
+				a, fs := e.Answer(Versions{Active: pv(1+g%2, defaultBody)}, snap, w.ro, q)
 				assert.Empty(t, fs)
 				assert.Equal(t, 1+g%2, a.Version)
 			}

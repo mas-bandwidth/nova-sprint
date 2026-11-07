@@ -1320,14 +1320,15 @@ func judgements(h *harness) {
 // a clear keeps it, since seq is global (a subscriber resumes where it was).
 func cursors(h *harness) {
 	h.seed() // seq 1
-	r := h.ok(h.op("push", nil, SetCursor{"push-w1", 1}, SetCursor{"feed", 0}))
-	assert.Equal(h.t, map[string]int64{"push-w1": 1, "feed": 0}, r.After.Cursors)
+	r := h.ok(h.op("push", nil, SetCursor{"push-w1", 1}, SetCursor{"feed", 1}))
+	assert.Equal(h.t, map[string]int64{"push-w1": 1, "feed": 1}, r.After.Cursors)
 	assert.Nil(h.t, r.After.Cards, "a cursor is not a card")
 	h.refused(h.op("same", nil, SetCursor{"push-w1", 1}), "cursor push-w1 is already at 1")
 	h.ok(h.op("on", nil, SetCursor{"push-w1", 3})) // the last event before it is seq 3
 	h.refused(h.op("back", nil, SetCursor{"push-w1", 2}), "cursor push-w1 is at 3, cannot move back to 2")
 	h.refused(h.op("ahead", nil, SetCursor{"feed", 99}), "cursor feed cannot pass the log at 5") // seq 5 is the refusal before it
 	h.refused(h.op("absent", nil, SetCursor{"new", 7}), "cursor new cannot pass the log at 6")   // an absent cursor reads as 0
+	h.refused(h.op("zero", nil, SetCursor{"new", 0}), "cursor new is already at 0")              // so 0 on it changes nothing (store-cursor-zero)
 	h.invalid(map[string]Op{
 		"negative":       h.op("x", nil, SetCursor{"feed", -1}),
 		"twice in an op": h.op("x", nil, SetCursor{"feed", 1}, SetCursor{"feed", 2}),
@@ -1336,7 +1337,7 @@ func cursors(h *harness) {
 	h.invalidAll([]refusal{{SetCursor{"", 1}, "a cursor needs a name"}})
 	ev := h.events()
 	assert.Equal(h.t, &State{Cursors: map[string]int64{"push-w1": 1}}, ev[3].Before, "the before-image holds the old seq")
-	want := map[string]int64{"push-w1": 3, "feed": 0}
+	want := map[string]int64{"push-w1": 3, "feed": 1}
 	s := h.snap()
 	assert.Equal(h.t, want, s.Cursors)
 	assert.Equal(h.t, Rebuild(h.events()), s, "the images carry cursors")

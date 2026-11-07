@@ -34,12 +34,13 @@ import (
 //     and return verdict("p5") == "yes", landing "head-new" with zero "ok" reads!
 func TestBreakVerdictCountsDoneReadsFromDifferentHead(t *testing.T) {
 	t.Parallel()
+	ro := handRoster(rc{"r1", "worker", 2, []string{"pro"}, ""}, rc{"r4", "kin", 2, []string{"pro"}, ""})
 	snap := store.Snapshot{
 		Epoch:   1,
 		Streams: map[string]store.Stream{"s1": {Name: "s1"}},
 		Rows: map[string]store.Row{
-			"r1": {Name: "r1", Kind: "worker", Width: 2, State: "up", Tiers: []string{"pro"}},
-			"r4": {Name: "r4", Kind: "kin", Width: 2, State: "up", Tiers: []string{"pro"}},
+			"r1": {Name: "r1", State: "up"},
+			"r4": {Name: "r4", State: "up"},
 		},
 		Cards: map[string]store.Card{
 			"p5": {
@@ -59,7 +60,7 @@ func TestBreakVerdictCountsDoneReadsFromDifferentHead(t *testing.T) {
 			},
 		},
 	}
-	a, fs := NewEngine().Answer(Versions{}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{}, snap, ro, FullQuestions(snap, nil))
 	require.Empty(t, fs)
 	assert.NotEqual(t, "yes", a.Verdict["p5"],
 		"head-new has zero ok reads (only a fault read); a stale ok read from head-old must not let verdict answer 'yes'")
@@ -91,12 +92,13 @@ func TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck(t *testing.T) {
 		// with width(r2) = {work: 0, ahead: 0} per Lesson 5.5.
 		// Because r2.working < r2.width, default.star's rows() returns ONLY ["r2"] and drops "r1",
 		// which then fails the joint check: "every row named has work 0 in width, while row r1 could take it".
+		ro := handRoster(rc{"r1", "worker", 1, []string{"pro"}, ""}, rc{"r2", "worker", 1, []string{"pro"}, ""})
 		snap := store.Snapshot{
 			Epoch:   1,
 			Streams: map[string]store.Stream{"s1": {Name: "s1"}},
 			Rows: map[string]store.Row{
-				"r1": {Name: "r1", Kind: "worker", Width: 1, State: "up", Tiers: []string{"pro"}},
-				"r2": {Name: "r2", Kind: "worker", Width: 1, State: "up", Tiers: []string{"pro"}},
+				"r1": {Name: "r1", State: "up"},
+				"r2": {Name: "r2", State: "up"},
 			},
 			Cards: map[string]store.Card{
 				"p0":    {ID: "p0", Kind: "producer", Stream: "s1", State: "working", Tier: "pro", Priority: "normal"},
@@ -105,7 +107,7 @@ func TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck(t *testing.T) {
 			},
 		}
 		body, _ := override("width", "def width(row):\n    if row.name == \"r2\":\n        return {\"work\": 0, \"ahead\": 0}\n    return {\"work\": row.width, \"ahead\": row.width}")
-		a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+		a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, ro, FullQuestions(snap, nil))
 		assert.Empty(t, fs, "default.star's rows() must list every candidate (those with room first, then busy ones) so joint check passes when r1 has work > 0")
 		assert.Equal(t, 2, a.Version)
 	})
@@ -116,13 +118,14 @@ func TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck(t *testing.T) {
 		// r4 (Width: 1, r4.working == 0) are both up candidates for p5's read.
 		// Design line 92 requires every candidate listed ("those with room first"): ["r4", "r3"].
 		// default.star returns only ["r4"], dropping "r3" completely.
+		ro := handRoster(rc{"r1", "worker", 2, []string{"pro"}, ""}, rc{"r3", "kin", 1, []string{"pro"}, ""}, rc{"r4", "kin", 1, []string{"pro"}, ""})
 		snap := store.Snapshot{
 			Epoch:   1,
 			Streams: map[string]store.Stream{"s1": {Name: "s1"}},
 			Rows: map[string]store.Row{
-				"r1": {Name: "r1", Kind: "worker", Width: 2, State: "up", Tiers: []string{"pro"}},
-				"r3": {Name: "r3", Kind: "kin", Width: 1, State: "up", Tiers: []string{"pro"}},
-				"r4": {Name: "r4", Kind: "kin", Width: 1, State: "up", Tiers: []string{"pro"}},
+				"r1": {Name: "r1", State: "up"},
+				"r3": {Name: "r3", State: "up"},
+				"r4": {Name: "r4", State: "up"},
 			},
 			Cards: map[string]store.Card{
 				"p0":    {ID: "p0", Kind: "producer", Stream: "s1", State: "review", Tier: "pro", Priority: "normal", Author: "r1"},
@@ -130,7 +133,7 @@ func TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck(t *testing.T) {
 				"p5":    {ID: "p5", Kind: "producer", Stream: "s1", State: "review", Tier: "pro", Priority: "normal", Author: "r1"},
 			},
 		}
-		a, fs := NewEngine().Answer(Versions{}, snap, FullQuestions(snap, nil))
+		a, fs := NewEngine().Answer(Versions{}, snap, ro, FullQuestions(snap, nil))
 		require.Empty(t, fs)
 		assert.Equal(t, []string{"r4", "r3"}, a.Rows[RowsQuestion{"p5", KindRead}],
 			"every candidate must be listed with those with room first: [r4, r3]")
@@ -157,14 +160,15 @@ func TestBreakCheckReportsRefusedJointAnswerAsValidChangeAndCascadesFromRefusedW
 	t.Parallel()
 	w := fakeWorld(t)
 	w.up()
+	w.configure(rc{"r5", "kin", 0, []string{"pro", "heavy", "frontier"}, "m-frontier"})
 	w.apply(
-		store.PutRow{Name: "r5", Kind: "kin", Width: 0, Tiers: []string{"pro", "heavy", "frontier"}, Model: "m-frontier"},
+		store.PutRow{Name: "r5"},
 		store.SetRowState{Row: "r5", State: "up"},
 	)
 
 	// Sequence 1: rows() returns only r5 (width 0), which fails the joint check.
 	onlyZeroWidth, _ := override("rows", "def rows(card, kind, candidates):\n    return [r.name for r in candidates if r.name == \"r5\"] or [r.name for r in candidates]")
-	rep, err := Check(w.ctx(), w.st, NewEngine(), w.file("zero-row.star", onlyZeroWidth))
+	rep, err := Check(w.ctx(), w.st, w.ro, NewEngine(), w.file("zero-row.star", onlyZeroWidth))
 	require.NoError(t, err)
 	require.NotEmpty(t, rep.Refusals, "joint check must refuse rows naming only r5")
 	for _, ch := range rep.Changes {
@@ -174,7 +178,7 @@ func TestBreakCheckReportsRefusedJointAnswerAsValidChangeAndCascadesFromRefusedW
 
 	// Sequence 2: width() is out of domain (-1), while rows() is the untouched default.
 	badWidth, _ := override("width", "def width(row):\n    return {\"work\": -1, \"ahead\": 0}")
-	rep2, err := Check(w.ctx(), w.st, NewEngine(), w.file("bad-width.star", badWidth))
+	rep2, err := Check(w.ctx(), w.st, w.ro, NewEngine(), w.file("bad-width.star", badWidth))
 	require.NoError(t, err)
 	for _, ref := range rep2.Refusals {
 		assert.False(t, strings.Contains(ref, "rows("),
@@ -215,7 +219,7 @@ func TestBreakDataPolicyRowBlocksUpAndCompilesInCheckShowDiff(t *testing.T) {
 		w.up()
 		w.apply(store.PutPolicy{Kind: "data", Name: "stream:s1", Body: `{"repo":"git@example.com:r.git","base":"main","pr":false,"mode":"flowing"}`})
 		e := NewEngine()
-		_, err := Check(w.ctx(), w.st, e, "v2")
+		_, err := Check(w.ctx(), w.st, w.ro, e, "v2")
 		var r *Refusal
 		require.ErrorAs(t, err, &r, "Check on a kind='data' version must refuse with *Refusal (like Activate and ReadCatalog), not compile data as Starlark")
 		assert.Contains(t, r.Error(), "kind data")
@@ -263,13 +267,13 @@ func TestBreakLoadVersionsWalksPastSnapshotSeqCollapsingPrevIntoActive(t *testin
 	// v2 sets reads=2 (clean on current world).
 	v2Body := strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)
 	v2 := w.set("v2.star", v2Body)
-	_, err := Activate(w.ctx(), w.st, NewEngine(), w.caller(), v2, "activate v2")
+	_, err := Activate(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), v2, "activate v2")
 	require.NoError(t, err)
 
 	// v3 is active now; previous active is v2.
 	v3Body, _ := override("landing", "def landing(stream):\n    return {\"backed_up\": 4 // (0 if stream.name == \"s3\" else 1), \"flowing\": 1}")
 	v3 := w.set("v3.star", v3Body)
-	_, err = Activate(w.ctx(), w.st, NewEngine(), w.caller(), v3, "activate v3")
+	_, err = Activate(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), v3, "activate v3")
 	require.NoError(t, err)
 
 	// Prepare v4 in the store so it can be activated right after LoadVersions's Snapshot().
@@ -288,7 +292,9 @@ func TestBreakLoadVersionsWalksPastSnapshotSeqCollapsingPrevIntoActive(t *testin
 		},
 	}
 
-	vs, err := LoadVersions(w.ctx(), st)
+	snap, err := st.Snapshot(w.ctx()) // round 5: LoadVersions reads at the snapshot it is given
+	require.NoError(t, err)
+	vs, err := LoadVersions(w.ctx(), st, snap)
 	require.NoError(t, err)
 	require.NotNil(t, vs.Active)
 	require.NotNil(t, vs.Prev)
@@ -306,21 +312,21 @@ func TestHeldAttacks(t *testing.T) {
 	// 1. Starlark input structs (Card, Row, Stream, Read) are frozen/immutable:
 	// attempting to set or mutate an attribute fails at runtime and falls back.
 	mutateInput, _ := override("reads", "def reads(card):\n    card.tier = \"frontier\"\n    return 1")
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, mutateInput)}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, mutateInput)}, snap, w.ro, FullQuestions(snap, nil))
 	require.Len(t, fs, 1)
 	assert.Equal(t, 0, a.Version)
 
 	// 2. NaN / Inf floats in order() or prices() are rejected by domain validation.
 	nanOrder, _ := override("order", "def order(card):\n    return (float(\"nan\"),)")
-	a, fs = NewEngine().Answer(Versions{Active: pv(2, nanOrder)}, snap, FullQuestions(snap, nil))
+	a, fs = NewEngine().Answer(Versions{Active: pv(2, nanOrder)}, snap, w.ro, FullQuestions(snap, nil))
 	require.Len(t, fs, 1)
 	assert.Equal(t, 0, a.Version)
 
 	// 3. Multi-byte UTF-8 rune boundary truncation at 4096 bytes in Judgements/storable
 	// never splits a multi-byte rune into invalid UTF-8.
 	utf8Fail, _ := override("limits", "def limits():\n    fail(\"é\" * 3000)")
-	_, fs = NewEngine().Answer(Versions{Active: pv(2, utf8Fail)}, snap, FullQuestions(snap, nil))
-	js := Judgements(snap, fs)
+	_, fs = NewEngine().Answer(Versions{Active: pv(2, utf8Fail)}, snap, w.ro, FullQuestions(snap, nil))
+	js := Judgements(snap, w.ro, fs)
 	require.Len(t, js, 1)
 	assert.LessOrEqual(t, len(js[0].Question), 4096)
 	id, at := w.next()

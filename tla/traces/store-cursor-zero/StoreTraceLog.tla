@@ -17,6 +17,6 @@ TOps == [
 TraceLog == <<
   [i |-> 1, action |-> "Init", epoch |-> 1, cards |-> <<>>, rows |-> <<>>, judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>, stopped |-> FALSE],
   [i |-> 2, action |-> "Apply", op |-> "o1", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> <<>>, rows |-> <<>>, judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>, stopped |-> FALSE],
-  [i |-> 3, action |-> "Apply", op |-> "o2", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> <<>>, rows |-> <<>>, judgements |-> <<>>, cursors |-> ("c1" :> 0), policies |-> <<>>, stopped |-> FALSE]
+  [i |-> 3, action |-> "Apply", op |-> "o2", known |-> TRUE, accepted |-> FALSE, reason |-> "cursor c1 is already at 0", epoch |-> 1, cards |-> <<>>, rows |-> <<>>, judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>, stopped |-> FALSE]
 >>
 ====
