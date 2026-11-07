@@ -60,8 +60,8 @@ nova-fleet check
 ```
 
 Choose the machine that will run the sprint. Run setup on that machine, which
-must be in the inventory with the `services` role. Remote placement through
-`--run-on` is not supported by the current setup implementation. Machines with
+must be in the inventory with the `services` role. `up` runs only on the
+machine you run it on; `--run-on` must name that machine. Machines with
 the `bench` role receive worker services, including the run machine if it also
 has that role. A bench needs its core count recorded, a supported harness,
 model routes and the appropriate credentials. An unused machine should not
@@ -69,7 +69,8 @@ be marked as a bench for this setup.
 
 Install a nova-sprint release on the control machine and participating machines
 using the fleet installer. Here `<release-repository>` is the repository that
-publishes your nova-sprint release and its checksums; `<release-tag>` is the
+publishes your nova-sprint release and its checksums, usually
+`mas-bandwidth/nova-sprint` for the official release; `<release-tag>` is the
 version you intend to run:
 
 ```sh
@@ -139,8 +140,9 @@ this command under that Monitor, not as a background shell job or into a file:
 nova-secrets exec --only NOVA_BUS_PASSWORD --store "$NOVA_SECRETS_STORE" --key "$NOVA_SECRETS_KEY" --as "$NOVA_SECRETS_SEAT" -- nova-bus hook --as "$NOVA_SPRINT_AS"
 ```
 
-The Monitor turns incoming lines into session wakes. For a Codex session, use
-its service hook instead:
+The long form above works in a Monitor shell that has the exported settings
+but has not loaded the `seat_exec` function. The Monitor turns incoming lines
+into session wakes. For a Codex session, use its service hook instead:
 
 ```sh
 seat_exec NOVA_BUS_PASSWORD nova-bus hook --as "$NOVA_SPRINT_AS" --codex-thread '<thread-id>' --service
@@ -305,14 +307,27 @@ Its pushed branch remains available to the next attempt.
 
 ### Read someone else's head
 
-Take the read exactly as dealt. Fetch the specified full head in an isolated
-clone, inspect it against the brief and base, and check the relevant evidence.
+Take the read exactly as dealt. Its receipt names the reviewed head instead
+of a work branch and base:
+
+```text
+TAKEN <card> repo=<repository> head=<sha> deadline=<n>s forge=<forge>
+```
+
+Fetch that full head in an isolated clone, inspect it against the brief and
+base, and check the relevant evidence.
 Review that head, not whichever commit the branch happens to point to now. Do
 not edit it. Report one of:
 
 ```sh
 sprint_env nova-sprint read '<read-card>@<gen>' yes --epoch '<epoch>'
 sprint_env nova-sprint read '<read-card>@<gen>' fix --finding '<path>:<line>: <defect-and-repair>' --epoch '<epoch>'
+```
+
+The acknowledgement has this form (`yes` is recorded as `ok`):
+
+```text
+READ <card> head=<sha> result=<ok-or-fix> applied at seq <n>
 ```
 
 A fix needs a concrete finding. An author cannot read their own head. The
@@ -442,9 +457,16 @@ sprint_env nova-sprint add --stream '<stream>' --brief-file '<card>.md'
 ```
 
 Admission checks the brief, repository base, paths, dependency graph and
-available tiers/routes. It does not run the brief's tests. A dry run reports
-`ADD DRY RUN cards=<n>`; a successful add ends with
-`ADDED <n> cards applied at seq <n>`. Review any dependency-chain warnings.
+available tiers/routes. It does not run the brief's tests. A dry run prints
+one line per card in this form:
+
+```text
+ADD <id> kind=<kind> stream=<stream> tier=<tier> priority=<priority> needs=<needs>
+```
+
+A dependency-chain line follows, then `(dry run)` and the next command.
+An actual add instead reports `ADDED <n> cards applied at seq <n>`. Review any
+dependency-chain warnings before proceeding.
 
 ### Start, observe and answer decisions
 
@@ -502,8 +524,11 @@ sprint_env nova-sprint replace '<old-card>' --by '<new-card>' --reason '<why>'
 ```
 
 Replacement redirects dependants to the new producer. Dropping work can fail
-its dependants unless you explicitly waive or relink them; inspect the verb's
-help and dry run before doing so.
+its dependants unless you explicitly waive or relink them. `drop --waive`
+waives the dropped need for a dependant, `drop --relink` redirects its need as part of the drop,
+and `relink` repairs a dependant's already failed need. Inspect
+`nova-sprint help drop` and `nova-sprint help relink` before doing so, and
+preview a drop with its dry run.
 
 Inspect the active policy and its versions before editing a local policy file:
 
@@ -536,6 +561,30 @@ must stop immediately. A backup receipt says
 contains sprint data. See `nova-sprint help restore` before restoring into an
 empty target, and `nova-sprint help clear` before ending an epoch. Neither is
 a repair for an ordinary refused command.
+
+## Other verbs
+
+| Verb | When to use it | Syntax and refusals |
+| --- | --- | --- |
+| `priority` | Change a producer's priority, with a reason. | `nova-sprint help priority` |
+| `drop` | Fail work that should not be done, with explicit treatment of its dependants. | `nova-sprint help drop` |
+| `relink` | Redirect a dependant's failed need to another producer. | `nova-sprint help relink` |
+| `stream set` | Change a stream's landing mode or forge. | `nova-sprint help stream set` |
+| `cost reconcile` | Compare provider balance changes with recorded API costs and raise a cost-gap judgement when required. | `nova-sprint help cost reconcile` |
+| `wake` | Consume a bus message on stdin and acknowledge each dealt card before printing its receipt or refusal. | `nova-sprint help wake` |
+
+For a Monitor-based bus hook that acknowledges deals before waking the session,
+replace the earlier Monitor command with this form. Load the settings and
+helpers in that shell first. Both runtime credentials must reach the `wake`
+child, so use `sprint_env`:
+
+```sh
+sprint_env nova-bus hook --as "$NOVA_SPRINT_AS" --exec "nova-sprint wake --as $NOVA_SPRINT_AS"
+```
+
+This is the `hook --exec` form; keep the service-hook form described earlier
+for a Codex session. The output of `wake` includes the full `take` receipt or
+its refusal. Read it and start the work; acknowledging a deal does not do it.
 
 ## When a command refuses
 

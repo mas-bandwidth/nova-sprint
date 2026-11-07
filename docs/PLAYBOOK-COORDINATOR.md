@@ -195,7 +195,9 @@ named it:
 
 The quality of the cards decides whether a sprint is smooth or rough. `add` lints every brief on
 every path, with no bypass, and refuses naming the section; lint before you add with
-`nova-sprint add --stream <s> --brief-file <f> --dry-run`, which prints the `ADD` line of each card it would add and `(dry run)`.
+`nova-sprint add --stream <s> --brief-file <f> --dry-run`, which prints one
+`ADD <id> kind=<kind> stream=<stream> tier=<tier> priority=<priority> needs=<needs>` line
+per card, then a dependency-chain line, then `(dry run)` and the next command.
 The card id is the file's name without `.md`. A brief is:
 
 1. Line 1: `tier: <flash|pro|heavy|frontier>`. Write cards pro-sized; heavy is for design, model
