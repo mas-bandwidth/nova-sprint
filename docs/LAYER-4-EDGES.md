@@ -976,3 +976,11 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   most). The default policy deals no ahead (`ahead: 0`).
 - **Fixed on the way.** A final card whose job is still in flight is left
   for that job to clean (two cleaners raced on the directory).
+- **Checked (measured, a bench host, TLC v1.8.0, 2026-11-07).** `Runner.tla` with `Runner.cfg`:
+  no error, 20,224 states generated, 5,269 distinct. The first run found `Liveness` violated: a
+  released card, ready again, was never retaken because `Take` is enabled only while a pass
+  plans and was only weakly fair; every pass takes the ready cards it has room for, so `Take`
+  is now strongly fair. `RunnerPassWaitsOnJobs` and `RunnerStopIsAFault` report their
+  invariant violated, as do the six older Runner witnesses; the four Runner reach checks are
+  violated as required. The three runner walk traces (with Stop and Release in them) check
+  against the model (`check-trace.sh Runner`: 29, 30 and 40 steps, TRACE OK).
