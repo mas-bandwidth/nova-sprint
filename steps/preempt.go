@@ -66,7 +66,7 @@ func (t *tick) preemptOn(b store.Card, row, victim string) {
 // tier, by name.
 func (t *tick) serving(c store.Card) []string {
 	var out []string
-	for _, n := range sortedKeys(t.v.Rows) {
+	for _, n := range t.rowNames {
 		r := t.v.Rows[n]
 		if _, resting := t.rested[n]; !resting && t.v.Open(r) && t.unclaimed(n) && slices.Contains(t.tiers(n), c.Tier) {
 			out = append(out, n)

@@ -17,10 +17,14 @@ type tick struct {
 	tmo Timeouts
 
 	rowsCache map[string]card.Row
-	claimed   set            // cards and rows an earlier step claimed
-	resolved  set            // producers resolved this tick: started, for the overlap tally
-	tally     map[string]int // consumers dealt per row this tick
-	rested    set            // rows resting after faults (LPM R34): a deal filter
+	rowNames  []string             // every row, by name, once
+	rfacts    map[string]RowFacts  // rowFacts, once per row per tick
+	roster    map[string]RosterRow // the roster's facts, once per row per tick
+	planned   int                  // cards touched by the non-blocker groups planned so far
+	claimed   set                  // cards and rows an earlier step claimed
+	resolved  set                  // producers resolved this tick: started, for the overlap tally
+	tally     map[string]int       // consumers dealt per row this tick
+	rested    set                  // rows resting after faults (LPM R34): a deal filter
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
 	judges    []judgement
@@ -34,7 +38,7 @@ type tick struct {
 // land requests, judgements. Then the groups are ordered, budgeted, packed
 // into ops and the rest of the inbox is carried.
 func Tick(v *View, in Inputs, ask Asker) Plan {
-	t := &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{}}
+	t := newTick(v, in)
 	t.o = newOracle(ask.Ask(t.questions()), Engine)
 	t.lim, t.tmo = t.o.limits(), t.o.timeouts()
 	t.rest()
@@ -51,6 +55,17 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 	t.judgements()
 	return t.pack()
 }
+
+func newTick(v *View, in Inputs) *tick {
+	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{},
+		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{}}
+}
+
+// overBudget says whether the non-blocker groups planned so far touch the
+// budget's count of cards: the packer would admit no more, so no more are
+// planned (the cost bound, guarantee 11). The steps still tally, judge and
+// claim past it, as the model's folds do, so the admitted plan is the same.
+func (t *tick) overBudget() bool { return t.planned >= t.lim.Budget }
 
 // free says whether producer p and every consumer of it is unclaimed (the
 // model's Free).
@@ -81,12 +96,19 @@ func (t *tick) add(g group) {
 
 // group plans a group of moves and keeps it; a machine refusal is a defect
 // of the step's pre-checks, kept as an engine judgement naming the plan and
-// the reason, never an op (RefusedOnlyByRace).
+// the reason, never an op (RefusedOnlyByRace). Past the budget a non-blocker
+// group is not planned (nil): the packer would not admit it.
 func (t *tick) group(kind, about string, moves ...move) *group {
+	if kind != "pre" && t.overBudget() && !(kind == "start" && rung(t.v.Cards[about]) == "blocker") {
+		return nil
+	}
 	g, r := t.newGroup(kind, about, moves...)
 	if r != nil {
 		t.engine(about, kind+" of "+about+" refused by the card machine on the view: "+r.Reason)
 		return nil
+	}
+	if kind != "pre" && !(kind == "start" && rung(t.v.Cards[about]) == "blocker") {
+		t.planned += g.size()
 	}
 	t.add(g)
 	return &t.groups[len(t.groups)-1]
@@ -121,7 +143,7 @@ func (t *tick) questions() Questions {
 			q.Verdict = append(q.Verdict, VerdictQuestion{Card: t.facts(c), Reads: reads})
 		}
 	}
-	for _, n := range sortedKeys(t.v.Rows) {
+	for _, n := range t.rowNames {
 		q.Width = append(q.Width, t.rowFacts(t.v.Rows[n]))
 	}
 	for _, s := range sortedKeys(t.v.Streams) {
@@ -144,6 +166,9 @@ func (t *tick) facts(c store.Card) CardFacts {
 }
 
 func (t *tick) rowFacts(r store.Row) RowFacts {
+	if f, ok := t.rfacts[r.Name]; ok {
+		return f
+	}
 	f := RowFacts{Name: r.Name, Kind: t.kind(r.Name), Rank: t.rank(r.Name), Width: t.width(r.Name), Flaps: r.Flaps, Tiers: t.tiers(r.Name)}
 	for id := range t.v.liveOnRow[r.Name] {
 		if t.v.Cards[id].State == "working" {
@@ -152,6 +177,7 @@ func (t *tick) rowFacts(r store.Row) RowFacts {
 			f.Ready++
 		}
 	}
+	t.rfacts[r.Name] = f
 	return f
 }
 
@@ -175,7 +201,7 @@ func (t *tick) streamFacts(s string) StreamFacts {
 // a live read of c's head. Room is the engine's check at the deal.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	var out []RowFacts
-	for _, n := range sortedKeys(t.v.Rows) {
+	for _, n := range t.rowNames {
 		r := t.v.Rows[n]
 		if _, resting := t.rested[n]; resting || !t.v.Open(r) || !slices.Contains(t.tiers(n), c.Tier) || !t.unclaimed(n) {
 			continue

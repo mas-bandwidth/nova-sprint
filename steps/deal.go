@@ -112,10 +112,9 @@ func (t *tick) dealWork(c store.Card) {
 	if row == "" {
 		return
 	}
-	g := t.group("start", c.ID, t.producerMove(c.ID, card.Start{Row: row, Branch: branch(c), Base: base}))
-	if g != nil {
+	t.tally[row]++ // the in-tick tally counts the deal whether or not the budget admits it
+	if g := t.group("start", c.ID, t.producerMove(c.ID, card.Start{Row: row, Branch: branch(c), Base: base})); g != nil {
 		g.blocker = rung(c) == "blocker"
-		t.tally[row]++
 	}
 }
 
@@ -138,11 +137,10 @@ func (t *tick) dealRead(c store.Card) {
 	if len(rows) == 0 {
 		return
 	}
-	if t.group("read", c.ID, t.producerMove(c.ID, card.AskReads{Rows: rows})) != nil {
-		for _, r := range rows {
-			t.tally[r]++
-		}
+	for _, r := range rows {
+		t.tally[r]++
 	}
+	t.group("read", c.ID, t.producerMove(c.ID, card.AskReads{Rows: rows}))
 }
 
 // withRoom keeps the rows with room: live consumers plus this tick's deals

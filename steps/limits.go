@@ -26,7 +26,7 @@ func (t *tick) limits() {
 			}
 		}
 	}
-	for _, n := range sortedKeys(t.v.Rows) {
+	for _, n := range t.rowNames {
 		t.rowLimits(n)
 	}
 }
