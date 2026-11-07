@@ -431,7 +431,7 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 	wantRepID := FormatResultID(3, "p1.w1", 1, 4)
 	rec, err := cli.Report(ctx, ReportRequest{
 		Epoch: 3, Row: "vision.ds", Consumer: "p1.w1", Gen: 4,
-		Result: "ok", Head: strings.Repeat("a", 40), Cost: 950, Priced: true,
+		Result: "ok", Head: strings.Repeat("a", 40), Cost: 950, Priced: true, Usage: "input=10 output=2 model=deepseek/deepseek-flash",
 	})
 	if err != nil || !rec.Accepted || rec.Op != wantRepID {
 		t.Fatalf("Report: rec=%+v err=%v", rec, err)
@@ -443,5 +443,8 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 	repArgs := strings.Join(calls[1], " ")
 	if !strings.Contains(repArgs, "--result ok --id "+wantRepID+" --epoch 3 --cost-microusd 950 --priced true --as vision.ds --json") {
 		t.Fatalf("unexpected report argv: %s", repArgs)
+	}
+	if i := slices.Index(calls[1], "--usage"); i < 0 || calls[1][i+1] != "input=10 output=2 model=deepseek/deepseek-flash" {
+		t.Fatalf("the run's tokens ride as one --usage argument: %q", calls[1])
 	}
 }

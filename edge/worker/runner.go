@@ -931,7 +931,7 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	req := ReportRequest{
 		Epoch: rec.Epoch, Row: rec.Row, Consumer: rec.Consumer, Gen: rec.Gen,
 		ResultID: rec.ResultID, Result: rec.Outcome.Result, Head: rec.Outcome.Head,
-		Reason: rec.Outcome.Reason, Finding: rec.Outcome.Finding, Cost: rec.Cost.MicroUSD, Priced: rec.Cost.Priced,
+		Reason: rec.Outcome.Reason, Finding: rec.Outcome.Finding, Cost: rec.Cost.MicroUSD, Priced: rec.Cost.Priced, Usage: rec.Cost.Usage,
 	}
 	var receipt store.Receipt
 	var err error
