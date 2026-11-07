@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"runtime"
@@ -100,8 +101,11 @@ func parseTopCPUInterval(s string) (float64, error) {
 		}
 	}
 	v, err := strconv.ParseFloat(idle, 64)
-	if n < 2 || err != nil {
-		return 0, errors.New("top gave no second CPU usage line with an idle percent")
+	if err != nil {
+		return 0, edge.Cause("top gave no idle percent on its last CPU usage line", err)
+	}
+	if n < 2 {
+		return 0, errors.New("top gave no second CPU usage line")
 	}
 	return clampPercent(100 - v), nil
 }
@@ -211,8 +215,11 @@ func NewOSCPUSampler(ex edge.Exec) *CPUSampler {
 	case "darwin":
 		return &CPUSampler{Second: func(ctx context.Context) (float64, error) {
 			res, err := cmp.Or[edge.Exec](ex, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: []string{"/usr/bin/top", "-l", "2", "-n", "0", "-s", "1"}, Timeout: 5 * time.Second})
-			if err != nil || res.ExitCode != 0 {
-				return 0, errors.New("top: no CPU usage")
+			if err != nil {
+				return 0, edge.Cause("top: no CPU usage", err)
+			}
+			if res.ExitCode != 0 {
+				return 0, fmt.Errorf("top: no CPU usage: exit %d", res.ExitCode)
 			}
 			return parseTopCPUInterval(res.Stdout)
 		}}
