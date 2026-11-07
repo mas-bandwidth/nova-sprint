@@ -16,7 +16,7 @@ Inherited NOVA_*TRACE* knobs are removed; each case supplies its own seed/output
 python3 /checkout/tla/check-layer6-traces.py --mode emit --repo /checkout --out /var/tmp/l6-traces
 ```
 
-On the authorized TLC bench (vision or hetzner2), transfer the complete output
+On the authorized local TLC bench (vision or hetzner2), transfer the complete output
 without modifying its contents, then use the exact retained helper:
 
 ```
@@ -42,8 +42,17 @@ input/spec/emission hashes are verified again. `check-results.json` preserves ev
 attempted verdict, including the first failure. The shared checker still uses its
 pinned jar; no alternate download pin is introduced here.
 
-The six focused Linux tests cover false success without a raw log, warning/error
+The seven focused Linux tests cover false success without a raw log, warning/error
 rejection, missing cases, inherited trace-knob removal, and descendant termination
-on timeout. They use benign fake commands and do not execute TLC. Full integration
+on timeout, plus approved CI host/runner routing. They use benign fake commands and do not execute TLC. Full integration
 requires running emission and all 83 checks at the exact integrated commit; unit
 checks alone do not satisfy that gate.
+
+
+Rowan's7278111 ruling additionally authorizes the existing amd GitHub CI benches.
+Read-only hostname/service checks establish b1 runs amd-1-nova-sprint-1 and b3
+runs amd-3-nova-sprint-1. The helper admits only those exact host/RUNNER_NAME pairs
+with GITHUB_ACTIONS=true. These environment values are routing markers, not a
+security boundary or independent authorization. Local amd TLC remains disallowed;
+vision/hetzner2 local routing is unchanged and Studio remains prohibited. The
+caller still acquires the approved reservation and installs the pinned runtime.
