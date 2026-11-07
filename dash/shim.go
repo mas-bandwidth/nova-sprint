@@ -8,6 +8,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/usage"
 )
 
 type workRow struct {
@@ -37,6 +38,7 @@ type fleetRow struct {
 	OK       int
 	Failed   int
 	OKPct    float64
+	Tokens   int64 // every token its runs reported (package usage), kin and benches alike
 }
 type streamLine struct{ Stream, State string }
 
@@ -242,6 +244,7 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 		f = friends[c.Holder]
 	}
 	if f != nil {
+		f.Tokens += usage.MustParse(c.Usage).Tokens.Total()
 		switch c.State {
 		case "ready":
 			f.Ready++
