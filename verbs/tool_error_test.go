@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,5 +41,14 @@ func TestFailedBusProbeNamesTheToolError(t *testing.T) {
 	r := w.e.Execute(t.Context(), []string{"check"})
 	if r.Exit != 2 || strings.Count(r.Output, "\n") != 1 || !strings.Contains(r.Output, "nova-bus who failed (bus secret names unavailable (nova-secrets: the seat key does not open the store))") {
 		t.Fatalf("%+v", r)
+	}
+}
+
+func TestParseFailureNamesTheByteAndWhatItSaw(t *testing.T) {
+	out := []byte("SECRETS EXEC STARTING as=x keys=1 cmd=env\n{\"result\":{}}")
+	var v map[string]any
+	got := ParseFailure(json.Unmarshal(out, &v), out)
+	if !strings.Contains(got, "byte 1") || !strings.Contains(got, "SECRETS EXEC STARTING") {
+		t.Fatalf("%s", got)
 	}
 }
