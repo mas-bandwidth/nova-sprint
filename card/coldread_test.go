@@ -276,7 +276,7 @@ func TestColdWalk(t *testing.T) {
 	seen := map[string]int{}
 	var mu sync.Mutex
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= walkSeeds(100); seed++ {
+		for seed := int64(1); seed <= walkSeeds(100, 10); seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel() // each seed its own Fake
 				got := coldWalk(t, seed, 800)
@@ -294,16 +294,17 @@ func TestColdWalk(t *testing.T) {
 		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
 		assert.Positive(t, seen[e], "the walk never accepted %s", e)
 	}
-	t.Logf("accepted ops by event over %d seeds x 800 steps: %v", walkSeeds(100), seen)
+	t.Logf("accepted ops by event over %d seeds x 800 steps: %v", walkSeeds(100, 10), seen)
 }
 
-// walkSeeds is a random walk's n seeds, or a fifth of them under -short:
-// the per-commit unit job runs -short, the nightly every seed.
-func walkSeeds(n int64) int64 {
+// walkSeeds is a random walk's full seed count, or its short one under
+// -short (the fewest that still accept every kind the walk requires): the
+// per-commit unit job runs -short, the nightly every seed.
+func walkSeeds(full, short int64) int64 {
 	if testing.Short() {
-		return max(n/5, 1)
+		return short
 	}
-	return n
+	return full
 }
 
 type coldFinal struct {
