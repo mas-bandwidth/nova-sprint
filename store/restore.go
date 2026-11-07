@@ -90,7 +90,7 @@ func refuseRows(ctx context.Context, tx pgx.Tx) error {
 // caller rolls back. It enables cards_fixed and runs it over every card (an
 // UPDATE that changes nothing, so the trigger's own text is the check), then
 // requires sprint.meta at this binary's version and hash, the epoch row, and
-// Rebuild over every loaded event equal to the loaded snapshot (checkRebuild).
+// the whole history to hold together (ValidateHistory, round 21).
 func RestoreEnd(ctx context.Context, tx pgx.Tx) (SchemaIdentity, error) {
 	for _, q := range []string{"ALTER TABLE sprint.cards ENABLE TRIGGER cards_fixed", "UPDATE sprint.cards SET id = id"} {
 		if _, err := tx.Exec(ctx, q); err != nil {
@@ -112,33 +112,10 @@ func RestoreEnd(ctx context.Context, tx pgx.Tx) (SchemaIdentity, error) {
 	} else if err != nil {
 		return SchemaIdentity{Expected: schemaHash, Hash: hash}, fmt.Errorf("store: restore: %w", err)
 	}
-	if err := rebuildsTo(ctx, tx); err != nil {
-		return SchemaIdentity{Expected: schemaHash, Hash: hash}, err
+	if err := validateHistory(ctx, tx); err != nil {
+		return SchemaIdentity{Expected: schemaHash, Hash: hash}, fmt.Errorf("store: restore: the dump does not hold together: %w", err)
 	}
 	return identify(ctx, tx)
-}
-
-// rebuildsTo reads the snapshot and every event in tx and checks them.
-func rebuildsTo(ctx context.Context, tx pgx.Tx) error {
-	snap, err := snapshotTx(ctx, tx)
-	if err != nil {
-		return fmt.Errorf("store: restore: %w", err)
-	}
-	var events []Event
-	for after := int64(0); ; {
-		page, err := readEvents(ctx, tx, after, MaxEvents)
-		if err != nil {
-			return fmt.Errorf("store: restore: %w", err)
-		}
-		if len(page) == 0 {
-			break
-		}
-		events, after = append(events, page...), page[len(page)-1].Seq
-	}
-	if err := checkRebuild(snap, events); err != nil {
-		return fmt.Errorf("store: restore: the dump does not hold together: %w", err)
-	}
-	return nil
 }
 
 // checkRebuild is the store's log-equals-state check: Rebuild over events,
