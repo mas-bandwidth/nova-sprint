@@ -39,6 +39,9 @@ facts (a send confirmed, a head on origin, a check green) as evidence.
 
 ## The bus edge
 
+(Stitch, 2026-11-07: this section's pusher is run's since drift row 6; the
+edge keeps `Send` and `Who`. See Built, "Stitch".)
+
 `Bus` has `Send(to, subject, body)` over `nova-bus send` and `Who()` over
 `nova-bus who`. The run loop sends as its own name (`sprint`). nova-bus
 refuses a send from a name that is not hooked, so `up` hooks it with
@@ -447,3 +450,100 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
 23. Binaries replaced by rename: the runner's install paragraph.
 24. Rate limit spends nothing: `fault` here; resting a route is layer 5's.
 25. No daemon gates on another: the restart paragraph.
+
+## Built
+
+### Packages and models
+
+- `edge` (`edge/exec.go`, `edge/request.go`, `edge/exec_test.go`, `edge/coldread_test.go`, `edge/coldread2_test.go`, `edge/break_test.go`): `Exec` (`OSExec`, `FakeExec`, clock starting at `1000`), `RunArgv`, `ValidateCmd`, `RequestID(epoch, kind, card, sha)`, `EdgeRequest` (carrying `After []string`, `Repo`, `Base`, `PR`, `Mode`, `Ledgers`), `EdgeResult` (stub for `steps.EdgeResult`), and `Deduplicator` (in-flight coalescing by `RequestID` with zero persistent memory after completion). Every child process runs in its own process group (`Setpgid: true`, killed as `-pid` on timeout/cancellation) with stdin closed (`nil`), bounded stdout/stderr ring buffers (`DefaultMaxBytes = 64 KiB`, preserving head and tail), `WaitDelay = 200ms` (`exec.ErrWaitDelay` treated as normal exit when the command exited before timeout), `OnStart(pid)` callback, and mandatory policy timeouts.
+- `edge/bus` (`edge/bus/bus.go`, `edge/bus/bus_test.go`, `edge/bus/functional_test.go`): `Bus` (`Send`, `Who`) and `Edge`, which runs `nova-bus send` and `nova-bus who` through `edge.Exec`. `Send` refuses a body over 4096 bytes before nova-bus runs and returns the message id only when nova-bus exits 0 and prints `<recipient> <id>`; `Who` parses `WHO OK present=<n>` and its tab lines. The package holds no cursor and reads no store: what to send, to whom, and when the cursor moves are run's (layer 6, the one pusher; stitch, below).
+- `edge/git` (`edge/git/git.go`, `edge/git/land.go`, `edge/git/fake_test.go`, `edge/git/git_test.go`, `edge/git/coldread_test.go`, `edge/git/coldread2_test.go`, `edge/git/break_test.go`, `edge/git/functional_test.go`, `edge/git/trace_test.go`): `Git` (`Client`, `Fake`, clock starting at `1000`) and `LandPass` (`StreamBranch`, `StreamRef`, `ValidateCardBranch`, `RunRemoteLandStep`). Implements the 6-step landing pass from `LANDING.md` (fetch, merge group in score order with union ledger merge, push `--force-with-lease=<ref>:<old>`, gate at exact SHA, land only while base tip matches the gated parent, fast-forward stream branch). Per `1794011119389-0` (`LANDING.md` step 1), the stream integration branch is `sprint/<stream>/group` (`refs/heads/sprint/<stream>/group`), coexisting cleanly with card branches `sprint/<stream>/<producer>`, and `ValidateCardBranch` / `Take` refuse a card or producer branch named `group` or bare `sprint/<stream>`.
+- `edge/forge` (`edge/forge/forge.go`, `edge/forge/fake_test.go`, `edge/forge/forge_test.go`, `edge/forge/coldread_test.go`, `edge/forge/break_test.go`, `edge/forge/functional_test.go`): `Forge` (`Client`, `NewClient`, `Fake`, clock starting at `1000`), `PR`, `OpenPR`, `EnsurePR`, `Checks`, `Merge`, and `RestedUntil`. Queries `statusCheckRollup` via GraphQL at up to `MaxChecksBatch = 100` exact 40-hex commit SHAs per call with context pagination, classifies outcomes (`green`, `red`, `pending`, `fault`, `rate_limit`), verifies PR base and head SHA before fast-forwarding `refs/heads/<base>` in `Merge`, and enforces non-Glenn identity credentials (`GH_TOKEN` / `GH_CONFIG_DIR`) and per-identity token-bucket rate limiting.
+- `edge/worker` (`edge/worker/worker.go`, `edge/worker/harness.go`, `edge/worker/proxy.go`, `edge/worker/verbs.go`, `edge/worker/runner.go`, `edge/worker/verbs_test.go`, `edge/worker/worker_test.go`, `edge/worker/coldread_test.go`, `edge/worker/coldread2_test.go`, `edge/worker/break_test.go`, `edge/worker/functional_test.go`, `edge/worker/trace_test.go`) and `cmd/nova-worker` (`cmd/nova-worker/main.go`, `cmd/nova-worker/main_test.go`, `cmd/nova-worker/coldread2_test.go`, `cmd/nova-worker/break_test.go`):
+  - Coordinator host refusal (`CheckHost` refuses `studio`, `studio.local`, and policy-listed coordinator hosts, `LESSONS 4.18`), and mandatory `--work-clone` and `--as <row>` flags in `cmd/nova-worker`.
+  - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `cmd/nova-worker` defaults `--harness` to `claude`. `ScriptHarness.Command` passes card fields as positional arguments (`$1`..`$9`) to a static shell program constant, never interpolating card prose into a shell string. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
+  - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), fetches route keys via `ReadProviderKey` (`nova-secrets get`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
+  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which splits `DoneWhen` command lines into unquoted argv via `splitArgv_internal`) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> --net-deny --net-allow 127.0.0.1:<proxyPort> -- <argv...>` via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
+  - 9-step runner lifecycle (`RunConsumer`, `StepRow`, `ProbeRow`, `RecoverRow`, `RunWakeLoop`, `QueryEdge` in `edge/worker/runner.go`):
+    * `FormatTakeOpID(epoch, consumer, gen, row)` (`take-e<epoch>-<consumer>-g<gen>-<row>`) and `FormatResultID(epoch, consumer, attempt, gen)` (`res-e<epoch>-<consumer>-a<attempt>-g<gen>`) fence store operations by epoch, consumer, attempt, and gen (`CLISprintClient.Take` passes `--id`).
+    * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
+    * `OSGitOps` executes all bench `git` operations through `edge.Exec` with `CleanEnv: true`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and `Timeouts` (`Stage`, `Push`, `RebaseAndTest`); `RebaseOntoStream` returns `*FetchError` on a fetch failure so `RunConsumer` propagates the failure without reporting a stale head.
+    * `sendReportAndClean_internal` requires an accepted store receipt matching the result ID (`receipt.Accepted && receipt.Op == req.ResultID`) before marking `JobRecorded` or removing the job directory; `CLISprintClient.Report` returns a parse error if `--json` output fails to unmarshal, and `ErrRefused` (exit code `1`) records `JobRecorded` so refused reports are final and never re-sent on subsequent wakes.
+    * `RecoverRow` matches disk `JobRecord` entries against the store's working summary by full identity `(epoch, consumer, attempt, gen)` (`jobMatchesSummary_internal`), verifies both PID and `NOVA_WORKER_NONCE` via `OSProcessTable.Alive`, kills and reports `fault` for any adopted harness past its recorded `DeadlineAt`, leaves `JobTaken`/`JobStaged` (`ErrNoSlot`) records untouched for retry, and completes `rebaseAndPRSteps_internal` for `JobHarvested` `"ok"` jobs before reporting; `QueryEdge` is a pure read of the store and `job.json` with zero side effects.
+- `tla/Push.tla`, `tla/LandEdge.tla`, `tla/Runner.tla` and 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
+
+### Seam rulings (Rowan, 2026-11-06)
+
+1. **Wake-up via `next --as <row> --json`, reports via `report` (`1794007469002-0`)**: There is no `queue` verb. On wake-up and on restart, `nova-worker` calls `SprintClient.Next(ctx, row)` (`nova-sprint next --as <row> --json` via `CLISprintClient.Next`) and acts on the row's `working` and `ready` consumers; `DEAL` overflow trailers end with `"and N more: nova-sprint next --as <row>"`. Reports apply directly to the store through `SprintClient.Report` (`CLISprintClient.Report` / `nova-sprint report --as <row>`) fenced on `Op.ID = ResultID`, never into a tick inbox.
+2. **Pre-satisfied `After []OpID` and `EdgeResult` (`1794007773302-0`)**: Layer 3's `EdgeRequest` carries `After []OpID` (`After []string`); `run` dispatches an `EdgeRequest` to Layer 4 only after every operation in `After` has an accepted store receipt, so edges never see a request whose store precondition failed. Each edge returns `EdgeResult` (`steps.EdgeResult`) for the next tick's inbox.
+3. **Every edge fact is re-queryable by `(epoch, kind, card, sha)` idempotently (`1794007844911-0`, `1794011583522-0`)**: Request IDs are `RequestID(epoch, kind, card, sha)` (`sha256(epoch + "\x00" + kind + "\x00" + card + "\x00" + sha)`). In-flight duplicate requests with the same `RequestID` are deduplicated inside the edge (`edge.Deduplicator`), not by `run`. Every edge answers requests as pure queries of the world at `(epoch, kind, card, sha)` without relying on process memory (`edge/forge` queries GitHub check runs at `sha`; `edge/git` checks ancestry and base tip on origin; `edge/worker` inspects `job.json` and the store). Restarting the edge struct or process and querying `(epoch, kind, card, sha)` again returns the identical `EdgeResult`.
+4. **Stream settings arrive in the edge request (`1794008719695-0`)**: A stream's `repo`, `base` branch, `pr`-required flag, and landing `mode` are policy data (a policy row of kind `data` named `stream:<name>`, JSON `{repo, base, pr, mode}`). Layer 3 puts `base` and `pr` into each landing `EdgeRequest`, so the git and forge edges take them as arguments and never read the store for them.
+
+### Timeouts and bounds (`measured` vs `guess`)
+
+| Parameter | Default | Status | Basis |
+| :--- | :--- | :--- | :--- |
+| `StageTimeout` | `120s` | **measured** | v1 mirror worktree staging ran 73–79 s median under load |
+| `LaunchGrace` | `15s` (3 tries, `5–20s` then `30–60s` jitter) | **measured** | 9 of 40 launches in v1 died on a provider 5xx within 15 s |
+| `TerminateGrace` | `3s` | **measured** | Process-group `SIGTERM` -> `SIGKILL` grace |
+| `MaxMessageBytes` / `MaxFieldBytes` | `4096 B` / `300 B` | **measured** | v1 bus size discipline (`Guarantee 3`) |
+| `MaxLogTailBytes` | `4096 B` | **measured** | Harness failure tail carried in report reason |
+| `RebaseTestBound` | `2m` | **guess** | Unmeasured until the first dogfood sprint |
+| `PushTimeout` | `60s` | **guess** | Unmeasured until the first dogfood sprint |
+| `ForgeTimeout` (`gh`) | `30s` | **guess** | Unmeasured until the first dogfood sprint |
+| `BusSendTimeout` | `5s` | **guess** | Unmeasured until the first dogfood sprint |
+| `SSHConnectBound` | `10s` | **guess** | Unmeasured until the first dogfood sprint |
+| `CIWaitMargin` | `10m` | **guess** | v1 land deadline margin over repo job timeout; unmeasured in v2 |
+
+### Deferred containment option: microVM / container wall
+
+For bench hosts whose OS sandbox (`nova-sandbox`) cannot enforce `--net-deny` at the kernel level, or for cards executing untrusted code, containment runs each job inside a disposable microVM (Firecracker / KVM on Linux benches, `Virtualization.framework` on macOS benches) or rootless network-isolated container (`bwrap` + network namespace) behind the existing `ReserveWall` and `Harness` seams:
+
+1. **Seam**: `MicroVMWall` implements `worker.ReserveWall` (`RunHarness` and `RunTest`). `Runner`, `Harness`, `KeyProxy`, and `job.json` recovery are unchanged.
+2. **Filesystem isolation**: `MicroVMWall` boots a read-only root image exporting `WallConfig.ReadPaths` (toolchains and staged siblings) and mounts only `Job.JobDir` read-write via virtiofs at the same path, with `HOME`, `TMPDIR`, and `XDG_DATA_HOME` inside `Job.JobDir` (`Guarantee 7`).
+3. **Host-enforced egress allowlist**: The guest NIC attaches to a host tap/vsock bridge where host firewall rules (outside the guest kernel) drop all outbound traffic except TCP to the host loopback `KeyProxy` (`127.0.0.1:<ProxyPort>`). Credentials stay in `KeyProxy` on the host (`Guarantee 12`), which validates the target `Host` against the route's `AllowedHosts` before injecting the Bearer key.
+4. **Lifecycle**: The microVM runs inside the `nova-reserve run --slots <weight>` lease and is destroyed before the slot is released (`Guarantee 8`).
+
+### Stitch (2026-11-07, the stitch on v2-stitch, merging round 3 at 833d094a)
+
+What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
+
+- **Row 6, one pusher.** Round 3 had not deleted it: `edge/bus` still held
+  `BuildRecipientMessages`, `PushRecipient`, `PushTick`, the subject table and
+  the `push:<name>` cursor writes. Deleted, with their tests, the `Push` model,
+  `PushTrace`, the `PushCursorBeforeConfirm` witness and the push walk in
+  `tla/make-traces.sh`. The cursor rule (move only after a confirmed send) is
+  run's and is checked by `Run.tla` at layer 6. `BusReply` and `TruncateField`
+  had no caller and went too.
+- **Row 10.** Verified: `LandPass` refuses a stream with no forge, and a stream
+  in mode `hand`, naming the fix.
+- **Forge ruling (Stella's handoff, 1794020909312).** No separate PR setting:
+  a stream with a forge lands through a PR and its CI, so `LandRequest.RequirePR`
+  is gone and a forge always means a PR; `EdgeRequest.PR bool` is now
+  `EdgeRequest.Forge string`.
+- **Row 27, a red result always blames a head.** Round 3 bisected only when
+  `BisectOnRed` was set and returned an unblamed red for "cross-card red
+  interaction" and for red after a remerge on a moved base. Steps consumes a
+  red with no blame and reissues the same request, so a group red only
+  together would be landed and refused forever. Now a group of more than one
+  always bisects; two halves green alone and red together blame the right head
+  (the one whose arrival made it red; the left is green); a red after the
+  remerge bisects the same way. `TestRedTogetherGreenAloneBlamesTheLaterHead`.
+- **Rows 28, 29, 34, dead code.** `RequestID` carried a switch with no body
+  that existed only to make the dead-code probe count `FactCI`, `FactLand` and
+  `FactRunner` as used; the kinds are layer 3's (`steps.EdgeRequest.Kind`:
+  `land`, `stop`; lower layer defines the seam), so the constants and the
+  switch are deleted. `LandRequest.PassedTrees` was cleared on entry and never
+  read: deleted.
+- **Open, owed at layer 6's binary pass (not done here):** row 14's real clock
+  and sleep are still defaulted inside `NewRunner`, not injected by main; row
+  15's literals remain (tier deadlines in `DefaultTimeouts`, model defaults in
+  `harness.go`, the provider hosts and the `--coordinator-hosts` default in
+  `cmd/nova-worker`, the forbidden logins in `forge.go`); nova-config v2.0.2
+  has no table for provider hosts, coordinator hosts or forbidden logins, so
+  these come from the take receipt (deadline and model, from policy and the
+  roster) and from policy, which layer 6 defines; row 20's startup order is
+  not what the ruling says: `RunWakeLoop` steps before it hooks, runs
+  `nova-bus hook` as a five-second call, drops its errors, never runs
+  `nova-sprint hook --as <row> --role worker`, and does not exit when the hook
+  dies.

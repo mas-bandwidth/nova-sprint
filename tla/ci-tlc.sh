@@ -144,6 +144,8 @@ run StepsDeal pass . StepsDeal.cfg Steps.tla 8
 run StepsLand pass . StepsLand.cfg Steps.tla 4
 run StepsBurst pass . StepsBurst.cfg Steps.tla 4
 run Policy pass . Policy.cfg Policy.tla 4
+run LandEdge pass . LandEdge.cfg LandEdge.tla 2
+run Runner pass . Runner.cfg Runner.tla 2
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"

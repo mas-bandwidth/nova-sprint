@@ -25,12 +25,14 @@ ROOT="$(dirname "$HERE")"
 OUT="$HERE/traces"
 cd "$ROOT" || exit 1
 
-find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' \) -exec rm -rf {} +
+find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
 go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./store/ || exit 1
 go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./card/ || exit 1
 go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./policy/ || exit 1
 go test -count=1 -run 'TestTraceFixtures$' ./steps/ || exit 1
+go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./edge/git || exit 1
+go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./edge/worker || exit 1
 if command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || ls /opt/homebrew/opt/postgresql@18/bin/initdb >/dev/null 2>&1; then
     go test -count=1 -run 'TestFunctionalTraceWalk$' ./store/ || exit 1
 elif [ "${NOVA_TRACE_PG:-0}" = 1 ]; then
@@ -46,7 +48,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 for d in "$OUT"/*/; do
     name="$(basename "$d")"
-    case "$name" in store-*) model=Store ;; card-*) model=CardMachine ;; policy-*) model=Policy ;; steps-*) model=Steps ;; *) continue ;; esac
+    case "$name" in store-*) model=Store ;; card-*) model=CardMachine ;; policy-*) model=Policy ;; steps-*) model=Steps ;; landedge-*) model=LandEdge ;; runner-*) model=Runner ;; *) continue ;; esac
     ( bash "$HERE/check-trace.sh" "$model" "$d" > "$WORK/$name.out" 2>&1; echo $? > "$WORK/$name.code" ) &
 done
 wait

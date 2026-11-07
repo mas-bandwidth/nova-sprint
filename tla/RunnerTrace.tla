@@ -1,0 +1,71 @@
+----------------------------- MODULE RunnerTrace -----------------------------
+(***************************************************************************)
+(* Trace validation of Runner.tla: Runner.tla's next-state relation        *)
+(* constrained to a recording of the Go worker walk                        *)
+(* (edge/worker/trace_test.go).                                            *)
+(***************************************************************************)
+EXTENDS Runner, Sequences, RunnerTraceLog, TLC
+
+VARIABLE l
+
+traceVars == <<vars, l>>
+
+MatchState(k) ==
+  /\ storeState = TraceLog[k].storeState
+  /\ jobState = TraceLog[k].jobState
+  /\ slotsInUse = TraceLog[k].slotsInUse
+  /\ width = TraceLog[k].width
+  /\ jobDir = TraceLog[k].jobDir
+  /\ harnessAlive = TraceLog[k].harnessAlive
+  /\ appliedOps = TraceLog[k].appliedOps
+  /\ env = TraceLog[k].env
+
+MatchNextState(k) ==
+  /\ storeState' = TraceLog[k].storeState
+  /\ jobState' = TraceLog[k].jobState
+  /\ slotsInUse' = TraceLog[k].slotsInUse
+  /\ width' = TraceLog[k].width
+  /\ jobDir' = TraceLog[k].jobDir
+  /\ harnessAlive' = TraceLog[k].harnessAlive
+  /\ appliedOps' = TraceLog[k].appliedOps
+  /\ env' = TraceLog[k].env
+
+TraceAction(k) ==
+  LET a == TraceLog[k].action
+      c == TraceLog[k].arg
+  IN CASE a = "Wake"      -> Wake
+       [] a = "Take"      -> Take(c)
+       [] a = "Stage"     -> Stage(c)
+       [] a = "StageFail" -> StageFail(c)
+       [] a = "Run"       -> Run(c)
+       [] a = "Die"       -> Die(c)
+       [] a = "Harvest"   -> Harvest(c)
+       [] a = "Rebase"    -> Rebase(c)
+       [] a = "Conflict"  -> Conflict(c)
+       [] a = "Push"      -> Push(c)
+       [] a = "Report"    -> Report(c)
+       [] a = "ReplyLost" -> ReplyLost(c)
+       [] a = "Clean"     -> Clean(c)
+       [] a = "Withdraw"  -> Withdraw(c)
+       [] a = "Crash"     -> Crash
+       [] a = "Restart"   -> Restart
+       [] a = "StoreDown" -> StoreDown
+       [] a = "StoreUp"   -> StoreUp
+       [] a = "Done"      -> Done
+       [] OTHER           -> FALSE
+
+TraceInit ==
+  /\ l = 1
+  /\ Init
+  /\ MatchState(1)
+
+TraceNext ==
+  /\ l < Len(TraceLog)
+  /\ l' = l + 1
+  /\ TraceAction(l + 1)
+  /\ MatchNextState(l + 1)
+
+TraceSpec == TraceInit /\ [][TraceNext]_traceVars /\ WF_traceVars(TraceNext)
+
+TraceMatched == <>(l = Len(TraceLog))
+=============================================================================

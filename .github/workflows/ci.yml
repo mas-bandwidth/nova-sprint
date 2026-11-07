@@ -130,3 +130,4 @@ jobs:
       - *checkout
       - name: TLC on Store (must pass), the witnesses and the reach checks (must be violated)
         run: bash tla/ci-tlc.sh
+
