@@ -74,11 +74,6 @@ def cons(wtext):
     return out
 
 
-def tko(wtext):
-    m = re.search(r'tko \|-> <<(.*?)>>(?:, pol \|-> \w+)? \]$', wtext)
-    return re.findall(r'<<"(\w+)", (\d+)>>', m.group(1)) if m else []
-
-
 def items(inbox):
     """(stamp, id, out) per inbox item, whatever order TLC prints fields in."""
     out = []
@@ -103,9 +98,6 @@ def action(a, b):
     for k in cb:
         if ca[k][0] == "working" and cb[k][0] == "done":
             return ("Report", {"card": '<<"%s", %s>>' % k, "res": '"%s"' % cb[k][1]})
-    ta, tb = tko(a["w"]), tko(b["w"])
-    if len(tb) == len(ta) + 1:
-        return ("Take", {"card": '<<"%s", %s>>' % tb[-1]})
     gone = landed_judged(a["js"]) - landed_judged(b["js"])
     if len(gone) == 1:
         p = gone.pop()
