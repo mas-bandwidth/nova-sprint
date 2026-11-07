@@ -295,8 +295,16 @@ type coldFinal struct {
 }
 
 func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
+	return coldWalkTraced(t, seed, steps, false)
+}
+
+// coldWalkTraced is the walk; traced records it for trace validation
+// (card/trace_test.go): one record per accepted op.
+func coldWalkTraced(t *testing.T, seed int64, steps int, traced bool) map[string]int {
 	rng := rand.New(rand.NewSource(seed))
 	w := newWorld(t, producer("p1"), producer("p2", "p1"), producer("p3"), store.PutCard{ID: "g1", Kind: "sentinel", Needs: []string{"p2"}})
+	tr := newCardTrace(w, traced)
+	defer tr.done(seed)
 	finals := map[string]coldFinal{}
 	accepted := map[string]int{}
 	for i := 0; i < steps; i++ {
@@ -315,6 +323,7 @@ func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		accepted[strings.Fields(label)[0]]++
 		w.landed(plan)
+		tr.step(label, plan)
 		coldInvariants(t, w.snap(), finals, fmt.Sprintf("seed %d step %d %s", seed, i, label))
 	}
 	return accepted
@@ -323,6 +332,7 @@ func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
 // coldStep picks one move at random: a producer, consumer or row event, or a
 // stream hold toggle (layer 3's raw op, to exercise Park).
 func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
+	w.ev = nil // the trace's: a raw hold has no event
 	all, cons := w.all()
 	var ids []string
 	for id := range all {
@@ -344,6 +354,7 @@ func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
 		r := w.rows()[pick(rowNames[:3])]
 		e := []Event{Seen{}, Gone{}, Width{N: 1 + rng.Intn(3)}, Hold{Reason: "h"}, Unhold{Reason: "u"}}[rng.Intn(5)]
 		plan, ref := MoveRow(r, e)
+		w.ev = e
 		return plan, name(e) + " " + r.Name, "", ref == nil
 	}
 	held := w.snap().Streams["s1"].Held
@@ -385,6 +396,7 @@ func (w *world) coldStepCard(rng *rand.Rand, ids []string, all map[string]Card, 
 	e := evs[rng.Intn(len(evs))]
 	st := w.snap().Streams[p.Stream]
 	plan, r := Move(p, cs, w.rows(), Stream{Name: st.Name, Held: st.Held}, all, e)
+	w.ev = e
 	return plan, name(e) + " " + p.ID, p.ID, r == nil
 }
 
@@ -423,6 +435,7 @@ func (w *world) coldStepConsumer(rng *rand.Rand, ids []string, all map[string]Ca
 		e = v
 	}
 	plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
+	w.ev = e
 	return plan, name(e) + " " + c.ID, c.ID, r == nil
 }
 
