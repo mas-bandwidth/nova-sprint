@@ -210,6 +210,7 @@ func busHook(t *testing.T, tr *transcript, env []string, name, inbox string) {
 const fakeGH = `#!/bin/sh
 case "$1 $2" in
 "auth status") echo "github.com"; echo "  Logged in to github.com account sprint-bot (keyring)"; exit 0 ;;
+"repo view") echo "WRITE"; exit 0 ;; # stream add's forge admission (hostForge.CanAct)
 "pr list")
   sha=$(git --git-dir="$FAKE_GH_ORIGIN" rev-parse --verify --quiet "refs/heads/$6") || { echo "[]"; exit 0; }
   printf '[{"number":7,"url":"https://forge.test/pr/7","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","state":"OPEN"}]\n' "$6" "$sha" "$8"

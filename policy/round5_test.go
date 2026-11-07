@@ -152,7 +152,11 @@ func TestFunctionalEvaluatorMemoryCap(t *testing.T) {
 	w.up()
 	snap := w.snap()
 	e := NewEngine(newFakeClock())
-	big, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(48):\n        x.append(\"a\" * (1 << 25))\n    return len(x) > 0")
+	// Three 256 MiB strings, not 48 of 32: few allocations cross the cap
+	// long before the tick's budget even under -race on a loaded runner,
+	// where the collector, held at the cap by the memory limit, made 48
+	// small ones run out the 1.5 s budget first (CI, 2026-11-07).
+	big, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(3):\n        x.append(\"a\" * (1 << 28))\n    return len(x) > 0")
 	a, fs := e.Answer(Versions{Active: pv(2, big)}, snap, w.ro, FullQuestions(snap, nil))
 	assert.Equal(t, -1, a.Version, "a dead child answers nothing: %v", fs)
 	require.NotEmpty(t, fs)

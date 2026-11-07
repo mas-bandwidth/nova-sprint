@@ -22,6 +22,8 @@ func (x *e2e) coordinatorHooks() {
 	x.tr.note("a fresh store is stopped, never started; the coordinator starts it")
 	x.c.must([]string{"show", "--as", "carol"}, `"StopReason": "never started"`)
 	x.c.must([]string{"start", "--reason", "e2e", "--as", "carol"}, "STARTED applied at seq")
+	x.tr.note("the coordinator sets the commit identity every worker commits as (the e2e's git identity)")
+	x.c.must([]string{"identity", "--name", "e2e", "--email", "e2e@sprint.test", "--reason", "e2e", "--as", "carol"}, "IDENTITY e2e <e2e@sprint.test> applied at seq")
 }
 
 // streamAndCard adds the stream (the local origin, --forge github) and one
@@ -62,16 +64,18 @@ func (x *e2e) dealt(row, kind string) (string, int) {
 	eventually(x.t, 90*time.Second, kind+" dealt to "+row, func() bool {
 		polls++
 		code, out := x.c.run(true, nil, "next", "--as", row, "--json")
+		type dealtCard struct {
+			ID, Kind string
+			Gen      int
+		}
 		var v struct {
-			Ready []struct {
-				ID, Kind string
-				Gen      int
-			} `json:"ready"`
+			Ready   []dealtCard `json:"ready"`
+			Working []dealtCard `json:"working"` // the deal puts it in the row's hand, working (defect 52)
 		}
 		if code != 0 || json.Unmarshal([]byte(out), &v) != nil {
 			return false
 		}
-		for _, c := range v.Ready {
+		for _, c := range append(v.Ready, v.Working...) {
 			if c.Kind == kind {
 				id, gen = c.ID, c.Gen
 				return true
@@ -146,7 +150,8 @@ func (x *e2e) lands(head string) {
 	calls := x.fg.Calls()
 	x.tr.record("forge calls (fake forge, run side)", 0, strings.Join(calls, "\n"))
 	joined := strings.Join(calls, "\n")
-	for _, want := range []string{"OpenPR sprint/s/group -> main", "Checks ", "Merge #"} {
+	// rung 1: one head on the base tip opens its PR from its own card branch
+	for _, want := range []string{"OpenPR sprint/s/e2e1 -> main", "Checks ", "Merge #"} {
 		if !strings.Contains(joined, want) {
 			x.t.Fatalf("the forge never saw %q:\n%s", want, joined)
 		}
