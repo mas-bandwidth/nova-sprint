@@ -41,6 +41,8 @@ import (
 //   - A consumer's tier: the model takes its producer's at add and ignores
 //     the write's; the store refuses one that differs. A walk sends the
 //     producer's.
+//   - Row load, cores and slots (the heartbeat, SetRowLoad): a write TraceOp
+//     refuses; it moves no gen and no rule reads it.
 //   - Row flaps and reason, and the write on them (SetRowFlaps): TraceOp
 //     refuses it. A row's session and role (the hook, PutRow) are projected
 //     as sess and role; a walk's sessions are the model's (x, y).
