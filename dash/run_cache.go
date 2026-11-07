@@ -20,6 +20,11 @@ type Feed struct {
 	Roster    roster.Roster
 	RosterErr error
 	At        time.Time
+	// Landings is the epoch's landing times (the v1 import's excluded), every
+	// one, that run keeps from the store's events. nil means run could not
+	// read them (the ETA then reads "-"); non-nil, even empty, is the store's
+	// answer.
+	Landings []time.Time
 }
 
 // NewFromFeed is the run-host dashboard: it reads no store; run publishes.
@@ -51,6 +56,10 @@ func (c *Cache) publish(f Feed) {
 	ro := f.Roster
 	if f.RosterErr != nil {
 		ro, c.alarm = roster.Roster{}, true
+	}
+	c.landings, c.landingsOK = nil, f.Landings != nil
+	if c.landingsOK {
+		c.landings = append([]time.Time{}, f.Landings...)
 	}
 	c.view = mapSnapshot(f.Snap, ro, f.At)
 	if f.RosterErr != nil {

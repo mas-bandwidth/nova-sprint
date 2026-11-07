@@ -118,7 +118,7 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 	}
 	l := &loop{cfg: cfg, ticker: t, log: NewWriterLogger(cfg.Log),
 		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
-		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), At: now}, cfg.Clock.Now)}
+		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Landings: t.Landings(), At: now}, cfg.Clock.Now)}
 	l.edges.Fault = l.log.EdgeFault
 	l.setStreams(t.snap.Streams)
 	return l, nil
@@ -165,7 +165,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
-	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows), RosterErr: rerr, At: start}); perr != nil && err == nil {
+	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows), RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
 		err = perr
 	}
 	l.log.Log(TickMetrics{Number: n, Seq: snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})
