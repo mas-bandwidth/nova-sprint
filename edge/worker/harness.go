@@ -91,7 +91,11 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
-	argv := append(append([]string{"opencode", "run"}, modelFlag_internal(j)...), buildPrompt_internal(j))
+	model := modelFlag_internal(j)
+	if len(model) == 0 && j.ProxyAddr != "" {
+		model = []string{"--model", "openai/deepseek-chat"} // LOCAL DOGFOOD STOPGAP: a probe carries no model
+	}
+	argv := append(append([]string{"opencode", "run"}, model...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if j.ProxyAddr != "" {
 		baseURL := j.ProxyAddr

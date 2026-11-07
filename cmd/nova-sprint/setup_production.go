@@ -123,15 +123,14 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 		if !found && in.Services == "" {
 			return verbs.SetupCheck{Line: "UP 6/8 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
 		}
-		return verbs.SetupCheck{}, workloadUnavailable()
-	}
-	if step >= 7 {
-		return verbs.SetupCheck{}, workloadUnavailable()
 	}
 	if step >= 4 {
 		r, err := p.configuredRuntime(ctx, in, step >= 5)
 		if err != nil {
 			return verbs.SetupCheck{}, err
+		}
+		if step >= 6 {
+			r.Workload = stopgapWorkload{} // LOCAL DOGFOOD STOPGAP
 		}
 		if step == 5 {
 			value, found, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
@@ -162,13 +161,13 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 			return err
 		}
 	}
-	if step >= 6 {
-		return workloadUnavailable()
-	}
 	if step >= 4 {
 		r, err := p.configuredRuntime(ctx, in, step >= 5)
 		if err != nil {
 			return err
+		}
+		if step >= 6 {
+			r.Workload = stopgapWorkload{} // LOCAL DOGFOOD STOPGAP
 		}
 		if step == 5 {
 			if _, err = p.ensurePublicVersion(ctx, r, in, true); err != nil {
@@ -753,11 +752,16 @@ func (p productionSetup) checkPublicVersion(ctx context.Context, host string) er
 			destination = inventory.User + "@" + destination
 		}
 		data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "nova-sprint", "version")
-		if err == nil && p.cfg.BinaryVersion != "" && string(data) == p.cfg.BinaryVersion+"\n" {
+		first, _, _ := strings.Cut(string(data), "\n")
+		first = strings.TrimPrefix(first, "nova-sprint ")
+		if err == nil && p.cfg.BinaryVersion != "" && first == p.cfg.BinaryVersion {
 			return nil
 		}
+		if err == nil {
+			err = fmt.Errorf("%s reports %q, this binary is %q", destination, first, p.cfg.BinaryVersion)
+		}
 	}
-	return &verbs.OperationError{Problem: "public host nova-sprint version could not be verified", Fix: "install nova-sprint " + p.cfg.BinaryVersion + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
+	return &verbs.OperationError{Problem: fmt.Sprintf("public host nova-sprint version could not be verified: %v", err), Fix: "install nova-sprint " + p.cfg.BinaryVersion + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
 }
 
 func safeSSHName(value string) bool {
@@ -923,19 +927,25 @@ func isTailnetIP(ip netip.Addr) bool {
 func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMachine, rows []setupServiceRow, privateURL string) (verbs.DashboardTarget, error) {
 	var machine *verbs.FleetMachine
 	for i := range machines {
-		if machines[i].Name == chosen || machines[i].Address == chosen {
+		if name, _, _ := strings.Cut(chosen, "="); machines[i].Name == name || machines[i].Address == chosen {
 			if machine != nil {
 				return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is ambiguous")
 			}
 			machine = &machines[i]
 		}
 	}
-	if machine == nil || machine.Name == runMachine || slices.Contains(machine.Roles, "bench") {
+	if machine == nil || machine.Name == runMachine { // LOCAL: Glenn 2026-11-07, a public host may be a bench
 		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is absent, hosts run, or is also a bench")
 	}
-	publicIP, err := netip.ParseAddr(machine.Address)
+	// LOCAL DOGFOOD STOPGAP (2026-11-07): until nova-tools ships the machine
+	// field `public`, the public address rides in the choice as <machine>=<ip>.
+	publicSource := machine.Address
+	if _, ip, ok := strings.Cut(chosen, "="); ok {
+		publicSource = ip
+	}
+	publicIP, err := netip.ParseAddr(publicSource)
 	if err != nil || !publicIP.IsGlobalUnicast() || publicIP.IsPrivate() || isTailnetIP(publicIP) {
-		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host needs a public IP in inventory")
+		return verbs.DashboardTarget{}, serviceConfigError(fmt.Sprintf("public dashboard host %s needs a public IP in inventory; its address is %q", machine.Name, machine.Address))
 	}
 	var candidate *verbs.FleetService
 	port := ""

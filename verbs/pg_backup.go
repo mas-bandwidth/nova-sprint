@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -51,7 +52,7 @@ func (p PGBackups) Backup(ctx context.Context, out string) (BackupInfo, error) {
 	}
 	defer os.Remove(path)
 	if err = runPGPassword(ctx, p.DSN, p.Password, "pg_dump", "--schema=sprint", "--data-only", "--format=plain", "--inserts", "--no-owner", "--no-privileges", "--file", path); err != nil {
-		return BackupInfo{}, fmt.Errorf("pg_dump failed")
+		return BackupInfo{}, fmt.Errorf("pg_dump failed: %w", err)
 	}
 	source, err := store.Open(ctx, p.DSN, p.Password)
 	if err != nil {
@@ -106,9 +107,15 @@ func (p PGBackups) checkDumpVersion(ctx context.Context) error {
 	if len(fields) < 3 {
 		return &OperationError{Problem: "pg_dump version is unknown", Fix: "install pg_dump at least as new as the server", Exit: 1}
 	}
-	major, err := strconv.Atoi(strings.Split(fields[len(fields)-1], ".")[0])
+	major, err := 0, fmt.Errorf("no numeric field")
+	for _, f := range fields {
+		if m, e := strconv.Atoi(strings.Split(f, ".")[0]); e == nil && m > 0 {
+			major, err = m, nil
+			break
+		}
+	}
 	if err != nil {
-		return fmt.Errorf("pg_dump version is unknown")
+		return &OperationError{Problem: fmt.Sprintf("pg_dump version is unknown: %q", strings.TrimSpace(string(out))), Fix: "install pg_dump at least as new as the server", Exit: 1}
 	}
 	cfg, err := pgx.ParseConfig(p.DSN)
 	if err != nil {
@@ -141,8 +148,12 @@ func runPGPassword(ctx context.Context, dsn, password, program string, args ...s
 	}
 	cmd.Env = env
 	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w: %s", program, err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
 }
 func pgProcessEnv(source []string, dsn, password string) ([]string, error) {
 	env := safeProcessEnv(source)
@@ -171,11 +182,16 @@ func pgProcessEnv(source []string, dsn, password string) ([]string, error) {
 func safeProcessEnv(source []string) []string {
 	allowed := map[string]bool{"PATH": true, "HOME": true, "LANG": true, "LC_ALL": true, "TZ": true, "TMPDIR": true, "SSL_CERT_DIR": true, "SSL_CERT_FILE": true}
 	out := []string{}
+	locale := false
 	for _, entry := range source {
 		name, _, ok := strings.Cut(entry, "=")
 		if ok && allowed[name] {
 			out = append(out, entry)
+			locale = locale || name == "LANG" || name == "LC_ALL"
 		}
+	}
+	if !locale {
+		out = append(out, "LC_ALL=C") // PostgreSQL 18 on macOS refuses to start without a valid locale
 	}
 	return out
 }
@@ -203,11 +219,11 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 	}()
 	dataDir := filepath.Join(dir, "pg")
 	if err = runPG(ctx, "", "initdb", "-D", dataDir, "-A", "trust", "--no-instructions"); err != nil {
-		return BackupInfo{}, fmt.Errorf("initdb failed")
+		return BackupInfo{}, fmt.Errorf("initdb failed: %w", err)
 	}
 	opts := "-k " + dir + " -c listen_addresses=''"
 	if err = runPG(ctx, "", "pg_ctl", "-D", dataDir, "-o", opts, "-w", "start"); err != nil {
-		return BackupInfo{}, fmt.Errorf("temporary PostgreSQL failed to start")
+		return BackupInfo{}, fmt.Errorf("temporary PostgreSQL failed to start (socket dir %s): %w", dir, err)
 	}
 	defer func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -233,7 +249,7 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 	sum := sha256.Sum256(dumpBytes)
 	validated := &VerifiedDump{statements: statements, digest: fmt.Sprintf("%x", sum)}
 	if err = p.Loader.Load(ctx, dsn, validated); err != nil {
-		return BackupInfo{}, fmt.Errorf("dump restore verification failed")
+		return BackupInfo{}, fmt.Errorf("dump restore verification failed: %w", err)
 	}
 	snap, digest, schemaHash, err := verifyDatabase(ctx, dsn)
 	if err != nil {

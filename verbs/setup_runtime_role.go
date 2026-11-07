@@ -60,13 +60,13 @@ func provisionSprintRole(ctx context.Context, dsn, adminPassword, password strin
 	}
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return fmt.Errorf("invalid postgres configuration")
+		return fmt.Errorf("invalid postgres configuration: %w", err)
 	}
 	cfg.User = "nova_admin"
 	cfg.Password = adminPassword
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("postgres admin unavailable")
+		return fmt.Errorf("postgres admin unavailable: %w", err)
 	}
 	defer closeSetupConnection(conn)
 	exists, authenticated, owner, err := roleReady(ctx, conn, cfg, password)
@@ -87,11 +87,11 @@ func provisionSprintRole(ctx context.Context, dsn, adminPassword, password strin
 
 	var salt [16]byte
 	if _, err = rand.Read(salt[:]); err != nil {
-		return fmt.Errorf("role credential unavailable")
+		return fmt.Errorf("role credential unavailable: %w", err)
 	}
 	verifier, err := scramVerifier(password, salt[:], 4096)
 	if err != nil {
-		return fmt.Errorf("role credential unavailable")
+		return fmt.Errorf("role credential unavailable: %w", err)
 	}
 	return setSprintRole(ctx, conn, verifier, fresh)
 }
@@ -126,12 +126,12 @@ func roleReady(ctx context.Context, admin *pgx.Conn, cfg *pgx.ConnConfig, passwo
 func verifyOwnedSprintSchema(ctx context.Context, cfg *pgx.ConnConfig, password string) error {
 	u, err := url.Parse(cfg.ConnString())
 	if err != nil {
-		return fmt.Errorf("schema identity unavailable")
+		return fmt.Errorf("schema identity unavailable: %w", err)
 	}
 	u.User = url.User("nova_admin")
 	pg, err := store.Open(ctx, u.String(), password)
 	if err != nil {
-		return fmt.Errorf("schema identity unavailable")
+		return fmt.Errorf("schema identity unavailable: %w", err)
 	}
 	defer pg.Close()
 	id, err := pg.Schema(ctx)
@@ -143,7 +143,7 @@ func verifyOwnedSprintSchema(ctx context.Context, cfg *pgx.ConnConfig, password 
 func setSprintRole(ctx context.Context, conn *pgx.Conn, verifier string, fresh bool) error {
 	tx, err := conn.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("role setup failed")
+		return fmt.Errorf("role setup failed: %w", err)
 	}
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -161,19 +161,19 @@ func setSprintRole(ctx context.Context, conn *pgx.Conn, verifier string, fresh b
 	}
 	var role bool
 	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='nova_sprint')").Scan(&role); err != nil {
-		return fmt.Errorf("role setup failed")
+		return fmt.Errorf("role setup failed: %w", err)
 	}
 	if !role {
 		if !fresh {
 			return errSprintCredentialMismatch
 		}
 		if _, err = tx.Exec(ctx, "CREATE ROLE nova_sprint LOGIN"); err != nil {
-			return fmt.Errorf("role creation failed")
+			return fmt.Errorf("role creation failed: %w", err)
 		}
 	}
 	if fresh {
 		if _, err = tx.Exec(ctx, "ALTER ROLE nova_sprint LOGIN PASSWORD '"+verifier+"'"); err != nil {
-			return fmt.Errorf("role credential setup failed")
+			return fmt.Errorf("role credential setup failed: %w", err)
 		}
 	}
 
@@ -183,7 +183,7 @@ func setSprintRole(ctx context.Context, conn *pgx.Conn, verifier string, fresh b
 		}
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return fmt.Errorf("role setup failed")
+		return fmt.Errorf("role setup failed: %w", err)
 	}
 	return nil
 }
@@ -194,15 +194,15 @@ func createSprintSchema(ctx context.Context, tx pgx.Tx) error {
 	var enabled *bool
 	err := tx.QueryRow(ctx, `SELECT set_option FROM pg_auth_members WHERE roleid='nova_sprint'::regrole AND member='nova_admin'::regrole AND grantor=current_user::regrole`).Scan(&enabled)
 	if err != nil && err != pgx.ErrNoRows {
-		return fmt.Errorf("schema creation failed")
+		return fmt.Errorf("schema creation failed: %w", err)
 	}
 	if enabled == nil || !*enabled {
 		if _, err = tx.Exec(ctx, "GRANT nova_sprint TO nova_admin WITH SET TRUE"); err != nil {
-			return fmt.Errorf("schema creation failed")
+			return fmt.Errorf("schema creation failed: %w", err)
 		}
 	}
 	if _, err = tx.Exec(ctx, "CREATE SCHEMA sprint AUTHORIZATION nova_sprint"); err != nil {
-		return fmt.Errorf("schema creation failed")
+		return fmt.Errorf("schema creation failed: %w", err)
 	}
 	if enabled == nil {
 		_, err = tx.Exec(ctx, "REVOKE nova_sprint FROM nova_admin")
@@ -210,7 +210,7 @@ func createSprintSchema(ctx context.Context, tx pgx.Tx) error {
 		_, err = tx.Exec(ctx, "GRANT nova_sprint TO nova_admin WITH SET FALSE")
 	}
 	if err != nil {
-		return fmt.Errorf("schema grant restoration failed")
+		return fmt.Errorf("schema grant restoration failed: %w", err)
 	}
 	return nil
 }
@@ -229,6 +229,7 @@ func internalSprintRole(ctx context.Context, fresh bool) int {
 		return SprintRoleCredentialMismatchExit
 	}
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "setup-role:", err)
 		return 1
 	}
 	return 0

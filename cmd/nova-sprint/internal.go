@@ -56,6 +56,7 @@ func internalCommand(ctx context.Context, args []string) (int, bool) {
 }
 func internalJSON(key string, value bool, err error) int {
 	if err != nil {
+		fmt.Fprintln(os.Stderr, "internal:", err)
 		return 1
 	}
 	if json.NewEncoder(os.Stdout).Encode(map[string]bool{key: value}) != nil {

@@ -76,7 +76,7 @@ func (s FleetService) valid() bool {
 func (f FleetServices) existing(ctx context.Context, s FleetService) (bool, error) {
 	out, err := f.command(ctx, "nova-config", "service", "list", "--json")
 	if err != nil {
-		return false, fmt.Errorf("nova-config service list failed")
+		return false, fmt.Errorf("nova-config service list failed: %w", err)
 	}
 	var list configServices
 	if json.Unmarshal(out, &list) != nil || list.Result.Verb != "service list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "service" || list.Facts.Rows != len(list.Items) {
@@ -124,7 +124,7 @@ func (f FleetServices) Ensure(ctx context.Context, s FleetService) (bool, error)
 	envJSON, _ := json.Marshal(env)
 	keys := append([]string(nil), s.Keys...)
 	sort.Strings(keys)
-	args := []string{"service", "add", s.Name, "--machine", s.Machine, "--argv", string(argv), "--keepalive", "true", "--enabled", "true", "--env", string(envJSON)}
+	args := []string{"service", "add", s.Name, "--machine", s.Machine, "--argv", string(argv), "--keepalive", "true", "--enabled", "true", "--env", string(envJSON), "--actor", "nova-sprint", "--reason", "nova-sprint up"}
 	if s.Seat != "" {
 		args = append(args, "--seat", s.Seat)
 	}
@@ -132,7 +132,7 @@ func (f FleetServices) Ensure(ctx context.Context, s FleetService) (bool, error)
 		args = append(args, "--keys", strings.Join(keys, ","))
 	}
 	if _, err = f.command(ctx, "nova-config", args...); err != nil {
-		return false, fmt.Errorf("nova-config service add failed")
+		return false, fmt.Errorf("nova-config service add failed: %w", err)
 	}
 	return true, nil
 }
@@ -151,7 +151,7 @@ func (f FleetServices) Apply(ctx context.Context, s FleetService) error {
 	}
 	_, err = f.command(ctx, "nova-fleet", "services", "--", "-l", s.Machine, "-e", "nova_service_only="+s.Name)
 	if err != nil {
-		return fmt.Errorf("nova-fleet services failed")
+		return fmt.Errorf("nova-fleet services failed: %w", err)
 	}
 	return nil
 }
