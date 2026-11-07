@@ -31,8 +31,8 @@ def _want(card, kind):
 def rows(card, kind, candidates):
     # Every serving row at or above the card's tier: the wanted rank and up,
     # nearest first, then the ranks between the tier and the wanted one,
-    # highest first. Those with room come first; when none has room, all of
-    # them (they queue). Never below the tier: candidates all serve it.
+    # highest first. Every candidate is listed, those with room first (the
+    # rest queue). Never below the tier: candidates all serve it.
     # prefer is that rule in Go, so a tick is linear in its producers.
     return prefer(candidates, _want(card, kind))
 

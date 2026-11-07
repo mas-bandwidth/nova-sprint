@@ -45,9 +45,9 @@ func Check(ctx context.Context, st store.Store, e *Engine, target string) (Repor
 		return Report{}, err
 	}
 	if n, ok := versionArg(target); ok {
-		pv := store.PolicyVersion{Version: 0, Kind: "script", Body: defaultBody}
+		pv := store.PolicyVersion{Body: defaultBody}
 		if n > 0 {
-			if pv, err = version(ctx, st, "check", n); err != nil {
+			if pv, err = script(ctx, st, "check", n); err != nil {
 				return Report{}, err
 			}
 		}
@@ -160,7 +160,7 @@ func line(pv store.PolicyVersion, reason string) string {
 // reasons are each version's reason, from the note of the event that stored it.
 func reasons(ctx context.Context, st store.Store) (map[int]string, error) {
 	out := map[int]string{}
-	return out, walk(ctx, st, func(e store.Event) {
+	return out, walk(ctx, st, 0, func(e store.Event) {
 		if !e.Accepted || e.After == nil {
 			return
 		}

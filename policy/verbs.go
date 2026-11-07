@@ -43,20 +43,25 @@ type Result struct {
 	Next    string
 }
 
-// Up stores the built-in default as version 1 and activates it, in one op,
-// when the store holds no version; otherwise it changes nothing.
+// Up stores the built-in default as the next version and activates it, in
+// one op fenced at the snapshot's seq, when no version is active; otherwise
+// it changes nothing. A data row stored first (stream data) is only counted
+// (Emma's probe: up once left no active version after one).
 func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 	snap, err := st.Snapshot(ctx)
+	if err != nil || snap.Policy > 0 {
+		return Result{Version: snap.Policy, Next: "nova-sprint policy show"}, err
+	}
+	all, err := versions(ctx, st)
 	if err != nil {
 		return Result{}, err
 	}
-	if _, err := st.Policy(ctx, 1); !errors.Is(err, store.ErrNotFound) {
-		return Result{Version: snap.Policy, Next: "nova-sprint policy show"}, err
-	}
+	v := len(all) + 1
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: "up: the built-in default",
-		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default.star", Body: defaultBody}, store.SetActivePolicy{Version: 1}}}
+		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}},
+		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default.star", Body: defaultBody}, store.SetActivePolicy{Version: v}}}
 	_, err = apply(ctx, st, op, "up")
-	return Result{Version: 1, Next: "nova-sprint policy show"}, err
+	return Result{Version: v, Next: "nova-sprint policy show"}, err
 }
 
 // Set compiles the file, checks its names and arity, runs it on the current
@@ -102,14 +107,11 @@ func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, r
 	if r := coordinator("activate", c, reason); r != nil {
 		return Result{}, r
 	}
-	pv, err := version(ctx, st, "activate", v)
+	pv, err := script(ctx, st, "activate", v)
 	if err != nil {
 		return Result{}, err
 	}
-	switch {
-	case pv.Kind != "script":
-		return no(fmt.Sprintf("v%d is of kind %s, which policy does not run", v, pv.Kind), "activate a script version: nova-sprint policy show --list")
-	case pv.Active:
+	if pv.Active {
 		return no(fmt.Sprintf("policy version %d is already active", v), "nova-sprint policy show")
 	}
 	snap, err := st.Snapshot(ctx)
@@ -187,8 +189,18 @@ func apply(ctx context.Context, st store.Store, op store.Op, verb string) (*stor
 // version is stored version v, or the refusal naming the list.
 func version(ctx context.Context, st store.Store, verb string, v int) (store.PolicyVersion, error) {
 	pv, err := st.Policy(ctx, v)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || v < 0 {
 		return pv, &Refusal{verb, fmt.Sprintf("policy version %d does not exist", v), "nova-sprint policy show --list"}
+	}
+	return pv, err
+}
+
+// script is stored version v of kind script: a data row (stream data) is
+// refused by every verb that runs a version (activate, check, catalog).
+func script(ctx context.Context, st store.Store, verb string, v int) (store.PolicyVersion, error) {
+	pv, err := version(ctx, st, verb, v)
+	if err == nil && pv.Kind != "script" {
+		err = &Refusal{verb, fmt.Sprintf("v%d is of kind %s, which policy does not run", v, pv.Kind), "name a script version: nova-sprint policy show --list"}
 	}
 	return pv, err
 }
@@ -223,7 +235,7 @@ func LoadVersions(ctx context.Context, st store.Store) (Versions, error) {
 	}
 	vs.Active = &active
 	prev := 0
-	err = walk(ctx, st, func(e store.Event) {
+	err = walk(ctx, st, snap.Seq, func(e store.Event) {
 		if p, ok := PrevOf(e); ok {
 			prev = p
 		}
@@ -250,14 +262,19 @@ func PrevOf(e store.Event) (int, bool) {
 	return 0, false
 }
 
-// walk calls fn on every event in seq order.
-func walk(ctx context.Context, st store.Store, fn func(store.Event)) error {
+// walk calls fn on every event in seq order up to seq to (a snapshot's,
+// so what it folds is what the snapshot holds: Emma's probe), or every
+// event when to is 0.
+func walk(ctx context.Context, st store.Store, to int64, fn func(store.Event)) error {
 	for after := int64(0); ; {
 		es, err := st.Events(ctx, after, store.MaxEvents)
 		if err != nil || len(es) == 0 {
 			return err
 		}
 		for _, e := range es {
+			if to > 0 && e.Seq > to {
+				return nil
+			}
 			fn(e)
 		}
 		after = es[len(es)-1].Seq

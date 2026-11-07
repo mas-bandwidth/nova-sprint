@@ -35,17 +35,11 @@ const CatalogFix = "nova-sprint policy set <file> --reason <why>"
 // in a tick's Answers (ruling 7). An unknown or negative version, or one of
 // kind data, is a Refusal naming the list. Each call returns its own copy.
 func ReadCatalog(ctx context.Context, st store.Store, v int) (Catalog, error) {
-	pv := store.PolicyVersion{Version: 0, Kind: "script", Body: defaultBody}
-	if v < 0 {
-		return Catalog{}, &Refusal{"catalog", fmt.Sprintf("policy version %d does not exist", v), "nova-sprint policy show --list"}
-	}
-	if v > 0 {
+	pv := store.PolicyVersion{Body: defaultBody}
+	if v != 0 {
 		var err error
-		if pv, err = version(ctx, st, "catalog", v); err != nil {
+		if pv, err = script(ctx, st, "catalog", v); err != nil {
 			return Catalog{}, err
-		}
-		if pv.Kind != "script" {
-			return Catalog{}, &Refusal{"catalog", fmt.Sprintf("v%d is of kind %s, which policy does not run", v, pv.Kind), "nova-sprint policy show --list"}
 		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, TickTime)

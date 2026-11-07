@@ -82,7 +82,7 @@ func TestCatalogRefusals(t *testing.T) {
 	assert.Equal(t, "SPRINT REFUSED policy catalog: policy version 9 does not exist: nova-sprint policy show --list", refusal(t, err))
 	w.apply(store.PutPolicy{Kind: "data", Name: "table", Body: "{}"})
 	_, err = ReadCatalog(w.ctx(), w.st, 2)
-	assert.Equal(t, "SPRINT REFUSED policy catalog: v2 is of kind data, which policy does not run: nova-sprint policy show --list", refusal(t, err))
+	assert.Equal(t, "SPRINT REFUSED policy catalog: v2 is of kind data, which policy does not run: name a script version: nova-sprint policy show --list", refusal(t, err))
 	twice, line := override("catalog", "def catalog():\n    return {\"models\": {\"a\": [{\"name\": \"opus\", \"tier\": \"heavy\"}], \"b\": [{\"name\": \"opus\", \"tier\": \"frontier\"}]}, \"harnesses\": [\"claude\"]}")
 	path := w.file("twice.star", twice)
 	_, err = Set(w.ctx(), w.st, NewEngine(), w.caller(), path, "test")

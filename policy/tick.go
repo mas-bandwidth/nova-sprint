@@ -142,7 +142,7 @@ func (r *run) exec() outcome {
 	t := &tally{rows: map[string][]string{}}
 	for i := range r.asks {
 		if f := r.one(p, &r.asks[i], cache, t, &o); f != nil {
-			if o.fs = append(o.fs, *f); !r.all || r.ctx.Err() != nil {
+			if o.refuse(&r.asks[i], *f); !r.all || r.ctx.Err() != nil {
 				return o
 			}
 			r.th.Uncancel() // a spent step budget cancels the thread; the deadline is checked next
@@ -210,14 +210,27 @@ func (r *run) fresh(p *program, k *ask, t *tally, o *outcome) (cached, *Failure)
 	return c, nil
 }
 
-// joint runs each rows answer's joint check once every answer is in.
+// refuse records f, and for check marks k's answer refused, so a refused
+// answer is never shown as a change of value (Emma's probe).
+func (o *outcome) refuse(k *ask, f Failure) {
+	o.fs = append(o.fs, f)
+	if o.a.shown != nil {
+		o.a.shown[k.q+"("+k.subject+")"] = "(refused)"
+	}
+}
+
+// joint runs each rows answer's joint check once every answer is in. When
+// a width was refused (check goes on past it) the joint check has nothing
+// to stand on and is not run: the width's refusal is the report's, not a
+// rows refusal per card (Emma's probe).
 func (r *run) joint(p *program, o *outcome) {
+	widths := 0
+	for i := range r.asks {
+		widths += b2i(r.asks[i].q == "width")
+	}
 	for i := range r.asks {
 		k := &r.asks[i]
-		if k.joint == nil {
-			continue
-		}
-		if _, ok := o.pending[k.digest]; !ok {
+		if _, ok := o.pending[k.digest]; k.joint == nil || !ok || len(o.a.Width) < widths {
 			continue
 		}
 		msg := k.joint(&o.a)
@@ -225,7 +238,7 @@ func (r *run) joint(p *program, o *outcome) {
 			msg = overTime()
 		}
 		if msg != "" {
-			if o.fs = append(o.fs, *p.fail(k, 0, msg)); !r.all || r.ctx.Err() != nil {
+			if o.refuse(k, *p.fail(k, 0, msg)); !r.all || r.ctx.Err() != nil {
 				return
 			}
 		}
