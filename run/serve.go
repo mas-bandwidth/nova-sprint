@@ -141,6 +141,9 @@ func (t *Ticker) seed(ctx context.Context) {
 func (l *loop) tick(ctx context.Context, n int) error {
 	start := l.cfg.Clock.Now()
 	ro, rerr := l.cfg.Roster.ReadRosterAt(ctx, max(1, l.ticker.Limits().FleetWidthCap))
+	if rerr == nil {
+		l.log.RosterRefused(ro.Refused)
+	}
 	present := l.present(ctx)
 	budget := BudgetDeadline{Duration: func() time.Duration { return time.Duration(l.ticker.Timeouts().Tick) * time.Second }}
 	tctx, cancel := budget.Begin(ctx)
