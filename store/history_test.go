@@ -38,6 +38,7 @@ func TestFunctionalValidateHistoryRefuses(t *testing.T) {
 		"dropped event":  {"dropped", unlocked + "DELETE FROM sprint.events WHERE seq = 3", "the log has no event at seq 3 (the next is seq 4)"},
 		"orphan receipt": {"orphan", unlocked + `UPDATE sprint.events SET receipt = jsonb_set(receipt, '{op}', '"ghost"') WHERE seq = 4`, "the receipt stored with event seq 4 (op reason-4) is not its own: it names op ghost at seq 4"},
 		"epoch row":      {"epoch", "UPDATE sprint.epoch SET n = 3", "the epoch row is 3, but the log's last epoch is 2"},
+		"stop row":       {"stop", "UPDATE sprint.epoch SET stopped = false", "rebuilding the 5 events gives a state that differs from the snapshot in stopped"},
 		"policy not in the log": {"policy", "INSERT INTO sprint.policy (version, kind, name, body, active, actor, at) VALUES (2, 'data', 'x', '{}', false, 'mallory', now())",
 			"policy version 2 is stored, but no event in the log wrote it"},
 		"cursor past the end": {"cursor", "UPDATE sprint.cursors SET seq = 99 WHERE name = 'feed'", "cursor feed is at seq 99, past the log's last seq 5"},
