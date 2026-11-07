@@ -321,10 +321,11 @@ func (p productionSetup) writeHandoffChild(ctx context.Context, request handoffE
 	cmd := exec.CommandContext(ctx, "nova-secrets", args...)
 	cmd.Stdin = bytes.NewReader(data)
 	cmd.Env = continuationEnv(os.Environ())
-	cmd.Stderr = io.Discard
-	out, err := cmd.Output()
+	var buf boundedOutput
+	err = verbs.OutputWith(cmd, &buf)
+	out := buf.Bytes()
 	if err != nil || len(out) > 128 {
-		return "", fmt.Errorf("continuation could not be saved")
+		return "", fmt.Errorf("continuation could not be saved%s", verbs.ToolDetail(err))
 	}
 	id := strings.TrimSpace(string(out))
 	if !handoffID.MatchString(id) {
@@ -783,9 +784,7 @@ func runSetupCommand(ctx context.Context, clean bool, name string, args ...strin
 		}
 	}
 	var out boundedOutput
-	cmd.Stdout = &out
-	cmd.Stderr = io.Discard
-	if err := cmd.Run(); err != nil {
+	if err := verbs.OutputWith(cmd, &out); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil

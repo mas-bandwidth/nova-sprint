@@ -3,10 +3,8 @@ package verbs
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -81,13 +79,10 @@ func (m ModelProbeCommand) Run(ctx context.Context, service string) error {
 		run = quietCommand
 	}
 	if err := run(ctx, "nova-secrets", args...); err != nil {
-		return fmt.Errorf("model-list probe failed")
+		return fmt.Errorf("model-list probe failed%s", ToolDetail(err))
 	}
 	return nil
 }
 func quietCommand(ctx context.Context, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run()
+	return RunQuiet(ctx, name, args...)
 }
