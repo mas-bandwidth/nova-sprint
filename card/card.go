@@ -30,6 +30,7 @@ type Card struct {
 	Red                         bool // a producer: the last read's verdict was red; set by Red, cleared by Finished and Start
 	Cost                        int64
 	Priced                      bool
+	Usage                       string // a consumer: its run's usage record (package usage's words)
 	Brief                       string // the brief as given: immutable, copied to each consumer at cut
 	Prose                       string // the contract fields Edit sets
 	Paths, DoneWhen             []string
@@ -138,11 +139,15 @@ type (
 
 // Consumer events, one per row of the consumer table.
 type (
-	Take   struct{ Row string }
+	Take struct{ Row string }
+	// Report is a row's result. Cost, Priced and Usage are the run's usage
+	// record as the engine priced it (package usage): the machine stores
+	// them and prices nothing.
 	Report struct {
 		Row, Result, Head, Reason string
 		Cost                      int64
 		Priced                    bool
+		Usage                     string
 	}
 	// Withdraw fails a live consumer; Head is its last pushed head, when it
 	// has one. Withdrawing the work consumer of a working producer releases
@@ -176,7 +181,7 @@ func FromStore(c store.Card) Card {
 	return Card{ID: c.ID, Kind: c.Kind, Of: c.Of, Stream: c.Stream, State: c.State, Gen: c.Gen, Attempt: c.Attempt, Priority: c.Priority,
 		Tier: c.Tier, Score: c.Score, Needs: c.Needs, After: c.After, Holder: c.Holder, Author: c.Author, Branch: c.Branch,
 		BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: c.Head, Result: c.Result, Reason: c.Reason, Finding: c.Finding,
-		Bounces: c.Bounces, Review: c.Review, Red: c.Red, Cost: c.Cost, Priced: c.Priced, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
+		Bounces: c.Bounces, Review: c.Review, Red: c.Red, Cost: c.Cost, Priced: c.Priced, Usage: c.Usage, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
 }
 
 // RowFromStore is a store row as the machine reads it, with width and

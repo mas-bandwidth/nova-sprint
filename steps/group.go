@@ -141,6 +141,8 @@ func written(w store.Write) (card, row string) {
 		return x.Card, ""
 	case store.SetCardCost:
 		return x.Card, ""
+	case store.SetCardUsage:
+		return x.Card, ""
 	case store.SetCardPriority:
 		return x.Card, ""
 	case store.SetCardPaths:

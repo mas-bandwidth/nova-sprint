@@ -50,6 +50,12 @@ const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f043418
 // transaction, then the new hash is recorded.
 const round21Hash = "cbe47774a69cf22749b6d414e1bc5689104820199313088df41975ef1771d491"
 
+// round24Hash is the schema hash of round 22's schema.sql, which every round
+// to 24 carried (testdata/schema-round24.sql), the live store's on
+// 2026-11-07: running schema.sql on it adds cards.usage and sprint.balances
+// (round 25), in Migrate's one transaction.
+const round24Hash = "eb754483470ba67cfe6aa6c36646c19b4503a2fb10fd0344b3aa2fdff6a15b7e"
+
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.

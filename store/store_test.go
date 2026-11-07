@@ -188,6 +188,20 @@ func TestRound16Hash(t *testing.T) {
 	assert.NotContains(t, string(old), " red ")
 }
 
+// round24Hash is the hash of round 22's schema.sql, which every round to 24
+// carried, kept in testdata: it has no cards.usage and no sprint.balances,
+// which round 25 adds. Unit: reads a file in the package, no store.
+func TestRound24Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round24.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round24Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round24Hash, schemaHash)
+	assert.NotContains(t, string(old), "usage")
+	assert.NotContains(t, string(old), "sprint.balances")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS usage")
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.
