@@ -56,7 +56,7 @@ func (t *Ticker) Timeouts() policy.Timeouts { return t.timeouts }
 
 // Push sends this tick's envelopes (Pusher.Push) and returns the
 // recipients whose send failed.
-func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []string {
+func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []PushFailure {
 	return t.push.Push(ctx, b, t.store, t.snap.Epoch, now)
 }
 

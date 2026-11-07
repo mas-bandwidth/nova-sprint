@@ -138,7 +138,7 @@ func TestPushFailureLeavesTheCursor(t *testing.T) {
 	}
 	tickN(t, tk, ro, 3)
 	b := &fakeBus{fail: map[string]bool{"alice": true}}
-	if failed := tk.Push(context.Background(), b, t0); !slices.Equal(failed, []string{"alice"}) {
+	if failed := tk.Push(context.Background(), b, t0); len(failed) != 1 || failed[0].To != "alice" || failed[0].Err == nil {
 		t.Fatalf("failed = %v", failed)
 	}
 	if err := tk.Fold(context.Background()); err != nil {
@@ -228,9 +228,14 @@ func TestStopIsOneMessageThenAck(t *testing.T) {
 		t.Fatalf("sent %+v results %+v", b.sent, got)
 	}
 	b.fail = map[string]bool{"alice": true}
+	var said []string
+	e.Fault = func(what string, err error) { said = append(said, what+": "+err.Error()) }
 	e.stop(context.Background(), steps.EdgeRequest{ID: "stop.2", Kind: "stop", Row: "alice", Consumer: "p1.w1"})
 	if got := e.Results(); len(got) != 0 {
 		t.Fatalf("an unsent stop was acknowledged: %+v", got)
+	}
+	if len(said) != 1 || !strings.HasPrefix(said[0], "stop stop.2 to alice: ") {
+		t.Fatalf("the unsent stop's cause was not said: %q", said)
 	}
 }
 

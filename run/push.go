@@ -94,10 +94,18 @@ func (p *Pusher) CatchUp(ctx context.Context, st store.Store, cold store.Snapsho
 	return nil
 }
 
+// PushFailure is a recipient whose envelope was not sent or whose cursor did
+// not move, and why.
+type PushFailure struct {
+	To  string
+	Err error
+}
+
 // Push sends each recipient's envelope and moves its cursor (SEAMS 6). It
-// returns the recipients whose send failed, for the PUSH FAILED lines.
-func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int, now time.Time) []string {
-	var failed []string
+// returns the recipients whose send failed, with the cause, for the PUSH
+// FAILED lines.
+func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int, now time.Time) []PushFailure {
+	var failed []PushFailure
 	for _, r := range slices.Sorted(maps.Keys(p.queue)) {
 		q := p.queue[r]
 		if len(q) == 0 {
@@ -106,11 +114,11 @@ func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int,
 		last := q[len(q)-1].seq
 		subject, body := envelope(r, q)
 		if _, err := b.Send(ctx, r, subject, body); err != nil {
-			failed = append(failed, r)
+			failed = append(failed, PushFailure{To: r, Err: err})
 			continue
 		}
 		if err := setCursor(ctx, st, r, last, epoch, now); err != nil {
-			failed = append(failed, r)
+			failed = append(failed, PushFailure{To: r, Err: err})
 			continue
 		}
 		delete(p.queue, r)
