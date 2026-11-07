@@ -911,6 +911,16 @@ round 4, each move the fault lets through is one card/ at 4a085774 refuses:
   a blocker Start on r2 then a preempt Withdraw of p1.1 working on r1 in
   one op.
 
+Trace check (`make-traces.sh check` on hetzner2, this model, card/ at
+4bb1a43b): card-walk-1..20 all TRACE OK (65 to 114 steps each), the
+card-breaker refused at 3 of 3 as expected, and the store traces as before.
+`CardMachineTrace.tla` sets the Merge bookkeeping (`op`, `snap`, `pw`, `bs`)
+at rest in TraceInit and leaves it unchanged on every record (each record
+is one op of one move), and `MaxOp` is read off the scenario, so the
+walk's generated cfg needs no new constant. The walk records single moves
+only: it never merges, uses InThisOp, adds a dotted id or gives ReadFix an
+empty finding, so it cannot see the round 7 divergences below.
+
 Round 7, checked by hand against card/ at v2-card-fix4 (b2b0b8c2; 4bb1a43b
 changes no move in card/, only adds the trace emitter). Each is a move the
 round 7 rulings refuse; "fix4 accepts" marks a divergence the code still has:
