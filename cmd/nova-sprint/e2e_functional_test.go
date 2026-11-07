@@ -44,8 +44,7 @@ type e2e struct {
 
 const sprintPassword = "e2e-sprint-password" // trust auth: the server never checks it
 
-func TestFunctionalEndToEnd(t *testing.T) {
-	t.Parallel()
+func TestFunctionalEndToEnd(t *testing.T) { // unitlint: serial, setUp sets the process environment (t.Setenv)
 	for _, tool := range []string{"initdb", "pg_ctl", "pg_dump", "redis-server", "nova-bus", "git", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip(tool + " required")
