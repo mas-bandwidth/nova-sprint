@@ -208,7 +208,7 @@ func consumersOf(s store.Snapshot, producer string) []card.Card {
 // reportOutput is the receipt: JSON for a machine, one line for a mind.
 func reportOutput(in *input, snap store.Snapshot, r store.Receipt, id string) (string, error) {
 	if r.Actor != in.actor || r.Kind != "report" {
-		return "", refuse("this report was "+r.Kind+" by "+r.Actor, "nova-sprint next --as "+in.actor)
+		return "", refuse(fmt.Sprintf("%s was reported by %s", id, r.Actor), "nova-sprint next --as "+in.actor)
 	}
 	if !r.Accepted {
 		return "", refuse(r.Reason, "nova-sprint show "+id)

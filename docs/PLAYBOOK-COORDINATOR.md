@@ -189,18 +189,18 @@ The card id is the file's name without `.md`. A brief is:
    base, tells the worker to run the whole package of every file it touches, and names a landed
    worked example for every piece after the first.
 
-A card already done at its base is a duplicate brief and is refused. Add cards with
-`nova-sprint add --stream <s> --brief-file <f>`; each prints
-`ADDED <id> stream=<s> tier=<t> priority=<level> needs=<ids>` and `next: nothing; wait for the
-bus`. A new stream comes first: `nova-sprint stream add <s> --repo <owner/name> [--base main] [--pr]`
-prints `STREAM ADDED <s> repo=... base=... branch=sprint/<s>`; give `--pr` when the repo
-requires PRs, and only then.
+A new stream comes first: `nova-sprint stream add <s> --repo <owner/name> [--base main]
+[--mode auto|group|hand] [--forge github]` prints `STREAM <s> repo=... base=... mode=...
+forge=... applied at seq <n>`; give `--forge github` when the repo requires PRs and CI, and only
+then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either later). Add cards
+with `nova-sprint add --stream <s> --brief-file <f>...` (`--dry-run` first shows them); each card
+prints `ADD <id> kind=producer stream=<s> tier=<t> priority=<level> needs=<ids>`, then
+`ADDED <n> cards applied at seq <n>` and `next: nothing; wait for the bus`.
 
-To correct a brief, edit it in place, never drop and re-add it:
-`nova-sprint edit <id> --brief-file <f> --reason "<why>"` prints `EDITED <id>`. An edit keeps the
-card's head, score, attempt and finished reads. It is refused while a row holds the card
-(`producer <id> is held by <row>; message <row> instead`): then send the correction to the holder
-on the bus, and edit after it comes back.
+To correct a brief, add the corrected brief under a new id and replace the old card with it:
+`nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants
+follow the new one. A card a row holds is refused (`producer <id> has live consumer ...`): send
+the correction to the holder on the bus, or release the card first.
 
 ## 5. Priorities, landing and reds
 

@@ -62,7 +62,10 @@ func (e *Engine) releaseRow(ctx context.Context, in *input, snap store.Snapshot,
 	}
 	cards := liveOf(snap, row)
 	what := fmt.Sprintf("RELEASE ROW %s withdraws %s", row, idList(cards))
-	if in.has("dry-run") || len(cards) == 0 {
+	if len(cards) == 0 {
+		return done(waitNext, "RELEASE ROW "+row+" holds nothing"), nil
+	}
+	if in.has("dry-run") {
 		return done("nova-sprint release --row "+row+" --all --reason \"<why>\"", what+" (dry run)"), nil
 	}
 	plan, err := withdraw(snap, cards, reason)

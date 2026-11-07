@@ -140,7 +140,7 @@ func firstOr(s []string, or string) string {
 // refusal.
 func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Roster, tmo policy.Timeouts, id string) (string, error) {
 	if r.Actor != in.actor || r.Kind != "take" {
-		return "", refuse("this take was "+r.Kind+" by "+r.Actor, "nova-sprint next --as "+in.actor)
+		return "", refuse(fmt.Sprintf("%s was taken by %s", id, r.Actor), "nova-sprint next --as "+in.actor)
 	}
 	if !r.Accepted {
 		return "", refuse(r.Reason, "nova-sprint show "+id)
@@ -163,7 +163,7 @@ func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Rost
 
 func takenText(t takeReceipt, row string) string {
 	ref := fmtCard(t.Consumer, t.Gen)
-	terms := fmt.Sprintf("deadline=%ds forge=%s", t.Deadline, forgeWord(t.Forge))
+	terms := fmt.Sprintf("deadline=%ds forge=%s", t.Deadline, orWord(t.Forge, "none"))
 	if t.Kind == "read" {
 		return done(fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, t.Epoch),
 			fmt.Sprintf("TAKEN %s repo=%s head=%s %s", t.Consumer, t.Repo, t.Head, terms), "Read detached at this head; do not edit or push.", t.Brief)
@@ -177,13 +177,6 @@ func takenText(t takeReceipt, row string) string {
 	}
 	lines = append(lines, t.Brief)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
-}
-
-func forgeWord(f string) string {
-	if f == "" {
-		return "none"
-	}
-	return f
 }
 
 func nonNil(s []string) []string {
