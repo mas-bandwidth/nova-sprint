@@ -69,7 +69,10 @@ func (c *Cache) pageSnapshot() pageEnvelope {
 		d.OK = false
 		d.Error = "store read failed"
 	}
-	rate, minutes := c.rate()
+	rate, minutes, landings := c.rateWindow()
+	d.EtaWindow, d.EtaLandings = minutes, landings
+	d.Eta = etaString(etaMinutes(d.Left, rate, landings))
+	d.Summary = summaryLine(d, d.Eta)
 	now := c.clock()
 	var msg *string
 	if d.Error != "" {

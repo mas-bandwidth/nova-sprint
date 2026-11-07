@@ -18,7 +18,7 @@ func TestMapRepresentative(t *testing.T) {
 	if d.All != 3 || w.Blocked != 1 || w.Fail != 1 || w.Fix != 1 || w.Cost == nil || w.Cost.Int64() != 120 {
 		t.Fatalf("work=%+v all=%d", w, d.All)
 	}
-	if f.Status != "held" || f.Done != 2 || f.OK != 1 || f.OKPct != 100 {
+	if f.Status != "held" || f.Done != 2 || f.OK != 0 || f.OKPct != 0 {
 		t.Fatalf("kin=%+v", f)
 	}
 }

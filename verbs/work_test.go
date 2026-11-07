@@ -130,6 +130,22 @@ func TestRead(t *testing.T) {
 	want(t, w.do("bob", "read", "p2.r1@2", "fix", "--finding", "a.go:1: off by one; use <="), 0, "READ p2.r1 head="+head+" result=fix")
 }
 
+// A read's spend reaches its consumer card, priced, exactly as a finish's does.
+func TestReadCarriesCost(t *testing.T) {
+	w := newWorld(t)
+	takeR1(t, w)
+	want(t, w.do("bob", "read", "p2.r1@2", "yes", "--cost", "0.015"), 0, "READ p2.r1 head="+head+" result=ok")
+	if c := w.snap(t).Cards["p2.r1"]; c.State != "done" || c.Cost != 15000 || !c.Priced {
+		t.Fatalf("read card %+v", c)
+	}
+	w = newWorld(t)
+	takeR1(t, w)
+	want(t, w.do("bob", "read", "p2.r1@2", "yes"), 0, "READ p2.r1")
+	if c := w.snap(t).Cards["p2.r1"]; c.Priced || c.Cost != 0 {
+		t.Fatalf("a read with no --cost is unpriced, never a priced $0: %+v", c)
+	}
+}
+
 func TestReadRefusals(t *testing.T) {
 	aliceReads := both(setCard("p2.r1", func(c *store.Card) { c.Holder, c.State = "alice", "working" }))
 	runCases(t, []tcase{

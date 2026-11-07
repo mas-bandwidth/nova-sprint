@@ -57,6 +57,13 @@ type envelope struct {
 	Tables        map[string]any         `json:"tables"`
 	Streams       []streamLine           `json:"streams"`
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
+	Coordinator   string                 `json:"coordinator"`        // the roster row whose role is coordinator ("" when none is hooked)
+	Summary       string                 `json:"summary"`            // v1's headline: "landed/all pct -> ETA 1h12m" (set per read, with the rate)
+	Eta           string                 `json:"eta"`                // the ETA alone, or "-"
+	EtaWindow     float64                `json:"eta_window_minutes"` // minutes of landings the rate was measured over
+	EtaLandings   int                    `json:"eta_landings"`       // landings inside that window
+	Left          int                    `json:"left"`               // cards not yet landed (blocked, waiting, ready, working, review, fix, merging)
+	Cost          *costSummary           `json:"cost"`
 	OK            bool                   `json:"ok"`
 	Error         string                 `json:"error,omitempty"`
 }
@@ -112,13 +119,26 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 	for _, f := range friends {
 		setPercent(f)
 	}
-	landed, failed, all := 0, 0, 0
+	landed, failed, all, left := 0, 0, 0, 0
 	for _, w := range work {
+		left += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging
 		landed += w.Landed
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+}
+
+// coordinatorOf is the name of the row whose role is coordinator; the first
+// by name when there are several, "" when none is hooked (v1 showed "-").
+func coordinatorOf(rows map[string]store.Row) string {
+	name := ""
+	for n, r := range rows {
+		if r.Role == "coordinator" && (name == "" || n < name) {
+			name = n
+		}
+	}
+	return name
 }
 func setStreamStates(streams []streamLine, work map[string]*workRow) {
 	for i := range streams {
