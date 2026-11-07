@@ -127,6 +127,7 @@ type Runner struct {
 	Now                                func() time.Time
 	Sleep                              func(time.Duration)
 	mu                                 *sync.Mutex
+	SkipPR                             bool            // the worker never opens a PR: the landing does (71); serve sets it
 	fatal                              chan error      // a refused receipt from a detached job ends the wake loop (66)
 	jobs                               *sync.WaitGroup // every job a pass launched, waited for when the loop ends
 	probed, withdrawn                  map[string]bool
@@ -886,7 +887,11 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 		rec.PushedHead = rec.Outcome.Head
 	}
 	rec.State = JobRebased
-	if rec.Forge != "" {
+	// Defect 71 (dogfood 2026-11-07, INTENT rule 16): the worker's contract
+	// ends at a pushed head; the run's landing opens the PR with the host's
+	// identity. A bench has no forge identity, so this step faulted every
+	// finished work card ("open PR fault: neither GH_TOKEN nor GH_CONFIG_DIR").
+	if rec.Forge != "" && !r.SkipPR {
 		fo := r.Forges[rec.Forge]
 		if fo == nil {
 			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fmt.Sprintf("the stream's forge %q has no adapter on this worker: install a nova-worker that serves it, or set the stream's forge to one this worker serves", rec.Forge)}
