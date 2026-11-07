@@ -1,7 +1,6 @@
 package store
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	_ "embed"
@@ -138,27 +137,20 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateLock); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
-	var meta, used bool
-	if err := tx.QueryRow(ctx, `SELECT to_regclass('sprint.meta') IS NOT NULL,
-		EXISTS (SELECT 1 FROM pg_depend d JOIN pg_namespace n ON n.oid = d.refobjid
-			WHERE d.refclassid = 'pg_namespace'::regclass AND n.nspname = 'sprint')`).Scan(&meta, &used); err != nil {
+	_, meta, used, _, err := namespace(ctx, tx) // the foreign check CheckSchema shares (schema.go)
+	if err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if used && !meta {
-		return errors.New("store: migrate: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere")
+		return fmt.Errorf("store: migrate: %w", errForeign)
 	}
 	if meta {
-		v, hash := 0, ""
-		// to_jsonb reads hash from a meta made before the column existed as ""
-		err := tx.QueryRow(ctx, "SELECT m.schema, coalesce(to_jsonb(m)->>'hash', '') FROM sprint.meta m WHERE id = 1").Scan(&v, &hash)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		v, hash, _, err := readMeta(ctx, tx) // no row is version 0, refused below
+		if err != nil {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
-		if v != SchemaVersion {
-			return fmt.Errorf("store: migrate: the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", v, SchemaVersion, v)
-		}
-		if hash != schemaHash && hash != round16Hash {
-			return fmt.Errorf("store: migrate: the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
+		if err := metaRefusal(v, hash); err != nil {
+			return fmt.Errorf("store: migrate: %w", err)
 		}
 	}
 	if _, err := tx.Exec(ctx, schemaSQL); err != nil {
