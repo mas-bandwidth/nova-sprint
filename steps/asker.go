@@ -1,17 +1,21 @@
 package steps
 
 import (
+	"maps"
 	"slices"
 	"time"
 )
 
-// Asker is layer 5 as the steps consume it: one call per tick with every
-// question the tick has subjects for (docs/LAYER-5-POLICY.md, "The question
-// set"; names and types as that doc has them). An answer the engine cannot
-// use (absent, failed, out of its domain, naming a row or card not offered)
-// is the default for this tick, with one policy judgement per question and
-// version; no answer ever stalls a step or makes it plan an illegal move
-// (guarantee 10, PolicyFailsToDefault).
+// Asker is layer 5 as the steps consume it: layer 5's question set, names
+// and types as docs/LAYER-5-POLICY.md has them. A tick asks twice, each
+// question once: first the argument-free questions (limits, timeouts) and
+// reads, whose answers shape the subjects of the rest (the rest bound, the
+// rows a silence will take down, the reads owed); then order, rows,
+// verdict, width and landing with every subject. An answer the engine
+// cannot use (absent, failed, out of its domain, naming a row or card not
+// offered) is the default for this tick, with one policy judgement per
+// question and version; no answer ever stalls a step or makes it plan an
+// illegal move (guarantee 10, PolicyFailsToDefault).
 type Asker interface {
 	Ask(Questions) Answers
 }
@@ -20,8 +24,8 @@ type Asker interface {
 // cold tick was 217 ms).
 const AskBudget = 500 * time.Millisecond
 
-// Questions is every question of one tick with its subjects. Limits and
-// timeouts take no subject and are always asked.
+// Questions is the questions of one call with their subjects. Limits and
+// timeouts take no subject and are answered on every call.
 type Questions struct {
 	Budget  time.Duration
 	Order   []CardFacts
@@ -35,21 +39,22 @@ type Questions struct {
 // CardFacts is a producer as policy sees it. WriterRank is set for a read:
 // the rank of the row that wrote the head.
 type CardFacts struct {
-	ID, Stream, Tier, Prose, Priority, PriorHead string
-	Score, Attempt, Bounces                      int
-	WriterRank                                   string
+	ID, Stream, Tier, Priority, PriorHead string
+	Score, Attempt, Bounces               int
+	WriterRank                            string
 }
 
-// RowFacts is a row as policy sees it: Rank is the highest tier it lists.
+// RowFacts is a row as policy sees it: Rank is the highest tier it lists,
+// Model the roster's label (a worker's harness, a kin's model).
 type RowFacts struct {
-	Name, Kind, Model, Harness, Rank string
-	Width, Working, Ready, Flaps     int
-	Tiers                            []string
+	Name, Kind, Model, Rank      string
+	Width, Working, Ready, Flaps int
+	Tiers                        []string
 }
 
 // RowsQuestion asks rows(card, kind, candidates): Kind is work or read;
-// Candidates are the rows up, not held, not rested, serving the card's tier
-// with room under the deal-ahead, the author excluded for a read.
+// Candidates are the rows up, not held, hooked, not resting, not about to
+// go down, serving the card's tier, the author excluded for a read.
 type RowsQuestion struct {
 	Card       CardFacts
 	Kind       string
@@ -90,19 +95,26 @@ type Answers struct {
 }
 
 // WidthAnswer is width(row): how many the row works (at most its width) and
-// how many it queues ahead (at most 4 x width).
+// how many it queues ahead (at most 4 x width). Ahead is the deal's room
+// beyond the width: policy's number, the width by default (the ruling of
+// round 2; limits.ahead did not land in policy round 5, so it stays here).
 type WidthAnswer struct{ Work, Ahead int }
 
 // LandingAnswer is landing(stream): backed up at BackedUp merging, flowing
 // again at Flowing.
 type LandingAnswer struct{ BackedUp, Flowing int }
 
-// Limits is limits(): the counts. Budget (cards touched per tick) and Pack
-// (groups per op) are layer 3's keys in the same dict (LAYER-3, "Policy
-// questions and their defaults").
+// Limits is limits() as policy round 5 has it: the counts and layer 3's
+// steering numbers. ReportsPerTick is the tick's budget of cards touched.
+// BaseRedMeetings and IdleCeiling are asked too (the intent audit's row 8)
+// and are optional until policy carries them: 0 is the default (3; half
+// again the floor).
 type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
-	Budget, Pack                                                                  int
+	EscalateAfter, FrontierAfter, FlapLimit                                       int
+	IdleFloor, LandTarget                                                         float64
+	BaseRedMeetings                                                               int
+	IdleCeiling                                                                   float64
 }
 
 // Timeouts is timeouts(): seconds of running time, each 1..86400.
@@ -117,32 +129,24 @@ type Default struct{}
 // Ask answers nothing.
 func (Default) Ask(Questions) Answers { return Answers{} }
 
-// Defaults are the engine's own answers (LAYER-5's default policy; every
-// number marked there). EscalateAfter and FrontierAfter are the bounces at
-// which a work consumer is dealt one rank up and to the top rank (guesses,
-// LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
-// (LAYER-3 "Retire and fail limits", 3, unmeasured).
+// Defaults are the engine's own answers where policy gives none. Pack is
+// the groups per op (measured, the load test); LandSample the landings a
+// land rate is judged over (LESSONS 3.21: 20); Limits, Timeouts and Landing
+// are layer 5's default policy's numbers, each marked there.
 type Defaults struct {
-	EscalateAfter, FrontierAfter int
-	Reads                        int
-	FlapLimit                    int
-	IdleFloor, IdleCeiling       float64
-	LandTarget                   float64
-	LandSample                   int
-	Limits                       Limits
-	Timeouts                     Timeouts
-	Landing                      LandingAnswer
+	Reads      int
+	Pack       int
+	LandSample int
+	Limits     Limits
+	Timeouts   Timeouts
+	Landing    LandingAnswer
 }
 
-// Engine is the defaults as the designs give them. Budget 250 and Pack 50
-// are measured (the load test, vision 2026-11-07: a tick of 250 cards at
-// 5,000 producers is about 265 ms p50 as 5 ops of 50; see the Built
-// section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
-// guesses, marked there.
+// Engine is the defaults as the designs give them.
 var Engine = Defaults{
-	EscalateAfter: 2, FrontierAfter: 4, Reads: 1, FlapLimit: 3,
-	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
-	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
+	Reads: 1, Pack: 50, LandSample: 20,
+	Limits: Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 250, RouteRestWindow: 10, RouteRestAfter: 3,
+		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, BaseRedMeetings: 3, IdleCeiling: 0.75},
 	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, BaseRegate: []int{120, 300}},
 	Landing:  LandingAnswer{BackedUp: 4, Flowing: 1},
 }
@@ -161,6 +165,42 @@ func newOracle(a Answers, d Defaults) *oracle {
 		o.miss["*"] = struct{}{}
 	}
 	return o
+}
+
+// merge adds the second call's answers to the first's (the version is the
+// first call's; a second call under another version is the budget spent).
+func (o *oracle) merge(b Answers) {
+	if b.Version != o.a.Version {
+		o.miss["*"] = struct{}{}
+		return
+	}
+	if o.a.Order == nil {
+		o.a.Order = map[string][]any{}
+	}
+	maps.Copy(o.a.Order, b.Order)
+	if o.a.Rows == nil {
+		o.a.Rows = map[string][]string{}
+	}
+	maps.Copy(o.a.Rows, b.Rows)
+	if o.a.Verdict == nil {
+		o.a.Verdict = map[string]string{}
+	}
+	maps.Copy(o.a.Verdict, b.Verdict)
+	if o.a.Width == nil {
+		o.a.Width = map[string]WidthAnswer{}
+	}
+	maps.Copy(o.a.Width, b.Width)
+	if o.a.Landing == nil {
+		o.a.Landing = map[string]LandingAnswer{}
+	}
+	maps.Copy(o.a.Landing, b.Landing)
+	if o.a.Failed == nil {
+		o.a.Failed = map[string]string{}
+	}
+	maps.Copy(o.a.Failed, b.Failed)
+	if b.Failed["*"] != "" {
+		o.miss["*"] = struct{}{}
+	}
 }
 
 // usable says whether question q's answer for one subject may be read:
@@ -245,26 +285,30 @@ func (o *oracle) reads(c CardFacts) int {
 }
 
 // verdict is verdict(card, reads): yes or fix, each needing a read that
-// said so. Default: any fix read means fix.
+// said so, or retry (one more read is asked). Default: any fix read means
+// fix; an ok read yes; none of either (every read faulted) retry.
 func (o *oracle) verdict(q VerdictQuestion) string {
 	has := func(res string) bool {
 		return slices.ContainsFunc(q.Reads, func(r ReadFacts) bool { return r.Result == res })
 	}
 	v, ok := o.a.Verdict[q.Card.ID]
 	if o.usable("verdict", ok) {
-		if (v == "yes" && has("ok")) || (v == "fix" && has("fix")) {
+		if (v == "yes" && has("ok")) || (v == "fix" && has("fix")) || v == "retry" {
 			return v
 		}
 		o.refuse("verdict")
 	}
-	if has("fix") {
+	switch {
+	case has("fix"):
 		return "fix"
+	case has("ok"):
+		return "yes"
 	}
-	return "yes"
+	return "retry"
 }
 
 // width is width(row): work at most the width, ahead at most 4 x width.
-// Default: work = width, ahead = width (LPM D21: 2 x width held).
+// Default: work = width, ahead = width.
 func (o *oracle) width(r RowFacts) WidthAnswer {
 	w, ok := o.a.Width[r.Name]
 	if o.usable("width", ok) {
@@ -288,12 +332,17 @@ func (o *oracle) landing(s StreamFacts) LandingAnswer {
 	return o.d.Landing
 }
 
-// limits is limits(): every count in its range, else the defaults whole.
+// limits is limits(): every number in its range, else the defaults whole;
+// an optional key left 0 is its default.
 func (o *oracle) limits() Limits {
 	l := o.a.Limits
 	if o.usable("limits", l != nil) {
 		if limitsOK(*l) {
-			return *l
+			got := *l
+			if got.BaseRedMeetings == 0 {
+				got.BaseRedMeetings = o.d.Limits.BaseRedMeetings
+			}
+			return got
 		}
 		o.refuse("limits")
 	}
@@ -302,8 +351,11 @@ func (o *oracle) limits() Limits {
 
 func limitsOK(l Limits) bool {
 	in := func(n, lo, hi int) bool { return n >= lo && n <= hi }
+	frac := func(f float64) bool { return f > 0 && f <= 1 }
 	return in(l.Bounces, 1, 100) && in(l.Faults, 1, 100) && in(l.SameFinding, 1, 10) && in(l.ReportsPerTick, 1, 10000) &&
-		in(l.RouteRestWindow, 1, 100) && in(l.RouteRestAfter, 1, l.RouteRestWindow) && in(l.Budget, 1, 10000) && in(l.Pack, 1, 10000)
+		in(l.RouteRestWindow, 1, 100) && in(l.RouteRestAfter, 1, l.RouteRestWindow) &&
+		in(l.EscalateAfter, 1, 100) && in(l.FrontierAfter, l.EscalateAfter, 100) && in(l.FlapLimit, 1, 100) &&
+		frac(l.IdleFloor) && frac(l.LandTarget) && in(l.BaseRedMeetings, 0, 100) && (l.IdleCeiling == 0 || frac(l.IdleCeiling) && l.IdleCeiling >= l.IdleFloor)
 }
 
 // timeouts is timeouts(): every bound 1..86400 s, withdraw at or above gone,

@@ -399,6 +399,73 @@ asker 300, requests 350): an estimate; layer 1's first was half its size.
 
 ## Built (rowan's child, 2026-11-07; branch `v2-l3-steps`, package `steps`)
 
+**STATUS, round 2 handed over mid-stride (2026-11-07, Glenn's change of
+method: one holistic pass takes this as input).** Head 91cbaf9a was round 1
+merged with `v2-integrate-22` (store round 22, policy round 5) and green:
+unit suite, walks, race on vision for card, store and steps, 25 trace
+fixtures and the steps model on hetzner2. The round 2 commits after it
+(this note's) are a rewrite in progress against the cold read's 20 probes
+(`steps/coldread_test.go`, copied in with attribution, two setups adapted to
+round 22) and the intent audit's layer 3 rows (`DRIFT-ROUTING-2026-11-06.md`):
+the non-test package builds (`go build ./steps/`); the tests do not compile
+yet (the `Limits` literals in the tests still name `Budget` and `Pack`, the
+probes' `s.roster["r2"] = RosterRow{...}` line is adapted but `FakeRoster`
+is gone, and no probe has been run against the new code). Nothing of round 2
+is verified; no TLC run, no bench run, no fixture regenerated since 91cbaf9a.
+
+Built in the code of this head, unverified: (1) Verb's Report is
+`card.ReportPlan` (consumer and producer in one plan); (2, 3) the actor rule:
+engine moves are nobody's verb, a holder's take or report only on its own
+consumer, Add only by a hooked actor, the run loop's Seen and Gone; (4)
+preemption on "no room" (live at work plus ahead on every serving row),
+the youngest ready consumer first, then the youngest working, a stop request
+only for a working victim; (5, 6) the rows a silence takes down and the
+rested rows are excluded before the candidates are built (a silence pre-pass
+and the rest from the fold's endings: `faults` of the last
+`route_rest_window` endings within `route_rest_for`); (7) a policy judgement
+per version and question (the open index keys policy by about and group);
+(8) reads(card) asked once in a first Asker call (limits, timeouts, reads),
+the rest in a second, both the owed count and the deal read it; (9) a review
+merges only with as many done reads as asked, fewer readers than reads is a
+cannot-read judgement; (10) the width refusal names a working consumer; (11)
+a single-group op refused on unchanged gens is claimed and an engine
+judgement, not replanned; (12, 13, 14) base-red meetings recorded per stream
+and base as `base-red-met` episodes (opened and closed in one op), one
+`base-red` judgement per base, the stream's `base_red_meetings`-th meeting a
+`landing-stopped` judgement (its base in the group key, never parsed from
+prose) that `landRequests` honours and `base-green` lifts; (15) one blocker
+start per row per tick; (16) `RowFacts.Model` from the roster (a worker's
+harness, a kin's model) and the ranking prefers another model than the
+author's for a read; (17) the ack names the seq the write is by (the fold's,
+else the snapshot's); (18) escalation one rank per bounce from
+`escalate_after`; (19) the needs step runs over `View.resolvePending` (what
+changed since the last tick: needs landed or failed, streams lifted,
+overlapping producers gone, cards become waiting), drops over `dropPending`,
+limits over the bounced index, stream counts and land rates from counters;
+(20) `shares` deleted. From the audit: `Tick` returns an empty plan (the
+inbox carried) while `View.Stopped`; a landed result needs the CI-passed
+`Tip`, the request's base and heads, else an engine judgement and nothing
+lands; the verdict default is `retry` with no ok or fix read, `retry`
+accepted from policy, a faulted read not counted and owed again; the rank
+ordering has no weights (rank, other model, idle, room, kept, name); the
+steering numbers come from `limits()` (escalate_after, frontier_after,
+flap_limit, idle_floor, land_target; `base_red_meetings` and `idle_ceiling`
+read when present, default 3 and half again the floor); `Engine` keeps only
+Reads, Pack (measured), LandSample and the default Limits, Timeouts and
+Landing; a fix read's finding must name a file and line; every inbox refusal
+names the next verb; one `due` clock comparison.
+
+Not done: the probes run green; a blocker never preempting another blocker's
+consumer (the two-blocker rule and witness); the model's `Ahead = Width`
+instance, the "no room" preemption rule, the ready victim and the pre
+scenario at width 1 (`Steps.tla` is still round 1's); the trace logging of
+snap, phase, split and last; the walk exercising inbox reports, Verb, rest,
+base-red and blocker starts; tests for every inbox refusal's text and for
+base-red, base-green and conflict; the 20,000-waiting measurement;
+`doc.go`'s contract paragraph; the LANDING 2 text; ENFORCED and LESSONS for
+round 2; the Built text below, which is round 1's.
+
+
 What the code is, where it differs from the text above and why, every number
 marked measured or guess. The model is `tla/Steps.tla`; the code follows its
 tick order and cites its invariants (`tla/README.md`, "The steps (layer 3)").

@@ -11,37 +11,52 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// landResults is the land results step (LAYER-3 "Land", from a result; the
-// model's InboxFold): inbox items of kind land and stop in arrival order. A
-// landed result is one group of Landed for every head that landed and Red
-// for the head the bisection blamed; a bench fault moves nothing (the
-// request leaves flight and is reissued); a conflict and a red base are
-// judgements. A stop ack, and a result for a request no longer in flight (a
-// repeat), is consumed with no move.
-func (t *tick) landResults() {
-	for _, it := range t.in.Inbox {
-		if it.Kind != "land" && it.Kind != "stop" {
-			continue
-		}
-		req, ok := t.request(it.Request)
-		if it.Kind == "stop" || !ok {
-			t.consume(it.ID)
-			continue
-		}
-		switch it.Outcome {
-		case "landed", "red":
-			t.landGroup(it, req)
-		case "conflict":
-			t.judge("conflict", req.Stream, fmt.Sprintf("stream %s cannot merge heads %s onto %s: a conflict across streams", req.Stream, strings.Join(req.Heads, ","), req.Base))
-			t.consume(it.ID)
-		case "base-red":
-			t.baseRed(it, req)
-		case "base-green":
-			t.baseGreen(it)
-		default:
-			t.consume(it.ID)
+// edgeItem is the land results step for one item (LAYER-3 "Land", from a
+// result; the model's InboxFold). A landed result is one group of Landed for
+// every head that landed and Red for the head the bisection blamed; a bench
+// fault moves nothing (the request leaves flight and is reissued); a
+// conflict and a red base are judgements. A stop ack, and a result for a
+// request no longer in flight (a repeat), is consumed with no move.
+func (t *tick) edgeItem(it InboxItem) {
+	req, ok := t.request(it.Request)
+	if it.Kind == "stop" || !ok {
+		t.consume(it.ID)
+		return
+	}
+	switch it.Outcome {
+	case "landed", "red":
+		t.landGroup(it, req)
+	case "conflict":
+		t.judge("conflict", req.Stream, fmt.Sprintf("stream %s cannot merge heads %s onto %s: a conflict across streams", req.Stream, strings.Join(req.Heads, ","), req.Base))
+		t.consume(it.ID)
+	case "base-red":
+		t.baseRed(it, req)
+	case "base-green":
+		t.baseGreen(it)
+	default:
+		t.consume(it.ID)
+	}
+}
+
+// landedMismatch is why a landed result is not the request's: no CI-passed
+// tip, another base, or a head the request did not send (round 2: never a
+// landing from a bare list).
+func landedMismatch(it InboxItem, req EdgeRequest) string {
+	if it.Outcome != "landed" {
+		return ""
+	}
+	switch {
+	case it.Tip == "":
+		return "no CI-passed tip"
+	case it.Base != req.Base:
+		return "base " + it.Base + " is not the request's " + req.Base
+	}
+	for _, h := range it.Landed {
+		if !slices.Contains(req.Heads, h) {
+			return "head " + h + " is not one the request sent"
 		}
 	}
+	return ""
 }
 
 func (t *tick) request(id string) (EdgeRequest, bool) {
@@ -55,6 +70,11 @@ func (t *tick) request(id string) (EdgeRequest, bool) {
 // landGroup plans Landed for each head that landed and Red for the blamed
 // one, for producers still merging at those heads and unclaimed.
 func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
+	if why := landedMismatch(it, req); why != "" {
+		t.engine(req.Stream, "land result "+it.ID+" for "+req.ID+" refused: "+why+"; nothing landed from it (layer 4 sends the CI-passed tip, the base and the heads of the request)")
+		t.consume(it.ID)
+		return
+	}
 	var moves []move
 	about := ""
 	for _, p := range req.Cards {
@@ -83,71 +103,57 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	}
 }
 
-// baseRed opens one judgement per base meeting (LANDING step 8): the third
-// stops the stream that met it, by holding it, and the judgement says so.
+// A red base (LANDING step 8): one judgement per base for the coordinator
+// (base-red, open while the base is red); each meeting of a stream with it
+// is recorded as an episode of base-red-met about <stream>@<base> (opened
+// and closed in the one op: a count, never a push); the third meeting of one
+// stream stops that stream's landing with a landing-stopped judgement about
+// the stream, open while stopped. The landing stop is the state LAYER-3
+// "Land" needs and the store lacks: a judgement, not a stream hold (a hold
+// is a deal control and never touches landing, LANDING 9). Other streams
+// meeting the same red are refused under the one base judgement and not
+// stopped until their own third meeting. base-green lifts every landing stop
+// for the base and expires its judgement.
 func (t *tick) baseRed(it InboxItem, req EdgeRequest) {
-	n := t.episodes("base-red", it.Base)
-	why := fmt.Sprintf("base %s is red (meeting %d); a head that fixes it lands first", it.Base, n+1)
-	if n+1 >= 3 && !t.v.Streams[req.Stream].Held {
-		why = fmt.Sprintf("base %s is red for the third time; stream %s is stopped until the base is green", it.Base, req.Stream)
-		t.group("hold", req.Stream, move{label: "HoldStream " + req.Stream, plan: func() (card.Plan, *card.Refusal) {
-			return card.MoveStream(t.streamOf(req.Stream), card.HoldStream{Reason: why, Ready: t.readyIn(req.Stream), Seq: t.v.Seq})
-		}})
+	met := req.Stream + "@" + it.Base
+	n := t.episodes("base-red-met", met) + 1
+	t.record("base-red-met", met, fmt.Sprintf("stream %s met red base %s (meeting %d)", req.Stream, it.Base, n))
+	t.judge("base-red", it.Base, fmt.Sprintf("base %s is red: a head that fixes it lands first; a stream's meeting %d of it stops its landing: nova-sprint judge base-red.%s.<n> retry when green", it.Base, t.lim.BaseRedMeetings, it.Base))
+	if n >= t.lim.BaseRedMeetings {
+		t.judgeGrouped("landing-stopped", req.Stream, "base:"+it.Base, fmt.Sprintf("stream %s met red base %s %d times; its landing is stopped until the base is green", req.Stream, it.Base, n))
 	}
-	t.judgeAgain("base-red", it.Base, why)
 	t.consume(it.ID)
 }
 
-// baseGreen expires the base's red judgements and resumes every stream
-// stopped only on that red.
+// baseGreen expires the base's judgement and every landing stop it caused.
 func (t *tick) baseGreen(it InboxItem) {
 	for _, id := range sortedKeys(t.v.Judgements) {
 		j := t.v.Judgements[id]
-		if j.Kind == "base-red" && j.About == it.Base && j.State == "open" {
-			t.expires[id] = "base " + it.Base + " is green"
+		if j.State != "open" {
+			continue
 		}
-	}
-	for _, s := range sortedKeys(t.v.Streams) {
-		if st := t.v.Streams[s]; st.Held && t.stoppedOn(s, it.Base) && t.unclaimed(s) {
-			t.group("unhold", s, move{label: "UnholdStream " + s, plan: func() (card.Plan, *card.Refusal) {
-				return card.MoveStream(t.streamOf(s), card.UnholdStream{Reason: "base " + it.Base + " is green"})
-			}})
+		if (j.Kind == "base-red" && j.About == it.Base) || (j.Kind == "landing-stopped" && j.Group == "base:"+it.Base) {
+			t.expires[id] = "base " + it.Base + " is green"
 		}
 	}
 	t.consume(it.ID)
 }
 
-// stoppedOn says whether stream s was held by the tick for base's red: the
-// judgement that says so is open.
-func (t *tick) stoppedOn(s, base string) bool {
-	for _, j := range t.v.Judgements {
-		if j.Kind == "base-red" && j.About == base && j.State == "open" && strings.Contains(j.Question, "stream "+s+" is stopped") {
-			return true
-		}
-	}
-	return false
-}
-
-func (t *tick) readyIn(stream string) []card.Card {
-	var out []card.Card
-	for _, p := range t.v.Producers("ready") {
-		if t.v.Cards[p].Stream == stream {
-			out = append(out, t.cardOf(p))
-		}
-	}
-	return out
-}
+// landingStopped says whether stream s's landing is stopped (LANDING 8).
+func (t *tick) landingStopped(s string) bool { return t.isOpen("landing-stopped", s) }
 
 // landRequests is the land requests step (LAYER-3 "Land"; the model's
 // LandPicks; AfterKept, AfterNeverHolds): per stream with no land request
-// in flight, flowing, the first merging producer none of whose after
-// targets is merging; backed up (merging at or past policy's landing
-// number), every eligible one in score order as one group with one CI. An
-// after orders only producers both queued to land and never holds on one
-// that is not (LESSONS 2.15). A hold never touches landing (LANDING 9).
+// in flight and its landing not stopped, flowing, the first merging producer
+// none of whose after targets is merging; backed up (merging at or past
+// policy's landing number), every eligible one in score order as one group
+// with one CI. An after orders only producers both queued to land and never
+// holds on one that is not (LESSONS 2.15). A hold never touches landing
+// (LANDING 9). Streams land concurrently; layer 4 serialises the base push
+// and pos orders only ties (LANDING 2, round 2's ruling).
 func (t *tick) landRequests() {
 	for _, s := range sortedKeys(t.v.Streams) {
-		if t.busy(s) {
+		if t.busy(s) || t.landingStopped(s) {
 			continue
 		}
 		queued := t.queued(s)

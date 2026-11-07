@@ -9,17 +9,28 @@ import (
 
 // View is the sprint as the tick reads it: the snapshot's records plus the
 // indexes the steps need (producers by state and rung, consumers by
-// producer and row, dependants by need, live paths by stream), advanced by
-// Fold. After any fold it equals a fresh Build at the same seq
+// producer and row, dependants by need, live paths by stream, the counters),
+// advanced by Fold. After any fold it equals a fresh Build at the same seq
 // (TestViewFoldEqualsBuild). The facts a snapshot does not carry (when a
-// consumer was taken, when a stream last landed, when a row went down, when
-// a row faulted) are witnessed by the fold and are zero for records that
-// predate the view; every bound they feed is then measured from Since.
+// consumer was taken, when a stream last landed, when a row went down, how a
+// row's consumers ended) are witnessed by the fold and are zero for records
+// that predate the view; every bound they feed is then measured from Since.
+//
+// The pending sets are what changed since the last tick (guarantee 11): the
+// waiting producers whose chance to resolve moved (a need landed, a stream
+// was lifted, an overlapping producer left its paths, a card became
+// waiting), and the failed producers whose dependants are owed a drop. A
+// tick reads them and clears what it settled; a cold Build pends every
+// waiting producer once.
 type View struct {
 	Seq    int64
 	Epoch  int
 	Policy int
 	Since  time.Time // Build's now: the base of every bound no event dates
+	Built  int64     // the seq of the snapshot the view was built from
+
+	Stopped    bool // the sprint is stopped: a tick plans nothing (rule 19)
+	StopReason string
 
 	Streams    map[string]store.Stream
 	Cards      map[string]store.Card
@@ -32,14 +43,31 @@ type View struct {
 	liveOnRow  map[string]set            // live (ready, working) consumers by row
 	dependants map[string]set            // producers whose needs name the key
 	paths      map[string]map[string]set // stream -> path -> producers ready or started
+	waitPaths  map[string]map[string]set // stream -> path -> waiting producers
+	waitingIn  map[string]set            // stream -> waiting producers
+	bounced    set                       // producers in ready or review with a bounce
+	count      map[string]map[string]int // stream -> producer state -> count
+	cleanLand  map[string]int            // stream -> landed with no bounce
 
-	TakenAt map[string]time.Time   // consumer -> when it went working
-	Landed  map[string]time.Time   // stream -> when a producer of it last landed
-	Down    map[string]time.Time   // row -> when it last went down
-	Faults  map[string][]time.Time // row -> when its consumers reported fault
-	born    map[string]int64       // card -> the seq that put it (0: before the view)
-	touched map[string]int64       // card -> the seq that last wrote it (0: before the view)
+	resolvePending set // waiting producers whose chance to resolve moved
+	dropPending    set // failed producers whose dependants are owed a drop
+
+	TakenAt map[string]time.Time // consumer -> when it went working
+	Landed  map[string]time.Time // stream -> when a producer of it last landed
+	Down    map[string]time.Time // row -> when it last went down
+	Ended   map[string][]ending  // row -> how its consumers ended, oldest first (the last endedKept)
+	born    map[string]int64     // card -> the seq that put it (0: before the view)
+	touched map[string]int64     // card -> the seq that last wrote it (0: before the view)
 }
+
+// ending is one consumer's end on a row: when, and whether it was a fault.
+type ending struct {
+	At    time.Time
+	Fault bool
+}
+
+// endedKept is how many endings a row keeps: the rest window's bound.
+const endedKept = 100
 
 type set = map[string]struct{}
 
@@ -49,9 +77,10 @@ var started = []string{"ready", "working", "review", "merging"}
 
 // Build is the view of snapshot s at now.
 func Build(s store.Snapshot, now time.Time) *View {
-	v := &View{Since: now}
+	v := &View{Since: now, Built: s.Seq}
 	v.reset(s.Epoch)
 	v.Seq, v.Policy = s.Seq, s.Policy
+	v.Stopped, v.StopReason = s.Stopped, s.StopReason
 	for _, st := range s.Streams {
 		v.Streams[st.Name] = st
 	}
@@ -65,6 +94,14 @@ func Build(s store.Snapshot, now time.Time) *View {
 		v.Cards[c.ID] = c
 		v.index(c)
 	}
+	for p := range v.byState["waiting"] {
+		v.resolvePending[p] = struct{}{}
+	}
+	for p := range v.byState["fail"] {
+		if len(v.dependants[p]) > 0 {
+			v.dropPending[p] = struct{}{}
+		}
+	}
 	return v
 }
 
@@ -74,9 +111,12 @@ func (v *View) reset(epoch int) {
 	v.Rows, v.Judgements = map[string]store.Row{}, map[string]store.Judgement{}
 	v.byState, v.byRung, v.consOf = map[string]set{}, map[string]set{}, map[string]set{}
 	v.liveOnRow, v.dependants = map[string]set{}, map[string]set{}
-	v.paths = map[string]map[string]set{}
+	v.paths, v.waitPaths = map[string]map[string]set{}, map[string]map[string]set{}
+	v.waitingIn, v.bounced = map[string]set{}, set{}
+	v.count, v.cleanLand = map[string]map[string]int{}, map[string]int{}
+	v.resolvePending, v.dropPending = set{}, set{}
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
-	v.Faults, v.born, v.touched = map[string][]time.Time{}, map[string]int64{}, map[string]int64{}
+	v.Ended, v.born, v.touched = map[string][]ending{}, map[string]int64{}, map[string]int64{}
 }
 
 // Fold advances the view by events, in seq order: an accepted event lays its
@@ -93,7 +133,7 @@ func (v *View) Fold(events []store.Event) {
 			v.Since = e.At
 		}
 		for _, st := range e.After.Streams {
-			v.Streams[st.Name] = st
+			v.foldStream(st)
 		}
 		for _, r := range e.After.Rows {
 			v.foldRow(r, e.At)
@@ -109,7 +149,21 @@ func (v *View) Fold(events []store.Event) {
 				v.Policy = ver
 			}
 		}
+		if e.After.Stop != nil {
+			v.Stopped, v.StopReason = e.After.Stop.Stopped, e.After.Stop.Reason
+		}
 	}
+}
+
+// foldStream: a lifted hold gives every waiting producer of the stream its
+// chance to resolve.
+func (v *View) foldStream(st store.Stream) {
+	if old, ok := v.Streams[st.Name]; ok && old.Held && !st.Held {
+		for p := range v.waitingIn[st.Name] {
+			v.resolvePending[p] = struct{}{}
+		}
+	}
+	v.Streams[st.Name] = st
 }
 
 func (v *View) foldRow(r store.Row, at time.Time) {
@@ -129,13 +183,53 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 	v.Cards[c.ID] = c
 	v.touched[c.ID] = e.Seq
 	v.index(c)
+	if isConsumer(c) {
+		v.foldConsumer(c, old, had, e.At)
+		return
+	}
+	v.foldProducer(c, old, had, e.At)
+}
+
+func (v *View) foldConsumer(c, old store.Card, had bool, at time.Time) {
 	switch {
-	case isConsumer(c) && c.State == "working" && (!had || old.State != "working"):
-		v.TakenAt[c.ID] = e.At
-	case isConsumer(c) && c.State == "done" && c.Result == "fault" && (!had || old.State != "done"):
-		v.Faults[c.Holder] = append(v.Faults[c.Holder], e.At)
-	case !isConsumer(c) && c.State == "landed" && (!had || old.State != "landed"):
-		v.Landed[c.Stream] = e.At
+	case c.State == "working" && (!had || old.State != "working"):
+		v.TakenAt[c.ID] = at
+	case c.State == "done" && (!had || old.State != "done"):
+		v.Ended[c.Holder] = append(v.Ended[c.Holder], ending{At: at, Fault: c.Result == "fault"})
+		if n := len(v.Ended[c.Holder]); n > endedKept {
+			v.Ended[c.Holder] = v.Ended[c.Holder][n-endedKept:]
+		}
+	}
+}
+
+// foldProducer keeps the pending sets: a card that became waiting may
+// resolve; a landed card frees its dependants and the waiting producers
+// sharing its paths; a failed card owes its dependants a drop.
+func (v *View) foldProducer(c, old store.Card, had bool, at time.Time) {
+	switch {
+	case c.State == "waiting" && (!had || old.State != "waiting"):
+		v.resolvePending[c.ID] = struct{}{}
+	case c.State == "landed" && (!had || old.State != "landed"):
+		v.Landed[c.Stream] = at
+		v.freed(c)
+	case c.State == "fail" && (!had || old.State != "fail"):
+		if len(v.dependants[c.ID]) > 0 {
+			v.dropPending[c.ID] = struct{}{}
+		}
+		v.freed(c)
+	}
+}
+
+// freed pends the dependants of c and the waiting producers of its stream
+// sharing a path with it.
+func (v *View) freed(c store.Card) {
+	for d := range v.dependants[c.ID] {
+		v.resolvePending[d] = struct{}{}
+	}
+	for _, path := range c.Paths {
+		for q := range v.waitPaths[c.Stream][path] {
+			v.resolvePending[q] = struct{}{}
+		}
 	}
 }
 
@@ -156,14 +250,17 @@ func (v *View) index(c store.Card) {
 	for _, n := range c.Needs {
 		add(v.dependants, n, c.ID)
 	}
-	if slices.Contains(started, c.State) {
-		for _, p := range c.Paths {
-			if v.paths[c.Stream] == nil {
-				v.paths[c.Stream] = map[string]set{}
-			}
-			add(v.paths[c.Stream], p, c.ID)
-		}
+	if v.count[c.Stream] == nil {
+		v.count[c.Stream] = map[string]int{}
 	}
+	v.count[c.Stream][c.State]++
+	if c.State == "landed" && c.Bounces == 0 && c.Kind == "producer" {
+		v.cleanLand[c.Stream]++
+	}
+	if c.Bounces > 0 && (c.State == "ready" || c.State == "review") {
+		v.bounced[c.ID] = struct{}{}
+	}
+	v.indexPaths(c, true)
 }
 
 func (v *View) unindex(c store.Card) {
@@ -177,12 +274,46 @@ func (v *View) unindex(c store.Card) {
 	for _, n := range c.Needs {
 		del(v.dependants, n, c.ID)
 	}
-	if m := v.paths[c.Stream]; m != nil {
-		for _, p := range c.Paths {
-			del(m, p, c.ID)
+	v.count[c.Stream][c.State]--
+	if c.State == "landed" && c.Bounces == 0 && c.Kind == "producer" {
+		v.cleanLand[c.Stream]--
+	}
+	delete(v.bounced, c.ID)
+	v.indexPaths(c, false)
+}
+
+// indexPaths keeps the two path indexes (ready or started; waiting) and the
+// waiting-by-stream index.
+func (v *View) indexPaths(c store.Card, on bool) {
+	var m map[string]map[string]set
+	switch {
+	case slices.Contains(started, c.State):
+		m = v.paths
+	case c.State == "waiting":
+		m = v.waitPaths
+		if on {
+			add(v.waitingIn, c.Stream, c.ID)
+		} else {
+			del(v.waitingIn, c.Stream, c.ID)
 		}
-		if len(m) == 0 {
-			delete(v.paths, c.Stream)
+	default:
+		return
+	}
+	if on {
+		if m[c.Stream] == nil {
+			m[c.Stream] = map[string]set{}
+		}
+		for _, p := range c.Paths {
+			add(m[c.Stream], p, c.ID)
+		}
+		return
+	}
+	if sm := m[c.Stream]; sm != nil {
+		for _, p := range c.Paths {
+			del(sm, p, c.ID)
+		}
+		if len(sm) == 0 {
+			delete(m, c.Stream)
 		}
 	}
 }
@@ -277,6 +408,9 @@ func (v *View) Overlaps(p store.Card) []string {
 	return sorted(found)
 }
 
+// Count is how many producers of stream s are in state.
+func (v *View) Count(s, state string) int { return v.count[s][state] }
+
 // Open says whether row r may be dealt to: up on the bus, not held, and
 // hooked in to the sprint (Glenn, 2026-11-06: the hook is the subscription
 // to the sprint's pushes; a row not hooked in is never dealt to and nothing
@@ -299,9 +433,35 @@ type viewCore struct {
 	Rows                                   map[string]store.Row
 	Judgements                             map[string]store.Judgement
 	ByState, ByRung, ConsOf, Live, Depends map[string]set
-	Paths                                  map[string]map[string]set
+	Paths, WaitPaths                       map[string]map[string]set
+	WaitingIn                              map[string]set
+	Bounced                                set
+	Count                                  map[string]map[string]int
+	CleanLand                              map[string]int
 }
 
 func (v *View) core() viewCore {
-	return viewCore{v.Seq, v.Epoch, v.Policy, v.Streams, v.Cards, v.Rows, v.Judgements, v.byState, v.byRung, v.consOf, v.liveOnRow, v.dependants, v.paths}
+	v.trim()
+	return viewCore{v.Seq, v.Epoch, v.Policy, v.Streams, v.Cards, v.Rows, v.Judgements, v.byState, v.byRung, v.consOf, v.liveOnRow, v.dependants,
+		v.paths, v.waitPaths, v.waitingIn, v.bounced, v.count, v.cleanLand}
+}
+
+// trim drops the zero counters, so a folded view's counters equal a fresh
+// build's.
+func (v *View) trim() {
+	for s, m := range v.count {
+		for st, n := range m {
+			if n == 0 {
+				delete(m, st)
+			}
+		}
+		if len(m) == 0 {
+			delete(v.count, s)
+		}
+	}
+	for s, n := range v.cleanLand {
+		if n == 0 {
+			delete(v.cleanLand, s)
+		}
+	}
 }

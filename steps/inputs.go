@@ -37,7 +37,8 @@ type InboxItem struct {
 	Outcome string   // land: landed, red, fault, conflict, base-red, base-green; stop: ack
 	Landed  []string // land: the heads that landed (a bisected batch lands a part)
 	Blamed  string   // red: the head the bisection blamed
-	Base    string   // base-red, base-green: the base
+	Base    string   // landed: the base the batch was merged onto (the request's); base-red, base-green: the base
+	Tip     string   // landed: the merged tip CI passed, now the base's tip; a landed result without it is refused
 }
 
 // EdgeRequest is work for layer 4: a landing (Kind land: merge Heads of
@@ -85,7 +86,9 @@ type Plan struct {
 }
 
 // RowAnswer is what a row is told about its report or take: an ack from the
-// record ("applied at seq N") or a refusal naming the fix.
+// record ("applied by seq N") for a repeat, or a refusal naming the fix. An
+// item whose group was applied gets no answer here: its receipt is the op's
+// (layer 6 tells the row from it).
 type RowAnswer struct {
 	Result  string // the inbox item's id
 	Row     string

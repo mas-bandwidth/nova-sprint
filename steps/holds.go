@@ -23,7 +23,7 @@ func (t *tick) holds() {
 		switch {
 		case r.Held:
 			why = "row " + n + " is held; redealt"
-		case r.State == "down" && !t.in.Now.Before(t.downAt(n).Add(seconds(t.tmo.RowSilentGone))):
+		case r.State == "down" && t.due(t.downAt(n), t.tmo.RowSilentGone):
 			why = "row " + n + " is down; redealt"
 		default:
 			continue

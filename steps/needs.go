@@ -10,20 +10,27 @@ import (
 // needs is the sentinels and needs step (LAYER-3 "Sentinels and needs"; the
 // model's ResolveFold; NeverOverlapStarted, ReadyNeverFlipsWithLoad). A
 // failed need takes the closure of its dependants in one group (LESSONS
-// 2.4). Then, in id order: a waiting sentinel whose needs landed is Reached
-// with a landed-sentinel judgement; a waiting producer whose needs landed,
-// whose stream is not held and whose paths overlap no producer of its
-// stream that is ready or started (those resolved this tick counted) is
-// Resolved. Room on a row is never a condition (LESSONS 3.2).
+// 2.4). Then, over the waiting producers whose chance to resolve moved since
+// the last tick (View.resolvePending: guarantee 11, never a scan of every
+// waiting producer), in id order: a sentinel whose needs landed is Reached
+// with a landed-sentinel judgement; a producer whose needs landed, whose
+// stream is not held and whose paths overlap no producer of its stream that
+// is ready or started (those resolved this tick counted) is Resolved. Room
+// on a row is never a condition (LESSONS 3.2). A candidate the budget cut
+// stays pending; one that cannot resolve leaves the set until an event
+// pends it again.
 func (t *tick) needs() {
 	t.drops()
-	for _, p := range t.v.Producers("waiting") {
-		c := t.v.Cards[p]
-		if !t.free(p) || !t.needsLanded(c) {
+	keep := set{}
+	for _, p := range sorted(t.v.resolvePending) {
+		c, ok := t.v.Cards[p]
+		if !ok || c.State != "waiting" || !t.free(p) || !t.needsLanded(c) {
 			continue
 		}
 		if c.Kind == "sentinel" {
-			if g := t.group("reached", p, t.producerMove(p, card.Reached{})); g != nil {
+			if t.overBudget() {
+				keep[p] = struct{}{}
+			} else if g := t.group("reached", p, t.producerMove(p, card.Reached{})); g != nil {
 				g.judge = t.riding("landed-sentinel", p, "sentinel "+p+" reached: every card it waited for has landed")
 			}
 			continue
@@ -31,12 +38,17 @@ func (t *tick) needs() {
 		if t.v.Streams[c.Stream].Held || len(t.overlap(c)) > 0 {
 			continue
 		}
-		t.resolved[p] = struct{}{} // the overlap tally counts it whether or not the budget admits it
+		if t.overBudget() {
+			keep[p] = struct{}{}
+			continue
+		}
+		t.resolved[p] = struct{}{} // the overlap tally counts it whether or not its op is accepted
 		for _, path := range c.Paths {
 			add(t.resolvedP, c.Stream+"\x00"+path, p)
 		}
 		t.group("resolve", p, t.producerMove(p, card.Resolve{}))
 	}
+	t.v.resolvePending = keep
 }
 
 func (t *tick) needsLanded(c store.Card) bool {
@@ -63,20 +75,17 @@ func (t *tick) overlap(c store.Card) []string {
 	return out
 }
 
-func shares(a, b []string) bool {
-	for _, p := range a {
-		if slices.Contains(b, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// drops fails every non-final dependant of a failed need, the whole closure
-// as one group: each dependant's live consumers withdrawn, then NeedFailed
-// (in this op for a dependant whose need fails in the same group).
+// drops fails every non-final dependant of a need that failed since the last
+// tick (View.dropPending), the whole closure as one group: each dependant's
+// live consumers withdrawn, then NeedFailed (in this op for a dependant whose
+// need fails in the same group). A drop the budget cut stays pending.
 func (t *tick) drops() {
-	for _, n := range t.v.Producers("fail") {
+	keep := set{}
+	for _, n := range sorted(t.v.dropPending) {
+		if t.overBudget() {
+			keep[n] = struct{}{}
+			continue
+		}
 		var moves []move
 		about := ""
 		seen := set{n: {}}
@@ -106,4 +115,5 @@ func (t *tick) drops() {
 			t.group("drop", about, moves...)
 		}
 	}
+	t.v.dropPending = keep
 }

@@ -26,10 +26,12 @@ type cand struct {
 // list down the ladder, within a rung in policy's order then id; each
 // candidate is dealt to a row with room (live under work plus ahead), the
 // row from policy's rows answer, else the engine's ranking; a candidate no
-// row has room for stays ready, queued. Escalation is row choice: a work
-// consumer at the card's own rank, one up at escalate_after bounces, the
-// top rank at frontier_after; a read at the rank above the writer's. No
-// tier is ever written, and a row below the card's tier is never offered.
+// row has room for stays ready, queued. A blocker's start is one per row per
+// tick (tick step 3). Escalation is row choice: a work consumer at the
+// card's own rank, one rank up per bounce from escalate_after, the top rank
+// at frontier_after; a read at the rank above the writer's, on a row of
+// another model than the author's when one is open (LESSONS 3.8). No tier is
+// ever written, and a row below the card's tier is never offered.
 func (t *tick) deal() {
 	for _, x := range t.cands() {
 		if !t.free(x.c.ID) {
@@ -101,42 +103,48 @@ func (t *tick) dealWork(c store.Card) {
 	answered := t.rowsAnswer(c, "work")
 	serving := t.serving(c)
 	if len(serving) == 0 {
-		t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+c.ID+" waits")
+		t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+c.ID+" waits: hook a row that serves it (nova-sprint hook --as <row> --role worker)")
 		return
 	}
+	blocker := rung(c) == "blocker"
 	base, ok := t.base(c.Stream)
-	if !ok || (t.overBudget() && rung(c) != "blocker") {
+	if !ok || (t.overBudget() && !blocker) {
 		return // past the budget nothing more is dealt; the judgements above are still opened
 	}
-	row := t.pickRow(c, answered, t.withRoom(serving))
+	rows := t.withRoom(serving)
+	if blocker {
+		rows = slices.DeleteFunc(rows, func(r string) bool { _, used := t.blockers[r]; return used })
+	}
+	row := t.pickRow(c, answered, rows)
 	if row == "" {
 		return
 	}
 	t.tally[row]++ // the in-tick tally counts the deal whether or not the budget admits it
 	if g := t.group("start", c.ID, t.producerMove(c.ID, card.Start{Row: row, Branch: branch(c), Base: base})); g != nil {
-		g.blocker = rung(c) == "blocker"
+		g.blocker = blocker
+	}
+	if blocker {
+		t.blockers[row] = struct{}{}
 	}
 }
 
+// dealRead asks the reads c is owed, one row each. Fewer rows than reads is a
+// cannot-read judgement (round 2 ruling 9): what can be read is asked, and
+// the review never merges short of the count.
 func (t *tick) dealRead(c store.Card) {
 	if t.v.Streams[c.Stream].Held {
 		return
 	}
 	answered := t.rowsAnswer(c, "read")
-	var serving []string
-	for _, r := range t.serving(c) {
-		if r != c.Author && !t.readingOn(c, r) {
-			serving = append(serving, r)
-		}
+	serving := t.readers(c)
+	owed := t.owed(c)
+	if len(serving) < owed {
+		t.judge("cannot-read", c.ID, "fewer open rows may read "+c.ID+" than the "+itoa(t.readsWanted(c))+" reads policy asks (author "+c.Author+"); hook another row or lower reads(card)")
 	}
-	if len(serving) == 0 {
-		t.judge("cannot-read", c.ID, "no open row may read "+c.ID+" (author "+c.Author+"); the review waits on nothing")
+	if len(serving) == 0 || t.overBudget() {
 		return
 	}
-	if t.overBudget() {
-		return
-	}
-	rows := t.pickRows(c, answered, t.withRoom(serving), t.owed(c))
+	rows := t.pickRows(c, answered, t.withRoom(serving), owed)
 	if len(rows) == 0 {
 		return
 	}
@@ -144,6 +152,16 @@ func (t *tick) dealRead(c store.Card) {
 		t.tally[r]++
 	}
 	t.group("read", c.ID, t.producerMove(c.ID, card.AskReads{Rows: rows}))
+}
+
+// readers is the open serving rows that may read c: not its author, not
+// holding a live read of its head.
+func (t *tick) readers(c store.Card) []string {
+	var out []string
+	for _, f := range t.candidates(c, "read") {
+		out = append(out, f.Name)
+	}
+	return out
 }
 
 // withRoom keeps the rows with room: live consumers plus this tick's deals
@@ -228,47 +246,56 @@ func kindOf(c store.Card) string {
 	return "work"
 }
 
-// ranked is rows in the engine's order (the model's DefaultRow): the desired
-// rank exactly, then above it, then an idle lane, then most room, then name;
-// a row the card was withdrawn from last, when another remains (LPM D22).
-// rows come in name order, so a stable sort keeps the name tie-break; a
-// single candidate's best row is one pass (the deal's common case).
+// ranked is rows in the engine's order (the model's DefaultRow), an
+// ordering with no weights: the desired rank exactly, then above it; a row
+// of another model than the author's for a read; an idle lane; most room; a
+// row the card was withdrawn from last (LPM D22); then name. rows come in
+// name order, so a stable sort keeps the name tie-break; a single
+// candidate's best row is one pass (the deal's common case).
 func (t *tick) ranked(c store.Card, kind string, rows []string, n int) []string {
 	want := t.desired(c, kind)
-	score := func(r string) int {
-		rk := t.rankIndex(r)
-		s := 0
-		switch {
-		case rk == want:
-			s = 100
-		case rk > want:
-			s = 50
+	author := t.rowOf(c.Author).Model
+	better := func(a, b string) int {
+		rk := func(r string) int {
+			switch i := t.rankIndex(r); {
+			case i == want:
+				return 2
+			case i > want:
+				return 1
+			}
+			return 0
 		}
-		if t.used(r) == 0 {
-			s += 10
-		}
-		if t.withdrawnFrom(c, r) {
-			s -= 1000
-		}
-		return s + t.room(r) - t.used(r)
+		other := func(r string) int { return b2i(kind == "read" && author != "" && t.rowOf(r).Model != author) }
+		idle := func(r string) int { return b2i(t.used(r) == 0) }
+		kept := func(r string) int { return b2i(!t.withdrawnFrom(c, r)) }
+		return cmp.Or(cmp.Compare(rk(b), rk(a)), cmp.Compare(other(b), other(a)), cmp.Compare(idle(b), idle(a)),
+			cmp.Compare(t.room(b)-t.used(b), t.room(a)-t.used(a)), cmp.Compare(kept(b), kept(a)))
 	}
 	if n == 1 {
-		best, bestScore := "", 0
+		best := ""
 		for _, r := range rows {
-			if s := score(r); best == "" || s > bestScore {
-				best, bestScore = r, s
+			if best == "" || better(r, best) < 0 {
+				best = r
 			}
 		}
 		return []string{best}
 	}
 	out := slices.Clone(rows)
-	slices.SortStableFunc(out, func(a, b string) int { return cmp.Compare(score(b), score(a)) })
+	slices.SortStableFunc(out, better)
 	return out
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // desired is the rank wanted for c (LAYER-3 "Escalation"): a read at the
 // rank above the writer's row (the top stays the top); work at the card's
-// tier, one up at escalate_after bounces, the top at frontier_after.
+// tier, one rank up per bounce from escalate_after, the top at
+// frontier_after.
 func (t *tick) desired(c store.Card, kind string) int {
 	top := t.topRank()
 	if kind == "read" {
@@ -279,10 +306,10 @@ func (t *tick) desired(c store.Card, kind string) int {
 	}
 	want := tierIndex(c.Tier)
 	switch {
-	case c.Bounces >= Engine.FrontierAfter:
+	case c.Bounces >= t.lim.FrontierAfter:
 		want = top
-	case c.Bounces >= Engine.EscalateAfter:
-		want++
+	case c.Bounces >= t.lim.EscalateAfter:
+		want += c.Bounces - t.lim.EscalateAfter + 1
 	}
 	return min(want, top)
 }

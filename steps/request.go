@@ -29,12 +29,14 @@ type Request struct {
 	Drop         map[string]card.Event
 }
 
-// coordinatorEvents are the events only a coordinator may raise (an engine
-// fact: a wrong coordinator could corrupt).
-var coordinatorEvents = []string{"Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream"}
-
-// runEvents are the run loop's own (presence).
-var runEvents = []string{"Seen", "Gone"}
+// The actor rule (round 2 rulings 2 and 3): coordinator verbs; the holder's
+// take and report on its own consumer; the run loop's presence; Add by a
+// hooked actor; every other move is the engine's, raised by the tick alone.
+var (
+	coordinatorEvents = []string{"Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream"}
+	holderEvents      = []string{"Take", "Report"}
+	runEvents         = []string{"Seen", "Gone"}
+)
 
 // Verb is one request as one op, or a refusal naming the fix: the actor
 // check, the move through the card machine, one op. A verb refused for its
@@ -43,6 +45,7 @@ func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) {
 	t := newTick(v, in)
 	t.o = newOracle(Answers{}, Engine)
 	t.lim, t.tmo = Engine.Limits, Engine.Timeouts
+	t.openIndex()
 	if ref := t.actorOK(r); ref != nil {
 		return store.Op{}, ref
 	}
@@ -77,9 +80,7 @@ func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) {
 	return op, nil
 }
 
-// actorOK is the actor rule: coordinator events need a coordinator; Take
-// and Report the consumer's holder; Seen and Gone the run loop; Add
-// anyone.
+// actorOK is the actor rule. An engine move is nobody's verb.
 func (t *tick) actorOK(r Request) *card.Refusal {
 	name := ""
 	if r.Event != nil {
@@ -87,22 +88,42 @@ func (t *tick) actorOK(r Request) *card.Refusal {
 	}
 	coordinator := slices.Contains(r.Coordinators, r.Actor)
 	switch {
-	case (r.Judgement != "" || slices.Contains(coordinatorEvents, name)) && !coordinator:
-		what := name
-		if what == "" {
-			what = "judge"
+	case r.Judgement != "" && !coordinator:
+		return t.coordinators(r, "judge")
+	case name == "":
+		return nil
+	case slices.Contains(coordinatorEvents, name):
+		if !coordinator {
+			return t.coordinators(r, name)
 		}
-		return &card.Refusal{Reason: fmt.Sprintf("%s is the coordinator's; ask on the bus: `nova-bus send --as %s --to %s ...`", what, r.Actor, firstOr(r.Coordinators, "<coordinator>"))}
-	case slices.Contains(runEvents, name) && r.Actor != Actor:
-		return &card.Refusal{Reason: name + " is the run loop's; presence is the bus's fact"}
-	case name == "Take" || name == "Report":
-		c, ok := t.v.Cards[r.Card]
-		if !ok {
-			return &card.Refusal{Reason: fmt.Sprintf("card %s does not exist: run `nova-sprint next --as %s`", r.Card, r.Actor)}
+	case slices.Contains(runEvents, name):
+		if r.Actor != Actor {
+			return &card.Refusal{Reason: name + " is the run loop's; presence is the bus's fact"}
 		}
-		if c.Holder != r.Actor {
-			return &card.Refusal{Reason: fmt.Sprintf("consumer %s is held by %s, not %s", c.ID, c.Holder, r.Actor)}
+	case slices.Contains(holderEvents, name):
+		return t.holderOK(r)
+	case name == "Add":
+		if row, ok := t.v.Rows[r.Actor]; !ok || !Hooked(row) {
+			return &card.Refusal{Reason: fmt.Sprintf("%s is not hooked in to the sprint: run `nova-sprint hook --as %s --role worker`", r.Actor, r.Actor)}
 		}
+	default:
+		return &card.Refusal{Reason: name + " is the engine's; the tick raises it from the store, never a verb"}
+	}
+	return nil
+}
+
+func (t *tick) coordinators(r Request, what string) *card.Refusal {
+	return &card.Refusal{Reason: fmt.Sprintf("%s is the coordinator's; ask on the bus: `nova-bus send --as %s --to %s ...`", what, r.Actor, firstOr(r.Coordinators, "<coordinator>"))}
+}
+
+// holderOK: a take or report is the consumer's holder's, on its own consumer.
+func (t *tick) holderOK(r Request) *card.Refusal {
+	c, ok := t.v.Cards[r.Card]
+	switch {
+	case !ok || !isConsumer(c):
+		return &card.Refusal{Reason: fmt.Sprintf("card %s does not exist: run `nova-sprint next --as %s`", r.Card, r.Actor)}
+	case c.Holder != r.Actor:
+		return &card.Refusal{Reason: fmt.Sprintf("consumer %s is held by %s, not %s", c.ID, c.Holder, r.Actor)}
 	}
 	return nil
 }
@@ -127,11 +148,10 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 			}
 			return card.MoveAdd(e, cards)
 		}}}, nil
-	case card.Take, card.Report:
-		if _, ok := t.v.Cards[r.Card]; !ok {
-			return nil, &card.Refusal{Reason: "card " + r.Card + " does not exist"}
-		}
+	case card.Take:
 		return []move{t.consumerMove(r.Card, e)}, nil
+	case card.Report:
+		return []move{t.reportMove(r.Card, e)}, nil // consumer and producer in one plan (round 2 ruling 1)
 	case card.Seen, card.Gone, card.Hold, card.Unhold:
 		if _, ok := t.v.Rows[r.Row]; !ok {
 			return nil, &card.Refusal{Reason: "row " + r.Row + " does not exist"}
@@ -165,6 +185,16 @@ func (t *tick) streamMoves(r Request, e card.Event) ([]move, *card.Refusal) {
 	return []move{{label: eventName(e) + " " + r.Stream, plan: func() (card.Plan, *card.Refusal) {
 		return card.MoveStream(t.streamOf(r.Stream), e)
 	}}}, nil
+}
+
+func (t *tick) readyIn(stream string) []card.Card {
+	var out []card.Card
+	for _, p := range t.v.Producers("ready") {
+		if t.v.Cards[p].Stream == stream {
+			out = append(out, t.cardOf(p))
+		}
+	}
+	return out
 }
 
 // dropMoves is a Cancel or Replace with its closure of dependants in the same

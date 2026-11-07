@@ -8,10 +8,10 @@ import (
 )
 
 // fix is the fix step (LAYER-3 "Fix"; the model's FixSet): once every read
-// of a producer's current review is done or withdrawn and one is done,
-// policy's verdict over all of them (LESSONS 3.7) is ReadYes or
-// ReadFix{finding}, the finding every fix read's joined. A finding
-// byte-equal to the producer's current one opens a brief judgement
+// asked of a producer's current review is done (as many as policy's reads
+// count) and none is live, policy's verdict over all of them (LESSONS 3.7)
+// is ReadYes or ReadFix{finding}, the finding every fix read's joined. A
+// finding byte-equal to the producer's current one opens a brief judgement
 // (LESSONS 5.9). A producer back from Broken or Faulted needs no plan here.
 func (t *tick) fix() {
 	var fixes []string
@@ -24,11 +24,14 @@ func (t *tick) fix() {
 		if reads == nil {
 			continue
 		}
-		if t.o.verdict(VerdictQuestion{Card: t.facts(c), Reads: reads}) == "yes" {
+		switch t.o.verdict(VerdictQuestion{Card: t.facts(c), Reads: reads}) {
+		case "yes":
 			t.group("yes", p, t.producerMove(p, card.ReadYes{}))
-			continue
+		case "fix":
+			fixes = append(fixes, p)
+		default:
+			t.retry[p] = struct{}{} // one more read is asked (the deal)
 		}
-		fixes = append(fixes, p)
 	}
 	for _, p := range fixes { // every yes before every fix, as the model orders them
 		c := t.v.Cards[p]
@@ -40,18 +43,22 @@ func (t *tick) fix() {
 	}
 }
 
-// settled is the done reads of c's current review and head when every read
-// of that review is final (done or withdrawn) and at least one is done; nil
-// while a read is live or none has reported.
+// settled is the done reads of c's current review and head when as many as
+// policy asked are done and none is live; nil while a read is live or owed
+// (round 2 ruling 9: fewer reads than asked never merge). A read that
+// faulted is not a read (the intent audit, row 12): it is owed again.
 func (t *tick) settled(c store.Card) []ReadFacts {
 	if c.State != "review" || t.hasLive(c.ID) {
 		return nil
 	}
 	var out []ReadFacts
 	for _, r := range t.v.Consumers(c.ID) {
-		if r.Kind == "read" && r.Review == c.Review && r.Head == c.Head && r.State == "done" {
+		if r.Kind == "read" && r.Review == c.Review && r.Head == c.Head && r.State == "done" && r.Result != "fault" {
 			out = append(out, ReadFacts{Row: r.Holder, Rank: t.rank(r.Holder), Result: r.Result, Finding: r.Reason})
 		}
+	}
+	if len(out) < t.readsWanted(c) {
+		return nil
 	}
 	return out
 }
@@ -73,25 +80,25 @@ func joinFindings(reads []ReadFacts) string {
 }
 
 // owed is how many reads c still needs: policy's count less the reads of
-// the current review that are live or done (a withdrawn one is owed again).
+// the current review that are live or done with a verdict (a withdrawn or
+// faulted one is owed again), plus one after a retry verdict.
 func (t *tick) owed(c store.Card) int {
 	if c.State != "review" {
 		return 0
 	}
 	have := 0
 	for _, r := range t.v.Consumers(c.ID) {
-		if r.Kind == "read" && r.Review == c.Review && r.State != "fail" {
+		if r.Kind == "read" && r.Review == c.Review && r.State != "fail" && !(r.State == "done" && r.Result == "fault") {
 			have++
 		}
 	}
-	return t.readsWanted(c) - have
+	owed := t.readsWanted(c) - have
+	if _, again := t.retry[c.ID]; again && owed <= 0 {
+		owed = 1
+	}
+	return owed
 }
 
-// readsWanted is reads(card); the engine default while the questions are
-// still being gathered (before the oracle exists).
-func (t *tick) readsWanted(c store.Card) int {
-	if t.o == nil {
-		return Engine.Reads
-	}
-	return t.o.reads(t.facts(c))
-}
+// readsWanted is reads(card), asked once in the tick's first call and read
+// by the owed count and the deal alike.
+func (t *tick) readsWanted(c store.Card) int { return t.o.reads(t.facts(c)) }

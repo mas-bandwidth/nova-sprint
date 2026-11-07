@@ -15,10 +15,12 @@ import (
 // width and the tiers it serves are read here by name (Inputs.Roster).
 
 // RosterRow is one row's facts as the tick caches them; Kind "" is unlisted.
+// Model is the row's model label: a worker's harness, a kin's model.
 type RosterRow struct {
 	Kind  string
 	Width int
 	Tiers []string
+	Model string
 }
 
 // rowOf is the roster's facts for row name, read once per tick; Kind "" is
@@ -32,6 +34,11 @@ func (t *tick) rowOf(name string) RosterRow {
 		r = RosterRow{Kind: kind, Width: w, Tiers: ts}
 		if r.Kind == "" {
 			r.Kind = roster.KindWorker
+		}
+		if wk, ok := t.in.Roster.Workers[name]; ok {
+			r.Model = wk.Harness
+		} else if k, ok := t.in.Roster.Kin[name]; ok {
+			r.Model = k.Model
 		}
 	}
 	t.roster[name] = r
@@ -75,7 +82,7 @@ func (t *tick) rowRecord(r store.Row) card.Row {
 func (t *tick) unlisted() {
 	for _, n := range t.rowNames {
 		if !t.listed(n) {
-			t.judge("roster", n, "row "+n+" is not in nova-config; nothing is dealt to it until nova-config lists it")
+			t.judge("roster", n, "row "+n+" is not in nova-config; nothing is dealt to it until nova-config lists it: nova-config machine add, or friend set")
 		}
 	}
 }

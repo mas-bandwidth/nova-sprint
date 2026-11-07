@@ -85,7 +85,7 @@ func (t *tick) admit(gs []group) []group {
 		case g.blocker:
 			out = append(out, g)
 			touched += g.size()
-		case !stop && (nonBlockers == 0 || touched+g.size() <= t.lim.Budget):
+		case !stop && (nonBlockers == 0 || touched+g.size() <= t.budget()):
 			out = append(out, g)
 			touched += g.size()
 			nonBlockers++
@@ -126,7 +126,7 @@ func (t *tick) ops(gs []group) [][]group {
 			continue
 		}
 		cur = append(cur, g)
-		if len(cur) >= t.lim.Pack {
+		if len(cur) >= Engine.Pack {
 			out = append(out, cur)
 			cur = nil
 		}

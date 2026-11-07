@@ -1,26 +1,31 @@
 package steps
 
 import (
+	"cmp"
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// preempt is the preemption step (LAYER-3 "Preemption"; the model's PreStep;
-// BlockerPreemptsInOneTick, PreemptYoungest). A ready blocker with no free
-// width on any open serving row (working at width) gets, on one such row,
-// one group: Withdraw of the youngest working consumer there (releasing its
-// producer, score and branch kept) merged with the blocker's Start, and a
-// stop request for the runner that rides with the op. The row is policy's
-// rows answer when it names one with a victim, else the first by name; at
-// most one preemption per row per tick. No open serving row at all opens
-// unserved for the tier and the blocker stays ready.
+// preempt is the preemption step (LAYER-3 "Preemption"; guarantee 4 as round
+// 2 reads it; the model's PreStep; BlockerPreemptsInOneTick,
+// PreemptYoungest). A ready blocker with no room on any open serving row
+// (every row's live consumers at its work plus ahead) gets, on one such row,
+// one group: Withdraw of the youngest ready consumer there (it costs
+// nothing; the row's queue is where the blocker goes), else of the youngest
+// working one (releasing its producer, score and branch kept), merged with
+// the blocker's Start, and a stop request for a working victim's runner that
+// rides with the op. The row is policy's rows answer when it names one with
+// a victim, else the first by name; at most one preemption per row per tick.
+// A blocker with room on a row is dealt ahead of everything by the deal, and
+// the row's take order is by priority (the take verb's, layer 6). No open
+// serving row at all opens unserved for the tier and the blocker stays ready.
 func (t *tick) preempt() {
 	used := set{}
-	for _, b := range t.v.Producers("ready") {
+	for _, b := range sorted(t.v.byRung["blocker"]) {
 		c := t.v.Cards[b]
-		if c.Kind != "producer" || rung(c) != "blocker" || !t.free(b) || t.v.Streams[c.Stream].Held {
+		if c.Kind != "producer" || c.State != "ready" || !t.free(b) || t.v.Streams[c.Stream].Held {
 			continue
 		}
 		serving := t.serving(c)
@@ -28,8 +33,8 @@ func (t *tick) preempt() {
 			t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+b+" waits")
 			continue
 		}
-		if !t.noFreeWidth(serving) {
-			continue // the deal starts it
+		if !t.noRoom(serving) {
+			continue // the deal starts it, ahead of everything
 		}
 		var rows []string
 		for _, r := range serving {
@@ -58,12 +63,13 @@ func (t *tick) preemptOn(b store.Card, row, victim string) {
 		return
 	}
 	g.blocker = true
-	vc := t.v.Cards[victim]
-	g.edges = []EdgeRequest{{ID: "stop." + victim, Kind: "stop", Stream: vc.Stream, Cards: []string{victim}, Row: row, Consumer: victim}}
+	if vc := t.v.Cards[victim]; vc.State == "working" {
+		g.edges = []EdgeRequest{{ID: "stop." + victim, Kind: "stop", Stream: vc.Stream, Cards: []string{victim}, Row: row, Consumer: victim}}
+	}
 }
 
-// serving is the open (up, not held), unclaimed, unrested rows serving c's
-// tier, by name (the candidates' names).
+// serving is the open (up, not held, hooked), unclaimed, unrested rows
+// serving c's tier, by name (the candidates' names).
 func (t *tick) serving(c store.Card) []string {
 	cands := t.candidates(c, "work")
 	out := make([]string, len(cands))
@@ -73,31 +79,60 @@ func (t *tick) serving(c store.Card) []string {
 	return out
 }
 
-// noFreeWidth says whether every row works at its width (ready consumers
-// hold no width; a queue is not free width: the model's NoFreeWidth).
-func (t *tick) noFreeWidth(rows []string) bool {
+// noRoom says whether every row is full: its live consumers at its room
+// (work plus ahead), with this tick's deals (guarantee 4: "no room").
+func (t *tick) noRoom(rows []string) bool {
 	for _, r := range rows {
-		if t.v.Working(r) < t.width(r) {
+		if t.used(r) < t.room(r) {
 			return false
 		}
 	}
 	return true
 }
 
-// victim is the youngest working consumer on row that is not b's and is
-// unclaimed: the latest taken, by id when the take was not witnessed.
+// victim is the consumer a blocker on row preempts: the youngest ready
+// consumer there (by producer then slot, the last dealt), else the youngest
+// working one (the latest taken, by id when the take was not witnessed);
+// never b's own, never a claimed one or one of a claimed producer.
 func (t *tick) victim(row, b string) string {
-	best := ""
+	best, bestReady := "", false
 	for _, id := range t.v.Live(row) {
 		c := t.v.Cards[id]
-		if c.State != "working" || c.Of == b || !t.unclaimed(id) || !t.free(c.Of) {
+		if c.Of == b || !t.unclaimed(id) || !t.free(c.Of) {
 			continue
 		}
-		if best == "" || t.v.TakenAt[id].After(t.v.TakenAt[best]) || (t.v.TakenAt[id].Equal(t.v.TakenAt[best]) && id > best) {
+		ready := c.State == "ready"
+		switch {
+		case best == "" || (ready && !bestReady):
+			best, bestReady = id, ready
+		case ready == bestReady && ready && t.slotCmp(id, best) > 0:
+			best = id
+		case ready == bestReady && !ready && t.youngerTake(id, best):
 			best = id
 		}
 	}
 	return best
+}
+
+// slotCmp orders two consumers by producer then cut order (the model's slot).
+func (t *tick) slotCmp(a, b string) int {
+	ca, cb := t.v.Cards[a], t.v.Cards[b]
+	return cmp.Or(cmp.Compare(ca.Of, cb.Of), cmp.Compare(t.slot(a), t.slot(b)))
+}
+
+// slot is a consumer's place in its producer's cut order, from 1.
+func (t *tick) slot(id string) int {
+	for i, k := range t.v.Consumers(t.v.Cards[id].Of) {
+		if k.ID == id {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+func (t *tick) youngerTake(a, b string) bool {
+	ta, tb := t.v.TakenAt[a], t.v.TakenAt[b]
+	return ta.After(tb) || (ta.Equal(tb) && a > b)
 }
 
 // preferred is the first of rows policy's answer for c names, else the first

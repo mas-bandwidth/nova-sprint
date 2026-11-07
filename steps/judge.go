@@ -12,14 +12,34 @@ import (
 // (none for blocked by Glenn's ruling) and the command that answers it.
 type judgement struct {
 	kind, about, question string
-	episode               int // 0: the next
+	group                 string // the group key when not the kind's: a fact other steps read (never parsed from the prose)
+	episode               int    // 0: the next
+	record                bool   // opened and closed in the one op: a count, never a push
 }
 
 // The closed list a step opens, with the choices judge offers for each.
 var choices = map[string]string{
 	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "conflict": "by-hand | drop",
-	"base-red": "retry", "stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
-	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
+	"base-red": "retry", "landing-stopped": "retry", "stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry",
+	"brief": "rework | drop", "landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
+}
+
+// openIndex indexes the open judgements once per tick: kind -> about, a
+// policy judgement by about@group (one per version and question).
+func (t *tick) openIndex() {
+	t.open = map[string]set{}
+	for _, j := range t.v.Judgements {
+		if j.State == "open" {
+			add(t.open, j.Kind, openKey(j.Kind, j.About, j.Group))
+		}
+	}
+}
+
+func openKey(kind, about, group string) string {
+	if kind == "policy" {
+		return about + "@" + group
+	}
+	return about
 }
 
 // judge opens kind about about unless one is open (a cause opens once).
@@ -30,12 +50,19 @@ func (t *tick) judge(kind, about, question string) {
 	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question})
 }
 
-// judgeAgain opens a new episode whether or not one is open (a base's red is
-// met again).
-func (t *tick) judgeAgain(kind, about, question string) {
-	if !t.pending(kind, about) {
-		t.judges = append(t.judges, judgement{kind: kind, about: about, question: question})
+// judgeGrouped is judge with the judgement's group key given: the fact a
+// later step reads (a landing stop's base).
+func (t *tick) judgeGrouped(kind, about, group, question string) {
+	if t.isOpen(kind, about) || t.pending(kind, about) {
+		return
 	}
+	t.judges = append(t.judges, judgement{kind: kind, about: about, group: group, question: question})
+}
+
+// record opens the next episode of kind about about and closes it in the
+// same op: a counted fact (a base met), never pushed.
+func (t *tick) record(kind, about, question string) {
+	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question, record: true})
 }
 
 // judgeAt opens episode n of kind about about once: a count that only grows
@@ -53,21 +80,21 @@ func (t *tick) engine(about, why string) { t.judge("engine", about, why) }
 
 func (t *tick) pending(kind, about string) bool {
 	for _, j := range t.judges {
-		if j.kind == kind && j.about == about {
+		if j.kind == kind && j.about == about && !j.record {
 			return true
 		}
 	}
 	return false
 }
 
+// isOpen says whether a judgement of kind about about is open; a policy one
+// counts only under this tick's version.
 func (t *tick) isOpen(kind, about string) bool {
-	for _, j := range t.v.Judgements {
-		if j.Kind == kind && j.About == about && j.State == "open" {
-			return true
-		}
-	}
-	return false
+	_, ok := t.open[kind][openKey(kind, about, t.policyGroup())]
+	return ok
 }
+
+func (t *tick) policyGroup() string { return fmt.Sprintf("policy:v%d", t.o.a.Version) }
 
 // episodes is how many judgements of kind about about exist, open or closed.
 func (t *tick) episodes(kind, about string) int {
@@ -95,13 +122,16 @@ func (t *tick) riding(kind, about, question string) []store.Write {
 func (t *tick) put(j judgement) store.Write {
 	n := j.episode
 	if n <= 0 {
-		n = t.episodes(j.kind, j.about) + 1
+		n = t.episodes(j.kind, j.about) + 1 + t.recordedBefore(j)
 	}
 	id := fmt.Sprintf("%s.%s.%d", j.kind, j.about, n)
 	w := store.PutJudgement{ID: id, Kind: j.kind, About: j.about, Question: j.question, Group: j.kind,
 		Command: fmt.Sprintf("nova-sprint judge %s <choice> --reason <why>   choices: %s", id, choices[j.kind])}
 	if j.kind == "policy" {
-		w.Group = fmt.Sprintf("policy:v%d", t.o.a.Version)
+		w.Group = t.policyGroup()
+	}
+	if j.group != "" {
+		w.Group = j.group
 	}
 	if j.kind != "blocked" {
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
@@ -109,11 +139,23 @@ func (t *tick) put(j judgement) store.Write {
 	return w
 }
 
+// recordedBefore is how many records of j's kind and about this tick opened
+// before j, so two meetings in one tick get two episodes.
+func (t *tick) recordedBefore(j judgement) int {
+	n := 0
+	for _, k := range t.judges {
+		if k.record && k.kind == j.kind && k.about == j.about && k.question != j.question {
+			n++
+		}
+	}
+	return n
+}
+
 // judgements is the judgements step (LAYER-3 "Judgements"; the model's jnew
-// and Expired): the alarms, one policy judgement per missed question, and
-// the expiries: a cause that cleared in the view, or a deadline passed with
-// the kind's safe default, which never drops, accepts, merges or lands
-// (LESSONS 5.7).
+// and Expired): the alarms, one policy judgement per missed question and
+// version, and the expiries: a cause that cleared in the view, or a deadline
+// passed with the kind's safe default, which never drops, accepts, merges or
+// lands (LESSONS 5.7).
 func (t *tick) judgements() {
 	t.alarms()
 	for _, q := range t.o.missed() {
@@ -147,21 +189,19 @@ func (t *tick) cleared(j store.Judgement) string {
 		if !ok || t.owed(c) <= 0 {
 			return j.About + " no longer waits for a read"
 		}
-		for _, r := range t.serving(c) {
-			if r != c.Author {
-				return "row " + r + " may read " + j.About
-			}
+		if len(t.readers(c)) >= t.owed(c) {
+			return "rows may read " + j.About
 		}
 	case "stall":
 		if at, ok := t.v.Landed[j.About]; ok && at.After(j.OpenedAt) {
 			return "stream " + j.About + " landed"
 		}
 	case "idle":
-		if open, working := t.load(); working*4 >= open*3 {
-			return "working at or above three quarters of the open width"
+		if open, working := t.load(); float64(working) >= t.idleCeiling()*float64(open) {
+			return "working at or above the ceiling of the open width"
 		}
 	case "land-rate":
-		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= Engine.LandTarget {
+		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= t.lim.LandTarget {
 			return "land rate back at target"
 		}
 	}
@@ -177,6 +217,15 @@ func contains(xs []string, x string) bool {
 	return false
 }
 
+// idleCeiling is where the idle alarm closes (LESSONS 3.18: three quarters
+// by default): policy's idle_ceiling, else half again the floor, at most 1.
+func (t *tick) idleCeiling() float64 {
+	if t.lim.IdleCeiling > 0 {
+		return t.lim.IdleCeiling
+	}
+	return min(1, 1.5*t.lim.IdleFloor)
+}
+
 // alarms are stall (nothing landed in the bound while producers wait in
 // review or merging, per stream), idle (working under the floor of the open
 // width while producers wait) and land-rate (a stream's first-time land
@@ -188,22 +237,22 @@ func (t *tick) alarms() {
 			if at, ok := t.v.Landed[s]; ok && at.After(since) {
 				since = at
 			}
-			if !t.in.Now.Before(since.Add(seconds(t.tmo.LandingStall))) {
+			if t.due(since, t.tmo.LandingStall) {
 				t.judge("stall", s, fmt.Sprintf("stream %s: nothing landed since %s while %d review and %d merging wait", s, since.UTC().Format("15:04:05"), f.Review, f.Merging))
 			}
 		}
-		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < Engine.LandTarget {
-			t.judge("land-rate", s, fmt.Sprintf("stream %s lands first time at %.0f%% over %d; the target is %.0f%%", s, rate*100, n, Engine.LandTarget*100))
+		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < t.lim.LandTarget {
+			t.judge("land-rate", s, fmt.Sprintf("stream %s lands first time at %.0f%% over %d; the target is %.0f%%", s, rate*100, n, t.lim.LandTarget*100))
 		}
 	}
 	open, working := t.load()
 	waiting := len(t.v.byState["ready"]) + len(t.v.byState["waiting"])
-	if open > 0 && waiting > 0 && float64(working) < Engine.IdleFloor*float64(open) {
+	if open > 0 && waiting > 0 && float64(working) < t.lim.IdleFloor*float64(open) {
 		t.judge("idle", "fleet", fmt.Sprintf("working %d of %d open width while %d ready and %d waiting: %s", working, open, len(t.v.byState["ready"]), len(t.v.byState["waiting"]), t.idleCauses()))
 	}
 }
 
-// load is the open width (up, unheld rows) and the working consumers.
+// load is the open width (up, unheld, hooked rows) and the working consumers.
 func (t *tick) load() (open, working int) {
 	for n, r := range t.v.Rows {
 		if t.v.Open(r) {
@@ -229,30 +278,29 @@ func (t *tick) idleCauses() string {
 	return fmt.Sprintf("%d in held streams, %d with no serving row", held, unserved)
 }
 
-// landRate is a stream's landed with no bounce over landed, and the count.
+// landRate is a stream's landed with no bounce over landed, and the count
+// (the view's counters).
 func (t *tick) landRate(s string) (float64, int) {
-	landed, clean := 0, 0
-	for p := range t.v.byState["landed"] {
-		if c := t.v.Cards[p]; c.Stream == s && c.Kind == "producer" {
-			landed++
-			if c.Bounces == 0 {
-				clean++
-			}
-		}
-	}
+	landed := t.v.Count(s, "landed")
 	if landed == 0 {
 		return 1, 0
 	}
-	return float64(clean) / float64(landed), landed
+	return float64(t.v.cleanLand[s]) / float64(landed), landed
 }
 
 // judgementOp is the op of the tick's judgements: the opens that ride in no
-// group and every expiry, fenced open. False when there is none.
+// group, the records (opened and closed in this op) and every expiry, fenced
+// open. False when there is none.
 func (t *tick) judgementOp() (store.Op, bool) {
 	op := store.Op{Epoch: t.v.Epoch, Actor: Actor, Kind: "judge", At: t.in.Now}
 	for _, j := range t.judges {
-		if j.episode >= 0 {
-			op.Writes = append(op.Writes, t.put(j))
+		if j.episode < 0 {
+			continue
+		}
+		w := t.put(j)
+		op.Writes = append(op.Writes, w)
+		if j.record {
+			op.Writes = append(op.Writes, store.ExpireJudgement{ID: w.(store.PutJudgement).ID, Reason: "recorded"})
 		}
 	}
 	for _, id := range sortedKeys(t.expires) {
