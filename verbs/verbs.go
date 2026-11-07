@@ -292,6 +292,7 @@ func streamNext(s store.Snapshot) nextAnswer {
 	}
 	// Stable ordering matters when several streams need a first card.
 	slices.Sort(names)
+	allDone := true
 	for _, name := range names {
 		count := 0
 		done := true
@@ -306,9 +307,10 @@ func streamNext(s store.Snapshot) nextAnswer {
 		if count == 0 {
 			return nextAnswer{"stream " + name + " has no cards", "nova-sprint add --stream " + name + " --brief-file <file>", nil, nil}
 		}
-		if done {
-			return nextAnswer{"stream " + name + " is done", "nothing; wait for the bus", nil, nil}
-		}
+		allDone = allDone && done
+	}
+	if allDone {
+		return nextAnswer{"everything is done", "nothing; wait for the bus", nil, nil}
 	}
 	return nextAnswer{"nothing needs you", "nothing; wait for the bus", nil, nil}
 }
