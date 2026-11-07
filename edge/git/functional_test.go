@@ -76,7 +76,7 @@ func TestFunctionalGitMergeLedgerRebaseAndPush(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	_, workDir, baseSHA, runGit := setupBareAndWorkRepo_internal(t)
-	client := New(Config{})
+	client := New(Config{AuthorName: "Test Author", AuthorEmail: "test@mas-bandwidth.com"})
 
 	runGit(workDir, "checkout", "-b", "card-1", baseSHA)
 	writeFile_internal(t, filepath.Join(workDir, "a.go"), "package a\n")
@@ -147,7 +147,7 @@ func TestFunctionalLandPassEndToEndAndBaseMoved(t *testing.T) {
 	c2 := commitBranch_internal(t, runGit, workDir, "c2", baseSHA, "c2.txt", "card 2\n", "refs/heads/sprint/s1/c2")
 	other := commitBranch_internal(t, runGit, workDir, "other", baseSHA, "other.txt", "other stream\n", "")
 
-	client := New(Config{})
+	client := New(Config{AuthorName: "Test Author", AuthorEmail: "test@mas-bandwidth.com"})
 	ff := newFakeForge_internal()
 	ff.allGreen = true
 	moved := false
@@ -175,7 +175,7 @@ func TestFunctionalLandPassEndToEndAndBaseMoved(t *testing.T) {
 			t.Fatalf("%s is not in the landed %s (err %v)", h, second.MergeSHA, err)
 		}
 	}
-	again, err := LandPass(ctx, New(Config{}), ff, req)
+	again, err := LandPass(ctx, New(Config{AuthorName: "Test Author", AuthorEmail: "test@mas-bandwidth.com"}), ff, req)
 	if err != nil || again.Outcome != OutcomeLanded || len(again.LandedHeads) != 2 {
 		t.Fatalf("a pass after landing = %+v err=%v, want landed (every head on base)", again, err)
 	}

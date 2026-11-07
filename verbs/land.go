@@ -59,7 +59,8 @@ func (e *Engine) handLand(ctx context.Context, in *input, snap store.Snapshot, i
 	case e.Lander == nil:
 		return "", broken("the landing edge is not configured", "nova-sprint check")
 	}
-	merge, err := e.Lander.Land(ctx, snap.Streams[c.Stream], branchOf(snap, c), c.Head)
+	// a merge the hand landing makes is the store's identity (round 24), never a literal
+	merge, err := e.Lander.Land(git.WithIdentity(ctx, snap.Identity.Name, snap.Identity.Email), snap.Streams[c.Stream], branchOf(snap, c), c.Head)
 	if err != nil {
 		return "", RefusalOr(err, broken("the hand landing of "+id+" failed: "+errText(err), "fix what it names, then nova-sprint land "+id+" --reason \"<why>\" again"))
 	}

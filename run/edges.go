@@ -83,7 +83,8 @@ func (e *Edges) Dispatch(ctx context.Context, reqs []steps.EdgeRequest, snap sto
 		switch r.Kind {
 		case "land":
 			s := snap.Streams[r.Stream]
-			go e.land(ctx, r, s)
+			// the landing's merge commits are the store's identity (round 24), never a literal
+			go e.land(git.WithIdentity(ctx, snap.Identity.Name, snap.Identity.Email), r, s)
 		case "stop":
 			go e.stop(ctx, r)
 		}
