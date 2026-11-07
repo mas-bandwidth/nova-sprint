@@ -295,10 +295,12 @@ ResolveOK(W, p, extra) ==
 -----------------------------------------------------------------------------
 (* Groups. A group is one producer's move with the consumers it touches:  *)
 (* cards (written), rk (card records read, fenced), rr and rsx (the rows  *)
-(* and streams read, fenced). Card keys are <<p, 0>> for a producer and   *)
-(* <<p, i>> for its i-th consumer slot. blk marks a blocker group (never  *)
-(* cut by the budget); stamp the inbox item it came from (0: none); req   *)
-(* the edge requests it carries (After = its op).                         *)
+(* and streams read, fenced; yes and landed read no stream, as            *)
+(* CardMachine's ReadYes and Landed and card/move.go do not). Card keys   *)
+(* are <<p, 0>> for a producer and <<p, i>> for its i-th consumer slot.   *)
+(* blk marks a blocker group (never cut by the budget); stamp the inbox   *)
+(* item it came from (0: none); req the edge requests it carries (After = *)
+(* its op).                                                               *)
 
 StopReq(c) == [id |-> <<Epoch, "stop", c, 0>>, stream |-> Stream[c[1]], sent |-> FALSE]
 LandReq(V, p) == [id |-> <<Epoch, "land", PKey(p), V.ps[p].head>>, stream |-> Stream[p], sent |-> FALSE]
@@ -321,7 +323,7 @@ Grp(kind, p, c, r, stamp, sha, V) ==
    cards |-> CardsOf(kind, p, c, V),
    rk    |-> ReadKeys(kind, p, c, V),
    rr    |-> IF r = NoR THEN {} ELSE {r},
-   rsx   |-> IF kind = "none" THEN {} ELSE {Stream[p]},
+   rsx   |-> IF kind \in {"none", "yes", "landed"} THEN {} ELSE {Stream[p]},
    req   |-> IF kind = "pre" THEN {StopReq(c)} ELSE {}]
 NoneG(stamp, V) == Grp("none", "-", NoC, NoR, stamp, 0, V)
 
