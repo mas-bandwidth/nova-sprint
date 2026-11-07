@@ -82,11 +82,21 @@ func (c *Cache) pageSnapshot() PageEnvelope {
 		d.OK = false
 		d.Error = "store read failed"
 	}
-	rate, minutes, landings := c.rateWindow()
-	d.EtaWindow, d.EtaLandings = minutes, landings
-	d.Eta = etaString(etaMinutes(d.Left, rate, landings))
-	d.Summary = summaryLine(d, d.Eta)
+	rate, minutes, _ := c.rateWindow()
 	now := c.clock()
+	// the ETA's rate is the store events' landings, whatever the process's uptime
+	// (the throughput tile's samples restart with it)
+	if c.landingsOK {
+		eta, window, landings, avg := landingRate(c.landings, now)
+		d.EtaWindow, d.EtaLandings, d.EtaBasis = window, landings, "last hour"
+		if avg {
+			d.EtaBasis = "sprint average"
+		}
+		d.Eta = etaString(etaMinutes(d.Left, eta, landings))
+	} else {
+		d.Eta = "-"
+	}
+	d.Summary = summaryLine(d, d.Eta)
 	var msg *string
 	if d.Error != "" {
 		msg = &d.Error

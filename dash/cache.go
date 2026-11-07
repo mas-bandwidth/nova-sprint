@@ -27,6 +27,8 @@ type Cache struct {
 	pending     bool
 	initialized bool
 	anchor      historyAnchor
+	landings    []time.Time // this epoch's landings (not the v1 import's), from the store's events: the ETA's rate, independent of uptime
+	landingsOK  bool
 	roster      roster.Roster // each row's kind and width (round 22); SetRoster
 }
 
@@ -51,6 +53,7 @@ func New(ctx context.Context, s store.Store) (*Cache, error) {
 	c := &Cache{state: snap, at: time.Now(), now: time.Now, pending: snap.Seq > 0, initialized: true, gate: make(chan struct{}, 1)}
 	c.view = mapSnapshot(c.state, c.roster, c.at)
 	c.samples = []sample{{c.at, c.view.Landed}}
+	c.loadLandings(ctx, s)
 	return c, nil
 }
 
@@ -98,6 +101,7 @@ func (c *Cache) Advance(ctx context.Context, s store.Store) error {
 		}
 		c.state = snap
 		c.initialized = true
+		c.loadLandings(ctx, s)
 		c.pending = snap.Seq > 0
 		var cancel context.CancelFunc
 		workCtx, cancel = context.WithTimeout(ctx, AdvanceDeadline)
@@ -145,6 +149,44 @@ func (c *Cache) publishRead(start time.Time) {
 	c.addSample(at, view.Landed)
 	c.mu.Unlock()
 }
+
+// landingReader is what a store offers to give the dashboard the sprint's
+// landing times from its events.
+type landingReader interface {
+	Landings(ctx context.Context, epoch int, upToSeq int64) ([]time.Time, error)
+}
+
+// loadLandings reads the epoch's landings up to the state's seq; a store that
+// cannot give them leaves the ETA without a rate ("-"), never a guess.
+func (c *Cache) loadLandings(ctx context.Context, s store.Store) {
+	r, ok := s.(landingReader)
+	if !ok {
+		return
+	}
+	at, err := r.Landings(ctx, c.state.Epoch, c.state.Seq)
+	if err != nil {
+		log.Printf("dashboard landings: %v", err)
+		return
+	}
+	c.landings, c.landingsOK = at, true
+}
+
+// noteLandings adds the landings in events, folded after the load; a clear
+// starts the epoch's count again.
+func (c *Cache) noteLandings(events []store.Event) {
+	if !c.landingsOK {
+		return
+	}
+	for _, e := range events {
+		if e.Kind == "clear" {
+			c.landings = nil
+			continue
+		}
+		for i := store.LandedIn(e); i > 0; i-- {
+			c.landings = append(c.landings, e.At)
+		}
+	}
+}
 func (c *Cache) failed(err error) error {
 	c.mu.Lock()
 	c.err = err
@@ -165,6 +207,7 @@ func (c *Cache) readAvailable(ctx context.Context, s store.Store) error {
 			}
 		}
 		if len(events) > 0 {
+			c.noteLandings(events)
 			c.state = store.Fold(c.state, events)
 			c.anchor = anchorOf(events[len(events)-1])
 			c.pending = true
