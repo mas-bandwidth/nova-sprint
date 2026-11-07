@@ -6,7 +6,7 @@ Runs: `go build ./... && go vet ./...` clean. `go test -skip Functional ./cmd/no
 
 ## Verdict
 
-The mechanics of `up` (two-phase credential split, lease, continuation record, one verify-act-verify per step, fail-closed fleet and ssh parsing) are carefully built and well tested at the unit level, but the box does not yet deliver what SETUP.md promises a cold AI: provider keys the human pastes in step 6 are never granted to the bench seats that the step-7 worker records open them from, and the worker records hard-code DeepSeek and Inception keys whatever `--services` was chosen (setup_workload.go:24-26, 54; verbs/setup_runtime_role_bootstrap.go:104-108). Worst single thing: with the default flow (`--services deepseek`, or `none`, or `openrouter`) step 7 installs worker units whose `nova-secrets exec` needs `DEEPSEEK_API_KEY` and `INCEPTION_API_KEY` in a bench seat nothing ever filled, so the first real fleet stops at 7/8 and the dogfood gate (a cold AI, zero to a running sprint, using only the tool) cannot pass. Close behind: the walk verifies once straight after each Act with no settling (steps 4, 5, 7), so a first install is likely to refuse even when healthy; every `up` writes a new store record and scans the whole event log three times; and the role bootstrap needs PostgreSQL 16+ unannounced.
+The mechanics of `up` (two-phase credential split, lease, continuation record, one verify-act-verify per step, fail-closed fleet and ssh parsing) are carefully built and well tested at the unit level, but the box does not yet deliver what SETUP.md promises a cold AI: provider keys the human pastes in step 6 are never granted to the bench seats that the step-7 worker records open them from, and the worker records hard-code DeepSeek and Inception keys whatever `--services` was chosen (setup_workload.go:24-26, 54; verbs/setup_runtime_role_bootstrap.go:104-108). Worst single thing: with the default flow (`--services deepseek`, or `none`, or `openrouter`) step 7 installs worker units whose `nova-secrets exec` needs `DEEPSEEK_API_KEY` and `INCEPTION_API_KEY` in a bench seat nothing ever filled, so the first real fleet stops at 7/8 and the dogfood gate (a cold AI, zero to a running sprint, using only the tool) cannot pass. Close behind: the walk verifies once straight after each Act with no settling (steps 4, 5, 7), so a first install can refuse before a healthy fleet has finished starting (Question 1 asks whether nova-fleet's play already waits); every `up` writes a new store record and scans the whole event log three times; and the role bootstrap needs PostgreSQL 16+ unannounced.
 
 ## Defects
 
@@ -17,10 +17,10 @@ The mechanics of `up` (two-phase credential split, lease, continuation record, o
 - Why it matters: SETUP.md:32-36 promises "one API key per service, pasted once ... the AI makes the seats, the grants, the worker rows", and :79-80 says the worker opens "the provider keys the bench's seat holds". The code assumes the bench seat already holds them; no step makes that true. Step 7 ends in `WorkersReady` refusal naming the log line.
 - Repair: derive the worker's key list from the saved `services` answer, grant each chosen provider key to every worker seat in `workersAct` (same Grant+Refresh as the sprint password), and refuse an unsupported service name by name.
 
-### 2. serious: no settling between Act and the re-verify in steps 4, 5, 7 (and 8), so a correct first install refuses
+### 2. serious: no settling between Act and the re-verify in steps 4, 5, 7 (and 8), so a correct first install can refuse
 - verbs/setup.go:295-307: `setupStep` does Verify, one Act, one Verify. `runAct` (verbs/setup_runtime.go:456-460), `dashboardAct` (:483-487), `workersAct` (:555) end in `nova-fleet services` plays; their verifies need the chooser lock held (verbs/setup_runtime_run.go:48-53), the dashboard answering, and every worker hooked and `up` (setup_workload.go:164-178). Those happen asynchronously after the unit starts.
 - `grep -n "Sleep\|time.After\|NewTimer\|Ticker\|deadline\|retry" verbs/setup_runtime*.go` finds no wait or retry anywhere in the step code. A not-yet-ready answer becomes `Action: true` plus a `Refusal` (verbs/setup_runtime.go:216-221, 294-297, workloadReady :65-71) which is printed as the failure.
-- Why it matters: SETUP.md:79-81 "The step verifies when every worker is on the bus and up". tla/Setup.tla:25-29 states `world[7]` "becomes true only when the units come up, so an Act that returns before that maps to repair again". The model has an unbounded repair loop (`WF_vars(Progress)`, EventuallyDone); the code has exactly one, so `up` exits 1 with "run not ready / not hooked" on a healthy fresh fleet and the human must rerun. Unit tests use fakes that become ready instantly, so nothing catches this.
+- Why it matters: SETUP.md:79-81 "The step verifies when every worker is on the bus and up". tla/Setup.tla:25-29 states `world[7]` "becomes true only when the units come up, so an Act that returns before that maps to repair again". The model has an unbounded repair loop (`WF_vars(Progress)`, EventuallyDone); the code has exactly one. If the play returns before the units are up (unresolved, Question 1), `up` exits 1 with "run not ready / not hooked" on a healthy fresh fleet and the human must rerun; if the play waits, only worker hooking is exposed. Unit tests use fakes that become ready instantly, so nothing catches this.
 - Repair: after Act, re-verify with a bounded poll (deadline from the context, injected clock) before returning the refusal. Question 1 asks whether nova-fleet's play waits for the unit.
 
 ### 3. serious: every `up` writes a store record, scans the whole event log three times, and races live writers
@@ -75,28 +75,40 @@ The mechanics of `up` (two-phase credential split, lease, continuation record, o
 ### 12. minor: `help` misuse gives a nonsense fix
 - verbs/help.go:28,38 call `misuse("help", ...)`, and `misuse` (verbs/result.go:70) appends `nova-sprint help <verb>` as the fix. Run: `nova-sprint help nosuch` -> `SPRINT REFUSED help: no verb nosuch: nova-sprint help help`; `nova-sprint help playbook` -> `...worker: nova-sprint help playbook worker: nova-sprint help help` (two commands in one fix). Fix should be `nova-sprint help`.
 
-### 13. minor: `check` does not lint a brief directory
+### 13. minor: `check` does not lint a brief directory, so the contract's sentence has no implementation
 - CARD-CONTRACT.md:6-7 "`check` lints a brief directory before a sprint starts"; CORRECT-USE.md:42 and `help check` (`[--integrity]` only) have no such input; `grep -in brief verbs/check*.go` finds only test fixtures. `check` re-proves waiting and ready cards already added, which is a different thing.
+- Why it matters: a coordinator following CARD-CONTRACT.md has no way to lint a directory of briefs before `add`; the only lint is the per-card refusal at admission.
+- Repair: either add a brief-directory input to `check` that calls `parseBrief` on each file, or delete the "`check` lints a brief directory" clause from CARD-CONTRACT.md:6-7.
 
 ### 14. minor: the worker playbook tells the worker about `JOB.md`, which the contract retires
-- docs/PLAYBOOK-WORKER.md:19-20 "its harness reads the card from `JOB.md` in the job directory"; CARD-CONTRACT.md:139-142 "`JOB.md` ... The take receipt is the job". Both are printed to a cold AI by `hook`.
+- docs/PLAYBOOK-WORKER.md:19-20 "its harness reads the card from `JOB.md` in the job directory"; CARD-CONTRACT.md:139-142 "`JOB.md` ... The take receipt is the job". Both are printed to a cold AI by `hook` (verbs/hook.go:87 serves `docs.Playbook`), and `add` refuses a brief that names `JOB.md` as a retired mechanic (verbs/brief_lint.go:30), so the worker playbook describes a file the contract says does not exist.
+- Why it matters: a worker reading the playbook looks for or writes a `JOB.md` and the take receipt is the real job.
+- Repair: in docs/PLAYBOOK-WORKER.md:19-20 replace "reads the card from `JOB.md` in the job directory" with "is handed the card by its take receipt".
 
-### 15. minor: step 6 says "one model-list request", the probe makes two; the service error is unnamed
-- SETUP.md:74 vs verbs/setup_runtime_model_probe.go:46 (key endpoint, then models).
-- verbs/setup_runtime.go:373 returns "unsupported or duplicate service" without naming which; `help up` shows `--services <a,b>` (no `none`, no list of names), so Mercury or OpenCode from SETUP.md:26 yields that bare line.
+### 15. minor: step 6 says "one model-list request" but the probe makes two
+- SETUP.md:74 "proven by one model-list request" vs verbs/setup_runtime_model_probe.go:46, which loops over `[]string{provider.keyEndpoint, provider.endpoint}` (key endpoint, then models).
+- Why it matters: a provider that rate-limits or lacks the key endpoint fails the probe on a request the doc never mentions.
+- Repair: change SETUP.md:74 to say two requests (key check, then model list), or probe only the model-list endpoint.
+
+### 15b. minor: the unsupported-service refusal does not name the service or the accepted names
+- verbs/setup_runtime.go:373 returns "unsupported or duplicate service" without naming which one; `help up` shows `--services <a,b>` with no list of accepted names and no `none`, so Mercury or OpenCode from SETUP.md:26 yields that bare line.
+- Why it matters: the refusal rule (CORRECT-USE.md:17-22) wants the fix named; here the human cannot tell a typo from an unsupported provider from a duplicate.
+- Repair: return `unsupported service %q (accepted: deepseek, openrouter, none)` and a separate message for a duplicate, and list the names in `help up`.
 
 ### 16. minor: `up --version` (release adoption) is promised and not built
 - docs/PLAYBOOK-COORDINATOR.md:364-366 "installs the build beside the old, runs one shadow tick against the live store, swaps, watches three ticks, and swaps back on any overrun, crash or refused tick". verbs/setup_runtime_version.go:62-67 only checks the installed version, `check` and `run --shadow`; `Apply` (:123-128) always refuses with a `nova-fleet install` fix. No swap, watch or rollback exists. It fails safe (a loud refusal). Repair: build it or delete the promise. (Also found by the earlier attempt d154e495.)
 
-### 17. nit
-- verbs/check.go:81-87: `check --integrity` prints no history line at all when the store is not at schema (`if current && in.has("integrity")`), against "prints every line". Repair: emit a skipped line. (Earlier attempt d154e495.)
-- cmd/nova-sprint/setup_production.go:80 `runDSN, _ :=` drops an error (the wrapper pre-checks, direct engine callers do not).
-- cmd/nova-sprint/setup_workload.go:32 `workerArgv(machine, _ string)` ignores its second argument; :84,87,263 `ServicesReady`, `InstallServices`, `RunSmoke` are constant no-ops behind a 6-method interface (verbs/setup_runtime.go:35-42).
-- cmd/nova-sprint/up_wrapper.go:236 a 1 s wait for fd 3 to close after the child exits: a grandchild that inherits fd 3 (not CLOEXEC after `os.NewFile`, up_wrapper.go:222) holds the pipe open and fails the walk with "continuation channel did not close".
-- verbs/setup.go:266 `text[:strings.LastIndex(text, "next: ")]` panics on -1 if `hookAs` ever returns text without `next: `.
-- verbs/help.go:61 `done("nova-sprint "+v.name+" ...")`: every help page ends with the literal `next: nova-sprint take ...`.
-- cmd/nova-sprint/open.go:130-135 `lazyStore.Close` leaves `s.pg` set after closing.
-- verbs/brief.go:51 reports a missing PATHS/TEST/DONE-WHEN at `len(lines)`, the last line of the brief, not a useful location; brief.go:135 accepts empty names (`NEEDS: a,,b` parses, checked).
+### 17. nit: eight small defects, one observation each
+- 17a. verbs/check.go:81-87: `check --integrity` prints no history line when the store is not at schema (`if current && in.has("integrity")`), against "prints every line". Repair: emit a skipped line. (Earlier attempt d154e495.)
+- 17b. cmd/nova-sprint/setup_production.go:80: `runDSN, _ :=` drops the error from `setupRoleDSN`; the wrapper pre-checks but direct engine callers do not. Repair: return the error.
+- 17c. cmd/nova-sprint/setup_workload.go:32: `workerArgv(machine, _ string)` ignores its second argument. Repair: drop the parameter.
+- 17d. cmd/nova-sprint/setup_workload.go:84,87,263 and verbs/setup_runtime.go:35-42: `ServicesReady`, `InstallServices`, `RunSmoke` are constant no-ops behind a 6-method interface. Repair: remove them from the interface (see Simplifications).
+- 17e. cmd/nova-sprint/up_wrapper.go:222,236: after the child exits, `waitHandoff` waits 1 s for fd 3 to close; a grandchild that inherits fd 3 (the `os.NewFile` descriptor is not close-on-exec) holds the pipe open and the walk fails with "continuation channel did not close". Repair: set close-on-exec on the descriptor in the child, or read until the child's handoff line instead of EOF.
+- 17f. verbs/setup.go:266: `text[:strings.LastIndex(text, "next: ")]` panics on -1 if `hookAs` ever returns text without `next: `. Repair: check the index before slicing.
+- 17g. verbs/help.go:61 (via `helpVerb` ending in `done("nova-sprint "+v.name+" ...")`): every help page ends with the literal `next: nova-sprint take ...`. Repair: end help pages with the verb's real next step or `nova-sprint help`.
+- 17h. cmd/nova-sprint/open.go:130-135: `lazyStore.Close` leaves `s.pg` set after closing it, so a later call uses a closed pool. Repair: set `s.pg = nil` after `Close`.
+- 17i. verbs/brief.go:51 reports a missing PATHS/TEST/DONE-WHEN at `len(lines)`, the last line, not a useful location. Repair: report line 1 and name the field.
+- 17j. verbs/brief.go:135: `splitNames` accepts empty names (`NEEDS: a,,b` parses). Repair: refuse an empty name.
 
 ## Promise gaps
 
@@ -143,7 +155,7 @@ The mechanics of `up` (two-phase credential split, lease, continuation record, o
 - up_wrapper.go:33-45 (`limitedOutput` overflow) and the 1 s `waitHandoff` timeout branch (up_wrapper.go:235-246) have no test (earlier attempt d154e495).
 - Verb-time concurrency with run on the shared clone (finding 5).
 - Brief lint false-positive/negative table for `brief_lint.go` (finding 9).
-- `docs/` has no test that each `nova-sprint <verb> ...` command quoted in PLAYBOOK-*.md and CORRECT-USE.md parses against the verb table (I checked by hand: all verbs and flags in the playbooks exist; `start --reason` is optional in `help start` but shown required in PLAYBOOK-COORDINATOR.md:56).
+- `docs/` has no test that each `nova-sprint <verb> ...` command quoted in PLAYBOOK-*.md and CORRECT-USE.md parses against the verb table (Checked by hand, not every verb exists: PLAYBOOK-COORDINATOR.md:293 tells the coordinator to "fix the brief with `edit`", and `edit` is not a verb; verbs/table.go and verbs/table_coordinate.go list none, and `nova-sprint help edit` refuses "no verb edit" (verbs/core_test.go:69). The other verbs and flags I looked up exist. `start --reason` is optional in `help start` but shown required in PLAYBOOK-COORDINATOR.md:56.)
 
 ## Questions for the coordinator
 
