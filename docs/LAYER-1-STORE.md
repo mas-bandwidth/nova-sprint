@@ -639,6 +639,51 @@ loaded dump per check (a dropped event, an orphan receipt, the epoch row, a
 policy version missing from the log, a cursor past the end), each refused
 with its message. No model change: a read.
 
+Recorded with round 22 (2026-11-06; reopens the locked layer for this
+change only). "nova-config is the one true source": a row is sprint state
+only, and the store never holds configuration. Where this entry and the
+sections above disagree, this entry stands (it supersedes Guarantee 3, Refusal
+3, the tier and width rules of the writes, and the rows' kind, width, tiers,
+model and harness wherever they are named).
+- `store.Row` is `Name, State, Session, Role, Flaps, Held, Reason, Gen`.
+  Kind, width, tiers, model and harness go from the Go type, `schema.sql`
+  and every reader; the roster (package `roster`, read from nova-config each
+  tick) has them, and the deal guards take width and tiers from it
+  (`card.RowFromStore(r, width, tiers)`). `SetRowWidth`, `SetRowTiers`,
+  `SetRowLabels` and `SetRowSession` go. The store refuses nothing for width
+  or tier: it takes any number of working consumers of any tier on a row that
+  exists (Guarantee 3 is now "the store holds no width"; the witness
+  StoreWidthInStore shows a store-side cap breaks NoSpuriousRefusal). The
+  `cards_live` index went with the tier check it served.
+- The hook: `PutRow{Name, Session, Role}` is the one write `nova-sprint hook
+  --as <name> --role <r>` makes (Session the bus session the hook recorded,
+  Role `worker` or `coordinator`; the coordinator is also a worker), and
+  unhook puts "" for both. Session and role both set or both "", and a role
+  outside `RowRoles`, are `ErrInvalid`. A hook by another session while one
+  holds the row is refused: "row w1 is hooked by session sess-a; unhook it
+  first". The same session may hook again (a new role). Like every row write
+  it raises the row's gen. `rows.role` has a CHECK.
+- The sprint's stop: `Snapshot.Stopped` and `StopReason`, one value for the
+  store on `sprint.epoch`'s one row (columns `stopped`, `stop_reason`), kept
+  by a clear, in the log as `State.Stop` so Rebuild has it. `SetStopped{Stopped,
+  Reason}` is its one write, refused when unchanged ("the sprint is already
+  stopped"). The store refuses nothing because of it: ops from people still
+  land; Run calls no Tick while stopped.
+- `EventIdentity(ctx, seq) (op, epoch, found, err)` on the Store interface
+  (Fake and PG) reads an event's op id and epoch only, never its images
+  (the dashboard's cursor check; branch v2-store-eventidentity, merged here).
+- Migrate: `schema.sql` drops the five columns (`ALTER TABLE ... DROP COLUMN
+  IF EXISTS`), adds `rows.role` and the stop columns (`ADD COLUMN IF NOT
+  EXISTS`), and drops `cards_live`, in its one transaction, the shape rounds
+  16 and 17 used; a round-21 store (`round21Hash`, round 17's schema, which
+  every round to 21 carried; CheckSchema reports it as round 17) migrates in
+  place, its rows' state kept. The schema round is 22.
+- Model: Store.tla's row is `[state, gen, held, sess, role]` and it carries
+  `stopped`; WidthKept and ServesHeld go with eight witnesses and twelve reach
+  checks; HookKept, StoreHookStolen, StoreStopDropped, StoreWidthInStore and
+  NeverTwoWorking, NeverHookRefused, NeverRehooked, NeverDealtStopped,
+  NeverSameStopRefused are new. The trace projects sess, role and stopped.
+
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
