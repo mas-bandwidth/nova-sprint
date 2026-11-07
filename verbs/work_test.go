@@ -3,6 +3,7 @@ package verbs
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -40,8 +41,13 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "sprint/s/group" {
 		t.Fatalf("%+v", got)
 	}
+	// A bench has no model of its own: the policy's candidates for the tier.
+	if got.Model != "" || !slices.Equal(got.Models, []string{"deepseek/deepseek-flash", "inception/mercury-3"}) {
+		t.Fatalf("a bench's receipt: model %q models %v", got.Model, got.Models)
+	}
+	delete(w.roster.ro.Workers, "bob")
 	w.roster.ro.Kin["bob"] = roster.Kin{Name: "bob", Model: "m-bob", Width: 2, Tiers: []string{"pro"}}
-	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"m-bob"`)
+	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"m-bob"`, `"models":[]`)
 }
 
 func TestTakeRefusals(t *testing.T) {

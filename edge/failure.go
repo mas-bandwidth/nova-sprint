@@ -106,13 +106,37 @@ func LastLine(out string) string {
 // refusal leaves it out. Its refusals (SECRETS EXEC FAIL, REFUSED) are kept.
 var secretsBanner = regexp.MustCompile(`^!?\s*SECRETS EXEC (STARTING|OK)\b`)
 
+// ansiEscape is a terminal escape sequence (colour, cursor): a harness that
+// paints its output ends a line with a bare reset, which is not a cause.
+var ansiEscape = regexp.MustCompile("\x1b(?:\\[[0-9;?]*[ -/]*[@-~]|\\][^\x07\x1b]*(?:\x07|\x1b\\\\)|[@-Z\\\\-_])")
+
+// StripANSI is out without its terminal escape sequences.
+func StripANSI(out string) string { return ansiEscape.ReplaceAllString(out, "") }
+
+// CauseLine is the line of out that says what went wrong, escapes stripped:
+// the first line holding "error", "refused" or "failed" (any case), else
+// the last non-empty line; redacted and bounded to max bytes.
+func CauseLine(out string, max int) string {
+	last := ""
+	for _, l := range strings.Split(StripANSI(out), "\n") {
+		if l = strings.TrimSpace(l); l == "" {
+			continue
+		}
+		if low := strings.ToLower(l); strings.Contains(low, "error") || strings.Contains(low, "refused") || strings.Contains(low, "failed") {
+			return RedactN(l, max)
+		}
+		last = l
+	}
+	return RedactN(last, max)
+}
+
 // StderrLines is every non-empty line a child wrote on stderr except
-// nova-secrets' banner, each redacted, joined by " | " and bounded to
-// StderrMax bytes, the first lines kept over the last: the child's whole
-// cause on one line.
+// nova-secrets' banner, escapes stripped, each redacted, joined by " | " and
+// bounded to StderrMax bytes, the first lines kept over the last: the
+// child's whole cause on one line.
 func StderrLines(out string) string {
 	var keep []string
-	for _, l := range strings.Split(out, "\n") {
+	for _, l := range strings.Split(StripANSI(out), "\n") {
 		if l = strings.TrimSpace(l); l == "" || secretsBanner.MatchString(l) {
 			continue
 		}

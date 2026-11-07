@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -191,8 +192,14 @@ func TestNextJSONIsTheInventory(t *testing.T) {
 	if v.Width != 1 || len(v.Ready) != 1 || v.Ready[0].ID != "p1.w1" || v.Working == nil || v.Final == nil || v.Judgements == nil {
 		t.Fatalf("%+v", v)
 	}
+	// A bench's models by tier are the catalog's, provider/model
+	// (the probe's and the take's candidates); a friend's, its own model.
+	if got := v.TierModels["pro"]; !slices.Equal(got, []string{"deepseek/deepseek-flash", "inception/mercury-3"}) || len(v.TierModels) != 4 {
+		t.Fatalf("tier_models %v", v.TierModels)
+	}
+	want(t, w.do("carol", "next", "--json"), 0, `"tier_models":{"flash":["m-carol"]`)
 	w.roster.err = errors.New("nova-config down")
-	want(t, w.do("alice", "next", "--json"), 0, `"width":0`, "roster_error")
+	want(t, w.do("alice", "next", "--json"), 0, `"width":0`, "roster_error", `"tier_models":{}`)
 }
 
 func withJudgement(id, group, kind, about, choices string) func(*store.Snapshot) {

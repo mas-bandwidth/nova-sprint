@@ -164,7 +164,8 @@ func (r *fakeRoster) ReadRosterAt(context.Context, int) (roster.Roster, error) {
 type fakeAnswers struct{}
 
 func (fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
-	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}}}, nil
+	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}},
+		Catalog: policy.Catalog{Models: map[string][]policy.Model{"inception": {{Name: "mercury-3", Tier: "pro"}}, "deepseek": {{Name: "deepseek-flash", Tier: "flash"}, {Name: "deepseek-flash", Tier: "pro"}}}}}, nil
 }
 
 type fakeOrigin struct {

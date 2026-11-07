@@ -94,7 +94,7 @@ func (w *cr2Wall) RunTest(context.Context, Job, string, time.Duration) (WallRunR
 
 func cr2Runner_internal(t *testing.T, sp SprintClient, wall ReserveWall, procs ProcessTable, now time.Time) *Runner {
 	t.Helper()
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, Procs: procs, DefaultHarness: &ScriptHarness{}, Now: func() time.Time { return now }})
+	r, err := NewRunner(Runner{Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, Procs: procs, DefaultHarness: &ScriptHarness{}, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
