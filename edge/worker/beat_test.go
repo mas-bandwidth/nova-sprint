@@ -58,13 +58,17 @@ func TestOSMeterSample(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no load average on windows")
 	}
+	t0 := time.Unix(1000, 0)
+	cpu := &CPUSampler{Second: func(context.Context) (float64, error) { return 42.5, nil }}
+	cpu.Step(t.Context(), t0)
 	m := OSMeter{
+		CPU: cpu, Now: func() time.Time { return t0.Add(2 * time.Second) },
 		Exec:       beatExec{reserve: "capacity=4\nfree=1/4\n", sysctl: "{ 2.50 1.00 1.00 }"},
 		ReserveBin: "/bin/nova-reserve",
 		ReadFile:   func(string) ([]byte, error) { return []byte("2.50 1.00 1.00 1/9 7\n"), nil },
 	}
 	hb, err := m.Sample(t.Context())
-	want := Heartbeat{Load1: 2.5, Cores: runtime.NumCPU(), SlotsUsed: 3, SlotsTotal: 4}
+	want := Heartbeat{Load1: 2.5, CPUPeak: 42.5, Cores: runtime.NumCPU(), SlotsUsed: 3, SlotsTotal: 4}
 	if err != nil || hb != want {
 		t.Fatalf("Sample = %+v, %v; want %+v", hb, err, want)
 	}
@@ -149,10 +153,10 @@ func TestCLISprintClientBeatArgv(t *testing.T) {
 		got = argv
 		return []byte("BEAT b1 applied"), 0, nil
 	}}
-	if err := cli.Beat(t.Context(), "b1", Heartbeat{Load1: 2.5, Cores: 8, SlotsUsed: 2, SlotsTotal: 8}); err != nil {
+	if err := cli.Beat(t.Context(), "b1", Heartbeat{Load1: 2.5, CPUPeak: 87.25, Cores: 8, SlotsUsed: 2, SlotsTotal: 8}); err != nil {
 		t.Fatal(err)
 	}
-	if want := "nova-sprint beat --as b1 --load1 2.50 --cores 8 --slots-used 2 --slots-total 8"; strings.Join(got, " ") != want {
+	if want := "nova-sprint beat --as b1 --load1 2.50 --cpu-peak 87.2 --cores 8 --slots-used 2 --slots-total 8"; strings.Join(got, " ") != want {
 		t.Fatalf("argv %q, want %q", strings.Join(got, " "), want)
 	}
 	cli.Run = func(context.Context, []string) ([]byte, int, error) {

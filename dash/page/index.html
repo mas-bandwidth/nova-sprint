@@ -370,7 +370,7 @@ footer a:hover { color: var(--text); }
    width (contents right-aligned); 56 px gutters; ~64 px from Ready to the track and from the
    track to the figure; cells a fixed 27 x 11 px with 4 px gaps */
 .fleet .row, .friends .row { --pad: 2rem; --gap: 3.5rem; --S: 9.5rem; column-gap: var(--gap); padding: 0 var(--pad); }
-.fleet .row, .friends .row { grid-template-columns: var(--name-w) var(--status-w) minmax(4.5rem, 1fr) minmax(0, calc(var(--track-w, 61.75rem) + .5rem)) 10rem 5.5rem minmax(6.75rem, 1fr); } /* the fraction and done columns are fixed, never content-sized: each row is its own grid, so a max-content column made the Total row (a longer "n / width", a 4-digit done) 15px wider than the rows and its figures sat off the line (the owner 2026-10-06 9:28 PM; 9:33 PM "that did it") */ /* ok% fits "100.0%" (the owner 11:52 AM) */
+.fleet .row, .friends .row { grid-template-columns: var(--name-w) var(--status-w) minmax(4.5rem, 1fr) minmax(0, calc(var(--track-w, 61.75rem) + .5rem)) 10rem 5.5rem minmax(6.75rem, 1fr) minmax(6.5rem, 1fr); } /* the fraction and done columns are fixed, never content-sized: each row is its own grid, so a max-content column made the Total row (a longer "n / width", a 4-digit done) 15px wider than the rows and its figures sat off the line (the owner 2026-10-06 9:28 PM; 9:33 PM "that did it") */ /* ok% fits "100.0%" (the owner 11:52 AM) */
 .fleet .row > :nth-child(4), .friends .row > :nth-child(4) { margin-left: .5rem; }
 .fleet .row > :nth-child(5), .friends .row > :nth-child(5) { padding-left: .5rem; }
 .fleet .cells, .friends .cells { gap: .25rem; grid-auto-rows: .6875rem; }
@@ -392,8 +392,8 @@ footer a:hover { color: var(--text); }
 .streams.compact .pill > span:last-child { display: none; }
 .fleet.compact .row, .friends.compact .row { grid-template-columns: var(--name-w) var(--status-w) minmax(7rem, 1fr) minmax(5.375rem, 1fr); }
 .fleet.compact .row > :nth-child(5), .friends.compact .row > :nth-child(5) { padding-left: 0; }
-.fleet.compact .row > :nth-child(3), .fleet.compact .row > :nth-child(4), .fleet.compact .row > :nth-child(6),
-.friends.compact .row > :nth-child(3), .friends.compact .row > :nth-child(4), .friends.compact .row > :nth-child(6) { display: none; }
+.fleet.compact .row > :nth-child(3), .fleet.compact .row > :nth-child(4), .fleet.compact .row > :nth-child(6), .fleet.compact .row > :nth-child(8),
+.friends.compact .row > :nth-child(3), .friends.compact .row > :nth-child(4), .friends.compact .row > :nth-child(6), .friends.compact .row > :nth-child(8) { display: none; }
 .fleet.compact .pill > span:last-child, .friends.compact .pill > span:last-child { display: none; }
 .fleet.compact .row.head .alt, .friends.compact .row.head .alt { display: inline; }
 @media (max-width: 600px) {

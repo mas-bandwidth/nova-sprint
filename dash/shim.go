@@ -192,14 +192,15 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 }
 
 // loadCells is the board's load cell and its slots title from the row's last
-// heartbeat: the 1-minute load average over the cores, as a percent of all of
-// them (v1's cell), and the nova-reserve slots in use of the total. A row that
-// is down shows none, and so does one that has never beaten (no cores).
+// heartbeat: the highest CPU busy percent of the 10 seconds before it, across
+// all the cores (100% is every core busy), and the nova-reserve slots in use of
+// the total. A row that is down shows none, and so does one that has never
+// beaten (no cores).
 func loadCells(r store.Row) (load, slots string) {
 	if r.State != "up" || r.Cores < 1 {
 		return "", ""
 	}
-	load = fmt.Sprintf("%.1f%%", float64(r.Load1Centi)/float64(r.Cores))
+	load = fmt.Sprintf("%.1f%%", float64(r.CPUPeakDeci)/10)
 	if r.SlotsTotal > 0 {
 		slots = fmt.Sprintf("%d / %d", r.SlotsUsed, r.SlotsTotal)
 	}

@@ -255,6 +255,21 @@ func TestRound25Hash(t *testing.T) {
 	assert.True(t, knownOlder(round25Hash))
 }
 
+// round26Hash is the hash of round 26's schema.sql, kept in testdata: it has
+// the row heartbeat without cpu_peak_deci, which this build's schema adds.
+// Unit: reads a file in the package, no store.
+func TestRound26Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round26.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round26Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round26Hash, schemaHash)
+	assert.Contains(t, string(old), "load1_centi")
+	assert.NotContains(t, string(old), "cpu_peak_deci")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS cpu_peak_deci")
+	assert.True(t, knownOlder(round26Hash))
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.

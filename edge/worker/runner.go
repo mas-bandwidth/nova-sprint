@@ -397,6 +397,9 @@ func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) e
 	if r.Meter != nil && r.Beater != nil {
 		beatCtx, stop := context.WithCancel(ctx)
 		defer stop()
+		if m, ok := r.Meter.(OSMeter); ok && m.CPU != nil && r.Now != nil && r.Sleep != nil {
+			go m.CPU.Run(beatCtx, r.Now, r.Sleep)
+		}
 		go r.beatLoop_internal(beatCtx, row)
 	}
 	return r.wakeLoop_internal(ctx, row, hook)

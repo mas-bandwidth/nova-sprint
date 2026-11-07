@@ -92,15 +92,15 @@ func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 	}
 }
 
-// The load cell is the row's last heartbeat (directive 63a): the 1-minute load
-// average over the cores as a percent of all of them, v1's cell, with the
+// The load cell is the row's last heartbeat (directive 63a): the highest CPU
+// busy percent of its last 10 seconds across all the cores, v1's cell, with the
 // slots in its title; a row that is down, or has never beaten, has none.
 func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 	t.Parallel()
 	ros := roster.Roster{Workers: map[string]roster.Worker{"a": {Name: "a", Width: 4}, "b": {Name: "b", Width: 4}, "c": {Name: "c", Width: 4}}}
 	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
-		"a": {Name: "a", State: "up", Load1Centi: 252, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
-		"b": {Name: "b", State: "down", Load1Centi: 252, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
+		"a": {Name: "a", State: "up", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
+		"b": {Name: "b", State: "down", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
 		"c": {Name: "c", State: "up"},
 	}}
 	body, err := json.Marshal(mapSnapshot(snap, ros, time.Time{}).Tables["fleet"])
@@ -111,8 +111,8 @@ func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
 	if err := json.Unmarshal(body, &cells); err != nil {
 		t.Fatal(err)
 	}
-	if cells["a"]["load"] != "31.5%" || cells["a"]["slots"] != "3 / 8" {
-		t.Errorf("a = %v: want load 31.5%% and slots 3 / 8", cells["a"])
+	if cells["a"]["load"] != "87.3%" || cells["a"]["slots"] != "3 / 8" {
+		t.Errorf("a = %v: want load 87.3%% and slots 3 / 8", cells["a"])
 	}
 	for _, n := range []string{"b", "c"} {
 		if _, ok := cells[n]["load"]; ok {
