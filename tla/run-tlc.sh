@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run TLC on Store.tla (two scenarios) and CardMachine.tla (three scenarios),
+# Run TLC on Store.tla (two scenarios) and CardMachine.tla (seven scenarios),
 # every reversed witness and every reach check, in parallel, one log each
 # under logs/. Run from this directory on a bench host, never on the working
 # machine:  sh run-tlc.sh /path/to/tla2tools.jar [java]
