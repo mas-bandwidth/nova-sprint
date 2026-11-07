@@ -31,23 +31,17 @@ func FormatTakeOpID(epoch int, consumer string, gen int, row string) string {
 }
 
 const (
-	JobNone        = "none"
-	JobTaken       = "taken"
-	JobStaged      = "staged"
-	JobRunning     = "running"
-	JobHarvested   = "harvested"
-	JobRebased     = "rebased"
-	JobCIWait      = "ciwait"
-	JobReporting   = "reporting"
-	JobRecorded    = "recorded"
-	JobCleaned     = "cleaned"
-	MaxReasonBytes = 4096
+	JobNone, JobTaken, JobStaged, JobRunning, JobHarvested = "none", "taken", "staged", "running", "harvested"
+	JobRebased, JobCIWait, JobReporting, JobRecorded       = "rebased", "ciwait", "reporting", "recorded"
+	JobCleaned                                             = "cleaned"
+	MaxReasonBytes                                         = 4096
 )
 
 var DefaultCoordinatorHosts = []string{"studio", "studio.local"}
 
+func cmpOr_internal(a, b string) string { return cmp.Or(a, b) }
 func CheckHost(host string, coordinatorHosts []string) error {
-	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(cmpOr_internal(host, ""))), ".")
 	if h == "" {
 		return errors.New("worker refused: host is empty: pass --host <bench> or set HOSTNAME")
 	}
@@ -57,8 +51,7 @@ func CheckHost(host string, coordinatorHosts []string) error {
 	short, _, _ := strings.Cut(h, ".")
 	for _, raw := range coordinatorHosts {
 		c := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), ".")
-		cShort, _, _ := strings.Cut(c, ".")
-		if c != "" && (h == c || short == cShort) {
+		if cShort, _, _ := strings.Cut(c, "."); c != "" && (h == c || short == cShort) {
 			return fmt.Errorf("worker refused: host %s is a coordinator host (no card runs on the coordinator's machine): run nova-worker on a worker bench", host)
 		}
 	}
@@ -100,38 +93,46 @@ func (t Timeouts) DeadlineFor(tier string) time.Duration {
 	return cmp.Or(t.TierDeadline[tier], 45*time.Minute)
 }
 
-type Job struct {
-	Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, Head, Tier, Model, HarnessName, Brief, Prose, Finding string
-	Paths, DoneWhen, Siblings                                                                                                                       []string
-	Epoch, Gen, Attempt, Review, SlotWeight                                                                                                         int
-	JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode                                                                             string
-	RequirePR                                                                                                                                       bool
-}
-type Outcome struct {
-	Result, Head, Reason, Finding string
-	Retryable5xx                  bool
-}
-type Cost struct {
-	MicroUSD                  int64 `json:"micro_usd"`
-	Priced                    bool  `json:"priced"`
-	InputTokens, OutputTokens int64
-}
-type JobRecord struct {
-	Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, TargetHead string
-	DoneWhen                                                                                             []string
-	Epoch, Gen, Attempt, PID, PRNumber                                                                   int
-	ResultID, State, Nonce, PushedHead                                                                   string
-	StartedAt, DeadlineAt                                                                                int64
-	RequirePR                                                                                            bool
-	Outcome                                                                                              Outcome
-	Cost                                                                                                 Cost
-}
+type (
+	Job struct {
+		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, Head, Tier, Model, HarnessName, Brief, Prose, Finding string
+		Paths, DoneWhen, Siblings                                                                                                                       []string
+		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
+		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode                                                                             string
+		RequirePR                                                                                                                                       bool
+	}
+	Outcome struct {
+		Result, Head, Reason, Finding string
+		Retryable5xx                  bool
+	}
+	Cost struct {
+		MicroUSD                  int64 `json:"micro_usd"`
+		Priced                    bool  `json:"priced"`
+		InputTokens, OutputTokens int64
+	}
+	JobRecord struct {
+		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, TargetHead string
+		DoneWhen                                                                                             []string
+		Epoch, Gen, Attempt, PID, PRNumber                                                                   int
+		ResultID, State, Nonce, PushedHead                                                                   string
+		StartedAt, DeadlineAt                                                                                int64
+		RequirePR                                                                                            bool
+		Outcome                                                                                              Outcome
+		Cost                                                                                                 Cost
+	}
+	StepLogger struct {
+		mu       sync.Mutex
+		StateDir string
+		MaxBytes int64
+		Now      func() time.Time
+	}
+)
 
 func WriteJobRecord(jobDir string, rec JobRecord) error {
 	if err := os.MkdirAll(jobDir, 0o755); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(rec, "", "  ")
+	data, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
@@ -143,27 +144,18 @@ func WriteJobRecord(jobDir string, rec JobRecord) error {
 }
 func ReadJobRecord(jobDir string) (JobRecord, error) {
 	data, err := os.ReadFile(filepath.Join(jobDir, "job.json"))
-	if err != nil {
-		return JobRecord{}, err
-	}
 	var rec JobRecord
+	if err != nil {
+		return rec, err
+	}
 	return rec, json.Unmarshal(data, &rec)
 }
 func TailBytes(b []byte, max int) string {
-	max = cmp.Or(max, MaxReasonBytes)
-	if len(b) > max {
+	if max = cmp.Or(max, MaxReasonBytes); len(b) > max {
 		b = b[len(b)-max:]
 	}
 	return strings.TrimSpace(strings.ReplaceAll(strings.ToValidUTF8(string(b), ""), "\x00", ""))
 }
-
-type StepLogger struct {
-	mu       sync.Mutex
-	StateDir string
-	MaxBytes int64
-	Now      func() time.Time
-}
-
 func (l *StepLogger) Log(row, consumer, step, result string, d time.Duration) error {
 	if l == nil || l.StateDir == "" {
 		return nil
@@ -187,20 +179,9 @@ func (l *StepLogger) Log(row, consumer, step, result string, d time.Duration) er
 		return err
 	}
 	defer f.Close()
+	tok := strings.TrimSpace(strings.NewReplacer("\n", " ", "\r", " ").Replace(result))
 	_, err = fmt.Fprintf(f, "ts=%s row=%s consumer=%s step=%s result=%s dur_ms=%d\n",
-		now.Format(time.RFC3339), row, consumer, step, sanitizeLogToken_internal(result), d.Milliseconds())
+		now.Format(time.RFC3339), row, consumer, step, tok, d.Milliseconds())
 	return err
 }
-func sanitizeLogToken_internal(s string) string {
-	s = strings.NewReplacer("\n", " ", "\r", " ").Replace(s)
-	if len(s) > 240 {
-		s = s[:240]
-	}
-	return strings.TrimSpace(s)
-}
-func cloneStrings_internal(in []string) []string {
-	if len(in) == 0 {
-		return nil
-	}
-	return slices.Clone(in)
-}
+func cloneStrings_internal(in []string) []string { return slices.Clone(in) }

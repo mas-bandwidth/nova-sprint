@@ -203,8 +203,9 @@ func (h *pushWalkHarness_internal) startSendOrSkip_internal(t *testing.T, r stri
 	msgs := h.edge.BuildRecipientMessages(snap, winEvs, r)
 	if len(msgs) == 0 {
 		h.stepN++
-		endSeq := h.domainSeqs[toIdx-1]
-		if err := advanceCursor_internal(context.Background(), h.st, snap.Epoch, r, endSeq, fmt.Sprintf("skip-%d", h.stepN), h.t0.Add(time.Duration(h.stepN)*time.Second)); err != nil {
+		ws := &windowSliceStore_internal{Store: h.st, winEvs: winEvs}
+		snap.Seq = h.domainSeqs[toIdx-1]
+		if _, err := h.edge.PushRecipient(context.Background(), ws, snap, r, fmt.Sprintf("skip-%d", h.stepN), h.t0.Add(time.Duration(h.stepN)*time.Second)); err != nil {
 			t.Fatal(err)
 		}
 		return "SkipIrrelevant"
@@ -242,31 +243,29 @@ func (h *pushWalkHarness_internal) finishSend_internal(t *testing.T, r, mode str
 	}
 	curSeq := snap.Cursors[CursorName(r)]
 	msgs := h.edge.BuildRecipientMessages(snap, winEvs, r)
+	ws := &windowSliceStore_internal{Store: h.st, winEvs: winEvs}
+	snap.Seq = endSeq
+	_ = msgs
 	switch mode {
 	case "SendFailed":
 		h.fb.SetRecipientError(r, errors.New("injected send failure"))
-		_, nextSeq, err := h.edge.sendWindow_internal(context.Background(), msgs, curSeq, endSeq, true)
+		_, err := h.edge.PushRecipient(context.Background(), ws, snap, r, fmt.Sprintf("fail-%d", h.stepN), h.t0.Add(time.Duration(h.stepN)*time.Second))
 		h.fb.SetRecipientError(r, nil)
-		if err == nil || nextSeq != curSeq {
-			t.Fatalf("expected failed send to leave cursor at %d, got %d err=%v", curSeq, nextSeq, err)
+		if err == nil {
+			t.Fatalf("expected failed send error at %d", curSeq)
 		}
 		h.crashes++
 	case "ReplyLost":
 		h.fb.DropNextReply(1)
-		_, nextSeq, err := h.edge.sendWindow_internal(context.Background(), msgs, curSeq, endSeq, true)
-		if err == nil || nextSeq != curSeq {
-			t.Fatalf("expected lost reply to leave cursor at %d, got %d err=%v", curSeq, nextSeq, err)
+		_, err := h.edge.PushRecipient(context.Background(), ws, snap, r, fmt.Sprintf("lost-%d", h.stepN), h.t0.Add(time.Duration(h.stepN)*time.Second))
+		if err == nil {
+			t.Fatalf("expected lost reply error at %d", curSeq)
 		}
 		h.crashes++
 	default:
-		deliv, nextSeq, err := h.edge.sendWindow_internal(context.Background(), msgs, curSeq, endSeq, true)
-		if err != nil || nextSeq != endSeq {
-			t.Fatalf("sendWindow confirmed: nextSeq=%d want=%d err=%v", nextSeq, endSeq, err)
+		if _, err := h.edge.PushRecipient(context.Background(), ws, snap, r, fmt.Sprintf("conf-%d", h.stepN), h.t0.Add(time.Duration(h.stepN)*time.Second)); err != nil {
+			t.Fatalf("PushRecipient confirmed: err=%v", err)
 		}
-		if err := advanceCursor_internal(context.Background(), h.st, snap.Epoch, r, nextSeq, fmt.Sprintf("conf-%d", h.stepN), h.t0.Add(time.Duration(h.stepN)*time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		_ = deliv
 		_ = pend
 	}
 	h.pending[r] = pushPendingState_internal{}
@@ -281,6 +280,9 @@ func walkPushTrace_internal(t *testing.T, seed int64) []pushTraceStep_internal {
 	for step := 0; step < 24; step++ {
 		st := steps[len(steps)-1]
 		if st.events == 3 && st.cursor["r1"] == 3 && st.cursor["r2"] == 3 && !st.pending["r1"].active && !st.pending["r2"].active {
+			if _, err := h.edge.PushTick(context.Background(), h.st, fmt.Sprintf("idle-%d", step), h.t0.Add(time.Minute)); err != nil {
+				t.Fatal(err)
+			}
 			steps = append(steps, refinementPushState_internal(t, h, "Idle", "none"))
 			break
 		}
@@ -400,4 +402,18 @@ func TestPushTraceRefinementWalk(t *testing.T) {
 			}
 		}
 	}
+}
+
+type windowSliceStore_internal struct {
+	store.Store
+	winEvs []store.Event
+	used   bool
+}
+
+func (w *windowSliceStore_internal) Events(_ context.Context, _ int64, _ int) ([]store.Event, error) {
+	if w.used {
+		return nil, nil
+	}
+	w.used = true
+	return w.winEvs, nil
 }

@@ -26,7 +26,59 @@ type StoreSprintClient struct {
 	Forge                ReportForgeChecker
 	RequirePR            map[string]bool
 	RequireGreenAtReport bool
+	RequireHook          bool
+	BusPresent           map[string]bool
+	BusRedisAddr         string
+	Hooked               map[string]string
+	HookCalls            int
 	Now                  func() time.Time
+}
+
+func (s *StoreSprintClient) Hook(ctx context.Context, row string) error {
+	return s.HookRole(ctx, row, "worker")
+}
+
+func (s *StoreSprintClient) HookRole(ctx context.Context, row, role string) error {
+	if role != "worker" && role != "coordinator" {
+		return fmt.Errorf("SPRINT REFUSED hook: invalid role %q: pass --role coordinator|worker", role)
+	}
+	if s.BusPresent != nil && !s.BusPresent[row] {
+		addr := cmpOr_internal(s.BusRedisAddr, "127.0.0.1:6381")
+		return fmt.Errorf("hook in to the bus first: run NOVA_BUS_REDIS=%s nova-bus hook --as %s as the Monitor tool command, then hook in to the sprint again", addr, row)
+	}
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	r, ok := snap.Rows[row]
+	if !ok {
+		return fmt.Errorf("SPRINT REFUSED hook: unknown row %s: run nova-sprint show", row)
+	}
+	if s.Hooked == nil {
+		s.Hooked = make(map[string]string)
+	}
+	s.Hooked[row] = role
+	s.HookCalls++
+	op := store.Op{
+		ID:    fmt.Sprintf("hook-%s-%s-e%d-%d", row, role, snap.Epoch, s.HookCalls),
+		Epoch: snap.Epoch, Actor: row, Kind: "row", At: s.now_internal(),
+		Writes: []store.Write{store.PutRow{Name: r.Name, Kind: r.Kind, Width: r.Width, Session: role + ":" + strconv.Itoa(snap.Epoch), Tiers: r.Tiers, Model: r.Model, Harness: r.Harness}},
+	}
+	_, err = s.applyWithReplay_internal(ctx, op)
+	return err
+}
+
+func (s *StoreSprintClient) checkHooked_internal(snap store.Snapshot, row string) error {
+	if !s.RequireHook {
+		return nil
+	}
+	if role := s.Hooked[row]; role == "worker" || role == "coordinator" {
+		return nil
+	}
+	if r, ok := snap.Rows[row]; ok && (strings.HasPrefix(r.Session, "worker") || strings.HasPrefix(r.Session, "coordinator")) {
+		return nil
+	}
+	return fmt.Errorf("hook in first: nova-sprint hook --as %s --role worker", row)
 }
 
 func (s *StoreSprintClient) now_internal() time.Time {
@@ -99,6 +151,9 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 	if err != nil {
 		return TakeInfo{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
 	}
+	if err := s.checkHooked_internal(snap, row); err != nil {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %w", err)
+	}
 	c, ok := snap.Cards[consumerID]
 	if !ok {
 		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: unknown card %s: run nova-sprint next --as %s", consumerID, row)
@@ -161,6 +216,9 @@ func (s *StoreSprintClient) Report(ctx context.Context, req ReportRequest) (stor
 	snap, err := s.Store.Snapshot(ctx)
 	if err != nil {
 		return store.Receipt{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	if err := s.checkHooked_internal(snap, req.Row); err != nil {
+		return store.Receipt{}, fmt.Errorf("SPRINT REFUSED report: %w", err)
 	}
 	op, err := s.buildReportOp_internal(ctx, snap, req)
 	if err != nil {

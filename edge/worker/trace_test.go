@@ -250,7 +250,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.jobState[c] = JobRunning
 	case "Harvest", "Die":
 		h.finishRun_internal(t, c, act, dir)
-	case "Rebase", "Conflict", "Push", "CIReady", "Report", "Clean":
+	case "Rebase", "Conflict", "Push", "Report", "Clean":
 		h.advancePostRun_internal(t, c, act, dir)
 	case "Crash":
 		h.env.crashes++
@@ -305,18 +305,9 @@ func (h *runnerWalkHarness_internal) advancePostRun_internal(t *testing.T, c, ac
 		if rec.ResultID == "" {
 			rec.ResultID = FormatResultID(1, c, 1, 1)
 		}
-		if rec.Outcome.Result == "ok" {
-			rec.State = JobCIWait
-		} else {
-			rec.State = JobReporting
-		}
-		_ = WriteJobRecord(dir, rec)
-		h.jobState[c] = rec.State
-	case "CIReady":
-		rec, _ := ReadJobRecord(dir)
 		rec.State = JobReporting
 		_ = WriteJobRecord(dir, rec)
-		h.jobState[c] = JobReporting
+		h.jobState[c] = rec.State
 	case "Report":
 		rec, _ := ReadJobRecord(dir)
 		id := runnerResID_internal(c)
@@ -389,8 +380,6 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 			}
 		case JobRebased:
 			moves = append(moves, move{"Push", c})
-		case JobCIWait:
-			moves = append(moves, move{"CIReady", c})
 		case JobReporting:
 			moves = append(moves, move{"Report", c})
 		case JobRecorded:
@@ -462,6 +451,7 @@ func tlaBool_internal(v bool) string {
 
 func TestRunnerTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
+	driveRunnerEntrypoints_internal(t)
 	for seed := int64(1); seed <= 8; seed++ {
 		steps := walkRunnerTrace_internal(t, seed)
 		last := steps[len(steps)-1]
@@ -495,5 +485,43 @@ func TestRunnerTraceRefinementWalk(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func driveRunnerEntrypoints_internal(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	clock := testClock_internal()
+	st, row := seedFakeStore_internal(t, clock)
+	git := newFakeGit_internal()
+	sc := &StoreSprintClient{Store: st, Origin: git, Now: clock}
+	wall := &fakeWall{
+		runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
+			git.mu.Lock()
+			git.headByWT[j.WorktreeDir] = testWorkSHA
+			git.mu.Unlock()
+			_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
+			return WallRunResult{ExitCode: 0, PID: 101, Nonce: "n101", Elapsed: time.Second}, nil
+		},
+	}
+	r, err := NewRunner(Runner{
+		Host: "vision", RootDir: t.TempDir(), Sprint: sc, Git: git, Wall: wall,
+		Now: clock, Sleep: func(time.Duration) {},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RecoverRow(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	next, err := sc.Next(ctx, row)
+	if err != nil || len(next.Ready) == 0 {
+		t.Fatalf("expected ready consumer, err=%v next=%+v", err, next)
+	}
+	if err := r.RunConsumer(ctx, next, next.Ready[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.StepRow(ctx, row); err != nil {
+		t.Fatal(err)
 	}
 }

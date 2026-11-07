@@ -4,25 +4,42 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"sync/atomic"
 )
 
 const ProxyPlaceholderKey = "nova-proxy-placeholder"
 
-type ProxyRoute struct {
-	Name, UpstreamURL string
-	AllowedHosts      []string
-	Key               func() string
-}
-type KeyProxy struct {
-	Routes       map[string]ProxyRoute
-	DefaultRoute string
-	Transport    http.RoundTripper
-}
+type (
+	ProxyRoute struct {
+		Name, UpstreamURL string
+		AllowedHosts      []string
+		Key               func() string
+	}
+	KeyProxy struct {
+		Routes       map[string]ProxyRoute
+		DefaultRoute string
+		Transport    http.RoundTripper
+		lastStatus   atomic.Int32
+	}
+)
 
+func (p *KeyProxy) RecordStatus(code int) {
+	if p != nil {
+		p.lastStatus.Store(int32(code))
+	}
+}
+func (p *KeyProxy) ConsumeStatus() int {
+	if p != nil {
+		return int(p.lastStatus.Swap(0))
+	}
+	return 0
+}
 func (p *KeyProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route, ok := p.resolveRoute_internal(r)
 	if !ok {
@@ -88,7 +105,7 @@ func hostAllowed_internal(host string, allowed []string) bool {
 		if hCand, _, err := net.SplitHostPort(cand); err == nil {
 			cand = hCand
 		}
-		if h != "" && cand != "" && h == cand {
+		if h != "" && h == cand {
 			return true
 		}
 	}
@@ -101,27 +118,23 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 		return
 	}
 	for k, vals := range r.Header {
-		switch strings.ToUpper(k) {
-		case "AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST":
-			continue
-		}
-		for _, v := range vals {
-			outReq.Header.Add(k, v)
+		if !slices.Contains([]string{"AUTHORIZATION", "X-NOVA-ROUTE", "X-TARGET-HOST", "HOST"}, strings.ToUpper(k)) {
+			outReq.Header[k] = slices.Clone(vals)
 		}
 	}
 	outReq.Header.Set("Authorization", "Bearer "+apiKey)
 	outReq.Host = target.Host
 	resp, err := cmp.Or[http.RoundTripper](p.Transport, http.DefaultTransport).RoundTrip(outReq)
 	if err != nil {
+		p.RecordStatus(http.StatusBadGateway)
 		http.Error(w, "proxy upstream fault: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
-	for k, vals := range resp.Header {
-		for _, v := range vals {
-			w.Header().Add(k, v)
-		}
+	if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		p.RecordStatus(resp.StatusCode)
 	}
+	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, io.LimitReader(resp.Body, 16<<20))
 }

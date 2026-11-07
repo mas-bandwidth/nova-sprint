@@ -3,6 +3,7 @@ package edge
 import (
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -194,7 +195,9 @@ func TestRequestIDDeterministicAndInFlightDeduplication(t *testing.T) {
 
 	go func() {
 		<-started
-		time.Sleep(15 * time.Millisecond)
+		for i := 0; i < 1000; i++ {
+			runtime.Gosched()
+		}
 		close(release)
 	}()
 

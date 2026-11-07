@@ -9,7 +9,7 @@ CONSTANTS Width, MaxSlots, MaxCrashes
 
 Consumers == {"c1", "c2"}
 StoreStates == {"ready", "working", "done", "fail"}
-JobStates == {"none", "taken", "staged", "running", "harvested", "rebased", "ciwait", "reporting", "recorded", "cleaned"}
+JobStates == {"none", "taken", "staged", "running", "harvested", "rebased", "reporting", "recorded", "cleaned"}
 
 VARIABLES storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env
 
@@ -117,14 +117,8 @@ Push(c) ==
   /\ jobState[c] \in {"harvested", "rebased"}
   /\ (jobState[c] = "harvested" => jobDir[c].outcome # "ok")
   /\ jobDir' = [jobDir EXCEPT ![c].pushed = TRUE, ![c].resId = IF @ = 0 THEN ResIDFor(c) ELSE @]
-  /\ jobState' = [jobState EXCEPT ![c] = IF jobDir[c].outcome = "ok" THEN "ciwait" ELSE "reporting"]
-  /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env>>
-
-CIReady(c) ==
-  /\ ~env.crashed
-  /\ jobState[c] = "ciwait"
   /\ jobState' = [jobState EXCEPT ![c] = "reporting"]
-  /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env>>
+  /\ UNCHANGED <<storeState, slotsInUse, width, harnessAlive, appliedOps, env>>
 
 Report(c) ==
   /\ ~env.crashed
@@ -167,7 +161,7 @@ Withdraw(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
   /\ storeState[c] \in {"ready", "working"}
-  /\ jobState[c] \in {"none", "taken", "staged", "harvested", "rebased", "ciwait"}
+  /\ jobState[c] \in {"none", "taken", "staged", "harvested", "rebased"}
   /\ harnessAlive[c] = 0
   /\ storeState' = [storeState EXCEPT ![c] = "fail"]
   /\ jobDir' = [jobDir EXCEPT ![c].pushed = IF jobDir[c].exists THEN TRUE ELSE jobDir[c].pushed, ![c].exists = FALSE]
@@ -213,7 +207,6 @@ Next ==
        \/ Rebase(c)
        \/ Conflict(c)
        \/ Push(c)
-       \/ CIReady(c)
        \/ Report(c)
        \/ ReplyLost(c)
        \/ Clean(c)
@@ -231,7 +224,6 @@ FairConsumer(c) ==
   /\ WF_vars(Harvest(c))
   /\ WF_vars(Rebase(c))
   /\ WF_vars(Push(c))
-  /\ WF_vars(CIReady(c))
   /\ WF_vars(Report(c))
   /\ WF_vars(Clean(c))
 

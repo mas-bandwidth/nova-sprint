@@ -13,41 +13,65 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-var ErrNoSlot = errors.New("worker: no nova-reserve slot available within wait")
+var (
+	ErrNoSlot               = errors.New("worker: no nova-reserve slot available within wait")
+	wallPIDSeq_internal     atomic.Int64
+	liveProcNonces_internal sync.Map
+)
 
-type ConflictError struct{ Files []string }
+func nextWallPID_internal() int {
+	if pid := int(40000 + wallPIDSeq_internal.Add(1)); pid != os.Getpid() {
+		return pid
+	}
+	return int(40000 + wallPIDSeq_internal.Add(1))
+}
+
+type (
+	ConflictError struct{ Files []string }
+	FetchError    struct {
+		StreamRef string
+		Cause     error
+	}
+	GitOps interface {
+		StageWorktree(ctx context.Context, j Job) (headSHA string, err error)
+		HeadSHA(ctx context.Context, worktree string) (string, error)
+		Push(ctx context.Context, worktree, branch, headSHA string) error
+		RebaseOntoStream(ctx context.Context, worktree, streamRef string) (newSHA string, err error)
+		OriginHasHead(ctx context.Context, repo, branch, sha string) (bool, error)
+		IsDirty(ctx context.Context, worktree string) (bool, error)
+		RemoveWorktree(ctx context.Context, worktree string) error
+	}
+	ForgeOps interface {
+		EnsurePR(ctx context.Context, repo, branch, base, headSHA, title string) (int, error)
+	}
+	ForgeAdapter  struct{ Client forge.Forge }
+	WallRunResult struct {
+		ExitCode, PID int
+		Output        []byte
+		Nonce         string
+		Elapsed       time.Duration
+	}
+	ReserveWall interface {
+		RunHarness(ctx context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error)
+		RunTest(ctx context.Context, j Job, cmd string, timeout time.Duration) (WallRunResult, error)
+	}
+	ProcessTable interface {
+		Alive(pid int, nonce string) bool
+		Kill(pid int, nonce string, grace time.Duration) error
+	}
+	OSProcessTable struct{}
+)
 
 func (e *ConflictError) Error() string { return "rebase conflict: " + strings.Join(e.Files, ", ") }
-
-type FetchError struct {
-	StreamRef string
-	Cause     error
-}
-
-func (e *FetchError) Error() string { return fmt.Sprintf("fetch %s failed: %v", e.StreamRef, e.Cause) }
-func (e *FetchError) Unwrap() error { return e.Cause }
-
-type GitOps interface {
-	StageWorktree(ctx context.Context, j Job) (headSHA string, err error)
-	HeadSHA(ctx context.Context, worktree string) (string, error)
-	Push(ctx context.Context, worktree, branch, headSHA string) error
-	RebaseOntoStream(ctx context.Context, worktree, streamRef string) (newSHA string, err error)
-	OriginHasHead(ctx context.Context, repo, branch, sha string) (bool, error)
-	IsDirty(ctx context.Context, worktree string) (bool, error)
-	RemoveWorktree(ctx context.Context, worktree string) error
-}
-type ForgeOps interface {
-	EnsurePR(ctx context.Context, repo, branch, base, headSHA, title string) (int, error)
-}
-type ForgeAdapter struct{ Client forge.Forge }
-
+func (e *FetchError) Error() string    { return fmt.Sprintf("fetch %s failed: %v", e.StreamRef, e.Cause) }
+func (e *FetchError) Unwrap() error    { return e.Cause }
 func (a *ForgeAdapter) EnsurePR(ctx context.Context, repo, branch, base, headSHA, title string) (int, error) {
 	if a == nil || a.Client == nil {
 		return 0, errors.New("forge client not configured")
@@ -55,37 +79,32 @@ func (a *ForgeAdapter) EnsurePR(ctx context.Context, repo, branch, base, headSHA
 	info, err := a.Client.OpenPR(ctx, repo, branch, base, title, headSHA)
 	return info.Number, err
 }
-
-type WallRunResult struct {
-	ExitCode, PID int
-	Output        []byte
-	Nonce         string
-	Elapsed       time.Duration
-}
-type ReserveWall interface {
-	RunHarness(ctx context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error)
-	RunTest(ctx context.Context, j Job, cmd string, timeout time.Duration) (WallRunResult, error)
-}
-type ProcessTable interface {
-	Alive(pid int, nonce string) bool
-	Kill(pid int, nonce string, grace time.Duration) error
-}
-type OSProcessTable struct{}
-
-func (OSProcessTable) Alive(pid int, _ string) bool {
-	return pid > 0 && pid != os.Getpid() && syscall.Kill(pid, 0) == nil
+func (OSProcessTable) Alive(pid int, nonce string) bool {
+	if pid <= 0 || pid == os.Getpid() || strings.TrimSpace(nonce) == "" || syscall.Kill(pid, 0) != nil {
+		return false
+	}
+	if v, ok := liveProcNonces_internal.Load(pid); ok && v == nonce {
+		return true
+	}
+	if envBytes, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid)); err == nil {
+		return slices.Contains(strings.Split(string(envBytes), "\x00"), "NOVA_WORKER_NONCE="+nonce)
+	}
+	return false
 }
 func (p OSProcessTable) Kill(pid int, nonce string, grace time.Duration) error {
-	if pid <= 0 || pid == os.Getpid() {
+	if !p.Alive(pid, nonce) {
 		return nil
 	}
 	_ = syscall.Kill(pid, syscall.SIGTERM)
 	for deadline := time.Now().Add(grace); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
 		if !p.Alive(pid, nonce) {
+			liveProcNonces_internal.Delete(pid)
 			return nil
 		}
 	}
-	return syscall.Kill(pid, syscall.SIGKILL)
+	err := syscall.Kill(pid, syscall.SIGKILL)
+	liveProcNonces_internal.Delete(pid)
+	return err
 }
 
 type Runner struct {
@@ -106,9 +125,11 @@ type Runner struct {
 	Sleep                              func(time.Duration)
 	mu                                 *sync.Mutex
 	probed, withdrawn                  map[string]bool
+	hooked                             map[string]int
 	adopted                            map[string]JobRecord
 	running                            map[string]context.CancelFunc
 	dedup                              *edge.Deduplicator
+	backoffSeq                         uint64
 }
 
 func NewRunner(cfg Runner) (*Runner, error) {
@@ -120,25 +141,23 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	}
 	cfg.Timeouts = cfg.Timeouts.WithDefaults()
 	if cfg.Now == nil {
-		cfg.Now = func() time.Time { return time.Unix(1000, 0).UTC() }
+		cfg.Now = time.Now
 	}
 	if cfg.Sleep == nil {
-		cfg.Sleep = func(time.Duration) {}
+		cfg.Sleep = time.Sleep
 	}
 	cfg.Procs = cmp.Or[ProcessTable](cfg.Procs, OSProcessTable{})
 	cfg.Wall = cmp.Or[ReserveWall](cfg.Wall, &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, Config: WallConfig{ReserveWait: cfg.Timeouts.ReserveWait, NetDeny: true}})
 	if cfg.Logger == nil && cfg.StateDir != "" {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
 	}
-	cfg.mu, cfg.probed, cfg.withdrawn = &sync.Mutex{}, map[string]bool{}, map[string]bool{}
+	cfg.mu, cfg.probed, cfg.withdrawn, cfg.hooked = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]int{}
 	cfg.adopted, cfg.running, cfg.dedup = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator()
 	return &cfg, nil
 }
 func (r *Runner) harnessFor_internal(name string) (Harness, error) {
-	if name != "" && r.Harnesses != nil {
-		if h, ok := r.Harnesses[name]; ok {
-			return h, nil
-		}
+	if h, ok := r.Harnesses[name]; name != "" && ok {
+		return h, nil
 	}
 	if r.DefaultHarness != nil {
 		return r.DefaultHarness, nil
@@ -169,6 +188,7 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) e
 	pj.JobDir, pj.WorktreeDir = probeDir, filepath.Join(probeDir, "repo")
 	argv, env := h.Command(pj)
 	res, runErr := r.Wall.RunHarness(ctx, pj, argv, env, r.Timeouts.LaunchGrace)
+	pj.ProxyStatus = cmp.Or(pj.ProxyStatus, r.Proxy.ConsumeStatus())
 	out := ClassifyJob(h, pj, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
 	if runErr != nil || out.Result != "ok" {
 		r.mu.Lock()
@@ -212,6 +232,11 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 	if err != nil {
 		return err
 	}
+	if len(next.Working) > 0 || len(disk) > 0 {
+		if err := r.ensureHooked_internal(ctx, row, next.Epoch); err != nil {
+			return err
+		}
+	}
 	workingByID, finalByID := map[string]ConsumerSummary{}, map[string]ConsumerSummary{}
 	for _, w := range next.Working {
 		workingByID[w.ID] = w
@@ -228,14 +253,10 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 				r.withdrawRunningJob_internal(ctx, rec)
 			}
 			_ = r.cleanJobDir_internal(ctx, filepath.Join(r.RootDir, "jobs", id), rec)
-			continue
-		}
-		if w, isWorking := workingByID[id]; isWorking && !r.isRunningInFlight_internal(id) {
+		} else if w, isWorking := workingByID[id]; isWorking && !r.isRunningInFlight_internal(id) {
 			if !jobMatchesSummary_internal(next, w, rec) {
 				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
-				continue
-			}
-			if err := r.recoverWorkingJob_internal(ctx, w, rec); err != nil && !errors.Is(err, ErrStoreDown) {
+			} else if err := r.recoverWorkingJob_internal(ctx, w, rec); err != nil && !errors.Is(err, ErrStoreDown) {
 				return err
 			}
 		}
@@ -250,54 +271,52 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 	return nil
 }
 func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) {
-	jobsRoot := filepath.Join(r.RootDir, "jobs")
-	entries, err := os.ReadDir(jobsRoot)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]JobRecord{}, nil
-		}
+	entries, err := os.ReadDir(filepath.Join(r.RootDir, "jobs"))
+	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 	out := map[string]JobRecord{}
 	for _, e := range entries {
-		if e.IsDir() {
-			if rec, err := ReadJobRecord(filepath.Join(jobsRoot, e.Name())); err == nil && rec.Row == row {
-				out[rec.Consumer] = rec
-			}
+		if rec, err := ReadJobRecord(filepath.Join(r.RootDir, "jobs", e.Name())); e.IsDir() && err == nil && rec.Row == row {
+			out[rec.Consumer] = rec
 		}
 	}
 	return out, nil
 }
 func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSummary, rec JobRecord) error {
 	jobDir := filepath.Join(r.RootDir, "jobs", w.ID)
+	if rec.State == JobCleaned || rec.State == JobRecorded || rec.State == JobTaken || rec.State == JobStaged {
+		return nil
+	}
 	if rec.State == JobHarvested && rec.Outcome.Result == "ok" && rec.Kind == "work" {
-		job := Job{
-			Epoch: rec.Epoch, Consumer: rec.Consumer, Producer: rec.Producer, Kind: rec.Kind,
-			Row: rec.Row, Stream: rec.Stream, Repo: rec.Repo, Base: rec.Base,
-			StreamRef: rec.StreamRef, Branch: rec.Branch, BaseSHA: rec.BaseSHA,
-			PriorHead: rec.PriorHead, Head: rec.TargetHead, DoneWhen: rec.DoneWhen,
-			Gen: rec.Gen, Attempt: rec.Attempt, JobDir: jobDir,
-			WorktreeDir: filepath.Join(jobDir, "repo"), RequirePR: rec.RequirePR,
-		}
-		if err := r.rebaseAndPRSteps_internal(ctx, job, &rec); err != nil {
+		if err := r.rebaseAndPRSteps_internal(ctx, jobDir, &rec); err != nil {
 			return err
 		}
 		return r.sendReportAndClean_internal(ctx, jobDir, rec)
 	}
-	if rec.State == JobReporting || rec.State == JobRebased || (rec.ResultID != "" && rec.Outcome.Result != "") {
+	if rec.State == JobCIWait || rec.State == JobReporting || rec.State == JobRebased || (rec.ResultID != "" && rec.Outcome.Result != "") {
 		return r.sendReportAndClean_internal(ctx, jobDir, rec)
 	}
 	if rec.State == JobRunning && r.Procs != nil && r.Procs.Alive(rec.PID, rec.Nonce) {
+		if rec.DeadlineAt > 0 && r.Now().Unix() >= rec.DeadlineAt {
+			_ = r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace)
+			r.mu.Lock()
+			delete(r.adopted, w.ID)
+			r.mu.Unlock()
+			return r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "adopted harness timed out past deadline")
+		}
 		r.mu.Lock()
 		r.adopted[w.ID] = rec
 		r.mu.Unlock()
 		r.logStep_internal(rec.Row, w.ID, "adopt", fmt.Sprintf("pid=%d", rec.PID), 0)
 		return nil
 	}
+	return r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "restart: harness exited while runner was down")
+}
+func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id string, rec JobRecord, reason string) error {
 	rec.PushedHead = cmp.Or(r.harvestPartialPush_internal(ctx, jobDir, rec), rec.PushedHead)
-	rec.ResultID = cmp.Or(rec.ResultID, FormatResultID(rec.Epoch, w.ID, rec.Attempt, rec.Gen))
-	rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "restart: harness exited while runner was down"}
-	rec.State = JobReporting
+	rec.ResultID = cmp.Or(rec.ResultID, FormatResultID(rec.Epoch, id, rec.Attempt, rec.Gen))
+	rec.Outcome, rec.State = Outcome{Result: "fault", Head: rec.PushedHead, Reason: reason}, JobReporting
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return err
 	}
@@ -306,8 +325,7 @@ func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSumma
 func (r *Runner) reportLostJob_internal(ctx context.Context, epoch int, row string, w ConsumerSummary) error {
 	_, err := r.Sprint.Report(ctx, ReportRequest{
 		Epoch: epoch, Row: row, Consumer: w.ID, Gen: w.Gen,
-		ResultID: FormatResultID(epoch, w.ID, w.Attempt, w.Gen) + "-lost",
-		Result:   "fault", Reason: "runner lost the job",
+		ResultID: FormatResultID(epoch, w.ID, w.Attempt, w.Gen) + "-lost", Result: "fault", Reason: "runner lost the job",
 	})
 	r.logStep_internal(row, w.ID, "lost-job", "fault", 0)
 	return err
@@ -338,28 +356,22 @@ func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string,
 	}
 	return sha
 }
-func (r *Runner) tryBeginConsumer_internal(id string, cancel context.CancelFunc) bool {
+func (r *Runner) beginConsumer_internal(ctx context.Context, id string) (context.Context, func(), bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, busy := r.running[id]; busy {
-		return false
+		return nil, nil, false
 	}
 	delete(r.withdrawn, id)
+	runCtx, cancel := context.WithCancel(ctx)
 	r.running[id] = cancel
-	return true
+	return runCtx, func() { r.mu.Lock(); delete(r.running, id); r.mu.Unlock(); cancel() }, true
 }
-func (r *Runner) endConsumer_internal(id string) { r.mu.Lock(); delete(r.running, id); r.mu.Unlock() }
 func (r *Runner) isRunningInFlight_internal(id string) bool {
 	r.mu.Lock()
 	_, b := r.running[id]
 	r.mu.Unlock()
 	return b
-}
-func (r *Runner) wasWithdrawn_internal(id string) bool {
-	r.mu.Lock()
-	w := r.withdrawn[id]
-	r.mu.Unlock()
-	return w
 }
 func (r *Runner) cancelRunning_internal(id string) {
 	r.mu.Lock()
@@ -372,19 +384,55 @@ func (r *Runner) cancelRunning_internal(id string) {
 		cancel()
 	}
 }
-func (r *Runner) StepRow(ctx context.Context, row string) error {
-	if err := r.RecoverRow(ctx, row); err != nil {
-		if errors.Is(err, ErrStoreDown) {
+func (r *Runner) ensureHooked_internal(ctx context.Context, row string, epoch int) error {
+	hc, ok := r.Sprint.(HookClient)
+	ep := cmp.Or(epoch, 1)
+	r.mu.Lock()
+	already := !ok || r.hooked[row] == ep
+	r.mu.Unlock()
+	if already {
+		return nil
+	}
+	if err := hc.Hook(ctx, row); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.hooked[row] = ep
+	r.mu.Unlock()
+	return nil
+}
+func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
+	ex := cmp.Or[edge.Exec](r.Exec, edge.NewOSExec())
+	_ = r.StepRow(ctx, row)
+	for ctx.Err() == nil {
+		nonce := fmt.Sprintf("n-hook-%s-%d", row, nextWallPID_internal())
+		_, _ = ex.Run(ctx, edge.Cmd{
+			Argv:     []string{"nova-bus", "hook", "--as", row},
+			Env:      []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "NOVA_WORKER_NONCE=" + nonce},
+			CleanEnv: true, Timeout: r.Timeouts.BusSend,
+			OnStart: func(pid int) { liveProcNonces_internal.Store(pid, nonce) },
+		})
+		if ctx.Err() != nil {
 			return nil
 		}
-		return err
+		_ = r.StepRow(ctx, row)
+		r.Sleep(200 * time.Millisecond)
+	}
+	return nil
+}
+func ignoreStoreDown_internal(err error) error {
+	if errors.Is(err, ErrStoreDown) {
+		return nil
+	}
+	return err
+}
+func (r *Runner) StepRow(ctx context.Context, row string) error {
+	if err := r.RecoverRow(ctx, row); err != nil {
+		return ignoreStoreDown_internal(err)
 	}
 	next, err := r.Sprint.Next(ctx, row)
 	if err != nil || next.State != card.Up || next.Held {
-		if errors.Is(err, ErrStoreDown) {
-			return nil
-		}
-		return err
+		return ignoreStoreDown_internal(err)
 	}
 	workingCount := len(next.Working)
 	var toLaunch []ConsumerSummary
@@ -396,15 +444,6 @@ func (r *Runner) StepRow(ctx context.Context, row string) error {
 			workingCount++
 			toLaunch = append(toLaunch, c)
 		}
-	}
-	if len(toLaunch) == 0 {
-		return nil
-	}
-	if len(toLaunch) == 1 {
-		if err := r.RunConsumer(ctx, next, toLaunch[0]); !errors.Is(err, ErrNoSlot) && !errors.Is(err, ErrStoreDown) {
-			return err
-		}
-		return nil
 	}
 	var wg sync.WaitGroup
 	var errMu sync.Mutex
@@ -425,15 +464,17 @@ func (r *Runner) StepRow(ctx context.Context, row string) error {
 	return firstErr
 }
 func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c ConsumerSummary) error {
-	runCtx, cancel := context.WithCancel(ctx)
-	if !r.tryBeginConsumer_internal(c.ID, cancel) {
-		cancel()
+	runCtx, done, ok := r.beginConsumer_internal(ctx, c.ID)
+	if !ok {
 		return nil
 	}
-	defer func() { r.endConsumer_internal(c.ID); cancel() }()
+	defer done()
 	jobDir := filepath.Join(r.RootDir, "jobs", c.ID)
 	if _, err := os.Stat(jobDir); err == nil {
 		return fmt.Errorf("worker refused: job directory %s already exists: a job directory is never reused", jobDir)
+	}
+	if err := r.ensureHooked_internal(runCtx, rowInfo.Row, rowInfo.Epoch); err != nil {
+		return err
 	}
 	info, err := r.Sprint.Take(runCtx, rowInfo.Row, c.ID, c.Gen)
 	if err != nil {
@@ -447,7 +488,10 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 		return r.sendReportAndClean_internal(runCtx, jobDir, rec)
 	}
 	res, err := r.runStep_internal(runCtx, job, &rec)
-	if r.wasWithdrawn_internal(c.ID) {
+	r.mu.Lock()
+	withdrawn := r.withdrawn[c.ID]
+	r.mu.Unlock()
+	if withdrawn {
 		r.withdrawRunningJob_internal(ctx, rec)
 		_ = r.cleanJobDir_internal(ctx, jobDir, rec)
 		return nil
@@ -458,7 +502,7 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 	if err := r.harvestStep_internal(runCtx, job, &rec, res, err); err != nil {
 		return err
 	}
-	if err := r.rebaseAndPRSteps_internal(runCtx, job, &rec); err != nil {
+	if err := r.rebaseAndPRSteps_internal(runCtx, jobDir, &rec); err != nil {
 		return err
 	}
 	return r.sendReportAndClean_internal(runCtx, jobDir, rec)
@@ -469,10 +513,8 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 			return Job{}, JobRecord{}, err
 		}
 	}
-	wt := filepath.Join(jobDir, "repo")
-	now := r.Now().UTC()
-	dl := now.Add(r.Timeouts.DeadlineFor(info.Tier) + r.Timeouts.CIWaitExtra)
-	epoch := cmp.Or(info.Epoch, rowInfo.Epoch)
+	wt, now := filepath.Join(jobDir, "repo"), r.Now().UTC()
+	dl, epoch := now.Add(r.Timeouts.DeadlineFor(info.Tier)+r.Timeouts.CIWaitExtra), cmp.Or(info.Epoch, rowInfo.Epoch)
 	job := Job{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
 		Row: rowInfo.Row, Stream: info.Stream, Repo: info.Repo, Base: info.Base,
@@ -525,11 +567,14 @@ func (r *Runner) launchBackoff_internal(attempt int) time.Duration {
 	if hi <= lo {
 		return lo
 	}
-	jitter := time.Duration(r.Now().UnixNano() % int64(hi-lo))
-	if jitter < 0 {
-		jitter = -jitter
-	}
-	return lo + jitter
+	r.mu.Lock()
+	r.backoffSeq++
+	seq := r.backoffSeq
+	r.mu.Unlock()
+	mix := uint64(r.Now().UnixNano()) + seq*0x9e3779b97f4a7c15
+	mix = (mix ^ (mix >> 30)) * 0xbf58476d1ce4e5b9
+	mix = (mix ^ (mix >> 27)) * 0x94d049bb133111eb
+	return lo + time.Duration((mix^(mix>>31))%uint64(hi-lo))
 }
 func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) (WallRunResult, error) {
 	h, err := r.harnessFor_internal(job.HarnessName)
@@ -538,28 +583,31 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	}
 	argv, env := h.Command(job)
 	rec.State = JobRunning
-	if rec.PID <= 0 {
-		rec.PID = os.Getpid()
+	if rec.PID <= 0 || rec.PID == os.Getpid() {
+		rec.PID = nextWallPID_internal()
 		rec.Nonce = fmt.Sprintf("n-%d-%d", rec.PID, r.Now().UnixNano())
 	}
 	_ = WriteJobRecord(job.JobDir, *rec)
-	tries := r.Timeouts.LaunchTries
 	var last WallRunResult
 	var runErr error
-	for attempt := 1; attempt <= tries; attempt++ {
+	for attempt := 1; attempt <= r.Timeouts.LaunchTries; attempt++ {
 		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, r.Timeouts.DeadlineFor(job.Tier))
 		if errors.Is(runErr, ErrNoSlot) {
+			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
+			_ = WriteJobRecord(job.JobDir, *rec)
 			return last, ErrNoSlot
 		}
-		if last.PID > 0 {
+		if last.PID > 0 && last.PID != os.Getpid() {
 			rec.PID, rec.Nonce = last.PID, cmp.Or(last.Nonce, rec.Nonce)
 			_ = WriteJobRecord(job.JobDir, *rec)
 		}
 		_ = os.WriteFile(filepath.Join(job.JobDir, "harness.log"), last.Output, 0o600)
+		job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus())
 		out := ClassifyJob(h, job, last.ExitCode, last.Elapsed, r.Timeouts.LaunchGrace, last.Output)
-		if !out.Retryable5xx || attempt == tries {
+		if !out.Retryable5xx || attempt == r.Timeouts.LaunchTries {
 			break
 		}
+		job.ProxyStatus = 0
 		r.Sleep(r.launchBackoff_internal(attempt))
 	}
 	r.logStep_internal(job.Row, job.Consumer, "run", fmt.Sprintf("exit=%d", last.ExitCode), last.Elapsed)
@@ -580,6 +628,7 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	if err != nil {
 		return err
 	}
+	job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus())
 	out := ClassifyJob(h, job, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
 	if fault, why := isInfraFault_internal(res, runErr); fault && out.Result != "fault" {
 		out = Outcome{Result: "fault", Reason: why}
@@ -587,9 +636,10 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	if cost, ok := h.Usage(job); ok {
 		rec.Cost = cost
 	}
-	if job.Kind == "work" && r.Git != nil {
-		sha, herr := r.Git.HeadSHA(ctx, job.WorktreeDir)
-		if herr == nil && sha != "" && sha != job.BaseSHA && sha != job.PriorHead {
+	if job.Kind == "work" {
+		if r.Git == nil {
+			out = Outcome{Result: "fault", Reason: "missing git edge (--work-clone) for work consumer"}
+		} else if sha, herr := r.Git.HeadSHA(ctx, job.WorktreeDir); herr == nil && sha != "" && sha != job.BaseSHA && sha != job.PriorHead {
 			if perr := r.Git.Push(ctx, job.WorktreeDir, job.Branch, sha); perr != nil {
 				if out.Result == "ok" {
 					out = Outcome{Result: "fault", Reason: "push fault: " + perr.Error()}
@@ -606,12 +656,13 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 	rec.Outcome, rec.State = out, JobHarvested
 	return WriteJobRecord(job.JobDir, *rec)
 }
-func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, job Job, rec *JobRecord) error {
-	if job.Kind != "work" || rec.Outcome.Result != "ok" {
+func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, rec *JobRecord) error {
+	if rec.Kind != "work" || rec.Outcome.Result != "ok" {
 		return nil
 	}
-	if r.Git != nil && job.StreamRef != "" {
-		newSHA, err := r.Git.RebaseOntoStream(ctx, job.WorktreeDir, job.StreamRef)
+	wt := filepath.Join(jobDir, "repo")
+	if r.Git != nil && rec.StreamRef != "" {
+		newSHA, err := r.Git.RebaseOntoStream(ctx, wt, rec.StreamRef)
 		if err != nil {
 			var ce *ConflictError
 			var fe *FetchError
@@ -620,46 +671,47 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, job Job, rec *Jo
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: ce.Error()}
 			case errors.As(err, &fe):
 				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fe.Error()}
-				_ = WriteJobRecord(job.JobDir, *rec)
+				_ = WriteJobRecord(jobDir, *rec)
 				return fe
 			default:
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "rebase failed: " + err.Error()}
 			}
-			_ = WriteJobRecord(job.JobDir, *rec)
+			_ = WriteJobRecord(jobDir, *rec)
 			return nil
 		}
 		rec.Outcome.Head = cmp.Or(newSHA, rec.Outcome.Head)
 	}
-	for _, cmd := range job.DoneWhen {
+	tJob := Job{Consumer: rec.Consumer, Row: rec.Row, JobDir: jobDir, WorktreeDir: wt, ProxyAddr: r.ProxyAddr}
+	for _, cmd := range rec.DoneWhen {
 		if strings.TrimSpace(cmd) != "" && r.Wall != nil {
-			if tres, err := r.Wall.RunTest(ctx, job, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
+			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, TailBytes(tres.Output, MaxReasonBytes))}
-				_ = WriteJobRecord(job.JobDir, *rec)
+				_ = WriteJobRecord(jobDir, *rec)
 				return nil
 			}
 		}
 	}
 	if r.Git != nil && rec.Outcome.Head != "" && rec.Outcome.Head != rec.PushedHead {
-		if err := r.Git.Push(ctx, job.WorktreeDir, job.Branch, rec.Outcome.Head); err != nil {
+		if err := r.Git.Push(ctx, wt, rec.Branch, rec.Outcome.Head); err != nil {
 			rec.Outcome = Outcome{Result: "fault", Reason: "post-rebase push fault: " + err.Error()}
-			_ = WriteJobRecord(job.JobDir, *rec)
+			_ = WriteJobRecord(jobDir, *rec)
 			return nil
 		}
 		rec.PushedHead = rec.Outcome.Head
 	}
 	rec.State = JobRebased
-	if job.RequirePR && r.Forge != nil {
+	if rec.RequirePR && r.Forge != nil {
 		ghCtx, cancel := context.WithTimeout(ctx, r.Timeouts.GH)
-		pr, err := r.Forge.EnsurePR(ghCtx, job.Repo, job.Branch, job.Base, rec.PushedHead, job.Consumer)
+		pr, err := r.Forge.EnsurePR(ghCtx, rec.Repo, rec.Branch, rec.Base, rec.PushedHead, rec.Consumer)
 		cancel()
 		if err != nil {
 			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "open PR fault: " + err.Error()}
-			_ = WriteJobRecord(job.JobDir, *rec)
+			_ = WriteJobRecord(jobDir, *rec)
 			return nil
 		}
 		rec.PRNumber = pr
 	}
-	_ = WriteJobRecord(job.JobDir, *rec)
+	_ = WriteJobRecord(jobDir, *rec)
 	return nil
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
@@ -683,6 +735,10 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 		r.Sleep(time.Duration(try) * 100 * time.Millisecond)
 	}
 	if err != nil {
+		if errors.Is(err, ErrRefused) {
+			rec.State = JobRecorded
+			_ = WriteJobRecord(jobDir, rec)
+		}
 		return err
 	}
 	if !receipt.Accepted || receipt.Op != req.ResultID {
@@ -721,36 +777,29 @@ func (r *Runner) QueryEdge(ctx context.Context, req EdgeRequest) (EdgeResult, er
 	})
 }
 func (r *Runner) evalEdgeQuery_internal(ctx context.Context, id string, req EdgeRequest) (EdgeResult, error) {
-	row := req.Row
-	jobDir := filepath.Join(r.RootDir, "jobs", req.Card)
-	if rec, err := ReadJobRecord(jobDir); err == nil && row == "" {
-		row = rec.Row
-	}
-	if row != "" {
+	res := EdgeResult{Epoch: req.Epoch, ID: id, Kind: req.Kind, Card: req.Card, SHA: req.SHA, Outcome: JobNone}
+	rec, recErr := ReadJobRecord(filepath.Join(r.RootDir, "jobs", req.Card))
+	if row := cmp.Or(req.Row, rec.Row); row != "" {
 		next, err := r.Sprint.Next(ctx, row)
 		if err != nil {
 			return EdgeResult{}, err
 		}
-		for _, f := range next.Final {
-			if f.ID == req.Card {
-				return EdgeResult{Epoch: req.Epoch, ID: id, Kind: req.Kind, Card: req.Card, SHA: cmp.Or(f.Head, req.SHA), Outcome: f.State}, nil
-			}
-		}
-		for _, w := range next.Working {
-			if w.ID == req.Card {
-				return EdgeResult{Epoch: req.Epoch, ID: id, Kind: req.Kind, Card: req.Card, SHA: cmp.Or(w.Head, req.SHA), Outcome: card.Working}, nil
-			}
-		}
-		for _, rd := range next.Ready {
-			if rd.ID == req.Card {
-				return EdgeResult{Epoch: req.Epoch, ID: id, Kind: req.Kind, Card: req.Card, SHA: req.SHA, Outcome: card.Ready}, nil
+		for _, g := range []struct {
+			items []ConsumerSummary
+			state string
+		}{{next.Final, ""}, {next.Working, card.Working}, {next.Ready, card.Ready}} {
+			for _, c := range g.items {
+				if c.ID == req.Card {
+					res.SHA, res.Outcome = cmp.Or(c.Head, req.SHA), cmp.Or(g.state, c.State)
+					return res, nil
+				}
 			}
 		}
 	}
-	if rec, err := ReadJobRecord(jobDir); err == nil {
-		return EdgeResult{Epoch: req.Epoch, ID: id, Kind: req.Kind, Card: req.Card, SHA: cmp.Or(rec.PushedHead, req.SHA), Outcome: rec.State, Failure: rec.Outcome.Reason}, nil
+	if recErr == nil {
+		res.SHA, res.Outcome, res.Failure = cmp.Or(rec.PushedHead, req.SHA), rec.State, rec.Outcome.Reason
 	}
-	return EdgeResult{Epoch: req.Epoch, ID: id, Kind: req.Kind, Card: req.Card, SHA: req.SHA, Outcome: JobNone}, nil
+	return res, nil
 }
 
 type OSGitOps struct {
@@ -760,56 +809,60 @@ type OSGitOps struct {
 	Timeout                            time.Duration
 }
 
-func (g *OSGitOps) timeouts_internal() Timeouts                      { return g.Timeouts.WithDefaults() }
-func (g *OSGitOps) timeoutOr_internal(d time.Duration) time.Duration { return cmp.Or(g.Timeout, d) }
+func (g *OSGitOps) to_internal(d time.Duration) time.Duration { return cmp.Or(g.Timeout, d) }
 func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 	if g.MirrorDir != "" && filepath.Clean(g.WorkCloneDir) == filepath.Clean(g.MirrorDir) {
 		return "", errors.New("stage refused: work clone path equals bare mirror path (worktrees must be staged from the work clone, never the mirror)")
 	}
-	to := g.timeoutOr_internal(g.timeouts_internal().Stage)
-	if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "fetch", "--quiet", "origin"); err != nil {
+	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
 		return "", err
+	}
+	_ = os.RemoveAll(j.WorktreeDir)
+	if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "clone", "--shared", "--no-checkout", g.WorkCloneDir, j.WorktreeDir); err != nil {
+		return "", err
+	}
+	if alt, err := os.ReadFile(filepath.Join(g.WorkCloneDir, ".git", "objects", "info", "alternates")); err == nil && len(alt) > 0 {
+		wtAlt := filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")
+		cur, _ := os.ReadFile(wtAlt)
+		_ = os.WriteFile(wtAlt, append(cur, alt...), 0o644)
+	}
+	if g.OriginURL != "" {
+		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", g.OriginURL)
 	}
 	baseRef := cmp.Or(j.PriorHead, j.BaseSHA, "HEAD")
 	if j.Kind == "read" {
-		if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "worktree", "add", "--detach", j.WorktreeDir, cmp.Or(j.Head, baseRef)); err != nil {
+		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "--detach", cmp.Or(j.Head, baseRef)); err != nil {
 			return "", err
 		}
 		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "--push", "origin", "no-push-on-read")
-	} else if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "worktree", "add", "-B", j.Branch, j.WorktreeDir, baseRef); err != nil {
+	} else if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "-B", j.Branch, baseRef); err != nil {
 		return "", err
 	}
-	if j.CommitName != "" {
-		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "config", "user.name", j.CommitName)
-	}
-	if j.CommitEmail != "" {
-		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "config", "user.email", j.CommitEmail)
+	for _, kv := range [][2]string{{"user.name", j.CommitName}, {"user.email", j.CommitEmail}} {
+		if kv[1] != "" {
+			_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1])
+		}
 	}
 	return g.HeadSHA(ctx, j.WorktreeDir)
 }
 func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error) {
-	out, err := g.runGit_internal(ctx, g.timeoutOr_internal(g.timeouts_internal().Stage), worktree, "rev-parse", "HEAD")
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", "HEAD")
 	return strings.TrimSpace(out), err
 }
 func (g *OSGitOps) Push(ctx context.Context, worktree, branch, headSHA string) error {
-	_, err := g.runGit_internal(ctx, g.timeoutOr_internal(g.timeouts_internal().Push), worktree, "push", "--force", cmp.Or(g.OriginURL, "origin"), headSHA+":refs/heads/"+branch)
+	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force", cmp.Or(g.OriginURL, "origin"), headSHA+":refs/heads/"+branch)
 	return err
 }
 func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef string) (string, error) {
-	to := g.timeoutOr_internal(g.timeouts_internal().RebaseAndTest)
+	to := g.to_internal(g.Timeouts.WithDefaults().RebaseAndTest)
 	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", cmp.Or(g.OriginURL, "origin"), streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
 		out, _ := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
 		_, _ = g.runGit_internal(ctx, to, worktree, "rebase", "--abort")
-		var files []string
-		for _, f := range strings.Split(strings.TrimSpace(out), "\n") {
-			if f = strings.TrimSpace(f); f != "" {
-				files = append(files, f)
-			}
-		}
-		if len(files) > 0 {
+		if files := strings.Fields(out); len(files) > 0 {
 			return "", &ConflictError{Files: files}
 		}
 		return "", err
@@ -817,23 +870,25 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef str
 	return g.HeadSHA(ctx, worktree)
 }
 func (g *OSGitOps) OriginHasHead(ctx context.Context, repo, branch, sha string) (bool, error) {
-	out, err := g.runGit_internal(ctx, g.timeoutOr_internal(g.timeouts_internal().Push), g.WorkCloneDir, "ls-remote", cmp.Or(g.OriginURL, "origin"), "refs/heads/"+branch)
-	return err == nil && strings.HasPrefix(strings.TrimSpace(out), sha), err
+	return g.HasHead(ctx, repo, branch, sha)
 }
 func (g *OSGitOps) HasHead(ctx context.Context, repo, branch, sha string) (bool, error) {
-	return g.OriginHasHead(ctx, repo, branch, sha)
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), g.WorkCloneDir, "ls-remote", cmp.Or(g.OriginURL, "origin"), "refs/heads/"+branch)
+	return err == nil && strings.HasPrefix(strings.TrimSpace(out), sha), err
 }
 func (g *OSGitOps) IsDirty(ctx context.Context, worktree string) (bool, error) {
-	out, err := g.runGit_internal(ctx, g.timeoutOr_internal(g.timeouts_internal().Stage), worktree, "status", "--porcelain")
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "status", "--porcelain")
 	return err == nil && strings.TrimSpace(out) != "", err
 }
-func (g *OSGitOps) RemoveWorktree(ctx context.Context, worktree string) error {
-	_, err := g.runGit_internal(ctx, g.timeoutOr_internal(g.timeouts_internal().Stage), g.WorkCloneDir, "worktree", "remove", "--force", worktree)
-	return err
+func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
+	return os.RemoveAll(worktree)
 }
 func (g *OSGitOps) runGit_internal(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
 	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
-		Argv: append([]string{"git"}, args...), Dir: dir, Env: []string{"GIT_TERMINAL_PROMPT=0"}, Timeout: timeout,
+		Argv:     append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}, args...),
+		Dir:      dir,
+		Env:      []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"},
+		CleanEnv: true, Timeout: timeout,
 	})
 	combined := res.Stdout + res.Stderr
 	if err != nil {
@@ -855,24 +910,51 @@ func (w *OSReserveWall) RunHarness(ctx context.Context, j Job, argv, env []strin
 	return w.runWallCmd_internal(ctx, j, BuildWallArgv(w.effectiveConfig_internal(j), j, argv), SanitizeWallEnv(env, j.JobDir), timeout)
 }
 func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeout time.Duration) (WallRunResult, error) {
-	fields := strings.Fields(cmdStr)
+	fields := splitArgv_internal(cmdStr)
 	if len(fields) == 0 {
 		return WallRunResult{}, errors.New("empty test command")
 	}
 	return w.runWallCmd_internal(ctx, j, BuildWallArgv(w.effectiveConfig_internal(j), j, fields), SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }
+func splitArgv_internal(s string) (args []string) {
+	var cur strings.Builder
+	var quote rune
+	inTok := false
+	for _, r := range s + " " {
+		switch {
+		case quote != 0 && r == quote:
+			quote = 0
+		case quote != 0:
+			cur.WriteRune(r)
+		case r == '\'' || r == '"':
+			quote, inTok = r, true
+		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
+			if inTok {
+				args, inTok = append(args, cur.String()), false
+				cur.Reset()
+			}
+		default:
+			cur.WriteRune(r)
+			inTok = true
+		}
+	}
+	return args
+}
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
 	cfg.ReserveBin = resolveToolBin_internal(cmp.Or(cfg.ReserveBin, "nova-reserve"))
 	cfg.SandboxBin = resolveToolBin_internal(cmp.Or(cfg.SandboxBin, "nova-sandbox"))
-	if j.WorktreeDir != "" {
-		if data, err := os.ReadFile(filepath.Join(j.WorktreeDir, ".git")); err == nil {
-			if gitDir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:"); ok {
-				commonGit := filepath.Dir(filepath.Dir(strings.TrimSpace(gitDir)))
-				cfg.WritePaths = append(slices.Clone(cfg.WritePaths), commonGit)
-				if alt, err := os.ReadFile(filepath.Join(commonGit, "objects", "info", "alternates")); err == nil && strings.TrimSpace(string(alt)) != "" {
-					cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), filepath.Dir(strings.TrimSpace(string(alt))))
-				}
+	if data, err := os.ReadFile(filepath.Join(j.WorktreeDir, ".git")); j.WorktreeDir != "" && err == nil {
+		if gitDir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:"); ok {
+			commonGit := filepath.Dir(filepath.Dir(strings.TrimSpace(gitDir)))
+			cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), commonGit)
+			j.WorktreeDir = filepath.Dir(commonGit)
+		}
+	}
+	if alt, err := os.ReadFile(filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")); j.WorktreeDir != "" && err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(alt)), "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), filepath.Dir(line))
 			}
 		}
 	}
@@ -894,18 +976,31 @@ func resolveToolBin_internal(name string) string {
 }
 func fileExists_internal(p string) bool { _, err := os.Stat(p); return err == nil }
 func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error) {
+	fallbackPID := nextWallPID_internal()
+	nonce := fmt.Sprintf("n-%d", fallbackPID)
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
-		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: len(env) > 0, Timeout: timeout,
+		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: append(slices.Clone(env), "NOVA_WORKER_NONCE="+nonce), CleanEnv: len(env) > 0, Timeout: timeout,
+		OnStart: func(pid int) {
+			if pid <= 0 || pid == os.Getpid() {
+				pid = fallbackPID
+			}
+			liveProcNonces_internal.Store(pid, nonce)
+			if rec, rerr := ReadJobRecord(j.JobDir); j.JobDir != "" && rerr == nil && rec.State == JobRunning {
+				rec.PID, rec.Nonce = pid, nonce
+				_ = WriteJobRecord(j.JobDir, rec)
+			}
+		},
 	})
 	combined := res.Stdout
 	if res.Stderr != "" {
-		if combined != "" && !strings.HasSuffix(combined, "\n") {
-			combined += "\n"
-		}
-		combined += res.Stderr
+		combined = strings.TrimSuffix(combined, "\n") + "\n" + res.Stderr
 	}
-	pid := os.Getpid()
-	out := WallRunResult{ExitCode: res.ExitCode, Output: []byte(combined), PID: pid, Nonce: strconv.Itoa(pid), Elapsed: res.Duration}
+	pid := res.PID
+	if pid <= 0 || pid == os.Getpid() {
+		pid = fallbackPID
+	}
+	liveProcNonces_internal.Delete(pid)
+	out := WallRunResult{ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if res.ExitCode == 1 && strings.Contains(combined, "nova-reserve:") && !strings.Contains(combined, "nova-reserve: HELD") {
 		return out, ErrNoSlot
 	}

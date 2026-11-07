@@ -57,7 +57,6 @@ type PRInfo struct {
 	HeadSHA                       string `json:"headRefOid"`
 	BaseRef                       string `json:"baseRefName"`
 }
-type PRSpec struct{ Repo, HeadBranch, BaseBranch, HeadSHA, Title, Body string }
 type FaultError struct {
 	Kind             FaultKind
 	Identity, Reason string
@@ -91,9 +90,10 @@ type Client struct {
 	lastTick, restTill int64
 }
 
-func New(cfg Config) *Client {
+func New(cfg Config) *Client { return NewClient(cfg.Exec, cfg) }
+func NewClient(ex edge.Exec, cfg Config) *Client {
 	cfg.Binary = cmp.Or(cfg.Binary, "gh")
-	cfg.Exec = cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec())
+	cfg.Exec = cmp.Or[edge.Exec](ex, cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec()))
 	cfg.Timeout = cmp.Or(cfg.Timeout, DefaultTimeout)
 	cfg.HourlyLimit = cmp.Or(cfg.HourlyLimit, DefaultHourlyLimit)
 	cfg.Burst = cmp.Or(cfg.Burst, DefaultBucketBurst)
@@ -101,10 +101,6 @@ func New(cfg Config) *Client {
 		cfg.Now = func() int64 { return time.Now().Unix() }
 	}
 	return &Client{cfg: cfg, tokens: float64(cfg.Burst), lastTick: cfg.Now()}
-}
-func NewClient(ex edge.Exec, cfg Config) *Client {
-	cfg.Exec = cmp.Or[edge.Exec](ex, cfg.Exec)
-	return New(cfg)
 }
 func (c *Client) RestedUntil() int64 { c.mu.Lock(); defer c.mu.Unlock(); return c.restTill }
 func (c *Client) checkCredentials_internal(ctx context.Context) error {
@@ -196,9 +192,8 @@ func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, st
 		if retrySec, ok := detectRateLimit_internal(res.Stderr); ok {
 			c.mu.Lock()
 			c.restTill = c.cfg.Now() + retrySec
-			until := c.restTill
 			c.mu.Unlock()
-			return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: until, Reason: strings.TrimSpace(res.Stderr)}
+			return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.RestedUntil(), Reason: strings.TrimSpace(res.Stderr)}
 		}
 	}
 	if err != nil {
@@ -256,10 +251,6 @@ func (c *Client) OpenPR(ctx context.Context, repo, head, base, title, body strin
 		return PRInfo{}, fmt.Errorf("forge: opened PR for %s -> %s on %s but could not find it: %v", head, base, repo, err)
 	}
 	return pr, nil
-}
-func (c *Client) EnsurePR(ctx context.Context, spec PRSpec) (int, error) {
-	pr, err := c.OpenPR(ctx, spec.Repo, spec.HeadBranch, spec.BaseBranch, spec.Title, spec.Body)
-	return pr.Number, err
 }
 func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[string]CheckRollup, error) {
 	if len(shas) > MaxChecksBatch {
@@ -437,7 +428,7 @@ func (c *Client) Merge(ctx context.Context, repo string, pr int, sha, base strin
 	if err != nil {
 		low := strings.ToLower(stderr + " " + err.Error())
 		switch {
-		case strings.Contains(low, "match-head-commit") || strings.Contains(low, "head branch was modified"):
+		case strings.Contains(low, "head branch was modified"):
 			return fmt.Errorf("%w: %v", ErrStaleHead, err)
 		case strings.Contains(low, "base branch was modified") || strings.Contains(low, "out-of-date") || strings.Contains(low, "not up to date") || strings.Contains(low, "fast-forward") || strings.Contains(low, "fast forward"):
 			return fmt.Errorf("%w: %v", ErrBaseMoved, err)

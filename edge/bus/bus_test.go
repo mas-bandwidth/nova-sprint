@@ -249,3 +249,29 @@ func TestDeal20CardAnd4KBCapUsesNextVerb(t *testing.T) {
 	assert.Contains(t, body, "and 5 more: nova-sprint next --as amd-1.ds")
 	assert.NotContains(t, body, "nova-sprint queue")
 }
+
+func TestPushTickSkipsUnhookedRecipients(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st, now := crSeed_internal(t, "emma", "stella")
+	rec, err := st.Apply(ctx, store.Op{
+		ID: "seed-hook", Epoch: 1, Actor: "rowan", Kind: "deal", At: now,
+		Writes: []store.Write{
+			store.SetRowSession{Row: "emma", Session: "worker:1"},
+			store.PutCard{ID: "c1", Stream: "s1", Kind: "producer", Tier: "pro"},
+			store.PutCard{ID: "c1.w1", Of: "c1", Stream: "s1", Kind: "work", Holder: "emma", Tier: "pro", Attempt: 1},
+			store.SetCardState{Card: "c1.w1", State: "ready"},
+			store.PutCard{ID: "c2", Stream: "s1", Kind: "producer", Tier: "pro"},
+			store.PutCard{ID: "c2.w1", Of: "c2", Stream: "s1", Kind: "work", Holder: "stella", Tier: "pro", Attempt: 1},
+			store.SetCardState{Card: "c2.w1", State: "ready"},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, rec.Accepted)
+	fb := NewFake()
+	e := New(Config{Transport: fb, Coordinator: "rowan", RequireHooked: true})
+	deliv, err := e.PushTick(ctx, st, "tick-hook", now)
+	require.NoError(t, err)
+	require.Len(t, deliv, 1)
+	assert.Equal(t, "emma", deliv[0].Message.To)
+}

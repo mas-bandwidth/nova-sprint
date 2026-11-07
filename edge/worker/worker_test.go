@@ -328,13 +328,17 @@ func TestClassifyOutcomesAndFaultRules(t *testing.T) {
 	if out := ClassifyJob(h, j, 137, 5*time.Second, 15*time.Second, []byte("killed")); out.Result != "fault" {
 		t.Fatalf("exit 137 must be fault, got %+v", out)
 	}
-	if out := ClassifyJob(h, j, 1, 5*time.Second, 15*time.Second, []byte("HTTP 503 Service Unavailable")); out.Result != "fault" || !out.Retryable5xx {
+	j503 := j
+	j503.ProxyStatus = 503
+	if out := ClassifyJob(h, j503, 1, 5*time.Second, 15*time.Second, []byte("upstream error")); out.Result != "fault" || !out.Retryable5xx {
 		t.Fatalf("503 within 15s grace must be retryable fault, got %+v", out)
 	}
-	if out := ClassifyJob(h, j, 1, 25*time.Second, 15*time.Second, []byte("HTTP 503 Service Unavailable")); out.Result != "fault" || out.Retryable5xx {
+	if out := ClassifyJob(h, j503, 1, 25*time.Second, 15*time.Second, []byte("upstream error")); out.Result != "fault" || out.Retryable5xx {
 		t.Fatalf("503 past 15s grace must be non-retryable fault, got %+v", out)
 	}
-	if out := ClassifyJob(h, j, 1, 4*time.Second, 15*time.Second, []byte("HTTP 429 rate_limit_exceeded")); out.Result != "fault" {
+	j429 := j
+	j429.ProxyStatus = 429
+	if out := ClassifyJob(h, j429, 1, 4*time.Second, 15*time.Second, []byte("rate limit")); out.Result != "fault" {
 		t.Fatalf("429 rate limit must be fault, got %+v", out)
 	}
 	if out := ClassifyJob(h, j, 0, 4*time.Second, 15*time.Second, []byte("done")); out.Result != "fail" {
@@ -449,7 +453,7 @@ func TestRunnerProbeAndFullLifecycleWithLaunchRetry(t *testing.T) {
 	root := t.TempDir()
 	r, err := NewRunner(Runner{
 		Host: "b1", RootDir: root, StateDir: root, Sprint: sc,
-		Git: git, Forge: forge, Wall: wall, Now: clock,
+		Git: git, Forge: forge, Wall: wall, Now: clock, Sleep: func(time.Duration) {},
 	})
 	if err != nil {
 		t.Fatalf("NewRunner: %v", err)
@@ -468,7 +472,7 @@ func TestRunnerProbeAndFullLifecycleWithLaunchRetry(t *testing.T) {
 	wall.calls = 0
 	wall.runFn = func(call int, j Job, _, _ []string) (WallRunResult, error) {
 		if call <= 2 && !strings.HasSuffix(j.Consumer, ".probe") {
-			return WallRunResult{ExitCode: 1, Output: []byte("HTTP 502 Bad Gateway"), Elapsed: 3 * time.Second}, nil
+			return WallRunResult{ExitCode: 1, Output: []byte(`{"http_status":502}`), Elapsed: 3 * time.Second}, nil
 		}
 		git.mu.Lock()
 		git.headByWT[j.WorktreeDir] = testWorkSHA
@@ -857,4 +861,53 @@ func (w *cancelWaitWall) RunHarness(ctx context.Context, _ Job, _, _ []string, _
 }
 func (w *cancelWaitWall) RunTest(context.Context, Job, string, time.Duration) (WallRunResult, error) {
 	return WallRunResult{}, nil
+}
+
+func TestRunnerHooksInAsWorkerBeforeFirstTake(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	clock := testClock_internal()
+	st, row := seedFakeStore_internal(t, clock)
+	git := newFakeGit_internal()
+	sprint := &StoreSprintClient{
+		Store:        st,
+		Origin:       git,
+		RequireHook:  true,
+		BusPresent:   map[string]bool{row: false},
+		BusRedisAddr: "127.0.0.1:6381",
+		Now:          clock,
+	}
+	if _, err := sprint.Take(ctx, row, "p1.w1", 0); err == nil || !strings.Contains(err.Error(), "hook in first: nova-sprint hook --as "+row+" --role worker") {
+		t.Fatalf("expected unhooked take refusal, got %v", err)
+	}
+	if err := sprint.Hook(ctx, row); err == nil || !strings.Contains(err.Error(), "hook in to the bus first: run NOVA_BUS_REDIS=127.0.0.1:6381 nova-bus hook --as "+row+" as the Monitor tool command, then hook in to the sprint again") {
+		t.Fatalf("expected bus-first refusal when not present on bus, got %v", err)
+	}
+	sprint.BusPresent[row] = true
+	wall := &fakeWall{
+		runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
+			git.mu.Lock()
+			git.headByWT[j.WorktreeDir] = testWorkSHA
+			git.mu.Unlock()
+			_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
+			return WallRunResult{ExitCode: 0, PID: 500, Nonce: "n500", Elapsed: time.Second}, nil
+		},
+	}
+	runner, err := NewRunner(Runner{
+		Host: "b1", RootDir: t.TempDir(), Sprint: sprint, Git: git, Wall: wall,
+		Now: clock, Sleep: func(time.Duration) {},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.StepRow(ctx, row); err != nil {
+		t.Fatalf("StepRow: %v", err)
+	}
+	if sprint.HookCalls != 1 || sprint.Hooked[row] != "worker" {
+		t.Fatalf("HookCalls = %d, Hooked = %v, want 1 worker hook", sprint.HookCalls, sprint.Hooked)
+	}
+	snap, _ := st.Snapshot(ctx)
+	if snap.Cards["p1.w1"].State != card.Done || snap.Rows[row].Session != "worker:1" || snap.Cards["p1.w1"].BaseSHA != testBaseSHA {
+		t.Fatalf("unexpected state after hooked run: card=%+v row=%+v", snap.Cards["p1.w1"], snap.Rows[row])
+	}
 }

@@ -22,8 +22,9 @@ func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
 }
 
 type fakeForge_internal struct {
-	world  *fakeForgeWorld_internal
-	OnCall func(op string)
+	world    *fakeForgeWorld_internal
+	OnCall   func(op string)
+	allGreen bool
 }
 
 func newFakeForge_internal() *fakeForge_internal {
@@ -59,12 +60,24 @@ func (f *fakeForge_internal) Checks(_ context.Context, repo string, shas []strin
 	if f.OnCall != nil {
 		f.OnCall("Checks")
 	}
+	out := make(map[string]forge.CheckRollup, len(shas))
+	if f.world == nil {
+		st := forge.CheckPending
+		if f.allGreen {
+			st = forge.CheckGreen
+		}
+		for _, sha := range shas {
+			out[sha] = forge.CheckRollup{SHA: sha, State: st}
+		}
+		return out, nil
+	}
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
-	out := make(map[string]forge.CheckRollup, len(shas))
 	for _, sha := range shas {
 		if r, ok := f.world.checks[repo+"\x00"+sha]; ok {
 			out[sha] = r
+		} else if f.allGreen {
+			out[sha] = forge.CheckRollup{SHA: sha, State: forge.CheckGreen}
 		} else {
 			out[sha] = forge.CheckRollup{SHA: sha, State: forge.CheckPending}
 		}

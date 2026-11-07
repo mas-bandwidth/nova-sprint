@@ -216,16 +216,10 @@ func (h *landWalkHarness_internal) applyLand_internal(t *testing.T, s string) {
 	t.Helper()
 	ctx := context.Background()
 	ga := h.gatedAt[s]
-	baseSHA := h.idToSHA[ga.baseTip]
 	msha := h.mergedSHA[s]
-	if err := h.g.Push(ctx, "", msha, "refs/heads/main", baseSHA); err != nil {
-		t.Fatalf("Land push main: %v", err)
-	}
-	oldStream, _, _ := h.g.LsRemote(ctx, "", StreamRef(s))
-	if oldStream != msha {
-		if err := h.g.Push(ctx, "", msha, StreamRef(s), oldStream); err != nil {
-			t.Fatalf("Land push stream: %v", err)
-		}
+	res, err := LandPass(ctx, h.g, h.fg, LandRequest{Stream: s, Repo: "org/repo", Base: "main", Heads: h.headSHAsFor_internal(s)})
+	if err != nil || res.Outcome != OutcomeLanded || res.GatedSHA != msha {
+		t.Fatalf("LandPass %s: res=%+v err=%v want=%s", s, res, err, msha)
 	}
 	h.base = append(h.base, landBaseEntry_internal{
 		sha:      ga.sha,

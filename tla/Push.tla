@@ -131,6 +131,10 @@ MessageWithinCap ==
 EveryBelowCursorConfirmed ==
   \A r \in Recipients : \A e \in 1..cursor[r] : Target(e) = r => e \in confirmed[r]
 
+(* Guarantee 2: every event for a recipient below cursor[r] is either      *)
+(* carried in a push or summarised in one (up to Cap items, with           *)
+(* "and N more: nova-sprint next --as <r>" retrieving the rest), and       *)
+(* cursor[r] advances past both only after nova-bus send confirms it.      *)
 NoEventSkipped ==
   \A r \in Recipients : \A e \in 1..cursor[r] : Target(e) = r => e \in delivered[r]
 

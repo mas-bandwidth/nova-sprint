@@ -16,64 +16,75 @@ import (
 )
 
 const (
-	DefaultSender       = "sprint"
-	DefaultCoordinator  = "rowan"
-	DefaultTimeout      = 5 * time.Second
-	MaxMessageBytes     = 4096
-	MaxCardLines        = 20
-	MaxFieldBytes       = 300
-	CursorPrefix        = "push:"
-	SubjectDeal         = "DEAL"
-	SubjectWithdrawn    = "WITHDRAWN"
-	SubjectNeedsYou     = "NEEDS YOU"
-	SubjectLanded       = "LANDED"
-	SubjectStreamLanded = "STREAM LANDED"
+	DefaultSender, DefaultCoordinator = "sprint", "rowan"
+	DefaultTimeout                    = 5 * time.Second
+	MaxMessageBytes, MaxCardLines     = 4096, 20
+	MaxFieldBytes                     = 300
+	CursorPrefix                      = "push:"
+	SubjectDeal, SubjectWithdrawn     = "DEAL", "WITHDRAWN"
+	SubjectNeedsYou, SubjectLanded    = "NEEDS YOU", "LANDED"
+	SubjectStreamLanded               = "STREAM LANDED"
 )
 
-type Bus interface {
-	Send(ctx context.Context, to, subject, body string) (msgID string, err error)
-	Who(ctx context.Context) (map[string]Presence, error)
-}
-type Presence struct{ Name, Uptime, Detail string }
-type Message struct {
-	To, Subject, Body string
-	MinSeq, MaxSeq    int64
-	Epoch             int
-}
-type Delivered struct {
-	Message   Message
-	MsgID     string
-	CursorSeq int64
-}
-type Config struct {
-	Exec                     edge.Exec
-	Transport                Bus
-	Bin, Sender, Coordinator string
-	Timeout                  time.Duration
-	Env                      []string
-	AllowNew                 bool
-	Window                   int
-}
-type Edge struct {
-	exec                     edge.Exec
-	transport                Bus
-	bin, sender, coordinator string
-	timeout                  time.Duration
-	env                      []string
-	allowNew                 bool
-	window                   int
+type (
+	Bus interface {
+		Send(ctx context.Context, to, subject, body string) (msgID string, err error)
+		Who(ctx context.Context) (map[string]Presence, error)
+	}
+	Presence struct{ Name, Uptime, Detail string }
+	Message  struct {
+		To, Subject, Body string
+		MinSeq, MaxSeq    int64
+		Epoch             int
+	}
+	Delivered struct {
+		Message   Message
+		MsgID     string
+		CursorSeq int64
+	}
+	Config struct {
+		Exec                     edge.Exec
+		Transport                Bus
+		Bin, Sender, Coordinator string
+		Timeout                  time.Duration
+		Env                      []string
+		AllowNew, RequireHooked  bool
+		Window                   int
+	}
+	Edge struct {
+		exec                     edge.Exec
+		transport                Bus
+		bin, sender, coordinator string
+		timeout                  time.Duration
+		env                      []string
+		allowNew, requireHooked  bool
+		window                   int
+	}
+	subjectSpec_internal struct {
+		subject   string
+		coordOnly bool
+		collect   func(snap store.Snapshot, events []store.Event, recipient string) (string, []string, int64, int64, int)
+	}
+	judgementGroup_internal struct {
+		key   string
+		items []store.Judgement
+	}
+)
+
+var subjectTable_internal = []subjectSpec_internal{
+	{SubjectDeal, false, collectDeals_internal},
+	{SubjectWithdrawn, false, collectWithdrawn_internal},
+	{SubjectNeedsYou, true, collectNeedsYou_internal},
+	{SubjectLanded, true, collectLanded_internal},
+	{SubjectStreamLanded, true, collectStreamLanded_internal},
 }
 
 func New(cfg Config) *Edge {
 	e := &Edge{
-		exec:        cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec()),
-		bin:         cmp.Or(cfg.Bin, "nova-bus"),
-		sender:      cmp.Or(cfg.Sender, DefaultSender),
-		coordinator: cmp.Or(cfg.Coordinator, DefaultCoordinator),
-		timeout:     cmp.Or(cfg.Timeout, DefaultTimeout),
-		env:         slices.Clone(cfg.Env),
-		allowNew:    cfg.AllowNew,
-		window:      cmp.Or(cfg.Window, store.MaxEvents),
+		exec: cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec()), bin: cmp.Or(cfg.Bin, "nova-bus"),
+		sender: cmp.Or(cfg.Sender, DefaultSender), coordinator: cmp.Or(cfg.Coordinator, DefaultCoordinator),
+		timeout: cmp.Or(cfg.Timeout, DefaultTimeout), env: slices.Clone(cfg.Env),
+		allowNew: cfg.AllowNew, requireHooked: cfg.RequireHooked, window: cmp.Or(cfg.Window, store.MaxEvents),
 	}
 	e.transport = cmp.Or[Bus](cfg.Transport, e)
 	return e
@@ -125,7 +136,7 @@ func parseSendConfirmation_internal(stdout, to string) (string, bool) {
 	return "", false
 }
 func (e *Edge) Who(ctx context.Context) (map[string]Presence, error) {
-	res, err := e.exec.Run(ctx, edge.Cmd{Argv: []string{e.bin, "who"}, Env: e.env, Timeout: e.timeout})
+	res, err := edge.RunArgv(ctx, e.exec, e.timeout, "", e.env, e.bin, "who")
 	if err != nil {
 		return nil, fmt.Errorf("bus who: %w", err)
 	}
@@ -156,21 +167,6 @@ func parseWhoOutput_internal(stdout string) (map[string]Presence, error) {
 	}
 	return out, nil
 }
-
-type subjectSpec_internal struct {
-	subject   string
-	coordOnly bool
-	collect   func(snap store.Snapshot, events []store.Event, recipient string) (string, []string, int64, int64, int)
-}
-
-var subjectTable_internal = []subjectSpec_internal{
-	{SubjectDeal, false, collectDeals_internal},
-	{SubjectWithdrawn, false, collectWithdrawn_internal},
-	{SubjectNeedsYou, true, collectNeedsYou_internal},
-	{SubjectLanded, true, collectLanded_internal},
-	{SubjectStreamLanded, true, collectStreamLanded_internal},
-}
-
 func (e *Edge) BuildRecipientMessages(snap store.Snapshot, events []store.Event, recipient string) []Message {
 	cursor := snap.Cursors[CursorName(recipient)]
 	var accepted []store.Event
@@ -253,12 +249,6 @@ func collectWithdrawn_internal(snap store.Snapshot, events []store.Event, recipi
 	})
 	return fmt.Sprintf("WITHDRAWN: %d card(s) for %s (epoch %d)", len(entries), recipient, epoch), entries, minSeq, maxSeq, epoch
 }
-
-type judgementGroup_internal struct {
-	key   string
-	items []store.Judgement
-}
-
 func collectNeedsYou_internal(snap store.Snapshot, events []store.Event, _ string) (string, []string, int64, int64, int) {
 	var groups []*judgementGroup_internal
 	byKey := make(map[string]*judgementGroup_internal)
@@ -274,8 +264,7 @@ func collectNeedsYou_internal(snap store.Snapshot, events []store.Event, _ strin
 			g, ok := byKey[k]
 			if !ok {
 				g = &judgementGroup_internal{key: k}
-				byKey[k] = g
-				groups = append(groups, g)
+				byKey[k], groups = g, append(groups, g)
 			}
 			g.items = append(g.items, j)
 			minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
@@ -290,9 +279,9 @@ func collectNeedsYou_internal(snap store.Snapshot, events []store.Event, _ strin
 }
 func formatJudgementGroup_internal(g *judgementGroup_internal) string {
 	first := g.items[0]
-	ids := make([]string, 0, len(g.items))
-	for _, item := range g.items {
-		ids = append(ids, item.ID)
+	ids := make([]string, len(g.items))
+	for i, item := range g.items {
+		ids[i] = item.ID
 	}
 	due := "none"
 	if !first.Deadline.IsZero() {
@@ -302,8 +291,7 @@ func formatJudgementGroup_internal(g *judgementGroup_internal) string {
 	if !strings.HasPrefix(cmd, "nova-sprint judge ") {
 		cmd = fmt.Sprintf("nova-sprint judge %s <choice> --reason \"<why>\"", first.ID)
 	}
-	head := fmt.Sprintf("NEEDS YOU judgement=%s group=%s n=%d size=%d ids=%s kind=%s about=%s due=%s",
-		first.ID, g.key, len(g.items), len(g.items), strings.Join(ids, ","), first.Kind, first.About, due)
+	head := fmt.Sprintf("NEEDS YOU judgement=%s group=%s n=%d size=%d ids=%s kind=%s about=%s due=%s", first.ID, g.key, len(g.items), len(g.items), strings.Join(ids, ","), first.Kind, first.About, due)
 	return fmt.Sprintf("%s\nquestion: %q\nrun: %s", head, TruncateField(first.Question, first.ID), cmd)
 }
 func collectLanded_internal(snap store.Snapshot, events []store.Event, _ string) (string, []string, int64, int64, int) {
@@ -316,23 +304,20 @@ func collectLanded_internal(snap store.Snapshot, events []store.Event, _ string)
 	return fmt.Sprintf("LANDED: %d card(s) (epoch %d)", len(entries), epoch), entries, minSeq, maxSeq, epoch
 }
 func collectStreamLanded_internal(snap store.Snapshot, events []store.Event, _ string) (string, []string, int64, int64, int) {
-	var streams []string
+	var streams, entries []string
 	seenStream := make(map[string]bool)
 	var minSeq, maxSeq int64
 	epoch := snap.Epoch
 	for _, ev := range events {
 		for _, id := range slices.Sorted(maps.Keys(ev.After.Cards)) {
-			c := ev.After.Cards[id]
-			if (c.Kind == "producer" || c.Kind == "sentinel") && c.State == "landed" && !seenStream[c.Stream] {
-				seenStream[c.Stream] = true
-				streams = append(streams, c.Stream)
+			if c := ev.After.Cards[id]; (c.Kind == "producer" || c.Kind == "sentinel") && c.State == "landed" && !seenStream[c.Stream] {
+				seenStream[c.Stream], streams = true, append(streams, c.Stream)
 				minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
 				epoch = cmp.Or(ev.Epoch, epoch)
 			}
 		}
 	}
 	slices.Sort(streams)
-	var entries []string
 	for _, sName := range streams {
 		if count, lastHead, allLanded := streamCompletion_internal(snap, sName); allLanded && count > 0 {
 			entries = append(entries, fmt.Sprintf("STREAM LANDED stream=%s base=%s head=%s cards=%d\nrun: nova-sprint show %s --stitch", sName, snap.Streams[sName].Base, lastHead, count, sName))
@@ -343,15 +328,12 @@ func collectStreamLanded_internal(snap store.Snapshot, events []store.Event, _ s
 func streamCompletion_internal(snap store.Snapshot, streamName string) (int, string, bool) {
 	count, lastHead := 0, ""
 	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
-		c := snap.Cards[id]
-		if c.Stream != streamName || (c.Kind != "producer" && c.Kind != "sentinel") {
-			continue
+		if c := snap.Cards[id]; c.Stream == streamName && (c.Kind == "producer" || c.Kind == "sentinel") {
+			if c.State != "landed" {
+				return 0, "", false
+			}
+			count, lastHead = count+1, cmp.Or(c.Head, lastHead)
 		}
-		if c.State != "landed" {
-			return 0, "", false
-		}
-		count++
-		lastHead = cmp.Or(c.Head, lastHead)
 	}
 	return count, lastHead, count > 0
 }
@@ -389,10 +371,7 @@ func updateSeqBounds_internal(minSeq, maxSeq, seq int64) (int64, int64) {
 func maxAcceptedSeq_internal(events []store.Event, curSeq int64) (int64, bool) {
 	maxSeq, hasDomain := curSeq, false
 	for _, ev := range events {
-		if ev.Accepted {
-			maxSeq = max(maxSeq, ev.Seq)
-			hasDomain = hasDomain || ev.Kind != "cursor"
-		}
+		maxSeq, hasDomain = max(maxSeq, ev.Seq), hasDomain || ev.Kind != "cursor"
 	}
 	return maxSeq, hasDomain
 }
@@ -410,23 +389,24 @@ func (e *Edge) pushWindow_internal(ctx context.Context, st store.Store, snap *st
 	cursorKey := CursorName(recipient)
 	curSeq, win := snap.Cursors[cursorKey], cmp.Or(e.window, store.MaxEvents)
 	events, err := st.Events(ctx, curSeq, win)
-	if err != nil {
-		return nil, false, fmt.Errorf("bus push %s: read events after %d: %w", recipient, curSeq, err)
-	}
-	if len(events) == 0 {
+	if err != nil || len(events) == 0 {
+		if err != nil {
+			return nil, false, fmt.Errorf("bus push %s: read events after %d: %w", recipient, curSeq, err)
+		}
 		return nil, false, nil
 	}
 	windowMax, hasDomain := maxAcceptedSeq_internal(events, curSeq)
 	snap.Cursors[cursorKey] = curSeq
 	msgs := e.BuildRecipientMessages(*snap, events, recipient)
-	deliv, nextSeq, sendErr := e.sendWindow_internal(ctx, msgs, curSeq, windowMax, hasDomain || len(events) == win)
+	hasLater := len(events) == win && (snap.Seq == 0 || windowMax < snap.Seq)
+	deliv, nextSeq, sendErr := e.sendWindow_internal(ctx, msgs, curSeq, windowMax, hasDomain || hasLater)
 	if nextSeq > curSeq {
 		if advErr := advanceCursor_internal(ctx, st, snap.Epoch, recipient, nextSeq, opIDPrefix, now); advErr != nil {
 			return deliv, false, advErr
 		}
 		snap.Cursors[cursorKey] = nextSeq
 	}
-	return deliv, sendErr == nil && len(events) == win, sendErr
+	return deliv, sendErr == nil && hasLater, sendErr
 }
 func (e *Edge) sendWindow_internal(ctx context.Context, msgs []Message, curSeq, windowMax int64, advanceEmpty bool) ([]Delivered, int64, error) {
 	if len(msgs) == 0 {
@@ -458,20 +438,22 @@ func advanceCursor_internal(ctx context.Context, st store.Store, epoch int, reci
 		return fmt.Errorf("bus push %s: advance cursor to %d: %w", recipient, seq, err)
 	case !rec.Accepted:
 		return fmt.Errorf("bus push %s: cursor write to %d refused: %s", recipient, seq, rec.Reason)
+	default:
+		return nil
 	}
-	return nil
 }
 func (e *Edge) PushTick(ctx context.Context, st store.Store, opIDPrefix string, now time.Time) ([]Delivered, error) {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("bus push tick: snapshot: %w", err)
 	}
-	recipients := make([]string, 0, len(snap.Rows)+1)
-	seen := make(map[string]bool)
+	recipients, seen := make([]string, 0, len(snap.Rows)+1), make(map[string]bool)
 	for name := range snap.Rows {
-		recipients, seen[name] = append(recipients, name), true
+		if isRecipientHooked_internal(snap, name, e.requireHooked) {
+			recipients, seen[name] = append(recipients, name), true
+		}
 	}
-	if e.coordinator != "" && !seen[e.coordinator] {
+	if e.coordinator != "" && !seen[e.coordinator] && isRecipientHooked_internal(snap, e.coordinator, e.requireHooked) {
 		recipients = append(recipients, e.coordinator)
 	}
 	slices.Sort(recipients)
@@ -479,10 +461,15 @@ func (e *Edge) PushTick(ctx context.Context, st store.Store, opIDPrefix string, 
 	var errs []error
 	for _, r := range recipients {
 		deliv, pushErr := e.PushRecipient(ctx, st, snap, r, opIDPrefix, now)
-		all = append(all, deliv...)
-		if pushErr != nil {
-			errs = append(errs, pushErr)
-		}
+		all, errs = append(all, deliv...), append(errs, pushErr)
 	}
 	return all, errors.Join(errs...)
+}
+func isRecipientHooked_internal(snap store.Snapshot, name string, requireHooked bool) bool {
+	hasSessions := requireHooked
+	for _, r := range snap.Rows {
+		hasSessions = hasSessions || r.Session != ""
+	}
+	r, ok := snap.Rows[name]
+	return (!ok && !requireHooked) || (ok && r.State == "up" && (!hasSessions || r.Session != ""))
 }

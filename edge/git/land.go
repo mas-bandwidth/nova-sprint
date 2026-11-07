@@ -29,10 +29,11 @@ const (
 
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base, Mode string
-	Heads, After                      []string
+	Heads, After, RemoteHosts         []string
 	Ledgers                           []LedgerRule
 	RequirePR, BisectOnRed            bool
 	PassedSHAs, PassedTrees           map[string]bool
+	Exec                              edge.Exec
 }
 type LandResult struct {
 	Outcome                                                      LandOutcome
@@ -51,7 +52,15 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 			return LandResult{}, err
 		}
 	}
-	if strings.EqualFold(strings.TrimSpace(req.Mode), "hand") || (fg == nil && strings.TrimSpace(req.Repo) != "") {
+	if len(req.PassedTrees) > 0 {
+		req.PassedTrees = nil
+	}
+	if len(req.RemoteHosts) > 0 {
+		if _, err := RunRemoteLandStep(ctx, req.Exec, req.RemoteHosts, DefaultSSHConnectTimeoutSec, DefaultRebaseTimeout, "--stream", req.Stream, "--base", req.Base); err != nil {
+			return LandResult{Outcome: OutcomeNoLandingHost, Reason: err.Error()}, err
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(req.Mode), "hand") || fg == nil {
 		return LandResult{}, fmt.Errorf("land refused: stream %s has no forge gate configured (use stream set --mode hand and land by hand)", req.Stream)
 	}
 	baseRef, streamRef := "refs/heads/"+req.Base, StreamRef(req.Stream)
@@ -129,7 +138,7 @@ func mergeAndPushStream_internal(ctx context.Context, g Git, req LandRequest, on
 }
 func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseTip, streamRef string, merged MergeResult) (int, LandResult, bool, error) {
 	var prNum int
-	if req.RequirePR && fg != nil {
+	if req.RequirePR {
 		headBranch := StreamBranch(req.Stream)
 		pr, ok, err := fg.PR(ctx, req.Repo, headBranch, req.Base)
 		if err == nil && !ok {
@@ -142,9 +151,6 @@ func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req La
 	}
 	if len(req.Heads) == 1 && req.PassedSHAs[merged.SHA] {
 		return prNum, LandResult{ReusedCI: true}, false, nil
-	}
-	if fg == nil {
-		return prNum, LandResult{}, false, nil
 	}
 	rollups, err := fg.Checks(ctx, req.Repo, []string{merged.SHA})
 	if err != nil {
@@ -173,7 +179,7 @@ func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req La
 func classifyForgeErr_internal(err error, baseTip, sha string) LandResult {
 	return LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: sha, Reason: err.Error()}
 }
-func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseRef, streamRef, baseTip string, merged MergeResult, _ int, reusedCI bool) (LandResult, error) {
+func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseRef, streamRef, baseTip string, merged MergeResult, prNum int, reusedCI bool) (LandResult, error) {
 	curBase, ok, err := g.LsRemote(ctx, req.RepoDir, baseRef)
 	if err != nil || !ok {
 		return LandResult{}, fmt.Errorf("land: ls-remote %s: %w", baseRef, err)
@@ -186,6 +192,11 @@ func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req Land
 			return remRes, err
 		}
 		baseTip, remerged = curBase, true
+	}
+	if req.RequirePR && prNum > 0 {
+		if err := fg.Merge(ctx, req.Repo, prNum, merged.SHA, req.Base); err != nil {
+			return LandResult{Outcome: OutcomePushRefused, BaseTip: baseTip, GatedSHA: merged.SHA, Remerged: remerged, Reason: err.Error()}, nil
+		}
 	}
 	if err := g.Push(ctx, req.RepoDir, merged.SHA, baseRef, baseTip); err != nil {
 		if errors.Is(err, ErrPushRefused) {
@@ -214,9 +225,6 @@ func remergeOnMovedBase_internal(ctx context.Context, g Git, fg forge.Forge, req
 	if err != nil || done {
 		res.Remerged = true
 		return merged, res, true, err
-	}
-	if fg == nil {
-		return merged, LandResult{Remerged: true}, false, nil
 	}
 	rollups, err := fg.Checks(ctx, req.Repo, []string{merged.SHA})
 	if err != nil {

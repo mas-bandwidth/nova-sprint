@@ -53,7 +53,7 @@ func TestBreakLandResurrectsRewoundBase(t *testing.T) {
 	g := &rewindBeforeBasePush_internal{Client: New(Config{}), baseRef: "refs/heads/v2", before: func() {
 		runGit(workDir, "push", "--force", "origin", b0+":refs/heads/v2")
 	}}
-	res, err := LandPass(ctx, g, nil, LandRequest{RepoDir: lander, Stream: "s1", Base: "v2", Heads: []string{c1, c2}})
+	res, err := LandPass(ctx, g, &fakeForge_internal{allGreen: true}, LandRequest{RepoDir: lander, Stream: "s1", Base: "v2", Heads: []string{c1, c2}})
 	if !g.fired {
 		t.Fatalf("base push never reached: %+v err=%v", res, err)
 	}
@@ -88,7 +88,7 @@ func TestBreakLandDeletedCardBranchStillLands(t *testing.T) {
 	runGit(originDir, "reflog", "expire", "--expire=now", "--all")
 	runGit(originDir, "gc", "--prune=now", "--quiet")
 
-	res, err := LandPass(ctx, New(Config{}), nil, LandRequest{RepoDir: lander, Stream: "s1", Base: "v2", Heads: []string{c1}})
+	res, err := LandPass(ctx, New(Config{}), &fakeForge_internal{allGreen: true}, LandRequest{RepoDir: lander, Stream: "s1", Base: "v2", Heads: []string{c1}})
 	if err != nil {
 		t.Fatalf("LandPass: %v", err)
 	}

@@ -43,7 +43,6 @@ TraceAction(k) ==
        [] a = "Rebase"    -> Rebase(c)
        [] a = "Conflict"  -> Conflict(c)
        [] a = "Push"      -> Push(c)
-       [] a = "CIReady"   -> CIReady(c)
        [] a = "Report"    -> Report(c)
        [] a = "ReplyLost" -> ReplyLost(c)
        [] a = "Clean"     -> Clean(c)
