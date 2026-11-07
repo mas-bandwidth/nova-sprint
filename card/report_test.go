@@ -10,13 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// taken is p1 working on r1 with p1.w1 taken and not yet reported.
+// taken is p1 working on r1 with p1.w1 in hand and not yet reported.
 func taken(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume(workID("p1", w.card("p1").Attempt), Take{Row: "r1"})
 	return w
 }
 
@@ -101,7 +100,6 @@ func TestReportPlanReadLeavesTheProducer(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, read)
-	w.consume(read, Take{Row: "r2"})
 	before := w.card("p1")
 	plan, r := w.reportPlan(read, Report{Row: "r2", Result: "fix", Head: before.Head, Reason: "a hole"})
 	require.Nil(t, r)

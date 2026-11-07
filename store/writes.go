@@ -213,7 +213,7 @@ func (w *work) addCard(v PutCard) (string, error) {
 		return fmt.Sprintf("card %s is a sentinel; a sentinel has no brief", v.ID), nil
 	}
 	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Attempt: v.Attempt, Score: v.Score, Needs: normSet(v.Needs), After: normSet(v.After), Brief: v.Brief, Priority: cmp.Or(v.Priority, "normal"),
-		Holder: v.Holder, Tier: v.Tier, Paths: normList(v.Paths), DoneWhen: normList(v.DoneWhen), Prose: v.Prose, Review: v.Review, Finding: v.Finding}
+		Holder: v.Holder, Tier: v.Tier, Paths: normList(v.Paths), DoneWhen: normList(v.DoneWhen), Prose: v.Prose, Review: v.Review, Finding: v.Finding, Model: v.Model}
 	if c.Priority != "normal" {
 		if r := producersOnly(c); r != "" {
 			return r, nil
@@ -224,6 +224,9 @@ func (w *work) addCard(v PutCard) (string, error) {
 	}
 	if v.Finding != "" && v.Kind != "work" {
 		return fmt.Sprintf("card %s is a %s; only a work consumer is cut with a finding (a producer's is set by SetCardFinding)", v.ID, v.Kind), nil
+	}
+	if v.Model != "" && !consumer(v.Kind) {
+		return fmt.Sprintf("card %s is a %s; only a consumer is cut with a model (the model its deal named)", v.ID, v.Kind), nil
 	}
 	if v.Review != 0 && v.Kind != "read" {
 		return fmt.Sprintf("card %s is a %s; only a read consumer is cut at a review (a producer's starts at 0 and is raised by SetCardReview)", v.ID, v.Kind), nil

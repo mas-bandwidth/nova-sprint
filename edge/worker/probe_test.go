@@ -310,21 +310,22 @@ func TestSprintVerbsRunDirectly(t *testing.T) {
 	}
 }
 
-// Take: a bench's receipt carries the policy's candidates; the job runs the
-// first the probe proved, and none proved is a fault naming them.
-func TestTakeRunsAProvedCandidateOrFaults(t *testing.T) {
+// Take: a receipt carries the one model its deal named (defect 57); the job
+// runs it, and one the probe did not prove (when it proved any) is a fault
+// naming it and the fix.
+func TestTakeRunsTheDealsModelOrFaults(t *testing.T) {
 	t.Parallel()
 	r := probeRunner_internal(t, &probeSprint{}, &fakeWall{}, nil, nil)
+	if m, err := r.chooseModel_internal("opencode", TakeInfo{Tier: "pro", Model: "inception/mercury-3"}); err != nil || m != "inception/mercury-3" {
+		t.Fatalf("no probe yet: the deal's model as it is: %q %v", m, err)
+	}
 	r.served["inception/mercury-3"] = true
-	m, err := r.chooseModel_internal("opencode", TakeInfo{Tier: "pro", Models: []string{"anthropic/sonnet", "inception/mercury-3"}})
+	m, err := r.chooseModel_internal("opencode", TakeInfo{Tier: "pro", Model: "inception/mercury-3"})
 	if err != nil || m != "inception/mercury-3" {
 		t.Fatalf("model %q err %v", m, err)
 	}
-	if _, err := r.chooseModel_internal("opencode", TakeInfo{Tier: "heavy", Models: []string{"anthropic/opus"}}); err == nil || !strings.Contains(err.Error(), "serves none of the policy's models for tier heavy (anthropic/opus)") {
-		t.Fatalf("no proved candidate: %v", err)
-	}
-	if m, err := r.chooseModel_internal("opencode", TakeInfo{Model: "m-friend", Models: []string{"x/y"}}); err != nil || m != "m-friend" {
-		t.Fatalf("a receipt's own model is run as it is: %q %v", m, err)
+	if _, err := r.chooseModel_internal("opencode", TakeInfo{Tier: "heavy", Model: "anthropic/opus"}); err == nil || !strings.Contains(err.Error(), "does not serve anthropic/opus, the model the deal named for tier heavy (its probe proved inception/mercury-3)") {
+		t.Fatalf("an unproved model: %v", err)
 	}
 }
 

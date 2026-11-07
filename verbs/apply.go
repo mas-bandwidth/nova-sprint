@@ -85,9 +85,10 @@ func (e *Engine) answers(ctx context.Context, snap store.Snapshot) (policy.Answe
 }
 
 // tierModels are the models row may run, by tier it serves: a friend's own
-// model at each of its tiers; a bench's, the catalog's candidates for the
-// tier in provider/model form (policy.Catalog.ForTier), of which its
-// harness runs the first it serves. A tier with none is an empty list.
+// model at each of its tiers; a bench's, the one the deal names for the
+// tier (the catalog's bench model, policy.Catalog.BenchModel), which the
+// probe proves its harness serves. A tier with none is an empty list (no
+// bench deal is made for it).
 func tierModels(ro roster.Roster, row string, cat policy.Catalog) map[string][]string {
 	out := map[string][]string{}
 	if k, ok := ro.Kin[row]; ok {
@@ -97,7 +98,7 @@ func tierModels(ro roster.Roster, row string, cat policy.Catalog) map[string][]s
 		return out
 	}
 	for _, t := range ro.Workers[row].Tiers {
-		out[t] = nonNil(cat.ForTier(t))
+		out[t] = nonNil(slices.DeleteFunc([]string{cat.BenchModel(t)}, func(m string) bool { return m == "" }))
 	}
 	return out
 }

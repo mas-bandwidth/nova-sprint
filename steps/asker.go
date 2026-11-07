@@ -87,11 +87,15 @@ type Answers struct {
 	Limits   *Limits
 	Timeouts *Timeouts
 	Failed   map[string]string // question -> why; "*" when the budget was spent
+	Models   map[string]string // tier -> the model a bench runs (the catalog's bench key); none: no bench deal
+	NoDeal   string            // layer 6's gate: why nothing is dealt this tick ("" deals; model.go)
 }
 
-// WidthAnswer is width(row): how many the row works (at most its width) and
-// how many it queues ahead (at most 4 x width).
-type WidthAnswer struct{ Work, Ahead int }
+// WidthAnswer is width(row): how many the row works at once, at most its
+// width. There is no queue ahead of it: a dealt card is in the row's hand
+// (defect 52), so the deal fills a row to Work and no further; policy's
+// "ahead" is read by no step since.
+type WidthAnswer struct{ Work int }
 
 // LandingAnswer is landing(stream): backed up (rung 2) at BackedUp merging
 // heads waiting, flowing again at Flowing; CIWait the seconds a gated sha
@@ -122,9 +126,16 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // number marked there). EscalateAfter and FrontierAfter are the bounces at
 // which a work consumer is dealt one rank up and to the top rank (guesses,
 // LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
-// (LAYER-3 "Retire and fail limits", 3, unmeasured).
+// (LAYER-3 "Retire and fail limits", 3, unmeasured). NudgeAfter and
+// UnackedAfter are the seconds after a deal at which an unacknowledged card
+// is nudged each tick and judged (LAYER-3 "In hand"; the human's numbers,
+// 2026-11-07, owed to policy's timeouts); UndealtAfter is the seconds a
+// producer may stay ready with a serving row with room before it is judged
+// (more than one one-second tick; LAYER-3 "Undealt").
 type Defaults struct {
 	EscalateAfter, FrontierAfter int
+	NudgeAfter, UnackedAfter     int
+	UndealtAfter                 int
 	Reads                        int
 	FlapLimit                    int
 	IdleFloor, IdleCeiling       float64
@@ -141,7 +152,7 @@ type Defaults struct {
 // section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
 // guesses, marked there.
 var Engine = Defaults{
-	EscalateAfter: 2, FrontierAfter: 4, Reads: 1, FlapLimit: 3,
+	EscalateAfter: 2, FrontierAfter: 4, NudgeAfter: 10, UnackedAfter: 60, UndealtAfter: 2, Reads: 1, FlapLimit: 3,
 	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
 	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
 	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, BaseRegate: []int{120, 300}},
@@ -264,17 +275,16 @@ func (o *oracle) verdict(q VerdictQuestion) string {
 	return "yes"
 }
 
-// width is width(row): work at most the width, ahead at most 4 x width.
-// Default: work = width, ahead = width (LPM D21: 2 x width held).
+// width is width(row): work at most the width. Default: work = width.
 func (o *oracle) width(r RowFacts) WidthAnswer {
 	w, ok := o.a.Width[r.Name]
 	if o.usable("width", ok) {
-		if w.Work >= 0 && w.Work <= r.Width && w.Ahead >= 0 && w.Ahead <= 4*r.Width {
+		if w.Work >= 0 && w.Work <= r.Width {
 			return w
 		}
 		o.refuse("width")
 	}
-	return WidthAnswer{Work: r.Width, Ahead: r.Width}
+	return WidthAnswer{Work: r.Width}
 }
 
 // landing is landing(stream): 0 <= flowing < backed_up <= 1000, a CI wait

@@ -107,8 +107,7 @@ func pushScratchBranch_internal(t *testing.T, ctx context.Context, c *Client, re
 	runGit := func(args ...string) string {
 		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = tmp
-		env, _ := c.env_internal()
-		cmd.Env = append(append(os.Environ(), env...),
+		cmd.Env = append(c.env_internal(),
 			"GIT_AUTHOR_NAME=Rowan Scratch",
 			"GIT_AUTHOR_EMAIL=rowan@mas-bandwidth.com",
 			"GIT_COMMITTER_NAME=Rowan Scratch",

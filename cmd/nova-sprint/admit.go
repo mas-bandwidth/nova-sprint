@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
@@ -40,7 +42,8 @@ var actingPermissions = []string{"ADMIN", "MAINTAIN", "WRITE"}
 
 func (f hostForge) gh(ctx context.Context, args ...string) (string, error) {
 	argv := append([]string{"gh"}, args...)
-	res, err := f.exec.Run(ctx, edge.Cmd{Argv: argv, Env: []string{"GH_PROMPT_DISABLED=1", "NO_COLOR=1"}, Timeout: 30 * time.Second})
+	// As the run's forge: the host's login, never a credential in the environment.
+	res, err := f.exec.Run(ctx, edge.Cmd{Argv: argv, Env: append(forge.HostEnv(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1"), CleanEnv: true, Timeout: 30 * time.Second})
 	if err != nil || !res.OK() {
 		return "", edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	}
@@ -77,6 +80,28 @@ func (f hostForge) PR(ctx context.Context, repo string, n int) (string, bool, er
 		return "", false, fmt.Errorf("gh pr view %d -R %s: %s", n, repo, edge.ParseFailure(err, []byte(out)))
 	}
 	return strings.ToLower(v.HeadRefOid), v.State == "MERGED", nil
+}
+
+// RequiredChecks are the status checks the base branch of repo requires, from
+// the two places a repository sets them: the branch's protection and the
+// rulesets that apply to it. Both are readable with read access; either
+// failing is an error (a half read would hide a requirement).
+func (f hostForge) RequiredChecks(ctx context.Context, repo, branch string) ([]string, error) {
+	prot, err := f.gh(ctx, "api", "repos/"+repo+"/branches/"+branch, "--jq", ".protection.required_status_checks.contexts // [] | .[]")
+	if err != nil {
+		return nil, fmt.Errorf("the protection of %s's %s: %w", repo, branch, err)
+	}
+	rules, err := f.gh(ctx, "api", "repos/"+repo+"/rules/branches/"+branch, "--jq", `.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context`)
+	if err != nil {
+		return nil, fmt.Errorf("the rulesets of %s's %s: %w", repo, branch, err)
+	}
+	var out []string
+	for _, line := range strings.Split(prot+"\n"+rules, "\n") {
+		if line = strings.TrimSpace(line); line != "" && !slices.Contains(out, line) {
+			out = append(out, line)
+		}
+	}
+	return out, nil
 }
 
 func orNone(s string) string {

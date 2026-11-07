@@ -60,7 +60,7 @@ func sweepSteps(b *bk) []cold4Step {
 		if !consumer(c.Kind) {
 			continue
 		}
-		for _, ev := range []Event{Take{}, Report{Result: "ok", Head: hB}, Report{Result: "ok", Head: c.Head}, Report{Result: "fail", Head: hD}, Report{Result: "fault"}, Report{Result: "fix", Head: c.Head},
+		for _, ev := range []Event{Report{Result: "ok", Head: hB}, Report{Result: "ok", Head: c.Head}, Report{Result: "fail", Head: hD}, Report{Result: "fault"}, Report{Result: "fix", Head: c.Head},
 			Withdraw{Reason: "silent"}, Withdraw{Reason: "preempted by blocker x"}, Withdraw{Reason: "silent", Head: hE}} {
 			add(b.C(id, ev))
 			if _, ok := ev.(Report); ok {

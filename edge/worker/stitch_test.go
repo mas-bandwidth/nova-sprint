@@ -97,6 +97,8 @@ func (s *loopSprint) Report(_ context.Context, req ReportRequest) (store.Receipt
 	if n := len(s.reports); n <= len(s.reportErrs) && s.reportErrs[n-1] != nil {
 		return store.Receipt{}, s.reportErrs[n-1]
 	}
+	// as the store: an accepted report takes the consumer out of the hand
+	s.next.Working = slices.DeleteFunc(slices.Clone(s.next.Working), func(c ConsumerSummary) bool { return c.ID == req.Consumer })
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
 func (s *loopSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
@@ -134,7 +136,7 @@ func loopRunner_internal(t *testing.T, sp SprintClient, hook *fakeWakeHook, wall
 }
 
 func readyRead_internal() NextResponse {
-	return NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1, Harness: "script", Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}
+	return NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1, Harness: "script", Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}
 }
 
 var okReadReceipt_internal = TakeInfo{Producer: "p1", Kind: "read", Stream: "s1", Tier: "flash", Epoch: 3, Attempt: 1, Head: strings.Repeat("a", 40), Model: "m1", Deadline: 900}
@@ -320,9 +322,6 @@ func TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, "jobs", "p1.r1")); !os.IsNotExist(err) {
 			t.Fatalf("%s: the acknowledged report left its job directory: %v", name, err)
 		}
-		sp.mu.Lock()
-		sp.next.Working = nil // the sprint took the report: the consumer left working
-		sp.mu.Unlock()
 		_ = r.StepRow(context.Background(), "vision.ds")
 		if n := len(sp.reported()); n != 3*tc.perPass+1 {
 			t.Fatalf("%s: %d sends, want %d", name, n, 3*tc.perPass+1)

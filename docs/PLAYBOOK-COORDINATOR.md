@@ -89,7 +89,19 @@ What each judgement kind asks of you, and where to look before you choose:
 
 - `blocked`: a card bounced past policy's limit and sits in `blocked` until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
-  choose `unblock`, or `drop`.
+  choose `unblock`, or `drop`. A `blocked` judgement that says the card faulted for a missing
+  route or device names the row and what is missing (its reason starts `missing-route: <route>`,
+  the route's name as a brief declares it with `NEEDS-ROUTE: <route>`): the card is never dealt
+  again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
+  that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
+  `unblock`; or `drop` it.
+- `unacked`: a card has been in a row's hand a minute and the row has not acknowledged it
+  (`take`), though it was nudged every tick. Reach the row on the bus; if its session is gone,
+  `nova-sprint release <card>@<gen> --as <you> --reason "<why>"` deals the card again.
+- `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
+  than a tick. The message names the row, the card and the cause: the tick's budget spent before
+  it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the
+  project's own tracker (section 11).
 - `land`: a merging card did not land automatically (red CI, no CI within the wait, a conflict,
   a refused merge, a PR that could not be opened, a branch that could not be pushed, a branch
   missing or moved, a stream landed by hand, a fault). The question carries the facts: the
@@ -189,7 +201,9 @@ The card id is the file's name without `.md`. A brief is:
    - `PRIORITY: <low|normal|high|critical|blocker>`: optional, normal by default, written only
      when someone asked for that level.
    - `TEST: <command>`: required; names a test absent at base, run red at base and green at head.
-   - `DONE-WHEN: <command>`: required, one per line; each is a checkable command, run at the base
+   - `DONE-WHEN: <command>`: required, one per line; each is one checkable command (a program and
+     its arguments, run with no shell: wrap a pipe, `&&`, `;` or a redirection in `sh -c '...'`),
+     run at the base
      before the deal, and a gate that would stay red after a correct fix is refused. Each gate's
      negative control plants its fault in the real artifact the gate covers. A gate names the
      facts it needs (an OS, a tool), never a host.
@@ -266,7 +280,8 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    which prints the dependants it would fail; then add `--waive` (dependants go on without it),
    `--relink <other>` (dependants wait on a replacement), or `--expect <dependant-ids>` to fail
    them as printed, and run it without `--dry-run`. It prints `DROP applied`. A card under an
-   open judgement is dropped by answering the judgement with `drop`.
+   open judgement is dropped by answering the judgement with `drop`. A drop releases the card's live
+   consumers itself.
 
 ## 7. Running rows: friends and the fleet
 
@@ -291,8 +306,15 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `RELEASED row=<row> consumers=<n>`; every card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
-   prints `HOLD applied`. A hold changes future deals only: it never takes back live work and
-   never stops landing. `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
+   prints `HOLD applied`. A hold of a row stops new deals to it and takes back only the cards it
+   has not acknowledged; work the row has acknowledged stays, and a hold never stops landing.
+   `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
+   To hold one card (a wrong brief, a question for the human), name the producer:
+   `nova-sprint hold <card> --reason "<why>"`. The card goes to `blocked` with the reason
+   `held: <why>`, its card in a row's hand is withdrawn in the same move (the branch kept), and
+   it is never dropped; the board lists it under its stream with that reason.
+   `nova-sprint unhold <card> --reason "<why>"` sends it back to `waiting`, and it is dealt again
+   when its needs have landed. A consumer id is refused with its producer's id.
 6. Coach for first-pass acceptance. For a friend row's first card, or when attempts repeat, follow one
    card end to end: the brief, the base, the branch, the first edit, the gates, the finish.
    Classify a failure as tool or version, access or route, brief or scope, gate or bench, report,
@@ -308,8 +330,10 @@ card, how many reads, the verdict, widths at or below config, limits, the landin
 the stitch, prices. It is a Starlark file; you change it only when the human asks.
 
 1. `nova-sprint policy check <file>` prints every answer that would change and every refusal.
-2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY SET v<n>` and
-   `next: nova-sprint policy check v<n>`.
+2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY STORED v<n>` and
+   `next: nova-sprint policy check v<n>`. When no policy is active the first set activates it
+   too (`POLICY STORED AND ACTIVE v<n>`). While no policy is active, or the active one fails,
+   the run deals nothing and one `no-policy` judgement on your row says so with the fix.
 3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> answers-changed=<k>`.
 4. A rollback is `policy activate` of an older version; `policy show --list` and `policy diff`
    show what you have.

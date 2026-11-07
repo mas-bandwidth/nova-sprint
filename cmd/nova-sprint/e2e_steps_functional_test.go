@@ -30,7 +30,7 @@ func (x *e2e) streamAndCard() {
 	x.tr.note("the stream: the local origin, landed through the forge")
 	x.c.must([]string{"stream", "add", "s", "--repo", x.origin, "--forge", "github", "--as", "carol"}, "STREAM s", "forge=github")
 	brief := filepath.Join(x.dir, "e2e1.md")
-	text := "tier: pro\nPATHS: e2e.txt\nTEST: test -f e2e.txt\nDONE-WHEN: e2e.txt says done\n\nWrite e2e.txt containing the word done.\n"
+	text := "tier: pro\nPATHS: e2e.txt\nTEST: test -f e2e.txt\nDONE-WHEN: test -f e2e.txt\n\nWrite e2e.txt containing the word done.\n"
 	if err := os.WriteFile(brief, []byte(text), 0o644); err != nil {
 		x.t.Fatal(err)
 	}

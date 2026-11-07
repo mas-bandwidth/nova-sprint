@@ -24,7 +24,8 @@ INVARIANTS = [
     "NeverBelowTier", "CarryFIFO", "EdgeAfterAccepted",
     "OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
-    "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
+    "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
+    "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom"]
 
@@ -55,6 +56,7 @@ REACH = {
     "StepsNeverSplit": ("pre", "a group of a refused op is packed as an op of its own"),
     "StepsNeverStopAcked": ("pre", "a runner's stop ack is consumed"),
     "StepsNeverPolicyJudged": ("pre", "a failed policy answer opens a policy judgement"),
+    "StepsNeverGated": ("pre", "the policy gate opens a no-policy judgement"),
     "StepsNeverResolved": ("deal", "Resolve makes a producer ready"),
     "StepsNeverDealt": ("deal", "the deal starts a producer"),
     "StepsNeverReadAsked": ("deal", "the deal cuts a read"),
@@ -63,12 +65,15 @@ REACH = {
     "StepsNeverEscalated": ("deal", "a bounced producer is dealt one rank up"),
     "StepsNeverNeedReleased": ("deal", "a need lands and its dependant resolves"),
     "StepsNeverCannotRead": ("deal", "a review no row may read opens cannot-read"),
+    "StepsNeverHeldBehind": ("deal", "a producer held behind another on a file opens overlap"),
+    "StepsNeverHandLanded": ("deal", "a store op lands a producer by hand"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
     "StepsNeverLandJudged": ("land", "a result other than landed opens a land judgement"),
     "StepsNeverAfterHeld": ("land", "a landing waits on a queued after target"),
     "StepsNeverCarried": ("burst", "the budget carries inbox items to the next tick"),
+    "StepsNeverUndealt": ("burst", "a producer left ready with room two ticks opens undealt"),
 }
 
 # (name, target, scenario, fault, replacements). A target in PROPERTIES is a
@@ -76,24 +81,38 @@ REACH = {
 WITNESSES = [
     ("StepsDealtTwice", "NeverDealtTwice", "pre",
      "The deal does not skip a blocker the preemption step claimed: one\n"
-     "tick plans the preemption and a plain Start for the same blocker.",
+     "tick plans the preemption and a plain Start for the same blocker.\n"
+     "Since the deal is the take (defect 52) a blocker preempts only when\n"
+     "no row has room, so the deal could not place it either; the second\n"
+     "fault, a preemption that fires with free width, makes the first\n"
+     "reachable, and the Free guard is what then keeps the deal off it.",
      [("LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ Free(p, cl))",
-       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE)   \\* FAULT: was Free(p, cl)", 1)]),
+       "LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = \"blocker\" /\\ V.ps[p].st = \"ready\" /\\ TRUE)   \\* FAULT: was Free(p, cl)", 1),
+      ("  /\\ NoFreeWidth(W, b)\n", "  /\\ TRUE   \\* FAULT 2: was NoFreeWidth(W, b)\n", 1)]),
     ("StepsTwoGroups", "OneGroupPerCard", "land",
      "The land-result step ignores cards already claimed: a result\n"
      "delivered twice plans two groups on one producer in one tick.",
      [("        /\\ PKey(p) \\notin cl\n", "        /\\ TRUE   \\* FAULT: was PKey(p) \\notin cl\n", 1)]),
-    ("StepsWidthOver", "WidthKept", "pre",
-     "The store's take checks the deal's room (width plus ahead) instead\n"
-     "of the width.",
-     [("  /\\ Cardinality(Working(w, w.cs[c].row)) < Width[w.cs[c].row]\n",
-       "  /\\ Cardinality(Working(w, w.cs[c].row)) < Width[w.cs[c].row] + Ahead[w.cs[c].row]   \\* FAULT\n", 1)]),
+    ("StepsWidthOver", "WidthKept", "burst",
+     "The deal does not count the row's load: with the deal the take, a\n"
+     "second producer is dealt to a full row.",
+     [("  /\\ Used(V, r, t) < Width[r]\n",
+       "  /\\ TRUE   \\* FAULT: was Used(V, r, t) < Width[r]\n", 1)]),
+    ("StepsCutReady", "DealIsTake", "pre",
+     "Start cuts its work consumer ready, as before defect 52.",
+     [("StartCut(W, p, r) == [st |-> \"working\", kind |-> \"work\",",
+       "StartCut(W, p, r) == [st |-> \"ready\", kind |-> \"work\",   \\* FAULT: was working\n                     ", 1)]),
+    ("StepsUndealtSilent", "DealtWithinKTicks", "burst",
+     "The tick never opens the undealt judgement: a producer the budget\n"
+     "leaves ready with room tick after tick sits unworked unseen.",
+     [("        /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"} \\cup {p \\in und : rdy[p] + 1 >= UndealtTicks}",
+       "        /\\ ju' = {p \\in ju : V.ps[p].st = \"ready\"}   \\* FAULT: no new undealt judgement", 1)]),
     ("StepsBlockerQueued", "BlockerPreemptsInOneTick", "pre",
      "The preemption step counts queue room (ready plus working under width\n"
      "plus ahead) as free width, so a ready blocker is queued behind full\n"
      "rows instead of preempting.",
      [("NoFreeWidth(W, b) == \\A r \\in ServingOpen(W, b) : Cardinality(Working(W, r)) >= Width[r]",
-       "NoFreeWidth(W, b) == \\A r \\in ServingOpen(W, b) : Cardinality(Load(W, r)) >= Width[r] + Ahead[r]   \\* FAULT", 1)]),
+       "NoFreeWidth(W, b) == \\A r \\in ServingOpen(W, b) : Cardinality(Load(W, r)) >= Width[r] + 1   \\* FAULT", 1)]),
     ("StepsHalfWrites", "GroupWhole", "pre",
      "A refused op is split by halves of writes: the preemption's Withdraw\n"
      "is applied without the blocker's Start.",
@@ -147,10 +166,10 @@ WITNESSES = [
        "stops == UNION {g.req : g \\in UNION {GroupsIn(ops[i]) : i \\in 1..Len(ops)}}   \\* FAULT", 1)]),
     ("StepsReadyOnRoom", "ReadyNeverFlipsWithLoad", "deal",
      "Ready is conditioned on room: Resolve requires an open serving row\n"
-     "with room under width plus ahead.",
+     "with room under width.",
      [("  /\\ ~\\E q \\in Prods : Overlap(p, q) /\\ (W.ps[q].st \\in Started \\cup {\"ready\"} \\/ q \\in extra)\n",
        "  /\\ ~\\E q \\in Prods : Overlap(p, q) /\\ (W.ps[q].st \\in Started \\cup {\"ready\"} \\/ q \\in extra)\n"
-       "  /\\ \\E r \\in ServingOpen(W, p) : Cardinality(Load(W, r)) < Width[r] + Ahead[r]   \\* FAULT\n", 1)]),
+       "  /\\ \\E r \\in ServingOpen(W, p) : Cardinality(Load(W, r)) < Width[r]   \\* FAULT\n", 1)]),
     ("StepsNoOverlapCheck", "NeverOverlapStarted", "deal",
      "Resolve without the overlap check: two producers of one stream with\n"
      "overlapping paths are ready together.",
@@ -189,12 +208,37 @@ WITNESSES = [
      "The victim default is the oldest working consumer, not the youngest.",
      [("VictimFor(W, S) == Youngest(W, S)",
        "VictimFor(W, S) == CHOOSE c \\in S : \\A d \\in S : Pos(W.tko, c) <= Pos(W.tko, d)   \\* FAULT: the oldest, not Youngest(W, S)", 1)]),
-    ("StepsReadyCountedAgainstWidth", "ReadyDealtWhenRoom", "pre",
-     "The deal counts ready consumers against width (a row is dealt only\n"
-     "while ready plus working is under width): a ready producer with room\n"
-     "under width plus ahead waits on takes that need not come.",
-     [("  /\\ Used(V, r, t) < Width[r] + Ahead[r]\n",
-       "  /\\ Used(V, r, t) < Width[r]   \\* FAULT: was Width[r] + Ahead[r]\n", 1)]),
+    ("StepsDealsWithoutPolicy", "NoDealWithoutPolicy", "pre",
+     "The policy gate is ignored: the tick preempts and deals on the\n"
+     "default rows while no active policy answers.",
+     [("         pre  == IF V.pol THEN PreStep(V, a) ELSE NoPlan",
+       "         pre  == PreStep(V, a)   \\* FAULT: was gated on V.pol", 1),
+      ("         dl   == IF V.pol THEN DealStep(V, cl3, a.rows, TRUE) ELSE NoPlan",
+       "         dl   == DealStep(V, cl3, a.rows, TRUE)   \\* FAULT: was gated on V.pol", 1)]),
+    ("StepsResolveOnEvent", "ResolveFromState", "deal",
+     "Resolve is driven by the land step's events, not the state: a\n"
+     "producer with needs resolves only in a tick that consumes its need's\n"
+     "landed result, so a need landed by a store op never releases it.",
+     [("         res  == ResolveFold(V, inb.cl, 1, {})",
+       "         res  == {p \\in ResolveFold(V, inb.cl, 1, {}) :   \\* FAULT: on the event only\n"
+       "                    \\A n \\in Needs[p] : \\E i \\in 1..Len(inbox) :\n"
+       "                      inbox[i].out = \"landed\" /\\ inbox[i].id[3][1] = n}", 1)]),
+    ("StepsGlobOverlaps", "ResolveFromState", "pre",
+     "Overlap counts a glob both cards list (a directory both add to): q\n"
+     "is held behind p on a/* though they name no file in common.",
+     [("Shared(p, q) == {f \\in Paths[p] \\cap Paths[q] : f \\notin Globs}",
+       "Shared(p, q) == Paths[p] \\cap Paths[q]   \\* FAULT: was files only", 1)]),
+    ("StepsHeldUnshown", "HeldBehindShown", "deal",
+     "A producer held behind another on a file opens no judgement: it\n"
+     "sits waiting with nothing saying why.",
+     [("                   \\cup {[kind |-> \"overlap\", about |-> p] : p \\in Held(V, inb.cl, res)}\n",
+       "                   \\cup {}   \\* FAULT: was the overlap judgements\n", 1)]),
+    ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
+     "The deal leaves one slot of each row empty (a row is dealt only\n"
+     "while working is under width less one): a ready producer with room\n"
+     "waits for a slot the deal never fills.",
+     [("  /\\ Used(V, r, t) < Width[r]\n",
+       "  /\\ Used(V, r, t) + 1 < Width[r]   \\* FAULT: was Used(V, r, t) < Width[r]\n", 1)]),
 ]
 
 

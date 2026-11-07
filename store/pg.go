@@ -30,10 +30,11 @@ var schemaSQL string
 // columns but active, and the log (TRUNCATE included)
 // fixed; and the CHECKs that keep every count at 0 or more. There is no
 // upgrade path from version 1: a store at version 1 is refused like any
-// other version. Within version 2 there are two: a store made by round 16's
+// other version. Within version 2 there are three: a store made by round 16's
 // schema (round16Hash) or by round 17's, the one every round to 21 carried
-// (round21Hash), is upgraded by Migrate (round 17's red column, round 22's
-// dropped row columns).
+// (round21Hash), or by round 22's (round22Hash), is upgraded by Migrate
+// (round 17's red column, round 22's dropped row columns, round 23's model
+// column and row heartbeat columns).
 const SchemaVersion = 2
 
 // round16Hash is the schema hash of round 16's schema.sql
@@ -51,6 +52,13 @@ const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f043418
 // transaction, then the new hash is recorded.
 const round21Hash = "cbe47774a69cf22749b6d414e1bc5689104820199313088df41975ef1771d491"
 
+// round22Hash is the schema hash of round 22's schema.sql
+// (testdata/schema-round22.sql): running schema.sql on it adds cards.model
+// (” on every card, with its CHECK; round 23, the model a deal names) and the
+// row heartbeat's four columns of sprint.rows, in Migrate's one transaction,
+// then the new hash is recorded.
+const round22Hash = "eb754483470ba67cfe6aa6c36646c19b4503a2fb10fd0344b3aa2fdff6a15b7e"
+
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.
@@ -64,24 +72,7 @@ var schemaHash = hashSchema(schemaSQL)
 // hash is still of the whole file.
 const createSchema = "CREATE SCHEMA IF NOT EXISTS sprint;"
 
-// rowLoadColumns adds the row heartbeat's five columns (SetRowLoad) to
-// sprint.rows. They are outside schema.sql on purpose: that file is hashed,
-// and a live store made before them must keep its identity and take them on
-// its next Migrate. Everything that applies schema.sql (Migrate, a restore's
-// DDL) applies them after it (fullSchema, schemaObjects); ADD COLUMN IF NOT
-// EXISTS makes a second run a no-op.
-const rowLoadColumns = `ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS load1_centi integer NOT NULL DEFAULT 0 CHECK (load1_centi >= 0),
-    ADD COLUMN IF NOT EXISTS cores integer NOT NULL DEFAULT 0 CHECK (cores >= 0),
-    ADD COLUMN IF NOT EXISTS slots_used integer NOT NULL DEFAULT 0 CHECK (slots_used >= 0),
-    ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0),
-    ADD COLUMN IF NOT EXISTS tiers text NOT NULL DEFAULT ''`
-
-// fullSchema is every DDL statement of a new store: schema.sql, then the
-// columns outside it. schemaObjects is the same without CREATE SCHEMA.
-var (
-	fullSchema    = schemaSQL + "\n" + rowLoadColumns + ";\n"
-	schemaObjects = strings.Replace(schemaSQL, createSchema, "", 1) + "\n" + rowLoadColumns + ";\n"
-)
+var schemaObjects = strings.Replace(schemaSQL, createSchema, "", 1)
 
 // hashSchema strips a -- comment only outside a single-quoted string literal
 // and a double-quoted identifier (a doubled quote closes and reopens, so it
@@ -185,10 +176,10 @@ func (p *PG) Close() { p.pool.Close() }
 // sprint that holds anything but no sprint.meta (not made by nova-sprint):
 // any object of any kind in the namespace, which PostgreSQL records as a
 // pg_depend row on it (a relation, type, function, operator, collation, text
-// search object, operator family, ...). The two other hashes it takes are
-// round16Hash and round21Hash: schema.sql adds cards.red to a round 16
-// store and drops the five configuration columns of sprint.rows from either
-// (round 22), and the new hash is recorded, in the same transaction. When schema sprint already exists it
+// search object, operator family, ...). The other hashes it takes are
+// round16Hash, round21Hash and round22Hash: schema.sql adds cards.red to a round 16
+// store, drops the five configuration columns of sprint.rows from either of the first two
+// (round 22) and adds cards.model and the row heartbeat's columns to all three (round 23), and the new hash is recorded, in the same transaction. When schema sprint already exists it
 // skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
 // on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
@@ -217,7 +208,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
 	}
-	sql := fullSchema
+	sql := schemaSQL
 	if present {
 		sql = schemaObjects // no CREATE SCHEMA: the owner may lack CREATE on the database
 	}

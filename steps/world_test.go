@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -52,6 +53,26 @@ func (w *world) apply(kind string, expect []store.Expect, writes ...store.Write)
 	r, err := w.f.Apply(context.Background(), op)
 	require.NoError(w.t, err, "%s: %+v", kind, op)
 	return r
+}
+
+// ack is a row's take: its acknowledgement of consumer c, in its hand from
+// the deal (defect 52); a cursor, no card move (LAYER-3 "In hand").
+func (w *world) ack(c string) store.Receipt {
+	s := w.snap()
+	return w.apply("take", []store.Expect{store.CardGen{Card: c, Gen: s.Cards[c].Gen}}, store.SetCursor{Name: AckCursor(s.Epoch, c), Seq: max(s.Seq, 1)})
+}
+
+// unacked is the working consumers their rows have not acknowledged, sorted.
+func (w *world) unacked() []string {
+	s := w.snap()
+	var out []string
+	for _, c := range s.Cards {
+		if _, acked := s.Cursors[AckCursor(s.Epoch, c.ID)]; isConsumer(c) && c.State == "working" && !acked {
+			out = append(out, c.ID)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // must applies writes and requires them accepted.

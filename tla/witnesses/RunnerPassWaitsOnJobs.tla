@@ -3,13 +3,22 @@
 (* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md,  *)
 (* Guarantees 7 to 11). Size: 2 consumers, width 2, 1 slot, 1 Crash.       *)
 (*                                                                         *)
+(* The deal is the take (defect 52): both consumers are dealt working, in  *)
+(* the row's hand, at Init; there is no ready state to take from. Take is  *)
+(* the row's acknowledgement (a cursor) and the start of its job, and it   *)
+(* moves no store state.                                                   *)
+(*                                                                         *)
 (* Passes and jobs are separate processes (defect 66, 2026-11-07): pass is *)
-(* the wake loop's pass (idle or planning); it takes dealt cards and ends  *)
-(* whatever its jobs are doing (PassNeverWaitsOnJobs). A job is the rest   *)
-(* of each consumer's actions. Stop is the worker's own stop (defect 73):  *)
-(* each live harness is killed, its job kept at staged (stopped) to be     *)
-(* resumed, never a fault (StopIsNeverAFault). Release is the restart's    *)
-(* no-blame give-back of a card it holds no job directory for.             *)
+(* the wake loop's pass (idle or planning); it acknowledges the cards in   *)
+(* its hand and ends whatever its jobs are doing (PassNeverWaitsOnJobs). A *)
+(* job is the rest of each consumer's actions. Stop is the worker's own    *)
+(* stop (defect 73): each live harness is killed, its job kept at staged   *)
+(* (stopped) to be resumed, never a fault (StopIsNeverAFault). Release is  *)
+(* the restart's no-blame give-back of a job it cannot resume (a job       *)
+(* directory with no receipt): its commits pushed, the consumer withdrawn  *)
+(* with no result and no report, the directory gone; the producer's redeal *)
+(* is a new consumer, the card machine's. A dealt card with no job         *)
+(* directory is no release: the pass acknowledges it and runs it.          *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
@@ -31,7 +40,7 @@ ResIDFor(c) == IF c = "c1" THEN 1 ELSE 2
 PidFor(c) == IF c = "c1" THEN 101 ELSE 102
 
 Init ==
-  /\ storeState = [c \in Consumers |-> "ready"]
+  /\ storeState = [c \in Consumers |-> "working"]
   /\ jobState = [c \in Consumers |-> "none"]
   /\ slotsInUse = 0
   /\ width = Width
@@ -50,13 +59,11 @@ Wake ==
 Take(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
-  /\ pass = "planning"   \* only a pass takes
-  /\ storeState[c] = "ready"
+  /\ pass = "planning"   \* only a pass acknowledges
+  /\ storeState[c] = "working"
   /\ jobState[c] = "none"
-  /\ Cardinality(WorkingSet) < width
-  /\ storeState' = [storeState EXCEPT ![c] = "working"]
   /\ jobState' = [jobState EXCEPT ![c] = "taken"]
-  /\ UNCHANGED <<slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass>>
+  /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env, pass>>
 
 Stage(c) ==
   /\ ~env.crashed
@@ -214,20 +221,24 @@ PassEnd ==
   /\ pass' = "idle"
   /\ UNCHANGED <<storeState, jobState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env>>
 
-\* After a restart, a working card the worker holds no job directory for is
-\* given back with no blame (no outcome, no bounce, no report): ready again.
+\* After a restart, a job the worker cannot resume (its directory holds no
+\* receipt) is given back with no blame: its commits pushed, the consumer
+\* withdrawn with no result (no outcome, no bounce, no report), and its
+\* directory gone once the release is recorded.
 Release(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
   /\ env.crashes > 0
   /\ ~env.released
   /\ storeState[c] = "working"
-  /\ jobState[c] = "taken"
-  /\ ~jobDir[c].exists
-  /\ storeState' = [storeState EXCEPT ![c] = "ready"]
-  /\ jobState' = [jobState EXCEPT ![c] = "none"]
+  /\ jobState[c] \in {"staged", "harvested"}
+  /\ jobDir[c].exists
+  /\ harnessAlive[c] = 0
+  /\ storeState' = [storeState EXCEPT ![c] = "fail"]
+  /\ jobDir' = [jobDir EXCEPT ![c].pushed = TRUE, ![c].exists = FALSE]
+  /\ jobState' = [jobState EXCEPT ![c] = "cleaned"]
   /\ env' = [env EXCEPT !.released = TRUE]
-  /\ UNCHANGED <<slotsInUse, width, jobDir, harnessAlive, appliedOps, pass>>
+  /\ UNCHANGED <<slotsInUse, width, harnessAlive, appliedOps, pass>>
 
 Restart ==
   /\ env.crashed
@@ -277,8 +288,8 @@ Next ==
   \/ Done
 
 \* Take is strongly fair: it is enabled only while a pass plans, and every
-\* pass takes the ready cards it has room for, so a card that stays ready
-\* with room through infinitely many passes is taken (a released card is).
+\* pass acknowledges the cards in its hand with no job yet, so a card that
+\* stays in hand through infinitely many passes is acknowledged.
 FairConsumer(c) ==
   /\ SF_vars(Take(c))
   /\ WF_vars(Stage(c))
@@ -328,8 +339,8 @@ SlotsWithinCapacity ==
   slotsInUse <= MaxSlots
 
 \* Defect 66: a pass can always end, whatever its jobs are doing; so a wake
-\* that arrives while a job runs gets its own pass, and a ready card with
-\* room is taken without waiting for that job.
+\* that arrives while a job runs gets its own pass, and a card dealt into
+\* the hand is acknowledged without waiting for that job.
 PassNeverWaitsOnJobs ==
   (pass = "planning" /\ ~env.crashed) => ENABLED PassEnd
 

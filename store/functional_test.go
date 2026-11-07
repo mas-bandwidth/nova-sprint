@@ -203,6 +203,35 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	assert.Equal(t, "working", h.snap().Cards["u1"].State)
 }
 
+// Round 23: a store made by round 22's schema (round22Hash, a consumer in
+// it) is upgraded by Migrate: cards.model is added (” on the consumer), the
+// new hash is recorded, and a consumer cut after carries its model.
+func TestFunctionalMigrateRound22(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round22.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round22Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
+		"INSERT INTO sprint.rows (name, state, session, role, epoch) VALUES ('w1', 'up', 'sess', 'worker', 1)",
+		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c1', 'producer', 'pro', 's1', 'waiting', 1)",
+		"INSERT INTO sprint.cards (id, kind, \"of\", tier, stream, state, holder, epoch) VALUES ('u1', 'work', 'c1', 'pro', 's1', 'working', 'w1', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round22Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 22}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, "", h.snap().Cards["u1"].Model, "an old consumer has no model")
+	h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "read", ID: "u2", Of: "c1", Stream: "s1", Holder: "w1", Model: "inception/mercury-3"}))
+	assert.Equal(t, "inception/mercury-3", h.snap().Cards["u2"].Model)
+}
+
 func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	t.Parallel()
 	_, p, dsn := pgHarness(t)

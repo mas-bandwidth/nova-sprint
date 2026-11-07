@@ -15,11 +15,15 @@ import (
 // Catalog is what a version's catalog() answers: the models rows may name,
 // by provider, and the harnesses. Version is the policy version it is from
 // (0 the built-in). The row verbs refuse an unknown model or harness with
-// Unknown, naming the version and CatalogFix.
+// Unknown, naming the version and CatalogFix. Bench is the optional "bench"
+// key: the one model a bench runs for each tier, in provider/model form (a
+// harness's model id), each one of the tier's models; the deal names it
+// (defect 57) and a tier it lacks deals to no bench.
 type Catalog struct {
 	Version   int
 	Models    map[string][]Model
 	Harnesses []string
+	Bench     map[string]string
 }
 
 // Model is one model and a tier it serves; a model serving two tiers is two entries.
@@ -63,7 +67,7 @@ func (e *Engine) catalog(ctx context.Context, src source) (Answers, []Failure) {
 
 // clone is c with its own map and slices.
 func (c Catalog) clone() Catalog {
-	out := Catalog{Version: c.Version, Models: make(map[string][]Model, len(c.Models)), Harnesses: slices.Clone(c.Harnesses)}
+	out := Catalog{Version: c.Version, Models: make(map[string][]Model, len(c.Models)), Harnesses: slices.Clone(c.Harnesses), Bench: maps.Clone(c.Bench)}
 	for p, ms := range c.Models {
 		out.Models[p] = slices.Clone(ms)
 	}
@@ -90,6 +94,10 @@ func (c Catalog) ForTier(t string) []string {
 	return out
 }
 
+// BenchModel is the model a bench runs for tier t, "" when the catalog
+// names none.
+func (c Catalog) BenchModel(t string) string { return c.Bench[t] }
+
 // Unknown is "" when model and harness are both in the catalog, else what
 // is not, naming the policy version; the fix is CatalogFix.
 func (c Catalog) Unknown(model, harness string) string {
@@ -113,10 +121,12 @@ func (c Catalog) unknownHarness(harness string) string {
 }
 
 // checkCatalog: {"models": {provider: [{"name": n, "tier": t}]}, "harnesses":
-// [h]}; names non-empty, tiers from TIERS, nothing listed twice. Linear in
-// the answer, and its loops stop at the tick's deadline.
+// [h], "bench": {tier: "provider/model"}} with bench optional; names
+// non-empty, tiers from TIERS, nothing listed twice, each bench model one of
+// its tier's. Linear in the answer, and its loops stop at the tick's
+// deadline.
 func checkCatalog(ctx context.Context, v starlark.Value) (Catalog, string) {
-	d, msg := dictOf(v, "models", "harnesses")
+	d, msg := dictWith(v, []string{"models", "harnesses"}, "bench")
 	if msg != "" {
 		return Catalog{}, msg
 	}
@@ -140,7 +150,39 @@ func checkCatalog(ctx context.Context, v starlark.Value) (Catalog, string) {
 			return Catalog{}, msg
 		}
 	}
-	return c, twice(c.Models)
+	if msg := twice(c.Models); msg != "" {
+		return Catalog{}, msg
+	}
+	if d["bench"] != nil {
+		if c.Bench, msg = bench(ctx, c, d["bench"]); msg != "" {
+			return Catalog{}, msg
+		}
+	}
+	return c, ""
+}
+
+// bench is the bench key: a dict of tier to one of that tier's models in
+// provider/model form (ForTier), each tier once.
+func bench(ctx context.Context, c Catalog, v starlark.Value) (map[string]string, string) {
+	d, ok := v.(*starlark.Dict)
+	if !ok {
+		return nil, refuse("bench is %s, not a dict of tier to model", kind(v))
+	}
+	out := map[string]string{}
+	for i, kv := range d.Items() {
+		tier, okTier := kv[0].(starlark.String)
+		model, okModel := kv[1].(starlark.String)
+		switch {
+		case late(ctx, i):
+			return nil, overTime()
+		case !okTier || !slices.Contains(store.Tiers, string(tier)):
+			return nil, refuse("bench: tier %s is not one of %s", brief(kv[0]), strings.Join(store.Tiers, " "))
+		case !okModel || !slices.Contains(c.ForTier(string(tier)), string(model)):
+			return nil, refuse("bench: %s's model %s is not one of its models (%s)", string(tier), cut(kv[1].String(), 64), strings.Join(c.ForTier(string(tier)), " "))
+		}
+		out[string(tier)] = string(model)
+	}
+	return out, ""
 }
 
 // twice refuses a model listed under two providers: nothing is listed twice.

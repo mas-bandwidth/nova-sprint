@@ -12,11 +12,11 @@ import (
 func TestEventNoticesUseCommittedImagesAndRecipients(t *testing.T) {
 	e := store.Event{Accepted: true, Epoch: 2, Before: &store.State{Cards: map[string]store.Card{"p": {ID: "p", Kind: "producer", State: "merging"}}}, After: &store.State{Cards: map[string]store.Card{
 		"p":    {ID: "p", Kind: "producer", Stream: "s", State: "landed", Head: "abc"},
-		"p.w1": {ID: "p.w1", Kind: "work", Stream: "s", State: "ready", Holder: "alice", Tier: "pro", Attempt: 1, Gen: 1},
+		"p.w1": {ID: "p.w1", Kind: "work", Stream: "s", State: "working", Holder: "alice", Tier: "pro", Attempt: 1, Gen: 1, Model: "deepseek/deepseek-flash"},
 	}, Judgements: map[string]store.Judgement{"j": {ID: "j", State: "open", Group: "g", Question: "review", Command: "nova-sprint judge j retry"}}}}
 	n := EventNotices{Coordinator: "rowan"}
 	a, err := n.ForEvent(e, store.Snapshot{}, "alice")
-	if err != nil || len(a) != 1 || a[0].Subject != "DEAL" || !strings.Contains(a[0].Line, "take p.w1@1 --epoch 2 --as alice") {
+	if err != nil || len(a) != 1 || a[0].Subject != "DEAL" || !strings.Contains(a[0].Line, "take p.w1@1 --epoch 2 --as alice") || !strings.Contains(a[0].Line, " model=deepseek/deepseek-flash ") {
 		t.Fatalf("alice=%+v err=%v", a, err)
 	}
 	r, err := n.ForEvent(e, store.Snapshot{}, "rowan")

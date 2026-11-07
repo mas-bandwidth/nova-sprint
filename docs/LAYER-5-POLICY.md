@@ -969,6 +969,32 @@ What the stitch changed in layer 5 and why:
 - **Owed at layer 6, done there:** main calls `ServeMain` on `EvalArg` and
   builds `NewEngine(RealClock{})`.
 
+**Stitch, the bench model and the first set (2026-11-07, branch `v2-stitch-w2D1`).**
+- *The catalog's `bench` (defects 54, 57).* `catalog()` may carry
+  `"bench": {tier: "provider/model"}`, the one model a bench row runs for a
+  card of that tier. Each key must be in `TIERS` and its model one of that
+  tier's models in the catalog (`bench: <tier>'s model <m> is not one of
+  its models (...)`); a list is refused. `Catalog.Bench` and
+  `Catalog.BenchModel(tier)`; run passes the active version's map to the
+  steps as `Answers.Models`, and the deal writes the model on the consumer
+  (LAYER-3's Built). A tier with no bench model leaves bench rows undealt
+  for it with a `no-model` judgement, never a guess. The default names
+  deepseek/deepseek-flash at flash and heavy, inception/mercury-3 at pro,
+  deepseek/deepseek-v4-pro at frontier (the coordinator's mapping of
+  2026-11-07; guesses, unmeasured), and lists deepseek-flash at heavy and
+  deepseek-v4-pro at frontier so the bench key names models of the tier.
+  `next --json`'s `tier_models` is kept as the probe's input and now holds
+  that one model per tier for a bench; the take receipt's `models` (the
+  candidates) is gone: the receipt carries the deal's `model` only.
+- *The first set activates (defect 53).* `policy set` with no version
+  active stores the version and activates it in the same op (`Result.Activated`;
+  the verb prints `POLICY STORED AND ACTIVE v<n>`), answering any open
+  judgements about the missing policy; with one active it stores only, as
+  before. While none is active, or the active one fails whole, layer 6
+  tells the steps to deal nothing (`Answers.NoDeal`) and the steps open one
+  `no-policy` judgement on the coordinator's row. Tests: `testSetFirst`,
+  `TestCatalogBenchRefused`, run's `TestTickDealsNothingWithoutAnActivePolicy`.
+
 ### Built: no deal-ahead for a worker (stitch w3W, 2026-11-07)
 
 - `default.star`'s `width(row)` answers `ahead: 0` (it was `row.width`, v1's DealAhead): a worker

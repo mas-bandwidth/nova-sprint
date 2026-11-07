@@ -526,7 +526,7 @@ func TestBreakHeldPreempt(t *testing.T) {
 		b.is("p2", Ready)
 		assert.Equal(t, []any{hA, 0}, []any{b.c("p2").Head, b.c("p2").Bounces})
 		b.take("pb.w1")
-		again := b.start("p2", "r2")
+		again := b.start("p2", "r1")              // r2 is pb's, at width
 		assert.Equal(t, hA, b.c(again).PriorHead) // continues from the preempted push
 	})
 	t.Run("another row", func(t *testing.T) {
@@ -538,9 +538,10 @@ func TestBreakHeldPreempt(t *testing.T) {
 	t.Run("a ready consumer is never preempted", func(t *testing.T) {
 		b := setup(t)
 		b.ok(b.P("pr", Resolve{}))
-		cr := b.start("pr", "r2") // ready beside the working one
+		cr := b.start("pr", "r1")
+		b.w.raw("legacy", store.SetCardState{Card: cr, State: Ready}) // dealt before the deal became the take
 		b.no(b.C(cr, Withdraw{Reason: "preempted by blocker pb", Preempt: true}), "a preempt withdraws a working consumer")
-		b.noMerge("a preempt withdraws a working consumer", b.C(cr, Withdraw{Reason: "preempted by blocker pb", Preempt: true}), start(b, "r2"))
+		b.noMerge("a preempt withdraws a working consumer", b.C(cr, Withdraw{Reason: "preempted by blocker pb", Preempt: true}), start(b, "r1"))
 	})
 	t.Run("a read on the row is preempted and its producer is asked again", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("pb"))
@@ -552,7 +553,7 @@ func TestBreakHeldPreempt(t *testing.T) {
 		b.okMerge(b.C("p1.r1.1", Withdraw{Reason: "preempted by blocker pb", Preempt: true}), start(b, "r2"))
 		b.is("p1", Review)
 		assert.Equal(t, 0, b.c("p1").Bounces)
-		b.ok(b.P("p1", AskRead{Row: "r2"}))
+		b.ok(b.P("p1", AskRead{Row: "r3"})) // r2 is pb's, at width
 	})
 }
 
@@ -563,12 +564,12 @@ func TestBreakHeldRefusedLeavesNothing(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"), producer("p3"))
 		b.ok(b.P("p1", Resolve{}))
 		b.ok(b.P("p2", Resolve{}))
-		c1, c2 := b.start("p1", "r2"), b.start("p2", "r2")
-		b.take(c1)
-		// Rescore lands first, then Take overflows the width: the store refuses, the score must not move
-		b.noMerge("its roster width is 1", b.P("p3", Rescore{Score: 9}), b.C(c2, Take{}))
+		b.take(b.start("p1", "r2"))
+		start2 := b.P("p2", Start{Row: "r2", Branch: "b-p2", Base: base})
+		// Rescore lands first, then the second deal overflows the width: the store refuses, the score must not move
+		b.noMerge("its roster width is 1", b.P("p3", Rescore{Score: 9}), start2)
 		assert.Equal(t, 0, b.c("p3").Score)
-		b.noMerge("its roster width is 1", cold4R("r3", Hold{Reason: "x"}), b.P("p3", Rescore{Score: 9}), b.C(c2, Take{}))
+		b.noMerge("its roster width is 1", cold4R("r3", Hold{Reason: "x"}), b.P("p3", Rescore{Score: 9}), start2)
 		assert.False(t, b.snap().Rows["r3"].Held)
 	})
 	t.Run("a stale hold", func(t *testing.T) {
@@ -603,7 +604,7 @@ func TestBreakHeldMergeEqualsOneByOne(t *testing.T) {
 		})
 		t.Logf("dependant before the drop: %q", got) // sequentially the NeedFailed is refused: the need is not yet fail
 	})
-	t.Run("two takes on two rows, and a width change", func(t *testing.T) {
+	t.Run("two reports on two rows, and a width change", func(t *testing.T) {
 		setup := func(t *testing.T) *bk {
 			b := newBk(t, producer("p1"), producer("p2"))
 			b.ok(b.P("p1", Resolve{}))
@@ -613,7 +614,7 @@ func TestBreakHeldMergeEqualsOneByOne(t *testing.T) {
 			return b
 		}
 		assert.Equal(t, "", sameAsSequence(t, setup, func(b *bk) []cold4Step {
-			return []cold4Step{b.C("p1.w1", Take{}), b.C("p2.w1", Take{}), cold4R("r1", Hold{Reason: "h"})}
+			return []cold4Step{b.C("p1.w1", Report{Result: "fault", Reason: "x"}), b.C("p2.w1", Report{Result: "fault", Reason: "x"}), cold4R("r1", Hold{Reason: "h"})}
 		}))
 	})
 	t.Run("an edit then a start, a rescore then a priority", func(t *testing.T) {

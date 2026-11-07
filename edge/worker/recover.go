@@ -80,12 +80,6 @@ func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_
 			}
 		}
 	}
-	for _, w := range next.Working {
-		if _, onDisk := disk[w.ID]; !onDisk && !r.isRunningInFlight_internal(w.ID) && !r.quarantined_internal(w) {
-			r.releaseNoBlame_internal(ctx, JobRecord{Epoch: next.Epoch, Row: row, Consumer: w.ID, Gen: w.Gen, Kind: w.Kind},
-				"the worker restarted with no job directory for it")
-		}
-	}
 	return out, nil
 }
 

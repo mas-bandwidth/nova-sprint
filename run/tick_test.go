@@ -31,7 +31,7 @@ type answering struct{ asks int }
 func (a *answering) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
 	a.asks++
 	names := slices.Sorted(maps.Keys(ro.Workers))
-	out := policy.Answers{Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
+	out := policy.Answers{Version: snap.Policy, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
 		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 3, ReportsPerTick: 100, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
 		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, Tick: 1, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
@@ -105,7 +105,7 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 	snap := tk.Snapshot()
 	var dealt []string
 	for id, c := range snap.Cards {
-		if c.Kind == "work" && c.Holder == "alice" && c.State == "ready" {
+		if c.Kind == "work" && c.Holder == "alice" && c.State == "working" {
 			dealt = append(dealt, id)
 		}
 	}
@@ -165,7 +165,7 @@ func TestTickRaisesSeenForAHookedRow(t *testing.T) {
 	}
 	var dealt []string
 	for id, c := range tk.Snapshot().Cards {
-		if c.Kind == "work" && c.State == "ready" {
+		if c.Kind == "work" && c.State == "working" {
 			dealt = append(dealt, id+" to "+c.Holder)
 		}
 	}
@@ -394,5 +394,54 @@ func TestStopBetweenFoldAndApplyRefusesTheOp(t *testing.T) {
 	tickN(t, tk, ro, 1)
 	if !st.done || tk.Counts().Applied != 0 || tk.Counts().Refused == 0 {
 		t.Fatalf("a tick op was accepted after the stop committed: %+v", tk.Counts())
+	}
+}
+
+// failingActive is a policy whose active version fails, so the built-in
+// answers (defect 53's second case).
+type failingActive struct{ answering }
+
+func (a *failingActive) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
+	out, _ := a.answering.AnswerContext(ctx, vs, snap, ro, q)
+	out.Version = 0
+	return out, []policy.Failure{{Version: 1, Label: "v1", Question: "order", Msg: "division by zero"}}
+}
+
+// The deal's gate (defect 53): with no policy active, or the active one
+// failing, the run deals nothing and one blocking no-policy judgement says
+// why; the first activation lets the next tick deal.
+func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
+	for name, c := range map[string]struct {
+		policy Asking
+		active bool
+		want   string
+	}{
+		"none active":   {&answering{}, false, "the run deals nothing: no policy is active: nova-sprint policy set <file> --reason <why>"},
+		"active failed": {&failingActive{}, true, "the run deals nothing: the active policy v1 failed (POLICY REFUSED v1 order(): division by zero)"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := store.NewFake()
+			must(t, f, "start", store.SetStopped{Stopped: false, Reason: "test"})
+			must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
+			must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
+			must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
+			if c.active {
+				must(t, f, "policy", activePolicy()...)
+			}
+			ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}
+			tk, err := NewTicker(context.Background(), f, &healthy{}, c.policy, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tickN(t, tk, ro, 3)
+			s := tk.Snapshot()
+			if s.Cards["p1"].State != "ready" {
+				t.Fatalf("p1 is %s, want ready and undealt", s.Cards["p1"].State)
+			}
+			j, ok := s.Judgements["no-policy.sprint.1"]
+			if !ok || j.State != "open" || !strings.HasPrefix(j.Question, c.want) || !j.Deadline.IsZero() {
+				t.Fatalf("judgement %+v, want open, no deadline, %q", j, c.want)
+			}
+		})
 	}
 }

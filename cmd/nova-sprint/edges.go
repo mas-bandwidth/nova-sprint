@@ -20,29 +20,29 @@ import (
 )
 
 // gitEdge is git as the sprint. The landing's forge work runs as the host's
-// gh identity (intent rule 32); GH_GATE_TOKEN, when nova-secrets exec puts it
-// in the process, is an optional override: every git call then authenticates
-// with it and never with the host's own credential helper. Otherwise, with
-// GH_TOKEN or GH_CONFIG_DIR set, gh is git's one credential helper for
-// https://github.com, the address git.CloneURL gives a github stream, and
-// with neither the host's git config answers.
+// gh login (intent rule 32), and so does git: gh is its one credential
+// helper for https://github.com (the address git.CloneURL gives a github
+// stream), run with no GitHub credential of the process, so a GH_TOKEN or
+// GH_CONFIG_DIR in the environment never makes it someone else (directive
+// 59). GH_GATE_TOKEN, when nova-secrets exec puts it in the process, is the
+// optional override: every git call then authenticates with it.
 func gitEdge() *git.Client {
-	return git.New(git.Config{Token: os.Getenv(forge.TokenEnv), GitHubCredential: githubCredential(os.Getenv)})
-}
-
-// githubCredential is the gh binary for git's github.com credential, or ""
-// when the process has no GitHub identity (the host's git config answers).
-func githubCredential(env func(string) string) string {
-	if env("GH_TOKEN") == "" && env("GH_CONFIG_DIR") == "" {
-		return ""
-	}
-	return "gh"
+	return git.New(git.Config{Token: os.Getenv(forge.TokenEnv), GitHubCredential: "gh"})
 }
 
 // forgeEdge is GitHub through the host's gh login (intent rule 32); a
 // GH_GATE_TOKEN in the process is an optional override gh then acts as.
+// The identity's name in messages is the choice, never a login.
 func forgeEdge() *forge.Client {
-	return forge.New(forge.Config{Identity: forge.Identity{Name: "sprint", Token: os.Getenv(forge.TokenEnv)}})
+	return forge.New(forge.Config{Identity: identity(os.Getenv)})
+}
+
+// identity is the forge's identity: the host's gh login, or the override.
+func identity(env func(string) string) forge.Identity {
+	if tok := env(forge.TokenEnv); tok != "" {
+		return forge.Identity{Name: forge.TokenEnv + " (the override of " + forge.HostLogin + ")", Token: tok}
+	}
+	return forge.Identity{Name: forge.HostLogin}
 }
 
 // origin is a stream's repository at origin, by its clone address

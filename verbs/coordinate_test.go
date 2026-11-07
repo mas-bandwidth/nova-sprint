@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -158,7 +159,7 @@ func TestHoldRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "no reason", as: "carol", args: []string{"hold", "alice"}, exit: 1, want: []string{"a hold needs its reason"}},
 		{name: "no name", as: "carol", args: []string{"hold", "--reason", "r"}, exit: 2, want: []string{"hold takes"}},
-		{name: "no such row", as: "carol", args: []string{"hold", "zz", "--reason", "r"}, exit: 1, want: []string{"no row or stream zz"}},
+		{name: "no such row", as: "carol", args: []string{"hold", "zz", "--reason", "r"}, exit: 1, want: []string{"no row, stream or card zz"}},
 		{name: "an unhold of nothing held", as: "carol", args: []string{"unhold", "alice", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show alice"}},
 	})
 }
@@ -198,6 +199,25 @@ func TestDropAndReplace(t *testing.T) {
 	}
 }
 
+// TestDropReleasesItsLiveConsumers: a drop of a producer a row holds
+// releases the work consumer in the same op, recorded released (no result, no
+// blame) with the drop's reason, and fails the producer.
+func TestDropReleasesItsLiveConsumers(t *testing.T) {
+	w := newWorld(t)
+	before := w.snap(t).Cards["p1.w1"]
+	if before.State != "ready" && before.State != "working" {
+		t.Fatalf("fixture: %+v", before)
+	}
+	want(t, w.do("carol", "drop", "p1", "--reason", "not needed"), 0, "p1.w1->fail", "p1->fail")
+	s := w.snap(t)
+	if c := s.Cards["p1.w1"]; c.State != "fail" || c.Result != "" || c.Reason != ReleasedPrefix+"not needed" {
+		t.Fatalf("consumer %+v", c)
+	}
+	if c := s.Cards["p1"]; c.State != "fail" || c.Reason != "not needed" {
+		t.Fatalf("producer %+v", c)
+	}
+}
+
 func TestReplaceAndRelink(t *testing.T) {
 	s := sprint()
 	dependant(&s)
@@ -220,7 +240,6 @@ func TestDropRefusals(t *testing.T) {
 		{name: "a bad relink", as: "carol", args: []string{"drop", "p2", "--reason", "r", "--relink", "p3"}, exit: 2, want: []string{"--relink is <dependant>=<card>"}},
 		{name: "waived and relinked", as: "carol", args: []string{"drop", "p2", "--reason", "r", "--waive", "p3", "--relink", "p3=p1"}, exit: 2, want: []string{"p3 is both waived and relinked"}},
 		{name: "a replace with no by", as: "carol", args: []string{"replace", "p2", "--reason", "r"}, exit: 2, want: []string{"--by <card>"}},
-		{name: "a live consumer", as: "carol", args: []string{"drop", "p1", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p1"}},
 		{name: "a relink with no need", as: "carol", args: []string{"relink", "p3", "--to", "p1", "--reason", "r"}, exit: 2, want: []string{"relink takes --need"}},
 		{name: "a relink of no failed need", as: "carol", snap: dependant, args: []string{"relink", "p3", "--need", "p4", "--to", "p1", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p3"}},
 	})
@@ -264,5 +283,31 @@ func TestPolicyRefusals(t *testing.T) {
 		{name: "an unreadable file", as: "carol", prep: withPolicy, args: []string{"policy", "set", "/nonexistent.star", "--reason", "r"}, exit: 1, want: []string{"set"}},
 		{name: "before up", as: "carol", prep: func(_ *testing.T, w *world) { w.e.Policy = policy.NewEngine(stillClock{}) },
 			args: []string{"policy", "show", "v1"}, exit: 1},
+	})
+}
+
+// TestHoldCard: hold parks one producer blocked with the reason, its live
+// consumer withdrawn in the same op; unhold sends it to waiting (defect 47).
+func TestHoldCard(t *testing.T) {
+	w := newWorld(t)
+	want(t, w.do("carol", "hold", "p1", "--reason", "wrong brief"), 0, "p1", "next: "+waitNext)
+	s := w.snap(t)
+	if c := s.Cards["p1"]; c.State != "blocked" || c.Reason != card.HeldPrefix+"wrong brief" {
+		t.Fatalf("held card %+v", c)
+	}
+	if c := s.Cards["p1.w1"]; c.State != "fail" {
+		t.Fatalf("its consumer %+v", c)
+	}
+	want(t, w.do("carol", "unhold", "p1", "--reason", "brief fixed"), 0, "p1")
+	if c := w.snap(t).Cards["p1"]; c.State != "waiting" {
+		t.Fatalf("unheld card %+v", c)
+	}
+}
+
+func TestHoldCardRefusals(t *testing.T) {
+	runCases(t, []tcase{
+		{name: "a consumer", as: "carol", args: []string{"hold", "p1.w1", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is a work card; hold its producer", "nova-sprint hold p1 --reason"}},
+		{name: "an unhold of a card not held", as: "carol", args: []string{"unhold", "p2", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p2"}},
+		{name: "a worker", as: "alice", args: []string{"hold", "p1", "--reason", "r"}, exit: 1, want: []string{"hold is the coordinator's"}},
 	})
 }

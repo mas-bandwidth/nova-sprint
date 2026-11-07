@@ -8,6 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -378,24 +379,23 @@ func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) e
 	return r.wakeLoop_internal(ctx, row, hook)
 }
 
-// chooseModel_internal is the model a job runs: a friend-shaped receipt's
-// own, else the first of a bench's candidates its probe proved this harness
-// serves (the policy decides the models per tier; the worker only drops
-// those it cannot serve). None is a fault naming the candidates and the fix.
+// chooseModel_internal is the model a job runs: the one the deal named and
+// the receipt carries (defect 57: the worker never picks one). A harness
+// that takes a model and whose probe proved models, none of them this one,
+// is a fault naming the model and the fix.
 func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, error) {
 	h, err := r.harnessFor_internal(harness)
-	if err != nil || info.Model != "" || !h.Needs().Model {
+	if err != nil || !h.Needs().Model {
 		return info.Model, err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, m := range info.Models {
-		if r.served[m] {
-			return m, nil
-		}
+	proved := slices.DeleteFunc(slices.Sorted(maps.Keys(r.served)), func(m string) bool { return m == "" || !r.served[m] })
+	if len(proved) == 0 || r.served[info.Model] {
+		return info.Model, nil
 	}
-	return "", fmt.Errorf("this bench's %s serves none of the policy's models for tier %s (%s): give the tier a model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for one (nova-worker --providers)",
-		h.Name(), info.Tier, strings.Join(info.Models, ", "))
+	return "", fmt.Errorf("this bench's %s does not serve %s, the model the deal named for tier %s (its probe proved %s): give the tier a bench model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for it (nova-worker --providers)",
+		h.Name(), info.Model, info.Tier, strings.Join(proved, ", "))
 }
 
 // refuseReceipt_internal reports the card taken under a receipt the worker
@@ -450,7 +450,7 @@ func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr st
 		DoneWhen: info.DoneWhen, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
 		ProxyAddr: proxyAddr, CommitName: rowInfo.Row,
-		CommitEmail: rowInfo.Row + "@nova-sprint.local", Forge: info.Forge, Deadline: deadline,
+		CommitEmail: rowInfo.Row + "@" + CommitEmailDomain, Forge: info.Forge, Deadline: deadline,
 	}
 	rec := JobRecord{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
@@ -1036,35 +1036,11 @@ func (w *OSReserveWall) RunHarness(ctx context.Context, j Job, argv, env []strin
 	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(env, j.JobDir), timeout)
 }
 func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeout time.Duration) (WallRunResult, error) {
-	fields := splitArgv_internal(cmdStr)
-	if len(fields) == 0 {
-		return WallRunResult{}, errors.New("empty test command")
+	fields, why := edge.ParseGate(cmdStr)
+	if why != "" {
+		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
 	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
-}
-func splitArgv_internal(s string) (args []string) {
-	var cur strings.Builder
-	var quote rune
-	inTok := false
-	for _, r := range s + " " {
-		switch {
-		case quote != 0 && r == quote:
-			quote = 0
-		case quote != 0:
-			cur.WriteRune(r)
-		case r == '\'' || r == '"':
-			quote, inTok = r, true
-		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
-			if inTok {
-				args, inTok = append(args, cur.String()), false
-				cur.Reset()
-			}
-		default:
-			cur.WriteRune(r)
-			inTok = true
-		}
-	}
-	return args
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config

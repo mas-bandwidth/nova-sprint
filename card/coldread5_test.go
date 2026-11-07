@@ -68,13 +68,12 @@ func (w *world) cold5Flat(t *testing.T, id string, rep Report) []Plan {
 	return []Plan{cp, pp}
 }
 
-// cold5Working is p1 and p2 working on r1 (width 2), both consumers taken.
+// cold5Working is p1 and p2 working on r1 (width 2), both consumers in hand.
 func cold5Working(t *testing.T) *world {
 	w := newWorld(t, producer("p1"), producer("p2"))
 	for _, id := range []string{"p1", "p2"} {
 		w.move(id, Resolve{})
 		w.move(id, Start{Row: "r1", Branch: "b-" + id, Base: base})
-		w.consume(id+".w1", Take{Row: "r1"})
 	}
 	return w
 }
@@ -180,7 +179,6 @@ func TestColdread5DefectNestedStartSkipsThePreemptGuard(t *testing.T) {
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b-p1", Base: base})
-	w.consume("p1.w1", Take{Row: "r2"})
 	w.move("p2", Resolve{})
 	w.move("p2", SetPriority{Level: "blocker", Reason: "asked"})
 	wd := w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2", Preempt: true})

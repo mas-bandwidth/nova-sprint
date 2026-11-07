@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func cardTake(row string) card.Event { return card.Take{Row: row} }
-
 // TestTickHappyPath: one producer from waiting to landed, tick by tick,
 // every op accepted (conformance, happy).
 func TestTickHappyPath(t *testing.T) {
@@ -25,7 +23,7 @@ func TestTickHappyPath(t *testing.T) {
 	p = s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1", "working")
-	s.requireState("p1.w1", "ready")
+	s.requireState("p1.w1", "working")
 	assert.Equal(t, "r1", s.card("p1.w1").Holder, "the idle lane with most room, by name")
 	assert.Equal(t, "sprint/s1/p1", s.card("p1.w1").Branch)
 	assert.Equal(t, base, s.card("p1.w1").BaseSHA)
@@ -34,7 +32,7 @@ func TestTickHappyPath(t *testing.T) {
 	p = s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1", "review")
-	s.requireState("p1.r1.1", "ready")
+	s.requireState("p1.r1.1", "working")
 	assert.Equal(t, "r2", s.card("p1.r1.1").Holder, "the rank above the writer's, never the author")
 	s.take("p1.r1.1")
 	s.report("p1.r1.1", "ok", sha(1), "fine")
@@ -137,6 +135,23 @@ func TestTickLandJudgementEveryOutcome(t *testing.T) {
 	}
 }
 
+// TestTickLandInheritedRedIsAGlance (directive 59): red that is all red on
+// the base too is still a land judgement (never a landing), worded so the
+// coordinator answers it at a glance: only inherited red, the facts, and
+// the hand landing's command for this card.
+func TestTickLandInheritedRedIsAGlance(t *testing.T) {
+	s := newSim(t)
+	first := toMerging(s)
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: InheritedRed, Reason: "inherited red (red on the base too, not this card's): hostile-corpus (the merge base cccccccccccc)"})
+	s.tick()
+	s.requireState("p1", "merging")
+	j := s.snap().Judgements["land.p1.1"]
+	assert.Equal(t, "open", j.State)
+	assert.Contains(t, j.Question, "card p1 (stream s1 onto ")
+	assert.Contains(t, j.Question, ") has only inherited red (its run ended; every failing workflow is red on the base too, so not this card's): land it with nova-sprint land p1 --reason <why>. Facts: inherited red (red on the base too, not this card's): hostile-corpus")
+	assert.Contains(t, j.Command, "choices: land | fix | retry")
+}
+
 // TestTickLandAnswers: fix sends the producer to fix with the finding (a
 // red: review +1); retry asks a new landing; land records it landed.
 func TestTickLandAnswers(t *testing.T) {
@@ -158,6 +173,7 @@ func TestTickLandAnswers(t *testing.T) {
 	assert.Equal(t, 2, s.card("p1").Review)
 	assert.Equal(t, "unit fails: fix TestX", s.card("p1").Finding)
 	s.run(2)
+	s.requireState("p1.w2", "working")
 	assert.Equal(t, "unit fails: fix TestX", s.card("p1.w2").Finding, "the fix attempt carries the finding")
 
 	h := newSim(t)
@@ -210,5 +226,5 @@ func TestTickFaultSpendsNothing(t *testing.T) {
 	s.requireState("p1", "ready")
 	assert.Equal(t, 0, s.card("p1").Bounces)
 	s.tick()
-	s.requireState("p1.w2", "ready")
+	s.requireState("p1.w2", "working")
 }

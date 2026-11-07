@@ -106,8 +106,8 @@ func startVerbs() []*verb {
 func workVerbs() []*verb {
 	return []*verb{
 		{name: "take", group: "work", role: roleWorker, usage: "<card>@<gen> --as <row> [--epoch <e>] [--id <op>] [--json]", flags: "epoch= id= json", min: 1, max: 1, run: runTake,
-			about: "starts work on a card dealt to you; prints the brief, the repository and the finish or read command",
-			needs: []string{"not dealt to this row at this generation: nova-sprint show <card>", "at width: finish a card first", "the row not in nova-config, or not serving the tier: nova-config"}},
+			about: "acknowledges a card dealt to you (it is in your hand from the deal; this stops the nudges) and prints the brief, the repository and the finish or read command; a repeat prints the same and writes nothing",
+			needs: []string{"not dealt to this row at this generation: nova-sprint next --as <row>", "withdrawn or reported already: nova-sprint next --as <row>", "the row not in nova-config, or not serving the tier: nova-config"}},
 		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport,
 			about: "reports a work card done at a head pushed to its branch, or failed with the reason",
 			needs: []string{"not the holder: nova-sprint show <card>", "not a full sha", "not on the dealt branch at origin: git push origin <branch>", "the head is the base: do the work"}},

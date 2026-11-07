@@ -11,16 +11,16 @@ import (
 )
 
 // schemaRound is the review round whose schema.sql this binary carries: round
-// 22 dropped the five configuration columns of sprint.rows (17 added
-// cards.red; no round between changed the schema).
-const schemaRound = 22
+// 23 added cards.model and the row heartbeat's four columns of sprint.rows (22 dropped the five configuration columns of
+// sprint.rows; 17 added cards.red; no round between changed the schema).
+const schemaRound = 23
 
 // SchemaIdentity is what CheckSchema found in a database. Expected is the
 // schema hash this binary carries, the one Migrate records (the only place it
 // is computed, hashSchema); Hash is the one sprint.meta records ("" when there
 // is none). Present is schema sprint existing at all. Current is a store at
 // SchemaVersion made by this binary's schema; KnownOlder is one Migrate
-// upgrades in place (round16Hash, round21Hash). Round is the round whose schema made the
+// upgrades in place (round16Hash, round21Hash, round22Hash). Round is the round whose schema made the
 // store (0 when it is neither). Owner is the role that owns schema sprint.
 type SchemaIdentity struct {
 	Present    bool
@@ -69,12 +69,12 @@ func readMeta(ctx context.Context, q queryRower) (version int, hash string, foun
 }
 
 // metaRefusal is why Migrate refuses a store at version and hash, naming the
-// fix, or nil when it takes it (this binary's hash, round16Hash or round21Hash).
+// fix, or nil when it takes it (this binary's hash or a knownOlder one).
 func metaRefusal(version int, hash string) error {
 	if version != SchemaVersion {
 		return fmt.Errorf("the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", version, SchemaVersion, version)
 	}
-	if hash != schemaHash && hash != round16Hash && hash != round21Hash {
+	if hash != schemaHash && !knownOlder(hash) {
 		return fmt.Errorf("the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
 	}
 	return nil
@@ -162,7 +162,13 @@ func identify(ctx context.Context, q queryRower) (SchemaIdentity, error) {
 	if err := metaRefusal(version, hash); err != nil {
 		return id, fmt.Errorf("store: check schema: %w", err)
 	}
-	id.Current, id.KnownOlder = hash == schemaHash, hash == round16Hash || hash == round21Hash
-	id.Round = map[string]int{schemaHash: schemaRound, round16Hash: 16, round21Hash: 17}[hash] // round 17's schema, carried to 21
+	id.Current, id.KnownOlder = hash == schemaHash, knownOlder(hash)
+	id.Round = map[string]int{schemaHash: schemaRound, round16Hash: 16, round21Hash: 17, round22Hash: 22}[hash] // round 17's schema, carried to 21
 	return id, nil
+}
+
+// knownOlder says whether hash is an earlier build of this version that
+// Migrate upgrades in place.
+func knownOlder(hash string) bool {
+	return hash == round16Hash || hash == round21Hash || hash == round22Hash
 }

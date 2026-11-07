@@ -70,7 +70,7 @@ func TestFakeExecRefusalsNameProgramAndFix(t *testing.T) {
 	require.ErrorAs(t, err, &exErr)
 	assert.Equal(t, ErrMissingBinary, exErr.Kind)
 	assert.Equal(t, "gh", exErr.Program)
-	assert.Contains(t, exErr.Error(), "GH_TOKEN or GH_CONFIG_DIR")
+	assert.Contains(t, exErr.Error(), "gh auth login")
 
 	// 5. Timeout names the binary, duration, and fix while keeping capped output.
 	f.Enqueue("git", FakeOutcome{
