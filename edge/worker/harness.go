@@ -98,7 +98,7 @@ func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 	}
 	model := modelFlag_internal(j)
 	if len(model) == 0 { // LOCAL DOGFOOD STOPGAP: a probe carries no model
-		model = []string{"--model", "deepseek/deepseek-chat"}
+		model = []string{"--model", "deepseek/deepseek-flash"}
 	}
 	argv := append(append([]string{"opencode", "run"}, model...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
