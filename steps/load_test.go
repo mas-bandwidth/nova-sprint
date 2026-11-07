@@ -40,8 +40,10 @@ func TestLoad(t *testing.T) {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (minutes, on a Linux bench, never in per-commit CI)")
 	}
 	s := loadWorld(t)
+	s.fold()
+	seed := storeSeed(s.v) // the world before any deal, for the PG half
 	t.Run("plan", func(t *testing.T) { loadPlan(t, s) })
-	t.Run("apply", func(t *testing.T) { loadApply(t, s) })
+	t.Run("apply", func(t *testing.T) { loadApply(t, s, seed) })
 }
 
 // loadWorld is 5,000 producers in 20 streams over 100 rows, a fifth of them
@@ -97,27 +99,24 @@ func loadPlan(t *testing.T, s *sim) {
 }
 
 // loadApply measures the per-op apply cost on PostgreSQL by packing size:
-// the same 250-card budget as 250 ops of 1, 25 of 10, 5 of 50 and 1 of 250.
-func loadApply(t *testing.T, s *sim) {
-	dsn := loadPG(t)
-	p, err := store.Open(context.Background(), dsn, "")
-	require.NoError(t, err)
-	t.Cleanup(p.Close)
-	require.NoError(t, p.Migrate(context.Background()))
+// the same tick (the seeded world's first) as 250 ops of 1, 25 of 10, 5 of
+// 50 and 1 of 250, each on a fresh store.
+func loadApply(t *testing.T, s *sim, seed []store.Op) {
 	ctx := context.Background()
-	s.fold()
-	seed := storeSeed(s.v)
-	for _, w := range seed {
-		r, err := p.Apply(ctx, w)
-		require.NoError(t, err)
-		require.True(t, r.Accepted, r.Reason)
-	}
 	for _, pack := range []int{1, 10, 50, 250} {
+		p, err := store.Open(ctx, loadPG(t), "")
+		require.NoError(t, err)
+		t.Cleanup(p.Close)
+		require.NoError(t, p.Migrate(ctx))
+		for _, w := range seed {
+			r, err := p.Apply(ctx, w)
+			require.NoError(t, err)
+			require.True(t, r.Accepted, r.Reason)
+		}
 		snap, err := p.Snapshot(ctx)
 		require.NoError(t, err)
 		v := Build(snap, t0)
-		in := s.inputs()
-		plan := Tick(v, in, scripted{Answers{Version: 1, Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}})
+		plan := Tick(v, s.inputs(), scripted{Answers{Version: 1, Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}})
 		var ls lat
 		total := time.Now()
 		for _, op := range tickOnly(plan.Ops) {
@@ -128,41 +127,7 @@ func loadApply(t *testing.T, s *sim) {
 			require.True(t, r.Accepted, "pack %d: %s", pack, r.Reason)
 		}
 		logLoad(t, fmt.Sprintf("apply-pack%d", pack), ls, fmt.Sprintf(" ops=%d tick=%s", len(ls), ms(time.Since(total))))
-		undo(t, p, plan)
 	}
-}
-
-// undo puts the PG store back as it was before plan, so each packing size
-// applies the same tick: the ops' cards back to ready.
-func undo(t *testing.T, p *store.PG, plan Plan) {
-	ctx := context.Background()
-	snap, err := p.Snapshot(ctx)
-	require.NoError(t, err)
-	var writes []store.Write
-	var expect []store.Expect
-	for _, op := range tickOnly(plan.Ops) {
-		for _, g := range OpGroups(op) {
-			for _, id := range g.Cards {
-				c, ok := snap.Cards[id]
-				if !ok {
-					continue
-				}
-				if isConsumer(c) {
-					writes = append(writes, store.SetCardState{Card: id, State: "fail"})
-					continue
-				}
-				writes = append(writes, store.SetCardState{Card: id, State: "ready"}, store.SetCardAttempt{Card: id, Attempt: 0})
-				expect = append(expect, store.CardGen{Card: id, Gen: c.Gen})
-			}
-		}
-	}
-	for i := 0; i < len(writes); i += 400 {
-		end := min(i+400, len(writes))
-		r, err := p.Apply(ctx, store.Op{ID: fmt.Sprintf("undo-%d-%d", time.Now().UnixNano(), i), Epoch: snap.Epoch, Actor: "load", Kind: "undo", At: time.Now(), Writes: writes[i:end]})
-		require.NoError(t, err)
-		require.True(t, r.Accepted, r.Reason)
-	}
-	_ = expect
 }
 
 // storeSeed is the fake's state as ops for a fresh PG store.
@@ -184,6 +149,9 @@ func storeSeed(v *View) []store.Op {
 	var ws []store.Write
 	for _, id := range sortedKeys(v.Cards) {
 		c := v.Cards[id]
+		if isConsumer(c) {
+			continue
+		}
 		ws = append(ws, store.PutCard{ID: c.ID, Kind: c.Kind, Stream: c.Stream, Tier: c.Tier, Brief: c.Brief, Paths: c.Paths, Score: c.Score})
 		if c.State == "ready" {
 			ws = append(ws, store.SetCardState{Card: c.ID, State: "ready"})
