@@ -83,6 +83,7 @@ func (e *Edge) send(ctx context.Context, to, subject, body string, extra ...stri
 	}
 	return "", fmt.Errorf("bus send to %s (%s): missing `<recipient> <id>` confirmation in stdout %q; leaving cursor unmoved", to, subject, strings.TrimSpace(res.Stdout))
 }
+
 // Reply answers message re from to (`nova-bus send --re`), with the same
 // confirmation rule as Send. The sprint hook's bus-reply uses it to point a
 // sender at its verbs; it reads no body.

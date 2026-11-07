@@ -18,14 +18,23 @@ type fakeConfigSnapshot struct {
 func TestConfigRosterSerializesConcurrentReads(t *testing.T) {
 	f := &fakeConfigSnapshot{}
 	r, err := NewConfigRoster(f, 8)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); if _, err := r.ReadRoster(context.Background()); err != nil { t.Error(err) } }()
+		go func() {
+			defer wg.Done()
+			if _, err := r.ReadRoster(context.Background()); err != nil {
+				t.Error(err)
+			}
+		}()
 	}
 	wg.Wait()
-	if f.calls != 8 { t.Fatalf("calls=%d", f.calls) }
+	if f.calls != 8 {
+		t.Fatalf("calls=%d", f.calls)
+	}
 }
 
 func (f *fakeConfigSnapshot) Snapshot(context.Context) (config.Snapshot, error) {
