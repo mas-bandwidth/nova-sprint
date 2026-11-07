@@ -73,7 +73,21 @@ Ranked. Severity: blocker, serious, minor, nit.
 
 22. **minor. Unit/functional tiers share one `go test`.** `edge/bus/functional_test.go`, `edge/worker/functional_test.go`, `edge/forge/functional_test.go`, `edge/git/functional_test.go`, `edge/break_test.go`, `cmd/nova-worker/break_test.go` carry no build tag or `-short` gate; `go test ./edge/...` starts redis-server, initdb PostgreSQL, real git and real sleeps (the two red runs above are these). The standing rule says a unit test uses no real time, sockets or services. Repair: `//go:build functional` or a `testing.Short()` skip, as the doc's own text asks.
 
-23. **nit.** `edge/request.go:92-100` a panicking `fn` leaves the in-flight entry forever and strands every waiter; the leader's cancelled context is returned to waiters whose own context is live. `edge/failure.go:83-85` cuts a redacted line at a byte, which can split a UTF-8 rune. `edge/bus/bus.go:74` passes subject and body as positional arguments with no `--`. `edge/git/refs.go:20` builds a glob pattern from a caller prefix. `edge/worker/hook.go:133` sets `Err()` even for a clean `Stop`, so `wakeLoop_internal` can return an error after a SIGTERM when the hook dies first (`pass.go:92-94`). `OSProcessTable.Kill` waits on the real clock (`edge/worker/runner.go:110`), not the runner's.
+23. **nit, split into seven single-observation defects (23a-23g).**
+
+    23a. **nit. A panicking `fn` strands the in-flight entry and every waiter.** `edge/request.go:92` calls `fn` with no `defer`; the `delete(d.inflight, key)` and `close(call.done)` at `:97-98` are skipped on a panic, so the entry stays forever and every later waiter blocks on `call.done` (`:83-84`) until its own context ends. It matters only if a handler panics, but then one panic wedges that request key for the life of the process. Repair: move the delete and close into a `defer` so waiters always wake.
+
+    23b. **nit. A waiter receives the leader's cancelled-context error.** `edge/request.go:83-84` returns `call.err` to a waiter whose own context is live, and `:92` runs `fn` under the leader's `ctx`; if the leader is cancelled, every live waiter gets `context canceled` for a request it never cancelled. Repair: when `call.err` is a context error and the waiter's context is live, re-enter the dedupe loop as a new leader.
+
+    23c. **nit. Redaction truncates at a byte and can split a UTF-8 rune.** `edge/failure.go:83-85` does `line[:max] + "..."` on bytes; a multi-byte character straddling `max` leaves invalid UTF-8 in a failure line that is later stored and shown. Repair: back `max` up to a rune boundary (`utf8.RuneStart`) before cutting.
+
+    23d. **nit. Bus subject and body are positional arguments with no `--`.** `edge/bus/bus.go:74` appends `subject, body` after the flags; a subject or body beginning with `-` can be read by `nova-bus` as a flag (whether `nova-bus send` parses flags after positionals I did not check: see Questions). Repair: insert `"--"` before `subject` in `argv`.
+
+    23e. **nit. `Branches` builds a glob from the caller's prefix.** `edge/git/refs.go:19` passes `"refs/heads/" + prefix + "*"` to `ls-remote`; a prefix holding `*`, `?` or `[` matches branches the caller did not mean, and the `HasPrefix(name, prefix)` check at `:25` then fails the whole listing instead of skipping the stray line. Repair: refuse a prefix containing glob metacharacters at the top of `Branches`.
+
+    23f. **nit. A clean `Stop` of the hook still sets `Err()`.** `edge/worker/hook.go:133` sets `w.err` unconditionally after the hook exits, even with status `exit 0` after our own `Stop`; `edge/worker/pass.go:92-94` returns `hook.Err()` when `hook.Done()` fires first, so `wakeLoop_internal` can return an error after a SIGTERM shutdown. Repair: leave `w.err` nil when `Stop` was called before the exit.
+
+    23g. **nit. `OSProcessTable.Kill` waits on the real clock.** `edge/worker/runner.go:110` loops on `time.Now()` and `time.Sleep(25ms)` rather than the runner's clock, so a unit test of the grace path needs real time (against the standing unit-test rule). Repair: take the clock as a parameter of `Kill`.
 
 ## Promise gaps
 
@@ -141,3 +155,4 @@ Ranked. Severity: blocker, serious, minor, nit.
 5. Is the first half of docs/LAYER-4-EDGES.md (git steps 6 and 7, the ssh `land-step` paragraph, the stream branch) meant to be rewritten to the "Built" sections' contract (group branch `sprint-group/<stream>`, no fast-forward, no remote step)? Several of my promise gaps are this one question.
 6. Should a card's `merge` method be fixed to "merge" (the only one for which a retry recognises a landed head by ancestry, `land.go:85`) rather than "the first the repository allows" (`forge.go:481-487`)?
 7. `OSExec` returns -1 without an error for a signalled child, and `Fetch`/`Push` in `edge/git` type every nonzero exit as `ErrMissingRef`/`PushRefusedError` (`git.go:151,543`); nothing branches on them today (only `land.go:184` treats any push error as `branch_failed`). Are those types meant to be matched later, in which case they need the real cause?
+8. Does `nova-bus send` stop parsing flags after the positional subject and body, or does a leading `-` in either reach its flag parser (defect 23d)? I did not run it.
