@@ -93,3 +93,19 @@ jobs:
       - *checkout
       - name: TLC on Store (must pass), the witnesses and the reach checks (must be violated)
         run: bash tla/ci-tlc.sh
+
+  # Trace validation (the lock gate since 2026-11-07): the steps' random walk
+  # on store.Fake writes one trace per fixed seed and scenario, and TLC
+  # checks each is a behaviour of tla/Steps.tla (tla/StepsTrace.tla).
+  trace:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, bench]
+    timeout-minutes: 60
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: the steps walk writes the fixed seed set's traces
+        run: NOVA_TRACES=tla/traces go test -count=1 -run TestTraceFixtures ./steps/
+      - name: TLC matches every trace to the model
+        run: bash tla/check-trace.sh tla/traces/steps-walk-*

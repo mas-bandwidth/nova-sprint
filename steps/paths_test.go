@@ -281,6 +281,23 @@ func TestTickUnlistedRow(t *testing.T) {
 	assert.Equal(t, []string{"unserved.pro.1"}, s.openJudgements("unserved"))
 }
 
+// TestTickUnhookedRow: a row up on the bus but not hooked in to the sprint
+// is never dealt to (Glenn, 2026-11-06); hooking in opens it.
+func TestTickUnhookedRow(t *testing.T) {
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.must("unhook", store.SetRowSession{Row: "r1", Session: ""})
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(3)
+	s.requireState("p1", "ready")
+	assert.Equal(t, []string{"unserved.pro.1"}, s.openJudgements("unserved"))
+	s.must("hook", store.SetRowSession{Row: "r1", Session: "hook-r1 worker"})
+	s.run(2)
+	s.requireState("p1", "working")
+	assert.Empty(t, s.openJudgements("unserved"), "the cause cleared")
+}
+
 // TestTickSilentRow: a row unseen past the withdraw bound has its working
 // consumers withdrawn with the branch kept; past the gone bound it goes
 // down; a flap judgement at the limit.

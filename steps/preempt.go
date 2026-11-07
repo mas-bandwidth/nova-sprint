@@ -103,12 +103,16 @@ func (t *tick) victim(row, b string) string {
 }
 
 // preferred is the first of rows policy's answer for c names, else the first
-// by name.
+// by name; an answer naming none of them is a miss.
 func (t *tick) preferred(c store.Card, rows []string) string {
-	for _, r := range t.o.rows(RowsQuestion{Card: t.facts(c), Kind: "work", Candidates: t.candidates(c, "work")}) {
+	answered := t.rowsAnswer(c, "work")
+	for _, r := range answered {
 		if slices.Contains(rows, r) {
 			return r
 		}
+	}
+	if answered != nil {
+		t.o.refuse("rows")
 	}
 	return rows[0]
 }
