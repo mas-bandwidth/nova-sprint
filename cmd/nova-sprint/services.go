@@ -9,12 +9,10 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/dash"
-	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/edge/worker"
@@ -63,51 +61,10 @@ func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 	if err != nil {
 		return err
 	}
-	h, err := worker.NewHarness(cmp.Or(w.Harness, "claude"))
-	if err != nil {
-		return err
-	}
 	host, _ := os.Hostname()
 	w.Host = cmp.Or(strings.TrimSpace(w.Host), host)
-	coords := []string{"studio", "studio.local"}
-	if err := worker.CheckHost(w.Host, coords); err != nil {
-		return err
-	}
-	ex, timeouts := edge.NewOSExec(), worker.DefaultTimeouts()
-	proxy := keyProxy(ex)
-	srv, proxyAddr, err := proxy.ListenLoopback("127.0.0.1:0")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = srv.Close() }()
-	home, _ := os.UserHomeDir()
-	fg := forge.New(forge.Config{Identity: forge.Identity{Name: w.Row, Token: os.Getenv("GH_TOKEN"), ConfigDir: os.Getenv("GH_CONFIG_DIR")}, Exec: ex, Timeout: timeouts.GH})
-	r, err := worker.NewRunner(worker.Runner{Host: w.Host, CoordinatorHosts: coords,
-		RootDir:  cmp.Or(w.Root, filepath.Join(home, ".local", "state", "nova-worker", w.Row)),
-		StateDir: cmp.Or(w.StateDir, filepath.Join(home, ".local", "state")),
-		Sprint:   &worker.CLISprintClient{Exec: ex, Timeout: timeouts.Stage, SecretsBin: "nova-secrets", SprintBin: self},
-		Git:      &worker.OSGitOps{WorkCloneDir: w.WorkClone, MirrorDir: w.Mirror, OriginURL: w.Origin, Exec: ex, Timeouts: timeouts},
-		Forge:    &worker.ForgeAdapter{Client: fg},
-		Wall:     &worker.OSReserveWall{UseSandbox: true, Exec: ex, Config: worker.WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: timeouts.ReserveWait, NetDeny: true}},
-		Procs:    worker.OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts})
-	if err != nil {
-		return err
-	}
-	if err := r.ProbeRow(ctx, w.Row, cmp.Or(w.Harness, "claude"), ""); err != nil {
-		return err
-	}
-	if w.Once {
-		return r.StepRow(ctx, w.Row)
-	}
-	return r.RunWakeLoop(ctx, w.Row)
-}
-
-// keyProxy holds the provider key on loopback; the harness never sees it.
-func keyProxy(ex edge.Exec) *worker.KeyProxy {
-	return &worker.KeyProxy{DefaultRoute: "openai", Routes: map[string]worker.ProxyRoute{
-		"openai": {Name: "openai", UpstreamURL: "https://api.openai.com", AllowedHosts: []string{"api.openai.com", "api.deepseek.com", "api.anthropic.com"},
-			Key: func() string { return worker.ReadProviderKey(ex, "nova-secrets", "openai") }},
-	}}
+	w.SprintBin = self
+	return worker.Serve(ctx, w, func(line string) { fmt.Println(line) })
 }
 
 // Dash is the board: a pulled copy of run's on a public host (--pull), or

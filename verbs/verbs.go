@@ -11,6 +11,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge/worker"
+
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -87,11 +89,9 @@ type Services interface {
 	Dash(ctx context.Context, listen, pull string) error
 }
 
-// WorkerArgs are `nova-sprint worker`'s flags (nova-worker, layer 4).
-type WorkerArgs struct {
-	Row, Host, Root, StateDir, Harness, WorkClone, Mirror, Origin string
-	Once                                                          bool
-}
+// WorkerArgs are `nova-sprint worker`'s flags: the worker's own Config
+// (layer 4), so this verb and nova-worker are one worker.
+type WorkerArgs = worker.Config
 
 // Execute runs one command line. No arguments is `next` (CORRECT-USE: the
 // tool's name alone says what to do now).
