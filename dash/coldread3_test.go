@@ -191,6 +191,8 @@ func (s *cr3Hang) Replay(ctx context.Context, id string) (store.Receipt, bool, e
 }
 
 func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
+	defer func(d time.Duration) { AdvanceDeadline = d }(AdvanceDeadline)
+	AdvanceDeadline = 500 * time.Millisecond
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)

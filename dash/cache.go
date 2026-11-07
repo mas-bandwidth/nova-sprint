@@ -39,9 +39,14 @@ func New(ctx context.Context, s store.Store) (*Cache, error) {
 	return c, nil
 }
 
+// AdvanceDeadline bounds one Advance. 500 ms held on the studio; a page from a store an
+// ocean away (hetzner2 to the studio, 121 ms RTT, 2026-11-07) did not fit it and the board
+// stayed stale, so it is five seconds: a late advance lands on a later tick.
+var AdvanceDeadline = 5 * time.Second
+
 // Advance reads a committed prefix in pages and keeps the last good copy on error.
 func (c *Cache) Advance(ctx context.Context, s store.Store) error {
-	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, AdvanceDeadline)
 	defer cancel()
 	select {
 	case c.gate <- struct{}{}:

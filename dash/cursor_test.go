@@ -169,6 +169,8 @@ func (s blockingStore) Events(ctx context.Context, after int64, max int) ([]stor
 	return nil, ctx.Err()
 }
 func TestAdvanceDeadline(t *testing.T) {
+	defer func(d time.Duration) { AdvanceDeadline = d }(AdvanceDeadline)
+	AdvanceDeadline = 500 * time.Millisecond
 	ctx := context.Background()
 	f := store.NewFake()
 	c, e := New(ctx, f)
