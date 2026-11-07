@@ -33,6 +33,7 @@ type tick struct {
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
 	judges    []judgement
+	raised    set               // kind and about of every cause a step met this tick (judge, engine; rearm)
 	pend      set               // kind and about of every judgement in judges (addJudge)
 	jidx      judgedIndex       // the view's judgements by kind and about (judged)
 	expires   map[string]string // judgement id -> why it expires
@@ -48,6 +49,7 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 	t := newTick(v, in)
 	t.o = newOracle(ask.Ask(t.questions()), Engine)
 	t.lim, t.tmo = t.o.limits(), t.o.timeouts()
+	t.claimEngine()
 	t.rest()
 	t.unlisted()
 	t.reports()
@@ -68,7 +70,7 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 }
 
 func newTick(v *View, in Inputs) *tick {
-	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{},
+	return &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{}, raised: set{},
 		rowNames: sortedKeys(v.Rows), rfacts: map[string]RowFacts{}, roster: map[string]RosterRow{},
 		candCache: map[string][]RowFacts{}, roomCache: map[string]int{}, rankCache: map[string]int{}, resolvedP: map[string]set{}}
 }

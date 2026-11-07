@@ -1,7 +1,9 @@
 package steps
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -112,7 +114,7 @@ func (t *tick) preferred(c store.Card, rows []string) string {
 		}
 	}
 	if answered != nil {
-		t.o.refuse("rows")
+		t.o.refuse("rows", fmt.Sprintf("rows(%s work) named %s, none of them a row the blocker may preempt on (%s)", c.ID, strings.Join(answered, " "), strings.Join(rows, " ")))
 	}
 	return rows[0]
 }

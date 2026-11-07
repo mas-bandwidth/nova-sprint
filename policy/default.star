@@ -42,12 +42,12 @@ def reads(card):
     return 1  # v1 standing rule, 2026-10-20
 
 def verdict(card, reads):
-    results = [r.result for r in reads]
-    if "fix" in results:
+    # reads are the done reads that said ok or fix: a faulted read is not a
+    # read (layer 3 asks it again, then the coordinator judges), so a
+    # verdict is asked only when one of them is done.
+    if "fix" in [r.result for r in reads]:
         return "fix"
-    if "ok" in results:
-        return "yes"
-    return "retry"  # every done read faulted: ask one more read
+    return "yes"
 
 def width(row):
     return {"work": row.width, "ahead": row.width}  # v1 DealAhead 2

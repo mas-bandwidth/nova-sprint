@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
@@ -8,11 +9,14 @@ import (
 )
 
 // fix is the fix step (LAYER-3 "Fix"; the model's FixSet): once every read
-// of a producer's current review is done or withdrawn and one is done,
-// policy's verdict over all of them (LESSONS 3.7) is ReadYes or
-// ReadFix{finding}, the finding every fix read's joined. A finding
-// byte-equal to the producer's current one opens a brief judgement
-// (LESSONS 5.9). A producer back from Broken or Faulted needs no plan here.
+// of a producer's current review is done or withdrawn and one is done ok or
+// fix, policy's verdict over all of them (LESSONS 3.7) is ReadYes or
+// ReadFix{finding}, the finding every fix read's joined. A faulted read is
+// not a read (directive 58): it is owed again, up to policy's faults since
+// the coordinator last said read, and then one read-faults judgement asks
+// the coordinator to read, yes or fix. A finding byte-equal to the
+// producer's current one opens a brief judgement (LESSONS 5.9). A producer
+// back from Broken or Faulted needs no plan here.
 func (t *tick) fix() {
 	var fixes []string
 	for _, p := range t.v.Producers("review") {
@@ -22,6 +26,7 @@ func (t *tick) fix() {
 		}
 		reads := t.settled(c)
 		if reads == nil {
+			t.readFaults(c)
 			continue
 		}
 		if t.o.verdict(VerdictQuestion{Card: t.facts(c), Reads: reads}) == "yes" {
@@ -49,11 +54,53 @@ func (t *tick) settled(c store.Card) []ReadFacts {
 	}
 	var out []ReadFacts
 	for _, r := range t.v.Consumers(c.ID) {
-		if r.Kind == "read" && r.Review == c.Review && r.Head == c.Head && r.State == "done" {
+		if r.Kind == "read" && r.Review == c.Review && r.Head == c.Head && r.State == "done" && r.Result != "fault" {
 			out = append(out, ReadFacts{Row: r.Holder, Rank: t.rank(r.Holder), Result: r.Result, Finding: r.Reason})
 		}
 	}
 	return out
+}
+
+// readFaults opens the read-faults judgement for c when its reads have
+// faulted up to the limit and none is live: no read is dealt for it until
+// the coordinator answers read (the count starts again), yes (JudgedYes)
+// or fix (JudgedFix with the reason as the finding).
+func (t *tick) readFaults(c store.Card) {
+	if t.hasLive(c.ID) || !t.faultCapped(c) {
+		return
+	}
+	t.judge("read-faults", c.ID, fmt.Sprintf("producer %s: %d read(s) of review %d at head %s faulted (the limit is %d) and none said ok or fix; "+
+		"read: ask a read again; yes: you read it and it is sound (it goes to merging); fix: it goes to fix with your reason as the finding",
+		c.ID, t.faults(c), c.Review, c.Head, t.faultLimit()))
+}
+
+// faults is how many done reads of c's current review and head faulted
+// since the coordinator last answered a read-faults judgement of c with
+// read: a read dealt at or after that answer (none is dealt while capped,
+// so every read the answer covered was dealt before it).
+func (t *tick) faults(c store.Card) int {
+	since := t.jindex().reads[c.ID]
+	n := 0
+	for _, r := range t.v.Consumers(c.ID) {
+		if r.Kind == "read" && r.Review == c.Review && r.Head == c.Head && r.State == "done" && r.Result == "fault" &&
+			!t.v.TakenAt[r.ID].Before(since) {
+			n++
+		}
+	}
+	return n
+}
+
+// faultCapped says whether c's faulted reads reached policy's faults: no
+// more reads are owed until the coordinator answers.
+func (t *tick) faultCapped(c store.Card) bool { return t.faults(c) >= t.faultLimit() }
+
+// faultLimit is limits().faults; the engine's while the questions are
+// still being gathered (before the oracle exists).
+func (t *tick) faultLimit() int {
+	if t.o == nil {
+		return Engine.Limits.Faults
+	}
+	return t.lim.Faults
 }
 
 // joinFindings is every fix read's finding, in read order, joined; a fix
@@ -73,14 +120,16 @@ func joinFindings(reads []ReadFacts) string {
 }
 
 // owed is how many reads c still needs: policy's count less the reads of
-// the current review that are live or done (a withdrawn one is owed again).
+// the current review that are live or done ok or fix (a withdrawn one is
+// owed again, and so is a faulted one: a fault is not a read, directive
+// 58), none once its faults reach the limit (readFaults).
 func (t *tick) owed(c store.Card) int {
-	if c.State != "review" {
+	if c.State != "review" || t.faultCapped(c) {
 		return 0
 	}
 	have := 0
 	for _, r := range t.v.Consumers(c.ID) {
-		if r.Kind == "read" && r.Review == c.Review && r.State != "fail" {
+		if r.Kind == "read" && r.Review == c.Review && r.State != "fail" && !(r.State == "done" && r.Result == "fault") {
 			have++
 		}
 	}

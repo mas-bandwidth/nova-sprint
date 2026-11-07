@@ -178,20 +178,23 @@ func TestJudgementStorable(t *testing.T) {
 	assert.Equal(t, "a\uFFFDb\uFFFD", storable("a\xffb\x00"))
 }
 
-// TestVerdictRetry: every done read faulted: the default answers retry;
-// retry while an ok or fix read is done is refused.
-func TestVerdictRetry(t *testing.T) {
+// TestVerdictFaultIsNoRead (directive 58): a faulted read is not a read,
+// so a review whose only done read faulted asks no verdict at all; "retry"
+// is no answer (the engine accepts exactly yes and fix).
+func TestVerdictFaultIsNoRead(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	w.apply(store.SetCardResult{Card: "p3-r1", Result: "fault"})
-	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	q := FullQuestions(w.snap(), nil)
+	assert.NotContains(t, q.Verdict, "p3")
+	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, q)
 	require.Empty(t, fs)
-	assert.Equal(t, "retry", a.Verdict["p3"])
+	assert.NotContains(t, a.Verdict, "p3")
 	w.apply(store.SetCardResult{Card: "p3-r1", Result: "ok"})
 	body, line := override("verdict", "def verdict(card, reads):\n    return \"retry\"")
 	_, fs = testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Len(t, fs, 1)
-	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "retry" with a done ok or fix read`, line), fs[0].Error())
+	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): the answer is "retry", not "yes" or "fix"`, line), fs[0].Error())
 }
 
 // TestRosterIsTheSourceOfRowFacts (round 5): every row fact a question

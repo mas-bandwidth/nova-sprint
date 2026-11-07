@@ -140,19 +140,54 @@ func (t *tick) landRequests() {
 	t.unlanded()
 }
 
-// unlanded reports, as an engine judgement, a merging producer the tick
-// leaves with no land request in flight or planned for its stream, no land
-// judgement, and no after target holding it: a card that would sit in
-// merging unexplained (intent rule 32). By construction landRequests leaves
-// none; this is the check that it did.
+// unlanded shows why a merging producer the tick leaves with no land
+// request waits: behind an after target under a land judgement, an after
+// judgement naming it (directive 78: the chain is shown, never an engine
+// judgement nobody can answer); with no request in flight or planned for
+// its stream, no land judgement and no after target holding it, an engine
+// judgement, since a card would sit in merging unexplained (intent rule
+// 32). By construction landRequests leaves none of the second; this is the
+// check that it did.
 func (t *tick) unlanded() {
 	for _, p := range t.v.Producers("merging") {
 		c := t.v.Cards[p]
-		if !t.free(p) || t.judged(p) || t.busy(c.Stream) || t.plannedLand(c.Stream) || t.afterHeld(c) {
+		if !t.free(p) || t.judged(p) {
 			continue
 		}
-		t.engine(p, "card "+p+" is merging with no land request and no land judgement: answer retry to ask the landing again")
+		if a := t.judgedAfter(c); a != "" {
+			t.judge("after", p, fmt.Sprintf("card %s waits to land after %s, which is merging under a land judgement: answer that one and %s lands after it; land: merge %s by hand now, out of its after order", p, a, p, p))
+			continue
+		}
+		if t.busy(c.Stream) || t.plannedLand(c.Stream) || t.afterHeld(c) {
+			continue
+		}
+		t.engine(p, "card "+p+" is merging with no land request and no land judgement (a defect in the steps): retry plans its landing afresh next tick; drop cancels it")
 	}
+}
+
+// judgedAfter is c's first after target that is merging under a land
+// judgement (open, or opened this tick), "" when none is.
+func (t *tick) judgedAfter(c store.Card) string {
+	for _, a := range c.After {
+		if x, ok := t.v.Cards[a]; ok && x.State == "merging" && t.judged(a) {
+			return a
+		}
+	}
+	return ""
+}
+
+// landJudgedIn is a card of stream s under a land judgement (open, or
+// opened this tick), "" when none is.
+func (t *tick) landJudgedIn(s string) string {
+	if p := t.jindex().landing[s]; p != "" {
+		return p
+	}
+	for _, j := range t.judges {
+		if j.kind == "land" && t.v.Cards[j.about].Stream == s {
+			return j.about
+		}
+	}
+	return ""
 }
 
 // plannedLand is whether this tick planned a land request for stream s.

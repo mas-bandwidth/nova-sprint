@@ -47,8 +47,9 @@ func TestRefusals(t *testing.T) {
 		{"reads", "0", "reads(p3): the answer 0 is outside 1..5"},
 		{"reads", "6", "reads(p3): the answer 6 is outside 1..5"},
 		{"reads", `"1"`, "reads(p3): the answer is a string, not an int"},
-		{"verdict", `"maybe"`, `verdict(p3): the answer is "maybe", not "yes", "fix" or "retry"`},
-		{"verdict", "True", `verdict(p3): the answer is a bool, not "yes", "fix" or "retry"`},
+		{"verdict", `"maybe"`, `verdict(p3): the answer is "maybe", not "yes" or "fix"`},
+		{"verdict", `"retry"`, `verdict(p3): the answer is "retry", not "yes" or "fix"`},
+		{"verdict", "True", `verdict(p3): the answer is a bool, not "yes" or "fix"`},
 		{"verdict", `"fix"`, `verdict(p3): "fix" with no fix read`},
 		{"width", `{"work": 3, "ahead": 2}`, "width(r1): work 3 is outside 0..2 (the row's width)"},
 		{"width", `{"work": -1, "ahead": 2}`, "width(r1): work -1 is outside 0..2 (the row's width)"},
@@ -96,7 +97,18 @@ func TestRefusals(t *testing.T) {
 		}
 		f := refusedBy(t, w, body)
 		assert.Equal(t, fmt.Sprintf("POLICY REFUSED v2 line %d %s", line, tc.want), f.Error(), "%s returning %s", tc.q, tc.ret)
+		refusalTextLint(t, f)
 	}
+}
+
+// refusalTextLint fails on a refusal with no validator text (directive 58:
+// "policy v24 failed question verdict: " told the coordinator nothing). A
+// refusal names its subject and says what is wrong, and its judgement
+// carries that text.
+func refusalTextLint(t *testing.T, f Failure) {
+	t.Helper()
+	assert.NotEmpty(t, strings.TrimSpace(f.Msg), "refusal of %s(%s) has no text: %s", f.Question, f.Subject, f.Error())
+	assert.Contains(t, f.Judgement(1).Question, f.Msg, "the judgement carries the validator's text")
 }
 
 func defLine(body, q string) int {

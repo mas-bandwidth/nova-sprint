@@ -74,7 +74,7 @@ type Answers struct {
 	Order    map[string][]any // each element an int64 or a string; see CompareOrder
 	Rows     map[RowsQuestion][]string
 	Reads    map[string]int
-	Verdict  map[string]string // "yes", "fix" or "retry" (ask one more read)
+	Verdict  map[string]string // "yes" or "fix" (a faulted read is no read: none is asked over faults alone)
 	Width    map[string]Width
 	Limits   Limits
 	Landing  map[string]Landing

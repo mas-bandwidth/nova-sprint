@@ -25,6 +25,7 @@ type sim struct {
 	last     Plan
 	accepted []store.Op
 	rejected []store.Receipt
+	edit     func(*Inputs) // changes a tick's inputs (a stream with no head)
 }
 
 func newSim(t *testing.T) *sim {
@@ -37,6 +38,9 @@ func (s *sim) inputs() Inputs {
 	in.Inbox = slices.Clone(s.inbox)
 	in.Inflight = slices.Clone(s.inflight)
 	in.Refused = slices.Clone(s.refused)
+	if s.edit != nil {
+		s.edit(&in)
+	}
 	return in
 }
 

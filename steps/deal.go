@@ -2,6 +2,7 @@ package steps
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -217,21 +218,28 @@ func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 }
 
 // pickRows is up to n distinct rows for c among rows (every one eligible,
-// with room): policy's answered rows in its order, the engine's ranking for
-// the rest. An answer naming no row with room is a miss, as an answer
-// naming a row not offered is.
+// with room): policy's answered rows in its order, spread (spread), the
+// engine's ranking for the rest. An answer naming no row with room is a
+// miss, as an answer naming a row not offered is.
 func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
 	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
-		t.o.refuse("rows")
+		t.o.refuse("rows", fmt.Sprintf("rows(%s %s) named %s, none with room (the rows with room: %s)", c.ID, kindOf(c), strings.Join(answered, " "), strings.Join(rows, " ")))
 	}
 	if len(rows) == 0 || n <= 0 {
 		return nil
 	}
 	var out []string
-	for _, r := range answered {
-		if slices.Contains(rows, r) && !slices.Contains(out, r) && len(out) < n {
-			out = append(out, r)
+	for len(out) < n {
+		var left []string
+		for _, r := range answered {
+			if slices.Contains(rows, r) && !slices.Contains(out, r) && !slices.Contains(left, r) {
+				left = append(left, r)
+			}
 		}
+		if len(left) == 0 {
+			break
+		}
+		out = append(out, t.spread(left))
 	}
 	if len(out) >= n {
 		return out
@@ -241,6 +249,24 @@ func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
 	return out
 }
 
+// spread is the row the deal takes from policy's answered rows with room,
+// in its order (directive 62: the deal spreads by load before it fills one
+// row to width): among the rows of the first one's rank and kind (rows
+// policy cannot tell apart), the one with the fewest live cards, this
+// tick's deals counted, policy's order breaking ties. Policy answers once
+// a tick on the counts before the deal, so only the engine can spread
+// within a tick. A row's load (load1 over cores) is not in the roster, so
+// it is not a key.
+func (t *tick) spread(left []string) string {
+	first, best := left[0], left[0]
+	for _, r := range left[1:] {
+		if t.rankIndex(r) == t.rankIndex(first) && t.kind(r) == t.kind(first) && t.used(r) < t.used(best) {
+			best = r
+		}
+	}
+	return best
+}
+
 func kindOf(c store.Card) string {
 	if c.State == "review" {
 		return "read"
@@ -248,41 +274,45 @@ func kindOf(c store.Card) string {
 	return "work"
 }
 
-// ranked is rows in the engine's order (the model's DefaultRow): the desired
-// rank exactly, then above it, then an idle lane, then most room, then name;
-// a row the card was withdrawn from last, when another remains (LPM D22).
-// rows come in name order, so a stable sort keeps the name tie-break; a
-// single candidate's best row is one pass (the deal's common case).
+// ranked is rows in the engine's order (the model's DefaultRow): a row the
+// card was withdrawn from last, when another remains (LPM D22); then the
+// desired rank exactly, then above it, then the fewest live cards (this
+// tick's deals counted: the deal spreads before it fills a row, directive
+// 62), then most room, then name. rows come in name order, so a stable
+// sort keeps the name tie-break; a single candidate's best row is one pass
+// (the deal's common case).
 func (t *tick) ranked(c store.Card, kind string, rows []string, n int) []string {
 	want := t.desired(c, kind)
-	score := func(r string) int {
-		rk := t.rankIndex(r)
-		s := 0
+	class := func(r string) int {
+		rk, s := t.rankIndex(r), 0
 		switch {
 		case rk == want:
-			s = 100
+			s = 2
 		case rk > want:
-			s = 50
-		}
-		if t.used(r) == 0 {
-			s += 10
+			s = 1
 		}
 		if t.withdrawnFrom(c, r) {
-			s -= 1000
+			s -= 10
 		}
-		return s + t.room(r) - t.used(r)
+		return s
+	}
+	better := func(a, b string) int { // < 0: a before b
+		return cmp.Or(cmp.Compare(class(b), class(a)), cmp.Compare(t.used(a), t.used(b)), cmp.Compare(t.room(b)-t.used(b), t.room(a)-t.used(a)))
+	}
+	if len(rows) == 0 {
+		return nil
 	}
 	if n == 1 {
-		best, bestScore := "", 0
-		for _, r := range rows {
-			if s := score(r); best == "" || s > bestScore {
-				best, bestScore = r, s
+		best := rows[0]
+		for _, r := range rows[1:] {
+			if better(r, best) < 0 {
+				best = r
 			}
 		}
 		return []string{best}
 	}
 	out := slices.Clone(rows)
-	slices.SortStableFunc(out, func(a, b string) int { return cmp.Compare(score(b), score(a)) })
+	slices.SortStableFunc(out, better)
 	return out
 }
 

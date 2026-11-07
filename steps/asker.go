@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"fmt"
 	"slices"
 	"time"
 )
@@ -161,47 +162,62 @@ var Engine = Defaults{
 
 // oracle is one tick's answers: the version's where usable, the defaults
 // where not, and the questions missed (one policy judgement each).
+// Every miss carries why (the policy's failure text, or the engine's
+// refusal of an answer it cannot use): a policy judgement with no text
+// told the coordinator nothing (directive 58; TestOracleRefusalsSayWhy).
 type oracle struct {
 	a    Answers
 	d    Defaults
-	miss set
+	miss map[string]string // question -> why its answer was not used (the first)
 }
 
 func newOracle(a Answers, d Defaults) *oracle {
-	o := &oracle{a: a, d: d, miss: set{}}
+	o := &oracle{a: a, d: d, miss: map[string]string{}}
 	if a.Failed["*"] != "" {
-		o.miss["*"] = struct{}{}
+		o.miss["*"] = a.Failed["*"]
 	}
 	return o
 }
 
-// usable says whether question q's answer for one subject may be read:
+// usable says whether question q's answer about subject may be read:
 // present, and the question not failed. A miss is recorded only under a
 // policy version (version 0 is no policy, every default by design).
-func (o *oracle) usable(q string, present bool) bool {
+func (o *oracle) usable(q, subject string, present bool) bool {
 	if o.a.Version == 0 {
 		return false
 	}
 	if _, spent := o.miss["*"]; spent {
 		return false
 	}
-	if o.a.Failed[q] != "" || !present {
-		o.miss[q] = struct{}{}
+	switch {
+	case o.a.Failed[q] != "":
+		o.refuse(q, o.a.Failed[q])
+		return false
+	case !present:
+		o.refuse(q, "no answer for "+subject)
 		return false
 	}
 	return true
 }
 
-func (o *oracle) refuse(q string) { o.miss[q] = struct{}{} }
+// refuse records question q's miss with why (the first why stands).
+func (o *oracle) refuse(q, why string) {
+	if _, ok := o.miss[q]; !ok {
+		o.miss[q] = why
+	}
+}
+
+// why is question q's miss as text.
+func (o *oracle) why(q string) string { return o.miss[q] }
 
 // order is order(card): the tuple, sorted by (rung, tuple, id) by the deal.
 // Default: fix attempts first (a prior head), then score.
 func (o *oracle) order(c CardFacts) []any {
 	t, ok := o.a.Order[c.ID]
-	if o.usable("order", ok) && orderOK(t) {
+	if o.usable("order", c.ID, ok) && orderOK(t) {
 		return t
-	} else if ok {
-		o.refuse("order")
+	} else if ok && o.a.Version != 0 {
+		o.refuse("order", fmt.Sprintf("order(%s) is %v: a tuple of up to 4 ints or strings is wanted", c.ID, t))
 	}
 	fix := 1
 	if c.PriorHead != "" {
@@ -228,16 +244,16 @@ func orderOK(t []any) bool {
 // or nil for the default (the engine's ranking in deal.go).
 func (o *oracle) rows(q RowsQuestion) []string {
 	ans, ok := o.a.Rows[q.Card.ID]
-	if !o.usable("rows", ok) {
+	if !o.usable("rows", q.Card.ID, ok) {
 		return nil
 	}
 	if len(ans) == 0 && len(q.Candidates) > 0 {
-		o.refuse("rows")
+		o.refuse("rows", fmt.Sprintf("rows(%s %s) named no row while %d candidate(s) exist", q.Card.ID, q.Kind, len(q.Candidates)))
 		return nil
 	}
 	for _, r := range ans {
 		if !slices.ContainsFunc(q.Candidates, func(c RowFacts) bool { return c.Name == r }) {
-			o.refuse("rows")
+			o.refuse("rows", fmt.Sprintf("rows(%s %s) named %s, not a candidate", q.Card.ID, q.Kind, r))
 			return nil
 		}
 	}
@@ -247,27 +263,30 @@ func (o *oracle) rows(q RowsQuestion) []string {
 // reads is reads(card): 1..5.
 func (o *oracle) reads(c CardFacts) int {
 	n, ok := o.a.Reads[c.ID]
-	if o.usable("reads", ok) {
+	if o.usable("reads", c.ID, ok) {
 		if n >= 1 && n <= 5 {
 			return n
 		}
-		o.refuse("reads")
+		o.refuse("reads", fmt.Sprintf("reads(%s) is %d, outside 1..5", c.ID, n))
 	}
 	return o.d.Reads
 }
 
 // verdict is verdict(card, reads): yes or fix, each needing a read that
-// said so. Default: any fix read means fix.
+// said so, exactly what layer 5's checkVerdict accepts (the reads are the
+// done ok and fix reads: a faulted read is not a read, directive 58, and
+// no verdict is asked without one of them). Default: any fix read means
+// fix, else yes.
 func (o *oracle) verdict(q VerdictQuestion) string {
 	has := func(res string) bool {
 		return slices.ContainsFunc(q.Reads, func(r ReadFacts) bool { return r.Result == res })
 	}
 	v, ok := o.a.Verdict[q.Card.ID]
-	if o.usable("verdict", ok) {
+	if o.usable("verdict", q.Card.ID, ok) {
 		if (v == "yes" && has("ok")) || (v == "fix" && has("fix")) {
 			return v
 		}
-		o.refuse("verdict")
+		o.refuse("verdict", fmt.Sprintf("verdict(%s) is %q: yes needs an ok read and fix a fix read", q.Card.ID, v))
 	}
 	if has("fix") {
 		return "fix"
@@ -278,11 +297,11 @@ func (o *oracle) verdict(q VerdictQuestion) string {
 // width is width(row): work at most the width. Default: work = width.
 func (o *oracle) width(r RowFacts) WidthAnswer {
 	w, ok := o.a.Width[r.Name]
-	if o.usable("width", ok) {
+	if o.usable("width", r.Name, ok) {
 		if w.Work >= 0 && w.Work <= r.Width {
 			return w
 		}
-		o.refuse("width")
+		o.refuse("width", fmt.Sprintf("width(%s) work is %d, outside 0..%d (the row's width)", r.Name, w.Work, r.Width))
 	}
 	return WidthAnswer{Work: r.Width}
 }
@@ -291,11 +310,11 @@ func (o *oracle) width(r RowFacts) WidthAnswer {
 // of at most a day.
 func (o *oracle) landing(s StreamFacts) LandingAnswer {
 	l, ok := o.a.Landing[s.Name]
-	if o.usable("landing", ok) {
+	if o.usable("landing", s.Name, ok) {
 		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 {
 			return l
 		}
-		o.refuse("landing")
+		o.refuse("landing", fmt.Sprintf("landing(%s) is %+v: 0 <= flowing < backed_up <= 1000 and ci_wait 0..86400 are wanted", s.Name, l))
 	}
 	return o.d.Landing
 }
@@ -303,11 +322,11 @@ func (o *oracle) landing(s StreamFacts) LandingAnswer {
 // limits is limits(): every count in its range, else the defaults whole.
 func (o *oracle) limits() Limits {
 	l := o.a.Limits
-	if o.usable("limits", l != nil) {
+	if o.usable("limits", "the sprint", l != nil) {
 		if limitsOK(*l) {
 			return *l
 		}
-		o.refuse("limits")
+		o.refuse("limits", fmt.Sprintf("limits() is %+v: a count is out of its range (layer 5's table)", *l))
 	}
 	return o.d.Limits
 }
@@ -322,11 +341,11 @@ func limitsOK(l Limits) bool {
 // regate a rising list; else the defaults whole. No wait is ever unbounded.
 func (o *oracle) timeouts() Timeouts {
 	t := o.a.Timeouts
-	if o.usable("timeouts", t != nil) {
+	if o.usable("timeouts", "the sprint", t != nil) {
 		if timeoutsOK(*t) {
 			return *t
 		}
-		o.refuse("timeouts")
+		o.refuse("timeouts", fmt.Sprintf("timeouts() is %+v: every bound 1..86400 s, withdraw at or above gone, regate rising", *t))
 	}
 	return o.d.Timeouts
 }
@@ -343,6 +362,6 @@ func timeoutsOK(t Timeouts) bool {
 
 // missed is the questions whose answer failed, in name order: one policy
 // judgement each ("*" is the budget, spent for every question).
-func (o *oracle) missed() []string { return sorted(o.miss) }
+func (o *oracle) missed() []string { return sortedKeys(o.miss) }
 
 func seconds(n int) time.Duration { return time.Duration(n) * time.Second }

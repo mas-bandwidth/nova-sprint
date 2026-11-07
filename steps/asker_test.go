@@ -123,3 +123,44 @@ func benchModels() map[string]string {
 	}
 	return out
 }
+
+// TestOracleRefusalsSayWhy: every answer the engine cannot use, under every
+// question, is a miss with its text (directive 58): failed with the
+// version's text, absent for its subject, or out of its domain, the verdict
+// "retry" included. A policy judgement with no text tells nobody anything.
+func TestOracleRefusalsSayWhy(t *testing.T) {
+	bad := Limits{Bounces: 0}
+	tmo := Timeouts{RowSilentGone: 0}
+	failed := map[string]string{}
+	for _, q := range []string{"order", "rows", "reads", "verdict", "width", "landing", "limits", "timeouts"} {
+		failed[q] = "line 9: " + q + " raised"
+	}
+	reads := []ReadFacts{{Result: "ok"}}
+	ask := func(a Answers) *oracle {
+		o := newOracle(a, Engine)
+		o.order(CardFacts{ID: "p1"})
+		o.rows(RowsQuestion{Card: CardFacts{ID: "p1"}, Candidates: rowsQ("r1").Candidates})
+		o.reads(CardFacts{ID: "p1"})
+		o.verdict(VerdictQuestion{Card: CardFacts{ID: "p1"}, Reads: reads})
+		o.width(RowFacts{Name: "r1", Width: 2})
+		o.landing(StreamFacts{Name: "s1"})
+		o.limits()
+		o.timeouts()
+		return o
+	}
+	for name, a := range map[string]Answers{
+		"failed": {Version: 4, Failed: failed},
+		"absent": {Version: 4, Limits: &bad, Timeouts: &tmo},
+		"domain": {Version: 4, Order: map[string][]any{"p1": {1.5}}, Rows: map[string][]string{"p1": {"r9"}}, Reads: map[string]int{"p1": 9},
+			Verdict: map[string]string{"p1": "retry"}, Width: map[string]WidthAnswer{"r1": {Work: 3}},
+			Landing: map[string]LandingAnswer{"s1": {BackedUp: 1, Flowing: 1}}, Limits: &bad, Timeouts: &tmo},
+	} {
+		o := ask(a)
+		assert.Len(t, o.missed(), 8, "%s: every question missed", name)
+		for _, q := range o.missed() {
+			assert.NotEmpty(t, o.why(q), "%s: question %s refused with no text", name, q)
+		}
+	}
+	o := ask(Answers{Version: 4, Verdict: map[string]string{"p1": "retry"}})
+	assert.Contains(t, o.why("verdict"), `verdict(p1) is "retry": yes needs an ok read and fix a fix read`)
+}

@@ -42,6 +42,10 @@ type View struct {
 	acks    set                    // the acknowledgement cursors written (AckCursor)
 	born    map[string]int64       // card -> the seq that put it (0: before the view)
 	touched map[string]int64       // card -> the seq that last wrote it (0: before the view)
+	// rearmed is the tick's memory of quiet causes (judge.go quiet): kind
+	// and about -> the closed judgement whose cause a tick has met gone
+	// since. Not a fold of the events: the ticks write it.
+	rearmed map[string]string
 }
 
 type set = map[string]struct{}
@@ -84,6 +88,7 @@ func (v *View) reset(epoch int) {
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
 	v.ReadyAt = map[string]time.Time{}
 	v.Faults, v.born, v.touched = map[string][]time.Time{}, map[string]int64{}, map[string]int64{}
+	v.rearmed = map[string]string{}
 	if v.acks == nil { // the store keeps cursors across epochs; so does the view
 		v.acks = set{}
 	}

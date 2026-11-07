@@ -76,11 +76,13 @@ func judgementsOf(snap store.Snapshot, name string) ([]store.Judgement, error) {
 	return out, nil
 }
 
-// choicesOf is a judgement's choices, as its command lists them.
+// choicesOf is a judgement's choices, as its command lists them; one whose
+// command lists none (a policy version's failure, whose answer is a policy
+// set) takes wait: seen.
 func choicesOf(j store.Judgement) []string {
 	_, list, ok := strings.Cut(j.Command, "choices:")
 	if !ok {
-		return []string{"retry"}
+		return []string{"wait"}
 	}
 	var out []string
 	for _, c := range strings.Split(list, "|") {
@@ -91,35 +93,47 @@ func choicesOf(j store.Judgement) []string {
 	return out
 }
 
-// answer is one judgement's answer applied: a land judgement's land is the
-// hand landing (runLand), every other answer one move.
+// answer is one judgement's answer applied: a land or after judgement's
+// land is the hand landing (runLand), every other answer one move.
 func (e *Engine) answer(ctx context.Context, in *input, snap store.Snapshot, j store.Judgement, r steps.Request, reason string) (string, error) {
-	if j.Kind == "land" && r.Answer == "land" {
+	if (j.Kind == "land" || j.Kind == "after") && r.Answer == "land" {
 		return e.handLand(ctx, in, snap, j.About, "", reason, j.ID)
 	}
 	return e.move(ctx, in, snap, r, j.About)
 }
 
-// answerRequest is the answer as a request: unblock and drop move the card
-// the judgement is about, and a land judgement's fix sends its producer to
-// fix with the reason as the finding (card.Red at its head); every other
-// choice (a land judgement's retry: the next tick asks the landing again)
-// is the answer alone.
+// answerRequest is the answer as a request: unblock, drop and hold move what
+// the judgement is about (hold as the hold verb's: a row, a stream or a
+// producer's Block); a land judgement's fix sends its producer to fix with
+// the reason as the finding (card.Red at its head), and a read-faults
+// judgement's yes and fix are the coordinator's verdict (JudgedYes,
+// JudgedFix with the reason as the finding). Every other choice is the
+// answer alone: retry (a new landing; an engine judgement's card planned
+// afresh), read (the read asked again) and wait (seen: not raised again
+// until its cause clears).
 func answerRequest(j store.Judgement, choice, reason string, snap store.Snapshot) (steps.Request, error) {
 	cs := choicesOf(j)
 	if !slices.Contains(cs, choice) {
 		return steps.Request{}, misuse("judge", "judgement "+j.ID+" takes one of: "+strings.Join(cs, " "))
 	}
 	r := steps.Request{Judgement: j.ID, Answer: choice}
-	switch choice {
-	case "unblock":
+	switch {
+	case choice == "unblock":
 		r.Card, r.Event = j.About, card.Unblock{Reason: reason}
-	case "drop":
+	case choice == "drop":
 		r.Card, r.Event = j.About, card.Cancel{Reason: reason}
-	case "fix":
-		if j.Kind == "land" {
-			r.Card, r.Event = j.About, card.Red{Head: snap.Cards[j.About].Head, Reason: reason}
+	case choice == "hold":
+		h, err := holdRequest(true, j.About, reason, snap)
+		if err != nil {
+			return steps.Request{}, err
 		}
+		r.Card, r.Stream, r.Row, r.Event = h.Card, h.Stream, h.Row, h.Event
+	case choice == "fix" && j.Kind == "land":
+		r.Card, r.Event = j.About, card.Red{Head: snap.Cards[j.About].Head, Reason: reason}
+	case choice == "fix" && j.Kind == "read-faults":
+		r.Card, r.Event = j.About, card.JudgedFix{Finding: reason}
+	case choice == "yes" && j.Kind == "read-faults":
+		r.Card, r.Event = j.About, card.JudgedYes{Reason: reason}
 	}
 	return r, nil
 }

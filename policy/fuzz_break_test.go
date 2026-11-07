@@ -308,7 +308,7 @@ func outOfDomain(a Answers, snap store.Snapshot, ro roster.Roster) string {
 		}
 	}
 	for id, v := range a.Verdict {
-		if v != "yes" && v != "fix" && v != "retry" {
+		if v != "yes" && v != "fix" {
 			return fmt.Sprintf("verdict(%s) = %q", id, v)
 		}
 	}

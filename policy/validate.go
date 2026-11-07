@@ -116,20 +116,20 @@ func late(ctx context.Context, i int) bool { return i%1024 == 1023 && ctx.Err() 
 // checkReads: the count of reads, 1..5.
 func checkReads(v starlark.Value) (int, string) { return intIn("the answer", v, 1, 5) }
 
-// checkVerdict: yes, fix or retry; never yes with no ok read, fix with no
-// fix read, or retry while a done read is ok or fix (retry: every done read
-// faulted, so layer 3 asks one more read).
+// checkVerdict: yes or fix; never yes with no ok read, fix with no fix
+// read. The reads are the done ok and fix reads: a faulted read is not a
+// read (directive 58; layer 3 asks it again up to limits' faults, then
+// the coordinator judges), so there is no "retry" (layer 3 accepts exactly
+// what this accepts).
 func checkVerdict(v starlark.Value, results []string) (string, string) {
 	s, ok := v.(starlark.String)
 	switch {
-	case !ok || (s != "yes" && s != "fix" && s != "retry"):
-		return "", refuse("the answer is %s, not \"yes\", \"fix\" or \"retry\"", brief(v))
+	case !ok || (s != "yes" && s != "fix"):
+		return "", refuse("the answer is %s, not \"yes\" or \"fix\"", brief(v))
 	case s == "yes" && !slices.Contains(results, "ok"):
 		return "", refuse("\"yes\" with no ok read")
 	case s == "fix" && !slices.Contains(results, "fix"):
 		return "", refuse("\"fix\" with no fix read")
-	case s == "retry" && (slices.Contains(results, "ok") || slices.Contains(results, "fix")):
-		return "", refuse("\"retry\" with a done ok or fix read")
 	}
 	return string(s), ""
 }

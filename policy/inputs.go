@@ -89,7 +89,8 @@ func (ix *index) count(c store.Card) {
 		l[0] += b2i(c.State == "working")
 		l[1] += b2i(c.State == "ready")
 		ix.load[c.Holder] = l
-		if p, ok := ix.snap.Cards[c.Of]; ok && c.Kind == "read" && c.State == "done" && c.Review == p.Review && c.Head == p.Head {
+		// A faulted read is not a read (directive 58): verdict sees ok and fix.
+		if p, ok := ix.snap.Cards[c.Of]; ok && c.Kind == "read" && c.State == "done" && c.Result != "fault" && c.Review == p.Review && c.Head == p.Head {
 			ix.reads[c.Of] = append(ix.reads[c.Of], c.ID)
 		}
 	case "producer":

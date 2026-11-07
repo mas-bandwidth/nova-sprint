@@ -1,8 +1,11 @@
 package steps
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -11,33 +14,49 @@ import (
 // (an open one of the same kind and about is not opened again), a group key
 // for one push per shared cause (LESSONS 4.9), the deadline policy states
 // (none for blocked by Glenn's ruling) and the command that answers it.
+// choices overrides the kind's (an engine judgement's depend on what it is
+// about).
 type judgement struct {
 	kind, about, question string
 	episode               int // 0: the next
+	choices               string
 }
 
-// The closed list a step opens, with the choices judge offers for each.
+// The closed list a step opens, with the choices judge offers for each
+// (directive 60: no kind's only choice is retry). A choice moves something
+// (unblock, drop, hold, land, fix, yes), asks again (retry: a new landing
+// or a fresh plan; read: the read again), or is wait, a notice's: seen, it
+// closes, and the same cause is not raised again until it has cleared
+// (quiet). engine's choices are engineChoices'.
 var choices = map[string]string{
-	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
-	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
-	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
-	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "unacked": "retry", "undealt": "retry",
+	"blocked": "unblock | drop", "unserved": "wait", "cannot-read": "wait | drop", "land": "land | fix | retry",
+	"stall": "wait | hold", "idle": "wait", "land-rate": "wait | hold", "flap": "wait | hold", "brief": "rework | drop",
+	"landed-sentinel": "wait", "policy": "wait", "roster": "wait",
+	"overlap": "wait | drop", "no-model": "wait", "no-policy": "wait", "unacked": "wait", "undealt": "wait | hold | drop",
+	"read-faults": "read | yes | fix", "after": "land | wait",
 }
 
-// judge opens kind about about unless one is open (a cause opens once).
+// reasks are the answers that ask the same thing again: the cause is
+// raised again at once if it still holds (every other answer, and a
+// deadline, quiets it until it clears).
+var reasks = []string{"retry", "read"}
+
+// sitting are the kinds with no deadline: each sits until answered or
+// its cause clears (a land judgement's producer stays merging with no
+// request until the coordinator says land, fix or retry, intent rule 32;
+// an engine, stall or read-faults judgement re-fired each deadline,
+// directive 60).
+var sitting = []string{"blocked", "land", "no-policy", "engine", "stall", "read-faults", "after"}
+
+// judge opens kind about about unless one is open (a cause opens once) or
+// the cause is quiet: its last episode was answered (not re-asked) or
+// timed out and the cause has not cleared since.
 func (t *tick) judge(kind, about, question string) {
-	if t.isOpen(kind, about) || t.pending(kind, about) {
+	t.raised[jkey(kind, about)] = struct{}{}
+	if t.isOpen(kind, about) || t.pending(kind, about) || t.quiet(kind, about) {
 		return
 	}
 	t.addJudge(judgement{kind: kind, about: about, question: question})
-}
-
-// judgeAgain opens a new episode whether or not one is open (a base's red is
-// met again).
-func (t *tick) judgeAgain(kind, about, question string) {
-	if !t.pending(kind, about) {
-		t.addJudge(judgement{kind: kind, about: about, question: question})
-	}
 }
 
 // judgeAt opens episode n of kind about about once: a count that only grows
@@ -50,8 +69,77 @@ func (t *tick) judgeAt(kind, about string, n int, question string) {
 }
 
 // engine is the judgement for a defect here or in layer 2: a plan the
-// machine or the store refused on fresh state.
-func (t *tick) engine(about, why string) { t.judge("engine", about, why) }
+// machine or the store refused on fresh state. While it is open the tick
+// plans nothing for its card (claimEngine); retry closes it and the next
+// tick plans the card afresh from the state, never the refused op again.
+func (t *tick) engine(about, why string) {
+	t.raised[jkey("engine", about)] = struct{}{}
+	if t.isOpen("engine", about) || t.pending("engine", about) || t.quiet("engine", about) {
+		return
+	}
+	t.addJudge(judgement{kind: "engine", about: about, question: why, choices: t.engineChoices(about)})
+}
+
+// engineChoices are an engine judgement's: retry (plan it afresh), and for
+// a card drop and, where the card machine allows Block, hold; for a stream
+// or a row, hold.
+func (t *tick) engineChoices(about string) string {
+	c, ok := t.v.Cards[about]
+	switch {
+	case !ok:
+		return "retry | hold"
+	case slices.Contains([]string{"waiting", "ready", "review", "working"}, c.State) && c.Kind == "producer":
+		return "retry | hold | drop"
+	}
+	return "retry | drop"
+}
+
+// claimEngine claims every card an open engine judgement is about, so no
+// step plans it (the refusal is not met again every tick) until the
+// coordinator answers.
+func (t *tick) claimEngine() {
+	for _, about := range t.jindex().engine {
+		if _, ok := t.v.Cards[about]; ok {
+			t.claimed[about] = struct{}{}
+		}
+	}
+}
+
+// quiet says whether kind about about's last episode closed without its
+// cause clearing: answered other than a re-ask, or past its deadline, and
+// no tick since has met the cause gone (rearm).
+func (t *tick) quiet(kind, about string) bool {
+	last, ok := t.jindex().last[jkey(kind, about)]
+	if !ok || !quieting(last) {
+		return false
+	}
+	return t.v.rearmed[jkey(kind, about)] != last.ID
+}
+
+// quieting says whether closed judgement j quiets its cause.
+func quieting(j store.Judgement) bool {
+	switch j.State {
+	case "answered":
+		return !slices.Contains(reasks, j.Answer)
+	case "expired":
+		return strings.HasPrefix(j.Answer, deadlinePassed)
+	}
+	return false
+}
+
+const deadlinePassed = "deadline passed"
+
+// rearm records, for every quiet cause the tick did not raise (it cleared),
+// that its last episode no longer quiets it: when it returns it is raised.
+// The view keeps it across ticks; after a restart a cause still holding
+// stays quiet until it clears once.
+func (t *tick) rearm() {
+	for k, last := range t.jindex().last {
+		if _, raised := t.raised[k]; !raised && quieting(last) && t.v.rearmed[k] != last.ID {
+			t.v.rearmed[k] = last.ID
+		}
+	}
+}
 
 // addJudge plans j and indexes it by kind and about, so pending is one lookup
 // however many the tick opens (thousands of held producers each open an
@@ -80,27 +168,56 @@ func (t *tick) isOpen(kind, about string) bool {
 // episodes is how many judgements of kind about about exist, open or closed.
 func (t *tick) episodes(kind, about string) int { return t.jindex().episodes[jkey(kind, about)] }
 
-// judgedIndex is the view's judgements by kind and about: the open ones and
-// how many episodes each has. Built once a tick, on first use (the view
+// judgedIndex is the view's judgements by kind and about: the open ones,
+// how many episodes each has and the last of them, the cards open engine
+// judgements are about, and when the coordinator last answered read to a
+// card's read-faults judgement. Built once a tick, on first use (the view
 // does not change during a tick).
 type judgedIndex struct {
 	open     set
 	episodes map[string]int
+	last     map[string]store.Judgement
+	engine   []string
+	reads    map[string]time.Time
+	landing  map[string]string // stream -> the least card under an open land judgement
 }
 
 func (t *tick) jindex() judgedIndex {
 	if t.jidx.open != nil {
 		return t.jidx
 	}
-	t.jidx = judgedIndex{open: set{}, episodes: map[string]int{}}
+	t.jidx = judgedIndex{open: set{}, episodes: map[string]int{}, last: map[string]store.Judgement{}, reads: map[string]time.Time{}, landing: map[string]string{}}
 	for _, j := range t.v.Judgements {
 		k := jkey(j.Kind, j.About)
 		t.jidx.episodes[k]++
-		if j.State == "open" {
+		if l, ok := t.jidx.last[k]; !ok || later(j, l) {
+			t.jidx.last[k] = j
+		}
+		switch {
+		case j.State == "open" && j.Kind == "engine":
+			t.jidx.engine = append(t.jidx.engine, j.About)
 			t.jidx.open[k] = struct{}{}
+		case j.State == "open" && j.Kind == "land":
+			if s := t.v.Cards[j.About].Stream; t.jidx.landing[s] == "" || j.About < t.jidx.landing[s] {
+				t.jidx.landing[s] = j.About
+			}
+			t.jidx.open[k] = struct{}{}
+		case j.State == "open":
+			t.jidx.open[k] = struct{}{}
+		case j.Kind == "read-faults" && j.Answer == "read" && j.ClosedAt.After(t.jidx.reads[j.About]):
+			t.jidx.reads[j.About] = j.ClosedAt
 		}
 	}
 	return t.jidx
+}
+
+// later says whether judgement a was opened after b (by id at the same
+// instant: an episode's number is in its id).
+func later(a, b store.Judgement) bool {
+	if !a.OpenedAt.Equal(b.OpenedAt) {
+		return a.OpenedAt.After(b.OpenedAt)
+	}
+	return a.ID > b.ID
 }
 
 // riding is the writes of a judgement that rides in a group's op (a block's
@@ -122,17 +239,14 @@ func (t *tick) put(j judgement) store.Write {
 	}
 	id := fmt.Sprintf("%s.%s.%d", j.kind, j.about, n)
 	w := store.PutJudgement{ID: id, Kind: j.kind, About: j.about, Question: j.question, Group: j.kind,
-		Command: fmt.Sprintf("nova-sprint judge %s <choice> --reason <why>   choices: %s", id, choices[j.kind])}
+		Command: fmt.Sprintf("nova-sprint judge %s <choice> --reason <why>   choices: %s", id, cmp.Or(j.choices, choices[j.kind]))}
 	if j.kind == "policy" {
 		w.Group = fmt.Sprintf("policy:v%d", t.o.a.Version)
 	}
 	if j.kind == "roster" {
 		w.Group = RosterGroup(j.about)
 	}
-	// A blocked card, a land judgement and the no-policy gate sit until
-	// answered or cleared: a land judgement's producer stays merging with no
-	// request until the coordinator says land, fix or retry (intent rule 32).
-	if j.kind != "blocked" && j.kind != "land" && j.kind != "no-policy" {
+	if !slices.Contains(sitting, j.kind) {
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
 	return w
@@ -146,7 +260,7 @@ func (t *tick) put(j judgement) store.Write {
 func (t *tick) judgements() {
 	t.alarms()
 	for _, q := range t.o.missed() {
-		t.judge("policy", q, fmt.Sprintf("policy v%d failed question %s: %s; the default answered this tick: run nova-sprint policy check", t.o.a.Version, q, t.o.a.Failed[q]))
+		t.judge("policy", q, fmt.Sprintf("policy v%d failed question %s: %s; the default answered this tick: run nova-sprint policy check", t.o.a.Version, q, t.o.why(q)))
 	}
 	for _, id := range sortedKeys(t.v.Judgements) {
 		j := t.v.Judgements[id]
@@ -156,9 +270,10 @@ func (t *tick) judgements() {
 		if why := t.cleared(j); why != "" {
 			t.expires[id] = why
 		} else if !j.Deadline.IsZero() && !t.in.Now.Before(j.Deadline) {
-			t.expires[id] = fmt.Sprintf("deadline passed; %s's safe default: nothing dropped, accepted, merged or landed", j.Kind)
+			t.expires[id] = fmt.Sprintf("%s; %s's safe default: nothing dropped, accepted, merged or landed", deadlinePassed, j.Kind)
 		}
 	}
+	t.rearm()
 }
 
 // cleared is why an open judgement's cause no longer holds in the view, or
@@ -198,6 +313,17 @@ func (t *tick) cleared(j store.Judgement) string {
 		if at, ok := t.v.Landed[j.About]; ok && at.After(j.OpenedAt) {
 			return "stream " + j.About + " landed"
 		}
+		if lj := t.landJudgedIn(j.About); lj != "" {
+			return "the stall's cause is on the board: the land judgement of " + lj
+		}
+	case "read-faults":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "review" || !t.faultCapped(c) {
+			return j.About + " no longer waits on faulted reads"
+		}
+	case "engine":
+		if c, ok := t.v.Cards[j.About]; ok && (c.State == "landed" || c.State == "fail") {
+			return j.About + " is " + c.State
+		}
 	case "idle":
 		if open, working := t.load(); working*4 >= open*3 {
 			return "working at or above three quarters of the open width"
@@ -231,6 +357,10 @@ func (t *tick) clearedDeal(j store.Judgement) string {
 		if j.About != t.coordinatorRow() {
 			return "the coordinator's row is now " + t.coordinatorRow()
 		}
+	case "after":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "merging" || t.judgedAfter(c) == "" {
+			return j.About + " no longer waits behind a judged card"
+		}
 	}
 	return ""
 }
@@ -250,7 +380,10 @@ func contains(xs []string, x string) bool {
 // rate under target over the sample).
 func (t *tick) alarms() {
 	for _, s := range sortedKeys(t.v.Streams) {
-		if f := t.streamFacts(s); f.Merging+f.Review > 0 {
+		// One stall per stream per stall (closed by the landing), never
+		// while a land judgement of the stream is open: that is the stall's
+		// cause, already on the board (directive 60).
+		if f := t.streamFacts(s); f.Merging+f.Review > 0 && t.landJudgedIn(s) == "" {
 			since := t.v.Since
 			if at, ok := t.v.Landed[s]; ok && at.After(since) {
 				since = at

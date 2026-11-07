@@ -15,9 +15,12 @@ import (
 // prefer(candidates, rank) is the default's choice of rows, in Go so that a
 // tick's rows work is linear in its producers, not producers x rows: the
 // names of the candidates at rank and up, nearest first, then those below
-// it, highest first; every candidate, those with room (working < width)
-// first (Emma's probe: dropping the busy ones could leave a card no row
-// with work above 0). Candidates come by rank, lowest first, then by name.
+// it, highest first; within a rank the fewest working first (directive 62:
+// the deal spreads by load, so the row first by name is not filled to
+// width while its peers idle; the engine spreads within the tick); every
+// candidate, those with room (working < width) first (Emma's probe:
+// dropping the busy ones could leave a card no row with work above 0).
+// Candidates come by rank, lowest first, then by name.
 // It is memoised for the thread (one version's tick) per candidate list
 // and rank, and the list it returns is frozen.
 func prefer(th *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -55,12 +58,13 @@ func prefer(th *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwarg
 func preferred(cands starlark.Tuple, want int) (*starlark.List, error) {
 	var up, below []starlark.Value
 	roomy := map[starlark.Value]bool{}
+	loads := map[starlark.Value]load{}
 	for _, c := range cands {
 		s, ok := c.(*starlarkstruct.Struct)
 		if !ok {
 			return nil, fmt.Errorf("prefer: a candidate is %s, not a row", kind(c))
 		}
-		name, r, has, err := attrs(s)
+		name, r, w, has, err := attrs(s)
 		if err != nil {
 			return nil, err
 		}
@@ -69,9 +73,11 @@ func preferred(cands starlark.Tuple, want int) (*starlark.List, error) {
 		} else {
 			below = append(below, name)
 		}
-		roomy[name] = has
+		roomy[name], loads[name] = has, load{rung(r), w}
 	}
 	slices.Reverse(below)
+	byLoad(up, loads)
+	byLoad(below, loads)
 	all := append(up, below...)
 	slices.SortStableFunc(all, func(a, b starlark.Value) int { return b2i(roomy[b]) - b2i(roomy[a]) })
 	l := starlark.NewList(all)
@@ -79,16 +85,32 @@ func preferred(cands starlark.Tuple, want int) (*starlark.List, error) {
 	return l, nil
 }
 
-// attrs are a candidate's name, rank and whether it has room.
-func attrs(s *starlarkstruct.Struct) (starlark.Value, string, bool, error) {
+// load is a candidate's rank (as an index) and working count.
+type load struct{ rung, working int }
+
+// byLoad orders each run of one rank in names by working, fewest first,
+// keeping the runs' order and, among equals, the names'.
+func byLoad(names []starlark.Value, loads map[starlark.Value]load) {
+	for i := 0; i < len(names); {
+		j := i + 1
+		for j < len(names) && loads[names[j]].rung == loads[names[i]].rung {
+			j++
+		}
+		slices.SortStableFunc(names[i:j], func(a, b starlark.Value) int { return loads[a].working - loads[b].working })
+		i = j
+	}
+}
+
+// attrs are a candidate's name, rank, working count and whether it has room.
+func attrs(s *starlarkstruct.Struct) (starlark.Value, string, int, bool, error) {
 	var v [4]starlark.Value
 	for i, a := range []string{"name", "rank", "working", "width"} {
 		x, err := s.Attr(a)
 		if err != nil {
-			return nil, "", false, fmt.Errorf("prefer: a candidate's %s: %w", a, err)
+			return nil, "", 0, false, fmt.Errorf("prefer: a candidate's %s: %w", a, err)
 		}
 		if x == nil {
-			return nil, "", false, fmt.Errorf("prefer: a candidate has no %s", a)
+			return nil, "", 0, false, fmt.Errorf("prefer: a candidate has no %s", a)
 		}
 		v[i] = x
 	}
@@ -96,9 +118,9 @@ func attrs(s *starlarkstruct.Struct) (starlark.Value, string, bool, error) {
 	working, okWorking := v[2].(starlark.Int)
 	width, okWidth := v[3].(starlark.Int)
 	if !okRank || !okWorking || !okWidth {
-		return nil, "", false, fmt.Errorf("prefer: a candidate's rank, working or width is of the wrong type")
+		return nil, "", 0, false, fmt.Errorf("prefer: a candidate's rank, working or width is of the wrong type")
 	}
 	w, _ := working.Int64() // ignored: the engine's counts always fit
 	n, _ := width.Int64()   // ignored: as above
-	return v[0], string(rank), w < n, nil
+	return v[0], string(rank), int(w), w < n, nil
 }
