@@ -38,27 +38,30 @@ type configMachines struct {
 func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 	out, err := f.command(ctx, "nova-config", "machine", "list", "--json")
 	if err != nil {
-		return nil, fmt.Errorf("nova-config machine list failed")
+		return nil, fmt.Errorf("nova-config machine list --json: %w", err)
 	}
 	var list configMachines
-	if json.Unmarshal(out, &list) != nil || list.Result.Verb != "machine list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "machine" || list.Facts.Rows != len(list.Items) {
-		return nil, fmt.Errorf("nova-config returned invalid machine list")
+	if err := json.Unmarshal(out, &list); err != nil {
+		return nil, fmt.Errorf("nova-config machine list --json: %s", ParseFailure(err, out))
+	}
+	if list.Result.Verb != "machine list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "machine" || list.Facts.Rows != len(list.Items) {
+		return nil, fmt.Errorf("nova-config machine list --json: result %q %q exit %d, facts %q rows %d for %d items; first bytes %q",
+			list.Result.Verb, list.Result.Status, list.Result.Exit, list.Facts.Kind, list.Facts.Rows, len(list.Items), firstBytes(out))
 	}
 	result := make([]FleetMachine, 0, len(list.Items))
 	seen := map[string]bool{}
 	for _, item := range list.Items {
 		v := item.Fields
 		if item.Kind != "machine" || !fleetName.MatchString(v.Name) || seen[v.Name] || (v.Cores != nil && *v.Cores < 0) {
-			return nil, fmt.Errorf("nova-config returned invalid machine list")
+			return nil, fmt.Errorf("nova-config machine list --json: item kind %q name %q is not a machine the sprint can name (duplicate, bad name or negative cores)", item.Kind, v.Name)
 		}
 		seen[v.Name] = true
+		// Roles are nova-config's to validate: the sprint reads the tokens
+		// it uses (bench, runner, services) and ignores every other.
 		roles := []string{}
-		if v.Roles != "" {
-			roles = strings.Split(v.Roles, ",")
-		}
-		for _, role := range roles {
-			if role != "bench" && role != "runner" && role != "services" {
-				return nil, fmt.Errorf("nova-config returned invalid machine role")
+		for _, role := range strings.Split(v.Roles, ",") {
+			if role = strings.TrimSpace(role); role == "bench" || role == "runner" || role == "services" {
+				roles = append(roles, role)
 			}
 		}
 		result = append(result, FleetMachine{Name: v.Name, Address: v.Address, Roles: roles, Cores: v.Cores})

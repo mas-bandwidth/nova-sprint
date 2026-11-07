@@ -21,6 +21,10 @@ func toolEnvironment(source []string, name string) []string {
 		for _, k := range []string{"NOVA_BUS_REDIS", "NOVA_BUS_USER", "NOVA_BUS_PASSWORD", "CODEX_THREAD_ID"} {
 			allowed[k] = true
 		}
+	case "nova-config": // its own store: the DSN and the password, or the variable that names it
+		for _, k := range []string{"NOVA_PG_DSN", "NOVA_PG_PASSWORD", "NOVA_PG_PASSWORD_ENV"} {
+			allowed[k] = true
+		}
 	case "nova-fleet":
 		for _, k := range []string{"NOVA_SECRETS_STORE", "NOVA_SECRETS_KEY", "NOVA_SECRETS_PINS", "NOVA_SECRETS_SEAT"} {
 			allowed[k] = true

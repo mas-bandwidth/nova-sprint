@@ -3,7 +3,9 @@ package verbs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -137,4 +139,31 @@ func OutputWith(cmd *exec.Cmd, out io.Writer) error {
 	cmd.Stdout = out
 	cmd.Stderr = &tail
 	return Failure(filepath.Base(cmd.Path), cmd.Run(), bytes.TrimSpace(tail.buf))
+}
+
+// Redact is StderrLine's redaction on any text, kept on one line.
+func Redact(text string) string { return StderrLine([]byte(strings.ReplaceAll(text, "\n", " "))) }
+
+// firstBytes is the first 200 bytes a parser saw, redacted.
+func firstBytes(out []byte) string {
+	if len(out) > 200 {
+		out = out[:200]
+	}
+	return Redact(string(out))
+}
+
+// ParseFailure names where a JSON parse failed and what it saw: the byte
+// offset and the first 200 bytes (audit row 28: a parse failure never
+// drops its cause).
+func ParseFailure(err error, out []byte) string {
+	var off int64 = -1
+	var se *json.SyntaxError
+	var te *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &se):
+		off = se.Offset
+	case errors.As(err, &te):
+		off = te.Offset
+	}
+	return fmt.Sprintf("parse failed at byte %d: %v; first bytes %q", off, err, firstBytes(out))
 }

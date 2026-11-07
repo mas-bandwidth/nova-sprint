@@ -192,7 +192,7 @@ func (p productionSetup) configError() error {
 func (p productionSetup) checkControlMachine(ctx context.Context) error {
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return &verbs.OperationError{Problem: "cannot inspect the control machine inventory", Fix: "run nova-config machine list --json and nova-fleet check", Exit: 2}
+		return &verbs.OperationError{Problem: "cannot inspect the control machine inventory: " + verbs.Redact(err.Error()), Fix: "fix what nova-config said, then nova-sprint up again", Exit: 2}
 	}
 	for _, machine := range machines {
 		if machine.Name == p.cfg.Host {
