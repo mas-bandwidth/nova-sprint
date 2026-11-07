@@ -55,7 +55,19 @@
 (* producer's head at Start, which an ok report may not repeat.           *)
 (*                                                                         *)
 (* deps also carries the sentinel a, absent until Add puts it with needs  *)
-(* and after chosen from the existing cards.                              *)
+(* and after chosen from the existing cards, and the id "p1.w1", which    *)
+(* Add refuses for its dot (round 7).                                     *)
+(*                                                                         *)
+(* Round 7 (the rulings after the fifth cold read): ids without dots      *)
+(* (IdsDistinct); InThisOp only after an earlier move of the same op      *)
+(* failed the need (InThisOpLater, InThisOpOnFailedNeed); the preempt     *)
+(* guard only on Withdraws flagged preempt, on the flattened op           *)
+(* (PlainRows, PlainWithdrawUnguarded); a sequence legal one by one is    *)
+(* one op, the last write winning (MergeParksResolved); ReadFix always    *)
+(* writes a finding (FixSaysWhat); the review counter rises once per      *)
+(* Finished or Red, however the op is nested (ReviewOnEntry); a move's    *)
+(* record is the real one with its fields written (a hand-built plan is   *)
+(* folded onto the snapshot's record, never a partial one).               *)
 (*                                                                         *)
 (* last is a step monitor: the set of step rules the step broke (bad),    *)
 (* computed by StepRule from the state before and after the step, and the *)
@@ -64,7 +76,7 @@
 (* seen there; each step invariant says its rule is not in last.bad. The  *)
 (* monitor keeps no predecessor, so it does not split states by them.     *)
 (***************************************************************************)
-EXTENDS Naturals, FiniteSets
+EXTENDS Naturals, FiniteSets, TLC
 
 CONSTANTS
   Scenario,    \* "life", "deps" or "pre"
@@ -76,8 +88,11 @@ CONSTANTS
   MaxOp        \* moves one Merge composes into one op (1: no merges)
 
 Prods     == IF Scenario \in {"life", "reads"} THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
-\* In deps a second sentinel, a, is absent until Add puts it.
-Added     == IF Scenario = "deps" THEN {"a"} ELSE {}
+\* In deps a second sentinel, a, is absent until Add puts it; so is
+\* "p1.w1", an id with a dot that Add refuses (round 7, ruling 1): it is the
+\* name of p1's first work consumer.
+Added     == IF Scenario = "deps" THEN {"a", "p1.w1"} ELSE {}
+Dotted    == {"p1.w1"}   \* the ids above that contain "."
 Sentinels == (IF Scenario \in {"pre", "reads"} THEN {} ELSE {"s"}) \cup Added
 P         == Prods \cup Sentinels
 \* "reads" has a third row, so AskReads can cut reads on two rows that are
@@ -152,6 +167,12 @@ Back         == IF held THEN "waiting" ELSE "ready"
 \* c is p's work consumer of its current attempt.
 IsCur(p, c)  == c \in ConsOf(p) /\ cs[c].kind = "work" /\ cs[c].att = ps[p].att /\ cs[c].st # "none"
 NextSlot(p)  == <<p, ps[p].ncut + 1>>
+\* The code's consumer ids: <p>.w<attempt> for work, <p>.r<review>.<n> for
+\* the n-th read cut at that review.
+ReadNo(c)    == Cardinality({i \in 1..c[2] : cs[<<c[1], i>>].kind = "read"
+                                             /\ cs[<<c[1], i>>].review = cs[c].review})
+ConsName(c)  == IF cs[c].kind = "work" THEN c[1] \o ".w" \o ToString(cs[c].att)
+                ELSE c[1] \o ".r" \o ToString(cs[c].review) \o "." \o ToString(ReadNo(c))
 
 \* The needs graph with p's needs replaced by ns has no cycle.
 RECURSIVE Reach(_, _, _)
@@ -241,6 +262,11 @@ StepRule(n, ev, p, c, r) ==
            (ps[s].st # "landed" /\ ps'[s].st = "landed")
              => (ev = "Reached" /\ \A x \in ps[s].needs : ps[x].st = "landed")
     [] n = "WaiveRedNeedsRed" -> ev = "WaiveRed" => ps[p].red
+    [] n = "ReviewOnEntry" ->
+         \A q \in Prods :
+           ps'[q].review = ps[q].review + (IF ev \in {"Finished", "Red"} /\ q = p THEN 1 ELSE 0)
+    [] n = "FixSaysWhat" -> ev = "ReadFix" => ps'[p].finding # "-"
+    [] n = "InThisOpOnFailedNeed" -> ev = "InThisOp" => ps'[r].st = "fail"
     [] n = "FencesOnSnapshot" ->
          op > 0 =>
            /\ p \in P => \A v \in PFence(p) : v = snap.ps[p].st
@@ -252,6 +278,7 @@ StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixK
               "WaiveRedNeedsPriorRead", "FixCarriesFailure", "ReplaceByLive", "HeadNeverRepeats",
               "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
               "SentinelLandsByReached", "WaiveRedNeedsRed",
+              "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
               "FencesOnSnapshot"}
 
 \* The monitor's value after a step: the rules it broke, and its name only
@@ -421,15 +448,15 @@ ReadYes(p) ==
   /\ YesRead(p)
   /\ PStep("ReadYes", p, NoC, [ps[p] EXCEPT !.st = "merging"])
 
-\* ReadFix{finding}: the finding is written only when one is given (round
-\* 6: "finding (when given and changed)"); give is whether it is.
-ReadFix(p, give) ==
+\* ReadFix{finding}: a fix read says what to fix (round 7, ruling 6): an
+\* empty finding is refused, so ReadFix always writes one.
+ReadFix(p) ==
   /\ ps[p].st = "review"
   /\ ReadsSettled(p)
   /\ NoLive(p)
   /\ FixRead(p)
   /\ PStep("ReadFix", p, NoC, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
-                                            !.finding = IF give THEN "fix" ELSE @])
+                                            !.finding = "fix"])
 
 \* WaiveRed (the second cold read): a producer that a Red sent back to
 \* review goes on to merging without a new read, when a done ok read of the
@@ -508,11 +535,13 @@ Relink(p, n, to) ==
   /\ Acyclic([NeedsGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])   \* FAULT: needs only
   /\ PStep("Relink", p, NoC, [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}])
 
-\* NeedFailed, Waive and Relink {InThisOp} (the code at v2-card-fix3): the
-\* op fails the need n earlier (here by Cancel) and moves the dependant p
-\* in the same op, with no "need is fail" fence; one step, no state between.
-InThisOpGuard(n, p, m, to) ==
-  /\ NonFinal(n) /\ NoLive(n)            \* Cancel(n)
+\* NeedFailed, Waive and Relink {InThisOp}: legal only inside a Merge where
+\* an earlier move of the same op writes the need n to fail (round 7,
+\* ruling 2), checked on the folded need state; alone it is refused ("merge
+\* it with the drop"). With MaxOp 1 the op is one step: Cancel(n) and the
+\* dependant's move together. With MaxOp > 1 it is InThisOpLater, a move of
+\* an open op after the one that failed n.
+InThisOpDeps(n, p, m, to) ==
   /\ p # n /\ n \in ps[p].needs
   /\ (m # "Relink") => to = n
   /\ CASE m = "NeedFailed" -> NonFinal(p) /\ NoLive(p)
@@ -527,10 +556,21 @@ InThisOpMove(p, n, m, to) ==
     [] m = "Waive"      -> [ps[p] EXCEPT !.needs = @ \ {n}]
     [] OTHER            -> [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}]
 InThisOp(n, p, m, to) ==
-  /\ InThisOpGuard(n, p, m, to)
+  /\ MaxOp = 1
+  /\ NonFinal(n) /\ NoLive(n)            \* Cancel(n)
+  /\ InThisOpDeps(n, p, m, to)
   /\ ps'   = [ps EXCEPT ![n].st = "fail", ![p] = InThisOpMove(p, n, m, to)]
   /\ UNCHANGED <<cs, rs, held>>
-  /\ last' = L("InThisOp", p, NoC, NoR)
+  /\ last' = L("InThisOp", p, NoC, n)   \* n rides in the row slot
+\* The need is fail in the folded state and was not at the op's start: an
+\* earlier move of this op failed it.
+InThisOpFolded(n) == op > 0 /\ ps[n].st = "fail" /\ snap.ps[n].st # "fail"
+InThisOpLater(n, p, m, to) ==
+  /\ InThisOpFolded(n)
+  /\ InThisOpDeps(n, p, m, to)
+  /\ ps'   = [ps EXCEPT ![p] = InThisOpMove(p, n, m, to)]
+  /\ UNCHANGED <<cs, rs, held>>
+  /\ last' = L("InThisOp", p, NoC, n)
 
 \* Edit writes the brief, which the model leaves out: only the history moves.
 \* A sentinel has no prose or score: Edit and Rescore refuse it, as Start
@@ -567,6 +607,7 @@ Unblock(p) ==
 \* through needs and after is refused (the first cold read).
 Add(p, ns, as) ==
   /\ ps[p].st = "absent"
+  /\ p \notin Dotted   \* round 7, ruling 1: an id may not contain "."
   /\ ns \subseteq {q \in P \ {p} : Exists(q)}
   /\ as \subseteq {q \in P \ {p} : Exists(q)}
   /\ Acyclic([OrderGraph EXCEPT ![p] = ns \cup as])
@@ -697,7 +738,7 @@ UnholdStream ==
 \* The card and consumer moves.
 CardMove ==
   \/ \E p \in P :
-       \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ (\E g \in BOOLEAN : ReadFix(p, g)) \/ WaiveRed(p)
+       \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
        \/ Cancel(p) \/ Block(p) \/ Unblock(p)
        \/ \E h \in Heads : Landed(p, h)
        \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
@@ -707,7 +748,8 @@ CardMove ==
        \/ \E n \in P : NeedFailed(p, n) \/ Waive(p, n)
        \/ \E n, to \in P : Relink(p, n, to)
        \/ \E c \in CIds, r \in Rows : Preempt(p, c, r)
-  \/ \E n, p \in P, m \in {"NeedFailed", "Waive", "Relink"}, to \in P : InThisOp(n, p, m, to)
+  \/ \E n, p \in P, m \in {"NeedFailed", "Waive", "Relink"}, to \in P :
+       InThisOp(n, p, m, to) \/ InThisOpLater(n, p, m, to)
   \/ \E c \in CIds :
        \/ \E h \in 0..MaxHead : Withdraw(c, h)
        \/ \E r \in Rows :
@@ -721,7 +763,7 @@ EnvMove ==
        \/ Scenario # "pre" /\ \E s \in 0..1 : Rescore(p, s)
        \/ \E l \in Prios : SetPriority(p, l)
        \/ \E h \in Heads : Red(p, h)   \* a red CI result: an outside event
-       \/ \E ns, as \in SUBSET P : Add(p, ns, as)
+       \/ \E ns, as \in SUBSET {q \in P \ {p} : Exists(q)} : Add(p, ns, as)
   \/ \E r \in Rows :
        \/ Seen(r) \/ Gone(r) \/ Hold(r) \/ Unhold(r)
        \/ \E n \in 1..2 : Width(r, n)
@@ -789,8 +831,13 @@ Commit ==
   /\ last' = [ev |-> "-", bad |-> {}]
   /\ UNCHANGED <<ps, cs, rs, held, env, pw, bs>>
 
+\* The rows the preempt guard reads off a move that is not a preempt
+\* Withdraw: none (round 7, ruling 3: the guard is the event's Preempt
+\* field, never its reason, and a plain Withdraw never triggers it).
+PlainRows == {}
+
 Next ==
-  \/ Move /\ OpStep({})
+  \/ Move /\ OpStep(PlainRows)
   \/ \E c \in CIds, h \in 0..MaxHead : PreWithdraw(c, h) /\ OpStep({cs[c].row})
   \/ Commit
   \/ Terminating
@@ -863,7 +910,7 @@ ParkedUnderHold == held => \A p \in P : ps[p].st # "ready"
 (* attempt bound, or one with no consumer slot left, is exempt: that is   *)
 (* the model's limit, not the design's.                                   *)
 OwnMove(p) ==
-  \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ (\E g \in BOOLEAN : ReadFix(p, g)) \/ WaiveRed(p)
+  \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
   \/ Unblock(p)
   \/ \E h \in Heads : Landed(p, h) \/ Red(p, h)
   \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
@@ -932,6 +979,26 @@ NeedsAcyclic == Acyclic(NeedsGraph)
 (* and after (the code at v2-card-fix3).                                 *)
 OrderAcyclic == Acyclic(OrderGraph)
 
+(* No card's id is a consumer's id (round 7, ruling 1): Add refuses an id *)
+(* with a dot, so a producer or sentinel never takes the name of a cut    *)
+(* work or read consumer.                                                 *)
+IdsDistinct ==
+  \A q \in P, c \in CIds : (Exists(q) /\ cs[c].st # "none") => q # ConsName(c)
+
+(* A plain (non-preempt) Withdraw of a working consumer merges into an op *)
+(* holding a blocker's Start on another row (round 7, rulings 3 and 8).   *)
+PlainWithdrawUnguarded ==
+  op > 0 =>
+    \A c \in CIds :
+      cs[c].st = "working"
+        => ENABLED (\E h \in 0..MaxHead : Withdraw(c, h) /\ UNCHANGED env /\ OpStep(PlainRows))
+
+(* A sequence legal one by one is one op, the last write winning (round  *)
+(* 7, ruling 4): HoldStream later in an open op is never refused, so     *)
+(* Merge(Resolve, HoldStream) parks what the Resolve readied.            *)
+MergeParksResolved ==
+  (op > 0 /\ ~held /\ env < MaxEnv) => ENABLED (HoldStream /\ env' = env + 1 /\ OpStep(PlainRows))
+
 (* An op's preempt Withdraws are of consumers on the row its blocker      *)
 (* Starts name (the guard, on the flattened op).                          *)
 PreemptOnBlockerRow == \A x \in pw, y \in bs : x = y
@@ -957,6 +1024,9 @@ EditNoLive             == "EditNoLive" \notin last.bad
 SentinelLandsByReached == "SentinelLandsByReached" \notin last.bad
 WaiveRedNeedsRed       == "WaiveRedNeedsRed" \notin last.bad
 FencesOnSnapshot       == "FencesOnSnapshot" \notin last.bad
+ReviewOnEntry          == "ReviewOnEntry" \notin last.bad
+FixSaysWhat            == "FixSaysWhat" \notin last.bad
+InThisOpOnFailedNeed   == "InThisOpOnFailedNeed" \notin last.bad
 
 -----------------------------------------------------------------------------
 (* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each    *)
@@ -990,6 +1060,8 @@ NeverAdded           == \A p \in Added : ~(Exists(p) /\ ps[p].needs # {} /\ ps[p
 NeverSentinelNeeded  == \A p \in Added : ~(Exists(p) /\ \E n \in ps[p].needs : n \in Sentinels)
 NeverAskReads        == last.ev # "AskReads"
 NeverInThisOp        == last.ev # "InThisOp"
+(* The same, in an op of several moves (InThisOpLater).                  *)
+NeverInThisOpMerged  == NeverInThisOp
 (* WaiveRed: merging after a Red with no ok read of the current review.   *)
 NeverWaivedRed       ==
   ~\E p \in Prods :
