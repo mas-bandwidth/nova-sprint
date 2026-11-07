@@ -34,7 +34,7 @@ func TestHiddenSetupModesFailClosedWithoutCredentials(t *testing.T) {
 	t.Setenv("NOVA_PG_DSN", "")
 	t.Setenv("NOVA_SPRINT_PG_PASSWORD", "")
 	t.Setenv("NOVA_PG_ADMIN_PASSWORD", "")
-	for _, args := range [][]string{{"--internal-model-probe", "unsupported"}, {"--internal-setup-role"}, {"--internal-setup-role-fresh"}, {"--internal-write-continuation"}, {"--internal-role-exists"}, {"--internal-store-probe"}, {"--internal-store-setup"}} {
+	for _, args := range [][]string{{"--internal-model-probe", "unsupported"}, {"--internal-setup-role"}, {"--internal-setup-role-fresh"}, {"--internal-write-continuation"}, {"--internal-role-exists"}, {"--internal-setup-role-password"}, {"--internal-store-probe"}, {"--internal-store-setup"}} {
 		code, handled := internalCommand(context.Background(), args)
 		if !handled || code == 0 {
 			t.Fatalf("%v: handled=%v exit=%d", args, handled, code)
