@@ -118,7 +118,7 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 			return SetupCheck{}, fmt.Errorf("version adoption unavailable")
 		}
 		ok, err = r.Adoption.Ready(ctx, in.Version)
-		return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d, backup and version shadow: VERIFIED", store.SchemaVersion), err)
+		return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d, backup and version check: VERIFIED", store.SchemaVersion), err)
 	case 3:
 		return r.Prerequisites.Coordinator(ctx, in.Actor)
 	case 4:
