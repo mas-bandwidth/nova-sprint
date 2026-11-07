@@ -9,14 +9,14 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 RUN_INV = ["TypeOK", "OneChooser", "NoApplyAfterObservedLoss", "AppliedOnce", "NoStaleMove", "BudgetKept",
-           "PushAfterCommit", "CursorTrailsSent", "FIFO", "NoDroppedPlan", "EdgesAfterCommit"]
+           "PushAfterCommit", "CursorTrailsSent", "FIFO", "NoDroppedPlan", "EdgesAfterCommit", "NoTickAfterObservedStop", "NoAcceptedTickWhileStopped"]
 SETUP_INV = ["TypeOK", "NeverAhead", "OnlyVerified", "AskedOnce", "KeyNeverPrinted", "RestartFromOne"]
 
 def config(model, *, work=3, reports=1, failures=1, budget=2, processes=2, temporal=True):
     if model == "Run":
         constants = ("CONSTANTS\n  Processes = {%s}\n  Recipients = {recipient}\n"
                      "  WorkCount = %d\n  CardCount = 2\n  Budget = %d\n"
-                     "  MaxReports = %d\n  MaxFailures = %d\n  AtomicChooser = FALSE\n") % (
+                     "  MaxReports = %d\n  MaxFailures = %d\n  AtomicChooser = FALSE\n  MaxStops = 0\n  InitiallyStopped = FALSE\n") % (
                          ", ".join("p%d" % n for n in range(1, processes+1)), work, budget, reports, failures)
         invariants, properties = RUN_INV, ["AllWork", "AllEventsSent"]
     else:

@@ -1,0 +1,6 @@
+=== RUN   TestEmitRunTrace
+    run_trace_test.go:351: fixture random seed=1 report card=2 between-ops=true
+    run_trace_test.go:399: trace: /var/tmp/stella-stop-trace-20261107/run-1.tla records=29
+--- PASS: TestEmitRunTrace (0.01s)
+PASS
+ok  	github.com/mas-bandwidth/nova-sprint/run	1.025s
