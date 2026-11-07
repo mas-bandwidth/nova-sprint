@@ -167,7 +167,7 @@ func TestSetupBusNamesFailureCarriesStderr(t *testing.T) {
 	}
 	bus := setupBusCommand(cfg, func(context.Context) (bool, error) { return false, nil }, run)
 	_, err := bus(context.Background(), "nova-bus", "who")
-	if err == nil || err.Error() != "bus secret names unavailable (nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=<redacted>)" {
+	if err == nil || !strings.HasPrefix(err.Error(), "bus secret names unavailable (nova-secrets: exit -1") || !strings.Contains(err.Error(), `stderr "nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=<redacted>"`) || strings.Contains(err.Error(), "AGE-SECRET") {
 		t.Fatal(err)
 	}
 }
