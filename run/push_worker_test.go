@@ -19,7 +19,7 @@ func TestPushWorkerUsesLatestViewAndUniqueRecipients(t *testing.T) {
 	if got.snapshot.Seq != 2 {
 		t.Fatalf("seq=%d", got.snapshot.Seq)
 	}
-	names := pushRecipients(store.Snapshot{Rows: map[string]store.Row{"alice": {}, "rowan": {}, "sprint": {}}}, "rowan")
+	names := pushRecipients(store.Snapshot{Rows: map[string]store.Row{"alice": {Session: "a", Role: "worker"}, "rowan": {Session: "r", Role: "coordinator"}, "offline": {Session: "o", Role: "worker"}, "unhooked": {}, "sprint": {Session: "s", Role: "worker"}}}, []string{"alice", "rowan", "unhooked", "sprint"})
 	if !reflect.DeepEqual(names, []string{"alice", "rowan"}) {
 		t.Fatalf("names=%v", names)
 	}

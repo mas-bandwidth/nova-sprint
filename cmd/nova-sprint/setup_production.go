@@ -60,7 +60,7 @@ func buildProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin 
 	return makeProductionSetup(st, env, actor, pin, cfg)
 }
 func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin string, cfg productionSetupConfig) (verbs.Setup, verbs.SetupLock) {
-	command := productionFleetCommand(cfg)
+	command := setupCommandWithBus(cfg, productionFleetCommand(cfg))
 	env.Command = command
 	env.Choices = verbs.Choices{Store: st, Actor: actor, Now: env.Choices.Now}
 	secret := cfg.Secrets
@@ -73,7 +73,7 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 	}
 	runDSN, _ := setupRoleDSN(cfg.DSN, "nova_sprint")
 	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st}
-	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: unavailablePublicInstaller{}}, productionSetupLock{cfg: cfg}
+	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 
 type failedProductionSetup struct{ err error }

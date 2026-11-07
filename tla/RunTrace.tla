@@ -1,17 +1,26 @@
 ----------------------------- MODULE RunTrace -----------------------------
-EXTENDS Run, RunTraceLog, TLC
+EXTENDS Run, RunTraceLog, TLC, Integers
 
 \* Finite actual-code observations, following the shared StepsTrace pattern.
 \* See RunTrace-MAPPING.md. Partial logging has per-action required fields.
 \* Unlogged scheduler abstractions remain assumptions, not code evidence.
-VARIABLE l
-traceVars == <<vars,l>>
+VARIABLE l, physicalSeq, observationSeq, capturedSeq
+traceVars == <<vars,l,physicalSeq,observationSeq,capturedSeq>>
+NoSeq == -1
+SequenceAppends == {"Stop","Start","Report","Apply","Refuse","SaveCursor"}
 Has(r,f) == f \in DOMAIN r
 TraceActions == {"Init","Take","Hook","HookFailure","LoseLock","LoseHook",
  "Crash","NoticeLost","Fold","Select","Report","Refuse","Apply","EndTick",
- "PreparePush","SendOK","SaveCursor","DeliverEdge","Stutter"}
-ProcessActions == TraceActions \ {"Init","Report","DeliverEdge","Stutter"}
+ "PreparePush","SendOK","SaveCursor","DeliverEdge","Stutter",
+ "Stop","Start","ReadControl","CaptureFence"}
+ProcessActions == TraceActions \ {"Init","Report","DeliverEdge","Stutter","Stop","Start"}
 Logged(r) ==
+ /\ Has(r,"physicalSeq") => physicalSeq = r.physicalSeq
+ /\ Has(r,"stopped") => sprintStopped = r.stopped
+ /\ Has(r,"observedSeq") => observationSeq[r.p] = r.observedSeq
+ /\ Has(r,"expectedSeq") => capturedSeq[r.p] = r.expectedSeq
+ /\ Has(r,"observedStopped") => local[r.p].control = (IF r.observedStopped THEN "stopped" ELSE "running")
+ /\ Has(r,"procFenced") => fenceFrozen[r.p] = r.procFenced
  /\ Has(r,"lock") => lock = r.lock
  /\ Has(r,"hook") => hook = r.hook
  /\ Has(r,"local") => local = r.local
@@ -35,6 +44,12 @@ Logged(r) ==
  /\ Has(r,"procChecked") => local[r.p].checked = r.procChecked
  /\ Has(r,"procSeen") => local[r.p].seen = r.procSeen
 LoggedNext(r) ==
+ /\ Has(r,"physicalSeq") => physicalSeq' = r.physicalSeq
+ /\ Has(r,"stopped") => sprintStopped' = r.stopped
+ /\ Has(r,"observedSeq") => observationSeq'[r.p] = r.observedSeq
+ /\ Has(r,"expectedSeq") => capturedSeq'[r.p] = r.expectedSeq
+ /\ Has(r,"observedStopped") => local'[r.p].control = (IF r.observedStopped THEN "stopped" ELSE "running")
+ /\ Has(r,"procFenced") => fenceFrozen'[r.p] = r.procFenced
  /\ Has(r,"lock") => lock' = r.lock
  /\ Has(r,"hook") => hook' = r.hook
  /\ Has(r,"local") => local' = r.local
@@ -58,15 +73,17 @@ LoggedNext(r) ==
  /\ Has(r,"procChecked") => local'[r.p].checked = r.procChecked
  /\ Has(r,"procSeen") => local'[r.p].seen = r.procSeen
 
-Required(r) ==
- CASE r.action = "Init" -> {"lock","hook","gens","done","events","cursor","sent","edgeDone"}
+Required(r) == {"physicalSeq"} \cup CASE r.action = "Init" -> {"lock","hook","gens","done","events","cursor","sent","edgeDone","stopped"}
  [] r.action \in {"Take","Hook","HookFailure","LoseLock","LoseHook","Crash","NoticeLost"}
     -> {"lock","hook","procPhase"}
+ [] r.action \in {"Stop","Start"} -> {"stopped"}
+ [] r.action = "ReadControl" -> {"observedSeq","observedStopped"}
+ [] r.action = "CaptureFence" -> {"expectedSeq","procFenced"}
  [] r.action = "Fold" -> {"procCopy","procFold","procCarry","procPhase"}
  [] r.action = "Select" -> {"procBatch","procCarry","procPhase"}
  [] r.action = "Report" -> {"gens","events"}
- [] r.action = "Apply" -> {"gens","done","events","procBatch","procApplied"}
- [] r.action = "Refuse" -> {"procBatch","procPutback"}
+ [] r.action = "Apply" -> {"gens","done","events","procBatch","procApplied","expectedSeq","receiptSeq","procFenced"}
+ [] r.action = "Refuse" -> {"procBatch","procPutback","expectedSeq","receiptSeq","procFenced"}
  [] r.action = "EndTick" -> {"procCarry","procBatch","procPutback","procPhase"}
  [] r.action = "PreparePush" -> {"push"}
  [] r.action = "SendOK" -> {"sent","push"}
@@ -74,7 +91,11 @@ Required(r) ==
  [] r.action = "DeliverEdge" -> {"edgeDone"}
  [] OTHER -> {}
 StepAs(r) ==
- CASE r.action = "Take" -> Take(r.p)
+ CASE r.action = "Stop" -> Stop
+ [] r.action = "Start" -> Start
+ [] r.action = "ReadControl" -> ReadControl(r.p)
+ [] r.action = "CaptureFence" -> CaptureFence(r.p)
+ [] r.action = "Take" -> Take(r.p)
  [] r.action = "Hook" -> Hook(r.p)
  [] r.action = "HookFailure" -> HookFailure(r.p)
  [] r.action = "LoseLock" -> LoseLock(r.p)
@@ -94,11 +115,29 @@ StepAs(r) ==
  [] r.action = "Stutter" -> UNCHANGED vars
  [] OTHER -> FALSE
 TraceInit == Init /\ l = 1
+ /\ physicalSeq = TraceLog[1].physicalSeq
+ /\ observationSeq = [p \in Processes |-> NoSeq]
+ /\ capturedSeq = [p \in Processes |-> NoSeq]
+SequenceStep(r) ==
+ /\ physicalSeq' = IF r.action \in SequenceAppends THEN physicalSeq+1 ELSE physicalSeq
+ /\ observationSeq' = IF r.action = "ReadControl"
+       THEN [observationSeq EXCEPT ![r.p] = physicalSeq] ELSE observationSeq
+ /\ capturedSeq' = IF r.action = "CaptureFence"
+       THEN [capturedSeq EXCEPT ![r.p] = observationSeq[r.p]] ELSE capturedSeq
+ /\ r.action \in {"Apply","Refuse"} =>
+       /\ r.receiptSeq = physicalSeq + 1
+       /\ r.expectedSeq = capturedSeq[r.p]
+SequenceProjection ==
+ /\ physicalSeq \in Nat
+ /\ \A p \in Processes :
+      /\ observedFresh[p] = (observationSeq[p] = physicalSeq)
+      /\ sequenceFresh[p] = (capturedSeq[p] = physicalSeq)
 TraceInitialAllowed == l = 1 => Logged(TraceLog[1])
 TraceNext ==
  /\ l < Len(TraceLog)
  /\ l' = l+1
  /\ StepAs(TraceLog[l+1])
+ /\ SequenceStep(TraceLog[l+1])
  /\ LoggedNext(TraceLog[l+1])
 TraceSpec == TraceInit /\ [][TraceNext]_traceVars /\ WF_traceVars(TraceNext)
 TraceIndexed ==

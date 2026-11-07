@@ -35,12 +35,14 @@ type Cache struct {
 // shows it. Until it is set every row is in the fleet at width 0.
 func (c *Cache) SetRoster(r roster.Roster) {
 	c.mu.Lock()
-	c.roster = r
+	c.roster = copyRoster(r)
 	c.mu.Unlock()
 }
 
+const startupSnapshotDeadline = 30 * time.Second
+
 func New(ctx context.Context, s store.Store) (*Cache, error) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, startupSnapshotDeadline)
 	defer cancel()
 	snap, err := s.Snapshot(ctx)
 	if err != nil {
@@ -71,24 +73,37 @@ func NewRecovering(ctx context.Context, s store.Store) (*Cache, error) {
 
 // Advance reads a committed prefix in pages and keeps the last good copy on error.
 func (c *Cache) Advance(ctx context.Context, s store.Store) error {
-	ctx, cancel := context.WithTimeout(ctx, AdvanceDeadline)
-	defer cancel()
+	gateCtx, gateCancel := context.WithTimeout(ctx, AdvanceDeadline)
+	defer gateCancel()
 	select {
 	case c.gate <- struct{}{}:
 		defer func() { <-c.gate }()
-	case <-ctx.Done():
-		return ctx.Err()
+	case <-gateCtx.Done():
+		return gateCtx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	start := c.clock()
+	workCtx := gateCtx
 	if !c.initialized {
-		snap, err := s.Snapshot(ctx)
+		snapshotCtx, snapshotCancel := context.WithTimeout(ctx, startupSnapshotDeadline)
+		snap, err := s.Snapshot(snapshotCtx)
+		if err == nil {
+			err = snapshotCtx.Err()
+		}
+		snapshotCancel()
 		if err != nil {
 			return c.failed(err)
 		}
 		c.state = snap
 		c.initialized = true
 		c.pending = snap.Seq > 0
+		var cancel context.CancelFunc
+		workCtx, cancel = context.WithTimeout(ctx, AdvanceDeadline)
+		defer cancel()
 	}
+	ctx = workCtx
 	if err := c.checkHistory(ctx, s); err != nil {
 		return c.failed(err)
 	}
@@ -103,8 +118,16 @@ func (c *Cache) Advance(ctx context.Context, s store.Store) error {
 			c.pending = intervened
 		}
 	}
-	// The gate serializes state writers. Build the immutable published view
-	// outside the reader lock, including when cursor persistence needs a retry.
+	c.publishRead(start)
+	if cursorErr != nil {
+		log.Printf("dashboard cursor warning: %v", cursorErr)
+		return cursorErr
+	}
+	return nil
+}
+
+// publishRead maps the gate-serialized state outside the reader lock.
+func (c *Cache) publishRead(start time.Time) {
 	at := c.clock()
 	c.mu.RLock()
 	ros := c.roster
@@ -121,11 +144,6 @@ func (c *Cache) Advance(ctx context.Context, s store.Store) error {
 	c.view = view
 	c.addSample(at, view.Landed)
 	c.mu.Unlock()
-	if cursorErr != nil {
-		log.Printf("dashboard cursor warning: %v", cursorErr)
-		return cursorErr
-	}
-	return nil
 }
 func (c *Cache) failed(err error) error {
 	c.mu.Lock()
@@ -204,7 +222,7 @@ func advanceSnapshot(s store.Snapshot, events []store.Event) store.Snapshot {
 	if s.Policy != 0 {
 		policies[s.Policy] = store.PolicyVersion{Active: true}
 	}
-	image := &store.State{Epoch: s.Epoch, Streams: s.Streams, Cards: s.Cards, Rows: s.Rows, Judgements: s.Judgements, Cursors: s.Cursors, Policies: policies}
+	image := &store.State{Epoch: s.Epoch, Streams: s.Streams, Cards: s.Cards, Rows: s.Rows, Judgements: s.Judgements, Cursors: s.Cursors, Policies: policies, Stop: &store.Stop{Stopped: s.Stopped, Reason: s.StopReason}}
 	base := store.Event{Seq: s.Seq, Accepted: true, After: image}
 	batch := make([]store.Event, 0, len(events)+1)
 	batch = append(batch, base)

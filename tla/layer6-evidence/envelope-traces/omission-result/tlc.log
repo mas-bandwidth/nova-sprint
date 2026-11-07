@@ -1,0 +1,248 @@
+TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)
+Running breadth-first search Model-Checking with fp 96 and seed 680464544411565243 with 1 worker on 32 cores with 24162MB heap and 64MB offheap memory [pid: 483686] (Linux 7.0.0-43-generic amd64, Eclipse Adoptium 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/nova/jobs/stella-l6-envelope-20261107/checked-spec/RunClearTrace.tla
+Parsing file /home/nova/jobs/stella-l6-envelope-20261107/checked-spec/RunClear.tla
+Parsing file /home/nova/jobs/stella-l6-envelope-20261107/omission-fixture/RunClearTraceLog.tla
+Parsing file /tmp/tmp.Q3U9Swoyen/tlc-10077690347905193559/TLC.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file /tmp/tmp.Q3U9Swoyen/tlc-10077690347905193559/Naturals.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tmp.Q3U9Swoyen/tlc-10077690347905193559/Sequences.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Sequences.tla)
+Parsing file /tmp/tmp.Q3U9Swoyen/tlc-10077690347905193559/FiniteSets.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module RunClear
+Semantic processing of module RunClearTraceLog
+Semantic processing of module TLC
+Semantic processing of module RunClearTrace
+Linting of module RunClear
+Linting of module RunClearTraceLog
+Linting of module RunClearTrace
+Starting... (2026-11-07 04:00:10)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-07 04:00:10.
+Progress(11) at 2026-11-07 04:00:10: 11 states generated, 11 distinct states found, 0 states left on queue.
+Checking temporal properties for the complete state space with 11 total distinct states at (2026-11-07 04:00:10)
+Error: Temporal property TraceMatched was violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ phase = "idle"
+/\ epoch = 1
+/\ cancelled = {}
+/\ through = 0
+/\ made = 0
+/\ log = <<>>
+/\ l = 1
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 1
+/\ needed = {}
+/\ cursor = 0
+/\ scan = 0
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 2: <RecordStep line 91, col 2 to line 94, col 29 of module RunClearTrace>
+/\ phase = "idle"
+/\ epoch = 1
+/\ cancelled = {}
+/\ through = 0
+/\ made = 1
+/\ log = <<[epoch |-> 1, kind |-> "notice"]>>
+/\ l = 2
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 1
+/\ needed = {}
+/\ cursor = 0
+/\ scan = 0
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 3: <RecordStep line 91, col 2 to line 94, col 29 of module RunClearTrace>
+/\ phase = "idle"
+/\ epoch = 2
+/\ cancelled = {}
+/\ through = 0
+/\ made = 1
+/\ log = <<[epoch |-> 1, kind |-> "notice"], [epoch |-> 1, kind |-> "clear"]>>
+/\ l = 3
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 1
+/\ needed = {}
+/\ cursor = 0
+/\ scan = 0
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 4: <RecordStep line 91, col 2 to line 94, col 29 of module RunClearTrace>
+/\ phase = "idle"
+/\ epoch = 2
+/\ cancelled = {}
+/\ through = 0
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 4
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 1
+/\ needed = {}
+/\ cursor = 0
+/\ scan = 0
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 5: <RecordStep line 91, col 2 to line 94, col 29 of module RunClearTrace>
+/\ phase = "scan"
+/\ epoch = 2
+/\ cancelled = {}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 5
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 2
+/\ needed = {}
+/\ cursor = 0
+/\ scan = 0
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 6: <InternalScan line 75, col 2 to line 77, col 23 of module RunClearTrace>
+/\ phase = "scan"
+/\ epoch = 2
+/\ cancelled = {1}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 5
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 2
+/\ needed = {}
+/\ cursor = 0
+/\ scan = 1
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 7: <InternalScan line 75, col 2 to line 77, col 23 of module RunClearTrace>
+/\ phase = "scan"
+/\ epoch = 2
+/\ cancelled = {1}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 5
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 2
+/\ needed = {2}
+/\ cursor = 0
+/\ scan = 2
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 8: <InternalScan line 75, col 2 to line 77, col 23 of module RunClearTrace>
+/\ phase = "scan"
+/\ epoch = 2
+/\ cancelled = {1}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 5
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 2
+/\ needed = {2, 3}
+/\ cursor = 0
+/\ scan = 3
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 9: <RecordStep line 91, col 2 to line 94, col 29 of module RunClearTrace>
+/\ phase = "send"
+/\ epoch = 2
+/\ cancelled = {1}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 6
+/\ oldSent = FALSE
+/\ acknowledged = {}
+/\ snapshotEpoch = 2
+/\ needed = {2, 3}
+/\ cursor = 0
+/\ scan = 3
+/\ sent = {}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 10: <InternalEnvelope line 82, col 2 to line 89, col 15 of module RunClearTrace>
+/\ phase = "send"
+/\ epoch = 2
+/\ cancelled = {1}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 6
+/\ oldSent = FALSE
+/\ acknowledged = {2}
+/\ snapshotEpoch = 2
+/\ needed = {2, 3}
+/\ cursor = 0
+/\ scan = 3
+/\ sent = {2}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 11: <RecordStep line 91, col 2 to line 94, col 29 of module RunClearTrace>
+/\ phase = "send"
+/\ epoch = 2
+/\ cancelled = {1}
+/\ through = 3
+/\ made = 2
+/\ log = << [epoch |-> 1, kind |-> "notice"],
+   [epoch |-> 1, kind |-> "clear"],
+   [epoch |-> 2, kind |-> "notice"] >>
+/\ l = 7
+/\ oldSent = FALSE
+/\ acknowledged = {2}
+/\ snapshotEpoch = 2
+/\ needed = {2, 3}
+/\ cursor = 0
+/\ scan = 3
+/\ sent = {2}
+/\ crashes = 0
+/\ ambiguousCount = FALSE
+
+State 12: Stuttering
+Finished checking temporal properties in 00s at 2026-11-07 04:00:10
+11 states generated, 11 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 11.
+Finished in 00s at (2026-11-07 04:00:10)

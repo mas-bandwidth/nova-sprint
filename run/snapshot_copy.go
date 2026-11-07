@@ -19,10 +19,6 @@ func snapshotCopy(s store.Snapshot) store.Snapshot {
 		s.Cards[k] = c
 	}
 	s.Rows = maps.Clone(s.Rows)
-	for k, r := range s.Rows {
-		r.Tiers = slices.Clone(r.Tiers)
-		s.Rows[k] = r
-	}
 	s.Judgements = maps.Clone(s.Judgements)
 	s.Cursors = maps.Clone(s.Cursors)
 	return s

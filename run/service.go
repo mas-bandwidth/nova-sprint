@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/dash"
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -23,6 +24,7 @@ type ServiceDeps struct {
 	Chooser     *Chooser
 	Clock       Clock
 	Presence    Presence
+	Roster      RosterReader
 	Steps       Steps
 	Edges       TickEdges
 	Results     Results
@@ -41,11 +43,12 @@ type Service struct {
 	pusher    *PushWorker
 	cache     *dash.Cache
 	chooser   *Chooser
+	roster    RosterReader
 	server    DashboardServer
 }
 
 func NewService(ctx context.Context, d ServiceDeps) (*Service, error) {
-	if d.Store == nil || d.Chooser == nil || d.Clock == nil || d.Presence == nil || d.Steps == nil || d.Edges == nil || d.Results == nil || d.Deadline == nil || d.Sender == nil || d.Logger == nil || !busName(d.Coordinator) {
+	if d.Store == nil || d.Chooser == nil || d.Clock == nil || d.Presence == nil || d.Roster == nil || d.Steps == nil || d.Edges == nil || d.Results == nil || d.Deadline == nil || d.Sender == nil || d.Logger == nil || !busName(d.Coordinator) {
 		return nil, fmt.Errorf("run: service dependencies and coordinator are required")
 	}
 	e, err := NewEngine(ctx, d.Store, d.Chooser, d.Steps, d.Edges)
@@ -60,7 +63,8 @@ func NewService(ctx context.Context, d ServiceDeps) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{engine: e, scheduler: scheduler, dashboard: dashboard, pusher: pusher, cache: cache, chooser: d.Chooser, server: d.Server}, nil
+	scheduler.roster = d.Roster
+	return &Service{engine: e, scheduler: scheduler, dashboard: dashboard, pusher: pusher, cache: cache, chooser: d.Chooser, roster: d.Roster, server: d.Server}, nil
 }
 
 type servicePublisher struct {
@@ -70,7 +74,14 @@ type servicePublisher struct {
 
 func (p servicePublisher) Offer(s store.Snapshot, at time.Time) {
 	p.dashboard.Offer(s, at)
-	p.pusher.Offer(s, at)
+}
+func (p servicePublisher) OfferPresence(s store.Snapshot, at time.Time, who []string) {
+	p.dashboard.Offer(s, at)
+	p.pusher.OfferPresence(s, at, who)
+}
+func (p servicePublisher) OfferRosterPresence(s store.Snapshot, at time.Time, r roster.Roster, who []string) {
+	p.dashboard.OfferRoster(s, at, r)
+	p.pusher.OfferPresence(s, at, who)
 }
 
 // Handler serves the cached dashboard; it performs no store I/O.
@@ -80,6 +91,9 @@ func (s *Service) Handler() http.Handler { return dash.Handler(s.cache) }
 func (s *Service) Run(ctx context.Context) (result error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if closer, ok := s.roster.(interface{ Close() }); ok {
+		defer closer.Close()
+	}
 	defer func() {
 		if err := s.chooser.Close(context.Background()); err != nil && result == nil {
 			result = fmt.Errorf("run: close chooser: %w", err)

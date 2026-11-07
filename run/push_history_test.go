@@ -133,7 +133,7 @@ func TestPushRetryStitchStableAfterLaterMutation(t *testing.T) {
 func TestPushClearDropsOldEpochBacklog(t *testing.T) {
 	ctx := context.Background()
 	f := store.NewFake()
-	applyOK(t, f, op("seed", store.PutStream{Name: "s"}, store.PutRow{Name: "alice", Kind: "worker", Width: 1, Tiers: []string{"pro"}}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s"}, store.PutCard{ID: "w", Kind: "work", Of: "p", Tier: "pro", Stream: "s", Holder: "alice"}, store.SetCardState{Card: "w", State: "ready"}))
+	applyOK(t, f, op("seed", store.PutStream{Name: "s"}, store.PutRow{Name: "alice"}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s"}, store.PutCard{ID: "w", Kind: "work", Of: "p", Tier: "pro", Stream: "s", Holder: "alice"}, store.SetCardState{Card: "w", State: "ready"}))
 	if _, err := f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "test", Kind: "clear", At: time.Unix(1000, 0)}); err != nil {
 		t.Fatal(err)
 	}

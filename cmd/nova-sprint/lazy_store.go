@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -86,6 +87,11 @@ func (s *lazyStore) EventIdentity(ctx context.Context, seq int64) (string, int, 
 		return "", 0, false, e
 	}
 	return p.EventIdentity(ctx, seq)
+}
+func (s *lazyStore) Restored(ctx context.Context) (time.Time, bool, error) {
+	p, e := s.get(ctx)
+	if e != nil { return time.Time{}, false, e }
+	return p.Restored(ctx)
 }
 func (s *lazyStore) Policy(ctx context.Context, v int) (store.PolicyVersion, error) {
 	p, e := s.get(ctx)
