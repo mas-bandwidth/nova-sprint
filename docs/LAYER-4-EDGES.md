@@ -447,3 +447,51 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
 23. Binaries replaced by rename: the runner's install paragraph.
 24. Rate limit spends nothing: `fault` here; resting a route is layer 5's.
 25. No daemon gates on another: the restart paragraph.
+
+## Built
+
+### Packages and models
+
+- `edge` (`edge/exec.go`, `edge/request.go`, `edge/exec_test.go`): `Exec` (`OSExec`, `FakeExec`, clock starting at `1000`), `RunArgv`, `ValidateCmd`, `RequestID(kind, card, sha)`, `EdgeRequest` (carrying `After []string`, `Repo`, `Base`, `PR`, `Mode`, `Ledgers`), `EdgeResult` (stub for `steps.EdgeResult`), and `Deduplicator` (in-flight coalescing by `RequestID` with zero persistent memory after completion). Every child process runs with stdin closed (`nil`), bounded stdout/stderr ring buffers (`DefaultMaxBytes = 16384`, preserving head and tail), and mandatory policy timeouts.
+- `edge/bus` (`edge/bus/bus.go`, `edge/bus/fake.go`, `edge/bus/bus_test.go`, `edge/bus/functional_test.go`): `Bus` (`Edge`, `Fake`, clock starting at `1000`). Wraps `nova-bus send` and `nova-bus who` via `edge.Exec` without opening a Redis connection. `BuildRecipientMessages`, `PushRecipient`, and `PushTick` build at most one message per `(recipient, subject)` per tick (`DEAL`, `WITHDRAWN`, `NEEDS YOU`, `LANDED`, `STREAM LANDED`), enforce `<= 4096 B` and `<= 20` card lines with overflow trailer `"and N more: nova-sprint next --as <row>"` and `300 B` field truncation (`"full text: nova-sprint show <id>"`), and advance `push:<recipient>` (`store.SetCursor`) only after `nova-bus send` exits 0 and prints `<recipient> <id>`. `BusReply(sender)` returns `"replies are verbs: run nova-sprint next --as <sender>"`.
+- `edge/git` (`edge/git/git.go`, `edge/git/land.go`, `edge/git/fake.go`, `edge/git/git_test.go`, `edge/git/functional_test.go`): `Git` (`Client`, `Fake`, clock starting at `1000`) and `Lander` (`LandGroup`, `Execute`, `MergeLedgerLines`, `NormalizeStreamRef`). Implements the 6-step landing pass from `LANDING.md` (fetch, merge group in score order with union ledger merge, push `--force-with-lease=<ref>:<old>`, gate at exact SHA, land only while base tip matches the gated parent, fast-forward stream branch). Note on Git D/F ref conflict: because Git cannot store both `refs/heads/sprint/<stream>` (a file) and `refs/heads/sprint/<stream>/<producer>` (under a directory), `NormalizeStreamRef` maps a bare `sprint/<stream>` ref to `refs/heads/sprint/<stream>/__stream`.
+- `edge/forge` (`edge/forge/forge.go`, `edge/forge/fake.go`, `edge/forge/forge_test.go`, `edge/forge/functional_test.go`): `Forge` (`Client`, `Fake`, clock starting at `1000`), `EnsurePR`, `ChecksAtSHA`, `MergePR`, `SelectGateHost`, and `Query`. Queries check runs at the exact 40-hex commit SHA (`repos/{repo}/commits/{sha}/check-runs`), classifies outcomes (`green`, `red`, `pending`, `fault`, `rate_limit`), passes `--match-head-commit <sha>` on `gh pr merge`, and probes bench gate hosts over SSH before running gate commands.
+- `edge/worker` (`edge/worker/worker.go`, `edge/worker/harness.go`, `edge/worker/proxy.go`, `edge/worker/verbs.go`, `edge/worker/runner.go`, `edge/worker/worker_test.go`, `edge/worker/functional_test.go`) and `cmd/nova-worker` (`cmd/nova-worker/main.go`, `cmd/nova-worker/main_test.go`):
+  - Coordinator host refusal (`CheckHost` refuses `studio`, `studio.local`, and policy-listed coordinator hosts, `LESSONS 4.18`).
+  - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`).
+  - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
+  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): runs `nova-reserve run --slots <weight> --wait <d> -- nova-sandbox --write <jobDir> --read <toolchains...> --net-deny --net-allow localhost:<proxyPort> -- <harness>`, stripping `NOVA_SPRINT_DSN`, `DATABASE_URL`, `PGPASSWORD`, `GITHUB_TOKEN`, `GH_TOKEN`, and provider API keys from the wall environment.
+  - 9-step runner lifecycle (`RunConsumer` in `edge/worker/runner.go`), startup probe (`ProbeRow`), and crash/restart recovery (`RecoverRow`).
+- `tla/Push.tla`, `tla/LandEdge.tla`, `tla/Runner.tla` and 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
+
+### Seam rulings (Rowan, 2026-11-06)
+
+1. **Wake-up via `next --as <row> --json`, reports via `report` (`1794007469002-0`)**: There is no `queue` verb. On wake-up and on restart, `nova-worker` calls `SprintClient.Next(ctx, row)` (`nova-sprint next --as <row> --json` at the CLI, or `StoreSprintClient.Next` over `store.Snapshot` in-process) and acts on the row's `working` and `ready` consumers; `DEAL` overflow trailers end with `"and N more: nova-sprint next --as <row>"`. Reports apply directly to the store through `SprintClient.Report` (`StoreSprintClient.Report` / `nova-sprint report --as <row>`) fenced on `Op.ID = ResultID`, never into a tick inbox.
+2. **Pre-satisfied `After []OpID` and `EdgeResult` (`1794007773302-0`)**: Layer 3's `EdgeRequest` carries `After []OpID` (`After []string`); `run` dispatches an `EdgeRequest` to Layer 4 only after every operation in `After` has an accepted store receipt, so edges never see a request whose store precondition failed. Each edge returns `EdgeResult` (`steps.EdgeResult`) for the next tick's inbox.
+3. **Every edge fact is re-queryable by `(kind, card, sha)` idempotently (`1794007844911-0`)**: Request IDs are `RequestID(kind, card, sha)` (`sha256(kind + "\x00" + card + "\x00" + sha)`). In-flight duplicate requests with the same `RequestID` are deduplicated inside the edge (`edge.Deduplicator`), not by `run`. Every edge answers requests as pure queries of the world at `(kind, card, sha)` without relying on process memory (`edge/forge` queries GitHub check runs at `sha`; `edge/git` checks ancestry and base tip on origin; `edge/worker` inspects `job.json` and the store). Restarting the edge struct or process and querying `(kind, card, sha)` again returns the identical `EdgeResult`.
+4. **Stream settings arrive in the edge request (`1794008719695-0`)**: A stream's `repo`, `base` branch, `pr`-required flag, and landing `mode` are policy data (a policy row of kind `data` named `stream:<name>`, JSON `{repo, base, pr, mode}`). Layer 3 puts `base` and `pr` into each landing `EdgeRequest`, so the git and forge edges take them as arguments and never read the store for them.
+
+### Timeouts and bounds (`measured` vs `guess`)
+
+| Parameter | Default | Status | Basis |
+| :--- | :--- | :--- | :--- |
+| `StageTimeout` | `120s` | **measured** | v1 mirror worktree staging ran 73–79 s median under load |
+| `LaunchGrace` | `15s` (3 tries, `5–20s` then `30–60s` jitter) | **measured** | 9 of 40 launches in v1 died on a provider 5xx within 15 s |
+| `TerminateGrace` | `3s` | **measured** | Process-group `SIGTERM` -> `SIGKILL` grace |
+| `MaxMessageBytes` / `MaxFieldBytes` | `4096 B` / `300 B` | **measured** | v1 bus size discipline (`Guarantee 3`) |
+| `MaxLogTailBytes` | `4096 B` | **measured** | Harness failure tail carried in report reason |
+| `RebaseTestBound` | `2m` | **guess** | Unmeasured until the first dogfood sprint |
+| `PushTimeout` | `60s` | **guess** | Unmeasured until the first dogfood sprint |
+| `ForgeTimeout` (`gh`) | `30s` | **guess** | Unmeasured until the first dogfood sprint |
+| `BusSendTimeout` | `5s` | **guess** | Unmeasured until the first dogfood sprint |
+| `SSHConnectBound` | `10s` | **guess** | Unmeasured until the first dogfood sprint |
+| `CIWaitMargin` | `10m` | **guess** | v1 land deadline margin over repo job timeout; unmeasured in v2 |
+
+### Deferred containment option: microVM / container wall
+
+For bench hosts whose OS sandbox (`nova-sandbox`) cannot enforce `--net-deny` at the kernel level, or for cards executing untrusted code, containment runs each job inside a disposable microVM (Firecracker / KVM on Linux benches, `Virtualization.framework` on macOS benches) or rootless network-isolated container (`bwrap` + network namespace) behind the existing `ReserveWall` and `Harness` seams:
+
+1. **Seam**: `MicroVMWall` implements `worker.ReserveWall` (`RunInWall(ctx, WallSpec)`). `Runner`, `Harness`, `KeyProxy`, and `job.json` recovery are unchanged.
+2. **Filesystem isolation**: `MicroVMWall` boots a read-only root image exporting `WallSpec.ReadDirs` (toolchains and staged siblings) and mounts only `WallSpec.JobDir` read-write via virtiofs at the same path, with `HOME`, `TMPDIR`, and `XDG_DATA_HOME` inside `JobDir` (`Guarantee 7`).
+3. **Host-enforced egress allowlist**: The guest NIC attaches to a host tap/vsock bridge where host firewall rules (outside the guest kernel) drop all outbound traffic except TCP to the host loopback `KeyProxy` (`127.0.0.1:<ProxyPort>`). Credentials stay in `KeyProxy` on the host (`Guarantee 12`), which validates the target `Host` against the route's `AllowedHosts` before injecting the Bearer key.
+4. **Lifecycle**: The microVM runs inside the `nova-reserve run --slots <weight>` lease and is destroyed before the slot is released (`Guarantee 8`).
