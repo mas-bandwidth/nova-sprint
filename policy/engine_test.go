@@ -57,7 +57,7 @@ func TestCompileRefusesNames(t *testing.T) {
 	arity, arityLine := override("reads", "def reads(card, extra):\n    return 1")
 	notFn, _ := override("order", "order = (1,)")
 	missing, _ := override("prices", "")
-	names := "landing limits order prices reads rows stitch timeouts verdict width"
+	names := "catalog landing limits order prices reads rows stitch timeouts verdict width"
 	for _, tc := range []struct{ name, body, want string }{
 		{"misspelt question", misspelt, fmt.Sprintf("POLICY REFUSED v1 line %d: unknown top-level name teir: a question is one of %s, a helper starts with _", line, names)},
 		{"unknown value", unknown, "POLICY REFUSED v1: unknown top-level name teir: a question is one of " + names + ", a helper starts with _"},

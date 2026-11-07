@@ -80,7 +80,7 @@ func testSetRefusals(t *testing.T, w *world) {
 	for _, tc := range []struct{ body, want string }{
 		{"def order(card)\n", "POLICY REFUSED f.star line 2: got newline, want ':'"},
 		{arity, fmt.Sprintf("POLICY REFUSED f.star line %d: reads takes 1 parameter(s): def reads(card)", line)},
-		{unknown, "POLICY REFUSED f.star: unknown top-level name teir: a question is one of landing limits order prices reads rows stitch timeouts verdict width, a helper starts with _"},
+		{unknown, "POLICY REFUSED f.star: unknown top-level name teir: a question is one of catalog landing limits order prices reads rows stitch timeouts verdict width, a helper starts with _"},
 		{missingQ, "POLICY REFUSED f.star: question stitch is missing: define def stitch(stream)"},
 		{bad, fmt.Sprintf("POLICY REFUSED f.star line %d reads(p3): the answer 9 is outside 1..5", badLine)},
 	} {

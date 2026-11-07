@@ -22,7 +22,7 @@ import (
 // or starts with "_". Arity is the number of parameters each takes.
 var Arity = map[string]int{
 	"order": 1, "rows": 3, "reads": 1, "verdict": 2, "width": 1,
-	"limits": 0, "landing": 1, "timeouts": 0, "stitch": 1, "prices": 0,
+	"limits": 0, "landing": 1, "timeouts": 0, "stitch": 1, "prices": 0, "catalog": 0,
 }
 
 // The kinds of a rows question.
@@ -69,6 +69,7 @@ type Answers struct {
 	Timeouts Timeouts
 	Stitch   map[string]bool
 	Prices   map[string]Price
+	Catalog  Catalog
 	shown    map[string]string // question(subject) -> the answer as Starlark prints it, for check
 }
 

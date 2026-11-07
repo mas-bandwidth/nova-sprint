@@ -494,5 +494,20 @@ five reach checks are each reached: 13 runs, run one by one with
 `regrace`, `budget`, `pack` and `deadline(kind)` have no question here and are
 owed to the layer 3 and 6 wiring.
 
-**Size.** 1,703 lines of non-test Go, over the 1.5k budget by about 200; 74
+**The catalog** (added at the coordinator's request, 2026-11-06, for the row
+verbs). Neither a `models` question nor a data section existed, so `catalog()`
+joined the question set: `{"models": {provider: [{"name": n, "tier": t}]},
+"harnesses": [h]}`, names non-empty, tiers from `TIERS`, nothing listed twice,
+validated every tick like the others. `policy.ReadCatalog(ctx, store, version)`
+(0 the built-in) returns `Catalog{Version, Models map[string][]Model{Name,
+Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
+give a function and a type one name. `Catalog.Unknown(model, harness)` is the
+row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
+(`nova-sprint policy set <file> --reason <why>`). The default lists only
+sourced models (PRIORITY T10: sonnet flash and pro, opus heavy and frontier,
+gemini pro, argon heavy and frontier) and LAYER-4's harnesses (claude, codex,
+opencode); DeepSeek, Mercury and OpenRouter's models have no sourced tier and
+are left out; argon's provider (google) is a guess.
+
+**Size.** 1857 lines of non-test Go, over the 1.5k budget by about 357; 97
 lines of Starlark.

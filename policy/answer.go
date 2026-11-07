@@ -113,6 +113,7 @@ func (ix *index) asks(q Questions) []ask {
 		{q: "limits", accept: func(a *Answers, v starlark.Value) (msg string) { a.Limits, msg = checkLimits(v); return }},
 		{q: "timeouts", accept: func(a *Answers, v starlark.Value) (msg string) { a.Timeouts, msg = checkTimeouts(v); return }},
 		{q: "prices", accept: func(a *Answers, v starlark.Value) (msg string) { a.Prices, msg = checkPrices(v); return }},
+		{q: "catalog", accept: func(a *Answers, v starlark.Value) (msg string) { a.Catalog, msg = checkCatalog(v); return }},
 	}
 	for _, r := range ix.rows {
 		out = append(out, ask{q: "width", subject: r.Name, args: starlark.Tuple{row(r)}, accept: func(a *Answers, v starlark.Value) string {

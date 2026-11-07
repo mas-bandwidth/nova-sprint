@@ -72,3 +72,26 @@ def stitch(stream):
 
 def prices():
     return {}  # micro-dollars per million tokens, by model: unpriced until set
+
+def catalog():
+    # The models rows may name, by provider, each with a tier it serves, and
+    # the harnesses. Sourced: PRIORITY T10 (2026-10-15/18, 2026-10-20) for the
+    # models and tiers; LAYER-4 "Adapters" for the harnesses. A model with no
+    # sourced tier (DeepSeek, Mercury, OpenRouter's) is left out until the
+    # coordinator adds it with policy set. The provider of argon is a guess.
+    return {
+        "models": {
+            "anthropic": [
+                {"name": "sonnet", "tier": "flash"},
+                {"name": "sonnet", "tier": "pro"},
+                {"name": "opus", "tier": "heavy"},
+                {"name": "opus", "tier": "frontier"},
+            ],
+            "google": [
+                {"name": "gemini", "tier": "pro"},
+                {"name": "argon", "tier": "heavy"},
+                {"name": "argon", "tier": "frontier"},
+            ],
+        },
+        "harnesses": ["claude", "codex", "opencode"],
+    }
