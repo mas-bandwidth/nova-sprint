@@ -125,7 +125,10 @@ func planAdds(s store.Snapshot, adds []card.Add) (card.Plan, error) {
 	plans := make([]card.Plan, 0, len(order))
 	for _, id := range order {
 		a := pending[id]
-		p, why := card.MoveAdd(a, known)
+		// A clone: the plan's replay reads the cards it was given, and known
+		// gains this card below; given known, the replay of the first add into
+		// an empty sprint refused the card as existing.
+		p, why := card.MoveAdd(a, maps.Clone(known))
 		if why != nil {
 			return card.Plan{}, refuse(why.Reason, "fix the brief or the flags and add again")
 		}
