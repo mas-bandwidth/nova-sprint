@@ -72,6 +72,14 @@ package does with it.
   version, the epoch row, and that Rebuild over the loaded events is the
   loaded snapshot (`checkRebuild`, the check the tests share), and returns
   the identity. Commit only when End returns no error.
+- `ValidateHistory(ctx, tx)` (round 21, `history.go`) checks that the log is
+  the whole history of the tables and names the first thing that is not:
+  seqs 1 to the last with no gap, each receipt its own event's, each event in
+  the log's epoch at that point and the epoch row the last, the stored policy
+  versions exactly the log's (each as last written, so the active one is the
+  last activation), every cursor at or below the last seq, and Rebuild equal
+  to the snapshot. RestoreEnd runs it; a verb can run it on a live store in
+  a REPEATABLE READ, read-only transaction.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and

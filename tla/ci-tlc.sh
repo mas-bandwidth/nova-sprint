@@ -61,6 +61,21 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# At most TLC_JOBS runs at once (default: the machine's cores), each JVM capped at
+# TLC_HEAP (default 2g; the main scenarios get twice that). Unbounded, the 200+
+# runs each took TLC's default quarter of RAM and the kernel killed them
+# (amd-3, 30 GB, 2026-11-07: "Out of memory: Killed process (java)").
+cores() {
+    if command -v nproc >/dev/null 2>&1; then nproc
+    else sysctl -n hw.ncpu 2>/dev/null || echo 4; fi
+}
+JOBS="${TLC_JOBS:-$(cores)}"
+HEAP="${TLC_HEAP:-2g}"
+# slot: wait until fewer than JOBS runs are live (bash 4.3+: wait -n).
+slot() {
+    while [ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$JOBS" ]; do wait -n 2>/dev/null || sleep 1; done
+}
+
 # run NAME EXPECT DIR CONFIG MODULE WORKERS: one TLC invocation.
 # EXPECT is pass or violate. Writes $WORK/NAME.log and $WORK/NAME.result.
 run() {
@@ -70,6 +85,8 @@ run() {
         echo "dry run: (cd tla/$dir && java -XX:+UseParallelGC -cp $JAR tlc2.TLC -workers $workers -metadir \$WORK/states/$name -config $cfg $mod)  expect $expect"
         return
     fi
+    heap="$HEAP"; [ "$workers" -gt 1 ] && heap="$(( ${HEAP%g} * 2 ))g"
+    slot
     (
         cd "$HERE/$dir" || exit 1
         # Own java.io.tmpdir per run: TLC unpacks the standard modules there,
@@ -77,7 +94,7 @@ run() {
         mkdir -p "$WORK/tmp/$name" || exit 1
         # -noGenerateSpecTE: no *_TTrace_*.tla trace modules beside the spec,
         # which the witnesses/*.tla glob would otherwise run on the next pass.
-        "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC \
+        "$JAVA" -XX:+UseParallelGC -Xmx"$heap" -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC \
             -noGenerateSpecTE -workers "$workers" \
             -metadir "$WORK/states/$name" -config "$cfg" "$mod" > "$WORK/$name.log" 2>&1
         code=$?

@@ -22,9 +22,10 @@ import (
 var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 
 type world struct {
-	t *testing.T
-	f *store.Fake
-	n int
+	t  *testing.T
+	f  *store.Fake
+	n  int
+	ev Event // the walk's last event, for its trace (trace_test.go)
 }
 
 // newWorld is stream s1 with rows r1 (width 2), r2 and r3 (width 1), all up
