@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -30,7 +31,7 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
 	}
-	if err := e.baseAt(ctx, repo, base); err != nil {
+	if _, err := e.baseTip(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
 		return "", err
 	}
 	pos := 0
@@ -48,19 +49,30 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)), nil
 }
 
-// baseAt refuses a base branch origin does not have.
-func (e *Engine) baseAt(ctx context.Context, repo, base string) error {
+// baseTip is the stream's base branch tip at origin, read through the git
+// edge at the stream's clone address (git.CloneURL); again is what to do
+// after the fix. A repository git cannot address, cannot read, or without
+// the base is a refusal naming its fix.
+func (e *Engine) baseTip(ctx context.Context, s store.Stream, again string) (string, error) {
 	if e.Origin == nil {
-		return broken("the git edge is not configured", "nova-sprint check")
+		return "", broken("the git edge is not configured", "nova-sprint check")
 	}
-	_, ok, err := e.Origin.Tip(ctx, repo, base)
+	url, err := git.CloneURL(s.Repo, s.Forge)
 	if err != nil {
-		return RefusalOr(err, broken("git ls-remote of "+repo+" failed ("+errText(err)+")", "check the repository is readable, then add the stream again"))
+		return "", RefusalOr(err, refuse(err.Error(), "name the repository --repo <org>/<repo> with --forge github, or by its clone URL, then "+again))
+	}
+	sha, ok, err := e.Origin.Tip(ctx, url, s.Base)
+	if err != nil {
+		fix := "make " + url + " readable from this host (GH_TOKEN or GH_CONFIG_DIR under nova-secrets exec for GitHub), then " + again
+		if s.Forge == "" && git.IsOrgRepo(s.Repo) {
+			fix = "an <org>/<repo> is cloned through its forge: give stream " + s.Name + " --forge github, then " + again
+		}
+		return "", RefusalOr(err, broken("git ls-remote of "+url+" failed ("+errText(err)+")", fix))
 	}
 	if !ok {
-		return refuse("branch "+base+" is not at "+repo+"'s origin", "push it, or pass --base <branch>")
+		return "", refuse("branch "+s.Base+" is not at "+s.Repo+"'s origin ("+url+")", "push it, or pass --base <branch>, then "+again)
 	}
-	return nil
+	return sha, nil
 }
 
 // runStreamSet is `stream set`: a stream's mode or forge, one write each.
