@@ -74,24 +74,38 @@ def prices():
     return {}  # micro-dollars per million tokens, by model: unpriced until set
 
 def catalog():
-    # The models rows may name, by provider, each with a tier it serves, and
-    # the harnesses. Sourced: PRIORITY T10 (2026-10-15/18, 2026-10-20) for the
-    # models and tiers; LAYER-4 "Adapters" for the harnesses. A model with no
-    # sourced tier (DeepSeek, Mercury, OpenRouter's) is left out until the
-    # coordinator adds it with policy set. The provider of argon is a guess.
+    # The models rows may name, by provider, each with the tier it serves, and
+    # the harnesses. The tier map is Glenn's, on Hacker News, 2026-11-05:
+    # "1. flash - deepseek flash 4.1 / luna / haiku; 2. pro - mercury 3 / terra
+    # / sonnet; 3. heavy - opus 5.5 / sol; 4. frontier - fable 5.1 / astra /
+    # argon". The providers are the coordinator's mapping (2026-11-06): openai
+    # and google are guesses, astra's provider is unknown (a guess). Harnesses:
+    # LAYER-4 "Adapters", api being the API-rate adapter.
     return {
         "models": {
             "anthropic": [
-                {"name": "sonnet", "tier": "flash"},
+                {"name": "haiku", "tier": "flash"},
                 {"name": "sonnet", "tier": "pro"},
                 {"name": "opus", "tier": "heavy"},
-                {"name": "opus", "tier": "frontier"},
+                {"name": "fable", "tier": "frontier"},
             ],
-            "google": [
-                {"name": "gemini", "tier": "pro"},
-                {"name": "argon", "tier": "heavy"},
+            "openai": [  # guess
+                {"name": "luna", "tier": "flash"},
+                {"name": "sol", "tier": "heavy"},
+            ],
+            "google": [  # guess
+                {"name": "terra", "tier": "pro"},
                 {"name": "argon", "tier": "frontier"},
             ],
+            "deepseek": [
+                {"name": "deepseek-flash-4.1", "tier": "flash"},
+            ],
+            "inception": [
+                {"name": "mercury-3", "tier": "pro"},
+            ],
+            "unknown": [  # the provider is unknown: a guess
+                {"name": "astra", "tier": "frontier"},
+            ],
         },
-        "harnesses": ["claude", "codex", "opencode"],
+        "harnesses": ["claude", "codex", "opencode", "api"],
     }

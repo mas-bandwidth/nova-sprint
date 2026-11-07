@@ -503,11 +503,13 @@ validated every tick like the others. `policy.ReadCatalog(ctx, store, version)`
 Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
 give a function and a type one name. `Catalog.Unknown(model, harness)` is the
 row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
-(`nova-sprint policy set <file> --reason <why>`). The default lists only
-sourced models (PRIORITY T10: sonnet flash and pro, opus heavy and frontier,
-gemini pro, argon heavy and frontier) and LAYER-4's harnesses (claude, codex,
-opencode); DeepSeek, Mercury and OpenRouter's models have no sourced tier and
-are left out; argon's provider (google) is a guess.
+(`nova-sprint policy set <file> --reason <why>`). The default's tier map is Glenn's (Hacker News, 2026-11-05),
+quoted in `default.star`: haiku, luna and deepseek-flash-4.1 at flash; sonnet,
+terra and mercury-3 at pro; opus and sol at heavy; fable, astra and argon at
+frontier. The providers are the coordinator's mapping (anthropic, openai,
+google, deepseek, inception); openai and google are guesses, and astra sits
+under `unknown`, a guess. Harnesses: claude, codex, opencode and api (the
+API-rate adapter).
 
-**Size.** 1857 lines of non-test Go, over the 1.5k budget by about 357; 97
+**Size.** 1857 lines of non-test Go, over the 1.5k budget by about 357; 111
 lines of Starlark.

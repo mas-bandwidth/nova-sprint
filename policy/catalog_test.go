@@ -14,9 +14,13 @@ func TestCatalogDefault(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	want := Catalog{Models: map[string][]Model{
-		"anthropic": {{"sonnet", "flash"}, {"sonnet", "pro"}, {"opus", "heavy"}, {"opus", "frontier"}},
-		"google":    {{"gemini", "pro"}, {"argon", "heavy"}, {"argon", "frontier"}},
-	}, Harnesses: []string{"claude", "codex", "opencode"}}
+		"anthropic": {{"haiku", "flash"}, {"sonnet", "pro"}, {"opus", "heavy"}, {"fable", "frontier"}},
+		"openai":    {{"luna", "flash"}, {"sol", "heavy"}},
+		"google":    {{"terra", "pro"}, {"argon", "frontier"}},
+		"deepseek":  {{"deepseek-flash-4.1", "flash"}},
+		"inception": {{"mercury-3", "pro"}},
+		"unknown":   {{"astra", "frontier"}},
+	}, Harnesses: []string{"claude", "codex", "opencode", "api"}}
 	c, err := ReadCatalog(w.ctx(), w.st, 0)
 	require.NoError(t, err)
 	assert.Equal(t, want, c)
@@ -26,6 +30,8 @@ func TestCatalogDefault(t *testing.T) {
 	want.Version = 1
 	assert.Equal(t, want, c)
 	assert.Empty(t, c.Unknown("opus", "claude"))
+	assert.Empty(t, c.Unknown("mercury-3", "api"))
+	assert.Equal(t, `model "gemini" is not in the catalog of policy v1 (models: haiku sonnet opus fable deepseek-flash-4.1 terra argon mercury-3 luna sol astra)`, c.Unknown("gemini", "api"))
 	a, fs := NewEngine().Answer(Versions{}, w.snap(), FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, want.Models, a.Catalog.Models, "the tick validates catalog like every answer")
@@ -43,7 +49,7 @@ func TestCatalogOmitsProvider(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Catalog{Version: 2, Models: map[string][]Model{"anthropic": {{"opus", "heavy"}}}, Harnesses: []string{"claude"}}, c)
 	assert.NotContains(t, c.Models, "google")
-	assert.Equal(t, `model "gemini" is not in the catalog of policy v2 (models: opus)`, c.Unknown("gemini", "claude"))
+	assert.Equal(t, `model "terra" is not in the catalog of policy v2 (models: opus)`, c.Unknown("terra", "claude"))
 	assert.Equal(t, `harness "codex" is not in the catalog of policy v2 (harnesses: claude)`, c.Unknown("opus", "codex"))
 	_, err = ReadCatalog(w.ctx(), w.st, 9)
 	assert.Error(t, err, "an unknown version is the store's ErrNotFound")
