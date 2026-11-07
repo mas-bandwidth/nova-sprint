@@ -99,6 +99,7 @@ func CheckSchema(ctx context.Context, dsn string) (SchemaIdentity, error) {
 	if err != nil {
 		return id, dsnParseError("store: check schema: the postgres dsn could not be parsed", err)
 	}
+	BoundIdleTx(cfg)
 	c, err := pgx.ConnectConfig(ctx, cfg)
 	var pe *pgconn.PgError
 	switch {

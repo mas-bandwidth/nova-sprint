@@ -123,6 +123,7 @@ func (d doctor) History(ctx context.Context) error {
 		return edge.Cause("integrity: NOVA_PG_DSN does not parse", err)
 	}
 	cfg.Password = d.creds.password
+	store.BoundIdleTx(cfg)
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return edge.Cause("integrity: PostgreSQL cannot be reached", err)
