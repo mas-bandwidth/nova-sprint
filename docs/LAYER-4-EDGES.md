@@ -184,12 +184,14 @@ removes a landing host (LANDING step 9).
 `Forge` has four methods: `PR(head, base)` (find), `OpenPR`, `Checks(shas)`
 and `Merge(pr, sha)`.
 
-Credentials. Every `gh` call runs with an explicit identity: `GH_TOKEN` from
-nova-secrets for a row, or `GH_CONFIG_DIR` for the sprint's own identity (on
-the studio, rowan's directory; bare `gh` there is Glenn's account). The
-edge refuses to run `gh` with neither set, and refuses when `gh auth status`
-names another login than the stream's, naming the fix. Glenn's credentials
-are never used. A row's token is minted by nova-tools for that row, scoped
+Credentials. Every `gh` call runs with an explicit token and nothing else:
+`GH_TOKEN` from nova-secrets for a row, and the control seat's
+`GH_GATE_TOKEN` for the sprint's own identity (the landing; LANDING, "The
+sprint's identity"). `GH_CONFIG_DIR` is no longer an identity (2026-11-07,
+defect 39: a config directory is whoever logged in there). The edge refuses
+to run `gh` with no token, naming the fix, and refuses when `gh auth status`
+names another login than the expected one. The human's credentials are
+never used. A row's token is minted by nova-tools for that row, scoped
 to its streams' repositories; minting is nova-tools', this layer only uses
 it. Workers push and open PRs with their row's token; the lander merges as
 the sprint.
@@ -248,8 +250,8 @@ Deal to report:
 6. **Rebase** onto the stream head as it is now and re-run the card's test
    command, inside a slot, bounded by the two-minute rule; push. A conflict
    is a `fail` naming the files.
-7. **PR and CI**: open the PR when the stream wants one; wait, woken by the
-   bus, for the run loop's check evidence at the head.
+7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
+   CI is read by the landing on the group sha, not by the worker.
 8. **Report** with a result id written to `job.json` before the first try;
    retry the verb with that id until it exits 0 or 1 (LESSONS 4.5).
 9. **Clean** the job directory only after the report is recorded and the
@@ -593,3 +595,44 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
     re-hooked (the hook is a startup step); the service restarts the worker.
     `tla/Runner.tla` models no refused report, so the keep-and-resend rule has
     a unit test (`TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake`) and no model.
+
+### Stitch: the landing's CI, identity and PRs (2026-11-07, branch `v2-stitch-c3`)
+
+- *Defect 40, CI on the group branch.* `forge.Checks` reports a sha with no
+  check rollup at all as `CheckAbsent` (it was pending); `LandPass` returns
+  `ci_absent` for it (`OutcomeCIAbsent`) in the first gate, the re-merge on a
+  moved base and the bisection's subsets. Run's landing loop waits on a
+  pending CI as before and on an absent one for `CIAbsentWait` (10 minutes,
+  a guess, unmeasured: GitHub creates a queued job's check within seconds of
+  a push), then answers `no-ci` and layer 3 opens one judgement. The stream's
+  repository must run CI on push to `sprint/**` (LANDING, "CI on the group
+  branch", which says why not the merge queue). `LandEdge.tla` has
+  `CIAbsent` (gating -> absent -> refused, no head blamed, nothing lands);
+  `FaultBlamesNoHead` covers it; `witnesses/LandEdgeAbsentBlamesHead` is its
+  reversed witness; the land walk takes it (1 in 8 gating moves).
+- *Defect 39, the sprint's identity.* `forge.Identity` is `{Name,
+  ExpectedLogin, Token}` (no `ConfigDir`); `Client.Ready` refuses a missing
+  token with an `*edge.Refusal` (Problem, Fix; `verbs.AsRefusal` passes it
+  through) and every gh call's clean environment carries only that token as
+  `GH_TOKEN`. `forge.TokenEnv` is `GH_GATE_TOKEN`; `cmd` builds run's forge
+  and git from it, and the sprint-run service's keys include it. `git.Config`
+  has `Token`: set, every git call resets the host's credential helpers
+  (`credential.helper` empty) and adds one that answers with the token from
+  the child's environment (`GIT_CONFIG_COUNT`; checked by hand with
+  `git credential fill`). Run's landing asks `Ready` first and answers
+  `forge` instead of merging or pushing. The worker's forge (edge/worker,
+  another owner) now takes `GH_TOKEN` only; its `GH_CONFIG_DIR` fallback is
+  gone with the field.
+- *Defect 34.* The verbs' `Origin` has no `PR` (finish asks no PR); `cmd`'s
+  origin holds no forge.
+- *A red's finding.* `run.landItem` puts the failing checks, the first
+  failing URL, the gate's reason and the gated sha in the red item's
+  `Reason` (`ciFinding`).
+- Tests (unit, fake gh and fake exec): `TestForgeActsOnlyAsItsToken`,
+  `TestCredentialsRefusals`, `TestTokenIsTheOnlyCredential`,
+  `TestWaitAgainBoundsAnAbsentCI`, `TestLandItemRedCarriesTheFinding`,
+  `TestLandRefusesWithoutAToken`.
+- *Not done.* `stream add` does not read the repository's workflows for the
+  push trigger (LANDING says why); a token without pull-request write fails
+  at OpenPR as a fault, re-tried each tick, not as a judgement.
+

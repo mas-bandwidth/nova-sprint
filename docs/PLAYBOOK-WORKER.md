@@ -132,10 +132,8 @@ Each message is a wake. Handle it, then wait for the bus again.
    rebase it and push it with `git push --force-with-lease origin <branch>`. Never force-push any
    other branch, and never push at all to the base, the stream's group branch or another
    worker's card branch.
-8. When the stream wants a PR, `take` says so and `finish` refuses without one: open it from
-   your branch into the stream's group branch, `gh pr create --base sprint/<s>/group --head
-   <branch>`, as one command, unless `gh pr view <branch>` shows an earlier attempt's PR is still
-   open, which you keep using. With no PR wanted, open none.
+8. Open no PR. The landing merges your head into the stream's group branch and opens the
+   stream's one PR itself; `finish` needs only your pushed head.
 9. Before you finish, bring your card branch up to the stream's group branch, `sprint/<s>/group`,
    when it has moved since your base: `git fetch origin sprint/<s>/group`, then
    `git rebase origin/sprint/<s>/group`, run the card's tests again, and
@@ -203,7 +201,7 @@ your own head.
 5. Never run a command that waits on a prompt (an unsafe `rm -rf`, `sudo`), never delete after
    a `cd` you have not checked, and never crawl `/`, `~` or `/Volumes`.
 6. Never print, paste or commit a secret. Keys reach a command only through `nova-secrets exec`.
-7. Open a PR only when the stream wants one.
+7. Never open a PR; the landing opens the stream's.
 8. Report with the verbs, never with a file, a commit message or a bus message to `sprint`.
 9. Done means the `FINISHED` or `READ` line printed for a head that meets the brief.
 10. Use the sprint as it is. Never add a loop, a watcher or a side channel beside it, and never
@@ -226,7 +224,6 @@ answer, never a thing to route round.
 - `<id> is not held by <you>`: it is someone else's, or it was withdrawn. Stop work on it.
 - `head <x> is not a full commit sha`: report the full 40-hex sha.
 - `push first: git push origin <branch>`: the head is not on the dealt branch at origin.
-- `open the PR`: the stream wants a PR at this head.
 - `head <x> is the base; nothing was done`: an empty head is never a finish.
 - `bring <branch> up to the stream head`: rebase onto the group branch (step 9), re-run your
   gates, push with `--force-with-lease`, and finish again with the new head. A red gate that is
