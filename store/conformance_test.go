@@ -489,7 +489,8 @@ func hook(h *harness) {
 
 // stop: the sprint's stop is one value for the store, set by SetStopped,
 // refused when unchanged, kept by a clear, and in the log's images so a
-// rebuild has it. The store refuses nothing on it: ops still land.
+// rebuild has it. The store refuses nothing on it (ops still land) except
+// an op fenced on Running, which run's tick ops are.
 func stop(h *harness) {
 	h.seed()
 	r := h.ok(h.op("stop", nil, SetStopped{true, "glenn: pause"}))
@@ -497,12 +498,14 @@ func stop(h *harness) {
 	assert.Equal(h.t, []any{true, "glenn: pause"}, []any{h.snap().Stopped, h.snap().StopReason})
 	h.refused(h.op("stop", nil, SetStopped{true, "again"}), "the sprint is already stopped")
 	h.ok(h.op("people", nil, SetCardReason{"c1", "still lands"}))
+	h.refused(h.op("tick", []Expect{Running{}}, SetCardReason{"c1", "a tick op"}), "the sprint is stopped (glenn: pause): nova-sprint start")
 	h.clear()
 	assert.True(h.t, h.snap().Stopped, "a clear keeps the stop")
 	ev := h.events()
 	assert.Equal(h.t, h.snap(), Rebuild(ev))
 	h.ok(h.op("start", nil, SetStopped{false, "go"}))
 	h.refused(h.op("start", nil, SetStopped{false, ""}), "the sprint is already running")
+	h.ok(h.op("tick2", []Expect{Running{}}, SetCursor{Name: "reader", Seq: 1}))
 	got := h.snap()
 	assert.Equal(h.t, []any{false, "go"}, []any{got.Stopped, got.StopReason})
 	assert.Equal(h.t, got, Rebuild(h.events()))

@@ -9,7 +9,7 @@ import (
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, CardRed,
 // NeedsLanded, RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen,
-// AtSeq. There
+// Running, AtSeq. There
 // is no width condition and no tier condition: the writes are the checks (the
 // state write into working for width, put card for the holder's tiers). The
 // set is closed by the unexported method; any other value is ErrInvalid.
@@ -67,6 +67,11 @@ type StreamHeld struct {
 // CardAbsent holds when card Card does not exist in the current epoch.
 type CardAbsent struct{ Card string }
 
+// Running holds when the sprint is not stopped: run's tick ops carry it,
+// so a stop that commits between a tick's fold and its apply refuses the
+// tick's ops (Run.tla NoAcceptedTickWhileStopped; Store.tla s23).
+type Running struct{}
+
 // AtSeq holds when the last event's seq is Seq: nothing at all has entered
 // the store since a snapshot read at Seq.
 type AtSeq struct{ Seq int64 }
@@ -82,6 +87,7 @@ func (RowHeld) isExpect()       {}
 func (StreamHeld) isExpect()    {}
 func (CardAbsent) isExpect()    {}
 func (AtSeq) isExpect()         {}
+func (Running) isExpect()       {}
 func (JudgementOpen) isExpect() {}
 
 // Write is one write. The set is closed by the unexported method; any other

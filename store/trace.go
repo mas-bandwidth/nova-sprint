@@ -186,6 +186,8 @@ func traceCond(e Expect) (ModelCond, error) {
 		return ModelCond{"judgeOpen", v.ID, none, none, 0}, nil
 	case CardRed:
 		return ModelCond{"cardRed", v.Card, none, none, flag(v.Red)}, nil
+	case Running:
+		return ModelCond{"running", none, none, none, 0}, nil
 	}
 	return ModelCond{}, fmt.Errorf("store: trace: condition %T is not in Store.tla", e)
 }

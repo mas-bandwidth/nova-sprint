@@ -111,6 +111,7 @@ RowGen(r, g)      == Cnd("rowGen",      None, r,    None, g)
 RowHeld(r, h)     == Cnd("rowHeld",     None, r,    None, IF h THEN 1 ELSE 0)
 JudgementOpen(j)  == Cnd("judgeOpen",   j,    None, None, 0)
 CardRed(c, b)     == Cnd("cardRed",     c,    None, None, IF b THEN 1 ELSE 0)
+Running           == Cnd("running",     None, None, None, 0)   \* the sprint is not stopped
 
 (* A write: k the kind; c the card, judgement or cursor; r the row (and a  *)
 (* consumer's holder at add); s a state, or a producer's tier at add; n    *)
@@ -151,8 +152,9 @@ ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 (* s17, s20, e1's width write, v1) and renumbered the rest. s1 and s2     *)
 (* hook r1 and r2 by session x as workers; s18 hooks r2 by y: refused, x   *)
 (* holds it; s19 unhooks r2; s20 hooks it by y as coordinator. s21 stops   *)
-(* the sprint; s22 stops it again: refused as changing nothing. The deal   *)
-(* scenario then runs stopped: the store refuses nothing for it.           *)
+(* the sprint; s22 stops it again: refused as changing nothing. s23, fenced *)
+(* on Running (run's tick ops carry it), is refused: the sprint is stopped. *)
+(* The deal scenario then runs stopped: unfenced ops still land.           *)
 (* Scenario "deal": a1 deals new consumer u1 to r1 and makes it working,   *)
 (* fenced on r1 up and not held; a2 marks it done (it keeps r1). b1 adds   *)
 (* consumer u2 ready on r1, b2 makes it working: with a1's u1 still        *)
@@ -186,6 +188,7 @@ Ops == [
   s20 |-> Op(1, {}, <<PutRow("r2", "y", "coordinator")>>),
   s21 |-> Op(1, {}, <<SetStopped(TRUE)>>),
   s22 |-> Op(1, {}, <<SetStopped(TRUE)>>),
+  s23 |-> Op(1, {Running}, <<SetRed("u3", FALSE)>>),
   a1  |-> Op(1, {CardAbsent("u1"), RowIs("r1", "up"), RowHeld("r1", FALSE)},
               <<AddCard("u1", "work", "p2", {}, "r1", None), SetState("u1", "working")>>),
   a2  |-> Op(1, {CardState("u1", "working")}, <<SetState("u1", "done")>>),
@@ -204,7 +207,7 @@ Ops == [
 ]
 OpIds == DOMAIN Ops
 SetupSeq == <<"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12",
-              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22">>
+              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23">>
 Setup == {SetupSeq[i] : i \in DOMAIN SetupSeq}
 Active == Setup \cup (IF Scenario = "deal"
                       THEN {"a1", "a2", "b1", "b2", "e1", "g1", "k1", "k2"}
@@ -240,6 +243,7 @@ Cond(st, x) ==
     [] x.k = "rowHeld"     -> st.rows[x.r].state # Absent /\ st.rows[x.r].held = (x.g = 1)
     [] x.k = "judgeOpen"   -> st.judgements[x.c] = "open"
     [] x.k = "cardRed"     -> Exists(st, x.c) /\ st.cards[x.c].red = (x.g = 1)
+    [] x.k = "running"     -> ~st.stopped
 
 Holds(st, conds) == \A x \in conds : Cond(st, x)
 
@@ -743,6 +747,8 @@ NeverSentinelRefused  == "s4" \notin RefusedIds
 NeverHeldCarried      == ~(epoch = 2 /\ rows["r1"].held)
 \* a1 is refused because g1 held r1 first (RowHeld)
 NeverHeldRefused      == ~FencedBy("a1", RowHeld("r1", FALSE))
+\* s23 is refused because s21 stopped the sprint first (Running)
+NeverStoppedRefused   == ~FencedBy("s23", Running)
 \* e1 sets r1 down (fenced on RowGen(r1, 0))
 NeverRowDown          == "e1" \notin AcceptedIds
 \* e1 is refused on a stale RowGen after g1 wrote r1

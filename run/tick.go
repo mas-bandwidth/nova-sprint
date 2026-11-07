@@ -210,6 +210,9 @@ func (t *Ticker) apply(ctx context.Context, ops []store.Op) (map[string]bool, er
 		if err := t.health.Check(ctx); err != nil {
 			return accepted, err
 		}
+		// A stop that commits after the fold refuses the op (store.Running;
+		// Run.tla NoAcceptedTickWhileStopped).
+		op.Expect = append(slices.Clone(op.Expect), store.Running{})
 		r, err := t.store.Apply(ctx, op)
 		if errors.Is(err, store.ErrUnknown) {
 			var found bool
