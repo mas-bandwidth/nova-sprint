@@ -147,6 +147,21 @@ func TestLandGroupConflict(t *testing.T) {
 	}
 }
 
+// A group (rung 2) whose card branch has moved past the head the read
+// passed is head_moved, as one head is: nothing is gated and no group
+// branch is pushed.
+func TestLandGroupMovedHead(t *testing.T) {
+	t.Parallel()
+	gf, ff, root, c1, _ := landWorld_internal()
+	c3 := gf.AddCommit(root, map[string]string{"c.go": "package c\n"}, "sprint/s1/c3")
+	gf.SetOriginRef("sprint/s1/c3", gf.AddCommit(c3, map[string]string{"z": "z\n"}, ""))
+	req := LandRequest{Repo: "o/r", Stream: "s1", Base: "v2", Heads: []string{c1, c3}, Branches: []string{"sprint/s1/c1", "sprint/s1/c3"}}
+	res, err := LandPass(context.Background(), gf, ff, req)
+	if err != nil || res.Outcome != OutcomeMoved || !strings.Contains(res.Reason, "sprint/s1/c3") || len(ff.prs) != 0 || gf.OriginRef(GroupBranch("s1")) != "" {
+		t.Fatalf("pass = %+v err=%v, want head_moved naming sprint/s1/c3, no PR and no group branch", res, err)
+	}
+}
+
 // Base moving between the gate and the merge merges nothing.
 func TestLandBaseMovedAfterTheGate(t *testing.T) {
 	t.Parallel()

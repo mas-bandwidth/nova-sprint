@@ -139,17 +139,22 @@ func fetchHeads_internal(ctx context.Context, g Git, req LandRequest) (string, [
 // else the group branch, rebuilt and pushed (done with its outcome when the
 // merge or the push failed).
 func gatedHead_internal(ctx context.Context, g Git, req LandRequest, baseTip string, tips []string, res *LandResult) (string, string, bool, error) {
+	// Every card branch must be at the head the read passed, on either
+	// rung: a moved branch is the coordinator's judgement, never landed at
+	// a sha its branch has left (the deployed line's check, 2026-11-07).
+	for i, tip := range tips {
+		if tip != req.Heads[i] {
+			res.Outcome = OutcomeMoved
+			res.Reason = fmt.Sprintf("branch %s is at %s, not at the head %s the read passed", req.Branches[i], tip, req.Heads[i])
+			return "", "", true, nil
+		}
+	}
 	if len(req.Heads) == 1 {
 		up, err := g.IsAncestor(ctx, req.RepoDir, baseTip, req.Heads[0])
 		if err != nil {
 			return "", "", true, err
 		}
 		if up {
-			if tips[0] != req.Heads[0] {
-				res.Outcome = OutcomeMoved
-				res.Reason = fmt.Sprintf("branch %s is at %s, not at the head %s the read passed", req.Branches[0], tips[0], req.Heads[0])
-				return "", "", true, nil
-			}
 			return req.Branches[0], req.Heads[0], false, nil
 		}
 	}
