@@ -281,8 +281,16 @@ func (t *tick) load() (open, working int) {
 	return open, working
 }
 
-// idleCauses counts why producers wait: held streams, tiers no row serves.
+// idleCauses is the idle judgement's facts: the ready producers in held
+// streams and with no serving row; when no ready producer is dealable and
+// none resolved this tick,
+// "nothing dealable" with the chains and overlaps the waiting ones sit on
+// (Waits, as check and the board say them) and the command that moves the
+// most. It is built only when the judgement would open.
 func (t *tick) idleCauses() string {
+	if t.isOpen("idle", "fleet") || t.pending("idle", "fleet") {
+		return ""
+	}
 	held, unserved := 0, 0
 	for p := range t.v.byState["ready"] {
 		c := t.v.Cards[p]
@@ -293,7 +301,15 @@ func (t *tick) idleCauses() string {
 			unserved++
 		}
 	}
-	return fmt.Sprintf("%d in held streams, %d with no serving row", held, unserved)
+	causes := fmt.Sprintf("%d in held streams, %d with no serving row", held, unserved)
+	if held+unserved < len(t.v.byState["ready"]) || len(t.resolved) > 0 {
+		return causes
+	}
+	what, fix := IdleWhy(Waits(t.v.Cards))
+	if what == "" {
+		return "nothing dealable: " + causes
+	}
+	return "nothing dealable: " + what + "; ready: " + causes + "; " + fix
 }
 
 // landRate is a stream's landed with no bounce over landed, and the count.

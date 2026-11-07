@@ -868,3 +868,39 @@ github.com credential is always gh as the host's login (no switch on
   `TestFinishRefusesAnotherIdentity`, `TestVerbsWorkMidUp` (the worker hook refused, then
   allowed), `TestStreamAddWarnsOfAnAgreement`, `TestCheckAllGreen`, the setup walk and
   completion tests, `TestWorkersReadyNamesEachBenchAndItsLog`.
+
+### Built: why the fleet is idle, in check, add, up and the board (stitch w4V, 2026-11-07)
+
+- `check` (`check_waits.go`, `check_width.go`): with nothing ready and the
+  fleet under its open width, the width line is a `CHECK WARN ... nothing
+  dealable: <steps.IdleWhy>` naming the command for the top card; then one
+  `CHECK waits <s>: <n> wait on <card> (<state>), ...; <n> held behind <file>
+  of <card>` per stream whose producers wait (the three largest of each, then
+  a count), and a `CHECK WARN stream <s>: its longest NEEDS chain is K cards:
+  a -> b -> ... -> z; at the stream's land rate (R an hour over its last N
+  landings) that is about H hours` per stream at `steps.ChainWarn` (4, a
+  guess) or more. Warnings, never red: an idle fleet is not a fault of the
+  tool.
+- `add` prints `CHAIN stream <s>: its longest NEEDS chain is K cards: ...`
+  with the cards in (dry run too), a `WARN CHAIN ...: <how to flatten>` from
+  4 cards; never a refusal.
+- The land rate reads the store's last 5,000 events of the epoch (a guess,
+  about an hour of a busy sprint; bounded however long the sprint): each
+  producer an accepted event moved into landed. Under two landings, or none
+  apart in time: "no land rate yet". An unreadable history is said with its
+  cause in the line.
+- `read` takes `--cost <usd>` exactly as `finish` does: it already shared
+  `reportFlags` and `readCost` and the card machine's report writes
+  `SetCardCost` for either consumer kind, so only its usage and help said
+  nothing of it; now they do, and `TestReadTakesCost` proves the write. The
+  board's Cost breakdown (the total, the pie per tier and the top streams by
+  tier) was carried with the v1 page and already counts reads
+  (`TestReadCostIsInTheTierSpend`).
+- `up`'s UP DONE is followed by one `BEFORE CARDS: keep everybody at width:
+  ...` line naming add's CHAIN line and check's width, waits and chain lines;
+  the coordinator playbook (section 1 step 3, section 4) and CORRECT-USE
+  ("Keep everybody at width") say the same.
+- Tests (unit, fakes): `TestCheckSaysWhyTheFleetIsIdle`,
+  `TestCheckQuietWithoutWaits`, `TestAddReportsTheLongestChain`,
+  `TestChainTime`, `TestLandingsCountsEachLandingOnce`, `TestReadTakesCost`,
+  `TestSetupVerifiesActionsAndRestarts` (the advice line).

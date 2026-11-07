@@ -106,7 +106,7 @@ function el(tag, cls, text) {
 // (setLiveHTML does not use these helpers).
 var flashCount = 0;
 ["all", "all2", "pct", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput",
- "streams-sub", "fleet-head", "friends-sub", "readers-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
+ "streams-sub", "fleet-head", "friends-sub", "readers-sub", "waits-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
 function valEl(e) {
   if (!e._fv) {
     var v = document.createElement("span"); v.className = "fv";
@@ -588,6 +588,29 @@ function renderProviders(d) {
     .map(function (x) { return counts[x] + " " + x; }).join(" · "));
 }
 
+// Why waiting (the human, 2026-11-07: "keep everybody working at width"): one row per stream whose
+// producers wait, as check says it (waits[].why), and the summary over every stream in the head.
+// Hidden when nothing waits; a build that serves no waits hides it too.
+function renderWaits(d) {
+  var panel = $("waits-panel"), box = $("waits"); if (!panel || !box) return;
+  var lines = Array.isArray(d.waits) ? d.waits : [];
+  panel.hidden = lines.length === 0;
+  if (!lines.length) return;
+  if (!box._head) box._head = headRow([["stream"], ["why waiting"]]);
+  var byName = Object.create(null); lines.forEach(function (l) { byName[String(l.stream)] = String(l.why || ""); });
+  syncRows(box, box._head, Object.keys(byName).sort(), function () {
+    var r = { node: el("div", "row") };
+    r.name = quiet(el("div", "name")); r.why = quiet(el("div", "why"));
+    r.node.appendChild(r.name); r.node.appendChild(r.why);
+    return r;
+  }, function (r, k) {
+    setText(r.name, k); setTitle(r.name, k);
+    setText(r.why, byName[k]); setTitle(r.why, byName[k]);
+  });
+  var sub = $("waits-sub"), sum = String(d.waits_summary || "");
+  setText(sub, sum); setTitle(sub, sum);
+}
+
 function renderReaders(d) {
   var box = $("readers"), table = d.tables.readers || {}, names = Object.keys(table).sort();
   var F = ["asked", "reading", "ok", "broken"];
@@ -921,6 +944,7 @@ function render(d) {
   var ft = renderFleet(d);
   renderFriends(d);
   renderProviders(d);
+  renderWaits(d);
   if (SHOW_ALL) renderReaders(d);
   renderHero(d, s, ft);
   fitTables();

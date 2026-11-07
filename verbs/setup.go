@@ -282,8 +282,12 @@ func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strin
 	if !strings.HasPrefix(line, "UP DONE ") || strings.ContainsAny(line, "\r\n") {
 		return "", "", broken("the setup walk's completion is not one UP DONE line", "nova-sprint up again")
 	}
-	return done("nova-sprint stream add <name> --repo <org/repo>", out.String()+line), "", nil
+	return done("nova-sprint stream add <name> --repo <org/repo>", out.String()+line, widthAdvice), "", nil
 }
+
+// widthAdvice is what UP DONE tells a new coordinator before the first
+// card: the fleet works at width only when the cards let it.
+const widthAdvice = "BEFORE CARDS: keep everybody at width: add each stream's cards with --dry-run first and read its CHAIN line (a NEEDS chain of 4 or more is a WARN: flatten it), then nova-sprint check and read its width, waits and NEEDS chain lines before start; flat chains, concrete PATHS, one card per file set (CORRECT-USE, \"Keep everybody at width\")"
 
 // setupStep verifies step, acts once when the choices allow it, and
 // verifies again. A step that does not verify is a refusal naming its next

@@ -347,6 +347,10 @@ footer a:hover { color: var(--text); }
   grid-template-columns: var(--name-w) var(--status-w) minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(10rem, 2.5fr); }
 .providers .row > :nth-child(2) { justify-self: end; }
 .providers .note { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.waits { margin-bottom: 3rem; }
+.waits .row { grid-template-columns: minmax(8rem, 16rem) minmax(0, 1fr); }
+.waits .why { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.waits .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .providers.compact .row { --pad: 1.5rem; --gap: 1.5rem; --S: 3.5rem; grid-template-columns: var(--name-w) var(--status-w) minmax(7rem, 1fr); }
 .providers.compact .row > :nth-child(n+4) { display: none; }
 .providers.compact .pill > span:last-child { display: none; }
@@ -519,6 +523,14 @@ footer a:hover { color: var(--text); }
     <div class="legend" id="legend"></div>
   </div>
   <div class="cells thick" id="overall"></div>
+</section>
+
+<!-- Why waiting (the human, 2026-11-07: "keep everybody working at width"): one line per stream whose producers
+     wait, grouped by the card whose landing frees them and by the file they are held behind, as check says it;
+     the head carries the summary over every stream and the command that moves the most. Hidden when nothing waits. -->
+<section class="panel waits" id="waits-panel" hidden>
+  <div class="panel-head"><h2>Why waiting</h2><span class="muted" id="waits-sub"></span></div>
+  <div class="scroll"><div class="rows" id="waits"></div></div>
 </section>
 
 <section class="panel streams">

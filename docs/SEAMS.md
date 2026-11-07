@@ -200,7 +200,10 @@ Run publishes its folded snapshot and the roster it read with it, as one
 pair, every tick (stopped or not). A failed roster read shows every row at
 width 0 with the alarm raised, never an old roster as current. The machine
 line is `machine: RUNNING` or `machine: STOPPED <reason>`. `run --listen`
-serves it; `dash --pull` serves a pulled copy on a public host.
+serves it; `dash --pull` serves a pulled copy on a public host. The board's
+Why waiting panel calls `steps.Waits(snap.Cards)` and `steps.IdleWhy` (pure
+functions of the cards, no View), the same ones `check` and the steps' idle
+judgement read, so all three say one thing.
 
 ## 8. verbs -> run
 

@@ -73,6 +73,10 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	if second.Exit != 0 || !strings.HasPrefix(strings.Join(f.trace, ","), "verify1,verify1,verify2,act2,verify2") {
 		t.Fatal(second, f.trace)
 	}
+	// UP DONE tells a new coordinator to read check's width lines before adding cards
+	if !strings.Contains(second.Output, "coordinator rowan\nBEFORE CARDS: keep everybody at width: ") || !strings.Contains(second.Output, "then nova-sprint check and read its width, waits and NEEDS chain lines before start") {
+		t.Fatal(second.Output)
+	}
 }
 func TestSetupArguments(t *testing.T) {
 	e := Engine{Actor: "rowan"}
