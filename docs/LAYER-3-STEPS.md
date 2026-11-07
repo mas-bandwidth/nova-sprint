@@ -396,3 +396,161 @@ asker 300, requests 350): an estimate; layer 1's first was half its size.
 - A card moves once per tick (conditions are checked before writes, so two
   hops of one card cannot share an op): a tick per engine hop.
 - Policy is asked per question per tick, a dozen calls whatever the size.
+
+## Built (rowan's child, 2026-11-07; branch `v2-l3-steps`, package `steps`)
+
+What the code is, where it differs from the text above and why, every number
+marked measured or guess. The model is `tla/Steps.tla`; the code follows its
+tick order and cites its invariants (`tla/README.md`, "The steps (layer 3)").
+
+**Inputs.** `Inputs{Now, Inbox, Inflight, Heads, Seen, Refused, Roster}`.
+Reports and takes are the rows' own ops (LAYER-6 wins; the fold shows them);
+the inbox path for them (`Kind report`, `take`) is built with every refusal
+of "Reports" in its words, for a layer 6 that routes them here, and is not
+in the model. Edge results (`land`, `stop`) are the model's inbox. `Seen` is
+when each row was last on the bus (layer 6 keeps it; a row absent from it
+fires nothing). `Refused` is the last tick's refused ops from their
+receipts: an op's `Note` carries its groups' keys as JSON (`OpGroups`), so
+layer 6 splits a refused op by group and puts its items back in place; `Plan`
+has the four fields exactly. `Roster` is nova-config (Glenn, 2026-11-06: the
+one true source; nothing of it in the store): a row's kind, width and tiers
+are read by name, a store row the roster lacks is never dealt to and is a
+`roster` judgement. `Inputs.Roster` is package roster's `Roster` (store
+round 22, merged from `v2-integrate-22`); `card.RowFromStore(r, width,
+tiers)` takes them from it. An open row is up, not held and hooked in to the
+sprint (Glenn, 2026-11-06: the hook is the subscription to the pushes): the
+row's `Session` and `Role` set, the role worker or coordinator (who counts
+as a worker). Round 22 took width out of the store and `card.Take` does not
+check it, so width at a take is held only by the tick's inbox path
+(`takeItem`'s tally) and must be the take verb's check in layer 6: the
+tests take as that verb would (`roomToTake`); one line for rowan.
+
+**The asker.** Layer 5's question set, names and types as that doc has them
+(`Questions`, `Answers`), one call per tick with every subject; `budget` and
+`pack` are layer 3's keys in `limits`. Absent, failed (`Failed[q]`, or `*`
+for the budget spent), out-of-domain or not-offered answers are the default
+for the subject with one `policy` judgement per question and version; no
+policy (version 0) is every default and no judgement. The engine's own
+numbers (`Engine`): `escalate_after` 2 and `frontier_after` 4 (guesses),
+`flap_limit` 3 (unmeasured), `idle_floor` 0.5 and closing at 0.75,
+`land_target` 0.9 over 20, and layer 5's defaults for `limits` (bounces 6,
+not the 3 this text guessed: layer 5 is the later word), `timeouts`,
+`landing` (backed up at 4, flowing at 1) and `width` (ahead = width, where
+the model's instance uses 2 x width; the trace walk's asker answers the
+model's). `victim` is not a question: the youngest working consumer on the
+row is the engine's fixed rule (LAYER-5's boundary, LESSONS 5.12); the model
+lost its `victim` oracle to match. `escalate_after` is the engine's, not
+policy's, since layer 5's set has no such question (its `rows` default
+carries it). The tick budget (cards touched) is 250 and `pack` 50, both
+measured below.
+
+**The steps.** Planned in this order, each skipping claimed cards: reports
+and takes (so a consumer that has reported is never preempted), preemption,
+land results, needs (drops, Reached with a `landed-sentinel` judgement in
+the op, Resolve with the overlap tally), holds (Park, withdraw of untaken
+consumers on held rows at once and down rows after `row_silent_gone`),
+limits (Block with its judgement in the op, withdraw of a silent row's
+working consumers, Gone, flap), fix (every yes before every fix, as the
+model orders them), the deal by rung (blocker, critical, read, high,
+normal, low; within a rung policy's `order` then id), land requests,
+judgements. The packer orders blocker groups first (preemptions, then
+blockers' starts), then the rest as planned: the model's `E`. A machine
+refusal while planning is an `engine` judgement, never an op. Planning is
+bounded by the budget (guarantee 11): once the non-blocker groups planned
+touch the budget's count no more are planned, while the tally, the claims
+and the judgements go on as the model's folds do, so the admitted plan is
+the same. Rows written by a group (Gone) are claimed like cards, so no
+group of a tick fences a record another group writes and the fence is the
+view's gens (the model's predicted fence reduces to it). Land request ids
+hash epoch, stream, cards, heads, reviews and base (model finding 8). The
+landing rung has no hysteresis: backed up at or past `backed_up` merging,
+else flowing (`flowing` unused). A `base-red` result opens one judgement
+per meeting, the third holds the stream it met, `base-green` lifts every
+stream held for it and expires them; `conflict` is a judgement; a bench
+fault moves nothing (the request leaves flight and is reissued).
+Judgement ids are `kind.about.episode` (a cause opens once while one is
+open; a flap's episode is its count), group key the kind (`policy:v<n>` for
+policy), deadline `timeouts.judgement` except `blocked`; at the deadline
+the expiry is the kind's safe default, nothing moves. The closed list gains
+`roster` (above). Facts a snapshot lacks (when a consumer was taken, a row
+went down, a row faulted, a stream last landed) are witnessed by the fold
+and are unknown for records older than the view; bounds then run from
+`Since` (Build's clock) and the victim among unwitnessed takes is by id. A
+cold view's consumers are in id order, a folded one's in cut order (the
+model's slots). Drops: a failed need's closure fails through `NeedFailed`
+(`InThisOp` past the first hop); a dependant with a live consumer is
+unreachable (a dependant is waiting), the withdraw is kept as defence.
+`Park` is a defence too (the hold's own op parks). Requests (`Verb`): the
+actor table (coordinator verbs, the holder's take and report, the run
+loop's row facts, anyone's Add), a drop with its dependants' chosen Waive or
+Relink or their `NeedFailed` in one op, a judgement answered with its move
+beside it (the answer's condition is not one the card machine merges, so
+it rides outside `Merge`). Stella's two findings (read of 03f44371): a
+later report or take of a consumer a group of this tick moves is carried,
+never acked from a pending group; an item's answer rides with its group and
+goes out only when the budget admits it.
+
+**The group.** `groupOp` composes a group's moves as one `card.Merge` of
+the plans each move builds on the view (built against `card.Merge` of
+`v2-card-fix4`, b2b0b8c2); card round 7's `Merge` over moves is an edit in
+that one function. A group's key is the cards its plan writes plus the card
+it is about, with the gens read, the row written and the inbox item.
+
+**Trace validation.** `steps/trace.go` is the refinement mapping to
+`Steps.tla`; `steps/trace_test.go` walks the model's four scenarios on
+`store.Fake` (every seed and scenario: 100 x 2,000 for depth; 4 x 3 x 150 as
+the fixed fixtures CI checks with `tla/check-trace.sh`); `StepsTrace.tla`
+logs `w` in parts. All 12 walk fixtures and the model's 13 own fixtures
+match (hetzner2, 2026-11-07). What it found: the first walk folded the
+tick's view after every outside move, so the tick planned on fresh state
+where the model planned on the snapshot (the walk, not the code); and the
+model fenced a row by its up flag where the store fences its gen, so a row
+that went down and came back passed the model's fence and failed the
+store's (the model, fixed: `rg`).
+
+**Measured** (vision, Linux, quiet under `nova-reserve --exclusive`,
+2026-11-07; 5,000 producers in 20 streams over 100 rows of width 4;
+`NOVA_LOAD=1 go test -run TestLoad ./steps/`): the fold of a tick's events 12.9 ms p50
+(13.5 p95); the plan at a budget of 250 cards with 2,500 producers ready
+47 ms p50, 71 p95, 78 max (the bar of 50 ms p50 met; before the planning
+was bounded by the budget it was 1,342 ms: the deal ranked every ready
+producer and the overlap tally was O(waiting x resolved)); the ops per tick
+at pack 1/10/50/250: 244/25/5/2. On PostgreSQL (fsync on) the same tick
+applied as 250 ops of 1 group: 1.83 ms p50 per op, 457 ms the tick; 25 of
+10: 9.8 ms, 246 ms; 5 of 50: 35 ms, 203 ms; 1 of 250: 207 ms, 207 ms. So
+the per-op fixed cost is about 1.1 ms and packing 50 groups per op takes
+98% of the gain of one op while a refusal costs 50 groups, not 250: `pack`
+is 50 (measured) and the budget stays 250 (measured: the full tick at
+5,000 producers is fold 13 + plan 47 + apply 203 = about 265 ms p50, under
+the one-second p99 bar with room; the layer 1 tick alone was 119 ms p50 at
+the same size).
+
+**Tests.** Unit (`go test ./steps/`, no clock, sockets, network or store but
+`store.Fake`): the view (a fold per event kind equals a fresh build), the
+purity lint (also every function under 60 lines), the asker (absent,
+erroring, slow, out of range, in domain), the paths (happy, fix, red and
+retry, fault, preemption, preemption refused by a race, drop, holds, row
+hold and down, block at the limit, budget and carry, refused op split by
+group, unlisted row, unhooked row, silent row and flap, stable op ids), the
+verbs (the actor table, Add/Take/Report, a drop's dependants, a judgement
+answered), the random walk (100 seeds x 2,000 steps, 50% of picked moves
+legal, the model's state invariants after every step and its tick
+invariants on every plan, every op accepted since the sim folds and applies
+at once), the trace walk. The suite is green under race on vision
+(2026-11-07, `go test -race -skip Functional ./...`, steps 185 s).
+
+**Size.** 3,435 lines of non-test Go (view 290, inputs 110, asker 300,
+roster 100, group 230, tick 220, pack 170, reports 130, preempt 130, land
+210, needs 115, holds 45, limits 100, fix 100, deal 300, judge 260, request
+230, trace 195): over the 3,000 budget by 15%; the requests, the roster and
+the trace mapping were not in the first estimate's 3,000.
+
+**Not built as written.** The ledger test (`tests/enforced`) indexes the
+steps; its remaining failures after the merge are policy's rows (tests the
+ledger does not index while policy does not build on the integration
+branch). `same_finding` is not a count: the `brief`
+judgement opens when a fix read's finding is byte-equal to the producer's
+(LESSONS 5.9 in part). The route rest is per row, from the faults the fold
+saw. `land-rate` is per stream, not per route. `base_regate`'s timing is the
+edge's. `stitch` and `prices` are not consumed here. Reports arriving
+through the inbox are not in the model (LAYER-6's path is).
