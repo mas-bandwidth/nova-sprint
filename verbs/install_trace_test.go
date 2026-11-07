@@ -31,19 +31,19 @@ type installTraceWalk struct {
 	states    []installTraceState
 }
 type installTraceTransport struct {
-	archive     []byte
+	binary      []byte
 	badChecksum bool
 }
 
 func (f installTraceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var body []byte
 	if strings.HasSuffix(req.URL.Path, "/SHA256SUMS") {
-		body = []byte(installSums(f.archive))
+		body = []byte(installSums(f.binary))
 		if f.badChecksum {
-			body = []byte(strings.Repeat("0", 64) + "  nova-sprint_v1.2.3_linux_amd64.tar.gz\n")
+			body = []byte(strings.Repeat("0", 64) + "  nova-sprint_v1.2.3_linux_amd64\n")
 		}
 	} else {
-		body = f.archive
+		body = f.binary
 	}
 	return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header), Request: req}, nil
 }
@@ -113,7 +113,7 @@ func installTracePrevious(t *testing.T, home string, previous bool) {
 }
 
 func installTraceRelease(w *installTraceWalk, scenario int, cancel context.CancelFunc) ReleaseInstaller {
-	r := ReleaseInstaller{Home: w.home, BaseURL: "https://fixture.invalid", OS: "linux", Arch: "amd64", Client: &http.Client{Transport: installTraceTransport{archive: installFixture(w.t, "nova-sprint"), badChecksum: scenario == 0}}}
+	r := ReleaseInstaller{Home: w.home, BaseURL: "https://fixture.invalid", OS: "linux", Arch: "amd64", Client: &http.Client{Transport: installTraceTransport{binary: installFixture(), badChecksum: scenario == 0}}}
 	r.Check = func(context.Context, string) error {
 		w.checkOK = scenario != 1
 		problem := "none"
