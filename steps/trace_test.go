@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -34,10 +35,13 @@ func modelDefaults(t *testing.T) {
 	t.Cleanup(func() { Engine.EscalateAfter = was })
 }
 
-// traceScenarios are the model's four, with the constants its cfgs carry.
+// traceScenarios are the model's six, with the constants its cfgs carry.
 var traceScenarios = map[string]struct {
 	budget, pack int
-}{"pre": {2, 2}, "deal": {2, 2}, "land": {2, 2}, "burst": {1, 1}}
+}{"pre": {2, 2}, "deal": {2, 2}, "land": {2, 2}, "burst": {1, 1}, "faults": {2, 2}, "spread": {2, 2}}
+
+// traceFaultCap is the model's FaultCap: the walk's limits().faults.
+const traceFaultCap = 2
 
 // traceWalk is one scenario's world and its trace.
 type traceWalk struct {
@@ -88,14 +92,17 @@ func (a traceAsker) Ask(q Questions) Answers {
 		out.Landing[s.Name] = LandingAnswer{BackedUp: 1000, Flowing: 1, CIWait: 600}
 	}
 	for _, r := range q.Rows {
-		if w.pref == "" {
+		switch w.pref {
+		case "":
 			out.Failed["rows"] = "the walk's policy failed"
-		} else {
+		case "both": // the model's "both": r1 then r2, of one rank in spread
+			out.Rows[r.Card.ID] = []string{"r1", "r2"}
+		default:
 			out.Rows[r.Card.ID] = []string{w.pref}
 		}
 	}
 	day := 86400
-	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
+	out.Limits = &Limits{Bounces: 100, Faults: traceFaultCap, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
 		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
 	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, BaseRegate: []int{day}}
 	return out
@@ -108,8 +115,13 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	landLike := scen == "land" || scen == "burst"
 	w.stream("s1")
 	w.stream("s2")
-	w.row("r1", 1, "pro")
-	w.row("r2", 2, "pro", "heavy")
+	if scen == "spread" { // both rows of one rank, width 2
+		w.row("r1", 2, "pro")
+		w.row("r2", 2, "pro")
+	} else {
+		w.row("r1", 1, "pro")
+		w.row("r2", 2, "pro", "heavy")
+	}
 	qStream, qPath := "s1", "a/z"
 	if landLike {
 		qStream = "s2"
@@ -121,8 +133,10 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	if landLike {
 		q.After = []string{"p"}
 	}
-	w.must("add", q)
-	if !landLike {
+	if scen != "faults" { // faults is p alone
+		w.must("add", q)
+	}
+	if !landLike && scen != "faults" && scen != "spread" {
 		b := store.PutCard{ID: "b", Kind: "producer", Stream: "s2", Tier: "pro", Brief: "do b", Paths: []string{"a/y"}}
 		if scen == "deal" {
 			b.Tier, b.Needs = "heavy", []string{"p"}
@@ -182,7 +196,9 @@ func (w *traceWalk) record(action string, args []string) {
 }
 
 // asked says whether a question has subjects now (the model's Asked): a
-// ready producer, a read owed.
+// ready producer, a read owed (no read of the review live or said ok or
+// fix, a faulted one owed again, until the faults since the coordinator's
+// read answer reach the cap).
 func (w *traceWalk) asked() bool {
 	for _, c := range w.v.Cards {
 		if isConsumer(c) {
@@ -191,19 +207,35 @@ func (w *traceWalk) asked() bool {
 		if c.State == "ready" && c.Kind == "producer" {
 			return true
 		}
-		if c.State == "review" {
-			owed := true
-			for _, r := range w.v.Consumers(c.ID) {
-				if r.Kind == "read" && r.Review == c.Review && r.State != "fail" {
-					owed = false
-				}
-			}
-			if owed {
-				return true
-			}
+		if c.State == "review" && w.owed(c) {
+			return true
 		}
 	}
 	return false
+}
+
+// owed is the model's ReadOwed on the walk's view.
+func (w *traceWalk) owed(c store.Card) bool {
+	var since time.Time
+	for _, j := range w.v.Judgements {
+		if j.Kind == "read-faults" && j.About == c.ID && j.Answer == "read" && j.ClosedAt.After(since) {
+			since = j.ClosedAt
+		}
+	}
+	faults := 0
+	for _, r := range w.v.Consumers(c.ID) {
+		if r.Kind != "read" || r.Review != c.Review {
+			continue
+		}
+		fault := r.State == "done" && r.Result == "fault"
+		if r.State != "fail" && !fault {
+			return false
+		}
+		if fault && !w.v.TakenAt[r.ID].Before(since) {
+			faults++
+		}
+	}
+	return faults < traceFaultCap
 }
 
 // step takes one model action at random: in idle Snap or a take; in snapped
@@ -232,11 +264,14 @@ func (w *traceWalk) step() {
 	if blind || slices.ContainsFunc(w.inflight, func(r EdgeRequest) bool { _, sent := w.sent[r.ID]; return !sent }) {
 		moves = append(moves, w.edgeOne)
 	}
-	if blind || w.scen != "burst" {
+	if blind || slices.Contains([]string{"pre", "deal", "land"}, w.scen) {
 		moves = append(moves, w.envOne)
 	}
-	if len(w.openLand()) > 0 { // the coordinator answers only what is open
+	if len(w.openOf("land")) > 0 { // the coordinator answers only what is open
 		moves = append(moves, w.answerOne)
+	}
+	if len(w.openOf("read-faults")) > 0 {
+		moves = append(moves, w.answerFaults)
 	}
 	moves[w.rng.Intn(len(moves))]()
 }
@@ -262,7 +297,11 @@ func (w *traceWalk) tickOnce() {
 	}
 	w.phase = "idle"
 	w.record("Tick", []string{fmt.Sprintf("answer |-> [rows |-> %q]", answer)})
-	w.pref = []string{"r1", "r2", ""}[w.rng.Intn(3)]
+	prefs := []string{"r1", "r2", ""}
+	if w.scen == "spread" {
+		prefs = append(prefs, "both")
+	}
+	w.pref = prefs[w.rng.Intn(len(prefs))]
 }
 
 func (w *traceWalk) moved(action string, args []string) {
@@ -276,17 +315,18 @@ func (w *traceWalk) moved(action string, args []string) {
 // acknowledgement moves no card, so the model has no action for it.
 
 // results are the scenario's result sets: work ok (and fail for p in deal),
-// read ok (and fix for p in deal).
+// read ok (and fix for p in deal, fault in faults).
 func (w *traceWalk) results(c store.Card) []string {
 	bounce := w.scen == "deal" && c.Of == "p"
-	if c.Kind == "work" {
-		if bounce {
-			return []string{"ok", "fail"}
-		}
+	switch {
+	case c.Kind == "work" && bounce:
+		return []string{"ok", "fail"}
+	case c.Kind == "work":
 		return []string{"ok"}
-	}
-	if bounce {
+	case bounce:
 		return []string{"ok", "fix"}
+	case w.scen == "faults":
+		return []string{"ok", "fault"}
 	}
 	return []string{"ok"}
 }
@@ -409,12 +449,12 @@ func (w *traceWalk) edgeOne() {
 	w.moved("EdgeResult", []string{"id |-> " + w.reqID[req.ID], fmt.Sprintf("out |-> %q", it.Outcome), fmt.Sprintf("n |-> %d", n)})
 }
 
-// openLand is the producers with an open land judgement, by id.
-func (w *traceWalk) openLand() []string {
+// openOf is the producers with an open judgement of kind, by id.
+func (w *traceWalk) openOf(kind string) []string {
 	js := w.truthView().Judgements
 	var out []string
 	for _, id := range sortedKeys(js) {
-		if j := js[id]; j.Kind == "land" && j.State == "open" {
+		if j := js[id]; j.Kind == kind && j.State == "open" {
 			out = append(out, j.About)
 		}
 	}
@@ -424,7 +464,7 @@ func (w *traceWalk) openLand() []string {
 // answerOne is the coordinator's answer to a land judgement (the model's
 // Answer): land, fix or retry, one verb op.
 func (w *traceWalk) answerOne() {
-	ps := w.openLand()
+	ps := w.openOf("land")
 	w.pick()
 	if len(ps) == 0 {
 		return
@@ -448,7 +488,35 @@ func (w *traceWalk) answerOne() {
 	w.moved("Answer", []string{fmt.Sprintf("p |-> %q", p), fmt.Sprintf("choice |-> %q", choice)})
 }
 
-// episodes is how many land judgements p has had (the open one is the last).
+// answerFaults is the coordinator's answer to a read-faults judgement (the
+// model's AnswerFaults): read (the answer alone), yes (JudgedYes) or fix
+// (JudgedFix), one verb op; the machine refuses yes and fix unless a read
+// faulted and none said ok or fix.
+func (w *traceWalk) answerFaults() {
+	ps := w.openOf("read-faults")
+	w.pick()
+	if len(ps) == 0 {
+		return
+	}
+	p := ps[w.rng.Intn(len(ps))]
+	choice := []string{"read", "yes", "fix"}[w.rng.Intn(3)]
+	r := Request{Actor: "rowan", Judgement: "read-faults." + p + "." + fmt.Sprint(w.episodes("read-faults", p)), Answer: choice}
+	switch choice {
+	case "yes":
+		r.Card, r.Event = p, card.JudgedYes{Reason: "the walk read it: sound"}
+	case "fix":
+		r.Card, r.Event = p, card.JudgedFix{Finding: "a/x:1 the walk's finding"}
+	}
+	r.Coordinators = []string{"rowan"}
+	op, ref := Verb(Build(w.snap(), w.now), Inputs{Now: w.now}, r)
+	if ref != nil || !w.apply("answer", op.Expect, op.Writes...).Accepted {
+		return
+	}
+	w.ok()
+	w.moved("AnswerFaults", []string{fmt.Sprintf("p |-> %q", p), fmt.Sprintf("choice |-> %q", choice)})
+}
+
+// episodes is how many judgements of kind p has had (the open one is the last).
 func (w *traceWalk) episodes(kind, about string) int {
 	n := 0
 	for _, j := range w.truthView().Judgements {
@@ -539,7 +607,7 @@ func TestTraceFixtures(t *testing.T) {
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = filepath.Join("..", dir) // relative to the repository root, as CI gives it
 	}
-	for _, scen := range []string{"pre", "deal", "land", "burst"} {
+	for _, scen := range []string{"pre", "deal", "land", "burst", "faults", "spread"} {
 		for seed := int64(1); seed <= 3; seed++ {
 			w := newTraceWalk(t, scen, seed)
 			for i := 0; i < 150; i++ {

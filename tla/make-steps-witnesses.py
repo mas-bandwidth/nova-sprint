@@ -271,7 +271,7 @@ WITNESSES = [
      "The deal takes policy's answered rows in order (before directive\n"
      "62): both cards of one tick go to the first row while the second,\n"
      "of the same rank, stays empty.",
-     [("  IN CHOOSE r \\in S : \\A s \\in S \\ {r} : Used(V, r, t) < Used(V, s, t)\n"
+     [("  IN CHOOSE r \\in S : \\A s \\in S \\ {r} : \\/ Used(V, r, t) < Used(V, s, t)\n"
        "                                         \\/ Used(V, r, t) = Used(V, s, t) /\\ Pos(L, r) < Pos(L, s)",
        "  IN L[1]   \\* FAULT: was the fewest live cards among S", 1)]),
 ]

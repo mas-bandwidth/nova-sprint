@@ -541,8 +541,8 @@ Before(V, x, t, r, s) ==
   \/ Class(V, x, r) > Class(V, x, s)
   \/ Class(V, x, r) = Class(V, x, s) /\ Used(V, r, t) < Used(V, s, t)
   \/ Class(V, x, r) = Class(V, x, s) /\ Used(V, r, t) = Used(V, s, t) /\ Width[r] > Width[s]
-  \/ Class(V, x, r) = Class(V, x, s) /\ Used(V, r, t) = Used(V, s, t) /\ Width[r] = Width[s]
-     /\ RowIdx(r) < RowIdx(s)
+  \/ /\ Class(V, x, r) = Class(V, x, s) /\ Used(V, r, t) = Used(V, s, t)
+     /\ Width[r] = Width[s] /\ RowIdx(r) < RowIdx(s)
 DefaultRow(V, x, t) ==
   LET E == {r \in Rows : Eligible(V, x, r, t)}
   IN IF E = {} THEN NoR ELSE CHOOSE r \in E : \A s \in E \ {r} : Before(V, x, t, r, s)
@@ -741,8 +741,8 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
              \A i \in 1..Len(gs) :
                gs[i].kind \in {"yes", "fix"} =>
                  \E c \in ConsOf(gs[i].p) : /\ V.cs[c].kind = "read" /\ V.cs[c].st = "done"
-                                          /\ V.cs[c].review = V.ps[gs[i].p].review
-                                          /\ V.cs[c].res \in {"ok", "fix"}
+                                            /\ V.cs[c].review = V.ps[gs[i].p].review
+                                            /\ V.cs[c].res \in {"ok", "fix"}
         [] n = "FaultsShown" ->
              \A p \in Prods :
                (/\ V.ps[p].st = "review" /\ Free(p, clr) /\ NoLive(V, p)
