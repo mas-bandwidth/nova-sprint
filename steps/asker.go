@@ -134,7 +134,11 @@ type Defaults struct {
 	Landing                      LandingAnswer
 }
 
-// Engine is the defaults as the designs give them.
+// Engine is the defaults as the designs give them. Budget 250 and Pack 50
+// are measured (the load test, vision 2026-11-07: a tick of 250 cards at
+// 5,000 producers is about 265 ms p50 as 5 ops of 50; see the Built
+// section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
+// guesses, marked there.
 var Engine = Defaults{
 	EscalateAfter: 2, FrontierAfter: 4, Reads: 1, FlapLimit: 3,
 	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
