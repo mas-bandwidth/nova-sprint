@@ -156,10 +156,12 @@ WITNESSES = [
           "  ELSE LET run == RunOp(st, Ops[o].writes)\n"
           "       \\* FAULT: the conditions are read on the snapshot.\n"
           "       IN IF Holds(Snap(st), Ops[o].expect) /\\ run.ok /\\ CursorsFit(Ops[o].writes, last)", 1)]),
-    ("StoreEpochUnfenced", "OpsInTheirEpoch", "deal",
+    ("StoreEpochUnfenced", "OpsInTheirEpoch", "records",
      "Ops other than clear are not checked against the store's epoch, so an\n"
      "op planned against epoch 1 arriving after the clear lands in epoch 2\n"
-     "(e1 sets r1 down in epoch 2).",
+     "(m1, unfenced, sets c1 to 2 in epoch 2). Records, not deal: every\n"
+     "epoch-1 deal op is refused in epoch 2 by a fence or a write rule (the\n"
+     "clear raises r1's gen and sets it down, and leaves p2 behind).",
      [("  IF Ops[o].epoch # st.epoch THEN [acc |-> FALSE, st |-> st]\n"
        "  ELSE IF Ops[o].kind = \"clear\"",
        "  \\* FAULT: only the clear is fenced by epoch.\n"
