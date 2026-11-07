@@ -1,13 +1,34 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "38ffe7f09303",
+  "build": "125ce3f7c51a",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "38ffe7f09303",
+    "build": "125ce3f7c51a",
+    "coordinator": "",
+    "cost": {
+      "api_tokens": "0",
+      "by_tier": {},
+      "landed_cards": 0,
+      "missing_prices": [],
+      "per_card": "-",
+      "priced_cards": 0,
+      "priced_runs": 0,
+      "seat_runs": 0,
+      "seat_tokens": "0",
+      "total": "-",
+      "unpriced_no_price": 0,
+      "unpriced_no_tokens": 0,
+      "unpriced_runs": 0
+    },
     "done": false,
     "epoch": 1,
+    "eta": "-",
+    "eta_basis": "last hour",
+    "eta_landings": 0,
+    "eta_window_minutes": 60,
     "landed": 0,
+    "left": 1,
     "machine": "machine: STOPPED never started",
     "ok": true,
     "server_version": "dev",
@@ -22,6 +43,7 @@
         "Stream": "alpha"
       }
     ],
+    "summary": "0/1 0.0% -\u003e ETA -",
     "tables": {
       "fleet": {
         "amd-1": {
@@ -35,6 +57,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "4000",
           "working": "0"
         },
@@ -49,6 +73,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -63,6 +89,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -77,6 +105,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -91,6 +121,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -105,6 +137,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -119,6 +153,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -133,6 +169,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -147,6 +185,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -161,6 +201,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -175,6 +217,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -189,6 +233,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -203,6 +249,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "16",
           "working": "0"
         },
@@ -217,6 +265,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "8",
           "working": "0"
         },
@@ -231,6 +281,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "2",
           "working": "0"
         }
@@ -247,6 +299,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "2",
           "working": "0"
         },
@@ -261,6 +315,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "32",
           "working": "0"
         },
@@ -275,6 +331,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "32",
           "working": "0"
         },
@@ -289,6 +347,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "32",
           "working": "0"
         },
@@ -303,6 +363,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "32",
           "working": "0"
         },
@@ -317,6 +379,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "2",
           "working": "0"
         },
@@ -331,6 +395,8 @@
           "reads_working": "0",
           "ready": "0",
           "status": "down",
+          "tokens": "0",
+          "tokens_n": "0",
           "width": "4000",
           "working": "0"
         }
