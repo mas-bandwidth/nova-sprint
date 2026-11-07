@@ -8,7 +8,7 @@ import (
 
 // SetupInput contains only non-secret choices. A service key is acquired by
 // the setup adapter at a hidden terminal prompt and sent directly to secrets.
-type SetupInput struct{ Actor, Dash, Services, Key, RunOn, Version string }
+type SetupInput struct{ Actor, Dash, Services, Key, RunOn, Version, Continuation string }
 
 // SetupCheck describes one probe. Action is true only when the supplied
 // choices make the next idempotent action possible without another question.
@@ -29,6 +29,12 @@ type SetupLease interface {
 	Monitor(context.Context) (context.Context, context.CancelFunc)
 	Check(context.Context) error
 	Close() error
+}
+
+// SetupHandoff correlates the admin bootstrap with a fresh sprint-credential walk.
+type SetupHandoff interface {
+	PrepareHandoff(context.Context, SetupInput) (string, bool, error)
+	ValidateHandoff(context.Context, string, SetupInput) error
 }
 
 type SetupCompletion interface {
@@ -60,10 +66,15 @@ func parseSetup(args []string, actor string) (SetupInput, bool) {
 			in.RunOn = value
 		case "--version":
 			in.Version = value
+		case "--continuation":
+			in.Continuation = value
 		default:
 			return in, false
 		}
 		i++
+	}
+	if in.Continuation != "" && !validContinuationID(in.Continuation) {
+		return in, false
 	}
 	if in.Dash != "" && in.Dash != "tailnet" && !strings.HasPrefix(in.Dash, "public=") {
 		return in, false
@@ -80,7 +91,7 @@ func (e *Engine) up(ctx context.Context, args []string) Result {
 		return unavailable("up")
 	}
 	var out strings.Builder
-	result, stop := e.setupStep(ctx, 1, in, &out)
+	result, stop := e.setupStep(ctx, 1, in, &out, "bootstrap")
 	if stop {
 		return result
 	}
@@ -91,26 +102,123 @@ func (e *Engine) up(ctx context.Context, args []string) Result {
 	if err != nil {
 		return operationalFailure("up", err)
 	}
-	defer lease.Close()
-	ctx, stopMonitor := lease.Monitor(ctx)
-	defer stopMonitor()
-	out.Reset() // step 1 is re-probed under the lock, not repeated in output.
+	closed := false
+	defer func() {
+		if !closed {
+			_ = lease.Close()
+		}
+	}()
+	monitored, cancel := lease.Monitor(ctx)
+	defer cancel()
+	result, id := e.walkSetup(monitored, lease, in)
+	cancel()
+	err = lease.Close()
+	closed = true
+	e.observeSetup(SetupObservation{Kind: "lease-closed", Scope: "handoff", Failed: err != nil})
+	if err != nil {
+		return operationalFailure("up", err)
+	}
+	if id == "" {
+		return result
+	}
+	if err := ctx.Err(); err != nil {
+		return operationalFailure("up", err)
+	}
+	if e.ReportContinuation == nil {
+		return unavailable("up")
+	}
+	err = e.ReportContinuation(ctx, id, in)
+	e.observeSetup(SetupObservation{Kind: "handoff-signaled", Scope: "handoff", Failed: err != nil})
+	if err != nil {
+		return operationalFailure("up", err)
+	}
+	return Result{"", 0}
+}
+func (e *Engine) walkSetup(ctx context.Context, lease SetupLease, in SetupInput) (result Result, continuation string) {
+	e.observeSetup(SetupObservation{Kind: "begin", Scope: "walk"})
+	currentStep := 0
+	defer func() {
+		kind := "stop"
+		if continuation != "" {
+			kind = "handoff-prepared"
+		} else if result.Exit == 0 {
+			kind = "complete"
+		}
+		e.observeSetup(SetupObservation{Kind: kind, Scope: "walk", Step: currentStep, Failed: result.Exit != 0})
+	}()
+	handoff, hasHandoff := e.Setup.(SetupHandoff)
+	if result, stop := e.validateSetupHandoff(ctx, lease, in, handoff, hasHandoff); stop {
+		return result, ""
+	}
+	var out strings.Builder
 	for step := 1; step <= 8; step++ {
-		if err := lease.Check(ctx); err != nil {
-			return operationalFailure("up", err)
-		}
-		result, stop := e.setupStep(ctx, step, in, &out)
+		currentStep = step
 		if err := context.Cause(ctx); err != nil {
-			return operationalFailure("up", err)
+			return operationalFailure("up", err), ""
 		}
 		if err := lease.Check(ctx); err != nil {
-			return operationalFailure("up", err)
+			return operationalFailure("up", err), ""
+		}
+		result, stop := e.setupStep(ctx, step, in, &out, "walk")
+		if err := context.Cause(ctx); err != nil {
+			return operationalFailure("up", err), ""
+		}
+		if err := lease.Check(ctx); err != nil {
+			return operationalFailure("up", err), ""
 		}
 		if stop {
-			return result
+			return result, ""
+		}
+		if step == 2 && in.Continuation == "" && hasHandoff {
+			id, needed, err := handoff.PrepareHandoff(ctx, in)
+			e.observeSetup(SetupObservation{Kind: "prepare-handoff", Scope: "walk", Step: step, Action: needed, Failed: err != nil})
+			if err != nil {
+				return operationalFailure("up", err), ""
+			}
+			if needed {
+				if !validContinuationID(id) {
+					return unavailable("up"), ""
+				}
+				if err = lease.Check(ctx); err != nil {
+					return operationalFailure("up", err), ""
+				}
+				return Result{}, id
+			}
 		}
 	}
-	return e.completeSetup(ctx, lease, &out)
+	return e.completeSetup(ctx, lease, &out), ""
+}
+func (e *Engine) validateSetupHandoff(ctx context.Context, lease SetupLease, in SetupInput, handoff SetupHandoff, available bool) (Result, bool) {
+	if in.Continuation == "" {
+		return Result{}, false
+	}
+	if err := lease.Check(ctx); err != nil {
+		return operationalFailure("up", err), true
+	}
+	if !available {
+		return refused("up", "setup continuation is unavailable", "nova-sprint up --as <name>"), true
+	}
+	err := handoff.ValidateHandoff(ctx, in.Continuation, in)
+	e.observeSetup(SetupObservation{Kind: "validate-handoff", Scope: "walk", Failed: err != nil})
+	if err != nil {
+		return operationalFailure("up", err), true
+	}
+	if err := lease.Check(ctx); err != nil {
+		return operationalFailure("up", err), true
+	}
+	return Result{}, false
+}
+
+func validContinuationID(id string) bool {
+	if len(id) != 64 {
+		return false
+	}
+	for _, c := range id {
+		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strings.Builder) Result {
@@ -136,18 +244,22 @@ func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strin
 	return Result{out.String(), 0}
 }
 
-func (e *Engine) setupStep(ctx context.Context, step int, in SetupInput, out *strings.Builder) (Result, bool) {
+func (e *Engine) setupStep(ctx context.Context, step int, in SetupInput, out *strings.Builder, scope string) (Result, bool) {
 	check, err := e.Setup.Verify(ctx, step, in)
+	e.observeSetup(SetupObservation{Kind: "verify", Scope: scope, Step: step, Verified: check.Verified, Action: check.Action, Failed: err != nil})
 	if err != nil {
 		r := operationalFailure("up", err)
 		return Result{out.String() + r.Output, r.Exit}, true
 	}
 	if !check.Verified && check.Action {
-		if err = e.Setup.Act(ctx, step, in); err != nil {
+		err = e.Setup.Act(ctx, step, in)
+		e.observeSetup(SetupObservation{Kind: "act", Scope: scope, Step: step, Failed: err != nil})
+		if err != nil {
 			r := operationalFailure("up", err)
 			return Result{out.String() + r.Output, r.Exit}, true
 		}
 		check, err = e.Setup.Verify(ctx, step, in)
+		e.observeSetup(SetupObservation{Kind: "verify", Scope: scope, Step: step, Verified: check.Verified, Action: check.Action, Failed: err != nil})
 		if err != nil {
 			r := operationalFailure("up", err)
 			return Result{out.String() + r.Output, r.Exit}, true
@@ -169,3 +281,21 @@ func (e *Engine) setupStep(ctx context.Context, step int, in SetupInput, out *st
 	fmt.Fprintln(out, "next: "+check.Next)
 	return Result{out.String(), 1}, true
 }
+
+// SetupObservation records only non-secret facts observed by the actual walker.
+// A trace harness supplies its own projection of fake outside state and saved
+// answers; the walker never synthesizes model state or reads external services.
+type SetupObservation struct {
+	Kind, Scope              string
+	Step                     int
+	Verified, Action, Failed bool
+}
+
+func (e *Engine) observeSetup(o SetupObservation) {
+	if e.SetupObserver != nil {
+		e.SetupObserver(o)
+	}
+}
+
+// ParseSetup validates non-secret setup arguments for the outer wrapper.
+func ParseSetup(args []string, actor string) (SetupInput, bool) { return parseSetup(args, actor) }

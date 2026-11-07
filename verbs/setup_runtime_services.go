@@ -58,7 +58,7 @@ func (f FleetServices) command(ctx context.Context, name string, args ...string)
 	return toolOutput(ctx, name, args...)
 }
 func (s FleetService) valid() bool {
-	if !fleetName.MatchString(s.Name) || !strings.HasPrefix(s.Name, "sprint-") || !fleetName.MatchString(s.Machine) || len(s.Argv) == 0 || !filepath.IsAbs(s.Argv[0]) {
+	if !fleetName.MatchString(s.Name) || !strings.HasPrefix(s.Name, "sprint-") || !fleetName.MatchString(s.Machine) || len(s.Argv) == 0 || (!filepath.IsAbs(s.Argv[0]) && !(s.Argv[0] == "nova-sprint" && s.Seat != "" && len(s.Keys) > 0)) {
 		return false
 	}
 	if (s.Seat != "" && !fleetName.MatchString(s.Seat)) || (len(s.Keys) > 0 && s.Seat == "") {

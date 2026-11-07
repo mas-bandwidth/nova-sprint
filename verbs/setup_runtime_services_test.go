@@ -7,6 +7,21 @@ import (
 	"testing"
 )
 
+func TestFleetServiceBareProgramRequiresSecretsWrapper(t *testing.T) {
+	s := FleetService{Name: "sprint-run", Machine: "studio", Seat: "studio", Keys: []string{"NOVA_SPRINT_PG_PASSWORD"}, Argv: []string{"nova-sprint", "run"}}
+	if !s.valid() {
+		t.Fatal("secret-backed nova-sprint was rejected")
+	}
+	s.Argv[0] = "other-program"
+	if s.valid() {
+		t.Fatal("unapproved relative executable accepted")
+	}
+	s.Argv[0], s.Seat, s.Keys = "nova-sprint", "", nil
+	if s.valid() {
+		t.Fatal("bare secret-free service accepted")
+	}
+}
+
 func TestFleetServicesCreateOnceAndTargetPlay(t *testing.T) {
 	ctx := context.Background()
 	s := FleetService{Name: "sprint-run", Machine: "bench-a", Seat: "bench-a", Argv: []string{"/opt/nova/bin/nova-sprint", "run"}, Keys: []string{"NOVA_PG_PASSWORD"}}

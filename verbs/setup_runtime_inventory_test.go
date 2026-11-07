@@ -57,3 +57,14 @@ func TestPublicDashboardRejectsCredentials(t *testing.T) {
 		t.Fatal("public service received store configuration")
 	}
 }
+
+func TestPublicDashboardEnvHasExactProgram(t *testing.T) {
+	service := &FleetService{Name: "sprint-public", Machine: "public", Argv: []string{"/usr/bin/env", "nova-sprint", "dash", "--pull", "http://private:8080", "--listen", ":8080"}}
+	if !validPublicTarget(service) {
+		t.Fatal("env-backed pull service refused")
+	}
+	service.Argv[1] = "other-program"
+	if validPublicTarget(service) {
+		t.Fatal("generic env wrapper accepted")
+	}
+}

@@ -33,31 +33,33 @@ type Reader interface {
 
 // Engine consumes its dependencies, keeping command parsing independent of CLI.
 type Engine struct {
-	Store           Reader
-	Env             Environment
-	Actor           string
-	Setup           Setup
-	SetupLock       SetupLock
-	Now             Clock
-	Reports         ReportPlanner
-	Judges          JudgePlanner
-	Heads           HeadVerifier
-	Faults          FaultVerifier
-	Health          Health
-	History         HistoryVerifier
-	Repositories    Repositories
-	Briefs          Briefs
-	Archive         Archive
-	Preview         func(context.Context, string) error
-	RowCatalog      RowCatalog
-	PolicyEvaluator PolicyEvaluator
-	PolicyFiles     PolicyFiles
-	PolicyActivator PolicyActivator
-	Install         Installer
-	RunInfo         RunInfo
-	ShowEdges       ShowEdges
-	Version         string
-	ToolPin         string
+	Store              Reader
+	Env                Environment
+	Actor              string
+	Setup              Setup
+	SetupLock          SetupLock
+	ReportContinuation func(context.Context, string, SetupInput) error
+	SetupObserver      func(SetupObservation)
+	Now                Clock
+	Reports            ReportPlanner
+	Judges             JudgePlanner
+	Heads              HeadVerifier
+	Faults             FaultVerifier
+	Health             Health
+	History            HistoryVerifier
+	Repositories       Repositories
+	Briefs             Briefs
+	Archive            Archive
+	Preview            func(context.Context, string) error
+	RowCatalog         RowCatalog
+	PolicyEvaluator    PolicyEvaluator
+	PolicyFiles        PolicyFiles
+	PolicyActivator    PolicyActivator
+	Install            Installer
+	RunInfo            RunInfo
+	ShowEdges          ShowEdges
+	Version            string
+	ToolPin            string
 }
 
 type nextAnswer struct {
