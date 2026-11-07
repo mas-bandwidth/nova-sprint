@@ -845,3 +845,14 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   left-out fields names it), and `TraceOp` refuses the write like `SetRowFlaps`. Test: the
   conformance scenario `row load`, on Fake and PostgreSQL alike.
 
+
+## Built: a worker's advertised tiers (stitch w3W, 2026-11-07)
+
+- `Row.Tiers`, a fifth heartbeat column (`tiers text`, added by `rowLoadColumns` like the other
+  four): the tiers the worker's harness proved it serves, a comma list in `Tiers`' order
+  (`JoinTiers`, `SplitTiers`), "" when none was advertised. `SetRowLoad` gains `Tiers`; one not
+  in that form is invalid. `PutRow` keeps it while the session is the same and clears it when
+  the session changes (an unhook, a new hook), so an advertisement holds for the session that
+  made it. No store rule reads it: the roster does (`roster.Advertised`, LAYER-4 Built "the
+  worker's live defects"). It moves no gen, as the rest of the heartbeat. Not in `Store.tla`
+  (telemetry, as the load columns: `trace.go`'s notes). Conformance: `rowLoad`.

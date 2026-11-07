@@ -753,3 +753,16 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   for its beat only after reading), and the test waits on it before its first tick. No
   production code changed; `go test -run TestServeTicksPushesAndLogs -count=2000 -cpu 1,4 ./run/`
   and 100 runs under `-race` pass.
+
+## Built: the roster takes a worker's advertisement (stitch w3W, 2026-11-07)
+
+- `beat` gains `--tiers <t,t>`: the tiers the worker's harness proved it serves (each a known
+  tier; stored in `Tiers`' order). nova-worker sends one beat at hook, before its first pass,
+  and every beat after carries it.
+- `roster.Advertised(rows)`: a worker row that advertised tiers is dealt exactly those, at width
+  min(nova-config's width, its slots) when it read its slots; one that advertised nothing keeps
+  nova-config's shape; kin are untouched. The run tick applies it after its fold, every verb's
+  roster read (`Engine.roster`, now given the snapshot) and the board's feed too.
+- `release` gains `--head <sha>`: a row releasing a working work card it holds names the partial
+  head it pushed, checked as a finish's head is; the producer goes back at that head with no
+  bounce. nova-worker uses it for a job its restart cannot rebuild.

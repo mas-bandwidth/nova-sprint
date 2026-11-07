@@ -15,7 +15,9 @@ abbreviate them.
 
 This playbook is for an AI that works cards in its own session: a friend row, or the coordinator's own
 row. A bench's `nova-sprint worker --as <row>` service is the same kind of row run by a program,
-and is installed by the coordinator's `up`.
+and is installed by the coordinator's `up`. It says in its heartbeat (`nova-sprint beat`) the
+tiers its harness proved it serves and its nova-reserve slots, and is dealt by them; its harness
+reads the card from `JOB.md` in the job directory.
 
 ## Who you are now
 
@@ -165,7 +167,9 @@ so honestly with one of these, never with a finish of a head that does not meet 
   It prints `FAULTED <id> ...`; a fault spends no attempt and never counts toward blocked.
 - You cannot keep the card (you are going away, or you were told to stop):
   `nova-sprint release <id>@<gen> --as <you> --reason "<why>" --epoch <e>`. The card goes
-  back to ready with your branch kept.
+  back to ready with your branch kept, and no blame. If you pushed commits on it, add
+  `--head <the 40-hex sha git ls-remote origin <branch> prints>` so the next attempt continues
+  from them.
 
 ## Read a card
 
