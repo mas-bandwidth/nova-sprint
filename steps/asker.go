@@ -228,8 +228,9 @@ func orderOK(t []any) bool {
 	return true
 }
 
-// rows is rows(card, kind, candidates): the answered candidates in order,
-// or nil for the default (the engine's ranking in deal.go).
+// rows is rows(card, kind, candidates): the set of candidates the card may go
+// to (the deal picks among them by the engine's ranking in deal.go, so a burst
+// spreads; preemption still takes the first), or nil for the default.
 func (o *oracle) rows(q RowsQuestion) []string {
 	ans, ok := o.a.Rows[q.Card.ID]
 	if !o.usable("rows", ok) {
