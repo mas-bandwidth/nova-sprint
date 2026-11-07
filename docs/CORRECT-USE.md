@@ -41,7 +41,7 @@ Each step refuses until the one before it has happened.
 | 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); nova-tools at the pin; `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers; then the sprint's health: every stream's repository and base at origin, no open judgement, run serving, something dealt while producers are ready, no landing waiting on a person; a policy active and answering the ready producers' questions; every waiting or ready producer admitted as `add` would admit it; every working consumer on a row that is hooked, up and on the bus | every line it checked; each `CHECK RED` line names its fix; exit non-zero while any is red |
 | 2 | `up` | `check` passes | `nova-sprint check` |
 | 3 | `stream add` | the store is at the schema `up` makes; the repository clones and its base is there; the card branches `sprint/<s>/<card>` can be created (git's ref-name rules, no parent branch at origin); with forge github, this host's gh identity can push, open and merge | `nova-sprint up`; the name to change, the branch to delete, or the gh login to make |
-| 4 | `add` | the stream exists and its base is at origin; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)), DONE-WHEN parsing and no retired mechanic; a row serves its tier and every NEEDS-ROUTE; its PATHS are at the base; its work is not already there; every need names a card | `stream add <s>`; the missing sections of the brief by name; the row to give the tier or route; the path; the unknown need |
+| 4 | `add` | the stream exists and its base is at origin; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)), DONE-WHEN as one command and no retired mechanic; a row serves its tier and every NEEDS-ROUTE; its PATHS are at the base; its work is not already there; every need names a card | `stream add <s>`; the missing sections of the brief by name; the row to give the tier or route; the path; the unknown need |
 | 5 | rows | a row hooks in (`nova-sprint worker --as <row>` on a bench; `nova-bus hook --as <name>` for a kin) | the recipe for the harness it detects |
 | 6 | deals | `run` is a service (made by `up`) and at least one row is up | `nova-sprint up`; "no row is hooked in" with step 5's recipe |
 | 7 | `take` | the name is hooked in; the card was dealt to this row at this gen | the hook recipe; "card X moved: run `nova-sprint show X`" |
@@ -192,3 +192,20 @@ So:
   REPLY; a subject that is not a verb is logged once on its stderr and gets
   no reply; a verb is answered once with the command to run instead (the
   sprint takes no verbs over the bus).
+
+## Built: gates are one command; a drop releases; the agreement warning (stitch w3A, 2026-11-07)
+
+- A DONE-WHEN is one argv, not a shell line: `add` and `check` refuse a backticked
+  chain, `a && b`, a pipe, a redirection, or a sentence, and the fix says to
+  wrap it in `sh -c '...'` (CARD-CONTRACT "Admission"). The same parser runs
+  the gate on the bench.
+- `drop` (and `replace`, and a judgement answered `drop`) releases the dropped
+  producer's live consumers itself, in the same op, recorded released with the
+  drop's reason (no result, no blame, as `release` records it); it no longer
+  asks the human to release first.
+- `stream add` and `check` warn when the base requires a contributor-agreement
+  check, naming the identities to sign (CARD-CONTRACT "Admission").
+- `make install` puts the commands in `~/.local/bin` as a new file, signed ad
+  hoc on macOS, renamed over the old one (`tools/placebin`). Installing a
+  release onto a bench is nova-fleet's install, which is another repository's
+  and is not changed here.

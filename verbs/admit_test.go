@@ -105,18 +105,20 @@ func (o *failingTree) Tree(context.Context, string, string) ([]string, error) { 
 func TestBriefContractLint(t *testing.T) {
 	good := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: go test ./...\n\nDo it.\n"
 	for rule, text := range map[string]string{
-		"line 4 must contain a valid DONE-WHEN section": strings.Replace(good, "DONE-WHEN: go test ./...", `DONE-WHEN: echo "open`, 1),
-		"line 5 must contain a valid DONE-WHEN section": strings.Replace(good, "go test ./...\n\n", "go test ./...\nDONE-WHEN: go test |\n\n", 1),
-		"must contain a valid NEEDS-ROUTE section":      strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nNEEDS-ROUTE: two words", 1),
-		"must contain a valid HEAD section":             strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nHEAD: abc", 1),
-		"must contain a valid PR section":               strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nPR: -3", 1),
-		"line 2 is a retired WHO line":                  strings.Replace(good, "PATHS: a.go", "WHO: alice\nPATHS: a.go", 1),
-		"line 2 is a retired LOCK line":                 strings.Replace(good, "PATHS: a.go", "LOCK: build\nPATHS: a.go", 1),
-		"line 7 names JOB.md, a retired mechanic":       good + "Write JOB.md when done.\n",
-		"line 7 names a lock (winlock), a retired":      good + "Take the winlock first.\n",
-		"line 7 names a host to ssh to (ssh to bench9)": good + "Then ssh to bench9 and run it.\n",
-		"line 4 names a gate that runs on a named host": strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: ssh -o BatchMode=yes bench1 make", 1),
-		"line 7 names a WHO line":                       good + "WHO: bob\n",
+		`line 4 DONE-WHEN echo "open is not one command: a " is left open`:                                       strings.Replace(good, "DONE-WHEN: go test ./...", `DONE-WHEN: echo "open`, 1),
+		"line 5 DONE-WHEN go test | is not one command: | is shell syntax":                                       strings.Replace(good, "go test ./...\n\n", "go test ./...\nDONE-WHEN: go test |\n\n", 1),
+		"line 4 DONE-WHEN go test ./... && go vet ./... is not one command: && is shell syntax":                  strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: go test ./... && go vet ./...", 1),
+		"line 4 DONE-WHEN Verify the tests pass is not one command: the first word Verify is not a program name": strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: Verify the tests pass", 1),
+		"must contain a valid NEEDS-ROUTE section":                                                               strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nNEEDS-ROUTE: two words", 1),
+		"must contain a valid HEAD section":                                                                      strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nHEAD: abc", 1),
+		"must contain a valid PR section":                                                                        strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nPR: -3", 1),
+		"line 2 is a retired WHO line":                                                                           strings.Replace(good, "PATHS: a.go", "WHO: alice\nPATHS: a.go", 1),
+		"line 2 is a retired LOCK line":                                                                          strings.Replace(good, "PATHS: a.go", "LOCK: build\nPATHS: a.go", 1),
+		"line 7 names JOB.md, a retired mechanic":                                                                good + "Write JOB.md when done.\n",
+		"line 7 names a lock (winlock), a retired":                                                               good + "Take the winlock first.\n",
+		"line 7 names a host to ssh to (ssh to bench9)":                                                          good + "Then ssh to bench9 and run it.\n",
+		"line 4 names a gate that runs on a named host":                                                          strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: ssh -o BatchMode=yes bench1 make", 1),
+		"line 7 names a WHO line":                                                                                good + "WHO: bob\n",
 	} {
 		_, err := parseBrief("b1", text)
 		if err == nil || !strings.Contains(err.Error(), rule) {
@@ -132,24 +134,21 @@ func TestBriefContractLint(t *testing.T) {
 	}
 }
 
-// TestShellProblem: the DONE-WHEN parse is form only.
-func TestShellProblem(t *testing.T) {
-	for cmd, want := range map[string]string{
-		`go test ./... && echo "ok (fine)"`: "",
-		`sh -c 'a | b' || true`:             "",
-		`echo \"`:                           "",
-		`(cd x && make)`:                    "",
-		``:                                  "the command is empty",
-		`echo 'x`:                           "a ' is left open",
-		"echo `x":                           "a ` is left open",
-		`(cd x`:                             "a ( is left open",
-		`x)`:                                "a ) closes nothing",
-		`| grep x`:                          "it starts with |",
-		`make &&`:                           "it ends with &&",
-		`make \`:                            `it ends with \`,
-	} {
-		if got := shellProblem(cmd); got != want {
-			t.Fatalf("shellProblem(%q) = %q, want %q", cmd, got, want)
-		}
+// TestGateFixSaysShC: a brief refused for a gate that needs a shell says to
+// wrap it in sh -c; a stored card is re-linted by the same parser (check).
+func TestGateFixSaysShC(t *testing.T) {
+	_, err := parseBrief("b1", "tier: pro\nPATHS: a.go\nTEST: t\nDONE-WHEN: `make` ; true\n\nDo it.\n")
+	if f := classify(err); !strings.Contains(f.Fix, "sh -c '...'") || !strings.Contains(f.What, "a backquote is shell syntax") {
+		t.Fatalf("%+v", f)
+	}
+	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}
+	f := cardFacts{ID: "c1", Tier: "pro", Brief: "tier: pro\n", DoneWhen: []string{"go test ./...", "Tests must all pass"}}
+	err = cardLint(f, ro)
+	if g := classify(err); !strings.Contains(g.What, "card c1: DONE-WHEN Tests must all pass is not one command") || !strings.Contains(g.Fix, "sh -c '...'") {
+		t.Fatalf("%+v %v", g, err)
+	}
+	f.DoneWhen = []string{"sh -c 'cd x && make | tee log'"}
+	if err := cardLint(f, ro); err != nil {
+		t.Fatalf("%v", err)
 	}
 }

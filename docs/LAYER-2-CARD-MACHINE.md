@@ -169,7 +169,9 @@ Rules the tables encode, each checked by the model and tested one by one:
   silence.
 - A need failing takes its dependants: layer 3 raises `NeedFailed` for every
   producer whose needs name it, in the same tick, after withdrawing their
-  consumers. The drop that fails a need may instead name, per dependant, a
+  consumers. (The coordinator's own drop of a producer under a live consumer is
+layer 3's: it withdraws the consumer as released in the same op, then
+Cancels; the machine still refuses a Cancel under a live consumer.) The drop that fails a need may instead name, per dependant, a
   `Waive` or a `Relink` to a replacement, applied in the same op, so the
   dependant is never failed first and revived after (LESSONS 2.18).
 - A held stream stops `Start` and `AskRead` (no new consumers); live

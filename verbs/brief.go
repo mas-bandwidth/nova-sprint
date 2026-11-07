@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -15,8 +16,9 @@ import (
 // AFTER, PRIORITY, TEST, DONE-WHEN), a blank line and the task prose. The
 // parser checks the form; the gates TEST names are the worker's to run.
 type briefParts struct {
-	a    card.Add
-	seen map[string]bool
+	a       card.Add
+	seen    map[string]bool
+	gateWhy string // why the DONE-WHEN line just read is not one command
 }
 
 // parseBrief is brief id's text as a producer's add, or the first rule it
@@ -38,6 +40,9 @@ func parseBrief(id, text string) (card.Add, error) {
 			break
 		}
 		if field := p.line(line); field != "" {
+			if field == "DONE-WHEN" && p.gateWhy != "" {
+				return p.a, &BriefLintError{Brief: id, Line: i + 2, Rule: p.gateWhy, Fix: edge.GateFix}
+			}
 			return p.a, lintAt(id, i+2, field)
 		}
 	}
@@ -81,7 +86,7 @@ func lintAt(id string, line int, field string) error {
 	case "task prose":
 		rule = "must include task prose after a blank line"
 	case "DONE-WHEN":
-		rule = "must contain a valid DONE-WHEN section (a shell command that parses: quotes, parentheses and backquotes closed, no dangling | & ; or \\)"
+		rule = "must contain a valid DONE-WHEN section (one command: a program and its arguments, no shell syntax outside quotes)"
 	case card.RouteField:
 		rule = "must contain a valid " + card.RouteField + " section (one route name per line, 1 to 128 of a-z A-Z 0-9 . _ -)"
 	case "HEAD":
@@ -139,7 +144,8 @@ func (p *briefParts) field(key, value string) string {
 		}
 		p.a.Priority = value
 	case "DONE-WHEN":
-		if shellProblem(value) != "" {
+		if _, why := edge.ParseGate(value); why != "" {
+			p.gateWhy = "DONE-WHEN " + clip(value) + " is not one command: " + why
 			return "DONE-WHEN"
 		}
 		p.a.DoneWhen = append(p.a.DoneWhen, value)

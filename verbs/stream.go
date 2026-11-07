@@ -48,8 +48,11 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if err != nil {
 		return "", err
 	}
-	return done("nova-sprint add --stream "+name+" --brief-file <f>",
-		fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)), nil
+	lines := []string{fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)}
+	if what, fix := e.agreementWarning(ctx, snap, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}); what != "" {
+		lines = append(lines, "WARN "+oneLine(what)+": "+oneLine(fix))
+	}
+	return done("nova-sprint add --stream "+name+" --brief-file <f>", lines...), nil
 }
 
 // baseTip is the stream's base branch tip at origin, read through the git
