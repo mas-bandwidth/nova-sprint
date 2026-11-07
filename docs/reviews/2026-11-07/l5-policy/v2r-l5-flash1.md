@@ -22,8 +22,8 @@ Not checked. I did not open `tla/Policy.tla`, so I cannot say whether the `ev.st
 
 ## Simplifications
 
-- `evaluator.go:104-134`: the `remote` select has four exits with two `ev.stop()` calls and one leak-free path. A single deferred decision on whether the child is still usable would make defect 1 hard to repeat.
-- `tick.go:31-40` and `clock.go:29-40`: `deadline` and `start` both wrap a goroutine that waits on a channel. Fine, but the cancel-on-ctx goroutine is per tick and could share one timer.
+- `evaluator.go:104-134`: the `remote` select has four exits, each with its own `ev.stop()` decision. One rule (stop the child on any error) would make defect 1 hard to repeat.
+- `clock.go:27-40`: `deadline` starts one goroutine per tick that waits on the clock or the context. Fine, but one timer could serve every version of a tick.
 
 ## Missing tests
 
