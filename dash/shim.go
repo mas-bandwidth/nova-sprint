@@ -231,10 +231,16 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 			f.Done++
 			// Glenn 2026-11-07: "OK% should be known as soon as a card is done": the
 			// worker's own result counts the moment it reports, not after a read.
-			if c.Result == "ok" {
-				f.OK++
-			} else if c.Result != "" {
-				f.Failed++
+			// ok% is the worker's own finished work: ok against fail or fix; a
+			// fault (harness, bench, route, device) and a close with no result do not
+			// count, and reads are the reader's done, not their ok% (Glenn 2026-11-07).
+			if c.Kind == "work" {
+				switch c.Result {
+				case "ok":
+					f.OK++
+				case "fail", "fix":
+					f.Failed++
+				}
 			}
 		}
 	}

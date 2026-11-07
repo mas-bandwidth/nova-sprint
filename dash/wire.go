@@ -28,7 +28,10 @@ func (w workRow) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{"blocked": integer(w.Blocked), "waiting": integer(w.Waiting), "ready": integer(w.Ready), "working": integer(w.Working), "review": integer(w.Review), "fix": integer(w.Fix), "merging": integer(w.Merging), "landed": integer(w.Landed), "fail": integer(w.Fail), "cost": moneyCell(w.Cost), "cost_by_tier": tiers})
 }
 func (f fleetRow) MarshalJSON() ([]byte, error) {
-	pct := fmt.Sprintf("%.1f%%", f.OKPct)
+	pct := "-" // no finished work with a result yet (Glenn 2026-11-07)
+	if f.OK+f.Failed > 0 {
+		pct = fmt.Sprintf("%.1f%%", f.OKPct)
+	}
 	return json.Marshal(map[string]string{"status": f.Status, "width": integer(f.Width), "ready": integer(f.Ready), "working": integer(f.Working), "done": integer(f.Done), "blocker_working": integer(f.Blocker), "critical_working": integer(f.Critical), "fix_working": integer(f.Fix), "reads_working": integer(f.Reads), "ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct})
 }
 
