@@ -1080,3 +1080,12 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   invariant violated, as do the six older Runner witnesses; the four Runner reach checks are
   violated as required. The three runner walk traces (with Stop and Release in them) check
   against the model (`check-trace.sh Runner`: 29, 30 and 40 steps, TRACE OK).
+- **Merged with deal is take (measured, a bench host, TLC 2.19, 2026-11-07, head a675488a).**
+  `Take` is now the pass's acknowledgement of a card dealt working (no ready state, no width
+  guard: the deal holds it). `Release(c)` gives back a job the restart cannot resume (staged or
+  harvested, directory present, no live harness): the consumer is withdrawn (fail, no result,
+  no report), its commits pushed, its directory gone. A card in hand with no job directory is
+  no release: the pass runs it. `Runner.tla` with `Runner.cfg`: no error, 16,928 states
+  generated, 4,245 distinct. The whole of `ci-tlc.sh`: 266 ok, 0 FAIL (Runner, the eight Runner
+  witnesses and the four Runner reach checks among them). `make-traces.sh check`: 88 ok, 0
+  FAIL; the runner walks check at 22, 29 and 30 steps.
