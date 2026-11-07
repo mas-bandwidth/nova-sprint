@@ -92,11 +92,16 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 }
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 	model := modelFlag_internal(j)
-	if len(model) == 0 && j.ProxyAddr != "" {
-		model = []string{"--model", "openai/deepseek-chat"} // LOCAL DOGFOOD STOPGAP: a probe carries no model
+	if len(model) == 0 { // LOCAL DOGFOOD STOPGAP: a probe carries no model
+		model = []string{"--model", "deepseek/deepseek-chat"}
 	}
 	argv := append(append([]string{"opencode", "run"}, model...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
+	for _, name := range []string{"DEEPSEEK_API_KEY", "INCEPTION_API_KEY"} { // LOCAL DOGFOOD STOPGAP
+		if v := os.Getenv(name); v != "" {
+			env = append(env, name+"="+v)
+		}
+	}
 	if j.ProxyAddr != "" {
 		baseURL := j.ProxyAddr
 		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
@@ -274,6 +279,11 @@ func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
 		argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
 	}
 	argv = append(argv, "--wait", cmp.Or(cfg.ReserveWait, 5*time.Second).String(), "--why", cmp.Or(j.Consumer, "probe"), "--", cmp.Or(cfg.SandboxBin, "nova-sandbox"), "--write", j.JobDir)
+	for _, name := range []string{"DEEPSEEK_API_KEY", "INCEPTION_API_KEY"} { // LOCAL DOGFOOD STOPGAP (Glenn 2026-11-07: move on): the key rides into the wall
+		if os.Getenv(name) != "" {
+			argv = append(argv, "--env", name)
+		}
+	}
 	for _, wp := range cfg.WritePaths {
 		if wp != "" {
 			argv = append(argv, "--write", wp)
@@ -302,7 +312,7 @@ func baseWallEnv_internal(j Job) []string {
 func SanitizeWallEnv(env []string, jobDir string) []string {
 	var clean []string
 	hasPath := false
-	allowed := []string{"LANG", "LC_ALL", "GIT_TERMINAL_PROMPT", "NOVA_WORKER_CONSUMER", "NOVA_WORKER_ROW", "NOVA_WORKER_NONCE", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "OPENAI_BASE_URL"}
+	allowed := []string{"LANG", "LC_ALL", "GIT_TERMINAL_PROMPT", "NOVA_WORKER_CONSUMER", "NOVA_WORKER_ROW", "NOVA_WORKER_NONCE", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "OPENAI_BASE_URL", "DEEPSEEK_API_KEY", "INCEPTION_API_KEY"} // LOCAL DOGFOOD STOPGAP: the last two
 	for _, kv := range env {
 		k, v, ok := strings.Cut(kv, "=")
 		u := strings.ToUpper(k)
