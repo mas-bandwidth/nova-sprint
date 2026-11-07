@@ -126,7 +126,7 @@ func (t *tick) base(stream string) (string, bool) {
 	return b, true
 }
 
-// branch is the card branch: sprint/<stream>/<producer> (the stream group
-// branch is sprint/<stream>/group, never sprint/<stream>: git refuses a ref
-// that is both a file and a directory).
+// branch is the card branch: sprint/<stream>/<producer> (the stream's group
+// branch is sprint-group/<stream>, outside sprint/, so the two never meet as
+// a file and a directory of one ref).
 func branch(c store.Card) string { return "sprint/" + c.Stream + "/" + c.ID }

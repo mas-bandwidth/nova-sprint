@@ -166,15 +166,18 @@ This ledger records every guarantee, rule, refusal, card-contract clause, and `P
 | L3-E4 | `LAYER-3-STEPS.md` list item 2, `BUILD-RULES` | The package reads no clock and no outside world; every function under 60 lines | `test TestLintPure` |
 | L3-E5 | `LAYER-3-STEPS.md` Requests | A verb refused for its actor writes nothing; coordinator verbs, the holder's take and report, the run loop's row facts | `test TestVerbActorTable`, `test TestVerbAddTakeReport`, `test TestVerbDropNamesItsDependants`, `test TestVerbJudgementAnswer` |
 | L3-T1 | `BUILD-RULES` 2026-11-07 (the lock gate) | The code is bound to the model: the walk's traces are behaviours of `Steps.tla` | `test TestTraceFixtures`, `test TestTraceWalk` |
+| L3-L1 | `LANDING.md` rung 3 (intent rule 32) | Anything but a landed result opens one `land` judgement per card still merging at the request's head, on the coordinator's row in that tick, with the facts and the choices land, fix and retry; nothing moves, nothing is blamed, and it has no deadline | `invariant Steps.MergingCovered`, `witness StepsLandJudgementExpires`, `test TestTickLandJudgementEveryOutcome`, `test TestTickLandAnswers` |
+| L3-L2 | `LANDING.md` rungs 1 and 2 (intent rule 16) | Fewer than `backed_up` merging heads waiting in a stream is one request for the first (rung 1); `backed_up` or more is one request for all of them (rung 2) | `test TestTickLadderRungs` |
+| L3-L3 | `LANDING.md` What is modelled (intent rules 16 and 32) | Base is never red from a landing; nothing lands that CI did not pass except by `land`; after a tick no merging card is without a request or a judgement | `invariant LandEdge.BaseNeverRed`, `invariant LandEdge.NothingLandsUnpassed`, `invariant LandEdge.MergingCovered`, `witness LandEdgeRedLands`, `witness LandEdgeStaleGate`, `witness LandEdgeJudgementHoldsStream` |
 
 ---
 
 ## Summary Counts
 
-Total rules audited: 108
+Total rules audited: 111
 
-- held by a model: 54
-- held by a test: 87
+- held by a model: 56
+- held by a test: 89
 - held by the schema: 16
 - held by nothing: 20
 

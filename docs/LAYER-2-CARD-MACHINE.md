@@ -511,3 +511,21 @@ reworked (after the first landing), a red landing goes to fix:
 - Not changed tonight: the `fail` state, `Cancel`, `Replace`, `NeedFailed`,
   and the board's and playbooks' state lists (intent rule 30 lists them).
 
+
+## The landing's transitions (2026-11-07, intent rule 32; branch `v2-stitch-w2L`)
+
+Built. Exactly what changed in layer 2, and only in the landing's
+transitions:
+
+- `Landed{Head}` became `Landed{Head, Merge, Reason}`. The move is the same
+  (`merging -> landed`, refused unless the producer is merging at `Head`);
+  it now writes the producer's reason as `landed at <merge>`, or
+  `landed at <merge>: <reason>` for a hand landing (`land` and a land
+  judgement answered `land` give `by hand: <why>`). Either field may be
+  empty; with both empty the reason is unchanged, as before.
+- `Red{Head, Reason}` is unchanged; it is now also the coordinator's: a land
+  judgement answered `fix` sends `Red` with the coordinator's reason as the
+  finding (layer 3 accepts `Landed` and `Red` from a coordinator).
+- No state, no guard and no other transition changed. `CardMachine.tla` is
+  unchanged: the merge sha and the reason are record text the model does
+  not carry (its `Landed(p, h)` is the same move).

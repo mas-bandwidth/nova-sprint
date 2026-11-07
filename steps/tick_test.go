@@ -127,6 +127,8 @@ func TestTickLandJudgementEveryOutcome(t *testing.T) {
 		assert.Equal(t, "open", j.State, outcome)
 		assert.Contains(t, j.Question, outcome)
 		assert.Contains(t, j.Question, "--- FAIL: TestX")
+		assert.Contains(t, j.Question, "card p1 (stream s1 onto ")
+		assert.Contains(t, j.Question, "head "+first.Heads[0])
 		assert.Contains(t, j.Command, "choices: land | fix | retry")
 		assert.Empty(t, p.Edges, outcome)
 		s.run(3)

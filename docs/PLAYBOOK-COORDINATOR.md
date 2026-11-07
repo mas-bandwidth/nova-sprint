@@ -15,7 +15,7 @@ judgement id as its message prints it, `<row>` a row's name on the bus.
 2. You are also a row like any other. Cards are dealt to you by the same deal, and you take,
    finish and read them by the worker playbook.
 3. The run loop does the seat's mechanical work: it deals, asks reads, decides yes or fix from
-   all the reads, lands, bisects a red batch, re-gates a red base, parks cards in a held stream,
+   all the reads, lands what CI passed green, parks cards in a held stream,
    blocks a card that bounces too often, and opens a judgement only when a mind is needed. Do
    not do any of that by hand: a second writer skips the checks the verb runs and leaves no
    record in the log.
@@ -90,10 +90,14 @@ What each judgement kind asks of you, and where to look before you choose:
 - `blocked`: a card bounced past policy's limit and sits in `blocked` until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unblock`, or `drop`.
-- `red`: CI was red at a head in merging. Run `show <id> --ci`; choose `rework`, `retry` (a flake
-  or a bench fault), `waive` only with evidence the red is not the card's, or `drop`.
-- `conflict`: a stream group cannot merge (section 5, rung 3).
-- `base-red`: the base itself is red (section 5).
+- `land`: a merging card did not land automatically (red CI, no CI within the wait, a conflict,
+  a refused merge, a PR that could not be opened, a branch that could not be pushed, a branch
+  missing or moved, a stream landed by hand, a fault). The question carries the facts: the
+  card, stream, base and its tip, branch, head, rung, group tip, gated sha, PR, the failing
+  checks with their first lines, the conflicting files, the cards landing with it. It has no
+  deadline. Choose `land` (you looked, it is right: merged by hand at once), `fix` (back to its
+  producer with your reason as the finding), or `retry` (a flake, a fixed trigger: a new
+  landing). Section 5.
 - `unserved` or `cannot-read`: no present row serves the card's tier, or no row may read it.
   Bring a row up that serves the tier (section 7); never lower the card's tier.
 - `stall`: nothing landed within the bound while producers wait; the message names the cause
@@ -159,8 +163,8 @@ named it:
      and bring a row up that serves the tier (section 7). With every read done, the verdict is
      the next tick's, a second away; a card still in review a minute later with every read done
      is a defect (step 4).
-   - `merging`: the stream's rung and stuck column in `nova-sprint show <s>`, and a `red`,
-     `conflict`, `base-red` or `stall` judgement.
+   - `merging`: the stream's rung and stuck column in `nova-sprint show <s>`, and a `land`
+     or `stall` judgement.
 4. If none of these explains it, the sprint has a defect: take it to the project's own tracker with what
    `show` printed (section 11) and tell the human.
 
@@ -218,31 +222,30 @@ reorders only ready cards; a waiting card moves when its needs land or are fixed
 raising it. Favour a stream by priority, never by holding other streams. Never narrow a row's
 tiers to steer deals.
 
-**The landing ladder.** Landing runs on its own, whether or not you are hooked or looking. Each
-stream is on one rung:
+**The landing ladder.** Landing runs on its own, whether or not you are hooked or looking. The
+automatic path is green-and-merge only; everything else is yours. Each stream is on one rung:
 
-1. Flowing: each producer that reaches merging lands on its own, with its CI.
-2. Backed up: past policy's backlog number, the stream's merging producers merge in score order
-   onto `sprint/<s>/group` and land as one group with one CI run.
-3. The stream cannot merge: a group that conflicts across streams, or stays red after bisection,
-   reaches you as a `conflict` judgement. Look across the streams for why two of them conflict
-   and fix the cause (a brief, a need, the order), then answer the judgement.
-4. By hand: when your fix is itself a merge that needs judgement, merge by hand, on a frontier
-   model: `nova-sprint stream set <s> --mode hand` stops the lander taking the stream, you merge
-   on the stream's group branch and push, the result lands through the same CI gate as any group,
-   then `nova-sprint stream set <s> --mode auto` gives the stream back. Never merge by hand on a
-   lower rung, and never land around the order.
+1. One head waiting: its PR from the card's branch against the stream's base. CI green at that
+   exact head merges it by the repository's allowed method; the card is landed with the merge
+   sha.
+2. More than one head waiting (policy's `backed_up`, default 2): the heads merge in score order
+   onto `sprint-group/<s>`, rebuilt from the base tip, with one PR against the base. Green merges
+   as one. Red is yours: no bisection, no blame.
+3. Anything else is one `land` judgement per card on your row, within a tick, with the facts.
+   Answer it: `nova-sprint judge land.<card>.<n> land|fix|retry --reason "<why>"`. Look across
+   streams when two of them conflict, and fix the cause (a brief, a need, the order) before you
+   answer `retry`.
 
-A red batch is bisected and only the red head returns; a bench fault blames no head. A base that
-moved is met by re-merging the batch once, never by sending cards back to rebase.
+**By hand.** `nova-sprint land <card> --reason "<why>"` merges a merging card's read head into
+the base with no CI gate (you looked): its PR on a stream with a forge, a fast-forward push on
+one without. `--head <sha>` makes sure it is the head you read. A conflict is refused with its
+fix: merge it into the base yourself, push, and land it again (a head already on the base records
+at once). Never land a card that is not merging, and never resolve a conflict on a card's branch,
+which no reader has read.
 
-**Known base reds.** When the base itself is red there is one `base-red` judgement for the base,
-not one per stream. A queued head that fixes the red lands first; the base is re-gated; the
-third failure stops the stream that met it; when the tip is green every stream stopped only on
-that red resumes by itself. Fix the base with a card (section 4) at blocker if the human asks, and
-let the rule resume the streams. A failure two workers reproduce at the base gets one repair
-card, and every worker cites it as pre-existing. Never fast-forward the base by hand, and never
-resolve a conflict on a card's branch, which no reader has read.
+A pending CI and a base that moved are asked again by the run on their own. A merging card with
+no land request and no land judgement is reported to you as an `engine` judgement: answer it
+`retry`, and take it to the project's own tracker.
 
 ## 6. Reads and fix triage
 
