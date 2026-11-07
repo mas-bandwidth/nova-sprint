@@ -28,7 +28,7 @@ type sim struct {
 }
 
 func newSim(t *testing.T) *sim {
-	return &sim{world: newWorld(t), ask: Default{}, sent: set{}}
+	return &sim{world: newWorld(t), ask: benchAsk{}, sent: set{}}
 }
 
 // now is the tick's clock: a second after the last op.

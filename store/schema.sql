@@ -149,6 +149,14 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
 ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red boolean NOT NULL DEFAULT false
     CONSTRAINT cards_red_check CHECK (kind = 'producer' OR NOT red);
 
+-- model (round 23): on a consumer, the model the deal named for it (the
+-- policy's bench model for its tier, or a friend's own), carried to the take
+-- receipt; '' on a producer or sentinel. Fixed at add like holder. Added by
+-- ALTER, as red is, so a round-22 store that Migrate upgrades gets it the
+-- same way as a new one.
+ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
+    CONSTRAINT cards_model_check CHECK (kind IN ('work', 'read') OR model = '');
+
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;
 -- Johnny's review 2026-11-06: a working card could drop its holder and keep

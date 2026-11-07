@@ -32,8 +32,9 @@ var schemaSQL string
 // upgrade path from version 1: a store at version 1 is refused like any
 // other version. Within version 2 there are two: a store made by round 16's
 // schema (round16Hash) or by round 17's, the one every round to 21 carried
-// (round21Hash), is upgraded by Migrate (round 17's red column, round 22's
-// dropped row columns).
+// (round21Hash), or by round 22's (round22Hash), is upgraded by Migrate
+// (round 17's red column, round 22's dropped row columns, round 23's model
+// column).
 const SchemaVersion = 2
 
 // round16Hash is the schema hash of round 16's schema.sql
@@ -50,6 +51,12 @@ const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f043418
 // DROP COLUMN, round 22) and the cards_live index, in Migrate's one
 // transaction, then the new hash is recorded.
 const round21Hash = "cbe47774a69cf22749b6d414e1bc5689104820199313088df41975ef1771d491"
+
+// round22Hash is the schema hash of round 22's schema.sql
+// (testdata/schema-round22.sql): running schema.sql on it adds cards.model
+// (” on every card, with its CHECK; round 23, the model a deal names), in
+// Migrate's one transaction, then the new hash is recorded.
+const round22Hash = "eb754483470ba67cfe6aa6c36646c19b4503a2fb10fd0344b3aa2fdff6a15b7e"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
@@ -168,10 +175,10 @@ func (p *PG) Close() { p.pool.Close() }
 // sprint that holds anything but no sprint.meta (not made by nova-sprint):
 // any object of any kind in the namespace, which PostgreSQL records as a
 // pg_depend row on it (a relation, type, function, operator, collation, text
-// search object, operator family, ...). The two other hashes it takes are
-// round16Hash and round21Hash: schema.sql adds cards.red to a round 16
-// store and drops the five configuration columns of sprint.rows from either
-// (round 22), and the new hash is recorded, in the same transaction. When schema sprint already exists it
+// search object, operator family, ...). The other hashes it takes are
+// round16Hash, round21Hash and round22Hash: schema.sql adds cards.red to a round 16
+// store, drops the five configuration columns of sprint.rows from either of the first two
+// (round 22) and adds cards.model to all three (round 23), and the new hash is recorded, in the same transaction. When schema sprint already exists it
 // skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
 // on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.

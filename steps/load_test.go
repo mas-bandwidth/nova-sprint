@@ -81,7 +81,7 @@ func loadPlan(t *testing.T, s *sim) {
 		folds = append(folds, time.Since(start))
 		in := s.inputs()
 		for _, pack := range []int{1, 10, 50, 250} {
-			ask := scripted{Answers{Version: 1, Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}}
+			ask := scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}}
 			start = time.Now()
 			plan := Tick(s.v, in, ask)
 			d := time.Since(start)
@@ -115,7 +115,7 @@ func loadApply(t *testing.T, s *sim, seed []store.Op) {
 		snap, err := p.Snapshot(ctx)
 		require.NoError(t, err)
 		v := Build(snap, t0)
-		plan := Tick(v, s.inputs(), scripted{Answers{Version: 1, Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}})
+		plan := Tick(v, s.inputs(), scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}})
 		var ls lat
 		total := time.Now()
 		for _, op := range tickOnly(plan.Ops) {

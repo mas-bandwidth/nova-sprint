@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"fmt"
 	"maps"
 
 	"github.com/mas-bandwidth/nova-sprint/policy"
@@ -66,7 +67,32 @@ func (a *asker) Ask(q steps.Questions) steps.Answers {
 	}
 	a.answers, a.failures = a.policy.AnswerContext(a.ctx, a.vs, a.snap, a.ro, pq)
 	a.asked = a.answers.Version >= 0
-	return stepsAnswers(a.answers, a.failures)
+	out := stepsAnswers(a.answers, a.failures)
+	out.NoDeal = noDeal(a.vs, a.answers, a.failures)
+	return out
+}
+
+// noDeal is the deal's gate (defect 53): why the run deals nothing this
+// tick, "" when the active version answered. With no version active the
+// built-in's defaults still run the rest of the tick, but nothing is dealt:
+// a deal on defaults carried no model and moved nothing (the fleet's idle
+// night of 2026-11-07). An active version that failed, so that another
+// answered, names its failure.
+func noDeal(vs policy.Versions, p policy.Answers, fs []policy.Failure) string {
+	if vs.Active == nil {
+		return "no policy is active: nova-sprint policy set <file> --reason <why> (the first set activates; nova-sprint up installs the default)"
+	}
+	if p.Version == vs.Active.Version {
+		return ""
+	}
+	why := "it did not answer"
+	for _, f := range fs {
+		if f.Version == vs.Active.Version || f.Version < 0 {
+			why = f.Error()
+			break
+		}
+	}
+	return fmt.Sprintf("the active policy v%d failed (%s): nova-sprint policy check v%d, then fix it with nova-sprint policy set <file> --reason <why>", vs.Active.Version, why, vs.Active.Version)
 }
 
 // stepsAnswers is policy's answers in steps' shape. Version -1 (no version
@@ -77,7 +103,7 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 	}
 	a := steps.Answers{Version: p.Version, Order: map[string][]any{}, Rows: map[string][]string{},
 		Reads: maps.Clone(p.Reads), Verdict: maps.Clone(p.Verdict), Width: map[string]steps.WidthAnswer{},
-		Landing: map[string]steps.LandingAnswer{}, Failed: map[string]string{}}
+		Landing: map[string]steps.LandingAnswer{}, Failed: map[string]string{}, Models: maps.Clone(p.Catalog.Bench)}
 	for id, t := range p.Order {
 		a.Order[id] = orderTuple(t)
 	}
