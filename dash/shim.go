@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -37,6 +38,7 @@ type fleetRow struct {
 	OK       int
 	Failed   int
 	OKPct    float64
+	Reason   string // why the roster refused the row ("" unless status is refused)
 }
 type streamLine struct{ Stream, State string }
 
@@ -59,6 +61,7 @@ type envelope struct {
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
 	OK            bool                   `json:"ok"`
 	Error         string                 `json:"error,omitempty"`
+	RosterNotes   []string               `json:"roster_notes,omitempty"` // the page's roster banner: the read's failure, each refused row
 }
 
 // mapSnapshot is the page's view of s. A row's kind and width are the
@@ -118,7 +121,16 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}, RosterNotes: rosterNotes(ros)}
+}
+
+// rosterNotes is one banner line per row the roster refused.
+func rosterNotes(ros roster.Roster) []string {
+	var notes []string
+	for _, r := range ros.Refused {
+		notes = append(notes, "nova-config row refused: "+edge.RedactN(r.Reason, edge.FailureMax))
+	}
+	return notes
 }
 func setStreamStates(streams []streamLine, work map[string]*workRow) {
 	for i := range streams {
@@ -133,6 +145,11 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 		}
 	}
 }
+// mapRows puts each store row in its table: a rostered row by its roster
+// kind; a row the roster refused as refused, with the reason, by the kind it
+// was read as; a row the roster does not name as down (Stella, v2-l6), by
+// its hook role: the coordinator is a person among the friends, never a
+// machine, so an empty roster (a failed read) does not put it in Fleet.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, r := range rows {
 		status := r.State
@@ -140,10 +157,15 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 			status = "held"
 		}
 		kind, width, _, found := ros.Row(n)
-		if !found { // not in nova-config: down, whatever the store says (Stella, v2-l6)
-			status = "down"
-		}
 		f := &fleetRow{Status: status, Width: width}
+		if !found {
+			f.Status, kind = "down", ""
+			if refused, ok := ros.RefusedNamed(n); ok {
+				f.Status, f.Reason, kind = "refused", refused.Reason, refused.Kind
+			} else if r.Role == "coordinator" {
+				kind = roster.KindKin
+			}
+		}
 		if kind == roster.KindKin {
 			friends[n] = f
 		} else {
