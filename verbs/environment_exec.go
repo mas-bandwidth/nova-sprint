@@ -72,35 +72,37 @@ func (e ExecEnvironment) Hooked(ctx context.Context, actor string) (bool, string
 	if getenv("CODEX_THREAD_ID") != "" {
 		recipe = "nova-bus show codex-agents"
 	}
+	present, err := e.Present(ctx)
+	if err != nil {
+		return false, recipe, err
+	}
+	return actor != "" && present[actor], recipe, nil
+}
+
+// Present is every name on the bus, from one nova-bus who.
+func (e ExecEnvironment) Present(ctx context.Context) (map[string]bool, error) {
 	out, err := e.command(ctx, "nova-bus", "who")
 	if err != nil {
-		return false, recipe, cause("nova-bus who failed", err)
+		return nil, cause("nova-bus who failed", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) == 0 || !strings.HasPrefix(lines[0], "WHO OK present=") {
-		return false, recipe, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseRefused("no `WHO OK present=<n>` header", 0, out))
+		return nil, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseRefused("no `WHO OK present=<n>` header", 0, out))
 	}
 	count, err := strconv.Atoi(strings.TrimPrefix(lines[0], "WHO OK present="))
 	if err != nil {
-		return false, recipe, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseFailure(err, out))
+		return nil, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseFailure(err, out))
 	}
 	if count < 0 || count != len(lines)-1 {
-		return false, recipe, fmt.Errorf("nova-bus who returned invalid output: present=%d but %d presence lines: %s", count, len(lines)-1, edge.ParseRefused("count mismatch", 0, out))
+		return nil, fmt.Errorf("nova-bus who returned invalid output: present=%d but %d presence lines: %s", count, len(lines)-1, edge.ParseRefused("count mismatch", 0, out))
 	}
-	found := false
 	seen := make(map[string]bool, count)
 	for _, line := range lines[1:] {
 		fields := strings.Split(line, "\t")
 		if len(fields) < 2 || fields[0] == "" || seen[fields[0]] {
-			return false, recipe, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseRefused("presence line is not a new name<TAB>uptime", strings.Index(string(out), line), out))
+			return nil, fmt.Errorf("nova-bus who returned invalid output: %s", edge.ParseRefused("presence line is not a new name<TAB>uptime", strings.Index(string(out), line), out))
 		}
 		seen[fields[0]] = true
-		if fields[0] == actor && actor != "" {
-			found = true
-		}
 	}
-	if found {
-		return true, recipe, nil
-	}
-	return false, recipe, nil
+	return seen, nil
 }

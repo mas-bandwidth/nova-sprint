@@ -74,14 +74,12 @@ func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 	return result, nil
 }
 
-// PublicBenchRefusal is the inventory's refusal of a public dashboard on a
-// bench: a bench holds the sprint credential, a public host never does.
-func PublicBenchRefusal(machine string) error {
-	return &OperationError{Problem: "public dashboard host " + machine + " is also a bench", Fix: "remove the bench role from " + machine + ", or --dash public=<other machine>", Exit: 1}
-}
-
 // SprintSeats uses the chosen run service's actual seat plus the existing
-// swarm seat for each configured bench. Public pull hosts receive no DSN.
+// swarm seat for each configured bench. The public dashboard service gets
+// no secret (a pull-only record without seat or keys, validPublicTarget):
+// that is the safety, so a bench that also serves the public board keeps
+// its seat for its worker (Glenn, 2026-11-07); the run machine never
+// serves it.
 func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) ([]SprintSeat, error) {
 	if !fleetName.MatchString(run.Machine) || !fleetName.MatchString(run.Seat) {
 		return nil, fmt.Errorf("run seat unavailable: sprint-run machine %q seat %q is not a fleet name", Redact(run.Machine), Redact(run.Seat))
@@ -99,10 +97,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 			}
 			found = true
 		}
-		if machine.Name == publicHost && slices.Contains(machine.Roles, "bench") {
-			return nil, PublicBenchRefusal(machine.Name)
-		}
-		if machine.Name == publicHost || !slices.Contains(machine.Roles, "bench") {
+		if !slices.Contains(machine.Roles, "bench") {
 			continue
 		}
 		seat := machine.Name

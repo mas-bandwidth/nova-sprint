@@ -282,8 +282,8 @@ Each step's action is idempotent.
 | 4 run | installs the `run` service on the chosen host (default: this one) | the advisory lock is held (`pg_locks`) and `sprint` is in `nova-bus who` | the host, only with `--run-on` |
 | 5 dashboard | installs `run --listen` on the tailnet, or `dash --pull` on the public host | `/healthz` 200 and `/api/sprint` at the store's epoch, fetched from this machine; for public, from the public address, with the cache headers | tailnet or public, once |
 | 6 services | for each chosen service, the key at a hidden prompt, piped into `nova-secrets set <SERVICE>_API_KEY` on stdin, then the grants, seats, worker rows and service rows | one request to the service's model list through `nova-secrets exec`, judged by its exit code only | which services, once; each key, once |
-| 7 workers | `worker --as <row>` on every bench in nova-config's inventory, through nova-fleet | each row present on the bus and `up` in the store | no |
-| 8 first deal | a stream `up-smoke` with one work card; run deals it and its read to real rows; both are released and the stream held | one work and one read consumer dealt within one tick (LESSONS 6.4) | no |
+| 7 workers | the sprint credential granted to each bench seat; one service record `sprint-worker-<machine>` per worker bench (every bench but the run machine) running `nova-sprint worker --as <machine>`, applied in one `nova-fleet services` play limited to those benches | each worker bench present on the bus and `up` in the store; the refusal names each that is not and its unit's last log line | no |
+| 8 first deal | nothing: a fresh sprint is stopped until `start` and moves nothing, so up deals no card | every worker row hooked, `up` and dealable (cores set in nova-config; a bench without is held at width 0) | no |
 
 **The key.** The prompt turns off echo on the human's terminal and reads one line. Without a
 terminal (an AI's shell) `up --key` refuses and names the terminal it must be run in. The
@@ -616,3 +616,48 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   later step, and start and stop work at any step. `NothingMovesUnstarted` holds;
   `SetupRunFreshRunning` (the fresh store running) violates it; three reach checks show the run
   up on a fresh store, a stop and work moving, each before the walk is done.
+### Built: up steps 6 to 8 on a real fleet, the role password (stitch, 2026-11-07)
+
+- `cmd/nova-sprint/setup_workload.go` is the production `verbs.SetupWorkload`; until it, every
+  step from 6 refused "worker setup is unavailable in this build". Step 6: `none` verifies; a
+  chosen service's key is proven by its model probe, and nothing else is installed at 6 (the
+  provider keys are opened from each bench's own seat; granting them from the control seat
+  would put a name in both a seat's file and its grants, which `nova-secrets exec` refuses).
+  Step 7: after `Role.GrantSeat` for every seat, one record `sprint-worker-<machine>` per worker
+  bench: argv `nova-sprint worker --as <machine> --work-clone .local/share/nova-sprint/work
+  --coordinator-hosts <run machine> --harness opencode --root .local/state/nova-worker/<machine>
+  --state-dir .local/state` (built in one function, `workerArgv`; directories under the bench
+  login's home, which `nova-sprint worker` now resolves there), seat the machine's, keys
+  `NOVA_SPRINT_PG_PASSWORD`, `NOVA_BUS_PASSWORD` (when the bus has a user, as sprint-run),
+  `DEEPSEEK_API_KEY`, `INCEPTION_API_KEY`, `PAPERINSTRUMENTS_API_KEY`, env `NOVA_PG_DSN`,
+  `NOVA_BUS_REDIS`, `NOVA_BUS_USER` as sprint-run's. All are applied in one play (`nova-fleet
+  services -- -l <benches> -e nova_service_only=<records>`), not one per machine. The run
+  machine gets no worker: the worker refuses the coordinator's machine (LESSONS 4.18), and the
+  UP DONE count is of worker benches. `harness` is opencode because nova-config's machines carry
+  no harness field.
+- Step 7 verifies from one inventory read, one snapshot and one `nova-bus who`
+  (`ExecEnvironment.Present`); a not-ready step is a `verbs.WorkloadNotReady`: up acts once, then
+  refuses naming each bench and its unit's last log line, the logs read over the inventory's
+  pinned ssh concurrently.
+- Step 8 is not the smoke deal this section's table first described: section 37's fresh store
+  is stopped until `start`, so a card dealt during up would be the sprint moving before it was
+  started. Step 8 verifies every worker row is dealable when the sprint starts (hooked, up,
+  cores set); the run's first tick after `start` is the first deal.
+- `productionSetup.Completion` forwards the configured runtime's (section 40); a compile-time
+  assertion covers every seam the engine type-asserts (`Setup`, `SetupHandoff`,
+  `SetupCompletion`, `SetupLock`) and the workload.
+- The public board on a bench: the refusal is gone (Glenn, 2026-11-07); a bench serving the
+  pull-only board keeps its seat for its worker. The run machine still never serves it.
+- Defect 37, the role's password: step 2's verify and the role child prove nova_sprint's
+  password with a SCRAM login (pgx `require_auth=scram-sha-256`); where pg_hba trusts the
+  connection (a wrong password logs in) the stored `pg_authid` verifier is recomputed from the
+  seat's value. Not proven, the password is set from the seat (ALTER ROLE with a SCRAM
+  verifier) and proven again; the refusal names the set or the verify. Where the admin cannot
+  read `pg_authid` on a trust host, the password is set on every up: nothing can observe it,
+  and a missing one cannot survive that. The stale-secret refusal ("delete the stale
+  NOVA_SPRINT_PG_PASSWORD") is gone: the seat's value is the one every service reads.
+- Unit tests: a fake fleet records every argv (`setup_workload_test.go`), a fake PostgreSQL
+  for the password (`setup_runtime_role_password_test.go`), and the steps-7/8 binding to
+  `tla/Setup.tla` over every state of a two-bench fleet. The functional role tests
+  (`TestFunctionalSprintRolePasswordOnATrustHost` among them) were changed but not run here;
+  they run on a bench.

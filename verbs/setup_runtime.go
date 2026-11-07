@@ -26,9 +26,12 @@ type SetupRun interface {
 	Ready(ctx context.Context, machine, service string) (bool, error)
 }
 
-// SetupWorkload is supplied by layer 4 for grants, rows, workers and smoke.
-// WorkersReady proves every configured worker is hooked and up; SmokeReady
-// proves one work and read were dealt and released within one tick.
+// SetupWorkload is supplied by the binary for steps 6 to 8 (services,
+// workers, first deal). WorkersReady proves every worker bench
+// (WorkerBenches) is hooked on the bus and up in the store; SmokeReady
+// proves every worker row is dealable when the sprint starts. A not-ready
+// answer is (false, *WorkloadNotReady) naming what is not: up acts, and
+// when the step still does not verify that is the refusal.
 type SetupWorkload interface {
 	ServicesReady(context.Context, []string) (bool, error)
 	InstallServices(context.Context, []string) error
@@ -36,6 +39,35 @@ type SetupWorkload interface {
 	InstallWorkers(context.Context) error
 	SmokeReady(context.Context) (bool, error)
 	RunSmoke(context.Context) error
+}
+
+// WorkloadNotReady is a step 7 or 8 that is not ready: Why names each
+// bench that is not and why, Fix the one thing to do.
+type WorkloadNotReady struct{ Why, Fix string }
+
+func (w *WorkloadNotReady) Error() string { return "not ready: " + w.Why }
+
+// WorkerBenches is the machines a sprint worker runs on: every bench but
+// the run machine (the worker refuses the coordinator's machine, LESSONS
+// 4.18), by name, sorted as machines are.
+func WorkerBenches(machines []FleetMachine, runMachine string) []string {
+	var benches []string
+	for _, m := range machines {
+		if slices.Contains(m.Roles, "bench") && m.Name != runMachine {
+			benches = append(benches, m.Name)
+		}
+	}
+	return benches
+}
+
+// workloadReady is setupReady for steps 7 and 8: a *WorkloadNotReady is
+// an act first, then its refusal.
+func workloadReady(ctx context.Context, ok bool, line string, err error) (SetupCheck, error) {
+	var notReady *WorkloadNotReady
+	if errors.As(err, &notReady) && ctx.Err() == nil {
+		return SetupCheck{Action: true, Refusal: &OperationError{Problem: edge.RedactN(notReady.Why, edge.FailureMax+400), Fix: notReady.Fix, Exit: 1}}, nil
+	}
+	return setupReady(ok, line, err)
 }
 
 // SetupAdoption verifies an installed release and runs the approved updater.
@@ -100,13 +132,13 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 			return SetupCheck{}, fmt.Errorf("worker setup unavailable")
 		}
 		ok, err := r.Workload.WorkersReady(ctx)
-		return setupReady(ok, "UP 7/8 workers: hooked and up: VERIFIED", err)
+		return workloadReady(ctx, ok, "UP 7/8 workers: every worker bench hooked on the bus and up in the store: VERIFIED", err)
 	case 8:
 		if r.Workload == nil {
 			return SetupCheck{}, fmt.Errorf("smoke setup unavailable")
 		}
 		ok, err := r.Workload.SmokeReady(ctx)
-		return setupReady(ok, "UP 8/8 first deal: work and read dealt and released within one tick: VERIFIED", err)
+		return workloadReady(ctx, ok, "UP 8/8 first deal: every worker row hooked, up and dealable (width from its cores); the sprint deals once started: VERIFIED", err)
 	}
 	return SetupCheck{}, fmt.Errorf("invalid setup step")
 }

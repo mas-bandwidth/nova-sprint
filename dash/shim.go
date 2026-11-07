@@ -38,7 +38,7 @@ type fleetRow struct {
 	OK       int
 	Failed   int
 	OKPct    float64
-	Reason   string // why the roster refused the row ("" unless status is refused)
+	Reason   string // why the roster refused or held the row ("" otherwise)
 }
 type streamLine struct{ Stream, State string }
 
@@ -159,6 +159,12 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		}
 		kind, width, _, found := ros.Row(n)
 		f := &fleetRow{Status: status, Width: width}
+		if held := ros.Workers[n].Held; found && held != "" {
+			f.Reason = held
+			if status == "up" {
+				f.Status = "held"
+			}
+		}
 		if !found {
 			f.Status, kind = "down", ""
 			if refused, ok := ros.RefusedNamed(n); ok {

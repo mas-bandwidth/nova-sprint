@@ -26,7 +26,7 @@ func TestFleetMachinesRejectsInvalidResponse(t *testing.T) {
 		t.Fatal("accepted inconsistent result")
 	}
 }
-func TestSprintSeatsExcludePublicAndUseServiceSeat(t *testing.T) {
+func TestSprintSeatsUseServiceSeatAndKeepPublicBench(t *testing.T) {
 	machines := []FleetMachine{{Name: "studio", Roles: []string{"services"}}, {Name: "amd-1", Roles: []string{"bench"}}, {Name: "public", Roles: []string{"services"}}}
 	seats, err := SprintSeats(machines, FleetService{Machine: "studio", Seat: "studio"}, "public")
 	if err != nil || len(seats) != 2 || seats[0] != (SprintSeat{Seat: "studio", Machine: "studio"}) || seats[1] != (SprintSeat{Seat: "amd-1", Machine: "amd-1"}) {
@@ -35,9 +35,11 @@ func TestSprintSeatsExcludePublicAndUseServiceSeat(t *testing.T) {
 	if _, err = SprintSeats(machines, FleetService{Machine: "public", Seat: "public"}, "public"); err == nil {
 		t.Fatal("public host accepted")
 	}
+	// A bench that serves the public board works cards too: it keeps its seat.
 	machines[2].Roles = []string{"bench"}
-	if _, err = SprintSeats(machines, FleetService{Machine: "studio", Seat: "studio"}, "public"); err == nil {
-		t.Fatal("public bench accepted")
+	seats, err = SprintSeats(machines, FleetService{Machine: "studio", Seat: "studio"}, "public")
+	if err != nil || len(seats) != 3 || seats[2] != (SprintSeat{Seat: "public", Machine: "public"}) {
+		t.Fatal(seats, err)
 	}
 }
 func TestPublicDashboardRejectsCredentials(t *testing.T) {
