@@ -399,12 +399,18 @@ func (r RuntimeSetup) workersAct(ctx context.Context) error {
 }
 
 func validPublicTarget(s *FleetService) bool {
-	if s == nil || !s.valid() || len(s.Keys) != 0 || s.Seat != "" || len(s.Env) != 0 || len(s.Argv) != 6 {
+	if s == nil || !s.valid() || len(s.Keys) != 0 || s.Seat != "" || len(s.Env) != 0 {
 		return false
 	}
-	if s.Argv[1] != "dash" || s.Argv[2] != "--pull" || s.Argv[4] != "--listen" || s.Argv[5] == "" {
+	argv := s.Argv
+	if len(argv) == 7 && argv[0] == "/usr/bin/env" && argv[1] == "nova-sprint" {
+		argv = argv[1:]
+	} else if len(argv) != 6 || argv[0] == "/usr/bin/env" {
 		return false
 	}
-	u, err := url.Parse(s.Argv[3])
+	if argv[1] != "dash" || argv[2] != "--pull" || argv[4] != "--listen" || argv[5] == "" {
+		return false
+	}
+	u, err := url.Parse(argv[3])
 	return err == nil && u.User == nil && u.Host != "" && u.RawQuery == "" && u.Fragment == "" && (u.Scheme == "http" || u.Scheme == "https")
 }
