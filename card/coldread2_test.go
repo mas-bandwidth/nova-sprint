@@ -41,7 +41,7 @@ func TestCold2DefectTwoReadsInOneTick(t *testing.T) {
 	b, r := w.plan("p1", AskRead{Row: "r3"})
 	require.Nil(t, r)
 	_, r = Merge(a, b)
-	refusal{r, "a second write to card p1.r1.1 field kind; one op writes a field once; several reads of one head are AskReads"}.check(t)
+	refusal{r, "merge of AskRead p1 and AskRead p1 refused: a second write to card p1.r1.1 field kind; one op writes a field once; several reads of one head are AskReads"}.check(t)
 	_, ok := w.snap().Cards["p1.r1.1"]
 	assert.False(t, ok, "the refused merge was applied")
 	_, r = w.plan("p1", AskReads{Rows: []string{"r2", "r2"}})
