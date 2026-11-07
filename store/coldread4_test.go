@@ -232,9 +232,13 @@ func TestFunctionalConformanceICU(t *testing.T) {
 	var mu sync.Mutex
 	var n atomic.Int32
 	RunConformance(t, func(t *testing.T) Store {
-		mu.Lock() // one admin connection, one statement at a time
-		dsn := icuDB(t, admin, fmt.Sprintf("icu%d", n.Add(1)))
-		mu.Unlock()
+		// one admin connection, one statement at a time; the deferred unlock
+		// releases the lock when require in icuDB exits the goroutine.
+		dsn := func() string {
+			mu.Lock()
+			defer mu.Unlock()
+			return icuDB(t, admin, fmt.Sprintf("icu%d", n.Add(1)))
+		}()
 		return openPG(t, dsn)
 	})
 }
