@@ -837,3 +837,12 @@ the landing (w2L); merged, superseding them where they differ:
   (`steps-walk-land-1`, record 38): a Hold between the Snap and the Tick
   refused the model's yes op on the fence while the code moved p to
   merging. The model followed the code and the card machine, which agree.
+- Checked at `ca1c7d28` on a bench (measured): `tla/ci-tlc.sh` 260 of 260
+  runs ok (every passing cfg clean; every witness and reach check
+  violated as required, among them `DealIsTake`, `DealtWithinKTicks`,
+  `MergingCovered`, `NoDealWithoutPolicy`, `ResolveFromState`,
+  `HeldBehindShown`, `StepsNeverGated`, `StepsNeverHeldBehind`,
+  `StepsNeverHandLanded`, `StepsNeverUndealt`); `make-traces.sh check` 88
+  of 88 ok (the 12 Steps walks, the 8 `steps-ok-*` fixtures matched, the
+  6 `steps-bad-*` refused at their last record). The Steps fixtures from
+  that commit's TLC logs are byte-identical to those of `e8852d30`.
