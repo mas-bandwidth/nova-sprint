@@ -27,7 +27,10 @@ func refusedBy(t *testing.T, w *world, body string) Failure {
 func TestRefusals(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
-	const limits = `"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10`
+	const limits = `"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, ` + steering
+	steer := func(key, value string) string { // limits with one steering key's value replaced
+		return "{" + strings.Replace(limits, steeringValue(key), `"`+key+`": `+value, 1) + `, "route_rest_after": 3}`
+	}
 	const times = `"row_silent_gone": 600, "landing_stall": 60, "judgement": 3600, "route_rest_for": 1800`
 	for _, tc := range []struct{ q, ret, want string }{
 		{"order", "[1]", "order(p1): the answer is a list, not a tuple of up to 4 ints or strings"},
@@ -53,7 +56,14 @@ func TestRefusals(t *testing.T) {
 		{"width", `{"work": 1}`, "width(r1): key ahead is missing"},
 		{"width", `{"work": 1, "ahead": 1, "x": 1}`, `width(r1): key "x" is not one of work ahead`},
 		{"width", "[1]", "width(r1): the answer is a list, not a dict of work ahead"},
-		{"limits", `{"bounces": 0, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, "route_rest_after": 3}`, "limits(): bounces 0 is outside 1..100"},
+		{"limits", "{" + strings.Replace(limits, `"bounces": 6`, `"bounces": 0`, 1) + `, "route_rest_after": 3}`, "limits(): bounces 0 is outside 1..100"},
+		{"limits", steer("escalate_after", "0"), "limits(): escalate_after 0 is outside 1..100"},
+		{"limits", steer("frontier_after", "1"), "limits(): frontier_after 1 is outside 2..100 (escalate_after to 100)"},
+		{"limits", steer("flap_limit", "101"), "limits(): flap_limit 101 is outside 1..100"},
+		{"limits", steer("idle_floor", "0"), "limits(): idle_floor 0 is outside (0, 1]"},
+		{"limits", steer("idle_floor", `"half"`), "limits(): idle_floor is a string, not a number"},
+		{"limits", steer("land_target", "1.5"), "limits(): land_target 1.5 is outside (0, 1]"},
+		{"limits", steer("land_target", `float("nan")`), "limits(): land_target nan is outside (0, 1]"},
 		{"limits", "{" + limits + `, "route_rest_after": 11}`, "limits(): route_rest_after 11 is outside 1..10 (route_rest_window)"},
 		{"limits", "{" + limits + "}", "limits(): key route_rest_after is missing"},
 		{"limits", "{" + strings.Replace(limits, `"same_finding": 2`, `"same_finding": 11`, 1) + `, "route_rest_after": 3}`, "limits(): same_finding 11 is outside 1..10"},
@@ -202,4 +212,17 @@ func inDomain(t *testing.T, snap store.Snapshot, ro roster.Roster, a Answers) {
 			assert.True(t, slices.Contains(r.tiers, c.Tier) && r.State == "up" && !r.Held, "%v %s", q, n)
 		}
 	}
+}
+
+// steering is limits' steering keys at the built-in's values (round 5).
+const steering = `"escalate_after": 2, "frontier_after": 4, "flap_limit": 3, "idle_floor": 0.5, "land_target": 0.9`
+
+// steeringValue is key's entry in steering.
+func steeringValue(key string) string {
+	for _, kv := range strings.Split(steering, ", ") {
+		if strings.HasPrefix(kv, `"`+key+`"`) {
+			return kv
+		}
+	}
+	panic(key)
 }

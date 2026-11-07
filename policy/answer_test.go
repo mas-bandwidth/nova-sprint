@@ -127,7 +127,8 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 		a, fs := NewEngine().Answer(Versions{}, s, ros[i], FullQuestions(s, nil))
 		require.Empty(t, fs, "shape %d", i)
 		assert.Equal(t, 0, a.Version)
-		assert.Equal(t, Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3}, a.Limits)
+		assert.Equal(t, Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
+			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9}, a.Limits)
 		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800}, a.Timeouts)
 		assert.Empty(t, a.Prices)
 	}

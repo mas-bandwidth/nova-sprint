@@ -174,9 +174,15 @@ func checkWidth(v starlark.Value, width int) (Width, string) {
 	return Width{Work: w, Ahead: a}, ""
 }
 
-// checkLimits: every key present, each in its range.
+// limitKeys are limits' keys, every one required.
+var limitKeys = []string{"bounces", "faults", "same_finding", "reports_per_tick", "route_rest_window", "route_rest_after",
+	"escalate_after", "frontier_after", "flap_limit", "idle_floor", "land_target"}
+
+// checkLimits: every key present, each in its range; frontier_after at or
+// above escalate_after, route_rest_after at most route_rest_window; the
+// two fractions in (0, 1].
 func checkLimits(v starlark.Value) (Limits, string) {
-	d, msg := dictOf(v, "bounces", "faults", "same_finding", "reports_per_tick", "route_rest_window", "route_rest_after")
+	d, msg := dictOf(v, limitKeys...)
 	if msg != "" {
 		return Limits{}, msg
 	}
@@ -186,7 +192,8 @@ func checkLimits(v starlark.Value) (Limits, string) {
 		lo, hi int
 		dst    *int
 	}{{"bounces", 1, 100, &l.Bounces}, {"faults", 1, 100, &l.Faults}, {"same_finding", 1, 10, &l.SameFinding},
-		{"reports_per_tick", 1, 10000, &l.ReportsPerTick}, {"route_rest_window", 1, 100, &l.RouteRestWindow}} {
+		{"reports_per_tick", 1, 10000, &l.ReportsPerTick}, {"route_rest_window", 1, 100, &l.RouteRestWindow},
+		{"escalate_after", 1, 100, &l.EscalateAfter}, {"flap_limit", 1, 100, &l.FlapLimit}} {
 		if *f.dst, msg = intIn(f.key, d[f.key], f.lo, f.hi); msg != "" {
 			return Limits{}, msg
 		}
@@ -194,7 +201,26 @@ func checkLimits(v starlark.Value) (Limits, string) {
 	if l.RouteRestAfter, msg = intIn("route_rest_after", d["route_rest_after"], 1, l.RouteRestWindow); msg != "" {
 		return Limits{}, msg + " (route_rest_window)"
 	}
-	return l, ""
+	if l.FrontierAfter, msg = intIn("frontier_after", d["frontier_after"], l.EscalateAfter, 100); msg != "" {
+		return Limits{}, msg + " (escalate_after to 100)"
+	}
+	if l.IdleFloor, msg = fraction("idle_floor", d["idle_floor"]); msg != "" {
+		return Limits{}, msg
+	}
+	l.LandTarget, msg = fraction("land_target", d["land_target"])
+	return l, msg
+}
+
+// fraction is a number (an int or a float) in (0, 1].
+func fraction(what string, v starlark.Value) (float64, string) {
+	f, ok := starlark.AsFloat(v)
+	if _, isNum := v.(starlark.Float); !ok || !isNum && v.Type() != "int" {
+		return 0, refuse("%s is %s, not a number", what, kind(v))
+	}
+	if !(f > 0 && f <= 1) { // NaN is outside too
+		return 0, refuse("%s %s is outside (0, 1]", what, cut(v.String(), 64)) // a number prints short; an int is cut
+	}
+	return f, ""
 }
 
 // checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000.
