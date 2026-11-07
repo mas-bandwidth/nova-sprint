@@ -97,12 +97,16 @@ Every judgement that reaches the coordinator (a red CI, a producer sent back to 
 blocked after too many bounces, a row that flapped, a card that cannot land) is a stored record in the store, pushed from that record, and carries the exact command that answers it:
 
 ```
-NEEDS YOU card=<id>: CI red at <head>: see <url>
-run: nova-sprint rework <id> --reason "<why>"   or   nova-sprint drop <id> --reason "<why>"
+NEEDS YOU judgement=<n> card=<id>: CI red at <head>: see <url>
+choices: rework | waive | drop
+run: nova-sprint judge <n> <choice> --reason "<why>"
 ```
 
-The dashboard's "needs you" column shows the same line. The coordinator's
-`next` prints the oldest one.
+`judge` is the one verb that answers a judgement; its choices are what v1
+spread over `rework`, `accept`, `unblock` and `drop` (LAYER-6, 2026-11-06). The
+board does not show a "needs you" column (it stays an exact match of v1 until
+it is nativized); the coordinator's `next` prints the oldest open judgement,
+and the bus push carries the same line.
 
 ## What `next` looks at, in order
 

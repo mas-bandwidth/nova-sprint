@@ -1,7 +1,6 @@
 package store
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	_ "embed"
@@ -44,6 +43,16 @@ const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f043418
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.
 var schemaHash = hashSchema(schemaSQL)
+
+// createSchema is schema.sql's one statement that needs CREATE on the
+// database: PostgreSQL checks that privilege before IF NOT EXISTS, so a role
+// that owns an existing schema sprint but may not create schemas (the
+// least-privilege setup) is refused it. Migrate runs it only when the schema
+// is absent and otherwise runs schemaObjects, the rest of schema.sql. The
+// hash is still of the whole file.
+const createSchema = "CREATE SCHEMA IF NOT EXISTS sprint;"
+
+var schemaObjects = strings.Replace(schemaSQL, createSchema, "", 1)
 
 // hashSchema strips a -- comment only outside a single-quoted string literal
 // and a double-quoted identifier (a doubled quote closes and reopens, so it
@@ -126,8 +135,9 @@ func (p *PG) Close() { p.pool.Close() }
 // pg_depend row on it (a relation, type, function, operator, collation, text
 // search object, operator family, ...). The one other hash it takes is
 // round16Hash: schema.sql adds cards.red to that store and the new hash is
-// recorded, in the same transaction.
-// Twice is a no-op, and concurrent Migrates are safe: each holds one
+// recorded, in the same transaction. When schema sprint already exists it
+// skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
+// on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
 	tx, err := p.pool.Begin(ctx)
@@ -138,30 +148,27 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateLock); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
-	var meta, used bool
-	if err := tx.QueryRow(ctx, `SELECT to_regclass('sprint.meta') IS NOT NULL,
-		EXISTS (SELECT 1 FROM pg_depend d JOIN pg_namespace n ON n.oid = d.refobjid
-			WHERE d.refclassid = 'pg_namespace'::regclass AND n.nspname = 'sprint')`).Scan(&meta, &used); err != nil {
+	present, meta, used, _, err := namespace(ctx, tx) // the foreign check CheckSchema shares (schema.go)
+	if err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if used && !meta {
-		return errors.New("store: migrate: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere")
+		return fmt.Errorf("store: migrate: %w", errForeign)
 	}
 	if meta {
-		v, hash := 0, ""
-		// to_jsonb reads hash from a meta made before the column existed as ""
-		err := tx.QueryRow(ctx, "SELECT m.schema, coalesce(to_jsonb(m)->>'hash', '') FROM sprint.meta m WHERE id = 1").Scan(&v, &hash)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		v, hash, _, err := readMeta(ctx, tx) // no row is version 0, refused below
+		if err != nil {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
-		if v != SchemaVersion {
-			return fmt.Errorf("store: migrate: the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", v, SchemaVersion, v)
-		}
-		if hash != schemaHash && hash != round16Hash {
-			return fmt.Errorf("store: migrate: the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
+		if err := metaRefusal(v, hash); err != nil {
+			return fmt.Errorf("store: migrate: %w", err)
 		}
 	}
-	if _, err := tx.Exec(ctx, schemaSQL); err != nil {
+	sql := schemaSQL
+	if present {
+		sql = schemaObjects // no CREATE SCHEMA: the owner may lack CREATE on the database
+	}
+	if _, err := tx.Exec(ctx, sql); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if _, err := tx.Exec(ctx, "UPDATE sprint.meta SET hash = $1 WHERE id = 1", schemaHash); err != nil {

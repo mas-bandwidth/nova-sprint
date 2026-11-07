@@ -457,7 +457,7 @@ with a design change, never a special case):
   both plans. This is what makes "the same checks as a single plan" literally
   true (two relinks cannot close a cycle; a hold merged with a resolve cannot
   leave a ready producer in a held stream).
-- A Red records itself on the producer (`result = "red"`); `Finished` and
+- A Red records itself on the producer (`red = true`, the column of store round 17); `Finished` and
   `Start` clear it; `WaiveRed` refuses "no red on review N" without it.
 - A fault never writes `finding`. A fault's reason goes to `reason`;
   `finding` is written only by a read (`Broken` carries the reader's text,
