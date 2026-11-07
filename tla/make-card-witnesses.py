@@ -19,13 +19,15 @@ INVARIANTS = [
     "TypeOK", "ProducerNeverHeld", "SlotsDense", "WorkingOneWorkConsumer",
     "WorkingLeavesInOneStep", "ParkedUnderHold", "NeverStranded", "ReadOnlyInReview",
     "ReaderNeverAuthor", "WidthKept", "TakeBelowWidth", "NeedFailedTakesDependants",
-    "SentinelShape", "NeedsAcyclic", "OrderAcyclic",
-    "ResultsByKind", "OneLiveReadPerRow",
+    "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "PreemptOnBlockerRow",
+    "ResultsByKind", "OneLiveReadPerRow", "IdsDistinct", "PlainWithdrawUnguarded",
+    "MergeParksResolved",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "ReplaceByLive", "HeadNeverRepeats",
-    "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed",
+    "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
+    "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
 ]
 
 # The instance of each scenario (see the module header). "life": one
@@ -42,10 +44,20 @@ SCENARIOS = {
     # life, sized for the one witness whose fault needs a third attempt
     # (CardWaiveRedWithoutRed); never a passing run.
     "redw":  {"Scenario": "life", "K": 5, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 1, "MaxEnv": 0},
+    # life with Merge: ops of up to three moves (MaxOp, read off the
+    # scenario in CardMachine.tla), at small bounds.
+    "merge": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
+    # pre with Merge: a preempt Withdraw and a blocker Start in one op.
+    "mergepre": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
+    # deps with Merge: a need failed and its dependant moved InThisOp as two
+    # moves of one op (round 7). No environment move: Add and Red are
+    # checked in deps.
+    "mergedeps": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 0},
 }
 
 # The passing runs: cfg name -> scenario.
-PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads"}
+PASSING = {"CardMachine": "life", "CardDeps": "deps", "CardPreempt": "pre", "CardReads": "reads", "CardMerge": "merge", "CardMergePre": "mergepre",
+           "CardMergeDeps": "mergedeps"}
 
 # Reachability checks on CardMachine.tla: name -> (scenario, what).
 REACH = {
@@ -65,6 +77,7 @@ REACH = {
     "NeverWaivedRed": ("life", "WaiveRed merges after a Red without a new read"),
     "NeverFindingCarried": ("life", "a fix attempt carries the reader's finding"),
     "NeverPreempted": ("pre", "a blocker preempts a live consumer"),
+    "NeverInThisOpMerged": ("mergedeps", "a need fails and a later move of the op moves its dependant InThisOp"),
 }
 
 # Relink's lines, shared by the two cycle witnesses.
@@ -193,6 +206,88 @@ WITNESSES = [
      "review by a Finished at an already-read head goes to merging.",
      [("  /\\ ps[p].red   \\* the code: \"no red on review N\"\n",
        "  /\\ TRUE   \\* FAULT: was ps[p].red\n", 1)]),
+    ("CardMergeCutUnseen", "BlockNoLive", "merge",
+     "Merge: a consumer cut earlier in the op is invisible to the next\n"
+     "move (overlayCons before round 6): AskRead then Block in one op, and\n"
+     "Block's no-live check does not see the read just cut.",
+     [("  /\\ NoLive(p)\n  /\\ PStep(\"Block\"",
+       "  /\\ \\A k \\in LiveOf(p) : op > 0 /\\ snap.cs[k].st = \"none\"   \\* FAULT: cut unseen\n"
+       "  /\\ PStep(\"Block\"", 1)]),
+    ("CardMergeNestedHold", "ParkedUnderHold", "merge",
+     "Merge: a release reads the stream from the snapshot, not from what a\n"
+     "hold earlier in the op (nested or not) left: HoldStream then Withdraw\n"
+     "in one op leaves the producer ready in a held stream.",
+     [("THEN [ps EXCEPT ![c[1]].st = Back,",
+       "THEN [ps EXCEPT ![c[1]].st = IF (IF op > 0 THEN snap.held ELSE held)   \\* FAULT\n"
+       "                             THEN \"waiting\" ELSE \"ready\",", 1)]),
+    ("CardMergeNoRerun", "FinalNeverMoves", "merge",
+     "Merge: a merged plan merged again is kept as built on the snapshot,\n"
+     "not run again on the earlier plans' writes (before round 6): Cancel\n"
+     "then a merged Rescore in one op rescores the failed card.",
+     [("  /\\ p \\in Prods\n  /\\ NonFinal(p)\n  /\\ s # ps[p].score\n",
+       "  /\\ p \\in Prods\n"
+       "  /\\ (IF op > 0 THEN snap.ps[p].st ELSE ps[p].st) \\notin PFinal \\cup {\"absent\"}   \\* FAULT\n"
+       "  /\\ s # ps[p].score\n", 1)]),
+    ("CardMergeOwnWrites", "FencesOnSnapshot", "merge",
+     "Merge: a merged plan's read set includes its own writes: a later move\n"
+     "keeps its condition on a state an earlier move of the op wrote, read\n"
+     "after that write. Resolve then Edit fences p1 ready against a\n"
+     "snapshot where it is waiting, and the store refuses the op.",
+     [("PFence(p) == IF op > 0 /\\ ps[p].st # snap.ps[p].st THEN {} ELSE {ps[p].st}",
+       "PFence(p) == {ps[p].st}   \\* FAULT: was keepExpects", 1)]),
+    ("CardMergeNestedStart", "PreemptOnBlockerRow", "mergepre",
+     "Merge: the preempt guard sees only the top-level plans, so a blocker\n"
+     "Start nested in a merged plan skips it: a preempt Withdraw on one row\n"
+     "and the blocker's Start on another row are one op.",
+     [("     IN /\\ PreemptGuard(pw2, bs2)\n",
+       "     IN /\\ TRUE   \\* FAULT: was PreemptGuard(pw2, bs2)\n", 1)]),
+    # Round 7 (the rulings after the fifth cold read).
+    ("CardDottedId", "NeverStranded", "deps",
+     "Add takes an id with a dot: the sentinel p1.w1 is added before p1\n"
+     "starts, and p1's first work consumer can never be cut under its id\n"
+     "(fenced absent), so p1 is stranded in ready (ruling 1).",
+     [("  /\\ p \\notin Dotted   \\* round 7, ruling 1: an id may not contain \".\"\n",
+       "  /\\ TRUE   \\* FAULT: was p \\notin Dotted\n", 1)]),
+    ("CardInThisOpAlone", "InThisOpOnFailedNeed", "mergedeps",
+     "InThisOp is taken alone, with no earlier move of the op failing the\n"
+     "need: the dependant moves on a need that is not fail (ruling 2).",
+     [("  /\\ InThisOpFolded(n)\n",
+       "  /\\ TRUE   \\* FAULT: was InThisOpFolded(n)\n", 1)]),
+    ("CardPlainWithdrawGuarded", "PlainWithdrawUnguarded", "mergepre",
+     "The preempt guard runs on every Withdraw (read off its reason), not\n"
+     "only those flagged preempt: a plain Withdraw on another row cannot\n"
+     "merge with a blocker's Start (rulings 3 and 8).",
+     [("PlainRows == {}\n",
+       "PlainRows == {cs[k].row : k \\in {x \\in CIds : Live(x) /\\ cs'[x].st = \"fail\"}}   \\* FAULT\n", 1)]),
+    ("CardMergeSecondWrite", "MergeParksResolved", "merge",
+     "Merge refuses a second write to a field an earlier move of the op\n"
+     "wrote: Merge(Resolve, HoldStream) is refused instead of parking what\n"
+     "the Resolve readied (ruling 4).",
+     [("HoldStream ==\n  /\\ ~held\n",
+       "HoldStream ==\n  /\\ ~held\n"
+       "  /\\ \\A q \\in P : (op > 0 /\\ ps[q].st = \"ready\") => snap.ps[q].st = \"ready\"   \\* FAULT\n", 1)]),
+    ("CardReadFixEmpty", "FixSaysWhat", "life",
+     "ReadFix takes an empty finding and keeps the old one: the fix read\n"
+     "does not say what to fix (ruling 6).",
+     [("                                            !.finding = \"fix\"])",
+       "                                            !.finding = @])   \\* FAULT: was \"fix\"", 1)]),
+    ("CardFailRepeatsPrior", "HeadNeverRepeats", "life",
+     "A fail report may name the attempt's prior head: the head given is\n"
+     "checked for ok only, not for every result (ruling 6).",
+     [("ELSE IF res = \"ok\" THEN Heads \\ {cs[c].prior} ELSE {0} \\cup (Heads \\ {cs[c].prior})",
+       "ELSE IF res = \"ok\" THEN Heads \\ {cs[c].prior} ELSE {0} \\cup Heads   \\* FAULT", 1)]),
+    ("CardMergeReviewTwice", "ReviewOnEntry", "merge",
+     "Merge folds an earlier move's writes twice: Report then Finished in\n"
+     "one op raises the review counter by two (ruling 7).",
+     [("                                           !.author = cs[c].row, !.review = @ + 1,",
+       "                                           !.author = cs[c].row,\n"
+       "                                           !.review = @ + (IF op > 0 THEN 2 ELSE 1),   \\* FAULT", 1)]),
+    ("CardHandPlanPartial", "AttemptOnlyOnStart", "merge",
+     "A hand-built plan in a merge writes a partial record, its missing\n"
+     "fields at their zero values, not folded onto the snapshot's record:\n"
+     "Start then SetPriority in one op resets the attempt (ruling 9).",
+     [("  /\\ PStep(\"SetPriority\", p, NoC, [ps[p] EXCEPT !.prio = l])",
+       "  /\\ PStep(\"SetPriority\", p, NoC, [(IF op > 0 THEN NewProd(p) ELSE ps[p]) EXCEPT !.prio = l])   \\* FAULT", 1)]),
 ]
 
 

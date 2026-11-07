@@ -55,7 +55,19 @@
 (* producer's head at Start, which an ok report may not repeat.           *)
 (*                                                                         *)
 (* deps also carries the sentinel a, absent until Add puts it with needs  *)
-(* and after chosen from the existing cards.                              *)
+(* and after chosen from the existing cards, and the id "p1.w1", which    *)
+(* Add refuses for its dot (round 7).                                     *)
+(*                                                                         *)
+(* Round 7 (the rulings after the fifth cold read): ids without dots      *)
+(* (IdsDistinct); InThisOp only after an earlier move of the same op      *)
+(* failed the need (InThisOpLater, InThisOpOnFailedNeed); the preempt     *)
+(* guard only on Withdraws flagged preempt, on the flattened op           *)
+(* (PlainRows, PlainWithdrawUnguarded); a sequence legal one by one is    *)
+(* one op, the last write winning (MergeParksResolved); ReadFix always    *)
+(* writes a finding (FixSaysWhat); the review counter rises once per      *)
+(* Finished or Red, however the op is nested (ReviewOnEntry); a move's    *)
+(* record is the real one with its fields written (a hand-built plan is   *)
+(* folded onto the snapshot's record, never a partial one).               *)
 (*                                                                         *)
 (* last is a step monitor: the set of step rules the step broke (bad),    *)
 (* computed by StepRule from the state before and after the step, and the *)
@@ -64,33 +76,47 @@
 (* seen there; each step invariant says its rule is not in last.bad. The  *)
 (* monitor keeps no predecessor, so it does not split states by them.     *)
 (***************************************************************************)
-EXTENDS Naturals, FiniteSets
+EXTENDS Naturals, FiniteSets, Sequences, TLC
 
 CONSTANTS
-  Scenario,    \* "life", "deps" or "pre"
+  Scenario,    \* "life", "deps", "pre", "reads", "merge", "mergepre" or "mergedeps"
   K,           \* consumer slots per producer
   MaxHead,     \* heads are 1..MaxHead
   MaxAttempt,  \* model bound: Start is not enabled at this attempt
   MaxBounce,   \* model bound: Broken and ReadFix are not enabled at this count
   MaxEnv       \* model bound: environment and coordinator moves per behaviour
 
-Prods     == IF Scenario \in {"life", "reads"} THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
-\* In deps a second sentinel, a, is absent until Add puts it.
-Added     == IF Scenario = "deps" THEN {"a"} ELSE {}
-Sentinels == (IF Scenario \in {"pre", "reads"} THEN {} ELSE {"s"}) \cup Added
+\* The merge scenarios are life, pre and deps with ops of several moves.
+\* MaxOp is read off the scenario, not a constant, so a cfg that names
+\* none (the trace's: card/trace_test.go) gets ops of one move.
+World == CASE Scenario = "merge"     -> "life"
+           [] Scenario = "mergepre"  -> "pre"
+           [] Scenario = "mergedeps" -> "deps"
+           [] OTHER                  -> Scenario
+MaxOp == CASE Scenario = "merge"                     -> 3   \* moves one Merge composes into one op
+           [] Scenario \in {"mergepre", "mergedeps"} -> 2
+           [] OTHER                                  -> 1   \* no merges
+
+Prods     == IF World \in {"life", "reads"} THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
+\* In deps a second sentinel, a, is absent until Add puts it; so is
+\* "p1.w1", an id with a dot that Add refuses (round 7, ruling 1): it is the
+\* name of p1's first work consumer.
+Added     == IF World = "deps" THEN {"a", "p1.w1"} ELSE {}
+Dotted    == {"p1.w1"}   \* the ids above that contain "."
+Sentinels == (IF World \in {"pre", "reads"} THEN {} ELSE {"s"}) \cup Added
 P         == Prods \cup Sentinels
 \* "reads" has a third row, so AskReads can cut reads on two rows that are
 \* not the author.
-Rows      == IF Scenario = "reads" THEN {"r1", "r2", "r3"} ELSE {"r1", "r2"}
+Rows      == IF World = "reads" THEN {"r1", "r2", "r3"} ELSE {"r1", "r2"}
 RowIdx    == [r \in Rows |-> CASE r = "r1" -> 1 [] r = "r2" -> 2 [] OTHER -> 3]
 CIds      == Prods \X (1..K)
 ConsOf(p) == IF p \in Prods THEN {<<p, i>> : i \in 1..K} ELSE {}
 
-Needs0 == CASE Scenario = "life" -> [p \in P |-> IF p = "s" THEN {"p1"} ELSE {}]
-            [] Scenario = "deps" ->
+Needs0 == CASE World = "life" -> [p \in P |-> IF p = "s" THEN {"p1"} ELSE {}]
+            [] World = "deps" ->
                  [p \in P |-> CASE p = "p2" -> {"p1"} [] p = "s" -> {"p2"} [] OTHER -> {}]
             [] OTHER -> [p \in P |-> {}]
-After0 == IF Scenario = "pre"
+After0 == IF World = "pre"
           THEN [p \in P |-> IF p = "p2" THEN {"p1"} ELSE {}]
           ELSE [p \in P |-> {}]
 
@@ -129,9 +155,13 @@ VARIABLES
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
   last,  \* step monitor: [ev, bad]
-  env    \* environment and coordinator moves so far (bounded by MaxEnv)
+  env,   \* environment and coordinator moves so far (bounded by MaxEnv)
+  op,    \* moves already in the open op (0: none open); see Merge
+  snap,  \* the state the open op started from (NoSnap when none is open)
+  pw,    \* rows of the preempt-flagged Withdraws of the last op
+  bs     \* rows of the blocker Starts of the last op
 
-vars == <<ps, cs, rs, held, last, env>>
+vars == <<ps, cs, rs, held, last, env, op, snap, pw, bs>>
 
 Live(c)      == cs[c].st \in LiveSt
 LiveOf(p)    == {c \in ConsOf(p) : Live(c)}
@@ -147,6 +177,22 @@ Back         == IF held THEN "waiting" ELSE "ready"
 \* c is p's work consumer of its current attempt.
 IsCur(p, c)  == c \in ConsOf(p) /\ cs[c].kind = "work" /\ cs[c].att = ps[p].att /\ cs[c].st # "none"
 NextSlot(p)  == <<p, ps[p].ncut + 1>>
+\* The code's consumer ids: <p>.w<attempt> for work, <p>.r<review>.<n> for
+\* the n-th read cut at that review.
+ReadNo(c)    == Cardinality({i \in 1..c[2] : cs[<<c[1], i>>].kind = "read"
+                                             /\ cs[<<c[1], i>>].review = cs[c].review})
+ConsName(c)  == IF cs[c].kind = "work" THEN c[1] \o ".w" \o ToString(cs[c].att)
+                ELSE c[1] \o ".r" \o ToString(cs[c].review) \o "." \o ToString(ReadNo(c))
+\* The names the next cuts take: Start's work consumer, and the k-th read
+\* cut now at p's review.
+WorkNext(p)    == p \o ".w" \o ToString(ps[p].att + 1)
+ReadNext(p, k) ==
+  p \o ".r" \o ToString(ps[p].review) \o "."
+    \o ToString(Cardinality({c \in ConsOf(p) : cs[c].st # "none" /\ cs[c].kind = "read"
+                                             /\ cs[c].review = ps[p].review}) + k)
+\* Cards and consumers share one namespace: a cut is fenced on its id being
+\* absent (the code's CardAbsent), and so is Add.
+NameFree(n)    == ~\E q \in P : Exists(q) /\ q = n
 
 \* The needs graph with p's needs replaced by ns has no cycle.
 RECURSIVE Reach(_, _, _)
@@ -159,6 +205,9 @@ NeedsGraph == [p \in P |-> ps[p].needs]
 \* Needs and after together: Add refuses a cycle through either.
 OrderGraph == [p \in P |-> ps[p].needs \cup ps[p].after]
 
+\* No op open (Merge, below): snap holds no state.
+NoSnap == [ps |-> "-", cs |-> "-", rs |-> "-", held |-> "-"]
+
 Init ==
   /\ ps   = [p \in P |-> NewProd(p)]
   /\ cs   = [c \in CIds |-> NoCons]
@@ -166,6 +215,10 @@ Init ==
   /\ held = FALSE
   /\ last = [ev |-> "Init", bad |-> {}]
   /\ env  = 0
+  /\ op   = 0
+  /\ snap = NoSnap
+  /\ pw   = {}
+  /\ bs   = {}
 
 -----------------------------------------------------------------------------
 (* The step monitor. Each rule reads the state before the step (ps, cs)  *)
@@ -174,6 +227,12 @@ Init ==
 (* A rule about a named card is only read when the event names one.       *)
 
 PEvents == {"Finished", "Broken", "Faulted", "Released"}
+
+\* The condition a move keeps on its card's state, as read (the state the
+\* earlier moves of the op left): none when an earlier move of the op wrote
+\* that state (the code's keepExpects), so what is kept is the snapshot's.
+PFence(p) == IF op > 0 /\ ps[p].st # snap.ps[p].st THEN {} ELSE {ps[p].st}
+CFence(c) == IF op > 0 /\ cs[c].st # snap.cs[c].st THEN {} ELSE {cs[c].st}
 
 StepRule(n, ev, p, c, r) ==
   CASE n = "FinalNeverMoves" ->
@@ -223,13 +282,24 @@ StepRule(n, ev, p, c, r) ==
            (ps[s].st # "landed" /\ ps'[s].st = "landed")
              => (ev = "Reached" /\ \A x \in ps[s].needs : ps[x].st = "landed")
     [] n = "WaiveRedNeedsRed" -> ev = "WaiveRed" => ps[p].red
+    [] n = "ReviewOnEntry" ->
+         \A q \in Prods :
+           ps'[q].review = ps[q].review + (IF ev \in {"Finished", "Red"} /\ q = p THEN 1 ELSE 0)
+    [] n = "FixSaysWhat" -> ev = "ReadFix" => ps'[p].finding # "-"
+    [] n = "InThisOpOnFailedNeed" -> ev = "InThisOp" => ps'[r].st = "fail"
+    [] n = "FencesOnSnapshot" ->
+         op > 0 =>
+           /\ p \in P => \A v \in PFence(p) : v = snap.ps[p].st
+           /\ c \in CIds => \A v \in CFence(c) : v = snap.cs[c].st
 
 StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
               "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs",
               "ReadYesNeedsYes", "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
               "WaiveRedNeedsPriorRead", "FixCarriesFailure", "ReplaceByLive", "HeadNeverRepeats",
               "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
-              "SentinelLandsByReached", "WaiveRedNeedsRed"}
+              "SentinelLandsByReached", "WaiveRedNeedsRed",
+              "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
+              "FencesOnSnapshot"}
 
 \* The monitor's value after a step: the rules it broke, and its name only
 \* when a reach check needs it (every other step is "-", so states are not
@@ -291,6 +361,7 @@ StartGuard(p, r) ==
   /\ Serves(r, p)
   /\ ps[p].att < MaxAttempt
   /\ ps[p].ncut < K
+  /\ NameFree(WorkNext(p))
 
 Start(p, r) ==
   /\ StartGuard(p, r)
@@ -345,6 +416,7 @@ AskRead(p, r) ==
   /\ ~held
   /\ ReadRowOK(p, r)
   /\ ps[p].ncut < K
+  /\ NameFree(ReadNext(p, 1))
   /\ ps'   = [ps EXCEPT ![p].ncut = @ + 1]
   /\ cs'   = [cs EXCEPT ![NextSlot(p)] = ReadCut(p, r)]
   /\ last' = L("AskRead", p, NextSlot(p), r)
@@ -361,6 +433,7 @@ AskReads(p, R) ==
   /\ ~held
   /\ \A r \in R : ReadRowOK(p, r)
   /\ ps[p].ncut + Cardinality(R) <= K
+  /\ \A k \in 1..Cardinality(R) : NameFree(ReadNext(p, k))
   /\ ps'   = [ps EXCEPT ![p].ncut = @ + Cardinality(R)]
   /\ cs'   = [k \in CIds |-> IF \E r \in R : k = ReadSlot(p, R, r)
                              THEN ReadCut(p, CHOOSE r \in R : k = ReadSlot(p, R, r))
@@ -398,6 +471,8 @@ ReadYes(p) ==
   /\ YesRead(p)
   /\ PStep("ReadYes", p, NoC, [ps[p] EXCEPT !.st = "merging"])
 
+\* ReadFix{finding}: a fix read says what to fix (round 7, ruling 6): an
+\* empty finding is refused, so ReadFix always writes one.
 ReadFix(p) ==
   /\ ps[p].st = "review"
   /\ ReadsSettled(p)
@@ -483,11 +558,13 @@ Relink(p, n, to) ==
   /\ TRUE   \* FAULT: no cycle check
   /\ PStep("Relink", p, NoC, [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}])
 
-\* NeedFailed, Waive and Relink {InThisOp} (the code at v2-card-fix3): the
-\* op fails the need n earlier (here by Cancel) and moves the dependant p
-\* in the same op, with no "need is fail" fence; one step, no state between.
-InThisOpGuard(n, p, m, to) ==
-  /\ NonFinal(n) /\ NoLive(n)            \* Cancel(n)
+\* NeedFailed, Waive and Relink {InThisOp}: legal only inside a Merge where
+\* an earlier move of the same op writes the need n to fail (round 7,
+\* ruling 2), checked on the folded need state; alone it is refused ("merge
+\* it with the drop"). With MaxOp 1 the op is one step: Cancel(n) and the
+\* dependant's move together. With MaxOp > 1 it is InThisOpLater, a move of
+\* an open op after the one that failed n.
+InThisOpDeps(n, p, m, to) ==
   /\ p # n /\ n \in ps[p].needs
   /\ (m # "Relink") => to = n
   /\ CASE m = "NeedFailed" -> NonFinal(p) /\ NoLive(p)
@@ -502,10 +579,21 @@ InThisOpMove(p, n, m, to) ==
     [] m = "Waive"      -> [ps[p] EXCEPT !.needs = @ \ {n}]
     [] OTHER            -> [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}]
 InThisOp(n, p, m, to) ==
-  /\ InThisOpGuard(n, p, m, to)
+  /\ MaxOp = 1
+  /\ NonFinal(n) /\ NoLive(n)            \* Cancel(n)
+  /\ InThisOpDeps(n, p, m, to)
   /\ ps'   = [ps EXCEPT ![n].st = "fail", ![p] = InThisOpMove(p, n, m, to)]
   /\ UNCHANGED <<cs, rs, held>>
-  /\ last' = L("InThisOp", p, NoC, NoR)
+  /\ last' = L("InThisOp", p, NoC, n)   \* n rides in the row slot
+\* The need is fail in the folded state and was not at the op's start: an
+\* earlier move of this op failed it.
+InThisOpFolded(n) == op > 0 /\ ps[n].st = "fail" /\ snap.ps[n].st # "fail"
+InThisOpLater(n, p, m, to) ==
+  /\ InThisOpFolded(n)
+  /\ InThisOpDeps(n, p, m, to)
+  /\ ps'   = [ps EXCEPT ![p] = InThisOpMove(p, n, m, to)]
+  /\ UNCHANGED <<cs, rs, held>>
+  /\ last' = L("InThisOp", p, NoC, n)
 
 \* Edit writes the brief, which the model leaves out: only the history moves.
 \* A sentinel has no prose or score: Edit and Rescore refuse it, as Start
@@ -542,6 +630,8 @@ Unblock(p) ==
 \* through needs and after is refused (the first cold read).
 Add(p, ns, as) ==
   /\ ps[p].st = "absent"
+  /\ p \notin Dotted   \* round 7, ruling 1: an id may not contain "."
+  /\ \A c \in CIds : cs[c].st # "none" => ConsName(c) # p   \* CardAbsent
   /\ ns \subseteq {q \in P \ {p} : Exists(q)}
   /\ as \subseteq {q \in P \ {p} : Exists(q)}
   /\ Acyclic([OrderGraph EXCEPT ![p] = ns \cup as])
@@ -607,15 +697,17 @@ Withdraw(c, h) ==
   /\ UNCHANGED <<rs, held>>
   /\ last' = L("Withdraw", NoP, c, NoR)
 
-\* Blocker preemption (Rules the tables encode): with no open serving row
-\* (up, not held) below its width, policy withdraws a working consumer of a
-\* serving row (a ready one holds no width) and, in the same plan, Start
-\* deals the blocker to that row. The Withdraw releases its producer as a
-\* Withdraw alone does. Which consumer is policy's; the model lets it be any.
+\* Blocker preemption: the step merges a Withdraw of a working consumer and
+\* the blocker's Start on that consumer's row; the machine checks what the
+\* code at round 6 checks off the event fields: the starter's priority is
+\* blocker, and the withdrawn consumer (another producer's) is working on
+\* the row Start names. Whether a row with open width exists is layer 3's
+\* (the step's), so the model does not ask. The Withdraw releases its
+\* producer as a Withdraw alone does. Which consumer is the step's; the
+\* model lets it be any.
 Preempt(b, c, r) ==
   /\ StartGuard(b, r)
   /\ ps[b].prio = "blocker"
-  /\ \A r2 \in Rows : (Serves(r2, b) /\ RowOpen(r2)) => Cardinality(WorkingOn(r2)) >= rs[r2].width
   /\ cs[c].st = "working"
   /\ cs[c].row = r
   /\ c \notin ConsOf(b)
@@ -680,7 +772,8 @@ CardMove ==
        \/ \E n \in P : NeedFailed(p, n) \/ Waive(p, n)
        \/ \E n, to \in P : Relink(p, n, to)
        \/ \E c \in CIds, r \in Rows : Preempt(p, c, r)
-  \/ \E n, p \in P, m \in {"NeedFailed", "Waive", "Relink"}, to \in P : InThisOp(n, p, m, to)
+  \/ \E n, p \in P, m \in {"NeedFailed", "Waive", "Relink"}, to \in P :
+       InThisOp(n, p, m, to) \/ InThisOpLater(n, p, m, to)
   \/ \E c \in CIds :
        \/ \E h \in 0..MaxHead : Withdraw(c, h)
        \/ \E r \in Rows :
@@ -690,11 +783,11 @@ CardMove ==
 \* The environment and coordinator moves, on the MaxEnv budget.
 EnvMove ==
   \/ \E p \in P :
-       \/ Scenario # "pre" /\ Edit(p)
-       \/ Scenario # "pre" /\ \E s \in 0..1 : Rescore(p, s)
+       \/ World # "pre" /\ Edit(p)
+       \/ World # "pre" /\ \E s \in 0..1 : Rescore(p, s)
        \/ \E l \in Prios : SetPriority(p, l)
        \/ \E h \in Heads : Red(p, h)   \* a red CI result: an outside event
-       \/ \E ns, as \in SUBSET P : Add(p, ns, as)
+       \/ \E ns, as \in SUBSET {q \in P \ {p} : Exists(q)} : Add(p, ns, as)
   \/ \E r \in Rows :
        \/ Seen(r) \/ Gone(r) \/ Hold(r) \/ Unhold(r)
        \/ \E n \in 1..2 : Width(r, n)
@@ -703,9 +796,74 @@ EnvMove ==
 \* Every producer final: the run is over (any other deadlock is reported).
 Terminating == (\A p \in P : ps[p].st \in PFinal \cup {"absent"}) /\ UNCHANGED vars
 
-Next ==
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+(* Merge composes moves (the ruling after the fourth cold read): an op is *)
+(* an ordered list of up to MaxOp moves, nested merges flattened first,    *)
+(* each move planned against the state the earlier ones leave. Here the    *)
+(* moves of an op are consecutive steps, so each later move is checked     *)
+(* against, and writes onto, what the earlier moves left (a consumer cut   *)
+(* earlier in the op is live for the next move; the stream, rows and       *)
+(* cards are the folded ones), and a sequence legal one by one is one op,  *)
+(* Red then WaiveRed included: no second write to a field is refused.      *)
+(* Nothing interleaves: the model has one actor, and the store applies an  *)
+(* op in one transaction. snap is the state the op started from: the       *)
+(* op's conditions are the first-read value of each field, minus fields    *)
+(* an earlier move of the op wrote, and the store checks them against      *)
+(* snap (FencesOnSnapshot). The preempt guard runs on the flattened list,  *)
+(* for Withdraws flagged preempt only: with a blocker's Start in the same  *)
+(* op, the withdrawn consumer is working on the row that Start names. pw   *)
+(* and bs keep the rows of the last op's preempt Withdraws and blocker     *)
+(* Starts until the next op starts (PreemptOnBlockerRow reads them).       *)
+Snap == [ps |-> ps, cs |-> cs, rs |-> rs, held |-> held]
+
+Move ==
   \/ CardMove /\ UNCHANGED env
   \/ env < MaxEnv /\ EnvMove /\ env' = env + 1
+
+\* A Withdraw flagged preempt: as Withdraw, of a working consumer (the code
+\* refuses it otherwise). Only in an op that can hold a Start too.
+PreWithdraw(c, h) ==
+  /\ MaxOp > 1
+  /\ cs[c].st = "working"
+  /\ Withdraw(c, h)
+  /\ UNCHANGED env
+
+\* The rows this move starts a blocker on.
+BlockerStarts ==
+  {r \in Rows : \E b \in Prods : /\ ps[b].prio = "blocker" /\ ps[b].st = "ready"
+                                 /\ ps'[b].st = "working" /\ cs'[NextSlot(b)].row = r}
+
+\* The preempt guard on the op so far, this move included.
+PreemptGuard(w, s) == \A x \in w, y \in s : x = y
+
+\* A move closes the op it is in, or (below MaxOp) leaves it open for the
+\* next move; the first move of an op records the snapshot. w: the rows of
+\* this move's preempt Withdraw.
+OpStep(w) ==
+  /\ LET pw2 == (IF op = 0 THEN {} ELSE pw) \cup w
+         bs2 == (IF op = 0 THEN {} ELSE bs) \cup (IF MaxOp > 1 THEN BlockerStarts ELSE {})
+     IN /\ PreemptGuard(pw2, bs2)
+        /\ pw' = pw2
+        /\ bs' = bs2
+  /\ \/ op' = 0 /\ snap' = NoSnap
+     \/ op + 1 < MaxOp /\ op' = op + 1 /\ snap' = IF op = 0 THEN Snap ELSE snap
+
+\* An open op may end after any of its moves.
+Commit ==
+  /\ op > 0
+  /\ op' = 0 /\ snap' = NoSnap
+  /\ last' = [ev |-> "-", bad |-> {}]
+  /\ UNCHANGED <<ps, cs, rs, held, env, pw, bs>>
+
+\* The rows the preempt guard reads off a move that is not a preempt
+\* Withdraw: none (round 7, ruling 3: the guard is the event's Preempt
+\* field, never its reason, and a plain Withdraw never triggers it).
+PlainRows == {}
+
+Next ==
+  \/ Move /\ OpStep(PlainRows)
+  \/ \E c \in CIds, h \in 0..MaxHead : PreWithdraw(c, h) /\ OpStep({cs[c].row})
+  \/ Commit
   \/ Terminating
 
 Spec == Init /\ [][Next]_vars
@@ -728,6 +886,8 @@ TypeOK ==
   /\ rs \in [Rows -> [st : {"up", "down"}, flaps : 0..1, width : 1..2, held : BOOLEAN]]
   /\ held \in BOOLEAN
   /\ env \in 0..MaxEnv
+  /\ op \in 0..(MaxOp - 1)
+  /\ pw \subseteq Rows /\ bs \subseteq Rows
   /\ last.bad \subseteq StepRules
 
 (* A producer never has a holder: the holder lives on the consumer only,  *)
@@ -843,6 +1003,32 @@ NeedsAcyclic == Acyclic(NeedsGraph)
 (* and after (the code at v2-card-fix3).                                 *)
 OrderAcyclic == Acyclic(OrderGraph)
 
+(* No card's id is a consumer's id: cards and consumers share one         *)
+(* namespace, fenced absent on every Add and cut. The bug ruling 1 closes *)
+(* is not here but in NeverStranded: an added id with a dot that names a  *)
+(* producer's next consumer leaves that producer never able to start      *)
+(* (CardDottedId).                                                        *)
+IdsDistinct ==
+  \A q \in P, c \in CIds : (Exists(q) /\ cs[c].st # "none") => q # ConsName(c)
+
+(* A plain (non-preempt) Withdraw of a working consumer merges into an op *)
+(* holding a blocker's Start on another row (round 7, rulings 3 and 8).   *)
+PlainWithdrawUnguarded ==
+  op > 0 =>
+    \A c \in CIds :
+      cs[c].st = "working"
+        => ENABLED (\E h \in 0..MaxHead : Withdraw(c, h) /\ UNCHANGED env /\ OpStep(PlainRows))
+
+(* A sequence legal one by one is one op, the last write winning (round  *)
+(* 7, ruling 4): HoldStream later in an open op is never refused, so     *)
+(* Merge(Resolve, HoldStream) parks what the Resolve readied.            *)
+MergeParksResolved ==
+  (op > 0 /\ ~held /\ env < MaxEnv) => ENABLED (HoldStream /\ env' = env + 1 /\ OpStep(PlainRows))
+
+(* An op's preempt Withdraws are of consumers on the row its blocker      *)
+(* Starts name (the guard, on the flattened op).                          *)
+PreemptOnBlockerRow == \A x \in pw, y \in bs : x = y
+
 (* The step invariants: each says the last step kept its rule (StepRule). *)
 FinalNeverMoves        == "FinalNeverMoves" \notin last.bad
 AttemptOnlyOnStart     == "AttemptOnlyOnStart" \notin last.bad
@@ -863,6 +1049,10 @@ BlockNoLive            == "BlockNoLive" \notin last.bad
 EditNoLive             == "EditNoLive" \notin last.bad
 SentinelLandsByReached == "SentinelLandsByReached" \notin last.bad
 WaiveRedNeedsRed       == "WaiveRedNeedsRed" \notin last.bad
+FencesOnSnapshot       == "FencesOnSnapshot" \notin last.bad
+ReviewOnEntry          == "ReviewOnEntry" \notin last.bad
+FixSaysWhat            == "FixSaysWhat" \notin last.bad
+InThisOpOnFailedNeed   == "InThisOpOnFailedNeed" \notin last.bad
 
 -----------------------------------------------------------------------------
 (* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each    *)
@@ -896,6 +1086,8 @@ NeverAdded           == \A p \in Added : ~(Exists(p) /\ ps[p].needs # {} /\ ps[p
 NeverSentinelNeeded  == \A p \in Added : ~(Exists(p) /\ \E n \in ps[p].needs : n \in Sentinels)
 NeverAskReads        == last.ev # "AskReads"
 NeverInThisOp        == last.ev # "InThisOp"
+(* The same, in an op of several moves (InThisOpLater).                  *)
+NeverInThisOpMerged  == NeverInThisOp
 (* WaiveRed: merging after a Red with no ok read of the current review.   *)
 NeverWaivedRed       ==
   ~\E p \in Prods :
