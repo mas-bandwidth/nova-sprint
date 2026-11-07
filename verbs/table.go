@@ -95,6 +95,8 @@ func startVerbs() []*verb {
 		{name: "hook", group: "start", usage: "--as <name> --role worker|coordinator", flags: "role=", max: 0, run: runHook,
 			about: "records your name and role in the sprint (a fresh session), subscribes you to its pushes, and prints the sprint's commit identity (its two git config lines) and your playbook",
 			needs: []string{"not on the bus: nova-bus hook --as <name> under your session's Monitor tool", "already hooked: nova-sprint unhook --as <name>", "a second coordinator: the recorded one unhooks first", "a worker on a sprint with no commit identity: the coordinator runs nova-sprint identity"}},
+		{name: "wake", group: "start", usage: "--as <you> (nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>' runs it per message)", max: 0, run: runWake,
+			about: "takes every card a DEAL on stdin deals you, then prints the message with each deal line replaced by its TAKEN receipt or its refusal; any other message unchanged"},
 		{name: "unhook", group: "start", usage: "[<row>] --as <you>", max: 1, run: runUnhook,
 			about: "clears a hook; your own without one, another row's as the coordinator",
 			needs: []string{"not hooked: nothing to unhook", "another row, and you are not the coordinator: ask the coordinator"}},
