@@ -33,27 +33,31 @@ type Reader interface {
 
 // Engine consumes its dependencies, keeping command parsing independent of CLI.
 type Engine struct {
-	Store        Reader
-	Env          Environment
-	Actor        string
-	Setup        Setup
-	SetupLock    SetupLock
-	Now          Clock
-	Reports      ReportPlanner
-	Judges       JudgePlanner
-	Heads        HeadVerifier
-	Faults       FaultVerifier
-	Health       Health
-	Repositories Repositories
-	Briefs       Briefs
-	Archive      Archive
-	Preview      func(context.Context, string) error
-	RowCatalog   RowCatalog
-	Install      Installer
-	RunInfo      RunInfo
-	ShowEdges    ShowEdges
-	Version      string
-	ToolPin      string
+	Store           Reader
+	Env             Environment
+	Actor           string
+	Setup           Setup
+	SetupLock       SetupLock
+	Now             Clock
+	Reports         ReportPlanner
+	Judges          JudgePlanner
+	Heads           HeadVerifier
+	Faults          FaultVerifier
+	Health          Health
+	History         HistoryVerifier
+	Repositories    Repositories
+	Briefs          Briefs
+	Archive         Archive
+	Preview         func(context.Context, string) error
+	RowCatalog      RowCatalog
+	PolicyEvaluator PolicyEvaluator
+	PolicyFiles     PolicyFiles
+	PolicyActivator PolicyActivator
+	Install         Installer
+	RunInfo         RunInfo
+	ShowEdges       ShowEdges
+	Version         string
+	ToolPin         string
 }
 
 type nextAnswer struct {
@@ -91,6 +95,8 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 		return e.help(ctx, args[1:])
 	case "priority":
 		return e.priority(ctx, args[1:])
+	case "policy":
+		return e.policy(ctx, args[1:])
 	case "judge":
 		return e.judge(ctx, args[1:])
 	case "stream":

@@ -243,24 +243,40 @@ func reportReceipt(r store.Receipt, actor, verb, id string) Result {
 	if !r.Accepted {
 		return refused(verb, r.Reason, "nova-sprint show "+id)
 	}
+	if r.After == nil {
+		return unavailable(verb)
+	}
+	c, ok := r.After.Cards[id]
+	if !ok {
+		return unavailable(verb)
+	}
 	label := "REPORTED"
-	if verb == "finish" {
-		label = "FINISHED"
-	}
-	if verb == "read" {
+	if c.Kind == "read" {
 		label = "READ"
-	}
-	head := ""
-	if r.After != nil {
-		if c, ok := r.After.Cards[id]; ok && c.Head != "" {
-			head = " head=" + c.Head
+	} else {
+		switch c.Result {
+		case "ok":
+			label = "FINISHED"
+		case "fail":
+			label = "FAILED"
+		case "fault":
+			label = "FAULTED"
 		}
 	}
+	head := ""
+	if c.Head != "" {
+		head = " head=" + c.Head
+	}
+	result := ""
+	if c.Kind == "read" {
+		result = " result=" + c.Result
+	}
+
 	next := r.Note
 	if next == "" {
 		next = "nothing; wait for the bus"
 	}
-	return Result{fmt.Sprintf("%s %s%s applied at seq %d\nnext: %s\n", label, id, head, r.Seq, next), 0}
+	return Result{fmt.Sprintf("%s %s%s%s applied at seq %d\nnext: %s\n", label, id, head, result, r.Seq, next), 0}
 }
 
 func decimalDigits(s string) bool {

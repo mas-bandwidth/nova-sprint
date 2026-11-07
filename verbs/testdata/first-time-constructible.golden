@@ -1,0 +1,33 @@
+$ nova-sprint
+nova-sprint deals cards to AIs over nova-bus, reads them, and lands them. It stands on nova-tools.
+NEXT the fleet is not up: nova-fleet check reports tailscale, redis, postgres missing
+next: nova-fleet check
+$ nova-sprint
+NEXT nova-tools is up; the sprint is not set up
+next: nova-sprint up --as rowan
+$ nova-sprint up --as rowan
+UP 1/8 nova-tools: fleet green; nova-tools v2.0.0 at or above pin v2.0.0: VERIFIED
+UP 2/8 store: schema sprint version 2 and backup: VERIFIED
+UP 3/8 coordinator rowan: not hooked
+SPRINT REFUSED up: rowan is not hooked in: run nova-bus hook --as rowan under your session's Monitor tool
+$ nova-sprint stream add docs --repo owner/repo
+STREAM ADDED docs repo=owner/repo base=main branch=sprint/docs
+next: nova-sprint add --stream docs --brief-file <file>
+$ nova-sprint add --stream docs --brief-file card
+ADDED fix-typos stream=docs tier=pro priority=normal needs=-
+next: nothing; wait for the bus
+$ nova-sprint take fix-typos.w1@0 --as worker --epoch 1
+TAKEN fix-typos.w1 repo=owner/repo base=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa branch=sprint/docs/fix-typos
+Fix the typos.
+next: nova-sprint finish fix-typos.w1@1 --head <sha> --as worker --epoch 1
+$ nova-sprint finish fix-typos.w1@1 --head bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --as worker --epoch 1
+FINISHED fix-typos.w1 head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb applied at seq 8
+next: nothing; wait for the bus
+$ nova-sprint take fix-typos.r1.1@0 --as reader --epoch 1
+TAKEN fix-typos.r1.1 repo=owner/repo head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+Read detached at this head; do not edit or push.
+Fix the typos.
+next: nova-sprint read fix-typos.r1.1@1 yes|fix --as reader --epoch 1
+$ nova-sprint read fix-typos.r1.1@1 yes --as reader --epoch 1
+READ fix-typos.r1.1 head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb result=ok applied at seq 11
+next: nothing; wait for the bus

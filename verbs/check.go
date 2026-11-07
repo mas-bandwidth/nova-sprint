@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// HistoryVerifier checks store history without external edge operations.
+type HistoryVerifier interface{ CheckHistory(context.Context) error }
+
 // Health supplies fleet/tool and endpoint checks without exposing credentials.
 type Health interface {
 	Check(context.Context, bool) ([]OperationError, error)
@@ -16,10 +19,18 @@ type Health interface {
 
 func (e *Engine) check(ctx context.Context, args []string) Result {
 	integrity := false
+	if len(args) == 1 && args[0] == "--history" {
+		return e.checkHistory(ctx)
+	}
 	if len(args) == 1 && args[0] == "--integrity" {
 		integrity = true
 	} else if len(args) != 0 {
 		return refused("check", "invalid arguments", "nova-sprint help check")
+	}
+	if integrity {
+		if r := e.checkHistory(ctx); r.Exit != 0 {
+			return r
+		}
 	}
 	if e.Health == nil {
 		return unavailable("check")
@@ -103,4 +114,14 @@ func versionUnknown(pin string) Result {
 func NovaToolsVersion(ctx context.Context) (string, error) {
 	out, err := exec.CommandContext(ctx, "nova-version", "version").Output()
 	return string(out), err
+}
+
+func (e *Engine) checkHistory(ctx context.Context) Result {
+	if e.History == nil {
+		return unavailable("check")
+	}
+	if err := e.History.CheckHistory(ctx); err != nil {
+		return operationalFailure("check", err)
+	}
+	return Result{"CHECK history verified\nnext: nova-sprint next\n", 0}
 }
