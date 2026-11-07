@@ -26,7 +26,7 @@ func TestFunctionalBackupRoundTrip(t *testing.T) {
 	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
 		t.Fatal(err)
 	}
-	if err := runPG(ctx, "", "pg_ctl", "-D", data, "-o", "-k "+dir+" -c listen_addresses=''", "-w", "start"); err != nil {
+	if err := runPG(ctx, "", "pg_ctl", "-D", data, "-l", filepath.Join(dir, "postgres.log"), "-o", "-k "+dir+" -c listen_addresses=''", "-w", "start"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runPG(context.Background(), "", "pg_ctl", "-D", data, "-m", "immediate", "-w", "stop") })

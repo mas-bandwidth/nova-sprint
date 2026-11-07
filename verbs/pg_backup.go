@@ -254,8 +254,11 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 			resultErr = errors.Join(resultErr, fmt.Errorf("temporary PostgreSQL could not stop (its directory is kept): %w", err))
 		}
 	}()
-	if err = runPG(ctx, "", "pg_ctl", "-D", dataDir, "-o", verifyServerOptions(dir), "-w", "start"); err != nil {
-		return BackupInfo{}, fmt.Errorf("temporary PostgreSQL failed to start: %w", err)
+	// -l: the postmaster writes its log to a file, never to pg_ctl's
+	// stdout and stderr, which runTool reads until they close.
+	logFile := filepath.Join(dir, "postgres.log")
+	if err = runPG(ctx, "", "pg_ctl", "-D", dataDir, "-l", logFile, "-o", verifyServerOptions(dir), "-w", "start"); err != nil {
+		return BackupInfo{}, fmt.Errorf("temporary PostgreSQL failed to start: %w; its log: %s", err, logTail(logFile))
 	}
 	started = true
 	dsn := "host=" + dir + " dbname=postgres sslmode=disable"
@@ -289,6 +292,19 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 // are small (macOS).
 func verifyServerOptions(dir string) string {
 	return "-k " + dir + " -c listen_addresses='' -c shared_memory_type=mmap -c dynamic_shared_memory_type=posix"
+}
+
+// logTail is the last lines of a server log, on one line, redacted: what a
+// failed start said.
+func logTail(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "unreadable (" + Redact(err.Error()) + ")"
+	}
+	if len(data) > 1500 {
+		data = data[len(data)-1500:]
+	}
+	return edge.StderrLines(string(data))
 }
 
 // pidFileExists is whether a postmaster may still own dataDir.
