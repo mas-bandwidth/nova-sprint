@@ -136,6 +136,36 @@ func TestVerbDropNamesItsDependants(t *testing.T) {
 	assert.Equal(t, []string{"p0"}, s.Cards["p4"].Needs)
 }
 
+// TestVerbDropReleasesLiveConsumers: a Cancel of a producer under a live work
+// consumer (ready, then working) releases the consumer in the same op, with
+// the released record and no result, then fails the producer.
+func TestVerbDropReleasesLiveConsumers(t *testing.T) {
+	for _, taken := range []bool{false, true} {
+		s := newSim(t)
+		s.stream("s1")
+		s.row("r1", 2, "pro")
+		s.producer("p1", "s1", "pro", "a/x")
+		s.producer("p2", "s1", "pro", "a/y")
+		s.run(2)
+		s.requireState("p1.w1", "ready")
+		if taken {
+			rc, ref := s.verb(Request{Actor: "r1", Card: "p1.w1", Event: card.Take{Row: "r1"}})
+			require.Nil(t, ref)
+			require.True(t, rc.Accepted, rc.Reason)
+			s.requireState("p1", "working")
+		}
+		rc, ref := s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Cancel{Reason: "not needed"}})
+		require.Nil(t, ref)
+		require.True(t, rc.Accepted, rc.Reason)
+		c := s.card("p1.w1")
+		assert.Equal(t, "fail", c.State)
+		assert.Empty(t, c.Result, "released is no result")
+		assert.Equal(t, card.ReleasedPrefix+"not needed", c.Reason)
+		assert.Equal(t, "fail", s.card("p1").State)
+		assert.Equal(t, "not needed", s.card("p1").Reason)
+	}
+}
+
 // TestVerbJudgementAnswer: an open judgement is answered once with its move
 // in one op; a second answer is refused naming the first.
 func TestVerbJudgementAnswer(t *testing.T) {

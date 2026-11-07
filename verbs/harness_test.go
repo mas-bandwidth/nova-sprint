@@ -233,6 +233,12 @@ type fakeForge struct {
 	act    error
 	prs    map[int]string
 	merged map[int]bool
+	checks []string // the base's required checks
+	checkE error
+}
+
+func (f *fakeForge) RequiredChecks(context.Context, string, string) ([]string, error) {
+	return f.checks, f.checkE
 }
 
 func (f *fakeForge) CanAct(context.Context, string) error { return f.act }

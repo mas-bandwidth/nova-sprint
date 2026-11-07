@@ -640,7 +640,7 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 		DoneWhen: info.DoneWhen, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
 		ProxyAddr: r.ProxyAddr, CommitName: rowInfo.Row,
-		CommitEmail: rowInfo.Row + "@nova-sprint.local", Forge: info.Forge, Deadline: deadline,
+		CommitEmail: rowInfo.Row + "@" + CommitEmailDomain, Forge: info.Forge, Deadline: deadline,
 	}
 	rec := JobRecord{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
@@ -1161,35 +1161,11 @@ func (w *OSReserveWall) RunHarness(ctx context.Context, j Job, argv, env []strin
 	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(env, j.JobDir), timeout)
 }
 func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeout time.Duration) (WallRunResult, error) {
-	fields := splitArgv_internal(cmdStr)
-	if len(fields) == 0 {
-		return WallRunResult{}, errors.New("empty test command")
+	fields, why := edge.ParseGate(cmdStr)
+	if why != "" {
+		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
 	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
-}
-func splitArgv_internal(s string) (args []string) {
-	var cur strings.Builder
-	var quote rune
-	inTok := false
-	for _, r := range s + " " {
-		switch {
-		case quote != 0 && r == quote:
-			quote = 0
-		case quote != 0:
-			cur.WriteRune(r)
-		case r == '\'' || r == '"':
-			quote, inTok = r, true
-		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
-			if inTok {
-				args, inTok = append(args, cur.String()), false
-				cur.Reset()
-			}
-		default:
-			cur.WriteRune(r)
-			inTok = true
-		}
-	}
-	return args
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config

@@ -616,6 +616,18 @@ exhaustive), because in the land scenario the other card is after-held by
 the judged one, so it was replaced; `make-traces.sh check`: 81 traces, the
 `ok` ones `TRACE OK` and the six `steps-bad-*` refused as they must be.
 
+## Built: a drop releases its consumers (stitch w3A, 2026-11-07; directive 77)
+
+`dropMoves` (a Cancel or Replace request) now begins with `withdraw` of each live
+consumer of the dropped producer, reason `card.ReleasedPrefix + <the drop's reason>`
+(no result: released is neither ok nor fail), and plans the producer's move
+with those consumers read as failed, so the one op is Withdraw (which releases a
+working producer to ready), then Cancel. A dependant waits on a need and has no
+live consumer, so only the dropped producer is released. Tests:
+`TestVerbDropReleasesLiveConsumers` (a ready and a working consumer). The model
+`Steps.tla` has no coordinator drop verb; the machine's Withdraw and Cancel are
+`CardMachine.tla`'s, composed as `CardMerge.cfg` checks.
+
 ## Built: routes in the deal (stitch w2A, 2026-11-07)
 
 A producer whose brief carries `NEEDS-ROUTE: <name>` lines (read once, by

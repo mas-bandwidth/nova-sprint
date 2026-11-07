@@ -168,7 +168,11 @@ func (t *tick) streamMoves(r Request, e card.Event) ([]move, *card.Refusal) {
 }
 
 // dropMoves is a Cancel or Replace with its closure of dependants in the same
-// op: each one's chosen Waive or Relink, else NeedFailed in this op.
+// op: each one's chosen Waive or Relink, else NeedFailed in this op. The
+// dropped producer's live consumers are released in the same op (the same
+// decision: whoever drops a producer drops what a row is doing for it), each
+// recorded released with the drop's reason and no blame, as `release` records
+// it. A dependant waits on a need, so it has no live consumer.
 func (t *tick) dropMoves(r Request) ([]move, *card.Refusal) {
 	if _, ok := t.v.Cards[r.Card]; !ok {
 		return nil, &card.Refusal{Reason: "card " + r.Card + " does not exist"}
@@ -177,7 +181,7 @@ func (t *tick) dropMoves(r Request) ([]move, *card.Refusal) {
 	if rep, ok := r.Event.(card.Replace); ok {
 		extra = append(extra, rep.By)
 	}
-	moves := []move{t.producerMove(r.Card, r.Event, extra...)}
+	moves := t.releasing(r.Card, r.Event, extra...)
 	seen := set{r.Card: {}}
 	queue := []string{r.Card}
 	for len(queue) > 0 {
@@ -198,6 +202,40 @@ func (t *tick) dropMoves(r Request) ([]move, *card.Refusal) {
 		}
 	}
 	return moves, nil
+}
+
+// releasing is producer p's live consumers withdrawn as released, then p's
+// move e planned with them gone. The reason on the record is the drop's own.
+func (t *tick) releasing(p string, e card.Event, extra ...string) []move {
+	var moves []move
+	gone := set{}
+	for _, id := range sorted(t.v.consOf[p]) {
+		if isLive(t.v.Cards[id]) {
+			moves = append(moves, t.withdraw(id, card.ReleasedPrefix+dropReason(e)))
+			gone[id] = struct{}{}
+		}
+	}
+	return append(moves, move{label: eventName(e) + " " + p, plan: func() (card.Plan, *card.Refusal) {
+		pc := t.cardOf(p)
+		cons := t.consOf(p)
+		for i := range cons {
+			if _, ok := gone[cons[i].ID]; ok {
+				cons[i].State = card.Fail
+			}
+		}
+		return card.Move(pc, cons, t.rows(), t.streamOf(pc.Stream), t.needsOf(p, extra...), e)
+	}})
+}
+
+// dropReason is the reason a Cancel or Replace carries.
+func dropReason(e card.Event) string {
+	switch x := e.(type) {
+	case card.Cancel:
+		return x.Reason
+	case card.Replace:
+		return x.Reason
+	}
+	return ""
 }
 
 // inThisOp is the drop's chosen move for a dependant, marked as in this op

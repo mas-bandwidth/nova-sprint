@@ -198,6 +198,25 @@ func TestDropAndReplace(t *testing.T) {
 	}
 }
 
+// TestDropReleasesItsLiveConsumers: a drop of a producer a row holds
+// releases the work consumer in the same op, recorded released (no result, no
+// blame) with the drop's reason, and fails the producer.
+func TestDropReleasesItsLiveConsumers(t *testing.T) {
+	w := newWorld(t)
+	before := w.snap(t).Cards["p1.w1"]
+	if before.State != "ready" && before.State != "working" {
+		t.Fatalf("fixture: %+v", before)
+	}
+	want(t, w.do("carol", "drop", "p1", "--reason", "not needed"), 0, "p1.w1->fail", "p1->fail")
+	s := w.snap(t)
+	if c := s.Cards["p1.w1"]; c.State != "fail" || c.Result != "" || c.Reason != ReleasedPrefix+"not needed" {
+		t.Fatalf("consumer %+v", c)
+	}
+	if c := s.Cards["p1"]; c.State != "fail" || c.Reason != "not needed" {
+		t.Fatalf("producer %+v", c)
+	}
+}
+
 func TestReplaceAndRelink(t *testing.T) {
 	s := sprint()
 	dependant(&s)
@@ -220,7 +239,6 @@ func TestDropRefusals(t *testing.T) {
 		{name: "a bad relink", as: "carol", args: []string{"drop", "p2", "--reason", "r", "--relink", "p3"}, exit: 2, want: []string{"--relink is <dependant>=<card>"}},
 		{name: "waived and relinked", as: "carol", args: []string{"drop", "p2", "--reason", "r", "--waive", "p3", "--relink", "p3=p1"}, exit: 2, want: []string{"p3 is both waived and relinked"}},
 		{name: "a replace with no by", as: "carol", args: []string{"replace", "p2", "--reason", "r"}, exit: 2, want: []string{"--by <card>"}},
-		{name: "a live consumer", as: "carol", args: []string{"drop", "p1", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p1"}},
 		{name: "a relink with no need", as: "carol", args: []string{"relink", "p3", "--to", "p1", "--reason", "r"}, exit: 2, want: []string{"relink takes --need"}},
 		{name: "a relink of no failed need", as: "carol", snap: dependant, args: []string{"relink", "p3", "--need", "p4", "--to", "p1", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p3"}},
 	})

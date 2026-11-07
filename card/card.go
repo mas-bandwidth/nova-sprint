@@ -267,6 +267,10 @@ const (
 // LandedState is the producer's final state of success (Landed is its event).
 const LandedState = "landed"
 
+// ReleasedPrefix starts a released consumer's reason: the record that it was
+// given back (by its row, or by a drop of its producer), not failed.
+const ReleasedPrefix = "released: "
+
 // The levels a producer's priority may take, lowest first; read consumers
 // occupy a rung between high and critical in the deal order (policy's).
 var Levels = []string{"low", "normal", "high", "critical", "blocker"}
