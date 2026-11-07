@@ -99,8 +99,8 @@ func (f *Fake) gate_internal(op string) error {
 	if name == "" {
 		name = "unknown"
 	}
-	if strings.TrimSpace(f.identity.Token) == "" && strings.TrimSpace(f.identity.ConfigDir) == "" {
-		return fmt.Errorf("forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity %s: run nova-secrets exec or set GH_CONFIG_DIR", name)
+	if strings.TrimSpace(f.identity.Token) == "" {
+		return (&Client{cfg: Config{Identity: f.identity}}).Ready()
 	}
 	f.world.mu.Lock()
 	login := f.world.authLogin
@@ -110,7 +110,7 @@ func (f *Fake) gate_internal(op string) error {
 		want = name
 	}
 	if isForbiddenLogin_internal(want) || isForbiddenLogin_internal(login) || (f.identity.ExpectedLogin != "" && !strings.EqualFold(login, f.identity.ExpectedLogin)) {
-		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (the human's own credentials are never used): set GH_CONFIG_DIR for %s", login, want, want)
+		return fmt.Errorf("forge refused: the token in %s is %s's, expected %s (the human's own credentials are never used)", TokenEnv, login, want)
 	}
 	return nil
 }

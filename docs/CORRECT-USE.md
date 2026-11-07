@@ -45,7 +45,7 @@ Each step refuses until the one before it has happened.
 | 5 | rows | a row hooks in (`nova-sprint worker --as <row>` on a bench; `nova-bus hook --as <name>` for a kin) | the recipe for the harness it detects |
 | 6 | deals | `run` is a service (made by `up`) and at least one row is up | `nova-sprint up`; "no row is hooked in" with step 5's recipe |
 | 7 | `take` | the name is hooked in; the card was dealt to this row at this gen | the hook recipe; "card X moved: run `nova-sprint show X`" |
-| 8 | `finish` | this row holds the card; the head is a full sha; it exists on the card's branch at origin; the PR exists when the card wants one | the holder; "not a full sha"; "push first: `git push origin <branch>`"; "open the PR" |
+| 8 | `finish` | this row holds the card; the head is a full sha; it exists on the card's branch at origin (no PR is asked: the landing opens the stream's) | the holder; "not a full sha"; "push first: `git push origin <branch>`" |
 | 9 | `read` | the reader is hooked; the reader is not the author; the head is the card's | the author; "card X is at <head>" |
 | 10 | landing | a read said yes to this head; CI is green at this head | "read owed"; "CI red at <head>: see <url>" |
 
@@ -80,7 +80,7 @@ output names the next command.
 
 `finish` refuses, naming which: a head that is not forty hex characters; a
 head not on the card's branch at origin; a branch other than the one dealt; a
-card that wants a PR and has none at that head; a row that is not the holder,
+row that is not the holder,
 naming who is. v1 accepted `finish --head abc` and printed OK (Johnny,
 2026-11-06); v2 never does.
 

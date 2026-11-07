@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -34,6 +35,14 @@ func (t *tick) landResults() {
 		case "conflict":
 			t.judge("conflict", req.Stream, fmt.Sprintf("stream %s cannot merge heads %s onto %s: a conflict across streams", req.Stream, strings.Join(req.Heads, ","), req.Base))
 			t.consume(it.ID)
+		case "no-ci":
+			// Nothing merged into base; the request leaves flight and is asked
+			// again next tick, under this one open judgement (defect 40).
+			t.judge("no-ci", req.Stream, fmt.Sprintf("stream %s: %s on %s: no CI runs on that branch, so nothing can land: make the repository's workflow run on push to sprint/** (LANDING, \"CI on the group branch\"), then re-run CI on that sha or answer retry", req.Stream, cmp.Or(it.Reason, "no check was reported"), groupBranch(req.Stream)))
+			t.consume(it.ID)
+		case "forge":
+			t.judge("forge", req.Stream, fmt.Sprintf("stream %s cannot land: %s", req.Stream, cmp.Or(it.Reason, "the forge refused")))
+			t.consume(it.ID)
 		case "base-red":
 			t.baseRed(it, req)
 		case "base-green":
@@ -53,7 +62,8 @@ func (t *tick) request(id string) (EdgeRequest, bool) {
 }
 
 // landGroup plans Landed for each head that landed and Red for the blamed
-// one, for producers still merging at those heads and unclaimed.
+// one, for producers still merging at those heads and unclaimed. Red sends
+// the producer to fix with the CI finding (intent rule 30).
 func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	var moves []move
 	about := ""
@@ -66,7 +76,7 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 		case slices.Contains(it.Landed, c.Head):
 			moves = append(moves, t.producerMove(p, card.Landed{Head: c.Head}))
 		case it.Blamed != "" && it.Blamed == c.Head:
-			moves = append(moves, t.producerMove(p, card.Red{Head: c.Head, Reason: "CI red at " + c.Head + " on " + req.Base}))
+			moves = append(moves, t.producerMove(p, card.Red{Head: c.Head, Reason: redFinding(c.Head, req.Base, it.Reason)}))
 		default:
 			continue
 		}
@@ -81,6 +91,21 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	if g := t.group("land", about, moves...); g != nil {
 		g.key.Item = it.ID
 	}
+}
+
+// groupBranch is a stream's integration branch (layer 4's git.StreamBranch;
+// layer 3 does not import the edges).
+func groupBranch(stream string) string { return "sprint/" + stream + "/group" }
+
+// redFinding is a red landing's finding, the fix attempt's brief addition
+// (intent rule 30): the head, the base, and the failing checks with their
+// URLs as the edge read them.
+func redFinding(head, base, ci string) string {
+	f := "CI red at " + head + " on " + base
+	if ci != "" {
+		f += ": " + ci
+	}
+	return f
 }
 
 // baseRed opens one judgement per base meeting (LANDING step 8): the third

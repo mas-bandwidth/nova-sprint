@@ -65,13 +65,12 @@ type Answerer interface {
 	AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure)
 }
 
-// Origin is a stream's repository as the verbs check it (layer 4's git and
-// forge edges, adapted in cmd/nova-sprint): the tip of a branch, whether one
-// commit contains another, and the PR of a branch.
+// Origin is a stream's repository as the verbs check it (layer 4's git
+// edge, adapted in cmd/nova-sprint): the tip of a branch and whether one
+// commit contains another.
 type Origin interface {
 	Tip(ctx context.Context, repo, branch string) (sha string, ok bool, err error)
 	Contains(ctx context.Context, repo, ancestor, head string) (bool, error)
-	PR(ctx context.Context, repo, branch, base string) (head string, ok bool, err error)
 }
 
 // Doctor is what `check` and `next` look at outside the store.

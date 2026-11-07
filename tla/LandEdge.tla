@@ -2,7 +2,9 @@
 (***************************************************************************)
 (* Layer 4 landing edge model (docs/LAYER-4-EDGES.md, Guarantees 4 & 5,    *)
 (* docs/LANDING.md). Models 2 streams, 3 heads in score order, K = 2 base  *)
-(* moves, and CI outcomes green, red, and fault.                           *)
+(* moves, and CI outcomes green, red, fault, and absent (no check ever    *)
+(* reported on the pushed group sha: no CI listens to the group branch,   *)
+(* defect 40; the landing stops with a judgement and lands nothing).      *)
 (***************************************************************************)
 EXTENDS Integers, Sequences, FiniteSets
 
@@ -10,7 +12,7 @@ CONSTANTS K
 
 Streams == {"s1", "s2"}
 Heads == {"h1", "h2", "h3"}
-Steps == {"idle", "fetched", "merged", "pushed", "gating", "green", "red", "fault", "landed", "refused"}
+Steps == {"idle", "fetched", "merged", "pushed", "gating", "green", "red", "fault", "absent", "landed", "refused"}
 
 VARIABLES base, stream, group, step, gatedAt, landed
 
@@ -86,6 +88,14 @@ CIFault(s) ==
   /\ step' = [step EXCEPT ![s] = "fault"]
   /\ UNCHANGED <<base, stream, group, landed>>
 
+\* No check reported within the bounded wait (run's CIAbsentWait): no head
+\* is blamed and nothing lands; layer 3 opens the no-ci judgement.
+CIAbsent(s) ==
+  /\ step[s] = "gating"
+  /\ gatedAt' = [gatedAt EXCEPT ![s].gate = "absent", ![s].blamed = {}]
+  /\ step' = [step EXCEPT ![s] = "absent"]
+  /\ UNCHANGED <<base, stream, group, landed>>
+
 BaseMoves ==
   /\ ExternalMoves < K
   /\ \E s \in Streams : step[s] # "landed"
@@ -115,7 +125,7 @@ Remerge(s) ==
   /\ UNCHANGED <<base, group, landed>>
 
 Refuse(s) ==
-  /\ step[s] = "red"
+  /\ step[s] \in {"red", "absent"}
   /\ step' = [step EXCEPT ![s] = "refused"]
   /\ UNCHANGED <<base, stream, group, gatedAt, landed>>
 
@@ -133,6 +143,7 @@ Next ==
        \/ CIGreen(s)
        \/ CIRed(s)
        \/ CIFault(s)
+       \/ CIAbsent(s)
        \/ Land(s)
        \/ Remerge(s)
        \/ Refuse(s)
@@ -173,7 +184,7 @@ GroupAllOrNone ==
 
 FaultBlamesNoHead ==
   \A s \in Streams :
-    (step[s] = "fault" \/ gatedAt[s].gate = "fault") => gatedAt[s].blamed = {}
+    (step[s] \in {"fault", "absent"} \/ gatedAt[s].gate \in {"fault", "absent"}) => gatedAt[s].blamed = {}
 
 StreamEqualsBaseAfterLand ==
   \A i \in 2..Len(base) :

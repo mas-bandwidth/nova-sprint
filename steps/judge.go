@@ -20,6 +20,7 @@ var choices = map[string]string{
 	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "conflict": "by-hand | drop",
 	"base-red": "retry", "stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
+	"no-ci": "retry", "forge": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once).

@@ -82,8 +82,9 @@ answer to a backlog, rung 2.
    when merging").
 4. **A report of ok is refused until the head is landable.** The head must
    be rebased at report (step 3), pushed, and have green CI at that exact
-   head; a card that wants a PR has one. Each refusal names which and the
-   command. A report is never refused because the stream head moved after
+   head (CI runs on the card branch by the same push trigger as the group
+   branch, below); no card is asked for a PR (defect 34, below). Each
+   refusal names which and the command. A report is never refused because the stream head moved after
    it (LESSONS 3.14). So every producer in review is landable; the read is
    the last gate.
 5. **In-order landing, visible when stuck.** Within a stream, producers land
@@ -109,8 +110,9 @@ answer to a backlog, rung 2.
    (LESSONS 3.14; PRIORITY M13).
 7. **Batch atomic, red batches bisected.** A batch lands whole or not at
    all. A red batch is bisected: its halves are gated until the red head is
-   found, that producer returns to `review` with the reason, and the rest
-   land as a smaller batch. A gate that did not run (a bench fault) blames no
+   found, that producer goes to fix (`ready`) with the failing checks and
+   their URLs as its finding (intent rule 30, below), and the rest land as a
+   smaller batch. A gate that did not run (a bench fault) blames no
    head: the batch is retried and nothing returns (LESSONS 3.13; PRIORITY
    M7).
 8. **A red base has one judgement and a path back.** When base itself is red
@@ -165,5 +167,104 @@ a stream; a bench fault blaming a head; a red base with no path back.
   the exact head (layer 4's GitHub edge, a machine reading an API, which is
   not a model polling) and recording it as evidence on the consumer; a red is
   a judgement, a green at the landable head is what step 4 requires.
-- "A card that wants a PR" is one whose stream's repo requires PRs (a stream
-  field, set at `stream add`); a stream that lands by fast-forward wants none.
+- "A card that wants a PR" was one whose stream's repo requires PRs; since
+  2026-11-07 no card is asked for one (defect 34, below).
+
+## CI on the group branch (2026-11-07, defects 38 and 40)
+
+The first landing merged a head into `sprint/nova-tools/group` while the
+head's own checks were red, and then waited for ever: nova-tools' workflow
+ran on push to main, pull_request, merge_group and the nightly, so nothing
+ever ran on the group branch, and the landing's gate (CI green on the exact
+merged sha before base moves) had no verdict to read. Merging the head into
+the group first is the design (the group's CI blames the head); the defect
+was that no CI could reach the group.
+
+**Decision: the stream's repository runs CI on push to `sprint/**`.** The
+landing pushes the merged group sha to `sprint/<stream>/group` and reads the
+check rollup of that exact sha; a green one is the sha that fast-forwards
+base (intent rule 16), a red one is blamed on a head (bisected by pushing
+subsets to the same branch, step 7). The merge queue was the other choice
+and is not taken: it tests a merge sha GitHub makes, not the one nova-sprint
+pushed, so "the exact sha CI passed is what lands" would be GitHub's sha and
+not ours; it cannot be bisected by the landing; and it ties the landing to
+one forge's feature. The same trigger runs CI on every card branch
+(`sprint/<stream>/<producer>`), which step 4 needs now that cards open no PR.
+
+What a stream's repository must have, for a stream with a forge:
+
+- a workflow whose `on:` includes `push: branches: ['sprint/**']` and that
+  reports its jobs as checks on the pushed commit (any job names; every
+  check on the sha counts, and one failure is red);
+- base's protection lets the sprint's identity (below) fast-forward base to
+  a commit whose required checks passed: required status checks are met by
+  the group sha's own checks; a rule that requires a merge queue or a PR
+  merge refuses the landing's fast-forward unless the sprint's identity is on
+  its bypass list.
+
+What the landing waits for, and for how long: after it pushes the group sha,
+a pending CI (jobs queued or running are checks already) is waited for as
+long as it runs (the stall judgement, step 10, covers a slow one). A sha with
+no check at all is waited for `CIAbsentWait` (10 minutes, a guess, not
+measured: GitHub creates a queued job's check within seconds of a push), and
+then the landing stops: nothing lands, nothing is blamed, and layer 3 opens
+one `no-ci` judgement naming `sprint/<stream>/group`, the sha and the fix
+(add the trigger, then re-run CI on that sha or answer retry). The request
+is asked again on later ticks under that one judgement; a re-push of the
+same merged sha starts no new CI, so the fix re-runs CI on it.
+
+How it is verified: at run time, by that bounded wait and its judgement,
+within ten minutes of a stream's first landing. Not verified yet at
+`stream add`: reading a repository's workflow files for a push trigger is a
+heuristic (a reusable workflow, another CI system), so it is left to `check`,
+which shows every open judgement by kind (directive 59); a `stream add`
+warning from the workflow files is owed.
+
+## The sprint's identity (2026-11-07, defect 39)
+
+The first landing's merge author was the human's own GitHub login: run's git
+pushed the group branch with the host's own credential helper (GitHub marks
+a PR merged, by the pusher, when its head reaches its base by a push), and
+its forge would have used whatever gh was logged in as. Now:
+
+- The forge acts only with the token in `GH_GATE_TOKEN`, the control seat's
+  secret of that name, handed to `nova-sprint run` by
+  `nova-secrets exec --only ...,GH_GATE_TOKEN` (the sprint-run service's
+  unit lists the key). Every `gh` call gets `GH_TOKEN` set to it in a clean
+  environment; an inherited `GH_TOKEN`, `GITHUB_TOKEN` or `GH_CONFIG_DIR`
+  never reaches gh. With no token the forge refuses, naming the fix, and
+  never falls back to the host's gh login; `NOVA_SPRINT_FORGE_LOGIN`, when
+  set, is checked against `gh auth status`, and the human's own login is
+  always refused.
+- git, given the same token, resets the host's credential helpers and
+  answers every https credential request with it (in the environment, never
+  argv), so the landing's pushes are the token's identity. This holds for an
+  https remote; an ssh remote would push with the host's ssh key.
+- A landing whose forge has no token merges and pushes nothing: it answers
+  `forge`, and layer 3 opens one `forge` judgement with the refusal's fix.
+
+The token needs, on each stream repository: contents write (the group
+branch, base's fast-forward), pull requests write (the group PR), and checks
+read. A token that cannot create a pull request is refused at the landing's
+OpenPR with GitHub's own error, as a fault.
+
+## PRs and the group branch (2026-11-07, defect 34)
+
+`finish` no longer asks a card for a PR at its head, and `take` no longer
+tells the worker to open one. The landing never used the card's PR: it
+merges the card heads into the group branch by git, opens (or finds) the one
+PR from `sprint/<stream>/group` into base itself, as the sprint, and lands
+by fast-forwarding base to the gated sha. The group branch needs no setup:
+the landing's first push creates it, and `finish` checks a head contains the
+group's tip only when the group branch exists. So a worker's seat needs no
+token that can open PRs; only the control seat's does.
+
+## A red landing goes to fix (2026-11-07, intent rule 30)
+
+A red gate moves the blamed producer from `merging` to fix (`ready`;
+`waiting` in a held stream) with the finding `CI red at <head> on <base>:
+failing: <check names>; <first failing check's URL>; <reason>; gated <sha>`,
+which the fix attempt's work consumer carries from `Start`. It used to go to
+`review`, where a reader re-read the same red head. The coordinator can
+still `WaiveRed` a red that was not the code's while the producer waits in
+fix (before the next `Start`).

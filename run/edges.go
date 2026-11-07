@@ -8,6 +8,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,10 +48,17 @@ type Edges struct {
 }
 
 // LandPoll is the pause before a pending CI is asked again; HeadsEvery how
-// often the base tips are read again.
+// often the base tips are read again. CIAbsentWait bounds the wait for the
+// first check on a pushed group sha: GitHub queues a workflow's jobs as
+// check runs within seconds of a push (a queued job is pending, not
+// absent), so a sha with no check at all after this long has no CI
+// listening to the group branch, and the landing stops with a judgement
+// instead of waiting for ever (defect 40). 10 minutes is a guess, not
+// measured.
 const (
-	LandPoll   = 30 * time.Second
-	HeadsEvery = 10 * time.Second
+	LandPoll     = 30 * time.Second
+	HeadsEvery   = 10 * time.Second
+	CIAbsentWait = 10 * time.Minute
 )
 
 // Results drains the results that finished since the last call.
@@ -113,6 +121,14 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	if s.Mode == "hand" || s.Forge == "" || e.Forge == nil {
 		return
 	}
+	if ready, ok := e.Forge.(interface{ Ready() error }); ok {
+		// No token, no landing: nothing is merged or pushed as anyone else
+		// (defect 39); one judgement says the fix.
+		if err := ready.Ready(); err != nil {
+			e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "forge", Reason: err.Error()})
+			return
+		}
+	}
 	dir := e.repoDir(s.Repo)
 	if err := e.Git.Clone(ctx, s.Repo, dir); err != nil {
 		e.fault("land "+r.ID+" stream "+r.Stream+": clone", err)
@@ -120,9 +136,11 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 		return
 	}
 	req := git.LandRequest{RepoDir: dir, Repo: s.Repo, Stream: r.Stream, Base: s.Base, Mode: s.Mode, Heads: r.Heads}
+	absent := 0 // consecutive passes with no check at all on the gated sha
 	for {
 		res, err := git.LandPass(ctx, e.Git, e.Forge, req)
-		if err == nil && res.Outcome == git.OutcomeCIPending {
+		var wait bool
+		if wait, absent = waitAgain_internal(res, err, absent); wait {
 			if e.Pause(ctx, LandPoll) != nil {
 				return
 			}
@@ -141,6 +159,25 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 }
 
+// waitAgain_internal says whether a landing pass asks CI again after
+// LandPoll, and the count of consecutive passes that found no check at all.
+// A pending CI is waited for (the stall judgement covers a slow one); an
+// absent one only until CIAbsentWait, after which the pass's absent outcome
+// goes to layer 3 as no-ci (defect 40).
+func waitAgain_internal(res git.LandResult, err error, absent int) (bool, int) {
+	if err != nil {
+		return false, 0
+	}
+	switch res.Outcome {
+	case git.OutcomeCIPending:
+		return true, 0
+	case git.OutcomeCIAbsent:
+		absent++
+		return time.Duration(absent)*LandPoll < CIAbsentWait, absent
+	}
+	return false, 0
+}
+
 // landFault is a fault outcome's reason as an error.
 func landFault(res git.LandResult) error {
 	return fmt.Errorf("%s: %s", cmp.Or(string(res.Outcome), "no outcome"), cmp.Or(res.Reason, "no reason given"))
@@ -156,11 +193,35 @@ func landItem(id string, res git.LandResult, err error) steps.InboxItem {
 	case git.OutcomeLanded:
 		it.Outcome, it.Landed = "landed", res.LandedHeads
 	case git.OutcomeCIRed:
-		it.Outcome, it.Blamed = "red", res.BlamedHead // the green heads are not on the base: they land again
+		// the green heads are not on the base: they land again; the blamed
+		// one goes to fix with this finding
+		it.Outcome, it.Blamed, it.Reason = "red", res.BlamedHead, ciFinding(res)
+	case git.OutcomeCIAbsent:
+		it.Outcome = "no-ci"
+		it.Reason = fmt.Sprintf("no check was reported on %s within %s of its push", cmp.Or(res.GatedSHA, "the gated sha"), CIAbsentWait)
 	case git.OutcomeRung3Conflict, git.OutcomeLedgerFailed:
 		it.Outcome = "conflict"
 	}
 	return it
+}
+
+// ciFinding is a red gate as a fix attempt reads it: the failing checks,
+// the first failing check's URL, and the gate's own reason.
+func ciFinding(res git.LandResult) string {
+	var parts []string
+	if len(res.FailingCI) > 0 {
+		parts = append(parts, "failing: "+strings.Join(res.FailingCI, ", "))
+	}
+	if res.CIURL != "" {
+		parts = append(parts, res.CIURL)
+	}
+	if res.Reason != "" {
+		parts = append(parts, res.Reason)
+	}
+	if res.GatedSHA != "" {
+		parts = append(parts, "gated "+res.GatedSHA)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // repoDir is the one clone of repo under ReposDir.

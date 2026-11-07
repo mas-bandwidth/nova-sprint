@@ -278,6 +278,9 @@ func (w *world) cold3Drive(rng *rand.Rand) (Plan, string, bool) {
 }
 
 func cold3Work(rng *rand.Rand, p Card, cons []Card, rs map[string]Row, stream Stream, needs map[string]Card) (Plan, string, bool) {
+	if p.State == Ready && p.Red && rng.Intn(2) == 0 {
+		return cold3Move(p, cons, rs, stream, needs, WaiveRed{Reason: "the red was not the code"})
+	}
 	if p.State == Ready {
 		row := []string{"r1", "r2", "r3"}[rng.Intn(3)]
 		return cold3Move(p, cons, rs, stream, needs, Start{Row: row, Branch: "b-" + p.ID, Base: base})

@@ -387,14 +387,15 @@ func TestConformanceRed(t *testing.T) {
 	w.read("p1", "r2", "ok", "")
 	w.move("p1", ReadYes{})
 	w.move("p1", Red{Head: h1, Reason: "ci red"})
-	w.is("p1", Review)
+	w.is("p1", Ready) // a red goes to fix with the CI finding (intent rule 30)
 	assert.Equal(t, 2, w.card("p1").Review, "Finished and Red each raise the review")
-	w.refused("p1", ReadYes{}, "producer p1 has no read of review 2 that said ok; ReadYes needs one")
-	assert.Equal(t, "p1.r2.1", w.read("p1", "r3", "ok", ""), "a new read, cut at the new review")
-	assert.Equal(t, 2, w.card("p1.r2.1").Review)
-	assert.Equal(t, 1, w.card("p1.r1.1").Review, "the old read keeps the review it was cut at")
+	assert.Equal(t, "ci red", w.card("p1").Finding)
+	w.refused("p1", ReadYes{}, "producer p1 is in ready, ReadYes needs review")
+	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h2, "")})
+	assert.Equal(t, 3, w.card("p1").Review)
+	w.read("p1", "r3", "ok", "")
 	w.move("p1", ReadYes{})
-	w.move("p1", Landed{Head: h1})
+	w.move("p1", Landed{Head: h2})
 }
 
 func TestConformanceFaultAndBroken(t *testing.T) {

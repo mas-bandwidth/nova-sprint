@@ -310,8 +310,8 @@ ApplyG(W, g) ==
     [] g.kind = "fix"     -> [W EXCEPT !.ps[g.p].st = BackOf(W, g.p), !.ps[g.p].bounces = @ + 1]
     [] g.kind = "resolve" -> [W EXCEPT !.ps[g.p].st = "ready"]
     [] g.kind = "landed"  -> [W EXCEPT !.ps[g.p].st = "landed"]
-    [] g.kind = "red"     -> [W EXCEPT !.ps[g.p].st = "review", !.ps[g.p].review = @ + 1,
-                                       !.ps[g.p].red = TRUE]
+    [] g.kind = "red"     -> [W EXCEPT !.ps[g.p].st = BackOf(W, g.p), !.ps[g.p].review = @ + 1,
+                                       !.ps[g.p].red = TRUE]   \* to fix (intent rule 30)
     [] OTHER              -> W
 
 -----------------------------------------------------------------------------
