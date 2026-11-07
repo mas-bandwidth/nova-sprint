@@ -968,3 +968,11 @@ What the stitch changed in layer 5 and why:
   the verb that closes it (`nova-sprint judge <id> retry --reason <why>`).
 - **Owed at layer 6, done there:** main calls `ServeMain` on `EvalArg` and
   builds `NewEngine(RealClock{})`.
+
+### Built: no deal-ahead for a worker (stitch w3W, 2026-11-07)
+
+- `default.star`'s `width(row)` answers `ahead: 0` (it was `row.width`, v1's DealAhead): a worker
+  is dealt only what it can run now (defect 74: a bench dealt ahead held cards it could not
+  start while other rows sat idle). `row.width` itself is now a worker's advertised width
+  (min of nova-config's cores-cap width and its nova-reserve slots, `roster.Advertised`).
+  `TestDefaultAnswersEverySnapshot` says `Ahead: 0`.

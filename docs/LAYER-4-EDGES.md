@@ -245,7 +245,10 @@ Deal to report:
    row and reads its stdout. A line is only a wake: the runner runs
    `nova-sprint queue --as <row>` and acts on what the store says, so a
    lost, late or repeated message changes nothing. No poller, wake file or
-   second channel (LESSONS 4.1).
+   second channel (LESSONS 4.1). A periodic wake (every 10 s, a guess) runs
+   a pass beside the hook's. A pass only plans: it recovers the row's jobs
+   and takes; each job then runs on its own, so no pass waits on a job
+   (defect 66, w3W below).
 2. **Take** each ready consumer up to width: `nova-sprint take <id>@<gen>
    --as <row>` prints the brief, base, branch, done-when and tier.
 3. **Stage** a worktree at `<root>/jobs/<consumer>/repo` from the bench's
@@ -255,7 +258,10 @@ Deal to report:
    row's, never the machine's (LESSONS 4.21). Siblings the card reads are
    staged read-only the same way. A staging failure or timeout is a `fault`
    (LESSONS 4.14). A job directory that exists is refused, so none is
-   reused (LESSONS 4.15).
+   reused (LESSONS 4.15). Each repo a pass stages from is fetched once per
+   pass, before its jobs stage (defect 72). The worker writes `JOB.md` in the
+   job directory: the card, repo, base, checkout, paths, done-when and how
+   the card finishes (defect 68).
 4. **Run** under `nova-reserve run --slots <weight> --wait <d> --why
    <consumer> -- nova-sandbox ... -- <harness>`: the slot lives exactly as
    long as the harness (LESSONS 4.17); no slot within the wait is no start
@@ -278,12 +284,16 @@ Deal to report:
    head is on origin; a worktree with uncommitted changes is logged and kept.
 
 Results, classified by the adapter. `ok`: the result file says ok and a head
-past `base_sha` and `prior_head` is pushed. `fail`: the result file says
-broken, no result file, a rebase conflict, the card's tests red. `fault`:
+past `base_sha` and `prior_head` is pushed (a harness that said ok and left
+its changes uncommitted has its tree committed by the worker). `fail`: the
+result file says broken, no result file ("fail: no verdict" with the
+harness's last output), a rebase conflict, the card's tests red. `fault`:
 exit 134 or 137; a launch that died inside the 15 s grace on a provider 5xx,
-three times; a rate-limit or credit refusal; a staging failure; a restart
-that lost the harness. A read reports `ok` or `fix` with its finding file;
-a read's provider failure is a fault and spends no reader (LPM T30).
+three times; a rate-limit or credit refusal; a staging failure. A read
+reports `ok`, `fix` with its finding, or `fault` (no result file is a
+fault), never `fail`; a read's provider failure is a fault and spends no
+reader (LPM T30). A job the worker's own stop cuts short is "runner
+stopped": not reported, kept to resume.
 
 ```go
 type Harness interface {
@@ -312,8 +322,9 @@ by the runner, outside the wall, after the harness exits.
 
 The probe (LESSONS 4.22): at start and after any harness fault, the runner
 runs the adapter's probe job through the same wall, flags and proxy as a
-card. The row hooks in only after it passes; a failed probe stops the row's
-hook and opens a judgement carrying the probe's last line.
+card. The row hooks in only after it passes; a failed probe leaves the row
+unhooked and held with the probe's reason, and is retried after a backoff
+(30 s doubling to 10 min, guesses); it never exits the served worker.
 
 A card can never, on a bench (LESSONS 4.19, 4.20): reach the store or the
 bus (no DSN, no bus credentials, no sprint verb in the wall); start a
@@ -339,10 +350,14 @@ Restart loses nothing. The store is the truth; the runner keeps only
 nonce). On start it lists its job directories and runs `queue --as` per
 row. A `working` consumer whose harness is alive is adopted by pid and
 nonce, its deadline from the recorded start. One whose harness is gone is
-harvested and reported `fault`. One with a recorded result id is reported
-again under that id. A `working` consumer with no job directory is reported
-`fault` ("runner lost the job"). A job directory whose consumer is final is
-cleaned. Ready consumers are taken as at a wake. The runner gates on no
+resumed from its take receipt (`receipt.json`): staged again if it was
+taken, run again if it was staged or running, harvested if it left its
+result file; no fault. One with a recorded result id is reported again
+under that id. A `working` consumer with no job directory, or one whose
+job cannot be rebuilt, is released with no blame (`nova-sprint release`,
+with the partial head it pushed). A job directory whose consumer is final
+is cleaned. A record the sprint refuses three times the same way is moved
+to `<root>/quarantine/` and raised. Ready consumers are taken as at a wake. The runner gates on no
 other daemon (LESSONS 4.25): with the store unreachable its harnesses run
 on and its reports wait to retry.
 
@@ -409,15 +424,22 @@ MaxPass 6. The code is bound to it by `LandEdgeTrace.tla` and the walk in
 `staged`, `running`, `harvested`, `rebased`, `ciwait`, `reporting`,
 `recorded`, `cleaned`), slots in use, width, the job directory (exists,
 result id, pushed head), harness alive, the store's applied op ids. Actions:
-Wake (duplicated, lost), Take, Stage, StageFail, Run, Die, Harvest, Rebase,
-Conflict, Push, Report, ReplyLost, Clean, Withdraw, Crash and Restart (at
-any step), StoreDown. Invariants: guarantees 7 to 11; `working` within
-width; slots within capacity. Liveness: every `working` consumer of the row
+Wake (duplicated, lost), PassStart and PassEnd (the pass, a process of its
+own: only a pass takes, and it ends whatever its jobs do), Take, Stage,
+StageFail, Run, Die, Harvest, Rebase, Conflict, Push, Report, ReplyLost,
+Clean, Withdraw, Release (the restart's no-blame give-back), Stop (the
+worker's own stop: harnesses killed, jobs kept at staged), Crash and
+Restart (at any step), StoreDown. Invariants: guarantees 7 to 11; `working`
+within width; slots within capacity; `PassNeverWaitsOnJobs`;
+`StopIsNeverAFault`. Liveness: every `working` consumer of the row
 ends recorded or withdrawn. Reversed witnesses: a slot freed while its
 harness lives; a reused job directory; Clean before Report (work lost on a
 crash); a fresh result id on retry (two reports); Restart taking a working
 consumer as new (two harnesses on one card); a Die classified `fail` (a
-fault that bounces). Size: 2 consumers, width 2, 1 slot, 1 Crash.
+fault that bounces); a pass that waits on its jobs (`RunnerPassWaitsOnJobs`);
+a stop reported as a fault (`RunnerStopIsAFault`). Reach checks: a take
+while another job runs, a stop, a stopped job back in a pass, a release.
+Size: 2 consumers, width 2, 1 slot, 1 Crash.
 
 `tla/Push.tla`, the cursor: events, cursor, sends, lost replies, a crash.
 Invariant: every event below the cursor was confirmed sent. Witness: the
@@ -835,7 +857,8 @@ clock), mostly in `edge/worker/probe_test.go`.
   bench whose harness serves no model of a tier is still dealt its cards,
   which fault and return to ready; the roster (or policy) needs a bench's
   served tiers. `rebaseAndPRSteps_internal` is 67 lines (over the 60 rule;
-  untouched here).
+  untouched here). (Both done by w3W, below: the advertised tiers, and the
+  PR step gone with the forge.)
 
 ## Built: admission reads and the probe before the hook (stitch w2A, 2026-11-07)
 
@@ -867,3 +890,89 @@ clock), mostly in `edge/worker/probe_test.go`.
 - Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
   and carries no numbers) and not a read verb that writes. Tests: `edge/worker/beat_test.go`.
 
+
+### Built: the worker's live defects (stitch w3W, 2026-11-07)
+
+From the first bench runs (directives items 61, 65 to 74). Files:
+`edge/worker/pass.go` (passes and jobs), `recover.go` (restart, release,
+quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
+
+- **Passes apart from jobs (66).** A pass recovers the row's jobs, reads
+  the row and claims its dealt cards up to width, then returns; the jobs of
+  a pass run detached under the runner's WaitGroup, which the wake loop
+  waits on when it ends. A refused receipt in a job still ends the worker
+  (a fatal channel). A periodic wake (`WakeEvery`, 10 s, a guess) runs a
+  pass beside `hook.Wake()`. Model: `Runner.tla` (PassStart, PassEnd,
+  `PassNeverWaitsOnJobs`, witness `RunnerPassWaitsOnJobs`); the trace walk
+  emits the pass. Test: `TestLivePassTakesWhileAJobBlocks`,
+  `TestLivePeriodicWakeRunsAPass`.
+- **Probe failure never exits (61).** `ServeRow` (served, not `--once`)
+  holds the row unhooked with the probe's reason on stderr and probes again
+  after `ProbeBackoff` (30 s) doubling to `ProbeBackoffMax` (10 min), both
+  guesses; `--once` still exits on a failed probe.
+- **Restart and stop (70, 73).** The take receipt is kept as
+  `receipt.json` at take; a restart rebuilds the job from it (a re-take
+  would replay the take's op id at the pre-take gen): taken is staged again,
+  staged or running with no live harness is run again, running with a
+  result file is harvested. A job with no slot stays staged and the next
+  pass runs it. A working card with no job directory, or no receipt, is
+  released with no blame: `release` gains `--head` so the worker hands back
+  the partial head it pushed (checked as a finish's head is). "runner lost
+  the job" is gone. The worker's own stop cancels its jobs: each is "runner
+  stopped", its record kept at its state with no pid, never reported;
+  `edge.Exec` classifies a cancelled command as `canceled` ("stopped by its
+  caller"), never a timeout. Model: Stop, Release, `StopIsNeverAFault`,
+  witness `RunnerStopIsAFault`.
+- **A read's outcome (67).** `ReadOutcome` has three values (ok, fix,
+  fault) and a read's report is built only from it, so a read cannot send
+  "fail". No result file for a read is a fault; a harness's own fail
+  verdict on a read is a fix with its reason as the finding. A record
+  written before this (fail naming result.json) heals at its next send.
+- **No verdict and a left tree (the harness note).** A work harness that
+  exits 0 with no result file is "fail: no verdict: ..." with its last
+  output. One that says ok, leaves its changes uncommitted and HEAD where
+  it started has its tree committed by the worker (`GitOps.CommitAll`,
+  `--no-verify`, the row's identity) and pushed; ok with nothing to commit
+  is a fail saying so.
+- **JOB.md (68).** Written at stage: card, repository, base, checkout,
+  prior head and finding, paths, done-when, the card's prose, and "How this
+  card finishes" (`finishRules_internal`), which the prompt carries word for
+  word: the result file's forms, and no git push and no gh (the worker
+  pushes; the landing opens the PR).
+- **A refused record never wedges a pass (69).** Each send's refusal
+  (the first included) is logged and counted on the record; after
+  `RefusalLimit` (3, a guess) identical refusals the record moves to
+  `<root>/quarantine/<consumer>@<gen>` and is raised on stderr with what to
+  read. A quarantined card is neither resumed nor released.
+- **No forge in the worker (71).** The worker's contract ends at a pushed
+  head: `Runner.Forges`, `EnsurePR`, the PR step and the gh timeout are
+  gone. Of the three stitch tests that encoded worker-opens-PR,
+  `TestStitchStreamForgeWithNoAdapterIsAFaultNamingIt` is deleted (the
+  landing opens and gates the card's PR: `TestLandRungOneGatesTheCardsOwnPR`
+  in `edge/git`), the PR assertion of
+  `TestStitchDeadlineModelAndForgeComeFromTheReceipt` is dropped, and the
+  forge gates of the store-backed fake (`RequirePR`, `RequireGreenAtReport`)
+  with them.
+- **One fetch per repo per pass (72).** `GitOps.Fetch` runs once per repo a
+  pass stages from, the repos at once, under the work clone's write lock;
+  staging takes the read lock, so no fetch runs on a clone while another
+  job clones from it. Test: `TestLiveOneFetchPerRepoPerPass`.
+- **Advertised tiers and slots (65, 74).** The probe records the tiers whose
+  policy model the harness serves; at hook the worker beats once before its
+  first pass and every beat carries `--tiers` with its nova-reserve slots.
+  The store keeps them on the row (`Row.Tiers` beside `SlotsTotal`, the
+  heartbeat's columns; cleared at unhook and at a new session).
+  `roster.Advertised` gives an advertising worker those tiers at width
+  min(nova-config width, slots); the run tick, every verb's roster read and
+  the board use it. Why not a tier list in each adapter: the worker may hold
+  no tier literal (rows 14, 15,
+  `TestStitchNoDeadlineModelHostOrTierLiteralsInTheWorker`); an adapter
+  declares what it reaches (provider, model list, proxy routes) and the
+  probe turns that into tiers. opencode with only a deepseek route therefore
+  advertises flash, the catalog's tier for deepseek-flash: a choice that
+  rests on the catalog's tier map, not on a measured run (a guess as to
+  whether it does pro work well). A beat moves no gen, so a deal made from a
+  snapshot just before an advertisement is not fenced by it (one tick at
+  most). The default policy deals no ahead (`ahead: 0`).
+- **Fixed on the way.** A final card whose job is still in flight is left
+  for that job to clean (two cleaners raced on the directory).
