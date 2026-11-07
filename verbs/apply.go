@@ -65,9 +65,13 @@ func (e *Engine) rules(ctx context.Context, snap store.Snapshot) (policy.Limits,
 		}
 		vs.Active = &pv
 	}
-	a, _ := e.Answers.AnswerContext(ctx, vs, snap, roster.Roster{}, policy.Questions{})
+	a, failures := e.Answers.AnswerContext(ctx, vs, snap, roster.Roster{}, policy.Questions{})
 	if a.Version < 0 {
-		return policy.Limits{}, policy.Timeouts{}, broken("no policy version answered, not even the built-in", "nova-sprint policy check v"+fmt.Sprint(snap.Policy))
+		problem := "no policy version answered, not even the built-in"
+		if len(failures) > 0 {
+			problem += fmt.Sprintf(" (%s; %d failures)", clip(Redact(failures[0].Error())), len(failures))
+		}
+		return policy.Limits{}, policy.Timeouts{}, broken(problem, "nova-sprint policy check v"+fmt.Sprint(snap.Policy))
 	}
 	return a.Limits, a.Timeouts, nil
 }
