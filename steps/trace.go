@@ -17,7 +17,7 @@ import (
 // TLC then checks the trace is a behaviour of the model
 // (tla/check-trace.sh).
 //
-// The mapping. The model's store w is [ps, cs, up, sh, tko]:
+// The mapping. The model's store w is [ps, cs, up, sh, tko, pol]:
 //   - ps[p]: the producer p of the view: st its state (blocked is not in the
 //     model and never arises in a scenario), att its attempt, head the
 //     attempt number of its head (heads are attempt numbers in the model: the
@@ -31,12 +31,15 @@ import (
 //   - up[r]: the row is up. rg[r]: the row's gen less its gen at Init (every
 //     row write raises it; the fence reads it). sh[s]: the stream is held.
 //   - tko: the working consumers in take order (View.TakenAt).
+//   - pol: an active policy answers. It is not logged (left to the model):
+//     the walk's asker always answers, so the gate never closes in a walk.
 // inbox is the items in arrival order as [stamp, id, out], stamp the arrival
 // count the walk keeps, id the request's model id (ReqID), out the outcome
 // (ack for a stop). inflight is the requests in flight as [id, stream, sent].
 // js is the open judgements of the model's kinds (unserved, cannot-read,
-// policy) as [kind, about], about a tier as its model name ("t1", "t2"), a
-// card or a question as is. The Tick's answer is [rows |-> r]: the row the
+// policy, overlap, no-policy) as [kind, about], about a tier as its model
+// name ("t1", "t2"), the coordinator's row as "coord", a card or a question
+// as is. The Tick's answer is [rows |-> r]: the row the
 // walk's asker prefers, or "failed" (no answer, or no question asked).
 
 // TraceScenario names the model's world in the Go world: the tiers the
@@ -203,12 +206,15 @@ func JudgementsTLA(v *View, sc TraceScenario) string {
 	var out []string
 	for _, id := range sortedKeys(v.Judgements) {
 		j := v.Judgements[id]
-		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy"}, j.Kind) {
+		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy", "overlap", "no-policy"}, j.Kind) {
 			continue
 		}
 		about := j.About
-		if j.Kind == "unserved" {
+		switch j.Kind {
+		case "unserved":
 			about = sc.TierName(about)
+		case "no-policy":
+			about = "coord"
 		}
 		out = append(out, fmt.Sprintf("[kind |-> %q, about |-> %q]", j.Kind, about))
 	}

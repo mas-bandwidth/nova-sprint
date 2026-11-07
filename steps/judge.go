@@ -28,14 +28,14 @@ func (t *tick) judge(kind, about, question string) {
 	if t.isOpen(kind, about) || t.pending(kind, about) {
 		return
 	}
-	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question})
+	t.addJudge(judgement{kind: kind, about: about, question: question})
 }
 
 // judgeAgain opens a new episode whether or not one is open (a base's red is
 // met again).
 func (t *tick) judgeAgain(kind, about, question string) {
 	if !t.pending(kind, about) {
-		t.judges = append(t.judges, judgement{kind: kind, about: about, question: question})
+		t.addJudge(judgement{kind: kind, about: about, question: question})
 	}
 }
 
@@ -45,40 +45,61 @@ func (t *tick) judgeAt(kind, about string, n int, question string) {
 	if _, exists := t.v.Judgements[fmt.Sprintf("%s.%s.%d", kind, about, n)]; exists || t.pending(kind, about) {
 		return
 	}
-	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question, episode: n})
+	t.addJudge(judgement{kind: kind, about: about, question: question, episode: n})
 }
 
 // engine is the judgement for a defect here or in layer 2: a plan the
 // machine or the store refused on fresh state.
 func (t *tick) engine(about, why string) { t.judge("engine", about, why) }
 
-func (t *tick) pending(kind, about string) bool {
-	for _, j := range t.judges {
-		if j.kind == kind && j.about == about {
-			return true
-		}
+// addJudge plans j and indexes it by kind and about, so pending is one lookup
+// however many the tick opens (thousands of held producers each open an
+// overlap judgement; a scan per open was quadratic, measured 52 ms for
+// 4,908 on the working machine).
+func (t *tick) addJudge(j judgement) {
+	t.judges = append(t.judges, j)
+	if t.pend == nil {
+		t.pend = set{}
 	}
-	return false
+	t.pend[jkey(j.kind, j.about)] = struct{}{}
+}
+
+func jkey(kind, about string) string { return kind + "\x00" + about }
+
+func (t *tick) pending(kind, about string) bool {
+	_, ok := t.pend[jkey(kind, about)]
+	return ok
 }
 
 func (t *tick) isOpen(kind, about string) bool {
-	for _, j := range t.v.Judgements {
-		if j.Kind == kind && j.About == about && j.State == "open" {
-			return true
-		}
-	}
-	return false
+	_, ok := t.judged().open[jkey(kind, about)]
+	return ok
 }
 
 // episodes is how many judgements of kind about about exist, open or closed.
-func (t *tick) episodes(kind, about string) int {
-	n := 0
+func (t *tick) episodes(kind, about string) int { return t.judged().episodes[jkey(kind, about)] }
+
+// judgedIndex is the view's judgements by kind and about: the open ones and
+// how many episodes each has. Built once a tick, on first use (the view
+// does not change during a tick).
+type judgedIndex struct {
+	open     set
+	episodes map[string]int
+}
+
+func (t *tick) judged() judgedIndex {
+	if t.jidx.open != nil {
+		return t.jidx
+	}
+	t.jidx = judgedIndex{open: set{}, episodes: map[string]int{}}
 	for _, j := range t.v.Judgements {
-		if j.Kind == kind && j.About == about {
-			n++
+		k := jkey(j.Kind, j.About)
+		t.jidx.episodes[k]++
+		if j.State == "open" {
+			t.jidx.open[k] = struct{}{}
 		}
 	}
-	return n
+	return t.jidx
 }
 
 // riding is the writes of a judgement that rides in a group's op (a block's
@@ -88,7 +109,7 @@ func (t *tick) riding(kind, about, question string) []store.Write {
 		return nil
 	}
 	j := judgement{kind: kind, about: about, question: question}
-	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question, episode: -1})
+	t.addJudge(judgement{kind: kind, about: about, question: question, episode: -1})
 	return []store.Write{t.put(j)}
 }
 
