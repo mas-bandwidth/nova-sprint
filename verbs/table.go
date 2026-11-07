@@ -88,7 +88,7 @@ func startVerbs() []*verb {
 		{name: "check", group: "start", usage: "[--integrity]", flags: "integrity", max: 0, run: runCheck,
 			about: "the one doctor: nova-fleet check green, nova-tools at or above the pin, the store at this build's schema, the bus answering; --integrity also rebuilds the history",
 			needs: []string{"the fleet is not up: the nova-fleet command", "nova-tools below the pin: nova-fleet up", "the store not set up: nova-sprint up --as <you>"}},
-		{name: "up", group: "start", usage: "--as <coordinator> [--dash tailnet|public=<host>] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]", flags: "dash= services= key= run-on= version= continuation=", max: 0, run: runUp,
+		{name: "up", group: "start", usage: "--as <coordinator> [--dash tailnet|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]", flags: "dash= services= key= run-on= version= continuation=", max: 0, run: runUp,
 			about: "sets the sprint up, step by step, re-verifying from step 1 each time; hooks you in as coordinator once the store exists",
 			needs: []string{"no --as: nova-sprint up --as <you>", "you are not on the bus: nova-bus hook --as <you> under your session's Monitor tool", "the first step that does not verify: its own fix"}},
 		{name: "hook", group: "start", usage: "--as <name> --role worker|coordinator", flags: "role=", max: 0, run: runHook,

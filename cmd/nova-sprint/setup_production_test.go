@@ -286,7 +286,7 @@ func TestProductionSetupRunHostByTailnetName(t *testing.T) {
 }
 
 func TestProductionSetupBuildsPublicPullService(t *testing.T) {
-	machines := []verbs.FleetMachine{{Name: "public", Address: "8.8.8.8", Roles: []string{"services"}}}
+	machines := []verbs.FleetMachine{{Name: "public", Address: "public.example-tailnet.ts.net", Public: "8.8.8.8", Roles: []string{"services"}}}
 	target, err := publicDashboardTarget("public", "studio", machines, nil, "http://100.100.1.2:8080")
 	if err != nil || target.Service == nil || target.URL != "http://8.8.8.8:8080" || strings.Join(target.Service.Argv[:3], " ") != "/usr/bin/env nova-sprint dash" || len(target.Service.Keys) != 0 {
 		t.Fatalf("invalid public target: %v", err)
@@ -294,6 +294,59 @@ func TestProductionSetupBuildsPublicPullService(t *testing.T) {
 	conflict := []setupServiceRow{{Name: "sprint-dashboard", Machine: "other"}}
 	if _, err := publicDashboardTarget("public", "studio", machines, conflict, "http://100.100.1.2:8080"); err == nil {
 		t.Fatal("conflicting public service accepted")
+	}
+	// Fronted on 80: the URL up verifies is :80; the service listens on :8080.
+	target, err = publicDashboardTarget("public:80", "studio", machines, nil, "http://100.100.1.2:8080")
+	if err != nil || target.URL != "http://8.8.8.8:80" || target.Service.Argv[len(target.Service.Argv)-1] != ":8080" {
+		t.Fatalf("fronted target %+v: %v", target, err)
+	}
+	for _, bad := range []string{"public:0", "public:http", "public:080", ":80"} {
+		if _, err := publicDashboardTarget(bad, "studio", machines, nil, "http://100.100.1.2:8080"); err == nil {
+			t.Fatalf("%q accepted", bad)
+		}
+	}
+}
+
+// Each reason the public board cannot go on a machine is its own refusal,
+// with its own fix; none is a generic service-configuration one.
+func TestPublicDashboardTargetRefusalsAreDistinct(t *testing.T) {
+	machines := []verbs.FleetMachine{
+		{Name: "studio", Address: "studio.example-tailnet.ts.net", Public: "8.8.8.8", Roles: []string{"services"}},
+		{Name: "bench-1", Address: "bench-1.example-tailnet.ts.net", Public: "8.8.4.4", Roles: []string{"bench"}},
+		{Name: "edge-1", Address: "edge-1.example-tailnet.ts.net", Roles: []string{"services"}},
+		{Name: "edge-2", Address: "edge-2.example-tailnet.ts.net", Public: "100.100.1.9"},
+	}
+	for _, tc := range []struct{ chosen, problem, fix string }{
+		{"absent", "no machine named absent in nova-config", "nova-config machine list"},
+		{"studio", "studio runs the sprint; the public dashboard goes on another machine", "--dash public=<other>"},
+		{"bench-1", "public dashboard host bench-1 is also a bench", "remove the bench role from bench-1, or --dash public=<other machine>"},
+		{"edge-1", "machine edge-1 has no public address in nova-config", "nova-config machine set edge-1 --public <ip> --actor <you> --reason <why>"},
+		{"edge-2", `machine edge-2's public address "100.100.1.9" in nova-config is not a public IP`, "nova-config machine set edge-2 --public <ip> --actor <you> --reason <why>"},
+	} {
+		_, err := publicDashboardTarget(tc.chosen, "studio", machines, nil, "http://100.100.1.2:8080")
+		var op *verbs.OperationError
+		if !errors.As(err, &op) || op.Problem != tc.problem || op.Fix != tc.fix {
+			t.Fatalf("%s: %v", tc.chosen, err)
+		}
+	}
+	// A refusal keeps its own words through the setup's wrapping.
+	inner := &verbs.OperationError{Problem: "p", Fix: "f", Exit: 1}
+	if err := serviceConfigFailure("cannot inspect machine inventory: ", inner); err != error(inner) {
+		t.Fatal(err)
+	}
+	if err := serviceConfigFailure("cannot inspect machine inventory: ", errors.New("boom")); !strings.Contains(err.Error(), "cannot inspect machine inventory: boom") {
+		t.Fatal(err)
+	}
+}
+
+// machine list --json carries the optional "public" field (nova-tools 2.0.3).
+func TestFleetMachinesReadPublicAddress(t *testing.T) {
+	f := verbs.FleetServices{Command: func(context.Context, string, ...string) ([]byte, error) {
+		return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":2},"items":[{"kind":"machine","fields":{"name":"edge-1","address":"edge-1.example-tailnet.ts.net","public":"8.8.8.8","roles":"services"}},{"kind":"machine","fields":{"name":"studio","address":"studio.example-tailnet.ts.net","roles":"services"}}]}`), nil
+	}}
+	machines, err := f.Machines(context.Background())
+	if err != nil || len(machines) != 2 || machines[0].Public != "8.8.8.8" || machines[1].Public != "" {
+		t.Fatal(machines, err)
 	}
 }
 
