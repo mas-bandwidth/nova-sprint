@@ -7,9 +7,9 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting", "fail"];
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"]; // Glenn 2026-11-07: no fail state on the board
 // Columns of the streams table, in flow order.
-var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed", "fail"];
+var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
 var LANDED_AT = 2 + FLOW.indexOf("landed"), COST_AT = 2 + FLOW.length;
 var POLL_MS = 1000;
@@ -287,7 +287,6 @@ function streamOrder(d) {
 }
 function streamStatus(state, c, total) {
   if (total > 0 && c.landed === total) return ["landed", "done"];
-  if (total > 0 && c.fail > 0 && c.landed + c.fail === total) return ["fail", "failed"];
   if (state === "stopped") return ["stopped", "critical"];
   // held only for a hold set on the stream (the server's State "held", hold <stream>): cards that all
   // wait on their needs are waiting, never held (the owner 2026-10-13: "don't show held on a work stream
