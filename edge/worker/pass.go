@@ -378,13 +378,13 @@ func (r *Runner) finishJob_internal(p *prepared_internal, fetchErr error) error 
 				return r.stopped_internal(p)
 			}
 			p.rec.State, p.rec.Outcome = JobReporting, Outcome{Result: "fault", Reason: "staging fault: " + fetchErr.Error()}
-			return r.sendReportAndClean_internal(ctx, jobDir, p.rec)
+			return r.send_internal(ctx, jobDir, p.rec)
 		}
 		if err := r.stageStep_internal(ctx, &p.job, &p.rec); err != nil {
 			if ctx.Err() != nil {
 				return r.stopped_internal(p)
 			}
-			return r.sendReportAndClean_internal(ctx, jobDir, p.rec)
+			return r.send_internal(ctx, jobDir, p.rec)
 		}
 	}
 	if p.rec.State != JobHarvested {
@@ -395,7 +395,16 @@ func (r *Runner) finishJob_internal(p *prepared_internal, fetchErr error) error 
 	if err := r.rebaseAndTestStep_internal(ctx, jobDir, &p.rec); err != nil {
 		return err
 	}
-	return r.sendReportAndClean_internal(ctx, jobDir, p.rec)
+	return r.send_internal(ctx, jobDir, p.rec)
+}
+
+// send_internal sends a finished job's report; a refusal is counted on its
+// record as every later resend's is (resendErr_internal), so the first
+// refusal is one of the RefusalLimit.
+func (r *Runner) send_internal(ctx context.Context, jobDir string, rec JobRecord) error {
+	err := r.sendReportAndClean_internal(ctx, jobDir, rec)
+	r.resendErr_internal(ctx, jobDir, rec, err)
+	return err
 }
 
 // runAndHarvest_internal runs the harness (unless it already ran and wrote

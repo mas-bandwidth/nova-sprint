@@ -177,6 +177,19 @@ func TestReleaseIsNoBlame(t *testing.T) {
 	}
 }
 
+// A worker that restarted releases a working work card with the partial
+// head it pushed (--head), checked as a finish's is; the producer goes back
+// at that head with no bounce.
+func TestReleaseCarriesThePushedHead(t *testing.T) {
+	w := newWorld(t)
+	takeW1(t, w)
+	want(t, w.do("alice", "release", "p1.w1@2", "--reason", "runner restarted", "--head", tip), 1, "is not the tip of sprint/s/p1")
+	want(t, w.do("alice", "release", "p1.w1@2", "--reason", "runner restarted", "--head", head), 0, "RELEASED p1.w1")
+	if p := w.snap(t).Cards["p1"]; p.State != "ready" || p.Head != head || p.Bounces != 0 {
+		t.Fatalf("the producer after a release with its head: %+v", p)
+	}
+}
+
 func TestReleaseRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "no reason", as: "alice", args: []string{"release", "p1.w1@1"}, exit: 1, want: []string{"a release needs its reason"}},
@@ -226,6 +239,10 @@ func TestBeat(t *testing.T) {
 		t.Fatalf("a repeated beat wrote to the log")
 	}
 	want(t, w.do("alice", "beat", "--load1", "0", "--cores", "8", "--slots-used", "0", "--slots-total", "8"), 0, "applied")
+	want(t, w.do("alice", "beat", "--load1", "0", "--cores", "8", "--slots-used", "0", "--slots-total", "8", "--tiers", "pro,flash"), 0, "applied")
+	if r := w.snap(t).Rows["alice"]; r.Tiers != "flash,pro" {
+		t.Fatalf("the advertised tiers are kept in the store's order: %q", r.Tiers)
+	}
 }
 
 func TestBeatRefusals(t *testing.T) {
@@ -240,6 +257,7 @@ func TestBeatRefusals(t *testing.T) {
 		{name: "a negative load", as: "alice", args: with("--load1", "-1"), exit: 2, want: []string{"--load1 takes"}},
 		{name: "no cores", as: "alice", args: with("--cores", "0"), exit: 2, want: []string{"--cores takes a whole number, 1 or more"}},
 		{name: "slots over the total", as: "alice", args: with("--slots-used", "5"), exit: 2, want: []string{"--slots-used 5 is more than --slots-total 4"}},
+		{name: "an unknown tier", as: "alice", args: append(with("--load1", "1"), "--tiers", "flash,turbo"), exit: 2, want: []string{"--tiers takes a comma list of flash, pro, heavy, frontier"}},
 		{name: "a flag missing", as: "alice", args: []string{"beat", "--load1", "1"}, exit: 2, want: []string{"--cores takes a whole number"}},
 		{name: "not hooked", as: "dave", args: append([]string{"beat"}, good...), exit: 1, want: []string{"hook in first", "nova-sprint hook --as dave --role worker"}},
 	})

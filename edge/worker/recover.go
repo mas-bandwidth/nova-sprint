@@ -69,7 +69,9 @@ func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_
 	var out []launch_internal
 	for id, rec := range disk {
 		if f, isFinal := finalByID[id]; isFinal {
-			r.finalJob_internal(ctx, f, rec)
+			if !r.isRunningInFlight_internal(id) { // a job in flight ends and cleans itself
+				r.finalJob_internal(ctx, f, rec)
+			}
 		} else if w, isWorking := workingByID[id]; isWorking && !r.isRunningInFlight_internal(id) {
 			if !jobMatchesSummary_internal(next, w, rec) {
 				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
