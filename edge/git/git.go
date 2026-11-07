@@ -78,6 +78,10 @@ type Config struct {
 	// so a push is the token's identity and never the host's own login
 	// (defect 39). It reaches git in the environment, never in argv.
 	Token string
+	// GitHubCredential is the gh binary git asks for https://github.com's
+	// credential (`gh auth git-credential`, as the identity GH_TOKEN or
+	// GH_CONFIG_DIR names); "" leaves the host's own git configuration.
+	GitHubCredential string
 }
 
 // tokenEnv_internal is the credential helper that answers git with the
@@ -106,8 +110,11 @@ func New(cfg Config) *Client {
 	return &Client{cfg: cfg}
 }
 func (c *Client) gitEnv_internal(extra ...string) []string {
-	env := append([]string{"GIT_TERMINAL_PROMPT=0", "GIT_AUTHOR_NAME=" + c.cfg.AuthorName, "GIT_AUTHOR_EMAIL=" + c.cfg.AuthorEmail, "GIT_COMMITTER_NAME=" + c.cfg.AuthorName, "GIT_COMMITTER_EMAIL=" + c.cfg.AuthorEmail}, tokenEnv_internal(c.cfg.Token)...)
-	return append(env, extra...)
+	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_AUTHOR_NAME=" + c.cfg.AuthorName, "GIT_AUTHOR_EMAIL=" + c.cfg.AuthorEmail, "GIT_COMMITTER_NAME=" + c.cfg.AuthorName, "GIT_COMMITTER_EMAIL=" + c.cfg.AuthorEmail}
+	if c.cfg.Token != "" {
+		return append(append(env, tokenEnv_internal(c.cfg.Token)...), extra...)
+	}
+	return append(append(env, credentialEnv_internal(c.cfg.GitHubCredential)...), extra...)
 }
 
 // runGitEnv_internal runs git; a run that could not complete (a timeout, a
@@ -164,6 +171,33 @@ func (c *Client) LsRemote(ctx context.Context, repoDir, ref string) (string, boo
 	}
 	return "", false, nil
 }
+
+// Tip is branch's tip at the clone address url (CloneURL), read with one
+// `git ls-remote` and no clone: ok is false when url has no such branch. A
+// bare branch name is read as refs/heads/<branch>, never a tag.
+func (c *Client) Tip(ctx context.Context, url, branch string) (string, bool, error) {
+	if url == "" || branch == "" {
+		return "", false, fmt.Errorf("git refused: a tip needs a clone address and a branch")
+	}
+	ref := branch
+	if !strings.HasPrefix(ref, "refs/") {
+		ref = "refs/heads/" + ref
+	}
+	stdout, stderr, code, err := c.runGit_internal(ctx, "", c.cfg.PushTimeout, "ls-remote", "--exit-code", url, ref)
+	switch {
+	case err != nil:
+		return "", false, err
+	case code == 2:
+		return "", false, nil
+	case code != 0:
+		return "", false, c.failed_internal(code, stdout, stderr, nil, "ls-remote", "--exit-code", url, ref)
+	}
+	if fields := strings.Fields(stdout); len(fields) > 0 && isFullSHA_internal(fields[0]) {
+		return strings.ToLower(fields[0]), true, nil
+	}
+	return "", false, c.failed_internal(code, stdout, stderr, fmt.Errorf("no sha in its output"), "ls-remote", "--exit-code", url, ref)
+}
+
 func (c *Client) lsRemoteSHA_internal(ctx context.Context, repoDir, target string) (string, bool, error) {
 	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.PushTimeout, "ls-remote", "origin")
 	if err != nil {
@@ -459,7 +493,7 @@ func isFullSHA_internal(s string) bool {
 	return true
 }
 
-// Clone makes dir a working clone of repo, once: a dir that already holds a
+// Clone makes dir a working clone of repo (a clone address: CloneURL), once: a dir that already holds a
 // .git is left as it is (run keeps one clone per stream repo, LAYER-4
 // "Git"). It never fetches into an existing clone; LandPass fetches what it
 // needs.
@@ -475,7 +509,7 @@ func (c *Client) Clone(ctx context.Context, repo, dir string) error {
 		return err
 	}
 	if code != 0 {
-		return fmt.Errorf("%w; check the stream's repo (nova-sprint stream show)", c.failed_internal(code, stdout, stderr, nil, "clone", "--no-tags", repo, dir))
+		return fmt.Errorf("%w; check the stream's repo: nova-sprint check", c.failed_internal(code, stdout, stderr, nil, "clone", "--no-tags", repo, dir))
 	}
 	return nil
 }

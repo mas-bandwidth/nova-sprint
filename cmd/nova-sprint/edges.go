@@ -22,8 +22,21 @@ import (
 
 // gitEdge is git as the sprint: with the control seat's token in the
 // process, every git call (the landing's pushes too) authenticates with it
-// and never with the host's own credential helper (defect 39).
-func gitEdge() *git.Client { return git.New(git.Config{Token: os.Getenv(forge.TokenEnv)}) }
+// and never with the host's own credential helper (defect 39); otherwise,
+// with GH_TOKEN or GH_CONFIG_DIR set, gh is git's one credential helper for
+// https://github.com, the address git.CloneURL gives a github stream.
+func gitEdge() *git.Client {
+	return git.New(git.Config{Token: os.Getenv(forge.TokenEnv), GitHubCredential: githubCredential(os.Getenv)})
+}
+
+// githubCredential is the gh binary for git's github.com credential, or ""
+// when the process has no GitHub identity (the host's git config answers).
+func githubCredential(env func(string) string) string {
+	if env("GH_TOKEN") == "" && env("GH_CONFIG_DIR") == "" {
+		return ""
+	}
+	return "gh"
+}
 
 // forgeEdge is GitHub through gh, as the token nova-secrets exec gave this
 // process in GH_GATE_TOKEN (the control seat's); with none it refuses, and
@@ -33,9 +46,10 @@ func forgeEdge() *forge.Client {
 	return forge.New(forge.Config{Identity: forge.Identity{Name: cmp.Or(login, "sprint"), ExpectedLogin: login, Token: os.Getenv(forge.TokenEnv)}})
 }
 
-// origin is a stream's repository at origin, read through one clone per
-// repository under the state dir (the git edge has no clone-free
-// ls-remote): run keeps its own the same way.
+// origin is a stream's repository at origin, by its clone address
+// (git.CloneURL): a tip is one ls-remote of the address; a containment is
+// read in one clone per address under the state dir (run keeps its own the
+// same way).
 type origin struct {
 	git *git.Client
 	dir string
@@ -50,12 +64,8 @@ func (o *origin) clone(ctx context.Context, repo string) (string, error) {
 	return dir, o.git.Clone(ctx, repo, dir)
 }
 
-func (o *origin) Tip(ctx context.Context, repo, branch string) (string, bool, error) {
-	dir, err := o.clone(ctx, repo)
-	if err != nil {
-		return "", false, err
-	}
-	return o.git.LsRemote(ctx, dir, branch)
+func (o *origin) Tip(ctx context.Context, url, branch string) (string, bool, error) {
+	return o.git.Tip(ctx, url, branch)
 }
 
 func (o *origin) Contains(ctx context.Context, repo, ancestor, head string) (bool, error) {

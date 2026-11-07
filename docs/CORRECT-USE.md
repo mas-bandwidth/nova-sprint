@@ -38,7 +38,7 @@ Each step refuses until the one before it has happened.
 
 | step | verb | refuses until | the refusal names |
 |---|---|---|---|
-| 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers | the nova-tools command for each missing piece, one line each |
+| 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); nova-tools at the pin; `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers; then the sprint's health: every stream's repository and base at origin, no open judgement, run serving, something dealt while producers are ready, no landing waiting on a person | every line it checked; each `CHECK RED` line names its fix; exit non-zero while any is red |
 | 2 | `up` | `check` passes | `nova-sprint check` |
 | 3 | `stream add` | the store is at the schema `up` makes | `nova-sprint up` |
 | 4 | `add` | the stream exists; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)); every need names a card | `stream add <s>`; the missing sections of the brief by name; the unknown need |
@@ -143,3 +143,28 @@ So:
   a second way is forbidden.
 - The coordinator is a row like any other: hooked in, driven by pushes, with
   judgement verbs instead of take and finish.
+
+## Built (stitch, 2026-11-07)
+
+- `check` says the sprint's health, not only the plumbing's (it once printed
+  four green lines while 24 of 25 streams could not be cloned, 28 judgements
+  were open and nothing dealt). It prints every line and exits non-zero when
+  any is red; each red line names its one fix. The lines, in order: the
+  fleet; nova-tools against the pin (below is red, above is a `CHECK WARN`,
+  exit 0); the store at schema; the bus; with `--integrity` the history; then,
+  only with the store at schema, one line per stream (its repository reached
+  at its clone address by `git ls-remote` and its base branch there), one line
+  per kind of open judgement (the ids, the oldest's question, the `judge`
+  command), who runs the sprint (the chooser lock, and the name `sprint` on
+  the bus), the width (working and dealt against the open width, and when
+  producers are ready and none is dealt, why: stopped, no run, no open row,
+  held streams, streams with no base head, tiers no open row serves, and the
+  steps' own idle judgement), and one line per stream with producers
+  merging (what its landing waits for: a judgement about it, run, its hold, a
+  hand landing, the lander's merge into its group branch, or CI at the group
+  branch's tip). `check` stays a client verb: it reads the store and calls the
+  edges, and starts nothing.
+- A stream named `<org>/<repo>` with `--forge github` is reached at
+  `https://github.com/<org>/<repo>.git` (`git.CloneURL`, LAYER-4 "Clone
+  addresses"); `stream add` checks its base there, and a hand stream named
+  `<org>/<repo>` is told to give the stream a forge.

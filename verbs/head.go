@@ -25,27 +25,31 @@ func (e *Engine) headReady(ctx context.Context, snap store.Snapshot, c store.Car
 		return broken("the git edge is not configured", "nova-sprint check")
 	}
 	s := snap.Streams[c.Stream]
-	tip, ok, err := e.Origin.Tip(ctx, s.Repo, c.Branch)
+	url, err := streamURL(s)
+	if err != nil {
+		return err
+	}
+	tip, ok, err := e.Origin.Tip(ctx, url, c.Branch)
 	if err != nil {
 		return RefusalOr(err, broken("git ls-remote of "+s.Repo+" failed ("+errText(err)+")", "check the repository is readable, then finish again"))
 	}
 	if !ok || tip != head {
 		return refuse("head "+head+" is not the tip of "+c.Branch+" at origin", "push first: git push origin "+c.Branch)
 	}
-	return e.upToGroup(ctx, s, c, head)
+	return e.upToGroup(ctx, s, url, c, head)
 }
 
 // upToGroup refuses a head that does not contain the stream's group head.
-func (e *Engine) upToGroup(ctx context.Context, s store.Stream, c store.Card, head string) error {
+func (e *Engine) upToGroup(ctx context.Context, s store.Stream, url string, c store.Card, head string) error {
 	group := git.StreamBranch(s.Name)
-	tip, ok, err := e.Origin.Tip(ctx, s.Repo, group)
+	tip, ok, err := e.Origin.Tip(ctx, url, group)
 	if err != nil {
 		return RefusalOr(err, broken("git ls-remote of "+s.Repo+" failed ("+errText(err)+")", "finish again"))
 	}
 	if !ok {
 		return nil
 	}
-	in, err := e.Origin.Contains(ctx, s.Repo, tip, head)
+	in, err := e.Origin.Contains(ctx, url, tip, head)
 	if err != nil {
 		return RefusalOr(err, broken("git merge-base of "+s.Repo+" failed ("+errText(err)+")", "finish again"))
 	}
@@ -53,6 +57,17 @@ func (e *Engine) upToGroup(ctx context.Context, s store.Stream, c store.Card, he
 		return refuse("bring "+c.Branch+" up to the stream head", "git fetch origin "+group+", git rebase origin/"+group+", run the gates, git push --force-with-lease origin "+c.Branch)
 	}
 	return nil
+}
+
+// streamURL is the stream's repository as the git edge reaches it
+// (git.CloneURL); a repository it cannot address is a refusal naming the
+// form.
+func streamURL(s store.Stream) (string, error) {
+	url, err := git.CloneURL(s.Repo, s.Forge)
+	if err != nil {
+		return "", RefusalOr(err, refuse("stream "+s.Name+": "+err.Error(), "nova-sprint check"))
+	}
+	return url, nil
 }
 
 func fullSHA(s string) bool {
