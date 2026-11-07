@@ -144,3 +144,12 @@ func missingNames(values map[string]string) string {
 	slices.Sort(names)
 	return strings.Join(names, ", ") + " not set"
 }
+
+// badNumber says why s is not the number wanted: the parse's byte and the
+// first bytes when it did not parse, else what was given.
+func badNumber(s string, err error) string {
+	if err != nil {
+		return edge.ParseFailure(err, []byte(s))
+	}
+	return fmt.Sprintf("got %q", Redact(s))
+}

@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -38,8 +39,12 @@ func TestDashboardProbeChecksHealthEpochAndPublicCache(t *testing.T) {
 				return &http.Response{StatusCode: status, Header: http.Header{"Cache-Control": []string{tc.cache}, "Etag": []string{tc.etag}}, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
 			})}
 			got, err := p.Verify(context.Background(), "http://host:8080", 3, tc.public)
-			if err != nil || got != tc.want {
+			var notReady *DashboardNotReady
+			if got != tc.want || (tc.want && err != nil) || (!tc.want && !errors.As(err, &notReady)) {
 				t.Fatal(got, err)
+			}
+			if tc.name == "invalid json" && !strings.Contains(err.Error(), "parse failed at byte 22") {
+				t.Fatal(err)
 			}
 		})
 	}

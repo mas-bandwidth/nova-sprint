@@ -168,8 +168,11 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 		return SetupCheck{}, err
 	}
 	ok, err = r.Dashboard.Verify(ctx, target.URL, snap.Epoch, target.Public)
-	if err != nil && ctx.Err() == nil && errors.Is(err, errDashboardReach) {
-		return SetupCheck{Action: true}, nil
+	var notReady *DashboardNotReady
+	if err != nil && ctx.Err() == nil && (errors.Is(err, errDashboardReach) || errors.As(err, &notReady)) {
+		// Not up yet: act; the line says why, and is printed when the
+		// step still does not verify after the act.
+		return SetupCheck{Action: true, Line: "UP 5/8 dashboard: " + target.URL + ": " + Redact(err.Error())}, nil
 	}
 	return setupReady(ok, "UP 5/8 dashboard: "+target.URL+": VERIFIED", err)
 }

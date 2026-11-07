@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -59,8 +61,11 @@ func (p PGBackups) Backup(ctx context.Context, out string) (BackupInfo, error) {
 	}
 	schema, err := source.Schema(ctx)
 	source.Close()
-	if err != nil || !schema.Current {
-		return BackupInfo{}, fmt.Errorf("source schema is not current")
+	if err != nil {
+		return BackupInfo{}, cause("source schema is not current", err)
+	}
+	if !schema.Current {
+		return BackupInfo{}, fmt.Errorf("source schema is not current (schema %s)", schema.Hash)
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -98,17 +103,18 @@ func publishDump(body []byte, target string) error {
 	return err
 }
 func (p PGBackups) checkDumpVersion(ctx context.Context) error {
-	out, err := exec.CommandContext(ctx, "pg_dump", "--version").Output()
+	out, err := Output(ctx, "pg_dump", "--version")
 	if err != nil {
-		return &OperationError{Problem: "pg_dump is missing", Fix: "install pg_dump at least as new as the server", Exit: 1}
+		return &OperationError{Problem: "pg_dump is missing (" + Redact(err.Error()) + ")", Fix: "install pg_dump at least as new as the server", Exit: 1}
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) < 3 {
-		return &OperationError{Problem: "pg_dump version is unknown", Fix: "install pg_dump at least as new as the server", Exit: 1}
+		return &OperationError{Problem: "pg_dump version is unknown (" + edge.ParseRefused("fewer than 3 words", 0, out) + ")", Fix: "install pg_dump at least as new as the server", Exit: 1}
 	}
-	major, err := strconv.Atoi(strings.Split(fields[len(fields)-1], ".")[0])
+	version := fields[len(fields)-1]
+	major, err := strconv.Atoi(strings.Split(version, ".")[0])
 	if err != nil {
-		return cause("pg_dump version is unknown", err)
+		return fmt.Errorf("pg_dump version is unknown: %s", edge.ParseFailure(err, out))
 	}
 	cfg, err := pgx.ParseConfig(p.DSN)
 	if err != nil {
@@ -125,8 +131,11 @@ func (p PGBackups) checkDumpVersion(ctx context.Context) error {
 		return cause("cannot inspect PostgreSQL version", err)
 	}
 	n, err := strconv.Atoi(server)
-	if err != nil || major < n/10000 {
-		return &OperationError{Problem: "pg_dump is older than the server", Fix: "install pg_dump at least as new as the server", Exit: 1}
+	if err != nil {
+		return fmt.Errorf("cannot inspect PostgreSQL version: server_version_num: %s", edge.ParseFailure(err, []byte(server)))
+	}
+	if major < n/10000 {
+		return &OperationError{Problem: fmt.Sprintf("pg_dump is older than the server (pg_dump %s, server %d)", version, n/10000), Fix: "install pg_dump at least as new as the server", Exit: 1}
 	}
 	return nil
 }
@@ -140,9 +149,9 @@ func runPGPassword(ctx context.Context, dsn, password, program string, args ...s
 		return err
 	}
 	cmd.Env = env
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
+	// Output is kept only for a failure, which carries the command, its exit
+	// code and its first lines (the env, with PGPASSWORD, is never printed).
+	return runTool(cmd, nil)
 }
 func pgProcessEnv(source []string, dsn, password string) ([]string, error) {
 	env := safeProcessEnv(source)
@@ -151,7 +160,7 @@ func pgProcessEnv(source []string, dsn, password string) ([]string, error) {
 	}
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return nil, err
+		return nil, cause("invalid postgres configuration", err)
 	}
 	cfg.Password = password
 	mode := "disable"
@@ -214,7 +223,7 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 		defer cancel()
 		if err := runPG(stopCtx, "", "pg_ctl", "-D", dataDir, "-m", "immediate", "-w", "stop"); err != nil {
 			cleanup = false
-			resultErr = fmt.Errorf("temporary PostgreSQL could not stop")
+			resultErr = errors.Join(resultErr, cause("temporary PostgreSQL could not stop", err))
 		}
 	}()
 	dsn := "host=" + dir + " dbname=postgres sslmode=disable"
