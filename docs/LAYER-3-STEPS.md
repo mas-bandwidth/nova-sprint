@@ -554,3 +554,19 @@ judgement opens when a fix read's finding is byte-equal to the producer's
 saw. `land-rate` is per stream, not per route. `base_regate`'s timing is the
 edge's. `stitch` and `prices` are not consumed here. Reports arriving
 through the inbox are not in the model (LAYER-6's path is).
+
+**Stitch, landing results (2026-11-07, branch `v2-stitch-c3`).** A `red`
+land result's `Reason` (the failing checks, the first failing URL, the gate's
+reason and the gated sha, from run's edges) is written into the `card.Red`
+reason as `CI red at <head> on <base>: ...`, and layer 2 now sends the
+producer to fix with it as the finding (intent rule 30; it was `review`).
+Two outcomes are new: `no-ci` (the gated group sha got no check within run's
+`CIAbsentWait`, defect 40) opens one `no-ci` judgement about the stream naming
+`sprint/<stream>/group` and the fix; `forge` (run's forge has no token,
+defect 39) opens one `forge` judgement with the refusal's fix. Neither moves
+a card; the request leaves flight and is asked again under the open
+judgement. `Steps.tla`'s red result moves the producer to `BackOf` (fix)
+the same way; the burst scenario's MaxAtt is 2 (it was 1) so a red's fix is
+dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
+(the fix attempt carries the finding), `TestTickNoCIJudges`.
+
