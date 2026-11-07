@@ -319,7 +319,6 @@ func TestPublicDashboardTargetRefusalsAreDistinct(t *testing.T) {
 	for _, tc := range []struct{ chosen, problem, fix string }{
 		{"absent", "no machine named absent in nova-config", "nova-config machine list"},
 		{"studio", "studio runs the sprint; the public dashboard goes on another machine", "--dash public=<other>"},
-		{"bench-1", "public dashboard host bench-1 is also a bench", "remove the bench role from bench-1, or --dash public=<other machine>"},
 		{"edge-1", "machine edge-1 has no public address in nova-config", "nova-config machine set edge-1 --public <ip> --actor <you> --reason <why>"},
 		{"edge-2", `machine edge-2's public address "100.100.1.9" in nova-config is not a public IP`, "nova-config machine set edge-2 --public <ip> --actor <you> --reason <why>"},
 	} {
@@ -328,6 +327,10 @@ func TestPublicDashboardTargetRefusalsAreDistinct(t *testing.T) {
 		if !errors.As(err, &op) || op.Problem != tc.problem || op.Fix != tc.fix {
 			t.Fatalf("%s: %v", tc.chosen, err)
 		}
+	}
+	// A bench serves the public board and works cards (Glenn, 2026-11-07).
+	if target, err := publicDashboardTarget("bench-1", "studio", machines, nil, "http://100.100.1.2:8080"); err != nil || target.URL != "http://8.8.4.4:8080" {
+		t.Fatalf("public board on a bench: %+v: %v", target, err)
 	}
 	// A refusal keeps its own words through the setup's wrapping.
 	inner := &verbs.OperationError{Problem: "p", Fix: "f", Exit: 1}

@@ -55,12 +55,19 @@ type Source interface {
 }
 
 // Worker is a bench machine dealt to: every tier, the worker harness.
+// Held is why the row is held at width 0 ("" when it is not): a bench
+// with no cores in nova-config loads at width 0, shown held with that
+// reason, and is dealt nothing until its cores are set.
 type Worker struct {
 	Name    string
 	Width   int
 	Tiers   []string
 	Harness string
+	Held    string
 }
+
+// NoCores is the Held reason of a bench with no cores in nova-config.
+const NoCores = "no cores in nova-config"
 
 // Kin is an enabled friend dealt to: its own width, tiers, model and
 // harness.
@@ -116,9 +123,11 @@ func (r Roster) RefusedNamed(name string) (Refused, bool) {
 // width min(cores, cap) serving every tier; every enabled friend is kin at
 // its own width and tiers. cap is policy's limits().fleet_width_cap (drift
 // row 26; the built-in says 8). A cap below 1 and a failed read are errors.
-// A row that cannot be loaded (no name, a name given twice, a bench with no
-// cores, a negative width, an unknown tier) is skipped and named in Refused:
-// the roster is not guessed, and one bad row never empties it.
+// A bench with no cores loads at width 0, Held NoCores (Glenn,
+// 2026-11-07: a machine with no core count is held, never refused). A row
+// that cannot be loaded (no name, a name given twice, a negative width, an
+// unknown tier) is skipped and named in Refused: the roster is not
+// guessed, and one bad row never empties it.
 func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 	if cap < 1 {
 		return Roster{}, fmt.Errorf("roster: width cap %d is below 1", cap)
@@ -150,11 +159,11 @@ func (r *Roster) addWorkers(ms []Machine, cap int) {
 			r.refuse(m.Name, KindWorker, "machine "+why)
 			continue
 		}
+		w := Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Harness: WorkerHarness}
 		if m.Cores < 1 {
-			r.refuse(m.Name, KindWorker, fmt.Sprintf("machine %s has %d cores; set its cores in nova-config", m.Name, m.Cores))
-			continue
+			w.Width, w.Held = 0, NoCores
 		}
-		r.Workers[m.Name] = Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Harness: WorkerHarness}
+		r.Workers[m.Name] = w
 	}
 }
 

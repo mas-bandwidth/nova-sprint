@@ -42,8 +42,8 @@ func TestConfigRosterSourceSnapshotIsolation(t *testing.T) {
 
 func TestConfigRosterSourceUnknownCoresAndCancellation(t *testing.T) {
 	src := ConfigRosterSource(config.Snapshot{Machines: []config.Machine{{Name: "bench", Roles: "bench"}}})
-	if r, err := roster.Load(context.Background(), src, 8); err != nil || len(r.Workers) != 0 || len(r.Refused) != 1 || r.Refused[0].Name != "bench" {
-		t.Fatalf("unknown cores: want bench refused by name, got %+v %v", r, err)
+	if r, err := roster.Load(context.Background(), src, 8); err != nil || len(r.Refused) != 0 || r.Workers["bench"].Width != 0 || r.Workers["bench"].Held != roster.NoCores {
+		t.Fatalf("unknown cores: want bench held at width 0, got %+v %v", r, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

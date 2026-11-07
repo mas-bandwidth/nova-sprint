@@ -107,7 +107,7 @@ type roster.Source interface { Machines(ctx) ([]roster.Machine, error); Friends(
 ```
 
 Run opens one `config.Store` (`github.com/mas-bandwidth/nova-tools/v2/config/lib`
-v2.0.2, `config.Open(ctx, dsn, password)`) for its life, takes **one**
+v2.0.3, `config.Open(ctx, dsn, password)`) for its life, takes **one**
 `(*config.Store).Snapshot(ctx)` per tick (machines and friends in one
 REPEATABLE READ transaction), and hands it to `roster.Load` through
 `snapshotSource`, which maps `config.Machine.Roles` and `config.Friend.Tiers`
