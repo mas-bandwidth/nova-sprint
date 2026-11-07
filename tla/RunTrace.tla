@@ -2,7 +2,7 @@
 EXTENDS Run, RunTraceLog, TLC, Integers
 
 \* Finite actual-code observations, following the shared StepsTrace pattern.
-\* See RunTrace-MAPPING.md. Partial logging has per-action required fields.
+\* See AGENTS.md, TLA+ models and trace checks. Partial logging has per-action required fields.
 \* Unlogged scheduler abstractions remain assumptions, not code evidence.
 VARIABLE l, physicalSeq, observationSeq, capturedSeq
 traceVars == <<vars,l,physicalSeq,observationSeq,capturedSeq>>

@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Request is one per-card verb asked of the engine (LAYER-3 "Requests"): who asks and what. Event is the move: a producer event on Card, a
+// Request is one per-card verb asked of the engine (AGENTS.md, Steps): who asks and what. Event is the move: a producer event on Card, a
 // consumer event (Take, Report) on Card, a row event on Row, a stream event
 // on Stream, or card.Add. Judgement names an open judgement the request
 // answers with Event as the chosen move (Event nil: the answer alone). Drop

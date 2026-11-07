@@ -1,4 +1,4 @@
-// Package steps is layer 3 of nova-sprint: the steps (docs/LAYER-3-STEPS.md).
+// Package steps is layer 3 of nova-sprint: the steps (AGENTS.md, Steps).
 // Pure Go: no store, clock, bus, git or exec. From one View of the sprint (the
 // snapshot plus the indexes the steps read, advanced by Fold), the tick's
 // Inputs (Now, the inbox in arrival order, the edge requests in flight, the
@@ -8,7 +8,7 @@
 // carry. Every move is a layer 2 move (package card); a step decides only
 // which moves this tick holds, in what order, within what budget.
 //
-// The model is tla/Steps.tla (tla/README.md, "The steps (layer 3)"); the
+// The model is tla/Steps.tla (AGENTS.md, TLA+ models and trace checks); the
 // code follows its tick order and cites its invariants by name. The
 // refinement mapping from this package's state to the model's variables is
 // in trace.go.

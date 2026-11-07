@@ -25,7 +25,7 @@ type Git interface {
 	Clone(ctx context.Context, repo, dir string) error
 }
 
-// Edges runs layer 3's edge requests off the tick (SEAMS 6): each request
+// Edges runs layer 3's edge requests off the tick (AGENTS.md, Layer seams): each request
 // on a goroutine of its own, its result kept for the next tick's inbox. It
 // also keeps each stream's base tip (Inputs.Heads), read at start, after
 // each landing and every HeadsEvery.
@@ -115,7 +115,7 @@ func (e *Edges) fault(what string, err error) {
 	}
 }
 
-// land runs LandPass until it is not pending (LANDING.md). A stream that
+// land runs LandPass until it is not pending (AGENTS.md, Edges and worker, landing pass). A stream that
 // lands by hand (mode hand, or no forge) is answered at once with outcome
 // hand: its cards are the coordinator's judgement.
 func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
@@ -174,7 +174,7 @@ func askAgain_internal(res git.LandResult, err error, absent, wait time.Duration
 	return false, 0
 }
 
-// landItem is LandResult as layer 3 reads it (SEAMS 6): landed with the
+// landItem is LandResult as layer 3 reads it (AGENTS.md, Layer seams): landed with the
 // heads and the merge sha, or the outcome and its facts for the
 // coordinator's judgement (an error is the outcome fault).
 func landItem(id string, res git.LandResult, err error, wait time.Duration) steps.InboxItem {

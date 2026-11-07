@@ -2,7 +2,7 @@
 EXTENDS Naturals, Sequences, FiniteSets
 
 (***************************************************************************
- Eight-step resumable setup (docs/LAYER-6-RUN.md and docs/SETUP.md).
+ Eight-step resumable setup (AGENTS.md, Run loop and verbs).
  verified is evidence from THIS walk, not a durable completion bitmap.
  Restart always begins at step 1. World regressions are separate from the
  last successful probe: a regression after a probe cannot be magically
@@ -28,7 +28,7 @@ EXTENDS Naturals, Sequences, FiniteSets
  a fresh sprint is stopped until start, so up deals no card itself). Do
  at 7 writes the worker service records and applies them; world[7]
  becomes true only when the units come up, so an Act that returns before
- that maps to repair again, never to Do (SetupTrace-MAPPING.md).
+ that maps to repair again, never to Do (AGENTS.md, TLA+ models and trace checks).
 ***************************************************************************)
 CONSTANT MaxDisruptions
 Steps == 1..8

@@ -38,7 +38,7 @@ type tick struct {
 	expires   map[string]string // judgement id -> why it expires
 }
 
-// Tick plans one tick (docs/LAYER-3-STEPS.md "The tick"; tla/Steps.tla Tick).
+// Tick plans one tick (AGENTS.md, Steps; tla/Steps.tla Tick).
 // The steps run in the model's order, each skipping the cards an earlier one
 // claimed: reports and takes from the inbox, preemption, land results, needs
 // (resolve, reached, drops), holds, retire and fail limits, fix, the deal,
@@ -132,7 +132,7 @@ func (t *tick) consume(item string) {
 }
 
 // questions gathers every question of the tick with its subjects, from the
-// view alone, so the asker is called once (LAYER-3: "a dozen calls whatever
+// view alone, so the asker is called once (AGENTS.md, Steps: "a dozen calls whatever
 // the size"; here one).
 func (t *tick) questions() Questions {
 	q := Questions{Budget: AskBudget}

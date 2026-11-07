@@ -69,7 +69,7 @@ func helpVerb(v *verb) string {
 	return done("nova-sprint "+v.name+" ...", lines...)
 }
 
-// upNeed is what a verb needs from up (the matrix, LAYER-6 section 3): no
+// upNeed is what a verb needs from up (the matrix, AGENTS.md, Run loop and verbs): no
 // verb waits on up's step; help, version, up and check need nothing, and
 // every other verb needs the store up makes at step 2 (its epoch) and the
 // sprint's credential in the process (a sprint that can

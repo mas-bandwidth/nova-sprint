@@ -1,4 +1,4 @@
-// Package bus is the nova-bus edge of layer 4 (docs/LAYER-4-EDGES.md): it sends
+// Package bus is the nova-bus edge of layer 4 (AGENTS.md, Edges and worker): it sends
 // one message and reads who is present, through the nova-bus binary. What to
 // send, to whom and when the cursor moves is run's (layer 6); this package
 // holds no cursor and reads no store.

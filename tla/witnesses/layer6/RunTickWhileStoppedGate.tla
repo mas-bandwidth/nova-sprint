@@ -2,7 +2,7 @@
 EXTENDS Naturals, Sequences, FiniteSets, TLC
 
 (***************************************************************************
- Layer 6's chooser, FIFO tick and pusher; see LAYER-6-RUN sections 2, 8, 9.
+ Layer 6's chooser, FIFO tick and pusher; see AGENTS.md, Run loop and verbs.
  Ops are numbered by first FIFO admission, not by card id. This bounded
  instance uses one move per packed atomic op (store owns multi-write atomicity).
  A report changes a card gen between fold and apply. A refused op goes back

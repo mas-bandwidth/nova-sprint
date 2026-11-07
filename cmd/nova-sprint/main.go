@@ -1,4 +1,4 @@
-// nova-sprint is layer 6's command (docs/LAYER-6-RUN.md): the verbs
+// nova-sprint is layer 6's command (AGENTS.md, Run loop and verbs): the verbs
 // (package verbs) over the real store, bus, roster, policy engine and
 // edges, opened here once (open.go). Hidden entries: the policy engine's
 // child (policy-eval), the bus hook's reply (bus-reply) and the up walk's

@@ -1,6 +1,6 @@
 ------------------------------ MODULE Runner ------------------------------
 (***************************************************************************)
-(* Layer 4 runner model: nova-worker on one bench (docs/LAYER-4-EDGES.md). *)
+(* Layer 4 runner model: nova-worker on one bench (AGENTS.md, Edges and worker). *)
 (* Size: 2 consumers, width 2, 1 slot, 1 Crash.                            *)
 (*                                                                         *)
 (* The deal is the take: both consumers are dealt working, in              *)

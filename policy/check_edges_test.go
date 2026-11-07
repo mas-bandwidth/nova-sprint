@@ -105,7 +105,7 @@ func TestJointCheckIgnoresReadCount(t *testing.T) {
 // active or the previous version, and the one that opens (policy:v0, "policy
 // check default") blames the binary. tla/Policy.tla Tick: every version in
 // Failing (active, prev, Default when all break) opens its judgement;
-// LAYER-5 the tick's answer: the judgement is the active version's,
+// the tick's answer (AGENTS.md, Policy): the judgement is the active version's,
 // "group key policy:v<n>". This path is never in the trace walk.
 func TestExpiredContextJudgesOnlyTheBuiltin(t *testing.T) {
 	t.Parallel()
@@ -130,7 +130,7 @@ func TestExpiredContextJudgesOnlyTheBuiltin(t *testing.T) {
 // which is neither that snapshot's active nor its previous active's first
 // pick (v2 runs clean). Nothing in the API pairs the two or refuses the
 // mismatch. tla/Policy.tla Pick: "IF active \notin breaks THEN active";
-// LAYER-5, the tick's answer: answered_by beside "the event's policy (the
+// the tick's answer (AGENTS.md, Policy): answered_by beside "the event's policy (the
 // active version)".
 func TestAnswerTakesVersionsTheSnapshotDoesNotHold(t *testing.T) {
 	t.Parallel()
@@ -202,7 +202,7 @@ func TestAbandonedRunOutlivesDeadline(t *testing.T) {
 
 // set's equal-body refusal names a data version and tells the coordinator
 // to activate it, which activate refuses ("v2 is of kind data, which policy
-// does not run"): the fix a refusal names must work (CORRECT-USE). The
+// does not run"): the fix a refusal names must work. The
 // body is compared before it is compiled, against every row, data included.
 // Design, the verbs: set refuses "a body equal to a stored version ("v4 has
 // this body: policy activate 4")"; activate refuses "a version of kind data".

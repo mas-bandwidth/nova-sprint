@@ -1,6 +1,6 @@
 package store
 
-// Trace validation of the store (tla/README.md, "Trace validation"). A
+// Trace validation of the store (AGENTS.md, TLA+ models and trace checks). A
 // seeded random walk applies ops to a store and records, after every step,
 // the step (Apply, LoseRequest or Replay of an op) and the store's state
 // projected by TraceState; tla/StoreTrace.tla checks the recording is a
@@ -97,7 +97,7 @@ func (g guardDropped) Apply(ctx context.Context, op Op) (Receipt, error) {
 }
 
 // TestTraceCursorZero holds the one divergence the walks found between the
-// store and Store.tla (tla/README.md, "Trace validation"): setting a cursor
+// store and Store.tla (AGENTS.md, TLA+ models and trace checks): setting a cursor
 // that was never set to 0. The store refuses it as a write that changes
 // nothing (an absent cursor is 0), as the model does.
 // The fixture tla/traces/store-cursor-zero must match.

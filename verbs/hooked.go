@@ -9,8 +9,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// hooked is the one hooked check (CORRECT-USE, "Hooked before anything that
-// acts as you"): a name, on the
+// hooked is the one hooked check (required before anything that
+// acts as the caller): a name, on the
 // bus, hooked in to the sprint, in the role the verb needs. It returns the
 // snapshot it read, which the verb acts on.
 func (e *Engine) hooked(ctx context.Context, in *input, need role) (store.Snapshot, error) {

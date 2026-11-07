@@ -12,7 +12,7 @@ EXTENDS Setup
  setup completes. A tick moves something only while the sprint runs
  (run.Ticker.Tick returns before steps.Tick when its copy is stopped;
  Run.tla NoTickWhileStopped). The coordinator's start and stop need only a
- store with an epoch, at any step of the walk (verbs upNeed, docs/LAYER-6-RUN.md); they are not fair: a sprint never started is allowed.
+ store with an epoch, at any step of the walk (verbs upNeed, AGENTS.md, Run loop and verbs); they are not fair: a sprint never started is allowed.
 
  NothingMovesUnstarted: nothing moves before the coordinator's first
  start. SetupRunFreshRunning makes the fresh store running and violates

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// The retired mechanics (CARD-CONTRACT "Retired mechanics"): what a brief
+// The retired mechanics: what a brief
 // must not carry because the sprint does it for itself. A brief naming one is refused at
 // add, naming the line, because a worker that follows it does the wrong
 // thing (writes a JOB.md nobody reads, waits for a lock nobody holds, ssh's

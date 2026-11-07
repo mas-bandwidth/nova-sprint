@@ -86,9 +86,9 @@ func guardScenario(h *harness) []string {
 	return out
 }
 
-// What the contract asks for (README "Every set write that would change
-// nothing is refused", "an empty key ... in a condition exactly as in a
-// write: it is ErrInvalid"), as prefixes.
+// What the contract asks for (AGENTS.md, Store: a set write that would change
+// nothing is refused; an empty key is ErrInvalid in a condition exactly as in a
+// write), as prefixes.
 var guardWant = map[string]string{
 	"needs reordered":                     "refused: card c2 already has the given needs",
 	"after reordered":                     "refused: card c2 already has the given after",

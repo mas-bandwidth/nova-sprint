@@ -5,7 +5,7 @@ import (
 	"slices"
 )
 
-// Trace validation (tla/README.md, "Trace validation"): a walk of the store
+// Trace validation (AGENTS.md, TLA+ models and trace checks): a walk of the store
 // records, after every step, the store's state projected onto the variables
 // of tla/Store.tla, and tla/StoreTrace.tla checks the recorded steps are a
 // behaviour of the model. TraceState and TraceOp are the refinement mapping:

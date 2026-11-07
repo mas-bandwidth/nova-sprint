@@ -12,8 +12,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// landResults is the land results step (LAYER-3 "Land", from a result;
-// LANDING.md; the model's InboxFold): inbox items of kind land and stop in
+// landResults is the land results step (AGENTS.md, Steps; from a result; the model's InboxFold): inbox items of kind land and stop in
 // arrival order. landed is the one automatic move: Landed, with the merge
 // sha, for every card of the request still merging at its head, as one
 // group. Anything else (red, no CI, a conflict, a refused merge, a PR that
@@ -111,8 +110,7 @@ func (t *tick) readyIn(stream string) []card.Card {
 	return out
 }
 
-// landRequests is the land requests step (LAYER-3 "Land"; LANDING.md "The
-// ladder"; the model's LandPicks; AfterKept, AfterNeverHolds): per stream
+// landRequests is the land requests step (AGENTS.md, Steps; the model's LandPicks; AfterKept, AfterNeverHolds): per stream
 // with no land request in flight, the merging producers not under a land
 // judgement, without those held by an after target merging elsewhere: one
 // (the first in score order) while fewer than policy's backed_up wait

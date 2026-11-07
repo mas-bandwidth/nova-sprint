@@ -6,7 +6,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/card"
 )
 
-// holds is the holds step (LAYER-3 "Holds"): Park for a ready producer of a
+// holds is the holds step (AGENTS.md, Steps): Park for a ready producer of a
 // held stream that the hold's op missed; Withdraw of every ready consumer,
 // releasing its producer to be dealt again in hand;
 // and of a held row's unacknowledged consumers at once and a down row's

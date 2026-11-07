@@ -7,7 +7,7 @@
 (***************************************************************************)
 (***************************************************************************)
 (* Layer 5 of nova-sprint: policy versions, activation and the per-tick   *)
-(* fallback (docs/LAYER-5-POLICY.md, "The model"; the code is              *)
+(* fallback (AGENTS.md, Policy, "Model and tests"; the code is             *)
 (* policy/answer.go AnswerContext, policy/tick.go race, and               *)
 (* policy/verbs.go Set and Activate). The tick's one deadline is         *)
 (* one more way a version breaks on a tick, and a fallback started early  *)

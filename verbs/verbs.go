@@ -1,4 +1,4 @@
-// Package verbs is layer 6's command line (docs/LAYER-6-RUN.md section 3):
+// Package verbs is layer 6's command line (AGENTS.md, Run loop and verbs):
 // every verb of nova-sprint, each with its prerequisite table, its one-line
 // refusals naming the fix, and its `next:` line. One table names the verbs
 // (table.go), one parser reads their flags (flags.go), one check says who
@@ -111,7 +111,7 @@ type Services interface {
 // (layer 4), so this verb and nova-worker are one worker.
 type WorkerArgs = worker.Config
 
-// Execute runs one command line. No arguments is `next` (CORRECT-USE: the
+// Execute runs one command line. No arguments is `next` (the
 // tool's name alone says what to do now).
 func (e *Engine) Execute(ctx context.Context, args []string) Result {
 	if len(args) == 0 {

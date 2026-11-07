@@ -78,10 +78,8 @@ func shadowWorking(t *testing.T) *world {
 // ---- regressions ----
 
 // "a merged plan stays re-runnable so nested merges and Merge(HoldStream,
-// ReportPlan(...)) compose like flat ones" (the author's claim; README:
-// "The merged plan itself runs again the same way, so nested merges
-// compose"); layer 3 packs groups, each a card.Merge, into one op
-// (LAYER-3-STEPS, the group and the packer). compose stores a merged plan's
+// ReportPlan(...)) compose like flat ones" (AGENTS.md, Card machine); layer 3 packs groups, each a card.Merge, into one op
+// (AGENTS.md, Steps, the group and the packer). compose stores a merged plan's
 // seen as the state after its own writes (replay.go:95, done.seen = cur).
 // Merged into a later position, foldPlans first unions that post-state into
 // the fold (replay.go:111, unionMissing) for every card the plans ahead did
@@ -166,7 +164,7 @@ func (w *world) shadowNarrow1(id string, e Event) (Plan, *Refusal) { return shad
 
 // "a preempt merged with a blocker's Start is checked by event fields
 // (blocker priority, the blocker's row)" and "nested merges compose like
-// flat ones" (the author's claims; README, Preemption). preemptGuard
+// flat ones" (AGENTS.md, Card machine). preemptGuard
 // (replay.go:201) reads only the top-level plans' events; a merged plan
 // carries no event (ev is never set on it), so a blocker's Start inside a
 // nested merge is never checked. Flat, a preempt of p1.w1 working on r2
@@ -199,7 +197,7 @@ func TestShadowPlansNestedStartSkipsThePreemptGuard(t *testing.T) {
 
 // "Merge is sequential composition: plan 1's writes are applied to a
 // copy of the snapshot, plan 2's move is re-run against that state"
-// (LAYER-2); README: "A hand-built plan is kept as
+// (AGENTS.md, Card machine); "A hand-built plan is kept as
 // written"; "the needs and after graphs stay acyclic". A
 // hand-built plan has no records (seen is empty), so folding its writes
 // creates a partial record of each card it writes (editCard, replay.go:573:
@@ -238,13 +236,13 @@ func TestShadowPlansHandBuiltPlanBlindsTheReRun(t *testing.T) {
 }
 
 // "Merge is sequential composition ... any refusal refuses the whole
-// merge" (LAYER-2): a merge is refused only when one
+// merge" (AGENTS.md, Card machine): a merge is refused only when one
 // of its moves, re-run in order, is refused. preemptGuard (replay.go:201)
 // treats every Withdraw in an op that also starts a blocker as that
 // blocker's preempt, whatever the withdraw is for. Layer 3 packs groups
-// into one op (LAYER-3-STEPS, the packer), so a blocker dealt to a free row
+// into one op (AGENTS.md, Steps, the packer), so a blocker dealt to a free row
 // and an unrelated withdraw (a held row's untaken consumer after its grace,
-// LAYER-3 Holds) are refused together: "consumer p1.w1 is ready; a preempt
+// AGENTS.md, Steps) are refused together: "consumer p1.w1 is ready; a preempt
 // withdraws a working consumer", though nothing was preempted and the two
 // moves apply one by one.
 func TestShadowPlansAnyWithdrawIsReadAsAPreempt(t *testing.T) {
@@ -261,8 +259,7 @@ func TestShadowPlansAnyWithdrawIsReadAsAPreempt(t *testing.T) {
 	require.Nil(t, mr, "a withdraw and a blocker's deal to a free row, each legal, are refused as one op")
 }
 
-// "every refusal names the fix" (LAYER-2, What it refuses, naming the
-// fix). dupWrites (values.go:222) adds "several reads of one head are
+// "every refusal names the fix" (AGENTS.md, Card machine). dupWrites (values.go:222) adds "several reads of one head are
 // AskReads" to every second write of a card's kind, so two Starts of one
 // producer, or two Adds of one id, are told to use AskReads, which cuts
 // reads and fixes neither. (The walk: "merge of Start # and Start #

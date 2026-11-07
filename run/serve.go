@@ -20,10 +20,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// TickEvery is the tick's period (LAYER-6 section 2: once a second).
+// TickEvery is the tick's period (AGENTS.md, Run loop and verbs: once a second).
 const TickEvery = time.Second
 
-// Config is everything run needs, opened by the caller (SEAMS 8): the
+// Config is everything run needs, opened by the caller (AGENTS.md, Layer seams): the
 // store and the chooser lock's own session, nova-config for the roster,
 // the bus and the sprint hook, the policy engine, the git and forge edges,
 // and where to serve the board ("" serves none).
@@ -140,7 +140,7 @@ func (t *Ticker) seed(ctx context.Context) {
 	}
 }
 
-// tick is one tick (LAYER-6 section 2): the roster and who is on the bus,
+// tick is one tick (AGENTS.md, Run loop and verbs): the roster and who is on the bus,
 // read once; the Ticker's fold and plan; the edge requests out; the
 // envelopes; the board. A failed roster read plans nothing (an empty
 // roster would judge every row unknown) but still folds, pushes and shows.

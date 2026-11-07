@@ -113,7 +113,7 @@ func parityScenario(h *harness) []string {
 	return out
 }
 
-// The outcomes the contract asks for (docs/LAYER-1-STORE.md, store/README.md),
+// The outcomes the contract asks for (AGENTS.md, Store),
 // as prefixes.
 var parityWant = map[string]string{
 	"B1 working":                             "ok",

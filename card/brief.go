@@ -6,7 +6,7 @@ import (
 )
 
 // RouteField is the brief's metadata line a card that needs a device or a
-// route declares it with (CARD-CONTRACT "Routes"): `NEEDS-ROUTE: <name>`,
+// route declares it with `NEEDS-ROUTE: <name>`,
 // one name per line, the line repeated for more. It is read here only, so
 // add's admission, the deal (steps: only rows that serve every route) and a
 // fault naming a missing route all read one parse.

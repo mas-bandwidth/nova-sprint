@@ -7,7 +7,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// needs is the sentinels and needs step (LAYER-3 "Sentinels and needs"; the
+// needs is the sentinels and needs step (AGENTS.md, Steps; the
 // model's ResolveFold; NeverOverlapStarted, ReadyNeverFlipsWithLoad). A
 // failed need takes the closure of its dependants in one group. Then, in id order: a waiting sentinel whose needs landed is Reached
 // with a landed-sentinel judgement; a waiting producer whose needs landed,
@@ -58,8 +58,7 @@ func (t *tick) needsLanded(c store.Card) bool {
 }
 
 // heldBehind is why c is held behind another producer of its stream, ready,
-// started or resolved this tick, that names a file c names (LANDING step
-// 2): "held behind <card> on <path>" for the least such card by id and the
+// started or resolved this tick, that names a file c names "held behind <card> on <path>" for the least such card by id and the
 // first of c's files it names; "" when none is.
 func (t *tick) heldBehind(c store.Card) string {
 	by, on := leastHolder(c, func(path string) []set {

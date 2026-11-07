@@ -11,7 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// asker is layer 5 as layer 3 asks it (SEAMS section 4): one call per tick
+// asker is layer 5 as layer 3 asks it (AGENTS.md, Layer seams): one call per tick
 // on the tick's snapshot, roster and versions. It turns steps' facts per
 // subject into policy's ids per subject, and policy's answers back into
 // steps' shape; policy computes the facts itself from the same snapshot and

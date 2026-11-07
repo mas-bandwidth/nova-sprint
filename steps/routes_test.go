@@ -12,7 +12,7 @@ import (
 // NEEDS-ROUTE is dealt only to a row that serves the route (roster.Worker
 // Routes, from nova-config's route:<name> roles); with none it waits on the
 // unserved judgement naming the route, and a row that serves it is dealt
-// to (CARD-CONTRACT "Routes").
+// to.
 func TestTickRoutesDealOnlyToServingRows(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)

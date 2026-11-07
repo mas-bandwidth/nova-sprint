@@ -28,7 +28,7 @@ type Asking interface {
 // TickCounts are one tick's numbers, for the tick line.
 type TickCounts struct{ Folded, Applied, Refused, Edges int }
 
-// Ticker is run's tick (LAYER-6 section 2): one steps View built once at
+// Ticker is run's tick (AGENTS.md, Run loop and verbs): one steps View built once at
 // the cold start and folded after, the folded snapshot beside it for the
 // pusher and the board, and what layer 3 needs between ticks. Ticks are
 // serial: Tick is called by one goroutine.
@@ -80,7 +80,7 @@ func judgementOp(a *asker, o Observed) (store.Op, bool) {
 }
 
 // NewTicker reads the one cold snapshot; later reads are Events only
-// (LAYER-1 "Scale"; no walk from seq 0).
+// (AGENTS.md, Store; no walk from seq 0).
 func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time.Time) (*Ticker, error) {
 	if err := h.Check(ctx); err != nil {
 		return nil, err
@@ -170,7 +170,7 @@ type Observed struct {
 }
 
 // Tick is one tick: check the lock, fold, and, unless the sprint is stopped,
-// plan with layer 3 and apply the plan's ops in order (LAYER-6 section 2).
+// plan with layer 3 and apply the plan's ops in order (AGENTS.md, Run loop and verbs).
 // It returns the edge requests to dispatch: those whose After op was
 // accepted. While stopped it plans and applies nothing and returns none
 // (Run.tla NoTickAfterObservedStop): the results that arrive

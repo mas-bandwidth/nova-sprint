@@ -6,8 +6,8 @@ import (
 )
 
 // Asker is layer 5 as the steps consume it: one call per tick with every
-// question the tick has subjects for (docs/LAYER-5-POLICY.md, "The question
-// set"; names and types as that doc has them). An answer the engine cannot
+// question the tick has subjects for (AGENTS.md, Policy; names and types as
+// it has them). An answer the engine cannot
 // use (absent, failed, out of its domain, naming a row or card not offered)
 // is the default for this tick, with one policy judgement per question and
 // version; no answer ever stalls a step or makes it plan an illegal move
@@ -101,8 +101,7 @@ type WidthAnswer struct{ Work int }
 type LandingAnswer struct{ BackedUp, Flowing, CIWait int }
 
 // Limits is limits(): the counts. Budget (cards touched per tick) and Pack
-// (groups per op) are layer 3's keys in the same dict (LAYER-3, "Policy
-// questions and their defaults").
+// (groups per op) are layer 3's keys in the same dict (AGENTS.md, Steps).
 type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
 	Budget, Pack                                                                  int
@@ -123,17 +122,17 @@ type Default struct{}
 // Ask answers nothing.
 func (Default) Ask(Questions) Answers { return Answers{} }
 
-// Defaults are the engine's own answers (LAYER-5's default policy; every
-// number marked there). EscalateAfter and FrontierAfter are the bounces at
+// Defaults are the engine's own answers (the default policy of
+// AGENTS.md, Policy; every number marked there). EscalateAfter and FrontierAfter are the bounces at
 // which a work consumer is dealt one rank up and to the top rank (guesses,
-// LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
-// (LAYER-3 "Retire and fail limits", 3, unmeasured). The seconds after a
+// AGENTS.md, Steps); FlapLimit is the flaps that open a flap judgement
+// (AGENTS.md, Steps, 3, unmeasured). The seconds after a
 // deal at which an unacknowledged card is nudged each tick and withdrawn are
-// policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"), default.star's 1 and 180; Engine's are those a
+// policy's timeouts ready_nag and ready_take (AGENTS.md, Steps), default.star's 1 and 180; Engine's are those a
 // tick with no usable timeouts() answer runs on, as for every timeout.
 // UndealtAfter is the seconds a
 // producer may stay ready with a serving row with room before it is judged
-// (more than one one-second tick; LAYER-3 "Undealt").
+// (more than one one-second tick; AGENTS.md, Steps).
 type Defaults struct {
 	EscalateAfter, FrontierAfter int
 	UndealtAfter                 int
@@ -149,8 +148,7 @@ type Defaults struct {
 
 // Engine is the defaults as the designs give them. Budget 250 and Pack 50
 // are measured (the load test: a tick of 250 cards at
-// 5,000 producers is about 265 ms p50 as 5 ops of 50; see the Built
-// section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
+// 5,000 producers is about 265 ms p50 as 5 ops of 50; see AGENTS.md, Steps); the rest are layer 5's defaults or
 // guesses, marked there.
 var Engine = Defaults{
 	EscalateAfter: 2, FrontierAfter: 4, UndealtAfter: 2, Reads: 1, FlapLimit: 3,

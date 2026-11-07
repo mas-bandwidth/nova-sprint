@@ -41,7 +41,7 @@ type streamAtBase struct {
 	branches map[string]string
 }
 
-// admitCards proves each producer of facts (CORRECT-USE "Admission"): its
+// admitCards proves each producer of facts: its
 // stream is live (its repository and base read at origin now), its tier and
 // routes have a serving row in nova-config, its PATHS exist at the base, its
 // DONE-WHEN lines are each one command (edge.ParseGate), it names no retired mechanic and no bench by name,

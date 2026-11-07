@@ -3,7 +3,7 @@ EXTENDS SetupWalk, SetupTraceLog, TLC
 
 \* Actual-code observations constrain the unchanged Setup.Next relation.
 \* All projected fields are required; safety monitors remain model-derived.
-\* See SetupTrace-MAPPING.md for sampled boundaries and hidden actions.
+\* See AGENTS.md, TLA+ models and trace checks for sampled boundaries and hidden actions.
 VARIABLE l
 traceVars == <<vars,l>>
 TraceActions == {"Init","Probe","Ask","Do","Regress","Crash","Restart","Stutter"}

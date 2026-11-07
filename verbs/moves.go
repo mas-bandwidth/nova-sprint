@@ -12,7 +12,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// move is a person's move through the steps' actor rules (SEAMS 3): one View
+// move is a person's move through the steps' actor rules (AGENTS.md, Layer seams): one View
 // built from the snapshot the hooked check read, one op from steps.Verb.
 // With --dry-run it prints what the op would do and applies nothing.
 func (e *Engine) move(ctx context.Context, in *input, snap store.Snapshot, r steps.Request, subject string) (string, error) {

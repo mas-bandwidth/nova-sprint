@@ -8,7 +8,7 @@
 (***************************************************************************)
 (***************************************************************************)
 (* Layer 2 of nova-sprint: the card machine                                *)
-(* (docs/LAYER-2-CARD-MACHINE.md), producer and consumer shape.            *)
+(* (AGENTS.md, Card machine), producer and consumer shape.            *)
 (*                                                                         *)
 (* Each action is one accepted event of the producer, consumer and row     *)
 (* tables. Its guard is the design's from-state plus its conditions; an    *)

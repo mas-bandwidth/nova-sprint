@@ -1,7 +1,6 @@
 package store
 
-// Load test, functional tier: the performance bar of docs/LAYER-1-STORE.md
-// ("Scale"). Thousands of producers with their consumers and judgements, a
+// Load test, functional tier: the performance bar of AGENTS.md, Store. Thousands of producers with their consumers and judgements, a
 // one-second tick, every worker reporting at once, steady-state reads
 // incremental from the event log, a dashboard refreshed once a second. It
 // starts its own PostgreSQL (as functional_test.go does) and is skipped
@@ -299,7 +298,7 @@ func (l *load) build(t *testing.T) {
 	phase("setup", []Op{l.op("setup", nil, setup...), l.op("rows-up", nil, up...)}, 1)
 
 	rng := rand.New(rand.NewPCG(1, uint64(l.n)))
-	paths, done := []string{"store/load_test.go", "store/README.md", "docs/LAYER-1-STORE.md"}, []string{"go test ./store/ is green", "the load bar is met"}
+	paths, done := []string{"store/load_test.go", "store/store.go"}, []string{"go test ./store/ is green", "the load bar is met"}
 	var ops []Op
 	var ws []Write
 	for i := range l.n {

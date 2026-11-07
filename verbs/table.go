@@ -7,7 +7,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// role is who may run a verb (the role matrix, LAYER-6 section 3): cold
+// role is who may run a verb (the role matrix, AGENTS.md, Run loop and verbs): cold
 // verbs need no hook (they look, or they hook); worker verbs need the name
 // hooked in as a worker or the coordinator; coordinator verbs need the
 // coordinator. A cold verb that acts as a name checks it itself.

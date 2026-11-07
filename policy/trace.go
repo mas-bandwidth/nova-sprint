@@ -8,7 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Trace validation (tla/README.md, "Trace validation"): the policy walk
+// Trace validation (AGENTS.md, TLA+ models and trace checks): the policy walk
 // (policy/trace_test.go) records, after every step, the step and the code's
 // state projected onto the variables of tla/Policy.tla, and
 // tla/PolicyTrace.tla checks the recording is a behaviour of the model.

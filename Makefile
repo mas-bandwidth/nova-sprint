@@ -21,7 +21,7 @@ BINDIR ?= $(HOME)/.local/bin
 install: build
 	go run ./tools/placebin bin/* $(BINDIR)
 
-# the unit tier (docs/TESTING.md): no real time, sockets or network
+# the unit tier (AGENTS.md, Testing): no real time, sockets or network
 test:
 	go test -race -short -skip Functional ./...
 

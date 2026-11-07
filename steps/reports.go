@@ -6,9 +6,9 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/card"
 )
 
-// reports is the reports step (LAYER-3 "Reports"): inbox items of kind
+// reports is the reports step (AGENTS.md, Steps): inbox items of kind
 // report, in arrival order, each one group (a work report with its
-// Finished, Broken or Faulted; a read report alone) or one answer. LAYER-6
+// Finished, Broken or Faulted; a read report alone) or one answer. AGENTS.md, Run loop and verbs
 // applies a row's report as the row's own op, so this inbox path is for a
 // layer 6 that routes them here; the fold shows either way. There is no
 // take item: a dealt consumer is in hand at the deal.

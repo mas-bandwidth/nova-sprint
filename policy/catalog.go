@@ -77,7 +77,7 @@ func (c Catalog) clone() Catalog {
 // ForTier is the models serving tier t in provider/model form, the one
 // vocabulary a harness takes (a name already holding a "/" is kept as it
 // is): providers in name order, each provider's models in catalog order. A
-// worker runs the first of them its harness serves (LAYER-4).
+// worker runs the first of them its harness serves (AGENTS.md, Edges and worker).
 func (c Catalog) ForTier(t string) []string {
 	var out []string
 	for _, p := range slices.Sorted(maps.Keys(c.Models)) {

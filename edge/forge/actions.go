@@ -14,7 +14,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
-// The facts of a red landing (LANDING.md, "Red that is not the card's"):
+// The facts of a red landing (AGENTS.md, Edges and worker, landing pass):
 // which of the head's failing workflows are red on the base too, and, for
 // the ones that are not, the failed jobs, their runners and the first error
 // lines of their logs.

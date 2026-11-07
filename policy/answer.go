@@ -40,8 +40,8 @@ func (e *Engine) Answer(vs Versions, snap store.Snapshot, ro roster.Roster, q Qu
 	return e.AnswerContext(context.Background(), vs, snap, ro, q)
 }
 
-// AnswerContext is the tick's answer (docs/LAYER-5-POLICY.md, "The tick's
-// answer"; tla/Policy.tla Tick): one version answers the whole tick. The
+// AnswerContext is the tick's answer (AGENTS.md, Policy, "Tick answer and
+// fallback"; tla/Policy.tla Tick): one version answers the whole tick. The
 // tick has one deadline, TickTime from the first byte of its input, or
 // ctx's when sooner. Any error, refusal or the deadline in a version means
 // none of its answers is used and the next is tried; the failures are

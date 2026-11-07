@@ -1,6 +1,6 @@
 // Command unitlint refuses a unit test that uses real time, sleeps, sockets,
 // the network or a child process, and any test, unit or functional, that
-// does not call t.Parallel() first (docs/TESTING.md). CI runs the unit tier with
+// does not call t.Parallel() first (AGENTS.md, Testing). CI runs the unit tier with
 // -skip Functional and the functional tier with -run Functional, so a unit test
 // is a test, fuzz target or example whose name does not contain "Functional";
 // the helpers it reaches in its package's test files are checked with it.

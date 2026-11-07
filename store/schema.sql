@@ -1,4 +1,4 @@
--- The sprint store: layer 1 of nova-sprint (docs/LAYER-1-STORE.md).
+-- The sprint store: layer 1 of nova-sprint (AGENTS.md, Store).
 -- Idempotent: applying it twice is a no-op. Migrate checks sprint.meta before
 -- it runs this, and refuses a store at another schema version. Nothing is
 -- ever deleted; a clear increments sprint.epoch and every stream, card, row

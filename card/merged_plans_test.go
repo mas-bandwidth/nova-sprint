@@ -29,7 +29,7 @@ import (
 // ---- regressions ----
 
 // WaiveRed "moves a producer that a Red sent back to review on to
-// merging without a new read" (LAYER-2). The
+// merging without a new read" (AGENTS.md, Card machine). The
 // machine checks only that a done ok read of review-1 exists at p's head, so
 // a producer that entered review by Finished, not Red, passes when its new
 // attempt pushed a head equal to one read earlier: the reads of the new
@@ -53,7 +53,7 @@ func TestMergedPlansWaiveRedSkipsTheReadsOfANewAttempt(t *testing.T) {
 
 // Merge "validates the merged plan ... so no plan the machine emits is
 // ever invalid at the store", and the needs and after graphs stay acyclic
-// (LAYER-2, "How it is checked"). Each Relink fences every card
+// (AGENTS.md, Card machine). Each Relink fences every card
 // its walk read, which stops two relinks applied as two ops,
 // but layer 1 checks every condition before any write, so the same two
 // relinks merged into one op both pass their fences and close a loop:
@@ -78,7 +78,7 @@ func TestMergedPlansMergedRelinksMakeACycle(t *testing.T) {
 }
 
 // HoldStream parks the stream's ready producers "in the same op, so a
-// card that cannot start is never left in ready" (LAYER-2 Park row), and its AtSeq fence is there so a card that became ready after the
+// card that cannot start is never left in ready" (AGENTS.md, Card machine), and its AtSeq fence is there so a card that became ready after the
 // snapshot refuses the op. Merged with a Resolve planned from the same
 // snapshot (p1 waiting, so the hold rightly names no ready producer), every
 // condition holds before the writes: the op holds s1 and makes p1 ready in

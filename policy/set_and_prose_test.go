@@ -32,9 +32,8 @@ import (
 // comment) and passes check, then reaches the store, which refuses the op as
 // ErrInvalid: the verb hands back a raw store error, not a refusal.
 // Sequence: up; write default.star plus "# \x00" to nul.star; policy set.
-// Design: "Every refusal is in the CORRECT-USE form" and "checked before
-// stored" (The verbs; "Refusals are *Refusal in the CORRECT-USE
-// form"); the fuzz's "the store never returning ErrInvalid" (How it is
+// Design: every refusal is a *Refusal ("SPRINT REFUSED ...: fix") and a body
+// is checked before it is stored (AGENTS.md, Policy, "Verbs"); the fuzz's "the store never returning ErrInvalid" (How it is
 // checked) — the layer built an op the store calls invalid.
 func TestSetBodyOrNameTheStoreRefusesReachesItAsErrInvalid(t *testing.T) {
 	t.Parallel()
@@ -50,7 +49,7 @@ func TestSetBodyOrNameTheStoreRefusesReachesItAsErrInvalid(t *testing.T) {
 			require.Error(t, err)
 			assert.False(t, errors.Is(err, store.ErrInvalid), "the verb let the store call its op invalid: %v", err)
 			var r *Refusal
-			assert.True(t, errors.As(err, &r), "want a *Refusal in the CORRECT-USE form, got %T: %v", err, err)
+			assert.True(t, errors.As(err, &r), "want a *Refusal, got %T: %v", err, err)
 		})
 	}
 }
@@ -61,7 +60,7 @@ func TestSetBodyOrNameTheStoreRefusesReachesItAsErrInvalid(t *testing.T) {
 // check (non-blank) and reaches the store as ErrInvalid.
 // Sequence: up; set a.star --reason "\xff"; and: up; set a.star; activate 2
 // --reason "\xff".
-// Design: "Every refusal is in the CORRECT-USE form".
+// Design: every refusal is a *Refusal naming its fix.
 func TestReasonInInvalidUTF8ReachesTheStoreAsErrInvalid(t *testing.T) {
 	t.Parallel()
 	body := DefaultBody() + "\n# a\n"

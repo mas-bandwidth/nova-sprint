@@ -12,7 +12,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The exact verb list (LAYER-6 section 3); clear is kept beside restore.
+// The exact verb list (AGENTS.md, Run loop and verbs); clear is kept beside restore.
 func TestTheVerbsAreExactlyTheList(t *testing.T) {
 	t.Parallel()
 	want := []string{"next", "check", "up", "hook", "wake", "unhook", "help", "version",

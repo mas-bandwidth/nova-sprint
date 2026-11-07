@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Trace validation (tla/README.md, "Trace validation"): a walk of the card
+// Trace validation (AGENTS.md, TLA+ models and trace checks): a walk of the card
 // machine on the store records, after every accepted op, the move and the
 // store's cards, rows and stream projected onto the variables of
 // tla/CardMachine.tla, and tla/CardMachineTrace.tla checks the recording is

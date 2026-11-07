@@ -24,7 +24,7 @@ type outcome struct {
 
 // runReport is `finish`, `read` and `report`: one op by the row itself, the
 // consumer and its producer together (card.ReportPlan), fenced by gen, its
-// id canonical (LAYER-6 section 2, "Reports are ordinary ops").
+// id canonical (AGENTS.md, Run loop and verbs).
 func runReport(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	o, err := readOutcome(in)
 	if err != nil {

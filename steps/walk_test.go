@@ -46,8 +46,7 @@ func TestWalk(t *testing.T) {
 	t.Cleanup(func() {
 		t.Logf("walk: %d picked, %d legal (%.0f%%); groups by kind %v", picked, legal, 100*float64(legal)/float64(max(picked, 1)), kinds)
 		assert.GreaterOrEqual(t, float64(legal), 0.4*float64(picked), "depth: at least 40%% of picked moves legal")
-		// park is a defence (the hold's own op parks; tla/README.md "Not
-		// modelled"), held by TestTickHolds alone.
+		// park is a defence (the hold's own op parks; AGENTS.md, TLA+ models and trace checks), held by TestTickHolds alone.
 		for _, k := range []string{"resolve", "start", "read", "yes", "fix", "land", "pre", "withdraw", "drop", "reached", "block"} {
 			assert.Positive(t, kinds[k], "the walk never planned a %s group", k)
 		}

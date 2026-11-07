@@ -6,7 +6,7 @@
 (* LandEdge.tla unchanged (make-landedge-witnesses.py).                    *)
 (***************************************************************************)
 (***************************************************************************)
-(* The landing (docs/LANDING.md): the ladder of                           *)
+(* The landing (AGENTS.md, Edges and worker): the ladder of               *)
 (* three rungs, from a tick's land request to the base.                    *)
 (*                                                                         *)
 (* Cards c1, c2 are stream s1's, c3 is s2's; both streams land on one     *)

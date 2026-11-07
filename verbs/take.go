@@ -15,7 +15,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// takeReceipt is the take seam (SEAMS 6): everything nova-worker needs to
+// takeReceipt is the take seam (AGENTS.md, Layer seams): everything nova-worker needs to
 // run a consumer. Model is the one the deal named and the consumer carries
 // (a friend's own; a bench's the active policy's bench model for the card's
 // tier, in provider/model form); take reads it from the consumer and never

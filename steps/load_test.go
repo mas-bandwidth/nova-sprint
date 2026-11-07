@@ -1,7 +1,6 @@
 package steps
 
-// Load test, functional tier: the tick's cost at scale (docs/LAYER-3-STEPS.md
-// "Tests", Load; guarantee 11). 5,000 producers over 100 rows in 20 streams
+// Load test, functional tier: the tick's cost at scale (AGENTS.md, Steps; guarantee 11). 5,000 producers over 100 rows in 20 streams
 // on store.Fake for the planning cost (the fold, the plan, the ops count per
 // tick for several packing sizes) and on PostgreSQL for the per-op apply
 // cost by packing size, which sets pack. Skipped unless NOVA_LOAD=1; run it

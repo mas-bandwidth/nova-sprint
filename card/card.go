@@ -3,8 +3,8 @@
 // clock, no bus. Given the records an event touches, Move, MoveConsumer,
 // MoveRow, MoveStream and MoveAdd return the plan layer 1 applies (conditions
 // and writes from package store) or a refusal naming why. The contract is
-// docs/LAYER-2-CARD-MACHINE.md; the model is tla/CardMachine.tla, checked
-// with TLC (tla/README.md), and the tables here are its actions.
+// AGENTS.md, Card machine; the model is tla/CardMachine.tla, checked
+// with TLC (AGENTS.md, TLA+ models and trace checks), and the tables here are its actions.
 package card
 
 import (
@@ -144,7 +144,7 @@ type (
 
 // Consumer events, one per row of the consumer table. There is no Take: a
 // consumer is cut in working, in its row's hand at the deal; the row's
-// acknowledgement is not a card move (LAYER-2 "Deal is take").
+// acknowledgement is not a card move (AGENTS.md, Card machine).
 type (
 	// Report is a row's result. Cost, Priced and Usage are the run's usage
 	// record as the engine priced it (package usage): the machine stores

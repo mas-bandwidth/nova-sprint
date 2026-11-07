@@ -2,7 +2,7 @@
 # and the short trace check. Every job finishes inside 2 minutes (the runners
 # stop a per-commit job past that). The full TLC, the long walks and the
 # Layer 6 traces run in nightly.yml. Each step is one plain command;
-# docs/TESTING.md lists the same commands to run by hand. Pull requests run on
+# The same commands to run by hand are in AGENTS.md, Testing. Pull requests run on
 # the self-hosted runners, and only for branches of this repository: a fork's code never runs on them.
 
 name: ci
@@ -92,11 +92,11 @@ jobs:
         run: command -v initdb
       # Each functional test starts its own PostgreSQL. This runner is Linux, so
       # the default parallelism is fine; on macOS run with -parallel 4, because
-      # its System V shared memory limits run out (docs/TESTING.md).
+      # its System V shared memory limits run out (AGENTS.md, Testing).
       - name: functional tests
         run: go test -count=1 -race -timeout 100s -run Functional ./...
 
-  # Trace validation (tla/README.md, "Trace validation"), short: the store's
+  # Trace validation (AGENTS.md, TLA+ models and trace checks), short: the store's
   # walks (the Fake, and PostgreSQL) at 150 steps, the card, policy, steps,
   # land-edge and runner walks on their fixed seeds, each trace checked by TLC
   # against its model, and the breakers refused. The 500-step walks, the

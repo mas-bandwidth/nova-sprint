@@ -11,7 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 )
 
-// LandOutcome is what one landing pass found (LANDING.md). landed is the
+// LandOutcome is what one landing pass found (AGENTS.md, Edges and worker, landing pass). landed is the
 // only automatic move; pending, absent and base-moved are asked again by the
 // caller; every other outcome is a judgement for the coordinator.
 type LandOutcome string
@@ -56,7 +56,7 @@ type LandResult struct {
 	Unsigned                                         []string
 }
 
-// LandPass is one pass of the landing (LANDING.md, "The ladder"). Heads all
+// LandPass is one pass of the landing (AGENTS.md, Edges and worker, landing pass). Heads all
 // on base already have landed. Otherwise the PR's head is the one card's
 // branch when it is a single head that already contains the base tip (rung
 // 1), else the stream's group branch, rebuilt from the base tip with every

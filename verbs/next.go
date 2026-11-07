@@ -60,7 +60,7 @@ type judgementLine struct {
 	Command  string `json:"command"`
 }
 
-// runNext is `next` (CORRECT-USE, "What next looks at, in order"). A
+// runNext is `next` (it looks at the prerequisites in order). A
 // missing prerequisite is its answer, exit 0; it exits 2 only when it
 // cannot look.
 func runNext(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {

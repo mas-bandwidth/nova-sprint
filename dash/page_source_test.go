@@ -1,6 +1,9 @@
 package dash
 
 import (
+	"io/fs"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -68,5 +71,39 @@ func TestPageIgnoresObjectPrototypeNames(t *testing.T) {
 	}
 	if strings.Contains(src, "function archivedSet(d) { var a = {};") {
 		t.Errorf("page/app.js archivedSet uses plain `{}` instead of `Object.create(null)`, so `arch[name]` treats Object.prototype names as archived")
+	}
+}
+
+// TestServedPageCarriesNoConversation checks that nothing the dashboard serves (the page, the stream page
+// and their scripts and styles) names a person or quotes a dated remark: view-source shows it to anyone.
+func TestServedPageCarriesNoConversation(t *testing.T) {
+	t.Parallel()
+	bad := regexp.MustCompile(`(?i)glenn|the owner|/\*[^*]*\d{4}-\d\d-\d\d[^*]*\*/|<!--[^>]*\d{4}-\d\d-\d\d[^>]*-->`)
+	err := fs.WalkDir(page, "page", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		switch filepath.Ext(path) {
+		case ".html", ".css", ".js":
+		default:
+			return nil
+		}
+		if filepath.Base(path) == "pele.js" {
+			return nil
+		}
+		b, err := page.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range bad.FindAllString(string(b), -1) {
+			if len(m) > 80 {
+				m = m[:80]
+			}
+			t.Errorf("%s carries conversation: %q", path, m)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

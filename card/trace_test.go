@@ -1,7 +1,7 @@
 package card
 
-// Trace validation of the card machine (tla/README.md, "Trace
-// validation"). The card walk (machineWalk, TestMachineWalk's) records, after
+// Trace validation of the card machine (AGENTS.md, TLA+ models and
+// trace checks). The card walk (machineWalk, TestMachineWalk's) records, after
 // every accepted op, the move and the store's state projected by TraceState;
 // tla/CardMachineTrace.tla checks the recording is a behaviour of
 // tla/CardMachine.tla. The walk writes its traces only when NOVA_TRACE_DIR

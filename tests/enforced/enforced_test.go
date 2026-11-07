@@ -312,11 +312,11 @@ func verifyEnforced(doc string, idx *treeIndex) []string {
 			continue
 		}
 		cells := strings.Split(line[1:len(line)-1], "|")
-		if len(cells) != 4 {
+		if len(cells) != 3 {
 			continue
 		}
 		id := strings.TrimSpace(cells[0])
-		holdersRaw := strings.TrimSpace(cells[3])
+		holdersRaw := strings.TrimSpace(cells[2])
 		if id == "ID" || strings.HasPrefix(id, ":---") || strings.HasPrefix(id, "---") {
 			continue
 		}
@@ -379,19 +379,31 @@ func verifyEnforced(doc string, idx *treeIndex) []string {
 	}
 
 	if totalRows == 0 {
-		errs = append(errs, "no ledger rows parsed from docs/ENFORCED.md")
+		errs = append(errs, "no ledger rows parsed from the Enforced rules section of AGENTS.md")
 	}
 	return errs
+}
+
+// enforcedSection returns the "## Enforced rules" section of AGENTS.md.
+func enforcedSection(t *testing.T, root string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	_, rest, ok := strings.Cut(string(b), "\n## Enforced rules\n")
+	if !ok {
+		t.Fatalf("AGENTS.md has no \"## Enforced rules\" section")
+	}
+	section, _, _ := strings.Cut(rest, "\n## ")
+	return []byte(section)
 }
 
 func TestFunctionalEnforcedLedger(t *testing.T) {
 	t.Parallel()
 	root := filepath.Clean(filepath.Join("..", ".."))
 	idx := loadTree(t, root)
-	docBytes, err := os.ReadFile(filepath.Join(root, "docs", "ENFORCED.md"))
-	if err != nil {
-		t.Fatalf("read docs/ENFORCED.md: %v", err)
-	}
+	docBytes := enforcedSection(t, root)
 	errs := verifyEnforced(string(docBytes), idx)
 	for _, e := range errs {
 		t.Errorf("%s", e)
@@ -402,11 +414,20 @@ func TestFunctionalEnforcedRejectsBrokenLedger(t *testing.T) {
 	t.Parallel()
 	root := filepath.Clean(filepath.Join("..", ".."))
 	idx := loadTree(t, root)
-	docBytes, err := os.ReadFile(filepath.Join(root, "docs", "ENFORCED.md"))
-	if err != nil {
-		t.Fatalf("read docs/ENFORCED.md: %v", err)
-	}
+	docBytes := enforcedSection(t, root)
 	baseDoc := string(docBytes)
+	first := func(re string) string {
+		tok := regexp.MustCompile(re).FindString(baseDoc)
+		if tok == "" {
+			t.Fatalf("ledger has no holder matching %s", re)
+		}
+		return tok
+	}
+	testTok := first("`test [A-Za-z0-9]+/[^`]+`")
+	topTok := first("`test [A-Za-z0-9]+`")
+	invTok := first("`invariant [^`<]+`")
+	witTok := first("`witness [^`<]+`")
+	chkTok := first("`check [^`<]+`")
 
 	cases := []struct {
 		name    string
@@ -416,35 +437,36 @@ func TestFunctionalEnforcedRejectsBrokenLedger(t *testing.T) {
 		{
 			name: "missing_top_level_test",
 			mutate: func(s string) string {
-				return strings.Replace(s, "`test TestFunctionalLoad/build`", "`test TestDoesNotExistAnywhere/build`", 1)
+				return strings.Replace(s, topTok, "`test TestDoesNotExistAnywhere`", 1)
 			},
 			wantErr: `missing top-level test "TestDoesNotExistAnywhere"`,
 		},
 		{
 			name: "missing_subtest_scenario",
 			mutate: func(s string) string {
-				return strings.Replace(s, "`test TestProducerTable/Resolve`", "`test TestProducerTable/NoSuchSubtestScenario`", 1)
+				top, _, _ := strings.Cut(testTok, "/")
+				return strings.Replace(s, testTok, top+"/NoSuchSubtestScenario`", 1)
 			},
 			wantErr: `missing subtest scenario "NoSuchSubtestScenario"`,
 		},
 		{
 			name: "missing_tla_invariant",
 			mutate: func(s string) string {
-				return strings.Replace(s, "`invariant Store.SingleStateSingleHolder`", "`invariant Store.NoSuchInvariant`", 1)
+				return strings.Replace(s, invTok, "`invariant Store.NoSuchInvariant`", 1)
 			},
 			wantErr: `missing TLA+ invariant "Store.NoSuchInvariant"`,
 		},
 		{
 			name: "missing_tla_witness",
 			mutate: func(s string) string {
-				return strings.Replace(s, "`witness StoreProducerHolds`", "`witness StoreNoSuchWitness`", 1)
+				return strings.Replace(s, witTok, "`witness StoreNoSuchWitness`", 1)
 			},
 			wantErr: `missing TLA+ witness "StoreNoSuchWitness"`,
 		},
 		{
 			name: "missing_schema_check",
 			mutate: func(s string) string {
-				return strings.Replace(s, "`check cards_state_check`", "`check cards_nonexistent_check`", 1)
+				return strings.Replace(s, chkTok, "`check cards_nonexistent_check`", 1)
 			},
 			wantErr: `missing schema check/trigger "cards_nonexistent_check"`,
 		},

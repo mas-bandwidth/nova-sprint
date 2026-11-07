@@ -11,7 +11,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Result is a verb's whole output and its exit status (LAYER-6 section 3):
+// Result is a verb's whole output and its exit status (AGENTS.md, Run loop and verbs):
 // 0 done, its last line `next: ...`; 1 refused, one line naming the command
 // that makes the prerequisite true; 2 could not run (bad usage, or the
 // store, the bus or an edge failed), one line in the same form.

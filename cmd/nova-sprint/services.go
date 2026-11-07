@@ -35,7 +35,7 @@ type services struct {
 	forge  *forge.Client
 }
 
-// Run is run.Serve over the real seams (SEAMS 8).
+// Run is run.Serve over the real seams (AGENTS.md, Layer seams).
 func (s services) Run(ctx context.Context, listen string) error {
 	dsn, err := s.creds.sprint()
 	if err != nil {

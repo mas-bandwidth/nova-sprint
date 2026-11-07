@@ -582,8 +582,8 @@ func isFullSHA_internal(s string) bool {
 }
 
 // Clone makes dir a working clone of repo (a clone address: CloneURL), once: a dir that already holds a
-// .git is left as it is (run keeps one clone per stream repo, LAYER-4
-// "Git"). It never fetches into an existing clone; LandPass fetches what it
+// .git is left as it is (run keeps one clone per stream repo, AGENTS.md,
+// Edges and worker). It never fetches into an existing clone; LandPass fetches what it
 // needs.
 func (c *Client) Clone(ctx context.Context, repo, dir string) error {
 	if repo == "" || dir == "" {

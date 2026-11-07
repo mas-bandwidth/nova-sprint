@@ -7,7 +7,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// fix is the fix step (LAYER-3 "Fix"; the model's FixSet): once every read
+// fix is the fix step (AGENTS.md, Steps; the model's FixSet): once every read
 // of a producer's current review is done or withdrawn and one is done,
 // policy's verdict over all of them is ReadYes or
 // ReadFix{finding}, the finding every fix read's joined. A finding

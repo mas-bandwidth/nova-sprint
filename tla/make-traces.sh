@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the walks on the fixed seed set and write their traces under
-# tla/traces/ (tla/README.md, "Trace validation"):
+# tla/traces/ (AGENTS.md, TLA+ models and trace checks):
 #   bash tla/make-traces.sh          write the traces
 #   bash tla/make-traces.sh check    write them, then check every trace under
 #                                    tla/traces/ with check-trace.sh, all in

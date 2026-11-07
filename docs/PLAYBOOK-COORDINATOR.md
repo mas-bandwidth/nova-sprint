@@ -83,7 +83,7 @@ Before moving a card, read its holder, gen, pushed head and gates, and preserve 
 
 ## 4. Cards
 
-`add` lints every brief with no bypass and refuses naming the section. `docs/CARD-CONTRACT.md` is the full contract. In short, a brief is a file whose name without `.md` is the card id:
+`add` lints every brief with no bypass and refuses naming the section. In short, a brief is a file whose name without `.md` is the card id:
 
     tier: pro
     PATHS: store/x.go, store/x_test.go

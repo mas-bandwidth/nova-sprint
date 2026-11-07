@@ -138,7 +138,7 @@ func (t *tick) put(j judgement) store.Write {
 	return w
 }
 
-// judgements is the judgements step (LAYER-3 "Judgements"; the model's jnew
+// judgements is the judgements step (AGENTS.md, Steps; the model's jnew
 // and Expired): the alarms, one policy judgement per missed question, and
 // the expiries: a cause that cleared in the view, or a deadline passed with
 // the kind's safe default, which never drops, accepts, merges or lands.

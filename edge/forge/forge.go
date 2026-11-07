@@ -1,4 +1,4 @@
-// Package forge is the GitHub edge of layer 4 (docs/LAYER-4-EDGES.md).
+// Package forge is the GitHub edge of layer 4 (AGENTS.md, Edges and worker).
 package forge
 
 import (
@@ -78,7 +78,7 @@ func (e *FaultError) Error() string {
 	return fmt.Sprintf("forge fault (%s) for %s until %d: %s", e.Kind, e.Identity, e.RetryAfter, e.Reason)
 }
 
-// Forge is the landing's GitHub (LANDING.md): a PR and its checks, the
+// Forge is the landing's GitHub (AGENTS.md, Edges and worker, landing pass): a PR and its checks, the
 // merge by the repository's allowed method at the exact head CI passed, and
 // the first failing lines of a red check for the coordinator's judgement.
 type Forge interface {

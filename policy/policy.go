@@ -1,4 +1,4 @@
-// Package policy is layer 5 of nova-sprint (docs/LAYER-5-POLICY.md): the
+// Package policy is layer 5 of nova-sprint (AGENTS.md, Policy): the
 // rules the coordinator changes while the sprint runs, as a Starlark file
 // stored as an immutable version in sprint.policy. It answers a closed set
 // of questions the steps ask, checks every answer against its domain, and
@@ -40,7 +40,7 @@ const (
 	KindRead = "read"
 )
 
-// The rungs a stream lands on (LANDING.md).
+// The rungs a stream lands on (AGENTS.md, Edges and worker, landing pass).
 const (
 	RungFlowing  = "flowing"
 	RungBackedUp = "backed_up"

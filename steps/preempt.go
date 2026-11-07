@@ -7,7 +7,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// preempt is the preemption step (LAYER-3 "Preemption"; the model's PreStep;
+// preempt is the preemption step (AGENTS.md, Steps; the model's PreStep;
 // BlockerPreemptsInOneTick, PreemptYoungest). A ready blocker with no free
 // width on any open serving row (working at width) gets, on one such row,
 // one group: Withdraw of the youngest working consumer there (releasing its

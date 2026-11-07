@@ -7,8 +7,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/card"
 )
 
-// limits is the retire and fail limits step (LAYER-3 "Retire and fail
-// limits"): Block with a blocked judgement when bounces reach the limit (a
+// limits is the retire and fail limits step (AGENTS.md, Steps): Block with a blocked judgement when bounces reach the limit (a
 // fault never counts); Withdraw of a working consumer whose
 // row is silent past the bound, branch kept; Gone for a row unseen past its
 // bound, never for one missed challenge (the bound is policy's

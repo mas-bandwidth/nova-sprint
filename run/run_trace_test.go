@@ -7,7 +7,7 @@ package run
 // (Push: one envelope, nova-bus send, then the cursor op) on store.Fake, a
 // fake bus, a fake lock session and hook, and a fake policy, on a seeded
 // random walk, and writes what it observed as a RunTraceLog module for
-// tla/RunTrace.tla (tla/RunTrace-MAPPING.md, "The run.Ticker binding").
+// tla/RunTrace.tla (AGENTS.md, TLA+ models and trace checks).
 //
 // Unit-test rules: no real time (the clock is a value), no socket, no
 // network. The trace is written only when NOVA_RUN_TRACE_PATH is set.

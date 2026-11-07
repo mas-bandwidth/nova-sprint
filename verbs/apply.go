@@ -14,8 +14,7 @@ import (
 )
 
 // commit is the one way a verb writes: Apply, and on an unknown outcome the
-// receipt the op id already got, else the same op again (CORRECT-USE,
-// "Unknown outcomes never leak"). A refused receipt is a refusal naming fix.
+// receipt the op id already got, else the same op again, so an unknown outcome never leaks. A refused receipt is a refusal naming fix.
 func (e *Engine) commit(ctx context.Context, op store.Op, fix string) (store.Receipt, error) {
 	r, err := applyOnce(ctx, e.Store, op, e.Store.Apply)
 	if err == nil && !r.Accepted {
@@ -53,7 +52,7 @@ func consumerOpID(kind string, epoch int, consumer string, gen int) string {
 }
 
 // rules are the active policy's numbers the verbs read: the roster's width
-// cap and the consumer deadlines (SEAMS 4: policy owns run's numbers).
+// cap and the consumer deadlines (AGENTS.md, Layer seams: policy owns run numbers).
 func (e *Engine) rules(ctx context.Context, snap store.Snapshot) (policy.Limits, policy.Timeouts, error) {
 	a, err := e.answers(ctx, snap)
 	return a.Limits, a.Timeouts, err

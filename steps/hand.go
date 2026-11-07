@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Deal is take (LAYER-3 "In hand"): a consumer is
+// Deal is take (AGENTS.md, Steps): a consumer is
 // cut working, in its row's hand at the deal, and the deal's push tells the
 // row what it holds. The row's acknowledgement is its `take`, which writes
 // AckCursor once; until then the steps nudge the row each tick from
@@ -45,7 +45,7 @@ func (t *tick) dealtAt(c string) time.Time {
 	return t.v.Since
 }
 
-// unacked is the nudges and the ready timeout (LAYER-3 "In hand"): a working consumer its row has not acknowledged is nudged
+// unacked is the nudges and the ready timeout (AGENTS.md, Steps): a working consumer its row has not acknowledged is nudged
 // each tick from timeouts ready_nag after the deal, with the row's count of
 // such cards, the cards it has taken and its width; at ready_take a work
 // card is withdrawn and its producer dealt in the same group, by the

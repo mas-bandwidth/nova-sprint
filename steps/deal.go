@@ -22,7 +22,7 @@ type cand struct {
 	key  []any
 }
 
-// deal is the deal and reads step (LAYER-3 "Deal and reads"; the model's
+// deal is the deal and reads step (AGENTS.md, Steps; the model's
 // DealStep; NeverDealtTwice, NeverBelowTier, guarantee 8). One candidate
 // list down the ladder, within a rung in policy's order then id; each
 // candidate is dealt to a row with room (working under policy's work, at
@@ -286,7 +286,7 @@ func (t *tick) ranked(c store.Card, kind string, rows []string, n int) []string 
 	return out
 }
 
-// desired is the rank wanted for c (LAYER-3 "Escalation"): a read at the
+// desired is the rank wanted for c (AGENTS.md, Steps): a read at the
 // rank above the writer's row (the top stays the top); work at the card's
 // tier, one up at escalate_after bounces, the top at frontier_after.
 func (t *tick) desired(c store.Card, kind string) int {

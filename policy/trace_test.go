@@ -1,7 +1,7 @@
 package policy
 
-// Trace validation of the policy engine (tla/README.md, "Trace
-// validation"). The policy walk drives the verbs and the tick on the Fake
+// Trace validation of the policy engine (AGENTS.md, TLA+ models and
+// trace checks). The policy walk drives the verbs and the tick on the Fake
 // (up, then set, activate, a snapshot that drifts, and ticks that write
 // their judgements and move one card as layer 3 would) and records, after
 // every step, the step and the state projected by TraceState;

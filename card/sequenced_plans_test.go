@@ -10,7 +10,7 @@ package card
 // a read cut in the same op, and a nested Merge. Each merged op the machine
 // accepts is also applied one by one on a replica of the store (the op log
 // replayed), and the two are compared: "Merge is sequential composition"
-// (LAYER-2).
+// (AGENTS.md, Card machine).
 //
 // Unit tests, no clock, no sockets: rand is seeded, At is t0 plus the op's
 // number.
@@ -56,7 +56,7 @@ func seqLiveReads(s store.Snapshot, p string) []string {
 
 // "a producer ... has a live read consumer only in review"; Cancel,
 // Block, ReadYes and ReadFix need "no live consumer of p"; "an Edit never
-// lands while a consumer is live" (LAYER-2 tables and checks). Merge re-runs
+// lands while a consumer is live" (AGENTS.md, Card machine). Merge re-runs
 // a later move with the consumer list it was planned with (overlayCons in
 // replay.go overlays only the consumers passed), so a read cut by an earlier
 // plan of the same merge is invisible to it. AskRead then Cancel, Block,
@@ -135,7 +135,7 @@ func TestSequencedPlansMergedHoldThenWithdrawReadiesInAHeldStream(t *testing.T) 
 }
 
 // "Merge is sequential composition ... plan 2's move is re-run against
-// that state ... two relinks cannot close a cycle"; README: "each later plan the machine built is run again". A
+// that state ... two relinks cannot close a cycle"; each later plan the machine built is run again. A
 // merged plan is built by the machine, but Merge returns it with no move to
 // run again (mergeSeq leaves again nil), so Merge treats it as hand-built
 // and keeps its writes. Merge(one, Merge(two)) of the two

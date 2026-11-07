@@ -8,7 +8,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Admission (CORRECT-USE "Admission"): what can
+// Admission: what can
 // be found when a stream, a card or a row is added is found then, each
 // refusal naming its one fix, and check re-proves it on demand.
 

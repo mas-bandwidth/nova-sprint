@@ -10,8 +10,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// headReady is finish's check of the head at origin (CORRECT-USE, "Finish
-// is checked, not trusted"): a full sha, not the base or the prior head, and
+// headReady is finish's check of the head at origin (finish is checked, not
+// trusted): a full sha, not the base or the prior head, and
 // the tip of the dealt branch at origin, every commit since the base made as
 // the sprint's commit identity. That is all finish needs (intent
 // rule 32): no PR, no forge and no token on the worker; the landing opens

@@ -29,7 +29,7 @@ type pending struct {
 // notice since its cursor; past the bound, one line names `next`
 // (overflow-to-next, the envelope model). The cursor `push:<name>`
 // moves to the last seq the envelope covers only after `nova-bus send`
-// exits 0 and names the message (LAYER-6 guarantee 4); a failed send is not
+// exits 0 and names the message (AGENTS.md, Run loop and verbs, Guarantees); a failed send is not
 // sent again within the tick, and the unmoved cursor is the only resend. Nothing is pushed for an event before its op commits:
 // the notices come from the log. A nudge (steps.Nudge: a card in a row's
 // hand it has not acknowledged) is the one notice not from the log: the
@@ -117,7 +117,7 @@ type PushFailure struct {
 	Err error
 }
 
-// Push sends each recipient's envelope and moves its cursor (SEAMS 6). It
+// Push sends each recipient's envelope and moves its cursor (AGENTS.md, Layer seams). It
 // returns the recipients whose send failed, with the cause, for the PUSH
 // FAILED lines.
 func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int, now time.Time) []PushFailure {

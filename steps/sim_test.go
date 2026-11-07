@@ -131,7 +131,7 @@ func (s *sim) run(n int) {
 	}
 }
 
-// take and report act as a row would, as their own ops (LAYER-6): take is
+// take and report act as a row would, as their own ops (AGENTS.md, Run loop and verbs): take is
 // the acknowledgement of a consumer already in the row's hand.
 func (s *sim) take(c string) {
 	s.t.Helper()

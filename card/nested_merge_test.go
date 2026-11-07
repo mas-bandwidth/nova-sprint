@@ -2,7 +2,7 @@ package card
 
 // Nested and right-associated merges, Add followed by a move in the same op,
 // the preempt guard, and the fences of re-run plans. Each test asserts a
-// design rule or model invariant from docs/LAYER-2-CARD-MACHINE.md and
+// design rule or model invariant from AGENTS.md, Card machine and
 // tla/CardMachine.tla.
 
 import (
@@ -15,7 +15,7 @@ import (
 
 // TestNestedMergeLeavesReadyProducerInHeldStream checks
 // CardMachine.ParkedUnderHold ("No producer is ready in a held stream after
-// any step", docs/LAYER-2-CARD-MACHINE.md) and "Merge is sequential
+// any step", AGENTS.md, Card machine) and "Merge is sequential
 // composition".
 //
 // inner = Merge(unblock, hold) merged as the second argument of
@@ -58,7 +58,7 @@ func TestNestedMergeLeavesReadyProducerInHeldStream(t *testing.T) {
 }
 
 // TestNestedMergeRightAssociatedRefusesValidMoves checks "Merge is
-// sequential composition" (docs/LAYER-2-CARD-MACHINE.md): the merged plan
+// sequential composition" (AGENTS.md, Card machine): the merged plan
 // carries the replay, so nested merges compose.
 //
 //  1. For three independent waiting producers p1, p2, p3 where each Resolve
@@ -115,9 +115,9 @@ func TestNestedMergeRightAssociatedRefusesValidMoves(t *testing.T) {
 
 // TestMergeAddAndSubsequentMoveBreaksAtCardAndStore checks sequential
 // composition of MoveAdd with a subsequent move in the same op
-// (docs/LAYER-1-STORE.md: "put card sets stream, score, needs and brief, so an
+// (AGENTS.md, Store: "put card sets stream, score, needs and brief, so an
 // op may put a card and set its state in the same transaction (add and ready
-// at once)"; docs/LAYER-2-CARD-MACHINE.md: "Merge is sequential composition",
+// at once)"; AGENTS.md, Card machine: "Merge is sequential composition",
 // "no plan the machine emits is ever invalid at the store").
 //
 //  1. The folded Card built from a PutCard has State: Waiting, so a
@@ -230,7 +230,7 @@ func TestPreemptGuardBypassedByNestedMergeAndSetPriority(t *testing.T) {
 }
 
 // TestMergeDropsRerunExpectFenceAndLandsCycle checks CardMachine.OrderAcyclic
-// ("the needs and after graphs stay acyclic", docs/LAYER-2-CARD-MACHINE.md:
+// ("the needs and after graphs stay acyclic", AGENTS.md, Card machine:
 // "Relink fences every card its acyclic walk reads").
 //
 // foldPlans re-runs each plan against the folded state and must keep the

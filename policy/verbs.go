@@ -17,10 +17,9 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The verbs' logic (docs/LAYER-5-POLICY.md, "The verbs"), called by layer
+// The verbs' logic (AGENTS.md, Policy, "Verbs"), called by layer
 // 6's verbs: checked before stored, stored before active, every change an
-// event through the store's policy writes. A refusal is a *Refusal in the
-// CORRECT-USE form; any other error is the store's.
+// event through the store's policy writes. A refusal is a *Refusal (problem and fix); any other error is the store's.
 
 // Caller is who runs a verb and the op it may write. Coordinator is layer
 // 6's answer for Actor (the rows nova-config names).

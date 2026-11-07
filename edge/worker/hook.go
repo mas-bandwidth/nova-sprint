@@ -19,7 +19,7 @@ import (
 
 type (
 	// WakeHook is the row's long-lived `nova-bus hook --as <row>` child. A
-	// line it prints is only a wake (LAYER-4, Wake): the runner asks the
+	// line it prints is only a wake (AGENTS.md, Edges and worker): the runner asks the
 	// sprint what to do, so a lost, late or repeated line changes nothing.
 	// edge.Exec returns only when its program ends, so the hook cannot be
 	// run through it; this is the one child the worker watches itself.

@@ -12,7 +12,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// A brief (CARD-CONTRACT) is a tier line, metadata lines (PATHS, NEEDS,
+// A brief is a tier line, metadata lines (PATHS, NEEDS,
 // AFTER, PRIORITY, TEST, DONE-WHEN), a blank line and the task prose. The
 // parser checks the form; the gates TEST names are the worker's to run.
 type briefParts struct {

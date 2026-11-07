@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -52,23 +51,6 @@ func TestStoreOpenRunsUnderDeadline(t *testing.T) {
 	if !deadlined[openArg] {
 		t.Errorf("open.go: store.Open(%s, ...) has no deadline (%s is not from context.WithTimeout/WithDeadline)", openArg, openArg)
 	}
-}
-
-// TestReadmeStatesTrackFixRule checks that README.md has a sentence stating the Fleet and Friends track's
-// fix rule (a working work consumer at attempt 2 or more).
-func TestReadmeStatesTrackFixRule(t *testing.T) {
-	t.Parallel()
-	b, err := os.ReadFile("README.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, s := range regexp.MustCompile(`[^.]*\.`).FindAllString(string(b), -1) {
-		l := strings.ToLower(s)
-		if strings.Contains(l, "track") && strings.Contains(l, "attempt") {
-			return
-		}
-	}
-	t.Error("README has no sentence stating the track's fix rule (working work consumer, attempt >= 2)")
 }
 
 // TestNoUnusedDashboardSymbols checks that three symbols with no reader stay out of the non-test code:

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// LAYER-2 "Consumer ids are the machine's: <producer>.w<attempt> for work,
+// AGENTS.md, Card machine: "Consumer ids are the machine's: <producer>.w<attempt> for work,
 // <producer>.r<review>.<n> for reads, fenced with CardAbsent at cut", and
 // "nothing stalls" (a ready producer is started on the next tick). Add accepts
 // a producer whose id IS a future consumer id. Sequence: Add p1; Add "p1.w1"
@@ -44,7 +44,7 @@ func TestEdgeAddIdCollidesWithConsumerId(t *testing.T) {
 	}
 }
 
-// LAYER-2 Waive/NeedFailed/Relink rows: "need is in p's needs and is fail,
+// AGENTS.md, Card machine: Waive/NeedFailed/Relink rows: "need is in p's needs and is fail,
 // or is failed by an earlier write of the same op", and "a merged op equals
 // applying its plans one by one". Merge(Rescore p3, NeedFailed p2 InThisOp)
 // has no drop in it; one by one the NeedFailed is refused ("need n1 is
@@ -68,7 +68,7 @@ func TestEdgeMergeInThisOpWithoutADrop(t *testing.T) {
 	}
 }
 
-// LAYER-2 "A Withdraw whose reason is preempt refuses unless the consumer
+// AGENTS.md, Card machine: "A Withdraw whose reason is preempt refuses unless the consumer
 // is working"; an ordinary withdraw has no such rule. The merge guard
 // (replay.go preemptGuard) applies to every Withdraw merged with a blocker's
 // Start, whatever its reason, so a silence withdraw on another row and a
@@ -86,7 +86,7 @@ func TestEdgeBlockerStartWithUnrelatedWithdraw(t *testing.T) {
 	}
 }
 
-// LAYER-2 "Merge: sequential composition ... nested merges compose".
+// AGENTS.md, Card machine.
 // ReportPlan is a nested Merge whose seen records are the post-fold state, so
 // Merge(P, ReportPlan) with P not having read the reporting cards re-runs the
 // Report against a consumer already done: "consumer p1.w1 is done; Report
@@ -111,7 +111,7 @@ func TestEdgeNestedMergeIsOrderDependent(t *testing.T) {
 	}
 }
 
-// LAYER-2 "An event naming a ... card ... that does not exist: a refusal
+// AGENTS.md, Card machine: "An event naming a ... card ... that does not exist: a refusal
 // naming the unknown name" and "refusals name the fix". A card that exists but
 // was not passed is reported as not existing: Relink to a real producer
 // missing from needs says "card x does not exist", so the caller hunts a

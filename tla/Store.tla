@@ -1,6 +1,6 @@
 ------------------------------- MODULE Store -------------------------------
 (***************************************************************************)
-(* Layer 1 of nova-sprint: the store (docs/LAYER-1-STORE.md).             *)
+(* Layer 1 of nova-sprint: the store (AGENTS.md, Store).             *)
 (*                                                                         *)
 (* Each operation is one atomic step. In SQL that step is one transaction  *)
 (* from LOCK TABLE sprint.epoch to COMMIT at READ COMMITTED: writers are   *)

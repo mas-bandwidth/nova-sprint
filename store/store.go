@@ -1,5 +1,5 @@
 // Package store is layer 1 of nova-sprint: the one place the sprint's state
-// lives (docs/LAYER-1-STORE.md). It holds streams, cards, rows, judgements, cursors and policy
+// lives (AGENTS.md, Store). It holds streams, cards, rows, judgements, cursors and policy
 // versions, applies one checked operation at a time in one transaction, and
 // logs every operation that entered it, accepted or refused.
 package store

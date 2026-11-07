@@ -18,9 +18,8 @@ const chainWarn = steps.ChainWarn
 // read however long the sprint has run.
 const landLookback = 5000
 
-// flattenFix is how a long chain is made short (CORRECT-USE, "Keep
-// everybody at width").
-const flattenFix = "flatten it before the deal: a NEEDS only on an output the card consumes, independent work as cards that need nothing, one card per file set (CORRECT-USE: keep everybody at width)"
+// flattenFix is how a long chain is made short.
+const flattenFix = "flatten it before the deal: a NEEDS only on an output the card consumes, independent work as cards that need nothing, one card per file set"
 
 // checkWaits is one line per stream with producers waiting, why they wait
 // (steps.Waits: the front of the chain they wait on, the producer and file
