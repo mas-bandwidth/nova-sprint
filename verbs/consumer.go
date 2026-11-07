@@ -92,7 +92,6 @@ func (e *Engine) takeNew(ctx context.Context, st ApplyStore, snap store.Snapshot
 	if why != nil {
 		return refused("take", why.Reason, "nova-sprint show "+id)
 	}
-	plan.Expect = append(plan.Expect, store.AtSeq{Seq: snap.Seq})
 	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: actor, Kind: "take", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: snap.Streams[c.Stream].Repo}
 	receipt, err := applyExact(ctx, st, op)
 	if err != nil {
