@@ -137,7 +137,7 @@ func (t *tick) judgements() {
 func (t *tick) cleared(j store.Judgement) string {
 	switch j.Kind {
 	case "unserved":
-		for _, n := range sortedKeys(t.v.Rows) {
+		for _, n := range t.rowNames {
 			if t.v.Open(t.v.Rows[n]) && contains(t.tiers(n), j.About) {
 				return "row " + n + " serves " + j.About
 			}

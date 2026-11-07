@@ -40,7 +40,7 @@ var runEvents = []string{"Seen", "Gone", "Width"}
 // check, the move through the card machine, one op. A verb refused for its
 // actor writes nothing.
 func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) {
-	t := &tick{v: v, in: in, claimed: set{}, resolved: set{}, tally: map[string]int{}, rested: set{}, expires: map[string]string{}}
+	t := newTick(v, in)
 	t.o = newOracle(Answers{}, Engine)
 	t.lim, t.tmo = Engine.Limits, Engine.Timeouts
 	if ref := t.actorOK(r); ref != nil {

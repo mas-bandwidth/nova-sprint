@@ -34,42 +34,37 @@ func (f FakeRoster) Row(name string) (string, int, []string, bool) {
 	return r.Kind, r.Width, slices.Clone(r.Tiers), ok
 }
 
+// rowOf is the roster's facts for row name, read once per tick; Kind "" is
+// unlisted.
+func (t *tick) rowOf(name string) RosterRow {
+	if r, ok := t.roster[name]; ok {
+		return r
+	}
+	r := RosterRow{}
+	if t.in.Roster != nil {
+		if kind, w, ts, ok := t.in.Roster.Row(name); ok {
+			r = RosterRow{Kind: kind, Width: w, Tiers: ts}
+			if r.Kind == "" {
+				r.Kind = "worker"
+			}
+		}
+	}
+	t.roster[name] = r
+	return r
+}
+
 // listed says whether row name is in the roster; one not listed is never
 // dealt to, and a step opens a roster judgement for it.
-func (t *tick) listed(name string) bool {
-	if t.in.Roster == nil {
-		return false
-	}
-	_, _, _, ok := t.in.Roster.Row(name)
-	return ok
-}
+func (t *tick) listed(name string) bool { return t.rowOf(name).Kind != "" }
 
 // kind is row name's kind from the roster (worker or kin), "" when unlisted.
-func (t *tick) kind(name string) string {
-	if t.in.Roster == nil {
-		return ""
-	}
-	k, _, _, _ := t.in.Roster.Row(name)
-	return k
-}
+func (t *tick) kind(name string) string { return t.rowOf(name).Kind }
 
 // width is row name's width from the roster, 0 when unlisted.
-func (t *tick) width(name string) int {
-	if t.in.Roster == nil {
-		return 0
-	}
-	_, w, _, _ := t.in.Roster.Row(name)
-	return w
-}
+func (t *tick) width(name string) int { return t.rowOf(name).Width }
 
 // tiers is the tiers row name serves, from the roster; none when unlisted.
-func (t *tick) tiers(name string) []string {
-	if t.in.Roster == nil {
-		return nil
-	}
-	_, _, ts, _ := t.in.Roster.Row(name)
-	return ts
-}
+func (t *tick) tiers(name string) []string { return t.rowOf(name).Tiers }
 
 // rank is the highest tier a row lists; "" for none.
 func (t *tick) rank(name string) string {
@@ -88,21 +83,15 @@ func (t *tick) rank(name string) string {
 // card round 8 lands they travel in the Row record).
 func (t *tick) rowRecord(r store.Row) card.Row {
 	cr := card.RowFromStore(r)
-	if t.in.Roster != nil {
-		if kind, w, ts, ok := t.in.Roster.Row(r.Name); ok {
-			_ = kind
-			cr.Width, cr.Tiers = w, ts
-		} else {
-			cr.Width, cr.Tiers = 0, nil
-		}
-	}
+	rr := t.rowOf(r.Name)
+	cr.Width, cr.Tiers = rr.Width, rr.Tiers
 	return cr
 }
 
 // unlisted opens the roster judgement for every store row the roster lacks;
 // such a row is dealt nothing.
 func (t *tick) unlisted() {
-	for _, n := range sortedKeys(t.v.Rows) {
+	for _, n := range t.rowNames {
 		if !t.listed(n) {
 			t.judge("roster", n, "row "+n+" is not in nova-config; nothing is dealt to it until nova-config lists it")
 		}

@@ -31,9 +31,8 @@ func (t *tick) needs() {
 		if t.v.Streams[c.Stream].Held || len(t.overlap(c)) > 0 {
 			continue
 		}
-		if t.group("resolve", p, t.producerMove(p, card.Resolve{})) != nil {
-			t.resolved[p] = struct{}{}
-		}
+		t.resolved[p] = struct{}{} // the overlap tally counts it whether or not the budget admits it
+		t.group("resolve", p, t.producerMove(p, card.Resolve{}))
 	}
 }
 

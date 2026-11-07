@@ -17,7 +17,7 @@ func (t *tick) holds() {
 			t.group("park", p, t.producerMove(p, card.Park{}))
 		}
 	}
-	for _, n := range sortedKeys(t.v.Rows) {
+	for _, n := range t.rowNames {
 		r := t.v.Rows[n]
 		why := ""
 		switch {
