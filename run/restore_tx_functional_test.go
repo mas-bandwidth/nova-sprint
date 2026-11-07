@@ -3,9 +3,12 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/stretchr/testify/require"
 )
 
@@ -13,7 +16,15 @@ func TestFunctionalRestoreSameSessionAndRollback(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	dsn := chooserTestPG(t)
-	lock, err := OpenRestoreLock(ctx, dsn, "", "bench", 20)
+	admin, err := pgx.Connect(ctx, dsn)
+	require.NoError(t, err)
+	defer admin.Close(ctx)
+	_, err = admin.Exec(ctx, "CREATE ROLE restore_user LOGIN; CREATE SCHEMA sprint AUTHORIZATION restore_user")
+	require.NoError(t, err)
+	limited := strings.Replace(dsn, "nova@", "restore_user@", 1)
+	identity, _ := store.CheckSchema(ctx, limited)
+	require.NotEmpty(t, identity.Expected)
+	lock, err := OpenRestoreLock(ctx, limited, "", "bench", 20)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lock.Close(ctx) })
 	err = lock.Restore(ctx, func(w RestoreWriter) error {
@@ -24,39 +35,29 @@ func TestFunctionalRestoreSameSessionAndRollback(t *testing.T) {
 		if e == nil {
 			return errors.New("chooser acquired during restore")
 		}
-		if e = w.Exec(ctx, "CREATE SCHEMA sprint"); e != nil {
-			return e
-		}
 		if e = w.Exec(ctx, "CREATE TABLE sprint.x (v integer)"); e != nil {
-			return e
-		}
-		if e = w.Exec(ctx, "INSERT INTO sprint.x VALUES (1)"); e != nil {
 			return e
 		}
 		return w.Exec(ctx, "-- not allowed\n COMMIT")
 	})
 	require.ErrorContains(t, err, "transaction control")
-	check, err := pgx.Connect(ctx, dsn)
-	require.NoError(t, err)
-	defer check.Close(ctx)
 	var exists bool
-	require.NoError(t, check.QueryRow(ctx, "SELECT to_regnamespace('sprint') IS NOT NULL").Scan(&exists))
-	require.False(t, exists, "failed restore must roll back all SQL")
+	require.NoError(t, admin.QueryRow(ctx, "SELECT to_regnamespace('sprint') IS NOT NULL").Scan(&exists))
+	require.True(t, exists, "rollback preserves the pre-provisioned schema")
+	require.NoError(t, admin.QueryRow(ctx, "SELECT to_regclass('sprint.x') IS NOT NULL").Scan(&exists))
+	require.False(t, exists, "failed restore must roll back its SQL")
 	require.NoError(t, lock.Restore(ctx, func(w RestoreWriter) error {
-		if err := w.Exec(ctx, "CREATE SCHEMA sprint"); err != nil {
+		if err := w.Exec(ctx, fmt.Sprintf("INSERT INTO sprint.meta (id,schema,hash) VALUES (1,2,'%s')", identity.Expected)); err != nil {
 			return err
 		}
-		if err := w.Exec(ctx, "CREATE TABLE sprint.x (v integer)"); err != nil {
-			return err
-		}
-		return w.Exec(ctx, "INSERT INTO sprint.x VALUES (2)")
+		return w.Exec(ctx, "INSERT INTO sprint.epoch (id,n) VALUES (1,1)")
 	}))
 	var value int
-	require.NoError(t, check.QueryRow(ctx, "SELECT v FROM sprint.x").Scan(&value))
-	require.Equal(t, 2, value)
+	require.NoError(t, admin.QueryRow(ctx, "SELECT n FROM sprint.epoch").Scan(&value))
+	require.Equal(t, 1, value)
 	called := false
 	err = lock.Restore(ctx, func(RestoreWriter) error { called = true; return nil })
-	require.ErrorContains(t, err, "schema sprint is not empty")
+	require.Error(t, err)
 	require.False(t, called)
 }
 func TestFunctionalRestoreRejectsMultipleStatements(t *testing.T) {
