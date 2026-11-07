@@ -33,12 +33,13 @@ type pushPending struct {
 // Pusher runs off the tick path and serializes sends across all recipients. Its cursors
 // trail confirmed sends; crash recovery starts from the store's cursors.
 type Pusher struct {
-	mu      sync.Mutex
-	store   store.Store
-	notices Notifications
-	sender  Sender
-	views   map[string]pushPosition
-	pending map[string]pushPending
+	mu             sync.Mutex
+	store          store.Store
+	notices        Notifications
+	sender         Sender
+	views          map[string]pushPosition
+	pending        map[string]pushPending
+	observeCollect func(pushCollection)
 }
 
 func NewPusher(s store.Store, n Notifications, b Sender) *Pusher {
@@ -68,6 +69,9 @@ func (p *Pusher) Push(ctx context.Context, recipient string, snap store.Snapshot
 	end, batches, next, err := p.collect(ctx, recipient, view, snap.Seq, snap.Epoch)
 	if err != nil {
 		return err
+	}
+	if p.observeCollect != nil {
+		p.observeCollect(collectionSnapshot(recipient, cursor, snap.Seq, snap.Epoch, end, batches))
 	}
 	if len(batches) == 0 {
 		p.views[recipient] = next

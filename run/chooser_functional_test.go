@@ -113,3 +113,15 @@ func TestFunctionalInspectChooserIsReadOnly(t *testing.T) {
 	require.Equal(t, 51, status.PID)
 	require.NoError(t, restore.Close(ctx))
 }
+
+func TestFunctionalChooserCloseReleasesBeforeReturning(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	dsn := chooserTestPG(t)
+	first, err := OpenChooser(ctx, dsn, "", "first", 11, &fakeHook{lease: &fakeLease{}})
+	require.NoError(t, err)
+	require.NoError(t, first.Close(ctx))
+	second, err := OpenChooser(ctx, dsn, "", "second", 12, &fakeHook{lease: &fakeLease{}})
+	require.NoError(t, err)
+	require.NoError(t, second.Close(ctx))
+}

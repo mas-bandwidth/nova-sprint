@@ -1,0 +1,14 @@
+[
+  {
+    "name": "SetupChoicesWalk",
+    "module": "SetupChoicesWalk.tla",
+    "cfg": "SetupChoicesWalk.cfg",
+    "expect": "pass",
+    "host": "vision",
+    "exit": 0,
+    "seconds": 5.691,
+    "checked": true,
+    "module_sha256": "ecb0fc447e1639c1377e2f34e064835e4ebb08d5be72cb404a11df8fc73005d1",
+    "cfg_sha256": "09cea8a2398dfe40be9f86d5b18dbe81759db79a82c55ba4a9aa8fe6f5d05751"
+  }
+]

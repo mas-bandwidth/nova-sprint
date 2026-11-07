@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestPublicDashboardRealHTTPAndShutdown(t *testing.T) {
+func TestFunctionalPublicDashboardRealHTTPAndShutdown(t *testing.T) {
 	t.Parallel()
 	var pulls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

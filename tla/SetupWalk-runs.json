@@ -1,0 +1,8 @@
+[
+  {
+    "name": "SetupWalk",
+    "module": "SetupWalk.tla",
+    "cfg": "SetupWalk.cfg",
+    "expect": "pass"
+  }
+]
