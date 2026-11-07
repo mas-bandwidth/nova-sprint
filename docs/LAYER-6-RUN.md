@@ -31,8 +31,10 @@ connection held for the process's life. Held, it refuses, naming the holder from
 run: run already chooses on studio (pid 4121, since 14:02): stop it there, or nova-sprint
 show run`. Then it hooks in as `sprint`, which nova-bus requires before `sprint` can send
 ("name already hooked" releases the lock and refuses the same way). The hook is only a
-wake-up and a reply: run never parses a message, and anything sent to `sprint` is answered
-once with `replies are verbs: run nova-sprint next --as <you>` (as in the LAYER-4 draft).
+wake-up: run never parses a message body; the sprint's pushes are receipts, so a reply to
+`sprint` is never answered and a message that is not a verb is ignored with one log line,
+and a verb sent to `sprint` is answered once with where to run it (verbs.BusAnswer, directive
+item 45: answering a REPLY with a REPLY made a loop).
 Then one cold `Snapshot`, and the ticks.
 
 **Reports are ordinary ops.** A row's `report` (nova-worker's form), `finish` and `read` run
@@ -106,23 +108,27 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | (none) | | runs `next --as <me>` | | 0 |
 | `next` | `[--as <name>]` | never; a broken prerequisite is its answer | the one command (section 4) | 0; 2 if it cannot look |
 | `help` | `[<verb>\|<group>]`, or `-h` | unknown verb: the index | `nova-sprint` | 0 |
-| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded | `next --as <name>` | 0, 1 |
+| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded; `worker` on a sprint with no commit identity: `identity` | `next --as <name>` | 0, 1 |
+| `identity` | `[--name <git user.name> --email <git user.email> --reason <why>]` | coordinator only; none set and none given; a quote, backslash, `$`, backtick or angle bracket, or an email that is not one address; no reason | `check` | 0, 1 |
 | `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
-| `check` | `[--integrity]` | fleet not green: each `nova-fleet` fix; a tool below the pin: `nova-fleet up`; `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable | `up`, or what next says | 0, 1 |
-| `up` | `[--as <coordinator>] [--dash tailnet\|public=<host>] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
-| `stream add` | `<s> --repo <owner/name> [--base main] [--pr]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>` | `add --stream <s> --brief-file <f>` | 0, 1 |
+| `check` | `[--integrity]` | prints every line; red (exit 1, or 2 when a read failed): fleet not green; nova-tools below the pin (above: a warning); `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable; a stream whose repository or base cannot be read; an open judgement (one line per kind); nothing runs the sprint; ready producers and nothing dealt (with why); a landing waiting on a judgement, run or a hold | `next`, or the first red line's fix | 0, 1, 2 |
+| `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
+| `stream add` | `<s> --repo <owner/name> [--base main] [--mode auto\|hand] [--forge github\|none]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>`; with a forge, the group branch `sprint-group/<s>` cannot be created (a name git refuses, a branch at origin in its way, origin's branches unreadable, the push refused), naming the fix | `add --stream <s> --brief-file <f>` | 0, 1 |
 | `add` | `--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a>] [--sentinel <id>] [--priority <level>] [--dry-run]` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
 | `run` | `[--listen <addr>] [--shadow]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
 | `worker` | `--as <row>` | not a host in nova-config's inventory: `nova-fleet join`; name hooked elsewhere; row serves no tier | `nothing; wait for the bus` | 0, 1 |
 | `take` | `<card>@<gen> --as <row>` | not hooked; not dealt to this row at this gen: `show <card>`; at width: `finish` one first | `finish <card>@<gen> --head <sha>` or `read <card>@<gen> yes\|fix` | 0, 1 |
-| `finish` | `<card>@<gen> --head <sha> --as <row>`, or `--failed --reason <why>` | not hooked; not the holder, naming who; not 40 hex; not on the dealt branch at origin: `git push origin <branch>`; PR wanted and absent; head equals base or prior head | `nothing; wait for the bus` | 0, 1 |
+| `finish` | `<card>@<gen> --head <sha> --as <row>`, or `--failed --reason <why>` | not hooked; not the holder, naming who; not 40 hex; not on the dealt branch at origin: `git push origin <branch>`; head equals base or prior head (a head on origin is all it needs: no PR, no forge) | `nothing; wait for the bus` | 0, 1 |
 | `read` | `<card>@<gen> yes\|fix --as <row> [--finding <text>]` | not hooked; the reader wrote the head; head moved: `show <card>`; `fix` with no finding | `nothing; wait for the bus` | 0, 1 |
+| `release` | `<card>@<gen> --as <row> --reason <why>` (recorded `released: <why>`, no result: neither ok nor fail; the re-deal is a new attempt, no blame) | not the holder | `nothing; wait for the bus` | 0, 1 |
 | `release` | `<card>@<gen> --as <row> --reason <why>` | not the holder | `nothing; wait for the bus` | 0, 1 |
+| `beat` | `--load1 <loadavg> --cores <n> --slots-used <n> --slots-total <n> --as <row>` | not hooked; a flag missing or not a number; slots used over the total | `nothing; wait for the bus` | 0, 1, 2 |
 | `show` | `[<card>\|<stream>\|<row>\|run] [--stitch]` | unknown name | what `next` says for that name | 0, 1 |
+| `land` | `<card> --reason <why> [--head <sha>]` (coordinator) | not the coordinator; no reason; not a merging producer; `--head` not its finished head; the merge refused (a conflict: merge it into the base yourself, push, land again), naming the fix | `nothing; wait for the bus` | 0, 1, 2 |
 | `judge` | `[<id> <choice> --reason <why>]` | not the coordinator, or not hooked; judgement not open, naming who closed it; a choice it does not offer, listing them | the next open judgement, or `nothing; wait for the bus` | 0, 1 |
 | `priority` | `<card> <level> --reason <why>` | a consumer id (`priority` is the producer's); a final card; a level outside `low normal high critical blocker` (`read` is a rung, not a level) | `nothing; wait for the bus` | 0, 1 |
 | `edit` | `<card> --brief-file <f> --reason <why>` | a live consumer: `nova-bus send --as <me> --to <holder> ...` instead | `nothing; wait for the bus` | 0, 1 |
-| `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | a live consumer: its holder's `release`; an open judgement on it: `judge <id> drop` | `nothing; wait for the bus` | 0, 1 |
+| `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | an open judgement on it: `judge <id> drop` (a live consumer is released by the drop itself) | `nothing; wait for the bus` | 0, 1 |
 | `hold`, `unhold` | `<row\|stream>... --reason <why> [--dry-run]` | unknown name | `nothing; wait for the bus` | 0, 1 |
 | `dash` | `--listen <addr> [--pull <tailnet addr>]` | no store and no `--pull`; the pulled run not answering | the URL | 0 on SIGTERM |
 | `backup` | `[--out <dir>]` | `pg_dump` missing or older than the server | `nothing` | 0, 1, 2 |
@@ -130,6 +136,25 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `clear` | `--confirm <epoch> [--dry-run]` | wrong epoch; a live consumer, listing them; the backup it takes first failed | `stream add` | 0, 1, 2 |
 | `policy` | layer 5's design | | | |
 | `report` | `<card>@<gen> --result ok\|fail\|fault [--head <sha>] [--cost <usd>] --reason <why> --as <row>` (nova-worker's form of `finish`) | as `finish`; `fault` only for a harness, bench or route failure | `nothing; wait for the bus` | 0, 1 |
+
+**What each verb needs from `up` (2026-11-07).** No verb is gated on `up`'s step; a verb
+refuses only for a piece it needs and names that piece (`nova-sprint help <verb>` prints the
+line as `up:`).
+
+| verbs | need from `up` | without it |
+|---|---|---|
+| `help`, `version`, `up` | nothing; they run before `up` | |
+| `check` | nothing; it names the first piece that is missing | |
+| every other verb (`stop`, `start`, `hook`, `show`, `next` included) | the store `up` makes at its step 2 (an epoch), at any later step of `up` | `the sprint is not set up: nova-sprint up --as <coordinator>`; `next` answers it, exit 0 |
+| every verb that reads the store | the sprint credential in the process | `this process has no sprint credential: run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...` |
+
+A fresh store is stopped, its reason `never started`, until the coordinator runs `start`: the
+run comes up on it and ticks nothing, the board shows `STOPPED never started`, `next` tells the
+coordinator `nova-sprint start --as <coordinator> --reason "<why>"` once the streams need
+nothing first, and tells a worker to wait. `start` on a running sprint and `stop` on a stopped
+one change nothing and succeed (exit 0): `RUNNING already: the sprint is already running
+(<reason>); nothing to start`, next `nova-sprint next --as <me>`, and `STOPPED already: ...`,
+next `nova-sprint start`.
 
 `hook` does not run the bus hook: the bus hook (`nova-bus hook --as <name>` under the session's
 Monitor) is the earlier step it requires, because every push of the sprint travels over the bus
@@ -211,8 +236,8 @@ SPRINT REFUSED up: rowan is not hooked in: run nova-bus hook --as rowan under yo
 # the AI hooks in and runs up again; steps 1 to 3 verify; up stops where the human chooses
 UP 4/8 run: installed on studio; chooser lock held; sprint hooked: VERIFIED
 UP 5/8 dashboard: not chosen
-ASK the human: the dashboard on the tailnet (default), or public on a host with a public IP?
-next: nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>
+ASK the human: the dashboard on the tailnet (default), or public on a machine with a public address in nova-config?
+next: nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]
 # the human says tailnet; up --dash tailnet verifies 1 to 5 and stops again
 UP 6/8 services: deepseek chosen; key not set
 ASK the human to type the deepseek API key at the hidden prompt in a terminal they can see:
@@ -263,8 +288,8 @@ Each step's action is idempotent.
 | 4 run | installs the `run` service on the chosen host (default: this one) | the advisory lock is held (`pg_locks`) and `sprint` is in `nova-bus who` | the host, only with `--run-on` |
 | 5 dashboard | installs `run --listen` on the tailnet, or `dash --pull` on the public host | `/healthz` 200 and `/api/sprint` at the store's epoch, fetched from this machine; for public, from the public address, with the cache headers | tailnet or public, once |
 | 6 services | for each chosen service, the key at a hidden prompt, piped into `nova-secrets set <SERVICE>_API_KEY` on stdin, then the grants, seats, worker rows and service rows | one request to the service's model list through `nova-secrets exec`, judged by its exit code only | which services, once; each key, once |
-| 7 workers | `worker --as <row>` on every bench in nova-config's inventory, through nova-fleet | each row present on the bus and `up` in the store | no |
-| 8 first deal | a stream `up-smoke` with one work card; run deals it and its read to real rows; both are released and the stream held | one work and one read consumer dealt within one tick (LESSONS 6.4) | no |
+| 7 workers | the sprint credential granted to each bench seat; one service record `sprint-worker-<machine>` per worker bench (every bench but the run machine) running `nova-sprint worker --as <machine>`, applied in one `nova-fleet services` play limited to those benches | each worker bench present on the bus and `up` in the store; the refusal names each that is not and its unit's last log line | no |
+| 8 first deal | nothing: a fresh sprint is stopped until `start` and moves nothing, so up deals no card | every worker row hooked, `up` and dealable (cores set in nova-config; a bench without is held at width 0) | no |
 
 **The key.** The prompt turns off echo on the human's terminal and reads one line. Without a
 terminal (an AI's shell) `up --key` refuses and names the terminal it must be run in. The
@@ -515,6 +540,36 @@ The put-back of fenced plans after a refusal; one push per recipient per tick; s
 as policy data; `up` keeping no progress record; the public dashboard pulling
 with no DSN; `judge` with choices in place of v1's answer verbs.
 
+## Built: check says the sprint's health (stitch, 2026-11-07)
+
+`verbs/check.go`, `check_sprint.go`, `check_width.go`, `check_landing.go`
+(item 43). `check` collected the plumbing only and refused at its first
+failure. It now prints one line per thing checked (`CHECK`, `CHECK WARN`,
+`CHECK RED <what>: <fix>`), every line even when an early one is red, and
+ends with `next:` when nothing is red or with one `SPRINT REFUSED check`
+line naming the first red's fix (exit 2 when a red line is a read that
+failed, else 1). With the store at schema it reads one snapshot and adds:
+each stream's repository and base through the git edge at its clone address
+(`Origin.Tip`, one `git ls-remote` each, no clone, every stream at once); the open judgements, one line
+per kind; who holds the chooser lock and whether the name `sprint` is on the
+bus; the width through the steps' own view (`steps.Build`: `Open`,
+`Working`, `Live`) and the roster at policy's cap, red when producers are
+ready and none is dealt, naming the causes the deal meets (stopped, no run,
+no open row, held streams, streams with no base head or an open engine
+judgement about them, tiers no open row serves, the steps' idle judgement,
+and, when no machine cause applies, the count of ready producers with none);
+and one line per stream with producers merging, from what the store records
+(a judgement about the stream, its base or the producer; run; the hold;
+mode hand or no forge), else "waits for its landing PR's CI" (rung 1 the
+card's branch, rung 2 `sprint-group/<s>`; since 2026-11-07 check reads no
+branch at origin for it). The landing line reads no in-flight state
+(run keeps it in memory), so "how long" is the judgement's open time when a
+stall judgement says it, and nothing otherwise. Upward the pin: lower is
+red, higher a warning that exits 0. Unit tests (`verbs/check_test.go`): the
+all-green output line for line, and each red line with fakes. Not measured:
+check's time on a fleet with 25 streams (25 ls-remotes in parallel; a guess
+of 1 to 3 s over the network).
+
 ## Built: foundation checkpoint (2026-11-06)
 
 This is a checkpoint, not a completed layer. `run/` contains the chooser session, an event-folding tick seam, a scheduler, notification batching, and the run-fed dashboard adapter; the actual layer 3–5 adapters, public verb/run CLI integration, setup, backup/restore parser, integrated load gate and dogfood remain open.
@@ -538,3 +593,314 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 - Remaining consumed dependencies include the actual layer 3 planner and roster, layer 4 worker/edges and its receipt-based machine CLI, and layer 5 policy evaluator/activator/catalog. Production repository and brief verification, report head/fault verification, judgement planning, stitch/CI views, workload setup and external integrity comparison remain unwired. Handoff/model trace fixtures are scoped evidence, not a final integrated-head lock.
 
 **Historical foundation measurement (before the later CLI checkpoint):** on reserved amd-1, Go 1.26.10, PostgreSQL 18.6 and Redis 8.10.2, focused `run` and dashboard race tests passed, including isolated PostgreSQL, a real nova-bus/Redis receipt by ID and body, and stale/recovery checks. The broad build, vet and `go test -race ./...` passed again after the store round 20 merge; the earlier inherited-ledger failure and the corrected gates are preserved. A bounded loopback burst served 1,000 requests from 40 source addresses in 21.95 ms with one initial upstream fetch; this is not a sustained or integrated load gate. No layer 6 p99 load measurement, real layer integration, cold read, production deployment or dogfood is claimed here. The logs are retained in the validation workspace; later gates must run on the exact integrated head.
+
+## Built: the run on a fresh store, and the verbs mid-up (2026-11-07)
+
+- A fresh store is stopped "never started" (layer 1's Built entry of the same date). The run
+  comes up on it and ticks nothing until `start`: `run/fresh_test.go` ticks a fresh Fake and
+  checks no sequence change, no ask, no send and no row moved, then one deal after `start`.
+  The dashboard shows `machine: STOPPED never started` (`dash/stop_test.go`).
+- No verb is gated on `up`'s step (section 3's matrix). The field refusal of `stop` while `up`
+  was at step 7 was the missing credential reported as "not set up"; that is now its own
+  refusal, `this process has no sprint credential` with the `nova-secrets exec` line as its fix
+  (`verbs.NoCredential`), from `open.go` and the doctor's schema check alike. "Not set up" now
+  means only a store without the schema. `verbs/fresh_test.go` runs show, next, hook, stop,
+  start and stop on a store as `up` leaves it before step 8, and each verb before the store
+  exists.
+- `start` on a running sprint is a success that changes nothing and names `next`; `stop` on a
+  stopped one names `start`. `next` on a stopped sprint with nothing owed tells the coordinator
+  to start it and a worker to wait; a card in hand or an open judgement still comes first.
+- `up`'s step 8 smoke needs a running sprint, so it needs `start` first; its refusal should name
+  `nova-sprint start` (owed to the setup steps' change).
+- `tla/Run.tla` gains `started` (set by Start; Init has `started = ~InitiallyStopped`) and the
+  invariant `NeverStartedMovesNothing`: before the first start no op, edge, push or tick has
+  applied. The witness `RunFreshRunning` (Init running though the store is fresh) violates it.
+  The generated cfgs now also check `NoTickWhileStopped`, which the generator had dropped.
+  `RunTrace.cfg` sets `InitiallyStopped = TRUE`, and `TestEmitRunTrace` starts from the fresh
+  store: one stopped tick, then Start, in all three trace modes.
+- `tla/SetupRun.tla` puts `up`'s walk (Setup.tla, unchanged) beside the sprint's stop and the
+  run's ticks: step 2 makes the store stopped "never started", the run ticks from step 4 at any
+  later step, and start and stop work at any step. `NothingMovesUnstarted` holds;
+  `SetupRunFreshRunning` (the fresh store running) violates it; three reach checks show the run
+  up on a fresh store, a stop and work moving, each before the walk is done.
+### Built: up steps 6 to 8 on a real fleet, the role password (stitch, 2026-11-07)
+
+- `cmd/nova-sprint/setup_workload.go` is the production `verbs.SetupWorkload`; until it, every
+  step from 6 refused "worker setup is unavailable in this build". Step 6: `none` verifies; a
+  chosen service's key is proven by its model probe, and nothing else is installed at 6 (the
+  provider keys are opened from each bench's own seat; granting them from the control seat
+  would put a name in both a seat's file and its grants, which `nova-secrets exec` refuses).
+  Step 7: after `Role.GrantSeat` for every seat, one record `sprint-worker-<machine>` per worker
+  bench: argv `nova-sprint worker --as <machine> --work-clone .local/share/nova-sprint/work
+  --coordinator-hosts <run machine> --harness opencode --root .local/state/nova-worker/<machine>
+  --state-dir .local/state` (built in one function, `workerArgv`; directories under the bench
+  login's home, which `nova-sprint worker` now resolves there), seat the machine's, keys
+  `NOVA_SPRINT_PG_PASSWORD`, `NOVA_BUS_PASSWORD` (when the bus has a user, as sprint-run),
+  `DEEPSEEK_API_KEY`, `INCEPTION_API_KEY` (Paper Instruments left out until its upstream is known), env `NOVA_PG_DSN`,
+  `NOVA_BUS_REDIS`, `NOVA_BUS_USER` as sprint-run's. All are applied in one play (`nova-fleet
+  services -- -l <benches> -e nova_service_only=<records>`), not one per machine. Every bench
+  gets a worker, the run machine too when it has the bench role (merged with the worker's
+  change of the same night, which dropped its coordinator-host refusal); the UP DONE count is of
+  worker benches. The record's argv carries the worker's per-repo roots (`--work-root`) and its
+  provider routes (`--providers`: DeepSeek and Inception; Paper Instruments left out until its upstream is known). `harness` is opencode because nova-config's machines carry
+  no harness field.
+- Step 7 verifies from one inventory read, one snapshot and one `nova-bus who`
+  (`ExecEnvironment.Present`); a not-ready step is a `verbs.WorkloadNotReady`: up acts once, then
+  refuses naming each bench and its unit's last log line, the logs read over the inventory's
+  pinned ssh concurrently.
+- Step 8 is not the smoke deal this section's table first described: section 37's fresh store
+  is stopped until `start`, so a card dealt during up would be the sprint moving before it was
+  started. Step 8 verifies every worker row is dealable when the sprint starts (hooked, up,
+  cores set); the run's first tick after `start` is the first deal.
+- `productionSetup.Completion` forwards the configured runtime's (section 40); a compile-time
+  assertion covers every seam the engine type-asserts (`Setup`, `SetupHandoff`,
+  `SetupCompletion`, `SetupLock`) and the workload.
+- The public board on a bench: the refusal is gone (Glenn, 2026-11-07); a bench serving the
+  pull-only board keeps its seat for its worker. The run machine still never serves it.
+- Defect 37, the role's password: step 2's verify and the role child prove nova_sprint's
+  password with a SCRAM login (pgx `require_auth=scram-sha-256`); where pg_hba trusts the
+  connection (a wrong password logs in) the stored `pg_authid` verifier is recomputed from the
+  seat's value. Not proven, the password is set from the seat (ALTER ROLE with a SCRAM
+  verifier) and proven again; the refusal names the set or the verify. Where the admin cannot
+  read `pg_authid` on a trust host, the password is set on every up: nothing can observe it,
+  and a missing one cannot survive that. The stale-secret refusal ("delete the stale
+  NOVA_SPRINT_PG_PASSWORD") is gone: the seat's value is the one every service reads.
+- Unit tests: a fake fleet records every argv (`setup_workload_test.go`), a fake PostgreSQL
+  for the password (`setup_runtime_role_password_test.go`), and the steps-7/8 binding to
+  `tla/Setup.tla` over every state of a two-bench fleet. The functional role tests
+  (`TestFunctionalSprintRolePasswordOnATrustHost` among them) were changed but not run here;
+  they run on a bench.
+
+## Built: the landing to intent rule 32 (stitch, 2026-11-07, branch `v2-stitch-w2L`)
+
+- `land <card> --reason <why> [--head <sha>]` (`verbs/land.go`, coordinator):
+  the hand merge of a merging producer's own head through `verbs.Lander`
+  (the host's gh identity), recorded `card.Landed{Head, Merge, Reason: "by
+  hand: <why>"}` in one op that also answers its open land judgement `land`.
+  `judge land.<card>.<n> land` runs the same path; `fix` sends `card.Red`
+  with the reason as the finding; `retry` is the answer alone.
+- `stream add` creates `sprint-group/<s>` at the base tip for a stream with a
+  forge (one call, `ensureGroup`), refusing with the fix when it cannot;
+  `finish` checks only the head at origin (the group-branch containment
+  check and `Origin.Contains` are gone); `take`'s `stream_ref` is the base
+  branch; `show --stitch`'s diff range is `origin/<base>..origin/sprint-group/<s>`.
+- `release` records the reason `released: <why>` with an empty result
+  (`verbs.ReleasedPrefix`; no schema change): neither ok nor fail.
+- Run (`run/edges.go`): LANDING.md "The ladder, as built"; `run/asker.go`
+  passes policy's `ci_wait`. `cmd`: the forge and git act as the host's gh
+  login (`GH_GATE_TOKEN` optional), `GH_GATE_TOKEN` is no longer a key the
+  sprint-run service needs, and the lander is wired into the engine.
+- Tests: `verbs/land_test.go` (`TestLandByHand`, `TestLandRefusals`,
+  `TestJudgeLandAnswers`, `TestStreamAddCreatesTheGroupBranch`),
+  `TestReleaseIsNoBlame`, the verb list and the role matrix with `land`.
+## Built: admission (stitch w2A, 2026-11-07; intent rule 34, defect 49)
+
+What can be found at add is found at add, each refusal with one fix. The
+checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
+
+- `stream add` (`verbs/admit_stream.go`): the card branch names against
+  git's ref-name rules; then three reads at once: the base tip, no `sprint`
+  or `sprint/<s>` branch at origin, and with forge github the host's gh
+  identity at write or above (`Engine.Forge`, `cmd/nova-sprint/admit.go`:
+  `gh repo view --json viewerPermission`). The group branch is not named or
+  made here; the call site carries one comment for the landing's check.
+- `add` and its dry run (`verbs/admit_card.go`): after the plan, every
+  producer is admitted. Streams are read at once (base tip, the tree at the
+  tip by `git ls-tree` in the state dir's clone, the card branches by one
+  `git ls-remote`); a card is refused for its lint (tier and routes served,
+  DONE-WHEN as one command, retired mechanic, a named bench), then its PATHS, then
+  work already at the base (its branch, HEAD, or PR: `gh pr view`). The brief
+  parse (`verbs/brief.go`, `verbs/brief_lint.go`) refuses the bad forms and
+  the retired keys with the line.
+- `hook`: the snapshot read proves the store credential (none is
+  `CredentialFix`); then every stream's base is read at once from this
+  process, which is what finish and read will need. A worker is asked for no
+  forge token.
+- `up` step 7: `WorkersReady` also checks every bench's binary is this
+  version (at once over the benches); the worker runs its probe (harness
+  lists the policy's model ids, seat holds the provider keys) before its
+  sprint hook, so a hooked row is a probed row, and a failed probe leaves it
+  unhooked.
+- `restore`: the dump confine refuses a card record whose state is not in
+  `store.CardStates`, naming the record; after the load, one `ADMIT` line per
+  waiting or ready producer. The restore stands on a red admission line (a
+  recovery refused for a moved path would leave no store); check repeats it.
+- `check` (`verbs/check_admission.go`): the stream lines use stream add's
+  admission; then the policy line (none active is red; a policy failing the
+  order or rows question is red with `policy check`), the cards line (up to
+  five red cards and a count), and the working line (a working consumer on a
+  row unhooked, down or off the bus is red; a job dead on a present bench is
+  not visible, said on the ok line).
+- The bus hook (`verbs/bus_answer.go`, item 45): a reply is never answered,
+  a non-verb is logged once and ignored, a verb gets one reply naming the
+  command to run.
+- Costs: admission is one ls-remote, one fetch and one ls-tree per stream,
+  and one `gh pr view` per PR line; at a few streams this is a few seconds
+  per add (a guess, not measured). Unit tests use a fake origin, fake forge
+  and fake exec: no network.
+- Owed upstream: nova-config has no routes field; routes ride on machine
+  roles (`route:<name>`) until one exists, and kin serve none. No per-job
+  heartbeat reaches the store.
+## Built: gates, drop and the agreement warning (stitch w3A, 2026-11-07; directives 77, 63)
+
+- DONE-WHEN is one argv (`edge.ParseGate`, shared with the worker): `verbs/brief.go`
+  (the brief parse, with the reason and `edge.GateFix` on the lint) and `cardLint`
+  (`verbs/admit_card.go`, add, check and restore) refuse shell syntax outside quotes
+  and a first word that is not a program; the old `shellProblem` (which allowed
+  `&&` and `|`, so a chain was admitted and then failed on the bench) is gone.
+- `drop`/`replace`: `steps.dropMoves` withdraws the dropped producer's live
+  consumers first (`card.ReleasedPrefix + the drop's reason`), then plans the
+  Cancel or Replace with them gone, all one `card.Merge`. The card machine is
+  unchanged: Cancel still refuses a live consumer, the op carries the Withdraw
+  before it, the same composition the machine's merge model checks. Tests:
+  `TestVerbDropReleasesLiveConsumers`, `TestDropReleasesItsLiveConsumers`.
+- The agreement warning: `verbs.Forge.RequiredChecks` (`hostForge` reads
+  `gh api repos/<r>/branches/<b>` for the protection contexts and
+  `repos/<r>/rules/branches/<b>` for rulesets); `verbs/admit_cla.go` matches the
+  names and prints the identities (`worker.CommitEmailDomain`). Two extra gh
+  reads per github stream at `stream add` and `check` (not measured).
+
+## Built: the board's load, ok% and ready alarm; a flaky test (stitch, 2026-11-07)
+
+- `beat` is the worker's heartbeat verb (a worker verb, so a row not hooked in is refused): it
+  sets the row's 1-minute load average (hundredths), cores and nova-reserve slots in use and in
+  all (layer 1, `SetRowLoad`). A beat that repeats the row's last values succeeds and writes
+  nothing. It is the one push the load cell needs (INTENT 7); nova-worker sends it every
+  30 s (a guess) and at start. The board's side is `dash/README.md`, Built.
+- `TestServeTicksPushesAndLogs` failed about one run in three: the deal waits for the head
+  watch's first read of the stream's base tip, which ran in its own goroutine while the test
+  drove only the tick beat. The test's clock now says when that read has finished (the watch asks
+  for its beat only after reading), and the test waits on it before its first tick. No
+  production code changed; `go test -run TestServeTicksPushesAndLogs -count=2000 -cpu 1,4 ./run/`
+  and 100 runs under `-race` pass.
+
+**Stitch w3I (2026-11-07).** The deal's push names the one model the deal
+named for the consumer (`DEAL ... tier=<t> model=<m> ...`, `none` for a
+card dealt before models were named), beside w2D2's repo, base, branch and
+clipped brief. Test: `TestEventNoticesUseCommittedImagesAndRecipients`.
+## Built: the landing's red split in the facts; the host identity (stitch w3L, 2026-11-07)
+
+Directives 59, 63, 76; LANDING.md "Red that is not the card's".
+`run/edges.go`: `landFacts` leads a red judgement's facts with `NEW red (not
+red on the base)` (each workflow, what the base was read from, "its run
+still going", each failed job's runner, page and first error lines), then
+`inherited red (red on the base too, not this card's)`, then the PR's
+commit authors when an agreement check failed, then the merge base; the
+rest is as before. `landItem` hands layer 4's `ci_red_inherited` to layer 3
+as `steps.InheritedRed`. Waiting for the run behind inherited red is layer
+4's `ci_pending`, asked again every `LandPoll` like any pending CI.
+`cmd/nova-sprint/edges.go`: the forge's `Identity` is `identity(env)`
+(`forge.HostLogin`, or `GH_GATE_TOKEN` named as the override), and git's
+github.com credential is always gh as the host's login (no switch on
+`GH_TOKEN`/`GH_CONFIG_DIR`); `admit.go`'s `hostForge` runs gh in
+`forge.HostEnv()`. Tests: `TestLandItemSplitsRedByTheBase`,
+`TestIdentityNamesTheChoice`.
+## Built: the roster takes a worker's advertisement (stitch w3W, 2026-11-07)
+
+- `beat` gains `--tiers <t,t>`: the tiers the worker's harness proved it serves (each a known
+  tier; stored in `Tiers`' order). nova-worker sends one beat at hook, before its first pass,
+  and every beat after carries it.
+- `roster.Advertised(rows)`: a worker row that advertised tiers is dealt exactly those, at width
+  min(nova-config's width, its slots) when it read its slots; one that advertised nothing keeps
+  nova-config's shape; kin are untouched. The run tick applies it after its fold, every verb's
+  roster read (`Engine.roster`, now given the snapshot) and the board's feed too.
+- `release` gains `--head <sha>`: a row releasing a working work card it holds names the partial
+  head it pushed, checked as a finish's head is; the producer goes back at that head with no
+  bounce. nova-worker uses it for a job its restart cannot rebuild.
+
+### Built: the installer's model retired (stitch, 2026-11-07)
+
+- The installer (`verbs/install*.go`) went with the verbs rewrite (c8b859a6): installing a release
+  onto a machine is nova-fleet's install, and `make install` places a local build through
+  `tools/placebin`. Its model (`tla/Install*.tla`, its witnesses, `Install-runs.json`) and the 64
+  install trace cases in `tla/check-layer6-traces.py` described code that no longer exists, and
+  the trace script failed before checking anything (its emitter `TestInstallTraceWalk` was gone).
+  Both are removed; the layer 6 trace check now emits and checks run, setup, handoff and choices.
+
+### Built: the Run traces match again after deal-is-take (stitch w4T, 2026-11-07)
+
+- The layer 6 trace check refused run-0 at record 43 of 132, the blocker raise of p3. The cause was
+  the emitter, not the model or the run: deal-is-take added a retake of w0 (ready, then working, so
+  w0 stays the youngest working consumer on r1 and the preemption's victim) as two ops of their
+  own before the raise. Each is a store append the model has no action for, so the code's
+  physicalSeq went 18 to 21 at the raise where the model's Report allows 19. The gens matched
+  (Report raises card 3 to gen 1); the brief's reading of the gens was not the refusal.
+- Fix, fixture side (`run/run_trace_test.go`): the raise is one outside op, as the model's Report
+  is one append. It retires w0 and cuts p0 a fresh consumer w1 working on r1 (put, then working, as
+  a deal cuts one; a card's state is written once per op, so w0 cannot go ready and back), with
+  the priority raise. w1 is the youngest working consumer whether the fold witnessed its take (at
+  the raise, the latest take) or not (unwitnessed takes tie and the larger id wins: `w1` sorts
+  after `p<n>.w1`). The emitter now refuses a stop request for any consumer but w1. Leaving w0
+  ready from the setup instead was tried and refused: steps withdraws a ready consumer as dealt
+  before the deal became the take (seed 1).
+- No change to `tla/Run.tla`, `tla/RunTrace.tla` or `run/`: neither violated the other.
+  `tla/RunTrace-MAPPING.md` names w1 as the victim. physicalSeq steps checked locally on all four
+  run traces (run-0..2, run-stop: 0 mismatches, measured) before TLC on the bench.
+
+### Built: one commit identity for the sprint (stitch w4I, 2026-11-07)
+
+- New verb `identity` (coordinator, group operate): `--name --email --reason` sets the store's
+  identity (one `SetIdentity` op fenced `AtSeq`); the same identity again changes nothing; no
+  flags prints it with its rule. Refusals: none set and none given, a value `ValidIdentity`
+  refuses, no reason. How the coordinator sets it for a live fleet:
+  `nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint identity
+  --as <coordinator> --name "<account's git user.name>" --email "<account's noreply address>"
+  --reason "<why>"`, then each worker re-hooks (a bench worker's restart does it; a friend runs
+  hook again).
+- `hook`: a worker on a sprint with none is refused (`noIdentity`); every hook prints
+  `COMMIT AS <name> <email>` and the rule under `HOOKED`, a coordinator on a sprint with none
+  `NO COMMIT IDENTITY: ...` and the command. `take`: refused with none; the receipt gains
+  `commit_name`, `commit_email`; the text gains the rule. `finish` (and `release --head`, which
+  checks a head as finish does): `madeAsIdentity` reads the head's commits not on the stream's
+  base at origin and not reachable from the attempt's base sha (`Origin.Commits`, a clone under
+  the state dir fetched first, as `Contains` and `Tree`) and refuses any whose author or
+  committer email is not the identity's (case-folded), naming up to ten commits and both
+  emails, the fix the two config lines and a `--reset-author` rebase.
+- `check`: a line `identity: every commit is made as <name> <email>`, red with the command when
+  unset. The agreement warning (w3A, `admit_cla.go`) names the identity instead of a list of
+  per-row identities, or that none is set yet.
+- `up` step 7: before the benches, the identity; none is a question for the human (`ASK the
+  human which forge account ...`, next: the identity command, then up again), like an unchosen
+  dashboard; the VERIFIED line names it. No change to the setup walk's actions (a step that does
+  not verify and has no act was already modelled), so no TLC was run for it; `Run.tla` and
+  `Runner.tla` are untouched.
+- Tests (unit, fakes): `TestIdentityVerb`, `TestTakeCarriesTheIdentity`,
+  `TestFinishRefusesAnotherIdentity`, `TestVerbsWorkMidUp` (the worker hook refused, then
+  allowed), `TestStreamAddWarnsOfAnAgreement`, `TestCheckAllGreen`, the setup walk and
+  completion tests, `TestWorkersReadyNamesEachBenchAndItsLog`.
+
+### Built: why the fleet is idle, in check, add, up and the board (stitch w4V, 2026-11-07)
+
+- `check` (`check_waits.go`, `check_width.go`): with nothing ready and the
+  fleet under its open width, the width line is a `CHECK WARN ... nothing
+  dealable: <steps.IdleWhy>` naming the command for the top card; then one
+  `CHECK waits <s>: <n> wait on <card> (<state>), ...; <n> held behind <file>
+  of <card>` per stream whose producers wait (the three largest of each, then
+  a count), and a `CHECK WARN stream <s>: its longest NEEDS chain is K cards:
+  a -> b -> ... -> z; at the stream's land rate (R an hour over its last N
+  landings) that is about H hours` per stream at `steps.ChainWarn` (4, a
+  guess) or more. Warnings, never red: an idle fleet is not a fault of the
+  tool.
+- `add` prints `CHAIN stream <s>: its longest NEEDS chain is K cards: ...`
+  with the cards in (dry run too), a `WARN CHAIN ...: <how to flatten>` from
+  4 cards; never a refusal.
+- The land rate reads the store's last 5,000 events of the epoch (a guess,
+  about an hour of a busy sprint; bounded however long the sprint): each
+  producer an accepted event moved into landed. Under two landings, or none
+  apart in time: "no land rate yet". An unreadable history is said with its
+  cause in the line.
+- `read` takes `--cost <usd>` exactly as `finish` does: it already shared
+  `reportFlags` and `readCost` and the card machine's report writes
+  `SetCardCost` for either consumer kind, so only its usage and help said
+  nothing of it; now they do, and `TestReadTakesCost` proves the write. The
+  board's Cost breakdown (the total, the pie per tier and the top streams by
+  tier) was carried with the v1 page and already counts reads
+  (`TestReadCostIsInTheTierSpend`).
+- `up`'s UP DONE is followed by one `BEFORE CARDS: keep everybody at width:
+  ...` line naming add's CHAIN line and check's width, waits and chain lines;
+  the coordinator playbook (section 1 step 3, section 4) and CORRECT-USE
+  ("Keep everybody at width") say the same.
+- Tests (unit, fakes): `TestCheckSaysWhyTheFleetIsIdle`,
+  `TestCheckQuietWithoutWaits`, `TestAddReportsTheLongestChain`,
+  `TestChainTime`, `TestLandingsCountsEachLandingOnce`, `TestReadTakesCost`,
+  `TestSetupVerifiesActionsAndRestarts` (the advice line).

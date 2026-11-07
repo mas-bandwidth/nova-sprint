@@ -19,6 +19,7 @@ func (p *modelKeyProbe) Run(context.Context, string) error {
 	return nil
 }
 func TestServiceKeyPromptOnceAndRechecksProvider(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	terminal := &terminalFake{data: []byte("fixture")}
 	sink := &sinkFake{}

@@ -35,9 +35,10 @@ jobs:
           mkdir -p dist
           for dir in cmd/*/; do
             cmd=$(basename "$dir")
-            # the version chip: main.version for a main that declares it, dash.Version for the dashboard
-            flags="-s -w -X github.com/mas-bandwidth/nova-sprint/dash.Version=$TAG"
-            if grep -q '^var version ' "$dir/main.go"; then flags="$flags -X main.version=$TAG"; fi
+            # the version: main.binaryVersion (nova-sprint's version verb, and what a
+            # backup records) and dash.Version for the dashboard; -X on a main
+            # without the variable is a no-op
+            flags="-s -w -X main.binaryVersion=$TAG -X github.com/mas-bandwidth/nova-sprint/dash.Version=$TAG"
             pids=()
             for target in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
               os=${target%/*}; arch=${target#*/}

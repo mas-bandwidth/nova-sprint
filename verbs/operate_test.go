@@ -10,27 +10,31 @@ import (
 )
 
 func TestStopAndStart(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
-	want(t, w.do("carol", "stop", "--reason", "deploy"), 0, "STOPPED applied at seq", "next: nova-sprint start")
+	want(t, w.do("carol", "stop", "--reason", "deploy"), 0, "STOPPED applied at seq", "next: nova-sprint start --as carol")
 	if s := w.snap(t); !s.Stopped || s.StopReason != "deploy" {
 		t.Fatalf("snapshot %+v", s)
 	}
-	want(t, w.do("carol", "stop", "--reason", "again"), 0, "STOPPED already (deploy)")
+	want(t, w.do("carol", "stop", "--reason", "again"), 0, "STOPPED already: the sprint is already stopped (deploy)", "next: nova-sprint start --as carol")
 	want(t, w.do("carol", "start"), 0, "STARTED applied at seq")
-	want(t, w.do("carol", "start"), 0, "STARTED already")
+	want(t, w.do("carol", "start"), 0, "RUNNING already: the sprint is already running", "next: nova-sprint next --as carol")
 	want(t, w.do("carol", "stop"), 1, "a stop needs its reason")
 }
 
 func TestCheck(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
-	want(t, w.do("", "check", "--integrity"), 0, "CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK bus answering (4 present)", "CHECK history rebuilds the tables")
+	healthy(t, w)
+	want(t, w.do("", "check", "--integrity"), 0, "CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK bus answering (5 present)", "CHECK history rebuilds the tables")
 }
 
 func TestCheckRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "the fleet down", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.fleet = refuse("the fleet is down", "nova-fleet up") }, want: []string{"the fleet is down: nova-fleet up"}},
 		{name: "tools below the pin", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.tools = "v2.0.1" }, want: []string{"nova-tools v2.0.1 is below the pin v2.0.2: nova-fleet install --tag v2.0.2 <machine>"}},
-		{name: "tools unknown", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.tools = "v2.1.0-rc1" }, want: []string{"nova-tools' version is unknown: nova-fleet install --tag v2.0.2 <machine>"}},
+		{name: "tools unknown", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.tools = "v2.1.0-rc1" }, want: []string{"nova-tools' version is unknown (\"v2.1.0-rc1\" is not a release vMAJOR.MINOR.PATCH): nova-fleet install --tag v2.0.2 <machine>"}},
 		{name: "the store not set up", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.schema = false }, want: []string{"not at this build's schema", "nova-sprint up"}},
 		{name: "the bus fails", args: []string{"check"}, exit: 2, prep: func(_ *testing.T, w *world) { w.bus.err = errBroken }, want: []string{"nova-bus who failed"}},
 		{name: "the history differs", args: []string{"check", "--integrity"}, exit: 2, prep: func(_ *testing.T, w *world) { w.doctor.history = errBroken }, want: []string{"connection refused"}},
@@ -39,6 +43,7 @@ func TestCheckRefusals(t *testing.T) {
 }
 
 func TestBackup(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.arch.info = BackupInfo{Path: "/b/1.dump", Epoch: 1, Seq: 10}
 	want(t, w.do("carol", "backup"), 0, "BACKUP /b/1.dump epoch=1 seq=10 verified")
@@ -68,6 +73,7 @@ func dumped(w *world) {
 }
 
 func TestRestore(t *testing.T) {
+	t.Parallel()
 	w := worldFrom(t, emptySprint())
 	dumped(w)
 	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "RESTORED /b/1.dump epoch=1 seq=10 digest=d1", "HOOKED dave role=coordinator")
@@ -78,7 +84,24 @@ func TestRestore(t *testing.T) {
 	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "(as restored)")
 }
 
+// TestRestoreHoldsCardsToAdmission: a restored producer not yet dealt is
+// held to today's admission; the restore stands and the line names the card
+// and its fix.
+func TestRestoreHoldsCardsToAdmission(t *testing.T) {
+	t.Parallel()
+	s := emptySprint()
+	s.Streams["s"] = store.Stream{Name: "s", Repo: "o/r", Base: "main", Mode: "auto"}
+	s.Cards["q1"] = store.Card{ID: "q1", Kind: "producer", Stream: "s", State: "ready", Tier: "pro", Priority: "normal", Brief: "tier: pro", Paths: []string{"gone/x.go"}}
+	w := worldFrom(t, s)
+	dumped(w)
+	w.origin.tree = []string{"README.md"}
+	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "RESTORED /b/1.dump", "ADMIT RED card q1: PATHS gone/x.go: neither it nor its directory gone/ is there")
+	delete(w.origin.tips, "o/r main")
+	want(t, w.do("dave", "restore", "/b/1.dump"), 0, "ADMIT RED card q1: stream s: branch main is not at o/r's origin")
+}
+
 func TestRestoreRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "not on the bus", as: "erin", args: []string{"restore", "/b/1.dump"}, exit: 1, prep: func(_ *testing.T, w *world) { dumped(w) }, want: []string{"erin is not on the bus"}},
 		{name: "another dump", as: "dave", args: []string{"restore", "/b/1.dump"}, exit: 1, prep: func(_ *testing.T, w *world) {
@@ -101,6 +124,7 @@ func quiet(s *store.Snapshot) {
 }
 
 func TestClear(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	quiet(&s)
 	w := worldFrom(t, s)
@@ -113,6 +137,7 @@ func TestClear(t *testing.T) {
 }
 
 func TestClearRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no confirm", as: "carol", snap: quiet, args: []string{"clear"}, exit: 1, want: []string{"clear confirms the epoch it ends, 1", "nova-sprint clear --confirm 1"}},
 		{name: "a wrong epoch", as: "carol", snap: quiet, args: []string{"clear", "--confirm", "2"}, exit: 1, want: []string{"--confirm 1"}},
@@ -125,9 +150,10 @@ func TestClearRefusals(t *testing.T) {
 }
 
 func TestServices(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("", "run"), 0, "RUN ended")
-	want(t, w.do("alice", "worker", "--work-clone", "/w", "--coordinator-hosts", "c1"), 0, "WORKER alice ended")
+	want(t, w.do("alice", "worker", "--work-root", "/w", "--mirror-root", "/m", "--providers", "deepseek=https://api.example@DEEPSEEK_API_KEY"), 0, "WORKER alice ended")
 	want(t, w.do("", "dash", "--listen", "127.0.0.1:0"), 0, "DASH ended")
 	if !slices.Equal(w.svc.ran, []string{"run", "worker alice", "dash"}) {
 		t.Fatalf("ran %v", w.svc.ran)
@@ -135,14 +161,14 @@ func TestServices(t *testing.T) {
 }
 
 func TestServicesRefusals(t *testing.T) {
+	t.Parallel()
 	none := func(_ *testing.T, w *world) { w.e.Services = nil }
 	runCases(t, []tcase{
-		{name: "a worker with no clone", as: "alice", args: []string{"worker"}, exit: 2, want: []string{"worker takes --as <row> --work-clone <dir>"}},
-		{name: "a worker with no name", args: []string{"worker", "--work-clone", "/w"}, exit: 2, want: []string{"worker takes --as <row>"}},
-		{name: "a worker with no coordinator hosts", as: "alice", args: []string{"worker", "--work-clone", "/w"}, exit: 2, want: []string{"--coordinator-hosts <h,h>"}},
+		{name: "a worker with no name", args: []string{"worker", "--work-root", "/w"}, exit: 2, want: []string{"worker takes --as <row>"}},
+		{name: "a worker given a removed flag", as: "alice", args: []string{"worker", "--coordinator-hosts", "c1"}, exit: 2, want: []string{"unknown flag --coordinator-hosts"}},
 		{name: "a dash with no listen", args: []string{"dash"}, exit: 2, want: []string{"dash takes --listen <addr>"}},
 		{name: "no run", args: []string{"run"}, exit: 2, prep: none, want: []string{"run is not configured"}},
-		{name: "no worker", as: "alice", args: []string{"worker", "--work-clone", "/w"}, exit: 2, prep: none, want: []string{"worker is not configured"}},
+		{name: "no worker", as: "alice", args: []string{"worker"}, exit: 2, prep: none, want: []string{"worker is not configured"}},
 		{name: "no dash", args: []string{"dash", "--listen", "x"}, exit: 2, prep: none, want: []string{"dash is not configured"}},
 	})
 }

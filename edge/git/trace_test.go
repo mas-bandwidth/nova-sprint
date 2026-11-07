@@ -6,457 +6,409 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 )
 
-type landBaseEntry_internal struct {
-	sha, parent        int
-	stream             string
-	heads              []string
-	gate               string
-	gatedTip, gatedSHA int
-}
+// The trace walk of tla/LandEdge.tla: LandPass (layer 4) against the git
+// fake and a truthful forge, driven by a walk that plays the tick (layer
+// 3's landing, as the model has it), outside commits to base, and the
+// coordinator's answers. Each step's state is projected onto the model's
+// variables and written as LandEdgeTraceLog.tla under NOVA_TRACE_DIR;
+// tla/check-trace.sh LandEdge checks every step is one of the model's.
+// The projection reads the trees themselves: a tree holds card c when it
+// holds c's file, and its ext is the count of outside commits' files.
 
-type landGatedAt_internal struct {
-	baseTip, sha int
-	gate         string
-	blamed       []string
-	chased       bool
-	faults       int
-}
+const (
+	walkK        = 2 // LandEdgeTrace.cfg's K
+	walkBackedUp = 2 // LandEdgeTrace.cfg's BackedUp
+)
 
-type landTraceStep_internal struct {
-	action  string
-	arg     string
-	base    []landBaseEntry_internal
-	stream  map[string]int
-	group   map[string][]string
-	step    map[string]string
-	gatedAt map[string]landGatedAt_internal
-	landed  []string
-}
+var (
+	walkCards   = []string{"c1", "c2", "c3"}
+	walkStreams = []string{"s1", "s2"}
+)
 
-type landWalkHarness_internal struct {
-	g         *Fake
-	fg        *fakeForge_internal
-	shaToID   map[string]int
-	idToSHA   map[int]string
-	base      []landBaseEntry_internal
-	group     map[string][]string
-	headSHAs  map[string]string
-	step      map[string]string
-	gatedAt   map[string]landGatedAt_internal
-	mergedSHA map[string]string
-	landed    []string
-}
-
-func newLandWalkHarness_internal(t *testing.T) *landWalkHarness_internal {
-	t.Helper()
-	now := int64(1000)
-	gf := NewFake(func() int64 { return now })
-	ff := newFakeForge_internal()
-	initSHA := gf.AddCommit("", map[string]string{"README.md": "init\n"}, "main")
-	gf.SetOriginRef(StreamRef("s1"), initSHA)
-	gf.SetOriginRef(StreamRef("s2"), initSHA)
-	h1SHA := gf.AddCommit(initSHA, map[string]string{"README.md": "init\n", "s1_h1.txt": "h1\n"}, "sprint/s1/h1")
-	h2SHA := gf.AddCommit(initSHA, map[string]string{"README.md": "init\n", "s1_h2.txt": "h2\n"}, "sprint/s1/h2")
-	h3SHA := gf.AddCommit(initSHA, map[string]string{"README.md": "init\n", "s2_h3.txt": "h3\n"}, "sprint/s2/h3")
-	return &landWalkHarness_internal{
-		g:       gf,
-		fg:      ff,
-		shaToID: map[string]int{initSHA: 1},
-		idToSHA: map[int]string{1: initSHA},
-		base: []landBaseEntry_internal{
-			{sha: 1, parent: 0, stream: "init", gate: "green", gatedTip: 0, gatedSHA: 1},
-		},
-		group:     map[string][]string{"s1": {"h1", "h2"}, "s2": {"h3"}},
-		headSHAs:  map[string]string{"h1": h1SHA, "h2": h2SHA, "h3": h3SHA},
-		step:      map[string]string{"s1": "idle", "s2": "idle"},
-		gatedAt:   map[string]landGatedAt_internal{"s1": {gate: "none"}, "s2": {gate: "none"}},
-		mergedSHA: map[string]string{},
+func walkStream_internal(c string) string {
+	if c == "c3" {
+		return "s2"
 	}
+	return "s1"
 }
 
-func candidateModelID_internal(s string, baseTip int, groupLen int) int {
-	if s == "s1" {
-		return 100 + baseTip + groupLen
-	}
-	return 200 + baseTip + groupLen
+type walkEntry_internal struct{ sha, how, gated string }
+
+type walkReq_internal struct {
+	cards   []string
+	st, out string
+	rung    int
 }
 
-// refinementLandEdgeState_internal projects the real git.Fake + forge state onto
-// LandEdge.tla variables <<base, stream, group, step, gatedAt, landed>>.
-func refinementLandEdgeState_internal(t *testing.T, h *landWalkHarness_internal, action, arg string) landTraceStep_internal {
-	t.Helper()
-	ctx := context.Background()
-	streamMap := make(map[string]int, 2)
-	for _, s := range []string{"s1", "s2"} {
-		sha, ok, err := h.g.LsRemote(ctx, "", StreamRef(s))
-		if err != nil || !ok {
-			t.Fatalf("LsRemote stream %s: ok=%v err=%v", s, ok, err)
+type landWalk_internal struct {
+	t      *testing.T
+	rng    *rand.Rand
+	g      *Fake
+	ff     *walkForge_internal
+	heads  map[string]string
+	base   []walkEntry_internal
+	cs     map[string]string
+	req    map[string]walkReq_internal
+	js     map[string]bool
+	held   map[string]bool
+	ticked bool
+	passes int
+}
+
+// walkForge_internal is the fake forge with truthful CI: a tree holding
+// c1 and c3 is red; any other is green, unless the walk chose absent. A
+// green read may move base under the gate (an outside commit).
+type walkForge_internal struct {
+	*fakeForge_internal
+	w            *landWalk_internal
+	absent, move bool
+}
+
+func (f *walkForge_internal) Checks(_ context.Context, _ string, shas []string) (map[string]forge.CheckRollup, error) {
+	f.call_internal("Checks")
+	out := make(map[string]forge.CheckRollup, len(shas))
+	for _, sha := range shas {
+		cards, _ := f.w.project_internal(sha)
+		st := forge.CheckGreen
+		switch {
+		case f.absent:
+			st = forge.CheckAbsent
+		case slices.Contains(cards, "c1") && slices.Contains(cards, "c3"):
+			st = forge.CheckRed
+		case f.move:
+			f.w.extCommit_internal()
 		}
-		streamMap[s] = h.shaToID[sha]
+		out[sha] = forge.CheckRollup{SHA: sha, State: st, Failing: []string{"test"}, URL: "https://example.invalid/actions/runs/1/job/2"}
 	}
-	stepMap := map[string]string{"s1": h.step["s1"], "s2": h.step["s2"]}
-	gatedMap := map[string]landGatedAt_internal{"s1": h.gatedAt["s1"], "s2": h.gatedAt["s2"]}
-	groupMap := map[string][]string{
-		"s1": append([]string(nil), h.group["s1"]...),
-		"s2": append([]string(nil), h.group["s2"]...),
-	}
-	return landTraceStep_internal{
-		action:  action,
-		arg:     arg,
-		base:    append([]landBaseEntry_internal(nil), h.base...),
-		stream:  streamMap,
-		group:   groupMap,
-		step:    stepMap,
-		gatedAt: gatedMap,
-		landed:  append([]string(nil), h.landed...),
-	}
+	return out, nil
 }
 
-func (h *landWalkHarness_internal) headSHAsFor_internal(s string) []string {
-	var out []string
-	for _, hid := range h.group[s] {
-		out = append(out, h.headSHAs[hid])
-	}
-	return out
-}
-
-func (h *landWalkHarness_internal) execStreamAction_internal(t *testing.T, s, act string) {
-	t.Helper()
-	ctx := context.Background()
-	ga := h.gatedAt[s]
-	switch act {
-	case "Fetch":
-		baseSHA, ok, err := h.g.LsRemote(ctx, "", "refs/heads/main")
-		if err != nil || !ok {
-			t.Fatalf("Fetch main: %v", err)
+func newLandWalk_internal(t *testing.T, seed int64) *landWalk_internal {
+	g := NewFake(nil)
+	w := &landWalk_internal{t: t, rng: rand.New(rand.NewSource(seed)), g: g, heads: map[string]string{},
+		cs: map[string]string{}, req: map[string]walkReq_internal{}, js: map[string]bool{}, held: map[string]bool{}}
+	w.ff = &walkForge_internal{fakeForge_internal: newFakeForge_internal(), w: w}
+	init := g.AddCommit("", map[string]string{"README.md": "init\n", "shared.txt": "init\n"}, "main")
+	w.base = []walkEntry_internal{{sha: init, how: "init"}}
+	for _, c := range walkCards {
+		files := map[string]string{c + ".txt": c + "\n"}
+		if c != "c1" { // c2 and c3 change one file: they do not merge together
+			files["shared.txt"] = c + "\n"
 		}
-		ga.baseTip = h.shaToID[baseSHA]
-		h.gatedAt[s] = ga
-		h.step[s] = "fetched"
-	case "Merge":
-		baseSHA := h.idToSHA[ga.baseTip]
-		heads := h.headSHAsFor_internal(s)
-		m1, err := h.g.MergeGroup(ctx, "", baseSHA, heads, nil)
-		if err != nil || m1.Kind != MergeOK {
-			t.Fatalf("MergeGroup %s: %+v err=%v", s, m1, err)
+		w.heads[c] = g.AddCommit(init, files, "sprint/"+walkStream_internal(c)+"/"+c)
+		w.cs[c] = "merging"
+	}
+	for _, s := range walkStreams {
+		w.req[s] = walkReq_internal{st: "none", out: "none"}
+	}
+	return w
+}
+
+// project_internal is a commit's tree as the model has it: the cards whose
+// files it holds and the count of outside commits in it.
+func (w *landWalk_internal) project_internal(sha string) ([]string, int) {
+	w.g.world.mu.Lock()
+	defer w.g.world.mu.Unlock()
+	c, ok := w.g.world.commits[sha]
+	if !ok {
+		w.t.Fatalf("project: unknown commit %s", sha)
+	}
+	var cards []string
+	for _, card := range walkCards {
+		if _, ok := c.Files[card+".txt"]; ok {
+			cards = append(cards, card)
 		}
-		m2, err := h.g.MergeGroup(ctx, "", baseSHA, heads, nil)
-		if err != nil || m2.SHA != m1.SHA {
-			t.Fatalf("MergeGroup non-deterministic: %s vs %s", m1.SHA, m2.SHA)
+	}
+	ext := 0
+	for f := range c.Files {
+		if strings.HasPrefix(f, "ext_") {
+			ext++
 		}
-		cid := candidateModelID_internal(s, ga.baseTip, len(h.group[s]))
-		h.shaToID[m1.SHA] = cid
-		h.idToSHA[cid] = m1.SHA
-		h.mergedSHA[s] = m1.SHA
-		ga.sha = cid
-		ga.gate = "none"
-		ga.blamed = nil
-		h.gatedAt[s] = ga
-		h.step[s] = "merged"
-	case "PushStream":
-		oldSHA, _, _ := h.g.LsRemote(ctx, "", StreamRef(s))
-		if err := h.g.Push(ctx, "", h.mergedSHA[s], StreamRef(s), oldSHA); err != nil {
-			t.Fatalf("PushStream %s: %v", s, err)
+	}
+	return cards, ext
+}
+
+func (w *landWalk_internal) tip_internal() string { return w.g.OriginRef("refs/heads/main") }
+
+func (w *landWalk_internal) extCount_internal() int {
+	_, ext := w.project_internal(w.tip_internal())
+	return ext
+}
+
+// extCommit_internal is an outside commit to base.
+func (w *landWalk_internal) extCommit_internal() {
+	n := w.extCount_internal() + 1
+	sha := w.g.AddCommit(w.tip_internal(), map[string]string{fmt.Sprintf("ext_%d.txt", n): "ext\n"}, "main")
+	w.base = append(w.base, walkEntry_internal{sha: sha, how: "ext"})
+}
+
+// handMerge_internal is the coordinator's merge by hand: base's tip and
+// the card's head, a conflict on shared.txt resolved by hand.
+func (w *landWalk_internal) handMerge_internal(c string) {
+	w.g.world.mu.Lock()
+	tip := w.g.world.originRefs["refs/heads/main"]
+	files := map[string]string{}
+	for k, v := range w.g.world.commits[tip].Files {
+		files[k] = v
+	}
+	for k, v := range w.g.world.commits[w.heads[c]].Files {
+		if k == "shared.txt" && files[k] != "init\n" && files[k] != v {
+			v = "resolved by hand\n"
 		}
-		h.step[s] = "pushed"
-	case "Gate":
-		ga.gate = "none"
-		ga.blamed = nil
-		h.gatedAt[s] = ga
-		h.step[s] = "gating"
-	case "CIGreen", "CIRed", "CIFault":
-		h.applyCIOutcome_internal(t, s, act)
-	case "Land":
-		h.applyLand_internal(t, s)
-	case "Remerge":
-		h.applyRemerge_internal(t, s)
-	case "Refuse":
-		h.step[s] = "refused"
+		files[k] = v
 	}
+	w.g.world.seq++
+	sha := fmt.Sprintf("%040x", w.g.world.seq)
+	w.g.world.commits[sha] = FakeCommit{SHA: sha, Parents: []string{tip, w.heads[c]}, Files: files, Tree: computeTreeHash_internal(files)}
+	w.g.world.originRefs[sha] = sha
+	w.g.world.mu.Unlock()
+	w.g.SetOriginRef("refs/heads/main", sha)
+	w.base = append(w.base, walkEntry_internal{sha: sha, how: "hand"})
 }
 
-func (h *landWalkHarness_internal) applyCIOutcome_internal(t *testing.T, s, act string) {
-	t.Helper()
-	ctx := context.Background()
-	ga := h.gatedAt[s]
-	msha := h.mergedSHA[s]
-	switch act {
-	case "CIGreen":
-		h.fg.SetCheck("org/repo", msha, forge.CheckRollup{State: forge.CheckGreen})
-		rep, err := h.fg.Checks(ctx, "org/repo", []string{msha})
-		if err != nil || rep[msha].State != forge.CheckGreen {
-			t.Fatalf("Checks green: %+v err=%v", rep, err)
+// tick_internal is the model's Tick: consume the finished requests (landed
+// moves the cards, anything else opens a land judgement for each card
+// still merging), then ask for each stream that had none in flight.
+func (w *landWalk_internal) tick_internal() {
+	busy := map[string]bool{}
+	for _, s := range walkStreams {
+		r := w.req[s]
+		busy[s] = r.st != "none"
+		if r.st != "done" {
+			continue
 		}
-		ga.gate = "green"
-		ga.blamed = nil
-		h.step[s] = "green"
-	case "CIRed":
-		h.fg.SetCheck("org/repo", msha, forge.CheckRollup{State: forge.CheckRed, Failing: []string{"unit"}})
-		ga.gate = "red"
-		ga.blamed = []string{h.group[s][0]}
-		h.step[s] = "red"
-	case "CIFault":
-		h.fg.SetCheck("org/repo", msha, forge.CheckRollup{State: forge.CheckFault})
-		ga.gate = "fault"
-		ga.blamed = nil
-		ga.faults++
-		h.step[s] = "fault"
-	}
-	h.gatedAt[s] = ga
-}
-
-func (h *landWalkHarness_internal) applyLand_internal(t *testing.T, s string) {
-	t.Helper()
-	ctx := context.Background()
-	ga := h.gatedAt[s]
-	msha := h.mergedSHA[s]
-	res, err := LandPass(ctx, h.g, h.fg, LandRequest{Stream: s, Repo: "org/repo", Base: "main", Heads: h.headSHAsFor_internal(s)})
-	if err != nil || res.Outcome != OutcomeLanded || res.GatedSHA != msha {
-		t.Fatalf("LandPass %s: res=%+v err=%v want=%s", s, res, err, msha)
-	}
-	h.base = append(h.base, landBaseEntry_internal{
-		sha:      ga.sha,
-		parent:   ga.baseTip,
-		stream:   s,
-		heads:    append([]string(nil), h.group[s]...),
-		gate:     ga.gate,
-		gatedTip: ga.baseTip,
-		gatedSHA: ga.sha,
-	})
-	h.landed = append(h.landed, h.group[s]...)
-	h.step[s] = "landed"
-}
-
-func (h *landWalkHarness_internal) applyRemerge_internal(t *testing.T, s string) {
-	t.Helper()
-	ctx := context.Background()
-	baseSHA, _, _ := h.g.LsRemote(ctx, "", "refs/heads/main")
-	baseTip := h.shaToID[baseSHA]
-	heads := h.headSHAsFor_internal(s)
-	m, err := h.g.MergeGroup(ctx, "", baseSHA, heads, nil)
-	if err != nil || m.Kind != MergeOK {
-		t.Fatalf("Remerge %s: %+v err=%v", s, m, err)
-	}
-	cid := candidateModelID_internal(s, baseTip, len(h.group[s]))
-	h.shaToID[m.SHA] = cid
-	h.idToSHA[cid] = m.SHA
-	h.mergedSHA[s] = m.SHA
-	oldStream, _, _ := h.g.LsRemote(ctx, "", StreamRef(s))
-	if err := h.g.Push(ctx, "", m.SHA, StreamRef(s), oldStream); err != nil {
-		t.Fatalf("Remerge push stream %s: %v", s, err)
-	}
-	ga := h.gatedAt[s]
-	ga.baseTip = baseTip
-	ga.sha = cid
-	ga.gate = "none"
-	ga.blamed = nil
-	ga.chased = false
-	h.gatedAt[s] = ga
-	h.step[s] = "pushed"
-}
-
-func (h *landWalkHarness_internal) applyBaseMove_internal(t *testing.T) {
-	t.Helper()
-	ctx := context.Background()
-	oldSHA, _, _ := h.g.LsRemote(ctx, "", "refs/heads/main")
-	oldID := h.shaToID[oldSHA]
-	nextID := oldID + 10
-	extSHA := h.g.AddCommit(oldSHA, map[string]string{
-		"README.md":                       "init\n",
-		fmt.Sprintf("ext_%d.txt", nextID): "ext\n",
-	}, "")
-	h.shaToID[extSHA] = nextID
-	h.idToSHA[nextID] = extSHA
-	if err := h.g.Push(ctx, "", extSHA, "refs/heads/main", oldSHA); err != nil {
-		t.Fatalf("BaseMoves push: %v", err)
-	}
-	h.base = append(h.base, landBaseEntry_internal{
-		sha:      nextID,
-		parent:   oldID,
-		stream:   "ext",
-		gate:     "green",
-		gatedTip: oldID,
-		gatedSHA: nextID,
-	})
-}
-
-func walkLandEdgeTrace_internal(t *testing.T, seed int64) []landTraceStep_internal {
-	t.Helper()
-	rng := rand.New(rand.NewSource(seed))
-	h := newLandWalkHarness_internal(t)
-	steps := []landTraceStep_internal{refinementLandEdgeState_internal(t, h, "Init", "none")}
-	extMoves := 0
-	for i := 0; i < 32; i++ {
-		st := steps[len(steps)-1]
-		if (st.step["s1"] == "landed" || st.step["s1"] == "refused") &&
-			(st.step["s2"] == "landed" || st.step["s2"] == "refused") {
-			steps = append(steps, refinementLandEdgeState_internal(t, h, "Done", "none"))
-			break
-		}
-		act, arg := pickLandMove_internal(t, rng, h, st, &extMoves)
-		steps = append(steps, refinementLandEdgeState_internal(t, h, act, arg))
-	}
-	return steps
-}
-
-func pickLandMove_internal(t *testing.T, rng *rand.Rand, h *landWalkHarness_internal, st landTraceStep_internal, extMoves *int) (string, string) {
-	t.Helper()
-	type move struct{ act, arg string }
-	var moves []move
-	baseTip := st.base[len(st.base)-1].sha
-	for _, s := range []string{"s1", "s2"} {
-		switch st.step[s] {
-		case "idle":
-			moves = append(moves, move{"Fetch", s})
-		case "fetched":
-			if st.gatedAt[s].baseTip != baseTip {
-				moves = append(moves, move{"Remerge", s})
+		for _, c := range r.cards {
+			if w.cs[c] != "merging" {
+				continue
+			}
+			if r.out == "landed" {
+				w.cs[c] = "landed"
 			} else {
-				moves = append(moves, move{"Merge", s})
+				w.js[c] = true
 			}
-		case "merged":
-			moves = append(moves, move{"PushStream", s})
-		case "pushed":
-			if st.gatedAt[s].baseTip != baseTip {
-				moves = append(moves, move{"Remerge", s})
-			} else {
-				moves = append(moves, move{"Gate", s})
-			}
-		case "gating":
-			moves = append(moves, move{"CIGreen", s})
-			if st.gatedAt[s].faults < 1 {
-				moves = append(moves, move{"CIFault", s})
-			}
-		case "fault":
-			moves = append(moves, move{"Gate", s})
-		case "green":
-			if st.gatedAt[s].baseTip == baseTip {
-				moves = append(moves, move{"Land", s})
-			} else {
-				moves = append(moves, move{"Remerge", s})
-			}
-		case "red":
-			moves = append(moves, move{"Refuse", s})
 		}
 	}
-	if *extMoves < 1 && (st.step["s1"] != "landed" || st.step["s2"] != "landed") {
-		moves = append(moves, move{"BaseMoves", "none"})
-	}
-	m := moves[rng.Intn(len(moves))]
-	if m.act == "BaseMoves" {
-		*extMoves++
-		h.applyBaseMove_internal(t)
-		return m.act, m.arg
-	}
-	h.execStreamAction_internal(t, m.arg, m.act)
-	return m.act, m.arg
-}
-
-func formatLandEdgeTraceTLA_internal(steps []landTraceStep_internal) string {
-	var b strings.Builder
-	b.WriteString("-------------------------- MODULE LandEdgeTraceLog --------------------------\n")
-	b.WriteString("EXTENDS Naturals, Sequences\nTraceLog == <<\n")
-	for i, s := range steps {
-		comma := ","
-		if i == len(steps)-1 {
-			comma = ""
+	for _, s := range walkStreams {
+		var e []string
+		for _, c := range walkCards {
+			if walkStream_internal(c) == s && w.cs[c] == "merging" && !w.js[c] {
+				e = append(e, c)
+			}
 		}
-		b.WriteString(fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, base |-> %s, stream |-> [s1 |-> %d, s2 |-> %d], group |-> [s1 |-> <<\"h1\", \"h2\">>, s2 |-> <<\"h3\">>], step |-> [s1 |-> %q, s2 |-> %q], gatedAt |-> [s1 |-> %s, s2 |-> %s], landed |-> %s]%s\n",
-			i+1, s.action, s.arg,
-			formatBaseSeqTLA_internal(s.base),
-			s.stream["s1"], s.stream["s2"],
-			s.step["s1"], s.step["s2"],
-			formatGatedAtTLA_internal(s.gatedAt["s1"]),
-			formatGatedAtTLA_internal(s.gatedAt["s2"]),
-			formatStringSeqTLA_internal(s.landed),
-			comma))
+		switch {
+		case !busy[s] && len(e) > 0:
+			if len(e) < walkBackedUp {
+				e = e[:1]
+			}
+			w.req[s] = walkReq_internal{cards: e, st: "sent", out: "none"}
+		case w.req[s].st == "done":
+			w.req[s] = walkReq_internal{st: "none", out: "none"}
+		}
 	}
-	b.WriteString(">>\n")
-	b.WriteString("=============================================================================\n")
-	return b.String()
+	w.held, w.ticked = busy, true
 }
 
-func formatBaseSeqTLA_internal(entries []landBaseEntry_internal) string {
-	parts := make([]string, len(entries))
-	for i, e := range entries {
-		parts[i] = fmt.Sprintf("[sha |-> %d, parent |-> %d, stream |-> %q, heads |-> %s, gate |-> %q, gatedTip |-> %d, gatedSHA |-> %d]",
-			e.sha, e.parent, e.stream, formatStringSetTLA_internal(e.heads), e.gate, e.gatedTip, e.gatedSHA)
+var walkOutcomes = map[LandOutcome]string{OutcomeLanded: "landed", OutcomeConflict: "conflict",
+	OutcomeRed: "red", OutcomeAbsent: "absent", OutcomeRefused: "merge_refused"}
+
+// pass_internal is one LandPass for stream s's request, with the walk's
+// choice of what CI and the forge do.
+func (w *landWalk_internal) pass_internal(s string) {
+	r := w.req[s]
+	req := LandRequest{Repo: "o/r", Stream: s, Base: "main"}
+	for _, c := range r.cards {
+		req.Heads = append(req.Heads, w.heads[c])
+		req.Branches = append(req.Branches, "sprint/"+s+"/"+c)
 	}
-	return "<< " + strings.Join(parts, ", ") + " >>"
+	w.ff.absent = w.rng.Intn(4) == 0
+	w.ff.move = w.extCount_internal() < walkK && w.rng.Intn(6) == 0
+	refuse := w.rng.Intn(6) == 0
+	w.ff.OnMerge = func(sha string) (string, error) {
+		if refuse {
+			return "", fmt.Errorf("required reviews missing")
+		}
+		w.g.SetOriginRef("refs/heads/main", sha)
+		return sha, nil
+	}
+	w.passes++
+	res, err := LandPass(context.Background(), w.g, w.ff, req)
+	if err != nil {
+		w.t.Fatalf("LandPass %s: %v", s, err)
+	}
+	if res.Outcome == OutcomeBaseMoved {
+		return // asked again: the request stays in flight
+	}
+	out, ok := walkOutcomes[res.Outcome]
+	if !ok {
+		w.t.Fatalf("LandPass %s: outcome %s is not one the walk drives (%s)", s, res.Outcome, res.Reason)
+	}
+	if res.Outcome == OutcomeLanded && res.MergeSHA != res.BaseTip {
+		if tip := w.tip_internal(); tip != res.MergeSHA {
+			w.t.Fatalf("LandPass %s: merged %s but base is at %s", s, res.MergeSHA, tip)
+		}
+		w.base = append(w.base, walkEntry_internal{sha: res.MergeSHA, how: "auto", gated: res.GatedSHA})
+	}
+	w.req[s] = walkReq_internal{cards: r.cards, st: "done", out: out, rung: res.Rung}
 }
 
-func formatGatedAtTLA_internal(g landGatedAt_internal) string {
-	ch := "FALSE"
-	if g.chased {
-		ch = "TRUE"
+// answer_internal is the coordinator's answer to card c's land judgement.
+func (w *landWalk_internal) answer_internal(c, choice string) {
+	delete(w.js, c)
+	switch choice {
+	case "land":
+		w.cs[c] = "landed"
+		if cards, _ := w.project_internal(w.tip_internal()); !slices.Contains(cards, c) {
+			w.handMerge_internal(c)
+		}
+	case "fix":
+		w.cs[c] = "fix"
 	}
-	return fmt.Sprintf("[baseTip |-> %d, sha |-> %d, gate |-> %q, blamed |-> %s, chased |-> %s, faults |-> %d]",
-		g.baseTip, g.sha, g.gate, formatStringSetTLA_internal(g.blamed), ch, g.faults)
 }
 
-func formatStringSetTLA_internal(vals []string) string {
-	if len(vals) == 0 {
-		return "{}"
+type walkMove_internal struct{ act, arg, choice string }
+
+// step_internal picks one enabled move at random, applies it and returns it.
+func (w *landWalk_internal) step_internal() walkMove_internal {
+	moves := []walkMove_internal{{act: "Tick"}}
+	for _, s := range walkStreams {
+		if w.req[s].st == "sent" {
+			moves = append(moves, walkMove_internal{act: "Pass", arg: s}, walkMove_internal{act: "Pass", arg: s})
+		}
 	}
-	parts := make([]string, len(vals))
+	if w.extCount_internal() < walkK && w.rng.Intn(8) == 0 {
+		moves = append(moves, walkMove_internal{act: "BaseMoves"})
+	}
+	for _, c := range walkCards {
+		if w.js[c] {
+			choice := []string{"land", "land", "fix", "retry"}[w.rng.Intn(4)]
+			moves = append(moves, walkMove_internal{act: "Answer", arg: c, choice: choice})
+		}
+	}
+	m := moves[w.rng.Intn(len(moves))]
+	switch m.act {
+	case "Tick":
+		w.tick_internal()
+		return m
+	case "Pass":
+		w.pass_internal(m.arg)
+	case "BaseMoves":
+		w.extCommit_internal()
+	case "Answer":
+		w.answer_internal(m.arg, m.choice)
+	}
+	w.ticked = false
+	return m
+}
+
+func (w *landWalk_internal) done_internal() bool {
+	for _, c := range walkCards {
+		if w.cs[c] == "merging" {
+			return false
+		}
+	}
+	return w.req["s1"].st == "none" && w.req["s2"].st == "none"
+}
+
+// walkLandEdge_internal walks one seed to the end (every card landed or
+// sent to fix, no request in flight) and returns the trace log module.
+func walkLandEdge_internal(t *testing.T, seed int64) (string, []string) {
+	w := newLandWalk_internal(t, seed)
+	records := []string{w.record_internal(1, walkMove_internal{act: "Init"})}
+	acts := []string{"Init"}
+	for i := 0; i < 400 && !w.done_internal(); i++ {
+		m := w.step_internal()
+		records = append(records, w.record_internal(len(records)+1, m))
+		acts = append(acts, m.act+":"+m.arg+":"+m.choice)
+	}
+	if !w.done_internal() {
+		t.Fatalf("seed %d: the walk did not finish in 400 steps: %v", seed, w.cs)
+	}
+	return "---------------------------- MODULE LandEdgeTraceLog ----------------------------\n" +
+		"EXTENDS Naturals, Sequences\nTraceLog == <<\n" + strings.Join(records, ",\n") + "\n>>\n" +
+		"=============================================================================\n", acts
+}
+
+func tlaSet_internal(vals []string) string {
+	q := make([]string, len(vals))
 	for i, v := range vals {
-		parts[i] = fmt.Sprintf("%q", v)
+		q[i] = fmt.Sprintf("%q", v)
 	}
-	return "{" + strings.Join(parts, ", ") + "}"
+	return "{" + strings.Join(q, ", ") + "}"
 }
 
-func formatStringSeqTLA_internal(vals []string) string {
-	if len(vals) == 0 {
-		return "<< >>"
+func tlaKeys_internal(m map[string]bool) string {
+	var ks []string
+	for k, v := range m {
+		if v {
+			ks = append(ks, k)
+		}
 	}
-	parts := make([]string, len(vals))
-	for i, v := range vals {
-		parts[i] = fmt.Sprintf("%q", v)
-	}
-	return "<< " + strings.Join(parts, ", ") + " >>"
+	slices.Sort(ks)
+	return tlaSet_internal(ks)
 }
 
+func (w *landWalk_internal) tree_internal(sha string) string {
+	if sha == "" {
+		return "[cards |-> {}, ext |-> 0]"
+	}
+	cards, ext := w.project_internal(sha)
+	return fmt.Sprintf("[cards |-> %s, ext |-> %d]", tlaSet_internal(cards), ext)
+}
+
+// record_internal is TraceLog record n: the move and the state after it.
+func (w *landWalk_internal) record_internal(n int, m walkMove_internal) string {
+	base := make([]string, len(w.base))
+	for i, e := range w.base {
+		base[i] = fmt.Sprintf("[tree |-> %s, how |-> %q, gated |-> %s]", w.tree_internal(e.sha), e.how, w.tree_internal(e.gated))
+	}
+	cs := make([]string, len(walkCards))
+	for i, c := range walkCards {
+		cs[i] = fmt.Sprintf("%s |-> %q", c, w.cs[c])
+	}
+	req := make([]string, len(walkStreams))
+	for i, s := range walkStreams {
+		r := w.req[s]
+		req[i] = fmt.Sprintf("%s |-> [cards |-> %s, st |-> %q, out |-> %q, rung |-> %d]", s, tlaSet_internal(r.cards), r.st, r.out, r.rung)
+	}
+	return fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, choice |-> %q, base |-> << %s >>, cs |-> [%s], req |-> [%s], js |-> %s, held |-> %s, ticked |-> %s, passes |-> %d]",
+		n, m.act, m.arg, m.choice, strings.Join(base, ", "), strings.Join(cs, ", "), strings.Join(req, ", "),
+		tlaKeys_internal(w.js), tlaKeys_internal(w.held), strings.ToUpper(fmt.Sprint(w.ticked)), w.passes)
+}
+
+// TestLandEdgeTraceRefinementWalk walks eight seeds to the end and, with
+// NOVA_TRACE_DIR set, writes each one's trace for tla/check-trace.sh. It
+// fails when the walks together never reach a rung of the ladder.
 func TestLandEdgeTraceRefinementWalk(t *testing.T) {
 	t.Parallel()
+	seen := map[string]bool{}
 	for seed := int64(1); seed <= 8; seed++ {
-		steps := walkLandEdgeTrace_internal(t, seed)
-		last := steps[len(steps)-1]
-		if last.action != "Done" {
-			t.Fatalf("seed %d: did not reach Done: %+v", seed, last)
+		text, acts := walkLandEdge_internal(t, seed)
+		for _, a := range acts {
+			seen[strings.SplitN(a, ":", 2)[0]] = true
 		}
-		tlaText := formatLandEdgeTraceTLA_internal(steps)
-		if traceDir := os.Getenv("NOVA_TRACE_DIR"); traceDir != "" && seed <= 3 {
-			sub := filepath.Join(traceDir, fmt.Sprintf("landedge-walk-%d", seed))
+		seen["rung2"] = seen["rung2"] || strings.Contains(text, "rung |-> 2")
+		seen["rung1"] = seen["rung1"] || strings.Contains(text, "rung |-> 1")
+		seen["hand"] = seen["hand"] || strings.Contains(text, `how |-> "hand"`)
+		if dir := os.Getenv("NOVA_TRACE_DIR"); dir != "" {
+			sub := filepath.Join(dir, fmt.Sprintf("landedge-walk-%d", seed))
 			if err := os.MkdirAll(sub, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(sub, "LandEdgeTraceLog.tla"), []byte(tlaText), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(sub, "LandEdgeTraceLog.tla"), []byte(text), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
-		wantSeed := int64(1)
-		if raw := os.Getenv("NOVA_TRACE_SEED"); raw != "" {
-			if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil {
-				wantSeed = parsed
-			}
-		}
-		if seed == wantSeed {
-			out := os.Getenv("NOVA_LANDEDGE_TRACE_OUT")
-			if out == "" {
-				out = os.Getenv("NOVA_TRACE_OUT")
-			}
-			if out != "" {
-				if err := os.WriteFile(out, []byte(tlaText), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
+	}
+	for _, want := range []string{"Tick", "Pass", "Answer", "BaseMoves", "rung1", "rung2", "hand"} {
+		if !seen[want] {
+			t.Errorf("the walks never reached %s", want)
 		}
 	}
 }

@@ -27,6 +27,7 @@ func (w *world) verb(r Request) (store.Receipt, *card.Refusal) {
 // TestVerbActorTable: every verb and actor (list item 8): a verb refused for
 // its actor writes nothing.
 func TestVerbActorTable(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")
@@ -84,8 +85,10 @@ func TestVerbActorTable(t *testing.T) {
 	assert.True(t, rc.Accepted, rc.Reason)
 }
 
-// TestVerbAddTakeReport: Add is anyone's; Take and Report are the holder's.
-func TestVerbAddTakeReport(t *testing.T) {
+// TestVerbAddReport: Add is anyone's; Report is the holder's, of a card in
+// its hand from the deal (there is no Take event).
+func TestVerbAddReport(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -96,12 +99,9 @@ func TestVerbAddTakeReport(t *testing.T) {
 	require.NotNil(t, ref)
 	assert.Equal(t, "need p9 of producer p2 is not a card", ref.Reason)
 	s.run(2)
-	s.requireState("p1.w1", "ready")
-	_, ref = s.verb(Request{Actor: "r2", Card: "p1.w1", Event: card.Take{Row: "r2"}})
+	s.requireState("p1.w1", "working")
+	_, ref = s.verb(Request{Actor: "r2", Card: "p1.w1", Event: card.Report{Row: "r2", Result: "ok", Head: sha(1), Reason: "done"}})
 	assert.Equal(t, "consumer p1.w1 is held by r1, not r2", ref.Reason)
-	rc, ref = s.verb(Request{Actor: "r1", Card: "p1.w1", Event: card.Take{Row: "r1"}})
-	require.Nil(t, ref)
-	assert.True(t, rc.Accepted, rc.Reason)
 	rc, ref = s.verb(Request{Actor: "r1", Card: "p1.w1", Event: card.Report{Row: "r1", Result: "ok", Head: sha(1), Reason: "done"}})
 	require.Nil(t, ref)
 	assert.True(t, rc.Accepted, rc.Reason)
@@ -112,6 +112,7 @@ func TestVerbAddTakeReport(t *testing.T) {
 // TestVerbDropNamesItsDependants: a Cancel fails its closure in the same op,
 // a dependant waived or relinked as the drop names.
 func TestVerbDropNamesItsDependants(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")
@@ -136,9 +137,34 @@ func TestVerbDropNamesItsDependants(t *testing.T) {
 	assert.Equal(t, []string{"p0"}, s.Cards["p4"].Needs)
 }
 
+// TestVerbDropReleasesLiveConsumers: a Cancel of a producer under a live work
+// consumer (working from its deal: the deal is the take) releases the
+// consumer in the same op, with the released record and no result, then
+// fails the producer.
+func TestVerbDropReleasesLiveConsumers(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.producer("p2", "s1", "pro", "a/y")
+	s.run(2)
+	s.requireState("p1.w1", "working")
+	rc, ref := s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Cancel{Reason: "not needed"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	c := s.card("p1.w1")
+	assert.Equal(t, "fail", c.State)
+	assert.Empty(t, c.Result, "released is no result")
+	assert.Equal(t, card.ReleasedPrefix+"not needed", c.Reason)
+	assert.Equal(t, "fail", s.card("p1").State)
+	assert.Equal(t, "not needed", s.card("p1").Reason)
+}
+
 // TestVerbJudgementAnswer: an open judgement is answered once with its move
 // in one op; a second answer is refused naming the first.
 func TestVerbJudgementAnswer(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")

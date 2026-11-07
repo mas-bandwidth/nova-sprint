@@ -102,9 +102,10 @@ type Limits struct {
 	IdleFloor, LandTarget                                                         float64
 }
 
-// Landing is the merging count at which a stream backs up and the one at
-// which it flows again.
-type Landing struct{ BackedUp, Flowing int }
+// Landing is the merging count at which a stream backs up (rung 2) and the
+// one at which it flows again, and CIWait the seconds a gated sha may go
+// with no CI before its landing is a judgement (0: the engine's default).
+type Landing struct{ BackedUp, Flowing, CIWait int }
 
 // Timeouts are seconds of running time; BaseRegate is a rising list. Tick
 // is run's budget for one tick (drift row 26); ReadyNag is how often run

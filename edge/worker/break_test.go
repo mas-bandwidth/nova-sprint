@@ -33,6 +33,7 @@ import (
 // harness still works. (cmd/nova-worker also wires no ProcessTable at all,
 // so Procs is nil and nothing is ever adopted in the shipped binary.)
 func TestBreakRestartDuringHarnessReportsFaultAndRemovesLiveJobDir(t *testing.T) {
+	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
@@ -44,7 +45,7 @@ func TestBreakRestartDuringHarnessReportsFaultAndRemovesLiveJobDir(t *testing.T)
 		<-release
 		return WallRunResult{ExitCode: 0, PID: 4242, Nonce: "n4242", Elapsed: time.Second}, nil
 	}}
-	r1, _ := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: wall, Now: clock})
+	r1, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: wall, Now: clock})
 	done := make(chan error, 1)
 	go func() { done <- r1.StepRow(context.Background(), row) }()
 	j := <-inRun
@@ -52,7 +53,7 @@ func TestBreakRestartDuringHarnessReportsFaultAndRemovesLiveJobDir(t *testing.T)
 
 	rec, _ := ReadJobRecord(j.JobDir)
 	procs := &fakeProcTable{alive: map[string]bool{"4242:n4242": true}}
-	r2, _ := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
+	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
 	if err := r2.RecoverRow(context.Background(), row); err != nil {
 		t.Fatalf("RecoverRow: %v", err)
 	}
@@ -93,6 +94,7 @@ func (g *blockingRebaseGit_internal) RebaseOntoStream(ctx context.Context, wt, r
 // so the producer goes to review at an un-rebased head whose tests never ran.
 // The same record exists after a kill anywhere in steps 6 and 7.
 func TestBreakRestartAfterHarvestReportsOkWithoutRebaseOrTests(t *testing.T) {
+	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	base := newFakeGit_internal()
@@ -107,14 +109,14 @@ func TestBreakRestartAfterHarvestReportsOkWithoutRebaseOrTests(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 		return WallRunResult{ExitCode: 0, PID: 501, Nonce: "n501", Elapsed: time.Second}, nil
 	}}
-	r1, _ := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: bg, Wall: wall1, Now: clock})
+	r1, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: bg, Wall: wall1, Now: clock})
 	done := make(chan error, 1)
 	go func() { done <- r1.StepRow(context.Background(), row) }()
 	<-bg.entered
 	t.Cleanup(func() { close(bg.release); <-done })
 
 	wall2 := &fakeWall{}
-	r2, _ := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: base, Wall: wall2, Procs: &fakeProcTable{alive: map[string]bool{}}, Now: clock})
+	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: base, Wall: wall2, Procs: &fakeProcTable{alive: map[string]bool{}}, Now: clock})
 	if err := r2.RecoverRow(context.Background(), row); err != nil {
 		t.Fatalf("RecoverRow: %v", err)
 	}
@@ -143,6 +145,7 @@ func TestBreakRestartAfterHarvestReportsOkWithoutRebaseOrTests(t *testing.T) {
 // receipts: the runner runs the job and believes it reported, while epoch 2's
 // p1.w1 is never taken or reported and its producer never leaves working.
 func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
@@ -156,7 +159,7 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 		return WallRunResult{ExitCode: 0, PID: 600, Nonce: "n600", Elapsed: time.Second}, nil
 	}}
-	r, _ := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: wall, Now: clock})
+	r, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, StateDir: root, Sprint: sc, Git: git, Wall: wall, Now: clock})
 	if err := r.StepRow(ctx, row); err != nil {
 		t.Fatalf("epoch 1 StepRow: %v", err)
 	}
@@ -213,6 +216,7 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 // whole output in memory (and writes all of it to harness.log); a harness
 // that prints without end exhausts the runner's memory.
 func TestBreakHarnessOutputUnbounded(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	w := &OSReserveWall{}
 	res, err := w.RunHarness(context.Background(), Job{Consumer: "p1.w1", JobDir: dir, WorktreeDir: dir},
@@ -225,7 +229,7 @@ func TestBreakHarnessOutputUnbounded(t *testing.T) {
 	}
 }
 
-// TestBreakHarnessTimeoutHangsOnBackgroundChild
+// TestFunctionalBreakHarnessTimeoutHangsOnBackgroundChild
 //
 // Sequence: OSReserveWall.RunHarness with a 300 ms timeout runs a harness
 // that starts a background process (`sleep 20 &`, as an agent starting a dev
@@ -236,7 +240,8 @@ func TestBreakHarnessOutputUnbounded(t *testing.T) {
 // output pipe open, and execBounded_internal sets no WaitDelay and kills no
 // process group, so cmd.Run blocks until the grandchild exits (20 s here,
 // forever for a server), and the runner is stuck past every deadline.
-func TestBreakHarnessTimeoutHangsOnBackgroundChild(t *testing.T) {
+func TestFunctionalBreakHarnessTimeoutHangsOnBackgroundChild(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	w := &OSReserveWall{}
 	done := make(chan time.Duration, 1)

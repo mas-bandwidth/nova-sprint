@@ -2,7 +2,6 @@ package verbs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -14,7 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-func TestFunctionalSprintRoleSCRAM(t *testing.T) {
+func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("requires isolated PostgreSQL")
 	}
@@ -190,7 +189,7 @@ func roleAdoptionExec(t *testing.T, ctx context.Context, conn *pgx.Conn, sql str
 	}
 }
 
-func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) {
+func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	ctx, super, dsn := roleAdoptionFixture(t)
 	// Password checks use host SCRAM; the local trusted socket is superuser-only fixture setup.
 	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err == nil {
@@ -207,15 +206,46 @@ func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) {
 	if err := super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "wrong-password", false); !errors.Is(err, errSprintCredentialMismatch) {
-		t.Fatalf("wrong secret: %v", err)
+	// The seat's value is the one every service reads (defect 37): a role
+	// whose password is not it is set to it, and a SCRAM login proves it.
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "seat-password", false); err != nil {
+		t.Fatalf("seat secret not set on the role: %v", err)
 	}
-	if err := super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&after); err != nil || before != after {
-		t.Fatal("stored mismatch changed role", err)
+	if err := super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&after); err != nil || before == after {
+		t.Fatal("the role kept the password that is not the seat's", err)
+	}
+	if same, why := scramMatches(after, "seat-password"); !same {
+		t.Fatal("the role's verifier is not the seat's password:", why)
 	}
 }
 
-func TestFunctionalSprintRoleRejectsForeignSchema(t *testing.T) {
+// Defect 37: on a host whose pg_hba trusts nova_sprint's connection, a
+// login proves nothing; a role with no password is set from the seat's
+// value all the same, and the stored verifier is the seat's.
+func TestFunctionalSprintRolePasswordOnATrustHost(t *testing.T) {
+	t.Parallel()
+	ctx, super, dsn := roleAdoptionFixture(t)
+	var hba string
+	if err := super.QueryRow(ctx, "SELECT setting FROM pg_settings WHERE name='hba_file'").Scan(&hba); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hba, []byte("local all all trust\nhost all nova_sprint 127.0.0.1/32 trust\nhost all all 127.0.0.1/32 scram-sha-256\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	roleAdoptionExec(t, ctx, super, "SELECT pg_reload_conf(); ALTER ROLE nova_sprint PASSWORD NULL")
+	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "initial-password", false); err != nil {
+		t.Fatalf("trust host: %v", err)
+	}
+	var verifier *string
+	if err := super.QueryRow(ctx, "SELECT rolpassword FROM pg_authid WHERE rolname='nova_sprint'").Scan(&verifier); err != nil || verifier == nil {
+		t.Fatal("a trust host hid a missing password", err)
+	}
+	if same, why := scramMatches(*verifier, "initial-password"); !same {
+		t.Fatal("the role's verifier is not the seat's password:", why)
+	}
+}
+
+func TestFunctionalSprintRoleRejectsForeignSchema(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	ctx, super, dsn := roleAdoptionFixture(t)
 	roleAdoptionExec(t, ctx, super, "GRANT USAGE ON SCHEMA sprint TO nova_admin; GRANT SELECT ON sprint.meta TO nova_admin")
 	var originalHash string
@@ -243,7 +273,7 @@ func TestFunctionalSprintRoleRejectsForeignSchema(t *testing.T) {
 	}
 }
 
-func TestFunctionalSprintRoleSetsUnsetPassword(t *testing.T) {
+func TestFunctionalSprintRoleSetsUnsetPassword(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	ctx, super, dsn := roleAdoptionFixture(t)
 	roleAdoptionExec(t, ctx, super, "GRANT USAGE ON SCHEMA sprint TO nova_admin; GRANT SELECT ON sprint.meta TO nova_admin; ALTER ROLE nova_sprint PASSWORD NULL")
 	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err != nil {

@@ -17,16 +17,18 @@ import (
 // most one preemption per row per tick. No open serving row at all opens
 // unserved for the tier and the blocker stays ready.
 func (t *tick) preempt() {
+	if t.o.a.NoDeal != "" {
+		return // the gate: the deal step opens its judgement
+	}
 	used := set{}
 	for _, b := range t.v.Producers("ready") {
 		c := t.v.Cards[b]
 		if c.Kind != "producer" || rung(c) != "blocker" || !t.free(b) || t.v.Streams[c.Stream].Held {
 			continue
 		}
-		serving := t.serving(c)
+		serving := t.named(c, t.serving(c))
 		if len(serving) == 0 {
-			t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+b+" waits")
-			continue
+			continue // the deal opens unserved or no-model
 		}
 		if !t.noFreeWidth(serving) {
 			continue // the deal starts it
@@ -52,7 +54,7 @@ func (t *tick) preemptOn(b store.Card, row, victim string) {
 	if !ok {
 		return
 	}
-	start := card.Start{Row: row, Branch: branch(b), Base: base}
+	start := card.Start{Row: row, Branch: branch(b), Base: base, Model: t.model(b, row)}
 	g := t.group("pre", b.ID, t.withdraw(victim, "preempted by blocker "+b.ID), t.producerMove(b.ID, start))
 	if g == nil {
 		return
@@ -126,7 +128,7 @@ func (t *tick) base(stream string) (string, bool) {
 	return b, true
 }
 
-// branch is the card branch: sprint/<stream>/<producer> (the stream group
-// branch is sprint/<stream>/group, never sprint/<stream>: git refuses a ref
-// that is both a file and a directory).
+// branch is the card branch: sprint/<stream>/<producer> (the stream's group
+// branch is sprint-group/<stream>, outside sprint/, so the two never meet as
+// a file and a directory of one ref).
 func branch(c store.Card) string { return "sprint/" + c.Stream + "/" + c.ID }

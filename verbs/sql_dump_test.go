@@ -13,6 +13,7 @@ func (s *sqlCollect) Exec(_ context.Context, v string) error {
 	return nil
 }
 func TestDumpParserQuotesAndComments(t *testing.T) {
+	t.Parallel()
 	dump := `-- generated
 \restrict abc123
 SET standard_conforming_strings = on;
@@ -29,6 +30,7 @@ INSERT INTO sprint.t VALUES ('one;two', E'a\'b', "x;y"); -- comment;
 	}
 }
 func TestDumpParserRejectsControlAndDirectives(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{"BEGIN;", "COMMIT/*c*/;", "-- hi\nSTART/*c*/TRANSACTION;", "COPY(sprint.t) TO STDOUT;", "\\! echo no\n", "\\restrict a\nSELECT 1;\n\\unrestrict b\n", "SELECT 'unterminated;", "\\restrict a\nSELECT 1;"} {
 		if err := ParseDump(strings.NewReader(text), nil); err == nil {
 			t.Fatalf("accepted %q", text)
@@ -37,6 +39,7 @@ func TestDumpParserRejectsControlAndDirectives(t *testing.T) {
 }
 
 func TestConfineDataRejectsExecutableValuesAndDDL(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
 	valid := header + "INSERT INTO sprint.events VALUES (E'hi\\'there', 10, NULL, true);\n"
@@ -54,12 +57,62 @@ func TestConfineDataRejectsExecutableValuesAndDDL(t *testing.T) {
 }
 
 func TestConfineDataOrdersCardsWithEscapedIdentifiers(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=dev+abcdef123456\n"
-	consumer := "INSERT INTO sprint.cards VALUES (E'child\\'id', 'work', 'parent');\n"
-	producer := "INSERT INTO sprint.cards VALUES ('parent', 'producer', NULL);\n"
+	consumer := "INSERT INTO sprint.cards VALUES (E'child\\'id', 'work', 'parent', 's', 'ready');\n"
+	producer := "INSERT INTO sprint.cards VALUES ('parent', 'producer', NULL, 's', 'working');\n"
 	statements, err := ConfineData([]byte(header+consumer+producer), hash)
 	if err != nil || len(statements) != 2 || !strings.Contains(statements[0], "'producer'") {
 		t.Fatal(statements, err)
+	}
+}
+
+// TestConfineDataRefusesAnUnmappedCardState: a record whose state this
+// build does not map (an importer's carried-over terminal state, here a v1
+// landed timestamp) is refused naming the record and the one fix, before
+// the verification cluster's CHECK would refuse it unnamed.
+func TestConfineDataRefusesAnUnmappedCardState(t *testing.T) {
+	t.Parallel()
+	hash := strings.Repeat("a", 64)
+	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
+	for _, record := range []string{
+		"INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', '2026-10-01 12:00:00+00', 0);\n",
+		"INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', 'merged', 0);\n",
+		"INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', NULL, 0);\n",
+	} {
+		_, err := ConfineData([]byte(header+record), hash)
+		r := AsRefusal(err)
+		if r == nil || !strings.Contains(r.Error(), "record sprint.cards 'c7': state") || !strings.Contains(classify(r).Fix, "map the record's state to one of those in the importer") {
+			t.Fatalf("%q: %v", record, err)
+		}
+	}
+	short := "INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL);\n"
+	if _, err := ConfineData([]byte(header+short), hash); AsRefusal(err) == nil {
+		t.Fatalf("accepted a card with no state: %v", err)
+	}
+	good := "INSERT INTO sprint.cards VALUES ('c7', 'producer', NULL, 's', 'landed', 0);\n"
+	if _, err := ConfineData([]byte(header+good), hash); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestConfineDataCarriesRound25Balances: a backup of a round 25 store holds
+// sprint.balances and its id sequence; both are sprint data and pass, after
+// everything else, while another sequence is still refused (the e2e's
+// backup step refused setval('sprint.balances_id_seq') before this).
+func TestConfineDataCarriesRound25Balances(t *testing.T) {
+	t.Parallel()
+	hash := strings.Repeat("a", 64)
+	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
+	balance := "INSERT INTO sprint.balances VALUES (1, 'deepseek', '2026-11-07 12:00:00+00', 5, 12.5, '');\n"
+	seq := "SELECT pg_catalog.setval('sprint.balances_id_seq', 1, true);\n"
+	event := "INSERT INTO sprint.events VALUES ('x', 1);\n"
+	statements, err := ConfineData([]byte(header+balance+seq+event), hash)
+	if err != nil || len(statements) != 3 || !strings.Contains(statements[0], "sprint.events") || !strings.Contains(statements[1], "sprint.balances") {
+		t.Fatal(statements, err)
+	}
+	if _, err := ConfineData([]byte(header+"SELECT pg_catalog.setval('sprint.other_seq', 1, true);\n"), hash); err == nil {
+		t.Fatal("accepted another sequence")
 	}
 }

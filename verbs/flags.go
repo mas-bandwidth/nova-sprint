@@ -120,7 +120,7 @@ func (in *input) num(name string) (int, *Fail) {
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 1 {
-		return 0, misuse(in.verb, "--"+name+" takes a positive whole number")
+		return 0, misuse(in.verb, "--"+name+" takes a positive whole number ("+badNumber(s, err)+")")
 	}
 	return n, nil
 }
@@ -133,7 +133,7 @@ func cardRef(verb, ref string) (string, int, *Fail) {
 	}
 	gen, err := strconv.Atoi(ref[i+1:])
 	if err != nil || gen < 0 {
-		return "", 0, misuse(verb, "name the card as <card>@<gen>, as the last output printed it")
+		return "", 0, misuse(verb, "name the card as <card>@<gen>, as the last output printed it ("+badNumber(ref[i+1:], err)+")")
 	}
 	return ref[:i], gen, nil
 }

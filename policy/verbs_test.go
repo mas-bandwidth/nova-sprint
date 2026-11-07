@@ -22,7 +22,7 @@ func TestVerbsFake(t *testing.T) {
 func verbSuite(t *testing.T, mk func(testing.TB) store.Store) {
 	for name, fn := range map[string]func(*testing.T, *world){
 		"up": testUp, "set refusals": testSetRefusals, "set": testSet, "activate refusals": testActivateRefusals,
-		"activate": testActivate, "show list diff": testShow, "check": testCheck, "broken mid-sprint": testBrokenMidSprint,
+		"set first": testSetFirst, "activate": testActivate, "show list diff": testShow, "check": testCheck, "broken mid-sprint": testBrokenMidSprint,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -56,11 +56,28 @@ func testUp(t *testing.T, w *world) {
 	assert.ErrorIs(t, err, store.ErrNotFound)
 }
 
+// testSetFirst: with no version active, the first set stores and activates
+// in one op (defect 53: a fresh store took a policy only from up) and
+// answers the built-in's open policy judgements; a second set only stores.
+func testSetFirst(t *testing.T, w *world) {
+	e := testEngine()
+	w.apply(store.PutJudgement{ID: "policy.order.1", Kind: "policy", About: "order", Group: "policy:v0", Question: "v0 failed order", Command: "judge"})
+	good := w.file("good.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1))
+	r, err := Set(w.ctx(), w.st, w.ro, e, w.caller(), good, "first")
+	require.NoError(t, err)
+	assert.Equal(t, Result{Version: 1, Activated: true, Next: "nova-sprint next"}, r)
+	assert.Equal(t, 1, w.snap().Policy, "the first set is active")
+	assert.Equal(t, "answered", w.snap().Judgements["policy.order.1"].State, "the built-in's judgement is answered")
+	other := w.file("other.star", strings.Replace(defaultBody, "return 1  #", "return 3  #", 1))
+	r, err = Set(w.ctx(), w.st, w.ro, e, w.caller(), other, "second")
+	require.NoError(t, err)
+	assert.Equal(t, Result{Version: 2, Next: "nova-sprint policy check v2"}, r)
+	assert.Equal(t, 1, w.snap().Policy, "a later set only stores")
+}
+
 func testSetRefusals(t *testing.T, w *world) {
 	e := testEngine()
 	good := w.file("good.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1))
-	r := refusal(t, setErr(w, e, good))
-	assert.Equal(t, "SPRINT REFUSED policy set: no policy is active: nova-sprint up", r)
 	w.up()
 	kin := w.caller()
 	kin.Actor, kin.Coordinator = "kin1", false
@@ -194,12 +211,14 @@ func testCheck(t *testing.T, w *world) {
 	assert.Equal(t, []string{"reads(p3): 1 -> 2", "reads(p5): 1 -> 2"}, rep.Changes)
 	assert.Equal(t, 0, rep.Code())
 	warn := []string{
-		`POLICY WARNING prices(): deepseek/deepseek-flash-4.1 (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-flash-4.1": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): deepseek/deepseek-flash (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-flash": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): deepseek/deepseek-v4-pro (tier frontier) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "deepseek-v4-pro": {"in": <micro-USD per million>, "out": <...>}`,
 		`POLICY WARNING prices(): inception/mercury-3 (tier pro) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-3": {"in": <micro-USD per million>, "out": <...>}`,
+		`POLICY WARNING prices(): inception/mercury-2.5 (tier flash) is billed at API rate and has no price: its runs will be recorded unpriced=no-price; add "mercury-2.5": {"in": <micro-USD per million>, "out": <...>}`,
 	}
 	assert.Equal(t, warn, rep.Warnings, "the default prices nothing: every API model is a defect found at creation")
-	assert.Equal(t, "policy check two.star: 2 answer(s) change, 0 refused, 2 warning(s)\n  reads(p3): 1 -> 2\n  reads(p5): 1 -> 2\n"+strings.Join(warn, "\n")+"\n", rep.Text())
-	priced := strings.Replace(defaultBody, "    return {}\n\ndef catalog", "    return {\"deepseek/deepseek-flash-4.1\": {\"in\": 270000, \"out\": 1100000}, \"mercury-3\": {\"in\": 250000, \"out\": 1000000}}\n\ndef catalog", 1)
+	assert.Equal(t, "policy check two.star: 2 answer(s) change, 0 refused, 4 warning(s)\n  reads(p3): 1 -> 2\n  reads(p5): 1 -> 2\n"+strings.Join(warn, "\n")+"\n", rep.Text())
+	priced := strings.Replace(defaultBody, "    return {}\n\ndef catalog", "    return {\"deepseek/deepseek-flash\": {\"in\": 270000, \"out\": 1100000}, \"deepseek-v4-pro\": {\"in\": 270000, \"out\": 1100000}, \"mercury-3\": {\"in\": 250000, \"out\": 1000000}, \"mercury-2.5\": {\"in\": 250000, \"out\": 1000000}}\n\ndef catalog", 1)
 	rep, err = Check(w.ctx(), w.st, w.ro, e, w.file("priced.star", priced))
 	require.NoError(t, err)
 	assert.Empty(t, rep.Warnings, "a price under provider/model or the model alone is found")

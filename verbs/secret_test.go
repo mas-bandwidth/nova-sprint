@@ -35,6 +35,7 @@ func (s *sinkFake) Set(_ context.Context, _ string, r io.Reader) error {
 	return nil
 }
 func TestKeyAskedAgainOnlyBeforeDurableSave(t *testing.T) {
+	t.Parallel()
 	terminal := &terminalFake{data: []byte("fake-key")}
 	sink := &sinkFake{fail: true}
 	ctx := context.Background()
@@ -61,6 +62,7 @@ func (t terminalRace) ReadHidden(context.Context, string) ([]byte, error) {
 	return []byte("new-key"), nil
 }
 func TestKeySavedDuringPromptIsNotOverwritten(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{}
 	if err := EnsureKey(context.Background(), "deepseek", terminalRace{sink}, sink); err != nil {
 		t.Fatal(err)
@@ -71,6 +73,7 @@ func TestKeySavedDuringPromptIsNotOverwritten(t *testing.T) {
 }
 
 func TestTTYSignalHelper(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_TTY_HELPER") != "1" {
 		t.Skip("PTY subprocess only")
 	}

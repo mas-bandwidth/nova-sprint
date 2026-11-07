@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -18,22 +19,23 @@ import (
 // a row, its inventory (nova-worker reads `next --json`). The lists are
 // never null; width 0 is an answer (no room, or no roster).
 type nextView struct {
-	Message    string          `json:"message"`
-	Next       string          `json:"next"`
-	Epoch      int             `json:"epoch"`
-	Seq        int64           `json:"seq"`
-	Row        string          `json:"row"`
-	State      string          `json:"state"`
-	Role       string          `json:"role"`
-	Width      int             `json:"width"`
-	Held       bool            `json:"held"`
-	Model      string          `json:"model"`
-	Harness    string          `json:"harness"`
-	RosterErr  string          `json:"roster_error,omitempty"`
-	Ready      []consumerLine  `json:"ready"`
-	Working    []consumerLine  `json:"working"`
-	Final      []consumerLine  `json:"final"`
-	Judgements []judgementLine `json:"judgements"`
+	Message    string              `json:"message"`
+	Next       string              `json:"next"`
+	Epoch      int                 `json:"epoch"`
+	Seq        int64               `json:"seq"`
+	Row        string              `json:"row"`
+	State      string              `json:"state"`
+	Role       string              `json:"role"`
+	Width      int                 `json:"width"`
+	Held       bool                `json:"held"`
+	Model      string              `json:"model"`
+	TierModels map[string][]string `json:"tier_models"`
+	Harness    string              `json:"harness"`
+	RosterErr  string              `json:"roster_error,omitempty"`
+	Ready      []consumerLine      `json:"ready"`
+	Working    []consumerLine      `json:"working"`
+	Final      []consumerLine      `json:"final"`
+	Judgements []judgementLine     `json:"judgements"`
 }
 
 type consumerLine struct {
@@ -62,7 +64,7 @@ type judgementLine struct {
 // missing prerequisite is its answer, exit 0; it exits 2 only when it
 // cannot look.
 func runNext(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
-	v := nextView{Row: in.actor, Ready: []consumerLine{}, Working: []consumerLine{}, Final: []consumerLine{}, Judgements: []judgementLine{}}
+	v := nextView{Row: in.actor, TierModels: map[string][]string{}, Ready: []consumerLine{}, Working: []consumerLine{}, Final: []consumerLine{}, Judgements: []judgementLine{}}
 	if err := e.look(ctx, &v, in.has("json")); err != nil {
 		return "", err
 	}
@@ -90,24 +92,29 @@ func (e *Engine) look(ctx context.Context, v *nextView, inventory bool) error {
 	}
 	row := snap.Rows[v.Row]
 	v.State, v.Role, v.Held = row.State, row.Role, row.Held
+	if inventory { // before the hook too: a worker probes its models before it hooks (up step 7)
+		e.fillRoster(ctx, v, snap)
+	}
 	if row.Session == "" {
 		v.Message, v.Next = v.Row+" is not hooked in to the sprint", "nova-sprint hook --as "+v.Row+" --role worker"
 		return nil
 	}
 	fillInventory(v, snap)
-	if inventory {
-		e.fillRoster(ctx, v, snap)
-	}
 	answer(v, snap)
 	return nil
 }
 
-// unready is next's answer when the store cannot be read: the fleet down or
-// the store not set up is guidance; anything else is a failure to look.
+// unready is next's answer when the store cannot be read: the fleet down,
+// the store not set up or a refusal (no sprint credential in this process)
+// is guidance; anything else is a failure to look.
 func (e *Engine) unready(ctx context.Context, v *nextView, cause error) error {
 	if errors.Is(cause, ErrNotSetUp) {
 		v.Message, v.Next = "the sprint is not set up", "nova-sprint up --as "+cmp.Or(v.Row, "<coordinator>")
 		return nil
+	}
+	var op *OperationError
+	if errors.As(cause, &op) && op.Exit != exitFailed {
+		return guidance(v, op)
 	}
 	if e.Doctor == nil {
 		return cause
@@ -140,7 +147,7 @@ func fillInventory(v *nextView, snap store.Snapshot) {
 		}
 		p := snap.Cards[c.Of]
 		line := consumerLine{ID: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, State: c.State, Priority: p.Priority,
-			Head: c.Head, Gen: c.Gen, Attempt: c.Attempt, Score: p.Score, Command: stepOf(c, v.Row, snap.Epoch)}
+			Head: c.Head, Gen: c.Gen, Attempt: c.Attempt, Score: p.Score, Command: stepOf(c, v.Row, snap)}
 		switch c.State {
 		case card.Ready:
 			v.Ready = append(v.Ready, line)
@@ -158,15 +165,17 @@ func fillInventory(v *nextView, snap store.Snapshot) {
 	}
 }
 
-// fillRoster is the row's width, model and harness from nova-config; an
-// unreadable roster is width 0 with the reason, never a refusal.
+// fillRoster is the row's width, model and harness from nova-config, and
+// the models it may run by tier (tierModels); an unreadable roster is width
+// 0 with the reason, never a refusal.
 func (e *Engine) fillRoster(ctx context.Context, v *nextView, snap store.Snapshot) {
-	lim, _, err := e.rules(ctx, snap)
+	a, err := e.answers(ctx, snap)
 	if err == nil {
-		ro, rerr := e.roster(ctx, lim)
+		ro, rerr := e.roster(ctx, a.Limits, snap)
 		if err = rerr; err == nil {
 			_, v.Width, _, _ = ro.Row(v.Row)
 			v.Model, v.Harness = ro.Kin[v.Row].Model, cmp.Or(ro.Kin[v.Row].Harness, ro.Workers[v.Row].Harness)
+			v.TierModels = tierModels(ro, v.Row, a.Catalog)
 		}
 	}
 	if err != nil {
@@ -184,6 +193,9 @@ func answer(v *nextView, snap store.Snapshot) {
 		v.Message, v.Next = "judgement "+v.Judgements[0].ID+" needs you", v.Judgements[0].Command
 	} else {
 		v.Message, v.Next = streamsAnswer(snap)
+		if snap.Stopped && (v.Next == waitNext || v.Role != "coordinator") {
+			v.Message, v.Next = stoppedAnswer(snap, v.Row, v.Role)
+		}
 	}
 	if more := len(v.Working) + len(v.Ready) + len(v.Judgements) - 1; more > 0 {
 		v.Message += fmt.Sprintf(" (%d more: nova-sprint next --as %s --json lists them)", more, v.Row)
@@ -192,23 +204,39 @@ func answer(v *nextView, snap store.Snapshot) {
 
 func inHand(state string) string {
 	if state == card.Ready {
-		return "dealt"
+		return "dealt before the deal became the take (the tick deals it again)"
 	}
 	return "in hand"
 }
 
-// stepOf is the command a consumer held by row is at.
-func stepOf(c store.Card, row string, epoch int) string {
-	ref := fmtCard(c.ID, c.Gen)
+// stepOf is the command a consumer held by row is at: in hand and not yet
+// acknowledged, take (which prints the brief); acknowledged, finish or read.
+// A ready one predates the deal being the take: the tick withdraws it and
+// deals it again, so there is nothing to run.
+func stepOf(c store.Card, row string, snap store.Snapshot) string {
+	ref, epoch := fmtCard(c.ID, c.Gen), snap.Epoch
+	_, acked := snap.Cursors[steps.AckCursor(epoch, c.ID)]
 	switch {
-	case c.State == card.Ready:
-		return fmt.Sprintf("nova-sprint take %s --as %s --epoch %d", ref, row, epoch)
 	case c.State != card.Working:
 		return waitNext
+	case !acked:
+		return fmt.Sprintf("nova-sprint take %s --as %s --epoch %d", ref, row, epoch)
 	case c.Kind == "read":
 		return fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, epoch)
 	}
 	return fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, epoch)
+}
+
+// stoppedAnswer is a stopped sprint's answer when nothing else is owed: a
+// fresh store is stopped, never started, until the coordinator starts it.
+// The coordinator is told to start once the streams need nothing first; a
+// worker waits, whatever the streams need.
+func stoppedAnswer(snap store.Snapshot, row, role string) (string, string) {
+	msg := "the sprint is stopped (" + orWord(snap.StopReason, "no reason given") + "): nothing is dealt, read or landed until it starts"
+	if role == "coordinator" {
+		return msg, "nova-sprint start --as " + row + " --reason \"<why>\""
+	}
+	return msg, waitNext
 }
 
 // streamsAnswer is the sprint's state when nothing is owed: no stream, an

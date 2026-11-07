@@ -78,16 +78,16 @@ type costSummary struct {
 	NoPrice     int               `json:"unpriced_no_price"`
 	Missing     []string          `json:"missing_prices"` // the models of the no-price runs, which prices() leaves out
 	Landed      int               `json:"landed_cards"`   // cards landed in this run
-	PricedCards int               `json:"priced_cards"`   // of those, the cards whose own API runs were priced: the per-card divisor
+	PricedCards int               `json:"priced_cards"`   // of those, the cards whose own API runs were priced
 	APITokens   string            `json:"api_tokens"`     // tokens of the priced API runs, compact (1.2M)
 	SeatRuns    int               `json:"seat_runs"`      // runs on subscription seats: free
 	SeatTokens  string            `json:"seat_tokens"`    // their tokens, compact; "0" when none reported
 }
 
 // summarizeCost sums every priced API consumer (work and read) in any state,
-// by tier, and divides by the landed cards whose own API runs were priced
-// (imported v1 landings, and landed cards no API run of which was priced, are
-// left out of the divisor). A subscription run adds its tokens, never
+// by tier, and divides by every card landed in this run, a card with no
+// priced API run (a seat card) counting at $0 (imported v1 landings are left
+// out of the divisor). A subscription run adds its tokens, never
 // dollars. A record from before round 25 (no usage) counts as it was
 // recorded: priced or not.
 func summarizeCost(s store.Snapshot) *costSummary {

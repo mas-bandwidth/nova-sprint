@@ -20,6 +20,7 @@ func (s cursorUnavailable) Apply(ctx context.Context, op store.Op) (store.Receip
 	return s.Store.Apply(ctx, op)
 }
 func TestRound7CursorFailurePublishesRead(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})
@@ -31,7 +32,7 @@ func TestRound7CursorFailurePublishesRead(t *testing.T) {
 	if err := c.Advance(ctx, cursorUnavailable{f}); err == nil {
 		t.Fatal("missing cursor warning")
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if !d.OK || d.Landed != 1 || !c.pending {
 		t.Fatalf("view=%+v pending=%v", d, c.pending)
 	}
@@ -43,6 +44,7 @@ func TestRound7CursorFailurePublishesRead(t *testing.T) {
 	}
 }
 func TestRound7OlderLogResnapshots(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})
@@ -59,12 +61,13 @@ func TestRound7OlderLogResnapshots(t *testing.T) {
 	if err := c.Advance(ctx, older); err != nil {
 		t.Fatal(err)
 	}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if !d.OK || d.Landed != 0 || d.All != 0 || len(d.Streams) != 1 || d.Streams[0].Stream != "old" {
 		t.Fatalf("view=%+v", d)
 	}
 }
 func TestRound7ChangedHistoryFailsClosed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"})
@@ -86,7 +89,8 @@ func TestRound7ChangedHistoryFailsClosed(t *testing.T) {
 	}
 }
 func TestRound7GzipNegotiation(t *testing.T) {
-	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{}, testRoster, time.Now())}
+	t.Parallel()
+	c := &Cache{at: t1000, now: at1000, view: mapSnapshot(store.Snapshot{}, testRoster, t1000)}
 	for _, tc := range []struct {
 		h          string
 		compressed bool
@@ -101,6 +105,7 @@ func TestRound7GzipNegotiation(t *testing.T) {
 	}
 }
 func TestRound7ExactWorkCostWire(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {Kind: "work", Stream: "s", Tier: "pro", Priced: true, Cost: 9_000_000_000_000_010_000}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
@@ -125,6 +130,7 @@ func (s *unavailableSnapshot) Snapshot(ctx context.Context) (store.Snapshot, err
 	return s.Store.Snapshot(ctx)
 }
 func TestRound7StartupRecovers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	apply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro"})
@@ -147,7 +153,7 @@ func TestRound7StartupRecovers(t *testing.T) {
 	}
 	rec = httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if rec.Code != 200 || !d.OK || d.All != 1 {
 		t.Fatalf("recovered health=%d data=%+v", rec.Code, d)
 	}

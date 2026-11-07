@@ -42,33 +42,10 @@ const (
 	MaxReasonBytes                                         = 4096
 )
 
-func cmpOr_internal(a, b string) string { return cmp.Or(a, b) }
-
-// CheckHost refuses the coordinator's machine (LESSONS 4.18). The worker
-// holds no list of its own: with none given it refuses to run, because a
-// check against nothing would pass on the coordinator.
-func CheckHost(host string, coordinatorHosts []string) error {
-	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(cmpOr_internal(host, ""))), ".")
-	if h == "" {
-		return errors.New("worker refused: host is empty: pass --host <bench> or set HOSTNAME")
-	}
-	if len(coordinatorHosts) == 0 {
-		return errors.New("worker refused: no coordinator hosts given, so the coordinator's machine cannot be told from a bench: pass --coordinator-hosts <host,host> (the machines nova-config gives the coordinator role)")
-	}
-	short, _, _ := strings.Cut(h, ".")
-	for _, raw := range coordinatorHosts {
-		c := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(raw)), ".")
-		if cShort, _, _ := strings.Cut(c, "."); c != "" && (h == c || short == cShort) {
-			return fmt.Errorf("worker refused: host %s is a coordinator host (no card runs on the coordinator's machine): run nova-worker on a worker bench", host)
-		}
-	}
-	return nil
-}
-
 type Timeouts struct {
-	Stage, LaunchGrace                                                                                                                         time.Duration
-	LaunchTries                                                                                                                                int
-	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, GH, BusClaim, ReserveWait time.Duration
+	Stage, LaunchGrace                                                                                                                     time.Duration
+	LaunchTries                                                                                                                            int
+	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, BusClaim, ReserveWait time.Duration
 }
 
 func DefaultTimeouts() Timeouts {
@@ -77,7 +54,7 @@ func DefaultTimeouts() Timeouts {
 		LaunchBackoff1Min: 5 * time.Second, LaunchBackoff1Max: 20 * time.Second,
 		LaunchBackoff2Min: 30 * time.Second, LaunchBackoff2Max: 60 * time.Second,
 		TerminateGrace: 3 * time.Second, RebaseAndTest: 2 * time.Minute,
-		Push: 60 * time.Second, GH: 30 * time.Second, BusClaim: 60 * time.Second, ReserveWait: 5 * time.Second,
+		Push: 60 * time.Second, BusClaim: 60 * time.Second, ReserveWait: 5 * time.Second,
 	}
 }
 func (t Timeouts) WithDefaults() Timeouts {
@@ -86,7 +63,7 @@ func (t Timeouts) WithDefaults() Timeouts {
 	t.LaunchBackoff1Min, t.LaunchBackoff1Max = cmp.Or(t.LaunchBackoff1Min, d.LaunchBackoff1Min), cmp.Or(t.LaunchBackoff1Max, d.LaunchBackoff1Max)
 	t.LaunchBackoff2Min, t.LaunchBackoff2Max = cmp.Or(t.LaunchBackoff2Min, d.LaunchBackoff2Min), cmp.Or(t.LaunchBackoff2Max, d.LaunchBackoff2Max)
 	t.TerminateGrace, t.RebaseAndTest, t.Push = cmp.Or(t.TerminateGrace, d.TerminateGrace), cmp.Or(t.RebaseAndTest, d.RebaseAndTest), cmp.Or(t.Push, d.Push)
-	t.GH, t.BusClaim, t.ReserveWait = cmp.Or(t.GH, d.GH), cmp.Or(t.BusClaim, d.BusClaim), cmp.Or(t.ReserveWait, d.ReserveWait)
+	t.BusClaim, t.ReserveWait = cmp.Or(t.BusClaim, d.BusClaim), cmp.Or(t.ReserveWait, d.ReserveWait)
 	return t
 }
 
@@ -97,10 +74,15 @@ type (
 		Epoch, Gen, Attempt, Review, SlotWeight, ProxyStatus                                                                                            int
 		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode, Forge                                                                      string
 		Deadline                                                                                                                                        time.Duration
+		Needs                                                                                                                                           Needs // the harness's wall, from its adapter
 	}
 	Outcome struct {
 		Result, Head, Reason, Finding string
 		Retryable5xx                  bool
+		// NoVerdict: the harness wrote no verdict this worker can read (no
+		// result.json, an unknown one, ok on a failed exit). A work job
+		// reports it "fail: no verdict"; a read, a fault (ReadOutcomeOf).
+		NoVerdict bool `json:",omitempty"`
 	}
 	// Cost is what a run's harness reported: its own dollar figure (MicroUSD,
 	// Priced when it had one), sent as --cost, the charged evidence; and
@@ -114,11 +96,21 @@ type (
 	JobRecord struct {
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, TargetHead string
 		DoneWhen                                                                                             []string
-		Epoch, Gen, Attempt, PID, PRNumber                                                                   int
+		Epoch, Gen, Attempt, PID                                                                             int
 		ResultID, State, Nonce, PushedHead, Forge                                                            string
 		StartedAt, DeadlineAt                                                                                int64
 		Outcome                                                                                              Outcome
 		Cost                                                                                                 Cost
+		// Refusals counts the sends of this record's report the sprint
+		// refused the same way in a row (LastRefusal); at RefusalLimit the
+		// record is set aside for a reader (defect 69).
+		Refusals    int    `json:",omitempty"`
+		LastRefusal string `json:",omitempty"`
+		// StartTip is the card's branch on origin when the job was staged
+		// ("" with StartTipRead: absent). Every push leases from PushedHead,
+		// the head this job last pushed, or else from StartTip (defect 78).
+		StartTip     string `json:",omitempty"`
+		StartTipRead bool   `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex
@@ -148,7 +140,10 @@ func ReadJobRecord(jobDir string) (JobRecord, error) {
 	if err != nil {
 		return rec, err
 	}
-	return rec, json.Unmarshal(data, &rec)
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return rec, fmt.Errorf("job record %s: %s", filepath.Join(filepath.Base(jobDir), "job.json"), edge.ParseFailure(err, data))
+	}
+	return rec, nil
 }
 func TailBytes(b []byte, max int) string {
 	if max = cmp.Or(max, MaxReasonBytes); len(b) > max {
@@ -167,8 +162,11 @@ func (l *StepLogger) Log(row, consumer, step, result string, d time.Duration) er
 		return err
 	}
 	path := filepath.Join(dir, row+".log")
+	var rotateErr error
 	if info, err := os.Stat(path); err == nil && info.Size() >= cmp.Or(l.MaxBytes, int64(10<<20)) {
-		_ = os.Rename(path, path+".1")
+		if err := os.Rename(path, path+".1"); err != nil {
+			rotateErr = fmt.Errorf("step log rotation (the log keeps growing): %w", err)
+		}
 	}
 	now := time.Unix(1000, 0).UTC()
 	if l.Now != nil {
@@ -182,6 +180,6 @@ func (l *StepLogger) Log(row, consumer, step, result string, d time.Duration) er
 	tok := strings.TrimSpace(strings.NewReplacer("\n", " ", "\r", " ").Replace(result))
 	_, err = fmt.Fprintf(f, "ts=%s row=%s consumer=%s step=%s result=%s dur_ms=%d\n",
 		now.Format(time.RFC3339), row, consumer, step, tok, d.Milliseconds())
-	return err
+	return errors.Join(err, rotateErr)
 }
 func cloneStrings_internal(in []string) []string { return slices.Clone(in) }

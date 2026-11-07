@@ -17,6 +17,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/cost"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/run"
@@ -34,7 +35,8 @@ type Engine struct {
 	Answers  Answerer    // the active policy's limits and timeouts
 	Policy   *policy.Engine
 	Origin   Origin   // a stream's repository at origin
-	Landing  Landing  // the forge for the coordinator's hand landing (land)
+	Lander   Lander   // the hand landing and the group branch
+	Forge    Forge    // the host's gh identity, as admission proves it
 	Doctor   Doctor   // nova-fleet, nova-tools and the store's schema
 	Archive  Archive  // backup and restore
 	Services Services // run, worker and dash
@@ -72,12 +74,21 @@ type Answerer interface {
 	AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure)
 }
 
-// Origin is a stream's repository as the verbs check it (layer 4's git and
-// forge edges, adapted in cmd/nova-sprint): the tip of a branch, whether one
-// commit contains another, and the PR of a branch.
+// Origin is a stream's repository as the verbs check it (layer 4's git
+// edge, adapted in cmd/nova-sprint): the tip of a branch at the clone
+// address (git.CloneURL of the stream's repo and forge).
 type Origin interface {
-	Tip(ctx context.Context, repo, branch string) (sha string, ok bool, err error)
-	Contains(ctx context.Context, repo, ancestor, head string) (bool, error)
+	Tip(ctx context.Context, url, branch string) (sha string, ok bool, err error)
+	Contains(ctx context.Context, url, ancestor, head string) (bool, error)
+	// Tree is every file path at commit sha (git ls-tree -r --name-only).
+	Tree(ctx context.Context, url, sha string) ([]string, error)
+	// Branches is every branch at origin under prefix (a/b/ lists a/b/*),
+	// by name, with its tip: one ls-remote.
+	Branches(ctx context.Context, url, prefix string) (map[string]string, error)
+	// Commits is every commit on head that is neither on the base branch at
+	// origin nor reachable from since ("" none), with its author and
+	// committer: finish's check of the sprint's commit identity.
+	Commits(ctx context.Context, url, head, base, since string) ([]git.Commit, error)
 }
 
 // Doctor is what `check` and `next` look at outside the store.

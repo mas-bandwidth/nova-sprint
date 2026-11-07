@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -39,10 +40,20 @@ type Fail struct {
 func (f *Fail) Error() string { return f.What + ": " + f.Fix }
 func (f *Fail) Unwrap() error { return f.cause }
 
-// ErrNotSetUp is the store with no sprint credential (up mints
-// NOVA_SPRINT_PG_PASSWORD) or without its schema: the fix is up, never a
-// hand-run secrets command.
+// ErrNotSetUp is a store without this build's schema (no epoch yet): the fix
+// is up. A process without the sprint's credential is NoCredential, not
+// this: the store may well be set up (defect 22, 2026-11-07).
 var ErrNotSetUp = errors.New("the sprint is not set up")
+
+// CredentialFix is how a verb gets the sprint's credentials into its
+// process: nova-secrets exec on the seat up granted them to.
+const CredentialFix = "run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ..."
+
+// NoCredential is the refusal of a process without NOVA_SPRINT_PG_PASSWORD
+// (up mints it; the fleet's units and nova-secrets exec inject it).
+func NoCredential() *OperationError {
+	return &OperationError{Problem: "this process has no sprint credential", Fix: CredentialFix, Exit: exitRefused}
+}
 
 // notSetUp is ErrNotSetUp's refusal (exit 1), naming up.
 func notSetUp(actor string) *Fail {
@@ -87,11 +98,15 @@ func classify(err error) *Fail {
 		}
 		return refuse(op.Problem, op.Fix)
 	case errors.As(err, &lint):
-		return refuse(lint.Error(), "fix the brief and run nova-sprint add again")
+		return refuse(lint.Error(), orWord(lint.Fix, "fix the brief and run nova-sprint add again"))
 	case errors.As(err, &pr):
 		return refuse(pr.What, pr.Fix)
 	case errors.Is(err, store.ErrInvalid):
 		return broken("nova-sprint built an invalid op ("+clip(err.Error())+")", "take it to the project's own tracker with this line")
+	}
+	if r := AsRefusal(err); r != nil {
+		// an internal child's refusal, read back from its stderr
+		return classify(r)
 	}
 	return broken(clip(err.Error()), "run nova-sprint check, then the verb again")
 }
@@ -125,11 +140,12 @@ func oneLine(s string) string {
 	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
 }
 
-// clip is a foreign error's text on one line, bounded.
+// clip is s on one line, bounded at edge.CommandMax: long enough for a
+// failed child's whole cause, which is the output that resolves it.
 func clip(s string) string {
 	s = oneLine(s)
-	if len(s) > 240 {
-		s = s[:240] + "..."
+	if len(s) > edge.CommandMax {
+		s = s[:edge.CommandMax] + "..."
 	}
 	return s
 }

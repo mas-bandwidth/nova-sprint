@@ -32,7 +32,7 @@ func breakClient_internal(graphql string) (*Client, *edge.FakeExec) {
 		return edge.FakeOutcome{ExitCode: 1, Stderr: "unexpected gh call"}
 	})
 	now := int64(1000)
-	c := New(Config{Identity: Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, Exec: fex, Now: func() int64 { return now }})
+	c := New(Config{Identity: Identity{Name: "sprint", Token: "tok"}, Exec: fex, Now: func() int64 { return now }})
 	return c, fex
 }
 
@@ -59,6 +59,7 @@ func rollupJSON_internal(state string, nodes []map[string]string) string {
 // came back, so a FAILURE rollup with 100 visible green nodes is CheckGreen
 // and LandPass pushes base.
 func TestBreakChecksGreenWhileRollupFails(t *testing.T) {
+	t.Parallel()
 	nodes := make([]map[string]string, 100)
 	for i := range nodes {
 		nodes[i] = map[string]string{"__typename": "CheckRun", "name": fmt.Sprintf("job-%03d", i), "status": "COMPLETED", "conclusion": "SUCCESS"}
@@ -86,6 +87,7 @@ func TestBreakChecksGreenWhileRollupFails(t *testing.T) {
 // FaultRateLimit and rest the identity for 60 s, again on each try: the
 // stream's landing faults forever on a green sha.
 func TestBreakCheckNamedRateLimitRestsIdentity(t *testing.T) {
+	t.Parallel()
 	nodes := []map[string]string{{"__typename": "CheckRun", "name": "API rate limit test", "status": "COMPLETED", "conclusion": "SUCCESS"}}
 	c, _ := breakClient_internal(rollupJSON_internal("SUCCESS", nodes))
 	m, err := c.Checks(context.Background(), "mas-bandwidth/nova-sprint", []string{breakSHA})
@@ -109,6 +111,7 @@ func TestBreakCheckNamedRateLimitRestsIdentity(t *testing.T) {
 // is taken as green for this one. (Real GitHub resolves object(oid:) to the
 // sha asked; this is defence in depth the edge does not have.)
 func TestBreakChecksTrustsResponseForOtherSHA(t *testing.T) {
+	t.Parallel()
 	other := strings.Repeat("0", 40)
 	raw := fmt.Sprintf(`{"data":{"repository":{"c0":{"oid":%q,"statusCheckRollup":{"state":"SUCCESS","contexts":{"nodes":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}}}}}}`, other)
 	c, fex := breakClient_internal(raw)

@@ -27,15 +27,25 @@ func (w workRow) MarshalJSON() ([]byte, error) {
 	for k, v := range w.ByTier {
 		tiers[k] = moneyCell(v)
 	}
-	return json.Marshal(map[string]any{"blocked": integer(w.Blocked), "waiting": integer(w.Waiting), "ready": integer(w.Ready), "working": integer(w.Working), "review": integer(w.Review), "fix": integer(w.Fix), "merging": integer(w.Merging), "landed": integer(w.Landed), "fail": integer(w.Fail), "cost": moneyCell(w.Cost), "cost_by_tier": tiers})
+	m := map[string]any{"blocked": integer(w.Blocked), "waiting": integer(w.Waiting), "ready": integer(w.Ready), "working": integer(w.Working), "review": integer(w.Review), "fix": integer(w.Fix), "merging": integer(w.Merging), "landed": integer(w.Landed), "fail": integer(w.Fail), "cost": moneyCell(w.Cost), "cost_by_tier": tiers}
+	if len(w.BlockedCards) > 0 {
+		m["blocked_cards"] = w.BlockedCards
+	}
+	return json.Marshal(m)
 }
 func (f fleetRow) MarshalJSON() ([]byte, error) {
-	pct := "-" // no finished work with a result yet (Glenn 2026-11-07)
+	pct := "-" // no finished work yet: nothing to be a percent of (directive 63b)
 	if f.OK+f.Failed > 0 {
 		pct = fmt.Sprintf("%.1f%%", f.OKPct)
 	}
-	return json.Marshal(map[string]string{"status": f.Status, "width": integer(f.Width), "ready": integer(f.Ready), "working": integer(f.Working), "done": integer(f.Done), "blocker_working": integer(f.Blocker), "critical_working": integer(f.Critical), "fix_working": integer(f.Fix), "reads_working": integer(f.Reads), "ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct,
-		"tokens": usage.Compact(f.Tokens), "tokens_n": strconv.FormatInt(f.Tokens, 10)})
+	m := map[string]string{"status": f.Status, "width": integer(f.Width), "ready": integer(f.Ready), "working": integer(f.Working), "done": integer(f.Done), "blocker_working": integer(f.Blocker), "critical_working": integer(f.Critical), "fix_working": integer(f.Fix), "reads_working": integer(f.Reads), "ok": integer(f.OK), "failed": integer(f.Failed), "okpct": pct,
+		"tokens": usage.Compact(f.Tokens), "tokens_n": strconv.FormatInt(f.Tokens, 10)}
+	for k, v := range map[string]string{"load": f.Load, "slots": f.Slots} {
+		if v != "" {
+			m[k] = v
+		}
+	}
+	return json.Marshal(m)
 }
 
 type numberCells map[string]int

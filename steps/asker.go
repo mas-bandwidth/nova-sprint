@@ -87,15 +87,20 @@ type Answers struct {
 	Limits   *Limits
 	Timeouts *Timeouts
 	Failed   map[string]string // question -> why; "*" when the budget was spent
+	Models   map[string]string // tier -> the model a bench runs (the catalog's bench key); none: no bench deal
+	NoDeal   string            // layer 6's gate: why nothing is dealt this tick ("" deals; model.go)
 }
 
-// WidthAnswer is width(row): how many the row works (at most its width) and
-// how many it queues ahead (at most 4 x width).
-type WidthAnswer struct{ Work, Ahead int }
+// WidthAnswer is width(row): how many the row works at once, at most its
+// width. There is no queue ahead of it: a dealt card is in the row's hand
+// (defect 52), so the deal fills a row to Work and no further; policy's
+// "ahead" is read by no step since.
+type WidthAnswer struct{ Work int }
 
-// LandingAnswer is landing(stream): backed up at BackedUp merging, flowing
-// again at Flowing.
-type LandingAnswer struct{ BackedUp, Flowing int }
+// LandingAnswer is landing(stream): backed up (rung 2) at BackedUp merging
+// heads waiting, flowing again at Flowing; CIWait the seconds a gated sha
+// may have no CI at all before it is a judgement (0: the engine's).
+type LandingAnswer struct{ BackedUp, Flowing, CIWait int }
 
 // Limits is limits(): the counts. Budget (cards touched per tick) and Pack
 // (groups per op) are layer 3's keys in the same dict (LAYER-3, "Policy
@@ -105,11 +110,13 @@ type Limits struct {
 	Budget, Pack                                                                  int
 }
 
-// Timeouts is timeouts(): seconds of running time, each 1..86400.
-// ReadyTake is how long a consumer may sit ready before it is withdrawn.
+// Timeouts is timeouts(): seconds of running time, each 1..86400. ReadyNag
+// is the seconds after a deal from which a row is nagged each tick for a
+// card in hand it has not taken; ReadyTake the seconds after which such a
+// card is withdrawn and dealt to another row with room.
 type Timeouts struct {
-	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, ReadyTake int
-	BaseRegate                                                                         []int
+	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, ReadyNag, ReadyTake int
+	BaseRegate                                                                                   []int
 }
 
 // Default answers nothing: the engine's defaults answer the tick.
@@ -122,9 +129,17 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // number marked there). EscalateAfter and FrontierAfter are the bounces at
 // which a work consumer is dealt one rank up and to the top rank (guesses,
 // LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
-// (LAYER-3 "Retire and fail limits", 3, unmeasured).
+// (LAYER-3 "Retire and fail limits", 3, unmeasured). The seconds after a
+// deal at which an unacknowledged card is nudged each tick and withdrawn are
+// policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"; the human's
+// numbers, 2026-11-07), default.star's 1 and 180; Engine's are those a
+// tick with no usable timeouts() answer runs on, as for every timeout.
+// UndealtAfter is the seconds a
+// producer may stay ready with a serving row with room before it is judged
+// (more than one one-second tick; LAYER-3 "Undealt").
 type Defaults struct {
 	EscalateAfter, FrontierAfter int
+	UndealtAfter                 int
 	Reads                        int
 	FlapLimit                    int
 	IdleFloor, IdleCeiling       float64
@@ -141,11 +156,11 @@ type Defaults struct {
 // section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
 // guesses, marked there.
 var Engine = Defaults{
-	EscalateAfter: 2, FrontierAfter: 4, Reads: 1, FlapLimit: 3,
+	EscalateAfter: 2, FrontierAfter: 4, UndealtAfter: 2, Reads: 1, FlapLimit: 3,
 	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
 	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
-	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyTake: 180, BaseRegate: []int{120, 300}},
-	Landing:  LandingAnswer{BackedUp: 4, Flowing: 1},
+	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300}},
+	Landing:  LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
 }
 
 // oracle is one tick's answers: the version's where usable, the defaults
@@ -269,24 +284,24 @@ func (o *oracle) verdict(q VerdictQuestion) string {
 	return "retry"
 }
 
-// width is width(row): work at most the width, ahead at most 4 x width.
-// Default: work = width, ahead = width (LPM D21: 2 x width held).
+// width is width(row): work at most the width. Default: work = width.
 func (o *oracle) width(r RowFacts) WidthAnswer {
 	w, ok := o.a.Width[r.Name]
 	if o.usable("width", ok) {
-		if w.Work >= 0 && w.Work <= r.Width && w.Ahead >= 0 && w.Ahead <= 4*r.Width {
+		if w.Work >= 0 && w.Work <= r.Width {
 			return w
 		}
 		o.refuse("width")
 	}
-	return WidthAnswer{Work: r.Width, Ahead: r.Width}
+	return WidthAnswer{Work: r.Width}
 }
 
-// landing is landing(stream): 0 <= flowing < backed_up <= 1000.
+// landing is landing(stream): 0 <= flowing < backed_up <= 1000, a CI wait
+// of at most a day.
 func (o *oracle) landing(s StreamFacts) LandingAnswer {
 	l, ok := o.a.Landing[s.Name]
 	if o.usable("landing", ok) {
-		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 {
+		if l.Flowing >= 0 && l.Flowing < l.BackedUp && l.BackedUp <= 1000 && l.CIWait >= 0 && l.CIWait <= 86400 {
 			return l
 		}
 		o.refuse("landing")
@@ -327,7 +342,7 @@ func (o *oracle) timeouts() Timeouts {
 
 func timeoutsOK(t Timeouts) bool {
 	day := func(n int) bool { return n >= 1 && n <= 86400 }
-	ok := day(t.RowSilentGone) && day(t.RowSilentWithdraw) && day(t.LandingStall) && day(t.Judgement) && day(t.RouteRestFor) && day(t.ReadyTake) &&
+	ok := day(t.RowSilentGone) && day(t.RowSilentWithdraw) && day(t.LandingStall) && day(t.Judgement) && day(t.RouteRestFor) && day(t.ReadyNag) && day(t.ReadyTake) &&
 		t.RowSilentWithdraw >= t.RowSilentGone && len(t.BaseRegate) > 0
 	for i, n := range t.BaseRegate {
 		ok = ok && day(n) && (i == 0 || n > t.BaseRegate[i-1])

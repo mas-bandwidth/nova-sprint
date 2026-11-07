@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 type (
@@ -114,7 +117,11 @@ func (b OSBusHook) Start(ctx context.Context, row string) (WakeHook, error) {
 				w.readyOne.Do(func() { close(w.ready) })
 			}
 		}
-		_, _ = io.Copy(io.Discard, stderr)
+		if _, err := io.Copy(io.Discard, stderr); err != nil && !errors.Is(err, os.ErrClosed) {
+			w.mu.Lock()
+			w.tail = append(w.tail, "(reading the hook's stderr failed: "+err.Error()+")\n"...)
+			w.mu.Unlock()
+		}
 	}()
 	go func() {
 		readers.Wait()
@@ -123,7 +130,7 @@ func (b OSBusHook) Start(ctx context.Context, row string) (WakeHook, error) {
 			status = werr.Error()
 		}
 		w.mu.Lock()
-		w.err = fmt.Errorf("nova-bus hook --as %s ended (%s): %s: the row is no longer reachable on the bus, so the worker exits; the service restarts it", row, status, TailBytes(w.tail, 512))
+		w.err = fmt.Errorf("nova-bus hook --as %s ended (%s): stderr %q: the row is no longer reachable on the bus, so the worker exits; the service restarts it", row, status, edge.RedactN(TailBytes(w.tail, 512), edge.FailureMax))
 		w.mu.Unlock()
 		close(w.done)
 	}()
@@ -139,7 +146,10 @@ func (b OSBusHook) Start(ctx context.Context, row string) (WakeHook, error) {
 		return nil, ctx.Err()
 	case <-claim.C:
 		w.Stop()
-		return nil, fmt.Errorf("worker refused: nova-bus hook --as %s did not claim the name in time (%s): check the bus with nova-bus who, then run nova-worker again", row, TailBytes(w.tail, 512))
+		w.mu.Lock()
+		tail := edge.RedactN(TailBytes(w.tail, 512), edge.FailureMax)
+		w.mu.Unlock()
+		return nil, fmt.Errorf("worker refused: nova-bus hook --as %s did not claim the name in time (stderr %q): check the bus with nova-bus who, then run nova-worker again", row, tail)
 	}
 }
 func (w *osWake_internal) Wake() <-chan struct{} { return w.wake }

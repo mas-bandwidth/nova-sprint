@@ -26,7 +26,7 @@ func (e *Engine) priceReport(ctx context.Context, snap store.Snapshot, row strin
 	}
 	p, err := usage.Price(o.usage, billing, charged, sheet)
 	if err != nil {
-		return p, misuse(o.verb, "--usage: "+err.Error()+" (the words are input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model>)")
+		return p, RefusalOr(err, misuse(o.verb, "--usage: "+err.Error()+" (the words are input=<n> cache_read=<n> cache_write=<n> output=<n> reasoning=<n> model=<provider/model>)"))
 	}
 	return p, nil
 }
@@ -45,7 +45,7 @@ func (e *Engine) billingOf(ctx context.Context, snap store.Snapshot, row string)
 	}
 	a, _ := e.Answers.AnswerContext(ctx, vs, snap, roster.Roster{}, policy.Questions{})
 	if a.Version >= 0 {
-		if ro, err := e.roster(ctx, a.Limits); err == nil {
+		if ro, err := e.roster(ctx, a.Limits, snap); err == nil {
 			billing = rowBilling(ro, row)
 		}
 	}

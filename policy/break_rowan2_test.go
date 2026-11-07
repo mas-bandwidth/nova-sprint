@@ -108,7 +108,8 @@ func proseSnap(size int) (store.Snapshot, roster.Roster) {
 // Sequence: Answer(Versions{}, proseSnap(16 KiB), FullQuestions).
 // Broken: Built, round 3, ruling 4: "One deadline per tick: ... TickTime ...
 // from the first byte of input construction to the last answer returned".
-func TestBreakProseMakesTheInputsOutrunTheTickDeadline(t *testing.T) {
+func TestFunctionalBreakProseMakesTheInputsOutrunTheTickDeadline(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	snap, ro := proseSnap(16 << 10)
 	q := FullQuestions(snap, nil)
@@ -127,6 +128,7 @@ func TestBreakProseMakesTheInputsOutrunTheTickDeadline(t *testing.T) {
 // Broken: guarantee 4, "Every tick is answered by the active, the previous
 // or the built-in version"; the default policy "answers every snapshot".
 func TestBreakProseLeavesTheBuiltInUnableToAnswer(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	snap, ro := proseSnap(16 << 10)
 	a, fs := timedEngine().Answer(Versions{}, snap, ro, FullQuestions(snap, nil))
@@ -162,7 +164,8 @@ func hungLimits() string {
 // never changes which version answers (the model's Pick)"; tla/Policy.tla
 // Tick: answered by the first of active, prev, Default not in breaks
 // (Default does not break on this snapshot), TickAlwaysAnswered.
-func TestBreakFallbackTimerStartsAfterTheInputs(t *testing.T) {
+func TestFunctionalBreakFallbackTimerStartsAfterTheInputs(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	var snap store.Snapshot
 	var ro roster.Roster
@@ -338,7 +341,7 @@ func TestHeldRowan2BodyAtTheCap(t *testing.T) {
 	var r *Refusal
 	require.True(t, errors.As(err, &r), "%v", err)
 	assert.Contains(t, r.What, "over 65536 bytes")
-	_, fs := testEngine().runFile("deep.star", "_X = "+strings.Repeat("[", 20000)+strings.Repeat("]", 20000)+"\n"+DefaultBody(), w.snap(), w.ro)
+	_, fs := testEngine().runFile("deep.star", "_X = "+strings.Repeat("[", 29000)+strings.Repeat("]", 29000)+"\n"+DefaultBody(), w.snap(), w.ro)
 	require.NotEmpty(t, fs)
 	assert.Contains(t, fs[0].Msg, "excessive nesting")
 }

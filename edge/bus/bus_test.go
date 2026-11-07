@@ -43,7 +43,7 @@ func TestEdgeSendAndWhoOverFakeExec(t *testing.T) {
 	})
 	_, err = b.Send(ctx, "amd-1.ds", "DEAL", "DEAL: 1 card for amd-1.ds (epoch 1)")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "nova-bus exited 1")
+	assert.Contains(t, err.Error(), "nova-bus send --as sprint --to amd-1.ds DEAL \"DEAL: 1 card for amd-1.ds (epoch 1)\": exit 1; stderr \"SEND FAILED: sprint not hooked in\"")
 	assert.Contains(t, err.Error(), "nova-bus who")
 
 	// 4. Who parses present rows and optional detail column.

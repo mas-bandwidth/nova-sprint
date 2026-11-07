@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -14,7 +15,9 @@ import (
 
 // runHook is `hook` (Stella's rulings, 2026-11-06): the name on the bus
 // first; the sprint mints the session; one hook per name and one
-// coordinator per sprint; the role's playbook printed. A worker's restart
+// coordinator per sprint; a worker only once the sprint has a commit
+// identity; the identity's two git config lines and the role's playbook
+// printed. A worker's restart
 // is the bus hook, its own unhook, this hook, then next.
 func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
 	r := in.str("role")
@@ -24,14 +27,45 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	if err := e.onBus(ctx, in.actor); err != nil {
 		return "", err
 	}
-	snap, err := e.snapshot(ctx)
+	snap, err := e.snapshot(ctx) // the store credential finish and read need: without it, CredentialFix
 	if err != nil {
+		return "", err
+	}
+	if r == "worker" && !snap.Identity.Set() { // nothing commits until the sprint knows as whom
+		return "", noIdentity()
+	}
+	if err := e.originsReadable(ctx, snap); err != nil {
 		return "", err
 	}
 	return e.hookAs(ctx, snap, in.actor, r)
 }
 
-// hookAs records name's session and role on snap and prints its playbook:
+// originsReadable is hook's admission (intent rule 34): the hooking
+// process has what finish and read will need. The store credential is
+// proved by the read before this; finish also reads the card's head and
+// the group branch at the stream's origin, so every stream's repository
+// must be readable from this process, all read at once. No forge token is
+// asked of a row: the run does the forge work.
+func (e *Engine) originsReadable(ctx context.Context, snap store.Snapshot) error {
+	ss := streamsInOrder(snap)
+	errs := make([]error, len(ss))
+	var wg sync.WaitGroup
+	for i, s := range ss {
+		wg.Go(func() { _, errs[i] = e.baseTip(ctx, s, "hook again") })
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			f := *classify(err)
+			f.What = "finish and read could not reach stream " + ss[i].Name + " from this process: " + f.What
+			return &f
+		}
+	}
+	return nil
+}
+
+// hookAs records name's session and role on snap and prints the sprint's
+// commit identity (the two git config lines) and its playbook:
 // the hook verb's, and up's and restore's for their coordinator.
 func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string) (string, error) {
 	if row := snap.Rows[name]; row.Session != "" {
@@ -53,7 +87,7 @@ func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string
 		return "", err
 	}
 	text, _ := docs.Playbook(r)
-	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), text), nil
+	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), identityLines(snap), text), nil
 }
 
 func (e *Engine) newSession() (string, error) {
@@ -62,7 +96,7 @@ func (e *Engine) newSession() (string, error) {
 	}
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return "", broken("no randomness for a session ("+clip(err.Error())+")", "run nova-sprint hook again")
+		return "", RefusalOr(err, broken("no randomness for a session ("+errText(err)+")", "run nova-sprint hook again"))
 	}
 	return hex.EncodeToString(b[:]), nil
 }
@@ -116,7 +150,7 @@ func runWake(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	}
 	raw, err := io.ReadAll(e.Stdin)
 	if err != nil {
-		return "", broken("stdin unreadable ("+clip(err.Error())+")", "nova-bus help hook")
+		return "", RefusalOr(err, broken("stdin unreadable ("+clip(err.Error())+")", "nova-bus help hook"))
 	}
 	line := strings.TrimSuffix(string(raw), "\n")
 	f := strings.SplitN(line, "\t", 5)
@@ -125,14 +159,28 @@ func runWake(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	}
 	body := strings.Split(busUnescape.Replace(f[4]), "\n")
 	for i, l := range body {
-		_, cmd, ok := strings.Cut(l, "; run: nova-sprint take ")
-		w := strings.Fields(cmd)
-		if ok && len(w) == 5 && w[1] == "--epoch" && w[3] == "--as" && w[4] == in.actor {
-			body[i] = strings.TrimSuffix(e.Execute(ctx, []string{"take", w[0], "--epoch", w[2], "--as", in.actor}).Output, "\n")
+		if ref, epoch, ok := takeLine(l, in.actor); ok {
+			body[i] = strings.TrimSuffix(e.Execute(ctx, []string{"take", ref, "--epoch", epoch, "--as", in.actor}).Output, "\n")
 		}
 	}
 	f[4] = busEscape.Replace(strings.Join(body, "\n"))
 	return strings.Join(f, "\t") + "\n", nil
+}
+
+// takeLine is the take a sprint line tells row to run ("run nova-sprint
+// take <ref> --epoch <e> --as <row>" in a DEAL, "run: nova-sprint take <ref>
+// --as <row> --epoch <e>" in a NUDGE, either flag order): its ref and epoch.
+func takeLine(l, row string) (ref, epoch string, ok bool) {
+	_, cmd, found := strings.Cut(l, "nova-sprint take ")
+	w := strings.Fields(cmd)
+	if !found || len(w) < 5 {
+		return "", "", false
+	}
+	flags := map[string]string{w[1]: w[2], w[3]: w[4]}
+	if flags["--as"] != row || flags["--epoch"] == "" {
+		return "", "", false
+	}
+	return w[0], flags["--epoch"], true
 }
 
 // nova-bus's line escapes, both ways.

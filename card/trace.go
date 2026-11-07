@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -33,6 +34,8 @@ import (
 //     gives (heads[0] is the base); a head not in it is an error.
 //   - finding: text in the code, "-" or "fix" in the model (whether a read
 //     asked for a fix): any non-empty finding is "fix".
+//   - A fault whose reason names a missing route (RouteFault) is the
+//     model's result "route"; the reason is otherwise left out.
 //   - Score and priority are carried as they are (any number, any level);
 //     the model's bounds on them (0..1; normal or blocker) are on its
 //     environment's choices, not on its moves.
@@ -122,13 +125,24 @@ func traceProd(c store.Card, ncut int, head func(string) (int, error)) (ModelPro
 		Finding: fixOrNone(c.Finding), Red: c.Red}, err
 }
 
+// TraceResult is a consumer's result as the model names it: a work fault
+// whose reason names a missing route (RouteFault) is "route" (defect 48),
+// every other result itself.
+func TraceResult(kind, result, reason string) string {
+	if _, route := RouteFault(reason); route && result == "fault" && kind == "work" {
+		return "route"
+	}
+	return result
+}
+
 func traceCons(c store.Card, head func(string) (int, error)) (ModelCons, error) {
 	h, err := head(c.Head)
 	if err != nil {
 		return ModelCons{}, err
 	}
 	prior, err := head(c.Prior)
-	return ModelCons{St: c.State, Kind: c.Kind, Row: c.Holder, Att: c.Attempt, Head: h, Res: cmp.Or(c.Result, "-"),
+	res := TraceResult(c.Kind, cmp.Or(c.Result, "-"), c.Reason)
+	return ModelCons{St: c.State, Kind: c.Kind, Row: c.Holder, Att: c.Attempt, Head: h, Res: res,
 		Author: cmp.Or(c.Author, "none"), Review: c.Review, Prior: prior, Finding: fixOrNone(c.Finding)}, err
 }
 
@@ -150,8 +164,10 @@ func traceConsumers(s store.Snapshot, p string) []store.Card {
 		}
 	}
 	readN := func(c store.Card) int {
-		var n int
-		_, _ = fmt.Sscanf(c.ID[strings.LastIndex(c.ID, ".")+1:], "%d", &n) // a work id has no index: 0
+		n, err := strconv.Atoi(c.ID[strings.LastIndex(c.ID, ".")+1:])
+		if err != nil {
+			return 0 // a work id has no numeric index: it sorts first
+		}
 		return n
 	}
 	isRead := func(c store.Card) int {

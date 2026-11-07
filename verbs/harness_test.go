@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/run"
@@ -29,6 +30,7 @@ var (
 	base = strings.Repeat("b", 40)
 	head = strings.Repeat("c", 40)
 	tip  = strings.Repeat("d", 40)
+	gh   = "https://github.com/o/r.git" // o/r's clone address with forge github (git.CloneURL)
 )
 
 func applyTest(t *testing.T, f *store.Fake, op store.Op) {
@@ -37,6 +39,13 @@ func applyTest(t *testing.T, f *store.Fake, op store.Op) {
 	if err != nil || !r.Accepted {
 		t.Fatalf("%+v %v", r, err)
 	}
+}
+
+// setIdentity gives f the fixtures' commit identity (the coordinator's
+// nova-sprint identity), as up's step 7 needs.
+func setIdentity(t *testing.T, f *store.Fake) {
+	t.Helper()
+	applyTest(t, f, store.Op{ID: "identity", Epoch: 1, Actor: "alice", Kind: "identity", At: t0, Writes: []store.Write{store.SetIdentity{Name: testIdentity.Name, Email: testIdentity.Email}}})
 }
 
 // world is an Engine over store.Fake and fakes of every edge, with the
@@ -53,20 +62,26 @@ type world struct {
 	svc    *fakeServices
 	arch   *fakeArchive
 	roster *fakeRoster
+	lander *fakeLander
+	forge  *fakeForge
 }
+
+// testIdentity is the sprint's commit identity in the fixtures.
+var testIdentity = store.Identity{Name: "Sprint Bot", Email: "1+sprint-bot@users.noreply.example.test"}
 
 func sprint() store.Snapshot {
 	row := func(n, role string) store.Row {
 		return store.Row{Name: n, State: "up", Session: "s-" + n, Role: role, Gen: 1}
 	}
 	return store.Snapshot{Seq: 10, Epoch: 1,
-		Streams: map[string]store.Stream{"s": {Name: "s", Repo: "o/r", Base: "main", Mode: "auto"}},
-		Rows:    map[string]store.Row{"alice": row("alice", "worker"), "bob": row("bob", "worker"), "carol": row("carol", "coordinator"), "dave": {Name: "dave", State: "up", Gen: 1}},
+		Streams:  map[string]store.Stream{"s": {Name: "s", Repo: "o/r", Base: "main", Mode: "auto"}},
+		Identity: testIdentity,
+		Rows:     map[string]store.Row{"alice": row("alice", "worker"), "bob": row("bob", "worker"), "carol": row("carol", "coordinator"), "dave": {Name: "dave", State: "up", Gen: 1}},
 		Cards: map[string]store.Card{
 			"p1":    {ID: "p1", Kind: "producer", Stream: "s", State: "working", Gen: 1, Attempt: 1, Tier: "pro", Priority: "normal", Brief: "tier: pro", Branch: "sprint/s/p1"},
-			"p1.w1": {ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s", State: "ready", Gen: 1, Attempt: 1, Holder: "alice", Tier: "pro", Branch: "sprint/s/p1", BaseSHA: base, Brief: "do p1", Priority: "normal"},
+			"p1.w1": {ID: "p1.w1", Kind: "work", Of: "p1", Stream: "s", State: "working", Gen: 1, Attempt: 1, Holder: "alice", Tier: "pro", Branch: "sprint/s/p1", BaseSHA: base, Brief: "do p1", Priority: "normal", Model: "inception/mercury-3"},
 			"p2":    {ID: "p2", Kind: "producer", Stream: "s", State: "review", Gen: 1, Attempt: 1, Review: 1, Tier: "pro", Priority: "normal", Head: head, Author: "alice", Branch: "sprint/s/p2"},
-			"p2.r1": {ID: "p2.r1", Kind: "read", Of: "p2", Stream: "s", State: "ready", Gen: 1, Attempt: 1, Review: 1, Holder: "bob", Tier: "pro", Head: head, Author: "alice", Branch: "sprint/s/p2", Priority: "normal"},
+			"p2.r1": {ID: "p2.r1", Kind: "read", Of: "p2", Stream: "s", State: "working", Gen: 1, Attempt: 1, Review: 1, Holder: "bob", Tier: "pro", Head: head, Author: "alice", Branch: "sprint/s/p2", Priority: "normal", Model: "inception/mercury-3"},
 		},
 		Judgements: map[string]store.Judgement{},
 		Cursors:    map[string]int64{},
@@ -85,10 +100,10 @@ func worldFrom(t *testing.T, s store.Snapshot) *world {
 		t.Fatal(err)
 	}
 	w := &world{f: f, bus: &fakeBus{present: map[string]bool{"alice": true, "bob": true, "carol": true, "dave": true}},
-		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true},
-		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster()}
+		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head, gh + " main": base, gh + " sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true, run: run.ChooserStatus{Held: true, Operation: "run", Host: "studio", PID: 41}},
+		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster(), lander: &fakeLander{merge: strings.Repeat("e", 40)}, forge: &fakeForge{}}
 	n := 0
-	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch,
+	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Forge: w.forge, Doctor: w.doctor, Services: w.svc, Archive: w.arch, Lander: w.lander,
 		Now: func() time.Time { return t0 }, Version: "v2.0.0-test", ToolPin: "v2.0.2",
 		Session: func() (string, error) { n++; return "minted-" + string(rune('0'+n)), nil }}
 	return w
@@ -165,13 +180,95 @@ func (r *fakeRoster) ReadRosterAt(context.Context, int) (roster.Roster, error) {
 type fakeAnswers struct{ prices map[string]policy.Price }
 
 func (f fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapshot, roster.Roster, policy.Questions) (policy.Answers, []policy.Failure) {
-	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}}, Prices: f.prices}, nil
+	return policy.Answers{Limits: policy.Limits{FleetWidthCap: 8}, Timeouts: policy.Timeouts{Consumer: map[string]int{"flash": 600, "pro": 1800, "heavy": 3600, "frontier": 7200}},
+		Catalog: policy.Catalog{Models: map[string][]policy.Model{"inception": {{Name: "mercury-3", Tier: "pro"}}, "deepseek": {{Name: "deepseek-flash", Tier: "flash"}, {Name: "deepseek-flash", Tier: "pro"}}},
+			Bench: map[string]string{"flash": "deepseek/deepseek-flash", "pro": "inception/mercury-3", "heavy": "deepseek/deepseek-flash", "frontier": "deepseek/deepseek-v4-pro"}}, Prices: f.prices}, nil
+}
+
+// fakeLander is the hand landing and the group branch's creation: Land
+// returns merge (or landErr) and records each branch@head it landed.
+type fakeLander struct {
+	merge            string
+	heads            map[string]string
+	landErr, headErr error
+	createErr        error
+	landed, created  []string
+}
+
+func (l *fakeLander) Land(_ context.Context, _ store.Stream, branch, head string) (string, error) {
+	if l.landErr != nil {
+		return "", l.landErr
+	}
+	l.landed = append(l.landed, branch+"@"+head)
+	return l.merge, nil
+}
+
+func (l *fakeLander) Heads(context.Context, store.Stream) (map[string]string, error) {
+	return l.heads, l.headErr
+}
+
+func (l *fakeLander) CreateGroup(_ context.Context, s store.Stream, sha string) error {
+	if l.createErr != nil {
+		return l.createErr
+	}
+	l.created = append(l.created, s.Name+"@"+sha)
+	return nil
 }
 
 type fakeOrigin struct {
-	tips     map[string]string // "repo branch" -> sha
+	tips     map[string]string // "<clone address> branch" -> sha
 	contains bool
+	tree     []string     // every file at any base (nil: the root only)
+	commits  []git.Commit // the head's commits since the base (nil: none)
+	commitsE error
 	err      error
+}
+
+func (o *fakeOrigin) Commits(context.Context, string, string, string, string) ([]git.Commit, error) {
+	return o.commits, o.commitsE
+}
+
+func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, error) {
+	return o.contains, o.err
+}
+
+func (o *fakeOrigin) Tree(context.Context, string, string) ([]string, error) {
+	return o.tree, o.err
+}
+
+// Branches is the tips at the address under prefix.
+func (o *fakeOrigin) Branches(_ context.Context, url, prefix string) (map[string]string, error) {
+	out := map[string]string{}
+	for k, sha := range o.tips {
+		if name, ok := strings.CutPrefix(k, url+" "+prefix); ok {
+			out[prefix+name] = sha
+		}
+	}
+	return out, o.err
+}
+
+// fakeForge is the host's gh identity: act is CanAct's answer; prs maps a
+// PR number to its head, merged lists the merged ones.
+type fakeForge struct {
+	act    error
+	prs    map[int]string
+	merged map[int]bool
+	checks []string // the base's required checks
+	checkE error
+}
+
+func (f *fakeForge) RequiredChecks(context.Context, string, string) ([]string, error) {
+	return f.checks, f.checkE
+}
+
+func (f *fakeForge) CanAct(context.Context, string) error { return f.act }
+
+func (f *fakeForge) PR(_ context.Context, _ string, n int) (string, bool, error) {
+	h, ok := f.prs[n]
+	if !ok {
+		return "", false, errors.New("no pull requests found")
+	}
+	return h, f.merged[n], nil
 }
 
 func (o *fakeOrigin) Tip(_ context.Context, repo, branch string) (string, bool, error) {
@@ -179,15 +276,12 @@ func (o *fakeOrigin) Tip(_ context.Context, repo, branch string) (string, bool, 
 	return sha, ok, o.err
 }
 
-func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, error) {
-	return o.contains, o.err
-}
-
-
 type fakeDoctor struct {
 	fleet, history error
 	tools          string
 	schema         bool
+	run            run.ChooserStatus
+	runErr         error
 }
 
 func (d *fakeDoctor) Fleet(context.Context) error                  { return d.fleet }
@@ -195,7 +289,7 @@ func (d *fakeDoctor) ToolsVersion(context.Context) (string, error) { return d.to
 func (d *fakeDoctor) Schema(context.Context) (bool, error)         { return d.schema, nil }
 func (d *fakeDoctor) History(context.Context) error                { return d.history }
 func (d *fakeDoctor) Run(context.Context) (run.ChooserStatus, error) {
-	return run.ChooserStatus{Host: "studio"}, nil
+	return d.run, d.runErr
 }
 
 type fakeServices struct{ ran []string }

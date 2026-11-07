@@ -21,6 +21,7 @@ import (
 // applies at once, so no race is possible and every op must be accepted
 // (RefusedOnlyByRace). At least 40% of the picked moves must be legal.
 func TestWalk(t *testing.T) {
+	t.Parallel()
 	steps := 2000
 	if testing.Short() {
 		steps = 300
@@ -66,7 +67,7 @@ func newWalk(t *testing.T, seed int64) *walk {
 	// A policy version with a low bounce limit, so Block is reached in the
 	// walk's depth; the rest of the answers are the defaults, so the view's
 	// limits path is exercised too.
-	w.ask = scripted{Answers{Version: 1, Limits: &Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50}}}
+	w.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50}}}
 	w.stream("s1")
 	w.stream("s2")
 	w.row("r1", 1, "pro")
@@ -123,7 +124,7 @@ func (w *walk) step() (ok, counted bool) {
 // enabled is the moves with a subject now.
 func (w *walk) enabled() []func() bool {
 	var out []func() bool
-	if len(w.consumersIn("ready")) > 0 {
+	if len(w.unacked()) > 0 {
 		out = append(out, w.takeOne)
 	}
 	if len(w.consumersIn("working")) > 0 {
@@ -213,9 +214,11 @@ func (w *walk) consumersIn(state string) []string {
 	return out
 }
 
-// takeOne takes a ready consumer, or any consumer (an illegal pick).
+// takeOne acknowledges a dealt consumer, or any card (an illegal pick):
+// the take verb refuses what is not working in a row's hand, and a second
+// acknowledgement writes nothing.
 func (w *walk) takeOne() bool {
-	ids := w.consumersIn("ready")
+	ids := w.unacked()
 	if w.rng.Intn(4) == 0 {
 		ids = sortedKeys(w.snap().Cards)
 	}
@@ -223,15 +226,10 @@ func (w *walk) takeOne() bool {
 	if id == "" {
 		return false
 	}
-	c := w.snap().Cards[id]
-	if !isConsumer(c) || !w.roomToTake(c.Holder) {
+	if c := w.snap().Cards[id]; !isConsumer(c) || c.State != "working" {
 		return false
 	}
-	p, r := w.consumer(id, card.Take{Row: c.Holder})
-	if r != nil {
-		return false
-	}
-	return w.apply("take", p.Expect, p.Writes...).Accepted
+	return w.ack(id).Accepted
 }
 
 // reportOne reports a working consumer with a result its kind allows.
@@ -275,8 +273,7 @@ func (w *walk) edgeOne() bool {
 	if req.Kind == "land" {
 		switch w.rng.Intn(6) {
 		case 0:
-			it.Outcome, it.Blamed = "red", req.Heads[w.rng.Intn(len(req.Heads))]
-			it.Landed = slices.DeleteFunc(slices.Clone(req.Heads), func(h string) bool { return h == it.Blamed })
+			it.Outcome = "ci_red"
 		case 1:
 			it.Outcome = "fault"
 		case 2:

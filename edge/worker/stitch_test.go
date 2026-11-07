@@ -97,9 +97,15 @@ func (s *loopSprint) Report(_ context.Context, req ReportRequest) (store.Receipt
 	if n := len(s.reports); n <= len(s.reportErrs) && s.reportErrs[n-1] != nil {
 		return store.Receipt{}, s.reportErrs[n-1]
 	}
+	// as the store: an accepted report takes the consumer out of the hand
+	s.next.Working = slices.DeleteFunc(slices.Clone(s.next.Working), func(c ConsumerSummary) bool { return c.ID == req.Consumer })
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
 func (s *loopSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
+func (s *loopSprint) Release(_ context.Context, _, id string, gen int, _, _ string) error {
+	s.note(fmt.Sprintf("release %s@%d", id, gen))
+	return nil
+}
 func (s *loopSprint) reported() []ReportRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -111,7 +117,7 @@ func loopRunner_internal(t *testing.T, sp SprintClient, hook *fakeWakeHook, wall
 	var order []string
 	var mu sync.Mutex
 	r, err := NewRunner(Runner{
-		CoordinatorHosts: testCoordinators_internal, Now: testClock_internal(), Sleep: noSleep_internal,
+		Now: testClock_internal(), Sleep: noSleep_internal,
 		Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, DefaultHarness: &ScriptHarness{},
 		BusHook: func(_ context.Context, row string) (WakeHook, error) {
 			mu.Lock()
@@ -130,10 +136,10 @@ func loopRunner_internal(t *testing.T, sp SprintClient, hook *fakeWakeHook, wall
 }
 
 func readyRead_internal() NextResponse {
-	return NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1, Harness: "script", Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}
+	return NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1, Harness: "script", Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}
 }
 
-var okReadReceipt_internal = TakeInfo{Producer: "p1", Kind: "read", Stream: "s1", Tier: "flash", Epoch: 3, Attempt: 1, Head: strings.Repeat("a", 40), Model: "m1", Deadline: 900}
+var okReadReceipt_internal = TakeInfo{Producer: "p1", Kind: "read", Stream: "s1", Tier: "flash", Epoch: 3, Attempt: 1, Head: strings.Repeat("a", 40), Model: "m1", Deadline: 900, CommitName: testCommitName, CommitEmail: testCommitEmail}
 
 // ---- row 20: startup order and the wake loop -------------------------------
 
@@ -289,6 +295,7 @@ func TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake(t *testing.T) {
 			sp.reportErrs = append(sp.reportErrs, tc.failure)
 		}
 		r, _ := loopRunner_internal(t, sp, newFakeWakeHook(), &crWall{})
+		r.RefusalLimit = 10 // the resend alone: quarantine at the limit is TestLiveRefusedRecordIsQuarantinedAndThePassGoesOn
 		root := r.RootDir
 		_ = r.StepRow(context.Background(), "vision.ds")
 		rec, err := ReadJobRecord(filepath.Join(root, "jobs", "p1.r1"))
@@ -315,9 +322,6 @@ func TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, "jobs", "p1.r1")); !os.IsNotExist(err) {
 			t.Fatalf("%s: the acknowledged report left its job directory: %v", name, err)
 		}
-		sp.mu.Lock()
-		sp.next.Working = nil // the sprint took the report: the consumer left working
-		sp.mu.Unlock()
 		_ = r.StepRow(context.Background(), "vision.ds")
 		if n := len(sp.reported()); n != 3*tc.perPass+1 {
 			t.Fatalf("%s: %d sends, want %d", name, n, 3*tc.perPass+1)
@@ -349,7 +353,7 @@ func TestStitchReceiptWithoutModelDeadlineForgeIsRefusedNamingTheFix(t *testing.
 func TestStitchReceiptWithAnEmptyForgeIsAHandStream(t *testing.T) {
 	t.Parallel()
 	cli := &CLISprintClient{Run: func(context.Context, []string) ([]byte, int, error) {
-		return []byte(`{"consumer":"p1.w1","model":"claude-x","deadline":2700,"forge":""}`), 0, nil
+		return []byte(`{"consumer":"p1.w1","model":"claude-x","deadline":2700,"forge":"","commit_name":"Sprint Bot","commit_email":"1+sprint-bot@users.noreply.example.test"}`), 0, nil
 	}}
 	info, err := cli.Take(context.Background(), "vision.ds", "p1.w1", 4)
 	if err != nil || info.Model != "claude-x" || info.Deadline != 2700 || info.Forge != "" {
@@ -399,7 +403,6 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
 	git.rebasedSHA = testRebSHA
-	forge := newFakeForge_internal()
 	wall := &stitchWall{}
 	wall.runFn = func(_ int, j Job, _, _ []string) (WallRunResult, error) {
 		git.mu.Lock()
@@ -408,10 +411,10 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 		return WallRunResult{ExitCode: 0, PID: 500, Nonce: "n5", Elapsed: time.Second}, nil
 	}
-	sc := &StoreSprintClient{Store: st, Origin: git, Forge: forge, RequirePR: map[string]bool{"s1": true}, Now: clock}
+	sc := &StoreSprintClient{Store: st, Origin: git, Now: clock}
 	r, err := NewRunner(Runner{
-		CoordinatorHosts: testCoordinators_internal, Host: "b1", RootDir: t.TempDir(), Sprint: sc, Git: git,
-		Forges: map[string]ForgeOps{"github": forge}, Wall: wall, DefaultHarness: &OpenCodeHarness{}, Now: clock, Sleep: noSleep_internal,
+		Host: "b1", RootDir: t.TempDir(), Sprint: sc, Git: git,
+		Wall: wall, DefaultHarness: &OpenCodeHarness{}, Now: clock, Sleep: noSleep_internal,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -430,35 +433,11 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 	if wall.job.Model != "deepseek-r1" || !slices.Contains(wall.argv, "deepseek-r1") {
 		t.Errorf("the model is the receipt's: job %q argv %q", wall.job.Model, wall.argv)
 	}
+	// The forge is the receipt's and only names the clone URL (CloneURL):
+	// the worker opens no PR; the landing does (edge/git
+	// TestLandRungOneGatesTheCardsOwnPR).
 	if wall.job.Forge != "github" || wall.rec.Forge != "github" {
 		t.Errorf("the forge is the receipt's: job %q record %q", wall.job.Forge, wall.rec.Forge)
-	}
-	if len(forge.prs) == 0 {
-		t.Errorf("a stream with a forge got no pull request")
-	}
-}
-
-func TestStitchStreamForgeWithNoAdapterIsAFaultNamingIt(t *testing.T) {
-	t.Parallel()
-	clock := testClock_internal()
-	st, row := seedFakeStore_internal(t, clock)
-	git := newFakeGit_internal()
-	git.rebasedSHA = testRebSHA
-	wall := &fakeWall{runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
-		git.mu.Lock()
-		git.headByWT[j.WorktreeDir] = testWorkSHA
-		git.mu.Unlock()
-		_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
-		return WallRunResult{ExitCode: 0, PID: 500, Nonce: "n5", Elapsed: time.Second}, nil
-	}}
-	rs := &recordingSprint{StoreSprintClient: &StoreSprintClient{Store: st, Origin: git, RequirePR: map[string]bool{"s1": true}, Now: clock}}
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Host: "b1", RootDir: t.TempDir(), Sprint: rs, Git: git, Wall: wall, Now: clock, Sleep: noSleep_internal})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = r.StepRow(context.Background(), row)
-	if len(rs.reports) != 1 || rs.reports[0].Result != "fault" || !strings.Contains(rs.reports[0].Reason, `"github"`) {
-		t.Fatalf("want one fault naming the forge, got %+v", rs.reports)
 	}
 }
 
@@ -490,11 +469,11 @@ func TestStitchHarnessAdaptersHoldNoModel(t *testing.T) {
 
 func TestStitchRunnerRefusesToStartWithoutAnInjectedClock(t *testing.T) {
 	t.Parallel()
-	_, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Host: "vision", RootDir: t.TempDir()})
+	_, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir()})
 	if err == nil || !strings.Contains(err.Error(), "Now and Sleep") {
 		t.Fatalf("a runner with no clock must be refused naming Now and Sleep, got %v", err)
 	}
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Host: "vision", RootDir: t.TempDir(), Now: testClock_internal(), Sleep: noSleep_internal})
+	r, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir(), Now: testClock_internal(), Sleep: noSleep_internal})
 	if err != nil {
 		t.Fatal(err)
 	}

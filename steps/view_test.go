@@ -22,6 +22,7 @@ func (w *world) same(what string) {
 // TestViewFoldEqualsBuild folds one event of every kind the store logs and
 // checks the view after each equals a fresh build (list item 1).
 func TestViewFoldEqualsBuild(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.same("put stream")
@@ -41,7 +42,6 @@ func TestViewFoldEqualsBuild(t *testing.T) {
 	w.move(w.plan("p1", card.Start{Row: "r1", Branch: "sprint/s1/p1", Base: base}))
 	w.same("start")
 	assert.Equal(t, []string{"p1.w1"}, w.v.Live("r1"))
-	w.move(w.consumer("p1.w1", card.Take{Row: "r1"}))
 	w.same("take")
 	assert.Equal(t, 1, w.v.Working("r1"))
 	assert.Equal(t, w.now, w.v.TakenAt["p1.w1"], "the fold witnessed the take")
@@ -49,7 +49,6 @@ func TestViewFoldEqualsBuild(t *testing.T) {
 	w.same("report ok")
 	w.move(w.plan("p1", card.AskReads{Rows: []string{"r2"}}))
 	w.same("ask reads")
-	w.move(w.consumer("p1.r1.1", card.Take{Row: "r2"}))
 	w.report("p1.r1.1", "ok", sha(1), "fine")
 	w.move(w.plan("p1", card.ReadYes{}))
 	w.same("read yes")
@@ -91,6 +90,7 @@ func TestViewFoldEqualsBuild(t *testing.T) {
 // TestViewRefusedEventMovesSeqOnly: a refused op is an event too; it moves
 // the cursor and nothing else.
 func TestViewRefusedEventMovesSeqOnly(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.fold()
@@ -106,6 +106,7 @@ func TestViewRefusedEventMovesSeqOnly(t *testing.T) {
 // TestViewOverlaps: the paths index holds ready and started producers of
 // one stream, and a path shared across streams is no overlap.
 func TestViewOverlaps(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.stream("s2")
@@ -123,6 +124,7 @@ func TestViewOverlaps(t *testing.T) {
 // TestViewConsumersInCutOrder: consumers come back in the order they were
 // cut, which the model numbers as slots.
 func TestViewConsumersInCutOrder(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")
@@ -130,10 +132,8 @@ func TestViewConsumersInCutOrder(t *testing.T) {
 	w.producer("p1", "s1", "pro", "a/x")
 	w.move(w.plan("p1", card.Resolve{}))
 	w.move(w.plan("p1", card.Start{Row: "r1", Branch: "b", Base: base}))
-	w.move(w.consumer("p1.w1", card.Take{Row: "r1"}))
 	w.report("p1.w1", "fail", "", "broke")
 	w.move(w.plan("p1", card.Start{Row: "r1", Branch: "b", Base: base}))
-	w.move(w.consumer("p1.w2", card.Take{Row: "r1"}))
 	w.report("p1.w2", "ok", sha(2), "done")
 	w.move(w.plan("p1", card.AskReads{Rows: []string{"r2"}}))
 	w.fold()

@@ -41,16 +41,19 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"author and base sha":     authorAndBase,
 		"working count":           workingCount,
 		"row gen race":            rowGenRace,
+		"row load":                rowLoad,
 		"sentinels":               sentinels,
 		"after":                   afterOrder,
 		"blocked":                 blockedState,
 		"row held":                rowHeld,
 		"hook":                    hook,
 		"stop":                    stop,
+		"identity":                identity,
 		"stream settings":         streamSettings,
 		"lesson columns":          lessonColumns,
 		"review and row reason":   reviewAndRowReason,
 		"finding":                 finding,
+		"model":                   model,
 		"red":                     red,
 		"usage":                   usageColumn,
 		"int range":               intRange,
@@ -161,7 +164,8 @@ func (h *harness) seed() {
 }
 
 func (h *harness) seeded() Snapshot {
-	return Snapshot{Epoch: 1, Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": w1}, Cards: map[string]Card{"c0": c0, "c1": c1, "c2": c2, "u1": u1, "u2": u2, "u3": u3}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
+	return Snapshot{Epoch: 1, Streams: map[string]Stream{"s1": s1}, Rows: map[string]Row{"w1": w1}, Cards: map[string]Card{"c0": c0, "c1": c1, "c2": c2, "u1": u1, "u2": u2, "u3": u3}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{},
+		Stopped: true, StopReason: NeverStarted}
 }
 
 func conditions(h *harness) {
@@ -405,7 +409,7 @@ func clearCarriesRows(h *harness) {
 	r := h.clear(AtSeq{3})
 	carried := map[string]Row{"w1": {Name: "w1", State: "down", Session: "sess-a", Role: "worker", Gen: 2}, "k1": {Name: "k1", State: "down", Session: "sess-k", Role: "worker", Gen: 1}}
 	assert.Equal(h.t, Receipt{Op: r.Op, Kind: "clear", Actor: "tester", Epoch: 1, At: r.At, Note: r.Note, Accepted: true, Seq: 4, NewEpoch: 2, After: &State{Epoch: 2, Rows: carried}}, r)
-	assert.Equal(h.t, Snapshot{Seq: 4, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: carried, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}},
+	assert.Equal(h.t, Snapshot{Seq: 4, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: carried, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}, Stopped: true, StopReason: NeverStarted},
 		h.snap(), "rows are carried down with no flaps; streams and cards are not; policy is kept")
 	ev := h.events()
 	require.Len(h.t, ev, 4)
@@ -490,10 +494,15 @@ func hook(h *harness) {
 
 // stop: the sprint's stop is one value for the store, set by SetStopped,
 // refused when unchanged, kept by a clear, and in the log's images so a
-// rebuild has it. The store refuses nothing on it (ops still land) except
-// an op fenced on Running, which run's tick ops are.
+// rebuild has it. A fresh store is stopped, never started, until its first
+// start. The store refuses nothing on it (ops still land) except an op
+// fenced on Running, which run's tick ops are.
 func stop(h *harness) {
+	assert.Equal(h.t, []any{true, NeverStarted}, []any{h.snap().Stopped, h.snap().StopReason}, "a fresh store is stopped, never started")
 	h.seed()
+	h.refused(h.op("fresh-tick", []Expect{Running{}}, SetCardReason{"c1", "a tick op"}), "the sprint is stopped (never started): nova-sprint start")
+	h.refused(h.op("fresh-stop", nil, SetStopped{true, "again"}), "the sprint is already stopped")
+	h.ok(h.op("first-start", nil, SetStopped{false, "go"}))
 	r := h.ok(h.op("stop", nil, SetStopped{true, "glenn: pause"}))
 	assert.Equal(h.t, &State{Stop: &Stop{true, "glenn: pause"}}, r.After)
 	assert.Equal(h.t, []any{true, "glenn: pause"}, []any{h.snap().Stopped, h.snap().StopReason})
@@ -512,6 +521,26 @@ func stop(h *harness) {
 	assert.Equal(h.t, got, Rebuild(h.events()))
 	_, err := h.s.Apply(h.ctx, h.op("twice", nil, SetStopped{true, "a"}, SetStopped{false, "b"}))
 	assert.ErrorIs(h.t, err, ErrInvalid, "one stop write per op")
+}
+
+// identity (round 24): the git identity the sprint commits as is one value
+// for the store, not set on a fresh store, set by SetIdentity with both
+// parts, refused when unchanged, kept by a clear, and in the log's images so
+// a rebuild has it.
+func identity(h *harness) {
+	assert.False(h.t, h.snap().Identity.Set(), "a fresh store has no identity")
+	h.seed()
+	_, err := h.s.Apply(h.ctx, h.op("no email", nil, SetIdentity{Name: "Bot"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "an identity needs both parts")
+	r := h.ok(h.op("set", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}))
+	assert.Equal(h.t, &State{Identity: &Identity{"Bot", "1+bot@users.noreply.example"}}, r.After)
+	h.refused(h.op("again", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}), "the sprint already commits as Bot <1+bot@users.noreply.example>")
+	h.ok(h.op("change", nil, SetIdentity{"Bot", "2+bot@users.noreply.example"}))
+	h.clear()
+	assert.Equal(h.t, Identity{"Bot", "2+bot@users.noreply.example"}, h.snap().Identity, "a clear keeps the identity")
+	assert.Equal(h.t, h.snap(), Rebuild(h.events()))
+	_, err = h.s.Apply(h.ctx, h.op("twice", nil, SetIdentity{"a", "a@x"}, SetIdentity{"b", "b@x"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "one identity write per op")
 }
 
 // Round 22: a stream's landing settings are stream state. A stream starts
@@ -599,6 +628,40 @@ func rowGenRace(h *harness) {
 	refused := cmpRefused(ra, rb)
 	assert.Equal(h.t, fmt.Sprintf("row w1 is at gen %d, expected gen %d", g+1, g), refused.Reason)
 	assert.Equal(h.t, 1, h.snap().Rows["w1"].Flaps, "the flap is counted once")
+}
+
+// A worker's heartbeat (SetRowLoad) sets the row's load columns and nothing
+// else, moves no gen, is refused when it changes nothing, and is carried by
+// the log and by PutRow.
+func rowLoad(h *harness) {
+	h.seed()
+	g := h.snap().Rows["w1"].Gen
+	r := h.ok(h.op("beat", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 250, 8, 2, 8, ""}))
+	row := r.After.Rows["w1"]
+	assert.Equal(h.t, []int{250, 8, 2, 8, g}, []int{row.Load1Centi, row.Cores, row.SlotsUsed, row.SlotsTotal, row.Gen}, "the beat is stored and the gen did not move")
+	h.refused(h.op("same", nil, SetRowLoad{"w1", 250, 8, 2, 8, ""}), "row w1 already has the given load")
+	h.ok(h.op("next", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 300, 8, 3, 8, ""}))
+	h.ok(h.op("advertise", nil, SetRowLoad{"w1", 300, 8, 3, 8, "flash,pro"}))
+	assert.Equal(h.t, "flash,pro", h.snap().Rows["w1"].Tiers, "the beat carries the advertised tiers (defect 74)")
+	h.ok(h.op("hook again", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}))
+	assert.Equal(h.t, []any{300, "flash,pro"}, []any{h.snap().Rows["w1"].Load1Centi, h.snap().Rows["w1"].Tiers}, "PutRow keeps the beat")
+	h.ok(h.op("unhook", nil, PutRow{Name: "w1"}))
+	assert.Equal(h.t, []any{300, ""}, []any{h.snap().Rows["w1"].Load1Centi, h.snap().Rows["w1"].Tiers}, "an unhook keeps the load and clears the advertisement")
+	h.ok(h.op("hook", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}))
+	h.ok(h.op("with a state", nil, SetRowState{"w1", "down"}, SetRowLoad{"w1", 100, 8, 0, 8, ""}))
+	assert.Equal(h.t, g+4, h.snap().Rows["w1"].Gen, "an op that also writes the row still moves its gen once (the hooks above moved it three times)")
+	h.refusedAll([]refusal{
+		{SetRowLoad{"w9", 100, 8, 0, 8, ""}, "row w9 does not exist"},
+	})
+	h.invalidAll([]refusal{
+		{SetRowLoad{"w1", -1, 8, 0, 8, ""}, "load1_centi -1 is outside"},
+		{SetRowLoad{"w1", 100, 0, 0, 8, ""}, "cores of at least 1"},
+		{SetRowLoad{"w1", 100, 8, 9, 8, ""}, "slots_used no more than slots_total"},
+		{SetRowLoad{"w1", 100, 8, math.MaxInt32 + 1, 8, ""}, "slots_used 2147483648 is outside"},
+		{SetRowLoad{"w1", 100, 8, 0, 8, "pro,flash"}, "not a comma list of flash, pro, heavy, frontier in that order"},
+		{SetRowLoad{"w1", 100, 8, 0, 8, "flash,turbo"}, "not a comma list"},
+	})
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the beat")
 }
 
 func cmpRefused(a, b Receipt) Receipt {
@@ -1096,6 +1159,20 @@ func finding(h *harness) {
 		assert.ErrorIs(h.t, err, ErrInvalid, name)
 	}
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the finding")
+}
+
+// Round 23: a consumer is cut with the model its deal named and keeps it
+// (no write changes it); a producer or sentinel carries none.
+func model(h *harness) {
+	h.seed()
+	r := h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "work", ID: "k1", Of: "c1", Stream: "s1", Holder: "w1", Model: "deepseek/deepseek-flash"}))
+	assert.Equal(h.t, "deepseek/deepseek-flash", r.After.Cards["k1"].Model, "a consumer is cut with its deal's model")
+	assert.Equal(h.t, "", h.snap().Cards["c1"].Model, "a producer has none")
+	h.refused(h.op("bad", nil, PutCard{Tier: "pro", Kind: "producer", ID: "c4", Stream: "s1", Model: "x/y"}),
+		"card c4 is a producer; only a consumer is cut with a model (the model its deal named)")
+	_, err := h.s.Apply(h.ctx, h.op("x", nil, PutCard{Tier: "pro", Kind: "work", ID: "k2", Of: "c1", Stream: "s1", Holder: "w1", Model: "a\x00"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "nul model")
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the model")
 }
 
 // Round 17: a producer records a red read verdict (SetCardRed) so a later

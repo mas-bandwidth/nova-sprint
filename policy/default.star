@@ -50,7 +50,7 @@ def verdict(card, reads):
     return "retry"  # every done read faulted: ask one more read
 
 def width(row):
-    return {"work": row.width, "ahead": row.width}  # v1 DealAhead 2
+    return {"work": row.width, "ahead": 0}  # no deal-ahead: a worker takes only what it can run now (defect 74)
 
 def limits():
     return {
@@ -69,7 +69,8 @@ def limits():
     }
 
 def landing(stream):
-    return {"backed_up": 4, "flowing": 1}  # guess
+    # rung 2 at more than one head waiting (intent rule 32); ci_wait a guess
+    return {"backed_up": 2, "flowing": 1, "ci_wait": 600}
 
 def timeouts():
     return {
@@ -123,14 +124,30 @@ def catalog():
                 {"name": "argon", "tier": "frontier"},
             ],
             "deepseek": [
-                {"name": "deepseek-flash-4.1", "tier": "flash"},
+                {"name": "deepseek-flash", "tier": "flash"},
+                {"name": "deepseek-flash", "tier": "heavy"},  # the bench mapping below: a guess
+                {"name": "deepseek-v4-pro", "tier": "frontier"},  # the bench mapping below: a guess
             ],
             "inception": [
                 {"name": "mercury-3", "tier": "pro"},
+                {"name": "mercury-2.5", "tier": "flash"},  # guess
+            ],
+            "paperinstruments": [
+                {"name": "ultramarine-1-flash", "tier": "flash"},  # guess
             ],
             "unknown": [  # the provider is unknown: a guess
                 {"name": "astra", "tier": "frontier"},
             ],
         },
         "harnesses": ["claude", "codex", "opencode", "api"],
+        # The one model a bench runs per tier, as its harness names it
+        # (provider/model); the deal names it and the take receipt carries it.
+        # The coordinator's mapping (2026-11-07), what opencode lists tonight:
+        # guesses until the probe measures each bench.
+        "bench": {
+            "flash": "deepseek/deepseek-flash",
+            "pro": "inception/mercury-3",
+            "heavy": "deepseek/deepseek-flash",
+            "frontier": "deepseek/deepseek-v4-pro",
+        },
     }

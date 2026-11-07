@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -75,6 +76,28 @@ var (
 	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier
 	StreamModes = []string{StreamAuto, "group", "hand"}         // how a stream's producers land
 )
+
+// JoinTiers is tiers as a row's advertised list: the known ones in Tiers'
+// order, each once, comma-joined; a name not in Tiers is dropped. A list
+// that does not come back from JoinTiers(SplitTiers(s)) unchanged was not
+// in that form.
+func JoinTiers(tiers []string) string {
+	var out []string
+	for _, t := range Tiers {
+		if slices.Contains(tiers, t) {
+			out = append(out, t)
+		}
+	}
+	return strings.Join(out, ",")
+}
+
+// SplitTiers is a row's advertised list as tiers (nil for "").
+func SplitTiers(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
 
 // StreamAuto is a stream's mode when none is given.
 const StreamAuto = "auto"
@@ -156,6 +179,7 @@ type Card struct {
 	Paths    []string `json:"paths,omitempty"`
 	DoneWhen []string `json:"done_when,omitempty"`
 	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given
+	Model    string   `json:"model"` // on a consumer: the model its deal named (round 23); "" on a producer or sentinel
 }
 
 // Row is a row of sprint.rows: a worker's or a kin's sprint state, and
@@ -171,6 +195,20 @@ type Row struct {
 	Held    bool   `json:"held"`   // the coordinator's hold: no deals while true
 	Reason  string `json:"reason"` // why it was held or released (SetRowHeld)
 	Gen     int    `json:"gen"`
+	// The worker's last heartbeat (SetRowLoad): its 1-minute load average
+	// in hundredths, the logical cores it was measured over (0: the row has
+	// never beaten), and the nova-reserve slots in use and in all. Telemetry
+	// for the board: no store rule reads it and a write of it moves no gen.
+	Load1Centi int `json:"load1_centi"`
+	Cores      int `json:"cores"`
+	SlotsUsed  int `json:"slots_used"`
+	SlotsTotal int `json:"slots_total"`
+	// Tiers is what the worker's harness adapter serves, as it advertised in
+	// its heartbeat: a comma list in Tiers' order, "" when it advertised
+	// none in this session (a PutRow that changes the session clears it).
+	// With SlotsTotal it is the roster's input for the row (defect 74:
+	// roster.Advertised); no store rule reads it.
+	Tiers string `json:"tiers"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,
@@ -214,6 +252,7 @@ type State struct {
 	Judgements map[string]Judgement  `json:"judgements,omitempty"`
 	Cursors    map[string]int64      `json:"cursors,omitempty"`
 	Stop       *Stop                 `json:"stop,omitempty"`
+	Identity   *Identity             `json:"identity,omitempty"`
 }
 
 // Stop is the sprint's stop: one value for the whole store, as the epoch
@@ -224,6 +263,30 @@ type Stop struct {
 	Stopped bool   `json:"stopped"`
 	Reason  string `json:"reason"`
 }
+
+// Identity is the git identity every commit of the sprint is authored and
+// committed under (round 24): one value for the whole store, as the stop
+// is, kept by a clear. A repository's contributor agreement keys off the
+// forge account, so every agent, friend and bench worker commits as one
+// account on the agreement's allowlist and names itself only in the
+// message. The zero value is not set. SetIdentity is its one write.
+type Identity struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// Set is whether the identity has been written.
+func (i Identity) Set() bool { return i.Name != "" && i.Email != "" }
+
+// NeverStarted is a fresh store's stop reason: a store begins stopped, and
+// nothing moves until the coordinator's first `nova-sprint start` (Glenn,
+// 2026-11-07: the run ticked on a fresh store while up was at step 7).
+const NeverStarted = "never started"
+
+// FreshStop is the stop every store begins with, which no event records:
+// Migrate writes it into a new store's epoch row, NewFake starts with it and
+// Rebuild folds the log over it (Store.tla Empty.stopped; Run.tla Init).
+var FreshStop = Stop{Stopped: true, Reason: NeverStarted}
 
 // Receipt is what an operation got. It is stored with its event, so Replay
 // and a repeated Apply return it exactly. It carries the original op's id,
@@ -274,23 +337,33 @@ type Snapshot struct {
 	Rows       map[string]Row
 	Judgements map[string]Judgement
 	Cursors    map[string]int64
-	Stopped    bool   // the sprint is stopped (Stop)
-	StopReason string // why it was stopped or started again
+	Stopped    bool     // the sprint is stopped (Stop)
+	StopReason string   // why it was stopped or started again
+	Identity   Identity // the git identity the sprint commits as; zero when not set
 }
 
 func emptySnapshot(epoch int) Snapshot {
 	return Snapshot{Epoch: epoch, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
 }
 
-// Rebuild folds events, in seq order from the first, into the snapshot they
-// produce. Guarantee 5 is Rebuild(every event) == Snapshot().
-func Rebuild(events []Event) Snapshot { return Fold(emptySnapshot(1), events) }
+// Rebuild folds events, in seq order from the first, over a fresh store
+// (epoch 1, FreshStop) into the snapshot they produce. Guarantee 5 is
+// Rebuild(every event) == Snapshot().
+func Rebuild(events []Event) Snapshot { return Fold(freshSnapshot(), events) }
+
+// freshSnapshot is a store before its first event: epoch 1, empty, stopped
+// with FreshStop's reason.
+func freshSnapshot() Snapshot {
+	s := emptySnapshot(1)
+	s.Stopped, s.StopReason = FreshStop.Stopped, FreshStop.Reason
+	return s
+}
 
 // Fold lays events, in seq order, over s, the snapshot before them, and
 // returns the snapshot after them (s's maps are reused): a clear empties the
 // streams, cards, rows and judgements (its after-image carries the rows) and
-// keeps the cursors, which are global as seq is, the stop and the active
-// policy; every other accepted event lays its after-images over them, the
+// keeps the cursors, which are global as seq is, the stop, the identity
+// and the active policy; every other accepted event lays its after-images over them, the
 // active version included. It is the one fold: Rebuild, run's copy (layer 6)
 // and the trace checks all call it, so none can drift from the store.
 func Fold(s Snapshot, events []Event) Snapshot {
@@ -302,10 +375,13 @@ func Fold(s Snapshot, events []Event) Snapshot {
 		if e.After.Epoch != 0 {
 			keep := s
 			s = emptySnapshot(e.After.Epoch)
-			s.Seq, s.Cursors, s.Stopped, s.StopReason, s.Policy = keep.Seq, keep.Cursors, keep.Stopped, keep.StopReason, keep.Policy
+			s.Seq, s.Cursors, s.Stopped, s.StopReason, s.Policy, s.Identity = keep.Seq, keep.Cursors, keep.Stopped, keep.StopReason, keep.Policy, keep.Identity
 		}
 		if e.After.Stop != nil {
 			s.Stopped, s.StopReason = e.After.Stop.Stopped, e.After.Stop.Reason
+		}
+		if e.After.Identity != nil {
+			s.Identity = *e.After.Identity
 		}
 		overlay(s.Streams, e.After.Streams)
 		overlay(s.Cards, e.After.Cards)

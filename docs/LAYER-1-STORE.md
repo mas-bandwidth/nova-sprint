@@ -724,6 +724,18 @@ model and harness wherever they are named).
   pos were never modelled), so the closed set is the checker's and the
   schema's; the trace projection drops PutStream and does not project an op
   with SetStreamMode or SetStreamForge, as for SetStreamHeld.
+- A consumer's model (round 23, stitch w2D1): `Card` gains `Model`, the
+  model its deal named (provider/model for a bench, the friend's own for a
+  friend), a column of `sprint.cards` (`NOT NULL DEFAULT ''`) with a CHECK
+  that only a work or read consumer carries one. `PutCard.Model` sets it at
+  the cut; a producer or sentinel put with a model is refused ("card <id>
+  is a <kind>; only a consumer is cut with a model (the model its deal
+  named)"). A round-22 store is upgraded in place by the idempotent
+  schema (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`); a card image logged
+  before round 23 reads its model as "". Store.tla does not model card
+  columns beyond those it names, so the column is the checker's and the
+  schema's. Tests: `TestRound22Hash`, the conformance case `model`,
+  `TestFunctionalMigrateRound22`.
 - Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
   value is refused as unchanged, an absent cursor counting as 0, so
   `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already
@@ -794,3 +806,101 @@ and cold-rebuild bars on every head: its disks are consumer NVMe (Samsung
 are datacenter NVMe (PM9A3) with it. The bars are judged on hetzner2's
 numbers above; vision's are for the comparison only. pg_stat_statements is
 not loadable on vision, so its logs have no STMT lines.
+
+## Built: a fresh store is stopped, never started (2026-11-07)
+
+A run could tick, deal and push on a store `up` had made at its step 2
+while `up` was still at step 7 of 8, and nothing could stop it. A fresh
+store now begins stopped, its reason `never started` (`store.NeverStarted`,
+`store.FreshStop`), until the coordinator runs `nova-sprint start`.
+
+- `Migrate` writes the stop into the epoch row in the same transaction that
+  creates the schema, and only when no meta row existed before it; a store
+  migrated again keeps whatever stop it has. The schema hash is unchanged.
+- `Rebuild` folds from the fresh image (`Fold(freshSnapshot(), events)`),
+  so a log with no stop or start event rebuilds stopped "never started", as
+  the store reads. `NewFake` starts the same way. A store made before this
+  change has no stop event and reads running: run `nova-sprint stop` (or
+  `start`) on it once, so the log and the row agree, before
+  `check --integrity` or a backup's verification compares them.
+- The streaming fold the backup verification uses (`verbs/rebuild.go`) did
+  not fold the stop at all; any stopped sprint would have failed its backup
+  check. It now starts from `FreshStop`, keeps the stop across a clear and
+  folds each event's stop.
+- A fenced op on the fresh store refuses `the sprint is stopped (never
+  started): nova-sprint start`; the conformance suite runs this on both the
+  Fake and PostgreSQL (refused fresh tick, refused fresh stop "already
+  stopped", accepted first start, then the old sequence).
+- `tla/Store.tla`: `Empty.stopped` is TRUE; two ops run first, `n1` (a
+  Running-fenced write, refused) and `n2` (the start). The invariant
+  `FreshMovesNothing` says an accepted Running-fenced op needs an accepted
+  start before it; the witness `StoreFreshRunning` (the fresh store running)
+  violates it, and the reach `NeverFreshRefused` shows `n1` is refused. The
+  store traces were regenerated from the code.
+
+## Built: the row's heartbeat (stitch, 2026-11-07)
+
+- A row carries its worker's last heartbeat for the board's load cell: `Row.Load1Centi`
+  (the 1-minute load average in hundredths), `Cores` (0: never beaten), `SlotsUsed` and
+  `SlotsTotal` (nova-reserve). One write sets them, `SetRowLoad{Row, Load1Centi, Cores,
+  SlotsUsed, SlotsTotal}`: cores at least 1, slots used no more than the total, every number
+  in `0..2147483647`, refused as every set write is when it changes nothing. It moves no gen,
+  so a beat never fences out a plan made from an earlier snapshot (`RowGen`); the log's
+  before and after images still carry the change. `PutRow` keeps the values; a clear carries
+  them (the next beat replaces them).
+- The four columns are added by `Migrate` after schema.sql (`rowLoadColumns`, `ADD COLUMN IF
+  NOT EXISTS`), not in schema.sql: that file is hashed, and a store made before them keeps its
+  hash and takes the columns on its next Migrate. Choice, not measured. A binary that reads a
+  store not yet migrated fails its row read: run `nova-sprint up` (or the Migrate it makes)
+  once after replacing the binary.
+- `tla/Store.tla` is unchanged: the heartbeat is a column no rule reads (the model's list of
+  left-out fields names it), and `TraceOp` refuses the write like `SetRowFlaps`. Test: the
+  conformance scenario `row load`, on Fake and PostgreSQL alike.
+
+## Built: one schema round for the model and the heartbeat (stitch w3I, 2026-11-07)
+
+- The row heartbeat's four columns moved into schema.sql, beside cards.model, as round 23
+  (`ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS ...`, the same statement as before).
+  Superseding the heartbeat entry above where they differ: the columns were kept outside
+  the hashed file so a store would keep its hash, but round 23's cards.model moves the hash
+  anyway, so a second, unhashed place to apply DDL bought nothing. `rowLoadColumns` and
+  `fullSchema` are gone; Migrate and a restore's DDL run schema.sql (or `schemaObjects`)
+  alone. A round-22 store (`round22Hash`) is upgraded in place by Migrate: it gains
+  cards.model and the four row columns, or keeps the row columns it already took from a
+  build that applied them outside the file (`IF NOT EXISTS`), and the round-23 hash is
+  recorded. Test: `TestSchemaObjects` (the columns are in the hashed file).
+
+## Built: a worker's advertised tiers (stitch w3W, 2026-11-07)
+
+- `Row.Tiers`, a fifth heartbeat column (`tiers text`, in schema.sql's round-23 `ALTER TABLE
+  sprint.rows` beside the other four, `ADD COLUMN IF NOT EXISTS`; no DDL outside the file, so
+  the round-23 hash covers it): the tiers the worker's harness proved it serves, a comma list
+  in `Tiers`' order (`JoinTiers`, `SplitTiers`), "" when none was advertised. `SetRowLoad` gains
+  `Tiers`; one not in that form is invalid. `PutRow` keeps it while the session is the same and
+  clears it when the session changes (an unhook, a new hook), so an advertisement holds for the
+  session that made it. No store rule reads it: the roster does (`roster.Advertised`, LAYER-4
+  Built "the worker's live defects"). It moves no gen, as the rest of the heartbeat. Not in
+  `Store.tla` (telemetry, as the load columns: `trace.go`'s notes). Conformance: `rowLoad`.
+
+## Built: the sprint's commit identity (stitch w4I, 2026-11-07; schema round 24)
+
+- `Identity{Name, Email}` is the git identity every commit of the sprint is authored and
+  committed as (a repository's contributor agreement keys off the forge account). It is one
+  value for the store, as the stop is: two columns on the epoch's one row (`commit_name`,
+  `commit_email`, `text NOT NULL DEFAULT ''`, in schema.sql's round-24 `ALTER TABLE
+  sprint.epoch`), empty on a fresh store (not set: `Identity.Set()` false). `Snapshot.Identity`
+  carries it; `State.Identity` is its image; `Fold` (and `verbs`' event fold) lays it over and
+  a clear keeps it, as it keeps the stop.
+- `SetIdentity{Name, Email}` is its one write: both parts non-empty and at most `MaxName`
+  bytes (a new `checker.given`), refused when unchanged ("the sprint already commits as <name>
+  <email>"), one per op. Why the store and not nova-config or an environment: the identity is
+  which account this sprint's repositories accept, the sprint's own decision, not a fact of the
+  fleet or the friends (intent rule 8), and every reader (hook, take, finish, check, up) already
+  holds a snapshot, so it costs no read; an environment variable would be a second copy on every
+  bench's service (rule 5).
+- No store rule reads it, so `Store.tla` is unchanged: `TraceOp` refuses the write (trace.go's
+  notes), and a walk never sends one.
+- Migration: `round23Hash` (testdata/schema-round23.sql, the file at 2dc67c2b) is a known older
+  build; Migrate adds the two columns and records the round-24 hash. Tests: conformance
+  `identity` (Fake and PG), `TestRound23Hash`, `TestFunctionalMigrateRound23` (run on this
+  machine's local test PostgreSQL: pass, measured).

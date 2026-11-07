@@ -157,8 +157,6 @@ func (m *mover) producerEvent(e Event) *Refusal {
 		return m.landed(v)
 	case Red:
 		return m.red(v)
-	case LandFix:
-		return m.landFix(v)
 	case Released:
 		return m.released(v)
 	case Cancel:
@@ -353,11 +351,14 @@ func (m *mover) readID() string {
 	return fmt.Sprintf("%s.r%d.%d", m.p.ID, m.p.Review, n)
 }
 
-// cut adds a consumer of p, held by row, in state ready: put card, then its
-// own columns, then the state (layer 1 checks the row serves its tier). The
+// cut adds a consumer of p, held by row, in state working: in the row's
+// hand at the deal (defect 52, intent rule 33: the deal is the take; the
+// row's width is the deal's check, in layer 3, since the machine sees one
+// producer's consumers). Put card, then its own columns, then the state. The
 // consumer carries copies of p's brief, prose, paths and done_when, and p's
-// stream and tier; a read is cut at p's current review.
-func (m *mover) cut(id, kind, row string, attempt int, cols ...store.Write) *Refusal {
+// stream and tier, and the model its deal named; a read is cut at p's
+// current review.
+func (m *mover) cut(id, kind, row, model string, attempt int, cols ...store.Write) *Refusal {
 	if len(id) > store.MaxName {
 		return no("producer %s's id is too long to name its consumer %s", m.p.ID, id)
 	}
@@ -365,7 +366,7 @@ func (m *mover) cut(id, kind, row string, attempt int, cols ...store.Write) *Ref
 		m.expect(absent) // fenced already when noLive read the review's next read
 	}
 	put := store.PutCard{ID: id, Kind: kind, Of: m.p.ID, Stream: m.p.Stream, Holder: row, Tier: m.p.Tier, Attempt: attempt,
-		Brief: m.p.Brief, Prose: m.p.Prose, Paths: slices.Clone(m.p.Paths), DoneWhen: slices.Clone(m.p.DoneWhen)} // the task handed off, copied (Stella's read of a822dfc7)
+		Brief: m.p.Brief, Prose: m.p.Prose, Paths: slices.Clone(m.p.Paths), DoneWhen: slices.Clone(m.p.DoneWhen), Model: model} // the task handed off, copied (Stella's read of a822dfc7)
 	if kind == "read" {
 		put.Review = m.p.Review
 	} else {
@@ -373,7 +374,7 @@ func (m *mover) cut(id, kind, row string, attempt int, cols ...store.Write) *Ref
 	}
 	m.write(put)
 	m.write(cols...)
-	m.state(id, Ready)
+	m.state(id, Working)
 	return nil
 }
 
@@ -407,7 +408,7 @@ func (m *mover) start(e Start) *Refusal {
 	if m.p.Head != "" {
 		cols = append(cols, store.SetCardPriorHead{Card: id, Head: m.p.Head})
 	}
-	return m.cut(id, "work", e.Row, n, cols...)
+	return m.cut(id, "work", e.Row, e.Model, n, cols...)
 }
 
 // firstOf is the first refusal of checks run in order; a check that passed
@@ -510,6 +511,16 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 	if r != nil {
 		return r
 	}
+	if _, route := RouteFault(c.Reason); route && !bounce {
+		// A fault naming a missing route or device blocks the producer on
+		// the first fault, never a re-deal (defect 48, intent rule 33): the
+		// same kind of row would fault the same way. Layer 3 opens the
+		// blocked judgement; the coordinator's Unblock deals it again.
+		m.state(m.p.ID, Blocked)
+		m.reason(m.p.ID, m.p.Reason, c.Reason)
+		m.head(m.p.ID, m.p.Head, c.Head)
+		return nil
+	}
 	if r := m.back(); r != nil {
 		return r
 	}
@@ -525,7 +536,7 @@ func (m *mover) askRead(e AskRead) *Refusal {
 	if r := m.readGate(e); r != nil {
 		return r
 	}
-	return m.oneRead(e.Row, map[string]bool{})
+	return m.oneRead(e.Row, e.Model, map[string]bool{})
 }
 
 func (m *mover) askReads(e AskReads) *Refusal {
@@ -535,9 +546,16 @@ func (m *mover) askReads(e AskReads) *Refusal {
 	if len(e.Rows) == 0 {
 		return no("AskReads of producer %s needs a row", m.p.ID)
 	}
+	if e.Models != nil && len(e.Models) != len(e.Rows) {
+		return no("AskReads of producer %s names %d rows and %d models; name one model per row", m.p.ID, len(e.Rows), len(e.Models))
+	}
 	seen := map[string]bool{}
-	for _, row := range e.Rows {
-		if r := m.oneRead(row, seen); r != nil {
+	for i, row := range e.Rows {
+		model := ""
+		if e.Models != nil {
+			model = e.Models[i]
+		}
+		if r := m.oneRead(row, model, seen); r != nil {
 			return r
 		}
 	}
@@ -559,8 +577,9 @@ func (m *mover) readGate(e Event) *Refusal {
 	return firstOf(m.stream(true), m.liveRefused(m.liveWork))
 }
 
-// oneRead cuts one read of p's head on row. seen refuses a row named twice.
-func (m *mover) oneRead(row string, seen map[string]bool) *Refusal {
+// oneRead cuts one read of p's head on row with model. seen refuses a row
+// named twice.
+func (m *mover) oneRead(row, model string, seen map[string]bool) *Refusal {
 	switch {
 	case seen[row]:
 		return no("row %s is named twice in AskReads of producer %s; name each row once", row, m.p.ID)
@@ -585,7 +604,7 @@ func (m *mover) oneRead(row string, seen map[string]bool) *Refusal {
 	if m.p.Author != "" {
 		cols = append(cols, store.SetCardAuthor{Card: id, Author: m.p.Author})
 	}
-	return m.cut(id, "read", row, m.p.Attempt, cols...)
+	return m.cut(id, "read", row, model, m.p.Attempt, cols...)
 }
 
 // liveWork refuses only a live work consumer: reads of one review may be
@@ -662,11 +681,12 @@ func (m *mover) readFix(e ReadFix) *Refusal {
 	return nil
 }
 
-// waiveRed sends a producer a Red returned to review on to merging, when that
-// Red is still recorded and a done ok read of the previous review at this
-// head exists. It does not raise the review. A live consumer is refused.
+// waiveRed sends a producer a Red sent to fix (ready, or waiting in a held
+// stream) on to merging, when that Red is still recorded (no Start since)
+// and a done ok read of the previous review at this head exists. It does
+// not raise the review. A live consumer is refused.
 func (m *mover) waiveRed(e WaiveRed) *Refusal {
-	if r := m.from(e, Review); r != nil {
+	if r := m.from(e, Ready, Waiting); r != nil {
 		return r
 	}
 	if r := m.noLive(m.liveRefusal); r != nil {
@@ -714,43 +734,42 @@ func (m *mover) landed(e Landed) *Refusal {
 		return r
 	}
 	m.state(m.p.ID, LandedState)
+	why := ""
+	if e.Merge != "" {
+		why = "landed at " + e.Merge
+	}
+	if e.Reason != "" {
+		why = strings.TrimPrefix(why+": "+e.Reason, ": ")
+	}
+	m.reason(m.p.ID, m.p.Reason, why)
 	return nil
 }
 
+// red is a red landing sent to fix (intent rule 30: no terminal fail): the
+// producer goes back to ready (waiting when its stream is held) carrying
+// the CI finding, as ReadFix carries a read's, so the next Start continues
+// from its head with the failing checks named. The review rises, so reads
+// before the red never count again, and the red is recorded for WaiveRed.
+// A red spends no bounce: the bounce limit stays the reads' and reports'.
 func (m *mover) red(e Red) *Refusal {
 	if r := m.atHead(e, e.Head); r != nil {
 		return r
 	}
-	if r := m.raiseReview(); r != nil {
-		return r
+	if m.p.Review >= math.MaxInt32 {
+		return no("producer %s is at review %d, the most there is", m.p.ID, m.p.Review)
 	}
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
-	m.markRed()
-	return nil
-}
-
-// landFix is LandFix: merging at the head, back to ready (waiting in a held
-// stream) with the finding, one bounce.
-func (m *mover) landFix(e LandFix) *Refusal {
-	if r := m.atHead(e, e.Head); r != nil {
-		return r
-	}
-	if e.Finding == "" {
-		return no("a land fix says what to fix")
-	}
-	if r := m.noLive(m.liveRefusal); r != nil {
-		return r
+	if e.Reason == "" {
+		return no("a red says what failed: the failing checks and their URLs")
 	}
 	if r := m.back(); r != nil {
 		return r
 	}
-	if m.s.Held {
-		m.reason(m.p.ID, m.p.Reason, holdPhrase(m.s))
+	m.write(store.SetCardReview{Card: m.p.ID})
+	m.reason(m.p.ID, m.p.Reason, m.returnReason(e.Reason))
+	if e.Reason != m.p.Finding {
+		m.write(store.SetCardFinding{Card: m.p.ID, Finding: e.Reason})
 	}
-	if e.Finding != m.p.Finding {
-		m.write(store.SetCardFinding{Card: m.p.ID, Finding: e.Finding})
-	}
-	m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
+	m.markRed()
 	return nil
 }
 
@@ -981,12 +1000,17 @@ func (m *mover) setPriority(e SetPriority) *Refusal {
 	return nil
 }
 
-// block parks a producer for the coordinator. From working the attempt's
-// consumer must have been withdrawn (fail): one that has reported is applied
-// first, never discarded.
+// block parks a producer for the coordinator: policy's bounce limit, or the
+// coordinator's hold of one card (defect 47; from waiting too, so a card
+// can be held before it is ready). From working the attempt's consumer must
+// have been withdrawn (fail): one that has reported is applied first, never
+// discarded.
 func (m *mover) block(e Block) *Refusal {
-	if r := firstOf(m.from(e, Ready, Review, Working), m.noLive(m.liveRefusal)); r != nil {
+	if r := firstOf(m.from(e, Waiting, Ready, Review, Working), m.noLive(m.liveRefusal)); r != nil {
 		return r
+	}
+	if m.p.Kind == "sentinel" {
+		return no("sentinel %s is never dealt; there is nothing to block", m.p.ID)
 	}
 	if m.p.State == Working {
 		id := workID(m.p.ID, m.p.Attempt) // present and fenced: noLive required it
@@ -1033,14 +1057,12 @@ func MoveConsumer(c Card, p Card, r Row, e Event) (Plan, *Refusal) {
 	m.expect(store.CardGen{Card: c.ID, Gen: c.Gen})
 	var refusal *Refusal
 	switch v := e.(type) {
-	case Take:
-		refusal = m.take(v, r)
 	case Report:
 		refusal = m.report(v, p)
 	case Withdraw:
 		refusal = m.withdraw(v, p)
 	default:
-		refusal = no("%s is not a consumer event; MoveConsumer takes Take, Report and Withdraw", name(e))
+		refusal = no("%s is not a consumer event; MoveConsumer takes Report and Withdraw (a dealt consumer is in hand: there is no take)", name(e))
 	}
 	if refusal != nil {
 		return Plan{}, refusal
@@ -1053,25 +1075,6 @@ func (m *mover) holder(row string) *Refusal {
 	if row != m.p.Holder {
 		return no("consumer %s is held by %s, not %s", m.p.ID, m.p.Holder, row)
 	}
-	return nil
-}
-
-// take moves a dealt consumer into working. The row's width is the
-// roster's (round 22): layer 1 no longer counts it, and a take past width is
-// refused by the caller that reads the roster, not here.
-func (m *mover) take(e Take, r Row) *Refusal {
-	if rr := firstOf(m.from(e, Ready), m.holder(e.Row)); rr != nil {
-		return rr
-	}
-	switch {
-	case r.Name != e.Row:
-		return no("MoveConsumer was passed row %s for a take on %s; pass the consumer's holder row", r.Name, e.Row)
-	case r.State != Up:
-		return no("row %s is %s; it cannot take", r.Name, r.State)
-	}
-	// held is allowed: a hold stops new deals, not work already dealt
-	m.expect(store.RowGen{Row: r.Name, Gen: r.Gen}, store.RowIs{Row: r.Name, State: Up})
-	m.state(m.p.ID, Working)
 	return nil
 }
 

@@ -28,7 +28,7 @@ func runPolicy(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (
 	if err != nil {
 		return "", err
 	}
-	ro, err := e.roster(ctx, lim)
+	ro, err := e.roster(ctx, lim, snap)
 	if err != nil {
 		return "", err
 	}
@@ -57,6 +57,9 @@ func policyWrite(ctx context.Context, e *Engine, in *input, snap store.Snapshot,
 		return "", err
 	}
 	word := map[string]string{"policy set": "STORED", "policy activate": "ACTIVE"}[in.verb]
+	if r.Activated {
+		word = "STORED AND ACTIVE" // the first set: none was active (defect 53)
+	}
 	return done(r.Next, fmt.Sprintf("POLICY %s v%d changes=%d", word, r.Version, r.Changes)), nil
 }
 
@@ -95,7 +98,7 @@ func policyShow(ctx context.Context, e *Engine, in *input) (string, error) {
 func version(s string) (int, *Fail) {
 	v, err := strconv.Atoi(strings.TrimPrefix(s, "v"))
 	if err != nil || v < 1 {
-		return 0, misuse("policy", "a version is 7 or v7, as nova-sprint policy show --list prints it")
+		return 0, misuse("policy", "a version is 7 or v7, as nova-sprint policy show --list prints it ("+badNumber(s, err)+")")
 	}
 	return v, nil
 }

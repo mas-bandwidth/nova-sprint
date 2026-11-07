@@ -27,6 +27,7 @@ type Fake struct {
 	judges   map[key]Judgement
 	cursors  map[string]int64 // global, as seq is: a clear carries them
 	stop     Stop             // global, as the epoch is
+	identity Identity         // global, as the stop is
 	events   []fakeEvent
 	seq0     int64          // the seq before events[0]: 0, or the snapshot's (NewFakeFrom)
 	ops      map[string]int // op id -> index in events
@@ -47,9 +48,10 @@ type fakeEvent struct {
 	before, after, receipt []byte
 }
 
-// NewFake is an empty store at epoch 1.
+// NewFake is an empty store at epoch 1, stopped as a fresh store is
+// (FreshStop: nothing moves until a start).
 func NewFake() *Fake {
-	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, judges: map[key]Judgement{}, cursors: map[string]int64{}, ops: map[string]int{}, drops: map[string]bool{}}
+	return &Fake{epoch: 1, streams: map[key]Stream{}, cards: map[key]Card{}, rows: map[key]Row{}, policies: map[int]PolicyVersion{}, judges: map[key]Judgement{}, cursors: map[string]int64{}, ops: map[string]int{}, drops: map[string]bool{}, stop: FreshStop}
 }
 
 // Drop makes the next Apply or Clear of op id report ErrUnknown, as if the
@@ -83,7 +85,7 @@ func (f *Fake) do(op Op, valid func(Op) error, rule rules) (Receipt, error) {
 		return Receipt{}, err
 	}
 	f.epoch, f.streams, f.cards, f.rows, f.policies, f.judges, f.cursors = tx.st.epoch, tx.st.streams, tx.st.cards, tx.st.rows, tx.st.policies, tx.st.judges, tx.st.cursors
-	f.stop = tx.st.stop
+	f.stop, f.identity = tx.st.stop, tx.st.identity
 	if len(tx.events) > len(f.events) {
 		f.events = tx.events
 		f.ops[op.ID] = len(f.events) - 1
@@ -170,7 +172,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	pick(s.Rows, f.rows, f.epoch)
 	pick(s.Judgements, f.judges, f.epoch)
 	maps.Copy(s.Cursors, f.cursors)
-	s.Stopped, s.StopReason = f.stop.Stopped, f.stop.Reason
+	s.Stopped, s.StopReason, s.Identity = f.stop.Stopped, f.stop.Reason, f.identity
 	for v, p := range f.policies {
 		if p.Active {
 			s.Policy = v
@@ -199,7 +201,7 @@ func (f *Fake) Policy(_ context.Context, version int) (PolicyVersion, error) {
 }
 
 func (f *Fake) clone() *Fake {
-	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors), stop: f.stop}
+	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors), stop: f.stop, identity: f.identity}
 }
 
 // fakeTx is the txn of one Fake transaction: st is the working copy of the
@@ -239,6 +241,9 @@ func (t *fakeTx) putCursor(name string, seq int64) error { t.st.cursors[name] = 
 
 func (t *fakeTx) stop() (Stop, error)  { return t.st.stop, nil }
 func (t *fakeTx) putStop(s Stop) error { t.st.stop = s; return nil }
+
+func (t *fakeTx) identity() (Identity, error)  { return t.st.identity, nil }
+func (t *fakeTx) putIdentity(i Identity) error { t.st.identity = i; return nil }
 
 func (t *fakeTx) stream(name string) (Stream, bool, error) {
 	s, ok := t.st.streams[t.k(name)]

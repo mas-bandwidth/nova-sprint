@@ -216,6 +216,7 @@ func checkRebuild(snap Snapshot, events []Event) error {
 		{"seq", snap.Seq, got.Seq}, {"epoch", snap.Epoch, got.Epoch}, {"policy", snap.Policy, got.Policy},
 		{"streams", snap.Streams, got.Streams}, {"cards", snap.Cards, got.Cards}, {"rows", snap.Rows, got.Rows},
 		{"judgements", snap.Judgements, got.Judgements}, {"cursors", snap.Cursors, got.Cursors},
+		{"identity", snap.Identity, got.Identity},
 	} {
 		if !reflect.DeepEqual(part.a, part.b) {
 			differ = append(differ, part.name)

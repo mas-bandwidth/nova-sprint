@@ -5,18 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
-	"github.com/mas-bandwidth/nova-sprint/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // takeReceipt is the take seam (SEAMS 6): everything nova-worker needs to
-// run a consumer. Model is the roster's, Deadline (seconds) the active
-// policy's timeouts().consumer[tier], Forge the stream's; the worker holds
-// none of its own.
+// run a consumer. Model is the one the deal named and the consumer carries
+// (a friend's own; a bench's the active policy's bench model for the card's
+// tier, in provider/model form); take reads it from the consumer and never
+// invents one (defect 57). Deadline (seconds) is the active policy's
+// timeouts().consumer[tier], Forge the stream's, CommitName and CommitEmail
+// the sprint's; the worker holds none of its own.
 type takeReceipt struct {
 	Consumer  string   `json:"consumer"`
 	Producer  string   `json:"producer"`
@@ -42,11 +47,18 @@ type takeReceipt struct {
 	Model     string   `json:"model"`
 	Deadline  int      `json:"deadline"`
 	Forge     string   `json:"forge"`
+	// CommitName and CommitEmail are the sprint's commit identity
+	// (store.Identity): the worker writes them into the job's clone.
+	CommitName  string `json:"commit_name"`
+	CommitEmail string `json:"commit_email"`
 }
 
-// runTake is `take`: a consumer dealt to this row at this gen goes to
-// working. The width check is soft, on the snapshot (no seq fence); the op
-// id is canonical, so a repeat prints the same receipt.
+// runTake is `take`: the row's acknowledgement of a card dealt to it. The
+// deal is the take (defect 52): the consumer is in the row's hand, working,
+// from the deal, and the deadline runs from there. take writes the
+// acknowledgement once (steps.AckCursor), which stops the nudges, and
+// prints the receipt; a repeat, or a take after the acknowledgement, prints
+// the same receipt and writes nothing.
 func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	id, gen, f := cardRef("take", in.arg(0))
 	if f != nil {
@@ -56,24 +68,50 @@ func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if err != nil {
 		return "", err
 	}
-	lim, tmo, err := e.rules(ctx, snap)
+	a, err := e.answers(ctx, snap)
 	if err != nil {
 		return "", err
 	}
-	ro, err := e.roster(ctx, lim)
+	ro, err := e.roster(ctx, a.Limits, snap)
 	if err != nil {
 		return "", err
 	}
-	r, found, err := e.Store.Replay(ctx, opID)
+	c, err := heldBy(snap, ro, in.actor, id, gen)
 	if err != nil {
 		return "", err
 	}
-	if !found {
-		if r, err = e.take(ctx, in.actor, snap, ro, id, gen, opID); err != nil {
+	if !snap.Identity.Set() {
+		return "", noIdentity()
+	}
+	if _, acked := snap.Cursors[steps.AckCursor(snap.Epoch, id)]; !acked {
+		if err := e.acknowledge(ctx, in.actor, snap, c, opID); err != nil {
 			return "", err
 		}
 	}
-	return takenOutput(in, snap, r, ro, tmo, id)
+	return takenOutput(in, snap, c, a)
+}
+
+// heldBy is consumer id at gen as row holds it: dealt to row, working, on
+// a row nova-config names and serving the card's tier, with the model its
+// deal named.
+func heldBy(snap store.Snapshot, ro roster.Roster, row, id string, gen int) (store.Card, error) {
+	c, ok := snap.Cards[id]
+	switch {
+	case !ok || c.Gen != gen || c.Holder != row || (c.Kind != "work" && c.Kind != "read"):
+		return c, refuse(id+" is not dealt to this row at this generation", "nova-sprint next --as "+row)
+	case c.State == card.Ready:
+		return c, refuse(id+" was dealt before the deal became the take; the next tick withdraws it and deals it again, in hand", "nova-sprint next --as "+row)
+	case c.State != card.Working:
+		return c, refuse(fmt.Sprintf("%s is %s: %s", id, c.State, orWord(c.Reason, "no reason given")), "nova-sprint next --as "+row)
+	}
+	_, _, tiers, ok := ro.Row(row)
+	if !ok {
+		return c, refuse("row "+row+" is not in nova-config", "add it to nova-config (nova-config friend add, or a bench machine), then take again")
+	}
+	if !slices.Contains(tiers, c.Tier) {
+		return c, refuse(fmt.Sprintf("row %s does not serve tier %s", row, c.Tier), "nova-sprint release "+fmtCard(id, gen)+" --as "+row+" --reason \"tier "+c.Tier+" not served\"")
+	}
+	return c, nil
 }
 
 // machineID is a row's op id on a consumer, checked against --epoch and
@@ -93,27 +131,20 @@ func machineID(in *input, snap store.Snapshot, kind, id string, gen int) (string
 	return opID, nil
 }
 
-func (e *Engine) take(ctx context.Context, row string, snap store.Snapshot, ro roster.Roster, id string, gen int, opID string) (store.Receipt, error) {
-	c, ok := snap.Cards[id]
-	if !ok || c.Gen != gen || c.Holder != row || (c.Kind != "work" && c.Kind != "read") {
-		return store.Receipt{}, refuse(id+" is not dealt to this row at this generation", "nova-sprint show "+id)
+// acknowledge writes row's acknowledgement of c, fenced on c's gen: one op,
+// its id canonical, so a repeat replays.
+func (e *Engine) acknowledge(ctx context.Context, row string, snap store.Snapshot, c store.Card, opID string) error {
+	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: row, Kind: "take", At: e.Now(),
+		Expect: []store.Expect{store.CardGen{Card: c.ID, Gen: c.Gen}},
+		Writes: []store.Write{store.SetCursor{Name: steps.AckCursor(snap.Epoch, c.ID), Seq: max(snap.Seq, 1)}}}
+	r, err := applyOnce(ctx, e.Store, op, e.Store.Apply)
+	switch {
+	case err != nil:
+		return err
+	case !r.Accepted && !strings.Contains(r.Reason, "already at"):
+		return refuse(r.Reason, "nova-sprint show "+c.ID)
 	}
-	_, width, tiers, ok := ro.Row(row)
-	if !ok {
-		return store.Receipt{}, refuse("row "+row+" is not in nova-config", "add it to nova-config (nova-config friend add, or a bench machine), then take again")
-	}
-	if !slices.Contains(tiers, c.Tier) {
-		return store.Receipt{}, refuse(fmt.Sprintf("row %s does not serve tier %s", row, c.Tier), "nova-sprint release "+fmtCard(id, gen)+" --as "+row+" --reason \"tier "+c.Tier+" not served\"")
-	}
-	if busy := working(snap, row); len(busy) >= width {
-		return store.Receipt{}, refuse(fmt.Sprintf("row %s is at width %d", row, width), "finish "+firstOr(busy, "a card")+" first")
-	}
-	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(snap.Cards[c.Of]), card.RowFromStore(snap.Rows[row], width, tiers), card.Take{Row: row})
-	if why != nil {
-		return store.Receipt{}, moved(why, id)
-	}
-	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: row, Kind: "take", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes}
-	return e.commit(ctx, op, "nova-sprint show "+id)
+	return nil
 }
 
 // working are the consumers row works on now, sorted.
@@ -128,32 +159,15 @@ func working(snap store.Snapshot, row string) []string {
 	return out
 }
 
-func firstOr(s []string, or string) string {
-	if len(s) == 0 {
-		return or
-	}
-	return s[0]
-}
-
 // takenOutput is the receipt, as JSON for a machine or as the brief for a
-// mind; a stored receipt of another row's take, or a refused one, is a
-// refusal.
-func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Roster, tmo policy.Timeouts, id string) (string, error) {
-	if r.Actor != in.actor || r.Kind != "take" {
-		return "", refuse(fmt.Sprintf("%s was taken by %s", id, r.Actor), "nova-sprint next --as "+in.actor)
-	}
-	if !r.Accepted {
-		return "", refuse(r.Reason, "nova-sprint show "+id)
-	}
-	c, ok := r.After.Cards[id]
-	if !ok {
-		return "", broken("the take's receipt does not hold "+id, "nova-sprint show "+id)
-	}
+// mind, of consumer c as row holds it: the model is the one its deal named.
+func takenOutput(in *input, snap store.Snapshot, c store.Card, a policy.Answers) (string, error) {
 	s := snap.Streams[c.Stream]
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
-		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: git.StreamBranch(c.Stream), BaseSHA: c.BaseSHA,
-		PriorHead: c.Prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: r.Epoch, Gen: c.Gen, Attempt: c.Attempt,
-		Review: c.Review, Model: takeModel_local(ro, in.actor, c.Tier), Deadline: tmo.Consumer[c.Tier], Forge: s.Forge}
+		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
+		PriorHead: c.Prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
+		Review: c.Review, Model: c.Model, Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge,
+		CommitName: snap.Identity.Name, CommitEmail: snap.Identity.Email}
 	if in.has("json") {
 		b, err := json.Marshal(t)
 		return string(b) + "\n", err
@@ -172,10 +186,7 @@ func takenText(t takeReceipt, row string) string {
 	if t.PriorHead != "" {
 		lines = append(lines, "continue from "+t.PriorHead+" (git fetch origin "+t.Branch+"); the finding: "+t.Finding)
 	}
-	if t.Forge != "" {
-		lines = append(lines, "the stream wants a PR: gh pr create --base "+t.StreamRef+" --head "+t.Branch)
-	}
-	lines = append(lines, t.Brief)
+	lines = append(lines, strings.TrimRight(worker.CommitRules(t.CommitName, t.CommitEmail), "\n"), t.Brief)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
 }
 
@@ -184,24 +195,4 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
-}
-
-// takeModel_local is the row's model: a friend's from nova-config; a bench's from its
-// card's tier (LOCAL DOGFOOD STOPGAP, defect 57: the policy's tier->model rows must
-// answer this; Glenn's map 2026-10-19: flash/heavy DeepSeek flash, pro Mercury 3).
-func takeModel_local(ro roster.Roster, actor, tier string) string {
-	if m := ro.Kin[actor].Model; m != "" {
-		return m
-	}
-	if _, ok := ro.Workers[actor]; !ok {
-		return ""
-	}
-	switch tier {
-	case "pro":
-		return "inception/mercury-3"
-	case "frontier":
-		return "deepseek/deepseek-v4-pro"
-	default:
-		return "deepseek/deepseek-flash"
-	}
 }

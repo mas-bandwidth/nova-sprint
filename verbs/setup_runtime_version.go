@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -27,7 +28,9 @@ func (v VersionAdoption) command(ctx context.Context, name string, args ...strin
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = safeProcessEnv(os.Environ())
-	return cmd.Output()
+	var out bytes.Buffer
+	err := runTool(cmd, &out)
+	return out.Bytes(), err
 }
 func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error) {
 	if !validRelease(version) || !filepath.IsAbs(v.Binary) {
@@ -38,26 +41,29 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 		resolve = resolvedSprintPath
 	}
 	binary, err := resolve()
-	if err != nil || !filepath.IsAbs(binary) {
-		return false, fmt.Errorf("installed version unavailable")
+	if err != nil {
+		return false, cause("installed version unavailable", err)
+	}
+	if !filepath.IsAbs(binary) {
+		return false, fmt.Errorf("installed version unavailable: %q is not an absolute path", binary)
 	}
 	v.Binary = binary
 	out, err := v.command(ctx, binary, "version")
 	if err != nil {
-		return false, fmt.Errorf("installed version unavailable")
+		return false, cause("installed version unavailable", err)
 	}
-	fields := strings.Fields(string(out))
-	if len(fields) != 1 || !validInstalledBuild(fields[0]) {
-		return false, fmt.Errorf("installed version unknown")
+	installed, err := ParseVersionOutput(out)
+	if err != nil {
+		return false, cause("installed version unknown", err)
 	}
-	if fields[0] != version {
+	if installed != version {
 		return false, nil
 	}
 	if err = v.secretCommand(ctx, "check"); err != nil {
-		return false, fmt.Errorf("updated sprint check failed")
+		return false, cause("updated sprint check failed", err)
 	}
 	if err = v.secretCommand(ctx, "run", "--shadow"); err != nil {
-		return false, fmt.Errorf("updated sprint shadow failed")
+		return false, cause("updated sprint shadow failed", err)
 	}
 	return true, nil
 }
@@ -75,14 +81,17 @@ func resolvedSprintPath() (string, error) {
 }
 
 func (v VersionAdoption) secretCommand(ctx context.Context, args ...string) error {
-	if v.Secrets.Store == "" || v.Secrets.KeyFile == "" || v.Secrets.Seat == "" || !slices.Contains(v.Keys, sprintPasswordName) {
-		return fmt.Errorf("version check credentials unavailable")
+	if v.Secrets.Store == "" || v.Secrets.KeyFile == "" || v.Secrets.Seat == "" {
+		return fmt.Errorf("version check credentials unavailable: the secret store, key file or seat is not configured")
+	}
+	if !slices.Contains(v.Keys, sprintPasswordName) {
+		return fmt.Errorf("version check credentials unavailable: %s is not among the keys", sprintPasswordName)
 	}
 	keys := append([]string(nil), v.Keys...)
 	slices.Sort(keys)
 	for i, key := range keys {
 		if !fleetKey.MatchString(key) || (i > 0 && keys[i-1] == key) {
-			return fmt.Errorf("version check credentials unavailable")
+			return fmt.Errorf("version check credentials unavailable: key name %q is invalid or repeated", key)
 		}
 	}
 	cmd := []string{"exec", "--only", strings.Join(keys, ","), "--store", v.Secrets.Store, "--key", v.Secrets.KeyFile, "--as", v.Secrets.Seat, "--", v.Binary}
@@ -98,10 +107,9 @@ func (v VersionAdoption) secretCommand(ctx context.Context, args ...string) erro
 			process.Env = append(process.Env, name+"="+value)
 		}
 	}
-	return process.Run()
+	return runTool(process, nil)
 }
 
-func validInstalledBuild(v string) bool { return validBuildVersion(v) }
 func validRelease(v string) bool {
 	if !strings.HasPrefix(v, "v") {
 		return false

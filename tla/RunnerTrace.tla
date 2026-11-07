@@ -19,6 +19,8 @@ MatchState(k) ==
   /\ harnessAlive = TraceLog[k].harnessAlive
   /\ appliedOps = TraceLog[k].appliedOps
   /\ env = TraceLog[k].env
+  /\ pass = TraceLog[k].pass
+  /\ branch = TraceLog[k].branch
 
 MatchNextState(k) ==
   /\ storeState' = TraceLog[k].storeState
@@ -29,6 +31,8 @@ MatchNextState(k) ==
   /\ harnessAlive' = TraceLog[k].harnessAlive
   /\ appliedOps' = TraceLog[k].appliedOps
   /\ env' = TraceLog[k].env
+  /\ pass' = TraceLog[k].pass
+  /\ branch' = TraceLog[k].branch
 
 TraceAction(k) ==
   LET a == TraceLog[k].action
@@ -47,6 +51,12 @@ TraceAction(k) ==
        [] a = "ReplyLost" -> ReplyLost(c)
        [] a = "Clean"     -> Clean(c)
        [] a = "Withdraw"  -> Withdraw(c)
+       [] a = "Retire"    -> Retire(c)
+       [] a = "HolderPush" -> HolderPush(c)
+       [] a = "Release"   -> Release(c)
+       [] a = "PassStart" -> PassStart
+       [] a = "PassEnd"   -> PassEnd
+       [] a = "Stop"      -> Stop
        [] a = "Crash"     -> Crash
        [] a = "Restart"   -> Restart
        [] a = "StoreDown" -> StoreDown

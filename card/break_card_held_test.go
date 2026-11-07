@@ -142,17 +142,13 @@ func (b *bk) P(id string, e Event) cold4Step { return cold4P(id, e) }
 
 func (b *bk) holder(cid string) string { return b.c(cid).Holder }
 
-// C is a consumer move by its holder (Take and Report carry the row), the row
+// C is a consumer move by its holder (Report carries the row), the row
 // read when the step is planned.
 func (b *bk) C(cid string, e Event) cold4Step {
 	return cold4Step{name(e) + " " + cid, func(w *world) (Plan, *Refusal) {
 		ev := e
 		row := w.snap().Cards[cid].Holder
-		switch v := e.(type) {
-		case Take:
-			v.Row = row
-			ev = v
-		case Report:
+		if v, ok := e.(Report); ok {
 			v.Row = row
 			ev = v
 		}
@@ -166,7 +162,8 @@ func (b *bk) start(id, row string) string {
 	return workID(id, b.c(id).Attempt)
 }
 
-func (b *bk) take(cid string) { b.t.Helper(); b.ok(b.C(cid, Take{})) }
+// take checks cid is in its row's hand: the deal is the take (defect 52).
+func (b *bk) take(cid string) { b.t.Helper(); b.is(cid, Working) }
 func (b *bk) report(cid, result, head, reason string) {
 	b.t.Helper()
 	b.ok(b.C(cid, Report{Result: result, Head: head, Reason: reason}))
@@ -357,7 +354,10 @@ func (b *bk) transition(was, c store.Card, prev, cur store.Snapshot, bad func(st
 	// A single move still has to end in review to raise the counter.
 	rose := c.Review == was.Review+1
 	enteredReview := was.State != Review && c.State == Review
-	if c.Review != was.Review && !(enteredReview && rose) && !(multi && rose) {
+	// A Red sends merging to fix (ready, or waiting when held) and raises
+	// the review on the way (intent rule 30).
+	redFix := was.State == Merging && (c.State == Ready || c.State == Waiting) && rose
+	if c.Review != was.Review && !(enteredReview && rose) && !(multi && rose) && !redFix {
 		if enteredReview {
 			bad("%s entered review at review %d -> %d", id, was.Review, c.Review)
 		} else {
@@ -367,7 +367,7 @@ func (b *bk) transition(was, c store.Card, prev, cur store.Snapshot, bad func(st
 	if was.Red && !c.Red && !(c.Attempt > was.Attempt || enteredReview || (multi && rose)) {
 		bad("%s red cleared other than by Start or Finished (%s -> %s)", id, was.State, c.State)
 	}
-	if !was.Red && c.Red && !(enteredReview && was.State == Merging) && !(multi && rose && was.State == Merging) {
+	if !was.Red && c.Red && !redFix && !(multi && rose && was.State == Merging) {
 		bad("%s red set other than by Red (%s -> %s)", id, was.State, c.State)
 	}
 	if was.State != LandedState && c.State == LandedState {
@@ -376,7 +376,7 @@ func (b *bk) transition(was, c store.Card, prev, cur store.Snapshot, bad func(st
 			bad("%s landed %d times", id, b.landed[id])
 		}
 	}
-	if was.State == Review && c.State == Merging {
+	if (was.State == Review || was.State == Ready || was.State == Waiting) && c.State == Merging {
 		okAt := func(r int) bool {
 			for _, x := range cur.Cards {
 				if x.Of == id && x.Kind == "read" && x.Review == r && x.Head == c.Head && x.State == Done && x.Result == "ok" {

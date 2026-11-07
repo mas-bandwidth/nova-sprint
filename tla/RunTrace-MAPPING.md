@@ -173,8 +173,10 @@ differences are in RunTrace.cfg and in what a record means):
    so a failed attempt leaves no model state.
 4. **Jobs are deals.** Job j is the deal of tracked producer p<j> (card j);
    p3's job is its preemption once a report raises it to blocker, which
-   carries the one edge (a stop for w0, After = the preemption's op).
-   Untracked cards: p0 and w0 (the victim), p9 and w9 (keep the idle alarm
+   carries the one edge (a stop for w1, After = the preemption's op).
+   Untracked cards: p0 and its consumers w0, then w1 (the victim: the raise's
+   own op retires w0 and cuts w1 working on r1, so the raise stays one store
+   append, the model's one Report), p9 and w9 (keep the idle alarm
    quiet). One judgement, policy.rows.1, is opened in the setup: steps opens
    it once whenever a ready producer has no row with room, and the fixture
    always has more ready producers than room.

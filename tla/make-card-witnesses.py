@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 INVARIANTS = [
     "TypeOK", "ProducerNeverHeld", "SlotsDense", "WorkingOneWorkConsumer",
     "WorkingLeavesInOneStep", "ParkedUnderHold", "NeverStranded", "ReadOnlyInReview",
-    "ReaderNeverAuthor", "WidthKept", "TakeBelowWidth", "NeedFailedTakesDependants",
+    "ReaderNeverAuthor", "WidthKept", "DealIsTake", "NeedFailedTakesDependants",
     "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "PreemptOnBlockerRow",
     "ResultsByKind", "OneLiveReadPerRow", "IdsDistinct", "PlainWithdrawUnguarded",
     "MergeParksResolved",
@@ -26,7 +26,7 @@ INVARIANTS = [
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "ReplaceByLive", "HeadNeverRepeats",
-    "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
+    "FaultSpendsNothing", "RouteFaultBlocks", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
     "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
 ]
 
@@ -43,7 +43,7 @@ SCENARIOS = {
     "reads": {"K": 3, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
     # life, sized for the one witness whose fault needs a third attempt
     # (CardWaiveRedWithoutRed); never a passing run.
-    "redw":  {"Scenario": "life", "K": 5, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 1, "MaxEnv": 0},
+    "redw":  {"Scenario": "life", "K": 6, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 2, "MaxEnv": 0},
     # life with Merge: ops of up to three moves (MaxOp, read off the
     # scenario in CardMachine.tla), at small bounds.
     "merge": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
@@ -67,7 +67,8 @@ REACH = {
     "NeverBlocked": ("life", "a producer is blocked"),
     "NeverSentinelReached": ("life", "the sentinel lands by Reached"),
     "NeverFaultRedealt": ("life", "a faulted work consumer's producer is started again"),
-    "NeverYesAfterRed": ("life", "a yes after a Red, on a new read"),
+    "NeverRouteBlocked": ("life", "a fault naming a missing route blocks its producer"),
+    "NeverRedToFix": ("life", "a red sends a merging producer to fix with the finding"),
     "NeverNeedFailed": ("deps", "NeedFailed takes a dependant"),
     "NeverRelinked": ("deps", "a failed need is relinked"),
     "NeverAdded": ("deps", "Add puts a sentinel with a need and an after"),
@@ -97,9 +98,9 @@ WITNESSES = [
        "  /\\ TRUE   \\* FAULT: was r # ps[p].author\n", 1)]),
     ("CardRedAdvances", "RedNeverAdvances", "life",
      "A red CI result moves merging to landed.",
-     [("PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"review\", !.review = @ + 1,\n"
-       "                                      !.red = TRUE])",
-       "PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"landed\"])   \\* FAULT: was review", 1)]),
+     [("PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = Back, !.review = @ + 1,\n"
+       "                                      !.red = TRUE, !.finding = \"fix\"])",
+       "PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"landed\"])   \\* FAULT: was Back", 1)]),
     ("CardNeedFailedIgnored", "NeedFailedTakesDependants", "deps",
      "NeedFailed reads the dependant's state where it means the need's, so\n"
      "it is never enabled for a live dependant whose need failed.",
@@ -121,9 +122,9 @@ WITNESSES = [
      "Faulted accepts any work consumer of the producer, not only the one of\n"
      "its current attempt: the first attempt's fault report moves the\n"
      "producer while the second attempt is working.",
-     [("  /\\ IsCur(p, c)\n  /\\ cs[c].st = \"done\"\n  /\\ cs[c].res = \"fault\"\n",
+     [("  /\\ IsCur(p, c)\n  /\\ cs[c].st = \"done\"\n  /\\ cs[c].res \\in {\"fault\", \"route\"}\n",
        "  /\\ c \\in ConsOf(p) /\\ cs[c].kind = \"work\"   \\* FAULT: was IsCur(p, c)\n"
-       "  /\\ cs[c].st = \"done\"\n  /\\ cs[c].res = \"fault\"\n", 1)]),
+       "  /\\ cs[c].st = \"done\"\n  /\\ cs[c].res \\in {\"fault\", \"route\"}\n", 1)]),
     ("CardYesOnZero", "ReadYesNeedsYes", "life",
      "ReadYes does not require a done ok read of the current review: a yes\n"
      "fires on zero yes reads.",
@@ -131,25 +132,39 @@ WITNESSES = [
        "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was YesRead(p)\n", 1)]),
     ("CardFaultBumpsAttempt", "FaultSpendsNothing", "life",
      "Faulted raises the producer's attempt.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
-       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+       "                                          !.head = KeptHead(p, c)])",
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+       "                                          !.head = KeptHead(p, c),\n"
        "                                          !.att = @ + 1])   \\* FAULT: attempt+1", 1)]),
     ("CardFaultBounces", "FaultSpendsNothing", "life",
      "Faulted raises bounces, so a fault counts toward Block.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
-       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+       "                                          !.head = KeptHead(p, c)])",
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+       "                                          !.head = KeptHead(p, c),\n"
        "                                          !.bounces = @ + 1])   \\* FAULT: bounces+1", 1)]),
+    ("CardRouteRedealt", "RouteFaultBlocks", "life",
+     "A fault naming a missing route goes back to ready like any fault: the\n"
+     "producer is dealt again to a row of the same kind (defect 48).",
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+       "                                          !.head = KeptHead(p, c)])",
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back,   \\* FAULT: was blocked on a route\n"
+       "                                          !.head = KeptHead(p, c)])", 1)]),
     ("CardEditUnderLive", "EditNoLive", "life",
      "Edit is accepted while the producer has a live consumer.",
      [("  /\\ NonFinal(p)\n  /\\ NoLive(p)\n  /\\ PStep(\"Edit\"",
        "  /\\ NonFinal(p)\n  /\\ TRUE   \\* FAULT: was NoLive(p)\n  /\\ PStep(\"Edit\"", 1)]),
-    ("CardReadyCounted", "TakeBelowWidth", "life",
-     "Take counts the row's ready consumers against its width as well as\n"
-     "its working ones, so a row below width refuses the take.",
-     [("  /\\ Cardinality(WorkingOn(r)) < rs[r].width\n  /\\ CStep(\"Take\"",
-       "  \\* FAULT: ready consumers are counted too.\n"
-       "  /\\ Cardinality({k \\in CIds : cs[k].st \\in LiveSt /\\ cs[k].row = r}) < rs[r].width\n"
-       "  /\\ CStep(\"Take\"", 1)]),
+    ("CardCutReady", "DealIsTake", "life",
+     "Start cuts its work consumer ready, as before defect 52: the card\n"
+     "waits on its row's session to take it.",
+     [("StartCut(p, r) ==\n  [st |-> \"working\", kind |-> \"work\",",
+       "StartCut(p, r) ==\n  [st |-> \"ready\", kind |-> \"work\",   \\* FAULT: was working", 1)]),
+    ("CardDealOverWidth", "WidthKept", "pre",
+     "Start does not check the row's width: with the deal the take, p2's\n"
+     "Start on the row p1's work holds puts it over width 1.",
+     [("  /\\ StartGuard(p, r)\n  /\\ RoomOn(r, {})\n",
+       "  /\\ StartGuard(p, r)\n  /\\ TRUE   \\* FAULT: was RoomOn(r, {})\n", 1)]),
     ("CardNeedsCycle", "NeedsAcyclic", "deps",
      "Relink does not check for a cycle: p2's failed need p1 is relinked\n"
      "to the sentinel, which needs p2 (a sentinel target is the rule since\n"
@@ -198,12 +213,12 @@ WITNESSES = [
        "                                        ", 1)]),
     ("CardWaiveRedWithoutRead", "WaiveRedNeedsPriorRead", "life",
      "WaiveRed does not require a done ok read of the previous review at\n"
-     "the same head: a producer in review goes to merging on no read.",
+     "the same head: a producer a Red sent to fix goes to merging on no read.",
      [("  /\\ PrevYes(p)\n  /\\ PStep(\"WaiveRed\"",
        "  /\\ TRUE   \\* FAULT: was PrevYes(p)\n  /\\ PStep(\"WaiveRed\"", 1)]),
     ("CardWaiveRedWithoutRed", "WaiveRedNeedsRed", "redw",
      "WaiveRed does not require the Red to be recorded: a producer back in\n"
-     "review by a Finished at an already-read head goes to merging.",
+     "ready by a second ReadFix at an already-read head goes to merging.",
      [("  /\\ ps[p].red   \\* the code: \"no red on review N\"\n",
        "  /\\ TRUE   \\* FAULT: was ps[p].red\n", 1)]),
     ("CardMergeCutUnseen", "BlockNoLive", "merge",

@@ -1,11 +1,13 @@
 package dash
 
 import (
+	"fmt"
 	"log"
 	"math/big"
 	"sort"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/usage"
@@ -24,6 +26,10 @@ type workRow struct {
 	Fail       int
 	Cost       *big.Int
 	ByTier     map[string]*big.Int
+	// BlockedCards is each blocked producer's reason, by id: a card the
+	// coordinator holds reads "held: <why>" (card.HeldPrefix; defect 47), a
+	// missing route "missing-route: <what>" (defect 48).
+	BlockedCards map[string]string
 }
 type fleetRow struct {
 	Status   string
@@ -38,7 +44,9 @@ type fleetRow struct {
 	OK       int
 	Failed   int
 	OKPct    float64
-	Tokens   int64 // every token its runs reported (package usage), kin and benches alike
+	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
+	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
+	Tokens   int64  // every token its runs reported (package usage), kin and benches alike
 }
 type streamLine struct{ Stream, State string }
 
@@ -156,7 +164,19 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 		}
 	}
 }
+
+// mapRows fills the Fleet and Friends tables. Every roster worker is a Fleet
+// row and every roster kin a Friends row, at its roster width, down until the
+// store has the row (the human, 2026-11-07: "we definitely need all that stuff
+// back"); a store row the roster does not name is shown as down (Stella,
+// v2-l6). The tables are maps, so the order is by name.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
+	for n, w := range ros.Workers {
+		fleet[n] = &fleetRow{Status: "down", Width: w.Width}
+	}
+	for n, k := range ros.Kin {
+		friends[n] = &fleetRow{Status: "down", Width: k.Width}
+	}
 	for n, r := range rows {
 		status := r.State
 		if r.State == "up" && r.Held {
@@ -167,24 +187,33 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 			status = "down"
 		}
 		f := &fleetRow{Status: status, Width: width}
-		if kind == roster.KindKin {
-			friends[n] = f
-		} else {
-			fleet[n] = f
-		}
+		f.Load, f.Slots = loadCells(r)
+		tableOf(kind, fleet, friends)[n] = f
 	}
-	// LOCAL DOGFOOD PATCH (Glenn 2026-11-07 "we definitely need all that stuff back"):
-	// every roster row is on the board, down until the store knows it hooked.
-	for n, w := range ros.Workers {
-		if _, ok := fleet[n]; !ok {
-			fleet[n] = &fleetRow{Status: "down", Width: w.Width}
-		}
+}
+
+// loadCells is the board's load cell and its slots title from the row's last
+// heartbeat: the 1-minute load average over the cores, as a percent of all of
+// them (v1's cell), and the nova-reserve slots in use of the total. A row that
+// is down shows none, and so does one that has never beaten (no cores).
+func loadCells(r store.Row) (load, slots string) {
+	if r.State != "up" || r.Cores < 1 {
+		return "", ""
 	}
-	for n, k := range ros.Kin {
-		if _, ok := friends[n]; !ok {
-			friends[n] = &fleetRow{Status: "down", Width: k.Width}
-		}
+	load = fmt.Sprintf("%.1f%%", float64(r.Load1Centi)/float64(r.Cores))
+	if r.SlotsTotal > 0 {
+		slots = fmt.Sprintf("%d / %d", r.SlotsUsed, r.SlotsTotal)
 	}
+	return load, slots
+}
+
+// tableOf is the table a row of this roster kind belongs in: Friends for
+// kin, Fleet for anything else.
+func tableOf(kind string, fleet, friends map[string]*fleetRow) map[string]*fleetRow {
+	if kind == roster.KindKin {
+		return friends
+	}
+	return fleet
 }
 func countRead(readers map[string]numberCells, c store.Card) {
 	if c.Holder == "" || (c.State != "ready" && c.State != "working" && !(c.State == "done" && (c.Result == "ok" || c.Result == "fix"))) {
@@ -214,6 +243,10 @@ func countWork(w *workRow, c store.Card) {
 	switch state {
 	case "blocked":
 		w.Blocked++
+		if w.BlockedCards == nil {
+			w.BlockedCards = map[string]string{}
+		}
+		w.BlockedCards[c.ID] = edge.RedactN(c.Reason, edge.FailureMax)
 	case "waiting":
 		w.Waiting++
 	case "ready":
@@ -253,29 +286,33 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 			countTrack(f, c, cards[c.Of])
 		case "done":
 			f.Done++
-			// Glenn 2026-11-07: "OK% should be known as soon as a card is done": the
-			// worker's own result counts the moment it reports, not after a read.
-			// ok% is the worker's own finished work: ok against fail or fix; a
-			// fault (harness, bench, route, device) and a close with no result do not
-			// count, and reads are the reader's done, not their ok% (Glenn 2026-11-07).
-			if c.Kind == "work" {
-				switch c.Result {
-				case "ok":
-					f.OK++
-				case "fail", "fix":
-					f.Failed++
-				}
-			}
 		}
 	}
-	if c.Kind == "read" && c.State == "done" {
-		author := fleet[c.Author]
-		if author == nil {
-			author = friends[c.Author]
-		}
-		if author != nil && c.Result == "fix" { // a read that says fix counts against the author's work
-			author.Failed++
-		}
+	if c.State == "done" {
+		countResult(c, fleet, friends)
+	}
+}
+
+// countResult is the OK% count of a done consumer (directive 64a, the human:
+// "reads count as the reader's done but never in ok%"). Only a work card
+// counts, for its holder, the moment it is done: ok is OK; fail and fix are
+// Failed; a fault (a harness, bench, route or device failure), a result that
+// is none or not one of those (a close, a release) is not counted. A read
+// adds to the reader's done and nothing else.
+func countResult(c store.Card, fleet, friends map[string]*fleetRow) {
+	if c.Kind != "work" {
+		return
+	}
+	f := fleet[c.Holder]
+	if f == nil {
+		f = friends[c.Holder]
+	}
+	switch {
+	case f == nil:
+	case c.Result == "ok":
+		f.OK++
+	case c.Result == "fail" || c.Result == "fix":
+		f.Failed++
 	}
 }
 func countCost(w *workRow, c store.Card, costs *streamCost) {

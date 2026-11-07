@@ -17,33 +17,36 @@ type SetupPrerequisites struct {
 }
 
 func (s SetupPrerequisites) Tools(ctx context.Context) (SetupCheck, error) {
-	ok, _, err := s.Env.Fleet(ctx)
+	ok, why, err := s.Env.Fleet(ctx)
 	if err != nil {
 		return SetupCheck{}, err
 	}
 	if !ok {
-		return SetupCheck{Line: "UP 1/8 nova-tools: fleet not ready", Next: "nova-fleet check"}, nil
+		return SetupCheck{Line: "UP 1/8 nova-tools: fleet not ready (" + why + ")", Next: "nova-fleet check"}, nil
 	}
 	installed := s.Installed
 	if installed == nil {
 		installed = InstalledTools
 	}
 	out, err := installed(ctx)
+	if err != nil {
+		return SetupCheck{}, s.unknown(err)
+	}
 	version, parsed := parseToolsRelease(out)
-	if err != nil || !parsed {
-		return SetupCheck{}, s.unknown()
+	if !parsed {
+		return SetupCheck{}, s.unknown(fmt.Errorf("%q is not a release vMAJOR.MINOR.PATCH", out))
 	}
 	enough, err := atLeast(version, s.Pin)
 	if err != nil {
-		return SetupCheck{}, s.unknown()
+		return SetupCheck{}, s.unknown(err)
 	}
 	if !enough {
 		return SetupCheck{}, &OperationError{Problem: fmt.Sprintf("nova-tools %s is below pin %s", version, s.Pin), Fix: toolsFix(s.Pin), Exit: 1}
 	}
 	return SetupCheck{Verified: true, Line: fmt.Sprintf("UP 1/8 nova-tools: fleet green; nova-tools %s at or above pin %s: VERIFIED", version, s.Pin)}, nil
 }
-func (s SetupPrerequisites) unknown() error {
-	return &OperationError{Problem: "nova-tools version unknown", Fix: toolsFix(s.Pin), Exit: 1}
+func (s SetupPrerequisites) unknown(err error) error {
+	return &OperationError{Problem: "nova-tools version unknown (" + errText(err) + ")", Fix: toolsFix(s.Pin), Exit: 1}
 }
 
 var setupActor = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -63,7 +66,7 @@ func (s SetupPrerequisites) Coordinator(ctx context.Context, actor string) (Setu
 		return SetupCheck{Line: "UP 3/8 coordinator: name is required", Next: "nova-sprint up --as <name>"}, nil
 	}
 	if !setupActor.MatchString(saved) {
-		return SetupCheck{}, fmt.Errorf("invalid coordinator name")
+		return SetupCheck{}, fmt.Errorf("invalid coordinator name %q: letters, digits, '.', '_' and '-' only", saved)
 	}
 	hooked, recipe, err := s.Env.Hooked(ctx, saved)
 	if err != nil {
@@ -83,7 +86,7 @@ func (s SetupPrerequisites) Coordinator(ctx context.Context, actor string) (Setu
 }
 func (s SetupPrerequisites) SaveCoordinator(ctx context.Context, actor string) error {
 	if !setupActor.MatchString(actor) {
-		return fmt.Errorf("invalid coordinator name")
+		return fmt.Errorf("invalid coordinator name %q: letters, digits, '.', '_' and '-' only", actor)
 	}
 	return s.Env.Choices.Save(ctx, "coordinator", actor)
 }

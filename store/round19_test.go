@@ -70,6 +70,7 @@ func fakeFromSnapshot(h *harness) {
 }
 
 func TestNewFakeFromEmptyAndCopy(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := NewFake().Snapshot(ctx)
 	require.NoError(t, err)
@@ -91,6 +92,7 @@ func TestNewFakeFromEmptyAndCopy(t *testing.T) {
 }
 
 func TestNewFakeFromInvalid(t *testing.T) {
+	t.Parallel()
 	bad := func(edit func(*Snapshot)) Snapshot {
 		s := emptySnapshot(1)
 		edit(&s)
@@ -119,11 +121,14 @@ func TestNewFakeFromInvalid(t *testing.T) {
 }
 
 // The statement Migrate skips on an existing schema is in schema.sql once,
-// and is the only CREATE SCHEMA in it.
+// and is the only CREATE SCHEMA in it. The row heartbeat's columns are in
+// schema.sql (round 23), so the hash covers them.
 func TestSchemaObjects(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 1, strings.Count(schemaSQL, createSchema))
 	assert.NotContains(t, schemaObjects, "CREATE SCHEMA")
 	assert.Equal(t, len(schemaSQL)-len(createSchema), len(schemaObjects))
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS load1_centi integer")
 }
 
 // The least-privilege setup: an admin role with CREATE on the database makes

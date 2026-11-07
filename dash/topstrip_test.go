@@ -9,6 +9,7 @@ import (
 )
 
 func TestEtaFollowsV1(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		left     int
 		rate     float64
@@ -41,17 +42,19 @@ func at(base time.Time, m ...int) []time.Time {
 // The ETA reads the store's landings, not the process's samples: a cache with
 // no samples at all (a restart) still has its rate.
 func TestEtaSurvivesARestart(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	now := base
 	c := &Cache{now: func() time.Time { return now }, landingsOK: true, landings: at(base, -50, -30, -20, -5)} // 4 in the hour
 	c.view = envelope{Landed: 4, All: 44, Left: 40, At: base}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if d.Eta != "10h" && d.Eta != "10h0m" || d.EtaLandings != 4 || d.EtaWindow != 60 || d.EtaBasis != "last hour" || !strings.Contains(d.Summary, "-> ETA 10h0m") {
 		t.Fatalf("eta=%q landings=%d window=%v basis=%q summary=%q", d.Eta, d.EtaLandings, d.EtaWindow, d.EtaBasis, d.Summary)
 	}
 }
 
 func TestEtaFallsBackToTheSprintAverage(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	// 6 landings over the 6 hours since the first, 2 of them in the last hour: under the floor
 	ls := at(base, -360, -300, -240, -180, -50, -10)
@@ -61,25 +64,26 @@ func TestEtaFallsBackToTheSprintAverage(t *testing.T) {
 	}
 	c := &Cache{now: func() time.Time { return base }, landingsOK: true, landings: ls}
 	c.view = envelope{Left: 12, All: 18, Landed: 6, At: base}
-	d := c.pageSnapshot().Data.(envelope)
+	d := c.pageSnapshot().Data
 	if d.Eta != "12h0m" || d.EtaBasis != "sprint average" {
 		t.Fatalf("eta=%q basis=%q", d.Eta, d.EtaBasis)
 	}
 	// before the third landing of the sprint: no ETA
 	c.landings = at(base, -30, -10)
 	c.view = envelope{Left: 12, All: 14, At: base}
-	if d := c.pageSnapshot().Data.(envelope); d.Eta != "-" {
+	if d := c.pageSnapshot().Data; d.Eta != "-" {
 		t.Fatalf("two landings give %q", d.Eta)
 	}
 	// a store that cannot give landings: no ETA, never a guess
 	c = &Cache{now: func() time.Time { return base }}
 	c.view = envelope{Left: 12, All: 14, At: base}
-	if d := c.pageSnapshot().Data.(envelope); d.Eta != "-" {
+	if d := c.pageSnapshot().Data; d.Eta != "-" {
 		t.Fatalf("unread landings give %q", d.Eta)
 	}
 }
 
 func TestLandedInCountsProducersBecomingLanded(t *testing.T) {
+	t.Parallel()
 	pre := store.Card{ID: "a", Kind: "producer", State: "merging"}
 	post := store.Card{ID: "a", Kind: "producer", State: "landed"}
 	imp := store.Card{ID: "i", Kind: "producer", State: "landed", Reason: "its producer landed in v1"}
@@ -95,6 +99,7 @@ func TestLandedInCountsProducersBecomingLanded(t *testing.T) {
 }
 
 func TestCoordinatorName(t *testing.T) {
+	t.Parallel()
 	rows := map[string]store.Row{"w": {Name: "w", Role: "worker"}, "rowan": {Name: "rowan", Role: "coordinator"}, "zed": {Name: "zed", Role: "coordinator"}}
 	if got := coordinatorOf(rows); got != "rowan" {
 		t.Fatalf("coordinator %q", got)
@@ -109,15 +114,16 @@ func TestCoordinatorName(t *testing.T) {
 }
 
 func TestVersionRidesTheEnvelope(t *testing.T) {
-	old := Version
-	defer func() { Version = old }()
-	Version = "v2-stitch+abc123def456"
-	if d := mapSnapshot(store.Snapshot{}, testRoster, time.Time{}); d.ServerVersion != "v2-stitch+abc123def456" {
-		t.Fatalf("version %q", d.ServerVersion)
+	t.Parallel()
+	// Version is the build's (main sets it once); the test reads it, never
+	// writes it, so it runs beside the others.
+	if d := mapSnapshot(store.Snapshot{}, testRoster, time.Time{}); Version == "" || d.ServerVersion != Version {
+		t.Fatalf("version %q, the build's %q", d.ServerVersion, Version)
 	}
 }
 
 func TestCostSummaryPricedAndUnpriced(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p1":   {ID: "p1", Kind: "producer", Stream: "s", State: "landed", Tier: "flash"},
 		"p2":   {ID: "p2", Kind: "producer", Stream: "s", State: "landed", Tier: "pro"},
@@ -139,6 +145,7 @@ func TestCostSummaryPricedAndUnpriced(t *testing.T) {
 }
 
 func TestCostSummaryNothingPricedIsDashNotZero(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Cards: map[string]store.Card{
 		"p":   {ID: "p", Kind: "producer", State: "landed"},
 		"p.w": {ID: "p.w", Kind: "work", Of: "p", State: "done", Tier: "pro"},
@@ -151,6 +158,7 @@ func TestCostSummaryNothingPricedIsDashNotZero(t *testing.T) {
 
 // Landed cards no run of which carried a cost are not in the per-card divisor.
 func TestPerCardDividesByEveryLandedCard(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Cards: map[string]store.Card{
 		"p1":   {ID: "p1", Kind: "producer", State: "landed"},
 		"p2":   {ID: "p2", Kind: "producer", State: "landed"}, // landed, its runs unpriced

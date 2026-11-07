@@ -11,6 +11,7 @@ import (
 )
 
 func TestHandoffStatusRejectsMalformedOrDuplicate(t *testing.T) {
+	t.Parallel()
 	id := strings.Repeat("a", 64)
 	good := `{"status":"continue","id":"` + id + `"}`
 	if got, err := readHandoffStatus(strings.NewReader(good)); err != nil || got != id {
@@ -22,7 +23,7 @@ func TestHandoffStatusRejectsMalformedOrDuplicate(t *testing.T) {
 		}
 	}
 }
-func TestFunctionalUpChildUsesPrivateChannelAndSeparateSecrets(t *testing.T) {
+func TestFunctionalUpChildUsesPrivateChannelAndSeparateSecrets(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("set NOVA_FUNCTIONAL=1 for child-process test")
 	}
@@ -69,6 +70,7 @@ fi
 }
 
 func TestWaitHandoffCancellation(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := waitHandoff(ctx, make(chan handoffRead)); err == nil {
@@ -77,6 +79,7 @@ func TestWaitHandoffCancellation(t *testing.T) {
 }
 
 func TestHandoffReaderCompletesAfterWriterClose(t *testing.T) {
+	t.Parallel()
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

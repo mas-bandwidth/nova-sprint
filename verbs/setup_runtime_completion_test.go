@@ -12,8 +12,10 @@ import (
 )
 
 func TestSetupCompletionReportsVerifiedState(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := store.NewFake()
+	setIdentity(t, db)
 	choices := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
 	for _, entry := range [][2]string{{"coordinator", "alice"}, {"run-on", "studio"}, {"dashboard", "tailnet"}} {
 		if err := choices.Save(ctx, entry[0], entry[1]); err != nil {
@@ -29,7 +31,7 @@ func TestSetupCompletionReportsVerifiedState(t *testing.T) {
 	transport := dashboardRoundTrip(func(req *http.Request) (*http.Response, error) {
 		body := "ok"
 		if req.URL.Path == "/api/sprint" {
-			body = `{"ok":true,"epoch":1}`
+			body = `{"ok":true,"data":{"epoch":1}}`
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})

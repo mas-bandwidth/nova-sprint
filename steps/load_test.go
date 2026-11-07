@@ -7,7 +7,7 @@ package steps
 // cost by packing size, which sets pack. Skipped unless NOVA_LOAD=1; run it
 // on a quiet Linux bench:
 //
-//	NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestLoad -v ./steps/
+//	NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestFunctionalLoad -v ./steps/
 //
 // Every measurement is one line, LOAD <name> n=<count> p50=<ms> p95=<ms>
 // max=<ms> [more=...], every bar one line, BAR <name> PASS|FAIL <why>.
@@ -20,7 +20,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"syscall"
 	"testing"
 	"time"
 
@@ -35,7 +34,8 @@ const (
 	loadStreams   = 20
 )
 
-func TestLoad(t *testing.T) {
+func TestFunctionalLoad(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (minutes, on a Linux bench, never in per-commit CI)")
 	}
@@ -82,7 +82,7 @@ func loadPlan(t *testing.T, s *sim) {
 		folds = append(folds, time.Since(start))
 		in := s.inputs()
 		for _, pack := range []int{1, 10, 50, 250} {
-			ask := scripted{Answers{Version: 1, Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}}
+			ask := scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}}
 			start = time.Now()
 			plan := Tick(s.v, in, ask)
 			d := time.Since(start)
@@ -116,7 +116,7 @@ func loadApply(t *testing.T, s *sim, seed []store.Op) {
 		snap, err := p.Snapshot(ctx)
 		require.NoError(t, err)
 		v := Build(snap, t0)
-		plan := Tick(v, s.inputs(), scripted{Answers{Version: 1, Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}})
+		plan := Tick(v, s.inputs(), scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: pack}}})
 		var ls lat
 		total := time.Now()
 		for _, op := range tickOnly(plan.Ops) {
@@ -184,10 +184,21 @@ func loadPG(t *testing.T) string {
 	out, err := init.CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	port := fmt.Sprint(54000 + os.Getpid()%1000)
-	cmd := exec.Command(filepath.Join(bin, "postgres"), "-D", filepath.Join(dir, "data"), "-p", port, "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=on")
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() })
+	// pg_ctl starts it and stops it (-m immediate: the postmaster stops its
+	// children before it exits, so none writes into the removed TempDir).
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=on", "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
@@ -227,4 +238,90 @@ func bar(t *testing.T, name string, ok bool, format string, args ...any) {
 	if !ok {
 		t.Errorf("bar missed: %s", name)
 	}
+}
+
+// TestFunctionalLoadResolve times the needs step alone (section 64b: the tick resolves
+// from the state, every tick) on 5,000 waiting producers whose needs a store
+// op landed (no land step, no edge result), in three worlds: free (every
+// producer names its own file, so all 5,000 resolve), held (each names two
+// of 50 files per stream and a glob all list, so most are held behind
+// another on a file and open an overlap judgement), and held-open (held
+// after one tick applied: the overlap judgements open, each checked for
+// clearing). The view is not applied between the timed ticks, so every tick
+// is the same worst case.
+func TestFunctionalLoadResolve(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("NOVA_LOAD") != "1" {
+		t.Skip("load test: set NOVA_LOAD=1 to run it (on a Linux bench, never in per-commit CI)")
+	}
+	timeResolve(t, "free", resolveWorld(t, false))
+	s := resolveWorld(t, true)
+	timeResolve(t, "held", s)
+	s.tick()
+	timeResolve(t, "held-open", s)
+}
+
+func timeResolve(t *testing.T, name string, s *sim) {
+	s.fold()
+	var needs, plans lat
+	resolved, judged := 0, 0
+	for i := 0; i < 20; i++ {
+		tk := newTick(s.v, s.inputs())
+		tk.o = newOracle(s.ask.Ask(tk.questions()), Engine)
+		tk.lim, tk.tmo = tk.o.limits(), tk.o.timeouts()
+		start := time.Now()
+		tk.needs()
+		needs = append(needs, time.Since(start))
+		resolved, judged = len(tk.resolved), len(tk.judges)
+		start = time.Now()
+		Tick(s.v, s.inputs(), s.ask)
+		plans = append(plans, time.Since(start))
+	}
+	open := 0
+	for _, j := range s.v.Judgements {
+		if j.State == "open" {
+			open++
+		}
+	}
+	logLoad(t, "resolve-"+name, needs, fmt.Sprintf(" waiting=%d resolved=%d newly-judged=%d open-judgements=%d", len(s.v.Producers("waiting")), resolved, judged, open))
+	logLoad(t, "plan-"+name, plans, "")
+	bar(t, "resolve-"+name+"-under-50ms", needs.at(0.5) < 50*time.Millisecond, "needs p50 %s", ms(needs.at(0.5)))
+}
+
+// resolveWorld is 100 landed producers (landed by a store op) and 5,000
+// producers waiting on one of them each, in 20 streams over 100 rows.
+func resolveWorld(t *testing.T, held bool) *sim {
+	s := newSim(t)
+	for i := 0; i < loadStreams; i++ {
+		s.stream(fmt.Sprintf("s%02d", i))
+	}
+	for i := 0; i < loadRows; i++ {
+		s.row(fmt.Sprintf("r%03d", i), 4, "pro", "heavy")
+	}
+	var writes []store.Write
+	for i := 0; i < 100; i++ {
+		id := fmt.Sprintf("n%03d", i)
+		writes = append(writes, store.PutCard{ID: id, Kind: "producer", Stream: fmt.Sprintf("s%02d", i%loadStreams), Tier: "pro", Brief: "do " + id, Paths: []string{"n/" + id}})
+	}
+	s.must("seed needs", writes...)
+	writes = nil
+	for i := 0; i < 100; i++ {
+		writes = append(writes, store.SetCardState{Card: fmt.Sprintf("n%03d", i), State: "landed"})
+	}
+	s.must("land by hand", writes...)
+	writes = nil
+	for i := 0; i < loadProducers; i++ {
+		id := fmt.Sprintf("p%05d", i)
+		paths := []string{fmt.Sprintf("a/%05d", i)}
+		if held {
+			paths = []string{fmt.Sprintf("a/%02d", i%50), fmt.Sprintf("a/%02d", (i*7)%50), "a/*"}
+		}
+		writes = append(writes, store.PutCard{ID: id, Kind: "producer", Stream: fmt.Sprintf("s%02d", i%loadStreams), Tier: "pro", Brief: "do " + id, Paths: paths, Needs: []string{fmt.Sprintf("n%03d", i%100)}, Score: i})
+		if len(writes) == 500 {
+			s.must("seed", writes...)
+			writes = nil
+		}
+	}
+	s.must("seed", writes...)
+	return s
 }

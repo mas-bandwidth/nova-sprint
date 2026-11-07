@@ -10,13 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// taken is p1 working on r1 with p1.w1 taken and not yet reported.
+// taken is p1 working on r1 with p1.w1 in hand and not yet reported.
 func taken(t *testing.T) *world {
 	t.Helper()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume(workID("p1", w.card("p1").Attempt), Take{Row: "r1"})
 	return w
 }
 
@@ -38,6 +37,7 @@ func (w *world) reportPlan(id string, r Report) (Plan, *Refusal) {
 }
 
 func TestReportPlanThreeResults(t *testing.T) {
+	t.Parallel()
 	for _, result := range []string{"ok", "fail", "fault"} {
 		t.Run(result, func(t *testing.T) {
 			w := taken(t)
@@ -65,6 +65,7 @@ func TestReportPlanThreeResults(t *testing.T) {
 }
 
 func TestReportPlanEqualsTwoApplies(t *testing.T) {
+	t.Parallel()
 	for _, result := range []string{"ok", "fail", "fault"} {
 		t.Run(result, func(t *testing.T) {
 			rep := Report{Row: "r1", Result: result, Head: h2, Reason: "because", Cost: 7, Priced: true}
@@ -82,6 +83,7 @@ func TestReportPlanEqualsTwoApplies(t *testing.T) {
 }
 
 func TestReportPlanStaleHead(t *testing.T) {
+	t.Parallel()
 	w := taken(t)
 	_, r := w.reportPlan("p1.w1", Report{Row: "r1", Result: "ok", Head: base})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
@@ -89,6 +91,7 @@ func TestReportPlanStaleHead(t *testing.T) {
 }
 
 func TestReportPlanReadLeavesTheProducer(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.work("p1", "r1", "ok", h2, "done")
@@ -101,7 +104,6 @@ func TestReportPlanReadLeavesTheProducer(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, read)
-	w.consume(read, Take{Row: "r2"})
 	before := w.card("p1")
 	plan, r := w.reportPlan(read, Report{Row: "r2", Result: "fix", Head: before.Head, Reason: "a hole"})
 	require.Nil(t, r)

@@ -1,18 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
 // toolCommand keeps database credentials out of fleet and bus subprocesses.
 func toolCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = toolEnvironment(os.Environ(), name)
-	return cmd.Output()
+	var out bytes.Buffer
+	err := verbs.OutputWith(cmd, &out)
+	return out.Bytes(), err
 }
 func toolEnvironment(source []string, name string) []string {
 	allowed := map[string]bool{"PATH": true, "HOME": true, "LANG": true, "LC_ALL": true, "TZ": true, "TMPDIR": true, "XDG_STATE_HOME": true, "XDG_CONFIG_HOME": true, "SSL_CERT_DIR": true, "SSL_CERT_FILE": true, "SSH_AUTH_SOCK": true, "NOVA_MACHINE": true}

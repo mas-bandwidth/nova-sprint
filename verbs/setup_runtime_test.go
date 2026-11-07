@@ -41,6 +41,7 @@ func (w *runtimeWork) InstallWorkers(context.Context) error {
 func (w *runtimeWork) SmokeReady(context.Context) (bool, error) { return w.smoke, nil }
 func (w *runtimeWork) RunSmoke(context.Context) error           { w.smoke = true; w.actions++; return nil }
 func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := &runtimeStore{}
 	w := &runtimeWork{}
@@ -72,6 +73,7 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 	}
 }
 func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"unknown", "deepseek,deepseek", "deepseek,"} {
 		if _, err := setupServices(value); err == nil {
 			t.Fatal(value)
@@ -85,8 +87,9 @@ func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
 
 type runtimeRun struct{ ready bool }
 
-func (r *runtimeRun) Ready(context.Context, string) (bool, error) { return r.ready, nil }
+func (r *runtimeRun) Ready(context.Context, string, string) (bool, error) { return r.ready, nil }
 func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := store.NewFake()
 	st := &runtimeStore{}
@@ -133,7 +136,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	transport := dashboardRoundTrip(func(req *http.Request) (*http.Response, error) {
 		body := "ok"
 		if req.URL.Path == "/api/sprint" {
-			body = `{"ok":true,"epoch":1}`
+			body = `{"ok":true,"data":{"epoch":1}}`
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
@@ -141,6 +144,13 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	in := SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
 	for round := 0; round < 2; round++ {
 		for step := 1; step <= 8; step++ {
+			if step == 7 && round == 0 { // no commit identity yet: up asks the human, and no act makes it true
+				check, err := r.Verify(ctx, step, in)
+				if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "ASK the human which forge account") {
+					t.Fatal(step, check, err)
+				}
+				setIdentity(t, db)
+			}
 			check, err := r.Verify(ctx, step, in)
 			if err != nil {
 				t.Fatal(step, err)
@@ -166,6 +176,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	}
 }
 func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
+	t.Parallel()
 	db := store.NewFake()
 	choices := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
 	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices}}}
@@ -179,6 +190,7 @@ func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
 	}
 }
 func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
+	t.Parallel()
 	db := store.NewFake()
 	choices := Choices{Store: db, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
 	command := func(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -194,5 +206,15 @@ func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 	want := "SPRINT REFUSED up: rowan is not on the bus: " + busRecipe("rowan") + "\n"
 	if result.Exit != 1 || result.Output != want {
 		t.Fatal(result)
+	}
+}
+
+// The bench role is the only word: the run machine is a worker bench when
+// it has the role.
+func TestWorkerBenchesIncludeTheRunMachineWhenItIsABench(t *testing.T) {
+	t.Parallel()
+	got := WorkerBenches([]FleetMachine{{Name: "studio", Roles: []string{"services", "bench"}}, {Name: "edge", Roles: []string{"services"}}, {Name: "amd-1", Roles: []string{"bench"}}})
+	if strings.Join(got, ",") != "studio,amd-1" {
+		t.Fatal(got)
 	}
 }

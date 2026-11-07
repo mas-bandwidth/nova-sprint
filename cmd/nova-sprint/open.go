@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -26,15 +27,16 @@ func credentialsFromEnv() credentials {
 	return credentials{dsn: os.Getenv("NOVA_PG_DSN"), password: os.Getenv("NOVA_SPRINT_PG_PASSWORD")}
 }
 
-// sprint is the DSN as nova_sprint, or the fix: without the sprint's own
-// credential the sprint is not set up (verbs.ErrNotSetUp; up is the fix).
+// sprint is the DSN as nova_sprint, or the refusal of a process without the
+// sprint's own credential (verbs.NoCredential: the store may well be set
+// up; "not set up" is for a store without the schema, defect 22).
 func (c credentials) sprint() (string, error) {
 	if c.password == "" {
-		return "", verbs.ErrNotSetUp
+		return "", verbs.NoCredential()
 	}
 	dsn, err := setupRoleDSN(c.dsn, "nova_sprint")
 	if err != nil {
-		return "", fmt.Errorf("NOVA_PG_DSN is not a passwordless postgres URL: set it so")
+		return "", fmt.Errorf("NOVA_PG_DSN is not a passwordless postgres URL (%s): set it so", edge.RedactN(err.Error(), edge.CommandMax))
 	}
 	return dsn, nil
 }
@@ -49,8 +51,9 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 	ro := &lazyRoster{creds: creds}
 	pol := policy.NewEngine(policy.RealClock{})
 	git, fg := gitEdge(), forgeEdge()
-	e := &verbs.Engine{Store: st, Bus: busEdge(), Roster: ro, Answers: pol, Policy: pol, Origin: &origin{git: git, forge: fg, dir: reposDir()}, Landing: fg,
+	e := &verbs.Engine{Store: st, Bus: busEdge(), Roster: ro, Answers: pol, Policy: pol, Origin: &origin{git: git, dir: reposDir()}, Forge: hostForge{exec: edge.NewOSExec()},
 		Doctor: doctor{creds: creds}, Archive: newArchive(creds), Now: time.Now, Stdin: os.Stdin, Actor: actor, Version: versionString(), ToolPin: toolPin}
+	e.Lander = &lander{clones: &origin{git: git, dir: filepath.Join(stateDir(), "land")}, forge: fg}
 	e.Services = services{creds: creds, store: st, roster: ro, policy: pol, git: git, forge: fg}
 	env := verbs.ExecEnvironment{DSN: creds.dsn, Password: creds.password, Choices: verbs.Choices{Store: st, Actor: actor, Now: time.Now}, Command: toolCommand}
 	e.Setup, e.Lock = buildProductionSetup(st, env, actor, toolPin)
@@ -92,7 +95,10 @@ func newArchive(c credentials) verbs.Archive {
 			return nil, err
 		}
 		host, _ := os.Hostname()
-		return run.OpenRestoreLock(ctx, dsn, c.password, host, os.Getpid())
+		if machine := os.Getenv(run.MachineEnv); machine != "" {
+			host = machine
+		}
+		return run.OpenRestoreLock(ctx, dsn, c.password, run.MachineName(host), os.Getpid())
 	})
 }
 

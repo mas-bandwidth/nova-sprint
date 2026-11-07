@@ -4,19 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // The exact verb list (LAYER-6 section 3); clear is kept beside restore.
 func TestTheVerbsAreExactlyTheList(t *testing.T) {
+	t.Parallel()
 	want := []string{"next", "check", "up", "hook", "wake", "unhook", "help", "version",
-		"take", "finish", "read", "report", "release", "show", "queue",
+		"take", "finish", "read", "report", "release", "beat", "show", "queue",
 		"stream add", "stream set", "add", "judge", "land", "hold", "unhold", "priority", "drop", "relink", "replace",
 		"policy set", "policy activate", "policy show", "policy diff", "cost reconcile", "policy check",
-		"run", "worker", "dash", "stop", "start", "backup", "restore", "clear"}
+		"run", "worker", "dash", "stop", "start", "identity", "backup", "restore", "clear"}
 	var got []string
 	for _, v := range table {
 		got = append(got, v.name)
@@ -28,10 +31,11 @@ func TestTheVerbsAreExactlyTheList(t *testing.T) {
 
 // The role matrix: who may run each verb.
 func TestRoleMatrix(t *testing.T) {
+	t.Parallel()
 	coordinator := map[string]bool{"cost reconcile": true, "stream add": true, "stream set": true, "add": true, "judge": true, "land": true, "hold": true, "unhold": true,
 		"priority": true, "drop": true, "relink": true, "replace": true, "policy set": true, "policy activate": true,
-		"stop": true, "start": true, "backup": true, "clear": true}
-	worker := map[string]bool{"take": true, "finish": true, "read": true, "report": true, "release": true, "show": true, "queue": true,
+		"stop": true, "start": true, "identity": true, "backup": true, "clear": true}
+	worker := map[string]bool{"beat": true, "take": true, "finish": true, "read": true, "report": true, "release": true, "show": true, "queue": true,
 		"policy show": true, "policy diff": true, "policy check": true}
 	for _, v := range table {
 		want := roleCold
@@ -47,6 +51,7 @@ func TestRoleMatrix(t *testing.T) {
 }
 
 func TestEveryVerbHasHelp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	for _, v := range table {
 		r := w.do("", append([]string{"help"}, strings.Fields(v.name)...)...)
@@ -62,6 +67,7 @@ func TestEveryVerbHasHelp(t *testing.T) {
 }
 
 func TestCoreRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "unknown verb", args: []string{"edit"}, exit: 2, want: []string{"SPRINT REFUSED nova-sprint: unknown verb edit: nova-sprint help"}},
 		{name: "help of no verb", args: []string{"help", "edit"}, exit: 2, want: []string{"no verb edit"}},
@@ -94,10 +100,12 @@ func (failingStore) Snapshot(context.Context) (store.Snapshot, error) {
 }
 
 func TestVersion(t *testing.T) {
+	t.Parallel()
 	want(t, newWorld(t).do("", "version"), 0, "nova-sprint v2.0.0-test")
 }
 
 func TestHook(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("dave", "hook", "--role", "worker"), 0, "HOOKED dave role=worker", "next: nova-sprint next --as dave")
 	if r := w.snap(t).Rows["dave"]; r.Session != "minted-1" || r.Role != "worker" {
@@ -106,6 +114,7 @@ func TestHook(t *testing.T) {
 }
 
 func TestHookRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no role", as: "dave", args: []string{"hook"}, exit: 2, want: []string{"--role is worker or coordinator"}},
 		{name: "a bad role", as: "dave", args: []string{"hook", "--role", "owner"}, exit: 2, want: []string{"--role is worker or coordinator"}},
@@ -122,10 +131,27 @@ func TestHookRefusals(t *testing.T) {
 		{name: "no sprint credential", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
 			prep: func(_ *testing.T, w *world) { w.e.Store = notSetUpStore{w.f} },
 			want: []string{"SPRINT REFUSED hook: the sprint is not set up: nova-sprint up --as dave"}},
+		{name: "no sprint credential in the process", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
+			prep: func(_ *testing.T, w *world) { w.e.Store = credentiallessStore{w.f} },
+			want: []string{"SPRINT REFUSED hook: this process has no sprint credential: " + CredentialFix}},
+		{name: "a stream finish could not read", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
+			prep: func(_ *testing.T, w *world) { delete(w.origin.tips, "o/r main") },
+			want: []string{"finish and read could not reach stream s from this process: branch main is not at o/r's origin"}},
+		{name: "a stream finish could not reach", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 2,
+			prep: func(_ *testing.T, w *world) { w.origin.err = errBroken },
+			want: []string{"finish and read could not reach stream s from this process: git ls-remote of o/r failed", "then hook again"}},
 		{name: "no sprint credential, next", as: "dave", args: []string{"next"},
 			prep: func(_ *testing.T, w *world) { w.e.Store = notSetUpStore{w.f} },
 			want: []string{"NEXT the sprint is not set up", "next: nova-sprint up --as dave"}},
 	})
+}
+
+// credentiallessStore is the store as a process without
+// NOVA_SPRINT_PG_PASSWORD reads it (cmd/nova-sprint: NoCredential).
+type credentiallessStore struct{ *store.Fake }
+
+func (credentiallessStore) Snapshot(context.Context) (store.Snapshot, error) {
+	return store.Snapshot{}, NoCredential()
 }
 
 type notSetUpStore struct{ *store.Fake }
@@ -135,6 +161,7 @@ func (notSetUpStore) Snapshot(context.Context) (store.Snapshot, error) {
 }
 
 func TestUnhook(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("alice", "unhook"), 0, "UNHOOKED alice", "next: nova-sprint hook --as alice --role worker")
 	want(t, w.do("alice", "unhook"), 0, "nothing to unhook")
@@ -145,6 +172,7 @@ func TestUnhook(t *testing.T) {
 }
 
 func TestUnhookRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no name", args: []string{"unhook"}, exit: 1, want: []string{"no name given"}},
 		{name: "another row as a worker", as: "alice", args: []string{"unhook", "bob"}, exit: 1, want: []string{"unhook is the coordinator's"}},
@@ -153,15 +181,18 @@ func TestUnhookRefusals(t *testing.T) {
 }
 
 func TestNextGuides(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no name", args: []string{"next"}, want: []string{"choose the name", "next: nova-sprint next --as <name>"}},
 		{name: "not on the bus", as: "erin", args: []string{"next"}, want: []string{"erin is not on the bus", "next: hook in to the bus first"}},
 		{name: "not hooked", as: "dave", args: []string{"next"}, want: []string{"not hooked in", "next: nova-sprint hook --as dave --role worker"}},
-		{name: "a dealt card", as: "alice", args: []string{"next"}, want: []string{"work p1.w1 is dealt with alice", "next: nova-sprint take p1.w1@1 --as alice --epoch 1"}},
-		{name: "a card in hand", as: "alice", args: []string{"next"}, snap: setCard("p1.w1", func(c *store.Card) { c.State = "working" }),
+		{name: "a dealt card", as: "alice", args: []string{"next"}, want: []string{"work p1.w1 is in hand with alice", "next: nova-sprint take p1.w1@1 --as alice --epoch 1"}},
+		{name: "a card acknowledged", as: "alice", args: []string{"next"}, snap: acked("p1.w1"),
 			want: []string{"in hand", "next: nova-sprint finish p1.w1@1 --head <sha> --as alice --epoch 1"}},
-		{name: "a read in hand", as: "bob", args: []string{"next"}, snap: setCard("p2.r1", func(c *store.Card) { c.State = "working" }),
+		{name: "a read acknowledged", as: "bob", args: []string{"next"}, snap: acked("p2.r1"),
 			want: []string{"next: nova-sprint read p2.r1@1 yes|fix --as bob --epoch 1"}},
+		{name: "a card dealt before the deal was the take", as: "alice", args: []string{"next"}, snap: setCard("p1.w1", func(c *store.Card) { c.State = "ready" }),
+			want: []string{"dealt before the deal became the take", "next: " + waitNext}},
 		{name: "nothing owed", as: "carol", args: []string{"next"}, want: []string{"nothing needs you", "next: " + waitNext}},
 		{name: "a judgement owed", as: "carol", args: []string{"next"}, snap: withJudgement("blocked.p1.1", "", "blocked", "p1", "unblock | drop"),
 			want: []string{"judgement blocked.p1.1 needs you", "next: nova-sprint judge blocked.p1.1"}},
@@ -180,7 +211,18 @@ func TestNextGuides(t *testing.T) {
 	})
 }
 
+// acked is the snapshot with row's acknowledgement of consumer c (its take).
+func acked(c string) func(*store.Snapshot) {
+	return func(s *store.Snapshot) {
+		if s.Cursors == nil {
+			s.Cursors = map[string]int64{}
+		}
+		s.Cursors[steps.AckCursor(s.Epoch, c)] = 1
+	}
+}
+
 func TestNextJSONIsTheInventory(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	r := w.do("alice", "next", "--json")
 	want(t, r, 0)
@@ -188,11 +230,17 @@ func TestNextJSONIsTheInventory(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.Output), &v); err != nil {
 		t.Fatal(err)
 	}
-	if v.Width != 1 || len(v.Ready) != 1 || v.Ready[0].ID != "p1.w1" || v.Working == nil || v.Final == nil || v.Judgements == nil {
+	if v.Width != 1 || len(v.Working) != 1 || v.Working[0].ID != "p1.w1" || v.Ready == nil || v.Final == nil || v.Judgements == nil {
 		t.Fatalf("%+v", v)
 	}
+	// A bench's model by tier is the one the deal names, the catalog's bench
+	// model in provider/model form (the probe's input); a friend's, its own.
+	if got := v.TierModels["pro"]; !slices.Equal(got, []string{"inception/mercury-3"}) || len(v.TierModels) != 4 || !slices.Equal(v.TierModels["heavy"], []string{"deepseek/deepseek-flash"}) {
+		t.Fatalf("tier_models %v", v.TierModels)
+	}
+	want(t, w.do("carol", "next", "--json"), 0, `"tier_models":{"flash":["m-carol"]`)
 	w.roster.err = errors.New("nova-config down")
-	want(t, w.do("alice", "next", "--json"), 0, `"width":0`, "roster_error")
+	want(t, w.do("alice", "next", "--json"), 0, `"width":0`, "roster_error", `"tier_models":{}`)
 }
 
 func withJudgement(id, group, kind, about, choices string) func(*store.Snapshot) {

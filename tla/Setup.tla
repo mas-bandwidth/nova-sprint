@@ -19,6 +19,16 @@ EXTENDS Naturals, Sequences, FiniteSets
  Once the finite disruptions are spent, fair execution repairs/verifies
  steps and reaches done. An unavailable external prerequisite or a human
  never supplying an answer is outside that liveness assumption.
+
+ The workload steps, bound to cmd/nova-sprint/setup_workload.go by
+ TestWorkloadStepsMatchTheSetupModel (every state of a two-bench fleet):
+ world[7] is every worker bench (every bench but the run machine) on the
+ bus and up in the store (WorkersReady); world[8] is world[7] and every
+ worker bench with cores, so dealable once the sprint starts (SmokeReady;
+ a fresh sprint is stopped until start, so up deals no card itself). Do
+ at 7 writes the worker service records and applies them; world[7]
+ becomes true only when the units come up, so an Act that returns before
+ that maps to repair again, never to Do (SetupTrace-MAPPING.md).
 ***************************************************************************)
 CONSTANT MaxDisruptions
 Steps == 1..8

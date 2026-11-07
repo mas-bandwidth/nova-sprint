@@ -13,6 +13,8 @@ github.com/mas-bandwidth/nova-tools v1.6.30-0.20261107025026-d80812bcd25c h1:gWm
 github.com/mas-bandwidth/nova-tools v1.6.30-0.20261107025026-d80812bcd25c/go.mod h1:E55OF9Wy79zu26q9kfECIzuJjm0SAgSJIhBLKi0Cxb4=
 github.com/mas-bandwidth/nova-tools/v2 v2.0.2 h1:oKDAM1f8G2m3jTHjgdmra3dtneyuJYoCw9KRNdrRx/8=
 github.com/mas-bandwidth/nova-tools/v2 v2.0.2/go.mod h1:mmFJggqZ4uZ4SfrKGo7JMeTWwAvOl96mddm94v+cmVU=
+github.com/mas-bandwidth/nova-tools/v2 v2.0.3 h1:sIihOBcsAB4s4gC0fhU/sdh82YiLouLbbyOjicukjDk=
+github.com/mas-bandwidth/nova-tools/v2 v2.0.3/go.mod h1:mmFJggqZ4uZ4SfrKGo7JMeTWwAvOl96mddm94v+cmVU=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=

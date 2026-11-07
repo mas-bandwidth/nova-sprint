@@ -11,7 +11,7 @@ import (
 )
 
 // TestFunctionalScratchForge exercises Client against a real GitHub repository using
-// non-Glenn credentials (e.g. rowan-claude via GH_GATE_TOKEN or NOVA_FORGE_TEST_CONFIG_DIR).
+// non-Glenn credentials (e.g. rowan-claude via NOVA_FORGE_TEST_TOKEN).
 // When NOVA_FORGE_SCRATCH_WRITE=1 is also set (for a scratch repo with a write-scoped token),
 // it pushes a throwaway branch scratch/forge-<id>, opens a PR, reads its CI status, and closes
 // the PR and deletes the branch in cleanup.
@@ -67,10 +67,8 @@ func newScratchClient_internal() (*Client, string, string, string) {
 	}
 	c := New(Config{
 		Identity: Identity{
-			Name:          "scratch-test",
-			ExpectedLogin: login,
-			Token:         os.Getenv("NOVA_FORGE_TEST_TOKEN"),
-			ConfigDir:     os.Getenv("NOVA_FORGE_TEST_CONFIG_DIR"),
+			Name:  "scratch-test",
+			Token: os.Getenv("NOVA_FORGE_TEST_TOKEN"),
 		},
 		Binary:  ghBin,
 		Timeout: 30 * time.Second,
@@ -121,7 +119,10 @@ func pushScratchBranch_internal(t *testing.T, ctx context.Context, c *Client, re
 		}
 		return strings.TrimSpace(string(out))
 	}
-	remoteURL := fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", c.cfg.Identity.Token, repo)
+	remoteURL := fmt.Sprintf("https://github.com/%s.git", repo)
+	if c.cfg.Identity.Token != "" {
+		remoteURL = fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", c.cfg.Identity.Token, repo)
+	}
 	runGit("init")
 	runGit("remote", "add", "origin", remoteURL)
 	runGit("fetch", "--depth=1", "origin", baseSHA)

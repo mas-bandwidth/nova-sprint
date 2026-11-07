@@ -3,6 +3,7 @@ package steps
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -24,13 +25,17 @@ type cand struct {
 // deal is the deal and reads step (LAYER-3 "Deal and reads"; the model's
 // DealStep; NeverDealtTwice, NeverBelowTier, guarantee 8). One candidate
 // list down the ladder, within a rung in policy's order then id; each
-// candidate is dealt to a row with room (live under work plus ahead), the
+// candidate is dealt to a row with room (working under policy's work, at
+// most the width: the deal is the take, defect 52), the
 // row from policy's rows answer, else the engine's ranking; a candidate no
 // row has room for stays ready, queued. Escalation is row choice: a work
 // consumer at the card's own rank, one up at escalate_after bounces, the
 // top rank at frontier_after; a read at the rank above the writer's. No
 // tier is ever written, and a row below the card's tier is never offered.
 func (t *tick) deal() {
+	if t.gated() {
+		return
+	}
 	for _, x := range t.cands() {
 		if !t.free(x.c.ID) {
 			continue
@@ -101,19 +106,25 @@ func (t *tick) dealWork(c store.Card) {
 	answered := t.rowsAnswer(c, "work")
 	serving := t.serving(c)
 	if len(serving) == 0 {
-		t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+c.ID+" waits")
+		t.judge("unserved", unservedAbout(c), "no open row serves tier "+c.Tier+routesClause(c)+"; ready "+c.ID+" waits")
+		return
+	}
+	named := t.named(c, serving)
+	if len(named) == 0 {
+		t.noModel(c, serving)
 		return
 	}
 	base, ok := t.base(c.Stream)
 	if !ok || (t.overBudget() && rung(c) != "blocker") {
 		return // past the budget nothing more is dealt; the judgements above are still opened
 	}
-	row := t.pickRow(c, answered, t.withRoom(serving))
+	row := t.pickRow(c, t.named(c, answered), t.withRoom(named))
 	if row == "" {
 		return
 	}
 	t.tally[row]++ // the in-tick tally counts the deal whether or not the budget admits it
-	if g := t.group("start", c.ID, t.producerMove(c.ID, card.Start{Row: row, Branch: branch(c), Base: base})); g != nil {
+	start := card.Start{Row: row, Branch: branch(c), Base: base, Model: t.model(c, row)}
+	if g := t.group("start", c.ID, t.producerMove(c.ID, start)); g != nil {
 		g.blocker = rung(c) == "blocker"
 	}
 }
@@ -133,21 +144,30 @@ func (t *tick) dealRead(c store.Card) {
 		t.judge("cannot-read", c.ID, "no open row may read "+c.ID+" (author "+c.Author+"); the review waits on nothing")
 		return
 	}
+	named := t.named(c, serving)
+	if len(named) == 0 {
+		t.noModel(c, serving)
+		return
+	}
 	if t.overBudget() {
 		return
 	}
-	rows := t.pickRows(c, answered, t.withRoom(serving), t.owed(c))
+	rows := t.pickRows(c, t.named(c, answered), t.withRoom(named), t.owed(c))
 	if len(rows) == 0 {
 		return
 	}
-	for _, r := range rows {
+	models := make([]string, len(rows))
+	for i, r := range rows {
 		t.tally[r]++
+		models[i] = t.model(c, r)
 	}
-	t.group("read", c.ID, t.producerMove(c.ID, card.AskReads{Rows: rows}))
+	t.group("read", c.ID, t.producerMove(c.ID, card.AskReads{Rows: rows, Models: models}))
 }
 
 // withRoom keeps the rows with room: live consumers plus this tick's deals
-// under work plus ahead (policy's width answer; width caps working only).
+// under policy's work, at most the width. Every live consumer is in hand
+// (working; a ready one is a pre-deal-is-take leftover the holds step
+// withdraws), so this is the width check at the deal.
 func (t *tick) withRoom(rows []string) []string {
 	var out []string
 	for _, r := range rows {
@@ -160,13 +180,13 @@ func (t *tick) withRoom(rows []string) []string {
 
 func (t *tick) used(r string) int { return len(t.v.liveOnRow[r]) + t.tally[r] }
 
-// room is policy's work plus ahead for row r, read once per tick.
+// room is policy's work for row r, read once per tick.
 func (t *tick) room(r string) int {
 	if n, ok := t.roomCache[r]; ok {
 		return n
 	}
 	w := t.o.width(t.rowFacts(t.v.Rows[r]))
-	t.roomCache[r] = w.Work + w.Ahead
+	t.roomCache[r] = w.Work
 	return t.roomCache[r]
 }
 
@@ -310,4 +330,20 @@ func (t *tick) withdrawnFrom(c store.Card, row string) bool {
 		}
 	}
 	return false
+}
+
+// routesClause is " with route(s) <a, b>" for a card that declares routes
+// (card.NeedsRoutes), else "".
+func routesClause(c store.Card) string {
+	if rs := card.NeedsRoutes(c.Brief); len(rs) > 0 {
+		return " with route(s) " + strings.Join(rs, ", ")
+	}
+	return ""
+}
+
+// unservedAbout is what an unserved judgement is about: the card's tier,
+// then "+<route>" for each route it declares (cleared reads it back), so a
+// tier served without the route does not clear it.
+func unservedAbout(c store.Card) string {
+	return strings.Join(append([]string{c.Tier}, card.NeedsRoutes(c.Brief)...), "+")
 }

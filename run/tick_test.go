@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,15 +25,18 @@ type healthy struct{ err error }
 func (h *healthy) Check(context.Context) error { return h.err }
 
 // answering is a policy that deals every producer to every row of the
-// roster, in id order.
+// roster, in id order. Its ready_nag is testReadyNag, so a deal's push
+// carries no nudge within the first ticks.
 type answering struct{ asks int }
+
+const testReadyNag = 10
 
 func (a *answering) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
 	a.asks++
 	names := slices.Sorted(maps.Keys(ro.Workers))
-	out := policy.Answers{Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
+	out := policy.Answers{Version: snap.Policy, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
 		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 3, ReportsPerTick: 100, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
-		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, Tick: 1, BaseRegate: []int{120}}}
+		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyNag: testReadyNag, ReadyTake: 180, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
 		out.Order[id] = []any{int64(0), id}
 	}
@@ -72,10 +76,10 @@ func must(t *testing.T, st store.Store, id string, ws ...store.Write) {
 	}
 }
 
-// seeded is a sprint with one stream, one producer and alice hooked in as a
-// worker on the roster.
+// seeded is a started sprint with one stream, one producer and alice hooked
+// in as a worker on the roster.
 func seeded(t *testing.T) (*store.Fake, roster.Roster) {
-	f := store.NewFake()
+	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "up", store.SetRowState{Row: "alice", State: "up"})
@@ -95,6 +99,7 @@ func tickN(t *testing.T, tk *Ticker, ro roster.Roster, n int) {
 }
 
 func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
@@ -104,7 +109,7 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 	snap := tk.Snapshot()
 	var dealt []string
 	for id, c := range snap.Cards {
-		if c.Kind == "work" && c.Holder == "alice" && c.State == "ready" {
+		if c.Kind == "work" && c.Holder == "alice" && c.State == "working" {
 			dealt = append(dealt, id)
 		}
 	}
@@ -135,7 +140,8 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 // run loop's Seen) and the deal follows; a row down and absent from the bus
 // stays down, and a row already up raises nothing.
 func TestTickRaisesSeenForAHookedRow(t *testing.T) {
-	f := store.NewFake()
+	t.Parallel()
+	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "row2", store.PutRow{Name: "bob", Session: "sess-2", Role: "worker"})
@@ -164,7 +170,7 @@ func TestTickRaisesSeenForAHookedRow(t *testing.T) {
 	}
 	var dealt []string
 	for id, c := range tk.Snapshot().Cards {
-		if c.Kind == "work" && c.State == "ready" {
+		if c.Kind == "work" && c.State == "working" {
 			dealt = append(dealt, id+" to "+c.Holder)
 		}
 	}
@@ -174,6 +180,7 @@ func TestTickRaisesSeenForAHookedRow(t *testing.T) {
 }
 
 func TestPushFailureLeavesTheCursor(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
@@ -181,7 +188,7 @@ func TestPushFailureLeavesTheCursor(t *testing.T) {
 	}
 	tickN(t, tk, ro, 3)
 	b := &fakeBus{fail: map[string]bool{"alice": true}}
-	if failed := tk.Push(context.Background(), b, t0); !slices.Equal(failed, []string{"alice"}) {
+	if failed := tk.Push(context.Background(), b, t0); len(failed) != 1 || failed[0].To != "alice" || failed[0].Err == nil {
 		t.Fatalf("failed = %v", failed)
 	}
 	if err := tk.Fold(context.Background()); err != nil {
@@ -197,6 +204,7 @@ func TestPushFailureLeavesTheCursor(t *testing.T) {
 }
 
 func TestNoTickWhileStopped(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	must(t, f, "stop", store.SetStopped{Stopped: true, Reason: "maintenance"})
 	p := &answering{}
@@ -212,6 +220,7 @@ func TestNoTickWhileStopped(t *testing.T) {
 }
 
 func TestLostLockAppliesNothing(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	h := &healthy{}
 	tk, err := NewTicker(context.Background(), f, h, &answering{}, t0)
@@ -229,6 +238,7 @@ func TestLostLockAppliesNothing(t *testing.T) {
 }
 
 func TestEnvelopeIsBoundedWithNext(t *testing.T) {
+	t.Parallel()
 	var q []pending
 	for i := range 200 {
 		q = append(q, pending{int64(i + 1), Notice{Subject: "DEAL", Line: strings.Repeat("x", 60)}})
@@ -239,7 +249,33 @@ func TestEnvelopeIsBoundedWithNext(t *testing.T) {
 	}
 }
 
+func TestLandResultMapping(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		res  git.LandResult
+		err  error
+		want steps.InboxItem
+	}{
+		{git.LandResult{Outcome: git.OutcomeLanded, LandedHeads: []string{"h1"}, MergeSHA: "m1"}, nil, steps.InboxItem{Outcome: "landed", Landed: []string{"h1"}, Merge: "m1"}},
+		{git.LandResult{Outcome: git.OutcomeRed}, nil, steps.InboxItem{Outcome: "ci_red"}},
+		{git.LandResult{Outcome: git.OutcomeConflict}, nil, steps.InboxItem{Outcome: "conflict"}},
+		{git.LandResult{Outcome: git.OutcomeRefused}, nil, steps.InboxItem{Outcome: "merge_refused"}},
+		{git.LandResult{Outcome: git.OutcomeUnopenable}, nil, steps.InboxItem{Outcome: "pr_unopenable"}},
+		{git.LandResult{Outcome: git.OutcomeBranch}, nil, steps.InboxItem{Outcome: "branch_failed"}},
+		{git.LandResult{Outcome: git.OutcomeAbsent}, nil, steps.InboxItem{Outcome: "no-ci"}},
+		{git.LandResult{}, errors.New("land refused"), steps.InboxItem{Outcome: "fault"}},
+	}
+	for _, c := range cases {
+		got := landItem("land.s.x", c.res, c.err, time.Minute)
+		c.want.Kind, c.want.Request = "land", "land.s.x"
+		if got.Outcome != c.want.Outcome || got.Merge != c.want.Merge || !slices.Equal(got.Landed, c.want.Landed) || got.Request != c.want.Request {
+			t.Fatalf("%v %v: got %+v want %+v", c.res.Outcome, c.err, got, c.want)
+		}
+	}
+}
+
 func TestStopIsOneMessageThenAck(t *testing.T) {
+	t.Parallel()
 	b := &fakeBus{}
 	e := &Edges{Bus: b}
 	e.stop(context.Background(), steps.EdgeRequest{ID: "stop.1", Kind: "stop", Row: "alice", Consumer: "p1.w1"})
@@ -248,9 +284,14 @@ func TestStopIsOneMessageThenAck(t *testing.T) {
 		t.Fatalf("sent %+v results %+v", b.sent, got)
 	}
 	b.fail = map[string]bool{"alice": true}
+	var said []string
+	e.Fault = func(what string, err error) { said = append(said, what+": "+err.Error()) }
 	e.stop(context.Background(), steps.EdgeRequest{ID: "stop.2", Kind: "stop", Row: "alice", Consumer: "p1.w1"})
 	if got := e.Results(); len(got) != 0 {
 		t.Fatalf("an unsent stop was acknowledged: %+v", got)
+	}
+	if len(said) != 1 || !strings.HasPrefix(said[0], "stop stop.2 to alice: ") {
+		t.Fatalf("the unsent stop's cause was not said: %q", said)
 	}
 }
 
@@ -271,6 +312,31 @@ func (c *beats) Every(d time.Duration) Beat {
 	return beat{make(chan time.Time)}
 }
 
+// watched is a beats clock that says when the head watch has read the base
+// tips. WatchHeads reads, then enters its select, which asks for the beat's
+// channel: so C() is called only after the read, and the test waits on that
+// rather than on a sleep. The watch's own beat never fires.
+type watched struct {
+	*beats
+	read chan struct{}
+	once sync.Once
+}
+
+func (c *watched) Every(d time.Duration) Beat {
+	if d == HeadsEvery {
+		return headBeat{c: make(chan time.Time), seen: func() { c.once.Do(func() { close(c.read) }) }}
+	}
+	return c.beats.Every(d)
+}
+
+type headBeat struct {
+	c    chan time.Time
+	seen func()
+}
+
+func (b headBeat) C() <-chan time.Time { b.seen(); return b.c }
+func (headBeat) Stop()                 {}
+
 type stillGit struct{ git.Git }
 
 func (stillGit) Clone(context.Context, string, string) error { return nil }
@@ -279,7 +345,8 @@ func (stillGit) LsRemote(context.Context, string, string) (string, bool, error) 
 }
 
 func TestServeTicksPushesAndLogs(t *testing.T) {
-	f := store.NewFake()
+	t.Parallel()
+	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
 	must(t, f, "up", store.SetRowState{Row: "bench", State: "up"})
@@ -288,7 +355,7 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock := &beats{now: t0, tick: make(chan time.Time)}
+	clock := &watched{beats: &beats{now: t0, tick: make(chan time.Time)}, read: make(chan struct{})}
 	b := &fakeBus{who: map[string]bus.Presence{"bench": {Name: "bench"}}}
 	var log strings.Builder
 	ctx, cancel := context.WithCancel(context.Background())
@@ -296,6 +363,7 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	go func() {
 		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, Clock: clock, Log: &log}, &healthy{})
 	}()
+	<-clock.read // the deal needs the stream's base tip: no tick before the head watch has read it
 	for range 3 {
 		clock.tick <- t0
 	}
@@ -329,6 +397,7 @@ func (s *stopFirst) Apply(ctx context.Context, op store.Op) (store.Receipt, erro
 }
 
 func TestStopBetweenFoldAndApplyRefusesTheOp(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	st := &stopFirst{Fake: f}
 	tk, err := NewTicker(context.Background(), st, &healthy{}, &answering{}, t0)
@@ -338,5 +407,55 @@ func TestStopBetweenFoldAndApplyRefusesTheOp(t *testing.T) {
 	tickN(t, tk, ro, 1)
 	if !st.done || tk.Counts().Applied != 0 || tk.Counts().Refused == 0 {
 		t.Fatalf("a tick op was accepted after the stop committed: %+v", tk.Counts())
+	}
+}
+
+// failingActive is a policy whose active version fails, so the built-in
+// answers (defect 53's second case).
+type failingActive struct{ answering }
+
+func (a *failingActive) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
+	out, _ := a.answering.AnswerContext(ctx, vs, snap, ro, q)
+	out.Version = 0
+	return out, []policy.Failure{{Version: 1, Label: "v1", Question: "order", Msg: "division by zero"}}
+}
+
+// The deal's gate (defect 53): with no policy active, or the active one
+// failing, the run deals nothing and one blocking no-policy judgement says
+// why; the first activation lets the next tick deal.
+func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		policy Asking
+		active bool
+		want   string
+	}{
+		"none active":   {&answering{}, false, "the run deals nothing: no policy is active: nova-sprint policy set <file> --reason <why>"},
+		"active failed": {&failingActive{}, true, "the run deals nothing: the active policy v1 failed (POLICY REFUSED v1 order(): division by zero)"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := store.NewFake()
+			must(t, f, "start", store.SetStopped{Stopped: false, Reason: "test"})
+			must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
+			must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
+			must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
+			if c.active {
+				must(t, f, "policy", activePolicy()...)
+			}
+			ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}
+			tk, err := NewTicker(context.Background(), f, &healthy{}, c.policy, t0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tickN(t, tk, ro, 3)
+			s := tk.Snapshot()
+			if s.Cards["p1"].State != "ready" {
+				t.Fatalf("p1 is %s, want ready and undealt", s.Cards["p1"].State)
+			}
+			j, ok := s.Judgements["no-policy.sprint.1"]
+			if !ok || j.State != "open" || !strings.HasPrefix(j.Question, c.want) || !j.Deadline.IsZero() {
+				t.Fatalf("judgement %+v, want open, no deadline, %q", j, c.want)
+			}
+		})
 	}
 }

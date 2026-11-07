@@ -8,6 +8,8 @@
 package card
 
 import (
+	"strings"
+
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -81,29 +83,33 @@ type Event interface{ isEvent() }
 
 // Producer events, one per row of the design's producer table.
 type (
-	Resolve  struct{}                // waiting -> ready when every need landed
-	Park     struct{ Reason string } // ready -> waiting while the stream is held
-	Reached  struct{}                // a sentinel: waiting -> landed when every need landed
-	Start    struct{ Row, Branch, Base string }
-	Finished struct{ Consumer string } // the work consumer reported ok; review +1
-	Broken   struct{ Consumer string } // the work consumer reported fail
-	Faulted  struct{ Consumer string } // the work consumer reported fault
-	AskRead  struct{ Row string }
-	AskReads struct{ Rows []string } // several reads of this head, one plan, distinct indices
-	ReadYes  struct{}
-	ReadFix  struct{ Finding string } // the read's finding, kept in its own column
-	// WaiveRed moves a producer a Red sent back to review on to merging
-	// without a new read, when that Red is still recorded and a done ok read
-	// of the previous review at the same head exists. Who may waive is layer
-	// 3's; the event carries no actor.
+	Resolve  struct{}                                  // waiting -> ready when every need landed
+	Park     struct{ Reason string }                   // ready -> waiting while the stream is held
+	Reached  struct{}                                  // a sentinel: waiting -> landed when every need landed
+	Start    struct{ Row, Branch, Base, Model string } // Model: the model the deal names, carried by the consumer to its take
+	Finished struct{ Consumer string }                 // the work consumer reported ok; review +1
+	Broken   struct{ Consumer string }                 // the work consumer reported fail
+	Faulted  struct{ Consumer string }                 // the work consumer reported fault
+	AskRead  struct{ Row, Model string }
+	AskReads struct {
+		Rows   []string // several reads of this head, one plan, distinct indices
+		Models []string // the model the deal names for Rows[i]; nil for none
+	}
+	ReadYes struct{}
+	ReadFix struct{ Finding string } // the read's finding, kept in its own column
+	// WaiveRed moves a producer a Red sent to fix (ready, or waiting in a
+	// held stream) on to merging without a new read, when that Red is still
+	// recorded and a done ok read of the previous review at the same head
+	// exists. Who may waive is layer 3's; the event carries no actor.
 	WaiveRed struct{ Reason string }
-	Landed   struct{ Head string }
-	Red      struct{ Head, Reason string } // review +1: reads before it no longer count
-	// LandFix sends a merging producer whose landing escalated back to ready
-	// with the coordinator's finding (Glenn 2026-11-07: a landing that does
-	// not land easily escalates to the coordinator; fix is one answer). A
-	// bounce, like a read's fix; the next attempt continues from the head.
-	LandFix  struct{ Head, Finding string }
+	// Landed is merging -> landed at Head. Merge is the merge commit base
+	// has (the landing's, or the hand landing's base tip), recorded in the
+	// producer's reason with Reason (a hand landing's why).
+	Landed struct{ Head, Merge, Reason string }
+	// Red is a red landing: merging -> fix (ready, waiting when held) with
+	// Reason, the CI finding, as the finding; review +1, so reads before it
+	// no longer count (intent rule 30: no terminal fail).
+	Red      struct{ Head, Reason string }
 	Released struct{ Reason string } // the work consumer of this attempt was withdrawn
 	Cancel   struct{ Reason string }
 	Replace  struct{ By, Reason string }
@@ -137,9 +143,11 @@ type (
 	Unblock     struct{ Reason string }
 )
 
-// Consumer events, one per row of the consumer table.
+// Consumer events, one per row of the consumer table. There is no Take: a
+// consumer is cut in working, in its row's hand at the deal (defect 52,
+// intent rule 33); the row's acknowledgement is not a card move (LAYER-2
+// "Deal is take").
 type (
-	Take struct{ Row string }
 	// Report is a row's result. Cost, Priced and Usage are the run's usage
 	// record as the engine priced it (package usage): the machine stores
 	// them and prices nothing.
@@ -234,7 +242,6 @@ func (ReadFix) isEvent()     {}
 func (WaiveRed) isEvent()    {}
 func (Landed) isEvent()      {}
 func (Red) isEvent()         {}
-func (LandFix) isEvent()     {}
 func (Released) isEvent()    {}
 func (Cancel) isEvent()      {}
 func (Replace) isEvent()     {}
@@ -246,7 +253,6 @@ func (Rescore) isEvent()     {}
 func (SetPriority) isEvent() {}
 func (Block) isEvent()       {}
 func (Unblock) isEvent()     {}
-func (Take) isEvent()        {}
 func (Report) isEvent()      {}
 func (Withdraw) isEvent()    {}
 func (Seen) isEvent()        {}
@@ -271,6 +277,41 @@ const (
 
 // LandedState is the producer's final state of success (Landed is its event).
 const LandedState = "landed"
+
+// MissingRoute is the reason kind of a fault that names a route or device
+// the row lacks (defect 48): a work consumer's fault whose reason starts
+// with it ("missing-route: adb no device attached") blocks its producer on
+// a judgement instead of a re-deal. The first word after it is the route's
+// name, the one vocabulary of routes: the name a brief declares with
+// `NEEDS-ROUTE: <name>` (RouteField) and a machine serves through its
+// `route:<name>` role; the rest of the reason says what is missing.
+const MissingRoute = "missing-route:"
+
+// RouteFault says whether reason is a missing-route fault's, and what it
+// names as missing (the route's name, then the detail).
+func RouteFault(reason string) (string, bool) {
+	what, ok := strings.CutPrefix(strings.TrimSpace(reason), MissingRoute)
+	return strings.TrimSpace(what), ok
+}
+
+// RouteName is the route a missing-route fault's reason names: the first
+// word after MissingRoute, "" when it names none.
+func RouteName(reason string) string {
+	what, ok := RouteFault(reason)
+	if f := strings.Fields(what); ok && len(f) > 0 {
+		return f[0]
+	}
+	return ""
+}
+
+// HeldPrefix starts the reason of a producer the coordinator holds with
+// `hold <card>` (defect 47): a Block whose reason is "held: <why>". The
+// board lists it with the other blocked producers under its reason.
+const HeldPrefix = "held: "
+
+// ReleasedPrefix starts a released consumer's reason: the record that it was
+// given back (by its row, or by a drop of its producer), not failed.
+const ReleasedPrefix = "released: "
 
 // The levels a producer's priority may take, lowest first; read consumers
 // occupy a rung between high and critical in the deal order (policy's).

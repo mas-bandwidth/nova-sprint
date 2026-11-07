@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -31,10 +32,26 @@ type pending struct {
 // exits 0 and names the message (LAYER-6 guarantee 4); a failed send is not
 // sent again within the tick, and the unmoved cursor is the only resend
 // (drift row 19). Nothing is pushed for an event before its op commits:
-// the notices come from the log.
-type Pusher struct{ queue map[string][]pending }
+// the notices come from the log. A nudge (steps.Nudge: a card in a row's
+// hand it has not acknowledged) is the one notice not from the log: the
+// tick derives it from the view, it rides in that tick's envelope and moves
+// no cursor, and one not sent is derived again by the next tick.
+type Pusher struct {
+	queue  map[string][]pending
+	nudges map[string][]Notice
+}
 
-func NewPusher() *Pusher { return &Pusher{queue: map[string][]pending{}} }
+func NewPusher() *Pusher {
+	return &Pusher{queue: map[string][]pending{}, nudges: map[string][]Notice{}}
+}
+
+// Nudge queues this tick's nudges, replacing the last tick's.
+func (p *Pusher) Nudge(ns []steps.Nudge) {
+	p.nudges = map[string][]Notice{}
+	for _, n := range ns {
+		p.nudges[n.Row] = append(p.nudges[n.Row], Notice{Subject: "NUDGE", Line: n.Line})
+	}
+}
 
 // Observe takes one folded event, with the snapshot after it, for every
 // recipient whose cursor is behind it.
@@ -94,27 +111,44 @@ func (p *Pusher) CatchUp(ctx context.Context, st store.Store, cold store.Snapsho
 	return nil
 }
 
+// PushFailure is a recipient whose envelope was not sent or whose cursor did
+// not move, and why.
+type PushFailure struct {
+	To  string
+	Err error
+}
+
 // Push sends each recipient's envelope and moves its cursor (SEAMS 6). It
-// returns the recipients whose send failed, for the PUSH FAILED lines.
-func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int, now time.Time) []string {
-	var failed []string
-	for _, r := range slices.Sorted(maps.Keys(p.queue)) {
+// returns the recipients whose send failed, with the cause, for the PUSH
+// FAILED lines.
+func (p *Pusher) Push(ctx context.Context, b bus.Bus, st store.Store, epoch int, now time.Time) []PushFailure {
+	var failed []PushFailure
+	to := maps.Clone(p.queue)
+	for r := range p.nudges {
+		to[r] = p.queue[r]
+	}
+	for _, r := range slices.Sorted(maps.Keys(to)) {
 		q := p.queue[r]
+		for _, n := range p.nudges[r] {
+			q = append(q, pending{0, n})
+		}
 		if len(q) == 0 {
 			continue
 		}
-		last := q[len(q)-1].seq
 		subject, body := envelope(r, q)
 		if _, err := b.Send(ctx, r, subject, body); err != nil {
-			failed = append(failed, r)
+			failed = append(failed, PushFailure{To: r, Err: err})
 			continue
 		}
-		if err := setCursor(ctx, st, r, last, epoch, now); err != nil {
-			failed = append(failed, r)
-			continue
+		if events := p.queue[r]; len(events) > 0 {
+			if err := setCursor(ctx, st, r, events[len(events)-1].seq, epoch, now); err != nil {
+				failed = append(failed, PushFailure{To: r, Err: err})
+				continue
+			}
 		}
 		delete(p.queue, r)
 	}
+	p.nudges = map[string][]Notice{}
 	return failed
 }
 

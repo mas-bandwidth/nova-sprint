@@ -27,7 +27,8 @@ import (
 // modelDefaults sets the engine's escalation to the model's (EscalateAfter
 // 1: the model bounds bounces at MaxBounce, so it escalates after one) for
 // the test and restores it after; the trace tests are the only ones that
-// write it, and top-level tests run one at a time.
+// write it, and they are serial: a serial top-level test ends before any
+// parallel one starts.
 func modelDefaults(t *testing.T) {
 	was := Engine.EscalateAfter
 	Engine.EscalateAfter = 1
@@ -67,7 +68,7 @@ type traceAsker struct{ w *traceWalk }
 func (a traceAsker) Ask(q Questions) Answers {
 	w := a.w
 	out := Answers{Version: 1, Order: map[string][]any{}, Rows: map[string][]string{}, Reads: map[string]int{}, Verdict: map[string]string{},
-		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}}
+		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}, Models: benchModels()}
 	for _, c := range q.Order {
 		out.Order[c.ID] = []any{} // id order, as the model
 	}
@@ -75,16 +76,25 @@ func (a traceAsker) Ask(q Questions) Answers {
 		out.Reads[c.ID] = 1
 	}
 	for _, v := range q.Verdict {
-		out.Verdict[v.Card.ID] = "yes"
-		if slices.ContainsFunc(v.Reads, func(r ReadFacts) bool { return r.Result == "fix" }) {
+		// the model's Verdict: fix on a fix read, else yes on an ok read, else retry
+		said := func(res string) bool {
+			return slices.ContainsFunc(v.Reads, func(r ReadFacts) bool { return r.Result == res })
+		}
+		switch {
+		case said("fix"):
 			out.Verdict[v.Card.ID] = "fix"
+		case said("ok"):
+			out.Verdict[v.Card.ID] = "yes"
+		default:
+			out.Verdict[v.Card.ID] = "retry"
 		}
 	}
 	for _, r := range q.Width {
-		out.Width[r.Name] = WidthAnswer{Work: r.Width, Ahead: 2 * r.Width} // the model's Ahead
+		out.Width[r.Name] = WidthAnswer{Work: r.Width}
 	}
 	for _, s := range q.Landing {
-		out.Landing[s.Name] = LandingAnswer{BackedUp: 4, Flowing: 1}
+		// above the scenario's producers: the model's requests are rung 1's
+		out.Landing[s.Name] = LandingAnswer{BackedUp: 1000, Flowing: 1, CIWait: 600}
 	}
 	for _, r := range q.Rows {
 		if w.pref == "" {
@@ -96,7 +106,7 @@ func (a traceAsker) Ask(q Questions) Answers {
 	day := 86400
 	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
 		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
-	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyTake: day, BaseRegate: []int{day}}
+	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyNag: day, ReadyTake: day, BaseRegate: []int{day}}
 	return out
 }
 
@@ -115,8 +125,8 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	} else if scen == "deal" {
 		qPath = "a/x"
 	}
-	w.producer("p", "s1", "pro", "a/x")
-	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath}}
+	w.producer("p", "s1", "pro", "a/x", "a/*") // the model's glob a/* both list: never an overlap
+	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath, "a/*"}}
 	if landLike {
 		q.After = []string{"p"}
 	}
@@ -225,9 +235,6 @@ func (w *traceWalk) step() {
 		moves = append(moves, w.tickOnce, w.tickOnce)
 	}
 	blind := w.rng.Intn(4) == 0 // one pick in four is blind, so refusals are met too
-	if w.phase == "idle" && (blind || len(w.consumersIn("ready")) > 0) {
-		moves = append(moves, w.takeOne)
-	}
 	if blind || len(w.consumersIn("working")) > 0 {
 		moves = append(moves, w.reportOne)
 	}
@@ -236,6 +243,9 @@ func (w *traceWalk) step() {
 	}
 	if blind || w.scen != "burst" {
 		moves = append(moves, w.envOne)
+	}
+	if len(w.openLand()) > 0 { // the coordinator answers only what is open
+		moves = append(moves, w.answerOne)
 	}
 	moves[w.rng.Intn(len(moves))]()
 }
@@ -271,27 +281,11 @@ func (w *traceWalk) moved(action string, args []string) {
 	w.record(action, args)
 }
 
-func (w *traceWalk) takeOne() {
-	ids := w.consumersIn("ready")
-	w.pick()
-	if len(ids) == 0 {
-		return
-	}
-	id := ids[w.rng.Intn(len(ids))]
-	c := w.snap().Cards[id]
-	if !w.roomToTake(c.Holder) {
-		return
-	}
-	pl, r := w.consumer(id, card.Take{Row: c.Holder})
-	if r != nil || !w.apply("take", pl.Expect, pl.Writes...).Accepted {
-		return
-	}
-	w.ok()
-	w.moved("Take", []string{"card |-> " + SlotTLA(w.view(), id)})
-}
+// The walk has no take: the deal is the take (defect 52), and a row's
+// acknowledgement moves no card, so the model has no action for it.
 
 // results are the scenario's result sets: work ok (and fail for p in deal),
-// read ok (and fix for p in deal).
+// read ok (and fix and fault for p in deal).
 func (w *traceWalk) results(c store.Card) []string {
 	bounce := w.scen == "deal" && c.Of == "p"
 	if c.Kind == "work" {
@@ -301,7 +295,7 @@ func (w *traceWalk) results(c store.Card) []string {
 		return []string{"ok"}
 	}
 	if bounce {
-		return []string{"ok", "fix"}
+		return []string{"ok", "fix", "fault"}
 	}
 	return []string{"ok"}
 }
@@ -412,7 +406,7 @@ func (w *traceWalk) edgeOne() {
 	if req.Kind == "land" {
 		it.Outcome, it.Landed = "landed", req.Heads
 		if (w.scen == "land" || w.scen == "burst") && w.rng.Intn(2) == 0 {
-			it.Outcome, it.Landed, it.Blamed = "red", nil, req.Heads[0]
+			it.Outcome, it.Landed = "red", nil
 		}
 	}
 	n := 1 + w.rng.Intn(2)
@@ -422,6 +416,56 @@ func (w *traceWalk) edgeOne() {
 	}
 	w.ok()
 	w.moved("EdgeResult", []string{"id |-> " + w.reqID[req.ID], fmt.Sprintf("out |-> %q", it.Outcome), fmt.Sprintf("n |-> %d", n)})
+}
+
+// openLand is the producers with an open land judgement, by id.
+func (w *traceWalk) openLand() []string {
+	js := w.truthView().Judgements
+	var out []string
+	for _, id := range sortedKeys(js) {
+		if j := js[id]; j.Kind == "land" && j.State == "open" {
+			out = append(out, j.About)
+		}
+	}
+	return out
+}
+
+// answerOne is the coordinator's answer to a land judgement (the model's
+// Answer): land, fix or retry, one verb op.
+func (w *traceWalk) answerOne() {
+	ps := w.openLand()
+	w.pick()
+	if len(ps) == 0 {
+		return
+	}
+	p := ps[w.rng.Intn(len(ps))]
+	choice := []string{"land", "fix", "retry"}[w.rng.Intn(3)]
+	r := Request{Actor: "rowan", Judgement: "land." + p + "." + fmt.Sprint(w.episodes("land", p)), Answer: choice}
+	head := w.snap().Cards[p].Head
+	switch choice {
+	case "land":
+		r.Card, r.Event = p, card.Landed{Head: head, Merge: Sha(90), Reason: "by hand: the walk"}
+	case "fix":
+		r.Card, r.Event = p, card.Red{Head: head, Reason: "the walk's finding"}
+	}
+	r.Coordinators = []string{"rowan"}
+	op, ref := Verb(Build(w.snap(), w.now), Inputs{Now: w.now}, r)
+	if ref != nil || !w.apply("answer", op.Expect, op.Writes...).Accepted {
+		return
+	}
+	w.ok()
+	w.moved("Answer", []string{fmt.Sprintf("p |-> %q", p), fmt.Sprintf("choice |-> %q", choice)})
+}
+
+// episodes is how many land judgements p has had (the open one is the last).
+func (w *traceWalk) episodes(kind, about string) int {
+	n := 0
+	for _, j := range w.truthView().Judgements {
+		if j.Kind == kind && j.About == about {
+			n++
+		}
+	}
+	return n
 }
 
 func (w *traceWalk) view() *View { return w.truthView() }
@@ -464,7 +508,7 @@ func (w *traceWalk) cfg() string {
 
 // TestTraceWalk: every scenario, 100 seeds, 2,000 steps; at least 40% of the
 // picked moves legal; no op refused without a race.
-func TestTraceWalk(t *testing.T) {
+func TestTraceWalk(t *testing.T) { // unitlint: serial, modelDefaults writes the package's Engine, which every tick reads
 	modelDefaults(t)
 	steps, seeds := 2000, int64(100)
 	if testing.Short() {
@@ -498,7 +542,7 @@ func TestTraceWalk(t *testing.T) {
 // TestTraceFixtures writes the fixed seed set's traces under NOVA_TRACE_DIR
 // (steps-walk-<scenario>-<seed>), for tla/make-traces.sh and check-trace.sh;
 // without it the walk runs and writes nothing.
-func TestTraceFixtures(t *testing.T) {
+func TestTraceFixtures(t *testing.T) { // unitlint: serial, modelDefaults writes the package's Engine, which every tick reads
 	modelDefaults(t)
 	dir := os.Getenv("NOVA_TRACE_DIR") // make-traces.sh's, absolute
 	if dir != "" && !filepath.IsAbs(dir) {

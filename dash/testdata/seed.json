@@ -29,11 +29,11 @@
     "eta_window_minutes": 60,
     "landed": 0,
     "left": 1,
-    "machine": "machine: RUNNING",
+    "machine": "machine: STOPPED never started",
     "ok": true,
     "server_version": "dev",
-    "stop_reason": "",
-    "stopped": false,
+    "stop_reason": "never started",
+    "stopped": true,
     "stream_costs": {
       "alpha": {}
     },

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -99,8 +100,11 @@ func readCost(in *input) (int64, bool, error) {
 	if machine {
 		n, err := strconv.ParseInt(in.str("cost-microusd"), 10, 64)
 		p := in.str("priced")
-		if err != nil || n < 0 || (p != "true" && p != "false") {
-			return 0, false, misuse(in.verb, "--cost-microusd <n> and --priced true|false go together")
+		if err != nil || n < 0 {
+			return 0, false, misuse(in.verb, "--cost-microusd <n> and --priced true|false go together (--cost-microusd: "+badNumber(in.str("cost-microusd"), err)+")")
+		}
+		if p != "true" && p != "false" {
+			return 0, false, misuse(in.verb, fmt.Sprintf("--cost-microusd <n> and --priced true|false go together (--priced %q)", Redact(p)))
 		}
 		return n, p == "true", nil
 	}
@@ -109,7 +113,7 @@ func readCost(in *input) (int64, bool, error) {
 	}
 	n, err := microUSD(in.str("cost"))
 	if err != nil {
-		return 0, false, misuse(in.verb, "--cost is dollars, at most six decimals: 0.04")
+		return 0, false, RefusalOr(err, misuse(in.verb, "--cost is dollars, at most six decimals: 0.04 ("+err.Error()+")"))
 	}
 	return n, true, nil
 }
@@ -117,14 +121,26 @@ func readCost(in *input) (int64, bool, error) {
 // microUSD is a decimal dollar amount in micro-dollars, exactly.
 func microUSD(s string) (int64, error) {
 	whole, frac, _ := strings.Cut(s, ".")
-	if whole == "" || len(frac) > 6 || strings.Trim(whole+frac, "0123456789") != "" {
-		return 0, fmt.Errorf("bad amount")
+	if whole == "" {
+		return 0, fmt.Errorf("bad amount: %s", edge.ParseRefused("no whole dollars", 0, []byte(s)))
+	}
+	if len(frac) > 6 {
+		return 0, fmt.Errorf("bad amount: %s", edge.ParseRefused("more than six decimals", len(whole)+7, []byte(s)))
+	}
+	if i := strings.IndexFunc(whole+"."+frac, func(r rune) bool { return r != '.' && (r < '0' || r > '9') }); i >= 0 {
+		return 0, fmt.Errorf("bad amount: %s", edge.ParseRefused("not a digit", i, []byte(s)))
 	}
 	w, err := strconv.ParseInt(whole, 10, 64)
-	if err != nil || w > math.MaxInt64/1_000_000-1 {
-		return 0, fmt.Errorf("bad amount")
+	if err != nil {
+		return 0, fmt.Errorf("bad amount: %s", edge.ParseFailure(err, []byte(s)))
 	}
-	f, _ := strconv.ParseInt((frac + "000000")[:6], 10, 64)
+	if w > math.MaxInt64/1_000_000-1 {
+		return 0, fmt.Errorf("bad amount: %s", edge.ParseRefused("too many dollars", 0, []byte(s)))
+	}
+	f, err := strconv.ParseInt((frac + "000000")[:6], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("bad amount: %s", edge.ParseFailure(err, []byte(s)))
+	}
 	return w*1_000_000 + f, nil
 }
 

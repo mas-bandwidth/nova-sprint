@@ -82,6 +82,8 @@ func TestRefusals(t *testing.T) {
 		{"limits", steer("fleet_width_cap", "0"), "limits(): fleet_width_cap 0 is outside 1..256"},
 		{"landing", `{"backed_up": 4, "flowing": 4}`, "landing(s1): flowing 4 is outside 0..3 (below backed_up)"},
 		{"landing", `{"backed_up": 1001, "flowing": 1}`, "landing(s1): backed_up 1001 is outside 1..1000"},
+		{"landing", `{"backed_up": 2, "flowing": 1, "ci_wait": 0}`, "landing(s1): ci_wait 0 is outside 1..86400"},
+		{"landing", `{"backed_up": 2, "flowing": 1, "ci_wait": "soon"}`, "landing(s1): ci_wait is a string, not an int"},
 		{"stitch", "1", "stitch(s1): the answer is an int, not True or False"},
 		{"prices", "[]", "prices(): the answer is a list, not a dict"},
 		{"prices", `{"m": {"in": -1, "out": 1}}`, "prices(): m in -1 is outside 0..9223372036854775807"},

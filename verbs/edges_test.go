@@ -1,37 +1,44 @@
 package verbs
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// An unknown outcome never leaks: a take whose commit was lost is applied
-// again; one that landed is its stored receipt.
+// An unknown outcome never leaks: a take (the acknowledgement) whose commit
+// was lost is applied again; one that landed is its stored receipt.
 func TestUnknownOutcomeReplaysOrApplies(t *testing.T) {
+	t.Parallel()
 	for _, landed := range []bool{false, true} {
 		w := newWorld(t)
 		w.f.Drop(consumerOpID("take", 1, "p1.w1", 1), landed)
 		want(t, w.do("alice", "take", "p1.w1@1"), 0, "TAKEN p1.w1")
-		if c := w.snap(t).Cards["p1.w1"]; c.State != "working" || c.Gen != 2 {
+		s := w.snap(t)
+		if c := s.Cards["p1.w1"]; c.State != "working" || c.Gen != 1 {
 			t.Fatalf("landed=%v: card %+v", landed, c)
+		}
+		if _, ok := s.Cursors[steps.AckCursor(1, "p1.w1")]; !ok {
+			t.Fatalf("landed=%v: no acknowledgement in %v", landed, s.Cursors)
 		}
 	}
 }
 
 func TestNextOrdersAndCounts(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	busyAlice(&s)
 	w := worldFrom(t, s)
-	want(t, w.do("alice", "next"), 0, "work p3.w1 is in hand with alice (1 more: nova-sprint next --as alice --json lists them)")
+	want(t, w.do("alice", "next"), 0, "work p1.w1 is in hand with alice (1 more: nova-sprint next --as alice --json lists them)")
 }
 
 func TestQueueEmpty(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	for _, id := range []string{"p1", "p2"} {
 		setCard(id, func(c *store.Card) { c.State = "fail" })(&s)
@@ -42,38 +49,21 @@ func TestQueueEmpty(t *testing.T) {
 	want(t, w.do("carol", "next"), 0, "every card is final")
 }
 
-// Finish needs only the head on origin (INTENT rule 16, Glenn 2026-11-07):
-// a forge stream with no PR, a group branch elsewhere and a failing
-// merge-base all finish; the landing opens the PR.
-func TestFinishNeedsOnlyTheHeadOnOrigin(t *testing.T) {
+func TestFinishEdgeFailures(t *testing.T) {
+	t.Parallel()
 	withForge := func(s *store.Snapshot) { st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st }
-	finish := []string{"finish", "p1.w1@2", "--head", head}
+	finish := []string{"finish", "p1.w1@1", "--head", head}
 	runCases(t, []tcase{
-		{name: "no PR on a forge stream", as: "alice", snap: withForge, args: finish, exit: 0, prep: takeW1, want: []string{"FINISHED p1.w1"}},
-		{name: "group elsewhere, merge-base failing", as: "alice", args: finish, exit: 0, prep: func(t *testing.T, w *world) {
-			takeW1(t, w)
-			w.e.Origin = &failingContains{w.origin}
-		}, want: []string{"FINISHED p1.w1"}},
+		// defect 34: no PR is asked of a card; the landing opens the group's
+		{name: "a forge stream, no PR", as: "alice", snap: withForge, args: finish, exit: 0, prep: takeW1,
+			want: []string{"FINISHED p1.w1"}},
 		{name: "no git edge", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.e.Origin = nil }, want: []string{"the git edge is not configured"}},
 	})
 }
 
-// failingContains is origin with the group branch at tip and merge-base failing.
-type failingContains struct{ *fakeOrigin }
-
-func (o *failingContains) Tip(ctx context.Context, repo, branch string) (string, bool, error) {
-	if branch == "sprint/s/group" {
-		return tip, true, nil
-	}
-	return o.fakeOrigin.Tip(ctx, repo, branch)
-}
-
-func (o *failingContains) Contains(context.Context, string, string, string) (bool, error) {
-	return false, errBroken
-}
-
 // Each brief rule is refused, by line, without quoting the brief.
 func TestBriefLint(t *testing.T) {
+	t.Parallel()
 	good := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: it works\n\nDo it.\n"
 	cases := map[string]string{
 		"must be tier: <flash|pro|heavy|frontier>":   "PATHS: a.go\n",
@@ -99,6 +89,7 @@ func TestBriefLint(t *testing.T) {
 }
 
 func TestPolicyCheckRefusesAFileThatFails(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	withPolicy(t, w)
 	file := filepath.Join(t.TempDir(), "bad.star")

@@ -11,6 +11,7 @@ import (
 // ---- a fault spends neither attempt nor bounces nor bounces ----
 
 func TestBreakHeldFault(t *testing.T) {
+	t.Parallel()
 	t.Run("three faults in a row, then a fail, then a fault", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
@@ -88,22 +89,26 @@ func TestBreakHeldFault(t *testing.T) {
 // ---- red only on producers, cleared by Finished and Start ----
 
 func TestBreakHeldRed(t *testing.T) {
+	t.Parallel()
 	t.Run("red, waive, red again: the second waive needs a read of the review before it", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.review("p1", "r1", hA)
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
 		b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
-		b.no(b.P("p1", ReadYes{}), "review 2 that said ok")
+		b.is("p1", Ready) // a red goes to fix (intent rule 30), with the finding
+		assert.Equal(t, "ci", b.c("p1").Finding)
+		b.no(b.P("p1", ReadYes{}), "ReadYes needs review")
 		b.ok(b.P("p1", WaiveRed{Reason: "flaky"}))
 		b.is("p1", Merging)
 		b.ok(b.P("p1", Red{Head: hA, Reason: "ci again"}))
 		assert.Equal(t, 3, b.c("p1").Review)
-		b.no(b.P("p1", WaiveRed{Reason: "flaky"}), "review 2 at head")
+		b.no(b.P("p1", WaiveRed{Reason: "flaky"}), "review 2 at head") // red stays true, and no read of review 2
+		c := b.run("p1", "r1", "ok", hB)                               // the fix: Start clears the red
+		b.ok(b.P("p1", Finished{Consumer: c}))
 		b.readOf("p1", "r3", "ok")
-		b.no(b.P("p1", WaiveRed{Reason: "flaky"}), "review 2 at head") // red stays true, and still no read of review 2
 		b.ok(b.P("p1", ReadYes{}))
-		b.ok(b.P("p1", Landed{Head: hA}))
+		b.ok(b.P("p1", Landed{Head: hB}))
 	})
 	t.Run("red then block, unblock, restart: Start clears it", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
@@ -114,25 +119,27 @@ func TestBreakHeldRed(t *testing.T) {
 		assert.True(t, b.c("p1").Red)
 		b.ok(b.P("p1", Block{Reason: "stuck"}))
 		assert.True(t, b.c("p1").Red)
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting") // blocked
 		b.ok(b.P("p1", Unblock{Reason: "go"}))
 		b.ok(b.P("p1", Resolve{}))
 		c := b.run("p1", "r1", "ok", hB)
 		assert.False(t, b.c("p1").Red) // Start cleared it
 		b.ok(b.P("p1", Finished{Consumer: c}))
-		b.no(b.P("p1", WaiveRed{Reason: "x"}), "no red on review")
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting") // review
 	})
-	t.Run("red then a fix read: ReadFix keeps it, Start clears it", func(t *testing.T) {
+	t.Run("red to fix: the fix attempt carries the CI finding, Start clears the red", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.review("p1", "r1", hA)
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
-		b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
-		b.readOf("p1", "r3", "fix")
-		b.ok(b.P("p1", ReadFix{Finding: "the red is the code"}))
+		b.ok(b.P("p1", Red{Head: hA, Reason: "CI red: unit (linux) https://ci/1"}))
 		assert.True(t, b.c("p1").Red)
-		b.no(b.P("p1", WaiveRed{Reason: "x"}), "review") // ready: not in review
-		b.start("p1", "r1")
+		assert.Equal(t, 0, b.c("p1").Bounces) // a red spends no bounce
+		w := b.start("p1", "r1")
 		assert.False(t, b.c("p1").Red)
+		assert.Equal(t, "CI red: unit (linux) https://ci/1", b.c(w).Finding)
+		assert.Equal(t, hA, b.c(w).PriorHead)
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting")
 	})
 	t.Run("red and waive in one op write the state twice", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
@@ -163,6 +170,7 @@ func TestBreakHeldRed(t *testing.T) {
 // ---- an Edit never lands while a consumer is live ----
 
 func TestBreakHeldEdit(t *testing.T) {
+	t.Parallel()
 	t.Run("every state with a live consumer", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"))
 		b.ok(b.P("p1", Resolve{}))
@@ -219,6 +227,7 @@ func TestBreakHeldEdit(t *testing.T) {
 // ---- needs and after stay acyclic ----
 
 func TestBreakHeldCycles(t *testing.T) {
+	t.Parallel()
 	t.Run("the loop is named", func(t *testing.T) {
 		b := newBk(t, producer("n1"), producer("p1", "n1"), producer("p2", "p1"))
 		b.ok(b.P("n1", Cancel{Reason: "dropped"}))
@@ -264,6 +273,7 @@ func TestBreakHeldCycles(t *testing.T) {
 // ---- a Withdraw of a working producer's live consumer releases it in the same plan ----
 
 func TestBreakHeldWithdraw(t *testing.T) {
+	t.Parallel()
 	t.Run("ready and working consumers", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"))
 		b.ok(b.P("p1", Resolve{}))
@@ -327,6 +337,7 @@ func TestBreakHeldWithdraw(t *testing.T) {
 // ---- a sentinel reaches exactly when every need landed ----
 
 func TestBreakHeldSentinel(t *testing.T) {
+	t.Parallel()
 	t.Run("one need at a time", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"), producer("p3"))
 		b.ok(b.sentinel("g", []string{"p1", "p2", "p3"}))
@@ -388,6 +399,7 @@ func TestBreakHeldSentinel(t *testing.T) {
 // ---- a producer never lands twice; a card in fail or landed never moves ----
 
 func TestBreakHeldLandsOnce(t *testing.T) {
+	t.Parallel()
 	t.Run("landed, landed, red", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.land("p1", hA)
@@ -444,6 +456,7 @@ func TestBreakHeldLandsOnce(t *testing.T) {
 // ---- review counts every review, ReadYes never skips one ----
 
 func TestBreakHeldReviewCount(t *testing.T) {
+	t.Parallel()
 	t.Run("a new attempt's review needs its own read", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.review("p1", "r1", hA)
@@ -454,7 +467,7 @@ func TestBreakHeldReviewCount(t *testing.T) {
 		b.ok(b.P("p1", Finished{Consumer: c}))
 		assert.Equal(t, 2, b.c("p1").Review)
 		b.no(b.P("p1", ReadYes{}), "no read of review 2 that said ok")
-		b.no(b.P("p1", WaiveRed{Reason: "x"}), "no red on review 2")
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting")
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
 	})
@@ -477,9 +490,18 @@ func TestBreakHeldReviewCount(t *testing.T) {
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
 		b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
-		b.no(b.P("p1", ReadYes{}), "review 2 that said ok")
+		c := b.run("p1", "r1", "ok", hB)
+		b.ok(b.P("p1", Finished{Consumer: c}))
+		assert.Equal(t, 3, b.c("p1").Review) // the red and the fix's Finished each raised it
+		b.no(b.P("p1", ReadYes{}), "review 3 that said ok")
 		b.ok(b.P("p1", AskRead{Row: "r2"})) // r2 again: the old read is done, not live
-		assert.Equal(t, 2, b.c("p1.r2.1").Review)
+		at := map[int]int{}
+		for _, c := range b.snap().Cards {
+			if c.Kind == "read" && c.Of == "p1" && c.Holder == "r2" {
+				at[c.Review]++
+			}
+		}
+		assert.Equal(t, map[int]int{1: 1, 3: 1}, at)
 	})
 	t.Run("the review column cannot overflow", func(t *testing.T) {
 		p := pr(Working)
@@ -495,6 +517,7 @@ func TestBreakHeldReviewCount(t *testing.T) {
 // ---- a blocker preempts only a working consumer on its own row ----
 
 func TestBreakHeldPreempt(t *testing.T) {
+	t.Parallel()
 	setup := func(t *testing.T) *bk {
 		b := newBk(t, producer("p2"), producer("p3"), producer("pb"), producer("pr"))
 		b.w.raw("prio", store.SetCardPriority{Card: "pb", Priority: "blocker"})
@@ -512,7 +535,7 @@ func TestBreakHeldPreempt(t *testing.T) {
 		b.is("p2", Ready)
 		assert.Equal(t, []any{hA, 0}, []any{b.c("p2").Head, b.c("p2").Bounces})
 		b.take("pb.w1")
-		again := b.start("p2", "r2")
+		again := b.start("p2", "r1")              // r2 is pb's, at width
 		assert.Equal(t, hA, b.c(again).PriorHead) // continues from the preempted push
 	})
 	t.Run("another row", func(t *testing.T) {
@@ -524,9 +547,10 @@ func TestBreakHeldPreempt(t *testing.T) {
 	t.Run("a ready consumer is never preempted", func(t *testing.T) {
 		b := setup(t)
 		b.ok(b.P("pr", Resolve{}))
-		cr := b.start("pr", "r2") // ready beside the working one
+		cr := b.start("pr", "r1")
+		b.w.raw("legacy", store.SetCardState{Card: cr, State: Ready}) // dealt before the deal became the take
 		b.no(b.C(cr, Withdraw{Reason: "preempted by blocker pb", Preempt: true}), "a preempt withdraws a working consumer")
-		b.noMerge("a preempt withdraws a working consumer", b.C(cr, Withdraw{Reason: "preempted by blocker pb", Preempt: true}), start(b, "r2"))
+		b.noMerge("a preempt withdraws a working consumer", b.C(cr, Withdraw{Reason: "preempted by blocker pb", Preempt: true}), start(b, "r1"))
 	})
 	t.Run("a read on the row is preempted and its producer is asked again", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("pb"))
@@ -538,23 +562,24 @@ func TestBreakHeldPreempt(t *testing.T) {
 		b.okMerge(b.C("p1.r1.1", Withdraw{Reason: "preempted by blocker pb", Preempt: true}), start(b, "r2"))
 		b.is("p1", Review)
 		assert.Equal(t, 0, b.c("p1").Bounces)
-		b.ok(b.P("p1", AskRead{Row: "r2"}))
+		b.ok(b.P("p1", AskRead{Row: "r3"})) // r2 is pb's, at width
 	})
 }
 
 // ---- a refused op leaves nothing half-applied; Merge equals one by one ----
 
 func TestBreakHeldRefusedLeavesNothing(t *testing.T) {
+	t.Parallel()
 	t.Run("the first plan of a merge would write before the second fails", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"), producer("p3"))
 		b.ok(b.P("p1", Resolve{}))
 		b.ok(b.P("p2", Resolve{}))
-		c1, c2 := b.start("p1", "r2"), b.start("p2", "r2")
-		b.take(c1)
-		// Rescore lands first, then Take overflows the width: the store refuses, the score must not move
-		b.noMerge("its roster width is 1", b.P("p3", Rescore{Score: 9}), b.C(c2, Take{}))
+		b.take(b.start("p1", "r2"))
+		start2 := b.P("p2", Start{Row: "r2", Branch: "b-p2", Base: base})
+		// Rescore lands first, then the second deal overflows the width: the store refuses, the score must not move
+		b.noMerge("its roster width is 1", b.P("p3", Rescore{Score: 9}), start2)
 		assert.Equal(t, 0, b.c("p3").Score)
-		b.noMerge("its roster width is 1", cold4R("r3", Hold{Reason: "x"}), b.P("p3", Rescore{Score: 9}), b.C(c2, Take{}))
+		b.noMerge("its roster width is 1", cold4R("r3", Hold{Reason: "x"}), b.P("p3", Rescore{Score: 9}), start2)
 		assert.False(t, b.snap().Rows["r3"].Held)
 	})
 	t.Run("a stale hold", func(t *testing.T) {
@@ -572,6 +597,7 @@ func TestBreakHeldRefusedLeavesNothing(t *testing.T) {
 }
 
 func TestBreakHeldMergeEqualsOneByOne(t *testing.T) {
+	t.Parallel()
 	dropSetup := func(t *testing.T) *bk {
 		b := newBk(t, producer("n1"), producer("m1"), producer("p2", "n1"), producer("p3", "n1"), producer("p4", "n1"), producer("p5", "n1"), producer("s0"))
 		return b
@@ -589,7 +615,7 @@ func TestBreakHeldMergeEqualsOneByOne(t *testing.T) {
 		})
 		t.Logf("dependant before the drop: %q", got) // sequentially the NeedFailed is refused: the need is not yet fail
 	})
-	t.Run("two takes on two rows, and a width change", func(t *testing.T) {
+	t.Run("two reports on two rows, and a width change", func(t *testing.T) {
 		setup := func(t *testing.T) *bk {
 			b := newBk(t, producer("p1"), producer("p2"))
 			b.ok(b.P("p1", Resolve{}))
@@ -599,7 +625,7 @@ func TestBreakHeldMergeEqualsOneByOne(t *testing.T) {
 			return b
 		}
 		assert.Equal(t, "", sameAsSequence(t, setup, func(b *bk) []cold4Step {
-			return []cold4Step{b.C("p1.w1", Take{}), b.C("p2.w1", Take{}), cold4R("r1", Hold{Reason: "h"})}
+			return []cold4Step{b.C("p1.w1", Report{Result: "fault", Reason: "x"}), b.C("p2.w1", Report{Result: "fault", Reason: "x"}), cold4R("r1", Hold{Reason: "h"})}
 		}))
 	})
 	t.Run("an edit then a start, a rescore then a priority", func(t *testing.T) {

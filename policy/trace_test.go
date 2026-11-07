@@ -33,6 +33,7 @@ const traceSeeds, traceSteps, traceMax = 10, 300, 4
 
 // TestTraceWalk writes the policy walk's traces (policy-walk-<seed>).
 func TestTraceWalk(t *testing.T) {
+	t.Parallel()
 	out := os.Getenv(traceEnv)
 	if out == "" {
 		t.Skip("trace walks run under tla/make-traces.sh (" + traceEnv + " unset)")

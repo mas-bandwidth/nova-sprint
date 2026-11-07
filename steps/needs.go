@@ -12,9 +12,13 @@ import (
 // failed need takes the closure of its dependants in one group (LESSONS
 // 2.4). Then, in id order: a waiting sentinel whose needs landed is Reached
 // with a landed-sentinel judgement; a waiting producer whose needs landed,
-// whose stream is not held and whose paths overlap no producer of its
-// stream that is ready or started (those resolved this tick counted) is
-// Resolved. Room on a row is never a condition (LESSONS 3.2).
+// whose stream is not held and who names no file a producer of its stream
+// that is ready or started names (those resolved this tick counted) is
+// Resolved; one held behind such a producer opens an overlap judgement
+// saying "held behind <card> on <path>" (defect 50). Room on a row is never
+// a condition (LESSONS 3.2). It reads the view's state every tick, never
+// the land step's events, so a need landed by a store op or a restore
+// resolves too (section 64b; the model's ResolveFromState).
 func (t *tick) needs() {
 	t.drops()
 	for _, p := range t.v.Producers("waiting") {
@@ -28,12 +32,18 @@ func (t *tick) needs() {
 			}
 			continue
 		}
-		if t.v.Streams[c.Stream].Held || len(t.overlap(c)) > 0 {
+		if t.v.Streams[c.Stream].Held {
+			continue
+		}
+		if why := t.heldBehind(c); why != "" {
+			t.judge("overlap", p, why)
 			continue
 		}
 		t.resolved[p] = struct{}{} // the overlap tally counts it whether or not the budget admits it
 		for _, path := range c.Paths {
-			add(t.resolvedP, c.Stream+"\x00"+path, p)
+			if Concrete(path) {
+				add(t.resolvedP, c.Stream+"\x00"+path, p)
+			}
 		}
 		t.group("resolve", p, t.producerMove(p, card.Resolve{}))
 	}
@@ -48,24 +58,44 @@ func (t *tick) needsLanded(c store.Card) bool {
 	return true
 }
 
-// overlap is the producers of c's stream, ready, started or resolved this
-// tick, sharing a path with c (LANDING step 2).
-func (t *tick) overlap(c store.Card) []string {
-	out := t.v.Overlaps(c)
+// heldBehind is why c is held behind another producer of its stream, ready,
+// started or resolved this tick, that names a file c names (LANDING step
+// 2): "held behind <card> on <path>" for the least such card by id and the
+// first of c's files it names; "" when none is.
+func (t *tick) heldBehind(c store.Card) string {
+	by, on := leastHolder(c, func(path string) []set {
+		return []set{t.v.paths[c.Stream][path], t.resolvedP[c.Stream+"\x00"+path]}
+	})
+	if by == "" {
+		return ""
+	}
+	return "held behind " + by + " on " + on
+}
+
+// leastHolder is the least producer by id, other than c, in the sets
+// holding one of c's files (Concrete), and the first of c's files it holds;
+// "" when none is. The needs step and Waits share it, so the board, check
+// and the overlap judgement name the same holder.
+func leastHolder(c store.Card, holding func(path string) []set) (by, on string) {
 	for _, path := range c.Paths {
-		for q := range t.resolvedP[c.Stream+"\x00"+path] {
-			if !slices.Contains(out, q) {
-				out = append(out, q)
+		if !Concrete(path) {
+			continue
+		}
+		for _, holders := range holding(path) {
+			for q := range holders {
+				if q != c.ID && (by == "" || q < by) {
+					by, on = q, path
+				}
 			}
 		}
 	}
-	slices.Sort(out)
-	return out
+	return by, on
 }
 
+// shares says whether two path lists name a common file (Concrete).
 func shares(a, b []string) bool {
 	for _, p := range a {
-		if slices.Contains(b, p) {
+		if Concrete(p) && slices.Contains(b, p) {
 			return true
 		}
 	}

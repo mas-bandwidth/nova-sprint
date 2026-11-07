@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 func TestStreamAddAndSet(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--forge", "github"), 0, "STREAM t repo=o/r base=main mode=auto forge=github applied at seq", "next: nova-sprint add --stream t")
 	if s := w.snap(t).Streams["t"]; s.Forge != "github" || s.Mode != "auto" || s.Pos != 1 {
@@ -24,6 +26,7 @@ func TestStreamAddAndSet(t *testing.T) {
 }
 
 func TestStreamRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no repo", as: "carol", args: []string{"stream", "add", "t"}, exit: 2, want: []string{"--repo <org/repo>"}},
 		{name: "a bad name", as: "carol", args: []string{"stream", "add", "a/b", "--repo", "o/r"}, exit: 2, want: []string{"a stream's name"}},
@@ -53,7 +56,25 @@ func brief(t *testing.T, id, needs string) string {
 	return path
 }
 
+// TestAddIntoAnEmptySprint is the first add of a sprint with no cards: the
+// plan's replay reads the cards as they were before the add, so the new
+// card is not refused as existing.
+func TestAddIntoAnEmptySprint(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	s.Cards = map[string]store.Card{}
+	w := worldFrom(t, s)
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a1", "")), 0, "ADD a1 kind=producer", "ADDED 1 cards")
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "b1", "a1"), "--brief-file", brief(t, "c1", "")), 0, "ADDED 2 cards")
+	for _, id := range []string{"a1", "b1", "c1"} {
+		if c := w.snap(t).Cards[id]; c.Kind != "producer" {
+			t.Fatalf("card %s: %+v", id, c)
+		}
+	}
+}
+
 func TestAdd(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	a, b := brief(t, "a1", ""), brief(t, "b1", "a1")
 	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", b, "--brief-file", a, "--dry-run"), 0, "ADD a1", "ADD b1", "(dry run)")
@@ -68,6 +89,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestAddRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no stream", as: "carol", args: []string{"add", "--sentinel", "x", "--needs", "p1"}, exit: 2, want: []string{"add names its stream"}},
 		{name: "neither form", as: "carol", args: []string{"add", "--stream", "s"}, exit: 2, want: []string{"one of them"}},
@@ -95,6 +117,7 @@ func TestAddRefusals(t *testing.T) {
 }
 
 func TestJudge(t *testing.T) {
+	t.Parallel()
 	blocked := withJudgement("blocked.p3.1", "", "blocked", "p3", "unblock | drop")
 	s := sprint()
 	blocked(&s)
@@ -109,6 +132,7 @@ func TestJudge(t *testing.T) {
 }
 
 func TestJudgeAGroup(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	withJudgement("stall.p1.1", "g", "stall", "p1", "retry")(&s)
 	withJudgement("stall.p2.1", "g", "stall", "p2", "retry")(&s)
@@ -119,6 +143,7 @@ func TestJudgeAGroup(t *testing.T) {
 }
 
 func TestJudgeRefusals(t *testing.T) {
+	t.Parallel()
 	blocked := withJudgement("blocked.p3.1", "", "blocked", "p3", "unblock | drop")
 	runCases(t, []tcase{
 		{name: "no judgement", as: "carol", args: []string{"judge", "zz"}, exit: 1, want: []string{"no open judgement or group zz", "nova-sprint judge"}},
@@ -129,6 +154,7 @@ func TestJudgeRefusals(t *testing.T) {
 }
 
 func TestHold(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "hold", "alice", "s", "--reason", "r", "--dry-run"), 0, "row alice held=true (dry run)", "next: nova-sprint hold alice s --reason")
 	want(t, w.do("carol", "hold", "alice", "s", "--reason", "r"), 0, "row alice held=true", "stream s held=true", "next: "+waitNext)
@@ -139,15 +165,17 @@ func TestHold(t *testing.T) {
 }
 
 func TestHoldRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no reason", as: "carol", args: []string{"hold", "alice"}, exit: 1, want: []string{"a hold needs its reason"}},
 		{name: "no name", as: "carol", args: []string{"hold", "--reason", "r"}, exit: 2, want: []string{"hold takes"}},
-		{name: "no such row", as: "carol", args: []string{"hold", "zz", "--reason", "r"}, exit: 1, want: []string{"no row or stream zz"}},
+		{name: "no such row", as: "carol", args: []string{"hold", "zz", "--reason", "r"}, exit: 1, want: []string{"no row, stream or card zz"}},
 		{name: "an unhold of nothing held", as: "carol", args: []string{"unhold", "alice", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show alice"}},
 	})
 }
 
 func TestPriority(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "priority", "p1", "high", "--reason", "glenn asked"), 0, "p1 priority=high")
 	if c := w.snap(t).Cards["p1"]; c.Priority != "high" {
@@ -156,6 +184,7 @@ func TestPriority(t *testing.T) {
 }
 
 func TestPriorityRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "a bad level", as: "carol", args: []string{"priority", "p1", "urgent", "--reason", "r"}, exit: 2, want: []string{"a level is one of"}},
 		{name: "no reason", as: "carol", args: []string{"priority", "p1", "high"}, exit: 1, want: []string{"a priority needs its reason"}},
@@ -171,6 +200,7 @@ func dependant(s *store.Snapshot) {
 }
 
 func TestDropAndReplace(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	dependant(&s)
 	w := worldFrom(t, s)
@@ -182,7 +212,28 @@ func TestDropAndReplace(t *testing.T) {
 	}
 }
 
+// TestDropReleasesItsLiveConsumers: a drop of a producer a row holds
+// releases the work consumer in the same op, recorded released (no result, no
+// blame) with the drop's reason, and fails the producer.
+func TestDropReleasesItsLiveConsumers(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	before := w.snap(t).Cards["p1.w1"]
+	if before.State != "ready" && before.State != "working" {
+		t.Fatalf("fixture: %+v", before)
+	}
+	want(t, w.do("carol", "drop", "p1", "--reason", "not needed"), 0, "p1.w1->fail", "p1->fail")
+	s := w.snap(t)
+	if c := s.Cards["p1.w1"]; c.State != "fail" || c.Result != "" || c.Reason != ReleasedPrefix+"not needed" {
+		t.Fatalf("consumer %+v", c)
+	}
+	if c := s.Cards["p1"]; c.State != "fail" || c.Reason != "not needed" {
+		t.Fatalf("producer %+v", c)
+	}
+}
+
 func TestReplaceAndRelink(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	dependant(&s)
 	w := worldFrom(t, s)
@@ -198,13 +249,13 @@ func TestReplaceAndRelink(t *testing.T) {
 }
 
 func TestDropRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no reason", as: "carol", args: []string{"drop", "p2"}, exit: 1, want: []string{"a drop needs its reason"}},
 		{name: "a consumer", as: "carol", args: []string{"drop", "p1.w1", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is a consumer", "nova-sprint drop p1"}},
 		{name: "a bad relink", as: "carol", args: []string{"drop", "p2", "--reason", "r", "--relink", "p3"}, exit: 2, want: []string{"--relink is <dependant>=<card>"}},
 		{name: "waived and relinked", as: "carol", args: []string{"drop", "p2", "--reason", "r", "--waive", "p3", "--relink", "p3=p1"}, exit: 2, want: []string{"p3 is both waived and relinked"}},
 		{name: "a replace with no by", as: "carol", args: []string{"replace", "p2", "--reason", "r"}, exit: 2, want: []string{"--by <card>"}},
-		{name: "a live consumer", as: "carol", args: []string{"drop", "p1", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p1"}},
 		{name: "a relink with no need", as: "carol", args: []string{"relink", "p3", "--to", "p1", "--reason", "r"}, exit: 2, want: []string{"relink takes --need"}},
 		{name: "a relink of no failed need", as: "carol", snap: dependant, args: []string{"relink", "p3", "--need", "p4", "--to", "p1", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p3"}},
 	})
@@ -225,6 +276,7 @@ func withPolicy(t *testing.T, w *world) {
 }
 
 func TestPolicy(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	withPolicy(t, w)
 	file := filepath.Join(t.TempDir(), "mine.star")
@@ -240,6 +292,7 @@ func TestPolicy(t *testing.T) {
 }
 
 func TestPolicyRefusals(t *testing.T) {
+	t.Parallel()
 	runCases(t, []tcase{
 		{name: "no engine", as: "carol", args: []string{"policy", "show"}, exit: 2, want: []string{"the policy engine is not configured"}},
 		{name: "a worker sets", as: "alice", args: []string{"policy", "set", "x", "--reason", "r"}, exit: 1, want: []string{"policy set is the coordinator's"}},
@@ -248,5 +301,33 @@ func TestPolicyRefusals(t *testing.T) {
 		{name: "an unreadable file", as: "carol", prep: withPolicy, args: []string{"policy", "set", "/nonexistent.star", "--reason", "r"}, exit: 1, want: []string{"set"}},
 		{name: "before up", as: "carol", prep: func(_ *testing.T, w *world) { w.e.Policy = policy.NewEngine(stillClock{}) },
 			args: []string{"policy", "show", "v1"}, exit: 1},
+	})
+}
+
+// TestHoldCard: hold parks one producer blocked with the reason, its live
+// consumer withdrawn in the same op; unhold sends it to waiting (defect 47).
+func TestHoldCard(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	want(t, w.do("carol", "hold", "p1", "--reason", "wrong brief"), 0, "p1", "next: "+waitNext)
+	s := w.snap(t)
+	if c := s.Cards["p1"]; c.State != "blocked" || c.Reason != card.HeldPrefix+"wrong brief" {
+		t.Fatalf("held card %+v", c)
+	}
+	if c := s.Cards["p1.w1"]; c.State != "fail" {
+		t.Fatalf("its consumer %+v", c)
+	}
+	want(t, w.do("carol", "unhold", "p1", "--reason", "brief fixed"), 0, "p1")
+	if c := w.snap(t).Cards["p1"]; c.State != "waiting" {
+		t.Fatalf("unheld card %+v", c)
+	}
+}
+
+func TestHoldCardRefusals(t *testing.T) {
+	t.Parallel()
+	runCases(t, []tcase{
+		{name: "a consumer", as: "carol", args: []string{"hold", "p1.w1", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is a work card; hold its producer", "nova-sprint hold p1 --reason"}},
+		{name: "an unhold of a card not held", as: "carol", args: []string{"unhold", "p2", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p2"}},
+		{name: "a worker", as: "alice", args: []string{"hold", "p1", "--reason", "r"}, exit: 1, want: []string{"hold is the coordinator's"}},
 	})
 }

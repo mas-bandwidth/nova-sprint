@@ -81,12 +81,13 @@ type wireFailure struct {
 
 // evaluator is a process engine's child, started on first use.
 type evaluator struct {
-	mu    sync.Mutex
-	cmd   *exec.Cmd
-	in    io.WriteCloser
-	enc   *gob.Encoder
-	dec   *gob.Decoder
-	error *capped
+	mu     sync.Mutex
+	cmd    *exec.Cmd
+	in     io.WriteCloser
+	enc    *gob.Encoder
+	dec    *gob.Decoder
+	error  *capped
+	memory int // the child's cap in bytes; 0 is EvalMemory (a test sets a small one)
 }
 
 // NewEngine is an engine that runs every version in its own child process
@@ -194,7 +195,11 @@ func (ev *evaluator) startChild() error {
 		return fmt.Errorf("cannot find the policy evaluator: %w", err)
 	}
 	cmd := exec.Command(exe, EvalArg)
-	cmd.Env = append(os.Environ(), evalMemoryEnv+"="+strconv.Itoa(EvalMemory))
+	limit := EvalMemory
+	if ev.memory > 0 {
+		limit = ev.memory
+	}
+	cmd.Env = append(os.Environ(), evalMemoryEnv+"="+strconv.Itoa(limit))
 	ev.error = &capped{}
 	cmd.Stderr = ev.error
 	in, err := cmd.StdinPipe()

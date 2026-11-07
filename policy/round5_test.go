@@ -38,6 +38,9 @@ func TestDefaultBodyIsTheBuiltIn(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, defaultBody, DefaultBody())
 	assert.True(t, strings.HasPrefix(DefaultBody(), "# nova-sprint default policy."))
+	for _, key := range []string{`"ready_nag": 1,`, `"ready_take": 180,`} { // named, not the older-version fallback (checkTimeouts)
+		assert.Contains(t, DefaultBody(), key)
+	}
 	w := fakeWorld(t)
 	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
@@ -149,12 +152,16 @@ func TestFunctionalEvaluatorMemoryCap(t *testing.T) {
 	w.up()
 	snap := w.snap()
 	e := NewEngine(newFakeClock())
-	big, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(48):\n        x.append(\"a\" * (1 << 25))\n    return len(x) > 0")
+	// The production path at a 64 MiB cap: three 32 MiB strings cross it in
+	// milliseconds. At 512 MiB, building the strings under -race on a loaded
+	// host (about 1 s per 256 MiB) runs out the tick's 1.5 s budget first.
+	e.proc.memory = 64 << 20
+	big, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(3):\n        x.append(\"a\" * (1 << 25))\n    return len(x) > 0")
 	a, fs := e.Answer(Versions{Active: pv(2, big)}, snap, w.ro, FullQuestions(snap, nil))
 	assert.Equal(t, -1, a.Version, "a dead child answers nothing: %v", fs)
 	require.NotEmpty(t, fs)
 	assert.Equal(t, "v2", fs[0].Label)
-	assert.Contains(t, fs[0].Msg, "over the evaluator's memory cap of 512 MiB")
+	assert.Contains(t, fs[0].Msg, "over the evaluator's memory cap of 64 MiB")
 	a, fs = e.Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	require.Empty(t, fs)
 	assert.Equal(t, 0, a.Version, "the next tick starts a new child")

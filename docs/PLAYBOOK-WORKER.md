@@ -15,7 +15,19 @@ abbreviate them.
 
 This playbook is for an AI that works cards in its own session: a friend row, or the coordinator's own
 row. A bench's `nova-sprint worker --as <row>` service is the same kind of row run by a program,
-and is installed by the coordinator's `up`.
+and is installed by the coordinator's `up`. It says in its heartbeat (`nova-sprint beat`) the
+tiers its harness proved it serves and its nova-reserve slots, and is dealt by them; its harness
+reads the card from `JOB.md` in the job directory.
+
+## The first rule: run everything in your hand
+
+Run every card in your hand, each in its own child (a sub-agent, or a separate session or
+process with its own fresh clone and directory), all at once, up to your width. A card is in
+your hand from the moment it is dealt: nothing waits for you to take it, its deadline runs
+from the deal, and the sprint deals you no more than your width. Never work your cards one
+after another when they could run side by side, and never leave a dealt card idle. A card in
+your hand that you have not acknowledged with `take` is nudged every tick from ten seconds
+after the deal, and after a minute the coordinator is told its row and card.
 
 ## Who you are now
 
@@ -24,8 +36,8 @@ and is installed by the coordinator's `up`.
 2. You do the work in a card and report it with a verb. You never choose your own work, never
    take a card that was not dealt to you, and never move a card any other way than the verbs
    below.
-3. The sprint's run loop does everything mechanical for you. It deals ready cards to rows with
-   room, asks every read a finished head needs in one tick from rows other than its author,
+3. The sprint's run loop does everything mechanical for you. It deals ready cards into the hands
+   of rows with room, asks every read a finished head needs in one tick from rows other than its author,
    decides yes or fix from all the reads, lands yes heads into the base with CI green at the
    exact base head, sends a fix back to the queue with your head and the finding, and opens a
    judgement for the coordinator when something needs a mind.
@@ -63,12 +75,20 @@ refusal is the tool doing its job, not an error to work around.
    sprint's refusal in step 2 names the form for your harness.
 2. Hook in to the sprint. Run, as one plain command:
    `nova-sprint hook --as <you> --role worker`
-   Its first line is `HOOKED <you> role=worker`, then this playbook, then a `next:` line. Before
+   Its first line is `HOOKED <you> role=worker`, then `COMMIT AS <name> <email>` with the
+   sprint's two git config lines, then this playbook, then a `next:` line. Before
    step 1 it refuses with `SPRINT REFUSED hook: <you> is not on the bus: hook in to the bus first:
    NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> under your session's Monitor tool`.
+   Every nova-sprint verb needs the sprint's credential in its process: run it under
+   `nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint <verb> ...`.
+   Without it a verb refuses with `this process has no sprint credential: run under nova-secrets
+   exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...`.
    This step records your name and role in the store and subscribes you to the sprint's pushes.
    Until it has run, every verb that acts as you refuses with
    `hook in first: nova-sprint hook --as <you> --role worker`.
+   On a sprint with no commit identity it refuses with `the sprint has no commit identity: ...:
+   ask the coordinator to run nova-sprint identity ...`: tell the coordinator, and hook again
+   once it is set.
 3. Ask what to do now. Run `nova-sprint next --as <you>`. It prints one `NEXT <what>` line and
    one `next: <command>` line. With a card already in your hand it names that card's step; with
    nothing in hand it says `next: nothing; wait for the bus`. Then stop and wait for the bus.
@@ -78,35 +98,49 @@ is lost: your cards are in the store, and step 3 names the step each one is at.
 
 ## What arrives on the bus, and what to run
 
-Every message from the sprint comes from the name `sprint`. Replies to `sprint` are never read:
-the answer to any message is a verb, and a message to `sprint` gets back
-`replies are verbs: run nova-sprint next --as <you>`.
+Every message from the sprint comes from the name `sprint`, and each one is a receipt: never
+answer it on the bus. The answer to a message from `sprint` is the verb its `run:` line names,
+or nothing. If your wake text tells you to answer every message by `nova-bus send`, that does
+not apply to `sprint`: a message to `sprint` that is not a verb is ignored, a reply to `sprint`
+is never answered, and a verb sent to `sprint` only gets back where to run it yourself.
 
-1. A work deal: the hook takes it for you before you wake (`nova-sprint wake`), so the deal's
-   line arrives as the take's output, `TAKEN <id> ...` and the brief, or its refusal; follow
-   "Work a card" below from its step 2. Without `--exec` (Grok, Antigravity, Codex) it is
-   `DEAL card=<id> ...; run: nova-sprint take <id>@<gen> --epoch <e> --as <you>`: run the `run:` line first.
-2. A read deal: the same with `kind=read`; follow "Read a card".
-3. A withdraw: your card was taken back, because a blocker preempted it or because you were
+1. A work deal: `DEAL card=<id> attempt=<n> kind=work stream=<s> tier=<t> model=<m> epoch=<e>
+   repo=<org/repo> base=<40 hex> branch=<branch> brief=<the brief, clipped>; in your hand now:
+   run nova-sprint take <id>@<gen> --epoch <e> --as <you> (acknowledges, prints the whole
+   brief), then do it and run: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`.
+   The card is yours already. Start a child for it at once (the first rule), have it run the
+   `take` command exactly as printed, then follow "Work a card" below. A session hooked with
+   `nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>'` has the take run for it
+   before it wakes: the deal's line arrives as the take's output, `TAKEN <id> ...` and the
+   brief, or its refusal; follow "Work a card" from its step 2.
+2. A read deal: the same with `kind=read` and `head=<40 hex>` in place of base and branch, and
+   the read command in place of finish. Start a child for it, then follow "Read a card".
+3. A nudge: `NUDGE card=<id> dealt <time> ago is in your hand, not acknowledged; run: nova-sprint
+   take <id>@<gen> --as <you> --epoch <e>`. A card of yours has no child working it, or its
+   child never ran `take`. Run the `take` line now and work the card; a nudge repeats each
+   tick until you do, and after a minute the coordinator is told.
+4. A withdraw: your card was taken back, because a blocker preempted it or because you were
    silent past the bound policy states. Stop work on that card at once. Your pushed branch is
    kept and the next attempt continues from it, so nothing you pushed is lost. Do not finish or
    report it: the verb will refuse with `consumer <id> was withdrawn`.
-4. A result for a card you worked (it landed, or it came back for a fix): read it; there is
+5. A result for a card you worked (it landed, or it came back for a fix): read it; there is
    nothing to run. A fix comes back to the queue as a new deal, possibly to another row, and
    carries your head and the finding.
-5. A message from the coordinator or another friend row: read it and act on it. A brief correction for
+6. A message from the coordinator or another friend row: read it and act on it. A brief correction for
    a card in your hand arrives this way, because the coordinator cannot edit a card you hold.
 
 Each message is a wake. Handle it, then wait for the bus again.
 
 ## Work a card
 
-1. Take it: `nova-sprint take <id>@<gen> --as <you> --epoch <e>`, the `run:` line of the deal.
-   The first line is `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch>`. The brief
-   follows: its tier, PATHS, NEEDS, TEST and DONE-WHEN lines, where tests may run, and, on a
-   fix, the prior head and the reason it came back. The last line is
-   `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. The generation in
-   that line is the card's new one: use it, not the deal's.
+1. Acknowledge it: `nova-sprint take <id>@<gen> --as <you> --epoch <e>`, as the deal printed
+   it. The card is already in your hand; `take` tells the sprint you have it (the nudges stop)
+   and prints the whole brief. The first line is
+   `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch>`. The brief follows: its tier,
+   PATHS, NEEDS, TEST and DONE-WHEN lines, where tests may run, and, on a fix, the prior head
+   and the reason it came back. The last line is
+   `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. `take` does not
+   change the generation, and a repeat prints the same and changes nothing.
 2. Make a fresh clone of `https://github.com/<org/repo>` (or the ssh form your git uses) in a
    new directory of your own, never a directory another worker or card uses. The dealt branch
    is the same for every attempt of a card. Run `git ls-remote origin <branch>`. If it prints
@@ -128,30 +162,35 @@ Each message is a wake. Handle it, then wait for the bus again.
 6. Unit tests use no real time, no sockets, no network and no outside service: time is an
    argument, and a test clock starts at 1000, never 0. Anything that needs the real thing is a
    functional test and starts its own servers in its own directory.
-7. Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
+7. Commit as the sprint's identity, never your own. A repository's contributor agreement keys
+   off the forge account, so every commit of the sprint is authored and committed as ONE
+   account on its allowlist: hook and take print it (`COMMIT AS <name> <email>`) and the two
+   lines that set it. In your clone, before the first commit, run
+   `git config user.name "<name>"` and `git config user.email "<email>"` exactly as printed.
+   Your own name goes only in the message: a `By: <your name>` line and a
+   `Co-Authored-By: <your name> <your email>` trailer. `finish` refuses a head with any commit
+   since the base by another author or committer email.
+   Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
    withdraw never costs work. Your card branch is yours alone: nobody else writes it, so you may
    rebase it and push it with `git push --force-with-lease origin <branch>`. Never force-push any
    other branch, and never push at all to the base, the stream's group branch or another
    worker's card branch.
-8. When the stream wants a PR, `take` says so and `finish` refuses without one: open it from
-   your branch into the stream's group branch, `gh pr create --base sprint/<s>/group --head
-   <branch>`, as one command, unless `gh pr view <branch>` shows an earlier attempt's PR is still
-   open, which you keep using. With no PR wanted, open none.
-9. Before you finish, bring your card branch up to the stream's group branch, `sprint/<s>/group`,
-   when it has moved since your base: `git fetch origin sprint/<s>/group`, then
-   `git rebase origin/sprint/<s>/group`, run the card's tests again, and
-   `git push --force-with-lease origin <branch>`. A conflict here is yours to resolve on your own
-   branch while you have the context. Check that the remote tip is your head:
-   `git ls-remote origin <branch>` prints the full sha you will report.
+8. Open no PR. The landing opens the PR itself (from your card's branch, or from the stream's
+   group branch when several heads land together); `finish` needs only your pushed head.
+9. Before you finish, check that the remote tip is your head: `git ls-remote origin <branch>`
+   prints the full sha you will report. You need not chase the base: a head behind it lands
+   through the group branch, merged onto the base's tip. Rebase onto the base only if your own
+   gates need it, then push with `git push --force-with-lease origin <branch>`.
 10. Do not wait for CI. You finish with ok once your own DONE-WHEN gates pass at the head you
-    report. CI runs on the stream's group branch at landing, which is the coordinator's
-    business; a red there comes back to you, or to another row, as a fix deal by push, with the
-    head and the finding.
+    report. CI runs on the landing's PR, which is the coordinator's business; a red there comes
+    back to you, or to another row, as a fix deal by push, with the head and the finding.
 11. Finish: `nova-sprint finish <id>@<gen> --head <40 hex> --as <you> --epoch <e> [--cost <usd>]`. Add `--cost` with what the run cost you in dollars when you know it (0.04); leave it off when you do not, and the board counts the run as unpriced, never as $0. It prints
     `FINISHED <id> head=<40 hex> applied at seq <n>` and `next: nothing; wait for the bus`.
     Your part is done when that line prints; the card itself is done only when it lands, which
     the run loop does after the reads. A push, a commit or a message is not a finish. A refused
-    finish changes nothing, so the same `<card>@<gen>` stays valid for the next try.
+    finish changes nothing, so the same `<card>@<gen>` stays valid for the next try. Add
+    `--cost <usd>` (dollars, at most six decimals: `--cost 0.42`) when you know what the run
+    cost; the board's Cost breakdown sums it by tier and stream.
 
 Finish only when every DONE-WHEN gate is green at the exact head you report. If it is not, say
 so honestly with one of these, never with a finish of a head that does not meet the brief:
@@ -163,16 +202,23 @@ so honestly with one of these, never with a finish of a head that does not meet 
   never started, a staging failure, a rate limit or credit refusal):
   `nova-sprint report <id>@<gen> --result fault --reason "<what failed>" --as <you> --epoch <e>`.
   It prints `FAULTED <id> ...`; a fault spends no attempt and never counts toward blocked.
+- The work needs a route or device this row does not have (a tool, a device, a network, a
+  model route): the same `report --result fault`, with a reason that starts `missing-route:`, then
+  the route's name in one word (the name a brief declares with `NEEDS-ROUTE: <route>`), then what
+  is missing, `--reason "missing-route: adb no device attached to this row"`. The card is not dealt
+  again by itself; it waits blocked until the coordinator answers.
 - You cannot keep the card (you are going away, or you were told to stop):
   `nova-sprint release <id>@<gen> --as <you> --reason "<why>" --epoch <e>`. The card goes
-  back to ready with your branch kept.
+  back to ready with your branch kept, and no blame. If you pushed commits on it, add
+  `--head <the 40-hex sha git ls-remote origin <branch> prints>` so the next attempt continues
+  from them.
 
 ## Read a card
 
 A read is an independent review of someone else's finished head. You are never dealt a read of
 your own head.
 
-1. Take it: the deal's `run:` line. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex>`
+1. Acknowledge it: the deal's `take` command. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex>`
    and the second is `Read detached at this head; do not edit or push.` The brief follows, then
    `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
 2. Check out that exact head detached in a fresh directory of your own. Do not edit it, commit
@@ -187,7 +233,8 @@ your own head.
 6. Answer: `nova-sprint read <id>@<gen> yes --as <you> --epoch <e> [--cost <usd>]` (same `--cost` rule as finish) with
    `--finding "<notes>"` when you have notes, or
    `nova-sprint read <id>@<gen> fix --finding "<path>:<line>: <the defect and the repair>" --as <you> --epoch <e>`.
-   A fix finding names the file and line and what to change. It prints
+   A fix finding names the file and line and what to change. Add `--cost <usd>` as finish
+   takes it when you know what the read cost. It prints
    `READ <id> head=<40 hex> result=<result> applied at seq <n>`.
 7. Keep a review of the source and a gate you ran apart: say which gates you ran, where, and
    their exit codes, and never call a gate green that you did not run at this head.
@@ -204,7 +251,7 @@ your own head.
 5. Never run a command that waits on a prompt (an unsafe `rm -rf`, `sudo`), never delete after
    a `cd` you have not checked, and never crawl `/`, `~` or `/Volumes`.
 6. Never print, paste or commit a secret. Keys reach a command only through `nova-secrets exec`.
-7. Open a PR only when the stream wants one.
+7. Never open a PR; the landing opens the stream's.
 8. Report with the verbs, never with a file, a commit message or a bus message to `sprint`.
 9. Done means the `FINISHED` or `READ` line printed for a head that meets the brief.
 10. Use the sprint as it is. Never add a loop, a watcher or a side channel beside it, and never
@@ -219,15 +266,21 @@ answer, never a thing to route round.
 
 - `<you> is not on the bus: hook in to the bus first: ...`: do step 1 of "Hook in".
 - `hook in first: nova-sprint hook --as <you> --role worker`: do step 2 of "Hook in".
-- `<id> is not dealt to this row at this generation: nova-sprint show <id>`: the card moved
-  (withdrawn, re-dealt, or a newer gen exists). Run `show`, and wait for the bus.
-- `row <you> is at width <n>: finish <card> first`: finish or release a card you hold.
+- `<id> is not dealt to this row at this generation: nova-sprint next --as <you>`: the card
+  moved (withdrawn, re-dealt, or a newer gen exists). Run `next`, and wait for the bus.
+- `<id> was dealt before the deal became the take; the next tick withdraws it and deals it
+  again, in hand`: a card dealt by an older sprint; wait for the bus and its new deal.
+- `<id> is done` or `<id> is fail`: the card was reported or withdrawn; stop work on it.
 - `epoch <n> is over: this card was recreated in epoch <m>: run nova-sprint next`: the sprint
   was cleared; your old card is gone. Run `next`.
 - `<id> is not held by <you>`: it is someone else's, or it was withdrawn. Stop work on it.
 - `head <x> is not a full commit sha`: report the full 40-hex sha.
 - `push first: git push origin <branch>`: the head is not on the dealt branch at origin.
-- `open the PR`: the stream wants a PR at this head.
+- `<n> of the <m> commits on <branch> since the base are not made as <name> <email>: <sha>
+  (author <a>, committer <c>), ...`: run the two git config lines it prints in your clone, rewrite
+  those commits as it (`git rebase <base> --exec 'git commit --amend --no-edit --reset-author'`),
+  push with `--force-with-lease`, and finish with the new head.
+- `the sprint has no commit identity`: nothing may commit yet; tell the coordinator.
 - `head <x> is the base; nothing was done`: an empty head is never a finish.
 - `bring <branch> up to the stream head`: rebase onto the group branch (step 9), re-run your
   gates, push with `--force-with-lease`, and finish again with the new head. A red gate that is

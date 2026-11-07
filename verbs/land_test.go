@@ -1,118 +1,115 @@
 package verbs
 
 import (
-	"context"
-	"errors"
+	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// fakeLanding is the forge for the hand landing: one PR per head branch.
-type fakeLanding struct {
-	prs      map[string]*forge.PRState
-	behind   int
-	mergeErr error
-	ff, prs2 []string
-	opened   int
+// merging2 is p2 merging at its read-ok head, its read consumer gone.
+func merging2(s *store.Snapshot) {
+	setCard("p2", func(c *store.Card) { c.State = "merging" })(s)
+	delete(s.Cards, "p2.r1")
 }
 
-func (f *fakeLanding) FindPR(_ context.Context, _, head, _ string) (forge.PRState, bool, error) {
-	p, ok := f.prs[head]
-	if !ok {
-		return forge.PRState{}, false, nil
-	}
-	return *p, true, nil
-}
-func (f *fakeLanding) OpenPR(_ context.Context, _, head, _, _, _ string) (forge.PRInfo, error) {
-	f.opened++
-	f.prs[head] = &forge.PRState{Number: 9, URL: "https://github.com/o/r/pull/9", State: "OPEN", HeadSHA: head3}
-	return forge.PRInfo{Number: 9}, nil
-}
-func (f *fakeLanding) Merge(_ context.Context, _ string, _ int, sha, _ string) error {
-	if f.mergeErr != nil {
-		return f.mergeErr
-	}
-	f.ff = append(f.ff, sha)
-	return nil
-}
-func (f *fakeLanding) MergePR(_ context.Context, _ string, _ int, head string, _ []string) (string, error) {
-	if f.mergeErr != nil {
-		return "", f.mergeErr
-	}
-	f.prs2 = append(f.prs2, head)
-	return "cccccccccccccccccccccccccccccccccccccccc", nil
-}
-func (f *fakeLanding) Behind(context.Context, string, string, string) (int, error) { return f.behind, nil }
-
-const head3 = "3333333333333333333333333333333333333333"
-
-// merging3 is p3 merging at head3 on sprint/s/p3 (its work's branch), with
-// an open land judgement about it.
-func merging3(s *store.Snapshot) {
-	s.Cards["p3"] = store.Card{ID: "p3", Kind: "producer", Stream: "s", State: "merging", Gen: 1, Attempt: 1, Review: 1, Tier: "pro", Priority: "normal", Head: head3, Author: "alice"}
-	s.Cards["p3.w1"] = store.Card{ID: "p3.w1", Kind: "work", Of: "p3", Stream: "s", State: "done", Result: "ok", Gen: 1, Attempt: 1, Holder: "alice", Tier: "pro", Branch: "sprint/s/p3", Head: head3, BaseSHA: base, Priority: "normal"}
-	withJudgement("land.p3.1", "land", "land", "p3", "land | fix | retry")(s)
+func landJudged2(s *store.Snapshot) {
+	merging2(s)
+	withJudgement("land.p2.1", "land", "land", "p2", "land | fix | retry")(s)
 }
 
-func landWorld(t *testing.T) (*world, *fakeLanding) {
+// land merges the card's own head by hand and records it landed with the
+// merge sha and the reason, in one op (intent rule 32).
+func TestLandByHand(t *testing.T) {
+	t.Parallel()
 	s := sprint()
-	merging3(&s)
+	merging2(&s)
 	w := worldFrom(t, s)
-	w.origin.tips["o/r sprint/s/p3"] = head3
-	f := &fakeLanding{prs: map[string]*forge.PRState{}}
-	w.e.Landing = f
-	return w, f
-}
-
-// land <card>: the PR is opened, fast-forwarded (the head contains the
-// base), the card landed and the open land judgement answered land.
-func TestLandCardByHand(t *testing.T) {
-	w, f := landWorld(t)
-	want(t, w.do("carol", "land", "p3", "--reason", "looked: the red was the runner"), 0, "fast-forwarded main to "+head3, "p3->landed")
-	if f.opened != 1 || len(f.ff) != 1 {
-		t.Fatalf("opened %d ff %v", f.opened, f.ff)
+	merge := strings.Repeat("e", 40)
+	want(t, w.do("carol", "land", "p2", "--reason", "red is a flake"), 0, "LANDED p2 head="+head+" merge="+merge+" by hand", "next: "+waitNext)
+	if got := w.lander.landed; len(got) != 1 || got[0] != "sprint/s/p2@"+head {
+		t.Fatalf("landed %v", got)
 	}
-	s := w.snap(t)
-	if s.Cards["p3"].State != "landed" || s.Judgements["land.p3.1"].State != "answered" {
-		t.Fatalf("p3 %s, judgement %s", s.Cards["p3"].State, s.Judgements["land.p3.1"].State)
+	if c := w.snap(t).Cards["p2"]; c.State != "landed" || !strings.Contains(c.Reason, merge) || !strings.Contains(c.Reason, "by hand: red is a flake") {
+		t.Fatalf("p2 %+v", c)
 	}
 }
 
-// judge <land judgement> land is the same hand landing; behind the base it
-// merges by the repository's method.
-func TestJudgeLandIsTheHandLanding(t *testing.T) {
-	w, f := landWorld(t)
-	f.behind = 1
-	want(t, w.do("carol", "judge", "land.p3.1", "land", "--reason", "looked"), 0, "merged as cccc", "p3->landed")
-	if len(f.prs2) != 1 {
-		t.Fatalf("merges %v", f.prs2)
-	}
-}
-
-// judge <land judgement> fix sends the card back with the finding.
-func TestJudgeLandFixSendsBack(t *testing.T) {
-	w, _ := landWorld(t)
-	want(t, w.do("carol", "judge", "land.p3.1", "fix", "--reason", "bus is over its line budget"), 0, "p3->ready")
-	c := w.snap(t).Cards["p3"]
-	if c.Finding == "" || c.Bounces != 1 {
-		t.Fatalf("p3 %+v", c)
-	}
-}
-
-// The hand landing refuses a head not on origin and says a refused merge
-// verbatim; nothing moves.
 func TestLandRefusals(t *testing.T) {
-	w, _ := landWorld(t)
-	delete(w.origin.tips, "o/r sprint/s/p3")
-	want(t, w.do("carol", "land", "p3", "--reason", "x"), 1, "is not the tip of sprint/s/p3 at origin", "git push origin sprint/s/p3")
-	w, f := landWorld(t)
-	f.mergeErr = errors.New("Update is not a fast forward")
-	want(t, w.do("carol", "land", "p3", "--reason", "x"), 1, "Update is not a fast forward")
-	w, _ = landWorld(t)
-	want(t, w.do("alice", "land", "p3", "--reason", "x"), 1)
-	if w.snap(t).Cards["p3"].State != "merging" {
-		t.Fatal("a refused landing moved the card")
+	t.Parallel()
+	land := []string{"land", "p2", "--reason", "r"}
+	runCases(t, []tcase{
+		{name: "no reason", as: "carol", snap: merging2, args: []string{"land", "p2"}, exit: 1, want: []string{"needs its reason", "--reason"}},
+		{name: "a worker", as: "alice", snap: merging2, args: land, exit: 1, want: []string{"land is the coordinator's"}},
+		{name: "not merging", as: "carol", args: land, exit: 1, want: []string{"p2 is review", "nova-sprint show p2"}},
+		{name: "a consumer", as: "carol", args: []string{"land", "p1.w1", "--reason", "r"}, exit: 1, want: []string{"no producer p1.w1"}},
+		{name: "another head", as: "carol", snap: merging2, args: []string{"land", "p2", "--reason", "r", "--head", base}, exit: 1,
+			want: []string{"p2's finished head is " + head}},
+		{name: "the merge fails", as: "carol", snap: merging2, args: land, exit: 2,
+			prep: func(_ *testing.T, w *world) { w.lander.landErr = errBroken }, want: []string{"the hand landing of p2 failed"}},
+		{name: "no landing edge", as: "carol", snap: merging2, args: land, exit: 2,
+			prep: func(_ *testing.T, w *world) { w.e.Lander = nil }, want: []string{"the landing edge is not configured"}},
+	})
+}
+
+// A land judgement's three answers: land is the hand merge, fix sends the
+// producer back to work (ready, red, review one up) with the reason as its
+// finding, retry is a new landing
+// request (the card stays merging; the next tick asks).
+func TestJudgeLandAnswers(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ choice, state string }{{"land", "landed"}, {"fix", "ready"}, {"retry", "merging"}}
+	for _, c := range cases {
+		t.Run(c.choice, func(t *testing.T) {
+			s := sprint()
+			landJudged2(&s)
+			w := worldFrom(t, s)
+			want(t, w.do("carol", "judge", "land.p2.1", c.choice, "--reason", "looked at the log"), 0, "land.p2.1")
+			snap := w.snap(t)
+			p := snap.Cards["p2"]
+			if p.State != c.state || (c.choice == "fix") != (p.Red && p.Finding == "looked at the log" && p.Review == 2) {
+				t.Fatalf("p2 is %s, want %s: %+v", p.State, c.state, p)
+			}
+			if j := snap.Judgements["land.p2.1"]; j.State == "open" || j.Answer != c.choice {
+				t.Fatalf("judgement %+v", j)
+			}
+			if (c.choice == "land") != (len(w.lander.landed) == 1) {
+				t.Fatalf("landed %v for %s", w.lander.landed, c.choice)
+			}
+		})
 	}
+}
+
+// stream add creates sprint-group/<stream> at the base tip for a stream
+// that lands through a forge, and refuses, naming the fix, when it cannot.
+func TestStreamAddCreatesTheGroupBranch(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--forge", "github"), 0, "STREAM t")
+	if got := w.lander.created; len(got) != 1 || got[0] != "t@"+base {
+		t.Fatalf("created %v", got)
+	}
+	w = newWorld(t)
+	w.lander.heads = map[string]string{"refs/heads/sprint-group/t": base}
+	want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--forge", "github"), 0, "STREAM t")
+	if len(w.lander.created) != 0 {
+		t.Fatalf("created %v over an existing group branch", w.lander.created)
+	}
+	w = newWorld(t)
+	want(t, w.do("carol", "stream", "add", "t", "--repo", "o/r", "--mode", "hand", "--forge", "none"), 0, "STREAM t")
+	if len(w.lander.created) != 0 {
+		t.Fatalf("created %v for a hand stream", w.lander.created)
+	}
+	add := []string{"stream", "add", "t", "--repo", "o/r", "--forge", "github"}
+	runCases(t, []tcase{
+		{name: "a blocking branch", as: "carol", args: add, exit: 1, prep: func(_ *testing.T, w *world) {
+			w.lander.heads = map[string]string{"refs/heads/sprint-group": base}
+		}, want: []string{"branch sprint-group at o/r keeps the group branch sprint-group/t from being created", "rename or delete sprint-group"}},
+		{name: "a name git refuses", as: "carol", args: []string{"stream", "add", "t.lock", "--repo", "o/r", "--forge", "github"}, exit: 1,
+			want: []string{"cannot be created"}},
+		{name: "heads unreadable", as: "carol", args: add, exit: 2, prep: func(_ *testing.T, w *world) { w.lander.headErr = errBroken },
+			want: []string{"listing o/r's branches failed"}},
+		{name: "creation fails", as: "carol", args: add, exit: 2, prep: func(_ *testing.T, w *world) { w.lander.createErr = errBroken },
+			want: []string{"creating sprint-group/t at o/r failed", "push access"}},
+	})
 }

@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -61,11 +60,21 @@ func startPG(t *testing.T) string {
 	out, err := init.CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	port := freePort(t)
-	cmd := exec.Command(filepath.Join(bin, "postgres"), "-D", filepath.Join(dir, "data"), "-p", port, "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=off")
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	// SIGQUIT is immediate shutdown: the postmaster stops its children before it exits, so none writes into the removed TempDir.
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() }) // ignored: the server is ours and disposable
+	// pg_ctl starts it and stops it (-m immediate: the postmaster stops its
+	// children before it exits, so none writes into the removed TempDir).
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
@@ -101,11 +110,20 @@ func pgHarness(t *testing.T) (*harness, *PG, string) {
 	return &harness{t: t, s: p, ctx: context.Background(), epoch: 1}, p, dsn
 }
 
+// A second Migrate is a no-op: the fresh store stays stopped, never
+// started, and a row's tiers (round 23's text column) survive it.
 func TestFunctionalMigrateTwice(t *testing.T) {
 	t.Parallel()
 	_, p, dsn := pgHarness(t)
-	require.NoError(t, p.Migrate(context.Background()), "a second Migrate is a no-op")
 	c := connect(t, dsn)
+	_, err := c.Exec(context.Background(), "INSERT INTO sprint.rows (name, state, tiers, epoch) VALUES ('w1', 'up', 'pro,heavy', 1)")
+	require.NoError(t, err)
+	require.NoError(t, p.Migrate(context.Background()), "a second Migrate is a no-op")
+	var tiers string
+	require.NoError(t, c.QueryRow(context.Background(), "SELECT tiers FROM sprint.rows WHERE name = 'w1'").Scan(&tiers))
+	assert.Equal(t, "pro,heavy", tiers, "a second Migrate keeps a row's tiers")
+	_, err = c.Exec(context.Background(), "DELETE FROM sprint.rows")
+	require.NoError(t, err)
 	var rows, tables, version int
 	require.NoError(t, c.QueryRow(context.Background(), "SELECT count(*), (SELECT schema FROM sprint.meta) FROM sprint.epoch").Scan(&rows, &version))
 	assert.Equal(t, 1, rows)
@@ -114,8 +132,15 @@ func TestFunctionalMigrateTwice(t *testing.T) {
 	assert.Equal(t, 10, tables, "nine and round 25's sprint.balances")
 	s, err := p.Snapshot(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, emptySnapshot(1), s)
+	want := emptySnapshot(1)
+	want.Stopped, want.StopReason = true, NeverStarted // a fresh store is stopped, never started
+	assert.Equal(t, want, s)
 }
+
+// configColumns counts round 17's five configuration columns of
+// sprint.rows, tiers as its text[] (round 23's text tiers is the heartbeat's).
+const configColumns = "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND " +
+	"(column_name IN ('kind', 'width', 'model', 'harness') OR column_name = 'tiers' AND data_type = 'ARRAY')"
 
 // Round 17: a store made by round 16's schema (its hash, no red column, a
 // card in it) is upgraded by Migrate: red is added false on every card with
@@ -148,7 +173,7 @@ func TestFunctionalMigrateRound16(t *testing.T) {
 	assert.False(t, h.snap().Cards["c1"].Red, "an old card reads not red")
 	h.ok(h.op("red", []Expect{CardRed{"c1", false}}, SetCardRed{"c1", true}))
 	assert.True(t, h.snap().Cards["c1"].Red)
-	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
+	require.NoError(t, c.QueryRow(ctx, configColumns).Scan(&n))
 	assert.Equal(t, 0, n, "round 22's columns are gone from a round-16 store too")
 }
 
@@ -179,7 +204,7 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	p := openPG(t, dsn) // Migrate
 	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
 	var n int
-	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows' AND column_name IN ('kind', 'width', 'tiers', 'model', 'harness')").Scan(&n))
+	require.NoError(t, c.QueryRow(ctx, configColumns).Scan(&n))
 	assert.Equal(t, 0, n, "the five configuration columns are dropped")
 	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM pg_indexes WHERE schemaname = 'sprint' AND indexname = 'cards_live'").Scan(&n))
 	assert.Equal(t, 0, n, "cards_live is dropped")
@@ -194,11 +219,67 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	assert.Equal(t, "working", h.snap().Cards["u1"].State)
 }
 
-// Round 25: the live store's schema, round 22's carried to 24 (round24Hash,
-// a consumer in it), is upgraded by Migrate: cards.usage (empty on every card,
-// a producer's held empty by its CHECK) and sprint.balances are added, the
-// new hash recorded, a second Migrate is a no-op, and the consumer takes a
-// usage after.
+// Round 23: a store made by round 22's schema (round22Hash, a consumer in
+// it) is upgraded by Migrate: cards.model is added (” on the consumer), the
+// new hash is recorded, and a consumer cut after carries its model.
+func TestFunctionalMigrateRound22(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round22.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round22Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
+		"INSERT INTO sprint.rows (name, state, session, role, epoch) VALUES ('w1', 'up', 'sess', 'worker', 1)",
+		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c1', 'producer', 'pro', 's1', 'waiting', 1)",
+		"INSERT INTO sprint.cards (id, kind, \"of\", tier, stream, state, holder, epoch) VALUES ('u1', 'work', 'c1', 'pro', 's1', 'working', 'w1', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round22Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 22}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, "", h.snap().Cards["u1"].Model, "an old consumer has no model")
+	h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "read", ID: "u2", Of: "c1", Stream: "s1", Holder: "w1", Model: "inception/mercury-3"}))
+	assert.Equal(t, "inception/mercury-3", h.snap().Cards["u2"].Model)
+}
+
+// Round 24: a store made by round 23's schema (round23Hash, a stopped
+// sprint in it) is upgraded by Migrate: the epoch row gains commit_name and
+// commit_email (empty: no identity), the new hash is recorded, the stop is
+// kept, and SetIdentity then sets it.
+func TestFunctionalMigrateRound23(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round23.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round23Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET stopped = true, stop_reason = 'pause' WHERE id = 1"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round23Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 23}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, []any{true, "pause", Identity{}}, []any{h.snap().Stopped, h.snap().StopReason, h.snap().Identity})
+	h.ok(h.op("set", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}))
+	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity)
+}
+
+// Round 25: a store made by v2-stitch's round 24 schema (round24Hash: model,
+// heartbeat, identity, a consumer in it) is upgraded by Migrate: cards.usage
+// (empty on every card, a producer's held empty by its CHECK) and
+// sprint.balances are added, the new hash recorded, a second Migrate is a
+// no-op, and the consumer takes a usage after.
 func TestFunctionalMigrateRound24(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -207,16 +288,17 @@ func TestFunctionalMigrateRound24(t *testing.T) {
 	dsn := startPG(t)
 	c := connect(t, dsn)
 	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round24Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET commit_name = 'Bot', commit_email = '1+bot@users.noreply.example' WHERE id = 1",
 		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
-		"INSERT INTO sprint.rows (name, state, epoch) VALUES ('w1', 'up', 1)",
+		"INSERT INTO sprint.rows (name, state, session, role, epoch) VALUES ('w1', 'up', 'sess', 'worker', 1)",
 		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c1', 'producer', 'pro', 's1', 'waiting', 1)",
-		"INSERT INTO sprint.cards (id, kind, \"of\", tier, stream, state, holder, cost, priced, epoch) VALUES ('u1', 'work', 'c1', 'pro', 's1', 'working', 'w1', 5, true, 1)"} {
+		"INSERT INTO sprint.cards (id, kind, \"of\", tier, stream, state, holder, model, cost, priced, epoch) VALUES ('u1', 'work', 'c1', 'pro', 's1', 'working', 'w1', 'inception/mercury-3', 5, true, 1)"} {
 		_, err = c.Exec(ctx, q)
 		require.NoError(t, err, q)
 	}
 	id, err := CheckSchema(ctx, dsn)
 	require.NoError(t, err, "Migrate would take it")
-	assert.Equal(t, SchemaIdentity{Present: true, Hash: round24Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 22}, id)
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round24Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 24}, id)
 	p := openPG(t, dsn) // Migrate
 	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
 	id, err = CheckSchema(ctx, dsn)
@@ -230,9 +312,76 @@ func TestFunctionalMigrateRound24(t *testing.T) {
 	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM sprint.balances").Scan(&n))
 	assert.Equal(t, 0, n)
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
-	assert.Equal(t, int64(5), h.snap().Cards["u1"].Cost, "the cost is kept")
+	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity, "the identity is kept")
+	assert.Equal(t, []any{int64(5), "inception/mercury-3", ""}, []any{h.snap().Cards["u1"].Cost, h.snap().Cards["u1"].Model, h.snap().Cards["u1"].Usage}, "the cost and model are kept; the usage is empty")
 	h.ok(h.op("report", nil, SetCardUsage{"u1", "input=3 billing=api charged=- unpriced=no-price"}))
 	assert.Equal(t, "input=3 billing=api charged=- unpriced=no-price", h.snap().Cards["u1"].Usage)
+}
+
+// Round 26: the live store's schema on 2026-11-07, the deployed line's round
+// 25 (round25Hash: usage and balances, a consumer with a usage in it), is
+// upgraded by Migrate: cards.model, the row heartbeat's columns and the
+// epoch row's commit identity (empty: none set) are added, the new hash
+// recorded, a second Migrate is a no-op, the usage and the stop are kept,
+// SetIdentity then sets the identity, and a consumer cut after carries its
+// model.
+func TestFunctionalMigrateRound25(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round25.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round25Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET stopped = true, stop_reason = 'pause' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
+		"INSERT INTO sprint.rows (name, state, session, role, epoch) VALUES ('w1', 'up', 'sess', 'worker', 1)",
+		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c1', 'producer', 'pro', 's1', 'waiting', 1)",
+		"INSERT INTO sprint.cards (id, kind, \"of\", tier, stream, state, holder, cost, priced, usage, epoch) VALUES ('u1', 'work', 'c1', 'pro', 's1', 'working', 'w1', 5, true, 'input=3 billing=api charged=0.000005', 1)",
+		"INSERT INTO sprint.balances (provider, at, seq, balance_usd, raw) VALUES ('deepseek', now(), 0, 12.5, '{}')"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round25Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 25}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	id, err = CheckSchema(ctx, dsn)
+	require.NoError(t, err)
+	want := currentSchema
+	want.Owner = "nova"
+	assert.Equal(t, want, id)
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, []any{true, "pause", Identity{}}, []any{h.snap().Stopped, h.snap().StopReason, h.snap().Identity})
+	assert.Equal(t, []any{int64(5), "input=3 billing=api charged=0.000005", ""}, []any{h.snap().Cards["u1"].Cost, h.snap().Cards["u1"].Usage, h.snap().Cards["u1"].Model}, "the usage is kept; an old consumer has no model")
+	b, found, err := p.LastBalance(ctx, "deepseek")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "12.5", b.USD, "the balances are kept")
+	h.ok(h.op("set", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}))
+	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity)
+	h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "read", ID: "u2", Of: "c1", Stream: "s1", Holder: "w1", Model: "inception/mercury-3"}))
+	assert.Equal(t, "inception/mercury-3", h.snap().Cards["u2"].Model)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated live store's order: a positional dump of either loads into the other")
+}
+
+// columns is every sprint table's columns in their order, the order a
+// positional INSERT (pg_dump --inserts) fills them in.
+func columns(t *testing.T, c *pgx.Conn) map[string][]string {
+	t.Helper()
+	rows, err := c.Query(context.Background(), "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'sprint' ORDER BY table_name, ordinal_position")
+	require.NoError(t, err)
+	out := map[string][]string{}
+	for rows.Next() {
+		var table, column string
+		require.NoError(t, rows.Scan(&table, &column))
+		out[table] = append(out[table], column)
+	}
+	require.NoError(t, rows.Err())
+	return out
 }
 
 func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {

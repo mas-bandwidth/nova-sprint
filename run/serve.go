@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/cost"
 	"github.com/mas-bandwidth/nova-sprint/dash"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/steps"
@@ -34,7 +35,7 @@ type Config struct {
 	Hook          Hook
 	Policy        Asking
 	Git           Git
-	Forge         LandForge
+	Forge         forge.Forge
 	Listen        string
 	Ready         chan<- string // the board's address, once it listens
 	Clock         Clock
@@ -68,7 +69,6 @@ type loop struct {
 	mu      sync.Mutex
 	streams map[string]store.Stream
 	hourly  cost.Hourly
-	nag     Nagger
 }
 
 func serve(ctx context.Context, cfg Config, h Health) error {
@@ -123,8 +123,9 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 		}
 	}
 	l := &loop{cfg: cfg, ticker: t, log: NewWriterLogger(cfg.Log),
-		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause, Now: cfg.Clock.Now, Log: cfg.Log},
+		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
 		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), Landings: t.Landings(), At: now}, cfg.Clock.Now)}
+	l.edges.Fault = l.log.EdgeFault
 	l.setStreams(t.snap.Streams)
 	return l, nil
 }
@@ -146,6 +147,9 @@ func (t *Ticker) seed(ctx context.Context) {
 func (l *loop) tick(ctx context.Context, n int) error {
 	start := l.cfg.Clock.Now()
 	ro, rerr := l.cfg.Roster.ReadRosterAt(ctx, max(1, l.ticker.Limits().FleetWidthCap))
+	if rerr == nil {
+		l.log.RosterRefused(ro.Refused)
+	}
 	present := l.present(ctx)
 	budget := BudgetDeadline{Duration: func() time.Duration { return time.Duration(l.ticker.Timeouts().Tick) * time.Second }}
 	tctx, cancel := budget.Begin(ctx)
@@ -163,14 +167,11 @@ func (l *loop) tick(ctx context.Context, n int) error {
 		return err
 	}
 	for _, r := range l.ticker.Push(ctx, l.cfg.Bus, start) {
-		l.log.PushFailed(r)
-	}
-	if rerr == nil {
-		l.nag.Nag(ctx, l.cfg.Bus, l.ticker.Snapshot(), ro, time.Duration(max(1, l.ticker.Timeouts().ReadyNag))*time.Second, start)
+		l.log.PushFailed(r.To, r.Err)
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
-	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro, RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
+	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows), RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
 		err = perr
 	}
 	l.log.Log(TickMetrics{Number: n, Seq: snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})

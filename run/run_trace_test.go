@@ -16,8 +16,11 @@ package run
 // express (each restriction is listed in the mapping document):
 //   - three tracked producers p1, p2, p3 (the model's jobs and cards 1..3),
 //     ready at Init; p0 (flash) with its consumer w0 working on r1, the
-//     preemption's victim; p9 (flash) with w9 working on r2, so the idle
-//     alarm never fires; r2 serves only flash and has no room.
+//     preemption's victim; p9 (flash) with w9 working on r2; r2 serves only
+//     flash and has no room. r1's width is 3: w0 and two jobs (the deal is
+//     the take, defect 52, so a dealt job is working on r1). The engine's
+//     idle floor and its nudge, unacked and undealt bounds are set past the
+//     walk (the model has no action for them).
 //   - the policy answers one deal of room on r1 per tick, so one tracked
 //     op per tick: the model's Budget is 1.
 //   - outside writes (a report, Stop, Start) land between ticks, or a report
@@ -28,6 +31,9 @@ package run
 //   - p3 is raised to blocker only when it is the last job, so the deal
 //     order stays the model's FIFO; it then preempts w0 and the tick
 //     returns the stop request (DeliverEdge) only once that op is accepted.
+//     In the raise's own op (the one append of the model's Report) w0 is
+//     retired and p0 cut a fresh consumer w1 working on r1, so it is the
+//     youngest working consumer on r1 and the victim, not a job's consumer.
 //   - a push is attempted only when the last tracked event raised r1 a
 //     notice (reports raise none), so the envelope covers the whole log.
 import (
@@ -300,7 +306,7 @@ func (r *runTrace) applyTick(ctx context.Context, op store.Op) (store.Receipt, e
 		for _, c := range g.Cards {
 			if j := jobOf(c); j > 0 {
 				if job != 0 && job != j {
-					r.t.Fatalf("op %s moves two tracked cards", op.ID)
+					r.t.Fatalf("op %s moves two tracked cards: %+v", op.ID, steps.OpGroups(op))
 				}
 				job = j
 			}
@@ -350,9 +356,9 @@ func (r *runTrace) applyTick(ctx context.Context, op store.Op) (store.Receipt, e
 type tracePolicy struct{ r *runTrace }
 
 func (p tracePolicy) AnswerContext(_ context.Context, _ policy.Versions, snap store.Snapshot, _ roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
-	out := policy.Answers{Version: 1, Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
+	out := policy.Answers{Version: 1, Catalog: benchCatalog(), Order: map[string][]any{}, Rows: map[policy.RowsQuestion][]string{}, Width: map[string]policy.Width{},
 		Limits:   policy.Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 100, RouteRestWindow: 10, RouteRestAfter: 3, FleetWidthCap: 4, FlapLimit: 3, EscalateAfter: 2, FrontierAfter: 3},
-		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyTake: 180, BaseRegate: []int{120}}}
+		Timeouts: policy.Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, Tick: 1, ReadyNag: 86400, ReadyTake: 86400, BaseRegate: []int{120}}}
 	for _, id := range q.Order {
 		out.Order[id] = []any{int64(0), id}
 	}
@@ -371,9 +377,9 @@ func (p tracePolicy) AnswerContext(_ context.Context, _ policy.Versions, snap st
 			}
 		}
 		if name == "r1" {
-			out.Width[name] = policy.Width{Work: 1, Ahead: live} // room for one more deal
+			out.Width[name] = policy.Width{Work: min(live+1, 3)} // room for one more deal, to the roster's width
 		} else {
-			out.Width[name] = policy.Width{Work: 1, Ahead: 0}
+			out.Width[name] = policy.Width{Work: 1}
 		}
 	}
 	if p.r.inTick { // the tick's ask (the cold start's seed asks nothing)
@@ -427,7 +433,7 @@ func tracePush(proc, stage string, lo, hi int) string {
 // --- the walk's actions --------------------------------------------------
 
 var traceRoster = roster.Roster{Workers: map[string]roster.Worker{
-	"r1": {Name: "r1", Width: 1, Tiers: []string{"pro"}},
+	"r1": {Name: "r1", Width: 3, Tiers: []string{"pro"}}, // w0 and two jobs: the deal is the take
 	"r2": {Name: "r2", Width: 1, Tiers: []string{"flash"}},
 }}
 
@@ -450,10 +456,21 @@ func (r *runTrace) report(card string) {
 	r.add("Report", fmt.Sprintf(", c |-> %d", jobOf(card))+r.global())
 }
 
+// raise is the person's blocker raise of p3 (the model's Report on card 3).
+// In the same op p0's consumer w0 is retired and p0 is cut a fresh one, w1,
+// working on r1 (as a deal cuts it: put, then working), so w1 is the
+// youngest working consumer there, witnessed at the raise or, unwitnessed,
+// last by id. One op is one append to the store's sequence, as the model's
+// Report is one; the retake as two ops of its own moved physicalSeq two past
+// the model's, and RunTrace refused the raise.
 func (r *runTrace) raise() {
 	r.t.Helper()
 	r.reports++
-	r.outside(fmt.Sprintf("report-%d", r.reports), store.SetCardPriority{Card: "p3", Priority: "blocker"})
+	r.outside(fmt.Sprintf("report-%d", r.reports),
+		store.SetCardState{Card: "w0", State: "fail"},
+		store.PutCard{ID: "w1", Kind: "work", Of: "p0", Stream: "s", Tier: "flash", Holder: "r1", Attempt: 2},
+		store.SetCardState{Card: "w1", State: "working"},
+		store.SetCardPriority{Card: "p3", Priority: "blocker"})
 	r.add("Report", ", c |-> 3"+r.global())
 }
 
@@ -544,8 +561,8 @@ func (r *runTrace) tick() {
 	r.add("EndTick", fmt.Sprintf(`, p |-> %q, procCarry |-> %s, procBatch |-> <<>>, procPutback |-> <<>>, procPhase |-> "ready"`, r.proc, tlaSeq(r.carry)))
 	for _, e := range reqs {
 		j, ok := r.opJob[e.After]
-		if e.Kind != "stop" || !ok {
-			r.t.Fatalf("an edge request the model has no job for: %+v", e)
+		if e.Kind != "stop" || !ok || e.Consumer != "w1" {
+			r.t.Fatalf("an edge request the model has no job for (the victim is w1): %+v", e)
 		}
 		r.edgeDone = append(r.edgeDone, j)
 		r.add("DeliverEdge", fmt.Sprintf(", j |-> %d, edgeDone |-> %s", j, tlaSet(r.edgeDone)))
@@ -590,6 +607,7 @@ func traceSetup(t *testing.T, f *store.Fake, at time.Time) {
 		store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"},
 		store.PutRow{Name: "r1", Session: "sess-1", Role: "worker"}, store.SetRowState{Row: "r1", State: "up"},
 		store.PutRow{Name: "r2"}, store.SetRowState{Row: "r2", State: "up"})
+	apply("setup-policy", activePolicy()...)
 	var ws []store.Write
 	for i, c := range append(slices.Clone(tracked), "p0", "p9") {
 		tier := "pro"
@@ -631,7 +649,13 @@ func traceSeed(t *testing.T) int64 {
 	return seed
 }
 
-func TestEmitRunTrace(t *testing.T) {
+func TestEmitRunTrace(t *testing.T) { // unitlint: serial, it writes steps.Engine, which every tick reads
+	// The run model has no nudge, unacked, undealt or idle action: the
+	// fixture keeps the engine's bounds past the walk (restored after; the
+	// test is serial, so it ends before any parallel test starts), and tracePolicy's
+	// ready_nag and ready_take are a day.
+	defer func(e steps.Defaults) { steps.Engine = e }(steps.Engine)
+	steps.Engine.UndealtAfter, steps.Engine.IdleFloor = 1<<30, 0
 	ctx := context.Background()
 	seed := traceSeed(t)
 	r := &runTrace{t: t, ctx: ctx, rnd: rand.New(rand.NewSource(seed)), base: store.NewFake(), at: time.Unix(1_800_000_000, 0).UTC(), opJob: map[string]int{}}
@@ -643,6 +667,16 @@ func TestEmitRunTrace(t *testing.T) {
 	}
 	r.add("Init", fmt.Sprintf(`, lock |-> "none", hook |-> "none"%s, cursor |-> [x \in {"r1"} |-> 0], sent |-> [x \in {"r1"} |-> {}], edgeDone |-> {}, stopped |-> %s`, r.global(), tlaBool(s.Stopped)))
 	r.start(false)
+	// The fresh store is stopped, never started (store.FreshStop): the run
+	// is up and ticks, and moves nothing until the coordinator's first
+	// start (Run.tla NeverStartedMovesNothing; RunTrace.cfg
+	// InitiallyStopped = TRUE).
+	if !s.Stopped || s.StopReason != store.NeverStarted {
+		t.Fatalf("a fresh store is %v (%q), want stopped (%q)", s.Stopped, s.StopReason, store.NeverStarted)
+	}
+	r.stopped = true
+	r.tick()
+	r.setStopped(false)
 
 	switch {
 	case os.Getenv("NOVA_RUN_TRACE_MIDSTOP") == "1":

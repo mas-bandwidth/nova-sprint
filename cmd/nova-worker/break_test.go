@@ -18,7 +18,7 @@ import (
 // a real git repository and real processes)
 //
 // Sequence: `nova-worker --once --as r1 --host b1 --harness script
-// --work-clone <clone>` against a nova-sprint that deals one read consumer.
+// --work-root <dir> --mirror-root <dir>` against a nova-sprint that deals one read consumer.
 // nova-reserve on PATH records every invocation.
 //
 // Broken: Guarantee 8 ("A harness runs only inside a nova-reserve slot, freed
@@ -28,7 +28,7 @@ import (
 // ReserveBin), so RunHarness runs the harness argv bare, with no slot and no
 // sandbox, and the card's done-when tests likewise. The same wiring leaves
 // Runner.Procs nil, so a restart can never adopt a live harness.
-func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) {
+func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	tmp := t.TempDir()
 	git := func(dir string, args ...string) string {
 		t.Helper()
@@ -56,8 +56,8 @@ func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) {
 	_ = os.MkdirAll(bin, 0o755)
 	reserveLog := filepath.Join(tmp, "reserve.log")
 	sprintLog := filepath.Join(tmp, "sprint.log")
-	next := `{"epoch":1,"seq":5,"row":"r1","state":"up","width":1,"harness":"script","ready":[{"id":"p1.r1","producer":"p1","kind":"read","stream":"s1","state":"ready","gen":1}]}`
-	take := fmt.Sprintf(`{"consumer":"p1.r1","producer":"p1","kind":"read","stream":"s1","repo":"o/r","base":"main","stream_ref":"sprint/s1/group","branch":"sprint/s1/p1","head":%q,"tier":"pro","prose":"read:ok","gen":2,"model":"m1","deadline":900,"forge":""}`, head)
+	next := `{"epoch":1,"seq":5,"row":"r1","state":"up","width":1,"harness":"script","working":[{"id":"p1.r1","producer":"p1","kind":"read","stream":"s1","state":"working","gen":2}]}` // dealt in hand (defect 52)
+	take := fmt.Sprintf(`{"consumer":"p1.r1","producer":"p1","kind":"read","stream":"s1","repo":%q,"base":"main","stream_ref":"sprint/s1/group","branch":"sprint/s1/p1","head":%q,"tier":"pro","prose":"read:ok","gen":2,"model":"m1","deadline":900,"forge":"","commit_name":"Sprint Bot","commit_email":"1+sprint-bot@users.noreply.example.test"}`, origin, head)
 	sprint := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\ncase \"$1\" in\nnext) echo '%s';;\ntake) echo '%s';;\nreport) echo '{\"accepted\":true}';;\nesac\n", sprintLog, next, take)
 	_ = os.WriteFile(filepath.Join(bin, "nova-sprint"), []byte(sprint), 0o755)
 	bus := "#!/bin/sh\necho 'HOOK OK name=r1 waiting=0' >&2\nexec sleep 3600\n"
@@ -67,8 +67,8 @@ func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	var out, errBuf bytes.Buffer
-	code := run_internal([]string{"--once", "--as", "r1", "--host", "b1", "--coordinator-hosts", "coord", "--harness", "script", "--root", filepath.Join(tmp, "root"),
-		"--state-dir", filepath.Join(tmp, "state"), "--work-clone", clone}, &out, &errBuf)
+	code := run_internal([]string{"--once", "--as", "r1", "--host", "b1", "--harness", "script", "--root", filepath.Join(tmp, "root"),
+		"--state-dir", filepath.Join(tmp, "state"), "--work-root", filepath.Join(tmp, "clones"), "--mirror-root", filepath.Join(tmp, "mirrors")}, &out, &errBuf)
 	sl, _ := os.ReadFile(sprintLog)
 	reported := ""
 	for _, l := range strings.Split(string(sl), "\n") {
@@ -81,7 +81,7 @@ func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) {
 	}
 	order := []string{}
 	for _, l := range strings.Split(string(sl), "\n") {
-		if verb, _, _ := strings.Cut(l, " "); verb != "" {
+		if verb, _, _ := strings.Cut(l, " "); verb != "" && verb != "beat" { // the heartbeat (round 23) may come anywhere
 			order = append(order, verb)
 		}
 	}

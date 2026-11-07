@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -11,29 +12,23 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 type OriginChecker interface {
 	HasHead(ctx context.Context, repo, branch, sha string) (bool, error)
 }
-type ReportForgeChecker interface {
-	HasPR(ctx context.Context, repo, branch, base, sha string) (bool, error)
-	ChecksGreen(ctx context.Context, repo, sha string) (bool, error)
-}
 type StoreSprintClient struct {
-	Store                store.Store
-	Origin               OriginChecker
-	Forge                ReportForgeChecker
-	RequirePR            map[string]bool
-	RequireGreenAtReport bool
-	RequireHook          bool
-	BusPresent           map[string]bool
-	BusRedisAddr         string
-	Hooked               map[string]string
-	HookCalls            int
-	UnhookCalls          int
-	Now                  func() time.Time
+	Store        store.Store
+	Origin       OriginChecker
+	RequireHook  bool
+	BusPresent   map[string]bool
+	BusRedisAddr string
+	Hooked       map[string]string
+	HookCalls    int
+	UnhookCalls  int
+	Now          func() time.Time
 }
 
 func (s *StoreSprintClient) Hook(ctx context.Context, row string) error {
@@ -54,7 +49,7 @@ func (s *StoreSprintClient) HookRole(ctx context.Context, row, role string) erro
 		return fmt.Errorf("SPRINT REFUSED hook: invalid role %q: pass --role coordinator|worker", role)
 	}
 	if s.BusPresent != nil && !s.BusPresent[row] {
-		addr := cmpOr_internal(s.BusRedisAddr, "127.0.0.1:6381")
+		addr := cmp.Or(s.BusRedisAddr, "127.0.0.1:6381")
 		return fmt.Errorf("hook in to the bus first: run NOVA_BUS_REDIS=%s nova-bus hook --as %s as the Monitor tool command, then hook in to the sprint again", addr, row)
 	}
 	snap, err := s.Store.Snapshot(ctx)
@@ -144,6 +139,13 @@ func fakeRowHarness_internal(row string) (harness, model string) {
 // real number is policy's, and the worker takes whatever the receipt says.
 const fakeTierDeadline = 900
 
+// testCommitName and testCommitEmail are the sprint's commit identity every
+// test receipt carries.
+const (
+	testCommitName  = "Sprint Bot"
+	testCommitEmail = "1+sprint-bot@users.noreply.example.test"
+)
+
 func sortConsumers_internal(list []ConsumerSummary) {
 	slices.SortFunc(list, func(a, b ConsumerSummary) int {
 		if c := priorityRank_internal(b.Priority) - priorityRank_internal(a.Priority); c != 0 {
@@ -188,14 +190,14 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 	if c.Of == "group" || c.Branch == "sprint/"+c.Stream+"/group" || strings.HasSuffix(c.Branch, "/group") || c.Branch == "sprint/"+c.Stream {
 		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: card %s branch %q collides with reserved stream integration branch sprint/%s/group", consumerID, c.Branch, c.Stream)
 	}
-	r := snap.Rows[row]
-	plan, ref := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Take{Row: row})
-	if ref != nil {
-		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %s: run nova-sprint show %s", ref.Reason, consumerID)
+	if c.Holder != row || c.State != card.Working {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %s is %s on %s, not in %s's hand: run nova-sprint show %s", consumerID, c.State, c.Holder, row, consumerID)
 	}
+	// the deal is the take: the acknowledgement is a cursor, as verbs' take
 	op := store.Op{
 		ID: FormatTakeOpID(snap.Epoch, consumerID, gen, row), Epoch: snap.Epoch,
-		Actor: row, Kind: "take", At: s.now_internal(), Expect: plan.Expect, Writes: plan.Writes,
+		Actor: row, Kind: "take", At: s.now_internal(), Expect: []store.Expect{store.CardGen{Card: consumerID, Gen: gen}},
+		Writes: []store.Write{store.SetCursor{Name: steps.AckCursor(snap.Epoch, consumerID), Seq: max(snap.Seq, 1)}},
 	}
 	rec, err := s.applyWithReplay_internal(ctx, op)
 	if err != nil {
@@ -212,11 +214,7 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 	}
 	st := snap.Streams[c.Stream]
 	_, model := fakeRowHarness_internal(row)
-	forge := ""
-	if s.RequirePR[c.Stream] {
-		forge = "github"
-	}
-	return buildTakeInfo_internal(snap.Epoch, afterCard, p, st, model, forge), nil
+	return buildTakeInfo_internal(snap.Epoch, afterCard, p, st, model, st.Forge), nil
 }
 func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, model, forge string) TakeInfo {
 	head := c.Head
@@ -230,6 +228,7 @@ func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, model, 
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding,
 		Paths: cloneStrings_internal(c.Paths), DoneWhen: cloneStrings_internal(c.DoneWhen),
 		Gen: c.Gen, Attempt: c.Attempt, Review: c.Review, Model: model, Deadline: fakeTierDeadline, Forge: forge,
+		CommitName: testCommitName, CommitEmail: testCommitEmail,
 	}
 }
 func (s *StoreSprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
@@ -294,18 +293,6 @@ func (s *StoreSprintClient) checkReportGates_internal(ctx context.Context, c, p 
 			return fmt.Errorf("SPRINT REFUSED report: head %s is not on branch %s at origin: run git push origin %s", req.Head, c.Branch, c.Branch)
 		}
 	}
-	if s.RequirePR[c.Stream] && s.Forge != nil {
-		hasPR, err := s.Forge.HasPR(ctx, st.Repo, c.Branch, st.Base, req.Head)
-		if err != nil || !hasPR {
-			return fmt.Errorf("SPRINT REFUSED report: stream %s requires a pull request for %s at %s: run gh pr create --head %s --base %s", c.Stream, c.Branch, req.Head, c.Branch, st.Base)
-		}
-	}
-	if s.RequireGreenAtReport && s.Forge != nil {
-		green, err := s.Forge.ChecksGreen(ctx, st.Repo, req.Head)
-		if err != nil || !green {
-			return fmt.Errorf("SPRINT REFUSED report: checks are not green at %s: run nova-sprint show %s", req.Head, p.ID)
-		}
-	}
 	return nil
 }
 func buildCombinedReportPlan_internal(snap store.Snapshot, c, p store.Card, st store.Stream, req ReportRequest) (card.Plan, error) {
@@ -314,7 +301,7 @@ func buildCombinedReportPlan_internal(snap store.Snapshot, c, p store.Card, st s
 	if c.Kind == "read" && head == "" {
 		head = p.Head
 	}
-	reason := cmpOr_internal(req.Reason, req.Finding)
+	reason := cmp.Or(req.Reason, req.Finding)
 	cCard := card.FromStore(c)
 	pCard := card.FromStore(p)
 	cPlan, ref := card.MoveConsumer(cCard, pCard, card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Report{Row: req.Row, Result: req.Result, Head: head, Reason: reason, Cost: req.Cost, Priced: req.Priced})
@@ -336,8 +323,8 @@ func mergeWorkProducerMove_internal(snap store.Snapshot, cCard, pCard card.Card,
 		if cc.ID == cCard.ID {
 			cc.State = card.Done
 			cc.Result = req.Result
-			cc.Head = cmpOr_internal(req.Head, cc.Head)
-			cc.Reason = cmpOr_internal(req.Reason, cc.Reason)
+			cc.Head = cmp.Or(req.Head, cc.Head)
+			cc.Reason = cmp.Or(req.Reason, cc.Reason)
 		}
 		cons = append(cons, cc)
 	}
@@ -385,6 +372,39 @@ func (s *StoreSprintClient) applyWithReplay_internal(ctx context.Context, op sto
 	}
 	return store.Receipt{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
 }
+
+// Release is the release verb's withdraw: the consumer gives back its card
+// with the reason "released: <why>", no result; the producer goes back with
+// its bounces unchanged, at head when one is named.
+func (s *StoreSprintClient) Release(ctx context.Context, row, consumer string, gen int, head, reason string) error {
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	c, ok := snap.Cards[consumer]
+	if !ok || c.Gen != gen || c.Holder != row {
+		return fmt.Errorf("%w: %s is not held by %s at generation %d", ErrRefused, consumer, row, gen)
+	}
+	p := snap.Cards[c.Of]
+	ev := card.Withdraw{Reason: "released: " + reason, Head: cmp.Or(head, c.Head), Stream: card.StreamFromStore(snap.Streams[p.Stream])}
+	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(snap.Rows[row], 0, nil), ev)
+	if why != nil {
+		return fmt.Errorf("%w: %s", ErrRefused, why.Reason)
+	}
+	op := store.Op{ID: fmt.Sprintf("release-%s-%d", consumer, gen), Epoch: snap.Epoch, Actor: row, Kind: "release", At: s.now_internal(), Expect: plan.Expect, Writes: plan.Writes}
+	_, err = s.applyWithReplay_internal(ctx, op)
+	return err
+}
+func (s *StoreSprintClient) Beat(ctx context.Context, row string, hb Heartbeat) error {
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	op := store.Op{ID: fmt.Sprintf("beat-%s-%d", row, snap.Seq), Epoch: snap.Epoch, Actor: row, Kind: "beat", At: s.now_internal(),
+		Writes: []store.Write{store.SetRowLoad{Row: row, Load1Centi: int(hb.Load1*100 + 0.5), Cores: hb.Cores, SlotsUsed: hb.SlotsUsed, SlotsTotal: hb.SlotsTotal, Tiers: hb.Tiers}}}
+	_, err = s.applyWithReplay_internal(ctx, op)
+	return err
+}
 func (s *StoreSprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
 	snap, err := s.Store.Snapshot(ctx)
 	if err != nil {
@@ -397,7 +417,7 @@ func (s *StoreSprintClient) OpenJudgement(ctx context.Context, j store.Judgement
 	op := store.Op{
 		ID:     "judge-open-" + j.ID + "-e" + strconv.Itoa(snap.Epoch),
 		Epoch:  snap.Epoch,
-		Actor:  cmpOr_internal(j.About, "worker"),
+		Actor:  cmp.Or(j.About, "worker"),
 		Kind:   "judgement",
 		At:     now,
 		Writes: []store.Write{store.PutJudgement{ID: j.ID, Kind: j.Kind, About: j.About, Question: j.Question, Command: j.Command, Group: j.Group, Deadline: j.Deadline}},
@@ -415,7 +435,7 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 		Run: func(_ context.Context, argv []string) ([]byte, int, error) {
 			calls = append(calls, slices.Clone(argv))
 			if slices.Contains(argv, "take") {
-				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4,"model":"m1","deadline":900,"forge":""}`), 0, nil
+				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4,"model":"m1","deadline":900,"forge":"","commit_name":"Sprint Bot","commit_email":"1+sprint-bot@users.noreply.example.test"}`), 0, nil
 			}
 			opID := FormatResultID(3, "p1.w1", 1, 4)
 			return []byte(fmt.Sprintf(`{"accepted":true,"op":%q}`, opID)), 0, nil

@@ -7,6 +7,7 @@ import (
 )
 
 func TestFleetPublicInstallerArgs(t *testing.T) {
+	t.Parallel()
 	var got []string
 	f := fleetPublicInstaller{command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		got = append([]string{name}, args...)

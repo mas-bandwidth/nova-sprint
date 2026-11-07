@@ -18,6 +18,7 @@ import (
 // the store is values. And every function is under 60 lines (the build
 // rules).
 func TestLintPure(t *testing.T) {
+	t.Parallel()
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
 	fset := token.NewFileSet()

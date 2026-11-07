@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -49,10 +48,21 @@ func startFunctionalPG_internal(t *testing.T) *store.PG {
 	out, err := initCmd.CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	port := freePort_internal(t)
-	cmd := exec.Command(filepath.Join(bin, "postgres"), "-D", filepath.Join(dir, "data"), "-p", port, "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=off")
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() })
+	// pg_ctl starts it and stops it (-m immediate: the postmaster stops its
+	// children before it exits, so none writes into the removed TempDir).
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
@@ -85,8 +95,6 @@ func runGitCmd_internal(t *testing.T, dir string, args ...string) string {
 
 type gitBenchDirs struct {
 	originDir string
-	mirrorDir string
-	workClone string
 	seedClone string
 	baseSHA   string
 }
@@ -95,8 +103,6 @@ func setupGitBench_internal(t *testing.T) gitBenchDirs {
 	t.Helper()
 	root := t.TempDir()
 	originDir := filepath.Join(root, "origin.git")
-	mirrorDir := filepath.Join(root, "mirror.git")
-	workClone := filepath.Join(root, "work-clone")
 	seedClone := filepath.Join(root, "seed-clone")
 
 	runGitCmd_internal(t, root, "init", "--bare", originDir)
@@ -107,16 +113,10 @@ func setupGitBench_internal(t *testing.T) gitBenchDirs {
 	baseSHA := runGitCmd_internal(t, seedClone, "rev-parse", "HEAD")
 	runGitCmd_internal(t, seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
-	runGitCmd_internal(t, root, "clone", "--bare", originDir, mirrorDir)
-	runGitCmd_internal(t, root, "clone", originDir, workClone)
-	altFile := filepath.Join(workClone, ".git", "objects", "info", "alternates")
-	require.NoError(t, os.MkdirAll(filepath.Dir(altFile), 0o755))
-	require.NoError(t, os.WriteFile(altFile, []byte(filepath.Join(mirrorDir, "objects")+"\n"), 0o644))
+	// The worker makes the mirror and the work clone on first use.
 
 	return gitBenchDirs{
 		originDir: originDir,
-		mirrorDir: mirrorDir,
-		workClone: workClone,
 		seedClone: seedClone,
 		baseSHA:   baseSHA,
 	}
@@ -174,8 +174,8 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	movedStreamSHA := runGitCmd_internal(t, gb.seedClone, "rev-parse", "HEAD")
 	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
-	gitOps := &OSGitOps{WorkCloneDir: gb.workClone, MirrorDir: gb.mirrorDir, OriginURL: gb.originDir}
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal,
+	gitOps := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
+	r, err := NewRunner(Runner{
 		Host:      "b1",
 		RootDir:   t.TempDir(),
 		Sprint:    &StoreSprintClient{Store: pg, Origin: gitOps},
@@ -187,7 +187,7 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	require.NoError(t, r.ProbeRow(ctx, "b1.script", "script", "script-v1"))
+	require.NoError(t, r.ProbeRow(ctx, "b1.script", "script"))
 	require.NoError(t, r.StepRow(ctx, "b1.script"))
 
 	snap, err := pg.Snapshot(ctx)
@@ -216,8 +216,8 @@ func TestFunctionalRunnerRebaseConflict(t *testing.T) {
 	runGitCmd_internal(t, gb.seedClone, "commit", "-m", "conflicting work.txt")
 	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
-	gitOps := &OSGitOps{WorkCloneDir: gb.workClone, MirrorDir: gb.mirrorDir, OriginURL: gb.originDir}
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal,
+	gitOps := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
+	r, err := NewRunner(Runner{
 		Host:      "b1",
 		RootDir:   t.TempDir(),
 		Sprint:    &StoreSprintClient{Store: pg, Origin: gitOps},
@@ -229,7 +229,7 @@ func TestFunctionalRunnerRebaseConflict(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	require.NoError(t, r.ProbeRow(ctx, "b1.script", "script", "script-v1"))
+	require.NoError(t, r.ProbeRow(ctx, "b1.script", "script"))
 	require.NoError(t, r.StepRow(ctx, "b1.script"))
 
 	snap, err := pg.Snapshot(ctx)

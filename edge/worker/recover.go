@@ -1,0 +1,289 @@
+package worker
+
+import (
+	"cmp"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+
+	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
+)
+
+// RefusalLimit is how many identical refusals of one record's report the
+// worker takes before it sets the record aside for a reader (defect 69). A
+// guess, not measured.
+const RefusalLimit = 3
+
+// ReceiptName is the take receipt as the worker read it, kept in the job
+// directory from the take on, so a job the runner stopped can be resumed
+// (defects 61, 70) without asking the sprint for it again.
+const ReceiptName = "receipt.json"
+
+// RecoverRow is one recovery of the row's jobs, run to the end: what is
+// owed is sent, finished cards' directories are cleaned, a live harness is
+// adopted, and every job a stopped runner left is resumed (and waited for).
+func (r *Runner) RecoverRow(ctx context.Context, row string) error {
+	resumes, err := r.recoverRow_internal(ctx, row)
+	if err != nil || len(resumes) == 0 {
+		return err
+	}
+	next, err := r.Sprint.Next(ctx, row)
+	if err != nil {
+		return err
+	}
+	var launches []launch_internal
+	for _, l := range resumes {
+		if l, ok := r.claim_internal(ctx, l.c, l.resume); ok {
+			launches = append(launches, l)
+		}
+	}
+	return r.runBatch_internal(ctx, next, launches)
+}
+
+// recoverRow_internal does a pass's recovery and returns the jobs to
+// resume (not yet claimed). One record the sprint keeps refusing never
+// ends it (defect 69): it is logged, kept, and sent again next pass.
+func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_internal, error) {
+	next, err := r.Sprint.Next(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	disk, err := r.loadRowJobs_internal(row)
+	if err != nil {
+		return nil, err
+	}
+	workingByID, finalByID := r.holders_internal(next)
+	var out []launch_internal
+	for id, rec := range disk {
+		if f, isFinal := finalByID[id]; isFinal {
+			if !r.isRunningInFlight_internal(id) { // a job in flight ends and retires itself
+				r.finalJob_internal(f, rec)
+			}
+		} else if w, isWorking := workingByID[id]; isWorking && !r.isRunningInFlight_internal(id) {
+			if sameEpoch_internal(next, rec) && rec.Gen < w.Gen {
+				r.retireJob_internal(filepath.Join(r.RootDir, "jobs", id), rec, fmt.Sprintf("generation %d is stale: the row holds %s at %d", rec.Gen, id, w.Gen))
+			} else if !jobMatchesSummary_internal(next, w, rec) {
+				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
+			} else if rec, resume := r.recoverWorkingJob_internal(ctx, w, rec); resume {
+				out = append(out, launch_internal{c: w, resume: &rec})
+			}
+		}
+	}
+	return out, nil
+}
+
+// holders_internal is the row's working and final consumers by id, and
+// records who holds a branch (holds_internal): a final consumer's jobs
+// none, a working one's only at its gen or above; a withdrawn consumer's
+// job in flight is cancelled.
+func (r *Runner) holders_internal(next NextResponse) (map[string]ConsumerSummary, map[string]ConsumerSummary) {
+	workingByID, finalByID := map[string]ConsumerSummary{}, map[string]ConsumerSummary{}
+	for _, w := range next.Working {
+		workingByID[w.ID] = w
+		r.markGone_internal(next.Epoch, w.ID, w.Gen)
+	}
+	for _, f := range next.Final {
+		finalByID[f.ID] = f
+		r.markGone_internal(next.Epoch, f.ID, math.MaxInt)
+		if f.State == card.Fail {
+			r.cancelRunning_internal(f.ID)
+		}
+	}
+	return workingByID, finalByID
+}
+
+// finalJob_internal ends a job whose card is final, on the first pass that
+// sees it: a harness left running is stopped, nothing is pushed (the branch
+// is the card's next holder's), and the directory is retired (defect 78).
+func (r *Runner) finalJob_internal(f ConsumerSummary, rec JobRecord) {
+	if rec.State == JobRunning {
+		r.withdrawRunningJob_internal(rec)
+	}
+	r.retireJob_internal(filepath.Join(r.RootDir, "jobs", rec.Consumer), rec, "consumer "+f.State)
+}
+
+// recoverWorkingJob_internal acts on a working card's record: a report it
+// owes is sent; a live harness is adopted (and killed past its deadline);
+// anything else (taken, staged, a harness gone, harvested) is resumed, which
+// the second result says.
+func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSummary, rec JobRecord) (JobRecord, bool) {
+	jobDir := filepath.Join(r.RootDir, "jobs", w.ID)
+	switch {
+	case rec.State == JobCleaned || rec.State == JobRecorded:
+		return rec, false
+	case rec.State == JobCIWait || rec.State == JobReporting || rec.State == JobRebased:
+		r.resend_internal(ctx, jobDir, rec)
+		return rec, false
+	case rec.State == JobRunning && r.Procs != nil && r.Procs.Alive(rec.PID, rec.Nonce):
+		r.adopt_internal(ctx, jobDir, w, rec)
+		return rec, false
+	}
+	return rec, true
+}
+
+// adopt_internal keeps a live harness a stopped runner left: its deadline is
+// the recorded one, and past it the harness is killed and the job faulted
+// (the harness ran too long; its stop was not the runner's).
+func (r *Runner) adopt_internal(ctx context.Context, jobDir string, w ConsumerSummary, rec JobRecord) {
+	if rec.DeadlineAt > 0 && r.Now().Unix() >= rec.DeadlineAt {
+		r.report("killing adopted harness "+w.ID, r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
+		r.mu.Lock()
+		delete(r.adopted, w.ID)
+		r.mu.Unlock()
+		r.resendErr_internal(ctx, jobDir, rec, r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "adopted harness timed out past deadline"))
+		return
+	}
+	r.mu.Lock()
+	r.adopted[w.ID] = rec
+	r.mu.Unlock()
+	r.logStep_internal(rec.Row, w.ID, "adopt", fmt.Sprintf("pid=%d", rec.PID), 0)
+}
+
+// prepareResume_internal builds a stopped job back from its directory: the
+// receipt it was taken under, its record, and where it stood. A job with
+// no receipt (a directory from before receipts were kept) cannot be run
+// again; it is released for a redeal with no fault and no blame.
+func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal) {
+	rec, jobDir := *p.resume, filepath.Join(r.RootDir, "jobs", p.resume.Consumer)
+	info, err := readReceipt_internal(jobDir)
+	if err != nil {
+		p.end = true
+		r.releaseNoBlame_internal(p.ctx, rec, "the job cannot be resumed: "+err.Error())
+		return
+	}
+	p.job, _ = buildJob_internal(next, info, jobDir, r.ProxyAddr, r.Now())
+	p.rec = rec
+	r.logStep_internal(rec.Row, rec.Consumer, "resume", "from "+rec.State, 0)
+	switch {
+	case rec.State == JobHarvested:
+		return
+	case rec.State == JobRunning && fileExists_internal(filepath.Join(jobDir, "result.json")):
+		p.harvestOnly = true
+		return
+	case rec.State == JobTaken || !fileExists_internal(p.job.WorktreeDir):
+		p.stage, p.rec.State = true, JobTaken
+	default:
+		p.rec.State, p.rec.PID, p.rec.Nonce = JobStaged, 0, ""
+	}
+	p.rec.DeadlineAt = r.Now().Unix() + int64(info.Deadline)
+	r.modelFor_internal(p, info)
+}
+
+// releaseNoBlame_internal gives a card the worker cannot go on with back to
+// the sprint for a redeal: its commits pushed first, once, while it still
+// holds the card (by lease from the head it last pushed), then `release`
+// (no result, no fault, no bounce: neither ok nor fail) with that head. The
+// directory is retired once the release is recorded, and nothing is pushed
+// after it (defect 78); a release that fails is said and tried again by the
+// next pass, whose push of the same head is skipped.
+func (r *Runner) releaseNoBlame_internal(ctx context.Context, rec JobRecord, why string) {
+	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
+	if fileExists_internal(jobDir) {
+		if pushed := r.harvestPartialPush_internal(ctx, jobDir, rec); pushed != "" {
+			rec.PushedHead = pushed
+			r.report("job record "+rec.Consumer, WriteJobRecord(jobDir, rec))
+		}
+	}
+	err := r.Sprint.Release(ctx, rec.Row, rec.Consumer, rec.Gen, rec.PushedHead, "runner restarted: "+why)
+	if err != nil {
+		r.report(fmt.Sprintf("release of %s@%d (%s)", rec.Consumer, rec.Gen, why), err)
+		return
+	}
+	r.markGone_internal(rec.Epoch, rec.Consumer, math.MaxInt)
+	r.logStep_internal(rec.Row, rec.Consumer, "release", "no blame: "+why, 0)
+	if fileExists_internal(jobDir) {
+		r.retireJob_internal(jobDir, rec, "released with no blame")
+	}
+}
+
+// resend_internal sends a report a record owes again.
+func (r *Runner) resend_internal(ctx context.Context, jobDir string, rec JobRecord) {
+	r.resendErr_internal(ctx, jobDir, rec, r.sendReportAndClean_internal(ctx, jobDir, rec))
+}
+
+// resendErr_internal handles a send's error: a down store waits for the
+// next pass; a refusal is logged and counted on the record, and the record
+// refused the same way RefusalLimit times is set aside (quarantine_internal).
+func (r *Runner) resendErr_internal(ctx context.Context, jobDir string, rec JobRecord, err error) {
+	if err == nil || errors.Is(err, ErrStoreDown) || ctx.Err() != nil {
+		return
+	}
+	r.logStep_internal(rec.Row, rec.Consumer, "recover", "refused: "+err.Error(), 0)
+	if cur, rerr := ReadJobRecord(jobDir); rerr == nil {
+		rec = cur
+	}
+	why := edge.RedactN(err.Error(), edge.FailureMax)
+	if rec.LastRefusal == why {
+		rec.Refusals++
+	} else {
+		rec.Refusals, rec.LastRefusal = 1, why
+	}
+	if rec.Refusals < cmp.Or(r.RefusalLimit, RefusalLimit) {
+		r.report("job record "+rec.Consumer, WriteJobRecord(jobDir, rec))
+		return
+	}
+	r.quarantine_internal(jobDir, rec)
+}
+
+// quarantine_internal sets a record the sprint keeps refusing aside, in
+// <root>/quarantine/<consumer>@<gen>, and raises it: a WORKER WARNING on
+// the worker's output and its step log, with the refusal and where the
+// record is. The pass goes on; the card is not resumed or released while
+// its record is there, so a reader decides.
+func (r *Runner) quarantine_internal(jobDir string, rec JobRecord) {
+	dst := r.quarantineDir_internal(rec.Consumer, rec.Gen)
+	if fileExists_internal(dst) {
+		dst += fmt.Sprintf("-%d", r.Now().Unix())
+	}
+	err := os.MkdirAll(filepath.Dir(dst), 0o755)
+	if err == nil {
+		r.report("job record "+rec.Consumer, WriteJobRecord(jobDir, rec))
+		err = os.Rename(jobDir, dst)
+	}
+	if err != nil {
+		r.report("quarantine of "+rec.Consumer, fmt.Errorf("setting the refused record aside failed, it stays in %s and is sent again next pass: %w", jobDir, err))
+		return
+	}
+	r.logStep_internal(rec.Row, rec.Consumer, "quarantine", dst, 0)
+	r.report("quarantine", fmt.Errorf("%s@%d: its report was refused %d times the same way (%s); the record is set aside in %s for a reader: read it, then nova-sprint show %s",
+		rec.Consumer, rec.Gen, rec.Refusals, rec.LastRefusal, dst, rec.Consumer))
+}
+
+func (r *Runner) quarantineDir_internal(consumer string, gen int) string {
+	return filepath.Join(r.RootDir, "quarantine", fmt.Sprintf("%s@%d", consumer, gen))
+}
+
+// quarantined_internal: w's record at this gen is set aside.
+func (r *Runner) quarantined_internal(w ConsumerSummary) bool {
+	return fileExists_internal(r.quarantineDir_internal(w.ID, w.Gen))
+}
+
+// writeReceipt_internal keeps the take receipt in the job directory.
+func writeReceipt_internal(jobDir string, info TakeInfo) error {
+	data, err := json.Marshal(info)
+	if err != nil {
+		return fmt.Errorf("the take receipt: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(jobDir, ReceiptName), append(data, '\n'), 0o600); err != nil {
+		return fmt.Errorf("keep the take receipt: %w", err)
+	}
+	return nil
+}
+
+// readReceipt_internal is the take receipt a job directory keeps.
+func readReceipt_internal(jobDir string) (TakeInfo, error) {
+	var info TakeInfo
+	data, err := os.ReadFile(filepath.Join(jobDir, ReceiptName))
+	if err != nil {
+		return info, fmt.Errorf("no take receipt in %s: %w", filepath.Base(jobDir), err)
+	}
+	if err := json.Unmarshal(data, &info); err != nil {
+		return info, fmt.Errorf("the take receipt in %s: %s", filepath.Base(jobDir), edge.ParseFailure(err, data))
+	}
+	return info, nil
+}

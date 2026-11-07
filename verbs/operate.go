@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/worker"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 
 	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -21,10 +21,10 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	}
 	label, next := "STARTED", waitNext
 	if stop {
-		label, next = "STOPPED", "nova-sprint start --reason \"<why>\""
+		label, next = "STOPPED", "nova-sprint start --as "+in.actor+" --reason \"<why>\""
 	}
 	if snap.Stopped == stop {
-		return done(next, fmt.Sprintf("%s already (%s)", label, orWord(snap.StopReason, "no reason given"))), nil
+		return alreadyStopped(snap, in.actor), nil
 	}
 	op := e.newOp(in.verb, in.actor, snap, reason)
 	op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}}
@@ -36,52 +36,15 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	return done(next, fmt.Sprintf("%s applied at seq %d", label, r.Seq)), nil
 }
 
-// runCheck is `check`, the one doctor: the fleet, nova-tools at or above
-// the pin, the store at this build's schema, the bus; --integrity also
-// rebuilds the history and compares it with the tables.
-func runCheck(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
-	if e.Doctor == nil || e.Bus == nil {
-		return "", broken("the doctor is not configured", "set NOVA_PG_DSN and NOVA_BUS_REDIS, then check again")
+// alreadyStopped is stop on a stopped sprint, or start on a running one: a
+// success that changes nothing, saying the state and the next verb (defect
+// 23: start on a running sprint printed "STARTED already").
+func alreadyStopped(snap store.Snapshot, actor string) string {
+	reason := orWord(snap.StopReason, "no reason given")
+	if snap.Stopped {
+		return done("nova-sprint start --as "+actor+" --reason \"<why>\"", "STOPPED already: the sprint is already stopped ("+reason+"); nothing changed")
 	}
-	if err := e.Doctor.Fleet(ctx); err != nil {
-		return "", err
-	}
-	tools, err := e.toolsAtPin(ctx)
-	if err != nil {
-		return "", err
-	}
-	current, err := e.Doctor.Schema(ctx)
-	if err != nil {
-		return "", broken("the store did not answer ("+clip(err.Error())+")", "check NOVA_PG_DSN and NOVA_SPRINT_PG_PASSWORD")
-	}
-	if !current {
-		return "", refuse("the store is not at this build's schema", "nova-sprint up --as <coordinator>")
-	}
-	who, err := e.Bus.Who(ctx)
-	if err != nil {
-		return "", broken("nova-bus who failed ("+clip(err.Error())+")", "check NOVA_BUS_REDIS, then nova-bus who")
-	}
-	lines := []string{"CHECK fleet green", "CHECK nova-tools " + tools + " (pin " + e.ToolPin + ")", "CHECK store at schema", fmt.Sprintf("CHECK bus answering (%d present)", len(who))}
-	if in.has("integrity") {
-		if err := e.Doctor.History(ctx); err != nil {
-			return "", err
-		}
-		lines = append(lines, "CHECK history rebuilds the tables")
-	}
-	return done("nova-sprint next --as "+orWord(in.actor, "<you>"), lines...), nil
-}
-
-// toolsAtPin is nova-tools' release, refused below this build's pin.
-func (e *Engine) toolsAtPin(ctx context.Context) (string, error) {
-	line, err := e.Doctor.ToolsVersion(ctx)
-	v, ok := parseToolsRelease(line)
-	if err != nil || !ok {
-		return "", refuse("nova-tools' version is unknown", toolsFix(e.ToolPin))
-	}
-	if at, err := atLeast(v, e.ToolPin); err != nil || !at {
-		return "", refuse("nova-tools "+v+" is below the pin "+e.ToolPin, toolsFix(e.ToolPin))
-	}
-	return v, nil
+	return done("nova-sprint next --as "+actor, "RUNNING already: the sprint is already running ("+reason+"); nothing to start")
 }
 
 // atLeast compares releases vMAJOR.MINOR.PATCH; a prerelease or a
@@ -102,20 +65,25 @@ func releaseVersion(s string) ([3]uint64, error) {
 	var out [3]uint64
 	parts := strings.Split(strings.TrimPrefix(s, "v"), ".")
 	if len(parts) != 3 {
-		return out, fmt.Errorf("invalid version")
+		return out, fmt.Errorf("invalid version: %s", edge.ParseRefused(fmt.Sprintf("%d dot-separated parts, want 3 (vMAJOR.MINOR.PATCH)", len(parts)), 0, []byte(s)))
 	}
+	at := len(s) - len(strings.TrimPrefix(s, "v"))
 	for i, p := range parts {
 		n, err := strconv.ParseUint(p, 10, 64)
-		if err != nil || p == "" || strings.Trim(p, "0123456789") != "" || (len(p) > 1 && p[0] == '0') {
-			return out, fmt.Errorf("invalid version")
+		if err != nil {
+			return out, fmt.Errorf("invalid version: %s", edge.ParseFailure(err, []byte(s)))
+		}
+		if strings.Trim(p, "0123456789") != "" || (len(p) > 1 && p[0] == '0') {
+			return out, fmt.Errorf("invalid version: %s", edge.ParseRefused(fmt.Sprintf("part %q is not a number without leading zeros", p), at, []byte(s)))
 		}
 		out[i] = n
+		at += len(p) + 1
 	}
 	return out, nil
 }
 
 func runVersion(e *Engine, _ context.Context, _ *input, _ store.Snapshot) (string, error) {
-	return done("nova-sprint help", "nova-sprint "+orWord(e.Version, "(unknown build)")), nil
+	return done("nova-sprint help", VersionLine(e.Version)), nil
 }
 
 // runRun, runWorker and runDash are the long-running verbs, the binary's.
@@ -133,17 +101,15 @@ func runWorker(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (str
 	if e.Services == nil {
 		return "", broken("worker is not configured in this build", "nova-sprint check")
 	}
-	if !validName(in.actor) || in.str("work-clone") == "" || in.str("coordinator-hosts") == "" {
-		return "", misuse("worker", "worker takes --as <row> --work-clone <dir> --coordinator-hosts <h,h>")
+	if !validName(in.actor) {
+		return "", misuse("worker", "worker takes --as <row>")
 	}
 	w := WorkerArgs{Row: in.actor, Host: in.str("host"), Root: in.str("root"), StateDir: in.str("state-dir"), Harness: in.str("harness"),
-		WorkClone: in.str("work-clone"), Mirror: in.str("mirror"), Origin: in.str("origin"), Once: in.has("once"),
-		CoordinatorHosts: worker.SplitList(in.str("coordinator-hosts")), ProviderUpstream: in.str("provider-upstream"),
-		ProviderHosts: worker.SplitList(in.str("provider-hosts")), ProviderKey: in.str("provider-key")}
+		WorkRoot: in.str("work-root"), MirrorRoot: in.str("mirror-root"), Providers: in.str("providers"), Once: in.has("once")}
 	if err := e.Services.Worker(ctx, w); err != nil {
 		return "", err
 	}
-	return done("nova-sprint worker --as "+in.actor+" --work-clone "+w.WorkClone, "WORKER "+in.actor+" ended"), nil
+	return done("nova-sprint worker --as "+in.actor, "WORKER "+in.actor+" ended"), nil
 }
 
 func runDash(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
@@ -203,7 +169,26 @@ func runRestore(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (st
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("RESTORED %s epoch=%d seq=%d digest=%s\n", info.Path, info.Epoch, info.Seq, digest) + text, nil
+	return fmt.Sprintf("RESTORED %s epoch=%d seq=%d digest=%s\n", info.Path, info.Epoch, info.Seq, digest) + text + e.restoreAdmission(ctx), nil
+}
+
+// restoreAdmission holds the restored producers not yet dealt (waiting or
+// ready) to today's admission (checkCards), one ADMIT line each. The data is
+// in and the restore stands (a recovery refused for a moved path would leave
+// no store at all); a red line names the card and its fix, and check repeats
+// it, red, until it is fixed.
+func (e *Engine) restoreAdmission(ctx context.Context) string {
+	r := &checkReport{}
+	if snap, err := e.snapshot(ctx); err != nil {
+		r.red(RefusalOr(err, broken("the restored store cannot be read for admission ("+errText(err)+")", "nova-sprint check")))
+	} else {
+		e.checkCards(ctx, r, snap)
+	}
+	var b strings.Builder
+	for _, line := range r.lines {
+		b.WriteString("ADMIT " + strings.TrimPrefix(line, "CHECK ") + "\n")
+	}
+	return b.String()
 }
 
 // load runs the verified dump under the chooser lock, in its session.

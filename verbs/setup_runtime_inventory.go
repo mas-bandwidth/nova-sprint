@@ -10,10 +10,13 @@ import (
 )
 
 // FleetMachine is the setup-relevant, non-secret subset of a nova-config row.
+// Address is its fleet (MagicDNS) address; Public is the optional public
+// address nova-config holds for it (nova-tools 2.0.3, machine set --public),
+// "" when unset.
 type FleetMachine struct {
-	Name, Address string
-	Roles         []string
-	Cores         *int
+	Name, Address, Public string
+	Roles                 []string
+	Cores                 *int
 }
 type configMachines struct {
 	Result struct {
@@ -28,6 +31,7 @@ type configMachines struct {
 		Kind   string `json:"kind"`
 		Fields struct {
 			Name, Address, Roles string
+			Public               string `json:"public"`
 			Cores                *int
 		} `json:"fields"`
 	} `json:"items"`
@@ -64,20 +68,24 @@ func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 				roles = append(roles, role)
 			}
 		}
-		result = append(result, FleetMachine{Name: v.Name, Address: v.Address, Roles: roles, Cores: v.Cores})
+		result = append(result, FleetMachine{Name: v.Name, Address: v.Address, Public: strings.TrimSpace(v.Public), Roles: roles, Cores: v.Cores})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result, nil
 }
 
 // SprintSeats uses the chosen run service's actual seat plus the existing
-// swarm seat for each configured bench. Public pull hosts receive no DSN.
+// swarm seat for each configured bench. The public dashboard service gets
+// no secret (a pull-only record without seat or keys, validPublicTarget):
+// that is the safety, so a bench that also serves the public board keeps
+// its seat for its worker (Glenn, 2026-11-07); the run machine never
+// serves it.
 func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) ([]SprintSeat, error) {
 	if !fleetName.MatchString(run.Machine) || !fleetName.MatchString(run.Seat) {
-		return nil, fmt.Errorf("run seat unavailable")
+		return nil, fmt.Errorf("run seat unavailable: sprint-run machine %q seat %q is not a fleet name", Redact(run.Machine), Redact(run.Seat))
 	}
 	if publicHost != "" && publicHost == run.Machine {
-		return nil, fmt.Errorf("public dashboard host cannot hold the sprint credential")
+		return nil, fmt.Errorf("public dashboard host cannot hold the sprint credential: %s also runs sprint-run", publicHost)
 	}
 	seats := []SprintSeat{{Seat: run.Seat, Machine: run.Machine}}
 	seen := map[string]bool{run.Seat + "\x00" + run.Machine: true}
@@ -85,17 +93,16 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 	for _, machine := range machines {
 		if machine.Name == run.Machine {
 			if !slices.Contains(machine.Roles, "services") {
-				return nil, fmt.Errorf("run host lacks services role")
+				return nil, fmt.Errorf("run host %s lacks services role (roles %s)", machine.Name, strings.Join(machine.Roles, ","))
 			}
 			found = true
 		}
-
-		if machine.Name == publicHost || !slices.Contains(machine.Roles, "bench") {
+		if !slices.Contains(machine.Roles, "bench") {
 			continue
 		}
 		seat := machine.Name
 		if !fleetName.MatchString(seat) {
-			return nil, fmt.Errorf("bench seat unavailable")
+			return nil, fmt.Errorf("bench seat unavailable: machine %q is not a fleet name", Redact(seat))
 		}
 		key := seat + "\x00" + machine.Name
 		if !seen[key] {
@@ -104,7 +111,7 @@ func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) (
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("run host absent from inventory")
+		return nil, fmt.Errorf("run host %s absent from inventory of %d machines", run.Machine, len(machines))
 	}
 	return seats, nil
 }

@@ -148,6 +148,7 @@ type PutCard struct {
 	Paths                []string
 	DoneWhen             []string
 	Prose                string
+	Model                string // a consumer's: the model its deal named (round 23); "" on a producer or sentinel
 }
 
 // SetCardState sets a card's state; refused when the card is already in it,
@@ -337,6 +338,17 @@ type SetRowFlaps struct {
 	Flaps int
 }
 
+// SetRowLoad sets a row's heartbeat: its 1-minute load average in hundredths,
+// the logical cores it was measured over (at least 1), and the nova-reserve
+// slots in use and in all (in use at most in all). It is telemetry: a write
+// that changes nothing is refused like any set write, and it moves no gen,
+// so a beat never fences out a deal made from an earlier snapshot.
+type SetRowLoad struct {
+	Row                                      string
+	Load1Centi, Cores, SlotsUsed, SlotsTotal int
+	Tiers                                    string // the tiers the worker serves, a comma list of Tiers ("" none advertised)
+}
+
 // PutPolicy adds the next policy version, inactive; actor and at come from the op.
 type PutPolicy struct{ Kind, Name, Body string }
 
@@ -346,6 +358,11 @@ type SetStopped struct {
 	Stopped bool
 	Reason  string
 }
+
+// SetIdentity sets the git identity the sprint commits as (Identity), both
+// parts non-empty. Refused when it is already that identity, like every set
+// write.
+type SetIdentity struct{ Name, Email string }
 
 // SetActivePolicy makes one existing version the active one and deactivates
 // the one active before it.
@@ -380,9 +397,11 @@ func (PutRow) isWrite()           {}
 func (SetRowHeld) isWrite()       {}
 func (SetRowState) isWrite()      {}
 func (SetRowFlaps) isWrite()      {}
+func (SetRowLoad) isWrite()       {}
 func (PutPolicy) isWrite()        {}
 func (SetActivePolicy) isWrite()  {}
 func (SetStopped) isWrite()       {}
+func (SetIdentity) isWrite()      {}
 func (SetCardPaths) isWrite()     {}
 func (SetCardDoneWhen) isWrite()  {}
 func (SetCardProse) isWrite()     {}
@@ -439,9 +458,9 @@ func specOf(w Write) spec {
 		})
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
-			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
+			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding, v.Model).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
-		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
+		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose", "model").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
 		return put("row", v.Name, func(c *checker) { c.text(v.Session).hook(v.Session, v.Role) }, "session", "role").then(func(w *work) (string, error) { return w.writePutRow(v) })
 	case PutJudgement:
@@ -462,6 +481,8 @@ func specOf(w Write) spec {
 		return spec{check: func(c *checker) { c.name(v.Name).text(v.Body).oneOf("policy kind", v.Kind, PolicyKinds) }}.then(func(w *work) (string, error) { return w.addPolicy(v) })
 	case SetStopped:
 		return spec{fields: []field{{"stop", "", "stopped"}}, check: func(c *checker) { c.text(v.Reason) }}.then(func(w *work) (string, error) { return w.writeStop(v) })
+	case SetIdentity:
+		return spec{fields: []field{{"identity", "", "identity"}}, check: func(c *checker) { c.name(v.Name, v.Email).given("an identity's name and email", v.Name, v.Email) }}.then(func(w *work) (string, error) { return w.writeIdentity(v) })
 	case SetActivePolicy:
 		return spec{fields: []field{{"policy", "", "active"}}, check: func(c *checker) { c.num("version", v.Version) }}.then(func(w *work) (string, error) { return w.activate(v) })
 	}
@@ -555,6 +576,16 @@ func rowSpec(w Write) spec {
 		return s
 	case SetRowFlaps:
 		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) })
+	case SetRowLoad:
+		return put("row", v.Row, func(c *checker) {
+			c.num("load1_centi", v.Load1Centi).num("cores", v.Cores).num("slots_used", v.SlotsUsed).num("slots_total", v.SlotsTotal)
+			if v.Cores < 1 || v.SlotsUsed > v.SlotsTotal {
+				c.fail("load needs cores of at least 1 and slots_used no more than slots_total, got cores %d, slots %d of %d", v.Cores, v.SlotsUsed, v.SlotsTotal)
+			}
+			if v.Tiers != JoinTiers(SplitTiers(v.Tiers)) {
+				c.fail("load tiers %q are not a comma list of %s in that order, each once", v.Tiers, strings.Join(Tiers, ", "))
+			}
+		}, "load").then(func(w *work) (string, error) { return w.setRowLoad(v) })
 	case SetRowHeld:
 		s := row(v.Row, "held", func(r *Row) { r.Held, r.Reason = v.Held, v.Reason }, func(c *checker) { c.text(v.Reason) })
 		s.rowIf = func(_ *work, r Row) (string, error) {

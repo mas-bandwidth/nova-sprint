@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -37,25 +36,24 @@ func cr3WorkGrid(vw float64) (grid, content float64) {
 	name := min(27.75*rem, e-pad-gap-s)                 // --name-w, --name-cap 27.75rem
 	status := e - pad - gap - name                      // --status-w
 	// name status repeat(6, minmax(5.625rem,1fr)) 4rem minmax(5.625rem,1fr) minmax(5.625rem,1fr) minmax(7.5rem,1.25fr)
-	grid = name + status + 6*5.625*rem + 4*rem + 5.625*rem + 5.625*rem + 7.5*rem + 11*gap
+	grid = name + status + 6*5.625*rem + 4*rem + 5.625*rem + 7.5*rem + 10*gap
 	content = vw - 2*2*rem - 2 - 2*pad // body padding 2rem each side, panel border 1px each side, row padding
 	return grid, content
 }
 
-// At 2000 px with no blocked card the full eleven-column Work grid needs 1894 px and its
-// row has 1870 px: it runs 24 px into the row's right padding, so the cost column ends
-// 8 px from the panel edge where v1's ends 32 px from it (v2-2000.png vs v1-live-2000.png,
-// Work and Total rows). fitTables does not trip because the overflow stays inside the
-// padding. README: "the full eleven-column Work table fits at both 2000 and 2800 px".
+// At 2000 px with no blocked card the Work grid, now ten columns (the fail column is gone,
+// the human 2026-11-07), needs 1733 px and its row has 1870 px: it fits. Before the fail
+// column went it needed 1894 px, 24 px more than the row (v2-2000.png vs v1-live-2000.png).
+// README: "the full Work table fits at both 2000 and 2800 px".
 func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
-	t.Skip("stale since ed7281ae (the fail column left the Work grid); the 2000/2800 px arithmetic is owed a recompute")
+	t.Parallel()
 	css, err := page.ReadFile("page/index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, rule := range []string{
 		".panel { --E: clamp(18.5rem, 45vw, 42rem); }",
-		".streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }",
+		".streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }",
 		".streams .row { --name-cap: 27.75rem; }",
 		"padding: 2rem 2rem 4rem;",
 	} {
@@ -76,6 +74,7 @@ func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
 // countRead creates readers[c.Holder] before its switch (shim.go:151). The ?all=1 Readers
 // table then shows an unnamed row; v1's readers are named rows only.
 func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
 		"p": {ID: "p", Kind: "producer", Stream: "s", State: "review", Tier: "pro"},
 		"r": {ID: "r", Kind: "read", Of: "p", Stream: "s", State: "waiting", Tier: "pro"},
@@ -86,11 +85,12 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 	}
 }
 
-// v1 sends ok% "0.0%" (grey) for a row whose ok and failed are both 0: live v1 capture
-// friends.alex, fleet.captain and fleet.studio; v1-live-1440.png / v1-live-2000.png show
-// "0.0%". v2 sends "-". Round-two ruling 4: "v1's cost, ok%, ETA and throughput fallbacks
-// remain". (dash/README.md states the opposite for zero-denominator rows.)
+// v1 sent ok% "0.0%" (grey) for a row whose ok and failed are both 0 (live v1 capture
+// friends.alex). The human ruled otherwise on 2026-11-07 (directive 63b, 64a): the cell
+// is "-" until there is data, as the total already is; the capture is checked only to
+// show it is the old form.
 func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
+	t.Parallel()
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
 	alex := v1["friends"].(map[string]any)["alex"].(map[string]any)
 	if alex["ok"] != "0" || alex["failed"] != "0" || alex["okpct"] != "0.0%" {
@@ -105,8 +105,8 @@ func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	if err = json.Unmarshal(b, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if got := rows["alex"]["okpct"]; got != "-" { // v1 said 0.0%; v2 says - until a verdict exists (Glenn 2026-11-07)
-		t.Errorf("zero-denominator ok%%: v1 %q, v2 %q", alex["okpct"], got)
+	if got := rows["alex"]["okpct"]; got != "-" {
+		t.Errorf("zero-denominator ok%%: v2 %q, want \"-\" (v1 sent %q)", got, alex["okpct"])
 	}
 }
 
@@ -128,6 +128,7 @@ func (s *cr3Tap) Events(ctx context.Context, after int64, max int) ([]store.Even
 }
 
 func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 30)
@@ -141,7 +142,7 @@ func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
 	mustApply(t, f, "pol2", 1, store.PutPolicy{Kind: "data", Name: "b", Body: "{}"})
 	mustApply(t, f, "act2", 1, store.SetActivePolicy{Version: 2})
 	mustApply(t, f, "land", 1, store.SetCardState{Card: "p00003", State: "landed"})
-	if _, err = f.Clear(ctx, store.Op{ID: "clr", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
+	if _, err = f.Clear(ctx, store.Op{ID: "clr", Epoch: 1, Actor: "x", Kind: "clear", At: t1000}); err != nil {
 		t.Fatal(err)
 	}
 	mustApply(t, f, "after", 2, store.PutStream{Name: "n"}, store.PutCard{ID: "q", Kind: "producer", Tier: "pro", Stream: "n"})
@@ -164,7 +165,7 @@ func TestColdread3FoldPolicyClearOnePage(t *testing.T) {
 			t.Fatalf("cursor did not resume exactly: %v", s.calls)
 		}
 	}
-	if d := c.pageSnapshot().Data.(envelope); d.Epoch != 2 || d.All != 1 {
+	if d := c.pageSnapshot().Data; d.Epoch != 2 || d.All != 1 {
 		t.Fatalf("view after clear epoch=%d all=%d", d.Epoch, d.All)
 	}
 }
@@ -193,6 +194,7 @@ func (s *cr3Hang) Replay(ctx context.Context, id string) (store.Receipt, bool, e
 }
 
 func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)
@@ -209,13 +211,14 @@ func TestColdread3DeadlineCoversCursorWrite(t *testing.T) {
 	if err = c.Advance(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	if d := c.pageSnapshot().Data.(envelope); !d.OK {
+	if d := c.pageSnapshot().Data; !d.OK {
 		t.Fatal("not recovered")
 	}
 }
 
 // Concurrent ticks and page reads under -race.
 func TestColdread3ConcurrentTicksAndReads(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 200)
@@ -257,6 +260,7 @@ func TestColdread3ConcurrentTicksAndReads(t *testing.T) {
 // design) answer each other's cursor receipts with cursor writes, one event per tick each,
 // forever.
 func TestColdread3TwoDashboardsCursorEvents(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 10)
@@ -278,7 +282,8 @@ func TestColdread3TwoDashboardsCursorEvents(t *testing.T) {
 }
 
 // Measurement: 5,000 producers (+500 work and 500 read consumers) on the in-memory store.
-func TestColdread3Measure5000(t *testing.T) {
+func TestFunctionalColdread3Measure5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
@@ -330,22 +335,26 @@ func TestColdread3Measure5000(t *testing.T) {
 type cr3PG struct {
 	bin, dir string
 	port     int
-	p        *exec.Cmd
+	running  bool
 }
 
+// start and stop run pg_ctl (-m immediate on stop), never a signal.
 func (g *cr3PG) start(t *testing.T) {
 	t.Helper()
-	g.p = exec.Command(filepath.Join(filepath.Dir(g.bin), "postgres"), "-D", g.dir, "-p", fmt.Sprint(g.port), "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=off")
-	if err := g.p.Start(); err != nil {
-		t.Fatal(err)
+	opts := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", g.port)
+	if out, err := exec.Command(filepath.Join(filepath.Dir(g.bin), "pg_ctl"), "-D", g.dir, "-l", filepath.Join(g.dir, "postgres.log"), "-o", opts, "-w", "start").CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
 	}
+	g.running = true
 }
-func (g *cr3PG) stop() {
-	if g.p != nil {
-		_ = g.p.Process.Signal(syscall.SIGQUIT)
-		_ = g.p.Wait()
-		g.p = nil
+func (g *cr3PG) stop(t *testing.T) {
+	if !g.running {
+		return
 	}
+	if out, err := exec.Command(filepath.Join(filepath.Dir(g.bin), "pg_ctl"), "-D", g.dir, "-m", "immediate", "-w", "stop").CombinedOutput(); err != nil {
+		t.Logf("pg_ctl stop: %v\n%s", err, out)
+	}
+	g.running = false
 }
 func (g *cr3PG) dsn() string {
 	return fmt.Sprintf("postgres://nova@127.0.0.1:%d/postgres?sslmode=disable", g.port)
@@ -368,7 +377,7 @@ func cr3StartPG(t *testing.T) *cr3PG {
 	g.port = l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	g.start(t)
-	t.Cleanup(g.stop)
+	t.Cleanup(func() { g.stop(t) })
 	return g
 }
 
@@ -393,6 +402,7 @@ func cr3Apply(t *testing.T, s store.Store, id string, w ...store.Write) {
 // Functional: killed backends and a full PostgreSQL restart are recovered by later
 // ticks without a second Snapshot, and the copy equals a fresh Snapshot.
 func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_SKIP_PG") != "" {
 		t.Skip()
 	}
@@ -441,13 +451,13 @@ func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
 		t.Fatal("not recovered after terminated backends")
 	}
 	// 2: PostgreSQL stopped, ticks fail, then started on the same port
-	g.stop()
+	g.stop(t)
 	for i := 0; i < 3; i++ {
 		if err = c.Advance(ctx, s); err == nil {
 			t.Fatal("advance succeeded with the store down")
 		}
 	}
-	if d := c.pageSnapshot().Data.(envelope); d.OK {
+	if d := c.pageSnapshot().Data; d.OK {
 		t.Fatal("ok while the store is down")
 	}
 	g.start(t)
@@ -470,7 +480,7 @@ func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(c.state, fresh) || s.snapshots != 1 || !c.pageSnapshot().Data.(envelope).OK {
+	if !reflect.DeepEqual(c.state, fresh) || s.snapshots != 1 || !c.pageSnapshot().Data.OK {
 		t.Fatalf("after restart: equal=%v snapshots=%d", reflect.DeepEqual(c.state, fresh), s.snapshots)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

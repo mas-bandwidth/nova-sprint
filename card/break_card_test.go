@@ -21,6 +21,7 @@ import (
 // "card p1.w1 exists", and so does every retry, so p1 can never start (a read
 // id "p1.r1.1" does the same to AskRead and strands p1 in review).
 func TestBreakCardAddIdCollidesWithConsumerId(t *testing.T) {
+	t.Parallel()
 	for _, id := range []string{"p1.w1", "p1.r1.1"} {
 		w := newWorld(t, producer("p1"))
 		all, _ := w.all()
@@ -50,6 +51,7 @@ func TestBreakCardAddIdCollidesWithConsumerId(t *testing.T) {
 // has no drop in it; one by one the NeedFailed is refused ("need n1 is
 // waiting, not fail"), merged it is accepted and p2 fails over a waiting need.
 func TestBreakCardMergeInThisOpWithoutADrop(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("p2", "n1"), producer("p3"))
 	a, r := w.plan("p3", Rescore{Score: 4})
 	require.Nil(t, r)
@@ -74,6 +76,7 @@ func TestBreakCardMergeInThisOpWithoutADrop(t *testing.T) {
 // blocker's start, each legal one by one, are refused, with a text about
 // preemption though nothing preempts.
 func TestBreakCardBlockerStartWithUnrelatedWithdraw(t *testing.T) {
+	t.Parallel()
 	b := newBk(t, producer("p2"), producer("pb"))
 	b.w.raw("prio", store.SetCardPriority{Card: "pb", Priority: "blocker"})
 	b.ok(b.P("p2", Resolve{}))
@@ -90,6 +93,7 @@ func TestBreakCardBlockerStartWithUnrelatedWithdraw(t *testing.T) {
 // Report against a consumer already done: "consumer p1.w1 is done; Report
 // moves a done card". Merge(ReportPlan, P) is accepted. The two commute.
 func TestBreakCardNestedMergeIsOrderDependent(t *testing.T) {
+	t.Parallel()
 	setup := func() *bk {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
@@ -114,6 +118,7 @@ func TestBreakCardNestedMergeIsOrderDependent(t *testing.T) {
 // missing from needs says "card x does not exist", so the caller hunts a
 // typo. Replace's text already says "among the cards passed".
 func TestBreakCardUnpassedCardIsNotMissing(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n"), producer("x"), producer("p1", "n"))
 	w.move("n", Cancel{Reason: "dropped"})
 	all, cons := w.all()

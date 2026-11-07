@@ -28,7 +28,8 @@ row is sprint state only (round 22): `Row{Name, Session, Role, State, Held,
 Seen...}`; width, tiers, model and harness are the roster's. A stream holds
 its own settings: `Stream{Name, Repo, Base, Pos, Mode, Forge, Held}`
 (`Mode` auto, group or hand; `Forge` "" or "github"). `Snapshot.Stopped` and
-`StopReason` are the machine line.
+`StopReason` are the machine line; `Snapshot.Identity` is the git identity
+every commit of the sprint is made as (round 24, `SetIdentity`).
 
 ## 2. card -> steps and verbs
 
@@ -107,11 +108,11 @@ type roster.Source interface { Machines(ctx) ([]roster.Machine, error); Friends(
 ```
 
 Run opens one `config.Store` (`github.com/mas-bandwidth/nova-tools/v2/config/lib`
-v2.0.2, `config.Open(ctx, dsn, password)`) for its life, takes **one**
+v2.0.3, `config.Open(ctx, dsn, password)`) for its life, takes **one**
 `(*config.Store).Snapshot(ctx)` per tick (machines and friends in one
 REPEATABLE READ transaction), and hands it to `roster.Load` through
 `snapshotSource`, which maps `config.Machine.Roles` and `config.Friend.Tiers`
-(comma lists) and `Cores *int` (nil is 0, which Load refuses for a bench).
+(comma lists) and `Cores *int` (nil is 0: Load holds such a bench at width 0, `Worker.Held` = `roster.NoCores`, and the board shows it held with that reason).
 Calls are serialized by run (one tick at a time). A failed read is the
 tick's: no tick that second, and the board shows the failure (section 7).
 
@@ -126,28 +127,64 @@ func git.New(git.Config) *git.Client
 
 Run is the one pusher and the one caller of `nova-bus`: `bus.Edge` runs
 `nova-bus who` once a tick and `nova-bus send` for each envelope. A
-`steps.EdgeRequest` of kind `land` becomes one `git.LandRequest{RepoDir,
-Repo, Stream, Base: <the stream's base branch>, Mode, Heads: <the request's
-head shas>}` run on a goroutine of its own (never under the tick), with the
-stream's forge (`Forge` "github": `forge.New`; "": none, and LandPass
-refuses: hand only). Its `LandResult` comes back as one `steps.InboxItem{Kind:
-"land", Request: req.ID, Outcome, Landed, Blamed}`: landed -> `landed`,
-ci_red -> `red` (Blamed always set), rung3_conflict and ledger_failed ->
-`conflict`, ci_pending -> nothing yet (asked again after a pause),
-everything else -> `fault` (the request leaves flight and steps reissues it).
-A request of kind `stop` is one bus message to the row (`STOP <consumer>`)
-and, once sent, an inbox item `{Kind: "stop", Request: req.ID, Outcome:
-"ack"}`. `Inputs.Heads` is the base tip of each stream as the edge last read
-it (`LsRemote` at start, after each landing, and every ten seconds).
+`steps.EdgeRequest` of kind `land` (`Cards`, `Heads`, `Branches`: the card
+branches `sprint/<stream>/<card>`; `Wait`: policy's `ci_wait` seconds)
+becomes one `git.LandRequest{RepoDir, Repo, Stream, Base: <the stream's base
+branch>, Heads, Branches}` run on a goroutine of its own (never under the
+tick), with the stream's forge (`Forge` "github": `forge.New`, acting as
+the host's gh login, `GH_GATE_TOKEN` an optional override). A stream with
+mode hand or no forge is answered at once with outcome `hand`. The pass is
+asked again after `LandPoll` on `ci_pending` and `base_moved`, and on
+`ci_absent` until `Wait` (10 minutes when none), when it is `no-ci`. Its
+`LandResult` comes back as one `steps.InboxItem{Kind: "land", Request:
+req.ID, Outcome, Landed, Merge, Reason}`: landed -> `landed` with the
+landed heads and the merge sha; every other outcome (`ci_red`, `no-ci`,
+`conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`, `ci_fault`,
+`missing_head`, `head_moved`, `hand`) keeps its name and carries the facts
+in `Reason` (rung, base tip, group tip, gated sha, PR, failing checks, their
+URL and first lines, conflicts, the pass's reason); an error is `fault`.
+Layer 3 opens one `land` judgement per card for each of those. A request of
+kind `stop` is one bus message to the row (`STOP <consumer>`) and, once
+sent, an inbox item `{Kind: "stop", Request: req.ID, Outcome: "ack"}`.
+`Inputs.Heads` is the base tip of each stream as the edge last read it
+(`LsRemote` at start, after each landing, and every ten seconds).
+
+The verbs' landing edge is `verbs.Lander` (`cmd/nova-sprint/lander.go`):
+`Land(stream, branch, head)` (the hand merge: the card branch's PR merged
+by the allowed method, or with no forge a fast-forward push of the head
+merged onto base; the merge sha), `Heads(stream)` (origin's branches) and
+`CreateGroup(stream, sha)` (`sprint-group/<stream>` at the base tip, at
+`stream add`).
 
 The worker (`nova-worker`, layer 4) talks to the sprint only through verbs:
 `nova-sprint hook --as <row> --role worker`, `next --json`, `take --json`,
 `report`. The take receipt (`take <card>@<gen> --as <row> --json`) is the
 seam: `{consumer, producer, kind, stream, repo, base, branch, head, tier,
-brief, prose, finding, stream_ref, base_sha, prior_head, paths, done_when,
-epoch, gen, attempt, review, model, deadline, forge}`, `deadline` in seconds
-from policy's `timeouts().consumer[tier]`, `model` from the roster, `forge`
-from the stream. The worker holds no deadline, model or forge of its own.
+brief, prose, finding, stream_ref (the stream's base branch), base_sha, prior_head, paths, done_when,
+epoch, gen, attempt, review, model, deadline, forge, commit_name, commit_email}`, `deadline` in
+seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream,
+`commit_name` and `commit_email` the sprint's commit identity (`Snapshot.Identity`,
+set by `nova-sprint identity`; take refuses without one).
+`model` is the one the deal named and wrote on the consumer (store round
+23's `cards.model`): a friend's own, from the roster, or for a bench the
+active policy's `catalog().bench[tier]` in provider/model form; take reads
+it from the consumer and never chooses one, and a consumer dealt with no
+model is refused at take. The worker runs it, and faults naming the model
+and the tier when its probe proved the harness does not serve it.
+`next --as <row> --json` carries the bench model per tier as `tier_models`
+(the probe's input). The worker holds no deadline,
+model or forge of its own.
+
+The deal is the take (defect 52): a consumer is `working` in the row's hand
+from the deal, so the worker runs every card `next --json` lists under
+`working` that has no job of its own yet, each in its own job, all at once;
+`take` is the row's acknowledgement (a cursor, the card's gen unchanged) and
+prints the receipt, and a repeat prints the same. A card the row has not
+acknowledged is nudged (`NUDGE card=<id> ...`) each tick from ten seconds
+after the deal; the deal's push names the model the deal named
+(`model=`). A fault whose reason starts `missing-route: <route>` (the
+route's name as a brief declares it with `NEEDS-ROUTE:`) blocks the
+producer for the coordinator instead of dealing it again (defect 48).
 
 ## 7. dash -> run
 
@@ -163,7 +200,10 @@ Run publishes its folded snapshot and the roster it read with it, as one
 pair, every tick (stopped or not). A failed roster read shows every row at
 width 0 with the alarm raised, never an old roster as current. The machine
 line is `machine: RUNNING` or `machine: STOPPED <reason>`. `run --listen`
-serves it; `dash --pull` serves a pulled copy on a public host.
+serves it; `dash --pull` serves a pulled copy on a public host. The board's
+Why waiting panel calls `steps.Waits(snap.Cards)` and `steps.IdleWhy` (pure
+functions of the cards, no View), the same ones `check` and the steps' idle
+judgement read, so all three say one thing.
 
 ## 8. verbs -> run
 

@@ -15,7 +15,7 @@ judgement id as its message prints it, `<row>` a row's name on the bus.
 2. You are also a row like any other. Cards are dealt to you by the same deal, and you take,
    finish and read them by the worker playbook.
 3. The run loop does the seat's mechanical work: it deals, asks reads, decides yes or fix from
-   all the reads, lands, bisects a red batch, re-gates a red base, parks cards in a held stream,
+   all the reads, lands what CI passed green, parks cards in a held stream,
    blocks a card that bounces too often, and opens a judgement only when a mind is needed. Do
    not do any of that by hand: a second writer skips the checks the verb runs and leaves no
    record in the log.
@@ -40,11 +40,22 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role to
    any name but the one `up` recorded. Both refusals are the tool enforcing the order. Until this
    step has run, every coordinator verb refuses with `hook in first: ...`.
-3. Check the fleet and the tools: `nova-sprint check` prints `CHECK fleet and tools verified` and
-   `next: nova-sprint next`. A refusal names the nova-fleet command for each missing piece; run
-   it, then `check` again.
+3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per
+   thing it checked (the fleet, nova-tools against the pin, the store, the bus, each stream's
+   repository and base, the open judgements, run, the width, why each stream's producers wait,
+   each long NEEDS chain, each landing's wait) and `next: nova-sprint next`. A `CHECK RED` line
+   names its fix and makes the exit non-zero; run the fix, then `check` again. Read the width
+   and waits lines before you add cards and before `start`: `CHECK WARN width: ... nothing
+   dealable: 2 chains (longest 9, top: <card> blocks 53), 8 overlaps` says the fleet will sit
+   idle; `CHECK waits <s>: 53 wait on <card> (working); 3 held behind <file> of <card>` says on
+   what; `CHECK WARN stream <s>: its longest NEEDS chain is 9 cards: ...` says which chain to
+   flatten (section 4, "Keep everybody at width").
 4. Ask what is owed: `nova-sprint next --as <you>`. It names your own card's step first, then
-   the oldest open judgement, then what the streams need (`add`, or done).
+   the oldest open judgement, then what the streams need (`add`, or done), then, on a stopped
+   sprint, `start`. A fresh sprint is stopped, its reason `never started`, and moves nothing
+   (no deal, read or landing) until you run `nova-sprint start --as <you> --reason "<why>"`;
+   the board shows `STOPPED never started` until then. `stop`, `start`, `hook`, `show` and
+   `next` work as soon as `up` has made the store (its step 2), whatever step `up` is at.
 5. List the judgements owed: `nova-sprint judge --as <you>`. Each is one line,
    `JUDGEMENT <j> kind=<kind> card=<id> group=<g> ...`, and the last line is `next:` with the
    command for the first. `JUDGEMENTS none` means nothing waits on you.
@@ -83,11 +94,27 @@ What each judgement kind asks of you, and where to look before you choose:
 
 - `blocked`: a card bounced past policy's limit and sits in `blocked` until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
-  choose `unblock`, or `drop`.
-- `red`: CI was red at a head in merging. Run `show <id> --ci`; choose `rework`, `retry` (a flake
-  or a bench fault), `waive` only with evidence the red is not the card's, or `drop`.
-- `conflict`: a stream group cannot merge (section 5, rung 3).
-- `base-red`: the base itself is red (section 5).
+  choose `unblock`, or `drop`. A `blocked` judgement that says the card faulted for a missing
+  route or device names the row and what is missing (its reason starts `missing-route: <route>`,
+  the route's name as a brief declares it with `NEEDS-ROUTE: <route>`): the card is never dealt
+  again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
+  that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
+  `unblock`; or `drop` it.
+- `unacked`: a card has been in a row's hand a minute and the row has not acknowledged it
+  (`take`), though it was nudged every tick. Reach the row on the bus; if its session is gone,
+  `nova-sprint release <card>@<gen> --as <you> --reason "<why>"` deals the card again.
+- `undealt`: a ready card has an open row serving its tier with room and was not dealt for more
+  than a tick. The message names the row, the card and the cause: the tick's budget spent before
+  it (a burst; it clears as the burst drains), or a defect in the sprint, which goes to the
+  project's own tracker (section 11).
+- `land`: a merging card did not land automatically (red CI, no CI within the wait, a conflict,
+  a refused merge, a PR that could not be opened, a branch that could not be pushed, a branch
+  missing or moved, a stream landed by hand, a fault). The question carries the facts: the
+  card, stream, base and its tip, branch, head, rung, group tip, gated sha, PR, the failing
+  checks with their first lines, the conflicting files, the cards landing with it. It has no
+  deadline. Choose `land` (you looked, it is right: merged by hand at once), `fix` (back to its
+  producer with your reason as the finding), or `retry` (a flake, a fixed trigger: a new
+  landing). Section 5.
 - `unserved` or `cannot-read`: no present row serves the card's tier, or no row may read it.
   Bring a row up that serves the tier (section 7); never lower the card's tier.
 - `stall`: nothing landed within the bound while producers wait; the message names the cause
@@ -153,8 +180,8 @@ named it:
      and bring a row up that serves the tier (section 7). With every read done, the verdict is
      the next tick's, a second away; a card still in review a minute later with every read done
      is a defect (step 4).
-   - `merging`: the stream's rung and stuck column in `nova-sprint show <s>`, and a `red`,
-     `conflict`, `base-red` or `stall` judgement.
+   - `merging`: the stream's rung and stuck column in `nova-sprint show <s>`, and a `land`
+     or `stall` judgement.
 4. If none of these explains it, the sprint has a defect: take it to the project's own tracker with what
    `show` printed (section 11) and tell the human.
 
@@ -179,13 +206,22 @@ The card id is the file's name without `.md`. A brief is:
    - `PRIORITY: <low|normal|high|critical|blocker>`: optional, normal by default, written only
      when someone asked for that level.
    - `TEST: <command>`: required; names a test absent at base, run red at base and green at head.
-   - `DONE-WHEN: <command>`: required, one per line; each is a checkable command, run at the base
+   - `DONE-WHEN: <command>`: required, one per line; each is one checkable command (a program and
+     its arguments, run with no shell: wrap a pipe, `&&`, `;` or a redirection in `sh -c '...'`),
+     run at the base
      before the deal, and a gate that would stay red after a correct fix is refused. Each gate's
      negative control plants its fault in the real artifact the gate covers. A gate names the
      facts it needs (an OS, a tool), never a host.
 3. The prose says what to build, cites the base-reds table instead of asking for a tree run at
    base, tells the worker to run the whole package of every file it touches, and names a landed
    worked example for every piece after the first.
+
+Before any worker hooks, the sprint needs its commit identity: the one forge account on the
+repositories' contributor-agreement allowlist that every commit is authored and committed as
+(ask the human which; its git user.name and its noreply address). Set it with
+`nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason "<why>"`;
+`up` step 7 asks for it, a worker's hook and take refuse until it is set, and finish refuses a
+head with a commit made as anyone else. `nova-sprint identity` with no flags prints it.
 
 A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base main]
 [--mode auto|group|hand] [--forge github]` prints `STREAM <s> repo=... base=... mode=...
@@ -194,6 +230,15 @@ then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either
 with `nova-sprint add --stream <s> --brief-file <f>...` (`--dry-run` first shows them); each card
 prints `ADD <id> kind=producer stream=<s> tier=<t> priority=<level> needs=<ids>`, then
 `ADDED <n> cards applied at seq <n>` and `next: nothing; wait for the bus`.
+
+**Keep everybody at width.** The fleet works in parallel only as far as the cards let it.
+Keep NEEDS chains flat (a NEEDS only on a consumed output), PATHS concrete (the files the card
+edits; a shared glob or directory holds nothing), and one card per file set. `add` prints the
+stream's longest NEEDS chain once the cards are in (`CHAIN stream <s>: its longest NEEDS chain
+is <k> cards: a -> b -> ...`), and from 4 cards a `WARN CHAIN` with what it takes at the
+stream's land rate: flatten it before `start`. During a sprint the steps' `idle` judgement
+says "nothing dealable: N chains (longest K, top: <card> blocks M), H overlaps" with the
+command for the top card, and the board's Why waiting panel shows the same lines as `check`.
 
 To correct a brief, add the corrected brief under a new id and replace the old card with it:
 `nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants
@@ -212,31 +257,30 @@ reorders only ready cards; a waiting card moves when its needs land or are fixed
 raising it. Favour a stream by priority, never by holding other streams. Never narrow a row's
 tiers to steer deals.
 
-**The landing ladder.** Landing runs on its own, whether or not you are hooked or looking. Each
-stream is on one rung:
+**The landing ladder.** Landing runs on its own, whether or not you are hooked or looking. The
+automatic path is green-and-merge only; everything else is yours. Each stream is on one rung:
 
-1. Flowing: each producer that reaches merging lands on its own, with its CI.
-2. Backed up: past policy's backlog number, the stream's merging producers merge in score order
-   onto `sprint/<s>/group` and land as one group with one CI run.
-3. The stream cannot merge: a group that conflicts across streams, or stays red after bisection,
-   reaches you as a `conflict` judgement. Look across the streams for why two of them conflict
-   and fix the cause (a brief, a need, the order), then answer the judgement.
-4. By hand: when your fix is itself a merge that needs judgement, merge by hand, on a frontier
-   model: `nova-sprint stream set <s> --mode hand` stops the lander taking the stream, you merge
-   on the stream's group branch and push, the result lands through the same CI gate as any group,
-   then `nova-sprint stream set <s> --mode auto` gives the stream back. Never merge by hand on a
-   lower rung, and never land around the order.
+1. One head waiting: its PR from the card's branch against the stream's base. CI green at that
+   exact head merges it by the repository's allowed method; the card is landed with the merge
+   sha.
+2. More than one head waiting (policy's `backed_up`, default 2): the heads merge in score order
+   onto `sprint-group/<s>`, rebuilt from the base tip, with one PR against the base. Green merges
+   as one. Red is yours: no bisection, no blame.
+3. Anything else is one `land` judgement per card on your row, within a tick, with the facts.
+   Answer it: `nova-sprint judge land.<card>.<n> land|fix|retry --reason "<why>"`. Look across
+   streams when two of them conflict, and fix the cause (a brief, a need, the order) before you
+   answer `retry`.
 
-A red batch is bisected and only the red head returns; a bench fault blames no head. A base that
-moved is met by re-merging the batch once, never by sending cards back to rebase.
+**By hand.** `nova-sprint land <card> --reason "<why>"` merges a merging card's read head into
+the base with no CI gate (you looked): its PR on a stream with a forge, a fast-forward push on
+one without. `--head <sha>` makes sure it is the head you read. A conflict is refused with its
+fix: merge it into the base yourself, push, and land it again (a head already on the base records
+at once). Never land a card that is not merging, and never resolve a conflict on a card's branch,
+which no reader has read.
 
-**Known base reds.** When the base itself is red there is one `base-red` judgement for the base,
-not one per stream. A queued head that fixes the red lands first; the base is re-gated; the
-third failure stops the stream that met it; when the tip is green every stream stopped only on
-that red resumes by itself. Fix the base with a card (section 4) at blocker if the human asks, and
-let the rule resume the streams. A failure two workers reproduce at the base gets one repair
-card, and every worker cites it as pre-existing. Never fast-forward the base by hand, and never
-resolve a conflict on a card's branch, which no reader has read.
+A pending CI and a base that moved are asked again by the run on their own. A merging card with
+no land request and no land judgement is reported to you as an `engine` judgement: answer it
+`retry`, and take it to the project's own tracker.
 
 ## 6. Reads and fix triage
 
@@ -257,7 +301,8 @@ resolve a conflict on a card's branch, which no reader has read.
    which prints the dependants it would fail; then add `--waive` (dependants go on without it),
    `--relink <other>` (dependants wait on a replacement), or `--expect <dependant-ids>` to fail
    them as printed, and run it without `--dry-run`. It prints `DROP applied`. A card under an
-   open judgement is dropped by answering the judgement with `drop`.
+   open judgement is dropped by answering the judgement with `drop`. A drop releases the card's live
+   consumers itself.
 
 ## 7. Running rows: friends and the fleet
 
@@ -282,8 +327,15 @@ resolve a conflict on a card's branch, which no reader has read.
    `RELEASED row=<row> consumers=<n>`; every card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
-   prints `HOLD applied`. A hold changes future deals only: it never takes back live work and
-   never stops landing. `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
+   prints `HOLD applied`. A hold of a row stops new deals to it and takes back only the cards it
+   has not acknowledged; work the row has acknowledged stays, and a hold never stops landing.
+   `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
+   To hold one card (a wrong brief, a question for the human), name the producer:
+   `nova-sprint hold <card> --reason "<why>"`. The card goes to `blocked` with the reason
+   `held: <why>`, its card in a row's hand is withdrawn in the same move (the branch kept), and
+   it is never dropped; the board lists it under its stream with that reason.
+   `nova-sprint unhold <card> --reason "<why>"` sends it back to `waiting`, and it is dealt again
+   when its needs have landed. A consumer id is refused with its producer's id.
 6. Coach for first-pass acceptance. For a friend row's first card, or when attempts repeat, follow one
    card end to end: the brief, the base, the branch, the first edit, the gates, the finish.
    Classify a failure as tool or version, access or route, brief or scope, gate or bench, report,
@@ -299,8 +351,10 @@ card, how many reads, the verdict, widths at or below config, limits, the landin
 the stitch, prices. It is a Starlark file; you change it only when the human asks.
 
 1. `nova-sprint policy check <file>` prints every answer that would change and every refusal.
-2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY SET v<n>` and
-   `next: nova-sprint policy check v<n>`.
+2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY STORED v<n>` and
+   `next: nova-sprint policy check v<n>`. When no policy is active the first set activates it
+   too (`POLICY STORED AND ACTIVE v<n>`). While no policy is active, or the active one fails,
+   the run deals nothing and one `no-policy` judgement on your row says so with the fix.
 3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> answers-changed=<k>`.
 4. A rollback is `policy activate` of an older version; `policy show --list` and `policy diff`
    show what you have.

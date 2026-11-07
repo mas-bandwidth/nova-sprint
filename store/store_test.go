@@ -122,9 +122,10 @@ func TestRebuildCarriesClearImage(t *testing.T) {
 		{Seq: 4, Accepted: true, After: &State{Epoch: 2, Rows: map[string]Row{"w1": row}}},
 		{Seq: 5, Reason: "no"},
 	}
-	want := Snapshot{Seq: 5, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{"w1": row}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}}
-	assert.Equal(t, want, Rebuild(events))
-	assert.Equal(t, emptySnapshot(1), Rebuild(nil))
+	want := Snapshot{Seq: 5, Epoch: 2, Policy: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{"w1": row}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}, Stopped: true, StopReason: NeverStarted}
+	assert.Equal(t, want, Rebuild(events), "a clear keeps the fresh stop")
+	fresh := Snapshot{Epoch: 1, Streams: map[string]Stream{}, Cards: map[string]Card{}, Rows: map[string]Row{}, Judgements: map[string]Judgement{}, Cursors: map[string]int64{}, Stopped: true, StopReason: "never started"}
+	assert.Equal(t, fresh, Rebuild(nil), "no events: a fresh store, stopped, never started")
 }
 
 func TestSchemaIsEmbedded(t *testing.T) {
@@ -138,6 +139,7 @@ func TestSchemaIsEmbedded(t *testing.T) {
 // cannot rise, a plain error naming it, and nothing lands (PG's side is
 // TestFunctionalClientErrorIsKnown).
 func TestFakeCounterBound(t *testing.T) {
+	t.Parallel()
 	f := NewFake()
 	h := &harness{t: t, s: f, ctx: context.Background(), epoch: 1}
 	h.seed()
@@ -167,6 +169,7 @@ func TestFakeCounterBound(t *testing.T) {
 // The schema hash ignores comments, indentation and blank lines, so a
 // comment edit does not refuse every store; any change to the SQL does.
 func TestSchemaHash(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, schemaHash, hashSchema(schemaSQL))
 	assert.Equal(t, schemaHash, hashSchema("-- a new comment\n\n"+strings.ReplaceAll(schemaSQL, "\n", "  -- note\n\n")))
 	assert.Equal(t, schemaHash, hashSchema(strings.ReplaceAll(schemaSQL, "\n    ", "\n\t")))
@@ -188,9 +191,36 @@ func TestRound16Hash(t *testing.T) {
 	assert.NotContains(t, string(old), " red ")
 }
 
-// round24Hash is the hash of round 22's schema.sql, which every round to 24
-// carried, kept in testdata: it has no cards.usage and no sprint.balances,
-// which round 25 adds. Unit: reads a file in the package, no store.
+// round22Hash is the hash of round 22's schema.sql, kept in testdata: it
+// has no cards.model, which this build's schema adds (round 23). Unit: reads
+// a file in the package, no store.
+func TestRound22Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round22.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round22Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round22Hash, schemaHash)
+	assert.NotContains(t, string(old), "model text")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS model text")
+}
+
+// round23Hash is the hash of round 23's schema.sql, kept in testdata: it
+// has no commit identity on the epoch row, which this build's schema adds
+// (round 24). Unit: reads a file in the package, no store.
+func TestRound23Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round23.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round23Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round23Hash, schemaHash)
+	assert.NotContains(t, string(old), "commit_email")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS commit_email text")
+	assert.True(t, knownOlder(round23Hash))
+}
+
+// round24Hash is the hash of v2-stitch's round 24 schema.sql, kept in
+// testdata: it has no cards.usage and no sprint.balances, which round 25
+// adds. Unit: reads a file in the package, no store.
 func TestRound24Hash(t *testing.T) {
 	t.Parallel()
 	old, err := os.ReadFile("testdata/schema-round24.sql")
@@ -199,7 +229,30 @@ func TestRound24Hash(t *testing.T) {
 	assert.NotEqual(t, round24Hash, schemaHash)
 	assert.NotContains(t, string(old), "usage")
 	assert.NotContains(t, string(old), "sprint.balances")
+	assert.Contains(t, string(old), "commit_email")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS usage")
+	assert.True(t, knownOlder(round24Hash))
+}
+
+// round25Hash is the hash of round 25's schema.sql (the deployed line's,
+// the live store's on 2026-11-07), kept in testdata: it has cards.usage and
+// sprint.balances and no cards.model, no heartbeat and no commit identity,
+// which this build's schema adds. Unit: reads a file in the package, no
+// store.
+func TestRound25Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round25.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round25Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round25Hash, schemaHash)
+	assert.Contains(t, string(old), "ADD COLUMN IF NOT EXISTS usage")
+	assert.Contains(t, string(old), "sprint.balances")
+	assert.NotContains(t, string(old), "model text")
+	assert.NotContains(t, string(old), "commit_email")
+	assert.NotContains(t, string(old), "load1_centi")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS model text")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS commit_email text")
+	assert.True(t, knownOlder(round25Hash))
 }
 
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
@@ -214,7 +267,11 @@ func TestRound21Hash(t *testing.T) {
 	assert.NotEqual(t, round21Hash, schemaHash)
 	for _, col := range []string{"kind", "width", "tiers", "model", "harness"} {
 		assert.Contains(t, string(old), "\n    "+col+" ", "round 21's rows table has %s", col)
-		assert.Contains(t, schemaSQL, "DROP COLUMN IF EXISTS "+col, "round 22 drops %s", col)
+		drop := "DROP COLUMN IF EXISTS " + col
+		if col == "tiers" {
+			drop = "DROP COLUMN tiers" // only as round 17's text[]: round 23's text tiers stays
+		}
+		assert.Contains(t, schemaSQL, drop, "round 22 drops %s", col)
 	}
 }
 

@@ -61,7 +61,8 @@ func loadSnap(producers, rows int) (store.Snapshot, roster.Roster) {
 // Sequence: Answer with an active version whose top level sorts 30M ints.
 // Broken: "the engine must answer in bounded time"; Built, "a tick in which
 // every version spends its budget takes at most three budgets".
-func TestBreakTopLevelHasNoTimeBudget(t *testing.T) {
+func TestFunctionalBreakTopLevelHasNoTimeBudget(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	body := defaultBody + "\n_T = len(sorted(range(30000000), reverse = True))\n"
 	w := fakeWorld(t)
@@ -78,7 +79,8 @@ func TestBreakTopLevelHasNoTimeBudget(t *testing.T) {
 // then set by the largest builtin, not by TickTime: range takes int32, so
 // sorted(range(2**31-1)) is reachable. Sequence: limits() sorts 30M ints.
 // Broken: the tick bound of three budgets.
-func TestBreakOneBuiltinOutlastsTickTime(t *testing.T) {
+func TestFunctionalBreakOneBuiltinOutlastsTickTime(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	body, _ := override("limits", `def limits():
     _n = len(sorted(range(30000000), reverse = True))
@@ -96,7 +98,8 @@ func TestBreakOneBuiltinOutlastsTickTime(t *testing.T) {
 // decimal by intIn (i.String()), which is superlinear in the int's size.
 // Sequence: width answers work = a ~16 Mbit int built in 15 squarings.
 // Broken: the tick bound; the refusal is reached only after the print.
-func TestBreakHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
+func TestFunctionalBreakHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	body, _ := override("width", `def width(row):
     x = 1 << 500
@@ -118,7 +121,8 @@ func TestBreakHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
 // and catalog() is validated every tick, cached or not. Sequence: catalog()
 // lists 40,000 distinct models under one provider (about 600k steps, under
 // CallSteps). Broken: the tick bound.
-func TestBreakCatalogValidationQuadratic(t *testing.T) {
+func TestFunctionalBreakCatalogValidationQuadratic(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	body, _ := override("catalog", `def catalog():
     return {"models": {"p": [{"name": "m" + str(i), "tier": "flash"} for i in range(40000)]}, "harnesses": ["claude"]}`)
@@ -146,6 +150,7 @@ func TestBreakCatalogValidationQuadratic(t *testing.T) {
 // input give one answer ... check on a snapshot predicts the tick on that
 // snapshot"; answered_by differs for one snapshot.
 func TestBreakBudgetOutcomeDependsOnCacheHistory(t *testing.T) {
+	t.Parallel()
 	snap, ro := loadSnap(80, 2)
 	body, _ := override("order", "def order(card):\n    for _i in range(50000):\n        pass\n    return (card.score,)")
 	e := testEngine()
@@ -170,7 +175,8 @@ func TestBreakBudgetOutcomeDependsOnCacheHistory(t *testing.T) {
 // built-in, cold, at 5,000 producers over 100 rows that all serve every
 // tier. Broken: 5.6 "no default leaves the sprint unable to deal"; the
 // default "answers every snapshot".
-func TestBreakDefaultSpendsTickBudgetAt100Rows(t *testing.T) {
+func TestFunctionalBreakDefaultSpendsTickBudgetAt100Rows(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	snap, ro := loadSnap(5000, 100)
 	start := time.Now()

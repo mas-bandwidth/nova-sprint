@@ -3,6 +3,7 @@ package run
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // SprintHook holds the nova-bus hook for the name sprint while run holds
@@ -28,6 +31,7 @@ type busLease struct {
 	done chan struct{}
 	mu   sync.Mutex
 	err  error
+	tail []string // the hook's first stderr lines, for its failure
 	stop sync.Once
 }
 
@@ -55,6 +59,11 @@ func (b SprintHook) Acquire(ctx context.Context, name string) (HookLease, error)
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
+			lease.mu.Lock()
+			if len(lease.tail) < 8 {
+				lease.tail = append(lease.tail, scanner.Text())
+			}
+			lease.mu.Unlock()
 			if strings.HasPrefix(scanner.Text(), "HOOK OK name="+name+" ") {
 				select {
 				case ready <- struct{}{}:
@@ -68,7 +77,7 @@ func (b SprintHook) Acquire(ctx context.Context, name string) (HookLease, error)
 	case <-ready:
 		return lease, nil
 	case <-lease.done:
-		return nil, fmt.Errorf("run: sprint hook exited before acquiring its name")
+		return nil, fmt.Errorf("run: sprint hook exited before acquiring its name: %w", lease.failure())
 	case <-ctx.Done():
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -84,11 +93,29 @@ func (l *busLease) Check(ctx context.Context) error {
 	}
 	select {
 	case <-l.done:
-		return fmt.Errorf("sprint hook exited")
+		return fmt.Errorf("sprint hook exited: %w", l.failure())
 	default:
 		return nil
 	}
 }
+
+// failure is the ended hook as an edge.CommandError: its command, exit code
+// and first stderr lines (its env is the bus connection: never printed).
+func (l *busLease) failure() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	code := -1
+	if l.cmd.ProcessState != nil {
+		code = l.cmd.ProcessState.ExitCode()
+	}
+	var runErr error
+	var x *exec.ExitError
+	if l.err != nil && !errors.As(l.err, &x) {
+		runErr = l.err
+	}
+	return edge.Failure(l.cmd.Args, nil, code, "", strings.Join(l.tail, "\n"), runErr)
+}
+
 func (l *busLease) Close(ctx context.Context) error {
 	l.stop.Do(func() { _ = l.cmd.Process.Signal(os.Interrupt) })
 	select {

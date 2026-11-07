@@ -46,8 +46,10 @@ edge keeps `Send` and `Who`. See Built, "Stitch".)
 `nova-bus who`. The run loop sends as its own name (`sprint`). nova-bus
 refuses a send from a name that is not hooked, so `up` hooks it with
 `nova-bus hook --as sprint --service --exec 'nova-sprint bus-reply'`;
-`bus-reply` reads only the sender and answers once: "replies are verbs: run
-nova-sprint next --as <you>". The engine never parses a bus message; every
+`bus-reply` reads only the sender, the message it answers and the subject
+(verbs.BusAnswer): the sprint's pushes are receipts, so a reply is never
+answered and a message that is not a verb is ignored (one log line each); a
+verb is answered once with where to run it. The engine never parses a bus message; every
 answer is a verb a row runs against the store (CORRECT-USE: "There is ONE
 WAY").
 
@@ -56,7 +58,7 @@ Sent the moment the op that caused it commits:
 | subject | to | when | answered by |
 |---|---|---|---|
 | `DEAL` | the row | consumers were cut for it (`Start`, `AskRead`) | `nova-sprint take` |
-| `WITHDRAWN` | the row | a consumer it holds was withdrawn (preempted, silence) | stop; the runner pushes what it has |
+| `WITHDRAWN` | the row | a consumer it holds was withdrawn (preempted, silence) | stop; the runner pushes nothing (the branch is the next holder's, defect 78) and retires the job directory |
 | `NEEDS YOU` | the coordinator | a judgement opened, one per `group_key` per episode | the verb the judgement names |
 | `LANDED` | the coordinator | a landing into base (LESSONS 3.20) | nothing; it is the record |
 
@@ -168,6 +170,25 @@ refused for a moved ref; checks not green at the exact sha; base moved
 between gate and land; no landing host answering. Each is a typed result
 that layer 3 counts toward the stall alarm and the stream's judgement.
 
+Clone addresses. A stream keeps its repository as it was given (`<org>/<repo>`
+is the forge's name for it: `gh -R`); `git.CloneURL(repo, forge)` is the one
+place it becomes what git clones and ls-remotes. With forge `github` an
+`<org>/<repo>` is `https://github.com/<org>/<repo>.git`; a URL, an scp-like
+address or a path passes as it is; with no forge the repo is its own (a hand
+stream names its repository by URL or path); a form a forge cannot address
+is refused naming the form. Run's land and heads clone through it (one clone
+per address under `ReposDir`), `stream add`, `finish` and `check` read tips
+at it (`Client.Tip`: one `git ls-remote <address> refs/heads/<branch>`, no
+clone). The scheme is https, not ssh: the sprint's GitHub identity is the
+host's gh login (w3L: or the `GH_GATE_TOKEN` override), the forge edge
+already runs as it, and an ssh key registered with GitHub is a second
+credential to keep. The git edge makes `gh auth git-credential`, run with
+every GitHub credential of the process unset (`env -u ...`), git's one
+credential helper for `https://github.com` (`Config.GitHubCredential`,
+through `GIT_CONFIG_COUNT`; an empty helper first clears the host's own
+list, so a person's keychain never answers for the sprint); the
+environment names no secret.
+
 A landing never: force-pushes base; merges a sha CI did not pass; puts two
 streams in one branch (LPM M5); rebases a card's branch; resolves a
 non-ledger conflict by script; runs under the writer lock or on the
@@ -181,15 +202,18 @@ removes a landing host (LANDING step 9).
 
 ## The GitHub edge
 
-`Forge` has four methods: `PR(head, base)` (find), `OpenPR`, `Checks(shas)`
-and `Merge(pr, sha)`.
+`Forge` has `PR(head, base)` (find), `OpenPR`, `Checks(shas)`,
+`Merge(pr, sha)`, `FailedLines(url)`, `Inheritance(base, baseTip, head)`
+(a red head's failing workflows split by the base) and `Authors(pr)` (see
+Built, "w3L").
 
-Credentials. Every `gh` call runs with an explicit identity: `GH_TOKEN` from
-nova-secrets for a row, or `GH_CONFIG_DIR` for the sprint's own identity (on
-the studio, rowan's directory; bare `gh` there is Glenn's account). The
-edge refuses to run `gh` with neither set, and refuses when `gh auth status`
-names another login than the stream's, naming the fix. Glenn's credentials
-are never used. A row's token is minted by nova-tools for that row, scoped
+Credentials. The landing's `gh` runs as the host's own gh login (the run's
+host; intent rule 32, 2026-11-07: "the run does the forge work with the
+host's gh identity"). `GH_GATE_TOKEN`, when set in run's environment, is an
+optional override: gh then gets it as `GH_TOKEN` in an environment with no
+other GitHub credential. A row's gh, where a row uses one, runs with its
+own `GH_TOKEN` from nova-secrets. The human's credentials are
+never used. A row's token is minted by nova-tools for that row, scoped
 to its streams' repositories; minting is nova-tools', this layer only uses
 it. Workers push and open PRs with their row's token; the lander merges as
 the sprint.
@@ -223,7 +247,10 @@ Deal to report:
    row and reads its stdout. A line is only a wake: the runner runs
    `nova-sprint queue --as <row>` and acts on what the store says, so a
    lost, late or repeated message changes nothing. No poller, wake file or
-   second channel (LESSONS 4.1).
+   second channel (LESSONS 4.1). A periodic wake (every 10 s, a guess) runs
+   a pass beside the hook's. A pass only plans: it recovers the row's jobs
+   and takes; each job then runs on its own, so no pass waits on a job
+   (defect 66, w3W below).
 2. **Take** each ready consumer up to width: `nova-sprint take <id>@<gen>
    --as <row>` prints the brief, base, branch, done-when and tier.
 3. **Stage** a worktree at `<root>/jobs/<consumer>/repo` from the bench's
@@ -233,7 +260,10 @@ Deal to report:
    row's, never the machine's (LESSONS 4.21). Siblings the card reads are
    staged read-only the same way. A staging failure or timeout is a `fault`
    (LESSONS 4.14). A job directory that exists is refused, so none is
-   reused (LESSONS 4.15).
+   reused (LESSONS 4.15). Each repo a pass stages from is fetched once per
+   pass, before its jobs stage (defect 72). The worker writes `JOB.md` in the
+   job directory: the card, repo, base, checkout, paths, done-when and how
+   the card finishes (defect 68).
 4. **Run** under `nova-reserve run --slots <weight> --wait <d> --why
    <consumer> -- nova-sandbox ... -- <harness>`: the slot lives exactly as
    long as the harness (LESSONS 4.17); no slot within the wait is no start
@@ -243,25 +273,35 @@ Deal to report:
    stdin closed. The model is nova-config's for (row, tier), chosen by code
    and recorded in the report (LPM T3, T28).
 5. **Harvest** outside the wall: read the result file, push the branch with
-   the row's token. On a wall death, a kill or a withdraw, push whatever
-   commits the worktree holds, so the next attempt continues from them.
+   the row's token. On a wall death or a kill past the deadline, while the
+   job still holds its card, push whatever commits the worktree holds, so
+   the next attempt continues from them. Every push is a lease
+   (`--force-with-lease=refs/heads/<branch>:<expect>`, from the head the job
+   last pushed or the tip it found at stage), never a plain force, and none
+   once the consumer is final or a newer generation holds it: a withdrawn
+   job pushes nothing (defect 78).
 6. **Rebase** onto the stream head as it is now and re-run the card's test
    command, inside a slot, bounded by the two-minute rule; push. A conflict
    is a `fail` naming the files.
-7. **PR and CI**: open the PR when the stream wants one; wait, woken by the
-   bus, for the run loop's check evidence at the head.
+7. **CI**: open no PR (the landing opens the stream's group PR, defect 34);
+   CI is read by the landing on the group sha, not by the worker.
 8. **Report** with a result id written to `job.json` before the first try;
    retry the verb with that id until it exits 0 or 1 (LESSONS 4.5).
 9. **Clean** the job directory only after the report is recorded and the
-   head is on origin; a worktree with uncommitted changes is logged and kept.
+   head is on origin; a worktree with uncommitted changes is logged and kept
+   until the next pass, which retires it (the consumer is final then).
 
 Results, classified by the adapter. `ok`: the result file says ok and a head
-past `base_sha` and `prior_head` is pushed. `fail`: the result file says
-broken, no result file, a rebase conflict, the card's tests red. `fault`:
+past `base_sha` and `prior_head` is pushed (a harness that said ok and left
+its changes uncommitted has its tree committed by the worker). `fail`: the
+result file says broken, no result file ("fail: no verdict" with the
+harness's last output), a rebase conflict, the card's tests red. `fault`:
 exit 134 or 137; a launch that died inside the 15 s grace on a provider 5xx,
-three times; a rate-limit or credit refusal; a staging failure; a restart
-that lost the harness. A read reports `ok` or `fix` with its finding file;
-a read's provider failure is a fault and spends no reader (LPM T30).
+three times; a rate-limit or credit refusal; a staging failure. A read
+reports `ok`, `fix` with its finding, or `fault` (no result file is a
+fault), never `fail`; a read's provider failure is a fault and spends no
+reader (LPM T30). A job the worker's own stop cuts short is "runner
+stopped": not reported, kept to resume.
 
 ```go
 type Harness interface {
@@ -290,8 +330,9 @@ by the runner, outside the wall, after the harness exits.
 
 The probe (LESSONS 4.22): at start and after any harness fault, the runner
 runs the adapter's probe job through the same wall, flags and proxy as a
-card. The row hooks in only after it passes; a failed probe stops the row's
-hook and opens a judgement carrying the probe's last line.
+card. The row hooks in only after it passes; a failed probe leaves the row
+unhooked and held with the probe's reason, and is retried after a backoff
+(30 s doubling to 10 min, guesses); it never exits the served worker.
 
 A card can never, on a bench (LESSONS 4.19, 4.20): reach the store or the
 bus (no DSN, no bus credentials, no sprint verb in the wall); start a
@@ -299,8 +340,9 @@ listening server (the wall refuses listen where it can; the card contract
 refuses briefs that ask); write outside its job directory, so no `rm -rf`
 of a home and no crawl of `/`, `~` or `/Volumes`; wait on a prompt (stdin
 is closed; `sudo` has no terminal). Commit text goes in a file, `git
-commit -F`. The coordinator's machine runs no card (LESSONS 4.18):
-`nova-worker` refuses a host policy names as a coordinator host.
+commit -F`. Which machines run cards is nova-config's bench role and
+nothing else: the coordinator's machine runs a worker when it is a bench
+(2026-11-07; LESSONS 4.18's refusal is gone).
 
 Timeouts, each a policy number. From v1, measured: stage 120 s (copies ran
 73 to 79 s median under load); launch grace 15 s, three launches, 5 to 20 s
@@ -316,10 +358,17 @@ Restart loses nothing. The store is the truth; the runner keeps only
 nonce). On start it lists its job directories and runs `queue --as` per
 row. A `working` consumer whose harness is alive is adopted by pid and
 nonce, its deadline from the recorded start. One whose harness is gone is
-harvested and reported `fault`. One with a recorded result id is reported
-again under that id. A `working` consumer with no job directory is reported
-`fault` ("runner lost the job"). A job directory whose consumer is final is
-cleaned. Ready consumers are taken as at a wake. The runner gates on no
+resumed from its take receipt (`receipt.json`): staged again if it was
+taken, run again if it was staged or running, harvested if it left its
+result file; no fault. One with a recorded result id is reported again
+under that id. A `working` consumer with no job directory, or one whose
+job cannot be rebuilt, is released with no blame (`nova-sprint release`,
+with the partial head it pushed). A job directory whose consumer is final,
+or whose generation is stale, is retired on the first pass that sees it:
+nothing pushed, the directory made writable and removed, its record kept in
+`<root>/retired/`; a removal that fails is raised once and moved to
+`<root>/quarantine/`. A record the sprint refuses three times the same way is moved
+to `<root>/quarantine/` and raised. Ready consumers are taken as at a wake. The runner gates on no
 other daemon (LESSONS 4.25): with the store unreachable its harnesses run
 on and its reports wait to retry.
 
@@ -359,36 +408,59 @@ seams; it is not built now.
 
 ## The models
 
-`tla/LandEdge.tla`, one landing attempt per stream. Variables: `base` (a
-sequence of shas, each with its gate result), `stream`, `group` (heads in
-score order), `step` (`idle`, `fetched`, `merged`, `pushed`, `gating`,
-`green`, `red`, `fault`, `landed`, `refused`), `gatedAt` (the base tip and
-sha a green belongs to), `landed`. Actions: Fetch, Merge, MergeConflict,
-PushStream, Gate, CIGreen, CIRed, CIFault, BaseMoves (the environment, at
-most K times), Land, Remerge, Refuse. Invariants: every sha on `base` was
-gated green at that sha from its parent tip; a head lands at most once; a
-group is all in `landed` or none; a fault blames no head; `stream` equals
-`base` after every Land. Liveness, with weak fairness on the lander and
-BaseMoves finite: a conflict-free green group lands. Reversed witnesses:
-Land without the up-to-date check (stale green); Land at another sha than
-the gated one; a partial Land; CIFault blaming a head; Remerge sending heads
-back to their cards (the chase, a liveness failure). Size: 2 streams, 3
-heads, K = 2, CI green, red, fault.
+`tla/LandEdge.tla` (rewritten 2026-11-07 for intent rules 16 and 32), the
+ladder from a tick's land request to the base. Cards c1, c2 of stream s1
+and c3 of s2, every branch cut from the first base commit; a tree is the
+set of cards it holds and its count of outside commits. CI is truthful (a
+tree with c1 and c3 is red; c2 with c3 does not merge) and may report
+nothing. Variables: `base` (a sequence of trees, each with how it got there,
+`init`, `auto`, `hand` or `ext`, and the tree CI gated), `cs` (merging,
+landed, fix), `req` (each stream's request: cards, sent or done, outcome,
+rung), `js` (cards under a land judgement), `held`, `ticked`, `passes`.
+Actions: Tick (layer 3: consume results, landed moves the cards, anything
+else judges them; ask one card while fewer than BackedUp wait, all of them
+when backed up), Pass (one `LandPass`: on base already; rung 1 or 2 by the
+heads and the tip; conflict; CI green merges the gated tree exactly, or
+GitHub refuses, or base moves under the gate and the pass runs again),
+BaseMoves (at most K), Answer (land by hand, fix, retry). Invariants:
+`BaseNeverRed`, `NothingLandsUnpassed`, `MergingCovered`; one reversed
+witness each (`LandEdgeRedLands`, `LandEdgeStaleGate`,
+`LandEdgeJudgementHoldsStream`); reach checks for rung 2, a judgement, a
+hand landing and a red gate. Size: 2 streams, 3 cards, K = 1, BackedUp 2,
+MaxPass 6. The code is bound to it by `LandEdgeTrace.tla` and the walk in
+`edge/git/trace_test.go`.
 
 `tla/Runner.tla`, one bench. Variables: each consumer's store state
 (`ready`, `working`, `done`, `fail`), its job state (`none`, `taken`,
 `staged`, `running`, `harvested`, `rebased`, `ciwait`, `reporting`,
 `recorded`, `cleaned`), slots in use, width, the job directory (exists,
 result id, pushed head), harness alive, the store's applied op ids. Actions:
-Wake (duplicated, lost), Take, Stage, StageFail, Run, Die, Harvest, Rebase,
-Conflict, Push, Report, ReplyLost, Clean, Withdraw, Crash and Restart (at
-any step), StoreDown. Invariants: guarantees 7 to 11; `working` within
-width; slots within capacity. Liveness: every `working` consumer of the row
-ends recorded or withdrawn. Reversed witnesses: a slot freed while its
+Wake (duplicated, lost), PassStart and PassEnd (the pass, a process of its
+own: only a pass takes, and it ends whatever its jobs do), Take, Stage,
+StageFail, Run, Die, Harvest, Rebase, Conflict, Push, Report, ReplyLost,
+Clean, Withdraw (the sprint's: the store moves, the job does not), Retire
+(the next pass removes a withdrawn job's directory, pushing nothing),
+HolderPush (the card's next holder pushes its branch from another row),
+Release (the restart's no-blame give-back), Stop (the
+worker's own stop: harnesses killed, jobs kept at staged), Crash and
+Restart (at any step), StoreDown; and the card's branch on origin (who
+wrote its tip, the next holder's write, the job's pushes after final).
+Invariants: guarantees 7 to 11; `working`
+within width; slots within capacity; `PassNeverWaitsOnJobs`;
+`StopIsNeverAFault`; `NoPushAfterFinal`; `BranchOnlyByHolder`. Liveness:
+every `working` consumer of the row ends recorded or withdrawn, and a
+withdrawn job's directory is removed (`FinalDirRemoved`). Reversed witnesses: a slot freed while its
 harness lives; a reused job directory; Clean before Report (work lost on a
 crash); a fresh result id on retry (two reports); Restart taking a working
 consumer as new (two harnesses on one card); a Die classified `fail` (a
-fault that bounces). Size: 2 consumers, width 2, 1 slot, 1 Crash.
+fault that bounces); a pass that waits on its jobs (`RunnerPassWaitsOnJobs`);
+a stop reported as a fault (`RunnerStopIsAFault`); a withdrawn job that
+pushes (`RunnerWithdrawnPushes`), again on a later pass
+(`RunnerWithdrawnPushesRepeatedly`), and by plain force over the next
+holder's branch (`RunnerForcePushRewinds`). Reach checks: a take
+while another job runs, a stop, a stopped job back in a pass, a release, a
+retire, the next holder's push over a head the job pushed.
+Size: 2 consumers, width 2, 1 slot, 1 Crash.
 
 `tla/Push.tla`, the cursor: events, cursor, sends, lost replies, a crash.
 Invariant: every event below the cursor was confirmed sent. Witness: the
@@ -460,17 +532,17 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
 - `edge/git` (`edge/git/git.go`, `edge/git/land.go`, `edge/git/fake_test.go`, `edge/git/git_test.go`, `edge/git/coldread_test.go`, `edge/git/coldread2_test.go`, `edge/git/break_test.go`, `edge/git/functional_test.go`, `edge/git/trace_test.go`): `Git` (`Client`, `Fake`, clock starting at `1000`) and `LandPass` (`StreamBranch`, `StreamRef`, `ValidateCardBranch`, `RunRemoteLandStep`). Implements the 6-step landing pass from `LANDING.md` (fetch, merge group in score order with union ledger merge, push `--force-with-lease=<ref>:<old>`, gate at exact SHA, land only while base tip matches the gated parent, fast-forward stream branch). Per `1794011119389-0` (`LANDING.md` step 1), the stream integration branch is `sprint/<stream>/group` (`refs/heads/sprint/<stream>/group`), coexisting cleanly with card branches `sprint/<stream>/<producer>`, and `ValidateCardBranch` / `Take` refuse a card or producer branch named `group` or bare `sprint/<stream>`.
 - `edge/forge` (`edge/forge/forge.go`, `edge/forge/fake_test.go`, `edge/forge/forge_test.go`, `edge/forge/coldread_test.go`, `edge/forge/break_test.go`, `edge/forge/functional_test.go`): `Forge` (`Client`, `NewClient`, `Fake`, clock starting at `1000`), `PR`, `OpenPR`, `EnsurePR`, `Checks`, `Merge`, and `RestedUntil`. Queries `statusCheckRollup` via GraphQL at up to `MaxChecksBatch = 100` exact 40-hex commit SHAs per call with context pagination, classifies outcomes (`green`, `red`, `pending`, `fault`, `rate_limit`), verifies PR base and head SHA before fast-forwarding `refs/heads/<base>` in `Merge`, and enforces non-Glenn identity credentials (`GH_TOKEN` / `GH_CONFIG_DIR`) and per-identity token-bucket rate limiting.
 - `edge/worker` (`edge/worker/worker.go`, `edge/worker/harness.go`, `edge/worker/proxy.go`, `edge/worker/verbs.go`, `edge/worker/runner.go`, `edge/worker/verbs_test.go`, `edge/worker/worker_test.go`, `edge/worker/coldread_test.go`, `edge/worker/coldread2_test.go`, `edge/worker/break_test.go`, `edge/worker/functional_test.go`, `edge/worker/trace_test.go`) and `cmd/nova-worker` (`cmd/nova-worker/main.go`, `cmd/nova-worker/main_test.go`, `cmd/nova-worker/coldread2_test.go`, `cmd/nova-worker/break_test.go`):
-  - Coordinator host refusal (`CheckHost` refuses the hosts given by `--coordinator-hosts`, which is required and has no default, `LESSONS 4.18`), and mandatory `--work-clone` and `--as <row>` flags in `cmd/nova-worker`.
+  - No host refusal: nova-config's bench role is the only word on where a worker runs, the coordinator's machine included (2026-11-07; `CheckHost` and `--coordinator-hosts` are gone, below). `--as <row>` is the one mandatory flag.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `cmd/nova-worker` defaults `--harness` to `claude`. `ScriptHarness.Command` passes card fields as positional arguments (`$1`..`$9`) to a static shell program constant, never interpolating card prose into a shell string. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
-  - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), fetches route keys via `ReadProviderKey` (`nova-secrets get`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
-  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which splits `DoneWhen` command lines into unquoted argv via `splitArgv_internal`) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> --net-deny --net-allow 127.0.0.1:<proxyPort> -- <argv...>` via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
+  - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
+  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which runs each `DoneWhen` line as the argv `edge.ParseGate` gives (the one parser admission uses too; a line with shell syntax outside quotes is an error and is never run)) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
   - 9-step runner lifecycle (`RunConsumer`, `StepRow`, `ProbeRow`, `RecoverRow`, `RunWakeLoop`, `QueryEdge` in `edge/worker/runner.go`):
     * `FormatTakeOpID(epoch, consumer, gen, row)` (`take-e<epoch>-<consumer>-g<gen>-<row>`) and `FormatResultID(epoch, consumer, attempt, gen)` (`res-e<epoch>-<consumer>-a<attempt>-g<gen>`) fence store operations by epoch, consumer, attempt, and gen (`CLISprintClient.Take` passes `--id`).
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
     * `OSGitOps` executes all bench `git` operations through `edge.Exec` with `CleanEnv: true`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and `Timeouts` (`Stage`, `Push`, `RebaseAndTest`); `RebaseOntoStream` returns `*FetchError` on a fetch failure so `RunConsumer` propagates the failure without reporting a stale head.
     * `sendReportAndClean_internal` requires an accepted store receipt matching the result ID (`receipt.Accepted && receipt.Op == req.ResultID`) before marking `JobRecorded` or removing the job directory; `CLISprintClient.Report` returns a parse error if `--json` output fails to unmarshal, and a report the sprint did not acknowledge with exit 0 (`ErrRefused` included) keeps its job record at `reporting` and is sent again, same id, on the next wake (stitch, row 20).
     * `RecoverRow` matches disk `JobRecord` entries against the store's working summary by full identity `(epoch, consumer, attempt, gen)` (`jobMatchesSummary_internal`), verifies both PID and `NOVA_WORKER_NONCE` via `OSProcessTable.Alive`, kills and reports `fault` for any adopted harness past its recorded `DeadlineAt`, leaves `JobTaken`/`JobStaged` (`ErrNoSlot`) records untouched for retry, and completes `rebaseAndPRSteps_internal` for `JobHarvested` `"ok"` jobs before reporting; `QueryEdge` is a pure read of the store and `job.json` with zero side effects.
-- `tla/Push.tla`, `tla/LandEdge.tla`, `tla/Runner.tla` and 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
+- `tla/Push.tla`, `tla/LandEdge.tla` (rewritten 2026-11-07 for the three rungs; its witnesses are now `LandEdgeRedLands`, `LandEdgeStaleGate`, `LandEdgeJudgementHoldsStream`, below), `tla/Runner.tla` and, as first built, 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
 
 ### Seam rulings (Rowan, 2026-11-06)
 
@@ -593,3 +665,566 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
     re-hooked (the hook is a startup step); the service restarts the worker.
     `tla/Runner.tla` models no refused report, so the keep-and-resend rule has
     a unit test (`TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake`) and no model.
+
+### Stitch: the landing's CI, identity and PRs (2026-11-07, branch `v2-stitch-c3`)
+
+- *Defect 40, CI on the group branch.* `forge.Checks` reports a sha with no
+  check rollup at all as `CheckAbsent` (it was pending); `LandPass` returns
+  `ci_absent` for it (`OutcomeCIAbsent`) in the first gate, the re-merge on a
+  moved base and the bisection's subsets. Run's landing loop waits on a
+  pending CI as before and on an absent one for `CIAbsentWait` (10 minutes,
+  a guess, unmeasured: GitHub creates a queued job's check within seconds of
+  a push), then answers `no-ci` and layer 3 opens one judgement. The stream's
+  repository must run CI on push to `sprint/**` (LANDING, "CI on the group
+  branch", which says why not the merge queue). `LandEdge.tla` has
+  `CIAbsent` (gating -> absent -> refused, no head blamed, nothing lands);
+  `FaultBlamesNoHead` covers it; `witnesses/LandEdgeAbsentBlamesHead` is its
+  reversed witness; the land walk takes it (1 in 8 gating moves).
+- *Defect 39, the sprint's identity.* `forge.Identity` is `{Name,
+  ExpectedLogin, Token}` (no `ConfigDir`); `Client.Ready` refuses a missing
+  token with an `*edge.Refusal` (Problem, Fix; `verbs.AsRefusal` passes it
+  through) and every gh call's clean environment carries only that token as
+  `GH_TOKEN`. `forge.TokenEnv` is `GH_GATE_TOKEN`; `cmd` builds run's forge
+  and git from it, and the sprint-run service's keys include it. `git.Config`
+  has `Token`: set, every git call resets the host's credential helpers
+  (`credential.helper` empty) and adds one that answers with the token from
+  the child's environment (`GIT_CONFIG_COUNT`; checked by hand with
+  `git credential fill`). Run's landing asks `Ready` first and answers
+  `forge` instead of merging or pushing. The worker's forge (edge/worker,
+  another owner) now takes `GH_TOKEN` only; its `GH_CONFIG_DIR` fallback is
+  gone with the field.
+- *Defect 34.* The verbs' `Origin` has no `PR` (finish asks no PR); `cmd`'s
+  origin holds no forge.
+- *A red's finding.* `run.landItem` puts the failing checks, the first
+  failing URL, the gate's reason and the gated sha in the red item's
+  `Reason` (`ciFinding`).
+- Tests (unit, fake gh and fake exec): `TestForgeActsOnlyAsItsToken`,
+  `TestCredentialsRefusals`, `TestTokenIsTheOnlyCredential`,
+  `TestWaitAgainBoundsAnAbsentCI`, `TestLandItemRedCarriesTheFinding`,
+  `TestLandRefusesWithoutAToken`.
+- *Not done.* `stream add` does not read the repository's workflows for the
+  push trigger (LANDING says why); a token without pull-request write fails
+  at OpenPR as a fault, re-tried each tick, not as a judgement.
+
+### Stitch: the landing to intent rule 32 (2026-11-07, branch `v2-stitch-w2L`)
+
+Supersedes the landing parts of the two stitch notes above where they
+differ (LANDING.md, "The ladder, as built").
+
+- *`LandPass`* (`edge/git/land.go`, rewritten) is one pass of rung 1 or 2.
+  All heads already on base: landed at base's tip. One head whose branch
+  already contains base's tip: rung 1, its own branch's PR against base,
+  refused as `head_moved` if the branch is no longer at the head. Otherwise
+  rung 2 (`LandResult.Rung` 2, one head behind base included): the heads are
+  merged onto base's tip (`MergeGroup`, deterministic), pushed to
+  `sprint-group/<stream>` with a lease on its old tip, and that branch's PR
+  is gated. The PR is found or opened against base; a PR whose head is not
+  yet the gated sha is `ci_pending`; GitHub's `CONFLICTING` is `conflict`.
+  Checks are read at the gated sha; green merges only while base is still
+  the tip it read (`base_moved` otherwise) through `forge.Merge(pr, sha)`.
+  Outcomes: `landed`, `ci_pending`, `ci_absent`, `base_moved`, `ci_red`,
+  `ci_fault`, `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`,
+  `missing_head`, `head_moved`; an error is a fault of git or the forge
+  themselves. `LandResult` carries the rung, base tip, group tip, gated
+  sha, merge sha, PR, CI URL, the failing checks and their first lines
+  (`forge.FailedLines`), the conflicting files and a reason. Bisection
+  (`BisectRedGroup`), the stream branch's fast-forward, the remote land step
+  (`RunRemoteLandStep`) and the outcomes they had are gone.
+- *The group branch* is `git.GroupBranch(stream)` = `sprint-group/<stream>`
+  (defect 46; `StreamBranch`, `sprint/<stream>/group`, is gone):
+  `GroupNameProblem` names a stream git cannot use in a branch,
+  `GroupBlocker` a branch at origin that keeps it from being created, and
+  `Client.Heads` lists origin's branches for them. `ValidateCardBranch`
+  refuses a card branch under `sprint-group/`.
+- *`forge`*: `Identity` is `{Name, Token}` (`ExpectedLogin`, `Ready` and
+  the `gh auth status` check are gone): gh runs as the host's login, or
+  with `Token` (`GH_GATE_TOKEN`) as an optional override. `PRInfo` gains
+  `URL` and `Mergeable`. `Merge(pr, sha)` merges by the repository's
+  allowed method (merge commit, then squash, then rebase) with
+  `--match-head-commit` and returns base's merge commit. `FailedLines(url)`
+  reads the first failing lines of an Actions job's log (`FirstFailing`).
+- *Run* (`run/edges.go`): asks a pass again every `LandPoll` on
+  `ci_pending` and `base_moved`, and on `ci_absent` until the request's
+  `Wait` (policy's `ci_wait`; `CIWait` 10 minutes when none, a guess), when
+  it answers `no-ci`; every other outcome goes to layer 3 with its facts
+  (`landFacts`). A stream with mode hand or no forge answers `hand`.
+- *`cmd`*: the forge and git act as the host's identity; the sprint-run
+  service's keys no longer include `GH_GATE_TOKEN`. `cmd/nova-sprint/lander.go`
+  is `verbs.Lander`: the hand merge (the PR merged, or with no forge a
+  fast-forward push of the head merged onto base), `Heads`, and
+  `CreateGroup` (pushed with a lease on its absence). The verbs' `Origin`
+  lost `Contains` (finish no longer checks a head against any branch).
+- Tests (unit, fakes): `edge/git/git_test.go` (each rung and every outcome,
+  the group branch's namespace), `run/edges_land_test.go`
+  (`TestAskAgainBoundsAnAbsentCI`, `TestLandItemRedCarriesTheFacts`,
+  `TestLandByHandStreamTouchesNothing`), `edge/forge` (Merge, FailedLines,
+  the identity). Functional (real git): `edge/git/functional_test.go`.
+- *Models.* `LandEdge.tla` is the ladder: `Tick` (layer 3's landing),
+  `Pass` (one `LandPass`), `BaseMoves`, `Answer` (land, fix, retry);
+  invariants `BaseNeverRed`, `NothingLandsUnpassed`, `MergingCovered`, each
+  with one reversed witness (`tla/make-landedge-witnesses.py`); reach
+  checks `LandEdgeNever{RungTwo,Judged,HandLand,RedGated}`. The six old
+  LandEdge witnesses and `edge/git/coldread_test.go` (probes of the old
+  ladder's defects) are removed. The trace walk
+  (`edge/git/trace_test.go`, `TestLandEdgeTraceRefinementWalk`: `LandPass`
+  on the git fake and a truthful forge, 8 seeds walked to the end) writes
+  `landedge-walk-<seed>`, checked against `LandEdgeTrace.tla`.
+  Measured on the bench (TLC 1.8.0): `LandEdge.cfg` 46,288 distinct states
+  in 4 s, no error; the 3 witnesses and 4 reach checks violated as
+  required; the 8 walks (8 to 17 records each) all `TRACE OK`.
+
+### Clone addresses (stitch, 2026-11-07, defect 21)
+
+`stream add <s> --repo mas-bandwidth/nova-tools --forge github`, the form the
+help prints, was refused at the fleet: the git edge passed `mas-bandwidth/nova-tools`
+to `git clone` and `git ls-remote` as a path. `edge/git/url.go` adds
+`CloneURL` and `IsOrgRepo`; `Client.Tip` reads a branch at an address with no
+clone; `Config.GitHubCredential` sets gh as git's github.com helper. Callers:
+`run/edges.go` (`Edges.clone`, for land and heads), `cmd/nova-sprint/edges.go`
+(`origin.Tip` no longer clones; `gitEdge` sets the helper when `GH_TOKEN` or
+`GH_CONFIG_DIR` is set), `verbs/stream.go` (`baseTip`, shared by `stream add`
+and `check`) and `verbs/head.go` (finish). Not changed here: the worker's
+staging still takes `--origin` (the per-stream-repository staging is another
+change; it should take its address from `git.CloneURL(receipt.repo,
+receipt.forge)`). Unit tests: `edge/git/url_test.go`,
+`run/edges_test.go`, `verbs/stream_url_test.go`,
+`cmd/nova-sprint/edges_test.go`. Not run here: a clone of a private GitHub
+repository through the gh helper (functional, on a bench).
+### The worker after the first bench runs (2026-11-07, stitch child c4)
+
+The first `nova-sprint worker` runs on a bench found these; each is fixed
+with a unit test (fake wall, fake exec, fake sprint; no process, socket or
+clock), mostly in `edge/worker/probe_test.go`.
+
+- **Harness directory (defect 24).** `OSReserveWall.RunHarness` grants
+  `--read` on the directory `exec.LookPath` finds the harness binary in and,
+  when that is a symlink, on its target's directory (`HarnessDirs`); a binary
+  it cannot find is left to the wall's own refusal, which names the path.
+- **The cause line (25).** `edge.CauseLine`: escapes stripped
+  (`edge.StripANSI`), the first line holding error, refused or failed, else
+  the last non-empty line, bounded; `edge.StderrLines` strips escapes too.
+- **Keys from the environment (26).** `ReadProviderKey` (`nova-secrets get`,
+  a verb nova-tools v2 does not have) is gone: each route's key is the named
+  environment variable, which the bench seat's `nova-secrets exec --only ...`
+  put there. A route whose key is absent refuses at the probe, naming the key
+  and the exec line, before any harness runs; at request time the proxy
+  answers 503 with the same words.
+- **The probe's model (27, 36).** The probe runs after the hook (next
+  --json answers only a hooked row) with, for each tier, the first of the
+  policy's candidates (`tier_models`; for a bench since stitch w2D1 the one
+  model the catalog's `bench` names for the tier) the harness serves: through the proxy
+  a route for its provider, else the adapter's one provider, and in the
+  harness's own list when it has one (`opencode models`, run outside the wall
+  under the probe's home). A tier with no candidate refuses ("no model for
+  tier <t>"); a tier none of whose candidates it serves is a warning naming
+  why, and a card of that tier dealt here faults with the candidates; none
+  served at all refuses, naming each tier's reasons and the harness's list for
+  those providers. A take runs the receipt's `model`, the one the deal
+  named (`chooseModel_internal`); a model the probe proved the harness does
+  not serve faults the card naming the model and the tier (stitch
+  w2D1: the receipt's `models` candidates are gone). A failed probe unhooks
+  the row again (`ServeRow`).
+- **Logs (28).** Every probe and job run keeps `stdout.log`, `stderr.log` and
+  `command.txt` (the wall's command line; the environment's values are never
+  written) in its directory; probe directories are
+  `<root>/probes/<row>/<provider>_<model>` and are kept after a failure. The
+  combined `harness.log` is gone.
+- **Several providers (29).** `--providers <name>=<url>@<KEY>[,...]`; the
+  harness's base URL is `http://<proxy>/<provider>/v1` (`ProxyBaseURL`), and
+  the proxy picks the route by that first path segment and cuts it, so one
+  proxy serves every provider; a route forwards only to its upstream's host.
+- **Judgement errors (30).** At 0832c0c0 the probe already appended the
+  judgement's error to its refusal. Found: nova-sprint v2 has no `judge-open`
+  verb, so `CLISprintClient.OpenJudgement` always fails ("unknown verb") and
+  every probe refusal says its judgement could not be opened. A row-raised
+  judgement needs a verb (layer 6) or an engine judgement for a row that
+  hooks and unhooks; not built here.
+- **Each adapter's wall (32, intent rule 31).** `Harness.Needs()` declares
+  `Unix`, `Proxy`/`NetOpen`, `Writes`, `ListModels`, `LogDir`, `Provider`,
+  `Model` and `Limits`; `BuildWallArgv(cfg, job, env, argv)` honours
+  `job.Needs` and passes every environment name but PATH, HOME, LANG and TERM
+  with `--env` (nova-sandbox drops the rest otherwise; read from its help, not
+  measured). opencode: `--unix` (its server's AF_UNIX socket; measured on a
+  bench) and the proxy's port; the same-uid escape trade is in its comment.
+  claude and codex: network open (each reaches its own provider with its own
+  login), their config directory a `--write`; whether they need `--unix` is
+  not measured. A probe that exits non-zero in its first second with an empty
+  log directory (or, with none declared, no output but the WALL line) says
+  "the harness died inside the wall before writing a log; nova-sandbox show
+  <flags> -- <harness>".
+- **Deferred, said (31, 33).** opencode through the proxy needs a provider
+  config in the wall home (31), and its own write tool dies inside the wall
+  (33). Neither is fixed; the opencode adapter's `Limits` names both in every
+  failed probe's refusal.
+- **Sprint verbs (35).** Run directly (`<sprint-bin> <verb> ...`), inheriting
+  the worker's environment, which the seat's exec filled; `--secrets-bin` is
+  gone.
+- **Any bench (41).** `CheckHost`, `Runner.CoordinatorHosts` and
+  `--coordinator-hosts` are gone.
+- **A clone per stream repo (42).** `OSGitOps{WorkRoot, MirrorRoot}`: the
+  repo is the receipt's, its clone URL a URL or path as it is, or
+  `https://github.com/<owner>/<name>.git` for owner/name on the github forge
+  (`CloneURL`, a local helper; the stream edge's own clone URL is another
+  child's); its mirror `<mirror-root>/<name>.git` (mirror-refresh's layout,
+  cloned `--mirror` on first use), its work clone `<work-root>/<name>`
+  (cloned `--reference` the mirror on first use, once per URL under a lock),
+  and a work clone of another repo in the way is refused. The worktree's
+  origin is the clone URL, so its fetch, push and the clean step's head check
+  go to the repo. Flags: `--work-root` (default `<root>/clones`) and
+  `--mirror-root` (default `~/nova-bench/mirror`) replace `--work-clone`,
+  `--mirror` and `--origin`.
+- **The flag set** of `nova-worker` and `nova-sprint worker`: `--as <row>`,
+  `--host`, `--root`, `--state-dir`, `--harness`, `--work-root`,
+  `--mirror-root`, `--providers`, `--once`, and `--sprint-bin` on
+  `nova-worker` only.
+- **Owed.** A bench's tiers: the roster gives every bench every tier, so a
+  bench whose harness serves no model of a tier is still dealt its cards,
+  which fault and return to ready; the roster (or policy) needs a bench's
+  served tiers. `rebaseAndPRSteps_internal` is 67 lines (over the 60 rule;
+  untouched here). (Both done by w3W, below: the advertised tiers, and the
+  PR step gone with the forge.)
+
+## Built: admission reads and the probe before the hook (stitch w2A, 2026-11-07)
+
+- `git.Client.Branches(url, prefix)`: one `git ls-remote --heads` for the
+  branches under a prefix, by name with their tips; a line that is not
+  `<sha> refs/heads/<prefix>...` is refused, never skipped.
+  `git.Client.ListTree(dir, rev)`: `git ls-tree -r --name-only -z`. Both are
+  the reads admission uses (CARD-CONTRACT.md "Admission").
+- The worker's start order is now bus hook, probe, sprint hook
+  (`busHook_internal`, `ProbeRow`, `sprintHook_internal`): a failed probe
+  leaves the row off the sprint, with no hook to undo, and up's step 7 can
+  read "hooked" as "probed". Test: `TestServeRowProbesBeforeTheSprintHook`.
+- `roster.Worker.Routes`: a machine's `route:<name>` roles, sorted and
+  unique; `Roster.ServesRoutes`. Kin serve no routes. A first-class routes
+  field in nova-config is owed upstream.
+- Still open (recorded above under "Judgement errors (30)"): no
+  `judge-open` verb exists, so a failed probe opens no judgement; with this
+  order the row stays unhooked and its worker log says why.
+### Built: the worker's heartbeat (stitch, 2026-11-07)
+
+- `edge/worker/beat.go`: with a `Meter` and a `Beater` set (`Serve` sets both), `ServeRow` pushes
+  `nova-sprint beat` (layer 6) after the probe and then every `BeatEvery` (30 s, a guess) until
+  the worker ends, on the runner's `Sleep`. `OSMeter` reads the 1-minute load average
+  (`/proc/loadavg` on Linux, `sysctl -n vm.loadavg` on macOS and the BSDs, nothing on Windows:
+  no load, no beat, and the warning says so), the logical cores (`runtime.NumCPU`), and the slots
+  from `nova-reserve status`'s `free=n/N` line. A bench with no readable slots still beats, with
+  0 of 0 and a warning. Each distinct failure is warned once, not every period. The worker
+  keeps only the last warning's text; a beat that repeats the last one writes nothing.
+- Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
+  and carries no numbers) and not a read verb that writes. Tests: `edge/worker/beat_test.go`.
+
+### Built: the landing's red split, its timing, and the host identity (stitch w3L, 2026-11-07)
+
+Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
+
+- *`forge` (`edge/forge/actions.go`, new).* `Inheritance(repo, base,
+  baseTip, head)`: the merge base (`gh api repos/<r>/compare/<tip>...<head>
+  --jq .merge_base_commit.sha`), the workflow runs at the head and at the
+  merge base (`actions/runs?head_sha=`, `--jq`-projected so a page of 100
+  runs fits the 64 KiB output cap), the jobs of each failed or still
+  running run at the head (`actions/runs/<id>/jobs`), and for a failing
+  workflow with no completed run at the merge base the base branch's last
+  completed run of it (`actions/workflows/<id>/runs?branch=&status=completed`).
+  A workflow fails at the head when a run failed or is running with a
+  failed job. Returns `RedSplit{MergeBase, Inherited, New}`; each
+  `WorkflowRed` carries its `Basis` (what the base side was read from),
+  `Running`, and its failed jobs (`FailedJob{Name, Runner, URL, Lines}`).
+  Only new red's logs are read: `JobLines(id)` (`actions/jobs/<id>/logs`,
+  readable once the job ends, `LogMaxBytes` 8 MiB, timestamps stripped,
+  `FirstFailing` 5 lines of `LineMax` 240 bytes) for the first `NewJobsMax`
+  3 jobs; all three bounds are guesses. `Authors(pr)` is the PR's distinct
+  commit authors (`gh pr view --json commits`); `IsAgreement(check)`
+  names a CLA/CAA/contributor-agreement check. `CheckRollup.Waiting`: a red
+  rollup with a check still queued or running.
+- *`LandPass`* (`edge/git/land.go`): a red rollup goes through
+  `splitRed_internal`: an agreement check failing reads `Authors` into
+  `LandResult.Unsigned`; the split fills `MergeBase`, `Inherited`, `NewRed`
+  (plus each failing check that is no failed job of any workflow: new, not
+  compared). New red is `ci_red` at once, even while the run goes on; all
+  inherited while waiting is `ci_pending` ("waiting for the run"); all
+  inherited with the run ended is the new outcome `ci_red_inherited` (a
+  judgement); a split that cannot be read waits while the run goes on, then
+  is `ci_red` with `FailingLines` and the cause. Run's `landFacts` leads
+  with NEW red, inherited red and the authors; layer 3 words
+  `ci_red_inherited` for a glance (`steps.InheritedRed`).
+- *Identity (59).* gh runs with `forge.HostEnv()`: the process's
+  environment less `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`,
+  `GITHUB_ENTERPRISE_TOKEN` and `GH_CONFIG_DIR` (`CleanEnv`), plus the
+  `GH_GATE_TOKEN` override as `GH_TOKEN` when set: before this a
+  `GH_CONFIG_DIR` in run's environment made the landing act as that
+  directory's login, not the host's. git's github.com helper is always gh
+  as the host's login (`!env -u ... gh auth git-credential`; the
+  `githubCredential` switch on `GH_TOKEN`/`GH_CONFIG_DIR` is gone), and
+  admission's `hostForge` runs gh the same way. `Identity.Name` is the
+  choice (`forge.HostLogin`, "this host's gh login", or `GH_GATE_TOKEN
+  (the override of ...)`), never "sprint"; the missing-gh fix says `gh auth
+  login on this host`. Already done at the base: the "identity sprint" and
+  "expected sprint" refusals (`ExpectedLogin`, `Ready`) had been removed by
+  w2L; what remained was the environment and the name.
+- *Model.* `LandEdge.tla` unchanged and TLC not rerun: in the model every
+  non-green, non-absent gate is one judgement, which `ci_red_inherited`
+  still is, and waiting for the run is the re-ask a pending CI already is
+  (a `Pass` is atomic up to its final outcome). The trace walk's truthful
+  fake reports red as new (`fakeForge_internal.Inheritance`), so
+  `walkOutcomes` is unchanged.
+- *Tests (unit, no network).* `edge/forge/actions_test.go`: gh with canned
+  JSON for compare, runs, workflow runs, jobs and logs
+  (`TestInheritanceSplitsByTheMergeBase`: inherited at the merge base,
+  inherited by the base branch's last run, new at the merge base, new with
+  no run on the base, a running workflow with a failed job, inherited logs
+  never read), compare faults, an unread log, `Authors` and `IsAgreement`.
+  `edge/git/red_test.go`: inherited-only, waiting, new while waiting, the
+  agreement check, an uncompared split. `run/edges_land_test.go`
+  `TestLandItemSplitsRedByTheBase`; `steps/tick_test.go`
+  `TestTickLandInheritedRedIsAGlance`; `cmd/nova-sprint/edges_test.go`
+  `TestIdentityNamesTheChoice`; `edge/forge` `TestForgeActsAsTheHostsGh`
+  now sets `GH_TOKEN` and `GH_CONFIG_DIR` and requires neither reaches gh.
+- *Not done.* Which author is unsigned is not parsed from the agreement
+  check's output (every author is named); no functional test against a real
+  repository's Actions API (the calls mirror a hand tool used on the live
+  fleet, not run here).
+## Built: one gate parser; the install (stitch w3A, 2026-11-07; directives 77, 78)
+
+- `edge.ParseGate` (`edge/argv.go`) is the one parser of a DONE-WHEN line.
+  `OSReserveWall.RunTest` calls it (replacing `splitArgv_internal`, which was
+  the tokenizer without the checks), so admission's add and the worker's run
+  agree; a stored line with shell syntax is an error naming it, never run as
+  literal arguments. The rule is in CARD-CONTRACT "Admission".
+- `worker.CommitEmailDomain` is the domain of a bench's commit author email
+  (`<row>@nova-sprint.local`); the job record and admission's agreement
+  warning both read it.
+- The binary at `~/.local/bin/nova-sprint` on a bench is installed by
+  nova-fleet's play (another repository), whose replace-by-rename and ad-hoc
+  signing is not changed here. In this repository `make install` now uses
+  `tools/placebin`: a new file beside the old, `codesign --force --sign -` on
+  darwin, rename over, never an open of the old file for writing. Tests:
+  `tools/placebin/place_test.go` (the destination is a different file after
+  and the old open file keeps its bytes).
+
+### Built: the worker's live defects (stitch w3W, 2026-11-07)
+
+From the first bench runs (directives items 61, 65 to 74). Files:
+`edge/worker/pass.go` (passes and jobs), `recover.go` (restart, release,
+quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
+
+- **Passes apart from jobs (66).** A pass recovers the row's jobs, reads
+  the row and acknowledges (takes) each card dealt working into its hand
+  that has no job yet (the deal holds the width: deal is take), then
+  returns; the jobs of a pass run detached under the runner's WaitGroup,
+  which the wake loop
+  waits on when it ends. A refused receipt in a job still ends the worker
+  (a fatal channel). A periodic wake (`WakeEvery`, 10 s, a guess) runs a
+  pass beside `hook.Wake()`. Model: `Runner.tla` (PassStart, PassEnd,
+  `PassNeverWaitsOnJobs`, witness `RunnerPassWaitsOnJobs`); the trace walk
+  emits the pass. Test: `TestLivePassTakesWhileAJobBlocks`,
+  `TestLivePeriodicWakeRunsAPass`.
+- **Probe failure never exits (61).** `ServeRow` (served, not `--once`)
+  holds the row unhooked with the probe's reason on stderr and probes again
+  after `ProbeBackoff` (30 s) doubling to `ProbeBackoffMax` (10 min), both
+  guesses; `--once` still exits on a failed probe.
+- **Restart and stop (70, 73).** The take receipt is kept as
+  `receipt.json` at take; a restart rebuilds the job from it (a re-take
+  would replay the take's op id at the pre-take gen): taken is staged again,
+  staged or running with no live harness is run again, running with a
+  result file is harvested. A job with no slot stays staged and the next
+  pass runs it. A job directory with no receipt is released with no blame:
+  `release` gains `--head` so the worker hands back
+  the partial head it pushed (checked as a finish's head is). "runner lost
+  the job" is gone, and so is releasing a card in hand with no job
+  directory: under deal is take that card is the pass's to run (its take,
+  the acknowledgement, prints the same receipt again). The worker's own stop cancels its jobs: each is "runner
+  stopped", its record kept at its state with no pid, never reported;
+  `edge.Exec` classifies a cancelled command as `canceled` ("stopped by its
+  caller"), never a timeout. Model: Stop, Release, `StopIsNeverAFault`,
+  witness `RunnerStopIsAFault`.
+- **A read's outcome (67).** `ReadOutcome` has three values (ok, fix,
+  fault) and a read's report is built only from it, so a read cannot send
+  "fail". No result file for a read is a fault; a harness's own fail
+  verdict on a read is a fix with its reason as the finding. A record
+  written before this (fail naming result.json) heals at its next send.
+- **No verdict and a left tree (the harness note).** A work harness that
+  exits 0 with no result file is "fail: no verdict: ..." with its last
+  output. One that says ok, leaves its changes uncommitted and HEAD where
+  it started has its tree committed by the worker (`GitOps.CommitAll`,
+  `--no-verify`, the row's identity) and pushed; ok with nothing to commit
+  is a fail saying so.
+- **JOB.md (68).** Written at stage: card, repository, base, checkout,
+  prior head and finding, paths, done-when, the card's prose, and "How this
+  card finishes" (`finishRules_internal`), which the prompt carries word for
+  word: the result file's forms, and no git push and no gh (the worker
+  pushes; the landing opens the PR).
+- **A refused record never wedges a pass (69).** Each send's refusal
+  (the first included) is logged and counted on the record; after
+  `RefusalLimit` (3, a guess) identical refusals the record moves to
+  `<root>/quarantine/<consumer>@<gen>` and is raised on stderr with what to
+  read. A quarantined card is neither resumed, run afresh nor released.
+- **No forge in the worker (71).** The worker's contract ends at a pushed
+  head: `Runner.Forges`, `EnsurePR`, the PR step and the gh timeout are
+  gone. Of the three stitch tests that encoded worker-opens-PR,
+  `TestStitchStreamForgeWithNoAdapterIsAFaultNamingIt` is deleted (the
+  landing opens and gates the card's PR: `TestLandRungOneGatesTheCardsOwnPR`
+  in `edge/git`), the PR assertion of
+  `TestStitchDeadlineModelAndForgeComeFromTheReceipt` is dropped, and the
+  forge gates of the store-backed fake (`RequirePR`, `RequireGreenAtReport`)
+  with them.
+- **One fetch per repo per pass (72).** `GitOps.Fetch` runs once per repo a
+  pass stages from, the repos at once, under the work clone's write lock;
+  staging takes the read lock, so no fetch runs on a clone while another
+  job clones from it. Test: `TestLiveOneFetchPerRepoPerPass`.
+- **Advertised tiers and slots (65, 74).** The probe records the tiers whose
+  policy model the harness serves; at hook the worker beats once before its
+  first pass and every beat carries `--tiers` with its nova-reserve slots.
+  The store keeps them on the row (`Row.Tiers` beside `SlotsTotal`, the
+  heartbeat's columns; cleared at unhook and at a new session).
+  `roster.Advertised` gives an advertising worker those tiers at width
+  min(nova-config width, slots); the run tick, every verb's roster read and
+  the board use it. Why not a tier list in each adapter: the worker may hold
+  no tier literal (rows 14, 15,
+  `TestStitchNoDeadlineModelHostOrTierLiteralsInTheWorker`); an adapter
+  declares what it reaches (provider, model list, proxy routes) and the
+  probe turns that into tiers. opencode with only a deepseek route therefore
+  advertises flash, the catalog's tier for deepseek-flash: a choice that
+  rests on the catalog's tier map, not on a measured run (a guess as to
+  whether it does pro work well). A beat moves no gen, so a deal made from a
+  snapshot just before an advertisement is not fenced by it (one tick at
+  most). The default policy deals no ahead (`ahead: 0`).
+- **Fixed on the way.** A final card whose job is still in flight is left
+  for that job to clean (two cleaners raced on the directory).
+- **Checked (measured, a bench host, TLC v1.8.0, 2026-11-07).** `Runner.tla` with `Runner.cfg`:
+  no error, 20,224 states generated, 5,269 distinct. The first run found `Liveness` violated: a
+  released card, ready again, was never retaken because `Take` is enabled only while a pass
+  plans and was only weakly fair; every pass takes the ready cards it has room for, so `Take`
+  is now strongly fair. `RunnerPassWaitsOnJobs` and `RunnerStopIsAFault` report their
+  invariant violated, as do the six older Runner witnesses; the four Runner reach checks are
+  violated as required. The three runner walk traces (with Stop and Release in them) check
+  against the model (`check-trace.sh Runner`: 29, 30 and 40 steps, TRACE OK).
+- **Merged with deal is take (measured, a bench host, TLC 2.19, 2026-11-07, head a675488a).**
+  `Take` is now the pass's acknowledgement of a card dealt working (no ready state, no width
+  guard: the deal holds it). `Release(c)` gives back a job the restart cannot resume (staged or
+  harvested, directory present, no live harness): the consumer is withdrawn (fail, no result,
+  no report), its commits pushed, its directory gone. A card in hand with no job directory is
+  no release: the pass runs it. `Runner.tla` with `Runner.cfg`: no error, 16,928 states
+  generated, 4,245 distinct. The whole of `ci-tlc.sh`: 266 ok, 0 FAIL (Runner, the eight Runner
+  witnesses and the four Runner reach checks among them). `make-traces.sh check`: 88 ok, 0
+  FAIL; the runner walks check at 22, 29 and 30 steps.
+
+### Built: a branch is its holder's (stitch w4W, 2026-11-07, defect 78)
+
+What happened on the live fleet: a bench's work consumer was withdrawn and
+its card re-dealt to another row. Every recovery pass found the consumer
+final and called `withdrawRunningJob_internal`, which ran
+`harvestPartialPush_internal`: `git push --force` of the job's dirty head to
+the card's branch. `cleanJobDir_internal` kept the directory (a dirty tree;
+the Go module cache inside it is read-only, so a plain remove fails too),
+so this happened again on every pass for as long as the worker lived, each
+time rewinding the new holder's branch to the stale head. Files:
+`edge/worker/retire.go` (new), `runner.go`, `recover.go`, `pass.go`,
+`worker.go`.
+
+- **One push, by lease.** `OSGitOps.Push` (the worker's only `git push`)
+  is `push --force-with-lease=refs/heads/<branch>:<expect> origin
+  <sha>:refs/heads/<branch>`; `GitOps.Push` takes `expect` ("" : the
+  branch must not exist). Every push goes through `pushBranch_internal`,
+  which refuses a job that no longer holds its consumer and leases from
+  `leaseFrom_internal`: the head this job last pushed (`PushedHead`), or
+  before its first push the tip it found at stage (`StartTip`, read by the
+  new `GitOps.BranchTip` from the work clone the pass fetched; a record
+  from before it falls back to `PriorHead`). Why the stage tip and not
+  only the last pushed sha: a never-pushed job has no sha of its own, and a
+  card branch can already exist (a cleared sprint's next epoch reuses card
+  ids and branch names; the breaker `TestBreakStaleEpochJobReplaysOldReceipts`
+  found it); leasing on an older tip than origin's can only refuse, never
+  overwrite. A lint test (`TestWorkerSourcesHaveNoPlainForce`) fails on a
+  plain `--force` in the worker's non-test sources.
+- **The push sites, each now.** `harvestWorkHead_internal` (the harness's
+  head): `pushBranch_internal`, lease from the stage tip. `rebaseAndTestStep_internal`
+  (the rebased head): lease from the head just pushed; a refused push is a
+  fault that reports the head that did land, so the next attempt's prior
+  head is the branch as it stands. `harvestPartialPush_internal`: only for
+  a job that still holds its card (`faultAndReportJob_internal`, an adopted
+  harness past its deadline; `releaseNoBlame_internal`, once before the
+  release, skipping a head already pushed). `withdrawRunningJob_internal`:
+  pushes nothing (it stops the harness only).
+- **Who holds.** `holds_internal`: the worker records, per epoch and
+  consumer, the generation below which its jobs hold nothing
+  (`markGone_internal`): every final consumer in a `next` read (all
+  generations), every working one (below its generation), a release once
+  recorded, a retired job.
+- **Retire.** `finalJob_internal` (a final consumer's job, not in flight),
+  a job of a stale generation (same epoch, `rec.Gen < w.Gen`: the store
+  refuses its report anyway), the in-flight job withdrawn while its harness
+  ran, and a recorded release all go to `retireJob_internal`: the record is
+  written to `<root>/retired/e<epoch>/<consumer>@<gen>/job.json`, the
+  directory made writable (`chmod` 0700 on every directory under it,
+  symbolic links not followed) and removed. A removal that fails is raised
+  once (a WORKER WARNING and the step log, with the hand fix) and the
+  directory moved to `<root>/quarantine/`; the retired record means it is
+  never tried again. A job of a stale generation retired frees its card for
+  the pass to run at its new generation (before, it sat with
+  "identity-mismatch-kept" every pass). An epoch mismatch is still kept.
+- **Model.** `Runner.tla` gains `branch[c]` (tip writer none / job /
+  holder, the next holder's write, the job's pushes after final), `Retire`,
+  `HolderPush`, the holder guard on the job's own steps, the lease on
+  `Push` and `Release`; `Withdraw` no longer cleans the job (that was the
+  model hiding the bug). Invariants `NoPushAfterFinal`, `BranchOnlyByHolder`;
+  liveness `FinalDirRemoved`; `CleanOnlyAfterRecordedAndPushed` now asks
+  for the push only of a job that ended done (a retired one pushed nothing).
+  Reversed witnesses `RunnerWithdrawnPushes`, `RunnerWithdrawnPushesRepeatedly`,
+  `RunnerForcePushRewinds` (the live bug: no retire, no lease); reach checks
+  `RunnerNeverRetired`, `RunnerNeverHolderPushedOverJob`. The trace walk
+  binds Withdraw, Retire (the worker's own `finalJob_internal`, on a fake
+  origin that records every push) and HolderPush; every walk push goes
+  through `pushBranch_internal`; eight seeds are written, and the test
+  fails if together they miss any of Push, Report, Clean, Release, Stop,
+  Withdraw, Retire, HolderPush.
+- **Tests.** `retire_test.go`: the lease argv; the lint; a normal job's
+  two leases; the defect's path (three passes over a final consumer: no
+  push, the holder's branch untouched, one removal of a tree with a
+  read-only module cache, the retired record kept); a failed removal
+  raised once and quarantined; a stale generation retired with no push;
+  the gate after final (and not across epochs); the release's one leased
+  push, refused when the holder moved the branch.
+- **Checked (measured, a bench host, TLC v1.8.0, 2026-11-07, head b5f98342).** `Runner.tla`
+  with `Runner.cfg` (both new invariants, `Liveness` and `FinalDirRemoved`): no error, 67,836
+  states generated, 16,839 distinct (was 16,928 and 4,245). Each new witness reports its
+  target violated, and its counterexample was checked against the base code by hand:
+  `RunnerForcePushRewinds` is Take, Stage, Withdraw, HolderPush, StalePush (the live
+  sequence: the withdrawn job's pass force-pushes over the new holder);
+  `RunnerWithdrawnPushesRepeatedly` is Take, Stage, Withdraw, StalePush, StalePush;
+  `RunnerWithdrawnPushes` is Take, Stage, Withdraw, StalePush. (The live job was at running
+  with a harness gone; the model's Withdraw takes a job with no harness, so the witness
+  withdraws it at staged: the same push, from the same kept directory.) The eight older
+  Runner witnesses and all six Runner reach checks (the two new ones among them) are violated
+  as required. `make-traces.sh check`: 93 ok, 0 FAIL; the eight runner walks check at 22 to
+  28 steps. The whole of `ci-tlc.sh`: 263 ok, 0 FAIL.
+
+### Built: the job commits as the sprint's identity (stitch w4I, 2026-11-07)
+
+- The per-row author (`<row> <row@nova-sprint.local>`, `CommitEmailDomain`) is gone. The take
+  receipt carries the sprint's identity (`commit_name`, `commit_email`, store round 24);
+  `buildJob_internal` sets `Job.CommitName`/`CommitEmail` from it and `checkoutJob_internal`
+  writes them into the job's clone (`git config user.name/user.email`). A receipt without them
+  is an `ErrReceipt` (the fault names it and the worker ends: an older nova-sprint); staging a
+  job with none (a record resumed from before) is refused, never committed as the bench. The
+  harness's environment was already clean of `GIT_AUTHOR_*`/`GIT_COMMITTER_*` and its HOME is
+  the job's, so the clone's config is what its commits carry; the worker's own `CommitAll`
+  commits in the same clone.
+- `CommitRules(name, email)` (edge/worker/identity.go) is the rule word for word in hook's
+  output, take's text, JOB.md and the prompt: the identity, the two `git config` lines, the
+  `By:`/`Co-Authored-By:` rule, and that finish refuses another email. `ValidIdentity` refuses a
+  value the printed lines could not carry (a quote, backslash, `$`, backtick, angle bracket or
+  control character; an email that is not one `local@domain`).
+- The git edge gains `Client.Commits(repoDir, head, not...)`: one `git log
+  --format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce head --not <bases> --`, the commits finish checks
+  (`TestCommits`).
+- The proof up and check give for each bench (directive item 4), chosen as the cheapest real
+  one: a bench's job clones take the identity from the receipt by construction, so what can
+  differ on a bench is the binary (step 7's version check per bench, already there) and whether
+  the sprint has an identity at all (step 7 asks for it first; `hook --role worker` refuses
+  without one, so a bench that is hooked and up hooked under one). What this proves: every
+  bench runs code that commits as the store's identity, and the store has one. What it does not
+  prove: that the account is on a repository's allowlist (no forge exposes that; the agreement
+  warning names the identity to sign for), or what a friend's own clone is set to; finish's
+  check of every head's commits is the proof for both. Reading each bench's clones over ssh was
+  rejected: an idle bench has no job clone to read.

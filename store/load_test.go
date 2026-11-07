@@ -7,7 +7,7 @@ package store
 // starts its own PostgreSQL (as functional_test.go does) and is skipped
 // unless NOVA_LOAD=1, so per-commit CI stays fast. Run it on a Linux bench:
 //
-//	NOVA_LOAD=1 go test -count=1 -timeout 90m -run TestLoad -v ./store/
+//	NOVA_LOAD=1 go test -count=1 -timeout 90m -run TestFunctionalLoad -v ./store/
 //
 // NOVA_LOAD_SIZES (default "2000,5000") picks the producer counts;
 // NOVA_LOAD_FSYNC (default "on", as a real store runs) sets the server's
@@ -34,7 +34,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -50,7 +49,8 @@ const (
 	loadPolicy  = 200
 )
 
-func TestLoad(t *testing.T) {
+func TestFunctionalLoad(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (minutes per size, on a Linux bench, never in per-commit CI)")
 	}
@@ -86,10 +86,20 @@ func loadPG(t *testing.T, fsync string) (dsn string, stats bool) {
 	if stats = len(libs)+len(libs2) > 0; stats {
 		args = append(args, "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=all")
 	}
-	cmd := exec.Command(filepath.Join(bin, "postgres"), args...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() }) // ignored: the server is ours and disposable
+	// pg_ctl starts it and stops it (-m immediate), never a signal.
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", strings.Join(args[2:], " "), "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	dsn = "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
@@ -186,7 +196,7 @@ func rowName(r int) string    { return fmt.Sprintf("r%02d", r) }
 func prodIndex(id string) int { n, _ := strconv.Atoi(id[1:]); return n } // ignored: our own ids
 
 func (l *load) op(kind string, expect []Expect, writes ...Write) Op {
-	return Op{ID: fmt.Sprintf("%s-%d", kind, l.ids.Add(1)), Epoch: 1, Actor: "load", Kind: kind, At: time.Now(), Expect: expect, Writes: writes}
+	return Op{ID: fmt.Sprintf("%s-%d", kind, l.ids.Add(1)), Epoch: 1, Actor: "load", Kind: kind, At: time.Now(), Expect: expect, Writes: writes} // unitlint: only TestFunctionalLoad builds a *load (the lint matches a method by its name, and harness has an op too)
 }
 
 // apply applies op, timing it; a refusal or error is a test error (the load

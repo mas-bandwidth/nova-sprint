@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -30,8 +31,19 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
 	}
-	if err := e.baseAt(ctx, repo, base); err != nil {
+	if _, err := e.admitStream(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
 		return "", err
+	}
+	if err := e.ensureGroup(ctx, store.Stream{Name: name, Repo: repo, Base: base, Mode: mode, Forge: forge}); err != nil {
+		return "", err
+	}
+	// The admission reads the forge for seconds while a running sprint's
+	// ticks move the store: the op is fenced on a snapshot read after it.
+	if snap, err = e.snapshot(ctx); err != nil {
+		return "", err
+	}
+	if _, ok := snap.Streams[name]; ok {
+		return "", refuse("stream "+name+" exists", "nova-sprint show "+name)
 	}
 	pos := 0
 	for _, s := range snap.Streams {
@@ -44,23 +56,37 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if err != nil {
 		return "", err
 	}
-	return done("nova-sprint add --stream "+name+" --brief-file <f>",
-		fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)), nil
+	lines := []string{fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)}
+	if what, fix := e.agreementWarning(ctx, snap, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}); what != "" {
+		lines = append(lines, "WARN "+oneLine(what)+": "+oneLine(fix))
+	}
+	return done("nova-sprint add --stream "+name+" --brief-file <f>", lines...), nil
 }
 
-// baseAt refuses a base branch origin does not have.
-func (e *Engine) baseAt(ctx context.Context, repo, base string) error {
+// baseTip is the stream's base branch tip at origin, read through the git
+// edge at the stream's clone address (git.CloneURL); again is what to do
+// after the fix. A repository git cannot address, cannot read, or without
+// the base is a refusal naming its fix.
+func (e *Engine) baseTip(ctx context.Context, s store.Stream, again string) (string, error) {
 	if e.Origin == nil {
-		return broken("the git edge is not configured", "nova-sprint check")
+		return "", broken("the git edge is not configured", "nova-sprint check")
 	}
-	_, ok, err := e.Origin.Tip(ctx, repo, base)
+	url, err := git.CloneURL(s.Repo, s.Forge)
 	if err != nil {
-		return broken("git ls-remote of "+repo+" failed ("+clip(err.Error())+")", "check the repository is readable, then add the stream again")
+		return "", RefusalOr(err, refuse(err.Error(), "name the repository --repo <org>/<repo> with --forge github, or by its clone URL, then "+again))
+	}
+	sha, ok, err := e.Origin.Tip(ctx, url, s.Base)
+	if err != nil {
+		fix := "make " + url + " readable from this host (for GitHub: gh auth login on this host as an identity that can read it), then " + again
+		if s.Forge == "" && git.IsOrgRepo(s.Repo) {
+			fix = "an <org>/<repo> is cloned through its forge: give stream " + s.Name + " --forge github, then " + again
+		}
+		return "", RefusalOr(err, broken("git ls-remote of "+url+" failed ("+errText(err)+")", fix))
 	}
 	if !ok {
-		return refuse("branch "+base+" is not at "+repo+"'s origin", "push it, or pass --base <branch>")
+		return "", refuse("branch "+s.Base+" is not at "+s.Repo+"'s origin ("+url+")", "push it, or pass --base <branch>, then "+again)
 	}
-	return nil
+	return sha, nil
 }
 
 // runStreamSet is `stream set`: a stream's mode or forge, one write each.

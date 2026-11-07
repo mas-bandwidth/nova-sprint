@@ -29,7 +29,7 @@ SCEN = {
     "pre":   {"K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 2, "Budget": 2, "Pack": 2},
     "deal":  {"K": 4, "MaxAtt": 2, "MaxBounce": 1, "MaxEnv": 1, "MaxArrive": 1, "Budget": 2, "Pack": 2},
     "land":  {"K": 2, "MaxAtt": 1, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 3, "Budget": 2, "Pack": 2},
-    "burst": {"K": 1, "MaxAtt": 1, "MaxBounce": 0, "MaxEnv": 0, "MaxArrive": 4, "Budget": 1, "Pack": 1},
+    "burst": {"K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 0, "MaxArrive": 4, "Budget": 1, "Pack": 1},
 }
 
 # fixture name -> (log, scenario, "ok" or "forbidden")
@@ -40,9 +40,10 @@ FIXTURES = {
     "ok-escalated":     ("r-StepsNeverEscalated.log", "deal", "ok"),
     "ok-need-released": ("r-StepsNeverNeedReleased.log", "deal", "ok"),
     "ok-red":           ("r-StepsNeverRed.log", "land", "ok"),
+    "ok-land-judged":   ("r-StepsNeverLandJudged.log", "land", "ok"),
     "ok-carried":       ("r-StepsNeverCarried.log", "burst", "ok"),
     "bad-dealt-twice":  ("w-StepsDealtTwice.log", "pre", "forbidden"),
-    "bad-width-over":   ("w-StepsWidthOver.log", "pre", "forbidden"),
+    "bad-width-over":   ("w-StepsWidthOver.log", "burst", "forbidden"),
     "bad-stop-early":   ("w-StepsStopEarly.log", "pre", "forbidden"),
     "bad-no-overlap":   ("w-StepsNoOverlapCheck.log", "deal", "forbidden"),
     "bad-tier":         ("w-StepsTierUnchecked.log", "deal", "forbidden"),
@@ -73,11 +74,6 @@ def cons(wtext):
     return out
 
 
-def tko(wtext):
-    m = re.search(r'tko \|-> <<(.*?)>> \]$', wtext)
-    return re.findall(r'<<"(\w+)", (\d+)>>', m.group(1)) if m else []
-
-
 def items(inbox):
     """(stamp, id, out) per inbox item, whatever order TLC prints fields in."""
     out = []
@@ -102,10 +98,26 @@ def action(a, b):
     for k in cb:
         if ca[k][0] == "working" and cb[k][0] == "done":
             return ("Report", {"card": '<<"%s", %s>>' % k, "res": '"%s"' % cb[k][1]})
-    ta, tb = tko(a["w"]), tko(b["w"])
-    if len(tb) == len(ta) + 1:
-        return ("Take", {"card": '<<"%s", %s>>' % tb[-1]})
+    gone = landed_judged(a["js"]) - landed_judged(b["js"])
+    if len(gone) == 1:
+        p = gone.pop()
+        st, red = producer(b["w"], p)
+        choice = "land" if st == "landed" else "fix" if red and st != "merging" else "retry"
+        return ("Answer", {"p": '"%s"' % p, "choice": '"%s"' % choice})
     raise SystemExit("cannot name the step between two states")
+
+
+def landed_judged(js):
+    """The producers with a land judgement in a printed js."""
+    return set(re.findall(r'kind \|-> "land", about \|-> "(\w+)"', js)) | \
+        set(re.findall(r'about \|-> "(\w+)", kind \|-> "land"', js))
+
+
+def producer(wtext, p):
+    """(st, red) of producer p in a printed w."""
+    m = re.search(r'\b%s \|-> \[(.*?)\]' % re.escape(p), wtext)
+    f = dict(re.findall(r'(\w+) \|-> ("[^"]*"|\w+)', m.group(1)))
+    return f["st"].strip('"'), f["red"] == "TRUE"
 
 
 def record(i, act, args, st):

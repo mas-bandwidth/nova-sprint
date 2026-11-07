@@ -41,19 +41,11 @@ func runJudge(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 		if snap, err = e.again(ctx, snap, i); err != nil {
 			return "", err
 		}
-		if j.Kind == "land" && choice == "land" && slices.Contains(choicesOf(j), choice) {
-			line, err := e.landHand(ctx, in, snap, j.About, j.ID)
-			if err != nil {
-				return "", err
-			}
-			lines = append(lines, line)
-			continue
-		}
-		r, err := answerRequest(snap, j, choice, reason, in.str("card"))
+		r, err := answerRequest(j, choice, reason, snap)
 		if err != nil {
 			return "", err
 		}
-		line, err := e.move(ctx, in, snap, r, j.About)
+		line, err := e.answer(ctx, in, snap, j, r, reason)
 		if err != nil {
 			return "", err
 		}
@@ -99,11 +91,21 @@ func choicesOf(j store.Judgement) []string {
 	return out
 }
 
+// answer is one judgement's answer applied: a land judgement's land is the
+// hand landing (runLand), every other answer one move.
+func (e *Engine) answer(ctx context.Context, in *input, snap store.Snapshot, j store.Judgement, r steps.Request, reason string) (string, error) {
+	if j.Kind == "land" && r.Answer == "land" {
+		return e.handLand(ctx, in, snap, j.About, "", reason, j.ID)
+	}
+	return e.move(ctx, in, snap, r, j.About)
+}
+
 // answerRequest is the answer as a request: unblock and drop move the card
-// the judgement is about; a land judgement's fix sends the card (or, on a
-// stream's, the --card named) back with the reason and the judgement's
-// facts as its finding; every other choice is the answer alone.
-func answerRequest(snap store.Snapshot, j store.Judgement, choice, reason, cardID string) (steps.Request, error) {
+// the judgement is about, and a land judgement's fix sends its producer to
+// fix with the reason as the finding (card.Red at its head); every other
+// choice (a land judgement's retry: the next tick asks the landing again)
+// is the answer alone.
+func answerRequest(j store.Judgement, choice, reason string, snap store.Snapshot) (steps.Request, error) {
 	cs := choicesOf(j)
 	if !slices.Contains(cs, choice) {
 		return steps.Request{}, misuse("judge", "judgement "+j.ID+" takes one of: "+strings.Join(cs, " "))
@@ -115,17 +117,9 @@ func answerRequest(snap store.Snapshot, j store.Judgement, choice, reason, cardI
 	case "drop":
 		r.Card, r.Event = j.About, card.Cancel{Reason: reason}
 	case "fix":
-		if j.Kind != "land" {
-			break
+		if j.Kind == "land" {
+			r.Card, r.Event = j.About, card.Red{Head: snap.Cards[j.About].Head, Reason: reason}
 		}
-		id := j.About
-		if _, stream := snap.Streams[j.About]; stream {
-			if cardID == "" || snap.Cards[cardID].Stream != j.About {
-				return steps.Request{}, misuse("judge", "a fix on stream "+j.About+"'s landing names the card to send back: --card <id>")
-			}
-			id = cardID
-		}
-		r.Card, r.Event = id, card.LandFix{Head: snap.Cards[id].Head, Finding: reason + " (landing: " + oneLine(j.Question) + ")"}
 	}
 	return r, nil
 }

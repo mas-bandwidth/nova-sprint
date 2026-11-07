@@ -21,6 +21,11 @@ const (
 	FakeClockStart                   = int64(1000)
 	ErrInvalidArgv, ErrMissingBinary = "invalid_argv", "missing_binary"
 	ErrTimeout, ErrStart             = "timeout", "start_failed"
+	// ErrCanceled is a run whose caller's context was cancelled before it
+	// ended: the caller stopped it (a worker shutting down), never its own
+	// timeout (defect 73: a stopped job was reported "timed out after 1h30m"
+	// after 70 s).
+	ErrCanceled = "canceled"
 )
 
 type (
@@ -85,7 +90,7 @@ func binaryFix_internal(prog string) string {
 	case strings.HasPrefix(prog, "nova-"):
 		return fmt.Sprintf("install nova-tools on PATH or run: nova-fleet up (missing %s)", prog)
 	case prog == "gh":
-		return "install GitHub CLI (gh) on PATH and authenticate with GH_TOKEN or GH_CONFIG_DIR"
+		return "install GitHub CLI (gh) on PATH and gh auth login on this host (the landing acts as the host's gh login)"
 	case prog == "git":
 		return "install git on PATH or run: nova-fleet check"
 	default:
@@ -136,7 +141,11 @@ func (o *OSExec) Run(ctx context.Context, cmd Cmd) (Result, error) {
 }
 func classifyExecErr_internal(prog string, timeout time.Duration, ctxErr, runErr error, res Result) (Result, error) {
 	base := filepath.Base(prog)
-	if errors.Is(ctxErr, context.DeadlineExceeded) || errors.Is(ctxErr, context.Canceled) {
+	if errors.Is(ctxErr, context.Canceled) {
+		res.ExitCode = -1
+		return res, &ExecError{Program: base, Kind: ErrCanceled, Reason: "stopped by its caller before it ended (not a timeout)", Fix: "nothing to fix in " + base + ": its caller stopped it", Cause: ctxErr}
+	}
+	if errors.Is(ctxErr, context.DeadlineExceeded) {
 		res.ExitCode = -1
 		return res, &ExecError{Program: base, Kind: ErrTimeout, Reason: fmt.Sprintf("timed out after %s", timeout), Fix: fmt.Sprintf("check %s responsiveness or raise the policy timeout", base), Cause: ctxErr}
 	}

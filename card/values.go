@@ -137,7 +137,7 @@ func (v *vals) putCard(x store.PutCard) {
 	v.name("card", x.Of, x.Holder)
 	v.key("card", x.Needs...)
 	v.key("card", x.After...)
-	v.text("text", x.Brief, x.Prose, x.Finding)
+	v.text("text", x.Brief, x.Prose, x.Finding, x.Model)
 	v.text("path", x.Paths...)
 	v.text("done-when", x.DoneWhen...)
 	v.num("attempt", x.Attempt)
@@ -246,7 +246,7 @@ func secondWrite(f [3]string) *Refusal {
 func writeFields(w store.Write) [][3]string {
 	switch x := w.(type) {
 	case store.PutCard:
-		return cardCols(x.ID, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose")
+		return cardCols(x.ID, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose", "model")
 	case store.SetStreamHeld:
 		return [][3]string{{"stream", x.Stream, "held"}}
 	default:

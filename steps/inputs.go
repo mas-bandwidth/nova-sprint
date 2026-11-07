@@ -29,35 +29,32 @@ type InboxItem struct {
 	Kind string // report, take, land, stop
 
 	Row, Session, Consumer string // a report or take: who, from which session, of what
-	Result, Head, Reason   string // a report
+	Result, Head, Reason   string // a report; land red: the failing checks and their URLs
 	Cost                   int64  // the report's cost, Priced and Usage as the engine priced them
 	Priced                 bool   // (verbs' priceReport): layer 6 routes a report here priced, never
 	Usage                  string // raw words, so the tick reads no price sheet
 
 	Request string   // an edge result: the request it answers
-	Outcome string   // land: landed, red, fault, conflict, escalate, base-red, base-green; stop: ack
-	Landed  []string // land: the heads that landed (a bisected batch lands a part)
-	Blamed  string   // red: the head the bisection blamed
-	Base    string   // base-red, base-green: the base
-
-	// Facts is an escalate's: what the landing saw and the command that does
-	// the next step, as the coordinator's judgement says them.
-	Facts string
+	Outcome string   // land: landed, or what kept it from landing (a judgement); stop: ack
+	Landed  []string // land: the heads that landed (all of the request's)
+	Merge   string   // land: the merge commit base has now
 }
 
-// EdgeRequest is work for layer 4: a landing (Kind land: merge Heads of
-// Cards onto Base and gate them, one CI) or a runner stop (Kind stop: the
-// Row's run of Consumer, after a preemption). After names the op whose
-// acceptance it waits for ("" waits for none): a stop goes out only with
-// its preemption (EdgeAfterAccepted). ID is stable across ticks, so a
-// restart reissues the same request and a result is matched by id.
+// EdgeRequest is work for layer 4: a landing (Kind land: Heads of Cards on
+// their Branches, one head rung 1, more rung 2; Base the stream's base tip
+// as the tick saw it; Wait the seconds a gated sha may have no CI at all,
+// policy's) or a runner stop (Kind stop: the Row's run of Consumer, after a
+// preemption). After names the op whose acceptance it waits for ("" waits
+// for none): a stop goes out only with its preemption (EdgeAfterAccepted).
+// ID is stable across ticks, so a restart reissues the same request and a
+// result is matched by id.
 type EdgeRequest struct {
-	ID, Kind, Stream string
-	Cards, Heads     []string
-	Base             string
-	Branch           string // land: the card's branch at origin, the PR's head (one card per landing)
-	Row, Consumer    string
-	After            string
+	ID, Kind, Stream       string
+	Cards, Heads, Branches []string
+	Base                   string
+	Wait                   int
+	Row, Consumer          string
+	After                  string
 }
 
 // RefusedOp is an op of the last tick that layer 1 refused: its groups (from
@@ -88,6 +85,7 @@ type Plan struct {
 	Edges   []EdgeRequest
 	Answers []RowAnswer
 	Carry   []InboxItem
+	Nudges  []Nudge // this tick's nudges: run pushes each to its row, outside the log
 }
 
 // RowAnswer is what a row is told about its report or take: an ack from the

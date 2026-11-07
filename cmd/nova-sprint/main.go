@@ -16,14 +16,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
-// binaryVersion and toolPin are set by release builds with -ldflags.
+// binaryVersion is set with -ldflags -X main.binaryVersion=<version> by
+// the Makefile and CI (git describe --always --dirty --tags) and by the
+// release workflow (the tag); toolPin may be set the same way.
 var (
 	binaryVersion = "dev"
-	toolPin       = "v2.0.2"
+	toolPin       = "v2.0.3"
 )
 
 func main() { os.Exit(command(os.Args[1:])) }
@@ -53,22 +57,32 @@ func executeVerb(ctx context.Context, args []string, phase string) int {
 	defer closeAll()
 	r := e.Execute(ctx, args)
 	if _, err := fmt.Fprint(os.Stdout, r.Output); err != nil {
+		// stdout is gone: the result and why it was lost go to stderr
+		fmt.Fprintf(os.Stderr, "nova-sprint: cannot write the result to stdout (%s); it was: %s", edge.RedactN(err.Error(), edge.CommandMax), r.Output)
 		return 2
 	}
 	return r.Exit
 }
 
-// busReply answers a message sent to sprint (run's hook names this binary's
-// bus-reply): a pointer at the verbs, its body unread.
+// busReply is what the sprint does with a message sent to its name (run's
+// hook names this binary's bus-reply): verbs.BusAnswer decides from the
+// sender, the message it answers and its subject, the body unread. A reply
+// or a message that is not a verb is logged (one line on the hook's
+// stderr) and not answered; a verb is pointed at, once.
 func busReply() int {
 	sender, id := os.Getenv("NOVA_BUS_FROM"), os.Getenv("NOVA_BUS_ID")
-	if sender == "" || sender == "sprint" || id == "" {
+	reply, log := verbs.BusAnswer(sender, os.Getenv("NOVA_BUS_RE"), os.Getenv("NOVA_BUS_SUBJECT"))
+	if log != "" {
+		fmt.Fprintln(os.Stderr, "nova-sprint bus-reply: "+edge.RedactN(log, edge.CommandMax))
+	}
+	if reply == "" || id == "" {
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	b := bus.New(bus.Config{Bin: busBinary(), Sender: "sprint", Env: toolEnvironment(os.Environ(), "nova-bus")})
-	if _, err := b.Reply(ctx, sender, id, "REPLY", "replies are verbs: run nova-sprint next --as "+sender); err != nil {
+	if _, err := b.Reply(ctx, sender, id, "REPLY", reply); err != nil {
+		fmt.Fprintln(os.Stderr, "nova-sprint bus-reply: cannot reply to "+edge.Redact(sender)+": "+edge.RedactN(err.Error(), edge.CommandMax))
 		return 1
 	}
 	return 0
@@ -86,6 +100,9 @@ func busBinary() string {
 	return path
 }
 
+// versionString is the stamped version, else a source build's
+// dev+<12 hex> from its VCS stamp, else "dev" (no stamp at all: a backup
+// refuses it, naming the build to make).
 func versionString() string {
 	if binaryVersion != "dev" {
 		return binaryVersion
@@ -96,6 +113,8 @@ func versionString() string {
 	return "dev"
 }
 
+// sourceVersion is dev+<first 12 hex of vcs.revision>, with -dirty when
+// vcs.modified is not false: a modified tree never claims to be the commit.
 func sourceVersion(settings []debug.BuildSetting) string {
 	revision, clean := "", false
 	for _, s := range settings {
@@ -106,8 +125,11 @@ func sourceVersion(settings []debug.BuildSetting) string {
 			clean = true
 		}
 	}
-	if !clean || len(revision) < 12 {
+	if len(revision) < 12 {
 		return "dev"
+	}
+	if !clean {
+		return "dev+" + revision[:12] + "-dirty"
 	}
 	return "dev+" + revision[:12]
 }

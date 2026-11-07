@@ -15,18 +15,19 @@
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
-#     Setup.tla, SetupWalk.tla, SetupChoices.tla (SetupChoices.cfg and
+#     Setup.tla, SetupWalk.tla, SetupRun.tla, SetupChoices.tla (SetupChoices.cfg and
 #     SetupChoicesTwoKeys.cfg), SetupChoicesWalk.tla, SetupHandoff.tla
-#     (SetupHandoff.cfg and SetupHandoffCrash.cfg), Install.tla (Install.cfg
-#     and InstallFresh.cfg)               must pass            (TLC exit 0)
+#     (SetupHandoff.cfg and SetupHandoffCrash.cfg)
+#                                        must pass            (TLC exit 0)
 #     (the list is tla/*-runs.json's "pass" entries)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
-#   witnesses/layer6/*.tla, and the Setup and Install witnesses beside their
+#   witnesses/layer6/*.tla, and the Setup witnesses beside their
 #     models (tla/*-runs.json's "invariant" and "temporal" entries)
 #                                      must report a violation (exit 12 or 13)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
 #     reach/Card*.cfg on CardMachine.tla, reach/Steps*.cfg on Steps.tla,
-#     reach/Policy*.cfg on Policy.tla, every other one on Store.tla
+#     reach/Policy*.cfg on Policy.tla, reach/LandEdge*.cfg on LandEdge.tla,
+#     every other one on Store.tla
 # A witness's target is the first INVARIANT or PROPERTY line of its cfg; a
 # PROPERTY target (a liveness witness) must end in TLC exit 13 with
 # "Temporal property <target> was violated" and no invariant violated.
@@ -36,12 +37,19 @@
 # Run it on a bench host, never on the working machine.
 #
 # DRY_RUN=1 prints the commands and fetches and runs nothing.
+# TLC_SHARD=i/n runs only every n-th run, starting at the i-th (1-based), so
+# the nightly spreads the set over n jobs on the runners labelled tlc; unset
+# is every run. TLC_CORES is this job's share of the host's cores (default:
+# all of them): no run gets more -workers than that, and the live runs'
+# workers together stay within it.
 # TLA_CACHE is where the pinned tla2tools.jar is kept (default ~/.cache/nova-sprint).
 set -u
 
 VERSION=v1.8.0
-URL="https://github.com/tlaplus/tlaplus/releases/download/$VERSION/tla2tools.jar"
-# The sha256 GitHub publishes for that release asset (releases API, "digest").
+# This repository's copy of the v1.8.0 jar (release tla-tools-1.8.0): upstream
+# replaced its v1.8.0 asset with a different binary, so the pin is kept here.
+URL="https://github.com/mas-bandwidth/nova-sprint/releases/download/tla-tools-1.8.0/tla2tools.jar"
+# The jar's sha256 (the release asset's "digest" in the releases API).
 SHA256=7a0a1e90628ebff2e3e8733375f8b684fa59504d2e02bddc4cb51a7679bb7e04
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -67,8 +75,8 @@ else
     [ -n "$JAVA" ] || { echo "no java on this runner" >&2; exit 1; }
     mkdir -p "$CACHE" || exit 1
     if [ ! -f "$JAR" ] || [ "$(sha256_of "$JAR")" != "$SHA256" ]; then
-        curl -fsSL -o "$JAR.part" "$URL" || { echo "download of $URL failed" >&2; exit 1; }
-        mv "$JAR.part" "$JAR" || exit 1
+        curl -fsSL -o "$JAR.part.$$" "$URL" || { echo "download of $URL failed" >&2; exit 1; }
+        mv "$JAR.part.$$" "$JAR" || exit 1
     fi
     got="$(sha256_of "$JAR")"
     if [ "$got" != "$SHA256" ]; then
@@ -89,25 +97,46 @@ cores() {
     if command -v nproc >/dev/null 2>&1; then nproc
     else sysctl -n hw.ncpu 2>/dev/null || echo 4; fi
 }
-JOBS="${TLC_JOBS:-$(cores)}"
+CORES="${TLC_CORES:-$(cores)}"
+[ "$CORES" -ge 1 ] 2>/dev/null || { echo "TLC_CORES is \"$CORES\", want a positive count" >&2; exit 1; }
+JOBS="${TLC_JOBS:-$CORES}"
 HEAP="${TLC_HEAP:-2g}"
-# slot: wait until fewer than JOBS runs are live (bash 4.3+: wait -n).
+SHARD="${TLC_SHARD:-1/1}"
+SHARD_I="${SHARD%/*}"; SHARD_N="${SHARD#*/}"
+[ "$SHARD_N" -ge 1 ] 2>/dev/null && [ "$SHARD_I" -ge 1 ] 2>/dev/null && [ "$SHARD_I" -le "$SHARD_N" ] ||
+    { echo "TLC_SHARD is \"$SHARD\", want i/n with 1 <= i <= n" >&2; exit 1; }
+SEQ=0
+mkdir -p "$WORK/live" || exit 1
+# busy: the workers of the live runs (each live run leaves $WORK/live/NAME
+# holding its count, removed when it ends).
+busy() {
+    cat "$WORK"/live/* 2>/dev/null | awk '{n += $1} END {print n + 0}'
+}
+# slot W: wait until fewer than JOBS runs are live and W more workers fit in
+# CORES (bash 4.3+: wait -n).
 slot() {
-    while [ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$JOBS" ]; do wait -n 2>/dev/null || sleep 1; done
+    while [ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$JOBS" ] || [ $(( $(busy) + $1 )) -gt "$CORES" ]; do
+        wait -n 2>/dev/null || sleep 1
+    done
 }
 
 # run NAME EXPECT DIR CONFIG MODULE WORKERS: one TLC invocation.
 # EXPECT is pass or violate. Writes $WORK/NAME.log and $WORK/NAME.result.
 run() {
     name="$1"; expect="$2"; dir="$3"; cfg="$4"; mod="$5"; workers="$6"
+    SEQ=$(( SEQ + 1 ))
+    [ $(( (SEQ - 1) % SHARD_N + 1 )) -eq "$SHARD_I" ] || return 0
+    [ "$workers" -le "$CORES" ] || workers="$CORES"
     echo "$name" >> "$WORK/expected"
     if [ "$DRY" = 1 ]; then
         echo "dry run: (cd tla/$dir && java -XX:+UseParallelGC -cp $JAR tlc2.TLC -workers $workers -metadir \$WORK/states/$name -config $cfg $mod)  expect $expect"
         return
     fi
     heap="$HEAP"; [ "$workers" -gt 1 ] && heap="$(( ${HEAP%g} * 2 ))g"
-    slot
+    slot "$workers"
+    echo "$workers" > "$WORK/live/$name"
     (
+        trap 'rm -f "$WORK/live/$name"' EXIT
         cd "$HERE/$dir" || exit 1
         # Own java.io.tmpdir per run: TLC unpacks the standard modules there,
         # and parallel runs sharing /tmp race on it (a parser NPE, exit 150).
@@ -166,13 +195,12 @@ run RunFailover pass . RunFailover.cfg Run.tla 4
 run RunClear pass . RunClear.cfg RunClear.tla 2
 run Setup pass . Setup.cfg Setup.tla 2
 run SetupWalk pass . SetupWalk.cfg SetupWalk.tla 2
+run SetupRun pass . SetupRun.cfg SetupRun.tla 2
 run SetupChoices pass . SetupChoices.cfg SetupChoices.tla 2
 run SetupChoicesTwoKeys pass . SetupChoicesTwoKeys.cfg SetupChoices.tla 2
 run SetupChoicesWalk pass . SetupChoicesWalk.cfg SetupChoicesWalk.tla 2
 run SetupHandoff pass . SetupHandoff.cfg SetupHandoff.tla 2
 run SetupHandoffCrash pass . SetupHandoffCrash.cfg SetupHandoff.tla 2
-run Install pass . Install.cfg Install.tla 2
-run InstallFresh pass . InstallFresh.cfg Install.tla 2
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
@@ -189,15 +217,20 @@ for f in "$HERE"/witnesses/layer6/*.tla; do
     run "witness-l6-$m" violate witnesses/layer6 "$m.cfg" "$m.tla" 1
 done
 
-# The Setup and Install witnesses live beside their models (tla/*-runs.json).
+# The Setup witnesses live beside their models (tla/*-runs.json).
 for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffEarlyRecord SetupHandoffLostRecord SetupHandoffNoLease \
          SetupHandoffOldProbe SetupHandoffParentSecret SetupHandoffRefusedEffect \
          SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
          SetupHandoffWrongType \
-         InstallCheckSkipped InstallDeletesPrevious InstallFailureSwitches \
-         InstallPartialPublished InstallUnlinksFirst InstallVersionIgnored; do
+         SetupRunFreshRunning; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
+done
+
+# SetupRun's reach checks (the run up on a fresh store, a stop and a move,
+# each before the walk is done): each must be violated on SetupRun.tla.
+for m in NeverRunUpFreshMidWalk NeverStoppedMidWalk NeverMovedMidWalk; do
+    run "reach-SetupRun$m" violate . "SetupRun$m.cfg" SetupRun.tla 1
 done
 
 for f in "$HERE"/reach/*.cfg; do
@@ -206,6 +239,8 @@ for f in "$HERE"/reach/*.cfg; do
         Card*) mod=CardMachine.tla ;;   # the card machine's reach checks
         Steps*) mod=Steps.tla ;;        # the steps' reach checks
         Policy*) mod=Policy.tla ;;      # the policy model's
+        LandEdge*) mod=LandEdge.tla ;;  # the landing model's
+        Runner*) mod=Runner.tla ;;      # the runner model's (passes, stop, release)
         *) mod=Store.tla ;;
     esac
     run "reach-$m" violate . "reach/$m.cfg" "$mod" 1

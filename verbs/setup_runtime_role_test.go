@@ -7,9 +7,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestScramVerifierKnownVector(t *testing.T) {
+	t.Parallel()
 	salt, _ := base64.StdEncoding.DecodeString("W22ZaJ0SNY7soEsUEjb6gQ==")
 	got, err := scramVerifier("pencil", salt, 4096)
 	want := "SCRAM-SHA-256$4096:W22ZaJ0SNY7soEsUEjb6gQ==$WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=:wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU="
@@ -19,6 +22,7 @@ func TestScramVerifierKnownVector(t *testing.T) {
 }
 
 func TestRoleBootstrapSavesOnceAndPassesOnlyNames(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{}
 	var calls [][]string
 	var modes []string
@@ -54,26 +58,25 @@ func TestRoleBootstrapSavesOnceAndPassesOnlyNames(t *testing.T) {
 	}
 }
 
-type roleFixtureExit int
-
-func (e roleFixtureExit) Error() string { return "fixture exit" }
-func (e roleFixtureExit) ExitCode() int { return int(e) }
-
-func TestRoleBootstrapRefusesRejectedStoredSecret(t *testing.T) {
-	sink := &sinkFake{saved: true, value: "stored-fixture"}
-	grant := FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: func(context.Context, string, ...string) ([]byte, error) { return nil, nil }}
-	b := SprintRoleBootstrap{Sink: sink, Grants: grant, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Binary: "/bin/nova-sprint", Execute: func(_ context.Context, _ string, args ...string) error {
-		if args[len(args)-1] != "--internal-setup-role" {
-			t.Fatalf("unexpected child: %v", args)
-		}
-		return roleFixtureExit(SprintRoleCredentialMismatchExit)
-	}}
-	err := b.Run(context.Background(), []SprintSeat{{Seat: "studio", Machine: "studio"}})
+// PostgreSQL 16+: a CREATEROLE admin may alter or grant only roles it
+// administers. A 42501 on a nova_sprint that already existed names the
+// superuser's grant; on a role being created, the admin's CREATEROLE; any
+// other error keeps the pg error wrapped, SQLSTATE and message intact.
+func TestRolePermissionRefusalNamesTheGrant(t *testing.T) {
+	t.Parallel()
+	denied := &pgconn.PgError{Severity: "ERROR", Code: "42501", Message: "permission denied to alter role"}
 	var op *OperationError
-	if !errors.As(err, &op) || op.Problem != "stored sprint credential was rejected" || !strings.Contains(op.Fix, "delete the stale NOVA_SPRINT_PG_PASSWORD") {
-		t.Fatalf("wrong refusal: %v", err)
+	if err := rolePermissionRefusal("role credential setup failed", denied, true); !errors.As(err, &op) ||
+		!strings.Contains(op.Problem, "permission denied to alter role (SQLSTATE 42501)") ||
+		op.Fix != "as the postgres superuser run: GRANT nova_sprint TO nova_admin WITH ADMIN TRUE, INHERIT FALSE, SET FALSE; then nova-sprint up again" {
+		t.Fatalf("%#v", err)
 	}
-	if sink.value != "stored-fixture" {
-		t.Fatal("stored secret changed")
+	if err := rolePermissionRefusal("role creation failed", denied, false); !errors.As(err, &op) || !strings.Contains(op.Fix, "ALTER ROLE nova_admin CREATEROLE") {
+		t.Fatalf("%#v", err)
+	}
+	other := &pgconn.PgError{Severity: "ERROR", Code: "42710", Message: "role \"nova_sprint\" already exists"}
+	err := rolePermissionRefusal("role creation failed", other, false)
+	if errors.As(err, &op) || !errors.Is(err, other) || err.Error() != `role creation failed: ERROR: role "nova_sprint" already exists (SQLSTATE 42710)` {
+		t.Fatalf("%v", err)
 	}
 }

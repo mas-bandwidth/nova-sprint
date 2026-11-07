@@ -11,34 +11,32 @@ import (
 // ---- no row over width (working consumers only) ----
 
 func TestBreakHeldWidth(t *testing.T) {
-	t.Run("take order inside one op", func(t *testing.T) {
+	t.Parallel()
+	t.Run("deal order inside one op", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"))
 		b.ok(b.P("p1", Resolve{}))
 		b.ok(b.P("p2", Resolve{}))
-		c1, c2 := b.start("p1", "r2"), b.start("p2", "r2") // two ready consumers on a width-1 row
-		b.take(c1)
-		b.no(b.C(c2, Take{}), "its roster width is 1")
-		// Take before the report that frees the slot: the store refuses, nothing lands
-		b.noMerge("its roster width is 1", b.C(c2, Take{}), b.C(c1, Report{Result: "ok", Head: hA}))
+		c1 := b.start("p1", "r2") // in hand at the deal: the width-1 row is full
+		start2 := b.P("p2", Start{Row: "r2", Branch: "b-p2", Base: base})
+		b.no(start2, "its roster width is 1")
+		// the deal before the report that frees the slot: refused, nothing lands
+		b.noMerge("its roster width is 1", start2, b.C(c1, Report{Result: "ok", Head: hA}))
 		b.is(c1, Working)
-		b.is(c2, Ready)
+		b.is("p2", Ready)
 		// the other order is the legal one
-		b.okMerge(b.C(c1, Report{Result: "ok", Head: hA}), b.C(c2, Take{}))
+		b.okMerge(b.C(c1, Report{Result: "ok", Head: hA}), start2)
 		b.is(c1, Done)
-		b.is(c2, Working)
+		b.is("p2.w1", Working)
 	})
 	t.Run("held and down rows", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
 		c := b.start("p1", "r3")
 		b.ok(cold4R("r3", Hold{Reason: "x"}))
-		b.ok(cold4R("r3", Gone{}))
-		b.no(b.C(c, Take{}), "is down")
-		b.ok(cold4R("r3", Seen{}))
-		b.take(c)                  // a held row may take what it was dealt
 		b.ok(cold4R("r3", Gone{})) // going down withdraws nothing
 		b.is(c, Working)
 		b.ok(cold4R("r3", Seen{}))
+		b.is(c, Working) // a held row keeps what it was dealt
 	})
 	t.Run("preempted slot goes to the blocker, the preempted waits at width", func(t *testing.T) {
 		b := newBk(t, producer("p2"), producer("pb"))
@@ -49,9 +47,8 @@ func TestBreakHeldWidth(t *testing.T) {
 		b.ok(b.P("pb", Resolve{}))
 		b.okMerge(b.C(c2, Withdraw{Reason: "preempted by blocker pb"}), b.P("pb", Start{Row: "r2", Branch: "bb", Base: base}))
 		b.is("p2", Ready)
-		b.take("pb.w1")
-		again := b.start("p2", "r2") // dealt ahead of width
-		b.no(b.C(again, Take{}), "its roster width is 1")
+		b.is("pb.w1", Working)
+		b.no(b.P("p2", Start{Row: "r2", Branch: "b-p2", Base: base}), "its roster width is 1") // no deal ahead of width
 		assert.Equal(t, 0, b.c("p2").Bounces)
 	})
 }
@@ -59,6 +56,7 @@ func TestBreakHeldWidth(t *testing.T) {
 // ---- no live read outside its producer's review ----
 
 func TestBreakHeldLiveRead(t *testing.T) {
+	t.Parallel()
 	t.Run("every way out of review is shut under a live read", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p9"))
 		b.review("p1", "r1", hA)
@@ -71,7 +69,7 @@ func TestBreakHeldLiveRead(t *testing.T) {
 			}
 		}
 		b.no(b.P("p1", Edit{Prose: "changed"}), "message r2 instead")
-		b.is(rid, Ready)
+		b.is(rid, Working)
 		b.is("p1", Review)
 	})
 	t.Run("a read cut in an op is live to the next plan of the op", func(t *testing.T) {
@@ -174,6 +172,7 @@ func TestBreakHeldLiveRead(t *testing.T) {
 // ---- a live work consumer only under its producer's working state and attempt ----
 
 func TestBreakHeldLiveWork(t *testing.T) {
+	t.Parallel()
 	t.Run("old attempts cannot be revived", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
@@ -183,7 +182,7 @@ func TestBreakHeldLiveWork(t *testing.T) {
 		b.is("p1", Ready)
 		c2 := b.start("p1", "r1")
 		assert.Equal(t, "p1.w2", c2)
-		for _, s := range []cold4Step{b.P("p1", Finished{Consumer: c1}), b.P("p1", Released{}), b.P("p1", Broken{Consumer: c1}), b.C(c1, Take{}), b.C(c1, Withdraw{Reason: "x"})} {
+		for _, s := range []cold4Step{b.P("p1", Finished{Consumer: c1}), b.P("p1", Released{}), b.P("p1", Broken{Consumer: c1}), b.C(c1, Report{Result: "fail", Reason: "x"}), b.C(c1, Withdraw{Reason: "x"})} {
 			if b.step(s) {
 				t.Fatalf("%s accepted for a withdrawn attempt-1 consumer", s.label)
 			}
@@ -193,7 +192,7 @@ func TestBreakHeldLiveWork(t *testing.T) {
 		b.no(b.P("p1", Finished{Consumer: c1}), "not producer p1's work consumer of attempt 2")
 		b.ok(b.P("p1", Finished{Consumer: c2}))
 	})
-	t.Run("ready consumer withdrawn before a take", func(t *testing.T) {
+	t.Run("dealt consumer withdrawn before a report", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
 		c1 := b.start("p1", "r2")
@@ -202,7 +201,7 @@ func TestBreakHeldLiveWork(t *testing.T) {
 		b.is(c1, Fail)
 		c2 := b.start("p1", "r3")
 		b.take(c2)
-		b.no(b.C(c1, Take{}), "nothing moves a fail card")
+		b.no(b.C(c1, Report{Result: "fail", Reason: "x"}), "nothing moves a fail card")
 	})
 	t.Run("broken, blocked, unblocked, restarted", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
@@ -245,6 +244,7 @@ func TestBreakHeldLiveWork(t *testing.T) {
 // ---- no ready producer in a held stream ----
 
 func TestBreakHeldHeldStream(t *testing.T) {
+	t.Parallel()
 	t.Run("every return parks", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p2"), producer("p3"), producer("p4"))
 		for _, id := range []string{"p1", "p2", "p3"} {

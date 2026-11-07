@@ -36,9 +36,17 @@ CREATE TABLE IF NOT EXISTS sprint.epoch (
 INSERT INTO sprint.epoch (id, n) VALUES (1, 1) ON CONFLICT (id) DO NOTHING;
 -- Round 22: the sprint's stop lives on the epoch's one row, as the epoch
 -- does (a clear keeps it). A stopped sprint moves nothing (Run calls no
--- Tick); the store refuses nothing on it.
+-- Tick); the store refuses nothing on it. A store Migrate makes starts
+-- stopped with reason 'never started' (pg.go freshStop, in Migrate's
+-- transaction); the defaults below are for a store made before that.
 ALTER TABLE sprint.epoch ADD COLUMN IF NOT EXISTS stopped boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS stop_reason text NOT NULL DEFAULT '';
+-- Round 24: the git identity every commit of the sprint is authored and
+-- committed under (a repository's contributor agreement keys off the forge
+-- account) lives on the epoch's one row, as the stop does (a clear keeps
+-- it); '' and '' is not set. SetIdentity is its one write.
+ALTER TABLE sprint.epoch ADD COLUMN IF NOT EXISTS commit_name text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS commit_email text NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS sprint.streams (
     name  text    NOT NULL,
@@ -74,15 +82,39 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
 -- Round 22: a store made by round 17's schema (round21Hash, the one every
 -- round to 21 carried) has the five configuration columns; Migrate drops
 -- them here, in its one transaction, as round 17 added cards.red. DROP
--- COLUMN IF EXISTS is a no-op on a new store and on a second run.
-ALTER TABLE sprint.rows DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS width, DROP COLUMN IF EXISTS tiers,
+-- COLUMN IF EXISTS is a no-op on a new store and on a second run. tiers is
+-- dropped only as round 17's text[]: round 23 adds a text tiers of its own
+-- below, which a second Migrate keeps.
+ALTER TABLE sprint.rows DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS width,
     DROP COLUMN IF EXISTS model, DROP COLUMN IF EXISTS harness;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'sprint' AND table_name = 'rows'
+            AND column_name = 'tiers' AND data_type = 'ARRAY') THEN
+        ALTER TABLE sprint.rows DROP COLUMN tiers;
+    END IF;
+END
+$$;
 -- and adds the hook's role (worker or coordinator; '' when not hooked).
 ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT ''
     CHECK (role IN ('', 'worker', 'coordinator'));
 -- A row hooked before round 22 has a session and no role: it is unhooked
 -- (a session and a role are both set or both empty), and hooks again.
 UPDATE sprint.rows SET session = '' WHERE role = '' AND session <> '';
+
+-- The worker's heartbeat (round 23, SetRowLoad): its 1-minute load average in
+-- hundredths, the cores it was measured over (0: never beaten) and the
+-- nova-reserve slots in use and in all; telemetry for the board, read by no
+-- rule. tiers is the comma list of model tiers the worker's probe proved it
+-- serves (empty: never advertised), cleared when the row's session changes;
+-- the roster deals a worker exactly these. Added by ALTER, as cards.model is, so a round-22 store that Migrate
+-- upgrades gets them the same way as a new one; IF NOT EXISTS skips a column
+-- a store already has.
+ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS load1_centi integer NOT NULL DEFAULT 0 CHECK (load1_centi >= 0),
+    ADD COLUMN IF NOT EXISTS cores integer NOT NULL DEFAULT 0 CHECK (cores >= 0),
+    ADD COLUMN IF NOT EXISTS slots_used integer NOT NULL DEFAULT 0 CHECK (slots_used >= 0),
+    ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0),
+    ADD COLUMN IF NOT EXISTS tiers text NOT NULL DEFAULT '';
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by
@@ -150,10 +182,21 @@ ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red boolean NOT NULL DEFAULT f
 -- usage (round 25): on a consumer, its run's usage record, the words of
 -- package usage (tokens by class, model, billing, the harness's charged
 -- dollars, why it is unpriced) beside cost and priced; '' on every other
--- kind. Added by ALTER as red was, so a round-24 store Migrate upgrades and a
--- new store get the one column the same way.
+-- kind. Added by ALTER as red was, so a store Migrate upgrades and a new
+-- store get the one column the same way. It comes before model: the live
+-- store (round 25's) has red, usage, and Migrate appends model after them,
+-- so a new store's columns are in the same order and a positional dump
+-- (pg_dump --inserts, verbs/pg_backup.go) loads into either.
 ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS usage text NOT NULL DEFAULT ''
     CONSTRAINT cards_usage_check CHECK (kind IN ('work', 'read') OR usage = '');
+
+-- model (round 23): on a consumer, the model the deal named for it (the
+-- policy's bench model for its tier, or a friend's own), carried to the take
+-- receipt; '' on a producer or sentinel. Fixed at add like holder. Added by
+-- ALTER, as red is, so a round-22 store that Migrate upgrades gets it the
+-- same way as a new one.
+ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
+    CONSTRAINT cards_model_check CHECK (kind IN ('work', 'read') OR model = '');
 
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;

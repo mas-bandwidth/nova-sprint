@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -68,7 +69,11 @@ func effects(op store.Op) string {
 	return strings.ToUpper(op.Kind) + " " + strings.Join(out, " ")
 }
 
-// runHold is `hold` and `unhold` of rows and streams, one op each.
+// runHold is `hold` and `unhold` of rows, streams and producer cards, one
+// op each. Holding a card (defect 47) parks that one producer blocked with
+// the reason "held: <why>", its live consumers withdrawn in the same op
+// (their pushed branches kept); unhold is its Unblock, back to waiting,
+// whence it resolves and is dealt as any other. It is never a drop.
 func runHold(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	reason := in.str("reason")
 	if reason == "" {
@@ -106,7 +111,16 @@ func holdRequest(hold bool, name, reason string, snap store.Snapshot) (steps.Req
 		}
 		return steps.Request{Stream: name, Event: card.UnholdStream{Reason: reason}}, nil
 	}
-	return steps.Request{}, refuse("no row or stream "+name, "nova-sprint show")
+	if c, ok := snap.Cards[name]; ok {
+		if c.Kind != "producer" {
+			return steps.Request{}, refuse(name+" is a "+c.Kind+" card; hold its producer", "nova-sprint hold "+cmp.Or(c.Of, name)+" --reason \"<why>\"")
+		}
+		if hold {
+			return steps.Request{Card: name, Event: card.Block{Reason: card.HeldPrefix + reason}}, nil
+		}
+		return steps.Request{Card: name, Event: card.Unblock{Reason: "unheld: " + reason}}, nil
+	}
+	return steps.Request{}, refuse("no row, stream or card "+name, "nova-sprint show")
 }
 
 // nextAfter is a person's move's next line: the same command without

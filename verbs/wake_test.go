@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -13,11 +14,14 @@ func wakeOf(w *world, name, line string) Result {
 	return w.do(name, "wake")
 }
 
+// dealLine is a DEAL as run/notices.go words it: the take to run, in the
+// row's hand already, then the finish.
 func dealLine(id, ref, row string) string {
-	return "card=" + id + " attempt=1 kind=work stream=s tier=pro epoch=1; run: nova-sprint take " + ref + " --epoch 1 --as " + row
+	return "DEAL card=" + id + " attempt=1 kind=work stream=s tier=pro epoch=1; in your hand now: run nova-sprint take " + ref + " --epoch 1 --as " + row + " (acknowledges, prints the whole brief), then do it and run: nova-sprint finish " + ref + " --head <sha> --as " + row + " --epoch 1"
 }
 
 func TestWakeTakesEveryDealtCard(t *testing.T) {
+	t.Parallel()
 	s := sprint()
 	setCard("p1.w1", func(c *store.Card) { c.Holder = "bob" })(&s)
 	w := worldFrom(t, s)
@@ -38,15 +42,18 @@ func TestWakeTakesEveryDealtCard(t *testing.T) {
 }
 
 func TestWakeRefusedTakeWakesWithTheRefusal(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
+	seq := w.snap(t).Seq
 	r := wakeOf(w, "alice", "8-0\tsprint\t-\tDEAL\t"+dealLine("p1.w1", "p1.w1@2", "alice"))
 	has(t, r, "8-0\tsprint\t-\tDEAL\tSPRINT REFUSED take: p1.w1 is not dealt to this row at this generation")
-	if s := w.snap(t).Cards["p1.w1"].State; s != "ready" {
-		t.Fatalf("p1.w1 is %s, want ready", s)
+	if w.snap(t).Seq != seq {
+		t.Fatalf("a refused take wrote to the log")
 	}
 }
 
 func TestWakePassesOtherMessagesThrough(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	for _, line := range []string{
 		"9-0\tcarol\t-\tNOTE\thello\\nworld",
@@ -58,8 +65,8 @@ func TestWakePassesOtherMessagesThrough(t *testing.T) {
 			t.Fatalf("%q: exit %d\n%s", line, r.Exit, r.Output)
 		}
 	}
-	if s := w.snap(t).Cards["p1.w1"].State; s != "ready" {
-		t.Fatalf("p1.w1 is %s, want ready", s)
+	if _, acked := w.snap(t).Cursors[steps.AckCursor(1, "p1.w1")]; acked {
+		t.Fatalf("p1.w1 was taken by a line that was not the sprint's deal to alice")
 	}
 }
 

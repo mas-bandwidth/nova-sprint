@@ -30,7 +30,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -69,13 +68,12 @@ func (w *world) cold5Flat(t *testing.T, id string, rep Report) []Plan {
 	return []Plan{cp, pp}
 }
 
-// cold5Working is p1 and p2 working on r1 (width 2), both consumers taken.
+// cold5Working is p1 and p2 working on r1 (width 2), both consumers in hand.
 func cold5Working(t *testing.T) *world {
 	w := newWorld(t, producer("p1"), producer("p2"))
 	for _, id := range []string{"p1", "p2"} {
 		w.move(id, Resolve{})
 		w.move(id, Start{Row: "r1", Branch: "b-" + id, Base: base})
-		w.consume(id+".w1", Take{Row: "r1"})
 	}
 	return w
 }
@@ -96,6 +94,7 @@ func cold5Working(t *testing.T) *world {
 // lands. (The fourth read's TestColdread4DefectReportPlanMergedAfterAHold
 // passes only because the merge is refused.)
 func TestColdread5DefectNestedPlanReadsItsOwnWrites(t *testing.T) {
+	t.Parallel()
 	t.Run("HoldThenReportPlan", func(t *testing.T) {
 		w := cold4Taken(t, false)
 		s := w.snap()
@@ -178,10 +177,10 @@ func (w *world) cold5Narrow1(id string, e Event) (Plan, *Refusal) { return cold5
 // blocker p2 is dealt to r1"; nested, the same two moves land: r2's
 // consumer is withdrawn and the blocker is dealt to another row.
 func TestColdread5DefectNestedStartSkipsThePreemptGuard(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b-p1", Base: base})
-	w.consume("p1.w1", Take{Row: "r2"})
 	w.move("p2", Resolve{})
 	w.move("p2", SetPriority{Level: "blocker", Reason: "asked"})
 	wd := w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2", Preempt: true})
@@ -214,6 +213,7 @@ func TestColdread5DefectNestedStartSkipsThePreemptGuard(t *testing.T) {
 // cycle walk reads a card whose needs it never had. The merge below lands
 // the cycle p -> x -> y -> z -> p; one by one the Relink is refused.
 func TestColdread5DefectHandBuiltPlanBlindsTheReRun(t *testing.T) {
+	t.Parallel()
 	t.Run("Cycle", func(t *testing.T) {
 		w := newWorld(t, producer("a"), producer("z"), producer("y", "z"), producer("x", "y"), producer("p", "a"))
 		w.move("a", Cancel{Reason: "dropped"})
@@ -251,6 +251,7 @@ func TestColdread5DefectHandBuiltPlanBlindsTheReRun(t *testing.T) {
 // withdraws a working consumer", though nothing was preempted and the two
 // moves apply one by one.
 func TestColdread5DefectAnyWithdrawIsReadAsAPreempt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b-p1", Base: base})
@@ -270,6 +271,7 @@ func TestColdread5DefectAnyWithdrawIsReadAsAPreempt(t *testing.T) {
 // reads and fixes neither. (The walk: "merge of Start # and Start #
 // refused: ... several reads of one head are AskReads".)
 func TestColdread5DefectSecondCutNamesTheWrongFix(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	a, r := w.plan("p1", Start{Row: "r1", Branch: "b-p1", Base: base})
@@ -1042,20 +1044,25 @@ func cold3Keys2(m map[string]int) []string {
 // checked against the design's invariants. It FAILS at b2b0b8c2 with the
 // defects above.
 func TestColdread5Walk(t *testing.T) {
-	runs := make([]*cold5Run, cold5Seeds)
+	t.Parallel()
+	seeds, steps := int64(cold5Seeds), cold5Steps
+	if testing.Short() { // a quarter of the seeds, a third of the steps: these still land every kind
+		seeds, steps = cold5Seeds/4, cold5Steps/3
+	}
+	runs := make([]*cold5Run, seeds)
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= cold5Seeds; seed++ {
+		for seed := int64(1); seed <= seeds; seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel() // each seed its own Fakes
 				r := newCold5Run(t, seed, nil, true)
-				for i := 0; i < cold5Steps; i++ {
+				for i := 0; i < steps; i++ {
 					r.step()
 				}
 				runs[seed-1] = r
 			})
 		}
 	})
-	cold5Report(t, runs, cold5Seeds, cold5Steps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
+	cold5Report(t, runs, int(seeds), steps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
 }
 
 // ---- PostgreSQL: the same walk mirrored on a real store ----
@@ -1084,10 +1091,21 @@ func cold5StartPG(t *testing.T) string {
 	require.NoError(t, err)
 	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
 	require.NoError(t, l.Close())
-	cmd := exec.Command(filepath.Join(bin, "postgres"), "-D", filepath.Join(dir, "data"), "-p", port, "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=off")
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() }) // ignored: the server is ours and disposable
+	// pg_ctl starts it and stops it (-m immediate: the postmaster stops its
+	// children before it exits, so none writes into the removed TempDir).
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	return "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 }
 
@@ -1097,6 +1115,7 @@ func cold5StartPG(t *testing.T) string {
 // cards, rows and streams equal the Fake's, gens included (a refused op
 // leaves nothing half-applied on either).
 func TestFunctionalColdread5PG(t *testing.T) {
+	t.Parallel()
 	const seeds, steps = 4, 800
 	runs := make([]*cold5Run, seeds)
 	t.Run("seeds", func(t *testing.T) {

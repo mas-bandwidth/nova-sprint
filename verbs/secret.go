@@ -3,6 +3,7 @@ package verbs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,7 +28,7 @@ type SecretSink interface {
 // EnsureKey never asks after a durable save. A crash before save may re-prompt.
 func EnsureKey(ctx context.Context, service string, terminal SecretTerminal, sink SecretSink) error {
 	if terminal == nil || sink == nil {
-		return fmt.Errorf("secret prompt is unavailable")
+		return fmt.Errorf("secret prompt is unavailable: no terminal or no secret store configured")
 	}
 	name, err := secretName(service)
 	if err != nil {
@@ -66,11 +67,11 @@ func EnsureKey(ctx context.Context, service string, terminal SecretTerminal, sin
 }
 func secretName(service string) (string, error) {
 	if service == "" {
-		return "", fmt.Errorf("invalid service")
+		return "", fmt.Errorf("invalid service: the name is empty")
 	}
 	for _, r := range service {
 		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_' {
-			return "", fmt.Errorf("invalid service")
+			return "", fmt.Errorf("invalid service %q: lowercase letters, digits and '_' only", service)
 		}
 	}
 	return strings.ToUpper(service) + "_API_KEY", nil
@@ -82,7 +83,7 @@ type TTY struct{}
 func (TTY) ReadHidden(ctx context.Context, prompt string) (key []byte, resultErr error) {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
-		return nil, &OperationError{Problem: "hidden prompt needs a terminal", Fix: "run nova-sprint up --key <service> in a visible terminal", Exit: 1}
+		return nil, RefusalOr(err, &OperationError{Problem: "hidden prompt needs a terminal (" + errText(err) + ")", Fix: "run nova-sprint up --key <service> in a visible terminal", Exit: 1})
 	}
 	defer tty.Close()
 	restoreTTY, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
@@ -105,7 +106,7 @@ func (TTY) ReadHidden(ctx context.Context, prompt string) (key []byte, resultErr
 				key[i] = 0
 			}
 			key = nil
-			resultErr = fmt.Errorf("terminal mode could not be restored")
+			resultErr = errors.Join(resultErr, cause("terminal mode could not be restored", err))
 		}
 	}()
 	if err = ttyMode(tty, "-echo"); err != nil {
@@ -119,7 +120,9 @@ func (TTY) ReadHidden(ctx context.Context, prompt string) (key []byte, resultErr
 		return nil, err
 	}
 	key, err = readHiddenLine(sigctx, fd)
-	_, _ = io.WriteString(restoreTTY, "\n")
+	if _, werr := io.WriteString(restoreTTY, "\n"); werr != nil { // the newline after a hidden prompt is cosmetic: said, not fatal
+		fmt.Fprintln(os.Stderr, "nova-sprint: the terminal did not take the newline after the hidden prompt: "+Redact(werr.Error()))
+	}
 	if err != nil {
 		for i := range key {
 			key[i] = 0
@@ -146,7 +149,7 @@ func readHiddenLine(ctx context.Context, fd int) ([]byte, error) {
 			}
 			data = append(data, chunk[0])
 			if len(data) > 65536 {
-				return data, fmt.Errorf("key is too long")
+				return data, fmt.Errorf("key is too long: over 65536 bytes")
 			}
 			continue
 		}
@@ -154,7 +157,7 @@ func readHiddenLine(ctx context.Context, fd int) ([]byte, error) {
 			return data, io.EOF
 		}
 		if err != nil && err != syscall.EAGAIN && err != syscall.EWOULDBLOCK && err != syscall.EINTR {
-			return data, fmt.Errorf("key could not be read")
+			return data, cause("key could not be read", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -167,18 +170,16 @@ func readHiddenLine(ctx context.Context, fd int) ([]byte, error) {
 func ttyState(tty *os.File) (string, error) {
 	cmd := exec.Command("stty", "-g")
 	cmd.Stdin = tty
-	out, err := cmd.Output()
-	if err != nil {
+	var out bytes.Buffer
+	if err := runTool(cmd, &out); err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(out.String()), nil
 }
 func ttyMode(tty *os.File, mode string) error {
 	cmd := exec.Command("stty", mode)
 	cmd.Stdin = tty
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run()
+	return runTool(cmd, nil)
 }
 
 // NovaSecrets uses the configured local secret store and passes values only on stdin.
@@ -189,9 +190,9 @@ func (n NovaSecrets) Has(ctx context.Context, name string) (bool, error) {
 	if n.Seat != "" {
 		args = append(args, "--as", n.Seat)
 	}
-	out, err := exec.CommandContext(ctx, "nova-secrets", args...).Output()
+	out, err := Output(ctx, "nova-secrets", args...)
 	if err != nil {
-		return false, &OperationError{Problem: "nova-secrets could not list names", Fix: "run nova-sprint up", Exit: 1}
+		return false, RefusalOr(err, &OperationError{Problem: "nova-secrets could not list names (" + errText(err) + ")", Fix: "run nova-sprint up", Exit: 1})
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.TrimSpace(line) == name {
@@ -206,11 +207,9 @@ func (n NovaSecrets) Set(ctx context.Context, name string, key io.Reader) error 
 		args = append(args, "--as", n.Seat)
 	}
 	cmd := exec.CommandContext(ctx, "nova-secrets", args...)
-	cmd.Stdin = key
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if err := cmd.Run(); err != nil {
-		return &OperationError{Problem: "nova-secrets could not save the key", Fix: "run nova-sprint up --key <service>", Exit: 1}
+	cmd.Stdin = key // the key goes on stdin only: never argv, env or output
+	if err := runTool(cmd, nil); err != nil {
+		return RefusalOr(err, &OperationError{Problem: "nova-secrets could not save the key (" + errText(err) + ")", Fix: "run nova-sprint up --key <service>", Exit: 1})
 	}
 	return nil
 }

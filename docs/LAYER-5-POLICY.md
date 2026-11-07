@@ -100,8 +100,8 @@ end of file` (ruled 2026-11-07).
 | `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
 | `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
 | `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses; `fleet_width_cap` 1..256 (the most consumers a worker machine works, its cores at most this; the roster's cap, drift row 26), 8, a guess |
-| `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000 | f >= b | backed up at 4 merging, flowing again at 1 |
-| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (run nags a row holding ready cards this often: Glenn 2026-11-07, default 1) and `ready_take` (a work card ready this long is withdrawn and dealt to another row with room: default 180) | zero, negative, absent: no wait is ever unbounded | below |
+| `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000, optional `"ci_wait"`: seconds 1..86400 | f >= b, ci_wait outside 1..86400 | backed up (rung 2) at 2 merging, flowing again at 1; ci_wait 600 (a guess) |
+| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (the seconds after a deal from which a row is nagged each tick for a card in hand it has not taken: Glenn 2026-11-07, default 1) and `ready_take` (the seconds after which such a card is withdrawn and dealt to another row with room: default 180) | zero, negative, absent: no wait is ever unbounded | below |
 | `stitch(stream)` | name, cards, landed | `True` or `False` | a non-bool | `True` when the stream has more than one card |
 | `prices()` | none | dict: model name to `{"in": n, "out": n}`, micro-dollars per million tokens, n >= 0 | a negative or non-int price | `{}`: every run unpriced until the coordinator sets them |
 
@@ -166,7 +166,7 @@ def verdict(card, reads):
     return "fix" if any([r.result == "fix" for r in reads]) else "yes"
 
 def width(row):
-    return {"work": row.width, "ahead": row.width}  # v1 DealAhead 2
+    return {"work": row.width, "ahead": 0}  # no deal-ahead: a worker takes only what it can run now (defect 74)
 
 def limits():
     return {
@@ -179,7 +179,8 @@ def limits():
     }
 
 def landing(stream):
-    return {"backed_up": 4, "flowing": 1}  # guess
+    # rung 2 at more than one head waiting (intent rule 32); ci_wait a guess
+    return {"backed_up": 2, "flowing": 1, "ci_wait": 600}
 
 def timeouts():
     return {
@@ -190,7 +191,6 @@ def timeouts():
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
         "ready_nag": 1,               # Glenn 2026-11-07
-        "ready_take": 180,            # Glenn 2026-11-07
     }
 
 def stitch(stream):
@@ -512,11 +512,16 @@ Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
 give a function and a type one name. `Catalog.Unknown(model, harness)` is the
 row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
 (`nova-sprint policy set <file> --reason <why>`). The default's tier map is Glenn's (Hacker News, 2026-11-05),
-quoted in `default.star`: haiku, luna and deepseek-flash-4.1 at flash; sonnet,
+quoted in `default.star`: haiku, luna and deepseek-flash at flash; sonnet,
 terra and mercury-3 at pro; opus and sol at heavy; fable, astra and argon at
 frontier. The providers are the coordinator's mapping (anthropic, openai,
 google, deepseek, inception); openai and google are guesses, and astra sits
-under `unknown`, a guess. Harnesses: claude, codex, opencode and api (the
+under `unknown`, a guess. 2026-11-07 (one vocabulary, defect 36): a name is
+the harness's own model id under its provider, and `Catalog.ForTier(tier)`
+hands a bench `provider/name` (a name holding a `/` as it is), providers in
+name order; deepseek-flash-4.1 became deepseek-flash (the id opencode lists),
+and mercury-2.5 (inception) and ultramarine-1-flash (paperinstruments) joined
+at flash, their tiers a guess. Harnesses: claude, codex, opencode and api (the
 API-rate adapter).
 
 **Size.** At round 3: 2,529 lines of non-test Go, over the 1.5k budget by
@@ -774,10 +779,10 @@ question reads, kind, width, tiers, model and harness, now comes from a
 name. The roster is a tick input beside the snapshot: `AnswerContext`,
 `Answer`, `Judgements`, `Check`, `Set`, `Activate`, `TraceState` take it
 (and `ReadCatalog` takes the engine). A row the snapshot holds and the
-roster does not name is in no question (no `width`, never a candidate) and
-`Judgements` opens one judgement for it while none is open: kind `roster`,
-about the row, "row <name> is not in nova-config", group `roster:<name>`,
-answered by `nova-sprint answer <id>`. A worker has no model (the roster's
+roster does not name is in no question (no `width`, never a candidate).
+Its judgement is the steps' alone (`steps` unlisted: kind `roster`, about
+the row, group `roster:<name>`); `Judgements` opens none for it (the e2e
+found two for one coordinator when both did). A worker has no model (the roster's
 `Worker` has none): `model` is "" for a worker, its harness `nova-worker`.
 `Rank` takes the tiers. The trace walk's drift moves a row's width in the
 roster (nova-config changing under the sprint), as it moved the store's.
@@ -794,7 +799,7 @@ roster (nova-config changing under the sprint), as it moved the store's.
 3. `TestBreakSetRaceStoresOneBodyTwice`: `set` is fenced `AtSeq` at its
    snapshot, as `up` is; a set that loses the race is refused as "v<n>
    already stores this body" when the winner stored its body.
-4. and 5. `TestBreakProseMakesTheInputsOutrunTheTickDeadline`,
+4. and 5. `TestFunctionalBreakProseMakesTheInputsOutrunTheTickDeadline`,
    `TestBreakProseLeavesTheBuiltInUnableToAnswer`: the prose is no input
    and no part of the answer cache's key, and the evaluator's request drops
    briefs and prose (`unworded`). **One conflict with the ruling's premise**:
@@ -807,7 +812,7 @@ roster (nova-config changing under the sprint), as it moved the store's.
    the evaluator, cold engine): 5,000 producers in review with 16 KiB
    prose each, answered by the built-in in 113 ms (was 952 ms and no
    answer on the studio at f62551fe).
-6. `TestBreakFallbackTimerStartsAfterTheInputs`: the fallback's wait and
+6. `TestFunctionalBreakFallbackTimerStartsAfterTheInputs`: the fallback's wait and
    the deadline are both counted from the tick's first byte
    (`AnswerContext` reads the clock before the inputs are built; `race`
    waits `fallbackAfter` minus the time spent). The probe now skips on
@@ -906,7 +911,7 @@ round 4 said; Glenn's call.
 
 *Tests.* `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
 c0067a27: ok (5.0 s). The timing probes with `NOVA_LOAD=1`, exclusive, on
-amd-3 at a33fb7ef: all pass but `TestBreakFallbackTimerStartsAfterTheInputs`
+amd-3 at a33fb7ef: all pass but `TestFunctionalBreakFallbackTimerStartsAfterTheInputs`
 (skips, above). Load through the evaluator, 5,000 producers over 100 rows:
 cold 106.7 ms, warm 59.1 ms (measured).
 
@@ -918,7 +923,7 @@ required).
 
 *STATUS at the end of round 5* (the method moved to one holistic pass over
 all layers; this round stops here). rowan2's seven: all seven built; six
-pass, `TestBreakFallbackTimerStartsAfterTheInputs` skips by construction
+pass, `TestFunctionalBreakFallbackTimerStartsAfterTheInputs` skips by construction
 (above) and its ruling is checked by `TestFallbackCountsFromTheFirstByte`.
 Cold read 3's eight: all eight built and pass. Rulings built: every one in
 this section, the contradictions included. Half done or owed: layer 6's
@@ -964,3 +969,37 @@ What the stitch changed in layer 5 and why:
   the verb that closes it (`nova-sprint judge <id> retry --reason <why>`).
 - **Owed at layer 6, done there:** main calls `ServeMain` on `EvalArg` and
   builds `NewEngine(RealClock{})`.
+
+**Stitch, the bench model and the first set (2026-11-07, branch `v2-stitch-w2D1`).**
+- *The catalog's `bench` (defects 54, 57).* `catalog()` may carry
+  `"bench": {tier: "provider/model"}`, the one model a bench row runs for a
+  card of that tier. Each key must be in `TIERS` and its model one of that
+  tier's models in the catalog (`bench: <tier>'s model <m> is not one of
+  its models (...)`); a list is refused. `Catalog.Bench` and
+  `Catalog.BenchModel(tier)`; run passes the active version's map to the
+  steps as `Answers.Models`, and the deal writes the model on the consumer
+  (LAYER-3's Built). A tier with no bench model leaves bench rows undealt
+  for it with a `no-model` judgement, never a guess. The default names
+  deepseek/deepseek-flash at flash and heavy, inception/mercury-3 at pro,
+  deepseek/deepseek-v4-pro at frontier (the coordinator's mapping of
+  2026-11-07; guesses, unmeasured), and lists deepseek-flash at heavy and
+  deepseek-v4-pro at frontier so the bench key names models of the tier.
+  `next --json`'s `tier_models` is kept as the probe's input and now holds
+  that one model per tier for a bench; the take receipt's `models` (the
+  candidates) is gone: the receipt carries the deal's `model` only.
+- *The first set activates (defect 53).* `policy set` with no version
+  active stores the version and activates it in the same op (`Result.Activated`;
+  the verb prints `POLICY STORED AND ACTIVE v<n>`), answering any open
+  judgements about the missing policy; with one active it stores only, as
+  before. While none is active, or the active one fails whole, layer 6
+  tells the steps to deal nothing (`Answers.NoDeal`) and the steps open one
+  `no-policy` judgement on the coordinator's row. Tests: `testSetFirst`,
+  `TestCatalogBenchRefused`, run's `TestTickDealsNothingWithoutAnActivePolicy`.
+
+### Built: no deal-ahead for a worker (stitch w3W, 2026-11-07)
+
+- `default.star`'s `width(row)` answers `ahead: 0` (it was `row.width`, v1's DealAhead): a worker
+  is dealt only what it can run now (defect 74: a bench dealt ahead held cards it could not
+  start while other rows sat idle). `row.width` itself is now a worker's advertised width
+  (min of nova-config's cores-cap width and its nova-reserve slots, `roster.Advertised`).
+  `TestDefaultAnswersEverySnapshot` says `Ahead: 0`.

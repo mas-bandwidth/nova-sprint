@@ -17,6 +17,7 @@ import (
 )
 
 func TestSetupBusSecretSelection(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, names, user           string
 		declared, failAuth, wantErr bool
@@ -63,6 +64,7 @@ func TestSetupBusSecretSelection(t *testing.T) {
 }
 
 func TestFunctionalSetupBusRedis(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_FUNCTIONAL_BUS") != "1" {
 		t.Skip("requires isolated Redis and secrets tools")
 	}
@@ -140,6 +142,7 @@ func fixtureRedis(t *testing.T, ctx context.Context, dir string) string {
 }
 
 func TestSetupBusMetadataAndCancellationFailClosed(t *testing.T) {
+	t.Parallel()
 	cfg := configForSetup()
 	for _, metadata := range []string{"NOVA_BUS_PASSWORD", "NOVA_BUS_PASSWORD\nBAD KEY\n", "\n"} {
 		run := func(context.Context, bool, string, ...string) ([]byte, error) { return []byte(metadata), nil }
@@ -157,9 +160,10 @@ func TestSetupBusMetadataAndCancellationFailClosed(t *testing.T) {
 	}
 }
 
-// A failed nova-secrets names reaches up's refusal as the tool's own last
+// A failed nova-secrets names reaches up's refusal as the tool's own
 // stderr line (runSetupCommand keeps it), never a bare "unavailable".
 func TestSetupBusNamesFailureCarriesStderr(t *testing.T) {
+	t.Parallel()
 	cfg := configForSetup()
 	cfg.BusRedis = "127.0.0.1:6379"
 	run := func(_ context.Context, _ bool, name string, _ ...string) ([]byte, error) {
@@ -167,7 +171,7 @@ func TestSetupBusNamesFailureCarriesStderr(t *testing.T) {
 	}
 	bus := setupBusCommand(cfg, func(context.Context) (bool, error) { return false, nil }, run)
 	_, err := bus(context.Background(), "nova-bus", "who")
-	if err == nil || err.Error() != "bus secret names unavailable (nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=<redacted>)" {
+	if err == nil || !strings.HasPrefix(err.Error(), "bus secret names unavailable: nova-secrets: exit -1") || !strings.Contains(err.Error(), `stderr "nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=<redacted>"`) || strings.Contains(err.Error(), "AGE-SECRET") {
 		t.Fatal(err)
 	}
 }

@@ -3,196 +3,134 @@ package verbs
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
-	"strconv"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Landing is the forge as the coordinator's hand merge uses it (edge/forge's
-// Client, the host's gh): the same calls the run's landing makes.
-type Landing interface {
-	FindPR(ctx context.Context, repo, head, base string) (forge.PRState, bool, error)
-	OpenPR(ctx context.Context, repo, head, base, title, body string) (forge.PRInfo, error)
-	Merge(ctx context.Context, repo string, pr int, sha, base string) error
-	MergePR(ctx context.Context, repo string, pr int, head string, methods []string) (string, error)
-	Behind(ctx context.Context, repo, base, head string) (int, error)
+// Lander is the landing as the verbs drive it by hand (layer 4's git and
+// forge edges, adapted in cmd/nova-sprint), acting as the host's gh
+// identity (intent rule 32).
+type Lander interface {
+	// Land merges head, the tip of the card's branch, into the stream's
+	// base with no check gate (the coordinator looked), and is the merge
+	// sha base then has: base's tip when head is already on it. A stream
+	// with a forge merges its PR (opened when there is none) by the
+	// repository's allowed method; one without merges onto base and pushes
+	// it, fast-forward only. Anything that keeps it from merging is a
+	// refusal naming its fix.
+	Land(ctx context.Context, s store.Stream, branch, head string) (string, error)
+	// Heads is every branch at the stream's origin: refs/heads/<name> -> sha.
+	Heads(ctx context.Context, s store.Stream) (map[string]string, error)
+	// CreateGroup creates the stream's group branch at sha (its base tip);
+	// it fails when the branch exists.
+	CreateGroup(ctx context.Context, s store.Stream, sha string) error
 }
 
-// runLand is `land <card|stream> --reason <why> [--head <sha>]`: the
-// coordinator's hand merge after looking (INTENT rule 16, rung 3). A card:
-// its PR from its branch into the base (opened if it has none) merged as
-// the landing merges it, then Landed. A stream: its group's PR merged if
-// one is open, then every merging producer of the stream whose head is in
-// the base is Landed. An open land judgement on it is answered land.
+// runLand is `land <card> --reason <why> [--head <sha>]`: the hand merge of
+// a merging producer's read-ok head (intent rule 32), recorded as landed
+// with the merge sha in one op; an open land judgement on the card is
+// answered land in the same op.
 func runLand(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
-	return e.landHand(ctx, in, snap, in.arg(0), "")
-}
-
-func (e *Engine) landHand(ctx context.Context, in *input, snap store.Snapshot, about, judgement string) (string, error) {
-	if in.str("reason") == "" {
+	reason := in.str("reason")
+	if reason == "" {
 		return "", refuse("a hand landing needs its reason", "add --reason \"<why>\"")
 	}
-	if e.Landing == nil || e.Origin == nil {
-		return "", broken("the forge edge is not configured", "nova-sprint check")
+	line, err := e.handLand(ctx, in, snap, in.arg(0), in.str("head"), reason, "")
+	if err != nil {
+		return "", err
+	}
+	return done(waitNext, line), nil
+}
+
+// handLand lands card id at head (its own head when "") by hand, answering
+// judgement (or the card's open land judgement when "") with land.
+func (e *Engine) handLand(ctx context.Context, in *input, snap store.Snapshot, id, head, reason, judgement string) (string, error) {
+	c, ok := snap.Cards[id]
+	switch {
+	case !ok || c.Kind != "producer":
+		return "", refuse("no producer "+id, "nova-sprint show")
+	case c.State != card.Merging:
+		return "", refuse(fmt.Sprintf("%s is %s; a hand landing is of a merging producer (its head passed its reads)", id, c.State), "nova-sprint show "+id)
+	case head != "" && head != c.Head:
+		return "", refuse(fmt.Sprintf("%s's finished head is %s, not %s", id, c.Head, head), "nova-sprint land "+id+" --reason \"<why>\" (its own head), or send it to fix")
+	case e.Lander == nil:
+		return "", broken("the landing edge is not configured", "nova-sprint check")
+	}
+	// a merge the hand landing makes is the store's identity (round 24), never a literal
+	merge, err := e.Lander.Land(git.WithIdentity(ctx, snap.Identity.Name, snap.Identity.Email), snap.Streams[c.Stream], branchOf(snap, c), c.Head)
+	if err != nil {
+		return "", RefusalOr(err, broken("the hand landing of "+id+" failed: "+errText(err), "fix what it names, then nova-sprint land "+id+" --reason \"<why>\" again"))
 	}
 	if judgement == "" {
-		judgement = openLand(snap, about)
+		judgement = openLand(snap, id)
 	}
-	if _, ok := snap.Streams[about]; ok {
-		return e.landStream(ctx, in, snap, about, judgement)
-	}
-	return e.landCard(ctx, in, snap, about, judgement)
-}
-
-// openLand is the open land judgement about about, or "".
-func openLand(snap store.Snapshot, about string) string {
-	for _, id := range slices.Sorted(maps.Keys(snap.Judgements)) {
-		if j := snap.Judgements[id]; j.Kind == "land" && j.About == about && j.State == "open" {
-			return id
-		}
-	}
-	return ""
-}
-
-func (e *Engine) landCard(ctx context.Context, in *input, snap store.Snapshot, id, judgement string) (string, error) {
-	c, ok := snap.Cards[id]
-	if !ok || c.Kind != "producer" {
-		return "", refuse("no producer "+id, "nova-sprint show "+id)
-	}
-	if c.State != "merging" {
-		return "", refuse(id+" is "+c.State+"; a hand landing is of a merging producer (read ok)", "nova-sprint show "+id)
-	}
-	if h := in.str("head"); h != "" && h != c.Head {
-		return "", refuse("--head "+h+" is not "+id+"'s head "+c.Head, "look again: nova-sprint show "+id)
-	}
-	s := snap.Streams[c.Stream]
-	repo, branch := forge.Slug(s.Repo), snap.Cards[id+".w"+strconv.Itoa(c.Attempt)].Branch
-	if branch == "" {
-		return "", refuse(id+" has no branch recorded", "merge it by hand, then nova-sprint drop or replace it")
-	}
-	tip, ok, err := e.Origin.Tip(ctx, s.Repo, branch)
-	if err != nil {
-		return "", broken("git ls-remote of "+s.Repo+" failed ("+clip(err.Error())+")", "land again")
-	}
-	if !ok || tip != c.Head {
-		return "", refuse("head "+c.Head+" is not the tip of "+branch+" at origin", "the worker pushes it: git push origin "+branch)
-	}
-	pr, ok, err := e.Landing.FindPR(ctx, repo, branch, s.Base)
-	if err != nil {
-		return "", broken("the forge did not answer ("+clip(err.Error())+")", "land again")
-	}
-	how := "was merged"
-	switch {
-	case ok && pr.State == "MERGED" && pr.HeadSHA == c.Head:
-	case ok && pr.State == "MERGED":
-		return "", refuse(fmt.Sprintf("PR %s was merged at %s, not at %s", pr.URL, pr.HeadSHA, c.Head), "nova-sprint judge")
-	default:
-		if !ok || pr.State != "OPEN" {
-			if _, err := e.Landing.OpenPR(ctx, repo, branch, s.Base, id+": land on "+s.Base, "nova-sprint hand landing of "+id+" at "+c.Head+"."); err != nil {
-				return "", refuse("the PR cannot be opened: "+clip(err.Error()), "gh pr create -R "+repo+" --head "+branch+" --base "+s.Base)
-			}
-			if pr, ok, err = e.Landing.FindPR(ctx, repo, branch, s.Base); err != nil || !ok {
-				return "", broken("the PR was opened but cannot be read", "land again")
-			}
-		}
-		if pr.HeadSHA != c.Head {
-			return "", refuse(fmt.Sprintf("PR %s is at %s, not %s: the branch moved", pr.URL, pr.HeadSHA, c.Head), "nova-sprint judge")
-		}
-		if how, err = e.mergePR(ctx, repo, s.Base, pr, c.Head); err != nil {
-			return "", err
-		}
-	}
-	r := steps.Request{Card: id, Event: card.Landed{Head: c.Head}, Judgement: judgement}
+	r := steps.Request{Card: id, Event: card.Landed{Head: c.Head, Merge: merge, Reason: "by hand: " + reason}, Judgement: judgement}
 	if judgement != "" {
 		r.Answer = "land"
 	}
 	line, err := e.move(ctx, in, snap, r, id)
 	if err != nil {
-		return "", err
+		return "", RefusalOr(err, broken("merged at "+merge+" but not recorded: "+errText(err), "nova-sprint land "+id+" --reason \"<why>\" again (the head is on base, so it records at once)"))
 	}
-	return done(waitNext, fmt.Sprintf("PR %s %s", pr.URL, how), line), nil
+	return fmt.Sprintf("LANDED %s head=%s merge=%s by hand: %s", id, c.Head, merge, line), nil
 }
 
-// mergePR merges pr at head the landing's way: a fast-forward to head when
-// head contains the base, else the repository's method. A refusal (the base
-// moved under it, a ruleset) is said verbatim.
-func (e *Engine) mergePR(ctx context.Context, repo, base string, pr forge.PRState, head string) (string, error) {
-	behind, err := e.Landing.Behind(ctx, repo, base, head)
-	if err != nil {
-		return "", broken("the forge did not answer ("+clip(err.Error())+")", "land again")
-	}
-	if behind == 0 {
-		if err := e.Landing.Merge(ctx, repo, pr.Number, head, base); err != nil {
-			return "", refuse("the fast-forward of "+base+" was refused: "+clip(err.Error()), "look at the base, then land again")
+// branchOf is producer c's branch: its latest work consumer's (a producer
+// holds none of its own).
+func branchOf(snap store.Snapshot, c store.Card) string {
+	out, at := "sprint/"+c.Stream+"/"+c.ID, -1
+	for _, x := range snap.Cards {
+		if x.Of == c.ID && x.Kind == "work" && x.Branch != "" && x.Attempt > at {
+			out, at = x.Branch, x.Attempt
 		}
-		return "fast-forwarded " + base + " to " + head, nil
 	}
-	sha, err := e.Landing.MergePR(ctx, repo, pr.Number, head, forge.MergeMethods)
-	if err != nil {
-		return "", refuse("the merge was refused: "+clip(err.Error()), "gh pr merge "+strconv.Itoa(pr.Number)+" -R "+repo)
-	}
-	return "merged as " + sha, nil
+	return out
 }
 
-func (e *Engine) landStream(ctx context.Context, in *input, snap store.Snapshot, name, judgement string) (string, error) {
-	s := snap.Streams[name]
-	repo, group := forge.Slug(s.Repo), git.StreamBranch(name)
-	var lines []string
-	pr, ok, err := e.Landing.FindPR(ctx, repo, group, s.Base)
+// openLand is the open land judgement on card id, or "".
+func openLand(snap store.Snapshot, id string) string {
+	for _, j := range snap.Judgements {
+		if j.Kind == "land" && j.About == id && j.State == "open" {
+			return j.ID
+		}
+	}
+	return ""
+}
+
+// ensureGroup is stream add's group branch (defect 46): for a stream that
+// lands through a forge, sprint-group/<stream> must be a name git accepts
+// and no branch at origin may keep it from being created; absent, it is
+// created at the base tip. A stream landed by hand has none.
+func (e *Engine) ensureGroup(ctx context.Context, s store.Stream) error {
+	if s.Forge == "" || s.Mode == "hand" {
+		return nil
+	}
+	branch := git.GroupBranch(s.Name)
+	if why := git.GroupNameProblem(s.Name); why != "" {
+		return refuse("stream "+s.Name+"'s group branch "+branch+" cannot be created: "+why, "name the stream with letters, digits, _ and - (no leading or trailing dot, no .., no .lock), then add it again")
+	}
+	if e.Lander == nil {
+		return broken("the landing edge is not configured", "nova-sprint check")
+	}
+	heads, err := e.Lander.Heads(ctx, s)
 	if err != nil {
-		return "", broken("the forge did not answer ("+clip(err.Error())+")", "land again")
+		return RefusalOr(err, broken("listing "+s.Repo+"'s branches failed: "+errText(err), "make the repository readable from this host, then add the stream again"))
 	}
-	if ok && pr.State == "OPEN" {
-		how, err := e.mergePR(ctx, repo, s.Base, pr, pr.HeadSHA)
-		if err != nil {
-			return "", err
-		}
-		lines = append(lines, fmt.Sprintf("PR %s %s", pr.URL, how))
+	if b := git.GroupBlocker(s.Name, heads); b != "" {
+		return refuse("branch "+b+" at "+s.Repo+" keeps the group branch "+branch+" from being created", "rename or delete "+b+" at origin, then add the stream again")
 	}
-	base, ok, err := e.Origin.Tip(ctx, s.Repo, s.Base)
-	if err != nil || !ok {
-		return "", broken("the base "+s.Base+" cannot be read at origin", "land again")
+	if _, ok := heads[git.GroupRef(s.Name)]; ok {
+		return nil
 	}
-	var landed []string
-	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
-		c := snap.Cards[id]
-		if c.Kind != "producer" || c.Stream != name || c.State != "merging" {
-			continue
-		}
-		if in, err := e.Origin.Contains(ctx, s.Repo, c.Head, base); err != nil || !in {
-			continue
-		}
-		landed = append(landed, id)
+	tip, err := e.baseTip(ctx, s, "add the stream again")
+	if err != nil {
+		return err
 	}
-	if len(landed) == 0 && judgement == "" {
-		return "", refuse("no merging producer of "+name+" has its head in "+s.Base+" at "+base, "merge by hand first, then land again")
+	if err := e.Lander.CreateGroup(ctx, s, tip); err != nil {
+		return RefusalOr(err, broken("creating "+branch+" at "+s.Repo+" failed: "+errText(err), "give this host's gh identity push access to "+s.Repo+", then add the stream again"))
 	}
-	for i, id := range landed {
-		if snap, err = e.again(ctx, snap, i); err != nil {
-			return "", err
-		}
-		r := steps.Request{Card: id, Event: card.Landed{Head: snap.Cards[id].Head}}
-		if i == 0 && judgement != "" {
-			r.Judgement, r.Answer = judgement, "land"
-		}
-		line, err := e.move(ctx, in, snap, r, id)
-		if err != nil {
-			return "", err
-		}
-		lines = append(lines, line)
-	}
-	if len(landed) == 0 {
-		line, err := e.move(ctx, in, snap, steps.Request{Judgement: judgement, Answer: "land"}, name)
-		if err != nil {
-			return "", err
-		}
-		lines = append(lines, line)
-	}
-	return done(waitNext, lines...), nil
+	return nil
 }

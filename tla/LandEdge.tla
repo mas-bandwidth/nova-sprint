@@ -1,192 +1,206 @@
 ------------------------------ MODULE LandEdge ------------------------------
 (***************************************************************************)
-(* Layer 4 landing edge model (docs/LAYER-4-EDGES.md, Guarantees 4 & 5,    *)
-(* docs/LANDING.md). Models 2 streams, 3 heads in score order, K = 2 base  *)
-(* moves, and CI outcomes green, red, and fault.                           *)
+(* The landing (docs/LANDING.md; intent rules 16 and 32): the ladder of   *)
+(* three rungs, from a tick's land request to the base.                    *)
+(*                                                                         *)
+(* Cards c1, c2 are stream s1's, c3 is s2's; both streams land on one     *)
+(* base. Every card's branch was cut from the first base commit. A tree    *)
+(* is the set of cards it holds and the count of outside commits (ext).   *)
+(* CI is truthful: a tree holding both c1 and c3 is red (a semantic       *)
+(* conflict across streams: each is green alone); a tree holding c2 and  *)
+(* c3 does not merge (a textual conflict). CI may also report nothing    *)
+(* (absent stands for every outcome that is neither green nor red: no CI *)
+(* in time, a fault, a PR not opened, a branch not created).             *)
+(*                                                                         *)
+(* Tick is layer 3's landing, one atomic step: each finished request is  *)
+(* consumed (landed moves its cards to landed; anything else opens one   *)
+(* land judgement per card still merging, nothing moved, nothing        *)
+(* blamed), then each stream with no request in flight at the tick's    *)
+(* start asks one: its first eligible card (rung 1's pick) while fewer   *)
+(* than BackedUp wait, every one of them when backed up (rung 2).        *)
+(* Pass is one LandPass of layer 4 (edge/git/land.go): all the request's *)
+(* heads already on base is landed at once; one head whose branch holds   *)
+(* base's tip gates its own PR (rung 1); otherwise the heads are merged  *)
+(* onto base's tip into the group branch and its PR gates (rung 2). A    *)
+(* conflict stops the pass. A green gate merges the gated tree exactly,  *)
+(* only while base is still the tip it was gated on; base moving under   *)
+(* the gate (an outside commit) asks the pass again; GitHub may refuse   *)
+(* the merge. Answer is the coordinator's (rung 3): land merges by hand  *)
+(* (no gate: the coordinator looked), fix sends the card to fix, retry   *)
+(* asks a new landing.                                                    *)
 (***************************************************************************)
-EXTENDS Integers, Sequences, FiniteSets
+EXTENDS Naturals, Sequences, FiniteSets
 
-CONSTANTS K
+CONSTANTS K,         \* outside commits to base at most
+          BackedUp,  \* policy's landing(stream).backed_up
+          MaxPass    \* passes at most (retries and base moves bound the model)
 
+Cards   == {"c1", "c2", "c3"}
 Streams == {"s1", "s2"}
-Heads == {"h1", "h2", "h3"}
-Steps == {"idle", "fetched", "merged", "pushed", "gating", "green", "red", "fault", "landed", "refused"}
+S(c)    == IF c = "c3" THEN "s2" ELSE "s1"
+Order   == <<"c1", "c2", "c3">>
+First(X) == Order[CHOOSE i \in 1..3 : Order[i] \in X /\ \A j \in 1..(i - 1) : Order[j] \notin X]
 
-VARIABLES base, stream, group, step, gatedAt, landed
+Red(cs)      == {"c1", "c3"} \subseteq cs
+Conflict(cs) == {"c2", "c3"} \subseteq cs
 
-vars == <<base, stream, group, step, gatedAt, landed>>
+NoTree == [cards |-> {}, ext |-> 0]
+NoReq  == [cards |-> {}, st |-> "none", out |-> "none", rung |-> 0]
 
-BaseTip == base[Len(base)].sha
+VARIABLES
+  base,    \* Seq of [tree, how ("init", "auto", "hand", "ext"), gated]
+  cs,      \* each card: "merging", "landed" or "fix"
+  req,     \* each stream's land request in flight, or NoReq
+  js,      \* the cards under an open land judgement
+  held,    \* the streams with a request in flight when the last tick began
+  ticked,  \* the last step was a tick
+  passes   \* passes so far
 
-SeqSet(sq) == {sq[i] : i \in 1..Len(sq)}
+vars == <<base, cs, req, js, held, ticked, passes>>
 
-LandedSet == SeqSet(landed)
-
-\* Deterministic merge sha: pure function of (stream, baseTip, group[s]).
-CandidateSHA(s, tip) ==
-  IF s = "s1" THEN 100 + tip + Len(group[s]) ELSE 200 + tip + Len(group[s])
-
-ExternalMoves ==
-  Cardinality({i \in 2..Len(base) : base[i].stream = "ext"})
+Tip == base[Len(base)].tree
+Init0 == base[1].tree
 
 Init ==
-  /\ base = << [sha |-> 1, parent |-> 0, stream |-> "init", heads |-> {}, gate |-> "green", gatedTip |-> 0, gatedSHA |-> 1] >>
-  /\ stream = [s \in Streams |-> 1]
-  /\ group = [s \in Streams |-> IF s = "s1" THEN << "h1", "h2" >> ELSE << "h3" >>]
-  /\ step = [s \in Streams |-> "idle"]
-  /\ gatedAt = [s \in Streams |-> [baseTip |-> 0, sha |-> 0, gate |-> "none", blamed |-> {}, chased |-> FALSE, faults |-> 0]]
-  /\ landed = << >>
+  /\ base = << [tree |-> NoTree, how |-> "init", gated |-> NoTree] >>
+  /\ cs = [c \in Cards |-> "merging"]
+  /\ req = [s \in Streams |-> NoReq]
+  /\ js = {}
+  /\ held = {}
+  /\ ticked = FALSE
+  /\ passes = 0
 
-Fetch(s) ==
-  /\ step[s] = "idle"
-  /\ step' = [step EXCEPT ![s] = "fetched"]
-  /\ gatedAt' = [gatedAt EXCEPT ![s].baseTip = BaseTip]
-  /\ UNCHANGED <<base, stream, group, landed>>
+-----------------------------------------------------------------------------
+(* The tick (layer 3)                                                      *)
 
-Merge(s) ==
-  /\ step[s] = "fetched"
-  /\ LET sha == CandidateSHA(s, gatedAt[s].baseTip) IN
-     /\ gatedAt' = [gatedAt EXCEPT ![s].sha = sha, ![s].gate = "none", ![s].blamed = {}]
-     /\ step' = [step EXCEPT ![s] = "merged"]
-  /\ UNCHANGED <<base, stream, group, landed>>
+Consumed(s) == req[s].st = "done"
+Moving(s)   == {c \in req[s].cards : cs[c] = "merging"}
 
-MergeConflict(s) ==
-  /\ step[s] = "fetched"
-  /\ step' = [step EXCEPT ![s] = "refused"]
-  /\ UNCHANGED <<base, stream, group, gatedAt, landed>>
+Tick ==
+  LET busy    == {s \in Streams : req[s].st # "none"}
+      landedC == UNION {Moving(s) : s \in {s \in Streams : Consumed(s) /\ req[s].out = "landed"}}
+      judgedC == UNION {Moving(s) : s \in {s \in Streams : Consumed(s) /\ req[s].out # "landed"}}
+      cs1     == [c \in Cards |-> IF c \in landedC THEN "landed" ELSE cs[c]]
+      js1     == js \cup judgedC
+      E(s)    == {c \in Cards : S(c) = s /\ cs1[c] = "merging" /\ c \notin js1}
+      ask(s)  == IF Cardinality(E(s)) >= BackedUp THEN E(s) ELSE {First(E(s))}
+  IN /\ cs' = cs1
+     /\ js' = js1
+     /\ req' = [s \in Streams |->
+                  IF s \notin busy /\ E(s) # {} THEN [NoReq EXCEPT !.cards = ask(s), !.st = "sent"]
+                  ELSE IF Consumed(s) THEN NoReq ELSE req[s]]
+     /\ held' = busy
+     /\ ticked' = TRUE
+     /\ UNCHANGED <<base, passes>>
 
-PushStream(s) ==
-  /\ step[s] = "merged"
-  /\ stream' = [stream EXCEPT ![s] = gatedAt[s].sha]
-  /\ step' = [step EXCEPT ![s] = "pushed"]
-  /\ UNCHANGED <<base, group, gatedAt, landed>>
+-----------------------------------------------------------------------------
+(* One pass of the landing edge (layer 4)                                  *)
 
-Gate(s) ==
-  /\ step[s] \in {"pushed", "fault"}
-  /\ step' = [step EXCEPT ![s] = "gating"]
-  /\ gatedAt' = [gatedAt EXCEPT ![s].gate = "none", ![s].blamed = {}]
-  /\ UNCHANGED <<base, stream, group, landed>>
+\* The tree CI gates: rung 1 (one head whose branch holds base's tip, the
+\* first commit) gates the card's branch, which is that tip plus the card;
+\* rung 2 gates the heads merged onto the tip. Both are Tip plus the cards.
+Gated(s) == [cards |-> Tip.cards \cup req[s].cards, ext |-> Tip.ext]
+RungOf(s) == IF Cardinality(req[s].cards) = 1 /\ Tip = Init0 THEN 1 ELSE 2
+CIOf(t) == IF Red(t.cards) THEN {"red", "absent"} ELSE {"green", "absent"}
 
-CIGreen(s) ==
-  /\ step[s] = "gating"
-  /\ gatedAt' = [gatedAt EXCEPT ![s].gate = "green", ![s].blamed = {}]
-  /\ step' = [step EXCEPT ![s] = "green"]
-  /\ UNCHANGED <<base, stream, group, landed>>
+Finish(s, out) == req' = [req EXCEPT ![s].st = "done", ![s].out = out, ![s].rung = RungOf(s)]
+\* Every head already on base: landed at once, rung by the heads' count.
+OnBase(s) == req' = [req EXCEPT ![s].st = "done", ![s].out = "landed",
+                                ![s].rung = IF Cardinality(req[s].cards) = 1 THEN 1 ELSE 2]
 
-CIRed(s) ==
-  /\ step[s] = "gating"
-  /\ gatedAt' = [gatedAt EXCEPT ![s].gate = "red", ![s].blamed = {group[s][1]}]
-  /\ step' = [step EXCEPT ![s] = "red"]
-  /\ UNCHANGED <<base, stream, group, landed>>
+Pass(s) ==
+  /\ req[s].st = "sent"
+  /\ passes < MaxPass
+  /\ passes' = passes + 1
+  /\ \/ /\ req[s].cards \subseteq Tip.cards
+        /\ OnBase(s)
+        /\ UNCHANGED base
+     \/ /\ ~(req[s].cards \subseteq Tip.cards)
+        /\ Conflict(Gated(s).cards)
+        /\ Finish(s, "conflict")
+        /\ UNCHANGED base
+     \/ /\ ~(req[s].cards \subseteq Tip.cards)
+        /\ ~Conflict(Gated(s).cards)
+        /\ \E ci \in CIOf(Gated(s)) :
+             IF ci # "green" THEN Finish(s, ci) /\ UNCHANGED base
+             ELSE \/ /\ base' = Append(base, [tree |-> Gated(s), how |-> "auto", gated |-> Gated(s)])
+                     /\ Finish(s, "landed")
+                  \/ /\ Finish(s, "merge_refused")
+                     /\ UNCHANGED base
+                  \/ /\ Tip.ext < K                    \* base moved under the gate: asked again
+                     /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> "ext", gated |-> NoTree])
+                     /\ UNCHANGED req
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<cs, js, held>>
 
-CIFault(s) ==
-  /\ step[s] = "gating"
-  /\ gatedAt[s].faults < 1
-  /\ gatedAt' = [gatedAt EXCEPT ![s].gate = "fault", ![s].blamed = {}, ![s].faults = @ + 1]   \* fault blames no head
-  /\ step' = [step EXCEPT ![s] = "fault"]
-  /\ UNCHANGED <<base, stream, group, landed>>
-
+\* An outside commit to base.
 BaseMoves ==
-  /\ ExternalMoves < K
-  /\ \E s \in Streams : step[s] # "landed"
-  /\ LET nextSHA == BaseTip + 10 IN
-     base' = Append(base, [sha |-> nextSHA, parent |-> BaseTip, stream |-> "ext", heads |-> {}, gate |-> "green", gatedTip |-> BaseTip, gatedSHA |-> nextSHA])
-  /\ UNCHANGED <<stream, group, step, gatedAt, landed>>
+  /\ Tip.ext < K
+  /\ base' = Append(base, [tree |-> [Tip EXCEPT !.ext = @ + 1], how |-> "ext", gated |-> NoTree])
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<cs, req, js, held, passes>>
 
-Land(s) ==
-  /\ step[s] = "green"
-  /\ gatedAt[s].gate = "green"
-  /\ gatedAt[s].baseTip = BaseTip   \* up-to-date check: base has not moved since gate
-  /\ \A h \in SeqSet(group[s]) : h \notin LandedSet
-  /\ LET landedSHA == gatedAt[s].sha IN   \* land exact gated sha
-     /\ base' = Append(base, [sha |-> landedSHA, parent |-> BaseTip, stream |-> s, heads |-> SeqSet(group[s]), gate |-> gatedAt[s].gate, gatedTip |-> gatedAt[s].baseTip, gatedSHA |-> gatedAt[s].sha])
-     /\ stream' = [stream EXCEPT ![s] = landedSHA]
-     /\ landed' = landed \o group[s]   \* group lands whole
-     /\ step' = [step EXCEPT ![s] = "landed"]
-  /\ UNCHANGED <<group, gatedAt>>
+-----------------------------------------------------------------------------
+(* The coordinator (rung 3)                                                *)
 
-Remerge(s) ==
-  /\ step[s] \in {"fetched", "merged", "pushed", "gating", "green"}
-  /\ gatedAt[s].baseTip # BaseTip
-  /\ LET sha == CandidateSHA(s, BaseTip) IN
-     /\ gatedAt' = [gatedAt EXCEPT ![s].baseTip = BaseTip, ![s].sha = sha, ![s].gate = "none", ![s].blamed = {}, ![s].chased = FALSE]   \* re-merge onto new base tip
-     /\ stream' = [stream EXCEPT ![s] = sha]
-     /\ step' = [step EXCEPT ![s] = "pushed"]
-  /\ UNCHANGED <<base, group, landed>>
-
-Refuse(s) ==
-  /\ step[s] = "red"
-  /\ step' = [step EXCEPT ![s] = "refused"]
-  /\ UNCHANGED <<base, stream, group, gatedAt, landed>>
-
-Done ==
-  /\ \A s \in Streams : step[s] \in {"landed", "refused"}
-  /\ UNCHANGED vars
+Answer(c, choice) ==
+  /\ c \in js
+  /\ cs[c] = "merging"
+  /\ js' = js \ {c}
+  /\ CASE choice = "land" ->
+            /\ cs' = [cs EXCEPT ![c] = "landed"]
+            /\ base' = IF c \in Tip.cards THEN base
+                       ELSE Append(base, [tree |-> [Tip EXCEPT !.cards = @ \cup {c}], how |-> "hand", gated |-> NoTree])
+       [] choice = "fix" -> cs' = [cs EXCEPT ![c] = "fix"] /\ UNCHANGED base
+       [] choice = "retry" -> UNCHANGED <<cs, base>>
+  /\ ticked' = FALSE
+  /\ UNCHANGED <<req, held, passes>>
 
 Next ==
-  \/ \E s \in Streams :
-       \/ Fetch(s)
-       \/ Merge(s)
-       \/ MergeConflict(s)
-       \/ PushStream(s)
-       \/ Gate(s)
-       \/ CIGreen(s)
-       \/ CIRed(s)
-       \/ CIFault(s)
-       \/ Land(s)
-       \/ Remerge(s)
-       \/ Refuse(s)
+  \/ Tick
+  \/ \E s \in Streams : Pass(s)
   \/ BaseMoves
-  \/ Done
+  \/ \E c \in Cards, choice \in {"land", "fix", "retry"} : Answer(c, choice)
 
-FairLander(s) ==
-  /\ WF_vars(Fetch(s))
-  /\ WF_vars(Merge(s))
-  /\ WF_vars(PushStream(s))
-  /\ WF_vars(Gate(s))
-  /\ WF_vars(CIGreen(s))
-  /\ WF_vars(Land(s))
-  /\ WF_vars(Remerge(s))
-  /\ WF_vars(Refuse(s))
+Spec == Init /\ [][Next]_vars
 
-Spec == Init /\ [][Next]_vars /\ FairLander("s1") /\ FairLander("s2")
+-----------------------------------------------------------------------------
+(* Invariants                                                              *)
 
 TypeOK ==
-  /\ Len(base) >= 1
-  /\ step \in [Streams -> Steps]
-  /\ SeqSet(landed) \subseteq Heads
+  /\ cs \in [Cards -> {"merging", "landed", "fix"}]
+  /\ js \subseteq Cards
+  /\ held \subseteq Streams
+  /\ ticked \in BOOLEAN
+  /\ \A s \in Streams : req[s].st \in {"none", "sent", "done"}
 
-BaseGatedGreenFromParent ==
-  \A i \in 2..Len(base) :
-    /\ base[i].gate = "green"
-    /\ base[i].parent = base[i - 1].sha
-    /\ base[i].gatedTip = base[i].parent
-    /\ base[i].gatedSHA = base[i].sha
+\* Base is never red from a landing: every tree the landing put on base
+\* is one CI passed green.
+BaseNeverRed ==
+  \A i \in 1..Len(base) : base[i].how = "auto" => ~Red(base[i].tree.cards)
 
-HeadLandsAtMostOnce ==
-  \A i, j \in 1..Len(landed) : i # j => landed[i] # landed[j]
+\* Nothing lands that CI did not pass except by land: a card enters base
+\* only in the exact tree CI gated (auto) or by the coordinator's hand;
+\* an outside commit brings none; and a landed card is on base.
+NothingLandsUnpassed ==
+  /\ \A i \in 2..Len(base) :
+       /\ base[i].how = "auto" => base[i].tree = base[i].gated
+       /\ base[i].how = "ext" => base[i].tree.cards = base[i - 1].tree.cards
+  /\ \A c \in Cards : cs[c] = "landed" => c \in Tip.cards
 
-GroupAllOrNone ==
-  \A s \in Streams :
-    \/ \A h \in SeqSet(group[s]) : h \in LandedSet
-    \/ \A h \in SeqSet(group[s]) : h \notin LandedSet
+\* No merging card without a request or a judgement after a tick: each is
+\* under a land judgement, or its stream has a request in flight (its own,
+\* or one ahead of it in landing order), or had one when the tick began
+\* (consumed by that tick; the next tick asks).
+MergingCovered ==
+  ticked => \A c \in Cards :
+    cs[c] = "merging" => c \in js \/ req[S(c)].st # "none" \/ S(c) \in held
 
-FaultBlamesNoHead ==
-  \A s \in Streams :
-    (step[s] = "fault" \/ gatedAt[s].gate = "fault") => gatedAt[s].blamed = {}
+-----------------------------------------------------------------------------
+(* Reachability: each expected VIOLATED (a run that shows the path).       *)
 
-StreamEqualsBaseAfterLand ==
-  \A i \in 2..Len(base) :
-    (i = Len(base) /\ base[i].stream \in Streams) => stream[base[i].stream] = BaseTip
-
-DeterministicPassSHA ==
-  \A s \in Streams :
-    step[s] \in {"merged", "pushed", "gating", "green"} =>
-      gatedAt[s].sha = CandidateSHA(s, gatedAt[s].baseTip)
-
-NoChaseBack ==
-  \A s \in Streams : ~gatedAt[s].chased /\ Len(group[s]) >= 1
-
-Liveness ==
-  \A s \in Streams : <>[](step[s] \in {"landed", "refused"})
+NeverRungTwo   == \A s \in Streams : req[s].rung # 2
+NeverJudged    == js = {}
+NeverHandLand  == \A i \in 1..Len(base) : base[i].how # "hand"
+NeverRedGated  == \A s \in Streams : req[s].out # "red"
 =============================================================================

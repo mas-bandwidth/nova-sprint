@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // FleetService is a non-secret nova-config service definition. Credentials
@@ -49,7 +51,30 @@ var fleetName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,127}$`)
 var fleetKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // FleetServices uses only the public nova-config and nova-fleet commands.
-type FleetServices struct{ Command CommandOutput }
+// Actor and Reason are the --actor and --reason every nova-config write
+// carries (nova-config v2 refuses a write without them): the up actor's
+// row and "nova-sprint up <step>".
+type FleetServices struct {
+	Command       CommandOutput
+	Actor, Reason string
+}
+
+// For is f writing as actor for reason.
+func (f FleetServices) For(actor, reason string) FleetServices {
+	f.Actor, f.Reason = actor, reason
+	return f
+}
+
+// writeArgs is args with the --actor and --reason a nova-config write
+// needs; an empty actor or reason is refused before anything is written.
+func (f FleetServices) writeArgs(args ...string) ([]string, error) {
+	if !fleetActor.MatchString(f.Actor) || strings.TrimSpace(f.Reason) == "" {
+		return nil, &OperationError{Problem: fmt.Sprintf("nova-config %s needs an actor and a reason (actor %q, reason %q)", strings.Join(args[:min(2, len(args))], " "), Redact(f.Actor), Redact(f.Reason)), Fix: "nova-sprint up --as <your row>", Exit: 1}
+	}
+	return append(args, "--actor", f.Actor, "--reason", f.Reason), nil
+}
+
+var fleetActor = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
 func (f FleetServices) command(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if f.Command != nil {
@@ -76,26 +101,76 @@ func (s FleetService) valid() bool {
 func (f FleetServices) existing(ctx context.Context, s FleetService) (bool, error) {
 	out, err := f.command(ctx, "nova-config", "service", "list", "--json")
 	if err != nil {
-		return false, fmt.Errorf("nova-config service list failed: %w", err)
+		return false, cause("nova-config service list failed", err)
 	}
 	var list configServices
-	if json.Unmarshal(out, &list) != nil || list.Result.Verb != "service list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "service" || list.Facts.Rows != len(list.Items) {
-		return false, fmt.Errorf("nova-config returned invalid service list")
+	if err := json.Unmarshal(out, &list); err != nil {
+		return false, fmt.Errorf("nova-config service list --json: %s", ParseFailure(err, out))
+	}
+	if list.Result.Verb != "service list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "service" || list.Facts.Rows != len(list.Items) {
+		return false, fmt.Errorf("nova-config service list --json: result %q %q exit %d, facts %q rows %d for %d items; first bytes %q",
+			list.Result.Verb, list.Result.Status, list.Result.Exit, list.Facts.Kind, list.Facts.Rows, len(list.Items), firstBytes(out))
 	}
 	found := false
 	for _, item := range list.Items {
 		if item.Kind != "service" || item.Fields.Name == "" {
-			return false, fmt.Errorf("nova-config returned invalid service list")
+			return false, fmt.Errorf("nova-config service list --json: item kind %q name %q is not a named service", item.Kind, item.Fields.Name)
 		}
 		if item.Fields.Name != s.Name {
 			continue
 		}
-		if found || !sameFleetService(item.Fields, s) {
-			return false, &OperationError{Problem: "service " + s.Name + " conflicts with setup", Fix: "inspect nova-config service show " + s.Name, Exit: 1}
+		if found {
+			return false, &OperationError{Problem: "service " + s.Name + " conflicts with setup: nova-config lists it twice", Fix: "remove the duplicate " + s.Name + " service record", Exit: 1}
+		}
+		if !sameFleetService(item.Fields, s) {
+			return false, &OperationError{Problem: edge.RedactN("service "+s.Name+" conflicts with setup: "+fleetServiceDiff(item.Fields, s), edge.CommandMax), Fix: "make the " + s.Name + " service record match setup, or remove it so setup creates it", Exit: 1}
 		}
 		found = true
 	}
 	return found, nil
+}
+
+// fleetServiceDiff names the fields where the record differs from what setup
+// wants; environment differences name the variables, never their values.
+func fleetServiceDiff(got configService, want FleetService) string {
+	keys := append([]string(nil), want.Keys...)
+	sort.Strings(keys)
+	diff := []string{}
+	if got.Machine != want.Machine {
+		diff = append(diff, fmt.Sprintf("machine %q, want %q", got.Machine, want.Machine))
+	}
+	if got.Seat != want.Seat {
+		diff = append(diff, fmt.Sprintf("seat %q, want %q", got.Seat, want.Seat))
+	}
+	if got.Keys != strings.Join(keys, ",") {
+		diff = append(diff, fmt.Sprintf("keys %q, want %q", got.Keys, strings.Join(keys, ",")))
+	}
+	if got.Every != 0 || !got.Keepalive || !got.Enabled || got.Log != "" {
+		diff = append(diff, fmt.Sprintf("every %d keepalive %t enabled %t log %q, want 0 true true \"\"", got.Every, got.Keepalive, got.Enabled, got.Log))
+	}
+	if !reflect.DeepEqual(got.Argv, want.Argv) {
+		diff = append(diff, fmt.Sprintf("argv %q, want %q", strings.Join(got.Argv, " "), strings.Join(want.Argv, " ")))
+	}
+	env := want.Env
+	if env == nil {
+		env = map[string]string{}
+	}
+	if !reflect.DeepEqual(got.Env, env) {
+		names := []string{}
+		for k, v := range got.Env {
+			if w, ok := env[k]; !ok || w != v {
+				names = append(names, k)
+			}
+		}
+		for k := range env {
+			if _, ok := got.Env[k]; !ok {
+				names = append(names, k)
+			}
+		}
+		sort.Strings(names)
+		diff = append(diff, "env differs in "+strings.Join(names, ","))
+	}
+	return strings.Join(diff, "; ")
 }
 func sameFleetService(got configService, want FleetService) bool {
 	keys := append([]string(nil), want.Keys...)
@@ -116,23 +191,32 @@ func (f FleetServices) Ensure(ctx context.Context, s FleetService) (bool, error)
 	if err != nil || found {
 		return false, err
 	}
-	argv, _ := json.Marshal(s.Argv)
+	argv, err := json.Marshal(s.Argv)
+	if err != nil {
+		return false, cause("fleet service argv", err)
+	}
 	env := s.Env
 	if env == nil {
 		env = map[string]string{}
 	}
-	envJSON, _ := json.Marshal(env)
+	envJSON, err := json.Marshal(env)
+	if err != nil {
+		return false, cause("fleet service env", err)
+	}
 	keys := append([]string(nil), s.Keys...)
 	sort.Strings(keys)
-	args := []string{"service", "add", s.Name, "--machine", s.Machine, "--argv", string(argv), "--keepalive", "true", "--enabled", "true", "--env", string(envJSON), "--actor", "nova-sprint", "--reason", "nova-sprint up"}
+	args := []string{"service", "add", s.Name, "--machine", s.Machine, "--argv", string(argv), "--keepalive", "true", "--enabled", "true", "--env", string(envJSON)}
 	if s.Seat != "" {
 		args = append(args, "--seat", s.Seat)
 	}
 	if len(keys) > 0 {
 		args = append(args, "--keys", strings.Join(keys, ","))
 	}
+	if args, err = f.writeArgs(args...); err != nil {
+		return false, err
+	}
 	if _, err = f.command(ctx, "nova-config", args...); err != nil {
-		return false, fmt.Errorf("nova-config service add failed: %w", err)
+		return false, cause("nova-config service add "+s.Name+" failed", err)
 	}
 	return true, nil
 }
@@ -147,11 +231,11 @@ func (f FleetServices) Apply(ctx context.Context, s FleetService) error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("fleet service is absent")
+		return fmt.Errorf("fleet service %s is absent from nova-config service list", s.Name)
 	}
 	_, err = f.command(ctx, "nova-fleet", "services", "--", "-l", s.Machine, "-e", "nova_service_only="+s.Name)
 	if err != nil {
-		return fmt.Errorf("nova-fleet services failed: %w", err)
+		return cause("nova-fleet services "+s.Name+" on "+s.Machine+" failed", err)
 	}
 	return nil
 }

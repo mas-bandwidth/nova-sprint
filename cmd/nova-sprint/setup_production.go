@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -22,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
@@ -35,12 +38,15 @@ type productionSetupConfig struct {
 
 func productionSetupConfigFromEnv() (productionSetupConfig, error) {
 	binary, err := os.Executable()
-	if err != nil || !filepath.IsAbs(binary) {
-		return productionSetupConfig{}, fmt.Errorf("cannot locate nova-sprint")
+	if err != nil {
+		return productionSetupConfig{}, edge.Cause("cannot locate nova-sprint", err)
+	}
+	if !filepath.IsAbs(binary) {
+		return productionSetupConfig{}, fmt.Errorf("cannot locate nova-sprint: %q is not absolute", edge.Redact(binary))
 	}
 	host, err := os.Hostname()
 	if err != nil {
-		return productionSetupConfig{}, fmt.Errorf("cannot determine control machine")
+		return productionSetupConfig{}, edge.Cause("cannot determine control machine", err)
 	}
 	host = strings.SplitN(host, ".", 2)[0]
 	seat := os.Getenv("NOVA_SECRETS_SEAT")
@@ -72,8 +78,34 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 		keys = append(keys, "NOVA_BUS_PASSWORD")
 	}
 	runDSN, _ := setupRoleDSN(cfg.DSN, "nova_sprint")
-	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st}
+	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
+}
+
+// Every seam the engine type-asserts on e.Setup and e.Lock, and the
+// workload the runtime calls, is checked here at build time: a missing
+// method is a build failure, never a refusal on a real fleet.
+var (
+	_ verbs.Setup           = productionSetup{}
+	_ verbs.SetupHandoff    = productionSetup{}
+	_ verbs.SetupCompletion = productionSetup{}
+	_ verbs.SetupLock       = productionSetupLock{}
+	_ verbs.SetupWorkload   = productionWorkload{}
+	_ verbs.Setup           = failedProductionSetup{}
+)
+
+// Completion is the walk's UP DONE line: the configured runtime's own
+// (verbs.RuntimeSetup.Completion), as the saved coordinator.
+func (p productionSetup) Completion(ctx context.Context) (string, error) {
+	actor, _, err := p.runtime.Prerequisites.Env.Choices.Get(ctx, "coordinator")
+	if err != nil {
+		return "", err
+	}
+	r, err := p.configuredRuntime(ctx, verbs.SetupInput{Actor: actor}, true)
+	if err != nil {
+		return "", err
+	}
+	return r.Completion(ctx)
 }
 
 type failedProductionSetup struct{ err error }
@@ -89,6 +121,7 @@ type productionSetup struct {
 	command   verbs.CommandOutput
 	installer publicInstaller
 	resolve   func(context.Context, string) ([]netip.Addr, error) // nil: the system resolver (MagicDNS)
+	home      string                                              // "": the home directory (where this machine's services find nova-sprint)
 }
 
 func (p productionSetup) forInput(in verbs.SetupInput) verbs.RuntimeSetup {
@@ -114,23 +147,19 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 	if step >= 3 && p.cfg.SprintPassword == "" {
 		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "the sprint is not set up (no sprint credential in this process)", Fix: "nova-sprint up --as " + in.Actor, Exit: 1}
 	}
-	if step == 6 {
-		r := p.forInput(in)
-		_, found, err := r.Prerequisites.Env.Choices.Get(ctx, "services")
-		if err != nil {
-			return verbs.SetupCheck{}, err
-		}
-		if !found && in.Services == "" {
-			return verbs.SetupCheck{Line: "UP 6/8 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
-		}
-	}
 	if step >= 4 {
 		r, err := p.configuredRuntime(ctx, in, step >= 5)
 		if err != nil {
 			return verbs.SetupCheck{}, err
 		}
-		if step >= 6 {
-			r.Workload = stopgapWorkload{} // LOCAL DOGFOOD STOPGAP
+		if step == 4 {
+			ready, err := p.ensureServiceVersion(ctx, r.RunService.Machine, false)
+			if err != nil {
+				return verbs.SetupCheck{}, err
+			}
+			if !ready {
+				return verbs.SetupCheck{Action: true}, nil
+			}
 		}
 		if step == 5 {
 			value, found, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
@@ -138,7 +167,7 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 				return verbs.SetupCheck{}, err
 			}
 			if !found && in.Dash == "" && value == "" {
-				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a host with a public IP?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>"}, nil
+				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
 			}
 			ready, err := p.ensurePublicVersion(ctx, r, in, false)
 			if err != nil {
@@ -166,8 +195,10 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 		if err != nil {
 			return err
 		}
-		if step >= 6 {
-			r.Workload = stopgapWorkload{} // LOCAL DOGFOOD STOPGAP
+		if step == 4 {
+			if _, err = p.ensureServiceVersion(ctx, r.RunService.Machine, true); err != nil {
+				return err
+			}
 		}
 		if step == 5 {
 			if _, err = p.ensurePublicVersion(ctx, r, in, true); err != nil {
@@ -191,7 +222,7 @@ func (p productionSetup) configError() error {
 func (p productionSetup) checkControlMachine(ctx context.Context) error {
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return &verbs.OperationError{Problem: "cannot inspect the control machine inventory: " + verbs.Redact(err.Error()), Fix: "fix what nova-config said, then nova-sprint up again", Exit: 2}
+		return verbs.RefusalOr(err, &verbs.OperationError{Problem: "cannot inspect the control machine inventory: " + edge.RedactN(err.Error(), edge.CommandMax), Fix: "fix what nova-config said, then nova-sprint up again", Exit: 2})
 	}
 	for _, machine := range machines {
 		if machine.Name == p.cfg.Host {
@@ -222,14 +253,20 @@ func (p productionSetupLock) Acquire(ctx context.Context) (verbs.SetupLease, err
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, role)
 	if err != nil {
-		return nil, &verbs.OperationError{Problem: "NOVA_PG_DSN is invalid", Fix: "configure a passwordless PostgreSQL URL and run nova-sprint check", Exit: 1}
+		return nil, verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN is invalid: " + edge.RedactN(err.Error(), edge.CommandMax), Fix: "configure a passwordless PostgreSQL URL and run nova-sprint check", Exit: 1})
 	}
 	return (verbs.PGSetupLock{DSN: dsn, Password: password, Host: p.cfg.Host}).Acquire(ctx)
 }
 func setupRoleDSN(dsn, role string) (string, error) {
 	u, err := url.Parse(dsn)
-	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
-		return "", fmt.Errorf("invalid database URL")
+	if err != nil {
+		return "", edge.Cause("invalid database URL", err)
+	}
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return "", fmt.Errorf("invalid database URL: scheme %q is not postgres or postgresql", edge.Redact(u.Scheme))
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("invalid database URL: no host")
 	}
 	if u.User != nil {
 		if _, ok := u.User.Password(); ok {
@@ -238,7 +275,7 @@ func setupRoleDSN(dsn, role string) (string, error) {
 	}
 	for key := range u.Query() {
 		if strings.EqualFold(key, "password") || strings.EqualFold(key, "user") {
-			return "", fmt.Errorf("invalid database URL")
+			return "", fmt.Errorf("invalid database URL: query parameter %q is not allowed", key)
 		}
 	}
 	u.User = url.User(role)
@@ -264,11 +301,11 @@ var handoffActor = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 func handoffDigest(in verbs.SetupInput) (string, error) {
 	values := []string{in.Actor, in.Dash, in.Services, in.Key, in.RunOn, in.Version}
 	if !handoffActor.MatchString(in.Actor) {
-		return "", fmt.Errorf("invalid setup actor")
+		return "", fmt.Errorf("invalid setup actor %q: want 1-128 of A-Z a-z 0-9 . _ -", edge.Redact(in.Actor))
 	}
 	for _, v := range values {
 		if len(v) > 512 {
-			return "", fmt.Errorf("setup argument too long")
+			return "", fmt.Errorf("setup argument too long: %d bytes, over 512", len(v))
 		}
 	}
 	raw, err := json.Marshal(values)
@@ -282,13 +319,13 @@ func handoffDigest(in verbs.SetupInput) (string, error) {
 // PrepareHandoff is called only while the first child's setup lease is held.
 func (p productionSetup) PrepareHandoff(ctx context.Context, in verbs.SetupInput) (string, bool, error) {
 	if p.cfg.SprintPassword != "" && p.cfg.AdminPassword != "" {
-		return "", false, fmt.Errorf("setup credential separation unavailable")
+		return "", false, fmt.Errorf("setup credential separation unavailable: NOVA_SPRINT_PG_PASSWORD and NOVA_PG_ADMIN_PASSWORD are both set")
 	}
 	if p.cfg.SprintPassword != "" {
 		return "", false, nil
 	}
 	if p.cfg.AdminPassword == "" {
-		return "", false, fmt.Errorf("setup credential unavailable")
+		return "", false, fmt.Errorf("setup credential unavailable: NOVA_PG_ADMIN_PASSWORD not set")
 	}
 	if err := p.configError(); err != nil {
 		return "", false, err
@@ -299,7 +336,7 @@ func (p productionSetup) PrepareHandoff(ctx context.Context, in verbs.SetupInput
 	}
 	var random [32]byte
 	if _, err = rand.Read(random[:]); err != nil {
-		return "", false, fmt.Errorf("continuation unavailable")
+		return "", false, edge.Cause("continuation unavailable: random id", err)
 	}
 	request := handoffEnvelope{ID: hex.EncodeToString(random[:]), Actor: in.Actor, Digest: digest}
 	result, err := p.writeHandoffChild(ctx, request)
@@ -307,7 +344,7 @@ func (p productionSetup) PrepareHandoff(ctx context.Context, in verbs.SetupInput
 		return "", false, err
 	}
 	if result != request.ID {
-		return "", false, fmt.Errorf("continuation was not saved")
+		return "", false, fmt.Errorf("continuation was not saved: the child returned id %q, not the one sent", edge.Redact(result))
 	}
 	return result, true, nil
 }
@@ -324,12 +361,15 @@ func (p productionSetup) writeHandoffChild(ctx context.Context, request handoffE
 	var buf boundedOutput
 	err = verbs.OutputWith(cmd, &buf)
 	out := buf.Bytes()
-	if err != nil || len(out) > 128 {
+	if err != nil {
 		return "", fmt.Errorf("continuation could not be saved%s", verbs.ToolDetail(err))
+	}
+	if len(out) > 128 {
+		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output longer than 128 bytes", 128, out))
 	}
 	id := strings.TrimSpace(string(out))
 	if !handoffID.MatchString(id) {
-		return "", fmt.Errorf("continuation could not be saved")
+		return "", fmt.Errorf("continuation could not be saved: %s", edge.ParseRefused("child output is not a 64-hex id", 0, out))
 	}
 	return id, nil
 }
@@ -347,73 +387,94 @@ func continuationEnv(env []string) []string {
 
 // ValidateHandoff is called again while phase 2 holds its fresh setup lease.
 func (p productionSetup) ValidateHandoff(ctx context.Context, id string, in verbs.SetupInput) error {
-	if !handoffID.MatchString(id) || p.cfg.SprintPassword == "" || p.cfg.AdminPassword != "" {
-		return handoffRefusal()
+	if !handoffID.MatchString(id) {
+		return handoffRefusal("the continuation id is not 64 hex")
+	}
+	if p.cfg.SprintPassword == "" || p.cfg.AdminPassword != "" {
+		return handoffRefusal(fmt.Sprintf("wants NOVA_SPRINT_PG_PASSWORD set and NOVA_PG_ADMIN_PASSWORD unset (sprint set %t, admin set %t)", p.cfg.SprintPassword != "", p.cfg.AdminPassword != ""))
 	}
 	digest, err := handoffDigest(in)
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal(edge.Redact(err.Error()))
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal(edge.Redact(err.Error()))
 	}
 	pg, err := store.Open(ctx, dsn, p.cfg.SprintPassword)
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal("open store: " + edge.Redact(err.Error()))
 	}
 	defer pg.Close()
 	identity, err := pg.Schema(ctx)
-	if err != nil || !identity.Current || identity.Owner != "nova_sprint" {
-		return handoffRefusal()
+	if err != nil {
+		return handoffRefusal("schema: " + edge.Redact(err.Error()))
+	}
+	if !identity.Current || identity.Owner != "nova_sprint" {
+		return handoffRefusal(fmt.Sprintf("schema current %t, owner %q, want current and nova_sprint", identity.Current, identity.Owner))
 	}
 	return validateHandoffRecord(ctx, pg, id, in.Actor, digest)
 }
 func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, digest string) error {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
-		return handoffRefusal()
+		return handoffRefusal("snapshot: " + edge.Redact(err.Error()))
 	}
 	record, found, err := findSetupContinuation(ctx, st, snap, id)
-	if err != nil || !found || record.Version != 1 || record.Epoch != snap.Epoch || record.Actor != actor || record.Digest != digest {
-		return handoffRefusal()
+	switch {
+	case err != nil:
+		return handoffRefusal(edge.Redact(err.Error()))
+	case !found:
+		return handoffRefusal("no continuation recorded with this id")
+	case record.Version != 1 || record.Epoch != snap.Epoch:
+		return handoffRefusal(fmt.Sprintf("recorded version %d epoch %d, want version 1 epoch %d", record.Version, record.Epoch, snap.Epoch))
+	case record.Actor != actor:
+		return handoffRefusal(fmt.Sprintf("recorded for actor %q, not %q", edge.Redact(record.Actor), edge.Redact(actor)))
+	case record.Digest != digest:
+		return handoffRefusal("the setup arguments differ from the ones recorded")
 	}
 	return nil
 }
-func handoffRefusal() error {
-	return &verbs.OperationError{Problem: "setup continuation is invalid or stale", Fix: "run nova-sprint up again", Exit: 1}
+func handoffRefusal(why string) error {
+	return &verbs.OperationError{Problem: edge.RedactN("setup continuation is invalid or stale: "+why, edge.FailureMax), Fix: "run nova-sprint up again", Exit: 1}
 }
 
 // writeSetupContinuation is called in a sprint-secret child while the parent
 // holds the setup lease. Only the non-secret ID is returned.
 func writeSetupContinuation(ctx context.Context, st store.Store, input io.Reader, at time.Time) (string, error) {
 	data, err := io.ReadAll(io.LimitReader(input, 1025))
-	if err != nil || len(data) > 1024 {
-		return "", fmt.Errorf("invalid continuation request")
+	if err != nil {
+		return "", edge.Cause("invalid continuation request: read", err)
+	}
+	if len(data) > 1024 {
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("longer than 1024 bytes", 1024, data))
 	}
 	var request handoffEnvelope
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&request); err != nil || !handoffID.MatchString(request.ID) || !handoffID.MatchString(request.Digest) || !handoffActor.MatchString(request.Actor) {
-		return "", fmt.Errorf("invalid continuation request")
+	if err := dec.Decode(&request); err != nil {
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseFailure(err, data))
+	}
+	if !handoffID.MatchString(request.ID) || !handoffID.MatchString(request.Digest) || !handoffActor.MatchString(request.Actor) {
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("id, digest or actor is not well formed", 0, data))
 	}
 	var extra any
 	if err := dec.Decode(&extra); err != io.EOF {
-		return "", fmt.Errorf("invalid continuation request")
+		return "", fmt.Errorf("invalid continuation request: %s", edge.ParseRefused("more than one request", int(dec.InputOffset()), data))
 	}
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
-		return "", fmt.Errorf("continuation unavailable")
+		return "", edge.Cause("continuation unavailable: snapshot", err)
 	}
 	existing, found, err := findSetupContinuation(ctx, st, snap, request.ID)
 	if err != nil {
-		return "", fmt.Errorf("continuation unavailable")
+		return "", edge.Cause("continuation unavailable", err)
 	}
 	if found {
 		if existing.Version == 1 && existing.Epoch == snap.Epoch && existing.Actor == request.Actor && existing.Digest == request.Digest {
 			return request.ID, nil
 		}
-		return "", fmt.Errorf("continuation unavailable")
+		return "", fmt.Errorf("continuation unavailable: id %s is already recorded with other content", request.ID[:12])
 	}
 	record := handoffRecord{Version: 1, Epoch: snap.Epoch, Actor: request.Actor, Digest: request.Digest}
 	body, err := json.Marshal(record)
@@ -431,25 +492,25 @@ func applyHandoff(ctx context.Context, st store.Store, op store.Op) error {
 		receipt, err := st.Apply(ctx, op)
 		if err == nil {
 			if !receipt.Accepted {
-				return fmt.Errorf("continuation refused")
+				return fmt.Errorf("continuation refused: %s", edge.Redact(cmp.Or(receipt.Reason, "no reason given")))
 			}
 			return nil
 		}
 		if !errors.Is(err, store.ErrUnknown) {
-			return fmt.Errorf("continuation unavailable")
+			return edge.Cause("continuation unavailable: apply", err)
 		}
 		receipt, found, err := st.Replay(ctx, op.ID)
 		if err != nil {
-			return fmt.Errorf("continuation unavailable")
+			return edge.Cause("continuation unavailable: replay", err)
 		}
 		if found {
 			if !receipt.Accepted {
-				return fmt.Errorf("continuation refused")
+				return fmt.Errorf("continuation refused: %s", edge.Redact(cmp.Or(receipt.Reason, "no reason given")))
 			}
 			return nil
 		}
 	}
-	return fmt.Errorf("continuation unavailable")
+	return fmt.Errorf("continuation unavailable: apply outcome unknown after 3 tries and no replay found")
 }
 func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snapshot, id string) (handoffRecord, bool, error) {
 	cursor := int64(0)
@@ -457,8 +518,11 @@ func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snaps
 	var result handoffRecord
 	for cursor < snap.Seq {
 		events, err := st.Events(ctx, cursor, store.MaxEvents)
-		if err != nil || len(events) == 0 {
-			return result, false, fmt.Errorf("continuation history unavailable")
+		if err != nil {
+			return result, false, edge.Cause("continuation history unavailable", err)
+		}
+		if len(events) == 0 {
+			return result, false, fmt.Errorf("continuation history unavailable: no events after seq %d, snapshot at %d", cursor, snap.Seq)
 		}
 		advanced := false
 		for _, event := range events {
@@ -466,7 +530,7 @@ func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snaps
 				break
 			}
 			if event.Seq != cursor+1 {
-				return result, false, fmt.Errorf("continuation history invalid")
+				return result, false, fmt.Errorf("continuation history invalid: seq %d follows %d", event.Seq, cursor)
 			}
 			cursor = event.Seq
 			advanced = true
@@ -477,18 +541,24 @@ func findSetupContinuation(ctx context.Context, st store.Store, snap store.Snaps
 				if policy.Name != "setup:continuation:"+id {
 					continue
 				}
-				if policy.Kind != "data" || policy.Active || json.Unmarshal([]byte(policy.Body), &result) != nil || policy.Actor != result.Actor {
-					return result, false, fmt.Errorf("continuation invalid")
+				if policy.Kind != "data" || policy.Active {
+					return result, false, fmt.Errorf("continuation invalid: seq %d policy kind %q active %t, want data and inactive", event.Seq, policy.Kind, policy.Active)
+				}
+				if err := json.Unmarshal([]byte(policy.Body), &result); err != nil {
+					return result, false, fmt.Errorf("continuation invalid: seq %d: %s", event.Seq, edge.ParseFailure(err, []byte(policy.Body)))
+				}
+				if policy.Actor != result.Actor {
+					return result, false, fmt.Errorf("continuation invalid: seq %d written by %q, records actor %q", event.Seq, edge.Redact(policy.Actor), edge.Redact(result.Actor))
 				}
 				count++
 			}
 		}
 		if !advanced {
-			return result, false, fmt.Errorf("continuation history incomplete")
+			return result, false, fmt.Errorf("continuation history incomplete: stopped at seq %d, snapshot at %d", cursor, snap.Seq)
 		}
 	}
 	if count > 1 {
-		return result, false, fmt.Errorf("continuation duplicated")
+		return result, false, fmt.Errorf("continuation duplicated: %d records", count)
 	}
 	return result, count == 1, nil
 }
@@ -519,34 +589,46 @@ type setupServicesResponse struct {
 func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, error) {
 	call := p.command
 	if call == nil {
-		call = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-			return exec.CommandContext(ctx, name, args...).Output()
-		}
+		call = verbs.Output
 	}
 	out, err := call(ctx, "nova-config", "service", "list", "--json")
-	if err != nil || len(out) > 1<<20 {
-		return nil, serviceConfigError("cannot inspect fleet services")
+	if err != nil {
+		return nil, serviceConfigFailure("cannot inspect fleet services: ", err)
+	}
+	if len(out) > 1<<20 {
+		return nil, serviceConfigError("cannot inspect fleet services: " + edge.ParseRefused("output longer than 1 MiB", 1<<20, out))
 	}
 	var response setupServicesResponse
-	if json.Unmarshal(out, &response) != nil || response.Result.Verb != "service list" || response.Result.Status != "ok" || response.Result.Exit != 0 || response.Facts.Kind != "service" || response.Facts.Rows != len(response.Items) {
-		return nil, serviceConfigError("fleet service response is invalid")
+	if err := json.Unmarshal(out, &response); err != nil {
+		return nil, serviceConfigError("fleet service response is invalid: " + edge.ParseFailure(err, out))
+	}
+	if response.Result.Verb != "service list" || response.Result.Status != "ok" || response.Result.Exit != 0 || response.Facts.Kind != "service" || response.Facts.Rows != len(response.Items) {
+		return nil, serviceConfigError(fmt.Sprintf("fleet service response is invalid: result %q %q exit %d, facts kind %q rows %d for %d items", response.Result.Verb, response.Result.Status, response.Result.Exit, response.Facts.Kind, response.Facts.Rows, len(response.Items)))
 	}
 	rows := make([]setupServiceRow, 0, len(response.Items))
 	seen := map[string]bool{}
-	for _, item := range response.Items {
+	for i, item := range response.Items {
 		if item.Kind != "service" || item.Fields.Name == "" || seen[item.Fields.Name] {
-			return nil, serviceConfigError("fleet service response is invalid")
+			return nil, serviceConfigError(fmt.Sprintf("fleet service response is invalid: item %d kind %q name %q (empty or repeated)", i, item.Kind, item.Fields.Name))
 		}
 		seen[item.Fields.Name] = true
 		rows = append(rows, item.Fields)
 	}
 	return rows, nil
 }
-func serviceConfigError(problem string) error {
-	return &verbs.OperationError{Problem: problem, Fix: "inspect nova-config service list --json and nova-fleet help services", Exit: 1}
+
+// serviceConfigFailure is err when it already is a refusal with its own
+// problem and fix (errors.As), else a service configuration refusal
+// carrying err's text after what.
+func serviceConfigFailure(what string, err error) error {
+	var op *verbs.OperationError
+	if errors.As(err, &op) {
+		return err
+	}
+	return serviceConfigError(what + err.Error())
 }
-func workloadUnavailable() error {
-	return &verbs.OperationError{Problem: "worker setup is unavailable in this build", Fix: "install a build with the verified worker setup adapter", Exit: 2}
+func serviceConfigError(problem string) error {
+	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.FailureMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
 }
 func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupInput, needDashboard bool) (verbs.RuntimeSetup, error) {
 	r := p.forInput(in)
@@ -565,7 +647,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	}
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return r, serviceConfigError("cannot inspect machine inventory")
+		return r, serviceConfigFailure("cannot inspect machine inventory: ", err)
 	}
 	found := false
 	for _, machine := range machines {
@@ -588,12 +670,16 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 		return r, err
 	}
 	expectedDSN, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
-	if err != nil || run.Env["NOVA_PG_DSN"] != expectedDSN {
+	if err != nil {
+		return r, verbs.RefusalOr(err, serviceConfigError("sprint-run must name the configured passwordless sprint DSN: the configured DSN: "+err.Error()))
+	}
+	if run.Env["NOVA_PG_DSN"] != expectedDSN {
 		return r, serviceConfigError("sprint-run must name the configured passwordless sprint DSN")
 	}
 	r.RunService = run
 	r.DefaultRunHost = host
 	r.Services = verbs.FleetServices{Command: p.command}
+	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 7/8 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion}
 	if !needDashboard {
 		return r, nil
 	}
@@ -652,15 +738,25 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 		return verbs.FleetService{}, serviceConfigError("run host needs a private-network address (a tailnet IP or name) in the inventory")
 	}
 	busHost, busPort, err := net.SplitHostPort(p.cfg.BusRedis)
-	port, portErr := strconv.Atoi(busPort)
-	if err != nil || portErr != nil || busHost == "" || port < 1 || port > 65535 {
-		return verbs.FleetService{}, serviceConfigError("NOVA_BUS_REDIS must name the configured Redis host and port")
+	if err != nil {
+		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("NOVA_BUS_REDIS must name the configured Redis host and port: "+err.Error()))
+	}
+	port, err := strconv.Atoi(busPort)
+	if err != nil {
+		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("NOVA_BUS_REDIS must name the configured Redis host and port: "+err.Error()))
+	}
+	if busHost == "" || port < 1 || port > 65535 {
+		return verbs.FleetService{}, serviceConfigError(fmt.Sprintf("NOVA_BUS_REDIS must name the configured Redis host and port (host %q, port %d)", busHost, port))
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return verbs.FleetService{}, serviceConfigError("configured sprint DSN is invalid")
+		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("configured sprint DSN is invalid: "+err.Error()))
 	}
-	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis}
+	// run records the chooser lock under the machine's nova-config name,
+	// handed here, never under the raw hostname (run.ResolveMachine).
+	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis, run.MachineEnv: host}
+	// run's forge and git act as the host's gh identity (intent rule 32);
+	// no GitHub token is required of the service.
 	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
 	if p.cfg.BusUser != "" {
 		env["NOVA_BUS_USER"] = p.cfg.BusUser
@@ -715,10 +811,18 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	}
 	target, ok := r.Dashboards[choice]
 	if !ok || target.Service == nil {
-		return false, serviceConfigError("public dashboard configuration unavailable")
+		return false, serviceConfigError(fmt.Sprintf("dashboard choice %q has no public service configured", choice))
 	}
-	host := target.Service.Machine
-	if err = p.checkPublicVersion(ctx, host); err == nil {
+	return p.ensureServiceVersion(ctx, target.Service.Machine, install)
+}
+
+// ensureServiceVersion is true when the nova-sprint a service on machine
+// will run is this binary's version. A probe that disagrees is (false,
+// nil) unless install, which installs this version through nova-fleet and
+// probes again; the probe's own refusal is returned when that fails too.
+func (p productionSetup) ensureServiceVersion(ctx context.Context, machine string, install bool) (bool, error) {
+	err := p.checkServiceVersion(ctx, machine)
+	if err == nil {
 		return true, nil
 	}
 	if ctx.Err() != nil {
@@ -727,41 +831,98 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	if !install {
 		return false, nil
 	}
-	if p.installer == nil || p.installer.Install(ctx, host, p.cfg.BinaryVersion) != nil {
+	if p.installer == nil || !publicRelease.MatchString(p.cfg.BinaryVersion) {
 		return false, err
 	}
-	if err = p.checkPublicVersion(ctx, host); err != nil {
+	if installErr := p.installer.Install(ctx, machine, p.cfg.BinaryVersion); installErr != nil {
+		return false, serviceVersionRefusal(p.cfg.BinaryVersion, machine, "nova-fleet install on "+machine+" failed: "+installErr.Error())
+	}
+	if err = p.checkServiceVersion(ctx, machine); err != nil {
 		return false, err
 	}
 	return true, nil
 }
-func (p productionSetup) checkPublicVersion(ctx context.Context, host string) error {
+
+// serviceBinDir is where a service's bare nova-sprint is found first:
+// nova-fleet's nova_bin_dir, the head of every service unit's PATH and
+// where nova-fleet install puts a release.
+const serviceBinDir = ".local/bin"
+
+// checkServiceVersion is the one check that the nova-sprint a service on
+// machine will run (<home>/.local/bin/nova-sprint) is this binary's
+// version: run here when machine is this one, else over ssh to the
+// inventory's address for it; its output read by the version verb's own
+// parser (verbs.ParseVersionOutput).
+func (p productionSetup) checkServiceVersion(ctx context.Context, machine string) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	data, err := p.smallCommand(ctx, "nova-config", "inventory", "--host", host)
+	want := p.cfg.BinaryVersion
+	if want == "" {
+		return serviceVersionRefusal(want, machine, "this build has no version to compare")
+	}
+	var data []byte
+	var err error
+	destination := machine
+	if run.SameMachine(machine, p.cfg.Host) {
+		home := p.home
+		if home == "" {
+			home, err = os.UserHomeDir()
+			if err != nil {
+				return serviceVersionRefusal(want, machine, "home directory: "+err.Error())
+			}
+		}
+		binary := filepath.Join(home, serviceBinDir, "nova-sprint")
+		if data, err = p.smallCommand(ctx, binary, "version"); err != nil {
+			return serviceVersionRefusal(want, machine, binary+" version: "+err.Error())
+		}
+	} else {
+		if destination, err = p.sshDestination(ctx, machine); err != nil {
+			return serviceVersionRefusal(want, machine, err.Error())
+		}
+		data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "~/"+serviceBinDir+"/nova-sprint", "version")
+		if err != nil {
+			return serviceVersionRefusal(want, machine, "ssh "+destination+": "+err.Error())
+		}
+	}
+	seen, err := verbs.ParseVersionOutput(data)
+	if err != nil {
+		seen = fmt.Sprintf("%q (not a v2 nova-sprint)", strings.TrimSpace(edge.FirstBytes(data)))
+	}
+	if seen != want {
+		return serviceVersionRefusal(want, machine, destination+" reports "+seen+", this binary is "+want)
+	}
+	return nil
+}
+
+// sshDestination is the inventory's [user@]address for machine.
+func (p productionSetup) sshDestination(ctx context.Context, machine string) (string, error) {
+	data, err := p.smallCommand(ctx, "nova-config", "inventory", "--host", machine)
+	if err != nil {
+		return "", fmt.Errorf("nova-config inventory --host %s: %s", machine, err.Error())
+	}
 	var inventory struct {
 		Host string `json:"ansible_host"`
 		User string `json:"ansible_user"`
 	}
-	if err == nil {
-		err = json.Unmarshal(data, &inventory)
+	if err = json.Unmarshal(data, &inventory); err != nil {
+		return "", fmt.Errorf("nova-config inventory --host %s: %s", machine, edge.ParseFailure(err, data))
 	}
-	if err == nil && safeSSHName(inventory.Host) && (inventory.User == "" || (safeSSHName(inventory.User) && !strings.Contains(inventory.User, ":"))) {
-		destination := inventory.Host
-		if inventory.User != "" {
-			destination = inventory.User + "@" + destination
-		}
-		data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "nova-sprint", "version")
-		first, _, _ := strings.Cut(string(data), "\n")
-		first = strings.TrimPrefix(first, "nova-sprint ")
-		if err == nil && p.cfg.BinaryVersion != "" && first == p.cfg.BinaryVersion {
-			return nil
-		}
-		if err == nil {
-			err = fmt.Errorf("%s reports %q, this binary is %q", destination, first, p.cfg.BinaryVersion)
-		}
+	if !safeSSHName(inventory.Host) || (inventory.User != "" && (!safeSSHName(inventory.User) || strings.Contains(inventory.User, ":"))) {
+		return "", fmt.Errorf("nova-config inventory --host %s: ansible_host %q or ansible_user %q is not a safe ssh name", machine, inventory.Host, inventory.User)
 	}
-	return &verbs.OperationError{Problem: fmt.Sprintf("public host nova-sprint version could not be verified: %v", err), Fix: "install nova-sprint " + p.cfg.BinaryVersion + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
+	if inventory.User != "" {
+		return inventory.User + "@" + inventory.Host, nil
+	}
+	return inventory.Host, nil
+}
+func serviceVersionRefusal(version, machine, why string) error {
+	return &verbs.OperationError{Problem: edge.RedactN("nova-sprint on "+machine+" is not this version: "+why, edge.FailureMax), Fix: "nova-fleet install --repo <org/repo> --tag " + orWord(version, "<v>") + " " + machine + ", then nova-sprint up again", Exit: 1}
+}
+func orWord(s, or string) string {
+	if s == "" {
+		return or
+	}
+	return s
 }
 
 func safeSSHName(value string) bool {
@@ -820,7 +981,7 @@ func productionFleetCommandWith(cfg productionSetupConfig, run func(context.Cont
 		}
 		dsn, err := setupRoleDSN(cfg.DSN, "nova_config")
 		if err != nil {
-			return nil, fmt.Errorf("nova-config DSN unavailable")
+			return nil, edge.Cause("nova-config DSN unavailable", err)
 		}
 		s := cfg.Secrets
 		prefix := []string{"exec", "--only", "NOVA_PG_PASSWORD", "--store", s.Store, "--key", s.KeyFile, "--as", s.Seat, "--", "env", "NOVA_PG_DSN=" + dsn, "NOVA_PG_PASSWORD_ENV=NOVA_PG_PASSWORD", name}
@@ -832,7 +993,7 @@ type boundedOutput struct{ bytes.Buffer }
 
 func (b *boundedOutput) Write(data []byte) (int, error) {
 	if b.Len()+len(data) > 1<<20 {
-		return 0, fmt.Errorf("command output exceeds limit")
+		return 0, fmt.Errorf("command output exceeds limit of %d bytes", 1<<20)
 	}
 	return b.Buffer.Write(data)
 }
@@ -845,9 +1006,12 @@ func selectRunService(rows []setupServiceRow, host string) (verbs.FleetService, 
 			return verbs.FleetService{}, false
 		}
 		for key := range row.Env {
-			if key != "NOVA_PG_DSN" && key != "NOVA_BUS_REDIS" && key != "NOVA_BUS_USER" && key != "NOVA_PG_PASSWORD_ENV" {
+			if key != "NOVA_PG_DSN" && key != "NOVA_BUS_REDIS" && key != "NOVA_BUS_USER" && key != "NOVA_PG_PASSWORD_ENV" && key != run.MachineEnv {
 				return verbs.FleetService{}, false
 			}
+		}
+		if value, ok := row.Env[run.MachineEnv]; ok && value != host {
+			return verbs.FleetService{}, false
 		}
 		if value, ok := row.Env["NOVA_PG_PASSWORD_ENV"]; ok && value != "NOVA_SPRINT_PG_PASSWORD" {
 			return verbs.FleetService{}, false
@@ -873,9 +1037,15 @@ func splitServiceKeys(raw string) []string {
 }
 func privateDashboardURL(listen string) (string, error) {
 	host, port, err := net.SplitHostPort(listen)
-	number, parseErr := strconv.Atoi(port)
-	if err != nil || parseErr != nil || number < 1 || number > 65535 {
-		return "", serviceConfigError("sprint-run needs an explicit private-network listener")
+	if err != nil {
+		return "", verbs.RefusalOr(err, serviceConfigError("sprint-run needs an explicit private-network listener: "+err.Error()))
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil {
+		return "", verbs.RefusalOr(err, serviceConfigError("sprint-run needs an explicit private-network listener: "+err.Error()))
+	}
+	if number < 1 || number > 65535 {
+		return "", serviceConfigError(fmt.Sprintf("sprint-run needs an explicit private-network listener: port %d is out of range", number))
 	}
 	if ip, err := netip.ParseAddr(host); err == nil && isTailnetIP(ip) || err != nil && tailnetName.MatchString(host) {
 		return "http://" + net.JoinHostPort(host, port), nil
@@ -924,28 +1094,39 @@ func (p productionSetup) runAddress(ctx context.Context, address string) string 
 func isTailnetIP(ip netip.Addr) bool {
 	return netip.MustParsePrefix("100.64.0.0/10").Contains(ip) || netip.MustParsePrefix("fd7a:115c:a1e0::/48").Contains(ip)
 }
+
+// publicDashboardTarget is the board for --dash public=<machine>[:<port>]:
+// the machine by its nova-config name, its public address (nova-config's
+// optional machine field "public"; fleet addresses are MagicDNS names by
+// design), and the URL the board answers on: <port> when given (a fleet
+// that fronts public services on 80), else the service's own listener. The
+// service keeps listening on its own port (:8080) behind any front.
 func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMachine, rows []setupServiceRow, privateURL string) (verbs.DashboardTarget, error) {
+	name, front, err := splitPublicChoice(chosen)
+	if err != nil {
+		return verbs.DashboardTarget{}, err
+	}
 	var machine *verbs.FleetMachine
 	for i := range machines {
-		if name, _, _ := strings.Cut(chosen, "="); machines[i].Name == name || machines[i].Address == chosen {
-			if machine != nil {
-				return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is ambiguous")
-			}
+		if machines[i].Name == name {
 			machine = &machines[i]
 		}
 	}
-	if machine == nil || machine.Name == runMachine { // LOCAL: Glenn 2026-11-07, a public host may be a bench
-		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is absent, hosts run, or is also a bench")
+	switch {
+	case machine == nil:
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "no machine named " + name + " in nova-config", Fix: "nova-config machine list", Exit: 1}
+	case run.SameMachine(machine.Name, runMachine):
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: machine.Name + " runs the sprint; the public dashboard goes on another machine", Fix: "--dash public=<other>", Exit: 1}
+	case machine.Public == "":
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "machine " + machine.Name + " has no public address in nova-config", Fix: "nova-config machine set " + machine.Name + " --public <ip> --actor <you> --reason <why>", Exit: 1}
 	}
-	// LOCAL DOGFOOD STOPGAP (2026-11-07): until nova-tools ships the machine
-	// field `public`, the public address rides in the choice as <machine>=<ip>.
-	publicSource := machine.Address
-	if _, ip, ok := strings.Cut(chosen, "="); ok {
-		publicSource = ip
+	publicFix := "nova-config machine set " + machine.Name + " --public <ip> --actor <you> --reason <why>"
+	publicIP, err := netip.ParseAddr(machine.Public)
+	if err != nil {
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("machine %s's public address %q in nova-config is not an IP: %s", machine.Name, machine.Public, edge.ParseFailure(err, []byte(machine.Public))), edge.FailureMax), Fix: publicFix, Exit: 1}
 	}
-	publicIP, err := netip.ParseAddr(publicSource)
-	if err != nil || !publicIP.IsGlobalUnicast() || publicIP.IsPrivate() || isTailnetIP(publicIP) {
-		return verbs.DashboardTarget{}, serviceConfigError(fmt.Sprintf("public dashboard host %s needs a public IP in inventory; its address is %q", machine.Name, machine.Address))
+	if !publicIP.IsGlobalUnicast() || publicIP.IsPrivate() || isTailnetIP(publicIP) {
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("machine %s's public address %q in nova-config is not a public IP", machine.Name, machine.Public), edge.FailureMax), Fix: publicFix, Exit: 1}
 	}
 	var candidate *verbs.FleetService
 	port := ""
@@ -970,7 +1151,29 @@ func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMach
 		service := verbs.FleetService{Name: "sprint-dashboard", Machine: machine.Name, Argv: []string{"/usr/bin/env", "nova-sprint", "dash", "--pull", privateURL, "--listen", ":8080"}}
 		candidate, port = &service, "8080"
 	}
+	if front != "" {
+		port = front
+	}
 	return verbs.DashboardTarget{URL: "http://" + net.JoinHostPort(publicIP.String(), port), Public: true, Service: candidate}, nil
+}
+
+// splitPublicChoice is <machine>[:<port>] from --dash public=: the machine
+// name and the port the board is fronted on ("" when not given).
+func splitPublicChoice(chosen string) (string, string, error) {
+	name, port, hasPort := strings.Cut(chosen, ":")
+	if hasPort {
+		number, err := strconv.Atoi(port)
+		if err != nil {
+			return "", "", &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("--dash public=%s: port %q is not a number: %s", chosen, port, edge.ParseFailure(err, []byte(port))), edge.FailureMax), Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+		}
+		if number < 1 || number > 65535 || strconv.Itoa(number) != port {
+			return "", "", &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("--dash public=%s: port %q is not 1-65535", chosen, port), edge.FailureMax), Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+		}
+	}
+	if name == "" {
+		return "", "", &verbs.OperationError{Problem: "--dash public= names no machine", Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+	}
+	return name, port, nil
 }
 func isDashboardService(argv []string) bool {
 	return (len(argv) > 1 && argv[1] == "dash") || (len(argv) > 2 && argv[0] == "/usr/bin/env" && argv[1] == "nova-sprint" && argv[2] == "dash")

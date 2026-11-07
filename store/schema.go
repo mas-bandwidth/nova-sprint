@@ -11,17 +11,20 @@ import (
 )
 
 // schemaRound is the review round whose schema.sql this binary carries: round
-// 25 added cards.usage and sprint.balances (22 dropped the five
-// configuration columns of sprint.rows, 17 added cards.red; no round between
-// changed the schema).
-const schemaRound = 25
+// 26 added the epoch row's commit_name and commit_email (the sprint's commit
+// identity; v2-stitch's round 24, renumbered past the deployed line's 25 at
+// the merge of 2026-11-07); 25 added cards.usage and sprint.balances; 23
+// added cards.model and the row heartbeat's four columns of sprint.rows (22
+// dropped the five configuration columns of sprint.rows; 17 added
+// cards.red; no round between changed the schema).
+const schemaRound = 26
 
 // SchemaIdentity is what CheckSchema found in a database. Expected is the
 // schema hash this binary carries, the one Migrate records (the only place it
 // is computed, hashSchema); Hash is the one sprint.meta records ("" when there
 // is none). Present is schema sprint existing at all. Current is a store at
 // SchemaVersion made by this binary's schema; KnownOlder is one Migrate
-// upgrades in place (round16Hash, round21Hash, round24Hash). Round is the round whose schema made the
+// upgrades in place (round16Hash, round21Hash, round22Hash, round23Hash, round24Hash, round25Hash). Round is the round whose schema made the
 // store (0 when it is neither). Owner is the role that owns schema sprint.
 type SchemaIdentity struct {
 	Present    bool
@@ -70,8 +73,7 @@ func readMeta(ctx context.Context, q queryRower) (version int, hash string, foun
 }
 
 // metaRefusal is why Migrate refuses a store at version and hash, naming the
-// fix, or nil when it takes it (this binary's hash, round16Hash, round21Hash
-// or round24Hash).
+// fix, or nil when it takes it (this binary's hash or a knownOlder one).
 func metaRefusal(version int, hash string) error {
 	if version != SchemaVersion {
 		return fmt.Errorf("the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", version, SchemaVersion, version)
@@ -95,7 +97,7 @@ func CheckSchema(ctx context.Context, dsn string) (SchemaIdentity, error) {
 	id := SchemaIdentity{Expected: schemaHash}
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return id, errors.New("store: check schema: the postgres dsn could not be parsed") // its text may hold a password
+		return id, dsnParseError("store: check schema: the postgres dsn could not be parsed", err)
 	}
 	c, err := pgx.ConnectConfig(ctx, cfg)
 	var pe *pgconn.PgError
@@ -165,11 +167,16 @@ func identify(ctx context.Context, q queryRower) (SchemaIdentity, error) {
 		return id, fmt.Errorf("store: check schema: %w", err)
 	}
 	id.Current, id.KnownOlder = hash == schemaHash, knownOlder(hash)
-	id.Round = map[string]int{schemaHash: schemaRound, round16Hash: 16, round21Hash: 17, round24Hash: 22}[hash] // round 17's schema carried to 21, round 22's to 24
+	id.Round = map[string]int{schemaHash: schemaRound, round16Hash: 16, round21Hash: 17, round22Hash: 22, round23Hash: 23, round24Hash: 24, round25Hash: 25}[hash] // round 17's schema, carried to 21
 	return id, nil
 }
 
-// knownOlder says hash is a schema Migrate upgrades in place.
+// knownOlder says whether hash is an earlier build of this version that
+// Migrate upgrades in place.
 func knownOlder(hash string) bool {
-	return hash == round16Hash || hash == round21Hash || hash == round24Hash
+	switch hash {
+	case round16Hash, round21Hash, round22Hash, round23Hash, round24Hash, round25Hash:
+		return true
+	}
+	return false
 }

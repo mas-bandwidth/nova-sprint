@@ -5,6 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/store"
+	"maps"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,11 +20,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/mas-bandwidth/nova-sprint/card"
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
-	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 var (
@@ -42,23 +42,39 @@ type (
 		Cause     error
 	}
 	GitOps interface {
+		// Fetch brings j's repo's work clone up to date from its origin
+		// (making it on first use). A pass fetches each repo it stages from
+		// once, before any of its jobs stage (defect 72).
+		Fetch(ctx context.Context, j Job) error
+		// StageWorktree makes j's worktree from the work clone as the last
+		// Fetch left it; it fetches nothing.
 		StageWorktree(ctx context.Context, j Job) (headSHA string, err error)
+		// BranchTip is j's branch on origin as the last Fetch left it in the
+		// work clone: its sha, or "" when the branch does not exist. A work
+		// job's first push leases from it (defect 78).
+		BranchTip(ctx context.Context, j Job) (string, error)
 		HeadSHA(ctx context.Context, worktree string) (string, error)
-		Push(ctx context.Context, worktree, branch, headSHA string) error
+		// Push moves branch on the worktree's origin to headSHA only while
+		// the branch is at expect ("" : the branch does not exist yet), by
+		// lease (--force-with-lease=refs/heads/<branch>:<expect>); never a
+		// plain force (defect 78: a stale job's force push rewound the new
+		// holder's branch).
+		Push(ctx context.Context, worktree, branch, headSHA, expect string) error
 		RebaseOntoStream(ctx context.Context, worktree, streamRef string) (newSHA string, err error)
-		OriginHasHead(ctx context.Context, repo, branch, sha string) (bool, error)
+		OriginHasHead(ctx context.Context, worktree, branch, sha string) (bool, error)
 		IsDirty(ctx context.Context, worktree string) (bool, error)
+		// CommitAll commits every change in the worktree (git add -A) with
+		// message, under the worktree's configured identity; the new head.
+		CommitAll(ctx context.Context, worktree, message string) (string, error)
 		RemoveWorktree(ctx context.Context, worktree string) error
 	}
-	ForgeOps interface {
-		EnsurePR(ctx context.Context, repo, branch, base, headSHA, title string) (int, error)
-	}
-	ForgeAdapter  struct{ Client forge.Forge }
 	WallRunResult struct {
-		ExitCode, PID int
-		Output        []byte
-		Nonce         string
-		Elapsed       time.Duration
+		ExitCode, PID  int
+		Output         []byte // stdout then stderr, as the classifier reads it
+		Stdout, Stderr []byte
+		Argv           []string // the wall's command line as run
+		Nonce          string
+		Elapsed        time.Duration
 	}
 	ReserveWall interface {
 		RunHarness(ctx context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error)
@@ -74,13 +90,6 @@ type (
 func (e *ConflictError) Error() string { return "rebase conflict: " + strings.Join(e.Files, ", ") }
 func (e *FetchError) Error() string    { return fmt.Sprintf("fetch %s failed: %v", e.StreamRef, e.Cause) }
 func (e *FetchError) Unwrap() error    { return e.Cause }
-func (a *ForgeAdapter) EnsurePR(ctx context.Context, repo, branch, base, headSHA, title string) (int, error) {
-	if a == nil || a.Client == nil {
-		return 0, errors.New("forge client not configured")
-	}
-	info, err := a.Client.OpenPR(ctx, repo, branch, base, title, headSHA)
-	return info.Number, err
-}
 func (OSProcessTable) Alive(pid int, nonce string) bool {
 	if pid <= 0 || pid == os.Getpid() || strings.TrimSpace(nonce) == "" || syscall.Kill(pid, 0) != nil {
 		return false
@@ -111,10 +120,8 @@ func (p OSProcessTable) Kill(pid int, nonce string, grace time.Duration) error {
 
 type Runner struct {
 	Host, RootDir, StateDir, ProxyAddr string
-	CoordinatorHosts                   []string
 	Sprint                             SprintClient
 	Git                                GitOps
-	Forges                             map[string]ForgeOps
 	BusHook                            BusHookStarter
 	Wall                               ReserveWall
 	Procs                              ProcessTable
@@ -124,23 +131,44 @@ type Runner struct {
 	DefaultHarness                     Harness
 	Timeouts                           Timeouts
 	Logger                             *StepLogger
-	Now                                func() time.Time
-	Sleep                              func(time.Duration)
-	mu                                 *sync.Mutex
-	SkipPR                             bool            // the worker never opens a PR: the landing does (71); serve sets it
-	fatal                              chan error      // a refused receipt from a detached job ends the wake loop (66)
-	jobs                               *sync.WaitGroup // every job a pass launched, waited for when the loop ends
-	probed, withdrawn                  map[string]bool
-	adopted                            map[string]JobRecord
-	running                            map[string]context.CancelFunc
-	dedup                              *edge.Deduplicator
-	backoffSeq                         uint64
+	Warn                               func(string) // a best-effort step's failure; nil: stderr
+	// Meter and Beater, both set, make ServeRow push a heartbeat every
+	// BeatEvery (the const when zero); a worker without them beats not at all.
+	Meter     Meter
+	Beater    Beater
+	BeatEvery time.Duration
+	Now       func() time.Time
+	Sleep     func(time.Duration)
+	// After is the clock's timer (time.After in the binary): the wake
+	// loop's periodic pass every WakeEvery (WakeEvery const when zero) and
+	// the probe's backoff wait on it. nil: no periodic pass, and waits are
+	// Sleep (a unit test drives the passes itself).
+	After     func(time.Duration) <-chan time.Time
+	WakeEvery time.Duration
+	// RefusalLimit is identical refusals before a record is set aside
+	// (RefusalLimit const when zero).
+	RefusalLimit int
+	// RemoveDir removes a retired job's directory (retireJob_internal); nil
+	// is removeTree_internal. A unit test's fault injection.
+	RemoveDir                 func(dir string) error
+	mu                        *sync.Mutex
+	gone                      map[string]int  // per consumer: its jobs of a lower gen hold no branch (holds_internal)
+	jobs                      *sync.WaitGroup // every detached job, waited for when the wake loop ends
+	fatal                     chan error      // a refused receipt from a detached job ends the wake loop
+	probed, withdrawn, served map[string]bool
+	tiers                     map[string]string // per row: the tiers its probe proved, a comma list (advertise_internal)
+	adopted                   map[string]JobRecord
+	running                   map[string]context.CancelFunc
+	dedup                     *edge.Deduplicator
+	backoffSeq                uint64
+	lastBeatErr               string
+	advertised                string // the tiers the heartbeat says this harness serves (advertise_internal)
 }
 
+// NewRunner is a runner on any machine nova-config gives the bench role;
+// the worker holds no list of machines of its own (directive 41: the
+// coordinator's machine may be a bench too).
 func NewRunner(cfg Runner) (*Runner, error) {
-	if err := CheckHost(cfg.Host, cfg.CoordinatorHosts); err != nil {
-		return nil, err
-	}
 	if strings.TrimSpace(cfg.RootDir) == "" {
 		return nil, errors.New("worker refused: root directory is empty: pass --root <dir>")
 	}
@@ -153,8 +181,9 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	if cfg.Logger == nil && cfg.StateDir != "" {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
 	}
-	cfg.mu, cfg.probed, cfg.withdrawn = &sync.Mutex{}, map[string]bool{}, map[string]bool{}
-	cfg.adopted, cfg.running, cfg.dedup = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator()
+	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
+	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
+	cfg.adopted, cfg.running, cfg.dedup, cfg.gone = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator(), map[string]int{}
 	return &cfg, nil
 }
 func (r *Runner) harnessFor_internal(name string) (Harness, error) {
@@ -166,118 +195,33 @@ func (r *Runner) harnessFor_internal(name string) (Harness, error) {
 	}
 	return NewHarness(cmp.Or(name, "claude"))
 }
+
+// report writes a best-effort step's failure (a job record, a step log line,
+// a cleanup) on the worker's output: the step goes on, never silently.
+func (r *Runner) report(what string, err error) { reportTo(r.Warn, what, err) }
+
+// reportTo writes err as a WORKER WARNING line to warn, or stderr when warn
+// is nil; nothing for a nil err.
+func reportTo(warn func(string), what string, err error) {
+	if err == nil {
+		return
+	}
+	line := "WORKER WARNING " + what + ": " + edge.RedactN(err.Error(), edge.CommandMax)
+	if warn != nil {
+		warn(line)
+		return
+	}
+	fmt.Fprintln(os.Stderr, line)
+}
+
 func (r *Runner) logStep_internal(row, consumer, step, res string, d time.Duration) {
 	if r.Logger != nil {
-		_ = r.Logger.Log(row, consumer, step, res, d)
+		r.report("step log for "+row, r.Logger.Log(row, consumer, step, res, d))
 	}
-}
-func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) error {
-	h, err := r.harnessFor_internal(harnessName)
-	if err != nil {
-		return err
-	}
-	probeDir := filepath.Join(r.RootDir, "probes", row)
-	_ = os.RemoveAll(probeDir)
-	if err := os.MkdirAll(filepath.Join(probeDir, "repo"), 0o755); err != nil {
-		return err
-	}
-	defer os.RemoveAll(probeDir)
-	pj := h.Probe(Job{
-		Consumer: row + ".probe", Row: row, Kind: "work",
-		Model: model, HarnessName: h.Name(), JobDir: probeDir,
-		WorktreeDir: filepath.Join(probeDir, "repo"), ProxyAddr: r.ProxyAddr,
-	})
-	pj.JobDir, pj.WorktreeDir = probeDir, filepath.Join(probeDir, "repo")
-	argv, env := h.Command(pj)
-	res, runErr := r.Wall.RunHarness(ctx, pj, argv, env, r.Timeouts.LaunchGrace)
-	pj.ProxyStatus = cmp.Or(pj.ProxyStatus, r.Proxy.ConsumeStatus())
-	out := ClassifyJob(h, pj, res.ExitCode, res.Elapsed, r.Timeouts.LaunchGrace, res.Output)
-	if runErr != nil || out.Result != "ok" {
-		r.mu.Lock()
-		r.probed[row] = false
-		r.mu.Unlock()
-		lastLine := lastNonEmptyLine_internal(string(res.Output), out.Reason)
-		if runErr != nil && lastLine == "" {
-			lastLine = runErr.Error()
-		}
-		// LOCAL DOGFOOD STOPGAP: the whole output, ANSI stripped, bounded, and kept in the probe dir.
-		whole := ansiRe_local.ReplaceAllString(string(res.Output), "")
-		_ = os.WriteFile(filepath.Join(os.TempDir(), "nova-sprint-probe-"+row+".txt"), []byte(whole+"\nreason="+out.Reason+"\nexit="+fmt.Sprint(res.ExitCode)+"\n"), 0o644)
-		whole = strings.Join(strings.Fields(whole), " ")
-		if len(whole) > 1500 {
-			whole = whole[:1500]
-		}
-		lastLine = whole + " | reason=" + out.Reason + " exit=" + fmt.Sprint(res.ExitCode) + " proxy=" + fmt.Sprint(pj.ProxyStatus) + " argv=" + strings.Join(argv, " ")
-		_ = r.Sprint.OpenJudgement(ctx, store.Judgement{
-			ID: "j-probe-" + row, Kind: "probe", About: row, Group: "probe:" + row,
-			Question: fmt.Sprintf("harness probe failed on %s: %s", row, lastLine),
-			Command:  fmt.Sprintf("nova-sprint judge j-probe-%s retry --reason fixed", row),
-		})
-		return fmt.Errorf("worker refused: probe failed for row %s: %s: fix the harness or credentials and run nova-worker again", row, lastLine)
-	}
-	r.mu.Lock()
-	r.probed[row] = true
-	r.mu.Unlock()
-	r.logStep_internal(row, pj.Consumer, "probe", "ok", res.Elapsed)
-	return nil
-}
-func lastNonEmptyLine_internal(s, fallback string) string {
-	for _, line := range slices.Backward(strings.Split(strings.TrimSpace(s), "\n")) {
-		if trimmed := strings.TrimSpace(line); trimmed != "" {
-			return trimmed
-		}
-	}
-	return fallback
 }
 func jobMatchesSummary_internal(next NextResponse, w ConsumerSummary, rec JobRecord) bool {
 	return rec.Consumer == w.ID && (rec.Epoch == 0 || next.Epoch == 0 || rec.Epoch == next.Epoch) &&
 		(rec.Attempt == 0 || w.Attempt == 0 || rec.Attempt == w.Attempt) && rec.Gen == w.Gen
-}
-func (r *Runner) RecoverRow(ctx context.Context, row string) error {
-	next, err := r.Sprint.Next(ctx, row)
-	if err != nil {
-		return err
-	}
-	disk, err := r.loadRowJobs_internal(row)
-	if err != nil {
-		return err
-	}
-	workingByID, finalByID := map[string]ConsumerSummary{}, map[string]ConsumerSummary{}
-	for _, w := range next.Working {
-		workingByID[w.ID] = w
-	}
-	for _, f := range next.Final {
-		finalByID[f.ID] = f
-		if f.State == card.Fail {
-			r.cancelRunning_internal(f.ID)
-		}
-	}
-	for id, rec := range disk {
-		if f, isFinal := finalByID[id]; isFinal {
-			if f.State == card.Fail && rec.State == JobRunning {
-				r.withdrawRunningJob_internal(ctx, rec)
-			}
-			_ = r.cleanJobDir_internal(ctx, filepath.Join(r.RootDir, "jobs", id), rec)
-		} else if w, isWorking := workingByID[id]; isWorking && !r.isRunningInFlight_internal(id) {
-			if !jobMatchesSummary_internal(next, w, rec) {
-				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
-			} else if err := r.recoverWorkingJob_internal(ctx, w, rec); err != nil && !errors.Is(err, ErrStoreDown) {
-				// Defect 69: one record the sprint keeps refusing must not end the
-				// pass before it has taken anything (it wedged a row for an hour).
-				// The record stays on disk and is tried again next pass; the pass
-				// goes on to the other records and to the ready cards.
-				r.logStep_internal(row, id, "recover", "refused: "+err.Error(), 0)
-			}
-		}
-	}
-	for _, w := range next.Working {
-		if _, onDisk := disk[w.ID]; !onDisk && !r.isRunningInFlight_internal(w.ID) {
-			if err := r.reportLostJob_internal(ctx, next.Epoch, row, w); err != nil && !errors.Is(err, ErrStoreDown) {
-				r.logStep_internal(row, w.ID, "recover", "lost-job report refused: "+err.Error(), 0)
-			}
-		}
-	}
-	return nil
 }
 func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) {
 	entries, err := os.ReadDir(filepath.Join(r.RootDir, "jobs"))
@@ -292,47 +236,6 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 	}
 	return out, nil
 }
-func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSummary, rec JobRecord) error {
-	jobDir := filepath.Join(r.RootDir, "jobs", w.ID)
-	if rec.State == JobCleaned || rec.State == JobRecorded {
-		return nil
-	}
-	if rec.State == JobTaken || rec.State == JobStaged {
-		// Defect 70: a job taken or staged but never run (the runner went down
-		// in between) was skipped here and sat "working" forever with no
-		// process. "No slot within the wait is no start yet, never a failure"
-		// holds for a fresh one; one still not running after the grace is the
-		// runner's fault: report it so the card deals again.
-		if rec.StartedAt > 0 && r.Now().Unix()-rec.StartedAt > int64(2*time.Minute/time.Second) {
-			return r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "restart: job "+rec.State+" but never run")
-		}
-		return nil
-	}
-	if rec.State == JobHarvested && rec.Outcome.Result == "ok" && rec.Kind == "work" {
-		if err := r.rebaseAndPRSteps_internal(ctx, jobDir, &rec); err != nil {
-			return err
-		}
-		return r.sendReportAndClean_internal(ctx, jobDir, rec)
-	}
-	if rec.State == JobCIWait || rec.State == JobReporting || rec.State == JobRebased || (rec.ResultID != "" && rec.Outcome.Result != "") {
-		return r.sendReportAndClean_internal(ctx, jobDir, rec)
-	}
-	if rec.State == JobRunning && r.Procs != nil && r.Procs.Alive(rec.PID, rec.Nonce) {
-		if rec.DeadlineAt > 0 && r.Now().Unix() >= rec.DeadlineAt {
-			_ = r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace)
-			r.mu.Lock()
-			delete(r.adopted, w.ID)
-			r.mu.Unlock()
-			return r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "adopted harness timed out past deadline")
-		}
-		r.mu.Lock()
-		r.adopted[w.ID] = rec
-		r.mu.Unlock()
-		r.logStep_internal(rec.Row, w.ID, "adopt", fmt.Sprintf("pid=%d", rec.PID), 0)
-		return nil
-	}
-	return r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "restart: harness exited while runner was down")
-}
 func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id string, rec JobRecord, reason string) error {
 	rec.PushedHead = cmp.Or(r.harvestPartialPush_internal(ctx, jobDir, rec), rec.PushedHead)
 	rec.ResultID = cmp.Or(rec.ResultID, FormatResultID(rec.Epoch, id, rec.Attempt, rec.Gen))
@@ -342,50 +245,40 @@ func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id stri
 	}
 	return r.sendReportAndClean_internal(ctx, jobDir, rec)
 }
-func (r *Runner) reportLostJob_internal(ctx context.Context, epoch int, row string, w ConsumerSummary) error {
-	_, err := r.Sprint.Report(ctx, ReportRequest{
-		Epoch: epoch, Row: row, Consumer: w.ID, Gen: w.Gen,
-		ResultID: FormatResultID(epoch, w.ID, w.Attempt, w.Gen), Result: "fault", Reason: "runner lost the job",
-	})
-	r.logStep_internal(row, w.ID, "lost-job", "fault", 0)
-	return err
-}
-func (r *Runner) withdrawRunningJob_internal(ctx context.Context, rec JobRecord) {
+
+// withdrawRunningJob_internal stops the harness of a job whose consumer is
+// final (withdrawn): it pushes nothing, since the branch is the next
+// holder's (defect 78); the caller retires the directory.
+func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
+	r.markGone_internal(rec.Epoch, rec.Consumer, math.MaxInt)
 	r.cancelRunning_internal(rec.Consumer)
 	if r.Procs != nil && rec.PID > 0 {
-		_ = r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace)
-	}
-	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
-	if pushed := r.harvestPartialPush_internal(ctx, jobDir, rec); pushed != "" {
-		rec.PushedHead = pushed
-		_ = WriteJobRecord(jobDir, rec)
+		r.report("stopping the withdrawn harness of "+rec.Consumer, r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
 	}
 	r.mu.Lock()
 	delete(r.adopted, rec.Consumer)
 	r.mu.Unlock()
-	r.logStep_internal(rec.Row, rec.Consumer, "withdraw", "stopped", 0)
+	r.logStep_internal(rec.Row, rec.Consumer, "withdraw", "stopped; nothing pushed", 0)
 }
+
+// harvestPartialPush_internal pushes the commits a work job's tree holds,
+// once, while its job still holds the consumer (a fault past the deadline,
+// a restart's release); the head pushed, or "" when nothing was (a failed
+// push is said).
 func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string, rec JobRecord) string {
 	if rec.Kind != "work" || r.Git == nil {
 		return ""
 	}
 	wt := filepath.Join(jobDir, "repo")
 	sha, err := r.Git.HeadSHA(ctx, wt)
-	if err != nil || sha == "" || sha == rec.BaseSHA || sha == rec.PriorHead || r.Git.Push(ctx, wt, rec.Branch, sha) != nil {
+	if err != nil || sha == "" || sha == rec.BaseSHA || sha == rec.PriorHead || sha == rec.PushedHead {
+		return ""
+	}
+	if err := r.pushBranch_internal(ctx, wt, &rec, sha); err != nil {
+		r.report("pushing the partial head of "+rec.Consumer, err)
 		return ""
 	}
 	return sha
-}
-func (r *Runner) beginConsumer_internal(ctx context.Context, id string) (context.Context, func(), bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, busy := r.running[id]; busy {
-		return nil, nil, false
-	}
-	delete(r.withdrawn, id)
-	runCtx, cancel := context.WithCancel(ctx)
-	r.running[id] = cancel
-	return runCtx, func() { r.mu.Lock(); delete(r.running, id); r.mu.Unlock(); cancel() }, true
 }
 func (r *Runner) isRunningInFlight_internal(id string) bool {
 	r.mu.Lock()
@@ -410,6 +303,20 @@ func (r *Runner) cancelRunning_internal(id string) {
 // refusal means there was none); then `nova-sprint hook --as <row> --role
 // worker`. Nothing acts before it returns, and the caller owns the hook.
 func (r *Runner) Start(ctx context.Context, row string) (WakeHook, error) {
+	hook, err := r.busHook_internal(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.sprintHook_internal(ctx, row); err != nil {
+		hook.Stop()
+		return nil, err
+	}
+	return hook, nil
+}
+
+// busHook_internal is the start's first half: the bus hook, which claims
+// the row's name, then the self-unhook of a dead worker's sprint hook.
+func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, error) {
 	if r.BusHook == nil {
 		return nil, errors.New("worker refused: no bus hook configured: start nova-worker through cmd/nova-worker")
 	}
@@ -421,12 +328,16 @@ func (r *Runner) Start(ctx context.Context, row string) (WakeHook, error) {
 		hook.Stop()
 		return nil, err
 	}
+	return hook, nil
+}
+
+// sprintHook_internal is the start's second half: nova-sprint hook.
+func (r *Runner) sprintHook_internal(ctx context.Context, row string) error {
 	if err := r.Sprint.Hook(ctx, row); err != nil {
-		hook.Stop()
-		return nil, err
+		return err
 	}
 	r.logStep_internal(row, "-", "hook", "ok", 0)
-	return hook, nil
+	return nil
 }
 
 // RunOnce is one pass under the same startup order.
@@ -451,189 +362,63 @@ func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
 		return err
 	}
 	defer hook.Stop()
-	loopCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	passDone, running, pending := make(chan error, 1), false, true
-	// Defect 66: a pass every 10 s as well as on each wake, so a ready card
-	// never waits on a missed push (Glenn: a ready card never sits).
-	poll := time.NewTicker(10 * time.Second)
-	defer poll.Stop()
-	r.mu.Lock()
-	if r.fatal == nil {
-		r.fatal = make(chan error, 1)
+	return r.wakeLoop_internal(ctx, row, hook)
+}
+
+// ServeRow is the binary's order: the bus hook and the self-unhook, then
+// the probe of the harness with every model the row would run (ProbeRow:
+// next --json names a row's models on the bus before its sprint hook),
+// then the sprint hook, then one pass (once) or the wake loop. Probing
+// before the sprint hook makes a hooked row a probed one: its harness
+// lists the policy's models and its seat's provider keys reached it, which
+// is what up's step 7 proves by the row being hooked and up (admission,
+// intent rule 34). A failed probe leaves the row unhooked: once, it is the
+// exit; served, the row is held and the probe retried (probeHeld_internal).
+func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) error {
+	hook, err := r.busHook_internal(ctx, row)
+	if err != nil {
+		return err
 	}
-	if r.jobs == nil {
-		r.jobs = &sync.WaitGroup{}
-	}
-	r.mu.Unlock()
-	wait := func() {
-		cancel()
-		if running {
-			<-passDone
-		}
-		r.jobsGroup_internal().Wait() // detached jobs end with the loop, as the pass's jobs always did
-	}
-	for {
-		if pending && !running {
-			pending, running = false, true
-			go func() { passDone <- r.stepRow_internal(loopCtx, row, true) }()
-		}
-		select {
-		case <-ctx.Done():
-			wait()
-			return nil
-		case <-hook.Wake():
-			pending = true
-		case <-poll.C:
-			pending = true
-		case err := <-r.fatal: // a refused receipt from a detached job (66)
-			wait()
+	defer hook.Stop()
+	if once {
+		if err := r.ProbeRow(ctx, row, harness); err != nil {
 			return err
-		case err := <-passDone:
-			running = false
-			if err != nil {
-				r.logStep_internal(row, "-", "pass", "error: "+err.Error(), 0)
-				if errors.Is(err, ErrReceipt) {
-					return err
-				}
-			}
-		case <-hook.Done():
-			wait()
-			return hook.Err()
 		}
+	} else if !r.probeHeld_internal(ctx, row, harness) {
+		return nil // stopped while held: a clean stop
 	}
-}
-func ignoreStoreDown_internal(err error) error {
-	if errors.Is(err, ErrStoreDown) {
-		return nil
+	if err := r.sprintHook_internal(ctx, row); err != nil {
+		return err
 	}
-	return err
+	r.advertise_internal(ctx, row)
+	if once {
+		return r.StepRow(ctx, row)
+	}
+	if r.Meter != nil && r.Beater != nil {
+		beatCtx, stop := context.WithCancel(ctx)
+		defer stop()
+		go r.beatLoop_internal(beatCtx, row)
+	}
+	return r.wakeLoop_internal(ctx, row, hook)
 }
 
-// StepRow is one synchronous pass: it waits for the jobs it launches (the
-// --once form and the tests). The wake loop uses stepRow_internal detached.
-func (r *Runner) StepRow(ctx context.Context, row string) error {
-	return r.stepRow_internal(ctx, row, false)
-}
-
-// stageLocks serializes fetches into one work clone (defect 72).
-var stageLocks sync.Map
-
-func (r *Runner) jobsGroup_internal() *sync.WaitGroup {
+// chooseModel_internal is the model a job runs: the one the deal named and
+// the receipt carries (defect 57: the worker never picks one). A harness
+// that takes a model and whose probe proved models, none of them this one,
+// is a fault naming the model and the fix.
+func (r *Runner) chooseModel_internal(harness string, info TakeInfo) (string, error) {
+	h, err := r.harnessFor_internal(harness)
+	if err != nil || !h.Needs().Model {
+		return info.Model, err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.jobs == nil {
-		r.jobs = &sync.WaitGroup{}
+	proved := slices.DeleteFunc(slices.Sorted(maps.Keys(r.served)), func(m string) bool { return m == "" || !r.served[m] })
+	if len(proved) == 0 || r.served[info.Model] {
+		return info.Model, nil
 	}
-	return r.jobs
-}
-
-func (r *Runner) stepRow_internal(ctx context.Context, row string, detach bool) error {
-	if err := r.RecoverRow(ctx, row); err != nil {
-		return ignoreStoreDown_internal(err)
-	}
-	next, err := r.Sprint.Next(ctx, row)
-	if err != nil || next.State != card.Up || next.Held {
-		return ignoreStoreDown_internal(err)
-	}
-	workingCount := len(next.Working)
-	var toLaunch []ConsumerSummary
-	for _, c := range next.Ready {
-		if workingCount >= next.Width {
-			break
-		}
-		if !r.isRunningInFlight_internal(c.ID) {
-			workingCount++
-			toLaunch = append(toLaunch, c)
-		}
-	}
-	// Defect 66 (dogfood 2026-11-07): a pass never waits on the jobs it
-	// launches. With wg.Wait() here one long job held the whole row: no
-	// take until it ended, every bench frozen at what its first pass
-	// launched. Jobs run detached (beginConsumer tracks them; a job's
-	// error is logged on its own line) and the pass returns at once.
-	var wg sync.WaitGroup
-	var errMu sync.Mutex
-	var firstErr error
-	for _, c := range toLaunch {
-		c := c
-		wg.Add(1)
-		jobs := r.jobsGroup_internal()
-		jobs.Add(1)
-		go func() {
-			defer wg.Done()
-			defer jobs.Done()
-			err := r.RunConsumer(ctx, next, c)
-			if err == nil || errors.Is(err, ErrNoSlot) || errors.Is(err, ErrStoreDown) {
-				return
-			}
-			if !detach {
-				errMu.Lock()
-				firstErr = cmp.Or(firstErr, err)
-				errMu.Unlock()
-				return
-			}
-			r.logStep_internal(row, c.ID, "job", "error: "+err.Error(), 0)
-			if errors.Is(err, ErrReceipt) {
-				select {
-				case r.fatal <- err:
-				default:
-				}
-			}
-		}()
-	}
-	if detach {
-		return nil
-	}
-	wg.Wait()
-	return firstErr
-}
-func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c ConsumerSummary) error {
-	runCtx, done, ok := r.beginConsumer_internal(ctx, c.ID)
-	if !ok {
-		return nil
-	}
-	defer done()
-	jobDir := filepath.Join(r.RootDir, "jobs", c.ID)
-	if _, err := os.Stat(jobDir); err == nil {
-		return fmt.Errorf("worker refused: job directory %s already exists: a job directory is never reused", jobDir)
-	}
-	info, err := r.Sprint.Take(runCtx, rowInfo.Row, c.ID, c.Gen)
-	if err == nil {
-		err = checkReceipt_internal(info)
-	}
-	if errors.Is(err, ErrReceipt) {
-		return r.refuseReceipt_internal(runCtx, jobDir, rowInfo, c, err)
-	}
-	if err != nil {
-		return err
-	}
-	job, rec, err := r.initJob_internal(rowInfo, info, jobDir)
-	if err != nil {
-		return err
-	}
-	if err := r.stageStep_internal(runCtx, &job, &rec); err != nil {
-		return r.sendReportAndClean_internal(runCtx, jobDir, rec)
-	}
-	res, err := r.runStep_internal(runCtx, job, &rec)
-	r.mu.Lock()
-	withdrawn := r.withdrawn[c.ID]
-	r.mu.Unlock()
-	if withdrawn {
-		r.withdrawRunningJob_internal(ctx, rec)
-		_ = r.cleanJobDir_internal(ctx, jobDir, rec)
-		return nil
-	}
-	if errors.Is(err, ErrNoSlot) {
-		return ErrNoSlot
-	}
-	if err := r.harvestStep_internal(runCtx, job, &rec, res, err); err != nil {
-		return err
-	}
-	if err := r.rebaseAndPRSteps_internal(runCtx, jobDir, &rec); err != nil {
-		return err
-	}
-	return r.sendReportAndClean_internal(runCtx, jobDir, rec)
+	return "", fmt.Errorf("this bench's %s does not serve %s, the model the deal named for tier %s (its probe proved %s): give the tier a bench model this bench serves (nova-sprint policy set <file> --reason <why>), or this bench a route for it (nova-worker --providers)",
+		h.Name(), info.Model, info.Tier, strings.Join(proved, ", "))
 }
 
 // refuseReceipt_internal reports the card taken under a receipt the worker
@@ -653,13 +438,29 @@ func (r *Runner) refuseReceipt_internal(ctx context.Context, jobDir string, rowI
 	}
 	return cause
 }
+
+// initJob_internal makes the job directory of a card just taken, with its
+// receipt (to resume it after a stop) and its record at taken.
 func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir string) (Job, JobRecord, error) {
 	for _, sub := range []string{"home", "tmp", "data"} {
 		if err := os.MkdirAll(filepath.Join(jobDir, sub), 0o755); err != nil && sub == "home" {
 			return Job{}, JobRecord{}, err
 		}
 	}
-	wt, now := filepath.Join(jobDir, "repo"), r.Now().UTC()
+	job, rec := buildJob_internal(rowInfo, info, jobDir, r.ProxyAddr, r.Now())
+	if err := writeReceipt_internal(jobDir, info); err != nil {
+		return Job{}, JobRecord{}, err
+	}
+	if err := WriteJobRecord(jobDir, rec); err != nil {
+		return Job{}, JobRecord{}, err
+	}
+	r.logStep_internal(rowInfo.Row, info.Consumer, "take", "ok", 0)
+	return job, rec, nil
+}
+
+// buildJob_internal is the job and its first record from a take receipt.
+func buildJob_internal(rowInfo NextResponse, info TakeInfo, jobDir, proxyAddr string, at time.Time) (Job, JobRecord) {
+	wt, now := filepath.Join(jobDir, "repo"), at.UTC()
 	deadline := time.Duration(info.Deadline) * time.Second
 	epoch := cmp.Or(info.Epoch, rowInfo.Epoch)
 	job := Job{
@@ -671,7 +472,8 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 		Prose: info.Prose, Finding: info.Finding, Paths: info.Paths,
 		DoneWhen: info.DoneWhen, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
-		ProxyAddr: r.ProxyAddr, CommitName: cmp.Or(os.Getenv("NOVA_SPRINT_COMMIT_NAME"), "Rowan Claude"), CommitEmail: cmp.Or(os.Getenv("NOVA_SPRINT_COMMIT_EMAIL"), "305107455+rowan-claude@users.noreply.github.com") /* Glenn 2026-10-22: the CAA keys off the GitHub id; every agent commits as the rowan-claude login */, Forge: info.Forge, Deadline: deadline,
+		ProxyAddr: proxyAddr, CommitName: info.CommitName,
+		CommitEmail: info.CommitEmail, Forge: info.Forge, Deadline: deadline,
 	}
 	rec := JobRecord{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
@@ -681,61 +483,34 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: FormatResultID(epoch, info.Consumer, info.Attempt, info.Gen),
 		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
 	}
-	if err := WriteJobRecord(jobDir, rec); err != nil {
-		return Job{}, JobRecord{}, err
-	}
-	r.logStep_internal(rowInfo.Row, info.Consumer, "take", "ok", 0)
-	return job, rec, nil
+	return job, rec
 }
 func (r *Runner) stageStep_internal(ctx context.Context, job *Job, rec *JobRecord) error {
 	start := r.Now()
 	if r.Git != nil {
 		stageCtx, cancel := context.WithTimeout(ctx, r.Timeouts.Stage)
 		_, err := r.Git.StageWorktree(stageCtx, *job)
+		if err == nil && job.Kind == "work" {
+			rec.StartTip, err = r.Git.BranchTip(stageCtx, *job)
+			rec.StartTipRead = err == nil
+		}
 		cancel()
 		if err != nil {
 			rec.State, rec.Outcome = JobReporting, Outcome{Result: "fault", Reason: "staging fault: " + err.Error()}
-			_ = WriteJobRecord(job.JobDir, *rec)
+			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 			r.logStep_internal(job.Row, job.Consumer, "stage", "fault", r.Now().Sub(start))
 			return err
 		}
 	}
+	if err := writeJobMD_internal(*job); err != nil {
+		rec.State, rec.Outcome = JobReporting, Outcome{Result: "fault", Reason: "staging fault: " + err.Error()}
+		r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
+		return err
+	}
 	rec.State = JobStaged
-	_ = WriteJobRecord(job.JobDir, *rec)
-	writeJobMD_internal(*job) // defect 68: the prompt says "read $JOB/JOB.md first"; nothing wrote it
+	r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 	r.logStep_internal(job.Row, job.Consumer, "stage", "ok", r.Now().Sub(start))
 	return nil
-}
-
-// writeJobMD_internal writes JOB.md in the job directory: what the card is,
-// where the staged checkout is, and how the card finishes (the verdict file;
-// the worker pushes and reports, the harness never does).
-func writeJobMD_internal(j Job) {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\nkind: %s (%s)\nrepository: %s\nbase: %s\n", j.Consumer, j.Kind, j.Tier, j.Repo, j.Base)
-	fmt.Fprintf(&b, "checkout: %s (a full clone at the base", j.WorktreeDir)
-	if j.Kind == "work" {
-		fmt.Fprintf(&b, ", on branch %s; commit there, never push)\n", j.Branch)
-	} else {
-		fmt.Fprintf(&b, "; detached at the head under review %s; edit no tracked file)\n", j.Head)
-	}
-	if len(j.Paths) > 0 {
-		fmt.Fprintf(&b, "paths: %s\n", strings.Join(j.Paths, ", "))
-	}
-	for _, d := range j.DoneWhen {
-		fmt.Fprintf(&b, "done-when: %s\n", d)
-	}
-	fmt.Fprintf(&b, "\n## How this card finishes\n\nWrite %s/result.json before you exit, then exit 0.\n", j.JobDir)
-	if j.Kind == "work" {
-		b.WriteString("- {\"result\":\"ok\"}: the work is committed on the branch and every done-when command is green.\n")
-		b.WriteString("- {\"result\":\"fail\",\"reason\":\"<what was not done and why>\"}: not done; say what you found.\n")
-		b.WriteString("The worker pushes the branch and reports; you run no git push and no gh.\n")
-	} else {
-		b.WriteString("- {\"result\":\"ok\"}: the head meets the card as written.\n")
-		b.WriteString("- {\"result\":\"fix\",\"finding\":\"<path>:<line>: <defect and repair>\"}: it does not; name every defect.\n")
-		b.WriteString("- {\"result\":\"fault\",\"reason\":\"<why>\"}: you could not judge it (a tool, a build, a missing input).\n")
-	}
-	_ = os.WriteFile(filepath.Join(j.JobDir, "JOB.md"), []byte(b.String()), 0o644)
 }
 func (r *Runner) launchBackoff_internal(attempt int) time.Duration {
 	lo, hi := r.Timeouts.LaunchBackoff1Min, r.Timeouts.LaunchBackoff1Max
@@ -759,27 +534,28 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	if err != nil {
 		return WallRunResult{}, err
 	}
+	job.Needs = h.Needs()
 	argv, env := h.Command(job)
 	rec.State = JobRunning
 	if rec.PID <= 0 || rec.PID == os.Getpid() {
 		rec.PID = nextWallPID_internal()
 		rec.Nonce = fmt.Sprintf("n-%d-%d", rec.PID, r.Now().UnixNano())
 	}
-	_ = WriteJobRecord(job.JobDir, *rec)
+	r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 	var last WallRunResult
 	var runErr error
 	for attempt := 1; attempt <= r.Timeouts.LaunchTries; attempt++ {
 		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, job.Deadline)
 		if errors.Is(runErr, ErrNoSlot) {
 			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
-			_ = WriteJobRecord(job.JobDir, *rec)
-			return last, ErrNoSlot
+			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
+			return last, runErr
 		}
 		if last.PID > 0 && last.PID != os.Getpid() {
 			rec.PID, rec.Nonce = last.PID, cmp.Or(last.Nonce, rec.Nonce)
-			_ = WriteJobRecord(job.JobDir, *rec)
+			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 		}
-		_ = os.WriteFile(filepath.Join(job.JobDir, "harness.log"), last.Output, 0o600)
+		r.report("harness logs", keepLogs_internal(job.JobDir, last))
 		job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus())
 		out := ClassifyJob(h, job, last.ExitCode, last.Elapsed, r.Timeouts.LaunchGrace, last.Output)
 		if !out.Retryable5xx || attempt == r.Timeouts.LaunchTries {
@@ -815,37 +591,63 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 		rec.Cost = cost
 	}
 	if job.Kind == "work" {
-		if r.Git == nil {
-			out = Outcome{Result: "fault", Reason: "missing git edge (--work-clone) for work consumer"}
-		} else if sha, herr := r.Git.HeadSHA(ctx, job.WorktreeDir); herr == nil && sha != "" && sha != job.BaseSHA && sha != job.PriorHead {
-			if perr := r.Git.Push(ctx, job.WorktreeDir, job.Branch, sha); perr != nil {
-				if out.Result == "ok" {
-					out = Outcome{Result: "fault", Reason: "push fault: " + perr.Error()}
-				}
-			} else {
-				rec.PushedHead, out.Head = sha, sha
-			}
-		} else if out.Result == "ok" {
-			out = Outcome{Result: "fail", Reason: "harness reported ok without advancing HEAD past base_sha and prior_head"}
-		}
+		out = r.harvestWorkHead_internal(ctx, job, rec, out)
 	} else if job.Kind == "read" {
+		_, out = ReadOutcomeOf(out)
 		out.Head = job.Head
-		// Defect 67 (dogfood 2026-11-07): a read reports ok, fix or fault; the
-		// store refuses "fail" for a read and the job then sat "working" with
-		// no process, re-reported and refused every pass. No verdict file is a
-		// fault of the harness; a verdict of fail/broken is a fix with its reason.
-		if out.Result == "fail" {
-			if strings.Contains(out.Reason, "result.json") {
-				out.Result = "fault"
-			} else {
-				out.Result, out.Finding = "fix", cmp.Or(out.Finding, out.Reason)
-			}
-		}
 	}
 	rec.Outcome, rec.State = out, JobHarvested
 	return WriteJobRecord(job.JobDir, *rec)
 }
-func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, rec *JobRecord) error {
+
+// harvestWorkHead_internal pushes the head a work job left. A harness that
+// said ok with its changes uncommitted and HEAD where it started has its
+// tree committed here (the harness note of 2026-11-07); ok with nothing to
+// commit is a fail naming it.
+func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *JobRecord, out Outcome) Outcome {
+	if r.Git == nil {
+		return Outcome{Result: "fault", Reason: "missing git edge for a work consumer: start the worker through nova-worker or nova-sprint worker, which give it one"}
+	}
+	sha, herr := r.Git.HeadSHA(ctx, job.WorktreeDir)
+	if herr == nil && out.Result == "ok" && (sha == job.BaseSHA || sha == job.PriorHead) {
+		sha, herr = r.commitLeftTree_internal(ctx, job, sha)
+	}
+	switch {
+	case herr != nil && out.Result == "ok":
+		return Outcome{Result: "fault", Reason: "head fault: " + herr.Error()}
+	case herr != nil:
+		return out
+	case sha != "" && sha != job.BaseSHA && sha != job.PriorHead:
+		if perr := r.pushBranch_internal(ctx, job.WorktreeDir, rec, sha); perr != nil {
+			if out.Result == "ok" {
+				return Outcome{Result: "fault", Head: rec.PushedHead, Reason: "push fault: " + perr.Error()}
+			}
+			return out
+		}
+		out.Head = sha
+	case out.Result == "ok":
+		return Outcome{Result: "fail", Reason: "harness reported ok without advancing HEAD past base_sha and prior_head, and left nothing to commit"}
+	}
+	return out
+}
+
+// commitLeftTree_internal commits a dirty work tree the harness left
+// uncommitted, under the row's identity, and is the new head; a clean tree
+// is head unchanged.
+func (r *Runner) commitLeftTree_internal(ctx context.Context, job Job, head string) (string, error) {
+	dirty, err := r.Git.IsDirty(ctx, job.WorktreeDir)
+	if err != nil || !dirty {
+		return head, err
+	}
+	msg := job.Consumer + ": the harness's work, committed by nova-worker\n\nThe harness reported ok and left its changes uncommitted; the worker committed the tree as it was.\n"
+	sha, err := r.Git.CommitAll(ctx, job.WorktreeDir, msg)
+	if err != nil {
+		return head, fmt.Errorf("commit the tree the harness left: %w", err)
+	}
+	r.logStep_internal(job.Row, job.Consumer, "commit-left-tree", sha, 0)
+	return sha, nil
+}
+func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, rec *JobRecord) error {
 	if rec.Kind != "work" || rec.Outcome.Result != "ok" {
 		return nil
 	}
@@ -860,12 +662,12 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: ce.Error()}
 			case errors.As(err, &fe):
 				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fe.Error()}
-				_ = WriteJobRecord(jobDir, *rec)
+				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return fe
 			default:
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "rebase failed: " + err.Error()}
 			}
-			_ = WriteJobRecord(jobDir, *rec)
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
 		rec.Outcome.Head = cmp.Or(newSHA, rec.Outcome.Head)
@@ -874,64 +676,40 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 	for _, cmd := range rec.DoneWhen {
 		if strings.TrimSpace(cmd) != "" && r.Wall != nil {
 			if tres, err := r.Wall.RunTest(ctx, tJob, cmd, r.Timeouts.RebaseAndTest); err != nil || tres.ExitCode != 0 {
-				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, TailBytes(tres.Output, MaxReasonBytes))}
-				_ = WriteJobRecord(jobDir, *rec)
+				why := TailBytes(tres.Output, MaxReasonBytes)
+				if err != nil {
+					why = TailBytes([]byte(err.Error()+": "+why), MaxReasonBytes)
+				}
+				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, why)}
+				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return nil
 			}
 		}
 	}
 	if r.Git != nil && rec.Outcome.Head != "" && rec.Outcome.Head != rec.PushedHead {
-		if err := r.Git.Push(ctx, wt, rec.Branch, rec.Outcome.Head); err != nil {
-			rec.Outcome = Outcome{Result: "fault", Reason: "post-rebase push fault: " + err.Error()}
-			_ = WriteJobRecord(jobDir, *rec)
+		if err := r.pushBranch_internal(ctx, wt, rec, rec.Outcome.Head); err != nil {
+			// The head that did land is reported, so the next attempt's
+			// prior head (and its lease) is the branch as it stands.
+			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "post-rebase push fault: " + err.Error()}
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
-		rec.PushedHead = rec.Outcome.Head
 	}
 	rec.State = JobRebased
-	// Defect 71 (dogfood 2026-11-07, INTENT rule 16): the worker's contract
-	// ends at a pushed head; the run's landing opens the PR with the host's
-	// identity. A bench has no forge identity, so this step faulted every
-	// finished work card ("open PR fault: neither GH_TOKEN nor GH_CONFIG_DIR").
-	if rec.Forge != "" && !r.SkipPR {
-		fo := r.Forges[rec.Forge]
-		if fo == nil {
-			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fmt.Sprintf("the stream's forge %q has no adapter on this worker: install a nova-worker that serves it, or set the stream's forge to one this worker serves", rec.Forge)}
-			_ = WriteJobRecord(jobDir, *rec)
-			return nil
-		}
-		ghCtx, cancel := context.WithTimeout(ctx, r.Timeouts.GH)
-		pr, err := fo.EnsurePR(ghCtx, rec.Repo, rec.Branch, rec.Base, rec.PushedHead, rec.Consumer)
-		cancel()
-		if err != nil {
-			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "open PR fault: " + err.Error()}
-			_ = WriteJobRecord(jobDir, *rec)
-			return nil
-		}
-		rec.PRNumber = pr
-	}
-	_ = WriteJobRecord(jobDir, *rec)
+	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 	return nil
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
-	// Defect 67, also for records written before the fix: a read reports ok,
-	// fix or fault; a stored "fail" on a read is a fault (no verdict) or a fix.
-	if rec.Kind == "read" && rec.Outcome.Result == "fail" {
-		if strings.Contains(rec.Outcome.Reason, "result.json") {
-			rec.Outcome.Result = "fault"
-		} else {
-			rec.Outcome.Result, rec.Outcome.Finding = "fix", cmp.Or(rec.Outcome.Finding, rec.Outcome.Reason)
-		}
-	}
 	rec.State = JobReporting
 	rec.ResultID = cmp.Or(rec.ResultID, FormatResultID(rec.Epoch, rec.Consumer, rec.Attempt, rec.Gen))
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return err
 	}
+	out := reportOutcome_internal(rec) // a read's is ok, fix or fault, a stale record's too
 	req := ReportRequest{
 		Epoch: rec.Epoch, Row: rec.Row, Consumer: rec.Consumer, Gen: rec.Gen,
-		ResultID: rec.ResultID, Result: rec.Outcome.Result, Head: rec.Outcome.Head,
-		Reason: rec.Outcome.Reason, Finding: rec.Outcome.Finding, Cost: rec.Cost.MicroUSD, Priced: rec.Cost.Priced, Usage: rec.Cost.Usage,
+		ResultID: rec.ResultID, Result: out.Result, Head: out.Head,
+		Reason: out.Reason, Finding: out.Finding, Cost: rec.Cost.MicroUSD, Priced: rec.Cost.Priced, Usage: rec.Cost.Usage,
 	}
 	var receipt store.Receipt
 	var err error
@@ -951,14 +729,18 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	}
 	r.logStep_internal(rec.Row, rec.Consumer, "report", fmt.Sprintf("accepted=%v", receipt.Accepted), 0)
 	rec.State = JobRecorded
-	_ = WriteJobRecord(jobDir, rec)
+	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, rec))
 	return r.cleanJobDir_internal(ctx, jobDir, rec)
 }
 func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	wt := filepath.Join(jobDir, "repo")
 	if rec.Kind == "work" && rec.PushedHead != "" && r.Git != nil {
-		if ok, err := r.Git.OriginHasHead(ctx, rec.Repo, rec.Branch, rec.PushedHead); err != nil || !ok {
-			r.logStep_internal(rec.Row, rec.Consumer, "clean", "kept-unconfirmed-head", 0)
+		if ok, err := r.Git.OriginHasHead(ctx, wt, rec.Branch, rec.PushedHead); err != nil || !ok {
+			why := "kept-unconfirmed-head"
+			if err != nil {
+				why += ": " + err.Error()
+			}
+			r.logStep_internal(rec.Row, rec.Consumer, "clean", why, 0)
 			return nil
 		}
 	}
@@ -966,8 +748,10 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 		if dirty, err := r.Git.IsDirty(ctx, wt); err == nil && dirty {
 			r.logStep_internal(rec.Row, rec.Consumer, "clean", "DIRTY WORKTREE KEPT", 0)
 			return nil
+		} else if err != nil {
+			r.logStep_internal(rec.Row, rec.Consumer, "clean", "dirty check failed, removing: "+err.Error(), 0)
 		}
-		_ = r.Git.RemoveWorktree(ctx, wt)
+		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
 	}
 	if err := os.RemoveAll(jobDir); err != nil {
 		return err
@@ -1006,127 +790,279 @@ func (r *Runner) evalEdgeQuery_internal(ctx context.Context, id string, req Edge
 	return res, nil
 }
 
+// OSGitOps stages from one work clone per stream repo (directive 42): the
+// repo is the deal receipt's; its bare mirror is <MirrorRoot>/<name>.git,
+// the layout mirror-refresh keeps, cloned on first use when absent; its work
+// clone is <WorkRoot>/<name>, made on first use borrowing the mirror's
+// objects. A job's worktree is a shared clone of the work clone whose origin
+// is the repo's clone URL, so its fetches and pushes go to the repo.
 type OSGitOps struct {
-	WorkCloneDir, MirrorDir, OriginURL string
-	Exec                               edge.Exec
-	Timeouts                           Timeouts
-	Timeout                            time.Duration
+	WorkRoot, MirrorRoot string
+	Exec                 edge.Exec
+	Timeouts             Timeouts
+	Timeout              time.Duration
+	mu                   sync.Mutex
+	clones               map[string]*sync.RWMutex // per clone URL (cloneLock_internal)
+}
+
+var orgRepo_internal = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
+// CloneURL is the URL a stream's repo is cloned from: a URL or an absolute
+// path as it is; owner/name on the github forge, https://github.com/owner/name.git.
+func CloneURL(repo, forgeName string) (string, error) {
+	repo = strings.TrimSpace(repo)
+	switch {
+	case repo == "":
+		return "", errors.New("stage refused: the receipt names no repo: set the stream's repo (nova-sprint stream set)")
+	case strings.Contains(repo, "://") || strings.HasPrefix(repo, "/") || strings.HasPrefix(repo, "git@"):
+		return repo, nil
+	case forgeName == "github" && orgRepo_internal.MatchString(repo):
+		return "https://github.com/" + strings.TrimSuffix(repo, ".git") + ".git", nil
+	}
+	return "", fmt.Errorf("stage refused: repo %q is not a URL or a path, and forge %q gives no clone URL for it: set the stream's repo to a clone URL, or its forge to github", repo, forgeName)
+}
+
+// repoName_internal is the clone's directory name: the URL's last element
+// without .git, as mirror-refresh names its mirrors.
+func repoName_internal(cloneURL string) (string, error) {
+	name := strings.TrimSuffix(filepath.Base(strings.TrimRight(strings.ReplaceAll(cloneURL, ":", "/"), "/")), ".git")
+	if name == "" || name == "." || name == ".." || name == "/" {
+		return "", fmt.Errorf("stage refused: clone URL %q names no repository: set the stream's repo to <owner>/<name> or a clone URL", cloneURL)
+	}
+	return name, nil
 }
 
 func (g *OSGitOps) to_internal(d time.Duration) time.Duration { return cmp.Or(g.Timeout, d) }
-func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
-	if g.MirrorDir != "" && filepath.Clean(g.WorkCloneDir) == filepath.Clean(g.MirrorDir) {
-		return "", errors.New("stage refused: work clone path equals bare mirror path (worktrees must be staged from the work clone, never the mirror)")
+
+// cloneLock_internal is url's lock: its write side makes the work clone and
+// fetches into it, its read side clones a job's worktree from it, so no
+// fetch races another on the clone's refs and no worktree is cloned from a
+// half-made one (defect 72).
+func (g *OSGitOps) cloneLock_internal(url string) *sync.RWMutex {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.clones == nil {
+		g.clones = map[string]*sync.RWMutex{}
 	}
+	if g.clones[url] == nil {
+		g.clones[url] = &sync.RWMutex{}
+	}
+	return g.clones[url]
+}
+
+// cloneURL_internal is j's repo's clone URL and its directory name.
+func cloneURL_internal(j Job) (string, string, error) {
+	url, err := CloneURL(j.Repo, j.Forge)
+	if err != nil {
+		return "", "", err
+	}
+	name, err := repoName_internal(url)
+	return url, name, err
+}
+
+// workClone_internal is url's work clone, made (with its mirror) on first
+// use, and refused when the clone there is another repo's. The caller holds
+// url's write lock.
+func (g *OSGitOps) workClone_internal(ctx context.Context, url, name string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
-	work, origin := g.WorkCloneDir, g.OriginURL
-	if os.Getenv("NOVA_WORKER_PER_REPO") == "1" && j.Repo != "" { // LOCAL DOGFOOD STOPGAP (defect 42): one work clone per stream repo, beside the configured one
-		work, origin = g.perRepo_internal(j.Repo)
-		if _, err := os.Stat(filepath.Join(work, ".git")); err != nil {
-			args := []string{"clone", "--quiet"}
-			if mirror := filepath.Join(filepath.Dir(g.MirrorDir), filepath.Base(work)+".git"); g.MirrorDir != "" {
-				if _, err := os.Stat(mirror); err == nil {
-					args = append(args, "--reference-if-able", mirror)
-				}
-			}
-			if _, err := g.runGit_internal(ctx, to, "", append(args, origin, work)...); err != nil {
-				return "", err
-			}
+	mirror, work := filepath.Join(g.MirrorRoot, name+".git"), filepath.Join(g.WorkRoot, name)
+	if g.MirrorRoot != "" && !fileExists_internal(mirror) {
+		if _, err := g.runGit_internal(ctx, to, "", "clone", "--quiet", "--mirror", url, mirror); err != nil {
+			return "", fmt.Errorf("stage: the mirror of %s: %w", url, err)
 		}
 	}
-	// Defect 72 (dogfood 2026-11-07): two jobs staging from the same work
-	// clone at once raced on its refs ("fetching ref ... failed: incorrect
-	// old value provided") and one staged nothing. One fetch at a time per
-	// work clone; the shared clone of it follows under the same lock.
-	mu, _ := stageLocks.LoadOrStore(filepath.Clean(work), &sync.Mutex{})
-	mu.(*sync.Mutex).Lock()
-	_, ferr := g.runGit_internal(ctx, to, work, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*")
-	if ferr == nil {
-		_ = os.RemoveAll(j.WorktreeDir)
-		_, ferr = g.runGit_internal(ctx, to, work, "clone", "--shared", "--no-checkout", work, j.WorktreeDir)
+	if !fileExists_internal(work) {
+		args := []string{"clone", "--quiet", "--no-checkout"}
+		if g.MirrorRoot != "" {
+			args = append(args, "--reference", mirror)
+		}
+		if _, err := g.runGit_internal(ctx, to, "", append(args, url, work)...); err != nil {
+			return "", fmt.Errorf("stage: the work clone of %s: %w", url, err)
+		}
+	} else if got, err := g.runGit_internal(ctx, to, work, "remote", "get-url", "origin"); err != nil || strings.TrimSpace(got) != url {
+		return "", fmt.Errorf("stage refused: the work clone %s is of %q, not %q (%v): move it aside; the worker makes a new one on first use", work, strings.TrimSpace(got), url, err)
 	}
-	mu.(*sync.Mutex).Unlock()
-	if ferr != nil {
-		return "", ferr
+	return work, nil
+}
+
+// Fetch brings j's repo's work clone up to date: one fetch of every branch,
+// under the clone's write lock.
+func (g *OSGitOps) Fetch(ctx context.Context, j Job) error {
+	url, name, err := cloneURL_internal(j)
+	if err != nil {
+		return err
+	}
+	lock := g.cloneLock_internal(url)
+	lock.Lock()
+	defer lock.Unlock()
+	work, err := g.workClone_internal(ctx, url, name)
+	if err != nil {
+		return err
+	}
+	if _, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), work, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+		return fmt.Errorf("fetch %s: %w", url, err)
+	}
+	return nil
+}
+
+// StageWorktree makes j's worktree, a shared clone of the work clone as the
+// pass's Fetch left it, whose origin is the repo.
+func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
+	url, name, err := cloneURL_internal(j)
+	if err != nil {
+		return "", err
+	}
+	lock := g.cloneLock_internal(url)
+	lock.Lock()
+	work, err := g.workClone_internal(ctx, url, name)
+	lock.Unlock()
+	if err != nil {
+		return "", err
+	}
+	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	if err := os.RemoveAll(j.WorktreeDir); err != nil {
+		return "", fmt.Errorf("stage: clear the work tree: %w", err)
+	}
+	lock.RLock()
+	_, err = g.runGit_internal(ctx, to, work, "clone", "--shared", "--no-checkout", work, j.WorktreeDir)
+	lock.RUnlock()
+	if err != nil {
+		return "", err
 	}
 	if alt, err := os.ReadFile(filepath.Join(work, ".git", "objects", "info", "alternates")); err == nil && len(alt) > 0 {
 		wtAlt := filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")
-		cur, _ := os.ReadFile(wtAlt)
-		_ = os.WriteFile(wtAlt, append(cur, alt...), 0o644)
+		cur, err := os.ReadFile(wtAlt)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("stage: read the work tree's alternates: %w", err)
+		}
+		if err := os.WriteFile(wtAlt, append(cur, alt...), 0o644); err != nil {
+			return "", fmt.Errorf("stage: write the work tree's alternates: %w", err)
+		}
 	}
-	if origin != "" {
-		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", origin)
+	if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", url); err != nil {
+		return "", err
 	}
+	return g.checkoutJob_internal(ctx, to, j)
+}
+
+// checkoutJob_internal checks out j's base (a read: detached at its head,
+// with no push URL) and sets the sprint's commit identity from the
+// receipt; a job with none is refused, never committed as the bench.
+func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j Job) (string, error) {
 	baseRef := cmp.Or(j.PriorHead, j.BaseSHA, "HEAD")
 	if j.Kind == "read" {
 		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "--detach", cmp.Or(j.Head, baseRef)); err != nil {
 			return "", err
 		}
-		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "--push", "origin", "no-push-on-read")
+		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "--push", "origin", "no-push-on-read"); err != nil {
+			return "", err
+		}
 	} else if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "checkout", "-B", j.Branch, baseRef); err != nil {
 		return "", err
 	}
+	if j.CommitName == "" || j.CommitEmail == "" { // a receipt from before the sprint's identity: never the bench's own
+		return "", fmt.Errorf("stage: %s has no commit identity in its receipt (taken from an older nova-sprint): the coordinator sets it with nova-sprint identity, and the next deal carries it", j.Consumer)
+	}
 	for _, kv := range [][2]string{{"user.name", j.CommitName}, {"user.email", j.CommitEmail}} {
-		if kv[1] != "" {
-			_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1])
+		if _, err := g.runGit_internal(ctx, to, j.WorktreeDir, "config", kv[0], kv[1]); err != nil {
+			return "", err
 		}
 	}
 	return g.HeadSHA(ctx, j.WorktreeDir)
+}
+
+// BranchTip reads j's branch from the work clone's remote-tracking refs
+// (the pass's Fetch), under the clone's read lock; "" when it is absent.
+func (g *OSGitOps) BranchTip(ctx context.Context, j Job) (string, error) {
+	url, name, err := cloneURL_internal(j)
+	if err != nil {
+		return "", err
+	}
+	lock := g.cloneLock_internal(url)
+	lock.RLock()
+	defer lock.RUnlock()
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), filepath.Join(g.WorkRoot, name), "for-each-ref", "--format=%(objectname)", "refs/remotes/origin/"+j.Branch)
+	if err != nil {
+		return "", fmt.Errorf("stage: read the tip of %s: %w", j.Branch, err)
+	}
+	return strings.TrimSpace(out), nil
 }
 func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error) {
 	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", "HEAD")
 	return strings.TrimSpace(out), err
 }
-func (g *OSGitOps) Push(ctx context.Context, worktree, branch, headSHA string) error {
-	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force", g.originFor_internal(), headSHA+":refs/heads/"+branch)
-	return err
+func (g *OSGitOps) Push(ctx context.Context, worktree, branch, headSHA, expect string) error {
+	ref := "refs/heads/" + branch
+	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force-with-lease="+ref+":"+expect, "origin", headSHA+":"+ref)
+	if err != nil {
+		at := cmp.Or(expect, "no branch (a new one)")
+		return fmt.Errorf("push of %s to %s refused or failed: it moves the branch only from %s, the head this job last pushed or started from, and a branch another holder moved is theirs: %w", headSHA, branch, at, err)
+	}
+	return nil
 }
 func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().RebaseAndTest)
-	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", g.originFor_internal(), streamRef); err != nil {
+	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", "origin", streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
-		out, _ := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
-		_, _ = g.runGit_internal(ctx, to, worktree, "rebase", "--abort")
-		if files := strings.Fields(out); len(files) > 0 {
+		out, diffErr := g.runGit_internal(ctx, to, worktree, "diff", "--name-only", "--diff-filter=U")
+		if _, abortErr := g.runGit_internal(ctx, to, worktree, "rebase", "--abort"); abortErr != nil {
+			err = fmt.Errorf("%w; cleanup: %w", err, abortErr)
+		}
+		if files := strings.Fields(out); diffErr == nil && len(files) > 0 {
 			return "", &ConflictError{Files: files}
+		}
+		if diffErr != nil {
+			err = fmt.Errorf("%w; listing conflicts: %w", err, diffErr)
 		}
 		return "", err
 	}
 	return g.HeadSHA(ctx, worktree)
 }
-func (g *OSGitOps) OriginHasHead(ctx context.Context, repo, branch, sha string) (bool, error) {
-	return g.HasHead(ctx, repo, branch, sha)
-}
-func (g *OSGitOps) HasHead(ctx context.Context, repo, branch, sha string) (bool, error) {
-	lsDir, lsOrigin := g.WorkCloneDir, cmp.Or(g.OriginURL, "origin")
-	if os.Getenv("NOVA_WORKER_PER_REPO") == "1" && repo != "" { // LOCAL DOGFOOD STOPGAP (defect 42)
-		lsDir, lsOrigin = g.perRepo_internal(repo)
+
+// OriginHasHead: the branch on the worktree's origin (the repo) is at sha.
+func (g *OSGitOps) OriginHasHead(ctx context.Context, worktree, branch, sha string) (bool, error) {
+	url, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "remote", "get-url", "origin")
+	if err != nil {
+		return false, err
 	}
-	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), lsDir, "ls-remote", lsOrigin, "refs/heads/"+branch)
+	return g.HasHead(ctx, strings.TrimSpace(url), branch, sha)
+}
+
+// HasHead: the branch of the repository at remote (a clone URL or path) is
+// at sha.
+func (g *OSGitOps) HasHead(ctx context.Context, remote, branch, sha string) (bool, error) {
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), "", "ls-remote", remote, "refs/heads/"+branch)
 	return err == nil && strings.HasPrefix(strings.TrimSpace(out), sha), err
 }
 func (g *OSGitOps) IsDirty(ctx context.Context, worktree string) (bool, error) {
 	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "status", "--porcelain")
 	return err == nil && strings.TrimSpace(out) != "", err
 }
+func (g *OSGitOps) CommitAll(ctx context.Context, worktree, message string) (string, error) {
+	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	if _, err := g.runGit_internal(ctx, to, worktree, "add", "-A"); err != nil {
+		return "", err
+	}
+	if _, err := g.runGit_internal(ctx, to, worktree, "commit", "--quiet", "--no-verify", "-m", message); err != nil {
+		return "", err
+	}
+	return g.HeadSHA(ctx, worktree)
+}
 func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
 	return os.RemoveAll(worktree)
 }
 func (g *OSGitOps) runGit_internal(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
-	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
+	cmd := edge.Cmd{
 		Argv:     append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}, args...),
 		Dir:      dir,
 		Env:      []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"},
 		CleanEnv: true, Timeout: timeout,
-	})
-	combined := res.Stdout + res.Stderr
-	if err != nil {
-		return combined, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "), err, TailBytes([]byte(combined), 512))
 	}
-	if res.ExitCode != 0 {
-		return combined, fmt.Errorf("git %s: exit %d (%s)", strings.Join(args, " "), res.ExitCode, TailBytes([]byte(combined), 512))
+	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, cmd)
+	if err != nil || res.ExitCode != 0 {
+		return res.Stdout + res.Stderr, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	}
 	return res.Stdout, nil
 }
@@ -1135,41 +1071,28 @@ type OSReserveWall struct {
 	Config     WallConfig
 	UseSandbox bool
 	Exec       edge.Exec
+	LookPath   func(string) (string, error) // exec.LookPath when nil
 }
 
+// RunHarness runs the harness in the wall, granting --read on the
+// directories its binary lives in (HarnessDirs).
 func (w *OSReserveWall) RunHarness(ctx context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error) {
-	return w.runWallCmd_internal(ctx, j, BuildWallArgv(w.effectiveConfig_internal(j), j, argv), SanitizeWallEnv(env, j.JobDir), timeout)
+	cfg := w.effectiveConfig_internal(j)
+	if len(argv) > 0 {
+		lookPath := w.LookPath
+		if lookPath == nil {
+			lookPath = exec.LookPath
+		}
+		cfg.ReadPaths = append(slices.Clone(cfg.ReadPaths), HarnessDirs(argv[0], lookPath)...)
+	}
+	return w.runWallCmd_internal(ctx, j, cfg, argv, SanitizeWallEnv(env, j.JobDir), timeout)
 }
 func (w *OSReserveWall) RunTest(ctx context.Context, j Job, cmdStr string, timeout time.Duration) (WallRunResult, error) {
-	fields := splitArgv_internal(cmdStr)
-	if len(fields) == 0 {
-		return WallRunResult{}, errors.New("empty test command")
+	fields, why := edge.ParseGate(cmdStr)
+	if why != "" {
+		return WallRunResult{}, fmt.Errorf("gate %q is not one command: %s: %s", cmdStr, why, edge.GateFix)
 	}
-	return w.runWallCmd_internal(ctx, j, BuildWallArgv(w.effectiveConfig_internal(j), j, fields), SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
-}
-func splitArgv_internal(s string) (args []string) {
-	var cur strings.Builder
-	var quote rune
-	inTok := false
-	for _, r := range s + " " {
-		switch {
-		case quote != 0 && r == quote:
-			quote = 0
-		case quote != 0:
-			cur.WriteRune(r)
-		case r == '\'' || r == '"':
-			quote, inTok = r, true
-		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
-			if inTok {
-				args, inTok = append(args, cur.String()), false
-				cur.Reset()
-			}
-		default:
-			cur.WriteRune(r)
-			inTok = true
-		}
-	}
-	return args
+	return w.runWallCmd_internal(ctx, j, w.effectiveConfig_internal(j), fields, SanitizeWallEnv(os.Environ(), j.JobDir), timeout)
 }
 func (w *OSReserveWall) effectiveConfig_internal(j Job) WallConfig {
 	cfg := w.Config
@@ -1206,11 +1129,13 @@ func resolveToolBin_internal(name string) string {
 	return name
 }
 func fileExists_internal(p string) bool { _, err := os.Stat(p); return err == nil }
-func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, env []string, timeout time.Duration) (WallRunResult, error) {
+func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, cfg WallConfig, cmdArgv, env []string, timeout time.Duration) (WallRunResult, error) {
 	fallbackPID := nextWallPID_internal()
 	nonce := fmt.Sprintf("n-%d", fallbackPID)
+	env = append(slices.Clone(env), "NOVA_WORKER_NONCE="+nonce)
+	argv := BuildWallArgv(cfg, j, env, cmdArgv)
 	res, err := cmp.Or[edge.Exec](w.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{
-		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: append(slices.Clone(env), "NOVA_WORKER_NONCE="+nonce), CleanEnv: len(env) > 0, Timeout: timeout,
+		Argv: argv, Dir: cmp.Or(j.WorktreeDir, j.JobDir), Env: env, CleanEnv: true, Timeout: timeout,
 		OnStart: func(pid int) {
 			if pid <= 0 || pid == os.Getpid() {
 				pid = fallbackPID
@@ -1218,7 +1143,7 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, en
 			liveProcNonces_internal.Store(pid, nonce)
 			if rec, rerr := ReadJobRecord(j.JobDir); j.JobDir != "" && rerr == nil && rec.State == JobRunning {
 				rec.PID, rec.Nonce = pid, nonce
-				_ = WriteJobRecord(j.JobDir, rec)
+				reportTo(nil, "job record "+filepath.Base(j.JobDir), WriteJobRecord(j.JobDir, rec))
 			}
 		},
 	})
@@ -1231,31 +1156,15 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, en
 		pid = fallbackPID
 	}
 	liveProcNonces_internal.Delete(pid)
-	out := WallRunResult{ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), PID: pid, Nonce: nonce, Elapsed: res.Duration}
+	out := WallRunResult{ExitCode: res.ExitCode, Output: []byte(strings.TrimPrefix(combined, "\n")), Stdout: []byte(res.Stdout), Stderr: []byte(res.Stderr),
+		Argv: argv, PID: pid, Nonce: nonce, Elapsed: res.Duration}
 	if res.ExitCode == 1 && strings.Contains(combined, "nova-reserve:") && !strings.Contains(combined, "nova-reserve: HELD") {
-		return out, ErrNoSlot
+		return out, fmt.Errorf("%w: %w", ErrNoSlot, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, nil))
 	}
-	return out, err
-}
-
-var ansiRe_local = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
-
-// perRepo_internal is the work clone and origin URL for a stream repo, beside
-// the configured work clone (LOCAL DOGFOOD STOPGAP, defect 42).
-func (g *OSGitOps) perRepo_internal(repo string) (string, string) {
-	name := strings.TrimSuffix(repo[strings.LastIndex(repo, "/")+1:], ".git")
-	url := repo
-	if !strings.Contains(url, "://") && !strings.Contains(url, "@") {
-		url = "https://github.com/" + strings.TrimSuffix(repo, ".git")
+	if err != nil {
+		// The run never completed (a timeout, a missing binary): the
+		// command, its exit code and its output so far go with it.
+		return out, edge.Failure(argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
 	}
-	return filepath.Join(filepath.Dir(g.WorkCloneDir), name), url
-}
-
-// originFor_internal is "origin" under the per-repo stopgap (the worktree's
-// origin was set at staging), else the configured origin URL.
-func (g *OSGitOps) originFor_internal() string {
-	if os.Getenv("NOVA_WORKER_PER_REPO") == "1" {
-		return "origin"
-	}
-	return cmp.Or(g.OriginURL, "origin")
+	return out, nil
 }

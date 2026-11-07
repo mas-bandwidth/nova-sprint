@@ -70,7 +70,7 @@ func TestFakeExecRefusalsNameProgramAndFix(t *testing.T) {
 	require.ErrorAs(t, err, &exErr)
 	assert.Equal(t, ErrMissingBinary, exErr.Kind)
 	assert.Equal(t, "gh", exErr.Program)
-	assert.Contains(t, exErr.Error(), "GH_TOKEN or GH_CONFIG_DIR")
+	assert.Contains(t, exErr.Error(), "gh auth login")
 
 	// 5. Timeout names the binary, duration, and fix while keeping capped output.
 	f.Enqueue("git", FakeOutcome{
@@ -261,4 +261,18 @@ func TestRestartRequeryIdempotencyPerFactKind(t *testing.T) {
 		assert.NotEqual(t, RequestID(2, tc.kind, tc.card, tc.sha), res1.ID)
 		assert.Equal(t, res1, res2, "restarted edge must return identical answer for fact kind %s", tc.kind)
 	}
+}
+
+// Defect 73: a command its caller cancels is "canceled", never a timeout;
+// a deadline that passes is the timeout.
+func TestExecCanceledIsNotATimeout(t *testing.T) {
+	t.Parallel()
+	_, err := classifyExecErr_internal("nova-sandbox", time.Minute, context.Canceled, nil, Result{})
+	var ee *ExecError
+	require.True(t, errors.As(err, &ee))
+	assert.Equal(t, ErrCanceled, ee.Kind)
+	assert.NotContains(t, ee.Error(), "timed out")
+	_, err = classifyExecErr_internal("nova-sandbox", time.Minute, context.DeadlineExceeded, nil, Result{})
+	require.True(t, errors.As(err, &ee))
+	assert.Equal(t, ErrTimeout, ee.Kind)
 }

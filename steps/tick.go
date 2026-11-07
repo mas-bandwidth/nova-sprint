@@ -2,6 +2,7 @@ package steps
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -21,8 +22,8 @@ type tick struct {
 	rfacts    map[string]RowFacts   // rowFacts, once per row per tick
 	roster    map[string]RosterRow  // the roster's facts, once per row per tick
 	planned   int                   // cards touched by the non-blocker groups planned so far
-	candCache map[string][]RowFacts // candidates per tier for work, once per tick
-	roomCache map[string]int        // room per row (policy's work plus ahead), once per tick
+	candCache map[string][]RowFacts // candidates per tier and routes for work, once per tick
+	roomCache map[string]int        // room per row (policy's work), once per tick
 	rankCache map[string]int        // rank index per row, once per tick
 	resolvedP map[string]set        // stream + path -> producers resolved this tick (the overlap tally)
 	claimed   set                   // cards and rows an earlier step claimed
@@ -32,6 +33,8 @@ type tick struct {
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
 	judges    []judgement
+	pend      set               // kind and about of every judgement in judges (addJudge)
+	jidx      judgedIndex       // the view's judgements by kind and about (judged)
 	expires   map[string]string // judgement id -> why it expires
 }
 
@@ -54,11 +57,14 @@ func Tick(v *View, in Inputs, ask Asker) Plan {
 	t.holds()
 	t.limits()
 	t.fix()
-	t.readyTimeout()
 	t.deal()
+	t.undealt()
 	t.landRequests()
+	nudges := t.unacked()
 	t.judgements()
-	return t.pack()
+	plan := t.pack()
+	plan.Nudges = nudges
+	return plan
 }
 
 func newTick(v *View, in Inputs) *tick {
@@ -208,16 +214,18 @@ func (t *tick) streamFacts(s string) StreamFacts {
 // list is built once per tier per tick (row claims are made before the
 // deal); a read's is filtered from it.
 func (t *tick) candidates(c store.Card, kind string) []RowFacts {
-	work, ok := t.candCache[c.Tier]
+	routes := card.NeedsRoutes(c.Brief) // only rows serving every route the card declares
+	key := c.Tier + "\x00" + strings.Join(routes, ",")
+	work, ok := t.candCache[key]
 	if !ok {
 		for _, n := range t.rowNames {
 			r := t.v.Rows[n]
-			if _, resting := t.rested[n]; resting || !t.v.Open(r) || !slices.Contains(t.tiers(n), c.Tier) || !t.unclaimed(n) {
+			if _, resting := t.rested[n]; resting || !t.v.Open(r) || !slices.Contains(t.tiers(n), c.Tier) || !t.in.Roster.ServesRoutes(n, routes) || !t.unclaimed(n) {
 				continue
 			}
 			work = append(work, t.rowFacts(r))
 		}
-		t.candCache[c.Tier] = work
+		t.candCache[key] = work
 	}
 	if kind != "read" {
 		return work

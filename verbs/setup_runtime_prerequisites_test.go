@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 )
 
 func TestSetupPrerequisitesRecheckToolsVersion(t *testing.T) {
+	t.Parallel()
 	fleet := true
 	version := "v1.6.29"
 	s := SetupPrerequisites{Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return version, nil }, Env: ExecEnvironment{Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -34,7 +36,7 @@ func TestSetupPrerequisitesRecheckToolsVersion(t *testing.T) {
 	version = "bad"
 	_, err = s.Tools(context.Background())
 	var op *OperationError
-	if !errors.As(err, &op) || op.Problem != "nova-tools version unknown" || op.Fix != "nova-fleet install --tag v1.6.20 <machine>" {
+	if !errors.As(err, &op) || !strings.HasPrefix(op.Problem, "nova-tools version unknown (") || op.Fix != "nova-fleet install --tag v1.6.20 <machine>" {
 		t.Fatal(err)
 	}
 	version = "v1.6.19"
@@ -44,6 +46,7 @@ func TestSetupPrerequisitesRecheckToolsVersion(t *testing.T) {
 	}
 }
 func TestSetupCoordinatorSavedAndRechecked(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	present := true
 	env := ExecEnvironment{Getenv: func(string) string { return "" }, Choices: Choices{Store: store.NewFake(), Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}, Command: func(context.Context, string, ...string) ([]byte, error) {

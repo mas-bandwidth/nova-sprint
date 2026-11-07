@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,9 +20,10 @@ import (
 // Cold read, 2026-11-06, at 649d1b4c (Rowan). One failing probe per confirmed defect.
 
 type crSprint struct {
-	mu      sync.Mutex
-	next    NextResponse
-	reports []ReportRequest
+	mu       sync.Mutex
+	next     NextResponse
+	reports  []ReportRequest
+	releases []string
 }
 
 func (s *crSprint) Next(context.Context, string) (NextResponse, error) {
@@ -30,7 +32,7 @@ func (s *crSprint) Next(context.Context, string) (NextResponse, error) {
 	return s.next, nil
 }
 func (s *crSprint) Take(_ context.Context, row, id string, gen int) (TakeInfo, error) {
-	return TakeInfo{Consumer: id, Producer: "p", Kind: "read", Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, Gen: gen, Head: strings.Repeat("a", 40)}, nil
+	return TakeInfo{Consumer: id, Producer: "p", Kind: "read", Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, CommitName: testCommitName, CommitEmail: testCommitEmail, Gen: gen, Head: strings.Repeat("a", 40)}, nil
 }
 func (s *crSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, error) {
 	s.mu.Lock()
@@ -41,6 +43,12 @@ func (s *crSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, 
 func (s *crSprint) Hook(context.Context, string) error                   { return nil }
 func (s *crSprint) Unhook(context.Context, string) error                 { return nil }
 func (s *crSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
+func (s *crSprint) Release(_ context.Context, row, id string, gen int, _, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releases = append(s.releases, fmt.Sprintf("%s@%d %s", id, gen, reason))
+	return nil
+}
 func (s *crSprint) reported() []ReportRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -52,7 +60,7 @@ type crWall struct {
 	running     int
 	maxRunning  int
 	pidsSeen    []int
-	barrier     chan struct{}
+	barrier     chan struct{} // closed when two harnesses run at once
 	barrierOnce sync.Once
 }
 
@@ -65,17 +73,14 @@ func (w *crWall) RunHarness(_ context.Context, j Job, _, _ []string, _ time.Dura
 	if rec, err := ReadJobRecord(j.JobDir); err == nil {
 		w.pidsSeen = append(w.pidsSeen, rec.PID)
 	}
+	if w.barrier != nil && w.running >= 2 {
+		w.barrierOnce.Do(func() { close(w.barrier) })
+	}
 	w.mu.Unlock()
 	if w.barrier != nil {
-		w.barrierOnce.Do(func() {
-			select {
-			case <-w.barrier:
-			case <-time.After(2 * time.Second): // bound only; a serial runner never meets the barrier
-			}
-		})
 		select {
-		case w.barrier <- struct{}{}:
-		default:
+		case <-w.barrier:
+		case <-time.After(2 * time.Second): // unitlint: a hang guard, not a measurement; a serial runner never meets the barrier
 		}
 	}
 	_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
@@ -90,7 +95,7 @@ func (w *crWall) RunTest(context.Context, Job, string, time.Duration) (WallRunRe
 
 func crRunner_internal(t *testing.T, sp SprintClient, wall ReserveWall) *Runner {
 	t.Helper()
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Now: testClock_internal(), Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, DefaultHarness: &ScriptHarness{}})
+	r, err := NewRunner(Runner{Now: testClock_internal(), Sleep: noSleep_internal, Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, DefaultHarness: &ScriptHarness{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,10 +159,11 @@ func TestColdreadDefectNonZeroExitBecomesFault(t *testing.T) {
 	if err := r.harvestStep_internal(context.Background(), job, &rec, res, runErr); err != nil {
 		t.Fatal(err)
 	}
-	// A read reports ok, fix or fault (the store refuses "fail" for a read,
-	// defect 67); a harness that exits with no verdict is a fault of the
-	// harness, bounded by the fault limit, never a verdict on the head.
-	if rec.Outcome.Result != "fault" {
+	// A read reports ok, fix or fault (ReadOutcome, defect 67): a read's
+	// harness that exits with no verdict is a fault of the harness, bounded
+	// by the fault limit, never a verdict on the head. A work job's is
+	// "fail: no verdict" (TestNoVerdictIsAFailForWorkAndAFaultForAReadWithTheTail).
+	if rec.Outcome.Result != "fault" || !rec.Outcome.NoVerdict {
 		t.Errorf("read harness exited 1 with no result file: want fault, got %s (%s)", rec.Outcome.Result, rec.Outcome.Reason)
 	}
 }
@@ -168,10 +174,10 @@ func TestColdreadDefectNonZeroExitBecomesFault(t *testing.T) {
 // a restarted runner cannot adopt it and reports it as gone.
 func TestColdreadDefectPidNotRecordedWhileHarnessRuns(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
+	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
 	w := &crWall{}
 	r := crRunner_internal(t, sp, w)
-	if err := r.RunConsumer(context.Background(), sp.next, sp.next.Ready[0]); err != nil {
+	if err := r.RunConsumer(context.Background(), sp.next, sp.next.Working[0]); err != nil {
 		t.Fatal(err)
 	}
 	if len(w.pidsSeen) == 0 || w.pidsSeen[0] == 0 {
@@ -183,7 +189,7 @@ func TestColdreadDefectPidNotRecordedWhileHarnessRuns(t *testing.T) {
 // main's Run returns exec's error for any non-zero exit (cmd/nova-worker/main.go:74-80)
 // and CLISprintClient treats err != nil as the store down (verbs.go:441), so a
 // refusal (exit 1) is retried forever instead of ending the retry.
-func TestColdreadDefectCLIRefusalReadAsStoreDown(t *testing.T) {
+func TestFunctionalColdreadDefectCLIRefusalReadAsStoreDown(t *testing.T) {
 	t.Parallel()
 	bin := filepath.Join(t.TempDir(), "nova-sprint")
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'SPRINT REFUSED report: consumer p1.w1 is held by amd-2.ds'\nexit 1\n"), 0o755); err != nil {
@@ -238,14 +244,14 @@ func TestColdreadDefectScriptHarnessShellInjectionFromProse(t *testing.T) {
 // at a time, and a WITHDRAWN wake cannot reach a running harness.
 func TestColdreadDefectWidthTwoRunsSerially(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}, {ID: "p2.r1", Kind: "read", Gen: 1}}}}
+	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}, {ID: "p2.r1", Kind: "read", Gen: 1}}}}
 	w := &crWall{barrier: make(chan struct{})}
 	r := crRunner_internal(t, sp, w)
 	if err := r.StepRow(context.Background(), "vision.ds"); err != nil {
 		t.Fatal(err)
 	}
 	if w.maxRunning < 2 {
-		t.Errorf("width 2 with 2 ready consumers ran at most %d harness at once", w.maxRunning)
+		t.Errorf("width 2 with 2 consumers in hand ran at most %d harness at once", w.maxRunning)
 	}
 }
 
@@ -267,7 +273,7 @@ func TestColdreadDefectRunnerGitHasNoTimeout(t *testing.T) {
 // Not a defect probe: a -race check of wake work against a concurrent query.
 func TestColdreadCheckConcurrentStepRowAndQueryEdge(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}}, Working: []ConsumerSummary{{ID: "p3.w1", Kind: "work", Gen: 1}}}}
+	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}, {ID: "p3.w1", Kind: "work", Gen: 1}}}}
 	r := crRunner_internal(t, sp, &crWall{})
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {

@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // PGSetupLock holds a dedicated PostgreSQL session for the whole setup walk.
@@ -39,7 +41,7 @@ func (p PGSetupLock) Acquire(ctx context.Context) (SetupLease, error) {
 	}
 	cfg, err := pgx.ParseConfig(p.DSN)
 	if err != nil {
-		return nil, fmt.Errorf("setup lock connection configuration invalid")
+		return nil, cause("setup lock connection configuration invalid", err)
 	}
 	if p.Password != "" {
 		cfg.Password = p.Password
@@ -52,18 +54,15 @@ func (p PGSetupLock) Acquire(ctx context.Context) (SetupLease, error) {
 	cfg.RuntimeParams["application_name"] = app
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("setup lock connection unavailable")
+		return nil, cause("setup lock connection unavailable", err)
 	}
 	var acquired bool
 	err = conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1, $2)", setupLockClass, setupLockObject).Scan(&acquired)
 	if err != nil {
-		_ = closeSetupConnection(conn)
-		return nil, fmt.Errorf("setup lock unavailable")
+		return nil, errors.Join(cause("setup lock unavailable", err), closeSetupConnection(conn))
 	}
 	if !acquired {
-		err = setupHolder(ctx, conn)
-		_ = closeSetupConnection(conn)
-		return nil, err
+		return nil, errors.Join(setupHolder(ctx, conn), closeSetupConnection(conn))
 	}
 	return &pgSetupLease{conn: conn}, nil
 }
@@ -71,13 +70,19 @@ func (p PGSetupLock) Acquire(ctx context.Context) (SetupLease, error) {
 func setupHolder(ctx context.Context, conn *pgx.Conn) error {
 	var app string
 	err := conn.QueryRow(ctx, `SELECT a.application_name FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid WHERE l.locktype='advisory' AND l.database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND l.classid=$1::oid AND l.objid=$2::oid AND l.objsubid=2 AND l.granted LIMIT 1`, setupLockClass, setupLockObject).Scan(&app)
+	if err != nil {
+		return cause("setup lock holder unavailable", err)
+	}
 	fields := strings.Fields(app)
-	if err != nil || len(fields) != 4 || fields[0] != "nova-sprint" || fields[1] != "up" {
-		return fmt.Errorf("setup lock holder unavailable")
+	if len(fields) != 4 || fields[0] != "nova-sprint" || fields[1] != "up" {
+		return fmt.Errorf("setup lock holder unavailable: held by %q, not `nova-sprint up <host> <pid>`", Redact(app))
 	}
 	pid, err := strconv.Atoi(fields[3])
-	if err != nil || pid <= 0 {
-		return fmt.Errorf("setup lock holder unavailable")
+	if err != nil {
+		return fmt.Errorf("setup lock holder unavailable: pid %s", edge.ParseFailure(err, []byte(fields[3])))
+	}
+	if pid <= 0 {
+		return fmt.Errorf("setup lock holder unavailable: held by %q with pid %d", Redact(app), pid)
 	}
 	return &OperationError{Problem: fmt.Sprintf("setup already running on %s (pid %d)", fields[2], pid), Fix: "wait for it to finish", Exit: 1}
 }
@@ -89,7 +94,7 @@ func (p *pgSetupLease) Check(ctx context.Context) error {
 		return fmt.Errorf("setup lock lost")
 	}
 	if err := p.conn.Ping(ctx); err != nil {
-		return fmt.Errorf("setup lock lost")
+		return cause("setup lock lost", err)
 	}
 	return nil
 }
@@ -139,14 +144,14 @@ func setupIdentity(host string, pid int) (string, error) {
 	if host == "" || strings.IndexFunc(host, func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_')
 	}) >= 0 {
-		return "", fmt.Errorf("invalid setup host")
+		return "", fmt.Errorf("invalid setup host %q: letters, digits, '.', '-' and '_' only", host)
 	}
 	if pid == 0 {
 		pid = os.Getpid()
 	}
 	app := fmt.Sprintf("nova-sprint up %s %d", host, pid)
 	if pid <= 0 || len(app) > 63 {
-		return "", fmt.Errorf("invalid setup identity")
+		return "", fmt.Errorf("invalid setup identity %q: pid must be positive and the name at most 63 bytes", app)
 	}
 	return app, nil
 }

@@ -1,0 +1,98 @@
+package git
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
+)
+
+// Branches is every branch at the clone address url whose name starts
+// with prefix (a/b/ lists a/b/*), by name without refs/heads/, with its
+// tip: one `git ls-remote --heads` and no clone (admission's read of the
+// card branches already at origin).
+func (c *Client) Branches(ctx context.Context, url, prefix string) (map[string]string, error) {
+	if url == "" {
+		return nil, fmt.Errorf("git refused: branches need a clone address")
+	}
+	args := []string{"ls-remote", "--heads", url, "refs/heads/" + prefix + "*"}
+	stdout, stderr, code, err := c.runGit_internal(ctx, "", c.cfg.PushTimeout, args...)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, c.failed_internal(code, stdout, stderr, nil, args...)
+	}
+	out := map[string]string{}
+	for _, line := range strings.Split(stdout, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 2 {
+			continue
+		}
+		name, ok := strings.CutPrefix(f[1], "refs/heads/")
+		if !ok || !isFullSHA_internal(f[0]) || !strings.HasPrefix(name, prefix) {
+			return nil, c.failed_internal(code, stdout, stderr, fmt.Errorf("a line is not <sha> refs/heads/%s...: %q", prefix, line), args...)
+		}
+		out[name] = strings.ToLower(f[0])
+	}
+	return out, nil
+}
+
+// ListTree is every file path at rev in the clone at repoDir (`git ls-tree
+// -r --name-only`), the tree admission checks a card's PATHS against.
+func (c *Client) ListTree(ctx context.Context, repoDir, rev string) ([]string, error) {
+	args := []string{"ls-tree", "-r", "--name-only", "-z", rev}
+	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, args...)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, c.failed_internal(code, stdout, stderr, nil, args...)
+	}
+	var out []string
+	for _, p := range strings.Split(stdout, "\x00") {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// Commit is one commit's identity as `git log` reads it: who authored it and
+// who committed it (finish's check of the sprint's commit identity).
+type Commit struct {
+	SHA, AuthorName, AuthorEmail, CommitterName, CommitterEmail string
+}
+
+// Commits is every commit reachable from head and from none of not (each
+// "" skipped), newest first, in the clone at repoDir: one `git log`. A
+// field that holds the separator is a failure naming the commit.
+func (c *Client) Commits(ctx context.Context, repoDir, head string, not ...string) ([]Commit, error) {
+	args := []string{"log", "--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce", head, "--not"}
+	for _, n := range not {
+		if strings.TrimSpace(n) != "" {
+			args = append(args, n)
+		}
+	}
+	args = append(args, "--")
+	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, args...)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, c.failed_internal(code, stdout, stderr, nil, args...)
+	}
+	var out []Commit
+	for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, "\x1f")
+		if len(f) != 5 {
+			return nil, fmt.Errorf("git log printed %q, not <sha> and four identity fields", edge.RedactN(line, 200))
+		}
+		out = append(out, Commit{SHA: f[0], AuthorName: f[1], AuthorEmail: f[2], CommitterName: f[3], CommitterEmail: f[4]})
+	}
+	return out, nil
+}

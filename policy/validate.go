@@ -224,11 +224,24 @@ func fraction(what string, v starlark.Value) (float64, string) {
 	return f, ""
 }
 
-// checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000.
+// checkLanding: {"backed_up": b, "flowing": f}, 0 <= f < b <= 1000, and
+// an optional "ci_wait": seconds, 1..86400 (absent is the engine's 600).
 func checkLanding(v starlark.Value) (Landing, string) {
-	d, msg := dictOf(v, "backed_up", "flowing")
+	keys := []string{"backed_up", "flowing"}
+	if d, ok := v.(*starlark.Dict); ok {
+		if _, found, _ := d.Get(starlark.String("ci_wait")); found {
+			keys = append(keys, "ci_wait")
+		}
+	}
+	d, msg := dictOf(v, keys...)
 	if msg != "" {
 		return Landing{}, msg
+	}
+	w := 0
+	if d["ci_wait"] != nil {
+		if w, msg = intIn("ci_wait", d["ci_wait"], 1, 86400); msg != "" {
+			return Landing{}, msg
+		}
 	}
 	b, msg := intIn("backed_up", d["backed_up"], 1, 1000)
 	if msg != "" {
@@ -238,13 +251,15 @@ func checkLanding(v starlark.Value) (Landing, string) {
 	if msg != "" {
 		return Landing{}, msg + " (below backed_up)"
 	}
-	return Landing{BackedUp: b, Flowing: f}, ""
+	return Landing{BackedUp: b, Flowing: f, CIWait: w}, ""
 }
 
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the
 // withdraw silence at or above the gone one: no wait is ever unbounded.
-// ready_nag (1) and ready_take (180) are optional, so a version stored
-// before them still answers.
+// ready_nag and ready_take are optional: the default policy (default.star)
+// names both, 1 and 180, and a version stored before them (the live
+// store's, before v2.0.1) lacks them, so for it alone the same values are
+// filled in here and it still answers.
 func checkTimeouts(v starlark.Value) (Timeouts, string) {
 	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag", "ready_take")
 	if msg != "" {
@@ -365,15 +380,21 @@ func checkPrices(ctx context.Context, v starlark.Value) (map[string]Price, strin
 
 // dictOf is v as a dict of exactly keys, by name.
 func dictOf(v starlark.Value, keys ...string) (map[string]starlark.Value, string) {
+	return dictWith(v, keys)
+}
+
+// dictWith is dictOf with optional keys: a key of optional may be absent.
+func dictWith(v starlark.Value, keys []string, optional ...string) (map[string]starlark.Value, string) {
 	d, ok := v.(*starlark.Dict)
+	all := slices.Concat(keys, optional)
 	if !ok {
-		return nil, refuse("the answer is %s, not a dict of %s", kind(v), strings.Join(keys, " "))
+		return nil, refuse("the answer is %s, not a dict of %s", kind(v), strings.Join(all, " "))
 	}
 	out := map[string]starlark.Value{}
 	for _, kv := range d.Items() {
 		k, ok := kv[0].(starlark.String)
-		if !ok || !slices.Contains(keys, string(k)) {
-			return nil, refuse("key %s is not one of %s", brief(kv[0]), strings.Join(keys, " "))
+		if !ok || !slices.Contains(all, string(k)) {
+			return nil, refuse("key %s is not one of %s", brief(kv[0]), strings.Join(all, " "))
 		}
 		out[string(k)] = kv[1]
 	}

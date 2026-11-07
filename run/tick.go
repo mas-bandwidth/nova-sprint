@@ -59,12 +59,12 @@ func (t *Ticker) Timeouts() policy.Timeouts { return t.timeouts }
 
 // Push sends this tick's envelopes (Pusher.Push) and returns the
 // recipients whose send failed.
-func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []string {
+func (t *Ticker) Push(ctx context.Context, b bus.Bus, now time.Time) []PushFailure {
 	return t.push.Push(ctx, b, t.store, t.snap.Epoch, now)
 }
 
 // judgementOp is the tick's policy judgements (policy.Judgements): one per
-// failing version and one per row the roster does not name, as one op on
+// failing version (a row the roster does not name is the steps'), as one op on
 // the snapshot the questions were asked on; its id is that seq's, so a
 // replay applies it once.
 func judgementOp(a *asker, o Observed) (store.Op, bool) {
@@ -193,10 +193,12 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	if err := t.raiseSeen(ctx, o); err != nil {
 		return nil, err
 	}
+	o.Roster = o.Roster.Advertised(t.snap.Rows) // a worker's own width and tiers (defect 74)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
 		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster}
 	a := t.asker(ctx, o.Roster)
 	plan := steps.Tick(t.view, in, a)
+	t.push.Nudge(plan.Nudges)
 	if a.asked {
 		t.limits, t.timeouts = a.answers.Limits, a.answers.Timeouts
 	}

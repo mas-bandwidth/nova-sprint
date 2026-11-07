@@ -6,19 +6,16 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/card"
 )
 
-// reports is the reports and takes step (LAYER-3 "Reports"): inbox items of
-// kind report and take, in arrival order, each one group (a work report with
-// its Finished, Broken or Faulted; a read report alone; a take alone) or one
-// answer. LAYER-6 applies a row's report as the row's own op, so this inbox
-// path is for a layer 6 that routes them here; the fold shows either way.
+// reports is the reports step (LAYER-3 "Reports"): inbox items of kind
+// report, in arrival order, each one group (a work report with its
+// Finished, Broken or Faulted; a read report alone) or one answer. LAYER-6
+// applies a row's report as the row's own op, so this inbox path is for a
+// layer 6 that routes them here; the fold shows either way. There is no
+// take item: a dealt consumer is in hand at the deal (defect 52).
 func (t *tick) reports() {
-	taken := map[string]int{}
 	for _, it := range t.in.Inbox {
-		switch it.Kind {
-		case "report":
+		if it.Kind == "report" {
 			t.reportItem(it)
-		case "take":
-			t.takeItem(it, taken)
 		}
 	}
 }
@@ -66,8 +63,6 @@ func (t *tick) reportItem(it InboxItem) {
 		t.refuse(it, "consumer %s is of attempt %d; producer %s is at attempt %d", c.ID, c.Attempt, p.ID, p.Attempt)
 	case c.Kind == "read" && c.Head != p.Head:
 		t.refuse(it, "read %s was cut at %s; producer %s is at %s", c.ID, c.Head, p.ID, p.Head)
-	case c.State == "ready":
-		t.refuse(it, "take it first: `nova-sprint take %s@%d`", c.ID, c.Gen)
 	default:
 		t.reportGroup(it, c.ID)
 	}
@@ -87,41 +82,6 @@ func (t *tick) reportGroup(it InboxItem, c string) {
 		t.refuse(it, "%s", r.Reason)
 		return
 	}
-	g.key.Item = it.ID
-	t.add(g)
-}
-
-// takeItem plans one take: at most width minus working per row by an
-// in-tick tally, so the store's width write never refuses a tick op.
-func (t *tick) takeItem(it InboxItem, taken map[string]int) {
-	c, ok := t.v.Cards[it.Consumer]
-	switch {
-	case !ok || !isConsumer(c):
-		t.refuse(it, "card %s does not exist: run `nova-sprint next --as %s`", it.Consumer, it.Row)
-		return
-	case !t.unclaimed(c.ID):
-		return // as a report's: the item waits for the folded result
-	case c.Holder != it.Row:
-		t.refuse(it, "consumer %s is held by %s, not %s", c.ID, c.Holder, it.Row)
-		return
-	case c.State == "working":
-		t.ack(it, "applied at seq %d", t.v.touched[c.ID])
-		return
-	case c.State != "ready":
-		t.refuse(it, "consumer %s is %s; only a ready consumer is taken", c.ID, c.State)
-		return
-	}
-	row, width := c.Holder, t.width(c.Holder)
-	if t.v.Working(row)+taken[row] >= width {
-		t.refuse(it, "row %s is at width %d: finish %s first", row, width, t.v.Live(row)[0])
-		return
-	}
-	g, r := t.newGroup("take", c.ID, t.consumerMove(c.ID, card.Take{Row: it.Row}))
-	if r != nil {
-		t.refuse(it, "%s", r.Reason)
-		return
-	}
-	taken[row]++
 	g.key.Item = it.ID
 	t.add(g)
 }

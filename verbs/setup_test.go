@@ -57,6 +57,7 @@ func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 	return nil
 }
 func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
+	t.Parallel()
 	f := &setupFake{stop: 5}
 	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: f, Lock: setupLeaseFake{}}
 	first := e.Execute(context.Background(), []string{"up"})
@@ -73,11 +74,36 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	if second.Exit != 0 || !strings.HasPrefix(strings.Join(f.trace, ","), "verify1,verify1,verify2,act2,verify2") {
 		t.Fatal(second, f.trace)
 	}
+	// up names what the walk does not set: here the commit identity (PR 641 F6)
+	if !strings.Contains(second.Output, "UP 8/8\nUP NEEDS the sprint has no commit identity: no worker can hook and nothing can be committed: nova-sprint identity --name ") {
+		t.Fatal(second.Output)
+	}
+	// UP DONE tells a new coordinator to read check's width lines before adding cards
+	if !strings.Contains(second.Output, "coordinator rowan\nBEFORE CARDS: keep everybody at width: ") || !strings.Contains(second.Output, "then nova-sprint check and read its width, waits and NEEDS chain lines before start") {
+		t.Fatal(second.Output)
+	}
 }
 func TestSetupArguments(t *testing.T) {
+	t.Parallel()
 	e := Engine{Actor: "rowan"}
 	got := e.Execute(context.Background(), []string{"up", "--dash", "invalid"})
-	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<host>: nova-sprint help up\n" {
+	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<machine>[:<port>]: nova-sprint help up\n" {
 		t.Fatal(got)
+	}
+}
+
+// TestSetupNamesTheBenchModel: a store Migrate upgraded keeps its policy,
+// which may name no bench model for a tier a bench serves; up names it with
+// the policy's fix, beside the identity (PR 641 F6).
+func TestSetupNamesTheBenchModel(t *testing.T) {
+	t.Parallel()
+	f := upStore(true)
+	applyTest(t, f, store.Op{ID: "policy-up", Epoch: 1, Actor: "rowan", Kind: "policy", At: t0,
+		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "old", Body: "script"}, store.SetActivePolicy{Version: 1}, store.SetIdentity{Name: "Bot", Email: "1+bot@users.noreply.example.test"}}})
+	e := Engine{Actor: "rowan", Store: f, Bus: upBus(), Now: upNow, Setup: &setupFake{}, Lock: setupLeaseFake{}, Answers: noBench{"frontier"}, Roster: newRoster()}
+	r := e.Execute(context.Background(), []string{"up", "--dash", "tailnet"})
+	if r.Exit != 0 || !strings.Contains(r.Output, "UP 8/8\nUP NEEDS policy v1 names no bench model for tier frontier, so no bench is dealt a card of it: give the policy's catalog() a \"bench\"") ||
+		strings.Contains(r.Output, "commit identity") {
+		t.Fatal(r.Output)
 	}
 }

@@ -60,7 +60,7 @@ func sweepSteps(b *bk) []cold4Step {
 		if !consumer(c.Kind) {
 			continue
 		}
-		for _, ev := range []Event{Take{}, Report{Result: "ok", Head: hB}, Report{Result: "ok", Head: c.Head}, Report{Result: "fail", Head: hD}, Report{Result: "fault"}, Report{Result: "fix", Head: c.Head},
+		for _, ev := range []Event{Report{Result: "ok", Head: hB}, Report{Result: "ok", Head: c.Head}, Report{Result: "fail", Head: hD}, Report{Result: "fault"}, Report{Result: "fix", Head: c.Head},
 			Withdraw{Reason: "silent"}, Withdraw{Reason: "preempted by blocker x"}, Withdraw{Reason: "silent", Head: hE}} {
 			add(b.C(id, ev))
 			if _, ok := ev.(Report); ok {
@@ -113,7 +113,7 @@ func sweepPairs(t *testing.T, name string, setup func(*testing.T) *bk) {
 	}
 	for i := range steps {
 		for j := range steps {
-			if i == j {
+			if i == j || testing.Short() && (i*len(steps)+j)%20 != 0 { // -short: every 20th pair
 				continue
 			}
 			a, s := setup(t), setup(t)
@@ -153,6 +153,7 @@ func sweepPairs(t *testing.T, name string, setup func(*testing.T) *bk) {
 }
 
 func TestBreakSweep(t *testing.T) {
+	t.Parallel()
 	worlds := map[string]func(*testing.T) *bk{
 		"fresh": func(t *testing.T) *bk {
 			b := newBk(t, producer("n1"), producer("p1"), producer("p2", "p1"), producer("g", "p1"))
@@ -190,6 +191,8 @@ func TestBreakSweep(t *testing.T) {
 			b.readOf("p1", "r2", "ok")
 			b.ok(b.P("p1", ReadYes{}))
 			b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
+			// the red sent p1 to fix: a new attempt, a new read, merging again
+			b.ok(b.P("p1", Finished{Consumer: b.run("p1", "r1", "ok", hD)}))
 			b.readOf("p1", "r3", "ok")
 			b.ok(b.P("p1", ReadYes{}))
 			b.review("p2", "r1", hB)
@@ -290,6 +293,7 @@ func sweepReport(t *testing.T, key, format string, args ...any) {
 }
 
 func TestBreakSweepTriples(t *testing.T) {
+	t.Parallel()
 	setups := map[string]func(*testing.T) *bk{
 		"drop": func(t *testing.T) *bk {
 			b := newBk(t, producer("n1"), producer("m1"), producer("p2", "n1"), producer("p3", "n1"), producer("p1"))
@@ -316,10 +320,15 @@ func TestBreakSweepTriples(t *testing.T) {
 	}
 	// 12000 samples per setup, in 8 shards of 1500 run in parallel, each
 	// shard its own seed (7..14): the same coverage in an eighth of the time.
+	// -short (the per-commit unit job) samples a tenth; the nightly all.
+	samples := 1500
+	if testing.Short() {
+		samples = 150
+	}
 	for n, f := range setups {
 		for shard := int64(0); shard < 8; shard++ {
 			n, f, shard := n, f, shard
-			t.Run(fmt.Sprintf("%s/%d", n, shard), func(t *testing.T) { t.Parallel(); sweepTriples(t, n, f, 1500, 7+shard) })
+			t.Run(fmt.Sprintf("%s/%d", n, shard), func(t *testing.T) { t.Parallel(); sweepTriples(t, n, f, samples, 7+shard) })
 		}
 	}
 }

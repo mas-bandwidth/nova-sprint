@@ -65,6 +65,13 @@ re-running the tree at base, and a fix card never edits that table (LESSONS
 C.17). It tells the worker to run the whole package of every file it
 touches, never a subset (LESSONS C.18).
 
+A brief never names a commit identity: the sprint has one (`nova-sprint identity`), which
+hook and take print and the bench worker writes into the job's clone, and every commit of
+every card is authored and committed as it; the contributor's own name goes only in a
+`By:` line and a `Co-Authored-By:` trailer of the message. A brief that tells a worker to
+commit as itself or as a row is wrong; `finish` refuses such a head (CORRECT-USE, "one commit
+identity").
+
 ## Size and kind
 
 Cards are pro-sized from the start: the design piece lands first, and each
@@ -95,3 +102,80 @@ report and the dashboard feed carry the same fields as JSON, and the dashboard r
 the only free text is the prose a mind reads: the task itself and the reason lines;
 v1's 400k generated lines came from making every internal message a record,
 and the engine's internals stay plain Go.
+
+## Admission: what add proves before a card exists (built 2026-11-07)
+
+Intent rule 34: whatever can be found at add is found at add, and each
+refusal names its one fix. `add` (dry run too) parses the brief, then proves
+against origin and the roster; `check` re-proves every waiting or ready
+producer the same way, and `restore` prints the same proof for the cards it
+restored (an `ADMIT` line each). The parse refuses:
+
+- **NEEDS-ROUTE: <name>** (repeatable). The card is dealt only to a row that
+  serves every route it names. A machine serves a route through a
+  `route:<name>` role in nova-config (`--roles bench,route:<name>`); kin
+  serve no routes. The one parse is `card.NeedsRoutes`, which the tick, the
+  unserved judgement and admission all read. Uppercase like every other key.
+- **HEAD: <full sha>** and **PR: <number>** (once each, optional): the work
+  the brief carries, read only by admission (the brief keeps them).
+- **DONE-WHEN** that is not one command. A DONE-WHEN is one argv: words
+  split at white space, a single or double quote joining what it encloses,
+  run directly with no shell. So the line is refused (decided 2026-11-07,
+  directive 77) when it carries shell syntax outside a quote (a backquote,
+  `;`, `&`, `&&`, `|`, `||`, `<`, `>`, `(`, `)`, a backslash, `$(`, `${`, or
+  `$` before a letter or `_`; a lone `$`, as in `^TestX$`, is a literal), when
+  a quote is left open, or when its first word is not a program: a path (it
+  holds a `/`), or a name that starts with a lower-case letter or digit, holds
+  only letters, digits and `. _ + - @`, does not end in a dot, and is not a
+  shell builtin (`cd`, `export`, `source`, ...). A sentence is caught by
+  that form (`Verify the tests pass`, `tests, pass`), a lower-case sentence is
+  not: what the coordinator can check is the form, because the bench's PATH
+  is not readable from it. A name of the right form that is not on the bench
+  is met where the gate runs, as the wall's own command-not-found. The fix
+  line says to wrap a gate that needs a shell: `sh -c '...'`. The one parser
+  is `edge.ParseGate`; admission (add, check, restore) and the worker's
+  `RunTest` both call it, so what is admitted is what runs. Nothing is run
+  at add.
+- **Retired mechanics**, named with the line: a `WHO:`, `LOCK:` or `JOB:`
+  key; `JOB.md`; a lock (winlock, flock, lockfile, a bench or captain lock);
+  `ssh to <host>`; a DONE-WHEN or TEST that runs ssh. The take receipt is the
+  job, the deal is the who, and a gate names facts, never a host.
+
+Then, against the roster and origin:
+
+- the stream is in the store and its base is at origin;
+- a row up at width above zero serves the card's tier and every route;
+- no DONE-WHEN or TEST names a roster bench as a word;
+- each PATHS entry is at the base: a glob (`*`, `?`, `[`) matches a file or
+  directory there; a literal exists, or its directory does, or its directory
+  is declared in PATHS as `dir/` and that directory's parent exists (a new
+  directory is declared, never implied);
+- the work is not already at the base: the card's branch at origin, a HEAD
+  line, or a PR's head is not an ancestor of the base tip, and the PR has not
+  merged.
+
+`stream add` (and `check`, per stream) also reads the status checks the base
+branch requires (branch protection and rulesets, one `gh api` each) and,
+when one is named like a contributor agreement (`CLA`, `CAA`, "contributor",
+"assignment agreement", "license agreement"), prints a warning, never a
+refusal: the check, and the git identities the benches author commits as
+(`<row> <row@nova-sprint.local>`, from nova-config's benches with cores), for
+the human to sign before the first card lands; kin commit as their own git
+identity. Decided 2026-11-07 (directive 63): a forge exposes who has signed
+only where the agreement's bot does, and most do not, so the signed identities
+are not listed and an unsigned one is not refused at add; the warning is the
+closest correct thing. A required-checks read that fails is itself a warning.
+Routing a stream's cards away from a row whose identity cannot land is the
+deal's, not admission's, and is not built here.
+
+`stream add` proves the card branches `sprint/<stream>/<card>` can be
+created: the name passes git's ref-name rules, the base is not `sprint` or
+`sprint/<stream>`, no branch at origin is their parent (git refuses a branch
+under a branch), the base is at origin, and with forge github this host's gh
+identity has write, maintain or admin on the repository.
+
+A restore refuses a card record whose state this build does not map (one of
+waiting, ready, working, review, merging, landed, fail, blocked, done),
+naming the record. A dump of another shape (a v1 store with a `landed`
+timestamp column) is refused before that by the backup header's schema
+hash; there is no import verb.

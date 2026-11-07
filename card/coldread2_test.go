@@ -35,6 +35,7 @@ func cold2Review(t *testing.T) *world {
 // refuses that, and the plan is not applied. The original probe applied the
 // merge and saw store.ErrInvalid.
 func TestCold2DefectTwoReadsInOneTick(t *testing.T) {
+	t.Parallel()
 	w := cold2Review(t)
 	a, r := w.plan("p1", AskRead{Row: "r2"})
 	require.Nil(t, r)
@@ -49,13 +50,14 @@ func TestCold2DefectTwoReadsInOneTick(t *testing.T) {
 	plan, r := w.plan("p1", AskReads{Rows: []string{"r2", "r3"}})
 	require.Nil(t, r)
 	w.op("askreads", plan)
-	assert.Equal(t, Ready, w.card("p1.r1.1").State)
-	assert.Equal(t, Ready, w.card("p1.r1.2").State)
+	assert.Equal(t, Working, w.card("p1.r1.1").State)
+	assert.Equal(t, Working, w.card("p1.r1.2").State)
 }
 
 // E2. HoldStream with a ready producer named twice emits two state writes to
 // one field: ErrInvalid, against "no plan it emits is ErrInvalid".
 func TestCold2DefectHoldStreamNamesAProducerTwice(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	p := w.card("p1")
@@ -71,6 +73,7 @@ func TestCold2DefectHoldStreamNamesAProducerTwice(t *testing.T) {
 // need fail, so a relink can never ride in the drop's op: the dependant must
 // be failed first and revived, or wait a tick on a need that is fail.
 func TestCold2DefectRelinkInTheDropsOp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("x"), producer("p3", "n1"))
 	drop, r := w.plan("n1", Cancel{Reason: "dropped, x replaces it"})
 	require.Nil(t, r)
@@ -85,6 +88,7 @@ func TestCold2DefectRelinkInTheDropsOp(t *testing.T) {
 // Start copies that finding, not the reason. The failure the work reported
 // does not ride into the next attempt.
 func TestCold2DefectBrokenReasonNeverReachesTheNextAttempt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Broken{Consumer: w.work("p1", "r1", "fail", h1, "TestFoo panics on nil map")})
@@ -103,6 +107,7 @@ func TestCold2DefectBrokenReasonNeverReachesTheNextAttempt(t *testing.T) {
 // the Withdraw release) and Unblock write waiting with the consumer's or the
 // event's reason, or none at all, never the hold.
 func TestCold2DefectParkedWithoutNamingTheHold(t *testing.T) {
+	t.Parallel()
 	hold := func(w *world) { w.raw("hold", store.SetStreamHeld{Stream: "s1", Held: true}) }
 	cases := map[string]func(w *world){
 		"Broken": func(w *world) {
@@ -138,6 +143,7 @@ func TestCold2DefectParkedWithoutNamingTheHold(t *testing.T) {
 // tick"; LESSONS 2.21 nothing stalls). Reads stall the same way later, when
 // ".r<review>.<n>" grows a digit.
 func TestCold2DefectAddedIdTooLongToStart(t *testing.T) {
+	t.Parallel()
 	id := strings.Repeat("p", store.MaxName-1)
 	_, r := MoveAdd(Add{ID: id, Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do it"}, map[string]Card{})
 	if assert.NotNil(t, r) {
@@ -156,6 +162,7 @@ func TestCold2DefectAddedIdTooLongToStart(t *testing.T) {
 // need that is not a card". A card of phase 2 cannot need the phase-1 mark;
 // it must list every card the mark lists.
 func TestCold2SuspectSentinelIsNeverANeed(t *testing.T) {
+	t.Parallel()
 	cards := map[string]Card{"g1": {ID: "g1", Kind: "sentinel", State: Waiting}}
 	_, r := MoveAdd(Add{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "b", Needs: []string{"g1"}}, cards)
 	assert.Nil(t, r, "a sentinel may be a need")
@@ -165,6 +172,7 @@ func TestCold2SuspectSentinelIsNeverANeed(t *testing.T) {
 // consumer (even the producer's own) and a failed card are accepted as the
 // replacement, and `by` is not fenced.
 func TestCold2SuspectReplaceByAConsumer(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Faulted{Consumer: w.work("p1", "r1", "fault", "", "bench")})
@@ -178,19 +186,21 @@ func TestCold2SuspectReplaceByAConsumer(t *testing.T) {
 // producer record that is not the one the store holds; the plan then lands
 // and strands the producer in working with its consumer fail.
 func TestCold2SuspectWithdrawFromAStaleProducerStrands(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	stale := w.card("p1") // ready, attempt 0
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
 	_, r := MoveConsumer(w.card("p1.w1"), stale, w.rows()["r1"], Withdraw{Reason: "silent", Stream: Stream{Name: "s1"}})
 	refusal{r, "producer p1 is ready; withdrawing live work consumer p1.w1 would leave it working; pass the producer in working, so the withdraw releases it"}.check(t)
-	assert.Equal(t, []string{Working, Ready}, []string{w.card("p1").State, w.card("p1.w1").State})
+	assert.Equal(t, []string{Working, Working}, []string{w.card("p1").State, w.card("p1.w1").State})
 }
 
 // S4. NeedFailed{InThisOp} alone is refused. The plan fences the need as
 // fail, so the store rejects it without the drop, and Merge of that one
 // plan refuses it too. The dependant stays waiting.
 func TestCold2SuspectNeedFailedInThisOpAlone(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("p3", "n1"))
 	plan, r := w.plan("p3", NeedFailed{Need: "n1", InThisOp: true})
 	require.Nil(t, r)
@@ -207,10 +217,10 @@ func TestCold2SuspectNeedFailedInThisOpAlone(t *testing.T) {
 // S5. Withdraw{Head} accepts the base itself as the pushed head; it becomes
 // the producer's head and the next attempt's prior_head.
 func TestCold2SuspectWithdrawHeadIsTheBase(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r1"})
 	c := w.card("p1.w1")
 	_, r := MoveConsumer(c, w.card("p1"), w.rows()["r1"], Withdraw{Reason: "silent", Head: base, Stream: StreamFromStore(w.snap().Streams["s1"])})
 	refusal{r, "head " + base + " is the base; nothing was done"}.check(t)
@@ -221,6 +231,7 @@ func TestCold2SuspectWithdrawHeadIsTheBase(t *testing.T) {
 // ---- rulings, each from the right and the wrong state and actor (pass) ----
 
 func TestCold2Rulings(t *testing.T) {
+	t.Parallel()
 	t.Run("work reports ok fail fault, read ok fix fault", func(t *testing.T) {
 		for _, res := range []string{"ok", "fail", "fault"} {
 			_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Report{Row: "r1", Result: res, Head: h2})
@@ -231,8 +242,6 @@ func TestCold2Rulings(t *testing.T) {
 	})
 	t.Run("wrong actor", func(t *testing.T) {
 		_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r2"], Report{Row: "r2", Result: "ok", Head: h2})
-		refusal{r, "consumer p1.w1 is held by r1, not r2"}.check(t)
-		_, r = MoveConsumer(wk(Ready, "", ""), pr(Working), rows()["r2"], Take{Row: "r2"})
 		refusal{r, "consumer p1.w1 is held by r1, not r2"}.check(t)
 		refusal{mv(Review, nil, AskRead{Row: "r2"}), "r2 wrote producer p1's head and may not read it"}.check(t)
 	})
@@ -253,6 +262,7 @@ func TestCold2Rulings(t *testing.T) {
 }
 
 func TestCold2RulingsReplaceAndReads(t *testing.T) {
+	t.Parallel()
 	t.Run("replace by self and unknown", func(t *testing.T) {
 		refusal{mv(Ready, nil, Replace{By: "p1"}), "producer p1 cannot be replaced by itself"}.check(t)
 		refusal{mv(Ready, nil, Replace{By: "zz"}), "card zz does not exist (Replace takes the card it is replaced by among the cards passed)"}.check(t)
@@ -270,14 +280,14 @@ func TestCold2RulingsReplaceAndReads(t *testing.T) {
 		_, r := Move(g, nil, rows(), Stream{Name: "s1"}, nil, AskRead{Row: "r1"})
 		refusal{r, "sentinel g1 never has a consumer"}.check(t)
 	})
-	t.Run("take on down and held rows", func(t *testing.T) {
-		c := wk(Ready, "", "")
-		c.Holder = "r3"
-		_, r := MoveConsumer(c, pr(Working), rows()["r3"], Take{Row: "r3"})
-		refusal{r, "row r3 is down; it cannot take"}.check(t)
-		c.Holder = "r4"
-		_, r = MoveConsumer(c, pr(Working), rows()["r4"], Take{Row: "r4"})
-		assert.Nil(t, r, "a held row takes what it was dealt")
+	t.Run("report from down and held rows", func(t *testing.T) {
+		// the deal is the take: what a row holds it may report, down or held
+		for _, row := range []string{"r3", "r4"} {
+			c := wk(Working, "", "")
+			c.Holder = row
+			_, r := MoveConsumer(c, pr(Working), rows()[row], Report{Row: row, Result: "fault", Reason: "x"})
+			assert.Nil(t, r, row)
+		}
 	})
 	t.Run("readfix on zero fix reads and an old review", func(t *testing.T) {
 		refusal{mv(Review, nil, ReadFix{Finding: "x"}), "producer p1 has no read of review 1 that said fix; ReadFix needs one"}.check(t)
@@ -291,6 +301,7 @@ func TestCold2RulingsReplaceAndReads(t *testing.T) {
 }
 
 func TestCold2RulingsValues(t *testing.T) {
+	t.Parallel()
 	t.Run("values refused before a plan", func(t *testing.T) {
 		for _, c := range []struct {
 			e    Event
@@ -327,28 +338,28 @@ func TestCold2RulingsValues(t *testing.T) {
 // deal the blocker to it, as one op, on the Fake; the withdrawn producer goes
 // back to ready with its head kept, no bounce.
 func TestCold2PreemptionMerge(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("b1"))
 	w.move("p1", Resolve{})
 	w.move("b1", Resolve{})
 	w.move("b1", SetPriority{Level: "blocker", Reason: "asked"})
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
-	w.consume("p1.w1", Take{Row: "r2"})
 	withdraw := w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker b1", Head: h2, Preempt: true})
 	start, r := w.plan("b1", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
 	w.op("preempt", mustMerge(t, withdraw, start))
 	w.is("p1", Ready)
 	assert.Equal(t, []any{h2, 0}, []any{w.card("p1").Head, w.card("p1").Bounces})
-	w.consume("b1.w1", Take{Row: "r2"})
 }
 
 // ---- the random walk, extended ----
 
 func TestCold2Walk(t *testing.T) {
+	t.Parallel()
 	seen := map[string]int{}
 	var mu sync.Mutex
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= 120; seed++ {
+		for seed := int64(1); seed <= walkSeeds(120, 24); seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel()
 				got := cold2Walk(t, seed, 900)
@@ -603,12 +614,13 @@ func (w *world) cold2Reached(rng *rand.Rand, all map[string]Card, sents []string
 	return plan, "Reached " + g.ID, g.ID, r == nil
 }
 
-// cold2WaiveRed attempts WaiveRed whenever a producer in review has a done
-// ok read of the previous review at the same head, so the walk accepts it.
+// cold2WaiveRed attempts WaiveRed whenever a producer a Red sent to fix
+// (ready or waiting, red recorded) has a done ok read of the previous review
+// at the same head, so the walk accepts it.
 func (w *world) cold2WaiveRed(rng *rand.Rand, all map[string]Card, cons map[string][]Card, prods []string) (Plan, string, string, bool, bool) {
 	var targets []string
 	for _, id := range prods {
-		if all[id].State == Review && cold2PriorOK(cons[id], all[id]) {
+		if (all[id].State == Ready || all[id].State == Waiting) && all[id].Red && cold2PriorOK(cons[id], all[id]) {
 			targets = append(targets, id)
 		}
 	}
