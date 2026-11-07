@@ -9,10 +9,7 @@ import (
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, CardRed,
 // NeedsLanded, RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen,
-// Running, AtSeq. There
-// is no width condition and no tier condition: the writes are the checks (the
-// state write into working for width, put card for the holder's tiers). The
-// set is closed by the unexported method; any other value is ErrInvalid.
+// Running, AtSeq. The set is closed by the unexported method; any other value is ErrInvalid.
 type Expect interface{ isExpect() }
 
 // JudgementOpen holds when judgement ID is open: it fences a judgement plan
@@ -125,7 +122,7 @@ type SetStreamForge struct{ Stream, Forge string }
 // A producer or sentinel has no Of and no Holder; a sentinel has no Brief. A
 // consumer (work or read) names its producer in Of (a producer of the same
 // epoch), its producer's tier and stream, and its Holder (a row of the same
-// epoch that serves its tier), has
+// epoch), has
 // no needs and no after, and carries the Attempt it belongs to (a producer's
 // starts at 0); its paths, done-when and prose are copies set here. Kind, of,
 // stream, holder and tier never change after. A read consumer carries the
@@ -152,11 +149,8 @@ type PutCard struct {
 }
 
 // SetCardState sets a card's state; refused when the card is already in it,
-// so nothing moves without a change. A consumer moved into ready or working
-// is refused when its holder does not serve its tier, and one moved into
-// working counts against its holder's width: refused when the row already
-// holds as many working cards as its width, counted at the moment of the
-// write (earlier writes of the op included). No other state counts. There is no holder
+// so nothing moves without a change. Width and tiers are configuration, not
+// the store's (round 22). There is no holder
 // write: a consumer's holder is fixed at add (Johnny's review, 2026-11-06:
 // a working card could drop its holder and keep the slot).
 type SetCardState struct{ Card, State string }
