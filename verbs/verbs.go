@@ -3,7 +3,6 @@ package verbs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -208,17 +207,14 @@ func (e *Engine) next(ctx context.Context, args []string, intro bool) Result {
 	if e.Env == nil {
 		return unavailable("next")
 	}
+	if jsonOutput {
+		return e.nextJSON(ctx, actor)
+	}
 	answer, err := e.findNext(ctx, actor)
 	if err != nil {
 		return operationalFailure("next", err)
 	}
-	if jsonOutput {
-		b, err := json.Marshal(answer)
-		if err != nil {
-			return unavailable("next")
-		}
-		return Result{string(b) + "\n", 0}
-	}
+
 	prefix := ""
 	if intro && strings.HasPrefix(answer.Message, "the fleet is not up") {
 		prefix = "nova-sprint deals cards to AIs over nova-bus, reads them, and lands them. It stands on nova-tools.\n"
@@ -262,6 +258,9 @@ func (e *Engine) findNext(ctx context.Context, actor string) (nextAnswer, error)
 	if err != nil {
 		return nextAnswer{}, err
 	}
+	return nextFromSnapshot(snap, actor), nil
+}
+func nextFromSnapshot(snap store.Snapshot, actor string) nextAnswer {
 	coordinator := ""
 	if snap.Rows[actor].Role == "coordinator" {
 		coordinator = actor
@@ -280,7 +279,7 @@ func (e *Engine) findNext(ctx context.Context, actor string) (nextAnswer, error)
 		a.Message += fmt.Sprintf(" (%d more)", more)
 	}
 	a.Obligations, a.Judgements = items, judgements
-	return a, nil
+	return a
 }
 
 func cardNext(s store.Snapshot, actor string) (nextAnswer, bool) {

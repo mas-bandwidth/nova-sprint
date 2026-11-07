@@ -73,12 +73,12 @@ func TestNextJSONAndInvalid(t *testing.T) {
 }
 
 func TestNextJSONIncludesAllRowObligations(t *testing.T) {
-	s := store.Snapshot{Cards: map[string]store.Card{
+	s := store.Snapshot{Rows: map[string]store.Row{"worker": {Name: "worker", Session: "fixture", Role: "worker"}}, Cards: map[string]store.Card{
 		"z":     {ID: "z", Holder: "worker", State: "ready", Kind: "work", Gen: 2},
 		"a":     {ID: "a", Holder: "worker", State: "working", Kind: "read", Gen: 3},
 		"other": {ID: "other", Holder: "another", State: "ready"},
 	}}
-	e := Engine{Store: fakeReader{s}, Env: fakeEnv{green: true, schema: true, hooked: true}, Roles: testRoles{role: "worker"}, Actor: "worker"}
+	e := Engine{Store: fakeReader{s}, Env: fakeEnv{green: true, schema: true, hooked: true}, Roles: testRoles{role: "worker"}, Roster: fixtureRoster{}, Version: "dev+abcdef123456", Actor: "worker"}
 	got := e.Execute(context.Background(), []string{"next", "--json"})
 	if got.Exit != 0 || !strings.Contains(got.Output, `"card":"a"`) || !strings.Contains(got.Output, `"card":"z"`) || strings.Contains(got.Output, `"card":"other"`) || strings.Index(got.Output, `"card":"a"`) > strings.Index(got.Output, `"card":"z"`) {
 		t.Fatal(got)

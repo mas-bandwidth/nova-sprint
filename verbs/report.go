@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -23,10 +24,12 @@ type FaultVerifier interface {
 }
 
 type reportInput struct {
-	id, actor, result, head, reason string
-	gen, epoch                      int
-	cost                            int64
-	priced                          bool
+	id, actor, result, head, reason, finding string
+	gen, epoch                               int
+	cost                                     int64
+	priced                                   bool
+	jsonOutput, pricedSet, microSet, usdSet  bool
+	opID                                     string
 }
 
 func parseReport(verb string, args []string, actor string) (reportInput, bool) {
@@ -54,32 +57,59 @@ func parseReport(verb string, args []string, actor string) (reportInput, bool) {
 		}
 		i++
 	}
+	if !parseReportFlags(verb, args[i:], &in) {
+		return in, false
+	}
+	if verb == "read" && in.finding != "" {
+		in.reason = in.finding
+	}
+	if verb == "finish" && in.result == "" {
+		in.result = "ok"
+	}
+	if ((verb == "report" && !in.jsonOutput) || in.result == "fail" || in.result == "fault") && in.reason == "" {
+		return in, false
+	}
+	if in.jsonOutput {
+		if in.epoch == 0 || in.opID == "" || !in.microSet || !in.pricedSet || in.usdSet {
+			return in, false
+		}
+	} else if in.opID != "" || in.microSet || in.pricedSet {
+		return in, false
+	}
+	return in, in.actor != "" && in.result != ""
+}
+
+func parseReportFlags(verb string, args []string, in *reportInput) bool {
+	i := 0
+	seen := map[string]bool{}
 	for ; i < len(args); i++ {
+		if seen[args[i]] {
+			return false
+		}
+		seen[args[i]] = true
+		if args[i] == "--json" {
+			in.jsonOutput = true
+			continue
+		}
 		if args[i] == "--failed" && verb == "finish" {
 			in.result = "fail"
 			continue
 		}
 		if i+1 >= len(args) || args[i+1] == "" {
-			return in, false
+			return false
 		}
 		if args[i] == "--result" && verb != "report" {
-			return in, false
+			return false
 		}
-		if args[i] == "--finding" && verb != "read" {
-			return in, false
+		if args[i] == "--finding" && verb != "read" && verb != "report" {
+			return false
 		}
-		if !reportFlag(&in, args[i], args[i+1]) {
-			return in, false
+		if !reportFlag(in, args[i], args[i+1]) {
+			return false
 		}
 		i++
 	}
-	if verb == "finish" && in.result == "" {
-		in.result = "ok"
-	}
-	if (verb == "report" || in.result == "fail" || in.result == "fault") && in.reason == "" {
-		return in, false
-	}
-	return in, in.actor != "" && in.result != ""
+	return true
 }
 
 func reportFlag(in *reportInput, key, value string) bool {
@@ -94,11 +124,32 @@ func reportFlag(in *reportInput, key, value string) bool {
 		}
 	case "--head":
 		in.head = value
-	case "--reason", "--finding":
+	case "--reason":
 		in.reason = value
+	case "--finding":
+		in.finding = value
 	case "--result":
 		in.result = value
+	case "--id":
+		in.opID = value
+	case "--cost-microusd":
+		if !decimalDigits(value) {
+			return false
+		}
+		var err error
+		in.cost, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return false
+		}
+		in.microSet = true
+	case "--priced":
+		if value != "true" && value != "false" {
+			return false
+		}
+		in.priced = value == "true"
+		in.pricedSet = true
 	case "--cost":
+		in.usdSet = true
 		var err error
 		in.cost, err = parseCost(value)
 		if err != nil {
@@ -128,12 +179,15 @@ func (e *Engine) report(ctx context.Context, verb string, args []string) Result 
 		return epochRefusal(verb, in.epoch, snap.Epoch)
 	}
 	opID := consumerOpID(verb, snap.Epoch, in.id, in.gen)
+	if in.jsonOutput && in.opID != opID {
+		return refused(verb, "op id must be "+opID, "use the derived operation id")
+	}
 	r, found, err := st.Replay(ctx, opID)
 	if err != nil {
 		return operationalFailure(verb, err)
 	}
 	if found {
-		return reportReceipt(r, in.actor, verb, in.id)
+		return formatReportReceipt(r, in, verb, opID)
 	}
 	if e.Reports == nil {
 		return unavailable(verb)
@@ -186,6 +240,9 @@ func (e *Engine) checkReport(ctx context.Context, verb string, snap store.Snapsh
 			return refused(verb, in.actor+" wrote the head and cannot read it", "nova-sprint next"), true
 		}
 	}
+	if c.Kind == "read" && in.result == "fix" && in.finding != "" {
+		in.reason = in.finding
+	}
 	if in.result == "fix" && in.reason == "" {
 		return refused(verb, "a fix needs a finding", "nova-sprint read "+in.id+"@"+strconv.Itoa(in.gen)+" fix --finding <text>"), true
 	}
@@ -221,7 +278,24 @@ func (e *Engine) applyReport(ctx context.Context, st ApplyStore, snap store.Snap
 	if err != nil {
 		return unavailable(verb)
 	}
-	return reportReceipt(rec, in.actor, verb, in.id)
+	return formatReportReceipt(rec, in, verb, id)
+}
+
+func formatReportReceipt(r store.Receipt, in reportInput, verb, opID string) Result {
+	if !in.jsonOutput {
+		return reportReceipt(r, in.actor, verb, in.id)
+	}
+	if r.Op != opID || r.Actor != in.actor || r.Kind != "report" {
+		return refused(verb, "operation cannot be performed", "nova-sprint next --as "+in.actor)
+	}
+	if !r.Accepted {
+		return refused(verb, r.Reason, "nova-sprint show "+in.id)
+	}
+	data, err := json.Marshal(r)
+	if err != nil {
+		return unavailable(verb)
+	}
+	return Result{string(data) + "\n", 0}
 }
 
 func parseCost(s string) (int64, error) {
