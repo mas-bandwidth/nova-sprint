@@ -386,6 +386,16 @@ func (s *StoreSprintClient) applyWithReplay_internal(ctx context.Context, op sto
 	}
 	return store.Receipt{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
 }
+func (s *StoreSprintClient) Beat(ctx context.Context, row string, hb Heartbeat) error {
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	op := store.Op{ID: fmt.Sprintf("beat-%s-%d", row, snap.Seq), Epoch: snap.Epoch, Actor: row, Kind: "beat", At: s.now_internal(),
+		Writes: []store.Write{store.SetRowLoad{Row: row, Load1Centi: int(hb.Load1*100 + 0.5), Cores: hb.Cores, SlotsUsed: hb.SlotsUsed, SlotsTotal: hb.SlotsTotal}}}
+	_, err = s.applyWithReplay_internal(ctx, op)
+	return err
+}
 func (s *StoreSprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
 	snap, err := s.Store.Snapshot(ctx)
 	if err != nil {

@@ -209,3 +209,38 @@ func TestShowAndQueueRefusals(t *testing.T) {
 		{name: "a queue of no stream", as: "alice", args: []string{"queue", "--stream", "zz"}, exit: 1, want: []string{"no stream zz"}},
 	})
 }
+
+// beat is the worker's heartbeat: it sets the row's load columns, a repeat
+// writes nothing, and a bad flag is bad usage that names the flag.
+func TestBeat(t *testing.T) {
+	w := newWorld(t)
+	args := []string{"beat", "--load1", "2.505", "--cores", "8", "--slots-used", "3", "--slots-total", "8"}
+	want(t, w.do("alice", args...), 0, "BEAT alice applied at seq", "next: ")
+	r := w.snap(t).Rows["alice"]
+	if r.Load1Centi != 251 || r.Cores != 8 || r.SlotsUsed != 3 || r.SlotsTotal != 8 {
+		t.Fatalf("the row after the beat: %+v", r)
+	}
+	seq := w.snap(t).Seq
+	want(t, w.do("alice", args...), 0, "BEAT alice unchanged")
+	if w.snap(t).Seq != seq {
+		t.Fatalf("a repeated beat wrote to the log")
+	}
+	want(t, w.do("alice", "beat", "--load1", "0", "--cores", "8", "--slots-used", "0", "--slots-total", "8"), 0, "applied")
+}
+
+func TestBeatRefusals(t *testing.T) {
+	good := []string{"--load1", "1", "--cores", "4", "--slots-used", "1", "--slots-total", "4"}
+	with := func(flag, val string) []string {
+		out := slices.Clone(good)
+		out[slices.Index(out, flag)+1] = val
+		return append([]string{"beat"}, out...)
+	}
+	runCases(t, []tcase{
+		{name: "not a load", as: "alice", args: with("--load1", "fast"), exit: 2, want: []string{"--load1 takes the 1-minute load average"}},
+		{name: "a negative load", as: "alice", args: with("--load1", "-1"), exit: 2, want: []string{"--load1 takes"}},
+		{name: "no cores", as: "alice", args: with("--cores", "0"), exit: 2, want: []string{"--cores takes a whole number, 1 or more"}},
+		{name: "slots over the total", as: "alice", args: with("--slots-used", "5"), exit: 2, want: []string{"--slots-used 5 is more than --slots-total 4"}},
+		{name: "a flag missing", as: "alice", args: []string{"beat", "--load1", "1"}, exit: 2, want: []string{"--cores takes a whole number"}},
+		{name: "not hooked", as: "dave", args: append([]string{"beat"}, good...), exit: 1, want: []string{"hook in first", "nova-sprint hook --as dave --role worker"}},
+	})
+}

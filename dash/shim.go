@@ -1,6 +1,7 @@
 package dash
 
 import (
+	"fmt"
 	"log"
 	"math/big"
 	"sort"
@@ -39,6 +40,8 @@ type fleetRow struct {
 	Failed   int
 	OKPct    float64
 	Reason   string // why the roster refused or held the row ("" otherwise)
+	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
+	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
 }
 type streamLine struct{ Stream, State string }
 
@@ -182,6 +185,7 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 					f.Status = "held"
 				}
 			}
+			f.Load, f.Slots = loadCells(r)
 			tableOf(kind, fleet, friends)[n] = f
 			continue
 		}
@@ -193,6 +197,21 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		}
 		tableOf(kind, fleet, friends)[n] = &fleetRow{Status: "down"}
 	}
+}
+
+// loadCells is the board's load cell and its slots title from the row's last
+// heartbeat: the 1-minute load average over the cores, as a percent of all of
+// them (v1's cell), and the nova-reserve slots in use of the total. A row that
+// is down shows none, and so does one that has never beaten (no cores).
+func loadCells(r store.Row) (load, slots string) {
+	if r.State != "up" || r.Cores < 1 {
+		return "", ""
+	}
+	load = fmt.Sprintf("%.1f%%", float64(r.Load1Centi)/float64(r.Cores))
+	if r.SlotsTotal > 0 {
+		slots = fmt.Sprintf("%d / %d", r.SlotsUsed, r.SlotsTotal)
+	}
+	return load, slots
 }
 
 // tableOf is the table a row of this roster kind belongs in: Friends for
@@ -276,31 +295,25 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 	}
 }
 
-// countResult is the OK% count of a done consumer (the human, 2026-11-07: "OK%
-// should be known as soon as a card is done"). A work card counts for its
-// holder the moment it is done: ok is OK, any other result is Failed (a done
-// card with no result yet is not counted). A read that says fix counts
-// against the work's author as well; a read that says ok adds nothing, for
-// the work was counted ok when it finished.
+// countResult is the OK% count of a done consumer (directive 64a, the human:
+// "reads count as the reader's done but never in ok%"). Only a work card
+// counts, for its holder, the moment it is done: ok is OK; fail and fix are
+// Failed; a fault (a harness, bench, route or device failure), a result that
+// is none or not one of those (a close, a release) is not counted. A read
+// adds to the reader's done and nothing else.
 func countResult(c store.Card, fleet, friends map[string]*fleetRow) {
-	row := func(name string) *fleetRow {
-		if f := fleet[name]; f != nil {
-			return f
-		}
-		return friends[name]
-	}
-	if c.Kind == "work" {
-		f := row(c.Holder)
-		switch {
-		case f == nil:
-		case c.Result == "ok":
-			f.OK++
-		case c.Result != "":
-			f.Failed++
-		}
+	if c.Kind != "work" {
 		return
 	}
-	if f := row(c.Author); f != nil && c.Result == "fix" {
+	f := fleet[c.Holder]
+	if f == nil {
+		f = friends[c.Holder]
+	}
+	switch {
+	case f == nil:
+	case c.Result == "ok":
+		f.OK++
+	case c.Result == "fail" || c.Result == "fix":
 		f.Failed++
 	}
 }

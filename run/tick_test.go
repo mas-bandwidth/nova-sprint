@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -300,6 +301,31 @@ func (c *beats) Every(d time.Duration) Beat {
 	return beat{make(chan time.Time)}
 }
 
+// watched is a beats clock that says when the head watch has read the base
+// tips. WatchHeads reads, then enters its select, which asks for the beat's
+// channel: so C() is called only after the read, and the test waits on that
+// rather than on a sleep. The watch's own beat never fires.
+type watched struct {
+	*beats
+	read chan struct{}
+	once sync.Once
+}
+
+func (c *watched) Every(d time.Duration) Beat {
+	if d == HeadsEvery {
+		return headBeat{c: make(chan time.Time), seen: func() { c.once.Do(func() { close(c.read) }) }}
+	}
+	return c.beats.Every(d)
+}
+
+type headBeat struct {
+	c    chan time.Time
+	seen func()
+}
+
+func (b headBeat) C() <-chan time.Time { b.seen(); return b.c }
+func (headBeat) Stop()                 {}
+
 type stillGit struct{ git.Git }
 
 func (stillGit) Clone(context.Context, string, string) error { return nil }
@@ -317,7 +343,7 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock := &beats{now: t0, tick: make(chan time.Time)}
+	clock := &watched{beats: &beats{now: t0, tick: make(chan time.Time)}, read: make(chan struct{})}
 	b := &fakeBus{who: map[string]bus.Presence{"bench": {Name: "bench"}}}
 	var log strings.Builder
 	ctx, cancel := context.WithCancel(context.Background())
@@ -325,6 +351,7 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	go func() {
 		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, Clock: clock, Log: &log}, &healthy{})
 	}()
+	<-clock.read // the deal needs the stream's base tip: no tick before the head watch has read it
 	for range 3 {
 		clock.tick <- t0
 	}

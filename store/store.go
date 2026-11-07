@@ -170,6 +170,14 @@ type Row struct {
 	Held    bool   `json:"held"`   // the coordinator's hold: no deals while true
 	Reason  string `json:"reason"` // why it was held or released (SetRowHeld)
 	Gen     int    `json:"gen"`
+	// The worker's last heartbeat (SetRowLoad): its 1-minute load average
+	// in hundredths, the logical cores it was measured over (0: the row has
+	// never beaten), and the nova-reserve slots in use and in all. Telemetry
+	// for the board: no rule reads it and a write of it moves no gen.
+	Load1Centi int `json:"load1_centi"`
+	Cores      int `json:"cores"`
+	SlotsUsed  int `json:"slots_used"`
+	SlotsTotal int `json:"slots_total"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,
