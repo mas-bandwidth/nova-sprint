@@ -86,7 +86,7 @@ idle judgement say the same thing, from the same function (`steps.Waits`).
 As nova-bus does: `take`, `finish`, `read`, `release`, `run` and every other
 verb that acts as a name refuse until that name is hooked in on the bus, and
 print the hook-in recipe for the harness they detect. A row that cannot be
-reached cannot hold work.
+reached cannot hold work. Every verb refuses until you are hooked in: before it reads or writes anything, the binary checks that --as (or NOVA_SPRINT_AS) is on the bus and exits 1 with `SPRINT REFUSED <verb>: <name> is not hooked in to the bus; hook in first: nova-bus hook --as <name>`; only help, version and the run, dash and worker services are exempt.
 
 ## The deal message is the walkthrough
 

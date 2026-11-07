@@ -14,7 +14,7 @@ import (
 // coordinatorHooks puts carol on the bus, then hooks her in as coordinator.
 func (x *e2e) coordinatorHooks() {
 	x.tr.note("the coordinator hooks in: refused off the bus; on the bus first, then the sprint")
-	if code, out := x.c.run(false, nil, "hook", "--as", "carol", "--role", "coordinator"); code != 1 || !strings.Contains(out, "carol is not on the bus") {
+	if code, out := x.c.run(false, nil, "hook", "--as", "carol", "--role", "coordinator"); code != 1 || !strings.Contains(out, "SPRINT REFUSED hook: carol is not hooked in to the bus; hook in first: nova-bus hook --as carol") {
 		x.t.Fatalf("a hook off the bus: exit %d\n%s", code, out)
 	}
 	busHook(x.t, x.tr, x.busEnv, "carol", x.inbox("carol"))
