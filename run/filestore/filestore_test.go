@@ -94,6 +94,21 @@ func TestReopenReplayAndClear(t *testing.T) {
 	}
 }
 
+func TestOldFormatRefusedWithoutModifyingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.json")
+	old := []byte(`{"version":1,"snapshot":{"rows":{"alice":{"kind":"worker","width":4}}}}`)
+	if err := os.WriteFile(path, old, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path); err == nil {
+		t.Fatal("old format was accepted")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || !reflect.DeepEqual(got, old) {
+		t.Fatalf("old file changed: %q %v", got, err)
+	}
+}
+
 func TestConcurrentWriters(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")
 	const n = 30

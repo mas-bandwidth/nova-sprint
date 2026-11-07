@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // Presence reads nova-bus once per tick.
 type Presence interface {
 	Who(context.Context) ([]string, error)
+}
+type RosterReader interface {
+	ReadRoster(context.Context) (roster.Roster, error)
 }
 type Clock interface {
 	Now() time.Time
@@ -45,6 +49,7 @@ type Results interface{ Drain() []EdgeResult }
 type observation struct {
 	at       time.Time
 	presence []string
+	roster   roster.Roster
 }
 
 // Scheduler owns observations and calls Engine serially. Deadline policy is
@@ -53,6 +58,7 @@ type Scheduler struct {
 	engine   *Engine
 	clock    Clock
 	presence Presence
+	roster   RosterReader
 	publish  Publisher
 	logger   TickLogger
 	results  Results
@@ -74,21 +80,26 @@ func (s *Scheduler) Step(ctx context.Context, incoming []EdgeResult) (err error)
 	s.count++
 	s.queued = mergeInbox(s.queued, incoming)
 	attempted := false
+	var observed []string
+	var current roster.Roster
+	haveRoster := false
 	defer func() {
-		snap, fresh := s.engine.FreshState()
-		if attempted && fresh {
-			s.publish.Offer(snap, s.clock.Now())
-		}
-		counts := TickCounts{}
-		policy := 0
-		if attempted {
-			counts = s.engine.tickCounts()
-			policy = s.engine.plannedPolicy()
-		}
-		s.logger.Log(TickMetrics{Number: s.count, At: start, Took: s.clock.Now().Sub(start), Seq: snap.Seq, PlannedPolicy: policy, Counts: counts, Err: err})
+		s.finishStep(start, attempted, current, haveRoster, observed, err)
 	}()
 	if err = s.engine.guard.Check(ctx); err != nil {
 		return err
+	}
+	attempted = true
+	stopped, err := s.engine.refresh(ctx)
+	if err != nil {
+		return err
+	}
+	if s.roster != nil {
+		current, err = s.roster.ReadRoster(ctx)
+		if err != nil {
+			return fmt.Errorf("run: roster: %w", err)
+		}
+		haveRoster = true
 	}
 	who, err := s.presence.Who(ctx)
 	if err != nil {
@@ -97,10 +108,31 @@ func (s *Scheduler) Step(ctx context.Context, incoming []EdgeResult) (err error)
 	if !containsName(who, "sprint") {
 		return fmt.Errorf("%w: sprint is not present on nova-bus", ErrLockLost)
 	}
+	observed = who
+	if stopped {
+		return nil
+	}
 	inbox := s.queued
 	s.queued = nil
-	attempted = true
-	return s.engine.tick(ctx, inbox, observation{at: start, presence: who})
+	return s.engine.tick(ctx, inbox, observation{at: start, presence: who, roster: current})
+}
+
+func (s *Scheduler) finishStep(start time.Time, attempted bool, current roster.Roster, haveRoster bool, observed []string, err error) {
+	snap, fresh := s.engine.FreshState()
+	if attempted && fresh {
+		if p, ok := s.publish.(interface { OfferRosterPresence(store.Snapshot, time.Time, roster.Roster, []string) }); ok && haveRoster {
+			p.OfferRosterPresence(snap, s.clock.Now(), current, observed)
+		} else if p, ok := s.publish.(interface { OfferPresence(store.Snapshot, time.Time, []string) }); ok {
+			p.OfferPresence(snap, s.clock.Now(), observed)
+		} else {
+			s.publish.Offer(snap, s.clock.Now())
+		}
+	}
+	counts, policy := TickCounts{}, 0
+	if attempted {
+		counts, policy = s.engine.tickCounts(), s.engine.plannedPolicy()
+	}
+	s.logger.Log(TickMetrics{Number: s.count, At: start, Took: s.clock.Now().Sub(start), Seq: snap.Seq, PlannedPolicy: policy, Counts: counts, Err: err})
 }
 
 // Run waits for the injected one-second ticker; results are drained once per tick.

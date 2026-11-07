@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -58,6 +59,12 @@ func (s *notifyingStore) Apply(ctx context.Context, o store.Op) (store.Receipt, 
 
 type serviceSender struct{ sent chan string }
 
+type serviceRoster struct{}
+
+func (serviceRoster) ReadRoster(context.Context) (roster.Roster, error) {
+	return roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}, nil
+}
+
 func (s *serviceSender) Send(_ context.Context, to, subject, body string) (Delivery, error) {
 	s.sent <- to + ":" + subject
 	return Delivery{Recipient: to, ID: "1000-1"}, nil
@@ -77,11 +84,11 @@ func TestServiceThreeTicksAndPush(t *testing.T) {
 	clock := &serviceClock{ready: make(chan struct{}, 2)}
 	logger := &serviceLog{ticks: make(chan TickMetrics, 4), failed: make(chan string, 4)}
 	sender := &serviceSender{sent: make(chan string, 4)}
-	service, err := NewService(ctx, ServiceDeps{Store: source, Chooser: chooser, Clock: clock, Presence: &fakePresence{}, Steps: &tickSteps{}, Edges: &tickEdges{}, Results: fakeResults{}, Deadline: fakeDeadline{}, Sender: sender, Coordinator: "rowan", Logger: logger})
+	service, err := NewService(ctx, ServiceDeps{Store: source, Chooser: chooser, Clock: clock, Presence: &fakePresence{}, Roster: serviceRoster{}, Steps: &tickSteps{}, Edges: &tickEdges{}, Results: fakeResults{}, Deadline: fakeDeadline{}, Sender: sender, Coordinator: "rowan", Logger: logger})
 	if err != nil {
 		t.Fatal(err)
 	}
-	seed := op("deal", store.PutStream{Name: "s"}, store.PutRow{Name: "alice", Kind: "worker", Width: 1, Tiers: []string{"pro"}}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s"}, store.PutCard{ID: "w", Kind: "work", Of: "p", Tier: "pro", Stream: "s", Holder: "alice"}, store.SetCardState{Card: "w", State: "ready"})
+	seed := op("deal", store.PutStream{Name: "s"}, store.PutRow{Name: "alice", Session: "session", Role: "worker"}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s"}, store.PutCard{ID: "w", Kind: "work", Of: "p", Tier: "pro", Stream: "s", Holder: "alice"}, store.SetCardState{Card: "w", State: "ready"})
 	applyOK(t, base, seed)
 	done := make(chan error, 1)
 	go func() { done <- service.Run(ctx) }()

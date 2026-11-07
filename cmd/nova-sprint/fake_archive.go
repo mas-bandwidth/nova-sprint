@@ -35,7 +35,7 @@ func (a fakeArchive) Backup(ctx context.Context, dir string) (verbs.BackupInfo, 
 	if !reflect.DeepEqual(store.Rebuild(events), snap) {
 		return verbs.BackupInfo{}, fmt.Errorf("fake backup: history does not match snapshot")
 	}
-	body, err := json.Marshal(fakeImage{Version: 1, Snapshot: snap, Events: events})
+	body, err := json.Marshal(fakeImage{Version: filestore.FormatVersion, Snapshot: snap, Events: events})
 	if err != nil {
 		return verbs.BackupInfo{}, err
 	}
