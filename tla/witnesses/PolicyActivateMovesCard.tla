@@ -11,7 +11,10 @@
 (* policy/answer.go Answer and policy/verbs.go Set and Activate).          *)
 (*                                                                         *)
 (* Versions 1..MaxVersion are stored in order and never deleted; Default  *)
-(* is the built-in, never stored and never failing. Init is the state     *)
+(* is the built-in, never stored; it can fail too (a bug in the binary).  *)
+(* When every version tried fails the tick is answered by NoAnswer: it    *)
+(* still applies every move that needs no answer, and deals nothing.      *)
+(* Init is the state                                                      *)
 (* after up: the default stored as v1 and active. breaks is the set of    *)
 (* versions that fail (a runtime error or a refused answer) on the        *)
 (* current snapshot; Drift moves the snapshot, so breaks changes          *)
@@ -27,6 +30,8 @@ CONSTANT MaxVersion
 Versions == 1..MaxVersion
 Default == 0
 None == -1
+NoAnswer == -2
+Usable == Versions \cup {Default}
 CardStates == {"ready", "working", "done"}
 Ops == {"up", "set", "activate", "drift", "tick"}
 
@@ -41,10 +46,10 @@ TypeOK ==
   /\ active \in Versions
   /\ prev \in Versions \cup {None}
   /\ everActive \subseteq Versions
-  /\ breaks \subseteq Versions
-  /\ answeredBy \in Versions \cup {Default, None}
-  /\ tickBreaks \subseteq Versions
-  /\ judgements \in [Versions -> Nat]
+  /\ breaks \subseteq Usable
+  /\ answeredBy \in Usable \cup {None, NoAnswer}
+  /\ tickBreaks \subseteq Usable
+  /\ judgements \in [Usable -> Nat]
   /\ card \in CardStates /\ cardBefore \in CardStates
   /\ waitBound \in Versions \cup {Default, None}
   /\ startBound \in Versions \cup {Default, None}
@@ -53,7 +58,7 @@ TypeOK ==
 Init ==
   /\ stored = {1} /\ active = 1 /\ prev = None /\ everActive = {1}
   /\ breaks = {} /\ answeredBy = None /\ tickBreaks = {}
-  /\ judgements = [v \in Versions |-> 0]
+  /\ judgements = [v \in Usable |-> 0]
   /\ card = "ready" /\ cardBefore = "ready"
   /\ waitBound = None /\ startBound = None
   /\ lastOp = "up"
@@ -89,24 +94,29 @@ Activate(v) ==
   /\ lastOp' = "activate"
   /\ UNCHANGED <<stored, breaks, answeredBy, tickBreaks, startBound>>
 
-(* The snapshot moves: any set of versions may now fail; Default never.   *)
+(* The snapshot moves: any set of versions may now fail, the built-in too. *)
 Drift ==
-  /\ \E b \in SUBSET Versions : b # breaks /\ breaks' = b
+  /\ \E b \in SUBSET Usable : b # breaks /\ breaks' = b
   /\ cardBefore' = card
   /\ lastOp' = "drift"
   /\ UNCHANGED <<stored, active, prev, everActive, answeredBy, tickBreaks, judgements, card, waitBound, startBound>>
 
 (* The version that answers a tick: active, else the previous active,     *)
-(* else the built-in (policy/answer.go Versions.tried).                   *)
+(* else the built-in (policy/answer.go Versions.tried), else NoAnswer     *)
+(* (Answers.Version -1).                                                  *)
 Pick ==
   IF active \notin breaks THEN active
   ELSE IF prev # None /\ prev \notin breaks THEN prev
-  ELSE Default
+  ELSE IF Default \notin breaks THEN Default
+  ELSE NoAnswer
 
-(* The versions tried and failing this tick: one judgement each.          *)
+(* The versions tried this tick, in order, and those of them failing: one *)
+(* judgement each.                                                        *)
+Tried == {active} \cup (IF prev = None THEN {} ELSE {prev}) \cup {Default}
 Failing ==
   ({active} \cap breaks) \cup
-  (IF active \in breaks /\ prev # None THEN {prev} \cap breaks ELSE {})
+  (IF active \in breaks /\ prev # None THEN {prev} \cap breaks ELSE {}) \cup
+  (IF active \in breaks /\ (prev = None \/ prev \in breaks) THEN {Default} \cap breaks ELSE {})
 
 (* A tick: answered by Pick; opens a judgement for each failing version   *)
 (* with none open; may move the card. A wait records the bound of the     *)
@@ -114,8 +124,9 @@ Failing ==
 Tick ==
   /\ answeredBy' = Pick
   /\ tickBreaks' = breaks
-  /\ judgements' = [u \in Versions |-> IF u \in Failing /\ judgements[u] = 0 THEN 1 ELSE judgements[u]]
+  /\ judgements' = [u \in Usable |-> IF u \in Failing /\ judgements[u] = 0 THEN 1 ELSE judgements[u]]
   /\ \E c \in {card, Advance(card)} :
+       /\ (c = "working" /\ card = "ready") => Pick # NoAnswer   \* a deal needs an answer
        /\ card' = c
        /\ IF c = "working" /\ card # "working" THEN waitBound' = Pick /\ startBound' = Pick
           ELSE IF c # "working" THEN waitBound' = None /\ startBound' = None
@@ -139,21 +150,28 @@ ActiveStored == active \in stored
 
 AnsweredByUsable == answeredBy \notin tickBreaks
 
-TickAlwaysAnswered == lastOp = "tick" => answeredBy # None
+TickAlwaysAnswered ==
+  lastOp = "tick" =>
+    /\ answeredBy # None
+    /\ answeredBy = NoAnswer => Tried \subseteq tickBreaks
+
+NoAnswerStartsNothing ==
+  (lastOp = "tick" /\ answeredBy = NoAnswer) => ~(cardBefore = "ready" /\ card = "working")
 
 ActivateMovesNoCard == lastOp \in {"set", "activate"} => card = cardBefore
 
-OneJudgementPerVersion == \A v \in Versions : judgements[v] <= 1
+OneJudgementPerVersion == \A v \in Usable : judgements[v] <= 1
 
 WaitKeepsItsBound == card = "working" => waitBound = startBound
 
-FallbackWasActive == answeredBy \in everActive \cup {Default, None}
+FallbackWasActive == answeredBy \in everActive \cup {Default, None, NoAnswer}
 
 (* Reachability: each must be violated (tla/reach/Policy*.cfg), or the    *)
 (* model never reaches the case the invariants above are about.           *)
 NeverPrevAnswers == ~(lastOp = "tick" /\ answeredBy \notin {active, Default})
 NeverDefaultAnswers == ~(lastOp = "tick" /\ answeredBy = Default)
-NeverJudged == \A v \in Versions : judgements[v] = 0
+NeverJudged == \A v \in Usable : judgements[v] = 0
+NeverNoAnswer == ~(lastOp = "tick" /\ answeredBy = NoAnswer)
 NeverRollback == ~(lastOp = "activate" /\ active < prev)
 NeverWaitAcrossActivate == ~(lastOp = "activate" /\ card = "working")
 

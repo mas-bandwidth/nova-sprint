@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/store"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,4 +67,31 @@ func TestCatalogRefused(t *testing.T) {
 	path := w.file("bad.star", body)
 	_, err := Set(w.ctx(), w.st, NewEngine(), w.caller(), path, "test")
 	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy set: POLICY REFUSED bad.star line %d catalog(): anthropic model 1: tier is \"ultra\", not one of flash pro heavy frontier: nova-sprint policy check %s", line, path), refusal(t, err))
+}
+
+// TestCatalogRefusals: a negative version, an unknown one and one of kind
+// data are refused naming the list; a model under two providers is
+// refused; a stored version with no catalog() has the built-in's.
+func TestCatalogRefusals(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	w.up()
+	_, err := ReadCatalog(w.ctx(), w.st, -1)
+	assert.Equal(t, "SPRINT REFUSED policy catalog: policy version -1 does not exist: nova-sprint policy show --list", refusal(t, err))
+	_, err = ReadCatalog(w.ctx(), w.st, 9)
+	assert.Equal(t, "SPRINT REFUSED policy catalog: policy version 9 does not exist: nova-sprint policy show --list", refusal(t, err))
+	w.apply(store.PutPolicy{Kind: "data", Name: "table", Body: "{}"})
+	_, err = ReadCatalog(w.ctx(), w.st, 2)
+	assert.Equal(t, "SPRINT REFUSED policy catalog: v2 is of kind data, which policy does not run: nova-sprint policy show --list", refusal(t, err))
+	twice, line := override("catalog", "def catalog():\n    return {\"models\": {\"a\": [{\"name\": \"opus\", \"tier\": \"heavy\"}], \"b\": [{\"name\": \"opus\", \"tier\": \"frontier\"}]}, \"harnesses\": [\"claude\"]}")
+	path := w.file("twice.star", twice)
+	_, err = Set(w.ctx(), w.st, NewEngine(), w.caller(), path, "test")
+	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy set: POLICY REFUSED twice.star line %d catalog(): model opus is listed under both a and b: nova-sprint policy check %s", line, path), refusal(t, err))
+	older, _ := override("catalog", "")
+	v := w.set("older.star", older)
+	c, err := ReadCatalog(w.ctx(), w.st, v)
+	require.NoError(t, err)
+	want := builtinCatalog()
+	want.Version = v
+	assert.Equal(t, want, c, "a version from before catalog has the built-in's")
 }

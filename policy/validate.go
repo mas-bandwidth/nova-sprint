@@ -116,16 +116,20 @@ func stringList(v starlark.Value) ([]string, string) {
 // checkReads: the count of reads, 1..5.
 func checkReads(v starlark.Value) (int, string) { return intIn("the answer", v, 1, 5) }
 
-// checkVerdict: yes or fix, never yes with no ok read nor fix with no fix read.
+// checkVerdict: yes, fix or retry; never yes with no ok read, fix with no
+// fix read, or retry while a done read is ok or fix (retry: every done read
+// faulted, so layer 3 asks one more read).
 func checkVerdict(v starlark.Value, results []string) (string, string) {
 	s, ok := v.(starlark.String)
 	switch {
-	case !ok || (s != "yes" && s != "fix"):
-		return "", refuse("the answer is %s, not \"yes\" or \"fix\"", show(v))
+	case !ok || (s != "yes" && s != "fix" && s != "retry"):
+		return "", refuse("the answer is %s, not \"yes\", \"fix\" or \"retry\"", show(v))
 	case s == "yes" && !slices.Contains(results, "ok"):
 		return "", refuse("\"yes\" with no ok read")
 	case s == "fix" && !slices.Contains(results, "fix"):
 		return "", refuse("\"fix\" with no fix read")
+	case s == "retry" && (slices.Contains(results, "ok") || slices.Contains(results, "fix")):
+		return "", refuse("\"retry\" with a done ok or fix read")
 	}
 	return string(s), ""
 }

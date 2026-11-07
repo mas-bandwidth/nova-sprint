@@ -77,10 +77,13 @@ func pgBin(t testing.TB) string {
 }
 
 // TestFunctionalLoad: policy's share of a tick at 5,000 ready producers
-// over 50 rows, with a cold cache and a warm one. The 100 ms budget is a
-// guess; measured 2026-11-06 on amd-3 without -race: cold 132 ms, warm 68 ms. This logs the measurement and fails only far past it (under -race it runs several times slower).
-func TestFunctionalLoad(t *testing.T) {
-	t.Parallel()
+// over 50 rows, with a cold cache and a warm one; the cold tick must fit
+// TickTime (measured 2026-11-06 on amd-3: cold 140 ms, warm 63 ms). It runs
+// alone, before the parallel tests, since a timing contends for the cores.
+func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for the cores
+	if raceSlowdown > 1 {
+		t.Skip("timing under -race measures the race detector")
+	}
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{}, Cards: map[string]store.Card{}, Rows: map[string]store.Row{}}
 	for i := range 10 {
 		snap.Streams[fmt.Sprintf("s%d", i)] = store.Stream{Name: fmt.Sprintf("s%d", i)}
@@ -105,6 +108,6 @@ func TestFunctionalLoad(t *testing.T) {
 	_, fs = e.Answer(vs, snap, q)
 	warm := time.Since(start)
 	require.Empty(t, fs)
-	t.Logf("policy at 5000 producers, 50 rows: cold %s, warm %s (budget 100ms, a guess)", cold, warm)
-	require.Less(t, warm, 2*time.Second)
+	t.Logf("policy at 5000 producers, 50 rows: cold %s, warm %s (TickTime %s)", cold, warm, TickTime)
+	require.Less(t, cold, TickTime, "the cold tick fits the tick's time budget")
 }

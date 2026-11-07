@@ -89,9 +89,9 @@ POLICY REFUSED v7 line 31 rows(c12): row r4 has rank pro, below the card's tier 
 | question | inputs | answer and domain | the engine also refuses | default |
 |---|---|---|---|---|
 | `order(card)` | id, stream, score, priority, tier, attempt, bounces, prior_head | a tuple of up to 4 ints or strings; the engine sorts by (rung, answer, id) | a tuple of other types or longer than 4 | fix attempts first, then score |
-| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), prose, attempt, bounces, priority, and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width, working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; nearest rank first, falling back to any rank at or above the card's tier when no row has the wanted rank |
+| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), prose, attempt, bounces, priority, and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width, working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; every candidate listed: the wanted rank and up, nearest first, then the ranks between the tier and the wanted one, highest first; those with room first, all of them when none has room (ruled 2026-11-06, so the joint check passes whenever any row could take the card) |
 | `reads(card)` | as `rows`' card | the count n, 1 <= n <= 5 | n out of range | 1 |
-| `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok or fix, finding) | `"yes"` or `"fix"` | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules) | any fix read means fix |
+| `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
 | `width(row)` | name, kind, width (nova-config's), tiers, model, harness, flaps | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
 | `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window | out of range, a missing key | below |
 | `landing(stream)` | name, merging, review, rung | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000 | f >= b | backed up at 4 merging, flowing again at 1 |
@@ -511,5 +511,49 @@ google, deepseek, inception); openai and google are guesses, and astra sits
 under `unknown`, a guess. Harnesses: claude, codex, opencode and api (the
 API-rate adapter).
 
-**Size.** 1857 lines of non-test Go, over the 1.5k budget by about 357; 111
+**Size.** 2022 lines of non-test Go, over the 1.5k budget by about 522; 121
 lines of Starlark.
+
+**After the cold read of e33eea61** (seven defects; the probes are
+`policy/coldread_test.go`, copied from the cold reader's clone; the rulings
+are the coordinator's, 2026-11-06):
+
+1. The answer cache keys by label (`v<n>` or `default`) and only a stored
+   version or the built-in is cached (`program.cached`); `check` and `set`
+   compile files uncached, so a file named `default` is just a file.
+2. The default's `rows` lists every serving row as the question table now
+   says, so a heavy card wanting a width-0 frontier row is dealt to the heavy
+   row. Candidates reach `rows` by rank, lowest first, then by name (the
+   default needs no sort; 140 ms cold, measured, against 214 ms with two
+   sorts under load). The joint check stays as the guard.
+3. `verdict` gains `retry`, in the question table above.
+4. A judgement's question is made storable: invalid UTF-8 and NUL replaced
+   by U+FFFD, at most 4,096 bytes, cut at a rune with " [cut at 4096 bytes]".
+5. and 6. One thread per version per tick, with the per-call step budget
+   kept, a per-tick step budget `TickSteps` = 10,000,000 (a guess: 1.5 x the
+   default's 6,550,740 steps, measured at 5,000 producers over 50 rows), and a
+   per-tick wall clock `TickTime` = 250 ms (the ruling; the cold tick measured
+   129 ms, 140 ms after this change, on amd-3) enforced by `Thread.Cancel` from
+   a timer. A spent budget is that version's failure: one judgement and the
+   fallback, which gets a budget of its own, so a tick in which every version
+   spends its budget takes at most three budgets. Starlark has no memory
+   limit, so the wall clock is the only bound on what a policy allocates: one
+   builtin step (a 512 MiB string) runs to its end and is refused after it,
+   not interrupted. A `-race` build scales `TickTime` by 3 (`race.go`; the race
+   detector runs Starlark five to ten times slower, measured), and the load
+   test skips its timing under -race. The load test runs alone, not parallel,
+   and now requires the cold tick inside `TickTime`.
+7. `ReadCatalog` refuses an unknown, negative or data-kind version naming
+   `nova-sprint policy show --list`; a model under two providers is refused;
+   `catalog()` is optional in a version, and one without it has the built-in's
+   catalog (in `ReadCatalog` and in the tick), so versions from before catalog
+   stay valid.
+
+The model now lets the built-in fail too: `Drift` may break `Default`; when
+active, previous and built-in all fail, the tick is answered by `NoAnswer`
+(`Answers.Version` -1), still applies the moves that need no answer, and deals
+nothing. `TickAlwaysAnswered` is now proved against that case (`NoAnswer` only
+when every version tried failed), with a new invariant `NoAnswerStartsNothing`,
+three new witnesses (`PolicyDefaultSkipped`, `PolicyBrokenDefaultUsed`,
+`PolicyNoAnswerDeals`), `PolicyTickStalls` re-cut against the new last resort,
+and the reach check `NeverNoAnswer`.

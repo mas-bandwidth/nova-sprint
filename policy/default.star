@@ -29,17 +29,27 @@ def _want(card, kind):
     return card.tier  # at its tier from its first deal (PRIORITY T17)
 
 def rows(card, kind, candidates):
+    # Every serving row at or above the card's tier: the wanted rank and up,
+    # nearest first, then the ranks between the tier and the wanted one,
+    # highest first. Those with room come first; when none has room, all of
+    # them (they queue). Never below the tier: candidates all serve it.
+    # The engine offers candidates by rank, lowest first, then by name.
     want = _RUNG[_want(card, kind)]
-    use = [r for r in candidates if _RUNG[r.rank] >= want]
-    if not use:  # no row of the wanted rank is open: never below the tier
-        use = [r for r in candidates if _RUNG[r.rank] >= _RUNG[card.tier]]
-    return [r.name for r in sorted(use, key = lambda r: _RUNG[r.rank])]
+    up = [r for r in candidates if _RUNG[r.rank] >= want]
+    between = [r for r in candidates if _RUNG[r.rank] < want][::-1]
+    use = [r for r in up + between if r.working < r.width]
+    return [r.name for r in (use or up + between)]
 
 def reads(card):
     return 1  # v1 standing rule, 2026-10-20
 
 def verdict(card, reads):
-    return "fix" if any([r.result == "fix" for r in reads]) else "yes"
+    results = [r.result for r in reads]
+    if "fix" in results:
+        return "fix"
+    if "ok" in results:
+        return "yes"
+    return "retry"  # every done read faulted: ask one more read
 
 def width(row):
     return {"work": row.width, "ahead": row.width}  # v1 DealAhead 2

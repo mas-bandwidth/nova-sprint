@@ -76,12 +76,18 @@ func (e *Engine) run(p *program, asks []ask, all bool) (Answers, []Failure) {
 	a := Answers{Version: p.version, Order: map[string][]any{}, Rows: map[RowsQuestion][]string{}, Reads: map[string]int{},
 		Verdict: map[string]string{}, Width: map[string]Width{}, Landing: map[string]Landing{}, Stitch: map[string]bool{}, shown: map[string]string{}}
 	var failed []Failure
+	b := newBudget(p.label)
+	defer b.stop()
 	refused := func(k ask, msg string) bool {
 		failed = append(failed, Failure{Version: p.version, Label: p.label, Question: k.q, Subject: k.subject, Line: int(p.fns[k.q].Position().Line), Msg: msg})
 		return !all
 	}
 	for _, k := range asks {
-		v, f := e.call(p, k)
+		if p.fns[k.q] == nil { // catalog, which a version may leave out
+			a.Catalog = builtinCatalog()
+			continue
+		}
+		v, f := e.call(p, k, b)
 		if f != nil {
 			if failed = append(failed, *f); !all {
 				return a, failed

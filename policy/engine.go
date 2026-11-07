@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
@@ -27,6 +29,15 @@ const (
 	// CallSteps bounds one call (and the file's top level): a guess, about
 	// a thousand times what the default's rows over 100 candidates takes.
 	CallSteps = 1_000_000
+	// TickSteps bounds one version's whole tick: a guess, 1.5 x the
+	// default's 6,550,740 steps measured at 5,000 producers over 50 rows.
+	TickSteps = 10_000_000
+	// TickTime bounds one version's whole tick in wall-clock time, by
+	// cancelling its thread: measured 2026-11-06, the cold tick at 5,000
+	// producers was 129 ms on amd-3 (140 ms after this change). Starlark has
+	// no memory limit, so this is also the bound on what a policy allocates.
+	// A -race build runs several times slower and scales it (race.go).
+	TickTime = 250 * time.Millisecond * raceSlowdown
 	// cacheMax bounds the answer cache; past it the cache starts again (a guess).
 	cacheMax = 200_000
 )
@@ -49,6 +60,7 @@ type program struct {
 	version int
 	label   string
 	fns     map[string]*starlark.Function
+	cached  bool // a stored version or the built-in; an unstored file never is
 }
 
 // Engine compiles each stored version once and caches answers by version
@@ -84,6 +96,7 @@ func (e *Engine) program(v store.PolicyVersion) (*program, *Failure) {
 	e.compiles++
 	p, f := compile(v.Version, Label(v.Version), v.Body)
 	if f == nil {
+		p.cached = true
 		e.progs[v.Version] = p
 	}
 	return p, f
@@ -119,7 +132,7 @@ func compile(version int, label, body string) (*program, *Failure) {
 		}
 	}
 	for _, q := range questionNames() {
-		if p.fns[q] == nil {
+		if p.fns[q] == nil && q != "catalog" { // catalog is optional: a version without it uses the built-in's
 			return nil, fail(0, "question %s is missing: define def %s(%s)", q, q, params(q))
 		}
 	}
@@ -171,13 +184,29 @@ func newThread(name string) *starlark.Thread {
 	return th
 }
 
-// call answers one ask, from the cache when the version has answered the
-// same input before (answers are deterministic, so the cache is exact). An
-// unstored file (version 0 but not the built-in) is never cached.
-func (e *Engine) call(p *program, k ask) (starlark.Value, *Failure) {
-	key := fmt.Sprintf("%d %s %s", p.version, k.q, k.key)
-	cache := p.version > 0 || p.label == "default"
-	if cache {
+// budget is one version's run in one tick: one thread, the per-call and
+// per-tick step budgets, and the wall clock that cancels it.
+type budget struct {
+	th    *starlark.Thread
+	start uint64 // the thread's steps when the current call began
+	late  atomic.Bool
+	timer *time.Timer
+}
+
+func newBudget(label string) *budget {
+	b := &budget{th: &starlark.Thread{Name: label, Print: func(*starlark.Thread, string) {}}}
+	b.timer = time.AfterFunc(TickTime, func() { b.late.Store(true); b.th.Cancel("over the tick's time budget") })
+	return b
+}
+
+func (b *budget) stop() { b.timer.Stop() }
+
+// call answers one ask on budget b, from the cache when the version has
+// answered the same input before (answers are deterministic, so the cache is
+// exact). Only a stored version or the built-in is cached, keyed by its label.
+func (e *Engine) call(p *program, k ask, b *budget) (starlark.Value, *Failure) {
+	key := p.label + " " + k.q + " " + k.key
+	if p.cached {
 		e.mu.Lock()
 		v, ok := e.answers[key]
 		e.mu.Unlock()
@@ -186,12 +215,23 @@ func (e *Engine) call(p *program, k ask) (starlark.Value, *Failure) {
 		}
 	}
 	fn := p.fns[k.q]
-	th := newThread(p.label)
-	v, err := starlark.Call(th, fn, k.args, nil)
-	if err != nil {
-		return nil, &Failure{Version: p.version, Label: p.label, Question: k.q, Subject: k.subject, Line: cmpLine(errLine(err), fn), Msg: errMsg(th, err)}
+	fail := func(msg string, line int) (starlark.Value, *Failure) {
+		return nil, &Failure{Version: p.version, Label: p.label, Question: k.q, Subject: k.subject, Line: cmpLine(line, fn), Msg: msg}
 	}
-	if cache {
+	if b.late.Load() || b.th.ExecutionSteps() >= TickSteps {
+		return fail(b.over(), 0)
+	}
+	b.th.Uncancel()
+	b.start = b.th.ExecutionSteps()
+	b.th.SetMaxExecutionSteps(min(b.start+CallSteps, TickSteps))
+	v, err := starlark.Call(b.th, fn, k.args, nil)
+	switch {
+	case err != nil:
+		return fail(b.errMsg(err), errLine(err))
+	case b.late.Load():
+		return fail(b.over(), 0)
+	}
+	if p.cached {
 		e.mu.Lock()
 		if len(e.answers) >= cacheMax {
 			e.answers = map[string]starlark.Value{}
@@ -200,6 +240,26 @@ func (e *Engine) call(p *program, k ask) (starlark.Value, *Failure) {
 		e.mu.Unlock()
 	}
 	return v, nil
+}
+
+// over says which tick budget is spent.
+func (b *budget) over() string {
+	if b.late.Load() {
+		return fmt.Sprintf("over the tick's time budget of %s", TickTime)
+	}
+	return fmt.Sprintf("over the tick's step budget of %d", TickSteps)
+}
+
+// errMsg is a call's error message, naming a spent budget.
+func (b *budget) errMsg(err error) string {
+	steps := b.th.ExecutionSteps()
+	switch {
+	case b.late.Load() || steps >= TickSteps:
+		return b.over()
+	case steps >= b.start+CallSteps:
+		return fmt.Sprintf("over the step budget of %d", CallSteps)
+	}
+	return errText(err)
 }
 
 func cmpLine(line int, fn *starlark.Function) int {
@@ -232,12 +292,18 @@ func errLine(err error) int {
 
 // errMsg is an error's message without its position, which the refusal names.
 func errMsg(th *starlark.Thread, err error) string {
+	if th.ExecutionSteps() >= CallSteps {
+		return fmt.Sprintf("over the step budget of %d", CallSteps)
+	}
+	return errText(err)
+}
+
+// errText is an error's message without its position.
+func errText(err error) string {
 	var se syntax.Error
 	var re resolve.ErrorList
 	var ee *starlark.EvalError
 	switch {
-	case th.ExecutionSteps() >= CallSteps:
-		return fmt.Sprintf("over the step budget of %d", CallSteps)
 	case errors.As(err, &se):
 		return se.Msg
 	case errors.As(err, &re):

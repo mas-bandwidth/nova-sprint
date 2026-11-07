@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"go.starlark.net/starlark"
 
@@ -27,22 +28,58 @@ type Model struct{ Name, Tier string }
 // CatalogFix is the command that changes the catalog.
 const CatalogFix = "nova-sprint policy set <file> --reason <why>"
 
-// ReadCatalog reads version's catalog (0 the built-in) from the store, compiled
-// and validated like every other answer; a version that fails is a Failure.
-func ReadCatalog(ctx context.Context, st store.Store, version int) (Catalog, error) {
-	pv := store.PolicyVersion{Version: 0, Kind: "script", Body: defaultBody}
-	if version > 0 {
-		var err error
-		if pv, err = st.Policy(ctx, version); err != nil {
-			return Catalog{}, err
-		}
+// ReadCatalog reads version v's catalog (0 the built-in) from the store,
+// compiled and validated like every other answer; a version that fails is a
+// Failure. A stored version with no catalog() has the built-in's. An unknown
+// or negative version, or one of kind data, is a Refusal naming the list.
+func ReadCatalog(ctx context.Context, st store.Store, v int) (Catalog, error) {
+	if v == 0 {
+		return builtinCatalog(), nil
 	}
+	if v < 0 {
+		return Catalog{}, &Refusal{"catalog", fmt.Sprintf("policy version %d does not exist", v), "nova-sprint policy show --list"}
+	}
+	pv, err := version(ctx, st, "catalog", v)
+	switch {
+	case err != nil:
+		return Catalog{}, err
+	case pv.Kind != "script":
+		return Catalog{}, &Refusal{"catalog", fmt.Sprintf("v%d is of kind %s, which policy does not run", v, pv.Kind), "nova-sprint policy show --list"}
+	}
+	c, f := catalogOf(pv)
+	switch {
+	case f != nil:
+		return Catalog{}, f
+	case c.Models == nil: // a version from before catalog: the built-in's
+		c = builtinCatalog()
+		c.Version = v
+	}
+	return c, nil
+}
+
+// builtinCatalog is the built-in's catalog; the embedded default is checked
+// by the tests, so a failure here is a bug in the binary and panics.
+var builtinCatalog = sync.OnceValue(func() Catalog {
+	c, f := catalogOf(store.PolicyVersion{Version: 0, Kind: "script", Body: defaultBody})
+	if f != nil {
+		panic(f.Error())
+	}
+	return c
+})
+
+// catalogOf compiles a version and answers its catalog() under a tick's
+// budget; the zero Catalog when it defines none.
+func catalogOf(pv store.PolicyVersion) (Catalog, *Failure) {
 	p, f := compile(pv.Version, Label(pv.Version), pv.Body)
 	if f != nil {
 		return Catalog{}, f
 	}
-	k := ask{q: "catalog", key: "()"}
-	v, f := (&Engine{answers: map[string]starlark.Value{}}).call(p, k)
+	if p.fns["catalog"] == nil {
+		return Catalog{}, nil // the zero catalog: the version has none
+	}
+	b := newBudget(p.label)
+	defer b.stop()
+	v, f := (&Engine{answers: map[string]starlark.Value{}}).call(p, ask{q: "catalog", key: "()"}, b)
 	if f != nil {
 		return Catalog{}, f
 	}
@@ -100,7 +137,21 @@ func checkCatalog(v starlark.Value) (Catalog, string) {
 			return Catalog{}, msg
 		}
 	}
-	return c, ""
+	return c, twice(c.Models)
+}
+
+// twice refuses a model listed under two providers: nothing is listed twice.
+func twice(ms map[string][]Model) string {
+	seen := map[string]string{}
+	for _, p := range sortedKeys(ms) {
+		for _, m := range ms[p] {
+			if q, ok := seen[m.Name]; ok && q != p {
+				return refuse("model %s is listed under both %s and %s", m.Name, q, p)
+			}
+			seen[m.Name] = p
+		}
+	}
+	return ""
 }
 
 func models(provider string, v starlark.Value) ([]Model, string) {

@@ -144,3 +144,43 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 	assert.Empty(t, a.Rows[RowsQuestion{"p2", KindWork}], "no row serves heavy: layer 3's judgement, not a refusal")
 	assert.NotContains(t, a.Order, "p1", "a landed producer is not asked")
 }
+
+// TestJudgementStorable: a failure's text is made storable before
+// PutJudgement: NUL and invalid UTF-8 replaced, at most 4096 bytes with a
+// marker; the store accepts both.
+func TestJudgementStorable(t *testing.T) {
+	t.Parallel()
+	nul, line := override("limits", "def limits():\n    fail(\"bad\" + chr(0))")
+	huge, _ := override("limits", "def limits():\n    fail(\"x\" * 1000000)")
+	for name, body := range map[string]string{"nul": nul, "1 MB": huge} {
+		w := fakeWorld(t)
+		snap := w.snap()
+		_, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+		js := Judgements(snap, fs)
+		require.Len(t, js, 1, name)
+		assert.LessOrEqual(t, len(js[0].Question), 4096, name)
+		if name == "nul" {
+			assert.Equal(t, fmt.Sprintf("POLICY REFUSED v2 line %d limits(): fail: bad\uFFFD", line+1), js[0].Question)
+		} else {
+			assert.True(t, strings.HasSuffix(js[0].Question, "x [cut at 4096 bytes]"), js[0].Question[len(js[0].Question)-40:])
+		}
+		w.apply(js[0])
+	}
+	assert.Equal(t, "a\uFFFDb\uFFFD", storable("a\xffb\x00"))
+}
+
+// TestVerdictRetry: every done read faulted: the default answers retry;
+// retry while an ok or fix read is done is refused.
+func TestVerdictRetry(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	w.apply(store.SetCardResult{Card: "p3-r1", Result: "fault"})
+	a, fs := NewEngine().Answer(Versions{}, w.snap(), FullQuestions(w.snap(), nil))
+	require.Empty(t, fs)
+	assert.Equal(t, "retry", a.Verdict["p3"])
+	w.apply(store.SetCardResult{Card: "p3-r1", Result: "ok"})
+	body, line := override("verdict", "def verdict(card, reads):\n    return \"retry\"")
+	_, fs = NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), FullQuestions(w.snap(), nil))
+	require.Len(t, fs, 1)
+	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "retry" with a done ok or fix read`, line), fs[0].Error())
+}

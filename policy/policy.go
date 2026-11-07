@@ -14,6 +14,8 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -62,7 +64,7 @@ type Answers struct {
 	Order    map[string][]any // each element an int64 or a string; see CompareOrder
 	Rows     map[RowsQuestion][]string
 	Reads    map[string]int
-	Verdict  map[string]string // "yes" or "fix"
+	Verdict  map[string]string // "yes", "fix" or "retry" (ask one more read)
 	Width    map[string]Width
 	Limits   Limits
 	Landing  map[string]Landing
@@ -124,8 +126,26 @@ func (f Failure) Error() string {
 func (f Failure) Judgement(seq int64) store.PutJudgement {
 	return store.PutJudgement{
 		ID: fmt.Sprintf("policy-v%d-s%d", f.Version, seq), Kind: "policy", About: f.Label,
-		Question: f.Error(), Command: "nova-sprint policy check " + f.Label, Group: Group(f.Version),
+		Question: storable(f.Error()), Command: "nova-sprint policy check " + f.Label, Group: Group(f.Version),
 	}
+}
+
+// maxQuestion caps a judgement's question text.
+const maxQuestion = 4096
+
+// storable is text the store accepts: invalid UTF-8 and NUL replaced, at
+// most maxQuestion bytes, cut at a rune with a marker.
+func storable(s string) string {
+	s = strings.ReplaceAll(strings.ToValidUTF8(s, "\uFFFD"), "\x00", "\uFFFD")
+	const marker = " [cut at 4096 bytes]"
+	if len(s) <= maxQuestion {
+		return s
+	}
+	cut := maxQuestion - len(marker)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + marker
 }
 
 // Group is the group key of version v's policy judgement.

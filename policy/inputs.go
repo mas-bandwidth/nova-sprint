@@ -93,7 +93,8 @@ func Rank(r store.Row) string {
 func rung(tier string) int { return slices.Index(store.Tiers, tier) }
 
 // candidates are the rows that may take producer c's next consumer of kind:
-// up, not held, serving the card's tier, and for a read not its author; by name.
+// up, not held, serving the card's tier, and for a read not its author; by
+// name (rows' argument is these by rank, lowest first, then by name).
 func (ix *index) candidates(c store.Card, kind string) []store.Row {
 	var out []store.Row
 	for _, r := range ix.rows {
@@ -114,6 +115,7 @@ func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 		return s
 	}
 	s := &candidateSet{rows: ix.candidates(c, kind)}
+	slices.SortStableFunc(s.rows, func(a, b store.Row) int { return cmp.Compare(rung(Rank(a)), rung(Rank(b))) })
 	s.list = make(starlark.Tuple, len(s.rows))
 	for i, r := range s.rows {
 		s.list[i] = ix.candidate(r)

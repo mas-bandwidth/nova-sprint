@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Every invariant of the passing run, in cfg order.
 INVARIANTS = [
     "TypeOK", "ActiveStored", "AnsweredByUsable", "TickAlwaysAnswered", "ActivateMovesNoCard",
-    "OneJudgementPerVersion", "WaitKeepsItsBound", "FallbackWasActive",
+    "OneJudgementPerVersion", "WaitKeepsItsBound", "FallbackWasActive", "NoAnswerStartsNothing",
 ]
 
 CONSTANTS = "CONSTANT MaxVersion = 3\nSPECIFICATION Spec\n"
@@ -27,6 +27,7 @@ REACH = {
     "NeverPrevAnswers": "a tick is answered by the previous active version",
     "NeverDefaultAnswers": "a tick is answered by the built-in",
     "NeverJudged": "a policy judgement opens",
+    "NeverNoAnswer": "a tick where the built-in fails too",
     "NeverRollback": "an older version is activated again",
     "NeverWaitAcrossActivate": "an activation while the card is working",
 }
@@ -38,8 +39,17 @@ WITNESSES = [
      "Activate has no stored check: a version never set is activated.",
      [("Activate(v) ==\n  /\\ v \\in stored\n", "Activate(v) ==\n  /\\ TRUE   \\* FAULT: was v \\in stored\n", 1)]),
     ("PolicyTickStalls", "TickAlwaysAnswered",
-     "Pick has no built-in: when the active and the previous break, the\ntick is answered by nothing (the stall).",
-     [("  ELSE Default\n", "  ELSE None   \\* FAULT: was Default\n", 1)]),
+     "Pick has no last resort: when every version breaks, the built-in\nincluded, the tick is answered by nothing (the stall).",
+     [("  ELSE NoAnswer\n", "  ELSE None   \\* FAULT: was NoAnswer\n", 1)]),
+    ("PolicyDefaultSkipped", "TickAlwaysAnswered",
+     "Pick never tries the built-in: a tick goes without an answer while\nthe built-in would have answered it.",
+     [("  ELSE IF Default \\notin breaks THEN Default\n", "  ELSE IF FALSE THEN Default   \\* FAULT: was Default \\notin breaks\n", 1)]),
+    ("PolicyBrokenDefaultUsed", "AnsweredByUsable",
+     "Pick takes the built-in on trust: a failing built-in answers the tick.",
+     [("  ELSE IF Default \\notin breaks THEN Default\n", "  ELSE IF TRUE THEN Default   \\* FAULT: was Default \\notin breaks\n", 1)]),
+    ("PolicyNoAnswerDeals", "NoAnswerStartsNothing",
+     "A tick with no answer deals anyway: the card starts work.",
+     [("       /\\ (c = \"working\" /\\ card = \"ready\") => Pick # NoAnswer   \\* a deal needs an answer\n", "       /\\ TRUE   \\* FAULT: was a deal needs an answer\n", 1)]),
     ("PolicyActivateMovesCard", "ActivateMovesNoCard",
      "Activate re-deals the card: a policy change moves it.",
      [("  /\\ card' = card   \\* a policy change never moves a card\n", "  /\\ card' = Advance(card)   \\* FAULT: was card\n", 1)]),
