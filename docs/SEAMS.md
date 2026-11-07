@@ -126,25 +126,40 @@ func git.New(git.Config) *git.Client
 
 Run is the one pusher and the one caller of `nova-bus`: `bus.Edge` runs
 `nova-bus who` once a tick and `nova-bus send` for each envelope. A
-`steps.EdgeRequest` of kind `land` becomes one `git.LandRequest{RepoDir,
-Repo, Stream, Base: <the stream's base branch>, Mode, Heads: <the request's
-head shas>}` run on a goroutine of its own (never under the tick), with the
-stream's forge (`Forge` "github": `forge.New`; "": none, and LandPass
-refuses: hand only). Its `LandResult` comes back as one `steps.InboxItem{Kind:
-"land", Request: req.ID, Outcome, Landed, Blamed}`: landed -> `landed`,
-ci_red -> `red` (Blamed always set), rung3_conflict and ledger_failed ->
-`conflict`, ci_pending -> nothing yet (asked again after a pause),
-everything else -> `fault` (the request leaves flight and steps reissues it).
-A request of kind `stop` is one bus message to the row (`STOP <consumer>`)
-and, once sent, an inbox item `{Kind: "stop", Request: req.ID, Outcome:
-"ack"}`. `Inputs.Heads` is the base tip of each stream as the edge last read
-it (`LsRemote` at start, after each landing, and every ten seconds).
+`steps.EdgeRequest` of kind `land` (`Cards`, `Heads`, `Branches`: the card
+branches `sprint/<stream>/<card>`; `Wait`: policy's `ci_wait` seconds)
+becomes one `git.LandRequest{RepoDir, Repo, Stream, Base: <the stream's base
+branch>, Heads, Branches}` run on a goroutine of its own (never under the
+tick), with the stream's forge (`Forge` "github": `forge.New`, acting as
+the host's gh login, `GH_GATE_TOKEN` an optional override). A stream with
+mode hand or no forge is answered at once with outcome `hand`. The pass is
+asked again after `LandPoll` on `ci_pending` and `base_moved`, and on
+`ci_absent` until `Wait` (10 minutes when none), when it is `no-ci`. Its
+`LandResult` comes back as one `steps.InboxItem{Kind: "land", Request:
+req.ID, Outcome, Landed, Merge, Reason}`: landed -> `landed` with the
+landed heads and the merge sha; every other outcome (`ci_red`, `no-ci`,
+`conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`, `ci_fault`,
+`missing_head`, `head_moved`, `hand`) keeps its name and carries the facts
+in `Reason` (rung, base tip, group tip, gated sha, PR, failing checks, their
+URL and first lines, conflicts, the pass's reason); an error is `fault`.
+Layer 3 opens one `land` judgement per card for each of those. A request of
+kind `stop` is one bus message to the row (`STOP <consumer>`) and, once
+sent, an inbox item `{Kind: "stop", Request: req.ID, Outcome: "ack"}`.
+`Inputs.Heads` is the base tip of each stream as the edge last read it
+(`LsRemote` at start, after each landing, and every ten seconds).
+
+The verbs' landing edge is `verbs.Lander` (`cmd/nova-sprint/lander.go`):
+`Land(stream, branch, head)` (the hand merge: the card branch's PR merged
+by the allowed method, or with no forge a fast-forward push of the head
+merged onto base; the merge sha), `Heads(stream)` (origin's branches) and
+`CreateGroup(stream, sha)` (`sprint-group/<stream>` at the base tip, at
+`stream add`).
 
 The worker (`nova-worker`, layer 4) talks to the sprint only through verbs:
 `nova-sprint hook --as <row> --role worker`, `next --json`, `take --json`,
 `report`. The take receipt (`take <card>@<gen> --as <row> --json`) is the
 seam: `{consumer, producer, kind, stream, repo, base, branch, head, tier,
-brief, prose, finding, stream_ref, base_sha, prior_head, paths, done_when,
+brief, prose, finding, stream_ref (the stream's base branch), base_sha, prior_head, paths, done_when,
 epoch, gen, attempt, review, model, models, deadline, forge}`, `deadline` in
 seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream.
 `model` is a friend's own, from the roster; a bench has none, and `models`

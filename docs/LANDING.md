@@ -12,259 +12,182 @@ conflicts showed only at merge, where nothing was left but rework. v2 moves
 each cost to the earliest point it can be paid, so landing is a fast-forward
 in a batch.
 
-## The escalation ladder
+## The ladder, as built (intent rules 16 and 32, 2026-11-07)
 
-Glenn, 2026-11-06: "My only hope is that you intelligently do merges, and
-don't fall back to merging only one card at a time to main, and chasing a
-moving target. If you are progressing well, and cards come in one at a time,
-obviously, you really should just merge those one at a time. if you get
-backed up, you should look across work streams and merge that work stream
-into its own branch, then merge the result into main as a group. If you
-can't do a merge in a work stream this way, you have to escalate further,
-and look wholistically across work streams and ask, why do I have conflicts
-between two work streams? and then fix. this is a job for the coordinator.
-my point is that merging is complex and you need to build in an escalation
-policy all the way to the coordinator goes into a frontier model and merges
-manually because it's complex and it needs judgement."
+The first ladder (four rungs, bisection of red groups, a base-red judgement,
+CI required on `sprint/**`, the sprint's own token) was found by the dogfood
+of 2026-11-07 to be ignored in the first implementation and too much
+machine for what landing needs. Rule 32 replaced it: **the automatic path
+is green-and-merge only; anything else is the coordinator's judgement.**
+Three rungs, each stream on one at a time; the group rung is kept.
 
-So landing is a ladder of four rungs, and each stream is on one rung at a
-time. Which rung a stream is on is policy's choice from its backlog, by a
-number policy states for each trigger; each rung's moves and refusals are
-the engine's; the merge table shows the rung of every stream.
+1. **Rung 1: one head waiting.** The stream has fewer merging producers
+   than policy's `landing(stream).backed_up` (default 2: more than one head
+   waiting backs it up). Layer 3 asks a land request for the first one in
+   score order (after-ordered). Layer 4's `LandPass` opens (or finds) the
+   PR from the card's own branch (`sprint/<stream>/<card>`) against the
+   stream's base, provided the head already contains base's tip; it reads
+   the checks at that exact head, and a green one merges by the
+   repository's allowed method (merge commit, then squash, then rebase)
+   with `gh pr merge --match-head-commit <head>`, only while base is still
+   the tip the head was gated on. The card is recorded `landed` with the
+   merge sha (`card.Landed{Head, Merge}`; its reason `landed at <merge>`).
+2. **Rung 2: more than one head waiting** (or one head behind base). Every
+   eligible merging producer of the stream is one request. `LandPass`
+   rebuilds the stream's group branch `sprint-group/<stream>` from base's
+   tip with every head merged in, in order (a deterministic merge dated at
+   base's commit, so a pass that runs again pushes nothing new and CI is
+   not restarted), pushes it with a lease on its old tip, and opens (or
+   finds) one PR from it against base. Green at the gated sha merges as
+   one, the same way as rung 1, and every card of the request is landed at
+   the merge sha in one op group. Red is a coordinator judgement for each
+   card: no bisection and no blame.
+3. **Rung 3: anything else is the coordinator's.** Red CI; no check at all
+   within `ci_wait` seconds (policy, default 600, a guess); a conflict (git's
+   merge or GitHub's mergeable state); a merge GitHub refused; a PR that
+   could not be opened or read; a group branch that could not be pushed; a
+   card branch missing or moved from its read head; a stream landed by
+   hand (mode hand, or no forge); or a fault of git or the forge itself:
+   each is one `land` judgement per card on the coordinator's row, opened
+   in the tick that reads the result. Nothing moves and nothing is blamed.
+   Its question carries the facts: the card, stream, base and base tip,
+   branch, head, the outcome, the rung, the group tip, the gated sha, the
+   PR, the failing checks with the first one's URL and its first failing
+   lines, the conflicting files, the pass's own reason, and the cards that
+   were landing together. Its command is the next step:
+   `nova-sprint judge land.<card>.<n> <land|fix|retry> --reason <why>`.
+   - **land**: the coordinator looked; the head is merged by hand (below).
+   - **fix**: the producer goes back to work (`ready`, red, review one up)
+     with the reason as its finding (intent rule 30).
+   - **retry**: the judgement closes; the next tick asks a new landing.
+   A land judgement has no deadline: it waits for the coordinator.
 
-1. **Flowing.** Cards arrive one at a time and the stream is not backed up:
-   each producer that reaches `merging` lands into base on its own, as it
-   comes, with its CI, and nothing chases the base tip (step 6).
-2. **Backed up.** Past policy's backlog number, the stream's merging
-   producers are merged in score order onto the stream branch and land into
-   base as one group: one PR, one CI run for the group.
-3. **The stream cannot merge.** A stream group that cannot be merged (a
-   conflict across streams, a group that stays red after bisection, step 7)
-   is a judgement to the coordinator, who looks across the streams for why
-   two streams conflict and fixes the cause.
-4. **By hand.** When the coordinator's fix is itself a merge that needs
-   judgement, the coordinator, on a frontier model, merges by hand, and the
-   result lands through the same CI gate as any group (step 6).
+Pending CI and a base that moved after the gate are not judgements: run
+asks the pass again every `LandPoll` (30 s), the first as long as CI runs,
+the second at once on the new tip (rung 2 then, since the head no longer
+contains base's tip). A CI that stays pending for ever is met by the stall
+judgement (layer 3), not by the landing.
 
-This replaces v1's "never land a card alone" (PRIORITY M4, R15, Glenn
-2026-09-25 "ALWAYS BATCH") for a stream that is flowing; the batch is now the
-answer to a backlog, rung 2.
+### land: the hand merge
 
-## The design
+`nova-sprint land <card> --reason <why> [--head <sha>]` is the coordinator's
+merge with no check gate. It lands a merging producer's own read-ok head
+(`--head`, when given, must be that head): on a stream with a forge, the
+card branch's PR against base (opened when there is none) is merged by the
+allowed method, refused if the PR's head is not the card's head; on a
+stream with no forge, the head is merged onto base's tip and pushed,
+fast-forward only, and a conflict is a refusal that says to merge it by
+hand and land again. A head already on base records at once at base's tip.
+The card is recorded `landed` with the merge sha and the reason
+`landed at <merge>: by hand: <why>`, and an open land judgement on it is
+answered `land` in the same op. Answering a land judgement `land` runs the
+same path.
 
-1. **Each stream has an integration branch** (`sprint/<stream>/group` by default (never `sprint/<stream>` itself: git refuses a ref that is both a file and a directory of the card branches `sprint/<stream>/<producer>`; found by Emma 2026-11-06),
-   set at `stream add`). Cards branch from it, not from base, and the base
-   commit is recorded on the consumer at deal (`base_sha`). How the stream's
-   producers reach base is its rung on the ladder above; a group is one PR
-   with one CI run, so on rung 2 the merge cost is per group.
-2. **Conflicts are prevented, not resolved.** Every card declares its paths
-   (the card lint refuses a brief without them). Two live cards in one stream
-   never overlap in paths: the deal refuses the second until the first has
-   landed, naming the overlap. So merges inside a stream cannot conflict.
-   Streams land into base one at a time in their order (`pos`), and a
-   cross-stream conflict is a judgement to the coordinator (rung 3), never a
-   silent rework. Ledger files (fixes and roadmap data, TLA run tables,
-   base-red tables, generated pages; the list is policy's, per repository)
-   are not counted as an overlap: the lander merges them entry by entry, or
-   regenerates them, and a ledger conflict it cannot resolve stops the
-   stream with a judgement (LESSONS 3.11; PRIORITY M19).
-3. **The runner rebases at report.** When a consumer's `base_sha` is behind
-   the stream head at report time, `nova-worker` rebases mechanically onto
-   the stream head as it is then, re-runs the card's tests, pushes, and
-   reports. A rebase that conflicts is a `fix` result with the files named,
-   early, while the author still has the context. A friend row is asked the
-   same by the report refusal (step 4). The goal is to merge efficiently:
-   after the report, the stream moving on is the landing's to absorb (step 6),
-   never the card's to chase, as v1 did on 2026-10-20 (Glenn: "this has
-   always been the rule. you guys just forget it over and over"); how many
-   rebases that takes is the implementation's, not this design's (LESSONS
-   3.14; ruled by Rowan 2026-11-06, corrected by Glenn: "work efficiently
-   when merging").
-4. **A report of ok is refused until the head is landable.** The head must
-   be rebased at report (step 3), pushed, and have green CI at that exact
-   head (CI runs on the card branch by the same push trigger as the group
-   branch, below); no card is asked for a PR (defect 34, below). Each
-   refusal names which and the command. A report is never refused because the stream head moved after
-   it (LESSONS 3.14). So every producer in review is landable; the read is
-   the last gate.
-5. **In-order landing, visible when stuck.** Within a stream, producers land
-   in score order (work order; Glenn 2026-09-29: "merge in work order, not
-   random"). A producer ahead that is not landable holds the ones behind it;
-   that is what in order means, and the merge table shows it per stream:
-   queued, merged, stuck (and why: the producer and its state), CI, state,
-   and the stream's rung. A
-   stuck batch is a judgement with its verb (`rescore`, `drop`, `rework`).
-   v1's merging was invisible ("You would be stuck and not know it").
-   The soft `after` list orders landings across streams the same way, and
-   only among cards both queued to land: an `after` whose target is not
-   itself queued (in `merging`, or ahead in the same batch) is ignored for
-   this landing and never holds it (LESSONS 2.15; PRIORITY M20; ruled by
-   Rowan 2026-11-06).
-6. **Base is never red from a landing.** A batch lands only on CI green
-   against the exact base head it lands on, re-run if base moved
-   (2026-10-27: stale-green merges put main red on 12 jobs). The batch's
-   CI is one run; its result is a notification either way. A base that
-   moved is met by re-merging the batch onto the new tip and gating the
-   combined tree once, never by sending its cards back to rebase one at a
-   time; a re-merge is needed only when the merge is refused for a conflict
-   (LESSONS 3.14; PRIORITY M13).
-7. **Batch atomic, red batches bisected.** A batch lands whole or not at
-   all. A red batch is bisected: its halves are gated until the red head is
-   found, that producer goes to fix (`ready`) with the failing checks and
-   their URLs as its finding (intent rule 30, below), and the rest land as a
-   smaller batch. A gate that did not run (a bench fault) blames no
-   head: the batch is retried and nothing returns (LESSONS 3.13; PRIORITY
-   M7).
-8. **A red base has one judgement and a path back.** When base itself is red
-   (not from a landing), there is one judgement for the base, not one per
-   stream: a queued head that passes the gate and fixes the red lands first;
-   base is re-gated (v1: after 2 and 5 minutes); the third failure stops the
-   stream that met it; other streams that meet the same red are refused
-   under that one judgement and not stopped; and when the tip is green,
-   every stream stopped only on that red resumes by itself. Base is never
-   fast-forwarded by hand (LESSONS 3.12; PRIORITY M18).
-9. **Landing runs on its own.** The landing step runs in the run loop
-   whether or not the coordinator is hooked or attending (LESSONS 3.15). A
-   hold is a deal control: it stops deals to a row and never removes a host
-   from the landing gate, so no hold, of one row or of every row, can stop
-   landing (LESSONS 3.16; PRIORITY W10).
-10. **A stalled landing is pushed.** When nothing has landed within a bound
-    policy states (v1: one minute) while producers wait in `review` or
-    `merging`, the coordinator is pushed once with the cause per stream, and
-    the episode clears at the next landing (LESSONS 3.19).
+### What a stream needs
+
+- **finish needs only a head on origin.** `finish` checks a full sha, not
+  the base nor the prior head, at the tip of the card's branch at origin.
+  It asks for no PR, no forge, no token and no up-to-date-ness with any
+  other branch: the landing does the forge work.
+- **The run lands as the host's gh identity.** The forge runs `gh` with the
+  host's own login (the coordinator's host, the one identity that can act on
+  every stream repository). `GH_GATE_TOKEN`, when set in run's environment,
+  is passed to gh as `GH_TOKEN` instead: an optional override, not a
+  requirement. No CI trigger on `sprint/**` is required: rung 1's PR is
+  from the card branch and rung 2's from the group branch, and the
+  repository's own `pull_request` workflow runs on both.
+- **The group branch** `sprint-group/<stream>` (beside `sprint/`, never in
+  it, so neither a base named `sprint/<stream>` nor a card branch
+  `sprint/<stream>/<card>` can collide with it; defect 46) is created at
+  `stream add` from the base tip for a stream with a forge, and by the
+  first rung-2 pass if it is absent. `stream add` refuses, naming the fix,
+  a stream name git cannot use in a branch, a branch at origin that keeps
+  the group branch from being created (`sprint-group` itself, or a branch
+  under `sprint-group/<stream>/`), branches it cannot list, and a creation
+  that fails (push access for this host's gh identity).
+
+### Requests rebuilt, nothing unexplained
+
+Land requests are rebuilt from the store's state every tick (and so at run
+start): a stream with no request in flight and merging producers not under
+a land judgement gets one. A request's id hashes the epoch, stream, base
+tip, cards, heads and reviews, so a restart reissues the same request. A
+merging producer that a tick leaves with no request in flight or planned
+for its stream, no land judgement, and no `after` target holding it is
+reported as an `engine` judgement ("merging with no land request and no
+land judgement: answer retry"); by construction there is none, and the
+report is the check that there is none.
+
+### A release is not a failure
+
+`release` withdraws a consumer with the reason `released: <why>` and no
+result: neither ok nor fail. The re-deal is a new attempt of the same
+review, and nothing is counted against the card or the row.
+
+## Kept from the first design
+
+- **Conflicts are prevented, not resolved.** Every card declares its paths;
+  two live cards in one stream never overlap in paths (the deal refuses the
+  second, layer 3). Merges inside a stream are then textually clean; one
+  that is not is a rung-3 judgement.
+- **In-order landing.** Producers land in score order; the soft `after`
+  orders landings across streams only among cards both queued to land, and
+  an `after` whose target is not merging never holds a landing (LESSONS
+  2.15).
+- **Base is never red from a landing.** Only the exact sha CI passed green
+  is merged, and only while base is still the tip it was gated on.
+- **Landing runs on its own.** The landing runs in the run loop whether or
+  not the coordinator is hooked; a hold never touches it.
 
 ## What is modelled
 
-`tla/Landing.tla` (layer 3 and 4): a card lands at most once; landings in a
-stream are in score order; a batch is all or none; the base is never advanced
-by a batch whose CI was not green at the exact base head; a producer in
-`merging` has a head equal to its last read's head; a soft `after` whose
-target is not queued never holds a landing (LESSONS 2.15); a bench fault
-returns no producer (LESSONS 3.13); every stream stopped only on a red base
-resumes when the base is green (LESSONS 3.12); a hold never disables the
-landing gate (LESSONS 3.16); and, as liveness, a producer in `merging`
-lands, returns, or is under a judgement (LESSONS 2.21). Each rung of the
-ladder is an action, its trigger a constant. Reversed witnesses: a
-stale-green landing; a card landing twice after an unknown outcome; a batch
-half-landed; a landing out of order; an `after` on an unqueued card freezing
-a stream; a bench fault blaming a head; a red base with no path back.
+`tla/LandEdge.tla` (layers 3 and 4): the three rungs from a tick's land
+request to the base, with outside commits to base and the coordinator's
+answers. Automatic moves: green to landed; anything else to a judgement.
+Invariants: `BaseNeverRed` (every tree the landing put on base was green),
+`NothingLandsUnpassed` (a card enters base only in the exact tree CI gated,
+or by the coordinator's hand; an outside commit brings none; a landed card
+is on base), `MergingCovered` (after a tick, every merging card is under a
+land judgement or its stream has a request in flight, or had one when the
+tick began). Reversed witnesses, one each: `LandEdgeRedLands` (the merge
+does not read the gate, so a red tree merges), `LandEdgeStaleGate` (base
+moves under the gate and the pass merges anyway: the heads on the new tip
+land, not the tree CI passed), `LandEdgeJudgementHoldsStream` (a judgement
+on one card holds its whole stream, so the stream's other merging cards
+are left with neither a request nor a judgement). Reach checks show rung 2, a
+judgement, a hand landing and a red gate. `tla/Steps.tla` carries the land
+judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
+`MergingCovered` and the reversed witness `StepsLandJudgementExpires`. The
+code is bound to `LandEdge.tla` by `edge/git/trace_test.go`
+(`TestLandEdgeTraceRefinementWalk`: `LandPass` on the git fake and a
+truthful forge, with the tick, outside commits and the answers played by
+the walk), checked by `tla/check-trace.sh LandEdge`.
+
+## Known gaps
+
+- **A stale land request.** A land request is planned from the tick's view
+  and carries no fence against a coordinator's answer made after it: an
+  answer (fix) that races a tick can leave a request in flight for a head
+  that was just sent to fix, and a green one would merge it. Layer 3 then
+  records nothing (the card is no longer merging at that head), but the
+  head is on base. `Steps.tla`'s `EdgeAfterAccepted` states the race rather
+  than forbidding it.
+- **`flowing` is validated and not used.** Rung 2 is taken whenever
+  `backed_up` or more heads wait; there is no hysteresis back to rung 1.
+- **Pending CI has no bound of its own.** A check that never leaves pending
+  is met by the stall judgement, not by `ci_wait`.
+- **Stream mode `group`** is accepted and behaves as `auto`.
 
 ## Where it lives
 
-- The refusals of step 4 are the consumer `Report` of layer 2 plus the
-  checks layer 4's git and GitHub edge runs for it.
-- The path-overlap refusal is a deal condition in layer 3, reading paths from
-  the card.
-- The batch and the merge table are layer 3's landing step and layer 6's
-  view.
-
-## Added from the promise reviews (2026-11-06)
-
-- After any landing into base, the stream branch is fast-forwarded to base
-  in the same step, so cards cut afterwards start from what landed and the
-  stream branch never drifts behind base (Fable, promise 4; v1: 105 conflicts).
-- The engine learns a CI result from the run loop reading the check status of
-  the exact head (layer 4's GitHub edge, a machine reading an API, which is
-  not a model polling) and recording it as evidence on the consumer; a red is
-  a judgement, a green at the landable head is what step 4 requires.
-- "A card that wants a PR" was one whose stream's repo requires PRs; since
-  2026-11-07 no card is asked for one (defect 34, below).
-
-## CI on the group branch (2026-11-07, defects 38 and 40)
-
-The first landing merged a head into `sprint/nova-tools/group` while the
-head's own checks were red, and then waited for ever: nova-tools' workflow
-ran on push to main, pull_request, merge_group and the nightly, so nothing
-ever ran on the group branch, and the landing's gate (CI green on the exact
-merged sha before base moves) had no verdict to read. Merging the head into
-the group first is the design (the group's CI blames the head); the defect
-was that no CI could reach the group.
-
-**Decision: the stream's repository runs CI on push to `sprint/**`.** The
-landing pushes the merged group sha to `sprint/<stream>/group` and reads the
-check rollup of that exact sha; a green one is the sha that fast-forwards
-base (intent rule 16), a red one is blamed on a head (bisected by pushing
-subsets to the same branch, step 7). The merge queue was the other choice
-and is not taken: it tests a merge sha GitHub makes, not the one nova-sprint
-pushed, so "the exact sha CI passed is what lands" would be GitHub's sha and
-not ours; it cannot be bisected by the landing; and it ties the landing to
-one forge's feature. The same trigger runs CI on every card branch
-(`sprint/<stream>/<producer>`), which step 4 needs now that cards open no PR.
-
-What a stream's repository must have, for a stream with a forge:
-
-- a workflow whose `on:` includes `push: branches: ['sprint/**']` and that
-  reports its jobs as checks on the pushed commit (any job names; every
-  check on the sha counts, and one failure is red);
-- base's protection lets the sprint's identity (below) fast-forward base to
-  a commit whose required checks passed: required status checks are met by
-  the group sha's own checks; a rule that requires a merge queue or a PR
-  merge refuses the landing's fast-forward unless the sprint's identity is on
-  its bypass list.
-
-What the landing waits for, and for how long: after it pushes the group sha,
-a pending CI (jobs queued or running are checks already) is waited for as
-long as it runs (the stall judgement, step 10, covers a slow one). A sha with
-no check at all is waited for `CIAbsentWait` (10 minutes, a guess, not
-measured: GitHub creates a queued job's check within seconds of a push), and
-then the landing stops: nothing lands, nothing is blamed, and layer 3 opens
-one `no-ci` judgement naming `sprint/<stream>/group`, the sha and the fix
-(add the trigger, then re-run CI on that sha or answer retry). The request
-is asked again on later ticks under that one judgement; a re-push of the
-same merged sha starts no new CI, so the fix re-runs CI on it.
-
-How it is verified: at run time, by that bounded wait and its judgement,
-within ten minutes of a stream's first landing. Not verified yet at
-`stream add`: reading a repository's workflow files for a push trigger is a
-heuristic (a reusable workflow, another CI system), so it is left to `check`,
-which shows every open judgement by kind (directive 59); a `stream add`
-warning from the workflow files is owed.
-
-## The sprint's identity (2026-11-07, defect 39)
-
-The first landing's merge author was the human's own GitHub login: run's git
-pushed the group branch with the host's own credential helper (GitHub marks
-a PR merged, by the pusher, when its head reaches its base by a push), and
-its forge would have used whatever gh was logged in as. Now:
-
-- The forge acts only with the token in `GH_GATE_TOKEN`, the control seat's
-  secret of that name, handed to `nova-sprint run` by
-  `nova-secrets exec --only ...,GH_GATE_TOKEN` (the sprint-run service's
-  unit lists the key). Every `gh` call gets `GH_TOKEN` set to it in a clean
-  environment; an inherited `GH_TOKEN`, `GITHUB_TOKEN` or `GH_CONFIG_DIR`
-  never reaches gh. With no token the forge refuses, naming the fix, and
-  never falls back to the host's gh login; `NOVA_SPRINT_FORGE_LOGIN`, when
-  set, is checked against `gh auth status`, and the human's own login is
-  always refused.
-- git, given the same token, resets the host's credential helpers and
-  answers every https credential request with it (in the environment, never
-  argv), so the landing's pushes are the token's identity. This holds for an
-  https remote; an ssh remote would push with the host's ssh key.
-- A landing whose forge has no token merges and pushes nothing: it answers
-  `forge`, and layer 3 opens one `forge` judgement with the refusal's fix.
-
-The token needs, on each stream repository: contents write (the group
-branch, base's fast-forward), pull requests write (the group PR), and checks
-read. A token that cannot create a pull request is refused at the landing's
-OpenPR with GitHub's own error, as a fault.
-
-## PRs and the group branch (2026-11-07, defect 34)
-
-`finish` no longer asks a card for a PR at its head, and `take` no longer
-tells the worker to open one. The landing never used the card's PR: it
-merges the card heads into the group branch by git, opens (or finds) the one
-PR from `sprint/<stream>/group` into base itself, as the sprint, and lands
-by fast-forwarding base to the gated sha. The group branch needs no setup:
-the landing's first push creates it, and `finish` checks a head contains the
-group's tip only when the group branch exists. So a worker's seat needs no
-token that can open PRs; only the control seat's does.
-
-## A red landing goes to fix (2026-11-07, intent rule 30)
-
-A red gate moves the blamed producer from `merging` to fix (`ready`;
-`waiting` in a held stream) with the finding `CI red at <head> on <base>:
-failing: <check names>; <first failing check's URL>; <reason>; gated <sha>`,
-which the fix attempt's work consumer carries from `Start`. It used to go to
-`review`, where a reader re-read the same red head. The coordinator can
-still `WaiveRed` a red that was not the code's while the producer waits in
-fix (before the next `Start`).
+- Layer 3 (`steps/land.go`): land requests (rung choice, order, the id),
+  results (landed as one group; anything else a land judgement), the
+  unlanded report; `steps/judge.go`: the land judgement's choices and no
+  deadline.
+- Layer 4 (`edge/git/land.go` `LandPass`; `edge/forge` PR, Checks, Merge,
+  FailedLines): one pass of either automatic rung; `edge/git/git.go`: the
+  group branch's name and its blockers.
+- Layer 6 (`run/edges.go`): passes asked again on pending CI and a moved
+  base, `ci_wait` for absent CI, the facts; `verbs/land.go`: `land`, the
+  group branch at `stream add`; `verbs/judge.go`: the answers;
+  `cmd/nova-sprint/lander.go`: the hand merge as the host's gh identity.

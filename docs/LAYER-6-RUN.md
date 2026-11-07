@@ -110,15 +110,16 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
 | `check` | `[--integrity]` | prints every line; red (exit 1, or 2 when a read failed): fleet not green; nova-tools below the pin (above: a warning); `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable; a stream whose repository or base cannot be read; an open judgement (one line per kind); nothing runs the sprint; ready producers and nothing dealt (with why); a landing waiting on a judgement, run or a hold | `next`, or the first red line's fix | 0, 1, 2 |
 | `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
-| `stream add` | `<s> --repo <owner/name> [--base main] [--pr]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>` | `add --stream <s> --brief-file <f>` | 0, 1 |
+| `stream add` | `<s> --repo <owner/name> [--base main] [--mode auto\|hand] [--forge github\|none]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>`; with a forge, the group branch `sprint-group/<s>` cannot be created (a name git refuses, a branch at origin in its way, origin's branches unreadable, the push refused), naming the fix | `add --stream <s> --brief-file <f>` | 0, 1 |
 | `add` | `--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a>] [--sentinel <id>] [--priority <level>] [--dry-run]` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
 | `run` | `[--listen <addr>] [--shadow]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
 | `worker` | `--as <row>` | not a host in nova-config's inventory: `nova-fleet join`; name hooked elsewhere; row serves no tier | `nothing; wait for the bus` | 0, 1 |
 | `take` | `<card>@<gen> --as <row>` | not hooked; not dealt to this row at this gen: `show <card>`; at width: `finish` one first | `finish <card>@<gen> --head <sha>` or `read <card>@<gen> yes\|fix` | 0, 1 |
-| `finish` | `<card>@<gen> --head <sha> --as <row>`, or `--failed --reason <why>` | not hooked; not the holder, naming who; not 40 hex; not on the dealt branch at origin: `git push origin <branch>`; PR wanted and absent; head equals base or prior head | `nothing; wait for the bus` | 0, 1 |
+| `finish` | `<card>@<gen> --head <sha> --as <row>`, or `--failed --reason <why>` | not hooked; not the holder, naming who; not 40 hex; not on the dealt branch at origin: `git push origin <branch>`; head equals base or prior head (a head on origin is all it needs: no PR, no forge) | `nothing; wait for the bus` | 0, 1 |
 | `read` | `<card>@<gen> yes\|fix --as <row> [--finding <text>]` | not hooked; the reader wrote the head; head moved: `show <card>`; `fix` with no finding | `nothing; wait for the bus` | 0, 1 |
-| `release` | `<card>@<gen> --as <row> --reason <why>` | not the holder | `nothing; wait for the bus` | 0, 1 |
+| `release` | `<card>@<gen> --as <row> --reason <why>` (recorded `released: <why>`, no result: neither ok nor fail; the re-deal is a new attempt, no blame) | not the holder | `nothing; wait for the bus` | 0, 1 |
 | `show` | `[<card>\|<stream>\|<row>\|run] [--stitch]` | unknown name | what `next` says for that name | 0, 1 |
+| `land` | `<card> --reason <why> [--head <sha>]` (coordinator) | not the coordinator; no reason; not a merging producer; `--head` not its finished head; the merge refused (a conflict: merge it into the base yourself, push, land again), naming the fix | `nothing; wait for the bus` | 0, 1, 2 |
 | `judge` | `[<id> <choice> --reason <why>]` | not the coordinator, or not hooked; judgement not open, naming who closed it; a choice it does not offer, listing them | the next open judgement, or `nothing; wait for the bus` | 0, 1 |
 | `priority` | `<card> <level> --reason <why>` | a consumer id (`priority` is the producer's); a final card; a level outside `low normal high critical blocker` (`read` is a rung, not a level) | `nothing; wait for the bus` | 0, 1 |
 | `edit` | `<card> --brief-file <f> --reason <why>` | a live consumer: `nova-bus send --as <me> --to <holder> ...` instead | `nothing; wait for the bus` | 0, 1 |
@@ -554,8 +555,9 @@ judgement about them, tiers no open row serves, the steps' idle judgement,
 and, when no machine cause applies, the count of ready producers with none);
 and one line per stream with producers merging, from what the store records
 (a judgement about the stream, its base or the producer; run; the hold;
-mode hand or no forge) and the group branch at origin (absent: the lander's
-merge; present: CI at its tip). The landing line reads no in-flight state
+mode hand or no forge), else "waits for its landing PR's CI" (rung 1 the
+card's branch, rung 2 `sprint-group/<s>`; since 2026-11-07 check reads no
+branch at origin for it). The landing line reads no in-flight state
 (run keeps it in memory), so "how long" is the judgement's open time when a
 stall judgement says it, and nothing otherwise. Upward the pin: lower is
 red, higher a warning that exits 0. Unit tests (`verbs/check_test.go`): the
@@ -663,3 +665,26 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   `tla/Setup.tla` over every state of a two-bench fleet. The functional role tests
   (`TestFunctionalSprintRolePasswordOnATrustHost` among them) were changed but not run here;
   they run on a bench.
+
+## Built: the landing to intent rule 32 (stitch, 2026-11-07, branch `v2-stitch-w2L`)
+
+- `land <card> --reason <why> [--head <sha>]` (`verbs/land.go`, coordinator):
+  the hand merge of a merging producer's own head through `verbs.Lander`
+  (the host's gh identity), recorded `card.Landed{Head, Merge, Reason: "by
+  hand: <why>"}` in one op that also answers its open land judgement `land`.
+  `judge land.<card>.<n> land` runs the same path; `fix` sends `card.Red`
+  with the reason as the finding; `retry` is the answer alone.
+- `stream add` creates `sprint-group/<s>` at the base tip for a stream with a
+  forge (one call, `ensureGroup`), refusing with the fix when it cannot;
+  `finish` checks only the head at origin (the group-branch containment
+  check and `Origin.Contains` are gone); `take`'s `stream_ref` is the base
+  branch; `show --stitch`'s diff range is `origin/<base>..origin/sprint-group/<s>`.
+- `release` records the reason `released: <why>` with an empty result
+  (`verbs.ReleasedPrefix`; no schema change): neither ok nor fail.
+- Run (`run/edges.go`): LANDING.md "The ladder, as built"; `run/asker.go`
+  passes policy's `ci_wait`. `cmd`: the forge and git act as the host's gh
+  login (`GH_GATE_TOKEN` optional), `GH_GATE_TOKEN` is no longer a key the
+  sprint-run service needs, and the lander is wired into the engine.
+- Tests: `verbs/land_test.go` (`TestLandByHand`, `TestLandRefusals`,
+  `TestJudgeLandAnswers`, `TestStreamAddCreatesTheGroupBranch`),
+  `TestReleaseIsNoBlame`, the verb list and the role matrix with `land`.

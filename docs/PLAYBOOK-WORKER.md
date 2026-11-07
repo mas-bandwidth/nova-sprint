@@ -136,18 +136,15 @@ Each message is a wake. Handle it, then wait for the bus again.
    rebase it and push it with `git push --force-with-lease origin <branch>`. Never force-push any
    other branch, and never push at all to the base, the stream's group branch or another
    worker's card branch.
-8. Open no PR. The landing merges your head into the stream's group branch and opens the
-   stream's one PR itself; `finish` needs only your pushed head.
-9. Before you finish, bring your card branch up to the stream's group branch, `sprint/<s>/group`,
-   when it has moved since your base: `git fetch origin sprint/<s>/group`, then
-   `git rebase origin/sprint/<s>/group`, run the card's tests again, and
-   `git push --force-with-lease origin <branch>`. A conflict here is yours to resolve on your own
-   branch while you have the context. Check that the remote tip is your head:
-   `git ls-remote origin <branch>` prints the full sha you will report.
+8. Open no PR. The landing opens the PR itself (from your card's branch, or from the stream's
+   group branch when several heads land together); `finish` needs only your pushed head.
+9. Before you finish, check that the remote tip is your head: `git ls-remote origin <branch>`
+   prints the full sha you will report. You need not chase the base: a head behind it lands
+   through the group branch, merged onto the base's tip. Rebase onto the base only if your own
+   gates need it, then push with `git push --force-with-lease origin <branch>`.
 10. Do not wait for CI. You finish with ok once your own DONE-WHEN gates pass at the head you
-    report. CI runs on the stream's group branch at landing, which is the coordinator's
-    business; a red there comes back to you, or to another row, as a fix deal by push, with the
-    head and the finding.
+    report. CI runs on the landing's PR, which is the coordinator's business; a red there comes
+    back to you, or to another row, as a fix deal by push, with the head and the finding.
 11. Finish: `nova-sprint finish <id>@<gen> --head <40 hex> --as <you> --epoch <e>`. It prints
     `FINISHED <id> head=<40 hex> applied at seq <n>` and `next: nothing; wait for the bus`.
     Your part is done when that line prints; the card itself is done only when it lands, which

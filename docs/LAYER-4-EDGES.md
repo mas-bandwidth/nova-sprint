@@ -203,13 +203,12 @@ removes a landing host (LANDING step 9).
 `Forge` has four methods: `PR(head, base)` (find), `OpenPR`, `Checks(shas)`
 and `Merge(pr, sha)`.
 
-Credentials. Every `gh` call runs with an explicit token and nothing else:
-`GH_TOKEN` from nova-secrets for a row, and the control seat's
-`GH_GATE_TOKEN` for the sprint's own identity (the landing; LANDING, "The
-sprint's identity"). `GH_CONFIG_DIR` is no longer an identity (2026-11-07,
-defect 39: a config directory is whoever logged in there). The edge refuses
-to run `gh` with no token, naming the fix, and refuses when `gh auth status`
-names another login than the expected one. The human's credentials are
+Credentials. The landing's `gh` runs as the host's own gh login (the run's
+host; intent rule 32, 2026-11-07: "the run does the forge work with the
+host's gh identity"). `GH_GATE_TOKEN`, when set in run's environment, is an
+optional override: gh then gets it as `GH_TOKEN` in an environment with no
+other GitHub credential. A row's gh, where a row uses one, runs with its
+own `GH_TOKEN` from nova-secrets. The human's credentials are
 never used. A row's token is minted by nova-tools for that row, scoped
 to its streams' repositories; minting is nova-tools', this layer only uses
 it. Workers push and open PRs with their row's token; the lander merges as
@@ -492,7 +491,7 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
     * `OSGitOps` executes all bench `git` operations through `edge.Exec` with `CleanEnv: true`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and `Timeouts` (`Stage`, `Push`, `RebaseAndTest`); `RebaseOntoStream` returns `*FetchError` on a fetch failure so `RunConsumer` propagates the failure without reporting a stale head.
     * `sendReportAndClean_internal` requires an accepted store receipt matching the result ID (`receipt.Accepted && receipt.Op == req.ResultID`) before marking `JobRecorded` or removing the job directory; `CLISprintClient.Report` returns a parse error if `--json` output fails to unmarshal, and a report the sprint did not acknowledge with exit 0 (`ErrRefused` included) keeps its job record at `reporting` and is sent again, same id, on the next wake (stitch, row 20).
     * `RecoverRow` matches disk `JobRecord` entries against the store's working summary by full identity `(epoch, consumer, attempt, gen)` (`jobMatchesSummary_internal`), verifies both PID and `NOVA_WORKER_NONCE` via `OSProcessTable.Alive`, kills and reports `fault` for any adopted harness past its recorded `DeadlineAt`, leaves `JobTaken`/`JobStaged` (`ErrNoSlot`) records untouched for retry, and completes `rebaseAndPRSteps_internal` for `JobHarvested` `"ok"` jobs before reporting; `QueryEdge` is a pure read of the store and `job.json` with zero side effects.
-- `tla/Push.tla`, `tla/LandEdge.tla`, `tla/Runner.tla` and 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
+- `tla/Push.tla`, `tla/LandEdge.tla` (rewritten 2026-11-07 for the three rungs; its witnesses are now `LandEdgeRedLands`, `LandEdgeStaleGate`, `LandEdgeJudgementHoldsStream`, below), `tla/Runner.tla` and, as first built, 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
 
 ### Seam rulings (Rowan, 2026-11-06)
 
@@ -655,6 +654,70 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
 - *Not done.* `stream add` does not read the repository's workflows for the
   push trigger (LANDING says why); a token without pull-request write fails
   at OpenPR as a fault, re-tried each tick, not as a judgement.
+
+### Stitch: the landing to intent rule 32 (2026-11-07, branch `v2-stitch-w2L`)
+
+Supersedes the landing parts of the two stitch notes above where they
+differ (LANDING.md, "The ladder, as built").
+
+- *`LandPass`* (`edge/git/land.go`, rewritten) is one pass of rung 1 or 2.
+  All heads already on base: landed at base's tip. One head whose branch
+  already contains base's tip: rung 1, its own branch's PR against base,
+  refused as `head_moved` if the branch is no longer at the head. Otherwise
+  rung 2 (`LandResult.Rung` 2, one head behind base included): the heads are
+  merged onto base's tip (`MergeGroup`, deterministic), pushed to
+  `sprint-group/<stream>` with a lease on its old tip, and that branch's PR
+  is gated. The PR is found or opened against base; a PR whose head is not
+  yet the gated sha is `ci_pending`; GitHub's `CONFLICTING` is `conflict`.
+  Checks are read at the gated sha; green merges only while base is still
+  the tip it read (`base_moved` otherwise) through `forge.Merge(pr, sha)`.
+  Outcomes: `landed`, `ci_pending`, `ci_absent`, `base_moved`, `ci_red`,
+  `ci_fault`, `conflict`, `merge_refused`, `pr_unopenable`, `branch_failed`,
+  `missing_head`, `head_moved`; an error is a fault of git or the forge
+  themselves. `LandResult` carries the rung, base tip, group tip, gated
+  sha, merge sha, PR, CI URL, the failing checks and their first lines
+  (`forge.FailedLines`), the conflicting files and a reason. Bisection
+  (`BisectRedGroup`), the stream branch's fast-forward, the remote land step
+  (`RunRemoteLandStep`) and the outcomes they had are gone.
+- *The group branch* is `git.GroupBranch(stream)` = `sprint-group/<stream>`
+  (defect 46; `StreamBranch`, `sprint/<stream>/group`, is gone):
+  `GroupNameProblem` names a stream git cannot use in a branch,
+  `GroupBlocker` a branch at origin that keeps it from being created, and
+  `Client.Heads` lists origin's branches for them. `ValidateCardBranch`
+  refuses a card branch under `sprint-group/`.
+- *`forge`*: `Identity` is `{Name, Token}` (`ExpectedLogin`, `Ready` and
+  the `gh auth status` check are gone): gh runs as the host's login, or
+  with `Token` (`GH_GATE_TOKEN`) as an optional override. `PRInfo` gains
+  `URL` and `Mergeable`. `Merge(pr, sha)` merges by the repository's
+  allowed method (merge commit, then squash, then rebase) with
+  `--match-head-commit` and returns base's merge commit. `FailedLines(url)`
+  reads the first failing lines of an Actions job's log (`FirstFailing`).
+- *Run* (`run/edges.go`): asks a pass again every `LandPoll` on
+  `ci_pending` and `base_moved`, and on `ci_absent` until the request's
+  `Wait` (policy's `ci_wait`; `CIWait` 10 minutes when none, a guess), when
+  it answers `no-ci`; every other outcome goes to layer 3 with its facts
+  (`landFacts`). A stream with mode hand or no forge answers `hand`.
+- *`cmd`*: the forge and git act as the host's identity; the sprint-run
+  service's keys no longer include `GH_GATE_TOKEN`. `cmd/nova-sprint/lander.go`
+  is `verbs.Lander`: the hand merge (the PR merged, or with no forge a
+  fast-forward push of the head merged onto base), `Heads`, and
+  `CreateGroup` (pushed with a lease on its absence). The verbs' `Origin`
+  lost `Contains` (finish no longer checks a head against any branch).
+- Tests (unit, fakes): `edge/git/git_test.go` (each rung and every outcome,
+  the group branch's namespace), `run/edges_land_test.go`
+  (`TestAskAgainBoundsAnAbsentCI`, `TestLandItemRedCarriesTheFacts`,
+  `TestLandByHandStreamTouchesNothing`), `edge/forge` (Merge, FailedLines,
+  the identity). Functional (real git): `edge/git/functional_test.go`.
+- *Models.* `LandEdge.tla` is the ladder: `Tick` (layer 3's landing),
+  `Pass` (one `LandPass`), `BaseMoves`, `Answer` (land, fix, retry);
+  invariants `BaseNeverRed`, `NothingLandsUnpassed`, `MergingCovered`, each
+  with one reversed witness (`tla/make-landedge-witnesses.py`); reach
+  checks `LandEdgeNever{RungTwo,Judged,HandLand,RedGated}`. The six old
+  LandEdge witnesses and `edge/git/coldread_test.go` (probes of the old
+  ladder's defects) are removed. The trace walk
+  (`edge/git/trace_test.go`, `TestLandEdgeTraceRefinementWalk`: `LandPass`
+  on the git fake and a truthful forge, 8 seeds walked to the end) writes
+  `landedge-walk-<seed>`, checked against `LandEdgeTrace.tla`.
 
 ### Clone addresses (stitch, 2026-11-07, defect 21)
 

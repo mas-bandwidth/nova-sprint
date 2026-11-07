@@ -84,7 +84,7 @@ func (t *tick) landJudge(it InboxItem, req EdgeRequest) {
 		if len(req.Cards) > 1 {
 			with = "; landing together: " + strings.Join(req.Cards, ", ")
 		}
-		t.judge("land", p, fmt.Sprintf("card %s (stream %s, branch %s, head %s) did not land: %s: %s%s. land: you looked, merge it by hand; fix: back to its producer with your finding as the reason; retry: a new landing", p, req.Stream, req.Branches[i], c.Head, it.Outcome, cmp.Or(it.Reason, "no facts given"), with))
+		t.judge("land", p, fmt.Sprintf("card %s (stream %s onto %s at %s, branch %s, head %s) did not land: %s: %s%s. land: you looked, merge it by hand; fix: back to its producer with your finding as the reason; retry: a new landing", p, req.Stream, t.v.Streams[req.Stream].Base, req.Base, req.Branches[i], c.Head, it.Outcome, cmp.Or(it.Reason, "no facts given"), with))
 	}
 }
 

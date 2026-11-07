@@ -130,7 +130,7 @@ high, normal, low; within a rung, policy's order.
 - Inputs: ready producers; producers in review owed reads; open rows (up,
   not held, not rested) with tiers, rank, model, width, working and ready
   counts; stream heads (the `base` a `Start` records).
-- Plans: `Start{row, branch, base}`, branch `sprint/<stream>/<producer>` (the stream group branch is `sprint/<stream>/group`, never `sprint/<stream>`: git refuses a ref that is both a file and a directory; Emma, 2026-11-06);
+- Plans: `Start{row, branch, base}`, branch `sprint/<stream>/<producer>` (the stream group branch is `sprint-group/<stream>`, beside `sprint/` and never in it, so git never meets a ref that is both a file and a directory; defect 46, 2026-11-07);
   `AskReads{rows}` cutting every read a head needs in one plan, to distinct
   rows, none the author (LESSONS 3.4). A row is dealt while ready plus
   working is under width plus `ahead`; width caps working only (LESSONS
@@ -160,21 +160,23 @@ high, normal, low; within a rung, policy's order.
 
 ### Land
 
-- Plans: an edge request per stream with none in flight: flowing, the first
-  merging producer alone; backed up, all of them in score order as one group
-  with one CI. An `after` orders only producers both queued and never holds
-  on one that is not (LESSONS 2.15). From a result: one group of `Landed` for
-  every head that landed (the edge fast-forwards the stream branch); `Red`
-  for the head bisection blamed; nothing for a bench fault (LANDING step 7);
-  a `conflict` judgement for a group that cannot merge (rung 3); one
-  `base-red` judgement per base, stopping a stream at its third meeting and
-  resuming all it stopped when green (step 8).
-- The mechanics (merge, rebase, gate, bisect, push, ledgers) are layer 4's
-  script; an agent only when the script fails, and that is a judgement.
-  Glenn: "work efficiently when merging". Request ids hash stream, heads and
-  base, so a restart reissues the same request (LPM R22).
-- Policy: `rung(stream, backlog)` (default backed up at 3 merging),
-  `ledgers(repo)` (none), `stall_bound` (60 s), `regate(base)` (2 and 5 min).
+(Rebuilt to intent rule 32, 2026-11-07; LANDING.md "The ladder, as built".)
+
+- Plans: an edge request per stream with none in flight, from the merging
+  producers not under a land judgement: fewer than `backed_up` waiting, the
+  first in score order alone (rung 1); `backed_up` or more, all of them in
+  score order as one request (rung 2). An `after` orders only producers
+  both queued and never holds on one that is not (LESSONS 2.15). From a
+  result: `landed` is one group of `Landed{Head, Merge}` for every card
+  still merging at its head; anything else is one `land` judgement per such
+  card with the facts and the choices land, fix and retry, and nothing
+  moves. A merging producer left with no request, no judgement and no
+  after target merging is reported as an `engine` judgement.
+- The mechanics (PR, group branch, gate, merge) are layer 4's; there is no
+  bisection and no blame. Request ids hash epoch, stream, base, cards,
+  heads and reviews, so a restart reissues the same request (LPM R22).
+- Policy: `landing(stream)`: `backed_up` (default 2), `flowing` (validated,
+  unused), `ci_wait` (default 600 s, a guess); `ledgers(repo)` (none).
 
 ### Retire and fail limits
 
@@ -211,8 +213,9 @@ for each candidate, and the engine refuses one below the card's tier.
   at the deadline with the kind's safe default, which never drops, accepts,
   merges or lands (LESSONS 5.7).
 - The closed list a step opens: `blocked`, `unserved`, `cannot-read`,
-  `conflict`, `base-red`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
-  `landed-sentinel`, `policy`, `engine`. What v1 escalated besides (failed
+  `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
+  `landed-sentinel`, `policy`, `engine`, `roster` (`conflict`, `base-red`,
+  `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
   the tick (LESSONS 3.17).
 - Alarms: `stall`, nothing landed in the bound while producers wait in
@@ -464,10 +467,9 @@ group of a tick fences a record another group writes and the fence is the
 view's gens (the model's predicted fence reduces to it). Land request ids
 hash epoch, stream, cards, heads, reviews and base (model finding 8). The
 landing rung has no hysteresis: backed up at or past `backed_up` merging,
-else flowing (`flowing` unused). A `base-red` result opens one judgement
-per meeting, the third holds the stream it met, `base-green` lifts every
-stream held for it and expires them; `conflict` is a judgement; a bench
-fault moves nothing (the request leaves flight and is reissued).
+else flowing (`flowing` unused). Since 2026-11-07 (below) every result but
+`landed` is a `land` judgement; `base-red`, `base-green`, `conflict`,
+`no-ci` and `forge` are gone.
 Judgement ids are `kind.about.episode` (a cause opens once while one is
 open; a flap's episode is its count), group key the kind (`policy:v<n>` for
 policy), deadline `timeouts.judgement` except `blocked`; at the deadline
@@ -570,3 +572,35 @@ the same way; the burst scenario's MaxAtt is 2 (it was 1) so a red's fix is
 dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
 (the fix attempt carries the finding), `TestTickNoCIJudges`.
 
+**Stitch, the landing to intent rule 32 (2026-11-07, branch
+`v2-stitch-w2L`).** Superseding the stitch above where they differ. The
+landing's automatic path is green-and-merge only: `landResults` moves cards
+only on `landed` (with `card.Landed{Head, Merge}`, the merge sha), and every
+other outcome (`ci_red`, `no-ci`, `conflict`, `merge_refused`,
+`pr_unopenable`, `branch_failed`, `ci_fault`, `missing_head`, `head_moved`,
+`hand`, `fault`) opens one `land` judgement per card still merging at the
+request's head (`land.<card>.<n>`, group key `land`, no deadline; choices
+`land | fix | retry`), with the question naming the card, stream, base and
+its tip, branch, head, outcome, the edge's facts, and the cards landing
+together. Nothing is blamed: the `red`, `no-ci`, `conflict`, `base-red` and
+`forge` kinds and their handling are removed. A judged card is left out of
+the next request, so a judgement holds that card only, not its stream. The
+answers are a coordinator `Request`: `land` carries `card.Landed` (the
+merge sha from the hand merge), `fix` carries `card.Red` with the reason as
+the finding, `retry` is the answer alone (the next tick asks a new
+request). `landRequests` now names the card branch `sprint/<stream>/<id>`
+(it was the producer's empty `Branch`), passes policy's `ci_wait` as the
+request's `Wait`, and ends with `unlanded`, the engine report of a merging
+producer with no request, no judgement and no after hold (intent rule 32;
+by construction none). Policy's default `backed_up` is 2 (it was 4), so
+rung 2 is "more than one head waiting". `Steps.tla`: `LandJ`, `Judged`,
+`LandJudged` (a result's judged items), `Answer(p, choice)` in any phase,
+the check `MergingCovered`, the reach `StepsNeverLandJudged` and the
+reversed witness `StepsLandJudgementExpires` (a land judgement given a
+deadline); `ItemGroup` moves only on `landed`, the red result's `ApplyG`
+went, and `EdgeAfterAccepted` is weakened to state the stale-request race
+(LANDING.md, "Known gaps"). The trace walk answers open land judgements
+(`answerOne`) and `StepsTrace.tla` maps `Answer`. Tests:
+`TestTickLandJudgementEveryOutcome`, `TestTickLandAnswers`,
+`TestTickLadderRungs`; the trace fixtures `steps-ok-*` and `steps-bad-*`
+regenerated from TLC on a bench, with `steps-ok-land-judged` new.
