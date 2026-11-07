@@ -301,10 +301,11 @@ func (r RuntimeSetup) runAct(ctx context.Context, in SetupInput) error {
 	if err = r.Role.GrantSeat(ctx, SprintSeat{Seat: r.RunService.Seat, Machine: host}); err != nil {
 		return err
 	}
-	if _, err = r.Services.Ensure(ctx, r.RunService); err != nil {
+	services := r.Services.For(in.Actor, "nova-sprint up 4/8 run")
+	if _, err = services.Ensure(ctx, r.RunService); err != nil {
 		return err
 	}
-	return r.Services.Apply(ctx, r.RunService)
+	return services.Apply(ctx, r.RunService)
 }
 func (r RuntimeSetup) dashboardAct(ctx context.Context, in SetupInput) error {
 	if r.Snapshot == nil {
@@ -327,10 +328,11 @@ func (r RuntimeSetup) dashboardAct(ctx context.Context, in SetupInput) error {
 	if target.Service != nil {
 		service = *target.Service
 	}
-	if _, err = r.Services.Ensure(ctx, service); err != nil {
+	services := r.Services.For(in.Actor, "nova-sprint up 5/8 dashboard")
+	if _, err = services.Ensure(ctx, service); err != nil {
 		return err
 	}
-	return r.Services.Apply(ctx, service)
+	return services.Apply(ctx, service)
 }
 func (r RuntimeSetup) servicesAct(ctx context.Context, in SetupInput) error {
 	if r.Workload == nil {
