@@ -152,6 +152,7 @@ func TestCardTestsRunInsideTheSandbox(t *testing.T) {
 	if len(ex.argvs) != 1 || !slices.Equal(ex.argvs[0], argv) {
 		t.Fatalf("the wall ran %q, reported %q", ex.argvs, argv)
 	}
+	argv = unniced(argv)
 	if argv[0] != "/fixture/nova-reserve" || !slices.Contains(argv, "/fixture/nova-sandbox") || !slices.Equal(argv[len(argv)-3:], []string{"--", "make", "test"}) {
 		t.Errorf("card test command ran as %q: want nova-reserve, then nova-sandbox, then make test", argv)
 	}
@@ -170,7 +171,7 @@ func TestDefaultWallRunsHarnessUnderReserveAndSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv := res.Argv
+	argv := unniced(res.Argv)
 	sandbox := slices.IndexFunc(argv, func(a string) bool { return filepath.Base(a) == "nova-sandbox" })
 	if filepath.Base(argv[0]) != "nova-reserve" || sandbox < 0 || !slices.Equal(argv[len(argv)-3:], []string{"--", "harness", "run"}) {
 		t.Errorf("the wall nova-worker ships ran the harness as %q: want nova-reserve, then nova-sandbox, then the harness", argv)
@@ -314,4 +315,13 @@ func TestColdreadCheckConcurrentStepRowAndQueryEdge(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// unniced drops the "nice -n N" prefix the wall puts in front of card work
+// (BuildWallArgv), so the guarantees below read the wall itself.
+func unniced(argv []string) []string {
+	if len(argv) >= 3 && argv[0] == "nice" && argv[1] == "-n" {
+		return argv[3:]
+	}
+	return argv
 }
