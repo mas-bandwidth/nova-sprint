@@ -44,7 +44,9 @@ func (e *Engine) fold(ctx context.Context) error {
 			}
 		}
 		if len(events) > 0 {
+			collectStreamPolicies(e.streamPolicies, events)
 			e.state = foldSnapshot(e.state, events)
+			e.counts.Folded += len(events)
 		}
 		if len(events) < store.MaxEvents {
 			e.folded = true

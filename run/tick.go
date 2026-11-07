@@ -35,6 +35,7 @@ type TickInput struct {
 	At       time.Time
 	Presence []string
 	Policy   *store.PolicyVersion
+	Streams  map[string]StreamSettings
 }
 type TickPlan struct {
 	Ops     []store.Op
@@ -76,8 +77,10 @@ type Engine struct {
 	refused           []RefusedOp
 	pending           *pendingTick
 	policy            map[int]store.PolicyVersion
+	streamPolicies    map[string]streamPolicy
 	lastPlannedPolicy int
 	folded            bool
+	counts            TickCounts
 }
 
 // NewEngine reads one initial snapshot; later reads use Events only.
@@ -89,7 +92,11 @@ func NewEngine(ctx context.Context, s store.Store, guard chooserHealth, steps St
 	if err != nil {
 		return nil, fmt.Errorf("run: snapshot: %w", err)
 	}
-	return &Engine{store: s, guard: guard, steps: steps, edges: edges, state: snap, policy: map[int]store.PolicyVersion{}}, nil
+	streamPolicies, err := loadStreamPolicies(ctx, s, snap.Seq)
+	if err != nil {
+		return nil, err
+	}
+	return &Engine{store: s, guard: guard, steps: steps, edges: edges, state: snap, policy: map[int]store.PolicyVersion{}, streamPolicies: streamPolicies}, nil
 }
 
 // Tick processes one scheduled tick. An unknown operation remains pinned until
@@ -101,6 +108,7 @@ func (e *Engine) tick(ctx context.Context, incoming []EdgeResult, obs observatio
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.folded = false
+	e.counts = TickCounts{}
 	e.inbox = mergeInbox(e.inbox, incoming)
 	if err := e.guard.Check(ctx); err != nil {
 		return err
@@ -115,7 +123,11 @@ func (e *Engine) tick(ctx context.Context, incoming []EdgeResult, obs observatio
 	if err != nil {
 		return err
 	}
-	plan, err := e.steps.Tick(ctx, snapshotCopy(e.state), TickInput{Inbox: e.inbox, Refused: e.refused, At: obs.at, Presence: append([]string(nil), obs.presence...), Policy: policy})
+	streams, err := streamSettingsFor(e.state, e.streamPolicies)
+	if err != nil {
+		return err
+	}
+	plan, err := e.steps.Tick(ctx, snapshotCopy(e.state), TickInput{Inbox: e.inbox, Refused: e.refused, At: obs.at, Presence: append([]string(nil), obs.presence...), Policy: policy, Streams: streams})
 	if err != nil {
 		return fmt.Errorf("run: steps: %w", err)
 	}
@@ -141,6 +153,11 @@ func (e *Engine) applyPending(ctx context.Context) error {
 		}
 		p.uncertain = false
 		p.receipts = append(p.receipts, receipt)
+		if receipt.Accepted {
+			e.counts.Applied++
+		} else {
+			e.counts.Refused++
+		}
 		p.next++
 		if !receipt.Accepted {
 			e.refused = append(e.refused, RefusedOp{Op: op, Receipt: receipt})
