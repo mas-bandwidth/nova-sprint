@@ -41,7 +41,15 @@ func runJudge(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 		if snap, err = e.again(ctx, snap, i); err != nil {
 			return "", err
 		}
-		r, err := answerRequest(j, choice, reason)
+		if j.Kind == "land" && choice == "land" && slices.Contains(choicesOf(j), choice) {
+			line, err := e.landHand(ctx, in, snap, j.About, j.ID)
+			if err != nil {
+				return "", err
+			}
+			lines = append(lines, line)
+			continue
+		}
+		r, err := answerRequest(snap, j, choice, reason, in.str("card"))
 		if err != nil {
 			return "", err
 		}
@@ -92,8 +100,10 @@ func choicesOf(j store.Judgement) []string {
 }
 
 // answerRequest is the answer as a request: unblock and drop move the card
-// the judgement is about; every other choice is the answer alone.
-func answerRequest(j store.Judgement, choice, reason string) (steps.Request, error) {
+// the judgement is about; a land judgement's fix sends the card (or, on a
+// stream's, the --card named) back with the reason and the judgement's
+// facts as its finding; every other choice is the answer alone.
+func answerRequest(snap store.Snapshot, j store.Judgement, choice, reason, cardID string) (steps.Request, error) {
 	cs := choicesOf(j)
 	if !slices.Contains(cs, choice) {
 		return steps.Request{}, misuse("judge", "judgement "+j.ID+" takes one of: "+strings.Join(cs, " "))
@@ -104,6 +114,18 @@ func answerRequest(j store.Judgement, choice, reason string) (steps.Request, err
 		r.Card, r.Event = j.About, card.Unblock{Reason: reason}
 	case "drop":
 		r.Card, r.Event = j.About, card.Cancel{Reason: reason}
+	case "fix":
+		if j.Kind != "land" {
+			break
+		}
+		id := j.About
+		if _, stream := snap.Streams[j.About]; stream {
+			if cardID == "" || snap.Cards[cardID].Stream != j.About {
+				return steps.Request{}, misuse("judge", "a fix on stream "+j.About+"'s landing names the card to send back: --card <id>")
+			}
+			id = cardID
+		}
+		r.Card, r.Event = id, card.LandFix{Head: snap.Cards[id].Head, Finding: reason + " (landing: " + oneLine(j.Question) + ")"}
 	}
 	return r, nil
 }

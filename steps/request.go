@@ -31,7 +31,7 @@ type Request struct {
 
 // coordinatorEvents are the events only a coordinator may raise (an engine
 // fact: a wrong coordinator could corrupt).
-var coordinatorEvents = []string{"Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream"}
+var coordinatorEvents = []string{"Landed", "LandFix", "Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream"}
 
 // runEvents are the run loop's own (presence).
 var runEvents = []string{"Seen", "Gone"}

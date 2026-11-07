@@ -239,29 +239,6 @@ func TestEnvelopeIsBoundedWithNext(t *testing.T) {
 	}
 }
 
-func TestLandResultMapping(t *testing.T) {
-	cases := []struct {
-		res  git.LandResult
-		err  error
-		want steps.InboxItem
-	}{
-		{git.LandResult{Outcome: git.OutcomeLanded, LandedHeads: []string{"h1"}}, nil, steps.InboxItem{Outcome: "landed", Landed: []string{"h1"}}},
-		{git.LandResult{Outcome: git.OutcomeCIRed, BlamedHead: "h2", GreenHeads: []string{"h1"}}, nil, steps.InboxItem{Outcome: "red", Blamed: "h2"}},
-		{git.LandResult{Outcome: git.OutcomeRung3Conflict}, nil, steps.InboxItem{Outcome: "conflict"}},
-		{git.LandResult{Outcome: git.OutcomeLedgerFailed}, nil, steps.InboxItem{Outcome: "conflict"}},
-		{git.LandResult{Outcome: git.OutcomePushRefused}, nil, steps.InboxItem{Outcome: "fault"}},
-		{git.LandResult{Outcome: git.OutcomeMissingHead}, nil, steps.InboxItem{Outcome: "fault"}},
-		{git.LandResult{}, errors.New("land refused"), steps.InboxItem{Outcome: "fault"}},
-	}
-	for _, c := range cases {
-		got := landItem("land.s.x", c.res, c.err)
-		c.want.Kind, c.want.Request = "land", "land.s.x"
-		if got.Outcome != c.want.Outcome || got.Blamed != c.want.Blamed || !slices.Equal(got.Landed, c.want.Landed) || got.Request != c.want.Request {
-			t.Fatalf("%v %v: got %+v want %+v", c.res.Outcome, c.err, got, c.want)
-		}
-	}
-}
-
 func TestStopIsOneMessageThenAck(t *testing.T) {
 	b := &fakeBus{}
 	e := &Edges{Bus: b}

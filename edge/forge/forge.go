@@ -48,7 +48,73 @@ type CheckRollup struct {
 	SHA, URL, Reason string
 	State            CheckState
 	Failing          []string
+	Runs             int // the checks reported on the commit; 0 while no CI has started (or none ever will)
 }
+
+// Slug is a repository as gh and the API name it, org/repo, from the forms a
+// stream stores (https URL, ssh, with or without .git).
+func Slug(repo string) string {
+	r := strings.TrimSpace(repo)
+	for _, p := range []string{"https://github.com/", "http://github.com/", "ssh://git@github.com/", "git@github.com:", "github.com/"} {
+		r = strings.TrimPrefix(r, p)
+	}
+	return strings.TrimSuffix(strings.TrimSuffix(r, "/"), ".git")
+}
+
+// jobRe is a GitHub Actions job URL: .../actions/runs/<run>/job/<job>.
+var jobRe = regexp.MustCompile(`/actions/runs/(\d+)/job/(\d+)`)
+
+// JobOf is the run and job ids of a check's details URL, or false.
+func JobOf(url string) (run, job string, ok bool) {
+	m := jobRe.FindStringSubmatch(url)
+	if len(m) != 3 {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
+// FailingLines is the first failing lines of the Actions job a check's
+// details URL names (gh run view --job <id> --log-failed): the go test FAIL
+// and error lines first, else the log's last lines; at most n. Nothing
+// when the URL is not an Actions job or gh cannot read it.
+func (c *Client) FailingLines(ctx context.Context, repo, url string, n int) []string {
+	_, job, ok := JobOf(url)
+	if !ok || n <= 0 {
+		return nil
+	}
+	stdout, _, err := c.runGH_internal(ctx, "run", "view", "--job", job, "--repo", Slug(repo), "--log-failed")
+	if err != nil {
+		return nil
+	}
+	return PickFailing(stdout, n)
+}
+
+// PickFailing is the lines of a failed job's log worth quoting: lines with a
+// test failure or an error, in order, else the last non-empty lines. The
+// job and step columns and the timestamp gh prints are cut.
+func PickFailing(log string, n int) []string {
+	var all, hits []string
+	for _, line := range strings.Split(log, "\n") {
+		f := strings.SplitN(line, "\t", 3)
+		text := strings.TrimSpace(f[len(f)-1])
+		if sp := strings.IndexByte(text, ' '); sp > 0 && strings.HasSuffix(text[:sp], "Z") && strings.Contains(text[:sp], "T") {
+			text = strings.TrimSpace(text[sp+1:])
+		}
+		if text == "" {
+			continue
+		}
+		all = append(all, text)
+		low := strings.ToLower(text)
+		if strings.HasPrefix(text, "--- FAIL") || strings.HasPrefix(text, "FAIL") || strings.Contains(low, "panic:") || strings.Contains(text, "_test.go:") || (strings.Contains(low, "error") && !strings.Contains(low, "process completed with exit code")) {
+			hits = append(hits, text)
+		}
+	}
+	if len(hits) == 0 {
+		hits = all[max(0, len(all)-n):]
+	}
+	return hits[:min(len(hits), n)]
+}
+
 type PRInfo struct {
 	Number                        int
 	URL, HeadRefName, BaseRefName string
@@ -73,7 +139,14 @@ type Forge interface {
 	Checks(ctx context.Context, repo string, shas []string) (map[string]CheckRollup, error)
 	Merge(ctx context.Context, repo string, pr int, sha, base string) error
 }
-type Identity struct{ Name, ExpectedLogin, Token, ConfigDir string }
+type Identity struct {
+	Name, ExpectedLogin, Token, ConfigDir string
+	// Host is the host's own logged-in gh, by the deployer's explicit choice
+	// (NOVA_SPRINT_FORGE_HOST=1; Glenn 2026-11-07: the studio's gh is the one
+	// identity that acts on every org the sprint lands in). It needs no
+	// token or config dir and its login is not refused.
+	Host bool
+}
 type Config struct {
 	Identity           Identity
 	Binary             string
@@ -107,6 +180,7 @@ func (c *Client) checkCredentials_internal(ctx context.Context) error {
 	id := c.cfg.Identity
 	name := cmp.Or(id.Name, "unknown")
 	switch {
+	case id.Host:
 	case strings.TrimSpace(id.Token) == "" && strings.TrimSpace(id.ConfigDir) == "":
 		return fmt.Errorf("forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity %s: run nova-secrets exec or set GH_CONFIG_DIR", name)
 	case isForbiddenLogin_internal(id.ExpectedLogin):
@@ -125,7 +199,7 @@ func (c *Client) checkCredentials_internal(ctx context.Context) error {
 		return fmt.Errorf("forge refused: gh auth status failed for %s: %s: set GH_CONFIG_DIR for %s", name, strings.TrimSpace(combined), name)
 	}
 	want := cmp.Or(id.ExpectedLogin, name)
-	if isForbiddenLogin_internal(login) || (id.ExpectedLogin != "" && !strings.EqualFold(login, id.ExpectedLogin)) {
+	if (!id.Host && isForbiddenLogin_internal(login)) || (id.ExpectedLogin != "" && !strings.EqualFold(login, id.ExpectedLogin)) {
 		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (the human's own credentials are never used): set GH_CONFIG_DIR for %s", cmp.Or(login, "unknown"), want, want)
 	}
 	c.mu.Lock()
@@ -220,6 +294,7 @@ func detectRateLimit_internal(s string) (int64, bool) {
 	return DefaultRateLimitRestSec, true
 }
 func (c *Client) PR(ctx context.Context, repo, head, base string) (PRInfo, bool, error) {
+	repo = Slug(repo)
 	if repo == "" || head == "" || base == "" {
 		return PRInfo{}, false, fmt.Errorf("forge refused: PR lookup requires repo, head, and base")
 	}
@@ -237,6 +312,7 @@ func (c *Client) PR(ctx context.Context, repo, head, base string) (PRInfo, bool,
 	return prs[0], true, nil
 }
 func (c *Client) OpenPR(ctx context.Context, repo, head, base, title, body string) (PRInfo, error) {
+	repo = Slug(repo)
 	if repo == "" || head == "" || base == "" || title == "" {
 		return PRInfo{}, fmt.Errorf("forge refused: OpenPR requires repo, head, base, and title")
 	}
@@ -252,7 +328,112 @@ func (c *Client) OpenPR(ctx context.Context, repo, head, base, title, body strin
 	}
 	return pr, nil
 }
+
+// PRState is a PR of a head branch into a base as the landing reads it.
+type PRState struct {
+	Number         int
+	URL, State     string // OPEN, MERGED, CLOSED
+	HeadSHA, Merge string // the head it is at; the merge commit once merged
+	Mergeable      string // MERGEABLE, CONFLICTING, UNKNOWN
+}
+
+// FindPR is the newest PR of head into base in any state.
+func (c *Client) FindPR(ctx context.Context, repo, head, base string) (PRState, bool, error) {
+	repo = Slug(repo)
+	if repo == "" || head == "" || base == "" {
+		return PRState{}, false, fmt.Errorf("forge refused: PR lookup requires repo, head, and base")
+	}
+	stdout, _, err := c.runGH_internal(ctx, "pr", "list", "--repo", repo, "--head", head, "--base", base, "--state", "all", "--limit", "1", "--json", "number,url,state,headRefOid,mergeCommit,mergeable")
+	if err != nil {
+		return PRState{}, false, err
+	}
+	return decodePRState_internal(stdout)
+}
+
+func decodePRState_internal(stdout string) (PRState, bool, error) {
+	var prs []struct {
+		Number      int
+		URL, State  string
+		HeadRefOid  string `json:"headRefOid"`
+		Mergeable   string `json:"mergeable"`
+		MergeCommit *struct {
+			Oid string `json:"oid"`
+		} `json:"mergeCommit"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &prs); err != nil {
+		return PRState{}, false, fmt.Errorf("forge: decode pr list: %w", err)
+	}
+	if len(prs) == 0 {
+		return PRState{}, false, nil
+	}
+	p := prs[0]
+	out := PRState{Number: p.Number, URL: p.URL, State: strings.ToUpper(p.State), HeadSHA: strings.ToLower(p.HeadRefOid), Mergeable: strings.ToUpper(p.Mergeable)}
+	if p.MergeCommit != nil {
+		out.Merge = strings.ToLower(p.MergeCommit.Oid)
+	}
+	return out, true, nil
+}
+
+// MergeMethods are tried in order for a card's PR that is behind its base
+// (one that is not is fast-forwarded to the exact sha its checks passed): a
+// merge commit first, so the head's commits land as they were read; a
+// ruleset that allows only one method refuses the others by name.
+var MergeMethods = []string{"--merge", "--squash", "--rebase"}
+
+// Behind is how many commits base has that head does not (0: head contains
+// base, so base can fast-forward to head).
+func (c *Client) Behind(ctx context.Context, repo, base, head string) (int, error) {
+	stdout, _, err := c.runGH_internal(ctx, "api", fmt.Sprintf("repos/%s/compare/%s...%s", Slug(repo), base, head), "--jq", ".behind_by")
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(stdout))
+}
+
+// MergePR merges PR pr of repo at head (gh pr merge --match-head-commit) by
+// the first of methods the repository allows, and returns the merge commit. A
+// refusal other than "method not allowed" is returned verbatim.
+func (c *Client) MergePR(ctx context.Context, repo string, pr int, head string, methods []string) (string, error) {
+	repo = Slug(repo)
+	if pr <= 0 || !isFullSHA_internal(head) {
+		return "", fmt.Errorf("forge refused: MergePR requires pr > 0 and a 40-hex head")
+	}
+	var last error
+	for _, m := range methods {
+		_, stderr, err := c.runGH_internal(ctx, "pr", "merge", strconv.Itoa(pr), "--repo", repo, m, "--match-head-commit", head)
+		if err == nil {
+			last = nil
+			break
+		}
+		last = err
+		if !methodRefused_internal(stderr + " " + err.Error()) {
+			return "", err
+		}
+	}
+	if last != nil {
+		return "", last
+	}
+	stdout, _, err := c.runGH_internal(ctx, "pr", "view", strconv.Itoa(pr), "--repo", repo, "--json", "number,url,state,headRefOid,mergeCommit,mergeable")
+	if err != nil {
+		return "", err
+	}
+	st, _, err := decodePRState_internal("[" + stdout + "]")
+	if err != nil {
+		return "", err
+	}
+	if st.State != "MERGED" {
+		return "", fmt.Errorf("gh pr merge %d returned but the PR is %s (a merge queue or auto-merge holds it)", pr, st.State)
+	}
+	return st.Merge, nil
+}
+
+func methodRefused_internal(s string) bool {
+	low := strings.ToLower(s)
+	return strings.Contains(low, "not allowed") || strings.Contains(low, "merge method") || strings.Contains(low, "not enabled")
+}
+
 func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[string]CheckRollup, error) {
+	repo = Slug(repo)
 	if len(shas) > MaxChecksBatch {
 		return nil, fmt.Errorf("forge refused: Checks batch size %d exceeds %d SHAs: split into batches of at most %d", len(shas), MaxChecksBatch, MaxChecksBatch)
 	}
@@ -390,6 +571,11 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 			faulted, firstFaultURL = append(faulted, name), cmp.Or(firstFaultURL, url)
 		}
 	}
+	r := classifyStates_internal(sha, rollupState, nodes, failing, faulted, firstRedURL, firstFaultURL, pending)
+	r.Runs = len(nodes)
+	return r
+}
+func classifyStates_internal(sha, rollupState string, nodes []gqlNode, failing, faulted []string, firstRedURL, firstFaultURL string, pending bool) CheckRollup {
 	switch {
 	case len(faulted) > 0 && len(failing) == 0:
 		return CheckRollup{SHA: sha, State: CheckFault, Failing: faulted, URL: firstFaultURL, Reason: "gate did not run: " + strings.Join(faulted, ", ")}
@@ -407,6 +593,7 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 	}
 }
 func (c *Client) Merge(ctx context.Context, repo string, pr int, sha, base string) error {
+	repo = Slug(repo)
 	if pr <= 0 || !isFullSHA_internal(sha) || base == "" {
 		return fmt.Errorf("forge refused: Merge requires pr > 0, 40-hex sha, and base")
 	}

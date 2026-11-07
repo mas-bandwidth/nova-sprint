@@ -22,10 +22,14 @@ import (
 func gitEdge() *git.Client { return git.New(git.Config{}) }
 
 // forgeEdge is GitHub through gh, as the identity nova-secrets exec gave
-// this process (GH_TOKEN or GH_CONFIG_DIR; never Glenn's).
+// this process (GH_TOKEN or GH_CONFIG_DIR), or, with NOVA_SPRINT_FORGE_HOST=1
+// and neither set, the host's own logged-in gh (the run on the studio:
+// Glenn 2026-11-07, the one identity that acts on every org it lands in).
 func forgeEdge() *forge.Client {
 	login := os.Getenv("NOVA_SPRINT_FORGE_LOGIN")
-	return forge.New(forge.Config{Identity: forge.Identity{Name: cmp.Or(login, "sprint"), ExpectedLogin: login, Token: os.Getenv("GH_TOKEN"), ConfigDir: os.Getenv("GH_CONFIG_DIR")}})
+	token, dir := os.Getenv("GH_TOKEN"), os.Getenv("GH_CONFIG_DIR")
+	host := os.Getenv("NOVA_SPRINT_FORGE_HOST") == "1" && token == "" && dir == ""
+	return forge.New(forge.Config{Identity: forge.Identity{Name: cmp.Or(login, "sprint"), ExpectedLogin: login, Token: token, ConfigDir: dir, Host: host}})
 }
 
 // origin is a stream's repository at origin, read through one clone per
@@ -63,11 +67,6 @@ func (o *origin) Contains(ctx context.Context, repo, ancestor, head string) (boo
 		return false, err
 	}
 	return o.git.IsAncestor(ctx, dir, ancestor, head)
-}
-
-func (o *origin) PR(ctx context.Context, repo, branch, base string) (string, bool, error) {
-	pr, ok, err := o.forge.PR(ctx, repo, branch, base)
-	return pr.HeadSHA, ok, err
 }
 
 // doctor is check's and show run's view outside the verbs' own reads.

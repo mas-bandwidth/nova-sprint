@@ -170,7 +170,6 @@ func (fakeAnswers) AnswerContext(context.Context, policy.Versions, store.Snapsho
 type fakeOrigin struct {
 	tips     map[string]string // "repo branch" -> sha
 	contains bool
-	pr       string
 	err      error
 }
 
@@ -183,9 +182,6 @@ func (o *fakeOrigin) Contains(context.Context, string, string, string) (bool, er
 	return o.contains, o.err
 }
 
-func (o *fakeOrigin) PR(context.Context, string, string, string) (string, bool, error) {
-	return o.pr, o.pr != "", o.err
-}
 
 type fakeDoctor struct {
 	fleet, history error

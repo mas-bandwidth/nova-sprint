@@ -157,6 +157,8 @@ func (m *mover) producerEvent(e Event) *Refusal {
 		return m.landed(v)
 	case Red:
 		return m.red(v)
+	case LandFix:
+		return m.landFix(v)
 	case Released:
 		return m.released(v)
 	case Cancel:
@@ -724,6 +726,31 @@ func (m *mover) red(e Red) *Refusal {
 	}
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	m.markRed()
+	return nil
+}
+
+// landFix is LandFix: merging at the head, back to ready (waiting in a held
+// stream) with the finding, one bounce.
+func (m *mover) landFix(e LandFix) *Refusal {
+	if r := m.atHead(e, e.Head); r != nil {
+		return r
+	}
+	if e.Finding == "" {
+		return no("a land fix says what to fix")
+	}
+	if r := m.noLive(m.liveRefusal); r != nil {
+		return r
+	}
+	if r := m.back(); r != nil {
+		return r
+	}
+	if m.s.Held {
+		m.reason(m.p.ID, m.p.Reason, holdPhrase(m.s))
+	}
+	if e.Finding != m.p.Finding {
+		m.write(store.SetCardFinding{Card: m.p.ID, Finding: e.Finding})
+	}
+	m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
 	return nil
 }
 

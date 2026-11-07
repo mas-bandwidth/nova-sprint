@@ -153,7 +153,7 @@ func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Rost
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: git.StreamBranch(c.Stream), BaseSHA: c.BaseSHA,
 		PriorHead: c.Prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: r.Epoch, Gen: c.Gen, Attempt: c.Attempt,
-		Review: c.Review, Model: ro.Kin[in.actor].Model, Deadline: tmo.Consumer[c.Tier], Forge: s.Forge}
+		Review: c.Review, Model: takeModel_local(ro, in.actor, c.Tier), Deadline: tmo.Consumer[c.Tier], Forge: s.Forge}
 	if in.has("json") {
 		b, err := json.Marshal(t)
 		return string(b) + "\n", err
@@ -184,4 +184,24 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// takeModel_local is the row's model: a friend's from nova-config; a bench's from its
+// card's tier (LOCAL DOGFOOD STOPGAP, defect 57: the policy's tier->model rows must
+// answer this; Glenn's map 2026-10-19: flash/heavy DeepSeek flash, pro Mercury 3).
+func takeModel_local(ro roster.Roster, actor, tier string) string {
+	if m := ro.Kin[actor].Model; m != "" {
+		return m
+	}
+	if _, ok := ro.Workers[actor]; !ok {
+		return ""
+	}
+	switch tier {
+	case "pro":
+		return "inception/mercury-3"
+	case "frontier":
+		return "deepseek/deepseek-v4-pro"
+	default:
+		return "deepseek/deepseek-flash"
+	}
 }

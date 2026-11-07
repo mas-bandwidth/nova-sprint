@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/dash"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/steps"
@@ -34,7 +33,7 @@ type Config struct {
 	Hook          Hook
 	Policy        Asking
 	Git           Git
-	Forge         forge.Forge
+	Forge         LandForge
 	Listen        string
 	Ready         chan<- string // the board's address, once it listens
 	Clock         Clock
@@ -117,7 +116,7 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 		}
 	}
 	l := &loop{cfg: cfg, ticker: t, log: NewWriterLogger(cfg.Log),
-		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
+		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause, Now: cfg.Clock.Now, Log: cfg.Log},
 		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), At: now}, cfg.Clock.Now)}
 	l.setStreams(t.snap.Streams)
 	return l, nil

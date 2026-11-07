@@ -98,7 +98,12 @@ type (
 	WaiveRed struct{ Reason string }
 	Landed   struct{ Head string }
 	Red      struct{ Head, Reason string } // review +1: reads before it no longer count
-	Released struct{ Reason string }       // the work consumer of this attempt was withdrawn
+	// LandFix sends a merging producer whose landing escalated back to ready
+	// with the coordinator's finding (Glenn 2026-11-07: a landing that does
+	// not land easily escalates to the coordinator; fix is one answer). A
+	// bounce, like a read's fix; the next attempt continues from the head.
+	LandFix  struct{ Head, Finding string }
+	Released struct{ Reason string } // the work consumer of this attempt was withdrawn
 	Cancel   struct{ Reason string }
 	Replace  struct{ By, Reason string }
 	// NeedFailed takes a dependant with its failed need. InThisOp says the
@@ -224,6 +229,7 @@ func (ReadFix) isEvent()     {}
 func (WaiveRed) isEvent()    {}
 func (Landed) isEvent()      {}
 func (Red) isEvent()         {}
+func (LandFix) isEvent()     {}
 func (Released) isEvent()    {}
 func (Cancel) isEvent()      {}
 func (Replace) isEvent()     {}

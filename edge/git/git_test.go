@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -129,7 +130,7 @@ func TestLedgerMergeConflictAndMissingHeadRefusals(t *testing.T) {
 	}
 }
 
-func TestBisectRedGroupAndFaultNoBlame(t *testing.T) {
+func TestRedGroupAndFaultNoBlame(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
@@ -157,8 +158,9 @@ func TestBisectRedGroupAndFaultNoBlame(t *testing.T) {
 
 	req := LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1, h2, h3}}
 	res, err := LandPass(ctx, gf, ff, req)
-	if err != nil || res.Outcome != OutcomeCIRed || res.BlamedHead != h2 || len(res.GreenHeads) != 2 {
-		t.Fatalf("expected BisectRedGroup to blame h2 (%s), got %+v err=%v", h2, res, err)
+	// INTENT rule 16: red on a group is the coordinator's; no bisection, no blame.
+	if err != nil || res.Outcome != OutcomeCIRed || res.BlamedHead != "" || len(res.GreenHeads) != 0 || !slices.Equal(res.FailingCI, []string{"unit"}) {
+		t.Fatalf("expected red with no blame and the failing check, got %+v err=%v", res, err)
 	}
 
 	ff.OnCall = func(op string) {
@@ -252,11 +254,16 @@ func TestStreamGroupAndCardRefHierarchy(t *testing.T) {
 	if err := gf.Push(ctx, "", h1, "refs/heads/sprint/s1", ""); err == nil {
 		t.Fatalf("expected bare stream ref push refs/heads/sprint/s1 to be refused")
 	}
+	// A leased fast-forward of a base named sprint/<x> (sprint/schema-100) is a base push.
+	gf.SetOriginRef("refs/heads/sprint/schema-100", base)
+	if err := gf.Push(ctx, "", h1, "refs/heads/sprint/schema-100", base); err != nil {
+		t.Fatalf("leased fast-forward of base sprint/schema-100: %v", err)
+	}
 }
 
-// Drift row 27: a red result always blames a head. Two heads each green alone
-// and red together: the bisection blames the later head and the earlier is green.
-func TestRedTogetherGreenAloneBlamesTheLaterHead(t *testing.T) {
+// INTENT rule 16 (replaces drift row 27): two heads each green alone and red
+// together are red as a group, with no head blamed; the coordinator decides.
+func TestRedTogetherGreenAloneBlamesNoHead(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
@@ -280,7 +287,7 @@ func TestRedTogetherGreenAloneBlamesTheLaterHead(t *testing.T) {
 		gf.world.mu.Unlock()
 	}
 	res, err := LandPass(ctx, gf, ff, LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1, h2}})
-	if err != nil || res.Outcome != OutcomeCIRed || res.BlamedHead != h2 || len(res.GreenHeads) != 1 || res.GreenHeads[0] != h1 {
-		t.Fatalf("want red blaming %s with %s green, got %+v err=%v", h2, h1, res, err)
+	if err != nil || res.Outcome != OutcomeCIRed || res.BlamedHead != "" || len(res.GreenHeads) != 0 {
+		t.Fatalf("want red blaming no head, got %+v err=%v", res, err)
 	}
 }
