@@ -98,6 +98,7 @@ func (t *tick) dealWork(c store.Card) {
 	if t.v.Streams[c.Stream].Held {
 		return
 	}
+	answered := t.rowsAnswer(c, "work")
 	serving := t.serving(c)
 	if len(serving) == 0 {
 		t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+c.ID+" waits")
@@ -107,7 +108,7 @@ func (t *tick) dealWork(c store.Card) {
 	if !ok {
 		return
 	}
-	row := t.pickRow(c, "work", t.withRoom(serving))
+	row := t.pickRow(c, answered, t.withRoom(serving))
 	if row == "" {
 		return
 	}
@@ -122,6 +123,7 @@ func (t *tick) dealRead(c store.Card) {
 	if t.v.Streams[c.Stream].Held {
 		return
 	}
+	answered := t.rowsAnswer(c, "read")
 	var serving []string
 	for _, r := range t.serving(c) {
 		if r != c.Author && !t.readingOn(c, r) {
@@ -132,7 +134,7 @@ func (t *tick) dealRead(c store.Card) {
 		t.judge("cannot-read", c.ID, "no open row may read "+c.ID+" (author "+c.Author+"); the review waits on nothing")
 		return
 	}
-	rows := t.pickRows(c, t.withRoom(serving), t.owed(c))
+	rows := t.pickRows(c, answered, t.withRoom(serving), t.owed(c))
 	if len(rows) == 0 {
 		return
 	}
@@ -162,10 +164,17 @@ func (t *tick) room(r string) int {
 	return w.Work + w.Ahead
 }
 
+// rowsAnswer is policy's rows answer for c, read once per candidate (the
+// oracle records a miss per question whatever the candidate's fate); nil
+// when the engine's ranking decides.
+func (t *tick) rowsAnswer(c store.Card, kind string) []string {
+	return t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
+}
+
 // pickRow is one row for c among rows: policy's first answered row with
 // room, else the engine's best.
-func (t *tick) pickRow(c store.Card, kind string, rows []string) string {
-	picks := t.pickRows(c, rows, 1)
+func (t *tick) pickRow(c store.Card, answered, rows []string) string {
+	picks := t.pickRows(c, answered, rows, 1)
 	if len(picks) == 0 {
 		return ""
 	}
@@ -176,19 +185,18 @@ func (t *tick) pickRow(c store.Card, kind string, rows []string) string {
 // with room): policy's answered rows in its order, the engine's ranking for
 // the rest. An answer naming no row with room is a miss, as an answer
 // naming a row not offered is.
-func (t *tick) pickRows(c store.Card, rows []string, n int) []string {
+func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
+	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
+		t.o.refuse("rows")
+	}
 	if len(rows) == 0 || n <= 0 {
 		return nil
 	}
 	var out []string
-	answered := t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kindOf(c), Candidates: t.candidates(c, kindOf(c))})
 	for _, r := range answered {
 		if slices.Contains(rows, r) && !slices.Contains(out, r) && len(out) < n {
 			out = append(out, r)
 		}
-	}
-	if answered != nil && len(out) == 0 {
-		t.o.refuse("rows")
 	}
 	for _, r := range t.ranked(c, kindOf(c), rows) {
 		if len(out) >= n {

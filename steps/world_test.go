@@ -89,7 +89,7 @@ func (w *world) stream(name string) {
 
 func (w *world) row(name string, width int, tiers ...string) {
 	w.roster[name] = RosterRow{Kind: "worker", Width: width, Tiers: tiers}
-	w.must("row", store.PutRow{Name: name, Kind: "worker", Width: width, Tiers: tiers, Model: "m-" + name})
+	w.must("row", store.PutRow{Name: name, Kind: "worker", Width: width, Tiers: tiers, Model: "m-" + name, Session: "hook-" + name})
 	w.must("seen", store.SetRowState{Row: name, State: "up"})
 }
 

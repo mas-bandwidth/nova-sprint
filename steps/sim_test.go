@@ -44,6 +44,13 @@ func (s *sim) inputs() Inputs {
 func (s *sim) tick() Plan {
 	s.t.Helper()
 	s.fold()
+	return s.planTick()
+}
+
+// planTick plans on the view as folded (stale when moves came after the
+// fold) and applies the plan: the model's Tick.
+func (s *sim) planTick() Plan {
+	s.t.Helper()
 	in := s.inputs()
 	plan := Tick(s.v, in, s.ask)
 	s.last = plan
@@ -77,13 +84,19 @@ func (s *sim) tick() Plan {
 		}
 	}
 	var next []InboxItem
+	consumed := set{}
 	for _, it := range in.Inbox {
 		_, b := back[it.ID]
 		if b || slices.ContainsFunc(plan.Carry, func(c InboxItem) bool { return c.ID == it.ID }) {
 			next = append(next, it)
+		} else if it.Request != "" {
+			consumed[it.Request] = struct{}{}
 		}
 	}
 	s.inbox = next
+	// A request leaves flight when a tick consumes a result of it (the
+	// model's inflight'), the result's copies included.
+	s.inflight = slices.DeleteFunc(s.inflight, func(r EdgeRequest) bool { _, c := consumed[r.ID]; return c })
 	return plan
 }
 
@@ -98,14 +111,9 @@ func (s *sim) arrive(it InboxItem) {
 	}
 }
 
-// consumed drops from flight every request whose result a tick consumed:
-// one with no item left in the inbox.
-func (s *sim) settle() {
-	s.inflight = slices.DeleteFunc(s.inflight, func(r EdgeRequest) bool {
-		_, sent := s.sent[r.ID]
-		return sent && !slices.ContainsFunc(s.inbox, func(it InboxItem) bool { return it.Request == r.ID })
-	})
-}
+// settle is kept for the tests that call it: planTick drops a request from
+// flight when a tick consumes its result.
+func (s *sim) settle() {}
 
 // run ticks until a tick plans nothing and the inbox is empty, at most n
 // ticks.
