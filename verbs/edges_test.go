@@ -45,6 +45,7 @@ func TestQueueEmpty(t *testing.T) {
 	}
 	quiet(&s)
 	w := worldFrom(t, s)
+	activePolicy(t, w)
 	want(t, w.do("alice", "queue"), 0, "the queue is empty")
 	want(t, w.do("carol", "next"), 0, "every card is final")
 }

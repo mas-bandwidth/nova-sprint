@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -152,15 +154,8 @@ func clipN(s string, n int) string {
 // name on the bus. It returns whether run serves the sprint.
 func (e *Engine) checkRun(ctx context.Context, r *checkReport, who map[string]bus.Presence) bool {
 	st, err := e.Doctor.Run(ctx)
-	switch {
-	case err != nil:
-		r.red(RefusalOr(err, broken("who runs the sprint cannot be read ("+errText(err)+")", "nova-sprint show run")))
-		return false
-	case !st.Held:
-		r.red(refuse("nothing runs the sprint: the chooser lock is free, so nothing is dealt or landed", runFix))
-		return false
-	case st.Operation != "run":
-		r.red(refuse(fmt.Sprintf("the chooser lock is held by %s on %s, not run", orWord(st.Operation, "an unknown holder"), orWord(st.Host, "an unknown host")), "nova-sprint show run names it; when it ends, "+runFix))
+	if f := runUnmet(st, err); f != nil {
+		r.red(f)
 		return false
 	}
 	if on, known := present(who, "sprint"); known && !on {
@@ -169,6 +164,44 @@ func (e *Engine) checkRun(ctx context.Context, r *checkReport, who map[string]bu
 	}
 	r.ok("run on %s (pid %d)", st.Host, st.PID)
 	return true
+}
+
+// runUnmet is run not holding the chooser lock, or nil: check's run line and
+// next's answer (unmet) from the same read.
+func runUnmet(st run.ChooserStatus, err error) *Fail {
+	switch {
+	case err != nil:
+		return classify(RefusalOr(err, broken("who runs the sprint cannot be read ("+errText(err)+")", "nova-sprint show run")))
+	case !st.Held:
+		return refuse("nothing runs the sprint: the chooser lock is free, so nothing is dealt or landed", runFix)
+	case st.Operation != "run":
+		return refuse(fmt.Sprintf("the chooser lock is held by %s on %s, not run", orWord(st.Operation, "an unknown holder"), orWord(st.Host, "an unknown host")), "nova-sprint show run names it; when it ends, "+runFix)
+	}
+	return nil
+}
+
+// noPolicy is check's red line for a store with no active policy: its fix
+// works on any store, one up did not make included (L5.21).
+func noPolicy() *Fail {
+	return refuse("no policy is active: the tick runs on the built-in default", policy.FirstPolicyFix)
+}
+
+// unmet is the first of check's red lines before the sprint can deal: no
+// commit identity, no active policy, and, for the coordinator, run not
+// holding the chooser lock (a worker's next skips that read). The same facts
+// and fixes check prints, so next never says start or wait while check is
+// red on them (L6.5).
+func (e *Engine) unmet(ctx context.Context, snap store.Snapshot, coordinator bool) *Fail {
+	if _, f := identityCheck(snap); f != nil {
+		return f
+	}
+	if snap.Policy == 0 {
+		return noPolicy()
+	}
+	if !coordinator || e.Doctor == nil {
+		return nil
+	}
+	return runUnmet(e.Doctor.Run(ctx))
 }
 
 // runFix is how run is brought back: its service's log, then up.

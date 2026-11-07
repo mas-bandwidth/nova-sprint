@@ -227,11 +227,16 @@ func coordinator(verb string, c Caller, reason string) *Refusal {
 	return unstorable(verb, field{"the actor", c.Actor, true}, field{"the op id", c.OpID, true}, field{"the reason", reason, false})
 }
 
+// FirstPolicyFix is the command that makes the first policy active on any
+// store, one up did not make included: the built-in written out, then set
+// (the first set is also the activation).
+const FirstPolicyFix = `nova-sprint policy show default --as <coordinator> > policy.star && nova-sprint policy set policy.star --as <coordinator> --reason "the first policy"`
+
 func upFirst(verb string, err error) error {
 	if err != nil {
 		return err
 	}
-	return &Refusal{verb, "no policy is active", "nova-sprint up"}
+	return &Refusal{verb, "no policy is active", FirstPolicyFix}
 }
 
 // readFile reads a policy file of at most MaxBody bytes, reading no more

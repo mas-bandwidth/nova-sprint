@@ -18,7 +18,9 @@ type input struct {
 }
 
 // flagSpec is a verb's flags in one string: `name` is a switch, `name=`
-// takes a value, `name=*` takes a value and repeats. `as=` is every verb's.
+// takes a value, `name=*` takes a value and repeats. `as=` and `epoch=` are
+// every verb's (--epoch left out is the active epoch; given, a verb that
+// reads the store refuses any other, L6.23).
 type flagSpec map[string]byte
 
 func parseSpec(s string) flagSpec {
@@ -40,7 +42,7 @@ func parseSpec(s string) flagSpec {
 // `--x v` are one form; an argument after `--` is positional.
 func parse(v *verb, args []string, actor string) (*input, *Fail) {
 	in := &input{verb: v.name, vals: map[string][]string{}, bools: map[string]bool{}, actor: actor}
-	spec := parseSpec(v.flags + " as=")
+	spec := parseSpec(v.flags + " as= epoch=")
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
@@ -82,6 +84,9 @@ func (in *input) finish(v *verb) *Fail {
 	if as := in.str("as"); as != "" {
 		in.actor = as
 	}
+	if _, f := in.num("epoch"); f != nil {
+		return f
+	}
 	if len(in.args) < v.min || (v.max >= 0 && len(in.args) > v.max) {
 		return misuse(v.name, fmt.Sprintf("%s takes %s", v.name, v.usage))
 	}
@@ -91,6 +96,12 @@ func (in *input) finish(v *verb) *Fail {
 		}
 	}
 	return nil
+}
+
+// epoch is --epoch, 0 when left out (the active one); parse checked it.
+func (in *input) epoch() int {
+	n, _ := in.num("epoch")
+	return n
 }
 
 func (in *input) str(name string) string {
