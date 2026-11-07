@@ -80,14 +80,14 @@ func TestClearRequiresMatchingVerifiedBackup(t *testing.T) {
 
 func TestPostgresSubprocessEnvironmentIsAllowlisted(t *testing.T) {
 	source := []string{"PATH=/bin", "HOME=/tmp/home", "NOVA_ADMIN_PASSWORD=synthetic", "NOVA_API_KEY=synthetic", "PGPASSWORD=unrelated"}
-	env, err := pgProcessEnv(source, "")
+	env, err := pgProcessEnv(source, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(env, []string{"PATH=/bin", "HOME=/tmp/home"}) {
 		t.Fatal(env)
 	}
-	env, err = pgProcessEnv(source, "host=example user=backup password=dedicated dbname=sprint sslmode=disable")
+	env, err = pgProcessEnv(source, "host=example user=backup dbname=sprint sslmode=disable", "dedicated")
 	if err != nil {
 		t.Fatal(err)
 	}

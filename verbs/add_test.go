@@ -68,3 +68,14 @@ func TestStandaloneSentinel(t *testing.T) {
 		t.Fatal(s.Cards)
 	}
 }
+
+func TestAddRejectsReservedGroupBranch(t *testing.T) {
+	f := store.NewFake()
+	at := time.Unix(1000, 0)
+	applyTest(t, f, store.Op{ID: "stream", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}}})
+	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Briefs: briefsFake{"x": {ID: "group", Kind: "producer", Tier: "pro", Brief: "x"}}, Actor: "rowan", Now: func() time.Time { return at }}
+	got := e.Execute(context.Background(), []string{"add", "--stream", "s", "--brief-file", "x"})
+	if got.Exit != 1 || got.Output != "SPRINT REFUSED add: card group is reserved for the stream group branch: choose another card id\n" {
+		t.Fatal(got)
+	}
+}

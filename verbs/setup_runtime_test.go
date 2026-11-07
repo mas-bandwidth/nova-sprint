@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -140,7 +141,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
 	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c, Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v1.6.20"}, Store: st, Run: run, Workload: worker, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, Snapshot: db, RunService: service, DefaultRunHost: "bench-a", Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}, Dashboard: DashboardProbe{Transport: transport}}
-	in := SetupInput{Actor: "alice", Services: "none"}
+	in := SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
 	for round := 0; round < 2; round++ {
 		for step := 1; step <= 8; step++ {
 			check, err := r.Verify(ctx, step, in)
@@ -165,5 +166,38 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	check, err := r.Verify(ctx, 1, in)
 	if err != nil || check.Verified || check.Next != "nova-fleet check" {
 		t.Fatal(check, err)
+	}
+}
+func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
+	db := store.NewFake()
+	choices := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices}}}
+	check, err := r.Verify(context.Background(), 5, SetupInput{})
+	if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "ASK the human") || !strings.Contains(check.Next, "--dash tailnet") {
+		t.Fatal(check, err)
+	}
+	_, saved, err := choices.Get(context.Background(), "dashboard")
+	if err != nil || saved {
+		t.Fatal("choice saved before asking", err)
+	}
+}
+func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
+	db := store.NewFake()
+	choices := Choices{Store: db, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
+	command := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "nova-version":
+			return []byte("nova-version v1.6.29 linux/amd64"), nil
+		case "nova-bus":
+			return []byte("WHO OK present=0\n"), nil
+		default:
+			return nil, nil
+		}
+	}
+	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: command, Getenv: func(string) string { return "" }}, Pin: "v1.6.20"}, Store: &runtimeStore{ready: true}}
+	result := (&Engine{Actor: "rowan", Setup: runtime, SetupLock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
+	want := fmt.Sprintf("UP 1/8 nova-tools: fleet green; nova-tools v1.6.29 at or above pin v1.6.20: VERIFIED\nUP 2/8 store: schema sprint version %d and backup: VERIFIED\nUP 3/8 coordinator rowan: not hooked\nSPRINT REFUSED up: rowan is not hooked in: run nova-bus hook --as rowan under your session's Monitor tool\n", store.SchemaVersion)
+	if result.Exit != 1 || result.Output != want {
+		t.Fatal(result)
 	}
 }

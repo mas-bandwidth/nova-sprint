@@ -79,7 +79,7 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) {
 	t.Setenv("NOVA_PG_DSN", dsn)
 	t.Setenv(sprintPasswordName, "fixture-sprint")
 	t.Setenv("NOVA_SPRINT_BACKUP_DIR", filepath.Join(dir, "backups"))
-	t.Setenv("PGPASSWORD", "")
+	t.Setenv("PGPASSWORD", "wrong-ambient-fixture")
 	ready, err := SprintStoreChild(ctx, false, "v2.0.0")
 	if err != nil || ready {
 		t.Fatal("unmigrated store appeared ready", err)

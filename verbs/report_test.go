@@ -57,3 +57,11 @@ func TestAtomicWorkReportAndReplay(t *testing.T) {
 		t.Fatal(snap.Cards)
 	}
 }
+
+func TestReplayShowsOriginalReportOutcome(t *testing.T) {
+	r := store.Receipt{Actor: "worker", Kind: "report", Accepted: true, Seq: 4, After: &store.State{Cards: map[string]store.Card{"p.w1": {ID: "p.w1", Kind: "work", Result: "fail"}}}}
+	got := reportReceipt(r, "worker", "finish", "p.w1")
+	if got.Exit != 0 || !strings.HasPrefix(got.Output, "FAILED p.w1") {
+		t.Fatal(got)
+	}
+}

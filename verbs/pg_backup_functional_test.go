@@ -79,7 +79,7 @@ func TestFunctionalBackupRoundTrip(t *testing.T) {
 	}
 	conn.Close(ctx)
 	targetDSN := "host=" + dir + " dbname=target sslmode=disable"
-	archive := NewPGArchive(targetDSN, "v2.0.0", t.TempDir(), func(ctx context.Context) (RestoreLease, error) {
+	archive := NewPGArchive(targetDSN, "", "v2.0.0", t.TempDir(), func(ctx context.Context) (RestoreLease, error) {
 		lock, err := run.OpenRestoreLock(ctx, targetDSN, "", "fixture", 1)
 		if err != nil {
 			return nil, err

@@ -108,10 +108,7 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 	if err != nil || !ok {
 		return false, err
 	}
-	if err = os.Setenv("PGPASSWORD", password); err != nil {
-		return false, fmt.Errorf("backup credentials unavailable")
-	}
-	archive := PGBackups{DSN: dsn, Directory: dir, Version: version, Loader: PGSQLLoader{}}
+	archive := PGBackups{DSN: dsn, Password: password, Directory: dir, Version: version, Loader: PGSQLLoader{}}
 	ok, err = verifiedFirstBackup(ctx, pg, archive, dir)
 	if err != nil {
 		return false, err
