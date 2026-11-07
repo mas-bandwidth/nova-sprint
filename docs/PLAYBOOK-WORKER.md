@@ -46,7 +46,7 @@ refusal is the tool doing its job, not an error to work around.
 1. Hook in to the bus under your session's Monitor tool. Run this as the Monitor's command,
    never with `&` and never into a file, because the Monitor is what turns each message into a
    wake:
-   `NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you>`
+   `NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>'`
    The address is the fleet's bus, which the coordinator gives you when it invites you.
    Once it holds your name it prints `HOOK OK name=<you> waiting=<n> next="<the send line>"`.
    From then on each message to you is one line, `id<TAB>from<TAB>re<TAB>subject<TAB>body`, with
@@ -82,10 +82,11 @@ Every message from the sprint comes from the name `sprint`. Replies to `sprint` 
 the answer to any message is a verb, and a message to `sprint` gets back
 `replies are verbs: run nova-sprint next --as <you>`.
 
-1. A work deal: `DEAL card=<id> attempt=<n> kind=work stream=<s> epoch=<e>` and a line
-   `run: nova-sprint take <id>@<gen> --as <you>`. Run the `run:` line exactly as printed, then
-   follow "Work a card" below.
-2. A read deal: the same with `kind=read`. Run its `run:` line, then follow "Read a card".
+1. A work deal: the hook takes it for you before you wake (`nova-sprint wake`), so the deal's
+   line arrives as the take's output, `TAKEN <id> ...` and the brief, or its refusal; follow
+   "Work a card" below from its step 2. Without `--exec` (Grok, Antigravity, Codex) it is
+   `DEAL card=<id> ...; run: nova-sprint take <id>@<gen> --epoch <e> --as <you>`: run the `run:` line first.
+2. A read deal: the same with `kind=read`; follow "Read a card".
 3. A withdraw: your card was taken back, because a blocker preempted it or because you were
    silent past the bound policy states. Stop work on that card at once. Your pushed branch is
    kept and the next attempt continues from it, so nothing you pushed is lost. Do not finish or
