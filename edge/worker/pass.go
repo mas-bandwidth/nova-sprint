@@ -423,8 +423,8 @@ func (r *Runner) runAndHarvest_internal(p *prepared_internal) (bool, error) {
 		r.mu.Unlock()
 		switch {
 		case withdrawn:
-			r.withdrawRunningJob_internal(context.WithoutCancel(ctx), p.rec)
-			r.report("cleaning job dir", r.cleanJobDir_internal(context.WithoutCancel(ctx), p.job.JobDir, p.rec))
+			r.withdrawRunningJob_internal(p.rec)
+			r.retireJob_internal(p.job.JobDir, p.rec, "consumer withdrawn while its harness ran")
 			return true, nil
 		case ctx.Err() != nil:
 			return true, r.stopped_internal(p)

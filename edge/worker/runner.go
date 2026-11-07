@@ -9,6 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"maps"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,8 +49,17 @@ type (
 		// StageWorktree makes j's worktree from the work clone as the last
 		// Fetch left it; it fetches nothing.
 		StageWorktree(ctx context.Context, j Job) (headSHA string, err error)
+		// BranchTip is j's branch on origin as the last Fetch left it in the
+		// work clone: its sha, or "" when the branch does not exist. A work
+		// job's first push leases from it (defect 78).
+		BranchTip(ctx context.Context, j Job) (string, error)
 		HeadSHA(ctx context.Context, worktree string) (string, error)
-		Push(ctx context.Context, worktree, branch, headSHA string) error
+		// Push moves branch on the worktree's origin to headSHA only while
+		// the branch is at expect ("" : the branch does not exist yet), by
+		// lease (--force-with-lease=refs/heads/<branch>:<expect>); never a
+		// plain force (defect 78: a stale job's force push rewound the new
+		// holder's branch).
+		Push(ctx context.Context, worktree, branch, headSHA, expect string) error
 		RebaseOntoStream(ctx context.Context, worktree, streamRef string) (newSHA string, err error)
 		OriginHasHead(ctx context.Context, worktree, branch, sha string) (bool, error)
 		IsDirty(ctx context.Context, worktree string) (bool, error)
@@ -137,8 +147,12 @@ type Runner struct {
 	WakeEvery time.Duration
 	// RefusalLimit is identical refusals before a record is set aside
 	// (RefusalLimit const when zero).
-	RefusalLimit              int
+	RefusalLimit int
+	// RemoveDir removes a retired job's directory (retireJob_internal); nil
+	// is removeTree_internal. A unit test's fault injection.
+	RemoveDir                 func(dir string) error
 	mu                        *sync.Mutex
+	gone                      map[string]int  // per consumer: its jobs of a lower gen hold no branch (holds_internal)
 	jobs                      *sync.WaitGroup // every detached job, waited for when the wake loop ends
 	fatal                     chan error      // a refused receipt from a detached job ends the wake loop
 	probed, withdrawn, served map[string]bool
@@ -169,7 +183,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	}
 	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
 	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
-	cfg.adopted, cfg.running, cfg.dedup = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator()
+	cfg.adopted, cfg.running, cfg.dedup, cfg.gone = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator(), map[string]int{}
 	return &cfg, nil
 }
 func (r *Runner) harnessFor_internal(name string) (Harness, error) {
@@ -231,28 +245,37 @@ func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id stri
 	}
 	return r.sendReportAndClean_internal(ctx, jobDir, rec)
 }
-func (r *Runner) withdrawRunningJob_internal(ctx context.Context, rec JobRecord) {
+
+// withdrawRunningJob_internal stops the harness of a job whose consumer is
+// final (withdrawn): it pushes nothing, since the branch is the next
+// holder's (defect 78); the caller retires the directory.
+func (r *Runner) withdrawRunningJob_internal(rec JobRecord) {
+	r.markGone_internal(rec.Epoch, rec.Consumer, math.MaxInt)
 	r.cancelRunning_internal(rec.Consumer)
 	if r.Procs != nil && rec.PID > 0 {
-		_ = r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace)
-	}
-	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
-	if pushed := r.harvestPartialPush_internal(ctx, jobDir, rec); pushed != "" {
-		rec.PushedHead = pushed
-		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, rec))
+		r.report("stopping the withdrawn harness of "+rec.Consumer, r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
 	}
 	r.mu.Lock()
 	delete(r.adopted, rec.Consumer)
 	r.mu.Unlock()
-	r.logStep_internal(rec.Row, rec.Consumer, "withdraw", "stopped", 0)
+	r.logStep_internal(rec.Row, rec.Consumer, "withdraw", "stopped; nothing pushed", 0)
 }
+
+// harvestPartialPush_internal pushes the commits a work job's tree holds,
+// once, while its job still holds the consumer (a fault past the deadline,
+// a restart's release); the head pushed, or "" when nothing was (a failed
+// push is said).
 func (r *Runner) harvestPartialPush_internal(ctx context.Context, jobDir string, rec JobRecord) string {
 	if rec.Kind != "work" || r.Git == nil {
 		return ""
 	}
 	wt := filepath.Join(jobDir, "repo")
 	sha, err := r.Git.HeadSHA(ctx, wt)
-	if err != nil || sha == "" || sha == rec.BaseSHA || sha == rec.PriorHead || r.Git.Push(ctx, wt, rec.Branch, sha) != nil {
+	if err != nil || sha == "" || sha == rec.BaseSHA || sha == rec.PriorHead || sha == rec.PushedHead {
+		return ""
+	}
+	if err := r.pushBranch_internal(ctx, wt, &rec, sha); err != nil {
+		r.report("pushing the partial head of "+rec.Consumer, err)
 		return ""
 	}
 	return sha
@@ -467,6 +490,10 @@ func (r *Runner) stageStep_internal(ctx context.Context, job *Job, rec *JobRecor
 	if r.Git != nil {
 		stageCtx, cancel := context.WithTimeout(ctx, r.Timeouts.Stage)
 		_, err := r.Git.StageWorktree(stageCtx, *job)
+		if err == nil && job.Kind == "work" {
+			rec.StartTip, err = r.Git.BranchTip(stageCtx, *job)
+			rec.StartTipRead = err == nil
+		}
 		cancel()
 		if err != nil {
 			rec.State, rec.Outcome = JobReporting, Outcome{Result: "fault", Reason: "staging fault: " + err.Error()}
@@ -591,13 +618,13 @@ func (r *Runner) harvestWorkHead_internal(ctx context.Context, job Job, rec *Job
 	case herr != nil:
 		return out
 	case sha != "" && sha != job.BaseSHA && sha != job.PriorHead:
-		if perr := r.Git.Push(ctx, job.WorktreeDir, job.Branch, sha); perr != nil {
+		if perr := r.pushBranch_internal(ctx, job.WorktreeDir, rec, sha); perr != nil {
 			if out.Result == "ok" {
-				return Outcome{Result: "fault", Reason: "push fault: " + perr.Error()}
+				return Outcome{Result: "fault", Head: rec.PushedHead, Reason: "push fault: " + perr.Error()}
 			}
 			return out
 		}
-		rec.PushedHead, out.Head = sha, sha
+		out.Head = sha
 	case out.Result == "ok":
 		return Outcome{Result: "fail", Reason: "harness reported ok without advancing HEAD past base_sha and prior_head, and left nothing to commit"}
 	}
@@ -660,12 +687,13 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 		}
 	}
 	if r.Git != nil && rec.Outcome.Head != "" && rec.Outcome.Head != rec.PushedHead {
-		if err := r.Git.Push(ctx, wt, rec.Branch, rec.Outcome.Head); err != nil {
-			rec.Outcome = Outcome{Result: "fault", Reason: "post-rebase push fault: " + err.Error()}
+		if err := r.pushBranch_internal(ctx, wt, rec, rec.Outcome.Head); err != nil {
+			// The head that did land is reported, so the next attempt's
+			// prior head (and its lease) is the branch as it stands.
+			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "post-rebase push fault: " + err.Error()}
 			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
-		rec.PushedHead = rec.Outcome.Head
 	}
 	rec.State = JobRebased
 	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
@@ -940,13 +968,35 @@ func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j
 	}
 	return g.HeadSHA(ctx, j.WorktreeDir)
 }
+
+// BranchTip reads j's branch from the work clone's remote-tracking refs
+// (the pass's Fetch), under the clone's read lock; "" when it is absent.
+func (g *OSGitOps) BranchTip(ctx context.Context, j Job) (string, error) {
+	url, name, err := cloneURL_internal(j)
+	if err != nil {
+		return "", err
+	}
+	lock := g.cloneLock_internal(url)
+	lock.RLock()
+	defer lock.RUnlock()
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), filepath.Join(g.WorkRoot, name), "for-each-ref", "--format=%(objectname)", "refs/remotes/origin/"+j.Branch)
+	if err != nil {
+		return "", fmt.Errorf("stage: read the tip of %s: %w", j.Branch, err)
+	}
+	return strings.TrimSpace(out), nil
+}
 func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error) {
 	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", "HEAD")
 	return strings.TrimSpace(out), err
 }
-func (g *OSGitOps) Push(ctx context.Context, worktree, branch, headSHA string) error {
-	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force", "origin", headSHA+":refs/heads/"+branch)
-	return err
+func (g *OSGitOps) Push(ctx context.Context, worktree, branch, headSHA, expect string) error {
+	ref := "refs/heads/" + branch
+	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force-with-lease="+ref+":"+expect, "origin", headSHA+":"+ref)
+	if err != nil {
+		at := cmp.Or(expect, "no branch (a new one)")
+		return fmt.Errorf("push of %s to %s refused or failed: it moves the branch only from %s, the head this job last pushed or started from, and a branch another holder moved is theirs: %w", headSHA, branch, at, err)
+	}
+	return nil
 }
 func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().RebaseAndTest)

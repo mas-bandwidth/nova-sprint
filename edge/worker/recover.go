@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -56,24 +57,17 @@ func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_
 	if err != nil {
 		return nil, err
 	}
-	workingByID, finalByID := map[string]ConsumerSummary{}, map[string]ConsumerSummary{}
-	for _, w := range next.Working {
-		workingByID[w.ID] = w
-	}
-	for _, f := range next.Final {
-		finalByID[f.ID] = f
-		if f.State == card.Fail {
-			r.cancelRunning_internal(f.ID)
-		}
-	}
+	workingByID, finalByID := r.holders_internal(next)
 	var out []launch_internal
 	for id, rec := range disk {
 		if f, isFinal := finalByID[id]; isFinal {
-			if !r.isRunningInFlight_internal(id) { // a job in flight ends and cleans itself
-				r.finalJob_internal(ctx, f, rec)
+			if !r.isRunningInFlight_internal(id) { // a job in flight ends and retires itself
+				r.finalJob_internal(f, rec)
 			}
 		} else if w, isWorking := workingByID[id]; isWorking && !r.isRunningInFlight_internal(id) {
-			if !jobMatchesSummary_internal(next, w, rec) {
+			if sameEpoch_internal(next, rec) && rec.Gen < w.Gen {
+				r.retireJob_internal(filepath.Join(r.RootDir, "jobs", id), rec, fmt.Sprintf("generation %d is stale: the row holds %s at %d", rec.Gen, id, w.Gen))
+			} else if !jobMatchesSummary_internal(next, w, rec) {
 				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
 			} else if rec, resume := r.recoverWorkingJob_internal(ctx, w, rec); resume {
 				out = append(out, launch_internal{c: w, resume: &rec})
@@ -83,13 +77,34 @@ func (r *Runner) recoverRow_internal(ctx context.Context, row string) ([]launch_
 	return out, nil
 }
 
-// finalJob_internal ends a job whose card is final: a withdrawn one's
-// harness is stopped (its commits pushed), and the directory is cleaned.
-func (r *Runner) finalJob_internal(ctx context.Context, f ConsumerSummary, rec JobRecord) {
-	if f.State == card.Fail && rec.State == JobRunning {
-		r.withdrawRunningJob_internal(ctx, rec)
+// holders_internal is the row's working and final consumers by id, and
+// records who holds a branch (holds_internal): a final consumer's jobs
+// none, a working one's only at its gen or above; a withdrawn consumer's
+// job in flight is cancelled.
+func (r *Runner) holders_internal(next NextResponse) (map[string]ConsumerSummary, map[string]ConsumerSummary) {
+	workingByID, finalByID := map[string]ConsumerSummary{}, map[string]ConsumerSummary{}
+	for _, w := range next.Working {
+		workingByID[w.ID] = w
+		r.markGone_internal(next.Epoch, w.ID, w.Gen)
 	}
-	r.report("cleaning job dir "+rec.Consumer, r.cleanJobDir_internal(ctx, filepath.Join(r.RootDir, "jobs", rec.Consumer), rec))
+	for _, f := range next.Final {
+		finalByID[f.ID] = f
+		r.markGone_internal(next.Epoch, f.ID, math.MaxInt)
+		if f.State == card.Fail {
+			r.cancelRunning_internal(f.ID)
+		}
+	}
+	return workingByID, finalByID
+}
+
+// finalJob_internal ends a job whose card is final, on the first pass that
+// sees it: a harness left running is stopped, nothing is pushed (the branch
+// is the card's next holder's), and the directory is retired (defect 78).
+func (r *Runner) finalJob_internal(f ConsumerSummary, rec JobRecord) {
+	if rec.State == JobRunning {
+		r.withdrawRunningJob_internal(rec)
+	}
+	r.retireJob_internal(filepath.Join(r.RootDir, "jobs", rec.Consumer), rec, "consumer "+f.State)
 }
 
 // recoverWorkingJob_internal acts on a working card's record: a report it
@@ -160,10 +175,12 @@ func (r *Runner) prepareResume_internal(next NextResponse, p *prepared_internal)
 }
 
 // releaseNoBlame_internal gives a card the worker cannot go on with back to
-// the sprint for a redeal: its commits pushed first, then `release` (no
-// result, no fault, no bounce: neither ok nor fail). The directory goes once
-// the release is recorded; a release that fails is said and tried again by
-// the next pass.
+// the sprint for a redeal: its commits pushed first, once, while it still
+// holds the card (by lease from the head it last pushed), then `release`
+// (no result, no fault, no bounce: neither ok nor fail) with that head. The
+// directory is retired once the release is recorded, and nothing is pushed
+// after it (defect 78); a release that fails is said and tried again by the
+// next pass, whose push of the same head is skipped.
 func (r *Runner) releaseNoBlame_internal(ctx context.Context, rec JobRecord, why string) {
 	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
 	if fileExists_internal(jobDir) {
@@ -177,9 +194,10 @@ func (r *Runner) releaseNoBlame_internal(ctx context.Context, rec JobRecord, why
 		r.report(fmt.Sprintf("release of %s@%d (%s)", rec.Consumer, rec.Gen, why), err)
 		return
 	}
+	r.markGone_internal(rec.Epoch, rec.Consumer, math.MaxInt)
 	r.logStep_internal(rec.Row, rec.Consumer, "release", "no blame: "+why, 0)
 	if fileExists_internal(jobDir) {
-		r.report("cleaning job dir "+rec.Consumer, r.cleanJobDir_internal(ctx, jobDir, rec))
+		r.retireJob_internal(jobDir, rec, "released with no blame")
 	}
 }
 
