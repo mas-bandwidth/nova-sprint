@@ -1,10 +1,12 @@
 package dash
 
 import (
-	"github.com/mas-bandwidth/nova-sprint/store"
 	"math/big"
 	"sort"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/roster"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 type workRow struct {
@@ -55,7 +57,10 @@ type envelope struct {
 	Error         string                 `json:"error,omitempty"`
 }
 
-func mapSnapshot(s store.Snapshot, at time.Time) envelope {
+// mapSnapshot is the page's view of s. A row's kind and width are the
+// roster's (round 22: the store keeps neither); a row the roster does not
+// name is shown in the fleet at width 0.
+func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 	work := map[string]*workRow{}
 	fleet := map[string]*fleetRow{}
 	friends := map[string]*fleetRow{}
@@ -74,7 +79,7 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 		streams = append(streams, streamLine{n, state})
 	}
 	sort.Slice(streams, func(i, j int) bool { return streams[i].Stream < streams[j].Stream })
-	mapRows(s.Rows, fleet, friends)
+	mapRows(s.Rows, ros, fleet, friends)
 	for _, c := range s.Cards {
 		if c.Kind == "producer" {
 			if w := work[c.Stream]; w != nil {
@@ -122,14 +127,15 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 		}
 	}
 }
-func mapRows(rows map[string]store.Row, fleet, friends map[string]*fleetRow) {
+func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, r := range rows {
 		status := r.State
 		if r.State == "up" && r.Held {
 			status = "held"
 		}
-		f := &fleetRow{Status: status, Width: r.Width}
-		if r.Kind == "kin" {
+		kind, width, _, _ := ros.Row(n)
+		f := &fleetRow{Status: status, Width: width}
+		if kind == roster.KindKin {
 			friends[n] = f
 		} else {
 			fleet[n] = f
