@@ -201,7 +201,9 @@ The card id is the file's name without `.md`. A brief is:
    - `PRIORITY: <low|normal|high|critical|blocker>`: optional, normal by default, written only
      when someone asked for that level.
    - `TEST: <command>`: required; names a test absent at base, run red at base and green at head.
-   - `DONE-WHEN: <command>`: required, one per line; each is a checkable command, run at the base
+   - `DONE-WHEN: <command>`: required, one per line; each is one checkable command (a program and
+     its arguments, run with no shell: wrap a pipe, `&&`, `;` or a redirection in `sh -c '...'`),
+     run at the base
      before the deal, and a gate that would stay red after a correct fix is refused. Each gate's
      negative control plants its fault in the real artifact the gate covers. A gate names the
      facts it needs (an OS, a tool), never a host.
@@ -278,7 +280,8 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    which prints the dependants it would fail; then add `--waive` (dependants go on without it),
    `--relink <other>` (dependants wait on a replacement), or `--expect <dependant-ids>` to fail
    them as printed, and run it without `--dry-run`. It prints `DROP applied`. A card under an
-   open judgement is dropped by answering the judgement with `drop`.
+   open judgement is dropped by answering the judgement with `drop`. A drop releases the card's live
+   consumers itself.
 
 ## 7. Running rows: friends and the fleet
 

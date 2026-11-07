@@ -494,7 +494,7 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
   - No host refusal: nova-config's bench role is the only word on where a worker runs, the coordinator's machine included (2026-11-07; `CheckHost` and `--coordinator-hosts` are gone, below). `--as <row>` is the one mandatory flag.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `cmd/nova-worker` defaults `--harness` to `claude`. `ScriptHarness.Command` passes card fields as positional arguments (`$1`..`$9`) to a static shell program constant, never interpolating card prose into a shell string. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
   - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
-  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which splits `DoneWhen` command lines into unquoted argv via `splitArgv_internal`) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
+  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which runs each `DoneWhen` line as the argv `edge.ParseGate` gives (the one parser admission uses too; a line with shell syntax outside quotes is an error and is never run)) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
   - 9-step runner lifecycle (`RunConsumer`, `StepRow`, `ProbeRow`, `RecoverRow`, `RunWakeLoop`, `QueryEdge` in `edge/worker/runner.go`):
     * `FormatTakeOpID(epoch, consumer, gen, row)` (`take-e<epoch>-<consumer>-g<gen>-<row>`) and `FormatResultID(epoch, consumer, attempt, gen)` (`res-e<epoch>-<consumer>-a<attempt>-g<gen>`) fence store operations by epoch, consumer, attempt, and gen (`CLISprintClient.Take` passes `--id`).
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
@@ -942,3 +942,20 @@ Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
   check's output (every author is named); no functional test against a real
   repository's Actions API (the calls mirror a hand tool used on the live
   fleet, not run here).
+## Built: one gate parser; the install (stitch w3A, 2026-11-07; directives 77, 78)
+
+- `edge.ParseGate` (`edge/argv.go`) is the one parser of a DONE-WHEN line.
+  `OSReserveWall.RunTest` calls it (replacing `splitArgv_internal`, which was
+  the tokenizer without the checks), so admission's add and the worker's run
+  agree; a stored line with shell syntax is an error naming it, never run as
+  literal arguments. The rule is in CARD-CONTRACT "Admission".
+- `worker.CommitEmailDomain` is the domain of a bench's commit author email
+  (`<row>@nova-sprint.local`); the job record and admission's agreement
+  warning both read it.
+- The binary at `~/.local/bin/nova-sprint` on a bench is installed by
+  nova-fleet's play (another repository), whose replace-by-rename and ad-hoc
+  signing is not changed here. In this repository `make install` now uses
+  `tools/placebin`: a new file beside the old, `codesign --force --sign -` on
+  darwin, rename over, never an open of the old file for writing. Tests:
+  `tools/placebin/place_test.go` (the destination is a different file after
+  and the old open file keeps its bytes).

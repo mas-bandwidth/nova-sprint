@@ -21,6 +21,9 @@ type Forge interface {
 	CanAct(ctx context.Context, repo string) error
 	// PR is pull request n of repo: its head sha and whether it merged.
 	PR(ctx context.Context, repo string, n int) (head string, merged bool, err error)
+	// RequiredChecks are the names of the status checks the base branch
+	// of repo requires to merge (branch protection and rulesets).
+	RequiredChecks(ctx context.Context, repo, branch string) ([]string, error)
 }
 
 // admitStream is stream add's admission, and check's of each stream: the
