@@ -145,9 +145,14 @@ The worker (`nova-worker`, layer 4) talks to the sprint only through verbs:
 `report`. The take receipt (`take <card>@<gen> --as <row> --json`) is the
 seam: `{consumer, producer, kind, stream, repo, base, branch, head, tier,
 brief, prose, finding, stream_ref, base_sha, prior_head, paths, done_when,
-epoch, gen, attempt, review, model, deadline, forge}`, `deadline` in seconds
-from policy's `timeouts().consumer[tier]`, `model` from the roster, `forge`
-from the stream. The worker holds no deadline, model or forge of its own.
+epoch, gen, attempt, review, model, models, deadline, forge}`, `deadline` in
+seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream.
+`model` is a friend's own, from the roster; a bench has none, and `models`
+is the active policy's candidates for the card's tier in provider/model form
+(`policy.Catalog.ForTier`), of which the worker runs the first its probe
+proved its harness serves. `next --as <row> --json` carries the same per
+tier as `tier_models` (the probe's input). The worker holds no deadline,
+model or forge of its own.
 
 ## 7. dash -> run
 
