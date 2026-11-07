@@ -33,20 +33,22 @@ type TickCounts struct{ Folded, Applied, Refused, Edges int }
 // pusher and the board, and what layer 3 needs between ticks. Ticks are
 // serial: Tick is called by one goroutine.
 type Ticker struct {
-	store    store.Store
-	health   Health
-	policy   Asking
-	view     *steps.View
-	snap     store.Snapshot
-	inbox    []steps.InboxItem
-	inflight map[string]steps.EdgeRequest
-	refused  []steps.RefusedOp
-	seen     map[string]time.Time
-	prev     int
-	counts   TickCounts
-	push     *Pusher
-	limits   policy.Limits
-	timeouts policy.Timeouts
+	store      store.Store
+	health     Health
+	policy     Asking
+	view       *steps.View
+	snap       store.Snapshot
+	inbox      []steps.InboxItem
+	inflight   map[string]steps.EdgeRequest
+	refused    []steps.RefusedOp
+	seen       map[string]time.Time
+	prev       int
+	counts     TickCounts
+	push       *Pusher
+	landings   []time.Time // the epoch's landings (not the v1 import's), from the events run folds
+	landingsOK bool
+	limits     policy.Limits
+	timeouts   policy.Timeouts
 }
 
 // Limits and Timeouts are the last answered tick's (the active policy's):
@@ -87,8 +89,27 @@ func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time
 	if err != nil {
 		return nil, fmt.Errorf("run: cold snapshot: %w", err)
 	}
-	return &Ticker{store: st, health: h, policy: p, view: steps.Build(snap, now), snap: snapshotCopy(snap),
-		inflight: map[string]steps.EdgeRequest{}, seen: map[string]time.Time{}, push: NewPusher()}, nil
+	t := &Ticker{store: st, health: h, policy: p, view: steps.Build(snap, now), snap: snapshotCopy(snap),
+		inflight: map[string]steps.EdgeRequest{}, seen: map[string]time.Time{}, push: NewPusher()}
+	// the epoch's landing times for the board's ETA, up to the cold snapshot's
+	// seq; a store that cannot answer leaves them unknown (the ETA is "-")
+	if r, ok := st.(interface {
+		Landings(ctx context.Context, epoch int, upToSeq int64) ([]time.Time, error)
+	}); ok {
+		if at, err := r.Landings(ctx, snap.Epoch, snap.Seq); err == nil {
+			t.landings, t.landingsOK = append([]time.Time{}, at...), true
+		}
+	}
+	return t, nil
+}
+
+// Landings is the epoch's landing times as run has folded them, the caller's
+// to keep; nil when the store could not give them.
+func (t *Ticker) Landings() []time.Time {
+	if !t.landingsOK {
+		return nil
+	}
+	return append([]time.Time{}, t.landings...)
 }
 
 // Snapshot is run's folded copy, the caller's to keep.
@@ -113,6 +134,14 @@ func (t *Ticker) Fold(ctx context.Context) error {
 		epoch := t.snap.Epoch
 		t.view.Fold(events)
 		for _, e := range events {
+			if t.landingsOK {
+				if e.Kind == "clear" {
+					t.landings = nil
+				}
+				for i := store.LandedIn(e); i > 0; i-- {
+					t.landings = append(t.landings, e.At)
+				}
+			}
 			t.snap = store.Fold(t.snap, []store.Event{e})
 			t.push.Observe(e, t.snap)
 			if p, ok := policy.PrevOf(e); ok {
