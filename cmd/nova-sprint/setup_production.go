@@ -793,7 +793,7 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	}
 	target, ok := r.Dashboards[choice]
 	if !ok || target.Service == nil {
-		return false, serviceConfigError("public dashboard configuration unavailable")
+		return false, serviceConfigError(fmt.Sprintf("dashboard choice %q has no public service configured", choice))
 	}
 	return p.ensureServiceVersion(ctx, target.Service.Machine, install)
 }

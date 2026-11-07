@@ -141,8 +141,8 @@ func (r RuntimeSetup) runCheck(ctx context.Context, in SetupInput) (SetupCheck, 
 	if err != nil {
 		return SetupCheck{}, err
 	}
-	if host == "" || host != r.RunService.Machine {
-		return SetupCheck{}, fmt.Errorf("run host configuration unavailable")
+	if err := runHostMatches(host, r.RunService.Machine); err != nil {
+		return SetupCheck{}, err
 	}
 	if !saved {
 		return SetupCheck{Action: true}, nil
@@ -221,9 +221,9 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 	if !saved && choice == "" {
 		return SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
 	}
-	target, ok := r.Dashboards[choice]
-	if !ok || target.Public != strings.HasPrefix(choice, "public=") || (target.Public && !validPublicTarget(target.Service)) {
-		return SetupCheck{}, fmt.Errorf("dashboard configuration unavailable")
+	target, err := r.dashboardTarget(choice)
+	if err != nil {
+		return SetupCheck{}, err
 	}
 	if !saved {
 		return SetupCheck{Action: true}, nil
@@ -235,7 +235,7 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 	if err != nil {
 		return SetupCheck{}, err
 	}
-	ok, err = r.Dashboard.Verify(ctx, target.URL, snap.Epoch, target.Public)
+	ok, err := r.Dashboard.Verify(ctx, target.URL, snap.Epoch, target.Public)
 	if refusal := r.dashboardRefusal(target, err); refusal != nil && ctx.Err() == nil {
 		// Not up yet: act; when it still does not verify after the act,
 		// the refusal is the probe's own error and its fix.
@@ -381,8 +381,8 @@ func (r RuntimeSetup) runAct(ctx context.Context, in SetupInput) error {
 	if err != nil {
 		return err
 	}
-	if host == "" || host != r.RunService.Machine {
-		return fmt.Errorf("run host configuration unavailable")
+	if err := runHostMatches(host, r.RunService.Machine); err != nil {
+		return err
 	}
 	if !saved {
 		if err = r.Prerequisites.Env.Choices.Save(ctx, "run-on", host); err != nil {
@@ -412,9 +412,9 @@ func (r RuntimeSetup) dashboardAct(ctx context.Context, in SetupInput) error {
 	if err != nil {
 		return err
 	}
-	target, ok := r.Dashboards[choice]
-	if !ok || target.Public != strings.HasPrefix(choice, "public=") || (target.Public && !validPublicTarget(target.Service)) {
-		return fmt.Errorf("dashboard configuration unavailable")
+	target, err := r.dashboardTarget(choice)
+	if err != nil {
+		return err
 	}
 	if !saved {
 		if err = r.Prerequisites.Env.Choices.Save(ctx, "dashboard", choice); err != nil {
@@ -473,9 +473,9 @@ func (r RuntimeSetup) workersAct(ctx context.Context) error {
 	if !found {
 		return fmt.Errorf("dashboard choice unavailable")
 	}
-	target, ok := r.Dashboards[choice]
-	if !ok || target.Public != strings.HasPrefix(choice, "public=") || (target.Public && !validPublicTarget(target.Service)) {
-		return fmt.Errorf("dashboard configuration unavailable")
+	target, err := r.dashboardTarget(choice)
+	if err != nil {
+		return err
 	}
 	publicHost := ""
 	if target.Public {
@@ -498,6 +498,39 @@ func (r RuntimeSetup) workersAct(ctx context.Context) error {
 		}
 	}
 	return r.Workload.InstallWorkers(ctx)
+}
+
+// runHostMatches refuses a chosen run machine that is not the one the
+// sprint-run service record names, naming both.
+func runHostMatches(host, machine string) error {
+	switch {
+	case host == "":
+		return &OperationError{Problem: "no run machine is chosen", Fix: "nova-sprint up --run-on <machine>", Exit: 1}
+	case host != machine:
+		return &OperationError{Problem: fmt.Sprintf("run machine %q is not %q, the machine the sprint-run service record names", host, machine), Fix: "nova-sprint up --run-on " + orWord(machine, "<machine>") + ", or correct the sprint-run record (nova-config service list)", Exit: 1}
+	}
+	return nil
+}
+
+// dashboardTarget is the configured target for choice, or why there is
+// none: no target for that choice, or a public one whose service record
+// is not a pull-only board without secrets.
+func (r RuntimeSetup) dashboardTarget(choice string) (DashboardTarget, error) {
+	target, ok := r.Dashboards[choice]
+	public := strings.HasPrefix(choice, "public=")
+	switch {
+	case !ok:
+		return target, &OperationError{Problem: edge.RedactN(fmt.Sprintf("dashboard choice %q has no configured target", choice), edge.FailureMax), Fix: "nova-sprint up --dash tailnet, or --dash public=<machine>[:<port>]", Exit: 1}
+	case target.Public != public:
+		return target, &OperationError{Problem: edge.RedactN(fmt.Sprintf("dashboard choice %q resolved to a public=%t target", choice, target.Public), edge.FailureMax), Fix: "nova-sprint up --dash tailnet, or --dash public=<machine>[:<port>]", Exit: 1}
+	case public && !validPublicTarget(target.Service):
+		machine := "(none)"
+		if target.Service != nil {
+			machine = target.Service.Machine
+		}
+		return target, &OperationError{Problem: "the public dashboard service on " + machine + " is not a pull-only nova-sprint dash without secrets", Fix: "correct or remove that service record (nova-config service list), then nova-sprint up again", Exit: 1}
+	}
+	return target, nil
 }
 
 func validPublicTarget(s *FleetService) bool {
