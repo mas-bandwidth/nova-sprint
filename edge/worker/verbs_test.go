@@ -32,11 +32,21 @@ type StoreSprintClient struct {
 	BusRedisAddr         string
 	Hooked               map[string]string
 	HookCalls            int
+	UnhookCalls          int
 	Now                  func() time.Time
 }
 
 func (s *StoreSprintClient) Hook(ctx context.Context, row string) error {
 	return s.HookRole(ctx, row, "worker")
+}
+
+func (s *StoreSprintClient) Unhook(_ context.Context, row string) error {
+	if _, ok := s.Hooked[row]; !ok {
+		return fmt.Errorf("%w: %s is not hooked", ErrRefused, row)
+	}
+	delete(s.Hooked, row)
+	s.UnhookCalls++
+	return nil
 }
 
 func (s *StoreSprintClient) HookRole(ctx context.Context, row, role string) error {
@@ -97,11 +107,8 @@ func (s *StoreSprintClient) Next(ctx context.Context, row string) (NextResponse,
 	if !ok {
 		return NextResponse{}, fmt.Errorf("SPRINT REFUSED next: unknown row %s: run nova-sprint show", row)
 	}
-	harness, model := "opencode", "deepseek-r1"
-	if strings.HasSuffix(r.Name, ".script") {
-		harness, model = "script", "script-v1"
-	}
-	out := NextResponse{Epoch: snap.Epoch, Seq: snap.Seq, Row: r.Name, State: r.State, Width: 2, Held: r.Held, Model: model, Harness: harness}
+	harness, _ := fakeRowHarness_internal(r.Name)
+	out := NextResponse{Epoch: snap.Epoch, Seq: snap.Seq, Row: r.Name, State: r.State, Width: 2, Held: r.Held, Harness: harness}
 	for _, c := range snap.Cards {
 		if (c.Kind != "work" && c.Kind != "read") || c.Holder != row {
 			continue
@@ -126,6 +133,17 @@ func (s *StoreSprintClient) Next(ctx context.Context, row string) (NextResponse,
 	sortConsumers_internal(out.Final)
 	return out, nil
 }
+func fakeRowHarness_internal(row string) (harness, model string) {
+	if strings.HasSuffix(row, ".script") {
+		return "script", "script-v1"
+	}
+	return "opencode", "deepseek-r1"
+}
+
+// fakeTierDeadline is the seconds a test sprint prints in the receipt; the
+// real number is policy's, and the worker takes whatever the receipt says.
+const fakeTierDeadline = 900
+
 func sortConsumers_internal(list []ConsumerSummary) {
 	slices.SortFunc(list, func(a, b ConsumerSummary) int {
 		if c := priorityRank_internal(b.Priority) - priorityRank_internal(a.Priority); c != 0 {
@@ -193,9 +211,14 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 		}
 	}
 	st := snap.Streams[c.Stream]
-	return buildTakeInfo_internal(snap.Epoch, afterCard, p, st, s.RequirePR[c.Stream]), nil
+	_, model := fakeRowHarness_internal(row)
+	forge := ""
+	if s.RequirePR[c.Stream] {
+		forge = "github"
+	}
+	return buildTakeInfo_internal(snap.Epoch, afterCard, p, st, model, forge), nil
 }
-func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, reqPR bool) TakeInfo {
+func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, model, forge string) TakeInfo {
 	head := c.Head
 	if c.Kind == "read" && head == "" {
 		head = p.Head
@@ -206,7 +229,7 @@ func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, reqPR b
 		Branch: c.Branch, BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding,
 		Paths: cloneStrings_internal(c.Paths), DoneWhen: cloneStrings_internal(c.DoneWhen),
-		Gen: c.Gen, Attempt: c.Attempt, Review: c.Review, RequirePR: reqPR,
+		Gen: c.Gen, Attempt: c.Attempt, Review: c.Review, Model: model, Deadline: fakeTierDeadline, Forge: forge,
 	}
 }
 func (s *StoreSprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
@@ -392,7 +415,7 @@ func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 		Run: func(_ context.Context, argv []string) ([]byte, int, error) {
 			calls = append(calls, slices.Clone(argv))
 			if slices.Contains(argv, "take") {
-				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4}`), 0, nil
+				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4,"model":"m1","deadline":900,"forge":""}`), 0, nil
 			}
 			opID := FormatResultID(3, "p1.w1", 1, 4)
 			return []byte(fmt.Sprintf(`{"accepted":true,"op":%q}`, opID)), 0, nil

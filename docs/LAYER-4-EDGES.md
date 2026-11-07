@@ -460,7 +460,7 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
 - `edge/git` (`edge/git/git.go`, `edge/git/land.go`, `edge/git/fake_test.go`, `edge/git/git_test.go`, `edge/git/coldread_test.go`, `edge/git/coldread2_test.go`, `edge/git/break_test.go`, `edge/git/functional_test.go`, `edge/git/trace_test.go`): `Git` (`Client`, `Fake`, clock starting at `1000`) and `LandPass` (`StreamBranch`, `StreamRef`, `ValidateCardBranch`, `RunRemoteLandStep`). Implements the 6-step landing pass from `LANDING.md` (fetch, merge group in score order with union ledger merge, push `--force-with-lease=<ref>:<old>`, gate at exact SHA, land only while base tip matches the gated parent, fast-forward stream branch). Per `1794011119389-0` (`LANDING.md` step 1), the stream integration branch is `sprint/<stream>/group` (`refs/heads/sprint/<stream>/group`), coexisting cleanly with card branches `sprint/<stream>/<producer>`, and `ValidateCardBranch` / `Take` refuse a card or producer branch named `group` or bare `sprint/<stream>`.
 - `edge/forge` (`edge/forge/forge.go`, `edge/forge/fake_test.go`, `edge/forge/forge_test.go`, `edge/forge/coldread_test.go`, `edge/forge/break_test.go`, `edge/forge/functional_test.go`): `Forge` (`Client`, `NewClient`, `Fake`, clock starting at `1000`), `PR`, `OpenPR`, `EnsurePR`, `Checks`, `Merge`, and `RestedUntil`. Queries `statusCheckRollup` via GraphQL at up to `MaxChecksBatch = 100` exact 40-hex commit SHAs per call with context pagination, classifies outcomes (`green`, `red`, `pending`, `fault`, `rate_limit`), verifies PR base and head SHA before fast-forwarding `refs/heads/<base>` in `Merge`, and enforces non-Glenn identity credentials (`GH_TOKEN` / `GH_CONFIG_DIR`) and per-identity token-bucket rate limiting.
 - `edge/worker` (`edge/worker/worker.go`, `edge/worker/harness.go`, `edge/worker/proxy.go`, `edge/worker/verbs.go`, `edge/worker/runner.go`, `edge/worker/verbs_test.go`, `edge/worker/worker_test.go`, `edge/worker/coldread_test.go`, `edge/worker/coldread2_test.go`, `edge/worker/break_test.go`, `edge/worker/functional_test.go`, `edge/worker/trace_test.go`) and `cmd/nova-worker` (`cmd/nova-worker/main.go`, `cmd/nova-worker/main_test.go`, `cmd/nova-worker/coldread2_test.go`, `cmd/nova-worker/break_test.go`):
-  - Coordinator host refusal (`CheckHost` refuses `studio`, `studio.local`, and policy-listed coordinator hosts, `LESSONS 4.18`), and mandatory `--work-clone` and `--as <row>` flags in `cmd/nova-worker`.
+  - Coordinator host refusal (`CheckHost` refuses the hosts given by `--coordinator-hosts`, which is required and has no default, `LESSONS 4.18`), and mandatory `--work-clone` and `--as <row>` flags in `cmd/nova-worker`.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `cmd/nova-worker` defaults `--harness` to `claude`. `ScriptHarness.Command` passes card fields as positional arguments (`$1`..`$9`) to a static shell program constant, never interpolating card prose into a shell string. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
   - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), fetches route keys via `ReadProviderKey` (`nova-secrets get`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
   - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which splits `DoneWhen` command lines into unquoted argv via `splitArgv_internal`) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> --net-deny --net-allow 127.0.0.1:<proxyPort> -- <argv...>` via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
@@ -468,7 +468,7 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
     * `FormatTakeOpID(epoch, consumer, gen, row)` (`take-e<epoch>-<consumer>-g<gen>-<row>`) and `FormatResultID(epoch, consumer, attempt, gen)` (`res-e<epoch>-<consumer>-a<attempt>-g<gen>`) fence store operations by epoch, consumer, attempt, and gen (`CLISprintClient.Take` passes `--id`).
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
     * `OSGitOps` executes all bench `git` operations through `edge.Exec` with `CleanEnv: true`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and `Timeouts` (`Stage`, `Push`, `RebaseAndTest`); `RebaseOntoStream` returns `*FetchError` on a fetch failure so `RunConsumer` propagates the failure without reporting a stale head.
-    * `sendReportAndClean_internal` requires an accepted store receipt matching the result ID (`receipt.Accepted && receipt.Op == req.ResultID`) before marking `JobRecorded` or removing the job directory; `CLISprintClient.Report` returns a parse error if `--json` output fails to unmarshal, and `ErrRefused` (exit code `1`) records `JobRecorded` so refused reports are final and never re-sent on subsequent wakes.
+    * `sendReportAndClean_internal` requires an accepted store receipt matching the result ID (`receipt.Accepted && receipt.Op == req.ResultID`) before marking `JobRecorded` or removing the job directory; `CLISprintClient.Report` returns a parse error if `--json` output fails to unmarshal, and a report the sprint did not acknowledge with exit 0 (`ErrRefused` included) keeps its job record at `reporting` and is sent again, same id, on the next wake (stitch, row 20).
     * `RecoverRow` matches disk `JobRecord` entries against the store's working summary by full identity `(epoch, consumer, attempt, gen)` (`jobMatchesSummary_internal`), verifies both PID and `NOVA_WORKER_NONCE` via `OSProcessTable.Alive`, kills and reports `fault` for any adopted harness past its recorded `DeadlineAt`, leaves `JobTaken`/`JobStaged` (`ErrNoSlot`) records untouched for retry, and completes `rebaseAndPRSteps_internal` for `JobHarvested` `"ok"` jobs before reporting; `QueryEdge` is a pure read of the store and `job.json` with zero side effects.
 - `tla/Push.tla`, `tla/LandEdge.tla`, `tla/Runner.tla` and 12 reversed witnesses in `tla/witnesses/` (`PushCursorBeforeConfirm`, `LandEdgeStaleGreen`, `LandEdgeWrongSHA`, `LandEdgePartialGroup`, `LandEdgeFaultBlamesHead`, `LandEdgeChaseBack`, `RunnerSlotFreedEarly`, `RunnerReusedJobDir`, `RunnerCleanBeforeReport`, `RunnerFreshResultIDOnRetry`, `RunnerRestartSpawnsSecondHarness`, `RunnerDieClassifiedFail`).
 
@@ -535,15 +535,61 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
   `land`, `stop`; lower layer defines the seam), so the constants and the
   switch are deleted. `LandRequest.PassedTrees` was cleared on entry and never
   read: deleted.
-- **Open, owed at layer 6's binary pass (not done here):** row 14's real clock
-  and sleep are still defaulted inside `NewRunner`, not injected by main; row
-  15's literals remain (tier deadlines in `DefaultTimeouts`, model defaults in
-  `harness.go`, the provider hosts and the `--coordinator-hosts` default in
-  `cmd/nova-worker`, the forbidden logins in `forge.go`); nova-config v2.0.2
-  has no table for provider hosts, coordinator hosts or forbidden logins, so
-  these come from the take receipt (deadline and model, from policy and the
-  roster) and from policy, which layer 6 defines; row 20's startup order is
-  not what the ruling says: `RunWakeLoop` steps before it hooks, runs
-  `nova-bus hook` as a five-second call, drops its errors, never runs
-  `nova-sprint hook --as <row> --role worker`, and does not exit when the hook
-  dies.
+- **Worker, rows 14, 15, 20 (done on v2-stitch-worker).** The worker reads its
+  sprint only through verbs, and the take receipt is the seam
+  (`SEAMS.md`, section 6).
+  * *Row 14.* `NewRunner` no longer defaults `Now` or `Sleep`: a runner with
+    no clock is refused naming both, `cmd/nova-worker` passes `time.Now` and
+    `time.Sleep`, and every unit test passes a fake clock. The job record's
+    deadline is the start plus the receipt's `deadline`; the `CIWaitExtra`
+    margin (a v1 guess with no reader but this sum) is deleted with it.
+  * *Row 15.* `TakeInfo` gains `model`, `deadline` (seconds, policy's
+    `timeouts().consumer[tier]`) and `forge` (from the stream, `""` for a hand
+    stream) and loses `require_pr`: a forge always means a PR, so the PR step
+    runs when `forge` is set, through the adapter named by it
+    (`Runner.Forges`, `cmd/nova-worker` serves `github`); a forge with no
+    adapter is a fault naming it. A receipt missing a key is refused with one
+    line naming `nova-sprint take <card>@<gen> --as <row> --json`
+    (`ErrReceipt`); the card already taken is reported `fault` through the
+    durable path with that line, and the worker exits non-zero, because every
+    further card would be refused the same way. Deleted: `TierDeadline`,
+    `DeadlineFor` (and its 45-minute fallback), the three model defaults in
+    `harness.go` (a job with no model, only the probe, runs the harness's own
+    configured default, since the probe tests the path), `Row.Model` from
+    `next --json`, `DefaultCoordinatorHosts`, the `--coordinator-hosts`
+    default (a worker with no list is refused naming the flag: a check
+    against nothing would pass on the coordinator) and the provider route
+    literals in `cmd/nova-worker` (now `--provider-upstream`,
+    `--provider-hosts`, `--provider-key`, none defaulted; given none the
+    proxy has no route and answers 502). `TestStitchNoDeadlineModelHostOrTierLiteralsInTheWorker`
+    keeps them out. nova-config v2.0.2 has no table for provider hosts or
+    coordinator hosts, so the service setup passes them from its inventory.
+  * *Row 20.* The startup order is `Runner.Start`: the bus hook (it claims
+    the row's name and must say so), then `nova-sprint unhook --as <row>`
+    (a refusal means no stale hook), then `nova-sprint hook --as <row> --role
+    worker`, and only then `next --json`. `RunWakeLoop` calls it before any
+    pass and `--once` goes through `RunOnce`, which calls it too; `StepRow`
+    never hooks. The `nova-bus hook` is the one long-lived child
+    (`OSBusHook`, `WakeHook`: edge.Exec returns only when its program ends,
+    so the hook cannot be run through it and is the one child the worker
+    starts itself, with only `NOVA_BUS_*` in its environment). A line is a
+    wake; wakes that arrive while a pass runs coalesce into one more pass, a
+    pass on a goroutine of its own; the hook's death ends the loop with the
+    hook's exit and last stderr and the worker exits 1. A report is
+    acknowledged only by `nova-sprint report` exit 0: until then the job
+    record stays at state `reporting` and each pass that still lists the
+    consumer as working sends it again under the same id. This reverses the
+    old round 2 ruling that a refusal (exit 1) is final
+    (`TestColdread2DefectRefusedReportResentEveryWake` now says so); the
+    record goes when the consumer turns final.
+  * *Owed, not done here.* `edge/forge/forge.go` (outside this branch's scope)
+    still holds the forbidden-logins literal in `isForbiddenLogin_internal`;
+    no table gives it a source (nova-config v2.0.2 has none and the receipt
+    carries none), so it needs a policy datum and a `forge.Config` field. The
+    rest of `Timeouts` (stage, launch grace, backoffs, rebase, push, `gh`,
+    bus claim, reserve wait) are operational bounds still in `DefaultTimeouts`.
+    `edge.Exec` has no streaming form; if layer 4's owner adds one, `OSBusHook`
+    moves onto it. A sprint epoch that changes while the worker runs is not
+    re-hooked (the hook is a startup step); the service restarts the worker.
+    `tla/Runner.tla` models no refused report, so the keep-and-resend rule has
+    a unit test (`TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake`) and no model.

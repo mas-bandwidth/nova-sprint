@@ -175,13 +175,14 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
 	gitOps := &OSGitOps{WorkCloneDir: gb.workClone, MirrorDir: gb.mirrorDir, OriginURL: gb.originDir}
-	r, err := NewRunner(Runner{
+	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal,
 		Host:      "b1",
 		RootDir:   t.TempDir(),
 		Sprint:    &StoreSprintClient{Store: pg, Origin: gitOps},
 		Git:       gitOps,
 		Wall:      &OSReserveWall{},
 		Harnesses: map[string]Harness{"script": &ScriptHarness{}},
+		Now:       time.Now, Sleep: time.Sleep,
 	})
 	require.NoError(t, err)
 
@@ -216,13 +217,14 @@ func TestFunctionalRunnerRebaseConflict(t *testing.T) {
 	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
 	gitOps := &OSGitOps{WorkCloneDir: gb.workClone, MirrorDir: gb.mirrorDir, OriginURL: gb.originDir}
-	r, err := NewRunner(Runner{
+	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal,
 		Host:      "b1",
 		RootDir:   t.TempDir(),
 		Sprint:    &StoreSprintClient{Store: pg, Origin: gitOps},
 		Git:       gitOps,
 		Wall:      &OSReserveWall{},
 		Harnesses: map[string]Harness{"script": &ScriptHarness{}},
+		Now:       time.Now, Sleep: time.Sleep,
 	})
 	require.NoError(t, err)
 

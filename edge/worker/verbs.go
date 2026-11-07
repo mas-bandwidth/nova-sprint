@@ -17,6 +17,10 @@ import (
 var (
 	ErrStoreDown = errors.New("worker: store unreachable")
 	ErrRefused   = errors.New("worker: sprint refused")
+	// ErrReceipt marks a take receipt that lacks what the worker takes from
+	// it (model, deadline, forge). It is fatal: the sprint is older than the
+	// worker, and every further card would be refused the same way.
+	ErrReceipt = errors.New("worker: take receipt refused")
 )
 
 type (
@@ -27,7 +31,7 @@ type (
 	NextResponse struct {
 		Epoch, Width          int
 		Seq                   int64
-		Row, State, Model     string
+		Row, State            string
 		Harness               string
 		Held                  bool
 		Ready, Working, Final []ConsumerSummary
@@ -40,7 +44,8 @@ type (
 		Paths                                                                                   []string `json:"paths"`
 		DoneWhen                                                                                []string `json:"done_when"`
 		Epoch, Gen, Attempt, Review                                                             int
-		RequirePR                                                                               bool `json:"require_pr"`
+		Model, Forge                                                                            string
+		Deadline                                                                                int // seconds, from policy's timeouts().consumer[tier]
 	}
 	ReportRequest struct {
 		Epoch, Gen                                             int
@@ -49,13 +54,12 @@ type (
 		Priced                                                 bool
 	}
 	SprintClient interface {
+		Hook(ctx context.Context, row string) error
+		Unhook(ctx context.Context, row string) error
 		Next(ctx context.Context, row string) (NextResponse, error)
 		Take(ctx context.Context, row, consumer string, gen int) (TakeInfo, error)
 		Report(ctx context.Context, req ReportRequest) (store.Receipt, error)
 		OpenJudgement(ctx context.Context, j store.Judgement) error
-	}
-	HookClient interface {
-		Hook(ctx context.Context, row string) error
 	}
 	CLISprintClient struct {
 		Exec                  edge.Exec
@@ -102,6 +106,10 @@ func (c *CLISprintClient) Hook(ctx context.Context, row string) error {
 	out, code, err := c.run_internal(ctx, c.wrap_internal("hook", "--as", row, "--role", "worker"))
 	return c.classifyCLIError_internal(out, code, err)
 }
+func (c *CLISprintClient) Unhook(ctx context.Context, row string) error {
+	out, code, err := c.run_internal(ctx, c.wrap_internal("unhook", "--as", row))
+	return c.classifyCLIError_internal(out, code, err)
+}
 func (c *CLISprintClient) Next(ctx context.Context, row string) (NextResponse, error) {
 	out, code, err := c.run_internal(ctx, c.wrap_internal("next", "--as", row, "--json"))
 	var resp NextResponse
@@ -125,7 +133,42 @@ func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen in
 	if err := json.Unmarshal(out, &info); err != nil {
 		return info, fmt.Errorf("parse take --json: %w", err)
 	}
+	// The forge may be "" (hand), so presence is read from the keys.
+	var keys map[string]json.RawMessage
+	_ = json.Unmarshal(out, &keys)
+	have := map[string]bool{}
+	for k := range keys {
+		have[strings.ToLower(k)] = true
+	}
+	var missing []string
+	for _, k := range []string{"model", "deadline", "forge"} {
+		if !have[k] {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) > 0 {
+		return TakeInfo{}, receiptError_internal(consumer, missing)
+	}
 	return info, nil
+}
+
+// checkReceipt_internal is what the runner needs from a receipt before it
+// stages anything: a model and a deadline (a forge of "" means none).
+func checkReceipt_internal(info TakeInfo) error {
+	var missing []string
+	if info.Model == "" {
+		missing = append(missing, "model")
+	}
+	if info.Deadline <= 0 {
+		missing = append(missing, "deadline")
+	}
+	if len(missing) > 0 {
+		return receiptError_internal(info.Consumer, missing)
+	}
+	return nil
+}
+func receiptError_internal(consumer string, missing []string) error {
+	return fmt.Errorf("%w: the receipt for %s has no %s: update nova-sprint, then check that `nova-sprint take <card>@<gen> --as <row> --json` prints model, deadline and forge", ErrReceipt, consumer, strings.Join(missing, ", "))
 }
 func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
 	ep := cmp.Or(req.Epoch, c.Epoch, 1)
