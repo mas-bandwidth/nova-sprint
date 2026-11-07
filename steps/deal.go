@@ -206,8 +206,8 @@ func (t *tick) rowsAnswer(c store.Card, kind string) []string {
 	return t.o.rows(RowsQuestion{Card: t.facts(c), Kind: kind, Candidates: t.candidates(c, kind)})
 }
 
-// pickRow is one row for c among rows: policy's first answered row with
-// room, else the engine's best.
+// pickRow is one row for c among rows: the engine's best of the rows policy
+// answered with room, else of them all.
 func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 	picks := t.pickRows(c, answered, rows, 1)
 	if len(picks) == 0 {
@@ -217,9 +217,10 @@ func (t *tick) pickRow(c store.Card, answered, rows []string) string {
 }
 
 // pickRows is up to n distinct rows for c among rows (every one eligible,
-// with room): policy's answered rows in its order, the engine's ranking for
-// the rest. An answer naming no row with room is a miss, as an answer
-// naming a row not offered is.
+// with room): policy's answered rows are the set a card may go to, its order
+// no preference; the engine's ranking (which counts this tick's deals) picks
+// among them, then among the rest. An answer naming no row with room is a
+// miss, as an answer naming a row not offered is.
 func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
 	if answered != nil && !slices.ContainsFunc(answered, func(r string) bool { return slices.Contains(rows, r) }) {
 		t.o.refuse("rows")
@@ -227,12 +228,8 @@ func (t *tick) pickRows(c store.Card, answered, rows []string, n int) []string {
 	if len(rows) == 0 || n <= 0 {
 		return nil
 	}
-	var out []string
-	for _, r := range answered {
-		if slices.Contains(rows, r) && !slices.Contains(out, r) && len(out) < n {
-			out = append(out, r)
-		}
-	}
+	allowed := slices.DeleteFunc(slices.Clone(rows), func(r string) bool { return !slices.Contains(answered, r) })
+	out := t.ranked(c, kindOf(c), allowed, n)[:min(n, len(allowed))]
 	if len(out) >= n {
 		return out
 	}
