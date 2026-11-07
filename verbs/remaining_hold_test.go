@@ -14,7 +14,7 @@ func TestRemainingHoldRowDryRun(t *testing.T) {
 	ctx := context.Background()
 	f := store.NewFake()
 	at := time.Unix(1000, 0)
-	applyTest(t, f, store.Op{ID: "seed-hold", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "worker", Kind: "worker", Width: 1, Tiers: []string{"pro"}}}})
+	applyTest(t, f, store.Op{ID: "seed-hold", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "worker", Session: "fixture", Role: "worker"}}})
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "rowan", Now: func() time.Time { return at }, Preview: func(context.Context, string) error { return nil }}
 	args := []string{"worker", "--reason", "pause"}
 	r := e.hold(ctx, "hold", append(args, "--dry-run"))
@@ -51,12 +51,12 @@ func TestRemainingMixedHoldKeepsDealtWork(t *testing.T) {
 	ctx := context.Background()
 	f := store.NewFake()
 	at := time.Unix(1000, 0)
-	applyTest(t, f, store.Op{ID: "seed-live", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "worker", Kind: "worker", Width: 1, Tiers: []string{"pro"}}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "brief"}}})
+	applyTest(t, f, store.Op{ID: "seed-live", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "worker", Session: "fixture", Role: "worker"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "brief"}}})
 	applyPlan := func(id string, p card.Plan) {
 		applyTest(t, f, store.Op{ID: id, Epoch: 1, Actor: "test", Kind: id, At: at, Expect: p.Expect, Writes: p.Writes})
 	}
 	s, _ := f.Snapshot(ctx)
-	p, w := card.MoveRow(card.RowFromStore(s.Rows["worker"]), card.Seen{})
+	p, w := card.MoveRow(card.RowFromStore(s.Rows["worker"], 2, []string{"pro"}), card.Seen{})
 	if w != nil {
 		t.Fatal(w)
 	}
@@ -68,7 +68,7 @@ func TestRemainingMixedHoldKeepsDealtWork(t *testing.T) {
 	}
 	applyPlan("resolve-live", p)
 	s, _ = f.Snapshot(ctx)
-	p, w = card.Move(card.FromStore(s.Cards["p"]), nil, map[string]card.Row{"worker": card.RowFromStore(s.Rows["worker"])}, card.StreamFromStore(s.Streams["s"]), nil, card.Start{Row: "worker", Branch: "b", Base: strings.Repeat("a", 40)})
+	p, w = card.Move(card.FromStore(s.Cards["p"]), nil, map[string]card.Row{"worker": card.RowFromStore(s.Rows["worker"], 2, []string{"pro"})}, card.StreamFromStore(s.Streams["s"]), nil, card.Start{Row: "worker", Branch: "b", Base: strings.Repeat("a", 40)})
 	if w != nil {
 		t.Fatal(w)
 	}
@@ -114,7 +114,7 @@ func TestRemainingHoldPreviewBeforeApply(t *testing.T) {
 	ctx := context.Background()
 	f := store.NewFake()
 	at := time.Unix(1000, 0)
-	applyTest(t, f, store.Op{ID: "preview-seed", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "r", Kind: "worker", Width: 1, Tiers: []string{"pro"}}}})
+	applyTest(t, f, store.Op{ID: "preview-seed", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutRow{Name: "r", Session: "fixture", Role: "worker"}}})
 	e := Engine{Store: f, Env: fakeEnv{hooked: true}, Actor: "rowan", Now: func() time.Time { return at }}
 	args := []string{"r", "--reason", "pause"}
 	if got := e.hold(ctx, "hold", args); got.Exit != 2 {
@@ -162,7 +162,7 @@ func TestRemainingMixedStreamHoldAndWithdrawal(t *testing.T) {
 	}
 	c := s.Cards["p.w1"]
 	p := s.Cards["p"]
-	withdrawal, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(s.Rows["w"]), card.Withdraw{Reason: "pause", Stream: card.StreamFromStore(s.Streams["s"])})
+	withdrawal, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(s.Rows["w"], 2, []string{"pro"}), card.Withdraw{Reason: "pause", Stream: card.StreamFromStore(s.Streams["s"])})
 	if why != nil {
 		t.Fatal(why)
 	}

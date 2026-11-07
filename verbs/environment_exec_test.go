@@ -55,7 +55,7 @@ func TestExecEnvironmentMissingDSNIsUnconfigured(t *testing.T) {
 func TestColdNextWithMissingDSNGoesToSetup(t *testing.T) {
 	env := ExecEnvironment{Command: func(context.Context, string, ...string) ([]byte, error) { return nil, nil }}
 	result := (&Engine{Env: env, Actor: "alice"}).Execute(context.Background(), nil)
-	if result.Exit != 0 || !strings.Contains(result.Output, "next: nova-sprint up --as alice") {
+	if result.Exit != 1 || !strings.Contains(result.Output, "nova-sprint up --as alice") {
 		t.Fatal(result)
 	}
 }

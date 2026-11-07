@@ -133,7 +133,7 @@ func planHolds(s store.Snapshot, in holdInput, holding bool) ([]card.Plan, []str
 		if holding {
 			event = card.Hold{Reason: in.reason}
 		}
-		plan, why := card.MoveRow(card.RowFromStore(r), event)
+		plan, why := card.MoveRow(card.RowFromStore(r, 0, nil), event)
 		if why != nil {
 			return nil, nil, why.Reason
 		}

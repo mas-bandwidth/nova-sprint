@@ -15,12 +15,12 @@ func releaseRowFixture(t *testing.T) (*store.Fake, time.Time) {
 	ctx := context.Background()
 	f := store.NewFake()
 	at := time.Unix(1000, 0)
-	applyTest(t, f, store.Op{ID: "batch-seed", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "w", Kind: "worker", Width: 2, Tiers: []string{"pro"}}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "brief"}, store.PutCard{ID: "q", Kind: "producer", Stream: "s", Tier: "pro", Brief: "brief"}}})
+	applyTest(t, f, store.Op{ID: "batch-seed", Epoch: 1, Actor: "test", Kind: "seed", At: at, Writes: []store.Write{store.PutStream{Name: "s", Repo: "owner/repo", Base: "main", Pos: 1}, store.PutRow{Name: "w", Session: "fixture", Role: "worker"}, store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "pro", Brief: "brief"}, store.PutCard{ID: "q", Kind: "producer", Stream: "s", Tier: "pro", Brief: "brief"}}})
 	applyPlan := func(id string, p card.Plan) {
 		applyTest(t, f, store.Op{ID: id, Epoch: 1, Actor: "test", Kind: id, At: at, Expect: p.Expect, Writes: p.Writes})
 	}
 	s, _ := f.Snapshot(ctx)
-	p, why := card.MoveRow(card.RowFromStore(s.Rows["w"]), card.Seen{})
+	p, why := card.MoveRow(card.RowFromStore(s.Rows["w"], 2, []string{"pro"}), card.Seen{})
 	if why != nil {
 		t.Fatal(why)
 	}
@@ -32,7 +32,7 @@ func releaseRowFixture(t *testing.T) (*store.Fake, time.Time) {
 	}
 	applyPlan("batch-resolve", p)
 	s, _ = f.Snapshot(ctx)
-	p, why = card.Move(card.FromStore(s.Cards["p"]), nil, map[string]card.Row{"w": card.RowFromStore(s.Rows["w"])}, card.StreamFromStore(s.Streams["s"]), nil, card.Start{Row: "w", Branch: "b", Base: strings.Repeat("a", 40)})
+	p, why = card.Move(card.FromStore(s.Cards["p"]), nil, map[string]card.Row{"w": card.RowFromStore(s.Rows["w"], 2, []string{"pro"})}, card.StreamFromStore(s.Streams["s"]), nil, card.Start{Row: "w", Branch: "b", Base: strings.Repeat("a", 40)})
 	if why != nil {
 		t.Fatal(why)
 	}
@@ -44,7 +44,7 @@ func releaseRowFixture(t *testing.T) (*store.Fake, time.Time) {
 	}
 	applyPlan("batch-resolve-q", p)
 	s, _ = f.Snapshot(ctx)
-	p, why = card.Move(card.FromStore(s.Cards["q"]), nil, map[string]card.Row{"w": card.RowFromStore(s.Rows["w"])}, card.StreamFromStore(s.Streams["s"]), nil, card.Start{Row: "w", Branch: "b", Base: strings.Repeat("a", 40)})
+	p, why = card.Move(card.FromStore(s.Cards["q"]), nil, map[string]card.Row{"w": card.RowFromStore(s.Rows["w"], 2, []string{"pro"})}, card.StreamFromStore(s.Streams["s"]), nil, card.Start{Row: "w", Branch: "b", Base: strings.Repeat("a", 40)})
 	if why != nil {
 		t.Fatal(why)
 	}

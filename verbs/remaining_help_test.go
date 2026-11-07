@@ -25,7 +25,7 @@ func TestRemainingHelpRulings(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"-h"}, "getting-started:"}, {[]string{"check"}, "--history | --integrity"}, {[]string{"policy", "set"}, "<file> --reason <why>"}, {[]string{"policy", "activate"}, "<version> --reason <why>"}, {[]string{"policy", "show"}, "--list"}, {[]string{"policy", "diff"}, "<version|default>"}, {[]string{"policy", "check"}, "<file|version>"}, {[]string{"work"}, "worker"}, {[]string{"row", "add"}, "--kind friend|worker"}, {[]string{"stream", "set"}, "--mode auto|group|hand"}, {[]string{"drop"}, "[--waive | --relink <other>] [--expect <dependant-ids>]"}, {[]string{"release"}, "--row <row> --all"},
+		{[]string{"-h"}, "getting-started:"}, {[]string{"check"}, "--history | --integrity"}, {[]string{"policy", "set"}, "<file> --reason <why>"}, {[]string{"policy", "activate"}, "<version> --reason <why>"}, {[]string{"policy", "show"}, "--list"}, {[]string{"policy", "diff"}, "<version|default>"}, {[]string{"policy", "check"}, "<file|version>"}, {[]string{"work"}, "worker"}, {[]string{"row", "add"}, "configuration is in nova-config"}, {[]string{"stream", "set"}, "--mode auto|group|hand"}, {[]string{"drop"}, "[--waive | --relink <other>] [--expect <dependant-ids>]"}, {[]string{"release"}, "--row <row> --all"},
 	}
 	for _, tc := range cases {
 		r := e.help(context.Background(), tc.args)

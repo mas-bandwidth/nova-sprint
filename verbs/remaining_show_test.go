@@ -39,12 +39,12 @@ func (showEdgesFake) CI(_ context.Context, c store.Card) (string, error) {
 	return "green at " + c.Head, nil
 }
 func TestRemainingShowRunStitchAndCI(t *testing.T) {
-	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Rows: map[string]store.Row{"writer": {Name: "writer", Model: "sol"}}, Cards: map[string]store.Card{
+	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Rows: map[string]store.Row{"writer": {Name: "writer"}}, Cards: map[string]store.Card{
 		"p":      {ID: "p", Kind: "producer", Stream: "s", Author: "writer", Head: "abc"},
 		"p.w1":   {ID: "p.w1", Kind: "work", Of: "p", Stream: "s", Cost: 10, Priced: true},
 		"p.r1.1": {ID: "p.r1.1", Kind: "read", Of: "p", Stream: "s", Holder: "reader", Result: "fix", Reason: "broken gate", Cost: 20, Priced: true},
 	}}
-	e := Engine{Store: fakeReader{s}, Env: fakeEnv{green: true, schema: true, hooked: true}, Actor: "rowan", RunInfo: showRunFake{}, ShowEdges: showEdgesFake{}}
+	e := Engine{Store: fakeReader{s}, Env: fakeEnv{green: true, schema: true, hooked: true}, Actor: "rowan", RunInfo: showRunFake{}, ShowEdges: showEdgesFake{}, Roster: fixtureRoster{}}
 	cases := []struct {
 		args  []string
 		parts []string

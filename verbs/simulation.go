@@ -26,7 +26,9 @@ func Simulation(st store.Store, actor, version, pin string, now Clock, preview f
 	choices := Choices{Store: st, Now: now}
 	env := simulationEnvironment{choices: choices}
 	setup := simulationSetup{choices: choices}
-	return &Engine{Store: st, Env: env, Actor: actor, Now: now, Version: version, ToolPin: pin, Health: simulationHealth{pin: pin}, Setup: setup, SetupLock: &simulationLock{}, Archive: archive, Preview: preview}, nil
+	engine := &Engine{Store: st, Env: env, Roles: SnapshotRoles{Store: st}, Actor: actor, Now: now, Version: version, ToolPin: pin, Health: simulationHealth{pin: pin}, Setup: setup, SetupLock: &simulationLock{}, Archive: archive, Preview: preview}
+	engine.SetupHook = engine.EnsureCoordinatorHook
+	return engine, nil
 }
 
 type simulationEnvironment struct{ choices Choices }

@@ -63,13 +63,7 @@ func (e *Engine) judge(ctx context.Context, args []string) Result {
 	if !ok || e.Env == nil || e.Now == nil {
 		return unavailable("judge")
 	}
-	coordinator, err := e.Env.Coordinator(ctx)
-	if err != nil {
-		return operationalFailure("judge", err)
-	}
-	if in.actor != coordinator {
-		return refused("judge", "only the coordinator can judge", "ask "+coordinator+" over the bus")
-	}
+
 	hooked, recipe, err := e.Env.Hooked(ctx, in.actor)
 	if err != nil {
 		return operationalFailure("judge", err)
@@ -82,7 +76,7 @@ func (e *Engine) judge(ctx context.Context, args []string) Result {
 		return operationalFailure("judge", err)
 	}
 	if in.id == "" {
-		return listJudgements(snap, in.actor, coordinator)
+		return listJudgements(snap, in.actor, in.actor)
 	}
 	members, problem := judgeMembers(snap, in)
 	if problem != "" {

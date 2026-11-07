@@ -32,11 +32,33 @@ type RestoreLease interface {
 	Close() error
 }
 
+func archiveArgs(args []string, backup bool) (string, bool) {
+	value := ""
+	seen := map[string]bool{}
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--as" || (backup && args[i] == "--out") {
+			key := args[i]
+			if seen[key] || i+1 >= len(args) || args[i+1] == "" {
+				return "", false
+			}
+			seen[key] = true
+			i++
+			if key == "--out" {
+				value = args[i]
+			}
+			continue
+		}
+		if backup || value != "" || args[i] == "" || strings.HasPrefix(args[i], "-") {
+			return "", false
+		}
+		value = args[i]
+	}
+	return value, backup || value != ""
+}
+
 func (e *Engine) backup(ctx context.Context, args []string) Result {
-	out := ""
-	if len(args) == 2 && args[0] == "--out" {
-		out = args[1]
-	} else if len(args) != 0 {
+	out, ok := archiveArgs(args, true)
+	if !ok {
 		return refused("backup", "invalid arguments", "nova-sprint help backup")
 	}
 	if e.Archive == nil {
@@ -49,7 +71,8 @@ func (e *Engine) backup(ctx context.Context, args []string) Result {
 	return Result{fmt.Sprintf("BACKUP %s epoch=%d seq=%d verified\nnext: nothing\n", info.Path, info.Epoch, info.Seq), 0}
 }
 func (e *Engine) restore(ctx context.Context, args []string) Result {
-	if len(args) != 1 || args[0] == "" {
+	path, ok := archiveArgs(args, false)
+	if !ok {
 		return refused("restore", "invalid arguments", "nova-sprint help restore")
 	}
 	if e.Archive == nil {
@@ -61,7 +84,7 @@ func (e *Engine) restore(ctx context.Context, args []string) Result {
 	}
 	defer lease.Close()
 
-	info, err := e.Archive.Verify(ctx, args[0])
+	info, err := e.Archive.Verify(ctx, path)
 	if err != nil {
 		return operationalFailure("restore", err)
 	}
@@ -99,6 +122,9 @@ func (e *Engine) clear(ctx context.Context, args []string) Result {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
 		return operationalFailure("clear", err)
+	}
+	if !roleMatchesSnapshot(ctx, actor, snap) {
+		return refused("clear", "hook changed", "nova-sprint hook --as "+actor+" --role coordinator")
 	}
 	if epoch != snap.Epoch {
 		return refused("clear", fmt.Sprintf("epoch %d is not current epoch %d", epoch, snap.Epoch), fmt.Sprintf("nova-sprint clear --confirm %d", snap.Epoch))
@@ -182,6 +208,10 @@ func parseClear(args []string, actor string) (int, bool, string, bool) {
 }
 
 func clearExact(ctx context.Context, st store.Store, op store.Op) (store.Receipt, error) {
+	claim, ok := ctx.Value(roleClaimKey{}).(roleClaim)
+	if !ok || claim.actor != op.Actor {
+		return store.Receipt{}, fmt.Errorf("role claim missing or mismatched")
+	}
 	r, err := st.Clear(ctx, op)
 	if !errors.Is(err, store.ErrUnknown) {
 		return r, err
