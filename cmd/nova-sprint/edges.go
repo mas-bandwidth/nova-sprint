@@ -91,6 +91,9 @@ func (d doctor) ToolsVersion(ctx context.Context) (string, error) {
 
 // Schema is the store at this build's schema; a store not set up is false.
 func (d doctor) Schema(ctx context.Context) (bool, error) {
+	if d.creds.password == "" {
+		return false, nil // up mints NOVA_SPRINT_PG_PASSWORD: without it the sprint is not set up
+	}
 	dsn, err := d.creds.sprint()
 	if err != nil {
 		return false, err

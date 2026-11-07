@@ -97,7 +97,11 @@ func runUpWrapper(ctx context.Context, args []string) int {
 	return code
 }
 func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string, args []string, channel bool) (string, string, int) {
-	flags := []string{"exec", "--only", key, "--store", cfg.Secrets.Store, "--key", cfg.Secrets.KeyFile, "--as", cfg.Secrets.Seat, "--", cfg.Binary, mode}
+	// nova-secrets exec drops NOVA_SECRETS_* from its child; the phases read
+	// them (productionSetupConfigFromEnv), so env puts the paths back.
+	s := cfg.Secrets
+	flags := []string{"exec", "--only", key, "--store", s.Store, "--key", s.KeyFile, "--as", s.Seat, "--", "/usr/bin/env",
+		"NOVA_SECRETS_STORE=" + s.Store, "NOVA_SECRETS_KEY=" + s.KeyFile, "NOVA_SECRETS_PINS=" + s.Pins, "NOVA_SECRETS_SEAT=" + s.Seat, cfg.Binary, mode}
 	cmd := exec.CommandContext(ctx, "nova-secrets", append(flags, args...)...)
 	cmd.Env = setupWrapperEnv(os.Environ())
 	if key == "NOVA_SPRINT_PG_PASSWORD" {

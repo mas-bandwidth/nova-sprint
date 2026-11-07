@@ -16,8 +16,9 @@ func TestProductionStoreRejectsAmbientCredentials(t *testing.T) {
 	if _, err := s.Snapshot(context.Background()); err == nil || !strings.Contains(err.Error(), "passwordless") {
 		t.Fatalf("embedded credential: %v", err)
 	}
-	if _, err := (doctor{creds: credentials{dsn: "postgres://nova_config@localhost/db"}}).Schema(context.Background()); err == nil {
-		t.Fatal("schema accepted ambient credential")
+	// No sprint credential is "not set up" (next answers up), never a connection on the ambient one.
+	if ok, err := (doctor{creds: credentials{dsn: "postgres://nova_config@localhost/db"}}).Schema(context.Background()); ok || err != nil {
+		t.Fatalf("schema without the sprint credential: ok=%v err=%v", ok, err)
 	}
 }
 
