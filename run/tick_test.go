@@ -130,6 +130,49 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 	}
 }
 
+// TestTickRaisesSeenForAHookedRow is a row as the hook leaves it (PutRow
+// inserts it down) and present on the bus: the first tick brings it up (the
+// run loop's Seen) and the deal follows; a row down and absent from the bus
+// stays down, and a row already up raises nothing.
+func TestTickRaisesSeenForAHookedRow(t *testing.T) {
+	f := store.NewFake()
+	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
+	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
+	must(t, f, "row2", store.PutRow{Name: "bob", Session: "sess-2", Role: "worker"})
+	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
+	all := []string{"flash", "pro", "heavy", "frontier"}
+	ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all}, "bob": {Name: "bob", Width: 1, Tiers: all}}}
+	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tickN(t, tk, ro, 1)
+	snap := tk.Snapshot()
+	if a, b := snap.Rows["alice"].State, snap.Rows["bob"].State; a != "up" || b != "down" {
+		t.Fatalf("after one tick: alice %s (want up), bob %s (want down)", a, b)
+	}
+	seq := snap.Seq
+	tickN(t, tk, ro, 2)
+	evs, err := f.Events(context.Background(), seq, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		if !ev.Accepted {
+			t.Fatalf("a later tick had a refused op: %+v", ev)
+		}
+	}
+	var dealt []string
+	for id, c := range tk.Snapshot().Cards {
+		if c.Kind == "work" && c.State == "ready" {
+			dealt = append(dealt, id+" to "+c.Holder)
+		}
+	}
+	if len(dealt) != 1 || !strings.HasSuffix(dealt[0], " to alice") {
+		t.Fatalf("want p1 dealt to alice, got %v", dealt)
+	}
+}
+
 func TestPushFailureLeavesTheCursor(t *testing.T) {
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
