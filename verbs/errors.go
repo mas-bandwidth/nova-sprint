@@ -12,6 +12,10 @@ type OperationError struct {
 func (e *OperationError) Error() string { return "external operation failed" }
 
 func operationalFailure(verb string, err error) Result {
+	var lint *BriefLintError
+	if errors.As(err, &lint) {
+		return refused(verb, lint.Error(), "fix the brief and retry nova-sprint add")
+	}
 	var named *OperationError
 	if errors.As(err, &named) && named.Problem != "" && named.Fix != "" {
 		r := refused(verb, named.Problem, named.Fix)
