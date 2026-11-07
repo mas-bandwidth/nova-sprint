@@ -198,7 +198,7 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) e
 		}
 		// LOCAL DOGFOOD STOPGAP: the whole output, ANSI stripped, bounded, and kept in the probe dir.
 		whole := ansiRe_local.ReplaceAllString(string(res.Output), "")
-		_ = os.WriteFile(filepath.Join(probeDir, "output.txt"), []byte(whole+"\nreason="+out.Reason+"\nexit="+fmt.Sprint(res.ExitCode)+"\n"), 0o644)
+		_ = os.WriteFile(filepath.Join(os.TempDir(), "nova-sprint-probe-"+row+".txt"), []byte(whole+"\nreason="+out.Reason+"\nexit="+fmt.Sprint(res.ExitCode)+"\n"), 0o644)
 		whole = strings.Join(strings.Fields(whole), " ")
 		if len(whole) > 1500 {
 			whole = whole[:1500]
