@@ -53,14 +53,15 @@ func ToolDetail(err error) string {
 	if err == nil {
 		return ""
 	}
-	return " (" + edge.RedactN(err.Error(), edge.FailureMax) + ")"
+	return " (" + edge.RedactN(err.Error(), edge.CommandMax) + ")"
 }
 
-const stderrLineMax = edge.RedactMax
+const stderrLineMax = edge.StderrMax
 
-// StderrLine is the last non-empty line of a tool's stderr, on one line,
-// bounded, with anything that may be a secret replaced (edge.RedactN).
-func StderrLine(stderr []byte) string { return edge.LastLine(string(stderr)) }
+// StderrLine is every non-empty line of a tool's stderr but nova-secrets'
+// banner, joined by " | " on one line, bounded (the first lines kept), with
+// anything that may be a secret replaced (edge.StderrLines).
+func StderrLine(stderr []byte) string { return edge.StderrLines(string(stderr)) }
 
 // headTail keeps the first and last bytes a child writes, bounded: enough
 // for the first lines a failure carries.
@@ -123,13 +124,73 @@ func ParseFailure(err error, out []byte) string { return edge.ParseFailure(err, 
 func cause(what string, err error) error { return edge.Cause(what, err) }
 
 // ChildFailed is an internal child's failure: its error, redacted and
-// bounded, on stderr as one line (the parent's edge.CommandError carries
-// it), and code. A child that exits non-zero always says why.
+// bounded, on stderr (the parent's edge.CommandError carries it), and code.
+// A child that exits non-zero always says why. A refusal (an
+// *OperationError or a *Fail anywhere in err) is written as two lines,
+// "nova-sprint: refused: <problem>" then "nova-sprint: fix: <fix>", which
+// AsRefusal in the parent reads back, so its Problem and Fix reach the
+// terminal as they were.
 func ChildFailed(err error, code int) int {
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "nova-sprint: "+edge.RedactN(err.Error(), edge.FailureMax))
-	}
+	writeChildFailure(os.Stderr, err)
 	return code
+}
+
+const (
+	childRefusedPrefix = "nova-sprint: refused: "
+	childFixPrefix     = "nova-sprint: fix: "
+)
+
+func writeChildFailure(w io.Writer, err error) {
+	if err == nil {
+		err = errors.New("failed with no error to report (a bug: take it to the project's own tracker)")
+	}
+	var op *OperationError
+	var f *Fail
+	switch {
+	case errors.As(err, &op):
+		fmt.Fprintln(w, childRefusedPrefix+edge.RedactN(op.Problem, edge.StderrMax/2))
+		fmt.Fprintln(w, childFixPrefix+edge.RedactN(op.Fix, edge.FailureMax))
+	case errors.As(err, &f):
+		fmt.Fprintln(w, childRefusedPrefix+edge.RedactN(f.What, edge.StderrMax/2))
+		fmt.Fprintln(w, childFixPrefix+edge.RedactN(f.Fix, edge.FailureMax))
+	default:
+		fmt.Fprintln(w, "nova-sprint: "+edge.RedactN(err.Error(), edge.StderrMax))
+	}
+}
+
+// AsRefusal is the refusal err carries, to be passed through as it is and
+// never re-wrapped: a *Fail or *OperationError anywhere in err's chain, or
+// the refusal an internal child wrote on stderr (ChildFailed) inside an
+// edge.CommandError, rebuilt as an *OperationError (Exit 2 when the child
+// exited 2, else 1). Nil when err carries no refusal.
+func AsRefusal(err error) error {
+	var f *Fail
+	var op *OperationError
+	var cmd *edge.CommandError
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &f):
+		return f
+	case errors.As(err, &op):
+		return op
+	case errors.As(err, &cmd):
+		at := strings.LastIndex(cmd.Stderr, childRefusedPrefix)
+		if at < 0 {
+			return nil
+		}
+		problem, fix, ok := strings.Cut(cmd.Stderr[at+len(childRefusedPrefix):], " | "+childFixPrefix)
+		if !ok {
+			return nil
+		}
+		fix, _, _ = strings.Cut(fix, " | ")
+		exit := exitRefused
+		if cmd.Exit == exitFailed {
+			exit = exitFailed
+		}
+		return &OperationError{Problem: problem, Fix: fix, Exit: exit}
+	}
+	return nil
 }
 
 // missingNames is the names (never the values) of the empty ones, sorted:

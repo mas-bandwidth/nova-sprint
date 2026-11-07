@@ -62,7 +62,10 @@ func (s SprintRoleBootstrap) Run(ctx context.Context, seats []SprintSeat) error 
 		if errors.As(err, &exit) && exit.ExitCode() == SprintRoleCredentialMismatchExit {
 			return &OperationError{Problem: "stored sprint credential was rejected", Fix: "delete the stale NOVA_SPRINT_PG_PASSWORD secret and run nova-sprint up again", Exit: 1}
 		}
-		return fmt.Errorf("role setup failed%s", ToolDetail(err))
+		if r := AsRefusal(err); r != nil {
+			return r // the role child's own refusal (an ADMIN OPTION grant to make, a role it may not create)
+		}
+		return fmt.Errorf("role setup failed: %w", err)
 	}
 	for _, seat := range seats {
 		if err = s.GrantSeat(ctx, seat); err != nil {

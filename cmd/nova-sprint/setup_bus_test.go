@@ -157,7 +157,7 @@ func TestSetupBusMetadataAndCancellationFailClosed(t *testing.T) {
 	}
 }
 
-// A failed nova-secrets names reaches up's refusal as the tool's own last
+// A failed nova-secrets names reaches up's refusal as the tool's own
 // stderr line (runSetupCommand keeps it), never a bare "unavailable".
 func TestSetupBusNamesFailureCarriesStderr(t *testing.T) {
 	cfg := configForSetup()
@@ -167,7 +167,7 @@ func TestSetupBusNamesFailureCarriesStderr(t *testing.T) {
 	}
 	bus := setupBusCommand(cfg, func(context.Context) (bool, error) { return false, nil }, run)
 	_, err := bus(context.Background(), "nova-bus", "who")
-	if err == nil || !strings.HasPrefix(err.Error(), "bus secret names unavailable (nova-secrets: exit -1") || !strings.Contains(err.Error(), `stderr "nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=<redacted>"`) || strings.Contains(err.Error(), "AGE-SECRET") {
+	if err == nil || !strings.HasPrefix(err.Error(), "bus secret names unavailable: nova-secrets: exit -1") || !strings.Contains(err.Error(), `stderr "nova-secrets: seat key does not open the store NOVA_SECRETS_KEY=<redacted>"`) || strings.Contains(err.Error(), "AGE-SECRET") {
 		t.Fatal(err)
 	}
 }

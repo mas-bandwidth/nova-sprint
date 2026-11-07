@@ -40,7 +40,7 @@ func (b *limitedOutput) Write(p []byte) (int, error) {
 		}
 		p = p[:left]
 	}
-	_, _ = b.buf.Write(p)
+	b.buf.Write(p) // bytes.Buffer's Write never returns an error (it panics when out of memory)
 	return n, nil
 }
 
@@ -50,51 +50,56 @@ func runUpWrapper(ctx context.Context, args []string) int {
 	input, ok := verbs.ParseSetup(args, os.Getenv("NOVA_SPRINT_AS"))
 	if !ok {
 		r := (&verbs.Engine{Actor: os.Getenv("NOVA_SPRINT_AS")}).Execute(ctx, append([]string{"up"}, args...))
-		_, _ = fmt.Fprint(os.Stdout, r.Output)
-		return r.Exit
+		return emit(r.Output, r.Exit)
 	}
 	if input.Continuation != "" {
-		fmt.Fprintln(os.Stdout, "SPRINT REFUSED up: invalid arguments: nova-sprint help up")
-		return 1
+		return emit("SPRINT REFUSED up: --continuation is the second phase's own flag, never given by hand: nova-sprint help up\n", 1)
 	}
 	if os.Getenv("NOVA_PG_ADMIN_PASSWORD") != "" || os.Getenv("NOVA_SPRINT_PG_PASSWORD") != "" {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: invoke the setup wrapper without database credentials")
+		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: invoke the setup wrapper without database credentials (NOVA_PG_ADMIN_PASSWORD and NOVA_SPRINT_PG_PASSWORD must be unset; each phase gets its own from nova-secrets)")
 		return 1
 	}
 	cfg, err := productionSetupConfigFromEnv()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: setup configuration unavailable")
+		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: setup configuration unavailable: "+edge.RedactN(err.Error(), edge.CommandMax))
 		return 1
 	}
 	p := productionSetup{cfg: cfg}
 	if err = p.configError(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: "+edge.RedactN(err.Error(), edge.CommandMax))
 		return 1
 	}
 	if _, err = setupRoleDSN(cfg.DSN, "nova_admin"); err != nil {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: configure a passwordless NOVA_PG_DSN")
+		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: configure a passwordless NOVA_PG_DSN ("+edge.RedactN(err.Error(), edge.CommandMax)+")")
 		return 1
 	}
 	status, output, code := runUpChild(ctx, cfg, "NOVA_PG_ADMIN_PASSWORD", "--internal-up-phase1", args, true)
 	if code != 0 {
-		_, _ = fmt.Fprint(os.Stdout, output)
-		return code
+		return emit(output, code)
 	}
 	if status == "" {
 		if output == "" {
-			fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: missing child result")
+			fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: the first phase exited 0 with no output and no continuation (a bug: take it to the project's own tracker)")
 			return 2
 		}
-		_, _ = fmt.Fprint(os.Stdout, output)
-		return 0
+		return emit(output, 0)
 	}
 	if !continuationID.MatchString(status) {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: invalid continuation status")
+		fmt.Fprintf(os.Stderr, "SPRINT REFUSED up: invalid continuation status %q (want 64 hex digits)\n", edge.Redact(status))
 		return 2
 	}
 	next := append(append([]string{}, args...), "--continuation", status)
 	_, output, code = runUpChild(ctx, cfg, "NOVA_SPRINT_PG_PASSWORD", "--internal-up-phase2", next, false)
-	_, _ = fmt.Fprint(os.Stdout, output)
+	return emit(output, code)
+}
+
+// emit writes a phase's output on stdout and returns code; when stdout
+// cannot take it, the output and why go to stderr and the exit is 2.
+func emit(output string, code int) int {
+	if _, err := fmt.Fprint(os.Stdout, output); err != nil {
+		fmt.Fprintf(os.Stderr, "SPRINT REFUSED up: cannot write to stdout (%s); the output was: %s", edge.Redact(err.Error()), output)
+		return 2
+	}
 	return code
 }
 func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string, args []string, channel bool) (string, string, int) {

@@ -27,7 +27,7 @@ func setupBusCommand(cfg productionSetupConfig, required func(context.Context) (
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			return nil, fmt.Errorf("bus secret names unavailable%s", verbs.ToolDetail(err))
+			return nil, fmt.Errorf("bus secret names unavailable: %w", err)
 		}
 		present, err := setupBusKeyPresent(out)
 		if err != nil {

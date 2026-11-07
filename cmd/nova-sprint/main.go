@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 )
@@ -53,6 +54,8 @@ func executeVerb(ctx context.Context, args []string, phase string) int {
 	defer closeAll()
 	r := e.Execute(ctx, args)
 	if _, err := fmt.Fprint(os.Stdout, r.Output); err != nil {
+		// stdout is gone: the result and why it was lost go to stderr
+		fmt.Fprintf(os.Stderr, "nova-sprint: cannot write the result to stdout (%s); it was: %s", edge.Redact(err.Error()), r.Output)
 		return 2
 	}
 	return r.Exit
@@ -69,6 +72,7 @@ func busReply() int {
 	defer cancel()
 	b := bus.New(bus.Config{Bin: busBinary(), Sender: "sprint", Env: toolEnvironment(os.Environ(), "nova-bus")})
 	if _, err := b.Reply(ctx, sender, id, "REPLY", "replies are verbs: run nova-sprint next --as "+sender); err != nil {
+		fmt.Fprintln(os.Stderr, "nova-sprint bus-reply: cannot reply to "+edge.Redact(sender)+": "+edge.RedactN(err.Error(), edge.CommandMax))
 		return 1
 	}
 	return 0

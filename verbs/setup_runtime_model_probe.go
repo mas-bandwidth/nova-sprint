@@ -84,7 +84,10 @@ func (m ModelProbeCommand) Run(ctx context.Context, service string) error {
 		run = quietCommand
 	}
 	if err := run(ctx, "nova-secrets", args...); err != nil {
-		return fmt.Errorf("model-list probe failed%s", ToolDetail(err))
+		if r := AsRefusal(err); r != nil {
+			return r
+		}
+		return fmt.Errorf("model-list probe failed: %w", err)
 	}
 	return nil
 }

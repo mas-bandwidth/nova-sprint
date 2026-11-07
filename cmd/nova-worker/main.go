@@ -5,6 +5,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -39,7 +40,10 @@ func run_internal(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&c.ProviderKey, "provider-key", "", "nova-secrets name of the provider key (required with --provider-upstream)")
 	fs.BoolVar(&c.Once, "once", false, "run one reconciliation/step pass and exit")
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2 // the flag set has written err and the usage on stderr
 	}
 	sysHost, _ := os.Hostname()
 	c.Host = cmp.Or(strings.TrimSpace(c.Host), sysHost)

@@ -75,3 +75,21 @@ func TestRedactIsIdempotent(t *testing.T) {
 		t.Fatalf("%q then %q", once, twice)
 	}
 }
+
+// A failed child's stderr reaches its CommandError whole: every non-empty
+// line but nova-secrets' banner, joined, redacted, the first lines kept
+// when it is cut; nova-secrets' own refusals stay.
+func TestFailureCarriesEveryStderrLineButTheBanner(t *testing.T) {
+	stderr := "SECRETS EXEC STARTING as=x keys=1 cmd=nova-sprint\n! SECRETS EXEC OK as=x keys=1\nnova-sprint: refused: one\n\nnova-sprint: fix: two\nthree NOVA_PG_PASSWORD=hunter2\nfour\nSECRETS EXEC FAIL invocation: missing '--'\n"
+	err := Failure([]string{"nova-secrets", "exec"}, nil, 1, "", stderr, nil)
+	if err.Stderr != "nova-sprint: refused: one | nova-sprint: fix: two | three NOVA_PG_PASSWORD=<redacted> | four | SECRETS EXEC FAIL invocation: missing '--'" {
+		t.Fatalf("%q", err.Stderr)
+	}
+	if !strings.Contains(err.Error(), err.Stderr[:40]) || strings.Contains(err.Error(), "hunter2") {
+		t.Fatal(err)
+	}
+	long := StderrLines("cause\n" + strings.Repeat("x y ", 2000) + "\nlast\n")
+	if len(long) > StderrMax+3 || !strings.HasPrefix(long, "cause | x y") || strings.Contains(long, "last") {
+		t.Fatalf("%d %q", len(long), long[:20])
+	}
+}

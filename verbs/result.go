@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -93,6 +94,10 @@ func classify(err error) *Fail {
 	case errors.Is(err, store.ErrInvalid):
 		return broken("nova-sprint built an invalid op ("+clip(err.Error())+")", "take it to the project's own tracker with this line")
 	}
+	if r := AsRefusal(err); r != nil {
+		// an internal child's refusal, read back from its stderr
+		return classify(r)
+	}
 	return broken(clip(err.Error()), "run nova-sprint check, then the verb again")
 }
 
@@ -125,11 +130,12 @@ func oneLine(s string) string {
 	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
 }
 
-// clip is a foreign error's text on one line, bounded.
+// clip is s on one line, bounded at edge.CommandMax: long enough for a
+// failed child's whole cause, which is the output that resolves it.
 func clip(s string) string {
 	s = oneLine(s)
-	if len(s) > 240 {
-		s = s[:240] + "..."
+	if len(s) > edge.CommandMax {
+		s = s[:edge.CommandMax] + "..."
 	}
 	return s
 }

@@ -22,9 +22,16 @@ const (
 	// RedactMax bounds one redacted fragment (a stderr line, a parse's
 	// first bytes).
 	RedactMax = 200
-	// FailureMax bounds a whole CommandError line so a refusal stays one
-	// readable line.
+	// FailureMax bounds a refusal's own words (a Problem built from a
+	// cause) so a refusal stays one readable line.
 	FailureMax = 300
+	// StderrMax bounds the stderr a failed child's refusal carries: every
+	// non-empty line, so the child's own cause (its refusal, its Fix) reaches
+	// the terminal; the first lines are kept over the last when it is cut.
+	StderrMax = 2000
+	// CommandMax bounds a whole CommandError line: the command, the exit,
+	// the child's stderr and the first lines of its stdout.
+	CommandMax = StderrMax + FailureMax + 100
 )
 
 var (
@@ -94,6 +101,26 @@ func LastLine(out string) string {
 	return ""
 }
 
+// secretsBanner is nova-secrets exec's own announcement on stderr (SECRETS
+// EXEC STARTING, or OK in older releases): never a cause, so a child's
+// refusal leaves it out. Its refusals (SECRETS EXEC FAIL, REFUSED) are kept.
+var secretsBanner = regexp.MustCompile(`^!?\s*SECRETS EXEC (STARTING|OK)\b`)
+
+// StderrLines is every non-empty line a child wrote on stderr except
+// nova-secrets' banner, each redacted, joined by " | " and bounded to
+// StderrMax bytes, the first lines kept over the last: the child's whole
+// cause on one line.
+func StderrLines(out string) string {
+	var keep []string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l == "" || secretsBanner.MatchString(l) {
+			continue
+		}
+		keep = append(keep, l)
+	}
+	return RedactN(strings.Join(keep, " | "), StderrMax)
+}
+
 // Head is the first n non-empty lines of out joined by " | ", redacted and
 // bounded to max bytes; when out has more lines, its last line follows
 // " ... " (a tool's error is often its last line).
@@ -144,8 +171,9 @@ func CommandLine(argv, env []string) string {
 }
 
 // CommandError is a child that failed: its redacted command line, its exit
-// code (-1 when it never exited on its own) and the first lines of its
-// stdout and stderr, redacted. Err is the run's own error (a timeout, a
+// code (-1 when it never exited on its own), every line of its stderr but
+// nova-secrets' banner (StderrLines) and the first lines of its stdout,
+// redacted. Err is the run's own error (a timeout, a
 // missing binary), or nil when the child only exited non-zero.
 type CommandError struct {
 	Command        string
@@ -173,8 +201,8 @@ func (e *CommandError) Error() string {
 		}
 	}
 	s := b.String()
-	if len(s) > FailureMax {
-		s = s[:FailureMax] + "..."
+	if len(s) > CommandMax {
+		s = s[:CommandMax] + "..."
 	}
 	return s
 }
@@ -198,8 +226,8 @@ func Failure(argv, env []string, exit int, stdout, stderr string, err error) *Co
 	return &CommandError{
 		Command: CommandLine(argv, env),
 		Exit:    exit,
-		Stdout:  Head(stdout, 2, 100),
-		Stderr:  Head(stderr, 3, 140),
+		Stdout:  Head(stdout, 2, FailureMax),
+		Stderr:  StderrLines(stderr),
 		Err:     err,
 	}
 }
@@ -261,6 +289,6 @@ type causeError struct {
 }
 
 func (c *causeError) Error() string {
-	return c.what + ": " + RedactN(c.err.Error(), FailureMax+100)
+	return c.what + ": " + RedactN(c.err.Error(), CommandMax+100)
 }
 func (c *causeError) Unwrap() error { return c.err }
