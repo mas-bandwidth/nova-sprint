@@ -53,12 +53,16 @@ func (e *Engine) Answer(vs Versions, snap store.Snapshot, ro roster.Roster, q Qu
 // row's name; a row ro does not name is in no question (Judgements reports
 // it).
 func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snapshot, ro roster.Roster, q Questions) (Answers, []Failure) {
+	start := e.clock.Now() // the tick's first byte: the deadline and the fallback count from here
 	if vs.Seq != 0 && vs.Seq != snap.Seq {
 		return Answers{Version: -1}, []Failure{{Version: -1, Label: "tick", Msg: fmt.Sprintf("versions read at seq %d, snapshot at %d: reload", vs.Seq, snap.Seq)}}
 	}
-	ctx, cancel := context.WithTimeout(ctx, TickTime)
-	defer cancel()
 	tried := vs.tried(e.builtin)
+	if e.proc != nil {
+		return e.remote(ctx, start, request{Kind: "tick", Versions: vs, Snap: snap, Roster: ro, Q: q}, tried)
+	}
+	ctx, cancel := e.deadline(ctx, start)
+	defer cancel()
 	asks := newIndex(snap, ro).asks(ctx, q)
 	if ctx.Err() != nil { // the inputs alone spent the deadline: every version tried fails
 		fs := make([]Failure, len(tried))
@@ -67,7 +71,7 @@ func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snap
 		}
 		return Answers{Version: -1}, fs
 	}
-	return e.race(ctx, tried, asks)
+	return e.race(ctx, start, tried, asks)
 }
 
 // Judgements are the judgements a tick opens: one per failing version with

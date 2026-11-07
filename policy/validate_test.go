@@ -17,7 +17,7 @@ import (
 // refusedBy runs a tick with body as v2 on w and returns its one failure.
 func refusedBy(t *testing.T, w *world, body string) Failure {
 	t.Helper()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	a, fs := testEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Len(t, fs, 1)
 	assert.Equal(t, 0, a.Version, "the default answered the tick")
 	return fs[0]
@@ -110,7 +110,7 @@ func TestRefuseYesWithNoOk(t *testing.T) {
 	body, line := override("verdict", "def verdict(card, reads):\n    return \"yes\"")
 	f := refusedBy(t, w, body)
 	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "yes" with no ok read`, line), f.Error())
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, defaultBody)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	a, fs := testEngine().Answer(Versions{Active: pv(2, defaultBody)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, "fix", a.Verdict["p3"], "the default: any fix read means fix")
 }
@@ -185,7 +185,7 @@ func FuzzAnswers(f *testing.F) {
 		for _, q := range questionNames {
 			fmt.Fprintf(&body, "def %s(%s):\n    return %s\n\n", q, params[q], g.lit(0))
 		}
-		a, fs := NewEngine().Answer(Versions{Active: pv(2, body.String())}, snap, w.ro, FullQuestions(snap, nil))
+		a, fs := testEngine().Answer(Versions{Active: pv(2, body.String())}, snap, w.ro, FullQuestions(snap, nil))
 		if a.Version == 2 {
 			require.Empty(t, fs)
 			inDomain(t, snap, w.ro, a)

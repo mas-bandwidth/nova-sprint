@@ -6,7 +6,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 
 	"go.starlark.net/starlark"
 
@@ -35,7 +34,8 @@ const CatalogFix = "nova-sprint policy set <file> --reason <why>"
 // has the built-in's, and its Version is 0, the catalog that answered, as
 // in a tick's Answers (ruling 7). An unknown or negative version, or one of
 // kind data, is a Refusal naming the list. Each call returns its own copy.
-func ReadCatalog(ctx context.Context, st store.Store, v int) (Catalog, error) {
+// e runs it (round 5: on e's clock, and in e's evaluator).
+func ReadCatalog(ctx context.Context, st store.Store, e *Engine, v int) (Catalog, error) {
 	pv := store.PolicyVersion{Body: defaultBody}
 	if v != 0 {
 		var err error
@@ -43,17 +43,23 @@ func ReadCatalog(ctx context.Context, st store.Store, v int) (Catalog, error) {
 			return Catalog{}, err
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, TickTime)
-	defer cancel()
-	a, fs := catalogEngine().race(ctx, []source{storedSource(v, pv.Body)}, []ask{catalogAsk(ctx)})
+	a, fs := e.catalog(ctx, storedSource(v, pv.Body))
 	if len(fs) > 0 {
 		return Catalog{}, &fs[0]
 	}
 	return a.Catalog, nil
 }
 
-// catalogEngine is the engine ReadCatalog's requests run in.
-var catalogEngine = sync.OnceValue(NewEngine)
+// catalog is src's catalog, run in this process under a tick's deadline.
+func (e *Engine) catalog(ctx context.Context, src source) (Answers, []Failure) {
+	start := e.clock.Now()
+	if e.proc != nil {
+		return e.remote(ctx, start, request{Kind: "catalog", Src: src.wire()}, []source{src})
+	}
+	ctx, cancel := e.deadline(ctx, start)
+	defer cancel()
+	return e.race(ctx, start, []source{src}, []ask{catalogAsk(ctx)})
+}
 
 // clone is c with its own map and slices.
 func (c Catalog) clone() Catalog {

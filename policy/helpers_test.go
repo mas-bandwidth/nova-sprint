@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,6 +51,27 @@ func handRoster(rcs ...rc) roster.Roster {
 	}
 	return ro
 }
+
+// fakeClock is the unit tests' clock: Now never moves from t0, and After
+// fires only once expire is called (every wait at once, then at once from
+// then on). A test that never expires it never reaches a deadline.
+type fakeClock struct {
+	once sync.Once
+	fire chan time.Time
+}
+
+func newFakeClock() *fakeClock { return &fakeClock{fire: make(chan time.Time)} }
+
+func (c *fakeClock) Now() time.Time { return t0 }
+
+func (c *fakeClock) After(time.Duration) <-chan time.Time { return c.fire }
+
+// expire makes every After fire: the tick's deadline (and the early
+// fallback) has passed.
+func (c *fakeClock) expire() { c.once.Do(func() { close(c.fire) }) }
+
+// testEngine is an engine on a fake clock that never expires.
+func testEngine() *Engine { return NewEngine(newFakeClock()) }
 
 // configure adds c to the world's roster, as nova-config would.
 func (w *world) configure(c rc) {
@@ -143,7 +165,7 @@ func (w *world) file(name, body string) string {
 // set stores body as the next version and requires it; it returns the version.
 func (w *world) set(name, body string) int {
 	w.t.Helper()
-	r, err := Set(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), w.file(name, body), "test")
+	r, err := Set(w.ctx(), w.st, w.ro, testEngine(), w.caller(), w.file(name, body), "test")
 	require.NoError(w.t, err)
 	return r.Version
 }

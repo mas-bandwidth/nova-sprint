@@ -398,7 +398,7 @@ func classify(dir string, idx int, body string, res fuzzResult) fuzzResult {
 		res.class, res.msg = "harness-error", err.Error()
 		return res
 	}
-	r, err := Set(ctx, st, seedRoster(), NewEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(2 * time.Hour)}, path, "fuzz")
+	r, err := Set(ctx, st, seedRoster(), testEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(2 * time.Hour)}, path, "fuzz")
 	if err != nil {
 		var rf *Refusal
 		if !errors.As(err, &rf) {
@@ -417,7 +417,7 @@ func classify(dir string, idx int, body string, res fuzzResult) fuzzResult {
 		return res
 	}
 	big, ro := fuzzBigSnapshot()
-	a, fs := NewEngine().Answer(Versions{Active: pv(r.Version, body)}, big, ro, FullQuestions(big, nil))
+	a, fs := testEngine().Answer(Versions{Active: pv(r.Version, body)}, big, ro, FullQuestions(big, nil))
 	switch {
 	case len(fs) > 0:
 		res.class, res.msg = "accepted-then-fails", fs[0].Error()
@@ -466,7 +466,7 @@ func TestFuzzPolicyReplay(t *testing.T) {
 	big, ro := fuzzBigSnapshot()
 	for k := 0; k < 3; k++ {
 		start := time.Now()
-		_, fs := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, ro, FullQuestions(big, nil))
+		_, fs := testEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, ro, FullQuestions(big, nil))
 		t.Logf("default cold tick %d: %s, refusals %d", k, time.Since(start), len(fs))
 	}
 }
@@ -531,7 +531,7 @@ func setMissing(t *testing.T) *Refusal {
 	if err := os.WriteFile(path, []byte(fuzzWithoutDef("limits")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Set(context.Background(), st, seedRoster(), NewEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(time.Hour)}, path, "fuzz")
+	_, err = Set(context.Background(), st, seedRoster(), testEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(time.Hour)}, path, "fuzz")
 	var rf *Refusal
 	if !errors.As(err, &rf) {
 		t.Fatalf("want a refusal, got %v", err)
@@ -566,6 +566,7 @@ func TestFuzzPolicyRefusalNamesLine(t *testing.T) {
 // largest snapshot must fit TickTime while the machine is busy. Eight ticks at
 // once (the fuzz's own parallelism) on the default: none may fail.
 func TestFuzzPolicyDefaultTickUnderLoad(t *testing.T) {
+	breakTiming(t)
 	big, ro := fuzzBigSnapshot()
 	var wg sync.WaitGroup
 	errs := make(chan string, 8)
@@ -574,7 +575,7 @@ func TestFuzzPolicyDefaultTickUnderLoad(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			start := time.Now()
-			_, fs := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, ro, FullQuestions(big, nil))
+			_, fs := timedEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, ro, FullQuestions(big, nil))
 			if len(fs) > 0 {
 				errs <- fmt.Sprintf("%s (after %s)", fs[0].Error(), time.Since(start))
 			}

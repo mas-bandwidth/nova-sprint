@@ -86,7 +86,10 @@ func (e *Engine) runFile(name, body string, snap store.Snapshot, ro roster.Roste
 // checkRun runs src on every question snap poses, under a tick's deadline,
 // collecting every failure and the answers' text; nothing is cached.
 func (e *Engine) checkRun(ctx context.Context, src source, snap store.Snapshot, ro roster.Roster) (Answers, []Failure) {
-	ctx, cancel := context.WithTimeout(ctx, TickTime)
+	if e.proc != nil {
+		return e.remote(ctx, e.clock.Now(), request{Kind: "check", Src: src.wire(), Snap: snap, Roster: ro}, []source{src})
+	}
+	ctx, cancel := e.deadline(ctx, e.clock.Now())
 	defer cancel()
 	asks := newIndex(snap, ro).asks(ctx, bothRungs(FullQuestions(snap, nil)))
 	o := e.start(ctx, src, asks, true).await(nil, func() {})

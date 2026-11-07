@@ -82,11 +82,12 @@ func pgBin(t testing.TB) string {
 // timing contends for the cores. The number is in LAYER-5's Built section.
 func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for the cores
 	if raceSlowdown > 1 {
+		breakTiming(t)
 		t.Skip("timing under -race measures the race detector")
 	}
 	snap, ro := loadSnap(5000, 100)
 	q := FullQuestions(snap, nil)
-	e := NewEngine()
+	e := timedEngine()
 	vs := Versions{Active: pv(1, defaultBody)}
 	start := time.Now()
 	a, fs := e.Answer(vs, snap, ro, q)

@@ -83,7 +83,7 @@ func newPolicyTrace(t testing.TB) *policyTrace {
 	}
 	w.apply(writes...)
 	w.up()
-	tr := &policyTrace{w: w, e: NewEngine()}
+	tr := &policyTrace{w: w, e: testEngine()}
 	tr.e.builtin = breaking(0)
 	tr.record("Init")
 	return tr

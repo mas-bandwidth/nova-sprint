@@ -92,7 +92,7 @@ func TestRuntimeForbidden(t *testing.T) {
 		{"frozen global", frozen, fmt.Sprintf("POLICY REFUSED v2 line %d order(p1): append: cannot append to frozen list", frozenLine+2)},
 		{"step budget", unbounded, fmt.Sprintf("POLICY REFUSED v2 line %d order(p1): over the step budget of 1000000", budgetLine+1)},
 	} {
-		a, fs := NewEngine().Answer(Versions{Active: pv(2, tc.body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+		a, fs := testEngine().Answer(Versions{Active: pv(2, tc.body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 		require.Len(t, fs, 1, tc.name)
 		assert.Equal(t, tc.want, fs[0].Error(), tc.name)
 		assert.Equal(t, 0, a.Version, "%s: the default answered", tc.name)
@@ -104,7 +104,7 @@ func TestRuntimeForbidden(t *testing.T) {
 func TestCompileOncePerVersion(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
-	e := NewEngine()
+	e := testEngine()
 	for range 5 {
 		a, fs := e.Answer(Versions{Active: pv(1, defaultBody)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 		require.Empty(t, fs)
@@ -119,11 +119,11 @@ func TestDeterministic(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	q := FullQuestions(w.snap(), nil)
-	first, fs := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, w.snap(), w.ro, q)
+	first, fs := testEngine().Answer(Versions{Active: pv(1, defaultBody)}, w.snap(), w.ro, q)
 	require.Empty(t, fs)
-	cached := NewEngine()
+	cached := testEngine()
 	for range 20 {
-		again, _ := NewEngine().Answer(Versions{Active: pv(1, defaultBody)}, w.snap(), w.ro, q)
+		again, _ := testEngine().Answer(Versions{Active: pv(1, defaultBody)}, w.snap(), w.ro, q)
 		assert.Equal(t, first, again)
 		warm, _ := cached.Answer(Versions{Active: pv(1, defaultBody)}, w.snap(), w.ro, q)
 		assert.Equal(t, first, warm)

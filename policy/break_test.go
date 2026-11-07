@@ -8,6 +8,7 @@ package policy
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -18,11 +19,17 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
+// breakTiming skips a timing probe unless NOVA_LOAD is set, and under
+// -race and -short (round 5: the timing probes read the wall clock, so they
+// run only when asked; every other test is on a fake clock).
 func breakTiming(t *testing.T) {
-	if raceSlowdown > 1 || testing.Short() {
-		t.Skip("a timing probe: run without -race and -short")
+	if os.Getenv("NOVA_LOAD") == "" || raceSlowdown > 1 || testing.Short() {
+		t.Skip("a timing probe: set NOVA_LOAD=1, without -race and -short")
 	}
 }
+
+// timedEngine is a timing probe's engine, on the wall clock.
+func timedEngine() *Engine { return NewEngine(RealClock{}) }
 
 // bound is the most a tick may take by the Built section: "a tick in which
 // every version spends its budget takes at most three budgets", plus slack.
@@ -60,7 +67,7 @@ func TestBreakTopLevelHasNoTimeBudget(t *testing.T) {
 	w := fakeWorld(t)
 	snap := w.snap()
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+	a, fs := timedEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	t.Logf("top-level sort of 30M: tick took %s, answered by %d, failures %v", took, a.Version, fs)
 	assert.Less(t, took, bound, "the tick must be bounded by its budgets")
@@ -79,7 +86,7 @@ func TestBreakOneBuiltinOutlastsTickTime(t *testing.T) {
 	w := fakeWorld(t)
 	snap := w.snap()
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+	a, fs := timedEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	t.Logf("one sorted(range(30M)) in limits: tick took %s, answered by %d, failures %v", took, a.Version, fs)
 	assert.Less(t, took, bound)
@@ -99,7 +106,7 @@ func TestBreakHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
 	w := fakeWorld(t)
 	snap := w.snap()
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
+	a, fs := timedEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	require.NotEmpty(t, fs)
 	t.Logf("huge int in width: tick took %s, answered by %d, failure text %d bytes", took, a.Version, len(fs[0].Msg))
@@ -117,7 +124,7 @@ func TestBreakCatalogValidationQuadratic(t *testing.T) {
     return {"models": {"p": [{"name": "m" + str(i), "tier": "flash"} for i in range(40000)]}, "harnesses": ["claude"]}`)
 	w := fakeWorld(t)
 	snap := w.snap()
-	e := NewEngine()
+	e := timedEngine()
 	vs := Versions{Active: pv(2, body)}
 	start := time.Now()
 	a, fs := e.Answer(vs, snap, w.ro, FullQuestions(snap, nil))
@@ -141,7 +148,7 @@ func TestBreakCatalogValidationQuadratic(t *testing.T) {
 func TestBreakBudgetOutcomeDependsOnCacheHistory(t *testing.T) {
 	snap, ro := loadSnap(80, 2)
 	body, _ := override("order", "def order(card):\n    for _i in range(50000):\n        pass\n    return (card.score,)")
-	e := NewEngine()
+	e := testEngine()
 	vs := Versions{Active: pv(2, body)}
 	q := FullQuestions(snap, nil)
 	var by []int
@@ -167,7 +174,7 @@ func TestBreakDefaultSpendsTickBudgetAt100Rows(t *testing.T) {
 	breakTiming(t)
 	snap, ro := loadSnap(5000, 100)
 	start := time.Now()
-	e := NewEngine()
+	e := timedEngine()
 	a, fs := e.Answer(Versions{}, snap, ro, FullQuestions(snap, nil))
 	t.Logf("built-in at 5000 producers x 100 rows: %s, answered by %d, failures %v", time.Since(start), a.Version, fs)
 	a2, fs2 := e.Answer(Versions{}, snap, ro, FullQuestions(snap, nil))

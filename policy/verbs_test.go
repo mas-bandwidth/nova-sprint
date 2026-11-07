@@ -57,7 +57,7 @@ func testUp(t *testing.T, w *world) {
 }
 
 func testSetRefusals(t *testing.T, w *world) {
-	e := NewEngine()
+	e := testEngine()
 	good := w.file("good.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1))
 	r := refusal(t, setErr(w, e, good))
 	assert.Equal(t, "SPRINT REFUSED policy set: no policy is active: nova-sprint up", r)
@@ -99,7 +99,7 @@ func setErr(w *world, e *Engine, path string) error {
 func testSet(t *testing.T, w *world) {
 	w.up()
 	before := w.snap()
-	r, err := Set(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), w.file("two-reads.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)), "two reads")
+	r, err := Set(w.ctx(), w.st, w.ro, testEngine(), w.caller(), w.file("two-reads.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)), "two reads")
 	require.NoError(t, err)
 	assert.Equal(t, Result{Version: 2, Next: "nova-sprint policy check v2"}, r)
 	after := w.snap()
@@ -112,7 +112,7 @@ func testSet(t *testing.T, w *world) {
 }
 
 func testActivateRefusals(t *testing.T, w *world) {
-	e := NewEngine()
+	e := testEngine()
 	w.up()
 	kin := w.caller()
 	kin.Coordinator = false
@@ -137,7 +137,7 @@ func testActivate(t *testing.T, w *world) {
 	w.up()
 	v := w.set("two-reads.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1))
 	before := w.snap()
-	r, err := Activate(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), v, "two reads")
+	r, err := Activate(w.ctx(), w.st, w.ro, testEngine(), w.caller(), v, "two reads")
 	require.NoError(t, err)
 	assert.Equal(t, Result{Version: 2, Changes: 2, Next: "nova-sprint next"}, r, "reads(p3) and reads(p5) change")
 	after := w.snap()
@@ -147,7 +147,7 @@ func testActivate(t *testing.T, w *world) {
 	require.NoError(t, err)
 	require.NotNil(t, vs.Prev)
 	assert.Equal(t, []int{2, 1}, []int{vs.Active.Version, vs.Prev.Version})
-	_, err = Activate(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), 1, "roll back")
+	_, err = Activate(w.ctx(), w.st, w.ro, testEngine(), w.caller(), 1, "roll back")
 	require.NoError(t, err, "a rollback is an activation of an old number")
 	vs, err = LoadVersions(w.ctx(), w.st, w.snap())
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func testShow(t *testing.T, w *world) {
 }
 
 func testCheck(t *testing.T, w *world) {
-	e := NewEngine()
+	e := testEngine()
 	w.up()
 	rep, err := Check(w.ctx(), w.st, w.ro, e, w.file("two.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1)))
 	require.NoError(t, err)
