@@ -1,0 +1,20 @@
+# Throwaway probe of the runners' CI rules (nova-tools fleet/README.md, "CI rules"); never merged.
+# push to this branch: refused by the job-started hook (not main, sprint/<stream> or a tag).
+# pull_request: a per-commit job that outlives the 2m limit, killed by the watchdog.
+name: ci-rule-probe
+on:
+  push:
+    branches: [rowan/ci-rule-probe]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64, bench]
+    timeout-minutes: 6
+    steps:
+      - name: outlive the per-commit limit
+        run: |
+          echo "event=$GITHUB_EVENT_NAME ref=$GITHUB_REF runner=$RUNNER_NAME"
+          for i in $(seq 1 20); do echo "alive at $((i * 10))s"; sleep 10; done
+          echo "not killed"
