@@ -154,8 +154,11 @@ func TestColdreadDefectNonZeroExitBecomesFault(t *testing.T) {
 	if err := r.harvestStep_internal(context.Background(), job, &rec, res, runErr); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Outcome.Result != "fail" {
-		t.Errorf("harness exited 1 with no result file: want fail, got %s (%s)", rec.Outcome.Result, rec.Outcome.Reason)
+	// A read reports ok, fix or fault (the store refuses "fail" for a read,
+	// defect 67); a harness that exits with no verdict is a fault of the
+	// harness, bounded by the fault limit, never a verdict on the head.
+	if rec.Outcome.Result != "fault" {
+		t.Errorf("read harness exited 1 with no result file: want fault, got %s (%s)", rec.Outcome.Result, rec.Outcome.Reason)
 	}
 }
 

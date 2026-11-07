@@ -293,7 +293,7 @@ func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
 		argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
 	}
 	argv = append(argv, "--wait", cmp.Or(cfg.ReserveWait, 5*time.Second).String(), "--why", cmp.Or(j.Consumer, "probe"), "--", cmp.Or(cfg.SandboxBin, "nova-sandbox"), "--write", j.JobDir)
-	argv = append(argv, "--unix") // LOCAL DOGFOOD STOPGAP: opencode's own server needs AF_UNIX; without it the wall kills it at startup (defect 32)
+	argv = append(argv, "--unix")                                            // LOCAL DOGFOOD STOPGAP: opencode's own server needs AF_UNIX; without it the wall kills it at startup (defect 32)
 	for _, name := range []string{"DEEPSEEK_API_KEY", "INCEPTION_API_KEY"} { // LOCAL DOGFOOD STOPGAP (Glenn 2026-11-07: move on): the key rides into the wall
 		if os.Getenv(name) != "" {
 			argv = append(argv, "--env", name)

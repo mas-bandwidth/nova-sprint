@@ -5,10 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/card"
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
-	"github.com/mas-bandwidth/nova-sprint/store"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +15,11 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 var (
@@ -126,6 +127,8 @@ type Runner struct {
 	Now                                func() time.Time
 	Sleep                              func(time.Duration)
 	mu                                 *sync.Mutex
+	fatal                              chan error      // a refused receipt from a detached job ends the wake loop (66)
+	jobs                               *sync.WaitGroup // every job a pass launched, waited for when the loop ends
 	probed, withdrawn                  map[string]bool
 	adopted                            map[string]JobRecord
 	running                            map[string]context.CancelFunc
@@ -435,16 +438,29 @@ func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
 	loopCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	passDone, running, pending := make(chan error, 1), false, true
+	// Defect 66: a pass every 10 s as well as on each wake, so a ready card
+	// never waits on a missed push (Glenn: a ready card never sits).
+	poll := time.NewTicker(10 * time.Second)
+	defer poll.Stop()
+	r.mu.Lock()
+	if r.fatal == nil {
+		r.fatal = make(chan error, 1)
+	}
+	if r.jobs == nil {
+		r.jobs = &sync.WaitGroup{}
+	}
+	r.mu.Unlock()
 	wait := func() {
+		cancel()
 		if running {
-			cancel()
 			<-passDone
 		}
+		r.jobsGroup_internal().Wait() // detached jobs end with the loop, as the pass's jobs always did
 	}
 	for {
 		if pending && !running {
 			pending, running = false, true
-			go func() { passDone <- r.StepRow(loopCtx, row) }()
+			go func() { passDone <- r.stepRow_internal(loopCtx, row, true) }()
 		}
 		select {
 		case <-ctx.Done():
@@ -452,6 +468,11 @@ func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
 			return nil
 		case <-hook.Wake():
 			pending = true
+		case <-poll.C:
+			pending = true
+		case err := <-r.fatal: // a refused receipt from a detached job (66)
+			wait()
+			return err
 		case err := <-passDone:
 			running = false
 			if err != nil {
@@ -472,7 +493,23 @@ func ignoreStoreDown_internal(err error) error {
 	}
 	return err
 }
+
+// StepRow is one synchronous pass: it waits for the jobs it launches (the
+// --once form and the tests). The wake loop uses stepRow_internal detached.
 func (r *Runner) StepRow(ctx context.Context, row string) error {
+	return r.stepRow_internal(ctx, row, false)
+}
+
+func (r *Runner) jobsGroup_internal() *sync.WaitGroup {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.jobs == nil {
+		r.jobs = &sync.WaitGroup{}
+	}
+	return r.jobs
+}
+
+func (r *Runner) stepRow_internal(ctx context.Context, row string, detach bool) error {
 	if err := r.RecoverRow(ctx, row); err != nil {
 		return ignoreStoreDown_internal(err)
 	}
@@ -491,20 +528,43 @@ func (r *Runner) StepRow(ctx context.Context, row string) error {
 			toLaunch = append(toLaunch, c)
 		}
 	}
+	// Defect 66 (dogfood 2026-11-07): a pass never waits on the jobs it
+	// launches. With wg.Wait() here one long job held the whole row: no
+	// take until it ended, every bench frozen at what its first pass
+	// launched. Jobs run detached (beginConsumer tracks them; a job's
+	// error is logged on its own line) and the pass returns at once.
 	var wg sync.WaitGroup
 	var errMu sync.Mutex
 	var firstErr error
 	for _, c := range toLaunch {
 		c := c
 		wg.Add(1)
+		jobs := r.jobsGroup_internal()
+		jobs.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := r.RunConsumer(ctx, next, c); err != nil && !errors.Is(err, ErrNoSlot) && !errors.Is(err, ErrStoreDown) {
+			defer jobs.Done()
+			err := r.RunConsumer(ctx, next, c)
+			if err == nil || errors.Is(err, ErrNoSlot) || errors.Is(err, ErrStoreDown) {
+				return
+			}
+			if !detach {
 				errMu.Lock()
 				firstErr = cmp.Or(firstErr, err)
 				errMu.Unlock()
+				return
+			}
+			r.logStep_internal(row, c.ID, "job", "error: "+err.Error(), 0)
+			if errors.Is(err, ErrReceipt) {
+				select {
+				case r.fatal <- err:
+				default:
+				}
 			}
 		}()
+	}
+	if detach {
+		return nil
 	}
 	wg.Wait()
 	return firstErr
@@ -624,8 +684,40 @@ func (r *Runner) stageStep_internal(ctx context.Context, job *Job, rec *JobRecor
 	}
 	rec.State = JobStaged
 	_ = WriteJobRecord(job.JobDir, *rec)
+	writeJobMD_internal(*job) // defect 68: the prompt says "read $JOB/JOB.md first"; nothing wrote it
 	r.logStep_internal(job.Row, job.Consumer, "stage", "ok", r.Now().Sub(start))
 	return nil
+}
+
+// writeJobMD_internal writes JOB.md in the job directory: what the card is,
+// where the staged checkout is, and how the card finishes (the verdict file;
+// the worker pushes and reports, the harness never does).
+func writeJobMD_internal(j Job) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\nkind: %s (%s)\nrepository: %s\nbase: %s\n", j.Consumer, j.Kind, j.Tier, j.Repo, j.Base)
+	fmt.Fprintf(&b, "checkout: %s (a full clone at the base", j.WorktreeDir)
+	if j.Kind == "work" {
+		fmt.Fprintf(&b, ", on branch %s; commit there, never push)\n", j.Branch)
+	} else {
+		fmt.Fprintf(&b, "; detached at the head under review %s; edit no tracked file)\n", j.Head)
+	}
+	if len(j.Paths) > 0 {
+		fmt.Fprintf(&b, "paths: %s\n", strings.Join(j.Paths, ", "))
+	}
+	for _, d := range j.DoneWhen {
+		fmt.Fprintf(&b, "done-when: %s\n", d)
+	}
+	fmt.Fprintf(&b, "\n## How this card finishes\n\nWrite %s/result.json before you exit, then exit 0.\n", j.JobDir)
+	if j.Kind == "work" {
+		b.WriteString("- {\"result\":\"ok\"}: the work is committed on the branch and every done-when command is green.\n")
+		b.WriteString("- {\"result\":\"fail\",\"reason\":\"<what was not done and why>\"}: not done; say what you found.\n")
+		b.WriteString("The worker pushes the branch and reports; you run no git push and no gh.\n")
+	} else {
+		b.WriteString("- {\"result\":\"ok\"}: the head meets the card as written.\n")
+		b.WriteString("- {\"result\":\"fix\",\"finding\":\"<path>:<line>: <defect and repair>\"}: it does not; name every defect.\n")
+		b.WriteString("- {\"result\":\"fault\",\"reason\":\"<why>\"}: you could not judge it (a tool, a build, a missing input).\n")
+	}
+	_ = os.WriteFile(filepath.Join(j.JobDir, "JOB.md"), []byte(b.String()), 0o644)
 }
 func (r *Runner) launchBackoff_internal(attempt int) time.Duration {
 	lo, hi := r.Timeouts.LaunchBackoff1Min, r.Timeouts.LaunchBackoff1Max
@@ -720,6 +812,17 @@ func (r *Runner) harvestStep_internal(ctx context.Context, job Job, rec *JobReco
 		}
 	} else if job.Kind == "read" {
 		out.Head = job.Head
+		// Defect 67 (dogfood 2026-11-07): a read reports ok, fix or fault; the
+		// store refuses "fail" for a read and the job then sat "working" with
+		// no process, re-reported and refused every pass. No verdict file is a
+		// fault of the harness; a verdict of fail/broken is a fix with its reason.
+		if out.Result == "fail" {
+			if strings.Contains(out.Reason, "result.json") {
+				out.Result = "fault"
+			} else {
+				out.Result, out.Finding = "fix", cmp.Or(out.Finding, out.Reason)
+			}
+		}
 	}
 	rec.Outcome, rec.State = out, JobHarvested
 	return WriteJobRecord(job.JobDir, *rec)

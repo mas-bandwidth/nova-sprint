@@ -252,15 +252,20 @@ func (o *oracle) verdict(q VerdictQuestion) string {
 	}
 	v, ok := o.a.Verdict[q.Card.ID]
 	if o.usable("verdict", ok) {
-		if (v == "yes" && has("ok")) || (v == "fix" && has("fix")) {
+		if (v == "yes" && has("ok")) || (v == "fix" && has("fix")) || (v == "retry" && !has("ok") && !has("fix")) {
 			return v
 		}
 		o.refuse("verdict")
 	}
+	// Default (dogfood 2026-11-07, defect 58): yes needs an ok read, fix a fix
+	// read; every read faulted means one more read, never a yes.
 	if has("fix") {
 		return "fix"
 	}
-	return "yes"
+	if has("ok") {
+		return "yes"
+	}
+	return "retry"
 }
 
 // width is width(row): work at most the width, ahead at most 4 x width.
