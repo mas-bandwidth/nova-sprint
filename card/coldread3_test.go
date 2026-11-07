@@ -470,8 +470,8 @@ func cold3Violations(before, after store.Snapshot, entry map[string]string) [][2
 		}
 	}
 	for name, n := range working {
-		if n > after.Rows[name].Width {
-			bad("row over width", "%s holds %d working, width %d", name, n, after.Rows[name].Width)
+		if n > worldWidth[name] {
+			bad("row over width", "%s holds %d working, width %d", name, n, worldWidth[name])
 		}
 	}
 	return out
