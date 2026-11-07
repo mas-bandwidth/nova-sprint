@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func cardTake(row string) card.Event { return card.Take{Row: row} }
-
 // TestTickHappyPath: one producer from waiting to landed, tick by tick,
 // every op accepted (conformance, happy).
 func TestTickHappyPath(t *testing.T) {
@@ -25,7 +23,7 @@ func TestTickHappyPath(t *testing.T) {
 	p = s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1", "working")
-	s.requireState("p1.w1", "ready")
+	s.requireState("p1.w1", "working")
 	assert.Equal(t, "r1", s.card("p1.w1").Holder, "the idle lane with most room, by name")
 	assert.Equal(t, "sprint/s1/p1", s.card("p1.w1").Branch)
 	assert.Equal(t, base, s.card("p1.w1").BaseSHA)
@@ -34,7 +32,7 @@ func TestTickHappyPath(t *testing.T) {
 	p = s.tick()
 	require.Empty(t, s.rejected)
 	s.requireState("p1", "review")
-	s.requireState("p1.r1.1", "ready")
+	s.requireState("p1.r1.1", "working")
 	assert.Equal(t, "r2", s.card("p1.r1.1").Holder, "the rank above the writer's, never the author")
 	s.take("p1.r1.1")
 	s.report("p1.r1.1", "ok", sha(1), "fine")
@@ -158,6 +156,7 @@ func TestTickLandAnswers(t *testing.T) {
 	assert.Equal(t, 2, s.card("p1").Review)
 	assert.Equal(t, "unit fails: fix TestX", s.card("p1").Finding)
 	s.run(2)
+	s.requireState("p1.w2", "working")
 	assert.Equal(t, "unit fails: fix TestX", s.card("p1.w2").Finding, "the fix attempt carries the finding")
 
 	h := newSim(t)
@@ -210,5 +209,5 @@ func TestTickFaultSpendsNothing(t *testing.T) {
 	s.requireState("p1", "ready")
 	assert.Equal(t, 0, s.card("p1").Bounces)
 	s.tick()
-	s.requireState("p1.w2", "ready")
+	s.requireState("p1.w2", "working")
 }

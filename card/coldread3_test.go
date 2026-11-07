@@ -287,8 +287,6 @@ func cold3Work(rng *rand.Rand, p Card, cons []Card, rs map[string]Row, stream St
 	}
 	c := needs[workID(p.ID, p.Attempt)]
 	switch c.State {
-	case Ready:
-		return cold3Consume(c, p, rs, Take{Row: c.Holder})
 	case Working:
 		h := []string{h1, h2, coldH3}[rng.Intn(3)]
 		res := []string{"ok", "ok", "fail", "fault"}[rng.Intn(4)]
@@ -313,8 +311,6 @@ func cold3Review(rng *rand.Rand, p Card, cons []Card, rs map[string]Row, stream 
 	for _, c := range cons {
 		switch {
 		case c.Kind != "read":
-		case live(c) && c.State == Ready:
-			return cold3Consume(c, p, rs, Take{Row: c.Holder})
 		case live(c):
 			res := []string{"ok", "fix"}[rng.Intn(2)]
 			return cold3Consume(c, p, rs, Report{Row: c.Holder, Result: res, Head: p.Head, Reason: "finding " + fmt.Sprint(rng.Intn(3))})

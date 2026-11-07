@@ -21,7 +21,7 @@ var choices = map[string]string{
 	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
 	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
-	"overlap": "retry", "no-model": "retry", "no-policy": "retry",
+	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "unacked": "retry", "undealt": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once).
@@ -181,6 +181,18 @@ func (t *tick) cleared(j store.Judgement) string {
 			if r != c.Author {
 				return "row " + r + " may read " + j.About
 			}
+		}
+	case "blocked":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "blocked" {
+			return j.About + " is no longer blocked"
+		}
+	case "unacked":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "working" || t.v.Acked(j.About) {
+			return j.About + " was acknowledged or left the row's hand"
+		}
+	case "undealt":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "ready" {
+			return j.About + " was dealt or left ready"
 		}
 	case "stall":
 		if at, ok := t.v.Landed[j.About]; ok && at.After(j.OpenedAt) {

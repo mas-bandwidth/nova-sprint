@@ -105,9 +105,12 @@ folded after every apply; a snapshot per tick is a defect (LAYER-1).
 ### Holds
 
 - Plans: `Park` for a ready producer of a held stream that the hold's op
-  missed; `Withdraw` of a held or down row's untaken consumers after the
-  grace, releasing their producers to be dealt elsewhere; working consumers
-  stay. A hold never touches landing (LANDING step 9).
+  missed; `Withdraw` of a held row's unacknowledged consumers at once and a
+  down row's after the grace, releasing their producers to be dealt
+  elsewhere; acknowledged consumers stay (a hold stops new deals, not work
+  in hand); `Withdraw` of any consumer still `ready` (dealt before the deal
+  became the take), dealt again in hand. A hold never touches landing
+  (LANDING step 9).
 - Policy: `regrace(row)`: 0 held, 10 minutes down (unmeasured).
 
 ### Preemption
@@ -132,20 +135,48 @@ high, normal, low; within a rung, policy's order.
   counts; stream heads (the `base` a `Start` records).
 - Plans: `Start{row, branch, base}`, branch `sprint/<stream>/<producer>` (the stream group branch is `sprint-group/<stream>`, beside `sprint/` and never in it, so git never meets a ref that is both a file and a directory; defect 46, 2026-11-07);
   `AskReads{rows}` cutting every read a head needs in one plan, to distinct
-  rows, none the author (LESSONS 3.4). A row is dealt while ready plus
-  working is under width plus `ahead`; width caps working only (LESSONS
-  3.3). A ready producer no row has room for stays ready, queued.
+  rows, none the author (LESSONS 3.4). The deal is the take (below, "In
+  hand"): a row is dealt while its working consumers are under policy's
+  `work` answer, at most its width, and the consumer is cut working
+  (LESSONS 3.3). A ready producer no row has room for stays ready, queued.
 - A ready producer whose tier no open row lists opens an `unserved`
   judgement per tier (LPM R31); a review no row may read opens
   `cannot-read`, so a review never waits on nothing.
-- Policy: `order(rung, producers)` (score, then id); `ahead(row)` (2 x
-  width, LPM D21); `rows(candidates, rows)`, which picks each candidate's
+- Policy: `order(rung, producers)` (score, then id); `ahead(row)` is no
+  longer read (nothing waits ready in a hand; its answer is owed to layer 5
+  to retire); `rows(candidates, rows)`, which picks each candidate's
   rank and row (below, Escalation; then an idle lane first, most room,
   name, never a row the card was withdrawn from, LPM D22; for a read, one
   read on a row whose model differs from the author's when one is open,
   LESSONS 3.8); `may_take(row, stream)` (every serving row). Width is the
   store's row column, set from config by the row verbs, never policy's
   (LESSONS 1.12).
+
+### In hand (defect 52, intent rule 33: nothing sits unworked)
+
+- The deal is the take: a consumer is in its row's hand, `working`, from the
+  op that cuts it, and the deal's push (layer 6) names the card, the repo,
+  base and branch (a read's head), the brief clipped, `take` and the finish
+  or read command. The deadline runs from the deal.
+- The row's `take` is its acknowledgement: a cursor, `AckCursor(epoch, c)`,
+  written once; it moves no card.
+- Nudge: a working consumer its row has not acknowledged, `NudgeAfter`
+  (10 s, the human's number, unmeasured) after the deal and until the row's
+  first report, gets a `NUDGE` line each tick naming the card, how long ago
+  it was dealt and the `take` command. Nudges are `Plan.Nudges`: run pushes
+  them outside the event log, and they move no cursor.
+- `unacked`: at `UnackedAfter` (60 s, the human's number, unmeasured) one
+  judgement for the coordinator naming the row and the card (choices as any
+  judgement's; `release` deals it again).
+- `undealt`: a ready producer still ready `UndealtAfter` (2 s: more than one
+  one-second tick; a guess) after it went ready, while an open row serving
+  its tier has room, opens one judgement naming the row, the card and the
+  cause (the tick's budget spent before it, or an engine defect). Checked
+  after the deal, so a producer dealt this tick is skipped.
+- `blocked` for a route: a producer a `missing-route:` fault blocked
+  (LAYER-2, defect 48) gets one `blocked` judgement naming the row, the card
+  and what is missing; it waits blocked, never dealt again by itself, until
+  the coordinator answers (`unblock` or `drop`).
 
 ### Fix
 
@@ -214,7 +245,8 @@ for each candidate, and the engine refuses one below the card's tier.
   merges or lands (LESSONS 5.7).
 - The closed list a step opens: `blocked`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
-  `landed-sentinel`, `policy`, `engine`, `roster` (`conflict`, `base-red`,
+  `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,
+  `no-policy`, `unacked`, `undealt` (`conflict`, `base-red`,
   `no-ci` and `forge` went with intent rule 32, 2026-11-07). What v1 escalated besides (failed
   work, bounds, lateness, rebase conflicts, read broken) is a rule move in
   the tick (LESSONS 3.17).
@@ -229,10 +261,13 @@ for each candidate, and the engine refuses one below the card's tier.
 ### Requests
 
 Each per-card verb is one step: event, actor check, `card.Move`, one op. The actor rule LAYER-2 left here: Unblock, Waive,
-Relink, SetPriority, WaiveRed, Cancel, Replace, Edit, Rescore, the holds and
+Relink, SetPriority, WaiveRed, Cancel, Replace, Edit, Rescore, the holds
+(of a row, a stream, or a producer card: `Block` with reason `held: <why>`
+and its live consumers withdrawn in one op; `unhold` is its `Unblock`) and
 judgement answers are the coordinator's (the rows nova-config names; an
-engine fact, since a wrong coordinator could corrupt); Take and Report are
-the holder's, through the inbox; Add is anyone hooked in. Refused:
+engine fact, since a wrong coordinator could corrupt); Report is the
+holder's, through the inbox (there is no Take event; `take` is the
+acknowledgement cursor); Add is anyone hooked in. Refused:
 "SetPriority is the coordinator's; ask on the bus: `nova-bus send ...`".
 
 ## Policy questions and their defaults
@@ -282,8 +317,9 @@ default deals, reads, lands or names a cause; none stalls.
 
 1. No producer is dealt twice: at most one group touches a card in a tick,
    and every `Start` is fenced on the producer's gen.
-2. No row is over width: takes are tallied against width minus working, and
-   the store's width write is the final check.
+2. No row is over width: deals (the deal is the take) are tallied against
+   width minus working, and every cut is checked by the card machine
+   against the row's roster width.
 3. No landing holds on an unqueued soft `after`.
 4. A ready blocker with no room is dealt by preemption in the tick that
    finds it ready, unless no row serves its tier, which is a judgement in
@@ -297,7 +333,8 @@ default deals, reads, lands or names a cause; none stalls.
    arrival order and reports come before deals, so a burst of B over budget
    N is through in ceil(B/N) ticks.
 8. Ready never depends on row load; a ready producer is started when a row
-   serving it has room under width plus `ahead`, in rung order; a waiting
+   serving it has room under its width, in rung order, or an `undealt`
+   judgement names it within `UndealtAfter`; a waiting
    producer whose needs landed has a named cause (held, or overlap with X).
 9. Every non-final producer is waited on by a named actor, the next tick or
    an open judgement (LAYER-2, nothing stalls).
@@ -710,3 +747,87 @@ candidate filter narrows the row set the model already chooses from.
   land (no edge result arrived) then a tick: the store-op path. The steps
   trace fixtures were regenerated from the new model's TLC logs, and
   `make-traces.sh check` matched all 82 traces (the Go walks included).
+**Stitch, deal is take (2026-11-07, branch `v2-stitch-w2D2`; intent rule
+33).** The deal cuts the consumer working (LAYER-2 "Deal is take"), so the
+steps changed with it:
+
+- `deal.go`: only `room` changed in logic (policy's `work` answer, no
+  longer plus `ahead`: a row has room while its working consumers are under
+  it), plus the doc comments of `deal` and `withRoom`. Nothing else in that
+  file changed.
+- `hand.go` (new): `AckCursor`, `Nudge`, `unacked` (nudges and the
+  `unacked` judgement), `undealt`, `routeBlocked`. `tick.go` runs `unacked`,
+  `undealt` (after the deal) and `routeBlocked` and returns the nudges in
+  `Plan.Nudges`. `holds.go` withdraws consumers left `ready`, and on a held
+  or down row only the unacknowledged ones. `view.go` keeps `TakenAt` (when
+  a consumer went working, the deal), `ReadyAt` and `Acked`. `request.go`
+  takes a card hold (`holdMoves`: the `Block` merged with the `Withdraw` of
+  each live consumer). `asker.go`: `NudgeAfter` 10 s and `UnackedAfter` 60 s
+  (the human's numbers, unmeasured), `UndealtAfter` 2 s (a guess).
+- Model: `tla/Steps.tla` has no `Take` and no `Ahead`; cuts are working and
+  their slots join the taken order; `Eligible` is `Used < Width`. New
+  variables `rdy` (ticks each producer has been ready) and `ju` (open
+  undealt judgements), and the property `DealtWithinKTicks`: a producer
+  ready `UndealtTicks` (2) ticks is dealt or has an undealt judgement. New
+  invariant `DealIsTake`. Reversed witnesses: `StepsCutReady`,
+  `StepsUndealtSilent` (no undealt judgement: the property breaks in burst,
+  budget 1), `StepsDealOneShort` (replacing `StepsReadyCountedAgainstWidth`);
+  reach check `StepsNeverUndealt`. `StepsWidthOver` now runs in burst.
+- Not trace-bound: the undealt judgement is counted in ticks in the model
+  and in seconds in the code, and `ju` is not in the trace record (the
+  trace's judgements are `unserved`, `cannot-read` and `policy`); nudges and
+  `unacked` are outside the model (it has no clock for them). The steps
+  trace walk has no take: an acknowledgement moves no card.
+- TLC and traces (measured, bench host, cd960636): the full `ci-tlc.sh`
+  run passed (250 as expected), with `DealtWithinKTicks`, `DealIsTake`,
+  `StepsCutReady`, `StepsUndealtSilent`, `StepsDealOneShort` and
+  `StepsNeverUndealt` as required. `StepsDealtTwice` stopped violating once
+  a blocker preempts only when no row has room (the deal cannot then place
+  it either); it gained a second fault, a preemption with free width. The
+  trace check refused `steps-walk-land-1` at a Tick: the model asked a read
+  of a review in a held stream, so a failed `rows` answer opened a policy
+  judgement the code never opens (its `dealRead` returns first); the model
+  now skips held streams' reads. The `steps-ok-*` and `steps-bad-*`
+  fixtures are regenerated from that run's logs.
+- Seen in the tests: with a tick budget of 1, each tick's `Resolve` of the
+  next producer spends the budget and the deal never reaches the first
+  ready producer; the `undealt` judgement names it with the budget as the
+  cause (`TestHandUndealtJudged`). At the default budget (250) this needs a
+  burst of over 250 resolves in a tick; not measured.
+- Tests: `hand_test.go` (nudge then unacked, no nudge after a report,
+  undealt with and without room, a route fault blocks and is never dealt
+  again, a plain fault re-deals); the sims' `take` is the acknowledgement.
+
+
+**Stitch w3I: the landing, the deal's model and deal-is-take together
+(2026-11-07, branch `v2-stitch-w3I`).** w2D1 and w2D2 were built apart from
+the landing (w2L); merged, superseding them where they differ:
+- The closed list of judgement kinds is the landing's (`land`; no
+  `conflict`, `base-red`, `no-ci`, `forge`) with w2D1's `overlap`,
+  `no-model`, `no-policy` and w2D2's `unacked`, `undealt`. No deadline:
+  `blocked`, `land`, `no-policy`. The view's judgement index (w2D1) is
+  `jindex()`; `judged(p)` stays the landing's land-judgement test.
+- `unserved` is opened by the deal only (w2D1), with w2A's routes in its
+  About (`unservedAbout`); the coordinator events take the landing's
+  `Landed` and `Red` and w2D2's `Block` (the card hold).
+- `undealt` counts room only on rows the deal can name a model for, and
+  nothing while the policy gate deals nothing: `no-model` and `no-policy`
+  already say why those cards wait (before this, a gated or model-less
+  ready card also opened an `undealt` judgement calling it an engine
+  defect; `TestTickNoDealWithoutPolicy`, `TestTickNoModelNoDeal`).
+- One vocabulary of routes: a `missing-route:` fault's first word is the
+  route's name (`card.RouteName`), the name a brief declares with
+  `NEEDS-ROUTE:` (w2A) and a machine serves as `route:<name>`; the blocked
+  judgement's fix says so (replace the card with a brief that declares the
+  route; or, when it already declares it, fix the row that serves it
+  without having it). The harness prompt asks for that form.
+- Model (`Steps.tla`): w2D2's deal-is-take (no `Take`, no `Ahead`, `rdy`
+  and `ju`, `DealIsTake`, `DealtWithinKTicks`) with the landing's `jsnap`,
+  `Answer` and `MergingCovered` and w2D1's `pol`, hand land, `NoPlan`,
+  `ResolveFromState`, `HeldBehindShown`. `und` counts nothing while
+  `~V.pol` (the code's gate); `RoomFor` is `w.pol /\ RoomIn(w, p)`. The
+  hand land (EnvMove) needs no open land judgement: a judged card's hand
+  land answers the judgement in the same op (verbs `handLand`), which is
+  `Answer(p, "land")`. Every witness and cfg regenerated by
+  `make-steps-witnesses.py`; `StepsReadyCountedAgainstWidth` stays retired
+  (w2D2's `StepsDealOneShort`).

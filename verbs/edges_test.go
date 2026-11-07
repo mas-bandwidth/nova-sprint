@@ -7,18 +7,23 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// An unknown outcome never leaks: a take whose commit was lost is applied
-// again; one that landed is its stored receipt.
+// An unknown outcome never leaks: a take (the acknowledgement) whose commit
+// was lost is applied again; one that landed is its stored receipt.
 func TestUnknownOutcomeReplaysOrApplies(t *testing.T) {
 	for _, landed := range []bool{false, true} {
 		w := newWorld(t)
 		w.f.Drop(consumerOpID("take", 1, "p1.w1", 1), landed)
 		want(t, w.do("alice", "take", "p1.w1@1"), 0, "TAKEN p1.w1")
-		if c := w.snap(t).Cards["p1.w1"]; c.State != "working" || c.Gen != 2 {
+		s := w.snap(t)
+		if c := s.Cards["p1.w1"]; c.State != "working" || c.Gen != 1 {
 			t.Fatalf("landed=%v: card %+v", landed, c)
+		}
+		if _, ok := s.Cursors[steps.AckCursor(1, "p1.w1")]; !ok {
+			t.Fatalf("landed=%v: no acknowledgement in %v", landed, s.Cursors)
 		}
 	}
 }
@@ -27,7 +32,7 @@ func TestNextOrdersAndCounts(t *testing.T) {
 	s := sprint()
 	busyAlice(&s)
 	w := worldFrom(t, s)
-	want(t, w.do("alice", "next"), 0, "work p3.w1 is in hand with alice (1 more: nova-sprint next --as alice --json lists them)")
+	want(t, w.do("alice", "next"), 0, "work p1.w1 is in hand with alice (1 more: nova-sprint next --as alice --json lists them)")
 }
 
 func TestQueueEmpty(t *testing.T) {
@@ -43,7 +48,7 @@ func TestQueueEmpty(t *testing.T) {
 
 func TestFinishEdgeFailures(t *testing.T) {
 	withForge := func(s *store.Snapshot) { st := s.Streams["s"]; st.Forge = "github"; s.Streams["s"] = st }
-	finish := []string{"finish", "p1.w1@2", "--head", head}
+	finish := []string{"finish", "p1.w1@1", "--head", head}
 	runCases(t, []tcase{
 		// defect 34: no PR is asked of a card; the landing opens the group's
 		{name: "a forge stream, no PR", as: "alice", snap: withForge, args: finish, exit: 0, prep: takeW1,

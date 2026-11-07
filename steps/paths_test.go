@@ -119,7 +119,7 @@ func TestTickHolds(t *testing.T) {
 	s.run(2)
 	s.take("p1.w1")
 	s.take("p2.w1")
-	s.requireState("p3.w1", "ready")
+	s.requireState("p3.w1", "working")
 	s.report("p1.w1", "ok", sha(1), "done")
 	s.tick()
 	s.take("p1.r1.1")
@@ -137,17 +137,17 @@ func TestTickHolds(t *testing.T) {
 	s.requireState("p1", "landed")
 }
 
-// TestTickRowHoldAndDown: a held row's untaken consumers are withdrawn at
-// once, a down row's after the grace; working consumers stay.
+// TestTickRowHoldAndDown: a held row's unacknowledged consumers are
+// withdrawn at once, a down row's after the grace; acknowledged ones stay.
 func TestTickRowHoldAndDown(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")
-	s.row("r1", 1, "pro")
+	s.row("r1", 2, "pro")
 	s.producer("p1", "s1", "pro", "a/x")
 	s.producer("p2", "s1", "pro", "a/y")
 	s.run(2)
 	s.take("p1.w1")
-	s.requireState("p2.w1", "ready")
+	s.requireState("p2.w1", "working")
 	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Hold{Reason: "rest"}))
 	s.tick()
 	require.Empty(t, s.rejected)
@@ -157,10 +157,10 @@ func TestTickRowHoldAndDown(t *testing.T) {
 	assert.Equal(t, "row r1 is held; redealt", s.card("p2.w1").Reason)
 	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Unhold{Reason: "back"}))
 	s.run(1)
-	s.requireState("p2.w2", "ready")
+	s.requireState("p2.w2", "working")
 	s.move(card.MoveRow(s.cardRow(s.snap().Rows["r1"]), card.Gone{}))
 	s.tick()
-	s.requireState("p2.w2", "ready")
+	s.requireState("p2.w2", "working")
 	s.now = s.now.Add(seconds(Engine.Timeouts.RowSilentGone))
 	s.tick()
 	require.Empty(t, s.rejected)

@@ -113,7 +113,6 @@ func TestProbeRead2ValueRulesAndBatchAskRead(t *testing.T) {
 	assert.False(t, ok)
 
 	w.move("p1", Start{Row: "r1", Branch: "s1/p1", Base: base})
-	w.consume("p1.w1", Take{Row: "r1"})
 	w.consume("p1.w1", Report{Row: "r1", Result: "ok", Head: h1})
 	w.move("p1", Finished{Consumer: "p1.w1"})
 	a, r := w.plan("p1", AskRead{Row: "r2"})
@@ -125,6 +124,6 @@ func TestProbeRead2ValueRulesAndBatchAskRead(t *testing.T) {
 	plan, r := w.plan("p1", AskReads{Rows: []string{"r2", "r3"}})
 	require.Nil(t, r)
 	w.op("askreads", plan)
-	assert.Equal(t, Ready, w.card("p1.r1.1").State)
-	assert.Equal(t, Ready, w.card("p1.r1.2").State)
+	assert.Equal(t, Working, w.card("p1.r1.1").State)
+	assert.Equal(t, Working, w.card("p1.r1.2").State)
 }

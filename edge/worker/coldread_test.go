@@ -165,10 +165,10 @@ func TestColdreadDefectNonZeroExitBecomesFault(t *testing.T) {
 // a restarted runner cannot adopt it and reports it as gone.
 func TestColdreadDefectPidNotRecordedWhileHarnessRuns(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
+	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
 	w := &crWall{}
 	r := crRunner_internal(t, sp, w)
-	if err := r.RunConsumer(context.Background(), sp.next, sp.next.Ready[0]); err != nil {
+	if err := r.RunConsumer(context.Background(), sp.next, sp.next.Working[0]); err != nil {
 		t.Fatal(err)
 	}
 	if len(w.pidsSeen) == 0 || w.pidsSeen[0] == 0 {
@@ -235,14 +235,14 @@ func TestColdreadDefectScriptHarnessShellInjectionFromProse(t *testing.T) {
 // at a time, and a WITHDRAWN wake cannot reach a running harness.
 func TestColdreadDefectWidthTwoRunsSerially(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}, {ID: "p2.r1", Kind: "read", Gen: 1}}}}
+	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}, {ID: "p2.r1", Kind: "read", Gen: 1}}}}
 	w := &crWall{barrier: make(chan struct{})}
 	r := crRunner_internal(t, sp, w)
 	if err := r.StepRow(context.Background(), "vision.ds"); err != nil {
 		t.Fatal(err)
 	}
 	if w.maxRunning < 2 {
-		t.Errorf("width 2 with 2 ready consumers ran at most %d harness at once", w.maxRunning)
+		t.Errorf("width 2 with 2 consumers in hand ran at most %d harness at once", w.maxRunning)
 	}
 }
 
@@ -264,7 +264,7 @@ func TestColdreadDefectRunnerGitHasNoTimeout(t *testing.T) {
 // Not a defect probe: a -race check of wake work against a concurrent query.
 func TestColdreadCheckConcurrentStepRowAndQueryEdge(t *testing.T) {
 	t.Parallel()
-	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}}, Working: []ConsumerSummary{{ID: "p3.w1", Kind: "work", Gen: 1}}}}
+	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}, {ID: "p3.w1", Kind: "work", Gen: 1}}}}
 	r := crRunner_internal(t, sp, &crWall{})
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {

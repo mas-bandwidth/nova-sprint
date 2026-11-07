@@ -2,6 +2,7 @@ package steps
 
 import (
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -35,6 +36,8 @@ func TestTickDealNamesTheModel(t *testing.T) {
 	writer := s.card("p1.w1").Holder
 	s.take("p1.w1")
 	s.report("p1.w1", "ok", sha(1), "done")
+	s.take("p2.w1") // the deal is the take: the other row has room for p1's read once p2 is done
+	s.report("p2.w1", "ok", sha(2), "done")
 	s.run(4)
 	r := s.card("p1.r1.1")
 	assert.NotEqual(t, writer, r.Holder, "never the author")
@@ -57,6 +60,9 @@ func TestTickNoModelNoDeal(t *testing.T) {
 	assert.Equal(t, "ready", s.state("p1"), "no model, no deal")
 	require.Equal(t, []string{"no-model.heavy.1"}, s.openJudgements("no-model"))
 	assert.Contains(t, s.snap().Judgements["no-model.heavy.1"].Question, "policy v0 names no bench model for tier heavy (bench rows b1;")
+	s.now = s.now.Add(10 * time.Duration(Engine.UndealtAfter) * time.Second)
+	s.tick()
+	assert.Empty(t, s.openJudgements("undealt"), "no-model says why p1 waits; a row with no model to name has no room for it")
 	s.kin("f1", "m-friend", 1, "heavy")
 	s.run(3)
 	assert.Equal(t, "working", s.state("p1"))
@@ -81,6 +87,9 @@ func TestTickNoDealWithoutPolicy(t *testing.T) {
 	j := s.snap().Judgements["no-policy.carol.1"]
 	assert.Equal(t, "the run deals nothing: no policy is active: nova-sprint policy set <file> --reason <why>", j.Question)
 	assert.True(t, j.Deadline.IsZero(), "blocking: no deadline")
+	s.now = s.now.Add(10 * time.Duration(Engine.UndealtAfter) * time.Second)
+	s.tick()
+	assert.Empty(t, s.openJudgements("undealt"), "the gate says why p1 waits; no undealt beside it")
 	s.ask = benchAsk{}
 	s.run(3)
 	assert.Equal(t, "working", s.state("p1"))

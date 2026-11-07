@@ -84,6 +84,7 @@ type Plan struct {
 	Edges   []EdgeRequest
 	Answers []RowAnswer
 	Carry   []InboxItem
+	Nudges  []Nudge // this tick's nudges: run pushes each to its row, outside the log
 }
 
 // RowAnswer is what a row is told about its report or take: an ack from the

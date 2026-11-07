@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -82,9 +83,9 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 			store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
 			store.PutCard{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro"},
 			store.PutCard{ID: "c1", Kind: "work", Of: "p1", Stream: "s1", Holder: "vision.ds", Tier: "pro", Attempt: 1},
-			store.SetCardState{Card: "c1", State: "ready"},
+			store.SetCardState{Card: "c1", State: "working"}, // the deal is the take (defect 52)
 			store.PutCard{ID: "c2", Kind: "work", Of: "p2", Stream: "s1", Holder: "vision.ds", Tier: "pro", Attempt: 1},
-			store.SetCardState{Card: "c2", State: "ready"},
+			store.SetCardState{Card: "c2", State: "working"},
 		},
 	})
 	if err != nil || !rec.Accepted {
@@ -220,7 +221,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 			Actor:  "vision.ds",
 			Kind:   "take",
 			At:     h.t0.Add(time.Duration(h.stepN) * time.Second),
-			Writes: []store.Write{store.SetCardState{Card: c, State: "working"}},
+			Writes: []store.Write{store.SetCursor{Name: steps.AckCursor(1, c), Seq: 1}}, // the acknowledgement
 		})
 		if err != nil || !rec.Accepted {
 			t.Fatalf("Take %s: err=%v rec=%+v", c, err, rec)
@@ -361,7 +362,7 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 	for _, c := range []string{"c1", "c2"} {
 		switch st.jobState[c] {
 		case JobNone:
-			if st.storeState[c] == "ready" {
+			if st.storeState[c] == "working" {
 				moves = append(moves, move{"Take", c})
 			}
 		case JobTaken:
@@ -515,10 +516,10 @@ func driveRunnerEntrypoints_internal(t *testing.T) {
 		t.Fatal(err)
 	}
 	next, err := sc.Next(ctx, row)
-	if err != nil || len(next.Ready) == 0 {
-		t.Fatalf("expected ready consumer, err=%v next=%+v", err, next)
+	if err != nil || len(next.Working) == 0 {
+		t.Fatalf("expected a consumer in hand, err=%v next=%+v", err, next)
 	}
-	if err := r.RunConsumer(ctx, next, next.Ready[0]); err != nil {
+	if err := r.RunConsumer(ctx, next, next.Working[0]); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.StepRow(ctx, row); err != nil {

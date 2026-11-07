@@ -105,7 +105,7 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 	snap := tk.Snapshot()
 	var dealt []string
 	for id, c := range snap.Cards {
-		if c.Kind == "work" && c.Holder == "alice" && c.State == "ready" {
+		if c.Kind == "work" && c.Holder == "alice" && c.State == "working" {
 			dealt = append(dealt, id)
 		}
 	}
@@ -165,7 +165,7 @@ func TestTickRaisesSeenForAHookedRow(t *testing.T) {
 	}
 	var dealt []string
 	for id, c := range tk.Snapshot().Cards {
-		if c.Kind == "work" && c.State == "ready" {
+		if c.Kind == "work" && c.State == "working" {
 			dealt = append(dealt, id+" to "+c.Holder)
 		}
 	}

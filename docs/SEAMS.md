@@ -160,7 +160,7 @@ The worker (`nova-worker`, layer 4) talks to the sprint only through verbs:
 `report`. The take receipt (`take <card>@<gen> --as <row> --json`) is the
 seam: `{consumer, producer, kind, stream, repo, base, branch, head, tier,
 brief, prose, finding, stream_ref (the stream's base branch), base_sha, prior_head, paths, done_when,
-epoch, gen, attempt, review, model, models, deadline, forge}`, `deadline` in
+epoch, gen, attempt, review, model, deadline, forge}`, `deadline` in
 seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream.
 `model` is the one the deal named and wrote on the consumer (store round
 23's `cards.model`): a friend's own, from the roster, or for a bench the
@@ -171,6 +171,17 @@ and the tier when its probe proved the harness does not serve it.
 `next --as <row> --json` carries the bench model per tier as `tier_models`
 (the probe's input). The worker holds no deadline,
 model or forge of its own.
+
+The deal is the take (defect 52): a consumer is `working` in the row's hand
+from the deal, so the worker runs every card `next --json` lists under
+`working` that has no job of its own yet, each in its own job, all at once;
+`take` is the row's acknowledgement (a cursor, the card's gen unchanged) and
+prints the receipt, and a repeat prints the same. A card the row has not
+acknowledged is nudged (`NUDGE card=<id> ...`) each tick from ten seconds
+after the deal; the deal's push names the model the deal named
+(`model=`). A fault whose reason starts `missing-route: <route>` (the
+route's name as a brief declares it with `NEEDS-ROUTE:`) blocks the
+producer for the coordinator instead of dealing it again (defect 48).
 
 ## 7. dash -> run
 
