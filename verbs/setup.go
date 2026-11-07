@@ -110,6 +110,9 @@ func (e *Engine) up(ctx context.Context, args []string) Result {
 	if e.Setup == nil {
 		return unavailable("up")
 	}
+	if result, stop := e.prevalidateSetupHandoff(ctx, in); stop {
+		return result
+	}
 	var out strings.Builder
 	result, stop := e.setupStep(ctx, 1, in, &out, "bootstrap")
 	if stop {
@@ -153,6 +156,21 @@ func (e *Engine) up(ctx context.Context, args []string) Result {
 		return operationalFailure("up", err)
 	}
 	return Result{"", 0}
+}
+func (e *Engine) prevalidateSetupHandoff(ctx context.Context, in SetupInput) (Result, bool) {
+	if in.Continuation == "" {
+		return Result{}, false
+	}
+	handoff, ok := e.Setup.(SetupHandoff)
+	if !ok {
+		return refused("up", "setup continuation is unavailable", "nova-sprint up --as <name>"), true
+	}
+	err := handoff.ValidateHandoff(ctx, in.Continuation, in)
+	e.observeSetup(SetupObservation{Kind: "prevalidate-handoff", Scope: "bootstrap", Failed: err != nil})
+	if err != nil {
+		return operationalFailure("up", err), true
+	}
+	return Result{}, false
 }
 func (e *Engine) walkSetup(ctx context.Context, lease SetupLease, in SetupInput) (result Result, continuation string) {
 	e.observeSetup(SetupObservation{Kind: "begin", Scope: "walk"})
