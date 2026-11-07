@@ -3,6 +3,7 @@ package steps
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -101,7 +102,7 @@ func (t *tick) dealWork(c store.Card) {
 	answered := t.rowsAnswer(c, "work")
 	serving := t.serving(c)
 	if len(serving) == 0 {
-		t.judge("unserved", c.Tier, "no open row serves tier "+c.Tier+"; ready "+c.ID+" waits")
+		t.judge("unserved", unservedAbout(c), "no open row serves tier "+c.Tier+routesClause(c)+"; ready "+c.ID+" waits")
 		return
 	}
 	base, ok := t.base(c.Stream)
@@ -310,4 +311,20 @@ func (t *tick) withdrawnFrom(c store.Card, row string) bool {
 		}
 	}
 	return false
+}
+
+// routesClause is " with route(s) <a, b>" for a card that declares routes
+// (card.NeedsRoutes), else "".
+func routesClause(c store.Card) string {
+	if rs := card.NeedsRoutes(c.Brief); len(rs) > 0 {
+		return " with route(s) " + strings.Join(rs, ", ")
+	}
+	return ""
+}
+
+// unservedAbout is what an unserved judgement is about: the card's tier,
+// then "+<route>" for each route it declares (cleared reads it back), so a
+// tier served without the route does not clear it.
+func unservedAbout(c store.Card) string {
+	return strings.Join(append([]string{c.Tier}, card.NeedsRoutes(c.Brief)...), "+")
 }

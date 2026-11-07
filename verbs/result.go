@@ -98,7 +98,7 @@ func classify(err error) *Fail {
 		}
 		return refuse(op.Problem, op.Fix)
 	case errors.As(err, &lint):
-		return refuse(lint.Error(), "fix the brief and run nova-sprint add again")
+		return refuse(lint.Error(), orWord(lint.Fix, "fix the brief and run nova-sprint add again"))
 	case errors.As(err, &pr):
 		return refuse(pr.What, pr.Fix)
 	case errors.Is(err, store.ErrInvalid):

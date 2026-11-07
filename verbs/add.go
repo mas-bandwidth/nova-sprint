@@ -25,6 +25,9 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	if err != nil {
 		return "", err
 	}
+	if err := e.admitAdds(ctx, snap, adds); err != nil {
+		return "", err
+	}
 	lines := make([]string, len(adds))
 	for i, a := range adds {
 		lines[i] = fmt.Sprintf("ADD %s kind=%s stream=%s tier=%s priority=%s needs=%s", a.ID, a.Kind, a.Stream, a.Tier, orWord(a.Priority, "normal"), orWord(strings.Join(a.Needs, ","), "-"))
@@ -174,4 +177,27 @@ func addOrder(pending map[string]card.Add) ([]string, error) {
 		}
 	}
 	return order, nil
+}
+
+// admitAdds is add's admission of its producers (admitCards): the first
+// refused card, by id, is the refusal. A sentinel has no brief and is
+// never dealt; its stream was checked by readAdds.
+func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card.Add) error {
+	var facts []cardFacts
+	for _, a := range adds {
+		if a.Kind == "producer" {
+			facts = append(facts, factsOfAdd(a))
+		}
+	}
+	if len(facts) == 0 {
+		return nil
+	}
+	refused, err := e.admitCards(ctx, snap, facts)
+	if err != nil {
+		return err
+	}
+	if ids := slices.Sorted(maps.Keys(refused)); len(ids) > 0 {
+		return refused[ids[0]]
+	}
+	return nil
 }

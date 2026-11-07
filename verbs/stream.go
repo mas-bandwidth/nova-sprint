@@ -31,9 +31,11 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
 	}
-	if _, err := e.baseTip(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
+	if _, err := e.admitStream(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
 		return "", err
 	}
+	// The group branch's name, and its creation at origin, are proved and
+	// made here by the landing's admission (owned by the landing work).
 	pos := 0
 	for _, s := range snap.Streams {
 		pos = max(pos, s.Pos+1)

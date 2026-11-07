@@ -32,6 +32,7 @@ type Engine struct {
 	Answers  Answerer    // the active policy's limits and timeouts
 	Policy   *policy.Engine
 	Origin   Origin   // a stream's repository at origin
+	Forge    Forge    // the host's gh identity, as admission proves it
 	Doctor   Doctor   // nova-fleet, nova-tools and the store's schema
 	Archive  Archive  // backup and restore
 	Services Services // run, worker and dash
@@ -72,6 +73,11 @@ type Answerer interface {
 type Origin interface {
 	Tip(ctx context.Context, url, branch string) (sha string, ok bool, err error)
 	Contains(ctx context.Context, url, ancestor, head string) (bool, error)
+	// Tree is every file path at commit sha (git ls-tree -r --name-only).
+	Tree(ctx context.Context, url, sha string) ([]string, error)
+	// Branches is every branch at origin under prefix (a/b/ lists a/b/*),
+	// by name, with its tip: one ls-remote.
+	Branches(ctx context.Context, url, prefix string) (map[string]string, error)
 }
 
 // Doctor is what `check` and `next` look at outside the store.
