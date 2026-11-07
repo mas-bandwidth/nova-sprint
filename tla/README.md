@@ -504,6 +504,69 @@ it lists; the model parks the whole ready set, the list layer 3 owes.
 A preempt Withdraw requires the consumer working, as Preempt already did.
 The reasons ("held: ...") are not modelled.
 
+Rounds 5 and 6 (card/ at v2-card-fix4 b2b0b8c2, and the ruling after the
+fourth cold read): Merge composes moves. An op is an ordered list of up to
+`MaxOp` moves, nested merges flattened first, each planned against what
+the earlier ones left: in the model the moves of an op are consecutive
+steps, `op` counts the moves of the open op and `snap` is the state it
+started from. A consumer cut earlier in the op is live for the next move;
+the stream, rows and cards are the folded ones; a move's conditions are
+the first-read value of each field, minus the fields an earlier move of the
+op wrote, and the store checks them against `snap` (FencesOnSnapshot). A
+sequence legal one by one is one op (Red then WaiveRed included). The
+preempt guard runs on the whole op for Withdraws flagged preempt
+(`PreWithdraw`): with a blocker's Start in the same op, the withdrawn
+consumer is working on the row that Start names (PreemptOnBlockerRow; `pw`
+and `bs` keep the rows of the op's preempt Withdraws and blocker Starts).
+`MaxOp` is read off the scenario (merge 3, mergepre and mergedeps 2, every
+other 1), so a cfg that names none has ops of one move.
+
+Round 7 (the rulings after the fifth cold read,
+`BRIEF-V2-CARD-ROUND7-draft-2026-11-07.md`), modelled ahead of the code
+(card/ at v2-card-fix4 b2b0b8c2 has not taken them; see the divergences
+below):
+- Ruling 1, ids without dots: cards and consumers share one namespace,
+  fenced absent on every Add and every cut (Start, AskRead, AskReads), and
+  consumer ids are the code's (`<p>.w<attempt>`, `<p>.r<review>.<n>`,
+  `ConsName`). deps carries the id `p1.w1`, which Add refuses for its dot;
+  without that refusal it is added before p1 starts and p1 can never cut
+  its first work consumer (CardDottedId, NeverStranded). IdsDistinct states
+  the namespace. The 104-byte cap is a value check with no state.
+- Ruling 2, InThisOp: legal only as a later move of an op whose earlier
+  move failed the need, checked on the folded need state (`InThisOpLater`,
+  `InThisOpFolded`); alone it is refused (CardInThisOpAlone,
+  InThisOpOnFailedNeed). With `MaxOp` 1 the op is the one step it was
+  (Cancel and the dependant's move together). "Drops it" is read as the
+  earlier move writing the need to fail (Cancel or Replace).
+- Rulings 3 and 8, Preempt as an event field, on the flattened list: the
+  guard reads only Withdraws flagged preempt (`PreWithdraw`); a plain
+  Withdraw (`PlainRows` is empty) merges with a blocker's Start on another
+  row (PlainWithdrawUnguarded, CardPlainWithdrawGuarded); a nested Start
+  never skips it (CardMergeNestedStart).
+- Rulings 4 and 11, composition: each move reads the folded state, the last
+  write wins, and nothing refuses a second write (MergeParksResolved:
+  HoldStream later in an open op is always enabled, so Merge(Resolve,
+  HoldStream) parks what the Resolve readied; CardMergeSecondWrite). The
+  order-independence test for ReportPlan and row-hold pairs is the code's:
+  no guard of Report or the producer moves reads a row's hold.
+- Ruling 6: Start copies `finding` only (reason is not modelled); a fail or
+  fault report may omit the head, and a head given differs from the base
+  and the prior head for every result (CardFailRepeatsPrior); ReadFix with
+  an empty finding is refused, so ReadFix always writes one (FixSaysWhat,
+  CardReadFixEmpty). The reason-only Edit of a parked producer is a refusal
+  on `reason`, which no other guard reads, so it is not modelled (Edit is a
+  stutter here).
+- Ruling 7, `seen` is the records read before any write (CardMergeOwnWrites,
+  FencesOnSnapshot) and the review counter is folded once: it rises by one
+  on Finished and Red and on nothing else (ReviewOnEntry,
+  CardMergeReviewTwice: Report then Finished in one op raising it by two).
+- Ruling 9, hand-built plans: a move's record is the real one with its
+  fields written; a merged move writing a partial record (missing fields at
+  their zero values) resets what it did not name (CardHandPlanPartial:
+  Start then SetPriority in one op resets the attempt, AttemptOnlyOnStart).
+- Rulings 5 and 10 (wording) and 12 (the walk, the PG mirror, card/README)
+  are the code's.
+
 `last` is a step monitor. `StepRule` reads the state before and after each
 step and records the step rules it broke (`last.bad`). It is shared by every
 action and part of none, so a fault in an action is caught there; it keeps
@@ -511,14 +574,17 @@ only four event names (NeedFailed, Preempt, AskReads, InThisOp, for their
 reach checks), so states
 are not split by the move that reached them.
 
-## The instance: four scenarios
+## The instance: seven scenarios
 
 | cfg | Scenario | producers | needs | K | heads | attempts | env moves |
 |---|---|---|---|---|---|---|---|
 | `CardMachine.cfg` | `life` | p1, sentinel s | s needs p1 | 3 | 2 | 2 | 2 |
-| `CardDeps.cfg` | `deps` | p1, p2, sentinel s, sentinel a (absent until Add) | p2 needs p1, s needs p2 | 2 | 1 | 1 | 1 |
+| `CardDeps.cfg` | `deps` | p1, p2, sentinel s, sentinels a and p1.w1 (absent until Add; Add refuses p1.w1) | p2 needs p1, s needs p2 | 2 | 1 | 1 | 1 |
 | `CardPreempt.cfg` | `pre` | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 2 |
 | `CardReads.cfg` | `reads` | p1; rows r1, r2, r3 | none | 3 | 1 | 1 | 1 |
+| `CardMerge.cfg` | `merge` (life, ops of 3 moves) | p1, sentinel s | s needs p1 | 2 | 1 | 1 | 1 |
+| `CardMergePre.cfg` | `mergepre` (pre, ops of 2) | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 1 |
+| `CardMergeDeps.cfg` | `mergedeps` (deps, ops of 2) | as deps | as deps | 2 | 1 | 1 | 0 |
 | `witnesses/CardWaiveRedWithoutRed.cfg` only | `redw` (Scenario life) | p1, sentinel s | s needs p1 | 5 | 2 | 3 | 0 |
 
 - `life` carries the whole lifecycle: a fix, a Red with a yes after it, a
@@ -572,9 +638,9 @@ cycle check.
 
 ## Files
 
-- `CardMachine.tla` and its four passing cfgs.
-- `witnesses/Card*.tla`: twenty-four reversed witnesses; `reach/Card*.cfg`:
-  sixteen reachability checks. Generated with every card cfg by
+- `CardMachine.tla` and its seven passing cfgs.
+- `witnesses/Card*.tla`: thirty-six reversed witnesses; `reach/Card*.cfg`:
+  seventeen reachability checks. Generated with every card cfg by
   `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
   in the script, in the same shape as `make-witnesses.py`: a replacement
   that no longer matches stops the script.
@@ -617,6 +683,15 @@ State invariants:
 - **ResultsByKind**: a work consumer's result is ok, fail or fault; a read's
   ok, fix or fault.
 - **OneLiveReadPerRow**: at most one live read of a head per row.
+- **IdsDistinct**: no existing card's id is a cut consumer's id (one
+  namespace, round 7).
+- **PreemptOnBlockerRow**: an op's preempt Withdraws are of consumers on the
+  row its blocker Starts name.
+- **PlainWithdrawUnguarded**: in an open op, a plain Withdraw of any working
+  consumer is enabled (the guard reads only the Preempt flag; round 7).
+- **MergeParksResolved**: in an open op, with the stream not held and an
+  environment move left, HoldStream is enabled (no second-write refusal;
+  round 7).
 
 Step invariants (each: the last step kept its rule):
 - **FinalNeverMoves**: no landed/fail producer and no done/fail consumer
@@ -647,12 +722,19 @@ Step invariants (each: the last step kept its rule):
 - **BlockNoLive**, **EditNoLive**: Block and Edit only with no live consumer.
 - **SentinelLandsByReached**: a sentinel lands only by Reached, needs landed.
 - **WaiveRedNeedsRed**: WaiveRed only with the Red recorded.
+- **FencesOnSnapshot**: in an op, a move's conditions on a card's state are
+  those of the snapshot, minus states an earlier move of the op wrote.
+- **ReviewOnEntry**: review rises by one on Finished and Red of that
+  producer, and on nothing else (round 7).
+- **FixSaysWhat**: ReadFix writes a finding (round 7).
+- **InThisOpOnFailedNeed**: after an InThisOp move, its need is fail (round
+  7).
 
 ## Expected results
 
 | Module | Scenario | Fault | Expected result |
 |---|---|---|---|
-| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` | life / deps / pre / reads | none | pass |
+| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` / `CardMerge` / `CardMergePre` / `CardMergeDeps` | life / deps / pre / reads / merge / mergepre / mergedeps | none | pass |
 | `witnesses/CardLandedMoves` | life | Rescore has no final check | FinalNeverMoves |
 | `witnesses/CardAuthorReads` | life | AskRead does not refuse the author | ReaderNeverAuthor |
 | `witnesses/CardRedAdvances` | life | Red moves merging to landed | RedNeverAdvances |
@@ -676,6 +758,19 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardTwoReadsOneRow` | life | AskRead takes a row holding a live read of the head | OneLiveReadPerRow |
 | `witnesses/CardPriorRepeated` | life | an ok report repeats the prior head | HeadNeverRepeats |
 | `witnesses/CardWaiveRedWithoutRed` | redw | WaiveRed without the red check | WaiveRedNeedsRed |
+| `witnesses/CardMergeCutUnseen` | merge | a consumer cut earlier in the op is unseen by the next move | BlockNoLive |
+| `witnesses/CardMergeNestedHold` | merge | a release reads the stream's hold from the snapshot | ParkedUnderHold |
+| `witnesses/CardMergeNoRerun` | merge | a merged move is checked on the snapshot, not the fold | FinalNeverMoves |
+| `witnesses/CardMergeOwnWrites` | merge | a move fences a state an earlier move wrote | FencesOnSnapshot |
+| `witnesses/CardMergeNestedStart` | mergepre | the preempt guard skips a nested Start | PreemptOnBlockerRow |
+| `witnesses/CardDottedId` | deps | Add takes an id with a dot | NeverStranded |
+| `witnesses/CardInThisOpAlone` | mergedeps | InThisOp alone, the need not failed in the op | InThisOpOnFailedNeed |
+| `witnesses/CardPlainWithdrawGuarded` | mergepre | the preempt guard on every Withdraw | PlainWithdrawUnguarded |
+| `witnesses/CardMergeSecondWrite` | merge | a second write to a field refused | MergeParksResolved |
+| `witnesses/CardReadFixEmpty` | life | ReadFix with an empty finding | FixSaysWhat |
+| `witnesses/CardFailRepeatsPrior` | life | a fail report names the prior head | HeadNeverRepeats |
+| `witnesses/CardMergeReviewTwice` | merge | Report then Finished in one op raises review by two | ReviewOnEntry |
+| `witnesses/CardHandPlanPartial` | merge | a merged move writes a partial record | AttemptOnlyOnStart |
 | `reach/CardNeverLanded` | life | none | violated: a producer lands |
 | `reach/CardNeverFixed` | life | none | violated: a review ends in ReadFix |
 | `reach/CardNeverRed` | life | none | violated: merging goes red |
@@ -692,6 +787,7 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverWaivedRed` | life | none | violated: WaiveRed merges after a Red on the earlier read |
 | `reach/CardNeverFindingCarried` | life | none | violated: a fix attempt carries the reader's finding |
 | `reach/CardNeverPreempted` | pre | none | violated: a blocker preempts a live consumer |
+| `reach/CardNeverInThisOpMerged` | mergedeps | none | violated: a need fails and a later move of the op moves its dependant |
 
 ## Results, the CI jar on hetzner2, 2026-11-06 (d93ceeae, round 4)
 
@@ -804,5 +900,7 @@ move the fault lets through is one card/ at 4a085774 refuses:
 
 Not modelled: the liveness obligation "nothing stalls", which the card
 model's rulings make layer 3's (with the tick); NeverStranded is its state
-half here. The reasons ("held: ..."), Merge's two-writes-to-one-field
-refusal and Add's id length cap are value checks with no state of their own.
+half here. The reasons ("held: ...", and so the reason-only Edit of a
+parked producer), the refusal wording and Add's id length cap are value
+checks with no state of their own; round 7 removes Merge's second-write
+refusal (MergeParksResolved).
