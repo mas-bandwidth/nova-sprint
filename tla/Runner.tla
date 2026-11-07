@@ -20,13 +20,14 @@ AliveSlots == (IF harnessAlive["c1"] > 0 THEN harnessAlive["c1"] ELSE 0) +
               (IF harnessAlive["c2"] > 0 THEN harnessAlive["c2"] ELSE 0)
 
 ResIDFor(c) == IF c = "c1" THEN 1 ELSE 2
+PidFor(c) == IF c = "c1" THEN 101 ELSE 102
 
 Init ==
   /\ storeState = [c \in Consumers |-> "ready"]
   /\ jobState = [c \in Consumers |-> "none"]
   /\ slotsInUse = 0
   /\ width = Width
-  /\ jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE]]
+  /\ jobDir = [c \in Consumers |-> [exists |-> FALSE, creates |-> 0, pid |-> 0, resId |-> 0, pushed |-> FALSE, outcome |-> "none", bounced |-> FALSE]]
   /\ harnessAlive = [c \in Consumers |-> 0]
   /\ appliedOps = {}
   /\ env = [crashes |-> 0, storeDown |-> FALSE, crashed |-> FALSE]
@@ -72,8 +73,9 @@ Run(c) ==
   /\ slotsInUse < MaxSlots
   /\ slotsInUse' = slotsInUse + 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 1]
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = PidFor(c)]   \* record pid in job.json at start
   /\ jobState' = [jobState EXCEPT ![c] = "running"]
-  /\ UNCHANGED <<storeState, width, jobDir, appliedOps, env>>
+  /\ UNCHANGED <<storeState, width, appliedOps, env>>
 
 Die(c) ==
   /\ ~env.crashed
@@ -81,7 +83,7 @@ Die(c) ==
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - 1
-  /\ jobDir' = [jobDir EXCEPT ![c].outcome = "fault", ![c].bounced = FALSE]   \* Die is a fault, never a fail that bounces
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "fault", ![c].bounced = FALSE]   \* Die is a fault, never a fail that bounces
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
   /\ UNCHANGED <<storeState, width, appliedOps, env>>
 
@@ -91,7 +93,7 @@ Harvest(c) ==
   /\ harnessAlive[c] = 1
   /\ harnessAlive' = [harnessAlive EXCEPT ![c] = 0]
   /\ slotsInUse' = slotsInUse - 1   \* slot freed only when harness ends
-  /\ jobDir' = [jobDir EXCEPT ![c].outcome = "ok"]
+  /\ jobDir' = [jobDir EXCEPT ![c].pid = 0, ![c].outcome = "ok"]
   /\ jobState' = [jobState EXCEPT ![c] = "harvested"]
   /\ UNCHANGED <<storeState, width, appliedOps, env>>
 
@@ -243,6 +245,9 @@ TypeOK ==
 
 OneLiveHarnessPerJobDir ==
   \A c \in Consumers : harnessAlive[c] <= 1 /\ (harnessAlive[c] > 0 => jobDir[c].exists)
+
+PidRecordedAtStart ==
+  \A c \in Consumers : (jobState[c] = "running" \/ harnessAlive[c] > 0) => jobDir[c].pid = PidFor(c)
 
 JobDirNeverReused ==
   \A c \in Consumers : jobDir[c].creates <= 1

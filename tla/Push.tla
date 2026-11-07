@@ -1,28 +1,35 @@
 -------------------------------- MODULE Push --------------------------------
 (***************************************************************************)
-(* Layer 4 bus push cursor model (docs/LAYER-4-EDGES.md, Guarantee 2).     *)
-(* Events are committed in sequence 1..MaxSeq; a recipient cursor advances *)
-(* only after nova-bus send exits 0 and prints the recipient and message   *)
-(* id. A failed send or a lost reply leaves the cursor unmoved so the next *)
-(* tick resends from the cursor (at-least-once, never skipped).            *)
-(* Size: 3 events, 1 crash.                                                *)
+(* Layer 4 bus push cursor model (docs/LAYER-4-EDGES.md, Guarantee 2 & 3). *)
+(* Models multiple recipients, an event window, and the 4 KB message cap.  *)
+(* Each recipient cursor advances past irrelevant event windows and moves  *)
+(* past relevant events only after nova-bus send confirms delivery; one    *)
+(* failing recipient never starves another.                                *)
 (***************************************************************************)
 EXTENDS Integers, FiniteSets
 
-CONSTANTS MaxSeq, MaxCrashes
+CONSTANTS MaxSeq, Window, Cap, MaxCrashes
+
+Recipients == {"r1", "r2"}
 
 VARIABLES events, cursor, pending, delivered, confirmed, crashes
 
 vars == <<events, cursor, pending, delivered, confirmed, crashes>>
 
-BatchRange(b) == IF b.from <= b.to THEN b.from .. b.to ELSE {}
+Target(e) == IF e = 2 THEN "r2" ELSE "r1"
+
+WinEnd(r) == IF cursor[r] + Window < events THEN cursor[r] + Window ELSE events
+
+Relevant(r, a, b) == IF a <= b THEN {e \in a..b : Target(e) = r} ELSE {}
+
+EmptyPending == [active |-> FALSE, from |-> 0, to |-> 0, rel |-> {}, size |-> 0]
 
 Init ==
   /\ events = 0
-  /\ cursor = 0
-  /\ pending = [active |-> FALSE, from |-> 0, to |-> 0]
-  /\ delivered = {}
-  /\ confirmed = {}
+  /\ cursor = [r \in Recipients |-> 0]
+  /\ pending = [r \in Recipients |-> EmptyPending]
+  /\ delivered = [r \in Recipients |-> {}]
+  /\ confirmed = [r \in Recipients |-> {}]
   /\ crashes = 0
 
 CommitEvent ==
@@ -30,78 +37,103 @@ CommitEvent ==
   /\ events' = events + 1
   /\ UNCHANGED <<cursor, pending, delivered, confirmed, crashes>>
 
-StartSend ==
-  /\ ~pending.active
-  /\ cursor < events
-  /\ pending' = [active |-> TRUE, from |-> cursor + 1, to |-> events]
-  /\ cursor' = cursor   \* cursor waits for send confirmation
-  /\ UNCHANGED <<events, delivered, confirmed, crashes>>
+SkipIrrelevant(r) ==
+  /\ ~pending[r].active
+  /\ cursor[r] < events
+  /\ Relevant(r, cursor[r] + 1, WinEnd(r)) = {}
+  /\ cursor' = [cursor EXCEPT ![r] = WinEnd(r)]
+  /\ UNCHANGED <<events, pending, delivered, confirmed, crashes>>
 
-SendConfirmed ==
-  /\ pending.active
-  /\ delivered' = delivered \cup BatchRange(pending)
-  /\ confirmed' = confirmed \cup BatchRange(pending)
-  /\ cursor' = pending.to
-  /\ pending' = [active |-> FALSE, from |-> 0, to |-> 0]
+StartSend(r) ==
+  /\ ~pending[r].active
+  /\ cursor[r] < events
+  /\ LET to == WinEnd(r)
+         rel == Relevant(r, cursor[r] + 1, to)
+         sz == IF Cardinality(rel) <= Cap THEN Cardinality(rel) ELSE Cap
+     IN /\ rel # {}
+        /\ pending' = [pending EXCEPT ![r] = [active |-> TRUE, from |-> cursor[r] + 1, to |-> to, rel |-> rel, size |-> sz]]
+        /\ cursor' = cursor   \* cursor waits for send confirmation
+        /\ UNCHANGED <<events, delivered, confirmed, crashes>>
+
+SendConfirmed(r) ==
+  /\ pending[r].active
+  /\ delivered' = [delivered EXCEPT ![r] = @ \cup pending[r].rel]
+  /\ confirmed' = [confirmed EXCEPT ![r] = @ \cup pending[r].rel]
+  /\ cursor' = [cursor EXCEPT ![r] = pending[r].to]
+  /\ pending' = [pending EXCEPT ![r] = EmptyPending]
   /\ UNCHANGED <<events, crashes>>
 
-SendFailed ==
-  /\ pending.active
+SendFailed(r) ==
+  /\ pending[r].active
   /\ crashes < MaxCrashes
   /\ crashes' = crashes + 1
-  /\ pending' = [active |-> FALSE, from |-> 0, to |-> 0]
-  /\ cursor' = cursor   \* failed send never advances cursor
+  /\ pending' = [pending EXCEPT ![r] = EmptyPending]
+  /\ cursor' = cursor   \* failed send on r leaves r unmoved and never starves other recipients
   /\ UNCHANGED <<events, delivered, confirmed>>
 
-ReplyLost ==
-  /\ pending.active
+ReplyLost(r) ==
+  /\ pending[r].active
   /\ crashes < MaxCrashes
   /\ crashes' = crashes + 1
-  /\ delivered' = delivered \cup BatchRange(pending)
-  /\ pending' = [active |-> FALSE, from |-> 0, to |-> 0]
-  /\ cursor' = cursor   \* lost reply never advances cursor
+  /\ delivered' = [delivered EXCEPT ![r] = @ \cup pending[r].rel]
+  /\ pending' = [pending EXCEPT ![r] = EmptyPending]
+  /\ cursor' = cursor
   /\ UNCHANGED <<events, confirmed>>
 
 Crash ==
   /\ crashes < MaxCrashes
   /\ crashes' = crashes + 1
-  /\ pending' = [active |-> FALSE, from |-> 0, to |-> 0]
+  /\ pending' = [r \in Recipients |-> EmptyPending]
   /\ UNCHANGED <<events, cursor, delivered, confirmed>>
 
 Idle ==
   /\ events = MaxSeq
-  /\ cursor = events
-  /\ ~pending.active
+  /\ \A r \in Recipients : cursor[r] = events /\ ~pending[r].active
   /\ UNCHANGED vars
 
 Next ==
   \/ CommitEvent
-  \/ StartSend
-  \/ SendConfirmed
-  \/ SendFailed
-  \/ ReplyLost
+  \/ \E r \in Recipients :
+       \/ SkipIrrelevant(r)
+       \/ StartSend(r)
+       \/ SendConfirmed(r)
+       \/ SendFailed(r)
+       \/ ReplyLost(r)
   \/ Crash
   \/ Idle
 
-Spec == Init /\ [][Next]_vars /\ WF_vars(CommitEvent) /\ WF_vars(StartSend) /\ WF_vars(SendConfirmed)
+FairRecipient(r) ==
+  /\ WF_vars(SkipIrrelevant(r))
+  /\ WF_vars(StartSend(r))
+  /\ WF_vars(SendConfirmed(r))
+
+Spec == Init /\ [][Next]_vars /\ WF_vars(CommitEvent) /\ FairRecipient("r1") /\ FairRecipient("r2")
 
 TypeOK ==
   /\ events \in 0..MaxSeq
-  /\ cursor \in 0..MaxSeq
-  /\ pending.active \in BOOLEAN
-  /\ pending.from \in 0..MaxSeq
-  /\ pending.to \in 0..MaxSeq
-  /\ delivered \subseteq (1..MaxSeq)
-  /\ confirmed \subseteq (1..MaxSeq)
+  /\ cursor \in [Recipients -> 0..MaxSeq]
+  /\ \A r \in Recipients :
+       /\ pending[r].active \in BOOLEAN
+       /\ pending[r].from \in 0..(MaxSeq + 1)
+       /\ pending[r].to \in 0..MaxSeq
+       /\ pending[r].rel \subseteq (1..MaxSeq)
+       /\ pending[r].size \in 0..Cap
+       /\ delivered[r] \subseteq (1..MaxSeq)
+       /\ confirmed[r] \subseteq (1..MaxSeq)
   /\ crashes \in 0..MaxCrashes
 
-CursorBounded == cursor <= events
+CursorBounded ==
+  \A r \in Recipients : cursor[r] <= events
+
+MessageWithinCap ==
+  \A r \in Recipients : pending[r].size <= Cap
 
 EveryBelowCursorConfirmed ==
-  \A e \in 1..cursor : e \in confirmed
+  \A r \in Recipients : \A e \in 1..cursor[r] : Target(e) = r => e \in confirmed[r]
 
 NoEventSkipped ==
-  \A e \in 1..cursor : e \in delivered
+  \A r \in Recipients : \A e \in 1..cursor[r] : Target(e) = r => e \in delivered[r]
 
-Liveness == <>[](cursor = MaxSeq /\ \A e \in 1..MaxSeq : e \in confirmed)
+Liveness ==
+  <>[](\A r \in Recipients : cursor[r] = MaxSeq /\ \A e \in 1..MaxSeq : Target(e) = r => e \in confirmed[r])
 =============================================================================

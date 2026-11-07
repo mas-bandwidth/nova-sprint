@@ -102,6 +102,9 @@ run CardMachine pass . CardMachine.cfg CardMachine.tla 4
 run CardDeps pass . CardDeps.cfg CardMachine.tla 4
 run CardPreempt pass . CardPreempt.cfg CardMachine.tla 4
 run CardReads pass . CardReads.cfg CardMachine.tla 4
+run Push pass . Push.cfg Push.tla 2
+run LandEdge pass . LandEdge.cfg LandEdge.tla 2
+run Runner pass . Runner.cfg Runner.tla 2
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"

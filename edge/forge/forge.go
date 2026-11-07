@@ -2,6 +2,7 @@
 package forge
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,58 +16,52 @@ import (
 	"time"
 )
 
+type CheckState string
+type FaultKind string
+
 const (
-	MaxChecksBatch          = 100
-	DefaultTimeout          = 30 * time.Second
-	DefaultHourlyLimit      = 5000
-	DefaultBucketBurst      = 100
-	DefaultRateLimitRestSec = 60
+	MaxChecksBatch                     = 100
+	DefaultTimeout                     = 30 * time.Second
+	DefaultHourlyLimit                 = 5000
+	DefaultBucketBurst                 = 100
+	DefaultRateLimitRestSec            = 60
+	CheckGreen              CheckState = "green"
+	CheckRed                CheckState = "red"
+	CheckPending            CheckState = "pending"
+	CheckFault              CheckState = "fault"
+	FaultRateLimit          FaultKind  = "rate_limit"
+	FaultGate               FaultKind  = "gate_fault"
 )
 
 var (
 	ErrStaleHead = errors.New("forge: stale head commit")
 	ErrBaseMoved = errors.New("forge: base branch moved")
+	accountRe    = regexp.MustCompile(`(?i)account\s+([A-Za-z0-9_.-]+)`)
+	retryAfterRe = regexp.MustCompile(`(?i)retry-after[:\s]+(\d+)`)
 )
 
 type ExecFunc func(ctx context.Context, cmd edge.Cmd) (edge.Result, error)
 
 func (f ExecFunc) Run(ctx context.Context, cmd edge.Cmd) (edge.Result, error) { return f(ctx, cmd) }
 
-type CheckState string
-
-const (
-	CheckGreen   CheckState = "green"
-	CheckRed     CheckState = "red"
-	CheckPending CheckState = "pending"
-	CheckFault   CheckState = "fault"
-)
-
 type CheckRollup struct {
-	SHA         string
-	State       CheckState
-	Failing     []string
-	URL, Reason string
+	SHA, URL, Reason string
+	State            CheckState
+	Failing          []string
 }
 type PRInfo struct {
-	Number  int    `json:"number"`
-	URL     string `json:"url"`
-	HeadRef string `json:"headRefName"`
-	HeadSHA string `json:"headRefOid"`
-	BaseRef string `json:"baseRefName"`
-	State   string `json:"state"`
+	Number                        int
+	URL, HeadRefName, BaseRefName string
+	State                         string
+	HeadRef                       string `json:"headRefName"`
+	HeadSHA                       string `json:"headRefOid"`
+	BaseRef                       string `json:"baseRefName"`
 }
-type FaultKind string
-
-const (
-	FaultRateLimit FaultKind = "rate_limit"
-	FaultGate      FaultKind = "gate_fault"
-)
-
+type PRSpec struct{ Repo, HeadBranch, BaseBranch, HeadSHA, Title, Body string }
 type FaultError struct {
-	Kind       FaultKind
-	Identity   string
-	RetryAfter int64
-	Reason     string
+	Kind             FaultKind
+	Identity, Reason string
+	RetryAfter       int64
 }
 
 func (e *FaultError) Error() string {
@@ -78,11 +73,8 @@ type Forge interface {
 	OpenPR(ctx context.Context, repo, head, base, title, body string) (PRInfo, error)
 	Checks(ctx context.Context, repo string, shas []string) (map[string]CheckRollup, error)
 	Merge(ctx context.Context, repo string, pr int, sha, base string) error
-	CheckBaseProtection(ctx context.Context, repo, base string) error
 }
-type Identity struct {
-	Name, ExpectedLogin, Token, ConfigDir string
-}
+type Identity struct{ Name, ExpectedLogin, Token, ConfigDir string }
 type Config struct {
 	Identity           Identity
 	Binary             string
@@ -97,37 +89,27 @@ type Client struct {
 	verified           bool
 	tokens             float64
 	lastTick, restTill int64
-	dedup              *edge.Deduplicator
 }
 
 func New(cfg Config) *Client {
-	if cfg.Binary == "" {
-		cfg.Binary = "gh"
-	}
-	if cfg.Exec == nil {
-		cfg.Exec = edge.NewOSExec()
-	}
-	if cfg.Timeout <= 0 {
-		cfg.Timeout = DefaultTimeout
-	}
+	cfg.Binary = cmp.Or(cfg.Binary, "gh")
+	cfg.Exec = cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec())
+	cfg.Timeout = cmp.Or(cfg.Timeout, DefaultTimeout)
+	cfg.HourlyLimit = cmp.Or(cfg.HourlyLimit, DefaultHourlyLimit)
+	cfg.Burst = cmp.Or(cfg.Burst, DefaultBucketBurst)
 	if cfg.Now == nil {
 		cfg.Now = func() int64 { return time.Now().Unix() }
 	}
-	if cfg.HourlyLimit <= 0 {
-		cfg.HourlyLimit = DefaultHourlyLimit
-	}
-	if cfg.Burst <= 0 {
-		cfg.Burst = DefaultBucketBurst
-	}
-	return &Client{cfg: cfg, tokens: float64(cfg.Burst), lastTick: cfg.Now(), dedup: edge.NewDeduplicator()}
+	return &Client{cfg: cfg, tokens: float64(cfg.Burst), lastTick: cfg.Now()}
+}
+func NewClient(ex edge.Exec, cfg Config) *Client {
+	cfg.Exec = cmp.Or[edge.Exec](ex, cfg.Exec)
+	return New(cfg)
 }
 func (c *Client) RestedUntil() int64 { c.mu.Lock(); defer c.mu.Unlock(); return c.restTill }
 func (c *Client) checkCredentials_internal(ctx context.Context) error {
 	id := c.cfg.Identity
-	name := id.Name
-	if name == "" {
-		name = "unknown"
-	}
+	name := cmp.Or(id.Name, "unknown")
 	switch {
 	case strings.TrimSpace(id.Token) == "" && strings.TrimSpace(id.ConfigDir) == "":
 		return fmt.Errorf("forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity %s: run nova-secrets exec or set GH_CONFIG_DIR", name)
@@ -146,15 +128,9 @@ func (c *Client) checkCredentials_internal(ctx context.Context) error {
 	if (err != nil || !res.OK()) && login == "" {
 		return fmt.Errorf("forge refused: gh auth status failed for %s: %s: set GH_CONFIG_DIR for %s", name, strings.TrimSpace(combined), name)
 	}
-	want := id.ExpectedLogin
-	if want == "" {
-		want = name
-	}
+	want := cmp.Or(id.ExpectedLogin, name)
 	if isForbiddenLogin_internal(login) || (id.ExpectedLogin != "" && !strings.EqualFold(login, id.ExpectedLogin)) {
-		if login == "" {
-			login = "unknown"
-		}
-		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (Glenn's credentials are never used): set GH_CONFIG_DIR for %s", login, want, want)
+		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (Glenn's credentials are never used): set GH_CONFIG_DIR for %s", cmp.Or(login, "unknown"), want, want)
 	}
 	c.mu.Lock()
 	c.verified = true
@@ -168,9 +144,6 @@ func isForbiddenLogin_internal(login string) bool {
 	}
 	return false
 }
-
-var accountRe = regexp.MustCompile(`(?i)account\s+([A-Za-z0-9_.-]+)`)
-
 func parseAuthLogin_internal(s string) string {
 	if m := accountRe.FindStringSubmatch(s); len(m) == 2 {
 		return m[1]
@@ -180,10 +153,9 @@ func parseAuthLogin_internal(s string) string {
 func (c *Client) env_internal() []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "GH_TOKEN=") || strings.HasPrefix(kv, "GITHUB_TOKEN=") || strings.HasPrefix(kv, "GH_CONFIG_DIR=") {
-			continue
+		if !strings.HasPrefix(kv, "GH_TOKEN=") && !strings.HasPrefix(kv, "GITHUB_TOKEN=") && !strings.HasPrefix(kv, "GH_CONFIG_DIR=") {
+			env = append(env, kv)
 		}
-		env = append(env, kv)
 	}
 	if c.cfg.Identity.Token != "" {
 		env = append(env, "GH_TOKEN="+c.cfg.Identity.Token)
@@ -200,16 +172,12 @@ func (c *Client) takeToken_internal() error {
 	if now < c.restTill {
 		return &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.restTill, Reason: "identity is resting after GitHub rate limit"}
 	}
+	rate := float64(c.cfg.HourlyLimit) / 3600.0
 	if now > c.lastTick {
-		rate := float64(c.cfg.HourlyLimit) / 3600.0
-		c.tokens += float64(now-c.lastTick) * rate
-		if c.tokens > float64(c.cfg.Burst) {
-			c.tokens = float64(c.cfg.Burst)
-		}
+		c.tokens = min(c.tokens+float64(now-c.lastTick)*rate, float64(c.cfg.Burst))
 		c.lastTick = now
 	}
 	if c.tokens < 1.0 {
-		rate := float64(c.cfg.HourlyLimit) / 3600.0
 		c.restTill = now + int64((1.0-c.tokens)/rate) + 1
 		return &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.restTill, Reason: "token bucket exhausted for identity"}
 	}
@@ -224,31 +192,29 @@ func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, st
 		return "", "", err
 	}
 	res, err := c.cfg.Exec.Run(ctx, edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout})
-	combined := res.Stdout + "\n" + res.Stderr
-	if retrySec, ok := detectRateLimit_internal(combined); ok {
-		c.mu.Lock()
-		c.restTill = c.cfg.Now() + retrySec
-		until := c.restTill
-		c.mu.Unlock()
-		return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: until, Reason: strings.TrimSpace(res.Stderr)}
+	if err != nil || !res.OK() {
+		if retrySec, ok := detectRateLimit_internal(res.Stderr); ok {
+			c.mu.Lock()
+			c.restTill = c.cfg.Now() + retrySec
+			until := c.restTill
+			c.mu.Unlock()
+			return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: until, Reason: strings.TrimSpace(res.Stderr)}
+		}
 	}
-	switch {
-	case err != nil:
+	if err != nil {
 		return res.Stdout, res.Stderr, err
-	case !res.OK():
+	}
+	if !res.OK() {
 		return res.Stdout, res.Stderr, fmt.Errorf("gh %s exited %d: %s", strings.Join(argv, " "), res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
 	return res.Stdout, res.Stderr, nil
 }
 
-var retryAfterRe = regexp.MustCompile(`(?i)retry-after[:\s]+(\d+)`)
-
 func detectRateLimit_internal(s string) (int64, bool) {
 	lower := strings.ToLower(s)
-	isLimit := strings.Contains(lower, "http 429") || strings.Contains(lower, "status 429") ||
-		strings.Contains(lower, "rate limit") || strings.Contains(lower, "secondary rate limit") ||
-		(strings.Contains(lower, "http 403") && strings.Contains(lower, "limit"))
-	if !isLimit {
+	if !strings.Contains(lower, "http 429") && !strings.Contains(lower, "status 429") &&
+		!strings.Contains(lower, "rate limit") && !strings.Contains(lower, "secondary rate limit") &&
+		!(strings.Contains(lower, "http 403") && strings.Contains(lower, "limit")) {
 		return 0, false
 	}
 	if m := retryAfterRe.FindStringSubmatch(s); len(m) == 2 {
@@ -257,29 +223,6 @@ func detectRateLimit_internal(s string) (int64, bool) {
 		}
 	}
 	return DefaultRateLimitRestSec, true
-}
-func (c *Client) Query(ctx context.Context, repo string, req edge.EdgeRequest) (edge.EdgeResult, error) {
-	return c.dedup.Do(ctx, req, func(ctx context.Context, r edge.EdgeRequest) (edge.EdgeResult, error) {
-		out := edge.EdgeResult{ID: r.ID, Kind: r.Kind, Card: r.Card, SHA: r.SHA}
-		m, err := c.Checks(ctx, repo, []string{r.SHA})
-		if err != nil {
-			var fe *FaultError
-			if errors.As(err, &fe) {
-				out.Outcome = string(CheckFault)
-				out.Failure = string(fe.Kind)
-				out.Reason = fe.Error()
-				return out, nil
-			}
-			return out, err
-		}
-		cr := m[r.SHA]
-		out.Outcome = string(cr.State)
-		out.Reason = cr.Reason
-		if cr.URL != "" {
-			out.Reason = cr.Reason + " (" + cr.URL + ")"
-		}
-		return out, nil
-	})
 }
 func (c *Client) PR(ctx context.Context, repo, head, base string) (PRInfo, bool, error) {
 	if repo == "" || head == "" || base == "" {
@@ -314,6 +257,10 @@ func (c *Client) OpenPR(ctx context.Context, repo, head, base, title, body strin
 	}
 	return pr, nil
 }
+func (c *Client) EnsurePR(ctx context.Context, spec PRSpec) (int, error) {
+	pr, err := c.OpenPR(ctx, spec.Repo, spec.HeadBranch, spec.BaseBranch, spec.Title, spec.Body)
+	return pr.Number, err
+}
 func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[string]CheckRollup, error) {
 	if len(shas) > MaxChecksBatch {
 		return nil, fmt.Errorf("forge refused: Checks batch size %d exceeds %d SHAs: split into batches of at most %d", len(shas), MaxChecksBatch, MaxChecksBatch)
@@ -333,40 +280,41 @@ func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[st
 	var b strings.Builder
 	fmt.Fprintf(&b, "query { repository(owner: %q, name: %q) {", owner, name)
 	for i, sha := range shas {
-		fmt.Fprintf(&b, ` c%d: object(oid: %q) { ... on Commit { statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } }`, i, sha)
+		fmt.Fprintf(&b, ` c%d: object(oid: %q) { ... on Commit { oid statusCheckRollup { state contexts(first: 100) { pageInfo { hasNextPage endCursor } nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } }`, i, sha)
 	}
 	b.WriteString(" } }")
 	stdout, _, err := c.runGH_internal(ctx, "api", "graphql", "-f", "query="+b.String())
 	if err != nil {
 		return nil, err
 	}
-	return parseChecksGraphQL_internal(stdout, shas)
+	return c.parseChecksGraphQL_internal(ctx, owner, name, stdout, shas)
 }
 
 type gqlNode struct {
-	Typename   string `json:"__typename"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	DetailsURL string `json:"detailsUrl"`
-	Context    string `json:"context"`
-	State      string `json:"state"`
-	TargetURL  string `json:"targetUrl"`
+	Typename                                             string `json:"__typename"`
+	Name, Status, Conclusion, DetailsURL, Context, State string
+	TargetURL                                            string
+}
+type gqlPageInfo struct {
+	HasNextPage bool
+	EndCursor   string
 }
 type gqlChecksEnvelope struct {
 	Data struct {
 		Repository map[string]*struct {
+			OID               string
 			StatusCheckRollup *struct {
-				State    string `json:"state"`
+				State    string
 				Contexts struct {
-					Nodes []gqlNode `json:"nodes"`
-				} `json:"contexts"`
-			} `json:"statusCheckRollup"`
-		} `json:"repository"`
-	} `json:"data"`
+					PageInfo gqlPageInfo
+					Nodes    []gqlNode
+				}
+			}
+		}
+	}
 }
 
-func parseChecksGraphQL_internal(raw string, shas []string) (map[string]CheckRollup, error) {
+func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, raw string, shas []string) (map[string]CheckRollup, error) {
 	var env gqlChecksEnvelope
 	if err := json.Unmarshal([]byte(raw), &env); err != nil {
 		return nil, fmt.Errorf("forge: decode graphql checks: %w", err)
@@ -378,9 +326,36 @@ func parseChecksGraphQL_internal(raw string, shas []string) (map[string]CheckRol
 			out[sha] = CheckRollup{SHA: sha, State: CheckPending, Reason: "no check rollup reported yet"}
 			continue
 		}
-		out[sha] = classifyRollup_internal(sha, commit.StatusCheckRollup.State, commit.StatusCheckRollup.Contexts.Nodes)
+		if commit.OID != "" && !strings.EqualFold(commit.OID, sha) {
+			out[sha] = CheckRollup{SHA: sha, State: CheckFault, Reason: fmt.Sprintf("graphql returned oid %s for requested sha %s", commit.OID, sha)}
+			continue
+		}
+		nodes, pi := commit.StatusCheckRollup.Contexts.Nodes, commit.StatusCheckRollup.Contexts.PageInfo
+		for pi.HasNextPage && pi.EndCursor != "" {
+			more, nextPI, err := c.fetchMoreContexts_internal(ctx, owner, name, sha, pi.EndCursor)
+			if err != nil {
+				return nil, err
+			}
+			nodes, pi = append(nodes, more...), nextPI
+		}
+		out[sha] = classifyRollup_internal(sha, commit.StatusCheckRollup.State, nodes)
 	}
 	return out, nil
+}
+func (c *Client) fetchMoreContexts_internal(ctx context.Context, owner, name, sha, cursor string) ([]gqlNode, gqlPageInfo, error) {
+	q := fmt.Sprintf(`query { repository(owner: %q, name: %q) { c0: object(oid: %q) { ... on Commit { oid statusCheckRollup { state contexts(first: 100, after: %q) { pageInfo { hasNextPage endCursor } nodes { __typename ... on CheckRun { name status conclusion detailsUrl } ... on StatusContext { context state targetUrl } } } } } } } }`, owner, name, sha, cursor)
+	stdout, _, err := c.runGH_internal(ctx, "api", "graphql", "-f", "query="+q)
+	if err != nil {
+		return nil, gqlPageInfo{}, err
+	}
+	var env gqlChecksEnvelope
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		return nil, gqlPageInfo{}, err
+	}
+	if commit := env.Data.Repository["c0"]; commit != nil && commit.StatusCheckRollup != nil {
+		return commit.StatusCheckRollup.Contexts.Nodes, commit.StatusCheckRollup.Contexts.PageInfo, nil
+	}
+	return nil, gqlPageInfo{}, nil
 }
 func classifyNode_internal(n gqlNode) (CheckState, string, string) {
 	if n.Typename == "StatusContext" || (n.Context != "" && n.Name == "") {
@@ -419,30 +394,26 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 		case CheckPending:
 			pending = true
 		case CheckRed:
-			failing = append(failing, name)
-			if firstRedURL == "" {
-				firstRedURL = url
-			}
+			failing, firstRedURL = append(failing, name), cmp.Or(firstRedURL, url)
 		case CheckFault:
-			faulted = append(faulted, name)
-			if firstFaultURL == "" {
-				firstFaultURL = url
-			}
+			faulted, firstFaultURL = append(faulted, name), cmp.Or(firstFaultURL, url)
 		}
 	}
-	if len(faulted) > 0 && len(failing) == 0 {
+	switch {
+	case len(faulted) > 0 && len(failing) == 0:
 		return CheckRollup{SHA: sha, State: CheckFault, Failing: faulted, URL: firstFaultURL, Reason: "gate did not run: " + strings.Join(faulted, ", ")}
-	}
-	if len(failing) > 0 {
+	case len(failing) > 0:
 		return CheckRollup{SHA: sha, State: CheckRed, Failing: failing, URL: firstRedURL, Reason: "CI red: " + strings.Join(failing, ", ")}
-	}
-	if pending || len(nodes) == 0 {
+	case strings.EqualFold(rollupState, "FAILURE") || strings.EqualFold(rollupState, "ERROR"):
+		return CheckRollup{SHA: sha, State: CheckRed, Failing: []string{"statusCheckRollup"}, Reason: "statusCheckRollup state " + rollupState}
+	case pending || strings.EqualFold(rollupState, "PENDING") || strings.EqualFold(rollupState, "EXPECTED") || len(nodes) == 0:
 		if strings.EqualFold(rollupState, "SUCCESS") && len(nodes) == 0 {
 			return CheckRollup{SHA: sha, State: CheckGreen}
 		}
 		return CheckRollup{SHA: sha, State: CheckPending, Reason: "checks in progress"}
+	default:
+		return CheckRollup{SHA: sha, State: CheckGreen}
 	}
-	return CheckRollup{SHA: sha, State: CheckGreen}
 }
 func (c *Client) Merge(ctx context.Context, repo string, pr int, sha, base string) error {
 	if pr <= 0 || !isFullSHA_internal(sha) || base == "" {
@@ -462,31 +433,16 @@ func (c *Client) Merge(ctx context.Context, repo string, pr int, sha, base strin
 	case info.HeadSHA != "" && !strings.EqualFold(info.HeadSHA, sha):
 		return fmt.Errorf("%w: PR #%d head is %s, expected gated sha %s: re-gate before merge", ErrStaleHead, pr, info.HeadSHA, sha)
 	}
-	_, stderr, err := c.runGH_internal(ctx, "pr", "merge", strconv.Itoa(pr), "--repo", repo, "--merge", "--match-head-commit", sha)
+	_, stderr, err := c.runGH_internal(ctx, "api", fmt.Sprintf("repos/%s/git/refs/heads/%s", repo, base), "-X", "PATCH", "-f", "sha="+sha)
 	if err != nil {
 		low := strings.ToLower(stderr + " " + err.Error())
 		switch {
 		case strings.Contains(low, "match-head-commit") || strings.Contains(low, "head branch was modified"):
 			return fmt.Errorf("%w: %v", ErrStaleHead, err)
-		case strings.Contains(low, "base branch was modified") || strings.Contains(low, "out-of-date") || strings.Contains(low, "not up to date"):
+		case strings.Contains(low, "base branch was modified") || strings.Contains(low, "out-of-date") || strings.Contains(low, "not up to date") || strings.Contains(low, "fast-forward") || strings.Contains(low, "fast forward"):
 			return fmt.Errorf("%w: %v", ErrBaseMoved, err)
 		}
 		return err
-	}
-	return nil
-}
-func (c *Client) CheckBaseProtection(ctx context.Context, repo, base string) error {
-	stdout, _, err := c.runGH_internal(ctx, "api", fmt.Sprintf("repos/%s/branches/%s/protection", repo, base))
-	if err != nil {
-		return fmt.Errorf("SPRINT REFUSED stream add: base branch %s on %s does not require branches to be up to date before merging: enable strict status checks on %s/%s", base, repo, repo, base)
-	}
-	var prot struct {
-		RequiredStatusChecks *struct {
-			Strict bool `json:"strict"`
-		} `json:"required_status_checks"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &prot); err != nil || prot.RequiredStatusChecks == nil || !prot.RequiredStatusChecks.Strict {
-		return fmt.Errorf("SPRINT REFUSED stream add: base branch %s on %s does not require branches to be up to date before merging: enable strict status checks on %s/%s", base, repo, repo, base)
 	}
 	return nil
 }
@@ -495,8 +451,7 @@ func isFullSHA_internal(s string) bool {
 		return false
 	}
 	for i := 0; i < 40; i++ {
-		c := s[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if c := s[i]; !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
 			return false
 		}
 	}

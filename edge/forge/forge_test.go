@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
@@ -123,20 +120,12 @@ func fakeGraphQLExec_internal(_ context.Context, cmd edge.Cmd) (edge.Result, err
 	return edge.Result{Stderr: "unexpected command", ExitCode: 1}, nil
 }
 
-func TestMergeExactSHAAndBaseProtection(t *testing.T) {
+func TestMergeExactSHA(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
 	f := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", ConfigDir: "/rowan/gh"}, func() int64 { return now })
 	repo := "mas-bandwidth/nova-sprint"
-
-	if err := f.CheckBaseProtection(ctx, repo, "v2"); err == nil || !strings.Contains(err.Error(), "SPRINT REFUSED stream add: base branch v2 on mas-bandwidth/nova-sprint does not require branches to be up to date") {
-		t.Fatalf("expected base protection refusal, got %v", err)
-	}
-	f.SetBaseProtection(repo, "v2", true)
-	if err := f.CheckBaseProtection(ctx, repo, "v2"); err != nil {
-		t.Fatalf("CheckBaseProtection: %v", err)
-	}
 
 	pr, err := f.OpenPR(ctx, repo, "sprint/s1/group", "v2", "sprint/s1 batch", "body")
 	if err != nil {
@@ -197,7 +186,7 @@ func TestRateLimitRestsIdentity(t *testing.T) {
 	}
 }
 
-func TestRestartRequeryAndInflightDedup(t *testing.T) {
+func TestRestartRequeryIdempotence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
@@ -207,49 +196,14 @@ func TestRestartRequeryAndInflightDedup(t *testing.T) {
 
 	edge1 := NewFakeWithWorld(world, id, func() int64 { return now })
 	edge1.SetCheck(repo, shaA, CheckRollup{SHA: shaA, State: CheckGreen})
-	req := edge.EdgeRequest{Kind: edge.FactCI, Card: "card-1", SHA: shaA, After: []string{"op-1", "op-2"}}
 
-	res1, err := edge1.Query(ctx, repo, req)
+	res1, err := edge1.Checks(ctx, repo, []string{shaA})
 	if err != nil {
-		t.Fatalf("edge1 Query: %v", err)
+		t.Fatalf("edge1 Checks: %v", err)
 	}
 	edge2 := NewFakeWithWorld(world, id, func() int64 { return now })
-	res2, err := edge2.Query(ctx, repo, req)
-	if err != nil || res1.ID != res2.ID || res1.Outcome != res2.Outcome || res2.Outcome != string(CheckGreen) {
+	res2, err := edge2.Checks(ctx, repo, []string{shaA})
+	if err != nil || res1[shaA].State != res2[shaA].State || res2[shaA].State != CheckGreen {
 		t.Fatalf("restart query mismatch: res1=%+v res2=%+v err=%v", res1, res2, err)
-	}
-	assertInflightDedup_internal(t, ctx, edge2, repo, req)
-}
-
-func assertInflightDedup_internal(t *testing.T, ctx context.Context, f *Fake, repo string, req edge.EdgeRequest) {
-	t.Helper()
-	var calls atomic.Int32
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	f.OnCall = func(op string) {
-		if op == "Checks" {
-			if calls.Add(1) == 1 {
-				close(entered)
-			}
-			<-release
-		}
-	}
-	var wg sync.WaitGroup
-	var outA, outB edge.EdgeResult
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		outA, _ = f.Query(ctx, repo, req)
-	}()
-	<-entered
-	go func() {
-		defer wg.Done()
-		outB, _ = f.Query(ctx, repo, req)
-	}()
-	time.Sleep(5 * time.Millisecond)
-	close(release)
-	wg.Wait()
-	if calls.Load() != 1 || outA.ID != outB.ID || outA.Outcome != outB.Outcome {
-		t.Fatalf("in-flight dedup calls=%d outA=%+v outB=%+v", calls.Load(), outA, outB)
 	}
 }

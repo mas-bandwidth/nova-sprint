@@ -3,6 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -179,6 +181,11 @@ func (w *fakeWall) RunHarness(_ context.Context, j Job, argv, env []string, _ ti
 	w.lastEnv = env
 	fn := w.runFn
 	w.mu.Unlock()
+	if rec, err := ReadJobRecord(j.JobDir); err == nil && rec.State == JobRunning {
+		rec.PID = 4242
+		rec.Nonce = "n4242"
+		_ = WriteJobRecord(j.JobDir, rec)
+	}
 	if fn != nil {
 		return fn(call, j, argv, env)
 	}
@@ -281,7 +288,7 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 	dir := t.TempDir()
 	j := Job{
 		Consumer: "p1.w1", Kind: "work", Row: "amd-1.ds", Stream: "s1",
-		Branch: "sprint/s1/p1", BaseSHA: testBaseSHA, Tier: "pro",
+		Branch: "sprint/s1/p1", BaseSHA: testBaseSHA, Tier: "pro", SlotWeight: 1,
 		Model: "deepseek/deepseek-r1", JobDir: dir, WorktreeDir: filepath.Join(dir, "repo"),
 		ProxyAddr: "127.0.0.1:19999", Prose: "fix bug",
 	}
@@ -539,7 +546,7 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 
 	procs := &fakeProcTable{alive: map[string]bool{"777:nonce-live": true}}
 	_ = WriteJobRecord(jobDir, JobRecord{
-		Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1",
+		Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1",
 		Branch: taken.Branch, BaseSHA: taken.BaseSHA, Gen: taken.Gen, Attempt: 1,
 		ResultID: "res-p1.w1-g3", State: JobRunning, PID: 777, Nonce: "nonce-live",
 	})
@@ -551,9 +558,12 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 		t.Fatalf("expected live pid 777 adopted on restart")
 	}
 
-	// Simulate harness death while runner was down, then restart with a brand-new Runner struct.
+	// Simulate harness death while runner was down, then restart and recover on r2 before pure QueryEdge.
 	delete(procs.alive, "777:nonce-live")
 	r2, _ := NewRunner(Runner{Host: "b1", RootDir: root, Sprint: sc, Git: git, Procs: procs, Now: clock})
+	if err := r2.RecoverRow(ctx, row); err != nil {
+		t.Fatalf("RecoverRow dead: %v", err)
+	}
 	req := EdgeRequest{Epoch: 1, Kind: "runner", Card: "p1.w1", SHA: testPriorSHA, Row: row, After: []string{"start-p1"}}
 	res1, err := r2.QueryEdge(ctx, req)
 	if err != nil {
@@ -632,4 +642,219 @@ func assertEpochSeparatedQueryEdge_internal(t *testing.T, ctx context.Context, r
 	if resEpoch2.ID == res1.ID || resEpoch2.Epoch != 2 || resEpoch2.ID != RequestID(2, "runner", "p1.w1", testPriorSHA) {
 		t.Fatalf("QueryEdge epoch 2 must have distinct RequestID keyed on epoch: res1=%+v resEpoch2=%+v", res1, resEpoch2)
 	}
+}
+
+func TestWallEnvExactAllowlistPerName(t *testing.T) {
+	t.Parallel()
+	forbidden := []string{
+		"DATABASE_URL",
+		"SSH_AUTH_SOCK",
+		"NOVA_SPRINT_DSN",
+		"NOVA_PG_DSN",
+		"PGPASSWORD",
+		"GITHUB_TOKEN",
+		"GH_TOKEN",
+		"ANTHROPIC_API_KEY",
+		"OPENAI_API_KEY",
+		"DEEPSEEK_API_KEY",
+		"AWS_SECRET_ACCESS_KEY",
+		"CUSTOM_KEY",
+		"CUSTOM_TOKEN",
+		"UNLISTED_VAR",
+	}
+	for _, name := range forbidden {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			env := SanitizeWallEnv([]string{name + "=secret-value", "PATH=/usr/bin", "LANG=C.UTF-8"}, t.TempDir())
+			for _, kv := range env {
+				if strings.HasPrefix(kv, name+"=") {
+					t.Fatalf("SanitizeWallEnv failed to strip %s: got %q", name, kv)
+				}
+			}
+		})
+	}
+}
+
+type rejectReceiptSprint struct {
+	crSprint
+	receipt store.Receipt
+}
+
+func (s *rejectReceiptSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reports = append(s.reports, req)
+	return s.receipt, nil
+}
+
+func TestReportRequiresAcceptedMatchingReceiptBeforeClean(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	sp := &rejectReceiptSprint{
+		crSprint: crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}},
+		receipt:  store.Receipt{Accepted: false, Op: "res-e1-p1.r1-a0-g2", Reason: "gen mismatch"},
+	}
+	r := crRunner_internal(t, sp, &crWall{})
+	jobDir := filepath.Join(r.RootDir, "jobs", "p1.r1")
+	if err := r.RunConsumer(ctx, sp.next, sp.next.Ready[0]); !errors.Is(err, ErrRefused) {
+		t.Fatalf("unaccepted receipt must refuse and not clean: got %v", err)
+	}
+	rec, err := ReadJobRecord(jobDir)
+	if err != nil || rec.State != JobReporting {
+		t.Fatalf("job directory must remain in %s on unaccepted receipt: rec=%+v err=%v", JobReporting, rec, err)
+	}
+
+	// Accepted receipt with wrong Op ID must also refuse to clean.
+	sp.receipt = store.Receipt{Accepted: true, Op: "wrong-op-id"}
+	if err := r.sendReportAndClean_internal(ctx, jobDir, rec); !errors.Is(err, ErrRefused) {
+		t.Fatalf("mismatched receipt Op must refuse and not clean: got %v", err)
+	}
+	if _, err := os.Stat(jobDir); err != nil {
+		t.Fatalf("job directory must remain when receipt.Op != ResultID: %v", err)
+	}
+
+	// Matching accepted receipt records and cleans.
+	sp.receipt = store.Receipt{Accepted: true, Op: rec.ResultID}
+	if err := r.sendReportAndClean_internal(ctx, jobDir, rec); err != nil {
+		t.Fatalf("expected clean on accepted matching receipt: %v", err)
+	}
+	if _, err := os.Stat(jobDir); !os.IsNotExist(err) {
+		t.Fatalf("expected job directory removed after matching accepted receipt, got %v", err)
+	}
+}
+
+func TestRecoveryMatchesFullJobIdentityEpochConsumerAttemptGen(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	sp := &crSprint{next: NextResponse{
+		Epoch: 2, Row: "vision.ds", State: card.Up, Width: 1,
+		Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Attempt: 2, Gen: 5}},
+	}}
+	procs := &fakeProcTable{alive: map[string]bool{"888:nonce-stale": true}}
+	root := t.TempDir()
+	jobDir := filepath.Join(root, "jobs", "p1.w1")
+	_ = WriteJobRecord(jobDir, JobRecord{
+		Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: "vision.ds",
+		Attempt: 1, Gen: 3, ResultID: "res-e1-p1.w1-a1-g3", State: JobRunning, PID: 888, Nonce: "nonce-stale",
+	})
+	r, err := NewRunner(Runner{Host: "vision", RootDir: root, Sprint: sp, Procs: procs, Wall: &crWall{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RecoverRow(ctx, "vision.ds"); err != nil {
+		t.Fatalf("RecoverRow: %v", err)
+	}
+	if _, adopted := r.adopted["p1.w1"]; adopted {
+		t.Fatalf("mismatched (epoch, attempt, gen) job must never be adopted")
+	}
+	if len(sp.reported()) > 0 {
+		t.Fatalf("mismatched job must be kept for requery, never reported under new gen: %+v", sp.reported())
+	}
+	diskRec, err := ReadJobRecord(jobDir)
+	if err != nil || diskRec.Epoch != 1 || diskRec.Attempt != 1 || diskRec.Gen != 3 {
+		t.Fatalf("mismatched job record on disk must preserve its original (epoch=1, attempt=1, gen=3), got %+v err=%v", diskRec, err)
+	}
+}
+
+func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fx := edge.NewFakeExec()
+	fx.Enqueue("git", edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"})
+	gitOps := &OSGitOps{WorkCloneDir: t.TempDir(), OriginURL: "origin", Exec: fx}
+	_, err := gitOps.RebaseOntoStream(ctx, t.TempDir(), "sprint/s1/group")
+	var fe *FetchError
+	if !errors.As(err, &fe) || fe.StreamRef != "sprint/s1/group" {
+		t.Fatalf("expected *FetchError from RebaseOntoStream when fetch fails, got %T (%v)", err, err)
+	}
+
+	// Verify RunConsumer propagates *FetchError and reports nothing.
+	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 1}}}}
+	fGit := newFakeGit_internal()
+	fGit.rebaseErr = &FetchError{StreamRef: "sprint/s1/group", Cause: errors.New("network down")}
+	wall := &fakeWall{
+		runFn: func(_ int, j Job, _, _ []string) (WallRunResult, error) {
+			fGit.mu.Lock()
+			fGit.headByWT[j.WorktreeDir] = testWorkSHA
+			fGit.mu.Unlock()
+			_ = os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
+			return WallRunResult{ExitCode: 0, PID: 321, Nonce: "n321"}, nil
+		},
+	}
+	r, err := NewRunner(Runner{
+		Host: "vision", RootDir: t.TempDir(),
+		Sprint: &workTakeSprint{crSprint: sp},
+		Git:    fGit, Wall: wall, DefaultHarness: &ScriptHarness{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runErr := r.RunConsumer(ctx, sp.next, sp.next.Ready[0])
+	if !errors.As(runErr, &fe) {
+		t.Fatalf("expected RunConsumer to propagate *FetchError, got %v", runErr)
+	}
+	if got := sp.reported(); len(got) > 0 {
+		t.Fatalf("fetch failure in RebaseOntoStream must report nothing, got %+v", got)
+	}
+}
+
+type workTakeSprint struct {
+	*crSprint
+}
+
+func (s *workTakeSprint) Take(_ context.Context, _, id string, gen int) (TakeInfo, error) {
+	return TakeInfo{
+		Epoch: 1, Consumer: id, Producer: "p1", Kind: "work", Stream: "s1",
+		StreamRef: "sprint/s1/group", Branch: "sprint/s1/p1", BaseSHA: testBaseSHA,
+		Tier: "pro", Gen: gen, Attempt: 1,
+	}, nil
+}
+
+func TestConcurrentWidthWithdrawStopsRunningHarness(t *testing.T) {
+	t.Parallel()
+	sp := &crSprint{next: NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 2, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}}}}
+	started := make(chan struct{})
+	canceled := make(chan error, 1)
+	wall := &cancelWaitWall{started: started, canceled: canceled}
+	r := crRunner_internal(t, sp, wall)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- r.StepRow(context.Background(), "vision.ds")
+	}()
+	<-started
+	sp.mu.Lock()
+	sp.next.Ready = nil
+	sp.next.Final = []ConsumerSummary{{ID: "p1.r1", Kind: "read", State: card.Fail, Gen: 2}}
+	sp.mu.Unlock()
+	if err := r.RecoverRow(context.Background(), "vision.ds"); err != nil {
+		t.Fatalf("RecoverRow withdraw: %v", err)
+	}
+	select {
+	case err := <-canceled:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected running harness ctx canceled on withdraw, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for withdraw to cancel running harness")
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("StepRow after withdraw: %v", err)
+	}
+}
+
+type cancelWaitWall struct {
+	started  chan struct{}
+	canceled chan error
+}
+
+func (w *cancelWaitWall) RunHarness(ctx context.Context, _ Job, _, _ []string, _ time.Duration) (WallRunResult, error) {
+	close(w.started)
+	<-ctx.Done()
+	w.canceled <- ctx.Err()
+	return WallRunResult{ExitCode: -1}, ctx.Err()
+}
+func (w *cancelWaitWall) RunTest(context.Context, Job, string, time.Duration) (WallRunResult, error) {
+	return WallRunResult{}, nil
 }

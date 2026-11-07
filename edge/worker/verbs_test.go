@@ -1,0 +1,321 @@
+package worker
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/store"
+)
+
+type OriginChecker interface {
+	HasHead(ctx context.Context, repo, branch, sha string) (bool, error)
+}
+type ReportForgeChecker interface {
+	HasPR(ctx context.Context, repo, branch, base, sha string) (bool, error)
+	ChecksGreen(ctx context.Context, repo, sha string) (bool, error)
+}
+type StoreSprintClient struct {
+	Store                store.Store
+	Origin               OriginChecker
+	Forge                ReportForgeChecker
+	RequirePR            map[string]bool
+	RequireGreenAtReport bool
+	Now                  func() time.Time
+}
+
+func (s *StoreSprintClient) now_internal() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Unix(1000, 0).UTC()
+}
+func (s *StoreSprintClient) Next(ctx context.Context, row string) (NextResponse, error) {
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return NextResponse{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	r, ok := snap.Rows[row]
+	if !ok {
+		return NextResponse{}, fmt.Errorf("SPRINT REFUSED next: unknown row %s: run nova-sprint show", row)
+	}
+	out := NextResponse{Epoch: snap.Epoch, Seq: snap.Seq, Row: r.Name, State: r.State, Width: r.Width, Held: r.Held, Model: r.Model, Harness: r.Harness}
+	for _, c := range snap.Cards {
+		if (c.Kind != "work" && c.Kind != "read") || c.Holder != row {
+			continue
+		}
+		p := snap.Cards[c.Of]
+		sum := ConsumerSummary{
+			ID: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream,
+			State: c.State, Gen: c.Gen, Attempt: c.Attempt,
+			Priority: p.Priority, Score: p.Score, Head: c.Head,
+		}
+		switch c.State {
+		case card.Ready:
+			out.Ready = append(out.Ready, sum)
+		case card.Working:
+			out.Working = append(out.Working, sum)
+		case card.Done, card.Fail:
+			out.Final = append(out.Final, sum)
+		}
+	}
+	sortConsumers_internal(out.Ready)
+	sortConsumers_internal(out.Working)
+	sortConsumers_internal(out.Final)
+	return out, nil
+}
+func sortConsumers_internal(list []ConsumerSummary) {
+	slices.SortFunc(list, func(a, b ConsumerSummary) int {
+		if c := priorityRank_internal(b.Priority) - priorityRank_internal(a.Priority); c != 0 {
+			return c
+		}
+		if a.Score != b.Score {
+			return b.Score - a.Score
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+}
+func priorityRank_internal(level string) int {
+	switch level {
+	case "blocker":
+		return 5
+	case "critical":
+		return 4
+	case "high":
+		return 3
+	case "normal":
+		return 2
+	default:
+		return 1
+	}
+}
+func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, gen int) (TakeInfo, error) {
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return TakeInfo{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	c, ok := snap.Cards[consumerID]
+	if !ok {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: unknown card %s: run nova-sprint next --as %s", consumerID, row)
+	}
+	if c.Gen != gen {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: card %s moved to gen %d (expected %d): run nova-sprint show %s", consumerID, c.Gen, gen, consumerID)
+	}
+	p := snap.Cards[c.Of]
+	if c.Of == "group" || c.Branch == "sprint/"+c.Stream+"/group" || strings.HasSuffix(c.Branch, "/group") || c.Branch == "sprint/"+c.Stream {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: card %s branch %q collides with reserved stream integration branch sprint/%s/group", consumerID, c.Branch, c.Stream)
+	}
+	r := snap.Rows[row]
+	plan, ref := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r), card.Take{Row: row})
+	if ref != nil {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %s: run nova-sprint show %s", ref.Reason, consumerID)
+	}
+	op := store.Op{
+		ID: FormatTakeOpID(snap.Epoch, consumerID, gen, row), Epoch: snap.Epoch,
+		Actor: row, Kind: "take", At: s.now_internal(), Expect: plan.Expect, Writes: plan.Writes,
+	}
+	rec, err := s.applyWithReplay_internal(ctx, op)
+	if err != nil {
+		return TakeInfo{}, err
+	}
+	if !rec.Accepted {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %s: run nova-sprint show %s", rec.Reason, consumerID)
+	}
+	afterCard := c
+	if rec.After != nil {
+		if ac, ok := rec.After.Cards[consumerID]; ok {
+			afterCard = ac
+		}
+	}
+	st := snap.Streams[c.Stream]
+	return buildTakeInfo_internal(snap.Epoch, afterCard, p, st, s.RequirePR[c.Stream]), nil
+}
+func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, reqPR bool) TakeInfo {
+	head := c.Head
+	if c.Kind == "read" && head == "" {
+		head = p.Head
+	}
+	return TakeInfo{
+		Epoch: epoch, Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream,
+		Repo: st.Repo, Base: st.Base, StreamRef: "sprint/" + c.Stream + "/group",
+		Branch: c.Branch, BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: head,
+		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding,
+		Paths: cloneStrings_internal(c.Paths), DoneWhen: cloneStrings_internal(c.DoneWhen),
+		Gen: c.Gen, Attempt: c.Attempt, Review: c.Review, RequirePR: reqPR,
+	}
+}
+func (s *StoreSprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
+	if strings.TrimSpace(req.ResultID) == "" {
+		return store.Receipt{}, errors.New("SPRINT REFUSED report: missing result id: pass --id <result-id>")
+	}
+	if prev, found, err := s.Store.Replay(ctx, req.ResultID); err != nil {
+		return store.Receipt{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
+	} else if found {
+		return prev, nil
+	}
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return store.Receipt{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	op, err := s.buildReportOp_internal(ctx, snap, req)
+	if err != nil {
+		return store.Receipt{}, err
+	}
+	return s.applyWithReplay_internal(ctx, op)
+}
+func (s *StoreSprintClient) buildReportOp_internal(ctx context.Context, snap store.Snapshot, req ReportRequest) (store.Op, error) {
+	c, ok := snap.Cards[req.Consumer]
+	if !ok {
+		return store.Op{}, fmt.Errorf("SPRINT REFUSED report: unknown consumer %s: run nova-sprint show", req.Consumer)
+	}
+	if c.Holder != req.Row {
+		return store.Op{}, fmt.Errorf("SPRINT REFUSED report: consumer %s is held by %s, not %s: run nova-sprint show %s", c.ID, c.Holder, req.Row, c.ID)
+	}
+	if c.Gen != req.Gen {
+		return store.Op{}, fmt.Errorf("SPRINT REFUSED report: consumer %s is at gen %d, expected %d: run nova-sprint show %s", c.ID, c.Gen, req.Gen, c.ID)
+	}
+	p := snap.Cards[c.Of]
+	st := snap.Streams[c.Stream]
+	if err := s.checkReportGates_internal(ctx, c, p, st, req); err != nil {
+		return store.Op{}, err
+	}
+	plan, err := buildCombinedReportPlan_internal(snap, c, p, st, req)
+	if err != nil {
+		return store.Op{}, err
+	}
+	return store.Op{ID: req.ResultID, Epoch: snap.Epoch, Actor: req.Row, Kind: "report", At: s.now_internal(), Expect: plan.Expect, Writes: plan.Writes}, nil
+}
+func (s *StoreSprintClient) checkReportGates_internal(ctx context.Context, c, p store.Card, st store.Stream, req ReportRequest) error {
+	switch {
+	case c.Kind == "read" && req.Result == "fix" && strings.TrimSpace(req.Finding) == "":
+		return fmt.Errorf("SPRINT REFUSED read: fix report on %s requires a finding: pass --finding <file:line and reason>", c.ID)
+	case c.Kind != "work" || req.Result != "ok":
+		return nil
+	case len(req.Head) != 40 || strings.Trim(req.Head, "0123456789abcdef") != "":
+		return fmt.Errorf("SPRINT REFUSED report: head %q is not a 40-hex commit sha: pass --head <40-hex>", req.Head)
+	}
+	if s.Origin != nil {
+		ok, err := s.Origin.HasHead(ctx, st.Repo, c.Branch, req.Head)
+		switch {
+		case err != nil:
+			return fmt.Errorf("SPRINT REFUSED report: origin check failed for %s: %v", c.Branch, err)
+		case !ok:
+			return fmt.Errorf("SPRINT REFUSED report: head %s is not on branch %s at origin: run git push origin %s", req.Head, c.Branch, c.Branch)
+		}
+	}
+	if s.RequirePR[c.Stream] && s.Forge != nil {
+		hasPR, err := s.Forge.HasPR(ctx, st.Repo, c.Branch, st.Base, req.Head)
+		if err != nil || !hasPR {
+			return fmt.Errorf("SPRINT REFUSED report: stream %s requires a pull request for %s at %s: run gh pr create --head %s --base %s", c.Stream, c.Branch, req.Head, c.Branch, st.Base)
+		}
+	}
+	if s.RequireGreenAtReport && s.Forge != nil {
+		green, err := s.Forge.ChecksGreen(ctx, st.Repo, req.Head)
+		if err != nil || !green {
+			return fmt.Errorf("SPRINT REFUSED report: checks are not green at %s: run nova-sprint show %s", req.Head, p.ID)
+		}
+	}
+	return nil
+}
+func buildCombinedReportPlan_internal(snap store.Snapshot, c, p store.Card, st store.Stream, req ReportRequest) (card.Plan, error) {
+	r := snap.Rows[req.Row]
+	head := req.Head
+	if c.Kind == "read" && head == "" {
+		head = p.Head
+	}
+	reason := cmpOr_internal(req.Reason, req.Finding)
+	cCard := card.FromStore(c)
+	pCard := card.FromStore(p)
+	cPlan, ref := card.MoveConsumer(cCard, pCard, card.RowFromStore(r), card.Report{Row: req.Row, Result: req.Result, Head: head, Reason: reason, Cost: req.Cost, Priced: req.Priced})
+	if ref != nil {
+		return card.Plan{}, fmt.Errorf("SPRINT REFUSED report: %s: run nova-sprint show %s", ref.Reason, c.ID)
+	}
+	if c.Kind != "work" || p.State != card.Working || c.ID != fmt.Sprintf("%s.w%d", p.ID, p.Attempt) {
+		return cPlan, nil
+	}
+	return mergeWorkProducerMove_internal(snap, cCard, pCard, st, req, cPlan)
+}
+func mergeWorkProducerMove_internal(snap store.Snapshot, cCard, pCard card.Card, st store.Stream, req ReportRequest, cPlan card.Plan) (card.Plan, error) {
+	var cons []card.Card
+	for _, sc := range snap.Cards {
+		if sc.Of != pCard.ID {
+			continue
+		}
+		cc := card.FromStore(sc)
+		if cc.ID == cCard.ID {
+			cc.State = card.Done
+			cc.Result = req.Result
+			cc.Head = cmpOr_internal(req.Head, cc.Head)
+			cc.Reason = cmpOr_internal(req.Reason, cc.Reason)
+		}
+		cons = append(cons, cc)
+	}
+	var ev card.Event
+	switch req.Result {
+	case "ok":
+		ev = card.Finished{Consumer: cCard.ID}
+	case "fail":
+		ev = card.Broken{Consumer: cCard.ID}
+	case "fault":
+		ev = card.Faulted{Consumer: cCard.ID}
+	default:
+		return cPlan, nil
+	}
+	pPlan, ref := card.Move(pCard, cons, nil, card.StreamFromStore(st), nil, ev)
+	if ref != nil {
+		return card.Plan{}, fmt.Errorf("SPRINT REFUSED report: %s: run nova-sprint show %s", ref.Reason, pCard.ID)
+	}
+	return combinePlans_internal(cPlan, pPlan), nil
+}
+func combinePlans_internal(a, b card.Plan) card.Plan {
+	var out card.Plan
+	out.Expect = append(out.Expect, a.Expect...)
+	for _, e := range b.Expect {
+		if !slices.Contains(out.Expect, e) {
+			out.Expect = append(out.Expect, e)
+		}
+	}
+	out.Writes = append(out.Writes, a.Writes...)
+	out.Writes = append(out.Writes, b.Writes...)
+	return out
+}
+func (s *StoreSprintClient) applyWithReplay_internal(ctx context.Context, op store.Op) (store.Receipt, error) {
+	rec, err := s.Store.Apply(ctx, op)
+	if err == nil {
+		return rec, nil
+	}
+	if errors.Is(err, store.ErrUnknown) {
+		if rep, found, rerr := s.Store.Replay(ctx, op.ID); rerr == nil && found {
+			return rep, nil
+		}
+		if rec2, aerr := s.Store.Apply(ctx, op); aerr == nil {
+			return rec2, nil
+		}
+	}
+	return store.Receipt{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
+}
+func (s *StoreSprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	if existing, ok := snap.Judgements[j.ID]; ok && existing.State == "open" {
+		return nil
+	}
+	now := s.now_internal()
+	op := store.Op{
+		ID:     "judge-open-" + j.ID + "-e" + strconv.Itoa(snap.Epoch),
+		Epoch:  snap.Epoch,
+		Actor:  cmpOr_internal(j.About, "worker"),
+		Kind:   "judgement",
+		At:     now,
+		Writes: []store.Write{store.PutJudgement{ID: j.ID, Kind: j.Kind, About: j.About, Question: j.Question, Command: j.Command, Group: j.Group, Deadline: j.Deadline}},
+	}
+	_, err = s.applyWithReplay_internal(ctx, op)
+	return err
+}

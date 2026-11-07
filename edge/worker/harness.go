@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,11 +12,11 @@ import (
 )
 
 type Harness interface {
-	Name() string                           // claude, codex, opencode, script
-	Command(j Job) (argv, env []string)     // pure, from the job and nova-config
-	Probe(j Job) Job                        // a one-turn job on the same path
-	Classify(exit int, tail []byte) Outcome // pure classification from exit + tail
-	Usage(j Job) (Cost, bool)               // the harness's own accounting
+	Name() string
+	Command(j Job) (argv, env []string)
+	Probe(j Job) Job
+	Classify(exit int, tail []byte) Outcome
+	Usage(j Job) (Cost, bool)
 }
 
 func NewHarness(name string) (Harness, error) {
@@ -33,158 +34,127 @@ func NewHarness(name string) (Harness, error) {
 	}
 }
 
-type ClaudeHarness struct {
-	ConfigDir string
-}
+type ClaudeHarness struct{ ConfigDir string }
 
-func (h *ClaudeHarness) Name() string { return "claude" }
+func (h *ClaudeHarness) Name() string             { return "claude" }
+func (h *ClaudeHarness) Probe(j Job) Job          { return probeJob_internal(j, "claude") }
+func (h *ClaudeHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
+func (h *ClaudeHarness) Classify(exit int, tail []byte) Outcome {
+	return classifyExitAndTail_internal(exit, tail)
+}
 func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
-	model := j.Model
-	if model == "" {
-		model = "claude-sonnet-4-6"
-	}
-	argv := []string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task", "--model", model, "--", buildPrompt_internal(j)}
+	argv := []string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task", "--model", cmp.Or(j.Model, "claude-sonnet-4-6"), "--", buildPrompt_internal(j)}
 	env := baseWallEnv_internal(j)
 	if h.ConfigDir != "" {
 		env = append(env, "CLAUDE_CONFIG_DIR="+h.ConfigDir)
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
-func (h *ClaudeHarness) Probe(j Job) Job { return probeJob_internal(j, "claude") }
-func (h *ClaudeHarness) Classify(exit int, tail []byte) Outcome {
+
+type CodexHarness struct{ ConfigDir string }
+
+func (h *CodexHarness) Name() string             { return "codex" }
+func (h *CodexHarness) Probe(j Job) Job          { return probeJob_internal(j, "codex") }
+func (h *CodexHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
+func (h *CodexHarness) Classify(exit int, tail []byte) Outcome {
 	return classifyExitAndTail_internal(exit, tail)
 }
-func (h *ClaudeHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
-
-type CodexHarness struct {
-	ConfigDir string
-}
-
-func (h *CodexHarness) Name() string { return "codex" }
 func (h *CodexHarness) Command(j Job) ([]string, []string) {
-	model := j.Model
-	if model == "" {
-		model = "gpt-5-codex"
-	}
-	wt := j.WorktreeDir
-	if wt == "" && j.JobDir != "" {
-		wt = filepath.Join(j.JobDir, "repo")
-	}
-	argv := []string{"codex", "exec", "--full-auto", "--model", model, "--cd", wt, buildPrompt_internal(j)}
+	wt := cmp.Or(j.WorktreeDir, filepath.Join(j.JobDir, "repo"))
+	argv := []string{"codex", "exec", "--full-auto", "--model", cmp.Or(j.Model, "gpt-5-codex"), "--cd", wt, buildPrompt_internal(j)}
 	env := baseWallEnv_internal(j)
 	if h.ConfigDir != "" {
 		env = append(env, "CODEX_HOME="+h.ConfigDir)
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
-func (h *CodexHarness) Probe(j Job) Job { return probeJob_internal(j, "codex") }
-func (h *CodexHarness) Classify(exit int, tail []byte) Outcome {
-	return classifyExitAndTail_internal(exit, tail)
-}
-func (h *CodexHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
 
 type OpenCodeHarness struct{}
 
-func (h *OpenCodeHarness) Name() string { return "opencode" }
+func (h *OpenCodeHarness) Name() string             { return "opencode" }
+func (h *OpenCodeHarness) Probe(j Job) Job          { return probeJob_internal(j, "opencode") }
+func (h *OpenCodeHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
+func (h *OpenCodeHarness) Classify(exit int, tail []byte) Outcome {
+	return classifyExitAndTail_internal(exit, tail)
+}
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
-	model := j.Model
-	if model == "" {
-		model = "deepseek/deepseek-reasoner"
-	}
-	argv := []string{"opencode", "run", "--model", model, buildPrompt_internal(j)}
+	argv := []string{"opencode", "run", "--model", cmp.Or(j.Model, "deepseek/deepseek-reasoner"), buildPrompt_internal(j)}
 	env := baseWallEnv_internal(j)
 	if j.ProxyAddr != "" {
 		baseURL := j.ProxyAddr
 		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
 			baseURL = "http://" + baseURL
 		}
-		env = append(env,
-			"OPENAI_BASE_URL="+strings.TrimSuffix(baseURL, "/")+"/v1",
-			"OPENAI_API_KEY="+ProxyPlaceholderKey,
-		)
+		env = append(env, "OPENAI_BASE_URL="+strings.TrimSuffix(baseURL, "/")+"/v1", "OPENAI_API_KEY="+ProxyPlaceholderKey)
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
-func (h *OpenCodeHarness) Probe(j Job) Job { return probeJob_internal(j, "opencode") }
-func (h *OpenCodeHarness) Classify(exit int, tail []byte) Outcome {
-	return classifyExitAndTail_internal(exit, tail)
-}
-func (h *OpenCodeHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
+
+const scriptHarnessProg_internal = `set -e
+op="$1"; wt="$2"; res="$3"; use="$4"; a1="$5"; a2="$6"; cons="$7"; row="$8"; msg="$9"
+case "$op" in
+  probe) printf '{"result":"ok"}\n' > "$res" ;;
+  exit137) exit 137 ;;
+  exit134) exit 134 ;;
+  5xx) echo 'provider error: HTTP 503 Service Unavailable' >&2; exit 1 ;;
+  ratelimit) echo 'HTTP 429 rate_limit_exceeded' >&2; exit 1 ;;
+  fail) printf '{"result":"fail","reason":"%s"}\n' "$a1" > "$res" ;;
+  readfix) printf '{"result":"fix","finding":"%s","reason":"%s"}\n' "$a1" "$a1" > "$res" ;;
+  readok) printf '{"result":"ok","reason":"read ok"}\n' > "$res" ;;
+  dirty) cd "$wt" && printf 'dirty\n' > "$a1" && exit 1 ;;
+  commit)
+    cd "$wt" && printf '%s\n' "$a2" > "$a1"
+    printf 'card %s\n\nAuthor: %s\n' "$cons" "$row" > "$msg"
+    git add -- "$a1" && git commit -F "$msg"
+    printf '{"result":"ok"}\n' > "$res"
+    printf '{"micro_usd":1200,"priced":true}\n' > "$use" ;;
+esac`
 
 type ScriptHarness struct{}
 
-func (h *ScriptHarness) Name() string { return "script" }
-func (h *ScriptHarness) Command(j Job) ([]string, []string) {
-	mode := j.ScriptMode
-	if mode == "" {
-		mode = strings.TrimSpace(j.Prose)
-	}
-	if mode == "" {
-		mode = "ok"
-	}
-	argv := []string{"sh", "-c", buildScriptBody_internal(j, mode)}
-	return argv, SanitizeWallEnv(baseWallEnv_internal(j), j.JobDir)
+func (h *ScriptHarness) Name() string             { return "script" }
+func (h *ScriptHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
+func (h *ScriptHarness) Classify(exit int, tail []byte) Outcome {
+	return classifyExitAndTail_internal(exit, tail)
 }
 func (h *ScriptHarness) Probe(j Job) Job {
 	p := probeJob_internal(j, "script")
 	p.ScriptMode = "probe"
 	return p
 }
-func (h *ScriptHarness) Classify(exit int, tail []byte) Outcome {
-	return classifyExitAndTail_internal(exit, tail)
+func (h *ScriptHarness) Command(j Job) ([]string, []string) {
+	mode := cmp.Or(j.ScriptMode, strings.TrimSpace(j.Prose), "ok")
+	wt := cmp.Or(j.WorktreeDir, filepath.Join(j.JobDir, "repo"))
+	op, a1, a2 := parseScriptMode_internal(j, mode)
+	argv := []string{"sh", "-c", scriptHarnessProg_internal, "script", op, wt,
+		filepath.Join(j.JobDir, "result.json"), filepath.Join(j.JobDir, "usage.json"),
+		a1, a2, j.Consumer, j.Row, filepath.Join(j.JobDir, "commit-msg.txt")}
+	return argv, SanitizeWallEnv(baseWallEnv_internal(j), j.JobDir)
 }
-func (h *ScriptHarness) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
-func buildScriptBody_internal(j Job, mode string) string {
-	resPath := filepath.Join(j.JobDir, "result.json")
-	usePath := filepath.Join(j.JobDir, "usage.json")
-	wt := j.WorktreeDir
-	if wt == "" && j.JobDir != "" {
-		wt = filepath.Join(j.JobDir, "repo")
-	}
+
+func parseScriptMode_internal(j Job, mode string) (op, a1, a2 string) {
 	switch {
-	case mode == "probe":
-		return fmt.Sprintf("printf '{\"result\":\"ok\"}\\n' > %q", resPath)
-	case mode == "exit:137":
-		return "exit 137"
-	case mode == "exit:134":
-		return "exit 134"
-	case mode == "5xx":
-		return "echo 'provider error: HTTP 503 Service Unavailable' >&2; exit 1"
-	case mode == "ratelimit":
-		return "echo 'HTTP 429 rate_limit_exceeded' >&2; exit 1"
+	case mode == "probe", mode == "5xx", mode == "ratelimit":
+		return mode, "", ""
+	case mode == "exit:137", mode == "exit:134", mode == "read:ok":
+		return strings.ReplaceAll(mode, ":", ""), "", ""
 	case strings.HasPrefix(mode, "fail:"):
-		why := strings.TrimPrefix(mode, "fail:")
-		return fmt.Sprintf("printf '{\"result\":\"fail\",\"reason\":%q}\\n' > %q", why, resPath)
+		return "fail", strings.TrimPrefix(mode, "fail:"), ""
 	case strings.HasPrefix(mode, "read:fix:"):
-		f := strings.TrimPrefix(mode, "read:fix:")
-		return fmt.Sprintf("printf '{\"result\":\"fix\",\"finding\":%q,\"reason\":%q}\\n' > %q", f, f, resPath)
-	case mode == "read:ok":
-		return fmt.Sprintf("printf '{\"result\":\"ok\",\"reason\":\"read ok\"}\\n' > %q", resPath)
+		return "readfix", strings.TrimPrefix(mode, "read:fix:"), ""
 	case strings.HasPrefix(mode, "dirty:"):
-		f := strings.TrimPrefix(mode, "dirty:")
-		return fmt.Sprintf("cd %q && printf 'dirty\\n' > %q && exit 1", wt, f)
+		return "dirty", strings.TrimPrefix(mode, "dirty:"), ""
 	default:
-		file := "work.txt"
-		content := j.Consumer
-		if strings.HasPrefix(mode, "commit:") {
-			parts := strings.SplitN(strings.TrimPrefix(mode, "commit:"), ":", 2)
-			if len(parts) == 2 && parts[0] != "" {
-				file, content = parts[0], parts[1]
-			}
+		file, content := "work.txt", j.Consumer
+		if f, c, ok := strings.Cut(strings.TrimPrefix(mode, "commit:"), ":"); ok && f != "" {
+			file, content = f, c
 		}
-		msgFile := filepath.Join(j.JobDir, "commit-msg.txt")
-		return fmt.Sprintf(
-			"set -e; cd %q && printf '%%s\\n' %q > %q && printf 'card %s\\n\\nAuthor: %s\\n' > %q && git add %q && git commit -F %q && printf '{\"result\":\"ok\"}\\n' > %q && printf '{\"micro_usd\":1200,\"priced\":true}\\n' > %q",
-			wt, content, file, j.Consumer, j.Row, msgFile, file, msgFile, resPath, usePath,
-		)
+		return "commit", file, content
 	}
 }
 func probeJob_internal(j Job, harness string) Job {
 	p := j
-	p.Consumer = j.Row + ".probe"
-	p.Kind = "work"
-	p.HarnessName = harness
-	p.DoneWhen = nil
+	p.Consumer, p.Kind, p.HarnessName, p.DoneWhen = j.Row+".probe", "work", harness, nil
 	p.Prose = `Reply READY and write {"result":"ok"} to result.json.`
 	if j.JobDir != "" {
 		p.JobDir = filepath.Join(filepath.Dir(j.JobDir), p.Consumer)
@@ -209,10 +179,8 @@ func buildPrompt_internal(j Job) string {
 	if len(j.DoneWhen) > 0 {
 		fmt.Fprintf(&b, "done_when=%s\n", strings.Join(j.DoneWhen, " && "))
 	}
-	if j.Prose != "" {
-		fmt.Fprintf(&b, "\n%s\n", j.Prose)
-	} else if j.Brief != "" {
-		fmt.Fprintf(&b, "\n%s\n", j.Brief)
+	if body := cmp.Or(j.Prose, j.Brief); body != "" {
+		fmt.Fprintf(&b, "\n%s\n", body)
 	}
 	fmt.Fprintf(&b, "\nWrite final verdict JSON to %s/result.json.\n", j.JobDir)
 	return b.String()
@@ -220,22 +188,17 @@ func buildPrompt_internal(j Job) string {
 func classifyExitAndTail_internal(exit int, tail []byte) Outcome {
 	text := TailBytes(tail, MaxReasonBytes)
 	lower := strings.ToLower(text)
-	if exit == 134 || exit == 137 {
+	switch {
+	case exit == 134 || exit == 137:
 		return Outcome{Result: "fault", Reason: fmt.Sprintf("harness killed with exit %d: %s", exit, text)}
-	}
-	if isRateLimitOrCredit_internal(lower) {
+	case isRateLimitOrCredit_internal(lower):
 		return Outcome{Result: "fault", Reason: "provider rate limit or credit refusal: " + text}
-	}
-	if isProvider5xx_internal(lower) {
+	case isProvider5xx_internal(lower):
 		return Outcome{Result: "fault", Reason: "provider 5xx error: " + text, Retryable5xx: true}
 	}
-	var fileRes struct {
-		Result  string `json:"result"`
-		Reason  string `json:"reason"`
-		Finding string `json:"finding"`
-	}
-	if err := json.Unmarshal(tail, &fileRes); err == nil && fileRes.Result != "" {
-		return normalizeFileOutcome_internal(fileRes.Result, fileRes.Reason, fileRes.Finding, exit, text)
+	var f Outcome
+	if json.Unmarshal(tail, &f) == nil && f.Result != "" {
+		return normalizeFileOutcome_internal(f.Result, f.Reason, f.Finding, exit, text)
 	}
 	if exit != 0 {
 		return Outcome{Result: "fail", Reason: fmt.Sprintf("harness exited %d without result.json: %s", exit, text)}
@@ -252,11 +215,7 @@ func ClassifyJob(h Harness, j Job, exit int, elapsed, launchGrace time.Duration,
 	}
 	if j.JobDir != "" {
 		if data, err := os.ReadFile(filepath.Join(j.JobDir, "result.json")); err == nil {
-			var f struct {
-				Result  string `json:"result"`
-				Reason  string `json:"reason"`
-				Finding string `json:"finding"`
-			}
+			var f Outcome
 			if json.Unmarshal(data, &f) == nil && f.Result != "" {
 				return normalizeFileOutcome_internal(f.Result, f.Reason, f.Finding, exit, TailBytes(tail, MaxReasonBytes))
 			}
@@ -273,11 +232,11 @@ func normalizeFileOutcome_internal(res, reason, finding string, exit int, tail s
 		}
 		return Outcome{Result: "ok", Reason: reason}
 	case "fix":
-		return Outcome{Result: "fix", Reason: cmpOr_internal(reason, finding), Finding: cmpOr_internal(finding, reason)}
+		return Outcome{Result: "fix", Reason: cmp.Or(reason, finding), Finding: cmp.Or(finding, reason)}
 	case "broken", "fail":
-		return Outcome{Result: "fail", Reason: cmpOr_internal(reason, cmpOr_internal(tail, "harness reported broken"))}
+		return Outcome{Result: "fail", Reason: cmp.Or(reason, tail, "harness reported broken")}
 	case "fault":
-		return Outcome{Result: "fault", Reason: cmpOr_internal(reason, cmpOr_internal(tail, "harness reported fault"))}
+		return Outcome{Result: "fault", Reason: cmp.Or(reason, tail, "harness reported fault")}
 	default:
 		return Outcome{Result: "fail", Reason: fmt.Sprintf("unknown verdict %q in result.json", res)}
 	}
@@ -314,37 +273,28 @@ func readUsageFile_internal(jobDir string) (Cost, bool) {
 }
 
 type WallConfig struct {
-	ReserveBin, ReserveDir string
-	ReserveWait            time.Duration
-	SandboxBin             string
-	ReadPaths              []string
-	NetDeny                bool
+	ReserveBin, ReserveDir, SandboxBin string
+	ReserveWait                        time.Duration
+	ReadPaths, WritePaths              []string
+	NetDeny                            bool
 }
 
 func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
-	resBin := cmpOr_internal(cfg.ReserveBin, "nova-reserve")
-	sbBin := cmpOr_internal(cfg.SandboxBin, "nova-sandbox")
-	weight := j.SlotWeight
-	if weight <= 0 {
-		weight = 1
-	}
-	wait := cfg.ReserveWait
-	if wait <= 0 {
-		wait = 5 * time.Second
-	}
-	argv := []string{resBin}
+	argv := []string{cmp.Or(cfg.ReserveBin, "nova-reserve")}
 	if cfg.ReserveDir != "" {
 		argv = append(argv, "--dir", cfg.ReserveDir)
 	}
-	argv = append(argv,
-		"run",
-		"--slots", strconv.Itoa(weight),
-		"--wait", wait.String(),
-		"--why", cmpOr_internal(j.Consumer, "probe"),
-		"--",
-		sbBin,
-		"--write", j.JobDir,
-	)
+	argv = append(argv, "run")
+	if j.SlotWeight > 0 {
+		argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
+	}
+	wait := cmp.Or(cfg.ReserveWait, 5*time.Second)
+	argv = append(argv, "--wait", wait.String(), "--why", cmp.Or(j.Consumer, "probe"), "--", cmp.Or(cfg.SandboxBin, "nova-sandbox"), "--write", j.JobDir)
+	for _, wp := range cfg.WritePaths {
+		if wp != "" {
+			argv = append(argv, "--write", wp)
+		}
+	}
 	for _, rp := range cfg.ReadPaths {
 		if rp != "" {
 			argv = append(argv, "--read", rp)
@@ -356,56 +306,51 @@ func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
 			argv = append(argv, "--net-allow", j.ProxyAddr)
 		}
 	}
-	argv = append(argv, "--")
-	argv = append(argv, harnessArgv...)
-	return argv
+	return append(append(argv, "--"), harnessArgv...)
 }
 func baseWallEnv_internal(j Job) []string {
-	home := filepath.Join(j.JobDir, "home")
-	tmp := filepath.Join(j.JobDir, "tmp")
-	data := filepath.Join(j.JobDir, "data")
-	return []string{"HOME=" + home, "TMPDIR=" + tmp, "XDG_DATA_HOME=" + data, "GIT_TERMINAL_PROMPT=0", "NOVA_WORKER_CONSUMER=" + j.Consumer, "NOVA_WORKER_ROW=" + j.Row}
+	return []string{
+		"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"),
+		"LANG=" + cmp.Or(os.Getenv("LANG"), "C.UTF-8"),
+		"HOME=" + filepath.Join(j.JobDir, "home"),
+		"TMPDIR=" + filepath.Join(j.JobDir, "tmp"),
+		"XDG_DATA_HOME=" + filepath.Join(j.JobDir, "data"),
+		"GIT_TERMINAL_PROMPT=0",
+		"NOVA_WORKER_CONSUMER=" + j.Consumer,
+		"NOVA_WORKER_ROW=" + j.Row,
+	}
 }
 func SanitizeWallEnv(env []string, jobDir string) []string {
 	var clean []string
+	hasPath := false
 	for _, kv := range env {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {
 			continue
 		}
 		ku := strings.ToUpper(k)
-		if ku == "OPENAI_API_KEY" && v == ProxyPlaceholderKey {
+		switch ku {
+		case "PATH":
+			hasPath = true
 			clean = append(clean, kv)
-			continue
+		case "OPENAI_API_KEY":
+			if v == ProxyPlaceholderKey {
+				clean = append(clean, kv)
+			}
+		case "HOME", "TMPDIR", "XDG_DATA_HOME":
+			if jobDir == "" {
+				clean = append(clean, kv)
+			}
+		case "LANG", "LC_ALL", "GIT_TERMINAL_PROMPT", "NOVA_WORKER_CONSUMER", "NOVA_WORKER_ROW", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "OPENAI_BASE_URL":
+			clean = append(clean, kv)
 		}
-		if isForbiddenEnvKey_internal(ku) {
-			continue
-		}
-		if ku == "HOME" || ku == "TMPDIR" || ku == "XDG_DATA_HOME" {
-			continue
-		}
-		clean = append(clean, kv)
+	}
+	if !hasPath {
+		clean = append(clean, "PATH="+cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"))
 	}
 	if jobDir != "" {
-		clean = append(clean,
-			"HOME="+filepath.Join(jobDir, "home"),
-			"TMPDIR="+filepath.Join(jobDir, "tmp"),
-			"XDG_DATA_HOME="+filepath.Join(jobDir, "data"),
-		)
+		clean = append(clean, "HOME="+filepath.Join(jobDir, "home"), "TMPDIR="+filepath.Join(jobDir, "tmp"), "XDG_DATA_HOME="+filepath.Join(jobDir, "data"))
 	}
 	return clean
 }
-func isForbiddenEnvKey_internal(ku string) bool {
-	for _, sub := range []string{"KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "DSN", "CREDENTIAL", "NOVA_PG", "NOVA_BUS"} {
-		if strings.Contains(ku, sub) {
-			return true
-		}
-	}
-	return false
-}
-func cmpOr_internal(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
+func cmpOr_internal(a, b string) string { return cmp.Or(a, b) }

@@ -22,8 +22,9 @@ SeqSet(sq) == {sq[i] : i \in 1..Len(sq)}
 
 LandedSet == SeqSet(landed)
 
+\* Deterministic merge sha: pure function of (stream, baseTip, group[s]).
 CandidateSHA(s, tip) ==
-  IF s = "s1" THEN 100 + tip ELSE 200 + tip
+  IF s = "s1" THEN 100 + tip + Len(group[s]) ELSE 200 + tip + Len(group[s])
 
 ExternalMoves ==
   Cardinality({i \in 2..Len(base) : base[i].stream = "ext"})
@@ -177,6 +178,11 @@ FaultBlamesNoHead ==
 StreamEqualsBaseAfterLand ==
   \A i \in 2..Len(base) :
     (i = Len(base) /\ base[i].stream \in Streams) => stream[base[i].stream] = BaseTip
+
+DeterministicPassSHA ==
+  \A s \in Streams :
+    step[s] \in {"merged", "pushed", "gating", "green"} =>
+      gatedAt[s].sha = CandidateSHA(s, gatedAt[s].baseTip)
 
 NoChaseBack ==
   \A s \in Streams : ~gatedAt[s].chased /\ Len(group[s]) >= 1

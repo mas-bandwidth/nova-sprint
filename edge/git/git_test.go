@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,18 +16,17 @@ func TestLandPassSingleHeadReuseAndFastForward(t *testing.T) {
 	ctx := context.Background()
 	now := int64(1000)
 	gf := NewFake(func() int64 { return now })
-	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
+	ff := newFakeForge_internal()
 
 	base := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
 	head1 := gf.AddCommit(base, map[string]string{"a.go": "package a\n"}, "sprint/s1/c1")
-	tree1, _ := gf.TreeHash(ctx, "", head1)
 
 	res, err := LandPass(ctx, gf, ff, LandRequest{
-		Repo:        "mas-bandwidth/nova-sprint",
-		Stream:      "s1",
-		Base:        "v2",
-		Heads:       []string{head1},
-		PassedTrees: map[string]bool{tree1: true},
+		Repo:       "mas-bandwidth/nova-sprint",
+		Stream:     "s1",
+		Base:       "v2",
+		Heads:      []string{head1},
+		PassedSHAs: map[string]bool{head1: true},
 	})
 	if err != nil {
 		t.Fatalf("LandPass: %v", err)
@@ -44,7 +41,7 @@ func TestLandPassRemergeWhenBaseMoved(t *testing.T) {
 	ctx := context.Background()
 	now := int64(1000)
 	gf := NewFake(func() int64 { return now })
-	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
+	ff := newFakeForge_internal()
 
 	base0 := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
 	head1 := gf.AddCommit(base0, map[string]string{"a.go": "package a\n"}, "sprint/s1/c1")
@@ -53,13 +50,17 @@ func TestLandPassRemergeWhenBaseMoved(t *testing.T) {
 
 	movedOnce := false
 	ff.OnCall = func(op string) {
-		if op == "Checks" && !movedOnce {
-			movedOnce = true
-			gf.SetOriginRef("v2", base1)
+		if op == "Checks" {
+			gf.world.mu.Lock()
+			for sha := range gf.world.commits {
+				ff.SetCheck("mas-bandwidth/nova-sprint", sha, forge.CheckRollup{State: forge.CheckGreen})
+			}
+			gf.world.mu.Unlock()
+			if !movedOnce {
+				movedOnce = true
+				gf.SetOriginRef("v2", base1)
+			}
 		}
-	}
-	for seq := 1; seq <= 20; seq++ {
-		ff.SetCheck("mas-bandwidth/nova-sprint", formatSeqSHA_internal(seq), forge.CheckRollup{State: forge.CheckGreen})
 	}
 
 	res, err := LandPass(ctx, gf, ff, LandRequest{
@@ -81,28 +82,20 @@ func TestLandPassRemergeWhenBaseMoved(t *testing.T) {
 	}
 }
 
-func formatSeqSHA_internal(seq int) string {
-	const hex = "0123456789abcdef"
-	buf := make([]byte, 40)
-	for i := range buf {
-		buf[i] = '0'
-	}
-	v := seq
-	for i := 39; i >= 0 && v > 0; i-- {
-		buf[i] = hex[v&0xf]
-		v >>= 4
-	}
-	return string(buf)
-}
-
 func TestLedgerMergeConflictAndMissingHeadRefusals(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
 	gf := NewFake(func() int64 { return now })
-	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
-	for seq := 1; seq <= 20; seq++ {
-		ff.SetCheck("mas-bandwidth/nova-sprint", formatSeqSHA_internal(seq), forge.CheckRollup{State: forge.CheckGreen})
+	ff := newFakeForge_internal()
+	ff.OnCall = func(op string) {
+		if op == "Checks" {
+			gf.world.mu.Lock()
+			for sha := range gf.world.commits {
+				ff.SetCheck("mas-bandwidth/nova-sprint", sha, forge.CheckRollup{State: forge.CheckGreen})
+			}
+			gf.world.mu.Unlock()
+		}
 	}
 
 	base := gf.AddCommit("", map[string]string{"tla/RUNS.tsv": "row0\n", "code.go": "v0\n"}, "v2")
@@ -131,7 +124,7 @@ func TestLedgerMergeConflictAndMissingHeadRefusals(t *testing.T) {
 		t.Fatalf("expected OutcomeMissingHead, got %+v err=%v", res, err)
 	}
 
-	if err := gf.Push(ctx, "", h1, "refs/heads/v2", base); err == nil || !strings.Contains(err.Error(), "force-with-lease is forbidden on base branch") {
+	if err := gf.Push(ctx, "", h1, "refs/heads/v2", h2); err == nil || !strings.Contains(err.Error(), "force-with-lease is forbidden on base branch") {
 		t.Fatalf("expected force-with-lease refusal on base branch, got %v", err)
 	}
 }
@@ -141,7 +134,7 @@ func TestBisectRedGroupAndFaultNoBlame(t *testing.T) {
 	ctx := context.Background()
 	now := int64(1000)
 	gf := NewFake(func() int64 { return now })
-	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
+	ff := newFakeForge_internal()
 
 	base := gf.AddCommit("", map[string]string{"base.txt": "1\n"}, "v2")
 	h1 := gf.AddCommit(base, map[string]string{"f1.txt": "1\n"}, "sprint/s1/c1")
@@ -208,68 +201,30 @@ func TestRemoteLandHostFailover(t *testing.T) {
 	}
 }
 
-func TestLanderRestartIdempotenceAndInflightDedup(t *testing.T) {
+func TestLandPassRestartIdempotence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := int64(1000)
 	gitWorld := NewFakeWorld()
-	forgeWorld := forge.NewFakeWorld("rowan-claude")
-	id := forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}
+	forgeWorld := newFakeForgeWorld_internal()
 
 	g1 := NewFakeWithWorld(gitWorld, func() int64 { return now })
-	f1 := forge.NewFakeWithWorld(forgeWorld, id, func() int64 { return now })
-	for seq := 1; seq <= 20; seq++ {
-		f1.SetCheck("mas-bandwidth/nova-sprint", formatSeqSHA_internal(seq), forge.CheckRollup{State: forge.CheckGreen})
-	}
+	f1 := newFakeForgeWithWorld_internal(forgeWorld)
 	base := g1.AddCommit("", map[string]string{"a.txt": "0\n"}, "v2")
 	h1 := g1.AddCommit(base, map[string]string{"b.txt": "1\n"}, "sprint/s1/c1")
+	f1.SetCheck("mas-bandwidth/nova-sprint", h1, forge.CheckRollup{State: forge.CheckGreen})
 
-	lander1 := NewLander(g1, f1)
-	eReq := edge.EdgeRequest{Kind: edge.FactLand, Card: "c1", SHA: h1, After: []string{"op-10"}}
 	lReq := LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1}}
-	res1, err := lander1.Execute(ctx, eReq, lReq)
-	if err != nil || res1.Outcome != string(OutcomeLanded) {
-		t.Fatalf("lander1 Execute: %+v err=%v", res1, err)
+	res1, err := LandPass(ctx, g1, f1, lReq)
+	if err != nil || res1.Outcome != OutcomeLanded {
+		t.Fatalf("g1 LandPass: %+v err=%v", res1, err)
 	}
 
 	g2 := NewFakeWithWorld(gitWorld, func() int64 { return now })
-	f2 := forge.NewFakeWithWorld(forgeWorld, id, func() int64 { return now })
-	lander2 := NewLander(g2, f2)
-	res2, err := lander2.Execute(ctx, eReq, lReq)
-	if err != nil || res1.ID != res2.ID || res1.Outcome != res2.Outcome || res1.BaseTip != res2.BaseTip {
+	f2 := newFakeForgeWithWorld_internal(forgeWorld)
+	res2, err := LandPass(ctx, g2, f2, lReq)
+	if err != nil || res1.Outcome != res2.Outcome || res1.BaseTip != res2.BaseTip {
 		t.Fatalf("restart idempotence mismatch: res1=%+v res2=%+v err=%v", res1, res2, err)
-	}
-	assertLanderDedup_internal(t, ctx, lander2, eReq, lReq)
-}
-
-func assertLanderDedup_internal(t *testing.T, ctx context.Context, l *Lander, eReq edge.EdgeRequest, lReq LandRequest) {
-	t.Helper()
-	var calls atomic.Int32
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	l.OnStep = func(_ string) {
-		if calls.Add(1) == 1 {
-			close(entered)
-		}
-		<-release
-	}
-	var wg sync.WaitGroup
-	var outA, outB edge.EdgeResult
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		outA, _ = l.Execute(ctx, eReq, lReq)
-	}()
-	<-entered
-	go func() {
-		defer wg.Done()
-		outB, _ = l.Execute(ctx, eReq, lReq)
-	}()
-	time.Sleep(5 * time.Millisecond)
-	close(release)
-	wg.Wait()
-	if calls.Load() != 1 || outA.ID != outB.ID {
-		t.Fatalf("expected 1 in-flight execution, got %d (outA=%+v outB=%+v)", calls.Load(), outA, outB)
 	}
 }
 

@@ -1,11 +1,13 @@
 package git
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -27,79 +29,19 @@ const (
 
 type LandRequest struct {
 	RepoDir, Repo, Stream, Base, Mode string
-	Heads                             []string
+	Heads, After                      []string
 	Ledgers                           []LedgerRule
 	RequirePR, BisectOnRed            bool
 	PassedSHAs, PassedTrees           map[string]bool
-	After                             []string
 }
 type LandResult struct {
-	Outcome                      LandOutcome
-	BaseTip, StreamTip, GatedSHA string
-	LandedHeads, GreenHeads      []string
-	BlamedHead, MissingHead      string
-	Conflicts, FailingCI         []string
-	CIURL                        string
-	Remerged, ReusedCI           bool
-	Reason                       string
-}
-type Lander struct {
-	Git    Git
-	Forge  forge.Forge
-	dedup  *edge.Deduplicator
-	OnStep func(step string)
+	Outcome                                                      LandOutcome
+	BaseTip, StreamTip, GatedSHA, BlamedHead, MissingHead, CIURL string
+	Reason                                                       string
+	LandedHeads, GreenHeads, Conflicts, FailingCI                []string
+	Remerged, ReusedCI                                           bool
 }
 
-func NewLander(g Git, fg forge.Forge) *Lander {
-	return &Lander{Git: g, Forge: fg, dedup: edge.NewDeduplicator()}
-}
-func (l *Lander) Execute(ctx context.Context, req edge.EdgeRequest, land LandRequest) (edge.EdgeResult, error) {
-	if req.Kind == "" {
-		req.Kind = edge.FactLand
-	}
-	if req.SHA == "" && len(land.Heads) > 0 {
-		req.SHA = strings.Join(land.Heads, ",")
-	}
-	return l.dedup.Do(ctx, req, func(ctx context.Context, r edge.EdgeRequest) (edge.EdgeResult, error) {
-		if l.OnStep != nil {
-			l.OnStep(r.Kind)
-		}
-		lr, err := LandPass(ctx, l.Git, l.Forge, land)
-		if err != nil {
-			return edge.EdgeResult{ID: r.ID, Kind: r.Kind, Card: r.Card, SHA: r.SHA}, err
-		}
-		return toEdgeResult_internal(r, lr), nil
-	})
-}
-func toEdgeResult_internal(r edge.EdgeRequest, lr LandResult) edge.EdgeResult {
-	out := edge.EdgeResult{
-		ID:        r.ID,
-		Kind:      r.Kind,
-		Card:      r.Card,
-		SHA:       r.SHA,
-		Outcome:   string(lr.Outcome),
-		BaseTip:   lr.BaseTip,
-		StreamTip: lr.StreamTip,
-		Landed:    lr.LandedHeads,
-		Files:     lr.Conflicts,
-		Reason:    lr.Reason,
-	}
-	switch lr.Outcome {
-	case OutcomeRung3Conflict:
-		out.Outcome = "refused"
-		out.Failure = "conflict"
-	case OutcomeMissingHead, OutcomeLedgerFailed, OutcomePushRefused, OutcomeNoLandingHost:
-		out.Outcome = "refused"
-		out.Failure = string(lr.Outcome)
-	case OutcomeCIPending:
-		out.Outcome = "pending"
-	case OutcomeCIRed:
-		out.Outcome = "red"
-	case OutcomeCIFault:
-		out.Outcome = "fault"
-	}
-	return out
-}
 func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (LandResult, error) {
 	if len(req.Heads) == 0 || req.Stream == "" || req.Base == "" {
 		return LandResult{}, fmt.Errorf("land refused: LandPass requires Stream, Base, and at least one Head")
@@ -109,24 +51,22 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 			return LandResult{}, err
 		}
 	}
-	baseRef := "refs/heads/" + req.Base
-	streamRef := StreamRef(req.Stream)
+	if strings.EqualFold(strings.TrimSpace(req.Mode), "hand") || (fg == nil && strings.TrimSpace(req.Repo) != "") {
+		return LandResult{}, fmt.Errorf("land refused: stream %s has no forge gate configured (use stream set --mode hand and land by hand)", req.Stream)
+	}
+	baseRef, streamRef := "refs/heads/"+req.Base, StreamRef(req.Stream)
 	baseTip, streamOld, missing, err := fetchAndCheckHeads_internal(ctx, g, req, baseRef, streamRef)
 	if err != nil {
 		return LandResult{}, err
 	}
 	if missing != "" {
-		return LandResult{
-			Outcome:     OutcomeMissingHead,
-			MissingHead: missing,
-			Reason:      fmt.Sprintf("land refused: head %s is not on origin: git push origin <branch>", missing),
-		}, nil
+		return LandResult{Outcome: OutcomeMissingHead, MissingHead: missing, Reason: fmt.Sprintf("land refused: head %s is not on origin: git push origin <branch>", missing)}, nil
 	}
 	if allAncestors_internal(ctx, g, req.RepoDir, req.Heads, baseTip) {
 		if streamOld != baseTip {
 			_ = g.Push(ctx, req.RepoDir, baseTip, streamRef, streamOld)
 		}
-		return LandResult{Outcome: OutcomeLanded, BaseTip: baseTip, StreamTip: baseTip, GatedSHA: baseTip, LandedHeads: append([]string(nil), req.Heads...)}, nil
+		return LandResult{Outcome: OutcomeLanded, BaseTip: baseTip, StreamTip: baseTip, GatedSHA: baseTip, LandedHeads: slices.Clone(req.Heads)}, nil
 	}
 	merged, res, done, err := mergeAndPushStream_internal(ctx, g, req, baseTip, streamRef, streamOld)
 	if err != nil || done {
@@ -147,11 +87,8 @@ func fetchAndCheckHeads_internal(ctx context.Context, g Git, req LandRequest, ba
 		}
 	}
 	baseTip, ok, err := g.LsRemote(ctx, req.RepoDir, baseRef)
-	switch {
-	case err != nil:
-		return "", "", "", err
-	case !ok:
-		return "", "", "", fmt.Errorf("land refused: base branch %s not on origin", baseRef)
+	if err != nil || !ok {
+		return "", "", "", cmp.Or(err, fmt.Errorf("land refused: base branch %s not on origin", baseRef))
 	}
 	streamOld, _, err := g.LsRemote(ctx, req.RepoDir, streamRef)
 	if err != nil {
@@ -161,10 +98,7 @@ func fetchAndCheckHeads_internal(ctx context.Context, g Git, req LandRequest, ba
 	if streamOld != "" {
 		refs = append(refs, streamRef)
 	}
-	if err := g.Fetch(ctx, req.RepoDir, refs...); err != nil {
-		return "", "", "", err
-	}
-	return baseTip, streamOld, "", nil
+	return baseTip, streamOld, "", g.Fetch(ctx, req.RepoDir, refs...)
 }
 func allAncestors_internal(ctx context.Context, g Git, repoDir string, heads []string, target string) bool {
 	for _, h := range heads {
@@ -179,15 +113,10 @@ func mergeAndPushStream_internal(ctx context.Context, g Git, req LandRequest, on
 	if err != nil {
 		return MergeResult{}, LandResult{}, true, err
 	}
-	if merged.Kind == MergeConflict {
-		return merged, LandResult{
-			Outcome:   OutcomeRung3Conflict,
-			BaseTip:   onto,
-			Conflicts: merged.Conflicts,
-			Reason:    fmt.Sprintf("rung 3 conflict merging stream %s onto %s: %s", req.Stream, onto, strings.Join(merged.Conflicts, ", ")),
-		}, true, nil
-	}
-	if merged.Kind == MergeLedgerFailed {
+	switch merged.Kind {
+	case MergeConflict:
+		return merged, LandResult{Outcome: OutcomeRung3Conflict, BaseTip: onto, Conflicts: merged.Conflicts, Reason: fmt.Sprintf("rung 3 conflict merging stream %s onto %s: %s", req.Stream, onto, strings.Join(merged.Conflicts, ", "))}, true, nil
+	case MergeLedgerFailed:
 		return merged, LandResult{Outcome: OutcomeLedgerFailed, BaseTip: onto, Conflicts: merged.Conflicts, Reason: merged.Reason}, true, nil
 	}
 	if err := g.Push(ctx, req.RepoDir, merged.SHA, streamRef, expectOld); err != nil {
@@ -203,18 +132,15 @@ func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req La
 	if req.RequirePR && fg != nil {
 		headBranch := StreamBranch(req.Stream)
 		pr, ok, err := fg.PR(ctx, req.Repo, headBranch, req.Base)
+		if err == nil && !ok {
+			pr, err = fg.OpenPR(ctx, req.Repo, headBranch, req.Base, fmt.Sprintf("sprint/%s: land %d card(s)", req.Stream, len(req.Heads)), "Automated stream landing group.")
+		}
 		if err != nil {
 			return 0, classifyForgeErr_internal(err, baseTip, merged.SHA), true, nil
 		}
-		if !ok {
-			pr, err = fg.OpenPR(ctx, req.Repo, headBranch, req.Base, fmt.Sprintf("sprint/%s: land %d card(s)", req.Stream, len(req.Heads)), "Automated stream landing group.")
-			if err != nil {
-				return 0, classifyForgeErr_internal(err, baseTip, merged.SHA), true, nil
-			}
-		}
 		prNum = pr.Number
 	}
-	if len(req.Heads) == 1 && (req.PassedSHAs[merged.SHA] || (merged.Tree != "" && req.PassedTrees[merged.Tree])) {
+	if len(req.Heads) == 1 && req.PassedSHAs[merged.SHA] {
 		return prNum, LandResult{ReusedCI: true}, false, nil
 	}
 	if fg == nil {
@@ -247,7 +173,7 @@ func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req La
 func classifyForgeErr_internal(err error, baseTip, sha string) LandResult {
 	return LandResult{Outcome: OutcomeCIFault, BaseTip: baseTip, GatedSHA: sha, Reason: err.Error()}
 }
-func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseRef, streamRef, baseTip string, merged MergeResult, prNum int, reusedCI bool) (LandResult, error) {
+func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseRef, streamRef, baseTip string, merged MergeResult, _ int, reusedCI bool) (LandResult, error) {
 	curBase, ok, err := g.LsRemote(ctx, req.RepoDir, baseRef)
 	if err != nil || !ok {
 		return LandResult{}, fmt.Errorf("land: ls-remote %s: %w", baseRef, err)
@@ -256,21 +182,12 @@ func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req Land
 	if curBase != baseTip {
 		var done bool
 		var remRes LandResult
-		merged, remRes, done, err = remergeOnMovedBase_internal(ctx, g, fg, req, baseRef, streamRef, curBase, merged.SHA)
-		if err != nil || done {
+		if merged, remRes, done, err = remergeOnMovedBase_internal(ctx, g, fg, req, baseRef, streamRef, curBase, merged.SHA); err != nil || done {
 			return remRes, err
 		}
-		baseTip = curBase
-		remerged = true
+		baseTip, remerged = curBase, true
 	}
-	if req.RequirePR && fg != nil {
-		if err := fg.Merge(ctx, req.Repo, prNum, merged.SHA, req.Base); err != nil {
-			if errors.Is(err, forge.ErrStaleHead) || errors.Is(err, forge.ErrBaseMoved) {
-				return LandResult{Outcome: OutcomePushRefused, BaseTip: baseTip, GatedSHA: merged.SHA, Remerged: remerged, Reason: err.Error()}, nil
-			}
-			return classifyForgeErr_internal(err, baseTip, merged.SHA), nil
-		}
-	} else if err := g.Push(ctx, req.RepoDir, merged.SHA, baseRef, ""); err != nil {
+	if err := g.Push(ctx, req.RepoDir, merged.SHA, baseRef, baseTip); err != nil {
 		if errors.Is(err, ErrPushRefused) {
 			return LandResult{Outcome: OutcomePushRefused, BaseTip: baseTip, GatedSHA: merged.SHA, Remerged: remerged, Reason: err.Error()}, nil
 		}
@@ -287,15 +204,7 @@ func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req Land
 	if !allAncestors_internal(ctx, g, req.RepoDir, req.Heads, newBase) {
 		return LandResult{}, fmt.Errorf("land invariant M21 violated: not all group heads are ancestors of pushed base %s", newBase)
 	}
-	return LandResult{
-		Outcome:     OutcomeLanded,
-		BaseTip:     newBase,
-		StreamTip:   newBase,
-		GatedSHA:    merged.SHA,
-		LandedHeads: append([]string(nil), req.Heads...),
-		Remerged:    remerged,
-		ReusedCI:    reusedCI,
-	}, nil
+	return LandResult{Outcome: OutcomeLanded, BaseTip: newBase, StreamTip: newBase, GatedSHA: merged.SHA, LandedHeads: slices.Clone(req.Heads), Remerged: remerged, ReusedCI: reusedCI}, nil
 }
 func remergeOnMovedBase_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseRef, streamRef, newBase, prevStreamSHA string) (MergeResult, LandResult, bool, error) {
 	if err := g.Fetch(ctx, req.RepoDir, baseRef); err != nil {
@@ -328,11 +237,9 @@ func remergeOnMovedBase_internal(ctx context.Context, g Git, fg forge.Forge, req
 	}
 }
 func BisectRedGroup(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseTip, streamRef, curStreamSHA string) (LandResult, error) {
-	candidates := append([]string(nil), req.Heads...)
-	streamSHA := curStreamSHA
+	candidates, streamSHA := slices.Clone(req.Heads), curStreamSHA
 	for len(candidates) > 1 {
-		mid := len(candidates) / 2
-		left, right := candidates[:mid], candidates[mid:]
+		left, right := candidates[:len(candidates)/2], candidates[len(candidates)/2:]
 		state, nextSHA, res, done, err := gateSubset_internal(ctx, g, fg, req, baseTip, streamRef, streamSHA, left)
 		if err != nil || done {
 			return res, err
@@ -361,14 +268,7 @@ func BisectRedGroup(ctx context.Context, g Git, fg forge.Forge, req LandRequest,
 			green = append(green, h)
 		}
 	}
-	return LandResult{
-		Outcome:    OutcomeCIRed,
-		BaseTip:    baseTip,
-		GatedSHA:   streamSHA,
-		BlamedHead: blamed,
-		GreenHeads: green,
-		Reason:     fmt.Sprintf("bisected red batch to head %s", blamed),
-	}, nil
+	return LandResult{Outcome: OutcomeCIRed, BaseTip: baseTip, GatedSHA: streamSHA, BlamedHead: blamed, GreenHeads: green, Reason: fmt.Sprintf("bisected red batch to head %s", blamed)}, nil
 }
 func gateSubset_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseTip, streamRef, expectOld string, subset []string) (forge.CheckState, string, LandResult, bool, error) {
 	subReq := req
@@ -393,32 +293,25 @@ func gateSubset_internal(ctx context.Context, g Git, fg forge.Forge, req LandReq
 }
 
 type RemoteLandResult struct {
-	Host           string
-	SkippedHosts   []string
-	Stdout, Stderr string
-	ExitCode       int
+	Host, Stdout, Stderr string
+	SkippedHosts         []string
+	ExitCode             int
 }
 
 func RunRemoteLandStep(ctx context.Context, execRunner edge.Exec, hosts []string, connectTimeoutSec int, stepTimeout time.Duration, args ...string) (RemoteLandResult, error) {
-	if execRunner == nil {
-		execRunner = edge.NewOSExec()
-	}
-	if connectTimeoutSec <= 0 {
-		connectTimeoutSec = DefaultSSHConnectTimeoutSec
-	}
-	if stepTimeout <= 0 {
-		stepTimeout = DefaultRebaseTimeout
-	}
+	execRunner = cmp.Or[edge.Exec](execRunner, edge.NewOSExec())
+	connectTimeoutSec = cmp.Or(connectTimeoutSec, DefaultSSHConnectTimeoutSec)
+	stepTimeout = cmp.Or(stepTimeout, DefaultRebaseTimeout)
 	var skipped []string
 	for _, host := range hosts {
 		host = strings.TrimSpace(host)
 		if host == "" || strings.HasPrefix(host, "-") {
 			continue
 		}
-		argv := append([]string{
-			"ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=" + strconv.Itoa(connectTimeoutSec),
-			"-o", "ControlMaster=no", "-o", "ControlPath=none", host, "nova-sprint", "land-step",
-		}, args...)
+		argv := []string{"ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=" + strconv.Itoa(connectTimeoutSec), "-o", "ControlMaster=no", "-o", "ControlPath=none", host, shellQuote_internal("nova-sprint"), shellQuote_internal("land-step")}
+		for _, a := range args {
+			argv = append(argv, shellQuote_internal(a))
+		}
 		res, err := execRunner.Run(ctx, edge.Cmd{Argv: argv, Timeout: stepTimeout})
 		if err != nil || res.ExitCode == 255 {
 			skipped = append(skipped, host)
@@ -428,3 +321,4 @@ func RunRemoteLandStep(ctx context.Context, execRunner edge.Exec, hosts []string
 	}
 	return RemoteLandResult{SkippedHosts: skipped}, fmt.Errorf("%w: land refused: no landing host answered (tried: %s): check nova-fleet check", ErrNoLandingHost, strings.Join(skipped, ", "))
 }
+func shellQuote_internal(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

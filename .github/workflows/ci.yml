@@ -93,3 +93,14 @@ jobs:
       - *checkout
       - name: TLC on Store (must pass), the witnesses and the reach checks (must be violated)
         run: bash tla/ci-tlc.sh
+
+  trace:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, bench]
+    timeout-minutes: 20
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: trace refinement checks (PushTrace, LandEdgeTrace, RunnerTrace)
+        run: bash tla/check-trace.sh

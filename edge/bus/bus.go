@@ -1,12 +1,14 @@
-// Package bus is the nova-bus edge of layer 4 (docs/LAYER-4-EDGES.md). It sends outbound notifications and reads hook.
+// Package bus is the nova-bus edge of layer 4 (docs/LAYER-4-EDGES.md).
 package bus
 
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -32,9 +34,7 @@ type Bus interface {
 	Send(ctx context.Context, to, subject, body string) (msgID string, err error)
 	Who(ctx context.Context) (map[string]Presence, error)
 }
-type Presence struct {
-	Name, Uptime, Detail string
-}
+type Presence struct{ Name, Uptime, Detail string }
 type Message struct {
 	To, Subject, Body string
 	MinSeq, MaxSeq    int64
@@ -52,6 +52,7 @@ type Config struct {
 	Timeout                  time.Duration
 	Env                      []string
 	AllowNew                 bool
+	Window                   int
 }
 type Edge struct {
 	exec                     edge.Exec
@@ -60,39 +61,29 @@ type Edge struct {
 	timeout                  time.Duration
 	env                      []string
 	allowNew                 bool
+	window                   int
 }
 
 func New(cfg Config) *Edge {
-	ex := cfg.Exec
-	if ex == nil {
-		ex = edge.NewOSExec()
-	}
 	e := &Edge{
-		exec:        ex,
+		exec:        cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec()),
 		bin:         cmp.Or(cfg.Bin, "nova-bus"),
 		sender:      cmp.Or(cfg.Sender, DefaultSender),
 		coordinator: cmp.Or(cfg.Coordinator, DefaultCoordinator),
 		timeout:     cmp.Or(cfg.Timeout, DefaultTimeout),
 		env:         slices.Clone(cfg.Env),
 		allowNew:    cfg.AllowNew,
+		window:      cmp.Or(cfg.Window, store.MaxEvents),
 	}
-	if cfg.Transport != nil {
-		e.transport = cfg.Transport
-	} else {
-		e.transport = e
-	}
+	e.transport = cmp.Or[Bus](cfg.Transport, e)
 	return e
 }
 func CursorName(recipient string) string { return CursorPrefix + recipient }
 func BusReply(sender string) string {
-	sender = strings.TrimSpace(sender)
-	if sender == "" {
-		sender = "<row>"
-	}
-	return "replies are verbs: run nova-sprint next --as " + sender
+	return "replies are verbs: run nova-sprint next --as " + cmp.Or(strings.TrimSpace(sender), "<row>")
 }
 func TruncateField(text, id string) string {
-	text = sanitizeInline_internal(text)
+	text = strings.TrimSpace(strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(text))
 	if len(text) <= MaxFieldBytes {
 		return text
 	}
@@ -101,12 +92,6 @@ func TruncateField(text, id string) string {
 		cut = cut[:len(cut)-1]
 	}
 	return cut + "... (full text: nova-sprint show " + id + ")"
-}
-func sanitizeInline_internal(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "\r", " ")
-	return strings.TrimSpace(s)
 }
 func (e *Edge) Send(ctx context.Context, to, subject, body string) (string, error) {
 	switch {
@@ -119,25 +104,21 @@ func (e *Edge) Send(ctx context.Context, to, subject, body string) (string, erro
 	if e.allowNew {
 		argv = append(argv, "--new")
 	}
-	argv = append(argv, subject, body)
-	res, err := e.exec.Run(ctx, edge.Cmd{Argv: argv, Env: e.env, Timeout: e.timeout})
+	res, err := e.exec.Run(ctx, edge.Cmd{Argv: append(argv, subject, body), Env: e.env, Timeout: e.timeout})
 	if err != nil {
 		return "", fmt.Errorf("bus send to %s (%s): %w", to, subject, err)
 	}
 	if res.ExitCode != 0 {
-		detail := strings.TrimSpace(cmp.Or(res.Stderr, res.Stdout))
-		return "", fmt.Errorf("bus send to %s (%s): nova-bus exited %d (%s); verify %s is hooked in (`nova-bus who`)", to, subject, res.ExitCode, detail, e.sender)
+		return "", fmt.Errorf("bus send to %s (%s): nova-bus exited %d (%s); verify %s is hooked in (`nova-bus who`)", to, subject, res.ExitCode, strings.TrimSpace(cmp.Or(res.Stderr, res.Stdout)), e.sender)
 	}
-	msgID, ok := parseSendConfirmation_internal(res.Stdout, to)
-	if !ok {
-		return "", fmt.Errorf("bus send to %s (%s): missing `<recipient> <id>` confirmation in stdout %q; leaving cursor unmoved", to, subject, strings.TrimSpace(res.Stdout))
+	if msgID, ok := parseSendConfirmation_internal(res.Stdout, to); ok {
+		return msgID, nil
 	}
-	return msgID, nil
+	return "", fmt.Errorf("bus send to %s (%s): missing `<recipient> <id>` confirmation in stdout %q; leaving cursor unmoved", to, subject, strings.TrimSpace(res.Stdout))
 }
 func parseSendConfirmation_internal(stdout, to string) (string, bool) {
 	for _, line := range strings.Split(stdout, "\n") {
-		fields := strings.Fields(strings.TrimSpace(line))
-		if len(fields) == 2 && fields[0] == to && fields[1] != "" {
+		if fields := strings.Fields(strings.TrimSpace(line)); len(fields) == 2 && fields[0] == to && fields[1] != "" {
 			return fields[1], true
 		}
 	}
@@ -149,8 +130,7 @@ func (e *Edge) Who(ctx context.Context) (map[string]Presence, error) {
 		return nil, fmt.Errorf("bus who: %w", err)
 	}
 	if res.ExitCode != 0 {
-		detail := strings.TrimSpace(cmp.Or(res.Stderr, res.Stdout))
-		return nil, fmt.Errorf("bus who: nova-bus exited %d (%s); check NOVA_BUS_REDIS and redis-server", res.ExitCode, detail)
+		return nil, fmt.Errorf("bus who: nova-bus exited %d (%s); check NOVA_BUS_REDIS and daemon status", res.ExitCode, strings.TrimSpace(cmp.Or(res.Stderr, res.Stdout)))
 	}
 	return parseWhoOutput_internal(res.Stdout)
 }
@@ -161,8 +141,7 @@ func parseWhoOutput_internal(stdout string) (map[string]Presence, error) {
 	}
 	out := make(map[string]Presence)
 	for _, line := range lines[1:] {
-		line = strings.TrimSpace(line)
-		if line == "" {
+		if line = strings.TrimSpace(line); line == "" {
 			continue
 		}
 		parts := strings.SplitN(line, "\t", 3)
@@ -177,6 +156,21 @@ func parseWhoOutput_internal(stdout string) (map[string]Presence, error) {
 	}
 	return out, nil
 }
+
+type subjectSpec_internal struct {
+	subject   string
+	coordOnly bool
+	collect   func(snap store.Snapshot, events []store.Event, recipient string) (string, []string, int64, int64, int)
+}
+
+var subjectTable_internal = []subjectSpec_internal{
+	{SubjectDeal, false, collectDeals_internal},
+	{SubjectWithdrawn, false, collectWithdrawn_internal},
+	{SubjectNeedsYou, true, collectNeedsYou_internal},
+	{SubjectLanded, true, collectLanded_internal},
+	{SubjectStreamLanded, true, collectStreamLanded_internal},
+}
+
 func (e *Edge) BuildRecipientMessages(snap store.Snapshot, events []store.Event, recipient string) []Message {
 	cursor := snap.Cursors[CursorName(recipient)]
 	var accepted []store.Event
@@ -188,123 +182,76 @@ func (e *Edge) BuildRecipientMessages(snap store.Snapshot, events []store.Event,
 	if len(accepted) == 0 {
 		return nil
 	}
+	trailer := fmt.Sprintf("and %%d more: nova-sprint next --as %s", recipient)
 	var out []Message
-	if m, ok := buildDealMessage_internal(snap, accepted, recipient); ok {
-		out = append(out, m)
-	}
-	if m, ok := buildWithdrawnMessage_internal(snap, accepted, recipient); ok {
-		out = append(out, m)
-	}
-	if recipient == e.coordinator {
-		if m, ok := buildNeedsYouMessage_internal(snap, accepted, recipient); ok {
-			out = append(out, m)
+	for _, spec := range subjectTable_internal {
+		if spec.coordOnly && recipient != e.coordinator {
+			continue
 		}
-		if m, ok := buildLandedMessage_internal(snap, accepted, recipient); ok {
-			out = append(out, m)
-		}
-		if m, ok := buildStreamLandedMessage_internal(snap, accepted, recipient); ok {
-			out = append(out, m)
+		if header, entries, minSeq, maxSeq, epoch := spec.collect(snap, accepted, recipient); len(entries) > 0 {
+			out = append(out, Message{To: recipient, Subject: spec.subject, Body: packEntries_internal(header, entries, trailer), MinSeq: minSeq, MaxSeq: maxSeq, Epoch: epoch})
 		}
 	}
 	return out
 }
-func buildDealMessage_internal(snap store.Snapshot, events []store.Event, recipient string) (Message, bool) {
+func scanCards_internal(snap store.Snapshot, events []store.Event, match func(ev store.Event, c store.Card) (string, bool)) ([]string, int64, int64, int) {
 	var entries []string
 	var minSeq, maxSeq int64
 	seen := make(map[string]bool)
 	epoch := snap.Epoch
 	for _, ev := range events {
-		for _, id := range sortedCardIDs_internal(ev.After.Cards) {
-			c := ev.After.Cards[id]
-			switch {
-			case (c.Kind != "work" && c.Kind != "read") || c.Holder != recipient || c.State != "ready":
-				continue
-			case ev.Before != nil && ev.Before.Cards[id].State == "ready":
-				continue
-			case seen[id]:
-				continue
-			}
-			seen[id] = true
-			entries = append(entries, formatDealEntry_internal(snap, ev, c, recipient))
-			minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
-			if ev.Epoch > 0 {
-				epoch = ev.Epoch
+		for _, id := range slices.Sorted(maps.Keys(ev.After.Cards)) {
+			if !seen[id] {
+				if entry, ok := match(ev, ev.After.Cards[id]); ok {
+					seen[id] = true
+					entries = append(entries, entry)
+					minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
+					epoch = cmp.Or(ev.Epoch, epoch)
+				}
 			}
 		}
 	}
-	if len(entries) == 0 {
-		return Message{}, false
-	}
+	return entries, minSeq, maxSeq, epoch
+}
+func collectDeals_internal(snap store.Snapshot, events []store.Event, recipient string) (string, []string, int64, int64, int) {
+	entries, minSeq, maxSeq, epoch := scanCards_internal(snap, events, func(ev store.Event, c store.Card) (string, bool) {
+		if (c.Kind != "work" && c.Kind != "read") || c.Holder != recipient || c.State != "ready" || (ev.Before != nil && ev.Before.Cards[c.ID].State == "ready") {
+			return "", false
+		}
+		lines := []string{fmt.Sprintf("card=%s attempt=%d kind=%s stream=%s tier=%s", c.ID, c.Attempt, c.Kind, c.Stream, c.Tier)}
+		if c.Kind == "work" && (c.Prior != "" || c.Attempt > 1 || c.Finding != "") {
+			var p store.Card
+			if ev.After != nil {
+				p = ev.After.Cards[c.Of]
+			}
+			why := cmp.Or(c.Finding, c.Reason, p.Finding, p.Reason, snap.Cards[c.Of].Finding, snap.Cards[c.Of].Reason)
+			lines = append(lines, fmt.Sprintf("prior=%s reason=%q", c.Prior, TruncateField(why, c.ID)))
+		}
+		if c.Kind == "read" && c.Head != "" {
+			lines = append(lines, fmt.Sprintf("kind=read head=%s", c.Head))
+		}
+		return strings.Join(append(lines, fmt.Sprintf("run: nova-sprint take %s@%d --as %s", c.ID, c.Gen, recipient)), "\n"), true
+	})
 	word := "cards"
 	if len(entries) == 1 {
 		word = "card"
 	}
-	header := fmt.Sprintf("DEAL: %d %s for %s (epoch %d)", len(entries), word, recipient, epoch)
-	trailer := fmt.Sprintf("and %%d more: nova-sprint next --as %s", recipient)
-	return Message{To: recipient, Subject: SubjectDeal, Body: packEntries_internal(header, entries, trailer), MinSeq: minSeq, MaxSeq: maxSeq, Epoch: epoch}, true
+	return fmt.Sprintf("DEAL: %d %s for %s (epoch %d)", len(entries), word, recipient, epoch), entries, minSeq, maxSeq, epoch
 }
-func formatDealEntry_internal(snap store.Snapshot, ev store.Event, c store.Card, recipient string) string {
-	var lines []string
-	lines = append(lines, fmt.Sprintf("card=%s attempt=%d kind=%s stream=%s tier=%s", c.ID, c.Attempt, c.Kind, c.Stream, c.Tier))
-	if c.Kind == "work" && (c.Prior != "" || c.Attempt > 1 || c.Finding != "") {
-		why := cmp.Or(c.Finding, c.Reason, producerReason_internal(snap, ev, c.Of))
-		lines = append(lines, fmt.Sprintf("prior=%s reason=%q", c.Prior, TruncateField(why, c.ID)))
-	}
-	if c.Kind == "read" && c.Head != "" {
-		lines = append(lines, fmt.Sprintf("kind=read head=%s", c.Head))
-	}
-	lines = append(lines, fmt.Sprintf("run: nova-sprint take %s@%d --as %s", c.ID, c.Gen, recipient))
-	return strings.Join(lines, "\n")
-}
-func producerReason_internal(snap store.Snapshot, ev store.Event, prodID string) string {
-	if ev.After != nil {
-		if p, ok := ev.After.Cards[prodID]; ok && (p.Finding != "" || p.Reason != "") {
-			return cmp.Or(p.Finding, p.Reason)
-		}
-	}
-	if p, ok := snap.Cards[prodID]; ok {
-		return cmp.Or(p.Finding, p.Reason)
-	}
-	return ""
-}
-func buildWithdrawnMessage_internal(snap store.Snapshot, events []store.Event, recipient string) (Message, bool) {
-	var entries []string
-	var minSeq, maxSeq int64
-	seen := make(map[string]bool)
-	epoch := snap.Epoch
-	for _, ev := range events {
-		for _, id := range sortedCardIDs_internal(ev.After.Cards) {
-			c := ev.After.Cards[id]
-			switch {
-			case (c.Kind != "work" && c.Kind != "read") || c.Holder != recipient || c.State != "fail":
-				continue
-			case !wasLiveOrWithdrawn_internal(ev.Before, c) || seen[id]:
-				continue
-			}
-			seen[id] = true
-			entry := fmt.Sprintf("card=%s of=%s branch=%s reason=%q\nstop; push committed work",
-				c.ID, c.Of, c.Branch, TruncateField(c.Reason, c.ID))
-			entries = append(entries, entry)
-			minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
-			if ev.Epoch > 0 {
-				epoch = ev.Epoch
+func collectWithdrawn_internal(snap store.Snapshot, events []store.Event, recipient string) (string, []string, int64, int64, int) {
+	entries, minSeq, maxSeq, epoch := scanCards_internal(snap, events, func(ev store.Event, c store.Card) (string, bool) {
+		live := c.Result == ""
+		if ev.Before != nil {
+			if b, ok := ev.Before.Cards[c.ID]; ok {
+				live = b.State == "ready" || b.State == "working"
 			}
 		}
-	}
-	if len(entries) == 0 {
-		return Message{}, false
-	}
-	header := fmt.Sprintf("WITHDRAWN: %d card(s) for %s (epoch %d)", len(entries), recipient, epoch)
-	trailer := fmt.Sprintf("and %%d more: nova-sprint next --as %s", recipient)
-	return Message{To: recipient, Subject: SubjectWithdrawn, Body: packEntries_internal(header, entries, trailer), MinSeq: minSeq, MaxSeq: maxSeq, Epoch: epoch}, true
-}
-func wasLiveOrWithdrawn_internal(before *store.State, after store.Card) bool {
-	if before != nil {
-		if b, ok := before.Cards[after.ID]; ok {
-			return b.State == "ready" || b.State == "working"
+		if (c.Kind != "work" && c.Kind != "read") || c.Holder != recipient || c.State != "fail" || !live {
+			return "", false
 		}
-	}
-	return after.Result == ""
+		return fmt.Sprintf("card=%s of=%s branch=%s reason=%q\nstop; push committed work", c.ID, c.Of, c.Branch, TruncateField(c.Reason, c.ID)), true
+	})
+	return fmt.Sprintf("WITHDRAWN: %d card(s) for %s (epoch %d)", len(entries), recipient, epoch), entries, minSeq, maxSeq, epoch
 }
 
 type judgementGroup_internal struct {
@@ -312,13 +259,13 @@ type judgementGroup_internal struct {
 	items []store.Judgement
 }
 
-func buildNeedsYouMessage_internal(snap store.Snapshot, events []store.Event, recipient string) (Message, bool) {
+func collectNeedsYou_internal(snap store.Snapshot, events []store.Event, _ string) (string, []string, int64, int64, int) {
 	var groups []*judgementGroup_internal
 	byKey := make(map[string]*judgementGroup_internal)
 	var minSeq, maxSeq int64
 	epoch := snap.Epoch
 	for _, ev := range events {
-		for _, id := range sortedJudgementIDs_internal(ev.After.Judgements) {
+		for _, id := range slices.Sorted(maps.Keys(ev.After.Judgements)) {
 			j := ev.After.Judgements[id]
 			if j.State != "open" || (ev.Before != nil && ev.Before.Judgements[id].State != "") {
 				continue
@@ -332,21 +279,14 @@ func buildNeedsYouMessage_internal(snap store.Snapshot, events []store.Event, re
 			}
 			g.items = append(g.items, j)
 			minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
-			if ev.Epoch > 0 {
-				epoch = ev.Epoch
-			}
+			epoch = cmp.Or(ev.Epoch, epoch)
 		}
-	}
-	if len(groups) == 0 {
-		return Message{}, false
 	}
 	entries := make([]string, 0, len(groups))
 	for _, g := range groups {
 		entries = append(entries, formatJudgementGroup_internal(g))
 	}
-	header := fmt.Sprintf("NEEDS YOU: %d group(s) (epoch %d)", len(groups), epoch)
-	trailer := fmt.Sprintf("and %%d more: nova-sprint next --as %s", recipient)
-	return Message{To: recipient, Subject: SubjectNeedsYou, Body: packEntries_internal(header, entries, trailer), MinSeq: minSeq, MaxSeq: maxSeq, Epoch: epoch}, true
+	return fmt.Sprintf("NEEDS YOU: %d group(s) (epoch %d)", len(groups), epoch), entries, minSeq, maxSeq, epoch
 }
 func formatJudgementGroup_internal(g *judgementGroup_internal) string {
 	first := g.items[0]
@@ -366,91 +306,52 @@ func formatJudgementGroup_internal(g *judgementGroup_internal) string {
 		first.ID, g.key, len(g.items), len(g.items), strings.Join(ids, ","), first.Kind, first.About, due)
 	return fmt.Sprintf("%s\nquestion: %q\nrun: %s", head, TruncateField(first.Question, first.ID), cmd)
 }
-func buildLandedMessage_internal(snap store.Snapshot, events []store.Event, recipient string) (Message, bool) {
-	var entries []string
-	var minSeq, maxSeq int64
-	seen := make(map[string]bool)
-	epoch := snap.Epoch
-	for _, ev := range events {
-		for _, id := range sortedCardIDs_internal(ev.After.Cards) {
-			c := ev.After.Cards[id]
-			switch {
-			case (c.Kind != "producer" && c.Kind != "sentinel") || c.State != "landed" || seen[id]:
-				continue
-			case ev.Before != nil && ev.Before.Cards[id].State == "landed":
-				continue
-			}
-			seen[id] = true
-			entries = append(entries, fmt.Sprintf("LANDED card=%s stream=%s head=%s\nrun: nova-sprint show %s", c.ID, c.Stream, c.Head, c.ID))
-			minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
-			if ev.Epoch > 0 {
-				epoch = ev.Epoch
-			}
+func collectLanded_internal(snap store.Snapshot, events []store.Event, _ string) (string, []string, int64, int64, int) {
+	entries, minSeq, maxSeq, epoch := scanCards_internal(snap, events, func(ev store.Event, c store.Card) (string, bool) {
+		if (c.Kind != "producer" && c.Kind != "sentinel") || c.State != "landed" || (ev.Before != nil && ev.Before.Cards[c.ID].State == "landed") {
+			return "", false
 		}
-	}
-	if len(entries) == 0 {
-		return Message{}, false
-	}
-	header := fmt.Sprintf("LANDED: %d card(s) (epoch %d)", len(entries), epoch)
-	trailer := fmt.Sprintf("and %%d more: nova-sprint next --as %s", recipient)
-	return Message{To: recipient, Subject: SubjectLanded, Body: packEntries_internal(header, entries, trailer), MinSeq: minSeq, MaxSeq: maxSeq, Epoch: epoch}, true
+		return fmt.Sprintf("LANDED card=%s stream=%s head=%s\nrun: nova-sprint show %s", c.ID, c.Stream, c.Head, c.ID), true
+	})
+	return fmt.Sprintf("LANDED: %d card(s) (epoch %d)", len(entries), epoch), entries, minSeq, maxSeq, epoch
 }
-func buildStreamLandedMessage_internal(snap store.Snapshot, events []store.Event, recipient string) (Message, bool) {
+func collectStreamLanded_internal(snap store.Snapshot, events []store.Event, _ string) (string, []string, int64, int64, int) {
 	var streams []string
 	seenStream := make(map[string]bool)
 	var minSeq, maxSeq int64
 	epoch := snap.Epoch
 	for _, ev := range events {
-		for _, id := range sortedCardIDs_internal(ev.After.Cards) {
+		for _, id := range slices.Sorted(maps.Keys(ev.After.Cards)) {
 			c := ev.After.Cards[id]
 			if (c.Kind == "producer" || c.Kind == "sentinel") && c.State == "landed" && !seenStream[c.Stream] {
 				seenStream[c.Stream] = true
 				streams = append(streams, c.Stream)
 				minSeq, maxSeq = updateSeqBounds_internal(minSeq, maxSeq, ev.Seq)
-				if ev.Epoch > 0 {
-					epoch = ev.Epoch
-				}
+				epoch = cmp.Or(ev.Epoch, epoch)
 			}
 		}
 	}
 	slices.Sort(streams)
 	var entries []string
 	for _, sName := range streams {
-		count, lastHead, allLanded := streamCompletion_internal(snap, sName)
-		if allLanded && count > 0 {
-			base := snap.Streams[sName].Base
-			entries = append(entries, fmt.Sprintf("STREAM LANDED stream=%s base=%s head=%s cards=%d\nrun: nova-sprint show %s --stitch", sName, base, lastHead, count, sName))
+		if count, lastHead, allLanded := streamCompletion_internal(snap, sName); allLanded && count > 0 {
+			entries = append(entries, fmt.Sprintf("STREAM LANDED stream=%s base=%s head=%s cards=%d\nrun: nova-sprint show %s --stitch", sName, snap.Streams[sName].Base, lastHead, count, sName))
 		}
 	}
-	if len(entries) == 0 {
-		return Message{}, false
-	}
-	header := fmt.Sprintf("STREAM LANDED: %d stream(s) (epoch %d)", len(entries), epoch)
-	trailer := fmt.Sprintf("and %%d more: nova-sprint next --as %s", recipient)
-	return Message{
-		To:      recipient,
-		Subject: SubjectStreamLanded,
-		Body:    packEntries_internal(header, entries, trailer),
-		MinSeq:  minSeq,
-		MaxSeq:  maxSeq,
-		Epoch:   epoch,
-	}, true
+	return fmt.Sprintf("STREAM LANDED: %d stream(s) (epoch %d)", len(entries), epoch), entries, minSeq, maxSeq, epoch
 }
 func streamCompletion_internal(snap store.Snapshot, streamName string) (int, string, bool) {
-	count := 0
-	lastHead := ""
-	for _, id := range sortedCardIDs_internal(snap.Cards) {
+	count, lastHead := 0, ""
+	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
 		c := snap.Cards[id]
-		switch {
-		case c.Stream != streamName || (c.Kind != "producer" && c.Kind != "sentinel"):
+		if c.Stream != streamName || (c.Kind != "producer" && c.Kind != "sentinel") {
 			continue
-		case c.State != "landed":
+		}
+		if c.State != "landed" {
 			return 0, "", false
 		}
 		count++
-		if c.Head != "" {
-			lastHead = c.Head
-		}
+		lastHead = cmp.Or(c.Head, lastHead)
 	}
 	return count, lastHead, count > 0
 }
@@ -462,93 +363,95 @@ func packEntries_internal(header string, entries []string, trailerFmt string) st
 		if included >= MaxCardLines {
 			break
 		}
-		remainingAfter := len(entries) - (i + 1)
 		reserve := 0
-		switch {
-		case remainingAfter > 0:
-			reserve = 1 + len(fmt.Sprintf(trailerFmt, remainingAfter))
-		case b.Len()+1+len(entry)+reserve > MaxMessageBytes:
+		if rem := len(entries) - (i + 1); rem > 0 {
+			reserve = 1 + len(fmt.Sprintf(trailerFmt, rem))
+		}
+		if b.Len()+1+len(entry)+reserve > MaxMessageBytes {
 			break
 		}
-		b.WriteString("\n")
-		b.WriteString(entry)
+		b.WriteString("\n" + entry)
 		included++
 	}
-	if remaining := len(entries) - included; remaining > 0 {
-		tail := "\n" + fmt.Sprintf(trailerFmt, remaining)
-		if b.Len()+len(tail) <= MaxMessageBytes {
+	if rem := len(entries) - included; rem > 0 {
+		if tail := "\n" + fmt.Sprintf(trailerFmt, rem); b.Len()+len(tail) <= MaxMessageBytes {
 			b.WriteString(tail)
 		}
 	}
 	return b.String()
 }
-func sortedCardIDs_internal(m map[string]store.Card) []string {
-	ids := make([]string, 0, len(m))
-	for id := range m {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	return ids
-}
-func sortedJudgementIDs_internal(m map[string]store.Judgement) []string {
-	ids := make([]string, 0, len(m))
-	for id := range m {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	return ids
-}
 func updateSeqBounds_internal(minSeq, maxSeq, seq int64) (int64, int64) {
 	if minSeq == 0 || seq < minSeq {
 		minSeq = seq
 	}
-	if seq > maxSeq {
-		maxSeq = seq
+	return minSeq, max(maxSeq, seq)
+}
+func maxAcceptedSeq_internal(events []store.Event, curSeq int64) (int64, bool) {
+	maxSeq, hasDomain := curSeq, false
+	for _, ev := range events {
+		if ev.Accepted {
+			maxSeq = max(maxSeq, ev.Seq)
+			hasDomain = hasDomain || ev.Kind != "cursor"
+		}
 	}
-	return minSeq, maxSeq
+	return maxSeq, hasDomain
 }
 func (e *Edge) PushRecipient(ctx context.Context, st store.Store, snap store.Snapshot, recipient, opIDPrefix string, now time.Time) ([]Delivered, error) {
-	cursorKey := CursorName(recipient)
-	curSeq := snap.Cursors[cursorKey]
-	events, err := st.Events(ctx, curSeq, store.MaxEvents)
-	if err != nil {
-		return nil, fmt.Errorf("bus push %s: read events after %d: %w", recipient, curSeq, err)
+	var all []Delivered
+	for {
+		deliv, more, err := e.pushWindow_internal(ctx, st, &snap, recipient, opIDPrefix, now)
+		all = append(all, deliv...)
+		if err != nil || !more {
+			return all, err
+		}
 	}
-	msgs := e.BuildRecipientMessages(snap, events, recipient)
+}
+func (e *Edge) pushWindow_internal(ctx context.Context, st store.Store, snap *store.Snapshot, recipient, opIDPrefix string, now time.Time) ([]Delivered, bool, error) {
+	cursorKey := CursorName(recipient)
+	curSeq, win := snap.Cursors[cursorKey], cmp.Or(e.window, store.MaxEvents)
+	events, err := st.Events(ctx, curSeq, win)
+	if err != nil {
+		return nil, false, fmt.Errorf("bus push %s: read events after %d: %w", recipient, curSeq, err)
+	}
+	if len(events) == 0 {
+		return nil, false, nil
+	}
+	windowMax, hasDomain := maxAcceptedSeq_internal(events, curSeq)
+	snap.Cursors[cursorKey] = curSeq
+	msgs := e.BuildRecipientMessages(*snap, events, recipient)
+	deliv, nextSeq, sendErr := e.sendWindow_internal(ctx, msgs, curSeq, windowMax, hasDomain || len(events) == win)
+	if nextSeq > curSeq {
+		if advErr := advanceCursor_internal(ctx, st, snap.Epoch, recipient, nextSeq, opIDPrefix, now); advErr != nil {
+			return deliv, false, advErr
+		}
+		snap.Cursors[cursorKey] = nextSeq
+	}
+	return deliv, sendErr == nil && len(events) == win, sendErr
+}
+func (e *Edge) sendWindow_internal(ctx context.Context, msgs []Message, curSeq, windowMax int64, advanceEmpty bool) ([]Delivered, int64, error) {
 	if len(msgs) == 0 {
-		return nil, nil
+		if advanceEmpty {
+			return nil, windowMax, nil
+		}
+		return nil, curSeq, nil
 	}
 	var delivered []Delivered
-	var maxConfirmed int64
 	for _, m := range msgs {
 		msgID, sendErr := e.transport.Send(ctx, m.To, m.Subject, m.Body)
-		switch {
-		case sendErr != nil:
-			return delivered, sendErr
-		case m.MaxSeq > maxConfirmed:
-			maxConfirmed = m.MaxSeq
+		if sendErr != nil {
+			return delivered, curSeq, sendErr
 		}
-		delivered = append(delivered, Delivered{Message: m, MsgID: msgID, CursorSeq: maxConfirmed})
+		delivered = append(delivered, Delivered{Message: m, MsgID: msgID, CursorSeq: windowMax})
 	}
-	if maxConfirmed > curSeq {
-		if err := advanceCursor_internal(ctx, st, snap.Epoch, recipient, maxConfirmed, opIDPrefix, now); err != nil {
-			return delivered, err
-		}
-	}
-	return delivered, nil
+	return delivered, windowMax, nil
 }
 func advanceCursor_internal(ctx context.Context, st store.Store, epoch int, recipient string, seq int64, opIDPrefix string, now time.Time) error {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	opID := fmt.Sprintf("%s-cursor-%s-%d", cmp.Or(opIDPrefix, "push"), recipient, seq)
 	rec, err := st.Apply(ctx, store.Op{
-		ID:     opID,
-		Epoch:  cmp.Or(epoch, 1),
-		Actor:  DefaultSender,
-		Kind:   "cursor",
-		At:     now,
-		Writes: []store.Write{store.SetCursor{Name: CursorName(recipient), Seq: seq}},
+		ID: fmt.Sprintf("%s-cursor-%s-%d", cmp.Or(opIDPrefix, "push"), recipient, seq), Epoch: cmp.Or(epoch, 1),
+		Actor: DefaultSender, Kind: "cursor", At: now, Writes: []store.Write{store.SetCursor{Name: CursorName(recipient), Seq: seq}},
 	})
 	switch {
 	case err != nil:
@@ -566,20 +469,20 @@ func (e *Edge) PushTick(ctx context.Context, st store.Store, opIDPrefix string, 
 	recipients := make([]string, 0, len(snap.Rows)+1)
 	seen := make(map[string]bool)
 	for name := range snap.Rows {
-		recipients = append(recipients, name)
-		seen[name] = true
+		recipients, seen[name] = append(recipients, name), true
 	}
 	if e.coordinator != "" && !seen[e.coordinator] {
 		recipients = append(recipients, e.coordinator)
 	}
 	slices.Sort(recipients)
 	var all []Delivered
+	var errs []error
 	for _, r := range recipients {
 		deliv, pushErr := e.PushRecipient(ctx, st, snap, r, opIDPrefix, now)
 		all = append(all, deliv...)
 		if pushErr != nil {
-			return all, pushErr
+			errs = append(errs, pushErr)
 		}
 	}
-	return all, nil
+	return all, errors.Join(errs...)
 }

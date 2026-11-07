@@ -2,12 +2,82 @@ package git
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"slices"
 	"strings"
 	"sync"
 )
+
+type fakeForgeWorld_internal struct {
+	mu     sync.Mutex
+	checks map[string]forge.CheckRollup
+}
+
+func newFakeForgeWorld_internal() *fakeForgeWorld_internal {
+	return &fakeForgeWorld_internal{checks: make(map[string]forge.CheckRollup)}
+}
+
+type fakeForge_internal struct {
+	world  *fakeForgeWorld_internal
+	OnCall func(op string)
+}
+
+func newFakeForge_internal() *fakeForge_internal {
+	return newFakeForgeWithWorld_internal(newFakeForgeWorld_internal())
+}
+
+func newFakeForgeWithWorld_internal(w *fakeForgeWorld_internal) *fakeForge_internal {
+	return &fakeForge_internal{world: w}
+}
+
+func (f *fakeForge_internal) SetCheck(repo, sha string, r forge.CheckRollup) {
+	f.world.mu.Lock()
+	r.SHA = sha
+	f.world.checks[repo+"\x00"+sha] = r
+	f.world.mu.Unlock()
+}
+
+func (f *fakeForge_internal) PR(_ context.Context, _, head, base string) (forge.PRInfo, bool, error) {
+	if f.OnCall != nil {
+		f.OnCall("PR")
+	}
+	return forge.PRInfo{Number: 1, HeadRef: head, BaseRef: base, State: "OPEN"}, true, nil
+}
+
+func (f *fakeForge_internal) OpenPR(_ context.Context, _, head, base, _, _ string) (forge.PRInfo, error) {
+	if f.OnCall != nil {
+		f.OnCall("OpenPR")
+	}
+	return forge.PRInfo{Number: 1, HeadRef: head, BaseRef: base, State: "OPEN"}, nil
+}
+
+func (f *fakeForge_internal) Checks(_ context.Context, repo string, shas []string) (map[string]forge.CheckRollup, error) {
+	if f.OnCall != nil {
+		f.OnCall("Checks")
+	}
+	f.world.mu.Lock()
+	defer f.world.mu.Unlock()
+	out := make(map[string]forge.CheckRollup, len(shas))
+	for _, sha := range shas {
+		if r, ok := f.world.checks[repo+"\x00"+sha]; ok {
+			out[sha] = r
+		} else {
+			out[sha] = forge.CheckRollup{SHA: sha, State: forge.CheckPending}
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeForge_internal) Merge(_ context.Context, _ string, _ int, _, _ string) error {
+	if f.OnCall != nil {
+		f.OnCall("Merge")
+	}
+	return nil
+}
 
 type FakeCommit struct {
 	SHA     string
@@ -254,9 +324,10 @@ func (f *Fake) mergeTwoLocked_internal(ours, theirs FakeCommit, ledgerMap map[st
 			mergedFiles[p] = unionLines_internal(ours.Files[p], theirs.Files[p])
 		}
 	}
-	f.world.seq++
-	sha := fmt.Sprintf("%040x", f.world.seq)
-	c := FakeCommit{SHA: sha, Parents: []string{ours.SHA, theirs.SHA}, Files: mergedFiles, Tree: computeTreeHash_internal(mergedFiles)}
+	tree := computeTreeHash_internal(mergedFiles)
+	sum := sha256.Sum256([]byte("merge\x00" + ours.SHA + "\x00" + theirs.SHA + "\x00" + tree))
+	sha := hex.EncodeToString(sum[:])[:40]
+	c := FakeCommit{SHA: sha, Parents: []string{ours.SHA, theirs.SHA}, Files: mergedFiles, Tree: tree}
 	f.world.commits[sha] = c
 	f.world.originRefs[sha] = sha
 	return c, MergeResult{}, false
@@ -296,12 +367,15 @@ func (f *Fake) Push(_ context.Context, _, sha, ref, expectOld string) error {
 	defer f.world.mu.Unlock()
 	var isStream bool
 	var err error
-	ref, isStream, err = classifyPushRef_internal(ref, expectOld)
+	ref, isStream, err = classifyPushRef_internal(ref)
 	if err != nil {
 		return err
 	}
+	if !isStream && expectOld != "" && !f.isAncestorLocked_internal(expectOld, sha) {
+		return fmt.Errorf("git refused: force-with-lease is forbidden on base branch %s: base pushes must fast-forward", ref)
+	}
 	cur := f.world.originRefs[ref]
-	if isStream {
+	if isStream || expectOld != "" {
 		if cur != expectOld {
 			return &PushRefusedError{Ref: ref, SHA: sha, Reason: fmt.Sprintf("stale lease on %s: got %s, expected %s", ref, cur, expectOld)}
 		}

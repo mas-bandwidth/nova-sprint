@@ -149,8 +149,7 @@ func TestFunctionalLandPassEndToEndAndBaseMoved(t *testing.T) {
 	otherBaseSHA := commitBranch_internal(t, runGit, workDir, "other-stream", baseSHA, "other.txt", "other stream\n", "")
 
 	client := New(Config{})
-	now := int64(1000)
-	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
+	ff := newFakeForge_internal()
 
 	movedBase := false
 	ff.OnCall = func(op string) {
@@ -170,7 +169,7 @@ func TestFunctionalLandPassEndToEndAndBaseMoved(t *testing.T) {
 	assertLandedStateAndRestart_internal(t, ctx, client, ff, landerClone, req, res, []string{c1SHA, c2SHA, otherBaseSHA})
 }
 
-func assertLandedStateAndRestart_internal(t *testing.T, ctx context.Context, client *Client, ff *forge.Fake, landerClone string, req LandRequest, res LandResult, heads []string) {
+func assertLandedStateAndRestart_internal(t *testing.T, ctx context.Context, client *Client, ff forge.Forge, landerClone string, req LandRequest, res LandResult, heads []string) {
 	t.Helper()
 	v2Remote, ok, err := client.LsRemote(ctx, landerClone, "refs/heads/v2")
 	if err != nil || !ok || v2Remote != res.BaseTip {

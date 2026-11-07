@@ -182,28 +182,30 @@ func TestPushCursorFailureAndLostReplyRecovery(t *testing.T) {
 	fb := NewFake()
 	b := New(Config{Transport: fb, Coordinator: "rowan"})
 
-	// 1. Send fails on first tick -> cursor stays at 0.
+	// 1. Send fails for amd-1.ds on first tick -> amd-1.ds cursor stays at 0 while rowan still advances.
 	fb.FailNextSend(errors.New("SEND FAILED"))
-	_, err := b.PushTick(ctx, st, "tick-fail", now.Add(time.Second))
+	deliv1, err := b.PushTick(ctx, st, "tick-fail", now.Add(time.Second))
 	require.Error(t, err)
+	assert.Len(t, deliv1, 3)
 
 	snap, err := st.Snapshot(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), snap.Cursors[CursorName("amd-1.ds")])
+	assert.Greater(t, snap.Cursors[CursorName("rowan")], int64(0))
 
-	// 2. Reply lost after message reaches wire -> cursor stays at 0, next tick resends identically.
+	// 2. Reply lost after message reaches wire -> amd-1.ds cursor stays at 0, next tick resends identically.
 	fb.DropNextReply(1)
 	_, err = b.PushTick(ctx, st, "tick-drop", now.Add(2*time.Second))
 	require.Error(t, err)
 	snap, err = st.Snapshot(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), snap.Cursors[CursorName("amd-1.ds")])
-	require.Len(t, fb.WireMessages(), 1)
+	require.Len(t, fb.WireMessages(), 4)
 
-	// 3. Recovery tick succeeds and advances both cursors.
+	// 3. Recovery tick succeeds and advances amd-1.ds cursor.
 	delivered, err := b.PushTick(ctx, st, "tick-ok", now.Add(3*time.Second))
 	require.NoError(t, err)
-	assert.Len(t, delivered, 5)
+	assert.Len(t, delivered, 2)
 	snap, err = st.Snapshot(ctx)
 	require.NoError(t, err)
 	assert.Greater(t, snap.Cursors[CursorName("amd-1.ds")], int64(0))

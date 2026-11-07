@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,30 +21,20 @@ func RequestID(epoch int64, kind, card, sha string) string {
 }
 
 type EdgeRequest struct {
-	Epoch                                   int64
-	ID, Kind, Card, Row, Stream, Repo, Base string
-	PR                                      bool
-	Mode                                    string
-	Ledgers                                 []string
-	SHA, BaseSHA                            string
-	Heads, After                            []string
+	Epoch                                              int64
+	ID, Kind, Card, Row, Stream, Repo, Base, Mode, SHA string
+	BaseSHA                                            string
+	PR                                                 bool
+	Ledgers, Heads, After                              []string
 }
 
-func (r EdgeRequest) Key() string {
-	if r.ID != "" {
-		return r.ID
-	}
-	return RequestID(r.Epoch, r.Kind, r.Card, r.SHA)
-}
+func (r EdgeRequest) Key() string { return cmp.Or(r.ID, RequestID(r.Epoch, r.Kind, r.Card, r.SHA)) }
 
 type EdgeResult struct {
-	Epoch                                                     int64
-	ID, Kind, Card, SHA, Outcome, Failure, BaseTip, StreamTip string
-	Landed                                                    []string
-	Blamed                                                    string
-	Files                                                     []string
-	PRNumber                                                  int
-	Reason                                                    string
+	Epoch                                                                     int64
+	ID, Kind, Card, SHA, Outcome, Failure, BaseTip, StreamTip, Blamed, Reason string
+	Landed, Files                                                             []string
+	PRNumber                                                                  int
 }
 type inflightCall_internal struct {
 	done chan struct{}
@@ -75,30 +66,12 @@ func (d *Deduplicator) Do(ctx context.Context, req EdgeRequest, fn func(context.
 	d.inflight[key] = call
 	d.mu.Unlock()
 	res, err := fn(ctx, req)
-	fillEdgeResultMeta_internal(&res, req, key)
+	res.Epoch, res.ID, res.Kind = cmp.Or(res.Epoch, req.Epoch), cmp.Or(res.ID, key), cmp.Or(res.Kind, req.Kind)
+	res.Card, res.SHA = cmp.Or(res.Card, req.Card), cmp.Or(res.SHA, req.SHA)
 	d.mu.Lock()
-	call.res = res
-	call.err = err
+	call.res, call.err = res, err
 	delete(d.inflight, key)
 	close(call.done)
 	d.mu.Unlock()
 	return res, err
-}
-
-func fillEdgeResultMeta_internal(res *EdgeResult, req EdgeRequest, key string) {
-	if res.Epoch == 0 {
-		res.Epoch = req.Epoch
-	}
-	if res.ID == "" {
-		res.ID = key
-	}
-	if res.Kind == "" {
-		res.Kind = req.Kind
-	}
-	if res.Card == "" {
-		res.Card = req.Card
-	}
-	if res.SHA == "" {
-		res.SHA = req.SHA
-	}
 }
