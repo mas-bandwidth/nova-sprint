@@ -1,7 +1,6 @@
 package dash
 
 import (
-	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -95,7 +94,7 @@ func (p *PullCache) serveJSON(w http.ResponseWriter, r *http.Request) {
 		body = compressed
 	}
 	if r.Method != http.MethodHead {
-		_, _ = w.Write(body)
+		respond(w, body)
 	}
 }
 func (p *PullCache) serveHealth(w http.ResponseWriter) {
@@ -107,5 +106,5 @@ func (p *PullCache) serveHealth(w http.ResponseWriter) {
 		http.Error(w, "stale", http.StatusServiceUnavailable)
 		return
 	}
-	_, _ = fmt.Fprintln(w, "ok")
+	respond(w, []byte("ok\n"))
 }

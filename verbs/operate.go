@@ -115,7 +115,10 @@ func releaseVersion(s string) ([3]uint64, error) {
 	at := len(s) - len(strings.TrimPrefix(s, "v"))
 	for i, p := range parts {
 		n, err := strconv.ParseUint(p, 10, 64)
-		if err != nil || p == "" || strings.Trim(p, "0123456789") != "" || (len(p) > 1 && p[0] == '0') {
+		if err != nil {
+			return out, fmt.Errorf("invalid version: %s", edge.ParseFailure(err, []byte(s)))
+		}
+		if strings.Trim(p, "0123456789") != "" || (len(p) > 1 && p[0] == '0') {
 			return out, fmt.Errorf("invalid version: %s", edge.ParseRefused(fmt.Sprintf("part %q is not a number without leading zeros", p), at, []byte(s)))
 		}
 		out[i] = n

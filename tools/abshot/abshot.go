@@ -101,8 +101,11 @@ func parseWidths(raw string) ([]int, error) {
 			continue
 		}
 		w, err := strconv.Atoi(p)
-		if err != nil || w < 200 || w > 10000 {
-			return nil, fmt.Errorf("invalid width %q", p)
+		if err != nil {
+			return nil, fmt.Errorf("invalid width %q: %w", p, err)
+		}
+		if w < 200 || w > 10000 {
+			return nil, fmt.Errorf("invalid width %q: want 200 to 10000", p)
 		}
 		out = append(out, w)
 	}

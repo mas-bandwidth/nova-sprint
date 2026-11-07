@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -116,7 +117,11 @@ func (b OSBusHook) Start(ctx context.Context, row string) (WakeHook, error) {
 				w.readyOne.Do(func() { close(w.ready) })
 			}
 		}
-		_, _ = io.Copy(io.Discard, stderr)
+		if _, err := io.Copy(io.Discard, stderr); err != nil && !errors.Is(err, os.ErrClosed) {
+			w.mu.Lock()
+			w.tail = append(w.tail, "(reading the hook's stderr failed: "+err.Error()+")\n"...)
+			w.mu.Unlock()
+		}
 	}()
 	go func() {
 		readers.Wait()

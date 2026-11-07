@@ -2,6 +2,7 @@ package worker
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"io"
@@ -88,12 +89,11 @@ func (p *KeyProxy) resolveRoute_internal(r *http.Request) (ProxyRoute, bool) {
 }
 func resolveTargetURL_internal(route ProxyRoute, r *http.Request) (*url.URL, string, error) {
 	base, err := url.Parse(route.UpstreamURL)
-	if err != nil || base.Scheme == "" || base.Host == "" {
-		why := "no scheme or host"
-		if err != nil {
-			why = err.Error()
-		}
-		return nil, "", fmt.Errorf("proxy refused: invalid upstream URL %q for route %s: %s", edge.Redact(route.UpstreamURL), route.Name, edge.Redact(why))
+	if err != nil {
+		return nil, "", fmt.Errorf("proxy refused: invalid upstream URL %q for route %s: %s", edge.Redact(route.UpstreamURL), route.Name, edge.Redact(err.Error()))
+	}
+	if base.Scheme == "" || base.Host == "" {
+		return nil, "", fmt.Errorf("proxy refused: invalid upstream URL %q for route %s: no scheme or host", edge.Redact(route.UpstreamURL), route.Name)
 	}
 	targetHost := base.Hostname()
 	if override := strings.TrimSpace(r.Header.Get("X-Target-Host")); override != "" {
@@ -149,7 +149,10 @@ func (p *KeyProxy) forward_internal(w http.ResponseWriter, r *http.Request, targ
 	}
 	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, io.LimitReader(resp.Body, 16<<20))
+	if _, err := io.Copy(w, io.LimitReader(resp.Body, 16<<20)); err != nil {
+		// the status is sent: the harness sees a cut body; the worker's log says why
+		reportTo(nil, "key proxy: response body cut short", err)
+	}
 }
 func CheckLoopbackAddr(addr string) error {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(addr))
@@ -171,6 +174,10 @@ func (p *KeyProxy) ListenLoopback(addr string) (*http.Server, string, error) {
 		return nil, "", err
 	}
 	srv := &http.Server{Handler: p}
-	go func() { _ = srv.Serve(ln) }()
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			reportTo(nil, "key proxy stopped serving", err)
+		}
+	}()
 	return srv, ln.Addr().String(), nil
 }

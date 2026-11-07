@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -58,13 +59,10 @@ func (p PGSetupLock) Acquire(ctx context.Context) (SetupLease, error) {
 	var acquired bool
 	err = conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1, $2)", setupLockClass, setupLockObject).Scan(&acquired)
 	if err != nil {
-		_ = closeSetupConnection(conn) // the query's failure is the one reported
-		return nil, cause("setup lock unavailable", err)
+		return nil, errors.Join(cause("setup lock unavailable", err), closeSetupConnection(conn))
 	}
 	if !acquired {
-		err = setupHolder(ctx, conn)
-		_ = closeSetupConnection(conn)
-		return nil, err
+		return nil, errors.Join(setupHolder(ctx, conn), closeSetupConnection(conn))
 	}
 	return &pgSetupLease{conn: conn}, nil
 }

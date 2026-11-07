@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/edge"
 	"io"
 	"log"
 	"net/http"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 const pullBodyLimit = 8 << 20
@@ -37,8 +38,11 @@ type PullCache struct {
 
 func NewPullCache(raw string, client *http.Client, now func() time.Time) (*PullCache, error) {
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return nil, fmt.Errorf("dashboard: invalid pull address")
+	if err != nil {
+		return nil, fmt.Errorf("dashboard: invalid pull address: %s", edge.Redact(err.Error()))
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("dashboard: invalid pull address: want http(s)://host[:port]/path with no user, query or fragment")
 	}
 	u.Path = strings.TrimRight(u.Path, "/") + "/api/sprint"
 	if client == nil {
@@ -70,9 +74,13 @@ func (p *PullCache) Advance(ctx context.Context) error {
 		return fmt.Errorf("dashboard: pull returned HTTP %d", resp.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, pullBodyLimit+1))
-	if err != nil || len(raw) > pullBodyLimit {
+	if err != nil {
 		p.failure()
-		return fmt.Errorf("dashboard: pull body unavailable or too large")
+		return fmt.Errorf("dashboard: pull body unavailable: %w", err)
+	}
+	if len(raw) > pullBodyLimit {
+		p.failure()
+		return fmt.Errorf("dashboard: pull body over %d bytes", pullBodyLimit)
 	}
 	value, age, err := parsePullEnvelope(raw)
 	if err != nil {
@@ -94,7 +102,9 @@ func (p *PullCache) failure() {
 	p.failed = true
 	if p.base != nil {
 		p.checkAlarmLocked()
-		_ = p.renderLocked()
+		if err := p.renderLocked(); err != nil {
+			log.Printf("dashboard: rendering the stale page after a failed pull failed: %s", edge.Redact(err.Error()))
+		}
 	}
 }
 func (p *PullCache) renderLocked() error {
@@ -131,13 +141,14 @@ func (p *PullCache) renderLocked() error {
 func (p *PullCache) Run(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	_ = p.Advance(ctx)
+	var pull errNote
+	pull.note("the pull", p.Advance(ctx))
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			_ = p.Advance(ctx)
+			pull.note("the pull", p.Advance(ctx))
 		}
 	}
 }

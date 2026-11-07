@@ -84,7 +84,10 @@ func attrs(s *starlarkstruct.Struct) (starlark.Value, string, bool, error) {
 	var v [4]starlark.Value
 	for i, a := range []string{"name", "rank", "working", "width"} {
 		x, err := s.Attr(a)
-		if err != nil || x == nil {
+		if err != nil {
+			return nil, "", false, fmt.Errorf("prefer: a candidate's %s: %w", a, err)
+		}
+		if x == nil {
 			return nil, "", false, fmt.Errorf("prefer: a candidate has no %s", a)
 		}
 		v[i] = x

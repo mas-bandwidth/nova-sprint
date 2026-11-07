@@ -120,7 +120,9 @@ func (TTY) ReadHidden(ctx context.Context, prompt string) (key []byte, resultErr
 		return nil, err
 	}
 	key, err = readHiddenLine(sigctx, fd)
-	_, _ = io.WriteString(restoreTTY, "\n") // the newline after a hidden prompt is cosmetic
+	if _, werr := io.WriteString(restoreTTY, "\n"); werr != nil { // the newline after a hidden prompt is cosmetic: said, not fatal
+		fmt.Fprintln(os.Stderr, "nova-sprint: the terminal did not take the newline after the hidden prompt: "+Redact(werr.Error()))
+	}
 	if err != nil {
 		for i := range key {
 			key[i] = 0

@@ -571,14 +571,14 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	}
 	out, err := call(ctx, "nova-config", "service", "list", "--json")
 	if err != nil {
-		return nil, verbs.RefusalOr(err, serviceConfigError("cannot inspect fleet services: " + err.Error()))
+		return nil, verbs.RefusalOr(err, serviceConfigError("cannot inspect fleet services: "+err.Error()))
 	}
 	if len(out) > 1<<20 {
 		return nil, serviceConfigError("cannot inspect fleet services: " + edge.ParseRefused("output longer than 1 MiB", 1<<20, out))
 	}
 	var response setupServicesResponse
 	if err := json.Unmarshal(out, &response); err != nil {
-		return nil, verbs.RefusalOr(err, serviceConfigError("fleet service response is invalid: " + edge.ParseFailure(err, out)))
+		return nil, verbs.RefusalOr(err, serviceConfigError("fleet service response is invalid: "+edge.ParseFailure(err, out)))
 	}
 	if response.Result.Verb != "service list" || response.Result.Status != "ok" || response.Result.Exit != 0 || response.Facts.Kind != "service" || response.Facts.Rows != len(response.Items) {
 		return nil, serviceConfigError(fmt.Sprintf("fleet service response is invalid: result %q %q exit %d, facts kind %q rows %d for %d items", response.Result.Verb, response.Result.Status, response.Result.Exit, response.Facts.Kind, response.Facts.Rows, len(response.Items)))
@@ -617,7 +617,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	}
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return r, verbs.RefusalOr(err, serviceConfigError("cannot inspect machine inventory: " + err.Error()))
+		return r, verbs.RefusalOr(err, serviceConfigError("cannot inspect machine inventory: "+err.Error()))
 	}
 	found := false
 	for _, machine := range machines {
@@ -640,7 +640,10 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 		return r, err
 	}
 	expectedDSN, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
-	if err != nil || run.Env["NOVA_PG_DSN"] != expectedDSN {
+	if err != nil {
+		return r, verbs.RefusalOr(err, serviceConfigError("sprint-run must name the configured passwordless sprint DSN: the configured DSN: "+err.Error()))
+	}
+	if run.Env["NOVA_PG_DSN"] != expectedDSN {
 		return r, serviceConfigError("sprint-run must name the configured passwordless sprint DSN")
 	}
 	r.RunService = run
@@ -704,13 +707,19 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 		return verbs.FleetService{}, serviceConfigError("run host needs a private-network address (a tailnet IP or name) in the inventory")
 	}
 	busHost, busPort, err := net.SplitHostPort(p.cfg.BusRedis)
-	port, portErr := strconv.Atoi(busPort)
-	if err != nil || portErr != nil || busHost == "" || port < 1 || port > 65535 {
-		return verbs.FleetService{}, serviceConfigError("NOVA_BUS_REDIS must name the configured Redis host and port")
+	if err != nil {
+		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("NOVA_BUS_REDIS must name the configured Redis host and port: "+err.Error()))
+	}
+	port, err := strconv.Atoi(busPort)
+	if err != nil {
+		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("NOVA_BUS_REDIS must name the configured Redis host and port: "+err.Error()))
+	}
+	if busHost == "" || port < 1 || port > 65535 {
+		return verbs.FleetService{}, serviceConfigError(fmt.Sprintf("NOVA_BUS_REDIS must name the configured Redis host and port (host %q, port %d)", busHost, port))
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("configured sprint DSN is invalid: " + err.Error()))
+		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("configured sprint DSN is invalid: "+err.Error()))
 	}
 	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis}
 	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
@@ -940,9 +949,15 @@ func splitServiceKeys(raw string) []string {
 }
 func privateDashboardURL(listen string) (string, error) {
 	host, port, err := net.SplitHostPort(listen)
-	number, parseErr := strconv.Atoi(port)
-	if err != nil || parseErr != nil || number < 1 || number > 65535 {
-		return "", serviceConfigError("sprint-run needs an explicit private-network listener")
+	if err != nil {
+		return "", verbs.RefusalOr(err, serviceConfigError("sprint-run needs an explicit private-network listener: "+err.Error()))
+	}
+	number, err := strconv.Atoi(port)
+	if err != nil {
+		return "", verbs.RefusalOr(err, serviceConfigError("sprint-run needs an explicit private-network listener: "+err.Error()))
+	}
+	if number < 1 || number > 65535 {
+		return "", serviceConfigError(fmt.Sprintf("sprint-run needs an explicit private-network listener: port %d is out of range", number))
 	}
 	if ip, err := netip.ParseAddr(host); err == nil && isTailnetIP(ip) || err != nil && tailnetName.MatchString(host) {
 		return "http://" + net.JoinHostPort(host, port), nil
@@ -1005,8 +1020,11 @@ func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMach
 		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is absent, hosts run, or is also a bench")
 	}
 	publicIP, err := netip.ParseAddr(machine.Address)
-	if err != nil || !publicIP.IsGlobalUnicast() || publicIP.IsPrivate() || isTailnetIP(publicIP) {
-		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host needs a public IP in inventory")
+	if err != nil {
+		return verbs.DashboardTarget{}, verbs.RefusalOr(err, serviceConfigError("public dashboard host needs a public IP in inventory: "+err.Error()))
+	}
+	if !publicIP.IsGlobalUnicast() || publicIP.IsPrivate() || isTailnetIP(publicIP) {
+		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host needs a public IP in inventory, not " + publicIP.String())
 	}
 	var candidate *verbs.FleetService
 	port := ""

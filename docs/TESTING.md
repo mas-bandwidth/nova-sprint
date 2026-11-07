@@ -5,8 +5,15 @@ The same commands CI runs (`.github/workflows/ci.yml`), from the repository root
 Lint:
 
     test -z "$(gofmt -l .)" || gofmt -l .
-    go build ./...
+    go build -ldflags "-X main.binaryVersion=$(git describe --always --dirty --tags --match 'v[0-9]*')" ./...
     go vet ./...
+    go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
+
+(`make lint` runs the same; `make build` stamps the version as CI does.)
+silentlint refuses the silent error forms: S1 a fixed-string error in an err
+branch, S2 a refusal re-wrapped without errors.As/AsRefusal/RefusalOr, S3 a
+`_ =` discard outside its named cleanups, S4 a bare exit that never writes
+the error (tools/silentlint/lint.go names each).
 
 Unit tests (no clock, sockets, network or outside service):
 

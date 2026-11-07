@@ -159,6 +159,7 @@ func dumpVersionRefusal(out string, serverMajor int) error {
 func runPG(ctx context.Context, dsn, program string, args ...string) error {
 	return runPGPassword(ctx, dsn, "", program, args...)
 }
+
 // runPGPassword runs a PostgreSQL program with the password in PGPASSWORD
 // (never argv); a failure is an edge.CommandError carrying the program, its
 // arguments, its exit and its whole stderr, redacted (the env, with
@@ -281,6 +282,7 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 	}
 	return BackupInfo{Path: path, Epoch: snap.Epoch, Seq: snap.Seq, PrefixDigest: digest, SchemaHash: schemaHash, Verified: validated}, nil
 }
+
 // verifyServerOptions are the verification cluster's server options: a
 // socket in dir only, no TCP, and no System V shared memory (mmap and POSIX
 // segments), so it starts beside other clusters on a host whose SysV limits

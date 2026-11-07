@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
 )
 
 // VersionAdoption checks that the nova-sprint on PATH is the release up was

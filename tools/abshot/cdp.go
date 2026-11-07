@@ -274,7 +274,9 @@ func runCaptureSession(ctx context.Context, sess *cdpConn, pageURL string, width
 	if _, err := sess.call(ctx, "Runtime.enable", map[string]any{}); err != nil {
 		return nil, nil, err
 	}
-	_, _ = sess.call(ctx, "Emulation.setTimezoneOverride", map[string]any{"timezoneId": tz})
+	if _, err := sess.call(ctx, "Emulation.setTimezoneOverride", map[string]any{"timezoneId": tz}); err != nil {
+		return nil, nil, fmt.Errorf("timezone override %q: %w", tz, err)
+	}
 	metrics := map[string]any{"width": width, "height": 1000, "deviceScaleFactor": 1, "mobile": false}
 	if _, err := sess.call(ctx, "Emulation.setDeviceMetricsOverride", metrics); err != nil {
 		return nil, nil, err
@@ -412,7 +414,7 @@ func dialWS(ctx context.Context, rawURL string) (*cdpConn, error) {
 		return nil, err
 	}
 	keyBytes := make([]byte, 16)
-	_, _ = rand.Read(keyBytes)
+	rand.Read(keyBytes) // crypto/rand.Read never returns an error (it crashes the program instead)
 	key := base64.StdEncoding.EncodeToString(keyBytes)
 	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n",
 		u.RequestURI(), u.Host, key)
@@ -442,7 +444,9 @@ func (c *cdpConn) call(ctx context.Context, method string, params any) (json.Raw
 	if !ok {
 		deadline = time.Now().Add(30 * time.Second)
 	}
-	_ = c.conn.SetDeadline(deadline)
+	if err := c.conn.SetDeadline(deadline); err != nil {
+		return nil, fmt.Errorf("cdp %s: set deadline: %w", method, err)
+	}
 	payload, err := json.Marshal(map[string]any{"id": id, "method": method, "params": params})
 	if err != nil {
 		return nil, err
@@ -481,13 +485,13 @@ func wsSend(w io.Writer, opcode byte, payload []byte) error {
 		hdr.WriteByte(0x80 | byte(n))
 	case n <= 65535:
 		hdr.WriteByte(0x80 | 126)
-		_ = binary.Write(&hdr, binary.BigEndian, uint16(n))
+		hdr.Write(binary.BigEndian.AppendUint16(nil, uint16(n)))
 	default:
 		hdr.WriteByte(0x80 | 127)
-		_ = binary.Write(&hdr, binary.BigEndian, uint64(n))
+		hdr.Write(binary.BigEndian.AppendUint64(nil, uint64(n)))
 	}
 	var mask [4]byte
-	_, _ = rand.Read(mask[:])
+	rand.Read(mask[:]) // crypto/rand.Read never returns an error
 	hdr.Write(mask[:])
 	masked := make([]byte, n)
 	for i := range payload {
@@ -509,7 +513,9 @@ func (c *cdpConn) readMessage() ([]byte, error) {
 		}
 		switch op {
 		case 0x9:
-			_ = wsSend(c.conn, 0xA, data)
+			if err := wsSend(c.conn, 0xA, data); err != nil {
+				return nil, fmt.Errorf("cdp: answering a ping: %w", err)
+			}
 			continue
 		case 0xA:
 			continue

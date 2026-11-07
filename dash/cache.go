@@ -221,12 +221,13 @@ func (c *Cache) Run(ctx context.Context, s store.Store) {
 	go c.monitor(ctx)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	var advance errNote
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = c.Advance(ctx, s)
+			advance.note("the store poll", c.Advance(ctx, s))
 		}
 	}
 }
