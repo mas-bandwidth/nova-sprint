@@ -80,17 +80,20 @@ type Event interface{ isEvent() }
 
 // Producer events, one per row of the design's producer table.
 type (
-	Resolve  struct{}                // waiting -> ready when every need landed
-	Park     struct{ Reason string } // ready -> waiting while the stream is held
-	Reached  struct{}                // a sentinel: waiting -> landed when every need landed
-	Start    struct{ Row, Branch, Base string }
-	Finished struct{ Consumer string } // the work consumer reported ok; review +1
-	Broken   struct{ Consumer string } // the work consumer reported fail
-	Faulted  struct{ Consumer string } // the work consumer reported fault
-	AskRead  struct{ Row string }
-	AskReads struct{ Rows []string } // several reads of this head, one plan, distinct indices
-	ReadYes  struct{}
-	ReadFix  struct{ Finding string } // the read's finding, kept in its own column
+	Resolve  struct{}                                  // waiting -> ready when every need landed
+	Park     struct{ Reason string }                   // ready -> waiting while the stream is held
+	Reached  struct{}                                  // a sentinel: waiting -> landed when every need landed
+	Start    struct{ Row, Branch, Base, Model string } // Model: the model the deal names, carried by the consumer to its take
+	Finished struct{ Consumer string }                 // the work consumer reported ok; review +1
+	Broken   struct{ Consumer string }                 // the work consumer reported fail
+	Faulted  struct{ Consumer string }                 // the work consumer reported fault
+	AskRead  struct{ Row, Model string }
+	AskReads struct {
+		Rows   []string // several reads of this head, one plan, distinct indices
+		Models []string // the model the deal names for Rows[i]; nil for none
+	}
+	ReadYes struct{}
+	ReadFix struct{ Finding string } // the read's finding, kept in its own column
 	// WaiveRed moves a producer a Red sent to fix (ready, or waiting in a
 	// held stream) on to merging without a new read, when that Red is still
 	// recorded and a done ok read of the previous review at the same head

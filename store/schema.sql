@@ -86,6 +86,17 @@ ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT ''
 -- (a session and a role are both set or both empty), and hooks again.
 UPDATE sprint.rows SET session = '' WHERE role = '' AND session <> '';
 
+-- The worker's heartbeat (round 23, SetRowLoad): its 1-minute load average in
+-- hundredths, the cores it was measured over (0: never beaten) and the
+-- nova-reserve slots in use and in all; telemetry for the board, read by no
+-- rule. Added by ALTER, as cards.model is, so a round-22 store that Migrate
+-- upgrades gets them the same way as a new one; IF NOT EXISTS skips a column
+-- a store already has.
+ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS load1_centi integer NOT NULL DEFAULT 0 CHECK (load1_centi >= 0),
+    ADD COLUMN IF NOT EXISTS cores integer NOT NULL DEFAULT 0 CHECK (cores >= 0),
+    ADD COLUMN IF NOT EXISTS slots_used integer NOT NULL DEFAULT 0 CHECK (slots_used >= 0),
+    ADD COLUMN IF NOT EXISTS slots_total integer NOT NULL DEFAULT 0 CHECK (slots_total >= 0);
+
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by
 -- the schema. A producer's or sentinel's "of" is NULL (the empty string in Go,
@@ -148,6 +159,14 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
 -- same way: ADD COLUMN IF NOT EXISTS is a no-op once it is there.
 ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red boolean NOT NULL DEFAULT false
     CONSTRAINT cards_red_check CHECK (kind = 'producer' OR NOT red);
+
+-- model (round 23): on a consumer, the model the deal named for it (the
+-- policy's bench model for its tier, or a friend's own), carried to the take
+-- receipt; '' on a producer or sentinel. Fixed at add like holder. Added by
+-- ALTER, as red is, so a round-22 store that Migrate upgrades gets it the
+-- same way as a new one.
+ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
+    CONSTRAINT cards_model_check CHECK (kind IN ('work', 'read') OR model = '');
 
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;

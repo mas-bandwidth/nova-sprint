@@ -2,6 +2,7 @@ package steps
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -31,7 +32,7 @@ type View struct {
 	consOf     map[string]set            // consumers by producer
 	liveOnRow  map[string]set            // live (ready, working) consumers by row
 	dependants map[string]set            // producers whose needs name the key
-	paths      map[string]map[string]set // stream -> path -> producers ready or started
+	paths      map[string]map[string]set // stream -> file -> producers ready or started (concrete paths only)
 
 	TakenAt map[string]time.Time   // consumer -> when it went working
 	Landed  map[string]time.Time   // stream -> when a producer of it last landed
@@ -158,6 +159,9 @@ func (v *View) index(c store.Card) {
 	}
 	if slices.Contains(started, c.State) {
 		for _, p := range c.Paths {
+			if !Concrete(p) {
+				continue
+			}
 			if v.paths[c.Stream] == nil {
 				v.paths[c.Stream] = map[string]set{}
 			}
@@ -263,8 +267,17 @@ func (v *View) Working(row string) int {
 // Dependants is every producer whose needs name card, in id order.
 func (v *View) Dependants(card string) []string { return sorted(v.dependants[card]) }
 
+// Concrete says whether a listed path names one file: no glob character
+// (* ? [) and no trailing slash. Overlap is a file both cards edit, never a
+// directory or glob both add to (defect 50: ten audits that each add their
+// own files under one corpus glob were serialised behind one); a true
+// conflict under a shared directory is the landing's rebase and the read's.
+func Concrete(path string) bool {
+	return path != "" && !strings.ContainsAny(path, "*?[") && !strings.HasSuffix(path, "/")
+}
+
 // Overlaps is every other producer of p's stream, ready or started, that
-// shares a path with p (LANDING step 2; LESSONS 2.20), in id order.
+// names a file p names (Concrete; LANDING step 2; LESSONS 2.20), in id order.
 func (v *View) Overlaps(p store.Card) []string {
 	found := set{}
 	for _, path := range p.Paths {

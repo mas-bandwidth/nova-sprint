@@ -61,7 +61,7 @@ func TestTickPreemptionRefusedByRace(t *testing.T) {
 	s.fold()
 	in := s.inputs()
 	s.report("p1.w1", "ok", sha(1), "done") // the race, after the fold
-	plan := Tick(s.v, in, Default{})
+	plan := Tick(s.v, in, benchAsk{})
 	plan.Ops = tickOnly(plan.Ops)
 	require.NotEmpty(t, plan.Ops)
 	rc, err := s.f.Apply(t.Context(), plan.Ops[0])
@@ -201,7 +201,7 @@ func TestTickBlockAtLimit(t *testing.T) {
 // order, nothing lost, through in ceil(B/N) ticks (BudgetKept, CarryFIFO).
 func TestTickBudgetAndCarry(t *testing.T) {
 	s := newSim(t)
-	s.ask = scripted{Answers{Version: 1, Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 1, Pack: 1}}}
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 1, Pack: 1}}}
 	s.row("r1", 4, "pro")
 	s.row("r2", 4, "pro", "heavy")
 	for i := 1; i <= 3; i++ {
@@ -252,7 +252,7 @@ func TestTickRefusedOpSplitByGroup(t *testing.T) {
 	s.fold()
 	in := s.inputs()
 	s.must("cancel p2", store.SetCardState{Card: "p2", State: "fail"}, store.SetCardReason{Card: "p2", Reason: "dropped"}) // the race
-	plan := Tick(s.v, in, Default{})
+	plan := Tick(s.v, in, benchAsk{})
 	plan.Ops = tickOnly(plan.Ops)
 	require.Len(t, plan.Ops, 1, "both resolves packed in one op")
 	rc, err := s.f.Apply(t.Context(), plan.Ops[0])
@@ -311,7 +311,7 @@ func TestTickSilentRow(t *testing.T) {
 	s.fold()
 	in := s.inputs()
 	in.Seen["r1"] = in.Now.Add(-seconds(Engine.Timeouts.RowSilentGone))
-	plan := Tick(s.v, in, Default{})
+	plan := Tick(s.v, in, benchAsk{})
 	plan.Ops = tickOnly(plan.Ops)
 	require.Len(t, plan.Ops, 1)
 	gs := OpGroups(plan.Ops[0])
@@ -325,7 +325,7 @@ func TestTickSilentRow(t *testing.T) {
 	s.fold()
 	in = s.inputs()
 	in.Seen["r1"] = in.Now.Add(-seconds(Engine.Timeouts.RowSilentWithdraw))
-	plan = Tick(s.v, in, Default{})
+	plan = Tick(s.v, in, benchAsk{})
 	plan.Ops = tickOnly(plan.Ops)
 	rc, err = s.f.Apply(t.Context(), plan.Ops[0])
 	require.NoError(t, err)
@@ -346,7 +346,7 @@ func TestTickStableOpIDs(t *testing.T) {
 	s.producer("p1", "s1", "pro", "a/x")
 	s.fold()
 	in := s.inputs()
-	a, b := Tick(s.v, in, Default{}), Tick(s.v, in, Default{})
+	a, b := Tick(s.v, in, benchAsk{}), Tick(s.v, in, benchAsk{})
 	require.Len(t, a.Ops, len(b.Ops))
 	for i := range a.Ops {
 		assert.Equal(t, a.Ops[i].ID, b.Ops[i].ID)

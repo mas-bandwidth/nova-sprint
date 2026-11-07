@@ -64,7 +64,9 @@
 (*   down leaves b unserved.                                              *)
 (* - "deal": p and q in s1 with overlapping paths; b (tier 2) in s2 needs *)
 (*   p. Resolve's overlap rule, escalation by row rank, reads, a fix, a   *)
-(*   landing and the need it releases. Only p bounces (fail, fix).        *)
+(*   landing and the need it releases. Only p bounces (fail, fix). A      *)
+(*   store op may land p by hand between ticks (no land step, no edge     *)
+(*   result): b resolves from the state all the same (ResolveFromState).  *)
 (* - "land": p (s1) and q (s2, after p) both merging: AfterKept,          *)
 (*   AfterNeverHolds, landed and judged results, the coordinator's land,  *)
 (*   fix and retry, the read after a fix, a hold on s1 that landing      *)
@@ -73,6 +75,15 @@
 (*   carry.                                                               *)
 (* A fault report is a fail that spends no bounce, so no scenario needs  *)
 (* it; red results come only in land and burst.                          *)
+(* Paths are files or globs: p and q also both list the glob "a/*", and *)
+(* overlap counts only a file both name (defect 50); a producer held      *)
+(* behind another opens an overlap judgement ("held behind <card> on      *)
+(* <path>").                                                              *)
+(* The policy gate (defect 53): w.pol is whether an active policy answers *)
+(* (in pre it fails and is fixed as an environment move). While it is    *)
+(* down the tick deals nothing (no preemption, no Start, no read) and     *)
+(* one no-policy judgement on the coordinator's row says so; resolve,     *)
+(* fix, the inbox and landing go on.                                      *)
 (* Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and *)
 (* 2 (rank 2). ahead is 2 x width (LPM D21).                              *)
 (*                                                                         *)
@@ -115,9 +126,12 @@ TierName(t) == IF t = 1 THEN "t1" ELSE "t2"
 Stream == [p \in Prods |-> CASE p = "p" -> "s1"
                              [] p = "q" -> IF LandLike THEN "s2" ELSE "s1"
                              [] OTHER   -> "s2"]
+\* A path is a file or a glob (defect 50: a glob both list never holds a
+\* card back; only a file both name does).
+Globs  == {"a/*"}
 Paths  == [p \in Prods |-> CASE p = "b" -> {"y"}
-                             [] p = "p" -> {"x"}
-                             [] OTHER   -> IF Scenario = "deal" THEN {"x"} ELSE {"z"}]
+                             [] p = "p" -> {"x", "a/*"}
+                             [] OTHER   -> IF Scenario = "deal" THEN {"x", "a/*"} ELSE {"z", "a/*"}]
 Tier   == [p \in Prods |-> IF p = "b" /\ Scenario = "deal" THEN 2 ELSE 1]
 Needs  == [p \in Prods |-> IF p = "b" /\ Scenario = "deal" THEN {"p"} ELSE {}]
 After  == [p \in Prods |-> IF p = "q" /\ LandLike THEN {"p"} ELSE {}]
@@ -149,7 +163,8 @@ W0 == [ps  |-> [p \in Prods |-> P0(p)],
        up  |-> [r \in Rows |-> ~(Scenario = "pre" /\ r = "r1")],
        rg  |-> [r \in Rows |-> 0],
        sh  |-> [s \in Streams |-> Scenario = "pre" /\ s = "s2"],
-       tko |-> <<>>]
+       tko |-> <<>>,
+       pol |-> TRUE]
 
 \* The oracle's answer: rows(candidates, rows). A policy that answers
 \* prefers one row for every candidate (in domain for a candidate when that
@@ -164,7 +179,7 @@ Answers == {[rows |-> "r1"], [rows |-> "r2"], [rows |-> "failed"]}
 Unasked == [rows |-> "failed"]
 
 VARIABLES
-  w,         \* the store: [ps, cs, up, rg, sh, tko]; rg is each row's generation, which every row write raises
+  w,         \* the store: [ps, cs, up, rg, sh, tko, pol]; rg is each row's generation, which every row write raises; pol is whether an active policy answers
   snap,      \* the view the next tick plans on (W0 while idle)
   phase,     \* "idle" or "snapped"
   inbox,     \* edge results: Seq of [stamp, id, out]
@@ -240,7 +255,9 @@ AllOk(W, p)   == \A c \in CurReads(W, p) : W.cs[c].st = "done" => W.cs[c].res = 
 \* of the stream overlapping its paths started (working, review, merging),
 \* counting ready ones and those resolved earlier in this tick (extra) as
 \* started. Room on a row is not a condition.
-Overlap(p, q) == p # q /\ Stream[p] = Stream[q] /\ Paths[p] \cap Paths[q] # {}
+\* Overlap is a file both name, never a glob both list (defect 50).
+Shared(p, q) == {f \in Paths[p] \cap Paths[q] : f \notin Globs}
+Overlap(p, q) == p # q /\ Stream[p] = Stream[q] /\ Shared(p, q) # {}
 ResolveOK(W, p, extra) ==
   /\ W.ps[p].st = "waiting"
   /\ NeedsLanded(W, p)
@@ -364,6 +381,9 @@ PreFold(V, a, i, acc) ==
                                 !.miss = @ \cup (IF a.rows \notin R THEN {"rows"} ELSE {})])
 PreStep(V, a) == PreFold(V, a, 1, [gs |-> <<>>, used |-> {}, uns |-> {}, miss |-> {}])
 
+\* The gate's plan: nothing (the fields of PreStep's and DealStep's acc).
+NoPlan == [gs |-> <<>>, t |-> [r \in Rows |-> 0], used |-> {}, uns |-> {}, miss |-> {}, cr |-> {}]
+
 \* Land results, in arrival order. A landed result for a producer still
 \* merging at the request's head is its Landed; anything else (a judged
 \* outcome, an ack, a stale or repeated result) is consumed with no move.
@@ -398,6 +418,9 @@ ResolveFold(V, cl, i, acc) ==
        IN IF PKey(p) \notin cl /\ ResolveOK(V, p, acc)
           THEN ResolveFold(V, cl, i + 1, acc \cup {p})
           ELSE ResolveFold(V, cl, i + 1, acc)
+\* Held behind another producer: everything ready but the overlap.
+Held(V, cl, res) == {p \in Prods : /\ V.ps[p].st = "waiting" /\ NeedsLanded(V, p)
+                                    /\ ~V.sh[Stream[p]] /\ PKey(p) \notin cl /\ p \notin res}
 GroupsOf(kind, S, V) ==
   LET s == SelectSeq(ProdSeq, LAMBDA x : x \in S)
   IN [i \in 1..Len(s) |-> Grp(kind, s[i], NoC, NoR, 0, 0, V)]
@@ -544,14 +567,25 @@ DueByDesign(V, b) ==
 RECURSIVE SumSize(_, _)
 SumSize(s, k) == IF k = 0 THEN 0 ELSE Size(s[k]) + SumSize(s, k - 1)
 
-TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4) ==
+\* The ready rule stated apart from Overlap and ResolveOK: a file both
+\* name (FileShared), and a producer resolvable from the view's state
+\* alone, whatever landed its needs.
+FileShared(p, q) == p # q /\ Stream[p] = Stream[q] /\ \E f \in Paths[p] \cap Paths[q] : f \notin Globs
+Resolvable(V, cl, p) ==
+  /\ V.ps[p].st = "waiting" /\ PKey(p) \notin cl /\ ~V.sh[Stream[p]]
+  /\ \A n \in Needs[p] : V.ps[n].st = "landed"
+  /\ ~\E q \in Prods : FileShared(p, q) /\ V.ps[q].st \in Started \cup {"ready"}
+
+TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res, clr) ==
   LET nb  == SelectSeq(adm, LAMBDA g : ~g.blk)
       bt  == SumSize(SelectSeq(adm, LAMBDA g : g.blk), Len(SelectSeq(adm, LAMBDA g : g.blk)))
       gs  == SelectSeq(E, LAMBDA g : g.kind # "none")
       pres == {adm[i] : i \in {i \in 1..Len(adm) : adm[i].kind = "pre"}}
+      accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
   IN {n \in {"OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
              "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
-             "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered"} :
+             "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
+             "NoDealWithoutPolicy", "ResolveFromState", "HeldBehindShown"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -571,10 +605,11 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4) ==
              \A b \in Prods : DueByDesign(V, b) =>
                \/ \E g \in pres : g.p = b
                \/ ServingOpen(V, b) = {} /\ [kind |-> "unserved", about |-> TierName(Tier[b])] \in jsn
+               \/ ~V.pol /\ [kind |-> "no-policy", about |-> "coord"] \in jsn
         [] n = "PreemptYoungest" ->
              \A g \in pres : g.c = Youngest(V, Victims(V, g.p, g.r))
         [] n = "PolicyFailsToDefault" ->
-             /\ a.rows \notin Rows => dl.gs = DealStep(V, cl3, a.rows, FALSE).gs
+             /\ (V.pol /\ a.rows \notin Rows) => dl.gs = DealStep(V, cl3, a.rows, FALSE).gs
              /\ \A q \in pre.miss \cup dl.miss : [kind |-> "policy", about |-> q] \in jsn
         [] n = "AfterKept" ->
              \A p \in picks : \A t \in After[p] : V.ps[t].st # "merging"
@@ -590,14 +625,26 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4) ==
                  \/ Busy(inflight, Stream[p])
                  \/ \E q \in picks : Stream[q] = Stream[p]
                  \/ Judged(jv, p)
-                 \/ \E t \in After[p] : V.ps[t].st = "merging"}
+                 \/ \E t \in After[p] : V.ps[t].st = "merging"
+        [] n = "NoDealWithoutPolicy" ->
+             ~V.pol => /\ \A g \in accd : g.kind \notin {"pre", "start", "read"}
+                       /\ [kind |-> "no-policy", about |-> "coord"] \in jsn
+        [] n = "ResolveFromState" ->
+             \A p \in Prods : Resolvable(V, clr, p) => (p \in res \/ \E q \in res : FileShared(p, q))
+        [] n = "HeldBehindShown" ->
+             \A p \in Prods :
+               (/\ V.ps[p].st = "waiting" /\ PKey(p) \notin clr /\ ~V.sh[Stream[p]]
+                /\ \A n2 \in Needs[p] : V.ps[n2].st = "landed"
+                /\ \E q \in Prods : FileShared(p, q) /\ (V.ps[q].st \in Started \cup {"ready"} \/ q \in res))
+                 => [kind |-> "overlap", about |-> p] \in jsn}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
 
 \* A question has subjects: a blocker due, a ready producer or a read owed.
 Asked(V) == \E p \in Prods : BlockerDue(V, p) \/ V.ps[p].st = "ready" \/ ReadOwed(V, p)
-AnswersFor(V) == IF Asked(V) THEN Answers ELSE {Unasked}
+\* While no active policy answers (the gate), nothing is asked.
+AnswersFor(V) == IF Asked(V) /\ V.pol THEN Answers ELSE {Unasked}
 
 Init ==
   /\ w = W0
@@ -622,17 +669,22 @@ Snap ==
   /\ UNCHANGED <<w, inbox, inflight, js, split, arrived, processed, env>>
 
 \* Judgements the tick opens (unserved per tier, cannot-read per producer,
-\* policy per question) and expires when the cause clears in the view.
+\* policy per question, overlap per held producer, no-policy on the
+\* coordinator's row) and expires when the cause clears in the view.
 Expired(V, J) ==
   {j \in J : \/ j.kind = "unserved" /\ \E r \in Rows : V.up[r] /\ \E t \in RowTiers[r] : TierName(t) = j.about
              \/ j.kind = "cannot-read" /\ \E p \in Prods :
-                  p = j.about /\ ~(ReadOwed(V, p) /\ ServingOpen(V, p) \subseteq {V.ps[p].author})}
+                  p = j.about /\ ~(ReadOwed(V, p) /\ ServingOpen(V, p) \subseteq {V.ps[p].author})
+             \/ j.kind = "overlap" /\ \E p \in Prods :
+                  p = j.about /\ ~(V.ps[p].st = "waiting" /\ \E q \in Prods : Overlap(p, q)
+                                                            /\ V.ps[q].st \in Started \cup {"ready"})
+             \/ j.kind = "no-policy" /\ V.pol}
 
 Tick(a) ==
   /\ phase = "snapped"
   /\ LET V    == snap
          W    == w
-         pre  == PreStep(V, a)
+         pre  == IF V.pol THEN PreStep(V, a) ELSE NoPlan
          inb  == InboxFold(V, inbox, 1, [es |-> <<>>, cl |-> Cards(pre.gs)])
          res  == ResolveFold(V, inb.cl, 1, {})
          rgs  == GroupsOf("resolve", res, V)
@@ -640,7 +692,7 @@ Tick(a) ==
          fyes == GroupsOf("yes", FixSet(V, cl2, TRUE), V)
          ffix == GroupsOf("fix", FixSet(V, cl2, FALSE), V)
          cl3  == cl2 \cup Cards(fyes) \cup Cards(ffix)
-         dl   == DealStep(V, cl3, a.rows, TRUE)
+         dl   == IF V.pol THEN DealStep(V, cl3, a.rows, TRUE) ELSE NoPlan
          dblk == SelectSeq(dl.gs, LAMBDA g : g.blk)
          drst == SelectSeq(dl.gs, LAMBDA g : ~g.blk)
          cl4  == cl3 \cup Cards(dl.gs)
@@ -664,6 +716,8 @@ Tick(a) ==
                    \cup {[kind |-> "cannot-read", about |-> p] : p \in dl.cr}
                    \cup {[kind |-> "policy", about |-> q] : q \in pre.miss \cup dl.miss}
                    \cup jl
+                   \cup {[kind |-> "overlap", about |-> p] : p \in Held(V, inb.cl, res)}
+                   \cup (IF V.pol THEN {} ELSE {[kind |-> "no-policy", about |-> "coord"]})
          jsn  == (js \ Expired(V, js)) \cup jnew
          accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
          tags == (IF \E g \in accd : g.kind = "pre" THEN {"pre"} ELSE {})
@@ -687,7 +741,8 @@ Tick(a) ==
         /\ js' = jsn
         /\ split' = UNION {GroupsIn(ops[i]) : i \in {i \in ap.ref : Len(ops[i]) > 1}}
         /\ last' = [tags |-> tags,
-                    bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4)]
+                    bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4,
+                                        res, inb.cl)]
   /\ phase' = "idle"
   /\ snap' = W0
   /\ jsnap' = {}
@@ -733,6 +788,19 @@ Report(c, res) ==
 HoldsOf  == CASE Scenario = "land" -> {"s1"} [] OTHER -> {}
 UnholdsOf == CASE Scenario = "pre" -> {"s2"} [] Scenario = "land" -> {"s1"} [] OTHER -> {}
 FlipsOf  == CASE Scenario = "pre" -> {"r2"} [] Scenario = "deal" -> {"r1"} [] OTHER -> {}
+\* In pre the active policy fails (a question errors or no version is
+\* active) and a fixed one is set; in deal a store op lands p by hand
+\* (land <card>), between ticks as Take and with no land request in
+\* flight for it, so no land step and no edge result sees it.
+PolFlips == Scenario = "pre"
+HandLandsOf == IF Scenario = "deal" THEN {"p"} ELSE {}
+\* A judged card's hand land answers its land judgement in the same op
+\* (verbs handLand): that is Answer(p, "land"), so this one has none open.
+HandLandOK(p) ==
+  /\ phase = "idle"
+  /\ w.ps[p].st = "merging"
+  /\ ~\E f \in inflight : f.id[2] = "land" /\ f.id[3][1] = p
+  /\ ~Judged(js, p)
 EnvMove ==
   /\ env < MaxEnv
   /\ env' = env + 1
@@ -744,7 +812,11 @@ EnvMove ==
                                                    ELSE w.ps[p]]]
      \/ \E s \in UnholdsOf : w.sh[s] /\ w' = [w EXCEPT !.sh[s] = FALSE]
      \/ \E r \in FlipsOf : w' = [w EXCEPT !.up[r] = ~w.up[r], !.rg[r] = @ + 1]
-  /\ last' = Clean
+     \/ PolFlips /\ w' = [w EXCEPT !.pol = ~w.pol]
+     \/ \E p \in HandLandsOf : HandLandOK(p) /\ w' = [w EXCEPT !.ps[p].st = "landed"]
+  \* The hand land is tagged for its reach check (StepsNeverHandLanded).
+  /\ last' = IF \E p \in Prods : w.ps[p].st # "landed" /\ w'.ps[p].st = "landed"
+             THEN [tags |-> {"handland"}, bad |-> {}] ELSE Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed>>
 
 \* An edge's result reaches the inbox, once or twice.
@@ -807,6 +879,7 @@ TypeOK ==
   /\ w.up \in [Rows -> BOOLEAN]
   /\ w.rg \in [Rows -> 0..MaxEnv]
   /\ w.sh \in [Streams -> BOOLEAN]
+  /\ w.pol \in BOOLEAN
   /\ phase \in {"idle", "snapped"}
   /\ arrived \in 0..MaxArrive
   /\ processed \in 0..MaxArrive
@@ -874,7 +947,12 @@ EdgeAfterAccepted ==
 (* merging producer of the view it planned on is in a land request in    *)
 (* flight or planned for its stream, under a land judgement as the tick  *)
 (* saw them (its snapshot's, jsnap, and its own), or held by a merging    *)
-(* after target).                                                         *)
+(* after target); NoDealWithoutPolicy (defect 53: no preemption, Start  *)
+(* or read while no active policy answers, and the no-policy judgement); *)
+(* ResolveFromState (section 64b: every producer the view's state makes   *)
+(* ready is resolved, or is held behind one resolved this tick on a       *)
+(* file, whatever landed its needs); HeldBehindShown (defect 50: a        *)
+(* producer held behind another on a file has an overlap judgement).     *)
 OneGroupPerCard          == "OneGroupPerCard" \notin last.bad
 GroupWhole               == "GroupWhole" \notin last.bad
 NeverHalfApplied         == "NeverHalfApplied" \notin last.bad
@@ -887,12 +965,17 @@ PolicyFailsToDefault     == "PolicyFailsToDefault" \notin last.bad
 AfterKept                == "AfterKept" \notin last.bad
 AfterNeverHolds          == "AfterNeverHolds" \notin last.bad
 MergingCovered           == "MergingCovered" \notin last.bad
+NoDealWithoutPolicy      == "NoDealWithoutPolicy" \notin last.bad
+ResolveFromState         == "ResolveFromState" \notin last.bad
+HeldBehindShown          == "HeldBehindShown" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width plus   *)
 (* ahead) is eventually dealt, unless the room goes. The model's bounds  *)
-(* (attempts, slots) are exempt, as in CardMachine.                      *)
+(* (attempts, slots) are exempt, as in CardMachine, and so is a run with *)
+(* no active policy (the gate deals nothing).                            *)
 RoomFor(p) ==
+  /\ w.pol
   /\ w.ps[p].att < MaxAtt
   /\ w.ps[p].ncut < K
   /\ \E r \in ServingOpen(w, p) : Cardinality(Load(w, r)) < Width[r] + Ahead[r]
@@ -923,5 +1006,8 @@ StepsNeverNeedReleased == ~\E p \in Prods : Needs[p] # {} /\ w.ps[p].st # "waiti
 StepsNeverUnserved    == ~\E j \in js : j.kind = "unserved"
 StepsNeverCannotRead  == ~\E j \in js : j.kind = "cannot-read"
 StepsNeverPolicyJudged == ~\E j \in js : j.kind = "policy"
+StepsNeverGated       == ~\E j \in js : j.kind = "no-policy"
+StepsNeverHeldBehind  == ~\E j \in js : j.kind = "overlap"
+StepsNeverHandLanded  == "handland" \notin last.tags
 
 =============================================================================
