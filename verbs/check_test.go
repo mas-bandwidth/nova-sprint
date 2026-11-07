@@ -53,3 +53,23 @@ func TestBuildVersionOutput(t *testing.T) {
 		t.Fatal("invalid build version accepted")
 	}
 }
+
+type historyFake struct {
+	calls int
+	err   error
+}
+
+func (h *historyFake) CheckHistory(context.Context) error { h.calls++; return h.err }
+func TestCheckHistoryIsStoreOnlyAndIntegrityChecksItFirst(t *testing.T) {
+	h := &historyFake{}
+	e := Engine{History: h}
+	r := e.Execute(context.Background(), []string{"check", "--history"})
+	if r.Exit != 0 || h.calls != 1 {
+		t.Fatal(r, h.calls)
+	}
+	h.err = &OperationError{Problem: "history differs", Fix: "restore a verified backup", Exit: 1}
+	r = e.Execute(context.Background(), []string{"check", "--integrity"})
+	if r.Exit != 1 || h.calls != 2 || r.Output != "SPRINT REFUSED check: history differs: restore a verified backup\n" {
+		t.Fatal(r, h.calls)
+	}
+}

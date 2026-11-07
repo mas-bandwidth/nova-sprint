@@ -22,6 +22,9 @@ type setupFake struct {
 	stop  int
 }
 
+func (f *setupFake) Completion(context.Context) (string, error) {
+	return "UP DONE run on studio; dashboard http://studio; 4 workers up; coordinator rowan", nil
+}
 func (f *setupFake) Verify(_ context.Context, n int, _ SetupInput) (SetupCheck, error) {
 	f.trace = append(f.trace, fmt.Sprintf("verify%d", n))
 	if n == f.stop && !f.ready[n] {
