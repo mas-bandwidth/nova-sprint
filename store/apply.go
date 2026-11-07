@@ -16,8 +16,6 @@ type txn interface {
 	row(name string) (Row, bool, error)
 	policy(version int) (PolicyVersion, bool, error)
 	policies() (last int, active []PolicyVersion, err error)
-	working(row string) (int, error)                       // cards in working whose holder is row: what width counts
-	needed(row string, tiers []string) (Card, bool, error) // the live (ready or working) consumer held by row, lowest id, whose tier is not in tiers
 	lastSeq() (int64, error)
 	rows() ([]Row, error) // every row of the epoch
 	open() error          // epoch n = n + 1; later puts go to the new epoch
@@ -29,6 +27,8 @@ type txn interface {
 	putJudgement(j Judgement) error
 	cursor(name string) (int64, bool, error)
 	putCursor(name string, seq int64) error
+	stop() (Stop, error) // the sprint's stop, one value for the store
+	putStop(s Stop) error
 	replay(opID string) (Receipt, bool, error) // the stored receipt of an op id
 	discard() error                            // back to the state the transaction began with: a refusal changes nothing
 	appendEvent(e Event) error                 // the op's event, at lastSeq + 1
@@ -389,6 +389,14 @@ func (w *work) putCursor(name string, old int64, existed bool, seq int64) error 
 	return w.tx.putCursor(name, seq)
 }
 
+func (w *work) putStop(old, s Stop) error {
+	if w.before.Stop == nil {
+		w.before.Stop = &old
+	}
+	w.after.Stop = &s
+	return w.tx.putStop(s)
+}
+
 func touch[K comparable, V any](before, after map[K]V, k K, old V, existed bool, v V) (map[K]V, map[K]V) {
 	if before == nil {
 		before, after = map[K]V{}, map[K]V{}
@@ -404,7 +412,7 @@ func touch[K comparable, V any](before, after map[K]V, k K, old V, existed bool,
 func (s State) compact() *State {
 	s.Streams, s.Cards, s.Rows, s.Policies = nilIfEmpty(s.Streams), nilIfEmpty(s.Cards), nilIfEmpty(s.Rows), nilIfEmpty(s.Policies)
 	s.Judgements, s.Cursors = nilIfEmpty(s.Judgements), nilIfEmpty(s.Cursors)
-	if s.Epoch == 0 && s.Streams == nil && s.Cards == nil && s.Rows == nil && s.Policies == nil && s.Judgements == nil && s.Cursors == nil {
+	if s.Epoch == 0 && s.Streams == nil && s.Cards == nil && s.Rows == nil && s.Policies == nil && s.Judgements == nil && s.Cursors == nil && s.Stop == nil {
 		return nil
 	}
 	return &s

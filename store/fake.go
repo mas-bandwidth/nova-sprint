@@ -1,12 +1,14 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
 	"sync"
+	"time"
 )
 
 // Fake is an in-memory Store with the semantics of PG: the same conditions,
@@ -24,7 +26,9 @@ type Fake struct {
 	policies map[int]PolicyVersion
 	judges   map[key]Judgement
 	cursors  map[string]int64 // global, as seq is: a clear carries them
+	stop     Stop             // global, as the epoch is
 	events   []fakeEvent
+	seq0     int64          // the seq before events[0]: 0, or the snapshot's (NewFakeFrom)
 	ops      map[string]int // op id -> index in events
 	drops    map[string]bool
 }
@@ -78,6 +82,7 @@ func (f *Fake) do(op Op, valid func(Op) error, rule rules) (Receipt, error) {
 		return Receipt{}, err
 	}
 	f.epoch, f.streams, f.cards, f.rows, f.policies, f.judges, f.cursors = tx.st.epoch, tx.st.streams, tx.st.cards, tx.st.rows, tx.st.policies, tx.st.judges, tx.st.cursors
+	f.stop = tx.st.stop
 	if len(tx.events) > len(f.events) {
 		f.events = tx.events
 		f.ops[op.ID] = len(f.events) - 1
@@ -126,6 +131,22 @@ func (f *Fake) Events(_ context.Context, afterSeq int64, max int) ([]Event, erro
 	return out, nil
 }
 
+// Restored is false: a Fake is never restored (RestoreEnd is PostgreSQL's).
+func (f *Fake) Restored(context.Context) (string, time.Time, bool, error) {
+	return "", time.Time{}, false, nil
+}
+
+// EventIdentity returns the op id and epoch of the event at seq.
+func (f *Fake) EventIdentity(_ context.Context, seq int64) (string, int, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	i, ok := slices.BinarySearchFunc(f.events, seq, func(e fakeEvent, s int64) int { return cmp.Compare(e.Seq, s) })
+	if !ok {
+		return "", 0, false, nil
+	}
+	return f.events[i].Op, f.events[i].Epoch, true, nil
+}
+
 func capEvents(max int) int {
 	if max <= 0 || max > MaxEvents {
 		return MaxEvents
@@ -139,19 +160,16 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s := emptySnapshot(f.epoch)
-	s.Seq = int64(len(f.events))
+	s.Seq = f.seq0 + int64(len(f.events))
 	pick(s.Streams, f.streams, f.epoch)
 	pick(s.Cards, f.cards, f.epoch)
 	for id, c := range s.Cards {
 		s.Cards[id] = cardCopy(c) // the caller's own copy: editing it never changes the store
 	}
 	pick(s.Rows, f.rows, f.epoch)
-	for name, r := range s.Rows {
-		r.Tiers = normSet(r.Tiers)
-		s.Rows[name] = r
-	}
 	pick(s.Judgements, f.judges, f.epoch)
 	maps.Copy(s.Cursors, f.cursors)
+	s.Stopped, s.StopReason = f.stop.Stopped, f.stop.Reason
 	for v, p := range f.policies {
 		if p.Active {
 			s.Policy = v
@@ -180,7 +198,7 @@ func (f *Fake) Policy(_ context.Context, version int) (PolicyVersion, error) {
 }
 
 func (f *Fake) clone() *Fake {
-	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors)}
+	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors), stop: f.stop}
 }
 
 // fakeTx is the txn of one Fake transaction: st is the working copy of the
@@ -218,6 +236,9 @@ func (t *fakeTx) cursor(name string) (int64, bool, error) {
 
 func (t *fakeTx) putCursor(name string, seq int64) error { t.st.cursors[name] = seq; return nil }
 
+func (t *fakeTx) stop() (Stop, error)  { return t.st.stop, nil }
+func (t *fakeTx) putStop(s Stop) error { t.st.stop = s; return nil }
+
 func (t *fakeTx) stream(name string) (Stream, bool, error) {
 	s, ok := t.st.streams[t.k(name)]
 	return s, ok, nil
@@ -225,7 +246,6 @@ func (t *fakeTx) stream(name string) (Stream, bool, error) {
 
 func (t *fakeTx) row(name string) (Row, bool, error) {
 	r, ok := t.st.rows[t.k(name)]
-	r.Tiers = normSet(r.Tiers)
 	return r, ok, nil
 }
 
@@ -245,27 +265,7 @@ func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 	return last, active, nil
 }
 
-func (t *fakeTx) working(row string) (int, error) {
-	n := 0
-	for k, c := range t.st.cards {
-		if k.epoch == t.st.epoch && c.Holder == row && c.State == "working" {
-			n++
-		}
-	}
-	return n, nil
-}
-
-func (t *fakeTx) needed(row string, tiers []string) (Card, bool, error) {
-	var found Card
-	for k, c := range t.st.cards {
-		if k.epoch == t.st.epoch && c.Holder == row && (c.State == "ready" || c.State == "working") && !slices.Contains(tiers, c.Tier) && (found.ID == "" || c.ID < found.ID) {
-			found = c
-		}
-	}
-	return found, found.ID != "", nil
-}
-
-func (t *fakeTx) lastSeq() (int64, error) { return int64(len(t.events)), nil }
+func (t *fakeTx) lastSeq() (int64, error) { return t.base.seq0 + int64(len(t.events)), nil }
 
 func (t *fakeTx) rows() ([]Row, error) {
 	var out []Row
@@ -281,12 +281,8 @@ func (t *fakeTx) open() error { t.st.epoch++; return nil }
 
 func (t *fakeTx) putCard(c Card) error { t.st.cards[t.k(c.ID)] = cardCopy(c); return nil }
 
-func (t *fakeTx) putStream(s Stream) error { t.st.streams[t.k(s.Name)] = s; return nil }
-func (t *fakeTx) putRow(r Row) error {
-	r.Tiers = normSet(r.Tiers)
-	t.st.rows[t.k(r.Name)] = r
-	return nil
-}
+func (t *fakeTx) putStream(s Stream) error        { t.st.streams[t.k(s.Name)] = s; return nil }
+func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = r; return nil }
 func (t *fakeTx) putPolicy(p PolicyVersion) error { t.st.policies[p.Version] = p; return nil }
 
 func (t *fakeTx) replay(opID string) (Receipt, bool, error) {

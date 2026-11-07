@@ -131,7 +131,7 @@ func seedFunctionalWork_internal(t *testing.T, pg *store.PG, originDir, baseSHA 
 		ID: "seed-1", Epoch: 1, Actor: "test", Kind: "seed", At: now,
 		Writes: []store.Write{
 			store.PutStream{Name: "s1", Repo: originDir, Base: "main", Pos: 1},
-			store.PutRow{Name: row, Kind: "worker", Width: 1, Tiers: []string{"flash", "pro"}, Model: "script-v1", Harness: "script"},
+			store.PutRow{Name: row},
 			store.SetRowState{Row: row, State: "up"},
 			store.PutCard{
 				ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Priority: "normal",
@@ -147,7 +147,7 @@ func seedFunctionalWork_internal(t *testing.T, pg *store.PG, originDir, baseSHA 
 	snap, err := pg.Snapshot(ctx)
 	require.NoError(t, err)
 	p := card.FromStore(snap.Cards["p1"])
-	r := card.RowFromStore(snap.Rows[row])
+	r := card.RowFromStore(snap.Rows[row], 1, []string{"flash", "pro"})
 	s := card.StreamFromStore(snap.Streams["s1"])
 	plan, ref := card.Move(p, nil, map[string]card.Row{row: r}, s, nil, card.Start{
 		Row: row, Branch: "sprint/s1/p1", Base: baseSHA,

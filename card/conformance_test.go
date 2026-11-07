@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -22,19 +23,27 @@ import (
 var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 
 type world struct {
-	t *testing.T
-	f *store.Fake
-	n int
+	t     *testing.T
+	f     *store.Fake
+	n     int
+	ev    Event          // the walk's last event, for its trace (trace_test.go)
+	width map[string]int // the roster's widths (round 22: the store keeps none)
 }
 
-// newWorld is stream s1 with rows r1 (width 2), r2 and r3 (width 1), all up
-// and serving pro, and the given producers (id, needs) of tier pro.
+// worldTiers is every row's tiers in the roster.
+var worldTiers = []string{"pro"}
+
+// worldWidth is every row's width in the roster; no event changes it.
+var worldWidth = map[string]int{"r1": 2, "r2": 1, "r3": 1}
+
+// newWorld is stream s1 with rows r1 (width 2), r2 and r3 (width 1) in its
+// roster, all up and serving pro, and the given producers (id, needs) of
+// tier pro.
 func newWorld(t *testing.T, cards ...store.PutCard) *world {
-	w := &world{t: t, f: store.NewFake()}
+	w := &world{t: t, f: store.NewFake(), width: maps.Clone(worldWidth)}
 	seed := []store.Write{store.PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1}}
-	for _, r := range []store.PutRow{{Name: "r1", Kind: "worker", Width: 2}, {Name: "r2", Kind: "worker", Width: 1}, {Name: "r3", Kind: "worker", Width: 1}} {
-		r.Tiers = []string{"pro"}
-		seed = append(seed, r)
+	for _, r := range []string{"r1", "r2", "r3"} {
+		seed = append(seed, store.PutRow{Name: r})
 	}
 	for _, c := range cards {
 		c.Stream, c.Tier = "s1", "pro"
@@ -78,12 +87,46 @@ func (w *world) raw(kind string, writes ...store.Write) {
 }
 
 // apply applies plan as one op: epoch from the snapshot, At passed in; the
-// receipt and error unchecked.
+// receipt and error unchecked. A take past the roster's width is refused
+// here, as layer 3's dealer refuses it (round 22: layer 1 no longer counts
+// width), with a reason naming width, and never reaches the store.
 func (w *world) apply(kind string, plan Plan) (store.Receipt, error) {
+	if reason := w.overWidth(plan); reason != "" {
+		return store.Receipt{Reason: reason}, nil
+	}
 	w.n++
 	op := store.Op{ID: fmt.Sprintf("op%d", w.n), Epoch: w.snap().Epoch, Actor: "card", Kind: kind, At: t0.Add(time.Duration(w.n) * time.Second),
 		Expect: plan.Expect, Writes: plan.Writes}
 	return w.f.Apply(context.Background(), op)
+}
+
+// overWidth is the dealer's width check on plan: the first consumer it
+// moves into working on a row that already holds the row's roster width of
+// working consumers, or "".
+func (w *world) overWidth(plan Plan) string {
+	s := w.snap()
+	working := map[string]int{} // per row, counted at each write as the store's old rule did
+	for _, o := range s.Cards {
+		if o.Holder != "" && o.State == Working {
+			working[o.Holder]++
+		}
+	}
+	for _, x := range plan.Writes {
+		v, ok := x.(store.SetCardState)
+		c, held := s.Cards[v.Card]
+		if !ok || !held || c.Holder == "" || (v.State == Working) == (c.State == Working) {
+			continue
+		}
+		if v.State != Working {
+			working[c.Holder]--
+			continue
+		}
+		if n := working[c.Holder]; n >= w.width[c.Holder] {
+			return fmt.Sprintf("width: row %s holds %d working, its roster width is %d", c.Holder, n, w.width[c.Holder])
+		}
+		working[c.Holder]++
+	}
+	return ""
 }
 
 func kind(e Event) string { return strings.ToLower(name(e)) }
@@ -101,7 +144,7 @@ func fromStore(c store.Card) Card { return FromStore(c) }
 func (w *world) rows() map[string]Row {
 	rs := map[string]Row{}
 	for n, r := range w.snap().Rows {
-		rs[n] = RowFromStore(r)
+		rs[n] = RowFromStore(r, w.width[n], worldTiers)
 	}
 	return rs
 }
@@ -149,6 +192,13 @@ func (w *world) consumerPlan(id string, e Event) Plan {
 }
 
 func (w *world) consume(id string, e Event) { w.t.Helper(); w.op(kind(e), w.consumerPlan(id, e)) }
+
+func mustMerge(t *testing.T, plans ...Plan) Plan {
+	t.Helper()
+	p, r := Merge(plans...)
+	require.Nil(t, r)
+	return p
+}
 
 func (w *world) row(name string, e Event) {
 	w.t.Helper()
@@ -216,6 +266,8 @@ func (w *world) landedCard2(s store.Snapshot, x store.Write) bool {
 		assert.ElementsMatch(w.t, v.Needs, s.Cards[v.Card].Needs, "needs of %s", v.Card)
 	case store.SetCardReview:
 		assert.Positive(w.t, s.Cards[v.Card].Review, "review of %s", v.Card)
+	case store.SetCardRed:
+		assert.Equal(w.t, v.Red, s.Cards[v.Card].Red, "red of %s", v.Card)
 	case store.SetCardPriorHead:
 		assert.Equal(w.t, v.Head, s.Cards[v.Card].Prior, "prior head of %s", v.Card)
 	case store.PutCard:
@@ -236,8 +288,6 @@ func (w *world) landedRow(s store.Snapshot, x store.Write) bool {
 		assert.Equal(w.t, v.Flaps, s.Rows[v.Row].Flaps, "flaps of %s", v.Row)
 	case store.SetRowState:
 		assert.Equal(w.t, v.State, s.Rows[v.Row].State, "state of %s", v.Row)
-	case store.SetRowWidth:
-		assert.Equal(w.t, v.Width, s.Rows[v.Row].Width, "width of %s", v.Row)
 	case store.SetRowHeld:
 		assert.Equal(w.t, []any{v.Held, v.Reason}, []any{s.Rows[v.Row].Held, s.Rows[v.Row].Reason}, "held of %s", v.Row)
 	default:
@@ -439,7 +489,7 @@ func TestConformancePreemption(t *testing.T) {
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
-	w.op("preempt", Merge(w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2"}), start))
+	w.op("preempt", mustMerge(t, w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2"}), start))
 	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p2.w1", Working)
 	assert.Equal(t, []any{Ready, "preempted by blocker p2"}, []any{w.card("p1").State, w.card("p1").Reason})
@@ -452,7 +502,6 @@ func TestConformanceRows(t *testing.T) {
 	assert.Equal(t, "maintenance", w.rows()["r1"].Reason)
 	w.refused("p1", Start{Row: "r1", Branch: "b", Base: base}, "row r1 is held; nothing is dealt to a held row")
 	w.row("r1", Unhold{Reason: "back"})
-	w.row("r1", Width{N: 3})
 	w.row("r1", Gone{})
 	assert.Equal(t, 1, w.rows()["r1"].Flaps)
 	w.refused("p1", Start{Row: "r1", Branch: "b", Base: base}, "row r1 is down; a consumer is dealt only to a row that is up")
@@ -519,7 +568,7 @@ func TestConformanceHoldStream(t *testing.T) {
 	w := newWorld(t, producer("p1"), producer("p2"), producer("p3"))
 	w.move("p1", Resolve{})
 	w.move("p2", Resolve{})
-	plan, r := MoveStream(Stream{Name: "s1"}, HoldStream{Reason: "release freeze", Ready: []Card{w.card("p1"), w.card("p2")}})
+	plan, r := MoveStream(Stream{Name: "s1"}, HoldStream{Reason: "release freeze", Ready: []Card{w.card("p1"), w.card("p2")}, Seq: w.snap().Seq})
 	require.Nil(t, r)
 	w.op("hold", plan)
 	assert.True(t, w.snap().Streams["s1"].Held)
@@ -527,6 +576,38 @@ func TestConformanceHoldStream(t *testing.T) {
 		assert.Equal(t, []any{Waiting, "release freeze"}, []any{w.card(id).State, w.card(id).Reason}, id)
 	}
 	w.refused("p3", Resolve{}, "stream s1 is held; no new consumers start in a held stream")
+}
+
+// A hold is fenced at the snapshot it was read from. A producer that becomes
+// ready after that snapshot is not parked by the stale plan: the store
+// refuses the op, and nothing in it lands.
+func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
+	w := newWorld(t, producer("p1"), producer("p2"))
+	w.move("p1", Resolve{})
+	snap := w.snap()
+	stale, r := MoveStream(StreamFromStore(snap.Streams["s1"]), HoldStream{
+		Reason: "release freeze", Ready: []Card{FromStore(snap.Cards["p1"])}, Seq: snap.Seq,
+	})
+	require.Nil(t, r)
+	w.move("p2", Resolve{})
+	rc, err := w.apply("stale-hold", stale)
+	require.NoError(t, err)
+	assert.False(t, rc.Accepted)
+	assert.Contains(t, rc.Reason, "expected seq")
+	assert.False(t, w.snap().Streams["s1"].Held)
+	w.is("p1", Ready)
+	w.is("p2", Ready)
+	fresh := w.snap()
+	plan, r := MoveStream(StreamFromStore(fresh.Streams["s1"]), HoldStream{
+		Reason: "release freeze",
+		Ready:  []Card{FromStore(fresh.Cards["p1"]), FromStore(fresh.Cards["p2"])},
+		Seq:    fresh.Seq,
+	})
+	require.Nil(t, r)
+	w.op("hold", plan)
+	assert.True(t, w.snap().Streams["s1"].Held)
+	w.is("p1", Waiting)
+	w.is("p2", Waiting)
 }
 
 // The card model's ruling: a return to ready while the stream is held parks
@@ -557,7 +638,7 @@ func TestConformanceDropInOneOp(t *testing.T) {
 	require.Nil(t, r)
 	waive, r := w.plan("p3", Waive{Need: "n1", Reason: "not needed", InThisOp: true})
 	require.Nil(t, r)
-	w.op("drop", Merge(drop, fail, waive))
+	w.op("drop", mustMerge(t, drop, fail, waive))
 	assert.Equal(t, []any{Fail, Fail, "need n1 failed"}, []any{w.card("n1").State, w.card("p2").State, w.card("p2").Reason})
 	assert.Empty(t, w.card("p3").Needs)
 }

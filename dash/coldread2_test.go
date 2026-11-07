@@ -7,7 +7,6 @@ package dash
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -15,11 +14,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
-
-// pageCents is app.js cents(): dollars to cents, rounded up.
-func pageCents(d float64) int {
-	return int(math.Ceil(d*100 - 1e-6))
-}
 
 // v1 partitions a stream's rounded-up total into tier cents (internal/sprint/cost_view.go
 // tierCostCents), so the tier cells and the legend add up to the stream's cost. v2 sends raw
@@ -32,10 +26,10 @@ func TestColdread2DefectTierCentsNotPartitioned(t *testing.T) {
 		"b": {ID: "b", Kind: "work", Of: "p", Stream: "s", Tier: "pro", Cost: 1000, Priced: true},
 		"c": {ID: "c", Kind: "work", Of: "p", Stream: "s", Tier: "heavy", Cost: 1000, Priced: true},
 	}}
-	w := mapSnapshot(s, time.Time{}).Tables["work"].(map[string]*workRow)["s"]
-	total, tiers := pageCents(*w.Cost), 0
+	w := mapSnapshot(s, testRoster, time.Time{}).Tables["work"].(map[string]*workRow)["s"]
+	total, tiers := w.Cost.Int64(), int64(0)
 	for _, d := range w.ByTier {
-		tiers += pageCents(d)
+		tiers += d.Int64()
 	}
 	if tiers != total {
 		t.Errorf("tier cells sum to %d cents, stream cost %d cents; v1 partitions the total (cost_view.go tierCostCents)", tiers, total)
@@ -67,12 +61,12 @@ func TestColdread2DefectPulseUsesViewerClock(t *testing.T) {
 func TestColdread2DefectTableValueTypesVsV1(t *testing.T) {
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
 	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}},
-		Rows: map[string]store.Row{"r": {Name: "r", Kind: "worker", Width: 8, State: "up"}},
+		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}},
 		Cards: map[string]store.Card{
 			"p": {ID: "p", Kind: "producer", Stream: "s", State: "working", Tier: "pro"},
 			"w": {ID: "w", Kind: "work", Of: "p", Stream: "s", Tier: "pro", Holder: "r", State: "working", Cost: 1, Priced: true},
 		}}
-	b, err := json.Marshal(mapSnapshot(s, time.Time{}))
+	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}))
 	if err != nil {
 		t.Fatal(err)
 	}

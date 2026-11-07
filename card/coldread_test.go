@@ -51,7 +51,7 @@ func (w *world) all() (map[string]Card, map[string][]Card) {
 
 func coldProducerEvents() []Event {
 	return []Event{Resolve{}, Park{}, Reached{}, Start{Row: "r1", Branch: "b", Base: base}, Finished{Consumer: "p1.w1"},
-		Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, AskRead{Row: "r1"}, ReadYes{}, ReadFix{Finding: "x"},
+		Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, AskRead{Row: "r1"}, AskReads{Rows: []string{"r1"}}, ReadYes{}, ReadFix{Finding: "x"}, WaiveRed{Reason: "x"},
 		Landed{Head: h1}, Red{Head: h1, Reason: "x"}, Released{}, Cancel{Reason: "x"}, Replace{By: "p9", Reason: "x"},
 		NeedFailed{Need: "n1"}, Waive{Need: "n1"}, Relink{Need: "n1", To: "n2"}, Edit{Prose: "x"}, Rescore{Score: 9},
 		SetPriority{Level: "high"}, Block{Reason: "x"}, Unblock{Reason: "x"}}
@@ -61,7 +61,7 @@ func coldProducerEvents() []Event {
 var coldAllowed = map[string][]string{
 	"Resolve": {Waiting}, "Park": {Ready}, "Reached": {Waiting}, "Start": {Ready},
 	"Finished": {Working}, "Broken": {Working}, "Faulted": {Working}, "Released": {Working},
-	"AskRead": {Review}, "ReadYes": {Review}, "ReadFix": {Review}, "Landed": {Merging}, "Red": {Merging},
+	"AskRead": {Review}, "AskReads": {Review}, "ReadYes": {Review}, "ReadFix": {Review}, "WaiveRed": {Review}, "Landed": {Merging}, "Red": {Merging},
 	"Cancel": nonFinal, "Replace": nonFinal, "NeedFailed": nonFinal, "Edit": nonFinal, "Rescore": nonFinal,
 	"SetPriority": nonFinal, "Waive": {Waiting}, "Relink": {Waiting}, "Block": {Ready, Review, Working}, "Unblock": {Blocked},
 }
@@ -206,9 +206,7 @@ func TestColdRowsEveryState(t *testing.T) {
 				r := w.rows()["r1"]
 				plan, ref := MoveRow(r, e)
 				want := map[string]bool{"Seen": down, "Gone": !down, "Hold": !held, "Unhold": held}[name(e)]
-				if v, ok := e.(Width); ok {
-					want = v.N != r.Width
-				}
+				// Width is refused in every state: it is the roster's (round 22).
 				label := fmt.Sprintf("%s down=%v held=%v", name(e), down, held)
 				if !want {
 					assert.NotNil(t, ref, label)
@@ -250,7 +248,7 @@ func TestColdPreemptARead(t *testing.T) {
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
-	w.op("preempt", Merge(w.consumerPlan("p1.r1.1", Withdraw{Reason: "preempted by blocker p2"}), start))
+	w.op("preempt", mustMerge(t, w.consumerPlan("p1.r1.1", Withdraw{Reason: "preempted by blocker p2"}), start))
 	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p1", Review)
 	assert.Zero(t, w.card("p1").Bounces)
@@ -283,7 +281,7 @@ func TestColdWalk(t *testing.T) {
 	// Released is not in the list: a Withdraw of the work consumer releases
 	// its producer in the same plan, so the walk never finds one to release.
 	for _, e := range []string{"Resolve", "Start", "Take", "Report", "Finished", "Broken", "Faulted", "AskRead", "ReadYes", "ReadFix",
-		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "Width", "HoldStream"} {
+		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
 		assert.Positive(t, seen[e], "the walk never accepted %s", e)
 	}
 	t.Logf("accepted ops by event over 100 seeds x 800 steps: %v", seen)
@@ -295,8 +293,16 @@ type coldFinal struct {
 }
 
 func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
+	return coldWalkTraced(t, seed, steps, false)
+}
+
+// coldWalkTraced is the walk; traced records it for trace validation
+// (card/trace_test.go): one record per accepted op.
+func coldWalkTraced(t *testing.T, seed int64, steps int, traced bool) map[string]int {
 	rng := rand.New(rand.NewSource(seed))
 	w := newWorld(t, producer("p1"), producer("p2", "p1"), producer("p3"), store.PutCard{ID: "g1", Kind: "sentinel", Needs: []string{"p2"}})
+	tr := newCardTrace(w, traced)
+	defer tr.done(seed)
 	finals := map[string]coldFinal{}
 	accepted := map[string]int{}
 	for i := 0; i < steps; i++ {
@@ -315,6 +321,7 @@ func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		accepted[strings.Fields(label)[0]]++
 		w.landed(plan)
+		tr.step(label, plan)
 		coldInvariants(t, w.snap(), finals, fmt.Sprintf("seed %d step %d %s", seed, i, label))
 	}
 	return accepted
@@ -323,6 +330,7 @@ func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
 // coldStep picks one move at random: a producer, consumer or row event, or a
 // stream hold toggle (layer 3's raw op, to exercise Park).
 func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
+	w.ev = nil // the trace's: a raw hold has no event
 	all, cons := w.all()
 	var ids []string
 	for id := range all {
@@ -337,85 +345,96 @@ func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
 	}
 	switch n := rng.Intn(60); {
 	case n < 34:
-		var prods []string
-		for _, id := range ids {
-			if !consumer(all[id].Kind) {
-				prods = append(prods, id)
-			}
-		}
-		p := all[pick(prods)]
-		cs := cons[p.ID]
-		cid := workID(p.ID, p.Attempt)
-		if len(cs) > 0 && rng.Intn(4) == 0 {
-			cid = cs[rng.Intn(len(cs))].ID
-		}
-		heads := []string{p.Head, p.Head, h1, coldH3}
-		evs := []Event{Resolve{}, Resolve{}, Park{}, Reached{}, Start{Row: row, Branch: "b-" + p.ID, Base: base}, Start{Row: row, Branch: "b-" + p.ID, Base: base},
-			Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskRead{Row: row},
-			ReadYes{}, ReadYes{}, ReadFix{Finding: "fix it"}, Landed{Head: pick(heads)}, Red{Head: pick(heads), Reason: "red"}, Red{Head: p.Head, Reason: "red"}, Released{},
-			Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
-			Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
-		if rng.Intn(120) == 0 {
-			evs = []Event{Cancel{Reason: "c"}, Replace{By: "p3", Reason: "r"}, NeedFailed{Need: "p1"}, Waive{Need: "p1"}, Relink{Need: "p1", To: "p3"}}
-		}
-		if legal := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return !slices.Contains(coldAllowed[name(e)], p.State) }); len(legal) > 0 && rng.Intn(5) > 0 {
-			evs = legal // mostly events whose from-state matches, so the walk gets deep
-		}
-		side := []string{"Rescore", "SetPriority", "Edit", "Block"}
-		if moves := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return slices.Contains(side, name(e)) }); len(moves) > 0 && rng.Intn(10) > 0 {
-			evs = moves // the side verbs are legal everywhere and would crowd out the path
-		}
-		if p.State == Merging && rng.Intn(3) > 0 {
-			evs = []Event{Landed{Head: p.Head}, Landed{Head: p.Head}, Red{Head: p.Head, Reason: "red"}}
-		}
-		e := evs[rng.Intn(len(evs))]
-		st := w.snap().Streams[p.Stream]
-		plan, r := Move(p, cs, w.rows(), Stream{Name: st.Name, Held: st.Held}, all, e)
-		return plan, name(e) + " " + p.ID, p.ID, r == nil
+		return w.coldStepCard(rng, ids, all, cons, row, pick)
 	case n < 56:
-		var cids []string
-		for _, id := range ids {
-			if consumer(all[id].Kind) {
-				cids = append(cids, id)
-			}
-		}
-		if len(cids) == 0 {
-			return Plan{}, "", "", false
-		}
-		if live := slices.DeleteFunc(slices.Clone(cids), func(id string) bool { return final(all[id].Kind, all[id].State) }); len(live) > 0 && rng.Intn(5) > 0 {
-			cids = live
-		}
-		c := all[pick(cids)]
-		p := all[c.Of]
-		at := c.Holder
-		if rng.Intn(6) == 0 {
-			at = row
-		}
-		head := pick([]string{p.Head, p.Head, h1, h2, coldH3, base, "", "abc"})
-		result := pick([]string{"ok", "ok", "ok", "fix", "fail", "fault", "maybe"})
-		if c.Kind == "read" && rng.Intn(4) > 0 {
-			head = p.Head
-		}
-		evs := []Event{Take{Row: at}, Take{Row: at}, Report{Row: at, Result: result, Head: head, Reason: "r", Cost: int64(rng.Intn(3)), Priced: rng.Intn(2) == 0},
-			Report{Row: at, Result: result, Head: head}, Report{Row: at, Result: result, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
-		if rng.Intn(3) > 0 {
-			evs = evs[:5]
-		}
-		e := evs[rng.Intn(len(evs))]
-		if v, ok := e.(Withdraw); ok { // the producer's stream, as layer 3 reads it
-			v.Stream = StreamFromStore(w.snap().Streams[p.Stream])
-			e = v
-		}
-		plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
-		return plan, name(e) + " " + c.ID, c.ID, r == nil
+		return w.coldStepConsumer(rng, ids, all, row, pick)
 	case n < 59:
 		r := w.rows()[pick(rowNames[:3])]
 		e := []Event{Seen{}, Gone{}, Width{N: 1 + rng.Intn(3)}, Hold{Reason: "h"}, Unhold{Reason: "u"}}[rng.Intn(5)]
 		plan, ref := MoveRow(r, e)
+		w.ev = e
 		return plan, name(e) + " " + r.Name, "", ref == nil
 	}
 	held := w.snap().Streams["s1"].Held
 	return Plan{Writes: []store.Write{store.SetStreamHeld{Stream: "s1", Held: !held}}}, "HoldStream s1", "", true
+}
+
+func (w *world) coldStepCard(rng *rand.Rand, ids []string, all map[string]Card, cons map[string][]Card, row string, pick func([]string) string) (Plan, string, string, bool) {
+	var prods []string
+	for _, id := range ids {
+		if !consumer(all[id].Kind) {
+			prods = append(prods, id)
+		}
+	}
+	p := all[pick(prods)]
+	cs := cons[p.ID]
+	cid := workID(p.ID, p.Attempt)
+	if len(cs) > 0 && rng.Intn(4) == 0 {
+		cid = cs[rng.Intn(len(cs))].ID
+	}
+	heads := []string{p.Head, p.Head, h1, coldH3}
+	evs := []Event{Resolve{}, Resolve{}, Park{}, Reached{}, Start{Row: row, Branch: "b-" + p.ID, Base: base}, Start{Row: row, Branch: "b-" + p.ID, Base: base},
+		Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskReads{Rows: []string{row}},
+		ReadYes{}, ReadYes{}, ReadFix{Finding: "fix it"}, Landed{Head: pick(heads)}, Red{Head: pick(heads), Reason: "red"}, Red{Head: p.Head, Reason: "red"}, Released{},
+		Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
+		Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
+	if rng.Intn(120) == 0 {
+		evs = []Event{Cancel{Reason: "c"}, Replace{By: "p3", Reason: "r"}, NeedFailed{Need: "p1"}, Waive{Need: "p1"}, Relink{Need: "p1", To: "p3"}}
+	}
+	if legal := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return !slices.Contains(coldAllowed[name(e)], p.State) }); len(legal) > 0 && rng.Intn(5) > 0 {
+		evs = legal // mostly events whose from-state matches, so the walk gets deep
+	}
+	side := []string{"Rescore", "SetPriority", "Edit", "Block"}
+	if moves := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return slices.Contains(side, name(e)) }); len(moves) > 0 && rng.Intn(10) > 0 {
+		evs = moves // the side verbs are legal everywhere and would crowd out the path
+	}
+	if p.State == Merging && rng.Intn(3) > 0 {
+		evs = []Event{Landed{Head: p.Head}, Landed{Head: p.Head}, Red{Head: p.Head, Reason: "red"}}
+	}
+	e := evs[rng.Intn(len(evs))]
+	st := w.snap().Streams[p.Stream]
+	plan, r := Move(p, cs, w.rows(), Stream{Name: st.Name, Held: st.Held}, all, e)
+	w.ev = e
+	return plan, name(e) + " " + p.ID, p.ID, r == nil
+}
+
+func (w *world) coldStepConsumer(rng *rand.Rand, ids []string, all map[string]Card, row string, pick func([]string) string) (Plan, string, string, bool) {
+	var cids []string
+	for _, id := range ids {
+		if consumer(all[id].Kind) {
+			cids = append(cids, id)
+		}
+	}
+	if len(cids) == 0 {
+		return Plan{}, "", "", false
+	}
+	if live := slices.DeleteFunc(slices.Clone(cids), func(id string) bool { return final(all[id].Kind, all[id].State) }); len(live) > 0 && rng.Intn(5) > 0 {
+		cids = live
+	}
+	c := all[pick(cids)]
+	p := all[c.Of]
+	at := c.Holder
+	if rng.Intn(6) == 0 {
+		at = row
+	}
+	head := pick([]string{p.Head, p.Head, h1, h2, coldH3, base, "", "abc"})
+	result := pick([]string{"ok", "ok", "ok", "fix", "fail", "fault", "maybe"})
+	if c.Kind == "read" && rng.Intn(4) > 0 {
+		head = p.Head
+	}
+	evs := []Event{Take{Row: at}, Take{Row: at}, Report{Row: at, Result: result, Head: head, Reason: "r", Cost: int64(rng.Intn(3)), Priced: rng.Intn(2) == 0},
+		Report{Row: at, Result: result, Head: head}, Report{Row: at, Result: result, Head: head, Reason: "r"}, Withdraw{Reason: "silent"}}
+	if rng.Intn(3) > 0 {
+		evs = evs[:5]
+	}
+	e := evs[rng.Intn(len(evs))]
+	if v, ok := e.(Withdraw); ok { // the producer's stream, as layer 3 reads it
+		v.Stream = StreamFromStore(w.snap().Streams[p.Stream])
+		e = v
+	}
+	plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
+	w.ev = e
+	return plan, name(e) + " " + c.ID, c.ID, r == nil
 }
 
 // coldFences: the moved card is fenced by its gen; every cut consumer by
@@ -468,7 +487,7 @@ func coldInvariants(t *testing.T, s store.Snapshot, finals map[string]coldFinal,
 		assert.LessOrEqual(t, n, 1, "%s: producer %s has %d live work consumers", label, p, n)
 	}
 	for name, n := range working {
-		assert.LessOrEqual(t, n, s.Rows[name].Width, "%s: row %s over width", label, name)
+		assert.LessOrEqual(t, n, worldWidth[name], "%s: row %s over width", label, name)
 	}
 	for _, p := range s.Cards {
 		switch {
@@ -476,9 +495,14 @@ func coldInvariants(t *testing.T, s store.Snapshot, finals map[string]coldFinal,
 			_, ok := s.Cards[workID(p.ID, p.Attempt)]
 			assert.True(t, ok, "%s: %s working with no work consumer of attempt %d", label, p.ID, p.Attempt)
 		case p.Kind == "producer" && p.State == Merging:
-			assert.True(t, slices.ContainsFunc(coldValues(s.Cards), func(c store.Card) bool {
-				return c.Of == p.ID && c.Kind == "read" && c.Review == p.Review && c.State == Done && c.Result == "ok"
-			}), "%s: %s merging without an ok read of review %d", label, p.ID, p.Review)
+			okRead := func(review int) bool {
+				return slices.ContainsFunc(coldValues(s.Cards), func(c store.Card) bool {
+					return c.Of == p.ID && c.Kind == "read" && c.Review == review && c.Head == p.Head && c.State == Done && c.Result == "ok"
+				})
+			}
+			// ReadYes has an ok read of this review. WaiveRed has one of the
+			// previous review, at this head, and does not raise the review.
+			assert.True(t, okRead(p.Review) || (p.Review > 0 && okRead(p.Review-1)), "%s: %s merging without an ok read of review %d or %d at its head", label, p.ID, p.Review, p.Review-1)
 		}
 	}
 	assert.Empty(t, coldCycle(s.Cards), "%s: needs cycle", label)
@@ -617,7 +641,7 @@ func TestColdDefectWaiveInTheDropsOp(t *testing.T) {
 	all, _ := w.all()
 	waive, r := Move(all["p3"], nil, w.rows(), Stream{Name: "s1"}, all, Waive{Need: "n1", Reason: "not needed", InThisOp: true})
 	require.Nil(t, r)
-	rc, err := w.apply("drop", Merge(drop, waive))
+	rc, err := w.apply("drop", mustMerge(t, drop, waive))
 	require.NoError(t, err)
 	assert.True(t, rc.Accepted, "drop + waive as one op refused: %s", rc.Reason)
 	assert.Empty(t, w.card("p3").Needs)
@@ -674,9 +698,8 @@ func TestColdDefectPlansTheStoreFindsInvalid(t *testing.T) {
 			return MoveConsumer(c, w.card("p1"), w.rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
 		}},
 		{"score past int32", func(w *world) (Plan, *Refusal) { return w.plan("p1", Rescore{Score: math.MaxInt32 + 1}) }},
-		{"width past int32", func(w *world) (Plan, *Refusal) { return MoveRow(w.rows()["r1"], Width{N: math.MaxInt32 + 1}) }},
 		{"NUL in branch", func(w *world) (Plan, *Refusal) { return w.plan("p1", Start{Row: "r1", Branch: "b\x00", Base: base}) }},
-		{"row with no name", func(w *world) (Plan, *Refusal) { return MoveRow(Row{}, Width{N: 1}) }},
+		{"row with no name", func(w *world) (Plan, *Refusal) { return MoveRow(Row{}, Hold{}) }},
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {

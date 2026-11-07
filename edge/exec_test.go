@@ -195,7 +195,7 @@ func TestRequestIDDeterministicAndInFlightDeduplication(t *testing.T) {
 
 	go func() {
 		<-started
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 100000; i++ {
 			runtime.Gosched()
 		}
 		close(release)

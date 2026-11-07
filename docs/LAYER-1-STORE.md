@@ -194,6 +194,7 @@ type Store interface {
     Apply(ctx, Op) (Receipt, error)                 // one transaction
     Replay(ctx, opID string) (Receipt, bool, error) // the receipt an op already got
     Events(ctx, afterSeq int64, max int) ([]Event, error) // afterSeq exclusive, seq order, max capped at 1000
+    EventIdentity(ctx, seq int64) (op string, epoch int, found bool, err error) // the op id and epoch at seq; reads no image
     Clear(ctx, Op) (Receipt, error)                 // n = n + 1; same protocol as Apply
     Policy(ctx, version int) (PolicyVersion, error) // the body layer 5 runs
 }
@@ -519,7 +520,219 @@ other hash is still refused. Model: `red` is a plain card attribute
 witness `StoreRedOnConsumer` (the write without its kind check) and the
 reach checks `NeverRed`, `NeverRedKindRefused` and `NeverSameRedRefused`.
 
-Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
+Recorded with round 18 (2026-11-06): a read-only schema identity,
+`store.CheckSchema(ctx, dsn) (SchemaIdentity, error)` (and `Schema(ctx)` on
+`PG`, the same read on its pool, and on `Fake`). `SchemaIdentity` is
+`Present` (schema `sprint` exists), `Hash` (what `sprint.meta` records, ""
+when none), `Expected` (the hash this binary carries: `schemaHash`, the one
+computation, exported only through this field), `Current`, `KnownOlder` (a
+round-16 store Migrate upgrades), `Owner` (the role owning the schema) and
+`Round` (17 for the current schema, unchanged since round 17; 16; else 0). It
+runs in one `READ ONLY` transaction it rolls back, so a role with only
+`USAGE` on the schema and `SELECT` on `sprint.meta` can run it, and it reads
+the catalogs and `sprint.meta` with the same three helpers Migrate now uses
+(`namespace`, the `pg_depend` foreign check; `readMeta`; `metaRefusal`, the
+version and hash refusals in Migrate's words), so the two cannot disagree. A
+store Migrate takes is no error; every other outcome returns what was found
+and an error naming the fix: no database ("create it, or point NOVA_PG_DSN
+at the store's database"), no schema `sprint` or an empty one ("run
+Migrate"), a foreign one (Migrate's refusal), a `sprint.meta` the role cannot
+read ("grant this role USAGE on schema sprint and SELECT on sprint.meta, or
+check as <owner>"), one with no row, and another version or hash. The
+password comes as pgx takes it (`PGPASSWORD`, a pgpass file), not
+`NOVA_PG_PASSWORD`. Fake reports `Present`, `Hash` equal to `Expected`,
+`Current` and round 17, with no owner (the conformance scenario "schema
+identity"). The no-write proof (`TestFunctionalCheckSchemaWritesNothing`): on a
+store with ops in it, as its owner and as a `default_transaction_read_only`
+role, the sprint tables' `n_tup_ins`/`upd`/`del`, the events count and the
+next transaction id are unchanged for two seconds after. The schema and its
+hash do not change. No model change: it is a read, and changes no state the
+model holds.
+
+Recorded with round 19 (2026-11-06): two changes, neither a model change.
+`store.NewFakeFrom(s Snapshot, policies ...PolicyVersion) (*Fake, error)`, a
+test and dry-run seam: a Fake whose streams, cards, rows, judgements,
+cursors, epoch and seq are the snapshot's, with the policy versions given
+(the snapshot names only the active one, `Policy`, which is set active), so
+an op built from the snapshot is checked exactly as the Fake checks it. Its
+`Snapshot` equals the input and its next event is the snapshot's seq plus 1;
+the earlier log is not carried (`Events` starts after it, `Replay` of an
+earlier id is unknown). An input that is not a snapshot is `ErrInvalid`. The
+signature differs from the one asked for (`NewFakeFrom(s) *Fake`) on purpose:
+the policy versions, which a snapshot does not carry, and an error for an
+inconsistent input. The conformance scenario "fake from snapshot" runs on
+Fake, PG and the ICU database: the snapshot round-trips, and the same four
+ops (accepted, refused, a policy add and switch, a judgement answer with a
+cursor) give the store and the Fake the same receipts, events and
+snapshot. `NewFake` is unchanged. Second: Migrate runs `CREATE SCHEMA IF NOT
+EXISTS sprint` only when the schema is absent (`pg_namespace`, read by the
+same `namespace` helper as the foreign check, which is unchanged), because
+PostgreSQL checks CREATE on the database before IF NOT EXISTS and refused
+(42501) a role that owns an existing `sprint` but may not create schemas,
+the least-privilege setup `up` makes. The schema hash is still of the whole
+`schema.sql` and does not change.
+
+Recorded with round 20 (2026-11-06): layer 6's restore of a data-only dump,
+`store.RestoreBegin(ctx, tx pgx.Tx, digest string) error` (digest since round 22) and `store.RestoreEnd(ctx, tx
+pgx.Tx) (SchemaIdentity, error)`, on one connection in one transaction the
+caller owns (`pgx.Tx`, so it cannot be called outside one). What the dump
+carries, read from `pg_dump --data-only --schema=sprint` of a seeded store
+(PostgreSQL 18): a `COPY` for every table, in this order: `rows`, `streams`,
+`cards`, `cursors`, `epoch`, `events`, `judgements`, `meta`, `policy`, with
+`meta`'s one row `(1, 2, <hash>)` and `epoch`'s one row `(1, n)` among them,
+and `setval` of `policy_version_seq`. So Begin leaves exactly schema.sql's two
+seed rows out (`INSERT INTO sprint.meta (id, schema) ...` and `INSERT INTO
+sprint.epoch (id, n) ...`, its only INSERTs) and inserts nothing. Begin takes
+Migrate's advisory lock for the transaction (a no-op when the caller holds
+it), refuses a foreign schema (the same check and words as Migrate) and a
+schema whose tables hold any row ("sprint.cards has rows; a restore loads only
+into an empty store: use a new database, or drop schema sprint", the first
+such table in byte order), runs `CREATE SCHEMA` only when the schema is absent,
+then schema.sql's DDL. A finding from building it: the dump does not load
+with `cards_fixed` on. pg_dump copies `sprint.cards` in physical order, where
+a producer updated after its consumers follows them, and the trigger checks
+each consumer's producer row by row ("card u1 is a consumer of c1, which is
+not a producer"; pg_dump itself warns of the self-referencing key and suggests
+`--disable-triggers`, which needs a superuser). So Begin disables
+`cards_fixed` (the owner may; the foreign keys stay on and are checked at the
+end of each COPY), and End enables it and runs it over every card (`UPDATE
+sprint.cards SET id = id`, so the trigger's own text is the check), in the
+same transaction, under the ACCESS EXCLUSIVE lock the ALTER holds to the
+end, so no other session sees it off. End then requires `sprint.meta` at
+this binary's version and hash, the epoch row, and `checkRebuild`: Rebuild
+over every loaded event equals the snapshot read in the transaction, naming
+each part that differs. `checkRebuild` is now the shared check: the cold
+read 7 tests (PG's log with old-shape receipts after the round-16 Migrate
+included) use it in place of their `assert.Equal(snap, Rebuild(...))`. End
+returns `CheckSchema`'s identity of the restored store; on any error the
+caller rolls back and nothing of the restore remains. The tests restore a
+store at epoch 2 with policies, judgements, a cursor and updated producers
+into a new database through pgx (statements by the simple protocol, each COPY
+by CopyFrom, psql's `\restrict` lines skipped), and get the same snapshot, the
+same log and the same receipt for the next op as the original, and Migrate
+takes the result; the witness loads the same dump with the trigger on and
+fails; a dump with its last event cut is refused ("... differs from the
+snapshot in judgements, cursors": seq is the log's own, so it agrees). No
+model change: the restore runs no op and changes no rule the model holds.
+
+Recorded with round 21 (2026-11-06): `store.ValidateHistory(ctx, tx pgx.Tx)
+error`, the whole-history check, which RestoreEnd now runs in place of the
+rebuild comparison alone, and which a verb can run on a live store in a
+REPEATABLE READ transaction (it only reads). It refuses naming the first
+mismatch, in this order: the events run from seq 1 to the last with no gap
+("the log has no event at seq 3 (the next is seq 4)"); each event's stored
+receipt is its own, its op, seq, kind, actor, accepted and time equal to the
+row's (receipts are a column of `sprint.events`, so an orphan receipt is one
+that names another event: "the receipt stored with event seq 4 (op reason-4)
+is not its own: it names op ghost at seq 4"); each event is in the epoch the
+log is in at that point (1, then each accepted clear's new epoch) and the
+epoch row is the log's last ("the epoch row is 3, but the log's last epoch is
+2"); the stored policy versions are exactly the ones the log's after-images
+wrote, each equal to its last image, active flag included, so the active one
+is the log's last activation ("policy version 2 is stored, but no event in
+the log wrote it", "the log wrote policy version 2, but it is not stored");
+every cursor is at or below the last seq ("cursor feed is at seq 99, past the
+log's last seq 5"); and `checkRebuild` as before. RestoreEnd prefixes "the
+dump does not hold together: "; ValidateHistory "store: history: ". Tests: the
+round-20 restore tests unchanged, a live store passes, and one mutation of a
+loaded dump per check (a dropped event, an orphan receipt, the epoch row, a
+policy version missing from the log, a cursor past the end), each refused
+with its message. No model change: a read.
+
+Recorded with round 22 (2026-11-06; reopens the locked layer for this
+change only). "nova-config is the one true source": a row is sprint state
+only, and the store never holds configuration. Where this entry and the
+sections above disagree, this entry stands (it supersedes Guarantee 3, Refusal
+3, the tier and width rules of the writes, and the rows' kind, width, tiers,
+model and harness wherever they are named).
+- `store.Row` is `Name, State, Session, Role, Flaps, Held, Reason, Gen`.
+  Kind, width, tiers, model and harness go from the Go type, `schema.sql`
+  and every reader; the roster (package `roster`, read from nova-config each
+  tick) has them, and the deal guards take width and tiers from it
+  (`card.RowFromStore(r, width, tiers)`). `SetRowWidth`, `SetRowTiers`,
+  `SetRowLabels` and `SetRowSession` go. The store refuses nothing for width
+  or tier: it takes any number of working consumers of any tier on a row that
+  exists (Guarantee 3 is now "the store holds no width"; the witness
+  StoreWidthInStore shows a store-side cap breaks NoSpuriousRefusal). The
+  `cards_live` index went with the tier check it served.
+- The hook: `PutRow{Name, Session, Role}` is the one write `nova-sprint hook
+  --as <name> --role <r>` makes (Session the bus session the hook recorded,
+  Role `worker` or `coordinator`; the coordinator is also a worker), and
+  unhook puts "" for both. Session and role both set or both "", and a role
+  outside `RowRoles`, are `ErrInvalid`. A hook by another session while one
+  holds the row is refused: "row w1 is hooked by session sess-a; unhook it
+  first". The same session may hook again (a new role). Like every row write
+  it raises the row's gen. `rows.role` has a CHECK.
+- The sprint's stop: `Snapshot.Stopped` and `StopReason`, one value for the
+  store on `sprint.epoch`'s one row (columns `stopped`, `stop_reason`), kept
+  by a clear, in the log as `State.Stop` so Rebuild has it. `SetStopped{Stopped,
+  Reason}` is its one write, refused when unchanged ("the sprint is already
+  stopped"). The store refuses nothing because of it: ops from people still
+  land; Run calls no Tick while stopped.
+- `EventIdentity(ctx, seq) (op, epoch, found, err)` on the Store interface
+  (Fake and PG) reads an event's op id and epoch only, never its images
+  (the dashboard's cursor check; branch v2-store-eventidentity, merged here).
+- Migrate: `schema.sql` drops the five columns (`ALTER TABLE ... DROP COLUMN
+  IF EXISTS`), adds `rows.role` and the stop columns (`ADD COLUMN IF NOT
+  EXISTS`), and drops `cards_live`, in its one transaction, the shape rounds
+  16 and 17 used; a round-21 store (`round21Hash`, round 17's schema, which
+  every round to 21 carried; CheckSchema reports it as round 17) migrates in
+  place, its rows' state kept. The schema round is 22.
+- Model: Store.tla's row is `[state, gen, held, sess, role]` and it carries
+  `stopped`; WidthKept and ServesHeld go with eight witnesses and twelve reach
+  checks; HookKept, StoreHookStolen, StoreStopDropped, StoreWidthInStore and
+  NeverTwoWorking, NeverHookRefused, NeverRehooked, NeverDealtStopped,
+  NeverSameStopRefused are new. The trace projects sess, role and stopped.
+- Restore (round 22, v2-integrate-22): `RestoreEnd`, after the history
+  check and in the restore's own transaction, records the restore in
+  `sprint.meta.restored_at` (the transaction's time; null when never
+  restored) and unhooks every hooked row of the current epoch, so no hook
+  from the dump is live. The unhook is one ordinary logged op
+  (`restore-unhook-<seq>`, actor `store-restore`, kind `unhook`, a
+  `PutRow{Name}` per hooked row, each raising the row's gen) run through the
+  protocol inside the transaction, so the log still rebuilds the state; a
+  dump with no hooked row logs nothing. `Restored(ctx) (at, ok, err)` on the
+  Store interface reads it (the Fake is never restored), so a retried
+  restore can tell the data is already in. The model needs no new variable
+  (the unhook is PutRow ops; `restored_at` is outside the ops' state).
+- The restore's identity (round 22, second refinement): `RestoreBegin(ctx,
+  tx, digest)` takes the dump's digest (sha256 of its bytes, lowercase hex,
+  computed by the caller; anything else is refused) and keeps it for the
+  transaction (`set_config`, local); `RestoreEnd` records it in
+  `sprint.meta.restored_digest` beside `restored_at` (a CHECK keeps it a
+  sha256 or ''), and refuses a transaction without it. The unhook op's id is
+  `restore-unhook-<digest>-<seq>`, unique against the dump's own log (which
+  may hold the unhook of the restore it came from). Before it returns,
+  `RestoreEnd` checks inside the transaction that no row of the current
+  epoch is hooked, and refuses the restore naming the row otherwise (a
+  replayed id would leave one hooked). `Restored(ctx)` returns `(digest, at,
+  ok, err)`. Layer 6's restore uses it: an empty schema is imported; a
+  non-empty one with the same digest skips the import and only hooks; a
+  different digest, or none, is refused ("schema holds a restore of
+  <digest> at <time>: clear it first").
+- A stream's landing settings (round 22): they are stream state, not policy
+  data (layer 6 had been reading them by scanning the log, O(history) per
+  take). `Stream` gains `Mode` (one of `StreamModes`: `auto`, `group`,
+  `hand`; `auto` by default, the column's default) and `Forge` (the forge it
+  lands through, "" for none), columns of `sprint.streams` with a CHECK on
+  mode. `PutStream{Name, Repo, Base, Pos, Mode, Forge}` takes both ("" mode
+  is auto). `SetStreamMode{Stream, Mode}` and `SetStreamForge{Stream,
+  Forge}` set one each, refused when unchanged (`stream s1's mode is already
+  "hand"`); a mode outside the set is `ErrInvalid`. A stream image logged
+  before round 22 reads its mode as auto, so the log of a migrated store
+  still rebuilds its tables. Store.tla has no streams (held, repo, base and
+  pos were never modelled), so the closed set is the checker's and the
+  schema's; the trace projection drops PutStream and does not project an op
+  with SetStreamMode or SetStreamForge, as for SetStreamHeld.
+- Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
+  value is refused as unchanged, an absent cursor counting as 0, so
+  `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already
+  at 0"), as Store.tla always had it. The trace fixture `store-cursor-zero`
+  now matches, and the walks send the write. The dashboard's cursor save
+  treats an absent cursor as 0 too, so an idle first poll of an empty store
+  writes nothing.
+
+Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference then, since ruled the code's fault and fixed (round 22): the store inserted an absent cursor set to 0, which the model refuses.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
 

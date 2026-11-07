@@ -43,7 +43,7 @@ func TestBreakDealOver4KBWedgesRecipient(t *testing.T) {
 	finding := strings.Repeat("f", 300)
 	writes := []store.Write{
 		store.PutStream{Name: "s1", Repo: "repo", Base: "main", Pos: 1},
-		store.PutRow{Name: "amd-1.ds", Kind: "worker", Width: 30, Tiers: []string{"pro"}},
+		store.PutRow{Name: "amd-1.ds"},
 		store.SetRowState{Row: "amd-1.ds", State: "up"},
 	}
 	var findings []store.Write
@@ -100,7 +100,7 @@ func TestBreakPushNeverReachesEventsPastFirstPage(t *testing.T) {
 	t0 := time.Unix(1000, 0).UTC()
 	breakApply_internal(t, st, "op-init", t0,
 		store.PutStream{Name: "s1", Repo: "repo", Base: "main", Pos: 1},
-		store.PutRow{Name: "amd-1.ds", Kind: "worker", Width: 2, Tiers: []string{"pro"}},
+		store.PutRow{Name: "amd-1.ds"},
 		store.SetRowState{Row: "amd-1.ds", State: "up"},
 		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
 	)

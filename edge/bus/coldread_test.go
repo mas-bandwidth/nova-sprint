@@ -28,7 +28,7 @@ func crSeed_internal(t *testing.T, rows ...string) (*store.Fake, time.Time) {
 	t0 := time.Unix(1000, 0).UTC()
 	writes := []store.Write{store.PutStream{Name: "s1", Repo: "repo", Base: "main", Pos: 1}}
 	for _, r := range rows {
-		writes = append(writes, store.PutRow{Name: r, Kind: "worker", Width: 30, Tiers: []string{"pro"}}, store.SetRowState{Row: r, State: "up"})
+		writes = append(writes, store.PutRow{Name: r}, store.SetRowState{Row: r, State: "up"})
 	}
 	crApply_internal(t, st, "op-seed", t0, writes...)
 	return st, t0

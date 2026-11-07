@@ -63,7 +63,7 @@ func (s *StoreSprintClient) HookRole(ctx context.Context, row, role string) erro
 	op := store.Op{
 		ID:    fmt.Sprintf("hook-%s-%s-e%d-%d", row, role, snap.Epoch, s.HookCalls),
 		Epoch: snap.Epoch, Actor: row, Kind: "row", At: s.now_internal(),
-		Writes: []store.Write{store.PutRow{Name: r.Name, Kind: r.Kind, Width: r.Width, Session: role + ":" + strconv.Itoa(snap.Epoch), Tiers: r.Tiers, Model: r.Model, Harness: r.Harness}},
+		Writes: []store.Write{store.PutRow{Name: r.Name, Session: role + ":" + strconv.Itoa(snap.Epoch), Role: role}},
 	}
 	_, err = s.applyWithReplay_internal(ctx, op)
 	return err
@@ -97,7 +97,11 @@ func (s *StoreSprintClient) Next(ctx context.Context, row string) (NextResponse,
 	if !ok {
 		return NextResponse{}, fmt.Errorf("SPRINT REFUSED next: unknown row %s: run nova-sprint show", row)
 	}
-	out := NextResponse{Epoch: snap.Epoch, Seq: snap.Seq, Row: r.Name, State: r.State, Width: r.Width, Held: r.Held, Model: r.Model, Harness: r.Harness}
+	harness, model := "opencode", "deepseek-r1"
+	if strings.HasSuffix(r.Name, ".script") {
+		harness, model = "script", "script-v1"
+	}
+	out := NextResponse{Epoch: snap.Epoch, Seq: snap.Seq, Row: r.Name, State: r.State, Width: 2, Held: r.Held, Model: model, Harness: harness}
 	for _, c := range snap.Cards {
 		if (c.Kind != "work" && c.Kind != "read") || c.Holder != row {
 			continue
@@ -167,7 +171,7 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: card %s branch %q collides with reserved stream integration branch sprint/%s/group", consumerID, c.Branch, c.Stream)
 	}
 	r := snap.Rows[row]
-	plan, ref := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r), card.Take{Row: row})
+	plan, ref := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Take{Row: row})
 	if ref != nil {
 		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %s: run nova-sprint show %s", ref.Reason, consumerID)
 	}
@@ -290,7 +294,7 @@ func buildCombinedReportPlan_internal(snap store.Snapshot, c, p store.Card, st s
 	reason := cmpOr_internal(req.Reason, req.Finding)
 	cCard := card.FromStore(c)
 	pCard := card.FromStore(p)
-	cPlan, ref := card.MoveConsumer(cCard, pCard, card.RowFromStore(r), card.Report{Row: req.Row, Result: req.Result, Head: head, Reason: reason, Cost: req.Cost, Priced: req.Priced})
+	cPlan, ref := card.MoveConsumer(cCard, pCard, card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Report{Row: req.Row, Result: req.Result, Head: head, Reason: reason, Cost: req.Cost, Priced: req.Priced})
 	if ref != nil {
 		return card.Plan{}, fmt.Errorf("SPRINT REFUSED report: %s: run nova-sprint show %s", ref.Reason, c.ID)
 	}
