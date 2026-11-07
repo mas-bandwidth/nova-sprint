@@ -53,6 +53,7 @@ type (
 		Row, Consumer, ResultID, Result, Head, Reason, Finding string
 		Cost                                                   int64
 		Priced                                                 bool
+		Usage                                                  string // the run's tokens, package usage's words (--usage)
 	}
 	SprintClient interface {
 		Hook(ctx context.Context, row string) error
@@ -186,7 +187,7 @@ func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.
 		"--result", req.Result, "--id", id, "--epoch", strconv.Itoa(ep),
 		"--cost-microusd", strconv.FormatInt(max(0, req.Cost), 10), "--priced", strconv.FormatBool(req.Priced),
 		"--as", req.Row, "--json")
-	for _, kv := range [][2]string{{"--head", req.Head}, {"--reason", req.Reason}, {"--finding", req.Finding}} {
+	for _, kv := range [][2]string{{"--head", req.Head}, {"--reason", req.Reason}, {"--finding", req.Finding}, {"--usage", req.Usage}} {
 		if kv[1] != "" {
 			argv = append(argv, kv[0], kv[1])
 		}

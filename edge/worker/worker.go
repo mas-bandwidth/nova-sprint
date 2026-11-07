@@ -102,10 +102,14 @@ type (
 		Result, Head, Reason, Finding string
 		Retryable5xx                  bool
 	}
+	// Cost is what a run's harness reported: its own dollar figure (MicroUSD,
+	// Priced when it had one), sent as --cost, the charged evidence; and
+	// Usage, its tokens by class as package usage's words, sent as --usage,
+	// which the engine prices (never the worker).
 	Cost struct {
-		MicroUSD                  int64 `json:"micro_usd"`
-		Priced                    bool  `json:"priced"`
-		InputTokens, OutputTokens int64
+		MicroUSD int64  `json:"micro_usd"`
+		Priced   bool   `json:"priced"`
+		Usage    string `json:"usage,omitempty"`
 	}
 	JobRecord struct {
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, TargetHead string

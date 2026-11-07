@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/usage"
 )
 
 type Harness interface {
@@ -60,21 +63,45 @@ func (h *ClaudeHarness) Name() string        { return "claude" }
 func (h *CodexHarness) Name() string         { return "codex" }
 func (h *OpenCodeHarness) Name() string      { return "opencode" }
 
-// opencodeSpend reads the run's spend in dollars from opencode's own session
-// database (its assistant messages carry "cost"); a var so a unit test
-// supplies it. The wall's XDG_DATA_HOME is <job>/data, so the database is the
-// run's alone.
-var opencodeSpend = func(db string) (float64, error) {
-	out, err := exec.Command("sqlite3", "-readonly", db, "select coalesce(sum(json_extract(data,'$.cost')),0) from message where json_extract(data,'$.role')='assistant'").Output()
+// opencodeMessages reads the run's assistant messages from opencode's own
+// session database, each row's data JSON; a var so a unit test feeds rows.
+// The wall's XDG_DATA_HOME is <job>/data, so the database is the run's alone.
+var opencodeMessages = func(db string) ([]string, error) {
+	out, err := exec.Command("sqlite3", "-readonly", "-json", db, "select data from message where json_extract(data,'$.role')='assistant'").Output()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	var rows []struct{ Data string }
+	if s := strings.TrimSpace(string(out)); s != "" {
+		if err := json.Unmarshal([]byte(s), &rows); err != nil {
+			return nil, err
+		}
+	}
+	data := make([]string, len(rows))
+	for i, r := range rows {
+		data[i] = r.Data
+	}
+	return data, nil
+}
+
+// opencodeMessage is what one assistant message's data carries: its tokens
+// by class, its model and its cost (opencode's own price, a float).
+type opencodeMessage struct {
+	ModelID    string  `json:"modelID"`
+	ProviderID string  `json:"providerID"`
+	Cost       float64 `json:"cost"`
+	Tokens     struct {
+		Input, Output, Reasoning int64
+		Cache                    struct{ Read, Write int64 }
+	} `json:"tokens"`
 }
 
 // Usage is usage.json when the run wrote one, else what opencode recorded for
-// the run. A run whose route has no price records $0: that is unpriced, never
-// a priced zero.
+// the run: its exact tokens by class summed over every assistant message
+// (the words of package usage, which the engine prices), the model with the
+// most tokens (models=<n> when the run used more than one), and opencode's
+// own cost summed as the charged evidence. A run that recorded no token and
+// no cost reports nothing: unpriced, never a priced zero.
 func (h *OpenCodeHarness) Usage(j Job) (Cost, bool) {
 	if c, ok := readUsageFile_internal(j.JobDir); ok {
 		return c, true
@@ -82,11 +109,45 @@ func (h *OpenCodeHarness) Usage(j Job) (Cost, bool) {
 	if j.JobDir == "" {
 		return Cost{}, false
 	}
-	usd, err := opencodeSpend(filepath.Join(j.JobDir, "data", "opencode", "opencode.db"))
-	if err != nil || usd <= 0 {
+	rows, err := opencodeMessages(filepath.Join(j.JobDir, "data", "opencode", "opencode.db"))
+	if err != nil {
 		return Cost{}, false
 	}
-	return Cost{MicroUSD: int64(math.Round(usd * 1e6)), Priced: true}, true
+	return opencodeUsage_internal(rows)
+}
+
+// opencodeUsage_internal sums opencode's assistant messages (data JSON each).
+func opencodeUsage_internal(rows []string) (Cost, bool) {
+	t := usage.None()
+	byModel := map[string]int64{}
+	usd := 0.0
+	for _, row := range rows {
+		var m opencodeMessage
+		if json.Unmarshal([]byte(row), &m) != nil {
+			continue
+		}
+		mt := usage.Tokens{Input: m.Tokens.Input, CacheRead: m.Tokens.Cache.Read, CacheWrite: m.Tokens.Cache.Write, Output: m.Tokens.Output, Reasoning: m.Tokens.Reasoning}
+		t = t.Add(mt)
+		if model := strings.Trim(m.ProviderID+"/"+m.ModelID, "/"); model != "" {
+			byModel[model] += mt.Total()
+		}
+		usd += max(m.Cost, 0)
+	}
+	r := usage.Record{Tokens: t}
+	for _, model := range slices.Sorted(maps.Keys(byModel)) {
+		if r.Model == "" || byModel[model] > byModel[r.Model] {
+			r.Model = model
+		}
+	}
+	if len(byModel) > 1 {
+		r.Models = len(byModel)
+	}
+	c := Cost{MicroUSD: int64(math.Round(usd * 1e6))}
+	c.Priced = c.MicroUSD > 0
+	if t.Reported() {
+		c.Usage = r.String()
+	}
+	return c, c.Priced || c.Usage != ""
 }
 func (h *ScriptHarness) Name() string { return "script" }
 func (h *ScriptHarness) Probe(j Job) Job {
@@ -294,13 +355,45 @@ func normalizeFileOutcome_internal(res, reason, finding string, exit int, tail s
 		return Outcome{Result: "fail", Reason: fmt.Sprintf("unknown verdict %q in result.json", res)}
 	}
 }
+
+// usageFile is usage.json, a harness's own report of a run: its dollars
+// (micro_usd, priced) and, when it counted them, its tokens by class and
+// model, or the words of package usage whole (usage).
+type usageFile struct {
+	Cost
+	Tokens *struct {
+		Input      *int64 `json:"input"`
+		CacheRead  *int64 `json:"cache_read"`
+		CacheWrite *int64 `json:"cache_write"`
+		Output     *int64 `json:"output"`
+		Reasoning  *int64 `json:"reasoning"`
+	} `json:"tokens"`
+	Model string `json:"model"`
+}
+
 func readUsageFile_internal(jobDir string) (Cost, bool) {
 	data, err := os.ReadFile(filepath.Join(jobDir, "usage.json"))
-	var c Cost
-	if jobDir == "" || err != nil || json.Unmarshal(data, &c) != nil {
+	var f usageFile
+	if jobDir == "" || err != nil || json.Unmarshal(data, &f) != nil {
 		return Cost{}, false
 	}
-	return c, c.Priced || c.MicroUSD > 0
+	c := f.Cost
+	if r, err := usage.Parse(c.Usage); err != nil {
+		c.Usage = "" // words that do not read are no usage, never a refused report
+	} else if c.Usage == "" && f.Tokens != nil {
+		n := func(p *int64) int64 {
+			if p == nil || *p < 0 {
+				return usage.Unreported
+			}
+			return *p
+		}
+		r.Tokens = usage.Tokens{Input: n(f.Tokens.Input), CacheRead: n(f.Tokens.CacheRead), CacheWrite: n(f.Tokens.CacheWrite), Output: n(f.Tokens.Output), Reasoning: n(f.Tokens.Reasoning)}
+		r.Model = strings.Join(strings.Fields(f.Model), "_")
+		if r.Tokens.Reported() {
+			c.Usage = r.String()
+		}
+	}
+	return c, c.Priced || c.MicroUSD > 0 || c.Usage != ""
 }
 
 type WallConfig struct {
