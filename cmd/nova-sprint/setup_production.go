@@ -818,8 +818,12 @@ func (p productionSetup) checkPublicVersion(ctx context.Context, host string) er
 	if p.cfg.BinaryVersion == "" {
 		return publicVersionRefusal(p.cfg.BinaryVersion, host, "this build has no version to compare")
 	}
-	if string(data) != p.cfg.BinaryVersion+"\n" {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("it reports version %q, not %s", edge.FirstBytes(data), p.cfg.BinaryVersion))
+	remote, err := verbs.ParseVersionOutput(data)
+	if err != nil {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error())
+	}
+	if remote != p.cfg.BinaryVersion {
+		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("it reports version %s, not %s", remote, p.cfg.BinaryVersion))
 	}
 	return nil
 }

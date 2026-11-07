@@ -343,7 +343,7 @@ func TestPublicVersionUsesFleetInventoryAndPinnedSSH(t *testing.T) {
 			return []byte(`{"ansible_host":"100.100.1.2","ansible_user":"fleet"}`), nil
 		}
 		if name == "ssh" && strings.Join(args, " ") == "-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -- fleet@100.100.1.2 nova-sprint version" {
-			return []byte("v2.0.0\n"), nil
+			return []byte((&verbs.Engine{Version: "v2.0.0"}).Execute(context.Background(), []string{"version"}).Output), nil // the verb's real output
 		}
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return nil, nil
@@ -371,7 +371,7 @@ func TestPublicVersionInstallRequiresRecheck(t *testing.T) {
 			return []byte(`{"ansible_host":"100.100.1.2"}`), nil
 		}
 		probes++
-		return []byte(version + "\n"), nil
+		return []byte((&verbs.Engine{Version: version}).Execute(context.Background(), []string{"version"}).Output), nil
 	}
 	p.installer = fakePublicInstaller{install: func() { installs++; version = "v2.0.0" }}
 	in := verbs.SetupInput{Dash: "public=public"}

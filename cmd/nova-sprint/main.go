@@ -21,7 +21,9 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/policy"
 )
 
-// binaryVersion and toolPin are set by release builds with -ldflags.
+// binaryVersion is set with -ldflags -X main.binaryVersion=<version> by
+// the Makefile and CI (git describe --always --dirty --tags) and by the
+// release workflow (the tag); toolPin may be set the same way.
 var (
 	binaryVersion = "dev"
 	toolPin       = "v2.0.2"
@@ -90,6 +92,9 @@ func busBinary() string {
 	return path
 }
 
+// versionString is the stamped version, else a source build's
+// dev+<12 hex> from its VCS stamp, else "dev" (no stamp at all: a backup
+// refuses it, naming the build to make).
 func versionString() string {
 	if binaryVersion != "dev" {
 		return binaryVersion
@@ -100,6 +105,8 @@ func versionString() string {
 	return "dev"
 }
 
+// sourceVersion is dev+<first 12 hex of vcs.revision>, with -dirty when
+// vcs.modified is not false: a modified tree never claims to be the commit.
 func sourceVersion(settings []debug.BuildSetting) string {
 	revision, clean := "", false
 	for _, s := range settings {
@@ -110,8 +117,11 @@ func sourceVersion(settings []debug.BuildSetting) string {
 			clean = true
 		}
 	}
-	if !clean || len(revision) < 12 {
+	if len(revision) < 12 {
 		return "dev"
+	}
+	if !clean {
+		return "dev+" + revision[:12] + "-dirty"
 	}
 	return "dev+" + revision[:12]
 }

@@ -12,7 +12,7 @@ import (
 
 var insertPrefix = regexp.MustCompile(`^INSERT INTO sprint\.(cards|cursors|epoch|events|judgements|meta|policy|rows|streams) VALUES \(`)
 var sequenceValue = regexp.MustCompile(`^SELECT pg_catalog\.setval\('sprint\.policy_version_seq', [0-9]+, (true|false)\);$`)
-var backupHeader = regexp.MustCompile(`^-- nova-sprint-backup schema=([0-9a-f]{64}) version=(v[0-9]+\.[0-9]+\.[0-9]+|dev\+[0-9a-f]{12})$`)
+var backupHeader = regexp.MustCompile(`^-- nova-sprint-backup schema=([0-9a-f]{64}) version=(` + buildVersionPattern + `)$`)
 
 type orderedSQL struct {
 	order int
@@ -174,18 +174,17 @@ func quotedLiteral(s string, i int, escape bool) (int, bool) {
 	return 0, false
 }
 
-var developmentVersion = regexp.MustCompile(`^dev\+[0-9a-f]{12}$`)
+// buildVersionPattern is every version a build reports and a backup
+// records: a release (vX.Y.Z); what `git describe --always --dirty --tags`
+// stamps through -ldflags (vX.Y.Z-N-gHEX, or a bare HEX with no tag, each
+// perhaps -dirty); and an unstamped source build's dev+<12 hex> from its VCS
+// stamp (-dirty when the tree was modified). A build with no VCS stamp is
+// "dev" and is refused: nothing would say what made the backup.
+const buildVersionPattern = `(?:v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9]+-g[0-9a-f]{7,40})?|dev\+[0-9a-f]{12}|[0-9a-f]{7,40})(?:-dirty)?`
 
-func validBuildVersion(version string) bool {
-	if developmentVersion.MatchString(version) {
-		return true
-	}
-	if !strings.HasPrefix(version, "v") {
-		return false
-	}
-	_, err := releaseVersion(version)
-	return err == nil
-}
+var buildVersion = regexp.MustCompile(`^` + buildVersionPattern + `$`)
+
+func validBuildVersion(version string) bool { return buildVersion.MatchString(version) }
 
 func insertCardKind(s string) (string, bool) {
 	prefix := insertPrefix.FindString(s)
