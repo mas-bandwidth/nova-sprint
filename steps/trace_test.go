@@ -468,6 +468,9 @@ func TestTraceWalk(t *testing.T) {
 // walk runs and writes nothing.
 func TestTraceFixtures(t *testing.T) {
 	dir := os.Getenv("NOVA_TRACES")
+	if dir != "" && !filepath.IsAbs(dir) {
+		dir = filepath.Join("..", dir) // relative to the repository root, as CI gives it
+	}
 	for _, scen := range []string{"pre", "deal", "land", "burst"} {
 		for seed := int64(1); seed <= 3; seed++ {
 			w := newTraceWalk(t, scen, seed)
