@@ -229,6 +229,13 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 			countTrack(f, c, cards[c.Of])
 		case "done":
 			f.Done++
+			// Glenn 2026-11-07: "OK% should be known as soon as a card is done": the
+			// worker's own result counts the moment it reports, not after a read.
+			if c.Result == "ok" {
+				f.OK++
+			} else if c.Result != "" {
+				f.Failed++
+			}
 		}
 	}
 	if c.Kind == "read" && c.State == "done" {
@@ -236,12 +243,8 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 		if author == nil {
 			author = friends[c.Author]
 		}
-		if author != nil {
-			if c.Result == "ok" {
-				author.OK++
-			} else if c.Result == "fix" {
-				author.Failed++
-			}
+		if author != nil && c.Result == "fix" { // a read that says fix counts against the author's work
+			author.Failed++
 		}
 	}
 }
