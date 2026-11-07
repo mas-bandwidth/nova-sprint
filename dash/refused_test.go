@@ -70,11 +70,13 @@ func TestOneBadMachineAmongGoodOnesRenders(t *testing.T) {
 	if tables["friends"]["friend-1"]["status"] != "up" {
 		t.Fatalf("friend not rendered: %v", tables["friends"])
 	}
+	// A bench with no cores is held at width 0 with the reason, not refused,
+	// and puts nothing on the banner (Glenn, 2026-11-07).
 	bad := fleet["bench-2"]
-	if bad["status"] != "refused" || bad["width"] != "0" || bad["reason"] != "machine bench-2 has 0 cores; set its cores in nova-config" {
+	if bad["status"] != "held" || bad["width"] != "0" || bad["reason"] != roster.NoCores {
 		t.Fatalf("bad machine: %v", bad)
 	}
-	if len(notes) != 1 || notes[0] != "nova-config row refused: machine bench-2 has 0 cores; set its cores in nova-config" {
+	if len(notes) != 0 {
 		t.Fatalf("banner: %q", notes)
 	}
 }

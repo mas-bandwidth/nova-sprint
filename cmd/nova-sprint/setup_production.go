@@ -1108,8 +1108,6 @@ func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMach
 		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "no machine named " + name + " in nova-config", Fix: "nova-config machine list", Exit: 1}
 	case run.SameMachine(machine.Name, runMachine):
 		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: machine.Name + " runs the sprint; the public dashboard goes on another machine", Fix: "--dash public=<other>", Exit: 1}
-	case slices.Contains(machine.Roles, "bench"):
-		return verbs.DashboardTarget{}, verbs.PublicBenchRefusal(machine.Name)
 	case machine.Public == "":
 		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "machine " + machine.Name + " has no public address in nova-config", Fix: "nova-config machine set " + machine.Name + " --public <ip> --actor <you> --reason <why>", Exit: 1}
 	}
