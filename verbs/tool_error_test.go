@@ -22,10 +22,10 @@ func TestStderrLineKeepsTheErrorAndNoSecret(t *testing.T) {
 		}
 	}
 	err := fmt.Errorf("bus secret names unavailable%s", ToolDetail(Failure("nova-secrets", errors.New("exit status 1"), stderr)))
-	if !strings.HasPrefix(err.Error(), "bus secret names unavailable (nova-secrets: open .../store.age:") {
+	if !strings.HasPrefix(err.Error(), "bus secret names unavailable (nova-secrets: exit -1 (exit status 1); stderr \"starting | nova-secrets: open .../store.age:") {
 		t.Fatal(err)
 	}
-	if ToolDetail(errors.New("plain")) != "" || StderrLine(nil) != "" || Failure("x", nil, stderr) != nil {
+	if ToolDetail(errors.New("plain")) != " (plain)" || ToolDetail(nil) != "" || StderrLine(nil) != "" || Failure("x", nil, stderr) != nil {
 		t.Fatal("no tool error is no detail")
 	}
 	long := StderrLine([]byte(strings.Repeat("word ", 100)))
@@ -39,7 +39,7 @@ func TestFailedBusProbeNamesTheToolError(t *testing.T) {
 	w := newWorld(t)
 	w.bus.err = fmt.Errorf("bus secret names unavailable%s", ToolDetail(Failure("nova-secrets", errors.New("exit status 1"), []byte("nova-secrets: the seat key does not open the store\n"))))
 	r := w.e.Execute(t.Context(), []string{"check"})
-	if r.Exit != 2 || strings.Count(r.Output, "\n") != 1 || !strings.Contains(r.Output, "nova-bus who failed (bus secret names unavailable (nova-secrets: the seat key does not open the store))") {
+	if r.Exit != 2 || strings.Count(r.Output, "\n") != 1 || !strings.Contains(r.Output, `nova-bus who failed (bus secret names unavailable (nova-secrets: exit -1 (exit status 1); stderr "nova-secrets: the seat key does not open the store"))`) {
 		t.Fatalf("%+v", r)
 	}
 }
