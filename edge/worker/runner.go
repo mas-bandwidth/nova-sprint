@@ -516,6 +516,9 @@ func (r *Runner) StepRow(ctx context.Context, row string) error {
 	return r.stepRow_internal(ctx, row, false)
 }
 
+// stageLocks serializes fetches into one work clone (defect 72).
+var stageLocks sync.Map
+
 func (r *Runner) jobsGroup_internal() *sync.WaitGroup {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1032,12 +1035,20 @@ func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 			}
 		}
 	}
-	if _, err := g.runGit_internal(ctx, to, work, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
-		return "", err
+	// Defect 72 (dogfood 2026-11-07): two jobs staging from the same work
+	// clone at once raced on its refs ("fetching ref ... failed: incorrect
+	// old value provided") and one staged nothing. One fetch at a time per
+	// work clone; the shared clone of it follows under the same lock.
+	mu, _ := stageLocks.LoadOrStore(filepath.Clean(work), &sync.Mutex{})
+	mu.(*sync.Mutex).Lock()
+	_, ferr := g.runGit_internal(ctx, to, work, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*")
+	if ferr == nil {
+		_ = os.RemoveAll(j.WorktreeDir)
+		_, ferr = g.runGit_internal(ctx, to, work, "clone", "--shared", "--no-checkout", work, j.WorktreeDir)
 	}
-	_ = os.RemoveAll(j.WorktreeDir)
-	if _, err := g.runGit_internal(ctx, to, work, "clone", "--shared", "--no-checkout", work, j.WorktreeDir); err != nil {
-		return "", err
+	mu.(*sync.Mutex).Unlock()
+	if ferr != nil {
+		return "", ferr
 	}
 	if alt, err := os.ReadFile(filepath.Join(work, ".git", "objects", "info", "alternates")); err == nil && len(alt) > 0 {
 		wtAlt := filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")
