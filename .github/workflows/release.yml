@@ -40,7 +40,7 @@ jobs:
             # without the variable is a no-op
             flags="-s -w -X main.binaryVersion=$TAG -X github.com/mas-bandwidth/nova-sprint/dash.Version=$TAG"
             pids=()
-            for target in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64; do
+            for target in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
               os=${target%/*}; arch=${target#*/}
               ext=""; [ "$os" = windows ] && ext=".exe"
               GOOS=$os GOARCH=$arch go build -trimpath -ldflags "$flags" \
