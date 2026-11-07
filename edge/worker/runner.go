@@ -203,7 +203,7 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) e
 		if len(whole) > 1500 {
 			whole = whole[:1500]
 		}
-		lastLine = whole + " | reason=" + out.Reason + " exit=" + fmt.Sprint(res.ExitCode)
+		lastLine = whole + " | reason=" + out.Reason + " exit=" + fmt.Sprint(res.ExitCode) + " proxy=" + fmt.Sprint(pj.ProxyStatus) + " argv=" + strings.Join(argv, " ")
 		_ = r.Sprint.OpenJudgement(ctx, store.Judgement{
 			ID: "j-probe-" + row, Kind: "probe", About: row, Group: "probe:" + row,
 			Question: fmt.Sprintf("harness probe failed on %s: %s", row, lastLine),
