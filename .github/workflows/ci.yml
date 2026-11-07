@@ -62,7 +62,10 @@ jobs:
 
   # -short: the random walks and sweeps take fewer seeds or steps (the nightly
   # runs them all). Every test is parallel and packages run at the core count,
-  # so -race fits inside the 2-minute job.
+  # so -race fits inside the 2-minute job. The test binaries run with an empty
+  # PATH and a HOME that does not exist (go test -exec env), so a unit test that
+  # starts a program (nova-tools, git, a shell, a harness), by name or from
+  # ~/.local/bin, fails here instead of passing on a bench that has it.
   unit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]
@@ -72,7 +75,7 @@ jobs:
       - *checkout
       - *go
       - name: unit tests (everything but the functional tests)
-        run: go test -count=1 -race -short -timeout 100s -skip Functional ./...
+        run: go test -count=1 -race -short -timeout 100s -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...
 
   functional:
     if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))

@@ -105,7 +105,11 @@ func (h *OpenCodeHarness) Name() string      { return "opencode" }
 // session database, each row's data JSON (a unit test feeds rows through
 // OpenCodeHarness.messages).
 // The wall's XDG_DATA_HOME is <job>/data, so the database is the run's alone.
+// A run that never opened opencode has no database, and no sqlite3 is started.
 func opencodeMessages(db string) ([]string, error) {
+	if _, err := os.Stat(db); err != nil {
+		return nil, err
+	}
 	out, err := exec.Command("sqlite3", "-readonly", "-json", db, "select data from message where json_extract(data,'$.role')='assistant'").Output()
 	if err != nil {
 		return nil, err

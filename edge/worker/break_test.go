@@ -206,7 +206,7 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 	}
 }
 
-// TestBreakHarnessOutputUnbounded
+// TestFunctionalBreakHarnessOutputUnbounded
 //
 // Sequence: OSReserveWall.RunHarness runs a harness that prints 100 MB.
 //
@@ -215,7 +215,7 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 // stdout and stderr in an unbounded bytes.Buffer, so the runner holds the
 // whole output in memory (and writes all of it to harness.log); a harness
 // that prints without end exhausts the runner's memory.
-func TestBreakHarnessOutputUnbounded(t *testing.T) {
+func TestFunctionalBreakHarnessOutputUnbounded(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	w := &OSReserveWall{}

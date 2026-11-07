@@ -46,7 +46,7 @@ jobs:
           done
           echo "no Go toolchain on this runner" >&2; exit 1
       - name: unit tests, every seed (no -short)
-        run: go test -count=1 -race -timeout 60m -skip Functional ./...
+        run: go test -count=1 -race -timeout 60m -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...
 
   trace:
     runs-on: [self-hosted, linux, x64, bench]

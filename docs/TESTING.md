@@ -26,12 +26,15 @@ branch, S2 a refusal re-wrapped without errors.As/AsRefusal/RefusalOr, S3 a
 `_ =` discard outside its named cleanups, S4 a bare exit that never writes
 the error (tools/silentlint/lint.go names each).
 
-Unit tests (no clock, sockets, network or outside service). Per commit they run
-`-short`: the random walks and sweeps take a fifth of their seeds; the nightly
-runs every seed:
+Unit tests (no clock, sockets, network, process or outside service). Per
+commit they run `-short`: the random walks and sweeps take a fifth of their
+seeds; the nightly runs every seed. The test binaries run with an empty PATH
+and a HOME that does not exist, so a unit test that starts a program (by name,
+or from `~/.local/bin`) fails on every host, not only on one without the
+program:
 
-    go test -count=1 -race -short -skip Functional ./...   # per commit
-    go test -count=1 -race -skip Functional ./...          # nightly
+    go test -count=1 -race -short -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...   # per commit
+    go test -count=1 -race -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...          # nightly
 
 Functional tests (each starts its own PostgreSQL with `initdb`; CI fails if `initdb` is missing):
 
