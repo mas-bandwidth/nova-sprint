@@ -8,11 +8,16 @@ import (
 )
 
 type handoffLock struct {
-	held    bool
-	onClose func()
+	held     bool
+	acquired int
+	onClose  func()
 }
 
-func (l *handoffLock) Acquire(context.Context) (SetupLease, error) { l.held = true; return l, nil }
+func (l *handoffLock) Acquire(context.Context) (SetupLease, error) {
+	l.held = true
+	l.acquired++
+	return l, nil
+}
 func (l *handoffLock) Monitor(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithCancel(ctx)
 }
@@ -27,13 +32,15 @@ func (l *handoffLock) Close() error {
 
 type handoffSetup struct {
 	setupFake
-	validated bool
+	validated   bool
+	validations int
 }
 
 func (s *handoffSetup) PrepareHandoff(context.Context, SetupInput) (string, bool, error) {
 	return strings.Repeat("a", 64), true, nil
 }
 func (s *handoffSetup) ValidateHandoff(_ context.Context, id string, _ SetupInput) error {
+	s.validations++
 	s.validated = id == strings.Repeat("a", 64)
 	return nil
 }
@@ -57,7 +64,7 @@ func TestSetupHandoffClosesLeaseBeforeSignal(t *testing.T) {
 	}
 	s.trace = nil
 	got = e.Execute(context.Background(), []string{"up", "--continuation", strings.Repeat("a", 64)})
-	if got.Exit != 0 || !s.validated || lock.held || !strings.Contains(strings.Join(s.trace, ","), "verify8") {
+	if got.Exit != 0 || !s.validated || s.validations != 2 || lock.held || !strings.Contains(strings.Join(s.trace, ","), "verify8") {
 		t.Fatal(got, s.trace)
 	}
 }
@@ -100,7 +107,7 @@ func TestSetupRejectsContinuationBeforeLockedSteps(t *testing.T) {
 	lock := &handoffLock{}
 	e := Engine{Actor: "rowan", Setup: s, SetupLock: lock}
 	got := e.Execute(context.Background(), []string{"up", "--continuation", strings.Repeat("a", 64)})
-	if got.Exit != 1 || lock.held || strings.Contains(strings.Join(s.trace, ","), "verify2") {
+	if got.Exit != 1 || lock.held || lock.acquired != 0 || len(s.trace) != 0 {
 		t.Fatal(got, s.trace, lock.held)
 	}
 }
