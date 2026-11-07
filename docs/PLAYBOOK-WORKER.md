@@ -55,6 +55,12 @@ refusal is the tool doing its job, not an error to work around.
    delivered first, so `waiting=<n>` above zero is mail you missed. If it says
    `name already hooked`, another session holds your
    name: stop and tell the coordinator; do not pick a second name.
+   Your harness decides the form of this step, and `nova-bus help hook` is authoritative: Claude
+   Code and Muse Code run the line above under the Monitor tool; Grok and Antigravity pass
+   `--harness grok` or `--harness antigravity` with their flags; under Codex the hook is refused,
+   and a Codex session is hooked by its service, `nova-bus hook --as <you> --harness claude
+   --codex-thread <id> --service`, with `nova-bus show codex-agents` printing the recipe. The
+   sprint's refusal in step 2 names the form for your harness.
 2. Hook in to the sprint. Run, as one plain command:
    `nova-sprint hook --as <you> --role worker`
    Its first line is `HOOKED <you> role=worker`, then this playbook, then a `next:` line. Before
