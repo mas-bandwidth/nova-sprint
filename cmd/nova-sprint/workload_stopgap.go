@@ -14,11 +14,11 @@ import (
 type stopgapWorkload struct{}
 
 func (stopgapWorkload) ServicesReady(context.Context, []string) (bool, error) { return true, nil }
-func (stopgapWorkload) InstallServices(context.Context, []string) error     { return nil }
-func (stopgapWorkload) WorkersReady(context.Context) (bool, error)          { return true, nil }
-func (stopgapWorkload) InstallWorkers(context.Context) error                { return nil }
-func (stopgapWorkload) SmokeReady(context.Context) (bool, error)            { return true, nil }
-func (stopgapWorkload) RunSmoke(context.Context) error                      { return nil }
+func (stopgapWorkload) InstallServices(context.Context, []string) error       { return nil }
+func (stopgapWorkload) WorkersReady(context.Context) (bool, error)            { return true, nil }
+func (stopgapWorkload) InstallWorkers(context.Context) error                  { return nil }
+func (stopgapWorkload) SmokeReady(context.Context) (bool, error)              { return true, nil }
+func (stopgapWorkload) RunSmoke(context.Context) error                        { return nil }
 
 // Completion forwards to the configured runtime's Completion (the production
 // setup did not implement verbs.SetupCompletion, so up could never finish).
