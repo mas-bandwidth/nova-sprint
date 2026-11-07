@@ -228,3 +228,36 @@ func TestTickFaultSpendsNothing(t *testing.T) {
 	s.tick()
 	s.requireState("p1.w2", "working")
 }
+
+// TestTickFaultedReadIsOwedAgain (defect 58, PR 641 F3): a review whose
+// only read faulted is not stuck: the verdict is retry (no ok read, so
+// never a yes), the faulted read is not counted, and the next tick deals a
+// new read while the producer stays in review.
+func TestTickFaultedReadIsOwedAgain(t *testing.T) {
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 1, "pro", "heavy")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	s.take("p1.w1")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.r1.1", "working")
+	s.take("p1.r1.1")
+	s.report("p1.r1.1", "fault", "", "exit 137")
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1", "review")
+	var dealt []string
+	for _, c := range s.snap().Cards {
+		if c.Of == "p1" && c.Kind == "read" && c.State == "working" {
+			dealt = append(dealt, c.ID)
+		}
+	}
+	require.Len(t, dealt, 1, "one new read owed and dealt")
+	assert.NotEqual(t, "p1.r1.1", dealt[0])
+}

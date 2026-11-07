@@ -24,8 +24,11 @@ func (t *tick) fix() {
 		if reads == nil {
 			continue
 		}
-		if t.o.verdict(VerdictQuestion{Card: t.facts(c), Reads: reads}) == "yes" {
+		switch t.o.verdict(VerdictQuestion{Card: t.facts(c), Reads: reads}) {
+		case "yes":
 			t.group("yes", p, t.producerMove(p, card.ReadYes{}))
+			continue
+		case "retry": // every read faulted: owed() deals one more; nothing to move
 			continue
 		}
 		fixes = append(fixes, p)
@@ -80,7 +83,8 @@ func (t *tick) owed(c store.Card) int {
 	}
 	have := 0
 	for _, r := range t.v.Consumers(c.ID) {
-		if r.Kind == "read" && r.Review == c.Review && r.State != "fail" {
+		// a done read that faulted is not a read (defect 58): it is owed again
+		if r.Kind == "read" && r.Review == c.Review && r.State != "fail" && !(r.State == "done" && r.Result == "fault") {
 			have++
 		}
 	}
