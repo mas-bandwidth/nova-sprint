@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // SetupPrerequisites implements the nova-tools and coordinator portions of the
@@ -19,7 +20,7 @@ func (s SetupPrerequisites) Tools(ctx context.Context) (SetupCheck, error) {
 		return SetupCheck{}, err
 	}
 	if !ok {
-		return SetupCheck{Line: "nova-tools fleet is not ready", Next: "nova-fleet check"}, nil
+		return SetupCheck{Line: "UP 1/8 nova-tools: fleet not ready", Next: "nova-fleet check"}, nil
 	}
 	out, err := s.Env.command(ctx, "nova-version", "version")
 	version, parsed := parseNovaVersion(string(out))
@@ -33,7 +34,7 @@ func (s SetupPrerequisites) Tools(ctx context.Context) (SetupCheck, error) {
 	if !enough {
 		return SetupCheck{}, &OperationError{Problem: fmt.Sprintf("nova-tools %s is below pin %s", version, s.Pin), Fix: "nova-fleet up", Exit: 1}
 	}
-	return SetupCheck{Verified: true, Line: "nova-tools verified"}, nil
+	return SetupCheck{Verified: true, Line: fmt.Sprintf("UP 1/8 nova-tools: fleet green; nova-tools %s at or above pin %s: VERIFIED", version, s.Pin)}, nil
 }
 func (s SetupPrerequisites) unknown() error {
 	return &OperationError{Problem: "nova-tools version unknown", Fix: "install nova-tools >= " + s.Pin + " with nova-update", Exit: 1}
@@ -53,7 +54,7 @@ func (s SetupPrerequisites) Coordinator(ctx context.Context, actor string) (Setu
 		saved = actor
 	}
 	if saved == "" {
-		return SetupCheck{Line: "coordinator name is required", Next: "nova-sprint up --as <name>"}, nil
+		return SetupCheck{Line: "UP 3/8 coordinator: name is required", Next: "nova-sprint up --as <name>"}, nil
 	}
 	if !setupActor.MatchString(saved) {
 		return SetupCheck{}, fmt.Errorf("invalid coordinator name")
@@ -63,12 +64,16 @@ func (s SetupPrerequisites) Coordinator(ctx context.Context, actor string) (Setu
 		return SetupCheck{}, err
 	}
 	if !hooked {
-		return SetupCheck{Line: "coordinator " + saved + " is not hooked in", Next: recipe}, nil
+		fix := "run " + recipe
+		if strings.HasPrefix(recipe, "nova-bus hook --as ") {
+			fix += " under your session's Monitor tool"
+		}
+		return SetupCheck{Line: "UP 3/8 coordinator " + saved + ": not hooked", Refusal: &OperationError{Problem: saved + " is not hooked in", Fix: fix, Exit: 1}}, nil
 	}
 	if !found {
 		return SetupCheck{Action: true}, nil
 	}
-	return SetupCheck{Verified: true, Line: "coordinator verified"}, nil
+	return SetupCheck{Verified: true, Line: "UP 3/8 coordinator " + saved + ": VERIFIED"}, nil
 }
 func (s SetupPrerequisites) SaveCoordinator(ctx context.Context, actor string) error {
 	if !setupActor.MatchString(actor) {

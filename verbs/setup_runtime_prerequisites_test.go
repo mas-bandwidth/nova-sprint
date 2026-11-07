@@ -61,7 +61,7 @@ func TestSetupCoordinatorSavedAndRechecked(t *testing.T) {
 	}
 	present = false
 	c, err = s.Coordinator(ctx, "other")
-	if err != nil || c.Verified || c.Next != "nova-bus hook --as alice" {
+	if err != nil || c.Verified || (c.Refusal == nil || c.Refusal.Problem != "alice is not hooked in" || c.Refusal.Fix != "run nova-bus hook --as alice under your session's Monitor tool") {
 		t.Fatal(c, err)
 	}
 }

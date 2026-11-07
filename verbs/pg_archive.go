@@ -16,8 +16,8 @@ type PGArchive struct {
 	Lock RestoreLockFactory
 }
 
-func NewPGArchive(dsn, version, directory string, lock RestoreLockFactory) *PGArchive {
-	return &PGArchive{PGBackups: PGBackups{DSN: dsn, Directory: directory, Version: version, Loader: PGSQLLoader{}}, Lock: lock}
+func NewPGArchive(dsn, password, version, directory string, lock RestoreLockFactory) *PGArchive {
+	return &PGArchive{PGBackups: PGBackups{DSN: dsn, Password: password, Directory: directory, Version: version, Loader: PGSQLLoader{}}, Lock: lock}
 }
 func (p *PGArchive) AcquireRestore(ctx context.Context) (RestoreLease, error) {
 	if p == nil || p.Lock == nil {

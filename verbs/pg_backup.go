@@ -23,8 +23,8 @@ type SQLLoader interface {
 }
 
 type PGBackups struct {
-	DSN, Directory, Version string
-	Loader                  SQLLoader
+	DSN, Password, Directory, Version string
+	Loader                            SQLLoader
 }
 
 func (p PGBackups) Backup(ctx context.Context, out string) (BackupInfo, error) {
@@ -50,10 +50,10 @@ func (p PGBackups) Backup(ctx context.Context, out string) (BackupInfo, error) {
 		return BackupInfo{}, err
 	}
 	defer os.Remove(path)
-	if err = runPG(ctx, p.DSN, "pg_dump", "--schema=sprint", "--data-only", "--format=plain", "--inserts", "--no-owner", "--no-privileges", "--file", path); err != nil {
+	if err = runPGPassword(ctx, p.DSN, p.Password, "pg_dump", "--schema=sprint", "--data-only", "--format=plain", "--inserts", "--no-owner", "--no-privileges", "--file", path); err != nil {
 		return BackupInfo{}, fmt.Errorf("pg_dump failed")
 	}
-	source, err := store.Open(ctx, p.DSN, "")
+	source, err := store.Open(ctx, p.DSN, p.Password)
 	if err != nil {
 		return BackupInfo{}, err
 	}
@@ -117,7 +117,14 @@ func (p PGBackups) checkDumpVersion(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("pg_dump version is unknown")
 	}
-	conn, err := pgx.Connect(ctx, p.DSN)
+	cfg, err := pgx.ParseConfig(p.DSN)
+	if err != nil {
+		return fmt.Errorf("cannot inspect PostgreSQL")
+	}
+	if p.Password != "" {
+		cfg.Password = p.Password
+	}
+	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("cannot inspect PostgreSQL")
 	}
@@ -133,8 +140,11 @@ func (p PGBackups) checkDumpVersion(ctx context.Context) error {
 	return nil
 }
 func runPG(ctx context.Context, dsn, program string, args ...string) error {
+	return runPGPassword(ctx, dsn, "", program, args...)
+}
+func runPGPassword(ctx context.Context, dsn, password, program string, args ...string) error {
 	cmd := exec.CommandContext(ctx, program, args...)
-	env, err := pgProcessEnv(os.Environ(), dsn)
+	env, err := pgProcessEnv(os.Environ(), dsn, password)
 	if err != nil {
 		return err
 	}
@@ -143,7 +153,7 @@ func runPG(ctx context.Context, dsn, program string, args ...string) error {
 	cmd.Stderr = nil
 	return cmd.Run()
 }
-func pgProcessEnv(source []string, dsn string) ([]string, error) {
+func pgProcessEnv(source []string, dsn, password string) ([]string, error) {
 	env := safeProcessEnv(source)
 	if dsn == "" {
 		return env, nil
@@ -151,6 +161,9 @@ func pgProcessEnv(source []string, dsn string) ([]string, error) {
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
+	}
+	if password != "" {
+		cfg.Password = password
 	}
 	mode := "disable"
 	if cfg.TLSConfig != nil {
@@ -165,6 +178,7 @@ func pgProcessEnv(source []string, dsn string) ([]string, error) {
 	env = append(env, "PGHOST="+cfg.Host, fmt.Sprintf("PGPORT=%d", cfg.Port), "PGUSER="+cfg.User, "PGPASSWORD="+cfg.Password, "PGDATABASE="+cfg.Database, "PGSSLMODE="+mode)
 	return env, nil
 }
+
 func safeProcessEnv(source []string) []string {
 	allowed := map[string]bool{"PATH": true, "HOME": true, "LANG": true, "LC_ALL": true, "TZ": true, "TMPDIR": true, "SSL_CERT_DIR": true, "SSL_CERT_FILE": true}
 	out := []string{}
@@ -221,7 +235,7 @@ func (p PGBackups) Verify(ctx context.Context, path string) (info BackupInfo, re
 	}
 	statements, err := ConfineData(dumpBytes, schema.Expected)
 	if err != nil {
-		return BackupInfo{}, &OperationError{Problem:"backup rejected: "+err.Error(),Fix:"use a compatible verified nova-sprint backup",Exit:1}
+		return BackupInfo{}, &OperationError{Problem: "backup rejected: " + err.Error(), Fix: "use a compatible verified nova-sprint backup", Exit: 1}
 	}
 	validated := &VerifiedDump{statements: statements}
 	if err = p.Loader.Load(ctx, dsn, validated); err != nil {

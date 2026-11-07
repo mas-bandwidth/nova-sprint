@@ -175,6 +175,7 @@ func takenResult(c store.Card, repo, actor string, epoch int) Result {
 	command := fmt.Sprintf("nova-sprint finish %s@%d --head <sha> --as %s", c.ID, c.Gen, actor) + fmt.Sprintf(" --epoch %d", epoch)
 	if c.Kind == "read" {
 		command = fmt.Sprintf("nova-sprint read %s@%d yes|fix --as %s", c.ID, c.Gen, actor) + fmt.Sprintf(" --epoch %d", epoch)
+		return Result{fmt.Sprintf("TAKEN %s repo=%s head=%s\nRead detached at this head; do not edit or push.\n%s\nnext: %s\n", c.ID, repo, c.Head, c.Brief, command), 0}
 	}
 	return Result{fmt.Sprintf("TAKEN %s repo=%s base=%s branch=%s\n%s\nnext: %s\n", c.ID, repo, c.BaseSHA, c.Branch, c.Brief, command), 0}
 }

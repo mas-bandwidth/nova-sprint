@@ -15,6 +15,7 @@ type SetupInput struct{ Actor, Dash, Services, Key, RunOn, Version string }
 type SetupCheck struct {
 	Verified, Action bool
 	Line, Next       string
+	Refusal          *OperationError
 }
 
 // Setup owns the effects of each setup step. Verify must inspect actual state;
@@ -28,6 +29,10 @@ type SetupLease interface {
 	Monitor(context.Context) (context.Context, context.CancelFunc)
 	Check(context.Context) error
 	Close() error
+}
+
+type SetupCompletion interface {
+	Completion(context.Context) (string, error)
 }
 
 type Setup interface {
@@ -105,7 +110,29 @@ func (e *Engine) up(ctx context.Context, args []string) Result {
 			return result
 		}
 	}
-	out.WriteString("UP DONE\nnext: nova-sprint stream add <name> --repo <owner/name>\n")
+	return e.completeSetup(ctx, lease, &out)
+}
+
+func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strings.Builder) Result {
+	completion, ok := e.Setup.(SetupCompletion)
+	if !ok {
+		return unavailable("up")
+	}
+	line, err := completion.Completion(ctx)
+	if err != nil {
+		return operationalFailure("up", err)
+	}
+	if err = context.Cause(ctx); err != nil {
+		return operationalFailure("up", err)
+	}
+	if err = lease.Check(ctx); err != nil {
+		return operationalFailure("up", err)
+	}
+	if !strings.HasPrefix(line, "UP DONE ") || strings.ContainsAny(line, "\r\n") {
+		return unavailable("up")
+	}
+	fmt.Fprintln(out, line)
+	out.WriteString("next: nova-sprint stream add <name> --repo <owner/name>\n")
 	return Result{out.String(), 0}
 }
 
@@ -131,6 +158,10 @@ func (e *Engine) setupStep(ctx context.Context, step int, in SetupInput, out *st
 	}
 	if check.Verified {
 		return Result{}, false
+	}
+	if check.Refusal != nil {
+		r := operationalFailure("up", check.Refusal)
+		return Result{out.String() + r.Output, r.Exit}, true
 	}
 	if check.Next == "" {
 		check.Next = "nova-sprint up"

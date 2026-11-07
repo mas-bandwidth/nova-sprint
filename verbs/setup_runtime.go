@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/store"
 	"net/url"
 	"slices"
 	"strings"
@@ -22,6 +23,8 @@ type SetupRun interface {
 }
 
 // SetupWorkload is supplied by layer 4 for grants, rows, workers and smoke.
+// WorkersReady proves every configured worker is hooked and up; SmokeReady
+// proves one work and read were dealt and released within one tick.
 type SetupWorkload interface {
 	ServicesReady(context.Context, []string) (bool, error)
 	InstallServices(context.Context, []string) error
@@ -69,13 +72,13 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 		}
 		ok, err := r.Store.Ready(ctx)
 		if err != nil || !ok || in.Version == "" {
-			return setupReady(ok, "store verified", err)
+			return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d and backup: VERIFIED", store.SchemaVersion), err)
 		}
 		if r.Adoption == nil {
 			return SetupCheck{}, fmt.Errorf("version adoption unavailable")
 		}
 		ok, err = r.Adoption.Ready(ctx, in.Version)
-		return setupReady(ok, "store and version verified", err)
+		return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d, backup and version shadow: VERIFIED", store.SchemaVersion), err)
 	case 3:
 		return r.Prerequisites.Coordinator(ctx, in.Actor)
 	case 4:
@@ -89,13 +92,13 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 			return SetupCheck{}, fmt.Errorf("worker setup unavailable")
 		}
 		ok, err := r.Workload.WorkersReady(ctx)
-		return setupReady(ok, "workers verified", err)
+		return setupReady(ok, "UP 7/8 workers: hooked and up: VERIFIED", err)
 	case 8:
 		if r.Workload == nil {
 			return SetupCheck{}, fmt.Errorf("smoke setup unavailable")
 		}
 		ok, err := r.Workload.SmokeReady(ctx)
-		return setupReady(ok, "first deal verified", err)
+		return setupReady(ok, "UP 8/8 first deal: work and read dealt and released within one tick: VERIFIED", err)
 	}
 	return SetupCheck{}, fmt.Errorf("invalid setup step")
 }
@@ -140,12 +143,15 @@ func (r RuntimeSetup) runCheck(ctx context.Context, in SetupInput) (SetupCheck, 
 		return SetupCheck{}, fmt.Errorf("run readiness unavailable")
 	}
 	ok, err := r.Run.Ready(ctx, host)
-	return setupReady(ok, "run verified", err)
+	return setupReady(ok, "UP 4/8 run: on "+host+"; chooser lock held; sprint hooked: VERIFIED", err)
 }
 func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupCheck, error) {
-	choice, saved, err := r.answer(ctx, "dashboard", in.Dash, "tailnet")
+	choice, saved, err := r.answer(ctx, "dashboard", in.Dash, "")
 	if err != nil {
 		return SetupCheck{}, err
+	}
+	if !saved && choice == "" {
+		return SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the tailnet (default), or public on a host with a public IP?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>"}, nil
 	}
 	target, ok := r.Dashboards[choice]
 	if !ok || target.Public != strings.HasPrefix(choice, "public=") || (target.Public && !validPublicTarget(target.Service)) {
@@ -165,7 +171,7 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 	if err != nil && ctx.Err() == nil && errors.Is(err, errDashboardReach) {
 		return SetupCheck{Action: true}, nil
 	}
-	return setupReady(ok, "dashboard verified", err)
+	return setupReady(ok, "UP 5/8 dashboard: "+target.URL+": VERIFIED", err)
 }
 func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCheck, error) {
 	value, saved, err := r.answer(ctx, "services", in.Services, "")
@@ -173,7 +179,7 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 		return SetupCheck{}, err
 	}
 	if value == "" {
-		return SetupCheck{Line: "choose API-rate services", Next: "nova-sprint up --services <names|none>"}, nil
+		return SetupCheck{Line: "UP 6/8 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
 	}
 	names, err := setupServices(value)
 	if err != nil {
@@ -198,7 +204,11 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 		return SetupCheck{}, fmt.Errorf("service setup unavailable")
 	}
 	ok, err := r.Workload.ServicesReady(ctx, names)
-	return setupReady(ok, "services verified", err)
+	line := "UP 6/8 services: none selected: VERIFIED"
+	if len(names) > 0 {
+		line = "UP 6/8 services: account and model endpoints answered; configuration: VERIFIED"
+	}
+	return setupReady(ok, line, err)
 }
 func setupServices(value string) ([]string, error) {
 	if value == "none" {
