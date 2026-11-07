@@ -3,6 +3,8 @@ package git
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 )
 
 // GitHubHost is where a stream whose forge is github clones from.
@@ -20,11 +22,11 @@ const GitHubHost = "https://github.com/"
 //   - with no forge the repo is returned as is: a hand stream names its
 //     repository by URL or path.
 //
-// The scheme is https, never ssh: the sprint's GitHub identity is a token
-// (GH_TOKEN, or the identity's GH_CONFIG_DIR) that nova-secrets exec puts
-// in the process, and git reads it through gh as its credential helper for
-// github.com (Config.GitHubCredential), so no bench needs an ssh key
-// registered with GitHub.
+// The scheme is https, never ssh: the sprint's GitHub identity is the
+// host's gh login (or the GH_GATE_TOKEN override), and git reads it
+// through gh as its credential helper for github.com
+// (Config.GitHubCredential), so no host needs an ssh key registered with
+// GitHub.
 func CloneURL(repo, forge string) (string, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
@@ -72,15 +74,18 @@ func isCloneAddress_internal(repo string) bool {
 	return colon > 0 && (at < 0 || at < colon) && !strings.Contains(repo[:colon], "/")
 }
 
-// credentialEnv_internal is the git environment that makes gh the only
-// credential helper for https://github.com (an empty helper first clears
-// the host's own, so a person's keychain never answers for the sprint).
-// It names no secret: gh reads GH_TOKEN or GH_CONFIG_DIR from the
-// process's environment.
+// credentialEnv_internal is the git environment that makes gh, as the
+// host's own login, the only credential helper for https://github.com (an
+// empty helper first clears the host's own, so a person's keychain never
+// answers for the sprint). gh runs through env(1) with every GitHub
+// credential of the process unset (forge.Unset), so a GH_TOKEN or a
+// GH_CONFIG_DIR in the environment cannot make it someone else (directive
+// 59). It names no secret.
 func credentialEnv_internal(gh string) []string {
 	if gh == "" {
 		return nil
 	}
 	key := "credential." + strings.TrimSuffix(GitHubHost, "/") + ".helper"
-	return []string{"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=" + key, "GIT_CONFIG_VALUE_0=", "GIT_CONFIG_KEY_1=" + key, "GIT_CONFIG_VALUE_1=!" + gh + " auth git-credential"}
+	helper := "!env " + strings.Join(forge.Unset(), " ") + " " + gh + " auth git-credential"
+	return []string{"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=" + key, "GIT_CONFIG_VALUE_0=", "GIT_CONFIG_KEY_1=" + key, "GIT_CONFIG_VALUE_1=" + helper}
 }

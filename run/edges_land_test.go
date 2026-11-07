@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -69,6 +70,28 @@ func TestLandItemRedCarriesTheFacts(t *testing.T) {
 	fault := landItem("land.s1.z", git.LandResult{}, errors.New("git: boom"), time.Minute)
 	if fault.Outcome != "fault" || !strings.Contains(fault.Reason, "boom") {
 		t.Fatalf("fault item %+v", fault)
+	}
+}
+
+// Directive 59: a red item leads with its split by the base, NEW red first
+// with each failed job's runner and first lines, then inherited red, then
+// the authors of a PR whose agreement check failed; all-inherited red is
+// layer 3's glance outcome.
+func TestLandItemSplitsRedByTheBase(t *testing.T) {
+	newRed := []forge.WorkflowRed{{Workflow: "Gates", Basis: "the merge base cccccccccccc",
+		Jobs: []forge.FailedJob{{Name: "Linux Debug", Runner: "bench-b", URL: "https://ci/121", Lines: []string{"--- FAIL: TestX", "FAIL"}}}}}
+	inherited := []forge.WorkflowRed{{Workflow: "hostile-corpus", Basis: "the merge base cccccccccccc"}}
+	res := git.LandResult{Outcome: git.OutcomeRed, Rung: 1, MergeBase: "c1", NewRed: newRed, Inherited: inherited, Unsigned: []string{"Aurora <a@x> (a)"}, Reason: "new red: Gates"}
+	it := landItem("land.s1.x", res, nil, time.Minute)
+	want := "NEW red (not red on the base): Gates (the merge base cccccccccccc) [job Linux Debug on bench-b https://ci/121: --- FAIL: TestX | FAIL]; " +
+		"inherited red (red on the base too, not this card's): hostile-corpus (the merge base cccccccccccc); " +
+		"an agreement check failed; the PR's commit authors, one of them unsigned: Aurora <a@x> (a); merge base c1"
+	if it.Outcome != string(git.OutcomeRed) || !strings.HasPrefix(it.Reason, want) {
+		t.Fatalf("red item %q\nwant prefix %q", it.Reason, want)
+	}
+	res = git.LandResult{Outcome: git.OutcomeInherited, Inherited: inherited, Reason: "only inherited red: hostile-corpus"}
+	if it := landItem("land.s1.y", res, nil, time.Minute); it.Outcome != steps.InheritedRed || !strings.HasPrefix(it.Reason, "inherited red (red on the base too") {
+		t.Fatalf("inherited item %+v", it)
 	}
 }
 

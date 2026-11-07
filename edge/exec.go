@@ -85,7 +85,7 @@ func binaryFix_internal(prog string) string {
 	case strings.HasPrefix(prog, "nova-"):
 		return fmt.Sprintf("install nova-tools on PATH or run: nova-fleet up (missing %s)", prog)
 	case prog == "gh":
-		return "install GitHub CLI (gh) on PATH and authenticate with GH_TOKEN or GH_CONFIG_DIR"
+		return "install GitHub CLI (gh) on PATH and gh auth login on this host (the landing acts as the host's gh login)"
 	case prog == "git":
 		return "install git on PATH or run: nova-fleet check"
 	default:

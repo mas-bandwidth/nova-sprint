@@ -95,7 +95,7 @@ func TestLandOneHeadBehindBaseGoesThroughTheGroup(t *testing.T) {
 }
 
 // Anything not green-and-merge is an outcome with its facts, and nothing
-// lands: red (with the failing lines), a CI fault, a conflict, a PR that
+// lands: red (with its new red's jobs and lines), a CI fault, a conflict, a PR that
 // cannot be opened, a refused merge, a moved branch, a missing branch.
 func TestLandEveryOtherOutcomeLandsNothing(t *testing.T) {
 	t.Parallel()
@@ -129,8 +129,8 @@ func TestLandEveryOtherOutcomeLandsNothing(t *testing.T) {
 		if err != nil || res.Outcome != c.want || res.Reason == "" || gf.OriginRef("v2") != root {
 			t.Fatalf("%s: %+v err=%v, want %s with a reason and base unmoved", c.name, res, err, c.want)
 		}
-		if c.want == OutcomeRed && (!slices.Equal(res.FailingCI, []string{"unit"}) || len(res.FailingLines) == 0) {
-			t.Fatalf("red carries no failing checks or lines: %+v", res)
+		if c.want == OutcomeRed && (!slices.Equal(res.FailingCI, []string{"unit"}) || len(res.NewRed) != 1 || len(res.NewRed[0].Jobs[0].Lines) == 0) {
+			t.Fatalf("red carries no failing checks, new red or lines: %+v", res)
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,10 +47,14 @@ type ExecFunc func(ctx context.Context, cmd edge.Cmd) (edge.Result, error)
 
 func (f ExecFunc) Run(ctx context.Context, cmd edge.Cmd) (edge.Result, error) { return f(ctx, cmd) }
 
+// CheckRollup is a commit's checks: State, the failing checks with the
+// first one's URL, and Waiting, some check still queued or running (a red
+// rollup can still be waiting: directive 76).
 type CheckRollup struct {
 	SHA, URL, Reason string
 	State            CheckState
 	Failing          []string
+	Waiting          bool
 }
 
 // PRInfo is an open PR as gh pr list prints it. Mergeable is GitHub's
@@ -84,13 +89,47 @@ type Forge interface {
 	// commit base now has.
 	Merge(ctx context.Context, repo string, pr int, sha string) (string, error)
 	FailedLines(ctx context.Context, repo, url string) ([]string, error)
+	// Inheritance splits head's failing workflows into those red on the
+	// base too and those that are not (actions.go).
+	Inheritance(ctx context.Context, repo, base, baseTip, head string) (RedSplit, error)
+	// Authors is PR pr's distinct commit author identities.
+	Authors(ctx context.Context, repo string, pr int) ([]string, error)
 }
 
 // Identity is who the forge acts as: the host's own gh login (the run on
 // the coordinator's host, deliberately: the one identity that can act on
 // every stream repository, intent rule 32), unless Token is set, an
-// optional override that gh gets as GH_TOKEN. Name is for the refusals.
+// optional override that gh gets as GH_TOKEN. Name is for the refusals: it
+// names the choice (HostLogin or TokenEnv), never a login it expects.
 type Identity struct{ Name, Token string }
+
+// HostLogin names the host identity in messages.
+const HostLogin = "this host's gh login"
+
+// credentialEnv lists the environment that would make gh act as someone
+// other than the identity chosen: the host's login is gh's own config
+// under the user's home, so none of these may reach it (directive 59: a
+// GH_CONFIG_DIR in the environment defeated the host identity).
+var credentialEnv = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_CONFIG_DIR"}
+
+// HostEnv is the process's environment without any GitHub credential of
+// its own, so gh run in it acts as the host's own login.
+func HostEnv() []string {
+	return slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		k, _, _ := strings.Cut(kv, "=")
+		return slices.Contains(credentialEnv, k)
+	})
+}
+
+// Unset is credentialEnv as env(1)'s -u arguments: a command run through
+// env with them sees no GitHub credential of the process.
+func Unset() []string {
+	var out []string
+	for _, k := range credentialEnv {
+		out = append(out, "-u", k)
+	}
+	return out
+}
 
 // TokenEnv is the optional override's environment variable: when it is set
 // in nova-sprint's process, the forge and git act as that token instead of
@@ -127,20 +166,15 @@ func NewClient(ex edge.Exec, cfg Config) *Client {
 }
 func (c *Client) RestedUntil() int64 { c.mu.Lock(); defer c.mu.Unlock(); return c.restTill }
 
-// env_internal is gh's environment: the process's own (the host's gh
-// login), or, with the override, the process's without any GitHub
-// credential of its own and GH_TOKEN set to the override.
-func (c *Client) env_internal() ([]string, bool) {
-	if c.cfg.Identity.Token == "" {
-		return []string{"GH_PROMPT_DISABLED=1", "NO_COLOR=1"}, false
+// env_internal is gh's environment: the process's without any GitHub
+// credential of its own (HostEnv: the host's gh login), with GH_TOKEN set
+// to the override when there is one.
+func (c *Client) env_internal() []string {
+	env := append(HostEnv(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
+	if c.cfg.Identity.Token != "" {
+		env = append(env, "GH_TOKEN="+c.cfg.Identity.Token)
 	}
-	var env []string
-	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GH_TOKEN=") && !strings.HasPrefix(kv, "GITHUB_TOKEN=") && !strings.HasPrefix(kv, "GH_ENTERPRISE_TOKEN=") && !strings.HasPrefix(kv, "GH_CONFIG_DIR=") {
-			env = append(env, kv)
-		}
-	}
-	return append(env, "GH_TOKEN="+c.cfg.Identity.Token, "GH_PROMPT_DISABLED=1", "NO_COLOR=1"), true
+	return env
 }
 func (c *Client) takeToken_internal() error {
 	c.mu.Lock()
@@ -162,11 +196,16 @@ func (c *Client) takeToken_internal() error {
 	return nil
 }
 func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, string, error) {
+	return c.runGHBytes_internal(ctx, 0, argv...)
+}
+
+// runGHBytes_internal is runGH_internal with stdout capped at maxBytes (0:
+// edge.DefaultMaxBytes).
+func (c *Client) runGHBytes_internal(ctx context.Context, maxBytes int, argv ...string) (string, string, error) {
 	if err := c.takeToken_internal(); err != nil {
 		return "", "", err
 	}
-	env, clean := c.env_internal()
-	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: env, CleanEnv: clean, Timeout: c.cfg.Timeout}
+	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout, MaxBytes: maxBytes}
 	res, err := c.cfg.Exec.Run(ctx, cmd)
 	if err == nil && res.OK() {
 		return res.Stdout, res.Stderr, nil
@@ -374,7 +413,7 @@ func classifyRollup_internal(sha, rollupState string, nodes []gqlNode) CheckRoll
 	case len(faulted) > 0 && len(failing) == 0:
 		return CheckRollup{SHA: sha, State: CheckFault, Failing: faulted, URL: firstFaultURL, Reason: "gate did not run: " + strings.Join(faulted, ", ")}
 	case len(failing) > 0:
-		return CheckRollup{SHA: sha, State: CheckRed, Failing: failing, URL: firstRedURL, Reason: "CI red: " + strings.Join(failing, ", ")}
+		return CheckRollup{SHA: sha, State: CheckRed, Failing: failing, URL: firstRedURL, Waiting: pending, Reason: "CI red: " + strings.Join(failing, ", ")}
 	case strings.EqualFold(rollupState, "FAILURE") || strings.EqualFold(rollupState, "ERROR"):
 		return CheckRollup{SHA: sha, State: CheckRed, Failing: []string{"statusCheckRollup"}, Reason: "statusCheckRollup state " + rollupState}
 	case pending || strings.EqualFold(rollupState, "PENDING") || strings.EqualFold(rollupState, "EXPECTED") || len(nodes) == 0:

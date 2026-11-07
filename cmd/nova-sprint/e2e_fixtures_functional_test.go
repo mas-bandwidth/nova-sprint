@@ -286,6 +286,17 @@ func (f *fakeForge) FailedLines(_ context.Context, _, url string) ([]string, err
 	return nil, nil
 }
 
+// Inheritance is never reached: CI is green for every sha.
+func (f *fakeForge) Inheritance(_ context.Context, _, base, _, head string) (forge.RedSplit, error) {
+	f.log("Inheritance %s %s", base, head)
+	return forge.RedSplit{}, nil
+}
+
+func (f *fakeForge) Authors(_ context.Context, _ string, pr int) ([]string, error) {
+	f.log("Authors #%d", pr)
+	return nil, nil
+}
+
 // storeSetup is up's store step through the binary. The binary's internal
 // mode prints no reason on failure (its JSON is the parent's), so a failure
 // is run once more in this process, the same function, for the reason.
