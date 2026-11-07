@@ -15,7 +15,13 @@ type StatementWriter interface {
 
 // VerifiedDump holds the exact statements that passed schema and rebuild checks.
 // Its statements are private so restore cannot accidentally re-read a changed file.
-type VerifiedDump struct{ statements []string }
+type VerifiedDump struct {
+ statements []string
+ digest string
+}
+
+// Digest identifies the exact verified dump bytes, including its header.
+func (v *VerifiedDump) Digest() string { if v == nil { return "" }; return v.digest }
 
 func (v *VerifiedDump) Execute(ctx context.Context, w StatementWriter) error {
 	if v == nil || w == nil {
@@ -47,7 +53,7 @@ func (PGSQLLoader) Load(ctx context.Context, dsn string, dump *VerifiedDump) err
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err = store.RestoreBegin(ctx, tx); err != nil {
+	if err = store.RestoreBegin(ctx, tx, dump.Digest()); err != nil {
 		return err
 	}
 	if err = dump.Execute(ctx, pgTxWriter{tx: tx}); err != nil {
