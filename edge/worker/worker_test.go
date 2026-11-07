@@ -564,8 +564,7 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 	}
 	assertEpochSeparatedQueryEdge_internal(t, ctx, r3, req, res1)
 	snap, _ := st.Snapshot(ctx)
-	// Defect 73: a job the restart cannot resume (no receipt to rebuild it
-	// from) is released with no blame, never reported "runner lost the job".
+	// Defect 73: one the restart cannot resume (no receipt) is released with no blame.
 	if snap.Cards["p1"].State != "ready" || snap.Cards["p1"].Bounces != 0 || snap.Cards["p1"].Head != testPriorSHA {
 		t.Fatalf("dead harness on restart must release with no blame (0 bounces) and keep partial head %s: %+v", testPriorSHA, snap.Cards["p1"])
 	}
