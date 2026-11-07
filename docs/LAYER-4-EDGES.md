@@ -380,21 +380,27 @@ seams; it is not built now.
 
 ## The models
 
-`tla/LandEdge.tla`, one landing attempt per stream. Variables: `base` (a
-sequence of shas, each with its gate result), `stream`, `group` (heads in
-score order), `step` (`idle`, `fetched`, `merged`, `pushed`, `gating`,
-`green`, `red`, `fault`, `landed`, `refused`), `gatedAt` (the base tip and
-sha a green belongs to), `landed`. Actions: Fetch, Merge, MergeConflict,
-PushStream, Gate, CIGreen, CIRed, CIFault, BaseMoves (the environment, at
-most K times), Land, Remerge, Refuse. Invariants: every sha on `base` was
-gated green at that sha from its parent tip; a head lands at most once; a
-group is all in `landed` or none; a fault blames no head; `stream` equals
-`base` after every Land. Liveness, with weak fairness on the lander and
-BaseMoves finite: a conflict-free green group lands. Reversed witnesses:
-Land without the up-to-date check (stale green); Land at another sha than
-the gated one; a partial Land; CIFault blaming a head; Remerge sending heads
-back to their cards (the chase, a liveness failure). Size: 2 streams, 3
-heads, K = 2, CI green, red, fault.
+`tla/LandEdge.tla` (rewritten 2026-11-07 for intent rules 16 and 32), the
+ladder from a tick's land request to the base. Cards c1, c2 of stream s1
+and c3 of s2, every branch cut from the first base commit; a tree is the
+set of cards it holds and its count of outside commits. CI is truthful (a
+tree with c1 and c3 is red; c2 with c3 does not merge) and may report
+nothing. Variables: `base` (a sequence of trees, each with how it got there,
+`init`, `auto`, `hand` or `ext`, and the tree CI gated), `cs` (merging,
+landed, fix), `req` (each stream's request: cards, sent or done, outcome,
+rung), `js` (cards under a land judgement), `held`, `ticked`, `passes`.
+Actions: Tick (layer 3: consume results, landed moves the cards, anything
+else judges them; ask one card while fewer than BackedUp wait, all of them
+when backed up), Pass (one `LandPass`: on base already; rung 1 or 2 by the
+heads and the tip; conflict; CI green merges the gated tree exactly, or
+GitHub refuses, or base moves under the gate and the pass runs again),
+BaseMoves (at most K), Answer (land by hand, fix, retry). Invariants:
+`BaseNeverRed`, `NothingLandsUnpassed`, `MergingCovered`; one reversed
+witness each (`LandEdgeRedLands`, `LandEdgeStaleGate`,
+`LandEdgeJudgementHoldsStream`); reach checks for rung 2, a judgement, a
+hand landing and a red gate. Size: 2 streams, 3 cards, K = 1, BackedUp 2,
+MaxPass 6. The code is bound to it by `LandEdgeTrace.tla` and the walk in
+`edge/git/trace_test.go`.
 
 `tla/Runner.tla`, one bench. Variables: each consumer's store state
 (`ready`, `working`, `done`, `fail`), its job state (`none`, `taken`,
@@ -718,6 +724,9 @@ differ (LANDING.md, "The ladder, as built").
   (`edge/git/trace_test.go`, `TestLandEdgeTraceRefinementWalk`: `LandPass`
   on the git fake and a truthful forge, 8 seeds walked to the end) writes
   `landedge-walk-<seed>`, checked against `LandEdgeTrace.tla`.
+  Measured on the bench (TLC 1.8.0): `LandEdge.cfg` 46,288 distinct states
+  in 4 s, no error; the 3 witnesses and 4 reach checks violated as
+  required; the 8 walks (8 to 17 records each) all `TRACE OK`.
 
 ### Clone addresses (stitch, 2026-11-07, defect 21)
 
