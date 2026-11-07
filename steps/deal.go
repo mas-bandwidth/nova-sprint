@@ -105,8 +105,8 @@ func (t *tick) dealWork(c store.Card) {
 		return
 	}
 	base, ok := t.base(c.Stream)
-	if !ok {
-		return
+	if !ok || (t.overBudget() && rung(c) != "blocker") {
+		return // past the budget nothing more is dealt; the judgements above are still opened
 	}
 	row := t.pickRow(c, answered, t.withRoom(serving))
 	if row == "" {
@@ -131,6 +131,9 @@ func (t *tick) dealRead(c store.Card) {
 	}
 	if len(serving) == 0 {
 		t.judge("cannot-read", c.ID, "no open row may read "+c.ID+" (author "+c.Author+"); the review waits on nothing")
+		return
+	}
+	if t.overBudget() {
 		return
 	}
 	rows := t.pickRows(c, answered, t.withRoom(serving), t.owed(c))
