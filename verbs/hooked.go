@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 
@@ -102,7 +103,24 @@ func (e *Engine) snapshot(ctx context.Context) (store.Snapshot, error) {
 	}
 	snap, err := e.Store.Snapshot(ctx)
 	if err != nil {
+		if e.notSetUp(ctx, err) {
+			return snap, notSetUp("")
+		}
 		return snap, broken("the store did not answer ("+clip(err.Error())+")", "nova-sprint check")
 	}
 	return snap, nil
+}
+
+// notSetUp is a store error that means the sprint is not set up: no sprint
+// credential (ErrNotSetUp), or a store the doctor reads as without this
+// build's schema.
+func (e *Engine) notSetUp(ctx context.Context, err error) bool {
+	if errors.Is(err, ErrNotSetUp) {
+		return true
+	}
+	if e.Doctor == nil || ctx.Err() != nil {
+		return false
+	}
+	current, serr := e.Doctor.Schema(ctx)
+	return serr == nil && !current
 }

@@ -18,17 +18,19 @@ import (
 )
 
 // credentials are the store's: NOVA_PG_DSN without a password, its user
-// rewritten to nova_sprint, and NOVA_SPRINT_PG_PASSWORD (nova-secrets exec).
+// rewritten to nova_sprint, and NOVA_SPRINT_PG_PASSWORD, which up mints and
+// the fleet's units inject.
 type credentials struct{ dsn, password string }
 
 func credentialsFromEnv() credentials {
 	return credentials{dsn: os.Getenv("NOVA_PG_DSN"), password: os.Getenv("NOVA_SPRINT_PG_PASSWORD")}
 }
 
-// sprint is the DSN as nova_sprint, or the fix.
+// sprint is the DSN as nova_sprint, or the fix: without the sprint's own
+// credential the sprint is not set up (verbs.ErrNotSetUp; up is the fix).
 func (c credentials) sprint() (string, error) {
 	if c.password == "" {
-		return "", fmt.Errorf("NOVA_SPRINT_PG_PASSWORD is not set: run under nova-secrets exec")
+		return "", verbs.ErrNotSetUp
 	}
 	dsn, err := setupRoleDSN(c.dsn, "nova_sprint")
 	if err != nil {

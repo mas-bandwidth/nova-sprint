@@ -9,6 +9,7 @@ package verbs
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/worker"
@@ -109,6 +110,9 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 	}
 	out, err := e.call(ctx, v, in)
 	if err != nil {
+		if errors.Is(err, ErrNotSetUp) {
+			return failed(v.name, notSetUp(in.actor))
+		}
 		return failed(v.name, classify(err))
 	}
 	return Result{Output: out, Exit: exitDone}
