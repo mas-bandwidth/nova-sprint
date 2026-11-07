@@ -15,6 +15,17 @@ import (
 )
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		if arg == "--pull" || len(arg) > 7 && arg[:7] == "--pull=" {
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			if err := dash.Command(ctx, os.Args[1:]); err != nil {
+				log.Print(err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
 	pg := flag.String("pg", os.Getenv("NOVA_PG_DSN"), "PostgreSQL DSN")
 	listen := flag.String("listen", "127.0.0.1:8080", "HTTP listen address")
 	flag.Parse()
@@ -24,7 +35,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	openCtx, cancelOpen := context.WithTimeout(ctx, 30*time.Second)
-	s, err := store.Open(openCtx, *pg, os.Getenv("NOVA_PG_PASSWORD"))
+	password := os.Getenv("NOVA_SPRINT_PG_PASSWORD")
+	if password == "" {
+		password = os.Getenv("NOVA_PG_PASSWORD")
+	}
+	s, err := store.Open(openCtx, *pg, password)
 	cancelOpen()
 	if err != nil {
 		log.Fatal(err)

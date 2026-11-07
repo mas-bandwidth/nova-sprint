@@ -56,3 +56,8 @@ func (e *Engine) FreshState() (store.Snapshot, bool) {
 	defer e.mu.Unlock()
 	return snapshotCopy(e.state), e.folded
 }
+
+// TickCounts reports measured events and op receipts, not inferred moves.
+type TickCounts struct{ Folded, Applied, Refused int }
+
+func (e *Engine) tickCounts() TickCounts { e.mu.Lock(); defer e.mu.Unlock(); return e.counts }

@@ -32,6 +32,7 @@ type TickMetrics struct {
 	Took          time.Duration
 	Seq           int64
 	PlannedPolicy int
+	Counts        TickCounts
 	Err           error
 }
 type TickLogger interface{ Log(TickMetrics) }
@@ -78,7 +79,13 @@ func (s *Scheduler) Step(ctx context.Context, incoming []EdgeResult) (err error)
 		if attempted && fresh {
 			s.publish.Offer(snap, s.clock.Now())
 		}
-		s.logger.Log(TickMetrics{Number: s.count, At: start, Took: s.clock.Now().Sub(start), Seq: snap.Seq, PlannedPolicy: s.engine.plannedPolicy(), Err: err})
+		counts := TickCounts{}
+		policy := 0
+		if attempted {
+			counts = s.engine.tickCounts()
+			policy = s.engine.plannedPolicy()
+		}
+		s.logger.Log(TickMetrics{Number: s.count, At: start, Took: s.clock.Now().Sub(start), Seq: snap.Seq, PlannedPolicy: policy, Counts: counts, Err: err})
 	}()
 	if err = s.engine.guard.Check(ctx); err != nil {
 		return err
