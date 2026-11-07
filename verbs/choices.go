@@ -10,7 +10,9 @@ import (
 )
 
 // Choices persists non-secret setup answers as inactive policy data versions.
-// It never activates data, so the active script stays active. See tla/Setup.tla.
+// It never activates data, so the active script stays active. An explicit
+// flag is the operator answering again and is saved as a new version; the
+// newest version is the answer in force. See tla/Setup.tla.
 type Choices struct {
 	Store store.Store
 	Actor string
@@ -35,6 +37,20 @@ func (c Choices) Get(ctx context.Context, question string) (string, bool, error)
 		return "", false, err
 	}
 	return c.getAt(ctx, name, snap)
+}
+
+// Effective is the answer in force for a question: the explicit flag when
+// one is given, else the saved answer. stored says the value is already the
+// newest saved version, so nothing needs saving.
+func (c Choices) Effective(ctx context.Context, question, flag string) (string, bool, error) {
+	saved, found, err := c.Get(ctx, question)
+	if err != nil {
+		return "", false, err
+	}
+	if flag != "" {
+		return flag, found && saved == flag, nil
+	}
+	return saved, found, nil
 }
 
 func (c Choices) getAt(ctx context.Context, name string, snap store.Snapshot) (string, bool, error) {
@@ -74,8 +90,9 @@ func (c Choices) getAt(ctx context.Context, name string, snap store.Snapshot) (s
 	return value, found, nil
 }
 
-// Save writes one immutable inactive data version; a stale snapshot is refused
-// so a concurrent writer must re-read the durable answer before asking again.
+// Save writes one immutable inactive data version unless the newest already
+// holds value; a stale snapshot is refused so a concurrent writer must
+// re-read the durable answer before asking again.
 func (c Choices) Save(ctx context.Context, question, value string) error {
 	name, err := choiceName(question)
 	if err != nil {
@@ -92,11 +109,8 @@ func (c Choices) Save(ctx context.Context, question, value string) error {
 	if err != nil {
 		return err
 	}
-	if found {
-		if existing == value {
-			return nil
-		}
-		return fmt.Errorf("setup answer already stored")
+	if found && existing == value {
+		return nil
 	}
 	id := consumerOpID("choice:"+c.Actor, snap.Epoch, name+"\x00"+value, int(snap.Seq))
 	op := store.Op{ID: id, Epoch: snap.Epoch, Actor: c.Actor, Kind: "setup answer", At: c.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "data", Name: name, Body: value}}}

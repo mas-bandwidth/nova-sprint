@@ -16,6 +16,12 @@ EXTENDS Naturals, Sequences, FiniteSets
  cannot prove otherwise. No actual secret bytes are modeled: secret sinks
  are a closed set, and only the stdin-to-secret-store path is allowed.
 
+ An answer can be given again: an explicit flag on the command line wins
+ over the saved value and is saved as a newer version (Choices.Effective,
+ Choices.Save). The model keeps which questions are answered, not their
+ values, so Reanswer leaves the state unchanged; it counts no prompt, which
+ keeps AskedOnce.
+
  Once the finite disruptions are spent, fair execution repairs/verifies
  steps and reaches done. An unavailable external prerequisite or a human
  never supplying an answer is outside that liveness assumption.
@@ -67,6 +73,9 @@ Ask(q) ==
   /\ asked' = [asked EXCEPT ![q] = @ + 1]
   /\ keySinks' = IF q = "key" THEN keySinks \cup {"secrets-stdin"} ELSE keySinks
   /\ UNCHANGED <<world, verified, pc, phase, disruptions, orderOK, verifiedOnly, resumeOK>>
+Reanswer(q) ==
+  /\ phase = "repair" /\ q \in Need(pc) /\ q \in answers
+  /\ UNCHANGED vars
 Do ==
   /\ phase = "repair" /\ Need(pc) \subseteq answers
   /\ (1..(pc-1)) \subseteq verified
@@ -85,7 +94,7 @@ Crash ==
   /\ disruptions' = disruptions + 1
   /\ UNCHANGED <<world, answers, asked, keySinks, orderOK, verifiedOnly, resumeOK>>
 Progress == Restart \/ Probe \/ Do \/ (\E q \in Questions : Ask(q))
-Next == Progress \/ Crash \/ (\E k \in Steps : Regress(k))
+Next == Progress \/ (\E q \in Questions : Reanswer(q)) \/ Crash \/ (\E k \in Steps : Regress(k))
 Spec == Init /\ [][Next]_vars /\ WF_vars(Progress)
 TypeOK == /\ world \in [Steps -> BOOLEAN] /\ verified \subseteq Steps
           /\ answers \subseteq Questions /\ asked \in [Questions -> 0..2]

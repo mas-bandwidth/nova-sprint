@@ -632,15 +632,12 @@ func serviceConfigError(problem string) error {
 }
 func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupInput, needDashboard bool) (verbs.RuntimeSetup, error) {
 	r := p.forInput(in)
-	host, saved, err := r.Prerequisites.Env.Choices.Get(ctx, "run-on")
+	host, _, err := r.Prerequisites.Env.Choices.Effective(ctx, "run-on", in.RunOn)
 	if err != nil {
 		return r, err
 	}
-	if !saved {
-		host = in.RunOn
-		if host == "" {
-			host = p.cfg.Host
-		}
+	if host == "" {
+		host = p.cfg.Host
 	}
 	if host != p.cfg.Host {
 		return r, p.remoteRunRefusal()
@@ -766,15 +763,17 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 }
 
 func (p productionSetup) configureDashboard(ctx context.Context, in verbs.SetupInput, r verbs.RuntimeSetup, machines []verbs.FleetMachine, rows []setupServiceRow, run verbs.FleetService) (verbs.RuntimeSetup, error) {
-	choice, saved, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
+	choice, _, err := r.Prerequisites.Env.Choices.Effective(ctx, "dashboard", in.Dash)
 	if err != nil {
 		return r, err
 	}
-	if !saved {
-		choice = in.Dash
-	}
 	if choice == "" {
 		return r, nil
+	}
+	if in.Dash == "" {
+		if err = savedDashboardValid(choice, machines); err != nil {
+			return r, err
+		}
 	}
 	privateURL, err := privateDashboardURL(run.Argv[3])
 	if err != nil {
@@ -794,17 +793,29 @@ func (p productionSetup) configureDashboard(ctx context.Context, in verbs.SetupI
 	return r, nil
 }
 
+// savedDashboardValid refuses a saved dashboard answer that no longer names
+// the private network or a machine in nova-config, with the flag that
+// answers again.
+func savedDashboardValid(choice string, machines []verbs.FleetMachine) error {
+	valid := choice == "tailnet"
+	if name, ok := strings.CutPrefix(choice, "public="); ok {
+		name, _, err := splitPublicChoice(name)
+		valid = err == nil && slices.ContainsFunc(machines, func(m verbs.FleetMachine) bool { return m.Name == name })
+	}
+	if valid {
+		return nil
+	}
+	return &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("the saved dashboard answer %q is not valid", choice), edge.FailureMax), Fix: "answer again: nova-sprint up --dash tailnet, or --dash public=<machine>[:<port>]", Exit: 1}
+}
+
 type publicInstaller interface {
 	Install(context.Context, string, string) error
 }
 
 func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.RuntimeSetup, in verbs.SetupInput, install bool) (bool, error) {
-	choice, saved, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
+	choice, _, err := r.Prerequisites.Env.Choices.Effective(ctx, "dashboard", in.Dash)
 	if err != nil {
 		return false, err
-	}
-	if !saved {
-		choice = in.Dash
 	}
 	if !strings.HasPrefix(choice, "public=") {
 		return true, nil
