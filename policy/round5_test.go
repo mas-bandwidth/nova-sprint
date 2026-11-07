@@ -5,7 +5,9 @@ package policy
 
 import (
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,4 +99,40 @@ func TestFunctionalEvaluator(t *testing.T) {
 	a, fs = e.Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
 	require.Empty(t, fs)
 	assert.Equal(t, 0, a.Version, "the next tick starts a new child")
+}
+
+// steppingClock moves 100 ms on every Now and records each After's wait; no
+// After fires.
+type steppingClock struct {
+	mu    sync.Mutex
+	now   time.Time
+	waits []time.Duration
+}
+
+func (c *steppingClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(100 * time.Millisecond)
+	return c.now
+}
+
+func (c *steppingClock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.waits = append(c.waits, d)
+	return nil
+}
+
+// TestFallbackCountsFromTheFirstByte (rowan2's ruling 6): the deadline and
+// the early fallback are counted from the tick's first byte, before its
+// inputs are built, so time spent on the inputs shortens both waits.
+func TestFallbackCountsFromTheFirstByte(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	c := &steppingClock{now: t0}
+	_, fs := newLocal(c).Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+	require.Empty(t, fs)
+	require.Len(t, c.waits, 2, "the deadline, then the fallback")
+	assert.Equal(t, TickTime-100*time.Millisecond, c.waits[0], "the deadline: one step of the clock after the first byte")
+	assert.Equal(t, fallbackAfter-200*time.Millisecond, c.waits[1], "the fallback: two steps after the first byte, the inputs between")
 }
