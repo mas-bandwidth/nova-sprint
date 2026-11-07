@@ -189,6 +189,13 @@ func (e *Engine) stitch(ctx context.Context, s store.Snapshot, stream store.Stre
 	if e.ShowEdges == nil {
 		return stitchView{}, fmt.Errorf("edge unavailable")
 	}
+	if e.Roster == nil {
+		return stitchView{}, fmt.Errorf("roster unavailable")
+	}
+	roster, err := e.Roster.ReadRoster(ctx)
+	if err != nil {
+		return stitchView{}, err
+	}
 	producers := []store.Card{}
 	for _, c := range s.Cards {
 		if c.Stream == stream.Name && c.Kind == "producer" {
@@ -202,7 +209,7 @@ func (e *Engine) stitch(ctx context.Context, s store.Snapshot, stream store.Stre
 	}
 	out := stitchView{Stream: stream.Name, DiffRange: diff, Cards: []stitchCard{}}
 	for _, p := range producers {
-		item := stitchCard{ID: p.ID, Head: p.Head, Author: p.Author, CurrentModel: s.Rows[p.Author].Model, Reads: []stitchRead{}, WorkCosts: []stitchCost{}}
+		item := stitchCard{ID: p.ID, Head: p.Head, Author: p.Author, CurrentModel: roster.Kin[p.Author].Model, Reads: []stitchRead{}, WorkCosts: []stitchCost{}}
 		for _, c := range s.Cards {
 			if c.Of != p.ID {
 				continue

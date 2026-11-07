@@ -35,11 +35,14 @@ type Reader interface {
 type Engine struct {
 	Store              Reader
 	Env                Environment
+	Roles              RoleSource
+	Roster             RosterSource
 	Actor              string
 	Setup              Setup
 	SetupLock          SetupLock
 	ReportContinuation func(context.Context, string, SetupInput) error
 	SetupObserver      func(SetupObservation)
+	SetupHook          func(context.Context, SetupInput) Result
 	Now                Clock
 	Reports            ReportPlanner
 	Judges             JudgePlanner
@@ -51,7 +54,6 @@ type Engine struct {
 	Briefs             Briefs
 	Archive            Archive
 	Preview            func(context.Context, string) error
-	RowCatalog         RowCatalog
 	PolicyEvaluator    PolicyEvaluator
 	PolicyFiles        PolicyFiles
 	PolicyActivator    PolicyActivator
@@ -71,30 +73,69 @@ type nextAnswer struct {
 
 // Execute handles commands; it returns output rather than writing to a terminal.
 func (e *Engine) Execute(ctx context.Context, args []string) Result {
-	if len(args) == 0 {
-		return e.next(ctx, nil, true)
+	intro := len(args) == 0
+	if intro {
+		args = []string{"next"}
 	}
+	if need := requiredRole(args); need != "" {
+		actor, actorOK := roleActor(args, e.Actor)
+		if !actorOK {
+			return refused(args[0], "invalid arguments", "nova-sprint help "+args[0])
+		}
+		if args[0] == "next" {
+			if result, ok := e.nextPrerequisites(ctx, actor); !ok {
+				return result
+			}
+		}
+		ctx = context.WithValue(ctx, roleRequiredKey{}, true)
+		var result Result
+		var ok bool
+		ctx, result, ok = e.authorizeRole(ctx, actor, need, args[0])
+		if !ok {
+			return result
+		}
+	}
+
+	if result, ok := e.dispatchCore(ctx, args, intro); ok {
+		return result
+	}
+	return e.dispatchOther(ctx, args)
+}
+func (e *Engine) dispatchCore(ctx context.Context, args []string, intro bool) (Result, bool) {
 	switch args[0] {
 	case "next":
-		return e.next(ctx, args[1:], false)
+		return e.next(ctx, args[1:], intro), true
 	case "up":
-		return e.up(ctx, args[1:])
+		return e.up(ctx, args[1:]), true
+	case "hook":
+		name, role, ok := hookInput(args[1:])
+		if !ok {
+			return refused("hook", "invalid arguments", "nova-sprint help hook"), true
+		}
+		return e.Hook(ctx, name, role), true
+	case "unhook":
+		return e.unhook(ctx, args[1:]), true
 	case "take":
-		return e.take(ctx, args[1:])
+		return e.take(ctx, args[1:]), true
 	case "release":
-		return e.release(ctx, args[1:])
+		return e.release(ctx, args[1:]), true
 	case "row":
-		return e.row(ctx, args[1:])
+		return e.row(ctx, args[1:]), true
 	case "edit":
-		return e.edit(ctx, args[1:])
+		return e.edit(ctx, args[1:]), true
 	case "show":
-		return e.show(ctx, args[1:])
+		return e.show(ctx, args[1:]), true
 	case "drop":
-		return e.drop(ctx, args[1:])
+		return e.drop(ctx, args[1:]), true
 	case "hold", "unhold":
-		return e.hold(ctx, args[0], args[1:])
+		return e.hold(ctx, args[0], args[1:]), true
 	case "help", "-h", "--help":
-		return e.help(ctx, args[1:])
+		return e.help(ctx, args[1:]), true
+	}
+	return Result{}, false
+}
+func (e *Engine) dispatchOther(ctx context.Context, args []string) Result {
+	switch args[0] {
 	case "priority":
 		return e.priority(ctx, args[1:])
 	case "policy":
@@ -113,6 +154,8 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 		return e.restore(ctx, args[1:])
 	case "clear":
 		return e.clear(ctx, args[1:])
+	case "stop", "start":
+		return e.setStopped(ctx, args[0], args[1:])
 	case "check":
 		return e.check(ctx, args[1:])
 	case "version":
@@ -219,9 +262,9 @@ func (e *Engine) findNext(ctx context.Context, actor string) (nextAnswer, error)
 	if err != nil {
 		return nextAnswer{}, err
 	}
-	coordinator, err := e.Env.Coordinator(ctx)
-	if err != nil {
-		return nextAnswer{}, err
+	coordinator := ""
+	if snap.Rows[actor].Role == "coordinator" {
+		coordinator = actor
 	}
 	items := obligations(snap, actor)
 	judgements := openJudgements(snap, actor, coordinator)

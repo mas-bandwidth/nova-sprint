@@ -113,11 +113,24 @@ func (e *Engine) up(ctx context.Context, args []string) Result {
 	if result, stop := e.prevalidateSetupHandoff(ctx, in); stop {
 		return result
 	}
+	if e.Env == nil {
+		return unavailable("up")
+	}
+	present, recipe, err := e.Env.Hooked(ctx, in.Actor)
+	if err != nil {
+		return operationalFailure("up", err)
+	}
+	if !present {
+		return busHookRefusal("up", in.Actor, recipe)
+	}
 	var out strings.Builder
 	result, stop := e.setupStep(ctx, 1, in, &out, "bootstrap")
 	if stop {
 		return result
 	}
+	return e.runSetupLeased(ctx, in)
+}
+func (e *Engine) runSetupLeased(ctx context.Context, in SetupInput) Result {
 	if e.SetupLock == nil {
 		return unavailable("up")
 	}
@@ -191,6 +204,15 @@ func (e *Engine) walkSetup(ctx context.Context, lease SetupLease, in SetupInput)
 	var out strings.Builder
 	for step := 1; step <= 8; step++ {
 		currentStep = step
+		if step >= 3 {
+			var result Result
+			var ok bool
+			ctx = context.WithValue(ctx, roleRequiredKey{}, true)
+			ctx, result, ok = e.authorizeRole(ctx, in.Actor, "coordinator", "up")
+			if !ok {
+				return result, ""
+			}
+		}
 		if err := context.Cause(ctx); err != nil {
 			return operationalFailure("up", err), ""
 		}
@@ -208,23 +230,55 @@ func (e *Engine) walkSetup(ctx context.Context, lease SetupLease, in SetupInput)
 			return result, ""
 		}
 		if step == 2 && in.Continuation == "" && hasHandoff {
-			id, needed, err := handoff.PrepareHandoff(ctx, in)
-			e.observeSetup(SetupObservation{Kind: "prepare-handoff", Scope: "walk", Step: step, Action: needed, Failed: err != nil})
-			if err != nil {
-				return operationalFailure("up", err), ""
+			result, id, stop := e.prepareSetupHandoff(ctx, lease, in, handoff)
+			if stop {
+				return result, id
 			}
-			if needed {
-				if !validContinuationID(id) {
-					return unavailable("up"), ""
-				}
-				if err = lease.Check(ctx); err != nil {
-					return operationalFailure("up", err), ""
-				}
-				return Result{}, id
+		}
+		if step == 2 {
+			if result, stop := e.setupCoordinatorHook(ctx, lease, in, &out); stop {
+				return result, ""
 			}
 		}
 	}
 	return e.completeSetup(ctx, lease, &out), ""
+}
+func (e *Engine) prepareSetupHandoff(ctx context.Context, lease SetupLease, in SetupInput, handoff SetupHandoff) (Result, string, bool) {
+	id, needed, err := handoff.PrepareHandoff(ctx, in)
+	e.observeSetup(SetupObservation{Kind: "prepare-handoff", Scope: "walk", Step: 2, Action: needed, Failed: err != nil})
+	if err != nil {
+		return operationalFailure("up", err), "", true
+	}
+	if !needed {
+		return Result{}, "", false
+	}
+	if !validContinuationID(id) {
+		return unavailable("up"), "", true
+	}
+	if err = lease.Check(ctx); err != nil {
+		return operationalFailure("up", err), "", true
+	}
+	return Result{}, id, true
+}
+func (e *Engine) setupCoordinatorHook(ctx context.Context, lease SetupLease, in SetupInput, out *strings.Builder) (Result, bool) {
+	if e.SetupHook == nil {
+		return unavailable("up"), true
+	}
+	if err := lease.Check(ctx); err != nil {
+		return operationalFailure("up", err), true
+	}
+	result := e.SetupHook(ctx, in)
+	if result.Exit != 0 {
+		return result, true
+	}
+	if err := context.Cause(ctx); err != nil {
+		return operationalFailure("up", err), true
+	}
+	if err := lease.Check(ctx); err != nil {
+		return operationalFailure("up", err), true
+	}
+	out.WriteString(result.Output)
+	return Result{}, false
 }
 func (e *Engine) validateSetupHandoff(ctx context.Context, lease SetupLease, in SetupInput, handoff SetupHandoff, available bool) (Result, bool) {
 	if in.Continuation == "" {

@@ -62,6 +62,9 @@ func (e *Engine) take(ctx context.Context, args []string) Result {
 	if result, found := replay(ctx, st, opID, actor, "take", id); found {
 		return result
 	}
+	return e.takeNew(ctx, st, snap, id, gen, actor, opID)
+}
+func (e *Engine) takeNew(ctx context.Context, st ApplyStore, snap store.Snapshot, id string, gen int, actor, opID string) Result {
 	hooked, recipe, err := e.Env.Hooked(ctx, actor)
 	if err != nil {
 		return unavailable("take")
@@ -81,10 +84,15 @@ func (e *Engine) take(ctx context.Context, args []string) Result {
 	if !exists {
 		return refused("take", "unknown row "+actor, "nova-sprint show "+actor)
 	}
-	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r), card.Take{Row: actor})
+	width, tiers, result, ok := e.takeRoster(ctx, snap, c, actor)
+	if !ok {
+		return result
+	}
+	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r, width, tiers), card.Take{Row: actor})
 	if why != nil {
 		return refused("take", why.Reason, "nova-sprint show "+id)
 	}
+	plan.Expect = append(plan.Expect, store.AtSeq{Seq: snap.Seq})
 	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: actor, Kind: "take", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: snap.Streams[c.Stream].Repo}
 	receipt, err := applyExact(ctx, st, op)
 	if err != nil {
@@ -152,6 +160,9 @@ func receiptResult(r store.Receipt, actor, kind, id string) Result {
 
 // applyExact retries only the identical operation when the result is unknown.
 func applyExact(ctx context.Context, st ApplyStore, op store.Op) (store.Receipt, error) {
+	if err := fenceRole(ctx, &op); err != nil {
+		return store.Receipt{}, err
+	}
 	r, err := st.Apply(ctx, op)
 	if !errors.Is(err, store.ErrUnknown) {
 		return r, err
