@@ -205,6 +205,8 @@ func cardValue(w store.Write) (string, func(v *vals)) {
 		}
 	case store.SetCardRed:
 		return x.Card, func(*vals) {}
+	case store.SetCardUsage:
+		return x.Card, func(v *vals) { v.text("usage", x.Usage) }
 	}
 	return "", nil
 }
@@ -306,6 +308,8 @@ func oneField(w store.Write) (id, col string, ok bool) {
 		return x.Card, "bounces", true
 	case store.SetCardCost:
 		return x.Card, "cost", true
+	case store.SetCardUsage:
+		return x.Card, "usage", true
 	case store.SetCardRed:
 		return x.Card, "red", true
 	}

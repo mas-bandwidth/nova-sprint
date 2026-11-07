@@ -163,18 +163,19 @@ type Card struct {
 	PR       int      `json:"pr"`
 	Brief    string   `json:"brief"`
 	Reason   string   `json:"reason"`
-	Author   string   `json:"author"`     // the row whose work the head is (schema 2)
-	BaseSHA  string   `json:"base_sha"`   // the base commit the attempt started from (schema 2)
-	Prior    string   `json:"prior_head"` // on a work consumer: the head the attempt continues from
-	Result   string   `json:"result"`     // "", ok, fix, fail or fault
-	Bounces  int      `json:"bounces"`    // on a producer: the returns that count toward blocked
-	Finding  string   `json:"finding"`    // on a producer: the last read's finding; on a work consumer: its producer's at cut, fixed
-	Review   int      `json:"review"`     // on a producer: its entries into review; on a read consumer: its producer's at cut, fixed
-	Red      bool     `json:"red"`        // on a producer: the last read's verdict was red (SetCardRed, round 17); false on every other kind
-	Cost     int64    `json:"cost"`       // on a consumer: what its run cost, in micro-dollars
-	Priced   bool     `json:"priced"`     // false when the run's route has no price
-	Priority string   `json:"priority"`   // a producer's level; normal on a consumer
-	Tier     string   `json:"tier"`       // flash, pro, heavy or frontier; a consumer's is its producer's
+	Author   string   `json:"author"`          // the row whose work the head is (schema 2)
+	BaseSHA  string   `json:"base_sha"`        // the base commit the attempt started from (schema 2)
+	Prior    string   `json:"prior_head"`      // on a work consumer: the head the attempt continues from
+	Result   string   `json:"result"`          // "", ok, fix, fail or fault
+	Bounces  int      `json:"bounces"`         // on a producer: the returns that count toward blocked
+	Finding  string   `json:"finding"`         // on a producer: the last read's finding; on a work consumer: its producer's at cut, fixed
+	Review   int      `json:"review"`          // on a producer: its entries into review; on a read consumer: its producer's at cut, fixed
+	Red      bool     `json:"red"`             // on a producer: the last read's verdict was red (SetCardRed, round 17); false on every other kind
+	Cost     int64    `json:"cost"`            // on a consumer: what its run cost, in micro-dollars
+	Priced   bool     `json:"priced"`          // false when the run's route has no price
+	Usage    string   `json:"usage,omitempty"` // on a consumer: its run's usage record, package usage's words (round 25); "" on every other kind
+	Priority string   `json:"priority"`        // a producer's level; normal on a consumer
+	Tier     string   `json:"tier"`            // flash, pro, heavy or frontier; a consumer's is its producer's
 	Paths    []string `json:"paths,omitempty"`
 	DoneWhen []string `json:"done_when,omitempty"`
 	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given

@@ -215,6 +215,8 @@ func idleCard(w store.Write, cur records) bool {
 		return c.Bounces == x.Bounces
 	case store.SetCardCost:
 		return c.Cost == x.Cost && c.Priced == x.Priced
+	case store.SetCardUsage:
+		return c.Usage == x.Usage
 	default:
 		return idleLists(w, c)
 	}
@@ -999,5 +1001,7 @@ func foldCardRest(s records, w store.Write) {
 		editCard(s, x.Card, func(c *Card) { c.Result = x.Result })
 	case store.SetCardCost:
 		editCard(s, x.Card, func(c *Card) { c.Cost, c.Priced = x.Cost, x.Priced })
+	case store.SetCardUsage:
+		editCard(s, x.Card, func(c *Card) { c.Usage = x.Usage })
 	}
 }

@@ -67,6 +67,21 @@ const round22Hash = "eb754483470ba67cfe6aa6c36646c19b4503a2fb10fd0344b3aa2fdff6a
 // Migrate's one transaction, then the new hash is recorded.
 const round23Hash = "e4d87e423396c701797836720e749b0d8ea81f8879cf2811f89275970a684b01"
 
+// round24Hash is the schema hash of v2-stitch's round 24 schema.sql
+// (testdata/schema-round24.sql: model, the heartbeat and the commit
+// identity, no usage and no balances): running schema.sql on it adds
+// cards.usage and sprint.balances (round 25), in Migrate's one transaction,
+// then the new hash is recorded.
+const round24Hash = "e7561ffcff21033ff3b0a7dd615e32b6c9f0c33278278fe30e1912fec5e57aca"
+
+// round25Hash is the schema hash of round 25's schema.sql
+// (testdata/schema-round25.sql), the deployed line's: round 22's schema
+// plus cards.usage and sprint.balances, the live store's on 2026-11-07.
+// Running schema.sql on it adds cards.model, the row heartbeat's columns
+// (round 23) and the epoch row's commit identity (round 26), in Migrate's
+// one transaction, then the new hash is recorded.
+const round25Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f4433d0e"
+
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.
