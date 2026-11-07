@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Check one recorded trace against its model:
 #   bash tla/check-trace.sh <model> <trace dir>
-# <model> is Store or CardMachine; <trace dir> holds <model>TraceLog.tla and
+# <model> is a model with a <model>Trace.tla (Store, CardMachine, Steps, Policy,
+# Push, LandEdge, Runner, ...); <trace dir> holds <model>TraceLog.tla and
 # <model>Trace.cfg (tla/make-traces.sh writes them under tla/traces/).
 #
 # Runs TLC on tla/<model>Trace.tla with the trace dir on the TLA-Library
@@ -29,6 +30,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 CACHE="${TLA_CACHE:-$HOME/.cache/nova-sprint}"
 JAR="$CACHE/tla2tools-$VERSION.jar"
 CFG="$TRACE/${MODEL}Trace.cfg"
+# A walk that writes no cfg (the layer 4 walks) is checked with its model's own.
+[ -f "$CFG" ] || [ ! -f "$HERE/${MODEL}Trace.cfg" ] || cp "$HERE/${MODEL}Trace.cfg" "$CFG" || exit 2
 LOGMOD="$TRACE/${MODEL}TraceLog.tla"
 [ -f "$CFG" ] && [ -f "$LOGMOD" ] || { echo "no $CFG or $LOGMOD" >&2; exit 2; }
 
