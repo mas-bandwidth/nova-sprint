@@ -64,6 +64,7 @@ type Plan struct {
 	seen    records // the records the move read
 	again   rerun   // the move, run again against folded records; nil if hand-built
 	replays int     // how many later moves a Merge ran again
+	ev      Event   // the move, so a merge can read its fields
 }
 
 // Refusal is an illegal move, as a value: the reason names the fix.

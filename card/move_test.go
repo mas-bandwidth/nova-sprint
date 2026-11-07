@@ -472,7 +472,7 @@ func TestMerge(t *testing.T) {
 	assert.Equal(t, Plan{Expect: append(a.Expect, b.Expect...), Writes: append(a.Writes, b.Writes...)}, got)
 	dup := Plan{Writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}}}
 	_, r = Merge(dup, dup)
-	refusal{r, "a second write to card p1 field state; one op writes a field once"}.check(t)
+	refusal{r, "merge of plan 1 and plan 2 refused: a second write to card p1 field state; one op writes a field once"}.check(t)
 }
 
 // Round 2, from Stella's and Johnny's reads of a822dfc7.
