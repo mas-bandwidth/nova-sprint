@@ -104,12 +104,35 @@ func New(cfg Config) *Client {
 	cfg.Exec = cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec())
 	cfg.PushTimeout = cmp.Or(cfg.PushTimeout, DefaultPushTimeout)
 	cfg.RebaseTimeout = cmp.Or(cfg.RebaseTimeout, DefaultRebaseTimeout)
-	cfg.AuthorName = cmp.Or(cfg.AuthorName, "nova-sprint")
-	cfg.AuthorEmail = cmp.Or(cfg.AuthorEmail, "sprint@mas-bandwidth")
 	return &Client{cfg: cfg}
 }
-func (c *Client) gitEnv_internal(extra ...string) []string {
-	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_AUTHOR_NAME=" + c.cfg.AuthorName, "GIT_AUTHOR_EMAIL=" + c.cfg.AuthorEmail, "GIT_COMMITTER_NAME=" + c.cfg.AuthorName, "GIT_COMMITTER_EMAIL=" + c.cfg.AuthorEmail}
+
+type identityKey struct{}
+
+// WithIdentity is ctx carrying the sprint's commit identity (store.Identity,
+// round 24): every commit git makes under it (the landing's merge commits)
+// is authored and committed as name <email>, over Config's. The landing
+// passes the store's identity this way, read in the same snapshot as the
+// request, so a merge commit never carries a made-up identity (fix list
+// L4.8; defect 80: the CAA refused merge commits authored by a literal).
+func WithIdentity(ctx context.Context, name, email string) context.Context {
+	return context.WithValue(ctx, identityKey{}, [2]string{name, email})
+}
+
+// identity_internal is the identity commits are made as: ctx's, else
+// Config's; ok is false when neither names both a name and an email.
+func (c *Client) identity_internal(ctx context.Context) (name, email string, ok bool) {
+	if id, found := ctx.Value(identityKey{}).([2]string); found && id[0] != "" && id[1] != "" {
+		return id[0], id[1], true
+	}
+	return c.cfg.AuthorName, c.cfg.AuthorEmail, c.cfg.AuthorName != "" && c.cfg.AuthorEmail != ""
+}
+
+func (c *Client) gitEnv_internal(ctx context.Context, extra ...string) []string {
+	env := []string{"GIT_TERMINAL_PROMPT=0"}
+	if name, email, ok := c.identity_internal(ctx); ok {
+		env = append(env, "GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email, "GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
+	}
 	if c.cfg.Token != "" {
 		return append(append(env, tokenEnv_internal(c.cfg.Token)...), extra...)
 	}
@@ -120,7 +143,7 @@ func (c *Client) gitEnv_internal(extra ...string) []string {
 // missing binary) is an edge.CommandError naming the command, so every
 // caller's err carries it.
 func (c *Client) runGitEnv_internal(ctx context.Context, dir string, timeout time.Duration, extraEnv []string, args ...string) (string, string, int, error) {
-	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, args...), Dir: dir, Env: c.gitEnv_internal(extraEnv...), Timeout: timeout}
+	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, args...), Dir: dir, Env: c.gitEnv_internal(ctx, extraEnv...), Timeout: timeout}
 	res, err := c.cfg.Exec.Run(ctx, cmd)
 	if err != nil {
 		return res.Stdout, res.Stderr, res.ExitCode, c.failed_internal(res.ExitCode, res.Stdout, res.Stderr, err, args...)
@@ -276,6 +299,9 @@ func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []s
 			return MergeResult{Kind: MergeOK, SHA: heads[0], Tree: tree, ReusedHead: true}, nil
 		}
 	}
+	if _, _, ok := c.identity_internal(ctx); !ok {
+		return MergeResult{}, fmt.Errorf("git refused: MergeGroup makes merge commits and has no commit identity (the sprint's, round 24); set it with nova-sprint identity --name --email --reason")
+	}
 	if stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "checkout", "--detach", onto); err != nil || code != 0 {
 		return MergeResult{}, cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "checkout", "--detach", onto))
 	}
@@ -345,7 +371,7 @@ func (c *Client) resolveLedgers_internal(ctx context.Context, repoDir string, fi
 			if stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "checkout", "--ours", "--", f); err != nil || code != 0 {
 				return cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "checkout", "--ours", "--", f))
 			}
-			cmd := edge.Cmd{Argv: rule.Script, Dir: repoDir, Env: c.gitEnv_internal(), Timeout: c.cfg.RebaseTimeout}
+			cmd := edge.Cmd{Argv: rule.Script, Dir: repoDir, Env: c.gitEnv_internal(ctx), Timeout: c.cfg.RebaseTimeout}
 			if res, err := c.cfg.Exec.Run(ctx, cmd); err != nil || !res.OK() {
 				return fmt.Errorf("ledger script on %s: %w", f, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
 			}
