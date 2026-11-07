@@ -1048,21 +1048,24 @@ func cold3Keys2(m map[string]int) []string {
 // defects above.
 func TestColdread5Walk(t *testing.T) {
 	t.Parallel()
-	seeds := walkSeeds(cold5Seeds)
+	seeds, steps := walkSeeds(cold5Seeds), cold5Steps
+	if testing.Short() { // half the seeds, a third of the steps: a seed's walk is the critical path, and these still land every kind
+		seeds, steps = cold5Seeds/2, cold5Steps/3
+	}
 	runs := make([]*cold5Run, seeds)
 	t.Run("seeds", func(t *testing.T) {
 		for seed := int64(1); seed <= seeds; seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel() // each seed its own Fakes
 				r := newCold5Run(t, seed, nil, true)
-				for i := 0; i < cold5Steps; i++ {
+				for i := 0; i < steps; i++ {
 					r.step()
 				}
 				runs[seed-1] = r
 			})
 		}
 	})
-	cold5Report(t, runs, int(seeds), cold5Steps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
+	cold5Report(t, runs, int(seeds), steps, []string{"two", "hold", "drop", "preempt", "review", "nested3", "report", "report alone", "pack", "narrow"}, "")
 }
 
 // ---- PostgreSQL: the same walk mirrored on a real store ----
