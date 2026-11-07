@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 var insertPrefix = regexp.MustCompile(`^INSERT INTO sprint\.(cards|cursors|epoch|events|judgements|meta|policy|rows|streams) VALUES \(`)
@@ -36,6 +38,9 @@ func ConfineData(dump []byte, expectedHash string) ([]string, error) {
 		order, ok := dataStatement(statement)
 		if !ok {
 			return fmt.Errorf("dump contains a statement outside sprint data: %q", edge.FirstBytes([]byte(statement)))
+		}
+		if err := cardStateMapped(statement); err != nil {
+			return err
 		}
 		rows = append(rows, orderedSQL{order, statement})
 		return nil
@@ -186,27 +191,59 @@ var buildVersion = regexp.MustCompile(`^` + buildVersionPattern + `$`)
 
 func validBuildVersion(version string) bool { return buildVersion.MatchString(version) }
 
-func insertCardKind(s string) (string, bool) {
+// cardLiterals is the first n literals of a sprint.cards INSERT, as
+// written (quoted strings keep their quotes): id, kind, "of", stream, state
+// in the table's column order.
+func cardLiterals(s string, n int) ([]string, bool) {
 	prefix := insertPrefix.FindString(s)
 	body := s[len(prefix):]
-	i := skipSpace(body, 0)
-	end, ok := literalEnd(body, i)
+	var out []string
+	for i := skipSpace(body, 0); len(out) < n; {
+		end, ok := literalEnd(body, i)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, body[i:end])
+		i = skipSpace(body, end)
+		if len(out) < n {
+			if i >= len(body) || body[i] != ',' {
+				return nil, false
+			}
+			i = skipSpace(body, i+1)
+		}
+	}
+	return out, true
+}
+
+func insertCardKind(s string) (string, bool) {
+	lits, ok := cardLiterals(s, 2)
 	if !ok {
 		return "", false
 	}
-	i = skipSpace(body, end)
-	if i >= len(body) || body[i] != ',' {
-		return "", false
-	}
-	i = skipSpace(body, i+1)
-	end, ok = literalEnd(body, i)
-	if !ok {
-		return "", false
-	}
-	kind := body[i:end]
-	switch kind {
+	switch kind := lits[1]; kind {
 	case "'producer'", "'sentinel'", "'work'", "'read'":
 		return strings.Trim(kind, "'"), true
 	}
 	return "", false
+}
+
+// cardStateMapped refuses a card record whose state this build does not
+// map (store.CardStates): an importer that carried a terminal state over
+// from another shape, a v1 landed say, names the record and the one fix
+// here, before the verification cluster's CHECK refuses it unnamed.
+func cardStateMapped(s string) error {
+	if !strings.HasPrefix(s, "INSERT INTO sprint.cards ") {
+		return nil
+	}
+	lits, ok := cardLiterals(s, 5)
+	if !ok {
+		return &OperationError{Problem: "a sprint.cards record has fewer than five values (id, kind, of, stream, state): " + edge.FirstBytes([]byte(s)),
+			Fix: "restore a backup this build wrote (nova-sprint backup), or map the importer's cards to this build's columns", Exit: 1}
+	}
+	state := strings.Trim(lits[4], "'")
+	if slices.Contains(store.CardStates, state) && lits[4] != state {
+		return nil
+	}
+	return &OperationError{Problem: fmt.Sprintf("record sprint.cards %s: state %s is not a state this build maps (%s)", clipN(lits[0], 80), clipN(lits[4], 40), strings.Join(store.CardStates, ", ")),
+		Fix: "map the record's state to one of those in the importer, or drop the record, then restore again", Exit: 1}
 }

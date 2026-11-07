@@ -158,3 +158,23 @@ func TestLoadFriendsError(t *testing.T) {
 	_, err := Load(context.Background(), friendsFail{}, 8)
 	assert.EqualError(t, err, "roster: friends: down")
 }
+
+// TestRoutesFromRoles: a bench serves the routes its route:<name> roles name
+// (sorted, once each); kin and unknown names serve none; ServesRoutes is
+// every route served (none needed is always served).
+func TestRoutesFromRoles(t *testing.T) {
+	t.Parallel()
+	src := Fake{Ms: []Machine{{Name: "b1", Roles: []string{"bench", "route:usb", "route:ipad", "route:ipad", "route:"}, Cores: 2}, {Name: "b2", Roles: []string{"bench"}, Cores: 2}},
+		Fs: []Friend{{Name: "k1", Harness: "h", Width: 1, Tiers: []string{"pro"}, Enabled: true}}}
+	r, err := Load(context.Background(), src, 8)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ipad", "usb"}, r.Routes("b1"))
+	assert.Empty(t, r.Routes("b2"))
+	assert.True(t, r.ServesRoutes("b1", []string{"usb", "ipad"}))
+	assert.False(t, r.ServesRoutes("b2", []string{"ipad"}))
+	assert.False(t, r.ServesRoutes("k1", []string{"ipad"}))
+	assert.True(t, r.ServesRoutes("k1", nil))
+	c := r.Clone()
+	c.Workers["b1"].Routes[0] = "x"
+	assert.Equal(t, "ipad", r.Workers["b1"].Routes[0], "a clone keeps its own routes")
+}

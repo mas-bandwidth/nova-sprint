@@ -31,8 +31,10 @@ connection held for the process's life. Held, it refuses, naming the holder from
 run: run already chooses on studio (pid 4121, since 14:02): stop it there, or nova-sprint
 show run`. Then it hooks in as `sprint`, which nova-bus requires before `sprint` can send
 ("name already hooked" releases the lock and refuses the same way). The hook is only a
-wake-up and a reply: run never parses a message, and anything sent to `sprint` is answered
-once with `replies are verbs: run nova-sprint next --as <you>` (as in the LAYER-4 draft).
+wake-up: run never parses a message body; the sprint's pushes are receipts, so a reply to
+`sprint` is never answered and a message that is not a verb is ignored with one log line,
+and a verb sent to `sprint` is answered once with where to run it (verbs.BusAnswer, directive
+item 45: answering a REPLY with a REPLY made a loop).
 Then one cold `Snapshot`, and the ticks.
 
 **Reports are ordinary ops.** A row's `report` (nova-worker's form), `finish` and `read` run
@@ -688,3 +690,51 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 - Tests: `verbs/land_test.go` (`TestLandByHand`, `TestLandRefusals`,
   `TestJudgeLandAnswers`, `TestStreamAddCreatesTheGroupBranch`),
   `TestReleaseIsNoBlame`, the verb list and the role matrix with `land`.
+## Built: admission (stitch w2A, 2026-11-07; intent rule 34, defect 49)
+
+What can be found at add is found at add, each refusal with one fix. The
+checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
+
+- `stream add` (`verbs/admit_stream.go`): the card branch names against
+  git's ref-name rules; then three reads at once: the base tip, no `sprint`
+  or `sprint/<s>` branch at origin, and with forge github the host's gh
+  identity at write or above (`Engine.Forge`, `cmd/nova-sprint/admit.go`:
+  `gh repo view --json viewerPermission`). The group branch is not named or
+  made here; the call site carries one comment for the landing's check.
+- `add` and its dry run (`verbs/admit_card.go`): after the plan, every
+  producer is admitted. Streams are read at once (base tip, the tree at the
+  tip by `git ls-tree` in the state dir's clone, the card branches by one
+  `git ls-remote`); a card is refused for its lint (tier and routes served,
+  DONE-WHEN parse, retired mechanic, a named bench), then its PATHS, then
+  work already at the base (its branch, HEAD, or PR: `gh pr view`). The brief
+  parse (`verbs/brief.go`, `verbs/brief_lint.go`) refuses the bad forms and
+  the retired keys with the line.
+- `hook`: the snapshot read proves the store credential (none is
+  `CredentialFix`); then every stream's base is read at once from this
+  process, which is what finish and read will need. A worker is asked for no
+  forge token.
+- `up` step 7: `WorkersReady` also checks every bench's binary is this
+  version (at once over the benches); the worker runs its probe (harness
+  lists the policy's model ids, seat holds the provider keys) before its
+  sprint hook, so a hooked row is a probed row, and a failed probe leaves it
+  unhooked.
+- `restore`: the dump confine refuses a card record whose state is not in
+  `store.CardStates`, naming the record; after the load, one `ADMIT` line per
+  waiting or ready producer. The restore stands on a red admission line (a
+  recovery refused for a moved path would leave no store); check repeats it.
+- `check` (`verbs/check_admission.go`): the stream lines use stream add's
+  admission; then the policy line (none active is red; a policy failing the
+  order or rows question is red with `policy check`), the cards line (up to
+  five red cards and a count), and the working line (a working consumer on a
+  row unhooked, down or off the bus is red; a job dead on a present bench is
+  not visible, said on the ok line).
+- The bus hook (`verbs/bus_answer.go`, item 45): a reply is never answered,
+  a non-verb is logged once and ignored, a verb gets one reply naming the
+  command to run.
+- Costs: admission is one ls-remote, one fetch and one ls-tree per stream,
+  and one `gh pr view` per PR line; at a few streams this is a few seconds
+  per add (a guess, not measured). Unit tests use a fake origin, fake forge
+  and fake exec: no network.
+- Owed upstream: nova-config has no routes field; routes ride on machine
+  roles (`route:<name>`) until one exists, and kin serve none. No per-job
+  heartbeat reaches the store.

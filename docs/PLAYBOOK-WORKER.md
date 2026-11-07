@@ -82,9 +82,11 @@ is lost: your cards are in the store, and step 3 names the step each one is at.
 
 ## What arrives on the bus, and what to run
 
-Every message from the sprint comes from the name `sprint`. Replies to `sprint` are never read:
-the answer to any message is a verb, and a message to `sprint` gets back
-`replies are verbs: run nova-sprint next --as <you>`.
+Every message from the sprint comes from the name `sprint`, and each one is a receipt: never
+answer it on the bus. The answer to a message from `sprint` is the verb its `run:` line names,
+or nothing. If your wake text tells you to answer every message by `nova-bus send`, that does
+not apply to `sprint`: a message to `sprint` that is not a verb is ignored, a reply to `sprint`
+is never answered, and a verb sent to `sprint` only gets back where to run it yourself.
 
 1. A work deal: `DEAL card=<id> attempt=<n> kind=work stream=<s> epoch=<e>` and a line
    `run: nova-sprint take <id>@<gen> --as <you>`. Run the `run:` line exactly as printed, then

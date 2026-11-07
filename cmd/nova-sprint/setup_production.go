@@ -679,7 +679,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	r.RunService = run
 	r.DefaultRunHost = host
 	r.Services = verbs.FleetServices{Command: p.command}
-	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 7/8 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine}
+	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 7/8 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine, version: p.checkServiceVersion}
 	if !needDashboard {
 		return r, nil
 	}

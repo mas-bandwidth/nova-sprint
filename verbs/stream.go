@@ -31,7 +31,7 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
 	}
-	if _, err := e.baseTip(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
+	if _, err := e.admitStream(ctx, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}, "add the stream again"); err != nil {
 		return "", err
 	}
 	if err := e.ensureGroup(ctx, store.Stream{Name: name, Repo: repo, Base: base, Mode: mode, Forge: forge}); err != nil {

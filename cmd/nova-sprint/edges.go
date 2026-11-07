@@ -63,6 +63,19 @@ func (o *origin) clone(ctx context.Context, repo string) (string, error) {
 	return dir, o.git.Clone(ctx, repo, dir)
 }
 
+// Contains is whether head contains ancestor, read in the clone of the
+// repository at url (admission: the work is not already at the base).
+func (o *origin) Contains(ctx context.Context, url, ancestor, head string) (bool, error) {
+	dir, err := o.clone(ctx, url)
+	if err == nil {
+		err = o.git.Fetch(ctx, dir)
+	}
+	if err != nil {
+		return false, err
+	}
+	return o.git.IsAncestor(ctx, dir, ancestor, head)
+}
+
 func (o *origin) Tip(ctx context.Context, url, branch string) (string, bool, error) {
 	return o.git.Tip(ctx, url, branch)
 }

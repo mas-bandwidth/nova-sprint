@@ -354,6 +354,20 @@ func (r *Runner) cancelRunning_internal(id string) {
 // refusal means there was none); then `nova-sprint hook --as <row> --role
 // worker`. Nothing acts before it returns, and the caller owns the hook.
 func (r *Runner) Start(ctx context.Context, row string) (WakeHook, error) {
+	hook, err := r.busHook_internal(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.sprintHook_internal(ctx, row); err != nil {
+		hook.Stop()
+		return nil, err
+	}
+	return hook, nil
+}
+
+// busHook_internal is the start's first half: the bus hook, which claims
+// the row's name, then the self-unhook of a dead worker's sprint hook.
+func (r *Runner) busHook_internal(ctx context.Context, row string) (WakeHook, error) {
 	if r.BusHook == nil {
 		return nil, errors.New("worker refused: no bus hook configured: start nova-worker through cmd/nova-worker")
 	}
@@ -365,12 +379,16 @@ func (r *Runner) Start(ctx context.Context, row string) (WakeHook, error) {
 		hook.Stop()
 		return nil, err
 	}
+	return hook, nil
+}
+
+// sprintHook_internal is the start's second half: nova-sprint hook.
+func (r *Runner) sprintHook_internal(ctx context.Context, row string) error {
 	if err := r.Sprint.Hook(ctx, row); err != nil {
-		hook.Stop()
-		return nil, err
+		return err
 	}
 	r.logStep_internal(row, "-", "hook", "ok", 0)
-	return hook, nil
+	return nil
 }
 
 // RunOnce is one pass under the same startup order.
@@ -398,21 +416,24 @@ func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
 	return r.wakeLoop_internal(ctx, row, hook)
 }
 
-// ServeRow is the binary's order: hook in (Start), probe the harness with
-// every model the row would run (ProbeRow, which needs the hook: next
-// --json answers a hooked row), then one pass (once) or the wake loop. A
-// failed probe unhooks the row again, so a bench that cannot run is never
-// left up with no worker behind it.
+// ServeRow is the binary's order: the bus hook and the self-unhook, then
+// the probe of the harness with every model the row would run (ProbeRow:
+// next --json names a row's models on the bus before its sprint hook),
+// then the sprint hook, then one pass (once) or the wake loop. Probing
+// before the sprint hook makes a hooked row a probed one: its harness
+// lists the policy's models and its seat's provider keys reached it, which
+// is what up's step 7 proves by the row being hooked and up (admission,
+// intent rule 34). A failed probe leaves the row unhooked.
 func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) error {
-	hook, err := r.Start(ctx, row)
+	hook, err := r.busHook_internal(ctx, row)
 	if err != nil {
 		return err
 	}
 	defer hook.Stop()
 	if err := r.ProbeRow(ctx, row, harness); err != nil {
-		if uerr := r.Sprint.Unhook(ctx, row); uerr != nil {
-			return fmt.Errorf("%w (and the row could not be unhooked: %w)", err, uerr)
-		}
+		return err
+	}
+	if err := r.sprintHook_internal(ctx, row); err != nil {
 		return err
 	}
 	if once {

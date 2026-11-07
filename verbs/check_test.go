@@ -1,16 +1,30 @@
 package verbs
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // healthy is the world with run's name on the bus (the run line is green).
-func healthy(_ *testing.T, w *world) { w.bus.present["sprint"] = true }
+func healthy(t *testing.T, w *world) {
+	w.bus.present["sprint"] = true
+	activePolicy(t, w)
+}
+
+// activePolicy stores and activates a policy version (the fake answers it).
+func activePolicy(t *testing.T, w *world) {
+	t.Helper()
+	s := w.snap(t)
+	applyTest(t, w.f, store.Op{ID: "policy-up", Epoch: s.Epoch, Actor: "carol", Kind: "policy", At: t0,
+		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default", Body: "script"}, store.SetActivePolicy{Version: 1}}})
+}
 
 // then runs each prep in order.
 func then(preps ...func(*testing.T, *world)) func(*testing.T, *world) {
@@ -41,7 +55,9 @@ func TestCheckAllGreen(t *testing.T) {
 	healthy(t, w)
 	r := w.do("", "check")
 	wantLines := []string{"CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK store at schema", "CHECK bus answering (5 present)",
-		"CHECK stream s: o/r reachable, base main at bbbbbbbbbbbb", "CHECK judgements: none open", "CHECK run on studio (pid 41)",
+		"CHECK stream s: o/r reachable, base main at bbbbbbbbbbbb", "CHECK policy v1 active (answered by v0; 0 ready producers asked)", "CHECK cards: none waiting or ready",
+		"CHECK working: 0 cards, each on a hooked row that is up and on the bus (a job dead on its bench is not visible here: no per-job heartbeat reaches the store)",
+		"CHECK judgements: none open", "CHECK run on studio (pid 41)",
 		"CHECK width: working 0 (2 dealt) of 4 open on 3 rows; 0 ready", "CHECK landings: none waiting", "next: nova-sprint next --as <you>"}
 	if r.Exit != 0 || r.Output != strings.Join(wantLines, "\n")+"\n" {
 		t.Fatalf("exit %d:\n%s", r.Exit, r.Output)
@@ -165,5 +181,57 @@ func TestCheckLandingWaits(t *testing.T) {
 			want: []string{"CHECK RED landing s: 1 merging (p2) waits for the stream's hold to end: nova-sprint unhold s"}},
 		{name: "nothing runs", args: []string{"check"}, exit: 1, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.run = run.ChooserStatus{} }), snap: merging,
 			want: []string{"CHECK RED landing s: 1 merging (p2) waits for run, and nothing runs the sprint"}},
+	})
+}
+
+// failingAnswers is a policy that fails the order question.
+type failingAnswers struct{ fakeAnswers }
+
+func (f failingAnswers) AnswerContext(ctx context.Context, vs policy.Versions, snap store.Snapshot, ro roster.Roster, q policy.Questions) (policy.Answers, []policy.Failure) {
+	a, _ := f.fakeAnswers.AnswerContext(ctx, vs, snap, ro, q)
+	if len(q.Order) == 0 {
+		return a, nil
+	}
+	return a, []policy.Failure{{Version: 1, Label: "v1", Question: "order", Subject: q.Order[0], Line: 3, Msg: "boom"}}
+}
+
+// TestCheckReprovesAdmission: check re-proves admission (intent rule 34)
+// and says what directive 75 found it silent on: no policy active, a policy
+// failing a question, a working card with no live job, a card that would
+// not be admitted today, and a stream whose card branches cannot be made.
+func TestCheckReprovesAdmission(t *testing.T) {
+	ready := func(s *store.Snapshot) {
+		undealtSprint(s)
+		c := s.Cards["p1"]
+		c.Paths = []string{"z/q.go"}
+		s.Cards["p1"] = c
+	}
+	unhookedHolder := func(s *store.Snapshot) {
+		c := s.Cards["p1.w1"]
+		c.State = "working"
+		s.Cards["p1.w1"] = c
+		r := s.Rows["alice"]
+		r.Session, r.Role = "", ""
+		s.Rows["alice"] = r
+	}
+	runCases(t, []tcase{
+		{name: "no policy active", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.bus.present["sprint"] = true },
+			want: []string{"CHECK RED no policy is active: the tick runs on the built-in default: nova-sprint up --as <coordinator> (its step 4 stores and activates the default)"}},
+		{name: "a policy failing a question", args: []string{"check"}, exit: 1, snap: undealtSprint,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.e.Answers = failingAnswers{} }),
+			want: []string{"CHECK RED policy v1 fails 1 question(s); the first: POLICY REFUSED v1 line 3 order(p1): boom", "nova-sprint policy check v1"}},
+		{name: "a ready card not admitted today", args: []string{"check"}, exit: 1, snap: ready, prep: healthy,
+			want: []string{"CHECK RED card p1: PATHS z/q.go: neither it nor its directory z/ is there at o/r's main (bbbbbbbbbbbb)"}},
+		{name: "a working card with no live job", args: []string{"check"}, exit: 1, snap: unhookedHolder, prep: healthy,
+			want: []string{"CHECK RED 1 working cards have no live job: p1.w1 on alice (not hooked)", "nova-sprint release <card>@<gen>"}},
+		{name: "a working card off the bus", args: []string{"check"}, exit: 1, snap: func(s *store.Snapshot) {
+			c := s.Cards["p1.w1"]
+			c.State = "working"
+			s.Cards["p1.w1"] = c
+		}, prep: then(healthy, func(_ *testing.T, w *world) { w.bus.present["alice"] = false }),
+			want: []string{"p1.w1 on alice (not on the bus)"}},
+		{name: "a stream whose card branches cannot be made", args: []string{"check"}, exit: 1,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.origin.tips["o/r sprint/s"] = tip }),
+			want: []string{"CHECK RED stream s: branch sprint/s is at o/r's origin"}},
 	})
 }

@@ -33,6 +33,7 @@ type Engine struct {
 	Policy   *policy.Engine
 	Origin   Origin   // a stream's repository at origin
 	Lander   Lander   // the hand landing and the group branch
+	Forge    Forge    // the host's gh identity, as admission proves it
 	Doctor   Doctor   // nova-fleet, nova-tools and the store's schema
 	Archive  Archive  // backup and restore
 	Services Services // run, worker and dash
@@ -71,6 +72,12 @@ type Answerer interface {
 // address (git.CloneURL of the stream's repo and forge).
 type Origin interface {
 	Tip(ctx context.Context, url, branch string) (sha string, ok bool, err error)
+	Contains(ctx context.Context, url, ancestor, head string) (bool, error)
+	// Tree is every file path at commit sha (git ls-tree -r --name-only).
+	Tree(ctx context.Context, url, sha string) ([]string, error)
+	// Branches is every branch at origin under prefix (a/b/ lists a/b/*),
+	// by name, with its tip: one ls-remote.
+	Branches(ctx context.Context, url, prefix string) (map[string]string, error)
 }
 
 // Doctor is what `check` and `next` look at outside the store.

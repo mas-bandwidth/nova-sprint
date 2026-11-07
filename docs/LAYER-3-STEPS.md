@@ -615,3 +615,14 @@ holding every stream, found no violation (1,016 distinct states,
 exhaustive), because in the land scenario the other card is after-held by
 the judged one, so it was replaced; `make-traces.sh check`: 81 traces, the
 `ok` ones `TRACE OK` and the six `steps-bad-*` refused as they must be.
+
+## Built: routes in the deal (stitch w2A, 2026-11-07)
+
+A producer whose brief carries `NEEDS-ROUTE: <name>` lines (read once, by
+`card.NeedsRoutes`) is a candidate only for rows that serve its tier and
+every route (`Roster.ServesRoutes`); the candidate cache keys on tier and
+routes. With none, the `unserved` judgement's About is the tier plus
+`+<route>` per route, and it clears only when a row serves all of them, so a
+tier-only row no longer clears it each tick. Test:
+`TestTickRoutesDealOnlyToServingRows`. No TLA model names routes; the
+candidate filter narrows the row set the model already chooses from.
