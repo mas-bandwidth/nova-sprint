@@ -167,6 +167,10 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 :root, :root[data-theme="dark"] { --tier-flash: #3b82f6; --tier-pro: #a855f7; --tier-heavy: #f59e0b; --tier-frontier: #ec4899; --tier-other: #4b5563; }
 :root[data-theme="light"] { --tier-flash: #2563eb; --tier-pro: #9333ea; --tier-heavy: #d97706; --tier-frontier: #db2777; --tier-other: #9ca3af; }
 
+/* Sprint-wide stop, shown only while stopped. */
+.stop-banner { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; margin-bottom: 2rem; padding: 1rem 2rem; border: 1px solid var(--critical); border-radius: 1rem; color: var(--text); font-size: 1.5rem; overflow-wrap: anywhere; }
+.stop-banner strong { color: var(--critical); }
+.stop-banner[hidden] { display: none; }
 /* hero */
 /* five tiles at full size: one row of five from 2000 px; three and two below that; two per row (the last full width, centred) below 1100 px */
 .hero { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2rem; margin-bottom: 2rem; }
@@ -466,6 +470,7 @@ footer a:hover { color: var(--text); }
   </div>
 </header>
 
+<div id="stop-banner" class="stop-banner" role="status" hidden><strong>STOPPED</strong><span id="stop-reason"></span></div>
 <section class="hero">
   <div class="tile">
     <div class="label">Landed</div>

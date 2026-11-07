@@ -50,6 +50,9 @@ type envelope struct {
 	All           int                    `json:"all"`
 	At            time.Time              `json:"at"`
 	Epoch         int                    `json:"epoch"`
+	Stopped       bool                   `json:"stopped"`
+	StopReason    string                 `json:"stop_reason,omitempty"`
+	Machine       string                 `json:"machine,omitempty"`
 	Tables        map[string]any         `json:"tables"`
 	Streams       []streamLine           `json:"streams"`
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
@@ -114,7 +117,11 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	machine := ""
+	if s.Stopped {
+		machine = "STOPPED"
+	}
+	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Stopped: s.Stopped, StopReason: s.StopReason, Machine: machine, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 func setStreamStates(streams []streamLine, work map[string]*workRow) {
 	for i := range streams {
@@ -135,7 +142,10 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		if r.State == "up" && r.Held {
 			status = "held"
 		}
-		kind, width, _, _ := ros.Row(n)
+		kind, width, _, found := ros.Row(n)
+		if !found {
+			status = "down"
+		}
 		f := &fleetRow{Status: status, Width: width}
 		if kind == roster.KindKin {
 			friends[n] = f

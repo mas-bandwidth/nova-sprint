@@ -1,15 +1,16 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "3b280e929f0e",
+  "build": "da3a807b9b21",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "3b280e929f0e",
+    "build": "da3a807b9b21",
     "done": false,
     "epoch": 1,
     "landed": 0,
     "ok": true,
     "server_version": "dev",
+    "stopped": false,
     "stream_costs": {
       "alpha": {}
     },
