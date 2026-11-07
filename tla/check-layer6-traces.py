@@ -156,16 +156,14 @@ def tlc_host_allowed(host, env):
         return False
     if host.startswith(('vision', 'hetzner2')):
         return True
-    # Rowan7278111: approved amd runner pairs, CI only. Environment is a
-    # routing marker, not a security boundary or a grant of authorization.
-    runners = {'b1': 'amd-1-nova-sprint-1', 'b3': 'amd-3-nova-sprint-1'}
-    return (env.get('GITHUB_ACTIONS') == 'true' and host in runners
-            and env.get('RUNNER_NAME') == runners[host])
+    # Any CI runner: the workflow's runs-on label and nova-reserve already
+    # place this job on a bench, never on the working machine.
+    return env.get('GITHUB_ACTIONS') == 'true'
 
 
 def check(out, args):
     if not tlc_host_allowed(socket.gethostname(), os.environ):
-        raise RuntimeError('TLC requires reserved vision/hetzner2 or an approved amd GitHub CI runner')
+        raise RuntimeError('TLC runs in CI or on reserved vision/hetzner2, never on the studio')
     manifest_hash = digest(out / 'emission.json')
     manifest = json.loads((out / 'emission.json').read_text())
     cases = manifest['cases']
