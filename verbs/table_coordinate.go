@@ -43,8 +43,9 @@ func coordinateVerbs() []*verb {
 			about: "the difference between two versions"},
 		{name: "cost reconcile", group: "coordinate", role: roleCoordinator, usage: "--as <coordinator>", max: 0, run: runCostReconcile,
 			about: "reads each provider's balance and sets its fall beside the store's priced API records; a gap over 5% and $1 opens one cost-gap judgement",
-			more: []string{"run under nova-secrets exec --only DEEPSEEK_API_KEY so the key is in the environment; the run loop does this hourly",
-				"inception publishes no balance endpoint: it is printed unknown, its spend the store's records alone"}},
+			more: []string{"the providers are the active policy's catalog() \"providers\"; each one's \"balance\" endpoint is read with its \"key\"",
+				"run under nova-secrets exec --only <each provider's key> so the keys are in the environment; the run loop does this hourly",
+				"a provider with no balance endpoint is printed unknown, its spend the store's records alone"}},
 		{name: "policy check", group: "coordinate", role: roleWorker, usage: "<file|version>", min: 1, max: 1, run: runPolicy,
 			about: "every answer a version or file would change, and every refusal"},
 	}

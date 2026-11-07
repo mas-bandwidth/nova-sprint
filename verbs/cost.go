@@ -2,8 +2,10 @@ package verbs
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mas-bandwidth/nova-sprint/cost"
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -13,14 +15,18 @@ import (
 // cost-gap judgement opened on the coordinator's row when the gap is over 5%
 // and over $1. The provider keys come from the environment (run it under
 // nova-secrets exec, as the run loop's unit is); nothing reads a secrets file.
-func runCostReconcile(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
+func runCostReconcile(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	st, ok := e.Store.(cost.Store)
 	if !ok {
 		return "", broken("this store keeps no provider balances", "nova-sprint check")
 	}
 	readers := e.CostReaders
 	if readers == nil {
-		readers = cost.Readers(nil)
+		c, err := policy.ReadCatalog(ctx, e.Store, e.Policy, snap.Policy)
+		if err != nil {
+			return "", RefusalOr(err, broken("cost reconcile: the providers of policy "+policy.Label(snap.Policy)+": "+clip(err.Error()), fmt.Sprintf("nova-sprint policy check %d", snap.Policy)))
+		}
+		readers = cost.Readers(c.Providers, nil)
 	}
 	lines, err := cost.Reconcile(ctx, st, e.Now(), in.actor, readers)
 	if err != nil {

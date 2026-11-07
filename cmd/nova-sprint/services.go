@@ -58,7 +58,11 @@ func (s services) Run(ctx context.Context, listen string) error {
 		Bus: busEdge(), Hook: run.SprintHook{Bin: busBinary(), Env: busEnv, Reply: self}, Policy: s.policy,
 		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(),
 		Reconcile: func(ctx context.Context, now time.Time, snap store.Snapshot) error {
-			lines, err := cost.Reconcile(ctx, s.store, now, coordinatorOf(snap), cost.Readers(nil))
+			providers, err := policy.ReadProviders(ctx, s.store, s.policy)
+			if err != nil {
+				return err
+			}
+			lines, err := cost.Reconcile(ctx, s.store, now, coordinatorOf(snap), cost.Readers(providers, nil))
 			for _, l := range lines {
 				fmt.Fprintln(os.Stderr, l.Text())
 			}

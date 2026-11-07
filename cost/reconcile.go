@@ -16,12 +16,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math/big"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/usage"
 )
@@ -57,31 +60,31 @@ type Reader interface {
 	Read(ctx context.Context) Reading
 }
 
-// DeepSeek reads GET https://api.deepseek.com/user/balance with the key
-// DEEPSEEK_API_KEY from the environment, as the worker and the run loop get
-// it (nova-secrets exec puts it there; nothing here reads a secrets file).
-// Transport and Getenv are seams: a unit test answers with a fake.
-type DeepSeek struct {
-	Transport http.RoundTripper
-	Getenv    func(string) string
+// Balance reads a provider's balance: GET URL with the provider's key,
+// named Key, from the environment, as the worker and the run loop get it
+// (nova-secrets exec puts it there; nothing here reads a secrets file). The
+// answer it reads is {"balance_infos": [{"currency": "USD",
+// "total_balance": "<decimal>"}]}. Transport and Getenv are seams: a unit
+// test answers with a fake.
+type Balance struct {
+	Provider, URL, Key string
+	Transport          http.RoundTripper
+	Getenv             func(string) string
 }
 
-// DeepSeekBalanceURL is the endpoint.
-const DeepSeekBalanceURL = "https://api.deepseek.com/user/balance"
-
 // Read is the balance in USD (balance_infos' USD total_balance).
-func (d DeepSeek) Read(ctx context.Context) Reading {
-	r := Reading{Provider: "deepseek"}
+func (d Balance) Read(ctx context.Context) Reading {
+	r := Reading{Provider: d.Provider}
 	get := d.Getenv
 	if get == nil {
 		get = os.Getenv
 	}
-	key := get("DEEPSEEK_API_KEY")
+	key := get(d.Key)
 	if key == "" || strings.ContainsAny(key, "\r\n") {
-		r.Why = "no DEEPSEEK_API_KEY in the environment: run it under nova-secrets exec --only DEEPSEEK_API_KEY"
+		r.Why = "no " + d.Key + " in the environment: run it under nova-secrets exec --only " + d.Key
 		return r
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, DeepSeekBalanceURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.URL, nil)
 	if err != nil {
 		r.Why = err.Error()
 		return r
@@ -91,14 +94,14 @@ func (d DeepSeek) Read(ctx context.Context) Reading {
 	c := http.Client{Transport: d.Transport, Timeout: 15 * time.Second}
 	resp, err := c.Do(req)
 	if err != nil {
-		r.Why = "GET " + DeepSeekBalanceURL + " failed: " + strings.ReplaceAll(err.Error(), key, "<key>")
+		r.Why = "GET " + d.URL + " failed: " + strings.ReplaceAll(err.Error(), key, "<key>")
 		return r
 	}
 	defer func() { _ = resp.Body.Close() }() // ignored: read-only
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
 	r.Raw = string(body)
 	if err != nil || resp.StatusCode != http.StatusOK {
-		r.Why = fmt.Sprintf("GET %s answered HTTP %d", DeepSeekBalanceURL, resp.StatusCode)
+		r.Why = fmt.Sprintf("GET %s answered HTTP %d", d.URL, resp.StatusCode)
 		return r
 	}
 	var b struct {
@@ -108,7 +111,7 @@ func (d DeepSeek) Read(ctx context.Context) Reading {
 		} `json:"balance_infos"`
 	}
 	if json.Unmarshal(body, &b) != nil {
-		r.Why = "the balance answer is not the JSON DeepSeek documents"
+		r.Why = "the balance answer is not JSON with balance_infos"
 		return r
 	}
 	for _, in := range b.Infos {
@@ -123,20 +126,29 @@ func (d DeepSeek) Read(ctx context.Context) Reading {
 	return r
 }
 
-// Inception is mercury's provider: it publishes no balance or usage
-// endpoint (docs.inceptionlabs.ai/api-reference, read 2026-11-07: chat, FIM,
-// edit, decisions and models; usage only per response), so its reading is
-// unknown and its spend is the store's records alone.
-type Inception struct{}
+// NoBalance is a provider the policy names no balance endpoint for: its
+// reading is unknown and its spend is the store's records alone.
+type NoBalance struct{ Provider string }
 
 // Read is unknown, with why.
-func (Inception) Read(context.Context) Reading {
-	return Reading{Provider: "inception", Why: "inception publishes no balance or usage endpoint (docs.inceptionlabs.ai/api-reference, 2026-11-07): its spend is the store's records alone"}
+func (n NoBalance) Read(context.Context) Reading {
+	return Reading{Provider: n.Provider, Why: "the policy's catalog() names no balance endpoint for " + n.Provider + ": its spend is the store's records alone"}
 }
 
-// Readers are the providers reconciled, with the DeepSeek transport t (nil
-// is the default).
-func Readers(t http.RoundTripper) []Reader { return []Reader{DeepSeek{Transport: t}, Inception{}} }
+// Readers are the providers reconciled: each one the policy declares, in
+// name order, read with transport t (nil is the default).
+func Readers(providers map[string]policy.Provider, t http.RoundTripper) []Reader {
+	out := make([]Reader, 0, len(providers))
+	for _, name := range slices.Sorted(maps.Keys(providers)) {
+		p := providers[name]
+		if p.Balance == "" {
+			out = append(out, NoBalance{Provider: name})
+			continue
+		}
+		out = append(out, Balance{Provider: name, URL: p.Balance, Key: p.Key, Transport: t})
+	}
+	return out
+}
 
 // Store is what a reconciliation reads and writes.
 type Store interface {

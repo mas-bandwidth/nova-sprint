@@ -47,7 +47,8 @@ type Engine struct {
 	ReportContinuation func(context.Context, string, SetupInput) error
 	SetupObserver      func(SetupObservation)
 
-	// CostReaders are the providers cost reconcile reads (nil: cost.Readers).
+	// CostReaders are the providers cost reconcile reads (nil: cost.Readers
+	// of the active policy's providers).
 	CostReaders []cost.Reader
 
 	Now     func() time.Time

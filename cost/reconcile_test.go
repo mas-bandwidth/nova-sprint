@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -54,29 +55,41 @@ func apply(t *testing.T, f *store.Fake, id string, ws ...store.Write) {
 	require.True(t, r.Accepted, r.Reason)
 }
 
-func ds(tr *fakeTransport, key string) DeepSeek {
-	return DeepSeek{Transport: tr, Getenv: func(n string) string {
-		if n == "DEEPSEEK_API_KEY" {
+func ds(tr *fakeTransport, key string) Balance {
+	return Balance{Provider: "acme", URL: "https://api.acme.test/balance", Key: "ACME_API_KEY", Transport: tr, Getenv: func(n string) string {
+		if n == "ACME_API_KEY" {
 			return key
 		}
 		return ""
 	}}
 }
 
-func TestDeepSeekReadsUSDBalance(t *testing.T) {
+func TestBalanceReadsUSDBalance(t *testing.T) {
 	t.Parallel()
 	tr := &fakeTransport{bodies: []string{balance("110.50")}}
 	r := ds(tr, "sk-1").Read(context.Background())
-	assert.Equal(t, Reading{Provider: "deepseek", Known: true, USD: "110.5", Raw: balance("110.50")}, r)
+	assert.Equal(t, Reading{Provider: "acme", Known: true, USD: "110.5", Raw: balance("110.50")}, r)
 	assert.Equal(t, []string{"Bearer sk-1"}, tr.auth)
 	r = ds(tr, "").Read(context.Background())
 	assert.False(t, r.Known)
-	assert.Contains(t, r.Why, "nova-secrets exec --only DEEPSEEK_API_KEY")
+	assert.Contains(t, r.Why, "nova-secrets exec --only ACME_API_KEY")
 	r = ds(&fakeTransport{bodies: []string{`{"error":"x"}`}, status: 401}, "sk-1").Read(context.Background())
-	assert.Equal(t, "GET https://api.deepseek.com/user/balance answered HTTP 401", r.Why)
+	assert.Equal(t, "GET https://api.acme.test/balance answered HTTP 401", r.Why)
 	r = ds(&fakeTransport{bodies: []string{`{"balance_infos":[{"currency":"CNY","total_balance":"5"}]}`}}, "sk-1").Read(context.Background())
 	assert.Equal(t, "the balance answer has no USD total_balance", r.Why)
-	assert.False(t, Inception{}.Read(context.Background()).Known)
+	assert.False(t, NoBalance{Provider: "zeta"}.Read(context.Background()).Known)
+}
+
+// Readers is one reader per provider the policy declares, in name order:
+// a balance endpoint is read with the provider's key, none is unknown.
+func TestReadersFollowThePolicysProviders(t *testing.T) {
+	t.Parallel()
+	got := Readers(map[string]policy.Provider{
+		"zeta": {URL: "https://zeta.test", Key: "ZETA_KEY", Probe: "https://zeta.test/p"},
+		"acme": {URL: "https://api.acme.test", Key: "ACME_API_KEY", Probe: "https://api.acme.test/p", Balance: "https://api.acme.test/balance"},
+	}, nil)
+	assert.Equal(t, []Reader{Balance{Provider: "acme", URL: "https://api.acme.test/balance", Key: "ACME_API_KEY"}, NoBalance{Provider: "zeta"}}, got)
+	assert.Empty(t, Readers(nil, nil), "no provider declared: none reconciled")
 }
 
 // The balance's fall between two reads is set beside the store's priced API
@@ -88,17 +101,17 @@ func TestReconcileWindowAndOneJudgement(t *testing.T) {
 	ctx := context.Background()
 	f := seeded(t)
 	// before the first read: not in any window
-	apply(t, f, "r0", store.SetCardCost{Card: "p.r2", Cost: 9_000_000, Priced: true}, store.SetCardUsage{Card: "p.r2", Usage: "input=1 model=deepseek/deepseek-flash billing=api charged=-"})
+	apply(t, f, "r0", store.SetCardCost{Card: "p.r2", Cost: 9_000_000, Priced: true}, store.SetCardUsage{Card: "p.r2", Usage: "input=1 model=acme/a-flash billing=api charged=-"})
 	tr := &fakeTransport{bodies: []string{balance("100.00"), balance("97.00"), balance("90.00"), balance("95.00")}}
-	readers := []Reader{ds(tr, "sk"), Inception{}}
+	readers := []Reader{ds(tr, "sk"), NoBalance{Provider: "zeta"}}
 	lines, err := Reconcile(ctx, f, t0, "rowan", readers)
 	require.NoError(t, err)
 	require.Len(t, lines, 2)
-	assert.Equal(t, "COST deepseek balance=$100: the first read: the next one measures the spend between them", lines[0].Text())
-	assert.Contains(t, lines[1].Text(), "COST inception unknown: inception publishes no balance or usage endpoint")
+	assert.Equal(t, "COST acme balance=$100: the first read: the next one measures the spend between them", lines[0].Text())
+	assert.Contains(t, lines[1].Text(), "COST zeta unknown: the policy's catalog() names no balance endpoint for zeta")
 
-	// in the window: a priced API run of deepseek ($2.50), a subscription run, an inception run
-	apply(t, f, "r1", store.SetCardCost{Card: "p.w1", Cost: 2_500_000, Priced: true}, store.SetCardUsage{Card: "p.w1", Usage: "input=1000 model=deepseek/deepseek-flash billing=api charged=-"})
+	// in the window: a priced API run of acme ($2.50) and a subscription run
+	apply(t, f, "r1", store.SetCardCost{Card: "p.w1", Cost: 2_500_000, Priced: true}, store.SetCardUsage{Card: "p.w1", Usage: "input=1000 model=acme/a-flash billing=api charged=-"})
 	apply(t, f, "r2", store.SetCardCost{Card: "p.r1", Cost: 0, Priced: true}, store.SetCardUsage{Card: "p.r1", Usage: "input=5 billing=subscription charged=1"})
 	lines, err = Reconcile(ctx, f, t0.Add(time.Hour), "rowan", readers[:1])
 	require.NoError(t, err)
@@ -106,7 +119,7 @@ func TestReconcileWindowAndOneJudgement(t *testing.T) {
 	assert.Equal(t, int64(3_000_000), l.Spent)
 	assert.Equal(t, int64(2_500_000), l.Recorded)
 	assert.Equal(t, "", l.Judgement, "a $0.50 gap is under the $1 floor")
-	assert.Equal(t, "COST deepseek 2026-11-07T12:00:00Z..2026-11-07T13:00:00Z provider=$3 recorded=$2.5 gap=$0.5", l.Text())
+	assert.Equal(t, "COST acme 2026-11-07T12:00:00Z..2026-11-07T13:00:00Z provider=$3 recorded=$2.5 gap=$0.5", l.Text())
 
 	// $7 spent, $0 recorded: the judgement, then never a second
 	lines, err = Reconcile(ctx, f, t0.Add(2*time.Hour), "rowan", readers[:1])
@@ -133,7 +146,7 @@ func TestReconcileWindowAndOneJudgement(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, n)
-	last, ok, err := f.LastBalance(ctx, "deepseek")
+	last, ok, err := f.LastBalance(ctx, "acme")
 	require.NoError(t, err)
 	assert.True(t, ok)
 	assert.Equal(t, "80", last.USD)
