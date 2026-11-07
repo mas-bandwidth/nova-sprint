@@ -110,18 +110,34 @@ What each judgement kind asks of you, and where to look before you choose:
   deadline. Choose `land` (you looked, it is right: merged by hand at once), `fix` (back to its
   producer with your reason as the finding), or `retry` (a flake, a fixed trigger: a new
   landing). Section 5.
+- `after`: a merging card lands after another that is under a `land` judgement, so it waits
+  behind that one (the message names it). Answer the other card's `land` judgement and this one
+  lands after it; choose `land` to merge this one by hand now, out of its after order, or `wait`.
+- `read-faults`: every read of a finished head faulted (a fault is not a read: each one is asked
+  again) up to policy's `faults`, and no read is dealt until you answer. Choose `read` (ask a read
+  again; the count starts over), `yes` (you read the work at its head and it is sound: it goes to
+  merging, and your reason says what you read), or `fix` (it goes back to its producer with your
+  reason as the finding). It has no deadline.
 - `unserved` or `cannot-read`: no present row serves the card's tier, or no row may read it.
-  Bring a row up that serves the tier (section 7); never lower the card's tier.
-- `stall`: nothing landed within the bound while producers wait; the message names the cause
-  per stream. `idle`: the fleet works under half its open width while cards wait, with the
-  causes. `land-rate`: a stream or model lands under target on the first try (section 6).
+  Bring a row up that serves the tier (section 7); never lower the card's tier. `wait` says you
+  have seen it (`cannot-read` also takes `drop`).
+- `stall`: nothing landed within the bound while producers wait in a stream; one per stream per
+  stall, with no deadline, closed by the stream's next landing, and never raised while a card of
+  the stream has an open `land` judgement (that judgement is the cause). `wait` once you have
+  acted, or `hold` the stream. `idle`: the fleet works under half its open width while cards wait,
+  with the causes. `land-rate`: a stream or model lands under target on the first try (section 6).
+- Choosing `wait` on any judgement that offers it says you have seen it: it closes, and the same
+  cause is not raised again until it has cleared once. No judgement offers `retry` alone.
 - `orphan`: a working card's holder is gone from the bus past the silence; choose `release` or
   `wait` after you have tried to reach the row (section 7).
 - `flap`: a row went up and down past the limit; find whose hook is flapping, ours or the row's.
 - `brief`: the same finding came back twice; the brief is wrong (section 4).
-- `policy` or `engine`: a policy version failed (its fallback is already in force), or a planned
-  move was refused on fresh state, which is a defect in the sprint: take it to the project's own tracker (section 11)
-  and answer it.
+- `policy` or `engine`: a policy version failed (its fallback is already in force; `wait`), or a
+  planned move was refused on fresh state, which is a defect in the sprint: take it to the
+  project's own tracker (section 11) and answer it. An `engine` judgement has no deadline and the
+  tick plans nothing for its card while it is open; `retry` plans the card afresh from the state
+  next tick (never the refused move again), `hold` holds it (a card, stream or row), `drop`
+  cancels the card.
 - `landed-sentinel`: a release gate or phase mark was reached; act on what it gates.
 
 ## 3. Ongoing custody: prove the work is moving
@@ -259,7 +275,7 @@ which no reader has read.
 
 A pending CI and a base that moved are asked again by the run on their own. A merging card with
 no land request and no land judgement is reported to you as an `engine` judgement: answer it
-`retry`, and take it to the project's own tracker.
+`retry` (its landing is planned afresh) or `drop`, and take it to the project's own tracker.
 
 ## 6. Reads and fix triage
 

@@ -97,7 +97,7 @@ end of file` (ruled 2026-11-07).
 | `order(card)` | id, stream, score, priority, tier, attempt, bounces, prior_head | a tuple of up to 4 ints or strings; the engine sorts by (rung, answer, id) | a tuple of other types or longer than 4 | fix attempts first, then score |
 | `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), attempt, bounces, priority (no prose: round 5), and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width (the roster's, from nova-config: round 5), working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; every candidate listed: the wanted rank and up, nearest first, then the ranks between the tier and the wanted one, highest first; those with room first, all of them when none has room (ruled 2026-11-06, so the joint check passes whenever any row could take the card); within a rank, by name (round 5) |
 | `reads(card)` | as `rows`' card | the count n, 1 <= n <= 5 | n out of range | 1 |
-| `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
+| `verdict(card, reads)` | the producer; its done reads of this head and review that said ok or fix (row, rank, result, finding); a faulted read is not a read and is not passed (directive 58) | `"yes"` or `"fix"` | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), anything else (`"retry"` included) | any fix read means fix; else yes |
 | `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
 | `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses; `fleet_width_cap` 1..256 (the most consumers a worker machine works, its cores at most this; the roster's cap, drift row 26), 8, a guess |
 | `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000, optional `"ci_wait"`: seconds 1..86400 | f >= b, ci_wait outside 1..86400 | backed up (rung 2) at 2 merging, flowing again at 1; ci_wait 600 (a guess) |
@@ -538,7 +538,9 @@ are the coordinator's, 2026-11-06):
    row. Candidates reach `rows` by rank, lowest first, then by name (the
    default needs no sort; 140 ms cold, measured, against 214 ms with two
    sorts under load). The joint check stays as the guard.
-3. `verdict` gains `retry`, in the question table above.
+3. `verdict` gains `retry`, in the question table above (withdrawn 2026-11-07,
+   directive 58: a faulted read is not a read, so the verdict is never asked
+   on faults alone; see the Built section).
 4. A judgement's question is made storable: invalid UTF-8 and NUL replaced
    by U+FFFD, at most 4,096 bytes, cut at a rune with " [cut at 4096 bytes]".
 5. and 6. One thread per version per tick, with the per-call step budget
@@ -965,7 +967,8 @@ What the stitch changed in layer 5 and why:
   deadline of its own. Every key is required and each has a refusal tested.
 - **The roster judgement's command** named `nova-sprint answer`, a verb that
   does not exist; it now names the fix (`nova-config friend add <row>`) and
-  the verb that closes it (`nova-sprint judge <id> retry --reason <why>`).
+  the verb that closes it (`nova-sprint judge <id> retry --reason <why>`; since
+  directive 60 the roster judgement's choice is `wait`).
 - **Owed at layer 6, done there:** main calls `ServeMain` on `EvalArg` and
   builds `NewEngine(RealClock{})`.
 

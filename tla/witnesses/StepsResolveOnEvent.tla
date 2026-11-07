@@ -749,7 +749,7 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
                (/\ V.ps[p].st = "review" /\ Free(p, clr) /\ NoLive(V, p)
                 /\ ~\E c \in CurReads(V, p) : V.cs[c].st = "done" /\ V.cs[c].res \in {"ok", "fix"}
                 /\ FaultsSince(V, fasnap, p) >= FaultCap)
-                 => FaultsJ(p) \in jsn
+                 => FaultsJ(p) \in jsnap \cup jsn   \* as the tick saw them: open in its view, or opened
         [] n = "DealSpread" ->
              a.rows \notin Rows =>
                \A i \in 1..Len(dl.gs) :
@@ -1134,7 +1134,9 @@ EdgeAfterAccepted ==
 (* producer held behind another on a file has an overlap judgement);    *)
 (* FaultIsNoRead (directive 58: no verdict, yes or fix, on a review whose *)
 (* only done reads faulted); FaultsShown (a review whose faults reached  *)
-(* the cap, with no live read, has its read-faults judgement); DealSpread *)
+(* the cap, with no live read, has its read-faults judgement, open in the *)
+(* tick's view or opened by it: the coordinator may answer it between the *)
+(* fold and the tick); DealSpread                                         *)
 (* (directive 62: with no single row from policy, a card is dealt to no  *)
 (* row while another eligible row of the same rank has fewer live cards, *)
 (* this tick's deals counted).                                            *)
