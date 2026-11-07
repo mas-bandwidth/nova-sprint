@@ -1,0 +1,26 @@
+[
+  {
+    "name": "run-0",
+    "exit": 0,
+    "matched": true,
+    "raw_sha256": "241a015c49c385ca18ff29e0aa3c1e8a270a986244b63d9ed28bafe835ff9f0d"
+  },
+  {
+    "name": "run-1",
+    "exit": 0,
+    "matched": true,
+    "raw_sha256": "61b5720d64f4b37ab472e85c7eabebd3b756cfecd3a00a1fefd7851d06078f3d"
+  },
+  {
+    "name": "run-2",
+    "exit": 0,
+    "matched": true,
+    "raw_sha256": "482141fae8ba80b139d6dd8c72d03f6549ac2d99ed7ec6d7f6d5cd02ea98d7b1"
+  },
+  {
+    "name": "stop",
+    "exit": 0,
+    "matched": true,
+    "raw_sha256": "6155f0d30beb8c515f60f39e850f2ab2d48144369d482ef9f72e4ea49818c8cd"
+  }
+]
