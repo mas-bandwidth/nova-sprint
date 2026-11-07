@@ -44,7 +44,6 @@ type fleetRow struct {
 	OK       int
 	Failed   int
 	OKPct    float64
-	Reason   string // why the roster refused or held the row ("" otherwise)
 	Load     string // the bench's last heartbeat as the board shows it ("18.6%"), "" when it has none
 	Slots    string // its nova-reserve slots in use and in all ("3 / 8"), "" when unknown
 	Tokens   int64  // every token its runs reported (package usage), kin and benches alike
@@ -78,9 +77,6 @@ type envelope struct {
 	Cost          *costSummary           `json:"cost"`
 	OK            bool                   `json:"ok"`
 	Error         string                 `json:"error,omitempty"`
-	RosterNotes   []string               `json:"roster_notes,omitempty"`  // the page's roster banner: the read's failure, each refused row
-	Waits         []waitLine             `json:"waits,omitempty"`         // the Why waiting panel: per stream, why its producers wait
-	WaitsSummary  string                 `json:"waits_summary,omitempty"` // over every stream: the chains, the overlaps, the command
 }
 
 // mapSnapshot is the page's view of s. A row's kind and width are the
@@ -141,17 +137,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	waits, summary := waitLines(s.Cards)
-	return envelope{Waits: waits, WaitsSummary: summary, Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}, RosterNotes: rosterNotes(ros)}
-}
-
-// rosterNotes is one banner line per row the roster refused.
-func rosterNotes(ros roster.Roster) []string {
-	var notes []string
-	for _, r := range ros.Refused {
-		notes = append(notes, "nova-config row refused: "+edge.RedactN(r.Reason, edge.FailureMax))
-	}
-	return notes
+	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 
 // coordinatorOf is the name of the row whose role is coordinator; the first
@@ -182,50 +168,27 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 // mapRows fills the Fleet and Friends tables. Every roster worker is a Fleet
 // row and every roster kin a Friends row, at its roster width, down until the
 // store has the row (the human, 2026-11-07: "we definitely need all that stuff
-// back"); a row the roster refused is shown in its table as refused with the
-// reason, by the kind it was read as; a store row the roster does not name is
-// shown as down (Stella, v2-l6), by its hook role: the coordinator is a person
-// among the friends, never a machine, so an empty roster (a failed read) does
-// not put it in Fleet. The tables are maps, so the order is by name.
+// back"); a store row the roster does not name is shown as down (Stella,
+// v2-l6). The tables are maps, so the order is by name.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, w := range ros.Workers {
-		fleet[n] = &fleetRow{Status: "down", Width: w.Width, Reason: w.Held}
+		fleet[n] = &fleetRow{Status: "down", Width: w.Width}
 	}
 	for n, k := range ros.Kin {
 		friends[n] = &fleetRow{Status: "down", Width: k.Width}
 	}
-	for _, x := range ros.Refused {
-		if x.Name != "" {
-			tableOf(x.Kind, fleet, friends)[x.Name] = &fleetRow{Status: "refused", Reason: x.Reason}
-		}
-	}
 	for n, r := range rows {
+		status := r.State
+		if r.State == "up" && r.Held {
+			status = "held"
+		}
 		kind, width, _, found := ros.Row(n)
-		if found {
-			status := r.State
-			if r.State == "up" && r.Held {
-				status = "held"
-			}
-			f := &fleetRow{Status: status, Width: width}
-			if held := ros.Workers[n].Held; held != "" {
-				// A bench the roster holds (no cores: width 0) shows held
-				// with the roster's reason.
-				f.Reason = held
-				if status == "up" {
-					f.Status = "held"
-				}
-			}
-			f.Load, f.Slots = loadCells(r)
-			tableOf(kind, fleet, friends)[n] = f
-			continue
+		if !found { // not in nova-config: down, whatever the store says (Stella, v2-l6)
+			status = "down"
 		}
-		if _, refused := ros.RefusedNamed(n); refused {
-			continue
-		}
-		if r.Role == "coordinator" {
-			kind = roster.KindKin
-		}
-		tableOf(kind, fleet, friends)[n] = &fleetRow{Status: "down"}
+		f := &fleetRow{Status: status, Width: width}
+		f.Load, f.Slots = loadCells(r)
+		tableOf(kind, fleet, friends)[n] = f
 	}
 }
 

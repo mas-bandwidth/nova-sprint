@@ -171,9 +171,6 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .stop-banner { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; margin-bottom: 2rem; padding: 1rem 2rem; border: 1px solid var(--critical); border-radius: 1rem; color: var(--text); font-size: 1.5rem; overflow-wrap: anywhere; }
 .stop-banner strong { color: var(--critical); }
 .stop-banner[hidden] { display: none; }
-/* nova-config rows the roster could not load, or a roster that could not be read: shown, never only in JSON. */
-.roster-banner { display: flex; flex-direction: column; gap: .25rem; margin-bottom: 2rem; padding: 1rem 2rem; border: 1px solid var(--warning); border-radius: 1rem; color: var(--text); font-size: 1.125rem; overflow-wrap: anywhere; }
-.roster-banner[hidden] { display: none; }
 /* hero */
 /* five tiles at full size: one row of five from 2000 px; three and two below that; two per row (the last full width, centred) below 1100 px */
 .hero { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2rem; margin-bottom: 2rem; }
@@ -214,7 +211,8 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .fb { color: var(--text-2); }
 .waiting { background: var(--s-waiting); } .ready { background: var(--s-ready); }
 .working { background: var(--s-working); } .review { background: var(--s-review); }
-:root { --s-blocked: #704342; }
+:root { --s-fail: #000; --s-blocked: #704342; }
+.fail { background: var(--s-fail); }
 .blocked { background: var(--s-blocked); }
 .fix { background: var(--s-fix); }
 .p-fix { background: var(--p-fix); }
@@ -259,7 +257,6 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .row.total { border-top: 1px solid var(--border-strong); border-bottom: 0; font-weight: 600; }
 .name { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zero { color: var(--text-3); }
-.row .alarm { color: var(--critical); font-weight: 800; } /* ready past a tick (app.js READY_ALARM_MS): a ready card with a serving row is a stall */
 /* pills: a dot carries the color, the text stays text */
 .pill { display: inline-flex; align-items: center; gap: 0.75rem; height: 3rem; padding: 0 1rem; border-radius: 1.5rem; font-size: 1.5rem; font-weight: 550; background: var(--neutral-tint); color: var(--text); justify-self: start; white-space: nowrap; }
 .pill .dot { width: 0.75rem; height: 0.75rem; }
@@ -268,6 +265,8 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .pill.critical { background: var(--critical-tint); } .pill.critical .dot { background: var(--critical); }
 .pill.neutral .dot { background: var(--text-3); }
 .pill.done .dot { background: var(--s-landed); }
+.pill.failed { background: var(--s-fail); color: var(--text); }
+.pill.failed .dot { background: var(--s-fail); }
 .pill.active .dot { background: var(--s-working); }
 .pill.dim { color: var(--text-3); } .pill.dim .dot { background: var(--text-3); }
 
@@ -347,10 +346,6 @@ footer a:hover { color: var(--text); }
   grid-template-columns: var(--name-w) var(--status-w) minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(10rem, 2.5fr); }
 .providers .row > :nth-child(2) { justify-self: end; }
 .providers .note { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.waits { margin-bottom: 3rem; }
-.waits .row { grid-template-columns: minmax(8rem, 16rem) minmax(0, 1fr); }
-.waits .why { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.waits .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .providers.compact .row { --pad: 1.5rem; --gap: 1.5rem; --S: 3.5rem; grid-template-columns: var(--name-w) var(--status-w) minmax(7rem, 1fr); }
 .providers.compact .row > :nth-child(n+4) { display: none; }
 .providers.compact .pill > span:last-child { display: none; }
@@ -365,7 +360,7 @@ footer a:hover { color: var(--text); }
    between the counts. 40 px gutters. Rows grouped by status: no rule between rows, a 1 px
    rule (the panel's border colour) between groups. */
 .streams .row { --pad: 2rem; --gap: clamp(1rem, calc(3vw - 2.75rem), 2.5rem); --S: 9.75rem; column-gap: var(--gap); padding: 0 var(--pad);
-  grid-template-columns: var(--name-w) var(--status-w) repeat(7, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }
+  grid-template-columns: var(--name-w) var(--status-w) repeat(7, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Glenn 2026-11-07: fail column gone */
 .streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }
 .streams.no-blocked .row > :nth-child(3) { display: none; }
 .streams .row > :nth-child(10) { grid-column: span 2; justify-self: end; }
@@ -397,7 +392,7 @@ footer a:hover { color: var(--text); }
 .panel.compact .panel-head, .panel.compact .empty { padding-left: 1.5rem; padding-right: 1.5rem; }
 .streams.compact .row { grid-template-columns: var(--name-w) var(--status-w) minmax(10.25rem, 1fr); }
 .streams.compact .row > :nth-child(10) { grid-column: auto; }
-.streams.compact .row > :nth-child(n+3):nth-child(-n+9), .streams.compact .row > :nth-child(11) { display: none; }
+.streams.compact .row > :nth-child(n+3):nth-child(-n+9), .streams.compact .row > :nth-child(11), .streams.compact .row > :nth-child(12) { display: none; }
 .streams.compact .pill > span:last-child { display: none; }
 .fleet.compact .row, .friends.compact .row { grid-template-columns: var(--name-w) var(--status-w) minmax(7rem, 1fr) minmax(5.375rem, 1fr); }
 .fleet.compact .row > :nth-child(5), .friends.compact .row > :nth-child(5) { padding-left: 0; }
@@ -476,7 +471,6 @@ footer a:hover { color: var(--text); }
 </header>
 
 <div id="stop-banner" class="stop-banner" role="status" hidden><strong>STOPPED</strong><span id="stop-reason"></span></div>
-<div id="roster-banner" class="roster-banner" role="status" hidden></div>
 <section class="hero">
   <div class="tile">
     <div class="label">Landed</div>
@@ -523,14 +517,6 @@ footer a:hover { color: var(--text); }
     <div class="legend" id="legend"></div>
   </div>
   <div class="cells thick" id="overall"></div>
-</section>
-
-<!-- Why waiting (the human, 2026-11-07: "keep everybody working at width"): one line per stream whose producers
-     wait, grouped by the card whose landing frees them and by the file they are held behind, as check says it;
-     the head carries the summary over every stream and the command that moves the most. Hidden when nothing waits. -->
-<section class="panel waits" id="waits-panel" hidden>
-  <div class="panel-head"><h2>Why waiting</h2><span class="muted" id="waits-sub"></span></div>
-  <div class="scroll"><div class="rows" id="waits"></div></div>
 </section>
 
 <section class="panel streams">

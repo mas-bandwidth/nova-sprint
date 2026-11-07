@@ -7,7 +7,7 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"];
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"]; // Glenn 2026-11-07: no fail state on the board
 // Columns of the streams table, in flow order.
 var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
@@ -106,7 +106,7 @@ function el(tag, cls, text) {
 // (setLiveHTML does not use these helpers).
 var flashCount = 0;
 ["all", "all2", "pct", "eta", "eta-at", "cost", "cost-per", "inflight", "inflight-sub", "tput",
- "streams-sub", "fleet-head", "friends-sub", "readers-sub", "waits-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
+ "streams-sub", "fleet-head", "friends-sub", "readers-sub"].forEach(function (id) { var e = document.getElementById(id); if (e) quiet(e); });
 function valEl(e) {
   if (!e._fv) {
     var v = document.createElement("span"); v.className = "fv";
@@ -150,17 +150,6 @@ function setClass(e, c) {
 }
 function setTitle(e, t) { if (e.title !== t) e.title = t; }
 function numCell(cls) { return el("div", cls === "frac" ? "frac" : "num " + (cls || "")); }
-// A row's ready cards are an alarm when they have sat ready past one tick
-// (directive 65.5; "we work in parallel"): a card dealt to a serving row is taken
-// at once. `since` holds when each row first showed ready > 0 without a break;
-// the age is in ms on the page's monotonic clock. A tick is 1 s and the page
-// polls at 1 Hz, so two seconds is "past one tick" (a guess, not measured).
-var READY_ALARM_MS = 2000;
-function readyAge(since, name, ready, now) {
-  if (!(ready > 0)) { delete since[name]; return 0; }
-  if (since[name] == null) since[name] = now;
-  return now - since[name];
-}
 function setNum(e, v, extra) { setText(e, v); setClass(e, "num " + (extra || "") + (String(v) === "0" ? " zero" : "")); }
 
 // Keyed rows between a fixed header and an optional total row; nodes are
@@ -267,7 +256,7 @@ function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill 
 function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
 // One vocabulary across the tables (SPEC.md, the owner 8:04 AM: "change 'asleep' to 'down' so we have
 // consistency across all tables"): a store that still says "asleep" is shown as "down", in red.
-var STATUS_TONE = { up: "good", held: "warning", down: "critical", refused: "critical" };
+var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
 // the status word alone (up, held, down): the server may carry a reason after it ("held (why)"), which is the coordinator's view, never the pill's (the owner 2026-10-04 10:40 PM)
 function shownStatus(st) { var w = String(st || "").trim().split(/[\s(]/)[0]; return w === "asleep" ? "down" : w; }
 // A bud shows as its person: "rowan-next" is "rowan (next)" when "rowan" is a friend too
@@ -330,7 +319,7 @@ function renderStreams(d) {
   // Rows are grouped by status (landed, working, stopped, held), by name within a group,
   // with a thin rule between groups; each row also carries its status pill. Rows are keyed by stream, so a reorder
   // only moves nodes and flashes nothing.
-  var RANK = { landed: 0, working: 1, stopped: 2, held: 3, waiting: 4 };
+  var RANK = { landed: 0, working: 1, stopped: 2, held: 3, waiting: 4, fail: 5 };
   var statusOf = Object.create(null);
   streamOrder(d).forEach(function (k) {
     var c = {}, total = 0; FLOW.forEach(function (st) { c[st] = int(work[k][st]); total += c[st]; });
@@ -383,8 +372,8 @@ function renderStreams(d) {
     r.node.classList.toggle("group-start", prevRank !== null && rank(k) !== prevRank);
     prevRank = rank(k);
     setText(r.nameT, k);
-    var tone = { landed: "done", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
-    setPill(r.pill, status, tone, status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
+    var tone = { landed: "done", fail: "failed", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
+    setPill(r.pill, status, tone, status === "fail" ? "fail · stream failed" : status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
     // an archived stream shown is marked: the total row leaves it out
     var tags = arch[k] ? ["archived"] : []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
     setText(r.tag, tags.join(" · "));
@@ -441,7 +430,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function shownWorking(m) { var w = int(m.working); return clamp ? Math.min(w, int(m.width)) : w; }
   var names = Object.keys(table || {});
   // rows by status (up, held, down), then by name
-  var rank = { up: 0, held: 1, down: 2, refused: 3 };
+  var rank = { up: 0, held: 1, down: 2 };
   function rk(n) { var r = rank[shownStatus(table[n].status)]; return r == null ? 3 : r; }
   names.sort(function (a, b) { return rk(a) - rk(b) || a.localeCompare(b); });
   if (!box._head) {
@@ -453,9 +442,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     box._total._c.push(quiet(numCell()));
     box._total._c.forEach(function (c) { box._total.appendChild(c); });
   }
-  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, refused: 0, upWidth: 0, upWorking: 0, fix: 0, late: 0, tokens: 0n };
-  var since = box._readySince || (box._readySince = {}), now = performance.now();
-  Object.keys(since).forEach(function (n) { if (!(n in table)) delete since[n]; });
+  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, upWidth: 0, upWorking: 0, fix: 0, tokens: 0n };
   scale = scale || tableScale(table);
   // the track column is exactly the widest track, so the figure sits right after it
   var tw = TRACK_SPAN.toFixed(3) + "rem";
@@ -493,21 +480,18 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     if (st in t) t[st]++;
     if (shownStatus(m.status) === "up") { t.upWidth += width; t.upWorking += working; }
     setText(r.name, budLabel(k, table));
-    setPill(r.pill, st || "-", STATUS_TONE[st] || "neutral", m.reason ? st + " · " + m.reason : "");
+    setPill(r.pill, st || "-", STATUS_TONE[st] || "neutral");
     setTrack(r.track, working, width, scale, m);
     t.fix += int(m.fix_working != null ? m.fix_working : m.fix);
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
-    var late = readyAge(since, k, int(m.ready), now) >= READY_ALARM_MS;
-    if (late) t.late++;
-    setNum(r.ready, int(m.ready), late ? "alarm" : ""); setNum(r.done, done);
+    setNum(r.ready, int(m.ready)); setNum(r.done, done);
     setOk(r.ok, pct(okv), done);
     // the tokens its runs reported, kin and benches alike (the column load once held; v2 serves no load)
     var tn = bigOf(m.tokens_n); t.tokens += tn;
     if (r.load) { setText(r.load, m.tokens != null ? m.tokens : "-"); setTitle(r.load, tn ? tn.toString() + " tokens" : ""); setClass(r.load, "num" + (tn ? "" : " zero")); }
   }, box._total);
   var c = box._total._c;
-  setNum(c[2], t.ready, t.late ? "alarm" : "");
-  box._head.children[2].classList.toggle("alarm", t.late > 0);
+  setNum(c[2], t.ready);
   setText(c[3], ""); setClass(c[3], "num zero"); // no fix count here (the owner 2026-10-10: "Remove \"1 fix\"")
   // working as "x / y": the sum of working over the sum of width (SPEC.md, the owner 8:10 PM)
   setHTML(c[4], frac(t.working, t.width, digits, Math.max(digits, totalDigits)));
@@ -538,7 +522,7 @@ function compactTokens(n) {
 
 function renderFleet(d) {
   var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d), false, sharedDigits(d));
-  setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + (r.t.refused ? " · " + r.t.refused + " refused" : "") + sideWord(d.fleet_work, null));
+  setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
 }
@@ -547,7 +531,7 @@ function renderFriends(d) {
   var box = $("friends"), table = d.tables.friends;
   if (!table || typeof table !== "object") table = {};
   var r = fleetLike(box, table, "friend", sharedScale(d), true, sharedDigits(d));
-  setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + (r.t.refused ? " · " + r.t.refused + " refused" : "") + sideWord(d.friends_work, d.friends_tiers));
+  setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.friends_work, d.friends_tiers));
   setSideOff(box.closest("section"), d.friends_work);
 }
 // A side (fleet, friends) can be switched off or limited to some tiers (set --fleet on|off,
@@ -610,29 +594,6 @@ function renderProviders(d) {
     .map(function (x) { return counts[x] + " " + x; }).join(" · "));
 }
 
-// Why waiting (the human, 2026-11-07: "keep everybody working at width"): one row per stream whose
-// producers wait, as check says it (waits[].why), and the summary over every stream in the head.
-// Hidden when nothing waits; a build that serves no waits hides it too.
-function renderWaits(d) {
-  var panel = $("waits-panel"), box = $("waits"); if (!panel || !box) return;
-  var lines = Array.isArray(d.waits) ? d.waits : [];
-  panel.hidden = lines.length === 0;
-  if (!lines.length) return;
-  if (!box._head) box._head = headRow([["stream"], ["why waiting"]]);
-  var byName = Object.create(null); lines.forEach(function (l) { byName[String(l.stream)] = String(l.why || ""); });
-  syncRows(box, box._head, Object.keys(byName).sort(), function () {
-    var r = { node: el("div", "row") };
-    r.name = quiet(el("div", "name")); r.why = quiet(el("div", "why"));
-    r.node.appendChild(r.name); r.node.appendChild(r.why);
-    return r;
-  }, function (r, k) {
-    setText(r.name, k); setTitle(r.name, k);
-    setText(r.why, byName[k]); setTitle(r.why, byName[k]);
-  });
-  var sub = $("waits-sub"), sum = String(d.waits_summary || "");
-  setText(sub, sum); setTitle(sub, sum);
-}
-
 function renderReaders(d) {
   var box = $("readers"), table = d.tables.readers || {}, names = Object.keys(table).sort();
   var F = ["asked", "reading", "ok", "broken"];
@@ -674,13 +635,6 @@ function renderHero(d, s, ft) {
   var stopBanner = $("stop-banner");
   stopBanner.hidden = !d.stopped;
   $("stop-reason").textContent = d.stopped ? String(d.stop_reason || "") : "";
-  // the roster's own failures, under the title beside a stop: a read that failed, a row it refused
-  var rosterBanner = $("roster-banner"), notes = Array.isArray(d.roster_notes) ? d.roster_notes : [];
-  if (rosterBanner) {
-    rosterBanner.hidden = notes.length === 0;
-    setCount(rosterBanner, notes.length, function () { return el("div"); });
-    notes.forEach(function (n, i) { rosterBanner.children[i].textContent = String(n); });
-  }
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
   setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)
@@ -955,7 +909,7 @@ function digitsOf(n) { return String(Math.max(0, n)).length; }
 function makePill() { var p = el("span", "pill neutral"); p.appendChild(el("span", "dot")); p._t = quiet(el("span")); p.appendChild(p._t); return p; }
 function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill " + tone); setTitle(p, title || text); }
 function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
-var STATUS_TONE = { up: "good", held: "warning", down: "critical", refused: "critical" };
+var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
 
 // ---------- sections ----------
 function streamOrder(d) {
@@ -981,7 +935,6 @@ function render(d) {
   var ft = renderFleet(d);
   renderFriends(d);
   renderProviders(d);
-  renderWaits(d);
   if (SHOW_ALL) renderReaders(d);
   renderHero(d, s, ft);
   fitTables();
