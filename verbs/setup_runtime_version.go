@@ -1,6 +1,7 @@
 package verbs
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // VersionAdoption checks that the nova-sprint on PATH is the release up was
@@ -27,7 +30,9 @@ func (v VersionAdoption) command(ctx context.Context, name string, args ...strin
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = safeProcessEnv(os.Environ())
-	return cmd.Output()
+	var out bytes.Buffer
+	err := runTool(cmd, &out)
+	return out.Bytes(), err
 }
 func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error) {
 	if !validRelease(version) || !filepath.IsAbs(v.Binary) {
@@ -38,8 +43,11 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 		resolve = resolvedSprintPath
 	}
 	binary, err := resolve()
-	if err != nil || !filepath.IsAbs(binary) {
-		return false, fmt.Errorf("installed version unavailable")
+	if err != nil {
+		return false, cause("installed version unavailable", err)
+	}
+	if !filepath.IsAbs(binary) {
+		return false, fmt.Errorf("installed version unavailable: %q is not an absolute path", binary)
 	}
 	v.Binary = binary
 	out, err := v.command(ctx, binary, "version")
@@ -48,7 +56,7 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) != 1 || !validInstalledBuild(fields[0]) {
-		return false, fmt.Errorf("installed version unknown")
+		return false, fmt.Errorf("installed version unknown: %s", edge.ParseRefused("not one build version word", 0, out))
 	}
 	if fields[0] != version {
 		return false, nil
@@ -75,14 +83,17 @@ func resolvedSprintPath() (string, error) {
 }
 
 func (v VersionAdoption) secretCommand(ctx context.Context, args ...string) error {
-	if v.Secrets.Store == "" || v.Secrets.KeyFile == "" || v.Secrets.Seat == "" || !slices.Contains(v.Keys, sprintPasswordName) {
-		return fmt.Errorf("version check credentials unavailable")
+	if v.Secrets.Store == "" || v.Secrets.KeyFile == "" || v.Secrets.Seat == "" {
+		return fmt.Errorf("version check credentials unavailable: the secret store, key file or seat is not configured")
+	}
+	if !slices.Contains(v.Keys, sprintPasswordName) {
+		return fmt.Errorf("version check credentials unavailable: %s is not among the keys", sprintPasswordName)
 	}
 	keys := append([]string(nil), v.Keys...)
 	slices.Sort(keys)
 	for i, key := range keys {
 		if !fleetKey.MatchString(key) || (i > 0 && keys[i-1] == key) {
-			return fmt.Errorf("version check credentials unavailable")
+			return fmt.Errorf("version check credentials unavailable: key name %q is invalid or repeated", key)
 		}
 	}
 	cmd := []string{"exec", "--only", strings.Join(keys, ","), "--store", v.Secrets.Store, "--key", v.Secrets.KeyFile, "--as", v.Secrets.Seat, "--", v.Binary}
@@ -98,7 +109,7 @@ func (v VersionAdoption) secretCommand(ctx context.Context, args ...string) erro
 			process.Env = append(process.Env, name+"="+value)
 		}
 	}
-	return process.Run()
+	return runTool(process, nil)
 }
 
 func validInstalledBuild(v string) bool { return validBuildVersion(v) }

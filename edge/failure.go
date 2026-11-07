@@ -180,6 +180,10 @@ func (e *CommandError) Error() string {
 }
 func (e *CommandError) Unwrap() error { return e.Err }
 
+// ExitCode is the child's exit code (os/exec's ExitError shape, so a caller
+// that asks errors.As for an ExitCode finds it here).
+func (e *CommandError) ExitCode() int { return e.Exit }
+
 // Failed is cmd's failure as a CommandError, or nil when it ran and exited 0.
 func Failed(cmd Cmd, res Result, err error) error {
 	if err == nil && res.OK() {

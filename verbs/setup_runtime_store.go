@@ -200,6 +200,7 @@ func sprintDSN(dsn string) (string, error) {
 	u.User = url.User("nova_sprint")
 	return u.String(), nil
 }
+
 // verifiedFirstBackup is true when a backup in dir verifies against the
 // store; false with why none did (the last file's reason), for the caller
 // that must say it.
