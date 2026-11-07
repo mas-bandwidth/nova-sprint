@@ -1,15 +1,16 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "4b0618b9d882",
+  "build": "1bc7da8687ff",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "4b0618b9d882",
+    "build": "1bc7da8687ff",
     "coordinator": "",
     "cost": {
       "by_tier": {},
       "landed_cards": 0,
       "per_card": "-",
+      "priced_cards": 0,
       "priced_runs": 0,
       "total": "-",
       "unpriced_runs": 0
@@ -17,8 +18,9 @@
     "done": false,
     "epoch": 1,
     "eta": "-",
+    "eta_basis": "last hour",
     "eta_landings": 0,
-    "eta_window_minutes": 0,
+    "eta_window_minutes": 60,
     "landed": 0,
     "left": 1,
     "machine": "machine: RUNNING",
