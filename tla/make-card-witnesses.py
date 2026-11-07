@@ -44,17 +44,15 @@ SCENARIOS = {
     # life, sized for the one witness whose fault needs a third attempt
     # (CardWaiveRedWithoutRed); never a passing run.
     "redw":  {"Scenario": "life", "K": 5, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 1, "MaxEnv": 0},
-    # life with Merge: ops of up to three moves, at small bounds.
-    "merge": {"Scenario": "life", "K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1,
-              "MaxOp": 3},
+    # life with Merge: ops of up to three moves (MaxOp, read off the
+    # scenario in CardMachine.tla), at small bounds.
+    "merge": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
     # pre with Merge: a preempt Withdraw and a blocker Start in one op.
-    "mergepre": {"Scenario": "pre", "K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1,
-                 "MaxOp": 2},
+    "mergepre": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
     # deps with Merge: a need failed and its dependant moved InThisOp as two
     # moves of one op (round 7). No environment move: Add and Red are
     # checked in deps.
-    "mergedeps": {"Scenario": "deps", "K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 0,
-                  "MaxOp": 2},
+    "mergedeps": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 0},
 }
 
 # The passing runs: cfg name -> scenario.
@@ -319,7 +317,6 @@ def constants(scenario):
     out = "CONSTANT Scenario = \"%s\"\n" % s.get("Scenario", scenario)
     for k in ["K", "MaxHead", "MaxAttempt", "MaxBounce", "MaxEnv"]:
         out += "CONSTANT %s = %d\n" % (k, s[k])
-    out += "CONSTANT MaxOp = %d\n" % s.get("MaxOp", 1)
     return out + "SPECIFICATION Spec\n"
 
 

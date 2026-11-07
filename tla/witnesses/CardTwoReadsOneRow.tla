@@ -78,34 +78,44 @@
 EXTENDS Naturals, FiniteSets, Sequences, TLC
 
 CONSTANTS
-  Scenario,    \* "life", "deps" or "pre"
+  Scenario,    \* "life", "deps", "pre", "reads", "merge", "mergepre" or "mergedeps"
   K,           \* consumer slots per producer
   MaxHead,     \* heads are 1..MaxHead
   MaxAttempt,  \* model bound: Start is not enabled at this attempt
   MaxBounce,   \* model bound: Broken and ReadFix are not enabled at this count
-  MaxEnv,      \* model bound: environment and coordinator moves per behaviour
-  MaxOp        \* moves one Merge composes into one op (1: no merges)
+  MaxEnv       \* model bound: environment and coordinator moves per behaviour
 
-Prods     == IF Scenario \in {"life", "reads"} THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
+\* The merge scenarios are life, pre and deps with ops of several moves.
+\* MaxOp is read off the scenario, not a constant, so a cfg that names
+\* none (the trace's: card/trace_test.go) gets ops of one move.
+World == CASE Scenario = "merge"     -> "life"
+           [] Scenario = "mergepre"  -> "pre"
+           [] Scenario = "mergedeps" -> "deps"
+           [] OTHER                  -> Scenario
+MaxOp == CASE Scenario = "merge"                     -> 3   \* moves one Merge composes into one op
+           [] Scenario \in {"mergepre", "mergedeps"} -> 2
+           [] OTHER                                  -> 1   \* no merges
+
+Prods     == IF World \in {"life", "reads"} THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
 \* In deps a second sentinel, a, is absent until Add puts it; so is
 \* "p1.w1", an id with a dot that Add refuses (round 7, ruling 1): it is the
 \* name of p1's first work consumer.
-Added     == IF Scenario = "deps" THEN {"a", "p1.w1"} ELSE {}
+Added     == IF World = "deps" THEN {"a", "p1.w1"} ELSE {}
 Dotted    == {"p1.w1"}   \* the ids above that contain "."
-Sentinels == (IF Scenario \in {"pre", "reads"} THEN {} ELSE {"s"}) \cup Added
+Sentinels == (IF World \in {"pre", "reads"} THEN {} ELSE {"s"}) \cup Added
 P         == Prods \cup Sentinels
 \* "reads" has a third row, so AskReads can cut reads on two rows that are
 \* not the author.
-Rows      == IF Scenario = "reads" THEN {"r1", "r2", "r3"} ELSE {"r1", "r2"}
+Rows      == IF World = "reads" THEN {"r1", "r2", "r3"} ELSE {"r1", "r2"}
 RowIdx    == [r \in Rows |-> CASE r = "r1" -> 1 [] r = "r2" -> 2 [] OTHER -> 3]
 CIds      == Prods \X (1..K)
 ConsOf(p) == IF p \in Prods THEN {<<p, i>> : i \in 1..K} ELSE {}
 
-Needs0 == CASE Scenario = "life" -> [p \in P |-> IF p = "s" THEN {"p1"} ELSE {}]
-            [] Scenario = "deps" ->
+Needs0 == CASE World = "life" -> [p \in P |-> IF p = "s" THEN {"p1"} ELSE {}]
+            [] World = "deps" ->
                  [p \in P |-> CASE p = "p2" -> {"p1"} [] p = "s" -> {"p2"} [] OTHER -> {}]
             [] OTHER -> [p \in P |-> {}]
-After0 == IF Scenario = "pre"
+After0 == IF World = "pre"
           THEN [p \in P |-> IF p = "p2" THEN {"p1"} ELSE {}]
           ELSE [p \in P |-> {}]
 
@@ -772,8 +782,8 @@ CardMove ==
 \* The environment and coordinator moves, on the MaxEnv budget.
 EnvMove ==
   \/ \E p \in P :
-       \/ Scenario # "pre" /\ Edit(p)
-       \/ Scenario # "pre" /\ \E s \in 0..1 : Rescore(p, s)
+       \/ World # "pre" /\ Edit(p)
+       \/ World # "pre" /\ \E s \in 0..1 : Rescore(p, s)
        \/ \E l \in Prios : SetPriority(p, l)
        \/ \E h \in Heads : Red(p, h)   \* a red CI result: an outside event
        \/ \E ns, as \in SUBSET {q \in P \ {p} : Exists(q)} : Add(p, ns, as)
