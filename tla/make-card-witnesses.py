@@ -43,7 +43,7 @@ SCENARIOS = {
     "reads": {"K": 3, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
     # life, sized for the one witness whose fault needs a third attempt
     # (CardWaiveRedWithoutRed); never a passing run.
-    "redw":  {"Scenario": "life", "K": 5, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 1, "MaxEnv": 0},
+    "redw":  {"Scenario": "life", "K": 6, "MaxHead": 2, "MaxAttempt": 3, "MaxBounce": 2, "MaxEnv": 0},
     # life with Merge: ops of up to three moves (MaxOp, read off the
     # scenario in CardMachine.tla), at small bounds.
     "merge": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
@@ -67,7 +67,7 @@ REACH = {
     "NeverBlocked": ("life", "a producer is blocked"),
     "NeverSentinelReached": ("life", "the sentinel lands by Reached"),
     "NeverFaultRedealt": ("life", "a faulted work consumer's producer is started again"),
-    "NeverYesAfterRed": ("life", "a yes after a Red, on a new read"),
+    "NeverRedToFix": ("life", "a red sends a merging producer to fix with the finding"),
     "NeverNeedFailed": ("deps", "NeedFailed takes a dependant"),
     "NeverRelinked": ("deps", "a failed need is relinked"),
     "NeverAdded": ("deps", "Add puts a sentinel with a need and an after"),
@@ -97,9 +97,9 @@ WITNESSES = [
        "  /\\ TRUE   \\* FAULT: was r # ps[p].author\n", 1)]),
     ("CardRedAdvances", "RedNeverAdvances", "life",
      "A red CI result moves merging to landed.",
-     [("PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"review\", !.review = @ + 1,\n"
-       "                                      !.red = TRUE])",
-       "PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"landed\"])   \\* FAULT: was review", 1)]),
+     [("PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = Back, !.review = @ + 1,\n"
+       "                                      !.red = TRUE, !.finding = \"fix\"])",
+       "PStep(\"Red\", p, NoC, [ps[p] EXCEPT !.st = \"landed\"])   \\* FAULT: was Back", 1)]),
     ("CardNeedFailedIgnored", "NeedFailedTakesDependants", "deps",
      "NeedFailed reads the dependant's state where it means the need's, so\n"
      "it is never enabled for a live dependant whose need failed.",
@@ -198,12 +198,12 @@ WITNESSES = [
        "                                        ", 1)]),
     ("CardWaiveRedWithoutRead", "WaiveRedNeedsPriorRead", "life",
      "WaiveRed does not require a done ok read of the previous review at\n"
-     "the same head: a producer in review goes to merging on no read.",
+     "the same head: a producer a Red sent to fix goes to merging on no read.",
      [("  /\\ PrevYes(p)\n  /\\ PStep(\"WaiveRed\"",
        "  /\\ TRUE   \\* FAULT: was PrevYes(p)\n  /\\ PStep(\"WaiveRed\"", 1)]),
     ("CardWaiveRedWithoutRed", "WaiveRedNeedsRed", "redw",
      "WaiveRed does not require the Red to be recorded: a producer back in\n"
-     "review by a Finished at an already-read head goes to merging.",
+     "ready by a second ReadFix at an already-read head goes to merging.",
      [("  /\\ ps[p].red   \\* the code: \"no red on review N\"\n",
        "  /\\ TRUE   \\* FAULT: was ps[p].red\n", 1)]),
     ("CardMergeCutUnseen", "BlockNoLive", "merge",

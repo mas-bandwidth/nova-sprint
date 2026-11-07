@@ -50,7 +50,7 @@ func TestPreemptWithdrawNeedsWorking(t *testing.T) {
 }
 
 func TestWaiveRedOnReviewZero(t *testing.T) {
-	p := pr(Review)
+	p := pr(Ready)
 	p.Review = 0
 	_, r := Move(p, nil, rows(), Stream{Name: "s1"}, nil, WaiveRed{Reason: "x"})
 	refusal{r, "producer p1 has no review yet"}.check(t)

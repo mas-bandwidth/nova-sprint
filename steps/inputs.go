@@ -29,7 +29,7 @@ type InboxItem struct {
 	Kind string // report, take, land, stop
 
 	Row, Session, Consumer string // a report or take: who, from which session, of what
-	Result, Head, Reason   string // a report
+	Result, Head, Reason   string // a report; land red: the failing checks and their URLs
 	Cost                   int64
 	Priced                 bool
 

@@ -190,6 +190,8 @@ func TestBreakSweep(t *testing.T) {
 			b.readOf("p1", "r2", "ok")
 			b.ok(b.P("p1", ReadYes{}))
 			b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
+			// the red sent p1 to fix: a new attempt, a new read, merging again
+			b.ok(b.P("p1", Finished{Consumer: b.run("p1", "r1", "ok", hD)}))
 			b.readOf("p1", "r3", "ok")
 			b.ok(b.P("p1", ReadYes{}))
 			b.review("p2", "r1", hB)

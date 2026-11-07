@@ -53,7 +53,8 @@ func (t *tick) request(id string) (EdgeRequest, bool) {
 }
 
 // landGroup plans Landed for each head that landed and Red for the blamed
-// one, for producers still merging at those heads and unclaimed.
+// one, for producers still merging at those heads and unclaimed. Red sends
+// the producer to fix with the CI finding (intent rule 30).
 func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	var moves []move
 	about := ""
@@ -66,7 +67,7 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 		case slices.Contains(it.Landed, c.Head):
 			moves = append(moves, t.producerMove(p, card.Landed{Head: c.Head}))
 		case it.Blamed != "" && it.Blamed == c.Head:
-			moves = append(moves, t.producerMove(p, card.Red{Head: c.Head, Reason: "CI red at " + c.Head + " on " + req.Base}))
+			moves = append(moves, t.producerMove(p, card.Red{Head: c.Head, Reason: redFinding(c.Head, req.Base, it.Reason)}))
 		default:
 			continue
 		}
@@ -81,6 +82,17 @@ func (t *tick) landGroup(it InboxItem, req EdgeRequest) {
 	if g := t.group("land", about, moves...); g != nil {
 		g.key.Item = it.ID
 	}
+}
+
+// redFinding is a red landing's finding, the fix attempt's brief addition
+// (intent rule 30): the head, the base, and the failing checks with their
+// URLs as the edge read them.
+func redFinding(head, base, ci string) string {
+	f := "CI red at " + head + " on " + base
+	if ci != "" {
+		f += ": " + ci
+	}
+	return f
 }
 
 // baseRed opens one judgement per base meeting (LANDING step 8): the third

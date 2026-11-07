@@ -65,7 +65,7 @@ REACH = {
     "StepsNeverCannotRead": ("deal", "a review no row may read opens cannot-read"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
-    "StepsNeverRed": ("land", "a red result sends a producer back to review"),
+    "StepsNeverRed": ("land", "a red result sends a producer to fix"),
     "StepsNeverAfterHeld": ("land", "a landing waits on a queued after target"),
     "StepsNeverCarried": ("burst", "the budget carries inbox items to the next tick"),
 }

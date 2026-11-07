@@ -94,16 +94,19 @@ func TestBreakHeldRed(t *testing.T) {
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
 		b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
-		b.no(b.P("p1", ReadYes{}), "review 2 that said ok")
+		b.is("p1", Ready) // a red goes to fix (intent rule 30), with the finding
+		assert.Equal(t, "ci", b.c("p1").Finding)
+		b.no(b.P("p1", ReadYes{}), "ReadYes needs review")
 		b.ok(b.P("p1", WaiveRed{Reason: "flaky"}))
 		b.is("p1", Merging)
 		b.ok(b.P("p1", Red{Head: hA, Reason: "ci again"}))
 		assert.Equal(t, 3, b.c("p1").Review)
-		b.no(b.P("p1", WaiveRed{Reason: "flaky"}), "review 2 at head")
+		b.no(b.P("p1", WaiveRed{Reason: "flaky"}), "review 2 at head") // red stays true, and no read of review 2
+		c := b.run("p1", "r1", "ok", hB)                               // the fix: Start clears the red
+		b.ok(b.P("p1", Finished{Consumer: c}))
 		b.readOf("p1", "r3", "ok")
-		b.no(b.P("p1", WaiveRed{Reason: "flaky"}), "review 2 at head") // red stays true, and still no read of review 2
 		b.ok(b.P("p1", ReadYes{}))
-		b.ok(b.P("p1", Landed{Head: hA}))
+		b.ok(b.P("p1", Landed{Head: hB}))
 	})
 	t.Run("red then block, unblock, restart: Start clears it", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
@@ -114,25 +117,27 @@ func TestBreakHeldRed(t *testing.T) {
 		assert.True(t, b.c("p1").Red)
 		b.ok(b.P("p1", Block{Reason: "stuck"}))
 		assert.True(t, b.c("p1").Red)
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting") // blocked
 		b.ok(b.P("p1", Unblock{Reason: "go"}))
 		b.ok(b.P("p1", Resolve{}))
 		c := b.run("p1", "r1", "ok", hB)
 		assert.False(t, b.c("p1").Red) // Start cleared it
 		b.ok(b.P("p1", Finished{Consumer: c}))
-		b.no(b.P("p1", WaiveRed{Reason: "x"}), "no red on review")
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting") // review
 	})
-	t.Run("red then a fix read: ReadFix keeps it, Start clears it", func(t *testing.T) {
+	t.Run("red to fix: the fix attempt carries the CI finding, Start clears the red", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.review("p1", "r1", hA)
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
-		b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
-		b.readOf("p1", "r3", "fix")
-		b.ok(b.P("p1", ReadFix{Finding: "the red is the code"}))
+		b.ok(b.P("p1", Red{Head: hA, Reason: "CI red: unit (linux) https://ci/1"}))
 		assert.True(t, b.c("p1").Red)
-		b.no(b.P("p1", WaiveRed{Reason: "x"}), "review") // ready: not in review
-		b.start("p1", "r1")
+		assert.Equal(t, 0, b.c("p1").Bounces) // a red spends no bounce
+		w := b.start("p1", "r1")
 		assert.False(t, b.c("p1").Red)
+		assert.Equal(t, "CI red: unit (linux) https://ci/1", b.c(w).Finding)
+		assert.Equal(t, hA, b.c(w).PriorHead)
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting")
 	})
 	t.Run("red and waive in one op write the state twice", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
@@ -454,7 +459,7 @@ func TestBreakHeldReviewCount(t *testing.T) {
 		b.ok(b.P("p1", Finished{Consumer: c}))
 		assert.Equal(t, 2, b.c("p1").Review)
 		b.no(b.P("p1", ReadYes{}), "no read of review 2 that said ok")
-		b.no(b.P("p1", WaiveRed{Reason: "x"}), "no red on review 2")
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting")
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
 	})
@@ -477,9 +482,18 @@ func TestBreakHeldReviewCount(t *testing.T) {
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
 		b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
-		b.no(b.P("p1", ReadYes{}), "review 2 that said ok")
+		c := b.run("p1", "r1", "ok", hB)
+		b.ok(b.P("p1", Finished{Consumer: c}))
+		assert.Equal(t, 3, b.c("p1").Review) // the red and the fix's Finished each raised it
+		b.no(b.P("p1", ReadYes{}), "review 3 that said ok")
 		b.ok(b.P("p1", AskRead{Row: "r2"})) // r2 again: the old read is done, not live
-		assert.Equal(t, 2, b.c("p1.r2.1").Review)
+		at := map[int]int{}
+		for _, c := range b.snap().Cards {
+			if c.Kind == "read" && c.Of == "p1" && c.Holder == "r2" {
+				at[c.Review]++
+			}
+		}
+		assert.Equal(t, map[int]int{1: 1, 3: 1}, at)
 	})
 	t.Run("the review column cannot overflow", func(t *testing.T) {
 		p := pr(Working)

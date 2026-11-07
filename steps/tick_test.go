@@ -94,8 +94,9 @@ func TestTickFixPath(t *testing.T) {
 	s.requireState("p1", "merging")
 }
 
-// TestTickRedAndRetry: a red result sends the producer back to review; a new
-// read, yes, and a second land request with an id of its own.
+// TestTickRedAndRetry: a red result sends the producer to fix with the CI
+// finding (intent rule 30); the fix attempt carries it, then a new read,
+// yes, and a second land request with an id of its own.
 func TestTickRedAndRetry(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")
@@ -110,17 +111,29 @@ func TestTickRedAndRetry(t *testing.T) {
 	s.report("p1.r1.1", "ok", sha(1), "fine")
 	s.run(2)
 	first := s.request("land", "s1")
-	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "red", Blamed: sha(1)})
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "red", Blamed: sha(1), Reason: "unit (linux) https://ci/1"})
 	s.tick()
 	require.Empty(t, s.rejected)
-	s.requireState("p1", "review")
+	s.requireState("p1", "ready")
 	assert.True(t, s.card("p1").Red)
 	assert.Equal(t, 2, s.card("p1").Review)
-	s.settle()
+	finding := "CI red at " + sha(1) + " on " + first.Base + ": unit (linux) https://ci/1"
+	assert.Equal(t, finding, s.card("p1").Finding)
+	s.run(2)
+	s.requireState("p1.w2", "ready")
+	assert.Equal(t, finding, s.card("p1.w2").Finding, "the fix attempt carries the CI finding")
+	s.take("p1.w2")
+	s.report("p1.w2", "ok", sha(2), "fixed")
 	s.tick()
-	s.requireState("p1.r2.1", "ready")
-	s.take("p1.r2.1")
-	s.report("p1.r2.1", "ok", sha(1), "fine again")
+	read := ""
+	for id, c := range s.snap().Cards {
+		if c.Kind == "read" && c.Of == "p1" && c.Review == 3 {
+			read = id
+		}
+	}
+	require.NotEmpty(t, read, "a read of the fix's review")
+	s.take(read)
+	s.report(read, "ok", sha(2), "fine again")
 	s.run(2)
 	second := s.request("land", "s1")
 	assert.NotEqual(t, first.ID, second.ID, "the second landing of one head has its own id")

@@ -357,7 +357,10 @@ func (b *bk) transition(was, c store.Card, prev, cur store.Snapshot, bad func(st
 	// A single move still has to end in review to raise the counter.
 	rose := c.Review == was.Review+1
 	enteredReview := was.State != Review && c.State == Review
-	if c.Review != was.Review && !(enteredReview && rose) && !(multi && rose) {
+	// A Red sends merging to fix (ready, or waiting when held) and raises
+	// the review on the way (intent rule 30).
+	redFix := was.State == Merging && (c.State == Ready || c.State == Waiting) && rose
+	if c.Review != was.Review && !(enteredReview && rose) && !(multi && rose) && !redFix {
 		if enteredReview {
 			bad("%s entered review at review %d -> %d", id, was.Review, c.Review)
 		} else {
@@ -367,7 +370,7 @@ func (b *bk) transition(was, c store.Card, prev, cur store.Snapshot, bad func(st
 	if was.Red && !c.Red && !(c.Attempt > was.Attempt || enteredReview || (multi && rose)) {
 		bad("%s red cleared other than by Start or Finished (%s -> %s)", id, was.State, c.State)
 	}
-	if !was.Red && c.Red && !(enteredReview && was.State == Merging) && !(multi && rose && was.State == Merging) {
+	if !was.Red && c.Red && !redFix && !(multi && rose && was.State == Merging) {
 		bad("%s red set other than by Red (%s -> %s)", id, was.State, c.State)
 	}
 	if was.State != LandedState && c.State == LandedState {
@@ -376,7 +379,7 @@ func (b *bk) transition(was, c store.Card, prev, cur store.Snapshot, bad func(st
 			bad("%s landed %d times", id, b.landed[id])
 		}
 	}
-	if was.State == Review && c.State == Merging {
+	if (was.State == Review || was.State == Ready || was.State == Waiting) && c.State == Merging {
 		okAt := func(r int) bool {
 			for _, x := range cur.Cards {
 				if x.Of == id && x.Kind == "read" && x.Review == r && x.Head == c.Head && x.State == Done && x.Result == "ok" {
