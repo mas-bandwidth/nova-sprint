@@ -12,8 +12,8 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-var insertPrefix = regexp.MustCompile(`^INSERT INTO sprint\.(cards|cursors|epoch|events|judgements|meta|policy|rows|streams) VALUES \(`)
-var sequenceValue = regexp.MustCompile(`^SELECT pg_catalog\.setval\('sprint\.policy_version_seq', [0-9]+, (true|false)\);$`)
+var insertPrefix = regexp.MustCompile(`^INSERT INTO sprint\.(balances|cards|cursors|epoch|events|judgements|meta|policy|rows|streams) VALUES \(`)
+var sequenceValue = regexp.MustCompile(`^SELECT pg_catalog\.setval\('sprint\.(policy_version_seq|balances_id_seq)', [0-9]+, (true|false)\);$`)
 var backupHeader = regexp.MustCompile(`^-- nova-sprint-backup schema=([0-9a-f]{64}) version=(` + buildVersionPattern + `)$`)
 
 type orderedSQL struct {
@@ -76,7 +76,7 @@ func dataStatement(s string) (int, bool) {
 	if len(prefix) != 2 || !validInsert(s) {
 		return 0, false
 	}
-	order := map[string]int{"meta": 10, "epoch": 11, "streams": 20, "rows": 21, "cards": 30, "judgements": 40, "events": 50, "cursors": 60, "policy": 70}[prefix[1]]
+	order := map[string]int{"meta": 10, "epoch": 11, "streams": 20, "rows": 21, "cards": 30, "judgements": 40, "events": 50, "cursors": 60, "policy": 70, "balances": 80}[prefix[1]]
 	if prefix[1] == "cards" {
 		kind, ok := insertCardKind(s)
 		if !ok {
@@ -148,6 +148,11 @@ func literalEnd(s string, i int) (int, bool) {
 	digits := i
 	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 		i++
+	}
+	if i > digits && i+1 < len(s) && s[i] == '.' && s[i+1] >= '0' && s[i+1] <= '9' {
+		// a numeric's fraction (sprint.balances.balance_usd, round 25)
+		for i++; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+		}
 	}
 	if i > digits {
 		return i, true

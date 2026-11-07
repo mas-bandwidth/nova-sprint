@@ -91,3 +91,22 @@ func TestConfineDataRefusesAnUnmappedCardState(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestConfineDataCarriesRound25Balances: a backup of a round 25 store holds
+// sprint.balances and its id sequence; both are sprint data and pass, after
+// everything else, while another sequence is still refused (the e2e's
+// backup step refused setval('sprint.balances_id_seq') before this).
+func TestConfineDataCarriesRound25Balances(t *testing.T) {
+	hash := strings.Repeat("a", 64)
+	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
+	balance := "INSERT INTO sprint.balances VALUES (1, 'deepseek', '2026-11-07 12:00:00+00', 5, 12.5, '');\n"
+	seq := "SELECT pg_catalog.setval('sprint.balances_id_seq', 1, true);\n"
+	event := "INSERT INTO sprint.events VALUES ('x', 1);\n"
+	statements, err := ConfineData([]byte(header+balance+seq+event), hash)
+	if err != nil || len(statements) != 3 || !strings.Contains(statements[0], "sprint.events") || !strings.Contains(statements[1], "sprint.balances") {
+		t.Fatal(statements, err)
+	}
+	if _, err := ConfineData([]byte(header+"SELECT pg_catalog.setval('sprint.other_seq', 1, true);\n"), hash); err == nil {
+		t.Fatal("accepted another sequence")
+	}
+}
