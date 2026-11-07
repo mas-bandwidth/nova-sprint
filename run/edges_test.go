@@ -248,6 +248,12 @@ func (g *fakeGroupGit) LsRemote(_ context.Context, _, ref string) (string, bool,
 	if ref == git.StreamRef("s1") {
 		return "", false, nil
 	}
+	switch ref { // the card branches' tips are the heads the request names
+	case "refs/heads/sprint/s1/p1":
+		return sha40("a"), true, nil
+	case "refs/heads/sprint/s1/p2":
+		return sha40("c"), true, nil
+	}
 	return sha40("b"), true, nil
 }
 func (g *fakeGroupGit) IsAncestor(context.Context, string, string, string) (bool, error) {
