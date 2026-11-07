@@ -359,8 +359,9 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	}
 }
 
-// Two deals on a width-1 row: the write into working counts the working cards it holds inside the
-// transaction, so one is accepted and one refused, with no width condition.
+// Two deals racing onto one row both land (round 22): the store holds no
+// width, so the write into working counts nothing; the roster's width is
+// the deal guards' to keep, above the store.
 func TestFunctionalWidthRace(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
@@ -372,12 +373,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, row}}, SetCardState{card, "working"})
 		}
 		a, b := race(t, p, deal(row+"a"), deal(row+"b"))
-		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
-		for _, r := range []Receipt{a, b} {
-			if !r.Accepted {
-				assert.Equal(t, "row "+row+" holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish", r.Reason)
-			}
-		}
+		assert.True(t, a.Accepted && b.Accepted, "both deals onto %s land: %q %q", row, a.Reason, b.Reason)
 	}
 }
 
