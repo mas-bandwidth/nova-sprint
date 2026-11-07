@@ -3,7 +3,6 @@ package verbs
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,31 +66,24 @@ func (p PGBackups) Backup(ctx context.Context, out string) (BackupInfo, error) {
 		return BackupInfo{}, err
 	}
 	header := fmt.Sprintf("-- nova-sprint-backup schema=%s version=%s\n", schema.Hash, p.Version)
-	if err = os.WriteFile(path, append([]byte(header), raw...), 0600); err != nil {
-		return BackupInfo{}, err
-	}
-	info, err := p.Verify(ctx, path)
+	body := append([]byte(header), raw...)
+	info, err := p.verifyBytes(ctx, path, body)
 	if err != nil {
 		return BackupInfo{}, err
 	}
 	target := filepath.Join(out, fmt.Sprintf("sprint-e%d-s%d.sql", info.Epoch, info.Seq))
-	if err = publishDump(path, target); err != nil {
+	if err = publishDump(body, target); err != nil {
 		return BackupInfo{}, err
 	}
 	info.Path = target
 	return info, nil
 }
-func publishDump(source, target string) error {
-	in, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
+func publishDump(body []byte, target string) error {
 	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(out, in)
+	_, err = out.Write(body)
 	if err == nil {
 		err = out.Sync()
 	}
@@ -121,9 +113,7 @@ func (p PGBackups) checkDumpVersion(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("cannot inspect PostgreSQL")
 	}
-	if p.Password != "" {
-		cfg.Password = p.Password
-	}
+	cfg.Password = p.Password
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("cannot inspect PostgreSQL")
@@ -162,9 +152,7 @@ func pgProcessEnv(source []string, dsn, password string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if password != "" {
-		cfg.Password = password
-	}
+	cfg.Password = password
 	mode := "disable"
 	if cfg.TLSConfig != nil {
 		mode = "require"
@@ -175,7 +163,7 @@ func pgProcessEnv(source []string, dsn, password string) ([]string, error) {
 	if cfg.TLSConfig != nil && len(cfg.TLSConfig.Certificates) > 0 {
 		return nil, fmt.Errorf("client certificates are not supported by the backup subprocess")
 	}
-	env = append(env, "PGHOST="+cfg.Host, fmt.Sprintf("PGPORT=%d", cfg.Port), "PGUSER="+cfg.User, "PGPASSWORD="+cfg.Password, "PGDATABASE="+cfg.Database, "PGSSLMODE="+mode)
+	env = append(env, "PGHOST="+cfg.Host, fmt.Sprintf("PGPORT=%d", cfg.Port), "PGUSER="+cfg.User, "PGPASSWORD="+cfg.Password, "PGPASSFILE=/dev/null", "PGDATABASE="+cfg.Database, "PGSSLMODE="+mode)
 	return env, nil
 }
 
@@ -193,7 +181,15 @@ func safeProcessEnv(source []string) []string {
 
 // Verify restores into an isolated temporary cluster and compares every rebuilt
 // event to the restored state; no caller-provided server is modified.
-func (p PGBackups) Verify(ctx context.Context, path string) (info BackupInfo, resultErr error) {
+func (p PGBackups) Verify(ctx context.Context, path string) (BackupInfo, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return BackupInfo{}, err
+	}
+	return p.verifyBytes(ctx, path, body)
+}
+
+func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byte) (info BackupInfo, resultErr error) {
 	dir, err := os.MkdirTemp("", "nova-sprint-verify-")
 	if err != nil {
 		return BackupInfo{}, err
@@ -229,10 +225,6 @@ func (p PGBackups) Verify(ctx context.Context, path string) (info BackupInfo, re
 		return BackupInfo{}, err
 	}
 
-	dumpBytes, err := os.ReadFile(path)
-	if err != nil {
-		return BackupInfo{}, err
-	}
 	statements, err := ConfineData(dumpBytes, schema.Expected)
 	if err != nil {
 		return BackupInfo{}, &OperationError{Problem: "backup rejected: " + err.Error(), Fix: "use a compatible verified nova-sprint backup", Exit: 1}
