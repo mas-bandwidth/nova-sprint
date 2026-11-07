@@ -9,8 +9,9 @@ import (
 	"runtime/debug"
 )
 
-// toolsModule is nova-tools' module path at any major version.
-var toolsModule = regexp.MustCompile(`^github\.com/mas-bandwidth/nova-tools(/v[0-9]+)?$`)
+// toolsModule is nova-tools' module path at any major version, under any
+// host and org: a fork of nova-tools is nova-tools.
+var toolsModule = regexp.MustCompile(`^([^/]+/)+nova-tools(/v[0-9]+)?$`)
 
 // InstalledTools is nova-tools' release as the installed binaries carry it:
 // the module version Go stamps into nova-config (the build info a release

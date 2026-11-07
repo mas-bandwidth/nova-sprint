@@ -95,6 +95,7 @@ func TestVersionAdoptionRunsWithStoreStep(t *testing.T) {
 // binary's build info; a development or pseudo-version build, or another
 // module's binary, is unknown.
 func TestToolsReleaseFromBuildInfo(t *testing.T) {
+	t.Parallel()
 	info := func(path, version string) *debug.BuildInfo {
 		return &debug.BuildInfo{Main: debug.Module{Path: path, Version: version}}
 	}
@@ -108,6 +109,9 @@ func TestToolsReleaseFromBuildInfo(t *testing.T) {
 		{info("github.com/mas-bandwidth/nova-tools/v2", "v2.0.3-0.20261106000000-0123456789ab"), ""},
 		{info("github.com/mas-bandwidth/nova-tools/v2", "v2.0.2+dirty"), ""},
 		{info("example.com/other", "v2.0.2"), ""},
+		{info("git.example.org/acme/nova-tools/v2", "v2.0.2"), "v2.0.2"}, // a fork under any host and org
+		{info("github.com/acme/not-nova-tools/v2", "v2.0.2"), ""},
+		{info("nova-tools", "v2.0.2"), ""},
 		{nil, ""},
 	} {
 		got, err := toolsRelease(tc.info)
