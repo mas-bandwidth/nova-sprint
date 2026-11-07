@@ -82,6 +82,32 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 
+// Every seam the engine type-asserts on e.Setup and e.Lock, and the
+// workload the runtime calls, is checked here at build time: a missing
+// method is a build failure, never a refusal on a real fleet.
+var (
+	_ verbs.Setup           = productionSetup{}
+	_ verbs.SetupHandoff    = productionSetup{}
+	_ verbs.SetupCompletion = productionSetup{}
+	_ verbs.SetupLock       = productionSetupLock{}
+	_ verbs.SetupWorkload   = productionWorkload{}
+	_ verbs.Setup           = failedProductionSetup{}
+)
+
+// Completion is the walk's UP DONE line: the configured runtime's own
+// (verbs.RuntimeSetup.Completion), as the saved coordinator.
+func (p productionSetup) Completion(ctx context.Context) (string, error) {
+	actor, _, err := p.runtime.Prerequisites.Env.Choices.Get(ctx, "coordinator")
+	if err != nil {
+		return "", err
+	}
+	r, err := p.configuredRuntime(ctx, verbs.SetupInput{Actor: actor}, true)
+	if err != nil {
+		return "", err
+	}
+	return r.Completion(ctx)
+}
+
 type failedProductionSetup struct{ err error }
 
 func (f failedProductionSetup) Verify(context.Context, int, verbs.SetupInput) (verbs.SetupCheck, error) {
@@ -120,20 +146,6 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 	}
 	if step >= 3 && p.cfg.SprintPassword == "" {
 		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "the sprint is not set up (no sprint credential in this process)", Fix: "nova-sprint up --as " + in.Actor, Exit: 1}
-	}
-	if step == 6 {
-		r := p.forInput(in)
-		_, found, err := r.Prerequisites.Env.Choices.Get(ctx, "services")
-		if err != nil {
-			return verbs.SetupCheck{}, err
-		}
-		if !found && in.Services == "" {
-			return verbs.SetupCheck{Line: "UP 6/8 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
-		}
-		return verbs.SetupCheck{}, workloadUnavailable()
-	}
-	if step >= 7 {
-		return verbs.SetupCheck{}, workloadUnavailable()
 	}
 	if step >= 4 {
 		r, err := p.configuredRuntime(ctx, in, step >= 5)
@@ -177,9 +189,6 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 		if err := p.checkControlMachine(ctx); err != nil {
 			return err
 		}
-	}
-	if step >= 6 {
-		return workloadUnavailable()
 	}
 	if step >= 4 {
 		r, err := p.configuredRuntime(ctx, in, step >= 5)
@@ -621,9 +630,6 @@ func serviceConfigFailure(what string, err error) error {
 func serviceConfigError(problem string) error {
 	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.FailureMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
 }
-func workloadUnavailable() error {
-	return &verbs.OperationError{Problem: "worker setup is unavailable in this build", Fix: "install a build with the verified worker setup adapter", Exit: 2}
-}
 func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupInput, needDashboard bool) (verbs.RuntimeSetup, error) {
 	r := p.forInput(in)
 	host, saved, err := r.Prerequisites.Env.Choices.Get(ctx, "run-on")
@@ -673,6 +679,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	r.RunService = run
 	r.DefaultRunHost = host
 	r.Services = verbs.FleetServices{Command: p.command}
+	r.Workload = productionWorkload{services: r.Services.For(in.Actor, "nova-sprint up 7/8 workers"), run: run, store: r.Snapshot, present: r.Prerequisites.Env.Present, lastLine: p.lastServiceLogLine}
 	if !needDashboard {
 		return r, nil
 	}
