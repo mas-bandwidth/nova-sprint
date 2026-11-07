@@ -694,15 +694,18 @@ clock), mostly in `edge/worker/probe_test.go`.
   answers 503 with the same words.
 - **The probe's model (27, 36).** The probe runs after the hook (next
   --json answers only a hooked row) with, for each tier, the first of the
-  policy's candidates (`tier_models`) the harness serves: through the proxy
+  policy's candidates (`tier_models`; for a bench since stitch w2D1 the one
+  model the catalog's `bench` names for the tier) the harness serves: through the proxy
   a route for its provider, else the adapter's one provider, and in the
   harness's own list when it has one (`opencode models`, run outside the wall
   under the probe's home). A tier with no candidate refuses ("no model for
   tier <t>"); a tier none of whose candidates it serves is a warning naming
   why, and a card of that tier dealt here faults with the candidates; none
   served at all refuses, naming each tier's reasons and the harness's list for
-  those providers. A take of a bench card runs the first of the receipt's
-  `models` the probe proved (`chooseModel_internal`). A failed probe unhooks
+  those providers. A take runs the receipt's `model`, the one the deal
+  named (`chooseModel_internal`); a model the probe proved the harness does
+  not serve faults the card naming the model and the tier (stitch
+  w2D1: the receipt's `models` candidates are gone). A failed probe unhooks
   the row again (`ServeRow`).
 - **Logs (28).** Every probe and job run keeps `stdout.log`, `stderr.log` and
   `command.txt` (the wall's command line; the environment's values are never

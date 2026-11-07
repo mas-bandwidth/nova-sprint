@@ -305,8 +305,10 @@ card, how many reads, the verdict, widths at or below config, limits, the landin
 the stitch, prices. It is a Starlark file; you change it only when the human asks.
 
 1. `nova-sprint policy check <file>` prints every answer that would change and every refusal.
-2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY SET v<n>` and
-   `next: nova-sprint policy check v<n>`.
+2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY STORED v<n>` and
+   `next: nova-sprint policy check v<n>`. When no policy is active the first set activates it
+   too (`POLICY STORED AND ACTIVE v<n>`). While no policy is active, or the active one fails,
+   the run deals nothing and one `no-policy` judgement on your row says so with the fix.
 3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> answers-changed=<k>`.
 4. A rollback is `policy activate` of an older version; `policy show --list` and `policy diff`
    show what you have.

@@ -570,3 +570,72 @@ the same way; the burst scenario's MaxAtt is 2 (it was 1) so a red's fix is
 dealt again and the carry stays reachable. Tests: `TestTickRedAndRetry`
 (the fix attempt carries the finding), `TestTickNoCIJudges`.
 
+
+**Stitch, what the deal carries and when the tick deals (2026-11-07, branch
+`v2-stitch-w2D1`).**
+- *The deal names the model (defects 54, 57).* A consumer is cut with the
+  model its deal named (`card.Start.Model`, `card.AskRead.Model`,
+  `AskReads.Models` one per row; store round 23's `cards.model`), so the
+  take receipt reads it from the consumer and take never chooses one. A
+  friend's model is the roster's (`Roster.Kin[row].Model`); a bench's is
+  the active policy's answer for the card's tier, `catalog().bench[tier]`,
+  in provider/model form, passed in `Answers.Models` (`steps/model.go`). A
+  candidate row with no model to name is not dealt to; when no serving row
+  can be named one, the card stays where it is and one `no-model`
+  judgement about the tier says why (tier, the row kinds, the policy
+  version, and the fix: `bench` in the policy, or the friend's model in
+  nova-config). It clears when an open serving row can be named one.
+- *The policy gate (defect 53).* While no policy is active, or the active
+  one fails as a whole (run's `Answers.NoDeal`, layer 6), the tick deals
+  nothing: no preemption, no Start, no read. One `no-policy` judgement on
+  the coordinator's row (the first hooked coordinator, else `sprint`) says
+  so with the fix, with no deadline (it blocks until it clears: a policy
+  answers again). Reports, the inbox, resolve, fix, landing and judgements
+  go on. This is the one exception to guarantee 10: a question one active
+  version fails still falls to the default with a `policy` judgement; only
+  no version, or a version that fails whole, stops the deal.
+- *Overlap is a file (defect 50).* Two producers of a stream overlap only
+  on a path both name that is a file (`Concrete`: not empty, no `*?[`, no
+  trailing `/`); a glob or a directory both list never holds one back. The
+  view indexes only concrete paths. A producer held behind another opens
+  one `overlap` judgement about it whose question is `held behind <card>
+  on <path>` (the least such card by id, its first shared file), where
+  the board and `check` show open judgements; it clears when the card is
+  no longer waiting or the reason changes.
+- *Resolve from state (section 64b).* Already so in the steps before this
+  change: `needs()` reads every waiting producer of the view each tick and
+  resolves one whose needs are all landed, whatever landed them (the land
+  step, a store op such as the reconcile's `SetCardState`, a restore). The
+  22-producer stall the section reports was not reproduced here; a stall of
+  that shape is what the old overlap rule (a glob or directory both listed)
+  produces, which the overlap change removes. Tests:
+  `TestTickResolvesFromState` (a need landed by a store op, and a cold
+  view), `TestTickOverlapIsAFile`, `TestTickDealNamesTheModel`,
+  `TestTickNoModelNoDeal`, `TestTickNoDealWithoutPolicy`.
+- *Judgements indexed.* `pending`, `isOpen` and `episodes` were scans (of
+  the tick's planned judgements and of the view's); with thousands of held
+  producers each opening an overlap judgement the needs step was
+  quadratic (measured on the working machine, not quiet: 52 ms p50 for
+  4,908 opens). They are now lookups: a per-tick index of the planned ones
+  and one of the view's, built on first use.
+- *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestLoadResolve
+  ./steps/`; the needs step alone, 5,000 waiting producers whose needs a
+  store op landed, 20 streams, 100 rows, 20 ticks): RESOLVE-MEASURED
+- *The model.* `Steps.tla`: `w.pol` (an active policy answers; in pre it
+  fails and is fixed as an environment move) gates `PreStep` and
+  `DealStep` (`NoPlan`) and opens `no-policy`; `NoDealWithoutPolicy`
+  checks no preemption, Start or read is accepted while it is down and the
+  judgement is open. Paths carry the glob `a/*` (p and q both list it);
+  `Overlap` counts only files (`Shared`); a held producer opens `overlap`
+  (`HeldBehindShown`). In deal a store op may land p by hand between ticks
+  (`HandLandOK`: no land request in flight for it); `ResolveFromState`
+  checks, stated apart from `Overlap` and `ResolveOK`, that every producer
+  the view's state makes ready is resolved or held behind one resolved
+  this tick on a file. `ReadyDealtWhenRoom` exempts a run with no active
+  policy. Reversed witnesses: `StepsDealsWithoutPolicy` (the gate ignored),
+  `StepsResolveOnEvent` (resolve only in the tick that consumes the need's
+  landed result), `StepsGlobOverlaps` (a glob both list counts),
+  `StepsHeldUnshown` (no overlap judgement); reach checks
+  `StepsNeverGated`, `StepsNeverHeldBehind`, `StepsNeverHandLanded`. The
+  trace maps `overlap` and `no-policy` judgements; `pol` is not logged
+  (the walk's asker always answers). TLC on the bench: TLC-RESULT
