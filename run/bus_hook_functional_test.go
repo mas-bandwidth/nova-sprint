@@ -58,7 +58,7 @@ func TestFunctionalHookCallsHiddenReply(t *testing.T) {
 	lease, err := SprintHook{Bin: fixture.bin, Env: fixture.env, Reply: bin}.Acquire(ctx, "sprint")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lease.Close(context.Background()) })
-	send := fixture.command(ctx, "send", "--as", "alice", "--to", "sprint", "QUESTION", "-")
+	send := fixture.command(ctx, "send", "--as", "alice", "--to", "sprint", "take p1@2", "-") // a verb: pointed at once (a reply or a non-verb is not answered: verbs.BusAnswer)
 	send.Stdin = strings.NewReader("test body is ignored")
 	out, err = send.Output()
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestFunctionalHookCallsHiddenReply(t *testing.T) {
 	require.Len(t, parts, 2)
 	require.Eventually(t, func() bool {
 		data, e := os.ReadFile(path)
-		return e == nil && strings.Contains(string(data), "\t"+parts[1]+"\t"+"replies are verbs: run nova-sprint next --as alice")
+		return e == nil && strings.Contains(string(data), "\t"+parts[1]+"\t"+"the sprint takes no verbs over the bus: run nova-sprint take p1@2 --as alice yourself")
 	}, 5*time.Second, 25*time.Millisecond)
 	require.NoError(t, lease.Close(ctx))
 }

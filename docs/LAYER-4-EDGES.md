@@ -46,8 +46,10 @@ edge keeps `Send` and `Who`. See Built, "Stitch".)
 `nova-bus who`. The run loop sends as its own name (`sprint`). nova-bus
 refuses a send from a name that is not hooked, so `up` hooks it with
 `nova-bus hook --as sprint --service --exec 'nova-sprint bus-reply'`;
-`bus-reply` reads only the sender and answers once: "replies are verbs: run
-nova-sprint next --as <you>". The engine never parses a bus message; every
+`bus-reply` reads only the sender, the message it answers and the subject
+(verbs.BusAnswer): the sprint's pushes are receipts, so a reply is never
+answered and a message that is not a verb is ignored (one log line each); a
+verb is answered once with where to run it. The engine never parses a bus message; every
 answer is a verb a row runs against the store (CORRECT-USE: "There is ONE
 WAY").
 
