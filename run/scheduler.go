@@ -9,17 +9,9 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// ConfiguredRow is the authoritative width and tiers from nova-config.
-type ConfiguredRow struct {
-	Name  string
-	Width int
-	Tiers []string
-}
+// Presence reads nova-bus once per tick.
 type Presence interface {
 	Who(context.Context) ([]string, error)
-}
-type Configuration interface {
-	Rows(context.Context) ([]ConfiguredRow, error)
 }
 type Clock interface {
 	Now() time.Time
@@ -52,33 +44,27 @@ type Results interface{ Drain() []EdgeResult }
 type observation struct {
 	at       time.Time
 	presence []string
-	config   []ConfiguredRow
 }
 
 // Scheduler owns observations and calls Engine serially. Deadline policy is
 // supplied by its caller's context; the engine never reads a wall clock.
 type Scheduler struct {
-	engine       *Engine
-	clock        Clock
-	presence     Presence
-	config       Configuration
-	publish      Publisher
-	logger       TickLogger
-	results      Results
-	deadline     TickDeadline
-	refreshEvery int64
-	count        int64
-	lastRefresh  int64
-	loaded       bool
-	rows         []ConfiguredRow
-	queued       []EdgeResult
+	engine   *Engine
+	clock    Clock
+	presence Presence
+	publish  Publisher
+	logger   TickLogger
+	results  Results
+	deadline TickDeadline
+	count    int64
+	queued   []EdgeResult
 }
 
-func NewScheduler(e *Engine, c Clock, p Presence, config Configuration, pub Publisher, log TickLogger, results Results, deadline TickDeadline, refreshEvery int64) (*Scheduler, error) {
-	if refreshEvery < 1 {
-		return nil, fmt.Errorf("run: config refresh interval must be positive")
+func NewScheduler(e *Engine, c Clock, p Presence, pub Publisher, log TickLogger, results Results, deadline TickDeadline) (*Scheduler, error) {
+	if e == nil || c == nil || p == nil || pub == nil || log == nil || results == nil || deadline == nil {
+		return nil, fmt.Errorf("run: scheduler dependencies are required")
 	}
-	return &Scheduler{engine: e, clock: c, presence: p, config: config, publish: pub, logger: log, results: results, deadline: deadline, refreshEvery: refreshEvery}, nil
+	return &Scheduler{engine: e, clock: c, presence: p, publish: pub, logger: log, results: results, deadline: deadline}, nil
 }
 
 // Step is one externally scheduled tick. Its caller bounds ctx to policy's deadline.
@@ -101,19 +87,13 @@ func (s *Scheduler) Step(ctx context.Context, incoming []EdgeResult) (err error)
 	if err != nil {
 		return fmt.Errorf("run: presence: %w", err)
 	}
-	if !s.loaded || s.count-s.lastRefresh >= s.refreshEvery {
-		rows, readErr := s.config.Rows(ctx)
-		if readErr != nil {
-			return fmt.Errorf("run: configuration: %w", readErr)
-		}
-		s.rows = copyConfig(rows)
-		s.loaded = true
-		s.lastRefresh = s.count
+	if !containsName(who, "sprint") {
+		return fmt.Errorf("%w: sprint is not present on nova-bus", ErrLockLost)
 	}
 	inbox := s.queued
 	s.queued = nil
 	attempted = true
-	return s.engine.tick(ctx, inbox, observation{at: start, presence: who, config: s.rows})
+	return s.engine.tick(ctx, inbox, observation{at: start, presence: who})
 }
 
 // Run waits for the injected one-second ticker; results are drained once per tick.
@@ -137,11 +117,11 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		}
 	}
 }
-func copyConfig(rows []ConfiguredRow) []ConfiguredRow {
-	out := make([]ConfiguredRow, len(rows))
-	for i, r := range rows {
-		out[i] = r
-		out[i].Tiers = append([]string(nil), r.Tiers...)
+func containsName(names []string, name string) bool {
+	for _, n := range names {
+		if n == name {
+			return true
+		}
 	}
-	return out
+	return false
 }
