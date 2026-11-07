@@ -72,19 +72,7 @@ func (tr *cardTrace) args(label string, plan Plan) ([]string, error) {
 		}
 		return sl.tla(), nil
 	}
-	head := func(h string) string {
-		if h == "" {
-			return "0"
-		}
-		return strconv.Itoa(slices.Index(traceHeads, h))
-	}
-	act := func(a string, kv ...string) []string {
-		out := []string{"action |-> " + quoted(a)}
-		for i := 0; i < len(kv); i += 2 {
-			out = append(out, kv[i]+" |-> "+kv[i+1])
-		}
-		return out
-	}
+	head, act := traceHead, traceAct
 	p := quoted(subject)
 	switch e := tr.w.ev.(type) {
 	case nil:
@@ -125,6 +113,23 @@ func (tr *cardTrace) args(label string, plan Plan) ([]string, error) {
 		return act("Width", "r", p, "n", strconv.Itoa(e.N)), nil
 	}
 	return tr.consumerArgs(subject, slot, head, act)
+}
+
+// traceHead is a head's index in traceHeads; the base and "" are 0.
+func traceHead(h string) string {
+	if h == "" {
+		return "0"
+	}
+	return strconv.Itoa(slices.Index(traceHeads, h))
+}
+
+// traceAct is a record's action and its arguments, given as key, value pairs.
+func traceAct(a string, kv ...string) []string {
+	out := []string{"action |-> " + quoted(a)}
+	for i := 0; i < len(kv); i += 2 {
+		out = append(out, kv[i]+" |-> "+kv[i+1])
+	}
+	return out
 }
 
 func inThisOp(b bool) error {
