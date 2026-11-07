@@ -28,7 +28,7 @@ store's records into the machine's.
   A walk that reaches a card not passed is refused. The path is joined with
   " needs " either way. Two relinks from one snapshot close no loop: Merge
   runs the second against the first's writes, and the second's walk sees them.
-- `MoveConsumer(c, p, r, e)`: Take, Report, Withdraw; `p` is c's producer, `r`
+- `MoveConsumer(c, p, r, e)`: Report, Withdraw (no Take: the deal is the take, defect 52); `p` is c's producer, `r`
   c's holder. `Withdraw.Stream` is p's stream, needed when the withdraw
   releases p.
 - `MoveRow(r, e)`: Seen, Gone, Width, Hold, Unhold.
@@ -160,11 +160,11 @@ refusals: `a card needs a name`, `card "..." is over 128 bytes`,
 | Resolve | waiting | StreamHeld false, NeedsLanded | state ready |
 | Park | ready | StreamHeld true | state waiting, reason |
 | Reached (sentinel) | waiting | NeedsLanded | state landed |
-| Start{Row,Branch,Base} | ready | producer only; StreamHeld false; RowGen, RowIs up, RowHeld false; CardGen of every consumer; CardAbsent of the new id | state working, attempt+1, author cleared, red cleared when a Red set it; PutCard `p.wN` (work, of, stream, holder, tier, attempt, task, finding) + branch, base_sha, prior_head (p's head), state ready |
+| Start{Row,Branch,Base} | ready | producer only; StreamHeld false; RowGen, RowIs up, RowHeld false; CardGen of every consumer; CardAbsent of the new id; width is the dealer's (layer 3), not checked here | state working, attempt+1, author cleared, red cleared when a Red set it; PutCard `p.wN` (work, of, stream, holder, tier, attempt, task, finding) + branch, base_sha, prior_head (p's head), state working (the deal is the take) |
 | Finished{Consumer} | working | CardGen of the work consumer of this attempt, done ok | state review, review+1, head, author = its holder, red cleared when a Red set it |
 | Broken{Consumer} | working | ... done fail; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), bounces+1, head |
-| Faulted{Consumer} | working | ... done fault; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), head (no bounce) |
-| AskRead{Row} | review | producer only; a full sha head; StreamHeld false; row as Start; no live work consumer, no live read of this head on the row; CardAbsent of the new id | PutCard `p.rR.N` (read, review = p's, task) + head, author (p's), state ready |
+| Faulted{Consumer} | working | ... done fault; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), head (no bounce); state blocked when the fault's reason starts `missing-route:` (`MissingRoute`, defect 48) |
+| AskRead{Row} | review | producer only; a full sha head; StreamHeld false; row as Start; no live work consumer, no live read of this head on the row; CardAbsent of the new id | PutCard `p.rR.N` (read, review = p's, task) + head, author (p's), state working |
 | AskReads{Rows} | review | as AskRead, one snapshot, each row once | one PutCard per row, indices distinct (`p.rR.1`, `p.rR.2`, ...) |
 | ReadYes | review | no live consumer; a done ok read of p's current review and head | state merging |
 | ReadFix{Finding} | review | no live consumer; a done fix read of p's current review and head; StreamHeld as read | state ready (waiting if held), finding (when given and changed), bounces+1 |
@@ -180,7 +180,7 @@ refusals: `a card needs a name`, `card "..." is over 128 bytes`,
 | Edit{Prose,Paths,DoneWhen,Reason} | any non-final | producer only; no live consumer | prose, paths, done_when, reason (each when changed); the brief as given is immutable |
 | Rescore{Score} | any non-final | producer only | score |
 | SetPriority{Level,Reason} | any non-final | (a sentinel too) | priority ("" is normal), reason |
-| Block{Reason} | ready, review, working | no live consumer; a reported one is applied first | state blocked, reason |
+| Block{Reason} | waiting, ready, review, working | a producer, never a sentinel; no live consumer; a reported one is applied first | state blocked, reason (`held: <why>` for the coordinator's `hold <card>`, `HeldPrefix`) |
 | Unblock{Reason} | blocked | StreamHeld as read | state waiting, reason (the hold phrase when the stream is held) |
 
 Relink on a sentinel is allowed, as is SetPriority; Edit, Rescore, Start and
@@ -190,7 +190,6 @@ AskRead on a sentinel are refused.
 
 | Event | From | Conditions | Writes |
 |---|---|---|---|
-| Take{Row} | ready | row is the holder and was passed; RowGen, RowIs up (a held row may take; layer 1 counts width) | state working |
 | Report{Row,Result,Head,Reason,Cost,Priced} | working | row is the holder; work reports ok, fail or fault, a read ok, fix or fault; a non-empty work head is a full sha, neither its base nor its prior head, for every result; a read reports the head it was cut at, which is the producer's, and fences the producer's gen; an empty read head stays empty | state done, result, head (a read's only when it is the head it was cut at), reason, cost (when changed) |
 | Withdraw{Reason,Head,Stream} | ready, working | a non-empty work head is a full sha, not the base, not the prior; a ready work consumer has not pushed; a read keeps its own head; a preempt refuses unless the consumer is working; a withdraw that would leave a working producer working is refused, and says to pass the producer in working so the withdraw releases it; releasing: Stream is p's, CardGen p, StreamHeld as read | state fail, reason, head; when it is the current work consumer of a working producer, also the producer: ready (waiting if held), reason (the hold phrase when held), head |
 

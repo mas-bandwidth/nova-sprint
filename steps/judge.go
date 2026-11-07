@@ -21,6 +21,7 @@ var choices = map[string]string{
 	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
 	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
+	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "unacked": "retry", "undealt": "retry",
 }
 
 // judge opens kind about about unless one is open (a cause opens once).
@@ -28,14 +29,14 @@ func (t *tick) judge(kind, about, question string) {
 	if t.isOpen(kind, about) || t.pending(kind, about) {
 		return
 	}
-	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question})
+	t.addJudge(judgement{kind: kind, about: about, question: question})
 }
 
 // judgeAgain opens a new episode whether or not one is open (a base's red is
 // met again).
 func (t *tick) judgeAgain(kind, about, question string) {
 	if !t.pending(kind, about) {
-		t.judges = append(t.judges, judgement{kind: kind, about: about, question: question})
+		t.addJudge(judgement{kind: kind, about: about, question: question})
 	}
 }
 
@@ -45,40 +46,61 @@ func (t *tick) judgeAt(kind, about string, n int, question string) {
 	if _, exists := t.v.Judgements[fmt.Sprintf("%s.%s.%d", kind, about, n)]; exists || t.pending(kind, about) {
 		return
 	}
-	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question, episode: n})
+	t.addJudge(judgement{kind: kind, about: about, question: question, episode: n})
 }
 
 // engine is the judgement for a defect here or in layer 2: a plan the
 // machine or the store refused on fresh state.
 func (t *tick) engine(about, why string) { t.judge("engine", about, why) }
 
-func (t *tick) pending(kind, about string) bool {
-	for _, j := range t.judges {
-		if j.kind == kind && j.about == about {
-			return true
-		}
+// addJudge plans j and indexes it by kind and about, so pending is one lookup
+// however many the tick opens (thousands of held producers each open an
+// overlap judgement; a scan per open was quadratic, measured 52 ms for
+// 4,908 on the working machine).
+func (t *tick) addJudge(j judgement) {
+	t.judges = append(t.judges, j)
+	if t.pend == nil {
+		t.pend = set{}
 	}
-	return false
+	t.pend[jkey(j.kind, j.about)] = struct{}{}
+}
+
+func jkey(kind, about string) string { return kind + "\x00" + about }
+
+func (t *tick) pending(kind, about string) bool {
+	_, ok := t.pend[jkey(kind, about)]
+	return ok
 }
 
 func (t *tick) isOpen(kind, about string) bool {
-	for _, j := range t.v.Judgements {
-		if j.Kind == kind && j.About == about && j.State == "open" {
-			return true
-		}
-	}
-	return false
+	_, ok := t.jindex().open[jkey(kind, about)]
+	return ok
 }
 
 // episodes is how many judgements of kind about about exist, open or closed.
-func (t *tick) episodes(kind, about string) int {
-	n := 0
+func (t *tick) episodes(kind, about string) int { return t.jindex().episodes[jkey(kind, about)] }
+
+// judgedIndex is the view's judgements by kind and about: the open ones and
+// how many episodes each has. Built once a tick, on first use (the view
+// does not change during a tick).
+type judgedIndex struct {
+	open     set
+	episodes map[string]int
+}
+
+func (t *tick) jindex() judgedIndex {
+	if t.jidx.open != nil {
+		return t.jidx
+	}
+	t.jidx = judgedIndex{open: set{}, episodes: map[string]int{}}
 	for _, j := range t.v.Judgements {
-		if j.Kind == kind && j.About == about {
-			n++
+		k := jkey(j.Kind, j.About)
+		t.jidx.episodes[k]++
+		if j.State == "open" {
+			t.jidx.open[k] = struct{}{}
 		}
 	}
-	return n
+	return t.jidx
 }
 
 // riding is the writes of a judgement that rides in a group's op (a block's
@@ -88,7 +110,7 @@ func (t *tick) riding(kind, about, question string) []store.Write {
 		return nil
 	}
 	j := judgement{kind: kind, about: about, question: question}
-	t.judges = append(t.judges, judgement{kind: kind, about: about, question: question, episode: -1})
+	t.addJudge(judgement{kind: kind, about: about, question: question, episode: -1})
 	return []store.Write{t.put(j)}
 }
 
@@ -107,10 +129,10 @@ func (t *tick) put(j judgement) store.Write {
 	if j.kind == "roster" {
 		w.Group = RosterGroup(j.about)
 	}
-	// A blocked card and a land judgement sit until answered: a land
-	// judgement's producer stays merging with no request until the
-	// coordinator says land, fix or retry (intent rule 32).
-	if j.kind != "blocked" && j.kind != "land" {
+	// A blocked card, a land judgement and the no-policy gate sit until
+	// answered or cleared: a land judgement's producer stays merging with no
+	// request until the coordinator says land, fix or retry (intent rule 32).
+	if j.kind != "blocked" && j.kind != "land" && j.kind != "no-policy" {
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
 	return w
@@ -160,6 +182,18 @@ func (t *tick) cleared(j store.Judgement) string {
 				return "row " + r + " may read " + j.About
 			}
 		}
+	case "blocked":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "blocked" {
+			return j.About + " is no longer blocked"
+		}
+	case "unacked":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "working" || t.v.Acked(j.About) {
+			return j.About + " was acknowledged or left the row's hand"
+		}
+	case "undealt":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != "ready" {
+			return j.About + " was dealt or left ready"
+		}
 	case "stall":
 		if at, ok := t.v.Landed[j.About]; ok && at.After(j.OpenedAt) {
 			return "stream " + j.About + " landed"
@@ -171,6 +205,31 @@ func (t *tick) cleared(j store.Judgement) string {
 	case "land-rate":
 		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= Engine.LandTarget {
 			return "land rate back at target"
+		}
+	}
+	return t.clearedDeal(j)
+}
+
+// clearedDeal is cleared for the deal's own kinds: a held producer no longer
+// held behind the card its judgement names, a tier a model can now be named
+// for, the policy gate lifted (or the coordinator's row changed).
+func (t *tick) clearedDeal(j store.Judgement) string {
+	switch j.Kind {
+	case "overlap":
+		c, ok := t.v.Cards[j.About]
+		if !ok || c.State != "waiting" || t.heldBehind(c) != j.Question {
+			return j.About + " is no longer " + j.Question
+		}
+	case "no-model":
+		if t.modelServed(j.About) {
+			return "an open row serving " + j.About + " can be named a model"
+		}
+	case "no-policy":
+		if t.o.a.NoDeal == "" {
+			return "a policy is active and answered; the run deals"
+		}
+		if j.About != t.coordinatorRow() {
+			return "the coordinator's row is now " + t.coordinatorRow()
 		}
 	}
 	return ""

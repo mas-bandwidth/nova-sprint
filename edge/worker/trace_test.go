@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -66,8 +67,9 @@ type runnerWalkHarness_internal struct {
 	slotsInUse int
 	applied    map[int]runnerAppliedOp_internal
 	env        runnerEnvState_internal
-	pass       string          // the wake loop's pass: idle or planning
-	stopped    map[string]bool // kept by the worker's stop, to run again
+	pass       string                // the wake loop's pass: idle or planning
+	stopped    map[string]bool       // kept by the worker's stop, to run again
+	released   map[string]*JobRecord // the record a release gave back, its directory gone
 	takes      map[string]int
 	runner     *Runner // its stopped_internal writes the stop's record
 }
@@ -89,9 +91,9 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 			store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
 			store.PutCard{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro"},
 			store.PutCard{ID: "c1", Kind: "work", Of: "p1", Stream: "s1", Holder: "vision.ds", Tier: "pro", Attempt: 1},
-			store.SetCardState{Card: "c1", State: "ready"},
+			store.SetCardState{Card: "c1", State: "working"}, // the deal is the take (defect 52)
 			store.PutCard{ID: "c2", Kind: "work", Of: "p2", Stream: "s1", Holder: "vision.ds", Tier: "pro", Attempt: 1},
-			store.SetCardState{Card: "c2", State: "ready"},
+			store.SetCardState{Card: "c2", State: "working"},
 		},
 	})
 	if err != nil || !rec.Accepted {
@@ -109,6 +111,7 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		applied:  map[int]runnerAppliedOp_internal{},
 		pass:     "idle",
 		stopped:  map[string]bool{"c1": false, "c2": false},
+		released: map[string]*JobRecord{},
 		takes:    map[string]int{"c1": 0, "c2": 0},
 		runner:   runnerForWalk_internal(t),
 	}
@@ -216,6 +219,9 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 }
 
 func (h *runnerWalkHarness_internal) shadowRec_internal(c string) JobRecord {
+	if rec := h.released[c]; rec != nil {
+		return JobRecord{Consumer: c, Outcome: rec.Outcome}
+	}
 	var resID string
 	if h.pushed[c] {
 		resID = FormatResultID(1, c, 1, 1)
@@ -243,7 +249,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 			Actor:  "vision.ds",
 			Kind:   "take",
 			At:     h.t0.Add(time.Duration(h.stepN) * time.Second),
-			Writes: []store.Write{store.SetCardState{Card: c, State: "working"}},
+			Writes: []store.Write{store.SetCursor{Name: steps.AckCursor(1, c), Seq: 1}}, // the acknowledgement
 		})
 		if err != nil || !rec.Accepted {
 			t.Fatalf("Take %s: err=%v rec=%+v", c, err, rec)
@@ -330,18 +336,27 @@ func (h *runnerWalkHarness_internal) stop_internal(t *testing.T) {
 	h.pass = "idle"
 }
 
-// release_internal is the restart's no-blame give-back of a card with no
-// job directory: the card is ready again, with no report.
+// release_internal is the restart's no-blame give-back of a job it cannot
+// resume: its commits pushed, the consumer withdrawn with no result and no
+// report, and its directory gone (releaseNoBlame_internal).
 func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
 	t.Helper()
+	dir := h.jobDirPath_internal(c)
+	kept, err := ReadJobRecord(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rec, err := h.st.Apply(context.Background(), store.Op{
 		ID: fmt.Sprintf("release-%s-%d", c, h.takes[c]), Epoch: 1, Actor: "vision.ds", Kind: "release",
-		At: h.t0.Add(time.Duration(h.stepN) * time.Second), Writes: []store.Write{store.SetCardState{Card: c, State: "ready"}},
+		At: h.t0.Add(time.Duration(h.stepN) * time.Second), Writes: []store.Write{store.SetCardState{Card: c, State: "fail"}},
 	})
 	if err != nil || !rec.Accepted {
 		t.Fatalf("Release %s: err=%v rec=%+v", c, err, rec)
 	}
-	h.jobState[c] = JobNone
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	h.pushed[c], h.released[c], h.jobState[c] = true, &kept, JobCleaned
 	h.env.released = true
 }
 
@@ -457,20 +472,22 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 	return m.act, m.arg
 }
 
-// consumerMoves_internal are c's enabled job moves in st (a take only in a
-// pass; a release only after a restart, of a card with no job directory).
+// consumerMoves_internal are c's enabled job moves in st: a take (the
+// acknowledgement of a card dealt working) only in a pass; a release only
+// after a restart, of a job left staged or harvested.
 func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_internal {
 	var moves []runnerMove_internal
+	if (st.jobState[c] == JobStaged || st.jobState[c] == JobHarvested) && st.env.crashes > 0 && !st.env.released &&
+		st.storeState[c] == "working" && st.jobDir[c].exists && st.harnessAlive[c] == 0 {
+		moves = append(moves, runnerMove_internal{"Release", c})
+	}
 	switch st.jobState[c] {
 	case JobNone:
-		if st.storeState[c] == "ready" && st.pass == "planning" {
+		if st.storeState[c] == "working" && st.pass == "planning" {
 			moves = append(moves, runnerMove_internal{"Take", c})
 		}
 	case JobTaken:
 		moves = append(moves, runnerMove_internal{"Stage", c})
-		if st.env.crashes > 0 && !st.env.released && st.storeState[c] == "working" && !st.jobDir[c].exists {
-			moves = append(moves, runnerMove_internal{"Release", c})
-		}
 	case JobStaged:
 		if st.slotsInUse < 1 && st.harnessAlive[c] == 0 {
 			moves = append(moves, runnerMove_internal{"Run", c})
@@ -615,10 +632,10 @@ func driveRunnerEntrypoints_internal(t *testing.T) {
 		t.Fatal(err)
 	}
 	next, err := sc.Next(ctx, row)
-	if err != nil || len(next.Ready) == 0 {
-		t.Fatalf("expected ready consumer, err=%v next=%+v", err, next)
+	if err != nil || len(next.Working) == 0 {
+		t.Fatalf("expected a consumer in hand, err=%v next=%+v", err, next)
 	}
-	if err := r.RunConsumer(ctx, next, next.Ready[0]); err != nil {
+	if err := r.RunConsumer(ctx, next, next.Working[0]); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.StepRow(ctx, row); err != nil {

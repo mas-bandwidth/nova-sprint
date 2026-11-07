@@ -208,12 +208,14 @@ func (r *Runner) planPass_internal(ctx context.Context, row string) (NextRespons
 	if next.State != card.Up || next.Held {
 		return next, launches, nil
 	}
-	working := len(next.Working)
-	for _, c := range next.Ready {
-		if working >= next.Width {
-			break
+	// The deal is the take (defect 52): every card in hand is working from
+	// its deal, within the row's width, so the pass starts a job for each
+	// one with none yet (on disk, in flight, or set aside); its take is the
+	// acknowledgement. One with a job on disk is recovery's.
+	for _, c := range next.Working {
+		if fileExists_internal(filepath.Join(r.RootDir, "jobs", c.ID)) || r.quarantined_internal(c) {
+			continue
 		}
-		working++ // claimed now, or already in flight from an earlier pass whose take has not landed: either holds width
 		if l, ok := r.claim_internal(ctx, c, nil); ok {
 			launches = append(launches, l)
 		}

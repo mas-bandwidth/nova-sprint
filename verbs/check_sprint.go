@@ -45,10 +45,13 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 		return heads
 	}
 	ss := streamsInOrder(snap)
-	shas, errs := make([]string, len(ss)), make([]error, len(ss))
+	shas, errs, agree := make([]string, len(ss)), make([]error, len(ss)), make([][2]string, len(ss))
 	var wg sync.WaitGroup
-	for i, s := range ss { // the streams' ls-remotes are independent: all at once
-		wg.Go(func() { shas[i], errs[i] = e.admitStream(ctx, s, "nova-sprint check") })
+	for i, s := range ss { // the streams' reads are independent: all at once
+		wg.Go(func() {
+			shas[i], errs[i] = e.admitStream(ctx, s, "nova-sprint check")
+			agree[i][0], agree[i][1] = e.agreementWarning(ctx, snap, s)
+		})
 	}
 	wg.Wait()
 	for i, s := range ss {
@@ -59,6 +62,9 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 		}
 		heads[s.Name] = sha
 		r.ok("stream %s: %s reachable, base %s at %s", s.Name, s.Repo, s.Base, shortSHA(sha))
+		if agree[i][0] != "" {
+			r.warn(agree[i][0], agree[i][1])
+		}
 	}
 	return heads
 }

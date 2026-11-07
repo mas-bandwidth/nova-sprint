@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -146,7 +147,7 @@ func fillInventory(v *nextView, snap store.Snapshot) {
 		}
 		p := snap.Cards[c.Of]
 		line := consumerLine{ID: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, State: c.State, Priority: p.Priority,
-			Head: c.Head, Gen: c.Gen, Attempt: c.Attempt, Score: p.Score, Command: stepOf(c, v.Row, snap.Epoch)}
+			Head: c.Head, Gen: c.Gen, Attempt: c.Attempt, Score: p.Score, Command: stepOf(c, v.Row, snap)}
 		switch c.State {
 		case card.Ready:
 			v.Ready = append(v.Ready, line)
@@ -203,19 +204,23 @@ func answer(v *nextView, snap store.Snapshot) {
 
 func inHand(state string) string {
 	if state == card.Ready {
-		return "dealt"
+		return "dealt before the deal became the take (the tick deals it again)"
 	}
 	return "in hand"
 }
 
-// stepOf is the command a consumer held by row is at.
-func stepOf(c store.Card, row string, epoch int) string {
-	ref := fmtCard(c.ID, c.Gen)
+// stepOf is the command a consumer held by row is at: in hand and not yet
+// acknowledged, take (which prints the brief); acknowledged, finish or read.
+// A ready one predates the deal being the take: the tick withdraws it and
+// deals it again, so there is nothing to run.
+func stepOf(c store.Card, row string, snap store.Snapshot) string {
+	ref, epoch := fmtCard(c.ID, c.Gen), snap.Epoch
+	_, acked := snap.Cursors[steps.AckCursor(epoch, c.ID)]
 	switch {
-	case c.State == card.Ready:
-		return fmt.Sprintf("nova-sprint take %s --as %s --epoch %d", ref, row, epoch)
 	case c.State != card.Working:
 		return waitNext
+	case !acked:
+		return fmt.Sprintf("nova-sprint take %s --as %s --epoch %d", ref, row, epoch)
 	case c.Kind == "read":
 		return fmt.Sprintf("nova-sprint read %s yes|fix --as %s --epoch %d", ref, row, epoch)
 	}

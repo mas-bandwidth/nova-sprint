@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -20,7 +21,7 @@ func TestTake(t *testing.T) {
 	w := newWorld(t)
 	first := w.do("alice", "take", "p1.w1@1", "--epoch", "1")
 	want(t, first, 0, "TAKEN p1.w1 repo=o/r base="+base+" branch=sprint/s/p1 deadline=1800s forge=none", "do p1",
-		"next: nova-sprint finish p1.w1@2 --head <sha> --as alice --epoch 1")
+		"next: nova-sprint finish p1.w1@1 --head <sha> --as alice --epoch 1")
 	if c := w.snap(t).Cards["p1.w1"]; c.State != "working" {
 		t.Fatalf("card %+v", c)
 	}
@@ -41,20 +42,21 @@ func TestTakeJSONIsTheReceipt(t *testing.T) {
 	if got.Consumer != "p2.r1" || got.Head != head || got.Deadline != 1800 || got.Forge != "github" || got.Paths == nil || got.StreamRef != "main" {
 		t.Fatalf("%+v", got)
 	}
-	// A bench has no model of its own: the policy's candidates for the tier.
-	if got.Model != "" || !slices.Equal(got.Models, []string{"deepseek/deepseek-flash", "inception/mercury-3"}) {
-		t.Fatalf("a bench's receipt: model %q models %v", got.Model, got.Models)
+	// The model is the one the deal named, carried by the consumer (defect
+	// 57); take never reads it from the roster.
+	if got.Model != "inception/mercury-3" || strings.Contains(r.Output, `"models"`) {
+		t.Fatalf("a bench's receipt: model %q\n%s", got.Model, r.Output)
 	}
 	delete(w.roster.ro.Workers, "bob")
 	w.roster.ro.Kin["bob"] = roster.Kin{Name: "bob", Model: "m-bob", Width: 2, Tiers: []string{"pro"}}
-	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"m-bob"`, `"models":[]`)
+	want(t, w.do("bob", "take", "p2.r1@1", "--json"), 0, `"model":"inception/mercury-3"`)
 }
 
 func TestTakeRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "no gen", as: "alice", args: []string{"take", "p1.w1"}, exit: 2, want: []string{"<card>@<gen>"}},
 		{name: "a bad gen", as: "alice", args: []string{"take", "p1.w1@x"}, exit: 2, want: []string{"<card>@<gen>"}},
-		{name: "another row's card", as: "alice", args: []string{"take", "p2.r1@1"}, exit: 1, want: []string{"p2.r1 is not dealt to this row", "nova-sprint show p2.r1"}},
+		{name: "another row's card", as: "alice", args: []string{"take", "p2.r1@1"}, exit: 1, want: []string{"p2.r1 is not dealt to this row", "nova-sprint next --as alice"}},
 		{name: "another gen", as: "alice", args: []string{"take", "p1.w1@2"}, exit: 1, want: []string{"not dealt to this row at this generation"}},
 		{name: "a producer", as: "alice", args: []string{"take", "p1@1"}, exit: 1, want: []string{"p1 is not dealt"}},
 		{name: "an old epoch", as: "alice", args: []string{"take", "p1.w1@1", "--epoch", "2"}, exit: 1, want: []string{"epoch 2 is over", "nova-sprint next"}},
@@ -67,9 +69,13 @@ func TestTakeRefusals(t *testing.T) {
 				w.roster.ro.Workers["alice"] = roster.Worker{Name: "alice", Width: 1, Tiers: []string{"flash"}}
 			},
 			want: []string{"row alice does not serve tier pro", "nova-sprint release p1.w1@1 --as alice"}},
-		{name: "at width", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: busyAlice, want: []string{"row alice is at width 1", "finish p3.w1 first"}},
-		{name: "taken by another", as: "bob", args: []string{"take", "p1.w1@1"}, exit: 1, prep: takeW1, want: []string{"p1.w1 was taken by alice", "nova-sprint next --as bob"}},
-		{name: "a working card", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State = "working" }), want: []string{"finish p1.w1 first"}},
+		{name: "another row's acknowledgement", as: "bob", args: []string{"take", "p1.w1@1"}, exit: 1, prep: takeW1, want: []string{"p1.w1 is not dealt to this row", "nova-sprint next --as bob"}},
+		{name: "dealt with no model", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.Model = "" }),
+			want: []string{"p1.w1 was dealt with no model", `nova-sprint release p1.w1@1 --as alice --reason "dealt with no model"`}},
+		{name: "dealt before the deal was the take", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State = "ready" }),
+			want: []string{"the next tick withdraws it and deals it again, in hand"}},
+		{name: "a finished card", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State, c.Reason = "done", "" }),
+			want: []string{"p1.w1 is done: no reason given"}},
 		{name: "the roster fails", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 2,
 			prep: func(_ *testing.T, w *world) { w.roster.err = errors.New("down") }, want: []string{"nova-config's roster cannot be read"}},
 		{name: "no policy engine", as: "alice", args: []string{"take", "p1.w1@1"}, exit: 2,
@@ -88,24 +94,24 @@ func busyAlice(s *store.Snapshot) {
 func TestFinish(t *testing.T) {
 	w := newWorld(t)
 	takeW1(t, w)
-	first := w.do("alice", "finish", "p1.w1@2", "--head", head, "--cost", "0.04")
+	first := w.do("alice", "finish", "p1.w1@1", "--head", head, "--cost", "0.04")
 	want(t, first, 0, "FINISHED p1.w1 head="+head, "next: "+waitNext)
 	if c := w.snap(t).Cards["p1.w1"]; c.State != "done" || c.Cost != 40000 || !c.Priced {
 		t.Fatalf("card %+v", c)
 	}
-	if again := w.do("alice", "finish", "p1.w1@2", "--head", head, "--cost", "0.04"); again != first {
+	if again := w.do("alice", "finish", "p1.w1@1", "--head", head, "--cost", "0.04"); again != first {
 		t.Fatalf("a repeat finish is the same receipt:\n%s", again.Output)
 	}
-	want(t, w.do("bob", "report", "p1.w1@2", "--result", "ok", "--head", head), 1, "p1.w1 was reported by alice")
+	want(t, w.do("bob", "report", "p1.w1@1", "--result", "ok", "--head", head), 1, "p1.w1 was reported by alice")
 }
 
 func TestFinishFailedAndReportForms(t *testing.T) {
 	w := newWorld(t)
 	takeW1(t, w)
-	want(t, w.do("alice", "finish", "p1.w1@2", "--failed", "--reason", "gate red: go test exit 1"), 0, "FAILED p1.w1")
+	want(t, w.do("alice", "finish", "p1.w1@1", "--failed", "--reason", "gate red: go test exit 1"), 0, "FAILED p1.w1")
 	w = newWorld(t)
 	takeW1(t, w)
-	r := w.do("alice", "report", "p1.w1@2", "--result", "fault", "--reason", "bench down", "--cost-microusd", "12", "--priced", "false", "--json")
+	r := w.do("alice", "report", "p1.w1@1", "--result", "fault", "--reason", "bench down", "--cost-microusd", "12", "--priced", "false", "--json")
 	want(t, r, 0, `"accepted":true`)
 	if c := w.snap(t).Cards["p1.w1"]; c.Result != "fault" || c.Cost != 12 || c.Priced {
 		t.Fatalf("card %+v", c)
@@ -113,40 +119,40 @@ func TestFinishFailedAndReportForms(t *testing.T) {
 }
 
 func TestFinishRefusals(t *testing.T) {
-	finish := []string{"finish", "p1.w1@2", "--head", head}
+	finish := []string{"finish", "p1.w1@1", "--head", head}
 	runCases(t, []tcase{
-		{name: "no head", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2"}, exit: 1, want: []string{"a finish names its head", "--head"}},
-		{name: "not a sha", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", "abc"}, exit: 1, want: []string{"head abc is not a full commit sha"}},
-		{name: "the base", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", base}, exit: 1, want: []string{"where this attempt started"}},
-		{name: "not pushed", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--head", tip}, exit: 1, want: []string{"is not the tip of sprint/s/p1", "git push origin sprint/s/p1"}},
+		{name: "no head", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@1"}, exit: 1, want: []string{"a finish names its head", "--head"}},
+		{name: "not a sha", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@1", "--head", "abc"}, exit: 1, want: []string{"head abc is not a full commit sha"}},
+		{name: "the base", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@1", "--head", base}, exit: 1, want: []string{"where this attempt started"}},
+		{name: "not pushed", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@1", "--head", tip}, exit: 1, want: []string{"is not the tip of sprint/s/p1", "git push origin sprint/s/p1"}},
 		{name: "origin fails", as: "alice", args: finish, exit: 2, prep: func(t *testing.T, w *world) { takeW1(t, w); w.origin.err = errBroken }, want: []string{"git ls-remote of o/r failed"}},
-		{name: "failed with no reason", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@2", "--failed"}, exit: 1, want: []string{"a fail needs its reason"}},
+		{name: "failed with no reason", as: "alice", prep: takeW1, args: []string{"finish", "p1.w1@1", "--failed"}, exit: 1, want: []string{"a fail needs its reason"}},
 		{name: "not the holder", as: "bob", prep: takeW1, args: finish, exit: 1, want: []string{"p1.w1 is not held by bob"}},
-		{name: "a read card", as: "bob", prep: takeR1, args: []string{"finish", "p2.r1@2", "--head", head}, exit: 1, want: []string{"p2.r1 is a read card", "nova-sprint read p2.r1@2 yes|fix"}},
+		{name: "a read card", as: "bob", prep: takeR1, args: []string{"finish", "p2.r1@1", "--head", head}, exit: 1, want: []string{"p2.r1 is a read card", "nova-sprint read p2.r1@1 yes|fix"}},
 		{name: "costs mixed", as: "alice", prep: takeW1, args: append(finish, "--cost", "1", "--priced", "true"), exit: 1, want: []string{"--cost mixes with --cost-microusd"}},
 		{name: "a bad cost", as: "alice", prep: takeW1, args: append(finish, "--cost", "1.0000001"), exit: 2, want: []string{"--cost is dollars"}},
 		{name: "micro-dollars unpriced", as: "alice", prep: takeW1, args: append(finish, "--cost-microusd", "5"), exit: 2, want: []string{"--priced true|false go together"}},
-		{name: "not taken", as: "alice", args: []string{"finish", "p1.w1@1", "--head", head}, exit: 1, want: []string{"nova-sprint show p1.w1"}},
+		{name: "not in hand", as: "alice", args: []string{"finish", "p1.w1@1", "--head", head}, exit: 1, snap: setCard("p1.w1", func(c *store.Card) { c.State = "ready" }), want: []string{"nova-sprint show p1.w1"}},
 	})
 }
 
 func TestRead(t *testing.T) {
 	w := newWorld(t)
 	takeR1(t, w)
-	want(t, w.do("bob", "read", "p2.r1@2", "fix", "--finding", "a.go:1: off by one; use <="), 0, "READ p2.r1 head="+head+" result=fix")
+	want(t, w.do("bob", "read", "p2.r1@1", "fix", "--finding", "a.go:1: off by one; use <="), 0, "READ p2.r1 head="+head+" result=fix")
 }
 
 func TestReadRefusals(t *testing.T) {
 	aliceReads := both(setCard("p2.r1", func(c *store.Card) { c.Holder, c.State = "alice", "working" }))
 	runCases(t, []tcase{
-		{name: "no answer", as: "bob", prep: takeR1, args: []string{"read", "p2.r1@2", "maybe"}, exit: 2, want: []string{"a read answers yes or fix"}},
-		{name: "fix with no finding", as: "bob", prep: takeR1, args: []string{"read", "p2.r1@2", "fix"}, exit: 1, want: []string{"a fix needs a finding", "--finding"}},
+		{name: "no answer", as: "bob", prep: takeR1, args: []string{"read", "p2.r1@1", "maybe"}, exit: 2, want: []string{"a read answers yes or fix"}},
+		{name: "fix with no finding", as: "bob", prep: takeR1, args: []string{"read", "p2.r1@1", "fix"}, exit: 1, want: []string{"a fix needs a finding", "--finding"}},
 		{name: "the author", as: "alice", snap: aliceReads, args: []string{"read", "p2.r1@1", "yes"}, exit: 1, want: []string{"alice wrote the head and cannot read it"}},
-		{name: "another head", as: "bob", prep: takeR1, args: []string{"read", "p2.r1@2", "yes", "--head", tip}, exit: 1, want: []string{"producer p2 is at head " + head}},
-		{name: "a work card", as: "alice", prep: takeW1, args: []string{"read", "p1.w1@2", "yes"}, exit: 1, want: []string{"p1.w1 is a work card", "nova-sprint finish p1.w1@2"}},
-		{name: "a bad result", as: "bob", prep: takeR1, args: []string{"report", "p2.r1@2", "--result", "maybe"}, exit: 2, want: []string{"--result is ok, fix, fail or fault"}},
-		{name: "a work card's fix", as: "alice", prep: takeW1, args: []string{"report", "p1.w1@2", "--result", "fix", "--finding", "x"}, exit: 2, want: []string{"fix is a read's answer"}},
-		{name: "a fault with no reason", as: "alice", prep: takeW1, args: []string{"report", "p1.w1@2", "--result", "fault"}, exit: 1, want: []string{"a fault needs its reason"}},
+		{name: "another head", as: "bob", prep: takeR1, args: []string{"read", "p2.r1@1", "yes", "--head", tip}, exit: 1, want: []string{"producer p2 is at head " + head}},
+		{name: "a work card", as: "alice", prep: takeW1, args: []string{"read", "p1.w1@1", "yes"}, exit: 1, want: []string{"p1.w1 is a work card", "nova-sprint finish p1.w1@1"}},
+		{name: "a bad result", as: "bob", prep: takeR1, args: []string{"report", "p2.r1@1", "--result", "maybe"}, exit: 2, want: []string{"--result is ok, fix, fail or fault"}},
+		{name: "a work card's fix", as: "alice", prep: takeW1, args: []string{"report", "p1.w1@1", "--result", "fix", "--finding", "x"}, exit: 2, want: []string{"fix is a read's answer"}},
+		{name: "a fault with no reason", as: "alice", prep: takeW1, args: []string{"report", "p1.w1@1", "--result", "fault"}, exit: 1, want: []string{"a fault needs its reason"}},
 	})
 }
 
@@ -183,8 +189,8 @@ func TestReleaseIsNoBlame(t *testing.T) {
 func TestReleaseCarriesThePushedHead(t *testing.T) {
 	w := newWorld(t)
 	takeW1(t, w)
-	want(t, w.do("alice", "release", "p1.w1@2", "--reason", "runner restarted", "--head", tip), 1, "is not the tip of sprint/s/p1")
-	want(t, w.do("alice", "release", "p1.w1@2", "--reason", "runner restarted", "--head", head), 0, "RELEASED p1.w1")
+	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "runner restarted", "--head", tip), 1, "is not the tip of sprint/s/p1")
+	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "runner restarted", "--head", head), 0, "RELEASED p1.w1")
 	if p := w.snap(t).Cards["p1"]; p.State != "ready" || p.Head != head || p.Bounces != 0 {
 		t.Fatalf("the producer after a release with its head: %+v", p)
 	}

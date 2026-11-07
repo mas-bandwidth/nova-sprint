@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/card"
 )
 
 // JobMDName is the file the worker writes in a card's job directory at
@@ -57,6 +59,7 @@ func finishRules_internal(j Job) string {
 			"   {\"result\":\"ok\"}: the head meets the card as written.\n" +
 			"   {\"result\":\"fix\",\"finding\":\"<path>:<line>: <the defect and its repair>\"}: it does not; name every defect.\n" +
 			"   {\"result\":\"fault\",\"reason\":\"<why>\"}: you could not judge it (a tool, a build, a missing input).\n" +
+			routeFault_internal() +
 			"A run that exits without " + res + " is reported a fault.\n"
 	}
 	return "1. Commit your work in " + j.WorktreeDir + " on branch " + j.Branch + " (git add, then git commit -F <message file>). Run no git push and no gh: the worker pushes the branch after you exit, and the landing opens the pull request.\n" +
@@ -65,4 +68,11 @@ func finishRules_internal(j Job) string {
 		"   {\"result\":\"ok\"}: the work is committed and every done-when command is green.\n" +
 		"   {\"result\":\"fail\",\"reason\":\"<what is not done, and why>\"}: you could not finish it; say what you found.\n" +
 		"A run that exits without " + res + " is reported \"fail: no verdict\".\n"
+}
+
+// routeFault_internal is the finish rule for a route or device this bench
+// lacks: a fault whose reason starts card.MissingRoute blocks the card for the
+// coordinator instead of dealing it again (defect 48).
+func routeFault_internal() string {
+	return fmt.Sprintf("   {\"result\":\"fault\",\"reason\":\"%s <route> <what is missing>\"}: the work needs a route or device this bench lacks (a tool, a device, a network); <route> is one word, the name a brief declares with %s: <route>. The card waits for the coordinator instead of being dealt again.\n", card.MissingRoute, card.RouteField)
 }

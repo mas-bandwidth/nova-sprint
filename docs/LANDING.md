@@ -68,6 +68,86 @@ the second at once on the new tip (rung 2 then, since the head no longer
 contains base's tip). A CI that stays pending for ever is met by the stall
 judgement (layer 3), not by the landing.
 
+### Red that is not the card's (directives 59, 63 and 76)
+
+A red gated sha is split by the base before it is a judgement
+(`forge.Inheritance`, the API calls a hand comparison makes):
+
+1. the merge base of base's tip and the gated sha
+   (`gh api repos/<r>/compare/<base tip>...<gated> --jq .merge_base_commit.sha`);
+2. each side's workflow runs (`actions/runs?head_sha=<sha>&per_page=100`,
+   projected by `--jq`). A workflow is failing at the head when a run of it
+   there failed, or is still queued or in progress with a failed job
+   (`actions/runs/<id>/jobs`);
+3. a failing workflow is **inherited** when the merge base's newest
+   completed run of it failed. When the merge base has no completed run of
+   it (a base with no CI, or CI still running there), the base branch's last
+   completed run of the same workflow is read instead
+   (`actions/workflows/<id>/runs?branch=<base>&status=completed&per_page=1`)
+   and the judgement says so ("<base>'s last completed run <id> (the merge
+   base <sha> ran none)"); with none there either it is **new**;
+4. for each new workflow, its failed jobs with their runners and pages, and
+   the first five error lines of the first three jobs' logs
+   (`actions/jobs/<id>/logs`, readable once a job ends while its run goes
+   on; timestamps stripped). Inherited red's logs are not read.
+
+A failing check that is no failed job of any workflow (a commit status or
+another app's check run) is new red: nothing on the base compares with it.
+When a failing check is named like a contributor or license agreement (CLA,
+CAA, "Contributor Assignment Agreement"), the PR's commit author
+identities are named (`gh pr view <n> --json commits`): one of them has
+not signed. Which one is on the check's own page; the landing does not
+parse it.
+
+Timing (directive 76): no judgement while the run is still queued or in
+progress (`CheckRollup.Waiting`) unless a failing workflow is new: red
+that is all inherited so far is `ci_pending` ("waiting for the run") and
+asked again; new red escalates at once. A split that cannot be read waits
+for the run, then escalates as plain `ci_red` with the first failing lines
+and the cause ("not compared with the base (...)").
+
+Outcomes: new red (or uncompared red) is `ci_red`, its facts led by
+`NEW red (not red on the base): <workflow> (<basis>) [job <name> on
+<runner> <url>: <lines>]`, then `inherited red (red on the base too, not
+this card's): ...`. Red that is all inherited, the run ended, is
+`ci_red_inherited`: still a judgement (red never lands by itself), worded
+for a glance. Two examples as the code words them (unit-test data; shas
+cut to 12 here; the closing "land: ... fix: ... retry: ..." line is the
+same on both):
+
+> card c1 (stream s1 onto main at a007c1800b2e, branch sprint/s1/c1, head
+> 5e1f00000000) has only inherited red (its run ended; every failing
+> workflow is red on the base too, so not this card's): land it with
+> nova-sprint land c1 --reason <why>. Facts: inherited red (red on the base
+> too, not this card's): hostile-corpus (the merge base a007c1800b2e), dart
+> (main's last completed run 1893 (the merge base a007c1800b2e ran none));
+> merge base a007c1800b2e; rung 1; base tip a007c1800b2e; gated
+> 5e1f00000000; PR https://github.com/o/r/pull/31; failing corpus, dart; at
+> https://github.com/o/r/actions/runs/11/job/111; reason: only inherited
+> red: hostile-corpus (...), dart (...)
+
+> card c2 (stream s1 onto main at a007c1800b2e, branch sprint/s1/c2, head
+> 9c3d00000000) did not land: ci_red: NEW red (not red on the base): Gates
+> (the merge base a007c1800b2e) (its run still going) [job Windows Release
+> on win-1 https://github.com/o/r/actions/runs/14/job/141: cl : error
+> C2065: 'x': undeclared identifier | ##[error]Process completed with exit
+> code 2.], Contributor Assignment Agreement (a check that is no Actions
+> workflow, not compared with the base); inherited red (red on the base
+> too, not this card's): hostile-corpus (the merge base a007c1800b2e); an
+> agreement check failed; the PR's commit authors, one of them unsigned: A
+> Writer <writer@example.invalid> (a-writer); merge base a007c1800b2e; rung
+> 1; base tip a007c1800b2e; gated 9c3d00000000; PR
+> https://github.com/o/r/pull/32; failing corpus, Windows Release,
+> Contributor Assignment Agreement; at
+> https://github.com/o/r/actions/runs/11/job/112; reason: new red: Gates
+> (...), Contributor Assignment Agreement (...)
+
+`LandEdge.tla` is unchanged: in the model every non-green, non-absent gate
+is one judgement (`red`), which `ci_red_inherited` still is, and a pass is
+atomic up to its final outcome, so waiting for the run is the same re-ask
+as pending CI. `BaseNeverRed` holds because red, inherited or not, never
+merges automatically.
+
 ### land: the hand merge
 
 `nova-sprint land <card> --reason <why> [--head <sha>]` is the coordinator's
@@ -91,9 +171,14 @@ same path.
   other branch: the landing does the forge work.
 - **The run lands as the host's gh identity.** The forge runs `gh` with the
   host's own login (the coordinator's host, the one identity that can act on
-  every stream repository). `GH_GATE_TOKEN`, when set in run's environment,
-  is passed to gh as `GH_TOKEN` instead: an optional override, not a
-  requirement. No CI trigger on `sprint/**` is required: rung 1's PR is
+  every stream repository): gh, and git's github.com credential helper
+  (`env -u ... gh auth git-credential`), run with every GitHub credential of
+  the process removed (`GH_TOKEN`, `GITHUB_TOKEN`, the enterprise tokens,
+  `GH_CONFIG_DIR`), so one in the environment never makes the landing
+  someone else (directive 59). `GH_GATE_TOKEN`, when set in run's
+  environment, is passed to gh as `GH_TOKEN` instead: an optional override,
+  not a requirement. Messages name the choice ("this host's gh login", or
+  `GH_GATE_TOKEN`), never a login the sprint expects. No CI trigger on `sprint/**` is required: rung 1's PR is
   from the card branch and rung 2's from the group branch, and the
   repository's own `pull_request` workflow runs on both.
 - **The group branch** `sprint-group/<stream>` (beside `sprint/`, never in
@@ -176,7 +261,16 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
 - **`flowing` is validated and not used.** Rung 2 is taken whenever
   `backed_up` or more heads wait; there is no hysteresis back to rung 1.
 - **Pending CI has no bound of its own.** A check that never leaves pending
-  is met by the stall judgement, not by `ci_wait`.
+  is met by the stall judgement, not by `ci_wait`. Waiting for the run
+  behind inherited red has none either.
+- **The split is read again every pass.** A pass waiting behind inherited
+  red re-reads the merge base, both sides' runs and the running runs' jobs
+  every `LandPoll`: about 5 to 10 GitHub calls a pass per stream (a guess,
+  not measured) against the 5,000 an hour of the host's login; a rate limit
+  rests the identity, and the pass, failing to split while the run goes on,
+  waits.
+- **Which author is unsigned** is not read from the agreement check's
+  output: every commit author on the PR is named.
 - **Stream mode `group`** is accepted and behaves as `auto`.
 
 ## Where it lives
@@ -186,7 +280,8 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
   unlanded report; `steps/judge.go`: the land judgement's choices and no
   deadline.
 - Layer 4 (`edge/git/land.go` `LandPass`; `edge/forge` PR, Checks, Merge,
-  FailedLines): one pass of either automatic rung; `edge/git/git.go`: the
+  FailedLines, and `actions.go` Inheritance, Authors, JobLines): one pass
+  of either automatic rung, a red one split by the base; `edge/git/git.go`: the
   group branch's name and its blockers.
 - Layer 6 (`run/edges.go`): passes asked again on pending CI and a moved
   base, `ci_wait` for absent CI, the facts; `verbs/land.go`: `land`, the

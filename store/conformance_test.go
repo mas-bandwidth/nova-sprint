@@ -52,6 +52,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"lesson columns":          lessonColumns,
 		"review and row reason":   reviewAndRowReason,
 		"finding":                 finding,
+		"model":                   model,
 		"red":                     red,
 		"int range":               intRange,
 		"nul bytes":               nulBytes,
@@ -1115,6 +1116,20 @@ func finding(h *harness) {
 		assert.ErrorIs(h.t, err, ErrInvalid, name)
 	}
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the finding")
+}
+
+// Round 23: a consumer is cut with the model its deal named and keeps it
+// (no write changes it); a producer or sentinel carries none.
+func model(h *harness) {
+	h.seed()
+	r := h.ok(h.op("cut", nil, PutCard{Tier: "pro", Kind: "work", ID: "k1", Of: "c1", Stream: "s1", Holder: "w1", Model: "deepseek/deepseek-flash"}))
+	assert.Equal(h.t, "deepseek/deepseek-flash", r.After.Cards["k1"].Model, "a consumer is cut with its deal's model")
+	assert.Equal(h.t, "", h.snap().Cards["c1"].Model, "a producer has none")
+	h.refused(h.op("bad", nil, PutCard{Tier: "pro", Kind: "producer", ID: "c4", Stream: "s1", Model: "x/y"}),
+		"card c4 is a producer; only a consumer is cut with a model (the model its deal named)")
+	_, err := h.s.Apply(h.ctx, h.op("x", nil, PutCard{Tier: "pro", Kind: "work", ID: "k2", Of: "c1", Stream: "s1", Holder: "w1", Model: "a\x00"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "nul model")
+	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the model")
 }
 
 // Round 17: a producer records a red read verdict (SetCardRed) so a later

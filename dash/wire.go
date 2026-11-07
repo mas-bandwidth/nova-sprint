@@ -25,7 +25,11 @@ func (w workRow) MarshalJSON() ([]byte, error) {
 	for k, v := range w.ByTier {
 		tiers[k] = moneyCell(v)
 	}
-	return json.Marshal(map[string]any{"blocked": integer(w.Blocked), "waiting": integer(w.Waiting), "ready": integer(w.Ready), "working": integer(w.Working), "review": integer(w.Review), "fix": integer(w.Fix), "merging": integer(w.Merging), "landed": integer(w.Landed), "fail": integer(w.Fail), "cost": moneyCell(w.Cost), "cost_by_tier": tiers})
+	m := map[string]any{"blocked": integer(w.Blocked), "waiting": integer(w.Waiting), "ready": integer(w.Ready), "working": integer(w.Working), "review": integer(w.Review), "fix": integer(w.Fix), "merging": integer(w.Merging), "landed": integer(w.Landed), "fail": integer(w.Fail), "cost": moneyCell(w.Cost), "cost_by_tier": tiers}
+	if len(w.BlockedCards) > 0 {
+		m["blocked_cards"] = w.BlockedCards
+	}
+	return json.Marshal(m)
 }
 func (f fleetRow) MarshalJSON() ([]byte, error) {
 	pct := "-" // no finished work yet: nothing to be a percent of (directive 63b)

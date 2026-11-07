@@ -178,6 +178,7 @@ type Card struct {
 	Paths    []string `json:"paths,omitempty"`
 	DoneWhen []string `json:"done_when,omitempty"`
 	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given
+	Model    string   `json:"model"` // on a consumer: the model its deal named (round 23); "" on a producer or sentinel
 }
 
 // Row is a row of sprint.rows: a worker's or a kin's sprint state, and

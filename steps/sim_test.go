@@ -28,7 +28,7 @@ type sim struct {
 }
 
 func newSim(t *testing.T) *sim {
-	return &sim{world: newWorld(t), ask: Default{}, sent: set{}}
+	return &sim{world: newWorld(t), ask: benchAsk{}, sent: set{}}
 }
 
 // now is the tick's clock: a second after the last op.
@@ -131,27 +131,13 @@ func (s *sim) run(n int) {
 	}
 }
 
-// take and report act as a row would, through the card machine, as their
-// own ops (LAYER-6).
+// take and report act as a row would, as their own ops (LAYER-6): take is
+// the acknowledgement of a consumer already in the row's hand.
 func (s *sim) take(c string) {
 	s.t.Helper()
-	cc := s.card(c)
-	require.True(s.t, s.roomToTake(cc.Holder), "row %s is at width", cc.Holder)
-	s.move(s.consumer(c, cardTake(cc.Holder)))
-}
-
-// roomToTake is the take verb's width check (layer 6): working under the
-// roster's width. Store round 22 took width out of the store, so the verb
-// holds it.
-func (w *world) roomToTake(row string) bool {
-	_, width, _, _ := w.roster.Row(row)
-	n := 0
-	for _, c := range w.snap().Cards {
-		if isConsumer(c) && c.State == "working" && c.Holder == row {
-			n++
-		}
-	}
-	return n < width
+	require.Equal(s.t, "working", s.card(c).State, "%s is in its row's hand from the deal", c)
+	r := s.ack(c)
+	require.True(s.t, r.Accepted, "take %s refused: %s", c, r.Reason)
 }
 
 func (s *sim) land(req EdgeRequest) {

@@ -71,9 +71,11 @@ func TestTipIsOneLsRemoteOfTheAddress(t *testing.T) {
 	}
 }
 
-// TestGitHubCredentialIsGhAndNamesNoSecret: with the identity's gh set, git's
-// only github.com helper is gh (the host's list cleared first); the
-// environment names no token; unset, git's own configuration answers.
+// TestGitHubCredentialIsGhAndNamesNoSecret: with gh set, git's only
+// github.com helper is gh as the host's login (the host's list cleared
+// first; every GitHub credential of the process unset for gh, directive
+// 59); the environment names no token; unset, git's own configuration
+// answers.
 func TestGitHubCredentialIsGhAndNamesNoSecret(t *testing.T) {
 	t.Parallel()
 	ex := edge.NewFakeExec()
@@ -83,13 +85,13 @@ func TestGitHubCredentialIsGhAndNamesNoSecret(t *testing.T) {
 	calls := ex.Calls()
 	env := calls[0].Cmd.Env
 	for _, kv := range []string{"GIT_CONFIG_COUNT=2", "GIT_CONFIG_KEY_0=credential.https://github.com.helper", "GIT_CONFIG_VALUE_0=",
-		"GIT_CONFIG_KEY_1=credential.https://github.com.helper", "GIT_CONFIG_VALUE_1=!gh auth git-credential"} {
+		"GIT_CONFIG_KEY_1=credential.https://github.com.helper", "GIT_CONFIG_VALUE_1=!env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN -u GH_CONFIG_DIR gh auth git-credential"} {
 		if !slices.Contains(env, kv) {
 			t.Fatalf("env lacks %q: %v", kv, env)
 		}
 	}
 	for _, kv := range append(env, calls[1].Cmd.Env...) {
-		if strings.Contains(kv, "TOKEN") {
+		if strings.Contains(kv, "TOKEN=") { // a value; the helper only unsets them
 			t.Fatalf("the git environment names a secret: %q", kv)
 		}
 	}

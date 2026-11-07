@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strings"
@@ -31,7 +32,7 @@ type Request struct {
 
 // coordinatorEvents are the events only a coordinator may raise (an engine
 // fact: a wrong coordinator could corrupt).
-var coordinatorEvents = []string{"Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream", "Landed", "Red"}
+var coordinatorEvents = []string{"Block", "Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream", "Landed", "Red"}
 
 // runEvents are the run loop's own (presence).
 var runEvents = []string{"Seen", "Gone"}
@@ -77,8 +78,9 @@ func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) {
 	return op, nil
 }
 
-// actorOK is the actor rule: coordinator events need a coordinator; Take
-// and Report the consumer's holder; Seen and Gone the run loop; Add
+// actorOK is the actor rule: coordinator events need a coordinator (Block
+// is the coordinator's hold of one card; the tick's own Block is policy's
+// bounce limit and never comes here); Report the consumer's holder; Seen and Gone the run loop; Add
 // anyone.
 func (t *tick) actorOK(r Request) *card.Refusal {
 	name := ""
@@ -95,7 +97,7 @@ func (t *tick) actorOK(r Request) *card.Refusal {
 		return &card.Refusal{Reason: fmt.Sprintf("%s is the coordinator's; ask on the bus: `nova-bus send --as %s --to %s ...`", what, r.Actor, firstOr(r.Coordinators, "<coordinator>"))}
 	case slices.Contains(runEvents, name) && r.Actor != Actor:
 		return &card.Refusal{Reason: name + " is the run loop's; presence is the bus's fact"}
-	case name == "Take" || name == "Report":
+	case name == "Report":
 		c, ok := t.v.Cards[r.Card]
 		if !ok {
 			return &card.Refusal{Reason: fmt.Sprintf("card %s does not exist: run `nova-sprint next --as %s`", r.Card, r.Actor)}
@@ -127,7 +129,7 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 			}
 			return card.MoveAdd(e, cards)
 		}}}, nil
-	case card.Take, card.Report:
+	case card.Report:
 		if _, ok := t.v.Cards[r.Card]; !ok {
 			return nil, &card.Refusal{Reason: "card " + r.Card + " does not exist"}
 		}
@@ -141,6 +143,8 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 		return t.streamMoves(r, e)
 	case card.Cancel, card.Replace:
 		return t.dropMoves(r)
+	case card.Block:
+		return t.holdMoves(r.Card, e)
 	}
 	if _, ok := t.v.Cards[r.Card]; !ok {
 		return nil, &card.Refusal{Reason: "card " + r.Card + " does not exist"}
@@ -150,6 +154,36 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 		extra = append(extra, rel.To)
 	}
 	return []move{t.producerMove(r.Card, r.Event, extra...)}, nil
+}
+
+// holdMoves is the coordinator's hold of one producer (defect 47): each
+// live consumer withdrawn with the hold's reason (a work consumer's withdraw
+// releases its producer, its pushed branch kept), then Block, in one op, so
+// the card is never dealt again between the two. Block is planned on the
+// state the withdraws leave; card.Merge runs it again on the folded state.
+func (t *tick) holdMoves(p string, e card.Block) ([]move, *card.Refusal) {
+	pc, ok := t.v.Cards[p]
+	if !ok {
+		return nil, &card.Refusal{Reason: "card " + p + " does not exist"}
+	}
+	var moves []move
+	cons := t.consOf(p)
+	for i, c := range cons {
+		if c.State == "ready" || c.State == "working" {
+			moves = append(moves, t.withdraw(c.ID, e.Reason))
+			cons[i].State = card.Fail
+		}
+	}
+	if len(moves) == 0 {
+		return []move{t.producerMove(p, e)}, nil
+	}
+	return append(moves, move{label: "Block " + p, plan: func() (card.Plan, *card.Refusal) {
+		after := card.FromStore(pc)
+		if after.State == card.Working {
+			after.State = cmp.Or(map[bool]string{true: card.Waiting}[t.v.Streams[pc.Stream].Held], card.Ready)
+		}
+		return card.Move(after, cons, t.rows(), t.streamOf(pc.Stream), t.needsOf(p), e)
+	}}), nil
 }
 
 // streamMoves is a stream's hold with every ready producer of it parked in
@@ -168,7 +202,11 @@ func (t *tick) streamMoves(r Request, e card.Event) ([]move, *card.Refusal) {
 }
 
 // dropMoves is a Cancel or Replace with its closure of dependants in the same
-// op: each one's chosen Waive or Relink, else NeedFailed in this op.
+// op: each one's chosen Waive or Relink, else NeedFailed in this op. The
+// dropped producer's live consumers are released in the same op (the same
+// decision: whoever drops a producer drops what a row is doing for it), each
+// recorded released with the drop's reason and no blame, as `release` records
+// it. A dependant waits on a need, so it has no live consumer.
 func (t *tick) dropMoves(r Request) ([]move, *card.Refusal) {
 	if _, ok := t.v.Cards[r.Card]; !ok {
 		return nil, &card.Refusal{Reason: "card " + r.Card + " does not exist"}
@@ -177,7 +215,7 @@ func (t *tick) dropMoves(r Request) ([]move, *card.Refusal) {
 	if rep, ok := r.Event.(card.Replace); ok {
 		extra = append(extra, rep.By)
 	}
-	moves := []move{t.producerMove(r.Card, r.Event, extra...)}
+	moves := t.releasing(r.Card, r.Event, extra...)
 	seen := set{r.Card: {}}
 	queue := []string{r.Card}
 	for len(queue) > 0 {
@@ -198,6 +236,40 @@ func (t *tick) dropMoves(r Request) ([]move, *card.Refusal) {
 		}
 	}
 	return moves, nil
+}
+
+// releasing is producer p's live consumers withdrawn as released, then p's
+// move e planned with them gone. The reason on the record is the drop's own.
+func (t *tick) releasing(p string, e card.Event, extra ...string) []move {
+	var moves []move
+	gone := set{}
+	for _, id := range sorted(t.v.consOf[p]) {
+		if isLive(t.v.Cards[id]) {
+			moves = append(moves, t.withdraw(id, card.ReleasedPrefix+dropReason(e)))
+			gone[id] = struct{}{}
+		}
+	}
+	return append(moves, move{label: eventName(e) + " " + p, plan: func() (card.Plan, *card.Refusal) {
+		pc := t.cardOf(p)
+		cons := t.consOf(p)
+		for i := range cons {
+			if _, ok := gone[cons[i].ID]; ok {
+				cons[i].State = card.Fail
+			}
+		}
+		return card.Move(pc, cons, t.rows(), t.streamOf(pc.Stream), t.needsOf(p, extra...), e)
+	}})
+}
+
+// dropReason is the reason a Cancel or Replace carries.
+func dropReason(e card.Event) string {
+	switch x := e.(type) {
+	case card.Cancel:
+		return x.Reason
+	case card.Replace:
+		return x.Reason
+	}
+	return ""
 }
 
 // inThisOp is the drop's chosen move for a dependant, marked as in this op

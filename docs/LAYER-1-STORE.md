@@ -724,6 +724,18 @@ model and harness wherever they are named).
   pos were never modelled), so the closed set is the checker's and the
   schema's; the trace projection drops PutStream and does not project an op
   with SetStreamMode or SetStreamForge, as for SetStreamHeld.
+- A consumer's model (round 23, stitch w2D1): `Card` gains `Model`, the
+  model its deal named (provider/model for a bench, the friend's own for a
+  friend), a column of `sprint.cards` (`NOT NULL DEFAULT ''`) with a CHECK
+  that only a work or read consumer carries one. `PutCard.Model` sets it at
+  the cut; a producer or sentinel put with a model is refused ("card <id>
+  is a <kind>; only a consumer is cut with a model (the model its deal
+  named)"). A round-22 store is upgraded in place by the idempotent
+  schema (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`); a card image logged
+  before round 23 reads its model as "". Store.tla does not model card
+  columns beyond those it names, so the column is the checker's and the
+  schema's. Tests: `TestRound22Hash`, the conformance case `model`,
+  `TestFunctionalMigrateRound22`.
 - Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
   value is refused as unchanged, an absent cursor counting as 0, so
   `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already
@@ -845,14 +857,27 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   left-out fields names it), and `TraceOp` refuses the write like `SetRowFlaps`. Test: the
   conformance scenario `row load`, on Fake and PostgreSQL alike.
 
+## Built: one schema round for the model and the heartbeat (stitch w3I, 2026-11-07)
+
+- The row heartbeat's four columns moved into schema.sql, beside cards.model, as round 23
+  (`ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS ...`, the same statement as before).
+  Superseding the heartbeat entry above where they differ: the columns were kept outside
+  the hashed file so a store would keep its hash, but round 23's cards.model moves the hash
+  anyway, so a second, unhashed place to apply DDL bought nothing. `rowLoadColumns` and
+  `fullSchema` are gone; Migrate and a restore's DDL run schema.sql (or `schemaObjects`)
+  alone. A round-22 store (`round22Hash`) is upgraded in place by Migrate: it gains
+  cards.model and the four row columns, or keeps the row columns it already took from a
+  build that applied them outside the file (`IF NOT EXISTS`), and the round-23 hash is
+  recorded. Test: `TestSchemaObjects` (the columns are in the hashed file).
 
 ## Built: a worker's advertised tiers (stitch w3W, 2026-11-07)
 
-- `Row.Tiers`, a fifth heartbeat column (`tiers text`, added by `rowLoadColumns` like the other
-  four): the tiers the worker's harness proved it serves, a comma list in `Tiers`' order
-  (`JoinTiers`, `SplitTiers`), "" when none was advertised. `SetRowLoad` gains `Tiers`; one not
-  in that form is invalid. `PutRow` keeps it while the session is the same and clears it when
-  the session changes (an unhook, a new hook), so an advertisement holds for the session that
-  made it. No store rule reads it: the roster does (`roster.Advertised`, LAYER-4 Built "the
-  worker's live defects"). It moves no gen, as the rest of the heartbeat. Not in `Store.tla`
-  (telemetry, as the load columns: `trace.go`'s notes). Conformance: `rowLoad`.
+- `Row.Tiers`, a fifth heartbeat column (`tiers text`, in schema.sql's round-23 `ALTER TABLE
+  sprint.rows` beside the other four, `ADD COLUMN IF NOT EXISTS`; no DDL outside the file, so
+  the round-23 hash covers it): the tiers the worker's harness proved it serves, a comma list
+  in `Tiers`' order (`JoinTiers`, `SplitTiers`), "" when none was advertised. `SetRowLoad` gains
+  `Tiers`; one not in that form is invalid. `PutRow` keeps it while the session is the same and
+  clears it when the session changes (an unhook, a new hook), so an advertisement holds for the
+  session that made it. No store rule reads it: the roster does (`roster.Advertised`, LAYER-4
+  Built "the worker's live defects"). It moves no gen, as the rest of the heartbeat. Not in
+  `Store.tla` (telemetry, as the load columns: `trace.go`'s notes). Conformance: `rowLoad`.

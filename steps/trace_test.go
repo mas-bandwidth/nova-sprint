@@ -67,7 +67,7 @@ type traceAsker struct{ w *traceWalk }
 func (a traceAsker) Ask(q Questions) Answers {
 	w := a.w
 	out := Answers{Version: 1, Order: map[string][]any{}, Rows: map[string][]string{}, Reads: map[string]int{}, Verdict: map[string]string{},
-		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}}
+		Width: map[string]WidthAnswer{}, Landing: map[string]LandingAnswer{}, Failed: map[string]string{}, Models: benchModels()}
 	for _, c := range q.Order {
 		out.Order[c.ID] = []any{} // id order, as the model
 	}
@@ -81,7 +81,7 @@ func (a traceAsker) Ask(q Questions) Answers {
 		}
 	}
 	for _, r := range q.Width {
-		out.Width[r.Name] = WidthAnswer{Work: r.Width, Ahead: 2 * r.Width} // the model's Ahead
+		out.Width[r.Name] = WidthAnswer{Work: r.Width}
 	}
 	for _, s := range q.Landing {
 		// above the scenario's producers: the model's requests are rung 1's
@@ -116,8 +116,8 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	} else if scen == "deal" {
 		qPath = "a/x"
 	}
-	w.producer("p", "s1", "pro", "a/x")
-	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath}}
+	w.producer("p", "s1", "pro", "a/x", "a/*") // the model's glob a/* both list: never an overlap
+	q := store.PutCard{ID: "q", Kind: "producer", Stream: qStream, Tier: "pro", Brief: "do q", Paths: []string{qPath, "a/*"}}
 	if landLike {
 		q.After = []string{"p"}
 	}
@@ -226,9 +226,6 @@ func (w *traceWalk) step() {
 		moves = append(moves, w.tickOnce, w.tickOnce)
 	}
 	blind := w.rng.Intn(4) == 0 // one pick in four is blind, so refusals are met too
-	if w.phase == "idle" && (blind || len(w.consumersIn("ready")) > 0) {
-		moves = append(moves, w.takeOne)
-	}
 	if blind || len(w.consumersIn("working")) > 0 {
 		moves = append(moves, w.reportOne)
 	}
@@ -275,24 +272,8 @@ func (w *traceWalk) moved(action string, args []string) {
 	w.record(action, args)
 }
 
-func (w *traceWalk) takeOne() {
-	ids := w.consumersIn("ready")
-	w.pick()
-	if len(ids) == 0 {
-		return
-	}
-	id := ids[w.rng.Intn(len(ids))]
-	c := w.snap().Cards[id]
-	if !w.roomToTake(c.Holder) {
-		return
-	}
-	pl, r := w.consumer(id, card.Take{Row: c.Holder})
-	if r != nil || !w.apply("take", pl.Expect, pl.Writes...).Accepted {
-		return
-	}
-	w.ok()
-	w.moved("Take", []string{"card |-> " + SlotTLA(w.view(), id)})
-}
+// The walk has no take: the deal is the take (defect 52), and a row's
+// acknowledgement moves no card, so the model has no action for it.
 
 // results are the scenario's result sets: work ok (and fail for p in deal),
 // read ok (and fix for p in deal).

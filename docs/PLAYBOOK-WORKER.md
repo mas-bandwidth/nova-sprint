@@ -19,6 +19,16 @@ and is installed by the coordinator's `up`. It says in its heartbeat (`nova-spri
 tiers its harness proved it serves and its nova-reserve slots, and is dealt by them; its harness
 reads the card from `JOB.md` in the job directory.
 
+## The first rule: run everything in your hand
+
+Run every card in your hand, each in its own child (a sub-agent, or a separate session or
+process with its own fresh clone and directory), all at once, up to your width. A card is in
+your hand from the moment it is dealt: nothing waits for you to take it, its deadline runs
+from the deal, and the sprint deals you no more than your width. Never work your cards one
+after another when they could run side by side, and never leave a dealt card idle. A card in
+your hand that you have not acknowledged with `take` is nudged every tick from ten seconds
+after the deal, and after a minute the coordinator is told its row and card.
+
 ## Who you are now
 
 1. You are a row: a name on nova-bus that the sprint deals cards to. A card is one piece of
@@ -26,8 +36,8 @@ reads the card from `JOB.md` in the job directory.
 2. You do the work in a card and report it with a verb. You never choose your own work, never
    take a card that was not dealt to you, and never move a card any other way than the verbs
    below.
-3. The sprint's run loop does everything mechanical for you. It deals ready cards to rows with
-   room, asks every read a finished head needs in one tick from rows other than its author,
+3. The sprint's run loop does everything mechanical for you. It deals ready cards into the hands
+   of rows with room, asks every read a finished head needs in one tick from rows other than its author,
    decides yes or fix from all the reads, lands yes heads into the base with CI green at the
    exact base head, sends a fix back to the queue with your head and the finding, and opens a
    judgement for the coordinator when something needs a mind.
@@ -90,30 +100,40 @@ or nothing. If your wake text tells you to answer every message by `nova-bus sen
 not apply to `sprint`: a message to `sprint` that is not a verb is ignored, a reply to `sprint`
 is never answered, and a verb sent to `sprint` only gets back where to run it yourself.
 
-1. A work deal: `DEAL card=<id> attempt=<n> kind=work stream=<s> epoch=<e>` and a line
-   `run: nova-sprint take <id>@<gen> --as <you>`. Run the `run:` line exactly as printed, then
-   follow "Work a card" below.
-2. A read deal: the same with `kind=read`. Run its `run:` line, then follow "Read a card".
-3. A withdraw: your card was taken back, because a blocker preempted it or because you were
+1. A work deal: `DEAL card=<id> attempt=<n> kind=work stream=<s> tier=<t> model=<m> epoch=<e>
+   repo=<org/repo> base=<40 hex> branch=<branch> brief=<the brief, clipped>; in your hand now:
+   run nova-sprint take <id>@<gen> --epoch <e> --as <you> (acknowledges, prints the whole
+   brief), then do it and run: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`.
+   The card is yours already. Start a child for it at once (the first rule), have it run the
+   `take` command exactly as printed, then follow "Work a card" below.
+2. A read deal: the same with `kind=read` and `head=<40 hex>` in place of base and branch, and
+   the read command in place of finish. Start a child for it, then follow "Read a card".
+3. A nudge: `NUDGE card=<id> dealt <time> ago is in your hand, not acknowledged; run: nova-sprint
+   take <id>@<gen> --as <you> --epoch <e>`. A card of yours has no child working it, or its
+   child never ran `take`. Run the `take` line now and work the card; a nudge repeats each
+   tick until you do, and after a minute the coordinator is told.
+4. A withdraw: your card was taken back, because a blocker preempted it or because you were
    silent past the bound policy states. Stop work on that card at once. Your pushed branch is
    kept and the next attempt continues from it, so nothing you pushed is lost. Do not finish or
    report it: the verb will refuse with `consumer <id> was withdrawn`.
-4. A result for a card you worked (it landed, or it came back for a fix): read it; there is
+5. A result for a card you worked (it landed, or it came back for a fix): read it; there is
    nothing to run. A fix comes back to the queue as a new deal, possibly to another row, and
    carries your head and the finding.
-5. A message from the coordinator or another friend row: read it and act on it. A brief correction for
+6. A message from the coordinator or another friend row: read it and act on it. A brief correction for
    a card in your hand arrives this way, because the coordinator cannot edit a card you hold.
 
 Each message is a wake. Handle it, then wait for the bus again.
 
 ## Work a card
 
-1. Take it: `nova-sprint take <id>@<gen> --as <you> --epoch <e>`, the `run:` line of the deal.
-   The first line is `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch>`. The brief
-   follows: its tier, PATHS, NEEDS, TEST and DONE-WHEN lines, where tests may run, and, on a
-   fix, the prior head and the reason it came back. The last line is
-   `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. The generation in
-   that line is the card's new one: use it, not the deal's.
+1. Acknowledge it: `nova-sprint take <id>@<gen> --as <you> --epoch <e>`, as the deal printed
+   it. The card is already in your hand; `take` tells the sprint you have it (the nudges stop)
+   and prints the whole brief. The first line is
+   `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch>`. The brief follows: its tier,
+   PATHS, NEEDS, TEST and DONE-WHEN lines, where tests may run, and, on a fix, the prior head
+   and the reason it came back. The last line is
+   `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. `take` does not
+   change the generation, and a repeat prints the same and changes nothing.
 2. Make a fresh clone of `https://github.com/<org/repo>` (or the ssh form your git uses) in a
    new directory of your own, never a directory another worker or card uses. The dealt branch
    is the same for every attempt of a card. Run `git ls-remote origin <branch>`. If it prints
@@ -165,6 +185,11 @@ so honestly with one of these, never with a finish of a head that does not meet 
   never started, a staging failure, a rate limit or credit refusal):
   `nova-sprint report <id>@<gen> --result fault --reason "<what failed>" --as <you> --epoch <e>`.
   It prints `FAULTED <id> ...`; a fault spends no attempt and never counts toward blocked.
+- The work needs a route or device this row does not have (a tool, a device, a network, a
+  model route): the same `report --result fault`, with a reason that starts `missing-route:`, then
+  the route's name in one word (the name a brief declares with `NEEDS-ROUTE: <route>`), then what
+  is missing, `--reason "missing-route: adb no device attached to this row"`. The card is not dealt
+  again by itself; it waits blocked until the coordinator answers.
 - You cannot keep the card (you are going away, or you were told to stop):
   `nova-sprint release <id>@<gen> --as <you> --reason "<why>" --epoch <e>`. The card goes
   back to ready with your branch kept, and no blame. If you pushed commits on it, add
@@ -176,7 +201,7 @@ so honestly with one of these, never with a finish of a head that does not meet 
 A read is an independent review of someone else's finished head. You are never dealt a read of
 your own head.
 
-1. Take it: the deal's `run:` line. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex>`
+1. Acknowledge it: the deal's `take` command. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex>`
    and the second is `Read detached at this head; do not edit or push.` The brief follows, then
    `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
 2. Check out that exact head detached in a fresh directory of your own. Do not edit it, commit
@@ -223,9 +248,11 @@ answer, never a thing to route round.
 
 - `<you> is not on the bus: hook in to the bus first: ...`: do step 1 of "Hook in".
 - `hook in first: nova-sprint hook --as <you> --role worker`: do step 2 of "Hook in".
-- `<id> is not dealt to this row at this generation: nova-sprint show <id>`: the card moved
-  (withdrawn, re-dealt, or a newer gen exists). Run `show`, and wait for the bus.
-- `row <you> is at width <n>: finish <card> first`: finish or release a card you hold.
+- `<id> is not dealt to this row at this generation: nova-sprint next --as <you>`: the card
+  moved (withdrawn, re-dealt, or a newer gen exists). Run `next`, and wait for the bus.
+- `<id> was dealt before the deal became the take; the next tick withdraws it and deals it
+  again, in hand`: a card dealt by an older sprint; wait for the bus and its new deal.
+- `<id> is done` or `<id> is fail`: the card was reported or withdrawn; stop work on it.
 - `epoch <n> is over: this card was recreated in epoch <m>: run nova-sprint next`: the sprint
   was cleared; your old card is gone. Run `next`.
 - `<id> is not held by <you>`: it is someone else's, or it was withdrawn. Stop work on it.

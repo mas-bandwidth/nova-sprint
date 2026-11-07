@@ -97,7 +97,7 @@ func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness
 	for _, tier := range slices.Sorted(maps.Keys(next.TierModels)) {
 		cands := next.TierModels[tier]
 		if len(cands) == 0 {
-			return nil, nil, fmt.Errorf("no model for tier %s: the policy's catalog names none: add one (nova-sprint policy set <file> --reason <why>)", tier)
+			return nil, nil, fmt.Errorf("no model for tier %s: the active policy's catalog names no bench model for it: add one to its bench (nova-sprint policy set <file> --reason <why>)", tier)
 		}
 		m, why := r.servedModel_internal(h.Needs(), cands, listed)
 		if m == "" {

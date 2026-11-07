@@ -101,7 +101,6 @@ func TestBreakNestedMergeRightAssociatedRefusesValidMoves(t *testing.T) {
 		w := newWorld(t, producer("p1"), producer("p2"))
 		w.move("p1", Resolve{})
 		w.move("p1", Start{Row: "r1", Branch: "sprint/p1", Base: base})
-		w.op("take", w.consumerPlan("p1.w1", Take{Row: "r1"}))
 
 		s1 := StreamFromStore(w.snap().Streams["s1"])
 		other, r := Move(w.card("p2"), nil, nil, s1, nil, Resolve{})
@@ -200,7 +199,6 @@ func TestBreakPreemptGuardBypassedByNestedMergeAndSetPriority(t *testing.T) {
 		w := newWorld(t, producer("p1"), producer("b"), producer("p3"))
 		w.move("p1", Resolve{})
 		w.move("p1", Start{Row: "r1", Branch: "sprint/p1", Base: base})
-		w.consume("p1.w1", Take{Row: "r1"})
 		w.move("b", SetPriority{Level: "blocker", Reason: "p0"})
 		w.move("b", Resolve{})
 
@@ -222,7 +220,6 @@ func TestBreakPreemptGuardBypassedByNestedMergeAndSetPriority(t *testing.T) {
 		w := newWorld(t, producer("p1"), producer("b"))
 		w.move("p1", Resolve{})
 		w.move("p1", Start{Row: "r1", Branch: "sprint/p1", Base: base})
-		w.consume("p1.w1", Take{Row: "r1"})
 		w.move("b", Resolve{})
 
 		setBlocker, r := w.plan("b", SetPriority{Level: "blocker", Reason: "p0"})

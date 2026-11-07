@@ -48,8 +48,11 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if err != nil {
 		return "", err
 	}
-	return done("nova-sprint add --stream "+name+" --brief-file <f>",
-		fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)), nil
+	lines := []string{fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)}
+	if what, fix := e.agreementWarning(ctx, snap, store.Stream{Name: name, Repo: repo, Base: base, Forge: forge}); what != "" {
+		lines = append(lines, "WARN "+oneLine(what)+": "+oneLine(fix))
+	}
+	return done("nova-sprint add --stream "+name+" --brief-file <f>", lines...), nil
 }
 
 // baseTip is the stream's base branch tip at origin, read through the git
@@ -66,7 +69,7 @@ func (e *Engine) baseTip(ctx context.Context, s store.Stream, again string) (str
 	}
 	sha, ok, err := e.Origin.Tip(ctx, url, s.Base)
 	if err != nil {
-		fix := "make " + url + " readable from this host (GH_TOKEN or GH_CONFIG_DIR under nova-secrets exec for GitHub), then " + again
+		fix := "make " + url + " readable from this host (for GitHub: gh auth login on this host as an identity that can read it), then " + again
 		if s.Forge == "" && git.IsOrgRepo(s.Repo) {
 			fix = "an <org>/<repo> is cloned through its forge: give stream " + s.Name + " --forge github, then " + again
 		}

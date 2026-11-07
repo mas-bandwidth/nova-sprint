@@ -22,7 +22,7 @@ AliveSlots == (IF harnessAlive["c1"] > 0 THEN harnessAlive["c1"] ELSE 0) +
 ResIDFor(c) == IF c = "c1" THEN 1 ELSE 2
 
 Init ==
-  /\ storeState = [c \in Consumers |-> "ready"]
+  /\ storeState = [c \in Consumers |-> "working"]   \* dealt in hand (defect 52)
   /\ jobState = [c \in Consumers |-> "none"]
   /\ slotsInUse = 0
   /\ width = Width
@@ -40,12 +40,10 @@ Wake ==
 Take(c) ==
   /\ ~env.crashed
   /\ ~env.storeDown
-  /\ storeState[c] = "ready"
+  /\ storeState[c] = "working"
   /\ jobState[c] = "none"
-  /\ Cardinality(WorkingSet) < width
-  /\ storeState' = [storeState EXCEPT ![c] = "working"]
   /\ jobState' = [jobState EXCEPT ![c] = "taken"]
-  /\ UNCHANGED <<slotsInUse, width, jobDir, harnessAlive, appliedOps, env>>
+  /\ UNCHANGED <<storeState, slotsInUse, width, jobDir, harnessAlive, appliedOps, env>>
 
 Stage(c) ==
   /\ ~env.crashed

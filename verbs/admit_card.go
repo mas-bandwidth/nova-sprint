@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -43,7 +44,7 @@ type streamAtBase struct {
 // admitCards proves each producer of facts (CORRECT-USE "Admission"): its
 // stream is live (its repository and base read at origin now), its tier and
 // routes have a serving row in nova-config, its PATHS exist at the base, its
-// DONE-WHEN lines parse, it names no retired mechanic and no bench by name,
+// DONE-WHEN lines are each one command (edge.ParseGate), it names no retired mechanic and no bench by name,
 // and its work is not already at the base. Each stream is read once, all at
 // once; the result is each refused card's refusal, by id.
 func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []cardFacts) (map[string]error, error) {
@@ -135,8 +136,8 @@ func cardLint(f cardFacts, ro roster.Roster) error {
 		return refuse(fmt.Sprintf("card %s: no row in nova-config serves tier %s%s", f.ID, f.Tier, routeWords(routes)), serveFix(f.Tier, routes))
 	}
 	for _, d := range f.DoneWhen {
-		if why := shellProblem(d); why != "" {
-			return refuse("card "+f.ID+": DONE-WHEN "+clip(d)+" does not parse: "+why, "write it as one shell command line, then add the card again")
+		if _, why := edge.ParseGate(d); why != "" {
+			return refuse("card "+f.ID+": DONE-WHEN "+clip(d)+" is not one command: "+why, edge.GateFix+", then add the card again")
 		}
 	}
 	lines := strings.Split(f.Brief, "\n")

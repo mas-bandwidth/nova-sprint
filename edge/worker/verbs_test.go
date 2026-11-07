@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -182,14 +183,14 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 	if c.Of == "group" || c.Branch == "sprint/"+c.Stream+"/group" || strings.HasSuffix(c.Branch, "/group") || c.Branch == "sprint/"+c.Stream {
 		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: card %s branch %q collides with reserved stream integration branch sprint/%s/group", consumerID, c.Branch, c.Stream)
 	}
-	r := snap.Rows[row]
-	plan, ref := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Take{Row: row})
-	if ref != nil {
-		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %s: run nova-sprint show %s", ref.Reason, consumerID)
+	if c.Holder != row || c.State != card.Working {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: %s is %s on %s, not in %s's hand: run nova-sprint show %s", consumerID, c.State, c.Holder, row, consumerID)
 	}
+	// the deal is the take: the acknowledgement is a cursor, as verbs' take
 	op := store.Op{
 		ID: FormatTakeOpID(snap.Epoch, consumerID, gen, row), Epoch: snap.Epoch,
-		Actor: row, Kind: "take", At: s.now_internal(), Expect: plan.Expect, Writes: plan.Writes,
+		Actor: row, Kind: "take", At: s.now_internal(), Expect: []store.Expect{store.CardGen{Card: consumerID, Gen: gen}},
+		Writes: []store.Write{store.SetCursor{Name: steps.AckCursor(snap.Epoch, consumerID), Seq: max(snap.Seq, 1)}},
 	}
 	rec, err := s.applyWithReplay_internal(ctx, op)
 	if err != nil {

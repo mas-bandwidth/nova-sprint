@@ -179,15 +179,15 @@ stream names its repository by URL or path); a form a forge cannot address
 is refused naming the form. Run's land and heads clone through it (one clone
 per address under `ReposDir`), `stream add`, `finish` and `check` read tips
 at it (`Client.Tip`: one `git ls-remote <address> refs/heads/<branch>`, no
-clone). The scheme is https, not ssh: the sprint's GitHub identity is a token
-nova-secrets exec puts in the process (`GH_TOKEN`, or the identity's
-`GH_CONFIG_DIR`), the forge edge already runs as it, and an ssh key
-registered with GitHub on every bench is a second credential to keep. With
-either set, the git edge makes `gh auth git-credential` git's one credential
-helper for `https://github.com` (`Config.GitHubCredential`, through
-`GIT_CONFIG_COUNT`; an empty helper first clears the host's own list, so a
-person's keychain never answers for the sprint); the environment names no
-secret. Without either, the host's own git configuration answers.
+clone). The scheme is https, not ssh: the sprint's GitHub identity is the
+host's gh login (w3L: or the `GH_GATE_TOKEN` override), the forge edge
+already runs as it, and an ssh key registered with GitHub is a second
+credential to keep. The git edge makes `gh auth git-credential`, run with
+every GitHub credential of the process unset (`env -u ...`), git's one
+credential helper for `https://github.com` (`Config.GitHubCredential`,
+through `GIT_CONFIG_COUNT`; an empty helper first clears the host's own
+list, so a person's keychain never answers for the sprint); the
+environment names no secret.
 
 A landing never: force-pushes base; merges a sha CI did not pass; puts two
 streams in one branch (LPM M5); rebases a card's branch; resolves a
@@ -202,8 +202,10 @@ removes a landing host (LANDING step 9).
 
 ## The GitHub edge
 
-`Forge` has four methods: `PR(head, base)` (find), `OpenPR`, `Checks(shas)`
-and `Merge(pr, sha)`.
+`Forge` has `PR(head, base)` (find), `OpenPR`, `Checks(shas)`,
+`Merge(pr, sha)`, `FailedLines(url)`, `Inheritance(base, baseTip, head)`
+(a red head's failing workflows split by the base) and `Authors(pr)` (see
+Built, "w3L").
 
 Credentials. The landing's `gh` runs as the host's own gh login (the run's
 host; intent rule 32, 2026-11-07: "the run does the forge work with the
@@ -514,7 +516,7 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
   - No host refusal: nova-config's bench role is the only word on where a worker runs, the coordinator's machine included (2026-11-07; `CheckHost` and `--coordinator-hosts` are gone, below). `--as <row>` is the one mandatory flag.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `cmd/nova-worker` defaults `--harness` to `claude`. `ScriptHarness.Command` passes card fields as positional arguments (`$1`..`$9`) to a static shell program constant, never interpolating card prose into a shell string. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
   - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only `OPENAI_API_KEY=nova-proxy-placeholder` (`Guarantee 12`).
-  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which splits `DoneWhen` command lines into unquoted argv via `splitArgv_internal`) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
+  - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which runs each `DoneWhen` line as the argv `edge.ParseGate` gives (the one parser admission uses too; a line with shell syntax outside quotes is an error and is never run)) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` only when equal to `ProxyPlaceholderKey`, plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
   - 9-step runner lifecycle (`RunConsumer`, `StepRow`, `ProbeRow`, `RecoverRow`, `RunWakeLoop`, `QueryEdge` in `edge/worker/runner.go`):
     * `FormatTakeOpID(epoch, consumer, gen, row)` (`take-e<epoch>-<consumer>-g<gen>-<row>`) and `FormatResultID(epoch, consumer, attempt, gen)` (`res-e<epoch>-<consumer>-a<attempt>-g<gen>`) fence store operations by epoch, consumer, attempt, and gen (`CLISprintClient.Take` passes `--id`).
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
@@ -790,15 +792,18 @@ clock), mostly in `edge/worker/probe_test.go`.
   answers 503 with the same words.
 - **The probe's model (27, 36).** The probe runs after the hook (next
   --json answers only a hooked row) with, for each tier, the first of the
-  policy's candidates (`tier_models`) the harness serves: through the proxy
+  policy's candidates (`tier_models`; for a bench since stitch w2D1 the one
+  model the catalog's `bench` names for the tier) the harness serves: through the proxy
   a route for its provider, else the adapter's one provider, and in the
   harness's own list when it has one (`opencode models`, run outside the wall
   under the probe's home). A tier with no candidate refuses ("no model for
   tier <t>"); a tier none of whose candidates it serves is a warning naming
   why, and a card of that tier dealt here faults with the candidates; none
   served at all refuses, naming each tier's reasons and the harness's list for
-  those providers. A take of a bench card runs the first of the receipt's
-  `models` the probe proved (`chooseModel_internal`). A failed probe unhooks
+  those providers. A take runs the receipt's `model`, the one the deal
+  named (`chooseModel_internal`); a model the probe proved the harness does
+  not serve faults the card naming the model and the tier (stitch
+  w2D1: the receipt's `models` candidates are gone). A failed probe unhooks
   the row again (`ServeRow`).
 - **Logs (28).** Every probe and job run keeps `stdout.log`, `stderr.log` and
   `command.txt` (the wall's command line; the environment's values are never
@@ -890,6 +895,93 @@ clock), mostly in `edge/worker/probe_test.go`.
 - Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
   and carries no numbers) and not a read verb that writes. Tests: `edge/worker/beat_test.go`.
 
+### Built: the landing's red split, its timing, and the host identity (stitch w3L, 2026-11-07)
+
+Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
+
+- *`forge` (`edge/forge/actions.go`, new).* `Inheritance(repo, base,
+  baseTip, head)`: the merge base (`gh api repos/<r>/compare/<tip>...<head>
+  --jq .merge_base_commit.sha`), the workflow runs at the head and at the
+  merge base (`actions/runs?head_sha=`, `--jq`-projected so a page of 100
+  runs fits the 64 KiB output cap), the jobs of each failed or still
+  running run at the head (`actions/runs/<id>/jobs`), and for a failing
+  workflow with no completed run at the merge base the base branch's last
+  completed run of it (`actions/workflows/<id>/runs?branch=&status=completed`).
+  A workflow fails at the head when a run failed or is running with a
+  failed job. Returns `RedSplit{MergeBase, Inherited, New}`; each
+  `WorkflowRed` carries its `Basis` (what the base side was read from),
+  `Running`, and its failed jobs (`FailedJob{Name, Runner, URL, Lines}`).
+  Only new red's logs are read: `JobLines(id)` (`actions/jobs/<id>/logs`,
+  readable once the job ends, `LogMaxBytes` 8 MiB, timestamps stripped,
+  `FirstFailing` 5 lines of `LineMax` 240 bytes) for the first `NewJobsMax`
+  3 jobs; all three bounds are guesses. `Authors(pr)` is the PR's distinct
+  commit authors (`gh pr view --json commits`); `IsAgreement(check)`
+  names a CLA/CAA/contributor-agreement check. `CheckRollup.Waiting`: a red
+  rollup with a check still queued or running.
+- *`LandPass`* (`edge/git/land.go`): a red rollup goes through
+  `splitRed_internal`: an agreement check failing reads `Authors` into
+  `LandResult.Unsigned`; the split fills `MergeBase`, `Inherited`, `NewRed`
+  (plus each failing check that is no failed job of any workflow: new, not
+  compared). New red is `ci_red` at once, even while the run goes on; all
+  inherited while waiting is `ci_pending` ("waiting for the run"); all
+  inherited with the run ended is the new outcome `ci_red_inherited` (a
+  judgement); a split that cannot be read waits while the run goes on, then
+  is `ci_red` with `FailingLines` and the cause. Run's `landFacts` leads
+  with NEW red, inherited red and the authors; layer 3 words
+  `ci_red_inherited` for a glance (`steps.InheritedRed`).
+- *Identity (59).* gh runs with `forge.HostEnv()`: the process's
+  environment less `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`,
+  `GITHUB_ENTERPRISE_TOKEN` and `GH_CONFIG_DIR` (`CleanEnv`), plus the
+  `GH_GATE_TOKEN` override as `GH_TOKEN` when set: before this a
+  `GH_CONFIG_DIR` in run's environment made the landing act as that
+  directory's login, not the host's. git's github.com helper is always gh
+  as the host's login (`!env -u ... gh auth git-credential`; the
+  `githubCredential` switch on `GH_TOKEN`/`GH_CONFIG_DIR` is gone), and
+  admission's `hostForge` runs gh the same way. `Identity.Name` is the
+  choice (`forge.HostLogin`, "this host's gh login", or `GH_GATE_TOKEN
+  (the override of ...)`), never "sprint"; the missing-gh fix says `gh auth
+  login on this host`. Already done at the base: the "identity sprint" and
+  "expected sprint" refusals (`ExpectedLogin`, `Ready`) had been removed by
+  w2L; what remained was the environment and the name.
+- *Model.* `LandEdge.tla` unchanged and TLC not rerun: in the model every
+  non-green, non-absent gate is one judgement, which `ci_red_inherited`
+  still is, and waiting for the run is the re-ask a pending CI already is
+  (a `Pass` is atomic up to its final outcome). The trace walk's truthful
+  fake reports red as new (`fakeForge_internal.Inheritance`), so
+  `walkOutcomes` is unchanged.
+- *Tests (unit, no network).* `edge/forge/actions_test.go`: gh with canned
+  JSON for compare, runs, workflow runs, jobs and logs
+  (`TestInheritanceSplitsByTheMergeBase`: inherited at the merge base,
+  inherited by the base branch's last run, new at the merge base, new with
+  no run on the base, a running workflow with a failed job, inherited logs
+  never read), compare faults, an unread log, `Authors` and `IsAgreement`.
+  `edge/git/red_test.go`: inherited-only, waiting, new while waiting, the
+  agreement check, an uncompared split. `run/edges_land_test.go`
+  `TestLandItemSplitsRedByTheBase`; `steps/tick_test.go`
+  `TestTickLandInheritedRedIsAGlance`; `cmd/nova-sprint/edges_test.go`
+  `TestIdentityNamesTheChoice`; `edge/forge` `TestForgeActsAsTheHostsGh`
+  now sets `GH_TOKEN` and `GH_CONFIG_DIR` and requires neither reaches gh.
+- *Not done.* Which author is unsigned is not parsed from the agreement
+  check's output (every author is named); no functional test against a real
+  repository's Actions API (the calls mirror a hand tool used on the live
+  fleet, not run here).
+## Built: one gate parser; the install (stitch w3A, 2026-11-07; directives 77, 78)
+
+- `edge.ParseGate` (`edge/argv.go`) is the one parser of a DONE-WHEN line.
+  `OSReserveWall.RunTest` calls it (replacing `splitArgv_internal`, which was
+  the tokenizer without the checks), so admission's add and the worker's run
+  agree; a stored line with shell syntax is an error naming it, never run as
+  literal arguments. The rule is in CARD-CONTRACT "Admission".
+- `worker.CommitEmailDomain` is the domain of a bench's commit author email
+  (`<row>@nova-sprint.local`); the job record and admission's agreement
+  warning both read it.
+- The binary at `~/.local/bin/nova-sprint` on a bench is installed by
+  nova-fleet's play (another repository), whose replace-by-rename and ad-hoc
+  signing is not changed here. In this repository `make install` now uses
+  `tools/placebin`: a new file beside the old, `codesign --force --sign -` on
+  darwin, rename over, never an open of the old file for writing. Tests:
+  `tools/placebin/place_test.go` (the destination is a different file after
+  and the old open file keeps its bytes).
 
 ### Built: the worker's live defects (stitch w3W, 2026-11-07)
 
@@ -898,8 +990,10 @@ From the first bench runs (directives items 61, 65 to 74). Files:
 quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
 
 - **Passes apart from jobs (66).** A pass recovers the row's jobs, reads
-  the row and claims its dealt cards up to width, then returns; the jobs of
-  a pass run detached under the runner's WaitGroup, which the wake loop
+  the row and acknowledges (takes) each card dealt working into its hand
+  that has no job yet (the deal holds the width: deal is take), then
+  returns; the jobs of a pass run detached under the runner's WaitGroup,
+  which the wake loop
   waits on when it ends. A refused receipt in a job still ends the worker
   (a fatal channel). A periodic wake (`WakeEvery`, 10 s, a guess) runs a
   pass beside `hook.Wake()`. Model: `Runner.tla` (PassStart, PassEnd,
@@ -915,10 +1009,12 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   would replay the take's op id at the pre-take gen): taken is staged again,
   staged or running with no live harness is run again, running with a
   result file is harvested. A job with no slot stays staged and the next
-  pass runs it. A working card with no job directory, or no receipt, is
-  released with no blame: `release` gains `--head` so the worker hands back
+  pass runs it. A job directory with no receipt is released with no blame:
+  `release` gains `--head` so the worker hands back
   the partial head it pushed (checked as a finish's head is). "runner lost
-  the job" is gone. The worker's own stop cancels its jobs: each is "runner
+  the job" is gone, and so is releasing a card in hand with no job
+  directory: under deal is take that card is the pass's to run (its take,
+  the acknowledgement, prints the same receipt again). The worker's own stop cancels its jobs: each is "runner
   stopped", its record kept at its state with no pid, never reported;
   `edge.Exec` classifies a cancelled command as `canceled` ("stopped by its
   caller"), never a timeout. Model: Stop, Release, `StopIsNeverAFault`,
@@ -943,7 +1039,7 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   (the first included) is logged and counted on the record; after
   `RefusalLimit` (3, a guess) identical refusals the record moves to
   `<root>/quarantine/<consumer>@<gen>` and is raised on stderr with what to
-  read. A quarantined card is neither resumed nor released.
+  read. A quarantined card is neither resumed, run afresh nor released.
 - **No forge in the worker (71).** The worker's contract ends at a pushed
   head: `Runner.Forges`, `EnsurePR`, the PR step and the gh timeout are
   gone. Of the three stitch tests that encoded worker-opens-PR,

@@ -203,7 +203,8 @@ func TestLivePassTakesWhileAJobBlocks(t *testing.T) {
 		}
 		return WallRunResult{}, os.WriteFile(filepath.Join(j.JobDir, "result.json"), []byte(`{"result":"ok"}`), 0o600)
 	}}
-	sp := &cr2Sprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Ready: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}}
+	sp := &cr2Sprint{next: workingNext_internal("read", "p1.r1")}
+	sp.next.Width = 2
 	r := cr2Runner_internal(t, sp, wall, &cr2Procs{}, time.Unix(1000, 0))
 	hook := newFakeWakeHook()
 	r.BusHook = func(context.Context, string) (WakeHook, error) { return hook, nil }
@@ -214,8 +215,7 @@ func TestLivePassTakesWhileAJobBlocks(t *testing.T) {
 		t.Fatalf("first job %s", c)
 	}
 	sp.mu.Lock()
-	sp.next.Ready = []ConsumerSummary{{ID: "p2.r1", Kind: "read", Gen: 2}}
-	sp.next.Working = []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2, Attempt: 1}}
+	sp.next.Working = append(sp.next.Working, ConsumerSummary{ID: "p2.r1", Kind: "read", Gen: 2, Attempt: 1}) // dealt into the hand
 	sp.mu.Unlock()
 	hook.wake <- struct{}{}
 	if c := <-started; c != "p2.r1" {
@@ -278,15 +278,40 @@ func TestLiveRestartResumesWithNoFault(t *testing.T) {
 	}
 }
 
-// 73: a working card the restarted worker has no job directory for is
-// released with no blame, never reported "runner lost the job".
-func TestLiveRestartWithNoJobDirReleasesWithNoBlame(t *testing.T) {
+// 73 under deal is take (defect 52): a card in the row's hand that the
+// restarted worker has no job directory for is the pass's to run (its take
+// is the acknowledgement), never released and never "runner lost the job".
+func TestLiveRestartWithNoJobDirRunsTheCard(t *testing.T) {
+	t.Parallel()
+	sp := &cr2Sprint{next: workingNext_internal("read", "p1.r1")}
+	wall := &liveWall{}
+	r := cr2Runner_internal(t, sp, wall, &cr2Procs{}, time.Unix(1000, 0))
+	_ = r.RecoverRow(context.Background(), "vision.ds")
+	if len(sp.reported()) != 0 || len(sp.releases) != 0 || len(wall.ran()) != 0 {
+		t.Fatalf("recovery leaves a dealt card with no job alone: releases %v reports %+v ran %v", sp.releases, sp.reported(), wall.ran())
+	}
+	_ = r.StepRow(context.Background(), "vision.ds")
+	if reps := sp.reported(); len(reps) != 1 || reps[0].Result != "ok" || len(sp.releases) != 0 || len(wall.ran()) != 1 {
+		t.Fatalf("the pass runs it: releases %v reports %+v ran %v", sp.releases, reps, wall.ran())
+	}
+}
+
+// 73: a job directory a restart cannot resume (no receipt) is released with
+// no blame, never reported.
+func TestLiveUnresumableJobIsReleasedWithNoBlame(t *testing.T) {
 	t.Parallel()
 	sp := &cr2Sprint{next: workingNext_internal("read", "p1.r1")}
 	r := cr2Runner_internal(t, sp, &liveWall{}, &cr2Procs{}, time.Unix(1000, 0))
+	dir := filepath.Join(r.RootDir, "jobs", "p1.r1")
+	if err := WriteJobRecord(dir, JobRecord{Consumer: "p1.r1", Producer: "p1", Kind: "read", Row: "vision.ds", Gen: 2, Attempt: 1, State: JobStaged}); err != nil {
+		t.Fatal(err)
+	}
 	_ = r.RecoverRow(context.Background(), "vision.ds")
 	if len(sp.reported()) != 0 || len(sp.releases) != 1 || !strings.HasPrefix(sp.releases[0], "p1.r1@2 runner restarted: ") {
 		t.Fatalf("want one no-blame release and no report, got releases %v reports %+v", sp.releases, sp.reported())
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the released job's directory must go: %v", err)
 	}
 }
 
@@ -348,7 +373,7 @@ func TestLiveRefusedRecordIsQuarantinedAndThePassGoesOn(t *testing.T) {
 	}
 	sp.mu.Lock()
 	sp.reportErr = nil
-	sp.next.Ready = []ConsumerSummary{{ID: "p2.r1", Kind: "read", Gen: 2}}
+	sp.next.Working = append(sp.next.Working, ConsumerSummary{ID: "p2.r1", Kind: "read", Gen: 2, Attempt: 1}) // p1.r1 is still in hand
 	sp.mu.Unlock()
 	_ = r.StepRow(context.Background(), "vision.ds")
 	reps := sp.reported()
@@ -360,8 +385,8 @@ func TestLiveRefusedRecordIsQuarantinedAndThePassGoesOn(t *testing.T) {
 // 72: one fetch per repo per pass, before any job stages from it.
 func TestLiveOneFetchPerRepoPerPass(t *testing.T) {
 	t.Parallel()
-	sp := &liveSprint{cr2Sprint: cr2Sprint{kind: "work", next: NextResponse{Row: "vision.ds", State: card.Up, Width: 3, Ready: []ConsumerSummary{
-		{ID: "p1.w1", Kind: "work", Gen: 2}, {ID: "p2.w1", Kind: "work", Gen: 2}, {ID: "p3.w1", Kind: "work", Gen: 2}}}},
+	sp := &liveSprint{cr2Sprint: cr2Sprint{kind: "work", next: NextResponse{Row: "vision.ds", State: card.Up, Width: 3, Working: []ConsumerSummary{
+		{ID: "p1.w1", Kind: "work", Gen: 2, Attempt: 1}, {ID: "p2.w1", Kind: "work", Gen: 2, Attempt: 1}, {ID: "p3.w1", Kind: "work", Gen: 2, Attempt: 1}}}},
 		repos: map[string]string{"p1.w1": "o/x", "p2.w1": "o/x", "p3.w1": "o/y"}}
 	r, g := liveWorkRunner_internal(t, sp, &liveWall{})
 	_ = r.StepRow(context.Background(), "vision.ds")
@@ -445,20 +470,23 @@ func TestLiveWorkerAdvertisesProvedTiersAtHook(t *testing.T) {
 	}
 }
 
-// 66: a card a detached job is still taking holds width: a pass that sees
-// it still ready does not take a second card past width.
-func TestLiveACardInFlightHoldsWidth(t *testing.T) {
+// 66 under deal is take (defect 52): the deal holds the width, so a pass
+// starts a job only for a card dealt into its hand with none yet: one whose
+// job is in flight is not started twice, and a card the sprint lists ready
+// (not dealt to this row) is never taken.
+func TestLivePassRunsOnlyTheHand(t *testing.T) {
 	t.Parallel()
-	sp := &cr2Sprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{
-		{ID: "p1.r1", Kind: "read", Gen: 2}, {ID: "p2.r1", Kind: "read", Gen: 2}}}}
+	sp := &cr2Sprint{next: workingNext_internal("read", "p1.r1", "p2.r1")}
+	sp.next.Ready = []ConsumerSummary{{ID: "p3.r1", Kind: "read", Gen: 2}}
 	r := cr2Runner_internal(t, sp, &liveWall{}, &cr2Procs{}, time.Unix(1000, 0))
-	held, ok := r.claim_internal(context.Background(), sp.next.Ready[0], nil) // p1.r1's take is in flight
+	held, ok := r.claim_internal(context.Background(), sp.next.Working[0], nil) // p1.r1's job is in flight
 	if !ok {
 		t.Fatal("claim")
 	}
 	defer held.done()
 	_, launches, err := r.planPass_internal(context.Background(), "vision.ds")
-	if err != nil || len(launches) != 0 {
-		t.Fatalf("width 1 with p1.r1 in flight: want no launch, got %d (%v)", len(launches), err)
+	if err != nil || len(launches) != 1 || launches[0].c.ID != "p2.r1" {
+		t.Fatalf("want one launch, p2.r1, got %+v (%v)", launches, err)
 	}
+	launches[0].done()
 }

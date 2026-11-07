@@ -41,3 +41,35 @@ func TestHostForge(t *testing.T) {
 		t.Fatal("a body that is not json read")
 	}
 }
+
+// TestHostForgeRequiredChecks: the required checks are the branch
+// protection's contexts and the rulesets' contexts, joined without repeats;
+// either read failing is an error. gh is a fake: no network.
+func TestHostForgeRequiredChecks(t *testing.T) {
+	var argvs []string
+	fail := ""
+	f := hostForge{exec: forge.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		line := strings.Join(cmd.Argv, " ")
+		argvs = append(argvs, line)
+		switch {
+		case fail != "" && strings.Contains(line, fail):
+			return edge.Result{ExitCode: 1, Stderr: "HTTP 403"}, nil
+		case strings.Contains(line, "/rules/branches/"):
+			return edge.Result{Stdout: "Gates\nContributor Assignment Agreement\n"}, nil
+		}
+		return edge.Result{Stdout: "Gates\n\nLinux Debug\n"}, nil
+	})}
+	got, err := f.RequiredChecks(context.Background(), "o/r", "main")
+	if err != nil || strings.Join(got, "|") != "Gates|Linux Debug|Contributor Assignment Agreement" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if len(argvs) != 2 || !strings.HasPrefix(argvs[0], "gh api repos/o/r/branches/main --jq") || !strings.HasPrefix(argvs[1], "gh api repos/o/r/rules/branches/main --jq") {
+		t.Fatalf("argvs %q", argvs)
+	}
+	for _, which := range []string{"/rules/branches/", "/branches/main --jq"} {
+		fail = which
+		if _, err := f.RequiredChecks(context.Background(), "o/r", "main"); err == nil || !strings.Contains(err.Error(), "HTTP 403") {
+			t.Fatalf("%s: %v", which, err)
+		}
+	}
+}

@@ -77,8 +77,9 @@ type Config struct {
 	// (defect 39). It reaches git in the environment, never in argv.
 	Token string
 	// GitHubCredential is the gh binary git asks for https://github.com's
-	// credential (`gh auth git-credential`, as the identity GH_TOKEN or
-	// GH_CONFIG_DIR names); "" leaves the host's own git configuration.
+	// credential (`gh auth git-credential` as the host's gh login, every
+	// GitHub credential of the process unset for it); "" leaves the host's
+	// own git configuration.
 	GitHubCredential string
 }
 
