@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -44,20 +45,27 @@ func Command(ctx context.Context, args []string) error {
 	if dsn == "" {
 		return fmt.Errorf("dashboard: --pg or NOVA_PG_DSN is required")
 	}
-	openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	password := os.Getenv("NOVA_SPRINT_PG_PASSWORD")
 	if password == "" {
-		password = os.Getenv("NOVA_PG_PASSWORD")
+		return fmt.Errorf("dashboard: NOVA_SPRINT_PG_PASSWORD is required")
 	}
+	dsn, err := SprintDSN(dsn)
+	if err != nil {
+		return err
+	}
+	openCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	s, err := store.Open(openCtx, dsn, password)
 	cancel()
 	if err != nil {
 		return err
 	}
 	defer s.Close()
-	cache, err := New(ctx, s)
+	cache, err := NewRecovering(ctx, s)
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		log.Printf("dashboard startup: %v; retrying", err)
 	}
 	return serveDashboard(ctx, *listen, Handler(cache), func(ctx context.Context) error { cache.Run(ctx, s); return ctx.Err() })
 }
@@ -88,4 +96,22 @@ func serveDashboardListener(ctx context.Context, listener net.Listener, handler 
 		return nil
 	}
 	return first
+}
+
+// ServeTestStore serves the explicitly selected local fake without PostgreSQL.
+func ServeTestStore(ctx context.Context, args []string, s store.Store) error {
+	flags := flag.NewFlagSet("dash", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	listen := flags.String("listen", "127.0.0.1:8080", "HTTP listen address")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
+		return fmt.Errorf("dashboard: fake mode accepts only --listen")
+	}
+	cache, err := NewRecovering(ctx, s)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		log.Printf("dashboard startup: %v; retrying", err)
+	}
+	return serveDashboard(ctx, *listen, Handler(cache), func(ctx context.Context) error { cache.Run(ctx, s); return ctx.Err() })
 }

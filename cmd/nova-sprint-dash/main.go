@@ -5,26 +5,20 @@ import (
 	"errors"
 	"flag"
 	"github.com/mas-bandwidth/nova-sprint/dash"
+	"github.com/mas-bandwidth/nova-sprint/run/filestore"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
 
 func main() {
-	for _, arg := range os.Args[1:] {
-		if arg == "--pull" || len(arg) > 7 && arg[:7] == "--pull=" {
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
-			if err := dash.Command(ctx, os.Args[1:]); err != nil {
-				log.Print(err)
-				os.Exit(1)
-			}
-			return
-		}
+	if handleAlternative() {
+		return
 	}
 	pg := flag.String("pg", os.Getenv("NOVA_PG_DSN"), "PostgreSQL DSN")
 	listen := flag.String("listen", "127.0.0.1:8080", "HTTP listen address")
@@ -37,9 +31,13 @@ func main() {
 	openCtx, cancelOpen := context.WithTimeout(ctx, 30*time.Second)
 	password := os.Getenv("NOVA_SPRINT_PG_PASSWORD")
 	if password == "" {
-		password = os.Getenv("NOVA_PG_PASSWORD")
+		log.Fatal("NOVA_SPRINT_PG_PASSWORD is required")
 	}
-	s, err := store.Open(openCtx, *pg, password)
+	dsn, err := dash.SprintDSN(*pg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	s, err := store.Open(openCtx, dsn, password)
 	cancelOpen()
 	if err != nil {
 		log.Fatal(err)
@@ -64,4 +62,34 @@ func main() {
 	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+func handleAlternative() bool {
+	if mode := os.Getenv("NOVA_SPRINT_STORE"); mode != "" {
+		if !strings.HasPrefix(mode, "fake:") {
+			log.Fatal("invalid NOVA_SPRINT_STORE")
+		}
+		s, err := filestore.Open(strings.TrimPrefix(mode, "fake:"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err = dash.ServeTestStore(ctx, os.Args[1:], s); err != nil {
+			log.Fatal(err)
+		}
+		return true
+	}
+	for _, arg := range os.Args[1:] {
+		if arg == "--pull" || len(arg) > 7 && arg[:7] == "--pull=" {
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			if err := dash.Command(ctx, os.Args[1:]); err != nil {
+				log.Print(err)
+				os.Exit(1)
+			}
+			return true
+		}
+	}
+	return false
 }
