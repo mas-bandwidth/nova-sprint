@@ -122,6 +122,7 @@ type Runner struct {
 	DefaultHarness                     Harness
 	Timeouts                           Timeouts
 	Logger                             *StepLogger
+	Warn                               func(string) // a best-effort step's failure; nil: stderr
 	Now                                func() time.Time
 	Sleep                              func(time.Duration)
 	mu                                 *sync.Mutex
@@ -161,9 +162,28 @@ func (r *Runner) harnessFor_internal(name string) (Harness, error) {
 	}
 	return NewHarness(cmp.Or(name, "claude"))
 }
+
+// report writes a best-effort step's failure (a job record, a step log line,
+// a cleanup) on the worker's output: the step goes on, never silently.
+func (r *Runner) report(what string, err error) { reportTo(r.Warn, what, err) }
+
+// reportTo writes err as a WORKER WARNING line to warn, or stderr when warn
+// is nil; nothing for a nil err.
+func reportTo(warn func(string), what string, err error) {
+	if err == nil {
+		return
+	}
+	line := "WORKER WARNING " + what + ": " + edge.RedactN(err.Error(), edge.CommandMax)
+	if warn != nil {
+		warn(line)
+		return
+	}
+	fmt.Fprintln(os.Stderr, line)
+}
+
 func (r *Runner) logStep_internal(row, consumer, step, res string, d time.Duration) {
 	if r.Logger != nil {
-		_ = r.Logger.Log(row, consumer, step, res, d)
+		r.report("step log for "+row, r.Logger.Log(row, consumer, step, res, d))
 	}
 }
 func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) error {
@@ -196,11 +216,14 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) e
 			lastLine = strings.TrimSuffix(runErr.Error()+": "+lastLine, ": ")
 		}
 		lastLine = edge.RedactN(fmt.Sprintf("%s: exit %d: %s", edge.CommandLine(argv, nil), res.ExitCode, lastLine), edge.FailureMax)
-		_ = r.Sprint.OpenJudgement(ctx, store.Judgement{
+		judged := r.Sprint.OpenJudgement(ctx, store.Judgement{
 			ID: "j-probe-" + row, Kind: "probe", About: row, Group: "probe:" + row,
 			Question: fmt.Sprintf("harness probe failed on %s: %s", row, lastLine),
 			Command:  fmt.Sprintf("nova-sprint judge j-probe-%s retry --reason fixed", row),
 		})
+		if judged != nil {
+			lastLine += " (and its judgement could not be opened: " + edge.RedactN(judged.Error(), edge.FailureMax) + ")"
+		}
 		return fmt.Errorf("worker refused: probe failed for row %s: %s: fix the harness or credentials and run nova-worker again", row, lastLine)
 	}
 	r.mu.Lock()
@@ -245,7 +268,7 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 			if f.State == card.Fail && rec.State == JobRunning {
 				r.withdrawRunningJob_internal(ctx, rec)
 			}
-			_ = r.cleanJobDir_internal(ctx, filepath.Join(r.RootDir, "jobs", id), rec)
+			r.report("cleaning job dir "+id, r.cleanJobDir_internal(ctx, filepath.Join(r.RootDir, "jobs", id), rec))
 		} else if w, isWorking := workingByID[id]; isWorking && !r.isRunningInFlight_internal(id) {
 			if !jobMatchesSummary_internal(next, w, rec) {
 				r.logStep_internal(row, id, "recover", "identity-mismatch-kept", 0)
@@ -331,7 +354,7 @@ func (r *Runner) withdrawRunningJob_internal(ctx context.Context, rec JobRecord)
 	jobDir := filepath.Join(r.RootDir, "jobs", rec.Consumer)
 	if pushed := r.harvestPartialPush_internal(ctx, jobDir, rec); pushed != "" {
 		rec.PushedHead = pushed
-		_ = WriteJobRecord(jobDir, rec)
+		r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, rec))
 	}
 	r.mu.Lock()
 	delete(r.adopted, rec.Consumer)
@@ -534,7 +557,7 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 	r.mu.Unlock()
 	if withdrawn {
 		r.withdrawRunningJob_internal(ctx, rec)
-		_ = r.cleanJobDir_internal(ctx, jobDir, rec)
+		r.report("cleaning job dir", r.cleanJobDir_internal(ctx, jobDir, rec))
 		return nil
 	}
 	if errors.Is(err, ErrNoSlot) {
@@ -609,13 +632,13 @@ func (r *Runner) stageStep_internal(ctx context.Context, job *Job, rec *JobRecor
 		cancel()
 		if err != nil {
 			rec.State, rec.Outcome = JobReporting, Outcome{Result: "fault", Reason: "staging fault: " + err.Error()}
-			_ = WriteJobRecord(job.JobDir, *rec)
+			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 			r.logStep_internal(job.Row, job.Consumer, "stage", "fault", r.Now().Sub(start))
 			return err
 		}
 	}
 	rec.State = JobStaged
-	_ = WriteJobRecord(job.JobDir, *rec)
+	r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 	r.logStep_internal(job.Row, job.Consumer, "stage", "ok", r.Now().Sub(start))
 	return nil
 }
@@ -647,21 +670,21 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		rec.PID = nextWallPID_internal()
 		rec.Nonce = fmt.Sprintf("n-%d-%d", rec.PID, r.Now().UnixNano())
 	}
-	_ = WriteJobRecord(job.JobDir, *rec)
+	r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 	var last WallRunResult
 	var runErr error
 	for attempt := 1; attempt <= r.Timeouts.LaunchTries; attempt++ {
 		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, job.Deadline)
 		if errors.Is(runErr, ErrNoSlot) {
 			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
-			_ = WriteJobRecord(job.JobDir, *rec)
+			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 			return last, runErr
 		}
 		if last.PID > 0 && last.PID != os.Getpid() {
 			rec.PID, rec.Nonce = last.PID, cmp.Or(last.Nonce, rec.Nonce)
-			_ = WriteJobRecord(job.JobDir, *rec)
+			r.report("job record "+filepath.Base(job.JobDir), WriteJobRecord(job.JobDir, *rec))
 		}
-		_ = os.WriteFile(filepath.Join(job.JobDir, "harness.log"), last.Output, 0o600)
+		r.report("harness log", os.WriteFile(filepath.Join(job.JobDir, "harness.log"), last.Output, 0o600))
 		job.ProxyStatus = cmp.Or(job.ProxyStatus, r.Proxy.ConsumeStatus())
 		out := ClassifyJob(h, job, last.ExitCode, last.Elapsed, r.Timeouts.LaunchGrace, last.Output)
 		if !out.Retryable5xx || attempt == r.Timeouts.LaunchTries {
@@ -735,12 +758,12 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: ce.Error()}
 			case errors.As(err, &fe):
 				rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fe.Error()}
-				_ = WriteJobRecord(jobDir, *rec)
+				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return fe
 			default:
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: "rebase failed: " + err.Error()}
 			}
-			_ = WriteJobRecord(jobDir, *rec)
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
 		rec.Outcome.Head = cmp.Or(newSHA, rec.Outcome.Head)
@@ -754,7 +777,7 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 					why = TailBytes([]byte(err.Error()+": "+why), MaxReasonBytes)
 				}
 				rec.Outcome = Outcome{Result: "fail", Head: rec.PushedHead, Reason: fmt.Sprintf("tests red (%s): %s", cmd, why)}
-				_ = WriteJobRecord(jobDir, *rec)
+				r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 				return nil
 			}
 		}
@@ -762,7 +785,7 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 	if r.Git != nil && rec.Outcome.Head != "" && rec.Outcome.Head != rec.PushedHead {
 		if err := r.Git.Push(ctx, wt, rec.Branch, rec.Outcome.Head); err != nil {
 			rec.Outcome = Outcome{Result: "fault", Reason: "post-rebase push fault: " + err.Error()}
-			_ = WriteJobRecord(jobDir, *rec)
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
 		rec.PushedHead = rec.Outcome.Head
@@ -772,7 +795,7 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 		fo := r.Forges[rec.Forge]
 		if fo == nil {
 			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fmt.Sprintf("the stream's forge %q has no adapter on this worker: install a nova-worker that serves it, or set the stream's forge to one this worker serves", rec.Forge)}
-			_ = WriteJobRecord(jobDir, *rec)
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
 		ghCtx, cancel := context.WithTimeout(ctx, r.Timeouts.GH)
@@ -780,12 +803,12 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 		cancel()
 		if err != nil {
 			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "open PR fault: " + err.Error()}
-			_ = WriteJobRecord(jobDir, *rec)
+			r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 			return nil
 		}
 		rec.PRNumber = pr
 	}
-	_ = WriteJobRecord(jobDir, *rec)
+	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, *rec))
 	return nil
 }
 func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string, rec JobRecord) error {
@@ -817,7 +840,7 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 	}
 	r.logStep_internal(rec.Row, rec.Consumer, "report", fmt.Sprintf("accepted=%v", receipt.Accepted), 0)
 	rec.State = JobRecorded
-	_ = WriteJobRecord(jobDir, rec)
+	r.report("job record "+filepath.Base(jobDir), WriteJobRecord(jobDir, rec))
 	return r.cleanJobDir_internal(ctx, jobDir, rec)
 }
 func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec JobRecord) error {
@@ -839,7 +862,7 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 		} else if err != nil {
 			r.logStep_internal(rec.Row, rec.Consumer, "clean", "dirty check failed, removing: "+err.Error(), 0)
 		}
-		_ = r.Git.RemoveWorktree(ctx, wt)
+		r.report("removing worktree "+filepath.Base(wt), r.Git.RemoveWorktree(ctx, wt))
 	}
 	if err := os.RemoveAll(jobDir); err != nil {
 		return err
@@ -1078,7 +1101,7 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, en
 			liveProcNonces_internal.Store(pid, nonce)
 			if rec, rerr := ReadJobRecord(j.JobDir); j.JobDir != "" && rerr == nil && rec.State == JobRunning {
 				rec.PID, rec.Nonce = pid, nonce
-				_ = WriteJobRecord(j.JobDir, rec)
+				reportTo(nil, "job record "+filepath.Base(j.JobDir), WriteJobRecord(j.JobDir, rec))
 			}
 		},
 	})

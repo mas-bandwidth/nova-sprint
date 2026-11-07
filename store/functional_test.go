@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -61,11 +60,21 @@ func startPG(t *testing.T) string {
 	out, err := init.CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	port := freePort(t)
-	cmd := exec.Command(filepath.Join(bin, "postgres"), "-D", filepath.Join(dir, "data"), "-p", port, "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=off")
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	// SIGQUIT is immediate shutdown: the postmaster stops its children before it exits, so none writes into the removed TempDir.
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() }) // ignored: the server is ours and disposable
+	// pg_ctl starts it and stops it (-m immediate: the postmaster stops its
+	// children before it exits, so none writes into the removed TempDir).
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)

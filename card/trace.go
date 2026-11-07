@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -150,8 +151,10 @@ func traceConsumers(s store.Snapshot, p string) []store.Card {
 		}
 	}
 	readN := func(c store.Card) int {
-		var n int
-		_, _ = fmt.Sscanf(c.ID[strings.LastIndex(c.ID, ".")+1:], "%d", &n) // a work id has no index: 0
+		n, err := strconv.Atoi(c.ID[strings.LastIndex(c.ID, ".")+1:])
+		if err != nil {
+			return 0 // a work id has no numeric index: it sorts first
+		}
 		return n
 	}
 	isRead := func(c store.Card) int {

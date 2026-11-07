@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 //go:embed page
@@ -18,7 +21,7 @@ var page embed.FS
 
 func assetBuild() string {
 	h := sha256.New()
-	_ = fs.WalkDir(page, "page", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(page, "page", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -27,11 +30,15 @@ func assetBuild() string {
 			if e != nil {
 				return e
 			}
-			_, _ = h.Write([]byte(path))
-			_, _ = h.Write(b)
+			h.Write([]byte(path)) // hash.Hash's Write never returns an error
+			h.Write(b)
 		}
 		return nil
 	})
+	if err != nil {
+		// the embedded page is part of the binary: a walk that fails is a broken build
+		log.Printf("dashboard: the embedded page could not be read for its build hash: %v", err)
+	}
 	return fmt.Sprintf("%x", h.Sum(nil))[:12]
 }
 
@@ -85,10 +92,14 @@ func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Encoding", "gzip")
 		z := gzip.NewWriter(w)
 		defer z.Close()
-		_ = json.NewEncoder(z).Encode(result)
+		if err := json.NewEncoder(z).Encode(result); err != nil {
+			log.Printf("dashboard: /data response failed: %s", edge.Redact(err.Error()))
+		}
 		return
 	}
-	_ = json.NewEncoder(w).Encode(result)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		log.Printf("dashboard: /data response failed: %s", edge.Redact(err.Error()))
+	}
 }
 
 // Explicit gzip preferences override wildcard preferences.
@@ -143,7 +154,7 @@ func Handler(c *Cache) http.Handler {
 			http.Error(w, "stale", http.StatusServiceUnavailable)
 			return
 		}
-		_, _ = w.Write([]byte("ok\n"))
+		respond(w, []byte("ok\n"))
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && r.URL.Path != "/index.html" && r.URL.Path != "/public.html" {
@@ -155,15 +166,19 @@ func Handler(c *Cache) http.Handler {
 		if r.URL.Path == "/public.html" {
 			body = publicIndex(body)
 		}
-		_, _ = w.Write(body)
+		respond(w, body)
 	})
 	for _, size := range []string{"192", "384"} {
 		path := "/logo-tile-" + size + ".png"
 		file := "page/logo-robot-" + size + ".png"
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-			b, _ := page.ReadFile(file)
+			b, err := page.ReadFile(file)
+			if err != nil {
+				http.Error(w, "logo missing from this build: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "image/png")
-			_, _ = w.Write(b)
+			respond(w, b)
 		})
 	}
 	files, _ := fs.Sub(page, "page")

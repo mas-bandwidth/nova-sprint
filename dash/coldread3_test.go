@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -329,22 +328,26 @@ func TestColdread3Measure5000(t *testing.T) {
 type cr3PG struct {
 	bin, dir string
 	port     int
-	p        *exec.Cmd
+	running  bool
 }
 
+// start and stop run pg_ctl (-m immediate on stop), never a signal.
 func (g *cr3PG) start(t *testing.T) {
 	t.Helper()
-	g.p = exec.Command(filepath.Join(filepath.Dir(g.bin), "postgres"), "-D", g.dir, "-p", fmt.Sprint(g.port), "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=off")
-	if err := g.p.Start(); err != nil {
-		t.Fatal(err)
+	opts := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", g.port)
+	if out, err := exec.Command(filepath.Join(filepath.Dir(g.bin), "pg_ctl"), "-D", g.dir, "-l", filepath.Join(g.dir, "postgres.log"), "-o", opts, "-w", "start").CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
 	}
+	g.running = true
 }
-func (g *cr3PG) stop() {
-	if g.p != nil {
-		_ = g.p.Process.Signal(syscall.SIGQUIT)
-		_ = g.p.Wait()
-		g.p = nil
+func (g *cr3PG) stop(t *testing.T) {
+	if !g.running {
+		return
 	}
+	if out, err := exec.Command(filepath.Join(filepath.Dir(g.bin), "pg_ctl"), "-D", g.dir, "-m", "immediate", "-w", "stop").CombinedOutput(); err != nil {
+		t.Logf("pg_ctl stop: %v\n%s", err, out)
+	}
+	g.running = false
 }
 func (g *cr3PG) dsn() string {
 	return fmt.Sprintf("postgres://nova@127.0.0.1:%d/postgres?sslmode=disable", g.port)
@@ -367,7 +370,7 @@ func cr3StartPG(t *testing.T) *cr3PG {
 	g.port = l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	g.start(t)
-	t.Cleanup(g.stop)
+	t.Cleanup(func() { g.stop(t) })
 	return g
 }
 
@@ -440,7 +443,7 @@ func TestColdread3FunctionalPGRestartRecovers(t *testing.T) {
 		t.Fatal("not recovered after terminated backends")
 	}
 	// 2: PostgreSQL stopped, ticks fail, then started on the same port
-	g.stop()
+	g.stop(t)
 	for i := 0; i < 3; i++ {
 		if err = c.Advance(ctx, s); err == nil {
 			t.Fatal("advance succeeded with the store down")

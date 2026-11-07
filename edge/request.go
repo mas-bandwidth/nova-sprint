@@ -178,8 +178,8 @@ func (f *FakeExec) pickOutcome_internal(base string, call FakeCall) (FakeOutcome
 func (f *FakeExec) finishOutcome_internal(ctx context.Context, cmd Cmd, base string, pid int, out FakeOutcome) (Result, error) {
 	maxBytes, timeout := cmp.Or(cmd.MaxBytes, DefaultMaxBytes), cmp.Or(cmd.Timeout, DefaultTimeout)
 	stdoutBuf, stderrBuf := newCappedBuffer_internal(maxBytes), newCappedBuffer_internal(maxBytes)
-	_, _ = stdoutBuf.Write([]byte(out.Stdout))
-	_, _ = stderrBuf.Write([]byte(out.Stderr))
+	stdoutBuf.Write([]byte(out.Stdout)) // a capped buffer's Write never returns an error: past its cap it marks truncated
+	stderrBuf.Write([]byte(out.Stderr))
 	res := Result{PID: pid, ExitCode: out.ExitCode, Stdout: stdoutBuf.String(), Stderr: stderrBuf.String(), Truncated: stdoutBuf.truncated || stderrBuf.truncated, Duration: out.Duration}
 	switch {
 	case out.Missing:

@@ -166,8 +166,11 @@ func (l *StepLogger) Log(row, consumer, step, result string, d time.Duration) er
 		return err
 	}
 	path := filepath.Join(dir, row+".log")
+	var rotateErr error
 	if info, err := os.Stat(path); err == nil && info.Size() >= cmp.Or(l.MaxBytes, int64(10<<20)) {
-		_ = os.Rename(path, path+".1")
+		if err := os.Rename(path, path+".1"); err != nil {
+			rotateErr = fmt.Errorf("step log rotation (the log keeps growing): %w", err)
+		}
 	}
 	now := time.Unix(1000, 0).UTC()
 	if l.Now != nil {
@@ -181,6 +184,6 @@ func (l *StepLogger) Log(row, consumer, step, result string, d time.Duration) er
 	tok := strings.TrimSpace(strings.NewReplacer("\n", " ", "\r", " ").Replace(result))
 	_, err = fmt.Fprintf(f, "ts=%s row=%s consumer=%s step=%s result=%s dur_ms=%d\n",
 		now.Format(time.RFC3339), row, consumer, step, tok, d.Milliseconds())
-	return err
+	return errors.Join(err, rotateErr)
 }
 func cloneStrings_internal(in []string) []string { return slices.Clone(in) }

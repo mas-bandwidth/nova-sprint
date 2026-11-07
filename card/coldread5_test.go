@@ -30,7 +30,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -1084,10 +1083,21 @@ func cold5StartPG(t *testing.T) string {
 	require.NoError(t, err)
 	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
 	require.NoError(t, l.Close())
-	cmd := exec.Command(filepath.Join(bin, "postgres"), "-D", filepath.Join(dir, "data"), "-p", port, "-c", "listen_addresses=127.0.0.1", "-c", "unix_socket_directories=", "-c", "fsync=off")
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() }) // ignored: the server is ours and disposable
+	// pg_ctl starts it and stops it (-m immediate: the postmaster stops its
+	// children before it exits, so none writes into the removed TempDir).
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	return "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 }
 

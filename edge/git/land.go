@@ -70,10 +70,16 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 	// A check that fails here is not a refusal: the merge path below runs
 	// the same git and reports its own failure.
 	if all, _ := allAncestors_internal(ctx, g, req.RepoDir, req.Heads, baseTip); all {
+		res := LandResult{Outcome: OutcomeLanded, BaseTip: baseTip, StreamTip: baseTip, GatedSHA: baseTip, LandedHeads: slices.Clone(req.Heads)}
 		if streamOld != baseTip {
-			_ = g.Push(ctx, req.RepoDir, baseTip, streamRef, streamOld)
+			// the heads are on base already: landed; the stream ref's
+			// fast-forward is best effort, and its failure is said
+			if err := g.Push(ctx, req.RepoDir, baseTip, streamRef, streamOld); err != nil {
+				res.StreamTip = streamOld
+				res.Reason = "landed (every head is on base); the stream ref was not fast-forwarded: " + edge.RedactN(err.Error(), edge.FailureMax)
+			}
 		}
-		return LandResult{Outcome: OutcomeLanded, BaseTip: baseTip, StreamTip: baseTip, GatedSHA: baseTip, LandedHeads: slices.Clone(req.Heads)}, nil
+		return res, nil
 	}
 	merged, res, done, err := mergeAndPushStream_internal(ctx, g, req, baseTip, streamRef, streamOld)
 	if err != nil || done {
@@ -94,8 +100,11 @@ func fetchAndCheckHeads_internal(ctx context.Context, g Git, req LandRequest, ba
 		}
 	}
 	baseTip, ok, err := g.LsRemote(ctx, req.RepoDir, baseRef)
-	if err != nil || !ok {
-		return "", "", "", cmp.Or(err, fmt.Errorf("land refused: base branch %s not on origin", baseRef))
+	if err != nil {
+		return "", "", "", err
+	}
+	if !ok {
+		return "", "", "", fmt.Errorf("land refused: base branch %s not on origin", baseRef)
 	}
 	streamOld, _, err := g.LsRemote(ctx, req.RepoDir, streamRef)
 	if err != nil {
@@ -205,16 +214,26 @@ func landAndRecord_internal(ctx context.Context, g Git, fg forge.Forge, req Land
 	if err != nil || !ok {
 		newBase = merged.SHA
 	}
-	_ = g.Fetch(ctx, req.RepoDir, baseRef)
+	fetchErr := g.Fetch(ctx, req.RepoDir, baseRef)
 	if err := g.Push(ctx, req.RepoDir, newBase, streamRef, merged.SHA); err != nil && !errors.Is(err, ErrPushRefused) {
+		if fetchErr != nil {
+			return LandResult{}, errors.Join(err, fmt.Errorf("the fetch of %s before it failed: %w", baseRef, fetchErr))
+		}
 		return LandResult{}, err
 	}
-	if all, err := allAncestors_internal(ctx, g, req.RepoDir, req.Heads, newBase); err != nil {
-		return LandResult{}, fmt.Errorf("land invariant M21 unchecked: cannot tell whether the group heads are ancestors of pushed base %s: %w", newBase, err)
-	} else if !all {
-		return LandResult{}, fmt.Errorf("land invariant M21 violated: not all group heads are ancestors of pushed base %s", newBase)
+	if fetchErr != nil {
+		fetchErr = fmt.Errorf("the fetch of %s before the stream push failed: %w", baseRef, fetchErr)
 	}
-	return LandResult{Outcome: OutcomeLanded, BaseTip: newBase, StreamTip: newBase, GatedSHA: merged.SHA, LandedHeads: slices.Clone(req.Heads), Remerged: remerged, ReusedCI: reusedCI}, nil
+	if all, err := allAncestors_internal(ctx, g, req.RepoDir, req.Heads, newBase); err != nil {
+		return LandResult{}, errors.Join(fmt.Errorf("land invariant M21 unchecked: cannot tell whether the group heads are ancestors of pushed base %s: %w", newBase, err), fetchErr)
+	} else if !all {
+		return LandResult{}, errors.Join(fmt.Errorf("land invariant M21 violated: not all group heads are ancestors of pushed base %s", newBase), fetchErr)
+	}
+	res := LandResult{Outcome: OutcomeLanded, BaseTip: newBase, StreamTip: newBase, GatedSHA: merged.SHA, LandedHeads: slices.Clone(req.Heads), Remerged: remerged, ReusedCI: reusedCI}
+	if fetchErr != nil {
+		res.Reason = "landed; " + edge.RedactN(fetchErr.Error(), edge.FailureMax)
+	}
+	return res, nil
 }
 func remergeOnMovedBase_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseRef, streamRef, newBase, prevStreamSHA string) (MergeResult, LandResult, bool, error) {
 	if err := g.Fetch(ctx, req.RepoDir, baseRef); err != nil {

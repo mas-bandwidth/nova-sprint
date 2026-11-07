@@ -3,17 +3,20 @@
 // "We provide output to help resolve the error."). It reads Go source with
 // go/ast only (no type checker), so each rule is a syntactic shape:
 //
-//	S1 fixed-string: inside an err branch (`if err != nil`, err being any
-//	   identifier named err, errX or xErr), a new error built with
-//	   fmt.Errorf (no %w and no use of err), errors.New, a refusal literal
-//	   (&OperationError{...}, &Fail{...}) or a refusal constructor (refuse,
-//	   broken, misuse, serviceConfigError, publicVersionRefusal) that does
-//	   not use err. A nested if whose condition reads err (errors.Is,
+//	S1 fixed-string: inside an err branch (`if err != nil`, alone or an
+//	   operand of && or ||; err is any identifier named err, errX or xErr),
+//	   a new error built with fmt.Errorf (no %w), errors.New, a refusal
+//	   literal (&OperationError{...}, &Fail{...}) or a refusal constructor
+//	   (refuse, broken, misuse, serviceConfigError, publicVersionRefusal)
+//	   that does not use err (err itself, or a variable the branch assigned
+//	   from it). A nested if whose condition reads err (errors.Is,
 //	   errors.As, a code test) has classified err and is not checked.
 //	S2 pass-through: inside an err branch, a refusal literal or refusal
-//	   constructor that does use err, in a branch that never asks
-//	   errors.As/AsRefusal on err first: a deeper *OperationError's Problem
-//	   and Fix would be flattened into a new one.
+//	   constructor that does use err (other than through a parse formatter,
+//	   badNumber or ParseFailure: a parse error is never a refusal), in a
+//	   branch that never asks errors.As, AsRefusal or RefusalOr of err: a
+//	   deeper *OperationError's Problem and Fix would be flattened into a
+//	   new one.
 //	S3 blank discard: `_ = f()` or `_, _ = f()` (every left side blank, one
 //	   call on the right) unless the call is one of the best-effort
 //	   cleanups named in allowedDiscards.
@@ -198,7 +201,7 @@ func errCondition(cond ast.Expr) string {
 			if ok && ok2 && y.Name == "nil" && errName(x.Name) {
 				return x.Name
 			}
-		case token.LAND:
+		case token.LAND, token.LOR:
 			if name := errCondition(c.X); name != "" {
 				return name
 			}
@@ -264,23 +267,78 @@ func refusalLiteral(n ast.Node) (string, bool) {
 	return name, refusalTypes[name]
 }
 
-// errBranch checks the body of an `if name != nil` branch.
-func (l *linter) errBranch(name string, body *ast.BlockStmt) {
-	read := false // the branch reads err (beyond the condition)
-	passed := false
-	for _, st := range body.List {
-		if uses(st, name) {
-			read = true
+// branch is one err branch being checked: the error's name, and every
+// name that carries it (err itself, and any variable the branch assigns from
+// it, such as why := err.Error()).
+type branch struct {
+	name     string
+	carriers map[string]bool
+	passed   bool // the branch asks errors.As/AsRefusal/RefusalOr of err
+}
+
+// carries is true when node reads err or a variable assigned from it,
+// outside the calls in skip.
+func (b *branch) carries(node ast.Node, skip map[string]bool) bool {
+	found := false
+	ast.Inspect(node, func(n ast.Node) bool {
+		if found {
+			return false
 		}
+		switch n := n.(type) {
+		case *ast.CallExpr:
+			if skip[calleeName(n)] {
+				return false
+			}
+		case *ast.Ident:
+			found = b.carriers[n.Name]
+		}
+		return !found
+	})
+	return found
+}
+
+// newBranch finds err's carriers in body: names assigned from err, then
+// from those, until nothing new.
+func newBranch(name string, body *ast.BlockStmt) *branch {
+	b := &branch{name: name, carriers: map[string]bool{name: true}}
+	for grew := true; grew; {
+		grew = false
+		ast.Inspect(body, func(n ast.Node) bool {
+			a, ok := n.(*ast.AssignStmt)
+			if !ok {
+				return true
+			}
+			from := false
+			for _, rhs := range a.Rhs {
+				from = from || b.carries(rhs, nil)
+			}
+			for _, lhs := range a.Lhs {
+				if id, ok := lhs.(*ast.Ident); ok && from && id.Name != "_" && !b.carriers[id.Name] {
+					b.carriers[id.Name], grew = true, true
+				}
+			}
+			return true
+		})
 	}
 	ast.Inspect(body, func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok && len(call.Args) > 0 {
 			if (qualified(call) == "errors.As" || passThroughCalls[calleeName(call)]) && uses(call.Args[0], name) {
-				passed = true
+				b.passed = true
 			}
 		}
 		return true
 	})
+	return b
+}
+
+// parseFormatters format a parse error (strconv's, json's) into a refusal's
+// text: such an err is never a refusal, so S2 does not ask for a pass.
+var parseFormatters = map[string]bool{"badNumber": true, "ParseFailure": true}
+
+// errBranch checks the body of an `if name != nil` branch.
+func (l *linter) errBranch(name string, body *ast.BlockStmt) {
+	b := newBranch(name, body)
+	read := b.carries(body, nil) // the branch reads err (beyond the condition)
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.FuncLit:
@@ -293,11 +351,11 @@ func (l *linter) errBranch(name string, body *ast.BlockStmt) {
 			}
 		case *ast.UnaryExpr:
 			if typ, ok := refusalLiteral(n); ok {
-				l.refusal(n, name, "&"+typ+"{...}", passed)
+				l.refusal(n, b, "&"+typ+"{...}")
 				return false
 			}
 		case *ast.CallExpr:
-			l.errCall(n, name, passed)
+			l.errCall(n, b)
 		case *ast.ReturnStmt:
 			if !read && len(n.Results) > 0 && nonZeroInt(n.Results[0]) {
 				l.add(n.Pos(), "S4", "a bare non-zero return in an err branch that never writes "+name+": write it (ChildFailed, a refusal line) before exiting")
@@ -311,16 +369,16 @@ func (l *linter) errBranch(name string, body *ast.BlockStmt) {
 	})
 }
 
-func (l *linter) refusal(n ast.Node, name, what string, passed bool) {
+func (l *linter) refusal(n ast.Node, b *branch, what string) {
 	switch {
-	case !uses(n, name):
-		l.add(n.Pos(), "S1", what+" in an err branch drops "+name+": carry it (its text in the Problem, or wrap it)")
-	case !passed:
-		l.add(n.Pos(), "S2", what+" re-wraps "+name+" without errors.As/AsRefusal first: a deeper *OperationError's Problem and Fix must pass through")
+	case !b.carries(n, nil):
+		l.add(n.Pos(), "S1", what+" in an err branch drops "+b.name+": carry it (its text in the Problem, or wrap it)")
+	case !b.passed && b.carries(n, parseFormatters):
+		l.add(n.Pos(), "S2", what+" re-wraps "+b.name+" without errors.As/AsRefusal/RefusalOr first: a deeper *OperationError's Problem and Fix must pass through")
 	}
 }
 
-func (l *linter) errCall(call *ast.CallExpr, name string, passed bool) {
+func (l *linter) errCall(call *ast.CallExpr, b *branch) {
 	switch q := qualified(call); {
 	case q == "fmt.Errorf":
 		if len(call.Args) == 0 {
@@ -330,15 +388,15 @@ func (l *linter) errCall(call *ast.CallExpr, name string, passed bool) {
 		if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
 			format, _ = strconv.Unquote(lit.Value)
 		}
-		if !strings.Contains(format, "%w") && !uses(call, name) {
-			l.add(call.Pos(), "S1", "fmt.Errorf in an err branch neither wraps (%w) nor uses "+name)
+		if !strings.Contains(format, "%w") && !b.carries(call, nil) {
+			l.add(call.Pos(), "S1", "fmt.Errorf in an err branch neither wraps (%w) nor uses "+b.name)
 		}
 	case q == "errors.New":
-		if !uses(call, name) {
-			l.add(call.Pos(), "S1", "errors.New in an err branch drops "+name+": wrap it (fmt.Errorf %w, edge.Cause)")
+		if !b.carries(call, nil) {
+			l.add(call.Pos(), "S1", "errors.New in an err branch drops "+b.name+": wrap it (fmt.Errorf %w, edge.Cause)")
 		}
 	case refusalConstructors[calleeName(call)]:
-		l.refusal(call, name, calleeName(call)+"(...)", passed)
+		l.refusal(call, b, calleeName(call)+"(...)")
 	}
 }
 

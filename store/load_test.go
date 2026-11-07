@@ -34,7 +34,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -86,10 +85,20 @@ func loadPG(t *testing.T, fsync string) (dsn string, stats bool) {
 	if stats = len(libs)+len(libs2) > 0; stats {
 		args = append(args, "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=all")
 	}
-	cmd := exec.Command(filepath.Join(bin, "postgres"), args...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Signal(syscall.SIGQUIT); _ = cmd.Wait() }) // ignored: the server is ours and disposable
+	// pg_ctl starts it and stops it (-m immediate), never a signal.
+	ctl := filepath.Join(bin, "pg_ctl")
+	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", strings.Join(args[2:], " "), "-w", "start")
+	start.Env = append(os.Environ(), "LC_ALL=C")
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop.Env = append(os.Environ(), "LC_ALL=C")
+		if out, err := stop.CombinedOutput(); err != nil {
+			t.Logf("pg_ctl stop: %v\n%s", err, out)
+		}
+	})
 	dsn = "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)

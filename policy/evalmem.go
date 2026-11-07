@@ -38,7 +38,10 @@ func capMemory() error {
 	limit := uint64(EvalMemory)
 	if v := os.Getenv(evalMemoryEnv); v != "" {
 		n, err := strconv.ParseUint(v, 10, 64)
-		if err != nil || n == 0 {
+		if err != nil {
+			return fmt.Errorf("%s is %q, want a positive byte count: %w", evalMemoryEnv, v, err)
+		}
+		if n == 0 {
 			return fmt.Errorf("%s is %q, want a positive byte count", evalMemoryEnv, v)
 		}
 		limit = n
