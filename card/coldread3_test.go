@@ -124,7 +124,7 @@ func cold3Note(m map[string]*cold3Break, kind, where string) {
 
 func TestColdread3Walk(t *testing.T) {
 	t.Parallel()
-	seeds, steps := walkSeeds(60, 12), 1000 // 60,000 steps (a fifth under -short); odd seeds merge plans, even seeds do not, so the walk also gets deep
+	seeds, steps := walkSeeds(60, 20), 1000 // 60,000 steps (a third under -short); odd seeds merge plans, even seeds do not, so the walk also gets deep
 	var mu sync.Mutex
 	seen := map[string]int{}
 	var extra int
