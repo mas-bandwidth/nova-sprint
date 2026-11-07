@@ -102,6 +102,11 @@ type (
 		// record is set aside for a reader (defect 69).
 		Refusals    int    `json:",omitempty"`
 		LastRefusal string `json:",omitempty"`
+		// StartTip is the card's branch on origin when the job was staged
+		// ("" with StartTipRead: absent). Every push leases from PushedHead,
+		// the head this job last pushed, or else from StartTip (defect 78).
+		StartTip     string `json:",omitempty"`
+		StartTipRead bool   `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex

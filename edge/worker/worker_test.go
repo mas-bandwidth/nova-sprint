@@ -58,7 +58,10 @@ type fakeGit struct {
 	commits     []string
 	fetches     map[string]int // per repo
 	fetchErr    error
+	pushLog     []fakePush
 }
+
+type fakePush struct{ branch, sha, expect string }
 
 func newFakeGit_internal() *fakeGit {
 	return &fakeGit{
@@ -93,21 +96,39 @@ func (g *fakeGit) StageWorktree(_ context.Context, j Job) (string, error) {
 	return g.headByWT[j.WorktreeDir], nil
 }
 
+func (g *fakeGit) BranchTip(_ context.Context, j Job) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.originHeads[j.Branch], nil
+}
+
 func (g *fakeGit) HeadSHA(_ context.Context, wt string) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.headByWT[wt], nil
 }
 
-func (g *fakeGit) Push(_ context.Context, _, branch, sha string) error {
+// Push records every push (branch, sha, lease) and keeps git's lease: the
+// branch on origin must be at expect ("" : absent).
+func (g *fakeGit) Push(_ context.Context, _, branch, sha, expect string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	g.pushLog = append(g.pushLog, fakePush{branch: branch, sha: sha, expect: expect})
 	if g.pushErr != nil {
 		return g.pushErr
+	}
+	if g.originHeads[branch] != expect {
+		return fmt.Errorf("! [rejected] %s -> %s (stale info): origin is at %q", sha, branch, g.originHeads[branch])
 	}
 	g.pushed[branch] = sha
 	g.originHeads[branch] = sha
 	return nil
+}
+
+func (g *fakeGit) pushes() []fakePush {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]fakePush(nil), g.pushLog...)
 }
 
 func (g *fakeGit) RebaseOntoStream(_ context.Context, wt, _ string) (string, error) {
