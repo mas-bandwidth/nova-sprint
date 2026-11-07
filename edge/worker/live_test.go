@@ -444,3 +444,21 @@ func TestLiveWorkerAdvertisesProvedTiersAtHook(t *testing.T) {
 		t.Fatalf("want one beat advertising flash and 3 slots after the hook, got %+v (hooks %d)", rec.beats, sp.hooks)
 	}
 }
+
+// 66: a card a detached job is still taking holds width: a pass that sees
+// it still ready does not take a second card past width.
+func TestLiveACardInFlightHoldsWidth(t *testing.T) {
+	t.Parallel()
+	sp := &cr2Sprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Ready: []ConsumerSummary{
+		{ID: "p1.r1", Kind: "read", Gen: 2}, {ID: "p2.r1", Kind: "read", Gen: 2}}}}
+	r := cr2Runner_internal(t, sp, &liveWall{}, &cr2Procs{}, time.Unix(1000, 0))
+	held, ok := r.claim_internal(context.Background(), sp.next.Ready[0], nil) // p1.r1's take is in flight
+	if !ok {
+		t.Fatal("claim")
+	}
+	defer held.done()
+	_, launches, err := r.planPass_internal(context.Background(), "vision.ds")
+	if err != nil || len(launches) != 0 {
+		t.Fatalf("width 1 with p1.r1 in flight: want no launch, got %d (%v)", len(launches), err)
+	}
+}

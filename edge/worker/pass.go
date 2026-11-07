@@ -213,8 +213,8 @@ func (r *Runner) planPass_internal(ctx context.Context, row string) (NextRespons
 		if working >= next.Width {
 			break
 		}
+		working++ // claimed now, or already in flight from an earlier pass whose take has not landed: either holds width
 		if l, ok := r.claim_internal(ctx, c, nil); ok {
-			working++
 			launches = append(launches, l)
 		}
 	}
