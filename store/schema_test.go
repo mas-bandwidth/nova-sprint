@@ -38,6 +38,7 @@ func TestSchemaFake(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, currentSchema, id)
 	assert.Equal(t, hashSchema(schemaSQL), id.Expected, "the expectation is the hash Migrate records")
+	t.Logf("schema hash %s, round %d", id.Expected, id.Round)
 }
 
 func TestFunctionalCheckSchemaCurrent(t *testing.T) {

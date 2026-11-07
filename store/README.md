@@ -36,6 +36,23 @@ package does with it.
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
   lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose`, `review`, `finding` and `red`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
   version 1 is refused like any other version.
+- `CheckSchema(ctx, dsn)` (round 18, `schema.go`) says what a database holds
+  without changing it, for a status or doctor command, before anything calls
+  Migrate. It returns a `SchemaIdentity`: `Present` (schema `sprint`
+  exists), `Hash` (recorded in `sprint.meta`), `Expected` (this binary's
+  hash, the only way to read it outside the package), `Current`,
+  `KnownOlder` (round 16, which Migrate upgrades), `Owner` and `Round`. It
+  reads in one `READ ONLY` transaction and rolls it back, so a role with
+  only `USAGE` on `sprint` and `SELECT` on `sprint.meta` can run it, and it
+  uses Migrate's own checks (`namespace` for the `pg_depend` foreign check,
+  `readMeta`, `metaRefusal`), so it says "fine" exactly when Migrate would
+  take the store. Anything else comes back with what was found and an error
+  naming the fix: no such database, no schema `sprint` (or an empty one: run
+  Migrate), a foreign schema, a `sprint.meta` the role cannot read (grant it,
+  or check as the owner), or a store Migrate refuses, in Migrate's words. The
+  password comes as pgx takes it (`PGPASSWORD` or a pgpass file). `PG.Schema`
+  is the same read on an open store's pool; `Fake.Schema` always reports the
+  current schema with no owner.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
