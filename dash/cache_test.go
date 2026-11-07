@@ -19,7 +19,7 @@ func apply(t *testing.T, s store.Store, id string, epoch int, w ...store.Write) 
 func TestFoldSnapshot(t *testing.T) {
 	ctx := context.Background()
 	s := store.NewFake()
-	apply(t, s, "seed", 1, store.PutStream{Name: "s"}, store.PutRow{Name: "r", Kind: "worker", Width: 1}, store.PutPolicy{Kind: "data", Name: "p", Body: "x"}, store.SetActivePolicy{Version: 1})
+	apply(t, s, "seed", 1, store.PutStream{Name: "s"}, store.PutRow{Name: "r"}, store.PutPolicy{Kind: "data", Name: "p", Body: "x"}, store.SetActivePolicy{Version: 1})
 	c, e := New(ctx, s)
 	if e != nil {
 		t.Fatal(e)

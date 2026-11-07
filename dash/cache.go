@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -26,6 +27,16 @@ type Cache struct {
 	pending     bool
 	initialized bool
 	anchor      historyAnchor
+	roster      roster.Roster // each row's kind and width (round 22); SetRoster
+}
+
+// SetRoster sets the roster the page reads each row's kind and width from
+// (round 22: they are nova-config's, never the store's); the next Advance
+// shows it. Until it is set every row is in the fleet at width 0.
+func (c *Cache) SetRoster(r roster.Roster) {
+	c.mu.Lock()
+	c.roster = r
+	c.mu.Unlock()
 }
 
 func New(ctx context.Context, s store.Store) (*Cache, error) {
@@ -36,7 +47,7 @@ func New(ctx context.Context, s store.Store) (*Cache, error) {
 		return nil, fmt.Errorf("dashboard startup snapshot (30s deadline): check PostgreSQL connectivity and schema: %w", err)
 	}
 	c := &Cache{state: snap, at: time.Now(), now: time.Now, pending: true, initialized: true, gate: make(chan struct{}, 1)}
-	c.view = mapSnapshot(c.state, c.at)
+	c.view = mapSnapshot(c.state, c.roster, c.at)
 	c.samples = []sample{{c.at, c.view.Landed}}
 	return c, nil
 }
@@ -54,7 +65,7 @@ func NewRecovering(ctx context.Context, s store.Store) (*Cache, error) {
 		return c, nil
 	}
 	c = &Cache{err: err, now: time.Now, gate: make(chan struct{}, 1)}
-	c.view = mapSnapshot(store.Snapshot{}, time.Time{})
+	c.view = mapSnapshot(store.Snapshot{}, roster.Roster{}, time.Time{})
 	return c, err
 }
 
@@ -94,7 +105,10 @@ func (c *Cache) Advance(ctx context.Context, s store.Store) error {
 	// The gate serializes state writers. Build the immutable published view
 	// outside the reader lock, including when cursor persistence needs a retry.
 	at := c.clock()
-	view := mapSnapshot(c.state, at)
+	c.mu.RLock()
+	ros := c.roster
+	c.mu.RUnlock()
+	view := mapSnapshot(c.state, ros, at)
 	c.mu.Lock()
 	c.at = at
 	c.readSeconds = at.Sub(start).Seconds()

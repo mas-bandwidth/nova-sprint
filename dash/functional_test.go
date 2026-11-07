@@ -60,7 +60,7 @@ func TestFunctionalJSONGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	r := apply(t, s, "seed", 1, store.PutStream{Name: "alpha"}, store.PutRow{Name: "w", Kind: "worker", Width: 2, Tiers: []string{"pro"}}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "alpha"})
+	r := apply(t, s, "seed", 1, store.PutStream{Name: "alpha"}, store.PutRow{Name: "w"}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "alpha"})
 	if !r.Accepted {
 		t.Fatal(r.Reason)
 	}
@@ -69,7 +69,7 @@ func TestFunctionalJSONGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.at = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	c.view = mapSnapshot(c.state, c.at)
+	c.view = mapSnapshot(c.state, testRoster, c.at)
 	rec := httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
 	var body any
