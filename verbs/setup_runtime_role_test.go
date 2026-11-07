@@ -80,3 +80,27 @@ func TestRolePermissionRefusalNamesTheGrant(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// PostgreSQL 14 and 15 lack pg_auth_members.set_option and GRANT ... WITH
+// SET: up refuses them by version, naming 16, before any SQL fails raw.
+func TestCreateSprintSchemaRefusesOldPostgres(t *testing.T) {
+	t.Parallel()
+	for _, num := range []string{"140024", "150010"} {
+		err := requireServerVersion(num)
+		var op *OperationError
+		if !errors.As(err, &op) || op.Exit != exitRefused || !strings.Contains(op.Problem, "needs PostgreSQL 16 or newer") || !strings.Contains(op.Fix, "upgrade the PostgreSQL server to 16") {
+			t.Fatal(num, err)
+		}
+	}
+	if err := requireServerVersion("140024"); !strings.Contains(err.Error(), "PostgreSQL 14.24 is too old") {
+		t.Fatal(err)
+	}
+	for _, num := range []string{"160000", "180006"} {
+		if err := requireServerVersion(num); err != nil {
+			t.Fatal(num, err)
+		}
+	}
+	if err := requireServerVersion("x"); err == nil {
+		t.Fatal("a non-number version passed")
+	}
+}

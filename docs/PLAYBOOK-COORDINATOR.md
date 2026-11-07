@@ -361,9 +361,9 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
 
 ## 9. Releases, backups and clears
 
-1. A new nova-sprint build is adopted whole with `nova-sprint up --version <v>`: it installs the
-   build beside the old, runs one shadow tick against the live store, swaps, watches three ticks,
-   and swaps back on any overrun, crash or refused tick, saying why. Never copy a binary by hand.
+1. A new nova-sprint build is adopted with `nova-sprint up --version <v>`: it checks that the
+   nova-sprint on PATH is that release and that its `check` passes; when it is not, it names the
+   `nova-fleet install` command that installs it. Never copy a binary by hand.
 2. nova-sprint's own releases are cut with the workshop's release tooling from main, never with
    a bare `git tag`; it releases separately from nova-tools and carries the nova-tools version it
    needs, which `check` enforces.

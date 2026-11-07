@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -211,7 +213,8 @@ func (p *PG) Close() { p.pool.Close() }
 // (round 22), adds cards.model and the row heartbeat's columns to the first three (round 23)
 // and the epoch row's commit identity to all four (round 24), and the new hash is recorded, in the same transaction. When schema sprint already exists it
 // skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
-// on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
+// on the database (round 19). An upgrade also logs the store's stop when its log does
+// not rebuild to it (logStop). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
 	tx, err := p.pool.Begin(ctx)
@@ -229,6 +232,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if used && !meta {
 		return fmt.Errorf("store: migrate: %w", errForeign)
 	}
+	upgrade := false
 	if meta {
 		v, hash, _, err := readMeta(ctx, tx) // no row is version 0, refused below
 		if err != nil {
@@ -237,6 +241,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 		if err := metaRefusal(v, hash); err != nil {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
+		upgrade = hash != schemaHash
 	}
 	sql := schemaSQL
 	if present {
@@ -250,6 +255,11 @@ func (p *PG) Migrate(ctx context.Context) error {
 	}
 	if err := freshStop(ctx, tx, meta); err != nil {
 		return err
+	}
+	if upgrade {
+		if err := logStop(ctx, tx); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
@@ -268,6 +278,58 @@ func freshStop(ctx context.Context, tx pgx.Tx, existed bool) error {
 	}
 	if _, err := tx.Exec(ctx, "UPDATE sprint.epoch SET stopped = $1, stop_reason = $2 WHERE id = 1", FreshStop.Stopped, FreshStop.Reason); err != nil {
 		return fmt.Errorf("store: migrate: the fresh store's stop (%s) was not written: %w", FreshStop.Reason, err)
+	}
+	return nil
+}
+
+// logStop makes an upgraded store's log rebuild to its stop (guarantee 5),
+// in Migrate's transaction. A store made before FreshStop began running
+// with nothing logged, and a rebuild starts never started, so a store
+// whose log does not end at the stop it has (the last logged stop, else
+// FreshStop) gets SetStopped events from the log's stop to its own, through
+// the protocol: the epoch row is set back to the log's stop first, so each
+// before-image is what the log says. One event when the flag differs; two
+// (through the other flag) when only the reason does, since SetStopped
+// refuses an unchanged flag. A store whose log agrees logs nothing, so a
+// second Migrate is a no-op.
+func logStop(ctx context.Context, tx pgx.Tx) error {
+	var have Stop
+	var epoch int
+	var now time.Time
+	if err := tx.QueryRow(ctx, "SELECT stopped, stop_reason, n, transaction_timestamp() FROM sprint.epoch WHERE id = 1").Scan(&have.Stopped, &have.Reason, &epoch, &now); err != nil {
+		return fmt.Errorf("store: migrate: reading the stop: %w", err)
+	}
+	logged := FreshStop
+	var image []byte
+	err := tx.QueryRow(ctx, "SELECT after->'stop' FROM sprint.events WHERE accepted AND after ? 'stop' ORDER BY seq DESC LIMIT 1").Scan(&image)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return fmt.Errorf("store: migrate: reading the logged stop: %w", err)
+	default:
+		if err = json.Unmarshal(image, &logged); err != nil {
+			return fmt.Errorf("store: migrate: the logged stop %s does not decode: %w", image, err)
+		}
+	}
+	if logged == have {
+		return nil
+	}
+	if _, err = tx.Exec(ctx, "UPDATE sprint.epoch SET stopped = $1, stop_reason = $2 WHERE id = 1", logged.Stopped, logged.Reason); err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	steps := []Stop{have}
+	if logged.Stopped == have.Stopped {
+		steps = []Stop{{Stopped: !have.Stopped, Reason: "migrate"}, have}
+	}
+	for i, st := range steps {
+		op := Op{ID: fmt.Sprintf("migrate-stop-%d-%s", i+1, schemaHash), Epoch: epoch, Actor: "store-migrate", Kind: "stop", At: at(now), Writes: []Write{SetStopped(st)}}
+		r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+		switch {
+		case err != nil:
+			return fmt.Errorf("store: migrate: logging the store's stop: %w", err)
+		case !r.Accepted:
+			return fmt.Errorf("store: migrate: logging the store's stop was refused: %s", r.Reason)
+		}
 	}
 	return nil
 }

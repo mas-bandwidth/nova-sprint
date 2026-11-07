@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -94,6 +95,13 @@ func provisionSprintRole(ctx context.Context, dsn, adminPassword, password strin
 		return err
 	}
 	defer closeSetupConnection(conn)
+	var server string
+	if err = conn.QueryRow(ctx, "SHOW server_version_num").Scan(&server); err != nil {
+		return fmt.Errorf("cannot inspect PostgreSQL version: %w", err)
+	}
+	if err = requireServerVersion(server); err != nil {
+		return err
+	}
 	exists, owner, err := sprintRoleState(ctx, conn)
 	if err != nil {
 		return err
@@ -166,6 +174,28 @@ func verifyOwnedSprintSchema(ctx context.Context, cfg *pgx.ConnConfig, password 
 	}
 	if !id.Present || !id.Current || id.Owner != "nova_sprint" {
 		return fmt.Errorf("schema identity unavailable: present %v, current %v, owner %q (want nova_sprint)", id.Present, id.Current, id.Owner)
+	}
+	return nil
+}
+
+// minServerVersion is the oldest PostgreSQL the sprint is set up on (its
+// server_version_num): the role step reads pg_auth_members.set_option and
+// grants WITH SET, which PostgreSQL 16 introduced.
+const minServerVersion = 160000
+
+// requireServerVersion refuses a server older than minServerVersion,
+// naming its version and the upgrade, before any SQL that needs 16 runs.
+func requireServerVersion(num string) error {
+	n, err := strconv.Atoi(num)
+	if err != nil {
+		return fmt.Errorf("cannot inspect PostgreSQL version: server_version_num %q: %w", num, err)
+	}
+	if n < minServerVersion {
+		return &OperationError{
+			Problem: fmt.Sprintf("PostgreSQL %d.%d is too old: nova-sprint needs PostgreSQL %d or newer", n/10000, n%10000, minServerVersion/10000),
+			Fix:     fmt.Sprintf("upgrade the PostgreSQL server to %d or newer, then run nova-sprint up again", minServerVersion/10000),
+			Exit:    exitRefused,
+		}
 	}
 	return nil
 }

@@ -1191,3 +1191,46 @@ func TestFunctionalEventIdentity(t *testing.T) {
 	assert.NotEmpty(t, op)
 	assert.Equal(t, 1, epoch)
 }
+
+// A round 25 store began running with nothing logged,
+// and a rebuild starts never started (FreshStop): Migrate logs the stop the
+// store has, so the log rebuilds to it, whether it runs (one event) or was
+// stopped by hand with another reason (two, through the other flag); a
+// second Migrate logs nothing.
+func TestFunctionalMigrateLogsTheStop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round25.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	for _, tc := range []struct {
+		name, stop string
+		events     int
+		want       Stop
+	}{
+		{"running", "SELECT 1", 1, Stop{}},
+		{"stopped", "UPDATE sprint.epoch SET stopped = true, stop_reason = 'pause' WHERE id = 1", 2, Stop{true, "pause"}},
+	} {
+		db := newDatabase(t, dsn, tc.name)
+		c := connect(t, db)
+		for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round25Hash + "' WHERE id = 1",
+			`INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy) VALUES (1, 'seed', 'test', 'seed', true, '', '{}', '{}', '{"op":"seed","kind":"seed","actor":"test","epoch":1,"at":"2026-11-07T00:00:00Z","accepted":true,"seq":1,"after":{}}', '2026-11-07T00:00:00Z', 1, 0)`,
+			tc.stop} {
+			_, err = c.Exec(ctx, q)
+			require.NoError(t, err, q)
+		}
+		p := openPG(t, db) // Migrate
+		snap, err := p.Snapshot(ctx)
+		require.NoError(t, err)
+		events, err := p.Events(ctx, 0, MaxEvents)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, Stop{snap.Stopped, snap.StopReason}, tc.name)
+		assert.Len(t, events, 1+tc.events, tc.name)
+		rebuilt := Rebuild(events)
+		assert.Equal(t, tc.want, Stop{rebuilt.Stopped, rebuilt.StopReason}, "%s: the log rebuilds to the store's stop", tc.name)
+		require.NoError(t, p.Migrate(ctx))
+		again, err := p.Events(ctx, 0, MaxEvents)
+		require.NoError(t, err)
+		assert.Len(t, again, len(events), "%s: a second Migrate logs nothing", tc.name)
+	}
+}

@@ -12,7 +12,7 @@ import (
 )
 
 // VersionAdoption checks that the nova-sprint on PATH is the release up was
-// asked for (--version), then its check and validated shadow. It installs
+// asked for (--version), then that its check passes. It installs
 // nothing: nova-fleet installs nova-sprint, and Apply names that command.
 type VersionAdoption struct {
 	Binary      string
@@ -61,9 +61,6 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 	}
 	if err = v.secretCommand(ctx, "check"); err != nil {
 		return false, cause("updated sprint check failed", err)
-	}
-	if err = v.secretCommand(ctx, "run", "--shadow"); err != nil {
-		return false, cause("updated sprint shadow failed", err)
 	}
 	return true, nil
 }
