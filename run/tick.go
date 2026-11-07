@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -160,6 +161,9 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	if t.snap.Stopped {
 		return nil, nil
 	}
+	if err := t.raiseSeen(ctx, o); err != nil {
+		return nil, err
+	}
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
 		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster}
 	a := t.asker(ctx, o.Roster)
@@ -177,6 +181,31 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	}
 	t.retire(plan, accepted)
 	return t.dispatch(plan.Edges, accepted), nil
+}
+
+// raiseSeen is the run loop's Seen (steps' runEvents: presence is the bus's
+// fact; Steps.tla EnvMove's flip up): each row down in the store and present
+// on the bus this tick comes up, one op each, applied before the plan so a
+// row that has just hooked in is open for this tick's deal. Gone, the flip
+// down, is the steps' silence rule. Without this a hooked row stayed down
+// and nothing was ever dealt (the end-to-end test, 2026-11-07).
+func (t *Ticker) raiseSeen(ctx context.Context, o Observed) error {
+	var ops []store.Op
+	for _, name := range o.Present {
+		if r, ok := t.snap.Rows[name]; !ok || r.State != card.Down {
+			continue
+		}
+		op, why := steps.Verb(t.view, steps.Inputs{Now: o.Now}, steps.Request{Actor: steps.Actor, Row: name, Event: card.Seen{}})
+		if why != nil {
+			continue
+		}
+		ops = append(ops, op)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	_, err := t.apply(ctx, ops)
+	return err
 }
 
 // fresh is results not already in the inbox and for a request in flight
