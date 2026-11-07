@@ -41,7 +41,7 @@ func (e ExecEnvironment) Fleet(ctx context.Context) (bool, string, error) {
 			return false, "", ctx.Err()
 		}
 		// Not ready, and why: nova-fleet check's own words.
-		return false, Redact(err.Error()), nil
+		return false, errText(err), nil
 	}
 	return true, "", nil
 }
@@ -51,7 +51,7 @@ func (e ExecEnvironment) Schema(ctx context.Context) (bool, error) {
 	}
 	pg, err := store.Open(ctx, e.DSN, e.Password)
 	if err != nil {
-		return false, &OperationError{Problem: "PostgreSQL cannot be reached or NOVA_PG_DSN is invalid (" + Redact(err.Error()) + ")", Fix: "check NOVA_PG_DSN and run nova-fleet check", Exit: 2}
+		return false, RefusalOr(err, &OperationError{Problem: "PostgreSQL cannot be reached or NOVA_PG_DSN is invalid (" + errText(err) + ")", Fix: "check NOVA_PG_DSN and run nova-fleet check", Exit: 2})
 	}
 	defer pg.Close()
 	identity, err := pg.Schema(ctx)

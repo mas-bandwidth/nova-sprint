@@ -92,7 +92,7 @@ func orWord(s, or string) string {
 func readBrief(path string) (card.Add, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return card.Add{}, broken("cannot read brief "+path+" ("+Redact(err.Error())+")", "pass a readable --brief-file")
+		return card.Add{}, RefusalOr(err, broken("cannot read brief "+path+" ("+errText(err)+")", "pass a readable --brief-file"))
 	}
 	id := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	if id == "group" {

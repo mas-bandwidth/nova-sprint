@@ -100,7 +100,7 @@ func (f FleetServices) existing(ctx context.Context, s FleetService) (bool, erro
 			return false, &OperationError{Problem: "service " + s.Name + " conflicts with setup: nova-config lists it twice", Fix: "remove the duplicate " + s.Name + " service record", Exit: 1}
 		}
 		if !sameFleetService(item.Fields, s) {
-			return false, &OperationError{Problem: edge.RedactN("service "+s.Name+" conflicts with setup: "+fleetServiceDiff(item.Fields, s), edge.FailureMax), Fix: "make the " + s.Name + " service record match setup, or remove it so setup creates it", Exit: 1}
+			return false, &OperationError{Problem: edge.RedactN("service "+s.Name+" conflicts with setup: "+fleetServiceDiff(item.Fields, s), edge.CommandMax), Fix: "make the " + s.Name + " service record match setup, or remove it so setup creates it", Exit: 1}
 		}
 		found = true
 	}

@@ -55,7 +55,7 @@ func (e *Engine) baseAt(ctx context.Context, repo, base string) error {
 	}
 	_, ok, err := e.Origin.Tip(ctx, repo, base)
 	if err != nil {
-		return broken("git ls-remote of "+repo+" failed ("+clip(err.Error())+")", "check the repository is readable, then add the stream again")
+		return RefusalOr(err, broken("git ls-remote of "+repo+" failed ("+errText(err)+")", "check the repository is readable, then add the stream again"))
 	}
 	if !ok {
 		return refuse("branch "+base+" is not at "+repo+"'s origin", "push it, or pass --base <branch>")

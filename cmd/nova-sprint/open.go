@@ -35,7 +35,7 @@ func (c credentials) sprint() (string, error) {
 	}
 	dsn, err := setupRoleDSN(c.dsn, "nova_sprint")
 	if err != nil {
-		return "", fmt.Errorf("NOVA_PG_DSN is not a passwordless postgres URL (%s): set it so", edge.Redact(err.Error()))
+		return "", fmt.Errorf("NOVA_PG_DSN is not a passwordless postgres URL (%s): set it so", edge.RedactN(err.Error(), edge.CommandMax))
 	}
 	return dsn, nil
 }

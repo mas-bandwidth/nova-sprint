@@ -58,7 +58,7 @@ var allowedDiscards = map[string]string{
 var (
 	refusalConstructors = map[string]bool{"refuse": true, "broken": true, "misuse": true, "serviceConfigError": true, "publicVersionRefusal": true}
 	refusalTypes        = map[string]bool{"OperationError": true, "Fail": true}
-	passThroughCalls    = map[string]bool{"AsRefusal": true, "asRefusal": true, "PassRefusal": true}
+	passThroughCalls    = map[string]bool{"AsRefusal": true, "RefusalOr": true}
 )
 
 // Finding is one silent form.

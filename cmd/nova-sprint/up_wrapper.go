@@ -97,7 +97,7 @@ func runUpWrapper(ctx context.Context, args []string) int {
 // cannot take it, the output and why go to stderr and the exit is 2.
 func emit(output string, code int) int {
 	if _, err := fmt.Fprint(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stderr, "SPRINT REFUSED up: cannot write to stdout (%s); the output was: %s", edge.Redact(err.Error()), output)
+		fmt.Fprintf(os.Stderr, "SPRINT REFUSED up: cannot write to stdout (%s); the output was: %s", edge.RedactN(err.Error(), edge.CommandMax), output)
 		return 2
 	}
 	return code
@@ -122,7 +122,7 @@ func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string
 	if channel {
 		reader, writer, err = os.Pipe()
 		if err != nil {
-			return "", "SPRINT REFUSED up: cannot open continuation channel: " + edge.Redact(err.Error()) + "\n", 2
+			return "", "SPRINT REFUSED up: cannot open continuation channel: " + edge.RedactN(err.Error(), edge.CommandMax) + "\n", 2
 		}
 		defer reader.Close()
 		cmd.ExtraFiles = []*os.File{writer}
@@ -154,7 +154,7 @@ func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string
 	}
 	status, err := waitHandoff(ctx, result)
 	if err != nil {
-		return "", "SPRINT REFUSED up: invalid continuation channel: " + edge.Redact(err.Error()) + "\n", 2
+		return "", "SPRINT REFUSED up: invalid continuation channel: " + edge.RedactN(err.Error(), edge.CommandMax) + "\n", 2
 	}
 	return status, output, 0
 }

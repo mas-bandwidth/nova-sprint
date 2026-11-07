@@ -111,7 +111,7 @@ func readCost(in *input) (int64, bool, error) {
 	}
 	n, err := microUSD(in.str("cost"))
 	if err != nil {
-		return 0, false, misuse(in.verb, "--cost is dollars, at most six decimals: 0.04 ("+err.Error()+")")
+		return 0, false, RefusalOr(err, misuse(in.verb, "--cost is dollars, at most six decimals: 0.04 ("+err.Error()+")"))
 	}
 	return n, true, nil
 }

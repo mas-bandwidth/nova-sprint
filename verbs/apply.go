@@ -83,7 +83,7 @@ func (e *Engine) roster(ctx context.Context, lim policy.Limits) (roster.Roster, 
 	}
 	ro, err := e.Roster.ReadRosterAt(ctx, max(1, lim.FleetWidthCap))
 	if err != nil {
-		return ro, broken("nova-config's roster cannot be read ("+clip(err.Error())+")", "nova-config check, then nova-sprint check")
+		return ro, RefusalOr(err, broken("nova-config's roster cannot be read ("+errText(err)+")", "nova-config check, then nova-sprint check"))
 	}
 	return ro, nil
 }

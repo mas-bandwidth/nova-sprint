@@ -172,7 +172,7 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 	if err != nil && ctx.Err() == nil && (errors.Is(err, errDashboardReach) || errors.As(err, &notReady)) {
 		// Not up yet: act; the line says why, and is printed when the
 		// step still does not verify after the act.
-		return SetupCheck{Action: true, Line: "UP 5/8 dashboard: " + target.URL + ": " + Redact(err.Error())}, nil
+		return SetupCheck{Action: true, Line: "UP 5/8 dashboard: " + target.URL + ": " + errText(err)}, nil
 	}
 	return setupReady(ok, "UP 5/8 dashboard: "+target.URL+": VERIFIED", err)
 }

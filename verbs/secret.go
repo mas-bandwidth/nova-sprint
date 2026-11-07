@@ -83,7 +83,7 @@ type TTY struct{}
 func (TTY) ReadHidden(ctx context.Context, prompt string) (key []byte, resultErr error) {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
-		return nil, &OperationError{Problem: "hidden prompt needs a terminal (" + Redact(err.Error()) + ")", Fix: "run nova-sprint up --key <service> in a visible terminal", Exit: 1}
+		return nil, RefusalOr(err, &OperationError{Problem: "hidden prompt needs a terminal (" + errText(err) + ")", Fix: "run nova-sprint up --key <service> in a visible terminal", Exit: 1})
 	}
 	defer tty.Close()
 	restoreTTY, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
@@ -190,7 +190,7 @@ func (n NovaSecrets) Has(ctx context.Context, name string) (bool, error) {
 	}
 	out, err := Output(ctx, "nova-secrets", args...)
 	if err != nil {
-		return false, &OperationError{Problem: "nova-secrets could not list names (" + Redact(err.Error()) + ")", Fix: "run nova-sprint up", Exit: 1}
+		return false, RefusalOr(err, &OperationError{Problem: "nova-secrets could not list names (" + errText(err) + ")", Fix: "run nova-sprint up", Exit: 1})
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.TrimSpace(line) == name {
@@ -207,7 +207,7 @@ func (n NovaSecrets) Set(ctx context.Context, name string, key io.Reader) error 
 	cmd := exec.CommandContext(ctx, "nova-secrets", args...)
 	cmd.Stdin = key // the key goes on stdin only: never argv, env or output
 	if err := runTool(cmd, nil); err != nil {
-		return &OperationError{Problem: "nova-secrets could not save the key (" + Redact(err.Error()) + ")", Fix: "run nova-sprint up --key <service>", Exit: 1}
+		return RefusalOr(err, &OperationError{Problem: "nova-secrets could not save the key (" + errText(err) + ")", Fix: "run nova-sprint up --key <service>", Exit: 1})
 	}
 	return nil
 }

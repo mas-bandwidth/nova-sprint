@@ -53,7 +53,7 @@ func dashboardGet(ctx context.Context, client *http.Client, base *url.URL, path 
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("%w (%s)", errDashboardReach, Redact(err.Error()))
+		return false, fmt.Errorf("%w (%s)", errDashboardReach, errText(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -82,7 +82,7 @@ func dashboardBody(resp *http.Response, epoch int, public bool) string {
 	data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
 	switch {
 	case err != nil:
-		return "reading the body: " + Redact(err.Error())
+		return "reading the body: " + errText(err)
 	case len(data) > 4<<20:
 		return "the body is over 4 MB"
 	}
