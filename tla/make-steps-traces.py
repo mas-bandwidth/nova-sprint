@@ -74,7 +74,7 @@ def cons(wtext):
 
 
 def tko(wtext):
-    m = re.search(r'tko \|-> <<(.*?)>> \]$', wtext)
+    m = re.search(r'tko \|-> <<(.*?)>>(?:, pol \|-> \w+)? \]$', wtext)
     return re.findall(r'<<"(\w+)", (\d+)>>', m.group(1)) if m else []
 
 
