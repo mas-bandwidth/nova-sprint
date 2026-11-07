@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
@@ -79,7 +80,7 @@ func (d doctor) Fleet(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return &verbs.OperationError{Problem: "nova-fleet check is not green", Fix: "run nova-fleet check and fix what it names", Exit: 1}
+		return &verbs.OperationError{Problem: edge.RedactN("nova-fleet check is not green: "+err.Error(), edge.FailureMax), Fix: "fix what nova-fleet check names", Exit: 1}
 	}
 	return nil
 }
@@ -111,21 +112,21 @@ func (d doctor) History(ctx context.Context) error {
 	}
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return fmt.Errorf("integrity: NOVA_PG_DSN does not parse")
+		return edge.Cause("integrity: NOVA_PG_DSN does not parse", err)
 	}
 	cfg.Password = d.creds.password
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("integrity: PostgreSQL cannot be reached")
+		return edge.Cause("integrity: PostgreSQL cannot be reached", err)
 	}
 	defer conn.Close(context.WithoutCancel(ctx))
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return fmt.Errorf("integrity: no read-only transaction")
+		return edge.Cause("integrity: no read-only transaction", err)
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 	if err = store.ValidateHistory(ctx, tx); err != nil {
-		return &verbs.OperationError{Problem: "the history does not rebuild the tables (" + err.Error() + ")", Fix: "take it to the project's own tracker with this line", Exit: 2}
+		return &verbs.OperationError{Problem: edge.RedactN("the history does not rebuild the tables ("+err.Error()+")", edge.FailureMax), Fix: "take it to the project's own tracker with this line", Exit: 2}
 	}
 	return nil
 }
@@ -159,16 +160,24 @@ func (p setupPresence) Who(ctx context.Context) (map[string]bus.Presence, error)
 // line per name.
 func parseWho(out []byte) (map[string]bus.Presence, error) {
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if !strings.HasPrefix(lines[0], "WHO OK present=") {
+		return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseRefused("no WHO OK present= header", 0, out))
+	}
 	n, err := strconv.Atoi(strings.TrimPrefix(lines[0], "WHO OK present="))
-	if !strings.HasPrefix(lines[0], "WHO OK present=") || err != nil || n != len(lines)-1 {
-		return nil, fmt.Errorf("nova-bus who printed something else")
+	if err != nil {
+		return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseFailure(err, out))
+	}
+	if n != len(lines)-1 {
+		return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseRefused(fmt.Sprintf("present=%d but %d name lines", n, len(lines)-1), len(lines[0]), out))
 	}
 	who := map[string]bus.Presence{}
+	at := len(lines[0]) + 1
 	for _, line := range lines[1:] {
 		f := strings.Split(line, "\t")
 		if len(f) < 2 || f[0] == "" {
-			return nil, fmt.Errorf("nova-bus who printed something else")
+			return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseRefused("a name line is not name<TAB>uptime", at, out))
 		}
+		at += len(line) + 1
 		who[f[0]] = bus.Presence{Name: f[0], Uptime: f[1]}
 	}
 	return who, nil

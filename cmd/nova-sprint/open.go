@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -34,7 +35,7 @@ func (c credentials) sprint() (string, error) {
 	}
 	dsn, err := setupRoleDSN(c.dsn, "nova_sprint")
 	if err != nil {
-		return "", fmt.Errorf("NOVA_PG_DSN is not a passwordless postgres URL: set it so")
+		return "", fmt.Errorf("NOVA_PG_DSN is not a passwordless postgres URL (%s): set it so", edge.Redact(err.Error()))
 	}
 	return dsn, nil
 }

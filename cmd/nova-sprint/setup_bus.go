@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
@@ -15,7 +16,7 @@ var setupSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 func setupBusCommand(cfg productionSetupConfig, required func(context.Context) (bool, error), run func(context.Context, bool, string, ...string) ([]byte, error)) verbs.CommandOutput {
 	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		if name != "nova-bus" || len(args) != 1 || args[0] != "who" || run == nil || required == nil {
-			return nil, fmt.Errorf("bus probe configuration unavailable")
+			return nil, fmt.Errorf("bus probe configuration unavailable: only nova-bus who is wired, asked for %s (run set %t, required set %t)", edge.CommandLine(append([]string{name}, args...), nil), run != nil, required != nil)
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -37,7 +38,7 @@ func setupBusCommand(cfg productionSetupConfig, required func(context.Context) (
 		}
 		declared, err := required(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("bus service credentials unavailable")
+			return nil, edge.Cause("bus service credentials unavailable", err)
 		}
 		if declared || cfg.BusUser != "" {
 			return nil, &verbs.OperationError{Problem: "NOVA_BUS_PASSWORD is missing from the control seat", Fix: "restore the bus credential to the control seat and rerun nova-sprint up", Exit: 1}
@@ -50,14 +51,19 @@ func setupBusKeyPresent(out []byte) (bool, error) {
 	if len(out) == 0 {
 		return false, nil
 	}
-	if len(out) > 1<<20 || out[len(out)-1] != '\n' {
-		return false, fmt.Errorf("bus secret names invalid")
+	if len(out) > 1<<20 {
+		return false, fmt.Errorf("bus secret names invalid: %s", edge.ParseRefused("longer than 1 MiB", 1<<20, out))
+	}
+	if out[len(out)-1] != '\n' {
+		return false, fmt.Errorf("bus secret names invalid: %s", edge.ParseRefused("no final newline", len(out), out))
 	}
 	present := false
+	at := 0
 	for _, name := range strings.Split(strings.TrimSuffix(string(out), "\n"), "\n") {
 		if !setupSecretName.MatchString(name) {
-			return false, fmt.Errorf("bus secret names invalid")
+			return false, fmt.Errorf("bus secret names invalid: %s", edge.ParseRefused("a line is not a secret name", at, out))
 		}
+		at += len(name) + 1
 		if name == "NOVA_BUS_PASSWORD" {
 			present = true
 		}
