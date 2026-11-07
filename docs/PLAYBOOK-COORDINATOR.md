@@ -1,8 +1,9 @@
 # The coordinator's playbook
 
-You are reading this because you just ran `nova-sprint hook --as <you> --role coordinator`. That
-hook printed two playbooks: the worker playbook first, then this one. You are a worker too; the
-worker playbook you were just handed binds you whenever you hold a card, and this page adds the
+You are reading this because `nova-sprint hook --as <you> --role coordinator` (or `up`) named it,
+and you ran `nova-sprint help playbook coordinator`, which prints two playbooks: the worker
+playbook first, then this one. You are a worker too; the worker playbook binds you whenever you
+hold a card, and this page adds the
 coordinator's part. Read both once now, then follow the commands the sprint pushes to you.
 
 Notation is the worker playbook's: `<you>`, `<card>@<gen>`, `<e>`. `<s>` is a stream, `<j>` a
@@ -11,7 +12,7 @@ judgement id as its message prints it, `<row>` a row's name on the bus.
 ## Who you are now
 
 1. You are the coordinator: the one name `up` recorded, the only name that may answer a
-   judgement, set a priority, edit or drop a card, hold a row or a stream, or change policy.
+   judgement, set a priority, replace or drop a card, hold a row or a stream, or change policy.
 2. You are also a row like any other. Cards are dealt to you by the same deal, and you take,
    finish and read them by the worker playbook.
 3. The run loop does the seat's mechanical work: it deals, asks reads, decides yes or fix from
@@ -36,7 +37,9 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    nova-fleet set up. Messages sent while you were away wait and arrive first; whatever was
    opened while you were not hooked in to the sprint is also listed by step 5.
 2. Hook in to the sprint: `nova-sprint hook --as <you> --role coordinator`. Its first line is
-   `HOOKED <you> role=coordinator`; then both playbooks; then a `next:` line. It refuses until
+   `HOOKED <you> role=coordinator`; then the commit identity; then
+   `playbook: nova-sprint help playbook coordinator` (read it once, not on every hook); then a
+   `next:` line. It refuses until
    the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role to
    any name but the one `up` recorded. Both refusals are the tool enforcing the order. Until this
    step has run, every coordinator verb refuses with `hook in first: ...`.
@@ -59,12 +62,14 @@ Run these in order at the start of a session, after a wrap-around, and after a l
 5. List the judgements owed: `nova-sprint judge --as <you>`. Each is one line,
    `JUDGEMENT <j> kind=<kind> card=<id> group=<g> ...`, and the last line is `next:` with the
    command for the first. `JUDGEMENTS none` means nothing waits on you.
-6. Look at the sprint: `nova-sprint show run` (the run loop, its host, its last tick) and
-   `nova-sprint show <s>` for each stream (its producers by state, its landing rung, what is
-   stuck and why). Open the dashboard at the address `up` printed.
+6. Look at the sprint: `nova-sprint show run` (who holds the run loop's lock: its host and pid),
+   `nova-sprint queue --stream <s>` for each stream (its open producers in deal order, each with
+   its state, needs and holders) and `nova-sprint check` for why they wait. Open the dashboard at
+   the address `up` printed.
 7. Account for every row expected to work. `nova-bus who` lists the names whose hook is running;
-   `nova-sprint show <row>` shows a row's state (up or down), its hold, its width and the cards
-   it holds. Up, down and held are separate facts: a configured row is not a present one, and a
+   `nova-sprint show <row>` shows a row's record: its state (up or down), session, role, hold and
+   last heartbeat; `nova-sprint queue` shows which rows hold which cards, and `next --as <you>
+   --json` a row's width. Up, down and held are separate facts: a configured row is not a present one, and a
    present one is not proof that work is running.
 
 Session start is done when `check` passes, you are hooked with the coordinator role, every
@@ -143,7 +148,7 @@ doing, and the exact blocker when nothing can start.
    release, drop or re-deal it, and preserve every pushed head and its evidence. A quiet row is
    not a stalled one: classify the stall first.
 3. Check the brief as well as the worker. A brief that passed the lint may still forbid a file or
-   a gate its own result needs; fix it in place (section 4) before another attempt. A real
+   a gate its own result needs; correct it with `replace` (section 4) before another attempt. A real
    design question is a hold and a question to the human, never guessed implementation work.
 4. Inspect each waiting card's effective wait with `show <id>`: its needs, a sentinel, a held
    stream, a path overlap with a started card of its stream. `after` orders landing only and
@@ -159,15 +164,16 @@ A producer moves `waiting` (a need not landed, or its stream held) to `ready` (l
 to `working` (one row holds its work card) to `review` (its head is finished; reads are owed or
 live) to `merging` (the reads said yes; landing) to `landed`. `fail` and `landed` are final;
 `blocked` waits for you. Each producer has consumer cards: one work card per attempt and a read
-card per read, each dealt to one row and shown by `show <producer>` with its holder and state.
+card per read, each dealt to one row: `queue` lists each producer's holders, and
+`show <consumer>` one consumer's holder and state.
 Nothing stalls silently: every state is waited on by someone named, within a bound policy states
 (`nova-sprint policy show` prints the active numbers). When a card sits too long and no push has
 named it:
 
 1. Run `nova-sprint judge --as <you>` and `nova-sprint next --as <you>`: a judgement opened while
    you were away is the likeliest cause, and it names its command.
-2. Run `nova-sprint show run`. A last tick more than a few seconds old means the run loop is
-   down and nothing is dealt, read or landed: run `nova-sprint up --as <you>`, which re-verifies
+2. Run `nova-sprint show run`. No holder, or a holder whose host and pid are not running,
+   means the run loop is down and nothing is dealt, read or landed (`check` says the same): run `nova-sprint up --as <you>`, which re-verifies
    each setup step and restarts the run service at the first that fails. Never start a second
    `run` by hand.
 3. Run `nova-sprint show <producer>` and read what it waits on:
@@ -180,8 +186,8 @@ named it:
      and bring a row up that serves the tier (section 7). With every read done, the verdict is
      the next tick's, a second away; a card still in review a minute later with every read done
      is a defect (step 4).
-   - `merging`: the stream's rung and stuck column in `nova-sprint show <s>`, and a `land`
-     or `stall` judgement.
+   - `merging`: `CHECK` lines for the stream's landing wait, the board's landing column, and a
+     `land` or `stall` judgement.
 4. If none of these explains it, the sprint has a defect: take it to the project's own tracker with what
    `show` printed (section 11) and tell the human.
 
@@ -205,13 +211,14 @@ The card id is the file's name without `.md`. A brief is:
    - `AFTER: <id>`: soft; orders landing among cards both queued to land, never holds a start.
    - `PRIORITY: <low|normal|high|critical|blocker>`: optional, normal by default, written only
      when someone asked for that level.
-   - `TEST: <command>`: required; names a test absent at base, run red at base and green at head.
+   - `TEST: <command>`: required; names a test absent at base, red at base and green at head.
    - `DONE-WHEN: <command>`: required, one per line; each is one checkable command (a program and
-     its arguments, run with no shell: wrap a pipe, `&&`, `;` or a redirection in `sh -c '...'`),
-     run at the base
-     before the deal, and a gate that would stay red after a correct fix is refused. Each gate's
-     negative control plants its fault in the real artifact the gate covers. A gate names the
-     facts it needs (an OS, a tool), never a host.
+     its arguments, run with no shell: wrap a pipe, `&&`, `;` or a redirection in `sh -c '...'`).
+     `add` parses each and runs none; a bench's worker runs every one at the head after the
+     work, and a red one fails the attempt. A gate that would stay red after a correct fix is a
+     brief defect no machine catches before the deal: write it red at base, green at head. Each
+     gate's negative control plants its fault in the real artifact the gate covers. A gate names
+     the facts it needs (an OS, a tool), never a host.
 3. The prose says what to build, cites the base-reds table instead of asking for a tree run at
    base, tells the worker to run the whole package of every file it touches, and names a landed
    worked example for every piece after the first.
@@ -242,8 +249,8 @@ command for the top card, and the board's Why waiting panel shows the same lines
 
 To correct a brief, add the corrected brief under a new id and replace the old card with it:
 `nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants
-follow the new one. A card a row holds is refused (`producer <id> has live consumer ...`): send
-the correction to the holder on the bus, or release the card first.
+follow the new one. A card a row holds is replaced too: its live consumer is released with the
+replace's reason (the branch kept), so tell the holder on the bus first.
 
 ## 5. Priorities, landing and reds
 
@@ -290,19 +297,20 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 2. A fix goes back by rule with the prior head and the finding, at the head of its queue. You see
    only what needs a mind: a `blocked` card, the same finding twice (`brief`), a land-rate under
    target.
-3. The same finding twice means the brief is wrong, not the worker: fix the brief with `edit`
-   before another attempt. A third time, stop and take it to the human with the evidence.
+3. The same finding twice means the brief is wrong, not the worker: add the corrected brief
+   under a new id and `nova-sprint replace <old> --by <new> --reason "<why>"` before another
+   attempt. A third time, stop and take it to the human with the evidence.
 4. When a row's first-time land rate falls under target, read its failed cards with `show <id>`
    and put each failure under one cause: an unmet DONE-WHEN, a file outside PATHS, a not-done
    head finished as ok, a red taken on an overloaded bench, or a wrong brief. Tell the row on the
    bus, one line per card, `<id>: <cause>. Fix: <the exact change>.`; fix the brief causes
    yourself.
 5. Drop only what should not be done: `nova-sprint drop <id> --reason "<why>" --dry-run` first,
-   which prints the dependants it would fail; then add `--waive` (dependants go on without it),
-   `--relink <other>` (dependants wait on a replacement), or `--expect <dependant-ids>` to fail
-   them as printed, and run it without `--dry-run`. It prints `DROP applied`. A card under an
-   open judgement is dropped by answering the judgement with `drop`. A drop releases the card's live
-   consumers itself.
+   which prints the dependants it would fail; then, per dependant, add
+   `--waive <dependant>` (it goes on without the card) or `--relink <dependant>=<card>` (it
+   waits on that card instead); every dependant you name neither way fails with it. Run it
+   without `--dry-run`. A card under an open judgement is dropped by answering the judgement
+   with `drop`. A drop releases the card's live consumers itself (branches kept).
 
 ## 7. Running rows: friends and the fleet
 

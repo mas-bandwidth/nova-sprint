@@ -139,7 +139,8 @@ func guidance(v *nextView, err error) error {
 	return nil
 }
 
-// fillInventory is the row's consumers by state, in deal order.
+// fillInventory is the row's consumers by state, in deal order, the
+// working ones not yet acknowledged first.
 func fillInventory(v *nextView, snap store.Snapshot) {
 	for _, c := range snap.Cards {
 		if c.Holder != v.Row || (c.Kind != "work" && c.Kind != "read") {
@@ -160,9 +161,20 @@ func fillInventory(v *nextView, snap store.Snapshot) {
 	for _, l := range [][]consumerLine{v.Ready, v.Working, v.Final} {
 		slices.SortFunc(l, dealOrder)
 	}
+	// A dealt card not yet acknowledged comes first: its take stops the
+	// nudges, and the card behind it is already being worked.
+	slices.SortStableFunc(v.Working, func(a, b consumerLine) int { return cmp.Compare(ackRank(a), ackRank(b)) })
 	if v.Role == "coordinator" {
 		v.Judgements = openJudgements(snap)
 	}
+}
+
+// ackRank is 1 for a consumer whose step is past take, else 0.
+func ackRank(l consumerLine) int {
+	if strings.HasPrefix(l.Command, "nova-sprint take ") {
+		return 0
+	}
+	return 1
 }
 
 // fillRoster is the row's width, model and harness from nova-config, and

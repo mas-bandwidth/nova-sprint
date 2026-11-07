@@ -39,12 +39,12 @@ Each step refuses until the one before it has happened.
 | step | verb | refuses until | the refusal names |
 |---|---|---|---|
 | 1 | `check` | nova-tools' fleet is up (`nova-fleet check` green: Tailscale, Redis, PostgreSQL); nova-tools at the pin; `NOVA_PG_DSN` and `NOVA_BUS_REDIS` reach their servers; then the sprint's health: every stream's repository and base at origin, no open judgement, run serving, something dealt while producers are ready, no landing waiting on a person; a policy active and answering the ready producers' questions; every waiting or ready producer admitted as `add` would admit it; every working consumer on a row that is hooked, up and on the bus | every line it checked; each `CHECK RED` line names its fix; exit non-zero while any is red |
-| 2 | `up` | `check` passes | `nova-sprint check` |
+| 2 | `up` | nothing before it: it walks its own steps from step 1 each run, each refusing until it verifies (it does not run `check`) | the first step that does not verify, with its own fix |
 | 3 | `stream add` | the store is at the schema `up` makes; the repository clones and its base is there; the card branches `sprint/<s>/<card>` can be created (git's ref-name rules, no parent branch at origin); with forge github, this host's gh identity can push, open and merge | `nova-sprint up`; the name to change, the branch to delete, or the gh login to make |
 | 4 | `add` | the stream exists and its base is at origin; the brief passes the card contract ([CARD-CONTRACT.md](CARD-CONTRACT.md)), DONE-WHEN as one command and no retired mechanic; a row serves its tier and every NEEDS-ROUTE; its PATHS are at the base; its work is not already there; every need names a card | `stream add <s>`; the missing sections of the brief by name; the row to give the tier or route; the path; the unknown need |
 | 5 | rows | a row hooks in (`nova-sprint worker --as <row>` on a bench; `nova-bus hook --as <name>` for a kin) | the recipe for the harness it detects |
 | 6 | deals | `run` is a service (made by `up`) and at least one row is up | `nova-sprint up`; "no row is hooked in" with step 5's recipe |
-| 7 | `take` | the name is hooked in; the card was dealt to this row at this gen | the hook recipe; "card X moved: run `nova-sprint show X`" |
+| 7 | `take` | the name is hooked in; the card was dealt to this row at this gen | the hook recipe; "X is not dealt to this row at this generation: `nova-sprint next --as <row>`" |
 | 8 | `finish` | this row holds the card; the head is a full sha; it exists on the card's branch at origin (no PR is asked: the landing opens the stream's) | the holder; "not a full sha"; "push first: `git push origin <branch>`" |
 | 9 | `read` | the reader is hooked; the reader is not the author; the head is the card's | the author; "card X is at <head>" |
 | 10 | landing | a read said yes to this head; CI is green at this head | "read owed"; "CI red at <head>: see <url>" |
@@ -93,14 +93,13 @@ reached cannot hold work.
 The one bus message a deal sends is the whole instruction. Its body:
 
 ```
-DEAL card=<id> attempt=<n> kind=work|read stream=<s> epoch=<e>
-run: nova-sprint take <id>@<gen> --as <you>
+DEAL card=<id> attempt=<n> kind=work|read stream=<s> tier=<t> model=<m> epoch=<e> repo=<org/repo> ... brief=<clipped>; in your hand now: run nova-sprint take <id>@<gen> --epoch <e> --as <you> (acknowledges, prints the whole brief), then do it and run: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>
 ```
 
-`take` prints the brief, the repository, the base commit, the branch this row
-may push, the done-when lines, where tests may run, and ends with
-`next: nova-sprint finish <id> --head <sha> --as <you>` (or `read … yes|fix`
-for a read). Nothing is carried in a model's memory between steps; every
+`take` prints the repository, the base commit, the branch this row may push,
+the brief with its done-when lines, how the card finishes, and ends with
+`next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>` (or
+`read … yes|fix` for a read). Nothing is carried in a model's memory between steps; every
 output names the next command.
 
 ## Finish is checked, not trusted

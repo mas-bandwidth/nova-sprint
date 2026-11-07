@@ -47,29 +47,65 @@ func writeJobMD_internal(j Job) error {
 	return nil
 }
 
-// finishRules_internal is how j finishes, word for word the same in JOB.md
-// and the prompt: what to leave in the checkout, the identity its commits
-// carry, the forms of result.json,
-// and what the worker does after (it pushes; the harness runs no git push
-// and no gh, and the landing opens the pull request).
-func finishRules_internal(j Job) string {
+// finishRules_internal is how j finishes on a bench, word for word the
+// same in JOB.md and the prompt: what to leave in the checkout, the
+// identity its commits carry, the forms of result.json, and what the worker
+// does after (it pushes; the harness runs no git push and no gh, and the
+// landing opens the pull request).
+func finishRules_internal(j Job) string { return finishRules(j, nil) }
+
+// KinFinish is a kin row's report verbs for one card: its <card>@<gen>,
+// the row and the epoch.
+type KinFinish struct {
+	Ref, Row string
+	Epoch    int
+}
+
+// KinFinishRules is how a card a kin row took finishes (take's text): the
+// rules JOB.md carries, with the row pushing its own branch and reporting
+// by finish, read or report in place of result.json.
+func KinFinishRules(j Job, k KinFinish) string { return finishRules(j, &k) }
+
+// finishRules is the one text of how j finishes: a bench's (k nil: the
+// harness writes result.json, the worker pushes) or a kin row's (k: the row
+// pushes and runs the verb).
+func finishRules(j Job, k *KinFinish) string {
 	res := filepath.Join(j.JobDir, "result.json")
-	if j.Kind == "read" {
-		return "1. Read the head checked out in " + j.WorktreeDir + " against the card. Edit no tracked file, commit nothing, run no git push and no gh.\n" +
-			"2. Write " + res + ", then exit 0. Its forms:\n" +
-			"   {\"result\":\"ok\"}: the head meets the card as written.\n" +
-			"   {\"result\":\"fix\",\"finding\":\"<path>:<line>: <the defect and its repair>\"}: it does not; name every defect.\n" +
-			"   {\"result\":\"fault\",\"reason\":\"<why>\"}: you could not judge it (a tool, a build, a missing input).\n" +
-			routeFault_internal() +
-			"A run that exits without " + res + " is reported a fault.\n"
+	if k == nil {
+		if j.Kind == "read" {
+			return "1. Read the head checked out in " + j.WorktreeDir + " against the card. Edit no tracked file, commit nothing, run no git push and no gh.\n" +
+				"2. Write " + res + ", then exit 0. Its forms:\n" +
+				"   {\"result\":\"ok\"}: the head meets the card as written.\n" +
+				"   {\"result\":\"fix\",\"finding\":\"<path>:<line>: <the defect and its repair>\"}: it does not; name every defect.\n" +
+				"   {\"result\":\"fault\",\"reason\":\"<why>\"}: you could not judge it (a tool, a build, a missing input).\n" +
+				routeFault_internal() +
+				"A run that exits without " + res + " is reported a fault.\n"
+		}
+		return "1. Commit your work in " + j.WorktreeDir + " on branch " + j.Branch + " (git add, then git commit -F <message file>). Run no git push and no gh: the worker pushes the branch after you exit, and the landing opens the pull request.\n" +
+			commitIdentity_internal(j) +
+			"2. Run every done-when command in the checkout; each must exit 0.\n" +
+			"3. Write " + res + ", then exit 0. Its forms:\n" +
+			"   {\"result\":\"ok\"}: the work is committed and every done-when command is green.\n" +
+			"   {\"result\":\"fail\",\"reason\":\"<what is not done, and why>\"}: you could not finish it; say what you found.\n" +
+			"A run that exits without " + res + " is reported \"fail: no verdict\".\n"
 	}
-	return "1. Commit your work in " + j.WorktreeDir + " on branch " + j.Branch + " (git add, then git commit -F <message file>). Run no git push and no gh: the worker pushes the branch after you exit, and the landing opens the pull request.\n" +
-		commitIdentity_internal(j) +
-		"2. Run every done-when command in the checkout; each must exit 0.\n" +
-		"3. Write " + res + ", then exit 0. Its forms:\n" +
-		"   {\"result\":\"ok\"}: the work is committed and every done-when command is green.\n" +
-		"   {\"result\":\"fail\",\"reason\":\"<what is not done, and why>\"}: you could not finish it; say what you found.\n" +
-		"A run that exits without " + res + " is reported \"fail: no verdict\".\n"
+	tail := fmt.Sprintf(" --as %s --epoch %d", k.Row, k.Epoch)
+	fault := "   nova-sprint report " + k.Ref + " --result fault --reason \"<why>\"" + tail + ": a tool, the harness or a route failed, not the work; a reason starting " + card.MissingRoute + " <route> blocks the card for the coordinator.\n"
+	if j.Kind == "read" {
+		return "1. Check out " + j.Head + " detached in a fresh directory of your own and read it against the card. Edit no tracked file, commit nothing, push nothing.\n" +
+			"2. Run every done-when command at that head; keep each command, exit code and log.\n" +
+			"3. Answer with one of:\n" +
+			"   nova-sprint read " + k.Ref + " yes" + tail + ": the head meets the card as written.\n" +
+			"   nova-sprint read " + k.Ref + " fix --finding \"<path>:<line>: <the defect and its repair>\"" + tail + ": it does not; name every defect.\n" +
+			fault
+	}
+	return "1. In a fresh clone of your own, commit your work on branch " + j.Branch + " (from the prior head when there is one, else the base), then git push origin " + j.Branch + ". Open no pull request: the landing opens it.\n" +
+		kinIdentity(j) +
+		"2. Run every done-when command at the head you pushed; each must exit 0.\n" +
+		"3. Report with one of:\n" +
+		"   nova-sprint finish " + k.Ref + " --head <sha>" + tail + ": the work is pushed at <sha> and every done-when command is green.\n" +
+		"   nova-sprint finish " + k.Ref + " --failed --reason \"<what is not done, and why>\"" + tail + ": you could not finish it; say what you found.\n" +
+		fault
 }
 
 // commitIdentity_internal is the sprint's commit identity rule for a work
@@ -80,6 +116,15 @@ func commitIdentity_internal(j Job) string {
 		return ""
 	}
 	return "   This checkout is already configured; do not change it. " + strings.ReplaceAll(strings.TrimRight(CommitRules(j.CommitName, j.CommitEmail), "\n"), "\n", "\n   ") + "\n"
+}
+
+// kinIdentity is the commit identity rule for a kin's own clone, which
+// nobody has configured for it.
+func kinIdentity(j Job) string {
+	if j.CommitName == "" || j.CommitEmail == "" {
+		return ""
+	}
+	return "   " + strings.ReplaceAll(strings.TrimRight(CommitRules(j.CommitName, j.CommitEmail), "\n"), "\n", "\n   ") + "\n"
 }
 
 // routeFault_internal is the finish rule for a route or device this bench

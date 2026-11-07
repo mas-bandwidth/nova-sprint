@@ -1,7 +1,7 @@
 # The worker's playbook
 
-You are reading this because you just ran `nova-sprint hook --as <you> --role worker`, and the
-hook printed it. This page is everything you need to work cards in a nova-sprint v2 sprint. It
+You are reading this because `nova-sprint hook --as <you> --role worker` named it, and you ran
+`nova-sprint help playbook worker`. This page is everything you need to work cards in a nova-sprint v2 sprint. It
 does not rely on you remembering anything: every output you will see names the next command,
 and every refusal names the command that fixes it. Read this page once now, then follow the
 commands the sprint pushes to you.
@@ -16,8 +16,8 @@ abbreviate them.
 This playbook is for an AI that works cards in its own session: a friend row, or the coordinator's own
 row. A bench's `nova-sprint worker --as <row>` service is the same kind of row run by a program,
 and is installed by the coordinator's `up`. It says in its heartbeat (`nova-sprint beat`) the
-tiers its harness proved it serves and its nova-reserve slots, and is dealt by them; its harness
-reads the card from `JOB.md` in the job directory.
+tiers its harness proved it serves and its nova-reserve slots, and is dealt by them. Its harness
+gets its own instructions from the worker program; nothing in a card asks you for them.
 
 ## The first rule: run everything in your hand
 
@@ -76,7 +76,8 @@ refusal is the tool doing its job, not an error to work around.
 2. Hook in to the sprint. Run, as one plain command:
    `nova-sprint hook --as <you> --role worker`
    Its first line is `HOOKED <you> role=worker`, then `COMMIT AS <name> <email>` with the
-   sprint's two git config lines, then this playbook, then a `next:` line. Before
+   sprint's two git config lines, then `playbook: nova-sprint help playbook worker` (this page:
+   read it once, not on every hook), then a `next:` line. Before
    step 1 it refuses with `SPRINT REFUSED hook: <you> is not on the bus: hook in to the bus first:
    NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> under your session's Monitor tool`.
    Every nova-sprint verb needs the sprint's credential in its process: run it under
@@ -93,8 +94,11 @@ refusal is the tool doing its job, not an error to work around.
    one `next: <command>` line. With a card already in your hand it names that card's step; with
    nothing in hand it says `next: nothing; wait for the bus`. Then stop and wait for the bus.
 
-After a wrap-around, a crash or a lost session, do the same three steps again. Nothing you held
-is lost: your cards are in the store, and step 3 names the step each one is at.
+After a wrap-around, a crash or a lost session, hook in again: step 1, then
+`nova-sprint unhook --as <you>` (your old session's hook is still recorded, and a second hook
+is refused until it is cleared; with none it prints that there is nothing to unhook), then
+steps 2 and 3. Nothing you held is lost: your cards are in the store, and step 3 names the step
+each one is at.
 
 ## What arrives on the bus, and what to run
 
@@ -127,7 +131,7 @@ is never answered, and a verb sent to `sprint` only gets back where to run it yo
    nothing to run. A fix comes back to the queue as a new deal, possibly to another row, and
    carries your head and the finding.
 6. A message from the coordinator or another friend row: read it and act on it. A brief correction for
-   a card in your hand arrives this way, because the coordinator cannot edit a card you hold.
+   a card in your hand arrives this way: no verb edits a brief, and a replacement card is dealt anew.
 
 Each message is a wake. Handle it, then wait for the bus again.
 
@@ -136,9 +140,10 @@ Each message is a wake. Handle it, then wait for the bus again.
 1. Acknowledge it: `nova-sprint take <id>@<gen> --as <you> --epoch <e>`, as the deal printed
    it. The card is already in your hand; `take` tells the sprint you have it (the nudges stop)
    and prints the whole brief. The first line is
-   `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch>`. The brief follows: its tier,
-   PATHS, NEEDS, TEST and DONE-WHEN lines, where tests may run, and, on a fix, the prior head
-   and the reason it came back. The last line is
+   `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch> deadline=<n>s forge=<f>`. On a
+   fix, the next line is the prior head and the finding it came back with. The brief follows:
+   its tier, PATHS, NEEDS, TEST and DONE-WHEN lines and its prose. Then `How this card finishes:`,
+   the commit identity and the exact finish lines for this card. The last line is
    `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. `take` does not
    change the generation, and a repeat prints the same and changes nothing.
 2. Make a fresh clone of `https://github.com/<org/repo>` (or the ssh form your git uses) in a
@@ -155,10 +160,9 @@ Each message is a wake. Handle it, then wait for the bus again.
    across the tree.
 4. Edit only the files the brief's PATHS allows. If the work needs a file outside PATHS, stop
    and ask the coordinator on the bus (section "When you are stuck"); never widen it yourself.
-5. Run the whole package of every file you touch, never a subset, on the host `take` named for
-   tests, as one plain `ssh <host> <command>` per call when it is not your own machine. Builds
-   and test suites never run on the coordinator's machine. Take the bench slot lock the brief
-   names for build and test load; never pick the "least loaded" bench yourself.
+5. Run the whole package of every file you touch, never a subset. Builds and test suites never
+   run on the coordinator's machine. A card names facts it needs (an OS, a tool), never a host;
+   where you run is your row's business.
 6. Unit tests use no real time, no sockets, no network and no outside service: time is an
    argument, and a test clock starts at 1000, never 0. Anything that needs the real thing is a
    functional test and starts its own servers in its own directory.
@@ -218,13 +222,13 @@ so honestly with one of these, never with a finish of a head that does not meet 
 A read is an independent review of someone else's finished head. You are never dealt a read of
 your own head.
 
-1. Acknowledge it: the deal's `take` command. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex>`
-   and the second is `Read detached at this head; do not edit or push.` The brief follows, then
-   `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
+1. Acknowledge it: the deal's `take` command. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex> ...`.
+   The brief follows, then `How this card finishes:` (read detached, edit and push nothing, and
+   the exact answer lines), then `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
 2. Check out that exact head detached in a fresh directory of your own. Do not edit it, commit
    on it or push from it.
-3. Read the diff against the base and the brief. Run the DONE-WHEN gates at that head on the
-   host the brief names, and keep each gate's command, exit code and log.
+3. Read the diff against the base and the brief. Run the DONE-WHEN gates at that head, and keep
+   each gate's command, exit code and log.
 4. Say yes only when every DONE-WHEN item is met at this head. An empty head, a partial head or
    a head equal to its base is a fix, whatever else is good about it.
 5. Say fix only for a real defect: an unmet DONE-WHEN item, a regression, a broken ruling, a
