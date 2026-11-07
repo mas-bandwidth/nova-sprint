@@ -243,12 +243,18 @@ func checkLanding(v starlark.Value) (Landing, string) {
 
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the
 // withdraw silence at or above the gone one: no wait is ever unbounded.
+// ready_nag is optional (1), so a version stored before it still answers.
 func checkTimeouts(v starlark.Value) (Timeouts, string) {
-	d, msg := dictOf(v, "row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer")
+	d, msg := dictSome(v, []string{"row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer"}, "ready_nag")
 	if msg != "" {
 		return Timeouts{}, msg
 	}
-	var t Timeouts
+	t := Timeouts{ReadyNag: 1}
+	if d["ready_nag"] != nil {
+		if t.ReadyNag, msg = intIn("ready_nag", d["ready_nag"], 1, maxSeconds); msg != "" {
+			return Timeouts{}, msg
+		}
+	}
 	for _, f := range []struct {
 		key string
 		dst *int
