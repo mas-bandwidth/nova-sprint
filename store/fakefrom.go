@@ -37,10 +37,6 @@ func NewFakeFrom(s Snapshot, policies ...PolicyVersion) (*Fake, error) {
 	for k, c := range f.cards {
 		f.cards[k] = cardCopy(c) // the Fake's own lists: editing s never changes it
 	}
-	for k, r := range f.rows {
-		r.Tiers = normSet(r.Tiers)
-		f.rows[k] = r
-	}
 	maps.Copy(f.cursors, s.Cursors)
 	for _, p := range policies {
 		if _, twice := f.policies[p.Version]; twice || p.Version < 1 {

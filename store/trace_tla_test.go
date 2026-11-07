@@ -133,7 +133,7 @@ func (ModelCard) absent() string {
 }
 
 func (r ModelRow) tla() string {
-	return fmt.Sprintf("[state |-> %q, width |-> %d, gen |-> %d, held |-> %s, tiers |-> %s]", r.State, r.Width, r.Gen, tlaBool(r.Held), tlaSet(r.Tiers))
+	return fmt.Sprintf("[state |-> %q, gen |-> %d, held |-> %s]", r.State, r.Gen, tlaBool(r.Held))
 }
 
 // absent is Store.tla's NoRow.

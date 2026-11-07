@@ -276,7 +276,6 @@ func (l *load) build(t *testing.T) {
 		logLoad(t, "build-"+name, d, fmt.Sprintf(" wall=%sms", ms(time.Since(s))))
 		all = append(all, d...)
 	}
-	tiers := slices.Clone(Tiers)
 
 	var setup []Write
 	for s := range loadStreams {
@@ -284,7 +283,7 @@ func (l *load) build(t *testing.T) {
 	}
 	var up []Write
 	for r := range loadRows {
-		setup = append(setup, PutRow{Name: rowName(r), Kind: "worker", Width: loadWidth, Session: "session-1", Tiers: tiers, Model: "model", Harness: "harness"})
+		setup = append(setup, PutRow{Name: rowName(r), Session: "session-1"})
 		up = append(up, SetRowState{rowName(r), "up"})
 	}
 	phase("setup", []Op{l.op("setup", nil, setup...), l.op("rows-up", nil, up...)}, 1)
@@ -622,9 +621,9 @@ func (l *load) boardSQL(c *pgx.Conn) (board, error) {
 	}
 	return b, cmp.Or(
 		q(&b.counts, "SELECT stream, state, count(*) FROM sprint.cards WHERE epoch = $1 AND kind = 'producer' GROUP BY stream, state", 1),
-		q(&b.rows, `SELECT r.name, r.width, r.state, r.held, count(c.id) FROM sprint.rows r
+		q(&b.rows, `SELECT r.name, r.state, r.held, count(c.id) FROM sprint.rows r
 			LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working'
-			WHERE r.epoch = $1 GROUP BY r.name, r.width, r.state, r.held ORDER BY r.name`, 1),
+			WHERE r.epoch = $1 GROUP BY r.name, r.state, r.held ORDER BY r.name`, 1),
 		q(&b.open, "SELECT id, kind, about, question, command, group_key, opened_at FROM sprint.judgements WHERE epoch = $1 AND state = 'open' ORDER BY opened_at, id", 1),
 		q(&b.merging, "SELECT stream, id, score, priority FROM sprint.cards WHERE epoch = $1 AND kind = 'producer' AND state = 'merging' ORDER BY stream, score DESC, id", 1),
 		q(&b.events, "SELECT seq, op, actor, kind, accepted, reason, at FROM sprint.events ORDER BY seq DESC LIMIT 50"),
@@ -866,10 +865,9 @@ func (l *load) explain(t *testing.T, c *pgx.Conn) {
 		"SELECT id FROM sprint.judgements WHERE epoch = 1 AND state = 'open'",
 		"SELECT stream, id, score, priority FROM sprint.cards WHERE epoch = 1 AND kind = 'producer' AND state = 'ready' ORDER BY stream, score DESC, id",
 		"SELECT receipt FROM sprint.events WHERE op = 'none'",
-		"SELECT id, tier FROM sprint.cards WHERE epoch = 1 AND holder = 'r07' AND state IN ('ready', 'working') AND NOT tier = ANY('{flash,pro}'::text[]) ORDER BY id COLLATE \"C\" LIMIT 1",
 		"SELECT coalesce(max(seq), 0) FROM sprint.events",
 		fmt.Sprintf("SELECT seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy FROM sprint.events WHERE seq > %d ORDER BY seq LIMIT 1000", last-1000),
-		"SELECT r.name, r.width, r.state, r.held, count(c.id) FROM sprint.rows r LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working' WHERE r.epoch = 1 GROUP BY r.name, r.width, r.state, r.held ORDER BY r.name",
+		"SELECT r.name, r.state, r.held, count(c.id) FROM sprint.rows r LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working' WHERE r.epoch = 1 GROUP BY r.name, r.state, r.held ORDER BY r.name",
 		"SELECT stream, state, count(*) FROM sprint.cards WHERE epoch = 1 AND kind = 'producer' GROUP BY stream, state",
 	} {
 		rows, err := c.Query(l.ctx, "EXPLAIN (ANALYZE, BUFFERS) "+q)

@@ -147,10 +147,6 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 		s.Cards[id] = cardCopy(c) // the caller's own copy: editing it never changes the store
 	}
 	pick(s.Rows, f.rows, f.epoch)
-	for name, r := range s.Rows {
-		r.Tiers = normSet(r.Tiers)
-		s.Rows[name] = r
-	}
 	pick(s.Judgements, f.judges, f.epoch)
 	maps.Copy(s.Cursors, f.cursors)
 	for v, p := range f.policies {
@@ -226,7 +222,6 @@ func (t *fakeTx) stream(name string) (Stream, bool, error) {
 
 func (t *fakeTx) row(name string) (Row, bool, error) {
 	r, ok := t.st.rows[t.k(name)]
-	r.Tiers = normSet(r.Tiers)
 	return r, ok, nil
 }
 
@@ -246,26 +241,6 @@ func (t *fakeTx) policies() (int, []PolicyVersion, error) {
 	return last, active, nil
 }
 
-func (t *fakeTx) working(row string) (int, error) {
-	n := 0
-	for k, c := range t.st.cards {
-		if k.epoch == t.st.epoch && c.Holder == row && c.State == "working" {
-			n++
-		}
-	}
-	return n, nil
-}
-
-func (t *fakeTx) needed(row string, tiers []string) (Card, bool, error) {
-	var found Card
-	for k, c := range t.st.cards {
-		if k.epoch == t.st.epoch && c.Holder == row && (c.State == "ready" || c.State == "working") && !slices.Contains(tiers, c.Tier) && (found.ID == "" || c.ID < found.ID) {
-			found = c
-		}
-	}
-	return found, found.ID != "", nil
-}
-
 func (t *fakeTx) lastSeq() (int64, error) { return t.base.seq0 + int64(len(t.events)), nil }
 
 func (t *fakeTx) rows() ([]Row, error) {
@@ -282,12 +257,8 @@ func (t *fakeTx) open() error { t.st.epoch++; return nil }
 
 func (t *fakeTx) putCard(c Card) error { t.st.cards[t.k(c.ID)] = cardCopy(c); return nil }
 
-func (t *fakeTx) putStream(s Stream) error { t.st.streams[t.k(s.Name)] = s; return nil }
-func (t *fakeTx) putRow(r Row) error {
-	r.Tiers = normSet(r.Tiers)
-	t.st.rows[t.k(r.Name)] = r
-	return nil
-}
+func (t *fakeTx) putStream(s Stream) error        { t.st.streams[t.k(s.Name)] = s; return nil }
+func (t *fakeTx) putRow(r Row) error              { t.st.rows[t.k(r.Name)] = r; return nil }
 func (t *fakeTx) putPolicy(p PolicyVersion) error { t.st.policies[p.Version] = p; return nil }
 
 func (t *fakeTx) replay(opID string) (Receipt, bool, error) {

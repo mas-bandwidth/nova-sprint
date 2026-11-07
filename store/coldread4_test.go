@@ -1,8 +1,8 @@
 package store
 
 // The fourth cold read (the lock read, on abefee69), folded in round 11 from
-// nsv2-coldread4/store/coldread4_test.go: adversarial probes of width, tier
-// serving, cursors, judgements, the same-value rule, malformed ops and
+// nsv2-coldread4/store/coldread4_test.go: adversarial probes of rows (round
+// 22: no width or tier in the store), cursors, judgements, the same-value rule, malformed ops and
 // Rebuild, run on the Fake and on PostgreSQL with every outcome line (reason
 // strings included) equal, under the C collation and under ICU en-US; the
 // SQL guards (TRUNCATE, policy versions) and Migrate's foreign-schema check.
@@ -40,51 +40,29 @@ func cr4apply(h *harness, o Op) string {
 
 // cr4Scenario runs every probe against one store and returns the outcomes in
 // order, "label => outcome". Consumer B1 sorts before a1 in byte order and
-// after it under ICU en-US, so the narrowing reasons tell the orders apart.
+// after it under ICU en-US (round 22 removed the narrowing reasons that
+// named the lowest; the ids are kept so the collation runs stay comparable).
 func cr4Scenario(h *harness) []string {
 	var out []string
 	add := func(label string, o Op) { out = append(out, label+" => "+cr4apply(h, o)) }
 	w := func(label string, expect []Expect, ws ...Write) { add(label, h.op("x", expect, ws...)) }
 
 	h.seed()
-	w("setup", nil, PutRow{Name: "r2", Kind: "worker", Width: 1, Tiers: []string{"heavy", "pro"}},
+	w("setup", nil, PutRow{Name: "r2"},
 		PutCard{Tier: "heavy", Kind: "producer", ID: "ph", Stream: "s1"},
 		PutCard{Tier: "heavy", Kind: "work", ID: "a1", Of: "ph", Stream: "s1", Holder: "r2"},
 		PutCard{Tier: "heavy", Kind: "read", ID: "B1", Of: "ph", Stream: "s1", Holder: "r2"},
 		SetCardState{"a1", "ready"}, SetCardState{"B1", "ready"})
 
-	// tier narrowing below live consumers, every spelling of "none"
-	w("narrow nil", nil, SetRowTiers{"r2", nil})
-	w("narrow empty", nil, SetRowTiers{"r2", []string{}})
-	w("narrow put row", nil, PutRow{Name: "r2", Kind: "worker", Width: 1, Tiers: []string{"pro"}})
-	w("narrow put row nil", nil, PutRow{Name: "r2", Kind: "worker", Width: 1})
-
-	// width
+	// round 22: width and tiers are the roster's, so the store takes any
+	// number of working consumers of any tier on a row that exists
 	w("B1 working", nil, SetCardState{"B1", "working"})
-	w("a1 working at full", nil, SetCardState{"a1", "working"})
-	w("width 0 under 1 working", nil, SetRowWidth{"r2", 0})
-	w("put row width 0 under 1 working", nil, PutRow{Name: "r2", Kind: "worker", Width: 0, Tiers: []string{"heavy", "pro"}})
-	w("B1 review", nil, SetCardState{"B1", "review"})
-	w("a1 working", nil, SetCardState{"a1", "working"})
-	w("B1 back to working at full", nil, SetCardState{"B1", "working"})
+	w("a1 working beside it", nil, SetCardState{"a1", "working"})
 	w("a1 same state", nil, SetCardState{"a1", "working"})
-	w("widen then move in one op", nil, SetRowWidth{"r2", 2}, SetCardState{"B1", "working"})
-	w("move then narrow width in one op", nil, PutCard{Tier: "heavy", Kind: "work", ID: "c9", Of: "ph", Stream: "s1", Holder: "r2"}, SetCardState{"c9", "working"})
-	w("move out then narrow width in one op", nil, SetCardState{"B1", "done"}, SetRowWidth{"r2", 1})
-	w("move at the narrowed width", nil, SetRowFlaps{"r2", 1}, SetCardState{"B1", "working"}) // width 1 is already set: a same-value width write is refused (round 11)
-
-	// tier: a waiting consumer, its row narrowed, then moved
-	w("r3 and a waiting heavy consumer", nil, PutRow{Name: "r3", Kind: "worker", Width: 1, Tiers: []string{"heavy"}},
-		PutCard{Tier: "heavy", Kind: "work", ID: "w3", Of: "ph", Stream: "s1", Holder: "r3"})
-	w("narrow r3 past a waiting consumer", nil, SetRowTiers{"r3", []string{"pro"}})
-	w("w3 ready on a row that does not serve it", nil, SetCardState{"w3", "ready"})
-	w("w3 working on a row that does not serve it", nil, SetCardState{"w3", "working"})
-	w("w3 review (not live)", nil, SetCardState{"w3", "review"})
-	w("w3 review to working", nil, SetCardState{"w3", "working"})
-	w("put consumer on a row that does not serve it", nil, PutCard{Tier: "heavy", Kind: "work", ID: "w4", Of: "ph", Stream: "s1", Holder: "r3"})
-	w("widen tiers then move in one op", nil, SetRowTiers{"r3", []string{"heavy"}}, SetCardState{"w3", "working"})
-	w("move then narrow tiers in one op", nil, PutCard{Tier: "heavy", Kind: "read", ID: "w5", Of: "ph", Stream: "s1", Holder: "r2"},
-		SetCardState{"w5", "ready"}, SetRowTiers{"r2", []string{"pro"}})
+	w("put row keeps them working", nil, PutRow{Name: "r2", Session: "s2"})
+	w("r3 and a heavy consumer working on it", nil, PutRow{Name: "r3"},
+		PutCard{Tier: "heavy", Kind: "work", ID: "w3", Of: "ph", Stream: "s1", Holder: "r3"}, SetCardState{"w3", "working"})
+	w("consumer on a row that does not exist", nil, PutCard{Tier: "heavy", Kind: "work", ID: "w4", Of: "ph", Stream: "s1", Holder: "r9"})
 
 	// cursors
 	last := h.snap().Seq
@@ -118,7 +96,6 @@ func cr4Scenario(h *harness) []string {
 	// malformed and same-value
 	w("write to a state outside the set", nil, SetCardState{"u1", "flying"})
 	w("condition on a state outside the set", []Expect{CardState{"u1", "flying"}})
-	w("row kind outside the set", nil, PutRow{Name: "r9", Kind: "robot"})
 	w("row to the state it is in", nil, SetRowState{"w1", "up"})
 	w("stream held to what it is", nil, SetStreamHeld{"s1", false})
 	w("policy", nil, PutPolicy{"data", "p", ""}, SetActivePolicy{1})
@@ -133,7 +110,6 @@ func cr4Scenario(h *harness) []string {
 	h.epoch = r.NewEpoch
 	w("cursor back after a clear", nil, SetCursor{"feed", 0})
 	w("cursor kept after a clear", nil, SetCursor{"feed", last})
-	w("narrow r2 in the new epoch", nil, SetRowTiers{"r2", nil})
 	w("answer j1 in the new epoch", nil, AnswerJudgement{ID: "j1"})
 	w("reopen j1 in the new epoch", nil, PutJudgement{ID: "j1", Kind: "red"})
 	return out
@@ -142,59 +118,39 @@ func cr4Scenario(h *harness) []string {
 // The outcomes the contract asks for (docs/LAYER-1-STORE.md, store/README.md),
 // as prefixes; round 11 changed the malformed and same-value lines.
 var cr4Want = map[string]string{
-	"narrow nil":                                   "refused: row r2 holds consumer B1 (heavy); cannot drop heavy",
-	"narrow empty":                                 "refused: row r2 holds consumer B1 (heavy); cannot drop heavy",
-	"narrow put row":                               "refused: row r2 holds consumer B1 (heavy); cannot drop heavy",
-	"narrow put row nil":                           "refused: row r2 holds consumer B1 (heavy); cannot drop heavy",
-	"B1 working":                                   "ok",
-	"a1 working at full":                           "refused: row r2 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish",
-	"width 0 under 1 working":                      "refused: row r2 holds 1 working card, more than width 0; wait for a card to finish before narrowing it",
-	"put row width 0 under 1 working":              "refused: row r2 holds 1 working card, more than width 0; wait for a card to finish before narrowing it",
-	"B1 review":                                    "ok",
-	"a1 working":                                   "ok",
-	"B1 back to working at full":                   "refused: row r2 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish",
-	"a1 same state":                                "refused: card a1 is already working",
-	"widen then move in one op":                    "ok",
-	"move then narrow width in one op":             "refused: row r2 holds 2 working cards, its width is 2; raise the width with set row width, or wait for a card to finish",
-	"move out then narrow width in one op":         "ok",
-	"move at the narrowed width":                   "refused: row r2 holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish",
-	"narrow r3 past a waiting consumer":            "ok",
-	"w3 ready on a row that does not serve it":     "refused: row r3 serves pro; consumer needs heavy",
-	"w3 working on a row that does not serve it":   "refused: row r3 serves pro; consumer needs heavy",
-	"w3 review (not live)":                         "ok",
-	"w3 review to working":                         "refused: row r3 serves pro; consumer needs heavy",
-	"put consumer on a row that does not serve it": "refused: row r3 serves pro; consumer needs heavy",
-	"widen tiers then move in one op":              "ok",
-	"move then narrow tiers in one op":             "refused: row r2 holds consumer a1 (heavy); cannot drop heavy",
-	"cursor past the log":                          "refused: cursor feed cannot pass the log at ",
-	"cursor at the log":                            "ok",
-	"cursor back":                                  "refused: cursor feed is at ",
-	"cursor same":                                  "refused: cursor feed is already at ",
-	"cursor negative":                              "invalid: ",
-	"two cursor writes":                            "invalid: ",
-	"open j1":                                      "ok",
-	"answer j1 before it opened":                   "refused: judgement j1 opened at ",
-	"open and answer in one op":                    "invalid: ",
-	"answer and expire in one op":                  "invalid: ",
-	"answer j1":                                    "ok",
-	"answer j1 again":                              "refused: judgement j1 is answered; only an open judgement can be answered",
-	"expire j1 after answer":                       "refused: judgement j1 is answered; only an open judgement can be expired",
-	"reopen j1":                                    "refused: judgement j1 exists",
-	"answer a judgement that does not exist":       "refused: judgement j9 does not exist",
-	"write to a state outside the set":             `invalid: store: invalid op: op x-`,
-	"condition on a state outside the set":         "invalid: ",
-	"row kind outside the set":                     "invalid: ",
-	"row to the state it is in":                    "refused: row w1 is already up",
-	"stream held to what it is":                    "refused: stream s1 is already not held",
-	"policy":                                       "ok",
-	"activate the active policy":                   "refused: policy version 1 is already active",
-	"empty card id in a condition":                 "invalid: ",
-	"empty card id in a write":                     "invalid: ",
-	"cursor back after a clear":                    "refused: cursor feed is at ",
-	"cursor kept after a clear":                    "refused: cursor feed is already at ",
-	"narrow r2 in the new epoch":                   "ok",
-	"answer j1 in the new epoch":                   "refused: judgement j1 does not exist",
-	"reopen j1 in the new epoch":                   "ok",
+	"B1 working":                             "ok",
+	"a1 working beside it":                   "ok",
+	"a1 same state":                          "refused: card a1 is already working",
+	"put row keeps them working":             "ok",
+	"r3 and a heavy consumer working on it":  "ok",
+	"consumer on a row that does not exist":  "refused: row r9 does not exist",
+	"cursor past the log":                    "refused: cursor feed cannot pass the log at ",
+	"cursor at the log":                      "ok",
+	"cursor back":                            "refused: cursor feed is at ",
+	"cursor same":                            "refused: cursor feed is already at ",
+	"cursor negative":                        "invalid: ",
+	"two cursor writes":                      "invalid: ",
+	"open j1":                                "ok",
+	"answer j1 before it opened":             "refused: judgement j1 opened at ",
+	"open and answer in one op":              "invalid: ",
+	"answer and expire in one op":            "invalid: ",
+	"answer j1":                              "ok",
+	"answer j1 again":                        "refused: judgement j1 is answered; only an open judgement can be answered",
+	"expire j1 after answer":                 "refused: judgement j1 is answered; only an open judgement can be expired",
+	"reopen j1":                              "refused: judgement j1 exists",
+	"answer a judgement that does not exist": "refused: judgement j9 does not exist",
+	"write to a state outside the set":       `invalid: store: invalid op: op x-`,
+	"condition on a state outside the set":   "invalid: ",
+	"row to the state it is in":              "refused: row w1 is already up",
+	"stream held to what it is":              "refused: stream s1 is already not held",
+	"policy":                                 "ok",
+	"activate the active policy":             "refused: policy version 1 is already active",
+	"empty card id in a condition":           "invalid: ",
+	"empty card id in a write":               "invalid: ",
+	"cursor back after a clear":              "refused: cursor feed is at ",
+	"cursor kept after a clear":              "refused: cursor feed is already at ",
+	"answer j1 in the new epoch":             "refused: judgement j1 does not exist",
+	"reopen j1 in the new epoch":             "ok",
 }
 
 func cr4Check(t *testing.T, h *harness, out []string) {
@@ -252,9 +208,9 @@ func icuDB(t *testing.T, admin *pgx.Conn, name string) string {
 	return "postgres://nova@" + admin.Config().Host + ":" + strconv.Itoa(int(admin.Config().Port)) + "/" + name + "?sslmode=disable"
 }
 
-// Under ICU en-US, "lowest id" in the tier-narrowing reason would be B1 in
-// byte order and a1 in the database's: PG orders it COLLATE "C", so every
-// line equals Fake's.
+// Every line under ICU en-US equals Fake's (round 22 dropped the
+// tier-narrowing reason whose "lowest id" this run was first written for:
+// PG ordered it COLLATE "C").
 func TestFunctionalColdRead4ParityUnderCollation(t *testing.T) {
 	t.Parallel()
 	admin := connect(t, startPG(t))
@@ -311,7 +267,7 @@ func TestFunctionalSQLFixed(t *testing.T) {
 	t.Parallel()
 	h, _, dsn := pgHarness(t)
 	h.seed()
-	h.ok(h.op("more", nil, PutRow{Name: "w2", Kind: "worker", Width: 1, Tiers: []string{"pro", "heavy"}}, PutStream{Name: "s2"},
+	h.ok(h.op("more", nil, PutRow{Name: "w2"}, PutStream{Name: "s2"},
 		PutJudgement{ID: "j1", Kind: "red"}, SetCursor{"feed", 1}, PutPolicy{"data", "p", "body"}))
 	c := connect(t, dsn)
 	try := func(sql string) error {

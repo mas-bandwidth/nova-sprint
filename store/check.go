@@ -175,16 +175,6 @@ func (c *checker) keys(table string, ks ...string) *checker {
 	return c
 }
 
-// tiers is a row's tiers: each one of Tiers, none named twice.
-func (c *checker) tiers(ts []string) *checker {
-	for i, t := range ts {
-		if c.oneOf("row tier", t, Tiers); c.err == nil && slices.Contains(ts[:i], t) {
-			c.fail("tier %s is named twice", t)
-		}
-	}
-	return c
-}
-
 func badText(s string) bool { return !utf8.ValidString(s) || strings.IndexByte(s, 0) >= 0 }
 
 // oneOf is the reason a value is outside its closed set, quoting at most
