@@ -648,7 +648,7 @@ State invariants:
   move of its own enabled (not counting the coordinator's Cancel, Replace,
   Block, Edit, Rescore, SetPriority), or waits on a need that can still
   move, an after-target that is merging, or (waiting, ready, review) a row
-  coming back or a hold lifting. A ready producer at the attempt bound, or
+  coming back, a hold lifting, or a full row's room (the deal is the take). A ready producer at the attempt bound, or
   one with no slot left, is exempt as the model's limit.
 - **ReadOnlyInReview**: a live read only in review, of the current head and
   review count.
@@ -1109,7 +1109,7 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | Module | Scenario | Fault | Expected result |
 |---|---|---|---|
 | `StepsPre` / `StepsPrePack1` / `StepsDeal` / `StepsLand` / `StepsBurst` | pre / pre1 / deal / land / burst | none | pass, liveness included |
-| `witnesses/StepsDealtTwice` | pre | the deal does not skip a blocker the preemption claimed | NeverDealtTwice |
+| `witnesses/StepsDealtTwice` | pre | the deal does not skip a blocker the preemption claimed, and the preemption fires with free width | NeverDealtTwice |
 | `witnesses/StepsTwoGroups` | land | the land-result step ignores claimed cards | OneGroupPerCard |
 | `witnesses/StepsWidthOver` | burst | the deal checks no width | WidthKept |
 | `witnesses/StepsBlockerQueued` | pre | preemption counts queue room as free width | BlockerPreemptsInOneTick |
