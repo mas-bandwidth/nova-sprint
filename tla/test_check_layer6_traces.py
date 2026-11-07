@@ -72,6 +72,17 @@ class GateFailures(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'all 83'):
                     gate.check(root, SimpleNamespace(check_timeout=5))
 
+    def test_only_verified_ci_host_runner_pairs_are_allowed(self):
+        for host, runner in [('b1', 'amd-1-nova-sprint-1'), ('b3', 'amd-3-nova-sprint-1')]:
+            env = {'GITHUB_ACTIONS': 'true', 'RUNNER_NAME': runner}
+            self.assertTrue(gate.tlc_host_allowed(host, env))
+            self.assertFalse(gate.tlc_host_allowed(host, {}))
+            self.assertFalse(gate.tlc_host_allowed(host, dict(env, RUNNER_NAME='other')))
+            self.assertFalse(gate.tlc_host_allowed('studio', env))
+            self.assertFalse(gate.tlc_host_allowed('captain', env))
+        self.assertTrue(gate.tlc_host_allowed('vision', {}))
+        self.assertTrue(gate.tlc_host_allowed('hetzner2', {}))
+
     def test_timeout_stops_descendant_process(self):
         with tempfile.TemporaryDirectory() as tmp:
             marker = Path(tmp) / 'escaped'

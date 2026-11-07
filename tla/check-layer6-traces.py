@@ -2,7 +2,7 @@
 """Emit current-code fixed-seed L6 traces and check them on reserved Linux benches.
 
 Output must be outside the clean Git checkout. Use --mode emit on the Go bench,
-transfer the complete output, then --mode check on authorized vision/hetzner2.
+transfer the complete output, then --mode check on an authorized TLC bench.
 The caller owns the nova-reserve reservation. No performance claim is made.
 """
 import argparse
@@ -160,9 +160,22 @@ def emit(repo, out, args):
     print(f'EMITTED head={head} cases={len(cases)}', flush=True)
 
 
+
+def tlc_host_allowed(host, env):
+    if 'studio' in host.lower():
+        return False
+    if host.startswith(('vision', 'hetzner2')):
+        return True
+    # Rowan7278111: approved amd runner pairs, CI only. Environment is a
+    # routing marker, not a security boundary or a grant of authorization.
+    runners = {'b1': 'amd-1-nova-sprint-1', 'b3': 'amd-3-nova-sprint-1'}
+    return (env.get('GITHUB_ACTIONS') == 'true' and host in runners
+            and env.get('RUNNER_NAME') == runners[host])
+
+
 def check(out, args):
-    if not socket.gethostname().startswith(('vision', 'hetzner2')):
-        raise RuntimeError('TLC requires authorized reserved vision/hetzner2')
+    if not tlc_host_allowed(socket.gethostname(), os.environ):
+        raise RuntimeError('TLC requires reserved vision/hetzner2 or an approved amd GitHub CI runner')
     manifest_hash = digest(out / 'emission.json')
     manifest = json.loads((out / 'emission.json').read_text())
     cases = manifest['cases']
