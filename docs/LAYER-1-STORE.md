@@ -1,0 +1,796 @@
+# Layer 1: the store
+
+The one place the sprint's state lives. Everything above it reads a snapshot and
+asks for one operation; nothing else writes. Approved by Glenn 2026-11-06
+("OK I like this. It sounds about right! Let's go."); the choices inside the
+layer are Rowan's (Glenn: "the person implementing should be able to select the
+tools they want to use").
+
+## What it is for
+
+nova-sprint v2 is a card dealer: cards in streams with needs, dealt to rows
+(workers and kin), read, landed, refused when a rule breaks. This layer is the
+floor under that. It knows nothing about dealing, reading or landing: it holds
+rows of state, applies one checked operation at a time, and remembers every
+operation it accepted. Layer 2 (the card machine) says which transitions are
+legal; layer 3 (the steps) builds the operations; this layer makes them land
+whole or not at all.
+
+## The store
+
+One PostgreSQL schema, `sprint`, in the PostgreSQL that nova-config already
+uses. Reached by the same two variables nova-config uses: `NOVA_PG_DSN`
+(`postgres://user@host:port/db`, no password) and `NOVA_PG_PASSWORD`. Plain SQL
+through pgx; no ORM. The schema file is embedded in the binary and applied with
+`CREATE ... IF NOT EXISTS`, so applying it twice is a no-op.
+
+### Tables
+
+- `sprint.meta`: one row (`id = 1` by CHECK), `schema integer`. `Migrate`
+  creates the schema at the version the binary knows and refuses a store at any
+  other version, naming both numbers, and also keeps a hash of the schema text that made the store, refusing a store made by a different build of the same version, with one exception: a store made by round 16's schema is upgraded in place (round 17, below).
+- `sprint.epoch`: one row (`id = 1` by CHECK), `n integer`. Clear is
+  `n = n + 1`. Every stream, card and row carries the epoch it was written in;
+  the snapshot shows only the current epoch's rows. Nothing is deleted.
+- `sprint.streams`: `name text`, `repo text`, `base text`, `held boolean`,
+  `pos integer`, `epoch integer`. Primary key `(epoch, name)`.
+- `sprint.cards`: `id text`, `kind text` (`producer`, `sentinel`, `work`, `read`),
+  `of text` (the producer a consumer belongs to; empty on a producer),
+  `stream text`, `state text`, `gen integer`, `attempt integer`,
+  `score integer`, `needs text[]` (hard: cannot start until these landed), `after text[]` (soft: may start any time; orders its landing only behind targets that are themselves queued to land, and never holds it behind a target that is not, as in v1 (LESSONS 2.15; PRIORITY D29, M20)), `holder text` (nullable), `author text`,
+  `branch text`, `base_sha text`, `prior_head text` (on a work consumer: the
+  head the attempt continues from, empty on a first attempt; LESSONS 3.9),
+  `head text`, `pr integer`, `result text`
+  (`""`, `ok`, `fix`, `fail`, `fault`), `bounces integer` (on a producer:
+  the returns that count toward `blocked`; a `fault` never raises it;
+  LESSONS 2.24), `cost bigint` (on a consumer: what its run cost, in
+  micro-dollars) and `priced boolean` (false when the run's route has no
+  price, so an unpriced run is shown as unpriced, never as $0; LESSONS 1.17),
+  `priority text NOT NULL DEFAULT 'normal'` (checked against `low`,
+  `normal`, `high`, `critical`, `blocker`; the deal order, lowest to
+  highest, is Glenn's of 2026-11-06: "There is low, normal, high, read,
+  critical, blocker in specific order.", where `read` is the rung every read
+  consumer occupies and is never a producer's level; Glenn 2026-11-06: "Default is normal." and
+  "Priorities are manually set by request.": a level is declared on a
+  producer by a person or by the coordinator on request, never computed or
+  raised by the system; a consumer has no level of its own and is ordered by
+  its producer's, read from that row, never a second copy; LESSONS 5.3),
+  `brief text`, `reason text`, `red boolean NOT NULL DEFAULT false` (on a
+  producer: its last read's verdict was red, so a later waiver can require
+  it; false on every other kind, by the CHECK `cards_red_check`; mutable,
+  so the `cards_fixed` trigger does not name it; round 17), `epoch integer`.
+  Primary key `(epoch, id)`. Every column but `holder` and `of` is `NOT NULL` (text
+  defaults to the empty string, `pr`, `bounces` and `cost` to 0, `priced` to
+  false). `state`, `kind` and `result` are
+  checked against their sets. `(epoch, stream)` references `streams`;
+  `(epoch, holder)` references `rows`; `(epoch, of)` references `cards` when
+  `of` is set. The two kinds (layer 2's producer and consumer cards, Glenn
+  2026-09-29 and 2026-11-06) share one table and one write set; what the
+  store itself enforces about them (in Go and, where SQL can say it, in the schema's CHECKs and one trigger that refuses any change to `kind`, `of` or `stream`): a sentinel has no brief, no holder, no consumer and no `of`; a producer never has a holder (the holder
+  write is refused on a producer, naming it); a consumer's `of` is set at add,
+  names a producer of the same epoch, and never changes; a consumer has no
+  needs. `gen` starts at 0 and goes up by one on every op that writes the
+  card, so an expectation on gen catches any change; it is a version, not an
+  attempt. `attempt` is raised only by its own write (layer 2 says when).
+  `score` is the work order: set at add, changed only by the explicit score
+  write, never by a move. A card is added in state `waiting`, gen 0, attempt
+  0, no holder; a consumer is added with its holder and the attempt it belongs to in the same op (a producer or sentinel with a non-zero attempt at add is refused).
+- `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
+  `state text` (`up`, `down`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; Glenn 2026-11-06: "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
+  so a late report from an old session can be told apart), `flaps integer`,
+  `gen integer`, `epoch integer`. A row's width has one source, nova-config:
+  the run loop writes `set row width` when nova-config's value differs from
+  the store's, and nothing else writes it, so a nova-config change reaches the
+  store with no hand sync (LESSONS 1.12). Primary key `(epoch, name)`; every column
+  `NOT NULL`; `kind` and `state` checked against their sets. `gen` rises by
+  one on every op that writes the row, so a row plan is fenced like a card
+  plan. There is no heartbeat column and no heartbeat op: presence is the
+  bus's fact (`nova-bus who`), read by the run loop at tick time; the store
+  records a row's state only when it changes. v1 filled its log with
+  heartbeats.
+- `sprint.events`: `seq bigint`, `op text unique`, `actor text`, `kind text`,
+  `accepted boolean`, `reason text`, `before jsonb`, `after jsonb`,
+  `receipt jsonb`, `at timestamptz`, `epoch integer`. Append-only. One row per
+  operation that entered the store, accepted or refused. Because writers run
+  one at a time (below), `seq` is commit order with no gaps, so a reader's
+  cursor is a committed prefix: `Events(afterSeq)` never skips an event.
+  `before` and `after` hold the full row of each touched stream, card, row or
+  policy version, so folding the accepted events in `seq` order from the first
+  event rebuilds the snapshot. `receipt` holds the receipt without its
+  after-image (round 15): Replay, a repeated Apply and Events rebuild
+  `Receipt.After` from a copy of the event's `after` column, so a receipt
+  reads as it did; a row written before round 15, whose receipt carries its
+  own `after`, still reads the same. The events are layer 4's outbox: a deal
+  is an accepted event, and the bus push reads from a cursor.
+- Indexes beyond the primary keys (`events.op` is unique), each serving one
+  store query that would otherwise scan the epoch's cards (rounds 15 and
+  16): `cards_working (epoch, holder) WHERE state = 'working'`, the width
+  count on every move into working and every width write (readers' per-row
+  working counts use it too); `cards_live (epoch, holder, id COLLATE "C")
+  WHERE state IN ('ready', 'working')`, the tier check on a tiers write. Every
+  other store read is by a primary key or a prefix of one (a snapshot's
+  epoch), and the foreign keys and trigger lookups reach primary keys, so
+  nothing else is indexed; a reader that needs another index (a dashboard
+  query by stream or state) names it in its own layer.
+- `sprint.policy`: `version serial`, `kind text` (`script` or `data`),
+  `name text`, `body text`, `active boolean`, `actor text`, `at timestamptz`.
+  Global, not epoch-scoped: a clear keeps the policy. At most one version is
+  active (a unique partial index). Layer 5 fills it; the table exists now so
+  there is one store. Every event records `policy integer`, the active
+  version when it applied, so a decision can always be traced to the rules
+  that made it (promise 6; PROMISE reviews 2026-11-06).
+- `sprint.judgements`: `id text`, `kind text` (a word for the dashboard:
+  `red`, `fix`, `stuck`, `blocked`, `flap`, `conflict`, `landed-sentinel`,
+  and the rest layer 3 names), `about text` (the card, stream or row it
+  concerns), `question text`, `command text` (the exact verb that answers
+  it), `group_key text` (judgements with one key are shown and pushed as
+  one), `state text` (`open`, `answered`, `expired`), `deadline timestamptz`
+  (nullable), `answer text`, `actor text`, `opened_at timestamptz`,
+  `closed_at timestamptz` (nullable), `epoch integer`. Primary key `(epoch,
+  id)`. A judgement is a stored record, not a bus message: the push is made
+  from the row and the row outlives the push, so nothing owed is forgotten
+  (promise 1), the dashboard's "needs you" column reads this table (promise
+  5), and the coordinator is told once per group (promise 6). Writes: put
+  judgement (refused if the id exists); answer judgement (state answered,
+  answer, actor); expire judgement (state expired, reason in answer). A
+  close is refused inside the write unless the judgement is open, and when
+  the op's time is before `opened_at` ("judgement J opened at T1, cannot
+  close at T0"), so a judgement closes at most once whatever the plan
+  carried (the model's `JudgementClosedOnce`; the code's rule, adopted
+  2026-11-06). Condition: judgement `J` is open. Layer 3 opens them, layer 6
+  answers them. Judgements belong to their epoch and are not carried across
+  a clear.
+- `sprint.cursors`: `name text` (primary key), `seq bigint`. A subscriber's
+  place in the event log (the run loop's push cursor per row, the
+  dashboard's feed cursor), saved so a restart can resume where it stopped.
+  The store gives the primitive, a monotone cursor bounded by the log; that
+  a restart never pushes twice or skips is layer 4's guarantee, built on it
+  by advancing the cursor only after a push is confirmed (promise 6). Global,
+  as seq is: a clear keeps it, and a subscriber resumes where it was, so the
+  old epoch is not pushed again by a subscriber that kept its cursor. Write:
+  set cursor (refused below the cursor's current
+  value, and above the last event's seq: "cursor X cannot pass the log at
+  42"); an absent cursor reads as 0.
+
+Two columns for the tier (Glenn 2026-11-06: "flash, pro, heavy, frontier ...
+making sure the right models did the work"): on cards, `tier text` (one of
+the four; a producer's, set at add from the brief; a consumer inherits its
+producer's at add); on rows, `tiers text[]` (the tiers this row serves; a
+bench row's from its model, a kin's from its own word), with `model text` and
+`harness text` as labels for policy and the dashboard. The put-card write
+refuses a consumer whose holder row does not serve its tier (read from the
+row inside the transaction), as does a move into ready or working, and the
+row writes refuse to drop a tier a live consumer of the row needs, so a
+consumer on a row that does not serve its tier is refused by the store,
+never by layer 2's good behaviour. And the card contract's structured fields as
+columns, since the table is the structure: `paths text[]`, `done_when
+text[]`, and `prose text` (the task a mind reads), beside `brief text` which
+keeps the whole brief as given.
+
+### Card states
+
+The closed set, locked by Glenn 2026-09-29 plus one exit and one consumer
+state: `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`, `blocked`,
+`done`. `landed` means the code is on the base branch and is final. `fail` is
+the record of a card that stopped any other way (cancelled, replaced, its need
+failed, or a consumer withdrawn) with the reason kept. `done` is a consumer
+that reported. `blocked` is a producer that bounced too many times (Glenn
+2026-11-05: "if a card flaps around more than n times, it goes into blocked
+primary card state. blocked -> waiting -> ready"; coloured black on the
+board); it is not final, and only the coordinator's unblock leaves it. Which
+transitions are legal, and which states each kind may use, is layer 2's;
+to this layer a state outside the set is `ErrInvalid`. A card is live when it is in
+`ready` or `working`; live is what layer 2's producer invariant counts (one
+live work consumer). Width counts consumers in `working` only, never `ready`
+(below; LESSONS 3.3).
+
+## The operations
+
+The Go API, package `store`:
+
+```go
+type Store interface {
+    Snapshot(ctx) (Snapshot, error)                 // the whole current epoch, with Seq and Epoch
+    Apply(ctx, Op) (Receipt, error)                 // one transaction
+    Replay(ctx, opID string) (Receipt, bool, error) // the receipt an op already got
+    Events(ctx, afterSeq int64, max int) ([]Event, error) // afterSeq exclusive, seq order, max capped at 1000
+    EventIdentity(ctx, seq int64) (op string, epoch int, found bool, err error) // the op id and epoch at seq; reads no image
+    Clear(ctx, Op) (Receipt, error)                 // n = n + 1; same protocol as Apply
+    Policy(ctx, version int) (PolicyVersion, error) // the body layer 5 runs
+}
+```
+
+An `Op` is: `ID` (chosen by the caller, unique forever), `Epoch` (the epoch
+the caller planned against; required), `Actor`, `Kind` (a word for the event
+log, such as `add`, `take`, `finish`), `At` (the time, passed in by the caller,
+never `now()` in SQL), `Expect` (conditions), `Writes` (a closed set of typed
+writes), `Note` (kept in the receipt).
+
+Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
+`X` has holder `R` (or none); card `X` is red or not red (`CardRed`); every need of card `X` is `landed` (read from the
+card's own `needs` inside the transaction, never from a caller's list); row
+`R` is in state `S`; row `R` is at gen `G` (`RowGen`); row `R` is held or not held (`RowHeld`); stream `S` is held or not held; card `X` does not exist;
+the store is at seq `N` (a fence
+for a plan that needs nothing at all to have changed since its snapshot). The
+op's epoch must equal the store's epoch; a mismatch is a refusal. Every
+condition is checked inside the same transaction as the writes, against the
+rows as they are at that moment.
+
+Writes (closed set), one field each: put stream (insert or overwrite: repo,
+base, pos; `pos` is the order streams land in); set stream held; put card
+(add: stream, score, needs, brief; refused if the card exists; every need must
+name a different card of the same epoch, no duplicates); set card state; a
+consumer's holder is fixed at add; there is no holder write (Johnny's review,
+2026-11-06: with a holder write, a working card could drop its holder and
+keep the slot); put card for a consumer names a row of the same epoch, a
+producer or sentinel never has one, and a `done` or `fail` consumer keeps its
+holder for the record and does not count. Width caps work in progress, not what is queued (LESSONS 3.3;
+PRIORITY D21; ruled by Rowan 2026-11-06): the count is the consumers a row
+holds in `working`, never those in `ready`. A state write that takes a
+consumer into `working` is
+refused when that row already holds as many `working` cards as its width,
+counted at the moment of the write and not counting the card being written,
+so one op with two such writes to a width-one row is refused on the second
+and nothing lands, and no path over-fills a row; there is no separate width
+condition, the write is the check. How many `ready` consumers a row may hold
+ahead of its width is policy's number (PRIORITY D21), never the store's;
+set card author; set
+card branch; set card base_sha; set card head; set card
+pr; set card result (a consumer only); set card bounces (a producer only); set card prior_head (a work consumer only); set card attempt (never a consumer: its attempt is set at add); set card cost (a consumer only; cost and priced
+together, one field; each kind-specific write is refused on the wrong kind, naming the kind and the write, and the schema carries the matching CHECKs); set card reason; set card score; set card red (`SetCardRed`: a producer only, refused on a consumer naming
+its producer as the place to record the verdict and on a sentinel as never
+read, whatever the value; a same-value write is refused like every set
+write); set card priority (`SetCardPriority`: one
+of the five levels, refused on a consumer, written only by the verb a
+person or the coordinator runs on request); set card needs; set card after (same rule as needs); put row (insert or
+overwrite: kind, width, session); set row width; set row held; set row state; set row
+session; set row flaps; put policy version; set active policy version
+(deactivates the one active before it in the same transaction). An op that
+writes a card raises that card's gen by one, however many of its writes
+touch the card, and the same for a row: gen counts the operations that
+changed it. Put row and set row width refuse a width below the number of
+`working` cards the row holds. Together, the refusals make "working holders
+never exceed width" true by every path. The condition `RowGen(R, G)` fences a row
+plan as `CardGen` fences a card plan. Every integer a write carries must fit the column
+(PostgreSQL `integer`, 32-bit signed; `cost` alone is `bigint`, micro-dollars, 0..MaxInt64); a value outside it is `ErrInvalid`
+from Fake and PG alike, never `ErrUnknown`. A snapshot is the caller's own
+copy: editing it never changes the store (the Fake copies every slice).
+Set card needs follows the add rule (other cards of the same epoch, no
+duplicates); a cycle through needs is layer 2's refusal. The op's epoch is
+checked on a clear too: a clear names the epoch it closes, so a retried clear
+with a new id after the first landed is refused, not applied twice. The
+clear's event carries the carried-forward rows in its after-image, which is
+how rebuild reproduces the copy. A set write whose target does not exist is a
+refusal. Writes in one op
+apply in order, so a later write sees a row an earlier one put. Two writes to
+one field in one op are invalid. `kind` on the op is a label for the log; the
+writes are the truth, and rebuild reads the writes' after-images, never the
+label.
+
+Writers run one at a time: `Apply` and `Clear` begin by taking one lock
+(`LOCK TABLE sprint.epoch`) and hold it to commit, at `READ COMMITTED`. A
+sprint sees a few operations a second at most; one writer at a time is the
+simplest thing that makes every condition exact and every seq commit order.
+There are no serialization retries because there are no serialization
+failures. Nothing that waits on the outside world runs while the lock is
+held: no network I/O, no git, no bus send, no read of a whole history; a
+caller does that work before it calls `Apply` and passes the result in, so
+one slow call never stalls every writer (LESSONS 3.23).
+
+`Apply` ends one of four ways:
+
+1. `Receipt{Accepted: true, ...}` with the event seq and the after-state of each
+   touched row: every condition held, every write landed, the event row is in
+   the same transaction.
+2. `Receipt{Accepted: false, Reason: ...}`: the epoch was wrong, a condition
+   failed, or a write broke a rule (target missing, card exists, bad state
+   name); nothing changed; the refusal is logged as an event with
+   `accepted = false`. Exit code 1 at the CLI. The id is used: a retry after a
+   refusal is a new op with a new id.
+3. `ErrInvalid`: the op never entered the store (no id, no epoch, a write type
+   outside the closed set, two writes to one field). Nothing is logged. A
+   caller bug.
+4. `ErrUnknown`: the outcome is not known: the context is done, the
+   connection was lost after a request may have reached the server, or any
+   error came during or after COMMIT. The caller calls `Replay(opID)`: if the
+   op landed, its receipt comes back; if not, the caller may `Apply` again
+   with the same id. Exit code 2 at the CLI. Every other error inside the
+   transaction, before COMMIT, means it rolled back and the outcome is known:
+   an error the server returned, whatever its SQLSTATE, or one the client
+   raised (a scan, an encode, a stored receipt that does not decode, a
+   counter at the top of its column). It is a plain error naming the cause,
+   never `ErrUnknown` (the second cold read found a 3 KB id and a missing
+   column reported as unknown, the third a scan error and a full gen, each of
+   which sends a caller into a replay loop that can never end).
+
+Ids and names (op id, card id, row and stream names, actor, kind label,
+policy name) are at most 128 bytes, `ErrInvalid` above, so no index can
+refuse one; brief, reason, body, head, branch and note are unbounded text
+with no index on them.
+
+Any other error means the request did not reach the store and nothing
+happened. A constraint violation from PostgreSQL during the writes is an engine
+defect, not a refusal: the transaction rolls back and the error is returned
+with the constraint named.
+
+`Replay` of an op id that was accepted or refused returns the stored receipt
+and changes nothing. A second `Apply` with an id already in `events` returns
+the stored receipt and changes nothing, whatever its body says: a changed body
+is never a new operation. The receipt carries the original op's id, kind,
+actor, epoch and at, so a caller can see what it is crediting. Two concurrent
+applies with one id are serialized by the lock; the second sees the event row
+and returns the first's receipt.
+
+`Clear` is an `Op` with kind `clear`, no writes, and at most the seq fence as
+a condition. It is idempotent by id, logged with the epoch it closed, and its
+receipt carries the new epoch. Streams and cards of the old epoch stay readable
+through `Events` and are not in the next `Snapshot`; policy is kept; rows are
+carried forward into the new epoch in the same transaction (copied: same name, held flag,
+kind, width and session, state `down`, flaps 0), because the rows are the
+fleet, not the sprint's work, and a clear must not make every worker and kin
+register again. Nothing is ever deleted: a clear opens a new epoch, it does
+not remove the old one.
+
+Schema version 2 (2026-11-06) is the version with the two card kinds:
+`kind`, `of`, `author`, `base_sha`, `result`, the state `done`, and row
+`gen`; with the lessons placed the same day it also carries `prior_head`,
+`bounces`, `cost`, `priced` and the result `fault` (LESSONS 1.17, 2.24,
+3.9), `priority` (Glenn's rulings of 2026-11-06, above), and from the promise
+round the same day `tier`, `paths`, `done_when`, `prose`, the rows' `tiers`,
+`model` and `harness`, `sprint.judgements`, `sprint.cursors` and
+`events.policy`. Nothing is owed to a later layer; a later column arrives with
+a schema version bump and a design change, never as a special case. The
+`cards_fixed` trigger fixes `id`, `epoch`, `kind`, `of`, `stream`, `holder`
+and `tier` once a card exists, and rows and streams have their name and epoch
+fixed the same way; a consumer's `stream` equals its producer's. The schema
+hash in `sprint.meta` is taken over the schema text with comments and blank
+lines stripped, so a comment edit refuses no store.
+
+`Replay` returns `(receipt, found, err)`: `found` is false when no event has
+that id. A refused event has no before or after images; rebuild folds only
+accepted events. `Events` crosses epochs (each event carries its epoch, the
+clear event included), so a tail sees the clear.
+
+One PostgreSQL role, `sprint`, owns the schema and is the only writer; the
+run loop and the verbs connect as it. Workers, kin and the bus never get the
+DSN: they talk to the store only through the engine's verbs. Making the role
+is nova-fleet's postgres play (layer 6 adds the row).
+
+Cost is recorded on the consumer that spent it (work, read, and the fix
+attempts alike) by the op that reports it; a producer's, a stream's and the
+sprint's cost are sums read from those rows, never a second record kept
+beside them (LESSONS 1.17, 1.1).
+
+Owed to layer 6, not part of this layer's lock: a backup (a dump of the
+`sprint` schema, named with the epoch and seq it was taken at) and a restore
+into an empty schema, run by a layer 6 verb and checked by rebuilding from
+the event log; any future op that would lose rows is taken only after a
+backup (LESSONS 1.16). The gate is `nova-sprint up` on the first real store.
+
+## What it guarantees
+
+1. One operation is one transaction: whole, with its event row, or nothing.
+2. Idempotent by op id: the same id never applies twice.
+3. A transport failure is reported as unknown, never as unchanged.
+4. A card is in exactly one state and has at most one holder. The schema
+   enforces this (`state` is one `NOT NULL` column with a CHECK; `holder` is
+   one column with a foreign key), not Go.
+5. The log matches the state: folding every accepted event from the first in
+   seq order rebuilds the snapshot, policy included. Nothing is deleted except
+   by epoch, and an old epoch stays readable in the log.
+6. Snapshot is one consistent read (one `REPEATABLE READ` transaction) of the
+   current epoch, and carries the seq it was read at and the epoch, so a plan
+   made from it can fence on either.
+7. A condition is checked against the rows as they are when the writes land:
+   writers are serialized, so there is no stale check and no lost update.
+
+What the model's atomic step stands for in SQL: one transaction, from the
+lock to the commit. The lock is what makes the correspondence hold; without
+it the StaleCheck witness is exactly what `READ COMMITTED` would do.
+
+## How it is checked
+
+- `tla/Store.tla` with `tla/Store.cfg`: operations as atomic steps over cards,
+  rows, events and applied op ids; invariants for the guarantees above
+  (single state and holder are structural; idempotent replay; log matches
+  state; conditions checked against the same state the writes change; ops
+  land only in their epoch; `working` holders never exceed width). Reversed witnesses
+  in `tla/witnesses/`, each a variant that TLC must fail: a write that lands
+  without its event row; a replay that applies again; a condition checked
+  against a stale snapshot (lost update); a second holder; an op without the
+  epoch check landing after a clear; a width check on a stale count. Reach
+  checks in `tla/reach/`, each also a required violation, show the passing
+  run really reaches a take, a refusal, a recovery after a transport failure,
+  a stale-epoch refusal, a needs-ready deal and a full row. `tla/ci-tlc.sh`
+  runs all of them and fails on any wrong outcome.
+- Unit tests, package `store`: pure Go against `store.Fake` (an in-memory
+  implementation of the same interface used only by tests above this layer),
+  time passed in, no sockets, no real time, no network.
+- Functional tests, package `store`, file `functional_test.go`: every
+  operation and every refusal against a real throwaway PostgreSQL started by
+  the test (`initdb` into `t.TempDir()`, free port, `fsync=off`, the same
+  recipe as nova-tools `config/functional_test.go`); each test its own server,
+  all tests `t.Parallel()`; skipped with a clear message when `initdb` is not
+  on PATH. Includes: the unknown-then-replay path (a connection killed between
+  request and commit), two concurrent applies on the same expectation (one
+  accepted, one refused), rebuild from the event log equals the snapshot.
+- Owed to layer 6, not part of this layer's lock: a load test, functional
+  tier, at four times live size (thousands of cards, their consumers, a long
+  event log), timing `Snapshot` and `Apply` against v1's bound "the tick
+  stays under one second at load"; the per-call numbers are unmeasured until
+  then (LESSONS 1.15). The gate is the first dogfood sprint.
+- A cold reader on the final head, then the layer is locked.
+
+## What the lock approves (2026-11-06)
+
+The layer 1 lock approves the tested database primitive: the schema, the
+operations, the four outcomes and the seven guarantees, as held by the
+conformance suite on Fake and PostgreSQL (C and ICU collations), the
+functional tests, the model with its witnesses and reach checks, five cold
+reads and the friends' reads. Three things named in this file are deferred
+to later, named gates and are not claimed by the lock: the backup and
+restore verb and the load test (layer 6's `up` and the first dogfood sprint),
+and "used for real work", which no layer can show before the first sprint
+runs on it. (Stella's READ5, 2026-11-06.)
+
+## Size
+
+About 2.8k lines of Go plus 0.25k of SQL, measured (`wc -l`, tests excluded:
+2,829 Go and 255 SQL at round 12); the first estimate, 1.5k from the operation
+count, left out the guarantees twelve rounds of review added: the full-body
+check before any read (closed sets, limits, empty keys), the write table, the
+unknown rule and its known cases, the counter bounds, tier serving, the
+same-value refusals, the schema hash and the foreign-schema check, and the
+triggers and CHECKs that hold the contract in SQL as well as in Go.
+
+## Decided inside the layer (Rowan, 2026-11-06), one line each, easy to overrule
+
+- PostgreSQL for state, not Redis: the state wants transactions and history;
+  Redis stays the bus.
+- Plain SQL via pgx; no ORM, no migrations tool: one `schema.sql`, idempotent.
+- No in-memory mode in the binary: `store.Fake` exists for unit tests only.
+- The caller supplies time and op ids: that is what makes the layer testable
+  without a clock and replayable after a crash.
+- Refusals are logged as events: a refused move is a fact the coordinator
+  wants to see, and v1 hid them.
+- Epoch-scoped rows instead of deletes: clear is one increment and history
+  stays readable to the first card.
+- The policy table is created now and used by layer 5: one store, one schema
+  file.
+- Snapshot is the whole epoch: a sprint is thousands of cards at most; one
+  read is simpler than a query language, and layers 2 and 3 are pure functions
+  over it.
+- Epochs start at 1, so an op whose epoch is 0 is one that forgot to set it
+  (`ErrInvalid`), never a match.
+- A row that is put for the first time starts `down`; it is up when the run
+  loop sees its hook on the bus.
+- `put card` sets stream, score, needs and brief, so an op may put a card and
+  set its state in the same transaction (add and ready at once); put card plus
+  set score in one op is two writes to one field and invalid.
+- The test servers run with `LC_ALL=C`: PostgreSQL 18 on macOS refuses to
+  start under a shell with no valid locale.
+
+Recorded with round 9 (2026-11-06): `events.policy` is the version active when the op was checked, before its writes, so the op that activates a policy records the version before it; opening and answering a judgement in one op is `ErrInvalid` (two writes to one state); `tier` on a card is fixed at add (in the trigger), a consumer's equal to its producer's; the schema hash in `sprint.meta` is computed from `schema.sql` at build.
+
+Recorded with round 10 (2026-11-06, the lock round): tier serving is the writes' own check (put card, a move into ready or working, and the row writes; no condition); a consumer's stream is its producer's; cursors are global and carried by a clear; the unknown rule is the one above; a gen, epoch or policy version that would pass 2147483647 is a plain error naming it, in both stores; Migrate refuses a schema `sprint` it did not make; the schema hash ignores comments, indentation and blank lines; a condition on a state outside its set is `ErrInvalid`; setting a card to the state it is in is refused; the triggers fix every key and epoch and keep the log append-only, and every count is 0 or more by a CHECK.
+
+Recorded with round 11 (2026-11-06, from the fourth cold read): reasons that depend on an order of names use byte order in both stores (PG `COLLATE "C"`), checked by the whole conformance suite on an ICU en-US database; the log and the policy versions refuse TRUNCATE, and a policy version is immutable but for `active` and never deleted; Migrate's foreign-schema check counts types and functions as well as relations; a value outside its closed set and an empty key are `ErrInvalid` in a write exactly as in a condition; every set write that would change nothing is refused (no gen moves); the schema hash strips a `--` comment only outside a single-quoted literal; each write is one entry in the write table (`specOf`).
+
+Recorded with round 12 (2026-11-06, from the fifth cold read): every name an op points at (a card's stream, needs and after) takes the key rule; tiers, needs and after are sets kept in canonical order in both stores; Migrate's foreign-schema check counts any object that depends on the namespace (`pg_depend`); integer conditions are range-checked like writes; `SetCardPriority{""}` is normal; each condition is one entry in the condition table (`condOf`); the schema hash also skips double-quoted identifiers, and scans dollar quotes as code (the stated limit).
+
+Round 13 (2026-11-06, from building layer 2): `cards.review integer` (a
+producer's count of entries into review; a read consumer's copy at cut, fixed)
+with `SetCardReview` (producer only, +1), and `rows.reason text` written by
+`SetRowHeld`. Schema version 2 still (no live store).
+
+Round 14 (2026-11-06, from the first cold read of layer 2): `cards.finding
+text NOT NULL DEFAULT ''` (producer: the last read's finding; work consumer: a
+copy at cut, fixed), written by `SetCardFinding` (producer only).
+
+Recorded with round 17 (2026-11-06; Glenn-approved context: a red read
+verdict is recorded on the producer so that a later waive can require it,
+where the card machine had been using `pr` for it): `cards.red boolean NOT
+NULL DEFAULT false` with the CHECK `cards_red_check` (`kind = 'producer' OR
+NOT red`); the write `SetCardRed{Card, Red}`, producer only (a consumer is
+refused "card u1 is of kind work; SetCardRed is only for a producer: record
+the verdict on its producer c1", a sentinel "... and a sentinel is never
+read"; a missing card "card c9 does not exist"; the same value "card c1
+already has the given red"; each a logged refusal, like every kind rule,
+not `ErrInvalid`, which is only for an op the store never reads); the
+condition `CardRed{Card, Red}` ("card c1 is not red, expected red"); `red`
+in the snapshot, every after-image and so `Rebuild`, in Fake and PG alike
+(an event written before round 17 has no `red` in its images and reads as
+false, which is what every card was). The `cards_fixed` trigger is
+unchanged. The column is added by an `ALTER TABLE sprint.cards ADD COLUMN
+IF NOT EXISTS red ...` after the `CREATE TABLE`, not inside it, so a new
+store and an upgraded one get it the same way. The schema hash moves with
+it. What `Migrate` does on an existing round-16 store (hash
+`round16Hash`, the hash of `store/testdata/schema-round16.sql`, the
+schema at 36c1bbd6), in its one transaction under the advisory lock: it
+finds version 2 and that hash and takes it instead of refusing; runs
+`schema.sql`, in which every `CREATE ... IF NOT EXISTS` is a no-op, every
+`CREATE OR REPLACE FUNCTION` and trigger is replaced by its identical
+text, and the `ALTER` adds `red` (PostgreSQL stores the default without
+rewriting the table, and the CHECK is validated against the existing rows,
+all false, under an ACCESS EXCLUSIVE lock on `sprint.cards` for the
+transaction); then writes the new hash into `sprint.meta` and commits. The
+events are not touched. A second `Migrate` is a no-op; a store at any
+other hash is still refused. Model: `red` is a plain card attribute
+(`SetRed`, `CardRed`), the invariant `RedOnlyOnProducers`, the reversed
+witness `StoreRedOnConsumer` (the write without its kind check) and the
+reach checks `NeverRed`, `NeverRedKindRefused` and `NeverSameRedRefused`.
+
+Recorded with round 18 (2026-11-06): a read-only schema identity,
+`store.CheckSchema(ctx, dsn) (SchemaIdentity, error)` (and `Schema(ctx)` on
+`PG`, the same read on its pool, and on `Fake`). `SchemaIdentity` is
+`Present` (schema `sprint` exists), `Hash` (what `sprint.meta` records, ""
+when none), `Expected` (the hash this binary carries: `schemaHash`, the one
+computation, exported only through this field), `Current`, `KnownOlder` (a
+round-16 store Migrate upgrades), `Owner` (the role owning the schema) and
+`Round` (17 for the current schema, unchanged since round 17; 16; else 0). It
+runs in one `READ ONLY` transaction it rolls back, so a role with only
+`USAGE` on the schema and `SELECT` on `sprint.meta` can run it, and it reads
+the catalogs and `sprint.meta` with the same three helpers Migrate now uses
+(`namespace`, the `pg_depend` foreign check; `readMeta`; `metaRefusal`, the
+version and hash refusals in Migrate's words), so the two cannot disagree. A
+store Migrate takes is no error; every other outcome returns what was found
+and an error naming the fix: no database ("create it, or point NOVA_PG_DSN
+at the store's database"), no schema `sprint` or an empty one ("run
+Migrate"), a foreign one (Migrate's refusal), a `sprint.meta` the role cannot
+read ("grant this role USAGE on schema sprint and SELECT on sprint.meta, or
+check as <owner>"), one with no row, and another version or hash. The
+password comes as pgx takes it (`PGPASSWORD`, a pgpass file), not
+`NOVA_PG_PASSWORD`. Fake reports `Present`, `Hash` equal to `Expected`,
+`Current` and round 17, with no owner (the conformance scenario "schema
+identity"). The no-write proof (`TestFunctionalCheckSchemaWritesNothing`): on a
+store with ops in it, as its owner and as a `default_transaction_read_only`
+role, the sprint tables' `n_tup_ins`/`upd`/`del`, the events count and the
+next transaction id are unchanged for two seconds after. The schema and its
+hash do not change. No model change: it is a read, and changes no state the
+model holds.
+
+Recorded with round 19 (2026-11-06): two changes, neither a model change.
+`store.NewFakeFrom(s Snapshot, policies ...PolicyVersion) (*Fake, error)`, a
+test and dry-run seam: a Fake whose streams, cards, rows, judgements,
+cursors, epoch and seq are the snapshot's, with the policy versions given
+(the snapshot names only the active one, `Policy`, which is set active), so
+an op built from the snapshot is checked exactly as the Fake checks it. Its
+`Snapshot` equals the input and its next event is the snapshot's seq plus 1;
+the earlier log is not carried (`Events` starts after it, `Replay` of an
+earlier id is unknown). An input that is not a snapshot is `ErrInvalid`. The
+signature differs from the one asked for (`NewFakeFrom(s) *Fake`) on purpose:
+the policy versions, which a snapshot does not carry, and an error for an
+inconsistent input. The conformance scenario "fake from snapshot" runs on
+Fake, PG and the ICU database: the snapshot round-trips, and the same four
+ops (accepted, refused, a policy add and switch, a judgement answer with a
+cursor) give the store and the Fake the same receipts, events and
+snapshot. `NewFake` is unchanged. Second: Migrate runs `CREATE SCHEMA IF NOT
+EXISTS sprint` only when the schema is absent (`pg_namespace`, read by the
+same `namespace` helper as the foreign check, which is unchanged), because
+PostgreSQL checks CREATE on the database before IF NOT EXISTS and refused
+(42501) a role that owns an existing `sprint` but may not create schemas,
+the least-privilege setup `up` makes. The schema hash is still of the whole
+`schema.sql` and does not change.
+
+Recorded with round 20 (2026-11-06): layer 6's restore of a data-only dump,
+`store.RestoreBegin(ctx, tx pgx.Tx, digest string) error` (digest since round 22) and `store.RestoreEnd(ctx, tx
+pgx.Tx) (SchemaIdentity, error)`, on one connection in one transaction the
+caller owns (`pgx.Tx`, so it cannot be called outside one). What the dump
+carries, read from `pg_dump --data-only --schema=sprint` of a seeded store
+(PostgreSQL 18): a `COPY` for every table, in this order: `rows`, `streams`,
+`cards`, `cursors`, `epoch`, `events`, `judgements`, `meta`, `policy`, with
+`meta`'s one row `(1, 2, <hash>)` and `epoch`'s one row `(1, n)` among them,
+and `setval` of `policy_version_seq`. So Begin leaves exactly schema.sql's two
+seed rows out (`INSERT INTO sprint.meta (id, schema) ...` and `INSERT INTO
+sprint.epoch (id, n) ...`, its only INSERTs) and inserts nothing. Begin takes
+Migrate's advisory lock for the transaction (a no-op when the caller holds
+it), refuses a foreign schema (the same check and words as Migrate) and a
+schema whose tables hold any row ("sprint.cards has rows; a restore loads only
+into an empty store: use a new database, or drop schema sprint", the first
+such table in byte order), runs `CREATE SCHEMA` only when the schema is absent,
+then schema.sql's DDL. A finding from building it: the dump does not load
+with `cards_fixed` on. pg_dump copies `sprint.cards` in physical order, where
+a producer updated after its consumers follows them, and the trigger checks
+each consumer's producer row by row ("card u1 is a consumer of c1, which is
+not a producer"; pg_dump itself warns of the self-referencing key and suggests
+`--disable-triggers`, which needs a superuser). So Begin disables
+`cards_fixed` (the owner may; the foreign keys stay on and are checked at the
+end of each COPY), and End enables it and runs it over every card (`UPDATE
+sprint.cards SET id = id`, so the trigger's own text is the check), in the
+same transaction, under the ACCESS EXCLUSIVE lock the ALTER holds to the
+end, so no other session sees it off. End then requires `sprint.meta` at
+this binary's version and hash, the epoch row, and `checkRebuild`: Rebuild
+over every loaded event equals the snapshot read in the transaction, naming
+each part that differs. `checkRebuild` is now the shared check: the cold
+read 7 tests (PG's log with old-shape receipts after the round-16 Migrate
+included) use it in place of their `assert.Equal(snap, Rebuild(...))`. End
+returns `CheckSchema`'s identity of the restored store; on any error the
+caller rolls back and nothing of the restore remains. The tests restore a
+store at epoch 2 with policies, judgements, a cursor and updated producers
+into a new database through pgx (statements by the simple protocol, each COPY
+by CopyFrom, psql's `\restrict` lines skipped), and get the same snapshot, the
+same log and the same receipt for the next op as the original, and Migrate
+takes the result; the witness loads the same dump with the trigger on and
+fails; a dump with its last event cut is refused ("... differs from the
+snapshot in judgements, cursors": seq is the log's own, so it agrees). No
+model change: the restore runs no op and changes no rule the model holds.
+
+Recorded with round 21 (2026-11-06): `store.ValidateHistory(ctx, tx pgx.Tx)
+error`, the whole-history check, which RestoreEnd now runs in place of the
+rebuild comparison alone, and which a verb can run on a live store in a
+REPEATABLE READ transaction (it only reads). It refuses naming the first
+mismatch, in this order: the events run from seq 1 to the last with no gap
+("the log has no event at seq 3 (the next is seq 4)"); each event's stored
+receipt is its own, its op, seq, kind, actor, accepted and time equal to the
+row's (receipts are a column of `sprint.events`, so an orphan receipt is one
+that names another event: "the receipt stored with event seq 4 (op reason-4)
+is not its own: it names op ghost at seq 4"); each event is in the epoch the
+log is in at that point (1, then each accepted clear's new epoch) and the
+epoch row is the log's last ("the epoch row is 3, but the log's last epoch is
+2"); the stored policy versions are exactly the ones the log's after-images
+wrote, each equal to its last image, active flag included, so the active one
+is the log's last activation ("policy version 2 is stored, but no event in
+the log wrote it", "the log wrote policy version 2, but it is not stored");
+every cursor is at or below the last seq ("cursor feed is at seq 99, past the
+log's last seq 5"); and `checkRebuild` as before. RestoreEnd prefixes "the
+dump does not hold together: "; ValidateHistory "store: history: ". Tests: the
+round-20 restore tests unchanged, a live store passes, and one mutation of a
+loaded dump per check (a dropped event, an orphan receipt, the epoch row, a
+policy version missing from the log, a cursor past the end), each refused
+with its message. No model change: a read.
+
+Recorded with round 22 (2026-11-06; reopens the locked layer for this
+change only). "nova-config is the one true source": a row is sprint state
+only, and the store never holds configuration. Where this entry and the
+sections above disagree, this entry stands (it supersedes Guarantee 3, Refusal
+3, the tier and width rules of the writes, and the rows' kind, width, tiers,
+model and harness wherever they are named).
+- `store.Row` is `Name, State, Session, Role, Flaps, Held, Reason, Gen`.
+  Kind, width, tiers, model and harness go from the Go type, `schema.sql`
+  and every reader; the roster (package `roster`, read from nova-config each
+  tick) has them, and the deal guards take width and tiers from it
+  (`card.RowFromStore(r, width, tiers)`). `SetRowWidth`, `SetRowTiers`,
+  `SetRowLabels` and `SetRowSession` go. The store refuses nothing for width
+  or tier: it takes any number of working consumers of any tier on a row that
+  exists (Guarantee 3 is now "the store holds no width"; the witness
+  StoreWidthInStore shows a store-side cap breaks NoSpuriousRefusal). The
+  `cards_live` index went with the tier check it served.
+- The hook: `PutRow{Name, Session, Role}` is the one write `nova-sprint hook
+  --as <name> --role <r>` makes (Session the bus session the hook recorded,
+  Role `worker` or `coordinator`; the coordinator is also a worker), and
+  unhook puts "" for both. Session and role both set or both "", and a role
+  outside `RowRoles`, are `ErrInvalid`. A hook by another session while one
+  holds the row is refused: "row w1 is hooked by session sess-a; unhook it
+  first". The same session may hook again (a new role). Like every row write
+  it raises the row's gen. `rows.role` has a CHECK.
+- The sprint's stop: `Snapshot.Stopped` and `StopReason`, one value for the
+  store on `sprint.epoch`'s one row (columns `stopped`, `stop_reason`), kept
+  by a clear, in the log as `State.Stop` so Rebuild has it. `SetStopped{Stopped,
+  Reason}` is its one write, refused when unchanged ("the sprint is already
+  stopped"). The store refuses nothing because of it: ops from people still
+  land; Run calls no Tick while stopped.
+- `EventIdentity(ctx, seq) (op, epoch, found, err)` on the Store interface
+  (Fake and PG) reads an event's op id and epoch only, never its images
+  (the dashboard's cursor check; branch v2-store-eventidentity, merged here).
+- Migrate: `schema.sql` drops the five columns (`ALTER TABLE ... DROP COLUMN
+  IF EXISTS`), adds `rows.role` and the stop columns (`ADD COLUMN IF NOT
+  EXISTS`), and drops `cards_live`, in its one transaction, the shape rounds
+  16 and 17 used; a round-21 store (`round21Hash`, round 17's schema, which
+  every round to 21 carried; CheckSchema reports it as round 17) migrates in
+  place, its rows' state kept. The schema round is 22.
+- Model: Store.tla's row is `[state, gen, held, sess, role]` and it carries
+  `stopped`; WidthKept and ServesHeld go with eight witnesses and twelve reach
+  checks; HookKept, StoreHookStolen, StoreStopDropped, StoreWidthInStore and
+  NeverTwoWorking, NeverHookRefused, NeverRehooked, NeverDealtStopped,
+  NeverSameStopRefused are new. The trace projects sess, role and stopped.
+- Restore (round 22, v2-integrate-22): `RestoreEnd`, after the history
+  check and in the restore's own transaction, records the restore in
+  `sprint.meta.restored_at` (the transaction's time; null when never
+  restored) and unhooks every hooked row of the current epoch, so no hook
+  from the dump is live. The unhook is one ordinary logged op
+  (`restore-unhook-<seq>`, actor `store-restore`, kind `unhook`, a
+  `PutRow{Name}` per hooked row, each raising the row's gen) run through the
+  protocol inside the transaction, so the log still rebuilds the state; a
+  dump with no hooked row logs nothing. `Restored(ctx) (at, ok, err)` on the
+  Store interface reads it (the Fake is never restored), so a retried
+  restore can tell the data is already in. The model needs no new variable
+  (the unhook is PutRow ops; `restored_at` is outside the ops' state).
+- The restore's identity (round 22, second refinement): `RestoreBegin(ctx,
+  tx, digest)` takes the dump's digest (sha256 of its bytes, lowercase hex,
+  computed by the caller; anything else is refused) and keeps it for the
+  transaction (`set_config`, local); `RestoreEnd` records it in
+  `sprint.meta.restored_digest` beside `restored_at` (a CHECK keeps it a
+  sha256 or ''), and refuses a transaction without it. The unhook op's id is
+  `restore-unhook-<digest>-<seq>`, unique against the dump's own log (which
+  may hold the unhook of the restore it came from). Before it returns,
+  `RestoreEnd` checks inside the transaction that no row of the current
+  epoch is hooked, and refuses the restore naming the row otherwise (a
+  replayed id would leave one hooked). `Restored(ctx)` returns `(digest, at,
+  ok, err)`. Layer 6's restore uses it: an empty schema is imported; a
+  non-empty one with the same digest skips the import and only hooks; a
+  different digest, or none, is refused ("schema holds a restore of
+  <digest> at <time>: clear it first").
+- A stream's landing settings (round 22): they are stream state, not policy
+  data (layer 6 had been reading them by scanning the log, O(history) per
+  take). `Stream` gains `Mode` (one of `StreamModes`: `auto`, `group`,
+  `hand`; `auto` by default, the column's default) and `Forge` (the forge it
+  lands through, "" for none), columns of `sprint.streams` with a CHECK on
+  mode. `PutStream{Name, Repo, Base, Pos, Mode, Forge}` takes both ("" mode
+  is auto). `SetStreamMode{Stream, Mode}` and `SetStreamForge{Stream,
+  Forge}` set one each, refused when unchanged (`stream s1's mode is already
+  "hand"`); a mode outside the set is `ErrInvalid`. A stream image logged
+  before round 22 reads its mode as auto, so the log of a migrated store
+  still rebuilds its tables. Store.tla has no streams (held, repo, base and
+  pos were never modelled), so the closed set is the checker's and the
+  schema's; the trace projection drops PutStream and does not project an op
+  with SetStreamMode or SetStreamForge, as for SetStreamHeld.
+- Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
+  value is refused as unchanged, an absent cursor counting as 0, so
+  `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already
+  at 0"), as Store.tla always had it. The trace fixture `store-cursor-zero`
+  now matches, and the walks send the write. The dashboard's cursor save
+  treats an absent cursor as 0 too, so an idle first poll of an empty store
+  writes nothing.
+
+Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference then, since ruled the code's fault and fixed (round 22): the store inserted an absent cursor set to 0, which the model refuses.
+
+## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
+
+"remember, we'll have sprints with hundreds or thousands of cards." So the
+whole-epoch `Snapshot` is the cold-start read only. In steady state the run
+loop and the dashboard keep a local copy of the state and advance it from
+`Events(afterSeq)` with their saved cursor, the same fold `Rebuild` runs, so a
+tick or a dashboard refresh reads only what changed since the last one,
+whatever the sprint's size. A snapshot per tick is a defect in layer 3. The
+deferred load test's target is thousands of producers with their consumers
+and judgements at a one-second tick, every worker reporting at once, with
+Apply latency under the writer lock and the incremental read both measured.
+
+## Measured at the bar (2026-11-06, hetzner2, PostgreSQL 18.6, fsync on, bench shared with TLC)
+
+After round 15 (indexes, each event's after-image stored once), 5,000
+producers with their consumers, 125,000 events, on a bench shared with TLC
+jobs (these are the absolute numbers that stand; the quiet A/B below is
+relative):
+tick 119 ms median, 153 max (was 327 / 387); tick while 200 reports/s arrive
+132 median, 178 max; report median wait 2.1 ms; 2,000-report burst 2.8 s;
+dashboard refresh from the local copy 24 ms; incremental read per tick 13
+ms; cold snapshot 45 ms; cold rebuild of the log 4.9 s read plus 83 ms fold;
+lock wait 21 ms mean, 168 max. At 2,000 producers every number is at or
+under these. Logs: store/testdata/load-*.log. The width count went from 3.8
+ms (a sequential scan) to 0.04 ms with one partial index. Remaining tick
+cost is about 1,500 one-row round trips; by Glenn's ruling the per-tick
+budget absorbs bursts rather than further tuning here.
+
+### Quiet A/B (2026-11-06, vision, PostgreSQL 18.6, fsync on)
+
+The four heads once each, one after another under one exclusive
+reservation, each started at a 1-minute load under 2 with no java (TLC), a
+sampler confirming none ran during it: before (c373d4a8), indexes
+(5c1eec16), image once (09b2eeb8), round 16 (36c1bbd6: the two indexes a
+store query uses, the event's images copied). Logs:
+store/testdata/load-vision-2026-11-06-r16-*.log. Medians in ms, 5,000
+producers (2,000 in brackets):
+
+| | before | indexes | image once | round 16 |
+|---|---|---|---|---|
+| tick-apply | 607 (445) | 396 (389) | 371 (364) | 362 (356) |
+| tick under reports (dash-tick) | 906 (666) | 507 (461) | 517 (497) | 484 (440) |
+| report wait (dash-report) | 890 (211) | 172 (127) | 171 (124) | 164 (120) |
+| report rate, per s | 22 (45) | 63 (85) | 63 (85) | 68 (91) |
+| 2,000-report burst, wall | 15.1 s (10.7 s) | 15.5 s (10.9 s) | 15.4 s (10.9 s) | 15.1 s (10.4 s) |
+| cold read of the log | 13.8 s (6.2 s) | 13.3 s (6.3 s) | 9.9 s (4.6 s) | 10.7 s (4.8 s) |
+| cold rebuild fold | 115 (42) | 114 (38) | 119 (58) | 117 (39) |
+| events table | 341 MB (143) | 344 MB (146) | 226 MB (98) | 226 MB (98) |
+
+The order of the heads holds: the indexes take the 5,000 tick from 607 to
+396 ms and the report wait from 890 to 172; storing the image once takes a
+third off the log and its cold read; dropping the five unused indexes in
+round 16 costs nothing and saves a little on every write. vision's absolute
+numbers are about three times hetzner2's and fail the burst, report-rate
+and cold-rebuild bars on every head: its disks are consumer NVMe (Samsung
+970 EVO) without power-loss protection, so every commit's fsync is slow
+(the burst clears at about 130 to 190 commits a second), where hetzner2's
+are datacenter NVMe (PM9A3) with it. The bars are judged on hetzner2's
+numbers above; vision's are for the comparison only. pg_stat_statements is
+not loadable on vision, so its logs have no STMT lines.

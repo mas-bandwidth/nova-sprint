@@ -1,0 +1,232 @@
+[
+  {
+    "gap": 40,
+    "compact": true,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "landed"
+    ]
+  },
+  {
+    "gap": 39,
+    "compact": true,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "landed"
+    ]
+  },
+  {
+    "gap": 38,
+    "compact": true,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "landed"
+    ]
+  },
+  {
+    "gap": 37,
+    "compact": true,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "landed"
+    ]
+  },
+  {
+    "gap": 36,
+    "compact": true,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "landed"
+    ]
+  },
+  {
+    "gap": 35,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 34,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 33,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 32,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 31,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 30,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 29,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 28,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 27,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  },
+  {
+    "gap": 26,
+    "compact": false,
+    "scroll": 2000,
+    "headers": [
+      "stream",
+      "status",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ]
+  }
+]

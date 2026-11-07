@@ -1,0 +1,353 @@
+{
+  "note": "Live fixture checks plus synthetic intercepted response probes; no live board modifications.",
+  "initial": {
+    "tooltip": "3 working, 19 review, 5 fix, 0 merging",
+    "scrollbar": 15,
+    "cost": "$28.62",
+    "tput": "0",
+    "pulse": true,
+    "linkCursor": "pointer",
+    "coord": "coordinator-",
+    "blockedLegend": false,
+    "empty": "waiting"
+  },
+  "costTypes": [
+    {
+      "name": "deterministic",
+      "key": "total_cost",
+      "value": "$2.13"
+    },
+    {
+      "name": "deterministic",
+      "key": "work_cost",
+      "value": "$2.13"
+    },
+    {
+      "name": "deterministic",
+      "key": "read_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "framework-agreed",
+      "key": "total_cost",
+      "value": "$2.75"
+    },
+    {
+      "name": "framework-agreed",
+      "key": "work_cost",
+      "value": "$2.75"
+    },
+    {
+      "name": "rocketnet-audit",
+      "key": "total_cost",
+      "value": "$0.15"
+    },
+    {
+      "name": "rocketnet-audit",
+      "key": "work_cost",
+      "value": "$0.15"
+    },
+    {
+      "name": "rollback3d",
+      "key": "total_cost",
+      "value": "$1.40"
+    },
+    {
+      "name": "rollback3d",
+      "key": "work_cost",
+      "value": "$1.40"
+    },
+    {
+      "name": "schema-lobster",
+      "key": "total_cost",
+      "value": "$0.87"
+    },
+    {
+      "name": "schema-lobster",
+      "key": "work_cost",
+      "value": "$0.87"
+    },
+    {
+      "name": "schema-lua",
+      "key": "total_cost",
+      "value": "$3.51"
+    },
+    {
+      "name": "schema-lua",
+      "key": "work_cost",
+      "value": "$3.51"
+    },
+    {
+      "name": "schema-luau",
+      "key": "total_cost",
+      "value": "$1.57"
+    },
+    {
+      "name": "schema-luau",
+      "key": "work_cost",
+      "value": "$1.57"
+    },
+    {
+      "name": "schema-main",
+      "key": "total_cost",
+      "value": "$0.54"
+    },
+    {
+      "name": "schema-main",
+      "key": "work_cost",
+      "value": "$0.54"
+    },
+    {
+      "name": "schema-python",
+      "key": "total_cost",
+      "value": "$0.02"
+    },
+    {
+      "name": "schema-python",
+      "key": "work_cost",
+      "value": "$0.02"
+    },
+    {
+      "name": "schema-squirrel",
+      "key": "total_cost",
+      "value": "$0.69"
+    },
+    {
+      "name": "schema-squirrel",
+      "key": "work_cost",
+      "value": "$0.69"
+    },
+    {
+      "name": "schema-strict",
+      "key": "total_cost",
+      "value": "$5.70"
+    },
+    {
+      "name": "schema-strict",
+      "key": "work_cost",
+      "value": "$5.70"
+    },
+    {
+      "name": "serialize-audit-c",
+      "key": "total_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "serialize-audit-c",
+      "key": "work_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "serialize-audit-cpp",
+      "key": "total_cost",
+      "value": "$0.25"
+    },
+    {
+      "name": "serialize-audit-cpp",
+      "key": "work_cost",
+      "value": "$0.25"
+    },
+    {
+      "name": "serialize-audit-js",
+      "key": "total_cost",
+      "value": "$0.03"
+    },
+    {
+      "name": "serialize-audit-js",
+      "key": "work_cost",
+      "value": "$0.03"
+    },
+    {
+      "name": "serialize-audit-lobster",
+      "key": "total_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "serialize-audit-lobster",
+      "key": "work_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "serialize-audit-lua",
+      "key": "total_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "serialize-audit-lua",
+      "key": "work_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "serialize-audit-luau",
+      "key": "total_cost",
+      "value": "$0.05"
+    },
+    {
+      "name": "serialize-audit-luau",
+      "key": "work_cost",
+      "value": "$0.05"
+    },
+    {
+      "name": "serialize-audit-nut",
+      "key": "total_cost",
+      "value": "$0.03"
+    },
+    {
+      "name": "serialize-audit-nut",
+      "key": "work_cost",
+      "value": "$0.03"
+    },
+    {
+      "name": "serialize-audit-rs",
+      "key": "total_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "serialize-audit-rs",
+      "key": "work_cost",
+      "value": "$0.00"
+    },
+    {
+      "name": "sprint-rewrite",
+      "key": "total_cost",
+      "value": "$5.17"
+    },
+    {
+      "name": "sprint-rewrite",
+      "key": "work_cost",
+      "value": "$5.17"
+    },
+    {
+      "name": "vg-ports",
+      "key": "total_cost",
+      "value": "$3.76"
+    },
+    {
+      "name": "vg-ports",
+      "key": "work_cost",
+      "value": "$3.76"
+    }
+  ],
+  "blockedLayout": {
+    "headers": [
+      "stream",
+      "status",
+      "blocked",
+      "waiting",
+      "ready",
+      "working",
+      "review",
+      "fix",
+      "merging",
+      "landed",
+      "fail",
+      "cost"
+    ],
+    "legend": [
+      "landed 146",
+      "fail 3",
+      "merging 0",
+      "fix 5",
+      "review 19",
+      "working 3",
+      "ready 23",
+      "blocked 2",
+      "waiting 175"
+    ]
+  },
+  "failOrder": {
+    "failIndex": 6,
+    "lastLanded": 5,
+    "firstWaiting": 22,
+    "title": "fail · stream failed"
+  },
+  "skew": [
+    {
+      "offset": 120000,
+      "healthyWithOldServerTime": true,
+      "stoppedAfterMonotonicElapsed": true,
+      "staleAgeStopped": true,
+      "recovered": true
+    },
+    {
+      "offset": -120000,
+      "healthyWithOldServerTime": true,
+      "stoppedAfterMonotonicElapsed": true,
+      "staleAgeStopped": true,
+      "recovered": true
+    }
+  ],
+  "redirects": [
+    {
+      "path": "/events",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/stream/schema-main",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/api/stream/schema-main",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/api/history",
+      "status": 302,
+      "location": "/"
+    }
+  ],
+  "healthPulse": {
+    "stoppedAfterLostPoll": true,
+    "clockHeld": true,
+    "recovered": true
+  },
+  "probe": {
+    "tooltip": "3 working, 19 review, 5 fix, 0 merging, 2 blocked",
+    "inflight": "27",
+    "sub": "3 working · 24 verify · 2 blocked",
+    "all": "376",
+    "work": [
+      "schema-main",
+      "waiting",
+      "2",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0 / 5",
+      "3",
+      "$0.00"
+    ],
+    "fleet": [
+      "amd-1",
+      "up",
+      "2",
+      "",
+      "0 / 8",
+      "1",
+      "0.0%",
+      ""
+    ],
+    "missingCost": "-",
+    "missingOK": "0.0%",
+    "merge": [
+      "0",
+      "151",
+      "",
+      "",
+      ""
+    ]
+  },
+  "done": {
+    "eta": "DONE",
+    "all": "376",
+    "inflight": "0",
+    "legend": "landed 146fail 230merging 0fix 0review 0working 0ready 0blocked 0waiting 0"
+  },
+  "errors": []
+}

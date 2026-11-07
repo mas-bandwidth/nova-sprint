@@ -1,0 +1,38 @@
+[
+  {
+    "width": 2000,
+    "compact": false,
+    "gutter": "35px",
+    "statusWordDisplay": "block",
+    "statusEdges": [
+      705,
+      705,
+      705
+    ],
+    "issues": []
+  },
+  {
+    "width": 2800,
+    "compact": false,
+    "gutter": "40px",
+    "statusWordDisplay": "block",
+    "statusEdges": [
+      705,
+      705,
+      705
+    ],
+    "issues": []
+  },
+  {
+    "width": 375,
+    "compact": true,
+    "gutter": "10px",
+    "statusWordDisplay": "none",
+    "statusEdges": [
+      218,
+      218,
+      202
+    ],
+    "issues": []
+  }
+]

@@ -1,0 +1,27 @@
+Fri Nov  6 21:11:40 UTC 2026
+b1
+go version go1.26.10 linux/amd64
+initdb (PostgreSQL) 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1)
+format=0
+build=0
+vet=0
+ok  	github.com/mas-bandwidth/nova-sprint/card	3.968s
+?   	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint-dash	[no test files]
+ok  	github.com/mas-bandwidth/nova-sprint/dash	1.524s
+ok  	github.com/mas-bandwidth/nova-sprint/store	1.733s
+unit=0
+ok  	github.com/mas-bandwidth/nova-sprint/card	1.012s [no tests to run]
+?   	github.com/mas-bandwidth/nova-sprint/cmd/nova-sprint-dash	[no test files]
+ok  	github.com/mas-bandwidth/nova-sprint/dash	1.428s
+--- FAIL: TestFunctionalRebuildFromLog (0.39s)
+    functional_test.go:612: 
+        	Error Trace:	/var/tmp/stella-dash-20261106/source/store/conformance_test.go:91
+        	            				/var/tmp/stella-dash-20261106/source/store/conformance_test.go:150
+        	            				/var/tmp/stella-dash-20261106/source/store/functional_test.go:612
+        	Error:      	Received unexpected error:
+        	            	store: outcome unknown, call Replay with the op id: read tcp 127.0.0.1:54076->127.0.0.1:44619: read: connection reset by peer
+        	Test:       	TestFunctionalRebuildFromLog
+FAIL
+FAIL	github.com/mas-bandwidth/nova-sprint/store	6.913s
+FAIL
+functional=1

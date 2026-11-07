@@ -1,351 +1,1502 @@
-# Checking the coordination rules
+# tla/: the store model (layer 1), the card machine (layer 2) and the steps (layer 3)
 
-Several AIs finishing, retrying, and handing work to one another can expose
-ordering bugs that a happy-path example will miss. These TLA+ models explore
-small, explicit versions of the sprint's state machines and look for broken
-invariants or work that can stop making progress.
+Three models live here: `Store.tla` (layer 1, below), `CardMachine.tla`
+(layer 2, in its own section after the store's results) and `Steps.tla`
+(layer 3, last). `ci-tlc.sh` runs all three, with all their witnesses and
+reach checks, in one parallel pass.
 
-You do not need TLA+ to use nova-sprint. This directory is for contributors
-changing scheduling, handoffs, recovery, or the work-tree design.
+`Store.tla` models the contract in `docs/LAYER-1-STORE.md` as of round 22.
+Each operation is one atomic step over `epoch`, `cards`, `rows`,
+`judgements`, `cursors`, `policies`, `stopped`, `events` and `applied`. In
+order, the step:
+1. checks the op's epoch against the store's epoch;
+2. checks its conditions;
+3. runs its writes in order, each under its own rule;
+4. either lands everything and appends an accepted event, or changes nothing
+   and appends a refused event.
 
-## Choose a model
+Epochs start at 1. `Clear` is an op with no writes and its epoch is checked
+too. It opens the next epoch and carries the rows forward: same held flag,
+session and role, state `down`, gen + 1. It keeps the cursors (global, as
+the log's seq is, so a subscriber resumes where it was), the policies and
+the sprint's stop, and leaves the cards and judgements behind (keyed by
+epoch). It is idempotent by id and logged with the epoch it closed. The
+event log is append-only: row triggers refuse UPDATE and DELETE on events,
+and a statement trigger refuses TRUNCATE.
 
-| Model | What it explores |
-|---|---|
-| [SprintEvents](README-SprintEvents.md) | Event-driven scheduling, leases, deadlines, notifications, and interruptions. |
-| `SprintTables` | The card lifecycle: six states, waiting ready working review merging landed, and the moves between them, with the fleet side, the reads and the merge and return. |
-| [DirtyTick](README-DirtyTick.md) | How a tick drains queues and moves work between tables. |
-| `DirtyTickRead` | Reader handoffs within the tick. |
-| `ReadsByRoom`, `ReaderTiers`, `ReadCards`, `AskReadIDs` | Where a read is asked, on which tier, how a read card is loaded, and why AskStep must include ended Fleet read-card records when minting a replacement ID. |
-| `RouteIndex`, `RouteRest` | Route selection, its counters, and resting a route. |
-| `NoRoom` | A member's no-room word (the disk floor) and its drain (its binary replaced), the deal and fleet verbs that give such a member nothing, the return of what a draining member was dealt and has not taken, and the ask that asks a held or draining machine's reader nothing. |
-| `RetireAbsent` | The tick retires a fleet row whose machine record is gone from the inventory (a rename), drains it while it still holds cards, and retires nothing on a failed config read. |
-| `Level`, `WhoPreference` | Distribution of queued work across available capacity, and the rebalance. |
-| `Land`, `LandPass`, `LatePush` | The landing protocol, the land pass over streams, and a late push. |
-| `CardISA` (over `CardMachine`) | The card instruction set; `CardMachine` is the model of nova-tools' deleted Lua card machine, kept for `CardISA` which `EXTENDS` it. |
-| `Holds` | A held card, a sentinel and its release, and a stream's hold, stop, resume and reopen. A needs change never releases a hold (`NeedsSetH`, `HeldMovesOnlyByRelease`) and the deal refuses a ready card that carries one (`DealH`, `NoHeldCardDealt`). Witness "needssetheld" (`MCHoldsBrokenNeedsSetHeld`): NeedsSet drops the held check; counterexample in 3 states: the held waiting card's needs are set to `{a}` (a not landed, waiting) and then to `{}` (`needs set --clear`), and the column recomputed from the needs alone is ready, hold kept; `steps_edit.go` NeedsSet computes `to := Ready` for no needs. Witness "dealheld" (`MCHoldsBrokenDealHeld`, with "needssetheld" also broken, the only way a held card reaches ready): the deal takes the held ready card, `NoHeldCardDealt` fails; `steps_work.go` dealPlan's ready closure. |
-| `HoldCause` | A fleet member's hold with its cause (a judgment, a doctor check, the machine's idle-reap judgment and its route) ended by the tick in the step that sees the cause end (one tick later when another unit writes the card), carried across a clear, every hold with no cause reported once a period, and the attribution of idle reaps counted as the code counts them: two or more members on one route, or a dead route one member used, rest the route and hold no member, and a rest ends the idle hold on it; a doctor check no cause (a carried one ended by unhold alone); a waited judgment parked, its hold standing until it is raised again and answered. Witnesses: `holdleaks`, `silent`, `blamemember`, `restkeeps`, `waitresolves`, `nocausereleases`. |
-| `CoordinatorPass`, `CoordinatorWake` | The coordinator's pass and its wake. |
-| `SprintRules` | The rules that answer failures. |
-| `SeatHealth`, `ServerLanes` | The seat's generation and a friend's health; the server's lanes. |
-| `StateEpisode` | A state episode's frozen message and durable receipt: ambiguous retry, restart, expiry and clear/recur. Pending sends stop at the persisted 24-hour acceptance deadline; expired unknown receipts require manual resolution. |
-| `CoordinatorPush` | The coordinator's push over the bus and the sprint push the server holds for it in the nova-hook record (v1.3.6, in place of the retired seat hook and its proof cache): a key told only once sent, a new holder told everything open, a lease only for a record the seat hooked as the coordinator and never one the server arms, and the gate's yes only while the server's last send went. |
-| `LiveRuns` | Working means a live run: the beat's live set, the reconcile while RUNNING and STOPPED, the STOP debt's receipt, held reports. |
-| `Timer`, `LoadCache`, `StatsReset` | Timers, the load cache, and a stats reset. |
-| `AttemptsEpochs` | The epoch a clear advances and a card's attempt, generation and redeals: the restore marker, the per-epoch tables, a late writer refused, a second concurrent clear, the deal and redeal, the stale-generation guard, and the branch per launch. |
-| `StopReturn` | STOP's captured owner leases, the owner's stop-return, its settle off the debt, START, and clear's STOP followed by its live work/read-lease check. `MCStopReturnClear` checks clear reachability and safety; `BrokenClearBlocked` drops the live-lease guard. |
-| `FriendReadyTake`, `FriendRedealLate` | Historical friend ready-take and redeal clocks, moved from nova-tools dev `2314d437f`; current start receipts and deadline routing are outside these preserved models (partial coverage). |
-| `MachineReady` | The machine's READY state (a clear is its stop and its advance, a start may land between): a clear (and init) leaves READY, start moves READY or STOPPED to RUNNING, stop moves RUNNING to STOPPED and is refused on READY, READY raises no `machine:stopped` judgment while STOPPED keeps it, and READY is read off the record (not RUNNING, not started since the clear). Invariant RanIsNotReady: a machine that ran in the epoch is STOPPED, never READY. Witnesses: `clearstopped`, `readyjudges`, `stopready`, `nostopstamp`. The card check gate (v1.2.18 warn and refuse split): a check fails only on a refusing finding (WarnsNeverFail) and a check of warnings alone lets start proceed (WarnOnlyStarts); witnesses `warnrefuses`, `refusewarns`, `warngate`. |
-| `StopFence` | The distinct nova-tools STOP/START fence model, renamed on arrival: RunSeq, stale tick stop/part, launch/report and row-delete fences. Newer debt settlement and held-report exemptions are outside it. |
-| `WorkImport` | Issue import and the specified work-tree modes. |
-| `RoadmapEntry` | An entry of a repository's roadmap and fixes files under nova-work roadmap: add, remove, pull, note, done, and Save's four writes (destination data, destination page, source data, source page), with scheduled notes whose `:release` is unchecked. |
-| `GateRing` | The land stage's gate bench ring: the hashed start slot, the per-pass skip record, a refusal stepping to the next slot, and the local fallback refused as a remote-bench unavailability. |
-| `ProviderFunds` (over `RouteRest`) | A provider's refusal rest and its end mark, the low, funds and key judgments, the all-out stop with the friend exception, and the coordinator's START. |
+Policy versions are global too. Put policy adds the next version; a
+version's body never changes once put and the version is never removed (a
+trigger; only `active` may change, and `active` is left out of the model).
 
-The `.tla` files define the models. `MC*.tla` and `.cfg` files provide bounded
-instances. [CASES.tsv](CASES.tsv) lists the gated cases; [RUNS.tsv](RUNS.tsv)
-records results, and [COVERAGE.tsv](COVERAGE.tsv) lists the sprint's state machines
-with their code, their module and their status. The two longer guides explain the assumptions, findings,
-and repairs for their models.
+Every set write that would change nothing is refused ("row r1 is already
+up", "cursor c1 is already at 2", "the sprint is already stopped"): the op
+is refused, its refused event is logged, and no gen moves. In the model that
+covers card state, red, row state, row held, the stop and the cursor.
+Streams (set stream held), policy activation and the set-card writes on
+fields no rule reads are left out, so their same-value refusals are not
+modelled.
 
-## Read a result in context
+Needs are a TLA+ set, so a reorder is the same value by construction (the
+store keeps them sorted without repeats). An empty name, an unknown role,
+and a session without a role (or a role without a session) are `ErrInvalid`
+before the store's step and are never logged, so they never reach the
+model: structural.
 
-An invariant is a condition that should always hold. A liveness property
-asks whether progress eventually happens under the model's stated fairness
-assumptions. A **reversed witness** deliberately breaks a rule: its expected
-counterexample checks that the property can catch that defect.
+Cards have a kind: `producer`, `sentinel`, or a consumer (`work` or `read`).
+A consumer names its producer (`prod`, the design's `of`), takes its
+producer's tier at add, and has no needs. A consumer's holder is set at add
+and never changes: there is no holder write. Add card refuses a holder on a
+producer or a sentinel, and refuses a consumer without one. A producer
+carries red (round 17), set by `SetRed` (producers only) and read by
+`CardRed`.
 
-A recorded pass applies to the model, bounds, revision, and configuration in
-that run. It does not prove that a live deployment has no bugs, that a model
-provider is available, or that all possible fleet sizes were checked. Keep
-counterexamples and measured results intact when improving their explanation.
+A row is sprint state only (round 22): its state, a gen, a held flag, and
+the session and role that hooked it. Its kind, width, tiers, model and
+harness are configuration, the roster's (nova-config, read each tick), and
+never the store's: the store neither caps a row's working consumers nor
+checks that a row serves a tier. The deal guards in the card package do
+that, against the roster. The store takes any number of consumers of any
+tier on a row that exists.
 
-## Run checks on a Linux bench
+The hook: `PutRow(r, session, role)` is the sprint hook's one write, and
+`PutRow(r, None, None)` unhooks. A hook by another session while one holds
+the row is refused (unhook first); the same session may hook again with a
+new role. Like every row write it raises the row's gen.
 
-TLC runs only on a bench. The runner is `tools/tlacheck` in this tree: build it
-with `go build -o /tmp/tlacheck ./tools/tlacheck`, or run it with
-`go run ./tools/tlacheck`. The Makefile wraps it:
+The sprint's stop (`stopped`) is one value for the store, as the epoch is.
+`SetStopped` sets it, refused when unchanged, and a clear keeps it. The
+store refuses nothing because of it: ops still land while stopped (the
+reach check NeverDealtStopped shows a deal landing).
 
-- `make tlc TLC_JAR=<jar> TLC_OUT=<dir> TLC_GROUP=<group>` runs one group,
-  writing its log and `RUNS.tsv` under `TLC_OUT`;
-- `make tlc-full TLC_BUDGET=<seconds> ...` runs a manual group, with `--manual`;
-- `make tlc-groups` prints the groups that hold a case with no current record;
-- `make tlc-test` runs the runner's own tests.
+Judgements are `open`, `answered` or `expired`: put judgement opens one
+(refused if it exists), and answer and expire close it. A close is refused
+inside the write unless the judgement is open, so it closes once whatever
+the plan carried; `JudgementOpen` still fences a plan. A cursor holds a seq
+that set cursor never moves back and never moves past the last event's seq
+(events are numbered from 1, refused ones included); an absent cursor reads
+as 0.
 
-`go run ./tools/tlacheck groups --root . --stale` names the groups a model edit
-made stale, and `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <runs>...` joins their records. Check the runner's help for
-your version, and record new results against the actual model inputs you ran.
+The conditions are:
+- `CardGen`, `CardState`, `HolderIs`, `CardAbsent` and `CardRed` on a card;
+- `NeedsLanded`: every need of the card is landed, read from the store in the
+  step;
+- `RowIs`, `RowGen` and `RowHeld` on a row;
+- `JudgementOpen` on a judgement.
 
-The same groups run on GitHub-hosted `ubuntu-latest` runners in
-[`.github/workflows/tlc.yml`](../.github/workflows/tlc.yml) (nightly, on
-`workflow_dispatch`, and on a pull request touching `tla/`, `pkg/tlc/` or
-`tools/tlacheck/`), which downloads the pinned tlaplus v1.7.4 release and
-checks it against [`tla2tools.sha256`](tla2tools.sha256) before
-`make tlc TLC_GROUP=<group> TLC_BUDGET=110`.
+An op that writes a card or a row raises its gen by one, however many of its
+writes touch it. A card or row the op itself adds stays at gen 0.
 
-Return to [Contributing](../CONTRIBUTING.md) for the ordinary build and test
-checks, or [the documentation index](../docs/README.md) for the user guides.
+`ledger` is a ghost: every event as it was committed. The store appends to
+`events` and `ledger` together and never changes `events` otherwise, so
+LogAppendOnly (`events = ledger`) holds by construction here; the witness
+StoreLogTampered adds the UPDATE the trigger refuses. TRUNCATE (on events and
+on policy) has no action in the model: the statement triggers make it
+structural, as UPDATE and DELETE are.
 
-## LandPass stream routing and certification
+The caller's view is modelled too:
+- `phase` per op: `idle`, `unknown` or `done`;
+- `receipt`: the receipt the caller holds;
+- `lost`: the transport failures so far.
 
-`MCLandPassStreamFlow.cfg` checks `StreamFlowFairSpec`, a separate abstraction
-alongside the existing LandPass gate/pass specifications. This is **not** a
-composition or refinement proof between them. The old batch-set variable is
-`batchBase`; `base[c]` is the card destination. Legacy specifications freeze the
-flow state and keep their original fairness over `legacyVars`; the flow freezes
-the legacy pass with a green oracle. All 13 historical cases retain their expected
-outcomes and independently check the old gate and refusal rules.
+A transport failure is either a request lost before the store saw it, or a
+reply lost after the store applied it. Either way the caller is left
+`unknown` and recovers with `Replay`, or with `Apply` again.
 
-The flow bound is **two streams and three cards**, represented by `<<stream,
-head>>`: s1 has heads 1 and 2, s2 has head 1. A batch contains one card and each
-stream lands its oldest unfinished head first. A second batch may land on the
-stream while its earlier snapshot is being certified. `sbranch[s]` contains its
-landed cards, `integrated[s]` the last snapshot merged into trunk, and `trunk`
-records `<<"merge", s>>` or `<<"card", batch>>`. `inflight` and `cert` distinguish
-certification admission from branch readiness. `moveFree` retains the **pre-state**
-admission guard at every append, so finishing certification cannot erase overlap.
+## What one model step stands for in SQL
 
-Initially branches are empty and legacy stream destinations name trunk. `AddCard`
-inherits its configured destination before or after migration. `AdvanceCard`
-visits waiting, ready, working, review and merging; landed is the sixth real
-lifecycle column, while absent is model-only. `landProtected` independently ranges
-over all subsets of streams. `CardOntoTrunk` requires the actual stream mark:
-`BugCardOntoDev` restores the historical **marked** exception; the independent
-`BugUnmarkedLanding` mutation removes the mark guard. An unmarked card is refused
-before git in the staged Go, rather than somehow landing because its BASE is stale.
+One model step = one SQL transaction from `LOCK TABLE sprint.epoch` to COMMIT
+at READ COMMITTED; the lock is what makes the atomic step real. The epoch,
+the conditions, the writes with their rules, and the event row are all
+inside it. Without the lock, two transactions at READ COMMITTED can each
+read the rows, decide, and then write. The witness StoreStaleCheck is
+exactly that interleaving: the conditions are judged on an earlier read, so
+a1 deals to r1 after e1 set it down.
 
-`SetBase(s, s)` migrates once to its stream branch. `BaseRewritePolicy` exposes two
-policies: the requested `all-unlanded` rewrite, and `preserve-cut-head` selected by
-`Broken = "baseskipsreview"`, which preserves working/review card bases in this
-bounded abstraction and still repoints merge-queued cards. The Go selector is
-broader: among eligible unlanded cards, it keeps every card with `attempt > 0`
-unless the card is in the merge queue's `Queued` cell.
-**This is an unresolved implementation policy choice.**
-The current Go intentionally preserves already-dealt heads on their old base;
-this model does not assert that rewriting an active head is safe or that the Go
-selector is simply defective. The stronger requested invariant
-`NoUnlandedCardBasesOnTrunk` says every existing unlanded card of a migrated stream
-names that stream, and the preserve policy violates it immediately at migration,
-without a protected mark or any landing. Settling that discrepancy may require
-explicit recutting/restaging; no Go repair is made or assumed here.
+With the lock, writers run one at a time and each one reads the state the
+previous one committed. That serial order is the order of `events` here.
 
-`BriefEdit(c, proposedBase)` is a real finite event: one attempted edit per card,
-with an independently chosen own-stream or trunk BASE. Normally it preserves
-routing; `BugBriefBase` writes that input to `base[c]` and independently violates
-the same postmigration invariant. The control also checks the action properties
-`SetBaseReachesEveryUnlanded` and `BriefEditKeepsBase`.
+## The instance
 
-An empty branch records the trunk revision it follows. A sibling merge can advance
-trunk while that branch is empty. `FollowTrunk(s)` fast-forwards it separately;
-`StreamLand(s)` must wait for that revision before the **first** landing.
-`EmptyStreamFollowsTrunk` compares the actual cut revision and trunk revision
-recorded at that landing. `BugEmptyStale` drops the first-land guard and produces a
-real stale landing after a sibling merge. The model permits temporary empty-branch
-lag before landing; it does not assert atomic updates to every branch on each move.
+6 cards (producers p1, p2; sentinel t1; consumers u1, u2, u3), 2 rows, one
+judgement j1, one cursor c1, two policy versions, two bus sessions (x, y),
+36 fixed ops. Callers issue their ops in program order (`Pred`). A setup
+caller goes first, covering each deterministic rule once:
+- s1, s2 hook r1 and r2 by session x as workers, and set them up;
+- s3 adds producer p1 with a holder, s4 sentinel t1 with a holder: both
+  refused;
+- s5 adds p1 (tier pro); s6 adds p2 (needs p1) and t1 (needs p2);
+- s7 readies p2 before its need landed (refused), s8 lands p1, s9 readies
+  p2;
+- s10 adds consumer u3 on r1 and readies it;
+- s11 opens judgement j1;
+- s12 and s13 put policy versions 1 and 2;
+- s14 sets p2 red; s15 (a consumer) and s16 (a sentinel) are refused by the
+  red write; s17 sets p2 red again: refused as changing nothing;
+- s18 hooks r2 by session y while x holds it: refused (unhook first);
+- s19 unhooks r2; s20 hooks it by y as coordinator;
+- s21 stops the sprint; s22 stops it again: refused as changing nothing.
 
-`StreamMerge(s)` admits a snapshot only when it is ahead, no merge is inflight,
-and cert is green or trunk has never moved. `CertDone` may answer green **or red**;
-red blocks new admission. `Fix` is explicitly a **successful repair and
-recertification of the same trunk revision**, without another trunk move. This
-is the recovery assumption, not a proof that arbitrary broken code can be fixed.
-The weakly fair specification schedules every card's add/advance, every stream's
-migration/follow/landing/merge, certification completion, and successful Fix.
-It checks both `LandedEventuallyIntegrated` and the stronger
-`AllFlowWorkCompletes`, so a run where nothing lands is not a vacuous progress pass.
-Safety invariants are checked over the full reachable graph and do not depend on
-these fairness assumptions, even though the same control also checks liveness.
+Then the callers of one scenario run concurrently. The constant `Scenario`
+picks it. The two scenarios touch disjoint tables, so splitting them keeps
+each run small without hiding an interleaving.
 
-A mere fair retry is insufficient: `BugRedRetry` replaces successful Fix with
-red-to-running retry, allowing an adversarial running/red cycle forever. Its
-liveness witness leaves real landed cards unintegrated. `BugNoRepair` removes Fix
-and exposes an incomplete terminal state. All new cases use deadlock policy
-`check`, including the control. `Quiesce` is the only explicit stutter and is
-available only when every card is landed and integrated, cert green, and no merge
-inflight. Brief edits are one-shot state changes, so cannot conceal a wedge.
-`NoPartialCompletionWedge` additionally gives a named invariant counterexample for
-the missing-repair case. No terminal state is silently waived.
+Scenario `deal` (`Store.cfg`):
 
-`TrunkMovesOnlyByStreamMerge` and `OneStreamMergeInflightPerTrunk` are the requested
-names; `DevMovesOnlyByStreamMerge` and `StreamMergesSerial` remain aliases for old
-callers. `CardLandsOnItsStream` is retained. Direct pushes during running
-certification set cert cancelled; serialization rejects both cancellation and
-admission while a previous certification is inflight. **GitHub's merge queue
-already serializes actual Git merges onto trunk.** The overlap witness concerns
-coordinated admission/certification and cancellation, not simultaneous Git writes.
-
-The eight negative cases distinguish historical behavior, a policy discrepancy,
-and deliberate mutations. State numbers below are from the revised measured run:
-
-| Configuration suffix | Selector | Expected violation / first bad state |
+| Caller | Ops | What it does |
 |---|---|---|
-| `BrokenCardOntoDev` | `cardontodev` | Historical marked route: `DevMovesOnlyByStreamMerge`, state 7 with `landProtected = {s1}`. |
-| `BrokenReviewKeepsBase` | `baseskipsreview` | Preserve-cut policy versus requested stronger rule: `NoUnlandedCardBasesOnTrunk`, state 5, working card still on trunk immediately after migration. |
-| `BrokenBriefBase` | `briefbase` | Mutated brief write: `NoUnlandedCardBasesOnTrunk`, state 4, migrated waiting card edited back to trunk. |
-| `BrokenMergeBeforeCert` | `mergebeforecert` | Mutated admission guard: `StreamMergesSerial`, state 16, s1's second snapshot admitted while its first is running, `moveFree = <<TRUE, FALSE>>`. Other-stream overlap is enabled by the same mutation. |
-| `BrokenEmptyStale` | `emptystale` | Mutated first-land guard: `EmptyStreamFollowsTrunk`, state 16, s2 first lands at cut 0 while trunk is 1 after s1's merge. |
-| `BrokenUnmarkedLanding` | `unmarkedlanding` | Mutated mark guard: `ProtectedLandingRequiresMark`, state 7, direct trunk push with `landProtected = {}`. |
-| `BrokenNoRepair` | `norepair` | Missing recovery: `NoPartialCompletionWedge`, state 23, all cards landed, s2 unintegrated, cert red, no enabled step. |
-| `BrokenRedRetry` | `redretry` | Retry is not successful repair: `LandedEventuallyIntegrated`, cycle 27-28, both s1 cards landed but never integrated while s2's trunk revision retries red forever. |
+| a | a1, a2 | a1 deals new consumer u1 working to r1, fenced on RowIs(r1, up) and RowHeld(r1, false); a2 marks it done |
+| b | b1, b2 | b1 adds u2 ready on r1; b2 makes it working: accepted beside u1, the store holds no width |
+| e | e1 | sets r1 down, fenced on RowGen(r1, 0) |
+| g | g1 | holds r1, fenced on RowGen(r1, 0) |
+| k | k1, k2 | k1 clears epoch 1; k2 adds p1 in epoch 2 |
 
-Hand mapping against staged Go `c3b0b1b142cddfeec489582a493cb2ff0a0022d9`:
+Transport failures happen only on a1 and k1 (`Lossy`, `MaxLoss = 1`).
 
-- **Protected routing:** `cmd/nova-sprint/landpass.go:299-302` reads the card's
-  BASE and line 323 calls `ProtectedLandWhy`; `internal/sprint/protected.go:48-50`
-  permits a matching `land_protected` mark. `cmd/nova-sprint/land.go:756-759`
-  (`placeWhy`) returns an unmarked refusal before git. This is the distinction
-  between the historical marked witness and the deliberately faulty unmarked one.
-- **Migration:** `internal/sprint/streams.go:407-421` selects never-dealt or
-  merge-queued cards; `cmd/nova-sprint/land.go:699` (`landQueue`) identifies the
-  queued merge candidates. Every eligible unlanded card with `attempt > 0` that
-  is not merge-queued is kept, regardless of its work column; `deal` increments
-  the attempt at `internal/sprint/steps_work.go:1247`.
-  `streams.go:433-436` only constructs candidates. The actual planned
-  write is `internal/sprint/settings.go:691-702`, using `briefOnBase` at
-  `streams.go:350-356`. The old merging-card trace and old landing-only property
-  were incorrect for this selector; the revised witness fails before landing.
-- **Brief editing:** `internal/sprint/steps_edit.go:168-187` admits a permitted
-  brief edit and writes `b.Brief`; landpass.go:299-302 later reads its BASE. The
-  mutant makes that routing change explicit; the desired design instead preserves
-  the routing field independently of prose.
-- **Admission/certification:** `cmd/nova-sprint/promote.go:354-370` watches an
-  existing pending promotion, lines 644-667 wait for checks before enqueue, and
-  lines 821-840 read one clone's pending state. They are local guards, not the
-  global per-trunk admission rule. `sprint.NextStreamMerge` is absent at this
-  staged head. `promote.go:597-620` and `:728-746` identify red runs and judgments;
-  successful Fix is the explicit environmental recovery obligation beyond them.
-- **Empty branches:** `landpass.go:362-363` uses the card's base to construct a
-  landing job. Automatic empty-stream following is absent from that staged path;
-  FollowTrunk and its first-land guard specify the sibling fix's intended behavior.
-  Revision counters abstract ancestry, not a full Git object graph or E12 check.
+Scenario `records` (`StoreRecords.cfg`):
 
-Rowan's independent cold read rejected the earlier readiness claim: it found the
-missing mark, incorrect merging-selector mapping, coupled skip/landing witness,
-missing empty-branch behavior and progress, and permissive terminal handling. This
-revision responds to those findings; the earlier run evidence remains historical.
-Rowan accepted the revised design, including the unresolved working-head policy,
-on 2026-10-12 at 14:00:30Z. Design acceptance is not final implementation approval.
-His final cold read of `5c3196d6` at 14:28:33Z approved the models-only revision,
-independently reproducing all 22 results and checking the eight negative witnesses
-and the necessity of each weak-fairness conjunct. This records model review, not
-product implementation or landing.
-
-Run `make tlc TLC_GROUP=landpass TLC_JAR=<pinned-jar> TLC_OUT=<new-directory>` on
-Linux, then use `tools/tlacheck merge --keep` as described above. The group contains
-13 unchanged historical cases, the revised control, and eight negatives (22 total).
-A witness's runner PASS means TLC reported its declared violation. This bounded
-model omits crash recovery, dynamic stream membership, arbitrary batch sizes and
-full Git ancestry; it makes no claim that the staged Go implements every requested
-policy or that certification is guaranteed green without successful repair.
-
-## The models in detail
-
-These rows and the `Level` section moved here from nova-tools' `tla/README.md` at v1.2.3, with the
-modules (docs/SPEC-SPRINT.md and the code are the references they cite). Several of these models are stale
-against the code: they were written before the owner's ruling of 2026-10-01 that the sprint is changed and
-run without a model change each time; [COVERAGE.tsv](COVERAGE.tsv) says which.
-
-| Module | Instance | What it is |
+| Caller | Ops | What it does |
 |---|---|---|
-| `CardMachine.tla` | `MCCardMachineSmall`, `MCCardMachineSmallLive`, `MCCardMachineBrokenReadsInReview` | the model of nova-tools' deleted Lua card machine (`02_card_move.lua`; no `.lua` of that name is in either repository, and nova-tools `internal/ci/testdata/deleted-tests.txt` records its deletion), kept because `CardISA` `EXTENDS` it and reuses its actions. It is not the machine `lifecycle.go` runs (that is SprintTables). The small instance is Cards `{c1}` with no Deps, Consumers `{k1,k2}` one slot each, MaxCopies 2, HeadBound(1): `MCCardMachineSmall` checks the nine invariants alone, `MCCardMachineSmallLive` adds `ReadyIsOneWay`, `CopiesEnd` and `Progress`, and `MCCardMachineBrokenReadsInReview` removes `DealRead`'s `where = "review"` guard and must violate `ReadsInReview`. The original two-card instance is in `cardmachine-bench/` and does not finish |
-| `CardISA.tla` | `MCCardISA*`, `MCCardISALive` | the card instruction set (docs/SPEC-ISA.md, layer 1): a card is one instruction and its kind says what it carries. It `EXTENDS CardMachine` and reuses its actions through one frame; it adds only what the kinds add: the one `wait` kind, whose one guard `OperandHolds(c)` is over an operand that is a card id, `release` or `external` (today's hold, sentinel and wave are one action's data, where CardMachine's `Release` is one path and the code it was read from holds three), and the per-kind results (`think`/`script`/`merge` a head and a verdict, `verify` a verdict, `wait` none). A non-wait card is resolved by `Wait(c)` (waiting -> ready) and a wait card is landed by its release (`IsaLandEvent`, a waiting wait card with released) and never dealt, so a card lands only by the table: from merging (`IsaLand`), or from waiting a wait card. It replaces `CardMachine.Release`, `DealWork`, `Land` and `LandEvent` (and its `Verdict` and `EndWorkDone` drop/done-already-to-landed branches, by `IsaVerdict` and `IsaEndWorkDone`), named in its header. It proves `NoCardRetiresTwice` (no card lands twice), `RetiredHeadOnBase` (a landed card's head is an ancestor of its base), `LandsOnlyByTable` (a card lands from merging, or from waiting a wait card) and `WaitDispatchesOnlyWhenOperandHolds` (a wait card lands only when its operand holds), with a reversed witness each (`MCCardISABrokenSecondLand`, `MCCardISABrokenOtherBase`, `MCCardISABrokenLandAnywhere`, `MCCardISABrokenWaitFirst`), and, on the small `MCCardISALive`, that a wait whose operand comes to hold is landed. The card model's stale note above does not cover this module; it is written to `docs/SPEC-ISA.md` (landed on the base at `817177be66d4a2764bd228c223eb485a8ef7c164`), and `LandTwoLevel.tla` (the `merge-tree-proof` branch, head `40e9dc34ea18f7362f3b1b914ac204fe48263ae7`) is cited by branch and head, not copied: that branch has not landed |
-| `SeatHealth.tla` | `MCSeatHealth*` | The seat generation and authoritative hook status: only proven hook status with a healthy hook server can show up or held, an explicit hold alone selects held, and work facts never introduce another state; one writer, the server's tick, stores the word and every reader shows the stored word and derives none (OneWriter, StoredIsTheServersWord). Two holders and two handovers. Witnesses reverse down precedence, ignore server failure, introduce a work-derived stalled state, retain the generation across handover, and let a reader derive its own word. The hook protocol itself is modeled upstream. |
-| `SprintTables.tla` | `MCSprintTables*` | the card lifecycle (docs/SPEC-SPRINT.md section 3; internal/sprint/lifecycle.go) and the fleet side and the reads of the work table (internal/sprint/refmodel/actions.go): a primary's six states, waiting ready working review merging landed, landed final, and the Moves table, one action per verb whose guard is Legal plus the plan's flags (releasing, inserting, removing), with needs, waivers and sentinels; off the table (a drop) is not a state; each member is up or down with a working primary's work card on its row (Start, Take, Finish, FleetDown, FleetUp), and each read card sits on one reader's row in a place none asked reading ok broken (Ask, AskAnother, ReadStart, Read, Accept); and the merge side: each primary belongs to a stream waiting merging stopped (with a cause) or landed, a primary in merge sits in a merge cell none queued merged stuck or returned, and Rework, Return, Redo, MergeGreen, MergeStop, MergeRefused, MergeRed, Resume, Rank and Drop move and stop it. It proves `TypeOK`, `NoNeedCycle`, `NoCardLostOrTwice`, `MovesOnlyByTable` (every change of cell is a Moves row, a drop from an open state, or a remove of a landed card), `ReadyToWaitingOnlyByInsert` (a primary moves ready -> waiting only by inserting a sentinel or its needs not landed), `WorkingToWaitingOnlyOnNeeds`, `NeedsWithdrawalWaits`, `LandedIsFinal`, `NeedsLandFirst` (a card leaves waiting for ready only with every need landed or waived), `WorkingOnAnUpMember`, `AcceptHeld`, `NeverAcceptBroken`, `NeverReadByItsWorker`, `StreamAfter` (a stream's state follows its merge cells and cause) and `RankRefusesLanded` (a landed primary is never ranked), with eight reversed witnesses: `MCSprintTablesBrokenInsert` (an add that moves ready -> waiting without inserting, `ReadyToWaitingOnlyByInsert` fails), `MCSprintTablesBrokenNeedless` (a resolve that drops the needs check, `NeedsLandFirst` fails), `MCSprintTablesBrokenWithdrawready` (a needs withdrawal run working -> ready, `NeedsWithdrawalWaits` fails), `MCSprintTablesBrokenDownkeeps` (a fleet down that keeps a working card on the member that went down, `WorkingOnAnUpMember` fails), `MCSprintTablesBrokenShortAccept` (`AcceptHeld` fails) and `MCSprintTablesBrokenAcceptBroken` (`NeverAcceptBroken` fails), `MCSprintTablesBrokenLandunmerged` (a card lands from review, `MovesOnlyByTable` fails) and `MCSprintTablesBrokenReturnlost` (a card returned from merging is dropped, `NoCardLostOrTwice` fails). The instance is split into the fleet and reads side (`MCSprintTables.cfg`) and the merge side (`MCSprintTablesMerge.cfg`). The refmodel's pending-operation fence (D1: Free) is left out, and crash and repair are owed by the next card |
-| `SprintEvents.tla` | `MCSprintEvents*` | the upper layers of nova-sprint (layers 3 to 8 of the event-driven tick design, standing on the table layer's guarantees): the log turned into keys, due times in running time, the rules with plan and apply separate, the tick, the verbs; 29 reversed witness configurations (W1 to W27, W7 split in two, and W5's reach half, which breaks reach and unreach and not the verb), 27 of which fail with the property their row names while W1 and W25 pass because the design holds there in depth, each with its unbroken control; goal cases that fail for the seventeen holes the model found (thirteen in the design as written, four in repairs errata 3 decided, three of them decided in its amendment 2 and repaired here; H12 and H15 on the bench), each decided repair with a case that passes. The larger runs are in `sprintevents-bench/`, outside `CASES.tsv`. `README-SprintEvents.md` says the rest, including what is not modelled |
-| `SprintRules.tla` | `MCSprintRules*` | the machine feeding itself (docs/SPEC-SPRINT.md section 2, a card replaced by its twin; section 8, answered by rule; section 14, the fleet is idle; internal/sprint twins.go, rules.go, rules_read.go, idle.go, cmd/nova-sprint landgo.go), ten small machines each checked alone by its `Part`: **twins** (an old card, its twin, two waiting cards that need it; add --replaces re-points every waiting need in one step and drops the old card raising no blocked judgment, relink repairs a drop and an add made apart): `TwinsInherit` (no waiting card needs a replaced id), `NoBlockedForReplaced`, `NoDanglingNeed` (a waiting card that needs a dropped card has a judgment that says so); **rules** (one card's attempts under the failed and bound rules, tiers flash, pro, heavy, then a friend's card where a mind answers, escalating to the first served tier of the ladder above and skipping tiers no route serves): `RuleAttemptsBounded` (at most Cap attempts a tier on three tiers), `LadderClimbs` (never a lower tier), `EscalatesOnlyToServed` (a rule climbs only to a served tier, or a friend's card), `Answered` (every failure or bound is answered, under fairness of the rules and the mind); **late** (one late work card, its holder's progress stamps as an outside event, the one wait a generation, the hold of a card whose holder never stamped, the return and redeal of one that stamped and went silent, once its holder has had its own whole deadline): `WaitOnce`, `NeverStampedNeverReturned` (a card whose holder never stamps is never returned by the late rule), `HeldToItsOwnDeadline` (a stamped card is not returned before its holder's own deadline, or its one wait is spent), `ProgressIsStamped`, and the reachability witness `MCSprintRulesLateReachReturn` (`NeverReturned` fails: a card is still returned); **reads** (one card's attempts under a reader's broken reads: the finding the fix of a rework, a finding naming a file outside PATHS the card's PATHS widened in place, never a twin, its attempts from the first and never stopped at the brief's bound, any other card at its brief's bound a mind's): `ReadAnswersBounded`, `WidensWiden` (every widening widens PATHS by a file), `OutsideNeverBound` (a finding outside PATHS is never stopped at the bound under the widen cap), `WidensBounded` (at most MaxWidens widenings a card), `ReadAnswered`; **gate** (one base commit gated again and again): `BaseStopsOnThird`; **idle** (an idle fleet each tick, the window, the episode): `AlarmOncePerEpisode`, `ClearFollowsAlarm`; **answers** (one card's attempts under the broken-read, harness-fault and late-report answers: a broken read with a finding and a harness fault or a HOLD with findings reworked with it, a broken read with no finding and a failure no class names a mind's, a deadline's failure racing the worker's late LAND or HOLD): `AnswerAttemptsBounded`, `ReworkKeepsCount` (every rework is one attempt more), `ReworkCarriesHead` (each attempt starts from the head the one before pushed), `ReworkHasAFix`, `LateReportFinishes` (a report for an attempt the deadline failed, before a later attempt started, finishes it), `HarnessFaultBounded` (a harness fault is reworked at most once a card), `HarnessFleetHeld` (the same harness-fault class on `RuleSameFailureCards` cards is the fleet's one grouped judgment, which holds every card and never redeals it), `AnAnswered`, `PartsAgree` (the answers Part's verdict on a read-broken finding equals the reads Part's), `MarkOnlyOnVotes` (PR #273: a card is marked a brief defect only on its own same-finding or same-failure bound, or when its worker and brief ends since the last decision are at least its harness ends; a harness end counts toward max_attempts, never as a vote; reversed witness `MCSprintRulesAnswersBrokenHarnessVotes`, which marks on the cap alone), with eight reversed witnesses of their own (a rework with no finding, a rework not counted, a rework from the base, a stale refusal of the late report, a harness rework past the bound, a read-broken finding at the bound left to a mind, a harness fault reworked a third time, a card the fleet's grouped judgment holds redealt). **conflict** (one card whose head the lander refused, rules.go ruleConflict, ruleRedo, ruleBrief: the conflict rule returns it reset to flash, the redo reworks it on the tip one attempt more, the same way twice a brief defect held for a mind): `ConflictResetsToFlash` and `OnlyConflictLowers` (`LadderClimbs` restated: no rule but the conflict rule lowers a tier), with its reversed witness `MCSprintRulesConflictBrokenConflictKeeps` (the return leaves the tier a failure raised it to, `ConflictResetsToFlash` fails). Sixteen reversed witnesses, each breaking its property: a replace that does not re-point (`TwinsInherit`), one that drops in silence (`NoDanglingNeed`), a failed rule with no cap (`RuleAttemptsBounded`), a bound rule that lowers the tier (`LadderClimbs`), a rule that climbs to the next tier whether a route serves it or not (`EscalatesOnlyToServed`), a late rule that waits whenever there is progress (`WaitOnce`), a late rule that returns a card with no progress whether its holder stamped or not (`NeverStampedNeverReturned`), a late rule that returns a stamped card before its holder's own deadline (`HeldToItsOwnDeadline`), a base gate that stops on its first failure (`BaseStopsOnThird`), an idle alarm every tick of an episode (`AlarmOncePerEpisode`), a read-broken rule that reworks at the brief's bound (`ReadAnswersBounded`), one that widens on a finding inside PATHS (`WidensWiden`), a read that stops a finding outside PATHS at the bound (`OutsideNeverBound`), a rule that widens past the cap (`WidensBounded`), a read-broken answer that leaves a non-empty finding at the bound to a mind (`PartsAgree`), a harness rule that redeals a third time (`HarnessFaultBounded`), a harness rule that redeals a card the fleet's grouped harness-fault judgment holds (`HarnessFleetHeld`) |
-| `CoordinatorPass.tla` | `MCCoordinatorPass*` | the coordinator's pass (docs/SPEC-SPRINT.md section 8, "The coordinator's pass"; internal/sprint coordinator_pass.go): one condition on one subject (a friend's session deaf, a friend holding working cards that finishes none, judgments late on the coordinator) coming and going as an outside event, the tick's pass raising its judgment once an episode, raising it again in place every Every steps of running time while it holds, the coordinator's ack quieting it, the wait that holds it until a review time and raises it again when the time is reached and the condition still holds, and the close when it stops holding: `OneJudgmentAnEpisode`, `PushedEveryWindow`, `ClosedWhenCleared`, `RaisedWhileItHolds`, `PushedOnlyWhileRaised`, `WaitedRaisedAgainOnExpiry`. Four reversed witnesses: a judgment raised once and never again (`PushedEveryWindow`), a raise again that writes a second judgment (`OneJudgmentAnEpisode`), a judgment left open when its condition clears (`ClosedWhenCleared`), a wait that never expires its hold (`WaitedRaisedAgainOnExpiry`); the instance is Every = 2, MaxClock = 6. With Kind = "behind" (`MCCoordinatorPassBehind`, MaxClock = 7) the condition is read off the judgments late on the coordinator: several of them, each named by its own overdue line, and the pass's judgment is of the oldest still late, so when the coordinator answers the oldest the level falls to the next; its overdue line is the first reminder and the pass counts it from that line, so it is pushed once a tick at most (`OnePushATick`) and never a whole window without a push (`LateRemindedEveryWindow`); the reversed witness counts it from its deadline, and the line and the pass push in one tick (`OnePushATick`). With Kind = "empty" (`MCCoordinatorPassEmpty`, MaxClock = 7) the condition is an up friend's empty row while cards she could do wait, judged only after the empty-row clock is Every old and the clock closed whenever the conjunction is gone (`EmptyAWholeWindow`); the reversed witness keeps the clock while she is down and judges her on her first tick back. With Kind = "pin" (`MCCoordinatorPassPin`) the deal writes the judgment of a named pin placed on another row and the pass keeps that one note; the reversed witness has the pass write its own beside it (`OneJudgmentAnEpisode`). With Kind = "drift" (`MCCoordinatorPassDrift`) holds is the drift the facts say holds, and the facts may say nothing of a type: the third value "unknown" carries the open judgment (and the coordinator's wait on it) as they are, neither closing nor raising it (`UnknownCarried`); the reversed witness closes the judgment on "unknown" (`UnknownCarried`). |
-| `CoordinatorWake.tla` | `MCCoordinatorWake*` | the coordinator's wake (cmd/nova-sprint watchwake.go): one run reads the bus up to busBatch = 100 entries past the cursor, and one wake fires every ask that look read (named three, the rest counted) while a filtered message moves the cursor with no line; the judgments, the stop and the friends are level state, not cursors, and each can set and clear between looks. `AtMostOnce`, `NoLapse` over bus events alone, and `LevelSeenWhileItHolds` (a level event that holds a whole window wakes a run, unless it clears first). Three reversed witnesses: `nocursor` (the run fires every ask but writes no cursor: `AtMostOnce`), `skip` (the run fires the first ask and writes the cursor at the newest arrival: `NoLapse`), and `batchdrops` (the run fires only the first ask of the batch and writes the cursor past the rest: `NoLapse`); the instance is MaxBus = 4, MaxLevel = 2, Window = 2. |
-| `ReadCards.tla` | `MCReadCards*` | the read cards (docs/SPEC-SPRINT.md section 6, "A read is a consumer card"; internal/sprint read_cards.go): the deal cuts every read the attempt still needs at once, each a card on a different reader; a reader that closed, returned or let pass a read is never dealt it again, a read the machine took back spends no one and is dealt again under the next generation up to MaxReadGen 2; the primary merges only on the needed oks (need: 0, 1 or 2 by the setting or the tier's rule, ReadsNeededIn), and a merging card short of them goes back to review (ShortReadsBack); `TypeOK`, `OneOpenPerReader`, `AtMostNeedStanding`, `NeverTheWorker`, `NeverTwiceAfterSpent`, `MergingOnlyOnOks`, `NoOpenReadOfAnOldAttempt`; one reversed witness (a deal that forgets a spent reader breaks `NeverTwiceAfterSpent`). The readers table is ReadsByRoom's, below. |
-| `ReadsByRoom.tla` | `MCReadsByRoom*` | the ask of nova-sprint (docs/SPEC-SPRINT.md section 6, the reads, by room; internal/sprint readers.go `ReadsWanted`, `finderFirst`, `askFinders`, `askPicks`), two rules in one machine by a `Rule` constant: **parallel** (the code, the interim rule of 2026-10-06, `MCReadsByRoom.cfg`) asks a card's reads together, the rest it needs each attempt with an outstanding read counted among those that stand, none once a read found it broken; **sequential** (the design of 2026-10-04, `MCReadsByRoomSequential.cfg`) asks the first read alone and the rest once every read that stands came back ok. Two readers of widths 2 and 1, two pro cards, two attempts each; `WidthRespected` and `FinderFirst` hold under both rules, `ReadsPerLanding` is `Need` reads an attempt under parallel (a pro card broken once lands on four reads, `Need` times broken attempts plus one) and `Need` plus broken attempts under sequential; `OneAtATime` and `OneBroken` hold only under sequential (the parallel pair can be asked and can break together), and `NoAskWhileBroken` (the ask places no read once a read found it broken) and the liveness `Settles` hold under both. Five reversed witnesses: the parallel pair asked together breaks `OneAtATime` and `OneBroken`; readers asked whatever their room break `WidthRespected`; the rework's first read of any reader breaks `FinderFirst` (on the three-reader instance, so a card has a reader to spare); and the ask while a read is broken breaks `NoAskWhileBroken` (also three readers) |
-| `WorkImport.tla` | `MCWorkImport*` | nova-work v1 (docs/SPEC-WORK-V1.md section 1): an issue under import (absent, fetched, in the tree, mirrored, closed by the destructive mode, re-opened by export) and a repository's sync, with outside edits at any time; import and verify each take a scope, a subset of the repositories, the import writes only its scope's issues and records the scope in the tree (:scope), verify reads the tree's own scope by default and refuses a --repo outside it, so a verify never reports done outside the import's scope; a tree is written only whole for its scope, only a verify receipt at GitHub's current version licenses a close, an issue the import closed is held by the tree exactly, an external issue is never closed, export restores; six reversed witnesses |
-| `DirtyTick.tla` | `MCDirtyTick*` | the sprint machine's tick as the owner shaped it on 2026-09-30, before it is built: four tables updated in turn (work, readers, merge, fleet), a queue per table as its dirty bit, readers, merge and fleet drained until empty, the work table written only by the one pump at the start of each tick; placements by counter modulo the count, width, one wake at the tick's end; 16 reversed witnesses and three goals for the holes it found (a placement blind to the fleet's status never ends the tick; room read from an undrained fleet queue over-fills a machine; the v2.1 rules write the work table in their own steps). The readers' presence (`MCDirtyTickReader`, `MCDirtyTickReaderAway`, W21, W22) abstracts two things away from the Go code: `ReadsStandOnReadersUp` says a read is held only by a reader that is up at every state, but the code keeps a read already begun on a reader that went away (only a read asked and not begun is taken back), and the model has one read per card on a host while the code has none. The model's `raway` always finds a reader to ask again, but the code with fewer than two readers up takes nothing back and asks none, raising the one judgment `fewer than two readers up` instead. The deal's held-stream skip (`HeldStreamNotDealt`; control `MCDirtyTickHeldStream`, witness `MCDirtyTickBrokenDealHeldStream`) and, under ReadCost "half" (read cards on), its reads-before-work order at a read's half slot (`ReadsBeforeWork`; control `MCDirtyTickReadsFirst`, witness `MCDirtyTickBrokenWorkFirst`) are modelled, each off unless its scenario turns it on. `README-DirtyTick.md` says the rest |
-| `Timer.tla` | `MCTimer*` | nova-sprint's timers (docs/SPEC-SPRINT.md, "Timers"; `internal/sprint/timers.go`, `internal/sprint/store/timers.go`): an actor sets a timer with `remind`, the machine's tick reads the store's open timers and raises each one whose due time the clock has reached as one judgment addressed to its actor, closing it in the same step, and a restart loses the machine's memory and keeps the store; a timer is raised at most once, never before its due time, a cancelled timer never fires, and an uncancelled one is raised once the clock passes its due time under fair ticks; three reversed witnesses |
-| `RouteIndex.tla` | `MCRouteIndex*` | the deal's route choice (internal/sprint/route.go): each tier's route array taken at a uint64 counter modulo its length, one step a card dealt, a route with its first flag set drawn before the others of its tier, a redeal moved past the entries it leaves out (the FieldRoutes taken for the card), an entry the member cannot launch walked past as an unserved one, a resting route walked past too, a pinned card moving nothing, a read card drawn from the reader tier's array at the same index with its avoid set and tier collapse (pro to flash); 3 routes x 2 tiers x 7 cards (one a read); reversed witnesses: a random draw breaks RouteFair, a redeal that does not move past the excluded entry breaks ExcludedNeverDrawn, a read that leaves the index where it is breaks RouteIndexAdvancesOncePerCard, the deal before fault 10 breaks NeverUnlaunchable, the tick judging over every member breaks StrandedIsJudged, and the walk that ignores the first flag breaks FirstPreferred; one reach witness (ReachSkip) |
-| `Level.tla` | `MCLevel*` | the fleet's level (internal/sprint `level`, `round.levelTo`), the rebalance at the start of every tick and inside every planner that computes holds: one call's loop over every start of a bounded fleet (every up order, every start of the deal's index, members over their width, a card with a refuser). It ends by two guards, each enough alone: every move lowers the sum of squared backlogs by at least two (`PotentialFalls`), and a moved card is never queued again, so a call makes no more moves than there were ready cards (`MovesBounded`); no card lands on a member that refused it at staging, and an older card moves when the newest is blocked (`SelectionComplete`). Five reversed witnesses: the rule of the wedge of 2026-10-02 (nova-tools#5122) does not end, nor does the gap test removed, a moved card queued again moves twice, the gap tested only on the newest card stops early, the refusers not skipped lands a card on one |
-| `Land.tla` | `MCLand*` | `nova-sprint land` (cmd/nova-sprint/land.go): a batch of a stream's merge queue pushed to a remote base, then reported to the store through the merge step, with the outside between them (an accept anywhere in the queue, a return, a rework that replaces a card's head and keeps its id and epoch, another lander, a clear that moves the epoch, the base moving, a crash at any step); a head is <<card, attempt>>, and the check before the push and the push are separate steps, as in the code. It proves: the store records a card landed only at a head the base holds (LandedInBase), a card lands only with every card ahead of it (LandsInOrder), no push for a caller whose epoch the store was not at when read (CallerEpochCheckedBeforePush), no report records at an epoch the lander does not hold (ReportHoldsTheEpoch), and a batch pushed and not reported is recorded by running land again (Recovers, under fairness); since v1.2.6, the machine never offers to accept a card at the head the landing refused (NoOfferAtRefusedHead; reversed witness `MCLandBrokenOfferRefused`, the loop of 2026-10-11 in which about 30 cards went accept, refused, ready to accept, accept). It does not claim that no push follows a clear: a clear between the check and the push makes a push for an epoch just left (ReachStalePush reaches it), which nothing records and nothing undoes. Five reversed witnesses (the report before the push, the caller's epoch checked only after the push, a report with no guard, a guard on ids and not heads, a report with no epoch fence) and two reach witnesses (ReachStranded: the lander's own push for the store's epoch left unreported, marked by the ghost lpushed, to which a push for an epoch the store has left adds nothing; ReachStalePush). Recovers is proved only once the outside goes quiet (the instance caps outside events at 4), so it does not cover (a) a lander that crashes between the push and the report on every run, which never records the batch, or (b) a base that moves twice inside every read-to-push window: one rebuild, then the lander gives up (the rejected fact), every run; nothing is pushed or lost, the cards stay queued, and the coordinator resumes the stream and runs land again |
-| `LandPass.tla` | `MCLandPass*` | the land pass over several streams (cmd/nova-sprint/landpass.go; the owner, 2026-10-07: the merges in parallel, the merge after serial): each stream's batch cut from the base and gated once in its own worktree, up to a width at once; the green ones landed one at a time in priority order, a batch whose base moved merged again onto the new tip and pushed with no new gate when its files and the files landed since are disjoint, else gated once combined; the oracle of which trees are green enumerated over every tree, so a batch green alone and red combined is a behaviour. It proves `BoundHeld`, `BaseAdvancesGated` (every push is a gated tree or a clean merge of disjoint files onto one), `LandsOnce`, `BaseKeepsLandings` (the merge after never loses a landing), `RefusedStaysMerging` (a collision refusal leaves the batch queued), the action property `RefusalTouchesNoOtherStream`, and under fairness `Lands` (a batch green on every tree lands); six reversed witnesses (no combined gate, the own tip pushed over a moved base, a collision recorded as the conflict fact, a refusal that reverts the base, a disjoint merge's tip recorded as gated, a re-merge of no head reported landed); the next pass's base gate reads the record of gated trees (`CachedIsGreen`: a clean merge of disjoint files is never recorded, since two heads green alone can be red together) and a re-merge may merge fewer heads or none |
-| `ServerLanes.tla` | `MCServerLanes*` | the sprint server's line of control and its lanes (cmd/nova-sprint serve.go `serveCtx`, servelanes.go, seriallock.go, internal/sprint/control_line.go, internal/sprint/readers.go; docs/SPEC-SPRINT.md section 14, The server; 2026-10-04): the run loop's tick and each batch of line verbs (a write, read --begin, or a reader's queue, which is its beat) hold the one line in turn; a batch takes the next ticket and is served in ticket order (first come, first served), the tick takes the line at its turn (when no batch waits, or once its turn is due — after the holder in flight and before every batch still waiting), and a gone caller's ticket is served and handed back. A friend's beat runs on the beat lane and a read on the read lane (one read at a time), and any caller can go away at any time. A read's lease lives on a reader card in the Readers Reading column: read --begin (a line verb) begins it, the reader's served queue renews it (best effort, errors ignored), a lease not renewed lapses, and on start the server keeps every live lease and takes back the lapsed. It proves a line verb runs only holding the line (`WriteHoldsTheLine`), a waiting beat can always start whoever holds the line (`BeatNeverWaitsForTheLine`), a read waits for another read alone (`ReadWaitsOnlyForReads`), a verb whose caller went before it started never runs (`GoneNeverRuns`; TLC found the first cut's beat lane breaking it), the lanes never hold the line (`LanesHoldNoLine`), no batch is served before an earlier ticket still waiting (`FCFS`), the tick waits at most one turn (`TickWaitsOneTurn`), a live lease is never taken back (`LiveLeaseNeverTakenBack`), every lapsed read is taken back (`EveryLapsedReadTakenBack`), and every batch sent is answered or dropped (`EveryBatchEnds`, under fairness, on the smaller `MCServerLanesLive`). Five reversed witnesses: a beat on the line (`beatonline`, the code before the lanes), a read on the line (`readonline`), a write whose caller went still run (`rungone`, the sync.Mutex of 2026-10-04, which kept every timed-out beat in the line), the tick queued like a batch (`tickqueues`, which fails `TickWaitsOneTurn`), and the served queue never renewing (`norenew`, which fails `LiveLeaseNeverTakenBack`). It does not model what a verb does to the sprint, nor the tick's own length on the line |
-| `RateBudget.tla` | `MCRateBudget*` | the global rate limiter (pkg/ratebudget, internal/sprint/store/rate.go, cmd/nova-sprint rate_budget.go; the owner, 2026-10-11: "the rate limited should just stall out delay, not fail", "i don't want this rate limiter causing errors"): callers on any machines take a model's requests-per-minute window and a provider's concurrency lease before each model request, each take a WATCH read and a MULTI/EXEC that commits only if the key did not move; a lost race or a spent window releases the slot and the caller stalls; the request renews its lease best-effort (a renewal not written lets the lease lapse while the request still runs); a 429 that gets through is retried in place; a dead holder's lease runs out; a store that does not answer grants open. Time is ages, so the space is finite with no clock bound. It proves `NeverOverRate` (at most N recorded grants in any window), `NeverOverConcurrent` and `InFlightHeld` (each while every renewal inside its bound succeeds), `AbortedWriteReleasesSlot` (a lost race releases the slot), `Progress` (while anyone waits someone is eventually in flight, with demand and refusals unbounded) and, with each caller's requests bounded (`MCRateBudgetLive`), `StalledIsGranted` and `SlotReclaimed`. TLC found that without a queue a caller whose rival always asks first can be passed over forever; the waiters jitter their polls, and the bounded instance is the claim. Four reversed witnesses: an unguarded write (`MCRateBudgetBrokenRace`, `NeverOverRate`), a live holder whose renewal fails, so its lease lapses (`MCRateBudgetBrokenNoRenew`, the renew-failure case, `NeverOverConcurrent`), a dead holder's lease that never expires (`MCRateBudgetBrokenNoExpiry`, `SlotReclaimed`), and a holder that keeps its slot after an aborted write (`MCRateBudgetBrokenKeepSlot`, the pre-fix behaviour, `AbortedWriteReleasesSlot`). Clock skew between machines is not modelled: the window is a minute plus two seconds |
-| `LiveRuns.tla` | `MCLiveRuns*` | working against what really runs (internal/sprint/live.go `LiveReturns`, the tick's `live` part and the STOPPED tick's `LiveReturnStep`, internal/sprint/store/live.go `stopOwned`, machine_transition.go `unsettledStopDebt`, pkg/member/member.go `liveWords`; 2026-10-10, v1.2.6): a worker's beat carries its live set (each child it runs, each finished report it holds), a beat window counts a working card absent from it, and the tick, RUNNING or STOPPED, returns a card absent for the grace to ready at its next generation with its receipt. A `Legacy` row (a worker from before v1.2.6) carries no live set, so the reconcile skips it and its cards never return, and a take names its card in the live set only at the member's next pass, the grace from the take covering that lag. It proves working is a live run within the grace (`WorkingIsLive`, over the rows that carry a live set), no working card of a legacy row is returned by the reconcile (`LegacyNeverReturned`), a STOP debt entry owns its card only while the card is working at the captured generation (`StopMarkerIsWorking`) and an owned card leaves working only with its receipt (`OwnedLeavesWithReceipt`), no finished report is lost (`NoReportLost`) and no running child's card is returned (`NoRunReturned`) on a row whose beat carries a live set, and a return settles its entry off the debt so clear reads a debt that is owed alone (`DebtIsOwed`). `SettleByBeat` (settleStopDebtByBeat, on START's path) returns a STOP-owned card whose row has beaten since the STOP to ready at gen+1 with its receipt, without the owner's own stop-return, when the row's stop-returns count is zero and, on a row whose beat carries a live set, that set does not name the card running or held (`LiveNamedAt`); a `Legacy` row's beat names nothing, so its lease is settled by the count alone, as before #87, and a held report or a child that has not yet seen the STOP is lost there: `MCLiveRunsSettleByLegacy` checks the every-row forms `NoReportLostAll` and `NoRunReturnedAll` and expects them violated (a v1.2.14 candidate). Eight reversed witnesses: a STOPPED tick that returns nothing (the v1.2.5 tick: 59 stale takes on 2026-10-10), a legacy row reconciled as an empty set (its working cards returned), the grace from the take dropped (a card returned while its child still runs), a debt that owns a card by id until start (the v1.2.5 debt: hold refused friend.zhi's row after her stop-returns), a live set without the held reports (a finished report's card returned, its generation gone), a silent row's stale beat read as an empty live set (a card whose child still runs returned: the first cut of v1.2.6, found by its cold read; the reconcile judges only a fresh beat), and a reconcile that returns a card but leaves its receipt in the debt (the stale STOP of 2026-10-10 that blocked clear), and a beat settle that reads the row's stop-returns count alone, not its live set (`settlebycount`, the code before #87 for a machine lease: a finished card's held report settled and dealt again, its generation gone, `NoReportLost`); `MCLiveRunsReachStoppedReturn` shows a STOPPED tick returning a dead take. It does not model the friend daemon's lanes (nova-friend), the deal, or time beyond beat windows |
-| `StatsReset.tla` | `MCStatsReset*` | `nova-sprint stats reset` with `stats tidy` (internal/sprint/stats_reset.go, internal/sprint/store/stats_reset.go, stats_tidy.go): figures that grow, appear, and that a tidy shrinks by any subset of a row's finished cards (not the oldest first); ghosts count the cards since the mark and since a reset's read. The reset is two steps (its read, refused while a tidy is in flight, and its compare-and-set write, which reads again when the record moved), the tidy three (its marker with the mark it saw, the move, its end rebasing that mark by the moved cards finished before it), the tick's where record two (read, write; taken only at the table's revision and the record's stamp). `ShownIsSinceMark` (with no tidy in flight every shown figure is the cards since the mark still on the row: the epoch's less the mark's, never below zero), `RecordShowsShown`, `UnknownReadsAsBefore`; reversed: a tidy that keeps the mark's counter, one that lowers it by count, a reset with no wait and no compare-and-set with a tidy that rebases any mark (each `ShownIsSinceMark`), a where that takes a record by its revision alone (`RecordShowsShown`), a reset that reads every tidy marker as ended and clears it mid-move (`stale`, `ShownIsSinceMark`). A clock and `TidyStale`: a marker older than it is read as ended by the reset and the next tidy (TidyInFlight.Fresh); the design lets a tidy finish inside `TidyStale` (`SlowTidy` FALSE), and `MCStatsResetSlowTidy` (a tidy slower than `TidyStale` racing a reset) expects `ShownIsSinceMark` violated: the tidy's end rebases only the mark it saw, a v1.2.14 candidate |
-| `AttemptsEpochs.tla` | `MCAttemptsEpochs*` | the sprint's epoch and clear (docs/SPEC-SPRINT.md section 13; internal/sprint/store epoch.go, clear.go): the epoch hash's n, its restore marker, the per-epoch streams, readers and members, a step's pin, clear as the CAS on n (its advance by one, its settle of the restore it set, the members carried and the new epoch's streams and readers blank, a second concurrent clear writing nothing), a late writer of the old epoch refused as stale, and the pin's restore; and a card's attempt, generation and redeals (internal/sprint/steps_work.go deal, redeal, nextGen, liveGen; stop_return.go StopReturn; live.go LiveReturns; lane_hold.go laneGoneUnits; rules.go Progress): Deal cuts a new attempt's work card (attempt + 1, generation 1, refused when it exists already), Redeal deals a withdrawn card again (the same attempt, generation + 1, a redeal counted only when a take of it ended), the other generation steps step the generation with no redeal, and Launch is the card's push to its branch, one per generation. It proves `OldEpochWritesNothing` (a writer holding an old epoch writes nothing into the new one), `NewEpochBlank` (the new epoch is blank except the members), `OldEpochReadable` (a card written to an epoch stays there), `EpochMonotone`, `SuffixUnique` (no two launches share an attempt, a generation and an epoch) and `StaleGenRefused` (a report naming a generation that is not the live one is refused); three reversed witnesses, `noepochcheck` (breaks `OldEpochWritesNothing`), `keepgen` (keeps the generation on a redeal, breaks `SuffixUnique`) and `nogenguard` (takes a report of an old generation, breaks `StaleGenRefused`). The crash cut between `AdvanceEpoch` and `SettleEpoch` (restore left set, so the next pin copies the old streams and readers) is a v1.2.14 candidate and is not modelled. The redeal cap's judgment and the tier ladder are `DirtyTick`'s (`RedealsAreEndedTakes`, `RedealBoundHolds`) and `SprintRules`' (`LadderClimbs`) |
-| `ProviderFunds.tla` | `MCProviderFunds*` | a provider's funds over `RouteRest` (internal/sprint/provider_funds.go `providerRestsDue`, `providerConds`, `AllOutOfCredit`, `Funded`, `friendsKeepRunning`; balance.go; route_coordinator.go): `RouteRest` instantiated once for each of two providers with one enabled route each, so no rest rule is copied; two outstanding takes a provider, each launched after the last rest ended, stale or with no launch time (a finite order in place of `e.taken.After(last.Mark())`), a refusal for credit or the key resting the provider only from a take launched after the last rest ended; a payment the poll sees, funded and the coordinator's wake ending the rest and setting that mark (a timed coordinator's rest the clock ends is the same step as the wake); the poll writes no rest; `Judgments` defines providerConds' one judgment a provider, a definition the model does not check (funds or key before low, low only while no rest of its own holds); the tick stops the machine only when every provider rests for credit and no friend is up, and START is the coordinator's, refused while all are out unless a friend is up. It proves `StopOnlyWhenAllOut`, `LowNeverStops`, `NoFundsStopWhileFriendUp`, `StartIsTheCoordinators` and `RefusalsAfterLastEnd`, with three reversed witnesses: `MCProviderFundsBrokenLowIsOut` (Out counts a low balance: `LowNeverStops`), `MCProviderFundsBrokenNoFriendException` (no friend exception: `NoFundsStopWhileFriendUp`) and `MCProviderFundsBrokenStaleRefusal` (a refusal from a take launched before the last rest ended rests the provider again: `RefusalsAfterLastEnd`). Balance and spend arithmetic, the judgments' words and the STOP debt (`StopReturn`) are outside it |
+| h | h1 | answers j1, fenced on JudgementOpen(j1) |
+| h' | h2 | answers j1 with no fence: the write itself refuses a second close |
+| y | y1 | expires j1, fenced on JudgementOpen(j1) |
+| m | m1 | sets c1 to 2 |
+| m' | m2 | sets c1 to 1 |
+| m'' | m3 | sets c1 to 40, past any log this instance writes |
+| k | k1 | clears epoch 1 (c1 is kept) |
 
-### The fleet's level (Level)
+Left out:
+- streams, policy activation and the seq fence;
+- op times, and so the refusal of a close timed before `opened_at`;
+- the soft `after` list (it follows the needs rule; no store rule reads it);
+- the fields no rule reads. On cards and rows: attempt, author, branch,
+  base_sha, prior_head, head, pr, result, bounces, cost, priced, priority,
+  brief, paths, done_when, prose, reason, score and flaps, and the stop's
+  reason. On judgements: kind, about, question, command, group_key,
+  deadline, answer, actor and the times. They add columns, not behaviour.
 
-`Level.tla`: one call of the fleet's level (internal/sprint/steps_work.go
-`level`, round.go `levelTo`). On 2026-10-02 at 2:26 PM the call did not end:
-the emptiest member had refused the longest queue's newest card at staging, the
-card went to a member one below instead, the receiver became the donor and the
-card went back, a unit appended per turn under the server's mutex, until the
-process held 244 GB (nova-tools#5122). The module's header says what it holds
-and what it leaves out; the instances are in `MCLevel.tla`.
+## Files
 
-The model found one defect beyond the wedge, in PR #5127 as it stood: a card the
-call moved was appended to its receiver's queue, so it could be moved again in
-the same call. `MCLevelBrokenRequeue` is the call: widths 2, 1 and 3, members up
-in the order c, a, b, three ready cards on b, the middle one refused by c; b3
-goes b -> a, b2 b -> a, then a is the longest, its newest (b2) is refused by c,
-so b3 goes a -> c, and b1 b -> c: four moves for three ready cards. Checked by
-hand against the code at 0a79ad873 and by `TestLevelMovesNoCardTwice`, red there:
-the second unit of b3 is guarded on b3's place before the first unit, so the plan
-the engine writes is not the plan it computed (`fleet: b3.w1: revision 2,
-expected 1`). The code no longer queues a moved card again.
+- `Store.tla`, `Store.cfg`, `StoreRecords.cfg`: the model and its two
+  passing runs.
+- `witnesses/Store*`: sixteen reversed witnesses, each `Store.tla` with one
+  fault. They are generated: `python3 make-witnesses.py` writes every
+  witness and every cfg (`Store.cfg`, `StoreRecords.cfg`,
+  `witnesses/*.cfg`, `reach/*.cfg`) from `Store.tla` and the fault list in
+  the script. Each fault is a set of exact text replacements; one that no
+  longer matches stops the script. Edit `Store.tla`, rerun the script,
+  commit both.
+- `reach/Never*`: twenty-six reachability checks on `Store.tla`. Each must
+  be violated, which shows the passing runs are not vacuous.
 
-Run on a macOS arm64 working machine, not the bench (TLC 2.19, jar SHA-256 `936a2620...`, OpenJDK 27, one worker,
-niced, 2026-10-02 ET), the eight cases with `-lncheck final -deadlock`; the bench
-records in `RUNS.tsv` are owed (the class test is red for these eight until a
-Linux bench run is merged):
+In each witness cfg the target invariant is listed first: when one state
+breaks several invariants, TLC names the first in the list.
 
-| config | result | distinct states | time |
+Retired witnesses:
+- `StoreTwoHolders`: it modelled the holder as a set so that a set holder
+  write could add a second row. With the holder fixed at add and no holder
+  write, SingleStateSingleHolder holds by construction.
+- `StoreServesStale`, and with round 22 StoreServesUnchecked and
+  StoreTiersNarrowed: the store no longer reads tiers (ServesHeld went).
+- With round 22, StoreWidthStale, StoreWidthUnchecked, StoreWidthPerOp,
+  StoreWorkEntryUnchecked, StoreWidthCountsDone and StoreWidthCountsReady:
+  the store no longer reads width (WidthKept went). StoreWidthInStore now
+  shows that a store-side cap is a spurious refusal.
+
+## Running
+
+Run TLC on a bench host, never on the working machine. `ci-tlc.sh` is the
+gate. It runs every module in parallel:
+- `Store.tla` must pass with `Store.cfg` and with `StoreRecords.cfg` (TLC
+  exit 0);
+- `CardMachine.tla` must pass with each of its scenario cfgs;
+- every `witnesses/*.tla` and every `reach/*.cfg` must report a violation
+  (TLC exit 12) of the first invariant in its cfg. `reach/Card*.cfg` run on
+  `CardMachine.tla`, every other reach cfg on `Store.tla`.
+
+It exits non-zero on any other outcome: a pass where a violation is
+required, a violation of a different invariant, a parse error, a crash, or a
+run that wrote no result. It uses a pinned, sha256-checked `tla2tools.jar`
+(v1.8.0), gives each run its own `java.io.tmpdir`, and passes
+`-noGenerateSpecTE`, so a rerun in the same tree never sees trace modules.
+
+```
+bash ci-tlc.sh
+```
+
+The helper scripts:
+- `sh run-tlc.sh /path/to/tla2tools.jar [java]` runs the same set, one log
+  per run in `logs/`;
+- `sh run-one.sh` runs a single one;
+- `sh summarize-logs.sh` prints the result lines;
+- `sh show-trace.sh <name>` prints a counterexample's event ids, and
+  `sh show-all-traces.sh` does it for every violated log;
+- `sh last-state.sh <name>` prints the epoch, cards and rows of a
+  counterexample's last state.
+
+## Invariants
+
+- **TypeOK**: every variable stays in its type.
+- **SingleStateSingleHolder**: every card has exactly one state from the
+  closed set (or is absent), at most one holder, and that holder is a row of
+  this epoch.
+- **ProducerNeverHeld**: no producer or sentinel has a holder.
+- **RedOnlyOnProducers**: only a producer is ever red.
+- **ConsumersWellFormed**: a consumer names an existing producer, has no
+  needs, has a holder, and has its producer's tier; a producer or sentinel
+  names none.
+- **IdempotentById**: no op id appears twice in the event log.
+- **AppliedIsLog**: the op ids the store remembers are exactly the ids in the
+  log.
+- **LogMatchesState**: folding the accepted events from empty gives the
+  current state. Rebuild applies each accepted event's writes and never
+  rechecks a condition or a write rule. Checked as a chain (the fold by
+  induction): each event starts where the one before ended, each accepted
+  event's after-state is its writes applied to its before-state, and the
+  last ends at the current state.
+- **OpsInTheirEpoch**: every accepted op, clear included, was planned against
+  the epoch the store was at when it applied.
+- **ConditionsAtomic**: every accepted op's conditions held in the state
+  immediately before its own writes.
+- **NoChangeOnRefusal**: a refused op changed nothing.
+- **NoSpuriousRefusal**: every refusal has a cause in the spec (the epoch, a
+  condition, or a write rule as the design states it), so a store rule
+  stricter than the design (a width cap, say) is caught.
+- **GenPerOp**: each accepted op raises the gen of each card and row it
+  writes that existed before it by exactly one; one it creates is at 0; a
+  clear raises every carried row's gen by one.
+- **ClearCarriesRows**: a clear keeps every row's held flag, session and
+  role, sets it down, leaves no card or judgement, and keeps every cursor,
+  the policies and the stop.
+- **HookKept**: no accepted op moves a row from one session straight to
+  another; it is unhooked between.
+- **JudgementClosedOnce**: within an epoch, at most one accepted op answers
+  or expires a given judgement: no second answer, and never both answered
+  and expired.
+- **CursorMonotone**: no accepted op, a clear included, moves a cursor back.
+- **CursorWithinLog**: no cursor is past the seq of the last event.
+- **LogAppendOnly**: the events table is exactly what was committed, in
+  order (`events = ledger`): no event was updated or deleted.
+- **PolicyImmutable**: a policy version, once put, keeps its body; no op
+  (a clear included) changes or removes it.
+- **ReceiptMatches**: a caller that thinks it knows the outcome holds exactly
+  the stored receipt.
+
+## Expected results
+
+| Module | Fault | Expected |
+|---|---|---|
+| `Store` (deal) | none | pass |
+| `Store` (records) | none | pass |
+| `StoreNoEvent` | an accepted op lands without its event | LogMatchesState violated |
+| `StoreReplayApplies` | Replay runs the op again and logs it again | IdempotentById violated |
+| `StoreStaleCheck` | conditions judged on a snapshot read before another op's commit (no lock) | ConditionsAtomic violated |
+| `StoreEpochUnfenced` (records) | ops other than clear are not epoch-checked | OpsInTheirEpoch violated |
+| `StoreProducerHolds` | add card accepts a holder on a producer or sentinel | ProducerNeverHeld violated |
+| `StoreSentinelHolds` | add card refuses a holder on a producer but not a sentinel | ProducerNeverHeld violated |
+| `StoreRowStale` | RowGen is not checked | ConditionsAtomic violated |
+| `StoreRedOnConsumer` | set red accepts a consumer | RedOnlyOnProducers violated |
+| `StoreWidthInStore` | the store caps a row at one working consumer | NoSpuriousRefusal violated |
+| `StoreHookStolen` | put row lets another session hook a hooked row | HookKept violated |
+| `StoreStopDropped` | a clear resets the stop | ClearCarriesRows violated |
+| `StoreJudgementTwice` (records) | answer and expire refuse only an absent judgement | JudgementClosedOnce violated |
+| `StoreCursorBack` (records) | set cursor accepts a lower value | CursorMonotone violated |
+| `StoreCursorPastLog` (records) | set cursor is not bounded by the log | CursorWithinLog violated |
+| `StoreLogTampered` | an UPDATE on events (no append-only trigger) | LogAppendOnly violated |
+| `StorePolicyRewritten` | put policy writes the latest version, not the next | PolicyImmutable violated |
+| reach `NeverTaken` | none | a1 is accepted |
+| reach `NeverRecovered` | none | a caller left unknown reaches done |
+| reach `NeverStaleEpochRefused` | none | an old-epoch op after the clear is refused |
+| reach `NeverNeedsReady` | none | s9 passes NeedsLanded |
+| reach `NeverNewEpochOp` | none | k2 is accepted in epoch 2 |
+| reach `NeverTwoWorking` | none | r1 holds two working consumers (u1, u2) |
+| reach `NeverProducerRefused` | none | s3 is refused |
+| reach `NeverSentinelRefused` | none | s4 is refused |
+| reach `NeverHeldCarried` | none | r1's hold survives the clear |
+| reach `NeverHeldRefused` | none | a1 is refused on RowHeld after g1 |
+| reach `NeverRowDown` | none | e1 sets r1 down |
+| reach `NeverRowFenced` | none | e1 is refused on a stale RowGen |
+| reach `NeverTwoPolicies` | none | s13 adds policy version 2 |
+| reach `NeverRed` | none | s14 sets p2 red |
+| reach `NeverRedKindRefused` | none | s15 and s16 are refused by the red write |
+| reach `NeverSameRedRefused` | none | s17 is refused as changing nothing |
+| reach `NeverHookRefused` | none | s18 is refused: x holds r2 |
+| reach `NeverRehooked` | none | s20 hooks r2 by y as coordinator |
+| reach `NeverDealtStopped` | none | a1 lands while the sprint is stopped |
+| reach `NeverSameStopRefused` | none | s22 is refused as changing nothing |
+| reach `NeverAnswered` (records) | none | j1 is answered |
+| reach `NeverJudgementFenced` (records) | none | a second fenced close of j1 is refused on JudgementOpen |
+| reach `NeverCursorRefused` (records) | none | m2 is refused below c1's value |
+| reach `NeverCloseRefused` (records) | none | the unfenced h2 is refused by the write after j1 closed |
+| reach `NeverCursorPastRefused` (records) | none | m3 is refused past the log |
+| reach `NeverCursorCarried` (records) | none | c1 keeps its value across the clear |
+
+## Results, tla2tools v1.8.0 (the CI jar) on hetzner2, 2026-11-06 (round 22)
+
+`ci-tlc.sh` ran twice. Run 2 (at be090aa7) gave 43 of the 44 store results
+as required and one FAIL: StoreEpochUnfenced passed. Its fault no longer had
+an op to land: the deal scenario's only unfenced epoch-1 op (v1, a tiers
+write) went with tiers, and every other epoch-1 deal op is refused in epoch
+2 by a fence or a write rule (the clear raises r1's gen and sets it down,
+and leaves p2 behind, which b1's consumer names). The witness now runs the
+records scenario, where the unfenced m1 can land after the clear. Run 3 (at
+6f525549, a comment-only change to `Store.tla` besides that) was green: 87
+ok, 0 FAIL, exit 0, the 44 store results among them. The numbers below are
+from run 2's logs (`Store.tla`'s behaviour is the same at both commits);
+run 3's working directory is removed by the script on exit, so the
+StoreEpochUnfenced row has only its result line.
+
+| Module | Result | States generated / distinct | Depth | Time |
+|---|---|---|---|---|
+| `Store` | No error has been found | 120727 / 70838 | 33 | 01min |
+| `StoreRecords` | No error has been found | 74687 / 39165 | 31 | 53s |
+| reach `NeverAnswered` | violated | 27 / 27 | 24 | 06s |
+| reach `NeverCloseRefused` | violated | 57 / 54 | 25 | 06s |
+| reach `NeverCursorCarried` | violated | 78 / 73 | 25 | 07s |
+| reach `NeverCursorPastRefused` | violated | 32 / 32 | 24 | 06s |
+| reach `NeverCursorRefused` | violated | 84 / 78 | 25 | 06s |
+| reach `NeverDealtStopped` | violated | 24 / 24 | 24 | 05s |
+| reach `NeverHeldCarried` | violated | 77 / 72 | 25 | 05s |
+| reach `NeverHeldRefused` | violated | 72 / 68 | 25 | 05s |
+| reach `NeverHookRefused` | violated | 19 / 19 | 19 | 06s |
+| reach `NeverJudgementFenced` | violated | 58 / 55 | 25 | 05s |
+| reach `NeverNeedsReady` | violated | 10 / 10 | 10 | 03s |
+| reach `NeverNewEpochOp` | violated | 86 / 80 | 25 | 06s |
+| reach `NeverProducerRefused` | violated | 4 / 4 | 4 | 03s |
+| reach `NeverRecovered` | violated | 40 / 40 | 25 | 04s |
+| reach `NeverRed` | violated | 15 / 15 | 15 | 05s |
+| reach `NeverRedKindRefused` | violated | 17 / 17 | 17 | 05s |
+| reach `NeverRehooked` | violated | 21 / 21 | 21 | 05s |
+| reach `NeverRowDown` | violated | 28 / 28 | 24 | 06s |
+| reach `NeverRowFenced` | violated | 76 / 71 | 25 | 07s |
+| reach `NeverSameRedRefused` | violated | 18 / 18 | 18 | 05s |
+| reach `NeverSameStopRefused` | violated | 23 / 23 | 23 | 04s |
+| reach `NeverSentinelRefused` | violated | 5 / 5 | 5 | 03s |
+| reach `NeverStaleEpochRefused` | violated | 80 / 75 | 25 | 05s |
+| reach `NeverTaken` | violated | 24 / 24 | 24 | 04s |
+| reach `NeverTwoPolicies` | violated | 14 / 14 | 14 | 04s |
+| reach `NeverTwoWorking` | violated | 109 / 94 | 26 | 04s |
+| `StoreCursorBack` | Invariant CursorMonotone is violated | 84 / 78 | 25 | 08s |
+| `StoreCursorPastLog` | Invariant CursorWithinLog is violated | 32 / 32 | 24 | 07s |
+| `StoreEpochUnfenced` | Invariant OpsInTheirEpoch is violated (run 3; see below) | | | |
+| `StoreHookStolen` | Invariant HookKept is violated | 19 / 19 | 19 | 05s |
+| `StoreJudgementTwice` | Invariant JudgementClosedOnce is violated | 57 / 54 | 25 | 06s |
+| `StoreLogTampered` | Invariant LogAppendOnly is violated | 4 / 4 | 3 | 03s |
+| `StoreNoEvent` | Invariant LogMatchesState is violated | 2 / 2 | 2 | 02s |
+| `StorePolicyRewritten` | Invariant PolicyImmutable is violated | 14 / 14 | 14 | 04s |
+| `StoreProducerHolds` | Invariant ProducerNeverHeld is violated | 4 / 4 | 4 | 03s |
+| `StoreRedOnConsumer` | Invariant RedOnlyOnProducers is violated | 16 / 16 | 16 | 04s |
+| `StoreReplayApplies` | Invariant IdempotentById is violated | 40 / 40 | 25 | 07s |
+| `StoreRowStale` | Invariant ConditionsAtomic is violated | 68 / 64 | 25 | 07s |
+| `StoreSentinelHolds` | Invariant ProducerNeverHeld is violated | 5 / 5 | 5 | 03s |
+| `StoreStaleCheck` | Invariant ConditionsAtomic is violated | 415 / 279 | 49 | 14s |
+| `StoreStopDropped` | Invariant ClearCarriesRows is violated | 30 / 30 | 24 | 07s |
+| `StoreWidthInStore` | Invariant NoSpuriousRefusal is violated | 109 / 94 | 26 | 09s |
+
+The counterexamples were checked by hand against the event ids of each
+last state. Every one starts with the setup (s1..s22, with s3, s4, s7,
+s15..s18 and s22 refused as designed), then:
+- **StoreNoEvent:** s1 lands with no event.
+- **StoreLogTampered:** s1's event is updated from accepted to refused.
+- **StorePolicyRewritten:** s13 overwrites version 1's body (in setup).
+- **StoreProducerHolds / StoreSentinelHolds:** s3 (producer p1 held by r1)
+  and s4 (sentinel t1 held by r1) are accepted.
+- **StoreRedOnConsumer:** s15 sets the consumer u3 red (in setup).
+- **StoreHookStolen:** s18 hooks r2 by y while x holds it (in setup).
+- **StoreReplayApplies:** a1 is accepted, its reply is lost, and the retried
+  Apply runs a1 again (refused, u1 exists) and logs it a second time.
+- **StoreStaleCheck:** a1 begins with r1 up, e1 sets r1 down, a1 lands.
+- **StoreRowStale:** e1 lands, then g1 lands on RowGen(r1, 0) although e1
+  raised r1's gen to 1.
+- **StoreWidthInStore:** a1 deals u1 working to r1, b1 adds u2 ready, b2 is
+  refused by the store's cap: no rule of the design refuses it.
+- **StoreStopDropped:** after s21 stopped the sprint, k1 opens epoch 2
+  running.
+- **StoreJudgementTwice:** h1 answers j1, then the unfenced h2 answers it
+  again.
+- **StoreCursorBack:** m1 sets c1 to 2, then m2 sets it to 1.
+- **StoreCursorPastLog:** m3 sets c1 to 40 with 22 events in the log.
+- **StoreEpochUnfenced:** run 3 named OpsInTheirEpoch; its trace was not
+  kept. By the model the shortest is k1 clears, then the epoch-1 m1 sets c1
+  to 2 in epoch 2.
+
+# The card machine (layer 2)
+
+`CardMachine.tla` models `docs/LAYER-2-CARD-MACHINE.md` (v2 at 2b0fe77c,
+with its sections "Rulings from the first cold read of layer 2", "Rulings
+from the card model", "Rulings from the second cold read of layer 2" and,
+at v2 3c9d3b89, "Rulings from the third cold read of layer 2 and the card
+model"):
+producer and consumer cards, every event of the producer, consumer and row
+tables as an action, Add, AskReads, WaiveRed, UnholdStream, blocker
+preemption, the stream's hold with Park in the same op, hard needs with
+Waive and Relink, soft `after` (an order edge only; see round 4), and the
+sentinel. An action's
+guard is the design's from-state plus its conditions;
+an event that does not match is not enabled (the Go code refuses it with a
+value, which changes nothing). The model is the reachable state space of
+accepted moves.
+
+Consumers are slots: producer p's i-th cut consumer is `<<p, i>>`. Start and
+AskRead cut the next slot, so a producer is never in `working` without its
+consumer. Width is the store's write guard on Take: working consumers only,
+never ready ones. A producer carries `review`, its count of entries into
+review (Finished and Red raise it); a read carries the producer's `review` at
+cut, and ReadYes needs a done ok read (ReadFix a done fix read) of the
+current head whose `review` equals the producer's.
+
+The rulings modelled: a Withdraw of the working producer's work consumer
+releases the producer in the same step (Preempt's Withdraw too), so
+Released and Block from working are kept as the tables have them but are
+never enabled; Broken, Faulted, ReadFix, Released and that release write the
+producer parked (waiting) when the stream is held; a work consumer reports
+ok, fail or fault, a read ok, fix or fault; an ok work head is neither the
+base nor the attempt's prior_head (the producer's head at Start); AskRead
+refuses a row already holding a live read of this head; Replace names an
+existing other card; a sentinel takes no Start, AskRead, Edit or Rescore,
+and takes SetPriority and Relink; Relink's target is a producer (a
+sentinel too since round 4); Take is
+refused on a down row and allowed on a held one; preemption withdraws a
+working consumer only and counts open rows (up, not held); Add puts a card
+with needs and after (producers or sentinels: a sentinel may be a need),
+refusing a cycle through either.
+
+From the second cold read: AskReads cuts reads on several rows in one step,
+each checked as AskRead checks it, into distinct consecutive slots;
+WaiveRed moves a producer from review to merging with no new read when a
+done ok read of the previous review at the same head exists, with no live
+consumer; Start copies the producer's finding to the new work consumer;
+Replace names a non-final producer or sentinel; UnholdStream is an event.
+
+Round 4 (the third cold read, card/ at v2-card-fix3 4a085774): a Red is
+recorded on the producer as a flag `red` (the producers-only card column
+`red`; the code holds it in `pr` until the store has the column): Red sets
+it, Finished, Start and Preempt's Start clear it, and WaiveRed requires it.
+The prior-read check alone does not imply it: a Finished can come back to
+an already-read head (Block and Unblock out of review, an attempt withdrawn
+with another head, an attempt reporting the old head), and only the red
+check refuses WaiveRed there (CardWaiveRedWithoutRed). `finding` is written
+only by ReadFix: Broken and Faulted keep it (the code writes a return's
+reason to `reason`, never `finding`). Relink takes a sentinel target as Add
+does. Landed has no after check: a landing never holding on a soft after is
+layer 3's landing step, so AfterNeverHolds and AfterKept are gone and
+`after` is read only by the cycle checks. Merge is sequential composition:
+the model's steps are already one plan each, so a merge is consecutive
+steps and nothing changes; Preempt stays the one step (Withdraw and Start
+on two cards) the code's plan is. HoldStream parks exactly the ready set
+it lists; the model parks the whole ready set, the list layer 3 owes.
+A preempt Withdraw requires the consumer working, as Preempt already did.
+The reasons ("held: ...") are not modelled.
+
+Rounds 5 and 6 (card/ at v2-card-fix4 b2b0b8c2, and the ruling after the
+fourth cold read): Merge composes moves. An op is an ordered list of up to
+`MaxOp` moves, nested merges flattened first, each planned against what
+the earlier ones left: in the model the moves of an op are consecutive
+steps, `op` counts the moves of the open op and `snap` is the state it
+started from. A consumer cut earlier in the op is live for the next move;
+the stream, rows and cards are the folded ones; a move's conditions are
+the first-read value of each field, minus the fields an earlier move of the
+op wrote, and the store checks them against `snap` (FencesOnSnapshot). A
+sequence legal one by one is one op (Red then WaiveRed included). The
+preempt guard runs on the whole op for Withdraws flagged preempt
+(`PreWithdraw`): with a blocker's Start in the same op, the withdrawn
+consumer is working on the row that Start names (PreemptOnBlockerRow; `pw`
+and `bs` keep the rows of the op's preempt Withdraws and blocker Starts).
+`MaxOp` is read off the scenario (merge 3, mergepre and mergedeps 2, every
+other 1), so a cfg that names none has ops of one move.
+
+Round 7 (the rulings after the fifth cold read,
+`BRIEF-V2-CARD-ROUND7-draft-2026-11-07.md`), modelled ahead of the code
+(card/ at v2-card-fix4 b2b0b8c2 has not taken them; see the divergences
+below):
+- Ruling 1, ids without dots: cards and consumers share one namespace,
+  fenced absent on every Add and every cut (Start, AskRead, AskReads), and
+  consumer ids are the code's (`<p>.w<attempt>`, `<p>.r<review>.<n>`,
+  `ConsName`). deps carries the id `p1.w1`, which Add refuses for its dot;
+  without that refusal it is added before p1 starts and p1 can never cut
+  its first work consumer (CardDottedId, NeverStranded). IdsDistinct states
+  the namespace. The 104-byte cap is a value check with no state.
+- Ruling 2, InThisOp: legal only as a later move of an op whose earlier
+  move failed the need, checked on the folded need state (`InThisOpLater`,
+  `InThisOpFolded`); alone it is refused (CardInThisOpAlone,
+  InThisOpOnFailedNeed). With `MaxOp` 1 the op is the one step it was
+  (Cancel and the dependant's move together). "Drops it" is read as the
+  earlier move writing the need to fail (Cancel or Replace).
+- Rulings 3 and 8, Preempt as an event field, on the flattened list: the
+  guard reads only Withdraws flagged preempt (`PreWithdraw`); a plain
+  Withdraw (`PlainRows` is empty) merges with a blocker's Start on another
+  row (PlainWithdrawUnguarded, CardPlainWithdrawGuarded); a nested Start
+  never skips it (CardMergeNestedStart).
+- Rulings 4 and 11, composition: each move reads the folded state, the last
+  write wins, and nothing refuses a second write (MergeParksResolved:
+  HoldStream later in an open op is always enabled, so Merge(Resolve,
+  HoldStream) parks what the Resolve readied; CardMergeSecondWrite). The
+  order-independence test for ReportPlan and row-hold pairs is the code's:
+  no guard of Report or the producer moves reads a row's hold.
+- Ruling 6: Start copies `finding` only (reason is not modelled); a fail or
+  fault report may omit the head, and a head given differs from the base
+  and the prior head for every result (CardFailRepeatsPrior); ReadFix with
+  an empty finding is refused, so ReadFix always writes one (FixSaysWhat,
+  CardReadFixEmpty). The reason-only Edit of a parked producer is a refusal
+  on `reason`, which no other guard reads, so it is not modelled (Edit is a
+  stutter here).
+- Ruling 7, `seen` is the records read before any write (CardMergeOwnWrites,
+  FencesOnSnapshot) and the review counter is folded once: it rises by one
+  on Finished and Red and on nothing else (ReviewOnEntry,
+  CardMergeReviewTwice: Report then Finished in one op raising it by two).
+- Ruling 9, hand-built plans: a move's record is the real one with its
+  fields written; a merged move writing a partial record (missing fields at
+  their zero values) resets what it did not name (CardHandPlanPartial:
+  Start then SetPriority in one op resets the attempt, AttemptOnlyOnStart).
+- Rulings 5 and 10 (wording) and 12 (the walk, the PG mirror, card/README)
+  are the code's.
+
+`last` is a step monitor. `StepRule` reads the state before and after each
+step and records the step rules it broke (`last.bad`). It is shared by every
+action and part of none, so a fault in an action is caught there; it keeps
+only four event names (NeedFailed, Preempt, AskReads, InThisOp, for their
+reach checks), so states
+are not split by the move that reached them.
+
+## The instance: seven scenarios
+
+| cfg | Scenario | producers | needs | K | heads | attempts | env moves |
+|---|---|---|---|---|---|---|---|
+| `CardMachine.cfg` | `life` | p1, sentinel s | s needs p1 | 3 | 2 | 2 | 2 |
+| `CardDeps.cfg` | `deps` | p1, p2, sentinel s, sentinels a and p1.w1 (absent until Add; Add refuses p1.w1) | p2 needs p1, s needs p2 | 2 | 1 | 1 | 1 |
+| `CardPreempt.cfg` | `pre` | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 2 |
+| `CardReads.cfg` | `reads` | p1; rows r1, r2, r3 | none | 3 | 1 | 1 | 1 |
+| `CardMerge.cfg` | `merge` (life, ops of 3 moves) | p1, sentinel s | s needs p1 | 2 | 1 | 1 | 1 |
+| `CardMergePre.cfg` | `mergepre` (pre, ops of 2) | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 1 |
+| `CardMergeDeps.cfg` | `mergedeps` (deps, ops of 2) | as deps | as deps | 2 | 1 | 1 | 0 |
+| `witnesses/CardWaiveRedWithoutRed.cfg` only | `redw` (Scenario life) | p1, sentinel s | s needs p1 | 5 | 2 | 3 | 0 |
+
+- `life` carries the whole lifecycle: a fix, a Red with a yes after it, a
+  fault re-dealt, the sentinel reached.
+- `deps` is the brief's pair (c2 needs c1) plus the sentinel: NeedFailed,
+  Waive, Relink, their InThisOp forms and the cycle check, and Add of a
+  second sentinel. One environment move: with two, Add's choices took it
+  past 6M states.
+- `reads` has a third row, so AskReads has two rows that are not the author
+  (with the third row in `deps` that run passed 24M states unfinished).
+- A Red is a CI result, so it spends the environment budget; as a free move,
+  Red and WaiveRed looped.
+- `redw` is `life` sized for one witness: WaiveRed without its red check
+  needs a third attempt (see round 4); it is never a passing run.
+- `pre` exists because a blocker can only preempt the consumer of another
+  producer live at the same time, which the `deps` pair never is (p2 waits
+  for p1 to land). Its environment budget goes to SetPriority, the row table
+  and the stream's hold; Edit and Rescore are checked in the other two.
+
+Bounds that are the model's, not the design's: K consumer slots per
+producer; attempt stops at the attempts column (Start is not enabled past
+it); bounces stop at 1 (a work consumer does not report fail, nor a read
+fix, at it, so a reported consumer is never stuck); flaps stop at 1; scores
+are 0..1; widths 1..2; priority is normal or blocker. The environment and
+coordinator moves (Add, Rescore, SetPriority, Edit, Seen, Gone, Width, Hold,
+Unhold, the stream's hold) share a budget per behaviour; every
+card and consumer move is unbounded but for the slots. Rows start up, width
+1, not held. Head 0 is "no head" and the base commit, so an ok work head
+always differs from base_sha.
+
+Left out, because no guard reads them: branch, base_sha, reason, finding,
+brief, prose, paths, done_when, cost, priced. Edit writes only prose, paths
+and done_when, so in the model it moves nothing but the monitor.
+
+The model is matched to card/ at v2-card-fix3 4a085774. Of the data
+columns, these are read by a transition and so are model state: head,
+prior_head (an ok or pushed work head, reported or withdrawn, is refused
+when it equals the base or the prior head, and a ready work consumer
+withdraws with none), review, author, red, finding (as "fix" or none:
+ReadFix writes it, Start copies it; in the code it is the reader's text and
+written only when non-empty and changed). These
+are not: reason, brief, cost, priced (written, read by no guard); prose,
+paths and done_when are read only by Edit's own "changes nothing" refusal,
+which moves no other state, so Edit is a stutter here. HoldStream's AtSeq
+fence is the atomic step itself: the model parks exactly the ready set of
+the state it steps from, which is what a plan fenced at the snapshot's seq
+can apply. NeedFailed, Waive and Relink {InThisOp} are one step together
+with the Cancel of the need. Relink names a producer or a sentinel and walks
+needs and after for a cycle, so the two cycle witnesses fault only the
+cycle check.
+
+## Files
+
+- `CardMachine.tla` and its seven passing cfgs.
+- `witnesses/Card*.tla`: thirty-six reversed witnesses; `reach/Card*.cfg`:
+  seventeen reachability checks. Generated with every card cfg by
+  `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
+  in the script, in the same shape as `make-witnesses.py`: a replacement
+  that no longer matches stops the script.
+- `card-trace.py`: `python3 -I card-trace.py logs/<name>.log` prints a card
+  counterexample one line per state (TLC names every step `<Next>`, so the
+  move is read off the diff).
+
+## Invariants
+
+State invariants:
+- **TypeOK**, **SlotsDense** (the cut slots are 1..ncut).
+- **ProducerNeverHeld**: the holder lives on the consumer only (structural).
+- **WorkingOneWorkConsumer**: at most one live work consumer; a live one is
+  the current attempt's and its producer is working; a working producer has
+  its current attempt's work consumer, never withdrawn (the invariant as the
+  tables have it, per the card model's ruling).
+- **WorkingLeavesInOneStep**: a working producer with no live consumer (its
+  consumer reported) has a leaving move enabled: Finished, Broken, Faulted,
+  Released or Block.
+- **ParkedUnderHold**: no producer is ready in a held stream after any step.
+- **NeverStranded**: every non-final producer with no live consumer has a
+  move of its own enabled (not counting the coordinator's Cancel, Replace,
+  Block, Edit, Rescore, SetPriority), or waits on a need that can still
+  move, an after-target that is merging, or (waiting, ready, review) a row
+  coming back or a hold lifting. A ready producer at the attempt bound, or
+  one with no slot left, is exempt as the model's limit.
+- **ReadOnlyInReview**: a live read only in review, of the current head and
+  review count.
+- **ReaderNeverAuthor**: a live read's holder is never the producer's author.
+- **WidthKept**: working consumers per row ≤ width.
+- **TakeBelowWidth**: a ready consumer can always take while its row is up
+  (held or not) and its working count is below width (ready ones are not
+  counted).
+- **NeedFailedTakesDependants**: when a need has failed and the dependant is
+  not final, NeedFailed is enabled.
+- **SentinelShape**: a sentinel is only absent (before Add), waiting, landed
+  or fail (it never has a consumer).
+- **NeedsAcyclic**: the needs graph stays acyclic.
+- **OrderAcyclic**: needs and after together stay acyclic.
+- **ResultsByKind**: a work consumer's result is ok, fail or fault; a read's
+  ok, fix or fault.
+- **OneLiveReadPerRow**: at most one live read of a head per row.
+- **IdsDistinct**: no existing card's id is a cut consumer's id (one
+  namespace, round 7).
+- **PreemptOnBlockerRow**: an op's preempt Withdraws are of consumers on the
+  row its blocker Starts name.
+- **PlainWithdrawUnguarded**: in an open op, a plain Withdraw of any working
+  consumer is enabled (the guard reads only the Preempt flag; round 7).
+- **MergeParksResolved**: in an open op, with the stream not held and an
+  environment move left, HoldStream is enabled (no second-write refusal;
+  round 7).
+
+Step invariants (each: the last step kept its rule):
+- **FinalNeverMoves**: no landed/fail producer and no done/fail consumer
+  changes.
+- **AttemptOnlyOnStart**: attempt rises by one on Start (and Preempt's Start)
+  of that producer, and on nothing else.
+- **RedNeverAdvances**: a Red step never ends in merging or landed.
+- **FixKeepsScore**: ReadFix keeps the score.
+- **HolderNeverChanges**: a cut consumer's holder never changes.
+- **OldAttemptNeverMoves**: Finished, Broken, Faulted and Released accept only
+  the work consumer of the current attempt.
+- **OnlyHolderActs**: Take and Report only from the consumer's holder.
+- **ReadYesNeedsYes**: ReadYes only with a done ok read of the current head
+  whose review equals the producer's.
+- **ReadFixNeedsFix**: ReadFix only with a done fix read of the same kind.
+- **WithdrawReleasesInOneStep**: a Withdraw (or Preempt) of the working
+  producer's work consumer leaves the producer ready, or waiting under a
+  hold, in that same step.
+- **WaiveRedNeedsPriorRead**: WaiveRed only with a done ok read of the
+  previous review at the current head.
+- **FixCarriesFailure**: Broken and Faulted keep the producer's finding (a
+  fault never writes it), and Start (and Preempt's Start) copies the finding
+  to the new work consumer.
+- **ReplaceByLive**: Replace names a non-final card other than itself.
+- **HeadNeverRepeats**: a work consumer's reported or withdrawn head is
+  never its prior head.
+- **FaultSpendsNothing**: Faulted keeps attempt and bounces.
+- **BlockNoLive**, **EditNoLive**: Block and Edit only with no live consumer.
+- **SentinelLandsByReached**: a sentinel lands only by Reached, needs landed.
+- **WaiveRedNeedsRed**: WaiveRed only with the Red recorded.
+- **FencesOnSnapshot**: in an op, a move's conditions on a card's state are
+  those of the snapshot, minus states an earlier move of the op wrote.
+- **ReviewOnEntry**: review rises by one on Finished and Red of that
+  producer, and on nothing else (round 7).
+- **FixSaysWhat**: ReadFix writes a finding (round 7).
+- **InThisOpOnFailedNeed**: after an InThisOp move, its need is fail (round
+  7).
+
+## Expected results
+
+| Module | Scenario | Fault | Expected result |
 |---|---|---|---|
-| `MCLevel` | no error (exit 0), three members, three cards, every up order: TypeOK, NeverOnARefuser, MovesBounded, SelectionComplete, PotentialFalls, Terminates | 649,537 | 57 s |
-| `MCLevelFour` | no error (exit 0), the wedge's four members: the same six | 472,115 | 57 s |
-| `MCLevelOldRuleNoRequeue` | no error (exit 0): the rule of the wedge with no second move ends, within the ready count, off every refuser | 473,903 | 42 s |
-| `MCLevelBrokenOld` | expected Terminates violation (exit 13): c3 goes a -> t -> a for ever | 466,243 | 62 s |
-| `MCLevelBrokenNoGap` | expected Terminates violation (exit 13): c2 goes a -> c -> a for ever | 654,916 | 74 s |
-| `MCLevelBrokenRequeue` | expected MovesBounded violation (exit 12): four moves for three ready cards, b3 twice | 643,223 | 62 s |
-| `MCLevelBrokenNaive` | expected SelectionComplete violation (exit 12): the call returns with c2 able to move | 360,485 | 36 s |
-| `MCLevelBrokenNoSkip` | expected NeverOnARefuser violation (exit 12): c3 onto c, its refuser | 360,485 | 37 s |
+| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` / `CardMerge` / `CardMergePre` / `CardMergeDeps` | life / deps / pre / reads / merge / mergepre / mergedeps | none | pass |
+| `witnesses/CardLandedMoves` | life | Rescore has no final check | FinalNeverMoves |
+| `witnesses/CardAuthorReads` | life | AskRead does not refuse the author | ReaderNeverAuthor |
+| `witnesses/CardRedAdvances` | life | Red moves merging to landed | RedNeverAdvances |
+| `witnesses/CardNeedFailedIgnored` | deps | NeedFailed reads the dependant's state for the need's | NeedFailedTakesDependants |
+| `witnesses/CardNonHolderReports` | life | Report does not check the holder | OnlyHolderActs |
+| `witnesses/CardTwoWorkConsumers` | life | Start accepted from working | WorkingOneWorkConsumer |
+| `witnesses/CardStaleReport` | life | Faulted accepts any work consumer of p | OldAttemptNeverMoves |
+| `witnesses/CardYesOnZero` | life | ReadYes without the yes-read check | ReadYesNeedsYes |
+| `witnesses/CardFaultBumpsAttempt` | life | Faulted raises attempt | FaultSpendsNothing |
+| `witnesses/CardFaultBounces` | life | Faulted raises bounces (a fault counted toward Block) | FaultSpendsNothing |
+| `witnesses/CardEditUnderLive` | life | Edit under a live consumer | EditNoLive |
+| `witnesses/CardReadyCounted` | life | Take counts ready consumers against width | TakeBelowWidth |
+| `witnesses/CardNeedsCycle` | deps | Relink without the cycle check | NeedsAcyclic |
+| `witnesses/CardWithdrawLeavesWorking` | life | Withdraw does not release the working producer | WithdrawReleasesInOneStep |
+| `witnesses/CardReadFixOnZero` | life | ReadFix without the fix-read check | ReadFixNeedsFix |
+| `witnesses/CardHeldStreamReady` | life | Broken returns to ready under a held stream | ParkedUnderHold |
+| `witnesses/CardWaiveRedWithoutRead` | life | WaiveRed without the prior-read check | WaiveRedNeedsPriorRead |
+| `witnesses/CardRelinkAfterCycle` | deps | Relink walks needs only | OrderAcyclic |
+| `witnesses/CardReadReportsFail` | life | a read may report fail | ResultsByKind |
+| `witnesses/CardReplaceByFinal` | life | Replace by a final card | ReplaceByLive |
+| `witnesses/CardTwoReadsOneRow` | life | AskRead takes a row holding a live read of the head | OneLiveReadPerRow |
+| `witnesses/CardPriorRepeated` | life | an ok report repeats the prior head | HeadNeverRepeats |
+| `witnesses/CardWaiveRedWithoutRed` | redw | WaiveRed without the red check | WaiveRedNeedsRed |
+| `witnesses/CardMergeCutUnseen` | merge | a consumer cut earlier in the op is unseen by the next move | BlockNoLive |
+| `witnesses/CardMergeNestedHold` | merge | a release reads the stream's hold from the snapshot | ParkedUnderHold |
+| `witnesses/CardMergeNoRerun` | merge | a merged move is checked on the snapshot, not the fold | FinalNeverMoves |
+| `witnesses/CardMergeOwnWrites` | merge | a move fences a state an earlier move wrote | FencesOnSnapshot |
+| `witnesses/CardMergeNestedStart` | mergepre | the preempt guard skips a nested Start | PreemptOnBlockerRow |
+| `witnesses/CardDottedId` | deps | Add takes an id with a dot | NeverStranded |
+| `witnesses/CardInThisOpAlone` | mergedeps | InThisOp alone, the need not failed in the op | InThisOpOnFailedNeed |
+| `witnesses/CardPlainWithdrawGuarded` | mergepre | the preempt guard on every Withdraw | PlainWithdrawUnguarded |
+| `witnesses/CardMergeSecondWrite` | merge | a second write to a field refused | MergeParksResolved |
+| `witnesses/CardReadFixEmpty` | life | ReadFix with an empty finding | FixSaysWhat |
+| `witnesses/CardFailRepeatsPrior` | life | a fail report names the prior head | HeadNeverRepeats |
+| `witnesses/CardMergeReviewTwice` | merge | Report then Finished in one op raises review by two | ReviewOnEntry |
+| `witnesses/CardHandPlanPartial` | merge | a merged move writes a partial record | AttemptOnlyOnStart |
+| `reach/CardNeverLanded` | life | none | violated: a producer lands |
+| `reach/CardNeverFixed` | life | none | violated: a review ends in ReadFix |
+| `reach/CardNeverRed` | life | none | violated: merging goes red |
+| `reach/CardNeverYesAfterRed` | life | none | violated: a yes after a Red, on a new read |
+| `reach/CardNeverFaultRedealt` | life | none | violated: a faulted producer is started again |
+| `reach/CardNeverBlocked` | life | none | violated: a producer is blocked |
+| `reach/CardNeverSentinelReached` | life | none | violated: the sentinel lands on its landed need |
+| `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |
+| `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |
+| `reach/CardNeverAdded` | deps | none | violated: Add puts a sentinel with a need and an after |
+| `reach/CardNeverSentinelNeeded` | deps | none | violated: a sentinel is a need |
+| `reach/CardNeverAskReads` | reads | none | violated: AskReads cuts two reads in one step |
+| `reach/CardNeverInThisOp` | deps | none | violated: a need fails and its dependant moves in one op |
+| `reach/CardNeverWaivedRed` | life | none | violated: WaiveRed merges after a Red on the earlier read |
+| `reach/CardNeverFindingCarried` | life | none | violated: a fix attempt carries the reader's finding |
+| `reach/CardNeverPreempted` | pre | none | violated: a blocker preempts a live consumer |
+| `reach/CardNeverInThisOpMerged` | mergedeps | none | violated: a need fails and a later move of the op moves its dependant |
 
-Every counterexample was read against the code by hand. Old: the wedge's shape
-in four members (a 2 above its width with c1 and c3, c3 refused by s; s 0, the
-emptiest; t 1, at the mean; u 4 and full): c3 goes a -> t at the mean, then t is
-the longest and c3 goes back to a, for ever (levelTo at b7776ca3, the longest
-and the refusers avoided, no gap). NoGap: the same shape in three members with
-the gap test removed from PR #5127's levelTo. Naive: a holds c2 and c3, c3
-refused by c, the emptiest two below; only c3 is tried, and the call returns
-with c2 still able to go to c. NoSkip: c3 goes onto c, its refuser (the code
-before #5000).
+## Results, the CI jar on hetzner2, 2026-11-07 (round 7, card/ at v2-card-fix4 4bb1a43b)
 
-### Models moved from nova-tools
+Every run (store and card) in one parallel pass with `run-tlc.sh` (each JVM
+at `-Xmx3g`), the passing runs on 4 workers each and the rest on 1, on a
+host other users' TLC jobs were also loading, so the times are under full
+contention. CardDeps was OOM-killed in that pass (exit 137, the host short
+of memory) and passed rerun alone at `-Xmx8g`. Of the card runs: 7 passing
+scenarios pass, 36 witnesses and 17 reach checks each report their target
+invariant violated (60 runs).
 
-`FriendReadyTake` (five cases), `FriendRedealLate` (two), and `StopFence`
-(eight, formerly nova-tools `StopReturn`) preserve the machines and reversed
-witnesses at nova-tools dev `2314d437fedb33d148e75346ab5582ec552e7962`.
-Only names and source/header comments changed. `StopFence` includes its
-`StaleTick` and `StalePart` instances; it does not replace this repository's
-`StopReturn`. Their groups are `friendreadytake`, `friendredeallate`, and
-`stopfence`. Coverage stays partial for the concrete differences recorded in
-`COVERAGE.tsv`; fresh TLC passes do not erase those differences.
+| Module | Result | Generated / distinct | Depth | Time |
+|---|---|---|---|---|
+| `CardMachine` (life) | No error has been found | 5808819 / 1359931 | 24 | 3min 00s |
+| `CardDeps` (deps) | No error has been found | 21525714 / 4031516 | 25 | 22min 30s (rerun alone) |
+| `CardPreempt` (pre) | No error has been found | 5688130 / 943790 | 27 | 2min 58s |
+| `CardReads` (reads) | No error has been found | 79927 / 27674 | 17 | 30s |
+| `CardMerge` (merge) | No error has been found | 220392 / 41428 | 17 | 32s |
+| `CardMergePre` (mergepre) | No error has been found | 7102298 / 1054188 | 26 | 2min 50s |
+| `CardMergeDeps` (mergedeps) | No error has been found | 216520 / 50135 | 25 | 45s |
+| `CardAuthorReads` | ReaderNeverAuthor violated | 10705 / 3788 | 7 | 29s |
+| `CardDottedId` | NeverStranded violated | 395 / 374 | 3 | 18s |
+| `CardEditUnderLive` | EditNoLive violated | 442 / 232 | 4 | 15s |
+| `CardFailRepeatsPrior` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 30s |
+| `CardFaultBounces` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 26s |
+| `CardFaultBumpsAttempt` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 22s |
+| `CardHandPlanPartial` | AttemptOnlyOnStart violated | 820 / 367 | 4 | 18s |
+| `CardHeldStreamReady` | ParkedUnderHold violated | 10428 / 3649 | 7 | 27s |
+| `CardInThisOpAlone` | InThisOpOnFailedNeed violated | 22 / 10 | 2 | 11s |
+| `CardLandedMoves` | FinalNeverMoves violated | 56 / 46 | 3 | 9s |
+| `CardMergeCutUnseen` | BlockNoLive violated | 40759 / 10276 | 8 | 30s |
+| `CardMergeNestedHold` | ParkedUnderHold violated | 3470 / 1082 | 5 | 20s |
+| `CardMergeNestedStart` | PreemptOnBlockerRow violated | 50919 / 13081 | 8 | 33s |
+| `CardMergeNoRerun` | FinalNeverMoves violated | 190 / 138 | 3 | 15s |
+| `CardMergeOwnWrites` | FencesOnSnapshot violated | 123 / 95 | 3 | 12s |
+| `CardMergeReviewTwice` | ReviewOnEntry violated | 7632 / 2166 | 6 | 24s |
+| `CardMergeSecondWrite` | MergeParksResolved violated | 7 / 5 | 2 | 9s |
+| `CardNeedFailedIgnored` | NeedFailedTakesDependants violated | 6 / 4 | 2 | 13s |
+| `CardNeedsCycle` | NeedsAcyclic violated | 280 / 255 | 3 | 19s |
+| `CardNonHolderReports` | OnlyHolderActs violated | 2074 / 794 | 5 | 23s |
+| `CardPlainWithdrawGuarded` | PlainWithdrawUnguarded violated | 17436 / 4849 | 7 | 28s |
+| `CardPriorRepeated` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 31s |
+| `CardReadFixEmpty` | FixSaysWhat violated | 200192 / 67405 | 10 | 54s |
+| `CardReadFixOnZero` | ReadFixNeedsFix violated | 10703 / 3786 | 7 | 28s |
+| `CardReadReportsFail` | ResultsByKind violated | 84689 / 29482 | 9 | 42s |
+| `CardReadyCounted` | TakeBelowWidth violated | 36 / 31 | 3 | 10s |
+| `CardRedAdvances` | RedNeverAdvances violated | 408537 / 130809 | 11 | 1min 18s |
+| `CardRelinkAfterCycle` | OrderAcyclic violated | 7380 / 3256 | 4 | 27s |
+| `CardReplaceByFinal` | ReplaceByLive violated | 22 / 20 | 3 | 9s |
+| `CardStaleReport` | OldAttemptNeverMoves violated | 30764 / 10902 | 8 | 34s |
+| `CardTwoReadsOneRow` | OneLiveReadPerRow violated | 31941 / 11338 | 8 | 34s |
+| `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 439 / 229 | 4 | 19s |
+| `CardWaiveRedWithoutRead` | WaiveRedNeedsPriorRead violated | 1719999 / 476019 | 14 | 3min 09s |
+| `CardWaiveRedWithoutRed` (redw) | WaiveRedNeedsRed violated | 977451 / 438683 | 20 | 3min 02s |
+| `CardWithdrawLeavesWorking` | WithdrawReleasesInOneStep violated | 439 / 229 | 4 | 16s |
+| `CardYesOnZero` | ReadYesNeedsYes violated | 10703 / 3786 | 7 | 25s |
+| reach `CardNeverAdded` | NeverAdded violated | 27 / 21 | 2 | 14s |
+| reach `CardNeverAskReads` | NeverAskReads violated | 1333 / 666 | 7 | 16s |
+| reach `CardNeverBlocked` | NeverBlocked violated | 35 / 30 | 3 | 11s |
+| reach `CardNeverFaultRedealt` | NeverFaultRedealt violated | 10458 / 3662 | 7 | 24s |
+| reach `CardNeverFindingCarried` | NeverFindingCarried violated | 408827 / 130955 | 11 | 1min 07s |
+| reach `CardNeverFixed` | NeverFixed violated | 200192 / 67405 | 10 | 46s |
+| reach `CardNeverInThisOp` | NeverInThisOp violated | 12 / 6 | 2 | 9s |
+| reach `CardNeverInThisOpMerged` | NeverInThisOpMerged violated | 93 / 33 | 3 | 9s |
+| reach `CardNeverLanded` | NeverLanded violated | 408529 / 130804 | 11 | 1min 06s |
+| reach `CardNeverNeedFailed` | NeverNeedFailed violated | 278 / 253 | 3 | 14s |
+| reach `CardNeverPreempted` | NeverPreempted violated | 9615 / 2863 | 7 | 25s |
+| reach `CardNeverRed` | NeverRed violated | 408537 / 130809 | 11 | 1min 04s |
+| reach `CardNeverRelinked` | NeverRelinked violated | 14 / 8 | 2 | 12s |
+| reach `CardNeverSentinelNeeded` | NeverSentinelNeeded violated | 19 / 13 | 2 | 11s |
+| reach `CardNeverSentinelReached` | NeverSentinelReached violated | 747709 / 229623 | 12 | 1min 31s |
+| reach `CardNeverWaivedRed` | NeverWaivedRed violated | 747797 / 229675 | 12 | 1min 31s |
+| reach `CardNeverYesAfterRed` | NeverYesAfterRed violated | 2227352 / 591860 | 15 | 3min 08s |
 
-`DecisionsOwed` / `MCDecisionsOwed*` models a bounded bound-card, reader and merge
-judgment, a five-observation clock, unconditional owner escalation,
-separate durable owed and successful owner-receipt sets, safe defaults only after
-twice the deadline, and one explicit ambiguous retry. `NoSilentPile` requires a
-durable delivery obligation or receipt, not human sight. Fair observation and
-owner delivery imply eventual answer, default or owner receipt. Broken silent, unsafe-default and owner-cadence configurations must violate
-`NoSilentPile`, `DefaultIsSafe` and `OwnerCadence`.
-The exact 30-minute elapsed-time cadence, epoch/recipient reset, frozen payload,
-transport-fault display and renewed bus token are pinned by runtime tests; the
-model abstracts elapsed intervals. `CoordinatorPush` retains the prerequisite's
-pre-deadline 30-minute reminder abstraction; `DecisionsOwed` owns overdue cadence.
+The counterexamples were checked by hand with `card-trace.py`. Up to
+round 4, each move the fault lets through is one card/ at 4a085774 refuses:
+- **CardLandedMoves:** p1 is cancelled (fail), then Rescore changes its score.
+- **CardAuthorReads:** r2 produces head 1; a read of it is cut to r2.
+- **CardRedAdvances:** deal, finish, read ok, ReadYes; then Red lands it.
+- **CardNeedFailedIgnored:** p1 fails; NeedFailed is not enabled for p2.
+- **CardNonHolderReports:** p1.1 is held by r2 and reported by another row.
+- **CardTwoWorkConsumers:** Start again from working: two ready work
+  consumers of p1.
+- **CardStaleReport:** attempt 1 reports fault, Faulted, attempt 2 is cut;
+  attempt 1's report moves p1 to ready again.
+- **CardYesOnZero:** Finished, then ReadYes with no read cut.
+- **CardFaultBumpsAttempt / CardFaultBounces:** a fault report; Faulted takes
+  attempt to 2 / bounces to 1.
+- **CardEditUnderLive:** Edit while p1.1 is ready on r2.
+- **CardReadyCounted:** p1.1 is ready on r2 with nothing working, and Take is
+  refused (it counts itself).
+- **CardNeedsCycle:** p1 fails; p2's need p1 is relinked to s, which needs p2.
+- **CardWithdrawLeavesWorking:** p1.1 (ready) is withdrawn and p1 stays
+  working.
+- **CardReadFixOnZero:** Finished, then ReadFix with no read cut.
+- **CardHeldStreamReady:** p1.1 reports fail, the stream is held (p1 is
+  working, not parked), Broken returns p1 to ready in the held stream.
+- **CardWaiveRedWithoutRead:** Finished, read ok, ReadYes, Red, WaiveRed (on
+  the review-1 read), Red again (review 3), then WaiveRed: the only ok read
+  is of review 1 (the code: "no done ok read of review 2").
+- **CardRelinkAfterCycle:** p1 fails; a is added after s; p2's need p1 is
+  relinked to a: p2 needs a, a after s, s needs p2.
+- **CardReadReportsFail:** a read of head 1 on r1 reports fail.
+- **CardReplaceByFinal:** s is cancelled; p1 is replaced by s.
+- **CardTwoReadsOneRow:** two live reads of head 1 cut to r1.
+- **CardPriorRepeated:** attempt 1 is withdrawn with head 1, attempt 2 is
+  cut with prior 1 and reports ok with head 1.
+- **CardWaiveRedWithoutRed:** attempt 1 finishes head 1 (review 1), a read
+  of it says ok, Block and Unblock take p1 out of review with no Red;
+  attempt 2 (prior 1) is withdrawn with head 2, releasing p1 at head 2;
+  attempt 3 (prior 2) reports ok with head 1 and Finished brings review 2
+  at head 1. WaiveRed then merges on the review-1 read with no Red recorded
+  (the code: "no red on review 2"; every other check passes there: Block
+  from review with no live consumer, the withdrawn head written by
+  Released, an ok head that is neither base nor prior).
+- **CardMergeCutUnseen, CardMergeNestedHold, CardMergeNoRerun,
+  CardMergeOwnWrites, CardMergeNestedStart** (rounds 5 and 6): AskRead then
+  Block in one op with the read unseen; HoldStream then a Withdraw leaving
+  p1 ready in a held stream; Cancel then a merged Rescore of the failed
+  card; Resolve then Cancel fencing p1 ready against a waiting snapshot;
+  a blocker Start on r2 then a preempt Withdraw of p1.1 working on r1 in
+  one op.
 
-The decisions landing repair bounds owner deliveries per 30-minute model window,
-including changed sets (`OwnerCadence` and its broken witness). Unused hook proof
-state is removed: escalation is unconditional on hook status. A bound-card default
-remains an open obligation until release (`ParkedRemainsOwed`). SprintTables enables
-its real park/release actions when Cardinality(Card)=1; the one-primary configs run
-Spec with the original lifecycle invariants/properties plus cause, prestate and
-head/read preservation checks. Historical three-card instances keep their original
-action set. This is not a three-primary parking-composition proof. No state constraint
-or weakened fairness hides a transition in the one-primary instance.
+Trace check (`make-traces.sh check` on hetzner2, this model, card/ at
+4bb1a43b): card-walk-1..20 all TRACE OK (65 to 114 steps each), the
+card-breaker refused at 3 of 3 as expected, and the store traces as before.
+`CardMachineTrace.tla` sets the Merge bookkeeping (`op`, `snap`, `pw`, `bs`)
+at rest in TraceInit and leaves it unchanged on every record (each record
+is one op of one move), and `MaxOp` is read off the scenario, so the
+walk's generated cfg needs no new constant. The walk records single moves
+only: it never merges, uses InThisOp, adds a dotted id or gives ReadFix an
+empty finding, so it cannot see the round 7 divergences below.
+
+Round 7, checked by hand against card/ at v2-card-fix4 (b2b0b8c2; 4bb1a43b
+changes no move in card/, only adds the trace emitter). Each is a move the
+round 7 rulings refuse; "fix4 accepts" marks a divergence the code still has:
+- **CardDottedId:** Resolve p1, Add `p1.w1` (a sentinel, no needs); p1 is
+  ready and every Start would cut `p1.w1`, which the CardAbsent fence
+  refuses: p1 is stranded. fix4 accepts the Add (addShape has no dot check).
+- **CardInThisOpAlone:** NeedFailed{InThisOp} of p2 on its need p1, alone,
+  with p1 waiting: p2 fails on a live need. fix4 accepts it (failedNeed
+  returns nil for InThisOp unless the need is landed).
+- **CardPlainWithdrawGuarded:** p1.1 works on r1; the blocker p2 is started
+  on r2, opening an op; a plain Withdraw of p1.1 is refused by the guard.
+  fix4 does refuse it (preemptGuard pairs every Withdraw with a blocker
+  Start: "consumer p1.1 is on r1; blocker p2 is dealt to r2").
+- **CardMergeSecondWrite:** Resolve p1 opens an op; HoldStream would write
+  p1's state again and is refused. fix4 refuses Merge(Resolve, HoldStream)
+  by dupWrites, the second-write refusal ruling 4 removes.
+- **CardReadFixEmpty:** deal, finish, a read says fix, ReadFix with no
+  finding: p1 is ready with no finding to carry. fix4 accepts it (readFix
+  writes a finding only when one is given).
+- **CardFailRepeatsPrior:** attempt 1 is withdrawn with head 1, attempt 2
+  (prior 1) reports fail with head 1. fix4 refuses it (reportHead checks a
+  given head against the prior for every result).
+- **CardMergeReviewTwice:** attempt 1 reports ok opening an op, Finished in
+  the same op takes review from 0 to 2.
+- **CardHandPlanPartial:** Start p1 opens an op; SetPriority in it writes a
+  record whose other fields are zero: attempt 1 goes back to 0.
+- **reach NeverInThisOpMerged:** Cancel p1 opens an op; NeedFailed{InThisOp}
+  of p2 on p1 is the next move.
+
+- **reach:** Landed runs deal, finish, read ok, ReadYes, Landed. Fixed ends
+  review → ready with bounces 1. Red goes merging → review with review 2.
+  YesAfterRed then cuts a new read at review 2 and merges on it; WaivedRed
+  merges at review 2 on the review-1 read of the same head. FaultRedealt:
+  fault, Faulted, Start of attempt 2; FindingCarried: a read says fix, ReadFix,
+  Start of attempt 2 carrying the finding. Blocked: Block from ready. SentinelReached: p1
+  lands, then Reached. NeedFailed: p1 fails, NeedFailed takes p2; InThisOp:
+  p1's Cancel and p2's NeedFailed in one step. Relinked: p2 fails, s's need
+  is relinked to p1. Added: a with a need and an after; SentinelNeeded: a
+  added needing p1, relinked to s. AskReads: reads on r1 and r3 (r2 is the
+  author) in slots 2 and 3, one step. Preempted: p1.1 works on r2, r1 goes
+  down, the blocker p2 withdraws p1.1 (releasing p1) and is dealt to r2 in
+  one step.
+
+Not modelled: the liveness obligation "nothing stalls", which the card
+model's rulings make layer 3's (with the tick); NeverStranded is its state
+half here. The reasons ("held: ...", and so the reason-only Edit of a
+parked producer), the refusal wording and Add's id length cap are value
+checks with no state of their own; round 7 removes Merge's second-write
+refusal (MergeParksResolved).
+
+# The steps (layer 3)
+
+`Steps.tla` models the tick of `docs/LAYER-3-STEPS.md` (v2 at 21798cc0),
+with the inputs as LAYER-6 and the build rules have them: reports and takes
+are the rows' own store ops, and the inbox holds edge results only. The Go
+in `steps/` cites it by the invariant names below.
+
+The state is the store `w` (producers, consumer slots, rows up or down, each
+stream's hold, and the take order of working consumers), the view `snap`,
+`inbox` (edge results: a landing outcome, landed or red with its CI, and a
+runner's stop ack), `inflight` (edge requests: id `<<epoch, kind, card,
+sha>>`, stream, sent), `js` (open judgements, kind and subject), `split` (the
+groups of the last tick's refused ops of two groups or more) and a monitor
+`last` of the last tick.
+
+`Snap` copies the store to the view (the fold). Between `Snap` and `Tick`
+the store moves under the tick: a row's `Report` (its verb's own op: a work
+consumer's report moves its producer in the same plan), the coordinator's
+hold (with Park of the stream's ready producers in the same op) and its
+lifting, a row's Gone and Seen. `Take` comes only between ticks: a take
+changes nothing a tick fences. `EdgeResult` delivers an in-flight request's
+result once or twice (layer 4 may redeliver).
+
+`Tick(a)` is one atomic action. From the view alone, in the design's order:
+1. **Preemption**: a ready blocker with every open serving row at width
+   (working consumers only) is one group: Withdraw of the victim on the
+   chosen row (releasing its producer), the blocker's Start there, and a
+   stop request for the victim's runner. The row is policy's `rows` answer
+   when it is a preemptable row, else the first by name; the victim is the
+   youngest working consumer on it by take, the engine's fixed rule
+   (LAYER-5's boundary, LESSONS 5.12; the model's first draft asked policy
+   for a `victim`, dropped when layer 3 was built against layer 5's
+   question set). No open serving row: an `unserved` judgement for the tier.
+2. **Land results**, in arrival order: Landed or Red for a producer still
+   merging at the request's head; an ack, a stale or a repeated result is
+   consumed with no move.
+3. **Needs**: Resolve in id order: needs landed, stream not held, no
+   producer of the stream overlapping its paths that is started (working,
+   review, merging) or ready, counting those resolved earlier in the tick.
+   Never a function of rows.
+4. **Fix**: ReadYes or ReadFix (the default verdict) once every read of the
+   current review is final and one is done.
+5. **Deal and reads**: blocker work, every read owed, normal work, in id
+   order; a row is dealt while ready plus working is under width plus
+   `ahead` (2 x width), with the in-tick tally. The row is policy's `rows`
+   answer when it is eligible for the candidate, else the default: the
+   desired rank exactly (the card's tier; one up once its bounces reach
+   `escalate_after`; for a read, the rank above its author's row), then
+   above it, then an idle lane, most room, name. A row below the card's
+   tier is never eligible. No open serving row: `unserved`; a review no
+   row may read: `cannot-read`.
+6. **Land requests**: per stream with none in flight, the first merging
+   producer none of whose `after` targets is merging (a hold never touches
+   landing).
+7. **Judgements**: `unserved`, `cannot-read`, and one `policy` judgement
+   per question whose answer failed for a subject; `unserved` and
+   `cannot-read` expire when the cause clears in the view.
+
+A card claimed by an earlier step is skipped by the later ones. Then the
+order (blocker groups, never cut; land results; needs; fix; the deal), the
+budget (cards touched; the first non-blocker group always goes, so a group
+larger than the budget is not starved; stop at the first group that does
+not fit, so the inbox is consumed as a prefix), the packing (up to `Pack`
+groups per op; a group touching a card of a `split` group is an op of its
+own), and the apply: each op in order is accepted whole if every record its
+groups read is as the plan expects it (the view with this tick's accepted
+ops applied) and every move passes layer 2's guard on the store as it is,
+else refused whole. A stop request is dispatched only with its accepted op
+(its After); a land request has an empty After. An inbox item is consumed
+when admitted and its op accepted (or it has no move); a refused op's items
+are put back in place; the rest carry, in arrival order.
+
+The oracle `a` is the asker: when a question has subjects, policy answers
+in domain (either row preferred for every candidate) or fails ("failed": no
+answer in the tick's policy time, an error, out of range, or a row not
+offered, which is one path in the engine).
+
+The per-card moves are layer 2's, written at the grain the steps read: each
+guard (`Legal`) and write (`ApplyG`) is the `CardMachine.tla` action of the
+same name. `CardMachine.tla` cannot be INSTANCEd here: its card sets are
+fixed by its `Scenario` constant (`Prods` is `{p1}` or `{p1, p2}`), and
+preemption of the youngest of two working consumers needs three producers.
+Heads are attempt numbers (an ok report of attempt n pushes head n).
+
+## The instance: four scenarios
+
+Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and 2
+(rank 2); `ahead` is 2 x width.
+
+| Scenario | Cards | Start | Environment | Constants |
+|---|---|---|---|---|
+| pre | b blocker (s2), p, q (s1, disjoint paths) | all waiting, s2 held, r1 down | lift s2's hold; r2 down and up | K 2, MaxAtt 2, MaxEnv 2, MaxArrive 2, Budget 2, Pack 2 |
+| pre1 | as pre | as pre | as pre | as pre, Pack 1 |
+| deal | p, q (s1, overlapping), b (s2, tier 2, needs p) | all waiting | r1 down and up | K 4, MaxAtt 2, MaxBounce 1 (p only), MaxEnv 1, MaxArrive 1, Budget 2, Pack 2 |
+| land | p (s1), q (s2, after p) | both merging at head 1 | hold and lift s1 | K 2, MaxAtt 1, MaxEnv 2, MaxArrive 3, Budget 2, Pack 2 |
+| burst | as land | as land | none | K 1, MaxAtt 1, MaxArrive 4, Budget 1, Pack 1 |
+
+Red results come only in land and burst; work and read reports are ok but
+in deal, where p may fail and a read of p may say fix. A fault report is a
+fail that spends no bounce, so no scenario needs it.
+
+## Invariants and the liveness property
+
+Named as the design names its guarantees. State invariants:
+
+| Invariant | Design | Says |
+|---|---|---|
+| `NeverDealtTwice` | guarantee 1 | at most one live work consumer per producer, of its current attempt, only while it works |
+| `WidthKept` | guarantee 2 | working consumers on a row never exceed its width |
+| `ReadyNeverFlipsWithLoad` | guarantee 8, LESSONS 2.20, 3.2 | the ready rule answers the same for the store and for the store with no consumers and every row down |
+| `NeverOverlapStarted` | Sentinels and needs (LESSONS 2.20) | two producers of one stream with overlapping paths are never ready or started together |
+| `NeverBelowTier` | Escalation | every live consumer is on a row that serves its card's tier (no tier is ever written) |
+| `CarryFIFO` | guarantee 7, list item 6 | the inbox is in arrival order and nothing that arrived is lost |
+| `EdgeAfterAccepted` | Plan.Edges | an in-flight stop names a withdrawn consumer; an in-flight land a producer merging at that head |
+
+Tick invariants, each a check of the last tick computed from the view, the
+store before and after and the plan (`TickChecks`), apart from the planning
+operators where the check is about them:
+
+| Invariant | Design | Says |
+|---|---|---|
+| `OneGroupPerCard` | list item 4, guarantee 1 | no card is in two of the tick's groups |
+| `GroupWhole` | list item 4, guarantee 5 | each group's cards are all as applied or all unchanged |
+| `NeverHalfApplied` | guarantee 5 | each op's groups are all applied or none |
+| `RefusalChangesNothing` | tick step 7 | a refused op changes none of its cards |
+| `RefusedOnlyByRace` | list item 5 | an op is refused only when a record it read moved between the fold and the tick |
+| `BudgetKept` | tick step 3, list item 6 | past the first non-blocker group, the cards touched stay within the budget |
+| `BlockerPreemptsInOneTick` | guarantee 4 | a ready blocker with every open serving row at width has a preemption group in the tick, or no open serving row and an `unserved` judgement |
+| `PreemptYoungest` | Preemption | the victim is the youngest working consumer on the row by take |
+| `PolicyFailsToDefault` | guarantee 10 | a failed rows answer deals exactly what no policy deals, and every failed question has its `policy` judgement |
+| `AfterKept` | guarantee 3, ENFORCED L2-U19 | a land request never goes out for a producer whose `after` target is merging |
+| `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
+
+`ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
+under weak fairness on `Snap` and `Tick` only (rows need not take or
+report): a ready producer with room on an open serving row (under width
+plus `ahead`) is eventually dealt, unless the room goes. The model's bounds
+(attempts, slots) are exempt, as in `CardMachine`.
+
+## Expected results
+
+| Module | Scenario | Fault | Expected result |
+|---|---|---|---|
+| `StepsPre` / `StepsPrePack1` / `StepsDeal` / `StepsLand` / `StepsBurst` | pre / pre1 / deal / land / burst | none | pass, liveness included |
+| `witnesses/StepsDealtTwice` | pre | the deal does not skip a blocker the preemption claimed | NeverDealtTwice |
+| `witnesses/StepsTwoGroups` | land | the land-result step ignores claimed cards | OneGroupPerCard |
+| `witnesses/StepsWidthOver` | pre | Take checks width plus ahead | WidthKept |
+| `witnesses/StepsBlockerQueued` | pre | preemption counts queue room as free width | BlockerPreemptsInOneTick |
+| `witnesses/StepsHalfWrites` | pre | a refused preemption's Withdraw half is applied | GroupWhole |
+| `witnesses/StepsPartialOp` | pre | a refused op applies its unraced groups | NeverHalfApplied |
+| `witnesses/StepsRefusedApplied` | pre | a refused op is applied anyway | RefusalChangesNothing |
+| `witnesses/StepsSelfRefusal` | deal | the deal does not pre-check that a row is up | RefusedOnlyByRace |
+| `witnesses/StepsFenceOnView` | pre1 | ops fenced on the view, not the view plus the tick's accepted ops | RefusedOnlyByRace |
+| `witnesses/StepsBudgetIgnored` | burst | no budget | BudgetKept |
+| `witnesses/StepsCarryDropped` | burst | the carry drops what the budget left | CarryFIFO |
+| `witnesses/StepsCarryNewestFirst` | burst | the carry is put back newest first | CarryFIFO |
+| `witnesses/StepsStopEarly` | pre | stop requests from refused ops too | EdgeAfterAccepted |
+| `witnesses/StepsReadyOnRoom` | deal | Resolve requires room on a row | ReadyNeverFlipsWithLoad |
+| `witnesses/StepsNoOverlapCheck` | deal | Resolve without the overlap check | NeverOverlapStarted |
+| `witnesses/StepsTierUnchecked` | deal | the tier checked nowhere (answer and Start) | NeverBelowTier |
+| `witnesses/StepsAfterIgnored` | land | the land step ignores after | AfterKept |
+| `witnesses/StepsAfterHolds` | land | the land step holds on any target not landed | AfterNeverHolds |
+| `witnesses/StepsPolicyStall` | deal | a failed rows answer plans nothing | PolicyFailsToDefault |
+| `witnesses/StepsOldestVictim` | pre | the victim is the oldest | PreemptYoungest |
+| `witnesses/StepsReadyCountedAgainstWidth` | pre | the deal counts ready against width | ReadyDealtWhenRoom (liveness, TLC exit 13) |
+| `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
+| `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
+| `reach/StepsNeverRefused` | pre | none | violated: an op is refused by a race |
+| `reach/StepsNeverSplit` | pre | none | violated: a group of a refused op is an op of its own |
+| `reach/StepsNeverStopAcked` | pre | none | violated: a stop ack is consumed |
+| `reach/StepsNeverPolicyJudged` | pre | none | violated: a policy judgement is opened |
+| `reach/StepsNeverResolved` | deal | none | violated: Resolve |
+| `reach/StepsNeverDealt` | deal | none | violated: Start |
+| `reach/StepsNeverReadAsked` | deal | none | violated: a read is cut |
+| `reach/StepsNeverMerged` | deal | none | violated: ReadYes |
+| `reach/StepsNeverFixed` | deal | none | violated: a producer back from a bounce |
+| `reach/StepsNeverEscalated` | deal | none | violated: a bounced producer dealt one rank up |
+| `reach/StepsNeverNeedReleased` | deal | none | violated: a need lands and its dependant resolves |
+| `reach/StepsNeverCannotRead` | deal | none | violated: cannot-read is opened |
+| `reach/StepsNeverLandRequested` | land | none | violated: a land request |
+| `reach/StepsNeverLanded` | land | none | violated: Landed |
+| `reach/StepsNeverRed` | land | none | violated: Red |
+| `reach/StepsNeverAfterHeld` | land | none | violated: a landing waits on a queued after target |
+| `reach/StepsNeverCarried` | burst | none | violated: the budget carries inbox items |
+
+`python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
+five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`
+and the fault list in the script, as the other two generators do.
+`ci-tlc.sh` runs them with the rest: a liveness witness's cfg lists its
+PROPERTY first and must end in TLC exit 13 with "Temporal property
+ReadyDealtWhenRoom was violated" and no invariant violated.
+
+## Results
+
+The CI jar on hetzner2, 2026-11-07, after the two changes layer 3's build
+made to the model (the `victim` oracle dropped; rows fenced by generation,
+`rg`): `ci-tlc.sh` ran every Steps row: 5 passing cfgs pass (StepsPre,
+StepsPrePack1 and StepsDeal rerun alone with 8 workers after the OOM killer
+took them in the full parallel run of 168 JVMs; StepsLand and StepsBurst in
+the run), all 21 witnesses violated as required, all 19 reach checks
+violated, all 25 trace fixtures as their cfgs expect (13 of the model's own,
+12 of the walk's). The table below is the model child's run before those
+two changes (vision, 2026-11-07 UTC, 4 workers for the passing runs, 1 for
+witnesses and reach checks); state counts move a little with `rg`.
+
+| Run | Result | Generated / distinct | Depth | Time |
+|---|---|---|---|---|
+| StepsPre | pass | 55,234 / 15,302 | 26 | 2m24s |
+| StepsPrePack1 | pass | 55,188 / 15,284 | 26 | 2m28s |
+| StepsDeal | pass | 27,019 / 11,006 | 48 | 47s |
+| StepsLand | pass | 16,821 / 7,125 | 38 | 23s |
+| StepsBurst | pass | 3,796 / 1,923 | 28 | 9s |
+| StepsDealtTwice | NeverDealtTwice | 3,224 / 1,332 | 14 | 20s |
+| StepsTwoGroups | OneGroupPerCard | 63 / 38 | 6 | 1s |
+| StepsWidthOver | WidthKept | 2,459 / 1,088 | 13 | 14s |
+| StepsBlockerQueued | BlockerPreemptsInOneTick | 3,224 / 1,332 | 14 | 20s |
+| StepsHalfWrites | GroupWhole | 4,231 / 1,680 | 15 | 26s |
+| StepsPartialOp | NeverHalfApplied | 146 / 96 | 7 | 5s |
+| StepsRefusedApplied | RefusalChangesNothing | 58 / 41 | 6 | 2s |
+| StepsSelfRefusal | RefusedOnlyByRace | 28 / 25 | 6 | 1s |
+| StepsFenceOnView | RefusedOnlyByRace | 5 / 5 | 3 | 1s |
+| StepsBudgetIgnored | BudgetKept | 444 / 255 | 13 | 5s |
+| StepsCarryDropped | CarryFIFO | 1,524 / 903 | 18 | 9s |
+| StepsCarryNewestFirst | CarryFIFO | 1,526 / 905 | 18 | 9s |
+| StepsStopEarly | EdgeAfterAccepted | 4,231 / 1,680 | 15 | 26s |
+| StepsReadyOnRoom | ReadyNeverFlipsWithLoad | initial state | 1 | 1s |
+| StepsNoOverlapCheck | NeverOverlapStarted | 4 / 4 | 3 | 1s |
+| StepsTierUnchecked | NeverBelowTier | 1,755 / 986 | 22 | 8s |
+| StepsAfterIgnored | AfterKept | 4 / 4 | 3 | 1s |
+| StepsAfterHolds | AfterNeverHolds | 152 / 82 | 8 | 3s |
+| StepsPolicyStall | PolicyFailsToDefault | 13 / 11 | 5 | 1s |
+| StepsOldestVictim | PreemptYoungest | 3,226 / 1,333 | 14 | 22s |
+| StepsReadyCountedAgainstWidth | ReadyDealtWhenRoom (exit 13) | 8,052 / 2,965 | 19 | 1m04s |
+
+All 19 reach checks are violated, in 1s to 30s each (StepsNeverStopAcked the
+longest, 6,384 generated at depth 17).
+
+## The counterexamples, checked by hand
+
+Each trace was read state by state; the move the fault lets through is one
+the correct model never makes (the passing runs show that).
+- **StepsDealtTwice:** p and q resolve, are dealt to r2 (r1 is down) over
+  two ticks and taken; s2's hold is lifted, b resolves. The next tick
+  preempts p1 for b on r2 and, the claim ignored, also deals b a plain
+  Start in the same op: b at attempt 2 with two ready work consumers.
+- **StepsTwoGroups:** p's land request goes out, its red result arrives
+  twice; one tick plans Red for p from both items (the second should have
+  been consumed with no move): review raised twice.
+- **StepsWidthOver:** p is dealt and taken on r2; s2 is lifted and b, then
+  q, are dealt to r2 while p works (r2 has free width, so no preemption);
+  the takes of q and b both pass: three working on a row of width 2.
+- **StepsBlockerQueued:** p and q work on r2, b becomes ready with no free
+  width; the faulted step sees queue room and skips preemption, and the
+  deal queues b as a ready consumer behind two working ones.
+- **StepsHalfWrites:** b is due; the tick plans preempting p1, but p1
+  reports ok between the fold and the tick, so the op is refused; the
+  fault still writes p1 withdrawn (fail over its done report) without b's
+  Start.
+- **StepsPartialOp:** s2 lifted, b and p resolve; r2 goes down between the
+  fold and the tick, whose first op is b's Start on r2 with q's Resolve; the
+  op is refused on r2's fence and the fault applies q's Resolve alone.
+- **StepsRefusedApplied:** r2 goes down between the fold and the tick; the
+  tick's Start of p on r2 is refused, and applied anyway: p working, its
+  consumer cut on a down row.
+- **StepsSelfRefusal:** r1 goes down; the tick plans p's Start on r1 (the
+  default's first choice for a tier-1 card) without the up check, and the
+  store refuses it with nothing having moved since the fold.
+- **StepsFenceOnView:** the first tick resolves p and q, one op each (pack
+  1); q's Resolve reads its stream's producers, p's record was written by
+  the tick's own first op, and the fence on the view refuses it with no
+  race.
+- **StepsBudgetIgnored:** p is red, re-read and settled while q's red
+  result waits; one tick admits p's ReadYes and q's Red with a budget of 1.
+- **StepsCarryDropped:** three results wait (p's red, q's red twice after
+  a redelivery); the tick takes p's and drops the rest: two items lost.
+- **StepsCarryNewestFirst:** the same inbox; the carry is put back as
+  stamps 4, 3.
+- **StepsStopEarly:** as StepsHalfWrites, p1 reports between the fold and
+  the tick and the preemption op is refused, but the stop request for p1's
+  runner goes out: in flight for a consumer that is done, not withdrawn.
+- **StepsReadyOnRoom:** the initial state: p is resolvable, and the
+  faulted rule says ready with rows up and not ready with them down.
+- **StepsNoOverlapCheck:** the first tick resolves p and q, whose paths
+  overlap: both ready.
+- **StepsTierUnchecked:** p is dealt to r1, finishes, is read on r2, merges
+  and lands; b (tier 2) and q resolve, and policy's answer r1 deals b to r1,
+  which serves tier 1 only.
+- **StepsAfterIgnored:** the first tick sends both p and q to land, though
+  q is after p and p is merging.
+- **StepsAfterHolds:** p's result is red (review again, not queued), q is
+  merging after p; the next tick sends nothing for s2.
+- **StepsPolicyStall:** p is ready, the rows answer fails, and the tick
+  deals nothing (the default deals p to r1).
+- **StepsOldestVictim:** p1 then q1 taken on r2, b due, and the tick
+  withdraws p1, the older.
+- **StepsReadyCountedAgainstWidth:** p and q are dealt to r2 and b
+  preempts p1; p is ready again with r2 at 2 of 6 (width plus ahead), but
+  the faulted deal sees 2 of 2. The lasso is the tick looping on that
+  state with q1 and b1 working forever (rows are not fair): p never dealt.
+- **reach:** Preempted: p1 and q1 working on r2, b lifted and due, p1 or q1
+  withdrawn and b dealt in one op, p released to ready. Unserved: r2 goes
+  down with b due. Refused: r2 down between fold and tick. Split: a refused
+  two-group op's groups each alone next tick. StopAcked: the preemption's
+  stop request answered and consumed. PolicyJudged: a failed answer at the
+  first deal. Resolved, Dealt, ReadAsked, Merged: p's path through deal.
+  Fixed: p's read says fix or its work fails, back to ready with a bounce.
+  Escalated: p, bounced once, dealt to r2 (rank 2). NeedReleased: p lands,
+  b leaves waiting. CannotRead: r1 down while p (author r2) owes a read.
+  LandRequested, Landed, Red: the first land request and its two results.
+  AfterHeld: q held while p merges. Carried: two results, budget 1.
+
+## Trace validation: the code bound to the model (the lock gate since 2026-11-07)
+
+`StepsTrace.tla` constrains the spec's next-state relation to a recorded
+trace (the Kuppe, Merz et al. pattern): `TraceLog` is a sequence of records,
+each an action name with its arguments and the model's variables after it,
+and `TraceNext` takes record `l + 1` only by the action it names, landing
+exactly on its logged values. A trace the model allows reaches the end
+(`TraceMatched`, TLC exit 0); a step the model forbids leaves no successor,
+and the counterexample's last `l` names the record before the refused one.
+`tla/check-trace.sh [traces/<fixture>...]` runs it on each fixture and
+prints `ok <fixture>: matched whole, N records` or `FAIL <fixture>: the
+model refuses record K of N:` with that record's action and arguments.
+
+Two kinds of fixture, both under `traces/`:
+
+- **The walk's** (`steps-walk-<scenario>-<seed>/`): the Go steps driving one
+  of the model's four scenarios on `store.Fake` (`steps/trace_test.go`), each
+  step one of the model's actions (Snap, Tick, Take, Report, Hold, Unhold,
+  Gone, Seen, EdgeResult) picked at random, each recorded with the model's
+  variables projected from the code's state by the refinement mapping in
+  `steps/trace.go` (`StoreTLA`, `InboxTLA`, `InflightTLA`, `JudgementsTLA`;
+  the mapping is in that file's comment). A record logs `w` in parts (`ps`,
+  `up`, `sh`, `tko` whole and `cs` as the slots that are not `none`, which
+  `StepsTrace.Parts` checks), the inbox, the in-flight requests and the
+  open judgements of the model's three kinds, and a Tick's `answer`. The
+  tick plans on the view as Snap left it, so a move between Snap and Tick
+  races it as in the model. The cfg sets the model's bounds above anything a
+  walk reaches (K 60, MaxAtt 30, MaxBounce 30, MaxEnv and MaxArrive 1000)
+  and the scenario's Budget and Pack. `TestTraceFixtures` writes the fixed
+  seed set (4 scenarios x 3 seeds x 150 steps) under `NOVA_TRACES`; the CI
+  job `trace` writes it every push and runs `check-trace.sh` on it.
+  `TestTraceWalk` runs 100 seeds x 2,000 steps per scenario for depth (at
+  least 40% of the picked moves legal while a producer is not final) and
+  that no op is refused without a race.
+- **The model's own** (`steps-ok-*`, `steps-bad-*`), `make-steps-traces.py`
+  from TLC logs: a reach check's counterexample is a behaviour of the model
+  and must match whole; a state-invariant witness's counterexample is a
+  behaviour of the faulted model whose last step the real model forbids
+  (`expect: forbidden at K`). They stand for the walk's bugs: the same fault
+  in `steps/` makes the same trace.
+
+What the trace check found while layer 3 was built (each a divergence
+between code and model that no unit test saw): the first walk fixtures were
+refused at a Tick because the Go walk folded the view after every outside
+move, so the tick planned on fresh state where the model's planned on the
+snapshot; the walk now keeps the tick's view as Snap left it (the code
+itself was right: layer 6 folds only at the tick's start). The model's
+`victim` oracle went when layer 3 was built against layer 5's question set,
+which has none (the youngest is the engine's rule).
+
+## Not modelled, and what the model found in the design
+
+Not modelled: holds' Withdraw of untaken consumers after the grace, the
+retire and fail limits (Block at the bounce limit, Withdraw on silence,
+Gone, flap), sentinels and `landed-sentinel`, drops (NeedFailed over a
+closure, Waive, Relink), backed-up landing groups and the rungs, `conflict`
+and `base-red`, the alarms (`stall`, `idle`, `land-rate`), judgement
+deadlines and expiry defaults, the per-card request verbs and their actor
+rule, op ids (an op is its body here; distinct bodies in one tick follow
+from OneGroupPerCard), and the `Park` step: the hold parks in its own op and
+every return to ready under a hold writes waiting (CardMachine `Back`), so a
+ready producer the hold's op missed does not arise; the step is a defence.
+The engine judgement for a group refused on fresh state is not modelled
+either: RefusedOnlyByRace shows no op is refused but by a race when the
+steps pre-check every store rule, so that path is a defence for a defect
+(StepsSelfRefusal shows what takes it). Guarantee 6 (a stale report) is the
+report verb's under LAYER-6 and `CardMachine`'s `OldAttemptNeverMoves`.
+
+What the model found, each with the design line:
+1. **The fence must be on the gens the plan predicts.** Tick step 7: "Apply
+   the ops in order, each fenced on the gens its groups read." Read as the
+   view's gens, an op whose group read a card an earlier op of the same
+   tick wrote is refused by the tick itself (StepsFenceOnView: a Resolve
+   reads its stream's producers). The model fences on the view with the
+   tick's accepted ops applied.
+2. **A group can be larger than the budget.** Tick step 3: the budget is a
+   count of cards touched (a Start touches two, a preemption four), with
+   no rule for a group over it; step 4's "A group larger than the packing
+   size is an op of its own" cannot apply, since `pack` counts groups. The
+   model always admits the first non-blocker group of a tick.
+3. **A refused op's inbox items.** Step 5: "Only the inbox carries ...
+   every other move is derived again from the store". A land result whose
+   op was refused cannot be derived again; the model puts it back in place
+   (CarryFIFO holds with it).
+4. **The order list omits needs and fix.** Step 3 lists blocker groups,
+   reports and takes, landing groups, drops and holds, limits, judgements,
+   the deal; Resolve and ReadYes/ReadFix groups are not placed. The model
+   puts them after landing groups, before the deal.
+5. **Guarantee 4 says "no room", the step says "no free width".**
+   Guarantee 4: "A ready blocker with no room is dealt by preemption";
+   Preemption: "with no free width on an open serving row". Room elsewhere
+   is width plus `ahead`; read that way the blocker is queued behind full
+   rows (StepsBlockerQueued). The model takes free width (working under
+   width).
+6. **Inputs: LAYER-3 against LAYER-6.** LAYER-3 Reports: "Takes ride the
+   same inbox", step 5 and guarantee 7 carry reports and takes; LAYER-6
+   section 2: "Reports are ordinary ops ... Nothing reaches run over the
+   bus". The model follows LAYER-6 (the build rules: layer 6 wins).
+7. **Apply and carry: LAYER-3 against LAYER-6.** LAYER-6 tick steps 5 and
+   6: "Apply the merged plan as one op", "the plans fenced on that card are
+   put back, and the rest is applied again", "a plan past the budget is
+   carried"; LAYER-3 steps 4, 5 and 7 pack into ops, split a refused op by
+   group next tick, and carry only the inbox. The model follows LAYER-3.
+8. **Edge request ids.** The brief's `<<epoch, kind, card, sha>>` and
+   Land's "Request ids hash stream, heads and base" both give the second
+   landing of one head after a red the id of the first (with the base
+   unchanged), so a late redelivery of the first result reads as the
+   second's. The model does not redeliver after a result is consumed, so
+   it does not show this.
+9. **Escalation's fallback.** "a work consumer at the card's own tier
+   first" does not say what follows when no row of that rank has room; the
+   model falls back to higher ranks, then lower ones that still serve the
+   tier.
+10. **CardMachine is not composable.** Its card sets are fixed by
+    `Scenario`; a `Prods` and `Rows` constant there would let this model
+    INSTANCE its guards and invariants instead of restating them.
+# Trace validation (binding the code to the models)
+
+A model checks the design; trace validation checks that the code is that
+design. The Go walks record every step they take, projected onto the model's
+variables, and TLC checks that each recording is a behaviour of the model.
+The shape is that of `StepsTrace.tla` (the Kuppe/Merz pattern): the trace is
+a generated constant module `<Model>TraceLog.tla` defining
+`TraceLog == << r_1, ..., r_n >>`; the trace module has one variable `l`, the
+index of the last record matched; `TraceNext` takes record `l + 1` through the
+action it names and requires the projected state after it; the property is
+`TraceMatched == <>(l = Len(TraceLog))`. TLC exit 0 is a matched trace; exit
+13 (TraceMatched violated) leaves `l = k` in the last state, so record `k + 1`
+is the step the model refuses.
+
+Each record carries only the entries that changed since the record before; an
+entry not named must be unchanged, so every step still pins the whole
+projected state.
+
+## Running
+
+On hetzner2 (never the studio), from the repository root:
+
+    bash tla/make-traces.sh          # the walks write their traces under tla/traces/
+    bash tla/make-traces.sh check    # ... and TLC checks every trace, in parallel
+    bash tla/check-trace.sh Store tla/traces/store-fake-1
+    bash tla/check-trace.sh CardMachine tla/traces/card-walk-3
+
+`check-trace.sh` prints `TRACE OK steps=<n>`, or
+`TRACE REFUSED at k of n: <action> (...)` followed by the model's state before
+the step and record k. Each trace's cfg has an `\* expect:` line (`matched` or
+`forbidden at K`); the script exits 0 when the outcome is the expected one, 1
+when it is not, 2 on any other TLC failure. The CI job `trace` runs
+`make-traces.sh check` on every push, with `NOVA_TRACE_PG=1` so a missing
+initdb fails the job instead of skipping the PostgreSQL walk.
+
+The walks write traces only when `NOVA_TRACE_DIR` names a directory
+(`make-traces.sh` sets it); without it the test suite is unchanged. The walk
+traces (`store-fake-*`, `store-pg-*`, `card-walk-*`) are regenerated, not
+committed. The committed fixtures are `store-breaker`, `card-breaker` and
+`store-cursor-zero`; `TestTraceRefusesDivergence` and `TestTraceCursorZero`
+compare them against what the code writes now (regenerate with
+`NOVA_TRACE_DIR=tla/traces go test -run '<test>' ./store/` or `./card/`).
+
+## The walks and their seeds
+
+- Store: `TestTraceWalk` (store/trace_test.go) on the Fake, seeds 1..8, 500
+  steps, with transport faults (`Fake.Drop`: a lost request is LoseRequest, a
+  lost reply after commit is Apply with known=FALSE, followed by Replay or a
+  second Apply); `TestFunctionalTraceWalk` on PostgreSQL, seeds 1..2, no faults.
+  The generator (store/trace_gen_test.go) draws ops over the fixed names
+  (producers p1 p2, cards p1 p2 t1 u1 u2 u3, rows r1 r2, judgements j1 j2,
+  cursor c1, bodies a b, tiers flash pro, hook sessions x y with either
+  role, the stop on and off), biased toward existing entities.
+- Card: `TestTraceColdWalk` runs `coldWalk` (TestColdWalk's walk) on seeds
+  1..20, 800 steps each, recording each accepted op.
+
+## The refinement mappings
+
+`store.TraceState` (store/trace.go) and `card.TraceState` (card/trace.go) are
+the mappings, each documented with every model variable it fills and every
+abstraction. `store.TraceOp` maps an op to the model's Ops entry and refuses
+what the model has no word for. In brief:
+
+- Store: epoch, cards, rows, judgements, cursors and policies are projected;
+  events, ledger, applied, receipt and lost are the model's own bookkeeping
+  and checked through the record's action and its `known`/`accepted` flags.
+  A card's After, Attempt, Review, Finding and non-normal Priority are not in
+  Store.tla, so a walk op that sets them is refused by TraceOp; needs are a set,
+  so a need named twice is refused (the code refuses it too). A consumer's
+  tier is not in the model; the generator gives a consumer put beside its
+  producer the producer's tier, which the code requires. PutStream is dropped
+  (one stream).
+- Card: producers project to ps, consumers to slots `<<p, i>>` in the order
+  attempt, work before read, review, read index; heads to their index in the
+  walk's head table (the base is 0); a finding to "fix" or "-"; flaps counted.
+  One stream.
+
+What the trace module adds to its model, each a lifted bound or a move outside
+the machine:
+
+- StoreTrace: none; MaxLoss is 2, every op may be lost.
+- CardMachineTrace: TraceInit takes the rows as the walk's world has them (r1
+  at width 2, not Init's 1); env is raised on every environment move and never
+  bounded; Gone past the model's flap bound of 1 (GoneAt); RawHold, the walk's
+  raw layer-3 stream hold, which parks nothing (HoldStream is the machine's).
+
+Card moves the 20 seeds never reach: Reached, Waive, Relink, WaiveRed,
+Released, multi-row AskReads, Add, HoldStream, Preempt and any InThisOp move
+(those live in the cold2/3/4 walks, whose merged ops are not traced).
+
+## The breakers
+
+`TestTraceRefusesDivergence` (unit tier, the Fake only) holds one breaker per
+package; each writes a fixture `check-trace.sh` must refuse at its last step:
+
+- store-breaker: a store that strips RowHeld conditions accepts a deal fenced
+  on `RowHeld(r1, FALSE)` after r1 was held. Refused at 4 of 4 (Apply o3).
+- card-breaker: Start with its SetCardAttempt write dropped leaves p1 working
+  at attempt 0. Refused at 3 of 3 (Start).
+
+## Divergence found
+
+- store-cursor-zero: `SetCursor{c1, 0}` on a cursor never set. The store
+  accepted it (it inserted c1 at 0); Store.tla refuses it (an absent cursor
+  is 0, and a write that changes nothing is refused). Ruled the code's fault
+  (round 22): the store now refuses it ("cursor c1 is already at 0"), the
+  fixture is `matched` (`TestTraceCursorZero`), and the walks send the write.
+
+## Results, tla2tools v1.8.0 (the CI jar) on hetzner2, 2026-11-06 (round 22, the row's sess and role and the stop projected)
+
+    store-fake-1..8   TRACE OK steps=497 513 512 511 520 520 485 497
+    store-pg-1..2     TRACE OK steps=469 482
+    card-walk-1..10   TRACE OK steps=65 105 90 107 106 104 64 94 105 58
+    card-walk-11..20  TRACE OK steps=80 81 87 112 83 71 78 77 85 83
+    store-breaker     refused at 4 of 4 (expected)
+    card-breaker      refused at 3 of 3 (expected)
+    store-cursor-zero matched (the cursor-zero ruling, above)
+
+The whole `make-traces.sh check` run takes about 1.5 minutes on hetzner2.

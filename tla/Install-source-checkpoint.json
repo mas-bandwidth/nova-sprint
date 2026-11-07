@@ -1,0 +1,13 @@
+{
+  "kind": "read-only source correspondence; not runtime evidence",
+  "source_tree": "/Volumes/nova/ai/stella/working/nova-sprint-v2-l6-verbs-20261106",
+  "observed_utc": "2026-11-07T00:34:42.467608+00:00",
+  "head": "9a5c39d8ca81fb5af2a704c4b24cfaf41e26efb2",
+  "files": {
+    "verbs/install.go": "b12cdba0af77e4d4da0c8cfc103fb1349c77ec8f8afff99c8d75f53264ffb373",
+    "verbs/install_release.go": "cf56247a3915201f1a6dabb06765ada0dc9aed82759420460df79c65ced5b608",
+    "verbs/install_fs.go": "8d2174e03040f9e6664aa15baec584612cfac1a60afb52e3b9bfdc287dfffbf7",
+    "verbs/install_lock_unix.go": "8793e0bb5e4d60235797396203d1f85aa5797c1fe916a84ce410983643d5cccb",
+    "verbs/install_test.go": "ad4f5fbfbdb41c0170d97ac1686b75aae84b81dbef168960840a440ef71002f8"
+  }
+}

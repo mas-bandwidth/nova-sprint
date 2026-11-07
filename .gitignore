@@ -1,0 +1,8 @@
+/bin/
+/tla/states/
+*.out
+/tla/logs/
+*_TTrace_*.tla
+*_TTrace_*.bin
+/nova-sprint
+/nova-worker
