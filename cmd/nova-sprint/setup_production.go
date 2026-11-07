@@ -155,7 +155,7 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 				return verbs.SetupCheck{}, err
 			}
 			if !found && in.Dash == "" && value == "" {
-				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a host with a public IP?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>"}, nil
+				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
 			}
 			ready, err := p.ensurePublicVersion(ctx, r, in, false)
 			if err != nil {
@@ -584,7 +584,7 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	}
 	out, err := call(ctx, "nova-config", "service", "list", "--json")
 	if err != nil {
-		return nil, serviceConfigError("cannot inspect fleet services: " + err.Error())
+		return nil, serviceConfigFailure("cannot inspect fleet services: ", err)
 	}
 	if len(out) > 1<<20 {
 		return nil, serviceConfigError("cannot inspect fleet services: " + edge.ParseRefused("output longer than 1 MiB", 1<<20, out))
@@ -606,6 +606,16 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 		rows = append(rows, item.Fields)
 	}
 	return rows, nil
+}
+// serviceConfigFailure is err when it already is a refusal with its own
+// problem and fix (errors.As), else a service configuration refusal
+// carrying err's text after what.
+func serviceConfigFailure(what string, err error) error {
+	var op *verbs.OperationError
+	if errors.As(err, &op) {
+		return err
+	}
+	return serviceConfigError(what + err.Error())
 }
 func serviceConfigError(problem string) error {
 	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.FailureMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
@@ -630,7 +640,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	}
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return r, serviceConfigError("cannot inspect machine inventory: " + err.Error())
+		return r, serviceConfigFailure("cannot inspect machine inventory: ", err)
 	}
 	found := false
 	for _, machine := range machines {
@@ -1059,22 +1069,36 @@ func (p productionSetup) runAddress(ctx context.Context, address string) string 
 func isTailnetIP(ip netip.Addr) bool {
 	return netip.MustParsePrefix("100.64.0.0/10").Contains(ip) || netip.MustParsePrefix("fd7a:115c:a1e0::/48").Contains(ip)
 }
+// publicDashboardTarget is the board for --dash public=<machine>[:<port>]:
+// the machine by its nova-config name, its public address (nova-config's
+// optional machine field "public"; fleet addresses are MagicDNS names by
+// design), and the URL the board answers on: <port> when given (a fleet
+// that fronts public services on 80), else the service's own listener. The
+// service keeps listening on its own port (:8080) behind any front.
 func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMachine, rows []setupServiceRow, privateURL string) (verbs.DashboardTarget, error) {
+	name, front, err := splitPublicChoice(chosen)
+	if err != nil {
+		return verbs.DashboardTarget{}, err
+	}
 	var machine *verbs.FleetMachine
 	for i := range machines {
-		if machines[i].Name == chosen || machines[i].Address == chosen {
-			if machine != nil {
-				return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is ambiguous")
-			}
+		if machines[i].Name == name {
 			machine = &machines[i]
 		}
 	}
-	if machine == nil || machine.Name == runMachine || slices.Contains(machine.Roles, "bench") {
-		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host is absent, hosts run, or is also a bench")
+	switch {
+	case machine == nil:
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "no machine named " + name + " in nova-config", Fix: "nova-config machine list", Exit: 1}
+	case run.SameMachine(machine.Name, runMachine):
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: machine.Name + " runs the sprint; the public dashboard goes on another machine", Fix: "--dash public=<other>", Exit: 1}
+	case slices.Contains(machine.Roles, "bench"):
+		return verbs.DashboardTarget{}, verbs.PublicBenchRefusal(machine.Name)
+	case machine.Public == "":
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: "machine " + machine.Name + " has no public address in nova-config", Fix: "nova-config machine set " + machine.Name + " --public <ip> --actor <you> --reason <why>", Exit: 1}
 	}
-	publicIP, err := netip.ParseAddr(machine.Address)
+	publicIP, err := netip.ParseAddr(machine.Public)
 	if err != nil || !publicIP.IsGlobalUnicast() || publicIP.IsPrivate() || isTailnetIP(publicIP) {
-		return verbs.DashboardTarget{}, serviceConfigError("public dashboard host needs a public IP in inventory")
+		return verbs.DashboardTarget{}, &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("machine %s's public address %q in nova-config is not a public IP", machine.Name, machine.Public), edge.FailureMax), Fix: "nova-config machine set " + machine.Name + " --public <ip> --actor <you> --reason <why>", Exit: 1}
 	}
 	var candidate *verbs.FleetService
 	port := ""
@@ -1099,7 +1123,26 @@ func publicDashboardTarget(chosen, runMachine string, machines []verbs.FleetMach
 		service := verbs.FleetService{Name: "sprint-dashboard", Machine: machine.Name, Argv: []string{"/usr/bin/env", "nova-sprint", "dash", "--pull", privateURL, "--listen", ":8080"}}
 		candidate, port = &service, "8080"
 	}
+	if front != "" {
+		port = front
+	}
 	return verbs.DashboardTarget{URL: "http://" + net.JoinHostPort(publicIP.String(), port), Public: true, Service: candidate}, nil
+}
+
+// splitPublicChoice is <machine>[:<port>] from --dash public=: the machine
+// name and the port the board is fronted on ("" when not given).
+func splitPublicChoice(chosen string) (string, string, error) {
+	name, port, hasPort := strings.Cut(chosen, ":")
+	if hasPort {
+		number, err := strconv.Atoi(port)
+		if err != nil || number < 1 || number > 65535 || strconv.Itoa(number) != port {
+			return "", "", &verbs.OperationError{Problem: edge.RedactN(fmt.Sprintf("--dash public=%s: port %q is not 1-65535", chosen, port), edge.FailureMax), Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+		}
+	}
+	if name == "" {
+		return "", "", &verbs.OperationError{Problem: "--dash public= names no machine", Fix: "nova-sprint up --dash public=<machine>[:<port>]", Exit: 1}
+	}
+	return name, port, nil
 }
 func isDashboardService(argv []string) bool {
 	return (len(argv) > 1 && argv[1] == "dash") || (len(argv) > 2 && argv[0] == "/usr/bin/env" && argv[1] == "nova-sprint" && argv[2] == "dash")

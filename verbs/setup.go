@@ -79,7 +79,7 @@ func setupInput(in *input) (SetupInput, error) {
 	case s.Continuation != "" && !validContinuationID(s.Continuation):
 		return s, misuse("up", "--continuation is the 64-hex id up printed")
 	case s.Dash != "" && s.Dash != "tailnet" && !strings.HasPrefix(s.Dash, "public="):
-		return s, misuse("up", "--dash is tailnet or public=<host>")
+		return s, misuse("up", "--dash is tailnet or public=<machine>[:<port>]")
 	}
 	for _, v := range []string{s.Services, s.Key, s.RunOn, s.Version, s.Dash} {
 		if len(v) > 512 {

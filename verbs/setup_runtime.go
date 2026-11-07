@@ -159,7 +159,7 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 		return SetupCheck{}, err
 	}
 	if !saved && choice == "" {
-		return SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a host with a public IP?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>"}, nil
+		return SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a machine with a public address in nova-config?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<machine>[:<port>]"}, nil
 	}
 	target, ok := r.Dashboards[choice]
 	if !ok || target.Public != strings.HasPrefix(choice, "public=") || (target.Public && !validPublicTarget(target.Service)) {
