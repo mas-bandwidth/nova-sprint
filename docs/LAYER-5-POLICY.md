@@ -557,3 +557,8 @@ when every version tried failed), with a new invariant `NoAnswerStartsNothing`,
 three new witnesses (`PolicyDefaultSkipped`, `PolicyBrokenDefaultUsed`,
 `PolicyNoAnswerDeals`), `PolicyTickStalls` re-cut against the new last resort,
 and the reach check `NeverNoAnswer`.
+
+Checked on vision (hetzner2 was down), `bash tla/ci-tlc.sh` at a9661204: 115 runs
+all as required, 17 of them Policy (Policy.cfg no error; 10 witnesses each
+violating their first invariant; 6 reach checks violated). Race suite green on
+amd-3; cold tick 133 ms at 5,000 producers over 50 rows, without -race.
