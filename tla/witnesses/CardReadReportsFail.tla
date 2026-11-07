@@ -253,7 +253,7 @@ StepRule(n, ev, p, c, r) ==
          \A q \in Prods :
            ps'[q].att = ps[q].att + (IF ev \in {"Start", "Preempt"} /\ q = p THEN 1 ELSE 0)
     [] n = "RedNeverAdvances" -> ev = "Red" => ps'[p].st \notin {"merging", "landed"}
-    [] n = "FixKeepsScore" -> ev = "ReadFix" => ps'[p].score = ps[p].score
+    [] n = "FixKeepsScore" -> ev \in {"ReadFix", "JudgedFix"} => ps'[p].score = ps[p].score
     [] n = "HolderNeverChanges" -> \A k \in CIds : cs[k].st # "none" => cs'[k].row = cs[k].row
     [] n = "OldAttemptNeverMoves" ->
          ev \in PEvents => (cs[c].kind = "work" /\ cs[c].att = ps[p].att)
@@ -298,7 +298,16 @@ StepRule(n, ev, p, c, r) ==
     [] n = "ReviewOnEntry" ->
          \A q \in Prods :
            ps'[q].review = ps[q].review + (IF ev \in {"Finished", "Red"} /\ q = p THEN 1 ELSE 0)
-    [] n = "FixSaysWhat" -> ev = "ReadFix" => ps'[p].finding # "-"
+    [] n = "FixSaysWhat" -> ev \in {"ReadFix", "JudgedFix"} => ps'[p].finding # "-"
+    [] n = "JudgedOnlyOnFaults" ->
+         ev \in {"JudgedYes", "JudgedFix"} =>
+           /\ \E k \in ConsOf(p) :
+                /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "fault"
+                /\ cs[k].head = ps[p].head /\ cs[k].review = ps[p].review
+           /\ ~\E k \in ConsOf(p) :
+                /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res \in {"ok", "fix"}
+                /\ cs[k].head = ps[p].head /\ cs[k].review = ps[p].review
+    [] n = "UnblockResetsBounces" -> ev = "Unblock" => ps'[p].bounces = 0
     [] n = "InThisOpOnFailedNeed" -> ev = "InThisOp" => ps'[r].st = "fail"
     [] n = "FencesOnSnapshot" ->
          op > 0 =>
@@ -312,7 +321,7 @@ StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixK
               "FaultSpendsNothing", "RouteFaultBlocks", "BlockNoLive", "EditNoLive",
               "SentinelLandsByReached", "WaiveRedNeedsRed",
               "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
-              "FencesOnSnapshot"}
+              "FencesOnSnapshot", "JudgedOnlyOnFaults", "UnblockResetsBounces"}
 
 \* The monitor's value after a step: the rules it broke, and its name only
 \* when a reach check needs it (every other step is "-", so states are not
@@ -503,6 +512,33 @@ ReadFix(p) ==
   /\ PStep("ReadFix", p, NoC, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
                                             !.finding = "fix"])
 
+\* JudgedYes and JudgedFix (directive 58): the coordinator's verdict on a
+\* review whose reads faulted (a fault is not a read: layer 3 asks the read
+\* again up to policy's faults, then opens one judgement with the choices
+\* read, yes and fix). Every read of the review final, none live, a done
+\* read of the current review and head that faulted, and none that said
+\* ok or fix (the verdict over the reads decides those). JudgedYes goes
+\* to merging; JudgedFix to fix as ReadFix does (a bounce, the finding).
+\* The model bounds JudgedFix's bounce at MaxBounce, as the reports'.
+FaultRead(p) == CountedRead(p, "fault")
+JudgedOK(p) ==
+  /\ ps[p].st = "review"
+  /\ ReadsSettled(p)
+  /\ NoLive(p)
+  /\ FaultRead(p)
+  /\ ~YesRead(p)
+  /\ ~FixRead(p)
+
+JudgedYes(p) ==
+  /\ JudgedOK(p)
+  /\ PStep("JudgedYes", p, NoC, [ps[p] EXCEPT !.st = "merging"])
+
+JudgedFix(p) ==
+  /\ JudgedOK(p)
+  /\ ps[p].bounces < MaxBounce
+  /\ PStep("JudgedFix", p, NoC,
+           [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1, !.finding = "fix"])
+
 \* WaiveRed (the second cold read): a producer that a Red sent to fix
 \* (ready, or waiting when held) goes on to merging without a new read, when
 \* a done ok read of the previous review at the same head exists (the
@@ -649,9 +685,12 @@ Block(p) ==
   /\ NoLive(p)
   /\ PStep("Block", p, NoC, [ps[p] EXCEPT !.st = "blocked"])
 
+\* Unblock is the coordinator's review that found the card sound: its
+\* bounces start again (directive 75), so the bounce limit does not block
+\* it again the tick it is ready.
 Unblock(p) ==
   /\ ps[p].st = "blocked"
-  /\ PStep("Unblock", p, NoC, [ps[p] EXCEPT !.st = "waiting"])
+  /\ PStep("Unblock", p, NoC, [ps[p] EXCEPT !.st = "waiting", !.bounces = 0])
 
 \* Add puts a new card (here the sentinel a): its needs are existing
 \* producers or sentinels, its after the same, and a cycle
@@ -785,6 +824,7 @@ UnholdStream ==
 CardMove ==
   \/ \E p \in P :
        \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
+       \/ JudgedYes(p) \/ JudgedFix(p)
        \/ Cancel(p) \/ Block(p) \/ Unblock(p)
        \/ \E h \in Heads : Landed(p, h)
        \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
@@ -1071,6 +1111,8 @@ FencesOnSnapshot       == "FencesOnSnapshot" \notin last.bad
 ReviewOnEntry          == "ReviewOnEntry" \notin last.bad
 FixSaysWhat            == "FixSaysWhat" \notin last.bad
 InThisOpOnFailedNeed   == "InThisOpOnFailedNeed" \notin last.bad
+JudgedOnlyOnFaults     == "JudgedOnlyOnFaults" \notin last.bad
+UnblockResetsBounces   == "UnblockResetsBounces" \notin last.bad
 
 -----------------------------------------------------------------------------
 (* Reachability: these are expected to be VIOLATED (reach/*.cfg). Each    *)
@@ -1129,5 +1171,11 @@ NeverRouteBlocked ==
 (* and only Red and ReadFix write a finding.                              *)
 NeverRedToFix ==
   ~\E p \in Prods : ps[p].red /\ ps[p].st \in {"ready", "waiting"} /\ ps[p].finding = "fix"
+(* The coordinator's yes on a review whose reads faulted (directive 58):  *)
+(* merging with a faulted read of the current review and no ok one.       *)
+NeverJudgedYes == ~\E p \in Prods : ps[p].st = "merging" /\ FaultRead(p) /\ ~YesRead(p)
+(* Unblock after a bounce: waiting again with the count reset (75).      *)
+NeverUnblockedReset ==
+  ~\E p \in Prods : ps[p].st = "waiting" /\ ps[p].bounces = 0 /\ ps[p].finding = "fix" /\ ps[p].att >= 1
 
 =============================================================================

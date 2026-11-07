@@ -54,7 +54,7 @@ func coldProducerEvents() []Event {
 		Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, AskRead{Row: "r1"}, AskReads{Rows: []string{"r1"}}, ReadYes{}, ReadFix{Finding: "x"}, WaiveRed{Reason: "x"},
 		Landed{Head: h1}, Red{Head: h1, Reason: "x"}, Released{}, Cancel{Reason: "x"}, Replace{By: "p9", Reason: "x"},
 		NeedFailed{Need: "n1"}, Waive{Need: "n1"}, Relink{Need: "n1", To: "n2"}, Edit{Prose: "x"}, Rescore{Score: 9},
-		SetPriority{Level: "high"}, Block{Reason: "x"}, Unblock{Reason: "x"}}
+		SetPriority{Level: "high"}, Block{Reason: "x"}, Unblock{Reason: "x"}, JudgedYes{Reason: "x"}, JudgedFix{Finding: "x"}}
 }
 
 // coldAllowed is the design's from-column per producer event.
@@ -64,6 +64,7 @@ var coldAllowed = map[string][]string{
 	"AskRead": {Review}, "AskReads": {Review}, "ReadYes": {Review}, "ReadFix": {Review}, "WaiveRed": {Review}, "Landed": {Merging}, "Red": {Merging},
 	"Cancel": nonFinal, "Replace": nonFinal, "NeedFailed": nonFinal, "Edit": nonFinal, "Rescore": nonFinal,
 	"SetPriority": nonFinal, "Waive": {Waiting}, "Relink": {Waiting}, "Block": {Waiting, Ready, Review, Working}, "Unblock": {Blocked},
+	"JudgedYes": {Review}, "JudgedFix": {Review},
 }
 
 // Final states never move, Rescore, SetPriority and Edit included, for every
@@ -375,7 +376,7 @@ func (w *world) coldStepCard(rng *rand.Rand, ids []string, all map[string]Card, 
 		Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskReads{Rows: []string{row}},
 		ReadYes{}, ReadYes{}, ReadFix{Finding: "fix it"}, Landed{Head: pick(heads)}, Red{Head: pick(heads), Reason: "red"}, Red{Head: p.Head, Reason: "red"}, Released{},
 		Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
-		Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
+		Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}, JudgedYes{Reason: "judged"}, JudgedFix{Finding: "judged fix"}}
 	if rng.Intn(120) == 0 {
 		evs = []Event{Cancel{Reason: "c"}, Replace{By: "p3", Reason: "r"}, NeedFailed{Need: "p1"}, Waive{Need: "p1"}, Relink{Need: "p1", To: "p3"}}
 	}
@@ -493,14 +494,15 @@ func coldInvariants(t *testing.T, s store.Snapshot, finals map[string]coldFinal,
 			_, ok := s.Cards[workID(p.ID, p.Attempt)]
 			assert.True(t, ok, "%s: %s working with no work consumer of attempt %d", label, p.ID, p.Attempt)
 		case p.Kind == "producer" && p.State == Merging:
-			okRead := func(review int) bool {
+			read := func(review int, result string) bool {
 				return slices.ContainsFunc(coldValues(s.Cards), func(c store.Card) bool {
-					return c.Of == p.ID && c.Kind == "read" && c.Review == review && c.Head == p.Head && c.State == Done && c.Result == "ok"
+					return c.Of == p.ID && c.Kind == "read" && c.Review == review && c.Head == p.Head && c.State == Done && c.Result == result
 				})
 			}
 			// ReadYes has an ok read of this review. WaiveRed has one of the
 			// previous review, at this head, and does not raise the review.
-			assert.True(t, okRead(p.Review) || (p.Review > 0 && okRead(p.Review-1)), "%s: %s merging without an ok read of review %d or %d at its head", label, p.ID, p.Review, p.Review-1)
+			// JudgedYes has a faulted one of this review (directive 58).
+			assert.True(t, read(p.Review, "ok") || (p.Review > 0 && read(p.Review-1, "ok")) || read(p.Review, "fault"), "%s: %s merging without an ok or faulted read of review %d or an ok read of %d at its head", label, p.ID, p.Review, p.Review-1)
 		}
 	}
 	assert.Empty(t, coldCycle(s.Cards), "%s: needs cycle", label)

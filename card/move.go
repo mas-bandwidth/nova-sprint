@@ -151,6 +151,10 @@ func (m *mover) producerEvent(e Event) *Refusal {
 		return m.readYes(v)
 	case ReadFix:
 		return m.readFix(v)
+	case JudgedYes:
+		return m.judgedYes(v)
+	case JudgedFix:
+		return m.judgedFix(v)
 	case WaiveRed:
 		return m.waiveRed(v)
 	case Landed:
@@ -668,17 +672,67 @@ func (m *mover) readFix(e ReadFix) *Refusal {
 	if e.Finding == "" {
 		return no("a fix read says what to fix")
 	}
+	return m.toFix(e.Finding)
+}
+
+// toFix is ReadFix's and JudgedFix's move: back to ready (waiting when
+// held) with the finding, a bounce spent.
+func (m *mover) toFix(finding string) *Refusal {
 	if r := m.back(); r != nil {
 		return r
 	}
 	if m.s.Held {
 		m.reason(m.p.ID, m.p.Reason, holdPhrase(m.s))
 	}
-	if e.Finding != "" && e.Finding != m.p.Finding {
-		m.write(store.SetCardFinding{Card: m.p.ID, Finding: e.Finding})
+	if finding != m.p.Finding {
+		m.write(store.SetCardFinding{Card: m.p.ID, Finding: finding})
 	}
 	m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
 	return nil
+}
+
+// judged checks what JudgedYes and JudgedFix need: p in review, no live
+// consumer, a done read of p's current review and head that faulted, and
+// none that said ok or fix (the tick's verdict answers those; directive 58).
+func (m *mover) judged(e Event) *Refusal {
+	if r := m.from(e, Review); r != nil {
+		return r
+	}
+	if _, r := m.reads(); r != nil {
+		return r
+	}
+	if ok, fix := m.count("ok"), m.count("fix"); ok+fix > 0 {
+		return no("producer %s has %d ok and %d fix read(s) of review %d; the verdict over its reads decides, not %s", m.p.ID, ok, fix, m.p.Review, name(e))
+	}
+	if m.count("fault") == 0 {
+		return no("producer %s has no faulted read of review %d; %s answers a review whose reads faulted", m.p.ID, m.p.Review, name(e))
+	}
+	return nil
+}
+
+// judgedYes is the coordinator's yes on a review whose reads all faulted.
+func (m *mover) judgedYes(e JudgedYes) *Refusal {
+	if r := m.judged(e); r != nil {
+		return r
+	}
+	if e.Reason == "" {
+		return no("the coordinator's yes says why: what was read and found sound")
+	}
+	m.state(m.p.ID, Merging)
+	m.reason(m.p.ID, m.p.Reason, e.Reason)
+	return nil
+}
+
+// judgedFix is the coordinator's fix on a review whose reads all faulted:
+// as ReadFix, with the coordinator's finding.
+func (m *mover) judgedFix(e JudgedFix) *Refusal {
+	if r := m.judged(e); r != nil {
+		return r
+	}
+	if e.Finding == "" {
+		return no("a fix says what to fix")
+	}
+	return m.toFix(e.Finding)
 }
 
 // waiveRed sends a producer a Red sent to fix (ready, or waiting in a held
@@ -1039,6 +1093,12 @@ func (m *mover) unblock(e Unblock) *Refusal {
 		why = holdPhrase(m.s)
 	}
 	m.reason(m.p.ID, m.p.Reason, why)
+	// The coordinator's review found the card sound: its bounces start
+	// again (directive 75; CardMachine.tla Unblock), so the bounce limit
+	// does not block it again the tick it is ready.
+	if m.p.Bounces != 0 {
+		m.write(store.SetCardBounces{Card: m.p.ID, Bounces: 0})
+	}
 	return nil
 }
 

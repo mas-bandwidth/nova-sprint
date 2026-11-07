@@ -346,7 +346,10 @@ func (b *bk) transition(was, c store.Card, prev, cur store.Snapshot, bad func(st
 	if d := c.Attempt - was.Attempt; d != 0 && !(d == 1 && c.State == Working) {
 		bad("%s attempt %d -> %d in state %s -> %s (attempt rises only on Start)", id, was.Attempt, c.Attempt, was.State, c.State)
 	}
-	if d := c.Bounces - was.Bounces; d < 0 || d > 1 || (d == 1 && was.State != Working && was.State != Review) {
+	// Unblock resets the count (directive 75: the coordinator's review
+	// found the card sound).
+	unblocked := was.State == Blocked && c.State != Blocked && c.Bounces == 0
+	if d := c.Bounces - was.Bounces; !unblocked && (d < 0 || d > 1 || (d == 1 && was.State != Working && was.State != Review)) {
 		bad("%s bounces %d -> %d from %s", id, was.Bounces, c.Bounces, was.State)
 	}
 	// A merge is several moves (ruling 11). Review may rise by one when an

@@ -27,7 +27,7 @@ INVARIANTS = [
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "ReplaceByLive", "HeadNeverRepeats",
     "FaultSpendsNothing", "RouteFaultBlocks", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
-    "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
+    "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed", "JudgedOnlyOnFaults", "UnblockResetsBounces",
 ]
 
 # The instance of each scenario (see the module header). "life": one
@@ -79,6 +79,8 @@ REACH = {
     "NeverFindingCarried": ("life", "a fix attempt carries the reader's finding"),
     "NeverPreempted": ("pre", "a blocker preempts a live consumer"),
     "NeverInThisOpMerged": ("mergedeps", "a need fails and a later move of the op moves its dependant InThisOp"),
+    "NeverJudgedYes": ("life", "the coordinator's yes merges a review whose reads faulted"),
+    "NeverUnblockedReset": ("life", "Unblock after a bounce resets the count"),
 }
 
 # Relink's lines, shared by the two cycle witnesses.
@@ -125,6 +127,16 @@ WITNESSES = [
      [("  /\\ IsCur(p, c)\n  /\\ cs[c].st = \"done\"\n  /\\ cs[c].res \\in {\"fault\", \"route\"}\n",
        "  /\\ c \\in ConsOf(p) /\\ cs[c].kind = \"work\"   \\* FAULT: was IsCur(p, c)\n"
        "  /\\ cs[c].st = \"done\"\n  /\\ cs[c].res \\in {\"fault\", \"route\"}\n", 1)]),
+    ("CardJudgedOverRead", "JudgedOnlyOnFaults", "life",
+     "JudgedYes and JudgedFix do not refuse a review a read said ok or fix\n"
+     "about: the coordinator's verdict overrides a reader's.",
+     [("  /\\ FaultRead(p)\n  /\\ ~YesRead(p)\n  /\\ ~FixRead(p)\n",
+       "  /\\ FaultRead(p)\n  /\\ TRUE   \\* FAULT: was ~YesRead(p) /\\ ~FixRead(p)\n", 1)]),
+    ("CardUnblockKeepsBounces", "UnblockResetsBounces", "life",
+     "Unblock keeps the bounce count (the model before directive 75): the\n"
+     "bounce limit blocks the card again the tick it is ready.",
+     [("!.st = \"waiting\", !.bounces = 0])",
+       "!.st = \"waiting\"])   \\* FAULT: was !.bounces = 0 too", 1)]),
     ("CardYesOnZero", "ReadYesNeedsYes", "life",
      "ReadYes does not require a done ok read of the current review: a yes\n"
      "fires on zero yes reads.",

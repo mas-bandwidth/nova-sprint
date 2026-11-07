@@ -80,7 +80,7 @@ func (tr *cardTrace) args(label string, plan Plan) ([]string, error) {
 			return act("RawHold"), nil
 		}
 		return act("UnholdStream"), nil
-	case Resolve, Park, Reached, ReadYes, ReadFix, WaiveRed, Cancel, Block, Unblock, Edit:
+	case Resolve, Park, Reached, ReadYes, ReadFix, JudgedYes, JudgedFix, WaiveRed, Cancel, Block, Unblock, Edit:
 		return act(name(e), "p", p), nil
 	case Start:
 		return act("Start", "p", p, "r", quoted(e.Row)), nil

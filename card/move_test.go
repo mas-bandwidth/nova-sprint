@@ -779,3 +779,44 @@ func TestReadFixNeedsAFixRead(t *testing.T) {
 	}
 	assert.Nil(t, mv(Review, []Card{rd(Done, "fix")}, ReadFix{Finding: "x"}))
 }
+
+// TestJudgedVerdict is directive 58's coordinator verdict: on a review
+// whose reads all faulted (or none is done), JudgedYes goes to merging and
+// JudgedFix to fix with a bounce; both are refused while a done read of the
+// review said ok or fix, or a read is live, and each says why.
+func TestJudgedVerdict(t *testing.T) {
+	faulted := []Card{rd(Done, "fault")}
+	plan, r := Move(pr(Review), faulted, rows(), Stream{Name: "s1"}, needs(LandedState), JudgedYes{Reason: "read it myself"})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Merging}))
+	plan, r = Move(pr(Review), faulted, rows(), Stream{Name: "s1"}, needs(LandedState), JudgedFix{Finding: "x.go:3 is wrong"})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Ready}))
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardBounces{Card: "p1", Bounces: 1}))
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardFinding{Card: "p1", Finding: "x.go:3 is wrong"}))
+	for _, res := range []string{"ok", "fix"} {
+		assert.NotNil(t, mv(Review, []Card{rd(Done, res)}, JudgedYes{Reason: "r"}), res)
+		assert.NotNil(t, mv(Review, []Card{rd(Done, res)}, JudgedFix{Finding: "f"}), res)
+	}
+	assert.NotNil(t, mv(Review, []Card{rd(Working, "")}, JudgedYes{Reason: "r"}))
+	refusal{mv(Review, faulted, JudgedYes{}), "the coordinator's yes says why: what was read and found sound"}.check(t)
+	refusal{mv(Review, faulted, JudgedFix{}), "a fix says what to fix"}.check(t)
+	for _, st := range []string{Waiting, Ready, Working, Merging, Blocked} {
+		assert.NotNil(t, mv(st, faulted, JudgedYes{Reason: "r"}), st)
+	}
+}
+
+// TestUnblockResetsBounces is directive 75: the coordinator's review found
+// the card sound, so the bounce limit does not block it again at once.
+func TestUnblockResetsBounces(t *testing.T) {
+	p := pr(Blocked)
+	p.Bounces = 6
+	plan, r := Move(p, nil, rows(), Stream{Name: "s1"}, needs(LandedState), Unblock{Reason: "brief rewritten"})
+	require.Nil(t, r)
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardBounces{Card: "p1", Bounces: 0}))
+}
+
+func TestJudgedNeedsAFaultedRead(t *testing.T) {
+	refusal{mv(Review, nil, JudgedYes{Reason: "r"}), "producer p1 has no faulted read of review 1; JudgedYes answers a review whose reads faulted"}.check(t)
+	refusal{mv(Review, []Card{rd(Fail, "")}, JudgedFix{Finding: "f"}), "producer p1 has no faulted read of review 1; JudgedFix answers a review whose reads faulted"}.check(t)
+}

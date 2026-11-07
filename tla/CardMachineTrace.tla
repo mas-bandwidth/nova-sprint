@@ -41,7 +41,7 @@ VARIABLE l
 traceVars == <<vars, l>>
 
 CardMoves == {"Resolve", "Park", "Reached", "Start", "Finished", "Broken", "Faulted", "Released",
-              "AskRead", "AskReads", "ReadYes", "ReadFix", "WaiveRed", "Landed", "Cancel", "Replace",
+              "AskRead", "AskReads", "ReadYes", "ReadFix", "JudgedYes", "JudgedFix", "WaiveRed", "Landed", "Cancel", "Replace",
               "NeedFailed", "Waive", "Relink", "Block", "Unblock", "Report", "Withdraw"}
 EnvMoves  == {"Edit", "Rescore", "SetPriority", "Red", "Seen", "Gone", "Width", "Hold", "Unhold",
               "HoldStream", "UnholdStream", "RawHold"}
@@ -76,6 +76,8 @@ CardStep(r) ==
     [] r.action = "AskReads"   -> AskReads(r.p, r.rows)
     [] r.action = "ReadYes"    -> ReadYes(r.p)
     [] r.action = "ReadFix"    -> ReadFix(r.p)
+    [] r.action = "JudgedYes"  -> JudgedYes(r.p)
+    [] r.action = "JudgedFix"  -> JudgedFix(r.p)
     [] r.action = "WaiveRed"   -> WaiveRed(r.p)
     [] r.action = "Landed"     -> Landed(r.p, r.h)
     [] r.action = "Cancel"     -> Cancel(r.p)

@@ -96,6 +96,14 @@ type (
 	}
 	ReadYes struct{}
 	ReadFix struct{ Finding string } // the read's finding, kept in its own column
+	// JudgedYes and JudgedFix are the coordinator's verdict on a review no
+	// read could give one for (directive 58: every read of it faulted, up to
+	// policy's faults): review -> merging, or to fix with Finding (a bounce,
+	// as ReadFix). Refused while a done read of the review said ok or fix
+	// (the tick's verdict decides those) or a consumer is live. Who may
+	// judge is layer 3's; the event carries no actor.
+	JudgedYes struct{ Reason string }
+	JudgedFix struct{ Finding string }
 	// WaiveRed moves a producer a Red sent to fix (ready, or waiting in a
 	// held stream) on to merging without a new read, when that Red is still
 	// recorded and a done ok read of the previous review at the same head
@@ -234,6 +242,8 @@ func (AskRead) isEvent()     {}
 func (AskReads) isEvent()    {}
 func (ReadYes) isEvent()     {}
 func (ReadFix) isEvent()     {}
+func (JudgedYes) isEvent()   {}
+func (JudgedFix) isEvent()   {}
 func (WaiveRed) isEvent()    {}
 func (Landed) isEvent()      {}
 func (Red) isEvent()         {}
