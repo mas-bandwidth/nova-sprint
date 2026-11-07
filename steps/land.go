@@ -217,8 +217,7 @@ func (t *tick) eligible(queued []store.Card) []store.Card {
 // landRequest is one edge request for the heads of picks in order: its id
 // hashes the epoch, stream, cards, heads, reviews and base, so a restart
 // reissues the same request and a second landing of one head after a
-// retry has an id of its own when anything changed (the model's
-// finding 8).
+// retry has an id of its own when anything changed.
 func (t *tick) landRequest(s string, picks []store.Card, wait int) {
 	base := t.in.Heads[s]
 	h := sha256.New()

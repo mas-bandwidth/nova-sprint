@@ -2,8 +2,7 @@
 EXTENDS RunClear, RunClearTraceLog, TLC
 \* Deterministic hidden Scan steps connect actual collector entry/completion.
 \* Every Collected record binds actual end, needed and cancelled observations.
-\* Historical fixtures used one obligation per confirmed batch. EnvelopeConfirmed
-\* binds one concrete confirmed envelope to a finite deterministic Send sequence;
+\* EnvelopeConfirmed binds one concrete confirmed envelope to a finite deterministic Send sequence;
 \* only actual rendered member IDs are acknowledged, never omitted IDs.
 VARIABLE l
 traceVars == <<vars,l>>

@@ -392,8 +392,8 @@ The deal is the take: a consumer is cut `working` and is in its row's hand from 
 op that cuts it, and the deal's push (layer 6) names the card, repo, base, branch
 (a read's head), brief and the finish or read command. The row's `take` is its
 **acknowledgement**: a cursor `took:<epoch>:<consumer>` (`AckCursor`; hashed when it
-would pass 128 bytes) written once, moving no card. A consumer with no model was
-dealt before models were named and counts as acknowledged.
+would pass 128 bytes) written once, moving no card. A consumer with no model
+counts as acknowledged.
 
 - **Nudge.** A working consumer not yet acknowledged, from `ready_nag` after the
   deal, gets a `NUDGE` line each tick (`Plan.Nudges`, pushed outside the log, no
@@ -515,8 +515,8 @@ the view is expired by the tick.
 | `no-policy` | no active policy answers (the gate) | the gate lifts | retry |
 | `engine` | a plan the card machine or the store refused on fresh state, or a stream with no head | | retry |
 
-What older designs escalated otherwise (failed work, bounds, lateness, rebase
-conflicts, read broken) is a rule move in the tick, not a judgement.
+Failed work, bounce bounds, lateness, rebase conflicts and a broken read are rule
+moves in the tick, not judgements.
 
 ## Why the fleet is idle
 

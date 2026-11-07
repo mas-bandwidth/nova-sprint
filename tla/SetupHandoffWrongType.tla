@@ -2,7 +2,7 @@
 EXTENDS Naturals, FiniteSets
 
 (***************************************************************************
- Separate two-child setup protocol; the original Setup walk is unchanged.
+ Separate two-child setup protocol, modelled apart from the Setup walk.
  A typed record is immutable and reusable, but only authorizes fresh checks.
  recordEpoch and binding abstract epoch and actor/canonical-argument binding.
  Phase 1 holds a monitored lease while a sprint-secret helper writes the

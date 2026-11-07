@@ -324,9 +324,8 @@ func TestFunctionalIndexes(t *testing.T) {
 	require.NoError(t, c.QueryRow(ctx, `SELECT pg_get_expr(i.indpred, i.indrelid) FROM pg_index i WHERE i.indexrelid = 'sprint.cards_working'::regclass`).Scan(&working))
 	assert.Equal(t, "(state = 'working'::text)", working)
 
-	// Round 22: the store no longer counts a row's working cards (width is
-	// the roster's); the per-row count is a reader's, and cards_working
-	// serves it.
+	// The store does not count a row's working cards (width is the roster's);
+	// the per-row count is a reader's, and cards_working serves it.
 	workingSQL := "SELECT count(*) FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = 'working'"
 	dashSQL := `SELECT r.name, r.state, r.held, count(c.id) FROM sprint.rows r
 			LEFT JOIN sprint.cards c ON c.epoch = r.epoch AND c.holder = r.name AND c.state = 'working' WHERE r.epoch = $1 GROUP BY r.name, r.state, r.held ORDER BY r.name`

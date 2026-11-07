@@ -81,7 +81,7 @@ type DashboardTarget struct {
 	Service *FleetService
 }
 
-// RuntimeSetup combines real tools with owner-supplied store/run/worker seams.
+// RuntimeSetup combines real tools with caller-supplied store/run/worker seams.
 type RuntimeSetup struct {
 	Prerequisites  SetupPrerequisites
 	Store          SetupStore

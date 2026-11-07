@@ -69,10 +69,10 @@ func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 	d := mapSnapshot(snap, ros, time.Time{})
 	friends := d.Tables["friends"].(map[string]*fleetRow)
 	if e := friends["friendC"]; e.OK != 1 || e.Failed != 1 || e.OKPct != 50 || e.Done != 3 {
-		t.Errorf("friendC = %+v: ok and fix work count, her read is her done and nothing else", e)
+		t.Errorf("friendC = %+v: ok and fix work count, a read counts only toward the reader's done", e)
 	}
 	if a := friends["friendA"]; a.OK != 1 || a.Failed != 1 || a.OKPct != 50 || a.Done != 4 {
-		t.Errorf("friendA = %+v: ok and fail count; the fault and friendC's read of his work do not", a)
+		t.Errorf("friendA = %+v: ok and fail count; the fault and friendC's read of friendA's work do not", a)
 	}
 	if b := friends["bob"]; b.OK != 0 || b.Failed != 0 || b.Done != 3 {
 		t.Errorf("bob = %+v: a fault, a close with no result and a release count for nothing", b)

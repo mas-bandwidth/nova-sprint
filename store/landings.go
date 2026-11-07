@@ -8,6 +8,7 @@ import (
 
 // ImportedReason starts the reason of a producer that was imported
 // as already landed: it landed before this run, so it is no landing of the sprint.
+// The string is stored on the card, so its text is part of the data format.
 const ImportedReason = "its producer landed in v1"
 
 // LandedIn is how many producers an accepted event moved to landed (the

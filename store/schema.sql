@@ -197,9 +197,8 @@ ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
     CONSTRAINT cards_model_check CHECK (kind IN ('work', 'read') OR model = '');
 
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
--- tier never change once it is written (there is no write for any of them;
--- FriendE's review 2026-11-06: a working card could drop its holder and keep
--- the slot), nor does a read consumer's review or a work consumer's finding
+-- tier never change once it is written (there is no write for any of them; a
+-- working card that dropped its holder would keep its slot), nor does a read consumer's review or a work consumer's finding
 -- (the producer's at cut), and a consumer's of names a producer of its own stream and tier
 -- (the foreign key says only that it names a card). A consumer's attempt is fixed at add
 -- too, but a trigger cannot tell the store's own writes from a caller's, so
