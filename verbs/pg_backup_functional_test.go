@@ -130,5 +130,5 @@ type functionalRestoreLease struct{ lock run.RestoreLock }
 func (l functionalRestoreLease) Check(ctx context.Context) error { return l.lock.Check(ctx) }
 func (l functionalRestoreLease) Close() error                    { return l.lock.Close(context.Background()) }
 func (l functionalRestoreLease) Restore(ctx context.Context, d *VerifiedDump) error {
-	return l.lock.Restore(ctx, func(w run.RestoreWriter) error { return d.Execute(ctx, w) })
+	return l.lock.Restore(ctx, d.Digest(), func(w run.RestoreWriter) error { return d.Execute(ctx, w) })
 }

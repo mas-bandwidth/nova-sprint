@@ -1,7 +1,8 @@
 # Fixed-seed Layer6 trace gate
 
 `check-layer6-traces.py` emits traces from the current implementation, then checks
-all 84 inputs through the current shared `check-trace.sh`. Run it only under an
+all 73 inputs through the current shared `check-trace.sh` (84 before the RunClear
+cases were withdrawn: see "After the run rewrite" at the end). Run it only under an
 authorized nova-reserve Linux reservation. It does not acquire another reservation
 inside an existing CI job. Workflow ownership belongs to the main integration.
 
@@ -64,3 +65,31 @@ report between stopped scheduler calls, and Start from actual Engine snapshots.
 The suite now has 84 identities. Historical 83-case receipts retain their original
 scope; this helper change requires a fresh integrated-source emission/check before
 claiming current full-suite acceptance.
+
+
+## After the run rewrite (f697b05f; this branch, 2026-11-06)
+
+The run core the Run fixtures were bound to (Engine, Scheduler, the old pusher)
+was deleted. `TestEmitRunTrace` (run/run_trace_test.go) is rewritten on
+`run.Ticker` and `run.Pusher` with the same case names, seeds and knobs:
+`run-0`, `run-1`, `run-2` (`NOVA_RUN_TRACE_SEED`) and `run-stop`
+(`NOVA_RUN_TRACE_STOP=1`), written to `NOVA_RUN_TRACE_PATH`. What changed in the
+mapping, and why, is "The run.Ticker binding" in RunTrace-MAPPING.md:
+RunTrace.cfg's Budget is 1 (was 2); RunTrace.tla is unchanged; CaptureFence is
+now the view seq in the op's id (the code sends no AtSeq); a failed send is
+Stutter. `NOVA_RUN_TRACE_MIDSTOP=1` emits the Stop-between-fold-and-apply case,
+which TLC refuses at its Apply (the code accepts a tick op after a Stop); it is
+evidence of that finding and not a gate case.
+
+The eleven RunClear cases (`clear`, `clear-walk-0..9`) are withdrawn and owed:
+their emitters (TestEmitClearTrace, TestEmitClearActionWalk) went with the old
+pusher, and `run.Pusher` has no clear summary or old-backlog suppression for
+RunClear's Prepare/Scan/Summary to bind. The suite is 73 identities: run 4,
+setup 1, handoff 2, choices 2, install 64.
+
+Checked on hetzner2 at d8d7bd29 (2026-11-06): `run-0` TRACE OK steps=130,
+`run-1` 112, `run-2` 109, `run-stop` 148 (emitted by this helper with -race).
+The full gate cannot pass at this base: `cmd/nova-sprint` does not build
+(engine.go and handoff_trace_test.go import the deleted run/filestore), so the
+two handoff emitters fail; that is the stitch's wiring of the run verb, not a
+trace change.
