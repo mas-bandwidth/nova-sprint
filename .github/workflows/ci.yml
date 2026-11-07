@@ -114,7 +114,7 @@ jobs:
       - name: Java is present for Layer 6 traces
         run: test -x "$HOME/sdk/bin/java" || command -v java
       - name: Emit and check fixed-seed Layer 6 traces
-        run: nova-reserve run --slots 4 --wait 15m --why "Layer 6 trace CI" -- nice -n 19 python3 tla/check-layer6-traces.py --mode all --repo "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/layer6-traces-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        run: nova-reserve run --wait 15m --why "Layer 6 trace CI" -- nice -n 19 python3 tla/check-layer6-traces.py --mode all --repo "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/layer6-traces-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         env:
           GOMAXPROCS: "4"
       - name: Retain Layer 6 trace evidence
