@@ -20,6 +20,7 @@ INVARIANTS = [
     "ConditionsAtomic", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
     "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "CursorWithinLog",
     "LogAppendOnly", "PolicyImmutable", "ReceiptMatches", "RedOnlyOnProducers", "HookKept",
+    "FreshMovesNothing",
 ]
 
 # The passing runs: cfg name -> Scenario.
@@ -47,6 +48,8 @@ REACH = {
     "NeverRehooked": ("deal", "an unhooked row is hooked by another session as coordinator (s19, s20)"),
     "NeverDealtStopped": ("deal", "a deal lands while the sprint is stopped (s21, a1)"),
     "NeverSameStopRefused": ("deal", "a stop write equal to the sprint's stop is refused (s22)"),
+    "NeverStoppedRefused": ("deal", "an op fenced on Running (s23) is refused once the sprint is stopped"),
+    "NeverFreshRefused": ("deal", "a tick op on the fresh store (n1) is refused: the sprint was never started"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
     "NeverJudgementFenced": ("records", "a second close of a judgement is refused on JudgementOpen"),
     "NeverCursorRefused": ("records", "a cursor write below the current value is refused (m2)"),
@@ -210,6 +213,12 @@ WITNESSES = [
      "opens epoch 2 running.",
      [("   policies |-> st.policies,\n   stopped |-> st.stopped]",
        "   policies |-> st.policies,\n   stopped |-> FALSE]   \\* FAULT: the stop is not carried", 1)]),
+    ("StoreFreshRunning", "FreshMovesNothing", "deal",
+     "A fresh store begins running (the defect of 2026-11-07: the run\n"
+     "ticked while up was at step 7): n1, a tick op fenced on Running,\n"
+     "lands before any start.",
+     [("policies |-> [v \\in Versions |-> Absent], stopped |-> TRUE]   \\* a fresh store: never started",
+       "policies |-> [v \\in Versions |-> Absent], stopped |-> FALSE]   \\* FAULT: a fresh store runs", 1)]),
     ("StoreJudgementTwice", "JudgementClosedOnce", "records",
      "Answer and expire refuse only an absent judgement, not a closed one:\n"
      "h1 answers j1, and h2, which carries no JudgementOpen fence, answers\n"

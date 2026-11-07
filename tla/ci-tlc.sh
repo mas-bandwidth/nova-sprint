@@ -15,7 +15,7 @@
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
-#     Setup.tla, SetupWalk.tla, SetupChoices.tla (SetupChoices.cfg and
+#     Setup.tla, SetupWalk.tla, SetupRun.tla, SetupChoices.tla (SetupChoices.cfg and
 #     SetupChoicesTwoKeys.cfg), SetupChoicesWalk.tla, SetupHandoff.tla
 #     (SetupHandoff.cfg and SetupHandoffCrash.cfg), Install.tla (Install.cfg
 #     and InstallFresh.cfg)               must pass            (TLC exit 0)
@@ -166,6 +166,7 @@ run RunFailover pass . RunFailover.cfg Run.tla 4
 run RunClear pass . RunClear.cfg RunClear.tla 2
 run Setup pass . Setup.cfg Setup.tla 2
 run SetupWalk pass . SetupWalk.cfg SetupWalk.tla 2
+run SetupRun pass . SetupRun.cfg SetupRun.tla 2
 run SetupChoices pass . SetupChoices.cfg SetupChoices.tla 2
 run SetupChoicesTwoKeys pass . SetupChoicesTwoKeys.cfg SetupChoices.tla 2
 run SetupChoicesWalk pass . SetupChoicesWalk.cfg SetupChoicesWalk.tla 2
@@ -196,8 +197,15 @@ for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
          SetupHandoffWrongType \
          InstallCheckSkipped InstallDeletesPrevious InstallFailureSwitches \
-         InstallPartialPublished InstallUnlinksFirst InstallVersionIgnored; do
+         InstallPartialPublished InstallUnlinksFirst InstallVersionIgnored \
+         SetupRunFreshRunning; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
+done
+
+# SetupRun's reach checks (the run up on a fresh store, a stop and a move,
+# each before the walk is done): each must be violated on SetupRun.tla.
+for m in NeverRunUpFreshMidWalk NeverStoppedMidWalk NeverMovedMidWalk; do
+    run "reach-SetupRun$m" violate . "SetupRun$m.cfg" SetupRun.tla 1
 done
 
 for f in "$HERE"/reach/*.cfg; do

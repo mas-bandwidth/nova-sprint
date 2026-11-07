@@ -22,10 +22,10 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	}
 	label, next := "STARTED", waitNext
 	if stop {
-		label, next = "STOPPED", "nova-sprint start --reason \"<why>\""
+		label, next = "STOPPED", "nova-sprint start --as "+in.actor+" --reason \"<why>\""
 	}
 	if snap.Stopped == stop {
-		return done(next, fmt.Sprintf("%s already (%s)", label, orWord(snap.StopReason, "no reason given"))), nil
+		return alreadyStopped(snap, in.actor), nil
 	}
 	op := e.newOp(in.verb, in.actor, snap, reason)
 	op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}}
@@ -35,6 +35,17 @@ func runStop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		return "", err
 	}
 	return done(next, fmt.Sprintf("%s applied at seq %d", label, r.Seq)), nil
+}
+
+// alreadyStopped is stop on a stopped sprint, or start on a running one: a
+// success that changes nothing, saying the state and the next verb (defect
+// 23: start on a running sprint printed "STARTED already").
+func alreadyStopped(snap store.Snapshot, actor string) string {
+	reason := orWord(snap.StopReason, "no reason given")
+	if snap.Stopped {
+		return done("nova-sprint start --as "+actor+" --reason \"<why>\"", "STOPPED already: the sprint is already stopped ("+reason+"); nothing changed")
+	}
+	return done("nova-sprint next --as "+actor, "RUNNING already: the sprint is already running ("+reason+"); nothing to start")
 }
 
 // runCheck is `check`, the one doctor: the fleet, nova-tools at or above

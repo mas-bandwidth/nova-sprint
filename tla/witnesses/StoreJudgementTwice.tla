@@ -56,16 +56,21 @@
 (* checked before the store's step (ErrInvalid), so it is structural here. *)
 (* The sprint's stop (stopped) is one value for the store, as the epoch is, *)
 (* set by SetStopped (refused when unchanged) and kept by a clear. The     *)
-(* store refuses nothing because of it: ops still land while stopped.      *)
+(* store refuses nothing because of it: ops still land while stopped,      *)
+(* except an op fenced on Running (run's tick ops). A fresh store begins   *)
+(* stopped, its reason "never started" (Empty.stopped; store.FreshStop,    *)
+(* written by Migrate), so nothing a tick plans lands before the first     *)
+(* start (FreshMovesNothing; Glenn, 2026-11-07).                           *)
 (*                                                                         *)
 (* A producer carries red (round 17): its last read's verdict was red, a   *)
 (* plain attribute set by SetRed (producers only; refused on a consumer or *)
 (* a sentinel, and as changing nothing) and read by CardRed.               *)
 (*                                                                         *)
 (* Small instance: 6 cards (2 producers, 1 sentinel, 3 consumers), 2 rows, *)
-(* one judgement, one cursor, two policy versions, 36 fixed ops. A setup   *)
-(* caller runs s1..s22 in order, covering the deterministic rules once     *)
-(* each; then the callers of one Scenario run concurrently: "deal" (cards  *)
+(* one judgement, one cursor, two policy versions, 39 fixed ops. A setup   *)
+(* caller runs n1, n2, s1..s23 in order, covering the deterministic rules  *)
+(* once each; then the callers of one Scenario run concurrently: "deal"   *)
+(* (cards                                                                  *)
 (* and rows)                                                               *)
 (* or "records" (judgements and cursors). The two never interact, and      *)
 (* splitting them keeps each run small. Transport failures (at most        *)
@@ -119,6 +124,7 @@ RowGen(r, g)      == Cnd("rowGen",      None, r,    None, g)
 RowHeld(r, h)     == Cnd("rowHeld",     None, r,    None, IF h THEN 1 ELSE 0)
 JudgementOpen(j)  == Cnd("judgeOpen",   j,    None, None, 0)
 CardRed(c, b)     == Cnd("cardRed",     c,    None, None, IF b THEN 1 ELSE 0)
+Running           == Cnd("running",     None, None, None, 0)   \* the sprint is not stopped
 
 (* A write: k the kind; c the card, judgement or cursor; r the row (and a  *)
 (* consumer's holder at add); s a state, or a producer's tier at add; n    *)
@@ -159,8 +165,12 @@ ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 (* s17, s20, e1's width write, v1) and renumbered the rest. s1 and s2     *)
 (* hook r1 and r2 by session x as workers; s18 hooks r2 by y: refused, x   *)
 (* holds it; s19 unhooks r2; s20 hooks it by y as coordinator. s21 stops   *)
-(* the sprint; s22 stops it again: refused as changing nothing. The deal   *)
-(* scenario then runs stopped: the store refuses nothing for it.           *)
+(* the sprint; s22 stops it again: refused as changing nothing. s23, fenced *)
+(* on Running (run's tick ops carry it), is refused: the sprint is stopped. *)
+(* The deal scenario then runs stopped: unfenced ops still land. Before    *)
+(* all of them, on the fresh store: n1, a tick op fenced on Running (run   *)
+(* opens a judgement), is refused: the sprint was never started; n2 is the *)
+(* coordinator's first start.                                              *)
 (* Scenario "deal": a1 deals new consumer u1 to r1 and makes it working,   *)
 (* fenced on r1 up and not held; a2 marks it done (it keeps r1). b1 adds   *)
 (* consumer u2 ready on r1, b2 makes it working: with a1's u1 still        *)
@@ -171,7 +181,9 @@ ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 (* fence (the write refuses a second close); m1 sets cursor c1 to 2, m2 to *)
 (* 1, m3 to MaxSeq (past the log); k1 clears epoch 1 (the cursor is kept). *)
 Ops == [
-  s1  |-> Op(1, {}, <<PutRow("r1", "x", "worker"), SetRowState("r1", "up")>>),
+  n1  |-> Op(1, {Running}, <<PutJudgement("j1")>>),
+  n2  |-> Op(1, {}, <<SetStopped(FALSE)>>),
+  s1  |->Op(1, {}, <<PutRow("r1", "x", "worker"), SetRowState("r1", "up")>>),
   s2  |-> Op(1, {}, <<PutRow("r2", "x", "worker"), SetRowState("r2", "up")>>),
   s3  |-> Op(1, {}, <<AddCard("p1", "producer", None, {}, "r1", "pro")>>),
   s4  |-> Op(1, {}, <<AddCard("t1", "sentinel", None, {}, "r1", "pro")>>),
@@ -194,6 +206,7 @@ Ops == [
   s20 |-> Op(1, {}, <<PutRow("r2", "y", "coordinator")>>),
   s21 |-> Op(1, {}, <<SetStopped(TRUE)>>),
   s22 |-> Op(1, {}, <<SetStopped(TRUE)>>),
+  s23 |-> Op(1, {Running}, <<SetRed("u3", FALSE)>>),
   a1  |-> Op(1, {CardAbsent("u1"), RowIs("r1", "up"), RowHeld("r1", FALSE)},
               <<AddCard("u1", "work", "p2", {}, "r1", None), SetState("u1", "working")>>),
   a2  |-> Op(1, {CardState("u1", "working")}, <<SetState("u1", "done")>>),
@@ -211,8 +224,8 @@ Ops == [
   m3  |-> Op(1, {}, <<SetCursor("c1", MaxSeq)>>)
 ]
 OpIds == DOMAIN Ops
-SetupSeq == <<"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12",
-              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22">>
+SetupSeq == <<"n1", "n2", "s1", "s2","s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12",
+              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23">>
 Setup == {SetupSeq[i] : i \in DOMAIN SetupSeq}
 Active == Setup \cup (IF Scenario = "deal"
                       THEN {"a1", "a2", "b1", "b2", "e1", "g1", "k1", "k2"}
@@ -232,7 +245,7 @@ NoCard == [state |-> Absent, gen |-> 0, holder |-> NoHolder, needs |-> {}, kind 
 NoRow  == [state |-> Absent, gen |-> 0, held |-> FALSE, sess |-> None, role |-> None]
 Empty  == [epoch |-> 1, cards |-> [c \in Cards |-> NoCard], rows |-> [r \in Rows |-> NoRow],
            judgements |-> [j \in Judgements |-> Absent], cursors |-> [x \in Cursors |-> 0],
-           policies |-> [v \in Versions |-> Absent], stopped |-> FALSE]
+           policies |-> [v \in Versions |-> Absent], stopped |-> TRUE]   \* a fresh store: never started
 
 Exists(st, c) == st.cards[c].state # Absent
 
@@ -248,6 +261,7 @@ Cond(st, x) ==
     [] x.k = "rowHeld"     -> st.rows[x.r].state # Absent /\ st.rows[x.r].held = (x.g = 1)
     [] x.k = "judgeOpen"   -> st.judgements[x.c] = "open"
     [] x.k = "cardRed"     -> Exists(st, x.c) /\ st.cards[x.c].red = (x.g = 1)
+    [] x.k = "running"     -> ~st.stopped
 
 Holds(st, conds) == \A x \in conds : Cond(st, x)
 
@@ -679,6 +693,15 @@ HookKept ==
       \A r \in Rows : (b.rows[r].state # Absent /\ b.rows[r].sess # None /\ a.rows[r].sess # None)
                        => a.rows[r].sess = b.rows[r].sess
 
+(* A fresh store moves nothing: it begins stopped (never started), so no   *)
+(* op fenced on Running (a tick's) is accepted before an accepted start.   *)
+Starts(o) == \E k \in DOMAIN Ops[o].writes :
+               Ops[o].writes[k].k = "setStopped" /\ Ops[o].writes[k].w = 0
+FreshMovesNothing ==
+  \A i \in DOMAIN events :
+    (events[i].accepted /\ Running \in Ops[events[i].id].expect)
+      => \E k \in 1..(i - 1) : events[k].accepted /\ Starts(events[k].id)
+
 (* The ops that close judgement j (answer or expire it).                   *)
 Closes(o, j) == \E k \in DOMAIN Ops[o].writes :
                   Ops[o].writes[k].k = "closeJudge" /\ Ops[o].writes[k].c = j
@@ -751,6 +774,8 @@ NeverSentinelRefused  == "s4" \notin RefusedIds
 NeverHeldCarried      == ~(epoch = 2 /\ rows["r1"].held)
 \* a1 is refused because g1 held r1 first (RowHeld)
 NeverHeldRefused      == ~FencedBy("a1", RowHeld("r1", FALSE))
+\* s23 is refused because s21 stopped the sprint first (Running)
+NeverStoppedRefused   == ~FencedBy("s23", Running)
 \* e1 sets r1 down (fenced on RowGen(r1, 0))
 NeverRowDown          == "e1" \notin AcceptedIds
 \* e1 is refused on a stale RowGen after g1 wrote r1
@@ -782,5 +807,7 @@ NeverRehooked         == ~(rows["r2"].sess = "y" /\ rows["r2"].role = "coordinat
 NeverDealtStopped     == ~(stopped /\ cards["u1"].state = "working")
 \* s22 stops it again: refused as changing nothing
 NeverSameStopRefused  == ~RuleRefused("s22")
+\* n1, a tick op on the fresh store, is refused: the sprint was never started
+NeverFreshRefused     == ~FencedBy("n1", Running)
 
 =============================================================================

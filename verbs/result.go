@@ -40,10 +40,20 @@ type Fail struct {
 func (f *Fail) Error() string { return f.What + ": " + f.Fix }
 func (f *Fail) Unwrap() error { return f.cause }
 
-// ErrNotSetUp is the store with no sprint credential (up mints
-// NOVA_SPRINT_PG_PASSWORD) or without its schema: the fix is up, never a
-// hand-run secrets command.
+// ErrNotSetUp is a store without this build's schema (no epoch yet): the fix
+// is up. A process without the sprint's credential is NoCredential, not
+// this: the store may well be set up (defect 22, 2026-11-07).
 var ErrNotSetUp = errors.New("the sprint is not set up")
+
+// CredentialFix is how a verb gets the sprint's credentials into its
+// process: nova-secrets exec on the seat up granted them to.
+const CredentialFix = "run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ..."
+
+// NoCredential is the refusal of a process without NOVA_SPRINT_PG_PASSWORD
+// (up mints it; the fleet's units and nova-secrets exec inject it).
+func NoCredential() *OperationError {
+	return &OperationError{Problem: "this process has no sprint credential", Fix: CredentialFix, Exit: exitRefused}
+}
 
 // notSetUp is ErrNotSetUp's refusal (exit 1), naming up.
 func notSetUp(actor string) *Fail {

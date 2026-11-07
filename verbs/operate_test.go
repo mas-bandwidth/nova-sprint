@@ -11,13 +11,13 @@ import (
 
 func TestStopAndStart(t *testing.T) {
 	w := newWorld(t)
-	want(t, w.do("carol", "stop", "--reason", "deploy"), 0, "STOPPED applied at seq", "next: nova-sprint start")
+	want(t, w.do("carol", "stop", "--reason", "deploy"), 0, "STOPPED applied at seq", "next: nova-sprint start --as carol")
 	if s := w.snap(t); !s.Stopped || s.StopReason != "deploy" {
 		t.Fatalf("snapshot %+v", s)
 	}
-	want(t, w.do("carol", "stop", "--reason", "again"), 0, "STOPPED already (deploy)")
+	want(t, w.do("carol", "stop", "--reason", "again"), 0, "STOPPED already: the sprint is already stopped (deploy)", "next: nova-sprint start --as carol")
 	want(t, w.do("carol", "start"), 0, "STARTED applied at seq")
-	want(t, w.do("carol", "start"), 0, "STARTED already")
+	want(t, w.do("carol", "start"), 0, "RUNNING already: the sprint is already running", "next: nova-sprint next --as carol")
 	want(t, w.do("carol", "stop"), 1, "a stop needs its reason")
 }
 

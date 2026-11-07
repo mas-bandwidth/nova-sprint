@@ -131,6 +131,25 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `policy` | layer 5's design | | | |
 | `report` | `<card>@<gen> --result ok\|fail\|fault [--head <sha>] [--cost <usd>] --reason <why> --as <row>` (nova-worker's form of `finish`) | as `finish`; `fault` only for a harness, bench or route failure | `nothing; wait for the bus` | 0, 1 |
 
+**What each verb needs from `up` (2026-11-07).** No verb is gated on `up`'s step; a verb
+refuses only for a piece it needs and names that piece (`nova-sprint help <verb>` prints the
+line as `up:`).
+
+| verbs | need from `up` | without it |
+|---|---|---|
+| `help`, `version`, `up` | nothing; they run before `up` | |
+| `check` | nothing; it names the first piece that is missing | |
+| every other verb (`stop`, `start`, `hook`, `show`, `next` included) | the store `up` makes at its step 2 (an epoch), at any later step of `up` | `the sprint is not set up: nova-sprint up --as <coordinator>`; `next` answers it, exit 0 |
+| every verb that reads the store | the sprint credential in the process | `this process has no sprint credential: run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...` |
+
+A fresh store is stopped, its reason `never started`, until the coordinator runs `start`: the
+run comes up on it and ticks nothing, the board shows `STOPPED never started`, `next` tells the
+coordinator `nova-sprint start --as <coordinator> --reason "<why>"` once the streams need
+nothing first, and tells a worker to wait. `start` on a running sprint and `stop` on a stopped
+one change nothing and succeed (exit 0): `RUNNING already: the sprint is already running
+(<reason>); nothing to start`, next `nova-sprint next --as <me>`, and `STOPPED already: ...`,
+next `nova-sprint start`.
+
 `hook` does not run the bus hook: the bus hook (`nova-bus hook --as <name>` under the session's
 Monitor) is the earlier step it requires, because every push of the sprint travels over the bus
 (Glenn, 2026-11-06: "you have to be hooked in to the message bus FIRST before you hook into the
@@ -538,3 +557,33 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 - Remaining consumed dependencies include the actual layer 3 planner and roster, layer 4 worker/edges and its receipt-based machine CLI, and layer 5 policy evaluator/activator/catalog. Production repository and brief verification, report head/fault verification, judgement planning, stitch/CI views, workload setup and external integrity comparison remain unwired. Handoff/model trace fixtures are scoped evidence, not a final integrated-head lock.
 
 **Historical foundation measurement (before the later CLI checkpoint):** on reserved amd-1, Go 1.26.10, PostgreSQL 18.6 and Redis 8.10.2, focused `run` and dashboard race tests passed, including isolated PostgreSQL, a real nova-bus/Redis receipt by ID and body, and stale/recovery checks. The broad build, vet and `go test -race ./...` passed again after the store round 20 merge; the earlier inherited-ledger failure and the corrected gates are preserved. A bounded loopback burst served 1,000 requests from 40 source addresses in 21.95 ms with one initial upstream fetch; this is not a sustained or integrated load gate. No layer 6 p99 load measurement, real layer integration, cold read, production deployment or dogfood is claimed here. The logs are retained in the validation workspace; later gates must run on the exact integrated head.
+
+## Built: the run on a fresh store, and the verbs mid-up (2026-11-07)
+
+- A fresh store is stopped "never started" (layer 1's Built entry of the same date). The run
+  comes up on it and ticks nothing until `start`: `run/fresh_test.go` ticks a fresh Fake and
+  checks no sequence change, no ask, no send and no row moved, then one deal after `start`.
+  The dashboard shows `machine: STOPPED never started` (`dash/stop_test.go`).
+- No verb is gated on `up`'s step (section 3's matrix). The field refusal of `stop` while `up`
+  was at step 7 was the missing credential reported as "not set up"; that is now its own
+  refusal, `this process has no sprint credential` with the `nova-secrets exec` line as its fix
+  (`verbs.NoCredential`), from `open.go` and the doctor's schema check alike. "Not set up" now
+  means only a store without the schema. `verbs/fresh_test.go` runs show, next, hook, stop,
+  start and stop on a store as `up` leaves it before step 8, and each verb before the store
+  exists.
+- `start` on a running sprint is a success that changes nothing and names `next`; `stop` on a
+  stopped one names `start`. `next` on a stopped sprint with nothing owed tells the coordinator
+  to start it and a worker to wait; a card in hand or an open judgement still comes first.
+- `up`'s step 8 smoke needs a running sprint, so it needs `start` first; its refusal should name
+  `nova-sprint start` (owed to the setup steps' change).
+- `tla/Run.tla` gains `started` (set by Start; Init has `started = ~InitiallyStopped`) and the
+  invariant `NeverStartedMovesNothing`: before the first start no op, edge, push or tick has
+  applied. The witness `RunFreshRunning` (Init running though the store is fresh) violates it.
+  The generated cfgs now also check `NoTickWhileStopped`, which the generator had dropped.
+  `RunTrace.cfg` sets `InitiallyStopped = TRUE`, and `TestEmitRunTrace` starts from the fresh
+  store: one stopped tick, then Start, in all three trace modes.
+- `tla/SetupRun.tla` puts `up`'s walk (Setup.tla, unchanged) beside the sprint's stop and the
+  run's ticks: step 2 makes the store stopped "never started", the run ticks from step 4 at any
+  later step, and start and stop work at any step. `NothingMovesUnstarted` holds;
+  `SetupRunFreshRunning` (the fresh store running) violates it; three reach checks show the run
+  up on a fresh store, a stop and work moving, each before the walk is done.

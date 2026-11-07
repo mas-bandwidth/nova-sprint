@@ -72,10 +72,10 @@ func must(t *testing.T, st store.Store, id string, ws ...store.Write) {
 	}
 }
 
-// seeded is a sprint with one stream, one producer and alice hooked in as a
-// worker on the roster.
+// seeded is a started sprint with one stream, one producer and alice hooked
+// in as a worker on the roster.
 func seeded(t *testing.T) (*store.Fake, roster.Roster) {
-	f := store.NewFake()
+	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "up", store.SetRowState{Row: "alice", State: "up"})
@@ -135,7 +135,7 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 // run loop's Seen) and the deal follows; a row down and absent from the bus
 // stays down, and a row already up raises nothing.
 func TestTickRaisesSeenForAHookedRow(t *testing.T) {
-	f := store.NewFake()
+	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
 	must(t, f, "row2", store.PutRow{Name: "bob", Session: "sess-2", Role: "worker"})
@@ -307,7 +307,7 @@ func (stillGit) LsRemote(context.Context, string, string) (string, bool, error) 
 }
 
 func TestServeTicksPushesAndLogs(t *testing.T) {
-	f := store.NewFake()
+	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
 	must(t, f, "up", store.SetRowState{Row: "bench", State: "up"})

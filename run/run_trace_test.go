@@ -643,6 +643,16 @@ func TestEmitRunTrace(t *testing.T) {
 	}
 	r.add("Init", fmt.Sprintf(`, lock |-> "none", hook |-> "none"%s, cursor |-> [x \in {"r1"} |-> 0], sent |-> [x \in {"r1"} |-> {}], edgeDone |-> {}, stopped |-> %s`, r.global(), tlaBool(s.Stopped)))
 	r.start(false)
+	// The fresh store is stopped, never started (store.FreshStop): the run
+	// is up and ticks, and moves nothing until the coordinator's first
+	// start (Run.tla NeverStartedMovesNothing; RunTrace.cfg
+	// InitiallyStopped = TRUE).
+	if !s.Stopped || s.StopReason != store.NeverStarted {
+		t.Fatalf("a fresh store is %v (%q), want stopped (%q)", s.Stopped, s.StopReason, store.NeverStarted)
+	}
+	r.stopped = true
+	r.tick()
+	r.setStopped(false)
 
 	switch {
 	case os.Getenv("NOVA_RUN_TRACE_MIDSTOP") == "1":

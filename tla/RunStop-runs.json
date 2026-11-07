@@ -24,5 +24,12 @@
     "cfg": "witnesses/layer6/RunStoppedFenceDropped.cfg",
     "expect": "invariant",
     "target": "NoAcceptedTickWhileStopped"
+  },
+  {
+    "name": "RunFreshRunning",
+    "module": "witnesses/layer6/RunFreshRunning.tla",
+    "cfg": "witnesses/layer6/RunFreshRunning.cfg",
+    "expect": "invariant",
+    "target": "NeverStartedMovesNothing"
   }
 ]

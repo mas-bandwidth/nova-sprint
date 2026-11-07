@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS sprint.epoch (
 INSERT INTO sprint.epoch (id, n) VALUES (1, 1) ON CONFLICT (id) DO NOTHING;
 -- Round 22: the sprint's stop lives on the epoch's one row, as the epoch
 -- does (a clear keeps it). A stopped sprint moves nothing (Run calls no
--- Tick); the store refuses nothing on it.
+-- Tick); the store refuses nothing on it. A store Migrate makes starts
+-- stopped with reason 'never started' (pg.go freshStop, in Migrate's
+-- transaction); the defaults below are for a store made before that.
 ALTER TABLE sprint.epoch ADD COLUMN IF NOT EXISTS stopped boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS stop_reason text NOT NULL DEFAULT '';
 

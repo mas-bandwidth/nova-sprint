@@ -44,7 +44,11 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    `next: nova-sprint next`. A refusal names the nova-fleet command for each missing piece; run
    it, then `check` again.
 4. Ask what is owed: `nova-sprint next --as <you>`. It names your own card's step first, then
-   the oldest open judgement, then what the streams need (`add`, or done).
+   the oldest open judgement, then what the streams need (`add`, or done), then, on a stopped
+   sprint, `start`. A fresh sprint is stopped, its reason `never started`, and moves nothing
+   (no deal, read or landing) until you run `nova-sprint start --as <you> --reason "<why>"`;
+   the board shows `STOPPED never started` until then. `stop`, `start`, `hook`, `show` and
+   `next` work as soon as `up` has made the store (its step 2), whatever step `up` is at.
 5. List the judgements owed: `nova-sprint judge --as <you>`. Each is one line,
    `JUDGEMENT <j> kind=<kind> card=<id> group=<g> ...`, and the last line is `next:` with the
    command for the first. `JUDGEMENTS none` means nothing waits on you.
