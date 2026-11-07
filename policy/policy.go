@@ -107,13 +107,14 @@ type Limits struct {
 type Landing struct{ BackedUp, Flowing int }
 
 // Timeouts are seconds of running time; BaseRegate is a rising list. Tick
-// is run's budget for one tick (drift row 26); Consumer is the deadline of a
+// is run's budget for one tick (drift row 26); ReadyNag is how often run
+// nags a row holding ready cards (optional, default 1); Consumer is the deadline of a
 // consumer by its tier, every tier of store.Tiers named (drift row 15: the
 // worker reads it from the take receipt, never a Go literal).
 type Timeouts struct {
-	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick int
-	BaseRegate                                                                    []int
-	Consumer                                                                      map[string]int
+	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick, ReadyNag int
+	BaseRegate                                                                              []int
+	Consumer                                                                                map[string]int
 }
 
 // Price is micro-dollars per million tokens of each class: uncached input,
