@@ -119,7 +119,7 @@ func (e *Engine) roster(ctx context.Context, lim policy.Limits, snap store.Snaps
 // epochNow refuses a row's command copied from an epoch a clear ended.
 func epochNow(given int, snap store.Snapshot) error {
 	if given != 0 && given != snap.Epoch {
-		return refuse(fmt.Sprintf("epoch %d is over: this card was recreated in epoch %d", given, snap.Epoch), "run nova-sprint next")
+		return refuse(fmt.Sprintf("epoch %d is over: the sprint is in epoch %d", given, snap.Epoch), "run nova-sprint next")
 	}
 	return nil
 }

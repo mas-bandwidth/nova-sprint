@@ -103,24 +103,36 @@ func (e *Engine) snapshot(ctx context.Context) (store.Snapshot, error) {
 	}
 	snap, err := e.Store.Snapshot(ctx)
 	if err != nil {
-		if e.notSetUp(ctx, err) {
-			return snap, notSetUp("")
+		if f := e.storeRefusal(ctx, err); f != nil {
+			return snap, f
 		}
 		return snap, RefusalOr(err, broken("the store did not answer ("+errText(err)+")", "nova-sprint check"))
 	}
 	return snap, nil
 }
 
-// notSetUp is a store error that means the sprint is not set up: no sprint
-// credential (ErrNotSetUp), or a store the doctor reads as without this
-// build's schema.
-func (e *Engine) notSetUp(ctx context.Context, err error) bool {
-	if errors.Is(err, ErrNotSetUp) {
-		return true
-	}
-	if e.Doctor == nil || ctx.Err() != nil {
-		return false
+// storeRefusal is what a store error means when the store is not this
+// build's to read: no store named (ErrNoStore), not set up (ErrNotSetUp,
+// or a store the doctor reads as without the schema), or set up by another
+// build (the doctor's refusal, schemaSkew, naming both hashes: a live
+// sprint is never "not set up"). nil is a store error as it is.
+func (e *Engine) storeRefusal(ctx context.Context, err error) *Fail {
+	switch {
+	case errors.Is(err, ErrNoStore):
+		return NoStore("")
+	case errors.Is(err, ErrNotSetUp):
+		return notSetUp("")
+	case e.Doctor == nil || ctx.Err() != nil:
+		return nil
 	}
 	current, serr := e.Doctor.Schema(ctx)
-	return serr == nil && !current
+	if serr == nil && !current {
+		return notSetUp("")
+	}
+	if r := AsRefusal(serr); r != nil {
+		if f := classify(r); f.Exit == exitRefused {
+			return f
+		}
+	}
+	return nil
 }

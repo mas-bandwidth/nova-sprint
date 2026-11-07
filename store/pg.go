@@ -177,6 +177,27 @@ type parseError struct {
 func (e *parseError) Error() string { return e.text }
 func (e *parseError) Unwrap() error { return e.err }
 
+// IdleTxTimeout is how long PostgreSQL lets one of the sprint's sessions sit
+// idle in a transaction before it ends the session, and with it the
+// transaction: a client that stalls inside one (a stopped process, a lost
+// network) otherwise keeps its locks and snapshot until TCP gives up, hours,
+// and every DDL and, queued behind it, every reader waits. A sprint
+// transaction runs its statements milliseconds apart, so a minute is far past
+// any healthy pause and bounds what a stall can hold (PR #658).
+const IdleTxTimeout = "60s"
+
+// BoundIdleTx sets idle_in_transaction_session_timeout to IdleTxTimeout on
+// every connection made with cfg, unless the dsn already sets it.
+func BoundIdleTx(cfg *pgx.ConnConfig) {
+	if _, set := cfg.RuntimeParams["idle_in_transaction_session_timeout"]; set {
+		return
+	}
+	if cfg.RuntimeParams == nil {
+		cfg.RuntimeParams = map[string]string{}
+	}
+	cfg.RuntimeParams["idle_in_transaction_session_timeout"] = IdleTxTimeout
+}
+
 // Open connects to the store at dsn (NOVA_PG_DSN, no password in it) with
 // password (NOVA_PG_PASSWORD, may be empty). It never quotes the dsn back.
 func Open(ctx context.Context, dsn, password string) (*PG, error) {
@@ -187,6 +208,7 @@ func Open(ctx context.Context, dsn, password string) (*PG, error) {
 	if password != "" {
 		cfg.ConnConfig.Password = password
 	}
+	BoundIdleTx(cfg.ConnConfig)
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)

@@ -208,6 +208,37 @@ func TestProductionSetupDerivesRunAndDashboardFromFleetRows(t *testing.T) {
 		t.Fatal("incorrect fleet-derived target")
 	}
 }
+
+// A saved dashboard answer that no longer names a machine refuses, naming
+// the flag that answers again; the flag wins over it.
+func TestProductionSetupSavedDashboardAnswerCanBeAnsweredAgain(t *testing.T) {
+	t.Parallel()
+	st := store.NewFake()
+	cfg := configForSetup()
+	cfg.SprintPassword = "fixture"
+	cfg.BusRedis = "100.100.1.3:6379"
+	env := verbs.ExecEnvironment{Choices: verbs.Choices{Store: st, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}}
+	if err := env.Choices.Save(context.Background(), "dashboard", "public=studio=37.27.135.206"); err != nil {
+		t.Fatal(err)
+	}
+	setup, _ := makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
+	p := setup.(productionSetup)
+	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if args[0] == "machine" {
+			return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":1},"items":[{"kind":"machine","fields":{"name":"studio","address":"100.100.1.2","roles":"services"}}]}`), nil
+		}
+		return []byte(`{"result":{"verb":"service list","status":"ok","exit":0},"facts":{"kind":"service","rows":1},"items":[{"kind":"service","fields":{"name":"sprint-run","machine":"studio","seat":"studio","keys":"NOVA_SPRINT_PG_PASSWORD","argv":["/remote/bin/nova-sprint","run","--listen","100.100.1.2:8080"],"every":0,"keepalive":true,"enabled":true,"env":{"NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova","NOVA_BUS_REDIS":"100.100.1.3:6379"},"log":""}}]}`), nil
+	}
+	_, err := p.configuredRuntime(context.Background(), verbs.SetupInput{Actor: "alice"}, true)
+	var op *verbs.OperationError
+	if !errors.As(err, &op) || !strings.Contains(op.Problem, "saved dashboard answer") || !strings.Contains(op.Fix, "--dash") {
+		t.Fatalf("saved bad answer: %v", err)
+	}
+	r, err := p.configuredRuntime(context.Background(), verbs.SetupInput{Actor: "alice", Dash: "tailnet"}, true)
+	if err != nil || r.Dashboards["tailnet"].URL != "http://100.100.1.2:8080" {
+		t.Fatalf("flag did not win: %v", err)
+	}
+}
 func TestProductionSetupRefusesUnsafeOrUnprovenEndpoints(t *testing.T) {
 	t.Parallel()
 	if _, err := privateDashboardURL("0.0.0.0:8080"); err == nil {

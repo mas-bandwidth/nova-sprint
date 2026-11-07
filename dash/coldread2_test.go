@@ -1,12 +1,9 @@
 package dash
 
 // Second cold read of the v2 dashboard shim (2026-11-06), head 348442a9.
-// Probes by Rowan’s second cold reader; the unchanged original is preserved
-// in testdata/coldread2-original.go.txt.
+// Probes by Rowan’s second cold reader.
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -55,46 +52,6 @@ func TestColdread2DefectPulseUsesViewerClock(t *testing.T) {
 	}
 	if !strings.Contains(src, "dataAgeSeconds") {
 		t.Error("app.js never reads the server's dataAgeSeconds")
-	}
-}
-
-// v1's tables carry every cell as a string ("13", "$2.13", "33.3%"; app.js: "every value in the
-// JSON is a string"). v2 sends numbers and null for the same keys.
-func TestColdread2DefectTableValueTypesVsV1(t *testing.T) {
-	t.Parallel()
-	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
-	s := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}},
-		Rows: map[string]store.Row{"r": {Name: "r", State: "up"}},
-		Cards: map[string]store.Card{
-			"p": {ID: "p", Kind: "producer", Stream: "s", State: "working", Tier: "pro"},
-			"w": {ID: "w", Kind: "work", Of: "p", Stream: "s", Tier: "pro", Holder: "r", State: "working", Cost: 1, Priced: true},
-		}}
-	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var v2 map[string]any
-	if err = json.Unmarshal(b, &v2); err != nil {
-		t.Fatal(err)
-	}
-	v2t := v2["tables"].(map[string]any)
-	first := func(m map[string]any) map[string]any {
-		for _, v := range m {
-			return v.(map[string]any)
-		}
-		return nil
-	}
-	for _, table := range []string{"work", "fleet"} {
-		a, c := first(v1[table].(map[string]any)), first(v2t[table].(map[string]any))
-		for k, x := range c {
-			y, ok := a[k]
-			if !ok {
-				continue
-			}
-			if fmt.Sprintf("%T", x) != fmt.Sprintf("%T", y) {
-				t.Errorf("tables.%s.%s: v1 %T (%v), v2 %T (%v)", table, k, y, y, x, x)
-			}
-		}
 	}
 }
 

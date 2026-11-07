@@ -1,8 +1,0 @@
-=== RUN   TestSetupChoicesActualTrace
-=== RUN   TestSetupChoicesActualTrace/none
-=== RUN   TestSetupChoicesActualTrace/configured
---- PASS: TestSetupChoicesActualTrace (0.00s)
-    --- PASS: TestSetupChoicesActualTrace/none (0.00s)
-    --- PASS: TestSetupChoicesActualTrace/configured (0.00s)
-PASS
-ok  	github.com/mas-bandwidth/nova-sprint/verbs	0.007s

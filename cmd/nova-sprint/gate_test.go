@@ -47,7 +47,6 @@ func TestHookGate(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
 			if got := hookGate(context.Background(), c.args, envOf(c.env), c.fp); got != c.want {
 				t.Fatalf("hookGate(%v) = %q, want %q", c.args, got, c.want)
 			}

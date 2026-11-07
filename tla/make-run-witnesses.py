@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate layer 6 cfgs and reversed witnesses with exact replacement counts.
 
-No TLC runs here. Invoke TLC on hetzner2 under nova-reserve; see run-layer6.py.
+No TLC runs here; gen-witnesses.sh runs this and ci-tlc.sh checks the result.
 RunLockCheckRace records the accepted gap between the last health check
 and committing on a separate store session; it is not a code defect.
 """
@@ -84,10 +84,8 @@ def main():
         "RunReports": ("Run", config("Run", work=2, reports=3, failures=0, processes=1)),
         "Setup": ("Setup", config("Setup")),
     }
-    manifest = []
     for name, (model, cfg) in passing.items():
         (HERE / (name + ".cfg")).write_text(cfg)
-        manifest.append({"name": name, "module": model + ".tla", "cfg": name + ".cfg", "expect": "pass"})
     for model, name, target, kind, fault, replacements in WITNESSES:
         text = (HERE / (model + ".tla")).read_text()
         text = text.replace("MODULE " + model + " ", "MODULE " + name + " ", 1)
@@ -104,10 +102,6 @@ def main():
         path.mkdir(exist_ok=True)
         (path / (name + ".tla")).write_text(text)
         (path / (name + ".cfg")).write_text("\\* Expected " + kind + " violation: " + target + "\n" + cfg)
-        manifest.append({"name": name, "module": "witnesses/layer6/" + name + ".tla",
-                         "cfg": "witnesses/layer6/" + name + ".cfg", "expect": kind, "target": target})
-    import json
-    (HERE / "layer6-runs.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 if __name__ == "__main__":
     main()

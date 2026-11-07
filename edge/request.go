@@ -148,7 +148,11 @@ func (f *FakeExec) Run(ctx context.Context, cmd Cmd) (Result, error) {
 	f.clock++
 	call := FakeCall{PID: f.nextPID, At: f.clock, Cmd: Cmd{Argv: slices.Clone(cmd.Argv), Dir: cmd.Dir, Env: slices.Clone(cmd.Env), CleanEnv: cmd.CleanEnv, Timeout: cmd.Timeout, MaxBytes: cmd.MaxBytes}}
 	f.calls = append(f.calls, call)
-	base := filepath.Base(cmd.Argv[0])
+	prog := cmd.Argv
+	if len(prog) > 3 && prog[0] == "nice" && prog[1] == "-n" { // the wall runs its program under nice
+		prog = prog[3:]
+	}
+	base := filepath.Base(prog[0])
 	out, ok := f.pickOutcome_internal(base, call)
 	f.mu.Unlock()
 	if !ok {

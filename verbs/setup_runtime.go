@@ -185,17 +185,14 @@ func (r RuntimeSetup) answer(ctx context.Context, name, input, def string) (stri
 	if c.Store == nil {
 		return "", false, fmt.Errorf("setup choices unavailable")
 	}
-	value, found, err := c.Get(ctx, name)
+	value, stored, err := c.Effective(ctx, name, input)
 	if err != nil {
 		return "", false, err
 	}
-	if found {
-		return value, true, nil
+	if value == "" {
+		return def, false, nil
 	}
-	if input != "" {
-		return input, false, nil
-	}
-	return def, false, nil
+	return value, stored, nil
 }
 func (r RuntimeSetup) runCheck(ctx context.Context, in SetupInput) (SetupCheck, error) {
 	host, saved, err := r.answer(ctx, "run-on", in.RunOn, r.DefaultRunHost)

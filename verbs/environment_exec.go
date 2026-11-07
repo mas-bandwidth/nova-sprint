@@ -55,6 +55,9 @@ func (e ExecEnvironment) Schema(ctx context.Context) (bool, error) {
 	}
 	defer pg.Close()
 	identity, err := pg.Schema(ctx)
+	if identity.Hash != "" && !identity.Current {
+		return false, schemaSkew(identity)
+	}
 	if err != nil {
 		if (!identity.Present && strings.Contains(err.Error(), "there is no schema sprint in this database")) || (identity.Present && strings.Contains(err.Error(), "schema sprint is empty")) {
 			return false, nil
@@ -63,6 +66,23 @@ func (e ExecEnvironment) Schema(ctx context.Context) (bool, error) {
 	}
 	return identity.Current, nil
 }
+
+// schemaSkew is a store another build of the schema made: a live sprint,
+// never "not set up" (L6.6). An older round this build knows is migrated by
+// the coordinator's up with this build; any other hash is the build that
+// made the store.
+func schemaSkew(id store.SchemaIdentity) *OperationError {
+	round := "an unknown round"
+	if id.Round > 0 {
+		round = "round " + strconv.Itoa(id.Round)
+	}
+	what := "the store is at schema " + shortSHA(id.Hash) + " (" + round + "), this build wants " + shortSHA(id.Expected)
+	if id.KnownOlder {
+		return &OperationError{Problem: what + ": the store is older, and up with this build migrates it", Fix: "on the coordinator, with this build: nova-sprint up --as <coordinator>", Exit: exitRefused}
+	}
+	return &OperationError{Problem: what + ": another build made the store", Fix: "run the coordinator's build (nova-sprint version on the coordinator names it)", Exit: exitRefused}
+}
+
 func (e ExecEnvironment) Hooked(ctx context.Context, actor string) (bool, string, error) {
 	recipe := "nova-bus hook --as " + actor
 	getenv := e.Getenv

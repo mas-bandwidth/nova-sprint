@@ -114,16 +114,9 @@ func heldBy(snap store.Snapshot, ro roster.Roster, row, id string, gen int) (sto
 	return c, nil
 }
 
-// machineID is a row's op id on a consumer, checked against --epoch and
-// --id when given.
+// machineID is a row's op id on a consumer, checked against --id when
+// given (--epoch is every hooked verb's, checked before it runs).
 func machineID(in *input, snap store.Snapshot, kind, id string, gen int) (string, error) {
-	epoch, f := in.num("epoch")
-	if f != nil {
-		return "", f
-	}
-	if err := epochNow(epoch, snap); err != nil {
-		return "", err
-	}
 	opID := consumerOpID(kind, snap.Epoch, id, gen)
 	if given := in.str("id"); given != "" && given != opID {
 		return "", refuse("--id "+given+" is not this "+kind+"'s id", "pass --id "+opID+", or leave --id out")

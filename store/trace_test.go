@@ -101,7 +101,7 @@ func (g guardDropped) Apply(ctx context.Context, op Op) (Receipt, error) {
 // validation"): setting a cursor that was never set to 0. The store used to
 // accept it; it was ruled the code's fault, and the store now refuses it as
 // a write that changes nothing (an absent cursor is 0), as the model does.
-// The fixture tla/traces/store-cursor-zero must match.
+// make-traces.sh writes the trace to tla/traces/store-cursor-zero and TLC checks it.
 func TestTraceCursorZero(t *testing.T) {
 	t.Parallel()
 	w := newStoreWalk(t, NewFake(), nil, 0)

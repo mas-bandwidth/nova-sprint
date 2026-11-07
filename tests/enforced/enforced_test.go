@@ -64,7 +64,13 @@ func loadTree(t *testing.T, root string) *treeIndex {
 	// Event type names (and "<Event> work" / "<Event> read").
 	collectCardEventSubtests(t, filepath.Join(root, "card", "card.go"), idx.subTests)
 
-	loadTLA(t, filepath.Join(root, "tla"), idx)
+	// The reversed witnesses, reach checks and several configs are generated, not
+	// committed: read them from a copy where the generators ran.
+	tlaCopy := t.TempDir()
+	if out, err := exec.Command("bash", filepath.Join(root, "tla", "gen-witnesses.sh"), tlaCopy).CombinedOutput(); err != nil {
+		t.Fatalf("tla/gen-witnesses.sh: %v\n%s", err, out)
+	}
+	loadTLA(t, tlaCopy, idx)
 	loadSchemaChecks(t, filepath.Join(root, "store", "schema.sql"), idx.schemaCheck)
 	return idx
 }

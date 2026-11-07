@@ -20,8 +20,9 @@
 #     (SetupHandoff.cfg and SetupHandoffCrash.cfg)
 #                                        must pass            (TLC exit 0)
 #     (the list is tla/*-runs.json's "pass" entries)
-#   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
-#   witnesses/layer6/*.tla, and the Setup witnesses beside their
+#   the generated witnesses/*.tla (gen-witnesses.sh) with their .cfg
+#                                      must report a violation (TLC exit 12)
+#   the generated witnesses/layer6/*.tla, and the Setup witnesses beside their
 #     models (tla/*-runs.json's "invariant" and "temporal" entries)
 #                                      must report a violation (exit 12 or 13)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
@@ -89,6 +90,12 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# The reversed witnesses, the reach checks and the passing runs' configs the
+# generators write are not committed: every run is made in a copy of this
+# directory (gen-witnesses.sh), where the make-*witnesses.py generators ran.
+GEN="$WORK/gen"
+bash "$HERE/gen-witnesses.sh" "$GEN" || { echo "gen-witnesses.sh failed" >&2; exit 1; }
+
 # At most TLC_JOBS runs at once (default: the machine's cores), each JVM capped at
 # TLC_HEAP (default 2g; the main scenarios get twice that). Unbounded, the 200+
 # runs each took TLC's default quarter of RAM and the kernel killed them
@@ -129,7 +136,7 @@ run() {
     [ "$workers" -le "$CORES" ] || workers="$CORES"
     echo "$name" >> "$WORK/expected"
     if [ "$DRY" = 1 ]; then
-        echo "dry run: (cd tla/$dir && java -XX:+UseParallelGC -cp $JAR tlc2.TLC -workers $workers -metadir \$WORK/states/$name -config $cfg $mod)  expect $expect"
+        echo "dry run: (cd $GEN/$dir && java -XX:+UseParallelGC -cp $JAR tlc2.TLC -workers $workers -metadir \$WORK/states/$name -config $cfg $mod)  expect $expect"
         return
     fi
     heap="$HEAP"; [ "$workers" -gt 1 ] && heap="$(( ${HEAP%g} * 2 ))g"
@@ -137,12 +144,11 @@ run() {
     echo "$workers" > "$WORK/live/$name"
     (
         trap 'rm -f "$WORK/live/$name"' EXIT
-        cd "$HERE/$dir" || exit 1
+        cd "$GEN/$dir" || exit 1
         # Own java.io.tmpdir per run: TLC unpacks the standard modules there,
         # and parallel runs sharing /tmp race on it (a parser NPE, exit 150).
         mkdir -p "$WORK/tmp/$name" || exit 1
-        # -noGenerateSpecTE: no *_TTrace_*.tla trace modules beside the spec,
-        # which the witnesses/*.tla glob would otherwise run on the next pass.
+        # -noGenerateSpecTE: no *_TTrace_*.tla trace modules beside the spec.
         "$JAVA" -XX:+UseParallelGC -Xmx"$heap" -Djava.io.tmpdir="$WORK/tmp/$name" -cp "$JAR" tlc2.TLC \
             -noGenerateSpecTE -workers "$workers" \
             -metadir "$WORK/states/$name" -config "$cfg" "$mod" > "$WORK/$name.log" 2>&1
@@ -202,18 +208,14 @@ run SetupChoicesWalk pass . SetupChoicesWalk.cfg SetupChoicesWalk.tla 2
 run SetupHandoff pass . SetupHandoff.cfg SetupHandoff.tla 2
 run SetupHandoffCrash pass . SetupHandoffCrash.cfg SetupHandoff.tla 2
 
-for f in "$HERE"/witnesses/*.tla; do
+for f in "$GEN"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
-    case "$m" in *_TTrace_*) continue ;; esac   # TLC trace output, not a witness
     run "witness-$m" violate witnesses "$m.cfg" "$m.tla" 1
 done
 
-# Layer 6's reversed witnesses: each module is the model with one fault, run
-# from its own directory (no EXTENDS of the model). They include
-# RunTickWhileStoppedGate and RunTickWhileStoppedFence (NoTickWhileStopped).
-for f in "$HERE"/witnesses/layer6/*.tla; do
+# Layer 6's reversed witnesses, run from their own directory.
+for f in "$GEN"/witnesses/layer6/*.tla; do
     m="$(basename "$f" .tla)"
-    case "$m" in *_TTrace_*) continue ;; esac
     run "witness-l6-$m" violate witnesses/layer6 "$m.cfg" "$m.tla" 1
 done
 
@@ -233,7 +235,7 @@ for m in NeverRunUpFreshMidWalk NeverStoppedMidWalk NeverMovedMidWalk; do
     run "reach-SetupRun$m" violate . "SetupRun$m.cfg" SetupRun.tla 1
 done
 
-for f in "$HERE"/reach/*.cfg; do
+for f in "$GEN"/reach/*.cfg; do
     m="$(basename "$f" .cfg)"
     case "$m" in
         Card*) mod=CardMachine.tla ;;   # the card machine's reach checks

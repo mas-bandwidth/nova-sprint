@@ -108,7 +108,7 @@ func startVerbs() []*verb {
 
 func workVerbs() []*verb {
 	return []*verb{
-		{name: "take", group: "work", role: roleWorker, usage: "<card>@<gen> --as <row> [--epoch <e>] [--id <op>] [--json]", flags: "epoch= id= json", min: 1, max: 1, run: runTake,
+		{name: "take", group: "work", role: roleWorker, usage: "<card>@<gen> --as <row> [--epoch <e>] [--id <op>] [--json]", flags: "id= json", min: 1, max: 1, run: runTake,
 			about: "acknowledges a card dealt to you (it is in your hand from the deal; this stops the nudges) and prints the brief, the repository and the finish or read command; a repeat prints the same and writes nothing",
 			needs: []string{"not dealt to this row at this generation: nova-sprint next --as <row>", "withdrawn or reported already: nova-sprint next --as <row>", "the row not in nova-config, or not serving the tier: nova-config", "no commit identity: the coordinator runs nova-sprint identity"}},
 		{name: "finish", group: "work", role: roleWorker, usage: "<card>@<gen> --head <sha> --as <row> [--epoch <e>] [--usage '<words>'] [--cost <usd>] | <card>@<gen> --failed --reason <why> --as <row>", flags: reportFlags + " failed", min: 1, max: 1, run: runReport,
@@ -120,7 +120,7 @@ func workVerbs() []*verb {
 		{name: "report", group: "work", role: roleWorker, usage: "<card>@<gen> --result ok|fix|fail|fault [--head <sha>] [--reason <why>] [--finding <text>] [--usage '<words>'] [--cost-microusd <n> --priced true|false | --cost <usd>] --as <row> [--epoch <e>] [--id <op>] [--json]", flags: reportFlags + " result=", min: 1, max: 1, run: runReport,
 			about: "nova-worker's form of finish and read; fault is for a harness, bench or route failure", more: usageHelp,
 			needs: []string{"as finish and read", "--cost mixed with --cost-microusd or --priced: give one form"}},
-		{name: "release", group: "work", role: roleWorker, usage: "<card>@<gen> --reason <why> --as <you> [--epoch <e>] [--head <sha>] | --row <row> --all --reason <why> [--dry-run]", flags: "reason= epoch= head= row= all dry-run", max: 1, run: runRelease,
+		{name: "release", group: "work", role: roleWorker, usage: "<card>@<gen> --reason <why> --as <you> [--epoch <e>] [--head <sha>] | --row <row> --all --reason <why> [--dry-run]", flags: "reason= head= row= all dry-run", max: 1, run: runRelease,
 			about: "gives a card back to the queue, its pushed branch kept; another row's card, or a whole row's, is the coordinator's",
 			needs: []string{"no reason: --reason <why>", "another holder's card, or --row, and you are not the coordinator: ask the coordinator"}},
 		{name: "beat", group: "work", role: roleWorker, usage: "--load1 <loadavg> [--cpu-peak <percent>] --cores <n> --slots-used <n> --slots-total <n> [--tiers <t,t>] --as <row>", flags: "load1= cpu-peak= cores= slots-used= slots-total= tiers=", max: 0, run: runBeat,
@@ -135,7 +135,7 @@ func workVerbs() []*verb {
 }
 
 // reportFlags are finish's, read's and report's shared flags.
-const reportFlags = "head= reason= finding= cost= cost-microusd= priced= usage= epoch= id= json"
+const reportFlags = "head= reason= finding= cost= cost-microusd= priced= usage= id= json"
 
 // usageHelp is what --usage and --cost are, for finish, read and report.
 var usageHelp = []string{
