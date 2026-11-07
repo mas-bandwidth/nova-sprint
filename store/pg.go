@@ -169,8 +169,8 @@ type parseError struct {
 func (e *parseError) Error() string { return e.text }
 func (e *parseError) Unwrap() error { return e.err }
 
-// Open connects to the store at dsn (NOVA_PG_DSN, no password in it) with
-// password (NOVA_PG_PASSWORD, may be empty). It never quotes the dsn back.
+// Open connects to the store at dsn (no password in it) with
+// password (may be empty). It never quotes the dsn back.
 func Open(ctx context.Context, dsn, password string) (*PG, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

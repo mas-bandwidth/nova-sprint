@@ -226,7 +226,7 @@ func TestFunctionalRestoreRefuses(t *testing.T) {
 	defer func() { _ = tx.Rollback(ctx) }() // ignored: refused
 	err = RestoreBegin(ctx, tx, digestOf(d))
 	require.Error(t, err)
-	assert.Equal(t, "store: restore: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere", err.Error())
+	assert.Equal(t, "store: restore: schema sprint exists and was not made by nova-sprint; drop it or use the dsn of another database", err.Error())
 }
 
 // The restore's identity: Begin refuses a digest that is not a sha256, End

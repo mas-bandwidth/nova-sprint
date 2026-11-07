@@ -37,7 +37,7 @@ type SchemaIdentity struct {
 }
 
 // errForeign is the refusal of a schema sprint nova-sprint did not make.
-var errForeign = errors.New("schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere")
+var errForeign = errors.New("schema sprint exists and was not made by nova-sprint; drop it or use the dsn of another database")
 
 // queryRower is what the schema reads need: a transaction or a connection.
 type queryRower interface {
@@ -76,10 +76,10 @@ func readMeta(ctx context.Context, q queryRower) (version int, hash string, foun
 // fix, or nil when it takes it (this binary's hash or a knownOlder one).
 func metaRefusal(version int, hash string) error {
 	if version != SchemaVersion {
-		return fmt.Errorf("the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", version, SchemaVersion, version)
+		return fmt.Errorf("the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d", version, SchemaVersion, version)
 	}
 	if hash != schemaHash && !knownOlder(hash) {
-		return fmt.Errorf("the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
+		return fmt.Errorf("the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; run the build whose schema hash is %s", cmp.Or(hash, "none"), schemaHash, cmp.Or(hash, "none"))
 	}
 	return nil
 }
@@ -103,7 +103,7 @@ func CheckSchema(ctx context.Context, dsn string) (SchemaIdentity, error) {
 	var pe *pgconn.PgError
 	switch {
 	case errors.As(err, &pe) && pe.Code == "3D000": // invalid_catalog_name
-		return id, fmt.Errorf("store: check schema: database %q does not exist on %s:%d: create it, or point NOVA_PG_DSN at the store's database", cfg.Database, cfg.Host, cfg.Port)
+		return id, fmt.Errorf("store: check schema: database %q does not exist on %s:%d: create it, or pass the dsn of the store's database", cfg.Database, cfg.Host, cfg.Port)
 	case err != nil:
 		return id, fmt.Errorf("store: check schema: cannot reach postgres at %s:%d: %w", cfg.Host, cfg.Port, err)
 	}
@@ -146,7 +146,7 @@ func identify(ctx context.Context, q queryRower) (SchemaIdentity, error) {
 	case err != nil:
 		return id, fmt.Errorf("store: check schema: the catalogs could not be read: %w", err)
 	case !present:
-		return id, errors.New("store: check schema: there is no schema sprint in this database: run Migrate to create the store, or point NOVA_PG_DSN at the store's database")
+		return id, errors.New("store: check schema: there is no schema sprint in this database: run Migrate to create the store, or pass the dsn of the store's database")
 	}
 	id.Present, id.Owner = true, owner
 	switch {
@@ -160,7 +160,7 @@ func identify(ctx context.Context, q queryRower) (SchemaIdentity, error) {
 	case err != nil:
 		return id, fmt.Errorf("store: check schema: sprint.meta could not be read: grant this role USAGE on schema sprint and SELECT on sprint.meta, or check as %s: %w", owner, err)
 	case !found:
-		return id, errors.New("store: check schema: sprint.meta has no row, so the store's schema is unknown: recreate the store")
+		return id, errors.New("store: check schema: sprint.meta has no row, so the store's schema is unknown: restore the store from a backup, or ask whoever runs it")
 	}
 	id.Hash = hash
 	if err := metaRefusal(version, hash); err != nil {

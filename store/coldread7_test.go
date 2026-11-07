@@ -457,7 +457,7 @@ func TestFunctionalColdRead7MigrateOldHash(t *testing.T) {
 	defer q.Close()
 	err = q.Migrate(ctx)
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store's schema hash is "+hashSchema(old)+", this binary's is "+schemaHash+": "+staleShape, err.Error())
+	assert.Equal(t, "store: migrate: the store's schema hash is "+hashSchema(old)+", this binary's is "+schemaHash+": "+staleShape(hashSchema(old)), err.Error())
 	var n int
 	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM pg_indexes WHERE schemaname = 'sprint' AND indexname IN ('cards_working', 'cards_live')").Scan(&n))
 	assert.Equal(t, 0, n, "a refused Migrate adds no index")

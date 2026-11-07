@@ -359,12 +359,12 @@ func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	require.NoError(t, err)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 2: run a binary built for schema version 7, or recreate the store", err.Error())
+	assert.Equal(t, "store: migrate: the store is at schema version 7, this binary knows schema version 2: run a binary built for schema version 7", err.Error())
 	_, err = c.Exec(context.Background(), "UPDATE sprint.meta SET schema = 1")
 	require.NoError(t, err)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store is at schema version 1, this binary knows schema version 2: run a binary built for schema version 1, or recreate the store", err.Error(), "no upgrade path from version 1")
+	assert.Equal(t, "store: migrate: the store is at schema version 1, this binary knows schema version 2: run a binary built for schema version 1", err.Error(), "no upgrade path from version 1")
 
 }
 
@@ -406,7 +406,7 @@ func TestFunctionalMigrateRefusesForeignSchema(t *testing.T) {
 			defer q.Close()
 			err = q.Migrate(context.Background())
 			require.Error(t, err)
-			assert.Equal(t, "store: migrate: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere", err.Error())
+			assert.Equal(t, "store: migrate: schema sprint exists and was not made by nova-sprint; drop it or use the dsn of another database", err.Error())
 			var meta bool
 			require.NoError(t, c.QueryRow(context.Background(), "SELECT to_regclass('sprint.meta') IS NOT NULL").Scan(&meta))
 			assert.False(t, meta, "a refused Migrate changes nothing")
@@ -421,7 +421,9 @@ func TestFunctionalMigrateRefusesForeignSchema(t *testing.T) {
 	require.NoError(t, q.Migrate(context.Background()), "an empty schema sprint is an empty store")
 }
 
-const staleShape = "this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)"
+func staleShape(hash string) string {
+	return "this store was made by a different build of schema 2; run the build whose schema hash is " + hash
+}
 
 // Migrate checks the shape, not only the version: a store at version 2 made
 // by another build of schema 2 (another hash in sprint.meta, or none) is
@@ -437,7 +439,7 @@ func TestFunctionalMigrateRefusesOtherShape(t *testing.T) {
 	require.NoError(t, err)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store's schema hash is abc, this binary's is "+schemaHash+": "+staleShape, err.Error())
+	assert.Equal(t, "store: migrate: the store's schema hash is abc, this binary's is "+schemaHash+": "+staleShape("abc"), err.Error())
 	require.NoError(t, c.QueryRow(context.Background(), "SELECT hash FROM sprint.meta").Scan(&hash))
 	assert.Equal(t, "abc", hash, "a refused Migrate changes nothing")
 }
@@ -460,7 +462,7 @@ func TestFunctionalMigrateRefusesStaleV2(t *testing.T) {
 	t.Cleanup(p.Close)
 	err = p.Migrate(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, "store: migrate: the store's schema hash is none, this binary's is "+schemaHash+": "+staleShape, err.Error())
+	assert.Equal(t, "store: migrate: the store's schema hash is none, this binary's is "+schemaHash+": "+staleShape("none"), err.Error())
 }
 
 func TestFunctionalConformance(t *testing.T) {
