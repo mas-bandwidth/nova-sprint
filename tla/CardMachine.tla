@@ -154,6 +154,9 @@ NeedsGraph == [p \in P |-> ps[p].needs]
 \* Needs and after together: Add refuses a cycle through either.
 OrderGraph == [p \in P |-> ps[p].needs \cup ps[p].after]
 
+\* No op open (Merge, below): snap holds no state.
+NoSnap == [ps |-> "-", cs |-> "-", rs |-> "-", held |-> "-"]
+
 Init ==
   /\ ps   = [p \in P |-> NewProd(p)]
   /\ cs   = [c \in CIds |-> NoCons]
@@ -732,7 +735,6 @@ Terminating == (\A p \in P : ps[p].st \in PFinal \cup {"absent"}) /\ UNCHANGED v
 (* snapshot, but for a write of the value already there). A move's        *)
 (* condition on its card's state is kept only when no earlier move of the  *)
 (* op wrote that state (keepExpects): FencesOnSnapshot.                    *)
-NoSnap == [ps |-> "-", cs |-> "-", rs |-> "-", held |-> "-"]
 Snap   == [ps |-> ps, cs |-> cs, rs |-> rs, held |-> held]
 
 PFields == {"st", "att", "head", "author", "bounces", "score", "prio", "needs", "after",
