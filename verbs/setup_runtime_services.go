@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // FleetService is a non-secret nova-config service definition. Credentials
@@ -94,12 +96,58 @@ func (f FleetServices) existing(ctx context.Context, s FleetService) (bool, erro
 		if item.Fields.Name != s.Name {
 			continue
 		}
-		if found || !sameFleetService(item.Fields, s) {
-			return false, &OperationError{Problem: "service " + s.Name + " conflicts with setup", Fix: "inspect nova-config service show " + s.Name, Exit: 1}
+		if found {
+			return false, &OperationError{Problem: "service " + s.Name + " conflicts with setup: nova-config lists it twice", Fix: "remove the duplicate " + s.Name + " service record", Exit: 1}
+		}
+		if !sameFleetService(item.Fields, s) {
+			return false, &OperationError{Problem: edge.RedactN("service "+s.Name+" conflicts with setup: "+fleetServiceDiff(item.Fields, s), edge.FailureMax), Fix: "make the " + s.Name + " service record match setup, or remove it so setup creates it", Exit: 1}
 		}
 		found = true
 	}
 	return found, nil
+}
+
+// fleetServiceDiff names the fields where the record differs from what setup
+// wants; environment differences name the variables, never their values.
+func fleetServiceDiff(got configService, want FleetService) string {
+	keys := append([]string(nil), want.Keys...)
+	sort.Strings(keys)
+	diff := []string{}
+	if got.Machine != want.Machine {
+		diff = append(diff, fmt.Sprintf("machine %q, want %q", got.Machine, want.Machine))
+	}
+	if got.Seat != want.Seat {
+		diff = append(diff, fmt.Sprintf("seat %q, want %q", got.Seat, want.Seat))
+	}
+	if got.Keys != strings.Join(keys, ",") {
+		diff = append(diff, fmt.Sprintf("keys %q, want %q", got.Keys, strings.Join(keys, ",")))
+	}
+	if got.Every != 0 || !got.Keepalive || !got.Enabled || got.Log != "" {
+		diff = append(diff, fmt.Sprintf("every %d keepalive %t enabled %t log %q, want 0 true true \"\"", got.Every, got.Keepalive, got.Enabled, got.Log))
+	}
+	if !reflect.DeepEqual(got.Argv, want.Argv) {
+		diff = append(diff, fmt.Sprintf("argv %q, want %q", strings.Join(got.Argv, " "), strings.Join(want.Argv, " ")))
+	}
+	env := want.Env
+	if env == nil {
+		env = map[string]string{}
+	}
+	if !reflect.DeepEqual(got.Env, env) {
+		names := []string{}
+		for k, v := range got.Env {
+			if w, ok := env[k]; !ok || w != v {
+				names = append(names, k)
+			}
+		}
+		for k := range env {
+			if _, ok := got.Env[k]; !ok {
+				names = append(names, k)
+			}
+		}
+		sort.Strings(names)
+		diff = append(diff, "env differs in "+strings.Join(names, ","))
+	}
+	return strings.Join(diff, "; ")
 }
 func sameFleetService(got configService, want FleetService) bool {
 	keys := append([]string(nil), want.Keys...)
