@@ -46,7 +46,7 @@ func New(ctx context.Context, s store.Store) (*Cache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dashboard startup snapshot (30s deadline): check PostgreSQL connectivity and schema: %w", err)
 	}
-	c := &Cache{state: snap, at: time.Now(), now: time.Now, pending: true, initialized: true, gate: make(chan struct{}, 1)}
+	c := &Cache{state: snap, at: time.Now(), now: time.Now, pending: snap.Seq > 0, initialized: true, gate: make(chan struct{}, 1)}
 	c.view = mapSnapshot(c.state, c.roster, c.at)
 	c.samples = []sample{{c.at, c.view.Landed}}
 	return c, nil
@@ -87,7 +87,7 @@ func (c *Cache) Advance(ctx context.Context, s store.Store) error {
 		}
 		c.state = snap
 		c.initialized = true
-		c.pending = true
+		c.pending = snap.Seq > 0
 	}
 	if err := c.checkHistory(ctx, s); err != nil {
 		return c.failed(err)
@@ -97,9 +97,10 @@ func (c *Cache) Advance(ctx context.Context, s store.Store) error {
 	}
 	var cursorErr error
 	if c.pending {
-		cursorErr = c.saveCursor(ctx, s)
+		var intervened bool
+		intervened, cursorErr = c.saveCursor(ctx, s)
 		if cursorErr == nil {
-			c.pending = false
+			c.pending = intervened
 		}
 	}
 	// The gate serializes state writers. Build the immutable published view
@@ -114,6 +115,9 @@ func (c *Cache) Advance(ctx context.Context, s store.Store) error {
 	c.readSeconds = at.Sub(start).Seconds()
 	c.err = nil
 	c.alarm = false
+	if c.view.Epoch != view.Epoch {
+		c.samples = nil
+	}
 	c.view = view
 	c.addSample(at, view.Landed)
 	c.mu.Unlock()
@@ -162,32 +166,26 @@ type historyAnchor struct {
 func anchorOf(e store.Event) historyAnchor { return historyAnchor{e.Seq, e.Op, e.Epoch} }
 
 // checkHistory tests the last folded event's identity before trusting the cache.
-// The initial lookup fetches an event; later checks replay its receipt. Replay
-// still reads after-images, but cursor receipts are ordinarily small. This is
-// continuity detection, not a proof that the entire log is authentic.
+// It verifies continuity, not the authenticity of the entire log.
 func (c *Cache) checkHistory(ctx context.Context, s store.Store) error {
 	seq := c.state.Seq
 	if seq == 0 {
 		return nil
 	}
-	if c.anchor.seq != seq {
-		events, err := s.Events(ctx, seq-1, 1)
-		if err != nil {
-			return err
-		}
-		if len(events) != 0 && events[0].Seq == seq {
-			c.anchor = anchorOf(events[0])
+	op, epoch, found, err := s.EventIdentity(ctx, seq)
+	if err != nil {
+		return err
+	}
+	if found {
+		if c.anchor.seq != seq {
+			c.anchor = historyAnchor{seq: seq, op: op, epoch: epoch}
 			return nil
 		}
-	} else {
-		r, found, err := s.Replay(ctx, c.anchor.op)
-		if err != nil {
-			return err
-		}
-		if found && r.Seq == seq && r.Op == c.anchor.op && r.Epoch == c.anchor.epoch {
+		if c.anchor.op == op && c.anchor.epoch == epoch {
 			return nil
 		}
 	}
+
 	snap, err := s.Snapshot(ctx)
 	if err != nil {
 		return err
@@ -197,7 +195,7 @@ func (c *Cache) checkHistory(ctx context.Context, s store.Store) error {
 	}
 	c.state = snap
 	c.anchor = historyAnchor{}
-	c.pending = true
+	c.pending = snap.Seq > 0
 	return nil
 }
 

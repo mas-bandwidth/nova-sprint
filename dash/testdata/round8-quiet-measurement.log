@@ -1,0 +1,9 @@
+=== RUN   TestColdreadRefresh5000
+    coldread_test.go:248: producers=5000 idle-advance=1.651573ms one-event-advance=13.92133ms json=1.837678ms worst=13.92133ms snapshots=1
+    coldread_test.go:248: producers=20000 idle-advance=14.213252ms one-event-advance=66.497455ms json=1.898381ms worst=70.119062ms snapshots=1
+--- PASS: TestColdreadRefresh5000 (3.23s)
+=== RUN   TestColdreadFunctionalPG5000
+    coldread_test.go:448: pg 5000: worst advance=15.529152ms snapshots=1
+--- PASS: TestColdreadFunctionalPG5000 (2.71s)
+PASS
+ok  	github.com/mas-bandwidth/nova-sprint/dash	6.978s

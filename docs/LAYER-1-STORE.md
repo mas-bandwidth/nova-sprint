@@ -573,7 +573,7 @@ the least-privilege setup `up` makes. The schema hash is still of the whole
 `schema.sql` and does not change.
 
 Recorded with round 20 (2026-11-06): layer 6's restore of a data-only dump,
-`store.RestoreBegin(ctx, tx pgx.Tx) error` and `store.RestoreEnd(ctx, tx
+`store.RestoreBegin(ctx, tx pgx.Tx, digest string) error` (digest since round 22) and `store.RestoreEnd(ctx, tx
 pgx.Tx) (SchemaIdentity, error)`, on one connection in one transaction the
 caller owns (`pgx.Tx`, so it cannot be called outside one). What the dump
 carries, read from `pg_dump --data-only --schema=sprint` of a seeded store
@@ -639,7 +639,100 @@ loaded dump per check (a dropped event, an orphan receipt, the epoch row, a
 policy version missing from the log, a cursor past the end), each refused
 with its message. No model change: a read.
 
-Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
+Recorded with round 22 (2026-11-06; reopens the locked layer for this
+change only). "nova-config is the one true source": a row is sprint state
+only, and the store never holds configuration. Where this entry and the
+sections above disagree, this entry stands (it supersedes Guarantee 3, Refusal
+3, the tier and width rules of the writes, and the rows' kind, width, tiers,
+model and harness wherever they are named).
+- `store.Row` is `Name, State, Session, Role, Flaps, Held, Reason, Gen`.
+  Kind, width, tiers, model and harness go from the Go type, `schema.sql`
+  and every reader; the roster (package `roster`, read from nova-config each
+  tick) has them, and the deal guards take width and tiers from it
+  (`card.RowFromStore(r, width, tiers)`). `SetRowWidth`, `SetRowTiers`,
+  `SetRowLabels` and `SetRowSession` go. The store refuses nothing for width
+  or tier: it takes any number of working consumers of any tier on a row that
+  exists (Guarantee 3 is now "the store holds no width"; the witness
+  StoreWidthInStore shows a store-side cap breaks NoSpuriousRefusal). The
+  `cards_live` index went with the tier check it served.
+- The hook: `PutRow{Name, Session, Role}` is the one write `nova-sprint hook
+  --as <name> --role <r>` makes (Session the bus session the hook recorded,
+  Role `worker` or `coordinator`; the coordinator is also a worker), and
+  unhook puts "" for both. Session and role both set or both "", and a role
+  outside `RowRoles`, are `ErrInvalid`. A hook by another session while one
+  holds the row is refused: "row w1 is hooked by session sess-a; unhook it
+  first". The same session may hook again (a new role). Like every row write
+  it raises the row's gen. `rows.role` has a CHECK.
+- The sprint's stop: `Snapshot.Stopped` and `StopReason`, one value for the
+  store on `sprint.epoch`'s one row (columns `stopped`, `stop_reason`), kept
+  by a clear, in the log as `State.Stop` so Rebuild has it. `SetStopped{Stopped,
+  Reason}` is its one write, refused when unchanged ("the sprint is already
+  stopped"). The store refuses nothing because of it: ops from people still
+  land; Run calls no Tick while stopped.
+- `EventIdentity(ctx, seq) (op, epoch, found, err)` on the Store interface
+  (Fake and PG) reads an event's op id and epoch only, never its images
+  (the dashboard's cursor check; branch v2-store-eventidentity, merged here).
+- Migrate: `schema.sql` drops the five columns (`ALTER TABLE ... DROP COLUMN
+  IF EXISTS`), adds `rows.role` and the stop columns (`ADD COLUMN IF NOT
+  EXISTS`), and drops `cards_live`, in its one transaction, the shape rounds
+  16 and 17 used; a round-21 store (`round21Hash`, round 17's schema, which
+  every round to 21 carried; CheckSchema reports it as round 17) migrates in
+  place, its rows' state kept. The schema round is 22.
+- Model: Store.tla's row is `[state, gen, held, sess, role]` and it carries
+  `stopped`; WidthKept and ServesHeld go with eight witnesses and twelve reach
+  checks; HookKept, StoreHookStolen, StoreStopDropped, StoreWidthInStore and
+  NeverTwoWorking, NeverHookRefused, NeverRehooked, NeverDealtStopped,
+  NeverSameStopRefused are new. The trace projects sess, role and stopped.
+- Restore (round 22, v2-integrate-22): `RestoreEnd`, after the history
+  check and in the restore's own transaction, records the restore in
+  `sprint.meta.restored_at` (the transaction's time; null when never
+  restored) and unhooks every hooked row of the current epoch, so no hook
+  from the dump is live. The unhook is one ordinary logged op
+  (`restore-unhook-<seq>`, actor `store-restore`, kind `unhook`, a
+  `PutRow{Name}` per hooked row, each raising the row's gen) run through the
+  protocol inside the transaction, so the log still rebuilds the state; a
+  dump with no hooked row logs nothing. `Restored(ctx) (at, ok, err)` on the
+  Store interface reads it (the Fake is never restored), so a retried
+  restore can tell the data is already in. The model needs no new variable
+  (the unhook is PutRow ops; `restored_at` is outside the ops' state).
+- The restore's identity (round 22, second refinement): `RestoreBegin(ctx,
+  tx, digest)` takes the dump's digest (sha256 of its bytes, lowercase hex,
+  computed by the caller; anything else is refused) and keeps it for the
+  transaction (`set_config`, local); `RestoreEnd` records it in
+  `sprint.meta.restored_digest` beside `restored_at` (a CHECK keeps it a
+  sha256 or ''), and refuses a transaction without it. The unhook op's id is
+  `restore-unhook-<digest>-<seq>`, unique against the dump's own log (which
+  may hold the unhook of the restore it came from). Before it returns,
+  `RestoreEnd` checks inside the transaction that no row of the current
+  epoch is hooked, and refuses the restore naming the row otherwise (a
+  replayed id would leave one hooked). `Restored(ctx)` returns `(digest, at,
+  ok, err)`. Layer 6's restore uses it: an empty schema is imported; a
+  non-empty one with the same digest skips the import and only hooks; a
+  different digest, or none, is refused ("schema holds a restore of
+  <digest> at <time>: clear it first").
+- A stream's landing settings (round 22): they are stream state, not policy
+  data (layer 6 had been reading them by scanning the log, O(history) per
+  take). `Stream` gains `Mode` (one of `StreamModes`: `auto`, `group`,
+  `hand`; `auto` by default, the column's default) and `Forge` (the forge it
+  lands through, "" for none), columns of `sprint.streams` with a CHECK on
+  mode. `PutStream{Name, Repo, Base, Pos, Mode, Forge}` takes both ("" mode
+  is auto). `SetStreamMode{Stream, Mode}` and `SetStreamForge{Stream,
+  Forge}` set one each, refused when unchanged (`stream s1's mode is already
+  "hand"`); a mode outside the set is `ErrInvalid`. A stream image logged
+  before round 22 reads its mode as auto, so the log of a migrated store
+  still rebuilds its tables. Store.tla has no streams (held, repo, base and
+  pos were never modelled), so the closed set is the checker's and the
+  schema's; the trace projection drops PutStream and does not project an op
+  with SetStreamMode or SetStreamForge, as for SetStreamHeld.
+- Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
+  value is refused as unchanged, an absent cursor counting as 0, so
+  `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already
+  at 0"), as Store.tla always had it. The trace fixture `store-cursor-zero`
+  now matches, and the walks send the write. The dashboard's cursor save
+  treats an absent cursor as 0 too, so an idle first poll of an empty store
+  writes nothing.
+
+Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference then, since ruled the code's fault and fixed (round 22): the store inserted an absent cursor set to 0, which the model refuses.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
 

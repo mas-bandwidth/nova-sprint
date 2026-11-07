@@ -59,7 +59,7 @@ package does with it.
   schema's owner needs no CREATE on the database: an admin role creates
   `sprint` owned by `nova_sprint`, and `nova_sprint` migrates it. The hash is
   still of the whole file. A store with no schema still needs CREATE.
-- Restore (round 20, `restore.go`): `RestoreBegin(ctx, tx)` and
+- Restore (round 20, `restore.go`): `RestoreBegin(ctx, tx, digest)` and
   `RestoreEnd(ctx, tx)` restore a `pg_dump --data-only --schema=sprint` dump
   in one transaction on one connection. Begin takes Migrate's advisory lock,
   refuses a foreign schema or one with any row, and creates every table,
@@ -80,6 +80,24 @@ package does with it.
   last activation), every cursor at or below the last seq, and Rebuild equal
   to the snapshot. RestoreEnd runs it; a verb can run it on a live store in
   a REPEATABLE READ, read-only transaction.
+- Round 22: a row is sprint state only (`Name, State, Session, Role,
+  Flaps, Held, Reason, Gen`). Kind, width, tiers, model and harness are
+  nova-config's, read through package `roster`; the store neither caps
+  working consumers nor checks tiers (the deal guards do, from the roster).
+  `PutRow{Name, Session, Role}` is the hook's one write (both "" unhooks;
+  another session's hook is refused: unhook first). `SetStopped` sets the
+  sprint's stop (`Snapshot.Stopped`, kept by a clear, refused when
+  unchanged; the store refuses nothing for it). `EventIdentity(ctx, seq)`
+  reads an event's op id and epoch without its images. Migrate takes a
+  round-21 store in place. `RestoreBegin(ctx, tx, digest)` takes the
+  dump's sha256; `RestoreEnd` records it and the time
+  (`sprint.meta.restored_digest`, `restored_at`, read by `Restored(ctx)`),
+  unhooks the dump's hooks in one logged op (`restore-unhook-<digest>-<seq>`)
+  inside the restore's transaction, and refuses the restore if a row is
+  still hooked. A stream carries its landing settings, `Mode` (auto, group
+  or hand) and `Forge` ("" for none), put by `PutStream` and changed by
+  `SetStreamMode` and `SetStreamForge`. A cursor
+  set to its current value is refused, an absent one counting as 0.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
@@ -351,7 +369,7 @@ consumer, nil included), `PutRow`
 (kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
 state, flaps, held and the row's reason are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
-true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
+true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowFlaps`,
 `SetRowTiers` (refused when it drops a tier a live consumer of the row needs), `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
 `PutJudgement`, `AnswerJudgement`, `ExpireJudgement`, `SetCursor`. `PutPolicy` takes no version: the store
 gives it the next one, and the caller learns it from the receipt,

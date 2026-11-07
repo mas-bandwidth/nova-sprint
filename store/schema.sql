@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS sprint.meta (
     hash   text    NOT NULL DEFAULT ''
 );
 INSERT INTO sprint.meta (id, schema) VALUES (1, 2) ON CONFLICT (id) DO NOTHING;
+-- Round 22: the last restore into this store, and the sha256 of the dump it
+-- loaded (RestoreEnd sets both in the restore's own transaction; null and ''
+-- when the store was never restored). Restored reads them, so a retried
+-- restore of the same dump can tell the data is already in.
+ALTER TABLE sprint.meta ADD COLUMN IF NOT EXISTS restored_at timestamptz,
+    ADD COLUMN IF NOT EXISTS restored_digest text NOT NULL DEFAULT '' CHECK (restored_digest ~ '^([0-9a-f]{64})?$');
 
 CREATE TABLE IF NOT EXISTS sprint.epoch (
     id integer PRIMARY KEY CHECK (id = 1),
@@ -43,6 +49,11 @@ CREATE TABLE IF NOT EXISTS sprint.streams (
     epoch integer NOT NULL,
     PRIMARY KEY (epoch, name)
 );
+-- Round 22: a stream's landing settings are stream state (layer 6 read them
+-- by scanning the log): how its producers land, and the forge it lands
+-- through ('' for none).
+ALTER TABLE sprint.streams ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto', 'group', 'hand')),
+    ADD COLUMN IF NOT EXISTS forge text NOT NULL DEFAULT '';
 
 -- A row is sprint state only (round 22): what a worker or kin is (kind,
 -- width, tiers, model, harness) is configuration, nova-config's, read
@@ -69,6 +80,9 @@ ALTER TABLE sprint.rows DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS width,
 -- and adds the hook's role (worker or coordinator; '' when not hooked).
 ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT ''
     CHECK (role IN ('', 'worker', 'coordinator'));
+-- A row hooked before round 22 has a session and no role: it is unhooked
+-- (a session and a role are both set or both empty), and hooks again.
+UPDATE sprint.rows SET session = '' WHERE role = '' AND session <> '';
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by

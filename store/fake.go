@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
 )
 
 // Fake is an in-memory Store with the semantics of PG: the same conditions,
@@ -128,6 +129,11 @@ func (f *Fake) Events(_ context.Context, afterSeq int64, max int) ([]Event, erro
 		out = append(out, e)
 	}
 	return out, nil
+}
+
+// Restored is false: a Fake is never restored (RestoreEnd is PostgreSQL's).
+func (f *Fake) Restored(context.Context) (string, time.Time, bool, error) {
+	return "", time.Time{}, false, nil
 }
 
 // EventIdentity returns the op id and epoch of the event at seq.

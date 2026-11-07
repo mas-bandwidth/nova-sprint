@@ -5,9 +5,17 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
+
+func requireDashLoad(t *testing.T) {
+	t.Helper()
+	if os.Getenv("NOVA_LOAD") != "1" {
+		t.Skip("dashboard load measurement: set NOVA_LOAD=1 on a quiet Linux bench")
+	}
+}
 
 type countedStore struct {
 	store.Store
@@ -19,6 +27,7 @@ func (s *countedStore) Snapshot(ctx context.Context) (store.Snapshot, error) {
 	return s.Store.Snapshot(ctx)
 }
 func TestDashboardIncremental5000(t *testing.T) {
+	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
 	writes := []store.Write{store.PutStream{Name: "s"}}

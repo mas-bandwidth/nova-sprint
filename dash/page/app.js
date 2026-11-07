@@ -263,12 +263,19 @@ function shownStatus(st) { var w = String(st || "").trim().split(/[\s(]/)[0]; re
 // (the owner 2026-10-04 ~4:24 PM: "this enforces it is one person, but multiple buds").
 function budLabel(name, table) {
   var i = name.indexOf("-");
-  if (i > 0 && table && table[name.slice(0, i)]) return name.slice(0, i) + " (" + name.slice(i + 1) + ")";
+  if (i > 0 && table && Object.prototype.hasOwnProperty.call(table, name.slice(0, i))) return name.slice(0, i) + " (" + name.slice(i + 1) + ")";
   return name;
 }
 function tableScale(table) { return Math.max(1, Object.keys(table || {}).reduce(function (a, n) { return Math.max(a, int(table[n].width)); }, 0)); }
 // the bar scale is shared with the friends table only while that table is shown; hidden, the fleet's own widest lane sets it (the owner 2026-10-12 ~01:42Z)
 function friendsShown() { var p = document.querySelector(".panel.friends"); return !!(p && getComputedStyle(p).display !== "none"); }
+// the widest "n / width" digit count across Fleet and Friends, so both tables' slashes align
+function sharedDigits(d) {
+  var tabs = friendsShown() ? [d.tables.fleet, d.tables.friends] : [d.tables.fleet];
+  return tabs.reduce(function (a, t) {
+    return Object.keys(t || {}).reduce(function (b, n) { return Math.max(b, digitsOf(int(t[n].working)), digitsOf(int(t[n].width))); }, a);
+  }, 1);
+}
 function sharedScale(d) { return friendsShown() ? Math.max(tableScale(d.tables.fleet), tableScale(d.tables.friends)) : tableScale(d.tables.fleet); }
 
 // ---------- sections ----------
@@ -420,7 +427,7 @@ window.addEventListener("resize", function () { if (overallLast) renderOverall(o
 // tables share, so their columns have the same widths.
 // `clamp` (Friends only, SPEC.md "Friends working, clamped to width, soft", the owner 2026-10-03 12:14 PM):
 // a friend's working figure never exceeds its width; the raw count is the cell's title only.
-function fleetLike(box, table, nameLabel, scale, clamp) {
+function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function shownWorking(m) { var w = int(m.working); return clamp ? Math.min(w, int(m.width)) : w; }
   var names = Object.keys(table || {});
   // rows by status (up, held, down), then by name
@@ -449,7 +456,10 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
   // the Total row's slash sits on the same line as the rows' (the owner 9:28 PM: "the totals are
   // slightly misaligned"): every row's numerator, the total's included, is as wide as the widest
   // numerator; only the total's denominator may be wider
-  var digits = names.reduce(function (a, n) { return Math.max(a, digitsOf(shownWorking(table[n])), digitsOf(int(table[n].width))); }, 1);
+  // the digit width is shared by Fleet and Friends (minDigits, from both tables), so their
+  // slashes sit on one vertical line (the owner 2026-11-06: "the / is supposed to be horizontally
+  // aligned between the fleet and friend tables"); widths of 8 beside widths of 16 had split them
+  var digits = names.reduce(function (a, n) { return Math.max(a, digitsOf(shownWorking(table[n])), digitsOf(int(table[n].width))); }, minDigits || 1);
   digits = Math.max(digits, digitsOf(names.reduce(function (a, n) { return a + shownWorking(table[n]); }, 0)));
   var totalDigits = digitsOf(names.reduce(function (a, n) { return a + int(table[n].width); }, 0));
   syncRows(box, box._head, names, function () {
@@ -490,7 +500,7 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
 }
 
 function renderFleet(d) {
-  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d));
+  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d), false, sharedDigits(d));
   setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
@@ -499,7 +509,7 @@ function renderFleet(d) {
 function renderFriends(d) {
   var box = $("friends"), table = d.tables.friends;
   if (!table || typeof table !== "object") table = {};
-  var r = fleetLike(box, table, "friend", sharedScale(d), true);
+  var r = fleetLike(box, table, "friend", sharedScale(d), true, sharedDigits(d));
   setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.friends_work, d.friends_tiers));
   setSideOff(box.closest("section"), d.friends_work);
 }
