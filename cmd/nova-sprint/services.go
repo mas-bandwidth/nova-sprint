@@ -115,6 +115,7 @@ func (s services) Dash(ctx context.Context, listen, pull string) error {
 		return err
 	}
 	var st store.Store = s.store
+	dash.Version = versionString()
 	cache, err := dash.NewRecovering(ctx, st)
 	if err != nil {
 		if ctx.Err() != nil {

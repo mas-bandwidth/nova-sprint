@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -93,7 +95,36 @@ func (baseHarness_internal) Probe(j Job) Job { return probeJob_internal(j, j.Har
 func (h *ClaudeHarness) Name() string        { return "claude" }
 func (h *CodexHarness) Name() string         { return "codex" }
 func (h *OpenCodeHarness) Name() string      { return "opencode" }
-func (h *ScriptHarness) Name() string        { return "script" }
+
+// opencodeSpend reads the run's spend in dollars from opencode's own session
+// database (its assistant messages carry "cost"); a var so a unit test
+// supplies it. The wall's XDG_DATA_HOME is <job>/data, so the database is the
+// run's alone.
+var opencodeSpend = func(db string) (float64, error) {
+	out, err := exec.Command("sqlite3", "-readonly", db, "select coalesce(sum(json_extract(data,'$.cost')),0) from message where json_extract(data,'$.role')='assistant'").Output()
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+}
+
+// Usage is usage.json when the run wrote one, else what opencode recorded for
+// the run. A run whose route has no price records $0: that is unpriced, never
+// a priced zero.
+func (h *OpenCodeHarness) Usage(j Job) (Cost, bool) {
+	if c, ok := readUsageFile_internal(j.JobDir); ok {
+		return c, true
+	}
+	if j.JobDir == "" {
+		return Cost{}, false
+	}
+	usd, err := opencodeSpend(filepath.Join(j.JobDir, "data", "opencode", "opencode.db"))
+	if err != nil || usd <= 0 {
+		return Cost{}, false
+	}
+	return Cost{MicroUSD: int64(math.Round(usd * 1e6)), Priced: true}, true
+}
+func (h *ScriptHarness) Name() string { return "script" }
 func (h *ScriptHarness) Probe(j Job) Job {
 	p := probeJob_internal(j, "script")
 	p.ScriptMode = "probe"
