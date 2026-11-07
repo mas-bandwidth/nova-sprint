@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -18,13 +20,24 @@ import (
 // Unknown, naming the version and CatalogFix. Bench is the optional "bench"
 // key: the one model a bench runs for each tier, in provider/model form (a
 // harness's model id), each one of the tier's models; the deal names it
-// (defect 57) and a tier it lacks deals to no bench.
+// (defect 57) and a tier it lacks deals to no bench. Providers is the
+// optional "providers" key: the API-rate providers up offers and a worker
+// routes to, by name (the provider prefix of their models' provider/model
+// ids). The built-in declares none: a sprint's providers are its own.
 type Catalog struct {
 	Version   int
 	Models    map[string][]Model
 	Harnesses []string
 	Bench     map[string]string
+	Providers map[string]Provider
 }
+
+// Provider is one API-rate provider: URL is its API base, the upstream a
+// worker's key proxy forwards to (without /v1); Key the name of the secret
+// holding its API key; Probe an endpoint that answers 2xx to a GET only
+// with a valid key, which proves a saved key; Balance, optional, the
+// endpoint cost reconcile reads the account's balance from.
+type Provider struct{ URL, Key, Probe, Balance string }
 
 // Model is one model and a tier it serves; a model serving two tiers is two entries.
 type Model struct{ Name, Tier string }
@@ -54,6 +67,17 @@ func ReadCatalog(ctx context.Context, st store.Store, e *Engine, v int) (Catalog
 	return a.Catalog, nil
 }
 
+// ReadProviders is the providers the active version's catalog declares
+// (the built-in's, none, while no version is active).
+func ReadProviders(ctx context.Context, st store.Store, e *Engine) (map[string]Provider, error) {
+	snap, err := st.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := ReadCatalog(ctx, st, e, snap.Policy)
+	return c.Providers, err
+}
+
 // catalog is src's catalog, run in this process under a tick's deadline.
 func (e *Engine) catalog(ctx context.Context, src source) (Answers, []Failure) {
 	start := e.clock.Now()
@@ -67,7 +91,7 @@ func (e *Engine) catalog(ctx context.Context, src source) (Answers, []Failure) {
 
 // clone is c with its own map and slices.
 func (c Catalog) clone() Catalog {
-	out := Catalog{Version: c.Version, Models: make(map[string][]Model, len(c.Models)), Harnesses: slices.Clone(c.Harnesses), Bench: maps.Clone(c.Bench)}
+	out := Catalog{Version: c.Version, Models: make(map[string][]Model, len(c.Models)), Harnesses: slices.Clone(c.Harnesses), Bench: maps.Clone(c.Bench), Providers: maps.Clone(c.Providers)}
 	for p, ms := range c.Models {
 		out.Models[p] = slices.Clone(ms)
 	}
@@ -121,12 +145,13 @@ func (c Catalog) unknownHarness(harness string) string {
 }
 
 // checkCatalog: {"models": {provider: [{"name": n, "tier": t}]}, "harnesses":
-// [h], "bench": {tier: "provider/model"}} with bench optional; names
-// non-empty, tiers from TIERS, nothing listed twice, each bench model one of
-// its tier's. Linear in the answer, and its loops stop at the tick's
-// deadline.
+// [h], "bench": {tier: "provider/model"}, "providers": {name: {"url": u,
+// "key": k, "probe": u, "balance": u}}} with bench, providers and balance
+// optional; names non-empty, tiers from TIERS, nothing listed twice, each
+// bench model one of its tier's. Linear in the answer, and its loops stop
+// at the tick's deadline.
 func checkCatalog(ctx context.Context, v starlark.Value) (Catalog, string) {
-	d, msg := dictWith(v, []string{"models", "harnesses"}, "bench")
+	d, msg := dictWith(v, []string{"models", "harnesses"}, "bench", "providers")
 	if msg != "" {
 		return Catalog{}, msg
 	}
@@ -158,7 +183,71 @@ func checkCatalog(ctx context.Context, v starlark.Value) (Catalog, string) {
 			return Catalog{}, msg
 		}
 	}
+	if d["providers"] != nil {
+		if c.Providers, msg = checkProviders(ctx, d["providers"]); msg != "" {
+			return Catalog{}, msg
+		}
+	}
 	return c, ""
+}
+
+var (
+	// providerName is a worker's route name: the provider prefix of a
+	// provider/model id (edge/worker ParseProviders takes the same).
+	providerName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+	// keyName is an environment variable name, as nova-secrets exec sets it.
+	keyName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+)
+
+// checkProviders is the providers key: a dict of name to its configuration
+// (Provider), each URL http(s) with a host and no credentials.
+func checkProviders(ctx context.Context, v starlark.Value) (map[string]Provider, string) {
+	d, ok := v.(*starlark.Dict)
+	if !ok {
+		return nil, refuse("providers is %s, not a dict of name to provider", kind(v))
+	}
+	out := map[string]Provider{}
+	for i, kv := range d.Items() {
+		name, ok := kv[0].(starlark.String)
+		if late(ctx, i) {
+			return nil, overTime()
+		}
+		if !ok || !providerName.MatchString(string(name)) {
+			return nil, refuse("providers: %s is not a provider name (lowercase letters, digits, '.', '_' and '-')", brief(kv[0]))
+		}
+		at := "provider " + string(name)
+		f, msg := dictWith(kv[1], []string{"url", "key", "probe"}, "balance")
+		if msg != "" {
+			return nil, at + ": " + msg
+		}
+		var p Provider
+		for _, s := range []struct {
+			key string
+			to  *string
+		}{{"url", &p.URL}, {"key", &p.Key}, {"probe", &p.Probe}, {"balance", &p.Balance}} {
+			if f[s.key] == nil {
+				continue
+			}
+			str, ok := f[s.key].(starlark.String)
+			if !ok {
+				return nil, refuse("%s: %s is %s, not a string", at, s.key, kind(f[s.key]))
+			}
+			*s.to = string(str)
+		}
+		for _, u := range [][2]string{{"url", p.URL}, {"probe", p.Probe}, {"balance", p.Balance}} {
+			if u[0] == "balance" && u[1] == "" {
+				continue
+			}
+			if parsed, err := url.Parse(u[1]); err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil {
+				return nil, refuse("%s: %s %s is not an http(s) URL with a host and no credentials", at, u[0], brief(starlark.String(u[1])))
+			}
+		}
+		if !keyName.MatchString(p.Key) {
+			return nil, refuse("%s: key %s is not an environment variable name (A-Z, 0-9 and _)", at, brief(starlark.String(p.Key)))
+		}
+		out[string(name)] = p
+	}
+	return out, ""
 }
 
 // bench is the bench key: a dict of tier to one of that tier's models in
