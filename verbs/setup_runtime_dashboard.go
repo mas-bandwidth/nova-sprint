@@ -66,6 +66,7 @@ func dashboardGet(ctx context.Context, client *http.Client, base *url.URL, path 
 	}
 	return true, nil
 }
+
 // dashboardBody is "" when the body is this sprint's, else what is wrong.
 func dashboardBody(resp *http.Response, epoch int, public bool) string {
 	if public && resp.Header.Get("ETag") == "" {

@@ -79,13 +79,17 @@ func (f FleetServices) existing(ctx context.Context, s FleetService) (bool, erro
 		return false, cause("nova-config service list failed", err)
 	}
 	var list configServices
-	if json.Unmarshal(out, &list) != nil || list.Result.Verb != "service list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "service" || list.Facts.Rows != len(list.Items) {
-		return false, fmt.Errorf("nova-config returned invalid service list")
+	if err := json.Unmarshal(out, &list); err != nil {
+		return false, fmt.Errorf("nova-config service list --json: %s", ParseFailure(err, out))
+	}
+	if list.Result.Verb != "service list" || list.Result.Status != "ok" || list.Result.Exit != 0 || list.Facts.Kind != "service" || list.Facts.Rows != len(list.Items) {
+		return false, fmt.Errorf("nova-config service list --json: result %q %q exit %d, facts %q rows %d for %d items; first bytes %q",
+			list.Result.Verb, list.Result.Status, list.Result.Exit, list.Facts.Kind, list.Facts.Rows, len(list.Items), firstBytes(out))
 	}
 	found := false
 	for _, item := range list.Items {
 		if item.Kind != "service" || item.Fields.Name == "" {
-			return false, fmt.Errorf("nova-config returned invalid service list")
+			return false, fmt.Errorf("nova-config service list --json: item kind %q name %q is not a named service", item.Kind, item.Fields.Name)
 		}
 		if item.Fields.Name != s.Name {
 			continue
@@ -116,12 +120,18 @@ func (f FleetServices) Ensure(ctx context.Context, s FleetService) (bool, error)
 	if err != nil || found {
 		return false, err
 	}
-	argv, _ := json.Marshal(s.Argv)
+	argv, err := json.Marshal(s.Argv)
+	if err != nil {
+		return false, cause("fleet service argv", err)
+	}
 	env := s.Env
 	if env == nil {
 		env = map[string]string{}
 	}
-	envJSON, _ := json.Marshal(env)
+	envJSON, err := json.Marshal(env)
+	if err != nil {
+		return false, cause("fleet service env", err)
+	}
 	keys := append([]string(nil), s.Keys...)
 	sort.Strings(keys)
 	args := []string{"service", "add", s.Name, "--machine", s.Machine, "--argv", string(argv), "--keepalive", "true", "--enabled", "true", "--env", string(envJSON)}
@@ -147,7 +157,7 @@ func (f FleetServices) Apply(ctx context.Context, s FleetService) error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("fleet service is absent")
+		return fmt.Errorf("fleet service %s is absent from nova-config service list", s.Name)
 	}
 	_, err = f.command(ctx, "nova-fleet", "services", "--", "-l", s.Machine, "-e", "nova_service_only="+s.Name)
 	if err != nil {
