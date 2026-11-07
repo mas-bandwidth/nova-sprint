@@ -25,13 +25,20 @@ import (
 //   - answeredBy: the last tick's Answers.Version, -2 (NoAnswer) for -1, and
 //     -1 (None) before the first tick.
 //   - judgements: the open policy judgements of each version, by group key.
+//   - everActive: the versions ever active: the active one and every one an
+//     accepted event of the log (up to the snapshot's seq) deactivated
+//     (PrevOf), so FallbackWasActive is checked against the code (round 5).
 //   - card: the state of one producer of the store (ready, working, done),
 //     moved by the walk's ticks, as layer 3 would: the one card of the model.
-//   - everActive, tickBreaks, cardBefore, waitBound, startBound, lastOp: the
-//     model's own bookkeeping, not projected; each is fixed by the step the
-//     record names (the trace module checks it as it computes it).
+//   - tickBreaks, cardBefore, waitBound, startBound, lastOp: the model's own
+//     bookkeeping, not projected; each is fixed by the step the record names
+//     (the trace module checks it as it computes it). waitBound and
+//     startBound are layer 3's waits, which this layer holds no state of:
+//     WaitKeepsItsBound is the model's statement about layer 3, and no
+//     ledger row claims it of this code (round 5).
 type ModelState struct {
 	Stored, Breaks []int
+	EverActive     []int
 	Active, Prev   int
 	AnsweredBy     int
 	Judgements     []int // by version, 0 (the built-in) to MaxVersion
@@ -56,7 +63,15 @@ func TraceState(ctx context.Context, st store.Store, ro roster.Roster, e *Engine
 	if err != nil {
 		return ModelState{}, err
 	}
-	m := ModelState{Active: vs.Active.Version, Prev: -1, AnsweredBy: -1, Card: snap.Cards[card].State}
+	m := ModelState{Active: vs.Active.Version, Prev: -1, AnsweredBy: -1, Card: snap.Cards[card].State, EverActive: []int{vs.Active.Version}}
+	err = walk(ctx, st, snap.Seq, func(ev store.Event) {
+		if p, ok := PrevOf(ev); ok && !slices.Contains(m.EverActive, p) {
+			m.EverActive = append(m.EverActive, p)
+		}
+	})
+	if err != nil {
+		return ModelState{}, err
+	}
 	if vs.Prev != nil {
 		m.Prev = vs.Prev.Version
 	}
