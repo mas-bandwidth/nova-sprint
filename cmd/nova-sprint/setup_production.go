@@ -88,6 +88,7 @@ type productionSetup struct {
 	cfg       productionSetupConfig
 	command   verbs.CommandOutput
 	installer publicInstaller
+	resolve   func(context.Context, string) ([]netip.Addr, error) // nil: the system resolver (MagicDNS)
 }
 
 func (p productionSetup) forInput(in verbs.SetupInput) verbs.RuntimeSetup {
@@ -580,7 +581,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	if err != nil {
 		return r, err
 	}
-	run, err := p.resolveRunService(host, rows, machines)
+	run, err := p.resolveRunService(ctx, host, rows, machines)
 	if err != nil {
 		return r, err
 	}
@@ -626,7 +627,7 @@ func (p productionSetup) validateRunService(run verbs.FleetService) error {
 	return nil
 }
 
-func (p productionSetup) resolveRunService(host string, rows []setupServiceRow, machines []verbs.FleetMachine) (verbs.FleetService, error) {
+func (p productionSetup) resolveRunService(ctx context.Context, host string, rows []setupServiceRow, machines []verbs.FleetMachine) (verbs.FleetService, error) {
 	if run, ok := selectRunService(rows, host); ok {
 		return run, nil
 	}
@@ -635,24 +636,21 @@ func (p productionSetup) resolveRunService(host string, rows []setupServiceRow, 
 			return verbs.FleetService{}, serviceConfigError("the sprint-run service record conflicts with setup")
 		}
 	}
-	return p.newRunService(host, machines)
+	return p.newRunService(ctx, host, machines)
 }
 
-func (p productionSetup) newRunService(host string, machines []verbs.FleetMachine) (verbs.FleetService, error) {
+func (p productionSetup) newRunService(ctx context.Context, host string, machines []verbs.FleetMachine) (verbs.FleetService, error) {
 	if host != p.cfg.Host || p.cfg.Secrets.Seat == "" {
 		return verbs.FleetService{}, serviceConfigError("run host needs an existing service record with its actual seat")
 	}
 	address := ""
 	for _, machine := range machines {
 		if machine.Name == host {
-			ip, err := netip.ParseAddr(machine.Address)
-			if err == nil && isTailnetIP(ip) {
-				address = ip.String()
-			}
+			address = p.runAddress(ctx, machine.Address)
 		}
 	}
 	if address == "" {
-		return verbs.FleetService{}, serviceConfigError("run host needs a private-network IP in the inventory")
+		return verbs.FleetService{}, serviceConfigError("run host needs a private-network address (a tailnet IP or name) in the inventory")
 	}
 	busHost, busPort, err := net.SplitHostPort(p.cfg.BusRedis)
 	port, portErr := strconv.Atoi(busPort)
@@ -875,11 +873,49 @@ func privateDashboardURL(listen string) (string, error) {
 	if err != nil || parseErr != nil || number < 1 || number > 65535 {
 		return "", serviceConfigError("sprint-run needs an explicit private-network listener")
 	}
-	ip, err := netip.ParseAddr(host)
-	if err != nil || !isTailnetIP(ip) {
-		return "", serviceConfigError("sprint-run must listen on a private-network IP")
+	if ip, err := netip.ParseAddr(host); err == nil && isTailnetIP(ip) || err != nil && tailnetName.MatchString(host) {
+		return "http://" + net.JoinHostPort(host, port), nil
 	}
-	return "http://" + net.JoinHostPort(host, port), nil
+	return "", serviceConfigError("sprint-run must listen on a private-network address (a tailnet IP or name)")
+}
+
+// tailnetName is a MagicDNS name, <host>.<tailnet>.ts.net: private, as a
+// 100.64.0.0/10 address is.
+var tailnetName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+\.ts\.net$`)
+
+// runAddress is the run host's inventory address as run listens on it: a
+// tailnet IP as is; a MagicDNS name resolved to its tailnet IP (IPv4
+// first), or the name itself when it does not resolve here; anything else,
+// or a name that resolves only off the tailnet, "" (not private).
+func (p productionSetup) runAddress(ctx context.Context, address string) string {
+	if ip, err := netip.ParseAddr(address); err == nil {
+		if isTailnetIP(ip) {
+			return ip.String()
+		}
+		return ""
+	}
+	name := strings.ToLower(strings.TrimSuffix(address, "."))
+	if !tailnetName.MatchString(name) {
+		return ""
+	}
+	resolve := p.resolve
+	if resolve == nil {
+		resolve = func(ctx context.Context, host string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		}
+	}
+	addrs, err := resolve(ctx, name)
+	if err != nil || len(addrs) == 0 {
+		return name // MagicDNS answers on the tailnet; run resolves it where it runs
+	}
+	for _, four := range []bool{true, false} {
+		for _, a := range addrs {
+			if a = a.Unmap(); a.Is4() == four && isTailnetIP(a) {
+				return a.String()
+			}
+		}
+	}
+	return "" // a tailnet name that resolves off the tailnet is not private
 }
 func isTailnetIP(ip netip.Addr) bool {
 	return netip.MustParsePrefix("100.64.0.0/10").Contains(ip) || netip.MustParsePrefix("fd7a:115c:a1e0::/48").Contains(ip)

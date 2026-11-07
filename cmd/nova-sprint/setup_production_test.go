@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"slices"
 	"strings"
 	"testing"
@@ -230,16 +231,57 @@ func TestProductionSetupBuildsMissingRunFromInventory(t *testing.T) {
 	cfg.BusUser = "sprint"
 	p := productionSetup{cfg: cfg}
 	machines := []verbs.FleetMachine{{Name: "studio", Address: "100.100.1.2", Roles: []string{"services"}}}
-	run, err := p.newRunService("studio", machines)
+	run, err := p.newRunService(context.Background(), "studio", machines)
 	if err != nil || run.Argv[0] != "nova-sprint" || run.Argv[3] != "100.100.1.2:8080" || run.Seat != "studio" || run.Env["NOVA_PG_PASSWORD_ENV"] != "NOVA_SPRINT_PG_PASSWORD" {
 		t.Fatalf("invalid derived service: %v", err)
 	}
-	if _, err := p.newRunService("remote", machines); err == nil {
+	if _, err := p.newRunService(context.Background(), "remote", machines); err == nil {
 		t.Fatal("guessed a remote seat")
 	}
 	machines[0].Address = "192.168.1.2"
-	if _, err := p.newRunService("studio", machines); err == nil {
+	if _, err := p.newRunService(context.Background(), "studio", machines); err == nil {
 		t.Fatal("guessed a tailnet address")
+	}
+}
+
+// The run host's inventory address may be its MagicDNS name: resolved (by
+// the injected resolver) to its tailnet IP, or kept as the name when it does
+// not resolve here; a name that resolves off the tailnet, or one that is
+// not a tailnet name, is refused.
+func TestProductionSetupRunHostByTailnetName(t *testing.T) {
+	cfg := configForSetup()
+	cfg.BusRedis = "100.100.1.3:6379"
+	answers := map[string][]netip.Addr{"studio.example-tailnet.ts.net": {netip.MustParseAddr("fd7a:115c:a1e0::1"), netip.MustParseAddr("100.100.1.2")}, "off.example-tailnet.ts.net": {netip.MustParseAddr("8.8.8.8")}}
+	p := productionSetup{cfg: cfg, resolve: func(_ context.Context, host string) ([]netip.Addr, error) {
+		if a, ok := answers[host]; ok {
+			return a, nil
+		}
+		return nil, errors.New("no such host")
+	}}
+	for _, tc := range []struct{ address, listen string }{
+		{"studio.example-tailnet.ts.net", "100.100.1.2:8080"},
+		{"Studio.Example-Tailnet.ts.net.", "100.100.1.2:8080"},
+		{"later.example-tailnet.ts.net", "later.example-tailnet.ts.net:8080"},
+		{"off.example-tailnet.ts.net", ""},
+		{"studio.example.com", ""},
+	} {
+		machines := []verbs.FleetMachine{{Name: "studio", Address: tc.address, Roles: []string{"services"}}}
+		run, err := p.newRunService(context.Background(), "studio", machines)
+		if tc.listen == "" {
+			if err == nil || !strings.Contains(err.Error(), "private-network address") {
+				t.Fatalf("%s: accepted %v", tc.address, run.Argv)
+			}
+			continue
+		}
+		if err != nil || run.Argv[3] != tc.listen {
+			t.Fatalf("%s: %v %v", tc.address, run.Argv, err)
+		}
+		if url, err := privateDashboardURL(run.Argv[3]); err != nil || url != "http://"+tc.listen {
+			t.Fatalf("%s: board %q %v", tc.address, url, err)
+		}
+	}
+	if _, err := privateDashboardURL("studio.example.com:8080"); err == nil {
+		t.Fatal("a public name passed as private")
 	}
 }
 
