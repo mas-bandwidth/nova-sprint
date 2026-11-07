@@ -44,6 +44,16 @@ const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f043418
 // not refuse every store.
 var schemaHash = hashSchema(schemaSQL)
 
+// createSchema is schema.sql's one statement that needs CREATE on the
+// database: PostgreSQL checks that privilege before IF NOT EXISTS, so a role
+// that owns an existing schema sprint but may not create schemas (the
+// least-privilege setup) is refused it. Migrate runs it only when the schema
+// is absent and otherwise runs schemaObjects, the rest of schema.sql. The
+// hash is still of the whole file.
+const createSchema = "CREATE SCHEMA IF NOT EXISTS sprint;"
+
+var schemaObjects = strings.Replace(schemaSQL, createSchema, "", 1)
+
 // hashSchema strips a -- comment only outside a single-quoted string literal
 // and a double-quoted identifier (a doubled quote closes and reopens, so it
 // stays inside), across lines, so a '--' in a literal is hashed. Dollar
@@ -125,8 +135,9 @@ func (p *PG) Close() { p.pool.Close() }
 // pg_depend row on it (a relation, type, function, operator, collation, text
 // search object, operator family, ...). The one other hash it takes is
 // round16Hash: schema.sql adds cards.red to that store and the new hash is
-// recorded, in the same transaction.
-// Twice is a no-op, and concurrent Migrates are safe: each holds one
+// recorded, in the same transaction. When schema sprint already exists it
+// skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
+// on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
 	tx, err := p.pool.Begin(ctx)
@@ -137,7 +148,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateLock); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
-	_, meta, used, _, err := namespace(ctx, tx) // the foreign check CheckSchema shares (schema.go)
+	present, meta, used, _, err := namespace(ctx, tx) // the foreign check CheckSchema shares (schema.go)
 	if err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
@@ -153,7 +164,11 @@ func (p *PG) Migrate(ctx context.Context) error {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
 	}
-	if _, err := tx.Exec(ctx, schemaSQL); err != nil {
+	sql := schemaSQL
+	if present {
+		sql = schemaObjects // no CREATE SCHEMA: the owner may lack CREATE on the database
+	}
+	if _, err := tx.Exec(ctx, sql); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	if _, err := tx.Exec(ctx, "UPDATE sprint.meta SET hash = $1 WHERE id = 1", schemaHash); err != nil {
