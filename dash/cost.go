@@ -2,6 +2,7 @@ package dash
 
 import (
 	"cmp"
+	"fmt"
 	"maps"
 	"math/big"
 	"slices"
@@ -142,8 +143,7 @@ func summarizeCost(s store.Snapshot) *costSummary {
 	// seat cards at $0 ("with sub cards being free").
 	out.PerCard = "-"
 	if out.Landed > 0 {
-		per := new(big.Int).Add(rounded, big.NewInt(int64(out.Landed-1)))
-		out.PerCard = moneyCell(per.Div(per, big.NewInt(int64(out.Landed))))
+		out.PerCard = perCardCell(micros, out.Landed)
 	}
 	return out
 }
@@ -160,4 +160,22 @@ func landedCards(s store.Snapshot, pricedOf map[string]bool) (landed, priced int
 		}
 	}
 	return landed, priced
+}
+
+// perCardCell is the average in micro-dollars per card, to the nearest cent, or
+// to the nearest hundredth of a cent when the average is under a cent (Glenn
+// 2026-11-07: never rounded up; $0.28 over 237 cards is not "$0.01").
+func perCardCell(micros map[string]*big.Int, cards int) string {
+	total := new(big.Int)
+	for _, m := range micros {
+		total.Add(total, m)
+	}
+	n := big.NewInt(int64(cards))
+	per := new(big.Int).Div(new(big.Int).Add(total, new(big.Int).Div(n, big.NewInt(2))), n)
+	if per.Cmp(big.NewInt(10000)) < 0 {
+		hundredths := new(big.Int).Div(new(big.Int).Add(per, big.NewInt(50)), big.NewInt(100))
+		return fmt.Sprintf("$0.%04d", hundredths.Int64())
+	}
+	cents := new(big.Int).Div(new(big.Int).Add(per, big.NewInt(5000)), big.NewInt(10000))
+	return moneyCell(cents)
 }
