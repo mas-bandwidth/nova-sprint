@@ -17,7 +17,9 @@ import (
 type EdgeRequest = edge.EdgeRequest
 type EdgeResult = edge.EdgeResult
 
-func RequestID(kind, card, sha string) string { return edge.RequestID(kind, card, sha) }
+func RequestID(epoch int64, kind, card, sha string) string {
+	return edge.RequestID(epoch, kind, card, sha)
+}
 
 const (
 	JobNone      = "none"

@@ -554,20 +554,21 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 	// Simulate harness death while runner was down, then restart with a brand-new Runner struct.
 	delete(procs.alive, "777:nonce-live")
 	r2, _ := NewRunner(Runner{Host: "b1", RootDir: root, Sprint: sc, Git: git, Procs: procs, Now: clock})
-	req := EdgeRequest{Kind: "runner", Card: "p1.w1", SHA: testPriorSHA, Row: row, After: []string{"start-p1"}}
+	req := EdgeRequest{Epoch: 1, Kind: "runner", Card: "p1.w1", SHA: testPriorSHA, Row: row, After: []string{"start-p1"}}
 	res1, err := r2.QueryEdge(ctx, req)
 	if err != nil {
 		t.Fatalf("QueryEdge 1: %v", err)
 	}
-	// Create a third brand-new Runner struct and query the exact same (kind, card, sha).
+	// Create a third brand-new Runner struct and query the exact same (epoch, kind, card, sha).
 	r3, _ := NewRunner(Runner{Host: "b1", RootDir: root, Sprint: sc, Git: git, Procs: procs, Now: clock})
 	res2, err := r3.QueryEdge(ctx, req)
 	if err != nil {
 		t.Fatalf("QueryEdge 2: %v", err)
 	}
-	if res1.ID != res2.ID || res1.Outcome != res2.Outcome || res1.SHA != res2.SHA || res1.Outcome != "done" || res1.SHA != testPriorSHA {
+	if res1.ID != res2.ID || res1.Epoch != 1 || res1.Outcome != res2.Outcome || res1.SHA != res2.SHA || res1.Outcome != "done" || res1.SHA != testPriorSHA {
 		t.Fatalf("QueryEdge not idempotent across Runner restart: res1=%+v res2=%+v", res1, res2)
 	}
+	assertEpochSeparatedQueryEdge_internal(t, ctx, r3, req, res1)
 	snap, _ := st.Snapshot(ctx)
 	if snap.Cards["p1"].State != "ready" || snap.Cards["p1"].Bounces != 0 || snap.Cards["p1"].Head != testPriorSHA {
 		t.Fatalf("dead harness on restart must report fault (0 bounces) and keep partial head %s: %+v", testPriorSHA, snap.Cards["p1"])
@@ -617,5 +618,18 @@ func TestTakeRefusesReservedGroupBranch(t *testing.T) {
 	}
 	if _, err := sprint.Take(ctx, row, "p2.w1", 0); err == nil || !strings.Contains(err.Error(), "sprint/s1/group") {
 		t.Fatalf("expected Take(p2.w1) to be refused for reserved group branch, got %v", err)
+	}
+}
+
+func assertEpochSeparatedQueryEdge_internal(t *testing.T, ctx context.Context, r *Runner, req EdgeRequest, res1 EdgeResult) {
+	t.Helper()
+	reqEpoch2 := req
+	reqEpoch2.Epoch = 2
+	resEpoch2, err := r.QueryEdge(ctx, reqEpoch2)
+	if err != nil {
+		t.Fatalf("QueryEdge epoch 2: %v", err)
+	}
+	if resEpoch2.ID == res1.ID || resEpoch2.Epoch != 2 || resEpoch2.ID != RequestID(2, "runner", "p1.w1", testPriorSHA) {
+		t.Fatalf("QueryEdge epoch 2 must have distinct RequestID keyed on epoch: res1=%+v resEpoch2=%+v", res1, resEpoch2)
 	}
 }

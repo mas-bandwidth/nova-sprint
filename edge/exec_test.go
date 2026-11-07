@@ -159,23 +159,20 @@ func TestFunctionalOSExecStdinClosedTimeoutAndMissingBinary(t *testing.T) {
 
 func TestRequestIDDeterministicAndInFlightDeduplication(t *testing.T) {
 	t.Parallel()
-	id1 := RequestID(FactCI, "card-1", "aaaa1111")
-	id2 := RequestID(FactCI, "card-1", "aaaa1111")
-	id3 := RequestID(FactLand, "card-1", "aaaa1111")
+	id1 := RequestID(1, FactCI, "card-1", "aaaa1111")
+	id2 := RequestID(1, FactCI, "card-1", "aaaa1111")
+	id3 := RequestID(1, FactLand, "card-1", "aaaa1111")
+	idEpoch2 := RequestID(2, FactCI, "card-1", "aaaa1111")
 	assert.Equal(t, id1, id2)
 	assert.NotEqual(t, id1, id3)
+	assert.NotEqual(t, id1, idEpoch2, "same card and sha in epochs 1 and 2 must produce different RequestIDs")
 
 	d := NewDeduplicator()
 	started := make(chan struct{})
 	release := make(chan struct{})
 	calls := 0
 
-	req := EdgeRequest{
-		Kind:  FactCI,
-		Card:  "card-1",
-		SHA:   "aaaa1111",
-		After: []string{"op-accept-1"},
-	}
+	req := EdgeRequest{Epoch: 1, Kind: FactCI, Card: "card-1", SHA: "aaaa1111", After: []string{"op-accept-1"}}
 
 	fn := func(ctx context.Context, r EdgeRequest) (EdgeResult, error) {
 		calls++
@@ -232,6 +229,7 @@ func TestRestartRequeryIdempotencyPerFactKind(t *testing.T) {
 
 	for _, tc := range cases {
 		req := EdgeRequest{
+			Epoch: 1,
 			Kind:  tc.kind,
 			Card:  tc.card,
 			SHA:   tc.sha,
@@ -256,7 +254,8 @@ func TestRestartRequeryIdempotencyPerFactKind(t *testing.T) {
 		res2, err := edgeAfter.Do(ctx, req, worldQuery)
 		require.NoError(t, err)
 
-		assert.Equal(t, RequestID(tc.kind, tc.card, tc.sha), res1.ID)
+		assert.Equal(t, RequestID(1, tc.kind, tc.card, tc.sha), res1.ID)
+		assert.NotEqual(t, RequestID(2, tc.kind, tc.card, tc.sha), res1.ID)
 		assert.Equal(t, res1, res2, "restarted edge must return identical answer for fact kind %s", tc.kind)
 	}
 }

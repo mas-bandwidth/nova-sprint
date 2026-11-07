@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"sync"
 )
 
@@ -13,12 +14,13 @@ const (
 	FactRunner = "runner"
 )
 
-func RequestID(kind, card, sha string) string {
-	sum := sha256.Sum256([]byte(kind + "\x00" + card + "\x00" + sha))
+func RequestID(epoch int64, kind, card, sha string) string {
+	sum := sha256.Sum256([]byte(strconv.FormatInt(epoch, 10) + "\x00" + kind + "\x00" + card + "\x00" + sha))
 	return "req-" + hex.EncodeToString(sum[:12])
 }
 
 type EdgeRequest struct {
+	Epoch                                   int64
 	ID, Kind, Card, Row, Stream, Repo, Base string
 	PR                                      bool
 	Mode                                    string
@@ -31,10 +33,11 @@ func (r EdgeRequest) Key() string {
 	if r.ID != "" {
 		return r.ID
 	}
-	return RequestID(r.Kind, r.Card, r.SHA)
+	return RequestID(r.Epoch, r.Kind, r.Card, r.SHA)
 }
 
 type EdgeResult struct {
+	Epoch                                                     int64
 	ID, Kind, Card, SHA, Outcome, Failure, BaseTip, StreamTip string
 	Landed                                                    []string
 	Blamed                                                    string
@@ -65,13 +68,27 @@ func (d *Deduplicator) Do(ctx context.Context, req EdgeRequest, fn func(context.
 		case <-call.done:
 			return call.res, call.err
 		case <-ctx.Done():
-			return EdgeResult{ID: key, Kind: req.Kind, Card: req.Card, SHA: req.SHA}, ctx.Err()
+			return EdgeResult{Epoch: req.Epoch, ID: key, Kind: req.Kind, Card: req.Card, SHA: req.SHA}, ctx.Err()
 		}
 	}
 	call := &inflightCall_internal{done: make(chan struct{})}
 	d.inflight[key] = call
 	d.mu.Unlock()
 	res, err := fn(ctx, req)
+	fillEdgeResultMeta_internal(&res, req, key)
+	d.mu.Lock()
+	call.res = res
+	call.err = err
+	delete(d.inflight, key)
+	close(call.done)
+	d.mu.Unlock()
+	return res, err
+}
+
+func fillEdgeResultMeta_internal(res *EdgeResult, req EdgeRequest, key string) {
+	if res.Epoch == 0 {
+		res.Epoch = req.Epoch
+	}
 	if res.ID == "" {
 		res.ID = key
 	}
@@ -84,11 +101,4 @@ func (d *Deduplicator) Do(ctx context.Context, req EdgeRequest, fn func(context.
 	if res.SHA == "" {
 		res.SHA = req.SHA
 	}
-	d.mu.Lock()
-	call.res = res
-	call.err = err
-	delete(d.inflight, key)
-	close(call.done)
-	d.mu.Unlock()
-	return res, err
 }
