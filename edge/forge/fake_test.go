@@ -110,7 +110,7 @@ func (f *Fake) gate_internal(op string) error {
 		want = name
 	}
 	if isForbiddenLogin_internal(want) || isForbiddenLogin_internal(login) || (f.identity.ExpectedLogin != "" && !strings.EqualFold(login, f.identity.ExpectedLogin)) {
-		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (Glenn's credentials are never used): set GH_CONFIG_DIR for %s", login, want, want)
+		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (the human's own credentials are never used): set GH_CONFIG_DIR for %s", login, want, want)
 	}
 	return nil
 }

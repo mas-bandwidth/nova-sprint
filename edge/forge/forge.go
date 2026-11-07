@@ -110,7 +110,7 @@ func (c *Client) checkCredentials_internal(ctx context.Context) error {
 	case strings.TrimSpace(id.Token) == "" && strings.TrimSpace(id.ConfigDir) == "":
 		return fmt.Errorf("forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity %s: run nova-secrets exec or set GH_CONFIG_DIR", name)
 	case isForbiddenLogin_internal(id.ExpectedLogin):
-		return fmt.Errorf("forge refused: gh auth login is %s, expected a non-Glenn identity (Glenn's credentials are never used): set GH_CONFIG_DIR for %s", id.ExpectedLogin, name)
+		return fmt.Errorf("forge refused: gh auth login is %s, expected an identity other than the human's (the human's own credentials are never used): set GH_CONFIG_DIR for %s", id.ExpectedLogin, name)
 	}
 	c.mu.Lock()
 	already := c.verified
@@ -126,7 +126,7 @@ func (c *Client) checkCredentials_internal(ctx context.Context) error {
 	}
 	want := cmp.Or(id.ExpectedLogin, name)
 	if isForbiddenLogin_internal(login) || (id.ExpectedLogin != "" && !strings.EqualFold(login, id.ExpectedLogin)) {
-		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (Glenn's credentials are never used): set GH_CONFIG_DIR for %s", cmp.Or(login, "unknown"), want, want)
+		return fmt.Errorf("forge refused: gh auth login is %s, expected %s (the human's own credentials are never used): set GH_CONFIG_DIR for %s", cmp.Or(login, "unknown"), want, want)
 	}
 	c.mu.Lock()
 	c.verified = true
@@ -258,7 +258,7 @@ func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[st
 	}
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || owner == "" || name == "" {
-		return nil, fmt.Errorf("forge refused: invalid repository %q: expected owner/name", repo)
+		return nil, fmt.Errorf("forge refused: invalid repository %q: expected org/repo", repo)
 	}
 	for _, sha := range shas {
 		if !isFullSHA_internal(sha) {

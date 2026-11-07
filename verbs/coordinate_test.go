@@ -25,7 +25,7 @@ func TestStreamAddAndSet(t *testing.T) {
 
 func TestStreamRefusals(t *testing.T) {
 	runCases(t, []tcase{
-		{name: "no repo", as: "carol", args: []string{"stream", "add", "t"}, exit: 2, want: []string{"--repo <owner/name>"}},
+		{name: "no repo", as: "carol", args: []string{"stream", "add", "t"}, exit: 2, want: []string{"--repo <org/repo>"}},
 		{name: "a bad name", as: "carol", args: []string{"stream", "add", "a/b", "--repo", "o/r"}, exit: 2, want: []string{"a stream's name"}},
 		{name: "a bad mode", as: "carol", args: []string{"stream", "add", "t", "--repo", "o/r", "--mode", "fast"}, exit: 2, want: []string{"--mode is one of"}},
 		{name: "a bad forge", as: "carol", args: []string{"stream", "add", "t", "--repo", "o/r", "--forge", "gitlab"}, exit: 2, want: []string{"--forge is github, or none"}},

@@ -13,7 +13,7 @@ on every verb, or set `NOVA_SPRINT_AS=<you>` in the environment once. Copy every
 the line the sprint printed, `@<gen>` and `--epoch <e>` included; the examples in CORRECT-USE
 abbreviate them.
 
-This playbook is for an AI that works cards in its own session: a kin, or the coordinator's own
+This playbook is for an AI that works cards in its own session: a friend row, or the coordinator's own
 row. A bench's `nova-sprint worker --as <row>` service is the same kind of row run by a program,
 and is installed by the coordinator's `up`.
 
@@ -93,7 +93,7 @@ the answer to any message is a verb, and a message to `sprint` gets back
 4. A result for a card you worked (it landed, or it came back for a fix): read it; there is
    nothing to run. A fix comes back to the queue as a new deal, possibly to another row, and
    carries your head and the finding.
-5. A message from the coordinator or another kin: read it and act on it. A brief correction for
+5. A message from the coordinator or another friend row: read it and act on it. A brief correction for
    a card in your hand arrives this way, because the coordinator cannot edit a card you hold.
 
 Each message is a wake. Handle it, then wait for the bus again.
@@ -101,12 +101,12 @@ Each message is a wake. Handle it, then wait for the bus again.
 ## Work a card
 
 1. Take it: `nova-sprint take <id>@<gen> --as <you> --epoch <e>`, the `run:` line of the deal.
-   The first line is `TAKEN <id> repo=<owner/name> base=<40 hex> branch=<branch>`. The brief
+   The first line is `TAKEN <id> repo=<org/repo> base=<40 hex> branch=<branch>`. The brief
    follows: its tier, PATHS, NEEDS, TEST and DONE-WHEN lines, where tests may run, and, on a
    fix, the prior head and the reason it came back. The last line is
    `next: nova-sprint finish <id>@<gen> --head <sha> --as <you> --epoch <e>`. The generation in
    that line is the card's new one: use it, not the deal's.
-2. Make a fresh clone of `https://github.com/<owner/name>` (or the ssh form your git uses) in a
+2. Make a fresh clone of `https://github.com/<org/repo>` (or the ssh form your git uses) in a
    new directory of your own, never a directory another worker or card uses. The dealt branch
    is the same for every attempt of a card. Run `git ls-remote origin <branch>`. If it prints
    nothing, no attempt pushed yet: create the branch at the base commit,
@@ -171,7 +171,7 @@ so honestly with one of these, never with a finish of a head that does not meet 
 A read is an independent review of someone else's finished head. You are never dealt a read of
 your own head.
 
-1. Take it: the deal's `run:` line. The first line is `TAKEN <id> repo=<owner/name> head=<40 hex>`
+1. Take it: the deal's `run:` line. The first line is `TAKEN <id> repo=<org/repo> head=<40 hex>`
    and the second is `Read detached at this head; do not edit or push.` The brief follows, then
    `next: nova-sprint read <id>@<gen> yes|fix --as <you> --epoch <e>`.
 2. Check out that exact head detached in a fresh directory of your own. Do not edit it, commit
@@ -255,4 +255,7 @@ answer, never a thing to route round.
    red, a PATHS too narrow, two DONE-WHEN lines that contradict) is a brief defect: finish
    `--failed` with that reason, so the coordinator fixes the brief rather than another worker
    retrying it.
-5. Then wait for the bus. The coordinator answers by message or by a new deal.
+5. A refusal you believe is wrong is a defect in nova-sprint itself: send the coordinator the exact
+   refusal line in one bus message, and do not route round it. The coordinator takes it to the
+   project's own tracker; it is never a card and never a side loop.
+6. Then wait for the bus. The coordinator answers by message or by a new deal.

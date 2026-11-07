@@ -282,7 +282,7 @@ func (e *Engine) completeSetup(ctx context.Context, lease SetupLease, out *strin
 	if !strings.HasPrefix(line, "UP DONE ") || strings.ContainsAny(line, "\r\n") {
 		return "", "", broken("the setup walk's completion is not one UP DONE line", "nova-sprint up again")
 	}
-	return done("nova-sprint stream add <name> --repo <owner/name>", out.String()+line), "", nil
+	return done("nova-sprint stream add <name> --repo <org/repo>", out.String()+line), "", nil
 }
 
 // setupStep verifies step, acts once when the choices allow it, and

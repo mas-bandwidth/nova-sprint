@@ -61,7 +61,7 @@ func readAdds(in *input, snap store.Snapshot) ([]card.Add, error) {
 		return nil, refuse("a sentinel needs the cards it waits for", "nova-sprint add --stream "+stream+" --sentinel "+sentinel+" --needs <a,b>")
 	}
 	if _, ok := snap.Streams[stream]; !ok {
-		return nil, refuse("no stream "+stream, "nova-sprint stream add "+stream+" --repo <owner/name>")
+		return nil, refuse("no stream "+stream, "nova-sprint stream add "+stream+" --repo <org/repo>")
 	}
 	if sentinel != "" {
 		return []card.Add{{ID: sentinel, Kind: "sentinel", Stream: stream, Tier: "flash", Priority: in.str("priority"), Needs: needs, After: after}}, nil

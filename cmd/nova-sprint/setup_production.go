@@ -138,7 +138,7 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 				return verbs.SetupCheck{}, err
 			}
 			if !found && in.Dash == "" && value == "" {
-				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the tailnet (default), or public on a host with a public IP?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>"}, nil
+				return verbs.SetupCheck{Line: "UP 5/8 dashboard: not chosen\nASK the human: the dashboard on the private network (default), or public on a host with a public IP?", Next: "nova-sprint up --dash tailnet      or      nova-sprint up --dash public=<host>"}, nil
 			}
 			ready, err := p.ensurePublicVersion(ctx, r, in, false)
 			if err != nil {
@@ -651,7 +651,7 @@ func (p productionSetup) newRunService(host string, machines []verbs.FleetMachin
 		}
 	}
 	if address == "" {
-		return verbs.FleetService{}, serviceConfigError("run host needs an inventory tailnet IP")
+		return verbs.FleetService{}, serviceConfigError("run host needs a private-network IP in the inventory")
 	}
 	busHost, busPort, err := net.SplitHostPort(p.cfg.BusRedis)
 	port, portErr := strconv.Atoi(busPort)
@@ -874,11 +874,11 @@ func privateDashboardURL(listen string) (string, error) {
 	host, port, err := net.SplitHostPort(listen)
 	number, parseErr := strconv.Atoi(port)
 	if err != nil || parseErr != nil || number < 1 || number > 65535 {
-		return "", serviceConfigError("sprint-run needs an explicit tailnet listener")
+		return "", serviceConfigError("sprint-run needs an explicit private-network listener")
 	}
 	ip, err := netip.ParseAddr(host)
 	if err != nil || !isTailnetIP(ip) {
-		return "", serviceConfigError("sprint-run must listen on a Tailscale IP")
+		return "", serviceConfigError("sprint-run must listen on a private-network IP")
 	}
 	return "http://" + net.JoinHostPort(host, port), nil
 }

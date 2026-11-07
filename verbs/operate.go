@@ -282,5 +282,5 @@ func runClear(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 	if err != nil {
 		return "", err
 	}
-	return done("nova-sprint stream add <name> --repo <owner/name>", what, fmt.Sprintf("CLEARED epoch=%d opened; backup %s", r.NewEpoch, info.Path)), nil
+	return done("nova-sprint stream add <name> --repo <org/repo>", what, fmt.Sprintf("CLEARED epoch=%d opened; backup %s", r.NewEpoch, info.Path)), nil
 }

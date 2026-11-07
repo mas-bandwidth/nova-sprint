@@ -43,7 +43,7 @@ func TestCredentialsRefusals(t *testing.T) {
 		}),
 	})
 	_, _, err = glennClient.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
-	wantGlenn := "forge refused: gh auth login is gafferongames, expected rowan-claude (Glenn's credentials are never used): set GH_CONFIG_DIR for rowan-claude"
+	wantGlenn := "forge refused: gh auth login is gafferongames, expected rowan-claude (the human's own credentials are never used): set GH_CONFIG_DIR for rowan-claude"
 	if err == nil || err.Error() != wantGlenn {
 		t.Fatalf("got %v, want %s", err, wantGlenn)
 	}

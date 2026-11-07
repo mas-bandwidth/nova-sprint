@@ -121,7 +121,7 @@ func (d doctor) History(ctx context.Context) error {
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 	if err = store.ValidateHistory(ctx, tx); err != nil {
-		return &verbs.OperationError{Problem: "the history does not rebuild the tables (" + err.Error() + ")", Fix: "put it on nova-sprint's owed list with this line", Exit: 2}
+		return &verbs.OperationError{Problem: "the history does not rebuild the tables (" + err.Error() + ")", Fix: "take it to the project's own tracker with this line", Exit: 2}
 	}
 	return nil
 }
