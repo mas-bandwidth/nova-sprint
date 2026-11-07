@@ -268,7 +268,8 @@ func TestColdreadMissingCellsBlank(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := env["data"].(map[string]any)
-	for _, k := range []string{"coordinator", "machine", "summary", "cleared", "landedSeries", "fleet_work", "friends_work", "providers"} {
+	// "machine" is filled since the stitch (drift row 4: STOPPED and its reason).
+	for _, k := range []string{"coordinator", "summary", "cleared", "landedSeries", "fleet_work", "friends_work", "providers"} {
 		if _, ok := data[k]; ok {
 			t.Errorf("MISSING key %s present", k)
 		}

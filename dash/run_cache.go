@@ -2,60 +2,59 @@ package dash
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// NewFromSnapshot creates the run-host dashboard without reading the store.
-// now is injected so the serving process and tests share one clock.
-func NewFromSnapshot(s store.Snapshot, now func() time.Time) *Cache {
-	if now == nil {
-		now = time.Now
-	}
-	at := now()
-	c := &Cache{state: copySnapshot(s), at: at, now: now, gate: make(chan struct{}, 1)}
-	c.view = mapSnapshot(c.state, at)
-	c.samples = []sample{{at, c.view.Landed}}
+// Feed is what run publishes each tick: the snapshot of its fold and the
+// roster read with it, one pair, never one without the other (Stella's
+// handoff finding 6: a fresh snapshot is never shown beside an old roster).
+// RosterErr is the roster read's failure, if it failed: the board then shows
+// every row at width 0 and raises the stale alarm, and still shows the
+// store's own lines (STOPPED among them) as fresh.
+type Feed struct {
+	Snap      store.Snapshot
+	Roster    roster.Roster
+	RosterErr error
+	At        time.Time
+}
+
+// NewFromFeed is the run-host dashboard: it reads no store; run publishes.
+// now is run's clock.
+func NewFromFeed(f Feed, now func() time.Time) *Cache {
+	c := &Cache{now: now, gate: make(chan struct{}, 1), initialized: true}
+	c.publish(f)
+	c.samples = []sample{{f.At, c.view.Landed}}
 	return c
 }
 
-// PublishSnapshot accepts only a completed run fold. Idle successful folds
-// refresh the clock; an older snapshot or an absent timestamp is refused.
-func (c *Cache) PublishSnapshot(s store.Snapshot, at time.Time) error {
+// Publish shows f. The snapshot is mapped before Publish returns, so the
+// caller may change it after. A snapshot older than the one shown, or an
+// absent time, is refused.
+func (c *Cache) Publish(f Feed) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if at.IsZero() || s.Seq < c.state.Seq || at.Before(c.at) {
-		return fmt.Errorf("dashboard: stale run snapshot")
+	if f.At.IsZero() || f.Snap.Seq < c.state.Seq || f.At.Before(c.at) {
+		return fmt.Errorf("dashboard: a run snapshot older than the one shown (seq %d at %s)", f.Snap.Seq, f.At.Format(time.RFC3339))
 	}
-	c.state = copySnapshot(s)
-	c.at = at
-	c.err = nil
-	c.alarm = false
-	c.view = mapSnapshot(c.state, at)
-	c.addSample(at, c.view.Landed)
+	c.publish(f)
+	c.addSample(f.At, c.view.Landed)
 	return nil
 }
-func copySnapshot(s store.Snapshot) store.Snapshot {
-	s.Streams = maps.Clone(s.Streams)
-	s.Cards = maps.Clone(s.Cards)
-	for k, c := range s.Cards {
-		c.Needs = slices.Clone(c.Needs)
-		c.After = slices.Clone(c.After)
-		c.Paths = slices.Clone(c.Paths)
-		c.DoneWhen = slices.Clone(c.DoneWhen)
-		s.Cards[k] = c
+
+func (c *Cache) publish(f Feed) {
+	c.state = store.Snapshot{Seq: f.Snap.Seq, Epoch: f.Snap.Epoch}
+	c.at, c.err, c.alarm = f.At, nil, false
+	ro := f.Roster
+	if f.RosterErr != nil {
+		ro, c.alarm = roster.Roster{}, true
 	}
-	s.Rows = maps.Clone(s.Rows)
-	for k, r := range s.Rows {
-		r.Tiers = slices.Clone(r.Tiers)
-		s.Rows[k] = r
+	c.view = mapSnapshot(f.Snap, ro, f.At)
+	if f.RosterErr != nil {
+		c.view.Error = "roster: " + f.RosterErr.Error()
 	}
-	s.Judgements = maps.Clone(s.Judgements)
-	s.Cursors = maps.Clone(s.Cursors)
-	return s
 }
 
 // CheckFreshness raises the stale alarm without reading the store or waiting

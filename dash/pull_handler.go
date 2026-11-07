@@ -50,7 +50,7 @@ func (l *addressLimiter) allow(address string, now time.Time) bool {
 
 // Handler serves only read-only routes, with a bounded per-address limiter.
 func (p *PullCache) Handler() http.Handler {
-	static := Handler(NewFromSnapshot(store.Snapshot{Epoch: 1}, p.now))
+	static := Handler(NewFromFeed(Feed{Snap: store.Snapshot{Epoch: 1}, At: p.now()}, p.now))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
