@@ -65,6 +65,8 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"event policy":            eventPolicy,
 		"cold read 3":             coldRead3,
 		"cold read 4":             coldRead4,
+		"schema identity":         schemaIdentity,
+		"fake from snapshot":      fakeFromSnapshot,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -134,7 +134,7 @@ func TestColdRead7ReceiptFidelityFake(t *testing.T) {
 	_, evs := cr7Run(t, f)
 	snap, err := f.Snapshot(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(evs))
+	require.NoError(t, checkRebuild(snap, evs))
 }
 
 func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
@@ -150,7 +150,7 @@ func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
 	}
 	snap, err := p.Snapshot(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(pgEvents), "Rebuild == Snapshot")
+	require.NoError(t, checkRebuild(snap, pgEvents), "Rebuild == Snapshot")
 
 	c := connect(t, dsn)
 	var withAfter, total int
@@ -190,7 +190,7 @@ func TestFunctionalColdRead7ReceiptFidelity(t *testing.T) {
 	require.NoError(t, err)
 	snap, err = p.Snapshot(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(all), "Rebuild == Snapshot with old-shape events in the log")
+	require.NoError(t, checkRebuild(snap, all), "Rebuild == Snapshot with old-shape events in the log")
 }
 
 // An Event's receipt and its after-image: on the Fake they are two decoded
@@ -407,7 +407,7 @@ func TestFunctionalColdRead7Indexes(t *testing.T) {
 	assert.Len(t, snap.Cards, 2)
 	events, err := cr7AllEvents(ctx, p)
 	require.NoError(t, err)
-	assert.Equal(t, snap, Rebuild(events))
+	require.NoError(t, checkRebuild(snap, events))
 }
 
 func cr7AllEvents(ctx context.Context, s Store) ([]Event, error) {

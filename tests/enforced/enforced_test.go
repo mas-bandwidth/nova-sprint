@@ -517,9 +517,9 @@ func TestEnforcedRejectsBrokenLedger(t *testing.T) {
 		{
 			name: "nothing_exceeds_ceiling",
 			mutate: func(s string) string {
-				return strings.Replace(s, "Nothing ceiling: 18", "Nothing ceiling: 17", 1)
+				return strings.Replace(s, "Nothing ceiling: 20", "Nothing ceiling: 19", 1)
 			},
-			wantErr: "nothing rows (18) exceed Nothing ceiling (17)",
+			wantErr: "nothing rows (20) exceed Nothing ceiling (19)",
 		},
 		{
 			name: "summary_count_mismatch",
