@@ -2,23 +2,6 @@
 
 The card machine is sound on the transitions the later rulings in `docs/LAYER-2-CARD-MACHINE.md` name: `Start` and `AskRead` cut a consumer already `working`, a `missing-route:` fault blocks on the first fault, a read report refuses `fail`, there is no `Width` move, and `Merge` refuses a second write of one field. The single worst thing is `docs/ENFORCED.md` section 4, which still marks those rulings unheld (`nothing`) while the opening tables and several `L2-M*` rows still describe a `Width` move, a consumer cut in `ready`, and a read that accepts `fail`, so a repair aimed at the ledger would change code that already follows the later rulings. The required `go test ./card/...` is red by the package timer, not by an assertion: it panicked at 600s while `TestFunctionalColdread5PG/seeds/1` had been running 13s inside a real PostgreSQL `Apply`, and no test printed an assertion failure. TLC was not run. This review does not claim a trace match.
 
-```
-ssh -o BatchMode=yes hulk 'cd /home/gaffer/johnny-jobs/v2r-l2-frontier1.w1 && mkdir -p .gocache && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go build ./card/... && echo BUILD_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go vet ./card/... && echo VET_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go test -p 2 -count=1 -timeout 600s ./card/... && echo TEST_OK'
-```
-
-```
-BUILD_OK
-VET_OK
-panic: test timed out after 10m0s
-	running tests:
-		TestFunctionalColdread5PG (13s)
-		TestFunctionalColdread5PG/seeds/1 (13s)
-FAIL	github.com/mas-bandwidth/nova-sprint/card	600.136s
-FAIL
-```
-
-`go build ./card/...` and `go vet ./card/...` both exited 0. The alarm's running list contained only `TestFunctionalColdread5PG`, so no other test was in progress when the process died. Tests registered after that function in source order had not started. The stop of that PostgreSQL is `t.Cleanup` in `cold5StartPG` (`card/coldread5_test.go:1092`), which a package-alarm crash does not run.
-
 ## Defects
 
 None. Every mismatch I could pin to a line is a stale sentence in the ledger or the opening tables, a model bound the trace module already names, or a special case listed below. I am not counting those as defects of the machine.
@@ -64,6 +47,25 @@ Model `HoldStream` is specified to park every ready producer (`docs/ENFORCED.md`
 `MoveAdd` (`card/add.go:30`) joins a cycle path with `" needs "` for both `needs` and `after` edges. The layer doc's example (line 227) is a needs cycle, "c1 needs c2 needs c1". An after-edge is named the same way.
 
 ## Missing tests
+
+Command, on hulk, from the review clone. `go build ./card/...` and `go vet ./card/...` both exited 0. The test alarm fired inside `TestFunctionalColdread5PG`.
+
+```
+ssh -o BatchMode=yes hulk 'cd /home/gaffer/johnny-jobs/v2r-l2-frontier1.w1 && mkdir -p .gocache && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go build ./card/... && echo BUILD_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go vet ./card/... && echo VET_OK && nice -n 19 env GOCACHE="$PWD/.gocache" GOFLAGS=-mod=readonly PATH="/home/gaffer/sdk/bin:/usr/lib/postgresql/18/bin:$PATH" go test -p 2 -count=1 -timeout 600s ./card/... && echo TEST_OK'
+```
+
+```
+BUILD_OK
+VET_OK
+panic: test timed out after 10m0s
+	running tests:
+		TestFunctionalColdread5PG (13s)
+		TestFunctionalColdread5PG/seeds/1 (13s)
+FAIL	github.com/mas-bandwidth/nova-sprint/card	600.136s
+FAIL
+```
+
+The alarm's running list contained only `TestFunctionalColdread5PG`, so no other test was in progress when the process died. Tests registered after that function in source order had not started. The stop of that PostgreSQL is `t.Cleanup` in `cold5StartPG` (`card/coldread5_test.go:1092`), which a package-alarm crash does not run.
 
 `TestCutCopiesTask` (`card/move_test.go:524-538`) asserts brief, prose, paths, and review on the read `PutCard`. It does not assert `branch` or `base_sha`. `docs/ENFORCED.md` `CC-2` lists that test as holding the promise that `AskRead` copies branch and base. The test does not check the fields the code omits.
 
