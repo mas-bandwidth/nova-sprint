@@ -238,7 +238,11 @@ func checkProviders(ctx context.Context, v starlark.Value) (map[string]Provider,
 			if u[0] == "balance" && u[1] == "" {
 				continue
 			}
-			if parsed, err := url.Parse(u[1]); err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil {
+			parsed, err := url.Parse(u[1])
+			if err != nil {
+				return nil, refuse("%s: %s %s is not a URL: %v", at, u[0], brief(starlark.String(u[1])), err)
+			}
+			if (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil {
 				return nil, refuse("%s: %s %s is not an http(s) URL with a host and no credentials", at, u[0], brief(starlark.String(u[1])))
 			}
 		}

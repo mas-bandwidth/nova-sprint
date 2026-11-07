@@ -43,8 +43,11 @@ type ModelListProbe struct {
 
 func (p ModelListProbe) Run(ctx context.Context, spec string) int {
 	var provider policy.Provider
-	if err := json.Unmarshal([]byte(spec), &provider); err != nil || provider.Key == "" || provider.Probe == "" {
-		return ChildFailed(fmt.Errorf("model-list probe: the provider configuration is not a policy provider"), 2)
+	if err := json.Unmarshal([]byte(spec), &provider); err != nil {
+		return ChildFailed(fmt.Errorf("model-list probe: the provider configuration is not a policy provider: %w", err), 2)
+	}
+	if provider.Key == "" || provider.Probe == "" {
+		return ChildFailed(fmt.Errorf("model-list probe: the provider configuration names no key or no probe"), 2)
 	}
 	get := p.Getenv
 	if get == nil {
