@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS sprint.meta (
     hash   text    NOT NULL DEFAULT ''
 );
 INSERT INTO sprint.meta (id, schema) VALUES (1, 2) ON CONFLICT (id) DO NOTHING;
+-- Round 22: the last restore into this store (RestoreEnd sets it in the
+-- restore's own transaction; null when the store was never restored).
+-- Restored reads it, so a retried restore can tell the data is already in.
+ALTER TABLE sprint.meta ADD COLUMN IF NOT EXISTS restored_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS sprint.epoch (
     id integer PRIMARY KEY CHECK (id = 1),

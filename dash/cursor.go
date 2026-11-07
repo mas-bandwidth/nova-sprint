@@ -13,8 +13,7 @@ const CursorName = "dashboard"
 
 func (c *Cache) saveCursor(ctx context.Context, s store.Store) (bool, error) {
 	seq, epoch := c.state.Seq, c.state.Epoch
-	old, exists := c.state.Cursors[CursorName]
-	if exists && seq == old {
+	if seq == c.state.Cursors[CursorName] { // an absent cursor is at 0: the store refuses 0 on it as unchanged
 		return false, nil
 	}
 	var id [16]byte

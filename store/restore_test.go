@@ -5,12 +5,14 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -121,7 +123,7 @@ func TestFunctionalRestore(t *testing.T) {
 			t.Log(line)
 		}
 	}
-	assert.Contains(t, d, "COPY sprint.meta (id, schema, hash) FROM stdin;\n1\t2\t"+schemaHash+"\n")
+	assert.Contains(t, d, "COPY sprint.meta (id, schema, hash, restored_at) FROM stdin;\n1\t2\t"+schemaHash+"\t\\N\n")
 	assert.Contains(t, d, "COPY sprint.epoch (id, n, stopped, stop_reason) FROM stdin;\n1\t2\tf\t\n")
 
 	target := newDatabase(t, dsn, "restored")
@@ -139,6 +141,25 @@ func TestFunctionalRestore(t *testing.T) {
 	q, err := Open(ctx, target, "")
 	require.NoError(t, err)
 	t.Cleanup(q.Close)
+	_, ok, err := p.Restored(ctx)
+	require.NoError(t, err)
+	assert.False(t, ok, "the original was never restored")
+	restoredAt, ok, err := q.Restored(ctx)
+	require.NoError(t, err)
+	require.True(t, ok, "the restore is recorded in sprint.meta")
+	assert.False(t, restoredAt.IsZero())
+	// The restore unhooked w1 (the seed's sess-a) in one logged op at the
+	// restore's time; the same op on the original makes the two stores one.
+	unhook, ok := unhookOp(want, restoredAt)
+	require.True(t, ok)
+	assert.Equal(t, fmt.Sprintf("restore-unhook-%d", want.Seq), unhook.ID)
+	u, err := p.Apply(ctx, unhook)
+	require.NoError(t, err)
+	require.True(t, u.Accepted, u.Reason)
+	w1 := want.Rows["w1"]
+	want, err = p.Snapshot(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, Row{Name: "w1", State: w1.State, Flaps: w1.Flaps, Held: w1.Held, Reason: w1.Reason, Gen: w1.Gen + 1}, want.Rows["w1"], "unhooked, its gen raised, the rest kept")
 	got, err := q.Snapshot(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
@@ -192,4 +213,36 @@ func TestFunctionalRestoreRefuses(t *testing.T) {
 	err = RestoreBegin(ctx, tx)
 	require.Error(t, err)
 	assert.Equal(t, "store: restore: schema sprint exists and was not made by nova-sprint; drop it or point NOVA_PG_DSN elsewhere", err.Error())
+}
+
+// unhookOp unhooks every hooked row of a snapshot in one op, raising each
+// one's gen and nothing else, and is not needed when no row is hooked
+// (unit, the Fake: RestoreEnd runs it on PostgreSQL).
+func TestUnhookOp(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := NewFake()
+	when := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	r, err := f.Apply(ctx, Op{ID: "hook", Epoch: 1, At: when, Writes: []Write{
+		PutRow{Name: "w1", Session: "x", Role: "worker"}, PutRow{Name: "w2"}, PutRow{Name: "w3", Session: "y", Role: "coordinator"}, SetRowState{"w1", "up"}}})
+	require.NoError(t, err)
+	require.True(t, r.Accepted, r.Reason)
+	before, err := f.Snapshot(ctx)
+	require.NoError(t, err)
+	op, ok := unhookOp(before, when)
+	require.True(t, ok)
+	assert.Equal(t, Op{ID: "restore-unhook-1", Epoch: 1, Actor: "store-restore", Kind: "unhook", At: when, Writes: []Write{PutRow{Name: "w1"}, PutRow{Name: "w3"}}}, op)
+	r, err = f.Apply(ctx, op)
+	require.NoError(t, err)
+	require.True(t, r.Accepted, r.Reason)
+	after, err := f.Snapshot(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, Row{Name: "w1", State: "up", Gen: 1}, after.Rows["w1"])
+	assert.Equal(t, before.Rows["w2"], after.Rows["w2"], "an unhooked row is not written")
+	assert.Equal(t, Row{Name: "w3", State: "down", Gen: 1}, after.Rows["w3"])
+	_, ok = unhookOp(after, when)
+	assert.False(t, ok, "nothing hooked: no op")
+	_, ok, err = f.Restored(ctx)
+	require.NoError(t, err)
+	assert.False(t, ok, "a Fake is never restored")
 }

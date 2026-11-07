@@ -892,11 +892,10 @@ package; each writes a fixture `check-trace.sh` must refuse at its last step:
 ## Divergence found
 
 - store-cursor-zero: `SetCursor{c1, 0}` on a cursor never set. The store
-  accepts it (it inserts c1 at 0); Store.tla refuses it (an absent cursor is 0,
-  and a write that changes nothing is refused). First refused step: record 3,
-  Apply o2, accepted TRUE, cursors c1 :> 0. Held as the fixture
-  (`forbidden at 3`) by `TestTraceCursorZero`; the walks do not send this
-  write. store/ is locked, so it is reported, not fixed; it needs a ruling.
+  accepted it (it inserted c1 at 0); Store.tla refuses it (an absent cursor
+  is 0, and a write that changes nothing is refused). Ruled the code's fault
+  (round 22): the store now refuses it ("cursor c1 is already at 0"), the
+  fixture is `matched` (`TestTraceCursorZero`), and the walks send the write.
 
 ## Results, tla2tools v1.8.0 (the CI jar) on hetzner2, 2026-11-06 (round 22, the row's sess and role and the stop projected)
 
@@ -906,6 +905,6 @@ package; each writes a fixture `check-trace.sh` must refuse at its last step:
     card-walk-11..20  TRACE OK steps=80 81 87 112 83 71 78 77 85 83
     store-breaker     refused at 4 of 4 (expected)
     card-breaker      refused at 3 of 3 (expected)
-    store-cursor-zero refused at 3 of 3 (expected)
+    store-cursor-zero matched (the cursor-zero ruling, above)
 
 The whole `make-traces.sh check` run takes about 1.5 minutes on hetzner2.
