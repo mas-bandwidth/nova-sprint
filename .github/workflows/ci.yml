@@ -7,7 +7,6 @@ name: ci
 
 on:
   push:
-    branches: [v2, main]
   pull_request:
   workflow_dispatch:
 
@@ -63,7 +62,7 @@ jobs:
         run: go test -count=1 -race -skip Functional ./...
 
   functional:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
     runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 20
     steps:
@@ -90,7 +89,7 @@ jobs:
   trace:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - *clean
       - *checkout
@@ -101,6 +100,19 @@ jobs:
           command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || { sudo -n apt-get update -qq && sudo -n apt-get install -y -qq postgresql; }
           for d in /usr/lib/postgresql/*/bin; do [ -x "$d/initdb" ] && echo "$d" >> "$GITHUB_PATH"; done
           true
+      - name: Java is present for Layer 6 traces
+        run: test -x "$HOME/sdk/bin/java" || command -v java
+      - name: Emit and check fixed-seed Layer 6 traces
+        run: nova-reserve run --slots 4 --wait 15m --why "Layer 6 trace CI" -- nice -n 19 python3 tla/check-layer6-traces.py --mode all --repo "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/layer6-traces-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        env:
+          GOMAXPROCS: "4"
+      - name: Retain Layer 6 trace evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: layer6-traces-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/layer6-traces-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
       - name: the walks write their traces, TLC checks each (a missing initdb fails the job)
         run: bash tla/make-traces.sh check
         env:
@@ -109,7 +121,7 @@ jobs:
   tlc:
     # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
     # (Glenn, 2026-11-06: "if you are out of memory, do it on the studio").
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
     runs-on: [self-hosted, tlc]
     timeout-minutes: 180
     steps:
