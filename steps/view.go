@@ -38,6 +38,7 @@ type View struct {
 	Down    map[string]time.Time   // row -> when it last went down
 	Faults  map[string][]time.Time // row -> when its consumers reported fault
 	born    map[string]int64       // card -> the seq that put it (0: before the view)
+	touched map[string]int64       // card -> the seq that last wrote it (0: before the view)
 }
 
 type set = map[string]struct{}
@@ -75,7 +76,7 @@ func (v *View) reset(epoch int) {
 	v.liveOnRow, v.dependants = map[string]set{}, map[string]set{}
 	v.paths = map[string]map[string]set{}
 	v.TakenAt, v.Landed, v.Down = map[string]time.Time{}, map[string]time.Time{}, map[string]time.Time{}
-	v.Faults, v.born = map[string][]time.Time{}, map[string]int64{}
+	v.Faults, v.born, v.touched = map[string][]time.Time{}, map[string]int64{}, map[string]int64{}
 }
 
 // Fold advances the view by events, in seq order: an accepted event lays its
@@ -126,6 +127,7 @@ func (v *View) foldCard(c store.Card, e store.Event) {
 		v.born[c.ID] = e.Seq
 	}
 	v.Cards[c.ID] = c
+	v.touched[c.ID] = e.Seq
 	v.index(c)
 	switch {
 	case isConsumer(c) && c.State == "working" && (!had || old.State != "working"):

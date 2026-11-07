@@ -18,6 +18,7 @@ type world struct {
 	t      *testing.T
 	f      *store.Fake
 	v      *View
+	roster FakeRoster
 	cursor int64
 	n      int
 	now    time.Time
@@ -31,7 +32,7 @@ const base = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 func sha(n int) string { return fmt.Sprintf("%040x", n+1) }
 
 func newWorld(t *testing.T) *world {
-	w := &world{t: t, f: store.NewFake(), now: t0}
+	w := &world{t: t, f: store.NewFake(), now: t0, roster: FakeRoster{}}
 	w.v = Build(w.snap(), t0)
 	return w
 }
@@ -87,6 +88,7 @@ func (w *world) stream(name string) {
 }
 
 func (w *world) row(name string, width int, tiers ...string) {
+	w.roster[name] = RosterRow{Kind: "worker", Width: width, Tiers: tiers}
 	w.must("row", store.PutRow{Name: name, Kind: "worker", Width: width, Tiers: tiers, Model: "m-" + name})
 	w.must("seen", store.SetRowState{Row: name, State: "up"})
 }
@@ -152,7 +154,7 @@ func (w *world) report(c, result, head, reason string) {
 // inputs is the tick's inputs at the world's clock: every row seen now, every
 // stream at base.
 func (w *world) inputs() Inputs {
-	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}}
+	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}, Roster: w.roster}
 	for s := range w.v.Streams {
 		in.Heads[s] = base
 	}
