@@ -1,18 +1,18 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "fda024d71493",
+  "build": "8b7e0a9b842d",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "fda024d71493",
+    "build": "8b7e0a9b842d",
     "done": false,
     "epoch": 1,
     "landed": 0,
-    "machine": "machine: RUNNING",
+    "machine": "machine: STOPPED never started",
     "ok": true,
     "server_version": "dev",
-    "stop_reason": "",
-    "stopped": false,
+    "stop_reason": "never started",
+    "stopped": true,
     "stream_costs": {
       "alpha": {}
     },
