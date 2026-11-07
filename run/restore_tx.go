@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // RestoreWriter accepts only parser-verified, individual dump statements.
@@ -27,19 +28,14 @@ func (s *pgChooser) Restore(ctx context.Context, apply func(RestoreWriter) error
 		return fmt.Errorf("restore: begin transaction: %w", err)
 	}
 	defer rollbackRestore(tx)
-	var used bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_depend d JOIN pg_namespace n ON n.oid=d.refobjid WHERE d.refclassid='pg_namespace'::regclass AND n.nspname='sprint')`).Scan(&used)
-	if err != nil {
-		return fmt.Errorf("restore: inspect schema: %w", err)
-	}
-	if used {
-		return fmt.Errorf("SPRINT REFUSED restore: schema sprint is not empty: use an empty store")
-	}
-	if _, err = tx.Exec(ctx, "DROP SCHEMA IF EXISTS sprint"); err != nil {
-		return fmt.Errorf("restore: prepare empty schema: %w", err)
+	if err = store.RestoreBegin(ctx, tx); err != nil {
+		return fmt.Errorf("restore: initialize: %w", err)
 	}
 	if err = apply(restoreWriter{conn: s.conn}); err != nil {
 		return fmt.Errorf("restore: apply verified dump: %w", err)
+	}
+	if _, err = store.RestoreEnd(ctx, tx); err != nil {
+		return fmt.Errorf("restore: verify: %w", err)
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return fmt.Errorf("restore: commit outcome unknown: inspect the store before retrying: %w", err)
