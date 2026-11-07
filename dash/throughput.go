@@ -77,6 +77,41 @@ func etaString(m int64) string {
 	return "-"
 }
 
+// landingRate is the rate the ETA (and the throughput tile) read, from the
+// epoch's landing times: the landings in the last hour when there are at least
+// MinEtaLandings of them; else the sprint's average (landings over the time
+// since the first, at least ten minutes) when there are that many in all.
+// window is the minutes the rate was measured over, n the landings counted,
+// average whether it is the sprint's average; rate 0 is no rate.
+func landingRate(landings []time.Time, now time.Time) (rate, window float64, n int, average bool) {
+	first := now
+	for _, at := range landings {
+		if at.After(now) {
+			continue
+		}
+		if now.Sub(at) < time.Hour {
+			n++
+		}
+		if at.Before(first) {
+			first = at
+		}
+	}
+	if n >= MinEtaLandings {
+		return float64(n), 60, n, false
+	}
+	total := 0
+	for _, at := range landings {
+		if !at.After(now) {
+			total++
+		}
+	}
+	if total >= MinEtaLandings {
+		span := max(now.Sub(first), 10*time.Minute)
+		return round1(float64(total) / span.Hours()), round1(span.Minutes()), total, true
+	}
+	return 0, 60, n, false
+}
+
 // summaryLine is v1's headline, which the page reads the ETA from.
 func summaryLine(d envelope, eta string) string {
 	pct := "0.0%"

@@ -622,7 +622,7 @@ function renderHero(d, s, ft) {
   if (machineStopped) { setHTML($("eta"), "<span class=\"eta-stopped\">STOP</span>"); /* STOP at every width (the owner ~01:32Z: "cleaner") */ etaAtLast = null; setText($("eta-at"), "\u00a0"); } /* the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red" */
   else if (m) {
     setHTML($("eta"), etaText(m[1]));
-    setTitle($("eta"), m[1] === "-" ? "needs " + 3 + " landings in the rate window (" + int(d.eta_landings) + " in the last " + Math.round(d.eta_window_minutes || 0) + " min); " + int(d.left) + " cards left" : int(d.left) + " cards left at " + Math.round(throughput || 0) + " per hour, measured over the last " + Math.round(d.eta_window_minutes || 0) + " min (" + int(d.eta_landings) + " landings)");
+    setTitle($("eta"), m[1] === "-" ? "needs 3 landings in the sprint (" + int(d.eta_landings) + " in the last hour); " + int(d.left) + " cards left" : int(d.left) + " cards left at " + Math.round(throughput || 0) + " per hour, measured over " + (d.eta_basis === "sprint average" ? "the sprint so far (" + Math.round(d.eta_window_minutes || 0) + " min, " + int(d.eta_landings) + " landings) (sprint average)" : "the last " + Math.round(d.eta_window_minutes || 0) + " min (" + int(d.eta_landings) + " landings)"));
     var ms = etaMs(m[1]);
     // the viewer's zone after the time, the same source as the Updated clock (SPEC.md, the owner 10:00 PM)
     var etaAt = new Date(at.getTime() + ms);
@@ -641,10 +641,10 @@ function renderHero(d, s, ft) {
   setText($("cost"), recorded === null ? "-" : money(recorded));
   setText($("cost-whole"), recorded === null ? "-" : dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z)
   var perC = cs ? cents(cs.per_card) : null;
-  var per = perC !== null ? money(perC) + " per card" : (unp ? "" : "");
+  var per = perC !== null ? money(perC) + " per priced card" : (unp ? "" : "");
   if (unp) per = (per ? per + " \u00b7 " : "") + unp + " unpriced";
   setText($("cost-per"), per || " ");
-  setTitle($("cost"), cs ? int(cs.priced_runs) + " priced runs, " + unp + " finished runs with no cost reported; per card is over the " + int(cs.landed_cards) + " cards landed in this run" : "");
+  setTitle($("cost"), cs ? int(cs.priced_runs) + " priced runs, " + unp + " finished runs with no cost reported; per priced card is over the " + int(cs.priced_cards) + " of " + int(cs.landed_cards) + " cards landed in this run whose own runs carried a cost" : "");
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
   inflightLast = s.sum; renderInflight(s.sum);
   // throughput: cards landed per hour over the last hour, from the server's samples
