@@ -415,13 +415,15 @@ layer 6 splits a refused op by group and puts its items back in place; `Plan`
 has the four fields exactly. `Roster` is nova-config (Glenn, 2026-11-06: the
 one true source; nothing of it in the store): a row's kind, width and tiers
 are read by name, a store row the roster lacks is never dealt to and is a
-`roster` judgement. The interface is local (`steps.Roster`, `FakeRoster`)
-with package roster's names until `v2-store-fix22` lands; `card.Row` still
-carries width and tiers, filled from the roster, until card round 8 takes
-them as arguments. An open row is up, not held and hooked in to the sprint
-(Glenn, 2026-11-06: the hook is the subscription to the pushes); the hook
-state is the row's `Session`, read as non-empty until round 22 defines its
-form and its role; a hooked row's role is taken as allowing the deal.
+`roster` judgement. `Inputs.Roster` is package roster's `Roster` (store
+round 22, merged from `v2-integrate-22`); `card.RowFromStore(r, width,
+tiers)` takes them from it. An open row is up, not held and hooked in to the
+sprint (Glenn, 2026-11-06: the hook is the subscription to the pushes): the
+row's `Session` and `Role` set, the role worker or coordinator (who counts
+as a worker). Round 22 took width out of the store and `card.Take` does not
+check it, so width at a take is held only by the tick's inbox path
+(`takeItem`'s tally) and must be the take verb's check in layer 6: the
+tests take as that verb would (`roomToTake`); one line for rowan.
 
 **The asker.** Layer 5's question set, names and types as that doc has them
 (`Questions`, `Answers`), one call per tick with every subject; `budget` and
@@ -543,7 +545,10 @@ roster 100, group 230, tick 220, pack 170, reports 130, preempt 130, land
 230, trace 195): over the 3,000 budget by 15%; the requests, the roster and
 the trace mapping were not in the first estimate's 3,000.
 
-**Not built as written.** `same_finding` is not a count: the `brief`
+**Not built as written.** The ledger test (`tests/enforced`) indexes the
+steps; its remaining failures after the merge are policy's rows (tests the
+ledger does not index while policy does not build on the integration
+branch). `same_finding` is not a count: the `brief`
 judgement opens when a fix read's finding is byte-equal to the producer's
 (LESSONS 5.9 in part). The route rest is per row, from the faults the fold
 saw. `land-rate` is per stream, not per route. `base_regate`'s timing is the
