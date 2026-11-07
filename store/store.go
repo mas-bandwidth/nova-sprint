@@ -28,6 +28,10 @@ type Store interface {
 	// Events returns events with seq above afterSeq, ascending, at most max
 	// of them; max is capped at MaxEvents, and max <= 0 means MaxEvents.
 	Events(ctx context.Context, afterSeq int64, max int) ([]Event, error)
+	// EventIdentity returns the op id and epoch of the event at seq, and
+	// false when there is none. It reads neither image nor the receipt, so
+	// a caller verifying a cursor pays for two columns, not the state.
+	EventIdentity(ctx context.Context, seq int64) (op string, epoch int, found bool, err error)
 	// Clear opens a new epoch (n = n + 1) with the protocol of Apply: an op of
 	// kind clear, no writes, at most an AtSeq condition. It is logged with the
 	// epoch it closed; the receipt's NewEpoch is the one it opened.

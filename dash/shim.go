@@ -18,8 +18,8 @@ type workRow struct {
 	Merging    int
 	Landed     int
 	Fail       int
-	Cost       *float64
-	ByTier     map[string]float64
+	Cost       *big.Int
+	ByTier     map[string]*big.Int
 }
 type fleetRow struct {
 	Status   string
@@ -64,7 +64,7 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 	readers := map[string]numberCells{}
 	merge := map[string]numberCells{}
 	for n, v := range s.Streams {
-		work[n] = &workRow{ByTier: map[string]float64{}, tierMicros: map[string]*big.Int{}}
+		work[n] = &workRow{ByTier: map[string]*big.Int{}, tierMicros: map[string]*big.Int{}}
 		costs[n] = &streamCost{amounts: map[string]*big.Int{}}
 		merge[n] = numberCells{}
 		state := "waiting"
@@ -220,12 +220,9 @@ func countCost(w *workRow, c store.Card, costs *streamCost) {
 		costs.unpriced++
 		return
 	}
-	d := float64(c.Cost) / 1e6
 	if w.Cost == nil {
-		z := 0.0
-		w.Cost = &z
+		w.Cost = new(big.Int)
 	}
-	*w.Cost += d
 	if w.tierMicros[c.Tier] == nil {
 		w.tierMicros[c.Tier] = new(big.Int)
 	}
