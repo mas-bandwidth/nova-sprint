@@ -105,7 +105,7 @@ func (w *work) setRowLoad(v SetRowLoad) (string, error) {
 	next := old
 	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.Tiers = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal, v.Tiers
 	if next == old {
-		return "row " + v.Row + " already has the given load", nil
+		return fmt.Sprintf("row %s already has the given load", v.Row), nil
 	}
 	w.before.Rows, w.after.Rows = touch(w.before.Rows, w.after.Rows, v.Row, old, true, next)
 	return "", w.tx.putRow(next)

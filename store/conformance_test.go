@@ -20,9 +20,12 @@ var t0 = time.Date(2026, 11, 6, 12, 0, 0, 123456789, time.UTC)
 
 // RunConformance runs the same scenarios against any Store. newStore gives
 // each scenario an empty store of its own. The unit tests run it against Fake
-// and the functional tests against PG, so the two cannot drift.
+// and the functional tests against PG, so the two cannot drift. Every refusal
+// the scenarios log is kept, and when all of them ran, each form of
+// refusalForms must have one (refusals_test.go).
 func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
-	for name, scenario := range map[string]func(h *harness){
+	refused := &refusedSeen{reasons: map[string]bool{}}
+	scenarios := map[string]func(h *harness){
 		"conditions":              conditions,
 		"seq fence and epoch":     fences,
 		"writes":                  writes,
@@ -75,10 +78,15 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"schema identity":         schemaIdentity,
 		"fake from snapshot":      fakeFromSnapshot,
 		"held by":                 heldBy,
-	} {
+		"full review":             fullReview,
+	}
+	t.Cleanup(func() { refused.check(t, len(scenarios)) })
+	for name, scenario := range scenarios {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			scenario(&harness{t: t, s: newStore(t), ctx: context.Background(), epoch: 1})
+			h := &harness{t: t, s: newStore(t), ctx: context.Background(), epoch: 1}
+			scenario(h)
+			refused.keep(h)
 		})
 	}
 }
