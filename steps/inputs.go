@@ -34,7 +34,7 @@ type InboxItem struct {
 	Priced                 bool
 
 	Request string   // an edge result: the request it answers
-	Outcome string   // land: landed, red, fault, conflict, base-red, base-green; stop: ack
+	Outcome string   // land: landed, red, fault, conflict, no-ci, forge, base-red, base-green; stop: ack
 	Landed  []string // land: the heads that landed (a bisected batch lands a part)
 	Blamed  string   // red: the head the bisection blamed
 	Base    string   // base-red, base-green: the base

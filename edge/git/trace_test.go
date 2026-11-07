@@ -171,7 +171,7 @@ func (h *landWalkHarness_internal) execStreamAction_internal(t *testing.T, s, ac
 		ga.blamed = nil
 		h.gatedAt[s] = ga
 		h.step[s] = "gating"
-	case "CIGreen", "CIRed", "CIFault":
+	case "CIGreen", "CIRed", "CIFault", "CIAbsent":
 		h.applyCIOutcome_internal(t, s, act)
 	case "Land":
 		h.applyLand_internal(t, s)
@@ -202,6 +202,10 @@ func (h *landWalkHarness_internal) applyCIOutcome_internal(t *testing.T, s, act 
 		ga.gate = "red"
 		ga.blamed = []string{h.group[s][0]}
 		h.step[s] = "red"
+	case "CIAbsent":
+		ga.gate = "absent"
+		ga.blamed = nil
+		h.step[s] = "absent"
 	case "CIFault":
 		h.fg.SetCheck("org/repo", msha, forge.CheckRollup{State: forge.CheckFault})
 		ga.gate = "fault"
@@ -334,6 +338,9 @@ func pickLandMove_internal(t *testing.T, rng *rand.Rand, h *landWalkHarness_inte
 			if st.gatedAt[s].faults < 1 {
 				moves = append(moves, move{"CIFault", s})
 			}
+			if rng.Intn(8) == 0 {
+				moves = append(moves, move{"CIAbsent", s})
+			}
 		case "fault":
 			moves = append(moves, move{"Gate", s})
 		case "green":
@@ -342,7 +349,7 @@ func pickLandMove_internal(t *testing.T, rng *rand.Rand, h *landWalkHarness_inte
 			} else {
 				moves = append(moves, move{"Remerge", s})
 			}
-		case "red":
+		case "red", "absent":
 			moves = append(moves, move{"Refuse", s})
 		}
 	}

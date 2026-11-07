@@ -37,6 +37,7 @@ TraceAction(k) ==
        [] a = "CIGreen"       -> CIGreen(s)
        [] a = "CIRed"         -> CIRed(s)
        [] a = "CIFault"       -> CIFault(s)
+       [] a = "CIAbsent"      -> CIAbsent(s)
        [] a = "BaseMoves"     -> BaseMoves
        [] a = "Land"          -> Land(s)
        [] a = "Remerge"       -> Remerge(s)

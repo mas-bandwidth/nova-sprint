@@ -292,3 +292,9 @@ func (c *causeError) Error() string {
 	return c.what + ": " + RedactN(c.err.Error(), CommandMax+100)
 }
 func (c *causeError) Unwrap() error { return c.err }
+
+// Refusal is an edge that will not act, with the one fix: what verbs show
+// as Problem and Fix (verbs.AsRefusal passes it through as a refusal).
+type Refusal struct{ Problem, Fix string }
+
+func (r *Refusal) Error() string { return r.Problem + ": " + r.Fix }

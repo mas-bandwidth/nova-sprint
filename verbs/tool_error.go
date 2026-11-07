@@ -180,13 +180,15 @@ func RefusalOr(err, otherwise error) error {
 func errText(err error) string { return edge.RedactN(err.Error(), edge.CommandMax) }
 
 // AsRefusal is the refusal err carries, to be passed through as it is and
-// never re-wrapped: a *Fail or *OperationError anywhere in err's chain, or
+// never re-wrapped: a *Fail or *OperationError anywhere in err's chain, an
+// edge's *edge.Refusal as an *OperationError (Exit 1), or
 // the refusal an internal child wrote on stderr (ChildFailed) inside an
 // edge.CommandError, rebuilt as an *OperationError (Exit 2 when the child
 // exited 2, else 1). Nil when err carries no refusal.
 func AsRefusal(err error) error {
 	var f *Fail
 	var op *OperationError
+	var er *edge.Refusal
 	var cmd *edge.CommandError
 	switch {
 	case err == nil:
@@ -195,6 +197,8 @@ func AsRefusal(err error) error {
 		return f
 	case errors.As(err, &op):
 		return op
+	case errors.As(err, &er):
+		return &OperationError{Problem: er.Problem, Fix: er.Fix, Exit: exitRefused}
 	case errors.As(err, &cmd):
 		at := strings.LastIndex(cmd.Stderr, childRefusedPrefix)
 		if at < 0 {

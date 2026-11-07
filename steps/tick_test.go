@@ -139,6 +139,44 @@ func TestTickRedAndRetry(t *testing.T) {
 	assert.NotEqual(t, first.ID, second.ID, "the second landing of one head has its own id")
 }
 
+// TestTickNoCIJudges: a landing whose group sha never got a check (defect
+// 40) opens one no-ci judgement naming the branch and the fix; the producer
+// stays merging, nothing lands, and the request is asked again.
+func TestTickNoCIJudges(t *testing.T) {
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 1, "pro", "heavy")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	s.take("p1.w1")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.tick()
+	s.take("p1.r1.1")
+	s.report("p1.r1.1", "ok", sha(1), "fine")
+	s.run(2)
+	first := s.request("land", "s1")
+	s.arrive(InboxItem{Kind: "land", Request: first.ID, Outcome: "no-ci", Reason: "no check was reported on " + sha(9) + " within 10m0s of its push"})
+	s.run(2)
+	require.Empty(t, s.rejected)
+	s.requireState("p1", "merging")
+	j := s.snap().Judgements["no-ci.s1.1"]
+	assert.Equal(t, "open", j.State)
+	assert.Contains(t, j.Question, "sprint/s1/group")
+	assert.Contains(t, j.Question, "push to sprint/**")
+	assert.Equal(t, first.ID, s.request("land", "s1").ID, "asked again under the one judgement")
+	s.arrive(InboxItem{Kind: "land", Request: s.request("land", "s1").ID, Outcome: "no-ci"})
+	s.run(2) // consumed with no op: the run stops after that tick
+	s.run(2) // and the next tick asks again
+	_, second := s.snap().Judgements["no-ci.s1.2"]
+	assert.False(t, second, "one judgement while it is open")
+	// a forge with no token (defect 39) is its own judgement, the fix in it
+	s.arrive(InboxItem{Kind: "land", Request: s.request("land", "s1").ID, Outcome: "forge", Reason: "the forge has no GitHub token for sprint: run it under nova-secrets exec --only GH_GATE_TOKEN"})
+	s.run(2)
+	s.requireState("p1", "merging")
+	assert.Contains(t, s.snap().Judgements["forge.s1.1"].Question, "nova-secrets exec --only GH_GATE_TOKEN")
+}
+
 // TestTickFaultSpendsNothing: a fault report returns the producer to ready
 // with no bounce, and the next deal carries the pushed head.
 func TestTickFaultSpendsNothing(t *testing.T) {
