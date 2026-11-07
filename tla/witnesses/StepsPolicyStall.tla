@@ -465,7 +465,9 @@ DealFold(V, cands, i, acc, ar, useAns) ==
                 ar, useAns)
 Cands(V, cl) ==
   LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "blocker" /\ V.ps[p].st = "ready" /\ Free(p, cl))
-      rd == SelectSeq(ProdSeq, LAMBDA p : ReadOwed(V, p) /\ Free(p, cl))
+      \* a held stream asks no read (the code's dealRead returns first; found
+      \* by the trace check, steps-walk-land-1, 2026-11-07)
+      rd == SelectSeq(ProdSeq, LAMBDA p : ReadOwed(V, p) /\ ~V.sh[Stream[p]] /\ Free(p, cl))
       nm == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "normal" /\ V.ps[p].st = "ready" /\ Free(p, cl))
   IN [i \in 1..Len(bl) |-> [p |-> bl[i], kind |-> "work"]]
        \o [i \in 1..Len(rd) |-> [p |-> rd[i], kind |-> "read"]]
