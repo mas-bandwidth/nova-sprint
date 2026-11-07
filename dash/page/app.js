@@ -7,9 +7,9 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting", "fail"];
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"];
 // Columns of the streams table, in flow order.
-var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed", "fail"];
+var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
 var LANDED_AT = 2 + FLOW.indexOf("landed"), COST_AT = 2 + FLOW.length;
 var POLL_MS = 1000;
@@ -287,7 +287,6 @@ function streamOrder(d) {
 }
 function streamStatus(state, c, total) {
   if (total > 0 && c.landed === total) return ["landed", "done"];
-  if (total > 0 && c.fail > 0 && c.landed + c.fail === total) return ["fail", "failed"];
   if (state === "stopped") return ["stopped", "critical"];
   // held only for a hold set on the stream (the server's State "held", hold <stream>): cards that all
   // wait on their needs are waiting, never held (the owner 2026-10-13: "don't show held on a work stream
@@ -320,7 +319,7 @@ function renderStreams(d) {
   // Rows are grouped by status (landed, working, stopped, held), by name within a group,
   // with a thin rule between groups; each row also carries its status pill. Rows are keyed by stream, so a reorder
   // only moves nodes and flashes nothing.
-  var RANK = { landed: 0, working: 1, stopped: 2, held: 3, waiting: 4, fail: 5 };
+  var RANK = { landed: 0, working: 1, stopped: 2, held: 3, waiting: 4 };
   var statusOf = Object.create(null);
   streamOrder(d).forEach(function (k) {
     var c = {}, total = 0; FLOW.forEach(function (st) { c[st] = int(work[k][st]); total += c[st]; });
@@ -373,8 +372,8 @@ function renderStreams(d) {
     r.node.classList.toggle("group-start", prevRank !== null && rank(k) !== prevRank);
     prevRank = rank(k);
     setText(r.nameT, k);
-    var tone = { landed: "done", fail: "failed", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
-    setPill(r.pill, status, tone, status === "fail" ? "fail · stream failed" : status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
+    var tone = { landed: "done", working: "active", held: "warning", stopped: "critical" }[status] || "neutral";
+    setPill(r.pill, status, tone, status + (s.State ? " · stream " + s.State + (s.Since ? " since " + clockShort(new Date(s.Since)) : "") : ""));
     // an archived stream shown is marked: the total row leaves it out
     var tags = arch[k] ? ["archived"] : []; if (int(m.stuck) > 0) tags.push(m.stuck + " stuck"); if (m.ci === "red") tags.push("ci red");
     setText(r.tag, tags.join(" · "));
