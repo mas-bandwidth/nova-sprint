@@ -130,7 +130,7 @@ func TestFunctionalRestore(t *testing.T) {
 	require.NoError(t, RestoreBegin(ctx, tx))
 	_, err = tx.Exec(ctx, "ALTER TABLE sprint.cards ENABLE TRIGGER cards_fixed")
 	require.NoError(t, err)
-	require.ErrorContains(t, loadDump(ctx, tx, d), "cards_of_producer_check", "a consumer's row comes before its updated producer's")
+	require.ErrorContains(t, loadDump(ctx, tx, d), "card u1 is a consumer of c1, which is not a producer", "a consumer's row comes before its updated producer's")
 	require.NoError(t, tx.Rollback(ctx))
 
 	id, err := restore(t, target, d)
@@ -164,7 +164,8 @@ func TestFunctionalRestore(t *testing.T) {
 }
 
 // End refuses a dump whose events do not rebuild to its tables (the last
-// event's line cut from the events' COPY) and a foreign schema is refused
+// event's line cut from the events' COPY: the tables hold its judgement and
+// cursor, the log does not; seq is the log's, so it agrees) and a foreign schema is refused
 // by Begin.
 func TestFunctionalRestoreRefuses(t *testing.T) {
 	t.Parallel()
@@ -180,9 +181,9 @@ func TestFunctionalRestoreRefuses(t *testing.T) {
 	block = block[:strings.LastIndex(block, "\n")]
 	_, err := restore(t, newDatabase(t, dsn, "cut"), head+"COPY sprint.events "+block+"\n\\.\n"+tail)
 	require.Error(t, err)
-	assert.Equal(t, "store: restore: the dump does not hold together: rebuilding the "+strconv.FormatInt(want.Seq-1, 10)+" events gives a state that differs from the snapshot in seq, judgements, cursors", err.Error())
+	assert.Equal(t, "store: restore: the dump does not hold together: rebuilding the "+strconv.FormatInt(want.Seq-1, 10)+" events gives a state that differs from the snapshot in judgements, cursors", err.Error())
 
-	foreign := newDatabase(t, dsn, "foreign")
+	foreign := newDatabase(t, dsn, "alien")
 	_, err = connect(t, foreign).Exec(ctx, "CREATE SCHEMA sprint; CREATE TABLE sprint.cards (id text)")
 	require.NoError(t, err)
 	tx, err := connect(t, foreign).Begin(ctx)
