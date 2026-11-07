@@ -102,7 +102,7 @@ func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 			env = append(env, name+"="+v)
 		}
 	}
-	if j.ProxyAddr != "" {
+	if j.ProxyAddr != "" && os.Getenv("NOVA_WORKER_NET_OPEN") != "1" { // LOCAL DOGFOOD STOPGAP: no proxy env when the provider is reached directly
 		baseURL := j.ProxyAddr
 		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
 			baseURL = "http://" + baseURL
