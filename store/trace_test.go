@@ -41,7 +41,7 @@ var (
 // traceSeeds is the fixed seed set of each walk, and its length.
 var traceSeeds = map[string][]uint64{"fake": {1, 2, 3, 4, 5, 6, 7, 8}, "pg": {1, 2}}
 
-const traceSteps = 300
+const traceSteps = 500
 
 // TestTraceWalk writes the Fake walk's traces (store-fake-<seed>).
 func TestTraceWalk(t *testing.T) {
@@ -108,17 +108,18 @@ func TestTraceRefusesDivergence(t *testing.T) {
 	breakerScript(broken)
 	require.Contains(t, honest.tr.recs[len(honest.tr.recs)-1], "accepted |-> FALSE")
 	require.Contains(t, broken.tr.recs[len(broken.tr.recs)-1], "accepted |-> TRUE")
+	expect := fmt.Sprintf("forbidden at %d", len(broken.tr.recs))
+	if out := os.Getenv(traceEnv); out != "" {
+		require.NoError(t, broken.tr.write(filepath.Join(out, "store-breaker"), expect))
+	}
 	dir := t.TempDir()
-	require.NoError(t, broken.tr.write(dir, fmt.Sprintf("forbidden at %d", len(broken.tr.recs))))
+	require.NoError(t, broken.tr.write(dir, expect))
 	for _, name := range []string{"StoreTraceLog.tla", "StoreTrace.cfg"} {
 		got, err := os.ReadFile(filepath.Join(dir, name))
 		require.NoError(t, err)
 		want, err := os.ReadFile(filepath.Join("..", "tla", "traces", "store-breaker", name))
 		require.NoError(t, err, "the fixture: NOVA_TRACE_DIR=tla/traces go test -run TestTraceRefusesDivergence ./store/ writes it")
 		require.Equal(t, string(want), string(got), "tla/traces/store-breaker/%s is stale", name)
-	}
-	if out := os.Getenv(traceEnv); out != "" {
-		require.NoError(t, broken.tr.write(filepath.Join(out, "store-breaker"), fmt.Sprintf("forbidden at %d", len(broken.tr.recs))))
 	}
 }
 

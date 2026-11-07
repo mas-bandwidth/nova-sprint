@@ -20,17 +20,23 @@ func (w *storeWalk) next() (Op, bool) {
 		epoch = max(1, epoch+w.rng.IntN(3)-1) // planned against another epoch, now and then
 	}
 	op := Op{ID: fmt.Sprintf("o%d", w.n), Epoch: epoch, Actor: "walk", Kind: "walk", At: t0.Add(time.Duration(w.n) * time.Second)}
-	if w.rng.IntN(40) == 0 {
+	if w.rng.IntN(80) == 0 {
 		op.Kind = "clear"
 		return op, true
 	}
-	if _, ok := s.Streams["s1"]; !ok {
+	if _, ok := s.Streams["s1"]; !ok { // a new epoch starts with its stream
 		op.Writes = append(op.Writes, PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1})
+		return op, false
 	}
-	for range 1 + w.rng.IntN(3) {
+	if w.rng.IntN(6) == 0 { // a deal: a consumer added and moved in one op
+		put := w.putConsumer(s).(PutCard)
+		op.Writes = append(op.Writes, put, SetCardState{Card: put.ID, State: w.pick([]string{"ready", "working"})})
+		return op, false
+	}
+	for range 1 + w.rng.IntN(5)/3 { // one write, two now and then
 		op.Writes = append(op.Writes, w.write(s))
 	}
-	for range w.rng.IntN(3) {
+	for range w.rng.IntN(5) / 2 { // most ops are unfenced
 		op.Expect = append(op.Expect, w.expect(s))
 	}
 	return op, false
@@ -43,11 +49,11 @@ func (w *storeWalk) write(s Snapshot) Write {
 	case 2, 3, 4, 5:
 		return w.setState(s)
 	case 6:
-		return SetCardRed{Card: w.pick(twCards), Red: w.rng.IntN(2) == 0}
+		return SetCardRed{Card: w.some(s, twCards), Red: w.rng.IntN(2) == 0}
 	case 7, 8, 9:
-		return w.rowWrite()
+		return w.rowWrite(s)
 	case 10, 11:
-		return w.judgementWrite()
+		return w.judgementWrite(s)
 	case 12:
 		return w.cursorWrite(s)
 	case 13:
@@ -85,16 +91,33 @@ func (w *storeWalk) putConsumer(s Snapshot) Write {
 // setState moves a card, most often a consumer into ready, working or done.
 func (w *storeWalk) setState(s Snapshot) Write {
 	if w.rng.IntN(3) > 0 {
-		return SetCardState{Card: w.pick(twCards[3:]), State: w.pick([]string{"ready", "working", "working", "done"})}
+		return SetCardState{Card: w.some(s, twCards[3:]), State: w.pick([]string{"ready", "working", "working", "done"})}
 	}
-	return SetCardState{Card: w.pick(twCards), State: w.pick(CardStates)}
+	return SetCardState{Card: w.some(s, twCards), State: w.pick(CardStates)}
 }
 
-func (w *storeWalk) rowWrite() Write {
+// some is one of names, most often one that exists in s.
+func (w *storeWalk) some(s Snapshot, names []string) string {
+	var in []string
+	for _, n := range names {
+		if _, ok := s.Cards[n]; ok {
+			in = append(in, n)
+		}
+	}
+	if len(in) > 0 && w.rng.IntN(5) > 0 {
+		return w.pick(in)
+	}
+	return w.pick(names)
+}
+
+func (w *storeWalk) rowWrite(s Snapshot) Write {
 	r := w.pick(twRows)
 	tiers := []string{w.pick(twTiers)}
 	if w.rng.IntN(2) == 0 {
 		tiers = twTiers
+	}
+	if _, ok := s.Rows[r]; !ok && w.rng.IntN(4) > 0 {
+		return PutRow{Name: r, Kind: "worker", Width: 1 + w.rng.IntN(2), Tiers: tiers}
 	}
 	switch w.rng.IntN(6) {
 	case 0:
@@ -109,12 +132,16 @@ func (w *storeWalk) rowWrite() Write {
 	return SetRowTiers{Row: r, Tiers: tiers}
 }
 
-func (w *storeWalk) judgementWrite() Write {
+func (w *storeWalk) judgementWrite(s Snapshot) Write {
 	j := w.pick(twJudgements)
+	_, exists := s.Judgements[j]
 	switch w.rng.IntN(3) {
 	case 0:
 		return PutJudgement{ID: j, Kind: "fix", About: "p1", Question: "q", Command: "c"}
 	case 1:
+		if !exists {
+			return PutJudgement{ID: j, Kind: "fix", About: "p1", Question: "q", Command: "c"}
+		}
 		return AnswerJudgement{ID: j, Answer: "yes"}
 	}
 	return ExpireJudgement{ID: j, Reason: "late"}
