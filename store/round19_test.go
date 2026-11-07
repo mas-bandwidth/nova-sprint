@@ -119,11 +119,14 @@ func TestNewFakeFromInvalid(t *testing.T) {
 }
 
 // The statement Migrate skips on an existing schema is in schema.sql once,
-// and is the only CREATE SCHEMA in it.
+// and is the only CREATE SCHEMA in it. Both forms end with the columns outside
+// schema.sql (rowLoadColumns), which the hash does not cover.
 func TestSchemaObjects(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(schemaSQL, createSchema))
 	assert.NotContains(t, schemaObjects, "CREATE SCHEMA")
-	assert.Equal(t, len(schemaSQL)-len(createSchema), len(schemaObjects))
+	assert.Equal(t, len(fullSchema)-len(createSchema), len(schemaObjects))
+	assert.Equal(t, schemaSQL+"\n"+rowLoadColumns+";\n", fullSchema)
+	assert.Equal(t, hashSchema(schemaSQL), schemaHash, "the columns are outside the hash")
 }
 
 // The least-privilege setup: an admin role with CREATE on the database makes
