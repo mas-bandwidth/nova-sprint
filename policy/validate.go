@@ -310,7 +310,10 @@ func checkStitch(v starlark.Value) (bool, string) {
 	return bool(b), ""
 }
 
-// checkPrices: model name to {"in": n, "out": n}, ints at or above 0.
+// checkPrices: model name to {"in": n, "out": n} with "cache_read" and
+// "cache_write" optional (each defaults to in), ints at or above 0. The
+// name is the model a usage record reports (provider/model) or the model
+// alone, as the catalog names it.
 func checkPrices(ctx context.Context, v starlark.Value) (map[string]Price, string) {
 	d, ok := v.(*starlark.Dict)
 	if !ok {
@@ -326,16 +329,22 @@ func checkPrices(ctx context.Context, v starlark.Value) (map[string]Price, strin
 			return nil, refuse("a key is %s, not a model name", kind(kv[0]))
 		}
 		name := cut(string(model), 64)
-		p, msg := dictOf(kv[1], "in", "out")
+		p, msg := dictSome(kv[1], []string{"in", "out"}, "cache_read", "cache_write")
 		if msg != "" {
 			return nil, name + ": " + msg
 		}
 		var price Price
-		if price.In, msg = intIn(name+" in", p["in"], 0, int64(math.MaxInt64)); msg == "" {
-			price.Out, msg = intIn(name+" out", p["out"], 0, int64(math.MaxInt64))
-		}
-		if msg != "" {
-			return nil, msg
+		for _, f := range []struct {
+			key string
+			to  *int64
+		}{{"in", &price.In}, {"out", &price.Out}, {"cache_read", &price.CacheRead}, {"cache_write", &price.CacheWrite}} {
+			if p[f.key] == nil {
+				*f.to = price.In
+				continue
+			}
+			if *f.to, msg = intIn(name+" "+f.key, p[f.key], 0, int64(math.MaxInt64)); msg != "" {
+				return nil, msg
+			}
 		}
 		out[string(model)] = price
 	}
@@ -357,6 +366,30 @@ func dictOf(v starlark.Value, keys ...string) (map[string]starlark.Value, string
 		out[string(k)] = kv[1]
 	}
 	for _, k := range keys {
+		if out[k] == nil {
+			return nil, refuse("key %s is missing", k)
+		}
+	}
+	return out, ""
+}
+
+// dictSome is v as a dict of every required key and any of optional, by
+// name; an optional key absent is absent from the map.
+func dictSome(v starlark.Value, required []string, optional ...string) (map[string]starlark.Value, string) {
+	all := append(slices.Clone(required), optional...)
+	d, ok := v.(*starlark.Dict)
+	if !ok {
+		return nil, refuse("the answer is %s, not a dict of %s", kind(v), strings.Join(all, " "))
+	}
+	out := map[string]starlark.Value{}
+	for _, kv := range d.Items() {
+		k, ok := kv[0].(starlark.String)
+		if !ok || !slices.Contains(all, string(k)) {
+			return nil, refuse("key %s is not one of %s", brief(kv[0]), strings.Join(all, " "))
+		}
+		out[string(k)] = kv[1]
+	}
+	for _, k := range required {
 		if out[k] == nil {
 			return nil, refuse("key %s is missing", k)
 		}

@@ -14,10 +14,11 @@ import (
 
 // outcome is a row's report as the three verbs give it.
 type outcome struct {
-	id, result, head, reason string
-	gen                      int
-	cost                     int64
-	priced                   bool
+	verb, id, result, head, reason string
+	gen                            int
+	cost                           int64
+	priced, costGiven              bool
+	usage                          string // the row's --usage words, priced by the engine (priceReport)
 }
 
 // runReport is `finish`, `read` and `report`: one op by the row itself, the
@@ -50,7 +51,7 @@ func readOutcome(in *input) (outcome, error) {
 	if f != nil {
 		return outcome{}, f
 	}
-	o := outcome{id: id, gen: gen, head: in.str("head"), reason: in.str("reason")}
+	o := outcome{verb: in.verb, id: id, gen: gen, head: in.str("head"), reason: in.str("reason"), usage: in.str("usage")}
 	switch in.verb {
 	case "finish":
 		o.result = map[bool]string{true: "fail", false: "ok"}[in.has("failed")]
@@ -70,6 +71,7 @@ func readOutcome(in *input) (outcome, error) {
 	}
 	var err error
 	o.cost, o.priced, err = readCost(in)
+	o.costGiven = in.has("cost") || in.has("cost-microusd")
 	return o, err
 }
 
@@ -144,7 +146,11 @@ func (e *Engine) report(ctx context.Context, in *input, snap store.Snapshot, o o
 			return store.Receipt{}, err
 		}
 	}
-	plan, why := reportPlan(snap, c, card.Report{Row: in.actor, Result: o.result, Head: o.head, Reason: o.reason, Cost: o.cost, Priced: o.priced})
+	p, err := e.priceReport(ctx, snap, in.actor, o)
+	if err != nil {
+		return store.Receipt{}, err
+	}
+	plan, why := reportPlan(snap, c, card.Report{Row: in.actor, Result: o.result, Head: o.head, Reason: o.reason, Cost: p.Cost, Priced: p.Priced, Usage: p.Record.String()})
 	if why != nil {
 		return store.Receipt{}, moved(why, o.id)
 	}

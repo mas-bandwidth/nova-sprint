@@ -79,7 +79,7 @@ func (t *tick) reportGroup(it InboxItem, c string) {
 	m := move{label: "Report " + c, plan: func() (card.Plan, *card.Refusal) {
 		cc := t.cardOf(c)
 		p := t.cardOf(cc.Of)
-		r := card.Report{Row: it.Row, Result: it.Result, Head: it.Head, Reason: it.Reason, Cost: it.Cost, Priced: it.Priced}
+		r := card.Report{Row: it.Row, Result: it.Result, Head: it.Head, Reason: it.Reason, Cost: it.Cost, Priced: it.Priced, Usage: it.Usage}
 		return card.ReportPlan(cc, p, t.consOf(p.ID), t.rows(), t.streamOf(p.Stream), t.needsOf(p.ID), r)
 	}}
 	g, r := t.newGroup("report", c, m)

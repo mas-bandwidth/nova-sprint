@@ -116,8 +116,11 @@ type Timeouts struct {
 	Consumer                                                                      map[string]int
 }
 
-// Price is micro-dollars per million tokens in and out.
-type Price struct{ In, Out int64 }
+// Price is micro-dollars per million tokens of each class: uncached input,
+// cached input read, cache write and output (reasoning is billed as
+// output). prices() names in and out; cache_read and cache_write are
+// optional and default to in.
+type Price struct{ In, CacheRead, CacheWrite, Out int64 }
 
 // Failure is one version's error or refused answer: none of that version's
 // answers is used that tick. Line is the line of the question's def for a
