@@ -132,6 +132,11 @@ func (w *world) consumer(c string, e card.Event) (card.Plan, *card.Refusal) {
 // report applies a row's report with its producer move (ReportPlan).
 func (w *world) report(c, result, head, reason string) {
 	w.t.Helper()
+	w.move(w.reportPlan(c, result, head, reason))
+}
+
+// reportPlan is card.ReportPlan read from the store.
+func (w *world) reportPlan(c, result, head, reason string) (card.Plan, *card.Refusal) {
 	s := w.snap()
 	cc := card.FromStore(s.Cards[c])
 	p := card.FromStore(s.Cards[cc.Of])
@@ -147,8 +152,7 @@ func (w *world) report(c, result, head, reason string) {
 	for _, r := range s.Rows {
 		rows[r.Name] = card.RowFromStore(r)
 	}
-	pl, r := card.ReportPlan(cc, p, cons, rows, card.StreamFromStore(s.Streams[p.Stream]), needs, card.Report{Row: cc.Holder, Result: result, Head: head, Reason: reason})
-	w.move(pl, r)
+	return card.ReportPlan(cc, p, cons, rows, card.StreamFromStore(s.Streams[p.Stream]), needs, card.Report{Row: cc.Holder, Result: result, Head: head, Reason: reason})
 }
 
 // inputs is the tick's inputs at the world's clock: every row seen now, every

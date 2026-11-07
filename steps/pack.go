@@ -38,6 +38,9 @@ func (t *tick) pack() Plan {
 		if g.none && g.key.Item != "" {
 			used[g.key.Item] = struct{}{}
 		}
+		if g.answer != nil {
+			plan.Answers = append(plan.Answers, *g.answer)
+		}
 	}
 	for _, it := range t.in.Inbox {
 		if _, u := used[it.ID]; !u {
@@ -48,7 +51,6 @@ func (t *tick) pack() Plan {
 	if jop, ok := t.judgementOp(); ok {
 		plan.Ops = append(plan.Ops, jop)
 	}
-	plan.Answers = t.answers
 	return plan
 }
 

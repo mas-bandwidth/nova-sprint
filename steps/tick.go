@@ -23,7 +23,6 @@ type tick struct {
 	rested    set            // rows resting after faults (LPM R34): a deal filter
 	groups    []group
 	edges     []EdgeRequest // land requests, waiting on no op
-	answers   []RowAnswer
 	judges    []judgement
 	expires   map[string]string // judgement id -> why it expires
 }
@@ -95,7 +94,7 @@ func (t *tick) group(kind, about string, moves ...move) *group {
 
 // consume keeps an inbox item with no move (the model's none group).
 func (t *tick) consume(item string) {
-	t.groups = append(t.groups, group{kind: "none", none: true, key: GroupKey{Item: item}})
+	t.groups = append(t.groups, group{kind: "none", none: true, key: GroupKey{Kind: "none", Item: item}})
 }
 
 // questions gathers every question of the tick with its subjects, from the
