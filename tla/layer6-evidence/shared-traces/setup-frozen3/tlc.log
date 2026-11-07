@@ -1,0 +1,37 @@
+TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)
+Running breadth-first search Model-Checking with fp 95 and seed 7183713176751762488 with 1 worker on 64 cores with 23500MB heap and 64MB offheap memory [pid: 332792] (Linux 7.0.0-43-generic amd64, Eclipse Adoptium 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/glenn/jobs/stella-v2-l6-shared-trace-20261106/spec/SetupTrace.tla
+Parsing file /home/glenn/jobs/stella-v2-l6-shared-trace-20261106/spec/SetupWalk.tla
+Parsing file /home/glenn/jobs/stella-v2-l6-shared-trace-20261106/inputs/setup-frozen3/SetupTraceLog.tla
+Parsing file /tmp/tmp.tpw0hSKeGq/tlc-3016831370547445958/TLC.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file /home/glenn/jobs/stella-v2-l6-shared-trace-20261106/spec/Setup.tla
+Parsing file /tmp/tmp.tpw0hSKeGq/tlc-3016831370547445958/Naturals.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /tmp/tmp.tpw0hSKeGq/tlc-3016831370547445958/Sequences.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Sequences.tla)
+Parsing file /tmp/tmp.tpw0hSKeGq/tlc-3016831370547445958/FiniteSets.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module Setup
+Semantic processing of module SetupWalk
+Semantic processing of module SetupTraceLog
+Semantic processing of module TLC
+Semantic processing of module SetupTrace
+Linting of module Setup
+Linting of module SetupWalk
+Linting of module SetupTraceLog
+Linting of module SetupTrace
+Starting... (2026-11-07 01:33:31)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-07 01:33:31.
+Progress(49) at 2026-11-07 01:33:31: 49 states generated, 49 distinct states found, 0 states left on queue.
+Checking temporal properties for the complete state space with 49 total distinct states at (2026-11-07 01:33:31)
+Finished checking temporal properties in 00s at 2026-11-07 01:33:31
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 0.0
+49 states generated, 49 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 49.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 1 and the 95th percentile is 1).
+Finished in 00s at (2026-11-07 01:33:31)
