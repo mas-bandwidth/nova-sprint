@@ -87,6 +87,23 @@ func (g guardDropped) Apply(ctx context.Context, op Op) (Receipt, error) {
 	return g.Fake.Apply(ctx, op)
 }
 
+// TestTraceCursorZero records the one divergence the walks found between
+// the store and Store.tla (tla/README.md, "Trace validation"): setting a
+// cursor that was never set to 0. The store accepts it (it inserts the
+// cursor at 0); the model refuses it as a write that changes nothing (an
+// absent cursor is 0 there, as it reads in a snapshot). The fixture
+// tla/traces/store-cursor-zero is refused at its last record until one side
+// is ruled on; the walks do not send this write.
+func TestTraceCursorZero(t *testing.T) {
+	w := newStoreWalk(t, NewFake(), nil, 0)
+	w.script(nil, PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1})
+	w.script(nil, SetCursor{Name: "c1", Seq: 0})
+	require.Contains(t, w.tr.recs[len(w.tr.recs)-1], "accepted |-> TRUE", "the store accepts a cursor set to 0 when it was never set")
+	if out := os.Getenv(traceEnv); out != "" {
+		require.NoError(t, w.tr.write(filepath.Join(out, "store-cursor-zero"), fmt.Sprintf("forbidden at %d", len(w.tr.recs))))
+	}
+}
+
 // The breaker's script: a row is held, then a deal fenced on it not being
 // held. The honest Fake refuses the deal; the breaker lands it.
 func breakerScript(w *storeWalk) {

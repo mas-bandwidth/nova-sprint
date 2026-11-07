@@ -23,7 +23,7 @@ cd "$ROOT" || exit 1
 
 find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./store/ || exit 1
+go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./store/ || exit 1
 go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./card/ || exit 1
 if command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || ls /opt/homebrew/opt/postgresql@18/bin/initdb >/dev/null 2>&1; then
     go test -count=1 -run 'TestFunctionalTraceWalk$' ./store/ || exit 1
