@@ -235,6 +235,11 @@ func (c *capped) first() string {
 func (r reply) answers() (Answers, []Failure) {
 	a := r.Answers
 	a.shown = r.Shown
+	for k, names := range a.Rows { // gob sends an empty list as nil; an empty answer is an empty list
+		if names == nil {
+			a.Rows[k] = []string{}
+		}
+	}
 	fs := make([]Failure, len(r.Failures))
 	for i, f := range r.Failures {
 		fs[i] = Failure{Version: f.Version, Label: f.Label, Question: f.Question, Subject: f.Subject, Line: f.Line, Msg: f.Msg, eof: f.EOF}
