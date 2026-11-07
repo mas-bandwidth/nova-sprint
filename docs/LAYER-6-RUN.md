@@ -815,3 +815,23 @@ github.com credential is always gh as the host's login (no switch on
   install trace cases in `tla/check-layer6-traces.py` described code that no longer exists, and
   the trace script failed before checking anything (its emitter `TestInstallTraceWalk` was gone).
   Both are removed; the layer 6 trace check now emits and checks run, setup, handoff and choices.
+
+### Built: the Run traces match again after deal-is-take (stitch w4T, 2026-11-07)
+
+- The layer 6 trace check refused run-0 at record 43 of 132, the blocker raise of p3. The cause was
+  the emitter, not the model or the run: deal-is-take added a retake of w0 (ready, then working, so
+  w0 stays the youngest working consumer on r1 and the preemption's victim) as two ops of their
+  own before the raise. Each is a store append the model has no action for, so the code's
+  physicalSeq went 18 to 21 at the raise where the model's Report allows 19. The gens matched
+  (Report raises card 3 to gen 1); the brief's reading of the gens was not the refusal.
+- Fix, fixture side (`run/run_trace_test.go`): the raise is one outside op, as the model's Report
+  is one append. It retires w0 and cuts p0 a fresh consumer w1 working on r1 (put, then working, as
+  a deal cuts one; a card's state is written once per op, so w0 cannot go ready and back), with
+  the priority raise. w1 is the youngest working consumer whether the fold witnessed its take (at
+  the raise, the latest take) or not (unwitnessed takes tie and the larger id wins: `w1` sorts
+  after `p<n>.w1`). The emitter now refuses a stop request for any consumer but w1. Leaving w0
+  ready from the setup instead was tried and refused: steps withdraws a ready consumer as dealt
+  before the deal became the take (seed 1).
+- No change to `tla/Run.tla`, `tla/RunTrace.tla` or `run/`: neither violated the other.
+  `tla/RunTrace-MAPPING.md` names w1 as the victim. physicalSeq steps checked locally on all four
+  run traces (run-0..2, run-stop: 0 mismatches, measured) before TLC on the bench.

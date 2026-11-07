@@ -31,9 +31,9 @@ package run
 //   - p3 is raised to blocker only when it is the last job, so the deal
 //     order stays the model's FIFO; it then preempts w0 and the tick
 //     returns the stop request (DeliverEdge) only once that op is accepted.
-//     Just before the raise w0 is set ready and working again (two
-//     untracked ops, no model event), so it is the youngest working
-//     consumer on r1 and the victim, not a job's consumer.
+//     In the raise's own op (the one append of the model's Report) w0 is
+//     retired and p0 cut a fresh consumer w1 working on r1, so it is the
+//     youngest working consumer on r1 and the victim, not a job's consumer.
 //   - a push is attempted only when the last tracked event raised r1 a
 //     notice (reports raise none), so the envelope covers the whole log.
 import (
@@ -456,17 +456,21 @@ func (r *runTrace) report(card string) {
 	r.add("Report", fmt.Sprintf(", c |-> %d", jobOf(card))+r.global())
 }
 
+// raise is the person's blocker raise of p3 (the model's Report on card 3).
+// In the same op p0's consumer w0 is retired and p0 is cut a fresh one, w1,
+// working on r1 (as a deal cuts it: put, then working), so w1 is the
+// youngest working consumer there, witnessed at the raise or, unwitnessed,
+// last by id. One op is one append to the store's sequence, as the model's
+// Report is one; the retake as two ops of its own moved physicalSeq two past
+// the model's, and RunTrace refused the raise.
 func (r *runTrace) raise() {
 	r.t.Helper()
-	for i, st := range []string{"ready", "working"} {
-		op := store.Op{ID: fmt.Sprintf("retake-w0-%d", i), Epoch: 1, Actor: "person", Kind: "trace-retake", At: r.at,
-			Writes: []store.Write{store.SetCardState{Card: "w0", State: st}}}
-		if rec, err := r.base.Apply(r.ctx, op); err != nil || !rec.Accepted {
-			r.t.Fatalf("retake w0: %+v %v", rec, err)
-		}
-	}
 	r.reports++
-	r.outside(fmt.Sprintf("report-%d", r.reports), store.SetCardPriority{Card: "p3", Priority: "blocker"})
+	r.outside(fmt.Sprintf("report-%d", r.reports),
+		store.SetCardState{Card: "w0", State: "fail"},
+		store.PutCard{ID: "w1", Kind: "work", Of: "p0", Stream: "s", Tier: "flash", Holder: "r1", Attempt: 2},
+		store.SetCardState{Card: "w1", State: "working"},
+		store.SetCardPriority{Card: "p3", Priority: "blocker"})
 	r.add("Report", ", c |-> 3"+r.global())
 }
 
@@ -557,8 +561,8 @@ func (r *runTrace) tick() {
 	r.add("EndTick", fmt.Sprintf(`, p |-> %q, procCarry |-> %s, procBatch |-> <<>>, procPutback |-> <<>>, procPhase |-> "ready"`, r.proc, tlaSeq(r.carry)))
 	for _, e := range reqs {
 		j, ok := r.opJob[e.After]
-		if e.Kind != "stop" || !ok {
-			r.t.Fatalf("an edge request the model has no job for: %+v", e)
+		if e.Kind != "stop" || !ok || e.Consumer != "w1" {
+			r.t.Fatalf("an edge request the model has no job for (the victim is w1): %+v", e)
 		}
 		r.edgeDone = append(r.edgeDone, j)
 		r.add("DeliverEdge", fmt.Sprintf(", j |-> %d, edgeDone |-> %s", j, tlaSet(r.edgeDone)))
