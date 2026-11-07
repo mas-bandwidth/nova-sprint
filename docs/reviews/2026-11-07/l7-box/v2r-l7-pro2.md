@@ -7,7 +7,7 @@ Scope reviewed: `docs/SETUP.md`, `docs/PLAYBOOK-COORDINATOR.md`, `docs/PLAYBOOK-
 `setup_installer.go`, `up_wrapper.go`, `verbs/check*.go`, `verbs/tools_version.go`,
 `verbs/setup_runtime*.go`, `verbs/secret.go`, `verbs/hook.go`, `verbs/identity.go`,
 with their tests and the `tla/Setup*.tla` models. `go build ./...` and `go vet ./...`
-are clean; `go test ./cmd/nova-sprint/ ./verbs/` passes (0.035s/0.079s). The functional
+are clean; `go test ./cmd/nova-sprint/ ./verbs/` passes (0.105s/0.174s). The functional
 tests skip without real Postgres/Redis/sshd (`initdb required`, `requires isolated Redis...`);
 `TestFunctionalPublicDashboardRealHTTPAndShutdown` is the one test that binds a real
 loopback socket (it passed). The unit tests are hermetic.
