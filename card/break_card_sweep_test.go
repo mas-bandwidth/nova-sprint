@@ -147,7 +147,7 @@ func sweepPairs(t *testing.T, name string, setup func(*testing.T) *bk) {
 	sort.Strings(keys)
 	for _, k := range keys {
 		h := hits[k]
-		t.Logf("[%s] x%d %s\n      e.g. %s", name, h.n, k, h.example)
+		sweepReport(t, k, "[%s] x%d %s\n      e.g. %s", name, h.n, k, h.example)
 	}
 	t.Logf("[%s] %d steps, %d pairs", name, len(steps), len(steps)*(len(steps)-1))
 }
@@ -226,15 +226,15 @@ func TestBreakSweep(t *testing.T) {
 	sort.Strings(names)
 	for _, n := range names {
 		n := n
-		t.Run(n, func(t *testing.T) { sweepPairs(t, n, worlds[n]) })
+		t.Run(n, func(t *testing.T) { t.Parallel(); sweepPairs(t, n, worlds[n]) })
 	}
 }
 
 // sweepTriples samples ordered triples of single moves.
-func sweepTriples(t *testing.T, name string, setup func(*testing.T) *bk, n int) {
+func sweepTriples(t *testing.T, name string, setup func(*testing.T) *bk, n int, seed int64) {
 	t.Helper()
 	steps := sweepSteps(setup(t))
-	rng := rand.New(rand.NewSource(7))
+	rng := rand.New(rand.NewSource(seed))
 	hits := map[string]string{}
 	count := map[string]int{}
 	for k := 0; k < n; k++ {
@@ -273,8 +273,20 @@ func sweepTriples(t *testing.T, name string, setup func(*testing.T) *bk, n int) 
 		}
 	}
 	for k, v := range hits {
-		t.Logf("[%s] x%d %s\n      e.g. %s", name, count[k], k, v)
+		sweepReport(t, k, "[%s] x%d %s\n      e.g. %s", name, count[k], k, v)
 	}
+}
+
+// sweepReport logs an over-refusal (a merge may refuse what the moves one by
+// one accept: one op writes a field once) and fails on the two unsound
+// outcomes: a merge accepted that the sequence refuses, or a different board.
+func sweepReport(t *testing.T, key, format string, args ...any) {
+	t.Helper()
+	if strings.HasPrefix(key, "MERGE-ACCEPTED-SEQ-REFUSED") || strings.HasPrefix(key, "DIFFER") {
+		t.Errorf(format, args...)
+		return
+	}
+	t.Logf(format, args...)
 }
 
 func TestBreakSweepTriples(t *testing.T) {
@@ -302,8 +314,12 @@ func TestBreakSweepTriples(t *testing.T) {
 			return b
 		},
 	}
+	// 12000 samples per setup, in 8 shards of 1500 run in parallel, each
+	// shard its own seed (7..14): the same coverage in an eighth of the time.
 	for n, f := range setups {
-		n, f := n, f
-		t.Run(n, func(t *testing.T) { sweepTriples(t, n, f, 12000) })
+		for shard := int64(0); shard < 8; shard++ {
+			n, f, shard := n, f, shard
+			t.Run(fmt.Sprintf("%s/%d", n, shard), func(t *testing.T) { t.Parallel(); sweepTriples(t, n, f, 1500, 7+shard) })
+		}
 	}
 }
