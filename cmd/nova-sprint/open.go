@@ -133,6 +133,12 @@ func (s *lazyStore) Snapshot(ctx context.Context) (store.Snapshot, error) {
 	return with(s, ctx, func(p *store.PG) (store.Snapshot, error) { return p.Snapshot(ctx) })
 }
 
+// Landings forwards the board's landing times to the store (dash and run look
+// for it by interface): without this the run's board had no ETA (2026-11-07).
+func (s *lazyStore) Landings(ctx context.Context, epoch int, upToSeq int64) ([]time.Time, error) {
+	return with(s, ctx, func(p *store.PG) ([]time.Time, error) { return p.Landings(ctx, epoch, upToSeq) })
+}
+
 func (s *lazyStore) Apply(ctx context.Context, o store.Op) (store.Receipt, error) {
 	return with(s, ctx, func(p *store.PG) (store.Receipt, error) { return p.Apply(ctx, o) })
 }
