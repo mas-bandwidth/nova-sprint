@@ -191,6 +191,7 @@ The Go API, package `store`:
 ```go
 type Store interface {
     Snapshot(ctx) (Snapshot, error)                 // the whole current epoch, with Seq and Epoch
+    CardsHeldBy(ctx, row string) (Held, error)      // Snapshot's header, the row, its ready and working cards with their producers
     Apply(ctx, Op) (Receipt, error)                 // one transaction
     Replay(ctx, opID string) (Receipt, bool, error) // the receipt an op already got
     Events(ctx, afterSeq int64, max int) ([]Event, error) // afterSeq exclusive, seq order, max capped at 1000
@@ -380,7 +381,9 @@ backup (LESSONS 1.16). The gate is `nova-sprint up` on the first real store.
    by epoch, and an old epoch stays readable in the log.
 6. Snapshot is one consistent read (one `REPEATABLE READ` transaction) of the
    current epoch, and carries the seq it was read at and the epoch, so a plan
-   made from it can fence on either.
+   made from it can fence on either. `CardsHeldBy` is the same read scoped to
+   one row: it equals the whole snapshot filtered to that row (`heldOf`), in
+   both stores, and reads no other row's cards.
 7. A condition is checked against the rows as they are when the writes land:
    writers are serialized, so there is no stale check and no lost update.
 

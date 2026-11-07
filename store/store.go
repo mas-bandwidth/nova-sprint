@@ -20,6 +20,11 @@ type Store interface {
 	// Snapshot is one consistent read of the current epoch, with the seq it
 	// was read at.
 	Snapshot(ctx context.Context) (Snapshot, error)
+	// CardsHeldBy is one consistent read of what one row needs: Snapshot's
+	// header, the row, and the cards it holds in HeldStates with each one's
+	// producer. It reads no other row's cards, so its size is the row's, not
+	// the sprint's.
+	CardsHeldBy(ctx context.Context, row string) (Held, error)
 	// Apply runs one operation as one transaction. It ends one of four ways:
 	// an accepted receipt; a refused receipt (nothing changed, the refusal is
 	// logged); ErrInvalid (the op never entered the store); ErrUnknown (the
@@ -340,6 +345,36 @@ type Snapshot struct {
 	Stopped    bool     // the sprint is stopped (Stop)
 	StopReason string   // why it was stopped or started again
 	Identity   Identity // the git identity the sprint commits as; zero when not set
+}
+
+// HeldStates are the states in which a row holds a card for CardsHeldBy.
+var HeldStates = []string{"ready", "working"}
+
+// Held is CardsHeldBy's read: Snapshot's header (Seq fences a plan made from
+// it, as a snapshot's does), the row (zero when the epoch has none), and by
+// id the cards the row holds in HeldStates with each one's producer.
+type Held struct {
+	Seq        int64
+	Epoch      int
+	Policy     int
+	Stopped    bool
+	StopReason string
+	Identity   Identity
+	Row        Row
+	Cards      map[string]Card
+}
+
+// heldOf is CardsHeldBy as a filter of the whole snapshot: its definition,
+// and the Fake's read. A consumer always has a holder and a producer of
+// its epoch; a producer or sentinel has neither.
+func heldOf(s Snapshot, row string) Held {
+	h := Held{Seq: s.Seq, Epoch: s.Epoch, Policy: s.Policy, Stopped: s.Stopped, StopReason: s.StopReason, Identity: s.Identity, Row: s.Rows[row], Cards: map[string]Card{}}
+	for id, c := range s.Cards {
+		if c.Holder != "" && c.Holder == row && slices.Contains(HeldStates, c.State) {
+			h.Cards[id], h.Cards[c.Of] = c, s.Cards[c.Of]
+		}
+	}
+	return h
 }
 
 func emptySnapshot(epoch int) Snapshot {

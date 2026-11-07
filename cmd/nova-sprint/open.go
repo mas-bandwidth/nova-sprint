@@ -145,6 +145,10 @@ func (s *lazyStore) Landings(ctx context.Context, epoch int, upToSeq int64) ([]t
 	return with(s, ctx, func(p *store.PG) ([]time.Time, error) { return p.Landings(ctx, epoch, upToSeq) })
 }
 
+func (s *lazyStore) CardsHeldBy(ctx context.Context, row string) (store.Held, error) {
+	return with(s, ctx, func(p *store.PG) (store.Held, error) { return p.CardsHeldBy(ctx, row) })
+}
+
 func (s *lazyStore) Apply(ctx context.Context, o store.Op) (store.Receipt, error) {
 	return with(s, ctx, func(p *store.PG) (store.Receipt, error) { return p.Apply(ctx, o) })
 }

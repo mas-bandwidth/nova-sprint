@@ -111,8 +111,7 @@ func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) {
 
 func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	var s Snapshot
-	err := tx.QueryRow(ctx, `SELECT n, (SELECT coalesce(max(version), 0) FROM sprint.policy WHERE active),
-		(SELECT coalesce(max(seq), 0) FROM sprint.events), stopped, stop_reason, commit_name, commit_email FROM sprint.epoch WHERE id = 1`).Scan(&s.Epoch, &s.Policy, &s.Seq, &s.Stopped, &s.StopReason, &s.Identity.Name, &s.Identity.Email)
+	err := tx.QueryRow(ctx, headerSQL).Scan(&s.Epoch, &s.Policy, &s.Seq, &s.Stopped, &s.StopReason, &s.Identity.Name, &s.Identity.Email)
 	if err != nil {
 		return s, err
 	}
@@ -134,6 +133,35 @@ func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 		s.Cursors[name] = c.seq
 	}
 	return s, err
+}
+
+// headerSQL is the header Snapshot and CardsHeldBy share: epoch, active
+// policy, seq, stop and identity.
+const headerSQL = `SELECT n, (SELECT coalesce(max(version), 0) FROM sprint.policy WHERE active),
+	(SELECT coalesce(max(seq), 0) FROM sprint.events), stopped, stop_reason, commit_name, commit_email FROM sprint.epoch WHERE id = 1`
+
+// CardsHeldBy reads one row's share of the epoch in one REPEATABLE READ
+// transaction: the header, the row, and the cards it holds in HeldStates
+// with their producers (heldOf, with no other card read).
+func (p *PG) CardsHeldBy(ctx context.Context, row string) (Held, error) {
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return Held{}, fmt.Errorf("store: cards held by %s: %w", row, err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }() // ignored: read only, nothing to keep
+	var h Held
+	err = tx.QueryRow(ctx, headerSQL).Scan(&h.Epoch, &h.Policy, &h.Seq, &h.Stopped, &h.StopReason, &h.Identity.Name, &h.Identity.Email)
+	if err == nil {
+		h.Row, _, err = one(tx.QueryRow(ctx, "SELECT "+rowCols+" FROM sprint.rows WHERE epoch = $1 AND name = $2", h.Epoch, row), scanRow)
+	}
+	if err == nil {
+		h.Cards, err = all(ctx, tx, scanCard, func(v Card) string { return v.ID }, "SELECT "+cardCols+` FROM sprint.cards WHERE epoch = $1
+			AND (holder = $2 AND state = ANY($3) OR id IN (SELECT "of" FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state = ANY($3)))`, h.Epoch, row, HeldStates)
+	}
+	if err != nil {
+		return Held{}, fmt.Errorf("store: cards held by %s: %w", row, err)
+	}
+	return h, nil
 }
 
 type cursorRow struct {

@@ -181,6 +181,12 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	return s, nil
 }
 
+// CardsHeldBy is heldOf over a snapshot of the fake: O(n), as every fake read.
+func (f *Fake) CardsHeldBy(ctx context.Context, row string) (Held, error) {
+	s, err := f.Snapshot(ctx)
+	return heldOf(s, row), err
+}
+
 func pick[V any](dst map[string]V, src map[key]V, epoch int) {
 	for k, v := range src {
 		if k.epoch == epoch {
