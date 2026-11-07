@@ -38,7 +38,7 @@ func TestCostSummaryAPIOnlyWithSeatTokens(t *testing.T) {
 		Rows: map[string]store.Row{"amd-1": {Name: "amd-1", State: "up"}, "stella": {Name: "stella", State: "up"}, "alex": {Name: "alex", State: "up"}, "r": {Name: "r", State: "up"}, "w": {Name: "w", State: "up"}}}
 	env := mapSnapshot(s, testRoster, time.Time{})
 	c := env.Cost
-	want := costSummary{Total: "$0.01", PerCard: "$0.01", ByTier: map[string]string{"flash": "$0.01", "pro": "$0.00"}, Priced: 2, Unpriced: 3, NoTokens: 1, NoPrice: 2,
+	want := costSummary{Total: "$0.01", PerCard: "$0.0050", ByTier: map[string]string{"flash": "$0.01", "pro": "$0.00"}, Priced: 2, Unpriced: 3, NoTokens: 1, NoPrice: 2,
 		Missing: []string{"inception/mercury-3", "openai/sol"}, Landed: 2, PricedCards: 2, APITokens: "56.6K", SeatRuns: 2, SeatTokens: "1.2M"}
 	b, _ := json.Marshal(c)
 	w, _ := json.Marshal(want)
