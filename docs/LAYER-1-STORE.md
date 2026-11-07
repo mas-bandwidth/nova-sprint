@@ -710,6 +710,20 @@ model and harness wherever they are named).
   non-empty one with the same digest skips the import and only hooks; a
   different digest, or none, is refused ("schema holds a restore of
   <digest> at <time>: clear it first").
+- A stream's landing settings (round 22): they are stream state, not policy
+  data (layer 6 had been reading them by scanning the log, O(history) per
+  take). `Stream` gains `Mode` (one of `StreamModes`: `auto`, `group`,
+  `hand`; `auto` by default, the column's default) and `Forge` (the forge it
+  lands through, "" for none), columns of `sprint.streams` with a CHECK on
+  mode. `PutStream{Name, Repo, Base, Pos, Mode, Forge}` takes both ("" mode
+  is auto). `SetStreamMode{Stream, Mode}` and `SetStreamForge{Stream,
+  Forge}` set one each, refused when unchanged (`stream s1's mode is already
+  "hand"`); a mode outside the set is `ErrInvalid`. A stream image logged
+  before round 22 reads its mode as auto, so the log of a migrated store
+  still rebuilds its tables. Store.tla has no streams (held, repo, base and
+  pos were never modelled), so the closed set is the checker's and the
+  schema's; the trace projection drops PutStream and does not project an op
+  with SetStreamMode or SetStreamForge, as for SetStreamHeld.
 - Cursor zero ruled the code's fault: `SetCursor` to a cursor's current
   value is refused as unchanged, an absent cursor counting as 0, so
   `SetCursor{c, 0}` on a cursor never set is refused ("cursor c is already

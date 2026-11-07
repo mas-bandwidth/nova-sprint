@@ -70,12 +70,27 @@ func (w *work) setStreamHeld(v SetStreamHeld) (string, error) {
 	return "", w.putStream(s, true, next)
 }
 
+// setStream sets one landing setting of a stream (field picks it), refused
+// when the stream has that value already.
+func (w *work) setStream(name, what, value string, field func(*Stream) *string) (string, error) {
+	s, r, err := w.mustStream(name)
+	if r != "" || err != nil {
+		return r, err
+	}
+	if *field(&s) == value {
+		return fmt.Sprintf("stream %s's %s is already %q", name, what, value), nil
+	}
+	next := s
+	*field(&next) = value
+	return "", w.putStream(s, true, next)
+}
+
 func (w *work) writePutStream(v PutStream) (string, error) {
 	old, ok, err := w.tx.stream(v.Name)
 	if err != nil {
 		return "", err
 	}
-	next := Stream{Name: v.Name, Repo: v.Repo, Base: v.Base, Pos: v.Pos, Held: ok && old.Held}
+	next := Stream{Name: v.Name, Repo: v.Repo, Base: v.Base, Pos: v.Pos, Held: ok && old.Held, Mode: cmp.Or(v.Mode, StreamAuto), Forge: v.Forge}
 	return "", w.putStream(old, ok, next)
 }
 

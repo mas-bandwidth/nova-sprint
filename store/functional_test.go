@@ -752,10 +752,14 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.cards SET holder = 'w1' WHERE id = 'c1'":  "cards_fixed_check",
 		"UPDATE sprint.cards SET tier = 'heavy' WHERE id = 'c1'": "cards_fixed_check",
 		// rows, judgements, cursors and the events' policy
-		"UPDATE sprint.rows SET role = 'boss'":  "rows_role_check",
-		"UPDATE sprint.rows SET tiers = NULL":   `"tiers"`,
-		"UPDATE sprint.rows SET model = NULL":   `"model"`,
-		"UPDATE sprint.rows SET harness = NULL": `"harness"`,
+		"UPDATE sprint.rows SET role = 'boss'": "rows_role_check",
+		// round 22: a stream's landing settings, the restore's digest
+		"UPDATE sprint.streams SET mode = 'fast'":        "streams_mode_check",
+		"UPDATE sprint.streams SET forge = NULL":         `"forge"`,
+		"UPDATE sprint.meta SET restored_digest = 'abc'": "meta_restored_digest_check",
+		"UPDATE sprint.rows SET tiers = NULL":            `"tiers"`,
+		"UPDATE sprint.rows SET model = NULL":            `"model"`,
+		"UPDATE sprint.rows SET harness = NULL":          `"harness"`,
 		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'pending', now(), now(), 1)":                 "judgements_state_check",
 		"INSERT INTO sprint.judgements (id, kind, state, opened_at, epoch) VALUES ('j1', 'red', 'answered', now(), 1)":                                  "judgements_closed_check",
 		"INSERT INTO sprint.judgements (id, kind, state, opened_at, closed_at, epoch) VALUES ('j1', 'red', 'open', now(), now(), 1)":                    "judgements_closed_check",

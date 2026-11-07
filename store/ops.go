@@ -88,11 +88,14 @@ func (JudgementOpen) isExpect() {}
 // value is ErrInvalid. An op that writes a card raises its gen by one, once.
 type Write interface{ isWrite() }
 
-// PutStream inserts a stream or overwrites its repo, base and pos; held is
-// kept on overwrite and false on insert. Pos is the order streams land in.
+// PutStream inserts a stream or overwrites its repo, base, pos, mode and
+// forge; held is kept on overwrite and false on insert. Pos is the order
+// streams land in. Mode is one of StreamModes, "" for auto; Forge is the
+// forge it lands through, "" for none.
 type PutStream struct {
 	Name, Repo, Base string
 	Pos              int
+	Mode, Forge      string
 }
 
 // SetStreamHeld sets a stream's held flag.
@@ -100,6 +103,14 @@ type SetStreamHeld struct {
 	Stream string
 	Held   bool
 }
+
+// SetStreamMode sets how a stream's producers land (one of StreamModes);
+// refused when it is the stream's mode already.
+type SetStreamMode struct{ Stream, Mode string }
+
+// SetStreamForge sets the forge a stream lands through ("" for none);
+// refused when it is the stream's forge already.
+type SetStreamForge struct{ Stream, Forge string }
 
 // PutCard adds a card of a kind (producer, sentinel, work or read): refused
 // when it exists. It starts waiting, gen 0, attempt 0. Its stream must exist;
@@ -330,6 +341,8 @@ type SetActivePolicy struct{ Version int }
 
 func (PutStream) isWrite()        {}
 func (SetStreamHeld) isWrite()    {}
+func (SetStreamMode) isWrite()    {}
+func (SetStreamForge) isWrite()   {}
 func (PutCard) isWrite()          {}
 func (SetCardState) isWrite()     {}
 func (SetCardResult) isWrite()    {}
@@ -398,9 +411,19 @@ type spec struct {
 func specOf(w Write) spec {
 	switch v := w.(type) {
 	case PutStream:
-		return put("stream", v.Name, func(c *checker) { c.text(v.Repo, v.Base).num("pos", v.Pos) }, "repo", "base", "pos").then(func(w *work) (string, error) { return w.writePutStream(v) })
+		return put("stream", v.Name, func(c *checker) {
+			c.text(v.Repo, v.Base, v.Forge).num("pos", v.Pos).oneOf("stream mode", cmp.Or(v.Mode, StreamAuto), StreamModes)
+		}, "repo", "base", "pos", "mode", "forge").then(func(w *work) (string, error) { return w.writePutStream(v) })
 	case SetStreamHeld:
 		return put("stream", v.Stream, nil, "held").then(func(w *work) (string, error) { return w.setStreamHeld(v) })
+	case SetStreamMode:
+		return put("stream", v.Stream, func(c *checker) { c.oneOf("stream mode", v.Mode, StreamModes) }, "mode").then(func(w *work) (string, error) {
+			return w.setStream(v.Stream, "mode", v.Mode, func(s *Stream) *string { return &s.Mode })
+		})
+	case SetStreamForge:
+		return put("stream", v.Stream, func(c *checker) { c.text(v.Forge) }, "forge").then(func(w *work) (string, error) {
+			return w.setStream(v.Stream, "forge", v.Forge, func(s *Stream) *string { return &s.Forge })
+		})
 	case PutCard:
 		return put("card", v.ID, func(c *checker) {
 			c.name(v.Of, v.Holder).key("stream", v.Stream).keys("card", v.Needs...).keys("card", v.After...).text(v.Brief, v.Prose, v.Finding).text(v.Paths...).text(v.DoneWhen...).num("attempt", v.Attempt).num("review", v.Review).num("score", v.Score).
