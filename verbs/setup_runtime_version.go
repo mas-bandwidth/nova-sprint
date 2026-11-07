@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // VersionAdoption checks that the nova-sprint on PATH is the release up was
@@ -54,11 +52,11 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 	if err != nil {
 		return false, cause("installed version unavailable", err)
 	}
-	fields := strings.Fields(string(out))
-	if len(fields) != 1 || !validInstalledBuild(fields[0]) {
-		return false, fmt.Errorf("installed version unknown: %s", edge.ParseRefused("not one build version word", 0, out))
+	installed, err := ParseVersionOutput(out)
+	if err != nil {
+		return false, cause("installed version unknown", err)
 	}
-	if fields[0] != version {
+	if installed != version {
 		return false, nil
 	}
 	if err = v.secretCommand(ctx, "check"); err != nil {
@@ -112,7 +110,6 @@ func (v VersionAdoption) secretCommand(ctx context.Context, args ...string) erro
 	return runTool(process, nil)
 }
 
-func validInstalledBuild(v string) bool { return validBuildVersion(v) }
 func validRelease(v string) bool {
 	if !strings.HasPrefix(v, "v") {
 		return false

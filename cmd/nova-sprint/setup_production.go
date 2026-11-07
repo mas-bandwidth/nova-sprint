@@ -95,6 +95,7 @@ type productionSetup struct {
 	command   verbs.CommandOutput
 	installer publicInstaller
 	resolve   func(context.Context, string) ([]netip.Addr, error) // nil: the system resolver (MagicDNS)
+	home      string                                              // "": the home directory (where this machine's services find nova-sprint)
 }
 
 func (p productionSetup) forInput(in verbs.SetupInput) verbs.RuntimeSetup {
@@ -139,6 +140,15 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 		if err != nil {
 			return verbs.SetupCheck{}, err
 		}
+		if step == 4 {
+			ready, err := p.ensureServiceVersion(ctx, r.RunService.Machine, false)
+			if err != nil {
+				return verbs.SetupCheck{}, err
+			}
+			if !ready {
+				return verbs.SetupCheck{Action: true}, nil
+			}
+		}
 		if step == 5 {
 			value, found, err := r.Prerequisites.Env.Choices.Get(ctx, "dashboard")
 			if err != nil {
@@ -175,6 +185,11 @@ func (p productionSetup) Act(ctx context.Context, step int, in verbs.SetupInput)
 		r, err := p.configuredRuntime(ctx, in, step >= 5)
 		if err != nil {
 			return err
+		}
+		if step == 4 {
+			if _, err = p.ensureServiceVersion(ctx, r.RunService.Machine, true); err != nil {
+				return err
+			}
 		}
 		if step == 5 {
 			if _, err = p.ensurePublicVersion(ctx, r, in, true); err != nil {
@@ -769,8 +784,16 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	if !ok || target.Service == nil {
 		return false, serviceConfigError("public dashboard configuration unavailable")
 	}
-	host := target.Service.Machine
-	if err = p.checkPublicVersion(ctx, host); err == nil {
+	return p.ensureServiceVersion(ctx, target.Service.Machine, install)
+}
+
+// ensureServiceVersion is true when the nova-sprint a service on machine
+// will run is this binary's version. A probe that disagrees is (false,
+// nil) unless install, which installs this version through nova-fleet and
+// probes again; the probe's own refusal is returned when that fails too.
+func (p productionSetup) ensureServiceVersion(ctx context.Context, machine string, install bool) (bool, error) {
+	err := p.checkServiceVersion(ctx, machine)
+	if err == nil {
 		return true, nil
 	}
 	if ctx.Err() != nil {
@@ -779,52 +802,98 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 	if !install {
 		return false, nil
 	}
-	if p.installer == nil {
+	if p.installer == nil || !publicRelease.MatchString(p.cfg.BinaryVersion) {
 		return false, err
 	}
-	if installErr := p.installer.Install(ctx, host, p.cfg.BinaryVersion); installErr != nil {
-		return false, publicVersionRefusal(p.cfg.BinaryVersion, host, "install failed: "+installErr.Error())
+	if installErr := p.installer.Install(ctx, machine, p.cfg.BinaryVersion); installErr != nil {
+		return false, serviceVersionRefusal(p.cfg.BinaryVersion, machine, "nova-fleet install on "+machine+" failed: "+installErr.Error())
 	}
-	if err = p.checkPublicVersion(ctx, host); err != nil {
+	if err = p.checkServiceVersion(ctx, machine); err != nil {
 		return false, err
 	}
 	return true, nil
 }
-func (p productionSetup) checkPublicVersion(ctx context.Context, host string) error {
+
+// serviceBinDir is where a service's bare nova-sprint is found first:
+// nova-fleet's nova_bin_dir, the head of every service unit's PATH and
+// where nova-fleet install puts a release.
+const serviceBinDir = ".local/bin"
+
+// checkServiceVersion is the one check that the nova-sprint a service on
+// machine will run (<home>/.local/bin/nova-sprint) is this binary's
+// version: run here when machine is this one, else over ssh to the
+// inventory's address for it; its output read by the version verb's own
+// parser (verbs.ParseVersionOutput).
+func (p productionSetup) checkServiceVersion(ctx context.Context, machine string) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	data, err := p.smallCommand(ctx, "nova-config", "inventory", "--host", host)
+	want := p.cfg.BinaryVersion
+	if want == "" {
+		return serviceVersionRefusal(want, machine, "this build has no version to compare")
+	}
+	var data []byte
+	var err error
+	destination := machine
+	if run.SameMachine(machine, p.cfg.Host) {
+		home := p.home
+		if home == "" {
+			home, err = os.UserHomeDir()
+			if err != nil {
+				return serviceVersionRefusal(want, machine, "home directory: "+err.Error())
+			}
+		}
+		binary := filepath.Join(home, serviceBinDir, "nova-sprint")
+		if data, err = p.smallCommand(ctx, binary, "version"); err != nil {
+			return serviceVersionRefusal(want, machine, binary+" version: "+err.Error())
+		}
+	} else {
+		if destination, err = p.sshDestination(ctx, machine); err != nil {
+			return serviceVersionRefusal(want, machine, err.Error())
+		}
+		data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "~/"+serviceBinDir+"/nova-sprint", "version")
+		if err != nil {
+			return serviceVersionRefusal(want, machine, "ssh "+destination+": "+err.Error())
+		}
+	}
+	seen, err := verbs.ParseVersionOutput(data)
+	if err != nil {
+		seen = fmt.Sprintf("%q (not a v2 nova-sprint)", strings.TrimSpace(edge.FirstBytes(data)))
+	}
+	if seen != want {
+		return serviceVersionRefusal(want, machine, destination+" reports "+seen+", this binary is "+want)
+	}
+	return nil
+}
+
+// sshDestination is the inventory's [user@]address for machine.
+func (p productionSetup) sshDestination(ctx context.Context, machine string) (string, error) {
+	data, err := p.smallCommand(ctx, "nova-config", "inventory", "--host", machine)
+	if err != nil {
+		return "", fmt.Errorf("nova-config inventory --host %s: %s", machine, err.Error())
+	}
 	var inventory struct {
 		Host string `json:"ansible_host"`
 		User string `json:"ansible_user"`
 	}
-	if err != nil {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+err.Error())
-	}
 	if err = json.Unmarshal(data, &inventory); err != nil {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+edge.ParseFailure(err, data))
+		return "", fmt.Errorf("nova-config inventory --host %s: %s", machine, edge.ParseFailure(err, data))
 	}
 	if !safeSSHName(inventory.Host) || (inventory.User != "" && (!safeSSHName(inventory.User) || strings.Contains(inventory.User, ":"))) {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("inventory ansible_host %q or ansible_user %q is not a safe ssh name", inventory.Host, inventory.User))
+		return "", fmt.Errorf("nova-config inventory --host %s: ansible_host %q or ansible_user %q is not a safe ssh name", machine, inventory.Host, inventory.User)
 	}
-	destination := inventory.Host
 	if inventory.User != "" {
-		destination = inventory.User + "@" + destination
+		return inventory.User + "@" + inventory.Host, nil
 	}
-	data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "nova-sprint", "version")
-	if err != nil {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error())
-	}
-	if p.cfg.BinaryVersion == "" {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, "this build has no version to compare")
-	}
-	if string(data) != p.cfg.BinaryVersion+"\n" {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("it reports version %q, not %s", edge.FirstBytes(data), p.cfg.BinaryVersion))
-	}
-	return nil
+	return inventory.Host, nil
 }
-func publicVersionRefusal(version, host, why string) error {
-	return &verbs.OperationError{Problem: edge.RedactN("public host nova-sprint version could not be verified: "+why, edge.FailureMax), Fix: "install nova-sprint " + version + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
+func serviceVersionRefusal(version, machine, why string) error {
+	return &verbs.OperationError{Problem: edge.RedactN("nova-sprint on "+machine+" is not this version: "+why, edge.FailureMax), Fix: "nova-fleet install --repo <org/repo> --tag " + orWord(version, "<v>") + " " + machine + ", then nova-sprint up again", Exit: 1}
+}
+func orWord(s, or string) string {
+	if s == "" {
+		return or
+	}
+	return s
 }
 
 func safeSSHName(value string) bool {

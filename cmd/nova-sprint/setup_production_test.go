@@ -334,27 +334,62 @@ func TestRemoteRunRefusedBeforeFleetCommands(t *testing.T) {
 	}
 }
 
-func TestPublicVersionUsesFleetInventoryAndPinnedSSH(t *testing.T) {
-	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.0.0"}}
-	calls := 0
+// One check reads the binary a service will run, on the run host here and
+// on any other machine over ssh, through the version verb's own parser:
+// the verb's real output passes; another version or a pre-v2 bare word is
+// refused naming what it saw, with the nova-fleet install fix.
+func TestServiceVersionUsesFleetInventoryAndPinnedSSH(t *testing.T) {
+	p := productionSetup{cfg: productionSetupConfig{BinaryVersion: "v2.0.0", Host: "studio"}, home: "/home/u"}
+	reported := versionVerbOutput(t, "v2.0.0")
+	var calls []string
 	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
-		calls++
-		if name == "nova-config" && strings.Join(args, " ") == "inventory --host public" {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		switch {
+		case name == "nova-config" && strings.Join(args, " ") == "inventory --host public":
 			return []byte(`{"ansible_host":"100.100.1.2","ansible_user":"fleet"}`), nil
-		}
-		if name == "ssh" && strings.Join(args, " ") == "-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -- fleet@100.100.1.2 nova-sprint version" {
-			return []byte("v2.0.0\n"), nil
+		case name == "ssh" && strings.Join(args, " ") == "-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -- fleet@100.100.1.2 ~/.local/bin/nova-sprint version":
+			return reported, nil
+		case name == "/home/u/.local/bin/nova-sprint" && strings.Join(args, " ") == "version":
+			return reported, nil
 		}
 		t.Fatalf("unexpected command: %s %v", name, args)
 		return nil, nil
 	}
-	if err := p.checkPublicVersion(context.Background(), "public"); err != nil || calls != 2 {
+	if err := p.checkServiceVersion(context.Background(), "public"); err != nil || len(calls) != 2 {
+		t.Fatal(err, calls)
+	}
+	if err := p.checkServiceVersion(context.Background(), "studio"); err != nil || len(calls) != 3 {
 		t.Fatal(err, calls)
 	}
 	p.cfg.BinaryVersion = "v2.0.1"
-	if err := p.checkPublicVersion(context.Background(), "public"); err == nil {
-		t.Fatal("wrong remote version accepted")
+	var op *verbs.OperationError
+	err := p.checkServiceVersion(context.Background(), "public")
+	if !errors.As(err, &op) || !strings.Contains(op.Problem, "fleet@100.100.1.2 reports v2.0.0, this binary is v2.0.1") || op.Fix != "nova-fleet install --repo <org/repo> --tag v2.0.1 public, then nova-sprint up again" {
+		t.Fatal(err)
 	}
+	reported = []byte("v1.6.29\n")
+	if err = p.checkServiceVersion(context.Background(), "studio"); !errors.As(err, &op) || !strings.Contains(op.Problem, `reports "v1.6.29" (not a v2 nova-sprint), this binary is v2.0.1`) {
+		t.Fatal(err)
+	}
+	p.command = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name == "nova-config" {
+			return []byte(`{"ansible_host":"100.100.1.2"}`), nil
+		}
+		return nil, errors.New("connection timed out")
+	}
+	if err = p.checkServiceVersion(context.Background(), "public"); !errors.As(err, &op) || !strings.Contains(op.Problem, "ssh 100.100.1.2: connection timed out") {
+		t.Fatal(err)
+	}
+}
+
+// versionVerbOutput is what `nova-sprint version` prints, from the verb.
+func versionVerbOutput(t *testing.T, version string) []byte {
+	t.Helper()
+	r := (&verbs.Engine{Version: version}).Execute(context.Background(), []string{"version"})
+	if r.Exit != 0 {
+		t.Fatal(r.Output)
+	}
+	return []byte(r.Output)
 }
 
 type fakePublicInstaller struct{ install func() }
@@ -371,7 +406,7 @@ func TestPublicVersionInstallRequiresRecheck(t *testing.T) {
 			return []byte(`{"ansible_host":"100.100.1.2"}`), nil
 		}
 		probes++
-		return []byte(version + "\n"), nil
+		return versionVerbOutput(t, version), nil
 	}
 	p.installer = fakePublicInstaller{install: func() { installs++; version = "v2.0.0" }}
 	in := verbs.SetupInput{Dash: "public=public"}

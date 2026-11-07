@@ -125,7 +125,7 @@ func releaseVersion(s string) ([3]uint64, error) {
 }
 
 func runVersion(e *Engine, _ context.Context, _ *input, _ store.Snapshot) (string, error) {
-	return done("nova-sprint help", "nova-sprint "+orWord(e.Version, "(unknown build)")), nil
+	return done("nova-sprint help", VersionLine(e.Version)), nil
 }
 
 // runRun, runWorker and runDash are the long-running verbs, the binary's.
