@@ -168,17 +168,34 @@ func exitOf(err error) int {
 	return -1
 }
 
-// boardShowsLanded reads /api/sprint until it counts the landing.
+// boardShowsLanded reads /api/sprint until it counts the landing: the
+// board counts producers per stream (no card ids), so landed=1 of all=1
+// and stream s's merge cell merged=1 are e2e1.
 func (x *e2e) boardShowsLanded() {
 	var raw string
+	var merged any
+	defer func() {
+		if x.t.Failed() {
+			x.tr.record("GET http://<board>/api/sprint (the last body)", 0, raw)
+		}
+	}()
 	eventually(x.t, 30*time.Second, "the board showing e2e1 landed", func() bool {
 		raw = x.boardJSON()
 		landed, ok := boardField(raw, "landed")
-		return ok && fmtAny(landed) == "1" && strings.Contains(raw, "e2e1")
+		all, _ := boardField(raw, "all")
+		tables, _ := boardField(raw, "tables")
+		if m, ok := tables.(map[string]any); ok {
+			if mg, ok := m["merge"].(map[string]any); ok {
+				if s, ok := mg["s"].(map[string]any); ok {
+					merged = s["merged"]
+				}
+			}
+		}
+		return ok && fmtAny(landed) == "1" && fmtAny(all) == "1" && fmtAny(merged) == "1"
 	})
 	all, _ := boardField(raw, "all")
 	machine, _ := boardField(raw, "machine")
-	x.tr.record("GET http://<board>/api/sprint", 0, fmt.Sprintf("landed=1 all=%v machine=%q (e2e1 on the board)", all, machine))
+	x.tr.record("GET http://<board>/api/sprint", 0, fmt.Sprintf("landed=1 all=%v merge.s.merged=%v machine=%q", all, merged, machine))
 }
 
 // stopStopsTheTick stops the sprint: no tick op lands after the stop, and
