@@ -439,8 +439,8 @@ model's). `victim` is not a question: the youngest working consumer on the
 row is the engine's fixed rule (LAYER-5's boundary, LESSONS 5.12); the model
 lost its `victim` oracle to match. `escalate_after` is the engine's, not
 policy's, since layer 5's set has no such question (its `rows` default
-carries it). The tick budget (cards touched) defaults to 250 and `pack` to
-50 until the load numbers below replace them.
+carries it). The tick budget (cards touched) is 250 and `pack` 50, both
+measured below.
 
 **The steps.** Planned in this order, each skipping claimed cards: reports
 and takes (so a consumer that has reported is never preempted), preemption,
@@ -508,7 +508,20 @@ store's (the model, fixed: `rg`).
 
 **Measured** (vision, Linux, quiet under `nova-reserve --exclusive`,
 2026-11-07; 5,000 producers in 20 streams over 100 rows of width 4;
-`NOVA_LOAD=1 go test -run TestLoad ./steps/`): @@LOAD@@
+`NOVA_LOAD=1 go test -run TestLoad ./steps/`): the fold of a tick's events 12.9 ms p50
+(13.5 p95); the plan at a budget of 250 cards with 2,500 producers ready
+47 ms p50, 71 p95, 78 max (the bar of 50 ms p50 met; before the planning
+was bounded by the budget it was 1,342 ms: the deal ranked every ready
+producer and the overlap tally was O(waiting x resolved)); the ops per tick
+at pack 1/10/50/250: 244/25/5/2. On PostgreSQL (fsync on) the same tick
+applied as 250 ops of 1 group: 1.83 ms p50 per op, 457 ms the tick; 25 of
+10: 9.8 ms, 246 ms; 5 of 50: 35 ms, 203 ms; 1 of 250: 207 ms, 207 ms. So
+the per-op fixed cost is about 1.1 ms and packing 50 groups per op takes
+98% of the gain of one op while a refusal costs 50 groups, not 250: `pack`
+is 50 (measured) and the budget stays 250 (measured: the full tick at
+5,000 producers is fold 13 + plan 47 + apply 203 = about 265 ms p50, under
+the one-second p99 bar with room; the layer 1 tick alone was 119 ms p50 at
+the same size).
 
 **Tests.** Unit (`go test ./steps/`, no clock, sockets, network or store but
 `store.Fake`): the view (a fold per event kind equals a fresh build), the
