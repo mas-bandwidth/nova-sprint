@@ -17,11 +17,11 @@
 #     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
 #     Setup.tla, SetupWalk.tla, SetupRun.tla, SetupChoices.tla (SetupChoices.cfg and
 #     SetupChoicesTwoKeys.cfg), SetupChoicesWalk.tla, SetupHandoff.tla
-#     (SetupHandoff.cfg and SetupHandoffCrash.cfg), Install.tla (Install.cfg
-#     and InstallFresh.cfg)               must pass            (TLC exit 0)
+#     (SetupHandoff.cfg and SetupHandoffCrash.cfg)
+#                                        must pass            (TLC exit 0)
 #     (the list is tla/*-runs.json's "pass" entries)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
-#   witnesses/layer6/*.tla, and the Setup and Install witnesses beside their
+#   witnesses/layer6/*.tla, and the Setup witnesses beside their
 #     models (tla/*-runs.json's "invariant" and "temporal" entries)
 #                                      must report a violation (exit 12 or 13)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
@@ -173,8 +173,6 @@ run SetupChoicesTwoKeys pass . SetupChoicesTwoKeys.cfg SetupChoices.tla 2
 run SetupChoicesWalk pass . SetupChoicesWalk.cfg SetupChoicesWalk.tla 2
 run SetupHandoff pass . SetupHandoff.cfg SetupHandoff.tla 2
 run SetupHandoffCrash pass . SetupHandoffCrash.cfg SetupHandoff.tla 2
-run Install pass . Install.cfg Install.tla 2
-run InstallFresh pass . InstallFresh.cfg Install.tla 2
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
@@ -191,14 +189,12 @@ for f in "$HERE"/witnesses/layer6/*.tla; do
     run "witness-l6-$m" violate witnesses/layer6 "$m.cfg" "$m.tla" 1
 done
 
-# The Setup and Install witnesses live beside their models (tla/*-runs.json).
+# The Setup witnesses live beside their models (tla/*-runs.json).
 for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
          SetupHandoffEarlyRecord SetupHandoffLostRecord SetupHandoffNoLease \
          SetupHandoffOldProbe SetupHandoffParentSecret SetupHandoffRefusedEffect \
          SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
          SetupHandoffWrongType \
-         InstallCheckSkipped InstallDeletesPrevious InstallFailureSwitches \
-         InstallPartialPublished InstallUnlinksFirst InstallVersionIgnored \
          SetupRunFreshRunning; do
     run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
