@@ -2,99 +2,128 @@ package verbs
 
 import (
 	"context"
-	"strconv"
+	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-func parseRelease(args []string, actor string) (string, int, string, string, int, bool) {
-	if len(args) < 1 {
-		return "", 0, "", "", 0, false
+// runRelease is `release` (Stella's ruling): a row gives back its own held
+// card with a reason; another holder's card, or a whole row's (--row), is
+// the coordinator's. The consumer is withdrawn and its branch kept.
+func runRelease(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	reason := in.str("reason")
+	if reason == "" {
+		return "", refuse("a release needs its reason", "add --reason \"<why>\"")
 	}
-	id, gen, ok := cardRef(args[0])
-	if !ok {
-		return "", 0, "", "", 0, false
+	if row := in.str("row"); row != "" {
+		return e.releaseRow(ctx, in, snap, row, reason)
 	}
-	reason := ""
-	epoch := 0
-	for i := 1; i < len(args); i++ {
-		if i+1 >= len(args) || args[i+1] == "" {
-			return "", 0, "", "", 0, false
-		}
-		switch args[i] {
-		case "--as":
-			actor = args[i+1]
-		case "--reason":
-			reason = args[i+1]
-		case "--epoch":
-			var err error
-			epoch, err = strconv.Atoi(args[i+1])
-			if err != nil || epoch < 1 {
-				return "", 0, "", "", 0, false
-			}
-		default:
-			return "", 0, "", "", 0, false
-		}
-		i++
-	}
-	return id, gen, actor, reason, epoch, actor != "" && reason != ""
-}
-
-func (e *Engine) release(ctx context.Context, args []string) Result {
-	if len(args) > 0 && args[0] == "--row" {
-		return e.releaseRow(ctx, args)
-	}
-	id, gen, actor, reason, epoch, ok := parseRelease(args, e.Actor)
-	if !ok {
-		return refused("release", "invalid arguments", "nova-sprint help release")
-	}
-	st, ok := e.Store.(ApplyStore)
-	if !ok || e.Now == nil || e.Env == nil {
-		return unavailable("release")
-	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return unavailable("release")
-	}
-	if epoch != 0 && epoch != snap.Epoch {
-		return epochRefusal("release", epoch, snap.Epoch)
-	}
-	opID := consumerOpID("release", snap.Epoch, id, gen)
-	if r, found := replay(ctx, st, opID, actor, "release", id); found {
-		return r
-	}
-	hooked, recipe, err := e.Env.Hooked(ctx, actor)
-	if err != nil {
-		return operationalFailure("release", err)
-	}
-	if !hooked {
-		return refused("release", actor+" is not hooked in", recipe)
+	id, gen, f := cardRef("release", in.arg(0))
+	if f != nil {
+		return "", f
 	}
 	c, ok := snap.Cards[id]
-	if !ok || c.Gen != gen || c.Holder != actor {
-		return refused("release", id+" is not held by "+actor, "nova-sprint show "+id)
+	if !ok || c.Gen != gen || !live(c) {
+		return "", refuse(id+" is not held at generation "+fmt.Sprint(gen), "nova-sprint show "+id)
 	}
-	p, ok := snap.Cards[c.Of]
-	if !ok {
-		return unavailable("release")
+	if c.Holder != in.actor && snap.Rows[in.actor].Role != "coordinator" {
+		return "", refuse(id+" is held by "+c.Holder+", not "+in.actor, "ask "+c.Holder+", or the coordinator, to release it")
 	}
-	stream, ok := snap.Streams[p.Stream]
-	if !ok {
-		return unavailable("release")
-	}
-	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.Row{}, card.Withdraw{Reason: reason, Stream: card.StreamFromStore(stream)})
-	if why != nil {
-		return refused("release", why.Reason, "nova-sprint show "+id)
-	}
-	next := "nothing; wait for the bus"
-	if len(obligations(snap, actor)) > 1 {
-		next = "nova-sprint next"
-	}
-	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: actor, Kind: "release", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: next}
-	rec, err := applyExact(ctx, st, op)
+	opID, err := machineID(in, snap, "release", id, gen)
 	if err != nil {
-		return unavailable("release")
+		return "", err
 	}
-	return receiptResult(rec, actor, "release", id)
+	plan, err := withdraw(snap, []store.Card{c}, reason)
+	if err != nil {
+		return "", err
+	}
+	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: in.actor, Kind: "release", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: reason}
+	r, err := e.commit(ctx, op, "nova-sprint show "+id)
+	if err != nil {
+		return "", err
+	}
+	return done(waitNext, fmt.Sprintf("RELEASED %s applied at seq %d; branch %s kept", id, r.Seq, c.Branch)), nil
+}
+
+// releaseRow withdraws every live consumer of row in one op, the
+// coordinator's, after printing what it withdraws.
+func (e *Engine) releaseRow(ctx context.Context, in *input, snap store.Snapshot, row, reason string) (string, error) {
+	if snap.Rows[in.actor].Role != "coordinator" {
+		return "", notCoordinator("release --row", in.actor, snap)
+	}
+	if _, ok := snap.Rows[row]; !ok {
+		return "", refuse("no row "+row, "nova-sprint show")
+	}
+	if !in.has("all") {
+		return "", misuse("release", "--row releases every card the row holds: confirm with --all")
+	}
+	cards := liveOf(snap, row)
+	what := fmt.Sprintf("RELEASE ROW %s withdraws %s", row, idList(cards))
+	if in.has("dry-run") || len(cards) == 0 {
+		return done("nova-sprint release --row "+row+" --all --reason \"<why>\"", what+" (dry run)"), nil
+	}
+	plan, err := withdraw(snap, cards, reason)
+	if err != nil {
+		return "", err
+	}
+	op := e.newOp("release-row", in.actor, snap, row, reason)
+	op.Expect, op.Writes, op.Note = plan.Expect, plan.Writes, reason
+	if _, err := e.commit(ctx, op, "nova-sprint show "+row); err != nil {
+		return "", err
+	}
+	return done(waitNext, what, fmt.Sprintf("RELEASED row=%s consumers=%d", row, len(cards))), nil
+}
+
+// withdraw is one plan withdrawing cards, each with its producer's stream
+// (a release into a held stream parks) and its last pushed head.
+func withdraw(snap store.Snapshot, cards []store.Card, reason string) (card.Plan, error) {
+	var plans []card.Plan
+	for _, c := range cards {
+		p := snap.Cards[c.Of]
+		head := ""
+		if c.Kind == "work" && c.State == card.Working {
+			head = c.Head
+		}
+		ev := card.Withdraw{Reason: reason, Head: head, Stream: card.StreamFromStore(snap.Streams[p.Stream])}
+		plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(snap.Rows[c.Holder], 0, nil), ev)
+		if why != nil {
+			return card.Plan{}, moved(why, c.ID)
+		}
+		plans = append(plans, plan)
+	}
+	plan, why := card.Merge(plans...)
+	if why != nil {
+		return card.Plan{}, refuse(why.Reason, "release the cards one at a time: nova-sprint release <card>@<gen>")
+	}
+	return plan, nil
+}
+
+func live(c store.Card) bool {
+	return (c.Kind == "work" || c.Kind == "read") && (c.State == card.Ready || c.State == card.Working)
+}
+
+// liveOf are row's live consumers, by id.
+func liveOf(snap store.Snapshot, row string) []store.Card {
+	var out []store.Card
+	for _, c := range snap.Cards {
+		if c.Holder == row && live(c) {
+			out = append(out, c)
+		}
+	}
+	slices.SortFunc(out, func(a, b store.Card) int { return strings.Compare(a.ID, b.ID) })
+	return out
+}
+
+func idList(cards []store.Card) string {
+	if len(cards) == 0 {
+		return "nothing"
+	}
+	ids := make([]string, len(cards))
+	for i, c := range cards {
+		ids[i] = fmtCard(c.ID, c.Gen)
+	}
+	return strings.Join(ids, ",")
 }

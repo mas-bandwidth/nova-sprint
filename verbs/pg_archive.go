@@ -2,26 +2,43 @@ package verbs
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/mas-bandwidth/nova-sprint/run"
 )
 
-// RestoreLockFactory opens the chooser lock on the target database. Its lease
-// must execute the verified dump in that same session and one transaction.
-type RestoreLockFactory func(context.Context) (RestoreLease, error)
+// Archive is backup and restore: a backup is returned only after a
+// throwaway restore rebuilt its event log and matched the restored
+// snapshot (Verify); a restore runs under the chooser lock, in its session.
+type Archive interface {
+	Backup(ctx context.Context, out string) (BackupInfo, error)
+	Verify(ctx context.Context, path string) (BackupInfo, error)
+	AcquireRestore(ctx context.Context) (run.RestoreLock, error)
+}
 
-// PGArchive is the concrete backup/verification adapter; the application
-// supplies the same-session chooser lock implementation without a run import.
+// BackupInfo is a verified dump: where it is, the epoch and seq it holds,
+// and the statements that passed verification.
+type BackupInfo struct {
+	Path         string
+	PrefixDigest string
+	SchemaHash   string
+	Verified     *VerifiedDump
+	Epoch        int
+	Seq          int64
+}
+
+// PGArchive is the Archive over PostgreSQL; Lock opens the chooser lock on
+// the target database (run.OpenRestoreLock).
 type PGArchive struct {
 	PGBackups
-	Lock RestoreLockFactory
+	Lock func(context.Context) (run.RestoreLock, error)
 }
 
-func NewPGArchive(dsn, password, version, directory string, lock RestoreLockFactory) *PGArchive {
+// NewPGArchive is the binary's archive.
+func NewPGArchive(dsn, password, version, directory string, lock func(context.Context) (run.RestoreLock, error)) *PGArchive {
 	return &PGArchive{PGBackups: PGBackups{DSN: dsn, Password: password, Directory: directory, Version: version, Loader: PGSQLLoader{}}, Lock: lock}
 }
-func (p *PGArchive) AcquireRestore(ctx context.Context) (RestoreLease, error) {
-	if p == nil || p.Lock == nil {
-		return nil, fmt.Errorf("restore lock is unavailable")
-	}
+
+// AcquireRestore takes the chooser lock for a restore.
+func (p *PGArchive) AcquireRestore(ctx context.Context) (run.RestoreLock, error) {
 	return p.Lock(ctx)
 }

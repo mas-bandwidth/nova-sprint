@@ -194,8 +194,8 @@ func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 		}
 	}
 	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: command, Getenv: func(string) string { return "" }}, Pin: "v1.6.20"}, Store: &runtimeStore{ready: true}}
-	result := (&Engine{Actor: "rowan", Env: runtime.Prerequisites.Env, Setup: runtime, SetupLock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
-	want := "SPRINT REFUSED up: hook in to the bus first: run NOVA_BUS_REDIS=<addr> nova-bus hook --as rowan as the Monitor tool command, then hook in to the sprint again\n"
+	result := (&Engine{Actor: "rowan", Store: upStore(true), Bus: &fakeBus{}, Now: upNow, Setup: runtime, Lock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
+	want := "SPRINT REFUSED up: rowan is not on the bus: " + busRecipe("rowan") + "\n"
 	if result.Exit != 1 || result.Output != want {
 		t.Fatal(result)
 	}

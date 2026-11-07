@@ -1,9 +1,7 @@
 package verbs
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,50 +10,25 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// BriefVerifier checks semantic contract gates against the actual base: red
-// controls, negative controls, tools, existing work and worker instructions.
-type BriefVerifier interface {
-	VerifyBrief(context.Context, store.Stream, card.Add, []string) error
-}
-
-// FileBriefs is the canonical on-disk brief parser and its external gate check.
-type FileBriefs struct{ Verifier BriefVerifier }
-
-func (b FileBriefs) Parse(ctx context.Context, path string, s store.Stream) (card.Add, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return card.Add{}, &OperationError{Problem: "cannot read brief " + path, Fix: "provide a readable --brief-file", Exit: 1}
-	}
-	id := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	a, tests, err := parseBrief(id, string(data))
-	if err != nil {
-		return card.Add{}, err
-	}
-	if b.Verifier == nil {
-		return card.Add{}, &OperationError{Problem: "brief gates cannot be verified", Fix: "configure the base and gate verifier", Exit: 2}
-	}
-	if err = b.Verifier.VerifyBrief(ctx, s, a, tests); err != nil {
-		return card.Add{}, err
-	}
-	return a, nil
-}
-
+// A brief (CARD-CONTRACT) is a tier line, metadata lines (PATHS, NEEDS,
+// AFTER, PRIORITY, TEST, DONE-WHEN), a blank line and the task prose. The
+// parser checks the form; the gates TEST names are the worker's to run.
 type briefParts struct {
-	a     card.Add
-	tests []string
-	seen  map[string]bool
-	prose []string
+	a    card.Add
+	seen map[string]bool
 }
 
-func parseBrief(id, text string) (card.Add, []string, error) {
+// parseBrief is brief id's text as a producer's add, or the first rule it
+// breaks.
+func parseBrief(id, text string) (card.Add, error) {
 	p := briefParts{a: card.Add{ID: id, Kind: "producer", Brief: text}, seen: map[string]bool{}}
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	if len(lines) == 0 || !strings.HasPrefix(lines[0], "tier: ") {
-		return p.a, nil, locateBriefError(id, 1, briefError("tier first line"))
+	if !strings.HasPrefix(lines[0], "tier: ") {
+		return p.a, lintAt(id, 1, "tier first line")
 	}
 	p.a.Tier = strings.TrimSpace(strings.TrimPrefix(lines[0], "tier: "))
 	if !slices.Contains(store.Tiers, p.a.Tier) {
-		return p.a, nil, locateBriefError(id, 1, briefError("tier"))
+		return p.a, lintAt(id, 1, "tier")
 	}
 	separator := -1
 	for i, line := range lines[1:] {
@@ -63,27 +36,25 @@ func parseBrief(id, text string) (card.Add, []string, error) {
 			separator = i + 2
 			break
 		}
-		if err := p.line(line); err != nil {
-			return p.a, nil, locateBriefError(id, i+2, err)
+		if field := p.line(line); field != "" {
+			return p.a, lintAt(id, i+2, field)
 		}
 	}
-	if separator < 0 || separator >= len(lines) {
-		return p.a, nil, locateBriefError(id, len(lines), briefError("task prose"))
-	}
-	p.prose = append(p.prose, lines[separator:]...)
 	for _, field := range []string{"PATHS", "TEST", "DONE-WHEN"} {
 		if !p.seen[field] {
-			return p.a, nil, locateBriefError(id, len(lines), briefError(field))
+			return p.a, lintAt(id, len(lines), field)
 		}
 	}
-	p.a.Prose = strings.TrimSpace(strings.Join(p.prose, "\n"))
-	if p.a.Prose == "" {
-		return p.a, nil, locateBriefError(id, len(lines), briefError("task prose"))
+	if separator > 0 {
+		p.a.Prose = strings.TrimSpace(strings.Join(lines[separator:], "\n"))
 	}
-	return p.a, p.tests, nil
+	if p.a.Prose == "" {
+		return p.a, lintAt(id, len(lines), "task prose")
+	}
+	return p.a, nil
 }
 
-// BriefLintError identifies the first failed canonical brief rule without quoting input.
+// BriefLintError is the first brief rule broken, without quoting the brief.
 type BriefLintError struct {
 	Brief string
 	Line  int
@@ -91,10 +62,10 @@ type BriefLintError struct {
 }
 
 func (e *BriefLintError) Error() string {
-	name := strings.NewReplacer("\n", " ", "\r", " ").Replace(e.Brief)
-	return fmt.Sprintf("%s: line %d %s", name, e.Line, e.Rule)
+	return fmt.Sprintf("%s: line %d %s", oneLine(e.Brief), e.Line, e.Rule)
 }
-func briefError(field string) error {
+
+func lintAt(id string, line int, field string) error {
 	rule := "must contain a valid " + field + " section"
 	switch field {
 	case "tier first line", "tier":
@@ -104,52 +75,38 @@ func briefError(field string) error {
 	case "task prose":
 		rule = "must include task prose after a blank line"
 	}
-	return &BriefLintError{Rule: rule}
-}
-func locateBriefError(id string, line int, err error) error {
-	if lint, ok := err.(*BriefLintError); ok {
-		lint.Brief = id
-		lint.Line = line
-	}
-	return err
+	return &BriefLintError{Brief: id, Line: line, Rule: rule}
 }
 
-func (p *briefParts) line(line string) error {
-	trimmed := strings.TrimSpace(line)
-	key, value, ok := strings.Cut(trimmed, ":")
+// line reads one metadata line; it returns the field it breaks, or "".
+func (p *briefParts) line(line string) string {
+	key, value, ok := strings.Cut(strings.TrimSpace(line), ":")
 	if !ok {
-		return briefError("metadata")
+		return "metadata"
 	}
-	key = strings.TrimSpace(key)
-	value = strings.TrimSpace(value)
+	key, value = strings.TrimSpace(key), strings.TrimSpace(value)
 	switch strings.ToUpper(key) {
 	case "DEPENDS-ON", "DEPENDENCIES", "NEED":
-		return briefError("NEEDS")
+		return "NEEDS"
 	case "PATHS", "NEEDS", "AFTER", "PRIORITY", "TEST", "DONE-WHEN":
-		if key != strings.ToUpper(key) || value == "" {
-			return briefError(strings.ToUpper(key))
-		}
-		if p.seen[key] && key != "DONE-WHEN" && key != "TEST" {
-			return briefError(key)
+		if key != strings.ToUpper(key) || value == "" || (p.seen[key] && key != "DONE-WHEN" && key != "TEST") {
+			return strings.ToUpper(key)
 		}
 		p.seen[key] = true
 		return p.field(key, value)
-	default:
-		return briefError("metadata")
 	}
+	return "metadata"
 }
-func (p *briefParts) field(key, value string) error {
+
+func (p *briefParts) field(key, value string) string {
 	switch key {
 	case "PATHS":
-		paths := strings.Split(value, ",")
-		for i, v := range paths {
-			v = strings.TrimSpace(v)
-			if !validPath(v) {
-				return briefError("PATHS")
+		for v := range strings.SplitSeq(value, ",") {
+			if v = strings.TrimSpace(v); !validPath(v) {
+				return "PATHS"
 			}
-			paths[i] = v
+			p.a.Paths = append(p.a.Paths, v)
 		}
-		p.a.Paths = paths
 	case "NEEDS":
 		if value != "none" {
 			p.a.Needs = splitNames(value)
@@ -160,19 +117,19 @@ func (p *briefParts) field(key, value string) error {
 		}
 	case "PRIORITY":
 		if !slices.Contains(card.Levels, value) {
-			return briefError("PRIORITY")
+			return "PRIORITY"
 		}
 		p.a.Priority = value
 	case "DONE-WHEN":
 		p.a.DoneWhen = append(p.a.DoneWhen, value)
-	case "TEST":
-		p.tests = append(p.tests, value)
 	}
-	return nil
+	return ""
 }
+
 func validPath(path string) bool {
 	return path != "" && !filepath.IsAbs(path) && !strings.ContainsAny(path, " \t()") && path != ".." && !strings.HasPrefix(filepath.Clean(path), "../")
 }
+
 func splitNames(value string) []string {
 	parts := strings.Split(value, ",")
 	for i := range parts {

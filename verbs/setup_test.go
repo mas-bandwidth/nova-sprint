@@ -5,7 +5,26 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
+
+// upStore is a store with rowan hooked in as coordinator, or with no rows.
+func upStore(hooked bool) *store.Fake {
+	rows := map[string]store.Row{}
+	if hooked {
+		rows["rowan"] = store.Row{Name: "rowan", State: "up", Session: "s-rowan", Role: "coordinator", Gen: 1}
+	}
+	f, err := store.NewFakeFrom(store.Snapshot{Epoch: 1, Rows: rows, Streams: map[string]store.Stream{}, Cards: map[string]store.Card{}, Judgements: map[string]store.Judgement{}, Cursors: map[string]int64{}})
+	if err != nil {
+		panic(err)
+	}
+	return f
+}
+
+func upBus() *fakeBus  { return &fakeBus{present: map[string]bool{"rowan": true}} }
+func upNow() time.Time { return t0 }
 
 type setupLeaseFake struct{}
 
@@ -39,9 +58,9 @@ func (f *setupFake) Act(_ context.Context, n int, _ SetupInput) error {
 }
 func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	f := &setupFake{stop: 5}
-	e := Engine{Actor: "rowan", Env: fakeEnv{hooked: true}, Roles: testRoles{role: "coordinator"}, SetupHook: func(context.Context, SetupInput) Result { return Result{} }, Setup: f, SetupLock: setupLeaseFake{}}
+	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: f, Lock: setupLeaseFake{}}
 	first := e.Execute(context.Background(), []string{"up"})
-	if first.Exit != 1 || !strings.Contains(first.Output, "ASK dashboard\nnext:") {
+	if first.Exit != 1 || !strings.Contains(first.Output, "ASK dashboard\nSPRINT REFUSED up: step 5 is not verified: nova-sprint up --dash tailnet\n") {
 		t.Fatal(first)
 	}
 	if strings.Join(f.trace, ",") != "verify1,act1,verify1,verify1,verify2,act2,verify2,verify3,act3,verify3,verify4,act4,verify4,verify5" {
@@ -58,7 +77,7 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 func TestSetupArguments(t *testing.T) {
 	e := Engine{Actor: "rowan"}
 	got := e.Execute(context.Background(), []string{"up", "--dash", "invalid"})
-	if got.Exit != 1 || got.Output != "SPRINT REFUSED up: invalid arguments: nova-sprint help up\n" {
+	if got.Exit != 2 || got.Output != "SPRINT REFUSED up: --dash is tailnet or public=<host>: nova-sprint help up\n" {
 		t.Fatal(got)
 	}
 }

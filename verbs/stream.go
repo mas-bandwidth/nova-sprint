@@ -2,114 +2,115 @@ package verbs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Repositories checks a stream's remote without giving the store credentials.
-type Repositories interface {
-	Readable(context.Context, string, string, bool) error
-}
+// forges are the forges the verb takes: none, or github. The store keeps
+// an open string; an empty forge is no PR and no CI, landed by hand.
+var forges = []string{"", "github"}
 
-type streamInput struct {
-	name, repo, base, actor, mode string
-	pr                            bool
-}
-
-func parseStream(args []string, actor string) (streamInput, bool) {
-	in := streamInput{base: "main", actor: actor, mode: "auto"}
-	if len(args) < 1 {
-		return in, false
-	}
-	in.name = args[0]
-	for i := 1; i < len(args); i++ {
-		if args[i] == "--pr" {
-			in.pr = true
-			continue
-		}
-		if i+1 >= len(args) || args[i+1] == "" {
-			return in, false
-		}
-		switch args[i] {
-		case "--repo":
-			in.repo = args[i+1]
-		case "--base":
-			in.base = args[i+1]
-		case "--mode":
-			in.mode = args[i+1]
-		case "--as":
-			in.actor = args[i+1]
-		default:
-			return in, false
-		}
-		i++
-	}
-	return in, in.name != "" && in.repo != "" && in.actor != ""
-}
-func (e *Engine) stream(ctx context.Context, args []string) Result {
-	if len(args) > 0 && args[0] == "set" {
-		return e.setStream(ctx, args[1:])
-	}
-	if len(args) == 0 || args[0] != "add" {
-		return refused("stream", "invalid arguments", "nova-sprint help stream")
-	}
-	in, ok := parseStream(args[1:], e.Actor)
-	if !ok {
-		return refused("stream add", "invalid arguments", "nova-sprint help stream add")
-	}
-	if !validMode(in.mode) {
-		return refused("stream add", "mode "+in.mode+" is not one of auto, group or hand", "nova-sprint stream add "+in.name+" --repo "+in.repo+" --mode auto")
-	}
-	st, ok := e.Store.(ApplyStore)
-	if !ok || e.Env == nil || e.Now == nil || e.Repositories == nil {
-		return unavailable("stream add")
-	}
-	schema, err := e.Env.Schema(ctx)
+// runStreamAdd is `stream add`: a stream, its repository and base branch
+// (checked at origin), its landing mode and forge, as store state.
+func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	name, repo, base := in.arg(0), in.str("repo"), orWord(in.str("base"), "main")
+	mode, forge, err := streamSettings(in, store.StreamAuto, "")
 	if err != nil {
-		return operationalFailure("stream add", err)
+		return "", err
 	}
-	if !schema {
-		return refused("stream add", "store is not at this schema", "nova-sprint up")
+	switch {
+	case !validName(name):
+		return "", misuse("stream add", "a stream's name is 1 to 128 of a-z A-Z 0-9 . _ -")
+	case repo == "":
+		return "", misuse("stream add", "stream add names its repository: --repo <owner/name>")
 	}
-	hooked, recipe, err := e.Env.Hooked(ctx, in.actor)
-	if err != nil {
-		return operationalFailure("stream add", err)
+	if _, ok := snap.Streams[name]; ok {
+		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)
 	}
-	if !hooked {
-		return refused("stream add", in.actor+" is not hooked in", recipe)
+	if err := e.baseAt(ctx, repo, base); err != nil {
+		return "", err
 	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return operationalFailure("stream add", err)
-	}
-	if _, exists := snap.Streams[in.name]; exists {
-		return refused("stream add", "stream "+in.name+" exists", "nova-sprint show "+in.name)
-	}
-	if err = e.Repositories.Readable(ctx, in.repo, in.base, in.pr); err != nil {
-		return operationalFailure("stream add", err)
-	}
-	return e.addStream(ctx, st, snap, in)
-}
-func (e *Engine) addStream(ctx context.Context, st ApplyStore, snap store.Snapshot, in streamInput) Result {
-	settings, _ := json.Marshal(streamSettings{Repo: in.repo, Base: in.base, PR: in.pr, Mode: in.mode})
-	pos := 1
+	pos := 0
 	for _, s := range snap.Streams {
-		if s.Pos >= pos {
-			pos = s.Pos + 1
-		}
+		pos = max(pos, s.Pos+1)
 	}
-	key, _ := json.Marshal([]string{"stream add", in.actor, in.name, in.repo, in.base, fmt.Sprint(in.pr), in.mode})
-	op := store.Op{ID: consumerOpID(string(key), snap.Epoch, in.name, int(snap.Seq)), Epoch: snap.Epoch, Actor: in.actor, Kind: "stream add", At: e.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutStream{Name: in.name, Repo: in.repo, Base: in.base, Pos: pos}, store.PutPolicy{Kind: "data", Name: "stream:" + in.name, Body: string(settings)}}}
-	rec, err := applyExact(ctx, st, op)
+	op := e.newOp("stream-add", in.actor, snap, name)
+	op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}}
+	op.Writes = []store.Write{store.PutStream{Name: name, Repo: repo, Base: base, Pos: pos, Mode: mode, Forge: forge}}
+	r, err := e.commit(ctx, op, "nova-sprint show "+name)
 	if err != nil {
-		return operationalFailure("stream add", err)
+		return "", err
 	}
-	if !rec.Accepted {
-		return refused("stream add", rec.Reason, "nova-sprint stream add "+in.name+" --repo "+in.repo)
-	}
-	return Result{fmt.Sprintf("STREAM ADDED %s repo=%s base=%s branch=sprint/%s\nnext: nova-sprint add --stream %s --brief-file <file>\n", in.name, in.repo, in.base, in.name, in.name), 0}
+	return done("nova-sprint add --stream "+name+" --brief-file <f>",
+		fmt.Sprintf("STREAM %s repo=%s base=%s mode=%s forge=%s applied at seq %d", name, repo, base, mode, orWord(forge, "none"), r.Seq)), nil
 }
 
-func validMode(mode string) bool { return mode == "auto" || mode == "group" || mode == "hand" }
+// baseAt refuses a base branch origin does not have.
+func (e *Engine) baseAt(ctx context.Context, repo, base string) error {
+	if e.Origin == nil {
+		return broken("the git edge is not configured", "nova-sprint check")
+	}
+	_, ok, err := e.Origin.Tip(ctx, repo, base)
+	if err != nil {
+		return broken("git ls-remote of "+repo+" failed ("+clip(err.Error())+")", "check the repository is readable, then add the stream again")
+	}
+	if !ok {
+		return refuse("branch "+base+" is not at "+repo+"'s origin", "push it, or pass --base <branch>")
+	}
+	return nil
+}
+
+// runStreamSet is `stream set`: a stream's mode or forge, one write each.
+func runStreamSet(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
+	name := in.arg(0)
+	s, ok := snap.Streams[name]
+	if !ok {
+		return "", refuse("no stream "+name, "nova-sprint stream add "+name+" --repo <owner/name>")
+	}
+	if !in.has("mode") && !in.has("forge") {
+		return "", misuse("stream set", "stream set changes --mode, --forge, or both")
+	}
+	mode, forge, err := streamSettings(in, s.Mode, s.Forge)
+	if err != nil {
+		return "", err
+	}
+	var ws []store.Write
+	if mode != orWord(s.Mode, store.StreamAuto) {
+		ws = append(ws, store.SetStreamMode{Stream: name, Mode: mode})
+	}
+	if forge != s.Forge {
+		ws = append(ws, store.SetStreamForge{Stream: name, Forge: forge})
+	}
+	if len(ws) == 0 {
+		return done(waitNext, fmt.Sprintf("STREAM %s mode=%s forge=%s unchanged", name, mode, orWord(forge, "none"))), nil
+	}
+	op := e.newOp("stream-set", in.actor, snap, name, mode, forge)
+	op.Writes = ws
+	r, err := e.commit(ctx, op, "nova-sprint show "+name)
+	if err != nil {
+		return "", err
+	}
+	return done(waitNext, fmt.Sprintf("STREAM %s mode=%s forge=%s applied at seq %d", name, mode, orWord(forge, "none"), r.Seq)), nil
+}
+
+// streamSettings is --mode and --forge over the stream's own; `--forge
+// none` clears the forge.
+func streamSettings(in *input, mode, forge string) (string, string, error) {
+	mode = orWord(in.str("mode"), orWord(mode, store.StreamAuto))
+	if !slices.Contains(store.StreamModes, mode) {
+		return "", "", misuse(in.verb, "--mode is one of "+strings.Join(store.StreamModes, " "))
+	}
+	if in.has("forge") {
+		forge = in.str("forge")
+	}
+	if forge == "none" {
+		forge = ""
+	}
+	if !slices.Contains(forges, forge) {
+		return "", "", misuse(in.verb, "--forge is github, or none for no PR and no CI")
+	}
+	return mode, forge, nil
+}

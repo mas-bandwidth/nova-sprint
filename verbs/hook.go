@@ -10,172 +10,94 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-func hookInput(args []string) (string, string, bool) {
-	var name, role string
-	seen := map[string]bool{}
-	for i := 0; i < len(args); i++ {
-		if i+1 >= len(args) || args[i+1] == "" || seen[args[i]] {
-			return "", "", false
-		}
-		seen[args[i]] = true
-		switch args[i] {
-		case "--as":
-			name = args[i+1]
-		case "--role":
-			role = args[i+1]
-		default:
-			return "", "", false
-		}
-		i++
+// runHook is `hook` (Stella's rulings, 2026-11-06): the name on the bus
+// first; the sprint mints the session; one hook per name and one
+// coordinator per sprint; the role's playbook printed. A worker's restart
+// is the bus hook, its own unhook, this hook, then next.
+func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
+	r := in.str("role")
+	if r != "worker" && r != "coordinator" {
+		return "", misuse("hook", "--role is worker or coordinator")
 	}
-	return name, role, validSetupActor(name) && role != ""
-}
-func newHookSession() (string, error) {
-	var data [16]byte
-	if _, err := rand.Read(data[:]); err != nil {
+	if err := e.onBus(ctx, in.actor); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(data[:]), nil
+	snap, err := e.snapshot(ctx)
+	if err != nil {
+		return "", err
+	}
+	return e.hookAs(ctx, snap, in.actor, r)
 }
 
-// Hook records an existing live bus name, then prints its role playbook.
-// Bootstrap and the CLI both call this same operation.
-func (e *Engine) Hook(ctx context.Context, name, role string) Result {
-	if !validSetupActor(name) {
-		return refused("hook", "invalid arguments", "nova-sprint help hook")
+// hookAs records name's session and role on snap and prints its playbook:
+// the hook verb's, and up's and restore's for their coordinator.
+func (e *Engine) hookAs(ctx context.Context, snap store.Snapshot, name, r string) (string, error) {
+	if row := snap.Rows[name]; row.Session != "" {
+		return "", refuse(name+" is already hooked in as "+row.Role, "nova-sprint unhook --as "+name+", then hook again")
 	}
-	if role != "worker" && role != "coordinator" {
-		return refused("hook", "unknown role "+role, "choose coordinator or worker")
+	if c := coordinatorOf(snap); r == "coordinator" && c != "" {
+		return "", refuse("the sprint's coordinator is "+c, "ask "+c+" to run nova-sprint unhook --as "+c+" first")
 	}
-	st, ok := e.Store.(ApplyStore)
-	if !ok || e.Env == nil || e.Now == nil {
-		return unavailable("hook")
-	}
-	present, recipe, err := e.Env.Hooked(ctx, name)
+	session, err := e.newSession()
 	if err != nil {
-		return operationalFailure("hook", err)
+		return "", err
 	}
-	if !present {
-		return busHookRefusal("hook", name, recipe)
+	op := e.newOp("hook", name, snap, session, r)
+	op.Writes = []store.Write{store.PutRow{Name: name, Session: session, Role: r}}
+	if r == "coordinator" { // one coordinator: no other hook may land between the read and this op
+		op.Expect = []store.Expect{store.AtSeq{Seq: snap.Seq}}
 	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return operationalFailure("hook", err)
+	if _, err := e.commit(ctx, op, "nova-sprint unhook --as "+name+", then hook again"); err != nil {
+		return "", err
 	}
-	if row, found := snap.Rows[name]; found && row.Session != "" {
-		return refused("hook", name+" is already hooked", "nova-sprint unhook --as "+name+" then nova-sprint hook --as "+name+" --role "+role)
-	}
-	session, err := newHookSession()
-	if err != nil {
-		return unavailable("hook")
-	}
-	op := store.Op{ID: consumerOpID("hook:"+name, snap.Epoch, session, int(snap.Seq)), Epoch: snap.Epoch, Actor: name, Kind: "hook", At: e.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutRow{Name: name, Session: session, Role: role}}}
-	receipt, err := applyExact(ctx, st, op)
-	if err != nil {
-		return operationalFailure("hook", err)
-	}
-	if !receipt.Accepted {
-		return refused("hook", receipt.Reason, "nova-sprint hook --as "+name+" --role "+role)
-	}
-	text, _ := docs.Playbook(role)
-	return Result{fmt.Sprintf("%s\nHOOKED %s as %s\nnext: nova-sprint next --as %s\n", text, name, role, name), 0}
+	text, _ := docs.Playbook(r)
+	return done("nova-sprint next --as "+name, fmt.Sprintf("HOOKED %s role=%s", name, r), text), nil
 }
 
-func unhookInput(args []string) (target, actor string, ok bool) {
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--as" {
-			if actor != "" || i+1 >= len(args) {
-				return "", "", false
-			}
-			i++
-			actor = args[i]
-			continue
-		}
-		if target != "" || args[i] == "" || args[i][0] == '-' {
-			return "", "", false
-		}
-		target = args[i]
+func (e *Engine) newSession() (string, error) {
+	if e.Session != nil {
+		return e.Session()
 	}
-	if target == "" {
-		target = actor
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", broken("no randomness for a session ("+clip(err.Error())+")", "run nova-sprint hook again")
 	}
-	return target, actor, validSetupActor(actor) && validSetupActor(target)
-}
-func (e *Engine) unhook(ctx context.Context, args []string) Result {
-	target, actor, ok := unhookInput(args)
-	if !ok {
-		return refused("unhook", "invalid arguments", "nova-sprint help unhook")
-	}
-	if target != actor {
-		ctx = context.WithValue(ctx, roleRequiredKey{}, true)
-		var result Result
-		ctx, result, ok = e.authorizeRole(ctx, actor, "coordinator", "unhook")
-		if !ok {
-			return result
-		}
-	}
-	st, ok := e.Store.(ApplyStore)
-	if !ok || e.Now == nil {
-		return unavailable("unhook")
-	}
-	snap, err := st.Snapshot(ctx)
-	if err != nil {
-		return operationalFailure("unhook", err)
-	}
-	row, ok := snap.Rows[target]
-	if !ok || row.Session == "" {
-		return refused("unhook", target+" is not hooked", "nova-sprint hook --as "+target+" --role worker")
-	}
-	op := store.Op{ID: consumerOpID("unhook:"+actor, snap.Epoch, target, int(snap.Seq)), Epoch: snap.Epoch, Actor: actor, Kind: "unhook", At: e.Now(), Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutRow{Name: target}}}
-	rec, err := applyExact(ctx, st, op)
-	if err != nil {
-		return operationalFailure("unhook", err)
-	}
-	if !rec.Accepted {
-		return refused("unhook", rec.Reason, unhookCommand(target, actor))
-	}
-	return Result{fmt.Sprintf("UNHOOKED %s\nnext: nova-sprint hook --as %s --role worker\n", target, target), 0}
+	return hex.EncodeToString(b[:]), nil
 }
 
-// EnsureCoordinatorHook is the idempotent setup boundary after step 2.
-func (e *Engine) EnsureCoordinatorHook(ctx context.Context, in SetupInput) Result {
-	if e.Store == nil || e.Env == nil {
-		return unavailable("up")
-	}
-	snap, err := e.Store.Snapshot(ctx)
-	if err != nil {
-		return operationalFailure("up", err)
-	}
-	if row, ok := snap.Rows[in.Actor]; ok && row.Session != "" {
-		present, recipe, err := e.Env.Hooked(ctx, in.Actor)
+// runUnhook is `unhook`: one's own hook needs nothing (a worker's restart
+// starts with it); another row's is the coordinator's.
+func runUnhook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
+	target := in.arg(0)
+	if target == "" || target == in.actor {
+		if in.actor == "" {
+			return "", refuse("no name given", "pass --as <you>, or set NOVA_SPRINT_AS=<you>")
+		}
+		snap, err := e.snapshot(ctx)
 		if err != nil {
-			return operationalFailure("up", err)
+			return "", err
 		}
-		if !present {
-			return busHookRefusal("up", in.Actor, recipe)
-		}
-		if row.Role != "coordinator" {
-			return refused("up", in.Actor+" is hooked as worker", "nova-sprint unhook --as "+in.Actor+" then nova-sprint hook --as "+in.Actor+" --role coordinator")
-		}
-		return Result{}
+		return e.unhook(ctx, snap, in.actor, in.actor)
 	}
-	result := e.Hook(ctx, in.Actor, "coordinator")
-	if result.Exit != 0 {
-		return result
+	snap, err := e.hooked(ctx, in, roleCoordinator)
+	if err != nil {
+		return "", err
 	}
-	result.Output = "hooked you in as coordinator; the playbooks follow\n" + result.Output
-	return result
+	return e.unhook(ctx, snap, target, in.actor)
 }
 
-func busHookRefusal(verb, name, recipe string) Result {
-	if recipe != "" && recipe != "nova-bus hook --as "+name {
-		return refused(verb, "hook in to the bus first", recipe)
+func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor string) (string, error) {
+	if snap.Rows[target].Session == "" && target == actor { // a restart's unhook: already true
+		return done("nova-sprint hook --as "+target+" --role worker", target+" is not hooked in; nothing to unhook"), nil
 	}
-	return refused(verb, "hook in to the bus first", "run NOVA_BUS_REDIS=<addr> nova-bus hook --as "+name+" as the Monitor tool command, then hook in to the sprint again")
-}
-func unhookCommand(target, actor string) string {
-	if target == actor {
-		return "nova-sprint unhook --as " + actor
+	if snap.Rows[target].Session == "" {
+		return "", refuse(target+" is not hooked in", "nova-sprint show "+target)
 	}
-	return "nova-sprint unhook " + target + " --as " + actor
+	op := e.newOp("unhook", actor, snap, target)
+	op.Expect = []store.Expect{store.RowGen{Row: target, Gen: snap.Rows[target].Gen}}
+	op.Writes = []store.Write{store.PutRow{Name: target}}
+	if _, err := e.commit(ctx, op, "nova-sprint show "+target); err != nil {
+		return "", err
+	}
+	return done("nova-sprint hook --as "+target+" --role worker", "UNHOOKED "+target), nil
 }

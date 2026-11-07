@@ -79,16 +79,11 @@ func TestFunctionalBackupRoundTrip(t *testing.T) {
 	}
 	conn.Close(ctx)
 	targetDSN := "host=" + dir + " dbname=target sslmode=disable"
-	archive := NewPGArchive(targetDSN, "", "v2.0.0", t.TempDir(), func(ctx context.Context) (RestoreLease, error) {
-		lock, err := run.OpenRestoreLock(ctx, targetDSN, "", "fixture", 1)
-		if err != nil {
-			return nil, err
-		}
-		return functionalRestoreLease{lock}, nil
+	archive := NewPGArchive(targetDSN, "", "v2.0.0", t.TempDir(), func(ctx context.Context) (run.RestoreLock, error) {
+		return run.OpenRestoreLock(ctx, targetDSN, "", "fixture", 1)
 	})
-	result := (&Engine{Archive: archive}).Execute(ctx, []string{"restore", info.Path})
-	if result.Exit != 0 {
-		t.Fatal(result)
+	if err := (&Engine{Archive: archive}).load(ctx, info); err != nil {
+		t.Fatal(err)
 	}
 
 	target, targetDigest, _, err := verifyDatabase(ctx, targetDSN)
@@ -123,12 +118,4 @@ func TestFunctionalBackupRoundTrip(t *testing.T) {
 	if _, err = b.Verify(ctx, info.Path); err == nil {
 		t.Fatal("corrupt dump verified")
 	}
-}
-
-type functionalRestoreLease struct{ lock run.RestoreLock }
-
-func (l functionalRestoreLease) Check(ctx context.Context) error { return l.lock.Check(ctx) }
-func (l functionalRestoreLease) Close() error                    { return l.lock.Close(context.Background()) }
-func (l functionalRestoreLease) Restore(ctx context.Context, d *VerifiedDump) error {
-	return l.lock.Restore(ctx, func(w run.RestoreWriter) error { return d.Execute(ctx, w) })
 }
