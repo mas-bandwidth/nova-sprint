@@ -806,3 +806,123 @@ Not modelled: the liveness obligation "nothing stalls", which the card
 model's rulings make layer 3's (with the tick); NeverStranded is its state
 half here. The reasons ("held: ..."), Merge's two-writes-to-one-field
 refusal and Add's id length cap are value checks with no state of their own.
+
+# Trace validation (binding the code to the models)
+
+A model checks the design; trace validation checks that the code is that
+design. The Go walks record every step they take, projected onto the model's
+variables, and TLC checks that each recording is a behaviour of the model.
+The shape is that of `StepsTrace.tla` (the Kuppe/Merz pattern): the trace is
+a generated constant module `<Model>TraceLog.tla` defining
+`TraceLog == << r_1, ..., r_n >>`; the trace module has one variable `l`, the
+index of the last record matched; `TraceNext` takes record `l + 1` through the
+action it names and requires the projected state after it; the property is
+`TraceMatched == <>(l = Len(TraceLog))`. TLC exit 0 is a matched trace; exit
+13 (TraceMatched violated) leaves `l = k` in the last state, so record `k + 1`
+is the step the model refuses.
+
+Each record carries only the entries that changed since the record before; an
+entry not named must be unchanged, so every step still pins the whole
+projected state.
+
+## Running
+
+On hetzner2 (never the studio), from the repository root:
+
+    bash tla/make-traces.sh          # the walks write their traces under tla/traces/
+    bash tla/make-traces.sh check    # ... and TLC checks every trace, in parallel
+    bash tla/check-trace.sh Store tla/traces/store-fake-1
+    bash tla/check-trace.sh CardMachine tla/traces/card-walk-3
+
+`check-trace.sh` prints `TRACE OK steps=<n>`, or
+`TRACE REFUSED at k of n: <action> (...)` followed by the model's state before
+the step and record k. Each trace's cfg has an `\* expect:` line (`matched` or
+`forbidden at K`); the script exits 0 when the outcome is the expected one, 1
+when it is not, 2 on any other TLC failure. The CI job `trace` runs
+`make-traces.sh check` on every push, with `NOVA_TRACE_PG=1` so a missing
+initdb fails the job instead of skipping the PostgreSQL walk.
+
+The walks write traces only when `NOVA_TRACE_DIR` names a directory
+(`make-traces.sh` sets it); without it the test suite is unchanged. The walk
+traces (`store-fake-*`, `store-pg-*`, `card-walk-*`) are regenerated, not
+committed. The committed fixtures are `store-breaker`, `card-breaker` and
+`store-cursor-zero`; `TestTraceRefusesDivergence` and `TestTraceCursorZero`
+compare them against what the code writes now (regenerate with
+`NOVA_TRACE_DIR=tla/traces go test -run '<test>' ./store/` or `./card/`).
+
+## The walks and their seeds
+
+- Store: `TestTraceWalk` (store/trace_test.go) on the Fake, seeds 1..8, 500
+  steps, with transport faults (`Fake.Drop`: a lost request is LoseRequest, a
+  lost reply after commit is Apply with known=FALSE, followed by Replay or a
+  second Apply); `TestFunctionalTraceWalk` on PostgreSQL, seeds 1..2, no faults.
+  The generator (store/trace_gen_test.go) draws ops over the fixed names
+  (producers p1 p2, cards p1 p2 t1 u1 u2 u3, rows r1 r2, judgements j1 j2,
+  cursor c1, bodies a b, tiers flash pro), biased toward existing entities.
+- Card: `TestTraceColdWalk` runs `coldWalk` (TestColdWalk's walk) on seeds
+  1..20, 800 steps each, recording each accepted op.
+
+## The refinement mappings
+
+`store.TraceState` (store/trace.go) and `card.TraceState` (card/trace.go) are
+the mappings, each documented with every model variable it fills and every
+abstraction. `store.TraceOp` maps an op to the model's Ops entry and refuses
+what the model has no word for. In brief:
+
+- Store: epoch, cards, rows, judgements, cursors and policies are projected;
+  events, ledger, applied, receipt and lost are the model's own bookkeeping
+  and checked through the record's action and its `known`/`accepted` flags.
+  A card's After, Attempt, Review, Finding and non-normal Priority are not in
+  Store.tla, so a walk op that sets them is refused by TraceOp; needs are a set,
+  so a need named twice is refused (the code refuses it too). A consumer's
+  tier is not in the model; the generator gives a consumer put beside its
+  producer the producer's tier, which the code requires. PutStream is dropped
+  (one stream).
+- Card: producers project to ps, consumers to slots `<<p, i>>` in the order
+  attempt, work before read, review, read index; heads to their index in the
+  walk's head table (the base is 0); a finding to "fix" or "-"; flaps counted.
+  One stream.
+
+What the trace module adds to its model, each a lifted bound or a move outside
+the machine:
+
+- StoreTrace: none; MaxLoss is 2, every op may be lost.
+- CardMachineTrace: TraceInit takes the rows as the walk's world has them (r1
+  at width 2, not Init's 1); env is raised on every environment move and never
+  bounded; Gone past the model's flap bound of 1 (GoneAt); RawHold, the walk's
+  raw layer-3 stream hold, which parks nothing (HoldStream is the machine's).
+
+Card moves the 20 seeds never reach: Reached, Waive, Relink, WaiveRed,
+Released, multi-row AskReads, Add, HoldStream, Preempt and any InThisOp move
+(those live in the cold2/3/4 walks, whose merged ops are not traced).
+
+## The breakers
+
+`TestTraceRefusesDivergence` (unit tier, the Fake only) holds one breaker per
+package; each writes a fixture `check-trace.sh` must refuse at its last step:
+
+- store-breaker: a store that strips RowHeld conditions accepts a deal fenced
+  on `RowHeld(r1, FALSE)` after r1 was held. Refused at 4 of 4 (Apply o3).
+- card-breaker: Start with its SetCardAttempt write dropped leaves p1 working
+  at attempt 0. Refused at 3 of 3 (Start).
+
+## Divergence found
+
+- store-cursor-zero: `SetCursor{c1, 0}` on a cursor never set. The store
+  accepts it (it inserts c1 at 0); Store.tla refuses it (an absent cursor is 0,
+  and a write that changes nothing is refused). First refused step: record 3,
+  Apply o2, accepted TRUE, cursors c1 :> 0. Held as the fixture
+  (`forbidden at 3`) by `TestTraceCursorZero`; the walks do not send this
+  write. store/ is locked, so it is reported, not fixed; it needs a ruling.
+
+## Results, tla2tools v1.8.0 (the CI jar) on hetzner2, 2026-11-06
+
+    store-fake-1..8   TRACE OK steps=510 503 514 503 504 514 501 498
+    store-pg-1..2     TRACE OK steps=471 472
+    card-walk-1..10   TRACE OK steps=70 110 92 110 114 109 67 98 108 65
+    card-walk-11..20  TRACE OK steps=85 89 91 113 87 79 80 83 90 100
+    store-breaker     refused at 4 of 4 (expected)
+    card-breaker      refused at 3 of 3 (expected)
+    store-cursor-zero refused at 3 of 3 (expected)
+
+The whole `make-traces.sh check` run takes about 1.5 minutes on hetzner2.

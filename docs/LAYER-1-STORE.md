@@ -548,6 +548,96 @@ next transaction id are unchanged for two seconds after. The schema and its
 hash do not change. No model change: it is a read, and changes no state the
 model holds.
 
+Recorded with round 19 (2026-11-06): two changes, neither a model change.
+`store.NewFakeFrom(s Snapshot, policies ...PolicyVersion) (*Fake, error)`, a
+test and dry-run seam: a Fake whose streams, cards, rows, judgements,
+cursors, epoch and seq are the snapshot's, with the policy versions given
+(the snapshot names only the active one, `Policy`, which is set active), so
+an op built from the snapshot is checked exactly as the Fake checks it. Its
+`Snapshot` equals the input and its next event is the snapshot's seq plus 1;
+the earlier log is not carried (`Events` starts after it, `Replay` of an
+earlier id is unknown). An input that is not a snapshot is `ErrInvalid`. The
+signature differs from the one asked for (`NewFakeFrom(s) *Fake`) on purpose:
+the policy versions, which a snapshot does not carry, and an error for an
+inconsistent input. The conformance scenario "fake from snapshot" runs on
+Fake, PG and the ICU database: the snapshot round-trips, and the same four
+ops (accepted, refused, a policy add and switch, a judgement answer with a
+cursor) give the store and the Fake the same receipts, events and
+snapshot. `NewFake` is unchanged. Second: Migrate runs `CREATE SCHEMA IF NOT
+EXISTS sprint` only when the schema is absent (`pg_namespace`, read by the
+same `namespace` helper as the foreign check, which is unchanged), because
+PostgreSQL checks CREATE on the database before IF NOT EXISTS and refused
+(42501) a role that owns an existing `sprint` but may not create schemas,
+the least-privilege setup `up` makes. The schema hash is still of the whole
+`schema.sql` and does not change.
+
+Recorded with round 20 (2026-11-06): layer 6's restore of a data-only dump,
+`store.RestoreBegin(ctx, tx pgx.Tx) error` and `store.RestoreEnd(ctx, tx
+pgx.Tx) (SchemaIdentity, error)`, on one connection in one transaction the
+caller owns (`pgx.Tx`, so it cannot be called outside one). What the dump
+carries, read from `pg_dump --data-only --schema=sprint` of a seeded store
+(PostgreSQL 18): a `COPY` for every table, in this order: `rows`, `streams`,
+`cards`, `cursors`, `epoch`, `events`, `judgements`, `meta`, `policy`, with
+`meta`'s one row `(1, 2, <hash>)` and `epoch`'s one row `(1, n)` among them,
+and `setval` of `policy_version_seq`. So Begin leaves exactly schema.sql's two
+seed rows out (`INSERT INTO sprint.meta (id, schema) ...` and `INSERT INTO
+sprint.epoch (id, n) ...`, its only INSERTs) and inserts nothing. Begin takes
+Migrate's advisory lock for the transaction (a no-op when the caller holds
+it), refuses a foreign schema (the same check and words as Migrate) and a
+schema whose tables hold any row ("sprint.cards has rows; a restore loads only
+into an empty store: use a new database, or drop schema sprint", the first
+such table in byte order), runs `CREATE SCHEMA` only when the schema is absent,
+then schema.sql's DDL. A finding from building it: the dump does not load
+with `cards_fixed` on. pg_dump copies `sprint.cards` in physical order, where
+a producer updated after its consumers follows them, and the trigger checks
+each consumer's producer row by row ("card u1 is a consumer of c1, which is
+not a producer"; pg_dump itself warns of the self-referencing key and suggests
+`--disable-triggers`, which needs a superuser). So Begin disables
+`cards_fixed` (the owner may; the foreign keys stay on and are checked at the
+end of each COPY), and End enables it and runs it over every card (`UPDATE
+sprint.cards SET id = id`, so the trigger's own text is the check), in the
+same transaction, under the ACCESS EXCLUSIVE lock the ALTER holds to the
+end, so no other session sees it off. End then requires `sprint.meta` at
+this binary's version and hash, the epoch row, and `checkRebuild`: Rebuild
+over every loaded event equals the snapshot read in the transaction, naming
+each part that differs. `checkRebuild` is now the shared check: the cold
+read 7 tests (PG's log with old-shape receipts after the round-16 Migrate
+included) use it in place of their `assert.Equal(snap, Rebuild(...))`. End
+returns `CheckSchema`'s identity of the restored store; on any error the
+caller rolls back and nothing of the restore remains. The tests restore a
+store at epoch 2 with policies, judgements, a cursor and updated producers
+into a new database through pgx (statements by the simple protocol, each COPY
+by CopyFrom, psql's `\restrict` lines skipped), and get the same snapshot, the
+same log and the same receipt for the next op as the original, and Migrate
+takes the result; the witness loads the same dump with the trigger on and
+fails; a dump with its last event cut is refused ("... differs from the
+snapshot in judgements, cursors": seq is the log's own, so it agrees). No
+model change: the restore runs no op and changes no rule the model holds.
+
+Recorded with round 21 (2026-11-06): `store.ValidateHistory(ctx, tx pgx.Tx)
+error`, the whole-history check, which RestoreEnd now runs in place of the
+rebuild comparison alone, and which a verb can run on a live store in a
+REPEATABLE READ transaction (it only reads). It refuses naming the first
+mismatch, in this order: the events run from seq 1 to the last with no gap
+("the log has no event at seq 3 (the next is seq 4)"); each event's stored
+receipt is its own, its op, seq, kind, actor, accepted and time equal to the
+row's (receipts are a column of `sprint.events`, so an orphan receipt is one
+that names another event: "the receipt stored with event seq 4 (op reason-4)
+is not its own: it names op ghost at seq 4"); each event is in the epoch the
+log is in at that point (1, then each accepted clear's new epoch) and the
+epoch row is the log's last ("the epoch row is 3, but the log's last epoch is
+2"); the stored policy versions are exactly the ones the log's after-images
+wrote, each equal to its last image, active flag included, so the active one
+is the log's last activation ("policy version 2 is stored, but no event in
+the log wrote it", "the log wrote policy version 2, but it is not stored");
+every cursor is at or below the last seq ("cursor feed is at seq 99, past the
+log's last seq 5"); and `checkRebuild` as before. RestoreEnd prefixes "the
+dump does not hold together: "; ValidateHistory "store: history: ". Tests: the
+round-20 restore tests unchanged, a live store passes, and one mutation of a
+loaded dump per check (a dropped event, an orphan receipt, the epoch row, a
+policy version missing from the log, a cursor past the end), each refused
+with its message. No model change: a read.
+
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
