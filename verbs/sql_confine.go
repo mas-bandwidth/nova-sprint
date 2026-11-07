@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 var insertPrefix = regexp.MustCompile(`^INSERT INTO sprint\.(cards|cursors|epoch|events|judgements|meta|policy|rows|streams) VALUES \(`)
@@ -22,18 +24,18 @@ type orderedSQL struct {
 func ConfineData(dump []byte, expectedHash string) ([]string, error) {
 	line, _, ok := bytes.Cut(dump, []byte("\n"))
 	if !ok {
-		return nil, fmt.Errorf("line 1: backup header missing")
+		return nil, fmt.Errorf("line 1: backup header missing: %s", edge.ParseRefused("no newline", len(dump), dump))
 	}
 	match := backupHeader.FindStringSubmatch(string(line))
 	if len(match) != 3 || match[1] != expectedHash || !validBuildVersion(match[2]) {
-		return nil, fmt.Errorf("line 1: backup schema or version header does not match")
+		return nil, fmt.Errorf("line 1: backup schema or version header does not match: %s", edge.ParseRefused(confineHeaderWhy(match, expectedHash), 0, line))
 	}
 	rows := []orderedSQL{}
 	err := ParseDump(bytes.NewReader(dump), func(s string) error {
 		statement := strings.TrimSpace(stripComments(s))
 		order, ok := dataStatement(statement)
 		if !ok {
-			return fmt.Errorf("dump contains a statement outside sprint data")
+			return fmt.Errorf("dump contains a statement outside sprint data: %q", edge.FirstBytes([]byte(statement)))
 		}
 		rows = append(rows, orderedSQL{order, statement})
 		return nil
@@ -47,6 +49,16 @@ func ConfineData(dump []byte, expectedHash string) ([]string, error) {
 		out = append(out, row.sql)
 	}
 	return out, nil
+}
+func confineHeaderWhy(match []string, expectedHash string) string {
+	switch {
+	case len(match) != 3:
+		return "not a nova-sprint-backup schema= version= header"
+	case match[1] != expectedHash:
+		return "schema " + match[1] + " is not this build's " + expectedHash
+	default:
+		return "version " + match[2] + " is not a build version"
+	}
 }
 func dataStatement(s string) (int, bool) {
 	if harmlessSet(s) {
