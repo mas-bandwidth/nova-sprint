@@ -176,13 +176,39 @@ func (r RuntimeSetup) dashboardCheck(ctx context.Context, in SetupInput) (SetupC
 		return SetupCheck{}, err
 	}
 	ok, err = r.Dashboard.Verify(ctx, target.URL, snap.Epoch, target.Public)
-	var notReady *DashboardNotReady
-	if err != nil && ctx.Err() == nil && (errors.Is(err, errDashboardReach) || errors.As(err, &notReady)) {
-		// Not up yet: act; the line says why, and is printed when the
-		// step still does not verify after the act.
-		return SetupCheck{Action: true, Line: "UP 5/8 dashboard: " + target.URL + ": " + Redact(err.Error())}, nil
+	if refusal := r.dashboardRefusal(target, err); refusal != nil && ctx.Err() == nil {
+		// Not up yet: act; when it still does not verify after the act,
+		// the refusal is the probe's own error and its fix.
+		return SetupCheck{Action: true, Refusal: refusal}, nil
 	}
 	return setupReady(ok, "UP 5/8 dashboard: "+target.URL+": VERIFIED", err)
+}
+
+// dashboardRefusal is the probe's error as a refusal with its fix: an
+// unreachable board names the port to open on the machine that serves it;
+// one that answers wrong names what it answered. nil for any other error.
+func (r RuntimeSetup) dashboardRefusal(target DashboardTarget, err error) *OperationError {
+	machine, service := r.RunService.Machine, r.RunService.Name
+	if target.Public && target.Service != nil {
+		machine, service = target.Service.Machine, target.Service.Name
+	}
+	var unreachable *DashboardUnreachable
+	var notReady *DashboardNotReady
+	switch {
+	case errors.As(err, &unreachable):
+		port := "8080"
+		if u, perr := url.Parse(target.URL); perr == nil && u.Port() != "" {
+			port = u.Port()
+		}
+		fix := "open " + port + "/tcp on " + machine + " for the dashboard"
+		if target.Public && port != "80" {
+			fix += ", or front it on 80 (--dash public=" + machine + ":80)"
+		}
+		return &OperationError{Problem: edge.RedactN("dashboard unreachable: "+unreachable.Error(), edge.FailureMax), Fix: fix + ", then nova-sprint up again", Exit: 1}
+	case errors.As(err, &notReady):
+		return &OperationError{Problem: edge.RedactN("dashboard "+target.URL+" "+notReady.Why, edge.FailureMax), Fix: runLogFix(service) + " on " + machine + ", then nova-sprint up again", Exit: 1}
+	}
+	return nil
 }
 func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCheck, error) {
 	value, saved, err := r.answer(ctx, "services", in.Services, "")
