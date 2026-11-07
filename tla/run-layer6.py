@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Run layer 6 TLC on reserved hetzner2, preserving logs and exact targets.
+"""Run layer 6 TLC on reserved hetzner2 or authorized vision fallback.
 
-Use nova-reserve run --slots 8 --wait 60s --why stella-l6-tlc -- python3 PATH.
+Use nova-reserve run with the host capacity (hetzner2: 8; vision: 16),
+--wait 60s --why stella-l6-tlc -- python3 PATH.
 Each invocation is sequential with two TLC workers, isolated tmp/state paths,
 and a two-minute timeout. No parse error or timeout counts as a witness.
 """
@@ -19,17 +20,18 @@ SHA = "7a0a1e90628ebff2e3e8733375f8b684fa59504d2e02bddc4cb51a7679bb7e04"
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", nargs="*")
+    parser.add_argument("--manifest", default="layer6-runs.json")
     parser.add_argument("--tag", default=time.strftime("%Y%m%d-%H%M%S"))
     args = parser.parse_args()
-    if not socket.gethostname().startswith("hetzner2"):
-        sys.exit("TLC must run on reserved hetzner2, never the Studio")
+    if not socket.gethostname().startswith(("hetzner2", "vision")):
+        sys.exit("TLC must run on reserved hetzner2 or authorized vision, never the Studio")
     jar = Path.home() / ".cache/nova-sprint/tla2tools-v1.8.0.jar"
     assert hashlib.sha256(jar.read_bytes()).hexdigest() == SHA, "TLC jar hash mismatch"
     java = Path.home() / "sdk/bin/java"
     out = HERE / "layer6-evidence" / args.tag
     out.mkdir(parents=True, exist_ok=False)
     results = []
-    for case in json.loads((HERE / "layer6-runs.json").read_text()):
+    for case in json.loads((HERE / args.manifest).read_text()):
         if args.only and case["name"] not in args.only:
             continue
         name = case["name"]
@@ -49,7 +51,7 @@ def main():
         good = (code == 0 and "Model checking completed. No error has been found." in text) if expect == "pass" else (
             code == 12 and "Invariant " + case["target"] + " is violated" in text) if expect == "invariant" else (
             code == 13 and "Temporal property " + case["target"] + " was violated" in text and "PROPERTY " + case["target"] in (HERE / case["cfg"]).read_text())
-        result = dict(case, exit=code, seconds=round(time.monotonic()-start, 3), checked=good,
+        result = dict(case, host=socket.gethostname(), exit=code, seconds=round(time.monotonic()-start, 3), checked=good,
                       module_sha256=hashlib.sha256((HERE / case["module"]).read_bytes()).hexdigest(),
                       cfg_sha256=hashlib.sha256((HERE / case["cfg"]).read_bytes()).hexdigest())
         results.append(result)
