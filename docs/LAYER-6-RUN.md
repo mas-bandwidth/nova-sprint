@@ -631,9 +631,11 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   `NOVA_SPRINT_PG_PASSWORD`, `NOVA_BUS_PASSWORD` (when the bus has a user, as sprint-run),
   `DEEPSEEK_API_KEY`, `INCEPTION_API_KEY`, `PAPERINSTRUMENTS_API_KEY`, env `NOVA_PG_DSN`,
   `NOVA_BUS_REDIS`, `NOVA_BUS_USER` as sprint-run's. All are applied in one play (`nova-fleet
-  services -- -l <benches> -e nova_service_only=<records>`), not one per machine. The run
-  machine gets no worker: the worker refuses the coordinator's machine (LESSONS 4.18), and the
-  UP DONE count is of worker benches. `harness` is opencode because nova-config's machines carry
+  services -- -l <benches> -e nova_service_only=<records>`), not one per machine. Every bench
+  gets a worker, the run machine too when it has the bench role (merged with the worker's
+  change of the same night, which dropped its coordinator-host refusal); the UP DONE count is of
+  worker benches. The record's argv carries the worker's per-repo roots (`--work-root`) and its
+  provider routes (`--providers`; only DeepSeek's upstream is known, the other two are owed). `harness` is opencode because nova-config's machines carry
   no harness field.
 - Step 7 verifies from one inventory read, one snapshot and one `nova-bus who`
   (`ExecEnvironment.Present`); a not-ready step is a `verbs.WorkloadNotReady`: up acts once, then

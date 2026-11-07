@@ -85,9 +85,9 @@ func (s services) Worker(ctx context.Context, w verbs.WorkerArgs) error {
 	w.SprintBin = self
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("worker: home directory (a relative --work-clone, --root or --state-dir is under it): %w", err)
+		return fmt.Errorf("worker: home directory (a relative --work-root, --mirror-root, --root or --state-dir is under it): %w", err)
 	}
-	w.WorkClone, w.Root, w.StateDir = underHome(home, w.WorkClone), underHome(home, w.Root), underHome(home, w.StateDir)
+	w.WorkRoot, w.MirrorRoot, w.Root, w.StateDir = underHome(home, w.WorkRoot), underHome(home, w.MirrorRoot), underHome(home, w.Root), underHome(home, w.StateDir)
 	return worker.Serve(ctx, w, func(line string) { fmt.Println(line) })
 }
 

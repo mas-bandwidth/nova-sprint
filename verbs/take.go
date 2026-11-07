@@ -14,9 +14,11 @@ import (
 )
 
 // takeReceipt is the take seam (SEAMS 6): everything nova-worker needs to
-// run a consumer. Model is the roster's, Deadline (seconds) the active
-// policy's timeouts().consumer[tier], Forge the stream's; the worker holds
-// none of its own.
+// run a consumer. Model is a friend's own from the roster; a bench has none
+// and Models instead, the active policy's candidates for the card's tier in
+// provider/model form, of which its harness runs the first it serves.
+// Deadline (seconds) is the active policy's timeouts().consumer[tier], Forge
+// the stream's; the worker holds none of its own.
 type takeReceipt struct {
 	Consumer  string   `json:"consumer"`
 	Producer  string   `json:"producer"`
@@ -40,6 +42,7 @@ type takeReceipt struct {
 	Attempt   int      `json:"attempt"`
 	Review    int      `json:"review"`
 	Model     string   `json:"model"`
+	Models    []string `json:"models"`
 	Deadline  int      `json:"deadline"`
 	Forge     string   `json:"forge"`
 }
@@ -56,11 +59,11 @@ func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if err != nil {
 		return "", err
 	}
-	lim, tmo, err := e.rules(ctx, snap)
+	a, err := e.answers(ctx, snap)
 	if err != nil {
 		return "", err
 	}
-	ro, err := e.roster(ctx, lim)
+	ro, err := e.roster(ctx, a.Limits)
 	if err != nil {
 		return "", err
 	}
@@ -73,7 +76,7 @@ func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 			return "", err
 		}
 	}
-	return takenOutput(in, snap, r, ro, tmo, id)
+	return takenOutput(in, snap, r, ro, a, id)
 }
 
 // machineID is a row's op id on a consumer, checked against --epoch and
@@ -138,7 +141,7 @@ func firstOr(s []string, or string) string {
 // takenOutput is the receipt, as JSON for a machine or as the brief for a
 // mind; a stored receipt of another row's take, or a refused one, is a
 // refusal.
-func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Roster, tmo policy.Timeouts, id string) (string, error) {
+func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Roster, a policy.Answers, id string) (string, error) {
 	if r.Actor != in.actor || r.Kind != "take" {
 		return "", refuse(fmt.Sprintf("%s was taken by %s", id, r.Actor), "nova-sprint next --as "+in.actor)
 	}
@@ -153,7 +156,10 @@ func takenOutput(in *input, snap store.Snapshot, r store.Receipt, ro roster.Rost
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: git.StreamBranch(c.Stream), BaseSHA: c.BaseSHA,
 		PriorHead: c.Prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: r.Epoch, Gen: c.Gen, Attempt: c.Attempt,
-		Review: c.Review, Model: ro.Kin[in.actor].Model, Deadline: tmo.Consumer[c.Tier], Forge: s.Forge}
+		Review: c.Review, Model: ro.Kin[in.actor].Model, Models: nonNil(nil), Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge}
+	if _, bench := ro.Workers[in.actor]; bench {
+		t.Models = tierModels(ro, in.actor, a.Catalog)[c.Tier]
+	}
 	if in.has("json") {
 		b, err := json.Marshal(t)
 		return string(b) + "\n", err

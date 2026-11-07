@@ -18,22 +18,23 @@ import (
 // a row, its inventory (nova-worker reads `next --json`). The lists are
 // never null; width 0 is an answer (no room, or no roster).
 type nextView struct {
-	Message    string          `json:"message"`
-	Next       string          `json:"next"`
-	Epoch      int             `json:"epoch"`
-	Seq        int64           `json:"seq"`
-	Row        string          `json:"row"`
-	State      string          `json:"state"`
-	Role       string          `json:"role"`
-	Width      int             `json:"width"`
-	Held       bool            `json:"held"`
-	Model      string          `json:"model"`
-	Harness    string          `json:"harness"`
-	RosterErr  string          `json:"roster_error,omitempty"`
-	Ready      []consumerLine  `json:"ready"`
-	Working    []consumerLine  `json:"working"`
-	Final      []consumerLine  `json:"final"`
-	Judgements []judgementLine `json:"judgements"`
+	Message    string              `json:"message"`
+	Next       string              `json:"next"`
+	Epoch      int                 `json:"epoch"`
+	Seq        int64               `json:"seq"`
+	Row        string              `json:"row"`
+	State      string              `json:"state"`
+	Role       string              `json:"role"`
+	Width      int                 `json:"width"`
+	Held       bool                `json:"held"`
+	Model      string              `json:"model"`
+	TierModels map[string][]string `json:"tier_models"`
+	Harness    string              `json:"harness"`
+	RosterErr  string              `json:"roster_error,omitempty"`
+	Ready      []consumerLine      `json:"ready"`
+	Working    []consumerLine      `json:"working"`
+	Final      []consumerLine      `json:"final"`
+	Judgements []judgementLine     `json:"judgements"`
 }
 
 type consumerLine struct {
@@ -62,7 +63,7 @@ type judgementLine struct {
 // missing prerequisite is its answer, exit 0; it exits 2 only when it
 // cannot look.
 func runNext(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
-	v := nextView{Row: in.actor, Ready: []consumerLine{}, Working: []consumerLine{}, Final: []consumerLine{}, Judgements: []judgementLine{}}
+	v := nextView{Row: in.actor, TierModels: map[string][]string{}, Ready: []consumerLine{}, Working: []consumerLine{}, Final: []consumerLine{}, Judgements: []judgementLine{}}
 	if err := e.look(ctx, &v, in.has("json")); err != nil {
 		return "", err
 	}
@@ -163,15 +164,17 @@ func fillInventory(v *nextView, snap store.Snapshot) {
 	}
 }
 
-// fillRoster is the row's width, model and harness from nova-config; an
-// unreadable roster is width 0 with the reason, never a refusal.
+// fillRoster is the row's width, model and harness from nova-config, and
+// the models it may run by tier (tierModels); an unreadable roster is width
+// 0 with the reason, never a refusal.
 func (e *Engine) fillRoster(ctx context.Context, v *nextView, snap store.Snapshot) {
-	lim, _, err := e.rules(ctx, snap)
+	a, err := e.answers(ctx, snap)
 	if err == nil {
-		ro, rerr := e.roster(ctx, lim)
+		ro, rerr := e.roster(ctx, a.Limits)
 		if err = rerr; err == nil {
 			_, v.Width, _, _ = ro.Row(v.Row)
 			v.Model, v.Harness = ro.Kin[v.Row].Model, cmp.Or(ro.Kin[v.Row].Harness, ro.Workers[v.Row].Harness)
+			v.TierModels = tierModels(ro, v.Row, a.Catalog)
 		}
 	}
 	if err != nil {

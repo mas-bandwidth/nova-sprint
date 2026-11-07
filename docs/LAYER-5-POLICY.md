@@ -510,11 +510,16 @@ Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
 give a function and a type one name. `Catalog.Unknown(model, harness)` is the
 row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
 (`nova-sprint policy set <file> --reason <why>`). The default's tier map is Glenn's (Hacker News, 2026-11-05),
-quoted in `default.star`: haiku, luna and deepseek-flash-4.1 at flash; sonnet,
+quoted in `default.star`: haiku, luna and deepseek-flash at flash; sonnet,
 terra and mercury-3 at pro; opus and sol at heavy; fable, astra and argon at
 frontier. The providers are the coordinator's mapping (anthropic, openai,
 google, deepseek, inception); openai and google are guesses, and astra sits
-under `unknown`, a guess. Harnesses: claude, codex, opencode and api (the
+under `unknown`, a guess. 2026-11-07 (one vocabulary, defect 36): a name is
+the harness's own model id under its provider, and `Catalog.ForTier(tier)`
+hands a bench `provider/name` (a name holding a `/` as it is), providers in
+name order; deepseek-flash-4.1 became deepseek-flash (the id opencode lists),
+and mercury-2.5 (inception) and ultramarine-1-flash (paperinstruments) joined
+at flash, their tiers a guess. Harnesses: claude, codex, opencode and api (the
 API-rate adapter).
 
 **Size.** At round 3: 2,529 lines of non-test Go, over the 1.5k budget by

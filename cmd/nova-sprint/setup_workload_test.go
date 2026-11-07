@@ -61,9 +61,10 @@ func serviceAdded(args []string) map[string]any {
 	return map[string]any{"name": args[2], "machine": flag("--machine"), "seat": flag("--seat"), "keys": flag("--keys"), "argv": argv, "every": 0, "keepalive": true, "enabled": true, "env": env, "log": ""}
 }
 
-// Three benches; studio runs the sprint and is a bench too (no worker
-// there: the worker refuses the coordinator's machine); amd-2 has no cores.
-const workloadMachines = `{"kind":"machine","fields":{"name":"studio","address":"100.100.1.2","roles":"services,bench","cores":8}},` +
+// Two benches and studio, which runs the sprint and is not a bench here
+// (a run machine with the bench role gets a worker like any bench); amd-2
+// has no cores.
+const workloadMachines = `{"kind":"machine","fields":{"name":"studio","address":"100.100.1.2","roles":"services","cores":8}},` +
 	`{"kind":"machine","fields":{"name":"amd-1","address":"100.100.1.5","roles":"bench,runner","cores":16}},` +
 	`{"kind":"machine","fields":{"name":"amd-2","address":"100.100.1.6","roles":"bench"}}`
 
@@ -103,7 +104,7 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		}
 	}
 	want := []string{"nova-config", "service", "add", "sprint-worker-amd-1", "--machine", "amd-1",
-		"--argv", `["nova-sprint","worker","--as","amd-1","--work-clone",".local/share/nova-sprint/work","--coordinator-hosts","studio","--harness","opencode","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
+		"--argv", `["nova-sprint","worker","--as","amd-1","--work-root",".local/share/nova-sprint/work","--harness","opencode","--providers","deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY","--root",".local/state/nova-worker/amd-1","--state-dir",".local/state"]`,
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
 		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD,PAPERINSTRUMENTS_API_KEY",

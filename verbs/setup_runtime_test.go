@@ -196,3 +196,12 @@ func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 		t.Fatal(result)
 	}
 }
+
+// The bench role is the only word: the run machine is a worker bench when
+// it has the role.
+func TestWorkerBenchesIncludeTheRunMachineWhenItIsABench(t *testing.T) {
+	got := WorkerBenches([]FleetMachine{{Name: "studio", Roles: []string{"services", "bench"}}, {Name: "edge", Roles: []string{"services"}}, {Name: "amd-1", Roles: []string{"bench"}}})
+	if strings.Join(got, ",") != "studio,amd-1" {
+		t.Fatal(got)
+	}
+}
