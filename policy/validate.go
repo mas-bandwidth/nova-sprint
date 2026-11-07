@@ -176,7 +176,7 @@ func checkWidth(v starlark.Value, width int) (Width, string) {
 
 // limitKeys are limits' keys, every one required.
 var limitKeys = []string{"bounces", "faults", "same_finding", "reports_per_tick", "route_rest_window", "route_rest_after",
-	"escalate_after", "frontier_after", "flap_limit", "idle_floor", "land_target"}
+	"escalate_after", "frontier_after", "flap_limit", "fleet_width_cap", "idle_floor", "land_target"}
 
 // checkLimits: every key present, each in its range; frontier_after at or
 // above escalate_after, route_rest_after at most route_rest_window; the
@@ -193,7 +193,8 @@ func checkLimits(v starlark.Value) (Limits, string) {
 		dst    *int
 	}{{"bounces", 1, 100, &l.Bounces}, {"faults", 1, 100, &l.Faults}, {"same_finding", 1, 10, &l.SameFinding},
 		{"reports_per_tick", 1, 10000, &l.ReportsPerTick}, {"route_rest_window", 1, 100, &l.RouteRestWindow},
-		{"escalate_after", 1, 100, &l.EscalateAfter}, {"flap_limit", 1, 100, &l.FlapLimit}} {
+		{"escalate_after", 1, 100, &l.EscalateAfter}, {"flap_limit", 1, 100, &l.FlapLimit},
+		{"fleet_width_cap", 1, 256, &l.FleetWidthCap}} {
 		if *f.dst, msg = intIn(f.key, d[f.key], f.lo, f.hi); msg != "" {
 			return Limits{}, msg
 		}
@@ -243,7 +244,7 @@ func checkLanding(v starlark.Value) (Landing, string) {
 // checkTimeouts: seconds, each 1..86400, base_regate a rising list, the
 // withdraw silence at or above the gone one: no wait is ever unbounded.
 func checkTimeouts(v starlark.Value) (Timeouts, string) {
-	d, msg := dictOf(v, "row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for")
+	d, msg := dictOf(v, "row_silent_gone", "row_silent_withdraw", "landing_stall", "base_regate", "judgement", "route_rest_for", "tick", "consumer")
 	if msg != "" {
 		return Timeouts{}, msg
 	}
@@ -251,7 +252,7 @@ func checkTimeouts(v starlark.Value) (Timeouts, string) {
 	for _, f := range []struct {
 		key string
 		dst *int
-	}{{"row_silent_gone", &t.RowSilentGone}, {"landing_stall", &t.LandingStall}, {"judgement", &t.Judgement}, {"route_rest_for", &t.RouteRestFor}} {
+	}{{"row_silent_gone", &t.RowSilentGone}, {"landing_stall", &t.LandingStall}, {"judgement", &t.Judgement}, {"route_rest_for", &t.RouteRestFor}, {"tick", &t.Tick}} {
 		if *f.dst, msg = intIn(f.key, d[f.key], 1, maxSeconds); msg != "" {
 			return Timeouts{}, msg
 		}
@@ -259,8 +260,26 @@ func checkTimeouts(v starlark.Value) (Timeouts, string) {
 	if t.RowSilentWithdraw, msg = intIn("row_silent_withdraw", d["row_silent_withdraw"], t.RowSilentGone, maxSeconds); msg != "" {
 		return Timeouts{}, msg + " (at or above row_silent_gone)"
 	}
-	t.BaseRegate, msg = rising(d["base_regate"])
+	if t.BaseRegate, msg = rising(d["base_regate"]); msg != "" {
+		return Timeouts{}, msg
+	}
+	t.Consumer, msg = perTier(d["consumer"])
 	return t, msg
+}
+
+// perTier is a dict naming every tier of store.Tiers, each 1..maxSeconds.
+func perTier(v starlark.Value) (map[string]int, string) {
+	d, msg := dictOf(v, store.Tiers...)
+	if msg != "" {
+		return nil, "consumer: " + msg
+	}
+	out := make(map[string]int, len(store.Tiers))
+	for _, tier := range store.Tiers {
+		if out[tier], msg = intIn("consumer "+tier, d[tier], 1, maxSeconds); msg != "" {
+			return nil, msg
+		}
+	}
+	return out, ""
 }
 
 func rising(v starlark.Value) ([]int, string) {

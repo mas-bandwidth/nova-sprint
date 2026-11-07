@@ -128,8 +128,9 @@ func TestDefaultAnswersEverySnapshot(t *testing.T) {
 		require.Empty(t, fs, "shape %d", i)
 		assert.Equal(t, 0, a.Version)
 		assert.Equal(t, Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
-			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9}, a.Limits)
-		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800}, a.Timeouts)
+			EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, FleetWidthCap: 8, IdleFloor: 0.5, LandTarget: 0.9}, a.Limits)
+		assert.Equal(t, Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, BaseRegate: []int{120, 300}, Judgement: 3600, RouteRestFor: 1800,
+			Tick: 10, Consumer: map[string]int{"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}}, a.Timeouts)
 		assert.Empty(t, a.Prices)
 	}
 	a, _ := testEngine().Answer(Versions{}, shapes[1], w.ro, FullQuestions(shapes[1], nil))
@@ -220,7 +221,7 @@ func TestRosterIsTheSourceOfRowFacts(t *testing.T) {
 	js := Judgements(snap, w.ro, fs)
 	require.Len(t, js, 1)
 	assert.Equal(t, store.PutJudgement{ID: fmt.Sprintf("roster-s%d-0", snap.Seq), Kind: "roster", About: "r1", Question: "row r1 is not in nova-config",
-		Command: fmt.Sprintf("nova-sprint answer roster-s%d-0", snap.Seq), Group: "roster:r1"}, js[0])
+		Command: fmt.Sprintf("nova-config friend add r1 (or nova-sprint judge roster-s%d-0 retry --reason <why> once it is)", snap.Seq), Group: "roster:r1"}, js[0])
 	w.apply(js[0])
 	assert.Empty(t, Judgements(w.snap(), w.ro, fs), "reported once: none while one is open")
 }
