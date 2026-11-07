@@ -24,7 +24,7 @@ func runCostReconcile(e *Engine, ctx context.Context, in *input, _ store.Snapsho
 	}
 	lines, err := cost.Reconcile(ctx, st, e.Now(), in.actor, readers)
 	if err != nil {
-		return "", broken("cost reconcile: "+clip(err.Error()), "nova-sprint cost reconcile --as "+in.actor)
+		return "", RefusalOr(err, broken("cost reconcile: "+clip(err.Error()), "nova-sprint cost reconcile --as "+in.actor))
 	}
 	out := make([]string, len(lines))
 	next := "nova-sprint next --as " + in.actor

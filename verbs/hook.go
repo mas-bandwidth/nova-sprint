@@ -150,7 +150,7 @@ func runWake(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	}
 	raw, err := io.ReadAll(e.Stdin)
 	if err != nil {
-		return "", broken("stdin unreadable ("+clip(err.Error())+")", "nova-bus help hook")
+		return "", RefusalOr(err, broken("stdin unreadable ("+clip(err.Error())+")", "nova-bus help hook"))
 	}
 	line := strings.TrimSuffix(string(raw), "\n")
 	f := strings.SplitN(line, "\t", 5)
