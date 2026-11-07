@@ -53,6 +53,33 @@ package does with it.
   password comes as pgx takes it (`PGPASSWORD` or a pgpass file). `PG.Schema`
   is the same read on an open store's pool; `Fake.Schema` always reports the
   current schema with no owner.
+- Least privilege (round 19): when schema `sprint` already exists, Migrate
+  skips `CREATE SCHEMA IF NOT EXISTS sprint` (PostgreSQL checks CREATE on the
+  database before IF NOT EXISTS) and runs the rest of `schema.sql`, so the
+  schema's owner needs no CREATE on the database: an admin role creates
+  `sprint` owned by `nova_sprint`, and `nova_sprint` migrates it. The hash is
+  still of the whole file. A store with no schema still needs CREATE.
+- Restore (round 20, `restore.go`): `RestoreBegin(ctx, tx)` and
+  `RestoreEnd(ctx, tx)` restore a `pg_dump --data-only --schema=sprint` dump
+  in one transaction on one connection. Begin takes Migrate's advisory lock,
+  refuses a foreign schema or one with any row, and creates every table,
+  function, trigger and index without schema.sql's two seed rows (the dump
+  carries `meta`'s row with its hash and `epoch`'s row), and disables
+  `cards_fixed` for the load, because the dump's cards are in physical order
+  and an updated producer can follow its consumers. Load the dump on the same
+  transaction (each statement as psql would, each COPY by `CopyFrom`), then
+  End enables the trigger and runs it over every card, checks the hash and
+  version, the epoch row, and that Rebuild over the loaded events is the
+  loaded snapshot (`checkRebuild`, the check the tests share), and returns
+  the identity. Commit only when End returns no error.
+- `ValidateHistory(ctx, tx)` (round 21, `history.go`) checks that the log is
+  the whole history of the tables and names the first thing that is not:
+  seqs 1 to the last with no gap, each receipt its own event's, each event in
+  the log's epoch at that point and the epoch row the last, the stored policy
+  versions exactly the log's (each as last written, so the active one is the
+  last activation), every cursor at or below the last seq, and Rebuild equal
+  to the snapshot. RestoreEnd runs it; a verb can run it on a live store in
+  a REPEATABLE READ, read-only transaction.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
@@ -65,6 +92,19 @@ package does with it.
   long log): it is for tests only.
   `Fake.Drop(opID, landed)` makes the next Apply or Clear of that id report
   `ErrUnknown`, landed or not, so callers can test their replay path.
+- `NewFakeFrom(snapshot, policies...)` (round 19, `fakefrom.go`) is a Fake
+  whose state is a snapshot, for a dry run: build a plan from a snapshot,
+  apply it to `NewFakeFrom` of that snapshot, and it gets the Fake's checks,
+  which are PG's. Pass every policy version the store holds (`Policy` for 1,
+  2, ... until `ErrNotFound`): a snapshot carries only the active version's
+  number, and the next `PutPolicy` number and the policy images need the rest.
+  Its `Snapshot` equals the input, and its first event is at the snapshot's
+  seq plus 1. The log before the snapshot is not carried, so `Events` starts
+  after it and `Replay` of an earlier op id reports unknown: a dry run cannot
+  tell that an id was already used. An input that is not a snapshot (an epoch
+  below 1, a negative seq, a map key that is not the entry's name, a policy
+  version below 1 or given twice, an active version not given) is
+  `ErrInvalid`. `NewFake` is unchanged (it starts at seq 0).
 
 ## A worked example
 

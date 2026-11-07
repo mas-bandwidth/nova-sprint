@@ -130,7 +130,7 @@ high, normal, low; within a rung, policy's order.
 - Inputs: ready producers; producers in review owed reads; open rows (up,
   not held, not rested) with tiers, rank, model, width, working and ready
   counts; stream heads (the `base` a `Start` records).
-- Plans: `Start{row, branch, base}`, branch `sprint/<stream>/<producer>`;
+- Plans: `Start{row, branch, base}`, branch `sprint/<stream>/<producer>` (the stream group branch is `sprint/<stream>/group`, never `sprint/<stream>`: git refuses a ref that is both a file and a directory; Emma, 2026-11-06);
   `AskReads{rows}` cutting every read a head needs in one plan, to distinct
   rows, none the author (LESSONS 3.4). A row is dealt while ready plus
   working is under width plus `ahead`; width caps working only (LESSONS

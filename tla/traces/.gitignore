@@ -1,0 +1,4 @@
+# Written by tla/make-traces.sh from the walks; only the breakers are committed.
+store-fake-*/
+store-pg-*/
+card-walk-*/
