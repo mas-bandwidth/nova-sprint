@@ -112,7 +112,8 @@ type Runner struct {
 	CoordinatorHosts                   []string
 	Sprint                             SprintClient
 	Git                                GitOps
-	Forge                              ForgeOps
+	Forges                             map[string]ForgeOps
+	BusHook                            BusHookStarter
 	Wall                               ReserveWall
 	Procs                              ProcessTable
 	Proxy                              *KeyProxy
@@ -125,7 +126,6 @@ type Runner struct {
 	Sleep                              func(time.Duration)
 	mu                                 *sync.Mutex
 	probed, withdrawn                  map[string]bool
-	hooked                             map[string]int
 	adopted                            map[string]JobRecord
 	running                            map[string]context.CancelFunc
 	dedup                              *edge.Deduplicator
@@ -139,19 +139,16 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	if strings.TrimSpace(cfg.RootDir) == "" {
 		return nil, errors.New("worker refused: root directory is empty: pass --root <dir>")
 	}
+	if cfg.Now == nil || cfg.Sleep == nil {
+		return nil, errors.New("worker refused: no clock: the caller passes Now and Sleep (the real clock in cmd/nova-worker, a fake one in a unit test)")
+	}
 	cfg.Timeouts = cfg.Timeouts.WithDefaults()
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
-	if cfg.Sleep == nil {
-		cfg.Sleep = time.Sleep
-	}
 	cfg.Procs = cmp.Or[ProcessTable](cfg.Procs, OSProcessTable{})
 	cfg.Wall = cmp.Or[ReserveWall](cfg.Wall, &OSReserveWall{UseSandbox: true, Exec: cfg.Exec, Config: WallConfig{ReserveWait: cfg.Timeouts.ReserveWait, NetDeny: true}})
 	if cfg.Logger == nil && cfg.StateDir != "" {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
 	}
-	cfg.mu, cfg.probed, cfg.withdrawn, cfg.hooked = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]int{}
+	cfg.mu, cfg.probed, cfg.withdrawn = &sync.Mutex{}, map[string]bool{}, map[string]bool{}
 	cfg.adopted, cfg.running, cfg.dedup = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator()
 	return &cfg, nil
 }
@@ -181,7 +178,7 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName, model string) e
 	}
 	defer os.RemoveAll(probeDir)
 	pj := h.Probe(Job{
-		Consumer: row + ".probe", Row: row, Kind: "work", Tier: "flash",
+		Consumer: row + ".probe", Row: row, Kind: "work",
 		Model: model, HarnessName: h.Name(), JobDir: probeDir,
 		WorktreeDir: filepath.Join(probeDir, "repo"), ProxyAddr: r.ProxyAddr,
 	})
@@ -231,11 +228,6 @@ func (r *Runner) RecoverRow(ctx context.Context, row string) error {
 	disk, err := r.loadRowJobs_internal(row)
 	if err != nil {
 		return err
-	}
-	if len(next.Working) > 0 || len(disk) > 0 {
-		if err := r.ensureHooked_internal(ctx, row, next.Epoch); err != nil {
-			return err
-		}
 	}
 	workingByID, finalByID := map[string]ConsumerSummary{}, map[string]ConsumerSummary{}
 	for _, w := range next.Working {
@@ -384,41 +376,86 @@ func (r *Runner) cancelRunning_internal(id string) {
 		cancel()
 	}
 }
-func (r *Runner) ensureHooked_internal(ctx context.Context, row string, epoch int) error {
-	hc, ok := r.Sprint.(HookClient)
-	ep := cmp.Or(epoch, 1)
-	r.mu.Lock()
-	already := !ok || r.hooked[row] == ep
-	r.mu.Unlock()
-	if already {
-		return nil
+
+// Start is the startup order (drift row 20): the bus hook, which claims the
+// row's name; then a self-unhook of any sprint hook a dead worker left (a
+// refusal means there was none); then `nova-sprint hook --as <row> --role
+// worker`. Nothing acts before it returns, and the caller owns the hook.
+func (r *Runner) Start(ctx context.Context, row string) (WakeHook, error) {
+	if r.BusHook == nil {
+		return nil, errors.New("worker refused: no bus hook configured: start nova-worker through cmd/nova-worker")
 	}
-	if err := hc.Hook(ctx, row); err != nil {
+	hook, err := r.BusHook(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.Sprint.Unhook(ctx, row); err != nil && !errors.Is(err, ErrRefused) {
+		hook.Stop()
+		return nil, err
+	}
+	if err := r.Sprint.Hook(ctx, row); err != nil {
+		hook.Stop()
+		return nil, err
+	}
+	r.logStep_internal(row, "-", "hook", "ok", 0)
+	return hook, nil
+}
+
+// RunOnce is one pass under the same startup order.
+func (r *Runner) RunOnce(ctx context.Context, row string) error {
+	hook, err := r.Start(ctx, row)
+	if err != nil {
 		return err
 	}
-	r.mu.Lock()
-	r.hooked[row] = ep
-	r.mu.Unlock()
-	return nil
+	defer hook.Stop()
+	return r.StepRow(ctx, row)
 }
+
+// RunWakeLoop hooks in (Start), takes one pass, then one pass per burst of
+// wakes: a pass runs on a goroutine of its own, wakes that arrive while it
+// runs coalesce into one more pass, and unacknowledged reports are sent again
+// by each pass (RecoverRow). It returns nil when ctx ends, and an error when
+// the bus hook dies, which the caller turns into a non-zero exit, or when a
+// receipt is refused (ErrReceipt).
 func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
-	ex := cmp.Or[edge.Exec](r.Exec, edge.NewOSExec())
-	_ = r.StepRow(ctx, row)
-	for ctx.Err() == nil {
-		nonce := fmt.Sprintf("n-hook-%s-%d", row, nextWallPID_internal())
-		_, _ = ex.Run(ctx, edge.Cmd{
-			Argv:     []string{"nova-bus", "hook", "--as", row},
-			Env:      []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "NOVA_WORKER_NONCE=" + nonce},
-			CleanEnv: true, Timeout: r.Timeouts.BusSend,
-			OnStart: func(pid int) { liveProcNonces_internal.Store(pid, nonce) },
-		})
-		if ctx.Err() != nil {
-			return nil
-		}
-		_ = r.StepRow(ctx, row)
-		r.Sleep(200 * time.Millisecond)
+	hook, err := r.Start(ctx, row)
+	if err != nil {
+		return err
 	}
-	return nil
+	defer hook.Stop()
+	loopCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	passDone, running, pending := make(chan error, 1), false, true
+	wait := func() {
+		if running {
+			cancel()
+			<-passDone
+		}
+	}
+	for {
+		if pending && !running {
+			pending, running = false, true
+			go func() { passDone <- r.StepRow(loopCtx, row) }()
+		}
+		select {
+		case <-ctx.Done():
+			wait()
+			return nil
+		case <-hook.Wake():
+			pending = true
+		case err := <-passDone:
+			running = false
+			if err != nil {
+				r.logStep_internal(row, "-", "pass", "error: "+err.Error(), 0)
+				if errors.Is(err, ErrReceipt) {
+					return err
+				}
+			}
+		case <-hook.Done():
+			wait()
+			return hook.Err()
+		}
+	}
 }
 func ignoreStoreDown_internal(err error) error {
 	if errors.Is(err, ErrStoreDown) {
@@ -473,10 +510,13 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 	if _, err := os.Stat(jobDir); err == nil {
 		return fmt.Errorf("worker refused: job directory %s already exists: a job directory is never reused", jobDir)
 	}
-	if err := r.ensureHooked_internal(runCtx, rowInfo.Row, rowInfo.Epoch); err != nil {
-		return err
-	}
 	info, err := r.Sprint.Take(runCtx, rowInfo.Row, c.ID, c.Gen)
+	if err == nil {
+		err = checkReceipt_internal(info)
+	}
+	if errors.Is(err, ErrReceipt) {
+		return r.refuseReceipt_internal(runCtx, jobDir, rowInfo, c, err)
+	}
 	if err != nil {
 		return err
 	}
@@ -507,6 +547,24 @@ func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c Consum
 	}
 	return r.sendReportAndClean_internal(runCtx, jobDir, rec)
 }
+
+// refuseReceipt_internal reports the card taken under a receipt the worker
+// cannot use as a fault naming the fix, through the durable path (a job
+// record at state reporting), and returns the refusal, which ends the worker.
+func (r *Runner) refuseReceipt_internal(ctx context.Context, jobDir string, rowInfo NextResponse, c ConsumerSummary, cause error) error {
+	rec := JobRecord{
+		Epoch: rowInfo.Epoch, Consumer: c.ID, Producer: c.Producer, Kind: c.Kind, Row: rowInfo.Row, Stream: c.Stream,
+		Gen: c.Gen, Attempt: c.Attempt, ResultID: FormatResultID(rowInfo.Epoch, c.ID, c.Attempt, c.Gen),
+		State: JobReporting, Outcome: Outcome{Result: "fault", Reason: TailBytes([]byte(cause.Error()), MaxReasonBytes)},
+	}
+	if err := WriteJobRecord(jobDir, rec); err != nil {
+		return err
+	}
+	if err := r.sendReportAndClean_internal(ctx, jobDir, rec); err != nil {
+		r.logStep_internal(rowInfo.Row, c.ID, "receipt", "refused; report kept: "+err.Error(), 0)
+	}
+	return cause
+}
 func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir string) (Job, JobRecord, error) {
 	for _, sub := range []string{"home", "tmp", "data"} {
 		if err := os.MkdirAll(filepath.Join(jobDir, sub), 0o755); err != nil && sub == "home" {
@@ -514,18 +572,19 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 		}
 	}
 	wt, now := filepath.Join(jobDir, "repo"), r.Now().UTC()
-	dl, epoch := now.Add(r.Timeouts.DeadlineFor(info.Tier)+r.Timeouts.CIWaitExtra), cmp.Or(info.Epoch, rowInfo.Epoch)
+	deadline := time.Duration(info.Deadline) * time.Second
+	epoch := cmp.Or(info.Epoch, rowInfo.Epoch)
 	job := Job{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
 		Row: rowInfo.Row, Stream: info.Stream, Repo: info.Repo, Base: info.Base,
 		StreamRef: info.StreamRef, Branch: info.Branch, BaseSHA: info.BaseSHA,
 		PriorHead: info.PriorHead, Head: info.Head, Tier: info.Tier,
-		Model: rowInfo.Model, HarnessName: rowInfo.Harness, Brief: info.Brief,
+		Model: info.Model, HarnessName: rowInfo.Harness, Brief: info.Brief,
 		Prose: info.Prose, Finding: info.Finding, Paths: info.Paths,
 		DoneWhen: info.DoneWhen, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
 		ProxyAddr: r.ProxyAddr, CommitName: rowInfo.Row,
-		CommitEmail: rowInfo.Row + "@nova-sprint.local", RequirePR: info.RequirePR,
+		CommitEmail: rowInfo.Row + "@nova-sprint.local", Forge: info.Forge, Deadline: deadline,
 	}
 	rec := JobRecord{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,
@@ -533,7 +592,7 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 		StreamRef: info.StreamRef, Branch: info.Branch, BaseSHA: info.BaseSHA,
 		PriorHead: info.PriorHead, TargetHead: info.Head, DoneWhen: cloneStrings_internal(info.DoneWhen),
 		Gen: info.Gen, Attempt: info.Attempt, ResultID: FormatResultID(epoch, info.Consumer, info.Attempt, info.Gen),
-		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: dl.Unix(), RequirePR: info.RequirePR,
+		State: JobTaken, StartedAt: now.Unix(), DeadlineAt: now.Add(deadline).Unix(), Forge: info.Forge,
 	}
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return Job{}, JobRecord{}, err
@@ -591,7 +650,7 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 	var last WallRunResult
 	var runErr error
 	for attempt := 1; attempt <= r.Timeouts.LaunchTries; attempt++ {
-		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, r.Timeouts.DeadlineFor(job.Tier))
+		last, runErr = r.Wall.RunHarness(ctx, job, argv, env, job.Deadline)
 		if errors.Is(runErr, ErrNoSlot) {
 			rec.State, rec.PID, rec.Nonce = JobStaged, 0, ""
 			_ = WriteJobRecord(job.JobDir, *rec)
@@ -700,9 +759,15 @@ func (r *Runner) rebaseAndPRSteps_internal(ctx context.Context, jobDir string, r
 		rec.PushedHead = rec.Outcome.Head
 	}
 	rec.State = JobRebased
-	if rec.RequirePR && r.Forge != nil {
+	if rec.Forge != "" {
+		fo := r.Forges[rec.Forge]
+		if fo == nil {
+			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: fmt.Sprintf("the stream's forge %q has no adapter on this worker: install a nova-worker that serves it, or set the stream's forge to one this worker serves", rec.Forge)}
+			_ = WriteJobRecord(jobDir, *rec)
+			return nil
+		}
 		ghCtx, cancel := context.WithTimeout(ctx, r.Timeouts.GH)
-		pr, err := r.Forge.EnsurePR(ghCtx, rec.Repo, rec.Branch, rec.Base, rec.PushedHead, rec.Consumer)
+		pr, err := fo.EnsurePR(ghCtx, rec.Repo, rec.Branch, rec.Base, rec.PushedHead, rec.Consumer)
 		cancel()
 		if err != nil {
 			rec.Outcome = Outcome{Result: "fault", Head: rec.PushedHead, Reason: "open PR fault: " + err.Error()}
@@ -735,10 +800,6 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 		r.Sleep(time.Duration(try) * 100 * time.Millisecond)
 	}
 	if err != nil {
-		if errors.Is(err, ErrRefused) {
-			rec.State = JobRecorded
-			_ = WriteJobRecord(jobDir, rec)
-		}
 		return err
 	}
 	if !receipt.Accepted || receipt.Op != req.ResultID {
