@@ -85,7 +85,7 @@ func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
 
 type runtimeRun struct{ ready bool }
 
-func (r *runtimeRun) Ready(context.Context, string) (bool, error) { return r.ready, nil }
+func (r *runtimeRun) Ready(context.Context, string, string) (bool, error) { return r.ready, nil }
 func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	ctx := context.Background()
 	db := store.NewFake()
