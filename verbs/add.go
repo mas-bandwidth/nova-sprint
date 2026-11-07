@@ -37,6 +37,15 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	if in.has("dry-run") {
 		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
 	}
+	// The admission reads the stream's repository for seconds while a running
+	// sprint's ticks move the store: the op is planned and fenced on a
+	// snapshot read after it.
+	if snap, err = e.snapshot(ctx); err != nil {
+		return "", err
+	}
+	if plan, err = planAdds(snap, adds); err != nil {
+		return "", err
+	}
 	op := e.newOp("add", in.actor, snap, adds)
 	op.Expect, op.Writes = append(plan.Expect, store.AtSeq{Seq: snap.Seq}), plan.Writes
 	r, err := e.commit(ctx, op, "nova-sprint queue --stream "+in.str("stream"))

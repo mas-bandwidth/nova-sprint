@@ -37,6 +37,14 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 	if err := e.ensureGroup(ctx, store.Stream{Name: name, Repo: repo, Base: base, Mode: mode, Forge: forge}); err != nil {
 		return "", err
 	}
+	// The admission reads the forge for seconds while a running sprint's
+	// ticks move the store: the op is fenced on a snapshot read after it.
+	if snap, err = e.snapshot(ctx); err != nil {
+		return "", err
+	}
+	if _, ok := snap.Streams[name]; ok {
+		return "", refuse("stream "+name+" exists", "nova-sprint show "+name)
+	}
 	pos := 0
 	for _, s := range snap.Streams {
 		pos = max(pos, s.Pos+1)
