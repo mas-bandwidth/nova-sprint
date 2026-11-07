@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"io"
 	"log"
 	"net/http"
@@ -56,12 +57,12 @@ func (p *PullCache) Advance(ctx context.Context) error {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.url, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("dashboard: pull request: %w", err)
 	}
 	resp, err := p.client.Do(req)
 	if err != nil {
 		p.failure()
-		return fmt.Errorf("dashboard: pull failed")
+		return fmt.Errorf("dashboard: pull failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -152,48 +153,98 @@ func (p *PullCache) checkAlarmLocked() {
 	}
 }
 
-// parsePullEnvelope rejects malformed upstream data before refreshing its age.
+// parsePullEnvelope rejects malformed upstream data before refreshing its age;
+// a refusal names the field, the parse's byte and the first bytes it saw.
 func parsePullEnvelope(raw []byte) (map[string]json.RawMessage, float64, error) {
 	var value map[string]json.RawMessage
-	if json.Unmarshal(raw, &value) != nil || value == nil {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull envelope")
+	if err := pullField(raw, &value, "envelope"); err != nil {
+		return nil, 0, err
+	}
+	if value == nil {
+		return nil, 0, pullRefused("envelope", "null", raw)
 	}
 	var ok bool
-	if string(value["ok"]) == "null" || json.Unmarshal(value["ok"], &ok) != nil {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull status")
+	if string(value["ok"]) == "null" {
+		return nil, 0, pullRefused("status", "ok is null", value["ok"])
+	}
+	if err := pullField(value["ok"], &ok, "status"); err != nil {
+		return nil, 0, err
 	}
 	var age float64
-	if string(value["dataAgeSeconds"]) == "null" || json.Unmarshal(value["dataAgeSeconds"], &age) != nil || age < 0 {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull age")
+	if string(value["dataAgeSeconds"]) == "null" {
+		return nil, 0, pullRefused("age", "dataAgeSeconds is null", value["dataAgeSeconds"])
 	}
+	if err := pullField(value["dataAgeSeconds"], &age, "age"); err != nil {
+		return nil, 0, err
+	}
+	if age < 0 {
+		return nil, 0, pullRefused("age", fmt.Sprintf("dataAgeSeconds %g is negative", age), value["dataAgeSeconds"])
+	}
+	if err := parsePullData(value["data"]); err != nil {
+		return nil, 0, err
+	}
+	return value, age, nil
+}
+
+// parsePullData checks the envelope's data: its timestamp, tables, streams
+// and epoch.
+func parsePullData(raw json.RawMessage) error {
 	var data map[string]json.RawMessage
-	if json.Unmarshal(value["data"], &data) != nil || data == nil {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull data")
+	if err := pullField(raw, &data, "data"); err != nil {
+		return err
+	}
+	if data == nil {
+		return pullRefused("data", "null", raw)
 	}
 	var at string
-	if json.Unmarshal(data["at"], &at) != nil {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull timestamp")
+	if err := pullField(data["at"], &at, "timestamp"); err != nil {
+		return err
 	}
 	if _, err := time.Parse(time.RFC3339Nano, at); err != nil {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull timestamp")
+		return fmt.Errorf("dashboard: invalid pull timestamp %q: %w", edge.Redact(at), err)
 	}
 	var tables map[string]json.RawMessage
-	if json.Unmarshal(data["tables"], &tables) != nil || tables == nil {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull tables")
+	if err := pullField(data["tables"], &tables, "tables"); err != nil {
+		return err
+	}
+	if tables == nil {
+		return pullRefused("tables", "null", data["tables"])
 	}
 	for _, key := range []string{"fleet", "friends", "merge", "readers", "work"} {
 		var table map[string]json.RawMessage
-		if json.Unmarshal(tables[key], &table) != nil || table == nil {
-			return nil, 0, fmt.Errorf("dashboard: invalid pull table %s", key)
+		if err := pullField(tables[key], &table, "table "+key); err != nil {
+			return err
+		}
+		if table == nil {
+			return pullRefused("table "+key, "missing or null", tables[key])
 		}
 	}
 	var streams []json.RawMessage
-	if json.Unmarshal(data["streams"], &streams) != nil || streams == nil {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull streams")
+	if err := pullField(data["streams"], &streams, "streams"); err != nil {
+		return err
+	}
+	if streams == nil {
+		return pullRefused("streams", "missing or null", data["streams"])
 	}
 	var epoch int
-	if json.Unmarshal(data["epoch"], &epoch) != nil || epoch < 1 {
-		return nil, 0, fmt.Errorf("dashboard: invalid pull epoch")
+	if err := pullField(data["epoch"], &epoch, "epoch"); err != nil {
+		return err
 	}
-	return value, age, nil
+	if epoch < 1 {
+		return pullRefused("epoch", fmt.Sprintf("epoch %d is below 1", epoch), data["epoch"])
+	}
+	return nil
+}
+
+// pullField decodes raw into v; a failure names what and where it failed.
+func pullField(raw json.RawMessage, v any, what string) error {
+	if err := json.Unmarshal(raw, v); err != nil {
+		return fmt.Errorf("dashboard: invalid pull %s: %s", what, edge.ParseFailure(err, raw))
+	}
+	return nil
+}
+
+// pullRefused is a field that decoded but is not acceptable.
+func pullRefused(what, why string, raw []byte) error {
+	return fmt.Errorf("dashboard: invalid pull %s: %s", what, edge.ParseRefused(why, 0, raw))
 }

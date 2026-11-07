@@ -80,7 +80,7 @@ func (d doctor) Fleet(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return &verbs.OperationError{Problem: edge.RedactN("nova-fleet check is not green: "+err.Error(), edge.FailureMax), Fix: "fix what nova-fleet check names", Exit: 1}
+		return verbs.RefusalOr(err, &verbs.OperationError{Problem: edge.RedactN("nova-fleet check is not green: "+err.Error(), edge.CommandMax), Fix: "fix what nova-fleet check names", Exit: 1})
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func (d doctor) History(ctx context.Context) error {
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 	if err = store.ValidateHistory(ctx, tx); err != nil {
-		return &verbs.OperationError{Problem: edge.RedactN("the history does not rebuild the tables ("+err.Error()+")", edge.FailureMax), Fix: "take it to the project's own tracker with this line", Exit: 2}
+		return verbs.RefusalOr(err, &verbs.OperationError{Problem: edge.RedactN("the history does not rebuild the tables ("+err.Error()+")", edge.CommandMax), Fix: "take it to the project's own tracker with this line", Exit: 2})
 	}
 	return nil
 }

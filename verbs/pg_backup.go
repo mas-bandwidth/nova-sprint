@@ -123,7 +123,7 @@ func (p PGBackups) checkDumpVersion(ctx context.Context) error {
 		return fmt.Errorf("cannot inspect PostgreSQL version: server_version_num: %s", edge.ParseFailure(err, []byte(server)))
 	}
 	if dumpErr != nil {
-		return &OperationError{Problem: "pg_dump --version failed (" + Redact(dumpErr.Error()) + ")", Fix: dumpFix(n / 10000), Exit: exitRefused}
+		return RefusalOr(dumpErr, &OperationError{Problem: "pg_dump --version failed (" + errText(dumpErr) + ")", Fix: dumpFix(n / 10000), Exit: exitRefused})
 	}
 	return dumpVersionRefusal(string(out), n/10000)
 }
@@ -268,7 +268,7 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 
 	statements, err := ConfineData(dumpBytes, schema.Expected)
 	if err != nil {
-		return BackupInfo{}, &OperationError{Problem: "backup rejected: " + err.Error(), Fix: "use a compatible verified nova-sprint backup", Exit: 1}
+		return BackupInfo{}, RefusalOr(err, &OperationError{Problem: "backup rejected: " + errText(err), Fix: "use a compatible verified nova-sprint backup", Exit: 1})
 	}
 	sum := sha256.Sum256(dumpBytes)
 	validated := &VerifiedDump{statements: statements, digest: fmt.Sprintf("%x", sum)}

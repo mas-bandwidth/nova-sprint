@@ -53,14 +53,14 @@ func runCheck(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (stri
 	}
 	current, err := e.Doctor.Schema(ctx)
 	if err != nil {
-		return "", broken("the store did not answer ("+clip(err.Error())+")", "check NOVA_PG_DSN and NOVA_SPRINT_PG_PASSWORD")
+		return "", RefusalOr(err, broken("the store did not answer ("+errText(err)+")", "check NOVA_PG_DSN and NOVA_SPRINT_PG_PASSWORD"))
 	}
 	if !current {
 		return "", refuse("the store is not at this build's schema", "nova-sprint up --as <coordinator>")
 	}
 	who, err := e.Bus.Who(ctx)
 	if err != nil {
-		return "", broken("nova-bus who failed ("+clip(err.Error())+")", "check NOVA_BUS_REDIS, then nova-bus who")
+		return "", RefusalOr(err, broken("nova-bus who failed ("+errText(err)+")", "check NOVA_BUS_REDIS, then nova-bus who"))
 	}
 	lines := []string{"CHECK fleet green", "CHECK nova-tools " + tools + " (pin " + e.ToolPin + ")", "CHECK store at schema", fmt.Sprintf("CHECK bus answering (%d present)", len(who))}
 	if in.has("integrity") {
@@ -77,14 +77,14 @@ func (e *Engine) toolsAtPin(ctx context.Context) (string, error) {
 	line, err := e.Doctor.ToolsVersion(ctx)
 	v, ok := parseToolsRelease(line)
 	if err != nil {
-		return "", refuse("nova-tools' version is unknown ("+Redact(err.Error())+")", toolsFix(e.ToolPin))
+		return "", RefusalOr(err, refuse("nova-tools' version is unknown ("+errText(err)+")", toolsFix(e.ToolPin)))
 	}
 	if !ok {
 		return "", refuse(fmt.Sprintf("nova-tools' version is unknown (%q is not a release vMAJOR.MINOR.PATCH)", Redact(line)), toolsFix(e.ToolPin))
 	}
 	at, err := atLeast(v, e.ToolPin)
 	if err != nil {
-		return "", refuse("nova-tools "+v+" cannot be compared with the pin "+e.ToolPin+" ("+Redact(err.Error())+")", toolsFix(e.ToolPin))
+		return "", RefusalOr(err, refuse("nova-tools "+v+" cannot be compared with the pin "+e.ToolPin+" ("+errText(err)+")", toolsFix(e.ToolPin)))
 	}
 	if !at {
 		return "", refuse("nova-tools "+v+" is below the pin "+e.ToolPin, toolsFix(e.ToolPin))

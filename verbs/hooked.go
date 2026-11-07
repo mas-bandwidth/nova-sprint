@@ -45,7 +45,7 @@ func (e *Engine) onBus(ctx context.Context, name string) error {
 	}
 	who, err := e.Bus.Who(ctx)
 	if err != nil {
-		return broken("nova-bus who failed ("+clip(err.Error())+")", "nova-sprint check")
+		return RefusalOr(err, broken("nova-bus who failed ("+errText(err)+")", "nova-sprint check"))
 	}
 	if _, ok := who[name]; !ok {
 		return refuse(name+" is not on the bus", busRecipe(name))
@@ -106,7 +106,7 @@ func (e *Engine) snapshot(ctx context.Context) (store.Snapshot, error) {
 		if e.notSetUp(ctx, err) {
 			return snap, notSetUp("")
 		}
-		return snap, broken("the store did not answer ("+clip(err.Error())+")", "nova-sprint check")
+		return snap, RefusalOr(err, broken("the store did not answer ("+errText(err)+")", "nova-sprint check"))
 	}
 	return snap, nil
 }

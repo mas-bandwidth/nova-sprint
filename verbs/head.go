@@ -25,7 +25,7 @@ func (e *Engine) headReady(ctx context.Context, snap store.Snapshot, c store.Car
 	s := snap.Streams[c.Stream]
 	tip, ok, err := e.Origin.Tip(ctx, s.Repo, c.Branch)
 	if err != nil {
-		return broken("git ls-remote of "+s.Repo+" failed ("+clip(err.Error())+")", "check the repository is readable, then finish again")
+		return RefusalOr(err, broken("git ls-remote of "+s.Repo+" failed ("+errText(err)+")", "check the repository is readable, then finish again"))
 	}
 	if !ok || tip != head {
 		return refuse("head "+head+" is not the tip of "+c.Branch+" at origin", "push first: git push origin "+c.Branch)
@@ -41,14 +41,14 @@ func (e *Engine) upToGroup(ctx context.Context, s store.Stream, c store.Card, he
 	group := git.StreamBranch(s.Name)
 	tip, ok, err := e.Origin.Tip(ctx, s.Repo, group)
 	if err != nil {
-		return broken("git ls-remote of "+s.Repo+" failed ("+clip(err.Error())+")", "finish again")
+		return RefusalOr(err, broken("git ls-remote of "+s.Repo+" failed ("+errText(err)+")", "finish again"))
 	}
 	if !ok {
 		return nil
 	}
 	in, err := e.Origin.Contains(ctx, s.Repo, tip, head)
 	if err != nil {
-		return broken("git merge-base of "+s.Repo+" failed ("+clip(err.Error())+")", "finish again")
+		return RefusalOr(err, broken("git merge-base of "+s.Repo+" failed ("+errText(err)+")", "finish again"))
 	}
 	if !in {
 		return refuse("bring "+c.Branch+" up to the stream head", "git fetch origin "+group+", git rebase origin/"+group+", run the gates, git push --force-with-lease origin "+c.Branch)
@@ -64,7 +64,7 @@ func (e *Engine) prReady(ctx context.Context, s store.Stream, c store.Card, head
 	group := git.StreamBranch(s.Name)
 	at, ok, err := e.Origin.PR(ctx, s.Repo, c.Branch, group)
 	if err != nil {
-		return broken("the forge did not answer ("+clip(err.Error())+")", "finish again")
+		return RefusalOr(err, broken("the forge did not answer ("+errText(err)+")", "finish again"))
 	}
 	if !ok {
 		return refuse("the stream wants a PR and "+c.Branch+" has none", "open the PR: gh pr create --base "+group+" --head "+c.Branch)

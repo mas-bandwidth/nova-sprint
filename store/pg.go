@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -114,12 +115,35 @@ type PG struct {
 	fault func(stage string) error
 }
 
+// dsnUserinfo and dsnPassword find a password a DSN's parse error may quote.
+var (
+	dsnUserinfo = regexp.MustCompile(`://[^/@\s]*@`)
+	dsnPassword = regexp.MustCompile(`(?i)\bpassword\s*=\s*\S+`)
+)
+
+// dsnParseError is what with the DSN parse's own reason, any password it
+// quotes removed (pgx redacts its own; this also covers a quoted URL); err
+// is kept for errors.Is and errors.As.
+func dsnParseError(what string, err error) error {
+	text := dsnUserinfo.ReplaceAllString(err.Error(), "://<redacted>@")
+	text = dsnPassword.ReplaceAllString(text, "password=<redacted>")
+	return &parseError{text: what + ": " + text, err: err}
+}
+
+type parseError struct {
+	text string
+	err  error
+}
+
+func (e *parseError) Error() string { return e.text }
+func (e *parseError) Unwrap() error { return e.err }
+
 // Open connects to the store at dsn (NOVA_PG_DSN, no password in it) with
 // password (NOVA_PG_PASSWORD, may be empty). It never quotes the dsn back.
 func Open(ctx context.Context, dsn, password string) (*PG, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, errors.New("store: the postgres dsn could not be parsed") // its text may hold a password
+		return nil, dsnParseError("store: the postgres dsn could not be parsed", err)
 	}
 	if password != "" {
 		cfg.ConnConfig.Password = password

@@ -46,7 +46,7 @@ func (s SetupPrerequisites) Tools(ctx context.Context) (SetupCheck, error) {
 	return SetupCheck{Verified: true, Line: fmt.Sprintf("UP 1/8 nova-tools: fleet green; nova-tools %s at or above pin %s: VERIFIED", version, s.Pin)}, nil
 }
 func (s SetupPrerequisites) unknown(err error) error {
-	return &OperationError{Problem: "nova-tools version unknown (" + Redact(err.Error()) + ")", Fix: toolsFix(s.Pin), Exit: 1}
+	return &OperationError{Problem: "nova-tools version unknown (" + errText(err) + ")", Fix: toolsFix(s.Pin), Exit: 1}
 }
 
 var setupActor = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)

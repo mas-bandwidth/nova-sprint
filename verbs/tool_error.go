@@ -158,6 +158,20 @@ func writeChildFailure(w io.Writer, err error) {
 	}
 }
 
+// RefusalOr is the refusal err carries (AsRefusal), passed through as it
+// is, or otherwise: the one form for an err branch that would build its own
+// refusal from err (silentlint S2).
+func RefusalOr(err, otherwise error) error {
+	if r := AsRefusal(err); r != nil {
+		return r
+	}
+	return otherwise
+}
+
+// errText is err's whole text for a refusal, redacted on one line and bounded
+// at edge.CommandMax (a failed child's whole stderr fits).
+func errText(err error) string { return edge.RedactN(err.Error(), edge.CommandMax) }
+
 // AsRefusal is the refusal err carries, to be passed through as it is and
 // never re-wrapped: a *Fail or *OperationError anywhere in err's chain, or
 // the refusal an internal child wrote on stderr (ChildFailed) inside an

@@ -57,7 +57,7 @@ func executeVerb(ctx context.Context, args []string, phase string) int {
 	r := e.Execute(ctx, args)
 	if _, err := fmt.Fprint(os.Stdout, r.Output); err != nil {
 		// stdout is gone: the result and why it was lost go to stderr
-		fmt.Fprintf(os.Stderr, "nova-sprint: cannot write the result to stdout (%s); it was: %s", edge.Redact(err.Error()), r.Output)
+		fmt.Fprintf(os.Stderr, "nova-sprint: cannot write the result to stdout (%s); it was: %s", edge.RedactN(err.Error(), edge.CommandMax), r.Output)
 		return 2
 	}
 	return r.Exit

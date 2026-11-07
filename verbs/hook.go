@@ -60,7 +60,7 @@ func (e *Engine) newSession() (string, error) {
 	}
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return "", broken("no randomness for a session ("+clip(err.Error())+")", "run nova-sprint hook again")
+		return "", RefusalOr(err, broken("no randomness for a session ("+errText(err)+")", "run nova-sprint hook again"))
 	}
 	return hex.EncodeToString(b[:]), nil
 }

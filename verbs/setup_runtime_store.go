@@ -140,7 +140,10 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 	}
 	if _, err = archive.Backup(ctx, attempt); err != nil {
 		_ = os.Remove(attempt) // only removes an empty attempt, never evidence; the backup's failure is the one reported
-		return false, cause("first backup failed", err)
+		if r := AsRefusal(err); r != nil {
+			return false, r // pg_dump's or the build version's refusal: its Problem and Fix as they are
+		}
+		return false, fmt.Errorf("first backup failed: %w", err)
 	}
 	ok, why, err := verifiedFirstBackup(ctx, pg, archive, dir)
 	if err == nil && !ok {
@@ -236,7 +239,7 @@ func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, d
 			if ctx.Err() != nil {
 				return false, "", ctx.Err()
 			}
-			why = name + ": " + Redact(err.Error())
+			why = name + ": " + errText(err)
 			continue
 		}
 		if info.Seq > snap.Seq || info.PrefixDigest == "" || info.SchemaHash != id.Hash {

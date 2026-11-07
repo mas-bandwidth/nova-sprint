@@ -31,7 +31,7 @@ func (s ServiceKey) Verify(ctx context.Context, service string) (bool, error) {
 		return false, err
 	}
 	if err = s.Probe.Run(ctx, service); err != nil {
-		return false, &OperationError{Problem: "service " + service + " did not pass its authenticated model probe (" + Redact(err.Error()) + ")", Fix: "check the service key and network access", Exit: 2}
+		return false, RefusalOr(err, &OperationError{Problem: "service " + service + " did not pass its authenticated model probe (" + errText(err) + ")", Fix: "check the service key and network access", Exit: 2})
 	}
 	return true, nil
 }

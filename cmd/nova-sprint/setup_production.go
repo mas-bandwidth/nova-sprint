@@ -197,7 +197,7 @@ func (p productionSetup) configError() error {
 func (p productionSetup) checkControlMachine(ctx context.Context) error {
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return &verbs.OperationError{Problem: "cannot inspect the control machine inventory: " + verbs.Redact(err.Error()), Fix: "fix what nova-config said, then nova-sprint up again", Exit: 2}
+		return verbs.RefusalOr(err, &verbs.OperationError{Problem: "cannot inspect the control machine inventory: " + edge.RedactN(err.Error(), edge.CommandMax), Fix: "fix what nova-config said, then nova-sprint up again", Exit: 2})
 	}
 	for _, machine := range machines {
 		if machine.Name == p.cfg.Host {
@@ -228,7 +228,7 @@ func (p productionSetupLock) Acquire(ctx context.Context) (verbs.SetupLease, err
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, role)
 	if err != nil {
-		return nil, &verbs.OperationError{Problem: "NOVA_PG_DSN is invalid", Fix: "configure a passwordless PostgreSQL URL and run nova-sprint check", Exit: 1}
+		return nil, verbs.RefusalOr(err, &verbs.OperationError{Problem: "NOVA_PG_DSN is invalid: " + edge.RedactN(err.Error(), edge.CommandMax), Fix: "configure a passwordless PostgreSQL URL and run nova-sprint check", Exit: 1})
 	}
 	return (verbs.PGSetupLock{DSN: dsn, Password: password, Host: p.cfg.Host}).Acquire(ctx)
 }
@@ -373,20 +373,20 @@ func (p productionSetup) ValidateHandoff(ctx context.Context, id string, in verb
 	}
 	digest, err := handoffDigest(in)
 	if err != nil {
-		return handoffRefusal(edge.Redact(err.Error()))
+		return handoffRefusal(edge.RedactN(err.Error(), edge.CommandMax))
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return handoffRefusal(edge.Redact(err.Error()))
+		return handoffRefusal(edge.RedactN(err.Error(), edge.CommandMax))
 	}
 	pg, err := store.Open(ctx, dsn, p.cfg.SprintPassword)
 	if err != nil {
-		return handoffRefusal("open store: " + edge.Redact(err.Error()))
+		return handoffRefusal("open store: " + edge.RedactN(err.Error(), edge.CommandMax))
 	}
 	defer pg.Close()
 	identity, err := pg.Schema(ctx)
 	if err != nil {
-		return handoffRefusal("schema: " + edge.Redact(err.Error()))
+		return handoffRefusal("schema: " + edge.RedactN(err.Error(), edge.CommandMax))
 	}
 	if !identity.Current || identity.Owner != "nova_sprint" {
 		return handoffRefusal(fmt.Sprintf("schema current %t, owner %q, want current and nova_sprint", identity.Current, identity.Owner))
@@ -396,12 +396,12 @@ func (p productionSetup) ValidateHandoff(ctx context.Context, id string, in verb
 func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, digest string) error {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
-		return handoffRefusal("snapshot: " + edge.Redact(err.Error()))
+		return handoffRefusal("snapshot: " + edge.RedactN(err.Error(), edge.CommandMax))
 	}
 	record, found, err := findSetupContinuation(ctx, st, snap, id)
 	switch {
 	case err != nil:
-		return handoffRefusal(edge.Redact(err.Error()))
+		return handoffRefusal(edge.RedactN(err.Error(), edge.CommandMax))
 	case !found:
 		return handoffRefusal("no continuation recorded with this id")
 	case record.Version != 1 || record.Epoch != snap.Epoch:
@@ -414,7 +414,7 @@ func validateHandoffRecord(ctx context.Context, st store.Store, id, actor, diges
 	return nil
 }
 func handoffRefusal(why string) error {
-	return &verbs.OperationError{Problem: edge.RedactN("setup continuation is invalid or stale: "+why, edge.FailureMax), Fix: "run nova-sprint up again", Exit: 1}
+	return &verbs.OperationError{Problem: edge.RedactN("setup continuation is invalid or stale: "+why, edge.CommandMax), Fix: "run nova-sprint up again", Exit: 1}
 }
 
 // writeSetupContinuation is called in a sprint-secret child while the parent
@@ -571,14 +571,14 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	}
 	out, err := call(ctx, "nova-config", "service", "list", "--json")
 	if err != nil {
-		return nil, serviceConfigError("cannot inspect fleet services: " + err.Error())
+		return nil, verbs.RefusalOr(err, serviceConfigError("cannot inspect fleet services: " + err.Error()))
 	}
 	if len(out) > 1<<20 {
 		return nil, serviceConfigError("cannot inspect fleet services: " + edge.ParseRefused("output longer than 1 MiB", 1<<20, out))
 	}
 	var response setupServicesResponse
 	if err := json.Unmarshal(out, &response); err != nil {
-		return nil, serviceConfigError("fleet service response is invalid: " + edge.ParseFailure(err, out))
+		return nil, verbs.RefusalOr(err, serviceConfigError("fleet service response is invalid: " + edge.ParseFailure(err, out)))
 	}
 	if response.Result.Verb != "service list" || response.Result.Status != "ok" || response.Result.Exit != 0 || response.Facts.Kind != "service" || response.Facts.Rows != len(response.Items) {
 		return nil, serviceConfigError(fmt.Sprintf("fleet service response is invalid: result %q %q exit %d, facts kind %q rows %d for %d items", response.Result.Verb, response.Result.Status, response.Result.Exit, response.Facts.Kind, response.Facts.Rows, len(response.Items)))
@@ -595,7 +595,7 @@ func (p productionSetup) listServices(ctx context.Context) ([]setupServiceRow, e
 	return rows, nil
 }
 func serviceConfigError(problem string) error {
-	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.FailureMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
+	return &verbs.OperationError{Problem: edge.RedactN(problem, edge.CommandMax), Fix: "correct the service records nova-config holds (nova-fleet help services)", Exit: 1}
 }
 func workloadUnavailable() error {
 	return &verbs.OperationError{Problem: "worker setup is unavailable in this build", Fix: "install a build with the verified worker setup adapter", Exit: 2}
@@ -617,7 +617,7 @@ func (p productionSetup) configuredRuntime(ctx context.Context, in verbs.SetupIn
 	}
 	machines, err := (verbs.FleetServices{Command: p.command}).Machines(ctx)
 	if err != nil {
-		return r, serviceConfigError("cannot inspect machine inventory: " + err.Error())
+		return r, verbs.RefusalOr(err, serviceConfigError("cannot inspect machine inventory: " + err.Error()))
 	}
 	found := false
 	for _, machine := range machines {
@@ -710,7 +710,7 @@ func (p productionSetup) newRunService(ctx context.Context, host string, machine
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, "nova_sprint")
 	if err != nil {
-		return verbs.FleetService{}, serviceConfigError("configured sprint DSN is invalid")
+		return verbs.FleetService{}, verbs.RefusalOr(err, serviceConfigError("configured sprint DSN is invalid: " + err.Error()))
 	}
 	env := map[string]string{"NOVA_PG_DSN": dsn, "NOVA_PG_PASSWORD_ENV": "NOVA_SPRINT_PG_PASSWORD", "NOVA_BUS_REDIS": p.cfg.BusRedis}
 	keys := []string{"NOVA_SPRINT_PG_PASSWORD"}
@@ -783,7 +783,7 @@ func (p productionSetup) ensurePublicVersion(ctx context.Context, r verbs.Runtim
 		return false, err
 	}
 	if installErr := p.installer.Install(ctx, host, p.cfg.BinaryVersion); installErr != nil {
-		return false, publicVersionRefusal(p.cfg.BinaryVersion, host, "install failed: "+installErr.Error())
+		return false, verbs.RefusalOr(installErr, publicVersionRefusal(p.cfg.BinaryVersion, host, "install failed: "+installErr.Error()))
 	}
 	if err = p.checkPublicVersion(ctx, host); err != nil {
 		return false, err
@@ -799,10 +799,10 @@ func (p productionSetup) checkPublicVersion(ctx context.Context, host string) er
 		User string `json:"ansible_user"`
 	}
 	if err != nil {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+err.Error())
+		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+err.Error()))
 	}
 	if err = json.Unmarshal(data, &inventory); err != nil {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+edge.ParseFailure(err, data))
+		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, "inventory: "+edge.ParseFailure(err, data)))
 	}
 	if !safeSSHName(inventory.Host) || (inventory.User != "" && (!safeSSHName(inventory.User) || strings.Contains(inventory.User, ":"))) {
 		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("inventory ansible_host %q or ansible_user %q is not a safe ssh name", inventory.Host, inventory.User))
@@ -813,14 +813,14 @@ func (p productionSetup) checkPublicVersion(ctx context.Context, host string) er
 	}
 	data, err = p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "nova-sprint", "version")
 	if err != nil {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error())
+		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error()))
 	}
 	if p.cfg.BinaryVersion == "" {
 		return publicVersionRefusal(p.cfg.BinaryVersion, host, "this build has no version to compare")
 	}
 	remote, err := verbs.ParseVersionOutput(data)
 	if err != nil {
-		return publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error())
+		return verbs.RefusalOr(err, publicVersionRefusal(p.cfg.BinaryVersion, host, err.Error()))
 	}
 	if remote != p.cfg.BinaryVersion {
 		return publicVersionRefusal(p.cfg.BinaryVersion, host, fmt.Sprintf("it reports version %s, not %s", remote, p.cfg.BinaryVersion))
@@ -828,7 +828,7 @@ func (p productionSetup) checkPublicVersion(ctx context.Context, host string) er
 	return nil
 }
 func publicVersionRefusal(version, host, why string) error {
-	return &verbs.OperationError{Problem: edge.RedactN("public host nova-sprint version could not be verified: "+why, edge.FailureMax), Fix: "install nova-sprint " + version + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
+	return &verbs.OperationError{Problem: edge.RedactN("public host nova-sprint version could not be verified: "+why, edge.CommandMax), Fix: "install nova-sprint " + version + " on " + host + " (nova-fleet repository install is nova-tools 2.0.x item 10), then rerun up", Exit: 1}
 }
 
 func safeSSHName(value string) bool {
