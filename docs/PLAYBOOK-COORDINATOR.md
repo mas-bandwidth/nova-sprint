@@ -42,9 +42,14 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    step has run, every coordinator verb refuses with `hook in first: ...`.
 3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per
    thing it checked (the fleet, nova-tools against the pin, the store, the bus, each stream's
-   repository and base, the open judgements, run, the width, each landing's wait) and
-   `next: nova-sprint next`. A `CHECK RED` line names its fix and makes the exit non-zero; run
-   the fix, then `check` again.
+   repository and base, the open judgements, run, the width, why each stream's producers wait,
+   each long NEEDS chain, each landing's wait) and `next: nova-sprint next`. A `CHECK RED` line
+   names its fix and makes the exit non-zero; run the fix, then `check` again. Read the width
+   and waits lines before you add cards and before `start`: `CHECK WARN width: ... nothing
+   dealable: 2 chains (longest 9, top: <card> blocks 53), 8 overlaps` says the fleet will sit
+   idle; `CHECK waits <s>: 53 wait on <card> (working); 3 held behind <file> of <card>` says on
+   what; `CHECK WARN stream <s>: its longest NEEDS chain is 9 cards: ...` says which chain to
+   flatten (section 4, "Keep everybody at width").
 4. Ask what is owed: `nova-sprint next --as <you>`. It names your own card's step first, then
    the oldest open judgement, then what the streams need (`add`, or done), then, on a stopped
    sprint, `start`. A fresh sprint is stopped, its reason `never started`, and moves nothing
@@ -225,6 +230,15 @@ then (`nova-sprint stream set <s> --mode <m> --forge github|none` changes either
 with `nova-sprint add --stream <s> --brief-file <f>...` (`--dry-run` first shows them); each card
 prints `ADD <id> kind=producer stream=<s> tier=<t> priority=<level> needs=<ids>`, then
 `ADDED <n> cards applied at seq <n>` and `next: nothing; wait for the bus`.
+
+**Keep everybody at width.** The fleet works in parallel only as far as the cards let it.
+Keep NEEDS chains flat (a NEEDS only on a consumed output), PATHS concrete (the files the card
+edits; a shared glob or directory holds nothing), and one card per file set. `add` prints the
+stream's longest NEEDS chain once the cards are in (`CHAIN stream <s>: its longest NEEDS chain
+is <k> cards: a -> b -> ...`), and from 4 cards a `WARN CHAIN` with what it takes at the
+stream's land rate: flatten it before `start`. During a sprint the steps' `idle` judgement
+says "nothing dealable: N chains (longest K, top: <card> blocks M), H overlaps" with the
+command for the top card, and the board's Why waiting panel shows the same lines as `check`.
 
 To correct a brief, add the corrected brief under a new id and replace the old card with it:
 `nova-sprint replace <old> --by <new> --reason "<why>"`; the old card fails and its dependants

@@ -63,12 +63,25 @@ func (t *tick) needsLanded(c store.Card) bool {
 // 2): "held behind <card> on <path>" for the least such card by id and the
 // first of c's files it names; "" when none is.
 func (t *tick) heldBehind(c store.Card) string {
-	by, on := "", ""
+	by, on := leastHolder(c, func(path string) []set {
+		return []set{t.v.paths[c.Stream][path], t.resolvedP[c.Stream+"\x00"+path]}
+	})
+	if by == "" {
+		return ""
+	}
+	return "held behind " + by + " on " + on
+}
+
+// leastHolder is the least producer by id, other than c, in the sets
+// holding one of c's files (Concrete), and the first of c's files it holds;
+// "" when none is. The needs step and Waits share it, so the board, check
+// and the overlap judgement name the same holder.
+func leastHolder(c store.Card, holding func(path string) []set) (by, on string) {
 	for _, path := range c.Paths {
 		if !Concrete(path) {
 			continue
 		}
-		for _, holders := range []set{t.v.paths[c.Stream][path], t.resolvedP[c.Stream+"\x00"+path]} {
+		for _, holders := range holding(path) {
 			for q := range holders {
 				if q != c.ID && (by == "" || q < by) {
 					by, on = q, path
@@ -76,10 +89,7 @@ func (t *tick) heldBehind(c store.Card) string {
 			}
 		}
 	}
-	if by == "" {
-		return ""
-	}
-	return "held behind " + by + " on " + on
+	return by, on
 }
 
 // shares says whether two path lists name a common file (Concrete).

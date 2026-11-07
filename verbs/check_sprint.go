@@ -8,12 +8,14 @@ import (
 	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // checkSprint is check's health of the sprint, read from one snapshot: each
 // stream's repository and base at origin, the open judgements by kind, who
-// runs the sprint, the width and why nothing deals, and each landing's wait.
+// runs the sprint, the width and why nothing deals, why each stream's
+// producers wait and its long NEEDS chains, and each landing's wait.
 func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string]bus.Presence) {
 	snap, err := e.snapshot(ctx)
 	if err != nil {
@@ -31,7 +33,9 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 	checkWorking(r, snap, who)
 	checkJudgements(r, snap)
 	running := e.checkRun(ctx, r, who)
-	e.checkWidth(ctx, r, snap, heads, running)
+	ws := steps.Waits(snap.Cards)
+	e.checkWidth(ctx, r, snap, heads, running, ws)
+	e.checkWaits(ctx, r, snap, ws)
 	e.checkLandings(ctx, r, snap, heads, running)
 }
 

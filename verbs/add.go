@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -32,6 +33,7 @@ func runAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (str
 	for i, a := range adds {
 		lines[i] = fmt.Sprintf("ADD %s kind=%s stream=%s tier=%s priority=%s needs=%s", a.ID, a.Kind, a.Stream, a.Tier, orWord(a.Priority, "normal"), orWord(strings.Join(a.Needs, ","), "-"))
 	}
+	lines = append(lines, e.chainAfterAdd(ctx, snap, adds))
 	if in.has("dry-run") {
 		return done("nova-sprint add (the same, without --dry-run)", append(lines, "(dry run)")...), nil
 	}
@@ -200,4 +202,21 @@ func (e *Engine) admitAdds(ctx context.Context, snap store.Snapshot, adds []card
 		return refused[ids[0]]
 	}
 	return nil
+}
+
+// chainAfterAdd is the stream's longest NEEDS chain once adds are in, and
+// what it takes at the stream's land rate: a warning (never a refusal) at
+// chainWarn cards or more, so the coordinator flattens it before the deal.
+func (e *Engine) chainAfterAdd(ctx context.Context, snap store.Snapshot, adds []card.Add) string {
+	cards := maps.Clone(snap.Cards)
+	for _, a := range adds {
+		cards[a.ID] = store.Card{ID: a.ID, Kind: a.Kind, Stream: a.Stream, State: "waiting", Needs: a.Needs}
+	}
+	stream := adds[0].Stream
+	chain := steps.LongestChain(cards, stream)
+	if len(chain) < chainWarn {
+		return fmt.Sprintf("CHAIN stream %s: its longest NEEDS chain is %d cards: %s", stream, len(chain), steps.ChainText(chain))
+	}
+	times, err := e.landTimes(ctx, snap)
+	return "WARN CHAIN " + chainLine(stream, chain, times[stream], err) + ": " + flattenFix
 }

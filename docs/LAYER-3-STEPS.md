@@ -867,3 +867,37 @@ inherited red (...): land it with nova-sprint land <c> --reason <why>.
 Facts: ...". It is still one land judgement with the choices land, fix and
 retry: red never lands by itself, and no state or transition changed, so
 `Steps.tla` is untouched. Test: `TestTickLandInheritedRedIsAGlance`.
+
+## Built: why the fleet is idle (stitch w4V, 2026-11-07)
+
+`steps.Waits(cards)` (`waits.go`) explains each stream's waiting producers for
+the idle judgement, `check` and the board, so the three say one thing: each
+waiting producer is counted once, on the front of the NEEDS chain it waits on
+(its first need not landed, followed while that need is itself waiting on a
+need not landed; a need naming no card is "missing") or, with every need
+landed, on the least producer and first file it is held behind. The holder
+rule is the needs step's own: `heldBehind` now calls `leastHolder`, shared
+with `Waits` (no change in behaviour; `TestTickOverlapIsAFile` unchanged).
+`Waits` also finds each stream's longest NEEDS chain over cards not landed or
+failed (a sentinel adds no length and is not listed; a cycle a store op
+wrote ends). `IdleWhy` is the summary ("N chains (longest K, top: <card>
+blocks M), H overlaps (top: <card> holds C on <file>)") and the command for
+the top card: show it when in flight, judge it when blocked, relink away from
+it when missing or failed, and `replace` for a NEEDS that is not a consumed
+output; never a priority (intent rule 14: set by request only).
+
+The idle judgement's text (one function, `idleCauses` in `judge.go`; the
+alarm's condition, `cleared` and the choices are unchanged): when no ready
+producer is dealable (every ready one in a held stream or unserved) and none
+resolved this tick, it reads "working W of O open width while R ready and N
+waiting: nothing dealable: <IdleWhy>; ready: <held> in held streams,
+<unserved> with no serving row; <command>"; otherwise it keeps the held and
+unserved counts. It is built only when the judgement would open (one open or
+pending skips it). No action, state or judgement kind changed, so
+`Steps.tla` and its generators are untouched.
+
+Cost: `BenchmarkWaits5000` (5,000 producers in 50 streams, a chain of 20
+and 40 on one front per stream) is 3.9 ms on the working machine (measured,
+one run, Apple M3 Ultra). Tests (unit, no clock): `TestWaitsGroupsByChainFrontAndHolder`,
+`TestWaitsLineNamesThreeAndCounts`, `TestWaitsSurvivesACycle`,
+`TestIdleWhyAndFix`, `TestIdleJudgementSaysWhyNothingDeals`.

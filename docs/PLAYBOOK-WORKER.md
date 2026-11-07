@@ -185,7 +185,9 @@ Each message is a wake. Handle it, then wait for the bus again.
     `FINISHED <id> head=<40 hex> applied at seq <n>` and `next: nothing; wait for the bus`.
     Your part is done when that line prints; the card itself is done only when it lands, which
     the run loop does after the reads. A push, a commit or a message is not a finish. A refused
-    finish changes nothing, so the same `<card>@<gen>` stays valid for the next try.
+    finish changes nothing, so the same `<card>@<gen>` stays valid for the next try. Add
+    `--cost <usd>` (dollars, at most six decimals: `--cost 0.42`) when you know what the run
+    cost; the board's Cost breakdown sums it by tier and stream.
 
 Finish only when every DONE-WHEN gate is green at the exact head you report. If it is not, say
 so honestly with one of these, never with a finish of a head that does not meet the brief:
@@ -228,7 +230,8 @@ your own head.
 6. Answer: `nova-sprint read <id>@<gen> yes --as <you> --epoch <e>` with
    `--finding "<notes>"` when you have notes, or
    `nova-sprint read <id>@<gen> fix --finding "<path>:<line>: <the defect and the repair>" --as <you> --epoch <e>`.
-   A fix finding names the file and line and what to change. It prints
+   A fix finding names the file and line and what to change. Add `--cost <usd>` as finish
+   takes it when you know what the read cost. It prints
    `READ <id> head=<40 hex> result=<result> applied at seq <n>`.
 7. Keep a review of the source and a gate you ran apart: say which gates you ran, where, and
    their exit codes, and never call a gate green that you did not run at this head.

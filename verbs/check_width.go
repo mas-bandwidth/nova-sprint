@@ -23,8 +23,11 @@ type widthFacts struct {
 
 // checkWidth is the width line: working against the open width, with the
 // ready producers; when producers are ready and none is dealt it is red,
-// naming why (the deal's own causes, and the steps' idle judgement).
-func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snapshot, heads map[string]string, running bool) {
+// naming why (the deal's own causes, and the steps' idle judgement); when
+// the fleet works under its width with nothing ready it warns "nothing
+// dealable" with the chains and overlaps the waiting producers sit on (ws,
+// the steps' own Waits, as the idle judgement says them).
+func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snapshot, heads map[string]string, running bool, ws []steps.StreamWaits) {
 	lim, _, err := e.rules(ctx, snap)
 	if err != nil {
 		r.red(err)
@@ -45,6 +48,12 @@ func (e *Engine) checkWidth(ctx context.Context, r *checkReport, snap store.Snap
 	case len(f.ready) > 0 && f.dealt < f.open && len(causes) > 0:
 		what, _ := causesLine(causes, "")
 		r.ok("%s; not dealt: %s", line, what)
+	case len(f.ready) == 0 && f.dealt < f.open:
+		if what, fix := steps.IdleWhy(ws); what != "" {
+			r.warn(line+"; nothing dealable: "+what, fix)
+			return
+		}
+		r.ok("%s", line)
 	default:
 		r.ok("%s", line)
 	}

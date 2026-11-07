@@ -68,7 +68,9 @@ type envelope struct {
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
 	OK            bool                   `json:"ok"`
 	Error         string                 `json:"error,omitempty"`
-	RosterNotes   []string               `json:"roster_notes,omitempty"` // the page's roster banner: the read's failure, each refused row
+	RosterNotes   []string               `json:"roster_notes,omitempty"`  // the page's roster banner: the read's failure, each refused row
+	Waits         []waitLine             `json:"waits,omitempty"`         // the Why waiting panel: per stream, why its producers wait
+	WaitsSummary  string                 `json:"waits_summary,omitempty"` // over every stream: the chains, the overlaps, the command
 }
 
 // mapSnapshot is the page's view of s. A row's kind and width are the
@@ -128,7 +130,8 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}, RosterNotes: rosterNotes(ros)}
+	waits, summary := waitLines(s.Cards)
+	return envelope{Waits: waits, WaitsSummary: summary, Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}, RosterNotes: rosterNotes(ros)}
 }
 
 // rosterNotes is one banner line per row the roster refused.

@@ -54,6 +54,33 @@ take, a read by the author, a landed card moving), with the holder and the
 state named. The chain is enforced twice: by the verb's table before it acts,
 and by the engine when the move is applied.
 
+## Keep everybody at width
+
+The promise is parallel to width: every friend and bench busy while there is
+work. Cards decide whether that can happen; the deal cannot deal a card that
+waits. A dogfood board had 5 working of 74 width with 144 waiting, 136 of
+them on NEEDS not yet landed (long chains) and 8 on a shared file. So:
+
+- **Flat chains.** A NEEDS only when the card consumes the other's output,
+  never for order or overlap. A chain of N cards lands one after another
+  while the rest of the fleet waits. `add` prints the stream's longest NEEDS
+  chain once the cards are in (`CHAIN ...`), a `WARN CHAIN` from 4 cards with
+  what it takes at the stream's land rate; `--dry-run` prints it before
+  anything is added. It warns, never refuses: flatten it before `start`.
+- **Concrete PATHS.** Overlap is a file both cards name (a glob or a
+  directory both add to holds nothing); a card waiting behind another's file
+  is "held behind <file> of <card>". List the files a card edits.
+- **One card per file set.** Cards that edit the same file run one at a
+  time; split work so independent cards name different files.
+
+Before `start`, and whenever the fleet is under width, run `nova-sprint check`
+and read its lines: the width line (a `WARN ... nothing dealable: N chains
+(longest K, top: <card> blocks M), H overlaps` when nothing is ready), one
+`waits <stream>:` line per stream ("53 wait on <card> (<state>); 3 held behind
+<file> of <card>"), and a `WARN stream <s>: its longest NEEDS chain is K
+cards` line per long chain. The board's Why waiting panel and the steps'
+idle judgement say the same thing, from the same function (`steps.Waits`).
+
 ## Hooked before anything that acts as you
 
 As nova-bus does: `take`, `finish`, `read`, `release`, `run` and every other
@@ -238,3 +265,23 @@ with `nova-sprint identity --name "<git user.name>" --email "<git user.email>" -
   emails; the fix is the two config lines and a `--reset-author` rebase.
 - `check` has a line naming it, red when unset; the agreement warning at `stream add` and in
   `check` names it as the identity to sign for.
+
+## Built: why the fleet is idle (stitch w4V, 2026-11-07)
+
+- `steps.Waits` groups each stream's waiting producers by the front of the
+  NEEDS chain they wait on (the first need not landed, followed while that
+  need itself waits on a need) and by the producer and file they are held
+  behind (`leastHolder`, the needs step's own overlap rule, now shared), and
+  finds the stream's longest NEEDS chain of cards not landed (sentinels add
+  no length). `check`, the board and the idle judgement all read it. Its cost
+  is 3.9 ms for 5,000 producers on the working machine (measured, one
+  benchmark run, `BenchmarkWaits5000`).
+- The chain warning starts at 4 cards (`steps.ChainWarn`, a guess). The land
+  rate is the stream's landings over the store's last 5,000 events (a guess:
+  about an hour of a busy sprint), (landings - 1) over their span; under two
+  landings it says "no land rate yet". A chain's hours are its cards over that
+  rate: an estimate, since a chain's cards land one after another and the
+  stream's rate counts all its landings.
+- The idle judgement's text names the chains and overlaps only when no ready
+  producer is dealable and none resolved that tick; otherwise it keeps its
+  held/unserved counts.
