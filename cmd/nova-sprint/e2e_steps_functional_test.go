@@ -46,6 +46,7 @@ func (x *e2e) dealt(row, kind string) (string, int) {
 			x.c.run(false, nil, "show", "e2e1", "--as", "carol")
 			snap := x.snapshot()
 			x.tr.record("the store's rows and cards when no deal came", 0, fmt.Sprintf("seq=%d stopped=%v\nrows: %+v\ncards: %+v", snap.Seq, snap.Stopped, snap.Rows, snap.Cards))
+			x.tr.record("the store's judgements", 0, fmt.Sprintf("%+v", snap.Judgements))
 			if evs, err := x.st.Events(context.Background(), 0, 200); err == nil {
 				var lines []string
 				for _, ev := range evs {
