@@ -113,8 +113,8 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	if s.Mode == "hand" || s.Forge == "" || e.Forge == nil {
 		return
 	}
-	dir := e.repoDir(s.Repo)
-	if err := e.Git.Clone(ctx, s.Repo, dir); err != nil {
+	dir, err := e.clone(ctx, s)
+	if err != nil {
 		e.fault("land "+r.ID+" stream "+r.Stream+": clone", err)
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault"})
 		return
@@ -163,10 +163,17 @@ func landItem(id string, res git.LandResult, err error) steps.InboxItem {
 	return it
 }
 
-// repoDir is the one clone of repo under ReposDir.
-func (e *Edges) repoDir(repo string) string {
-	sum := sha256.Sum256([]byte(repo))
-	return filepath.Join(e.ReposDir, fmt.Sprintf("%x", sum[:8]))
+// clone is the one clone of the stream's repository under ReposDir, at its
+// clone address (git.CloneURL: an org/repo with forge github is GitHub's
+// https URL), named by that address.
+func (e *Edges) clone(ctx context.Context, s store.Stream) (string, error) {
+	url, err := git.CloneURL(s.Repo, s.Forge)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(url))
+	dir := filepath.Join(e.ReposDir, fmt.Sprintf("%x", sum[:8]))
+	return dir, e.Git.Clone(ctx, url, dir)
 }
 
 // Stale asks the heads loop to read again now.
@@ -205,8 +212,8 @@ func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[stri
 func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) {
 	heads, failed := map[string]string{}, map[string]error{}
 	for name, s := range streams {
-		dir := e.repoDir(s.Repo)
-		if err := e.Git.Clone(ctx, s.Repo, dir); err != nil {
+		dir, err := e.clone(ctx, s)
+		if err != nil {
 			failed[name] = fmt.Errorf("clone: %w", err)
 			continue
 		}

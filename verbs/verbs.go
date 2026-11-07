@@ -67,10 +67,12 @@ type Answerer interface {
 
 // Origin is a stream's repository as the verbs check it (layer 4's git and
 // forge edges, adapted in cmd/nova-sprint): the tip of a branch, whether one
-// commit contains another, and the PR of a branch.
+// commit contains another, and the PR of a branch. Tip and Contains take the
+// clone address (git.CloneURL of the stream's repo and forge); PR takes the
+// forge's <org>/<repo>.
 type Origin interface {
-	Tip(ctx context.Context, repo, branch string) (sha string, ok bool, err error)
-	Contains(ctx context.Context, repo, ancestor, head string) (bool, error)
+	Tip(ctx context.Context, url, branch string) (sha string, ok bool, err error)
+	Contains(ctx context.Context, url, ancestor, head string) (bool, error)
 	PR(ctx context.Context, repo, branch, base string) (head string, ok bool, err error)
 }
 
