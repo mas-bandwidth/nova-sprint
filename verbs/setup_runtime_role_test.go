@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestScramVerifierKnownVector(t *testing.T) {
@@ -75,5 +77,27 @@ func TestRoleBootstrapRefusesRejectedStoredSecret(t *testing.T) {
 	}
 	if sink.value != "stored-fixture" {
 		t.Fatal("stored secret changed")
+	}
+}
+
+// PostgreSQL 16+: a CREATEROLE admin may alter or grant only roles it
+// administers. A 42501 on a nova_sprint that already existed names the
+// superuser's grant; on a role being created, the admin's CREATEROLE; any
+// other error keeps the pg error wrapped, SQLSTATE and message intact.
+func TestRolePermissionRefusalNamesTheGrant(t *testing.T) {
+	denied := &pgconn.PgError{Severity: "ERROR", Code: "42501", Message: "permission denied to alter role"}
+	var op *OperationError
+	if err := rolePermissionRefusal("role credential setup failed", denied, true); !errors.As(err, &op) ||
+		!strings.Contains(op.Problem, "permission denied to alter role (SQLSTATE 42501)") ||
+		op.Fix != "as the postgres superuser run: GRANT nova_sprint TO nova_admin WITH ADMIN TRUE, INHERIT FALSE, SET FALSE; then nova-sprint up again" {
+		t.Fatalf("%#v", err)
+	}
+	if err := rolePermissionRefusal("role creation failed", denied, false); !errors.As(err, &op) || !strings.Contains(op.Fix, "ALTER ROLE nova_admin CREATEROLE") {
+		t.Fatalf("%#v", err)
+	}
+	other := &pgconn.PgError{Severity: "ERROR", Code: "42710", Message: "role \"nova_sprint\" already exists"}
+	err := rolePermissionRefusal("role creation failed", other, false)
+	if errors.As(err, &op) || !errors.Is(err, other) || err.Error() != `role creation failed: ERROR: role "nova_sprint" already exists (SQLSTATE 42710)` {
+		t.Fatalf("%v", err)
 	}
 }

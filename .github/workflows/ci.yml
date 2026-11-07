@@ -45,10 +45,14 @@ jobs:
           echo "no Go toolchain on this runner" >&2; exit 1
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      - name: build
-        run: go build ./...
+      - name: build (stamped with git describe, as the Makefile does)
+        run: go build -ldflags "-X main.binaryVersion=$(git describe --always --dirty --tags --match 'v[0-9]*')" ./...
       - name: vet
         run: go vet ./...
+      # The silent-error lint (tools/silentlint): no error dropped in an err
+      # branch, no refusal re-wrapped, no unlisted `_ =` discard, no bare exit.
+      - name: silentlint (every layer, bottom up)
+        run: go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
 
   # The card package's race run takes about 556 s on vision (2026-11-06), near
   # go test's default 10-minute per-package bound: each package gets 20 minutes

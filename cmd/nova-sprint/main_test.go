@@ -64,7 +64,7 @@ func TestDirtyBuildDoesNotClaimCommitIdentity(t *testing.T) {
 		t.Fatalf("clean %q", got)
 	}
 	clean[1].Value = "true"
-	if got := sourceVersion(clean); got != "dev" {
+	if got := sourceVersion(clean); got != "dev+0123456789ab-dirty" {
 		t.Fatalf("dirty %q", got)
 	}
 	if got := sourceVersion(nil); got != "dev" {
