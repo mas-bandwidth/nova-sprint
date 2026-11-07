@@ -317,13 +317,49 @@ func (c *Client) Rebase(ctx context.Context, worktree, onto string) (RebaseResul
 	}
 	return RebaseResult{OK: false, Conflicts: conflicts, Reason: reason}, nil
 }
-func (c *Client) Push(ctx context.Context, repoDir, sha, ref, expectOld string) error {
+
+// StreamBranch returns the canonical integration branch name ("sprint/<stream>/group") for a stream.
+func StreamBranch(stream string) string {
+	return "sprint/" + strings.TrimSpace(stream) + "/group"
+}
+
+// StreamRef returns the full integration ref ("refs/heads/sprint/<stream>/group") for a stream.
+func StreamRef(stream string) string {
+	return "refs/heads/" + StreamBranch(stream)
+}
+
+// ValidateCardBranch refuses a card branch or head ref that collides with the stream integration branch ("group").
+func ValidateCardBranch(stream, branch string) error {
+	b := strings.TrimPrefix(strings.TrimSpace(branch), "refs/heads/")
+	if b == "group" || strings.HasSuffix(b, "/group") || b == "sprint/"+stream {
+		return fmt.Errorf("git refused: card branch %q cannot use reserved stream integration branch %s", branch, StreamBranch(stream))
+	}
+	return nil
+}
+
+func classifyPushRef_internal(ref, expectOld string) (string, bool, error) {
 	if !strings.HasPrefix(ref, "refs/heads/") {
 		ref = "refs/heads/" + strings.TrimPrefix(ref, "/")
 	}
-	isStream := strings.HasPrefix(ref, "refs/heads/sprint/")
+	if strings.HasPrefix(ref, "refs/heads/sprint/") {
+		rest := strings.TrimPrefix(ref, "refs/heads/sprint/")
+		if !strings.Contains(rest, "/") {
+			return "", false, fmt.Errorf("git refused: bare stream ref %s is forbidden: use %s/group for the stream branch or %s/<producer> for a card branch", ref, ref, ref)
+		}
+	}
+	isStream := strings.HasPrefix(ref, "refs/heads/sprint/") && strings.HasSuffix(ref, "/group")
 	if !isStream && expectOld != "" {
-		return fmt.Errorf("git refused: force-with-lease is forbidden on base branch %s: base pushes must fast-forward", ref)
+		return "", false, fmt.Errorf("git refused: force-with-lease is forbidden on base branch %s: base pushes must fast-forward", ref)
+	}
+	return ref, isStream, nil
+}
+
+func (c *Client) Push(ctx context.Context, repoDir, sha, ref, expectOld string) error {
+	var isStream bool
+	var err error
+	ref, isStream, err = classifyPushRef_internal(ref, expectOld)
+	if err != nil {
+		return err
 	}
 	args := []string{"push", "origin", sha + ":" + ref}
 	if isStream {

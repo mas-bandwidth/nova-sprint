@@ -33,7 +33,7 @@ func TestCredentialsRefusals(t *testing.T) {
 			return edge.Result{}, nil
 		}),
 	})
-	_, _, err := missing.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1", "v2")
+	_, _, err := missing.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
 	if err == nil || !strings.Contains(err.Error(), "forge refused: neither GH_TOKEN nor GH_CONFIG_DIR is set for identity amd-1.ds: run nova-secrets exec or set GH_CONFIG_DIR") {
 		t.Fatalf("unexpected missing cred error: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestCredentialsRefusals(t *testing.T) {
 			return edge.Result{Stdout: "  ✓ Logged in to github.com account gafferongames (GH_TOKEN)"}, nil
 		}),
 	})
-	_, _, err = glennClient.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1", "v2")
+	_, _, err = glennClient.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
 	wantGlenn := "forge refused: gh auth login is gafferongames, expected rowan-claude (Glenn's credentials are never used): set GH_CONFIG_DIR for rowan-claude"
 	if err == nil || err.Error() != wantGlenn {
 		t.Fatalf("got %v, want %s", err, wantGlenn)
@@ -53,7 +53,7 @@ func TestCredentialsRefusals(t *testing.T) {
 
 	wrongFake := NewFake(Identity{Name: "sprint", ExpectedLogin: "rowan-claude", ConfigDir: "/path/rowan-gh"}, func() int64 { return now })
 	wrongFake.SetAuthLogin("stella-codex")
-	_, _, err = wrongFake.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1", "v2")
+	_, _, err = wrongFake.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
 	if err == nil || !strings.Contains(err.Error(), "gh auth login is stella-codex, expected rowan-claude") {
 		t.Fatalf("unexpected wrong login error: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestMergeExactSHAAndBaseProtection(t *testing.T) {
 		t.Fatalf("CheckBaseProtection: %v", err)
 	}
 
-	pr, err := f.OpenPR(ctx, repo, "sprint/s1", "v2", "sprint/s1 batch", "body")
+	pr, err := f.OpenPR(ctx, repo, "sprint/s1/group", "v2", "sprint/s1 batch", "body")
 	if err != nil {
 		t.Fatalf("OpenPR: %v", err)
 	}
@@ -180,19 +180,19 @@ func TestRateLimitRestsIdentity(t *testing.T) {
 		}),
 	})
 
-	_, _, err := c.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1", "v2")
+	_, _, err := c.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2")
 	var fe *FaultError
 	if !errors.As(err, &fe) || fe.Kind != FaultRateLimit || fe.RetryAfter != 1045 || c.RestedUntil() != 1045 {
 		t.Fatalf("expected FaultRateLimit until 1045, got %v (RestedUntil=%d)", err, c.RestedUntil())
 	}
 
 	now = 1020
-	if _, _, err := c.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1", "v2"); !errors.As(err, &fe) || fe.RetryAfter != 1045 {
+	if _, _, err := c.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2"); !errors.As(err, &fe) || fe.RetryAfter != 1045 {
 		t.Fatalf("expected still resting at 1020, got %v", err)
 	}
 
 	now = 1046
-	if _, ok, err := c.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1", "v2"); err != nil || ok {
+	if _, ok, err := c.PR(ctx, "mas-bandwidth/nova-sprint", "sprint/s1/group", "v2"); err != nil || ok {
 		t.Fatalf("expected recovery after rest window at 1046, got ok=%v err=%v", ok, err)
 	}
 }

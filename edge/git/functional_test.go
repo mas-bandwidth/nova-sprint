@@ -86,7 +86,7 @@ func TestFunctionalGitMergeLedgerRebaseAndPush(t *testing.T) {
 	runGit(workDir, "add", ".")
 	runGit(workDir, "commit", "-m", "card 1")
 	sha1 := runGit(workDir, "rev-parse", "HEAD")
-	runGit(workDir, "push", "origin", sha1+":refs/heads/card/s1/card-1")
+	runGit(workDir, "push", "origin", sha1+":refs/heads/sprint/s1/card-1")
 
 	runGit(workDir, "checkout", "-b", "card-2", baseSHA)
 	writeFile_internal(t, filepath.Join(workDir, "b.go"), "package b\n")
@@ -94,7 +94,7 @@ func TestFunctionalGitMergeLedgerRebaseAndPush(t *testing.T) {
 	runGit(workDir, "add", ".")
 	runGit(workDir, "commit", "-m", "card 2")
 	sha2 := runGit(workDir, "rev-parse", "HEAD")
-	runGit(workDir, "push", "origin", sha2+":refs/heads/card/s1/card-2")
+	runGit(workDir, "push", "origin", sha2+":refs/heads/sprint/s1/card-2")
 
 	mConflict, err := client.MergeGroup(ctx, workDir, baseSHA, []string{sha1, sha2}, nil)
 	if err != nil || mConflict.Kind != MergeConflict || len(mConflict.Conflicts) != 1 || mConflict.Conflicts[0] != "tla/RUNS.tsv" {
@@ -120,10 +120,13 @@ func verifyRebaseAndPush_internal(t *testing.T, ctx context.Context, client *Cli
 		t.Fatalf("expected Rebase conflict on a.go, got %+v err=%v", rebConflict, err)
 	}
 
-	if err := client.Push(ctx, workDir, sha1, "refs/heads/sprint/s1", ""); err != nil {
+	if err := client.Push(ctx, workDir, sha1, "refs/heads/sprint/s1", ""); err == nil {
+		t.Fatalf("expected bare refs/heads/sprint/s1 push to be refused")
+	}
+	if err := client.Push(ctx, workDir, sha1, "refs/heads/sprint/s1/group", ""); err != nil {
 		t.Fatalf("initial stream push: %v", err)
 	}
-	if err := client.Push(ctx, workDir, sha2, "refs/heads/sprint/s1", baseSHA); !errors.Is(err, ErrPushRefused) {
+	if err := client.Push(ctx, workDir, sha2, "refs/heads/sprint/s1/group", baseSHA); !errors.Is(err, ErrPushRefused) {
 		t.Fatalf("expected ErrPushRefused on stale stream lease, got %v", err)
 	}
 	if err := client.Push(ctx, workDir, sha1, "refs/heads/v2", ""); err != nil {
@@ -141,8 +144,8 @@ func TestFunctionalLandPassEndToEndAndBaseMoved(t *testing.T) {
 	landerClone := filepath.Join(t.TempDir(), "lander")
 	runGit(filepath.Dir(landerClone), "clone", originDir, landerClone)
 
-	c1SHA := commitBranch_internal(t, runGit, workDir, "c1", baseSHA, "c1.txt", "card 1\n", "refs/heads/card/s1/c1")
-	c2SHA := commitBranch_internal(t, runGit, workDir, "c2", baseSHA, "c2.txt", "card 2\n", "refs/heads/card/s1/c2")
+	c1SHA := commitBranch_internal(t, runGit, workDir, "c1", baseSHA, "c1.txt", "card 1\n", "refs/heads/sprint/s1/c1")
+	c2SHA := commitBranch_internal(t, runGit, workDir, "c2", baseSHA, "c2.txt", "card 2\n", "refs/heads/sprint/s1/c2")
 	otherBaseSHA := commitBranch_internal(t, runGit, workDir, "other-stream", baseSHA, "other.txt", "other stream\n", "")
 
 	client := New(Config{})
@@ -173,9 +176,9 @@ func assertLandedStateAndRestart_internal(t *testing.T, ctx context.Context, cli
 	if err != nil || !ok || v2Remote != res.BaseTip {
 		t.Fatalf("origin/v2 = %s (ok=%v err=%v), want %s", v2Remote, ok, err, res.BaseTip)
 	}
-	streamRemote, ok, err := client.LsRemote(ctx, landerClone, "refs/heads/sprint/s1")
+	streamRemote, ok, err := client.LsRemote(ctx, landerClone, "refs/heads/sprint/s1/group")
 	if err != nil || !ok || streamRemote != res.BaseTip {
-		t.Fatalf("origin/sprint/s1 = %s, want fast-forwarded to %s", streamRemote, res.BaseTip)
+		t.Fatalf("origin/sprint/s1/group = %s, want fast-forwarded to %s", streamRemote, res.BaseTip)
 	}
 	for _, h := range heads {
 		if anc, err := client.IsAncestor(ctx, landerClone, h, res.BaseTip); err != nil || !anc {

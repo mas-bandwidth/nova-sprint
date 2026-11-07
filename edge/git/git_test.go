@@ -21,7 +21,7 @@ func TestLandPassSingleHeadReuseAndFastForward(t *testing.T) {
 	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
 
 	base := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
-	head1 := gf.AddCommit(base, map[string]string{"a.go": "package a\n"}, "card/s1/c1")
+	head1 := gf.AddCommit(base, map[string]string{"a.go": "package a\n"}, "sprint/s1/c1")
 	tree1, _ := gf.TreeHash(ctx, "", head1)
 
 	res, err := LandPass(ctx, gf, ff, LandRequest{
@@ -47,8 +47,8 @@ func TestLandPassRemergeWhenBaseMoved(t *testing.T) {
 	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
 
 	base0 := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
-	head1 := gf.AddCommit(base0, map[string]string{"a.go": "package a\n"}, "card/s1/c1")
-	head2 := gf.AddCommit(base0, map[string]string{"b.go": "package b\n"}, "card/s1/c2")
+	head1 := gf.AddCommit(base0, map[string]string{"a.go": "package a\n"}, "sprint/s1/c1")
+	head2 := gf.AddCommit(base0, map[string]string{"b.go": "package b\n"}, "sprint/s1/c2")
 	base1 := gf.AddCommit(base0, map[string]string{"other.go": "package other\n"}, "")
 
 	movedOnce := false
@@ -71,7 +71,7 @@ func TestLandPassRemergeWhenBaseMoved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LandPass: %v", err)
 	}
-	if res.Outcome != OutcomeLanded || !res.Remerged || gf.OriginRef("v2") != res.BaseTip || gf.OriginRef("sprint/s1") != res.BaseTip {
+	if res.Outcome != OutcomeLanded || !res.Remerged || gf.OriginRef("v2") != res.BaseTip || gf.OriginRef("sprint/s1/group") != res.BaseTip {
 		t.Fatalf("unexpected remerge LandResult: %+v", res)
 	}
 	for _, h := range []string{base1, head1, head2} {
@@ -106,8 +106,8 @@ func TestLedgerMergeConflictAndMissingHeadRefusals(t *testing.T) {
 	}
 
 	base := gf.AddCommit("", map[string]string{"tla/RUNS.tsv": "row0\n", "code.go": "v0\n"}, "v2")
-	h1 := gf.AddCommit(base, map[string]string{"tla/RUNS.tsv": "row0\nrow1\n"}, "card/s1/c1")
-	h2 := gf.AddCommit(base, map[string]string{"tla/RUNS.tsv": "row0\nrow2\n"}, "card/s1/c2")
+	h1 := gf.AddCommit(base, map[string]string{"tla/RUNS.tsv": "row0\nrow1\n"}, "sprint/s1/c1")
+	h2 := gf.AddCommit(base, map[string]string{"tla/RUNS.tsv": "row0\nrow2\n"}, "sprint/s1/c2")
 
 	res, err := LandPass(ctx, gf, ff, LandRequest{Repo: "mas-bandwidth/nova-sprint", Stream: "s1", Base: "v2", Heads: []string{h1, h2}})
 	if err != nil || res.Outcome != OutcomeRung3Conflict || len(res.Conflicts) != 1 || res.Conflicts[0] != "tla/RUNS.tsv" {
@@ -144,9 +144,9 @@ func TestBisectRedGroupAndFaultNoBlame(t *testing.T) {
 	ff := forge.NewFake(forge.Identity{Name: "sprint", ExpectedLogin: "rowan-claude", Token: "tok"}, func() int64 { return now })
 
 	base := gf.AddCommit("", map[string]string{"base.txt": "1\n"}, "v2")
-	h1 := gf.AddCommit(base, map[string]string{"f1.txt": "1\n"}, "card/s1/c1")
-	h2 := gf.AddCommit(base, map[string]string{"f2.txt": "2\n"}, "card/s1/c2")
-	h3 := gf.AddCommit(base, map[string]string{"f3.txt": "3\n"}, "card/s1/c3")
+	h1 := gf.AddCommit(base, map[string]string{"f1.txt": "1\n"}, "sprint/s1/c1")
+	h2 := gf.AddCommit(base, map[string]string{"f2.txt": "2\n"}, "sprint/s1/c2")
+	h3 := gf.AddCommit(base, map[string]string{"f3.txt": "3\n"}, "sprint/s1/c3")
 
 	ff.OnCall = func(op string) {
 		if op == "Checks" {
@@ -222,7 +222,7 @@ func TestLanderRestartIdempotenceAndInflightDedup(t *testing.T) {
 		f1.SetCheck("mas-bandwidth/nova-sprint", formatSeqSHA_internal(seq), forge.CheckRollup{State: forge.CheckGreen})
 	}
 	base := g1.AddCommit("", map[string]string{"a.txt": "0\n"}, "v2")
-	h1 := g1.AddCommit(base, map[string]string{"b.txt": "1\n"}, "card/s1/c1")
+	h1 := g1.AddCommit(base, map[string]string{"b.txt": "1\n"}, "sprint/s1/c1")
 
 	lander1 := NewLander(g1, f1)
 	eReq := edge.EdgeRequest{Kind: edge.FactLand, Card: "c1", SHA: h1, After: []string{"op-10"}}
@@ -270,5 +270,31 @@ func assertLanderDedup_internal(t *testing.T, ctx context.Context, l *Lander, eR
 	wg.Wait()
 	if calls.Load() != 1 || outA.ID != outB.ID {
 		t.Fatalf("expected 1 in-flight execution, got %d (outA=%+v outB=%+v)", calls.Load(), outA, outB)
+	}
+}
+
+func TestStreamGroupAndCardRefHierarchy(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	gf := NewFake(func() int64 { return 1000 })
+	base := gf.AddCommit("", map[string]string{"README.md": "v2\n"}, "v2")
+	h1 := gf.AddCommit(base, map[string]string{"a.go": "package a\n"}, "sprint/s1/p1")
+
+	if StreamBranch("s1") != "sprint/s1/group" || StreamRef("s1") != "refs/heads/sprint/s1/group" {
+		t.Fatalf("unexpected StreamBranch/StreamRef: %s / %s", StreamBranch("s1"), StreamRef("s1"))
+	}
+	if err := ValidateCardBranch("s1", "sprint/s1/p1"); err != nil {
+		t.Fatalf("ValidateCardBranch(sprint/s1/p1): %v", err)
+	}
+	for _, bad := range []string{"group", "sprint/s1/group", "refs/heads/sprint/s1/group", "sprint/s1"} {
+		if err := ValidateCardBranch("s1", bad); err == nil {
+			t.Fatalf("expected ValidateCardBranch(%q) to be refused", bad)
+		}
+		if _, err := LandPass(ctx, gf, nil, LandRequest{Stream: "s1", Base: "v2", Heads: []string{bad}}); err == nil {
+			t.Fatalf("expected LandPass with head %q to be refused", bad)
+		}
+	}
+	if err := gf.Push(ctx, "", h1, "refs/heads/sprint/s1", ""); err == nil {
+		t.Fatalf("expected bare stream ref push refs/heads/sprint/s1 to be refused")
 	}
 }

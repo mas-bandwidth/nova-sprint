@@ -294,12 +294,11 @@ func (f *Fake) Rebase(_ context.Context, worktree, onto string) (RebaseResult, e
 func (f *Fake) Push(_ context.Context, _, sha, ref, expectOld string) error {
 	f.world.mu.Lock()
 	defer f.world.mu.Unlock()
-	if !strings.HasPrefix(ref, "refs/heads/") {
-		ref = "refs/heads/" + strings.TrimPrefix(ref, "/")
-	}
-	isStream := strings.HasPrefix(ref, "refs/heads/sprint/")
-	if !isStream && expectOld != "" {
-		return fmt.Errorf("git refused: force-with-lease is forbidden on base branch %s: base pushes must fast-forward", ref)
+	var isStream bool
+	var err error
+	ref, isStream, err = classifyPushRef_internal(ref, expectOld)
+	if err != nil {
+		return err
 	}
 	cur := f.world.originRefs[ref]
 	if isStream {

@@ -104,8 +104,13 @@ func LandPass(ctx context.Context, g Git, fg forge.Forge, req LandRequest) (Land
 	if len(req.Heads) == 0 || req.Stream == "" || req.Base == "" {
 		return LandResult{}, fmt.Errorf("land refused: LandPass requires Stream, Base, and at least one Head")
 	}
+	for _, h := range req.Heads {
+		if err := ValidateCardBranch(req.Stream, h); err != nil {
+			return LandResult{}, err
+		}
+	}
 	baseRef := "refs/heads/" + req.Base
-	streamRef := "refs/heads/sprint/" + req.Stream
+	streamRef := StreamRef(req.Stream)
 	baseTip, streamOld, missing, err := fetchAndCheckHeads_internal(ctx, g, req, baseRef, streamRef)
 	if err != nil {
 		return LandResult{}, err
@@ -196,7 +201,7 @@ func mergeAndPushStream_internal(ctx context.Context, g Git, req LandRequest, on
 func gateMergedGroup_internal(ctx context.Context, g Git, fg forge.Forge, req LandRequest, baseTip, streamRef string, merged MergeResult) (int, LandResult, bool, error) {
 	var prNum int
 	if req.RequirePR && fg != nil {
-		headBranch := "sprint/" + req.Stream
+		headBranch := StreamBranch(req.Stream)
 		pr, ok, err := fg.PR(ctx, req.Repo, headBranch, req.Base)
 		if err != nil {
 			return 0, classifyForgeErr_internal(err, baseTip, merged.SHA), true, nil

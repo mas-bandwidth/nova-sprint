@@ -175,6 +175,9 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: card %s moved to gen %d (expected %d): run nova-sprint show %s", consumerID, c.Gen, gen, consumerID)
 	}
 	p := snap.Cards[c.Of]
+	if c.Of == "group" || c.Branch == "sprint/"+c.Stream+"/group" || strings.HasSuffix(c.Branch, "/group") || c.Branch == "sprint/"+c.Stream {
+		return TakeInfo{}, fmt.Errorf("SPRINT REFUSED take: card %s branch %q collides with reserved stream integration branch sprint/%s/group", consumerID, c.Branch, c.Stream)
+	}
 	r := snap.Rows[row]
 	plan, ref := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(r), card.Take{Row: row})
 	if ref != nil {
@@ -207,7 +210,7 @@ func buildTakeInfo_internal(c, p store.Card, st store.Stream, reqPR bool) TakeIn
 	}
 	return TakeInfo{
 		Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream,
-		Repo: st.Repo, Base: st.Base, StreamRef: "sprint/" + c.Stream,
+		Repo: st.Repo, Base: st.Base, StreamRef: "sprint/" + c.Stream + "/group",
 		Branch: c.Branch, BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding,
 		Paths: cloneStrings_internal(c.Paths), DoneWhen: cloneStrings_internal(c.DoneWhen),

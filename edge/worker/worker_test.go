@@ -573,3 +573,49 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 		t.Fatalf("dead harness on restart must report fault (0 bounces) and keep partial head %s: %+v", testPriorSHA, snap.Cards["p1"])
 	}
 }
+
+func TestTakeRefusesReservedGroupBranch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	clock := testClock_internal()
+	st, row := seedFakeStore_internal(t, clock)
+	sprint := &StoreSprintClient{
+		Store:  st,
+		Origin: newFakeGit_internal(),
+		Forge:  newFakeForge_internal(),
+		Now:    clock,
+	}
+	info, err := sprint.Take(ctx, row, "p1.w1", 0)
+	if err != nil {
+		t.Fatalf("Take(p1.w1): %v", err)
+	}
+	if info.StreamRef != "sprint/s1/group" || info.Branch != "sprint/s1/p1" {
+		t.Fatalf("unexpected StreamRef=%q Branch=%q", info.StreamRef, info.Branch)
+	}
+	_, err = st.Apply(ctx, store.Op{
+		ID: "seed-bad-group", Epoch: 1, Actor: "test", Kind: "seed", At: clock(),
+		Writes: []store.Write{
+			store.PutCard{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro", Priority: "normal", Brief: "b", Prose: "p", Paths: []string{"g.go"}, DoneWhen: []string{"true"}},
+			store.SetCardState{Card: "p2", State: "ready"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Apply p2 seed: %v", err)
+	}
+	snap, _ := st.Snapshot(ctx)
+	plan, ref := card.Move(
+		card.FromStore(snap.Cards["p2"]), nil,
+		map[string]card.Row{row: card.RowFromStore(snap.Rows[row])},
+		card.StreamFromStore(snap.Streams["s1"]), nil,
+		card.Start{Row: row, Branch: "sprint/s1/group", Base: testBaseSHA},
+	)
+	if ref != nil {
+		t.Fatalf("Start p2 refused: %s", ref.Reason)
+	}
+	if rec, err := st.Apply(ctx, store.Op{ID: "start-p2", Epoch: 1, Actor: "sprint", Kind: "start", At: clock(), Expect: plan.Expect, Writes: plan.Writes}); err != nil || !rec.Accepted {
+		t.Fatalf("Apply start-p2 failed: err=%v reason=%s", err, rec.Reason)
+	}
+	if _, err := sprint.Take(ctx, row, "p2.w1", 0); err == nil || !strings.Contains(err.Error(), "sprint/s1/group") {
+		t.Fatalf("expected Take(p2.w1) to be refused for reserved group branch, got %v", err)
+	}
+}

@@ -105,7 +105,7 @@ func setupGitBench_internal(t *testing.T) gitBenchDirs {
 	runGitCmd_internal(t, seedClone, "add", "README.md")
 	runGitCmd_internal(t, seedClone, "commit", "-m", "initial")
 	baseSHA := runGitCmd_internal(t, seedClone, "rev-parse", "HEAD")
-	runGitCmd_internal(t, seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1")
+	runGitCmd_internal(t, seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
 	runGitCmd_internal(t, root, "clone", "--bare", originDir, mirrorDir)
 	runGitCmd_internal(t, root, "clone", originDir, workClone)
@@ -150,7 +150,7 @@ func seedFunctionalWork_internal(t *testing.T, pg *store.PG, originDir, baseSHA 
 	r := card.RowFromStore(snap.Rows[row])
 	s := card.StreamFromStore(snap.Streams["s1"])
 	plan, ref := card.Move(p, nil, map[string]card.Row{row: r}, s, nil, card.Start{
-		Row: row, Branch: "card/s1/p1", Base: baseSHA,
+		Row: row, Branch: "sprint/s1/p1", Base: baseSHA,
 	})
 	require.Nil(t, ref)
 	rec, err = pg.Apply(ctx, store.Op{
@@ -172,7 +172,7 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	runGitCmd_internal(t, gb.seedClone, "add", "other.txt")
 	runGitCmd_internal(t, gb.seedClone, "commit", "-m", "stream advance")
 	movedStreamSHA := runGitCmd_internal(t, gb.seedClone, "rev-parse", "HEAD")
-	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1")
+	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
 	gitOps := &OSGitOps{WorkCloneDir: gb.workClone, MirrorDir: gb.mirrorDir, OriginURL: gb.originDir}
 	r, err := NewRunner(Runner{
@@ -197,7 +197,7 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 	assert.NotEmpty(t, snap.Cards["p1"].Head)
 	assert.NotEqual(t, movedStreamSHA, snap.Cards["p1"].Head)
 
-	parentSHA := runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/card/s1/p1^")
+	parentSHA := runGitCmd_internal(t, gb.originDir, "rev-parse", "refs/heads/sprint/s1/p1^")
 	assert.Equal(t, movedStreamSHA, parentSHA)
 	_, err = os.Stat(filepath.Join(r.RootDir, "jobs", "p1.w1"))
 	assert.True(t, os.IsNotExist(err), "job directory must be cleaned after ok report")
@@ -213,7 +213,7 @@ func TestFunctionalRunnerRebaseConflict(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(gb.seedClone, "work.txt"), []byte("stream conflict version\n"), 0o644))
 	runGitCmd_internal(t, gb.seedClone, "add", "work.txt")
 	runGitCmd_internal(t, gb.seedClone, "commit", "-m", "conflicting work.txt")
-	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1")
+	runGitCmd_internal(t, gb.seedClone, "push", "origin", "HEAD:refs/heads/sprint/s1/group")
 
 	gitOps := &OSGitOps{WorkCloneDir: gb.workClone, MirrorDir: gb.mirrorDir, OriginURL: gb.originDir}
 	r, err := NewRunner(Runner{
