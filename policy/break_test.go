@@ -75,7 +75,7 @@ func TestBreakOneBuiltinOutlastsTickTime(t *testing.T) {
 	breakTiming(t)
 	body, _ := override("limits", `def limits():
     _n = len(sorted(range(30000000), reverse = True))
-    return {"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, "route_rest_after": 3}`)
+    return {"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, "route_rest_after": 3, `+steering+`}`)
 	w := fakeWorld(t)
 	snap := w.snap()
 	start := time.Now()

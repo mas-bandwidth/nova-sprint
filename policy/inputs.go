@@ -180,14 +180,17 @@ func orderCard(c store.Card) starlark.Value {
 }
 
 // card is the subject of rows, reads and verdict: id, stream, tier (its
-// minimum), prose, attempt, bounces, priority and writer_rank (the rank of
-// the row that wrote the head; the card's tier when that row is unknown).
+// minimum), attempt, bounces, priority and writer_rank (the rank of the row
+// that wrote the head; the card's tier when that row is unknown). Never the
+// prose (rowan2's ruling 4 and 5): a brief of any size would enter every
+// input and the answer cache's key, so the inputs would grow with the briefs
+// and not with the card count.
 func (ix *index) card(c store.Card) starlark.Value {
 	writer := c.Tier
 	if r, ok := ix.facts[c.Author]; ok && Rank(r.tiers) != "" {
 		writer = Rank(r.tiers)
 	}
-	return newStruct("id", c.ID, "stream", c.Stream, "tier", c.Tier, "prose", c.Prose, "attempt", c.Attempt,
+	return newStruct("id", c.ID, "stream", c.Stream, "tier", c.Tier, "attempt", c.Attempt,
 		"bounces", c.Bounces, "priority", cmp.Or(c.Priority, "normal"), "writer_rank", writer)
 }
 

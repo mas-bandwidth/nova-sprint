@@ -88,9 +88,16 @@ type Answers struct {
 // Width is how many consumers a row works and how many it holds ready ahead.
 type Width struct{ Work, Ahead int }
 
-// Limits are the counts the steps compare against.
+// Limits are the counts the steps compare against, and the steering
+// numbers layer 3 reads (round 5): EscalateAfter and FrontierAfter are the
+// bounces at which work goes one rank up and to frontier, FlapLimit the
+// flaps that open a flap judgement, IdleFloor the fraction of the open width
+// working under which the idle alarm opens, LandTarget the first-time land
+// rate under which the land-rate alarm opens.
 type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
+	EscalateAfter, FrontierAfter, FlapLimit                                       int
+	IdleFloor, LandTarget                                                         float64
 }
 
 // Landing is the merging count at which a stream backs up and the one at
