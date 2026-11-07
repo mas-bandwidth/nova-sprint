@@ -59,6 +59,19 @@ package does with it.
   schema's owner needs no CREATE on the database: an admin role creates
   `sprint` owned by `nova_sprint`, and `nova_sprint` migrates it. The hash is
   still of the whole file. A store with no schema still needs CREATE.
+- Restore (round 20, `restore.go`): `RestoreBegin(ctx, tx)` and
+  `RestoreEnd(ctx, tx)` restore a `pg_dump --data-only --schema=sprint` dump
+  in one transaction on one connection. Begin takes Migrate's advisory lock,
+  refuses a foreign schema or one with any row, and creates every table,
+  function, trigger and index without schema.sql's two seed rows (the dump
+  carries `meta`'s row with its hash and `epoch`'s row), and disables
+  `cards_fixed` for the load, because the dump's cards are in physical order
+  and an updated producer can follow its consumers. Load the dump on the same
+  transaction (each statement as psql would, each COPY by `CopyFrom`), then
+  End enables the trigger and runs it over every card, checks the hash and
+  version, the epoch row, and that Rebuild over the loaded events is the
+  loaded snapshot (`checkRebuild`, the check the tests share), and returns
+  the identity. Commit only when End returns no error.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
