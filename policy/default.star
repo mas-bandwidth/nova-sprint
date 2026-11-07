@@ -93,7 +93,9 @@ def stitch(stream):
     return stream.cards > 1
 
 def prices():
-    return {}  # micro-dollars per million tokens, by model: unpriced until set
+    # micro-dollars per million tokens: {"in", "out"}, cache_read and
+    # cache_write default to in. Unlisted API models are unpriced, never $0.
+    return {}
 
 def catalog():
     # The models rows may name, by provider, each with the tier it serves, and

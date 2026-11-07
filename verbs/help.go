@@ -58,7 +58,8 @@ func helpLine(v *verb) string {
 }
 
 func helpVerb(v *verb) string {
-	lines := []string{"nova-sprint " + strings.TrimSpace(v.name+" "+v.usage), v.about, "who: " + v.role.String(), "up: " + upNeed(v)}
+	lines := append([]string{"nova-sprint " + strings.TrimSpace(v.name+" "+v.usage), v.about}, v.more...)
+	lines = append(lines, "who: "+v.role.String(), "up: "+upNeed(v))
 	if len(v.needs) > 0 {
 		lines = append(lines, "refuses when (and the fix it names):")
 		for _, n := range v.needs {

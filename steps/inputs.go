@@ -30,8 +30,9 @@ type InboxItem struct {
 
 	Row, Session, Consumer string // a report or take: who, from which session, of what
 	Result, Head, Reason   string // a report; land red: the failing checks and their URLs
-	Cost                   int64
-	Priced                 bool
+	Cost                   int64  // the report's cost, Priced and Usage as the engine priced them
+	Priced                 bool   // (verbs' priceReport): layer 6 routes a report here priced, never
+	Usage                  string // raw words, so the tick reads no price sheet
 
 	Request string   // an edge result: the request it answers
 	Outcome string   // land: landed, or what kept it from landing (a judgement); stop: ack

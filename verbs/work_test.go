@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -96,8 +97,8 @@ func TestFinish(t *testing.T) {
 	takeW1(t, w)
 	first := w.do("alice", "finish", "p1.w1@1", "--head", head, "--cost", "0.04")
 	want(t, first, 0, "FINISHED p1.w1 head="+head, "next: "+waitNext)
-	if c := w.snap(t).Cards["p1.w1"]; c.State != "done" || c.Cost != 40000 || !c.Priced {
-		t.Fatalf("card %+v", c)
+	if c := w.snap(t).Cards["p1.w1"]; c.State != "done" || c.Cost != 0 || c.Priced || c.Usage != "billing=api charged=0.04 unpriced=no-tokens" {
+		t.Fatalf("a bench's --cost is the harness's evidence, never its price; no tokens is unpriced: %+v", c)
 	}
 	if again := w.do("alice", "finish", "p1.w1@1", "--head", head, "--cost", "0.04"); again != first {
 		t.Fatalf("a repeat finish is the same receipt:\n%s", again.Output)
@@ -113,7 +114,7 @@ func TestFinishFailedAndReportForms(t *testing.T) {
 	takeW1(t, w)
 	r := w.do("alice", "report", "p1.w1@1", "--result", "fault", "--reason", "bench down", "--cost-microusd", "12", "--priced", "false", "--json")
 	want(t, r, 0, `"accepted":true`)
-	if c := w.snap(t).Cards["p1.w1"]; c.Result != "fault" || c.Cost != 12 || c.Priced {
+	if c := w.snap(t).Cards["p1.w1"]; c.Result != "fault" || c.Cost != 0 || c.Priced || c.Usage != "billing=api charged=- unpriced=no-tokens" {
 		t.Fatalf("card %+v", c)
 	}
 }
@@ -142,17 +143,22 @@ func TestRead(t *testing.T) {
 	want(t, w.do("bob", "read", "p2.r1@1", "fix", "--finding", "a.go:1: off by one; use <="), 0, "READ p2.r1 head="+head+" result=fix")
 }
 
-// A read's spend reaches its consumer card, priced, exactly as a finish's does.
+// A read's spend reaches its consumer card as a finish's does, priced by the
+// engine: a kin on a subscription seat is free (priced, $0), its --cost kept
+// as charged evidence (the owner, 2026-11-07: "friend sub rate should be
+// free").
 func TestReadCarriesCost(t *testing.T) {
 	w := newWorld(t)
+	w.roster.ro.Kin["bob"] = roster.Kin{Name: "bob", Model: "m-bob", Width: 2, Tiers: []string{"pro"}, Harness: "claude"}
+	delete(w.roster.ro.Workers, "bob")
 	takeR1(t, w)
-	want(t, w.do("bob", "read", "p2.r1@2", "yes", "--cost", "0.015"), 0, "READ p2.r1 head="+head+" result=ok")
-	if c := w.snap(t).Cards["p2.r1"]; c.State != "done" || c.Cost != 15000 || !c.Priced {
+	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.015"), 0, "READ p2.r1 head="+head+" result=ok")
+	if c := w.snap(t).Cards["p2.r1"]; c.State != "done" || c.Cost != 0 || !c.Priced || c.Usage != "billing=subscription charged=0.015" {
 		t.Fatalf("read card %+v", c)
 	}
 	w = newWorld(t)
 	takeR1(t, w)
-	want(t, w.do("bob", "read", "p2.r1@2", "yes"), 0, "READ p2.r1")
+	want(t, w.do("bob", "read", "p2.r1@1", "yes"), 0, "READ p2.r1")
 	if c := w.snap(t).Cards["p2.r1"]; c.Priced || c.Cost != 0 {
 		t.Fatalf("a read with no --cost is unpriced, never a priced $0: %+v", c)
 	}
@@ -283,4 +289,34 @@ func TestBeatRefusals(t *testing.T) {
 		{name: "a flag missing", as: "alice", args: []string{"beat", "--load1", "1"}, exit: 2, want: []string{"--cores takes a whole number"}},
 		{name: "not hooked", as: "dave", args: append([]string{"beat"}, good...), exit: 1, want: []string{"hook in first", "nova-sprint hook --as dave --role worker"}},
 	})
+}
+
+// A bench's read carries its harness's tokens (--usage); the engine prices
+// them exactly by the policy's prices() and keeps --cost as charged evidence.
+// A model the policy has no price for is unpriced=no-price, never $0, and
+// words that do not read are refused before anything is applied.
+func TestReadPricedFromUsage(t *testing.T) {
+	sheet := map[string]policy.Price{"deepseek-flash": {In: 270_000, CacheRead: 70_000, CacheWrite: 270_000, Out: 1_100_000}}
+	w := newWorld(t)
+	w.e.Answers = fakeAnswers{prices: sheet}
+	takeR1(t, w)
+	words := "input=19541 cache_read=36336 output=692 reasoning=70 model=deepseek/deepseek-flash"
+	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--cost", "0.015", "--usage", words), 0, "READ p2.r1 head="+head+" result=ok")
+	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 8658 || !c.Priced || c.Usage != words+" billing=api charged=0.015" {
+		t.Fatalf("read card %+v", c)
+	}
+	w = newWorld(t)
+	w.e.Answers = fakeAnswers{prices: sheet}
+	takeR1(t, w)
+	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", "input=10 output=2 model=openai/sol"), 0, "READ p2.r1")
+	if c := w.snap(t).Cards["p2.r1"]; c.Cost != 0 || c.Priced || c.Usage != "input=10 output=2 model=openai/sol billing=api charged=- unpriced=no-price" {
+		t.Fatalf("read card %+v", c)
+	}
+	w = newWorld(t)
+	takeR1(t, w)
+	want(t, w.do("bob", "read", "p2.r1@1", "yes", "--usage", "input=lots"), 2, "--usage: usage input=lots is not a whole number")
+	if c := w.snap(t).Cards["p2.r1"]; c.State != "working" {
+		t.Fatalf("a refused report applies nothing: %+v", c)
+	}
+	want(t, w.do("bob", "help", "read"), 0, "--usage is the run's tokens", "a kin on a subscription seat (claude, codex, ...): free; pass nothing")
 }
