@@ -22,9 +22,10 @@ import (
 var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 
 type world struct {
-	t *testing.T
-	f *store.Fake
-	n int
+	t  *testing.T
+	f  *store.Fake
+	n  int
+	ev Event // the walk's last event, for its trace (trace_test.go)
 }
 
 // newWorld is stream s1 with rows r1 (width 2), r2 and r3 (width 1), all up
@@ -150,6 +151,13 @@ func (w *world) consumerPlan(id string, e Event) Plan {
 
 func (w *world) consume(id string, e Event) { w.t.Helper(); w.op(kind(e), w.consumerPlan(id, e)) }
 
+func mustMerge(t *testing.T, plans ...Plan) Plan {
+	t.Helper()
+	p, r := Merge(plans...)
+	require.Nil(t, r)
+	return p
+}
+
 func (w *world) row(name string, e Event) {
 	w.t.Helper()
 	plan, r := MoveRow(w.rows()[name], e)
@@ -216,6 +224,8 @@ func (w *world) landedCard2(s store.Snapshot, x store.Write) bool {
 		assert.ElementsMatch(w.t, v.Needs, s.Cards[v.Card].Needs, "needs of %s", v.Card)
 	case store.SetCardReview:
 		assert.Positive(w.t, s.Cards[v.Card].Review, "review of %s", v.Card)
+	case store.SetCardRed:
+		assert.Equal(w.t, v.Red, s.Cards[v.Card].Red, "red of %s", v.Card)
 	case store.SetCardPriorHead:
 		assert.Equal(w.t, v.Head, s.Cards[v.Card].Prior, "prior head of %s", v.Card)
 	case store.PutCard:
@@ -439,7 +449,7 @@ func TestConformancePreemption(t *testing.T) {
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
-	w.op("preempt", Merge(w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2"}), start))
+	w.op("preempt", mustMerge(t, w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2"}), start))
 	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p2.w1", Working)
 	assert.Equal(t, []any{Ready, "preempted by blocker p2"}, []any{w.card("p1").State, w.card("p1").Reason})
@@ -519,7 +529,7 @@ func TestConformanceHoldStream(t *testing.T) {
 	w := newWorld(t, producer("p1"), producer("p2"), producer("p3"))
 	w.move("p1", Resolve{})
 	w.move("p2", Resolve{})
-	plan, r := MoveStream(Stream{Name: "s1"}, HoldStream{Reason: "release freeze", Ready: []Card{w.card("p1"), w.card("p2")}})
+	plan, r := MoveStream(Stream{Name: "s1"}, HoldStream{Reason: "release freeze", Ready: []Card{w.card("p1"), w.card("p2")}, Seq: w.snap().Seq})
 	require.Nil(t, r)
 	w.op("hold", plan)
 	assert.True(t, w.snap().Streams["s1"].Held)
@@ -527,6 +537,38 @@ func TestConformanceHoldStream(t *testing.T) {
 		assert.Equal(t, []any{Waiting, "release freeze"}, []any{w.card(id).State, w.card(id).Reason}, id)
 	}
 	w.refused("p3", Resolve{}, "stream s1 is held; no new consumers start in a held stream")
+}
+
+// A hold is fenced at the snapshot it was read from. A producer that becomes
+// ready after that snapshot is not parked by the stale plan: the store
+// refuses the op, and nothing in it lands.
+func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
+	w := newWorld(t, producer("p1"), producer("p2"))
+	w.move("p1", Resolve{})
+	snap := w.snap()
+	stale, r := MoveStream(StreamFromStore(snap.Streams["s1"]), HoldStream{
+		Reason: "release freeze", Ready: []Card{FromStore(snap.Cards["p1"])}, Seq: snap.Seq,
+	})
+	require.Nil(t, r)
+	w.move("p2", Resolve{})
+	rc, err := w.apply("stale-hold", stale)
+	require.NoError(t, err)
+	assert.False(t, rc.Accepted)
+	assert.Contains(t, rc.Reason, "expected seq")
+	assert.False(t, w.snap().Streams["s1"].Held)
+	w.is("p1", Ready)
+	w.is("p2", Ready)
+	fresh := w.snap()
+	plan, r := MoveStream(StreamFromStore(fresh.Streams["s1"]), HoldStream{
+		Reason: "release freeze",
+		Ready:  []Card{FromStore(fresh.Cards["p1"]), FromStore(fresh.Cards["p2"])},
+		Seq:    fresh.Seq,
+	})
+	require.Nil(t, r)
+	w.op("hold", plan)
+	assert.True(t, w.snap().Streams["s1"].Held)
+	w.is("p1", Waiting)
+	w.is("p2", Waiting)
 }
 
 // The card model's ruling: a return to ready while the stream is held parks
@@ -557,7 +599,7 @@ func TestConformanceDropInOneOp(t *testing.T) {
 	require.Nil(t, r)
 	waive, r := w.plan("p3", Waive{Need: "n1", Reason: "not needed", InThisOp: true})
 	require.Nil(t, r)
-	w.op("drop", Merge(drop, fail, waive))
+	w.op("drop", mustMerge(t, drop, fail, waive))
 	assert.Equal(t, []any{Fail, Fail, "need n1 failed"}, []any{w.card("n1").State, w.card("p2").State, w.card("p2").Reason})
 	assert.Empty(t, w.card("p3").Needs)
 }
