@@ -74,3 +74,47 @@ func TestRunFeedRosterFailureIsNotAnOldRoster(t *testing.T) {
 		t.Fatalf("store line not fresh: %q", c.view.Machine)
 	}
 }
+
+// The run's board reads the ETA from the landings run feeds it, not from any
+// poller: four in the last hour give an ETA over the hour, and a Publish that
+// adds landings moves it.
+func TestRunFeedCarriesLandingsForTheEta(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	snap := store.Snapshot{Epoch: 1, Seq: 5, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{}}
+	for i := 0; i < 40; i++ { // 40 cards waiting
+		id := string(rune('a'+i%26)) + string(rune('a'+i/26))
+		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: "s", State: "waiting"}
+	}
+	ls := []time.Time{now.Add(-50 * time.Minute), now.Add(-30 * time.Minute), now.Add(-20 * time.Minute), now.Add(-5 * time.Minute)}
+	c := NewFromFeed(Feed{Snap: snap, Landings: ls, At: now}, func() time.Time { return now })
+	d := c.pageSnapshot().Data.(envelope)
+	if d.Eta != "10h0m" || d.EtaBasis != "last hour" || d.EtaLandings != 4 {
+		t.Fatalf("eta=%q basis=%q landings=%d", d.Eta, d.EtaBasis, d.EtaLandings)
+	}
+	now = now.Add(time.Minute)
+	snap.Seq = 6
+	if err := c.Publish(Feed{Snap: snap, Landings: append(ls, now.Add(-time.Minute)), At: now}); err != nil {
+		t.Fatal(err)
+	}
+	d = c.pageSnapshot().Data.(envelope)
+	if d.EtaLandings != 5 || d.Eta != "8h0m" {
+		t.Fatalf("after a landing: eta=%q landings=%d", d.Eta, d.EtaLandings)
+	}
+	// run could not read them: no ETA, never a guess; an answered empty list is known but still "-"
+	now = now.Add(time.Minute)
+	snap.Seq = 7
+	if err := c.Publish(Feed{Snap: snap, At: now}); err != nil {
+		t.Fatal(err)
+	}
+	if d = c.pageSnapshot().Data.(envelope); d.Eta != "-" || d.EtaBasis != "" {
+		t.Fatalf("unknown landings: eta=%q basis=%q", d.Eta, d.EtaBasis)
+	}
+	now = now.Add(time.Minute)
+	snap.Seq = 8
+	if err := c.Publish(Feed{Snap: snap, Landings: []time.Time{}, At: now}); err != nil {
+		t.Fatal(err)
+	}
+	if d = c.pageSnapshot().Data.(envelope); d.Eta != "-" || d.EtaBasis != "last hour" {
+		t.Fatalf("empty known landings: eta=%q basis=%q", d.Eta, d.EtaBasis)
+	}
+}
