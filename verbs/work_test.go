@@ -279,10 +279,10 @@ func TestShowAndQueueRefusals(t *testing.T) {
 func TestBeat(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	args := []string{"beat", "--load1", "2.505", "--cores", "8", "--slots-used", "3", "--slots-total", "8"}
+	args := []string{"beat", "--load1", "2.505", "--cpu-peak", "87.25", "--cores", "8", "--slots-used", "3", "--slots-total", "8"}
 	want(t, w.do("alice", args...), 0, "BEAT alice applied at seq", "next: ")
 	r := w.snap(t).Rows["alice"]
-	if r.Load1Centi != 251 || r.Cores != 8 || r.SlotsUsed != 3 || r.SlotsTotal != 8 {
+	if r.Load1Centi != 251 || r.CPUPeakDeci != 873 || r.Cores != 8 || r.SlotsUsed != 3 || r.SlotsTotal != 8 {
 		t.Fatalf("the row after the beat: %+v", r)
 	}
 	seq := w.snap(t).Seq
@@ -308,6 +308,8 @@ func TestBeatRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "not a load", as: "alice", args: with("--load1", "fast"), exit: 2, want: []string{"--load1 takes the 1-minute load average"}},
 		{name: "a negative load", as: "alice", args: with("--load1", "-1"), exit: 2, want: []string{"--load1 takes"}},
+		{name: "a cpu peak over 100", as: "alice", args: append(with("--load1", "1"), "--cpu-peak", "100.1"), exit: 2, want: []string{"--cpu-peak takes the CPU busy percent as a number from 0 to 100"}},
+		{name: "a cpu peak that is not a number", as: "alice", args: append(with("--load1", "1"), "--cpu-peak", "hot"), exit: 2, want: []string{"--cpu-peak takes"}},
 		{name: "no cores", as: "alice", args: with("--cores", "0"), exit: 2, want: []string{"--cores takes a whole number, 1 or more"}},
 		{name: "slots over the total", as: "alice", args: with("--slots-used", "5"), exit: 2, want: []string{"--slots-used 5 is more than --slots-total 4"}},
 		{name: "an unknown tier", as: "alice", args: append(with("--load1", "1"), "--tiers", "flash,turbo"), exit: 2, want: []string{"--tiers takes a comma list of flash, pro, heavy, frontier"}},

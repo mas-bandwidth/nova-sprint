@@ -87,8 +87,12 @@
 (*   ignores.                                                             *)
 (* - "burst": land with budget 1, pack 1 and redelivered results: the    *)
 (*   carry.                                                               *)
-(* A fault report is a fail that spends no bounce, so no scenario needs  *)
-(* it; red results come only in land and burst.                          *)
+(* A work fault report is a fail that spends no bounce, so no scenario   *)
+(* needs it; red results come only in land and burst. A read may fault   *)
+(* (p's, in deal): a faulted read is done but is not a read. It is owed   *)
+(* again, and the verdict needs a read that said so: yes an ok read, fix  *)
+(* a fix read; reads that all faulted are retry, which moves nothing, and *)
+(* the deal cuts one more read.                                           *)
 (* Paths are files or globs: p and q also both list the glob "a/*", and *)
 (* overlap counts only a file both name (defect 50); a producer held      *)
 (* behind another opens an overlap judgement ("held behind <card> on      *)
@@ -153,10 +157,11 @@ Needs  == [p \in Prods |-> IF p = "b" /\ Scenario = "deal" THEN {"p"} ELSE {}]
 After  == [p \in Prods |-> IF p = "q" /\ LandLike THEN {"p"} ELSE {}]
 Prio0  == [p \in Prods |-> IF p = "b" /\ Scenario = "pre" THEN "blocker" ELSE "normal"]
 WorkResults == IF Scenario = "deal" THEN {"ok", "fail"} ELSE {"ok"}
-ReadResults == IF Scenario = "deal" THEN {"ok", "fix"} ELSE {"ok"}
-\* Only p bounces in deal (its fix, escalation and re-deal); a red result
-\* comes only in land and burst.
+ReadResults == IF Scenario = "deal" THEN {"ok", "fix", "fault"} ELSE {"ok"}
+\* Only p bounces in deal (its fix, escalation and re-deal), and only p's
+\* reads fault; a red result comes only in land and burst.
 MayBounce(p) == Scenario = "deal" /\ p = "p"
+MayFault(p)  == Scenario = "deal" /\ p = "p"
 LandOutcomes == IF LandLike THEN {"landed", "red"} ELSE {"landed"}
 
 NoR     == "-"
@@ -267,13 +272,17 @@ ReadCut(W, p, r) == [st |-> "working", kind |-> "read", row |-> r, att |-> W.ps[
                      res |-> "-", review |-> W.ps[p].review]
 CurReads(W, p) == {c \in ConsOf(p) : W.cs[c].kind = "read" /\ W.cs[c].st # "none"
                                      /\ W.cs[c].review = W.ps[p].review}
+\* A done read that faulted is not a read.
+Faulted(W, c) == W.cs[c].st = "done" /\ W.cs[c].res = "fault"
 \* Owed a read: in review with no live or done read of this review (a
-\* withdrawn read is owed again).
-ReadOwed(W, p) == W.ps[p].st = "review" /\ ~\E c \in CurReads(W, p) : W.cs[c].st # "fail"
-\* ReadYes and ReadFix: every read of this review final, one done; the
-\* verdict default is yes when every done read says ok, else fix.
+\* withdrawn read and a faulted one are owed again).
+ReadOwed(W, p) == W.ps[p].st = "review" /\ ~\E c \in CurReads(W, p) : W.cs[c].st # "fail" /\ ~Faulted(W, c)
+\* ReadYes and ReadFix: every read of this review final, one done.
 Settled(W, p) == W.ps[p].st = "review" /\ NoLive(W, p) /\ \E c \in CurReads(W, p) : W.cs[c].st = "done"
-AllOk(W, p)   == \A c \in CurReads(W, p) : W.cs[c].st = "done" => W.cs[c].res = "ok"
+\* The verdict default over the done reads: fix on a fix read, else yes on
+\* an ok read, else (every done read faulted) retry, which moves nothing.
+DoneSaid(W, p, res) == \E c \in CurReads(W, p) : W.cs[c].st = "done" /\ W.cs[c].res = res
+Verdict(W, p) == IF DoneSaid(W, p, "fix") THEN "fix" ELSE IF DoneSaid(W, p, "ok") THEN "yes" ELSE "retry"
 
 \* Ready (LESSONS 2.20): needs landed, the stream not held, and no producer
 \* of the stream overlapping its paths started (working, review, merging),
@@ -338,8 +347,8 @@ Legal(W, g) ==
                              /\ g.c[1] # g.p
     [] g.kind = "start"   -> StartOK(W, g.p, g.r)
     [] g.kind = "read"    -> ReadOK(W, g.p, g.r)
-    [] g.kind = "yes"     -> Settled(W, g.p) /\ AllOk(W, g.p)
-    [] g.kind = "fix"     -> Settled(W, g.p) /\ ~AllOk(W, g.p)
+    [] g.kind = "yes"     -> Settled(W, g.p) /\ Verdict(W, g.p) = "yes"
+    [] g.kind = "fix"     -> Settled(W, g.p) /\ Verdict(W, g.p) = "fix"
     [] g.kind = "resolve" -> W.ps[g.p].st = "waiting" /\ NeedsLanded(W, g.p) /\ ~W.sh[Stream[g.p]]
     [] g.kind = "landed"  -> W.ps[g.p].st = "merging" /\ W.ps[g.p].head = g.sha
     [] OTHER              -> TRUE
@@ -453,8 +462,8 @@ GroupsOf(kind, S, V) ==
   LET s == SelectSeq(ProdSeq, LAMBDA x : x \in S)
   IN [i \in 1..Len(s) |-> Grp(kind, s[i], NoC, NoR, 0, 0, V)]
 
-\* Fix: ReadYes or ReadFix by the default verdict.
-FixSet(V, cl, yes) == {p \in Prods : Free(p, cl) /\ Settled(V, p) /\ AllOk(V, p) = yes}
+\* Fix: ReadYes or ReadFix by the default verdict; retry plans nothing.
+FixSet(V, cl, v) == {p \in Prods : Free(p, cl) /\ Settled(V, p) /\ Verdict(V, p) = v}
 
 \* Deal and reads. Candidates down the ladder: blocker work, every read
 \* owed, normal work; within a rung, id order (policy's order, default).
@@ -613,7 +622,8 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
   IN {n \in {"OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
              "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
              "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
-             "NoDealWithoutPolicy", "ResolveFromState", "HeldBehindShown"} :
+             "NoDealWithoutPolicy", "ResolveFromState", "HeldBehindShown",
+             "VerdictHasItsRead"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -664,7 +674,13 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
                (/\ V.ps[p].st = "waiting" /\ PKey(p) \notin clr /\ ~V.sh[Stream[p]]
                 /\ \A n2 \in Needs[p] : V.ps[n2].st = "landed"
                 /\ \E q \in Prods : FileShared(p, q) /\ (V.ps[q].st \in Started \cup {"ready"} \/ q \in res))
-                 => [kind |-> "overlap", about |-> p] \in jsn}
+                 => [kind |-> "overlap", about |-> p] \in jsn
+        [] n = "VerdictHasItsRead" ->
+             \A g \in {x \in GroupsIn(gs) : x.kind \in {"yes", "fix"}} :
+               LET said(out) == \E c \in ConsOf(g.p) :
+                                  /\ V.cs[c].kind = "read" /\ V.cs[c].review = V.ps[g.p].review
+                                  /\ V.cs[c].st = "done" /\ V.cs[c].res = out
+               IN IF g.kind = "yes" THEN said("ok") /\ ~said("fix") ELSE said("fix")}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
@@ -720,8 +736,8 @@ Tick(a) ==
          res  == ResolveFold(V, inb.cl, 1, {})
          rgs  == GroupsOf("resolve", res, V)
          cl2  == inb.cl \cup Cards(rgs)
-         fyes == GroupsOf("yes", FixSet(V, cl2, TRUE), V)
-         ffix == GroupsOf("fix", FixSet(V, cl2, FALSE), V)
+         fyes == GroupsOf("yes", FixSet(V, cl2, "yes"), V)
+         ffix == GroupsOf("fix", FixSet(V, cl2, "fix"), V)
          cl3  == cl2 \cup Cards(fyes) \cup Cards(ffix)
          dl   == IF V.pol THEN DealStep(V, cl3, a.rows, TRUE) ELSE NoPlan
          dblk == SelectSeq(dl.gs, LAMBDA g : g.blk)
@@ -803,6 +819,7 @@ Report(c, res) ==
   /\ IF w.cs[c].kind = "read"
      THEN /\ res \in ReadResults
           /\ res = "fix" => (MayBounce(c[1]) /\ w.ps[c[1]].bounces < MaxBounce)
+          /\ res = "fault" => MayFault(c[1])
           /\ w' = [w EXCEPT !.cs[c].st = "done", !.cs[c].res = res, !.tko = Drop(@, c)]
      ELSE /\ res \in WorkResults
           /\ res = "fail" => (MayBounce(c[1]) /\ w.ps[c[1]].bounces < MaxBounce)
@@ -997,7 +1014,9 @@ EdgeAfterAccepted ==
 (* ResolveFromState (section 64b: every producer the view's state makes   *)
 (* ready is resolved, or is held behind one resolved this tick on a       *)
 (* file, whatever landed its needs); HeldBehindShown (defect 50: a        *)
-(* producer held behind another on a file has an overlap judgement).     *)
+(* producer held behind another on a file has an overlap judgement);     *)
+(* VerdictHasItsRead (a yes has a done ok read of the review and no fix  *)
+(* read, a fix has a done fix read: a faulted read is neither).          *)
 OneGroupPerCard          == "OneGroupPerCard" \notin last.bad
 GroupWhole               == "GroupWhole" \notin last.bad
 NeverHalfApplied         == "NeverHalfApplied" \notin last.bad
@@ -1013,6 +1032,7 @@ MergingCovered           == "MergingCovered" \notin last.bad
 NoDealWithoutPolicy      == "NoDealWithoutPolicy" \notin last.bad
 ResolveFromState         == "ResolveFromState" \notin last.bad
 HeldBehindShown          == "HeldBehindShown" \notin last.bad
+VerdictHasItsRead        == "VerdictHasItsRead" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width) is     *)
@@ -1022,6 +1042,21 @@ HeldBehindShown          == "HeldBehindShown" \notin last.bad
 RoomFor(p) == w.pol /\ RoomIn(w, p)
 ReadyDealtWhenRoom ==
   \A p \in Prods : (w.ps[p].st = "ready" /\ RoomFor(p)) ~> (w.ps[p].st # "ready" \/ ~RoomFor(p))
+
+(* A review whose reads all faulted is read again: settled with every     *)
+(* done read of the review faulted and room for a read (an open serving  *)
+(* row other than the author's, under width; the stream not held; a slot *)
+(* left; an active policy), it eventually has a read that is not faulted, *)
+(* or leaves review, unless the room goes.                                *)
+OnlyFaulted(p) ==
+  /\ w.ps[p].st = "review" /\ NoLive(w, p)
+  /\ \E c \in CurReads(w, p) : Faulted(w, c)
+  /\ \A c \in CurReads(w, p) : w.cs[c].st = "fail" \/ Faulted(w, c)
+ReadRoomFor(p) ==
+  /\ w.pol /\ ~w.sh[Stream[p]] /\ w.ps[p].ncut < K
+  /\ \E r \in ServingOpen(w, p) : r # w.ps[p].author /\ Cardinality(Load(w, r)) < Width[r]
+FaultedReadReadAgain ==
+  \A p \in Prods : (OnlyFaulted(p) /\ ReadRoomFor(p)) ~> (~OnlyFaulted(p) \/ ~ReadRoomFor(p))
 
 -----------------------------------------------------------------------------
 (* Reachability: each is expected to be VIOLATED (reach/Steps*.cfg); each *)
@@ -1051,5 +1086,7 @@ StepsNeverGated       == ~\E j \in js : j.kind = "no-policy"
 StepsNeverHeldBehind  == ~\E j \in js : j.kind = "overlap"
 StepsNeverHandLanded  == "handland" \notin last.tags
 StepsNeverUndealt     == ju = {}
+StepsNeverReadAgain   == ~\E p \in Prods : \E c, d \in CurReads(w, p) :
+                           Faulted(w, c) /\ d # c /\ w.cs[d].st \in {"working", "done"} /\ ~Faulted(w, d)
 
 =============================================================================

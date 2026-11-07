@@ -62,8 +62,7 @@ type envelope struct {
 	At            time.Time              `json:"at"`
 	Epoch         int                    `json:"epoch"`
 	Machine       string                 `json:"machine"`
-	Stopped       bool                   `json:"stopped"`     // the page's stop banner
-	StopReason    string                 `json:"stop_reason"` // the last stop's or start's reason
+	Stopped       bool                   `json:"stopped"` // the sprint is stopped (the ETA tile and machine line show it)
 	Tables        map[string]any         `json:"tables"`
 	Streams       []streamLine           `json:"streams"`
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
@@ -137,7 +136,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 
 // coordinatorOf is the name of the row whose role is coordinator; the first
@@ -193,14 +192,15 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 }
 
 // loadCells is the board's load cell and its slots title from the row's last
-// heartbeat: the 1-minute load average over the cores, as a percent of all of
-// them (v1's cell), and the nova-reserve slots in use of the total. A row that
-// is down shows none, and so does one that has never beaten (no cores).
+// heartbeat: the highest CPU busy percent of the 10 seconds before it, across
+// all the cores (100% is every core busy), and the nova-reserve slots in use of
+// the total. A row that is down shows none, and so does one that has never
+// beaten (no cores).
 func loadCells(r store.Row) (load, slots string) {
 	if r.State != "up" || r.Cores < 1 {
 		return "", ""
 	}
-	load = fmt.Sprintf("%.1f%%", float64(r.Load1Centi)/float64(r.Cores))
+	load = fmt.Sprintf("%.1f%%", float64(r.CPUPeakDeci)/10)
 	if r.SlotsTotal > 0 {
 		slots = fmt.Sprintf("%d / %d", r.SlotsUsed, r.SlotsTotal)
 	}

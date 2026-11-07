@@ -434,11 +434,12 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function rk(n) { var r = rank[shownStatus(table[n].status)]; return r == null ? 3 : r; }
   names.sort(function (a, b) { return rk(a) - rk(b) || a.localeCompare(b); });
   if (!box._head) {
-    var cols = [[nameLabel], ["status"], ["ready", "num"], ["working"], ["", "frac"], ["done", "num"], ["ok%", "num"]];
+    var cols = [[nameLabel], ["status"], ["ready", "num"], ["working"], ["", "frac"], ["done", "num"], ["ok%", "num"], ["load", "num"]];
     box._head = headRow(cols);
     var wh = box._head.children[4]; wh.textContent = ""; wh.appendChild(el("span", "alt", "working"));
     box._total = el("div", "row total");
     box._total._c = [el("div", "", "Total"), el("div"), quiet(numCell()), el("div"), quiet(numCell("frac")), quiet(numCell()), quiet(numCell())];
+    box._total._c.push(el("div"));
     box._total._c.forEach(function (c) { box._total.appendChild(c); });
   }
   var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, upWidth: 0, upWorking: 0, fix: 0 };
@@ -466,6 +467,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     // fleet and friends: no numeric column flashes, only the cells
     r.wf = quiet(r.wf); r.ready = quiet(numCell()); r.done = quiet(numCell()); r.ok = quiet(numCell());
     [r.name, r.pill, r.ready, r.track, r.wf, r.done, r.ok].forEach(function (c) { r.node.appendChild(c); });
+    r.load = quiet(numCell()); r.node.appendChild(r.load);
     return r;
   }, function (r, k) {
     var m = table[k], raw = int(m.working), working = shownWorking(m), width = int(m.width), done = int(m.done);
@@ -484,6 +486,7 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
     setNum(r.ready, int(m.ready)); setNum(r.done, done);
     setOk(r.ok, pct(okv), done);
+    if (r.load) { var lp = pct(m.load); setText(r.load, lp === null ? "-" : lp.toFixed(1) + "%"); setClass(r.load, "num" + (lp === null ? " zero" : "")); }
   }, box._total);
   var c = box._total._c;
   setNum(c[2], t.ready);
@@ -607,9 +610,6 @@ function renderReaders(d) {
 }
 
 function renderHero(d, s, ft) {
-  var stopBanner = $("stop-banner");
-  stopBanner.hidden = !d.stopped;
-  $("stop-reason").textContent = d.stopped ? String(d.stop_reason || "") : "";
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
   setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)

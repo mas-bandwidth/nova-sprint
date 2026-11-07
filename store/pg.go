@@ -82,6 +82,12 @@ const round24Hash = "e7561ffcff21033ff3b0a7dd615e32b6c9f0c33278278fe30e1912fec5e
 // one transaction, then the new hash is recorded.
 const round25Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f4433d0e"
 
+// round26Hash is the schema hash of round 26's schema.sql
+// (testdata/schema-round26.sql): running schema.sql on it adds the row
+// heartbeat's cpu_peak_deci (round 27, the CPU busy peak of the last 10
+// seconds), in Migrate's one transaction, then the new hash is recorded.
+const round26Hash = "475ac9c67bf8c1d041e7a54b69f7c4e3a0b0d56bfd43a11dc6e4db31ff60dfed"
+
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.
