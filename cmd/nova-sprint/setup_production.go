@@ -111,7 +111,7 @@ func (p productionSetup) Verify(ctx context.Context, step int, in verbs.SetupInp
 		}
 	}
 	if step >= 3 && p.cfg.SprintPassword == "" {
-		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "sprint credential is not available in this process", Fix: "rerun nova-sprint up under nova-secrets exec with NOVA_SPRINT_PG_PASSWORD", Exit: 1}
+		return verbs.SetupCheck{}, &verbs.OperationError{Problem: "the sprint is not set up (no sprint credential in this process)", Fix: "nova-sprint up --as " + in.Actor, Exit: 1}
 	}
 	if step == 6 {
 		r := p.forInput(in)
@@ -218,7 +218,7 @@ func (p productionSetupLock) Acquire(ctx context.Context) (verbs.SetupLease, err
 		role, password = "nova_admin", p.cfg.AdminPassword
 	}
 	if password == "" {
-		return nil, &verbs.OperationError{Problem: "setup database credential is unavailable", Fix: "run nova-sprint up under nova-secrets exec with NOVA_PG_ADMIN_PASSWORD", Exit: 1}
+		return nil, &verbs.OperationError{Problem: "the sprint is not set up (no setup database credential in this process)", Fix: "nova-sprint up --as <you>", Exit: 1}
 	}
 	dsn, err := setupRoleDSN(p.cfg.DSN, role)
 	if err != nil {

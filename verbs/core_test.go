@@ -116,7 +116,22 @@ func TestHookRefusals(t *testing.T) {
 			prep: func(_ *testing.T, w *world) {
 				w.e.Session = func() (string, error) { return "", broken("no randomness", "again") }
 			}, want: []string{"no randomness"}},
+		{name: "the store without its schema", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
+			prep: func(_ *testing.T, w *world) { w.e.Store = failingStore{w.f}; w.doctor.schema = false },
+			want: []string{"SPRINT REFUSED hook: the sprint is not set up: nova-sprint up --as dave"}},
+		{name: "no sprint credential", as: "dave", args: []string{"hook", "--role", "worker"}, exit: 1,
+			prep: func(_ *testing.T, w *world) { w.e.Store = notSetUpStore{w.f} },
+			want: []string{"SPRINT REFUSED hook: the sprint is not set up: nova-sprint up --as dave"}},
+		{name: "no sprint credential, next", as: "dave", args: []string{"next"},
+			prep: func(_ *testing.T, w *world) { w.e.Store = notSetUpStore{w.f} },
+			want: []string{"NEXT the sprint is not set up", "next: nova-sprint up --as dave"}},
 	})
+}
+
+type notSetUpStore struct{ *store.Fake }
+
+func (notSetUpStore) Snapshot(context.Context) (store.Snapshot, error) {
+	return store.Snapshot{}, ErrNotSetUp
 }
 
 func TestUnhook(t *testing.T) {

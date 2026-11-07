@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -104,6 +105,10 @@ func (e *Engine) look(ctx context.Context, v *nextView, inventory bool) error {
 // unready is next's answer when the store cannot be read: the fleet down or
 // the store not set up is guidance; anything else is a failure to look.
 func (e *Engine) unready(ctx context.Context, v *nextView, cause error) error {
+	if errors.Is(cause, ErrNotSetUp) {
+		v.Message, v.Next = "the sprint is not set up", "nova-sprint up --as "+cmp.Or(v.Row, "<coordinator>")
+		return nil
+	}
 	if e.Doctor == nil {
 		return cause
 	}

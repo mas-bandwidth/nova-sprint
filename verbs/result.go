@@ -33,9 +33,21 @@ type Fail struct {
 	What, Fix string
 	Detail    string // printed before the refusal line: what a check found
 	Exit      int
+	cause     error // the sentinel it stands for (ErrNotSetUp), for errors.Is
 }
 
 func (f *Fail) Error() string { return f.What + ": " + f.Fix }
+func (f *Fail) Unwrap() error { return f.cause }
+
+// ErrNotSetUp is the store with no sprint credential (up mints
+// NOVA_SPRINT_PG_PASSWORD) or without its schema: the fix is up, never a
+// hand-run secrets command.
+var ErrNotSetUp = errors.New("the sprint is not set up")
+
+// notSetUp is ErrNotSetUp's refusal (exit 1), naming up.
+func notSetUp(actor string) *Fail {
+	return &Fail{What: "the sprint is not set up", Fix: "nova-sprint up --as " + orWord(actor, "<you>"), Exit: exitRefused, cause: ErrNotSetUp}
+}
 
 // refuse is a prerequisite that does not hold (exit 1).
 func refuse(what, fix string) *Fail { return &Fail{What: what, Fix: fix, Exit: exitRefused} }
@@ -67,6 +79,8 @@ func classify(err error) *Fail {
 	switch {
 	case errors.As(err, &f):
 		return f
+	case errors.Is(err, ErrNotSetUp):
+		return notSetUp("")
 	case errors.As(err, &op):
 		if op.Exit == exitFailed {
 			return broken(op.Problem, op.Fix)
