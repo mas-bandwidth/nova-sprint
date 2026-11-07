@@ -76,9 +76,17 @@ func (a traceAsker) Ask(q Questions) Answers {
 		out.Reads[c.ID] = 1
 	}
 	for _, v := range q.Verdict {
-		out.Verdict[v.Card.ID] = "yes"
-		if slices.ContainsFunc(v.Reads, func(r ReadFacts) bool { return r.Result == "fix" }) {
+		// the model's Verdict: fix on a fix read, else yes on an ok read, else retry
+		said := func(res string) bool {
+			return slices.ContainsFunc(v.Reads, func(r ReadFacts) bool { return r.Result == res })
+		}
+		switch {
+		case said("fix"):
 			out.Verdict[v.Card.ID] = "fix"
+		case said("ok"):
+			out.Verdict[v.Card.ID] = "yes"
+		default:
+			out.Verdict[v.Card.ID] = "retry"
 		}
 	}
 	for _, r := range q.Width {
@@ -98,7 +106,7 @@ func (a traceAsker) Ask(q Questions) Answers {
 	day := 86400
 	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
 		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
-	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, BaseRegate: []int{day}}
+	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyNag: day, ReadyTake: day, BaseRegate: []int{day}}
 	return out
 }
 
@@ -277,7 +285,7 @@ func (w *traceWalk) moved(action string, args []string) {
 // acknowledgement moves no card, so the model has no action for it.
 
 // results are the scenario's result sets: work ok (and fail for p in deal),
-// read ok (and fix for p in deal).
+// read ok (and fix and fault for p in deal).
 func (w *traceWalk) results(c store.Card) []string {
 	bounce := w.scen == "deal" && c.Of == "p"
 	if c.Kind == "work" {
@@ -287,7 +295,7 @@ func (w *traceWalk) results(c store.Card) []string {
 		return []string{"ok"}
 	}
 	if bounce {
-		return []string{"ok", "fix"}
+		return []string{"ok", "fix", "fault"}
 	}
 	return []string{"ok"}
 }

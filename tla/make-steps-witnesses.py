@@ -25,9 +25,9 @@ INVARIANTS = [
     "OneGroupPerCard", "GroupWhole", "NeverHalfApplied", "RefusalChangesNothing",
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
-    "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks",
+    "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
 ]
-PROPERTIES = ["ReadyDealtWhenRoom"]
+PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
 CONST_ORDER = ["K", "MaxAtt", "MaxBounce", "MaxEnv", "MaxArrive", "Budget", "Pack"]
 
@@ -67,6 +67,7 @@ REACH = {
     "StepsNeverCannotRead": ("deal", "a review no row may read opens cannot-read"),
     "StepsNeverHeldBehind": ("deal", "a producer held behind another on a file opens overlap"),
     "StepsNeverHandLanded": ("deal", "a store op lands a producer by hand"),
+    "StepsNeverReadAgain": ("deal", "a review whose read faulted is read again"),
     "StepsNeverLandRequested": ("land", "a land request is dispatched"),
     "StepsNeverLanded": ("land", "a landed result lands a producer"),
     "StepsNeverRed": ("land", "the coordinator's fix sends a judged producer to fix"),
@@ -233,6 +234,16 @@ WITNESSES = [
      "sits waiting with nothing saying why.",
      [("                   \\cup {[kind |-> \"overlap\", about |-> p] : p \\in Held(V, inb.cl, res)}\n",
        "                   \\cup {}   \\* FAULT: was the overlap judgements\n", 1)]),
+    ("StepsYesOnFault", "VerdictHasItsRead", "deal",
+     "The verdict default is yes unless a read said fix: a review whose\n"
+     "only read faulted is merged with no read that said ok.",
+     [("Verdict(W, p) == IF DoneSaid(W, p, \"fix\") THEN \"fix\" ELSE IF DoneSaid(W, p, \"ok\") THEN \"yes\" ELSE \"retry\"",
+       "Verdict(W, p) == IF DoneSaid(W, p, \"fix\") THEN \"fix\" ELSE \"yes\"   \\* FAULT: was yes only on an ok read, else retry", 1)]),
+    ("StepsFaultCounted", "FaultedReadReadAgain", "deal",
+     "A faulted read counts as a read: the review is owed none, the\n"
+     "verdict is retry, and the producer sits in review for good.",
+     [("ReadOwed(W, p) == W.ps[p].st = \"review\" /\\ ~\\E c \\in CurReads(W, p) : W.cs[c].st # \"fail\" /\\ ~Faulted(W, c)",
+       "ReadOwed(W, p) == W.ps[p].st = \"review\" /\\ ~\\E c \\in CurReads(W, p) : W.cs[c].st # \"fail\"   \\* FAULT: a faulted read counted", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"
