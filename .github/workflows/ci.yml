@@ -50,16 +50,19 @@ jobs:
       - name: vet
         run: go vet ./...
 
+  # The card package's race run takes about 556 s on vision (2026-11-06), near
+  # go test's default 10-minute per-package bound: each package gets 20 minutes
+  # (about twice the slowest), the job 30 (packages build and run in parallel).
   unit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - *clean
       - *checkout
       - *go
       - name: unit tests (everything but the functional tests)
-        run: go test -count=1 -race -skip Functional ./...
+        run: go test -count=1 -race -timeout 20m -skip Functional ./...
 
   functional:
     if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
@@ -86,7 +89,9 @@ jobs:
   # Trace validation (tla/README.md, "Trace validation"): the store's walks
   # (the Fake, and PostgreSQL), the card walk and the policy walk on their
   # fixed seeds, each trace checked by TLC against its model, and the
-  # breakers refused.
+  # breakers refused. Layer 6 (tla/CHECK-LAYER6-TRACES.md): the Run fixtures
+  # (run.Ticker and run.Pusher on three seeds and the stop cycle) and the
+  # Setup fixtures (setup, handoff, choices, the 64 installer walks).
   trace:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]

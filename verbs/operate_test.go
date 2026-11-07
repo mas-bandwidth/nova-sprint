@@ -127,7 +127,7 @@ func TestClearRefusals(t *testing.T) {
 func TestServices(t *testing.T) {
 	w := newWorld(t)
 	want(t, w.do("", "run"), 0, "RUN ended")
-	want(t, w.do("alice", "worker", "--work-clone", "/w"), 0, "WORKER alice ended")
+	want(t, w.do("alice", "worker", "--work-clone", "/w", "--coordinator-hosts", "c1"), 0, "WORKER alice ended")
 	want(t, w.do("", "dash", "--listen", "127.0.0.1:0"), 0, "DASH ended")
 	if !slices.Equal(w.svc.ran, []string{"run", "worker alice", "dash"}) {
 		t.Fatalf("ran %v", w.svc.ran)
@@ -139,6 +139,7 @@ func TestServicesRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "a worker with no clone", as: "alice", args: []string{"worker"}, exit: 2, want: []string{"worker takes --as <row> --work-clone <dir>"}},
 		{name: "a worker with no name", args: []string{"worker", "--work-clone", "/w"}, exit: 2, want: []string{"worker takes --as <row>"}},
+		{name: "a worker with no coordinator hosts", as: "alice", args: []string{"worker", "--work-clone", "/w"}, exit: 2, want: []string{"--coordinator-hosts <h,h>"}},
 		{name: "a dash with no listen", args: []string{"dash"}, exit: 2, want: []string{"dash takes --listen <addr>"}},
 		{name: "no run", args: []string{"run"}, exit: 2, prep: none, want: []string{"run is not configured"}},
 		{name: "no worker", as: "alice", args: []string{"worker", "--work-clone", "/w"}, exit: 2, prep: none, want: []string{"worker is not configured"}},

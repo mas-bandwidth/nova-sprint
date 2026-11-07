@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CI run of the store model (layer 1), the card machine (layer 2), the steps
-# (layer 3) and the policy model (layer 5):
+# (layer 3), the policy model (layer 5) and layer 6 (run, setup, install):
 # bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
@@ -13,7 +13,17 @@
 #     StepsBurst.cfg (its scenarios, invariants and the liveness property)
 #                                      must pass            (TLC exit 0)
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
+#   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
+#     RunStopStart.cfg, RunFailover.cfg; RunClear.tla with RunClear.cfg;
+#     Setup.tla, SetupWalk.tla, SetupChoices.tla (SetupChoices.cfg and
+#     SetupChoicesTwoKeys.cfg), SetupChoicesWalk.tla, SetupHandoff.tla
+#     (SetupHandoff.cfg and SetupHandoffCrash.cfg), Install.tla (Install.cfg
+#     and InstallFresh.cfg)               must pass            (TLC exit 0)
+#     (the list is tla/*-runs.json's "pass" entries)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
+#   witnesses/layer6/*.tla, and the Setup and Install witnesses beside their
+#     models (tla/*-runs.json's "invariant" and "temporal" entries)
+#                                      must report a violation (exit 12 or 13)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
 #     reach/Card*.cfg on CardMachine.tla, reach/Steps*.cfg on Steps.tla,
 #     reach/Policy*.cfg on Policy.tla, every other one on Store.tla
@@ -147,10 +157,47 @@ run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2
 
+# Layer 6: the run (chooser, tick, pusher), its clear, setup and install.
+run Run pass . Run.cfg Run.tla 2
+run RunReports pass . RunReports.cfg Run.tla 2
+run RunInitiallyStopped pass . RunInitiallyStopped.cfg Run.tla 2
+run RunStopStart pass . RunStopStart.cfg Run.tla 2
+run RunFailover pass . RunFailover.cfg Run.tla 4
+run RunClear pass . RunClear.cfg RunClear.tla 2
+run Setup pass . Setup.cfg Setup.tla 2
+run SetupWalk pass . SetupWalk.cfg SetupWalk.tla 2
+run SetupChoices pass . SetupChoices.cfg SetupChoices.tla 2
+run SetupChoicesTwoKeys pass . SetupChoicesTwoKeys.cfg SetupChoices.tla 2
+run SetupChoicesWalk pass . SetupChoicesWalk.cfg SetupChoicesWalk.tla 2
+run SetupHandoff pass . SetupHandoff.cfg SetupHandoff.tla 2
+run SetupHandoffCrash pass . SetupHandoffCrash.cfg SetupHandoff.tla 2
+run Install pass . Install.cfg Install.tla 2
+run InstallFresh pass . InstallFresh.cfg Install.tla 2
+
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
     case "$m" in *_TTrace_*) continue ;; esac   # TLC trace output, not a witness
     run "witness-$m" violate witnesses "$m.cfg" "$m.tla" 1
+done
+
+# Layer 6's reversed witnesses: each module is the model with one fault, run
+# from its own directory (no EXTENDS of the model). They include
+# RunTickWhileStoppedGate and RunTickWhileStoppedFence (NoTickWhileStopped).
+for f in "$HERE"/witnesses/layer6/*.tla; do
+    m="$(basename "$f" .tla)"
+    case "$m" in *_TTrace_*) continue ;; esac
+    run "witness-l6-$m" violate witnesses/layer6 "$m.cfg" "$m.tla" 1
+done
+
+# The Setup and Install witnesses live beside their models (tla/*-runs.json).
+for m in SetupChoicesNoneNeedsKey SetupChoicesReprompt \
+         SetupHandoffEarlyRecord SetupHandoffLostRecord SetupHandoffNoLease \
+         SetupHandoffOldProbe SetupHandoffParentSecret SetupHandoffRefusedEffect \
+         SetupHandoffReuseSkips SetupHandoffStaleRecord SetupHandoffWrongSeat \
+         SetupHandoffWrongType \
+         InstallCheckSkipped InstallDeletesPrevious InstallFailureSwitches \
+         InstallPartialPublished InstallUnlinksFirst InstallVersionIgnored; do
+    run "witness-$m" violate . "$m.cfg" "$m.tla" 1
 done
 
 for f in "$HERE"/reach/*.cfg; do

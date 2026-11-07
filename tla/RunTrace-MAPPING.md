@@ -1,5 +1,10 @@
 # Run actual-code trace contract
 
+**Current binding: "The run.Ticker binding" at the end of this file.** The
+sections before it describe the contract as written for the old run code
+(Engine, Scheduler, fixture-owned FIFO), deleted in f697b05f; where the two
+differ, the last section is the one that holds.
+
 RunTrace consumes a code-emitted RunTraceLog TLA module defining TraceLog as a
 sequence of records. Records have 1-based i and action; process actions also
 have p, push actions r, Report c, DeliverEdge j. Required(r) in RunTrace.tla
@@ -117,3 +122,88 @@ three seeded schedules (29, 29 and 35 records) and a 31-record Stop/report/fold/
 Start schedule. These bind actual folded stop state and actual captured AtSeq;
 they do not bind unknown committed Replay, prove arbitrary implementation
 behavior, or constitute the final integrated GitHub Actions gate.
+
+## The run.Ticker binding (2026-11-06, after f697b05f)
+
+`run/run_trace_test.go` (`TestEmitRunTrace`) drives the code that replaced the
+Engine and Scheduler: `acquireChooser` and `Chooser.Check` (unchanged),
+`coldStart` (NewTicker's cold snapshot, the policy seed, `Pusher.CatchUp`),
+`Ticker.Tick` (health check, fold, the stopped gate, `steps.Tick` itself, the
+plan's ops applied in order, `dispatch` of the edges whose After was accepted)
+and `Ticker.Push` / `Pusher.Push` (one envelope, `bus.Send`, then the
+`push:<r>` cursor op). The store is `store.Fake`; the lock session, hook, bus
+and policy are fakes. Layer 3 is real: there is no fixture scheduler any more,
+so procCarry and procBatch are projections of the real plan, not a fixture's
+queue. Seeds 0, 1, 2 and the stop cycle (`NOVA_RUN_TRACE_STOP=1`) are the
+gate's `run-0..2` and `run-stop`. Nothing is written unless
+`NOVA_RUN_TRACE_PATH` is set; no real time, socket or network.
+
+Where each record is sampled:
+
+| Record | Code boundary |
+|---|---|
+| Take, Hook, HookFailure | `acquireChooser`: the session's Try, then the hook's Acquire (a failing Acquire closes the session) |
+| LoseLock, LoseHook, Crash | fixture events: the session's or the lease's Check starts failing; a crash closes the chooser |
+| NoticeLost | `Ticker.Tick` returns `ErrLockLost` from its health check, before any fold or apply; the chooser is closed |
+| ReadControl + Fold | the tick's one policy call (`Asking.AnswerContext`, inside `steps.Tick`): the snapshot passed is run's folded copy. A stopped tick never calls policy; its ReadControl is sampled from `Ticker.Snapshot` at Tick's return, with no Fold |
+| Select, CaptureFence | the store's `Apply` of the tick op, before it runs: the op's tracked card is the head of the queue; `expectedSeq` is the view seq in the op's id (`t<epoch>.<seq>.<hash>`) |
+| Apply, Refuse | the store's receipt for that op |
+| EndTick | Tick's return |
+| DeliverEdge | each request Tick returns; its After names an accepted op |
+| PreparePush, SendOK | `bus.Send` of r1's envelope (lo..hi: the ranks of r1's cursor and the envelope's last notice) |
+| SaveCursor | the store's receipt for the `push-cursor` op |
+| Stutter | a failed `bus.Send`: the code keeps nothing of the attempt, the cursor stays (logged) |
+| Report, Stop, Start | a person's op between ticks (SetCardProse, SetCardPriority, SetStopped), or a report between a tick op's fold and its apply on that op's own card |
+
+Where the mapping differs from the old one (RunTrace.tla is unchanged; the
+differences are in RunTrace.cfg and in what a record means):
+
+1. **Budget is 1** (RunTrace.cfg). Layer 3's budget is 250 cards and run
+   does not take policy's; the fixture's policy answers room for one deal on
+   r1 per tick, so each running tick plans one tracked op. Two deals in one
+   tick pack into one op of two moves, which Run.tla's one-move-per-op
+   instance cannot express.
+2. **CaptureFence is the view seq, not an AtSeq the store checks.** steps'
+   ops carry CardGen fences only. The trace logs the seq the op was planned
+   on; RunTrace's Apply then requires nothing to have landed since. When
+   something did (a Stop, or a write on another card), the code applies the
+   op and TLC refuses the trace at that Apply: the finding below.
+3. **A failed send is Stutter, not PreparePush.** The old pusher kept a
+   prepared batch; run.Pusher rebuilds the envelope from its queue each push,
+   so a failed attempt leaves no model state.
+4. **Jobs are deals.** Job j is the deal of tracked producer p<j> (card j);
+   p3's job is its preemption once a report raises it to blocker, which
+   carries the one edge (a stop for w0, After = the preemption's op).
+   Untracked cards: p0 and w0 (the victim), p9 and w9 (keep the idle alarm
+   quiet). One judgement, policy.rows.1, is opened in the setup: steps opens
+   it once whenever a ready producer has no row with room, and the fixture
+   always has more ready producers than room.
+
+What the walk holds fixed (so the trace stays inside the instance):
+outside writes land between ticks, or as a report on the pending op's own
+card (refused by its gen fence); p3 is raised to blocker only when it is
+the last job (steps deals blockers first; the model's queue is FIFO); a push
+is attempted only when the last tracked event raised r1 a notice (reports
+raise none, and Run.tla's instance has every event need every recipient);
+no push between a loss and its notice (Run.tla's PreparePush needs Active).
+
+Not bound by these traces: AtomicChooser (not implemented, as before);
+an unknown Apply outcome and its Replay (`Ticker.apply`'s ErrUnknown path);
+a push between an observed loss and the process exiting (`loop.tick` pushes
+after Tick returned ErrLockLost: see the finding); multiple recipients;
+envelope overflow ("and N more"); more than one move per op; Edges.Dispatch
+itself (the trace stops at the request Tick returns; the bus send of the
+STOP is TestStopIsOneMessageThenAck). RunClear: owed (run.Pusher has no clear
+summary or old-backlog suppression to bind).
+
+### Finding: no AtSeq fence, so a Stop after the fold does not stop the op
+
+`NOVA_RUN_TRACE_MIDSTOP=1` emits one tick with a Stop landing between the
+fold and the op's apply (10 records). TLC (hetzner2, 2026-11-06, at
+d8d7bd29): `TRACE REFUSED at 9 of 10: Apply`: the op was accepted at seq 9
+with the sprint stopped at seq 8. Checked by hand: `Ticker.apply` checks
+health and calls `store.Apply`; the op's conditions are CardGen only and a
+stop moves no card gen, so the store accepts it. Run.tla's
+NoAcceptedTickWhileStopped (and so NoTickWhileStopped) is what the code
+breaks here; RunStoppedFenceDropped is the model's witness of exactly this.
+The case is not in the gate: it fails until the code fences its tick ops.

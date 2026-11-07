@@ -67,8 +67,7 @@ def run_process(command, cwd, env, timeout, output=None):
 
 def expected_cases():
     return dict([('run-' + str(s), 'Run') for s in (0, 1, 2)]
-                + [('run-stop', 'Run'), ('clear', 'RunClear')]
-                + [('clear-walk-' + str(s), 'RunClear') for s in range(10)]
+                + [('run-stop', 'Run')]
                 + [('setup', 'Setup')]
                 + [('handoff-' + str(s), 'SetupHandoff') for s in (0, 1)]
                 + [('choices-' + s, 'SetupChoices') for s in ('none', 'configured')]
@@ -103,9 +102,8 @@ def emit_simple(repo, out, args, cases):
              'NOVA_RUN_TRACE_PATH', {'NOVA_RUN_TRACE_SEED': str(s)}) for s in (0, 1, 2)]
     jobs += [('run-stop', 'Run', './run', 'TestEmitRunTrace', 'NOVA_RUN_TRACE_PATH',
               {'NOVA_RUN_TRACE_SEED': '0', 'NOVA_RUN_TRACE_STOP': '1'})]
-    jobs += [('clear', 'RunClear', './run', 'TestEmitClearTrace', 'NOVA_CLEAR_TRACE_PATH', {})]
-    jobs += [('clear-walk-' + str(s), 'RunClear', './run', 'TestEmitClearActionWalk',
-              'NOVA_WALK_TRACE_PATH', {'NOVA_WALK_TRACE_SEED': str(s)}) for s in range(10)]
+    # The RunClear cases (clear, clear-walk-0..9) are owed: their emitters went
+    # with the old pusher (f697b05f), and run.Pusher has no clear summary to bind.
     jobs += [('setup', 'Setup', './verbs', 'TestSetupActualTrace', 'NOVA_SETUP_TRACE_OUT', {})]
     jobs += [('handoff-' + str(s), 'SetupHandoff', './cmd/nova-sprint', 'TestEmitHandoffTrace',
               'NOVA_HANDOFF_TRACE_PATH', {'NOVA_HANDOFF_TRACE_STALE': str(s)}) for s in (0, 1)]
@@ -155,8 +153,8 @@ def emit(repo, out, args):
     emit_groups(repo, out, args, cases)
     if snapshot(repo) != before or git(repo, 'rev-parse', 'HEAD').strip() != head:
         raise RuntimeError('source changed during trace emission')
-    if len(cases) != 84:
-        raise RuntimeError('expected exactly 84 actual trace cases')
+    if len(cases) != len(expected_cases()):
+        raise RuntimeError(f'expected exactly {len(expected_cases())} actual trace cases')
     hashes = {str(p.relative_to(out)): digest(p) for p in sorted(out.rglob('*')) if p.is_file()}
     save(out / 'emission.json', dict(head=head, host=socket.gethostname(), cases=cases, hashes=hashes))
     print(f'EMITTED head={head} cases={len(cases)}', flush=True)
@@ -181,8 +179,8 @@ def check(out, args):
     manifest_hash = digest(out / 'emission.json')
     manifest = json.loads((out / 'emission.json').read_text())
     cases = manifest['cases']
-    if len(cases) != 84 or {c['name']: c['model'] for c in cases} != expected_cases():
-        raise RuntimeError('manifest must contain all 84 fixed trace cases exactly once')
+    if len(cases) != len(expected_cases()) or {c['name']: c['model'] for c in cases} != expected_cases():
+        raise RuntimeError(f'manifest must contain all {len(expected_cases())} fixed trace cases exactly once')
     for name, want in manifest['hashes'].items():
         if digest(out / name) != want:
             raise RuntimeError('artifact changed before check: ' + name)
