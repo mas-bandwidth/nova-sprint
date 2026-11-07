@@ -30,9 +30,10 @@ func newStoreTrace(init ModelState) *storeTrace {
 	return tr
 }
 
-// step records one step: action is Apply, LoseRequest or Replay; accepted
-// is nil when the caller did not learn the outcome (or there is none).
-func (tr *storeTrace) step(action string, op Op, clear bool, accepted *bool, st ModelState) {
+// step records one step: action is Apply, LoseRequest or Replay; rc is the
+// receipt, nil when the caller did not learn the outcome (or there is none).
+// A refusal's reason rides along for the reader; the model does not read it.
+func (tr *storeTrace) step(action string, op Op, clear bool, rc *Receipt, st ModelState) {
 	if _, ok := tr.ops[op.ID]; !ok {
 		m, err := TraceOp(op, clear)
 		if err != nil {
@@ -48,10 +49,13 @@ func (tr *storeTrace) step(action string, op Op, clear bool, accepted *bool, st 
 	}
 	f := []string{"action |-> " + strconv.Quote(action), "op |-> " + strconv.Quote(op.ID)}
 	if action == "Apply" {
-		f = append(f, "known |-> "+tlaBool(accepted != nil))
+		f = append(f, "known |-> "+tlaBool(rc != nil))
 	}
-	if accepted != nil {
-		f = append(f, "accepted |-> "+tlaBool(*accepted))
+	if rc != nil {
+		f = append(f, "accepted |-> "+tlaBool(rc.Accepted))
+	}
+	if rc != nil && !rc.Accepted {
+		f = append(f, "reason |-> "+strconv.Quote(rc.Reason))
 	}
 	tr.add("", f, st)
 }

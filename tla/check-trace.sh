@@ -75,7 +75,7 @@ echo "TRACE REFUSED at $k of $n: $act ($(record "$k" | cut -c1-160)...)"
 echo "-- the model after record $lastl (TLC's last state):"
 last="$(grep -n '^State [0-9]*: <' "$WORK/tlc.log" | tail -n 1 | cut -d: -f1)"
 sed -n "$last,\$p" "$WORK/tlc.log" | sed -n '2,/^$/p' \
-    | awk '/^\/\\ [a-z]+ = / { skip = ($2 ~ /^(events|ledger|receipt|last|applied|lost)$/) } !skip' | cut -c1-2000
+    | awk '/^\/\\ [a-z]+ = / { skip = ($2 ~ /^(events|ledger|receipt|last|applied|lost|phase)$/) } !skip' | cut -c1-2000
 echo "-- record $k (the code's step and state):"
 record "$k"
 [ "$want" = "forbidden at $k" ] && exit 0
