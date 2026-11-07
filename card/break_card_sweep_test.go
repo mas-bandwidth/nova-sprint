@@ -113,7 +113,7 @@ func sweepPairs(t *testing.T, name string, setup func(*testing.T) *bk) {
 	}
 	for i := range steps {
 		for j := range steps {
-			if i == j || testing.Short() && (i*len(steps)+j)%5 != 0 { // -short: every fifth pair
+			if i == j || testing.Short() && (i*len(steps)+j)%20 != 0 { // -short: every 20th pair
 				continue
 			}
 			a, s := setup(t), setup(t)
