@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+ "crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -229,7 +230,8 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 	if err != nil {
 		return BackupInfo{}, &OperationError{Problem: "backup rejected: " + err.Error(), Fix: "use a compatible verified nova-sprint backup", Exit: 1}
 	}
-	validated := &VerifiedDump{statements: statements}
+	sum := sha256.Sum256(dumpBytes)
+	validated := &VerifiedDump{statements: statements, digest: fmt.Sprintf("%x",sum)}
 	if err = p.Loader.Load(ctx, dsn, validated); err != nil {
 		return BackupInfo{}, fmt.Errorf("dump restore verification failed")
 	}

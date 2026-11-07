@@ -36,17 +36,12 @@ func cardRef(ref string) (string, int, bool) {
 }
 
 func (e *Engine) take(ctx context.Context, args []string) Result {
-	if len(args) < 1 {
-		return refused("take", "missing card and generation", "nova-sprint help take")
-	}
-	id, gen, ok := cardRef(args[0])
-	if !ok {
-		return refused("take", "invalid card generation", "nova-sprint help take")
-	}
-	actor, epoch, valid := parseActor(args[1:], e.Actor)
+	in, valid := parseTake(args, e.Actor)
 	if !valid {
 		return refused("take", "invalid arguments", "nova-sprint help take")
 	}
+	id, gen, actor, epoch := in.id, in.gen, in.actor, in.epoch
+
 	st, ok := e.Store.(ApplyStore)
 	if !ok || e.Env == nil || e.Now == nil {
 		return unavailable("take")
@@ -59,12 +54,23 @@ func (e *Engine) take(ctx context.Context, args []string) Result {
 		return epochRefusal("take", epoch, snap.Epoch)
 	}
 	opID := consumerOpID("take", snap.Epoch, id, gen)
-	if result, found := replay(ctx, st, opID, actor, "take", id); found {
+	if in.machine && in.opID != opID {
+		return refused("take", "op id must be "+opID, "use the derived operation id")
+	}
+	if in.machine {
+		r, found, err := st.Replay(ctx, opID)
+		if err != nil {
+			return operationalFailure("take", err)
+		}
+		if found {
+			return machineTakeReceipt(r, actor, id, opID)
+		}
+	} else if result, found := replay(ctx, st, opID, actor, "take", id); found {
 		return result
 	}
-	return e.takeNew(ctx, st, snap, id, gen, actor, opID)
+	return e.takeNew(ctx, st, snap, id, gen, actor, opID, in.machine)
 }
-func (e *Engine) takeNew(ctx context.Context, st ApplyStore, snap store.Snapshot, id string, gen int, actor, opID string) Result {
+func (e *Engine) takeNew(ctx context.Context, st ApplyStore, snap store.Snapshot, id string, gen int, actor, opID string, machine bool) Result {
 	hooked, recipe, err := e.Env.Hooked(ctx, actor)
 	if err != nil {
 		return unavailable("take")
@@ -92,10 +98,17 @@ func (e *Engine) takeNew(ctx context.Context, st ApplyStore, snap store.Snapshot
 	if why != nil {
 		return refused("take", why.Reason, "nova-sprint show "+id)
 	}
-	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: actor, Kind: "take", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: snap.Streams[c.Stream].Repo}
+	note, err := e.takeNote(ctx, snap, c, machine)
+	if err != nil {
+		return operationalFailure("take", err)
+	}
+	op := store.Op{ID: opID, Epoch: snap.Epoch, Actor: actor, Kind: "take", At: e.Now(), Expect: plan.Expect, Writes: plan.Writes, Note: note}
 	receipt, err := applyExact(ctx, st, op)
 	if err != nil {
 		return unavailable("take")
+	}
+	if machine {
+		return machineTakeReceipt(receipt, actor, id, opID)
 	}
 	return receiptResult(receipt, actor, "take", id)
 }
@@ -147,7 +160,7 @@ func receiptResult(r store.Receipt, actor, kind, id string) Result {
 	}
 	if kind == "take" && r.After != nil {
 		if c, ok := r.After.Cards[id]; ok {
-			return takenResult(c, r.Note, actor, r.Epoch)
+			return takenResult(c, takeHumanRepo(r.Note), actor, r.Epoch)
 		}
 	}
 	next := "nova-sprint next --as " + actor

@@ -48,9 +48,13 @@ func (c Choices) getAt(ctx context.Context, name string, snap store.Snapshot) (s
 		if len(events) == 0 {
 			return "", false, fmt.Errorf("event history ended before snapshot")
 		}
+		before := cursor
 		for _, event := range events {
 			if event.Seq > snap.Seq {
 				break
+			}
+			if event.Seq != cursor+1 {
+				return "", false, fmt.Errorf("event history is not contiguous")
 			}
 			cursor = event.Seq
 			if !event.Accepted || event.After == nil {
@@ -61,6 +65,9 @@ func (c Choices) getAt(ctx context.Context, name string, snap store.Snapshot) (s
 					value, found = p.Body, true
 				}
 			}
+		}
+		if cursor == before {
+			return "", false, fmt.Errorf("event history made no progress")
 		}
 	}
 	return value, found, nil
