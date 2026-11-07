@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,9 +20,10 @@ import (
 // Cold read, 2026-11-06, at 649d1b4c (Rowan). One failing probe per confirmed defect.
 
 type crSprint struct {
-	mu      sync.Mutex
-	next    NextResponse
-	reports []ReportRequest
+	mu       sync.Mutex
+	next     NextResponse
+	reports  []ReportRequest
+	releases []string
 }
 
 func (s *crSprint) Next(context.Context, string) (NextResponse, error) {
@@ -41,6 +43,12 @@ func (s *crSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, 
 func (s *crSprint) Hook(context.Context, string) error                   { return nil }
 func (s *crSprint) Unhook(context.Context, string) error                 { return nil }
 func (s *crSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
+func (s *crSprint) Release(_ context.Context, row, id string, gen int, _, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releases = append(s.releases, fmt.Sprintf("%s@%d %s", id, gen, reason))
+	return nil
+}
 func (s *crSprint) reported() []ReportRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -154,8 +162,12 @@ func TestColdreadDefectNonZeroExitBecomesFault(t *testing.T) {
 	if err := r.harvestStep_internal(context.Background(), job, &rec, res, runErr); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Outcome.Result != "fail" {
-		t.Errorf("harness exited 1 with no result file: want fail, got %s (%s)", rec.Outcome.Result, rec.Outcome.Reason)
+	// A read reports ok, fix or fault (ReadOutcome, defect 67): a read's
+	// harness that exits with no verdict is a fault of the harness, bounded
+	// by the fault limit, never a verdict on the head. A work job's is
+	// "fail: no verdict" (TestNoVerdictIsAFailForWorkAndAFaultForAReadWithTheTail).
+	if rec.Outcome.Result != "fault" || !rec.Outcome.NoVerdict {
+		t.Errorf("read harness exited 1 with no result file: want fault, got %s (%s)", rec.Outcome.Result, rec.Outcome.Reason)
 	}
 }
 

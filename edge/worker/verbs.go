@@ -63,6 +63,10 @@ type (
 		Next(ctx context.Context, row string) (NextResponse, error)
 		Take(ctx context.Context, row, consumer string, gen int) (TakeInfo, error)
 		Report(ctx context.Context, req ReportRequest) (store.Receipt, error)
+		// Release gives the row's own card back for a redeal with no result:
+		// neither ok nor fail, no fault and no bounce (`nova-sprint release`);
+		// head, when not empty, is the partial head the worker pushed.
+		Release(ctx context.Context, row, consumer string, gen int, head, reason string) error
 		OpenJudgement(ctx context.Context, j store.Judgement) error
 	}
 	CLISprintClient struct {
@@ -211,6 +215,14 @@ func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.
 	}
 	rec.Op = cmp.Or(rec.Op, id)
 	return rec, nil
+}
+func (c *CLISprintClient) Release(ctx context.Context, row, consumer string, gen int, head, reason string) error {
+	args := []string{"release", fmt.Sprintf("%s@%d", consumer, gen), "--reason", reason, "--epoch", strconv.Itoa(cmp.Or(c.Epoch, 1)), "--as", row}
+	if head != "" {
+		args = append(args, "--head", head)
+	}
+	out, code, err := c.run_internal(ctx, c.argv_internal(args...))
+	return c.classifyCLIError_internal(out, code, err)
 }
 func (c *CLISprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
 	out, code, err := c.run_internal(ctx, c.argv_internal("judge-open", "--id", j.ID, "--kind", j.Kind, "--about", j.About, "--question", j.Question))

@@ -43,9 +43,9 @@ const (
 )
 
 type Timeouts struct {
-	Stage, LaunchGrace                                                                                                                         time.Duration
-	LaunchTries                                                                                                                                int
-	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, GH, BusClaim, ReserveWait time.Duration
+	Stage, LaunchGrace                                                                                                                     time.Duration
+	LaunchTries                                                                                                                            int
+	LaunchBackoff1Min, LaunchBackoff1Max, LaunchBackoff2Min, LaunchBackoff2Max, TerminateGrace, RebaseAndTest, Push, BusClaim, ReserveWait time.Duration
 }
 
 func DefaultTimeouts() Timeouts {
@@ -54,7 +54,7 @@ func DefaultTimeouts() Timeouts {
 		LaunchBackoff1Min: 5 * time.Second, LaunchBackoff1Max: 20 * time.Second,
 		LaunchBackoff2Min: 30 * time.Second, LaunchBackoff2Max: 60 * time.Second,
 		TerminateGrace: 3 * time.Second, RebaseAndTest: 2 * time.Minute,
-		Push: 60 * time.Second, GH: 30 * time.Second, BusClaim: 60 * time.Second, ReserveWait: 5 * time.Second,
+		Push: 60 * time.Second, BusClaim: 60 * time.Second, ReserveWait: 5 * time.Second,
 	}
 }
 func (t Timeouts) WithDefaults() Timeouts {
@@ -63,7 +63,7 @@ func (t Timeouts) WithDefaults() Timeouts {
 	t.LaunchBackoff1Min, t.LaunchBackoff1Max = cmp.Or(t.LaunchBackoff1Min, d.LaunchBackoff1Min), cmp.Or(t.LaunchBackoff1Max, d.LaunchBackoff1Max)
 	t.LaunchBackoff2Min, t.LaunchBackoff2Max = cmp.Or(t.LaunchBackoff2Min, d.LaunchBackoff2Min), cmp.Or(t.LaunchBackoff2Max, d.LaunchBackoff2Max)
 	t.TerminateGrace, t.RebaseAndTest, t.Push = cmp.Or(t.TerminateGrace, d.TerminateGrace), cmp.Or(t.RebaseAndTest, d.RebaseAndTest), cmp.Or(t.Push, d.Push)
-	t.GH, t.BusClaim, t.ReserveWait = cmp.Or(t.GH, d.GH), cmp.Or(t.BusClaim, d.BusClaim), cmp.Or(t.ReserveWait, d.ReserveWait)
+	t.BusClaim, t.ReserveWait = cmp.Or(t.BusClaim, d.BusClaim), cmp.Or(t.ReserveWait, d.ReserveWait)
 	return t
 }
 
@@ -79,6 +79,10 @@ type (
 	Outcome struct {
 		Result, Head, Reason, Finding string
 		Retryable5xx                  bool
+		// NoVerdict: the harness wrote no verdict this worker can read (no
+		// result.json, an unknown one, ok on a failed exit). A work job
+		// reports it "fail: no verdict"; a read, a fault (ReadOutcomeOf).
+		NoVerdict bool `json:",omitempty"`
 	}
 	Cost struct {
 		MicroUSD                  int64 `json:"micro_usd"`
@@ -88,11 +92,16 @@ type (
 	JobRecord struct {
 		Consumer, Producer, Kind, Row, Stream, Repo, Base, StreamRef, Branch, BaseSHA, PriorHead, TargetHead string
 		DoneWhen                                                                                             []string
-		Epoch, Gen, Attempt, PID, PRNumber                                                                   int
+		Epoch, Gen, Attempt, PID                                                                             int
 		ResultID, State, Nonce, PushedHead, Forge                                                            string
 		StartedAt, DeadlineAt                                                                                int64
 		Outcome                                                                                              Outcome
 		Cost                                                                                                 Cost
+		// Refusals counts the sends of this record's report the sprint
+		// refused the same way in a row (LastRefusal); at RefusalLimit the
+		// record is set aside for a reader (defect 69).
+		Refusals    int    `json:",omitempty"`
+		LastRefusal string `json:",omitempty"`
 	}
 	StepLogger struct {
 		mu       sync.Mutex

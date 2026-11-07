@@ -47,6 +47,7 @@ type cr2Sprint struct {
 	kind      string
 	reportErr error
 	reports   []ReportRequest
+	releases  []string
 }
 
 func (s *cr2Sprint) Next(context.Context, string) (NextResponse, error) {
@@ -73,6 +74,12 @@ func (s *cr2Sprint) Report(_ context.Context, req ReportRequest) (store.Receipt,
 func (s *cr2Sprint) Hook(context.Context, string) error                   { return nil }
 func (s *cr2Sprint) Unhook(context.Context, string) error                 { return nil }
 func (s *cr2Sprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
+func (s *cr2Sprint) Release(_ context.Context, row, id string, gen int, _, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.releases = append(s.releases, fmt.Sprintf("%s@%d %s", id, gen, reason))
+	return nil
+}
 func (s *cr2Sprint) reported() []ReportRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()

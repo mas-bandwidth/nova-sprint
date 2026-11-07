@@ -243,7 +243,11 @@ func buildPrompt_internal(j Job) string {
 	if body := cmp.Or(j.Prose, j.Brief); body != "" {
 		b.WriteString("\n" + body + "\n")
 	}
-	fmt.Fprintf(&b, "\nWrite final verdict JSON to %s/result.json.\n", j.JobDir)
+	if j.Repo == "" { // the probe: no card, no JOB.md
+		fmt.Fprintf(&b, "\nWrite final verdict JSON to %s/result.json.\n", j.JobDir)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "\nRead %s first: it says what this card is and how it finishes.\n\n%s", filepath.Join(j.JobDir, JobMDName), finishRules_internal(j))
 	return b.String()
 }
 func classifyExitAndTail_internal(exit int, tail []byte) Outcome {
@@ -263,10 +267,7 @@ func classifyExitAndTail_internal(exit int, tail []byte) Outcome {
 			return out
 		}
 	}
-	if exit != 0 {
-		return Outcome{Result: "fail", Reason: fmt.Sprintf("harness exited %d without result.json: %s", exit, text)}
-	}
-	return Outcome{Result: "fail", Reason: "no result.json written by harness"}
+	return noVerdict_internal(fmt.Sprintf("the harness exited %d without writing result.json", exit), text)
 }
 func classifyHTTPStatus_internal(status int, elapsed, launchGrace time.Duration) (Outcome, bool) {
 	if status == 402 || status == 429 || status >= 500 {
@@ -307,7 +308,7 @@ func normalizeFileOutcome_internal(res, reason, finding string, exit int, tail s
 	switch r := strings.ToLower(strings.TrimSpace(res)); r {
 	case "ok", "yes":
 		if exit != 0 {
-			return Outcome{Result: "fail", Reason: fmt.Sprintf("result.json says %s but exit was %d: %s", r, exit, tail)}
+			return Outcome{Result: "fail", Reason: fmt.Sprintf("result.json says %s but exit was %d: %s", r, exit, tail), NoVerdict: true}
 		}
 		return Outcome{Result: "ok", Reason: reason}
 	case "fix":
@@ -317,7 +318,7 @@ func normalizeFileOutcome_internal(res, reason, finding string, exit int, tail s
 	case "fault":
 		return Outcome{Result: "fault", Reason: cmp.Or(reason, tail, "harness reported fault")}
 	default:
-		return Outcome{Result: "fail", Reason: fmt.Sprintf("unknown verdict %q in result.json", res)}
+		return Outcome{Result: "fail", Reason: fmt.Sprintf("unknown verdict %q in result.json", res), NoVerdict: true}
 	}
 }
 func readUsageFile_internal(jobDir string) (Cost, bool) {

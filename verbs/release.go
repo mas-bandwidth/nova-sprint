@@ -36,6 +36,10 @@ func runRelease(e *Engine, ctx context.Context, in *input, snap store.Snapshot) 
 	if c.Holder != in.actor && snap.Rows[in.actor].Role != "coordinator" {
 		return "", refuse(id+" is held by "+c.Holder+", not "+in.actor, "ask "+c.Holder+", or the coordinator, to release it")
 	}
+	c, herr := e.releasedHead(ctx, snap, c, in.str("head"))
+	if herr != nil {
+		return "", herr
+	}
 	opID, err := machineID(in, snap, "release", id, gen)
 	if err != nil {
 		return "", err
@@ -50,6 +54,25 @@ func runRelease(e *Engine, ctx context.Context, in *input, snap store.Snapshot) 
 		return "", err
 	}
 	return done(waitNext, fmt.Sprintf("RELEASED %s applied at seq %d; branch %s kept", id, r.Seq, c.Branch)), nil
+}
+
+// releasedHead is c with head as its last pushed head: a worker releasing a
+// working work card it held when it restarted names the partial head it
+// pushed, so the redeal continues from it (the head is checked as a
+// finish's is: a full sha at the tip of the card's branch at origin). No
+// head keeps the card's own.
+func (e *Engine) releasedHead(ctx context.Context, snap store.Snapshot, c store.Card, head string) (store.Card, error) {
+	if head == "" || head == c.Head {
+		return c, nil
+	}
+	if c.Kind != "work" || c.State != card.Working {
+		return c, refuse("only a working work card carries a head back", "release "+fmtCard(c.ID, c.Gen)+" without --head")
+	}
+	if err := e.headReady(ctx, snap, c, head); err != nil {
+		return c, err
+	}
+	c.Head = head
+	return c, nil
 }
 
 // releaseRow withdraws every live consumer of row in one op, the

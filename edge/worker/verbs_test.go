@@ -18,23 +18,16 @@ import (
 type OriginChecker interface {
 	HasHead(ctx context.Context, repo, branch, sha string) (bool, error)
 }
-type ReportForgeChecker interface {
-	HasPR(ctx context.Context, repo, branch, base, sha string) (bool, error)
-	ChecksGreen(ctx context.Context, repo, sha string) (bool, error)
-}
 type StoreSprintClient struct {
-	Store                store.Store
-	Origin               OriginChecker
-	Forge                ReportForgeChecker
-	RequirePR            map[string]bool
-	RequireGreenAtReport bool
-	RequireHook          bool
-	BusPresent           map[string]bool
-	BusRedisAddr         string
-	Hooked               map[string]string
-	HookCalls            int
-	UnhookCalls          int
-	Now                  func() time.Time
+	Store        store.Store
+	Origin       OriginChecker
+	RequireHook  bool
+	BusPresent   map[string]bool
+	BusRedisAddr string
+	Hooked       map[string]string
+	HookCalls    int
+	UnhookCalls  int
+	Now          func() time.Time
 }
 
 func (s *StoreSprintClient) Hook(ctx context.Context, row string) error {
@@ -213,11 +206,7 @@ func (s *StoreSprintClient) Take(ctx context.Context, row, consumerID string, ge
 	}
 	st := snap.Streams[c.Stream]
 	_, model := fakeRowHarness_internal(row)
-	forge := ""
-	if s.RequirePR[c.Stream] {
-		forge = "github"
-	}
-	return buildTakeInfo_internal(snap.Epoch, afterCard, p, st, model, forge), nil
+	return buildTakeInfo_internal(snap.Epoch, afterCard, p, st, model, st.Forge), nil
 }
 func buildTakeInfo_internal(epoch int, c, p store.Card, st store.Stream, model, forge string) TakeInfo {
 	head := c.Head
@@ -293,18 +282,6 @@ func (s *StoreSprintClient) checkReportGates_internal(ctx context.Context, c, p 
 			return fmt.Errorf("SPRINT REFUSED report: origin check failed for %s: %v", c.Branch, err)
 		case !ok:
 			return fmt.Errorf("SPRINT REFUSED report: head %s is not on branch %s at origin: run git push origin %s", req.Head, c.Branch, c.Branch)
-		}
-	}
-	if s.RequirePR[c.Stream] && s.Forge != nil {
-		hasPR, err := s.Forge.HasPR(ctx, st.Repo, c.Branch, st.Base, req.Head)
-		if err != nil || !hasPR {
-			return fmt.Errorf("SPRINT REFUSED report: stream %s requires a pull request for %s at %s: run gh pr create --head %s --base %s", c.Stream, c.Branch, req.Head, c.Branch, st.Base)
-		}
-	}
-	if s.RequireGreenAtReport && s.Forge != nil {
-		green, err := s.Forge.ChecksGreen(ctx, st.Repo, req.Head)
-		if err != nil || !green {
-			return fmt.Errorf("SPRINT REFUSED report: checks are not green at %s: run nova-sprint show %s", req.Head, p.ID)
 		}
 	}
 	return nil
@@ -385,6 +362,29 @@ func (s *StoreSprintClient) applyWithReplay_internal(ctx context.Context, op sto
 		}
 	}
 	return store.Receipt{}, fmt.Errorf("%w: %v", ErrStoreDown, err)
+}
+
+// Release is the release verb's withdraw: the consumer gives back its card
+// with the reason "released: <why>", no result; the producer goes back with
+// its bounces unchanged, at head when one is named.
+func (s *StoreSprintClient) Release(ctx context.Context, row, consumer string, gen int, head, reason string) error {
+	snap, err := s.Store.Snapshot(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrStoreDown, err)
+	}
+	c, ok := snap.Cards[consumer]
+	if !ok || c.Gen != gen || c.Holder != row {
+		return fmt.Errorf("%w: %s is not held by %s at generation %d", ErrRefused, consumer, row, gen)
+	}
+	p := snap.Cards[c.Of]
+	ev := card.Withdraw{Reason: "released: " + reason, Head: cmp.Or(head, c.Head), Stream: card.StreamFromStore(snap.Streams[p.Stream])}
+	plan, why := card.MoveConsumer(card.FromStore(c), card.FromStore(p), card.RowFromStore(snap.Rows[row], 0, nil), ev)
+	if why != nil {
+		return fmt.Errorf("%w: %s", ErrRefused, why.Reason)
+	}
+	op := store.Op{ID: fmt.Sprintf("release-%s-%d", consumer, gen), Epoch: snap.Epoch, Actor: row, Kind: "release", At: s.now_internal(), Expect: plan.Expect, Writes: plan.Writes}
+	_, err = s.applyWithReplay_internal(ctx, op)
+	return err
 }
 func (s *StoreSprintClient) Beat(ctx context.Context, row string, hb Heartbeat) error {
 	snap, err := s.Store.Snapshot(ctx)
