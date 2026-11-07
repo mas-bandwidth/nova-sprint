@@ -885,20 +885,35 @@ func (g *OSGitOps) StageWorktree(ctx context.Context, j Job) (string, error) {
 		return "", errors.New("stage refused: work clone path equals bare mirror path (worktrees must be staged from the work clone, never the mirror)")
 	}
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
-	if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+	work, origin := g.WorkCloneDir, g.OriginURL
+	if os.Getenv("NOVA_WORKER_PER_REPO") == "1" && j.Repo != "" { // LOCAL DOGFOOD STOPGAP (defect 42): one work clone per stream repo, beside the configured one
+		work, origin = g.perRepo_internal(j.Repo)
+		if _, err := os.Stat(filepath.Join(work, ".git")); err != nil {
+			args := []string{"clone", "--quiet"}
+			if mirror := filepath.Join(filepath.Dir(g.MirrorDir), filepath.Base(work)+".git"); g.MirrorDir != "" {
+				if _, err := os.Stat(mirror); err == nil {
+					args = append(args, "--reference-if-able", mirror)
+				}
+			}
+			if _, err := g.runGit_internal(ctx, to, "", append(args, origin, work)...); err != nil {
+				return "", err
+			}
+		}
+	}
+	if _, err := g.runGit_internal(ctx, to, work, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
 		return "", err
 	}
 	_ = os.RemoveAll(j.WorktreeDir)
-	if _, err := g.runGit_internal(ctx, to, g.WorkCloneDir, "clone", "--shared", "--no-checkout", g.WorkCloneDir, j.WorktreeDir); err != nil {
+	if _, err := g.runGit_internal(ctx, to, work, "clone", "--shared", "--no-checkout", work, j.WorktreeDir); err != nil {
 		return "", err
 	}
-	if alt, err := os.ReadFile(filepath.Join(g.WorkCloneDir, ".git", "objects", "info", "alternates")); err == nil && len(alt) > 0 {
+	if alt, err := os.ReadFile(filepath.Join(work, ".git", "objects", "info", "alternates")); err == nil && len(alt) > 0 {
 		wtAlt := filepath.Join(j.WorktreeDir, ".git", "objects", "info", "alternates")
 		cur, _ := os.ReadFile(wtAlt)
 		_ = os.WriteFile(wtAlt, append(cur, alt...), 0o644)
 	}
-	if g.OriginURL != "" {
-		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", g.OriginURL)
+	if origin != "" {
+		_, _ = g.runGit_internal(ctx, to, j.WorktreeDir, "remote", "set-url", "origin", origin)
 	}
 	baseRef := cmp.Or(j.PriorHead, j.BaseSHA, "HEAD")
 	if j.Kind == "read" {
@@ -921,12 +936,12 @@ func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error)
 	return strings.TrimSpace(out), err
 }
 func (g *OSGitOps) Push(ctx context.Context, worktree, branch, headSHA string) error {
-	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force", cmp.Or(g.OriginURL, "origin"), headSHA+":refs/heads/"+branch)
+	_, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), worktree, "push", "--force", g.originFor_internal(), headSHA+":refs/heads/"+branch)
 	return err
 }
 func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, streamRef string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().RebaseAndTest)
-	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", cmp.Or(g.OriginURL, "origin"), streamRef); err != nil {
+	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", g.originFor_internal(), streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
@@ -943,7 +958,11 @@ func (g *OSGitOps) OriginHasHead(ctx context.Context, repo, branch, sha string) 
 	return g.HasHead(ctx, repo, branch, sha)
 }
 func (g *OSGitOps) HasHead(ctx context.Context, repo, branch, sha string) (bool, error) {
-	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), g.WorkCloneDir, "ls-remote", cmp.Or(g.OriginURL, "origin"), "refs/heads/"+branch)
+	lsDir, lsOrigin := g.WorkCloneDir, cmp.Or(g.OriginURL, "origin")
+	if os.Getenv("NOVA_WORKER_PER_REPO") == "1" && repo != "" { // LOCAL DOGFOOD STOPGAP (defect 42)
+		lsDir, lsOrigin = g.perRepo_internal(repo)
+	}
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Push), lsDir, "ls-remote", lsOrigin, "refs/heads/"+branch)
 	return err == nil && strings.HasPrefix(strings.TrimSpace(out), sha), err
 }
 func (g *OSGitOps) IsDirty(ctx context.Context, worktree string) (bool, error) {
@@ -1078,3 +1097,23 @@ func (w *OSReserveWall) runWallCmd_internal(ctx context.Context, j Job, argv, en
 }
 
 var ansiRe_local = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
+
+// perRepo_internal is the work clone and origin URL for a stream repo, beside
+// the configured work clone (LOCAL DOGFOOD STOPGAP, defect 42).
+func (g *OSGitOps) perRepo_internal(repo string) (string, string) {
+	name := strings.TrimSuffix(repo[strings.LastIndex(repo, "/")+1:], ".git")
+	url := repo
+	if !strings.Contains(url, "://") && !strings.Contains(url, "@") {
+		url = "https://github.com/" + strings.TrimSuffix(repo, ".git")
+	}
+	return filepath.Join(filepath.Dir(g.WorkCloneDir), name), url
+}
+
+// originFor_internal is "origin" under the per-repo stopgap (the worktree's
+// origin was set at staging), else the configured origin URL.
+func (g *OSGitOps) originFor_internal() string {
+	if os.Getenv("NOVA_WORKER_PER_REPO") == "1" {
+		return "origin"
+	}
+	return cmp.Or(g.OriginURL, "origin")
+}
