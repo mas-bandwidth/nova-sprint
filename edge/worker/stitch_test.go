@@ -111,7 +111,7 @@ func loopRunner_internal(t *testing.T, sp SprintClient, hook *fakeWakeHook, wall
 	var order []string
 	var mu sync.Mutex
 	r, err := NewRunner(Runner{
-		CoordinatorHosts: testCoordinators_internal, Now: testClock_internal(), Sleep: noSleep_internal,
+		Now: testClock_internal(), Sleep: noSleep_internal,
 		Host: "vision", RootDir: t.TempDir(), Sprint: sp, Wall: wall, DefaultHarness: &ScriptHarness{},
 		BusHook: func(_ context.Context, row string) (WakeHook, error) {
 			mu.Lock()
@@ -410,7 +410,7 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 	}
 	sc := &StoreSprintClient{Store: st, Origin: git, Forge: forge, RequirePR: map[string]bool{"s1": true}, Now: clock}
 	r, err := NewRunner(Runner{
-		CoordinatorHosts: testCoordinators_internal, Host: "b1", RootDir: t.TempDir(), Sprint: sc, Git: git,
+		Host: "b1", RootDir: t.TempDir(), Sprint: sc, Git: git,
 		Forges: map[string]ForgeOps{"github": forge}, Wall: wall, DefaultHarness: &OpenCodeHarness{}, Now: clock, Sleep: noSleep_internal,
 	})
 	if err != nil {
@@ -452,7 +452,7 @@ func TestStitchStreamForgeWithNoAdapterIsAFaultNamingIt(t *testing.T) {
 		return WallRunResult{ExitCode: 0, PID: 500, Nonce: "n5", Elapsed: time.Second}, nil
 	}}
 	rs := &recordingSprint{StoreSprintClient: &StoreSprintClient{Store: st, Origin: git, RequirePR: map[string]bool{"s1": true}, Now: clock}}
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Host: "b1", RootDir: t.TempDir(), Sprint: rs, Git: git, Wall: wall, Now: clock, Sleep: noSleep_internal})
+	r, err := NewRunner(Runner{Host: "b1", RootDir: t.TempDir(), Sprint: rs, Git: git, Wall: wall, Now: clock, Sleep: noSleep_internal})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,11 +490,11 @@ func TestStitchHarnessAdaptersHoldNoModel(t *testing.T) {
 
 func TestStitchRunnerRefusesToStartWithoutAnInjectedClock(t *testing.T) {
 	t.Parallel()
-	_, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Host: "vision", RootDir: t.TempDir()})
+	_, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir()})
 	if err == nil || !strings.Contains(err.Error(), "Now and Sleep") {
 		t.Fatalf("a runner with no clock must be refused naming Now and Sleep, got %v", err)
 	}
-	r, err := NewRunner(Runner{CoordinatorHosts: testCoordinators_internal, Host: "vision", RootDir: t.TempDir(), Now: testClock_internal(), Sleep: noSleep_internal})
+	r, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir(), Now: testClock_internal(), Sleep: noSleep_internal})
 	if err != nil {
 		t.Fatal(err)
 	}

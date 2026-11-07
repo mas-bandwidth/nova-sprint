@@ -16,12 +16,13 @@ func TestCatalogDefault(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
 	want := Catalog{Models: map[string][]Model{
-		"anthropic": {{"haiku", "flash"}, {"sonnet", "pro"}, {"opus", "heavy"}, {"fable", "frontier"}},
-		"openai":    {{"luna", "flash"}, {"sol", "heavy"}},
-		"google":    {{"terra", "pro"}, {"argon", "frontier"}},
-		"deepseek":  {{"deepseek-flash-4.1", "flash"}},
-		"inception": {{"mercury-3", "pro"}},
-		"unknown":   {{"astra", "frontier"}},
+		"anthropic":        {{"haiku", "flash"}, {"sonnet", "pro"}, {"opus", "heavy"}, {"fable", "frontier"}},
+		"openai":           {{"luna", "flash"}, {"sol", "heavy"}},
+		"google":           {{"terra", "pro"}, {"argon", "frontier"}},
+		"deepseek":         {{"deepseek-flash", "flash"}},
+		"inception":        {{"mercury-3", "pro"}, {"mercury-2.5", "flash"}},
+		"paperinstruments": {{"ultramarine-1-flash", "flash"}},
+		"unknown":          {{"astra", "frontier"}},
 	}, Harnesses: []string{"claude", "codex", "opencode", "api"}}
 	c, err := ReadCatalog(w.ctx(), w.st, testEngine(), 0)
 	require.NoError(t, err)
@@ -33,10 +34,14 @@ func TestCatalogDefault(t *testing.T) {
 	assert.Equal(t, want, c)
 	assert.Empty(t, c.Unknown("opus", "claude"))
 	assert.Empty(t, c.Unknown("mercury-3", "api"))
-	assert.Equal(t, `model "gemini" is not in the catalog of policy v1 (models: haiku sonnet opus fable deepseek-flash-4.1 terra argon mercury-3 luna sol astra)`, c.Unknown("gemini", "api"))
+	assert.Equal(t, `model "gemini" is not in the catalog of policy v1 (models: haiku sonnet opus fable deepseek-flash terra argon mercury-3 mercury-2.5 luna sol ultramarine-1-flash astra)`, c.Unknown("gemini", "api"))
 	a, fs := testEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, want.Models, a.Catalog.Models, "the tick validates catalog like every answer")
+	// A worker's candidates for a tier: provider/model, providers in name order.
+	assert.Equal(t, []string{"anthropic/haiku", "deepseek/deepseek-flash", "inception/mercury-2.5", "openai/luna", "paperinstruments/ultramarine-1-flash"}, c.ForTier("flash"))
+	assert.Equal(t, []string{"anthropic/sonnet", "google/terra", "inception/mercury-3"}, c.ForTier("pro"))
+	assert.Empty(t, c.ForTier("none"))
 }
 
 // TestCatalogOmitsProvider: a version with no google provider; its models

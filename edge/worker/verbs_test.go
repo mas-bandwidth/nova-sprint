@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -54,7 +55,7 @@ func (s *StoreSprintClient) HookRole(ctx context.Context, row, role string) erro
 		return fmt.Errorf("SPRINT REFUSED hook: invalid role %q: pass --role coordinator|worker", role)
 	}
 	if s.BusPresent != nil && !s.BusPresent[row] {
-		addr := cmpOr_internal(s.BusRedisAddr, "127.0.0.1:6381")
+		addr := cmp.Or(s.BusRedisAddr, "127.0.0.1:6381")
 		return fmt.Errorf("hook in to the bus first: run NOVA_BUS_REDIS=%s nova-bus hook --as %s as the Monitor tool command, then hook in to the sprint again", addr, row)
 	}
 	snap, err := s.Store.Snapshot(ctx)
@@ -314,7 +315,7 @@ func buildCombinedReportPlan_internal(snap store.Snapshot, c, p store.Card, st s
 	if c.Kind == "read" && head == "" {
 		head = p.Head
 	}
-	reason := cmpOr_internal(req.Reason, req.Finding)
+	reason := cmp.Or(req.Reason, req.Finding)
 	cCard := card.FromStore(c)
 	pCard := card.FromStore(p)
 	cPlan, ref := card.MoveConsumer(cCard, pCard, card.RowFromStore(r, 4, []string{"flash", "pro", "heavy", "frontier"}), card.Report{Row: req.Row, Result: req.Result, Head: head, Reason: reason, Cost: req.Cost, Priced: req.Priced})
@@ -336,8 +337,8 @@ func mergeWorkProducerMove_internal(snap store.Snapshot, cCard, pCard card.Card,
 		if cc.ID == cCard.ID {
 			cc.State = card.Done
 			cc.Result = req.Result
-			cc.Head = cmpOr_internal(req.Head, cc.Head)
-			cc.Reason = cmpOr_internal(req.Reason, cc.Reason)
+			cc.Head = cmp.Or(req.Head, cc.Head)
+			cc.Reason = cmp.Or(req.Reason, cc.Reason)
 		}
 		cons = append(cons, cc)
 	}
@@ -397,7 +398,7 @@ func (s *StoreSprintClient) OpenJudgement(ctx context.Context, j store.Judgement
 	op := store.Op{
 		ID:     "judge-open-" + j.ID + "-e" + strconv.Itoa(snap.Epoch),
 		Epoch:  snap.Epoch,
-		Actor:  cmpOr_internal(j.About, "worker"),
+		Actor:  cmp.Or(j.About, "worker"),
 		Kind:   "judgement",
 		At:     now,
 		Writes: []store.Write{store.PutJudgement{ID: j.ID, Kind: j.Kind, About: j.About, Question: j.Question, Command: j.Command, Group: j.Group, Deadline: j.Deadline}},

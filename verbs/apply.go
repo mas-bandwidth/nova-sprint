@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
@@ -54,14 +55,21 @@ func consumerOpID(kind string, epoch int, consumer string, gen int) string {
 // rules are the active policy's numbers the verbs read: the roster's width
 // cap and the consumer deadlines (SEAMS 4: policy owns run's numbers).
 func (e *Engine) rules(ctx context.Context, snap store.Snapshot) (policy.Limits, policy.Timeouts, error) {
+	a, err := e.answers(ctx, snap)
+	return a.Limits, a.Timeouts, err
+}
+
+// answers are the active policy's argument-free answers (limits, timeouts,
+// prices, catalog) at snap.
+func (e *Engine) answers(ctx context.Context, snap store.Snapshot) (policy.Answers, error) {
 	if e.Answers == nil {
-		return policy.Limits{}, policy.Timeouts{}, broken("the policy engine is not configured", "nova-sprint check")
+		return policy.Answers{}, broken("the policy engine is not configured", "nova-sprint check")
 	}
 	vs := policy.Versions{Seq: snap.Seq}
 	if snap.Policy > 0 {
 		pv, err := e.Store.Policy(ctx, snap.Policy)
 		if err != nil {
-			return policy.Limits{}, policy.Timeouts{}, err
+			return policy.Answers{}, err
 		}
 		vs.Active = &pv
 	}
@@ -71,9 +79,27 @@ func (e *Engine) rules(ctx context.Context, snap store.Snapshot) (policy.Limits,
 		if len(failures) > 0 {
 			problem += fmt.Sprintf(" (%s; %d failures)", clip(Redact(failures[0].Error())), len(failures))
 		}
-		return policy.Limits{}, policy.Timeouts{}, broken(problem, "nova-sprint policy check v"+fmt.Sprint(snap.Policy))
+		return policy.Answers{}, broken(problem, "nova-sprint policy check v"+fmt.Sprint(snap.Policy))
 	}
-	return a.Limits, a.Timeouts, nil
+	return a, nil
+}
+
+// tierModels are the models row may run, by tier it serves: a friend's own
+// model at each of its tiers; a bench's, the catalog's candidates for the
+// tier in provider/model form (policy.Catalog.ForTier), of which its
+// harness runs the first it serves. A tier with none is an empty list.
+func tierModels(ro roster.Roster, row string, cat policy.Catalog) map[string][]string {
+	out := map[string][]string{}
+	if k, ok := ro.Kin[row]; ok {
+		for _, t := range k.Tiers {
+			out[t] = nonNil(slices.DeleteFunc([]string{k.Model}, func(m string) bool { return m == "" }))
+		}
+		return out
+	}
+	for _, t := range ro.Workers[row].Tiers {
+		out[t] = nonNil(cat.ForTier(t))
+	}
+	return out
 }
 
 // roster is nova-config's roster at the active policy's width cap.

@@ -46,7 +46,7 @@ func operateVerbs() []*verb {
 		{name: "run", group: "operate", usage: "[--listen <addr>]", flags: "listen=", max: 0, run: runRun,
 			about: "the one chooser: the service up installs; deals, reads and lands",
 			needs: []string{"another run chooses: names its host and pid", "sprint is hooked elsewhere"}},
-		{name: "worker", group: "operate", usage: "--as <row> --work-clone <dir> --coordinator-hosts <h,h> [--host <h>] [--root <dir>] [--state-dir <dir>] [--harness claude|codex|opencode] [--mirror <dir>] [--origin <url>] [--provider-upstream <url> --provider-hosts <h,h> --provider-key <name>] [--once]", flags: "host= root= state-dir= harness= work-clone= mirror= origin= coordinator-hosts= provider-upstream= provider-hosts= provider-key= once", max: 0, run: runWorker,
+		{name: "worker", group: "operate", usage: "--as <row> [--host <h>] [--root <dir>] [--state-dir <dir>] [--harness claude|codex|opencode] [--work-root <dir>] [--mirror-root <dir>] [--providers <name>=<url>@<KEY>[,...]] [--once]", flags: "host= root= state-dir= harness= work-root= mirror-root= providers= once", max: 0, run: runWorker,
 			about: "a bench's runner (nova-worker): hooks its row, takes what is dealt, runs it, reports"},
 		{name: "dash", group: "operate", usage: "--listen <addr> [--pull <url>]", flags: "listen= pull=", max: 0, run: runDash,
 			about: "serves the board from the store, or a pulled copy of run's on a public host"},

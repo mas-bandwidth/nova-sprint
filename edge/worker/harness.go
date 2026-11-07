@@ -20,6 +20,40 @@ type Harness interface {
 	Probe(j Job) Job
 	Classify(exit int, tail []byte) Outcome
 	Usage(j Job) (Cost, bool)
+	Needs() Needs
+}
+
+// Needs is what a harness's wall needs, declared by its adapter (intent rule
+// 31): BuildWallArgv honours it, and nothing else widens a wall.
+type Needs struct {
+	// Unix leaves AF_UNIX sockets open (nova-sandbox --unix), which reopens
+	// the sandbox's same-uid escape (any local socket reachable by path). An
+	// adapter that sets it says why in its own comment.
+	Unix bool
+	// Proxy: the harness reaches its provider only through the worker's key
+	// proxy: --net-deny with one --net-allow for the proxy's loopback port.
+	// NetOpen: it reaches its own provider with its own login (no
+	// --net-deny). Neither: the network is denied outright.
+	Proxy, NetOpen bool
+	// Writes are directories outside the job directory the harness writes
+	// (its config and session state).
+	Writes []string
+	// ListModels is the argv that prints the models the harness serves, one
+	// provider/model first on each line; nil: it cannot list them, and the
+	// probe's run is the only proof a model serves.
+	ListModels []string
+	// LogDir is where, under the job directory, the harness writes its own
+	// log ("" none): empty after a death in the first second means it died
+	// inside the wall before it started.
+	LogDir string
+	// Provider is the one provider a harness without the proxy serves; a
+	// model is passed to it without the "<provider>/" prefix.
+	Provider string
+	// Model: every run of it is given a model (a probe too).
+	Model bool
+	// Limits are its known failures inside the wall, said with every failed
+	// probe so a refusal names them.
+	Limits string
 }
 
 func NewHarness(name string) (Harness, error) {
@@ -66,17 +100,51 @@ func (h *ScriptHarness) Probe(j Job) Job {
 	return p
 }
 
-// modelFlag_internal passes the model the take receipt named. The adapters
-// hold no model of their own: a job with none (the probe) runs the harness's
-// own configured default, since the probe tests the path, not the model.
-func modelFlag_internal(j Job) []string {
+// Needs: claude reaches its provider itself with the login in its config
+// directory, which it writes (session state), so its network stays open
+// and the directory is a --write. It has no command that lists its models.
+// Whether it needs AF_UNIX inside the wall is not measured: no --unix.
+func (h *ClaudeHarness) Needs() Needs {
+	return Needs{NetOpen: true, Writes: []string{h.ConfigDir}, Provider: "anthropic", Model: true}
+}
+
+// Needs: codex as claude, with its home (CODEX_HOME) the --write; not
+// measured inside the wall.
+func (h *CodexHarness) Needs() Needs {
+	return Needs{NetOpen: true, Writes: []string{h.ConfigDir}, Provider: "openai", Model: true}
+}
+
+// Needs: opencode's own in-process server listens on an AF_UNIX socket;
+// without --unix the wall kills it at startup ("Unexpected server error")
+// before it writes its log (measured on a bench, 2026-11-07). --unix reopens
+// nova-sandbox's same-uid escape (any local socket reachable by path): that
+// trade is accepted for this adapter only. It reaches providers through the
+// key proxy (one loopback --net-allow), logs under its data home, and lists
+// its models with `opencode models`.
+func (h *OpenCodeHarness) Needs() Needs {
+	return Needs{Unix: true, Proxy: true, ListModels: []string{"opencode", "models"}, LogDir: filepath.Join("data", "opencode", "log"), Model: true,
+		Limits: "through the key proxy opencode needs a provider config in the wall home mapping the proxy's routes, which is not built: a model sent " +
+			"through OPENAI_BASE_URL dies with \"Unexpected server error\"; and its own write tool dies inside the wall with the same words (cause unknown)"}
+}
+
+// Needs: the script harness is the test double: no network, no model.
+func (h *ScriptHarness) Needs() Needs { return Needs{} }
+
+// modelFlag_internal passes the model the take receipt (or the probe) named,
+// without the provider prefix for a harness that serves one provider. The
+// adapters hold no model of their own: a job with none runs the harness's
+// own configured default.
+func modelFlag_internal(j Job, provider string) []string {
 	if j.Model == "" {
 		return nil
+	}
+	if p, m, ok := strings.Cut(j.Model, "/"); ok && provider != "" && p == provider {
+		return []string{"--model", m}
 	}
 	return []string{"--model", j.Model}
 }
 func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
-	argv := append(append([]string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task"}, modelFlag_internal(j)...), "--", buildPrompt_internal(j))
+	argv := append(append([]string{"claude", "--print", "--dangerously-skip-permissions", "--disallowedTools", "Task"}, modelFlag_internal(j, h.Needs().Provider)...), "--", buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if h.ConfigDir != "" {
 		env = append(env, "CLAUDE_CONFIG_DIR="+h.ConfigDir)
@@ -85,22 +153,21 @@ func (h *ClaudeHarness) Command(j Job) ([]string, []string) {
 }
 func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	wt := cmp.Or(j.WorktreeDir, filepath.Join(j.JobDir, "repo"))
-	argv := append(append([]string{"codex", "exec", "--full-auto"}, modelFlag_internal(j)...), "--cd", wt, buildPrompt_internal(j))
+	argv := append(append([]string{"codex", "exec", "--full-auto"}, modelFlag_internal(j, h.Needs().Provider)...), "--cd", wt, buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if h.ConfigDir != "" {
 		env = append(env, "CODEX_HOME="+h.ConfigDir)
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
+
+// Command: the proxy's base URL names the route of the model's provider
+// (http://<proxy>/<provider>/v1), so one proxy serves every provider.
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
-	argv := append(append([]string{"opencode", "run"}, modelFlag_internal(j)...), buildPrompt_internal(j))
+	argv := append(append([]string{"opencode", "run"}, modelFlag_internal(j, "")...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if j.ProxyAddr != "" {
-		baseURL := j.ProxyAddr
-		if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
-			baseURL = "http://" + baseURL
-		}
-		env = append(env, "OPENAI_BASE_URL="+strings.TrimSuffix(baseURL, "/")+"/v1", "OPENAI_API_KEY="+ProxyPlaceholderKey)
+		env = append(env, "OPENAI_BASE_URL="+ProxyBaseURL(j.ProxyAddr, j.Model), "OPENAI_API_KEY="+ProxyPlaceholderKey)
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
@@ -269,7 +336,17 @@ type WallConfig struct {
 	NetDeny                            bool
 }
 
-func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
+// wallKeeps are the names nova-sandbox passes into the wall without --env;
+// every other name the harness's environment holds is named with --env, or
+// the wall drops it (nova-sandbox help).
+var wallKeeps_internal = []string{"PATH", "HOME", "LANG", "TERM"}
+
+// BuildWallArgv is nova-reserve around nova-sandbox around the harness: the
+// job directory and the adapter's Needs (j.Needs) written, cfg's paths
+// read, --unix and the network as the adapter declares (under cfg.NetDeny:
+// open, denied with the proxy's port reopened, or denied), and every name
+// of env passed with --env.
+func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
 	argv := []string{cmp.Or(cfg.ReserveBin, "nova-reserve")}
 	if cfg.ReserveDir != "" {
 		argv = append(argv, "--dir", cfg.ReserveDir)
@@ -278,24 +355,77 @@ func BuildWallArgv(cfg WallConfig, j Job, harnessArgv []string) []string {
 	if j.SlotWeight > 0 {
 		argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
 	}
-	argv = append(argv, "--wait", cmp.Or(cfg.ReserveWait, 5*time.Second).String(), "--why", cmp.Or(j.Consumer, "probe"), "--", cmp.Or(cfg.SandboxBin, "nova-sandbox"), "--write", j.JobDir)
-	for _, wp := range cfg.WritePaths {
-		if wp != "" {
-			argv = append(argv, "--write", wp)
-		}
-	}
-	for _, rp := range cfg.ReadPaths {
-		if rp != "" {
-			argv = append(argv, "--read", rp)
-		}
-	}
-	if cfg.NetDeny {
-		argv = append(argv, "--net-deny")
-		if j.ProxyAddr != "" {
-			argv = append(argv, "--net-allow", j.ProxyAddr)
-		}
-	}
+	argv = append(argv, "--wait", cmp.Or(cfg.ReserveWait, 5*time.Second).String(), "--why", cmp.Or(j.Consumer, "probe"), "--", cmp.Or(cfg.SandboxBin, "nova-sandbox"))
+	argv = append(argv, sandboxFlags_internal(cfg, j, env)...)
 	return append(append(argv, "--"), harnessArgv...)
+}
+
+// sandboxFlags_internal are nova-sandbox's flags for job j (BuildWallArgv).
+func sandboxFlags_internal(cfg WallConfig, j Job, env []string) []string {
+	var flags []string
+	add := func(flag string, paths []string) {
+		for _, p := range paths {
+			if p != "" && !slices.Contains(flags, p) {
+				flags = append(flags, flag, p)
+			}
+		}
+	}
+	add("--write", append([]string{j.JobDir}, append(slices.Clone(cfg.WritePaths), j.Needs.Writes...)...))
+	add("--read", cfg.ReadPaths)
+	if j.Needs.Unix {
+		flags = append(flags, "--unix")
+	}
+	if cfg.NetDeny && !j.Needs.NetOpen {
+		flags = append(flags, "--net-deny")
+		if j.Needs.Proxy && j.ProxyAddr != "" {
+			flags = append(flags, "--net-allow", j.ProxyAddr)
+		}
+	}
+	for _, kv := range env {
+		if name, _, ok := strings.Cut(kv, "="); ok && name != "" && !slices.Contains(wallKeeps_internal, strings.ToUpper(name)) && !slices.Contains(flags, name) {
+			flags = append(flags, "--env", name)
+		}
+	}
+	return flags
+}
+
+// SandboxShow is the command that prints the wall argv (a BuildWallArgv)
+// applies, without running anything: nova-sandbox show, its flags, and the
+// harness binary alone (its prompt left out).
+func SandboxShow(argv []string) string {
+	i := slices.IndexFunc(argv, func(a string) bool { return filepath.Base(a) == "nova-sandbox" })
+	if i < 0 {
+		return "nova-sandbox show"
+	}
+	rest := argv[i+1:]
+	cut := slices.Index(rest, "--")
+	if cut < 0 {
+		return "nova-sandbox show " + strings.Join(rest, " ")
+	}
+	show := append([]string{"nova-sandbox", "show"}, rest[:cut]...)
+	if cut+1 < len(rest) {
+		show = append(show, "--", rest[cut+1])
+	}
+	return strings.Join(show, " ")
+}
+
+// HarnessDirs are the directories the wall must grant --read for the
+// harness binary to start (defect 24): the directory lookPath finds it in
+// and, when that is a symlink, the directory of the file it names. A name
+// lookPath cannot find is nil: the wall then refuses it, naming the path.
+func HarnessDirs(name string, lookPath func(string) (string, error)) []string {
+	p, err := lookPath(name)
+	if err != nil || p == "" {
+		return nil
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	dirs := []string{filepath.Dir(p)}
+	if real, err := filepath.EvalSymlinks(p); err == nil && filepath.Dir(real) != dirs[0] {
+		dirs = append(dirs, filepath.Dir(real))
+	}
+	return dirs
 }
 func baseWallEnv_internal(j Job) []string {
 	return []string{
