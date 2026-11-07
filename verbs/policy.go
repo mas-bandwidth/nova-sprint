@@ -95,7 +95,7 @@ func policyShow(ctx context.Context, e *Engine, in *input) (string, error) {
 func version(s string) (int, *Fail) {
 	v, err := strconv.Atoi(strings.TrimPrefix(s, "v"))
 	if err != nil || v < 1 {
-		return 0, misuse("policy", "a version is 7 or v7, as nova-sprint policy show --list prints it")
+		return 0, misuse("policy", "a version is 7 or v7, as nova-sprint policy show --list prints it ("+badNumber(s, err)+")")
 	}
 	return v, nil
 }

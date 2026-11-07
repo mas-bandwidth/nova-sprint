@@ -29,7 +29,7 @@ func (p PGSetupStore) configured() bool {
 }
 func (p PGSetupStore) Ready(ctx context.Context) (bool, error) {
 	if !p.configured() {
-		return false, fmt.Errorf("role setup unavailable")
+		return false, fmt.Errorf("role setup unavailable: the store and role setup do not share one binary, seat, store and key")
 	}
 	has, err := p.Role.Sink.Has(ctx, sprintPasswordName)
 	if err != nil || !has {
@@ -70,8 +70,14 @@ func (p PGSetupStore) child(ctx context.Context, mode string) (bool, error) {
 	var result struct {
 		Ready *bool `json:"ready"`
 	}
-	if len(out) > 1024 || json.Unmarshal(out, &result) != nil || result.Ready == nil {
-		return false, fmt.Errorf("store child returned invalid result")
+	if len(out) > 1024 {
+		return false, fmt.Errorf("store child returned invalid result: %d bytes, over 1024; first bytes %q", len(out), firstBytes(out))
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		return false, fmt.Errorf("store child returned invalid result: %s", ParseFailure(err, out))
+	}
+	if result.Ready == nil {
+		return false, fmt.Errorf("store child returned invalid result: no \"ready\"; first bytes %q", firstBytes(out))
 	}
 	return *result.Ready, nil
 }
@@ -82,13 +88,19 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 	dsn, password, dir := os.Getenv("NOVA_PG_DSN"), os.Getenv(sprintPasswordName), os.Getenv("NOVA_SPRINT_BACKUP_DIR")
 	if dir == "" {
 		home, err := os.UserHomeDir()
-		if err != nil || !filepath.IsAbs(home) {
-			return false, fmt.Errorf("backup directory unavailable")
+		if err != nil {
+			return false, cause("backup directory unavailable", err)
+		}
+		if !filepath.IsAbs(home) {
+			return false, fmt.Errorf("backup directory unavailable: the home directory is not absolute")
 		}
 		dir = filepath.Join(home, ".local", "state", "nova-sprint", "backups")
 	}
-	if dsn == "" || password == "" || !filepath.IsAbs(dir) {
-		return false, fmt.Errorf("store child configuration unavailable")
+	if dsn == "" || password == "" {
+		return false, fmt.Errorf("store child configuration unavailable: %s", missingNames(map[string]string{"NOVA_PG_DSN": dsn, sprintPasswordName: password}))
+	}
+	if !filepath.IsAbs(dir) {
+		return false, fmt.Errorf("store child configuration unavailable: NOVA_SPRINT_BACKUP_DIR is not absolute")
 	}
 	var err error
 	dsn, err = sprintDSN(dsn)
@@ -101,7 +113,7 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 		if !install && errors.As(err, &pe) && pe.Code == "28P01" {
 			return false, nil
 		}
-		return false, fmt.Errorf("sprint store unavailable")
+		return false, cause("sprint store unavailable", err)
 	}
 	defer pg.Close()
 	ok, err := ensureStoreSchema(ctx, pg, install)
@@ -109,7 +121,7 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 		return false, err
 	}
 	archive := PGBackups{DSN: dsn, Password: password, Directory: dir, Version: version, Loader: PGSQLLoader{}}
-	ok, err = verifiedFirstBackup(ctx, pg, archive, dir)
+	ok, _, err = verifiedFirstBackup(ctx, pg, archive, dir)
 	if err != nil {
 		return false, err
 	}
@@ -124,10 +136,14 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 		return false, cause("backup directory unavailable", err)
 	}
 	if _, err = archive.Backup(ctx, attempt); err != nil {
-		_ = os.Remove(attempt) // only removes an empty attempt, never evidence
-		return false, fmt.Errorf("first backup failed")
+		_ = os.Remove(attempt) // only removes an empty attempt, never evidence; the backup's failure is the one reported
+		return false, cause("first backup failed", err)
 	}
-	return verifiedFirstBackup(ctx, pg, archive, dir)
+	ok, why, err := verifiedFirstBackup(ctx, pg, archive, dir)
+	if err == nil && !ok {
+		return false, fmt.Errorf("first backup did not verify: %s", why)
+	}
+	return ok, err
 }
 
 func ensureStoreSchema(ctx context.Context, pg *store.PG, install bool) (bool, error) {
@@ -135,7 +151,7 @@ func ensureStoreSchema(ctx context.Context, pg *store.PG, install bool) (bool, e
 	if err != nil {
 		missing := (!id.Present && strings.Contains(err.Error(), "there is no schema sprint in this database")) || (id.Present && strings.Contains(err.Error(), "schema sprint is empty"))
 		if !missing {
-			return false, fmt.Errorf("schema identity unavailable")
+			return false, cause("schema identity unavailable", err)
 		}
 	}
 	if !id.Current || id.Owner != "nova_sprint" {
@@ -145,22 +161,28 @@ func ensureStoreSchema(ctx context.Context, pg *store.PG, install bool) (bool, e
 		if err = pg.Migrate(ctx); err != nil {
 			var pe *pgconn.PgError
 			if errors.As(err, &pe) {
-				return false, fmt.Errorf("migration failed (SQLSTATE %s)", pe.Code)
+				return false, cause(fmt.Sprintf("migration failed (SQLSTATE %s)", pe.Code), err)
 			}
-			return false, fmt.Errorf("migration failed")
+			return false, cause("migration failed", err)
 		}
 	}
 	id, err = pg.Schema(ctx)
-	if err != nil || !id.Current || id.Owner != "nova_sprint" {
-		return false, fmt.Errorf("schema ownership unavailable")
+	if err != nil {
+		return false, cause("schema ownership unavailable", err)
+	}
+	if !id.Current || id.Owner != "nova_sprint" {
+		return false, fmt.Errorf("schema ownership unavailable: current %v, owner %q (want nova_sprint)", id.Current, id.Owner)
 	}
 	return true, nil
 }
 
 func sprintDSN(dsn string) (string, error) {
 	u, err := url.Parse(dsn)
-	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
-		return "", fmt.Errorf("invalid postgres configuration")
+	if err != nil {
+		return "", cause("invalid postgres configuration", err)
+	}
+	if (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
+		return "", fmt.Errorf("invalid postgres configuration: scheme %q host %q, want postgres://<host>/<db>", u.Scheme, u.Host)
 	}
 	if u.User != nil {
 		if _, has := u.User.Password(); has {
@@ -178,42 +200,53 @@ func sprintDSN(dsn string) (string, error) {
 	u.User = url.User("nova_sprint")
 	return u.String(), nil
 }
-func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, dir string) (bool, error) {
+// verifiedFirstBackup is true when a backup in dir verifies against the
+// store; false with why none did (the last file's reason), for the caller
+// that must say it.
+func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, dir string) (bool, string, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "sprint-e*-s*.sql"))
 	if err != nil {
-		return false, cause("backup directory unavailable", err)
+		return false, "", cause("backup directory unavailable", err)
 	}
 	attempts, err := filepath.Glob(filepath.Join(dir, "attempt-*", "sprint-e*-s*.sql"))
 	if err != nil {
-		return false, cause("backup directory unavailable", err)
+		return false, "", cause("backup directory unavailable", err)
 	}
 	files = append(files, attempts...)
 	id, err := pg.Schema(ctx)
-	if err != nil || !id.Current {
-		return false, fmt.Errorf("schema identity unavailable")
+	if err != nil {
+		return false, "", cause("schema identity unavailable", err)
+	}
+	if !id.Current {
+		return false, "", fmt.Errorf("schema identity unavailable: the store's schema is not this build's")
 	}
 	snap, err := pg.Snapshot(ctx)
 	if err != nil {
-		return false, cause("store snapshot unavailable", err)
+		return false, "", cause("store snapshot unavailable", err)
 	}
+	why := "no backup file in the backup directory"
 	for _, file := range files {
+		name := filepath.Base(file)
 		info, err := archive.Verify(ctx, file)
 		if err != nil {
 			if ctx.Err() != nil {
-				return false, ctx.Err()
+				return false, "", ctx.Err()
 			}
+			why = name + ": " + Redact(err.Error())
 			continue
 		}
 		if info.Seq > snap.Seq || info.PrefixDigest == "" || info.SchemaHash != id.Hash {
+			why = fmt.Sprintf("%s: seq %d (store at %d), schema %s (store %s), digest %q", name, info.Seq, snap.Seq, info.SchemaHash, id.Hash, info.PrefixDigest)
 			continue
 		}
 		digest, err := EventPrefixDigest(ctx, pg, info.Seq)
 		if err != nil {
-			return false, cause("event history unavailable", err)
+			return false, "", cause("event history unavailable", err)
 		}
 		if digest == info.PrefixDigest {
-			return true, nil
+			return true, "", nil
 		}
+		why = name + ": its event prefix digest differs from the store's"
 	}
-	return false, nil
+	return false, why, nil
 }
