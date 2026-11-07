@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -13,8 +14,13 @@ import (
 )
 
 // Versions is what a tick is answered from: the active version and the one
-// active before it (from the last accepted activation), each nil when none.
-type Versions struct{ Active, Prev *store.PolicyVersion }
+// active before it (from the last accepted activation), each nil when none,
+// and Seq, the snapshot seq they were read at (LoadVersions); 0 is a
+// Versions built by hand (the tests), which no snapshot is checked against.
+type Versions struct {
+	Active, Prev *store.PolicyVersion
+	Seq          int64
+}
 
 // tried is the order a tick tries: active, else the previous active, else
 // the built-in default (version 0).
@@ -47,13 +53,19 @@ func (e *Engine) Answer(vs Versions, snap store.Snapshot, ro roster.Roster, q Qu
 // row's name; a row ro does not name is in no question (Judgements reports
 // it).
 func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snapshot, ro roster.Roster, q Questions) (Answers, []Failure) {
+	if vs.Seq != 0 && vs.Seq != snap.Seq {
+		return Answers{Version: -1}, []Failure{{Version: -1, Label: "tick", Msg: fmt.Sprintf("versions read at seq %d, snapshot at %d: reload", vs.Seq, snap.Seq)}}
+	}
 	ctx, cancel := context.WithTimeout(ctx, TickTime)
 	defer cancel()
 	tried := vs.tried(e.builtin)
 	asks := newIndex(snap, ro).asks(ctx, q)
-	if ctx.Err() != nil { // the inputs alone spent the deadline: no version can answer
-		b := tried[len(tried)-1]
-		return Answers{Version: -1}, []Failure{{Version: b.version, Label: b.label, Line: 1, Msg: overTime() + " building the tick's inputs"}}
+	if ctx.Err() != nil { // the inputs alone spent the deadline: every version tried fails
+		fs := make([]Failure, len(tried))
+		for i, src := range tried {
+			fs[i] = Failure{Version: src.version, Label: src.label, Line: 1, Msg: overTime() + " building the tick's inputs"}
+		}
+		return Answers{Version: -1}, fs
 	}
 	return e.race(ctx, tried, asks)
 }
@@ -66,7 +78,7 @@ func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snap
 func Judgements(snap store.Snapshot, ro roster.Roster, failed []Failure) []store.PutJudgement {
 	var out []store.PutJudgement
 	for _, f := range failed {
-		if len(OpenJudgements(snap, f.Version)) == 0 {
+		if f.Version >= 0 && len(OpenJudgements(snap, f.Version)) == 0 { // -1: a refused tick (stale versions), no version's fault
 			out = append(out, f.Judgement(snap.Seq))
 		}
 	}
@@ -149,27 +161,42 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 }
 
 // rowsAsk is one rows question, with its joint check: the rows named must
-// leave the card a row able to work it (a work answer above 0 in width) when
-// a candidate could (a configured width above 0).
+// leave the card as many rows able to take it (a work answer above 0 in
+// width) as it needs, one for work and the reads answer for a read (layer 3
+// deals a read to that many distinct rows; the names are distinct
+// candidates, so never the author), when the candidates could (a configured
+// width above 0): rowan2's and cold read 3's probe.
 func (ix *index) rowsAsk(c store.Card, rq RowsQuestion) ask {
 	set := ix.candidateSet(c, rq.Kind)
 	card := ix.card(c)
 	return ask{q: "rows", subject: rq.Card + " " + rq.Kind, args: starlark.Tuple{card, starlark.String(rq.Kind), set.list},
 		digest: digestOf("rows", card.String()+" "+rq.Kind+" "+set.digest), rq: &rq,
 		acceptRows: func(v starlark.Value) ([]string, string) { return checkRows(v, c, set, ix.facts) },
-		joint: func(a *Answers) string {
-			for _, n := range a.Rows[rq] {
-				if a.Width[n].Work > 0 {
-					return ""
-				}
-			}
-			for _, r := range set.rows {
-				if r.width > 0 {
-					return refuse("every row named has work 0 in width, while row %s could take it", r.Name)
-				}
-			}
-			return ""
-		}}
+		joint:      func(a *Answers) string { return jointRows(a, rq, set) }}
+}
+
+// jointRows is rowsAsk's joint check on the tick's answers a.
+func jointRows(a *Answers, rq RowsQuestion, set *candidateSet) string {
+	need, have, could, first := 1, 0, 0, ""
+	if n, ok := a.Reads[rq.Card]; ok && rq.Kind == KindRead {
+		need = n
+	}
+	for _, n := range a.Rows[rq] {
+		have += b2i(a.Width[n].Work > 0)
+	}
+	for _, r := range set.rows {
+		if r.width > 0 {
+			could++
+			first = cmp.Or(first, r.Name)
+		}
+	}
+	switch need = min(need, could); {
+	case have >= need:
+		return ""
+	case need == 1:
+		return refuse("every row named has work 0 in width, while row %s could take it", first)
+	}
+	return refuse("reads is %d, and %d row(s) named have work above 0 in width, while %d candidate(s) could take a read", a.Reads[rq.Card], have, could)
 }
 
 // subjectAsks are reads, verdict, landing and stitch.
@@ -187,7 +214,8 @@ func (ix *index) subjectAsks(q Questions) []ask {
 	}
 	for _, lq := range q.Landing {
 		if _, ok := ix.streams[lq.Stream]; ok {
-			out = append(out, askOf("landing", lq.Stream, starlark.Tuple{ix.landingStream(lq)}, checkLanding, func(a *Answers, l Landing) { a.Landing[lq.Stream] = l }))
+			subject := lq.Stream + map[bool]string{true: " " + lq.Rung}[lq.Rung != RungFlowing] // check asks both rungs
+			out = append(out, askOf("landing", subject, starlark.Tuple{ix.landingStream(lq)}, checkLanding, func(a *Answers, l Landing) { a.Landing[lq.Stream] = l }))
 		}
 	}
 	for _, s := range q.Stitch {

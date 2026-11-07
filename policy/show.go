@@ -88,9 +88,20 @@ func (e *Engine) runFile(name, body string, snap store.Snapshot, ro roster.Roste
 func (e *Engine) checkRun(ctx context.Context, src source, snap store.Snapshot, ro roster.Roster) (Answers, []Failure) {
 	ctx, cancel := context.WithTimeout(ctx, TickTime)
 	defer cancel()
-	asks := newIndex(snap, ro).asks(ctx, FullQuestions(snap, nil))
+	asks := newIndex(snap, ro).asks(ctx, bothRungs(FullQuestions(snap, nil)))
 	o := e.start(ctx, src, asks, true).await(nil, func() {})
 	return o.a, o.fs
+}
+
+// bothRungs is q with landing asked on both rungs for every stream, flowing
+// then backed up: check predicts a tick on either (cold read 3's probe).
+func bothRungs(q Questions) Questions {
+	var out []LandingQuestion
+	for _, lq := range q.Landing {
+		out = append(out, LandingQuestion{lq.Stream, RungFlowing}, LandingQuestion{lq.Stream, RungBackedUp})
+	}
+	q.Landing = out
+	return q
 }
 
 // report compares a run's answers with the active version's on snap.

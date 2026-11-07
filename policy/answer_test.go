@@ -63,9 +63,10 @@ func testBrokenMidSprint(t *testing.T, w *world) {
 	_, err := Activate(w.ctx(), w.st, w.ro, e, w.caller(), v2, "try it")
 	require.NoError(t, err)
 	tick := func() (Answers, []Failure) {
-		vs, err := LoadVersions(w.ctx(), w.st)
+		snap := w.snap()
+		vs, err := LoadVersions(w.ctx(), w.st, snap)
 		require.NoError(t, err)
-		return e.Answer(vs, w.snap(), w.ro, FullQuestions(w.snap(), nil))
+		return e.Answer(vs, snap, w.ro, FullQuestions(snap, nil))
 	}
 	a, fs := tick()
 	require.Empty(t, fs)

@@ -129,7 +129,7 @@ func testActivateRefusals(t *testing.T, w *world) {
 	v := w.set("breaks.star", breaks)
 	w.apply(store.PutStream{Name: "s3", Repo: "git@example.com:r.git", Base: "main", Pos: 3})
 	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), v, "r")
-	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy activate: POLICY REFUSED v3 line %d landing(s3): floored division by zero: nova-sprint policy check 3", line+1), refusal(t, err))
+	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy activate: POLICY REFUSED v3 line %d landing(s3): floored division by zero; POLICY REFUSED v3 line %d landing(s3 backed_up): floored division by zero: nova-sprint policy check 3", line+1, line+1), refusal(t, err), "check asks landing on both rungs (round 5)")
 	assert.Equal(t, 1, w.snap().Policy)
 }
 
@@ -143,13 +143,13 @@ func testActivate(t *testing.T, w *world) {
 	after := w.snap()
 	assert.Equal(t, 2, after.Policy)
 	assert.Equal(t, before.Cards, after.Cards, "a policy change never moves a card")
-	vs, err := LoadVersions(w.ctx(), w.st)
+	vs, err := LoadVersions(w.ctx(), w.st, w.snap())
 	require.NoError(t, err)
 	require.NotNil(t, vs.Prev)
 	assert.Equal(t, []int{2, 1}, []int{vs.Active.Version, vs.Prev.Version})
 	_, err = Activate(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), 1, "roll back")
 	require.NoError(t, err, "a rollback is an activation of an old number")
-	vs, err = LoadVersions(w.ctx(), w.st)
+	vs, err = LoadVersions(w.ctx(), w.st, w.snap())
 	require.NoError(t, err)
 	assert.Equal(t, []int{1, 2}, []int{vs.Active.Version, vs.Prev.Version})
 }

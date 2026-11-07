@@ -191,11 +191,11 @@ func TestColdread2RaceVerbsAndAnswer(t *testing.T) {
 					return
 				default:
 				}
-				vs, err := LoadVersions(w.ctx(), w.st)
+				snap, err := w.st.Snapshot(w.ctx())
 				if !assert.NoError(t, err) {
 					return
 				}
-				snap, err := w.st.Snapshot(w.ctx())
+				vs, err := LoadVersions(w.ctx(), w.st, snap)
 				if !assert.NoError(t, err) {
 					return
 				}
