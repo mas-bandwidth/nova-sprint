@@ -5,11 +5,24 @@ import (
 	"time"
 )
 
-// WallClock is the production clock; unit tests inject an inert clock.
+// Clock is run's time: now, and a beat every d. Unit tests inject an inert
+// one; production is WallClock.
+type (
+	Clock interface {
+		Now() time.Time
+		Every(d time.Duration) Beat
+	}
+	Beat interface {
+		C() <-chan time.Time
+		Stop()
+	}
+)
+
+// WallClock is the production clock.
 type WallClock struct{}
 
-func (WallClock) Now() time.Time               { return time.Now() }
-func (WallClock) Every(d time.Duration) Ticker { return wallTicker{time.NewTicker(d)} }
+func (WallClock) Now() time.Time             { return time.Now() }
+func (WallClock) Every(d time.Duration) Beat { return wallTicker{time.NewTicker(d)} }
 
 type wallTicker struct{ ticker *time.Ticker }
 

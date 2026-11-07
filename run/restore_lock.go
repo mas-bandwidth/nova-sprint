@@ -10,7 +10,7 @@ import (
 // It does not make work on a separate database session atomic with this lock.
 type RestoreLock interface {
 	Check(context.Context) error
-	Restore(context.Context, func(RestoreWriter) error) error
+	Restore(ctx context.Context, digest string, apply func(RestoreWriter) error) error
 	Close(context.Context) error
 }
 

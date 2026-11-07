@@ -15,6 +15,7 @@ package roster
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -73,6 +74,21 @@ type Kin struct {
 type Roster struct {
 	Workers map[string]Worker
 	Kin     map[string]Kin
+}
+
+// Clone is a deep copy: a reader that keeps a roster keeps its own.
+func (r Roster) Clone() Roster {
+	r.Workers = maps.Clone(r.Workers)
+	for n, w := range r.Workers {
+		w.Tiers = slices.Clone(w.Tiers)
+		r.Workers[n] = w
+	}
+	r.Kin = maps.Clone(r.Kin)
+	for n, k := range r.Kin {
+		k.Tiers = slices.Clone(k.Tiers)
+		r.Kin[n] = k
+	}
+	return r
 }
 
 // Load reads src once: every machine with the bench role is a worker at

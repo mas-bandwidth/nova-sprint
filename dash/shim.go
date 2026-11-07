@@ -1,6 +1,7 @@
 package dash
 
 import (
+	"log"
 	"math/big"
 	"sort"
 	"time"
@@ -51,6 +52,8 @@ type envelope struct {
 	At            time.Time              `json:"at"`
 	Epoch         int                    `json:"epoch"`
 	Machine       string                 `json:"machine"`
+	Stopped       bool                   `json:"stopped"`     // the page's stop banner
+	StopReason    string                 `json:"stop_reason"` // the last stop's or start's reason
 	Tables        map[string]any         `json:"tables"`
 	Streams       []streamLine           `json:"streams"`
 	StreamCosts   map[string]*streamCost `json:"stream_costs"`
@@ -115,7 +118,7 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, StopReason: s.StopReason, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
 func setStreamStates(streams []streamLine, work map[string]*workRow) {
 	for i := range streams {
@@ -136,7 +139,10 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 		if r.State == "up" && r.Held {
 			status = "held"
 		}
-		kind, width, _, _ := ros.Row(n)
+		kind, width, _, found := ros.Row(n)
+		if !found { // not in nova-config: down, whatever the store says (Stella, v2-l6)
+			status = "down"
+		}
 		f := &fleetRow{Status: status, Width: width}
 		if kind == roster.KindKin {
 			friends[n] = f
@@ -189,6 +195,9 @@ func countWork(w *workRow, c store.Card) {
 		w.Fail++
 	case "fix":
 		w.Fix++
+	default:
+		w.Waiting++
+		log.Printf("ALARM dashboard: producer %q has unknown state %q; counted as waiting", c.ID, c.State)
 	}
 }
 func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]*streamCost) {

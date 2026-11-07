@@ -35,7 +35,7 @@ type Cache struct {
 // shows it. Until it is set every row is in the fleet at width 0.
 func (c *Cache) SetRoster(r roster.Roster) {
 	c.mu.Lock()
-	c.roster = copyRoster(r)
+	c.roster = r.Clone()
 	c.mu.Unlock()
 }
 
@@ -165,7 +165,7 @@ func (c *Cache) readAvailable(ctx context.Context, s store.Store) error {
 			}
 		}
 		if len(events) > 0 {
-			c.state = advanceSnapshot(c.state, events)
+			c.state = store.Fold(c.state, events)
 			c.anchor = anchorOf(events[len(events)-1])
 			c.pending = true
 		}
@@ -215,19 +215,6 @@ func (c *Cache) checkHistory(ctx context.Context, s store.Store) error {
 	c.anchor = historyAnchor{}
 	c.pending = snap.Seq > 0
 	return nil
-}
-
-func advanceSnapshot(s store.Snapshot, events []store.Event) store.Snapshot {
-	policies := map[int]store.PolicyVersion{}
-	if s.Policy != 0 {
-		policies[s.Policy] = store.PolicyVersion{Active: true}
-	}
-	image := &store.State{Epoch: s.Epoch, Streams: s.Streams, Cards: s.Cards, Rows: s.Rows, Judgements: s.Judgements, Cursors: s.Cursors, Policies: policies, Stop: &store.Stop{Stopped: s.Stopped, Reason: s.StopReason}}
-	base := store.Event{Seq: s.Seq, Accepted: true, After: image}
-	batch := make([]store.Event, 0, len(events)+1)
-	batch = append(batch, base)
-	batch = append(batch, events...)
-	return store.Rebuild(batch)
 }
 
 func (c *Cache) Run(ctx context.Context, s store.Store) {

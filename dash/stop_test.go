@@ -28,7 +28,7 @@ func TestAdvanceSnapshotKeepsStopAcrossOrdinaryEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := advanceSnapshot(s, events)
+	got := store.Fold(s, events)
 	if !got.Stopped || got.StopReason != "pause" || got.Cursors["reader"] != s.Seq {
 		t.Fatalf("snapshot: %+v", got)
 	}

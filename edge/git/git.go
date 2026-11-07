@@ -372,3 +372,24 @@ func isFullSHA_internal(s string) bool {
 	}
 	return true
 }
+
+// Clone makes dir a working clone of repo, once: a dir that already holds a
+// .git is left as it is (run keeps one clone per stream repo, LAYER-4
+// "Git"). It never fetches into an existing clone; LandPass fetches what it
+// needs.
+func (c *Client) Clone(ctx context.Context, repo, dir string) error {
+	if repo == "" || dir == "" {
+		return fmt.Errorf("git refused: clone needs a repository and a directory")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		return nil
+	}
+	_, stderr, code, err := c.runGit_internal(ctx, "", c.cfg.RebaseTimeout, "clone", "--no-tags", repo, dir)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		return fmt.Errorf("git clone %s failed: %s; check the stream's repo (nova-sprint stream show)", repo, strings.TrimSpace(stderr))
+	}
+	return nil
+}

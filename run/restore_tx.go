@@ -19,7 +19,9 @@ type RestoreWriter interface {
 }
 type restoreWriter struct{ conn *pgx.Conn }
 
-func (s *pgChooser) Restore(ctx context.Context, apply func(RestoreWriter) error) error {
+// Restore loads a verified dump whose bytes hash to digest (sha256,
+// lowercase hex) in one transaction under the chooser lock.
+func (s *pgChooser) Restore(ctx context.Context, digest string, apply func(RestoreWriter) error) error {
 	if err := s.Check(ctx); err != nil {
 		return fmt.Errorf("restore: chooser lock lost: %w", err)
 	}
@@ -28,7 +30,7 @@ func (s *pgChooser) Restore(ctx context.Context, apply func(RestoreWriter) error
 		return fmt.Errorf("restore: begin transaction: %w", err)
 	}
 	defer rollbackRestore(tx)
-	if err = store.RestoreBegin(ctx, tx); err != nil {
+	if err = store.RestoreBegin(ctx, tx, digest); err != nil {
 		return fmt.Errorf("restore: initialize: %w", err)
 	}
 	if err = apply(restoreWriter{conn: s.conn}); err != nil {

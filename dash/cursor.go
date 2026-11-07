@@ -70,7 +70,7 @@ func (c *Cache) catchCursor(ctx context.Context, s store.Store, target int64) (b
 		if len(batch) == 0 {
 			return false, fmt.Errorf("dashboard cursor event %d missing", target)
 		}
-		c.state = advanceSnapshot(c.state, batch)
+		c.state = store.Fold(c.state, batch)
 		c.anchor = anchorOf(batch[len(batch)-1])
 	}
 }

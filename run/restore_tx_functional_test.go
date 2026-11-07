@@ -27,7 +27,7 @@ func TestFunctionalRestoreSameSessionAndRollback(t *testing.T) {
 	lock, err := OpenRestoreLock(ctx, limited, "", "bench", 20)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lock.Close(ctx) })
-	err = lock.Restore(ctx, func(w RestoreWriter) error {
+	err = lock.Restore(ctx, testDigest, func(w RestoreWriter) error {
 		other, e := OpenChooser(ctx, dsn, "", "other", 21, &fakeHook{lease: &fakeLease{}})
 		if other != nil {
 			_ = other.Close(ctx)
@@ -46,7 +46,7 @@ func TestFunctionalRestoreSameSessionAndRollback(t *testing.T) {
 	require.True(t, exists, "rollback preserves the pre-provisioned schema")
 	require.NoError(t, admin.QueryRow(ctx, "SELECT to_regclass('sprint.x') IS NOT NULL").Scan(&exists))
 	require.False(t, exists, "failed restore must roll back its SQL")
-	require.NoError(t, lock.Restore(ctx, func(w RestoreWriter) error {
+	require.NoError(t, lock.Restore(ctx, testDigest, func(w RestoreWriter) error {
 		if err := w.Exec(ctx, fmt.Sprintf("INSERT INTO sprint.meta (id,schema,hash) VALUES (1,2,'%s')", identity.Expected)); err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func TestFunctionalRestoreSameSessionAndRollback(t *testing.T) {
 	require.NoError(t, admin.QueryRow(ctx, "SELECT n FROM sprint.epoch").Scan(&value))
 	require.Equal(t, 1, value)
 	called := false
-	err = lock.Restore(ctx, func(RestoreWriter) error { called = true; return nil })
+	err = lock.Restore(ctx, testDigest, func(RestoreWriter) error { called = true; return nil })
 	require.Error(t, err)
 	require.False(t, called)
 }
@@ -66,6 +66,6 @@ func TestFunctionalRestoreRejectsMultipleStatements(t *testing.T) {
 	lock, err := OpenRestoreLock(ctx, chooserTestPG(t), "", "bench", 20)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lock.Close(ctx) })
-	err = lock.Restore(ctx, func(w RestoreWriter) error { return w.Exec(ctx, "CREATE SCHEMA sprint; COMMIT") })
+	err = lock.Restore(ctx, testDigest, func(w RestoreWriter) error { return w.Exec(ctx, "CREATE SCHEMA sprint; COMMIT") })
 	require.ErrorContains(t, err, "dump statement failed")
 }
