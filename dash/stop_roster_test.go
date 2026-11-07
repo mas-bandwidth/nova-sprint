@@ -2,6 +2,7 @@ package dash
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,19 +31,43 @@ func TestStoppedAndRosterProjection(t *testing.T) {
 	}
 	var got struct {
 		Stopped bool   `json:"stopped"`
-		Reason  string `json:"stop_reason"`
 		Machine string `json:"machine"`
 	}
 	if err = json.Unmarshal(body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.Stopped || got.Reason != "Scheduled maintenance" || got.Machine != "machine: STOPPED Scheduled maintenance" {
+	if !got.Stopped || got.Machine != "machine: STOPPED Scheduled maintenance" {
 		t.Fatalf("stop projection: %s", body)
 	}
 	snap.Stopped = false
 	snap.StopReason = "Restarted"
 	d = mapSnapshot(snap, ros, time.Time{})
-	if d.Stopped || d.Machine != "machine: RUNNING" || d.StopReason != "Restarted" {
+	if d.Stopped || d.Machine != "machine: RUNNING" {
 		t.Fatalf("start projection: %+v", d)
+	}
+}
+
+// A stopped sprint shows in the ETA tile and the machine line only: the page has
+// no stop banner, and the server sends no reason for one.
+func TestNoStopBanner(t *testing.T) {
+	t.Parallel()
+	for _, f := range []string{"page/index.html", "page/app.js"} {
+		b, err := page.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range []string{"stop-banner", "stop-reason", "stop_reason"} {
+			if strings.Contains(string(b), s) {
+				t.Errorf("%s still has %q", f, s)
+			}
+		}
+	}
+	snap := store.Snapshot{Epoch: 1, Stopped: true, StopReason: "x"}
+	body, err := json.Marshal(mapSnapshot(snap, roster.Roster{}, time.Time{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "stop_reason") {
+		t.Fatalf("the envelope carries a stop reason: %s", body)
 	}
 }

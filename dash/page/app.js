@@ -607,9 +607,6 @@ function renderReaders(d) {
 }
 
 function renderHero(d, s, ft) {
-  var stopBanner = $("stop-banner");
-  stopBanner.hidden = !d.stopped;
-  $("stop-reason").textContent = d.stopped ? String(d.stop_reason || "") : "";
   var landed = int(d.landed), all = int(d.all);
   setText($("landed"), landed.toLocaleString("en-US")); setText($("all"), all.toLocaleString("en-US")); setText($("all2"), all.toLocaleString("en-US"));
   setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)

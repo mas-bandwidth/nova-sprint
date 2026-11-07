@@ -32,7 +32,6 @@
     "machine": "machine: STOPPED never started",
     "ok": true,
     "server_version": "dev",
-    "stop_reason": "never started",
     "stopped": true,
     "stream_costs": {
       "alpha": {}
