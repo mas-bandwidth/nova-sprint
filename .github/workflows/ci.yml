@@ -85,8 +85,9 @@ jobs:
         run: go test -count=1 -race -run Functional ./...
 
   # Trace validation (tla/README.md, "Trace validation"): the store's walks
-  # (the Fake, and PostgreSQL) and the card walk on their fixed seeds, each
-  # trace checked by TLC against its model, and the breakers refused.
+  # (the Fake, and PostgreSQL), the card walk and the policy walk on their
+  # fixed seeds, each trace checked by TLC against its model, and the
+  # breakers refused.
   trace:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, bench]

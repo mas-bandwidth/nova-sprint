@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# CI run of the store model (layer 1) and the card machine (layer 2):
+# CI run of the store model (layer 1), the card machine (layer 2), the steps
+# (layer 3) and the policy model (layer 5):
 # bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
@@ -7,9 +8,18 @@
 #                                      must pass            (TLC exit 0)
 #   CardMachine.tla with CardMachine.cfg, CardDeps.cfg, CardPreempt.cfg, CardReads.cfg
 #     (its four scenarios)             must pass            (TLC exit 0)
+#   Steps.tla with StepsPre.cfg, StepsPrePack1.cfg, StepsDeal.cfg, StepsLand.cfg,
+#     StepsBurst.cfg (its scenarios, invariants and the liveness property)
+#                                      must pass            (TLC exit 0)
+#   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
-#     reach/Card*.cfg on CardMachine.tla, every other one on Store.tla
+#     reach/Card*.cfg on CardMachine.tla, reach/Steps*.cfg on Steps.tla,
+#     reach/Policy*.cfg on Policy.tla, every other one on Store.tla
+# A witness's target is the first INVARIANT or PROPERTY line of its cfg; a
+# PROPERTY target (a liveness witness) must end in TLC exit 13 with
+# "Temporal property <target> was violated" and no invariant violated.
+# The trace fixtures (traces/*) are checked by make-traces.sh, not here.
 # Exits non-zero if a model fails, if any witness or reach run passes, or if any
 # run ends any other way (a parse error, a crash, a timeout is not a violation).
 # Run it on a bench host, never on the working machine.
@@ -100,11 +110,16 @@ run() {
         # The invariant a violate run must break is the first one in its cfg;
         # a violation of any other invariant is a FAIL (the fault is not the
         # one the witness names, or the model broke elsewhere first).
-        target="$(grep -m 1 '^INVARIANT' "$cfg" | awk '{print $2}')"
+        tkind="$(grep -m 1 -E '^(INVARIANT|PROPERTY)' "$cfg" | awk '{print $1}')"
+        target="$(grep -m 1 -E '^(INVARIANT|PROPERTY)' "$cfg" | awk '{print $2}')"
         if [ "$expect" = pass ] && [ "$code" -eq 0 ]; then
             echo "ok   $name: no error found" > "$WORK/$name.result"
-        elif [ "$expect" = violate ] && [ "$code" -eq 12 ] \
+        elif [ "$expect" = violate ] && [ "$tkind" = INVARIANT ] && [ "$code" -eq 12 ] \
             && grep -q "Invariant $target is violated" "$WORK/$name.log"; then
+            echo "ok   $name: $target violated, as required" > "$WORK/$name.result"
+        elif [ "$expect" = violate ] && [ "$tkind" = PROPERTY ] && [ "$code" -eq 13 ] \
+            && grep -q "Temporal property $target was violated" "$WORK/$name.log" \
+            && ! grep -q "Invariant .* is violated" "$WORK/$name.log"; then
             echo "ok   $name: $target violated, as required" > "$WORK/$name.result"
         else
             echo "FAIL $name: TLC exit $code, wanted $expect (log below)" > "$WORK/$name.result"
@@ -119,6 +134,12 @@ run CardMachine pass . CardMachine.cfg CardMachine.tla 4
 run CardDeps pass . CardDeps.cfg CardMachine.tla 4
 run CardPreempt pass . CardPreempt.cfg CardMachine.tla 4
 run CardReads pass . CardReads.cfg CardMachine.tla 4
+run StepsPre pass . StepsPre.cfg Steps.tla 8
+run StepsPrePack1 pass . StepsPrePack1.cfg Steps.tla 8
+run StepsDeal pass . StepsDeal.cfg Steps.tla 8
+run StepsLand pass . StepsLand.cfg Steps.tla 4
+run StepsBurst pass . StepsBurst.cfg Steps.tla 4
+run Policy pass . Policy.cfg Policy.tla 4
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
@@ -130,6 +151,8 @@ for f in "$HERE"/reach/*.cfg; do
     m="$(basename "$f" .cfg)"
     case "$m" in
         Card*) mod=CardMachine.tla ;;   # the card machine's reach checks
+        Steps*) mod=Steps.tla ;;        # the steps' reach checks
+        Policy*) mod=Policy.tla ;;      # the policy model's
         *) mod=Store.tla ;;
     esac
     run "reach-$m" violate . "reach/$m.cfg" "$mod" 1

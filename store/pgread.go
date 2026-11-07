@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	streamCols = "name, repo, base, held, pos"
+	streamCols = "name, repo, base, held, pos, mode, forge"
 	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result, prior_head, bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding, red`
 	rowCols    = "name, state, session, role, flaps, held, gen, reason"
 	judgeCols  = "id, kind, about, question, command, group_key, state, deadline, answer, actor, opened_at, closed_at"
@@ -22,7 +22,7 @@ const (
 
 func scanStream(r pgx.Row) (Stream, error) {
 	var s Stream
-	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos)
+	err := r.Scan(&s.Name, &s.Repo, &s.Base, &s.Held, &s.Pos, &s.Mode, &s.Forge)
 	return s, err
 }
 
@@ -168,6 +168,20 @@ func (p *PG) EventIdentity(ctx context.Context, seq int64) (string, int, bool, e
 	return op, epoch, true, nil
 }
 
+// Restored returns the digest of the dump the store was last restored from
+// and when (RestoreEnd), and false when it never was. It only reads.
+func (p *PG) Restored(ctx context.Context) (string, time.Time, bool, error) {
+	var digest string
+	var at *time.Time
+	if err := p.pool.QueryRow(ctx, "SELECT restored_digest, restored_at FROM sprint.meta WHERE id = 1").Scan(&digest, &at); err != nil {
+		return "", time.Time{}, false, fmt.Errorf("store: restored: %w", err)
+	}
+	if at == nil {
+		return "", time.Time{}, false, nil
+	}
+	return digest, at.UTC(), true, nil
+}
+
 // readEvents is Events on q: the pool, or a transaction (RestoreEnd).
 func readEvents(ctx context.Context, q interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
@@ -265,9 +279,10 @@ func (t *pgTx) open() error {
 }
 
 func (t *pgTx) putStream(s Stream) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (epoch, name) DO UPDATE SET repo = EXCLUDED.repo, base = EXCLUDED.base, held = EXCLUDED.held, pos = EXCLUDED.pos`,
-		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.streams (epoch, name, repo, base, held, pos, mode, forge) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (epoch, name) DO UPDATE SET repo = EXCLUDED.repo, base = EXCLUDED.base, held = EXCLUDED.held, pos = EXCLUDED.pos,
+		mode = EXCLUDED.mode, forge = EXCLUDED.forge`,
+		t.epoch, s.Name, s.Repo, s.Base, s.Held, s.Pos, s.Mode, s.Forge)
 	return err
 }
 

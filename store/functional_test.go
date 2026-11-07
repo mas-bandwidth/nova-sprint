@@ -189,7 +189,7 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	want.Owner = "nova"
 	assert.Equal(t, want, id)
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
-	assert.Equal(t, Row{Name: "w1", State: "up", Session: "sess", Role: "worker", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept")
+	assert.Equal(t, Row{Name: "w1", State: "up", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept; it is unhooked (no role was recorded), so it hooks again")
 	h.ok(h.op("put", nil, PutRow{Name: "w1", Session: "sess-2", Role: "worker"}))
 	assert.Equal(t, "working", h.snap().Cards["u1"].State)
 }
@@ -359,8 +359,9 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	}
 }
 
-// Two deals on a width-1 row: the write into working counts the working cards it holds inside the
-// transaction, so one is accepted and one refused, with no width condition.
+// Two deals racing onto one row both land (round 22): the store holds no
+// width, so the write into working counts nothing; the roster's width is
+// the deal guards' to keep, above the store.
 func TestFunctionalWidthRace(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
@@ -372,12 +373,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, row}}, SetCardState{card, "working"})
 		}
 		a, b := race(t, p, deal(row+"a"), deal(row+"b"))
-		require.NotEqual(t, a.Accepted, b.Accepted, "exactly one deal onto %s is accepted", row)
-		for _, r := range []Receipt{a, b} {
-			if !r.Accepted {
-				assert.Equal(t, "row "+row+" holds 1 working card, its width is 1; raise the width with set row width, or wait for a card to finish", r.Reason)
-			}
-		}
+		assert.True(t, a.Accepted && b.Accepted, "both deals onto %s land: %q %q", row, a.Reason, b.Reason)
 	}
 }
 
@@ -756,7 +752,11 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.cards SET holder = 'w1' WHERE id = 'c1'":  "cards_fixed_check",
 		"UPDATE sprint.cards SET tier = 'heavy' WHERE id = 'c1'": "cards_fixed_check",
 		// rows, judgements, cursors and the events' policy
-		"UPDATE sprint.rows SET tiers = '{flash,ultra}'": "rows_tiers_check",
+		"UPDATE sprint.rows SET role = 'boss'": "rows_role_check",
+		// round 22: a stream's landing settings, the restore's digest
+		"UPDATE sprint.streams SET mode = 'fast'":        "streams_mode_check",
+		"UPDATE sprint.streams SET forge = NULL":         `"forge"`,
+		"UPDATE sprint.meta SET restored_digest = 'abc'": "meta_restored_digest_check",
 		"UPDATE sprint.rows SET tiers = NULL":            `"tiers"`,
 		"UPDATE sprint.rows SET model = NULL":            `"model"`,
 		"UPDATE sprint.rows SET harness = NULL":          `"harness"`,
@@ -777,7 +777,6 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"UPDATE sprint.rows SET epoch = 2":                       "rows_key_fixed_check",
 		"UPDATE sprint.streams SET name = 'renamed'":             "streams_key_fixed_check",
 		"UPDATE sprint.streams SET epoch = 2":                    "streams_key_fixed_check",
-		"UPDATE sprint.rows SET width = -1":                      "rows_width_check",
 		"UPDATE sprint.rows SET flaps = -1":                      "rows_flaps_check",
 		"UPDATE sprint.rows SET gen = -1":                        "rows_gen_check",
 		"UPDATE sprint.streams SET pos = -1":                     "streams_pos_check",
@@ -833,8 +832,7 @@ func TestFunctionalSchemaEnforces(t *testing.T) {
 		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c3', 'producer', 'pro', 's9', 'ready', 1)":                                         "cards_epoch_stream_fkey",
 		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c3', 'producer', 'pro', 's1', 'ready', 2)":                                         "cards_epoch_stream_fkey",
 		"INSERT INTO sprint.cards (id, stream, state, epoch) VALUES ('c3', 's1', 'ready', 1)":                                                                        `"kind"`,
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'robot', 'up', 1)":                                                                         "rows_kind_check",
-		"INSERT INTO sprint.rows (name, kind, state, epoch) VALUES ('w2', 'kin', 'asleep', 1)":                                                                       "rows_state_check",
+		"INSERT INTO sprint.rows (name, state, epoch) VALUES ('w2', 'asleep', 1)":                                                                                    "rows_state_check",
 		"UPDATE sprint.rows SET state = 'blocked'":                                                                                                                   "rows_state_check",
 		"UPDATE sprint.rows SET session = NULL":                                                                                                                      `"session"`,
 		"INSERT INTO sprint.epoch (id, n) VALUES (2, 5)":                                                                                                             "epoch_id_check",

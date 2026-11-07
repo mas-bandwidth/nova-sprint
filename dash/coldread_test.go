@@ -215,6 +215,7 @@ func TestColdreadLostConnection(t *testing.T) {
 
 // 5: the refresh path at 5,000 producers (+1,000 consumers): idle tick, one-event tick, HTTP JSON.
 func TestColdreadRefresh5000(t *testing.T) {
+	requireDashLoad(t)
 	for _, n := range []int{5000, 20000} {
 		ctx := context.Background()
 		f := store.NewFake()
@@ -404,6 +405,7 @@ func TestColdreadDefectStreamPagesDead(t *testing.T) {
 
 // 2 + 5, functional: a throwaway PostgreSQL, 5,000 producers, cold snapshot then deltas.
 func TestColdreadFunctionalPG5000(t *testing.T) {
+	requireDashLoad(t)
 	dsn := startPG(t)
 	ctx := context.Background()
 	var pg *store.PG
@@ -446,5 +448,46 @@ func TestColdreadFunctionalPG5000(t *testing.T) {
 	t.Logf("pg 5000: worst advance=%s snapshots=%d", worst, s.snapshots)
 	if s.snapshots != 1 || worst > 100*time.Millisecond {
 		t.Errorf("snapshots=%d worst=%s", s.snapshots, worst)
+	}
+}
+
+// TestRefreshCountsAndShape keeps a small deterministic counterpart to the load measurement.
+func TestRefreshCountsAndShape(t *testing.T) {
+	ctx := context.Background()
+	f := store.NewFake()
+	seedSprint(t, f, 20)
+	s := &tapStore{Store: f}
+	c, err := New(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Advance(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	mustApply(t, f, "shape-land", 1, store.SetCardState{Card: "p00001", State: "landed"})
+	if err := c.Advance(ctx, s); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := f.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.snapshots != 1 || !reflect.DeepEqual(c.state, fresh) {
+		t.Fatal("incremental fold differs from snapshot")
+	}
+	rec := httptest.NewRecorder()
+	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
+	var got struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			All    int `json:"all"`
+			Landed int `json:"landed"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != 200 || !got.OK || got.Data.All != 20 || got.Data.Landed != 1 {
+		t.Fatalf("unexpected page shape: %s", rec.Body.String())
 	}
 }
