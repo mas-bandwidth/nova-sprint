@@ -32,6 +32,23 @@ func TestFunctionalSetupLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	admin, err := pgx.Connect(ctx, lock.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = admin.Exec(ctx, "CREATE ROLE sprint_check LOGIN"); err != nil {
+		t.Fatal(err)
+	}
+	admin.Close(ctx)
+	childDSN := lock.DSN + " user=sprint_check"
+	found, err := VerifySetupLeaseOwner(ctx, childDSN, "", "host-a", 42)
+	if err != nil || !found {
+		t.Fatal(found, err)
+	}
+	found, err = VerifySetupLeaseOwner(ctx, childDSN, "", "host-a", 43)
+	if err != nil || found {
+		t.Fatal(found, err)
+	}
 	_, err = lock.Acquire(ctx)
 	var op *OperationError
 	if !errors.As(err, &op) || op.Problem != "setup already running on host-a (pid 42)" {
@@ -42,6 +59,10 @@ func TestFunctionalSetupLock(t *testing.T) {
 	}
 	if err = lease.Close(); err != nil {
 		t.Fatal(err)
+	}
+	found, err = VerifySetupLeaseOwner(ctx, childDSN, "", "host-a", 42)
+	if err != nil || found {
+		t.Fatal(found, err)
 	}
 	lease, err = lock.Acquire(ctx)
 	if err != nil {
