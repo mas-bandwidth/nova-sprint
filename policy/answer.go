@@ -74,35 +74,20 @@ func (e *Engine) AnswerContext(ctx context.Context, vs Versions, snap store.Snap
 	return e.race(ctx, start, tried, asks)
 }
 
-// Judgements are the judgements a tick opens: one per failing version with
-// none open (its group key), and one per row of the snapshot ro does not
-// name with none open ("row <name> is not in nova-config", group key
-// roster:<name>), each named by the snapshot's seq so an id is never reused
-// after an answer.
-func Judgements(snap store.Snapshot, ro roster.Roster, failed []Failure) []store.PutJudgement {
+// Judgements are the policy judgements a tick opens: one per failing version
+// with none open (its group key), named by the snapshot's seq so an id is
+// never reused after an answer. A row nova-config does not name is the
+// steps' roster judgement (steps.RosterGroup), never one here as well: the
+// e2e found two for one coordinator.
+func Judgements(snap store.Snapshot, _ roster.Roster, failed []Failure) []store.PutJudgement {
 	var out []store.PutJudgement
 	for _, f := range failed {
 		if f.Version >= 0 && len(OpenJudgements(snap, f.Version)) == 0 { // -1: a refused tick (stale versions), no version's fault
 			out = append(out, f.Judgement(snap.Seq))
 		}
 	}
-	open := map[string]bool{}
-	for _, j := range snap.Judgements {
-		open[j.Group] = open[j.Group] || j.State == "open"
-	}
-	for i, name := range slices.Sorted(maps.Keys(snap.Rows)) {
-		if _, ok := rosterOf(ro, snap.Rows[name]); !ok && !open[RosterGroup(name)] {
-			id := fmt.Sprintf("roster-s%d-%d", snap.Seq, i)
-			out = append(out, store.PutJudgement{ID: id, Kind: "roster", About: name, Question: "row " + name + " is not in nova-config",
-				Command: "nova-config friend add " + name + " (or nova-sprint judge " + id + " retry --reason <why> once it is)", Group: RosterGroup(name)})
-		}
-	}
 	return out
 }
-
-// RosterGroup is the group key of the judgement that row name is not in
-// nova-config.
-func RosterGroup(name string) string { return "roster:" + name }
 
 // ask is one question about one subject, with the check that validates its
 // answer into what it sets (for rows, into names the tick interns), and for
