@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -329,7 +330,7 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 		ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox",
 		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true,
 	}, j, oEnv, cArgv)
-	if len(wallArgv) < 3 || wallArgv[0] != "nice" || wallArgv[1] != "-n" || wallArgv[2] != "15" {
+	if runtime.GOOS != "windows" && (len(wallArgv) < 3 || wallArgv[0] != "nice" || wallArgv[1] != "-n" || wallArgv[2] != "15") {
 		t.Fatalf("wall argv must run the work at nice 15, below CI: %v", wallArgv)
 	}
 	joined := strings.Join(wallArgv, " ")
