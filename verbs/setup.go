@@ -48,10 +48,12 @@ type Setup interface {
 
 func parseSetup(args []string, actor string) (SetupInput, bool) {
 	in := SetupInput{Actor: actor}
+	seen := make(map[string]bool)
 	for i := 0; i < len(args); i++ {
-		if i+1 >= len(args) || args[i+1] == "" {
+		if i+1 >= len(args) || args[i+1] == "" || strings.HasPrefix(args[i+1], "--") || len(args[i+1]) > 512 || seen[args[i]] {
 			return in, false
 		}
+		seen[args[i]] = true
 		value := args[i+1]
 		switch args[i] {
 		case "--as":
@@ -73,6 +75,9 @@ func parseSetup(args []string, actor string) (SetupInput, bool) {
 		}
 		i++
 	}
+	if !validSetupActor(in.Actor) {
+		return in, false
+	}
 	if in.Continuation != "" && !validContinuationID(in.Continuation) {
 		return in, false
 	}
@@ -82,9 +87,24 @@ func parseSetup(args []string, actor string) (SetupInput, bool) {
 	return in, true
 }
 
+func validSetupActor(actor string) bool {
+	if len(actor) == 0 || len(actor) > 128 {
+		return false
+	}
+	for _, c := range actor {
+		if !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && !(c >= '0' && c <= '9') && c != '.' && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 func (e *Engine) up(ctx context.Context, args []string) Result {
 	in, ok := parseSetup(args, e.Actor)
 	if !ok {
+		if !validSetupActor(in.Actor) {
+			return refused("up", "invalid coordinator", "nova-sprint up --as <name>")
+		}
 		return refused("up", "invalid arguments", "nova-sprint help up")
 	}
 	if e.Setup == nil {
