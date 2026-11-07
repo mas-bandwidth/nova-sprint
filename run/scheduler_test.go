@@ -31,16 +31,8 @@ type fakePresence struct {
 
 func (p *fakePresence) Who(context.Context) ([]string, error) {
 	p.calls++
-	return []string{"alice"}, p.err
+	return []string{"alice", "sprint"}, p.err
 }
-
-type fakeConfig struct {
-	calls int
-	err   error
-	rows  []ConfiguredRow
-}
-
-func (c *fakeConfig) Rows(context.Context) ([]ConfiguredRow, error) { c.calls++; return c.rows, c.err }
 
 type fakePublisher struct{ snapshots []store.Snapshot }
 
@@ -70,30 +62,34 @@ func (p *policyStore) Policy(ctx context.Context, v int) (store.PolicyVersion, e
 	return p.Store.Policy(ctx, v)
 }
 
-type observeSteps struct{ inputs []TickInput }
+type observeSteps struct {
+	inputs []TickInput
+	views  []store.Snapshot
+}
 
-func (s *observeSteps) Tick(_ context.Context, _ store.Snapshot, in TickInput) (TickPlan, error) {
+func (s *observeSteps) Tick(_ context.Context, view store.Snapshot, in TickInput) (TickPlan, error) {
+	s.views = append(s.views, view)
 	copyIn := in
-	copyIn.Config = copyConfig(in.Config)
 	if in.Policy != nil {
 		value := *in.Policy
 		copyIn.Policy = &value
 	}
 	s.inputs = append(s.inputs, copyIn)
-	if len(in.Config) > 0 {
-		in.Config[0].Tiers[0] = "mutated"
-	}
 	if in.Policy != nil {
 		in.Policy.Body = "mutated"
 	}
 	return TickPlan{}, nil
 }
-func TestSchedulerInputsCadenceAndIsolation(t *testing.T) {
+func TestSchedulerInputsAndPolicyIsolation(t *testing.T) {
 	ctx := context.Background()
 	base := store.NewFake()
 	r, err := base.Apply(ctx, op("policy", store.PutPolicy{Kind: "script", Name: "p", Body: "original"}))
 	if err != nil || !r.Accepted {
 		t.Fatalf("policy %v %+v", err, r)
+	}
+	r, err = base.Apply(ctx, op("row", store.PutRow{Name: "alice", Kind: "worker", Width: 2, Tiers: []string{"pro"}}))
+	if err != nil || !r.Accepted {
+		t.Fatalf("row %v %+v", err, r)
 	}
 	r, err = base.Apply(ctx, op("activate", store.SetActivePolicy{Version: 1}))
 	if err != nil || !r.Accepted {
@@ -107,23 +103,28 @@ func TestSchedulerInputsCadenceAndIsolation(t *testing.T) {
 	}
 	clock := &fakeClock{at: time.Unix(1000, 0)}
 	presence := &fakePresence{}
-	config := &fakeConfig{rows: []ConfiguredRow{{Name: "alice", Width: 2, Tiers: []string{"pro"}}}}
 	pub := &fakePublisher{}
 	log := &fakeLogger{}
-	sched, err := NewScheduler(engine, clock, presence, config, pub, log, fakeResults{}, fakeDeadline{}, 2)
+	sched, err := NewScheduler(engine, clock, presence, pub, log, fakeResults{}, fakeDeadline{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
+		if i == 1 {
+			applyOK(t, base, op("width", store.SetRowWidth{Row: "alice", Width: 3}))
+		}
 		if err = sched.Step(ctx, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if presence.calls != 3 || config.calls != 2 || storeView.reads != 1 {
-		t.Fatalf("presence=%d config=%d policy=%d", presence.calls, config.calls, storeView.reads)
+	if steps.views[0].Rows["alice"].Width != 2 || steps.views[1].Rows["alice"].Width != 3 {
+		t.Fatalf("folded row widths: %d, %d", steps.views[0].Rows["alice"].Width, steps.views[1].Rows["alice"].Width)
+	}
+	if presence.calls != 3 || storeView.reads != 1 {
+		t.Fatalf("presence=%d policy=%d", presence.calls, storeView.reads)
 	}
 	for _, in := range steps.inputs {
-		if !in.At.Equal(clock.at) || len(in.Presence) != 1 || in.Config[0].Tiers[0] != "pro" || in.Policy.Body != "original" {
+		if !in.At.Equal(clock.at) || len(in.Presence) != 2 || in.Policy.Body != "original" {
 			t.Fatalf("input=%+v", in)
 		}
 	}
@@ -131,7 +132,7 @@ func TestSchedulerInputsCadenceAndIsolation(t *testing.T) {
 		t.Fatalf("publish=%d logs=%+v", len(pub.snapshots), log.ticks)
 	}
 }
-func TestSchedulerRetriesFailedConfigAndKeepsResults(t *testing.T) {
+func TestSchedulerRetriesFailedPresenceAndKeepsResults(t *testing.T) {
 	ctx := context.Background()
 	steps := &tickSteps{}
 	engine, err := NewEngine(ctx, store.NewFake(), &tickGuard{}, steps, &tickEdges{})
@@ -139,20 +140,20 @@ func TestSchedulerRetriesFailedConfigAndKeepsResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	clock := &fakeClock{at: time.Unix(1000, 0)}
-	config := &fakeConfig{err: errors.New("offline"), rows: []ConfiguredRow{{Name: "alice", Tiers: []string{"pro"}}}}
-	sched, err := NewScheduler(engine, clock, &fakePresence{}, config, &fakePublisher{}, &fakeLogger{}, fakeResults{}, fakeDeadline{}, 5)
+	presence := &fakePresence{err: errors.New("offline")}
+	sched, err := NewScheduler(engine, clock, presence, &fakePublisher{}, &fakeLogger{}, fakeResults{}, fakeDeadline{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = sched.Step(ctx, []EdgeResult{{ID: "edge"}}); err == nil {
-		t.Fatal("expected config error")
+		t.Fatal("expected presence error")
 	}
-	config.err = nil
+	presence.err = nil
 	if err = sched.Step(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if config.calls != 2 || len(steps.inputs) != 1 || len(steps.inputs[0].Inbox) != 1 || steps.inputs[0].Inbox[0].ID != "edge" {
-		t.Fatalf("calls=%d input=%+v", config.calls, steps.inputs)
+	if presence.calls != 2 || len(steps.inputs) != 1 || len(steps.inputs[0].Inbox) != 1 || steps.inputs[0].Inbox[0].ID != "edge" {
+		t.Fatalf("calls=%d input=%+v", presence.calls, steps.inputs)
 	}
 }
 func TestSchedulerStopsOnObservedLockLoss(t *testing.T) {
@@ -165,7 +166,7 @@ func TestSchedulerStopsOnObservedLockLoss(t *testing.T) {
 	clock := &fakeClock{at: time.Unix(1000, 0), ticks: make(chan time.Time, 1)}
 	clock.ticks <- clock.at
 	guard.err = ErrLockLost
-	sched, err := NewScheduler(engine, clock, &fakePresence{}, &fakeConfig{}, &fakePublisher{}, &fakeLogger{}, fakeResults{}, fakeDeadline{}, 1)
+	sched, err := NewScheduler(engine, clock, &fakePresence{}, &fakePublisher{}, &fakeLogger{}, fakeResults{}, fakeDeadline{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +185,7 @@ func TestSchedulerChecksLockBeforePresence(t *testing.T) {
 	guard.err = ErrLockLost
 	presence := &fakePresence{err: errors.New("offline")}
 	pub := &fakePublisher{}
-	sched, err := NewScheduler(engine, &fakeClock{at: time.Unix(1000, 0)}, presence, &fakeConfig{}, pub, &fakeLogger{}, fakeResults{}, fakeDeadline{}, 1)
+	sched, err := NewScheduler(engine, &fakeClock{at: time.Unix(1000, 0)}, presence, pub, &fakeLogger{}, fakeResults{}, fakeDeadline{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,5 +231,24 @@ func TestPlannedAndCommittedPolicyAreDistinct(t *testing.T) {
 	last := events[len(events)-1]
 	if last.Policy != 2 || !strings.Contains(last.Receipt.Note, "planned_policy=1") || engine.plannedPolicy() != 1 {
 		t.Fatalf("event=%+v planned=%d", last, engine.plannedPolicy())
+	}
+}
+
+type absentSprint struct{}
+
+func (absentSprint) Who(context.Context) ([]string, error) { return []string{"alice"}, nil }
+func TestSchedulerStopsIfSprintHookNotPresent(t *testing.T) {
+	ctx := context.Background()
+	steps := &tickSteps{}
+	engine, err := NewEngine(ctx, store.NewFake(), &tickGuard{}, steps, &tickEdges{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sched, err := NewScheduler(engine, &fakeClock{at: time.Unix(1000, 0)}, absentSprint{}, &fakePublisher{}, &fakeLogger{}, fakeResults{}, fakeDeadline{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sched.Step(ctx, nil); !errors.Is(err, ErrLockLost) || len(steps.inputs) != 0 {
+		t.Fatalf("err=%v planned=%d", err, len(steps.inputs))
 	}
 }

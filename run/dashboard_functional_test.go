@@ -47,7 +47,7 @@ func TestFunctionalDashboardStaleAfterEventFailures(t *testing.T) {
 	clock := &fakeClock{at: time.Unix(1000, 0)}
 	cache := dash.NewFromSnapshot(engine.State(), clock.Now)
 	pub := &immediateDashboard{cache: cache}
-	sched, err := NewScheduler(engine, clock, &fakePresence{}, &fakeConfig{}, pub, &fakeLogger{}, fakeResults{}, fakeDeadline{}, 1)
+	sched, err := NewScheduler(engine, clock, &fakePresence{}, pub, &fakeLogger{}, fakeResults{}, fakeDeadline{})
 	require.NoError(t, err)
 	require.NoError(t, sched.Step(ctx, nil))
 	require.Equal(t, 1, pub.updates)
