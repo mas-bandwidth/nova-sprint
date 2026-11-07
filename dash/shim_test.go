@@ -15,7 +15,7 @@ func TestMapRepresentative(t *testing.T) {
 	d := mapSnapshot(s, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
 	f := d.Tables["friends"].(map[string]*fleetRow)["kin"]
-	if d.All != 3 || w.Blocked != 1 || w.Fail != 1 || w.Fix != 1 || w.Cost == nil || *w.Cost != 1.2 {
+	if d.All != 3 || w.Blocked != 1 || w.Fail != 1 || w.Fix != 1 || w.Cost == nil || w.Cost.Int64() != 120 {
 		t.Fatalf("work=%+v all=%d", w, d.All)
 	}
 	if f.Status != "held" || f.Done != 2 || f.OK != 1 || f.OKPct != 100 {

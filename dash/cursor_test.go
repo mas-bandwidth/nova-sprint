@@ -118,8 +118,8 @@ func TestCursorClearRaceRecovers(t *testing.T) {
 		t.Fatal("stale epoch cursor was not refused")
 	}
 	after := c.pageSnapshot().Data.(envelope)
-	if after.At != before.At || after.Epoch != before.Epoch {
-		t.Fatal("failed advance changed last-good view")
+	if after.At.Before(before.At) || after.Epoch != before.Epoch || !after.OK {
+		t.Fatal("cursor refusal did not publish the read prefix")
 	}
 	if e = c.Advance(ctx, s); e != nil {
 		t.Fatal(e)
@@ -169,6 +169,8 @@ func (s blockingStore) Events(ctx context.Context, after int64, max int) ([]stor
 	return nil, ctx.Err()
 }
 func TestAdvanceDeadline(t *testing.T) {
+	defer func(d time.Duration) { AdvanceDeadline = d }(AdvanceDeadline)
+	AdvanceDeadline = 500 * time.Millisecond
 	ctx := context.Background()
 	f := store.NewFake()
 	c, e := New(ctx, f)

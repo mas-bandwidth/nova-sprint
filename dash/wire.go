@@ -5,27 +5,25 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
-	"strings"
 )
 
 func integer(n int) string { return strconv.Itoa(n) }
-func moneyCell(n *float64) string {
-	if n == nil {
+func moneyCell(cents *big.Int) string {
+	if cents == nil {
 		return "-"
 	}
-	raw := fmt.Sprintf("%.2f", *n)
-	parts := strings.SplitN(raw, ".", 2)
-	digits := parts[0]
+	dollars, fraction := new(big.Int), new(big.Int)
+	dollars.QuoRem(cents, big.NewInt(100), fraction)
+	digits := dollars.String()
 	for i := len(digits) - 3; i > 0; i -= 3 {
 		digits = digits[:i] + "," + digits[i:]
 	}
-	return "$" + digits + "." + parts[1]
+	return fmt.Sprintf("$%s.%02d", digits, fraction.Int64())
 }
 func (w workRow) MarshalJSON() ([]byte, error) {
 	tiers := map[string]string{}
 	for k, v := range w.ByTier {
-		x := v
-		tiers[k] = moneyCell(&x)
+		tiers[k] = moneyCell(v)
 	}
 	return json.Marshal(map[string]any{"blocked": integer(w.Blocked), "waiting": integer(w.Waiting), "ready": integer(w.Ready), "working": integer(w.Working), "review": integer(w.Review), "fix": integer(w.Fix), "merging": integer(w.Merging), "landed": integer(w.Landed), "fail": integer(w.Fail), "cost": moneyCell(w.Cost), "cost_by_tier": tiers})
 }
@@ -64,13 +62,7 @@ func (s *streamCost) MarshalJSON() ([]byte, error) {
 	for key, micros := range s.amounts {
 		cents := new(big.Int).Add(micros, big.NewInt(9999))
 		cents.Div(cents, big.NewInt(10000))
-		dollars, fraction := new(big.Int), new(big.Int)
-		dollars.QuoRem(cents, big.NewInt(100), fraction)
-		digits := dollars.String()
-		for i := len(digits) - 3; i > 0; i -= 3 {
-			digits = digits[:i] + "," + digits[i:]
-		}
-		out[key] = fmt.Sprintf("$%s.%02d", digits, fraction.Int64())
+		out[key] = moneyCell(cents)
 	}
 	return json.Marshal(out)
 }
