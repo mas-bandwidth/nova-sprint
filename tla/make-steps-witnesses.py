@@ -180,8 +180,8 @@ WITNESSES = [
        "                       ELSE IF ar = \"failed\" THEN NoR ELSE DefaultRow(V, x, t)   \\* FAULT", 1)]),
     ("StepsOldestVictim", "PreemptYoungest", "pre",
      "The victim default is the oldest working consumer, not the youngest.",
-     [("VictimFor(W, S, av) == IF av = \"oldest\" THEN Oldest(W, S) ELSE Youngest(W, S)",
-       "VictimFor(W, S, av) == Oldest(W, S)   \\* FAULT: the default was Youngest(W, S)", 1)]),
+     [("VictimFor(W, S) == Youngest(W, S)",
+       "VictimFor(W, S) == CHOOSE c \\in S : \\A d \\in S : Pos(W.tko, c) <= Pos(W.tko, d)   \\* FAULT: the oldest, not Youngest(W, S)", 1)]),
     ("StepsReadyCountedAgainstWidth", "ReadyDealtWhenRoom", "pre",
      "The deal counts ready consumers against width (a row is dealt only\n"
      "while ready plus working is under width): a ready producer with room\n"

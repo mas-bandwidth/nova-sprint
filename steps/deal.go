@@ -239,7 +239,7 @@ func (t *tick) ranked(c store.Card, kind string, rows []string) []string {
 // rank above the writer's row (the top stays the top); work at the card's
 // tier, one up at escalate_after bounces, the top at frontier_after.
 func (t *tick) desired(c store.Card, kind string) int {
-	top := len(store.Tiers) - 1
+	top := t.topRank()
 	if kind == "read" {
 		if rk := t.rank(c.Author); rk != "" {
 			return min(tierIndex(rk)+1, top)
@@ -254,6 +254,21 @@ func (t *tick) desired(c store.Card, kind string) int {
 		want++
 	}
 	return min(want, top)
+}
+
+// topRank is the highest rank any listed row serves: the top escalation
+// reaches (the top stays the top); the top tier when no row is listed.
+func (t *tick) topRank() int {
+	top := -1
+	for n := range t.v.Rows {
+		if t.listed(n) {
+			top = max(top, tierIndex(t.rank(n)))
+		}
+	}
+	if top < 0 {
+		return len(store.Tiers) - 1
+	}
+	return top
 }
 
 // withdrawnFrom says whether a consumer of c was withdrawn from row.

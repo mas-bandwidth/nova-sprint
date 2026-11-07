@@ -29,8 +29,11 @@
 (* cfg above any trace's length; the scenario (cards, rows, streams,      *)
 (* paths, tiers, which results occur) is the one the Go walk drives. The  *)
 (* oracle's answer for a Tick is the record's answer field when present   *)
-(* ([victim, rows], in the model's terms: "oldest" or "failed", a row or  *)
-(* "failed"), any of AnswersFor(snap) when absent.                        *)
+(* ([rows |-> r], r a row or "failed"), any of AnswersFor(snap) when       *)
+(* absent. The Go walk logs w in parts: ps, up, sh, tko whole, and cs as  *)
+(* the slots that are not "none" (every other slot must be "none"), so a   *)
+(* record stays small whatever K is; a record may log w whole instead.     *)
+(* A record that logs nothing of w leaves it to the model.                 *)
 (***************************************************************************)
 EXTENDS Steps, StepsTraceLog, TLC
 
@@ -43,9 +46,19 @@ TraceActions == {"Init", "Snap", "Tick", "Take", "Report", "Hold", "Unhold", "Go
 
 Has(r, f) == f \in DOMAIN r
 
+\* The store in parts: ps, up, sh, tko whole; cs as the live slots.
+Parts(W, r) ==
+  /\ Has(r, "ps")  => W.ps = r.ps
+  /\ Has(r, "up")  => W.up = r.up
+  /\ Has(r, "sh")  => W.sh = r.sh
+  /\ Has(r, "tko") => W.tko = r.tko
+  /\ Has(r, "cs")  => /\ \A c \in DOMAIN r.cs : c \in CIds /\ W.cs[c] = r.cs[c]
+                      /\ \A c \in CIds \ DOMAIN r.cs : W.cs[c].st = "none"
+
 \* The logged variables: a present field equals the variable.
 Logged(r) ==
   /\ Has(r, "w")        => w = r.w
+  /\ Parts(w, r)
   /\ Has(r, "snap")     => snap = r.snap
   /\ Has(r, "phase")    => phase = r.phase
   /\ Has(r, "inbox")    => inbox = r.inbox
@@ -56,6 +69,7 @@ Logged(r) ==
 \* The same after a step (written out, so the record index is not primed).
 LoggedNext(r) ==
   /\ Has(r, "w")        => w' = r.w
+  /\ Parts(w', r)
   /\ Has(r, "snap")     => snap' = r.snap
   /\ Has(r, "phase")    => phase' = r.phase
   /\ Has(r, "inbox")    => inbox' = r.inbox
