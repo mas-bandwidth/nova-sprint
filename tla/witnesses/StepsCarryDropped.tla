@@ -11,11 +11,10 @@
 (* as one atomic action.                                                   *)
 (*                                                                         *)
 (* The store w is the truth: producers, consumer slots, rows (up or down), *)
-(* each stream's hold, and the take order of working consumers (the        *)
-(* youngest is the last taken). Snap copies it to snap, the view; between  *)
+(* each stream's hold, and the deal order of working consumers (the        *)
+(* youngest is the last dealt). Snap copies it to snap, the view; between  *)
 (* Snap and Tick the rows and the coordinator move the store (Report, the *)
-(* stream's hold, a row's Gone and Seen; a Take races nothing a tick      *)
-(* fences, so it comes only between ticks), so a tick plans on a view     *)
+(* stream's hold, a row's Gone and Seen), so a tick plans on a view       *)
 (* that may be stale. Tick plans every step from snap alone, takes the    *)
 (* policy answers from an oracle (a), orders the groups, keeps the        *)
 (* budget, packs groups into ops of up to Pack, and applies the ops in     *)
@@ -26,8 +25,23 @@
 (* an op of its own. Judgements are written by the tick directly (not    *)
 (* fenced, not counted in the budget).                                    *)
 (*                                                                         *)
+(* The deal is the take (defect 52, intent rule 33): Start and AskRead    *)
+(* cut their consumer working, in its row's hand, and a row is dealt only *)
+(* while its working consumers are under its width (there is no ahead).  *)
+(* The row's take is an acknowledgement (a cursor) that moves nothing the *)
+(* steps read, so it is not an action here; the nudges it stops are       *)
+(* layer 6's.                                                             *)
+(*                                                                         *)
+(* The undealt judgement (directive 65): rdy[p] counts the ticks in a row *)
+(* that left producer p ready with room on an open serving row (RoomIn,   *)
+(* in the view); at UndealtTicks the tick opens the judgement (ju), which *)
+(* expires when p is not ready. DealtWithinKTicks: a ready producer with  *)
+(* room is dealt within UndealtTicks ticks or its judgement is open. The  *)
+(* code counts the same in seconds (UndealtAfter, one tick a second), so  *)
+(* ju is not in the trace records (StepsTrace leaves it to the model).    *)
+(*                                                                         *)
 (* Inputs (LAYER-6's reading, which the build rules make win): reports    *)
-(* and takes are the rows' own store ops (Report, Take), already in the   *)
+(* are the rows' own store ops (Report), already in the                   *)
 (* store when the tick folds; the inbox holds edge results only: a        *)
 (* landing outcome and a runner's ack of a stop. A landing outcome is     *)
 (* landed (the one automatic move) or red, which stands for every other   *)
@@ -85,7 +99,7 @@
 (* one no-policy judgement on the coordinator's row says so; resolve,     *)
 (* fix, the inbox and landing go on.                                      *)
 (* Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and *)
-(* 2 (rank 2). ahead is 2 x width (LPM D21).                              *)
+(* 2 (rank 2).                                                             *)
 (*                                                                         *)
 (* last is the step monitor of the last tick: bad is the set of checks    *)
 (* the tick broke (each computed from the view, the store before and      *)
@@ -114,13 +128,15 @@ Rows      == {"r1", "r2"}
 RowIdx(r) == IF r = "r1" THEN 1 ELSE 2
 Streams   == {"s1", "s2"}
 Width     == [r \in Rows |-> IF r = "r1" THEN 1 ELSE 2]
-Ahead     == [r \in Rows |-> 2 * Width[r]]
 RowTiers  == [r \in Rows |-> IF r = "r1" THEN {1} ELSE {1, 2}]
 Rank      == [r \in Rows |-> IF r = "r1" THEN 1 ELSE 2]
 MaxRank   == 2
 \* escalate_after is 2 by default (unmeasured); the model bounds bounces at
 \* MaxBounce, so it escalates after 1.
 EscalateAfter == 1
+\* The undealt judgement's bound, in ticks: the code's UndealtAfter is 2 s
+\* at one tick a second (a guess, not measured).
+UndealtTicks == 2
 TierName(t) == IF t = 1 THEN "t1" ELSE "t2"
 
 Stream == [p \in Prods |-> CASE p = "p" -> "s1"
@@ -190,9 +206,12 @@ VARIABLES
   arrived,   \* inbox items so far (each item's stamp)
   processed, \* inbox items consumed so far
   env,       \* environment moves so far
-  last       \* the step monitor: [tags, bad]
+  last,      \* the step monitor: [tags, bad]
+  rdy,       \* producer -> ticks in a row it was left ready with room (0..UndealtTicks)
+  ju         \* producers with an open undealt judgement
 
-vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last>>
+vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last, rdy, ju>>
+aux  == <<rdy, ju>>
 Clean == [tags |-> {}, bad |-> {}]
 
 -----------------------------------------------------------------------------
@@ -205,6 +224,11 @@ Working(W, r)   == {c \in CIds : W.cs[c].st = "working" /\ W.cs[c].row = r}
 Load(W, r)      == {c \in CIds : Live(W, c) /\ W.cs[c].row = r}
 Serves(r, p)    == Tier[p] \in RowTiers[r]
 ServingOpen(W, p) == {r \in Rows : W.up[r] /\ Serves(r, p)}
+\* Room for p: under the model's bounds, an open serving row with working
+\* consumers under its width.
+RoomIn(W, p)    == /\ W.ps[p].att < MaxAtt
+                   /\ W.ps[p].ncut < K
+                   /\ \E r \in ServingOpen(W, p) : Cardinality(Load(W, r)) < Width[r]
 BackOf(W, p)    == IF W.sh[Stream[p]] THEN "waiting" ELSE "ready"
 NextSlot(W, p)  == <<p, W.ps[p].ncut + 1>>
 NeedsLanded(W, p) == \A n \in Needs[p] : W.ps[n].st = "landed"
@@ -216,7 +240,7 @@ First(seq, S) == seq[CHOOSE i \in 1..Len(seq) : seq[i] \in S /\ \A j \in 1..(i -
 Youngest(W, S) == CHOOSE c \in S : \A d \in S : Pos(W.tko, d) <= Pos(W.tko, c)
 
 \* Start (CardMachine Start): p to working, attempt + 1, a work consumer
-\* cut ready on r.
+\* cut working on r, in the row's hand (the deal is the take).
 StartOK(W, p, r) ==
   /\ W.ps[p].st = "ready"
   /\ W.up[r]
@@ -226,7 +250,7 @@ StartOK(W, p, r) ==
   /\ W.ps[p].ncut < K
 StartedP(W, p) == [W.ps[p] EXCEPT !.st = "working", !.att = @ + 1, !.author = NoR,
                                   !.ncut = @ + 1, !.red = FALSE]
-StartCut(W, p, r) == [st |-> "ready", kind |-> "work", row |-> r, att |-> W.ps[p].att + 1,
+StartCut(W, p, r) == [st |-> "working", kind |-> "work", row |-> r, att |-> W.ps[p].att + 1,
                       res |-> "-", review |-> 0]
 
 \* AskRead (CardMachine AskRead): a read of the current review on a row
@@ -239,7 +263,7 @@ ReadOK(W, p, r) ==
   /\ Serves(r, p)
   /\ W.ps[p].ncut < K
   /\ ~\E k \in LiveOf(W, p) : W.cs[k].kind = "read"
-ReadCut(W, p, r) == [st |-> "ready", kind |-> "read", row |-> r, att |-> W.ps[p].att,
+ReadCut(W, p, r) == [st |-> "working", kind |-> "read", row |-> r, att |-> W.ps[p].att,
                      res |-> "-", review |-> W.ps[p].review]
 CurReads(W, p) == {c \in ConsOf(p) : W.cs[c].kind = "read" /\ W.cs[c].st # "none"
                                      /\ W.cs[c].review = W.ps[p].review}
@@ -327,13 +351,15 @@ PreWrites(W, g) ==
       ps1 == IF Releases(W, g.c) THEN [W.ps EXCEPT ![v].st = BackOf(W, v)] ELSE W.ps
   IN [W EXCEPT !.ps  = [ps1 EXCEPT ![g.p] = StartedP(W, g.p)],
                !.cs  = [W.cs EXCEPT ![g.c].st = "fail", ![NextSlot(W, g.p)] = StartCut(W, g.p, g.r)],
-               !.tko = Drop(W.tko, g.c)]
+               !.tko = Append(Drop(W.tko, g.c), NextSlot(W, g.p))]
 ApplyG(W, g) ==
   CASE g.kind = "pre"     -> PreWrites(W, g)
     [] g.kind = "start"   -> [W EXCEPT !.ps[g.p] = StartedP(W, g.p),
-                                       !.cs[NextSlot(W, g.p)] = StartCut(W, g.p, g.r)]
+                                       !.cs[NextSlot(W, g.p)] = StartCut(W, g.p, g.r),
+                                       !.tko = Append(@, NextSlot(W, g.p))]
     [] g.kind = "read"    -> [W EXCEPT !.ps[g.p].ncut = @ + 1,
-                                       !.cs[NextSlot(W, g.p)] = ReadCut(W, g.p, g.r)]
+                                       !.cs[NextSlot(W, g.p)] = ReadCut(W, g.p, g.r),
+                                       !.tko = Append(@, NextSlot(W, g.p))]
     [] g.kind = "yes"     -> [W EXCEPT !.ps[g.p].st = "merging"]
     [] g.kind = "fix"     -> [W EXCEPT !.ps[g.p].st = BackOf(W, g.p), !.ps[g.p].bounces = @ + 1]
     [] g.kind = "resolve" -> [W EXCEPT !.ps[g.p].st = "ready"]
@@ -430,7 +456,8 @@ FixSet(V, cl, yes) == {p \in Prods : Free(p, cl) /\ Settled(V, p) /\ AllOk(V, p)
 
 \* Deal and reads. Candidates down the ladder: blocker work, every read
 \* owed, normal work; within a rung, id order (policy's order, default).
-\* A row is dealt while ready plus working is under width plus ahead.
+\* A row is dealt while its working consumers are under its width: what is
+\* dealt is in the row's hand (defect 52), so there is no ahead.
 \* Escalation is row choice: the default rank is the card's tier, one up
 \* once its bounces reach escalate_after; a read's is the rank above its
 \* author's row. A row below the card's tier is never eligible.
@@ -442,13 +469,13 @@ Used(V, r, t) == Cardinality(Load(V, r)) + t[r]
 Eligible(V, x, r, t) ==
   /\ V.up[r]
   /\ Serves(r, x.p)
-  /\ Used(V, r, t) < Width[r] + Ahead[r]
+  /\ Used(V, r, t) < Width[r]
   /\ (x.kind = "read" => r # V.ps[x.p].author)
 \* The default: the desired rank exactly, then above it, then an idle
 \* lane, then most room, then name.
 Score(V, x, r, t) ==
   (CASE Rank[r] = Desired(V, x) -> 100 [] Rank[r] > Desired(V, x) -> 50 [] OTHER -> 0)
-  + (IF Used(V, r, t) = 0 THEN 10 ELSE 0) + (Width[r] + Ahead[r] - Used(V, r, t))
+  + (IF Used(V, r, t) = 0 THEN 10 ELSE 0) + (Width[r] - Used(V, r, t))
 DefaultRow(V, x, t) ==
   LET E == {r \in Rows : Eligible(V, x, r, t)}
   IN IF E = {} THEN NoR
@@ -479,7 +506,9 @@ DealFold(V, cands, i, acc, ar, useAns) ==
                 ar, useAns)
 Cands(V, cl) ==
   LET bl == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "blocker" /\ V.ps[p].st = "ready" /\ Free(p, cl))
-      rd == SelectSeq(ProdSeq, LAMBDA p : ReadOwed(V, p) /\ Free(p, cl))
+      \* a held stream asks no read (the code's dealRead returns first; found
+      \* by the trace check, steps-walk-land-1, 2026-11-07)
+      rd == SelectSeq(ProdSeq, LAMBDA p : ReadOwed(V, p) /\ ~V.sh[Stream[p]] /\ Free(p, cl))
       nm == SelectSeq(ProdSeq, LAMBDA p : V.ps[p].prio = "normal" /\ V.ps[p].st = "ready" /\ Free(p, cl))
   IN [i \in 1..Len(bl) |-> [p |-> bl[i], kind |-> "work"]]
        \o [i \in 1..Len(rd) |-> [p |-> rd[i], kind |-> "read"]]
@@ -655,6 +684,8 @@ Init ==
   /\ processed = 0
   /\ env = 0
   /\ last = Clean
+  /\ rdy = [p \in Prods |-> 0]
+  /\ ju = {}
 
 Snap ==
   /\ phase = "idle"
@@ -663,6 +694,7 @@ Snap ==
   /\ jsnap' = js
   /\ last' = Clean
   /\ UNCHANGED <<w, inbox, inflight, js, split, arrived, processed, env>>
+  /\ UNCHANGED aux
 
 \* Judgements the tick opens (unserved per tier, cannot-read per producer,
 \* policy per question, overlap per held producer, no-policy on the
@@ -716,6 +748,11 @@ Tick(a) ==
                    \cup (IF V.pol THEN {} ELSE {[kind |-> "no-policy", about |-> "coord"]})
          jsn  == (js \ Expired(V, js)) \cup jnew
          accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
+         \* Left ready with room: a candidate of the view the tick did not deal.
+         \* A run with no active policy deals nothing and says so (no-policy),
+         \* so the gate counts nothing toward undealt.
+         und  == {p \in Prods : V.pol /\ V.ps[p].st = "ready" /\ ~V.sh[Stream[p]] /\ RoomIn(V, p)
+                                /\ ap.w.ps[p].st = "ready"}
          tags == (IF \E g \in accd : g.kind = "pre" THEN {"pre"} ELSE {})
                  \cup (IF ap.ref # {} THEN {"refused"} ELSE {})
                  \cup (IF \E i \in 1..Len(Real(adm)) : Alone(Real(adm)[i], split) THEN {"split"} ELSE {})
@@ -740,21 +777,16 @@ Tick(a) ==
         /\ last' = [tags |-> tags,
                     bad  |-> TickChecks(V, W, ap.w, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4,
                                         res, inb.cl)]
+        /\ rdy' = [p \in Prods |-> IF p \in und THEN IF rdy[p] < UndealtTicks THEN rdy[p] + 1 ELSE rdy[p]
+                                                ELSE 0]
+        /\ ju' = {p \in ju : V.ps[p].st = "ready"} \cup {p \in und : rdy[p] + 1 >= UndealtTicks}
   /\ phase' = "idle"
   /\ snap' = W0
   /\ jsnap' = {}
   /\ UNCHANGED <<arrived, env>>
 
-\* A row takes a consumer dealt to it (layer 1's width write: working
-\* under width; a ready consumer is not counted). Take order is kept.
-Take(c) ==
-  /\ phase = "idle"   \* a take between fold and apply races nothing the tick fences
-  /\ w.cs[c].st = "ready"
-  /\ w.up[w.cs[c].row]
-  /\ Cardinality(Working(w, w.cs[c].row)) < Width[w.cs[c].row]
-  /\ w' = [w EXCEPT !.cs[c].st = "working", !.tko = Append(@, c)]
-  /\ last' = Clean
-  /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed, env>>
+\* There is no Take (defect 52): a consumer is dealt working, in its row's
+\* hand; the row's acknowledgement moves nothing the steps read.
 
 \* A row's report, applied by its verb as one op (LAYER-6): a work
 \* consumer's report moves its producer in the same plan (Finished,
@@ -776,6 +808,7 @@ Report(c, res) ==
                             !.ps[c[1]] = ReportMove(w, c[1], c, res)]
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed, env>>
+  /\ UNCHANGED aux
 
 \* The coordinator's hold (with Park of the stream's ready producers in the
 \* same op, LESSONS 2.20) and its lifting; a row's Gone and Seen.
@@ -787,7 +820,7 @@ UnholdsOf == CASE Scenario = "pre" -> {"s2"} [] Scenario = "land" -> {"s1"} [] O
 FlipsOf  == CASE Scenario = "pre" -> {"r2"} [] Scenario = "deal" -> {"r1"} [] OTHER -> {}
 \* In pre the active policy fails (a question errors or no version is
 \* active) and a fixed one is set; in deal a store op lands p by hand
-\* (land <card>), between ticks as Take and with no land request in
+\* (land <card>), between ticks and with no land request in
 \* flight for it, so no land step and no edge result sees it.
 PolFlips == Scenario = "pre"
 HandLandsOf == IF Scenario = "deal" THEN {"p"} ELSE {}
@@ -815,6 +848,7 @@ EnvMove ==
   /\ last' = IF \E p \in Prods : w.ps[p].st # "landed" /\ w'.ps[p].st = "landed"
              THEN [tags |-> {"handland"}, bad |-> {}] ELSE Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed>>
+  /\ UNCHANGED aux
 
 \* An edge's result reaches the inbox, once or twice.
 EdgeResult(f, out, n) ==
@@ -828,6 +862,7 @@ EdgeResult(f, out, n) ==
   /\ inflight' = (inflight \ {f}) \cup {[f EXCEPT !.sent = TRUE]}
   /\ last' = Clean
   /\ UNCHANGED <<w, snap, jsnap, phase, js, split, processed, env>>
+  /\ UNCHANGED aux
 
 \* The coordinator answers a land judgement (intent rule 32): land is the
 \* hand merge (Landed at its head), fix the producer to fix with the
@@ -847,11 +882,12 @@ Answer(p, choice) ==
   /\ js' = js \ {LandJ(p)}
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, split, arrived, processed, env>>
+  /\ UNCHANGED aux
 
 Next ==
   \/ Snap
   \/ \E a \in AnswersFor(snap) : Tick(a)
-  \/ \E c \in CIds : Take(c) \/ \E res \in WorkResults \cup ReadResults : Report(c, res)
+  \/ \E c \in CIds, res \in WorkResults \cup ReadResults : Report(c, res)
   \/ EnvMove
   \/ \E f \in inflight, out \in {"landed", "red", "ack"}, n \in 1..2 : EdgeResult(f, out, n)
   \/ \E p \in Prods, choice \in {"land", "fix", "retry"} : Answer(p, choice)
@@ -881,7 +917,9 @@ TypeOK ==
   /\ arrived \in 0..MaxArrive
   /\ processed \in 0..MaxArrive
   /\ env \in 0..MaxEnv
-  \* the take order holds every working consumer exactly once
+  /\ rdy \in [Prods -> 0..UndealtTicks]
+  /\ ju \subseteq Prods
+  \* the deal order holds every working consumer exactly once
   /\ \A c \in CIds : (w.cs[c].st = "working") <=> \E i \in 1..Len(w.tko) : w.tko[i] = c
   /\ \A i, j \in 1..Len(w.tko) : i # j => w.tko[i] # w.tko[j]
 
@@ -895,6 +933,14 @@ NeverDealtTwice ==
 
 (* Guarantee 2: no row is over width; working consumers only.             *)
 WidthKept == \A r \in Rows : Cardinality(Working(w, r)) <= Width[r]
+
+(* The deal is the take (defect 52): no consumer is ever dealt ready.     *)
+DealIsTake == \A c \in CIds : w.cs[c].st # "ready"
+
+(* Nothing sits unworked (intent rule 33, directive 65): a producer the   *)
+(* ticks left ready with room UndealtTicks times in a row has an open     *)
+(* undealt judgement naming it.                                           *)
+DealtWithinKTicks == \A p \in Prods : rdy[p] >= UndealtTicks => p \in ju
 
 (* Guarantee 8: ready never depends on row load. The ready rule gives the *)
 (* same answer for the store as it is and for the store with every        *)
@@ -967,15 +1013,11 @@ ResolveFromState         == "ResolveFromState" \notin last.bad
 HeldBehindShown          == "HeldBehindShown" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
-(* a ready producer with room on an open serving row (under width plus   *)
-(* ahead) is eventually dealt, unless the room goes. The model's bounds  *)
-(* (attempts, slots) are exempt, as in CardMachine, and so is a run with *)
-(* no active policy (the gate deals nothing).                            *)
-RoomFor(p) ==
-  /\ w.pol
-  /\ w.ps[p].att < MaxAtt
-  /\ w.ps[p].ncut < K
-  /\ \E r \in ServingOpen(w, p) : Cardinality(Load(w, r)) < Width[r] + Ahead[r]
+(* a ready producer with room on an open serving row (under width) is     *)
+(* eventually dealt, unless the room goes. The model's bounds (attempts,  *)
+(* slots) are exempt, as in CardMachine, and so is a run with no active   *)
+(* policy (the gate deals nothing).                                       *)
+RoomFor(p) == w.pol /\ RoomIn(w, p)
 ReadyDealtWhenRoom ==
   \A p \in Prods : (w.ps[p].st = "ready" /\ RoomFor(p)) ~> (w.ps[p].st # "ready" \/ ~RoomFor(p))
 
@@ -1006,5 +1048,6 @@ StepsNeverPolicyJudged == ~\E j \in js : j.kind = "policy"
 StepsNeverGated       == ~\E j \in js : j.kind = "no-policy"
 StepsNeverHeldBehind  == ~\E j \in js : j.kind = "overlap"
 StepsNeverHandLanded  == "handland" \notin last.tags
+StepsNeverUndealt     == ju = {}
 
 =============================================================================

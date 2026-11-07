@@ -438,8 +438,9 @@ accepted moves.
 
 Consumers are slots: producer p's i-th cut consumer is `<<p, i>>`. Start and
 AskRead cut the next slot, so a producer is never in `working` without its
-consumer. Width is the store's write guard on Take: working consumers only,
-never ready ones. A producer carries `review`, its count of entries into
+consumer. Start and AskRead cut the consumer working (the deal is the take,
+defect 52), guarded by `RoomOn`: the row's working consumers, less a
+preempted victim, below its width (the dealer's check in layer 3). A producer carries `review`, its count of entries into
 review (Finished and Red raise it); a read carries the producer's `review` at
 cut, and ReadYes needs a done ok read (ReadFix a done fix read) of the
 current head whose `review` equals the producer's.
@@ -454,8 +455,7 @@ base nor the attempt's prior_head (the producer's head at Start); AskRead
 refuses a row already holding a live read of this head; Replace names an
 existing other card; a sentinel takes no Start, AskRead, Edit or Rescore,
 and takes SetPriority and Relink; Relink's target is a producer (a
-sentinel too since round 4); Take is
-refused on a down row and allowed on a held one; preemption withdraws a
+sentinel too since round 4); there is no Take; preemption withdraws a
 working consumer only and counts open rows (up, not held); Add puts a card
 with needs and after (producers or sentinels: a sentinel may be a need),
 refusing a cycle through either.
@@ -648,15 +648,14 @@ State invariants:
   move of its own enabled (not counting the coordinator's Cancel, Replace,
   Block, Edit, Rescore, SetPriority), or waits on a need that can still
   move, an after-target that is merging, or (waiting, ready, review) a row
-  coming back or a hold lifting. A ready producer at the attempt bound, or
+  coming back, a hold lifting, or a full row's room (the deal is the take). A ready producer at the attempt bound, or
   one with no slot left, is exempt as the model's limit.
 - **ReadOnlyInReview**: a live read only in review, of the current head and
   review count.
 - **ReaderNeverAuthor**: a live read's holder is never the producer's author.
 - **WidthKept**: working consumers per row ≤ width.
-- **TakeBelowWidth**: a ready consumer can always take while its row is up
-  (held or not) and its working count is below width (ready ones are not
-  counted).
+- **DealIsTake**: no consumer is ever `ready`: a cut consumer is working,
+  in its row's hand (defect 52; replaces TakeBelowWidth).
 - **NeedFailedTakesDependants**: when a need has failed and the dependant is
   not final, NeedFailed is enabled.
 - **SentinelShape**: a sentinel is only absent (before Add), waiting, landed
@@ -686,7 +685,10 @@ Step invariants (each: the last step kept its rule):
 - **HolderNeverChanges**: a cut consumer's holder never changes.
 - **OldAttemptNeverMoves**: Finished, Broken, Faulted and Released accept only
   the work consumer of the current attempt.
-- **OnlyHolderActs**: Take and Report only from the consumer's holder.
+- **OnlyHolderActs**: Report only from the consumer's holder.
+- **RouteFaultBlocks**: a work consumer's fault naming a missing route
+  (result `route`) moves its producer to blocked, never to ready (defect
+  48).
 - **ReadYesNeedsYes**: ReadYes only with a done ok read of the current head
   whose review equals the producer's.
 - **ReadFixNeedsFix**: ReadFix only with a done fix read of the same kind.
@@ -729,7 +731,9 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardFaultBumpsAttempt` | life | Faulted raises attempt | FaultSpendsNothing |
 | `witnesses/CardFaultBounces` | life | Faulted raises bounces (a fault counted toward Block) | FaultSpendsNothing |
 | `witnesses/CardEditUnderLive` | life | Edit under a live consumer | EditNoLive |
-| `witnesses/CardReadyCounted` | life | Take counts ready consumers against width | TakeBelowWidth |
+| `witnesses/CardCutReady` | life | Start cuts its consumer ready | DealIsTake |
+| `witnesses/CardDealOverWidth` | pre | Start has no room guard | WidthKept |
+| `witnesses/CardRouteRedealt` | life | a route fault goes back to ready | RouteFaultBlocks |
 | `witnesses/CardNeedsCycle` | deps | Relink without the cycle check | NeedsAcyclic |
 | `witnesses/CardWithdrawLeavesWorking` | life | Withdraw does not release the working producer | WithdrawReleasesInOneStep |
 | `witnesses/CardReadFixOnZero` | life | ReadFix without the fix-read check | ReadFixNeedsFix |
@@ -760,6 +764,7 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverYesAfterRed` | life | none | violated: a yes after a Red, on a new read |
 | `reach/CardNeverFaultRedealt` | life | none | violated: a faulted producer is started again |
 | `reach/CardNeverBlocked` | life | none | violated: a producer is blocked |
+| `reach/CardNeverRouteBlocked` | life | none | violated: a route fault blocks its producer |
 | `reach/CardNeverSentinelReached` | life | none | violated: the sentinel lands on its landed need |
 | `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |
 | `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |
@@ -997,8 +1002,9 @@ result once or twice (layer 4 may redeliver).
 4. **Fix**: ReadYes or ReadFix (the default verdict) once every read of the
    current review is final and one is done.
 5. **Deal and reads**: blocker work, every read owed, normal work, in id
-   order; a row is dealt while ready plus working is under width plus
-   `ahead` (2 x width), with the in-tick tally. The row is policy's `rows`
+   order; a row is dealt while its working consumers are under its width,
+   with the in-tick tally (the deal is the take, defect 52: the cut is
+   working). The row is policy's `rows`
    answer when it is eligible for the candidate, else the default: the
    desired rank exactly (the card's tier; one up once its bounces reach
    `escalate_after`; for a read, the rank above its author's row), then
@@ -1041,7 +1047,7 @@ Heads are attempt numbers (an ok report of attempt n pushes head n).
 ## The instance: four scenarios
 
 Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and 2
-(rank 2); `ahead` is 2 x width.
+(rank 2). There is no `ahead` since the deal became the take.
 
 | Scenario | Cards | Start | Environment | Constants |
 |---|---|---|---|---|
@@ -1089,8 +1095,13 @@ operators where the check is about them:
 
 `ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
 under weak fairness on `Snap` and `Tick` only (rows need not take or
-report): a ready producer with room on an open serving row (under width
-plus `ahead`) is eventually dealt, unless the room goes. The model's bounds
+report): a ready producer with room on an open serving row (under its
+width) is eventually dealt, unless the room goes.
+
+`DealtWithinKTicks` (intent rule 33, an invariant over the counters `rdy`
+and `ju`): a producer ready for `UndealtTicks` (2) ticks with an open
+serving row with room is dealt, or has an open undealt judgement (`ju`).
+`DealIsTake`: no consumer is ever `ready`. The model's bounds
 (attempts, slots) are exempt, as in `CardMachine`.
 
 ## Expected results
@@ -1098,9 +1109,9 @@ plus `ahead`) is eventually dealt, unless the room goes. The model's bounds
 | Module | Scenario | Fault | Expected result |
 |---|---|---|---|
 | `StepsPre` / `StepsPrePack1` / `StepsDeal` / `StepsLand` / `StepsBurst` | pre / pre1 / deal / land / burst | none | pass, liveness included |
-| `witnesses/StepsDealtTwice` | pre | the deal does not skip a blocker the preemption claimed | NeverDealtTwice |
+| `witnesses/StepsDealtTwice` | pre | the deal does not skip a blocker the preemption claimed, and the preemption fires with free width | NeverDealtTwice |
 | `witnesses/StepsTwoGroups` | land | the land-result step ignores claimed cards | OneGroupPerCard |
-| `witnesses/StepsWidthOver` | pre | Take checks width plus ahead | WidthKept |
+| `witnesses/StepsWidthOver` | burst | the deal checks no width | WidthKept |
 | `witnesses/StepsBlockerQueued` | pre | preemption counts queue room as free width | BlockerPreemptsInOneTick |
 | `witnesses/StepsHalfWrites` | pre | a refused preemption's Withdraw half is applied | GroupWhole |
 | `witnesses/StepsPartialOp` | pre | a refused op applies its unraced groups | NeverHalfApplied |
@@ -1118,7 +1129,9 @@ plus `ahead`) is eventually dealt, unless the room goes. The model's bounds
 | `witnesses/StepsAfterHolds` | land | the land step holds on any target not landed | AfterNeverHolds |
 | `witnesses/StepsPolicyStall` | deal | a failed rows answer plans nothing | PolicyFailsToDefault |
 | `witnesses/StepsOldestVictim` | pre | the victim is the oldest | PreemptYoungest |
-| `witnesses/StepsReadyCountedAgainstWidth` | pre | the deal counts ready against width | ReadyDealtWhenRoom (liveness, TLC exit 13) |
+| `witnesses/StepsDealOneShort` | pre | the deal leaves one slot of width unused | ReadyDealtWhenRoom (liveness, TLC exit 13) |
+| `witnesses/StepsCutReady` | pre | the deal cuts its consumer ready | DealIsTake |
+| `witnesses/StepsUndealtSilent` | burst | no undealt judgement | DealtWithinKTicks |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
 | `reach/StepsNeverRefused` | pre | none | violated: an op is refused by a race |
@@ -1138,6 +1151,7 @@ plus `ahead`) is eventually dealt, unless the room goes. The model's bounds
 | `reach/StepsNeverRed` | land | none | violated: Red |
 | `reach/StepsNeverAfterHeld` | land | none | violated: a landing waits on a queued after target |
 | `reach/StepsNeverCarried` | burst | none | violated: the budget carries inbox items |
+| `reach/StepsNeverUndealt` | burst | none | violated: an undealt judgement is opened |
 
 `python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
 five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`

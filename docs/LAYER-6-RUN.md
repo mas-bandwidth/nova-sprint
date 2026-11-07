@@ -753,3 +753,8 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   for its beat only after reading), and the test waits on it before its first tick. No
   production code changed; `go test -run TestServeTicksPushesAndLogs -count=2000 -cpu 1,4 ./run/`
   and 100 runs under `-race` pass.
+
+**Stitch w3I (2026-11-07).** The deal's push names the one model the deal
+named for the consumer (`DEAL ... tier=<t> model=<m> ...`, `none` for a
+card dealt before models were named), beside w2D2's repo, base, branch and
+clipped brief. Test: `TestEventNoticesUseCommittedImagesAndRecipients`.

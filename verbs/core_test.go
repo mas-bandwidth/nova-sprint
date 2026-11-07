@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -175,11 +176,13 @@ func TestNextGuides(t *testing.T) {
 		{name: "no name", args: []string{"next"}, want: []string{"choose the name", "next: nova-sprint next --as <name>"}},
 		{name: "not on the bus", as: "erin", args: []string{"next"}, want: []string{"erin is not on the bus", "next: hook in to the bus first"}},
 		{name: "not hooked", as: "dave", args: []string{"next"}, want: []string{"not hooked in", "next: nova-sprint hook --as dave --role worker"}},
-		{name: "a dealt card", as: "alice", args: []string{"next"}, want: []string{"work p1.w1 is dealt with alice", "next: nova-sprint take p1.w1@1 --as alice --epoch 1"}},
-		{name: "a card in hand", as: "alice", args: []string{"next"}, snap: setCard("p1.w1", func(c *store.Card) { c.State = "working" }),
+		{name: "a dealt card", as: "alice", args: []string{"next"}, want: []string{"work p1.w1 is in hand with alice", "next: nova-sprint take p1.w1@1 --as alice --epoch 1"}},
+		{name: "a card acknowledged", as: "alice", args: []string{"next"}, snap: acked("p1.w1"),
 			want: []string{"in hand", "next: nova-sprint finish p1.w1@1 --head <sha> --as alice --epoch 1"}},
-		{name: "a read in hand", as: "bob", args: []string{"next"}, snap: setCard("p2.r1", func(c *store.Card) { c.State = "working" }),
+		{name: "a read acknowledged", as: "bob", args: []string{"next"}, snap: acked("p2.r1"),
 			want: []string{"next: nova-sprint read p2.r1@1 yes|fix --as bob --epoch 1"}},
+		{name: "a card dealt before the deal was the take", as: "alice", args: []string{"next"}, snap: setCard("p1.w1", func(c *store.Card) { c.State = "ready" }),
+			want: []string{"dealt before the deal became the take", "next: " + waitNext}},
 		{name: "nothing owed", as: "carol", args: []string{"next"}, want: []string{"nothing needs you", "next: " + waitNext}},
 		{name: "a judgement owed", as: "carol", args: []string{"next"}, snap: withJudgement("blocked.p1.1", "", "blocked", "p1", "unblock | drop"),
 			want: []string{"judgement blocked.p1.1 needs you", "next: nova-sprint judge blocked.p1.1"}},
@@ -198,6 +201,16 @@ func TestNextGuides(t *testing.T) {
 	})
 }
 
+// acked is the snapshot with row's acknowledgement of consumer c (its take).
+func acked(c string) func(*store.Snapshot) {
+	return func(s *store.Snapshot) {
+		if s.Cursors == nil {
+			s.Cursors = map[string]int64{}
+		}
+		s.Cursors[steps.AckCursor(s.Epoch, c)] = 1
+	}
+}
+
 func TestNextJSONIsTheInventory(t *testing.T) {
 	w := newWorld(t)
 	r := w.do("alice", "next", "--json")
@@ -206,7 +219,7 @@ func TestNextJSONIsTheInventory(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.Output), &v); err != nil {
 		t.Fatal(err)
 	}
-	if v.Width != 1 || len(v.Ready) != 1 || v.Ready[0].ID != "p1.w1" || v.Working == nil || v.Final == nil || v.Judgements == nil {
+	if v.Width != 1 || len(v.Working) != 1 || v.Working[0].ID != "p1.w1" || v.Ready == nil || v.Final == nil || v.Judgements == nil {
 		t.Fatalf("%+v", v)
 	}
 	// A bench's model by tier is the one the deal names, the catalog's bench

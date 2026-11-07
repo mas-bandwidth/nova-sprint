@@ -55,7 +55,7 @@ func TestNextNamesStartOnAStoppedSprint(t *testing.T) {
 	s.Stopped, s.StopReason = true, store.NeverStarted
 	w := worldFrom(t, s)
 	want(t, w.do("carol", "next"), 0, "NEXT the sprint is stopped (never started)", "next: nova-sprint start --as carol --reason")
-	want(t, w.do("alice", "next"), 0, "NEXT work p1.w1 is dealt with alice")
+	want(t, w.do("alice", "next"), 0, "NEXT work p1.w1 is in hand with alice")
 }
 
 // Before the store exists (no epoch: up at step 1), every verb that reads

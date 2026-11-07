@@ -351,8 +351,10 @@ func (m *mover) readID() string {
 	return fmt.Sprintf("%s.r%d.%d", m.p.ID, m.p.Review, n)
 }
 
-// cut adds a consumer of p, held by row, in state ready: put card, then its
-// own columns, then the state (layer 1 checks the row serves its tier). The
+// cut adds a consumer of p, held by row, in state working: in the row's
+// hand at the deal (defect 52, intent rule 33: the deal is the take; the
+// row's width is the deal's check, in layer 3, since the machine sees one
+// producer's consumers). Put card, then its own columns, then the state. The
 // consumer carries copies of p's brief, prose, paths and done_when, and p's
 // stream and tier, and the model its deal named; a read is cut at p's
 // current review.
@@ -372,7 +374,7 @@ func (m *mover) cut(id, kind, row, model string, attempt int, cols ...store.Writ
 	}
 	m.write(put)
 	m.write(cols...)
-	m.state(id, Ready)
+	m.state(id, Working)
 	return nil
 }
 
@@ -508,6 +510,16 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 	c, r := m.reported(e, id, result)
 	if r != nil {
 		return r
+	}
+	if _, route := RouteFault(c.Reason); route && !bounce {
+		// A fault naming a missing route or device blocks the producer on
+		// the first fault, never a re-deal (defect 48, intent rule 33): the
+		// same kind of row would fault the same way. Layer 3 opens the
+		// blocked judgement; the coordinator's Unblock deals it again.
+		m.state(m.p.ID, Blocked)
+		m.reason(m.p.ID, m.p.Reason, c.Reason)
+		m.head(m.p.ID, m.p.Head, c.Head)
+		return nil
 	}
 	if r := m.back(); r != nil {
 		return r
@@ -988,12 +1000,17 @@ func (m *mover) setPriority(e SetPriority) *Refusal {
 	return nil
 }
 
-// block parks a producer for the coordinator. From working the attempt's
-// consumer must have been withdrawn (fail): one that has reported is applied
-// first, never discarded.
+// block parks a producer for the coordinator: policy's bounce limit, or the
+// coordinator's hold of one card (defect 47; from waiting too, so a card
+// can be held before it is ready). From working the attempt's consumer must
+// have been withdrawn (fail): one that has reported is applied first, never
+// discarded.
 func (m *mover) block(e Block) *Refusal {
-	if r := firstOf(m.from(e, Ready, Review, Working), m.noLive(m.liveRefusal)); r != nil {
+	if r := firstOf(m.from(e, Waiting, Ready, Review, Working), m.noLive(m.liveRefusal)); r != nil {
 		return r
+	}
+	if m.p.Kind == "sentinel" {
+		return no("sentinel %s is never dealt; there is nothing to block", m.p.ID)
 	}
 	if m.p.State == Working {
 		id := workID(m.p.ID, m.p.Attempt) // present and fenced: noLive required it
@@ -1040,14 +1057,12 @@ func MoveConsumer(c Card, p Card, r Row, e Event) (Plan, *Refusal) {
 	m.expect(store.CardGen{Card: c.ID, Gen: c.Gen})
 	var refusal *Refusal
 	switch v := e.(type) {
-	case Take:
-		refusal = m.take(v, r)
 	case Report:
 		refusal = m.report(v, p)
 	case Withdraw:
 		refusal = m.withdraw(v, p)
 	default:
-		refusal = no("%s is not a consumer event; MoveConsumer takes Take, Report and Withdraw", name(e))
+		refusal = no("%s is not a consumer event; MoveConsumer takes Report and Withdraw (a dealt consumer is in hand: there is no take)", name(e))
 	}
 	if refusal != nil {
 		return Plan{}, refusal
@@ -1060,25 +1075,6 @@ func (m *mover) holder(row string) *Refusal {
 	if row != m.p.Holder {
 		return no("consumer %s is held by %s, not %s", m.p.ID, m.p.Holder, row)
 	}
-	return nil
-}
-
-// take moves a dealt consumer into working. The row's width is the
-// roster's (round 22): layer 1 no longer counts it, and a take past width is
-// refused by the caller that reads the roster, not here.
-func (m *mover) take(e Take, r Row) *Refusal {
-	if rr := firstOf(m.from(e, Ready), m.holder(e.Row)); rr != nil {
-		return rr
-	}
-	switch {
-	case r.Name != e.Row:
-		return no("MoveConsumer was passed row %s for a take on %s; pass the consumer's holder row", r.Name, e.Row)
-	case r.State != Up:
-		return no("row %s is %s; it cannot take", r.Name, r.State)
-	}
-	// held is allowed: a hold stops new deals, not work already dealt
-	m.expect(store.RowGen{Row: r.Name, Gen: r.Gen}, store.RowIs{Row: r.Name, State: Up})
-	m.state(m.p.ID, Working)
 	return nil
 }
 

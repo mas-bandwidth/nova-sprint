@@ -25,7 +25,8 @@ type cand struct {
 // deal is the deal and reads step (LAYER-3 "Deal and reads"; the model's
 // DealStep; NeverDealtTwice, NeverBelowTier, guarantee 8). One candidate
 // list down the ladder, within a rung in policy's order then id; each
-// candidate is dealt to a row with room (live under work plus ahead), the
+// candidate is dealt to a row with room (working under policy's work, at
+// most the width: the deal is the take, defect 52), the
 // row from policy's rows answer, else the engine's ranking; a candidate no
 // row has room for stays ready, queued. Escalation is row choice: a work
 // consumer at the card's own rank, one up at escalate_after bounces, the
@@ -164,7 +165,9 @@ func (t *tick) dealRead(c store.Card) {
 }
 
 // withRoom keeps the rows with room: live consumers plus this tick's deals
-// under work plus ahead (policy's width answer; width caps working only).
+// under policy's work, at most the width. Every live consumer is in hand
+// (working; a ready one is a pre-deal-is-take leftover the holds step
+// withdraws), so this is the width check at the deal.
 func (t *tick) withRoom(rows []string) []string {
 	var out []string
 	for _, r := range rows {
@@ -177,13 +180,13 @@ func (t *tick) withRoom(rows []string) []string {
 
 func (t *tick) used(r string) int { return len(t.v.liveOnRow[r]) + t.tally[r] }
 
-// room is policy's work plus ahead for row r, read once per tick.
+// room is policy's work for row r, read once per tick.
 func (t *tick) room(r string) int {
 	if n, ok := t.roomCache[r]; ok {
 		return n
 	}
 	w := t.o.width(t.rowFacts(t.v.Rows[r]))
-	t.roomCache[r] = w.Work + w.Ahead
+	t.roomCache[r] = w.Work
 	return t.roomCache[r]
 }
 
