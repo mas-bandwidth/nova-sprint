@@ -44,26 +44,11 @@ func (p PGSetupLock) Acquire(ctx context.Context) (SetupLease, error) {
 	if p.Password != "" {
 		cfg.Password = p.Password
 	}
-	host := p.Host
-	if host == "" {
-		host, err = os.Hostname()
-		if err != nil {
-			return nil, err
-		}
+	app, err := setupIdentity(p.Host, p.PID)
+	if err != nil {
+		return nil, err
 	}
-	if host == "" || strings.IndexFunc(host, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_')
-	}) >= 0 {
-		return nil, fmt.Errorf("invalid setup host")
-	}
-	pid := p.PID
-	if pid == 0 {
-		pid = os.Getpid()
-	}
-	app := fmt.Sprintf("nova-sprint up %s %d", host, pid)
-	if pid <= 0 || len(app) > 63 {
-		return nil, fmt.Errorf("invalid setup identity")
-	}
+
 	cfg.RuntimeParams["application_name"] = app
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
@@ -141,4 +126,27 @@ func closeSetupConnection(conn *pgx.Conn) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return conn.Close(ctx)
+}
+
+func setupIdentity(host string, pid int) (string, error) {
+	var err error
+	if host == "" {
+		host, err = os.Hostname()
+		if err != nil {
+			return "", err
+		}
+	}
+	if host == "" || strings.IndexFunc(host, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_')
+	}) >= 0 {
+		return "", fmt.Errorf("invalid setup host")
+	}
+	if pid == 0 {
+		pid = os.Getpid()
+	}
+	app := fmt.Sprintf("nova-sprint up %s %d", host, pid)
+	if pid <= 0 || len(app) > 63 {
+		return "", fmt.Errorf("invalid setup identity")
+	}
+	return app, nil
 }
