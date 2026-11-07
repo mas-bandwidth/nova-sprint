@@ -17,6 +17,12 @@ With **nova-sprint**, your AIs can:
 * Show your humans the sprint's progress in a dashboard, so they can see the work moving
 * Be told when a judgement is needed, and change the rules of the sprint while it runs
 
+**CI rules, on by default.** Per-commit CI (push and pull request) finishes in 2 minutes, 1 minute is the aim, with unit
+and functional jobs in parallel; unit tests use no real time, sleep or network; nightly (schedule) runs have no limit;
+push CI runs only on `main` and `sprint/<stream>`. Without these limits CI queues up and all work slows. The fleet's
+runners, set up by nova-tools (`nova-fleet up --runners`), enforce the rules; `nova-sprint up` and `check` refuse a
+nova-tools below the release that does.
+
 For more information, please ask your AI to [read the docs](docs/README.md).
 
 ## License
