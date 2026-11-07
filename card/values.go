@@ -120,9 +120,6 @@ func (v *vals) write(w store.Write) {
 		v.key("stream", x.Stream)
 	case store.SetRowState:
 		v.key("row", x.Row)
-	case store.SetRowWidth:
-		v.key("row", x.Row)
-		v.num("width", x.Width)
 	case store.SetRowFlaps:
 		v.key("row", x.Row)
 		v.num("flaps", x.Flaps)
@@ -305,8 +302,6 @@ func rowField(w store.Write) (row, col string, ok bool) {
 	switch x := w.(type) {
 	case store.SetRowState:
 		return x.Row, "state", true
-	case store.SetRowWidth:
-		return x.Row, "width", true
 	case store.SetRowFlaps:
 		return x.Row, "flaps", true
 	case store.SetRowHeld:

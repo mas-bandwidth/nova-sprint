@@ -113,7 +113,7 @@ func newCardTrace(w *world, on bool) *cardTrace {
 }
 
 func (tr *cardTrace) state() ModelState {
-	st, err := TraceState(tr.w.snap(), "s1", traceHeads)
+	st, err := TraceState(tr.w.snap(), "s1", traceHeads, tr.w.width)
 	require.NoError(tr.w.t, err)
 	for _, p := range st.Ps {
 		tr.bounds["K"] = max(tr.bounds["K"], p.Ncut)

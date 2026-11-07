@@ -206,9 +206,7 @@ func TestColdRowsEveryState(t *testing.T) {
 				r := w.rows()["r1"]
 				plan, ref := MoveRow(r, e)
 				want := map[string]bool{"Seen": down, "Gone": !down, "Hold": !held, "Unhold": held}[name(e)]
-				if v, ok := e.(Width); ok {
-					want = v.N != r.Width
-				}
+				// Width is refused in every state: it is the roster's (round 22).
 				label := fmt.Sprintf("%s down=%v held=%v", name(e), down, held)
 				if !want {
 					assert.NotNil(t, ref, label)
@@ -283,7 +281,7 @@ func TestColdWalk(t *testing.T) {
 	// Released is not in the list: a Withdraw of the work consumer releases
 	// its producer in the same plan, so the walk never finds one to release.
 	for _, e := range []string{"Resolve", "Start", "Take", "Report", "Finished", "Broken", "Faulted", "AskRead", "ReadYes", "ReadFix",
-		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "Width", "HoldStream"} {
+		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
 		assert.Positive(t, seen[e], "the walk never accepted %s", e)
 	}
 	t.Logf("accepted ops by event over 100 seeds x 800 steps: %v", seen)
@@ -489,7 +487,7 @@ func coldInvariants(t *testing.T, s store.Snapshot, finals map[string]coldFinal,
 		assert.LessOrEqual(t, n, 1, "%s: producer %s has %d live work consumers", label, p, n)
 	}
 	for name, n := range working {
-		assert.LessOrEqual(t, n, s.Rows[name].Width, "%s: row %s over width", label, name)
+		assert.LessOrEqual(t, n, worldWidth[name], "%s: row %s over width", label, name)
 	}
 	for _, p := range s.Cards {
 		switch {
@@ -700,9 +698,8 @@ func TestColdDefectPlansTheStoreFindsInvalid(t *testing.T) {
 			return MoveConsumer(c, w.card("p1"), w.rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
 		}},
 		{"score past int32", func(w *world) (Plan, *Refusal) { return w.plan("p1", Rescore{Score: math.MaxInt32 + 1}) }},
-		{"width past int32", func(w *world) (Plan, *Refusal) { return MoveRow(w.rows()["r1"], Width{N: math.MaxInt32 + 1}) }},
 		{"NUL in branch", func(w *world) (Plan, *Refusal) { return w.plan("p1", Start{Row: "r1", Branch: "b\x00", Base: base}) }},
-		{"row with no name", func(w *world) (Plan, *Refusal) { return MoveRow(Row{}, Width{N: 1}) }},
+		{"row with no name", func(w *world) (Plan, *Refusal) { return MoveRow(Row{}, Hold{}) }},
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
