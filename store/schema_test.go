@@ -168,8 +168,11 @@ func TestFunctionalCheckSchemaWritesNothing(t *testing.T) {
 	_, err := c.Exec(ctx, "SET stats_fetch_consistency = none")
 	require.NoError(t, err)
 	all := storeRows(t, ctx, c)
-	require.Eventually(t, func() bool { return storeWrites(t, ctx, c)[0] == all }, wait, 50*time.Millisecond, "every writer's statistics are flushed")
 	before := storeWrites(t, ctx, c)
+	for deadline := time.Now().Add(wait); before[0] != all; before = storeWrites(t, ctx, c) { // on this goroutine: c is not shared
+		require.True(t, time.Now().Before(deadline), "every writer's statistics are flushed: %d inserts, %d rows", before[0], all)
+		time.Sleep(50 * time.Millisecond)
+	}
 	require.Positive(t, before[3], "the store has events")
 	want := currentSchema
 	want.Owner = "nova"
@@ -178,5 +181,8 @@ func TestFunctionalCheckSchemaWritesNothing(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, want, id)
 	}
-	assert.Never(t, func() bool { return storeWrites(t, ctx, c) != before }, 2*time.Second, 100*time.Millisecond, "CheckSchema changed the store")
+	for range 20 { // two seconds for a write's statistics to arrive, as above
+		time.Sleep(100 * time.Millisecond)
+		require.Equal(t, before, storeWrites(t, ctx, c), "CheckSchema changed the store")
+	}
 }
