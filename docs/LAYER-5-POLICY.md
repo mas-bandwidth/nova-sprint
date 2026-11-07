@@ -652,4 +652,111 @@ with exit 137 after 8 minutes and 3.85M distinct states.
 **Owed.** The trace check binding `tla/Policy.tla` to the code (Glenn,
 2026-11-07: the code's random walk emits traces, TLC checks them in CI) is
 not built here; until it is, this layer does not lock. Layer 3 is told the
-budget is 500 ms and that `AnswerContext` carries its deadline.
+budget is 500 ms and that `AnswerContext` carries its deadline. (Built in
+round 4, below.)
+
+**Round 4** (2026-11-07). Emma's five break probes, the trace check, and
+size.
+
+*Emma's probes* (`policy/break_emma_test.go`, copied from
+origin/v2-break-emma at 07993b6c with her attribution, gofmt only; every
+probe passes as written, none weakened):
+
+1. `TestBreakVerdictCountsDoneReadsFromDifferentHead`: the inputs counted a
+   done read of the current review whatever its head, so a stale ok read let
+   a fault-only head land. `verdict`'s reads (and the verdict question
+   itself) now take only done reads of the producer's current review *and*
+   head (`inputs.go` count), as the question table says ("its done reads of
+   this head and review").
+2. `TestBreakDefaultRowsDropsBusyCandidatesAndFailsJointCheck`: `prefer`
+   returned only the candidates with room when any had room, dropping busy
+   rows, so a gates-only row with room could fail the joint check while a
+   busy row could work the card. It now lists every candidate in the
+   default's order, those with room first (a stable sort), as the question
+   table says ("every candidate listed ... those with room first").
+3. `TestBreakCheckReportsRefusedJointAnswerAsValidChangeAndCascadesFromRefusedWidth`:
+   `check` printed an answer the joint check refused as a change of value,
+   and a refused `width` (absent from Answers) made the joint check refuse
+   every rows answer. A refused answer is now shown as `(refused)`, and the
+   joint check is not run when any width was refused (only `check` goes on
+   past a refusal; a tick stops at the first).
+4. `TestBreakDataPolicyRowBlocksUpAndCompilesInCheckShowDiff`: `up` took
+   any row at version 1 as "already up", so a `data` row stored first left no
+   active version; `check v<n>` compiled a data row as Starlark. `Up` now
+   acts when no version is active, storing the default as the next version
+   and activating it in one op fenced by `AtSeq` at its snapshot; `check`,
+   `activate` and `catalog` refuse a data version through one helper
+   (`script`), with one fix text: `name a script version: nova-sprint
+   policy show --list` (activate's and catalog's tests updated to it).
+5. `TestBreakLoadVersionsWalksPastSnapshotSeqCollapsingPrevIntoActive`:
+   `LoadVersions` folded events past its snapshot's seq, so an activation
+   between the two reads made Prev equal Active and the tick skipped the
+   previous active. The walk now stops at the snapshot's seq.
+
+No probe contradicts the design. `tla/Policy.tla` says "Init is the state
+after up: the default stored as v1"; with a data row stored first the
+default is stored as the next number. The model has no data rows, so
+nothing in it changes.
+
+*The trace check.* The shape of `tla/README.md` "Trace validation",
+copied: `policy/trace.go` `TraceState` is the refinement mapping (every
+variable of `Policy.tla` named: stored, active, prev, breaks, answeredBy,
+judgements and card projected; everActive, tickBreaks, cardBefore,
+waitBound, startBound and lastOp the model's own bookkeeping, computed by
+the action the record names). `breaks` is each stored version and the
+built-in run by check on the snapshot's full question set on an engine of
+its own; a version not yet stored is never in it (Set checks before it
+stores). `policy/trace_test.go` `TestTraceWalk` drives, on the Fake, up,
+set, activate, a snapshot that drifts (row x<k>'s width between 1 and 2;
+version k, and the built-in at k = 0, fail while it is 2) and ticks that
+write their judgements and move one card as layer 3 would (a deal only
+with an answer), seeds 1 to 10, 300 steps, versions up to 4; a drift that
+changes no version's outcome is a stutter and is not recorded.
+`tla/PolicyTrace.tla` constrains `Policy.tla`'s actions to the records
+(each carries the whole projected state, which is small); it adds nothing
+to the model. The breaker, `TestTraceRefusesDivergence`, is one line: the
+tick's versions with the previous active dropped; its fixture
+`tla/traces/policy-breaker` is refused at 5 of 5 (Tick: answeredBy 0 where
+the model's Pick is 1). `tla/make-traces.sh` runs and checks the policy
+walks; the CI job `trace` runs that script, so it gains them.
+`tla/README.md` "Trace validation" does not yet list the policy walk (not
+this layer's file).
+
+Results on hetzner2 at a3b3143f (`bash tla/make-traces.sh check`, tla2tools
+v1.8.0): policy-walk-1..10 TRACE OK steps=203 212 206 206 191 214 211 209
+213 210; policy-breaker refused at 5 of 5 (expected); the store and card
+traces as before (8 + 2 + 20 OK, three breakers refused). Seeds 2, 4, 6
+and 8 reach NoAnswer (answeredBy -2: 3, 3, 7 and 4 ticks, measured); the
+others do not. TLC: TLC_RESULT_PLACEHOLDER
+
+*Size.* Before: 2,529 lines of non-test Go at cdeaddb2 (1,996 without
+comments and blank lines). After: 2,545 (1,971), of which `trace.go`, new,
+is 85 (55) and the probe fixes about 30; the code that was there is about
+100 lines smaller (one `errAt` for a Starlark error's line and message,
+`questionNames` sorted once, `maps.Keys` for sorted keys, `askOf` for every
+one-value question, `candidates` folded into `candidateSet`, one generic
+`intIn`, rows answers cached with their names so `intern` never splits,
+`weight` over `Indexable`, the diff reversing its halves, `cmpErr` gone).
+Every function is under 60 lines (golangci-lint funlen). What remains is,
+I think, honest, and 1.5k is not reachable without dropping a guarantee.
+Code lines by file (measured, without comments and blanks): validate.go
+283 and catalog.go 151 (one refusal per out-of-domain shape, each with its
+exact text, as the design requires); tick.go 251 (the one deadline: each
+version on its own goroutine and thread, the early fallback, the late
+failure naming the question in hand, cancellation at every phase, and the
+answer cache with its 4 MiB bound: rulings 3 and 4); verbs.go 224 and
+show.go 143 (the eight verbs and their CORRECT-USE refusals); engine.go 209
+(compile, the closed name set, error lines); inputs.go 178 (seven subject
+structs, the shared candidate sets, the counts); answer.go 146; policy.go
+136 (the exported types and the judgement text); diff.go 107 (the
+linear-space diff, ruling 5); prefer.go 84 (the 5,000-producer budget);
+trace.go 55. Each was added by a design line or a ruling, not by drift;
+the 1.5k budget was set before rulings 3 to 7, the catalog and the trace
+check. Glenn's call whether to raise the budget or drop a feature (the
+diff verb and the catalog are the two that could move to layer 6).
+
+Tests: `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
+35b61d2e: ok (9.6 s), functional tests included. Load on amd-3 without
+-race: the built-in at 5,000 producers over 100 rows, cold 61.7 ms, warm
+27.6 ms (measured; up from 56.8 ms, since `prefer` now orders every
+candidate).
