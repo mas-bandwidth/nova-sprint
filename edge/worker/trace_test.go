@@ -276,6 +276,16 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.finishRun_internal(t, c, act, dir)
 	case "Rebase", "Conflict", "Push", "Report", "Clean":
 		h.advancePostRun_internal(t, c, act, dir)
+	default:
+		h.processStep_internal(t, act, c)
+	}
+}
+
+// processStep_internal is a step of the worker process, not of one job: a
+// crash, the stop, a pass, a restart, a release.
+func (h *runnerWalkHarness_internal) processStep_internal(t *testing.T, act, c string) {
+	t.Helper()
+	switch act {
 	case "Crash":
 		h.env.crashes++
 		h.env.crashed = true
