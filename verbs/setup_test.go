@@ -56,7 +56,7 @@ func TestSetupVerifiesActionsAndRestarts(t *testing.T) {
 	}
 }
 func TestSetupArguments(t *testing.T) {
-	e := Engine{}
+	e := Engine{Actor: "rowan"}
 	got := e.Execute(context.Background(), []string{"up", "--dash", "invalid"})
 	if got.Exit != 1 || got.Output != "SPRINT REFUSED up: invalid arguments: nova-sprint help up\n" {
 		t.Fatal(got)
