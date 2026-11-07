@@ -1,19 +1,19 @@
-# nova-sprint end to end: the binary dev+1afd13eea28e for the verbs, run.Serve in the test process with a fake forge
+# nova-sprint end to end: the binary dev+f3f08b6729bb for the verbs, run.Serve in the test process with a fake forge
 # the stream's origin: a local bare repository, main at one commit
-$ git init -q --bare -b main /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd3664576396/001/origin.git
+$ git init -q --bare -b main /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd2056208092/001/origin.git
 exit 0
 
-$ git clone -q /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd3664576396/001/origin.git /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd3664576396/001/seed
+$ git clone -q /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd2056208092/001/origin.git /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd2056208092/001/seed
 exit 0
 warning: You appear to have cloned an empty repository.
 
-$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd3664576396/001/seed add README
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd2056208092/001/seed add README
 exit 0
 
-$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd3664576396/001/seed commit -q -m base
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd2056208092/001/seed commit -q -m base
 exit 0
 
-$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd3664576396/001/seed push -q origin HEAD:main
+$ git -C /var/folders/z2/0d2ymgl1363d6gbhv4443p8c0000gn/T/TestFunctionalEndToEnd2056208092/001/seed push -q origin HEAD:main
 exit 0
 
 # up, on a fake fleet: the binary's own role and store steps; nova-config seeded; the default policy stored

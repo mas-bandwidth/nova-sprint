@@ -168,6 +168,25 @@ refused for a moved ref; checks not green at the exact sha; base moved
 between gate and land; no landing host answering. Each is a typed result
 that layer 3 counts toward the stall alarm and the stream's judgement.
 
+Clone addresses. A stream keeps its repository as it was given (`<org>/<repo>`
+is the forge's name for it: `gh -R`); `git.CloneURL(repo, forge)` is the one
+place it becomes what git clones and ls-remotes. With forge `github` an
+`<org>/<repo>` is `https://github.com/<org>/<repo>.git`; a URL, an scp-like
+address or a path passes as it is; with no forge the repo is its own (a hand
+stream names its repository by URL or path); a form a forge cannot address
+is refused naming the form. Run's land and heads clone through it (one clone
+per address under `ReposDir`), `stream add`, `finish` and `check` read tips
+at it (`Client.Tip`: one `git ls-remote <address> refs/heads/<branch>`, no
+clone). The scheme is https, not ssh: the sprint's GitHub identity is a token
+nova-secrets exec puts in the process (`GH_TOKEN`, or the identity's
+`GH_CONFIG_DIR`), the forge edge already runs as it, and an ssh key
+registered with GitHub on every bench is a second credential to keep. With
+either set, the git edge makes `gh auth git-credential` git's one credential
+helper for `https://github.com` (`Config.GitHubCredential`, through
+`GIT_CONFIG_COUNT`; an empty helper first clears the host's own list, so a
+person's keychain never answers for the sprint); the environment names no
+secret. Without either, the host's own git configuration answers.
+
 A landing never: force-pushes base; merges a sha CI did not pass; puts two
 streams in one branch (LPM M5); rebases a card's branch; resolves a
 non-ledger conflict by script; runs under the writer lock or on the
@@ -636,3 +655,20 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
   push trigger (LANDING says why); a token without pull-request write fails
   at OpenPR as a fault, re-tried each tick, not as a judgement.
 
+### Clone addresses (stitch, 2026-11-07, defect 21)
+
+`stream add <s> --repo mas-bandwidth/nova-tools --forge github`, the form the
+help prints, was refused at the fleet: the git edge passed `mas-bandwidth/nova-tools`
+to `git clone` and `git ls-remote` as a path. `edge/git/url.go` adds
+`CloneURL` and `IsOrgRepo`; `Client.Tip` reads a branch at an address with no
+clone; `Config.GitHubCredential` sets gh as git's github.com helper. Callers:
+`run/edges.go` (`Edges.clone`, for land and heads), `cmd/nova-sprint/edges.go`
+(`origin.Tip` no longer clones; `gitEdge` sets the helper when `GH_TOKEN` or
+`GH_CONFIG_DIR` is set), `verbs/stream.go` (`baseTip`, shared by `stream add`
+and `check`) and `verbs/head.go` (finish). Not changed here: the worker's
+staging still takes `--origin` (the per-stream-repository staging is another
+change; it should take its address from `git.CloneURL(receipt.repo,
+receipt.forge)`). Unit tests: `edge/git/url_test.go`,
+`run/edges_test.go`, `verbs/stream_url_test.go`,
+`cmd/nova-sprint/edges_test.go`. Not run here: a clone of a private GitHub
+repository through the gh helper (functional, on a bench).

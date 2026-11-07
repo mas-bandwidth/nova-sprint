@@ -53,7 +53,7 @@ func (oldTools) Run(context.Context) (run.ChooserStatus, error) { return run.Cho
 func TestCheckRefusesToolsBelowThePin(t *testing.T) {
 	e := verbs.Engine{Doctor: oldTools{}, Bus: present{}, ToolPin: toolPin}
 	result := e.Execute(context.Background(), []string{"check"})
-	if result.Exit != 1 || !strings.Contains(result.Output, "below the pin "+toolPin) {
+	if result.Exit == 0 || !strings.Contains(result.Output, "CHECK RED nova-tools v1.6.29 is below the pin "+toolPin) {
 		t.Fatalf("result=%+v", result)
 	}
 }
