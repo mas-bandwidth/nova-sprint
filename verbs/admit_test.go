@@ -17,7 +17,7 @@ import (
 func TestStreamAdmission(t *testing.T) {
 	t.Parallel()
 	add := func(name string, more ...string) []string {
-		return append([]string{"stream", "add", name, "--repo", "o/r"}, more...)
+		return append([]string{"stream", "add", name, "--repo", "o/r", "--mode", "hand"}, more...)
 	}
 	runCases(t, []tcase{
 		{name: "a name git refuses", as: "carol", args: add("x.lock"), exit: 1, want: []string{"the card branches sprint/x.lock/<card> cannot be created", "ends with .lock", "name the stream or the base otherwise"}},

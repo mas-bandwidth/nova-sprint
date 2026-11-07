@@ -27,6 +27,8 @@ func runStreamAdd(e *Engine, ctx context.Context, in *input, snap store.Snapshot
 		return "", misuse("stream add", "a stream's name is 1 to 128 of a-z A-Z 0-9 . _ -")
 	case repo == "":
 		return "", misuse("stream add", "stream add names its repository: --repo <org/repo>")
+	case mode == store.StreamAuto && forge == "":
+		return "", misuse("stream add", "mode auto merges through a forge, and this stream has none: pass --forge github, or --mode hand to land it by hand")
 	}
 	if _, ok := snap.Streams[name]; ok {
 		return "", refuse("stream "+name+" exists", "nova-sprint stream set "+name+" --mode <m> --forge <f>, or nova-sprint show "+name)

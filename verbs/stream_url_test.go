@@ -15,7 +15,7 @@ func TestStreamAddReachesTheCloneAddress(t *testing.T) {
 			want: []string{"STREAM t repo=o/r base=main"}},
 		{name: "a bare name", as: "carol", args: []string{"stream", "add", "t", "--repo", "nova-tools", "--forge", "github"}, exit: 1,
 			want: []string{"neither <org>/<repo> nor a clone URL", "name the repository --repo <org>/<repo> with --forge github"}},
-		{name: "org/repo with no forge", as: "carol", args: []string{"stream", "add", "t", "--repo", "o/x"}, exit: 2,
+		{name: "org/repo with no forge", as: "carol", args: []string{"stream", "add", "t", "--repo", "o/x", "--mode", "hand"}, exit: 2,
 			prep: func(_ *testing.T, w *world) { w.origin.err = errBroken },
 			want: []string{"git ls-remote of o/x failed", "an <org>/<repo> is cloned through its forge: give stream t --forge github, then add the stream again"}},
 	})

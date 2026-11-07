@@ -3,7 +3,7 @@ package verbs
 func coordinateVerbs() []*verb {
 	return []*verb{
 		{name: "stream add", group: "coordinate", role: roleCoordinator, usage: "<s> --repo <org/repo> [--base main] [--mode auto|group|hand] [--forge github]", flags: "repo= base= mode= forge=", min: 1, max: 1, run: runStreamAdd,
-			about: "adds a stream: its repository (<org>/<repo> with --forge github, reached at https://github.com/<org>/<repo>.git as the process's GitHub identity; or a clone URL or path), base branch, landing mode (auto by default) and forge (none: no PR or CI, landed by hand)",
+			about: "adds a stream: its repository (<org>/<repo> with --forge github, reached at https://github.com/<org>/<repo>.git as the process's GitHub identity; or a clone URL or path), base branch, landing mode (auto by default, which needs --forge github; without a forge pass --mode hand) and forge (none: no PR or CI, landed by hand)",
 			needs: []string{"the stream exists: nova-sprint show <s>", "the base branch is not at origin: push it, or pass --base", "card branches sprint/<s>/<card> cannot be created (a bad name, or a branch sprint or sprint/<s>): rename or delete it", "with --forge github, this host's gh cannot write the repository: gh auth login as an identity that can"}},
 		{name: "stream set", group: "coordinate", role: roleCoordinator, usage: "<s> [--mode auto|group|hand] [--forge github|none]", flags: "mode= forge=", min: 1, max: 1, run: runStreamSet,
 			about: "changes a stream's landing mode or forge",

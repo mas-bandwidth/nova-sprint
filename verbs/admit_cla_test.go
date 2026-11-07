@@ -57,7 +57,7 @@ func TestStreamAddWarnsOfAnAgreement(t *testing.T) {
 	t.Run("no forge", func(t *testing.T) {
 		w := worldFrom(t, sprint())
 		cla(t, w)
-		r := w.do("carol", "stream", "add", "t", "--repo", "https://example.test/o/r.git")
+		r := w.do("carol", "stream", "add", "t", "--repo", "https://example.test/o/r.git", "--mode", "hand")
 		if strings.Contains(r.Output, "WARN") {
 			t.Fatalf("a warning with no forge: %d %s", r.Exit, r.Output)
 		}
