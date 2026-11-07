@@ -59,9 +59,19 @@ func (s *streamCost) MarshalJSON() ([]byte, error) {
 	if s.unpriced > 0 {
 		out["unpriced_runs"] = s.unpriced
 	}
+	parts := map[string]*big.Int{}
+	for _, key := range []string{"work_cost", "read_cost"} {
+		if micros, ok := s.amounts[key]; ok {
+			parts[key] = micros
+		}
+	}
+	_, split := partitionCents(parts)
 	for key, micros := range s.amounts {
-		cents := new(big.Int).Add(micros, big.NewInt(9999))
-		cents.Div(cents, big.NewInt(10000))
+		cents := split[key]
+		if cents == nil {
+			cents = new(big.Int).Add(micros, big.NewInt(9999))
+			cents.Div(cents, big.NewInt(10000))
+		}
 		out[key] = moneyCell(cents)
 	}
 	return json.Marshal(out)

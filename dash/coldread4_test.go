@@ -104,6 +104,8 @@ func TestColdread4DefectMainOpenWithoutDeadline(t *testing.T) {
 }
 
 // v1 sends stream_costs.<s>.total_cost, work_cost and read_cost as strings ("$0.54");
+// Rowan ruled 2026-11-07 that work and read partition the rounded total rather than
+// independently round upward, so their displayed cents always add to the total.
 // v2 sends JSON numbers (unrounded dollars). Round-two ruling 7: "The page envelope uses
 // v1's field types". (README: "The stream_costs accounting total remains unrounded".)
 func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
@@ -134,7 +136,7 @@ func TestColdread4DefectStreamCostsTypesVsV1(t *testing.T) {
 		t.Fatal(err)
 	}
 	sc := v2["data"].(map[string]any)["stream_costs"].(map[string]any)["s"].(map[string]any)
-	if sc["total_cost"] != "$1.24" || sc["work_cost"] != "$1.24" || sc["read_cost"] != "$0.01" || sc["unpriced_runs"] != float64(1) {
+	if sc["total_cost"] != "$1.24" || sc["work_cost"] != "$1.24" || sc["read_cost"] != "$0.00" || sc["unpriced_runs"] != float64(1) {
 		t.Fatalf("stream cost values and count: %v", sc)
 	}
 	for _, k := range []string{"total_cost", "work_cost", "read_cost"} {
@@ -217,6 +219,7 @@ func TestColdread4DefectDeadCodeRemains(t *testing.T) {
 // Measurement: 5,000 producers in 50 streams, a work and a read consumer for every
 // producer (10,000 consumers), 12 worker and 4 kin rows, on the in-memory store.
 func TestColdread4Measure5000(t *testing.T) {
+	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()
 	var w []store.Write

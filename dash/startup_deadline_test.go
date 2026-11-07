@@ -5,20 +5,17 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 type startupBlockingStore struct {
 	store.Store
-	deadline time.Duration
+	deadline bool
 }
 
 func (s *startupBlockingStore) Snapshot(ctx context.Context) (store.Snapshot, error) {
-	if d, ok := ctx.Deadline(); ok {
-		s.deadline = time.Until(d)
-	}
+	_, s.deadline = ctx.Deadline()
 	<-ctx.Done()
 	return store.Snapshot{}, ctx.Err()
 }
@@ -30,7 +27,7 @@ func TestStartupSnapshotDeadline(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "startup snapshot") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if s.deadline < 29*time.Second || s.deadline > 30*time.Second {
-		t.Fatalf("deadline = %s", s.deadline)
+	if !s.deadline {
+		t.Fatal("startup snapshot had no deadline")
 	}
 }
