@@ -71,17 +71,17 @@ func testSetRefusals(t *testing.T, w *world) {
 	missing := filepath.Join(t.TempDir(), "none.star")
 	assert.Equal(t, "SPRINT REFUSED policy set: cannot read "+missing+": open "+missing+": no such file or directory: name a readable file", refusal(t, setErr(w, e, missing)))
 	big := w.file("big.star", strings.Repeat("#", MaxBody+1))
-	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy set: %s is %d bytes, over %d: make the file smaller", big, MaxBody+1, MaxBody), refusal(t, setErr(w, e, big)))
+	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy set: %s is over %d bytes: make the file smaller", big, MaxBody), refusal(t, setErr(w, e, big)))
 	assert.Equal(t, "SPRINT REFUSED policy set: v1 has this body: nova-sprint policy activate 1", refusal(t, setErr(w, e, w.file("same.star", defaultBody))))
 	arity, line := override("reads", "def reads(card, x):\n    return 1")
-	unknown, _ := appended("teir = 1\n")
+	unknown, unknownLine := appended("teir = 1\n")
 	missingQ, _ := override("stitch", "")
 	bad, badLine := override("reads", "def reads(card):\n    return 9")
 	for _, tc := range []struct{ body, want string }{
 		{"def order(card)\n", "POLICY REFUSED f.star line 2: got newline, want ':'"},
 		{arity, fmt.Sprintf("POLICY REFUSED f.star line %d: reads takes 1 parameter(s): def reads(card)", line)},
-		{unknown, "POLICY REFUSED f.star: unknown top-level name teir: a question is one of catalog landing limits order prices reads rows stitch timeouts verdict width, a helper starts with _"},
-		{missingQ, "POLICY REFUSED f.star: question stitch is missing: define def stitch(stream)"},
+		{unknown, fmt.Sprintf("POLICY REFUSED f.star line %d: unknown top-level name teir: a question is one of catalog landing limits order prices reads rows stitch timeouts verdict width, a helper starts with _", unknownLine)},
+		{missingQ, fmt.Sprintf("POLICY REFUSED f.star line %d, end of file: question stitch is missing: define def stitch(stream)", lastLine(missingQ))},
 		{bad, fmt.Sprintf("POLICY REFUSED f.star line %d reads(p3): the answer 9 is outside 1..5", badLine)},
 	} {
 		path := w.file("f.star", tc.body)

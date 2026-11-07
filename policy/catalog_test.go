@@ -91,7 +91,8 @@ func TestCatalogRefusals(t *testing.T) {
 	v := w.set("older.star", older)
 	c, err := ReadCatalog(w.ctx(), w.st, v)
 	require.NoError(t, err)
-	want := builtinCatalog()
-	want.Version = v
+	want, err := ReadCatalog(w.ctx(), w.st, 0)
+	require.NoError(t, err)
+	want.Version = 0 // ruling 7: the catalog that answered, the built-in one
 	assert.Equal(t, want, c, "a version from before catalog has the built-in's")
 }

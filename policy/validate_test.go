@@ -73,7 +73,7 @@ func TestRefusals(t *testing.T) {
 		{"prices", `{1: {"in": 1, "out": 1}}`, "prices(): a key is an int, not a model name"},
 		{"width", `{"work": 0, "ahead": 0}`, "rows(p1 work): every row named has work 0 in width, while row r1 could take it"},
 	} {
-		body, line := override(tc.q, fmt.Sprintf("def %s(%s):\n    return %s", tc.q, params(tc.q), tc.ret))
+		body, line := override(tc.q, fmt.Sprintf("def %s(%s):\n    return %s", tc.q, params[tc.q], tc.ret))
 		if tc.q == "width" && strings.HasPrefix(tc.want, "rows") {
 			line = defLine(body, "rows")
 		}
@@ -172,7 +172,7 @@ func FuzzAnswers(f *testing.F) {
 		g := &fuzzLit{b: b}
 		var body strings.Builder
 		for _, q := range questionNames() {
-			fmt.Fprintf(&body, "def %s(%s):\n    return %s\n\n", q, params(q), g.lit(0))
+			fmt.Fprintf(&body, "def %s(%s):\n    return %s\n\n", q, params[q], g.lit(0))
 		}
 		a, fs := NewEngine().Answer(Versions{Active: pv(2, body.String())}, snap, FullQuestions(snap, nil))
 		if a.Version == 2 {

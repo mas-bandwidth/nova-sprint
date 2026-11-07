@@ -2,10 +2,13 @@ package policy
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"go.starlark.net/starlark"
 
@@ -59,25 +62,41 @@ func checkOrder(v starlark.Value) ([]any, string) {
 }
 
 // checkRows: the candidates to use, in preference order, never a row below
-// the card's tier, never empty while a candidate exists, no name twice.
-func checkRows(v starlark.Value, c store.Card, cands []store.Row, rows map[string]store.Row) ([]string, string) {
-	names, msg := stringList(v)
-	switch {
-	case msg != "":
-		return nil, msg
-	case len(names) == 0 && len(cands) > 0:
-		return nil, refuse("the answer is empty while %d candidate(s) exist", len(cands))
+// the card's tier, never empty while a candidate exists, no name twice. It
+// stops at the first refusal, so it reads at most one more name than there
+// are candidates, however long the answer.
+func checkRows(v starlark.Value, c store.Card, set *candidateSet, rows map[string]store.Row) ([]string, string) {
+	var l starlark.Indexable
+	switch x := v.(type) {
+	case *starlark.List:
+		l = x
+	case starlark.Tuple:
+		l = x
+	default:
+		return nil, refuse("the answer is %s, not a list of row names", kind(v))
 	}
-	for i, n := range names {
+	if l.Len() == 0 && len(set.rows) > 0 {
+		return nil, refuse("the answer is empty while %d candidate(s) exist", len(set.rows))
+	}
+	names, seen := make([]string, 0, min(l.Len(), len(set.rows))), make([]bool, len(set.rows))
+	for i := range l.Len() {
+		s, ok := l.Index(i).(starlark.String)
+		if !ok {
+			return nil, refuse("element %d is %s, not a row name", i+1, kind(l.Index(i)))
+		}
+		n := string(s)
+		at, candidate := set.names[n]
 		r, known := rows[n]
 		switch {
 		case known && rung(Rank(r)) < rung(c.Tier):
-			return nil, refuse("row %s has rank %s, below the card's tier %s", n, cmp.Or(Rank(r), "none"), c.Tier)
-		case !slices.ContainsFunc(cands, func(r store.Row) bool { return r.Name == n }):
-			return nil, refuse("row %s is not a candidate (the candidates: %s)", n, cmp.Or(rowNames(cands), "none"))
-		case slices.Contains(names[:i], n):
+			return nil, refuse("row %s has rank %s, below the card's tier %s", cut(n, 64), cmp.Or(Rank(r), "none"), c.Tier)
+		case !candidate:
+			return nil, refuse("row %s is not a candidate (the candidates: %s)", cut(n, 64), cut(cmp.Or(rowNames(set.rows), "none"), maxQuestion/2))
+		case seen[at]:
 			return nil, refuse("row %s is named twice", n)
 		}
+		seen[at] = true
+		names = append(names, n)
 	}
 	return names, ""
 }
@@ -90,28 +109,9 @@ func rowNames(rs []store.Row) string {
 	return strings.Join(names, " ")
 }
 
-func stringList(v starlark.Value) ([]string, string) {
-	var items []starlark.Value
-	switch x := v.(type) {
-	case *starlark.List:
-		for i := range x.Len() {
-			items = append(items, x.Index(i))
-		}
-	case starlark.Tuple:
-		items = x
-	default:
-		return nil, refuse("the answer is %s, not a list of row names", kind(v))
-	}
-	out := make([]string, len(items))
-	for i, x := range items {
-		s, ok := x.(starlark.String)
-		if !ok {
-			return nil, refuse("element %d is %s, not a row name", i+1, kind(x))
-		}
-		out[i] = string(s)
-	}
-	return out, ""
-}
+// late is true, every 1,024th element of a validation loop, once the
+// tick's deadline has passed: the loop stops with overTime.
+func late(ctx context.Context, i int) bool { return i%1024 == 1023 && ctx.Err() != nil }
 
 // checkReads: the count of reads, 1..5.
 func checkReads(v starlark.Value) (int, string) { return intIn("the answer", v, 1, 5) }
@@ -123,7 +123,7 @@ func checkVerdict(v starlark.Value, results []string) (string, string) {
 	s, ok := v.(starlark.String)
 	switch {
 	case !ok || (s != "yes" && s != "fix" && s != "retry"):
-		return "", refuse("the answer is %s, not \"yes\", \"fix\" or \"retry\"", show(v))
+		return "", refuse("the answer is %s, not \"yes\", \"fix\" or \"retry\"", brief(v))
 	case s == "yes" && !slices.Contains(results, "ok"):
 		return "", refuse("\"yes\" with no ok read")
 	case s == "fix" && !slices.Contains(results, "fix"):
@@ -134,9 +134,25 @@ func checkVerdict(v starlark.Value, results []string) (string, string) {
 	return string(s), ""
 }
 
-func show(v starlark.Value) string {
-	if s, ok := v.(starlark.String); ok {
-		return s.String()
+// brief is a refused value as a refusal prints it, at most 64 characters:
+// a string cut before it is quoted, an int past 64 bits by its size alone,
+// anything else by its type, so a refusal never prints a huge value.
+func brief(v starlark.Value) string {
+	switch x := v.(type) {
+	case starlark.String:
+		if len(x) > 16 { // each byte quotes to at most 4 characters
+			i := 10
+			for i > 0 && !utf8.RuneStart(x[i]) {
+				i--
+			}
+			return x[:i].String() + fmt.Sprintf("... (%d bytes)", len(x))
+		}
+		return x.String()
+	case starlark.Int:
+		if n, ok := x.Int64(); ok {
+			return strconv.FormatInt(n, 10)
+		}
+		return fmt.Sprintf("an int of %d bits", x.BigInt().BitLen())
 	}
 	return kind(v)
 }
@@ -250,24 +266,27 @@ func checkStitch(v starlark.Value) (bool, string) {
 }
 
 // checkPrices: model name to {"in": n, "out": n}, ints at or above 0.
-func checkPrices(v starlark.Value) (map[string]Price, string) {
+func checkPrices(ctx context.Context, v starlark.Value) (map[string]Price, string) {
 	d, ok := v.(*starlark.Dict)
 	if !ok {
 		return nil, refuse("the answer is %s, not a dict", kind(v))
 	}
 	out := map[string]Price{}
-	for _, kv := range d.Items() {
+	for i, kv := range d.Items() {
 		model, ok := kv[0].(starlark.String)
-		if !ok {
+		switch {
+		case late(ctx, i):
+			return nil, overTime()
+		case !ok:
 			return nil, refuse("a key is %s, not a model name", kind(kv[0]))
 		}
 		p, msg := dictOf(kv[1], "in", "out")
 		if msg != "" {
-			return nil, string(model) + ": " + msg
+			return nil, cut(string(model), 64) + ": " + msg
 		}
 		var price Price
-		if price.In, msg = int64In(string(model)+" in", p["in"]); msg == "" {
-			price.Out, msg = int64In(string(model)+" out", p["out"])
+		if price.In, msg = int64In(cut(string(model), 64)+" in", p["in"]); msg == "" {
+			price.Out, msg = int64In(cut(string(model), 64)+" out", p["out"])
 		}
 		if msg != "" {
 			return nil, msg
@@ -287,7 +306,7 @@ func dictOf(v starlark.Value, keys ...string) (map[string]starlark.Value, string
 	for _, kv := range d.Items() {
 		k, ok := kv[0].(starlark.String)
 		if !ok || !slices.Contains(keys, string(k)) {
-			return nil, refuse("key %s is not one of %s", kv[0].String(), strings.Join(keys, " "))
+			return nil, refuse("key %s is not one of %s", brief(kv[0]), strings.Join(keys, " "))
 		}
 		out[string(k)] = kv[1]
 	}
@@ -307,7 +326,7 @@ func intIn(what string, v starlark.Value, lo, hi int) (int, string) {
 	}
 	n, ok := i.Int64()
 	if !ok || n < int64(lo) || n > int64(hi) {
-		return 0, refuse("%s %s is outside %d..%d", what, i.String(), lo, hi)
+		return 0, refuse("%s %s is outside %d..%d", what, brief(i), lo, hi)
 	}
 	return int(n), ""
 }
@@ -320,7 +339,7 @@ func int64In(what string, v starlark.Value) (int64, string) {
 	}
 	n, ok := i.Int64()
 	if !ok || n < 0 {
-		return 0, refuse("%s %s is outside 0..%d", what, i.String(), int64(math.MaxInt64))
+		return 0, refuse("%s %s is outside 0..%d", what, brief(i), int64(math.MaxInt64))
 	}
 	return n, ""
 }

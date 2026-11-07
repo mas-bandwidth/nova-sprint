@@ -7,7 +7,6 @@ package policy
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -77,25 +76,15 @@ func pgBin(t testing.TB) string {
 }
 
 // TestFunctionalLoad: policy's share of a tick at 5,000 ready producers
-// over 50 rows, with a cold cache and a warm one; the cold tick must fit
-// TickTime (measured 2026-11-06 on amd-3: cold 140 ms, warm 63 ms). It runs
-// alone, before the parallel tests, since a timing contends for the cores.
+// over 100 rows that all serve every tier (the breaker's case: every rows
+// question has 100 candidates), with a cold cache and a warm one; the cold
+// tick must fit TickTime. It runs alone, before the parallel tests, since a
+// timing contends for the cores. The number is in LAYER-5's Built section.
 func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for the cores
 	if raceSlowdown > 1 {
 		t.Skip("timing under -race measures the race detector")
 	}
-	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{}, Cards: map[string]store.Card{}, Rows: map[string]store.Row{}}
-	for i := range 10 {
-		snap.Streams[fmt.Sprintf("s%d", i)] = store.Stream{Name: fmt.Sprintf("s%d", i)}
-	}
-	for i := range 50 {
-		name := fmt.Sprintf("r%02d", i)
-		snap.Rows[name] = store.Row{Name: name, Kind: "worker", Width: 2, State: "up", Tiers: store.Tiers[i%4:]}
-	}
-	for i := range 5000 {
-		id := fmt.Sprintf("p%04d", i)
-		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: fmt.Sprintf("s%d", i%10), State: "ready", Tier: store.Tiers[i%4], Score: i, Priority: "normal"}
-	}
+	snap := loadSnap(5000, 100)
 	q := FullQuestions(snap, nil)
 	e := NewEngine()
 	vs := Versions{Active: pv(1, defaultBody)}
@@ -108,6 +97,6 @@ func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for t
 	_, fs = e.Answer(vs, snap, q)
 	warm := time.Since(start)
 	require.Empty(t, fs)
-	t.Logf("policy at 5000 producers, 50 rows: cold %s, warm %s (TickTime %s)", cold, warm, TickTime)
+	t.Logf("policy at 5000 producers, 100 rows: cold %s, warm %s (TickTime %s)", cold, warm, TickTime)
 	require.Less(t, cold, TickTime, "the cold tick fits the tick's time budget")
 }

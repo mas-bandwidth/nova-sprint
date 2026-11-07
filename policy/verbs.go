@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -152,15 +153,20 @@ func upFirst(verb string, err error) error {
 	return &Refusal{verb, "no policy is active", "nova-sprint up"}
 }
 
-// readFile reads a policy file of at most MaxBody bytes; its name is the base name.
+// readFile reads a policy file of at most MaxBody bytes, reading no more
+// than one byte past it; its name is the base name.
 func readFile(verb, path string) (string, string, *Refusal) {
-	fi, err := os.Stat(path)
-	if err == nil && fi.Size() > MaxBody {
-		return "", "", &Refusal{verb, fmt.Sprintf("%s is %d bytes, over %d", path, fi.Size(), MaxBody), "make the file smaller"}
+	f, err := os.Open(path)
+	var b []byte
+	if err == nil {
+		b, err = io.ReadAll(io.LimitReader(f, MaxBody+1))
+		_ = f.Close() // ignored: read-only, and everything needed is read
 	}
-	b, err := os.ReadFile(path)
-	if err != nil {
+	switch {
+	case err != nil:
 		return "", "", &Refusal{verb, "cannot read " + path + ": " + err.Error(), "name a readable file"}
+	case len(b) > MaxBody:
+		return "", "", &Refusal{verb, fmt.Sprintf("%s is over %d bytes", path, MaxBody), "make the file smaller"}
 	}
 	return filepath.Base(path), string(b), nil
 }

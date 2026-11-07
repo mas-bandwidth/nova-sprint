@@ -3,8 +3,9 @@
 // stored as an immutable version in sprint.policy. It answers a closed set
 // of questions the steps ask, checks every answer against its domain, and
 // never writes the store during a tick and never raises a move. Pure Go over
-// go.starlark.net: no clock, no bus, no socket; the verbs (verbs.go) are the
-// only code that touches the store, through its policy writes.
+// go.starlark.net: no bus, no socket; the one clock is a tick's deadline
+// (TickTime), and the verbs (verbs.go) are the only code that touches the
+// store, through its policy writes.
 //
 // The state machine of versions, activation and the per-tick fallback is
 // modelled in tla/Policy.tla.
@@ -25,6 +26,12 @@ import (
 var Arity = map[string]int{
 	"order": 1, "rows": 3, "reads": 1, "verdict": 2, "width": 1,
 	"limits": 0, "landing": 1, "timeouts": 0, "stitch": 1, "prices": 0, "catalog": 0,
+}
+
+// params are each question's parameters as the design writes them.
+var params = map[string]string{
+	"order": "card", "rows": "card, kind, candidates", "reads": "card", "verdict": "card, reads", "width": "row",
+	"limits": "", "landing": "stream", "timeouts": "", "stitch": "stream", "prices": "", "catalog": "",
 }
 
 // The kinds of a rows question.
@@ -58,7 +65,10 @@ type RowsQuestion struct{ Card, Kind string }
 type LandingQuestion struct{ Stream, Rung string }
 
 // Answers are one tick's answers, every one checked against its domain.
-// Version is the version that answered (0 is the built-in default).
+// Version is the version that answered (0 is the built-in default). Each
+// tick's Answers are the caller's own, except the Rows lists: equal lists
+// share one slice (within a tick and with the answer cache), so they are
+// read-only.
 type Answers struct {
 	Version  int
 	Order    map[string][]any // each element an int64 or a string; see CompareOrder
@@ -98,7 +108,9 @@ type Price struct{ In, Out int64 }
 
 // Failure is one version's error or refused answer: none of that version's
 // answers is used that tick. Line is the line of the question's def for a
-// refusal, of the innermost frame for a runtime error.
+// refusal, of the innermost frame for a runtime error, and the file's last
+// line ("line N, end of file") for something the file does not define.
+// Label is the version (v7, default) or, before storage, the file's name.
 type Failure struct {
 	Version  int    // 0 is the built-in or an unstored file
 	Label    string // v7, default, or a file's name
@@ -106,12 +118,16 @@ type Failure struct {
 	Subject  string
 	Line     int
 	Msg      string
+	eof      bool // Line is the file's last line: the thing refused is absent
 }
 
 func (f Failure) Error() string {
 	at := f.Label
 	if f.Line > 0 {
 		at += fmt.Sprintf(" line %d", f.Line)
+	}
+	if f.eof {
+		at += ", end of file"
 	}
 	if f.Question != "" {
 		at += fmt.Sprintf(" %s(%s)", f.Question, f.Subject)
@@ -130,22 +146,28 @@ func (f Failure) Judgement(seq int64) store.PutJudgement {
 	}
 }
 
-// maxQuestion caps a judgement's question text.
+// maxQuestion caps a judgement's question text and every refusal's.
 const maxQuestion = 4096
 
 // storable is text the store accepts: invalid UTF-8 and NUL replaced, at
-// most maxQuestion bytes, cut at a rune with a marker.
+// most maxQuestion bytes, cut at a rune with a marker. It cuts first at four
+// times that, so the work is bounded however long the text.
 func storable(s string) string {
-	s = strings.ReplaceAll(strings.ToValidUTF8(s, "\uFFFD"), "\x00", "\uFFFD")
-	const marker = " [cut at 4096 bytes]"
-	if len(s) <= maxQuestion {
+	s = strings.ReplaceAll(strings.ToValidUTF8(cut(s, 4*maxQuestion), "�"), "\x00", "�")
+	return cut(s, maxQuestion)
+}
+
+// cut is s at most n bytes, cut at a rune with a marker naming n.
+func cut(s string, n int) string {
+	if len(s) <= n {
 		return s
 	}
-	cut := maxQuestion - len(marker)
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
-		cut--
+	marker := fmt.Sprintf(" [cut at %d bytes]", n)
+	i := max(n-len(marker), 0)
+	for i > 0 && !utf8.RuneStart(s[i]) {
+		i--
 	}
-	return s[:cut] + marker
+	return s[:i] + marker
 }
 
 // Group is the group key of version v's policy judgement.

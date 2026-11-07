@@ -33,7 +33,7 @@ func TestCompileRefusesForbidden(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			body, line := appended(tc.extra)
-			_, f := compile(1, "v1", body)
+			_, f := compile(1, "v1", body, newThread("v1"))
 			require.NotNil(t, f)
 			want := tc.want
 			if strings.Contains(want, "%d") {
@@ -53,25 +53,25 @@ func TestCompileRefusesForbidden(t *testing.T) {
 func TestCompileRefusesNames(t *testing.T) {
 	t.Parallel()
 	misspelt, line := appended("def teir(card):\n    return \"pro\"\n")
-	unknown, _ := appended("teir = 1\n")
+	unknown, unknownLine := appended("teir = 1\n")
 	arity, arityLine := override("reads", "def reads(card, extra):\n    return 1")
-	notFn, _ := override("order", "order = (1,)")
+	notFn, notFnLine := override("order", "order = (1,)")
 	missing, _ := override("prices", "")
 	names := "catalog landing limits order prices reads rows stitch timeouts verdict width"
 	for _, tc := range []struct{ name, body, want string }{
 		{"misspelt question", misspelt, fmt.Sprintf("POLICY REFUSED v1 line %d: unknown top-level name teir: a question is one of %s, a helper starts with _", line, names)},
-		{"unknown value", unknown, "POLICY REFUSED v1: unknown top-level name teir: a question is one of " + names + ", a helper starts with _"},
+		{"unknown value", unknown, fmt.Sprintf("POLICY REFUSED v1 line %d: unknown top-level name teir: a question is one of %s, a helper starts with _", unknownLine, names)},
 		{"wrong arity", arity, fmt.Sprintf("POLICY REFUSED v1 line %d: reads takes 1 parameter(s): def reads(card)", arityLine)},
-		{"not a function", notFn, "POLICY REFUSED v1: order is a tuple, not a function: define def order(card)"},
-		{"missing question", missing, "POLICY REFUSED v1: question prices is missing: define def prices()"},
-		{"over 64 KiB", defaultBody + "#" + strings.Repeat("x", MaxBody) + "\n", fmt.Sprintf("POLICY REFUSED v1: the file is %d bytes, over 65536", len(defaultBody)+MaxBody+2)},
+		{"not a function", notFn, fmt.Sprintf("POLICY REFUSED v1 line %d: order is a tuple, not a function: define def order(card)", notFnLine)},
+		{"missing question", missing, fmt.Sprintf("POLICY REFUSED v1 line %d, end of file: question prices is missing: define def prices()", strings.Count(strings.TrimRight(missing, "\n"), "\n")+1)}, // the file's last line
+		{"over 64 KiB", defaultBody + "#" + strings.Repeat("x", MaxBody) + "\n", fmt.Sprintf("POLICY REFUSED v1 line %d, end of file: the file is %d bytes, over 65536", strings.Count(defaultBody, "\n")+1, len(defaultBody)+MaxBody+2)},
 	} {
-		_, f := compile(1, "v1", tc.body)
+		_, f := compile(1, "v1", tc.body, newThread("v1"))
 		require.NotNil(t, f, tc.name)
 		assert.Equal(t, tc.want, f.Error(), tc.name)
 	}
 	lambda, _ := override("order", "order = lambda card: (1,)")
-	_, f := compile(1, "v1", lambda)
+	_, f := compile(1, "v1", lambda, newThread("v1"))
 	assert.Nil(t, f, "a lambda is a function")
 }
 

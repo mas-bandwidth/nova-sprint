@@ -37,7 +37,8 @@ func (r Report) Text() string {
 func (r Report) Code() int { return min(len(r.Refusals), 1) }
 
 // Check runs a file, a stored version (7 or v7) or default on the current
-// snapshot against the active version. Read-only.
+// snapshot against the active version. Read-only. A file's refusals name
+// the file (it has no version yet); a stored version's name the version.
 func Check(ctx context.Context, st store.Store, e *Engine, target string) (Report, error) {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
@@ -56,7 +57,7 @@ func Check(ctx context.Context, st store.Store, e *Engine, target string) (Repor
 	if r != nil {
 		return Report{}, r
 	}
-	a, fs := e.runFile(name, body, snap)
+	a, fs := e.checkRun(ctx, source{label: name, body: body}, snap)
 	return e.report(ctx, st, snap, name, a, fs)
 }
 
@@ -70,21 +71,23 @@ func versionArg(s string) (int, bool) {
 }
 
 func check(ctx context.Context, st store.Store, e *Engine, snap store.Snapshot, pv store.PolicyVersion) (Report, error) {
-	p, f := e.program(pv)
-	if f != nil {
-		return Report{Label: Label(pv.Version), Refusals: []string{f.Error()}}, nil
-	}
-	a, fs := e.run(p, newIndex(snap).asks(FullQuestions(snap, nil)), true)
+	a, fs := e.checkRun(ctx, storedSource(pv.Version, pv.Body), snap)
 	return e.report(ctx, st, snap, Label(pv.Version), a, fs)
 }
 
-// runFile compiles an unstored file (never cached) and runs it on snap.
+// runFile runs an unstored file (never cached) on snap, labelled by its name.
 func (e *Engine) runFile(name, body string, snap store.Snapshot) (Answers, []Failure) {
-	p, f := compile(0, name, body)
-	if f != nil {
-		return Answers{}, []Failure{*f}
-	}
-	return e.run(p, newIndex(snap).asks(FullQuestions(snap, nil)), true)
+	return e.checkRun(context.Background(), source{label: name, body: body}, snap)
+}
+
+// checkRun runs src on every question snap poses, under a tick's deadline,
+// collecting every failure and the answers' text; nothing is cached.
+func (e *Engine) checkRun(ctx context.Context, src source, snap store.Snapshot) (Answers, []Failure) {
+	ctx, cancel := context.WithTimeout(ctx, TickTime)
+	defer cancel()
+	asks := newIndex(snap).asks(ctx, FullQuestions(snap, nil))
+	o := e.start(ctx, src, asks, true).await(nil, func() {})
+	return o.a, o.fs
 }
 
 // report compares a run's answers with the active version's on snap.
@@ -100,14 +103,10 @@ func (e *Engine) report(ctx context.Context, st store.Store, snap store.Snapshot
 			return r, err
 		}
 	}
-	old := map[string]string{}
-	if p, f := e.program(active); f == nil {
-		was, _ := e.run(p, newIndex(snap).asks(FullQuestions(snap, nil)), true) // ignored: the active's own refusals are not this report's
-		old = was.shown
-	}
+	was, _ := e.checkRun(ctx, storedSource(active.Version, active.Body), snap) // ignored: the active's own refusals are not this report's
 	for _, k := range sortedKeys(a.shown) {
-		if was, ok := old[k]; !ok || was != a.shown[k] {
-			r.Changes = append(r.Changes, fmt.Sprintf("%s: %s -> %s", k, cmp.Or(was, "(refused)"), a.shown[k]))
+		if old, ok := was.shown[k]; !ok || old != a.shown[k] {
+			r.Changes = append(r.Changes, fmt.Sprintf("%s: %s -> %s", k, cmp.Or(old, "(refused)"), a.shown[k]))
 		}
 	}
 	return r, nil
@@ -171,68 +170,4 @@ func reasons(ctx context.Context, st store.Store) (map[int]string, error) {
 			}
 		}
 	})
-}
-
-// Diff is the text diff of two bodies: a and b are 7, v7 or default; b ""
-// is the active version.
-func Diff(ctx context.Context, st store.Store, a, b string) (string, error) {
-	if b == "" {
-		snap, err := st.Snapshot(ctx)
-		if err != nil || snap.Policy == 0 {
-			return "", upFirst("diff", err)
-		}
-		b = strconv.Itoa(snap.Policy)
-	}
-	var bodies [2]string
-	for i, s := range []string{a, b} {
-		n, ok := versionArg(s)
-		switch {
-		case !ok:
-			return "", &Refusal{"diff", "unknown version " + s, "nova-sprint policy show --list"}
-		case n == 0:
-			bodies[i] = defaultBody
-		default:
-			pv, err := version(ctx, st, "diff", n)
-			if err != nil {
-				return "", err
-			}
-			bodies[i] = pv.Body
-		}
-	}
-	return "--- " + a + "\n+++ " + b + "\n" + textDiff(bodies[0], bodies[1]), nil
-}
-
-// textDiff is a line diff by longest common subsequence: " " kept, "-" only
-// in a, "+" only in b.
-func textDiff(a, b string) string {
-	x, y := strings.Split(a, "\n"), strings.Split(b, "\n")
-	lcs := make([][]int, len(x)+1)
-	for i := range lcs {
-		lcs[i] = make([]int, len(y)+1)
-	}
-	for i := len(x) - 1; i >= 0; i-- {
-		for j := len(y) - 1; j >= 0; j-- {
-			if x[i] == y[j] {
-				lcs[i][j] = lcs[i+1][j+1] + 1
-			} else {
-				lcs[i][j] = max(lcs[i+1][j], lcs[i][j+1])
-			}
-		}
-	}
-	var out strings.Builder
-	i, j := 0, 0
-	for i < len(x) || j < len(y) {
-		switch {
-		case i < len(x) && j < len(y) && x[i] == y[j]:
-			out.WriteString("  " + x[i] + "\n")
-			i, j = i+1, j+1
-		case i < len(x) && (j == len(y) || lcs[i+1][j] >= lcs[i][j+1]):
-			out.WriteString("- " + x[i] + "\n")
-			i++
-		default:
-			out.WriteString("+ " + y[j] + "\n")
-			j++
-		}
-	}
-	return out.String()
 }

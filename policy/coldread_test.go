@@ -1,10 +1,12 @@
 package policy
 
 // Cold-read probes (2026-11-06), written by the cold reader of e33eea61
-// (~/rowan-working/children/nsv2-l5-coldread), copied here unchanged. Each
-// TestColdreadDefect* fails at the head it was written against and names the
-// design line it holds the code to. No clock, no socket: store.Fake and
-// hand-built snapshots only.
+// (~/rowan-working/children/nsv2-l5-coldread), copied here; two were changed
+// by Rowan in round 3, when ruling 4 replaced the per-tick step budget with
+// one deadline per tick and said no memory bound exists (each change is
+// marked "Round 3"). Each TestColdreadDefect* fails at the head it was
+// written against and names the design line it holds the code to.
+// store.Fake and hand-built snapshots only.
 
 import (
 	"fmt"
@@ -101,9 +103,14 @@ func TestColdreadDefectJudgementTextNotStorable(t *testing.T) {
 // (open a judgement), never stall the tick or exhaust the process.
 func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
 	t.Parallel()
-	alloc, _ := override("reads", "def reads(card):\n    return min(1, len(\"x\" * (1 << 29)))")
-	sorting, _ := override("reads", "def reads(card):\n    return min(1, len(sorted(range(5000000), reverse = True)))")
-	for name, body := range map[string]string{"alloc 512 MiB": alloc, "sort 5M": sorting} {
+	// Round 3: the ruling (4, 2026-11-06) makes the tick's deadline the bound
+	// and says no memory bound exists, so one 512 MiB string (about 40 ms on
+	// the studio) may answer; the probe now allocates 128 MiB 256 times, 32
+	// GiB in all, which must outrun the deadline and fail. And 50M, not 5M:
+	// a sort of 5M takes about 130 ms, inside TickTime.
+	alloc, _ := override("reads", "def reads(card):\n    return min(1, len([len(\"x\" * (1 << 27)) for _i in range(256)]))")
+	sorting, _ := override("reads", "def reads(card):\n    return min(1, len(sorted(range(50000000), reverse = True)))")
+	for name, body := range map[string]string{"alloc 32 GiB": alloc, "sort 50M": sorting} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			w := fakeWorld(t)
@@ -116,23 +123,23 @@ func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
 }
 
 // The step budget is per call (Built), so a tick's policy time grows with
-// the number of subjects: 200 producers at 30,000 loop iterations each (each
-// call under the budget) are over 6,000,000 steps in one tick and no
-// failure. At 5,000 producers and a call just under 1,000,000 steps, a tick
-// is 5,000,000,000 steps. Design, "The embedding": "on one thread per tick, with
-// thread.SetMaxExecutionSteps(budget)"; guarantee 4.
+// the number of subjects. Round 3: the ruling's one deadline per tick
+// replaced the per-tick step budget, so the probe is now 2,000 producers at
+// 30,000 iterations each (the original count, each call under CallSteps, 60M in
+// all), which only the deadline can end. Design, "The embedding";
+// guarantee 4.
 func TestColdreadDefectTickStepsUnbounded(t *testing.T) {
 	t.Parallel()
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},
 		Rows: map[string]store.Row{"r": {Name: "r", Kind: "worker", Width: 2, State: "up", Tiers: store.Tiers}}}
-	for i := range 200 {
-		id := fmt.Sprintf("p%03d", i)
+	for i := range 2000 {
+		id := fmt.Sprintf("p%04d", i)
 		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: "s", State: "ready", Tier: "pro", Score: i, Priority: "normal"}
 	}
 	body, _ := override("order", "def order(card):\n    for _i in range(30000):\n        pass\n    return (card.score,)")
 	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
-	require.Len(t, fs, 1, "a tick over CallSteps in total must fail the version: %v", fs)
-	assert.Contains(t, fs[0].Msg, "step budget")
+	require.Len(t, fs, 1, "a tick over TickTime in total must fail the version: %v", fs)
+	assert.Contains(t, fs[0].Msg, "time budget")
 	assert.NotEqual(t, 2, a.Version)
 }
 

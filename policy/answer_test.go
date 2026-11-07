@@ -43,9 +43,7 @@ func TestFallbackOrder(t *testing.T) {
 		assert.Equal(t, tc.failed, labels, tc.name)
 	}
 	e := NewEngine()
-	p, f := compile(0, "default", broken)
-	require.Nil(t, f)
-	e.progs[0] = p // the built-in, broken: a bug in the binary
+	e.builtin = broken // the built-in, broken: a bug in the binary
 	a, fs := e.Answer(Versions{Active: pv(3, broken)}, snap, q)
 	assert.Equal(t, -1, a.Version, "even the built-in failing returns, it never stalls")
 	assert.Equal(t, []string{"v3", "default"}, []string{fs[0].Label, fs[1].Label})
@@ -97,10 +95,12 @@ func testBrokenMidSprint(t *testing.T, w *world) {
 	a, fs = tick()
 	require.Empty(t, fs)
 	assert.Equal(t, 3, a.Version)
-	for _, c := range rep.Changes {
-		k, rest, _ := strings.Cut(c, ": ")
-		assert.Equal(t, rest[strings.Index(rest, " -> ")+4:], a.shown[k], "check predicts the next tick: %s", c)
-	}
+	// Round 3: a tick keeps no answer text (only check does), so check's own
+	// answers on the tick's snapshot are compared with the tick's.
+	checked, cfs := e.checkRun(w.ctx(), storedSource(v3, fixed), w.snap())
+	require.Empty(t, cfs)
+	checked.shown = nil
+	assert.Equal(t, checked, a, "check predicts the next tick")
 	assert.Contains(t, rep.Changes, `landing(s3): (refused) -> {"backed_up": 4, "flowing": 1}`)
 }
 

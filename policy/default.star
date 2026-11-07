@@ -33,12 +33,8 @@ def rows(card, kind, candidates):
     # nearest first, then the ranks between the tier and the wanted one,
     # highest first. Those with room come first; when none has room, all of
     # them (they queue). Never below the tier: candidates all serve it.
-    # The engine offers candidates by rank, lowest first, then by name.
-    want = _RUNG[_want(card, kind)]
-    up = [r for r in candidates if _RUNG[r.rank] >= want]
-    between = [r for r in candidates if _RUNG[r.rank] < want][::-1]
-    use = [r for r in up + between if r.working < r.width]
-    return [r.name for r in (use or up + between)]
+    # prefer is that rule in Go, so a tick is linear in its producers.
+    return prefer(candidates, _want(card, kind))
 
 def reads(card):
     return 1  # v1 standing rule, 2026-10-20

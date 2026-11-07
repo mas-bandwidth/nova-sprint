@@ -28,6 +28,7 @@ type index struct {
 // its contents for the answer cache.
 type candidateSet struct {
 	rows   []store.Row
+	names  map[string]int // name -> its place in rows
 	list   starlark.Tuple
 	digest string
 }
@@ -116,9 +117,9 @@ func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 	}
 	s := &candidateSet{rows: ix.candidates(c, kind)}
 	slices.SortStableFunc(s.rows, func(a, b store.Row) int { return cmp.Compare(rung(Rank(a)), rung(Rank(b))) })
-	s.list = make(starlark.Tuple, len(s.rows))
+	s.list, s.names = make(starlark.Tuple, len(s.rows)), map[string]int{}
 	for i, r := range s.rows {
-		s.list[i] = ix.candidate(r)
+		s.list[i], s.names[r.Name] = ix.candidate(r), i
 	}
 	sum := sha256.Sum256([]byte(s.list.String()))
 	s.digest = hex.EncodeToString(sum[:])
