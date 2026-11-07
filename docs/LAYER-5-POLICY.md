@@ -482,7 +482,11 @@ tick's answers reach the store only through layer 3's ops.
 fallback witness needs an invariant to break), a seventh witness
 (`PolicyWaitRebound` for `WaitKeepsItsBound`), and five reach checks. There is
 no separate `Answer` action: answering the judgement is part of `Activate`, as
-in the code.
+in the code. TLC on hetzner2, MaxVersion 3: `Policy.cfg` passes (34,945
+distinct states); the seven witnesses each break their target invariant; the
+five reach checks are each reached: 13 runs, run one by one with
+`tla/run-one.sh` because hetzner2 was rebooting every few minutes; the full
+`tla/ci-tlc.sh`, which now includes them, was not run end to end.
 
 **Names.** Layer 3's design names its questions differently (`regrace`,
 `victim`, `rung`, `bounce_limit`, `escalate_after`, `budget`, `pack`,
@@ -490,5 +494,5 @@ in the code.
 `regrace`, `budget`, `pack` and `deadline(kind)` have no question here and are
 owed to the layer 3 and 6 wiring.
 
-**Size.** 1,700 lines of non-test Go, over the 1.5k budget by about 200; 74
+**Size.** 1,701 lines of non-test Go, over the 1.5k budget by about 200; 74
 lines of Starlark.
