@@ -5,6 +5,9 @@
 #   bash tla/make-traces.sh check    write them, then check every trace under
 #                                    tla/traces/ with check-trace.sh, all in
 #                                    parallel; exit 1 if any is not as expected
+#   bash tla/make-traces.sh store-check   the same for the store's walks alone
+#                                    (store-*): layer 1's own CI job, which
+#                                    needs no other layer's fixtures
 #
 # The walks and their seeds (the seeds are in the tests):
 #   store-fake-<seed>   store/trace_test.go TestTraceWalk, the Fake, with transport faults
@@ -24,15 +27,19 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
 OUT="$HERE/traces"
 cd "$ROOT" || exit 1
+ONLY=all
+if [ "${1:-}" = store-check ]; then ONLY=store; set -- check; fi
 
 find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
 go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./store/ || exit 1
-go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./card/ || exit 1
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./policy/ || exit 1
-go test -count=1 -run 'TestTraceFixtures$' ./steps/ || exit 1
-go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./edge/git || exit 1
-go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./edge/worker || exit 1
+if [ "$ONLY" = all ]; then
+    go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./card/ || exit 1
+    go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./policy/ || exit 1
+    go test -count=1 -run 'TestTraceFixtures$' ./steps/ || exit 1
+    go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./edge/git || exit 1
+    go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./edge/worker || exit 1
+fi
 if command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || ls /opt/homebrew/opt/postgresql@18/bin/initdb >/dev/null 2>&1; then
     go test -count=1 -run 'TestFunctionalTraceWalk$' ./store/ || exit 1
 elif [ "${NOVA_TRACE_PG:-0}" = 1 ]; then
@@ -48,6 +55,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 for d in "$OUT"/*/; do
     name="$(basename "$d")"
+    [ "$ONLY" = store ] && case "$name" in store-*) ;; *) continue ;; esac
     case "$name" in store-*) model=Store ;; card-*) model=CardMachine ;; policy-*) model=Policy ;; steps-*) model=Steps ;; landedge-*) model=LandEdge ;; runner-*) model=Runner ;; *) continue ;; esac
     ( bash "$HERE/check-trace.sh" "$model" "$d" > "$WORK/$name.out" 2>&1; echo $? > "$WORK/$name.code" ) &
 done

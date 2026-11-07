@@ -69,7 +69,7 @@ jobs:
         run: go test -count=1 -race -timeout 20m -skip Functional ./...
 
   functional:
-    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/v2-stitch'))
     runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 20
     steps:
@@ -123,15 +123,40 @@ jobs:
           name: layer6-traces-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/layer6-traces-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: error
-      - name: the walks write their traces, TLC checks each (a missing initdb fails the job)
+      - name: the other layers' walks write their traces, TLC checks each
         run: bash tla/make-traces.sh check
+        env:
+          NOVA_TRACE_PG: "1"
+
+  # Layer 1's own trace check: the store's walks (the Fake and PostgreSQL),
+  # each trace checked by TLC against Store, and the breaker refused. It has no
+  # other layer's step in front of it, so a layer-6 failure cannot hide its
+  # result. TLC needs Java.
+  store-trace:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, bench]
+    timeout-minutes: 30
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: postgres on PATH
+        shell: bash
+        run: |
+          command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || { sudo -n apt-get update -qq && sudo -n apt-get install -y -qq postgresql; }
+          for d in /usr/lib/postgresql/*/bin; do [ -x "$d/initdb" ] && echo "$d" >> "$GITHUB_PATH"; done
+          true
+      - name: Java is present for TLC
+        run: test -x "$HOME/sdk/bin/java" || command -v java
+      - name: the store's walks write their traces, TLC checks each (a missing initdb fails the job)
+        run: bash tla/make-traces.sh store-check
         env:
           NOVA_TRACE_PG: "1"
 
   tlc:
     # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
     # (Glenn, 2026-11-06: "if you are out of memory, do it on the studio").
-    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/v2-stitch'))
     runs-on: [self-hosted, tlc]
     timeout-minutes: 180
     steps:
