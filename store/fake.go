@@ -25,6 +25,7 @@ type Fake struct {
 	policies map[int]PolicyVersion
 	judges   map[key]Judgement
 	cursors  map[string]int64 // global, as seq is: a clear carries them
+	stop     Stop             // global, as the epoch is
 	events   []fakeEvent
 	seq0     int64          // the seq before events[0]: 0, or the snapshot's (NewFakeFrom)
 	ops      map[string]int // op id -> index in events
@@ -80,6 +81,7 @@ func (f *Fake) do(op Op, valid func(Op) error, rule rules) (Receipt, error) {
 		return Receipt{}, err
 	}
 	f.epoch, f.streams, f.cards, f.rows, f.policies, f.judges, f.cursors = tx.st.epoch, tx.st.streams, tx.st.cards, tx.st.rows, tx.st.policies, tx.st.judges, tx.st.cursors
+	f.stop = tx.st.stop
 	if len(tx.events) > len(f.events) {
 		f.events = tx.events
 		f.ops[op.ID] = len(f.events) - 1
@@ -161,6 +163,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	pick(s.Rows, f.rows, f.epoch)
 	pick(s.Judgements, f.judges, f.epoch)
 	maps.Copy(s.Cursors, f.cursors)
+	s.Stopped, s.StopReason = f.stop.Stopped, f.stop.Reason
 	for v, p := range f.policies {
 		if p.Active {
 			s.Policy = v
@@ -189,7 +192,7 @@ func (f *Fake) Policy(_ context.Context, version int) (PolicyVersion, error) {
 }
 
 func (f *Fake) clone() *Fake {
-	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors)}
+	return &Fake{epoch: f.epoch, streams: maps.Clone(f.streams), cards: maps.Clone(f.cards), rows: maps.Clone(f.rows), policies: maps.Clone(f.policies), judges: maps.Clone(f.judges), cursors: maps.Clone(f.cursors), stop: f.stop}
 }
 
 // fakeTx is the txn of one Fake transaction: st is the working copy of the
@@ -226,6 +229,9 @@ func (t *fakeTx) cursor(name string) (int64, bool, error) {
 }
 
 func (t *fakeTx) putCursor(name string, seq int64) error { t.st.cursors[name] = seq; return nil }
+
+func (t *fakeTx) stop() (Stop, error)  { return t.st.stop, nil }
+func (t *fakeTx) putStop(s Stop) error { t.st.stop = s; return nil }
 
 func (t *fakeTx) stream(name string) (Stream, bool, error) {
 	s, ok := t.st.streams[t.k(name)]

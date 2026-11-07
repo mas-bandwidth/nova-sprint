@@ -47,13 +47,24 @@
 (* close is refused unless the judgement is open (and JudgementOpen fences *)
 (* a plan). A cursor never moves back and never passes the log's last seq. *)
 (*                                                                         *)
+(* A row is hooked by one bus session at a time (round 22): sess and role  *)
+(* are put by PutRow, the sprint hook's one write ("" for both, None here, *)
+(* is unhooked). A hook by another session while one holds the row is      *)
+(* refused (unhook first); the same session may hook again with a new role. *)
+(* Session and role both set or both unset, and a role from Roles, is      *)
+(* checked before the store's step (ErrInvalid), so it is structural here. *)
+(* The sprint's stop (stopped) is one value for the store, as the epoch is, *)
+(* set by SetStopped (refused when unchanged) and kept by a clear. The     *)
+(* store refuses nothing because of it: ops still land while stopped.      *)
+(*                                                                         *)
+(*                                                                         *)
 (* A producer carries red (round 17): its last read's verdict was red, a   *)
 (* plain attribute set by SetRed (producers only; refused on a consumer or *)
 (* a sentinel, and as changing nothing) and read by CardRed.               *)
 (*                                                                         *)
 (* Small instance: 6 cards (2 producers, 1 sentinel, 3 consumers), 2 rows, *)
-(* one judgement, one cursor, two policy versions, 31 fixed ops. A setup   *)
-(* caller runs s1..s24 (the rest after round 22) in order, covering the    *)
+(* one judgement, one cursor, two policy versions, 36 fixed ops. A setup   *)
+(* caller runs s1..s22 in order, covering the    *)
 (* deterministic                                                           *)
 (* rules once each; then                                                   *)
 (* the callers of one Scenario run concurrently: "deal" (cards and rows)   *)
@@ -90,6 +101,8 @@ JStates    == {"open", "answered", "expired"}
 Absent     == "absent"   \* the state of a card, row or judgement that does not exist
 NoHolder   == "none"
 None       == "-"        \* an unused field
+Sessions   == {"x", "y"}                \* bus sessions a hook records
+Roles      == {"worker", "coordinator"} \* a hooked row's role
 
 (* Conditions and writes are uniform records so TLC can compare them. In a *)
 (* condition, g is the gen for CardGen and RowGen, and 1 or 0 for RowHeld; *)
@@ -115,7 +128,8 @@ CardRed(c, b)     == Cnd("cardRed",     c,    None, None, IF b THEN 1 ELSE 0)
 Wr(k, c, r, s, n, w, kd, p) == [k |-> k, c |-> c, r |-> r, s |-> s, n |-> n, w |-> w, kd |-> kd, p |-> p]
 AddCard(c, kd, p, n, h, t) == Wr("addCard",  c,    h,    t,    n,  0, kd,   p)
 SetState(c, s)       == Wr("setState",    c,    None, s,    {}, 0, None, None)
-PutRow(r)            == Wr("putRow",      None, r,    None, {}, 0, None, None)
+PutRow(r, x, ro)     == Wr("putRow",      None, r,    x,    {}, 0, ro,   None)   \* x the session, ro the role; None, None unhooks
+SetStopped(b)        == Wr("setStopped",  None, None, None, {}, IF b THEN 1 ELSE 0, None, None)
 SetRowState(r, s)    == Wr("setRowState", None, r,    s,    {}, 0, None, None)
 SetRowHeld(r, h)     == Wr("setRowHeld",  None, r,    None, {}, IF h THEN 1 ELSE 0, None, None)
 PutJudgement(j)     == Wr("putJudge",    j,    None, None, {}, 0, None, None)
@@ -143,7 +157,11 @@ ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 (* (the store keeps them sorted without repeats). An empty name is         *)
 (* ErrInvalid before the store's step, so it never reaches the model       *)
 (* (structural). Round 22 removed the width and tier ops (old s10, s13 to  *)
-(* s17, s20, e1's width write, v1) and renumbered the rest.                *)
+(* s17, s20, e1's width write, v1) and renumbered the rest. s1 and s2     *)
+(* hook r1 and r2 by session x as workers; s18 hooks r2 by y: refused, x   *)
+(* holds it; s19 unhooks r2; s20 hooks it by y as coordinator. s21 stops   *)
+(* the sprint; s22 stops it again: refused as changing nothing. The deal   *)
+(* scenario then runs stopped: the store refuses nothing for it.           *)
 (* Scenario "deal": a1 deals new consumer u1 to r1 and makes it working,   *)
 (* fenced on r1 up and not held; a2 marks it done (it keeps r1). b1 adds   *)
 (* consumer u2 ready on r1, b2 makes it working: with a1's u1 still        *)
@@ -154,8 +172,8 @@ ClearOp(e)   == [kind |-> "clear", epoch |-> e, expect |-> {}, writes |-> <<>>]
 (* fence (the write refuses a second close); m1 sets cursor c1 to 2, m2 to *)
 (* 1, m3 to MaxSeq (past the log); k1 clears epoch 1 (the cursor is kept). *)
 Ops == [
-  s1  |-> Op(1, {}, <<PutRow("r1"), SetRowState("r1", "up")>>),
-  s2  |-> Op(1, {}, <<PutRow("r2"), SetRowState("r2", "up")>>),
+  s1  |-> Op(1, {}, <<PutRow("r1", "x", "worker"), SetRowState("r1", "up")>>),
+  s2  |-> Op(1, {}, <<PutRow("r2", "x", "worker"), SetRowState("r2", "up")>>),
   s3  |-> Op(1, {}, <<AddCard("p1", "producer", None, {}, "r1", "pro")>>),
   s4  |-> Op(1, {}, <<AddCard("t1", "sentinel", None, {}, "r1", "pro")>>),
   s5  |-> Op(1, {CardAbsent("p1")}, <<AddCard("p1", "producer", None, {}, NoHolder, "pro")>>),
@@ -172,6 +190,11 @@ Ops == [
   s15 |-> Op(1, {}, <<SetRed("u3", TRUE)>>),
   s16 |-> Op(1, {}, <<SetRed("t1", TRUE)>>),
   s17 |-> Op(1, {CardRed("p2", TRUE)}, <<SetRed("p2", TRUE)>>),
+  s18 |-> Op(1, {}, <<PutRow("r2", "y", "coordinator")>>),
+  s19 |-> Op(1, {}, <<PutRow("r2", None, None)>>),
+  s20 |-> Op(1, {}, <<PutRow("r2", "y", "coordinator")>>),
+  s21 |-> Op(1, {}, <<SetStopped(TRUE)>>),
+  s22 |-> Op(1, {}, <<SetStopped(TRUE)>>),
   a1  |-> Op(1, {CardAbsent("u1"), RowIs("r1", "up"), RowHeld("r1", FALSE)},
               <<AddCard("u1", "work", "p2", {}, "r1", None), SetState("u1", "working")>>),
   a2  |-> Op(1, {CardState("u1", "working")}, <<SetState("u1", "done")>>),
@@ -190,7 +213,7 @@ Ops == [
 ]
 OpIds == DOMAIN Ops
 SetupSeq == <<"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12",
-              "s13", "s14", "s15", "s16", "s17">>
+              "s13", "s14", "s15", "s16", "s17", "s18", "s19", "s20", "s21", "s22">>
 Setup == {SetupSeq[i] : i \in DOMAIN SetupSeq}
 Active == Setup \cup (IF Scenario = "deal"
                       THEN {"a1", "a2", "b1", "b2", "e1", "g1", "k1", "k2"}
@@ -207,10 +230,10 @@ Pred(o) ==
 
 NoCard == [state |-> Absent, gen |-> 0, holder |-> NoHolder, needs |-> {}, kind |-> None, prod |-> None,
            tier |-> None, red |-> FALSE]
-NoRow  == [state |-> Absent, gen |-> 0, held |-> FALSE]
+NoRow  == [state |-> Absent, gen |-> 0, held |-> FALSE, sess |-> None, role |-> None]
 Empty  == [epoch |-> 1, cards |-> [c \in Cards |-> NoCard], rows |-> [r \in Rows |-> NoRow],
            judgements |-> [j \in Judgements |-> Absent], cursors |-> [x \in Cursors |-> 0],
-           policies |-> [v \in Versions |-> Absent]]
+           policies |-> [v \in Versions |-> Absent], stopped |-> FALSE]
 
 Exists(st, c) == st.cards[c].state # Absent
 
@@ -262,7 +285,11 @@ WriteRule(st, w) ==
                                       /\ st.rows[w.r].state # Absent
     [] w.k = "setState"    -> Exists(st, w.c) /\ w.s \in CardStates
     [] w.k = "setRed"      -> Exists(st, w.c) /\ st.cards[w.c].kind = "producer"
-    [] w.k = "putRow"      -> TRUE
+    [] w.k = "putRow"      -> ~(/\ st.rows[w.r].state # Absent
+                                /\ st.rows[w.r].sess # None
+                                /\ w.s # None
+                                /\ w.s # st.rows[w.r].sess)
+    [] w.k = "setStopped"  -> TRUE
     [] w.k = "setRowState" -> st.rows[w.r].state # Absent /\ w.s \in RowStates
     [] w.k = "setRowHeld"  -> st.rows[w.r].state # Absent
     [] w.k = "putJudge"   -> st.judgements[w.c] = Absent
@@ -278,6 +305,7 @@ Changes(st, w) ==
     [] w.k = "setRowState" -> w.s # st.rows[w.r].state
     [] w.k = "setRowHeld"  -> (w.w = 1) # st.rows[w.r].held
     [] w.k = "setCursor"   -> w.w # st.cursors[w.c]
+    [] w.k = "setStopped"  -> (w.w = 1) # st.stopped
     [] OTHER               -> TRUE
 
 RuleLegal(st, w) == Changes(st, w) /\ WriteRule(st, w)
@@ -304,8 +332,9 @@ Do(st, w) ==
     [] w.k = "setRed"      -> [st EXCEPT !.cards[w.c].red = (w.w = 1)]
     [] w.k = "putRow"      -> [st EXCEPT !.rows[w.r] =
                                  IF @.state = Absent
-                                 THEN [state |-> "down", gen |-> 0, held |-> FALSE]
-                                 ELSE @]
+                                 THEN [state |-> "down", gen |-> 0, held |-> FALSE, sess |-> w.s, role |-> w.kd]
+                                 ELSE [@ EXCEPT !.sess = w.s, !.role = w.kd]]
+    [] w.k = "setStopped"  -> [st EXCEPT !.stopped = (w.w = 1)]
     [] w.k = "setRowState" -> [st EXCEPT !.rows[w.r].state = w.s]
     [] w.k = "setRowHeld"  -> [st EXCEPT !.rows[w.r].held = (w.w = 1)]
     [] w.k = "putJudge"    -> [st EXCEPT !.judgements[w.c] = "open"]
@@ -362,7 +391,8 @@ ClearState(st) ==
                              ELSE [st.rows[r] EXCEPT !.state = "down", !.gen = @ + 1]],
    judgements |-> [j \in Judgements |-> Absent],
    cursors |-> st.cursors,
-   policies |-> st.policies]
+   policies |-> st.policies,
+   stopped |-> st.stopped]
 
 (* Every cursor write of ws stays at or below last, the seq of the last    *)
 (* event logged before the op (events are numbered 1, 2, ... in the log,   *)
@@ -392,10 +422,11 @@ NoReceipt == [id |-> "none", accepted |-> FALSE, epoch |-> 0, before |-> Empty, 
 VARIABLES
   epoch,      \* the store's epoch (sprint.epoch.n)
   cards,      \* card id -> [state, gen, holder, needs, kind, prod, tier, red] in the current epoch
-  rows,       \* row name -> [state, gen, held] in the current epoch
+  rows,       \* row name -> [state, gen, held, sess, role] in the current epoch
   judgements, \* judgement id -> Absent | open | answered | expired in the current epoch
   cursors,    \* cursor name -> seq (0 when never set); global
   policies,   \* policy version -> body (Absent until put); global
+  stopped,    \* the sprint is stopped (SetStopped); global, kept by a clear
   events,     \* the events table: a sequence of [id, accepted, epoch, before, after]
   ledger,     \* ghost: every event as it was committed, in order (what LogAppendOnly compares)
   applied,    \* op ids the store has seen (the unique op column of events)
@@ -403,10 +434,10 @@ VARIABLES
   receipt,    \* op id -> the receipt the caller holds (NoReceipt until done)
   lost        \* op id -> transport failures so far (bounded by MaxLoss)
 
-store == <<epoch, cards, rows, judgements, cursors, policies>>
-vars == <<epoch, cards, rows, judgements, cursors, policies, events, ledger, applied, phase, receipt, lost>>
+store == <<epoch, cards, rows, judgements, cursors, policies, stopped>>
+vars == <<epoch, cards, rows, judgements, cursors, policies, stopped, events, ledger, applied, phase, receipt, lost>>
 Current == [epoch |-> epoch, cards |-> cards, rows |-> rows, judgements |-> judgements,
-            cursors |-> cursors, policies |-> policies]
+            cursors |-> cursors, policies |-> policies, stopped |-> stopped]
 (* The state the log says held just before event i: empty before the       *)
 (* first, otherwise the after-state of the one before it.                  *)
 Before(i) == IF i = 1 THEN Empty ELSE events[i - 1].after
@@ -420,6 +451,7 @@ Init ==
   /\ judgements = Empty.judgements
   /\ cursors    = Empty.cursors
   /\ policies   = Empty.policies
+  /\ stopped    = Empty.stopped
   /\ events     = <<>>
   /\ ledger     = <<>>
   /\ applied    = {}
@@ -451,6 +483,7 @@ Execute(o) ==
      /\ judgements' = post.judgements
      /\ cursors'    = post.cursors
      /\ policies'   = post.policies
+     /\ stopped'    = post.stopped
      /\ events'  = Append(events, ev)
      /\ ledger'  = Append(ledger, ev)
      /\ applied' = applied \cup {o}
@@ -502,10 +535,12 @@ StoreState ==
                       holder : Rows \cup {NoHolder}, needs : SUBSET Cards,
                       kind : CardKinds \cup {None}, prod : Cards \cup {None},
                       tier : Tiers \cup {None}, red : BOOLEAN]],
-   rows : [Rows -> [state : RowStates \cup {Absent}, gen : Gens, held : BOOLEAN]],
+   rows : [Rows -> [state : RowStates \cup {Absent}, gen : Gens, held : BOOLEAN,
+                    sess : Sessions \cup {None}, role : Roles \cup {None}]],
    judgements : [Judgements -> JStates \cup {Absent}],
    cursors : [Cursors -> 0..MaxSeq],
-   policies : [Versions -> Bodies \cup {Absent}]]
+   policies : [Versions -> Bodies \cup {Absent}],
+   stopped : BOOLEAN]
 
 TypeOK ==
   /\ Current \in StoreState
@@ -630,10 +665,22 @@ ClearCarriesRows ==
       /\ a.judgements = Empty.judgements
       /\ a.cursors = b.cursors
       /\ a.policies = b.policies
+      /\ a.stopped = b.stopped
       /\ \A r \in Rows :
            IF b.rows[r].state = Absent THEN a.rows[r] = NoRow
            ELSE /\ a.rows[r].state = "down"
                 /\ a.rows[r].held = b.rows[r].held
+                /\ a.rows[r].sess = b.rows[r].sess
+                /\ a.rows[r].role = b.rows[r].role
+
+(* A row is hooked by one session at a time: no accepted op moves a row   *)
+(* from one session straight to another; it is unhooked (None) between.    *)
+HookKept ==
+  \A i \in DOMAIN events :
+    LET b == events[i].before  a == events[i].after IN
+    events[i].accepted =>
+      \A r \in Rows : (b.rows[r].state # Absent /\ b.rows[r].sess # None /\ a.rows[r].sess # None)
+                       => a.rows[r].sess = b.rows[r].sess
 
 (* The ops that close judgement j (answer or expire it).                   *)
 Closes(o, j) == \E k \in DOMAIN Ops[o].writes :
@@ -730,5 +777,13 @@ NeverRed              == ~cards["p2"].red
 NeverRedKindRefused   == ~(RuleRefused("s15") /\ RuleRefused("s16"))
 \* s17 sets p2 red when it is red: refused as changing nothing
 NeverSameRedRefused   == ~RuleRefused("s17")
+\* s18 hooks r2 by y while x holds it: refused
+NeverHookRefused      == ~RuleRefused("s18")
+\* s19 unhooks r2 and s20 hooks it by y as coordinator
+NeverRehooked         == ~(rows["r2"].sess = "y" /\ rows["r2"].role = "coordinator")
+\* s21 stops the sprint, and a deal lands while it is stopped
+NeverDealtStopped     == ~(stopped /\ cards["u1"].state = "working")
+\* s22 stops it again: refused as changing nothing
+NeverSameStopRefused  == ~RuleRefused("s22")
 
 =============================================================================

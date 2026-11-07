@@ -51,7 +51,7 @@ func cr7Steps() []cr7Step {
 	add := func(label string, o Op) { s = append(s, cr7Step{label: label, op: o}) }
 	add("seed every table", op(1, nil,
 		PutStream{"s1", "mas-bandwidth/x", "main", 1}, PutStream{"s2", weird, "dev", 2},
-		PutRow{Name: "w1", Session: weird},
+		PutRow{Name: "w1", Session: weird, Role: "coordinator"},
 		PutRow{Name: "k1"}, SetRowState{"w1", "up"},
 		PutCard{Tier: "pro", Kind: "producer", ID: "c0", Stream: "s1", Brief: weird, Paths: []string{"a/b", weird}, DoneWhen: []string{"x"}, Prose: weird, Priority: "high"}, SetCardState{"c0", "landed"},
 		PutCard{Tier: "pro", Kind: "producer", ID: "c1", Stream: "s1", Score: 7, Needs: []string{"c0"}, After: []string{"c0"}},

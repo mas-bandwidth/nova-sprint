@@ -283,7 +283,7 @@ func (l *load) build(t *testing.T) {
 	}
 	var up []Write
 	for r := range loadRows {
-		setup = append(setup, PutRow{Name: rowName(r), Session: "session-1"})
+		setup = append(setup, PutRow{Name: rowName(r), Session: "session-1", Role: "worker"})
 		up = append(up, SetRowState{rowName(r), "up"})
 	}
 	phase("setup", []Op{l.op("setup", nil, setup...), l.op("rows-up", nil, up...)}, 1)

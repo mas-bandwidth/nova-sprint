@@ -70,7 +70,8 @@ func (tr *storeTrace) add(init string, f []string, st ModelState) {
 		"rows |-> "+tlaDiff(tr.prev.Rows, st.Rows, func(r ModelRow) string { return r.tla() }, ModelRow{}.absent()),
 		"judgements |-> "+tlaDiff(tr.prev.Judgements, st.Judgements, strconv.Quote, `"absent"`),
 		"cursors |-> "+tlaDiff(tr.prev.Cursors, st.Cursors, func(n int64) string { return strconv.FormatInt(n, 10) }, "0"),
-		"policies |-> "+tlaDiff(tr.prev.Policies, st.Policies, strconv.Quote, `"absent"`))
+		"policies |-> "+tlaDiff(tr.prev.Policies, st.Policies, strconv.Quote, `"absent"`),
+		"stopped |-> "+tlaBool(st.Stopped))
 	tr.recs = append(tr.recs, "["+strings.Join(f, ", ")+"]")
 	tr.prev = st
 }
@@ -133,11 +134,11 @@ func (ModelCard) absent() string {
 }
 
 func (r ModelRow) tla() string {
-	return fmt.Sprintf("[state |-> %q, gen |-> %d, held |-> %s]", r.State, r.Gen, tlaBool(r.Held))
+	return fmt.Sprintf("[state |-> %q, gen |-> %d, held |-> %s, sess |-> %q, role |-> %q]", r.State, r.Gen, tlaBool(r.Held), r.Sess, r.Role)
 }
 
 // absent is Store.tla's NoRow.
-func (ModelRow) absent() string { return ModelRow{State: "absent"}.tla() }
+func (ModelRow) absent() string { return ModelRow{State: "absent", Sess: "-", Role: "-"}.tla() }
 
 func tlaOp(m ModelOp) string {
 	kind := "op"

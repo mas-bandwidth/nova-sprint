@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS sprint.epoch (
     n  integer NOT NULL CHECK (n >= 1)
 );
 INSERT INTO sprint.epoch (id, n) VALUES (1, 1) ON CONFLICT (id) DO NOTHING;
+-- Round 22: the sprint's stop lives on the epoch's one row, as the epoch
+-- does (a clear keeps it). A stopped sprint moves nothing (Run calls no
+-- Tick); the store refuses nothing on it.
+ALTER TABLE sprint.epoch ADD COLUMN IF NOT EXISTS stopped boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS stop_reason text NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS sprint.streams (
     name  text    NOT NULL,
@@ -46,6 +51,7 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
     name    text    NOT NULL,
     state   text    NOT NULL CHECK (state IN ('up', 'down')),
     session text    NOT NULL DEFAULT '',
+    role    text    NOT NULL DEFAULT '' CHECK (role IN ('', 'worker', 'coordinator')),
     flaps   integer NOT NULL DEFAULT 0 CHECK (flaps >= 0),
     held    boolean NOT NULL DEFAULT false,
     gen     integer NOT NULL DEFAULT 0 CHECK (gen >= 0),
@@ -60,6 +66,9 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
 -- COLUMN IF EXISTS is a no-op on a new store and on a second run.
 ALTER TABLE sprint.rows DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS width, DROP COLUMN IF EXISTS tiers,
     DROP COLUMN IF EXISTS model, DROP COLUMN IF EXISTS harness;
+-- and adds the hook's role (worker or coordinator; '' when not hooked).
+ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT ''
+    CHECK (role IN ('', 'worker', 'coordinator'));
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by

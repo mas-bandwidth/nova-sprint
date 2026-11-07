@@ -84,7 +84,10 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := Row{Name: v.Name, Session: v.Session, State: "down"}
+	if ok && old.Session != "" && v.Session != "" && old.Session != v.Session {
+		return fmt.Sprintf("row %s is hooked by session %s; unhook it first", v.Name, old.Session), nil
+	}
+	next := Row{Name: v.Name, Session: v.Session, Role: v.Role, State: "down"}
 	if ok {
 		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
 	}
@@ -289,6 +292,19 @@ func (w *work) addPolicy(v PutPolicy) (string, error) {
 	}
 	p := PolicyVersion{Version: version, Kind: v.Kind, Name: v.Name, Body: v.Body, Actor: w.op.Actor, At: w.op.At}
 	return "", w.putPolicy(PolicyVersion{}, false, p)
+}
+
+// writeStop stops or starts the sprint; one already in that state is
+// refused.
+func (w *work) writeStop(v SetStopped) (string, error) {
+	old, err := w.tx.stop()
+	if err != nil {
+		return "", err
+	}
+	if old.Stopped == v.Stopped {
+		return fmt.Sprintf("the sprint is already %s", map[bool]string{true: "stopped", false: "running"}[v.Stopped]), nil
+	}
+	return "", w.putStop(old, Stop{Stopped: v.Stopped, Reason: v.Reason})
 }
 
 // activate makes one version the active one and deactivates the others; the

@@ -38,6 +38,7 @@ func NewFakeFrom(s Snapshot, policies ...PolicyVersion) (*Fake, error) {
 		f.cards[k] = cardCopy(c) // the Fake's own lists: editing s never changes it
 	}
 	maps.Copy(f.cursors, s.Cursors)
+	f.stop = Stop{Stopped: s.Stopped, Reason: s.StopReason}
 	for _, p := range policies {
 		if _, twice := f.policies[p.Version]; twice || p.Version < 1 {
 			return nil, fmt.Errorf("%w: policy version %d is below 1 or given twice", ErrInvalid, p.Version)

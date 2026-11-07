@@ -63,6 +63,7 @@ var (
 	CardResults = []string{"", "ok", "fix", "fail", "fault"}
 	Priorities  = []string{"low", "normal", "high", "critical", "blocker"} // a producer's or sentinel's level, lowest first
 	RowStates   = []string{"up", "down"}
+	RowRoles    = []string{"worker", "coordinator"} // a hooked row's role; the coordinator is also a worker
 	PolicyKinds = []string{"script", "data"}
 	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier
 )
@@ -132,7 +133,8 @@ type Card struct {
 type Row struct {
 	Name    string `json:"name"`
 	State   string `json:"state"`
-	Session string `json:"session"`
+	Session string `json:"session"` // the bus session the sprint hook recorded; "" when not hooked
+	Role    string `json:"role"`    // worker or coordinator; "" when not hooked
 	Flaps   int    `json:"flaps"`
 	Held    bool   `json:"held"`   // the coordinator's hold: no deals while true
 	Reason  string `json:"reason"` // why it was held or released (SetRowHeld)
@@ -179,6 +181,16 @@ type State struct {
 	Policies   map[int]PolicyVersion `json:"policies,omitempty"`
 	Judgements map[string]Judgement  `json:"judgements,omitempty"`
 	Cursors    map[string]int64      `json:"cursors,omitempty"`
+	Stop       *Stop                 `json:"stop,omitempty"`
+}
+
+// Stop is the sprint's stop: one value for the whole store, as the epoch
+// is, kept by a clear. A stopped sprint moves nothing: Run calls no Tick
+// while Stopped. The store refuses nothing on it; ops from people still
+// land. SetStopped is its one write.
+type Stop struct {
+	Stopped bool   `json:"stopped"`
+	Reason  string `json:"reason"`
 }
 
 // Receipt is what an operation got. It is stored with its event, so Replay
@@ -230,6 +242,8 @@ type Snapshot struct {
 	Rows       map[string]Row
 	Judgements map[string]Judgement
 	Cursors    map[string]int64
+	Stopped    bool   // the sprint is stopped (Stop)
+	StopReason string // why it was stopped or started again
 }
 
 func emptySnapshot(epoch int) Snapshot {
@@ -250,9 +264,12 @@ func Rebuild(events []Event) Snapshot {
 			continue
 		}
 		if e.After.Epoch != 0 {
-			seq, cursors := s.Seq, s.Cursors
+			seq, cursors, stopped, reason := s.Seq, s.Cursors, s.Stopped, s.StopReason
 			s = emptySnapshot(e.After.Epoch)
-			s.Seq, s.Cursors = seq, cursors
+			s.Seq, s.Cursors, s.Stopped, s.StopReason = seq, cursors, stopped, reason
+		}
+		if e.After.Stop != nil {
+			s.Stopped, s.StopReason = e.After.Stop.Stopped, e.After.Stop.Reason
 		}
 		overlay(s.Streams, e.After.Streams)
 		overlay(s.Cards, e.After.Cards)

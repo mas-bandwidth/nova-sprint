@@ -257,11 +257,15 @@ type SetCardAfter struct {
 	After []string
 }
 
-// PutRow inserts a row or overwrites its session: a row is put when it first
-// hooks in or is first dealt to. State, flaps and held are kept on
-// overwrite, and down, 0 and false on insert. Its kind, width, tiers, model
-// and harness are configuration, the roster's, never the store's (round 22).
-type PutRow struct{ Name, Session string }
+// PutRow inserts a row or sets its hook, the one write that does: `nova-sprint
+// hook --as <name> --role <r>` puts the bus session the hook recorded and
+// the role (worker or coordinator), and unhook puts "" for both. Session
+// and Role are both set or both "" (ErrInvalid otherwise, and for a role
+// not in RowRoles). Hooking a row another session holds is refused: unhook
+// it first. State, flaps and held are kept on overwrite, and down, 0 and
+// false on insert. Its kind, width, tiers, model and harness are
+// configuration, the roster's, never the store's (round 22).
+type PutRow struct{ Name, Session, Role string }
 
 // PutJudgement opens a judgement: refused when it exists. Its state is
 // open, opened at the op's At; Deadline zero is none. It belongs to the
@@ -294,9 +298,6 @@ type SetCursor struct {
 // SetRowState sets a row's state.
 type SetRowState struct{ Row, State string }
 
-// SetRowSession sets a row's session.
-type SetRowSession struct{ Row, Session string }
-
 // SetRowHeld sets a row's held flag and the reason it was held or released:
 // the coordinator's hold, no deals to the row while true, whatever its state.
 // Refused when the row is already held (or not held), whatever the reason.
@@ -314,6 +315,13 @@ type SetRowFlaps struct {
 
 // PutPolicy adds the next policy version, inactive; actor and at come from the op.
 type PutPolicy struct{ Kind, Name, Body string }
+
+// SetStopped stops the sprint or starts it again, with the reason. Refused
+// when the sprint is already in that state, like every set write.
+type SetStopped struct {
+	Stopped bool
+	Reason  string
+}
 
 // SetActivePolicy makes one existing version the active one and deactivates
 // the one active before it.
@@ -344,10 +352,10 @@ func (SetCardPriority) isWrite()  {}
 func (PutRow) isWrite()           {}
 func (SetRowHeld) isWrite()       {}
 func (SetRowState) isWrite()      {}
-func (SetRowSession) isWrite()    {}
 func (SetRowFlaps) isWrite()      {}
 func (PutPolicy) isWrite()        {}
 func (SetActivePolicy) isWrite()  {}
+func (SetStopped) isWrite()       {}
 func (SetCardPaths) isWrite()     {}
 func (SetCardDoneWhen) isWrite()  {}
 func (SetCardProse) isWrite()     {}
@@ -398,7 +406,7 @@ func specOf(w Write) spec {
 				oneOf("card kind", v.Kind, CardKinds).oneOf("card tier", v.Tier, Tiers).oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities)
 		}, "kind", "of", "stream", "attempt", "review", "finding", "score", "needs", "after", "brief", "holder", "priority", "tier", "paths", "done_when", "prose").then(func(w *work) (string, error) { return w.addCard(v) })
 	case PutRow:
-		return put("row", v.Name, func(c *checker) { c.text(v.Session) }, "session").then(func(w *work) (string, error) { return w.writePutRow(v) })
+		return put("row", v.Name, func(c *checker) { c.text(v.Session).hook(v.Session, v.Role) }, "session", "role").then(func(w *work) (string, error) { return w.writePutRow(v) })
 	case PutJudgement:
 		return put("judgement", v.ID, func(c *checker) {
 			c.name(v.Kind, v.About, v.Group).text(v.Question, v.Command).time("deadline", v.Deadline, true)
@@ -415,6 +423,8 @@ func specOf(w Write) spec {
 		return put("cursor", v.Name, func(c *checker) { c.num64("cursor seq", v.Seq) }, "seq").then(func(w *work) (string, error) { return w.writeCursor(v) })
 	case PutPolicy:
 		return spec{check: func(c *checker) { c.name(v.Name).text(v.Body).oneOf("policy kind", v.Kind, PolicyKinds) }}.then(func(w *work) (string, error) { return w.addPolicy(v) })
+	case SetStopped:
+		return spec{fields: []field{{"stop", "", "stopped"}}, check: func(c *checker) { c.text(v.Reason) }}.then(func(w *work) (string, error) { return w.writeStop(v) })
 	case SetActivePolicy:
 		return spec{fields: []field{{"policy", "", "active"}}, check: func(c *checker) { c.num("version", v.Version) }}.then(func(w *work) (string, error) { return w.activate(v) })
 	}
@@ -504,8 +514,6 @@ func rowSpec(w Write) spec {
 		s := row(v.Row, "state", func(r *Row) { r.State = v.State }, func(c *checker) { c.oneOf("row state", v.State, RowStates) })
 		s.is = "is already " + v.State
 		return s
-	case SetRowSession:
-		return row(v.Row, "session", func(r *Row) { r.Session = v.Session }, func(c *checker) { c.text(v.Session) })
 	case SetRowFlaps:
 		return row(v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, func(c *checker) { c.num("flaps", v.Flaps) })
 	case SetRowHeld:
