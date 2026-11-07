@@ -40,6 +40,14 @@ func (x *e2e) streamAndCard() {
 func (x *e2e) dealt(row, kind string) (string, int) {
 	var id string
 	var gen, polls int
+	defer func() {
+		if id == "" {
+			x.c.run(false, nil, "next", "--as", row, "--json")
+			x.c.run(false, nil, "show", "e2e1", "--as", "carol")
+			snap := x.snapshot()
+			x.tr.record("the store's rows and cards when no deal came", 0, fmt.Sprintf("seq=%d stopped=%v\nrows: %+v\ncards: %+v", snap.Seq, snap.Stopped, snap.Rows, snap.Cards))
+		}
+	}()
 	eventually(x.t, 90*time.Second, kind+" dealt to "+row, func() bool {
 		polls++
 		code, out := x.c.run(true, nil, "next", "--as", row, "--json")

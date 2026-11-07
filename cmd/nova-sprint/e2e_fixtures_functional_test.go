@@ -338,7 +338,13 @@ func (x *e2e) runLogTail() {
 		return
 	}
 	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
-	x.tr.record(fmt.Sprintf("run's tick log, last %d of %d lines", min(40, len(lines)), len(lines)), 0, strings.Join(lines[max(0, len(lines)-40):], "\n"))
+	var busy []string
+	for _, l := range lines {
+		if !strings.Contains(l, " ops=0/0 edges=0 status=ok") {
+			busy = append(busy, l)
+		}
+	}
+	x.tr.record(fmt.Sprintf("run's tick log, %d of %d lines (every tick that did something)", len(busy), len(lines)), 0, strings.Join(busy, "\n"))
 }
 
 // field reads a JSON object's field as text.
