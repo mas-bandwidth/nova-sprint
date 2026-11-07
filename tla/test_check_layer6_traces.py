@@ -65,7 +65,7 @@ class GateFailures(unittest.TestCase):
             self.assertEqual(json.loads((root / 'emit-logs/fixture.log').read_text()), [None, '1', None])
 
     def test_stopped_case_has_explicit_seed_and_mode(self):
-        self.assertEqual(len(gate.expected_cases()), 84)
+        self.assertEqual(len(gate.expected_cases()), 73)
         self.assertEqual(gate.expected_cases()['run-stop'], 'Run')
         cases = []
         with patch.object(gate, 'run_emit') as emit, patch.object(
@@ -85,7 +85,7 @@ class GateFailures(unittest.TestCase):
             root = Path(tmp)
             (root / 'emission.json').write_text(json.dumps(dict(cases=[], hashes={})))
             with patch.object(gate.socket, 'gethostname', return_value='vision-test'):
-                with self.assertRaisesRegex(RuntimeError, 'all 84'):
+                with self.assertRaisesRegex(RuntimeError, 'all 73'):
                     gate.check(root, SimpleNamespace(check_timeout=5))
 
     def test_only_verified_ci_host_runner_pairs_are_allowed(self):
