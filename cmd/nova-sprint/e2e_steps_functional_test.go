@@ -76,7 +76,7 @@ func (x *e2e) dealt(row, kind string) (string, int) {
 		}
 		return false
 	})
-	x.tr.note("a tick dealt %s %s@%d to %s (next polled %d times)", kind, id, gen, row)
+	x.tr.note("a tick dealt %s %s@%d to %s (next polled %d times)", kind, id, gen, row, polls)
 	x.c.must([]string{"next", "--as", row}, "nova-sprint take "+fmt.Sprintf("%s@%d", id, gen))
 	return id, gen
 }
