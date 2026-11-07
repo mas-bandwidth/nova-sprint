@@ -268,8 +268,8 @@ func TestColdreadMissingCellsBlank(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := env["data"].(map[string]any)
-	// "machine" is filled since the stitch (drift row 4: STOPPED and its reason).
-	for _, k := range []string{"coordinator", "summary", "cleared", "landedSeries", "fleet_work", "friends_work", "providers"} {
+	// "machine", "coordinator" and "summary" are filled (drift row 4; the top strip, 2026-11-07).
+	for _, k := range []string{"cleared", "landedSeries", "fleet_work", "friends_work", "providers"} {
 		if _, ok := data[k]; ok {
 			t.Errorf("MISSING key %s present", k)
 		}
@@ -281,7 +281,7 @@ func TestColdreadMissingCellsBlank(t *testing.T) {
 			t.Errorf("fleet row carries MISSING %s=%v", k, row[k])
 		}
 	}
-	if row["okpct"] != "0.0%" {
+	if row["okpct"] != "-" {
 		t.Errorf("okpct with no verdicts = %v", row["okpct"])
 	}
 	work := tables["work"].(map[string]any)["s00"].(map[string]any)

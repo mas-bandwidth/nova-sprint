@@ -622,6 +622,7 @@ function renderHero(d, s, ft) {
   if (machineStopped) { setHTML($("eta"), "<span class=\"eta-stopped\">STOP</span>"); /* STOP at every width (the owner ~01:32Z: "cleaner") */ etaAtLast = null; setText($("eta-at"), "\u00a0"); } /* the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red" */
   else if (m) {
     setHTML($("eta"), etaText(m[1]));
+    setTitle($("eta"), m[1] === "-" ? "needs " + 3 + " landings in the rate window (" + int(d.eta_landings) + " in the last " + Math.round(d.eta_window_minutes || 0) + " min); " + int(d.left) + " cards left" : int(d.left) + " cards left at " + Math.round(throughput || 0) + " per hour, measured over the last " + Math.round(d.eta_window_minutes || 0) + " min (" + int(d.eta_landings) + " landings)");
     var ms = etaMs(m[1]);
     // the viewer's zone after the time, the same source as the Updated clock (SPEC.md, the owner 10:00 PM)
     var etaAt = new Date(at.getTime() + ms);
@@ -632,11 +633,18 @@ function renderHero(d, s, ft) {
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
   // card is that over the cards that landed
-  var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
-  setText($("cost"), money(recorded));
-  setText($("cost-whole"), dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout", "just round up to nearest dollar")
-  var per = landed ? money((recorded + BigInt(landed) - 1n) / BigInt(landed)) + " per card" : "";
+  // The server's cost summary (docs: v1 summary line): the total over priced runs, the per card over
+  // the cards landed in this run, and the count of finished runs that reported no cost. "-" where
+  // nothing is priced: never a false $0.
+  var cs = d.cost || null, unp = cs ? int(cs.unpriced_runs) : 0;
+  var recorded = cs ? cents(cs.total) : null;
+  setText($("cost"), recorded === null ? "-" : money(recorded));
+  setText($("cost-whole"), recorded === null ? "-" : dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z)
+  var perC = cs ? cents(cs.per_card) : null;
+  var per = perC !== null ? money(perC) + " per card" : (unp ? "" : "");
+  if (unp) per = (per ? per + " \u00b7 " : "") + unp + " unpriced";
   setText($("cost-per"), per || " ");
+  setTitle($("cost"), cs ? int(cs.priced_runs) + " priced runs, " + unp + " finished runs with no cost reported; per card is over the " + int(cs.landed_cards) + " cards landed in this run" : "");
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
   inflightLast = s.sum; renderInflight(s.sum);
   // throughput: cards landed per hour over the last hour, from the server's samples
@@ -730,6 +738,10 @@ function tierCounts(obj) { // {flash: "12", pro: 3} -> [[tier, n], ...] sorted b
 // retains cents. The pie follows the rounded legend values.
 function tierSpend(d) {
   var work = (d.tables && d.tables.work) || {}, byTier = {};
+  if (d.cost && d.cost.by_tier) { // the sprint's whole spend by tier, from the server
+    TIERS.forEach(function (t) { var c = cents(d.cost.by_tier[t]); if (c) byTier[t] = c; });
+    work = {};
+  }
   Object.keys(work).forEach(function (k) {
     var b = work[k].cost_by_tier; if (!b || typeof b !== "object") return;
     // the four tiers alone: a record with no tier ("untiered") is no tier and is left out (the owner 2026-10-04 3:10 PM)

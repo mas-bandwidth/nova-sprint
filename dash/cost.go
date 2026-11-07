@@ -3,6 +3,9 @@ package dash
 import (
 	"math/big"
 	"sort"
+	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 type tierPart struct {
@@ -53,4 +56,64 @@ func finishCosts(w *workRow) {
 		return
 	}
 	w.Cost, w.ByTier = partitionCents(w.tierMicros)
+}
+
+// importedReason marks a landed producer the v1 import carried over: it
+// landed before this run and has no cost here.
+const importedReason = "its producer landed in v1"
+
+// costSummary is the sprint's whole spend as the top strip shows it. Amounts
+// are currency strings; "-" where no priced run exists, never a false $0.
+type costSummary struct {
+	Total    string            `json:"total"`
+	PerCard  string            `json:"per_card"`
+	ByTier   map[string]string `json:"by_tier"`
+	Priced   int               `json:"priced_runs"`
+	Unpriced int               `json:"unpriced_runs"` // finished runs (done or fail) that reported no cost
+	Landed   int               `json:"landed_cards"`  // cards landed in this run, the per-card divisor
+}
+
+// summarizeCost sums every priced consumer (work and read) in any state, by
+// tier, and divides by the cards landed in this run (imported v1 landings
+// carry no cost and are left out of the divisor).
+func summarizeCost(s store.Snapshot) *costSummary {
+	out := &costSummary{ByTier: map[string]string{}}
+	micros := map[string]*big.Int{}
+	total := new(big.Int)
+	for _, c := range s.Cards {
+		switch c.Kind {
+		case "producer":
+			if c.State == "landed" && !strings.HasPrefix(c.Reason, importedReason) {
+				out.Landed++
+			}
+		case "work", "read":
+			if c.Priced {
+				out.Priced++
+				if micros[c.Tier] == nil {
+					micros[c.Tier] = new(big.Int)
+				}
+				micros[c.Tier].Add(micros[c.Tier], big.NewInt(c.Cost))
+				total.Add(total, big.NewInt(c.Cost))
+			} else if c.State == "done" || c.State == "fail" {
+				out.Unpriced++
+			}
+		}
+	}
+	if out.Priced == 0 {
+		out.Total, out.PerCard = "-", "-"
+		return out
+	}
+	rounded, split := partitionCents(micros)
+	out.Total = moneyCell(rounded)
+	for tier, cents := range split {
+		if tier != "" {
+			out.ByTier[tier] = moneyCell(cents)
+		}
+	}
+	out.PerCard = "-"
+	if out.Landed > 0 {
+		per := new(big.Int).Add(rounded, big.NewInt(int64(out.Landed-1)))
+		out.PerCard = moneyCell(per.Div(per, big.NewInt(int64(out.Landed))))
+	}
+	return out
 }
