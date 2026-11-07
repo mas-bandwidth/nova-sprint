@@ -363,10 +363,7 @@ func packEntries_internal(header string, entries []string, trailerFmt string) st
 	return b.String()
 }
 func updateSeqBounds_internal(minSeq, maxSeq, seq int64) (int64, int64) {
-	if minSeq == 0 || seq < minSeq {
-		minSeq = seq
-	}
-	return minSeq, max(maxSeq, seq)
+	return min(cmp.Or(minSeq, seq), seq), max(maxSeq, seq)
 }
 func maxAcceptedSeq_internal(events []store.Event, curSeq int64) (int64, bool) {
 	maxSeq, hasDomain := curSeq, false

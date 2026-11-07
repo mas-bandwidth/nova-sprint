@@ -17,31 +17,29 @@ import (
 )
 
 const (
-	DefaultTimeout   = 30 * time.Second
-	DefaultMaxBytes  = 64 * 1024
-	FakeClockStart   = int64(1000)
-	ErrInvalidArgv   = "invalid_argv"
-	ErrMissingBinary = "missing_binary"
-	ErrTimeout       = "timeout"
-	ErrStart         = "start_failed"
+	DefaultTimeout, DefaultMaxBytes  = 30 * time.Second, 64 * 1024
+	FakeClockStart                   = int64(1000)
+	ErrInvalidArgv, ErrMissingBinary = "invalid_argv", "missing_binary"
+	ErrTimeout, ErrStart             = "timeout", "start_failed"
 )
 
-type Cmd struct {
-	Argv     []string
-	Dir      string
-	Env      []string
-	CleanEnv bool
-	Timeout  time.Duration
-	MaxBytes int
-	OnStart  func(pid int)
-}
-type Result struct {
-	PID            int
-	ExitCode       int
-	Stdout, Stderr string
-	Truncated      bool
-	Duration       time.Duration
-}
+type (
+	Cmd struct {
+		Argv     []string
+		Dir      string
+		Env      []string
+		CleanEnv bool
+		Timeout  time.Duration
+		MaxBytes int
+		OnStart  func(pid int)
+	}
+	Result struct {
+		PID, ExitCode  int
+		Stdout, Stderr string
+		Truncated      bool
+		Duration       time.Duration
+	}
+)
 
 func (r Result) OK() bool { return r.ExitCode == 0 }
 
@@ -106,8 +104,7 @@ func (o *OSExec) Run(ctx context.Context, cmd Cmd) (Result, error) {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	c := exec.CommandContext(runCtx, cmd.Argv[0], cmd.Argv[1:]...)
-	c.Stdin, c.Dir, c.WaitDelay = nil, cmd.Dir, 200*time.Millisecond
-	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	c.Stdin, c.Dir, c.WaitDelay, c.SysProcAttr = nil, cmd.Dir, 200*time.Millisecond, &syscall.SysProcAttr{Setpgid: true}
 	c.Cancel = func() error {
 		if c.Process != nil {
 			_ = syscall.Kill(-c.Process.Pid, syscall.SIGKILL)

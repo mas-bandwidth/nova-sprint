@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
@@ -376,4 +377,44 @@ func (s *StoreSprintClient) OpenJudgement(ctx context.Context, j store.Judgement
 	}
 	_, err = s.applyWithReplay_internal(ctx, op)
 	return err
+}
+
+func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	var calls [][]string
+	cli := &CLISprintClient{
+		Epoch: 3,
+		Run: func(_ context.Context, argv []string) ([]byte, int, error) {
+			calls = append(calls, slices.Clone(argv))
+			if slices.Contains(argv, "take") {
+				return []byte(`{"Consumer":"p1.w1","Epoch":3,"Gen":4}`), 0, nil
+			}
+			opID := FormatResultID(3, "p1.w1", 1, 4)
+			return []byte(fmt.Sprintf(`{"accepted":true,"op":%q}`, opID)), 0, nil
+		},
+	}
+	wantTakeID := FormatTakeOpID(3, "p1.w1", 4, "vision.ds")
+	if !strings.HasPrefix(wantTakeID, "consumer:") || len(wantTakeID) != len("consumer:")+64 {
+		t.Fatalf("unexpected canonical take op id: %s", wantTakeID)
+	}
+	if _, err := cli.Take(ctx, "vision.ds", "p1.w1", 4); err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	wantRepID := FormatResultID(3, "p1.w1", 1, 4)
+	rec, err := cli.Report(ctx, ReportRequest{
+		Epoch: 3, Row: "vision.ds", Consumer: "p1.w1", Gen: 4,
+		Result: "ok", Head: strings.Repeat("a", 40), Cost: 950, Priced: true,
+	})
+	if err != nil || !rec.Accepted || rec.Op != wantRepID {
+		t.Fatalf("Report: rec=%+v err=%v", rec, err)
+	}
+	takeArgs := strings.Join(calls[0], " ")
+	if !strings.Contains(takeArgs, "--id "+wantTakeID+" --epoch 3 --as vision.ds --json") {
+		t.Fatalf("unexpected take argv: %s", takeArgs)
+	}
+	repArgs := strings.Join(calls[1], " ")
+	if !strings.Contains(repArgs, "--result ok --id "+wantRepID+" --epoch 3 --cost-microusd 950 --priced true --as vision.ds --json") {
+		t.Fatalf("unexpected report argv: %s", repArgs)
+	}
 }

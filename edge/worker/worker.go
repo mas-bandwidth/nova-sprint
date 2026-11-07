@@ -3,6 +3,7 @@ package worker
 
 import (
 	"cmp"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,11 +24,15 @@ type (
 func RequestID(epoch int64, kind, card, sha string) string {
 	return edge.RequestID(epoch, kind, card, sha)
 }
-func FormatResultID(epoch int, consumer string, attempt, gen int) string {
-	return fmt.Sprintf("res-e%d-%s-a%d-g%d", epoch, consumer, attempt, gen)
+func consumerOpID_internal(verb string, epoch int, consumer string, gen int) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%d:%s:%d:%s:%d", len(verb), verb, cmp.Or(epoch, 1), consumer, gen)))
+	return fmt.Sprintf("consumer:%x", sum)
 }
-func FormatTakeOpID(epoch int, consumer string, gen int, row string) string {
-	return fmt.Sprintf("take-e%d-%s-g%d-%s", epoch, consumer, gen, row)
+func FormatResultID(epoch int, consumer string, _ int, gen int) string {
+	return consumerOpID_internal("report", epoch, consumer, gen)
+}
+func FormatTakeOpID(epoch int, consumer string, gen int, _ string) string {
+	return consumerOpID_internal("take", epoch, consumer, gen)
 }
 
 const (

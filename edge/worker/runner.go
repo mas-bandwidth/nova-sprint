@@ -325,7 +325,7 @@ func (r *Runner) faultAndReportJob_internal(ctx context.Context, jobDir, id stri
 func (r *Runner) reportLostJob_internal(ctx context.Context, epoch int, row string, w ConsumerSummary) error {
 	_, err := r.Sprint.Report(ctx, ReportRequest{
 		Epoch: epoch, Row: row, Consumer: w.ID, Gen: w.Gen,
-		ResultID: FormatResultID(epoch, w.ID, w.Attempt, w.Gen) + "-lost", Result: "fault", Reason: "runner lost the job",
+		ResultID: FormatResultID(epoch, w.ID, w.Attempt, w.Gen), Result: "fault", Reason: "runner lost the job",
 	})
 	r.logStep_internal(row, w.ID, "lost-job", "fault", 0)
 	return err

@@ -9,6 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -114,8 +115,9 @@ func (c *CLISprintClient) Next(ctx context.Context, row string) (NextResponse, e
 	return resp, nil
 }
 func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen int) (TakeInfo, error) {
-	id := FormatTakeOpID(cmp.Or(c.Epoch, 1), consumer, gen, row)
-	out, code, err := c.run_internal(ctx, c.wrap_internal("take", fmt.Sprintf("%s@%d", consumer, gen), "--id", id, "--as", row, "--json"))
+	ep := cmp.Or(c.Epoch, 1)
+	id := FormatTakeOpID(ep, consumer, gen, row)
+	out, code, err := c.run_internal(ctx, c.wrap_internal("take", fmt.Sprintf("%s@%d", consumer, gen), "--id", id, "--epoch", strconv.Itoa(ep), "--as", row, "--json"))
 	var info TakeInfo
 	if cerr := c.classifyCLIError_internal(out, code, err); cerr != nil {
 		return info, cerr
@@ -126,8 +128,12 @@ func (c *CLISprintClient) Take(ctx context.Context, row, consumer string, gen in
 	return info, nil
 }
 func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
+	ep := cmp.Or(req.Epoch, c.Epoch, 1)
+	id := cmp.Or(req.ResultID, FormatResultID(ep, req.Consumer, 0, req.Gen))
 	argv := c.wrap_internal("report", fmt.Sprintf("%s@%d", req.Consumer, req.Gen),
-		"--result", req.Result, "--id", req.ResultID, "--as", req.Row, "--json")
+		"--result", req.Result, "--id", id, "--epoch", strconv.Itoa(ep),
+		"--cost-microusd", strconv.FormatInt(max(0, req.Cost), 10), "--priced", strconv.FormatBool(req.Priced),
+		"--as", req.Row, "--json")
 	for _, kv := range [][2]string{{"--head", req.Head}, {"--reason", req.Reason}, {"--finding", req.Finding}} {
 		if kv[1] != "" {
 			argv = append(argv, kv[0], kv[1])
@@ -141,7 +147,7 @@ func (c *CLISprintClient) Report(ctx context.Context, req ReportRequest) (store.
 	if err := json.Unmarshal(out, &rec); err != nil {
 		return rec, fmt.Errorf("parse report --json: %w", err)
 	}
-	rec.Op = cmp.Or(rec.Op, req.ResultID)
+	rec.Op = cmp.Or(rec.Op, id)
 	return rec, nil
 }
 func (c *CLISprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
