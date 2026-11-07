@@ -229,7 +229,11 @@ func (c *CLISprintClient) OpenJudgement(ctx context.Context, j store.Judgement) 
 	return c.classifyCLIError_internal(out, code, err)
 }
 func (c *CLISprintClient) Beat(ctx context.Context, row string, hb Heartbeat) error {
-	out, code, err := c.run_internal(ctx, c.argv_internal("beat", "--as", row, "--load1", strconv.FormatFloat(hb.Load1, 'f', 2, 64),
-		"--cores", strconv.Itoa(hb.Cores), "--slots-used", strconv.Itoa(hb.SlotsUsed), "--slots-total", strconv.Itoa(hb.SlotsTotal)))
+	args := []string{"beat", "--as", row, "--load1", strconv.FormatFloat(hb.Load1, 'f', 2, 64),
+		"--cores", strconv.Itoa(hb.Cores), "--slots-used", strconv.Itoa(hb.SlotsUsed), "--slots-total", strconv.Itoa(hb.SlotsTotal)}
+	if hb.Tiers != "" {
+		args = append(args, "--tiers", hb.Tiers)
+	}
+	out, code, err := c.run_internal(ctx, c.argv_internal(args...))
 	return c.classifyCLIError_internal(out, code, err)
 }

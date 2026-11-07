@@ -170,7 +170,7 @@ func fillInventory(v *nextView, snap store.Snapshot) {
 func (e *Engine) fillRoster(ctx context.Context, v *nextView, snap store.Snapshot) {
 	a, err := e.answers(ctx, snap)
 	if err == nil {
-		ro, rerr := e.roster(ctx, a.Limits)
+		ro, rerr := e.roster(ctx, a.Limits, snap)
 		if err = rerr; err == nil {
 			_, v.Width, _, _ = ro.Row(v.Row)
 			v.Model, v.Harness = ro.Kin[v.Row].Model, cmp.Or(ro.Kin[v.Row].Harness, ro.Workers[v.Row].Harness)

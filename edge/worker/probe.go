@@ -33,7 +33,7 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName string) error {
 	r.mu.Lock()
 	r.probed[row] = false
 	r.mu.Unlock()
-	models, err := r.probeModels_internal(ctx, row, h)
+	models, tiers, err := r.probeModels_internal(ctx, row, h)
 	for _, m := range models {
 		if err != nil {
 			break
@@ -45,6 +45,7 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName string) error {
 	}
 	r.mu.Lock()
 	r.probed[row] = true
+	r.tiers[row] = store.JoinTiers(tiers)
 	for _, m := range models {
 		r.served[m] = true
 	}
@@ -67,49 +68,54 @@ func (r *Runner) probeRefusal_internal(ctx context.Context, row string, cause er
 	return fmt.Errorf("worker refused: probe failed for row %s: %s", row, line)
 }
 
-// probeModels_internal are the models to probe: every route's key present
-// first, then for a harness given a model, of each tier's candidates the
-// first it serves. A tier with no candidate is a refusal; a tier whose
-// candidates it serves none of is a warning, and none served at all a
-// refusal naming each tier's reasons.
-func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness) ([]string, error) {
+// probeModels_internal are the models to probe and the tiers they serve:
+// every route's key present first, then for a harness given a model, of
+// each tier's candidates the first it serves. A tier with no candidate is a
+// refusal; a tier whose candidates it serves none of is a warning and not
+// among the tiers (the worker advertises the rest, defect 74), and none
+// served at all a refusal naming each tier's reasons. A harness given no
+// model serves every tier.
+func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness) ([]string, []string, error) {
 	if missing := r.Proxy.MissingKeys(); len(missing) > 0 {
-		return nil, errors.New(strings.Join(missing, "; "))
+		return nil, nil, errors.New(strings.Join(missing, "; "))
 	}
 	if !h.Needs().Model {
-		return []string{""}, nil
+		return []string{""}, store.Tiers, nil
 	}
 	next, err := r.Sprint.Next(ctx, row)
 	if err != nil {
-		return nil, fmt.Errorf("the row's models could not be read (nova-sprint next --as %s --json): %w", row, err)
+		return nil, nil, fmt.Errorf("the row's models could not be read (nova-sprint next --as %s --json): %w", row, err)
 	}
 	if len(next.TierModels) == 0 {
-		return nil, fmt.Errorf("no model for any tier: next --json names no tier for %s (roster: %s): check that nova-config gives this machine the bench role (nova-sprint check)", row, cmp.Or(next.RosterErr, "read"))
+		return nil, nil, fmt.Errorf("no model for any tier: next --json names no tier for %s (roster: %s): check that nova-config gives this machine the bench role (nova-sprint check)", row, cmp.Or(next.RosterErr, "read"))
 	}
 	listed, err := r.listModels_internal(ctx, row, h)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var chosen, unserved []string
+	var chosen, tiers, unserved []string
 	for _, tier := range slices.Sorted(maps.Keys(next.TierModels)) {
 		cands := next.TierModels[tier]
 		if len(cands) == 0 {
-			return nil, fmt.Errorf("no model for tier %s: the policy's catalog names none: add one (nova-sprint policy set <file> --reason <why>)", tier)
+			return nil, nil, fmt.Errorf("no model for tier %s: the policy's catalog names none: add one (nova-sprint policy set <file> --reason <why>)", tier)
 		}
 		m, why := r.servedModel_internal(h.Needs(), cands, listed)
 		if m == "" {
 			unserved = append(unserved, "tier "+tier+": "+why)
-		} else if !slices.Contains(chosen, m) {
+			continue
+		}
+		tiers = append(tiers, tier)
+		if !slices.Contains(chosen, m) {
 			chosen = append(chosen, m)
 		}
 	}
 	if len(chosen) == 0 {
-		return nil, fmt.Errorf("this bench's %s serves none of the policy's models: %s", h.Name(), strings.Join(unserved, "; "))
+		return nil, nil, fmt.Errorf("this bench's %s serves none of the policy's models: %s", h.Name(), strings.Join(unserved, "; "))
 	}
 	for _, u := range unserved {
-		r.report("tier not served on "+row, errors.New(u+": a card of that tier dealt here faults"))
+		r.report("tier not served on "+row, errors.New(u+": this row does not advertise it, so no card of that tier is dealt here"))
 	}
-	return chosen, nil
+	return chosen, tiers, nil
 }
 
 // servedModel_internal is the first of cands the harness serves (a route

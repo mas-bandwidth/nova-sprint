@@ -36,7 +36,7 @@ func (e *Engine) checkPolicy(ctx context.Context, r *checkReport, snap store.Sna
 		r.red(err)
 		return
 	}
-	ro, err := e.roster(ctx, lim)
+	ro, err := e.roster(ctx, lim, snap)
 	if err != nil {
 		r.red(err)
 		return

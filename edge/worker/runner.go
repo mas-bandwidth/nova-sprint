@@ -141,11 +141,13 @@ type Runner struct {
 	jobs                      *sync.WaitGroup // every detached job, waited for when the wake loop ends
 	fatal                     chan error      // a refused receipt from a detached job ends the wake loop
 	probed, withdrawn, served map[string]bool
+	tiers                     map[string]string // per row: the tiers its probe proved, a comma list (advertise_internal)
 	adopted                   map[string]JobRecord
 	running                   map[string]context.CancelFunc
 	dedup                     *edge.Deduplicator
 	backoffSeq                uint64
 	lastBeatErr               string
+	advertised                string // the tiers the heartbeat says this harness serves (advertise_internal)
 }
 
 // NewRunner is a runner on any machine nova-config gives the bench role;
@@ -164,7 +166,7 @@ func NewRunner(cfg Runner) (*Runner, error) {
 	if cfg.Logger == nil && cfg.StateDir != "" {
 		cfg.Logger = &StepLogger{StateDir: cfg.StateDir, Now: cfg.Now}
 	}
-	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+	cfg.mu, cfg.probed, cfg.withdrawn, cfg.served, cfg.tiers = &sync.Mutex{}, map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]string{}
 	cfg.jobs, cfg.fatal = &sync.WaitGroup{}, make(chan error, 1)
 	cfg.adopted, cfg.running, cfg.dedup = map[string]JobRecord{}, map[string]context.CancelFunc{}, edge.NewDeduplicator()
 	return &cfg, nil
@@ -346,19 +348,25 @@ func (r *Runner) RunWakeLoop(ctx context.Context, row string) error {
 // before the sprint hook makes a hooked row a probed one: its harness
 // lists the policy's models and its seat's provider keys reached it, which
 // is what up's step 7 proves by the row being hooked and up (admission,
-// intent rule 34). A failed probe leaves the row unhooked.
+// intent rule 34). A failed probe leaves the row unhooked: once, it is the
+// exit; served, the row is held and the probe retried (probeHeld_internal).
 func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) error {
 	hook, err := r.busHook_internal(ctx, row)
 	if err != nil {
 		return err
 	}
 	defer hook.Stop()
-	if err := r.ProbeRow(ctx, row, harness); err != nil {
-		return err
+	if once {
+		if err := r.ProbeRow(ctx, row, harness); err != nil {
+			return err
+		}
+	} else if !r.probeHeld_internal(ctx, row, harness) {
+		return nil // stopped while held: a clean stop
 	}
 	if err := r.sprintHook_internal(ctx, row); err != nil {
 		return err
 	}
+	r.advertise_internal(ctx, row)
 	if once {
 		return r.StepRow(ctx, row)
 	}

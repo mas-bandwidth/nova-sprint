@@ -252,3 +252,30 @@ func routesOf(roles []string) []string {
 	slices.Sort(out)
 	return out
 }
+
+// Advertised is r with each worker's width and tiers as its own row says
+// it can serve (defect 74): a worker's heartbeat advertises the tiers its
+// harness adapter serves and its nova-reserve slots (store.Row Tiers and
+// SlotsTotal). A worker that advertised serves exactly those tiers, at width
+// min(its width, its slots) when it read its slots (0 of 0 when it could
+// not: its width stays). A worker that advertised nothing keeps
+// nova-config's shape (every tier, width min(cores, cap)). An advertisement
+// holds for the session that made it (the store clears it at unhook and at
+// a new hook), so a worker probing before its hook is asked every tier's
+// models, never only last session's.
+// Kin are untouched: a friend's width and tiers are its own in nova-config.
+func (r Roster) Advertised(rows map[string]store.Row) Roster {
+	out := r.Clone()
+	for name, w := range out.Workers {
+		row, ok := rows[name]
+		if !ok || row.Tiers == "" {
+			continue
+		}
+		w.Tiers = store.SplitTiers(row.Tiers)
+		if row.SlotsTotal > 0 {
+			w.Width = min(w.Width, row.SlotsTotal)
+		}
+		out.Workers[name] = w
+	}
+	return out
+}

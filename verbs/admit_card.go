@@ -51,7 +51,7 @@ func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []ca
 	if err != nil {
 		return nil, err
 	}
-	ro, err := e.roster(ctx, lim)
+	ro, err := e.roster(ctx, lim, snap)
 	if err != nil {
 		return nil, err
 	}

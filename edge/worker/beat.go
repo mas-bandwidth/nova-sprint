@@ -27,6 +27,9 @@ type (
 	Heartbeat struct {
 		Load1                        float64
 		Cores, SlotsUsed, SlotsTotal int
+		// Tiers are what the harness serves (its adapter's Needs.Tiers),
+		// a comma list in store.Tiers' order: the roster deals by them.
+		Tiers string
 	}
 	// Beater pushes a heartbeat to the sprint (CLISprintClient is one).
 	Beater interface {
@@ -126,6 +129,7 @@ func ParseReserveStatus(out string) (used, total int, err error) {
 // distinct cause so a down store is one line, not one per period.
 func (r *Runner) beat_internal(ctx context.Context, row string) {
 	hb, merr := r.Meter.Sample(ctx)
+	hb.Tiers = r.advertised
 	var serr error
 	if hb.Cores > 0 {
 		serr = r.Beater.Beat(ctx, row, hb)
@@ -147,6 +151,22 @@ func (r *Runner) beatLoop_internal(ctx context.Context, row string) {
 	for ctx.Err() == nil {
 		r.beat_internal(ctx, row)
 		r.Sleep(r.beatEvery_internal())
+	}
+}
+
+// advertise_internal is the worker's advertisement at hook (defect 74): the
+// tiers its probe proved its harness serves (a tier whose policy models the
+// adapter cannot reach is not among them) go in every heartbeat with the
+// nova-reserve slots, and the first beat is pushed now, before the first
+// pass, so the roster deals the row by its real width and tiers from its
+// first tick. Without a Meter it sends none (the roster keeps nova-config's
+// shape for the row).
+func (r *Runner) advertise_internal(ctx context.Context, row string) {
+	r.mu.Lock()
+	r.advertised = r.tiers[row]
+	r.mu.Unlock()
+	if r.Meter != nil && r.Beater != nil {
+		r.beat_internal(ctx, row)
 	}
 }
 

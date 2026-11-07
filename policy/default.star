@@ -50,7 +50,7 @@ def verdict(card, reads):
     return "retry"  # every done read faulted: ask one more read
 
 def width(row):
-    return {"work": row.width, "ahead": row.width}  # v1 DealAhead 2
+    return {"work": row.width, "ahead": 0}  # no deal-ahead: a worker takes only what it can run now (defect 74)
 
 def limits():
     return {

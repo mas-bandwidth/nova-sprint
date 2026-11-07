@@ -613,23 +613,30 @@ func rowGenRace(h *harness) {
 func rowLoad(h *harness) {
 	h.seed()
 	g := h.snap().Rows["w1"].Gen
-	r := h.ok(h.op("beat", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 250, 8, 2, 8}))
+	r := h.ok(h.op("beat", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 250, 8, 2, 8, ""}))
 	row := r.After.Rows["w1"]
 	assert.Equal(h.t, []int{250, 8, 2, 8, g}, []int{row.Load1Centi, row.Cores, row.SlotsUsed, row.SlotsTotal, row.Gen}, "the beat is stored and the gen did not move")
-	h.refused(h.op("same", nil, SetRowLoad{"w1", 250, 8, 2, 8}), "row w1 already has the given load")
-	h.ok(h.op("next", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 300, 8, 3, 8}))
+	h.refused(h.op("same", nil, SetRowLoad{"w1", 250, 8, 2, 8, ""}), "row w1 already has the given load")
+	h.ok(h.op("next", []Expect{RowGen{"w1", g}}, SetRowLoad{"w1", 300, 8, 3, 8, ""}))
+	h.ok(h.op("advertise", nil, SetRowLoad{"w1", 300, 8, 3, 8, "flash,pro"}))
+	assert.Equal(h.t, "flash,pro", h.snap().Rows["w1"].Tiers, "the beat carries the advertised tiers (defect 74)")
 	h.ok(h.op("hook again", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}))
-	assert.Equal(h.t, 300, h.snap().Rows["w1"].Load1Centi, "PutRow keeps the beat")
-	h.ok(h.op("with a state", nil, SetRowState{"w1", "down"}, SetRowLoad{"w1", 100, 8, 0, 8}))
-	assert.Equal(h.t, g+2, h.snap().Rows["w1"].Gen, "an op that also writes the row still moves its gen once")
+	assert.Equal(h.t, []any{300, "flash,pro"}, []any{h.snap().Rows["w1"].Load1Centi, h.snap().Rows["w1"].Tiers}, "PutRow keeps the beat")
+	h.ok(h.op("unhook", nil, PutRow{Name: "w1"}))
+	assert.Equal(h.t, []any{300, ""}, []any{h.snap().Rows["w1"].Load1Centi, h.snap().Rows["w1"].Tiers}, "an unhook keeps the load and clears the advertisement")
+	h.ok(h.op("hook", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}))
+	h.ok(h.op("with a state", nil, SetRowState{"w1", "down"}, SetRowLoad{"w1", 100, 8, 0, 8, ""}))
+	assert.Equal(h.t, g+4, h.snap().Rows["w1"].Gen, "an op that also writes the row still moves its gen once (the hooks above moved it three times)")
 	h.refusedAll([]refusal{
-		{SetRowLoad{"w9", 100, 8, 0, 8}, "row w9 does not exist"},
+		{SetRowLoad{"w9", 100, 8, 0, 8, ""}, "row w9 does not exist"},
 	})
 	h.invalidAll([]refusal{
-		{SetRowLoad{"w1", -1, 8, 0, 8}, "load1_centi -1 is outside"},
-		{SetRowLoad{"w1", 100, 0, 0, 8}, "cores of at least 1"},
-		{SetRowLoad{"w1", 100, 8, 9, 8}, "slots_used no more than slots_total"},
-		{SetRowLoad{"w1", 100, 8, math.MaxInt32 + 1, 8}, "slots_used 2147483648 is outside"},
+		{SetRowLoad{"w1", -1, 8, 0, 8, ""}, "load1_centi -1 is outside"},
+		{SetRowLoad{"w1", 100, 0, 0, 8, ""}, "cores of at least 1"},
+		{SetRowLoad{"w1", 100, 8, 9, 8, ""}, "slots_used no more than slots_total"},
+		{SetRowLoad{"w1", 100, 8, math.MaxInt32 + 1, 8, ""}, "slots_used 2147483648 is outside"},
+		{SetRowLoad{"w1", 100, 8, 0, 8, "pro,flash"}, "not a comma list of flash, pro, heavy, frontier in that order"},
+		{SetRowLoad{"w1", 100, 8, 0, 8, "flash,turbo"}, "not a comma list"},
 	})
 	assert.Equal(h.t, Rebuild(h.events()), h.snap(), "images carry the beat")
 }

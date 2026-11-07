@@ -90,7 +90,7 @@ func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr stri
 		Sprint:   sprint, Beater: sprint,
 		Git: &OSGitOps{WorkRoot: cmp.Or(c.WorkRoot, filepath.Join(root, "clones")),
 			MirrorRoot: cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror")), Exec: ex, Timeouts: timeouts},
-		Now: time.Now, Sleep: time.Sleep,
+		Now: time.Now, Sleep: time.Sleep, After: time.After, WakeEvery: WakeEvery,
 		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
 		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: timeouts.ReserveWait, NetDeny: true}},
 		Procs:   OSProcessTable{}, Proxy: proxy, Exec: ex, ProxyAddr: proxyAddr, DefaultHarness: h, Timeouts: timeouts,

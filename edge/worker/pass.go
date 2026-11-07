@@ -117,6 +117,36 @@ func (r *Runner) wait_internal(ctx context.Context, d time.Duration) {
 	}
 }
 
+// ProbeBackoff is the first wait before a failed probe is run again, and
+// ProbeBackoffMax the longest; the wait doubles between them. Both are
+// guesses (not measured): long enough not to spin a provider that is down,
+// short enough that a fixed key is picked up within minutes.
+const (
+	ProbeBackoff    = 30 * time.Second
+	ProbeBackoffMax = 10 * time.Minute
+)
+
+// probeHeld_internal probes the row until its harness passes (defect 61): a
+// failed probe never exits the worker. The row stays unhooked (dealt
+// nothing) and is held with the probe's reason, raised on stderr; the probe
+// runs again after a backoff. True when it passed, false when ctx ended.
+func (r *Runner) probeHeld_internal(ctx context.Context, row, harness string) bool {
+	wait := ProbeBackoff
+	for {
+		err := r.ProbeRow(ctx, row, harness)
+		if err == nil {
+			return true
+		}
+		if ctx.Err() != nil {
+			return false
+		}
+		r.report(fmt.Sprintf("row %s held (unhooked, probed again in %s): its probe failed", row, wait), err)
+		r.logStep_internal(row, "-", "probe", "held: "+err.Error(), 0)
+		r.wait_internal(ctx, wait)
+		wait = min(2*wait, ProbeBackoffMax)
+	}
+}
+
 func ignoreStoreDown_internal(err error) error {
 	if errors.Is(err, ErrStoreDown) {
 		return nil
