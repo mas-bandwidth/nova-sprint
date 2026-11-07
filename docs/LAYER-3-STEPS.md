@@ -637,6 +637,17 @@ steps changed with it:
   trace's judgements are `unserved`, `cannot-read` and `policy`); nudges and
   `unacked` are outside the model (it has no clock for them). The steps
   trace walk has no take: an acknowledgement moves no card.
+- TLC and traces (measured, bench host, cd960636): the full `ci-tlc.sh`
+  run passed (250 as expected), with `DealtWithinKTicks`, `DealIsTake`,
+  `StepsCutReady`, `StepsUndealtSilent`, `StepsDealOneShort` and
+  `StepsNeverUndealt` as required. `StepsDealtTwice` stopped violating once
+  a blocker preempts only when no row has room (the deal cannot then place
+  it either); it gained a second fault, a preemption with free width. The
+  trace check refused `steps-walk-land-1` at a Tick: the model asked a read
+  of a review in a held stream, so a failed `rows` answer opened a policy
+  judgement the code never opens (its `dealRead` returns first); the model
+  now skips held streams' reads. The `steps-ok-*` and `steps-bad-*`
+  fixtures are regenerated from that run's logs.
 - Seen in the tests: with a tick budget of 1, each tick's `Resolve` of the
   next producer spends the budget and the deal never reaches the first
   ready producer; the `undealt` judgement names it with the budget as the

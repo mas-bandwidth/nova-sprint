@@ -569,7 +569,19 @@ breaker's trace fixture is regenerated.
   `Take` to the deal; `TestBreakHeldWidth` and the seq2 width test refuse a
   second deal at width 1; the cold read's third fault reason names a
   missing route and blocks.
-- TLC: run on a bench host with `tla/ci-tlc.sh`; the result is in the
-  commit that follows this one (the run's wall time and state counts are
-  measured there, not here).
+- TLC (measured, on the bench host, `tla/ci-tlc.sh` at cd960636,
+  2026-11-07): all 250 runs as expected, none failed; about 28 minutes of
+  wall time with the trace check running beside it. The first run (at
+  324cafa0) failed five: `CardPreempt` and `CardMergePre` found
+  `NeverStranded` violated by a review whose read waited on a full row (a
+  deal now waits for room, so `Gated` counts a row with no room);
+  `CardMergeNestedStart` met that violation before its own;
+  `CardDealOverWidth` could not reach a second producer in `life` and moved
+  to `pre`; `StepsDealtTwice` (layer 3, below). Each was re-run alone and
+  passed or violated as required before the full run.
+- Trace checks (measured, `tla/make-traces.sh check` on the bench at
+  cd960636): 75 traces as expected. The first check refused four card walks
+  at a missing-route fault's `Report`, whose record named the result
+  `fault` where the consumer's state names `route`; `card.TraceResult` maps
+  both.
 
