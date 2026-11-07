@@ -260,7 +260,9 @@ func (w *work) closeJudgement(id, state, answer, actor string) (string, error) {
 }
 
 // writeCursor moves a cursor forward, never back and never past the log; a
-// cursor set to where it is already changes nothing and is refused.
+// cursor set to where it is already changes nothing and is refused, an
+// absent cursor counting as 0 (SetCursor{c, 0} on a cursor never set is
+// refused, as Store.tla has it; the store-cursor-zero fixture).
 func (w *work) writeCursor(v SetCursor) (string, error) {
 	seq, ok, err := w.tx.cursor(v.Name)
 	if err != nil {
@@ -270,7 +272,7 @@ func (w *work) writeCursor(v SetCursor) (string, error) {
 	switch {
 	case err != nil:
 		return "", err
-	case ok && v.Seq == seq:
+	case v.Seq == seq:
 		return fmt.Sprintf("cursor %s is already at %d", v.Name, seq), nil
 	case v.Seq < seq:
 		return fmt.Sprintf("cursor %s is at %d, cannot move back to %d", v.Name, seq, v.Seq), nil

@@ -34,7 +34,7 @@ func TestCatalogDefault(t *testing.T) {
 	assert.Empty(t, c.Unknown("opus", "claude"))
 	assert.Empty(t, c.Unknown("mercury-3", "api"))
 	assert.Equal(t, `model "gemini" is not in the catalog of policy v1 (models: haiku sonnet opus fable deepseek-flash-4.1 terra argon mercury-3 luna sol astra)`, c.Unknown("gemini", "api"))
-	a, fs := NewEngine().Answer(Versions{}, w.snap(), FullQuestions(w.snap(), nil))
+	a, fs := NewEngine().Answer(Versions{}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, want.Models, a.Catalog.Models, "the tick validates catalog like every answer")
 }
@@ -65,7 +65,7 @@ func TestCatalogRefused(t *testing.T) {
 	w.up()
 	body, line := override("catalog", "def catalog():\n    return {\"models\": {\"anthropic\": [{\"name\": \"opus\", \"tier\": \"ultra\"}]}, \"harnesses\": [\"claude\"]}")
 	path := w.file("bad.star", body)
-	_, err := Set(w.ctx(), w.st, NewEngine(), w.caller(), path, "test")
+	_, err := Set(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), path, "test")
 	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy set: POLICY REFUSED bad.star line %d catalog(): anthropic model 1: tier is \"ultra\", not one of flash pro heavy frontier: nova-sprint policy check %s", line, path), refusal(t, err))
 }
 
@@ -85,7 +85,7 @@ func TestCatalogRefusals(t *testing.T) {
 	assert.Equal(t, "SPRINT REFUSED policy catalog: v2 is of kind data, which policy does not run: name a script version: nova-sprint policy show --list", refusal(t, err))
 	twice, line := override("catalog", "def catalog():\n    return {\"models\": {\"a\": [{\"name\": \"opus\", \"tier\": \"heavy\"}], \"b\": [{\"name\": \"opus\", \"tier\": \"frontier\"}]}, \"harnesses\": [\"claude\"]}")
 	path := w.file("twice.star", twice)
-	_, err = Set(w.ctx(), w.st, NewEngine(), w.caller(), path, "test")
+	_, err = Set(w.ctx(), w.st, w.ro, NewEngine(), w.caller(), path, "test")
 	assert.Equal(t, fmt.Sprintf("SPRINT REFUSED policy set: POLICY REFUSED twice.star line %d catalog(): model opus is listed under both a and b: nova-sprint policy check %s", line, path), refusal(t, err))
 	older, _ := override("catalog", "")
 	v := w.set("older.star", older)

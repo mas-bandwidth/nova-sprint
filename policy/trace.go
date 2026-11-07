@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -39,13 +40,15 @@ type ModelState struct {
 
 // TraceState projects the store, the engine's built-in and the last tick's
 // answers (nil before the first tick) onto Policy.tla, with versions up to
-// maxVersion; card names the model's one card.
-func TraceState(ctx context.Context, st store.Store, e *Engine, tick *Answers, card string, maxVersion int) (ModelState, error) {
+// maxVersion; card names the model's one card. ro is the roster the
+// snapshot is read with: breaks is computed on the snapshot and ro, as a
+// tick computes it.
+func TraceState(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, tick *Answers, card string, maxVersion int) (ModelState, error) {
 	snap, err := st.Snapshot(ctx)
 	if err != nil {
 		return ModelState{}, err
 	}
-	vs, err := LoadVersions(ctx, st)
+	vs, err := LoadVersions(ctx, st, snap)
 	if err != nil || vs.Active == nil {
 		return ModelState{}, upFirst("trace", err)
 	}
@@ -63,7 +66,7 @@ func TraceState(ctx context.Context, st store.Store, e *Engine, tick *Answers, c
 	runs := NewEngine()
 	runs.builtin = e.builtin
 	for _, src := range append([]source{storedSource(0, e.builtin)}, sources(all)...) {
-		if _, fs := runs.checkRun(ctx, src, snap); len(fs) > 0 {
+		if _, fs := runs.checkRun(ctx, src, snap, ro); len(fs) > 0 {
 			m.Breaks = append(m.Breaks, src.version)
 		}
 	}

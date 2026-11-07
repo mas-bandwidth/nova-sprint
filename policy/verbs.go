@@ -11,7 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -65,13 +67,18 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 }
 
 // Set compiles the file, checks its names and arity, runs it on the current
-// snapshot, and stores it as the next version, not active (tla/Policy.tla Set).
-func Set(ctx context.Context, st store.Store, e *Engine, c Caller, path, reason string) (Result, error) {
-	no := func(what, fix string) (Result, error) { return Result{}, &Refusal{"set", what, fix} }
+// snapshot read with ro, and stores it as the next version, not active
+// (tla/Policy.tla Set), in an op fenced at the snapshot's seq: a set that
+// lands first (the same file from another shell) refuses this one, as
+// "already stored" when it stored this body (rowan2's probe).
+func Set(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Caller, path, reason string) (Result, error) {
 	if r := coordinator("set", c, reason); r != nil {
 		return Result{}, r
 	}
 	name, body, r := readFile("set", path)
+	if r == nil {
+		r = unstorable("set", field{"the file's name", name, true}, field{"the file", body, false})
+	}
 	if r != nil {
 		return Result{}, r
 	}
@@ -79,30 +86,70 @@ func Set(ctx context.Context, st store.Store, e *Engine, c Caller, path, reason 
 	if err != nil || snap.Policy == 0 {
 		return Result{}, upFirst("set", err)
 	}
-	all, err := versions(ctx, st)
-	if err != nil {
+	if err := sameBody(ctx, st, body, "has this body"); err != nil {
 		return Result{}, err
 	}
-	if i := slices.IndexFunc(all, func(v store.PolicyVersion) bool { return v.Body == body }); i >= 0 {
-		return no(fmt.Sprintf("v%d has this body", all[i].Version), fmt.Sprintf("nova-sprint policy activate %d", all[i].Version))
-	}
-	if _, fs := e.runFile(name, body, snap); len(fs) > 0 {
-		return no(fs[0].Error(), "nova-sprint policy check "+path)
+	if _, fs := e.runFile(name, body, snap, ro); len(fs) > 0 {
+		return Result{}, &Refusal{"set", fs[0].Error(), "nova-sprint policy check " + path}
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: reason,
-		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: name, Body: body}}}
+		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: []store.Write{store.PutPolicy{Kind: "script", Name: name, Body: body}}}
 	after, err := apply(ctx, st, op, "set")
 	for v := range after.Policies { // the one version the op stored
 		return Result{Version: v, Next: fmt.Sprintf("nova-sprint policy check v%d", v)}, nil
 	}
+	if serr := sameBody(ctx, st, body, "already stores this body"); serr != nil {
+		return Result{}, serr
+	}
 	return Result{}, err
 }
 
-// Activate re-runs check on the current snapshot, then in one op moves the
+// sameBody is the refusal of body when a stored script version has it (a
+// data row is never named: activate refuses it; cold read 3's probe), or
+// the store's error.
+func sameBody(ctx context.Context, st store.Store, body, what string) error {
+	all, err := versions(ctx, st)
+	if err != nil {
+		return err
+	}
+	if i := slices.IndexFunc(all, func(v store.PolicyVersion) bool { return v.Kind == "script" && v.Body == body }); i >= 0 {
+		return &Refusal{"set", fmt.Sprintf("v%d %s", all[i].Version, what), fmt.Sprintf("nova-sprint policy activate %d", all[i].Version)}
+	}
+	return nil
+}
+
+// field is one string a verb puts in an op: a name (an id or a name, at
+// most store.MaxName bytes) or text.
+type field struct {
+	what, value string
+	name        bool
+}
+
+// unstorable refuses, before any op is built, a string the store would
+// refuse as invalid: text that is not valid UTF-8 or holds a NUL byte, a
+// name over store.MaxName bytes (rowan2's probes: the verb's refusal names
+// the field, never the store's ErrInvalid).
+func unstorable(verb string, fs ...field) *Refusal {
+	for _, f := range fs {
+		switch {
+		case !utf8.ValidString(f.value):
+			return &Refusal{verb, f.what + " is not valid UTF-8", "give " + f.what + " in UTF-8"}
+		case strings.IndexByte(f.value, 0) >= 0:
+			return &Refusal{verb, f.what + " holds a NUL byte", "remove the NUL byte from " + f.what}
+		case f.name && len(f.value) > store.MaxName:
+			return &Refusal{verb, fmt.Sprintf("%s is over %d bytes", f.what, store.MaxName), fmt.Sprintf("give %s of at most %d bytes", f.what, store.MaxName)}
+		}
+	}
+	return nil
+}
+
+// Activate re-runs check on the current snapshot (read with ro), then in
+// one op fenced at that snapshot's seq (the model's one step) moves the
 // active flag to v and answers the open policy judgements of the old
-// version and of v (v now runs clean). It writes no card (tla/Policy.tla
+// version, of v (v now runs clean) and of the built-in (policy:v0: any
+// clean activation answers it). It writes no card (tla/Policy.tla
 // Activate, ActivateMovesNoCard).
-func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, reason string) (Result, error) {
+func Activate(ctx context.Context, st store.Store, ro roster.Roster, e *Engine, c Caller, v int, reason string) (Result, error) {
 	no := func(what, fix string) (Result, error) { return Result{}, &Refusal{"activate", what, fix} }
 	if r := coordinator("activate", c, reason); r != nil {
 		return Result{}, r
@@ -118,7 +165,7 @@ func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, r
 	if err != nil {
 		return Result{}, err
 	}
-	rep, err := check(ctx, st, e, snap, pv)
+	rep, err := check(ctx, st, ro, e, snap, pv)
 	if err != nil {
 		return Result{}, err
 	}
@@ -126,14 +173,19 @@ func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, r
 		return no(strings.Join(rep.Refusals, "; "), "nova-sprint policy check "+strconv.Itoa(v))
 	}
 	writes := []store.Write{store.SetActivePolicy{Version: v}}
-	for _, id := range append(OpenJudgements(snap, snap.Policy), OpenJudgements(snap, v)...) {
+	open := slices.Concat(OpenJudgements(snap, snap.Policy), OpenJudgements(snap, v), OpenJudgements(snap, 0))
+	slices.Sort(open)
+	for _, id := range slices.Compact(open) {
 		writes = append(writes, store.AnswerJudgement{ID: id, Answer: fmt.Sprintf("v%d activated: %s", v, reason)})
 	}
-	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-activate", At: c.At, Note: reason, Writes: writes}
+	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-activate", At: c.At, Note: reason,
+		Expect: []store.Expect{store.AtSeq{Seq: snap.Seq}}, Writes: writes}
 	_, err = apply(ctx, st, op, "activate")
 	return Result{Version: v, Changes: len(rep.Changes), Next: "nova-sprint next"}, err
 }
 
+// coordinator refuses a caller who is not the coordinator, a blank reason,
+// and a caller or reason the store would refuse (unstorable).
 func coordinator(verb string, c Caller, reason string) *Refusal {
 	switch {
 	case !c.Coordinator:
@@ -141,7 +193,7 @@ func coordinator(verb string, c Caller, reason string) *Refusal {
 	case strings.TrimSpace(reason) == "":
 		return &Refusal{verb, "no reason given", "nova-sprint policy " + verb + " ... --reason <why>"}
 	}
-	return nil
+	return unstorable(verb, field{"the actor", c.Actor, true}, field{"the op id", c.OpID, true}, field{"the reason", reason, false})
 }
 
 func upFirst(verb string, err error) error {
@@ -217,14 +269,15 @@ func versions(ctx context.Context, st store.Store) ([]store.PolicyVersion, error
 	}
 }
 
-// LoadVersions are the active version and the one active before it, read
-// from the store (the previous from the log's last activation; PrevOf).
-func LoadVersions(ctx context.Context, st store.Store) (Versions, error) {
-	snap, err := st.Snapshot(ctx)
-	if err != nil || snap.Policy == 0 {
-		return Versions{}, err
+// LoadVersions are the active version and the one active before it in snap
+// (the previous from the log's last activation up to snap's seq; PrevOf),
+// with Seq snap's seq: a tick answers with the snapshot its versions were
+// read at, or AnswerContext refuses it (cold read 3's probe).
+func LoadVersions(ctx context.Context, st store.Store, snap store.Snapshot) (Versions, error) {
+	vs := Versions{Seq: snap.Seq}
+	if snap.Policy == 0 {
+		return vs, nil
 	}
-	var vs Versions
 	active, err := st.Policy(ctx, snap.Policy)
 	if err != nil {
 		return vs, err

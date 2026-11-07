@@ -10,25 +10,49 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// index is what one tick's inputs are built from: the snapshot and the
-// counts every question shares, computed once.
+// index is what one tick's inputs are built from: the snapshot, the roster
+// and the counts every question shares, computed once.
 type index struct {
 	snap    store.Snapshot
-	rows    []store.Row         // by name, byte order
+	rows    []rostered          // the snapshot's rows the roster names, by name, byte order
+	facts   map[string]rostered // the same, by name
 	load    map[string][2]int   // row -> working, ready consumers it holds
 	reads   map[string][]string // producer -> its done reads of its current review and head, by id
 	streams map[string]*streamCount
 	sets    map[string]*candidateSet // by tier, kind and (for a read) author
 }
 
+// rostered is a store row with its configuration from the roster, by its
+// name (store round 22: a row is sprint state only; nova-config, read by
+// roster.Load, is the one source of kind, width, tiers, model and harness).
+type rostered struct {
+	store.Row
+	kind, model, harness string
+	width                int
+	tiers                []string
+}
+
+// rosterOf is r with its roster facts; ok is false when the roster does not
+// name it (a worker has no model).
+func rosterOf(ro roster.Roster, r store.Row) (rostered, bool) {
+	if w, ok := ro.Workers[r.Name]; ok {
+		return rostered{Row: r, kind: roster.KindWorker, harness: w.Harness, width: w.Width, tiers: w.Tiers}, true
+	}
+	if k, ok := ro.Kin[r.Name]; ok {
+		return rostered{Row: r, kind: roster.KindKin, model: k.Model, harness: k.Harness, width: k.Width, tiers: k.Tiers}, true
+	}
+	return rostered{}, false
+}
+
 // candidateSet is one list of candidates, built once per tick and shared by
 // every rows question with the same tier, kind and author; digest names
 // its contents for the answer cache.
 type candidateSet struct {
-	rows   []store.Row
+	rows   []rostered
 	names  map[string]int // name -> its place in rows
 	list   starlark.Tuple
 	digest string
@@ -36,12 +60,16 @@ type candidateSet struct {
 
 type streamCount struct{ merging, review, cards, landed int }
 
-func newIndex(snap store.Snapshot) *index {
-	ix := &index{snap: snap, load: map[string][2]int{}, reads: map[string][]string{}, streams: map[string]*streamCount{}, sets: map[string]*candidateSet{}}
+// newIndex indexes snap with ro: a row the roster does not name is in no
+// question (Judgements reports it).
+func newIndex(snap store.Snapshot, ro roster.Roster) *index {
+	ix := &index{snap: snap, facts: map[string]rostered{}, load: map[string][2]int{}, reads: map[string][]string{}, streams: map[string]*streamCount{}, sets: map[string]*candidateSet{}}
 	for _, r := range snap.Rows {
-		ix.rows = append(ix.rows, r)
+		if f, ok := rosterOf(ro, r); ok {
+			ix.rows, ix.facts[r.Name] = append(ix.rows, f), f
+		}
 	}
-	slices.SortFunc(ix.rows, func(a, b store.Row) int { return cmp.Compare(a.Name, b.Name) })
+	slices.SortFunc(ix.rows, func(a, b rostered) int { return cmp.Compare(a.Name, b.Name) })
 	for name := range snap.Streams {
 		ix.streams[name] = &streamCount{}
 	}
@@ -81,11 +109,11 @@ func b2i(b bool) int {
 	return 0
 }
 
-// Rank is the highest tier a row lists, in ladder order; "" when none.
-func Rank(r store.Row) string {
+// Rank is the highest of a row's tiers, in ladder order; "" when none.
+func Rank(tiers []string) string {
 	rank := ""
 	for _, t := range store.Tiers {
-		if slices.Contains(r.Tiers, t) {
+		if slices.Contains(tiers, t) {
 			rank = t
 		}
 	}
@@ -107,11 +135,11 @@ func (ix *index) candidateSet(c store.Card, kind string) *candidateSet {
 	}
 	s := &candidateSet{}
 	for _, r := range ix.rows {
-		if r.State == "up" && !r.Held && slices.Contains(r.Tiers, c.Tier) && (kind != KindRead || r.Name != c.Author) {
+		if r.State == "up" && !r.Held && slices.Contains(r.tiers, c.Tier) && (kind != KindRead || r.Name != c.Author) {
 			s.rows = append(s.rows, r)
 		}
 	}
-	slices.SortStableFunc(s.rows, func(a, b store.Row) int { return cmp.Compare(rung(Rank(a)), rung(Rank(b))) })
+	slices.SortStableFunc(s.rows, func(a, b rostered) int { return cmp.Compare(rung(Rank(a.tiers)), rung(Rank(b.tiers))) })
 	s.list, s.names = make(starlark.Tuple, len(s.rows)), map[string]int{}
 	for i, r := range s.rows {
 		s.list[i], s.names[r.Name] = ix.candidate(r), i
@@ -152,36 +180,39 @@ func orderCard(c store.Card) starlark.Value {
 }
 
 // card is the subject of rows, reads and verdict: id, stream, tier (its
-// minimum), prose, attempt, bounces, priority and writer_rank (the rank of
-// the row that wrote the head; the card's tier when that row is unknown).
+// minimum), attempt, bounces, priority and writer_rank (the rank of the row
+// that wrote the head; the card's tier when that row is unknown). Never the
+// prose (rowan2's ruling 4 and 5): a brief of any size would enter every
+// input and the answer cache's key, so the inputs would grow with the briefs
+// and not with the card count.
 func (ix *index) card(c store.Card) starlark.Value {
 	writer := c.Tier
-	if r, ok := ix.snap.Rows[c.Author]; ok && Rank(r) != "" {
-		writer = Rank(r)
+	if r, ok := ix.facts[c.Author]; ok && Rank(r.tiers) != "" {
+		writer = Rank(r.tiers)
 	}
-	return newStruct("id", c.ID, "stream", c.Stream, "tier", c.Tier, "prose", c.Prose, "attempt", c.Attempt,
+	return newStruct("id", c.ID, "stream", c.Stream, "tier", c.Tier, "attempt", c.Attempt,
 		"bounces", c.Bounces, "priority", cmp.Or(c.Priority, "normal"), "writer_rank", writer)
 }
 
 // candidate is one row offered to rows: name, tiers, rank, model, harness,
 // width, working, ready.
-func (ix *index) candidate(r store.Row) starlark.Value {
+func (ix *index) candidate(r rostered) starlark.Value {
 	l := ix.load[r.Name]
-	return newStruct("name", r.Name, "tiers", r.Tiers, "rank", Rank(r), "model", r.Model, "harness", r.Harness,
-		"width", r.Width, "working", l[0], "ready", l[1])
+	return newStruct("name", r.Name, "tiers", r.tiers, "rank", Rank(r.tiers), "model", r.model, "harness", r.harness,
+		"width", r.width, "working", l[0], "ready", l[1])
 }
 
-// row is width's subject: name, kind, width (nova-config's), tiers, model,
-// harness, flaps.
-func row(r store.Row) starlark.Value {
-	return newStruct("name", r.Name, "kind", r.Kind, "width", r.Width, "tiers", r.Tiers, "model", r.Model,
-		"harness", r.Harness, "flaps", r.Flaps)
+// row is width's subject: name, kind, width, tiers, model, harness (the
+// roster's, from nova-config), flaps (the store's).
+func row(r rostered) starlark.Value {
+	return newStruct("name", r.Name, "kind", r.kind, "width", r.width, "tiers", r.tiers, "model", r.model,
+		"harness", r.harness, "flaps", r.Flaps)
 }
 
 // read is one done read for verdict: row, rank, result (ok or fix), finding
 // (the read's reason).
 func (ix *index) read(c store.Card) starlark.Value {
-	return newStruct("row", c.Holder, "rank", Rank(ix.snap.Rows[c.Holder]), "result", c.Result, "finding", c.Reason)
+	return newStruct("row", c.Holder, "rank", Rank(ix.facts[c.Holder].tiers), "result", c.Result, "finding", c.Reason)
 }
 
 // landingStream is landing's subject: name, merging, review, rung.
@@ -203,7 +234,7 @@ func (ix *index) stitchStream(name string) starlark.Value {
 // conformance tests ask these, so check predicts a tick that asks them.
 func FullQuestions(snap store.Snapshot, rungs map[string]string) Questions {
 	var q Questions
-	ix := newIndex(snap)
+	ix := newIndex(snap, roster.Roster{}) // the reads counted; no question here reads a row
 	for _, id := range slices.Sorted(maps.Keys(snap.Cards)) {
 		c := snap.Cards[id]
 		switch {

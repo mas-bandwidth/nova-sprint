@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -27,20 +28,24 @@ func breakTiming(t *testing.T) {
 // every version spends its budget takes at most three budgets", plus slack.
 const bound = 3*TickTime + 250*time.Millisecond
 
-func loadSnap(producers, rows int) store.Snapshot {
+// loadSnap is producers ready producers over rows workers serving every
+// tier at width 2, and its roster.
+func loadSnap(producers, rows int) (store.Snapshot, roster.Roster) {
+	ro := handRoster()
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{}, Cards: map[string]store.Card{}, Rows: map[string]store.Row{}}
 	for i := range 10 {
 		snap.Streams[fmt.Sprintf("s%d", i)] = store.Stream{Name: fmt.Sprintf("s%d", i)}
 	}
 	for i := range rows {
 		name := fmt.Sprintf("r%03d", i)
-		snap.Rows[name] = store.Row{Name: name, Kind: "worker", Width: 2, State: "up", Tiers: store.Tiers}
+		snap.Rows[name] = store.Row{Name: name, State: "up"}
+		ro.Workers[name] = roster.Worker{Name: name, Width: 2, Tiers: store.Tiers, Harness: roster.WorkerHarness}
 	}
 	for i := range producers {
 		id := fmt.Sprintf("p%04d", i)
 		snap.Cards[id] = store.Card{ID: id, Kind: "producer", Stream: fmt.Sprintf("s%d", i%10), State: "ready", Tier: store.Tiers[i%4], Score: i, Priority: "normal"}
 	}
-	return snap
+	return snap, ro
 }
 
 // The file's top level runs on newThread: CallSteps but no wall clock
@@ -55,7 +60,7 @@ func TestBreakTopLevelHasNoTimeBudget(t *testing.T) {
 	w := fakeWorld(t)
 	snap := w.snap()
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	t.Logf("top-level sort of 30M: tick took %s, answered by %d, failures %v", took, a.Version, fs)
 	assert.Less(t, took, bound, "the tick must be bounded by its budgets")
@@ -70,11 +75,11 @@ func TestBreakOneBuiltinOutlastsTickTime(t *testing.T) {
 	breakTiming(t)
 	body, _ := override("limits", `def limits():
     _n = len(sorted(range(30000000), reverse = True))
-    return {"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, "route_rest_after": 3}`)
+    return {"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, "route_rest_after": 3, `+steering+`}`)
 	w := fakeWorld(t)
 	snap := w.snap()
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	t.Logf("one sorted(range(30M)) in limits: tick took %s, answered by %d, failures %v", took, a.Version, fs)
 	assert.Less(t, took, bound)
@@ -94,7 +99,7 @@ func TestBreakHugeIntRefusalPrintedOutsideBudget(t *testing.T) {
 	w := fakeWorld(t)
 	snap := w.snap()
 	start := time.Now()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, FullQuestions(snap, nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, snap, w.ro, FullQuestions(snap, nil))
 	took := time.Since(start)
 	require.NotEmpty(t, fs)
 	t.Logf("huge int in width: tick took %s, answered by %d, failure text %d bytes", took, a.Version, len(fs[0].Msg))
@@ -115,10 +120,10 @@ func TestBreakCatalogValidationQuadratic(t *testing.T) {
 	e := NewEngine()
 	vs := Versions{Active: pv(2, body)}
 	start := time.Now()
-	a, fs := e.Answer(vs, snap, FullQuestions(snap, nil))
+	a, fs := e.Answer(vs, snap, w.ro, FullQuestions(snap, nil))
 	cold := time.Since(start)
 	start = time.Now()
-	_, _ = e.Answer(vs, snap, FullQuestions(snap, nil))
+	_, _ = e.Answer(vs, snap, w.ro, FullQuestions(snap, nil))
 	warm := time.Since(start)
 	t.Logf("catalog of 40k models: cold %s, warm (cached answer, revalidated) %s, answered by %d, failures %v", cold, warm, a.Version, fs)
 	assert.Less(t, cold, bound)
@@ -134,14 +139,14 @@ func TestBreakCatalogValidationQuadratic(t *testing.T) {
 // input give one answer ... check on a snapshot predicts the tick on that
 // snapshot"; answered_by differs for one snapshot.
 func TestBreakBudgetOutcomeDependsOnCacheHistory(t *testing.T) {
-	snap := loadSnap(80, 2)
+	snap, ro := loadSnap(80, 2)
 	body, _ := override("order", "def order(card):\n    for _i in range(50000):\n        pass\n    return (card.score,)")
 	e := NewEngine()
 	vs := Versions{Active: pv(2, body)}
 	q := FullQuestions(snap, nil)
 	var by []int
 	for range 6 {
-		a, fs := e.Answer(vs, snap, q)
+		a, fs := e.Answer(vs, snap, ro, q)
 		by = append(by, a.Version)
 		t.Logf("tick: answered by %d, failures %v", a.Version, fs)
 	}
@@ -160,12 +165,12 @@ func TestBreakBudgetOutcomeDependsOnCacheHistory(t *testing.T) {
 // default "answers every snapshot".
 func TestBreakDefaultSpendsTickBudgetAt100Rows(t *testing.T) {
 	breakTiming(t)
-	snap := loadSnap(5000, 100)
+	snap, ro := loadSnap(5000, 100)
 	start := time.Now()
 	e := NewEngine()
-	a, fs := e.Answer(Versions{}, snap, FullQuestions(snap, nil))
+	a, fs := e.Answer(Versions{}, snap, ro, FullQuestions(snap, nil))
 	t.Logf("built-in at 5000 producers x 100 rows: %s, answered by %d, failures %v", time.Since(start), a.Version, fs)
-	a2, fs2 := e.Answer(Versions{}, snap, FullQuestions(snap, nil))
+	a2, fs2 := e.Answer(Versions{}, snap, ro, FullQuestions(snap, nil))
 	t.Logf("same snapshot, next tick: answered by %d, failures %v", a2.Version, fs2)
 	assert.Equal(t, 0, a.Version, "the built-in must answer")
 }

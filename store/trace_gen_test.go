@@ -171,17 +171,12 @@ func (w *storeWalk) judgementWrite(s Snapshot) Write {
 	return ExpireJudgement{ID: j, Reason: "late"}
 }
 
-// cursorWrite moves c1 around the log's end. It never sets 0 on a cursor
-// that was never set: the store accepts that write and the model refuses
-// it (the divergence in tla/README.md, "Trace validation").
+// cursorWrite moves c1 around the log's end, 0 on a cursor never set
+// included (refused as unchanged since round 22's ruling on cursor zero).
 func (w *storeWalk) cursorWrite(s Snapshot) Write {
-	cur, ok := s.Cursors["c1"]
-	seq := max(0, cur+int64(w.rng.IntN(4))-1)
+	seq := max(0, s.Cursors["c1"]+int64(w.rng.IntN(4))-1)
 	if w.rng.IntN(2) == 0 {
 		seq = max(0, s.Seq+int64(w.rng.IntN(3))-1)
-	}
-	if !ok && seq == 0 {
-		seq = 1
 	}
 	return SetCursor{Name: "c1", Seq: seq}
 }

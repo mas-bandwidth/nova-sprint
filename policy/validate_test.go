@@ -10,13 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // refusedBy runs a tick with body as v2 on w and returns its one failure.
 func refusedBy(t *testing.T, w *world, body string) Failure {
 	t.Helper()
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), FullQuestions(w.snap(), nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, body)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Len(t, fs, 1)
 	assert.Equal(t, 0, a.Version, "the default answered the tick")
 	return fs[0]
@@ -26,7 +27,10 @@ func refusedBy(t *testing.T, w *world, body string) Failure {
 func TestRefusals(t *testing.T) {
 	t.Parallel()
 	w := fakeWorld(t)
-	const limits = `"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10`
+	const limits = `"bounces": 6, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, ` + steering
+	steer := func(key, value string) string { // limits with one steering key's value replaced
+		return "{" + strings.Replace(limits, steeringValue(key), `"`+key+`": `+value, 1) + `, "route_rest_after": 3}`
+	}
 	const times = `"row_silent_gone": 600, "landing_stall": 60, "judgement": 3600, "route_rest_for": 1800`
 	for _, tc := range []struct{ q, ret, want string }{
 		{"order", "[1]", "order(p1): the answer is a list, not a tuple of up to 4 ints or strings"},
@@ -52,7 +56,14 @@ func TestRefusals(t *testing.T) {
 		{"width", `{"work": 1}`, "width(r1): key ahead is missing"},
 		{"width", `{"work": 1, "ahead": 1, "x": 1}`, `width(r1): key "x" is not one of work ahead`},
 		{"width", "[1]", "width(r1): the answer is a list, not a dict of work ahead"},
-		{"limits", `{"bounces": 0, "faults": 3, "same_finding": 2, "reports_per_tick": 1000, "route_rest_window": 10, "route_rest_after": 3}`, "limits(): bounces 0 is outside 1..100"},
+		{"limits", "{" + strings.Replace(limits, `"bounces": 6`, `"bounces": 0`, 1) + `, "route_rest_after": 3}`, "limits(): bounces 0 is outside 1..100"},
+		{"limits", steer("escalate_after", "0"), "limits(): escalate_after 0 is outside 1..100"},
+		{"limits", steer("frontier_after", "1"), "limits(): frontier_after 1 is outside 2..100 (escalate_after to 100)"},
+		{"limits", steer("flap_limit", "101"), "limits(): flap_limit 101 is outside 1..100"},
+		{"limits", steer("idle_floor", "0"), "limits(): idle_floor 0 is outside (0, 1]"},
+		{"limits", steer("idle_floor", `"half"`), "limits(): idle_floor is a string, not a number"},
+		{"limits", steer("land_target", "1.5"), "limits(): land_target 1.5 is outside (0, 1]"},
+		{"limits", steer("land_target", `float("nan")`), "limits(): land_target nan is outside (0, 1]"},
 		{"limits", "{" + limits + `, "route_rest_after": 11}`, "limits(): route_rest_after 11 is outside 1..10 (route_rest_window)"},
 		{"limits", "{" + limits + "}", "limits(): key route_rest_after is missing"},
 		{"limits", "{" + strings.Replace(limits, `"same_finding": 2`, `"same_finding": 11`, 1) + `, "route_rest_after": 3}`, "limits(): same_finding 11 is outside 1..10"},
@@ -99,7 +110,7 @@ func TestRefuseYesWithNoOk(t *testing.T) {
 	body, line := override("verdict", "def verdict(card, reads):\n    return \"yes\"")
 	f := refusedBy(t, w, body)
 	assert.Equal(t, fmt.Sprintf(`POLICY REFUSED v2 line %d verdict(p3): "yes" with no ok read`, line), f.Error())
-	a, fs := NewEngine().Answer(Versions{Active: pv(2, defaultBody)}, w.snap(), FullQuestions(w.snap(), nil))
+	a, fs := NewEngine().Answer(Versions{Active: pv(2, defaultBody)}, w.snap(), w.ro, FullQuestions(w.snap(), nil))
 	require.Empty(t, fs)
 	assert.Equal(t, "fix", a.Verdict["p3"], "the default: any fix read means fix")
 }
@@ -174,10 +185,10 @@ func FuzzAnswers(f *testing.F) {
 		for _, q := range questionNames {
 			fmt.Fprintf(&body, "def %s(%s):\n    return %s\n\n", q, params[q], g.lit(0))
 		}
-		a, fs := NewEngine().Answer(Versions{Active: pv(2, body.String())}, snap, FullQuestions(snap, nil))
+		a, fs := NewEngine().Answer(Versions{Active: pv(2, body.String())}, snap, w.ro, FullQuestions(snap, nil))
 		if a.Version == 2 {
 			require.Empty(t, fs)
-			inDomain(t, snap, a)
+			inDomain(t, snap, w.ro, a)
 			return
 		}
 		require.Len(t, fs, 1, body.String())
@@ -189,16 +200,29 @@ func FuzzAnswers(f *testing.F) {
 
 // inDomain: widths at or below each row's, rows only candidates at or above
 // the card's tier.
-func inDomain(t *testing.T, snap store.Snapshot, a Answers) {
+func inDomain(t *testing.T, snap store.Snapshot, ro roster.Roster, a Answers) {
 	for name, wd := range a.Width {
-		r := snap.Rows[name]
-		assert.True(t, wd.Work >= 0 && wd.Work <= r.Width && wd.Ahead >= 0 && wd.Ahead <= 4*r.Width, name)
+		r, _ := rosterOf(ro, snap.Rows[name])
+		assert.True(t, wd.Work >= 0 && wd.Work <= r.width && wd.Ahead >= 0 && wd.Ahead <= 4*r.width, name)
 	}
 	for q, names := range a.Rows {
 		c := snap.Cards[q.Card]
 		for _, n := range names {
-			r := snap.Rows[n]
-			assert.True(t, slices.Contains(r.Tiers, c.Tier) && r.State == "up" && !r.Held, "%v %s", q, n)
+			r, _ := rosterOf(ro, snap.Rows[n])
+			assert.True(t, slices.Contains(r.tiers, c.Tier) && r.State == "up" && !r.Held, "%v %s", q, n)
 		}
 	}
+}
+
+// steering is limits' steering keys at the built-in's values (round 5).
+const steering = `"escalate_after": 2, "frontier_after": 4, "flap_limit": 3, "idle_floor": 0.5, "land_target": 0.9`
+
+// steeringValue is key's entry in steering.
+func steeringValue(key string) string {
+	for _, kv := range strings.Split(steering, ", ") {
+		if strings.HasPrefix(kv, `"`+key+`"`) {
+			return kv
+		}
+	}
+	panic(key)
 }

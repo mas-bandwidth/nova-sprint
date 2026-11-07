@@ -287,7 +287,8 @@ type ExpireJudgement struct{ ID, Reason string }
 
 // SetCursor sets a subscriber's place in the event log (the last seq it has
 // read), inserting it when absent (an absent cursor reads as 0); refused
-// below its stored seq, and above the last event's seq before the op. Seq is
+// at its stored seq (0 for an absent one: "already at 0"), below it, and
+// above the last event's seq before the op. Seq is
 // global, so cursors are too: a clear carries them, and a subscriber resumes
 // where it was.
 type SetCursor struct {

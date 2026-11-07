@@ -2,12 +2,14 @@
 
 _RUNG = {t: i for i, t in enumerate(TIERS)}
 _SECURITY_STREAMS = []  # the coordinator lists streams whose reads go to frontier
+_ESCALATE_AFTER = 2  # bounces before one rank up: guess (layer 3's engine default)
+_FRONTIER_AFTER = 4  # bounces before frontier: guess (PRIORITY T19; layer 3's engine default)
 
 def _up(t, n):
     return TIERS[min(_RUNG[t] + n, len(TIERS) - 1)]
 
 def _security(card):
-    return card.stream in _SECURITY_STREAMS or "security" in card.prose.lower()
+    return card.stream in _SECURITY_STREAMS  # the prose is no input (round 5)
 
 def order(card):
     # Inside one declared level; the ladder is the engine's.
@@ -22,10 +24,10 @@ def _want(card, kind):
             return "frontier"
         return _up(card.writer_rank, 1)  # the rank above the writer's row
     # Escalation counts bounces, never faults (LESSONS 2.24).
-    if card.bounces >= 4:
-        return "frontier"  # PRIORITY T19; 4 is a guess
-    if card.bounces >= 2:
-        return _up(card.tier, 1)  # guess
+    if card.bounces >= _FRONTIER_AFTER:
+        return "frontier"
+    if card.bounces >= _ESCALATE_AFTER:
+        return _up(card.tier, 1)
     return card.tier  # at its tier from its first deal (PRIORITY T17)
 
 def rows(card, kind, candidates):
@@ -58,6 +60,11 @@ def limits():
         "reports_per_tick": 1000,  # derived from the layer 1 load test: a guess
         "route_rest_window": 10,   # v1 (PRIORITY T20)
         "route_rest_after": 3,     # v1
+        "escalate_after": _ESCALATE_AFTER,
+        "frontier_after": _FRONTIER_AFTER,
+        "flap_limit": 3,           # unmeasured: a guess (layer 3's engine default)
+        "idle_floor": 0.5,         # guess (LESSONS 3.18: under half the open width)
+        "land_target": 0.9,        # guess (layer 3's engine default, over 20 landings)
     }
 
 def landing(stream):
