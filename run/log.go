@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+// TickMetrics is one tick's line: its number, the seq it folded to, how
+// long it took, its counts and its error.
+type TickMetrics struct {
+	Number int
+	Seq    int64
+	Took   time.Duration
+	Counts TickCounts
+	Err    error
+}
+
 // WriterLogger serializes short tick and push lines without logging message
 // bodies, DSNs, provider keys or untrusted error text.
 type WriterLogger struct {
@@ -24,7 +34,7 @@ func (l *WriterLogger) Log(m TickMetrics) {
 	if m.Err != nil {
 		status = "error"
 	}
-	_, err := fmt.Fprintf(l.out, "TICK n=%d seq=%d took=%s folded=%d ops=%d/%d planned_policy=%d status=%s\n", m.Number, m.Seq, m.Took, m.Counts.Folded, m.Counts.Applied, m.Counts.Refused, m.PlannedPolicy, status)
+	_, err := fmt.Fprintf(l.out, "TICK n=%d seq=%d took=%s folded=%d ops=%d/%d edges=%d status=%s\n", m.Number, m.Seq, m.Took, m.Counts.Folded, m.Counts.Applied, m.Counts.Refused, m.Counts.Edges, status)
 	if err == nil && m.Took > time.Second {
 		_, err = fmt.Fprintf(l.out, "OVERRUN n=%d took=%s\n", m.Number, m.Took)
 	}

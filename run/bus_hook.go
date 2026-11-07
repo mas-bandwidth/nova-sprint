@@ -7,13 +7,23 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 )
 
+// SprintHook holds the nova-bus hook for the name sprint while run holds
+// the chooser lock (LAYER-6 section 1): Bin is the nova-bus binary, Env its
+// bus connection only (no store or provider secrets), Reply the absolute
+// nova-sprint whose `bus-reply` answers a message sent to sprint.
+type SprintHook struct {
+	Bin   string
+	Env   []string
+	Reply string
+}
+
 type busLease struct {
-	bus  *NovaBus
 	cmd  *exec.Cmd
 	done chan struct{}
 	mu   sync.Mutex
@@ -23,13 +33,15 @@ type busLease struct {
 
 // Acquire starts a real hook. It runs only the fixed bus-reply entry point;
 // no message body is interpolated into a shell command.
-func (b *NovaBus) Acquire(ctx context.Context, name string) (HookLease, error) {
+func (b SprintHook) Acquire(ctx context.Context, name string) (HookLease, error) {
 	if name != "sprint" {
 		return nil, fmt.Errorf("run: chooser hook must be sprint")
 	}
-	reply := shellWord(b.cfg.ReplyExecutable) + " bus-reply"
-	cmd := exec.Command(b.cfg.Binary, "hook", "--as", name, "--exec", reply)
-	cmd.Env = b.env()
+	if !filepath.IsAbs(b.Bin) || !filepath.IsAbs(b.Reply) {
+		return nil, fmt.Errorf("run: the sprint hook needs absolute nova-bus and nova-sprint paths; pass them in run.Config")
+	}
+	cmd := exec.Command(b.Bin, "hook", "--as", name, "--exec", shellWord(b.Reply)+" bus-reply")
+	cmd.Env = b.Env
 	cmd.Stdout = io.Discard
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -38,7 +50,7 @@ func (b *NovaBus) Acquire(ctx context.Context, name string) (HookLease, error) {
 	if err = cmd.Start(); err != nil {
 		return nil, fmt.Errorf("run: start bus hook: %w", err)
 	}
-	lease := &busLease{bus: b, cmd: cmd, done: make(chan struct{})}
+	lease := &busLease{cmd: cmd, done: make(chan struct{})}
 	ready := make(chan struct{}, 1)
 	go func() {
 		scanner := bufio.NewScanner(stderr)

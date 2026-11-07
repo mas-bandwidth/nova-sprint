@@ -282,22 +282,26 @@ func emptySnapshot(epoch int) Snapshot {
 }
 
 // Rebuild folds events, in seq order from the first, into the snapshot they
-// produce: a clear empties the streams, cards, rows and judgements (its
-// after-image carries the rows) and keeps the cursors, which are global as
-// seq is; every other accepted event lays its after-images over them,
-// policy included. Guarantee 5 is Rebuild(every event) == Snapshot().
-func Rebuild(events []Event) Snapshot {
-	s := emptySnapshot(1)
-	policies := map[int]PolicyVersion{}
+// produce. Guarantee 5 is Rebuild(every event) == Snapshot().
+func Rebuild(events []Event) Snapshot { return Fold(emptySnapshot(1), events) }
+
+// Fold lays events, in seq order, over s, the snapshot before them, and
+// returns the snapshot after them (s's maps are reused): a clear empties the
+// streams, cards, rows and judgements (its after-image carries the rows) and
+// keeps the cursors, which are global as seq is, the stop and the active
+// policy; every other accepted event lays its after-images over them, the
+// active version included. It is the one fold: Rebuild, run's copy (layer 6)
+// and the trace checks all call it, so none can drift from the store.
+func Fold(s Snapshot, events []Event) Snapshot {
 	for _, e := range events {
 		s.Seq = e.Seq
 		if !e.Accepted || e.After == nil {
 			continue
 		}
 		if e.After.Epoch != 0 {
-			seq, cursors, stopped, reason := s.Seq, s.Cursors, s.Stopped, s.StopReason
+			keep := s
 			s = emptySnapshot(e.After.Epoch)
-			s.Seq, s.Cursors, s.Stopped, s.StopReason = seq, cursors, stopped, reason
+			s.Seq, s.Cursors, s.Stopped, s.StopReason, s.Policy = keep.Seq, keep.Cursors, keep.Stopped, keep.StopReason, keep.Policy
 		}
 		if e.After.Stop != nil {
 			s.Stopped, s.StopReason = e.After.Stop.Stopped, e.After.Stop.Reason
@@ -307,11 +311,12 @@ func Rebuild(events []Event) Snapshot {
 		overlay(s.Rows, e.After.Rows)
 		overlay(s.Judgements, e.After.Judgements)
 		overlay(s.Cursors, e.After.Cursors)
-		overlay(policies, e.After.Policies)
-	}
-	for v, p := range policies {
-		if p.Active {
-			s.Policy = v
+		for v, p := range e.After.Policies {
+			if p.Active {
+				s.Policy = v
+			} else if s.Policy == v {
+				s.Policy = 0
+			}
 		}
 	}
 	return s

@@ -334,6 +334,11 @@ NoDroppedPlan == \A p \in Processes : local[p].phase # "down" =>
 EdgesAfterCommit == edgeDone \subseteq done
 NoTickAfterObservedStop == tickCallSafe
 NoAcceptedTickWhileStopped == tickStopSafe
+\* The brief's name (BRIEF-V2-STITCH step 3): nothing ticks while Stopped,
+\* neither a tick begun after the stop was seen nor one accepted under it.
+\* run.Ticker.Tick returns before steps.Tick when its folded copy is
+\* stopped (run/tick.go; TestNoTickWhileStopped).
+NoTickWhileStopped == NoTickAfterObservedStop /\ NoAcceptedTickWhileStopped
 \* Intentionally stopped service is not promised eventual work completion.
 WorkWhenRunning == (<>[](~sprintStopped)) => <>(done = Jobs)
 AllWork == <>(done = Jobs)

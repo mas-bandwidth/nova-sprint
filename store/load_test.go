@@ -454,34 +454,6 @@ func (l *load) reportOp() (Op, func(), bool) {
 	return l.op("report", ex, append(ws, cw...)...), done, true
 }
 
-// foldInto advances a local copy by events: the fold Rebuild runs, onto a
-// copy that already holds the state before them.
-func foldInto(s *Snapshot, events []Event) {
-	for _, e := range events {
-		s.Seq = e.Seq
-		if !e.Accepted || e.After == nil {
-			continue
-		}
-		if e.After.Epoch != 0 {
-			seq, cursors := s.Seq, s.Cursors
-			*s = emptySnapshot(e.After.Epoch)
-			s.Seq, s.Cursors = seq, cursors
-		}
-		overlay(s.Streams, e.After.Streams)
-		overlay(s.Cards, e.After.Cards)
-		overlay(s.Rows, e.After.Rows)
-		overlay(s.Judgements, e.After.Judgements)
-		overlay(s.Cursors, e.After.Cursors)
-		for v, p := range e.After.Policies {
-			if p.Active {
-				s.Policy = v
-			} else if s.Policy == v {
-				s.Policy = 0
-			}
-		}
-	}
-}
-
 // catchUp reads the log from the saved cursor until caught up and folds it
 // into the local copy, timing the read and the fold apart.
 func (l *load) catchUp(t *testing.T) (n int, read, fold time.Duration) {
@@ -494,7 +466,7 @@ func (l *load) catchUp(t *testing.T) (n int, read, fold time.Duration) {
 			return n, read, fold
 		}
 		s = time.Now()
-		foldInto(&l.local, evs)
+		l.local = Fold(l.local, evs)
 		for _, e := range evs {
 			l.recent = append(l.recent, summary{e.Seq, e.Op, e.Kind, e.Accepted})
 		}

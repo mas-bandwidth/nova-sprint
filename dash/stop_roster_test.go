@@ -35,13 +35,13 @@ func TestStoppedAndRosterProjection(t *testing.T) {
 	if err = json.Unmarshal(body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.Stopped || got.Reason != "Scheduled maintenance" || got.Machine != "STOPPED" {
+	if !got.Stopped || got.Reason != "Scheduled maintenance" || got.Machine != "machine: STOPPED Scheduled maintenance" {
 		t.Fatalf("stop projection: %s", body)
 	}
 	snap.Stopped = false
 	snap.StopReason = "Restarted"
 	d = mapSnapshot(snap, ros, time.Time{})
-	if d.Stopped || d.Machine != "" || d.StopReason != "Restarted" {
+	if d.Stopped || d.Machine != "machine: RUNNING" || d.StopReason != "Restarted" {
 		t.Fatalf("start projection: %+v", d)
 	}
 }

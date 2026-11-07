@@ -11,10 +11,10 @@ import (
 func TestWriterLoggerReportsMeasuredCountsWithoutErrorText(t *testing.T) {
 	var out bytes.Buffer
 	l := NewWriterLogger(&out)
-	l.Log(TickMetrics{Number: 1, Seq: 9, Took: 2 * time.Second, PlannedPolicy: 3, Counts: TickCounts{Folded: 4, Applied: 2, Refused: 1}, Err: ErrLockLost})
+	l.Log(TickMetrics{Number: 1, Seq: 9, Took: 2 * time.Second, Counts: TickCounts{Folded: 4, Applied: 2, Refused: 1, Edges: 3}, Err: ErrLockLost})
 	l.PushFailed("alice")
 	got := out.String()
-	for _, want := range []string{"folded=4", "ops=2/1", "planned_policy=3", "OVERRUN", "LOCK LOST", "PUSH FAILED to=alice"} {
+	for _, want := range []string{"folded=4", "ops=2/1", "edges=3", "OVERRUN", "LOCK LOST", "PUSH FAILED to=alice"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %q", want, got)
 		}

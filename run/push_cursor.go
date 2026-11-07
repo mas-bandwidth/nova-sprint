@@ -1,7 +1,6 @@
 package run
 
 import (
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"strings"
@@ -17,29 +16,4 @@ func pushCursorName(recipient string) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(recipient))
 	return fmt.Sprintf("push-hash:%x", sum), nil
-}
-func (p *Pusher) resolve(ctx context.Context, recipient string, item pushPending) error {
-	r, found, err := p.store.Replay(ctx, item.op.ID)
-	if err != nil {
-		return fmt.Errorf("run: replay push cursor: %w", err)
-	}
-	if !found {
-		r, err = p.store.Apply(ctx, item.op)
-		if err != nil {
-			return fmt.Errorf("run: save push cursor: %w", err)
-		}
-	}
-	delete(p.pending, recipient)
-	if !r.Accepted {
-		delete(p.views, recipient)
-		return fmt.Errorf("run: push cursor refused: %s", r.Reason)
-	}
-	p.views[recipient] = item.position
-	return nil
-}
-
-func validDeliveryID(id string) bool {
-	a, b, ok := strings.Cut(id, "-")
-	digits := func(s string) bool { return s != "" && strings.Trim(s, "0123456789") == "" }
-	return ok && digits(a) && digits(b)
 }
