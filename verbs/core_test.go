@@ -14,7 +14,7 @@ import (
 // The exact verb list (LAYER-6 section 3); clear is kept beside restore.
 func TestTheVerbsAreExactlyTheList(t *testing.T) {
 	want := []string{"next", "check", "up", "hook", "unhook", "help", "version",
-		"take", "finish", "read", "report", "release", "show", "queue",
+		"take", "finish", "read", "report", "release", "beat", "show", "queue",
 		"stream add", "stream set", "add", "judge", "hold", "unhold", "priority", "drop", "relink", "replace",
 		"policy set", "policy activate", "policy show", "policy diff", "policy check",
 		"run", "worker", "dash", "stop", "start", "backup", "restore", "clear"}
@@ -32,7 +32,7 @@ func TestRoleMatrix(t *testing.T) {
 	coordinator := map[string]bool{"stream add": true, "stream set": true, "add": true, "judge": true, "hold": true, "unhold": true,
 		"priority": true, "drop": true, "relink": true, "replace": true, "policy set": true, "policy activate": true,
 		"stop": true, "start": true, "backup": true, "clear": true}
-	worker := map[string]bool{"take": true, "finish": true, "read": true, "report": true, "release": true, "show": true, "queue": true,
+	worker := map[string]bool{"beat": true, "take": true, "finish": true, "read": true, "report": true, "release": true, "show": true, "queue": true,
 		"policy show": true, "policy diff": true, "policy check": true}
 	for _, v := range table {
 		want := roleCold

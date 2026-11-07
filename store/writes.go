@@ -94,6 +94,23 @@ func (w *work) writePutStream(v PutStream) (string, error) {
 	return "", w.putStream(old, ok, next)
 }
 
+// setRowLoad is the heartbeat write: the row's load columns and nothing else,
+// refused when they are what the row has, and with no gen move (the row's
+// before-image is still recorded, so the log shows the change).
+func (w *work) setRowLoad(v SetRowLoad) (string, error) {
+	old, r, err := w.mustRow(v.Row)
+	if r != "" || err != nil {
+		return r, err
+	}
+	next := old
+	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal
+	if next == old {
+		return "row " + v.Row + " already has the given load", nil
+	}
+	w.before.Rows, w.after.Rows = touch(w.before.Rows, w.after.Rows, v.Row, old, true, next)
+	return "", w.tx.putRow(next)
+}
+
 func (w *work) writePutRow(v PutRow) (string, error) {
 	old, ok, err := w.tx.row(v.Name)
 	if err != nil {
@@ -105,6 +122,7 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	next := Row{Name: v.Name, Session: v.Session, Role: v.Role, State: "down"}
 	if ok {
 		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
+		next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal = old.Load1Centi, old.Cores, old.SlotsUsed, old.SlotsTotal
 	}
 	return "", w.putRow(old, ok, next)
 }
