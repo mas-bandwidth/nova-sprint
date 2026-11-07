@@ -30,7 +30,7 @@ exit 0
 # the coordinator hooks in: refused off the bus; on the bus first, then the sprint
 $ nova-sprint hook --as carol --role coordinator
 exit 1
-SPRINT REFUSED hook: carol is not on the bus: hook in to the bus first: NOVA_BUS_REDIS=<host:port> nova-bus hook --as carol under your session's Monitor tool
+SPRINT REFUSED hook: carol is not hooked in to the bus; hook in first: nova-bus hook --as carol
 
 $ nova-bus hook --as carol --exec <append to inbox> (background)
 exit 0
