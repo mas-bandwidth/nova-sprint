@@ -671,7 +671,7 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 		Prose: info.Prose, Finding: info.Finding, Paths: info.Paths,
 		DoneWhen: info.DoneWhen, Gen: info.Gen, Attempt: info.Attempt,
 		Review: info.Review, JobDir: jobDir, WorktreeDir: wt,
-		ProxyAddr: r.ProxyAddr, CommitName: "Rowan Claude", CommitEmail: "305107455+rowan-claude@users.noreply.github.com" /* Glenn 2026-10-22: the CAA keys off the GitHub id; every agent commits as the rowan-claude login */, Forge: info.Forge, Deadline: deadline,
+		ProxyAddr: r.ProxyAddr, CommitName: cmp.Or(os.Getenv("NOVA_SPRINT_COMMIT_NAME"), "Rowan Claude"), CommitEmail: cmp.Or(os.Getenv("NOVA_SPRINT_COMMIT_EMAIL"), "305107455+rowan-claude@users.noreply.github.com") /* Glenn 2026-10-22: the CAA keys off the GitHub id; every agent commits as the rowan-claude login */, Forge: info.Forge, Deadline: deadline,
 	}
 	rec := JobRecord{
 		Epoch: epoch, Consumer: info.Consumer, Producer: info.Producer, Kind: info.Kind,

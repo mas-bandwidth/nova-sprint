@@ -81,8 +81,10 @@ func New(cfg Config) *Client {
 	cfg.Exec = cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec())
 	cfg.PushTimeout = cmp.Or(cfg.PushTimeout, DefaultPushTimeout)
 	cfg.RebaseTimeout = cmp.Or(cfg.RebaseTimeout, DefaultRebaseTimeout)
-	cfg.AuthorName = cmp.Or(cfg.AuthorName, "nova-sprint")
-	cfg.AuthorEmail = cmp.Or(cfg.AuthorEmail, "sprint@mas-bandwidth")
+	// The identity of every commit the landing makes (the CAA keys off it):
+	// NOVA_SPRINT_COMMIT_NAME/EMAIL until the store's identity is adopted.
+	cfg.AuthorName = cmp.Or(cfg.AuthorName, os.Getenv("NOVA_SPRINT_COMMIT_NAME"), "nova-sprint")
+	cfg.AuthorEmail = cmp.Or(cfg.AuthorEmail, os.Getenv("NOVA_SPRINT_COMMIT_EMAIL"), "sprint@mas-bandwidth")
 	return &Client{cfg: cfg}
 }
 func (c *Client) gitEnv_internal(extra ...string) []string {
