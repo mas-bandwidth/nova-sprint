@@ -158,7 +158,7 @@ are left with neither a request nor a judgement). Reach checks show rung 2, a
 judgement, a hand landing and a red gate. `tla/Steps.tla` carries the land
 judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
 `MergingCovered` (judgements as the tick's snapshot saw them) and the
-reversed witness `StepsLandJudgementHoldsAll`. The
+reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the earlier card lands, so a card after one sent to fix sits with no request). The
 code is bound to `LandEdge.tla` by `edge/git/trace_test.go`
 (`TestLandEdgeTraceRefinementWalk`: `LandPass` on the git fake and a
 truthful forge, with the tick, outside commits and the answers played by
