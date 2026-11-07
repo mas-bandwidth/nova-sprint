@@ -80,6 +80,16 @@ package does with it.
   last activation), every cursor at or below the last seq, and Rebuild equal
   to the snapshot. RestoreEnd runs it; a verb can run it on a live store in
   a REPEATABLE READ, read-only transaction.
+- Round 22: a row is sprint state only (`Name, State, Session, Role,
+  Flaps, Held, Reason, Gen`). Kind, width, tiers, model and harness are
+  nova-config's, read through package `roster`; the store neither caps
+  working consumers nor checks tiers (the deal guards do, from the roster).
+  `PutRow{Name, Session, Role}` is the hook's one write (both "" unhooks;
+  another session's hook is refused: unhook first). `SetStopped` sets the
+  sprint's stop (`Snapshot.Stopped`, kept by a clear, refused when
+  unchanged; the store refuses nothing for it). `EventIdentity(ctx, seq)`
+  reads an event's op id and epoch without its images. Migrate takes a
+  round-21 store in place.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
   `check.go`, `writes.go`), so its conditions, writes, refusal reasons and
@@ -351,7 +361,7 @@ consumer, nil included), `PutRow`
 (kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
 state, flaps, held and the row's reason are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
-true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
+true, whatever its state; it sets the row's `reason` with the flag, and is refused when the flag would not change), `SetRowState`, `SetRowFlaps`,
 `SetRowTiers` (refused when it drops a tier a live consumer of the row needs), `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
 `PutJudgement`, `AnswerJudgement`, `ExpireJudgement`, `SetCursor`. `PutPolicy` takes no version: the store
 gives it the next one, and the caller learns it from the receipt,

@@ -62,10 +62,10 @@ var (
 	CardKinds   = []string{"producer", "sentinel", "work", "read"}
 	CardResults = []string{"", "ok", "fix", "fail", "fault"}
 	Priorities  = []string{"low", "normal", "high", "critical", "blocker"} // a producer's or sentinel's level, lowest first
-	RowKinds    = []string{"worker", "kin"}
 	RowStates   = []string{"up", "down"}
+	RowRoles    = []string{"worker", "coordinator"} // a hooked row's role; the coordinator is also a worker
 	PolicyKinds = []string{"script", "data"}
-	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier, and the tiers a row serves
+	Tiers       = []string{"flash", "pro", "heavy", "frontier"} // a card's tier
 )
 
 // Op is one operation: conditions that must all hold and writes that all land,
@@ -126,20 +126,19 @@ type Card struct {
 	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given
 }
 
-// Row is a row of sprint.rows: a worker or a kin.
+// Row is a row of sprint.rows: a worker's or a kin's sprint state, and
+// nothing else. What a row is (kind, width, tiers, model, harness) is
+// configuration, read from nova-config through the roster each tick, never
+// copied here (round 22: "nova-config is the one true source").
 type Row struct {
-	Name    string   `json:"name"`
-	Kind    string   `json:"kind"`
-	Width   int      `json:"width"`
-	State   string   `json:"state"`
-	Session string   `json:"session"`
-	Flaps   int      `json:"flaps"`
-	Held    bool     `json:"held"`   // the coordinator's hold: no deals while true
-	Reason  string   `json:"reason"` // why it was held or released (SetRowHeld)
-	Gen     int      `json:"gen"`
-	Tiers   []string `json:"tiers,omitempty"` // the tiers this row serves
-	Model   string   `json:"model"`           // a label for policy and the dashboard
-	Harness string   `json:"harness"`         // a label for policy and the dashboard
+	Name    string `json:"name"`
+	State   string `json:"state"`
+	Session string `json:"session"` // the bus session the sprint hook recorded; "" when not hooked
+	Role    string `json:"role"`    // worker or coordinator; "" when not hooked
+	Flaps   int    `json:"flaps"`
+	Held    bool   `json:"held"`   // the coordinator's hold: no deals while true
+	Reason  string `json:"reason"` // why it was held or released (SetRowHeld)
+	Gen     int    `json:"gen"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,
@@ -182,6 +181,16 @@ type State struct {
 	Policies   map[int]PolicyVersion `json:"policies,omitempty"`
 	Judgements map[string]Judgement  `json:"judgements,omitempty"`
 	Cursors    map[string]int64      `json:"cursors,omitempty"`
+	Stop       *Stop                 `json:"stop,omitempty"`
+}
+
+// Stop is the sprint's stop: one value for the whole store, as the epoch
+// is, kept by a clear. A stopped sprint moves nothing: Run calls no Tick
+// while Stopped. The store refuses nothing on it; ops from people still
+// land. SetStopped is its one write.
+type Stop struct {
+	Stopped bool   `json:"stopped"`
+	Reason  string `json:"reason"`
 }
 
 // Receipt is what an operation got. It is stored with its event, so Replay
@@ -233,6 +242,8 @@ type Snapshot struct {
 	Rows       map[string]Row
 	Judgements map[string]Judgement
 	Cursors    map[string]int64
+	Stopped    bool   // the sprint is stopped (Stop)
+	StopReason string // why it was stopped or started again
 }
 
 func emptySnapshot(epoch int) Snapshot {
@@ -253,9 +264,12 @@ func Rebuild(events []Event) Snapshot {
 			continue
 		}
 		if e.After.Epoch != 0 {
-			seq, cursors := s.Seq, s.Cursors
+			seq, cursors, stopped, reason := s.Seq, s.Cursors, s.Stopped, s.StopReason
 			s = emptySnapshot(e.After.Epoch)
-			s.Seq, s.Cursors = seq, cursors
+			s.Seq, s.Cursors, s.Stopped, s.StopReason = seq, cursors, stopped, reason
+		}
+		if e.After.Stop != nil {
+			s.Stopped, s.StopReason = e.After.Stop.Stopped, e.After.Stop.Reason
 		}
 		overlay(s.Streams, e.After.Streams)
 		overlay(s.Cards, e.After.Cards)

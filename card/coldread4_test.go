@@ -322,6 +322,9 @@ type cold4Run struct {
 }
 
 func (r *cold4Run) apply(w *world, kind string, plan Plan, log bool) (store.Receipt, error) {
+	if reason := w.overWidth(plan); reason != "" { // the dealer's check (round 22), as world.apply
+		return store.Receipt{Reason: reason}, nil
+	}
 	w.n++
 	op := store.Op{ID: fmt.Sprintf("op%d", w.n), Epoch: w.snap().Epoch, Actor: "card", Kind: kind, At: t0.Add(time.Duration(w.n) * time.Second),
 		Expect: plan.Expect, Writes: plan.Writes}
@@ -394,7 +397,7 @@ func cold4Diff(a, b store.Snapshot) string {
 		}
 	}
 	for n, x := range a.Rows {
-		rx, ry := RowFromStore(x), RowFromStore(b.Rows[n])
+		rx, ry := RowFromStore(x, 0, nil), RowFromStore(b.Rows[n], 0, nil)
 		rx.Gen, ry.Gen = 0, 0
 		if !reflect.DeepEqual(rx, ry) {
 			return fmt.Sprintf("row %s: %+v vs %+v", n, rx, ry)

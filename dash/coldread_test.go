@@ -51,8 +51,8 @@ func mustApply(t *testing.T, s store.Store, id string, epoch int, w ...store.Wri
 func seedSprint(t *testing.T, s store.Store, n int) {
 	t.Helper()
 	w := []store.Write{
-		store.PutRow{Name: "amd-1", Kind: "worker", Width: 4000, Tiers: []string{"pro", "heavy"}},
-		store.PutRow{Name: "stella", Kind: "kin", Width: 4000, Tiers: []string{"pro", "heavy"}},
+		store.PutRow{Name: "amd-1"},
+		store.PutRow{Name: "stella"},
 	}
 	for i := 0; i < 50; i++ {
 		w = append(w, store.PutStream{Name: fmt.Sprintf("s%02d", i)})
@@ -72,7 +72,7 @@ func seedSprint(t *testing.T, s store.Store, n int) {
 
 func viewJSON(t *testing.T, s store.Snapshot) string {
 	t.Helper()
-	b, err := json.Marshal(mapSnapshot(s, time.Time{}))
+	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func readJSON(t *testing.T, path string) map[string]any {
 // 3: the envelope's top-level value types against the live v1 capture.
 func TestColdreadDefectEnvelopeTypesVsV1(t *testing.T) {
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")
-	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{Epoch: 1}, time.Now())}
+	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{Epoch: 1}, testRoster, time.Now())}
 	rec := httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
 	var v2 map[string]any
@@ -337,7 +337,7 @@ func TestColdreadDefectStreamStateBlank(t *testing.T) {
 	for _, s := range v1["data"].(map[string]any)["streams"].([]any) {
 		states[fmt.Sprint(s.(map[string]any)["State"])]++
 	}
-	d := mapSnapshot(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"a": {Name: "a"}}}, time.Now())
+	d := mapSnapshot(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"a": {Name: "a"}}}, testRoster, time.Now())
 	if states[""] == 0 && d.Streams[0].State == "" {
 		t.Errorf("v1 stream States %v (none blank); v2 sends State=%q", states, d.Streams[0].State)
 	}
@@ -376,7 +376,7 @@ func TestColdreadDefectThroughputNeverComputed(t *testing.T) {
 // 3: a priced sum remains visible when a stream also has unpriced work.
 func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
-	d := mapSnapshot(s, time.Time{})
+	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
 	if w.Cost == nil || w.Cost.Int64() != 120 {
 		t.Fatalf("priced sum lost: %+v", w)

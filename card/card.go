@@ -35,7 +35,9 @@ type Card struct {
 	Paths, DoneWhen             []string
 }
 
-// Row is a row of sprint.rows as the machine reads it.
+// Row is a row of sprint.rows as the machine reads it, with its width and
+// tiers from the roster (round 22: nova-config is their one source and the
+// store keeps neither).
 type Row struct {
 	Name, State string
 	Width, Gen  int
@@ -168,9 +170,10 @@ func FromStore(c store.Card) Card {
 		Bounces: c.Bounces, Review: c.Review, Red: c.Red, Cost: c.Cost, Priced: c.Priced, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
 }
 
-// RowFromStore is a store row as the machine reads it.
-func RowFromStore(r store.Row) Row {
-	return Row{Name: r.Name, State: r.State, Width: r.Width, Gen: r.Gen, Flaps: r.Flaps, Held: r.Held, Reason: r.Reason, Tiers: r.Tiers}
+// RowFromStore is a store row as the machine reads it, with width and
+// tiers passed in from the roster (round 22).
+func RowFromStore(r store.Row, width int, tiers []string) Row {
+	return Row{Name: r.Name, State: r.State, Width: width, Gen: r.Gen, Flaps: r.Flaps, Held: r.Held, Reason: r.Reason, Tiers: tiers}
 }
 
 // StreamFromStore is a store stream as the machine reads it.

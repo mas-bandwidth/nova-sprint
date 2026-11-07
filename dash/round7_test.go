@@ -86,7 +86,7 @@ func TestRound7ChangedHistoryFailsClosed(t *testing.T) {
 	}
 }
 func TestRound7GzipNegotiation(t *testing.T) {
-	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{}, time.Now())}
+	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{}, testRoster, time.Now())}
 	for _, tc := range []struct {
 		h          string
 		compressed bool
@@ -102,7 +102,7 @@ func TestRound7GzipNegotiation(t *testing.T) {
 }
 func TestRound7ExactWorkCostWire(t *testing.T) {
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {Kind: "work", Stream: "s", Tier: "pro", Priced: true, Cost: 9_000_000_000_000_010_000}}}
-	d := mapSnapshot(s, time.Time{})
+	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
 	want := big.NewInt(900_000_000_000_001)
 	if w.Cost.Cmp(want) != 0 {
