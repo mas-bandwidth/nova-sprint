@@ -881,3 +881,26 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   session that made it. No store rule reads it: the roster does (`roster.Advertised`, LAYER-4
   Built "the worker's live defects"). It moves no gen, as the rest of the heartbeat. Not in
   `Store.tla` (telemetry, as the load columns: `trace.go`'s notes). Conformance: `rowLoad`.
+
+## Built: the sprint's commit identity (stitch w4I, 2026-11-07; schema round 24)
+
+- `Identity{Name, Email}` is the git identity every commit of the sprint is authored and
+  committed as (a repository's contributor agreement keys off the forge account). It is one
+  value for the store, as the stop is: two columns on the epoch's one row (`commit_name`,
+  `commit_email`, `text NOT NULL DEFAULT ''`, in schema.sql's round-24 `ALTER TABLE
+  sprint.epoch`), empty on a fresh store (not set: `Identity.Set()` false). `Snapshot.Identity`
+  carries it; `State.Identity` is its image; `Fold` (and `verbs`' event fold) lays it over and
+  a clear keeps it, as it keeps the stop.
+- `SetIdentity{Name, Email}` is its one write: both parts non-empty and at most `MaxName`
+  bytes (a new `checker.given`), refused when unchanged ("the sprint already commits as <name>
+  <email>"), one per op. Why the store and not nova-config or an environment: the identity is
+  which account this sprint's repositories accept, the sprint's own decision, not a fact of the
+  fleet or the friends (intent rule 8), and every reader (hook, take, finish, check, up) already
+  holds a snapshot, so it costs no read; an environment variable would be a second copy on every
+  bench's service (rule 5).
+- No store rule reads it, so `Store.tla` is unchanged: `TraceOp` refuses the write (trace.go's
+  notes), and a walk never sends one.
+- Migration: `round23Hash` (testdata/schema-round23.sql, the file at 2dc67c2b) is a known older
+  build; Migrate adds the two columns and records the round-24 hash. Tests: conformance
+  `identity` (Fake and PG), `TestRound23Hash`, `TestFunctionalMigrateRound23` (run on this
+  machine's local test PostgreSQL: pass, measured).

@@ -209,3 +209,32 @@ So:
   hoc on macOS, renamed over the old one (`tools/placebin`). Installing a
   release onto a bench is nova-fleet's install, which is another repository's
   and is not changed here.
+
+## Built: one commit identity for the whole sprint (stitch w4I, 2026-11-07)
+
+A repository's contributor agreement (CAA, CLA) keys off the forge account, and its allowlist
+holds accounts, never people. So every agent, friend and bench worker of a sprint commits as
+ONE configured identity: the git `user.name` and `user.email` of an account on the allowlist,
+typically its noreply address. A contributor's own name goes only in the message, a
+`By: <name>` line and a `Co-Authored-By: <name> <email>` trailer. Before this, each bench job
+committed as `<row> <row@nova-sprint.local>` and friends as themselves, and heads sat in
+merging behind a red agreement check.
+
+The identity is the sprint's own state, never a literal in the code: the coordinator sets it
+with `nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason
+"<why>"`, and the store holds it (round 24, beside the stop). The tool enforces it in order:
+
+- `up` step 7 asks the human for it before it looks at any bench (`ASK the human which forge
+  account ...`, next: the identity command); no act can make it true.
+- `hook --role worker` refuses until it is set; every hook prints `COMMIT AS <name> <email>`,
+  the two `git config` lines and the By:/Co-Authored-By: rule.
+- `take` refuses until it is set; its text repeats the rule for a friend, and its receipt
+  carries `commit_name` and `commit_email` for the bench worker, which writes them into the
+  job's clone (JOB.md and the prompt say so). A receipt without them ends the worker
+  (`update nova-sprint`); staging a job with none is refused, never committed as the bench.
+- `finish` reads the head's commits since the base (the attempt's base sha and the stream's
+  base at origin excluded) with `git log` in a clone and refuses any commit whose author or
+  committer email is not the identity's (compared case-folded), naming each commit and both
+  emails; the fix is the two config lines and a `--reset-author` rebase.
+- `check` has a line naming it, red when unset; the agreement warning at `stream add` and in
+  `check` names it as the identity to sign for.

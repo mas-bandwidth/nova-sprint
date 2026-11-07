@@ -65,6 +65,13 @@ re-running the tree at base, and a fix card never edits that table (LESSONS
 C.17). It tells the worker to run the whole package of every file it
 touches, never a subset (LESSONS C.18).
 
+A brief never names a commit identity: the sprint has one (`nova-sprint identity`), which
+hook and take print and the bench worker writes into the job's clone, and every commit of
+every card is authored and committed as it; the contributor's own name goes only in a
+`By:` line and a `Co-Authored-By:` trailer of the message. A brief that tells a worker to
+commit as itself or as a row is wrong; `finish` refuses such a head (CORRECT-USE, "one commit
+identity").
+
 ## Size and kind
 
 Cards are pro-sized from the start: the design piece lands first, and each

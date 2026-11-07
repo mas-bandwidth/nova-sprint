@@ -28,7 +28,8 @@ row is sprint state only (round 22): `Row{Name, Session, Role, State, Held,
 Seen...}`; width, tiers, model and harness are the roster's. A stream holds
 its own settings: `Stream{Name, Repo, Base, Pos, Mode, Forge, Held}`
 (`Mode` auto, group or hand; `Forge` "" or "github"). `Snapshot.Stopped` and
-`StopReason` are the machine line.
+`StopReason` are the machine line; `Snapshot.Identity` is the git identity
+every commit of the sprint is made as (round 24, `SetIdentity`).
 
 ## 2. card -> steps and verbs
 
@@ -160,8 +161,10 @@ The worker (`nova-worker`, layer 4) talks to the sprint only through verbs:
 `report`. The take receipt (`take <card>@<gen> --as <row> --json`) is the
 seam: `{consumer, producer, kind, stream, repo, base, branch, head, tier,
 brief, prose, finding, stream_ref (the stream's base branch), base_sha, prior_head, paths, done_when,
-epoch, gen, attempt, review, model, deadline, forge}`, `deadline` in
-seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream.
+epoch, gen, attempt, review, model, deadline, forge, commit_name, commit_email}`, `deadline` in
+seconds from policy's `timeouts().consumer[tier]`, `forge` from the stream,
+`commit_name` and `commit_email` the sprint's commit identity (`Snapshot.Identity`,
+set by `nova-sprint identity`; take refuses without one).
 `model` is the one the deal named and wrote on the consumer (store round
 23's `cards.model`): a friend's own, from the roster, or for a bench the
 active policy's `catalog().bench[tier]` in provider/model form; take reads

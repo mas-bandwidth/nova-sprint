@@ -108,7 +108,8 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | (none) | | runs `next --as <me>` | | 0 |
 | `next` | `[--as <name>]` | never; a broken prerequisite is its answer | the one command (section 4) | 0; 2 if it cannot look |
 | `help` | `[<verb>\|<group>]`, or `-h` | unknown verb: the index | `nova-sprint` | 0 |
-| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded | `next --as <name>` | 0, 1 |
+| `hook` | `--as <name> --role coordinator\|worker` | the name not in `nova-bus who`: "hook in to the bus first: `NOVA_BUS_REDIS=<addr> nova-bus hook --as <name>` under your session's Monitor tool"; `coordinator` for a name other than the one `up` recorded; `worker` on a sprint with no commit identity: `identity` | `next --as <name>` | 0, 1 |
+| `identity` | `[--name <git user.name> --email <git user.email> --reason <why>]` | coordinator only; none set and none given; a quote, backslash, `$`, backtick or angle bracket, or an email that is not one address; no reason | `check` | 0, 1 |
 | `help playbook` | `<worker\|coordinator>` | an unknown role: the two roles | `nova-sprint hook --as <name> --role <role>` | 0, 1 |
 | `check` | `[--integrity]` | prints every line; red (exit 1, or 2 when a read failed): fleet not green; nova-tools below the pin (above: a warning); `NOVA_PG_DSN`, `NOVA_BUS_REDIS` unset or unreachable; a stream whose repository or base cannot be read; an open judgement (one line per kind); nothing runs the sprint; ready producers and nothing dealt (with why); a landing waiting on a judgement, run or a hold | `next`, or the first red line's fix | 0, 1, 2 |
 | `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
@@ -835,3 +836,35 @@ github.com credential is always gh as the host's login (no switch on
 - No change to `tla/Run.tla`, `tla/RunTrace.tla` or `run/`: neither violated the other.
   `tla/RunTrace-MAPPING.md` names w1 as the victim. physicalSeq steps checked locally on all four
   run traces (run-0..2, run-stop: 0 mismatches, measured) before TLC on the bench.
+
+### Built: one commit identity for the sprint (stitch w4I, 2026-11-07)
+
+- New verb `identity` (coordinator, group operate): `--name --email --reason` sets the store's
+  identity (one `SetIdentity` op fenced `AtSeq`); the same identity again changes nothing; no
+  flags prints it with its rule. Refusals: none set and none given, a value `ValidIdentity`
+  refuses, no reason. How the coordinator sets it for a live fleet:
+  `nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint identity
+  --as <coordinator> --name "<account's git user.name>" --email "<account's noreply address>"
+  --reason "<why>"`, then each worker re-hooks (a bench worker's restart does it; a friend runs
+  hook again).
+- `hook`: a worker on a sprint with none is refused (`noIdentity`); every hook prints
+  `COMMIT AS <name> <email>` and the rule under `HOOKED`, a coordinator on a sprint with none
+  `NO COMMIT IDENTITY: ...` and the command. `take`: refused with none; the receipt gains
+  `commit_name`, `commit_email`; the text gains the rule. `finish` (and `release --head`, which
+  checks a head as finish does): `madeAsIdentity` reads the head's commits not on the stream's
+  base at origin and not reachable from the attempt's base sha (`Origin.Commits`, a clone under
+  the state dir fetched first, as `Contains` and `Tree`) and refuses any whose author or
+  committer email is not the identity's (case-folded), naming up to ten commits and both
+  emails, the fix the two config lines and a `--reset-author` rebase.
+- `check`: a line `identity: every commit is made as <name> <email>`, red with the command when
+  unset. The agreement warning (w3A, `admit_cla.go`) names the identity instead of a list of
+  per-row identities, or that none is set yet.
+- `up` step 7: before the benches, the identity; none is a question for the human (`ASK the
+  human which forge account ...`, next: the identity command, then up again), like an unchosen
+  dashboard; the VERIFIED line names it. No change to the setup walk's actions (a step that does
+  not verify and has no act was already modelled), so no TLC was run for it; `Run.tla` and
+  `Runner.tla` are untouched.
+- Tests (unit, fakes): `TestIdentityVerb`, `TestTakeCarriesTheIdentity`,
+  `TestFinishRefusesAnotherIdentity`, `TestVerbsWorkMidUp` (the worker hook refused, then
+  allowed), `TestStreamAddWarnsOfAnAgreement`, `TestCheckAllGreen`, the setup walk and
+  completion tests, `TestWorkersReadyNamesEachBenchAndItsLog`.

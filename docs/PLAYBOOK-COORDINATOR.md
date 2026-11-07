@@ -211,6 +211,13 @@ The card id is the file's name without `.md`. A brief is:
    base, tells the worker to run the whole package of every file it touches, and names a landed
    worked example for every piece after the first.
 
+Before any worker hooks, the sprint needs its commit identity: the one forge account on the
+repositories' contributor-agreement allowlist that every commit is authored and committed as
+(ask the human which; its git user.name and its noreply address). Set it with
+`nova-sprint identity --name "<git user.name>" --email "<git user.email>" --reason "<why>"`;
+`up` step 7 asks for it, a worker's hook and take refuse until it is set, and finish refuses a
+head with a commit made as anyone else. `nova-sprint identity` with no flags prints it.
+
 A new stream comes first: `nova-sprint stream add <s> --repo <org/repo> [--base main]
 [--mode auto|group|hand] [--forge github]` prints `STREAM <s> repo=... base=... mode=...
 forge=... applied at seq <n>`; give `--forge github` when the repo requires PRs and CI, and only
