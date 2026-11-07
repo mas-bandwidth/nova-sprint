@@ -136,3 +136,26 @@ func TestFallbackCountsFromTheFirstByte(t *testing.T) {
 	assert.Equal(t, TickTime-100*time.Millisecond, c.waits[0], "the deadline: one step of the clock after the first byte")
 	assert.Equal(t, fallbackAfter-200*time.Millisecond, c.waits[1], "the fallback: two steps after the first byte, the inputs between")
 }
+
+// TestFunctionalEvaluatorMemoryCap: a version that allocates past the
+// evaluator's memory cap (Glenn's ruling, 2026-11-07, default 512 MiB) ends
+// the child. As for any child that dies, every version it ran fails, naming
+// the cap (the tick applies the moves that need no answer and Judgements
+// opens one per failing version); the next tick starts a new child.
+// Functional: it starts processes.
+func TestFunctionalEvaluatorMemoryCap(t *testing.T) {
+	t.Parallel()
+	w := fakeWorld(t)
+	w.up()
+	snap := w.snap()
+	e := NewEngine(newFakeClock())
+	big, _ := override("stitch", "def stitch(stream):\n    x = []\n    for _i in range(48):\n        x.append(\"a\" * (1 << 25))\n    return len(x) > 0")
+	a, fs := e.Answer(Versions{Active: pv(2, big)}, snap, w.ro, FullQuestions(snap, nil))
+	assert.Equal(t, -1, a.Version, "a dead child answers nothing: %v", fs)
+	require.NotEmpty(t, fs)
+	assert.Equal(t, "v2", fs[0].Label)
+	assert.Contains(t, fs[0].Msg, "over the evaluator's memory cap of 512 MiB")
+	a, fs = e.Answer(Versions{}, snap, w.ro, FullQuestions(snap, nil))
+	require.Empty(t, fs)
+	assert.Equal(t, 0, a.Version, "the next tick starts a new child")
+}

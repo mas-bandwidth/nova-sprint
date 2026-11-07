@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -193,6 +194,7 @@ func (ev *evaluator) startChild() error {
 		return fmt.Errorf("cannot find the policy evaluator: %w", err)
 	}
 	cmd := exec.Command(exe, EvalArg)
+	cmd.Env = append(os.Environ(), evalMemoryEnv+"="+strconv.Itoa(EvalMemory))
 	ev.error = &capped{}
 	cmd.Stderr = ev.error
 	in, err := cmd.StdinPipe()
@@ -264,6 +266,10 @@ func (r reply) answers() (Answers, []Failure) {
 // TestMain: it serves requests until its input closes, and returns the
 // exit status.
 func ServeMain() int {
+	if err := capMemory(); err != nil {
+		fmt.Fprintln(os.Stderr, "policy-eval:", err)
+		return 1
+	}
 	if err := ServeEval(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "policy-eval:", err)
 		return 1

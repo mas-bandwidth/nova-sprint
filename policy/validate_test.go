@@ -31,7 +31,7 @@ func TestRefusals(t *testing.T) {
 	steer := func(key, value string) string { // limits with one steering key's value replaced
 		return "{" + strings.Replace(limits, steeringValue(key), `"`+key+`": `+value, 1) + `, "route_rest_after": 3}`
 	}
-	const times = `"row_silent_gone": 600, "landing_stall": 60, "judgement": 3600, "route_rest_for": 1800`
+	const times = `"row_silent_gone": 600, "landing_stall": 60, "judgement": 3600, "route_rest_for": 1800, "tick": 10, "consumer": {"flash": 900, "pro": 2700, "heavy": 5400, "frontier": 7200}`
 	for _, tc := range []struct{ q, ret, want string }{
 		{"order", "[1]", "order(p1): the answer is a list, not a tuple of up to 4 ints or strings"},
 		{"order", "(1, 2, 3, 4, 5)", "order(p1): the answer has 5 elements, over 4"},
@@ -74,6 +74,10 @@ func TestRefusals(t *testing.T) {
 		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": []}`, "timeouts(): base_regate is an empty list, not a rising list of seconds"},
 		{"timeouts", "{" + times + `, "row_silent_withdraw": 1800, "base_regate": 120}`, "timeouts(): base_regate is an int, not a rising list of seconds"},
 		{"timeouts", "{" + times + `, "base_regate": [120]}`, "timeouts(): key row_silent_withdraw is missing"},
+		{"timeouts", "{" + strings.Replace(times, `"tick": 10`, `"tick": 0`, 1) + `, "row_silent_withdraw": 1800, "base_regate": [120]}`, "timeouts(): tick 0 is outside 1..86400"},
+		{"timeouts", "{" + strings.Replace(times, `"heavy": 5400, `, "", 1) + `, "row_silent_withdraw": 1800, "base_regate": [120]}`, "timeouts(): consumer: key heavy is missing"},
+		{"timeouts", "{" + strings.Replace(times, `"pro": 2700`, `"pro": 0`, 1) + `, "row_silent_withdraw": 1800, "base_regate": [120]}`, "timeouts(): consumer pro 0 is outside 1..86400"},
+		{"limits", steer("fleet_width_cap", "0"), "limits(): fleet_width_cap 0 is outside 1..256"},
 		{"landing", `{"backed_up": 4, "flowing": 4}`, "landing(s1): flowing 4 is outside 0..3 (below backed_up)"},
 		{"landing", `{"backed_up": 1001, "flowing": 1}`, "landing(s1): backed_up 1001 is outside 1..1000"},
 		{"stitch", "1", "stitch(s1): the answer is an int, not True or False"},
@@ -215,7 +219,7 @@ func inDomain(t *testing.T, snap store.Snapshot, ro roster.Roster, a Answers) {
 }
 
 // steering is limits' steering keys at the built-in's values (round 5).
-const steering = `"escalate_after": 2, "frontier_after": 4, "flap_limit": 3, "idle_floor": 0.5, "land_target": 0.9`
+const steering = `"escalate_after": 2, "frontier_after": 4, "flap_limit": 3, "fleet_width_cap": 8, "idle_floor": 0.5, "land_target": 0.9`
 
 // steeringValue is key's entry in steering.
 func steeringValue(key string) string {

@@ -99,7 +99,7 @@ end of file` (ruled 2026-11-07).
 | `reads(card)` | as `rows`' card | the count n, 1 <= n <= 5 | n out of range | 1 |
 | `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
 | `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
-| `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses |
+| `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses; `fleet_width_cap` 1..256 (the most consumers a worker machine works, its cores at most this; the roster's cap, drift row 26), 8, a guess |
 | `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000 | f >= b | backed up at 4 merging, flowing again at 1 |
 | `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for` | zero, negative, absent: no wait is ever unbounded | below |
 | `stitch(stream)` | name, cards, landed | `True` or `False` | a non-bool | `True` when the stream has more than one card |
@@ -131,7 +131,7 @@ def _up(t, n):
     return TIERS[min(_RUNG[t] + n, len(TIERS) - 1)]
 
 def _security(card):
-    return card.stream in _SECURITY_STREAMS or "security" in card.prose.lower()
+    return card.stream in _SECURITY_STREAMS  # the prose is no input (round 5)
 
 def order(card):
     # Inside one declared level; the ladder is the engine's.
@@ -926,3 +926,39 @@ memory limit in the evaluator child; the built-in's prose security rule
 (Rowan's call, above); the size over budget. The timing probes ran on
 amd-3 at a33fb7ef; the commits after it change only tests and docs, so
 they were not re-run.
+
+### Stitch (2026-11-07, the stitch on v2-stitch, at policy round 5 6e1dfa2a)
+
+What the stitch changed in layer 5 and why:
+
+- **The evaluator's memory cap (Glenn's ruling 1).** `EvalMemory`, 512 MiB,
+  the policy layer's number, passed to the child in
+  `NOVA_POLICY_EVAL_MEMORY`. The child caps itself before it reads a request
+  (`evalmem.go`): the Go runtime's memory limit, and a watchdog reading the
+  live heap every 2 ms that ends the child with "over the evaluator's memory
+  cap of 512 MiB" on stderr. RLIMIT_AS, the ruling's first choice, is not
+  used, and that is the closest correct thing rather than the thing asked:
+  the Go runtime reserves address space far past its heap (a -race build
+  reserves terabytes of shadow), so an address-space cap near the heap cap
+  stops the child before it starts, and darwin does not enforce one. A
+  single allocation is bounded by Starlark's own 1 GiB, so the heap can pass
+  the cap by at most that before the watchdog sees it. A child that dies is
+  read as before: every version it ran fails, naming the line it wrote, and
+  Judgements opens one per failing version. `TestFunctionalEvaluatorMemoryCap`.
+- **Security reads (Glenn's ruling 2).** The prose rule stays gone: frontier
+  reads come only from a card's tier or its stream. A security stream names
+  its need in its setting, the policy's `_SECURITY_STREAMS` list (the
+  coordinator adds the stream with `policy set`), never in a brief's prose.
+  The design's listing of the built-in above now shows the stream-only rule.
+- **Drift row 26 and row 15: numbers that were Go literals elsewhere are
+  policy's.** `limits()` gains `fleet_width_cap` (the roster's cap, was
+  `roster.FleetWidthCap`); `timeouts()` gains `tick` (run's budget for one
+  tick, 10 s, a guess) and `consumer`, a deadline by tier naming every tier of
+  `store.Tiers` (900, 2700, 5400, 7200 s: nova-worker's old Go literals,
+  guesses), which run puts in the take receipt so the worker holds no
+  deadline of its own. Every key is required and each has a refusal tested.
+- **The roster judgement's command** named `nova-sprint answer`, a verb that
+  does not exist; it now names the fix (`nova-config friend add <row>`) and
+  the verb that closes it (`nova-sprint judge <id> retry --reason <why>`).
+- **Owed at layer 6, done there:** main calls `ServeMain` on `EvalArg` and
+  builds `NewEngine(RealClock{})`.

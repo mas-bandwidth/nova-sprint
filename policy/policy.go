@@ -94,9 +94,11 @@ type Width struct{ Work, Ahead int }
 // flaps that open a flap judgement, IdleFloor the fraction of the open width
 // working under which the idle alarm opens, LandTarget the first-time land
 // rate under which the land-rate alarm opens.
+// FleetWidthCap bounds a worker machine's width (its cores, at most this):
+// the roster's cap, policy's number (drift row 26).
 type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
-	EscalateAfter, FrontierAfter, FlapLimit                                       int
+	EscalateAfter, FrontierAfter, FlapLimit, FleetWidthCap                        int
 	IdleFloor, LandTarget                                                         float64
 }
 
@@ -104,10 +106,14 @@ type Limits struct {
 // which it flows again.
 type Landing struct{ BackedUp, Flowing int }
 
-// Timeouts are seconds of running time; BaseRegate is a rising list.
+// Timeouts are seconds of running time; BaseRegate is a rising list. Tick
+// is run's budget for one tick (drift row 26); Consumer is the deadline of a
+// consumer by its tier, every tier of store.Tiers named (drift row 15: the
+// worker reads it from the take receipt, never a Go literal).
 type Timeouts struct {
-	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor int
-	BaseRegate                                                              []int
+	RowSilentGone, RowSilentWithdraw, LandingStall, Judgement, RouteRestFor, Tick int
+	BaseRegate                                                                    []int
+	Consumer                                                                      map[string]int
 }
 
 // Price is micro-dollars per million tokens in and out.

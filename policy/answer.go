@@ -94,7 +94,7 @@ func Judgements(snap store.Snapshot, ro roster.Roster, failed []Failure) []store
 		if _, ok := rosterOf(ro, snap.Rows[name]); !ok && !open[RosterGroup(name)] {
 			id := fmt.Sprintf("roster-s%d-%d", snap.Seq, i)
 			out = append(out, store.PutJudgement{ID: id, Kind: "roster", About: name, Question: "row " + name + " is not in nova-config",
-				Command: "nova-sprint answer " + id, Group: RosterGroup(name)})
+				Command: "nova-config friend add " + name + " (or nova-sprint judge " + id + " retry --reason <why> once it is)", Group: RosterGroup(name)})
 		}
 	}
 	return out

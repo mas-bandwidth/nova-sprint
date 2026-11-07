@@ -63,6 +63,7 @@ def limits():
         "escalate_after": _ESCALATE_AFTER,
         "frontier_after": _FRONTIER_AFTER,
         "flap_limit": 3,           # unmeasured: a guess (layer 3's engine default)
+        "fleet_width_cap": 8,      # guess (roster's FleetWidthCap before round 6)
         "idle_floor": 0.5,         # guess (LESSONS 3.18: under half the open width)
         "land_target": 0.9,        # guess (layer 3's engine default, over 20 landings)
     }
@@ -78,6 +79,13 @@ def timeouts():
         "base_regate": [120, 300],    # v1 (LANDING step 8)
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
+        "tick": 10,                   # guess: run's budget for one tick
+        "consumer": {                 # a consumer's deadline by tier: nova-worker's old literals, guesses
+            "flash": 900,
+            "pro": 2700,
+            "heavy": 5400,
+            "frontier": 7200,
+        },
     }
 
 def stitch(stream):
