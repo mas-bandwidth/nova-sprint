@@ -825,3 +825,23 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   start before it; the witness `StoreFreshRunning` (the fresh store running)
   violates it, and the reach `NeverFreshRefused` shows `n1` is refused. The
   store traces were regenerated from the code.
+
+## Built: the row's heartbeat (stitch, 2026-11-07)
+
+- A row carries its worker's last heartbeat for the board's load cell: `Row.Load1Centi`
+  (the 1-minute load average in hundredths), `Cores` (0: never beaten), `SlotsUsed` and
+  `SlotsTotal` (nova-reserve). One write sets them, `SetRowLoad{Row, Load1Centi, Cores,
+  SlotsUsed, SlotsTotal}`: cores at least 1, slots used no more than the total, every number
+  in `0..2147483647`, refused as every set write is when it changes nothing. It moves no gen,
+  so a beat never fences out a plan made from an earlier snapshot (`RowGen`); the log's
+  before and after images still carry the change. `PutRow` keeps the values; a clear carries
+  them (the next beat replaces them).
+- The four columns are added by `Migrate` after schema.sql (`rowLoadColumns`, `ADD COLUMN IF
+  NOT EXISTS`), not in schema.sql: that file is hashed, and a store made before them keeps its
+  hash and takes the columns on its next Migrate. Choice, not measured. A binary that reads a
+  store not yet migrated fails its row read: run `nova-sprint up` (or the Migrate it makes)
+  once after replacing the binary.
+- `tla/Store.tla` is unchanged: the heartbeat is a column no rule reads (the model's list of
+  left-out fields names it), and `TraceOp` refuses the write like `SetRowFlaps`. Test: the
+  conformance scenario `row load`, on Fake and PostgreSQL alike.
+

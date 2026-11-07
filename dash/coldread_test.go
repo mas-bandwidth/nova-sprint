@@ -281,8 +281,8 @@ func TestColdreadMissingCellsBlank(t *testing.T) {
 			t.Errorf("fleet row carries MISSING %s=%v", k, row[k])
 		}
 	}
-	if row["okpct"] != "0.0%" {
-		t.Errorf("okpct with no verdicts = %v", row["okpct"])
+	if row["okpct"] != "-" {
+		t.Errorf("okpct with no finished work = %v", row["okpct"])
 	}
 	work := tables["work"].(map[string]any)["s00"].(map[string]any)
 	if work["cost"] != "-" {

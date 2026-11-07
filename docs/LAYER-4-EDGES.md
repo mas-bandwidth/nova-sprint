@@ -762,3 +762,17 @@ clock), mostly in `edge/worker/probe_test.go`.
   which fault and return to ready; the roster (or policy) needs a bench's
   served tiers. `rebaseAndPRSteps_internal` is 67 lines (over the 60 rule;
   untouched here).
+
+### Built: the worker's heartbeat (stitch, 2026-11-07)
+
+- `edge/worker/beat.go`: with a `Meter` and a `Beater` set (`Serve` sets both), `ServeRow` pushes
+  `nova-sprint beat` (layer 6) after the probe and then every `BeatEvery` (30 s, a guess) until
+  the worker ends, on the runner's `Sleep`. `OSMeter` reads the 1-minute load average
+  (`/proc/loadavg` on Linux, `sysctl -n vm.loadavg` on macOS and the BSDs, nothing on Windows:
+  no load, no beat, and the warning says so), the logical cores (`runtime.NumCPU`), and the slots
+  from `nova-reserve status`'s `free=n/N` line. A bench with no readable slots still beats, with
+  0 of 0 and a warning. Each distinct failure is warned once, not every period. The worker
+  keeps only the last warning's text; a beat that repeats the last one writes nothing.
+- Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
+  and carries no numbers) and not a read verb that writes. Tests: `edge/worker/beat_test.go`.
+

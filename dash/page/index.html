@@ -259,6 +259,7 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .row.total { border-top: 1px solid var(--border-strong); border-bottom: 0; font-weight: 600; }
 .name { font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zero { color: var(--text-3); }
+.row .alarm { color: var(--critical); font-weight: 800; } /* ready past a tick (app.js READY_ALARM_MS): a ready card with a serving row is a stall */
 /* pills: a dot carries the color, the text stays text */
 .pill { display: inline-flex; align-items: center; gap: 0.75rem; height: 3rem; padding: 0 1rem; border-radius: 1.5rem; font-size: 1.5rem; font-weight: 550; background: var(--neutral-tint); color: var(--text); justify-self: start; white-space: nowrap; }
 .pill .dot { width: 0.75rem; height: 0.75rem; }

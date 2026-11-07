@@ -125,14 +125,20 @@ type Runner struct {
 	Timeouts                           Timeouts
 	Logger                             *StepLogger
 	Warn                               func(string) // a best-effort step's failure; nil: stderr
-	Now                                func() time.Time
-	Sleep                              func(time.Duration)
-	mu                                 *sync.Mutex
-	probed, withdrawn, served          map[string]bool
-	adopted                            map[string]JobRecord
-	running                            map[string]context.CancelFunc
-	dedup                              *edge.Deduplicator
-	backoffSeq                         uint64
+	// Meter and Beater, both set, make ServeRow push a heartbeat every
+	// BeatEvery (the const when zero); a worker without them beats not at all.
+	Meter                     Meter
+	Beater                    Beater
+	BeatEvery                 time.Duration
+	Now                       func() time.Time
+	Sleep                     func(time.Duration)
+	mu                        *sync.Mutex
+	probed, withdrawn, served map[string]bool
+	adopted                   map[string]JobRecord
+	running                   map[string]context.CancelFunc
+	dedup                     *edge.Deduplicator
+	backoffSeq                uint64
+	lastBeatErr               string
 }
 
 // NewRunner is a runner on any machine nova-config gives the bench role;
@@ -417,6 +423,11 @@ func (r *Runner) ServeRow(ctx context.Context, row, harness string, once bool) e
 	}
 	if once {
 		return r.StepRow(ctx, row)
+	}
+	if r.Meter != nil && r.Beater != nil {
+		beatCtx, stop := context.WithCancel(ctx)
+		defer stop()
+		go r.beatLoop_internal(beatCtx, row)
 	}
 	return r.wakeLoop_internal(ctx, row, hook)
 }

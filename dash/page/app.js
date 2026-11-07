@@ -150,6 +150,17 @@ function setClass(e, c) {
 }
 function setTitle(e, t) { if (e.title !== t) e.title = t; }
 function numCell(cls) { return el("div", cls === "frac" ? "frac" : "num " + (cls || "")); }
+// A row's ready cards are an alarm when they have sat ready past one tick
+// (directive 65.5; "we work in parallel"): a card dealt to a serving row is taken
+// at once. `since` holds when each row first showed ready > 0 without a break;
+// the age is in ms on the page's monotonic clock. A tick is 1 s and the page
+// polls at 1 Hz, so two seconds is "past one tick" (a guess, not measured).
+var READY_ALARM_MS = 2000;
+function readyAge(since, name, ready, now) {
+  if (!(ready > 0)) { delete since[name]; return 0; }
+  if (since[name] == null) since[name] = now;
+  return now - since[name];
+}
 function setNum(e, v, extra) { setText(e, v); setClass(e, "num " + (extra || "") + (String(v) === "0" ? " zero" : "")); }
 
 // Keyed rows between a fixed header and an optional total row; nodes are
@@ -442,7 +453,9 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     box._total._c.push(el("div"));
     box._total._c.forEach(function (c) { box._total.appendChild(c); });
   }
-  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, refused: 0, upWidth: 0, upWorking: 0, fix: 0 };
+  var t = { ready: 0, working: 0, width: 0, done: 0, ok: 0, up: 0, held: 0, down: 0, refused: 0, upWidth: 0, upWorking: 0, fix: 0, late: 0 };
+  var since = box._readySince || (box._readySince = {}), now = performance.now();
+  Object.keys(since).forEach(function (n) { if (!(n in table)) delete since[n]; });
   scale = scale || tableScale(table);
   // the track column is exactly the widest track, so the figure sits right after it
   var tw = TRACK_SPAN.toFixed(3) + "rem";
@@ -484,12 +497,15 @@ function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
     setTrack(r.track, working, width, scale, m);
     t.fix += int(m.fix_working != null ? m.fix_working : m.fix);
     setHTML(r.wf, frac(working, width, digits) + (m.window ? "<span class=\"win\"> · " + escHTML(m.window) + "</span>" : "")); // no reads count beside the fraction: the orange cells say it, and the label widened the column and broke the alignment (the owner 2026-10-06 9:08 PM)
-    setNum(r.ready, int(m.ready)); setNum(r.done, done);
+    var late = readyAge(since, k, int(m.ready), now) >= READY_ALARM_MS;
+    if (late) t.late++;
+    setNum(r.ready, int(m.ready), late ? "alarm" : ""); setNum(r.done, done);
     setOk(r.ok, pct(okv), done);
-    if (r.load) { var lp = pct(m.load); setText(r.load, lp === null ? "" : lp.toFixed(1) + "%"); setClass(r.load, "num" + (lp === null ? " zero" : "")); }
+    if (r.load) { var lp = pct(m.load); setText(r.load, lp === null ? "-" : lp.toFixed(1) + "%"); setClass(r.load, "num" + (lp === null ? " zero" : "")); r.load.title = m.slots ? "slots " + m.slots : ""; }
   }, box._total);
   var c = box._total._c;
-  setNum(c[2], t.ready);
+  setNum(c[2], t.ready, t.late ? "alarm" : "");
+  box._head.children[2].classList.toggle("alarm", t.late > 0);
   setText(c[3], ""); setClass(c[3], "num zero"); // no fix count here (the owner 2026-10-10: "Remove \"1 fix\"")
   // working as "x / y": the sum of working over the sum of width (SPEC.md, the owner 8:10 PM)
   setHTML(c[4], frac(t.working, t.width, digits, Math.max(digits, totalDigits)));

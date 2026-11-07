@@ -83,10 +83,10 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 	}
 }
 
-// v1 sends ok% "0.0%" (grey) for a row whose ok and failed are both 0: live v1 capture
-// friends.alex, fleet.captain and fleet.studio; v1-live-1440.png / v1-live-2000.png show
-// "0.0%". v2 sends "-". Round-two ruling 4: "v1's cost, ok%, ETA and throughput fallbacks
-// remain". (dash/README.md states the opposite for zero-denominator rows.)
+// v1 sent ok% "0.0%" (grey) for a row whose ok and failed are both 0 (live v1 capture
+// friends.alex). The human ruled otherwise on 2026-11-07 (directive 63b, 64a): the cell
+// is "-" until there is data, as the total already is; the capture is checked only to
+// show it is the old form.
 func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
 	alex := v1["friends"].(map[string]any)["alex"].(map[string]any)
@@ -102,8 +102,8 @@ func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	if err = json.Unmarshal(b, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if got := rows["alex"]["okpct"]; got != alex["okpct"] {
-		t.Errorf("zero-denominator ok%%: v1 %q, v2 %q", alex["okpct"], got)
+	if got := rows["alex"]["okpct"]; got != "-" {
+		t.Errorf("zero-denominator ok%%: v2 %q, want \"-\" (v1 sent %q)", got, alex["okpct"])
 	}
 }
 

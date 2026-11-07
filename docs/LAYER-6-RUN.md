@@ -118,6 +118,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `finish` | `<card>@<gen> --head <sha> --as <row>`, or `--failed --reason <why>` | not hooked; not the holder, naming who; not 40 hex; not on the dealt branch at origin: `git push origin <branch>`; PR wanted and absent; head equals base or prior head | `nothing; wait for the bus` | 0, 1 |
 | `read` | `<card>@<gen> yes\|fix --as <row> [--finding <text>]` | not hooked; the reader wrote the head; head moved: `show <card>`; `fix` with no finding | `nothing; wait for the bus` | 0, 1 |
 | `release` | `<card>@<gen> --as <row> --reason <why>` | not the holder | `nothing; wait for the bus` | 0, 1 |
+| `beat` | `--load1 <loadavg> --cores <n> --slots-used <n> --slots-total <n> --as <row>` | not hooked; a flag missing or not a number; slots used over the total | `nothing; wait for the bus` | 0, 1, 2 |
 | `show` | `[<card>\|<stream>\|<row>\|run] [--stitch]` | unknown name | what `next` says for that name | 0, 1 |
 | `judge` | `[<id> <choice> --reason <why>]` | not the coordinator, or not hooked; judgement not open, naming who closed it; a choice it does not offer, listing them | the next open judgement, or `nothing; wait for the bus` | 0, 1 |
 | `priority` | `<card> <level> --reason <why>` | a consumer id (`priority` is the producer's); a final card; a level outside `low normal high critical blocker` (`read` is a rung, not a level) | `nothing; wait for the bus` | 0, 1 |
@@ -663,3 +664,17 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   `tla/Setup.tla` over every state of a two-bench fleet. The functional role tests
   (`TestFunctionalSprintRolePasswordOnATrustHost` among them) were changed but not run here;
   they run on a bench.
+
+## Built: the board's load, ok% and ready alarm; a flaky test (stitch, 2026-11-07)
+
+- `beat` is the worker's heartbeat verb (a worker verb, so a row not hooked in is refused): it
+  sets the row's 1-minute load average (hundredths), cores and nova-reserve slots in use and in
+  all (layer 1, `SetRowLoad`). A beat that repeats the row's last values succeeds and writes
+  nothing. It is the one push the load cell needs (INTENT 7); nova-worker sends it every
+  30 s (a guess) and at start. The board's side is `dash/README.md`, Built.
+- `TestServeTicksPushesAndLogs` failed about one run in three: the deal waits for the head
+  watch's first read of the stream's base tip, which ran in its own goroutine while the test
+  drove only the tick beat. The test's clock now says when that read has finished (the watch asks
+  for its beat only after reading), and the test waits on it before its first tick. No
+  production code changed; `go test -run TestServeTicksPushesAndLogs -count=2000 -cpu 1,4 ./run/`
+  and 100 runs under `-race` pass.
