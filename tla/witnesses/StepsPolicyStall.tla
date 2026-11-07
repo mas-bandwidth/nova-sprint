@@ -137,6 +137,7 @@ P0(p) ==
 W0 == [ps  |-> [p \in Prods |-> P0(p)],
        cs  |-> [c \in CIds |-> NoCons],
        up  |-> [r \in Rows |-> ~(Scenario = "pre" /\ r = "r1")],
+       rg  |-> [r \in Rows |-> 0],
        sh  |-> [s \in Streams |-> Scenario = "pre" /\ s = "s2"],
        tko |-> <<>>]
 
@@ -153,7 +154,7 @@ Answers == {[rows |-> "r1"], [rows |-> "r2"], [rows |-> "failed"]}
 Unasked == [rows |-> "failed"]
 
 VARIABLES
-  w,         \* the store: [ps, cs, up, sh, tko]
+  w,         \* the store: [ps, cs, up, rg, sh, tko]; rg is each row's generation, which every row write raises
   snap,      \* the view the next tick plans on (W0 while idle)
   phase,     \* "idle" or "snapped"
   inbox,     \* edge results: Seq of [stamp, id, out]
@@ -268,10 +269,12 @@ Grp(kind, p, c, r, stamp, sha, V) ==
    req   |-> IF kind = "pre" THEN {StopReq(c)} ELSE {}]
 NoneG(stamp, V) == Grp("none", "-", NoC, NoR, stamp, 0, V)
 
-\* The fence: every record the group read is as the view had it.
+\* The fence: every record the group read is as the view had it. A row is
+\* fenced by its generation, as the store does (RowGen): a row that went
+\* down and came back is not the row the plan read.
 Fence(V, W, g) ==
   /\ \A k \in g.rk : Same(V, W, k)
-  /\ \A r \in g.rr : V.up[r] = W.up[r]
+  /\ \A r \in g.rr : V.rg[r] = W.rg[r]
   /\ \A s \in g.rsx : V.sh[s] = W.sh[s]
 
 \* The store's own rules for each move (the CardMachine guards).
@@ -703,7 +706,7 @@ EnvMove ==
                                                    THEN [w.ps[p] EXCEPT !.st = "waiting"]
                                                    ELSE w.ps[p]]]
      \/ \E s \in UnholdsOf : w.sh[s] /\ w' = [w EXCEPT !.sh[s] = FALSE]
-     \/ \E r \in FlipsOf : w' = [w EXCEPT !.up[r] = ~w.up[r]]
+     \/ \E r \in FlipsOf : w' = [w EXCEPT !.up[r] = ~w.up[r], !.rg[r] = @ + 1]
   /\ last' = Clean
   /\ UNCHANGED <<snap, phase, inbox, inflight, js, split, arrived, processed>>
 
@@ -745,6 +748,7 @@ TypeOK ==
   /\ w.ps \in [Prods -> ProdRec]
   /\ w.cs \in [CIds -> ConsRec]
   /\ w.up \in [Rows -> BOOLEAN]
+  /\ w.rg \in [Rows -> 0..MaxEnv]
   /\ w.sh \in [Streams -> BOOLEAN]
   /\ phase \in {"idle", "snapped"}
   /\ arrived \in 0..MaxArrive

@@ -836,9 +836,11 @@ result once or twice (layer 4 may redeliver).
    (working consumers only) is one group: Withdraw of the victim on the
    chosen row (releasing its producer), the blocker's Start there, and a
    stop request for the victim's runner. The row is policy's `rows` answer
-   when it is a preemptable row, else the first by name; the victim is
-   policy's `victim` answer when in domain, else the youngest by take. No
-   open serving row: an `unserved` judgement for the tier.
+   when it is a preemptable row, else the first by name; the victim is the
+   youngest working consumer on it by take, the engine's fixed rule
+   (LAYER-5's boundary, LESSONS 5.12; the model's first draft asked policy
+   for a `victim`, dropped when layer 3 was built against layer 5's
+   question set). No open serving row: an `unserved` judgement for the tier.
 2. **Land results**, in arrival order: Landed or Red for a producer still
    merging at the request's head; an ack, a stale or a repeated result is
    consumed with no move.
@@ -879,10 +881,9 @@ when admitted and its op accepted (or it has no move); a refused op's items
 are put back in place; the rest carry, in arrival order.
 
 The oracle `a` is the asker: when a question has subjects, policy answers
-in domain (an alternative victim, the oldest, with either row preferred for
-every candidate) or fails ("failed": no answer in the tick's policy time,
-an error, out of range, or a row or consumer not offered, which is one path
-in the engine).
+in domain (either row preferred for every candidate) or fails ("failed": no
+answer in the tick's policy time, an error, out of range, or a row not
+offered, which is one path in the engine).
 
 The per-card moves are layer 2's, written at the grain the steps read: each
 guard (`Legal`) and write (`ApplyG`) is the `CardMachine.tla` action of the
@@ -935,7 +936,7 @@ operators where the check is about them:
 | `RefusedOnlyByRace` | list item 5 | an op is refused only when a record it read moved between the fold and the tick |
 | `BudgetKept` | tick step 3, list item 6 | past the first non-blocker group, the cards touched stay within the budget |
 | `BlockerPreemptsInOneTick` | guarantee 4 | a ready blocker with every open serving row at width has a preemption group in the tick, or no open serving row and an `unserved` judgement |
-| `PreemptYoungest` | Preemption | the victim is the youngest by take, unless policy named another in domain |
+| `PreemptYoungest` | Preemption | the victim is the youngest working consumer on the row by take |
 | `PolicyFailsToDefault` | guarantee 10 | a failed rows answer deals exactly what no policy deals, and every failed question has its `policy` judgement |
 | `AfterKept` | guarantee 3, ENFORCED L2-U19 | a land request never goes out for a producer whose `after` target is merging |
 | `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
@@ -970,7 +971,7 @@ plus `ahead`) is eventually dealt, unless the room goes. The model's bounds
 | `witnesses/StepsAfterIgnored` | land | the land step ignores after | AfterKept |
 | `witnesses/StepsAfterHolds` | land | the land step holds on any target not landed | AfterNeverHolds |
 | `witnesses/StepsPolicyStall` | deal | a failed rows answer plans nothing | PolicyFailsToDefault |
-| `witnesses/StepsOldestVictim` | pre | the victim default is the oldest | PreemptYoungest |
+| `witnesses/StepsOldestVictim` | pre | the victim is the oldest | PreemptYoungest |
 | `witnesses/StepsReadyCountedAgainstWidth` | pre | the deal counts ready against width | ReadyDealtWhenRoom (liveness, TLC exit 13) |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
@@ -1092,8 +1093,8 @@ the correct model never makes (the passing runs show that).
   merging after p; the next tick sends nothing for s2.
 - **StepsPolicyStall:** p is ready, the rows answer fails, and the tick
   deals nothing (the default deals p to r1).
-- **StepsOldestVictim:** p1 then q1 taken on r2, b due, the victim answer
-  fails, and the tick withdraws p1, the older.
+- **StepsOldestVictim:** p1 then q1 taken on r2, b due, and the tick
+  withdraws p1, the older.
 - **StepsReadyCountedAgainstWidth:** p and q are dealt to r2 and b
   preempts p1; p is ready again with r2 at 2 of 6 (width plus ahead), but
   the faulted deal sees 2 of 2. The lasso is the tick looping on that
@@ -1109,6 +1110,56 @@ the correct model never makes (the passing runs show that).
   b leaves waiting. CannotRead: r1 down while p (author r2) owes a read.
   LandRequested, Landed, Red: the first land request and its two results.
   AfterHeld: q held while p merges. Carried: two results, budget 1.
+
+## Trace validation: the code bound to the model (the lock gate since 2026-11-07)
+
+`StepsTrace.tla` constrains the spec's next-state relation to a recorded
+trace (the Kuppe, Merz et al. pattern): `TraceLog` is a sequence of records,
+each an action name with its arguments and the model's variables after it,
+and `TraceNext` takes record `l + 1` only by the action it names, landing
+exactly on its logged values. A trace the model allows reaches the end
+(`TraceMatched`, TLC exit 0); a step the model forbids leaves no successor,
+and the counterexample's last `l` names the record before the refused one.
+`tla/check-trace.sh [traces/<fixture>...]` runs it on each fixture and
+prints `ok <fixture>: matched whole, N records` or `FAIL <fixture>: the
+model refuses record K of N:` with that record's action and arguments.
+
+Two kinds of fixture, both under `traces/`:
+
+- **The walk's** (`steps-walk-<scenario>-<seed>/`): the Go steps driving one
+  of the model's four scenarios on `store.Fake` (`steps/trace_test.go`), each
+  step one of the model's actions (Snap, Tick, Take, Report, Hold, Unhold,
+  Gone, Seen, EdgeResult) picked at random, each recorded with the model's
+  variables projected from the code's state by the refinement mapping in
+  `steps/trace.go` (`StoreTLA`, `InboxTLA`, `InflightTLA`, `JudgementsTLA`;
+  the mapping is in that file's comment). A record logs `w` in parts (`ps`,
+  `up`, `sh`, `tko` whole and `cs` as the slots that are not `none`, which
+  `StepsTrace.Parts` checks), the inbox, the in-flight requests and the
+  open judgements of the model's three kinds, and a Tick's `answer`. The
+  tick plans on the view as Snap left it, so a move between Snap and Tick
+  races it as in the model. The cfg sets the model's bounds above anything a
+  walk reaches (K 60, MaxAtt 30, MaxBounce 30, MaxEnv and MaxArrive 1000)
+  and the scenario's Budget and Pack. `TestTraceFixtures` writes the fixed
+  seed set (4 scenarios x 3 seeds x 150 steps) under `NOVA_TRACES`; the CI
+  job `trace` writes it every push and runs `check-trace.sh` on it.
+  `TestTraceWalk` runs 100 seeds x 2,000 steps per scenario for depth (at
+  least 40% of the picked moves legal while a producer is not final) and
+  that no op is refused without a race.
+- **The model's own** (`steps-ok-*`, `steps-bad-*`), `make-steps-traces.py`
+  from TLC logs: a reach check's counterexample is a behaviour of the model
+  and must match whole; a state-invariant witness's counterexample is a
+  behaviour of the faulted model whose last step the real model forbids
+  (`expect: forbidden at K`). They stand for the walk's bugs: the same fault
+  in `steps/` makes the same trace.
+
+What the trace check found while layer 3 was built (each a divergence
+between code and model that no unit test saw): the first walk fixtures were
+refused at a Tick because the Go walk folded the view after every outside
+move, so the tick planned on fresh state where the model's planned on the
+snapshot; the walk now keeps the tick's view as Snap left it (the code
+itself was right: layer 6 folds only at the tick's start). The model's
+`victim` oracle went when layer 3 was built against layer 5's question set,
+which has none (the youngest is the engine's rule).
 
 ## Not modelled, and what the model found in the design
 
