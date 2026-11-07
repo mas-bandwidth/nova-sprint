@@ -280,14 +280,14 @@ func (v *View) Overlaps(p store.Card) []string {
 // Open says whether row r may be dealt to: up on the bus, not held, and
 // hooked in to the sprint (Glenn, 2026-11-06: the hook is the subscription
 // to the sprint's pushes; a row not hooked in is never dealt to and nothing
-// is pushed to it). The hook state is the row's Session, whose form store
-// round 22 defines; until then a non-empty Session is hooked with a role
-// that allows the deal (worker; the coordinator counts as a worker).
+// is pushed to it). The hook is the row's Session and Role (store round 22).
 func (v *View) Open(r store.Row) bool { return r.State == "up" && !r.Held && Hooked(r) }
 
 // Hooked says whether row r is hooked in to the sprint with a role that
-// allows the deal.
-func Hooked(r store.Row) bool { return r.Session != "" }
+// allows the deal: worker, or coordinator, who counts as a worker.
+func Hooked(r store.Row) bool {
+	return r.Session != "" && (r.Role == "worker" || r.Role == "coordinator")
+}
 
 // viewCore is what two equal views share: the records and the indexes, not
 // the facts the fold alone witnesses.

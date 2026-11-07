@@ -29,21 +29,19 @@ func cr5Scenario(h *harness) []string {
 
 	h.seed()
 	// Five live heavy consumers whose byte order (B1 Z9 a1 z1 é1) and ICU
-	// en-US order (a1 B1 é1 z1 Z9) differ at every step.
+	// en-US order (a1 B1 é1 z1 Z9) differ at every step (round 22 dropped the
+	// tier narrowing that named the lowest; they are still retired in order).
 	ids := []string{"a1", "B1", "Z9", "z1", "é1"}
-	setup := []Write{PutRow{Name: "r2", Kind: "worker", Width: 5, Tiers: []string{"heavy", "pro"}}, PutCard{Tier: "heavy", Kind: "producer", ID: "ph", Stream: "s1"}}
+	setup := []Write{PutRow{Name: "r2"}, PutCard{Tier: "heavy", Kind: "producer", ID: "ph", Stream: "s1"}}
 	for _, id := range ids {
 		setup = append(setup, PutCard{Tier: "heavy", Kind: "read", ID: id, Of: "ph", Stream: "s1", Holder: "r2"}, SetCardState{id, "ready"})
 	}
 	w("setup", nil, setup...)
 	for _, id := range []string{"B1", "Z9", "a1", "z1", "é1"} {
-		w("narrow with lowest "+id, nil, SetRowTiers{"r2", []string{"pro"}})
-		w("narrow by put row with lowest "+id, nil, PutRow{Name: "r2", Kind: "worker", Width: 5, Tiers: []string{"pro"}})
 		w("retire "+id, nil, SetCardState{id, "done"})
 	}
 
 	// same-value: a set compared as a sequence
-	w("tiers reordered", nil, SetRowTiers{"r2", []string{"pro", "heavy"}})
 	w("needs two", nil, SetCardNeeds{"c2", []string{"c0", "c1"}})
 	w("needs reordered", nil, SetCardNeeds{"c2", []string{"c1", "c0"}})
 	w("after two", nil, SetCardAfter{"c2", []string{"c0", "c1"}})
@@ -52,7 +50,6 @@ func cr5Scenario(h *harness) []string {
 	w("cost priced only", nil, SetCardCost{"u1", 0, true})
 	w("cost same", nil, SetCardCost{"u1", 0, true})
 	w("cost unpriced again", nil, SetCardCost{"u1", 0, false})
-	w("labels same", nil, SetRowLabels{"w1", "", ""})
 	w("paths nil on nil", nil, SetCardPaths{"c1", nil})
 	w("paths empty on nil", nil, SetCardPaths{"c1", []string{}})
 	w("paths empty string", nil, SetCardPaths{"c1", []string{""}})
@@ -61,12 +58,10 @@ func cr5Scenario(h *harness) []string {
 	w("priority empty", nil, SetCardPriority{"c1", ""})
 	w("result empty on a producer", nil, SetCardResult{"c1", ""})
 	w("result same", nil, SetCardResult{"u1", ""})
-	w("width same", nil, SetRowWidth{"w1", 2})
 	w("held same", nil, SetRowHeld{"w1", false, ""})
 	w("flaps same", nil, SetRowFlaps{"w1", 0})
 	w("score same", nil, SetCardScore{"c1", 10})
 	w("attempt same", nil, SetCardAttempt{"c1", 0})
-	w("session same", nil, SetRowSession{"w1", "sess-a"})
 	w("state same after a change in one op", nil, SetCardReason{"c1", "r"}, SetCardState{"c1", "waiting"})
 	w("reason same after add in one op", nil, PutCard{Tier: "pro", Kind: "producer", ID: "p9", Stream: "s1"}, SetCardReason{"p9", ""})
 	w("open j1", nil, PutJudgement{ID: "j1", Kind: "red"})
@@ -85,15 +80,12 @@ func cr5Scenario(h *harness) []string {
 	w("row gen condition below 0", []Expect{RowGen{"w1", -1}})
 	w("seq condition below 0", []Expect{AtSeq{-1}})
 	w("activate version 0", nil, SetActivePolicy{0})
-	w("tier empty in tiers", nil, SetRowTiers{"w1", []string{""}})
-	w("put row tier twice", nil, PutRow{Name: "r7", Kind: "worker", Tiers: []string{"pro", "pro"}})
 
 	// a clear, then the cursors and the new epoch
 	c := h.op("clear", nil)
 	r, err := h.s.Clear(h.ctx, c)
 	out = append(out, fmt.Sprintf("clear => %v %v %d", err, r.Accepted, r.NewEpoch))
 	h.epoch = r.NewEpoch
-	w("tiers same in the new epoch", nil, SetRowTiers{"r2", []string{"pro", "heavy"}})
 	return out
 }
 
@@ -101,20 +93,11 @@ func cr5Scenario(h *harness) []string {
 // nothing is refused", "an empty key ... in a condition exactly as in a
 // write: it is ErrInvalid"), as prefixes.
 var cr5Want = map[string]string{
-	"narrow with lowest B1":               "refused: row r2 holds consumer B1 (heavy); cannot drop heavy",
-	"narrow with lowest Z9":               "refused: row r2 holds consumer Z9 (heavy); cannot drop heavy",
-	"narrow with lowest a1":               "refused: row r2 holds consumer a1 (heavy); cannot drop heavy",
-	"narrow with lowest z1":               "refused: row r2 holds consumer z1 (heavy); cannot drop heavy",
-	"narrow with lowest é1":               "refused: row r2 holds consumer é1 (heavy); cannot drop heavy",
-	"narrow by put row with lowest B1":    "refused: row r2 holds consumer B1 (heavy); cannot drop heavy",
-	"narrow by put row with lowest é1":    "refused: row r2 holds consumer é1 (heavy); cannot drop heavy",
-	"tiers reordered":                     "refused: row r2 already has the given tiers",
 	"needs reordered":                     "refused: card c2 already has the given needs",
 	"after reordered":                     "refused: card c2 already has the given after",
 	"cost priced only":                    "ok",
 	"cost same":                           "refused: card u1 already has the given cost",
 	"cost unpriced again":                 "ok",
-	"labels same":                         "refused: row w1 already has the given labels",
 	"paths nil on nil":                    "refused: card c1 already has the given paths",
 	"paths empty on nil":                  "refused: card c1 already has the given paths",
 	"paths empty string":                  "ok",
@@ -123,11 +106,9 @@ var cr5Want = map[string]string{
 	"priority empty":                      "refused: card c1 already has the given priority", // "" is normal (round 12)
 	"result empty on a producer":          "refused: card c1 is of kind producer; SetCardResult is only for a consumer",
 	"result same":                         "refused: card u1 already has the given result",
-	"width same":                          "refused: row w1 already has the given width",
 	"held same":                           "refused: row w1 is already not held",
 	"score same":                          "refused: card c1 already has the given score",
 	"attempt same":                        "refused: card c1 already has the given attempt",
-	"session same":                        "refused: row w1 already has the given session",
 	"answer j1 the same again":            "refused: judgement j1 is answered; only an open judgement can be answered",
 	"put card with no stream":             "invalid: ",
 	"put card with an empty need":         "invalid: ",
@@ -136,14 +117,8 @@ var cr5Want = map[string]string{
 	"set after to an empty name":          "invalid: ",
 	"consumer of no producer":             "refused: card u8 is a consumer; a consumer names its producer in of",
 	"consumer with no holder":             "refused: card u8 is a consumer; a consumer names its holder row at add, and it never changes",
-	"tier empty in tiers":                 "invalid: ",
-	"put row tier twice":                  "invalid: ",
-	"tiers same in the new epoch":         "refused: row r2 already has the given tiers",
 	"reason same after add in one op":     "refused: card p9 already has the given reason",
 	"state same after a change in one op": "refused: card c1 is already waiting",
-	"narrow by put row with lowest Z9":    "refused: row r2 holds consumer Z9 (heavy); cannot drop heavy",
-	"narrow by put row with lowest a1":    "refused: row r2 holds consumer a1 (heavy); cannot drop heavy",
-	"narrow by put row with lowest z1":    "refused: row r2 holds consumer z1 (heavy); cannot drop heavy",
 	"open j1":                             "ok",
 	"answer j1":                           "ok",
 	"needs two":                           "ok",

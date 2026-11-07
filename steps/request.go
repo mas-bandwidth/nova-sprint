@@ -33,8 +33,8 @@ type Request struct {
 // fact: a wrong coordinator could corrupt).
 var coordinatorEvents = []string{"Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream"}
 
-// runEvents are the run loop's own (presence and nova-config's width).
-var runEvents = []string{"Seen", "Gone", "Width"}
+// runEvents are the run loop's own (presence).
+var runEvents = []string{"Seen", "Gone"}
 
 // Verb is one request as one op, or a refusal naming the fix: the actor
 // check, the move through the card machine, one op. A verb refused for its
@@ -78,7 +78,7 @@ func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) {
 }
 
 // actorOK is the actor rule: coordinator events need a coordinator; Take
-// and Report the consumer's holder; Seen, Gone and Width the run loop; Add
+// and Report the consumer's holder; Seen and Gone the run loop; Add
 // anyone.
 func (t *tick) actorOK(r Request) *card.Refusal {
 	name := ""
@@ -94,7 +94,7 @@ func (t *tick) actorOK(r Request) *card.Refusal {
 		}
 		return &card.Refusal{Reason: fmt.Sprintf("%s is the coordinator's; ask on the bus: `nova-bus send --as %s --to %s ...`", what, r.Actor, firstOr(r.Coordinators, "<coordinator>"))}
 	case slices.Contains(runEvents, name) && r.Actor != Actor:
-		return &card.Refusal{Reason: name + " is the run loop's; nova-config is where width and presence are set"}
+		return &card.Refusal{Reason: name + " is the run loop's; presence is the bus's fact"}
 	case name == "Take" || name == "Report":
 		c, ok := t.v.Cards[r.Card]
 		if !ok {
@@ -132,7 +132,7 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 			return nil, &card.Refusal{Reason: "card " + r.Card + " does not exist"}
 		}
 		return []move{t.consumerMove(r.Card, e)}, nil
-	case card.Seen, card.Gone, card.Width, card.Hold, card.Unhold:
+	case card.Seen, card.Gone, card.Hold, card.Unhold:
 		if _, ok := t.v.Rows[r.Row]; !ok {
 			return nil, &card.Refusal{Reason: "row " + r.Row + " does not exist"}
 		}

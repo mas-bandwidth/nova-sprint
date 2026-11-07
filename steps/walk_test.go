@@ -224,7 +224,7 @@ func (w *walk) takeOne() bool {
 		return false
 	}
 	c := w.snap().Cards[id]
-	if !isConsumer(c) {
+	if !isConsumer(c) || !w.roomToTake(c.Holder) {
 		return false
 	}
 	p, r := w.consumer(id, card.Take{Row: c.Holder})
@@ -307,7 +307,7 @@ func (w *walk) envOne() bool {
 		return r == nil && w.apply("stream", pl.Expect, pl.Writes...).Accepted
 	case 1:
 		name := w.pick(sortedKeys(s.Rows))
-		row := card.RowFromStore(s.Rows[name])
+		row := w.cardRow(s.Rows[name])
 		var e card.Event = card.Hold{Reason: "walk"}
 		if row.Held {
 			e = card.Unhold{Reason: "walk"}
@@ -316,7 +316,7 @@ func (w *walk) envOne() bool {
 		return r == nil && w.apply("row", pl.Expect, pl.Writes...).Accepted
 	default:
 		name := w.pick(sortedKeys(s.Rows))
-		row := card.RowFromStore(s.Rows[name])
+		row := w.cardRow(s.Rows[name])
 		var e card.Event = card.Gone{}
 		if row.State == "down" {
 			e = card.Seen{}

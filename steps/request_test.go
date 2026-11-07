@@ -58,8 +58,8 @@ func TestVerbActorTable(t *testing.T) {
 	assert.Contains(t, ref.Reason, "HoldStream is the coordinator's")
 	_, ref = w.verb(Request{Actor: "emma", Judgement: "x", Answer: "retry"})
 	assert.Contains(t, ref.Reason, "judge is the coordinator's")
-	_, ref = w.verb(Request{Actor: "emma", Row: "r1", Event: card.Width{N: 3}})
-	assert.Equal(t, "Width is the run loop's; nova-config is where width and presence are set", ref.Reason)
+	_, ref = w.verb(Request{Actor: "emma", Row: "r1", Event: card.Gone{}})
+	assert.Equal(t, "Gone is the run loop's; presence is the bus's fact", ref.Reason)
 	assert.Equal(t, before, w.snap().Seq, "a verb refused for its actor writes nothing")
 
 	rc, ref := w.verb(Request{Actor: "rowan", Card: "p1", Event: card.SetPriority{Level: "high", Reason: "why"}})
@@ -79,7 +79,7 @@ func TestVerbActorTable(t *testing.T) {
 	rc, ref = w.verb(Request{Actor: "rowan", Row: "r1", Event: card.Hold{Reason: "rest"}})
 	require.Nil(t, ref)
 	assert.True(t, rc.Accepted, rc.Reason)
-	rc, ref = w.verb(Request{Actor: Actor, Row: "r1", Event: card.Width{N: 3}})
+	rc, ref = w.verb(Request{Actor: Actor, Row: "r1", Event: card.Gone{}})
 	require.Nil(t, ref)
 	assert.True(t, rc.Accepted, rc.Reason)
 }

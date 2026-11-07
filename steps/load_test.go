@@ -144,7 +144,7 @@ func storeSeed(v *View) []store.Op {
 	}
 	for _, r := range sortedKeys(v.Rows) {
 		row := v.Rows[r]
-		op(store.PutRow{Name: row.Name, Kind: row.Kind, Width: row.Width, Session: row.Session, Tiers: row.Tiers, Model: row.Model}, store.SetRowState{Row: row.Name, State: "up"})
+		op(store.PutRow{Name: row.Name, Session: row.Session, Role: row.Role}, store.SetRowState{Row: row.Name, State: "up"})
 	}
 	var ws []store.Write
 	for _, id := range sortedKeys(v.Cards) {

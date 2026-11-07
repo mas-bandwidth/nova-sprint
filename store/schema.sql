@@ -7,7 +7,7 @@
 -- version with the two card kinds (kind with sentinel, of, after, author,
 -- base_sha, result, the states blocked and done; prior_head, bounces, cost,
 -- priced, priority, the result fault; tier, paths, done_when, prose,
--- review, finding, red), row gen, held, tiers, model, harness and reason, the judgements and cursors tables and
+-- review, finding, red), row gen, held and reason, the judgements and cursors tables and
 -- the events' policy; there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS sprint.epoch (
     n  integer NOT NULL CHECK (n >= 1)
 );
 INSERT INTO sprint.epoch (id, n) VALUES (1, 1) ON CONFLICT (id) DO NOTHING;
+-- Round 22: the sprint's stop lives on the epoch's one row, as the epoch
+-- does (a clear keeps it). A stopped sprint moves nothing (Run calls no
+-- Tick); the store refuses nothing on it.
+ALTER TABLE sprint.epoch ADD COLUMN IF NOT EXISTS stopped boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS stop_reason text NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS sprint.streams (
     name  text    NOT NULL,
@@ -39,22 +44,34 @@ CREATE TABLE IF NOT EXISTS sprint.streams (
     PRIMARY KEY (epoch, name)
 );
 
+-- A row is sprint state only (round 22): what a worker or kin is (kind,
+-- width, tiers, model, harness) is configuration, nova-config's, read
+-- through the roster and never copied here.
 CREATE TABLE IF NOT EXISTS sprint.rows (
     name    text    NOT NULL,
-    kind    text    NOT NULL CHECK (kind IN ('worker', 'kin')),
-    width   integer NOT NULL DEFAULT 1 CHECK (width >= 0),
     state   text    NOT NULL CHECK (state IN ('up', 'down')),
     session text    NOT NULL DEFAULT '',
+    role    text    NOT NULL DEFAULT '' CHECK (role IN ('', 'worker', 'coordinator')),
     flaps   integer NOT NULL DEFAULT 0 CHECK (flaps >= 0),
     held    boolean NOT NULL DEFAULT false,
     gen     integer NOT NULL DEFAULT 0 CHECK (gen >= 0),
-    tiers   text[]  NOT NULL DEFAULT '{}' CHECK (tiers <@ ARRAY['flash', 'pro', 'heavy', 'frontier']::text[]),
-    model   text    NOT NULL DEFAULT '',
-    harness text    NOT NULL DEFAULT '',
     reason  text    NOT NULL DEFAULT '',
     epoch   integer NOT NULL,
     PRIMARY KEY (epoch, name)
 );
+
+-- Round 22: a store made by round 17's schema (round21Hash, the one every
+-- round to 21 carried) has the five configuration columns; Migrate drops
+-- them here, in its one transaction, as round 17 added cards.red. DROP
+-- COLUMN IF EXISTS is a no-op on a new store and on a second run.
+ALTER TABLE sprint.rows DROP COLUMN IF EXISTS kind, DROP COLUMN IF EXISTS width, DROP COLUMN IF EXISTS tiers,
+    DROP COLUMN IF EXISTS model, DROP COLUMN IF EXISTS harness;
+-- and adds the hook's role (worker or coordinator; '' when not hooked).
+ALTER TABLE sprint.rows ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT ''
+    CHECK (role IN ('', 'worker', 'coordinator'));
+-- A row hooked before round 22 has a session and no role: it is unhooked
+-- (a session and a role are both set or both empty), and hooks again.
+UPDATE sprint.rows SET session = '' WHERE role = '' AND session <> '';
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by
@@ -156,18 +173,17 @@ CREATE OR REPLACE TRIGGER cards_fixed BEFORE INSERT OR UPDATE ON sprint.cards
 
 -- The indexes beyond the primary keys, one per store query that would
 -- otherwise scan every card of the epoch (the load test, store round 15):
---   cards_working: the width count, working cards per holder (pgTx.working,
---     once per move into working and per width write); readers' per-row
---     working counts use it too.
---   cards_live: the tier check, a row's ready or working consumers, lowest id
---     (pgTx.needed, per tiers write).
+--   cards_working: working cards per holder, the readers' per-row working
+--     counts (the dashboard's).
+-- Round 22 dropped cards_live: it served the store's tier check, which left
+-- with the row's tiers (the deal guards check tiers against the roster).
 -- Every other store read is by the primary key (epoch, id or name) or a
 -- prefix of it (a snapshot's whole epoch), and the foreign keys and the
 -- cards_fixed lookups go to a primary key, so nothing else is indexed: an
 -- index serves no store query costs every card write. Events are read by seq
 -- (primary key) and op (unique), never by epoch.
 CREATE INDEX IF NOT EXISTS cards_working ON sprint.cards (epoch, holder) WHERE state = 'working';
-CREATE INDEX IF NOT EXISTS cards_live ON sprint.cards (epoch, holder, id COLLATE "C") WHERE state IN ('ready', 'working');
+DROP INDEX IF EXISTS sprint.cards_live;
 
 -- A stream's, row's or judgement's key (TG_ARGV[0]) and epoch never change:
 -- an update that moved one would move its history with it.

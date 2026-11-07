@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -16,7 +17,7 @@ type Inputs struct {
 	Heads    map[string]string    // stream -> the head of its branch: the base a Start records
 	Seen     map[string]time.Time // row -> when it was last seen on the bus (layer 6 keeps it)
 	Refused  []RefusedOp          // the last tick's refused ops, from their receipts (OpGroups)
-	Roster   Roster               // nova-config: each row's kind, width and tiers, by name
+	Roster   roster.Roster        // nova-config: each row's kind, width and tiers, by name
 }
 
 // InboxItem is one thing that arrived for the tick: a row's report or take

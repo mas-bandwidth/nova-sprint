@@ -7,7 +7,7 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "fail", "merging", "fix", "review", "working", "ready", "blocked", "waiting"];
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting", "fail"];
 // Columns of the streams table, in flow order.
 var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed", "fail"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
@@ -25,15 +25,19 @@ var $ = function (id) { return document.getElementById(id); };
 // ---------- parsing (every value in the JSON is a string) ----------
 function int(s) { var n = parseInt(s, 10); return isNaN(n) ? 0 : n; }
 function pct(s) { var n = parseFloat(String(s == null ? "" : s).replace("%", "")); return isNaN(n) ? null : n; }
-function cents(s) { // "$26.16" -> 2616, "-" -> null; rounded up to the cent
-  var n = parseFloat(String(s == null ? "" : s).replace(/[$,]/g, ""));
-  if (isNaN(n)) return null;
-  var c = Math.ceil(n * 100 - 1e-6);
-  return c === 0 ? 0 : c;  // never -0: "$0.00" must not print as "$-0.00"
+function cents(s) { // Keep currency exact through parsing and aggregation.
+  var m = String(s == null ? "" : s).replace(/[$,]/g, "").match(/^(-?)(\d+)(?:\.(\d+))?$/);
+  if (!m) return null;
+  var fraction = (m[3] || "") + "00", n = BigInt(m[2]) * 100n + BigInt(fraction.slice(0, 2));
+  if (m[1]) return -n;
+  return /[1-9]/.test(fraction.slice(2)) ? n + 1n : n;
 }
-function money(c) { return "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-// whole dollars rounded up, for the Cost breakdown panel only (the owner 2026-10-04 2:45 PM: "Round up to nearest $", "for this case"); money() keeps the cent everywhere else
-function dollars(c) { var d = Math.ceil(c / 100 - 1e-9); return "$" + (d === 0 ? 0 : d).toLocaleString("en-US"); }
+function money(c) {
+  var sign = c < 0n ? "-" : "", n = c < 0n ? -c : c;
+  return "$" + sign + (n / 100n).toLocaleString("en-US") + "." + String(n % 100n).padStart(2, "0");
+}
+// Whole dollars rounded up for the Cost breakdown and phone layout.
+function dollars(c) { var d = c >= 0n ? (c + 99n) / 100n : c / 100n; return "$" + d.toLocaleString("en-US"); }
 // the sprint's duration once done: from the epoch's clear to the end of the last 10-minute bucket a card landed in (landedSeries)
 function tookText(d) {
   var t0 = Date.parse(d.cleared || ""), s = d.landedSeries, last = -1;
@@ -259,18 +263,25 @@ function shownStatus(st) { var w = String(st || "").trim().split(/[\s(]/)[0]; re
 // (the owner 2026-10-04 ~4:24 PM: "this enforces it is one person, but multiple buds").
 function budLabel(name, table) {
   var i = name.indexOf("-");
-  if (i > 0 && table && table[name.slice(0, i)]) return name.slice(0, i) + " (" + name.slice(i + 1) + ")";
+  if (i > 0 && table && Object.prototype.hasOwnProperty.call(table, name.slice(0, i))) return name.slice(0, i) + " (" + name.slice(i + 1) + ")";
   return name;
 }
 function tableScale(table) { return Math.max(1, Object.keys(table || {}).reduce(function (a, n) { return Math.max(a, int(table[n].width)); }, 0)); }
 // the bar scale is shared with the friends table only while that table is shown; hidden, the fleet's own widest lane sets it (the owner 2026-10-12 ~01:42Z)
 function friendsShown() { var p = document.querySelector(".panel.friends"); return !!(p && getComputedStyle(p).display !== "none"); }
+// the widest "n / width" digit count across Fleet and Friends, so both tables' slashes align
+function sharedDigits(d) {
+  var tabs = friendsShown() ? [d.tables.fleet, d.tables.friends] : [d.tables.fleet];
+  return tabs.reduce(function (a, t) {
+    return Object.keys(t || {}).reduce(function (b, n) { return Math.max(b, digitsOf(int(t[n].working)), digitsOf(int(t[n].width))); }, a);
+  }, 1);
+}
 function sharedScale(d) { return friendsShown() ? Math.max(tableScale(d.tables.fleet), tableScale(d.tables.friends)) : tableScale(d.tables.fleet); }
 
 // ---------- sections ----------
 function streamOrder(d) {
-  var work = d.tables.work || {}, keys = [], seen = {};
-  (d.streams || []).forEach(function (s) { if (work[s.Stream] && !seen[s.Stream]) { keys.push(s.Stream); seen[s.Stream] = 1; } });
+  var work = d.tables.work || {}, keys = [], seen = Object.create(null);
+  (d.streams || []).forEach(function (s) { if (Object.prototype.hasOwnProperty.call(work, s.Stream) && !seen[s.Stream]) { keys.push(s.Stream); seen[s.Stream] = 1; } });
   Object.keys(work).sort().forEach(function (k) { if (!seen[k]) keys.push(k); });
   return keys;
 }
@@ -291,10 +302,10 @@ function streamStatus(state, c, total) {
   return [state || "idle", "neutral"];
 }
 
-function archivedSet(d) { var a = {}; ((d.archived || {}).streams || []).forEach(function (s) { a[s] = 1; }); return a; }
+function archivedSet(d) { var a = Object.create(null); ((d.archived || {}).streams || []).forEach(function (s) { a[s] = 1; }); return a; }
 function renderStreams(d) {
   var box = $("streams"), work = d.tables.work || {}, merge = d.tables.merge || {}, arch = archivedSet(d);
-  var states = {}; (d.streams || []).forEach(function (s) { states[s.Stream] = s; });
+  var states = Object.create(null); (d.streams || []).forEach(function (s) { states[s.Stream] = s; });
   // children: 1 stream, 2 status, 3 waiting, 4 ready, 5 working, 6 review, 7 fix, 8 merging, 9 landed, 10 cost
   if (!box._head) {
     var cols = [["stream"], ["status"]];
@@ -309,18 +320,18 @@ function renderStreams(d) {
   // Rows are grouped by status (landed, working, stopped, held), by name within a group,
   // with a thin rule between groups; each row also carries its status pill. Rows are keyed by stream, so a reorder
   // only moves nodes and flashes nothing.
-  var RANK = { landed: 0, fail: 1, working: 2, stopped: 3, held: 4, waiting: 5 };
-  var statusOf = {};
+  var RANK = { landed: 0, working: 1, stopped: 2, held: 3, waiting: 4, fail: 5 };
+  var statusOf = Object.create(null);
   streamOrder(d).forEach(function (k) {
     var c = {}, total = 0; FLOW.forEach(function (st) { c[st] = int(work[k][st]); total += c[st]; });
     statusOf[k] = streamStatus((states[k] || {}).State, c, total)[0];
   });
   var rank = function (k) { return RANK[statusOf[k]] == null ? 5 : RANK[statusOf[k]]; };
   var keys = streamOrder(d).filter(function (k) { return !arch[k]; }).sort(function (a, b) { return rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0); });
-  var sum = { cost: 0, totalCost: 0, workCost: 0, readCost: 0, unreconciled: 0, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
+  var sum = { cost: 0n, totalCost: 0n, workCost: 0n, readCost: 0n, unreconciled: 0n, unpriced: 0 }, held = 0, landedStreams = 0, prevRank = null;
   // the epoch's spend, every stream's, the archived ones' too: the cost tile's scope once the
   // sprint is done (where --json's done), when the table's streams are all archived
-  var epoch = { totalCost: 0, workCost: 0, readCost: 0, unpriced: 0 };
+  var epoch = { totalCost: 0n, workCost: 0n, readCost: 0n, unpriced: 0 };
   streamOrder(d).forEach(function (k) {
     var sc = (d.stream_costs || {})[k] || {};
     var tc = cents(sc.total_cost); if (tc) epoch.totalCost += tc;
@@ -374,14 +385,14 @@ function renderStreams(d) {
   // the sprint's unreconciled spend rides on every stream's record, an archived one's too:
   // read once, never summed
   Object.keys(d.stream_costs || {}).forEach(function (k) {
-    var uc = cents(d.stream_costs[k].unreconciled); if (uc) sum.unreconciled = Math.max(sum.unreconciled, uc);
+    var uc = cents(d.stream_costs[k].unreconciled); if (uc) sum.unreconciled = sum.unreconciled > uc ? sum.unreconciled : uc;
   });
   var tc = box._total._c, all = 0;
   FLOW.forEach(function (st, i) { all += sum[st]; if (st !== "landed") setNum(tc[2 + i], sum[st]); });
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
   setText(tc[COST_AT], money(sum.cost));
   // stream counts, never cards: "landed" here read as cards beside the table's landed column (Glenn 2026-10-14), so it names its unit
-  setText($("streams-sub"), keys.length + " streams · " + landedStreams + " streams landed · " + held + " held");
+  setText($("streams-sub"), keys.length + " streams · " + landedStreams + " landed · " + held + " held");
   // the "landed" header is centred over its n / total cell: same width as the cell, text centred
   var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
   if (lw && box._head.children[LANDED_AT].style.width !== lw) box._head.children[LANDED_AT].style.width = lw;
@@ -416,7 +427,7 @@ window.addEventListener("resize", function () { if (overallLast) renderOverall(o
 // tables share, so their columns have the same widths.
 // `clamp` (Friends only, SPEC.md "Friends working, clamped to width, soft", the owner 2026-10-03 12:14 PM):
 // a friend's working figure never exceeds its width; the raw count is the cell's title only.
-function fleetLike(box, table, nameLabel, scale, clamp) {
+function fleetLike(box, table, nameLabel, scale, clamp, minDigits) {
   function shownWorking(m) { var w = int(m.working); return clamp ? Math.min(w, int(m.width)) : w; }
   var names = Object.keys(table || {});
   // rows by status (up, held, down), then by name
@@ -445,7 +456,10 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
   // the Total row's slash sits on the same line as the rows' (the owner 9:28 PM: "the totals are
   // slightly misaligned"): every row's numerator, the total's included, is as wide as the widest
   // numerator; only the total's denominator may be wider
-  var digits = names.reduce(function (a, n) { return Math.max(a, digitsOf(shownWorking(table[n])), digitsOf(int(table[n].width))); }, 1);
+  // the digit width is shared by Fleet and Friends (minDigits, from both tables), so their
+  // slashes sit on one vertical line (the owner 2026-11-06: "the / is supposed to be horizontally
+  // aligned between the fleet and friend tables"); widths of 8 beside widths of 16 had split them
+  var digits = names.reduce(function (a, n) { return Math.max(a, digitsOf(shownWorking(table[n])), digitsOf(int(table[n].width))); }, minDigits || 1);
   digits = Math.max(digits, digitsOf(names.reduce(function (a, n) { return a + shownWorking(table[n]); }, 0)));
   var totalDigits = digitsOf(names.reduce(function (a, n) { return a + int(table[n].width); }, 0));
   syncRows(box, box._head, names, function () {
@@ -486,7 +500,7 @@ function fleetLike(box, table, nameLabel, scale, clamp) {
 }
 
 function renderFleet(d) {
-  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d));
+  var r = fleetLike($("fleet"), d.tables.fleet || {}, "machine", sharedScale(d), false, sharedDigits(d));
   setText($("fleet-head"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.fleet_work, null));
   setSideOff($("fleet").closest("section"), d.fleet_work);
   return r.t;
@@ -494,17 +508,8 @@ function renderFleet(d) {
 
 function renderFriends(d) {
   var box = $("friends"), table = d.tables.friends;
-  if (!table || typeof table !== "object" || !Object.keys(table).length) {
-    if (!box._empty) {
-      // No friends: the panel stays empty, with no explanatory text (the owner, 2026-10-20:
-      // "I don't want to see that text in the empty friends table. just leave empty").
-      box._map = null; box._head = null; box.textContent = ""; box._empty = true;
-    }
-    setText($("friends-sub"), "");
-    return;
-  }
-  if (box._empty) { box.textContent = ""; box._empty = false; }
-  var r = fleetLike(box, table, "friend", sharedScale(d), true);
+  if (!table || typeof table !== "object") table = {};
+  var r = fleetLike(box, table, "friend", sharedScale(d), true, sharedDigits(d));
   setText($("friends-sub"), r.t.up + " up · " + r.t.held + " held · " + r.t.down + " down" + sideWord(d.friends_work, d.friends_tiers));
   setSideOff(box.closest("section"), d.friends_work);
 }
@@ -628,7 +633,7 @@ function renderHero(d, s, ft) {
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
   setText($("cost"), money(recorded));
   setText($("cost-whole"), dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout", "just round up to nearest dollar")
-  var per = landed ? money(Math.ceil(recorded / landed)) + " per card" : "";
+  var per = landed ? money((recorded + BigInt(landed) - 1n) / BigInt(landed)) + " per card" : "";
   setText($("cost-per"), per || " ");
   setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
   inflightLast = s.sum; renderInflight(s.sum);
@@ -719,31 +724,24 @@ function tierCounts(obj) { // {flash: "12", pro: 3} -> [[tier, n], ...] sorted b
   return out;
 }
 // The Cost breakdown (the owner 2026-10-04 2:43 to 3:05 PM): the pie is the spend by tier and the
-// tier line in the panel's header is its legend, open or folded. The spend per tier is summed
-// over every stream (tables.work[s].cost_by_tier); a tier at $0 is left out of the pie, the
-// legend and the table alike. One format for the whole panel, decided once: cents (rounded up)
-// when every tier shown is under $10, else whole dollars rounded up ("so we don't get weird
-// stuff where the tiers' rounded $ values don't match the pie"). The pie is drawn from the
-// values the legend shows, in the legend's order: by spend, most first.
+// tier line in the panel's header shows rounded whole dollars. The table below
+// retains cents. The pie follows the rounded legend values.
 function tierSpend(d) {
   var work = (d.tables && d.tables.work) || {}, byTier = {};
   Object.keys(work).forEach(function (k) {
     var b = work[k].cost_by_tier; if (!b || typeof b !== "object") return;
     // the four tiers alone: a record with no tier ("untiered") is no tier and is left out (the owner 2026-10-04 3:10 PM)
-    TIERS.forEach(function (t) { var c = cents(b[t]); if (c) byTier[t] = (byTier[t] || 0) + c; });
+    TIERS.forEach(function (t) { var c = cents(b[t]); if (c) byTier[t] = (byTier[t] || 0n) + c; });
   });
-  var order = Object.keys(byTier).sort(function (a, b) { return byTier[b] - byTier[a] || a.localeCompare(b); });
-  var inCents = order.length > 0 && order.every(function (t) { return byTier[t] < 1000; });
-  var fmt = inCents ? money : dollars;
-  // a value as shown: the cents, or the whole dollars rounded up, in cents
-  var shown = function (c) { return inCents ? c : Math.ceil(c / 100 - 1e-9) * 100; };
-  return { byTier: byTier, order: order, fmt: fmt, shown: shown, unit: inCents ? 1 : 100 };
+  var order = Object.keys(byTier).sort(function (a, b) { return byTier[b] > byTier[a] ? 1 : byTier[b] < byTier[a] ? -1 : a.localeCompare(b); });
+  var shown = function (c) { return ((c + 99n) / 100n) * 100n; };
+  return { byTier: byTier, order: order, fmt: dollars, shown: shown };
 }
 function renderPie(d) {
   var svg = $("pie"); if (!svg) return; // no legend below the chart: its legend is the panel's header line
   var sp = tierSpend(d), vals = sp.order.map(function (t) { return [t, sp.shown(sp.byTier[t])]; });
-  var total = vals.reduce(function (a, v) { return a + v[1]; }, 0);
-  var key = JSON.stringify(vals) + "|" + sp.fmt(total);
+  var total = vals.reduce(function (a, v) { return a + v[1]; }, 0n);
+  var key = JSON.stringify(vals, function (_, v) { return typeof v === "bigint" ? v.toString() : v; }) + "|" + sp.fmt(total);
   if (svg._key === key) return; // the same pie is not drawn again
   svg._key = key;
   while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -756,7 +754,7 @@ function renderPie(d) {
   }
   var a0 = -Math.PI / 2;
   vals.forEach(function (v) {
-    var frac = v[1] / total, a1 = a0 + frac * 2 * Math.PI, p = document.createElementNS(ns, "path");
+    var frac = Number(v[1]) / Number(total), a1 = a0 + frac * 2 * Math.PI, p = document.createElementNS(ns, "path");
     if (frac >= 0.9999) { p.setAttribute("d", "M50,2 A48,48 0 1 1 49.99,2 Z"); }
     else {
       var x0 = 50 + 48 * Math.cos(a0), y0 = 50 + 48 * Math.sin(a0), x1 = 50 + 48 * Math.cos(a1), y1 = 50 + 48 * Math.sin(a1);
@@ -795,13 +793,13 @@ function renderTopStreams(d) {
   var box = $("top-streams"); if (!box) return;
   lastSpendData = d;
   var work = (d.tables && d.tables.work) || {}, rows = [];
-  var sp = tierSpend(d), byTier = sp.byTier, order = sp.order, fmt = sp.fmt;
+  var sp = tierSpend(d), byTier = sp.byTier, order = sp.order;
   Object.keys(work).forEach(function (k) {
     var w = work[k], ct = cents(w.cost); if (!ct) return;
     var n = {}; FLOW.forEach(function (c) { n[c] = parseInt(w[c], 10) || 0; });
-    rows.push({ name: k, cost: ct, n: n, per: n.landed ? Math.ceil(ct / n.landed) : null, tiers: tierCounts(w.tiers), byTier: w.cost_by_tier || null });
+    rows.push({ name: k, cost: ct, n: n, per: n.landed ? (ct + BigInt(n.landed) - 1n) / BigInt(n.landed) : null, tiers: tierCounts(w.tiers), byTier: w.cost_by_tier || null });
   });
-  rows.sort(function (a, b) { return b.cost - a.cost; });
+  rows.sort(function (a, b) { return b.cost > a.cost ? 1 : b.cost < a.cost ? -1 : 0; });
   var cols = String(order.length + 1); // the tiers with spend, then total
   if (box.style.getPropertyValue("--tier-cols") !== cols) box.style.setProperty("--tier-cols", cols);
   var pie = $("pie"), rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -817,7 +815,7 @@ function renderTopStreams(d) {
   order.forEach(function (t, i) { putKid(head, 1 + i, "num", t); }); // plain headers, as every table's: the color keys are the legend's alone
   putKid(head, cellCount - 1, "num", window.matchMedia("(max-width: 1100px)").matches ? "cost" : "total"); // the phone shows only stream | its cost (the owner 2026-10-12 ~00:55Z: "it's the cost per stream")
   var shown = rows.slice(0, n);
-  var byName = {}; shown.forEach(function (r) { byName[r.name] = r; });
+  var byName = Object.create(null); shown.forEach(function (r) { byName[r.name] = r; });
   syncRows(box, head, shown.map(function (r) { return r.name; }), function () {
     return { node: el("div", "row") };
   }, function (r, k) {
@@ -826,9 +824,9 @@ function renderTopStreams(d) {
     putKid(r.node, 0, "name", k);
     order.forEach(function (t, i) { // the stream's spend on the tier, in the panel's format
       var c = row.byTier && cents(row.byTier[t]);
-      putKid(r.node, 1 + i, "num" + (c ? "" : " faint"), c ? fmt(c) : "-");
+      putKid(r.node, 1 + i, "num" + (c ? "" : " faint"), c ? money(c) : "-");
     });
-    putKid(r.node, cellCount - 1, "num", fmt(row.cost));
+    putKid(r.node, cellCount - 1, "num", money(row.cost));
   });
   // with no stream spending, the table keeps its row lines and stays blank: no message (the owner 2026-10-12 ~01:07Z)
   var blankN = rows.length ? 0 : (pie && pie.clientWidth ? Math.max(3, Math.round((pie.clientWidth - rem) / (5 * rem))) : 10);
@@ -856,7 +854,7 @@ function renderTopStreams(d) {
       order.forEach(function (t, i) {
         var p = ts.children[i], bg = tierColor(t);
         if (p.children[0].style.background !== bg) p.children[0].style.background = bg;
-        setText(p.children[1], t); setText(p.children[2], fmt(sp.shown(byTier[t])));
+        setText(p.children[1], t); setText(p.children[2], dollars(sp.shown(byTier[t])));
       });
     }
   }
@@ -876,8 +874,8 @@ var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
 
 // ---------- sections ----------
 function streamOrder(d) {
-  var work = d.tables.work || {}, keys = [], seen = {};
-  (d.streams || []).forEach(function (s) { if (work[s.Stream] && !seen[s.Stream]) { keys.push(s.Stream); seen[s.Stream] = 1; } });
+  var work = d.tables.work || {}, keys = [], seen = Object.create(null);
+  (d.streams || []).forEach(function (s) { if (Object.prototype.hasOwnProperty.call(work, s.Stream) && !seen[s.Stream]) { keys.push(s.Stream); seen[s.Stream] = 1; } });
   Object.keys(work).sort().forEach(function (k) { if (!seen[k]) keys.push(k); });
   return keys;
 }

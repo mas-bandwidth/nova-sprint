@@ -206,9 +206,7 @@ func TestColdRowsEveryState(t *testing.T) {
 				r := w.rows()["r1"]
 				plan, ref := MoveRow(r, e)
 				want := map[string]bool{"Seen": down, "Gone": !down, "Hold": !held, "Unhold": held}[name(e)]
-				if v, ok := e.(Width); ok {
-					want = v.N != r.Width
-				}
+				// Width is refused in every state: it is the roster's (round 22).
 				label := fmt.Sprintf("%s down=%v held=%v", name(e), down, held)
 				if !want {
 					assert.NotNil(t, ref, label)
@@ -283,7 +281,7 @@ func TestColdWalk(t *testing.T) {
 	// Released is not in the list: a Withdraw of the work consumer releases
 	// its producer in the same plan, so the walk never finds one to release.
 	for _, e := range []string{"Resolve", "Start", "Take", "Report", "Finished", "Broken", "Faulted", "AskRead", "ReadYes", "ReadFix",
-		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "Width", "HoldStream"} {
+		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
 		assert.Positive(t, seen[e], "the walk never accepted %s", e)
 	}
 	t.Logf("accepted ops by event over 100 seeds x 800 steps: %v", seen)
@@ -295,8 +293,16 @@ type coldFinal struct {
 }
 
 func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
+	return coldWalkTraced(t, seed, steps, false)
+}
+
+// coldWalkTraced is the walk; traced records it for trace validation
+// (card/trace_test.go): one record per accepted op.
+func coldWalkTraced(t *testing.T, seed int64, steps int, traced bool) map[string]int {
 	rng := rand.New(rand.NewSource(seed))
 	w := newWorld(t, producer("p1"), producer("p2", "p1"), producer("p3"), store.PutCard{ID: "g1", Kind: "sentinel", Needs: []string{"p2"}})
+	tr := newCardTrace(w, traced)
+	defer tr.done(seed)
 	finals := map[string]coldFinal{}
 	accepted := map[string]int{}
 	for i := 0; i < steps; i++ {
@@ -315,6 +321,7 @@ func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
 		}
 		accepted[strings.Fields(label)[0]]++
 		w.landed(plan)
+		tr.step(label, plan)
 		coldInvariants(t, w.snap(), finals, fmt.Sprintf("seed %d step %d %s", seed, i, label))
 	}
 	return accepted
@@ -323,6 +330,7 @@ func coldWalk(t *testing.T, seed int64, steps int) map[string]int {
 // coldStep picks one move at random: a producer, consumer or row event, or a
 // stream hold toggle (layer 3's raw op, to exercise Park).
 func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
+	w.ev = nil // the trace's: a raw hold has no event
 	all, cons := w.all()
 	var ids []string
 	for id := range all {
@@ -344,6 +352,7 @@ func (w *world) coldStep(rng *rand.Rand) (Plan, string, string, bool) {
 		r := w.rows()[pick(rowNames[:3])]
 		e := []Event{Seen{}, Gone{}, Width{N: 1 + rng.Intn(3)}, Hold{Reason: "h"}, Unhold{Reason: "u"}}[rng.Intn(5)]
 		plan, ref := MoveRow(r, e)
+		w.ev = e
 		return plan, name(e) + " " + r.Name, "", ref == nil
 	}
 	held := w.snap().Streams["s1"].Held
@@ -385,6 +394,7 @@ func (w *world) coldStepCard(rng *rand.Rand, ids []string, all map[string]Card, 
 	e := evs[rng.Intn(len(evs))]
 	st := w.snap().Streams[p.Stream]
 	plan, r := Move(p, cs, w.rows(), Stream{Name: st.Name, Held: st.Held}, all, e)
+	w.ev = e
 	return plan, name(e) + " " + p.ID, p.ID, r == nil
 }
 
@@ -423,6 +433,7 @@ func (w *world) coldStepConsumer(rng *rand.Rand, ids []string, all map[string]Ca
 		e = v
 	}
 	plan, r := MoveConsumer(c, p, w.rows()[c.Holder], e)
+	w.ev = e
 	return plan, name(e) + " " + c.ID, c.ID, r == nil
 }
 
@@ -476,7 +487,7 @@ func coldInvariants(t *testing.T, s store.Snapshot, finals map[string]coldFinal,
 		assert.LessOrEqual(t, n, 1, "%s: producer %s has %d live work consumers", label, p, n)
 	}
 	for name, n := range working {
-		assert.LessOrEqual(t, n, s.Rows[name].Width, "%s: row %s over width", label, name)
+		assert.LessOrEqual(t, n, worldWidth[name], "%s: row %s over width", label, name)
 	}
 	for _, p := range s.Cards {
 		switch {
@@ -687,9 +698,8 @@ func TestColdDefectPlansTheStoreFindsInvalid(t *testing.T) {
 			return MoveConsumer(c, w.card("p1"), w.rows()["r1"], Report{Row: "r1", Result: "fail", Cost: -1})
 		}},
 		{"score past int32", func(w *world) (Plan, *Refusal) { return w.plan("p1", Rescore{Score: math.MaxInt32 + 1}) }},
-		{"width past int32", func(w *world) (Plan, *Refusal) { return MoveRow(w.rows()["r1"], Width{N: math.MaxInt32 + 1}) }},
 		{"NUL in branch", func(w *world) (Plan, *Refusal) { return w.plan("p1", Start{Row: "r1", Branch: "b\x00", Base: base}) }},
-		{"row with no name", func(w *world) (Plan, *Refusal) { return MoveRow(Row{}, Width{N: 1}) }},
+		{"row with no name", func(w *world) (Plan, *Refusal) { return MoveRow(Row{}, Hold{}) }},
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {

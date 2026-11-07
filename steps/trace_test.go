@@ -279,6 +279,9 @@ func (w *traceWalk) takeOne() {
 	}
 	id := ids[w.rng.Intn(len(ids))]
 	c := w.snap().Cards[id]
+	if !w.roomToTake(c.Holder) {
+		return
+	}
 	pl, r := w.consumer(id, card.Take{Row: c.Holder})
 	if r != nil || !w.apply("take", pl.Expect, pl.Writes...).Accepted {
 		return
@@ -369,7 +372,7 @@ func (w *traceWalk) unhold(stream string) {
 }
 
 func (w *traceWalk) flip(row string) {
-	r := card.RowFromStore(w.snap().Rows[row])
+	r := w.cardRow(w.snap().Rows[row])
 	var e card.Event = card.Gone{}
 	action := "Gone"
 	if r.State == "down" {
@@ -492,12 +495,12 @@ func TestTraceWalk(t *testing.T) {
 	}
 }
 
-// TestTraceFixtures writes the fixed seed set's traces under NOVA_TRACES
-// (steps-walk-<scenario>-<seed>), for tla/check-trace.sh; without it the
-// walk runs and writes nothing.
+// TestTraceFixtures writes the fixed seed set's traces under NOVA_TRACE_DIR
+// (steps-walk-<scenario>-<seed>), for tla/make-traces.sh and check-trace.sh;
+// without it the walk runs and writes nothing.
 func TestTraceFixtures(t *testing.T) {
 	modelDefaults(t)
-	dir := os.Getenv("NOVA_TRACES")
+	dir := os.Getenv("NOVA_TRACE_DIR") // make-traces.sh's, absolute
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = filepath.Join("..", dir) // relative to the repository root, as CI gives it
 	}

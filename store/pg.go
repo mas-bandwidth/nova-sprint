@@ -21,23 +21,34 @@ var schemaSQL string
 // schema's hash. Version 2 adds to version 1: the card columns kind (with
 // sentinel), of, after, author, base_sha, prior_head, result (with fault),
 // bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding and red; the card
-// states blocked and done; the row columns gen, held, tiers, model, harness
-// and reason; the tables judgements and cursors; the events' policy; the meta
+// states blocked and done; the row columns gen, held and reason (round 22
+// dropped kind, width, tiers, model and harness: configuration, the
+// roster's); the tables judgements and cursors; the events' policy; the meta
 // hash; the triggers that keep a card's kind, of, stream, holder, tier, id
 // and epoch, a row's, stream's or judgement's key and epoch, a policy version's
 // columns but active, and the log (TRUNCATE included)
 // fixed; and the CHECKs that keep every count at 0 or more. There is no
 // upgrade path from version 1: a store at version 1 is refused like any
-// other version. Within version 2 there is one: a store made by round 16's
-// schema (round16Hash) is upgraded by Migrate (round 17's red column).
+// other version. Within version 2 there are two: a store made by round 16's
+// schema (round16Hash) or by round 17's, the one every round to 21 carried
+// (round21Hash), is upgraded by Migrate (round 17's red column, round 22's
+// dropped row columns).
 const SchemaVersion = 2
 
 // round16Hash is the schema hash of round 16's schema.sql
-// (testdata/schema-round16.sql, 36c1bbd6), the one earlier build of version
-// 2 Migrate upgrades: running schema.sql on it adds cards.red (false on every
-// card, with its CHECK) and changes nothing else, then the new hash is
-// recorded. Any other hash is still refused.
+// (testdata/schema-round16.sql, 36c1bbd6), an earlier build of version 2
+// Migrate upgrades: running schema.sql on it adds cards.red (false on every
+// card, with its CHECK), drops round 22's five row columns and the
+// cards_live index, and changes nothing else, then the new hash is
+// recorded. Any hash but these two and schemaHash is still refused.
 const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f0434187373e"
+
+// round21Hash is the schema hash of round 17's schema.sql, which every
+// round to 21 carried (testdata/schema-round21.sql): running schema.sql on
+// it drops sprint.rows' kind, width, tiers, model and harness (ALTER TABLE
+// DROP COLUMN, round 22) and the cards_live index, in Migrate's one
+// transaction, then the new hash is recorded.
+const round21Hash = "cbe47774a69cf22749b6d414e1bc5689104820199313088df41975ef1771d491"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
@@ -133,9 +144,10 @@ func (p *PG) Close() { p.pool.Close() }
 // sprint that holds anything but no sprint.meta (not made by nova-sprint):
 // any object of any kind in the namespace, which PostgreSQL records as a
 // pg_depend row on it (a relation, type, function, operator, collation, text
-// search object, operator family, ...). The one other hash it takes is
-// round16Hash: schema.sql adds cards.red to that store and the new hash is
-// recorded, in the same transaction. When schema sprint already exists it
+// search object, operator family, ...). The two other hashes it takes are
+// round16Hash and round21Hash: schema.sql adds cards.red to a round 16
+// store and drops the five configuration columns of sprint.rows from either
+// (round 22), and the new hash is recorded, in the same transaction. When schema sprint already exists it
 // skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
 // on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.

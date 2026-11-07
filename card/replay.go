@@ -532,8 +532,6 @@ func foldWrite(s records, w store.Write) {
 		editStream(s, x.Stream, x.Held)
 	case store.SetRowState:
 		editRow(s, x.Row, func(r *Row) { r.State = x.State })
-	case store.SetRowWidth:
-		editRow(s, x.Row, func(r *Row) { r.Width = x.Width })
 	case store.SetRowFlaps:
 		editRow(s, x.Row, func(r *Row) { r.Flaps = x.Flaps })
 	case store.SetRowHeld:
