@@ -21,15 +21,19 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 		return
 	}
 	heads := e.checkStreams(ctx, r, snap)
+	e.checkPolicy(ctx, r, snap)
+	e.checkCards(ctx, r, snap)
+	checkWorking(r, snap, who)
 	checkJudgements(r, snap)
 	running := e.checkRun(ctx, r, who)
 	e.checkWidth(ctx, r, snap, heads, running)
 	e.checkLandings(ctx, r, snap, heads, running)
 }
 
-// checkStreams is one line per stream: its repository reachable at its
-// clone address (git ls-remote through the git edge, every stream at once)
-// and its base branch there. It returns each readable stream's base tip.
+// checkStreams is one line per stream: stream add's admission again
+// (admitStream: its repository reachable at its clone address and its base
+// there, its card branches creatable, its forge able to act), every stream
+// at once. It returns each readable stream's base tip.
 func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Snapshot) map[string]string {
 	heads := map[string]string{}
 	if len(snap.Streams) == 0 {
@@ -44,15 +48,13 @@ func (e *Engine) checkStreams(ctx context.Context, r *checkReport, snap store.Sn
 	shas, errs := make([]string, len(ss)), make([]error, len(ss))
 	var wg sync.WaitGroup
 	for i, s := range ss { // the streams' ls-remotes are independent: all at once
-		wg.Go(func() { shas[i], errs[i] = e.baseTip(ctx, s, "nova-sprint check") })
+		wg.Go(func() { shas[i], errs[i] = e.admitStream(ctx, s, "nova-sprint check") })
 	}
 	wg.Wait()
 	for i, s := range ss {
 		sha, err := shas[i], errs[i]
 		if err != nil {
-			f := *classify(err)
-			f.What = "stream " + s.Name + ": " + f.What
-			r.red(&f)
+			r.red(admissionWhat(s.Name, err))
 			continue
 		}
 		heads[s.Name] = sha
