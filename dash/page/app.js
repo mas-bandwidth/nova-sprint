@@ -711,11 +711,8 @@ function renderHero(d, s, ft) {
   var perC = cs ? cents(cs.per_card) : null;
   // the tile is the API spend; kin on subscription seats are free, and their tokens are shown beside
   // the dollars (the owner 2026-11-07: "api rate work should be priced *exactly*. friend sub rate should be free.")
-  var per = recorded !== null ? "API" : "";
-  if (perC !== null) per += " \u00b7 " + money(perC) + " per priced card";
-  if (cs && int(cs.seat_runs)) per = (per ? per + " \u00b7 " : "") + (cs.seat_tokens || "0") + " tokens on seats";
-// Glenn 2026-11-07: the tile shows API spend only; unpriced counts are the coordinator's (check), not the human's
-//   if (unp) per = (per ? per + " \u00b7 " : "") + unp + " unpriced";
+  // Glenn 2026-11-07: the line under the total is "$x per card" and nothing else, ever.
+  var per = perC !== null ? money(perC) + " per-card" : "";
   setText($("cost-per"), per || " ");
   var missing = cs && cs.missing_prices && cs.missing_prices.length ? " (no price for " + cs.missing_prices.join(", ") + ")" : "";
   setTitle($("cost"), cs ? int(cs.priced_runs) + " API runs priced from their tokens (" + (cs.api_tokens || "0") + " tokens); " + unp + " finished API runs unpriced: " + int(cs.unpriced_no_tokens) + " reported no tokens, " + int(cs.unpriced_no_price) + " have no price in the policy" + missing + "; " + int(cs.seat_runs) + " runs on subscription seats, free (" + (cs.seat_tokens || "0") + " tokens); per priced card is over the " + int(cs.priced_cards) + " of " + int(cs.landed_cards) + " cards landed in this run whose own API runs were priced" : "");

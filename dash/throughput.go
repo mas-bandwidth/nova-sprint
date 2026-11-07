@@ -36,6 +36,13 @@ func (c *Cache) rate() (float64, float64) {
 
 // rateWindow is rate plus the landings inside the window (0 in the warmup).
 func (c *Cache) rateWindow() (float64, float64, int) {
+	// the store's landings when the cache has them (the samples start empty
+	// after every run restart and read 0 for ten minutes: Glenn 2026-11-07)
+	if c.landingsOK {
+		if r, w, n, _ := landingRate(c.landings, c.clock()); r > 0 {
+			return r, w, n
+		}
+	}
 	if len(c.samples) < 2 {
 		return 0, 0, 0
 	}
