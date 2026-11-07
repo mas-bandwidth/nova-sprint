@@ -9,11 +9,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 const sprintPasswordName = "NOVA_SPRINT_PG_PASSWORD"
@@ -43,6 +45,12 @@ func scramVerifier(password string, salt []byte, iterations int) (string, error)
 // ProvisionSprintRole runs only in a child under nova-secrets exec. SQL contains
 // a SCRAM verifier, never plaintext. Server logs may contain that sensitive verifier.
 func ProvisionSprintRole(ctx context.Context, dsn, adminPassword, password string) error {
+	return provisionSprintRole(ctx, dsn, adminPassword, password, false)
+}
+
+var errSprintCredentialMismatch = errors.New("stored sprint credential rejected")
+
+func provisionSprintRole(ctx context.Context, dsn, adminPassword, password string, fresh bool) error {
 	if adminPassword == "" || password == "" {
 		return fmt.Errorf("role credential unavailable")
 	}
@@ -61,13 +69,22 @@ func ProvisionSprintRole(ctx context.Context, dsn, adminPassword, password strin
 		return fmt.Errorf("postgres admin unavailable")
 	}
 	defer closeSetupConnection(conn)
-	ready, err := roleReady(ctx, conn, cfg, password)
+	exists, authenticated, owner, err := roleReady(ctx, conn, cfg, password)
 	if err != nil {
 		return err
 	}
-	if ready {
+	if !fresh && authenticated && owner != nil {
 		return nil
 	}
+	if !fresh && !authenticated {
+		return errSprintCredentialMismatch
+	}
+	if fresh && exists && owner != nil {
+		if err = verifyOwnedSprintSchema(ctx, cfg, adminPassword); err != nil {
+			return err
+		}
+	}
+
 	var salt [16]byte
 	if _, err = rand.Read(salt[:]); err != nil {
 		return fmt.Errorf("role credential unavailable")
@@ -76,20 +93,20 @@ func ProvisionSprintRole(ctx context.Context, dsn, adminPassword, password strin
 	if err != nil {
 		return fmt.Errorf("role credential unavailable")
 	}
-	return setSprintRole(ctx, conn, verifier)
+	return setSprintRole(ctx, conn, verifier, fresh)
 }
-func roleReady(ctx context.Context, admin *pgx.Conn, cfg *pgx.ConnConfig, password string) (bool, error) {
+func roleReady(ctx context.Context, admin *pgx.Conn, cfg *pgx.ConnConfig, password string) (bool, bool, *string, error) {
 	var exists bool
 	var owner *string
 	err := admin.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='nova_sprint'), (SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname='sprint')`).Scan(&exists, &owner)
 	if err != nil {
-		return false, fmt.Errorf("role setup failed")
+		return false, false, nil, fmt.Errorf("role setup failed")
 	}
 	if owner != nil && *owner != "nova_sprint" {
-		return false, fmt.Errorf("sprint schema has another owner")
+		return false, false, owner, fmt.Errorf("sprint schema has another owner")
 	}
 	if !exists {
-		return false, nil
+		return false, false, owner, nil
 	}
 	test := cfg.Copy()
 	test.User = "nova_sprint"
@@ -98,14 +115,32 @@ func roleReady(ctx context.Context, admin *pgx.Conn, cfg *pgx.ConnConfig, passwo
 	if err != nil {
 		var pe *pgconn.PgError
 		if errors.As(err, &pe) && pe.Code == "28P01" {
-			return false, nil
+			return true, false, owner, nil
 		}
-		return false, fmt.Errorf("sprint role authentication unavailable")
+		return false, false, owner, fmt.Errorf("sprint role authentication unavailable")
 	}
 	_ = closeSetupConnection(conn)
-	return owner != nil, nil
+	return true, true, owner, nil
 }
-func setSprintRole(ctx context.Context, conn *pgx.Conn, verifier string) error {
+
+func verifyOwnedSprintSchema(ctx context.Context, cfg *pgx.ConnConfig, password string) error {
+	u, err := url.Parse(cfg.ConnString())
+	if err != nil {
+		return fmt.Errorf("schema identity unavailable")
+	}
+	u.User = url.User("nova_admin")
+	pg, err := store.Open(ctx, u.String(), password)
+	if err != nil {
+		return fmt.Errorf("schema identity unavailable")
+	}
+	defer pg.Close()
+	id, err := pg.Schema(ctx)
+	if err != nil || !id.Present || !id.Current || id.Owner != "nova_sprint" {
+		return fmt.Errorf("schema identity unavailable")
+	}
+	return nil
+}
+func setSprintRole(ctx context.Context, conn *pgx.Conn, verifier string, fresh bool) error {
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("role setup failed")
@@ -129,13 +164,19 @@ func setSprintRole(ctx context.Context, conn *pgx.Conn, verifier string) error {
 		return fmt.Errorf("role setup failed")
 	}
 	if !role {
+		if !fresh {
+			return errSprintCredentialMismatch
+		}
 		if _, err = tx.Exec(ctx, "CREATE ROLE nova_sprint LOGIN"); err != nil {
 			return fmt.Errorf("role creation failed")
 		}
 	}
-	if _, err = tx.Exec(ctx, "ALTER ROLE nova_sprint LOGIN PASSWORD '"+verifier+"'"); err != nil {
-		return fmt.Errorf("role credential setup failed")
+	if fresh {
+		if _, err = tx.Exec(ctx, "ALTER ROLE nova_sprint LOGIN PASSWORD '"+verifier+"'"); err != nil {
+			return fmt.Errorf("role credential setup failed")
+		}
 	}
+
 	if owner == nil {
 		if err = createSprintSchema(ctx, tx); err != nil {
 			return err
@@ -175,15 +216,25 @@ func createSprintSchema(ctx context.Context, tx pgx.Tx) error {
 }
 
 // InternalSprintRole reads only credentials injected into its dedicated child.
-func InternalSprintRole(ctx context.Context) int {
-	if ProvisionSprintRole(ctx, os.Getenv("NOVA_PG_DSN"), os.Getenv("NOVA_PG_ADMIN_PASSWORD"), os.Getenv(sprintPasswordName)) != nil {
+func InternalSprintRole(ctx context.Context) int { return internalSprintRole(ctx, false) }
+
+// InternalSprintRoleFresh is used only after this up invocation saved a new secret.
+func InternalSprintRoleFresh(ctx context.Context) int { return internalSprintRole(ctx, true) }
+
+const SprintRoleCredentialMismatchExit = 3
+
+func internalSprintRole(ctx context.Context, fresh bool) int {
+	err := provisionSprintRole(ctx, os.Getenv("NOVA_PG_DSN"), os.Getenv("NOVA_PG_ADMIN_PASSWORD"), os.Getenv(sprintPasswordName), fresh)
+	if errors.Is(err, errSprintCredentialMismatch) {
+		return SprintRoleCredentialMismatchExit
+	}
+	if err != nil {
 		return 1
 	}
 	return 0
 }
 
-// InternalSprintRoleExists is a read-only bootstrap preflight. A role that
-// exists without its durable control-seat credential is never rotated.
+// InternalSprintRoleExists supports the existing read-only internal route.
 func InternalSprintRoleExists(ctx context.Context) (bool, error) {
 	dsn, password := os.Getenv("NOVA_PG_DSN"), os.Getenv("NOVA_PG_ADMIN_PASSWORD")
 	if dsn == "" || password == "" {
@@ -197,8 +248,7 @@ func InternalSprintRoleExists(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("invalid postgres configuration")
 	}
-	cfg.User = "nova_admin"
-	cfg.Password = password
+	cfg.User, cfg.Password = "nova_admin", password
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		return false, fmt.Errorf("role inspection unavailable")
