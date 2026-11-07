@@ -789,62 +789,81 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverPreempted` | pre | none | violated: a blocker preempts a live consumer |
 | `reach/CardNeverInThisOpMerged` | mergedeps | none | violated: a need fails and a later move of the op moves its dependant |
 
-## Results, the CI jar on hetzner2, 2026-11-06 (d93ceeae, round 4)
+## Results, the CI jar on hetzner2, 2026-11-07 (round 7, card/ at v2-card-fix4 4bb1a43b)
 
-Every run (store and card) in one parallel pass with `run-tlc.sh`, the
-passing runs on 4 workers each and the rest on 1, so the times are under
-full contention. `ci-tlc.sh` then passed: 94 runs, 94 ok, exit 0 (a first
-pass lost CardDeps to "Cannot allocate memory" while another user's TLC
-jobs held about 30 GB; rerun clean).
+Every run (store and card) in one parallel pass with `run-tlc.sh` (each JVM
+at `-Xmx3g`), the passing runs on 4 workers each and the rest on 1, on a
+host other users' TLC jobs were also loading, so the times are under full
+contention. CardDeps was OOM-killed in that pass (exit 137, the host short
+of memory) and passed rerun alone at `-Xmx8g`. Of the card runs: 7 passing
+scenarios pass, 36 witnesses and 17 reach checks each report their target
+invariant violated (60 runs).
 
 | Module | Result | Generated / distinct | Depth | Time |
 |---|---|---|---|---|
-| `CardMachine` (life) | No error has been found | 5808819 / 1359931 | 24 | 2min 4s |
-| `CardDeps` (deps) | No error has been found | 21525714 / 4031516 | 25 | 9min 36s |
-| `CardPreempt` (pre) | No error has been found | 5687866 / 943758 | 27 | 2min 0s |
-| `CardReads` (reads) | No error has been found | 79927 / 27674 | 17 | 22s |
+| `CardMachine` (life) | No error has been found | 5808819 / 1359931 | 24 | 3min 00s |
+| `CardDeps` (deps) | No error has been found | 21525714 / 4031516 | 25 | 22min 30s (rerun alone) |
+| `CardPreempt` (pre) | No error has been found | 5688130 / 943790 | 27 | 2min 58s |
+| `CardReads` (reads) | No error has been found | 79927 / 27674 | 17 | 30s |
+| `CardMerge` (merge) | No error has been found | 220392 / 41428 | 17 | 32s |
+| `CardMergePre` (mergepre) | No error has been found | 7102298 / 1054188 | 26 | 2min 50s |
+| `CardMergeDeps` (mergedeps) | No error has been found | 216520 / 50135 | 25 | 45s |
+| `CardAuthorReads` | ReaderNeverAuthor violated | 10705 / 3788 | 7 | 29s |
+| `CardDottedId` | NeverStranded violated | 395 / 374 | 3 | 18s |
+| `CardEditUnderLive` | EditNoLive violated | 442 / 232 | 4 | 15s |
+| `CardFailRepeatsPrior` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 30s |
+| `CardFaultBounces` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 26s |
+| `CardFaultBumpsAttempt` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 22s |
+| `CardHandPlanPartial` | AttemptOnlyOnStart violated | 820 / 367 | 4 | 18s |
+| `CardHeldStreamReady` | ParkedUnderHold violated | 10428 / 3649 | 7 | 27s |
+| `CardInThisOpAlone` | InThisOpOnFailedNeed violated | 22 / 10 | 2 | 11s |
 | `CardLandedMoves` | FinalNeverMoves violated | 56 / 46 | 3 | 9s |
-| `CardAuthorReads` | ReaderNeverAuthor violated | 10705 / 3788 | 7 | 20s |
-| `CardRedAdvances` | RedNeverAdvances violated | 408537 / 130809 | 11 | 59s |
-| `CardNeedFailedIgnored` | NeedFailedTakesDependants violated | 6 / 4 | 2 | 8s |
-| `CardNonHolderReports` | OnlyHolderActs violated | 2074 / 794 | 5 | 17s |
-| `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 439 / 229 | 4 | 10s |
-| `CardStaleReport` | OldAttemptNeverMoves violated | 30764 / 10902 | 8 | 23s |
-| `CardYesOnZero` | ReadYesNeedsYes violated | 10703 / 3786 | 7 | 21s |
-| `CardFaultBumpsAttempt` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 19s |
-| `CardFaultBounces` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 19s |
-| `CardEditUnderLive` | EditNoLive violated | 442 / 232 | 4 | 9s |
-| `CardReadyCounted` | TakeBelowWidth violated | 36 / 31 | 3 | 8s |
-| `CardNeedsCycle` | NeedsAcyclic violated | 280 / 255 | 3 | 16s |
-| `CardWithdrawLeavesWorking` | WithdrawReleasesInOneStep violated | 439 / 229 | 4 | 14s |
-| `CardReadFixOnZero` | ReadFixNeedsFix violated | 10703 / 3786 | 7 | 21s |
-| `CardHeldStreamReady` | ParkedUnderHold violated | 10428 / 3649 | 7 | 20s |
-| `CardWaiveRedWithoutRead` | WaiveRedNeedsPriorRead violated | 1719999 / 476019 | 14 | 2min 13s |
-| `CardRelinkAfterCycle` | OrderAcyclic violated | 7380 / 3256 | 4 | 20s |
-| `CardReadReportsFail` | ResultsByKind violated | 84689 / 29482 | 9 | 28s |
-| `CardReplaceByFinal` | ReplaceByLive violated | 22 / 20 | 3 | 7s |
-| `CardTwoReadsOneRow` | OneLiveReadPerRow violated | 31941 / 11338 | 8 | 23s |
-| `CardPriorRepeated` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 23s |
-| `CardWaiveRedWithoutRed` (redw) | WaiveRedNeedsRed violated | 977451 / 438683 | 20 | 2min 6s |
-| reach `CardNeverLanded` | NeverLanded violated | 408529 / 130804 | 11 | 51s |
-| reach `CardNeverFixed` | NeverFixed violated | 200192 / 67405 | 10 | 34s |
-| reach `CardNeverRed` | NeverRed violated | 408537 / 130809 | 11 | 51s |
-| reach `CardNeverYesAfterRed` | NeverYesAfterRed violated | 2227352 / 591860 | 15 | 2min 15s |
-| reach `CardNeverWaivedRed` | NeverWaivedRed violated | 747797 / 229675 | 12 | 1min 8s |
-| reach `CardNeverFaultRedealt` | NeverFaultRedealt violated | 10458 / 3662 | 7 | 18s |
-| reach `CardNeverFindingCarried` | NeverFindingCarried violated | 408827 / 130955 | 11 | 51s |
-| reach `CardNeverBlocked` | NeverBlocked violated | 35 / 30 | 3 | 8s |
-| reach `CardNeverSentinelReached` | NeverSentinelReached violated | 747709 / 229623 | 12 | 1min 9s |
-| reach `CardNeverNeedFailed` | NeverNeedFailed violated | 278 / 253 | 3 | 9s |
-| reach `CardNeverInThisOp` | NeverInThisOp violated | 12 / 6 | 2 | 8s |
-| reach `CardNeverRelinked` | NeverRelinked violated | 14 / 8 | 2 | 8s |
-| reach `CardNeverAdded` | NeverAdded violated | 27 / 21 | 2 | 8s |
-| reach `CardNeverSentinelNeeded` | NeverSentinelNeeded violated | 19 / 13 | 2 | 9s |
-| reach `CardNeverAskReads` | NeverAskReads violated | 1333 / 666 | 7 | 11s |
-| reach `CardNeverPreempted` | NeverPreempted violated | 26847 / 7616 | 8 | 20s |
+| `CardMergeCutUnseen` | BlockNoLive violated | 40759 / 10276 | 8 | 30s |
+| `CardMergeNestedHold` | ParkedUnderHold violated | 3470 / 1082 | 5 | 20s |
+| `CardMergeNestedStart` | PreemptOnBlockerRow violated | 50919 / 13081 | 8 | 33s |
+| `CardMergeNoRerun` | FinalNeverMoves violated | 190 / 138 | 3 | 15s |
+| `CardMergeOwnWrites` | FencesOnSnapshot violated | 123 / 95 | 3 | 12s |
+| `CardMergeReviewTwice` | ReviewOnEntry violated | 7632 / 2166 | 6 | 24s |
+| `CardMergeSecondWrite` | MergeParksResolved violated | 7 / 5 | 2 | 9s |
+| `CardNeedFailedIgnored` | NeedFailedTakesDependants violated | 6 / 4 | 2 | 13s |
+| `CardNeedsCycle` | NeedsAcyclic violated | 280 / 255 | 3 | 19s |
+| `CardNonHolderReports` | OnlyHolderActs violated | 2074 / 794 | 5 | 23s |
+| `CardPlainWithdrawGuarded` | PlainWithdrawUnguarded violated | 17436 / 4849 | 7 | 28s |
+| `CardPriorRepeated` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 31s |
+| `CardReadFixEmpty` | FixSaysWhat violated | 200192 / 67405 | 10 | 54s |
+| `CardReadFixOnZero` | ReadFixNeedsFix violated | 10703 / 3786 | 7 | 28s |
+| `CardReadReportsFail` | ResultsByKind violated | 84689 / 29482 | 9 | 42s |
+| `CardReadyCounted` | TakeBelowWidth violated | 36 / 31 | 3 | 10s |
+| `CardRedAdvances` | RedNeverAdvances violated | 408537 / 130809 | 11 | 1min 18s |
+| `CardRelinkAfterCycle` | OrderAcyclic violated | 7380 / 3256 | 4 | 27s |
+| `CardReplaceByFinal` | ReplaceByLive violated | 22 / 20 | 3 | 9s |
+| `CardStaleReport` | OldAttemptNeverMoves violated | 30764 / 10902 | 8 | 34s |
+| `CardTwoReadsOneRow` | OneLiveReadPerRow violated | 31941 / 11338 | 8 | 34s |
+| `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 439 / 229 | 4 | 19s |
+| `CardWaiveRedWithoutRead` | WaiveRedNeedsPriorRead violated | 1719999 / 476019 | 14 | 3min 09s |
+| `CardWaiveRedWithoutRed` (redw) | WaiveRedNeedsRed violated | 977451 / 438683 | 20 | 3min 02s |
+| `CardWithdrawLeavesWorking` | WithdrawReleasesInOneStep violated | 439 / 229 | 4 | 16s |
+| `CardYesOnZero` | ReadYesNeedsYes violated | 10703 / 3786 | 7 | 25s |
+| reach `CardNeverAdded` | NeverAdded violated | 27 / 21 | 2 | 14s |
+| reach `CardNeverAskReads` | NeverAskReads violated | 1333 / 666 | 7 | 16s |
+| reach `CardNeverBlocked` | NeverBlocked violated | 35 / 30 | 3 | 11s |
+| reach `CardNeverFaultRedealt` | NeverFaultRedealt violated | 10458 / 3662 | 7 | 24s |
+| reach `CardNeverFindingCarried` | NeverFindingCarried violated | 408827 / 130955 | 11 | 1min 07s |
+| reach `CardNeverFixed` | NeverFixed violated | 200192 / 67405 | 10 | 46s |
+| reach `CardNeverInThisOp` | NeverInThisOp violated | 12 / 6 | 2 | 9s |
+| reach `CardNeverInThisOpMerged` | NeverInThisOpMerged violated | 93 / 33 | 3 | 9s |
+| reach `CardNeverLanded` | NeverLanded violated | 408529 / 130804 | 11 | 1min 06s |
+| reach `CardNeverNeedFailed` | NeverNeedFailed violated | 278 / 253 | 3 | 14s |
+| reach `CardNeverPreempted` | NeverPreempted violated | 9615 / 2863 | 7 | 25s |
+| reach `CardNeverRed` | NeverRed violated | 408537 / 130809 | 11 | 1min 04s |
+| reach `CardNeverRelinked` | NeverRelinked violated | 14 / 8 | 2 | 12s |
+| reach `CardNeverSentinelNeeded` | NeverSentinelNeeded violated | 19 / 13 | 2 | 11s |
+| reach `CardNeverSentinelReached` | NeverSentinelReached violated | 747709 / 229623 | 12 | 1min 31s |
+| reach `CardNeverWaivedRed` | NeverWaivedRed violated | 747797 / 229675 | 12 | 1min 31s |
+| reach `CardNeverYesAfterRed` | NeverYesAfterRed violated | 2227352 / 591860 | 15 | 3min 08s |
 
-The counterexamples were checked by hand with `card-trace.py`, and each
-move the fault lets through is one card/ at 4a085774 refuses:
+The counterexamples were checked by hand with `card-trace.py`. Up to
+round 4, each move the fault lets through is one card/ at 4a085774 refuses:
 - **CardLandedMoves:** p1 is cancelled (fail), then Rescore changes its score.
 - **CardAuthorReads:** r2 produces head 1; a read of it is cut to r2.
 - **CardRedAdvances:** deal, finish, read ok, ReadYes; then Red lands it.
@@ -884,6 +903,43 @@ move the fault lets through is one card/ at 4a085774 refuses:
   (the code: "no red on review 2"; every other check passes there: Block
   from review with no live consumer, the withdrawn head written by
   Released, an ok head that is neither base nor prior).
+- **CardMergeCutUnseen, CardMergeNestedHold, CardMergeNoRerun,
+  CardMergeOwnWrites, CardMergeNestedStart** (rounds 5 and 6): AskRead then
+  Block in one op with the read unseen; HoldStream then a Withdraw leaving
+  p1 ready in a held stream; Cancel then a merged Rescore of the failed
+  card; Resolve then Cancel fencing p1 ready against a waiting snapshot;
+  a blocker Start on r2 then a preempt Withdraw of p1.1 working on r1 in
+  one op.
+
+Round 7, checked by hand against card/ at v2-card-fix4 (b2b0b8c2; 4bb1a43b
+changes no move in card/, only adds the trace emitter). Each is a move the
+round 7 rulings refuse; "fix4 accepts" marks a divergence the code still has:
+- **CardDottedId:** Resolve p1, Add `p1.w1` (a sentinel, no needs); p1 is
+  ready and every Start would cut `p1.w1`, which the CardAbsent fence
+  refuses: p1 is stranded. fix4 accepts the Add (addShape has no dot check).
+- **CardInThisOpAlone:** NeedFailed{InThisOp} of p2 on its need p1, alone,
+  with p1 waiting: p2 fails on a live need. fix4 accepts it (failedNeed
+  returns nil for InThisOp unless the need is landed).
+- **CardPlainWithdrawGuarded:** p1.1 works on r1; the blocker p2 is started
+  on r2, opening an op; a plain Withdraw of p1.1 is refused by the guard.
+  fix4 does refuse it (preemptGuard pairs every Withdraw with a blocker
+  Start: "consumer p1.1 is on r1; blocker p2 is dealt to r2").
+- **CardMergeSecondWrite:** Resolve p1 opens an op; HoldStream would write
+  p1's state again and is refused. fix4 refuses Merge(Resolve, HoldStream)
+  by dupWrites, the second-write refusal ruling 4 removes.
+- **CardReadFixEmpty:** deal, finish, a read says fix, ReadFix with no
+  finding: p1 is ready with no finding to carry. fix4 accepts it (readFix
+  writes a finding only when one is given).
+- **CardFailRepeatsPrior:** attempt 1 is withdrawn with head 1, attempt 2
+  (prior 1) reports fail with head 1. fix4 refuses it (reportHead checks a
+  given head against the prior for every result).
+- **CardMergeReviewTwice:** attempt 1 reports ok opening an op, Finished in
+  the same op takes review from 0 to 2.
+- **CardHandPlanPartial:** Start p1 opens an op; SetPriority in it writes a
+  record whose other fields are zero: attempt 1 goes back to 0.
+- **reach NeverInThisOpMerged:** Cancel p1 opens an op; NeedFailed{InThisOp}
+  of p2 on p1 is the next move.
+
 - **reach:** Landed runs deal, finish, read ok, ReadYes, Landed. Fixed ends
   review → ready with bounces 1. Red goes merging → review with review 2.
   YesAfterRed then cuts a new read at review 2 and merges on it; WaivedRed
