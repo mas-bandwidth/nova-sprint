@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -101,3 +103,40 @@ func (e *Engine) unhook(ctx context.Context, snap store.Snapshot, target, actor 
 	}
 	return done("nova-sprint hook --as "+target+" --role worker", "UNHOOKED "+target), nil
 }
+
+// runWake is `wake`, nova-bus hook's --exec (Stella's and Johnny's ask,
+// 2026-11-07): the hook takes, the friend works. Each deal line of a
+// message from sprint that names this row is taken here, before the session
+// wakes, and replaced by take's own output (TAKEN with the brief, or the
+// refusal); every other line, and every other message, passes unchanged.
+// It never fails a message: nova-bus would end the hook on a non-zero exit.
+func runWake(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (string, error) {
+	if in.actor == "" {
+		return "", misuse("wake", "pass --as <you>")
+	}
+	raw, err := io.ReadAll(e.Stdin)
+	if err != nil {
+		return "", broken("stdin unreadable ("+clip(err.Error())+")", "nova-bus help hook")
+	}
+	line := strings.TrimSuffix(string(raw), "\n")
+	f := strings.SplitN(line, "\t", 5)
+	if len(f) != 5 || f[1] != "sprint" {
+		return line + "\n", nil
+	}
+	body := strings.Split(busUnescape.Replace(f[4]), "\n")
+	for i, l := range body {
+		_, cmd, ok := strings.Cut(l, "; run: nova-sprint take ")
+		w := strings.Fields(cmd)
+		if ok && len(w) == 5 && w[1] == "--epoch" && w[3] == "--as" && w[4] == in.actor {
+			body[i] = strings.TrimSuffix(e.Execute(ctx, []string{"take", w[0], "--epoch", w[2], "--as", in.actor}).Output, "\n")
+		}
+	}
+	f[4] = busEscape.Replace(strings.Join(body, "\n"))
+	return strings.Join(f, "\t") + "\n", nil
+}
+
+// nova-bus's line escapes, both ways.
+var (
+	busEscape   = strings.NewReplacer(`\`, `\\`, "\n", `\n`, "\r", `\r`, "\t", `\t`)
+	busUnescape = strings.NewReplacer(`\\`, `\`, `\n`, "\n", `\r`, "\r", `\t`, "\t")
+)

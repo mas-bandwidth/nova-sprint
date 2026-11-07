@@ -10,6 +10,7 @@ package verbs
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/worker"
@@ -49,6 +50,7 @@ type Engine struct {
 
 	Now     func() time.Time
 	Session func() (string, error) // a fresh hook session
+	Stdin   io.Reader              // wake's bus line
 	Actor   string                 // NOVA_SPRINT_AS
 	Version string                 // this build
 	ToolPin string                 // the lowest nova-tools it runs on
