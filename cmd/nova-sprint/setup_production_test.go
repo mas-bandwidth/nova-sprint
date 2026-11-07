@@ -52,13 +52,13 @@ func TestProductionSetupRefusesMissingAndUnimplementedConfiguration(t *testing.T
 		t.Fatal(err)
 	}
 	_, err = lock.Acquire(context.Background())
-	if !errors.As(err, &op) || !strings.Contains(op.Fix, "NOVA_PG_ADMIN_PASSWORD") {
+	if !errors.As(err, &op) || op.Fix != "nova-sprint up --as <you>" || strings.Contains(op.Error(), "nova-secrets") {
 		t.Fatal(err)
 	}
 	cfg = configForSetup()
 	setup, _ = makeProductionSetup(st, env, "alice", "v1.6.0", cfg)
 	_, err = setup.Verify(context.Background(), 3, verbs.SetupInput{Actor: "alice"})
-	if !errors.As(err, &op) || !strings.Contains(op.Fix, "NOVA_SPRINT_PG_PASSWORD") {
+	if !errors.As(err, &op) || op.Fix != "nova-sprint up --as alice" || !strings.HasPrefix(op.Problem, "the sprint is not set up") {
 		t.Fatal(err)
 	}
 	cfg.SprintPassword = "fixture"
