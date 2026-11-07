@@ -75,7 +75,8 @@ refusal is the tool doing its job, not an error to work around.
    sprint's refusal in step 2 names the form for your harness.
 2. Hook in to the sprint. Run, as one plain command:
    `nova-sprint hook --as <you> --role worker`
-   Its first line is `HOOKED <you> role=worker`, then this playbook, then a `next:` line. Before
+   Its first line is `HOOKED <you> role=worker`, then `COMMIT AS <name> <email>` with the
+   sprint's two git config lines, then this playbook, then a `next:` line. Before
    step 1 it refuses with `SPRINT REFUSED hook: <you> is not on the bus: hook in to the bus first:
    NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> under your session's Monitor tool`.
    Every nova-sprint verb needs the sprint's credential in its process: run it under
@@ -85,6 +86,9 @@ refusal is the tool doing its job, not an error to work around.
    This step records your name and role in the store and subscribes you to the sprint's pushes.
    Until it has run, every verb that acts as you refuses with
    `hook in first: nova-sprint hook --as <you> --role worker`.
+   On a sprint with no commit identity it refuses with `the sprint has no commit identity: ...:
+   ask the coordinator to run nova-sprint identity ...`: tell the coordinator, and hook again
+   once it is set.
 3. Ask what to do now. Run `nova-sprint next --as <you>`. It prints one `NEXT <what>` line and
    one `next: <command>` line. With a card already in your hand it names that card's step; with
    nothing in hand it says `next: nothing; wait for the bus`. Then stop and wait for the bus.
@@ -155,7 +159,15 @@ Each message is a wake. Handle it, then wait for the bus again.
 6. Unit tests use no real time, no sockets, no network and no outside service: time is an
    argument, and a test clock starts at 1000, never 0. Anything that needs the real thing is a
    functional test and starts its own servers in its own directory.
-7. Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
+7. Commit as the sprint's identity, never your own. A repository's contributor agreement keys
+   off the forge account, so every commit of the sprint is authored and committed as ONE
+   account on its allowlist: hook and take print it (`COMMIT AS <name> <email>`) and the two
+   lines that set it. In your clone, before the first commit, run
+   `git config user.name "<name>"` and `git config user.email "<email>"` exactly as printed.
+   Your own name goes only in the message: a `By: <your name>` line and a
+   `Co-Authored-By: <your name> <your email>` trailer. `finish` refuses a head with any commit
+   since the base by another author or committer email.
+   Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
    withdraw never costs work. Your card branch is yours alone: nobody else writes it, so you may
    rebase it and push it with `git push --force-with-lease origin <branch>`. Never force-push any
    other branch, and never push at all to the base, the stream's group branch or another
@@ -258,6 +270,11 @@ answer, never a thing to route round.
 - `<id> is not held by <you>`: it is someone else's, or it was withdrawn. Stop work on it.
 - `head <x> is not a full commit sha`: report the full 40-hex sha.
 - `push first: git push origin <branch>`: the head is not on the dealt branch at origin.
+- `<n> of the <m> commits on <branch> since the base are not made as <name> <email>: <sha>
+  (author <a>, committer <c>), ...`: run the two git config lines it prints in your clone, rewrite
+  those commits as it (`git rebase <base> --exec 'git commit --amend --no-edit --reset-author'`),
+  push with `--force-with-lease`, and finish with the new head.
+- `the sprint has no commit identity`: nothing may commit yet; tell the coordinator.
 - `head <x> is the base; nothing was done`: an empty head is never a finish.
 - `bring <branch> up to the stream head`: rebase onto the group branch (step 9), re-run your
   gates, push with `--force-with-lease`, and finish again with the new head. A red gate that is

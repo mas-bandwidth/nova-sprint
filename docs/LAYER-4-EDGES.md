@@ -1198,3 +1198,33 @@ time rewinding the new holder's branch to the stale head. Files:
   Runner witnesses and all six Runner reach checks (the two new ones among them) are violated
   as required. `make-traces.sh check`: 93 ok, 0 FAIL; the eight runner walks check at 22 to
   28 steps. The whole of `ci-tlc.sh`: 263 ok, 0 FAIL.
+
+### Built: the job commits as the sprint's identity (stitch w4I, 2026-11-07)
+
+- The per-row author (`<row> <row@nova-sprint.local>`, `CommitEmailDomain`) is gone. The take
+  receipt carries the sprint's identity (`commit_name`, `commit_email`, store round 24);
+  `buildJob_internal` sets `Job.CommitName`/`CommitEmail` from it and `checkoutJob_internal`
+  writes them into the job's clone (`git config user.name/user.email`). A receipt without them
+  is an `ErrReceipt` (the fault names it and the worker ends: an older nova-sprint); staging a
+  job with none (a record resumed from before) is refused, never committed as the bench. The
+  harness's environment was already clean of `GIT_AUTHOR_*`/`GIT_COMMITTER_*` and its HOME is
+  the job's, so the clone's config is what its commits carry; the worker's own `CommitAll`
+  commits in the same clone.
+- `CommitRules(name, email)` (edge/worker/identity.go) is the rule word for word in hook's
+  output, take's text, JOB.md and the prompt: the identity, the two `git config` lines, the
+  `By:`/`Co-Authored-By:` rule, and that finish refuses another email. `ValidIdentity` refuses a
+  value the printed lines could not carry (a quote, backslash, `$`, backtick, angle bracket or
+  control character; an email that is not one `local@domain`).
+- The git edge gains `Client.Commits(repoDir, head, not...)`: one `git log
+  --format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce head --not <bases> --`, the commits finish checks
+  (`TestCommits`).
+- The proof up and check give for each bench (directive item 4), chosen as the cheapest real
+  one: a bench's job clones take the identity from the receipt by construction, so what can
+  differ on a bench is the binary (step 7's version check per bench, already there) and whether
+  the sprint has an identity at all (step 7 asks for it first; `hook --role worker` refuses
+  without one, so a bench that is hooked and up hooked under one). What this proves: every
+  bench runs code that commits as the store's identity, and the store has one. What it does not
+  prove: that the account is on a repository's allowlist (no forge exposes that; the agreement
+  warning names the identity to sign for), or what a friend's own clone is set to; finish's
+  check of every head's commits is the proof for both. Reading each bench's clones over ssh was
+  rejected: an idle bench has no job clone to read.
