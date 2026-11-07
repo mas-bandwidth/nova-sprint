@@ -1,0 +1,12 @@
+[
+  {
+    "name": "stale",
+    "exit": 0,
+    "output": "TRACE OK steps=9"
+  },
+  {
+    "name": "success",
+    "exit": 0,
+    "output": "TRACE OK steps=13"
+  }
+]
