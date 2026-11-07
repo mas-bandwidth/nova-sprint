@@ -23,7 +23,10 @@ yet minted and that `up` itself refuses to run with (verbs/next.go:110-118, cmd/
 behind it, the coordinator playbook documents a verb (`edit`), a flag (`drop --expect`) and a grouped push
 (`NEEDS YOU group=...`) that the code does not have, and README/SETUP never state the environment `up` needs.
 
-Defect count: 1 blocker, 9 serious, 8 minor, 4 nit.
+Defect count: 1 blocker (D1), 9 serious (D2-D10), 10 minor (D11-D18, D20, D21), 1 nit entry (D19, six small items).
+
+An earlier attempt on this branch (commits bece09c3, 6a9a3454) found four things; all four are verified again here and merged:
+its 1 is D2, its 2 is D8 (plus Model vs code), its 3 is D20, its 4 is D21.
 
 ## Defects
 
@@ -35,7 +38,7 @@ Defect count: 1 blocker, 9 serious, 8 minor, 4 nit.
   `env -i HOME=/tmp PATH=/usr/bin:/bin nsl7` prints
   `NEXT this process has no sprint credential` / `next: run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...`.
   `check` likewise prints `CHECK RED this process has no sprint credential` and exits 2.
-- Why it matters: `NOVA_SPRINT_PG_PASSWORD` is minted by `up` step 2 (setup_runtime_role_bootstrap.go:42-47), and
+- Why it matters: `NOVA_SPRINT_PG_PASSWORD` is minted by `up` step 2 (setup_runtime_role_bootstrap.go:42-48), and
   `up` refuses when it is set (up_wrapper.go:58-61: "NOVA_PG_ADMIN_PASSWORD and NOVA_SPRINT_PG_PASSWORD must be unset").
   The one entry point CORRECT-USE:29-33 promises ("runs `next`... prints the one thing to do now") dead-ends on
   the gate Glenn named (SETUP.md:46-52: a cold AI from docs/README.md and the tool's own help).
@@ -111,13 +114,13 @@ Defect count: 1 blocker, 9 serious, 8 minor, 4 nit.
 ### D7 (serious) CARD-CONTRACT promises about TEST and gates that the lint does not keep
 - `TEST:` is only required to be present and non-empty (verbs/brief.go:49,114-118; `field()` has no `TEST` case and
   nothing stores it); `TEST: none` is accepted (this very card's brief carries it). Not parsed by `edge.ParseGate`, not run
-  by `add`, and the worker runs only `DoneWhen` (edge/worker/runner.go:675-686).
+  by `add`, and the worker runs only `DoneWhen` (edge/worker/runner.go:676-686).
   CARD-CONTRACT.md:54-55 ("The TEST line names a test absent at base, and the system runs it red at base and green at
   head as a gate") and COORDINATOR.md:208 ("TEST: required ... run red at base and green at head") are not implemented.
 - CARD-CONTRACT.md:49-50 ("Each done-when is run at the base before the deal ... refused at add"), :51-53 ("a gate that
   skips, cannot compile, or excludes by default fails the lint") and :80 ("a card that writes a new TLA+ model is
   admitted at heavy at least") have no code (`grep -rniE 'negative control|stay red|cannot compile'` and
-  `grep -rn tla verbs card` find none); the same document says "Nothing is run at add" (:131-133 region, the DONE-WHEN
+  `grep -rn tla verbs card` find none); the same document says "Nothing is run at add" (:137-138, the DONE-WHEN
   bullet), contradicting :49.
 - Repair: either build the run-at-base/heavy checks or reword the contract to what `add` proves; give `TEST` a real
   grammar (a gate, or an explicit "none" the contract allows).
@@ -133,10 +136,10 @@ Defect count: 1 blocker, 9 serious, 8 minor, 4 nit.
 ### D9 (serious) README/SETUP are not the walkthrough the gate requires
 - docs/SETUP.md:3-4 says "this page becomes the walkthrough an AI runs", but it holds no command, flag or
   environment. `up` fails first on `control-seat secrets configuration is incomplete: set NOVA_SECRETS_STORE,
-  NOVA_SECRETS_KEY, NOVA_SECRETS_PINS and NOVA_SECRETS_SEAT` (reproduced: `nsl7 up --as me`; setup_production.go:225-236),
+  NOVA_SECRETS_KEY, NOVA_SECRETS_PINS and NOVA_SECRETS_SEAT` (reproduced: `nsl7 up --as me`; setup_production.go:212-221),
   needs a passwordless `NOVA_PG_DSN`, `NOVA_BUS_REDIS`, `NOVA_PG_ADMIN_PASSWORD` for phase 1 (up_wrapper.go:62-76), and the
-  seat must equal the machine name (:229) so `up` runs only on the control machine (`--run-on` elsewhere is refused,
-  setup_production.go:131-133). None of that is in README.md, SETUP.md, or `help up`.
+  seat must equal the machine name (setup_production.go:216-218) so `up` runs only on the control machine (`--run-on` elsewhere is refused,
+  setup_production.go:136-138, 688). None of that is in README.md, SETUP.md, or `help up`.
 - docs/README.md:16-18 promises "a section per layer ... with the lines the first try prints"; there is none. It never
   links the two playbooks, and line 90 names `cmd/nova-sprint-dash`, which does not exist (`ls cmd`: nova-sprint, nova-worker).
 - Repair: write the numbered walkthrough in SETUP.md from `up`'s real preconditions and first-try output; fix README links.
@@ -170,7 +173,7 @@ Defect count: 1 blocker, 9 serious, 8 minor, 4 nit.
   itself knows the repo (`mas-bandwidth/nova-sprint`, setup_installer.go:24). The rule is "each refusal names its one
   fix" (CARD-CONTRACT "Admission"); this one is not copy-pasteable. After any `up --version`/release the benches need that
   per-bench install by hand (versionsReady, setup_workload.go:181-209) while the run/public machines are installed
-  automatically (setup_production.go:855-868); COORDINATOR.md:364-366 says "adopted whole".
+  automatically (setup_production.go:823-854); COORDINATOR.md:364-366 says "adopted whole".
 - Repair: put the real repo in the fix; say in the playbook that benches need `nova-fleet install` first.
 
 ### D14 (minor) `nova-sprint worker` swallows a hostname error that `nova-worker` refuses
@@ -202,6 +205,17 @@ Defect count: 1 blocker, 9 serious, 8 minor, 4 nit.
   The job builds from the tag without a test/lint step or a check that the commit is on main (COORDINATOR.md:367-369 says "from main").
 - Repair: reuse one regexp, and add `go vet`/unit test or a `needs` on the CI run for the sha.
 
+### D20 (minor) check's tools-pin fix is not the command SETUP.md names
+- docs/SETUP.md:62-67 says `check` refuses below the pin "naming the `nova-fleet up` that brings them up"; verbs/tools_version.go:55
+  (`toolsFix`) and verbs/check.go:131-133 name `nova-fleet install --tag <pin> <machine>`. (Found by the earlier attempt; verified.)
+- Repair: change SETUP.md to the command the code prints (the install form is the one that lands the pinned version).
+
+### D21 (minor) On an unprovable host `up` rewrites the sprint password on every run
+- verbs/setup_runtime_role_password.go:102-134 (comment at :103-107 states it): when pg_hba trusts the connection and pg_authid is unreadable,
+  `proveSprintPassword` is never `Proven`, so each `up` sets a fresh SCRAM verifier. SETUP.md:88-90 says up sets it only "when it is not the
+  sprint's credential". Harmless functionally but churns the stored verifier and the doc is untrue for that host. (Earlier attempt; verified.)
+- Repair: say so in SETUP.md, or skip the set when a readable stored verifier already matches.
+
 ### D19 (nit) Stale or misleading references
 - CORRECT-USE.md:145 `add`, or `done` (no `done` verb; the next line printed is `stream add`/`add`); card/brief.go:9 cites
   CARD-CONTRACT "Routes" (no such heading); setup_workload.go:181 comment says "step 5's check" for step 7;
@@ -218,7 +232,7 @@ Defect count: 1 blocker, 9 serious, 8 minor, 4 nit.
 4. "The brief tells ... where tests may run" via `take` (CORRECT-USE.md:100-101) -> `takenText` prints none (D6).
 5. "`nova-sprint check` reads the installed tools' versions (`nova-bus -h`, `nova-fleet -h`, and the rest) and refuses below
    the pin" (SETUP.md:65-67) -> `InstalledTools` reads the build info of one binary, `nova-config`, on the machine `check` runs
-   on (verbs/tools_version.go:20-31); the other tools and the benches' tools are never compared with the pin.
+   on (verbs/tools_version.go:19-31); the other tools and the benches' tools are never compared with the pin.
 6. "The AI makes the seats, the grants, the worker rows and the service rows" for the chosen services (SETUP.md:35-37) -> D2.
 7. "Every machine with the bench role, except the one the sprint runs on, gets a worker" (SETUP.md:75) -> D8.
 8. "A TEST line ... run red at base and green at head"; "done-when run at the base before the deal"; "a gate that skips ... fails
@@ -241,6 +255,10 @@ Not exhaustive (I did not run TLC; read the code side and the file list). Observ
 - No model covers worker-service content (which keys, which providers) or the seat grants of step 7; D2 is therefore
   invisible to every witness.
 - `Setup.tla` treats `check` as no part of the walk; CORRECT-USE's "up refuses until check passes" has no model counterpart (D5).
+- `tla/Setup.tla:24-26` says world[7] is "every worker bench (every bench but the run machine)"; `WorkerBenches` (verbs/setup_runtime.go:50-61)
+  includes the run machine, and `TestWorkloadStepsMatchTheSetupModel` (cmd/nova-sprint/setup_workload_model_test.go:21-40) only ever places
+  benches `amd-1`/`amd-2` beside a non-bench `studio`, so the harness cannot see the divergence (D8). Model, SETUP.md and code must be
+  made to agree together.
 - I could not confirm from the files read whether the model checks that `Completion` runs only after step 8 is verified at the
   same lease (setup.go:199,234-247 does so in code).
 
@@ -250,7 +268,7 @@ Not exhaustive (I did not run TLC; read the code side and the file list). Observ
    (harness `claude` vs the service's `opencode`; `underHome` path resolution only in services.go:86-90; hostname handling
    differs, D14). Keep one (the release ships both: .github/workflows/release.yml builds every `cmd/*`).
 2. Two `up` code paths for the version/ssh checks (`checkServiceVersion` over ssh, `lastServiceLogLine` over ssh,
-   `versionsReady` via `w.version`) each build their own ssh command line (setup_production.go:~890, setup_workload.go:274);
+   `versionsReady` via `w.version`) each build their own ssh command line (setup_production.go:882, setup_workload.go:274);
    one helper would remove three copies of `-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes`.
 3. `commitIdentity` in step 7 duplicates `identity` verbs' validity text; `widthAdvice` is a 400-byte constant inside
    `completeSetup` (setup.go:288-289) that restates CORRECT-USE "Keep everybody at width" a third time.
@@ -277,14 +295,15 @@ Not exhaustive (I did not run TLC; read the code side and the file list). Observ
    `go test -count=1 -run TestFunctionalBreakShipped -v ./cmd/nova-worker/` ->
    `break_test.go:80: no report reached nova-sprint (exit 0, stderr "", sprint log "unhook --as r1\nhook --as r1 --role worker\nbeat ... --slots-used 0 --slots-total 0 ...\nnext --as r1 --json\nnext --as r1 --json\n")`.
    The log shows `take` never ran and the worker exited 0 with nothing on stderr. I could not isolate the cause cold (host load was
-   124/32 cores; `serve.go:98` now builds the wall with `UseSandbox: true`, which this test's PATH stubs do not provide); if
+   124/32 cores; `edge/worker/serve.go:95` now builds the wall with `UseSandbox: true`, which this test's PATH stubs do not provide); if
    the test is stale it is a "breaker finding" for a defect already changed, and if the worker really exits 0 silently when it
    declines a ready card, that is a silent failure.
 8. `serveBoardOn` (services.go:137-157) has no unit test (shutdown order, poll error vs shutdown error: a shutdown error
    replaces the poll error at :148-151) and `services.Worker`/`underHome` is tested only through the functional tier.
-9. A brief-lint test that prose mentioning `lockfile` or `JOB.md` is accepted/refused as intended (D15), and a test that
+9. `WorkerBenches` with the run machine also holding the bench role (the case Setup.tla excludes); a test that pins `toolsFix` to the SETUP.md text (D20).
+10. A brief-lint test that prose mentioning `lockfile` or `JOB.md` is accepted/refused as intended (D15), and a test that
    `TEST: none` is refused or allowed deliberately (D7).
-10. up_wrapper: the overflow path (up_wrapper.go:143-145) with a child that exits 0 and with a child that exits 1.
+11. up_wrapper: the overflow path (up_wrapper.go:143-145) with a child that exits 0 and with a child that exits 1.
 
 ## Questions for the coordinator
 
