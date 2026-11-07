@@ -1,11 +1,13 @@
 package run
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"maps"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -32,10 +34,14 @@ type Edges struct {
 	Bus      bus.Bus
 	ReposDir string
 	Pause    func(context.Context, time.Duration) error // between asks of a pending CI
+	// Fault is told every edge failure, with its cause (the run log's EDGE
+	// FAULT line); nil drops nothing that layer 3 reads, only the line.
+	Fault func(what string, err error)
 
 	mu      sync.Mutex
 	results []steps.InboxItem
 	heads   map[string]string
+	headErr map[string]string // the last heads failure said, per stream
 	n       int
 	stale   chan struct{}
 }
@@ -87,8 +93,17 @@ func (e *Edges) result(it steps.InboxItem) {
 
 // stop is one bus message to the row; sent, it is acknowledged.
 func (e *Edges) stop(ctx context.Context, r steps.EdgeRequest) {
-	if _, err := e.Bus.Send(ctx, r.Row, "STOP", "STOP "+r.Consumer); err == nil {
-		e.result(steps.InboxItem{Kind: "stop", Request: r.ID, Outcome: "ack"})
+	if _, err := e.Bus.Send(ctx, r.Row, "STOP", "STOP "+r.Consumer); err != nil {
+		e.fault("stop "+r.ID+" to "+r.Row, err)
+		return
+	}
+	e.result(steps.InboxItem{Kind: "stop", Request: r.ID, Outcome: "ack"})
+}
+
+// fault says an edge failure; a nil Fault says nothing.
+func (e *Edges) fault(what string, err error) {
+	if e.Fault != nil && err != nil {
+		e.Fault(what, err)
 	}
 }
 
@@ -100,6 +115,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	dir := e.repoDir(s.Repo)
 	if err := e.Git.Clone(ctx, s.Repo, dir); err != nil {
+		e.fault("land "+r.ID+" stream "+r.Stream+": clone", err)
 		e.result(steps.InboxItem{Kind: "land", Request: r.ID, Outcome: "fault"})
 		return
 	}
@@ -112,12 +128,22 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 			}
 			continue
 		}
-		e.result(landItem(r.ID, res, err))
+		it := landItem(r.ID, res, err)
+		if it.Outcome == "fault" {
+			// Layer 3 reissues a fault with no move; the cause is said here.
+			e.fault("land "+r.ID+" stream "+r.Stream, cmp.Or(err, landFault(res)))
+		}
+		e.result(it)
 		if res.Outcome == git.OutcomeLanded {
 			e.Stale()
 		}
 		return
 	}
+}
+
+// landFault is a fault outcome's reason as an error.
+func landFault(res git.LandResult) error {
+	return fmt.Errorf("%s: %s", cmp.Or(string(res.Outcome), "no outcome"), cmp.Or(res.Reason, "no reason given"))
 }
 
 // landItem is LandResult as layer 3 reads it (SEAMS 6).
@@ -177,17 +203,38 @@ func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[stri
 }
 
 func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) {
-	heads := map[string]string{}
+	heads, failed := map[string]string{}, map[string]error{}
 	for name, s := range streams {
 		dir := e.repoDir(s.Repo)
-		if e.Git.Clone(ctx, s.Repo, dir) != nil {
+		if err := e.Git.Clone(ctx, s.Repo, dir); err != nil {
+			failed[name] = fmt.Errorf("clone: %w", err)
 			continue
 		}
-		if sha, ok, err := e.Git.LsRemote(ctx, dir, "refs/heads/"+s.Base); err == nil && ok {
+		sha, ok, err := e.Git.LsRemote(ctx, dir, "refs/heads/"+s.Base)
+		switch {
+		case err != nil:
+			failed[name] = fmt.Errorf("ls-remote %s: %w", s.Base, err)
+		case !ok:
+			failed[name] = fmt.Errorf("base branch %s is not on origin", s.Base)
+		default:
 			heads[name] = sha
 		}
 	}
 	e.mu.Lock()
 	e.heads = heads
+	// A failure is said when it starts or changes, not every pass.
+	said := e.headErr
+	e.headErr = map[string]string{}
+	var tell []string
+	for name, err := range failed {
+		e.headErr[name] = err.Error()
+		if said[name] != err.Error() {
+			tell = append(tell, name)
+		}
+	}
 	e.mu.Unlock()
+	slices.Sort(tell)
+	for _, name := range tell {
+		e.fault("heads stream "+name, failed[name])
+	}
 }

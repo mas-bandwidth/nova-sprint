@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -56,20 +57,22 @@ func (w restoreWriter) Exec(ctx context.Context, statement string) error {
 	}
 	switch word {
 	case "BEGIN", "START", "COMMIT", "END", "ROLLBACK", "ABORT", "SAVEPOINT", "RELEASE", "PREPARE":
-		return fmt.Errorf("restore: transaction control is not permitted")
+		return fmt.Errorf("restore: transaction control (%s) is not permitted", word)
 	}
 	if _, err = w.conn.PgConn().ExecParams(ctx, statement, nil, nil, nil, nil).Close(); err != nil {
 		return fmt.Errorf("restore: dump statement failed: %w", err)
 	}
 	return nil
 }
-func leadingSQLWord(s string) (string, error) {
+func leadingSQLWord(statement string) (string, error) {
+	s := statement
+	at := func() int { return len(statement) - len(s) }
 	for {
 		s = strings.TrimSpace(s)
 		if strings.HasPrefix(s, "--") {
 			i := strings.IndexByte(s, '\n')
 			if i < 0 {
-				return "", fmt.Errorf("restore: empty statement")
+				return "", fmt.Errorf("restore: empty statement: %s", edge.ParseRefused("only a comment", at(), []byte(statement)))
 			}
 			s = s[i+1:]
 			continue
@@ -77,7 +80,7 @@ func leadingSQLWord(s string) (string, error) {
 		if strings.HasPrefix(s, "/*") {
 			i := strings.Index(s, "*/")
 			if i < 0 {
-				return "", fmt.Errorf("restore: unterminated comment")
+				return "", fmt.Errorf("restore: unterminated comment: %s", edge.ParseRefused("no */", at(), []byte(statement)))
 			}
 			s = s[i+2:]
 			continue
@@ -89,7 +92,7 @@ func leadingSQLWord(s string) (string, error) {
 		i++
 	}
 	if i == 0 {
-		return "", fmt.Errorf("restore: expected SQL statement")
+		return "", fmt.Errorf("restore: expected SQL statement: %s", edge.ParseRefused("no leading SQL word", at(), []byte(statement)))
 	}
 	return strings.ToUpper(s[:i]), nil
 }

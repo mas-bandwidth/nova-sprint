@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // These two-key advisory lock values are shared by run and restore, and are
@@ -27,7 +28,7 @@ func OpenChooser(ctx context.Context, dsn, password, host string, pid int, bus H
 func connectLockSession(ctx context.Context, dsn, password, app string) (*pgChooser, error) {
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("run: PostgreSQL DSN could not be parsed")
+		return nil, edge.Cause("run: PostgreSQL DSN could not be parsed", err)
 	}
 	if password != "" {
 		cfg.Password = password
@@ -38,7 +39,7 @@ func connectLockSession(ctx context.Context, dsn, password, app string) (*pgChoo
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("run: connect chooser: %w", ctx.Err())
 		}
-		return nil, fmt.Errorf("run: cannot connect to PostgreSQL; check settings and network")
+		return nil, edge.Cause("run: cannot connect to PostgreSQL; check settings and network", err)
 	}
 	return &pgChooser{conn}, nil
 }

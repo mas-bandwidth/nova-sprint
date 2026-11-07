@@ -119,6 +119,7 @@ func coldStart(ctx context.Context, cfg Config, h Health) (*loop, error) {
 	l := &loop{cfg: cfg, ticker: t, log: NewWriterLogger(cfg.Log),
 		edges: &Edges{Git: cfg.Git, Forge: cfg.Forge, Bus: cfg.Bus, ReposDir: cfg.ReposDir, Pause: pause},
 		board: dash.NewFromFeed(dash.Feed{Snap: t.Snapshot(), At: now}, cfg.Clock.Now)}
+	l.edges.Fault = l.log.EdgeFault
 	l.setStreams(t.snap.Streams)
 	return l, nil
 }
@@ -157,7 +158,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 		return err
 	}
 	for _, r := range l.ticker.Push(ctx, l.cfg.Bus, start) {
-		l.log.PushFailed(r)
+		l.log.PushFailed(r.To, r.Err)
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
