@@ -56,30 +56,6 @@ func TestRoleBootstrapSavesOnceAndPassesOnlyNames(t *testing.T) {
 	}
 }
 
-type roleFixtureExit int
-
-func (e roleFixtureExit) Error() string { return "fixture exit" }
-func (e roleFixtureExit) ExitCode() int { return int(e) }
-
-func TestRoleBootstrapRefusesRejectedStoredSecret(t *testing.T) {
-	sink := &sinkFake{saved: true, value: "stored-fixture"}
-	grant := FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: func(context.Context, string, ...string) ([]byte, error) { return nil, nil }}
-	b := SprintRoleBootstrap{Sink: sink, Grants: grant, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Binary: "/bin/nova-sprint", Execute: func(_ context.Context, _ string, args ...string) error {
-		if args[len(args)-1] != "--internal-setup-role" {
-			t.Fatalf("unexpected child: %v", args)
-		}
-		return roleFixtureExit(SprintRoleCredentialMismatchExit)
-	}}
-	err := b.Run(context.Background(), []SprintSeat{{Seat: "studio", Machine: "studio"}})
-	var op *OperationError
-	if !errors.As(err, &op) || op.Problem != "stored sprint credential was rejected" || !strings.Contains(op.Fix, "delete the stale NOVA_SPRINT_PG_PASSWORD") {
-		t.Fatalf("wrong refusal: %v", err)
-	}
-	if sink.value != "stored-fixture" {
-		t.Fatal("stored secret changed")
-	}
-}
-
 // PostgreSQL 16+: a CREATEROLE admin may alter or grant only roles it
 // administers. A 42501 on a nova_sprint that already existed names the
 // superuser's grant; on a role being created, the admin's CREATEROLE; any

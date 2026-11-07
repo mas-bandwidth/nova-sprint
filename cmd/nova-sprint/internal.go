@@ -42,6 +42,12 @@ func internalCommand(ctx context.Context, args []string) (int, bool) {
 			return code, true
 		}
 		return verbs.InternalSprintRole(ctx), true
+	case "--internal-setup-role-password":
+		if code, bad := internalArgs(args, 1); bad {
+			return code, true
+		}
+		yes, err := verbs.InternalSprintRolePassword(ctx)
+		return internalJSON("ready", yes, err), true
 	case "--internal-role-exists":
 		if code, bad := internalArgs(args, 1); bad {
 			return code, true
