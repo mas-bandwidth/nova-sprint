@@ -106,15 +106,26 @@ $ grep -rn --include='*.go' -F 'LoadVersions(' . | grep -v '^./policy/' | grep -
   `policy/answer.go:82-90` `Judgements` then opens one judgement per failure, `policy:v0`
   included.
 - Why it matters: the doc's own sentence is "every version it ran fails" (doc 840-841 and
-  952-953); the parent fails every version it *might* have run. Before `fallbackAfter`
-  (`policy/engine.go:45`, `policy/tick.go:81-89`) only the active version has started, so a
-  memory-cap death or a child hang in the active version opens a `policy:v0` judgement
-  ("the built-in failed") that is false, and `tla/Policy.tla:119-122` `Failing` puts `Default`
-  in the failing set only when active and prev both break on the snapshot.
-- Repair: the parent knows what started (active alone until `fallbackAfter` elapsed, then the
-  rest): fail only those; have the child write the label of the run in hand to stderr before
-  `os.Exit(3)` in `watchMemory` (`policy/evalmem.go:55-64`, `capped.first()` already carries
-  the first stderr line to the message) so a memory death names its version.
+  952-953); the parent fails every version it *might* have run. What has started inside the
+  child is decided by `race` (`policy/tick.go:83-95`): run i+1 starts the moment run i's
+  `await` returns a failure (`launch(i)` at the top of the loop, `:84`), and every later run
+  starts at `spec` (`:86-88`), which is `fallbackAfter` from the child's own `start`
+  (`policy/answer.go:56`, reached from `policy/evaluator.go:307`), a clock the parent never
+  sees. So the started set is any of {active}, {active, previous} or all three at any moment
+  of the tick: a fast refusal in the active version starts the previous at once, a second
+  one starts the built-in. The parent cannot tell them apart by time, and today does not try:
+  a memory-cap death or a hang while only the active (or active and previous) had started
+  opens a `policy:v0` judgement ("the built-in failed") for a version that never ran, while
+  `tla/Policy.tla:119-122` `Failing` puts `Default` in the failing set only when active and
+  prev both break on the snapshot.
+- Repair: track execution explicitly, since only the child knows it. In `Engine.start`
+  (`policy/tick.go:59-67`) the child writes one line, `started <label>`, to stderr as each run
+  launches (`capped`, `policy/evaluator.go:226-248`, already collects the child's stderr live
+  in the parent); `killed` (`policy/evaluator.go:162-169`) then fails only the labels seen
+  there, and `watchMemory` (`policy/evalmem.go:55-64`) names the run in hand before
+  `os.Exit(3)`. A second form that needs no stderr parsing: the child sends a `reply{Started:
+  label}` on the gob stream at each launch and the parent's decode goroutine
+  (`policy/evaluator.go:180-187`) keeps the set until the final reply.
 
 ### D4. minor — `Answers.Timeouts.Consumer` is one map shared across ticks through the cache
 
@@ -157,8 +168,9 @@ zz_review_probe_test.go:57: Up as kin1 (not the coordinator): err=<nil> version=
   evalGrace)` after the lock. A tick that waits on the lock (behind a `check` or `catalog`
   request on the same engine, `policy/show.go:89-90`, `policy/catalog.go:60-61`) hands the
   child a budget that ignores the wait and waits that much again.
-- Why it matters: L5-16 and doc 604-605, "the deadline ... from the first byte of input
-  construction"; `TestDeadlineOnTheClock` cannot see it (the local engine has no lock).
+- Why it matters: L5-16 and doc 596-599, "One deadline per tick ... from the first byte of
+  input construction to the last answer returned"; `TestDeadlineOnTheClock` cannot see it
+  (the local engine has no lock).
   Today `run` holds one engine and ticks serially, so it is a latent bound, not a live one.
 - Repair: compute `req.Budget` after `ev.mu.Lock()`, and return `killed` at once when it is
   at or below zero.
@@ -198,6 +210,12 @@ zz_review_probe_test.go:32: changes: 4 refused: 0; first: ["width(r1): {\"work\"
 - `policy/verbs.go:188-193` reads `pv.Active` before the snapshot; a racing activation is
   then refused by the store (`policy/verbs.go:255-266` `apply`) with fix "nova-sprint policy
   show --list" rather than the pre-check's "nova-sprint policy show".
+- Why it matters: the coordinator is sent to the list to find a version that is already
+  active, and the `What` is the store's same-value text, not this verb's; the doc (260) says
+  the refusal is layer 1's text, so only the fix is wrong. Nothing is written either way
+  (`AtSeq` at `policy/verbs.go:213`).
+- Repair: drop the pre-read and check `snap.Policy == v` after `st.Snapshot` (`:195-198`),
+  which gives the one refusal with the right fix and one store read fewer.
 
 ## Promise gaps
 
@@ -215,8 +233,9 @@ Doc sentence, then what the code does.
    `Timeouts.Consumer` is shared; see D4.
 5. "All are the coordinator's" (doc 254) and L5-17 "A verb refuses ... any string the store
    would refuse before it builds an op". `Up` has neither gate (`policy/verbs.go:53-68`); D5.
-6. "the deadline ... from the first byte of input construction to the last answer returned"
-   (doc 604-605, L5-16). Through the evaluator the wait for `ev.mu` is outside it; D6.
+6. "One deadline per tick ... from the first byte of input construction to the last answer
+   returned" (doc 596-599, L5-16). Through the evaluator the wait for `ev.mu` is outside it;
+   D6.
 7. `policy set` refuses "`up` not run" (doc 259, the verbs table). It no longer does: the
    first `set` activates (`policy/verbs.go:118-136`, doc 989-996). The table is stale.
 8. `timeouts()` "dict of seconds ... `row_silent_gone`, `row_silent_withdraw`, `landing_stall`,
