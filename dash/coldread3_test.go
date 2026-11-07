@@ -23,6 +23,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 )
 
 // cr3WorkGrid is the no-blocked Work grid's minimum width and its row's content
@@ -362,10 +363,7 @@ func (g *cr3PG) dsn() string {
 
 func cr3StartPG(t *testing.T) *cr3PG {
 	t.Helper()
-	bin, err := exec.LookPath("initdb")
-	if err != nil {
-		t.Skip("initdb required")
-	}
+	bin := filepath.Join(pgbin.Dir(t), "initdb")
 	g := &cr3PG{bin: bin, dir: t.TempDir()}
 	if out, err := exec.Command(bin, "-D", g.dir, "-U", "nova", "--auth=trust", "--no-locale").CombinedOutput(); err != nil {
 		t.Fatalf("initdb %v: %s", err, out)

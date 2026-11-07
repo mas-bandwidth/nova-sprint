@@ -152,7 +152,7 @@ func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string
 	if !channel {
 		return "", output, 0
 	}
-	status, err := waitHandoff(ctx, result)
+	status, err := waitHandoff(ctx, result, time.After(time.Second))
 	if err != nil {
 		return "", "SPRINT REFUSED up: invalid continuation channel: " + edge.RedactN(err.Error(), edge.CommandMax) + "\n", 2
 	}
@@ -232,15 +232,13 @@ type handoffRead struct {
 	err error
 }
 
-func waitHandoff(ctx context.Context, result <-chan handoffRead) (string, error) {
-	timer := time.NewTimer(time.Second)
-	defer timer.Stop()
+func waitHandoff(ctx context.Context, result <-chan handoffRead, expired <-chan time.Time) (string, error) {
 	select {
 	case r := <-result:
 		return r.id, r.err
 	case <-ctx.Done():
 		return "", ctx.Err()
-	case <-timer.C:
+	case <-expired:
 		return "", fmt.Errorf("continuation channel did not close")
 	}
 }

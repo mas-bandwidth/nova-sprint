@@ -22,6 +22,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 )
 
 const wait = 30 * time.Second
@@ -35,19 +37,8 @@ func freePort(t *testing.T) string {
 	return port
 }
 
-// pgBin finds initdb: on PATH, else Homebrew's postgresql@18, else Debian's.
-func pgBin(t *testing.T) string {
-	if p, err := exec.LookPath("initdb"); err == nil {
-		return filepath.Dir(p)
-	}
-	found, _ := filepath.Glob("/opt/homebrew/opt/postgresql@18/bin/initdb") // ignored: a bad pattern is a constant's
-	debian, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb")          // ignored: as above
-	if found = append(found, debian...); len(found) > 0 {
-		return filepath.Dir(found[0])
-	}
-	t.Skip("functional tests need PostgreSQL: initdb is not on PATH, in /opt/homebrew/opt/postgresql@18/bin or /usr/lib/postgresql/*/bin")
-	return ""
-}
+// pgBin is the directory holding initdb and the other PostgreSQL programs.
+func pgBin(t *testing.T) string { return pgbin.Dir(t) }
 
 // startPG starts a PostgreSQL of this test's own and returns the dsn of its
 // postgres database. Unix sockets are off: a macOS temp path is too long for one.
