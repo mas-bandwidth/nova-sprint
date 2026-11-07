@@ -111,7 +111,7 @@ func TestFunctionalMigrateTwice(t *testing.T) {
 	assert.Equal(t, 1, rows)
 	assert.Equal(t, SchemaVersion, version)
 	require.NoError(t, c.QueryRow(context.Background(), "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'sprint'").Scan(&tables))
-	assert.Equal(t, 9, tables)
+	assert.Equal(t, 10, tables, "nine and round 25's sprint.balances")
 	s, err := p.Snapshot(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, emptySnapshot(1), s)
@@ -192,6 +192,47 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	assert.Equal(t, Row{Name: "w1", State: "up", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept; it is unhooked (no role was recorded), so it hooks again")
 	h.ok(h.op("put", nil, PutRow{Name: "w1", Session: "sess-2", Role: "worker"}))
 	assert.Equal(t, "working", h.snap().Cards["u1"].State)
+}
+
+// Round 25: the live store's schema, round 22's carried to 24 (round24Hash,
+// a consumer in it), is upgraded by Migrate: cards.usage (empty on every card,
+// a producer's held empty by its CHECK) and sprint.balances are added, the
+// new hash recorded, a second Migrate is a no-op, and the consumer takes a
+// usage after.
+func TestFunctionalMigrateRound24(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round24.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round24Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1)",
+		"INSERT INTO sprint.rows (name, state, epoch) VALUES ('w1', 'up', 1)",
+		"INSERT INTO sprint.cards (id, kind, tier, stream, state, epoch) VALUES ('c1', 'producer', 'pro', 's1', 'waiting', 1)",
+		"INSERT INTO sprint.cards (id, kind, \"of\", tier, stream, state, holder, cost, priced, epoch) VALUES ('u1', 'work', 'c1', 'pro', 's1', 'working', 'w1', 5, true, 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round24Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 22}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	id, err = CheckSchema(ctx, dsn)
+	require.NoError(t, err)
+	want := currentSchema
+	want.Owner = "nova"
+	assert.Equal(t, want, id)
+	_, err = c.Exec(ctx, "UPDATE sprint.cards SET usage = 'x=1' WHERE id = 'c1'")
+	assert.ErrorContains(t, err, "cards_usage_check")
+	var n int
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM sprint.balances").Scan(&n))
+	assert.Equal(t, 0, n)
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, int64(5), h.snap().Cards["u1"].Cost, "the cost is kept")
+	h.ok(h.op("report", nil, SetCardUsage{"u1", "input=3 billing=api charged=- unpriced=no-price"}))
+	assert.Equal(t, "input=3 billing=api charged=- unpriced=no-price", h.snap().Cards["u1"].Usage)
 }
 
 func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {

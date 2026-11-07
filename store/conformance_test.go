@@ -52,6 +52,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"review and row reason":   reviewAndRowReason,
 		"finding":                 finding,
 		"red":                     red,
+		"usage":                   usageColumn,
 		"int range":               intRange,
 		"nul bytes":               nulBytes,
 		"text and time":           textAndTime,
@@ -919,6 +920,27 @@ func rowHeld(h *harness) {
 	h.ok(h.op("deal", []Expect{RowHeld{"w1", false}}))
 	h.refused(h.op("deal", []Expect{RowHeld{"w1", true}}), "row w1 is not held, expected held")
 	assert.False(h.t, h.snap().Rows["w1"].Held)
+}
+
+// usage (round 25): a consumer's usage record, words the store keeps and
+// never reads; refused on a producer or sentinel, "already has the given
+// usage" when unchanged, and kept by rebuild.
+func usageColumn(h *harness) {
+	h.seed()
+	words := "input=10 cache_read=2 output=5 model=deepseek/deepseek-flash billing=api charged=0.01"
+	r := h.ok(h.op("report", nil, SetCardUsage{"u1", words}, SetCardCost{"u1", 7, true}))
+	assert.Equal(h.t, words, r.After.Cards["u1"].Usage)
+	assert.Equal(h.t, "", r.After.Cards["c1"].Usage)
+	h.refusedAll([]refusal{
+		{SetCardUsage{"c1", "x=1"}, "card c1 is of kind producer; SetCardUsage is only for a consumer"},
+		{SetCardUsage{"u9", "x=1"}, "card u9 does not exist"},
+		{SetCardUsage{"u1", words}, "card u1 already has the given usage"},
+	})
+	h.invalid(map[string]Op{
+		"nul usage":   h.op("x", nil, SetCardUsage{"u1", "a\x00"}),
+		"usage twice": h.op("x", nil, SetCardUsage{"u1", "a=1"}, SetCardUsage{"u1", "a=2"}),
+	})
+	assert.Equal(h.t, h.snap().Cards, Rebuild(h.events()).Cards, "the log carries the usage")
 }
 
 // The columns the lessons of v1 placed: prior_head (a work consumer's
