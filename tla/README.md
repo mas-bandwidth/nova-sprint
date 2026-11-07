@@ -487,6 +487,69 @@ it lists; the model parks the whole ready set, the list layer 3 owes.
 A preempt Withdraw requires the consumer working, as Preempt already did.
 The reasons ("held: ...") are not modelled.
 
+Rounds 5 and 6 (card/ at v2-card-fix4 b2b0b8c2, and the ruling after the
+fourth cold read): Merge composes moves. An op is an ordered list of up to
+`MaxOp` moves, nested merges flattened first, each planned against what
+the earlier ones left: in the model the moves of an op are consecutive
+steps, `op` counts the moves of the open op and `snap` is the state it
+started from. A consumer cut earlier in the op is live for the next move;
+the stream, rows and cards are the folded ones; a move's conditions are
+the first-read value of each field, minus the fields an earlier move of the
+op wrote, and the store checks them against `snap` (FencesOnSnapshot). A
+sequence legal one by one is one op (Red then WaiveRed included). The
+preempt guard runs on the whole op for Withdraws flagged preempt
+(`PreWithdraw`): with a blocker's Start in the same op, the withdrawn
+consumer is working on the row that Start names (PreemptOnBlockerRow; `pw`
+and `bs` keep the rows of the op's preempt Withdraws and blocker Starts).
+`MaxOp` is read off the scenario (merge 3, mergepre and mergedeps 2, every
+other 1), so a cfg that names none has ops of one move.
+
+Round 7 (the rulings after the fifth cold read,
+`BRIEF-V2-CARD-ROUND7-draft-2026-11-07.md`), modelled ahead of the code
+(card/ at v2-card-fix4 b2b0b8c2 has not taken them; see the divergences
+below):
+- Ruling 1, ids without dots: cards and consumers share one namespace,
+  fenced absent on every Add and every cut (Start, AskRead, AskReads), and
+  consumer ids are the code's (`<p>.w<attempt>`, `<p>.r<review>.<n>`,
+  `ConsName`). deps carries the id `p1.w1`, which Add refuses for its dot;
+  without that refusal it is added before p1 starts and p1 can never cut
+  its first work consumer (CardDottedId, NeverStranded). IdsDistinct states
+  the namespace. The 104-byte cap is a value check with no state.
+- Ruling 2, InThisOp: legal only as a later move of an op whose earlier
+  move failed the need, checked on the folded need state (`InThisOpLater`,
+  `InThisOpFolded`); alone it is refused (CardInThisOpAlone,
+  InThisOpOnFailedNeed). With `MaxOp` 1 the op is the one step it was
+  (Cancel and the dependant's move together). "Drops it" is read as the
+  earlier move writing the need to fail (Cancel or Replace).
+- Rulings 3 and 8, Preempt as an event field, on the flattened list: the
+  guard reads only Withdraws flagged preempt (`PreWithdraw`); a plain
+  Withdraw (`PlainRows` is empty) merges with a blocker's Start on another
+  row (PlainWithdrawUnguarded, CardPlainWithdrawGuarded); a nested Start
+  never skips it (CardMergeNestedStart).
+- Rulings 4 and 11, composition: each move reads the folded state, the last
+  write wins, and nothing refuses a second write (MergeParksResolved:
+  HoldStream later in an open op is always enabled, so Merge(Resolve,
+  HoldStream) parks what the Resolve readied; CardMergeSecondWrite). The
+  order-independence test for ReportPlan and row-hold pairs is the code's:
+  no guard of Report or the producer moves reads a row's hold.
+- Ruling 6: Start copies `finding` only (reason is not modelled); a fail or
+  fault report may omit the head, and a head given differs from the base
+  and the prior head for every result (CardFailRepeatsPrior); ReadFix with
+  an empty finding is refused, so ReadFix always writes one (FixSaysWhat,
+  CardReadFixEmpty). The reason-only Edit of a parked producer is a refusal
+  on `reason`, which no other guard reads, so it is not modelled (Edit is a
+  stutter here).
+- Ruling 7, `seen` is the records read before any write (CardMergeOwnWrites,
+  FencesOnSnapshot) and the review counter is folded once: it rises by one
+  on Finished and Red and on nothing else (ReviewOnEntry,
+  CardMergeReviewTwice: Report then Finished in one op raising it by two).
+- Ruling 9, hand-built plans: a move's record is the real one with its
+  fields written; a merged move writing a partial record (missing fields at
+  their zero values) resets what it did not name (CardHandPlanPartial:
+  Start then SetPriority in one op resets the attempt, AttemptOnlyOnStart).
+- Rulings 5 and 10 (wording) and 12 (the walk, the PG mirror, card/README)
+  are the code's.
+
 `last` is a step monitor. `StepRule` reads the state before and after each
 step and records the step rules it broke (`last.bad`). It is shared by every
 action and part of none, so a fault in an action is caught there; it keeps
@@ -494,14 +557,17 @@ only four event names (NeedFailed, Preempt, AskReads, InThisOp, for their
 reach checks), so states
 are not split by the move that reached them.
 
-## The instance: four scenarios
+## The instance: seven scenarios
 
 | cfg | Scenario | producers | needs | K | heads | attempts | env moves |
 |---|---|---|---|---|---|---|---|
 | `CardMachine.cfg` | `life` | p1, sentinel s | s needs p1 | 3 | 2 | 2 | 2 |
-| `CardDeps.cfg` | `deps` | p1, p2, sentinel s, sentinel a (absent until Add) | p2 needs p1, s needs p2 | 2 | 1 | 1 | 1 |
+| `CardDeps.cfg` | `deps` | p1, p2, sentinel s, sentinels a and p1.w1 (absent until Add; Add refuses p1.w1) | p2 needs p1, s needs p2 | 2 | 1 | 1 | 1 |
 | `CardPreempt.cfg` | `pre` | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 2 |
 | `CardReads.cfg` | `reads` | p1; rows r1, r2, r3 | none | 3 | 1 | 1 | 1 |
+| `CardMerge.cfg` | `merge` (life, ops of 3 moves) | p1, sentinel s | s needs p1 | 2 | 1 | 1 | 1 |
+| `CardMergePre.cfg` | `mergepre` (pre, ops of 2) | p1, p2 | none; p2 `after` p1 | 2 | 1 | 1 | 1 |
+| `CardMergeDeps.cfg` | `mergedeps` (deps, ops of 2) | as deps | as deps | 2 | 1 | 1 | 0 |
 | `witnesses/CardWaiveRedWithoutRed.cfg` only | `redw` (Scenario life) | p1, sentinel s | s needs p1 | 5 | 2 | 3 | 0 |
 
 - `life` carries the whole lifecycle: a fix, a Red with a yes after it, a
@@ -555,9 +621,9 @@ cycle check.
 
 ## Files
 
-- `CardMachine.tla` and its four passing cfgs.
-- `witnesses/Card*.tla`: twenty-four reversed witnesses; `reach/Card*.cfg`:
-  sixteen reachability checks. Generated with every card cfg by
+- `CardMachine.tla` and its seven passing cfgs.
+- `witnesses/Card*.tla`: thirty-six reversed witnesses; `reach/Card*.cfg`:
+  seventeen reachability checks. Generated with every card cfg by
   `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
   in the script, in the same shape as `make-witnesses.py`: a replacement
   that no longer matches stops the script.
@@ -600,6 +666,15 @@ State invariants:
 - **ResultsByKind**: a work consumer's result is ok, fail or fault; a read's
   ok, fix or fault.
 - **OneLiveReadPerRow**: at most one live read of a head per row.
+- **IdsDistinct**: no existing card's id is a cut consumer's id (one
+  namespace, round 7).
+- **PreemptOnBlockerRow**: an op's preempt Withdraws are of consumers on the
+  row its blocker Starts name.
+- **PlainWithdrawUnguarded**: in an open op, a plain Withdraw of any working
+  consumer is enabled (the guard reads only the Preempt flag; round 7).
+- **MergeParksResolved**: in an open op, with the stream not held and an
+  environment move left, HoldStream is enabled (no second-write refusal;
+  round 7).
 
 Step invariants (each: the last step kept its rule):
 - **FinalNeverMoves**: no landed/fail producer and no done/fail consumer
@@ -630,12 +705,19 @@ Step invariants (each: the last step kept its rule):
 - **BlockNoLive**, **EditNoLive**: Block and Edit only with no live consumer.
 - **SentinelLandsByReached**: a sentinel lands only by Reached, needs landed.
 - **WaiveRedNeedsRed**: WaiveRed only with the Red recorded.
+- **FencesOnSnapshot**: in an op, a move's conditions on a card's state are
+  those of the snapshot, minus states an earlier move of the op wrote.
+- **ReviewOnEntry**: review rises by one on Finished and Red of that
+  producer, and on nothing else (round 7).
+- **FixSaysWhat**: ReadFix writes a finding (round 7).
+- **InThisOpOnFailedNeed**: after an InThisOp move, its need is fail (round
+  7).
 
 ## Expected results
 
 | Module | Scenario | Fault | Expected result |
 |---|---|---|---|
-| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` | life / deps / pre / reads | none | pass |
+| `CardMachine` / `CardDeps` / `CardPreempt` / `CardReads` / `CardMerge` / `CardMergePre` / `CardMergeDeps` | life / deps / pre / reads / merge / mergepre / mergedeps | none | pass |
 | `witnesses/CardLandedMoves` | life | Rescore has no final check | FinalNeverMoves |
 | `witnesses/CardAuthorReads` | life | AskRead does not refuse the author | ReaderNeverAuthor |
 | `witnesses/CardRedAdvances` | life | Red moves merging to landed | RedNeverAdvances |
@@ -659,6 +741,19 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardTwoReadsOneRow` | life | AskRead takes a row holding a live read of the head | OneLiveReadPerRow |
 | `witnesses/CardPriorRepeated` | life | an ok report repeats the prior head | HeadNeverRepeats |
 | `witnesses/CardWaiveRedWithoutRed` | redw | WaiveRed without the red check | WaiveRedNeedsRed |
+| `witnesses/CardMergeCutUnseen` | merge | a consumer cut earlier in the op is unseen by the next move | BlockNoLive |
+| `witnesses/CardMergeNestedHold` | merge | a release reads the stream's hold from the snapshot | ParkedUnderHold |
+| `witnesses/CardMergeNoRerun` | merge | a merged move is checked on the snapshot, not the fold | FinalNeverMoves |
+| `witnesses/CardMergeOwnWrites` | merge | a move fences a state an earlier move wrote | FencesOnSnapshot |
+| `witnesses/CardMergeNestedStart` | mergepre | the preempt guard skips a nested Start | PreemptOnBlockerRow |
+| `witnesses/CardDottedId` | deps | Add takes an id with a dot | NeverStranded |
+| `witnesses/CardInThisOpAlone` | mergedeps | InThisOp alone, the need not failed in the op | InThisOpOnFailedNeed |
+| `witnesses/CardPlainWithdrawGuarded` | mergepre | the preempt guard on every Withdraw | PlainWithdrawUnguarded |
+| `witnesses/CardMergeSecondWrite` | merge | a second write to a field refused | MergeParksResolved |
+| `witnesses/CardReadFixEmpty` | life | ReadFix with an empty finding | FixSaysWhat |
+| `witnesses/CardFailRepeatsPrior` | life | a fail report names the prior head | HeadNeverRepeats |
+| `witnesses/CardMergeReviewTwice` | merge | Report then Finished in one op raises review by two | ReviewOnEntry |
+| `witnesses/CardHandPlanPartial` | merge | a merged move writes a partial record | AttemptOnlyOnStart |
 | `reach/CardNeverLanded` | life | none | violated: a producer lands |
 | `reach/CardNeverFixed` | life | none | violated: a review ends in ReadFix |
 | `reach/CardNeverRed` | life | none | violated: merging goes red |
@@ -675,63 +770,83 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverWaivedRed` | life | none | violated: WaiveRed merges after a Red on the earlier read |
 | `reach/CardNeverFindingCarried` | life | none | violated: a fix attempt carries the reader's finding |
 | `reach/CardNeverPreempted` | pre | none | violated: a blocker preempts a live consumer |
+| `reach/CardNeverInThisOpMerged` | mergedeps | none | violated: a need fails and a later move of the op moves its dependant |
 
-## Results, the CI jar on hetzner2, 2026-11-06 (d93ceeae, round 4)
+## Results, the CI jar on hetzner2, 2026-11-07 (round 7, card/ at v2-card-fix4 4bb1a43b)
 
-Every run (store and card) in one parallel pass with `run-tlc.sh`, the
-passing runs on 4 workers each and the rest on 1, so the times are under
-full contention. `ci-tlc.sh` then passed: 94 runs, 94 ok, exit 0 (a first
-pass lost CardDeps to "Cannot allocate memory" while another user's TLC
-jobs held about 30 GB; rerun clean).
+Every run (store and card) in one parallel pass with `run-tlc.sh` (each JVM
+at `-Xmx3g`), the passing runs on 4 workers each and the rest on 1, on a
+host other users' TLC jobs were also loading, so the times are under full
+contention. CardDeps was OOM-killed in that pass (exit 137, the host short
+of memory) and passed rerun alone at `-Xmx8g`. Of the card runs: 7 passing
+scenarios pass, 36 witnesses and 17 reach checks each report their target
+invariant violated (60 runs).
 
 | Module | Result | Generated / distinct | Depth | Time |
 |---|---|---|---|---|
-| `CardMachine` (life) | No error has been found | 5808819 / 1359931 | 24 | 2min 4s |
-| `CardDeps` (deps) | No error has been found | 21525714 / 4031516 | 25 | 9min 36s |
-| `CardPreempt` (pre) | No error has been found | 5687866 / 943758 | 27 | 2min 0s |
-| `CardReads` (reads) | No error has been found | 79927 / 27674 | 17 | 22s |
+| `CardMachine` (life) | No error has been found | 5808819 / 1359931 | 24 | 3min 00s |
+| `CardDeps` (deps) | No error has been found | 21525714 / 4031516 | 25 | 22min 30s (rerun alone) |
+| `CardPreempt` (pre) | No error has been found | 5688130 / 943790 | 27 | 2min 58s |
+| `CardReads` (reads) | No error has been found | 79927 / 27674 | 17 | 30s |
+| `CardMerge` (merge) | No error has been found | 220392 / 41428 | 17 | 32s |
+| `CardMergePre` (mergepre) | No error has been found | 7102298 / 1054188 | 26 | 2min 50s |
+| `CardMergeDeps` (mergedeps) | No error has been found | 216520 / 50135 | 25 | 45s |
+| `CardAuthorReads` | ReaderNeverAuthor violated | 10705 / 3788 | 7 | 29s |
+| `CardDottedId` | NeverStranded violated | 395 / 374 | 3 | 18s |
+| `CardEditUnderLive` | EditNoLive violated | 442 / 232 | 4 | 15s |
+| `CardFailRepeatsPrior` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 30s |
+| `CardFaultBounces` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 26s |
+| `CardFaultBumpsAttempt` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 22s |
+| `CardHandPlanPartial` | AttemptOnlyOnStart violated | 820 / 367 | 4 | 18s |
+| `CardHeldStreamReady` | ParkedUnderHold violated | 10428 / 3649 | 7 | 27s |
+| `CardInThisOpAlone` | InThisOpOnFailedNeed violated | 22 / 10 | 2 | 11s |
 | `CardLandedMoves` | FinalNeverMoves violated | 56 / 46 | 3 | 9s |
-| `CardAuthorReads` | ReaderNeverAuthor violated | 10705 / 3788 | 7 | 20s |
-| `CardRedAdvances` | RedNeverAdvances violated | 408537 / 130809 | 11 | 59s |
-| `CardNeedFailedIgnored` | NeedFailedTakesDependants violated | 6 / 4 | 2 | 8s |
-| `CardNonHolderReports` | OnlyHolderActs violated | 2074 / 794 | 5 | 17s |
-| `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 439 / 229 | 4 | 10s |
-| `CardStaleReport` | OldAttemptNeverMoves violated | 30764 / 10902 | 8 | 23s |
-| `CardYesOnZero` | ReadYesNeedsYes violated | 10703 / 3786 | 7 | 21s |
-| `CardFaultBumpsAttempt` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 19s |
-| `CardFaultBounces` | FaultSpendsNothing violated | 4978 / 1572 | 6 | 19s |
-| `CardEditUnderLive` | EditNoLive violated | 442 / 232 | 4 | 9s |
-| `CardReadyCounted` | TakeBelowWidth violated | 36 / 31 | 3 | 8s |
-| `CardNeedsCycle` | NeedsAcyclic violated | 280 / 255 | 3 | 16s |
-| `CardWithdrawLeavesWorking` | WithdrawReleasesInOneStep violated | 439 / 229 | 4 | 14s |
-| `CardReadFixOnZero` | ReadFixNeedsFix violated | 10703 / 3786 | 7 | 21s |
-| `CardHeldStreamReady` | ParkedUnderHold violated | 10428 / 3649 | 7 | 20s |
-| `CardWaiveRedWithoutRead` | WaiveRedNeedsPriorRead violated | 1719999 / 476019 | 14 | 2min 13s |
-| `CardRelinkAfterCycle` | OrderAcyclic violated | 7380 / 3256 | 4 | 20s |
-| `CardReadReportsFail` | ResultsByKind violated | 84689 / 29482 | 9 | 28s |
-| `CardReplaceByFinal` | ReplaceByLive violated | 22 / 20 | 3 | 7s |
-| `CardTwoReadsOneRow` | OneLiveReadPerRow violated | 31941 / 11338 | 8 | 23s |
-| `CardPriorRepeated` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 23s |
-| `CardWaiveRedWithoutRed` (redw) | WaiveRedNeedsRed violated | 977451 / 438683 | 20 | 2min 6s |
-| reach `CardNeverLanded` | NeverLanded violated | 408529 / 130804 | 11 | 51s |
-| reach `CardNeverFixed` | NeverFixed violated | 200192 / 67405 | 10 | 34s |
-| reach `CardNeverRed` | NeverRed violated | 408537 / 130809 | 11 | 51s |
-| reach `CardNeverYesAfterRed` | NeverYesAfterRed violated | 2227352 / 591860 | 15 | 2min 15s |
-| reach `CardNeverWaivedRed` | NeverWaivedRed violated | 747797 / 229675 | 12 | 1min 8s |
-| reach `CardNeverFaultRedealt` | NeverFaultRedealt violated | 10458 / 3662 | 7 | 18s |
-| reach `CardNeverFindingCarried` | NeverFindingCarried violated | 408827 / 130955 | 11 | 51s |
-| reach `CardNeverBlocked` | NeverBlocked violated | 35 / 30 | 3 | 8s |
-| reach `CardNeverSentinelReached` | NeverSentinelReached violated | 747709 / 229623 | 12 | 1min 9s |
-| reach `CardNeverNeedFailed` | NeverNeedFailed violated | 278 / 253 | 3 | 9s |
-| reach `CardNeverInThisOp` | NeverInThisOp violated | 12 / 6 | 2 | 8s |
-| reach `CardNeverRelinked` | NeverRelinked violated | 14 / 8 | 2 | 8s |
-| reach `CardNeverAdded` | NeverAdded violated | 27 / 21 | 2 | 8s |
-| reach `CardNeverSentinelNeeded` | NeverSentinelNeeded violated | 19 / 13 | 2 | 9s |
-| reach `CardNeverAskReads` | NeverAskReads violated | 1333 / 666 | 7 | 11s |
-| reach `CardNeverPreempted` | NeverPreempted violated | 26847 / 7616 | 8 | 20s |
+| `CardMergeCutUnseen` | BlockNoLive violated | 40759 / 10276 | 8 | 30s |
+| `CardMergeNestedHold` | ParkedUnderHold violated | 3470 / 1082 | 5 | 20s |
+| `CardMergeNestedStart` | PreemptOnBlockerRow violated | 50919 / 13081 | 8 | 33s |
+| `CardMergeNoRerun` | FinalNeverMoves violated | 190 / 138 | 3 | 15s |
+| `CardMergeOwnWrites` | FencesOnSnapshot violated | 123 / 95 | 3 | 12s |
+| `CardMergeReviewTwice` | ReviewOnEntry violated | 7632 / 2166 | 6 | 24s |
+| `CardMergeSecondWrite` | MergeParksResolved violated | 7 / 5 | 2 | 9s |
+| `CardNeedFailedIgnored` | NeedFailedTakesDependants violated | 6 / 4 | 2 | 13s |
+| `CardNeedsCycle` | NeedsAcyclic violated | 280 / 255 | 3 | 19s |
+| `CardNonHolderReports` | OnlyHolderActs violated | 2074 / 794 | 5 | 23s |
+| `CardPlainWithdrawGuarded` | PlainWithdrawUnguarded violated | 17436 / 4849 | 7 | 28s |
+| `CardPriorRepeated` | HeadNeverRepeats violated | 26661 / 9341 | 8 | 31s |
+| `CardReadFixEmpty` | FixSaysWhat violated | 200192 / 67405 | 10 | 54s |
+| `CardReadFixOnZero` | ReadFixNeedsFix violated | 10703 / 3786 | 7 | 28s |
+| `CardReadReportsFail` | ResultsByKind violated | 84689 / 29482 | 9 | 42s |
+| `CardReadyCounted` | TakeBelowWidth violated | 36 / 31 | 3 | 10s |
+| `CardRedAdvances` | RedNeverAdvances violated | 408537 / 130809 | 11 | 1min 18s |
+| `CardRelinkAfterCycle` | OrderAcyclic violated | 7380 / 3256 | 4 | 27s |
+| `CardReplaceByFinal` | ReplaceByLive violated | 22 / 20 | 3 | 9s |
+| `CardStaleReport` | OldAttemptNeverMoves violated | 30764 / 10902 | 8 | 34s |
+| `CardTwoReadsOneRow` | OneLiveReadPerRow violated | 31941 / 11338 | 8 | 34s |
+| `CardTwoWorkConsumers` | WorkingOneWorkConsumer violated | 439 / 229 | 4 | 19s |
+| `CardWaiveRedWithoutRead` | WaiveRedNeedsPriorRead violated | 1719999 / 476019 | 14 | 3min 09s |
+| `CardWaiveRedWithoutRed` (redw) | WaiveRedNeedsRed violated | 977451 / 438683 | 20 | 3min 02s |
+| `CardWithdrawLeavesWorking` | WithdrawReleasesInOneStep violated | 439 / 229 | 4 | 16s |
+| `CardYesOnZero` | ReadYesNeedsYes violated | 10703 / 3786 | 7 | 25s |
+| reach `CardNeverAdded` | NeverAdded violated | 27 / 21 | 2 | 14s |
+| reach `CardNeverAskReads` | NeverAskReads violated | 1333 / 666 | 7 | 16s |
+| reach `CardNeverBlocked` | NeverBlocked violated | 35 / 30 | 3 | 11s |
+| reach `CardNeverFaultRedealt` | NeverFaultRedealt violated | 10458 / 3662 | 7 | 24s |
+| reach `CardNeverFindingCarried` | NeverFindingCarried violated | 408827 / 130955 | 11 | 1min 07s |
+| reach `CardNeverFixed` | NeverFixed violated | 200192 / 67405 | 10 | 46s |
+| reach `CardNeverInThisOp` | NeverInThisOp violated | 12 / 6 | 2 | 9s |
+| reach `CardNeverInThisOpMerged` | NeverInThisOpMerged violated | 93 / 33 | 3 | 9s |
+| reach `CardNeverLanded` | NeverLanded violated | 408529 / 130804 | 11 | 1min 06s |
+| reach `CardNeverNeedFailed` | NeverNeedFailed violated | 278 / 253 | 3 | 14s |
+| reach `CardNeverPreempted` | NeverPreempted violated | 9615 / 2863 | 7 | 25s |
+| reach `CardNeverRed` | NeverRed violated | 408537 / 130809 | 11 | 1min 04s |
+| reach `CardNeverRelinked` | NeverRelinked violated | 14 / 8 | 2 | 12s |
+| reach `CardNeverSentinelNeeded` | NeverSentinelNeeded violated | 19 / 13 | 2 | 11s |
+| reach `CardNeverSentinelReached` | NeverSentinelReached violated | 747709 / 229623 | 12 | 1min 31s |
+| reach `CardNeverWaivedRed` | NeverWaivedRed violated | 747797 / 229675 | 12 | 1min 31s |
+| reach `CardNeverYesAfterRed` | NeverYesAfterRed violated | 2227352 / 591860 | 15 | 3min 08s |
 
-The counterexamples were checked by hand with `card-trace.py`, and each
-move the fault lets through is one card/ at 4a085774 refuses:
+The counterexamples were checked by hand with `card-trace.py`. Up to
+round 4, each move the fault lets through is one card/ at 4a085774 refuses:
 - **CardLandedMoves:** p1 is cancelled (fail), then Rescore changes its score.
 - **CardAuthorReads:** r2 produces head 1; a read of it is cut to r2.
 - **CardRedAdvances:** deal, finish, read ok, ReadYes; then Red lands it.
@@ -771,6 +886,53 @@ move the fault lets through is one card/ at 4a085774 refuses:
   (the code: "no red on review 2"; every other check passes there: Block
   from review with no live consumer, the withdrawn head written by
   Released, an ok head that is neither base nor prior).
+- **CardMergeCutUnseen, CardMergeNestedHold, CardMergeNoRerun,
+  CardMergeOwnWrites, CardMergeNestedStart** (rounds 5 and 6): AskRead then
+  Block in one op with the read unseen; HoldStream then a Withdraw leaving
+  p1 ready in a held stream; Cancel then a merged Rescore of the failed
+  card; Resolve then Cancel fencing p1 ready against a waiting snapshot;
+  a blocker Start on r2 then a preempt Withdraw of p1.1 working on r1 in
+  one op.
+
+Trace check (`make-traces.sh check` on hetzner2, this model, card/ at
+4bb1a43b): card-walk-1..20 all TRACE OK (65 to 114 steps each), the
+card-breaker refused at 3 of 3 as expected, and the store traces as before.
+`CardMachineTrace.tla` sets the Merge bookkeeping (`op`, `snap`, `pw`, `bs`)
+at rest in TraceInit and leaves it unchanged on every record (each record
+is one op of one move), and `MaxOp` is read off the scenario, so the
+walk's generated cfg needs no new constant. The walk records single moves
+only: it never merges, uses InThisOp, adds a dotted id or gives ReadFix an
+empty finding, so it cannot see the round 7 divergences below.
+
+Round 7, checked by hand against card/ at v2-card-fix4 (b2b0b8c2; 4bb1a43b
+changes no move in card/, only adds the trace emitter). Each is a move the
+round 7 rulings refuse; "fix4 accepts" marks a divergence the code still has:
+- **CardDottedId:** Resolve p1, Add `p1.w1` (a sentinel, no needs); p1 is
+  ready and every Start would cut `p1.w1`, which the CardAbsent fence
+  refuses: p1 is stranded. fix4 accepts the Add (addShape has no dot check).
+- **CardInThisOpAlone:** NeedFailed{InThisOp} of p2 on its need p1, alone,
+  with p1 waiting: p2 fails on a live need. fix4 accepts it (failedNeed
+  returns nil for InThisOp unless the need is landed).
+- **CardPlainWithdrawGuarded:** p1.1 works on r1; the blocker p2 is started
+  on r2, opening an op; a plain Withdraw of p1.1 is refused by the guard.
+  fix4 does refuse it (preemptGuard pairs every Withdraw with a blocker
+  Start: "consumer p1.1 is on r1; blocker p2 is dealt to r2").
+- **CardMergeSecondWrite:** Resolve p1 opens an op; HoldStream would write
+  p1's state again and is refused. fix4 refuses Merge(Resolve, HoldStream)
+  by dupWrites, the second-write refusal ruling 4 removes.
+- **CardReadFixEmpty:** deal, finish, a read says fix, ReadFix with no
+  finding: p1 is ready with no finding to carry. fix4 accepts it (readFix
+  writes a finding only when one is given).
+- **CardFailRepeatsPrior:** attempt 1 is withdrawn with head 1, attempt 2
+  (prior 1) reports fail with head 1. fix4 refuses it (reportHead checks a
+  given head against the prior for every result).
+- **CardMergeReviewTwice:** attempt 1 reports ok opening an op, Finished in
+  the same op takes review from 0 to 2.
+- **CardHandPlanPartial:** Start p1 opens an op; SetPriority in it writes a
+  record whose other fields are zero: attempt 1 goes back to 0.
+- **reach NeverInThisOpMerged:** Cancel p1 opens an op; NeedFailed{InThisOp}
+  of p2 on p1 is the next move.
+
 - **reach:** Landed runs deal, finish, read ok, ReadYes, Landed. Fixed ends
   review → ready with bounces 1. Red goes merging → review with review 2.
   YesAfterRed then cuts a new read at review 2 and merges on it; WaivedRed
@@ -787,8 +949,10 @@ move the fault lets through is one card/ at 4a085774 refuses:
 
 Not modelled: the liveness obligation "nothing stalls", which the card
 model's rulings make layer 3's (with the tick); NeverStranded is its state
-half here. The reasons ("held: ..."), Merge's two-writes-to-one-field
-refusal and Add's id length cap are value checks with no state of their own.
+half here. The reasons ("held: ...", and so the reason-only Edit of a
+parked producer), the refusal wording and Add's id length cap are value
+checks with no state of their own; round 7 removes Merge's second-write
+refusal (MergeParksResolved).
 
 # The steps (layer 3)
 

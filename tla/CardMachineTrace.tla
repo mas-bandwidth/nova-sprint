@@ -105,9 +105,12 @@ EnvStep(r) ==
     [] r.action = "RawHold"      -> RawHold
     [] OTHER                     -> FALSE
 
+\* Each record is one accepted op of one move: no op stays open (op, snap,
+\* pw and bs are CardMachine.tla's Merge bookkeeping, at rest).
 StepAs(r) ==
-  IF r.action \in CardMoves THEN CardStep(r) /\ UNCHANGED env
-  ELSE EnvStep(r) /\ env' = env + 1
+  /\ UNCHANGED <<op, snap, pw, bs>>
+  /\ IF r.action \in CardMoves THEN CardStep(r) /\ UNCHANGED env
+     ELSE EnvStep(r) /\ env' = env + 1
 
 \* The value a record gives entry k: its own, else old's (unchanged).
 Upd(d, old, k) == IF k \in DOMAIN d THEN d[k] ELSE old[k]
@@ -127,6 +130,7 @@ TraceInit ==
   /\ held = FALSE
   /\ last = [ev |-> "Init", bad |-> {}]
   /\ env  = 0
+  /\ op   = 0 /\ snap = NoSnap /\ pw = {} /\ bs = {}
   /\ \A p \in P : ps[p] = TraceLog[1].ps[p]
   /\ DOMAIN TraceLog[1].cs = {}
   /\ held = TraceLog[1].held

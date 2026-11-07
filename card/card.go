@@ -63,10 +63,11 @@ type Plan struct {
 	Writes []store.Write
 
 	label   string  // the move, for a merge refusal: "Relink p1"
-	seen    records // the records the move read
+	seen    records // the records the move read, before its own writes
 	again   rerun   // the move, run again against folded records; nil if hand-built
-	replays int     // how many later moves a Merge ran again
+	replays int     // how many moves a Merge ran again
 	ev      Event   // the move, so a merge can read its fields
+	parts   []Plan  // the flattened moves, when this plan is itself a merge
 }
 
 // Refusal is an illegal move, as a value: the reason names the fix.
@@ -144,9 +145,12 @@ type (
 	// Stream is the producer's stream, read with it: a release into a held
 	// stream parks the producer (waiting); needed only when the withdraw
 	// releases.
+	// Preempt marks the blocker's preempt. The pair guard and the
+	// working-consumer check read this field, never the reason text.
 	Withdraw struct {
 		Reason, Head string
 		Stream       Stream
+		Preempt      bool
 	}
 )
 
@@ -202,7 +206,6 @@ func (UnholdStream) isEvent() {}
 type (
 	Seen   struct{}
 	Gone   struct{}
-	Width  struct{ N int }
 	Hold   struct{ Reason string }
 	Unhold struct{ Reason string }
 )
@@ -237,7 +240,6 @@ func (Report) isEvent()      {}
 func (Withdraw) isEvent()    {}
 func (Seen) isEvent()        {}
 func (Gone) isEvent()        {}
-func (Width) isEvent()       {}
 func (Hold) isEvent()        {}
 func (Unhold) isEvent()      {}
 

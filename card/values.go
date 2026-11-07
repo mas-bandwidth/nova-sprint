@@ -216,15 +216,29 @@ func dupWrites(ws []store.Write) *Refusal {
 	for _, w := range ws {
 		for _, f := range writeFields(w) {
 			if seen[f] {
-				if f[2] == "kind" {
-					return no("a second write to %s %s field %s; one op writes a field once; several reads of one head are AskReads", f[0], f[1], f[2])
-				}
-				return no("a second write to %s %s field %s; one op writes a field once", f[0], f[1], f[2])
+				return secondWrite(f)
 			}
 			seen[f] = true
 		}
 	}
 	return nil
+}
+
+// secondWrite names the fix for a repeated field. A second read of one head
+// is AskReads. A second work consumer is one Start. A second new card is one Add.
+func secondWrite(f [3]string) *Refusal {
+	msg := fmt.Sprintf("a second write to %s %s field %s; one op writes a field once", f[0], f[1], f[2])
+	if f[2] != "kind" {
+		return no("%s", msg)
+	}
+	switch {
+	case strings.Contains(f[1], ".r"):
+		return no("%s; several reads of one head are AskReads", msg)
+	case strings.Contains(f[1], ".w"):
+		return no("%s; one Start", msg)
+	default:
+		return no("%s; one Add", msg)
+	}
 }
 
 func writeFields(w store.Write) [][3]string {

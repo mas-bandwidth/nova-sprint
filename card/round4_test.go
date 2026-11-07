@@ -45,7 +45,7 @@ func TestHoldThenStartRefusesHeld(t *testing.T) {
 // A preempt withdraws a working consumer. The youngest on the row is the step's choice.
 func TestPreemptWithdrawNeedsWorking(t *testing.T) {
 	ready := wk(Ready, "", "")
-	_, r := MoveConsumer(ready, pr(Working), rows()["r1"], Withdraw{Reason: "preempted by blocker p2", Stream: Stream{Name: "s1"}})
+	_, r := MoveConsumer(ready, pr(Working), rows()["r1"], Withdraw{Reason: "preempted by blocker p2", Stream: Stream{Name: "s1"}, Preempt: true})
 	refusal{r, "consumer p1.w1 is ready; a preempt withdraws a working consumer, and the step chooses the youngest on the row"}.check(t)
 }
 

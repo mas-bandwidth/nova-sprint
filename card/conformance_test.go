@@ -489,7 +489,7 @@ func TestConformancePreemption(t *testing.T) {
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
-	w.op("preempt", mustMerge(t, w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2"}), start))
+	w.op("preempt", mustMerge(t, w.consumerPlan("p1.w1", Withdraw{Reason: "preempted by blocker p2", Preempt: true}), start))
 	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p2.w1", Working)
 	assert.Equal(t, []any{Ready, "preempted by blocker p2"}, []any{w.card("p1").State, w.card("p1").Reason})

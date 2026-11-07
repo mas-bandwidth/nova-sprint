@@ -25,6 +25,12 @@ def section(text, var):
     return m.group(1) if m else ""
 
 
+def word(text, var):
+    """The first token of a scalar variable (the last state runs to the log's end)."""
+    w = section(text, var).split()
+    return w[0] if w else ""
+
+
 def prod(name, f):
     s = "%s:%s a%s h%s" % (name, f["st"], f["att"], f["head"])
     if f["author"] != "none":
@@ -77,9 +83,15 @@ def main():
             if f["st"] != "up" or f["width"] != "1" or f["held"] != "FALSE" or f["flaps"] != "0":
                 out.append("%s:%s w%s%s f%s" % (r, f["st"], f["width"],
                                                 " held" if f["held"] == "TRUE" else "", f["flaps"]))
-        if section(text, "held").strip() == "TRUE":
+        if word(text, "held") == "TRUE":
             out.append("STREAM-HELD")
-        out.append("env" + section(text, "env").strip())
+        out.append("env" + word(text, "env"))
+        if word(text, "op") not in ("", "0"):
+            out.append("OP" + word(text, "op"))   # moves already in the open op
+        for v in ("pw", "bs"):   # rows of the last op's preempt Withdraws / blocker Starts
+            w = " ".join(section(text, v).split()[:1])
+            if w and w != "{}":
+                out.append(v + "".join(section(text, v).split()[:3]).split("\n")[0].replace('"', ''))
         out.append("last" + " ".join(section(text, "last").split()))
         print("%2s | %s" % (n, " | ".join(out)))
 
