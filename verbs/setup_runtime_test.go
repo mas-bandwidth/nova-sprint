@@ -98,8 +98,6 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	service := FleetService{Name: "sprint-run", Machine: "bench-a", Seat: "swarm-bench-a", Keys: []string{sprintPasswordName}, Argv: []string{"/bin/nova-sprint", "run"}}
 	cmd := func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
-		case "nova-version":
-			return []byte("nova-version v1.6.29 linux/amd64"), nil
 		case "nova-bus":
 			return []byte("WHO OK present=1\nalice\t1m\n"), nil
 		case "nova-fleet":
@@ -139,7 +137,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
-	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c, Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v1.6.20"}, Store: st, Run: run, Workload: worker, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, Snapshot: db, RunService: service, DefaultRunHost: "bench-a", Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}, Dashboard: DashboardProbe{Transport: transport}}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c, Command: cmd, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Store: st, Run: run, Workload: worker, Services: FleetServices{Command: cmd}, Role: SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "studio", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "studio", Command: cmd}}, Snapshot: db, RunService: service, DefaultRunHost: "bench-a", Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}, Dashboard: DashboardProbe{Transport: transport}}
 	in := SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
 	for round := 0; round < 2; round++ {
 		for step := 1; step <= 8; step++ {
@@ -185,15 +183,13 @@ func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 	choices := Choices{Store: db, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
 	command := func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
-		case "nova-version":
-			return []byte("nova-version v1.6.29 linux/amd64"), nil
 		case "nova-bus":
 			return []byte("WHO OK present=0\n"), nil
 		default:
 			return nil, nil
 		}
 	}
-	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: command, Getenv: func(string) string { return "" }}, Pin: "v1.6.20"}, Store: &runtimeStore{ready: true}}
+	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices, Command: command, Getenv: func(string) string { return "" }}, Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return "v1.6.29", nil }}, Store: &runtimeStore{ready: true}}
 	result := (&Engine{Actor: "rowan", Store: upStore(true), Bus: &fakeBus{}, Now: upNow, Setup: runtime, Lock: setupLeaseFake{}}).Execute(context.Background(), []string{"up"})
 	want := "SPRINT REFUSED up: rowan is not on the bus: " + busRecipe("rowan") + "\n"
 	if result.Exit != 1 || result.Output != want {

@@ -74,12 +74,12 @@ func runCheck(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (stri
 // toolsAtPin is nova-tools' release, refused below this build's pin.
 func (e *Engine) toolsAtPin(ctx context.Context) (string, error) {
 	line, err := e.Doctor.ToolsVersion(ctx)
-	v, ok := parseNovaVersion(line)
+	v, ok := parseToolsRelease(line)
 	if err != nil || !ok {
-		return "", refuse("nova-tools' version is unknown", "install nova-tools "+e.ToolPin+" or later with nova-update")
+		return "", refuse("nova-tools' version is unknown", toolsFix(e.ToolPin))
 	}
 	if at, err := atLeast(v, e.ToolPin); err != nil || !at {
-		return "", refuse("nova-tools "+v+" is below the pin "+e.ToolPin, "nova-fleet up")
+		return "", refuse("nova-tools "+v+" is below the pin "+e.ToolPin, toolsFix(e.ToolPin))
 	}
 	return v, nil
 }
@@ -112,16 +112,6 @@ func releaseVersion(s string) ([3]uint64, error) {
 		out[i] = n
 	}
 	return out, nil
-}
-
-// parseNovaVersion is `nova-version version`'s release.
-func parseNovaVersion(line string) (string, bool) {
-	f := strings.Fields(line)
-	if len(f) < 2 || f[0] != "nova-version" {
-		return "", false
-	}
-	_, err := releaseVersion(f[1])
-	return f[1], err == nil
 }
 
 func runVersion(e *Engine, _ context.Context, _ *input, _ store.Snapshot) (string, error) {

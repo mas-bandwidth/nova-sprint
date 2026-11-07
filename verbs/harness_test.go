@@ -85,7 +85,7 @@ func worldFrom(t *testing.T, s store.Snapshot) *world {
 		t.Fatal(err)
 	}
 	w := &world{f: f, bus: &fakeBus{present: map[string]bool{"alice": true, "bob": true, "carol": true, "dave": true}},
-		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "nova-version v2.0.2", schema: true},
+		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "v2.0.2", schema: true},
 		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster()}
 	n := 0
 	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch,

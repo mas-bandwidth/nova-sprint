@@ -11,15 +11,15 @@ import (
 
 func TestSetupPrerequisitesRecheckToolsVersion(t *testing.T) {
 	fleet := true
-	version := "nova-version v1.6.29 linux/amd64"
-	s := SetupPrerequisites{Pin: "v1.6.20", Env: ExecEnvironment{Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
-		if name == "nova-fleet" {
-			if !fleet {
-				return nil, errors.New("offline")
-			}
-			return nil, nil
+	version := "v1.6.29"
+	s := SetupPrerequisites{Pin: "v1.6.20", Installed: func(context.Context) (string, error) { return version, nil }, Env: ExecEnvironment{Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name != "nova-fleet" {
+			t.Fatalf("ran %s: the tools' version is read from build info, never a retired tool", name)
 		}
-		return []byte(version), nil
+		if !fleet {
+			return nil, errors.New("offline")
+		}
+		return nil, nil
 	}}}
 	check, err := s.Tools(context.Background())
 	if err != nil || !check.Verified {
@@ -34,7 +34,12 @@ func TestSetupPrerequisitesRecheckToolsVersion(t *testing.T) {
 	version = "bad"
 	_, err = s.Tools(context.Background())
 	var op *OperationError
-	if !errors.As(err, &op) || op.Problem != "nova-tools version unknown" || op.Fix != "install nova-tools >= v1.6.20 with nova-update" {
+	if !errors.As(err, &op) || op.Problem != "nova-tools version unknown" || op.Fix != "nova-fleet install --tag v1.6.20 <machine>" {
+		t.Fatal(err)
+	}
+	version = "v1.6.19"
+	_, err = s.Tools(context.Background())
+	if !errors.As(err, &op) || op.Problem != "nova-tools v1.6.19 is below pin v1.6.20" || op.Fix != "nova-fleet install --tag v1.6.20 <machine>" {
 		t.Fatal(err)
 	}
 }

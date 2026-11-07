@@ -84,9 +84,10 @@ func (d doctor) Fleet(ctx context.Context) error {
 	return nil
 }
 
+// ToolsVersion is nova-tools' release, read from the installed binaries'
+// build info (nova-version is retired).
 func (d doctor) ToolsVersion(ctx context.Context) (string, error) {
-	out, err := toolCommand(ctx, "nova-version", "version")
-	return string(out), err
+	return verbs.InstalledTools(ctx)
 }
 
 // Schema is the store at this build's schema; a store not set up is false.

@@ -12,6 +12,8 @@ import (
 type SetupPrerequisites struct {
 	Env ExecEnvironment
 	Pin string
+	// Installed is nova-tools' installed release (nil: InstalledTools).
+	Installed func(context.Context) (string, error)
 }
 
 func (s SetupPrerequisites) Tools(ctx context.Context) (SetupCheck, error) {
@@ -22,8 +24,12 @@ func (s SetupPrerequisites) Tools(ctx context.Context) (SetupCheck, error) {
 	if !ok {
 		return SetupCheck{Line: "UP 1/8 nova-tools: fleet not ready", Next: "nova-fleet check"}, nil
 	}
-	out, err := s.Env.command(ctx, "nova-version", "version")
-	version, parsed := parseNovaVersion(string(out))
+	installed := s.Installed
+	if installed == nil {
+		installed = InstalledTools
+	}
+	out, err := installed(ctx)
+	version, parsed := parseToolsRelease(out)
 	if err != nil || !parsed {
 		return SetupCheck{}, s.unknown()
 	}
@@ -32,12 +38,12 @@ func (s SetupPrerequisites) Tools(ctx context.Context) (SetupCheck, error) {
 		return SetupCheck{}, s.unknown()
 	}
 	if !enough {
-		return SetupCheck{}, &OperationError{Problem: fmt.Sprintf("nova-tools %s is below pin %s", version, s.Pin), Fix: "nova-fleet up", Exit: 1}
+		return SetupCheck{}, &OperationError{Problem: fmt.Sprintf("nova-tools %s is below pin %s", version, s.Pin), Fix: toolsFix(s.Pin), Exit: 1}
 	}
 	return SetupCheck{Verified: true, Line: fmt.Sprintf("UP 1/8 nova-tools: fleet green; nova-tools %s at or above pin %s: VERIFIED", version, s.Pin)}, nil
 }
 func (s SetupPrerequisites) unknown() error {
-	return &OperationError{Problem: "nova-tools version unknown", Fix: "install nova-tools >= " + s.Pin + " with nova-update", Exit: 1}
+	return &OperationError{Problem: "nova-tools version unknown", Fix: toolsFix(s.Pin), Exit: 1}
 }
 
 var setupActor = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
