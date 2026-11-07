@@ -40,9 +40,11 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    the bus lists you (`hook in to the bus first: ...`), and it refuses the coordinator role to
    any name but the one `up` recorded. Both refusals are the tool enforcing the order. Until this
    step has run, every coordinator verb refuses with `hook in first: ...`.
-3. Check the fleet and the tools: `nova-sprint check` prints `CHECK fleet and tools verified` and
-   `next: nova-sprint next`. A refusal names the nova-fleet command for each missing piece; run
-   it, then `check` again.
+3. Check the fleet, the tools and the sprint: `nova-sprint check` prints one `CHECK` line per
+   thing it checked (the fleet, nova-tools against the pin, the store, the bus, each stream's
+   repository and base, the open judgements, run, the width, each landing's wait) and
+   `next: nova-sprint next`. A `CHECK RED` line names its fix and makes the exit non-zero; run
+   the fix, then `check` again.
 4. Ask what is owed: `nova-sprint next --as <you>`. It names your own card's step first, then
    the oldest open judgement, then what the streams need (`add`, or done).
 5. List the judgements owed: `nova-sprint judge --as <you>`. Each is one line,

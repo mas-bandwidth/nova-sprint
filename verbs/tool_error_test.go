@@ -75,7 +75,7 @@ func TestFailedBusProbeNamesTheToolError(t *testing.T) {
 	w := newWorld(t)
 	w.bus.err = fmt.Errorf("bus secret names unavailable%s", ToolDetail(Failure("nova-secrets", errors.New("exit status 1"), []byte("nova-secrets: the seat key does not open the store\n"))))
 	r := w.e.Execute(t.Context(), []string{"check"})
-	if r.Exit != 2 || strings.Count(r.Output, "\n") != 1 || !strings.Contains(r.Output, `nova-bus who failed (bus secret names unavailable (nova-secrets: exit -1 (exit status 1); stderr "nova-secrets: the seat key does not open the store"))`) {
+	if r.Exit != 2 || strings.Count(r.Output, "SPRINT REFUSED") != 1 || !strings.Contains(r.Output, `nova-bus who failed (bus secret names unavailable (nova-secrets: exit -1 (exit status 1); stderr "nova-secrets: the seat key does not open the store"))`) {
 		t.Fatalf("%+v", r)
 	}
 }
@@ -98,7 +98,7 @@ func TestRefusalFromFailingCommandNamesSecretsNotValues(t *testing.T) {
 	failed := edge.Failure(argv, env, 3, "", "nova-secrets: key AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQ rejected\n", errors.New("exit status 3"))
 	w.bus.err = fmt.Errorf("bus secret names unavailable%s", ToolDetail(failed))
 	r := w.e.Execute(t.Context(), []string{"check"})
-	if r.Exit != 2 || strings.Count(r.Output, "\n") != 1 {
+	if r.Exit != 2 || strings.Count(r.Output, "SPRINT REFUSED") != 1 {
 		t.Fatalf("%+v", r)
 	}
 	for _, want := range []string{"nova-secrets exec", "NOVA_PG_PASSWORD=<redacted>", "NOVA_SPRINT_PG_PASSWORD", "GH_TOKEN", "exit 3", "rejected"} {
