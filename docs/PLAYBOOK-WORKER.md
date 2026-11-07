@@ -122,22 +122,24 @@ Each message is a wake. Handle it, then wait for the bus again.
    argument, and a test clock starts at 1000, never 0. Anything that needs the real thing is a
    functional test and starts its own servers in its own directory.
 7. Commit on the dealt branch and push only that branch. Push as you reach green steps, so a
-   withdraw never costs work. Never force-push, never push to the base or the stream branch,
-   and never push another card's branch.
+   withdraw never costs work. Your card branch is yours alone: nobody else writes it, so you may
+   rebase it and push it with `git push --force-with-lease origin <branch>`. Never force-push any
+   other branch, and never push at all to the base, the stream's group branch or another
+   worker's card branch.
 8. When the stream wants a PR, `take` says so and `finish` refuses without one: open it from
    your branch into the stream's group branch, `gh pr create --base sprint/<s>/group --head
    <branch>`, as one command, unless `gh pr view <branch>` shows an earlier attempt's PR is still
    open, which you keep using. With no PR wanted, open none.
-9. Before you finish, bring your branch up to the stream's group branch, `sprint/<s>/group`,
+9. Before you finish, bring your card branch up to the stream's group branch, `sprint/<s>/group`,
    when it has moved since your base: `git fetch origin sprint/<s>/group`, then
-   `git merge origin/sprint/<s>/group`, run the card's tests again, and push. Merge, never
-   rebase a pushed branch, so you never need a force-push. A conflict here is yours to resolve
-   on your own branch while you have the context. Check that the remote tip is your head:
+   `git rebase origin/sprint/<s>/group`, run the card's tests again, and
+   `git push --force-with-lease origin <branch>`. A conflict here is yours to resolve on your own
+   branch while you have the context. Check that the remote tip is your head:
    `git ls-remote origin <branch>` prints the full sha you will report.
-10. CI runs on every push of your branch, and a finish of ok needs CI green at that exact head.
-    After your last push, `gh pr checks <branch> --watch` (or `gh run watch` with no PR) blocks
-    until CI at that head finishes, as one command; a finish while it is still running is refused
-    naming it.
+10. Do not wait for CI. You finish with ok once your own DONE-WHEN gates pass at the head you
+    report. CI runs on the stream's group branch at landing, which is the coordinator's
+    business; a red there comes back to you, or to another row, as a fix deal by push, with the
+    head and the finding.
 11. Finish: `nova-sprint finish <id>@<gen> --head <40 hex> --as <you> --epoch <e>`. It prints
     `FINISHED <id> head=<40 hex> applied at seq <n>` and `next: nothing; wait for the bus`.
     Your part is done when that line prints; the card itself is done only when it lands, which
@@ -220,12 +222,10 @@ answer, never a thing to route round.
 - `push first: git push origin <branch>`: the head is not on the dealt branch at origin.
 - `open the PR`: the stream wants a PR at this head.
 - `head <x> is the base; nothing was done`: an empty head is never a finish.
-- `bring <branch> up to the stream head` or `CI red at <head>: see <url>`: a finish of ok is
-  refused until the head is landable. Merge the group branch (step 9), re-run, push; or read the
-  CI log at the URL, fix the red on your branch, push, and finish again with the new head. A red
-  that is not your card's (already red at base, outside PATHS) is a `finish --failed` naming
-  it. A red after you finished, while the card is merging, is the coordinator's judgement, not
-  yours.
+- `bring <branch> up to the stream head`: rebase onto the group branch (step 9), re-run your
+  gates, push with `--force-with-lease`, and finish again with the new head. A red gate that is
+  not your card's (already red at base, outside PATHS) is a `finish --failed` naming it. A CI
+  red at landing is the coordinator's; it reaches you only as a fix deal.
 - `<you> wrote the head and cannot read it`: you were never meant to read it; wait for the bus.
 - `producer <p> is at head <h1>, the read was of <h2>`: the head moved. Run `show <id>`.
 - `a fix needs a finding`: add `--finding "<path>:<line>: <defect and repair>"`.
