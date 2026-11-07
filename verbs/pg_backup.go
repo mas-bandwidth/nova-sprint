@@ -294,17 +294,18 @@ func verifyServerOptions(dir string) string {
 	return "-k " + dir + " -c listen_addresses='' -c shared_memory_type=mmap -c dynamic_shared_memory_type=posix"
 }
 
-// logTail is the last lines of a server log, on one line, redacted: what a
-// failed start said.
+// logTail is the last 20 lines of a server log, on one line, redacted:
+// what a failed start said.
 func logTail(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "unreadable (" + Redact(err.Error()) + ")"
 	}
-	if len(data) > 1500 {
-		data = data[len(data)-1500:]
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) > 20 {
+		lines = lines[len(lines)-20:]
 	}
-	return edge.StderrLines(string(data))
+	return edge.StderrLines(strings.Join(lines, "\n"))
 }
 
 // pidFileExists is whether a postmaster may still own dataDir.

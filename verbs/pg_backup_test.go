@@ -2,6 +2,8 @@ package verbs
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -50,5 +52,21 @@ func TestVerifyServerOptionsAvoidSysV(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%q lacks %q", got, want)
 		}
+	}
+}
+
+// A verify cluster that does not start says what its log said: the last
+// 20 lines, on one line, redacted; a missing log says so.
+func TestLogTailQuotesTheServerLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "postgres.log")
+	if err := os.WriteFile(path, []byte(strings.Repeat("noise\n", 400)+"FATAL:  could not create shared memory segment: No space left on device\nDETAIL:  Failed system call was shmget(key=1, size=56, 03600).\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := logTail(path)
+	if !strings.HasPrefix(got, "noise | ") || !strings.HasSuffix(got, "| FATAL:  could not create shared memory segment: No space left on device | DETAIL:  Failed system call was shmget(key=<redacted> size=<redacted> 03600).") || strings.Count(got, "noise") != 18 {
+		t.Fatalf("%q", got)
+	}
+	if got := logTail(filepath.Join(t.TempDir(), "none")); !strings.HasPrefix(got, "unreadable (") {
+		t.Fatalf("%q", got)
 	}
 }
