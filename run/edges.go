@@ -188,15 +188,19 @@ func landItem(id string, res git.LandResult, err error, wait time.Duration) step
 	case res.Outcome == git.OutcomeAbsent:
 		it.Outcome = "no-ci"
 		res.Reason = fmt.Sprintf("no check was reported on %s within %s", res.GatedSHA, wait)
+	case res.Outcome == git.OutcomeInherited:
+		it.Outcome = steps.InheritedRed // the judgement worded for a glance
 	}
 	it.Reason = landFacts(res)
 	return it
 }
 
-// landFacts is a pass's facts as the judgement shows them: the rung, the
-// base and its tip, the group tip, the gated sha, the PR, the failing checks
-// with the first one's URL and its first failing lines, the conflicting
-// files, and the pass's own reason.
+// landFacts is a pass's facts as the judgement shows them: a red one's
+// split by the base first (NEW red with each failed job's runner and first
+// error lines, then inherited red, then the authors of a PR whose agreement
+// check failed), then the rung, the base and its tip, the group tip, the
+// gated sha, the PR, the failing checks with the first one's URL and its
+// first failing lines, the conflicting files, and the pass's own reason.
 func landFacts(res git.LandResult) string {
 	var parts []string
 	add := func(label, v string) {
@@ -204,6 +208,10 @@ func landFacts(res git.LandResult) string {
 			parts = append(parts, label+" "+v)
 		}
 	}
+	add("NEW red (not red on the base):", newRed_internal(res.NewRed))
+	add("inherited red (red on the base too, not this card's):", inheritedRed_internal(res.Inherited))
+	add("an agreement check failed; the PR's commit authors, one of them unsigned:", strings.Join(res.Unsigned, ", "))
+	add("merge base", res.MergeBase)
 	add("rung", map[int]string{1: "1", 2: "2"}[res.Rung])
 	add("base tip", res.BaseTip)
 	add("group tip", res.GroupTip)
@@ -215,6 +223,46 @@ func landFacts(res git.LandResult) string {
 	add("conflicts:", strings.Join(res.Conflicts, ", "))
 	add("reason:", res.Reason)
 	return strings.Join(parts, "; ")
+}
+
+// newRed_internal is each new red workflow with what the base was read
+// from, and each failed job's runner, page and first error lines.
+func newRed_internal(ws []forge.WorkflowRed) string {
+	var out []string
+	for _, w := range ws {
+		s := w.Workflow + " (" + w.Basis + ")"
+		if w.Running {
+			s += " (its run still going)"
+		}
+		for _, j := range w.Jobs {
+			if j.Runner == "" && j.URL == "" && len(j.Lines) == 0 {
+				continue // a check with nothing more than its name
+			}
+			s += " [job " + j.Name
+			if j.Runner != "" {
+				s += " on " + j.Runner
+			}
+			if j.URL != "" {
+				s += " " + j.URL
+			}
+			if len(j.Lines) > 0 {
+				s += ": " + strings.Join(j.Lines, " | ")
+			}
+			s += "]"
+		}
+		out = append(out, s)
+	}
+	return strings.Join(out, ", ")
+}
+
+// inheritedRed_internal is each inherited workflow with what the base was
+// read from.
+func inheritedRed_internal(ws []forge.WorkflowRed) string {
+	var out []string
+	for _, w := range ws {
+		out = append(out, w.Workflow+" ("+w.Basis+")")
+	}
+	return strings.Join(out, ", ")
 }
 
 // clone is the one clone of the stream's repository under ReposDir, at its

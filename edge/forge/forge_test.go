@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -19,11 +20,15 @@ const (
 )
 
 // The forge acts as the host's own gh login (intent rule 32): with no
-// override it passes nothing of its own and inherits the environment.
+// override gh gets the process's environment without any GitHub credential
+// of its own, so a GH_TOKEN or a GH_CONFIG_DIR there cannot make it someone
+// else (directive 59).
 func TestForgeActsAsTheHostsGh(t *testing.T) {
+	t.Setenv("GH_TOKEN", "inherited-token")
+	t.Setenv("GH_CONFIG_DIR", "/home/someone/.config/gh")
 	var seen []edge.Cmd
 	c := New(Config{
-		Identity: Identity{Name: "sprint"},
+		Identity: Identity{Name: HostLogin},
 		Now:      func() int64 { return 1000 },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 			seen = append(seen, cmd)
@@ -33,8 +38,10 @@ func TestForgeActsAsTheHostsGh(t *testing.T) {
 	if _, _, err := c.PR(context.Background(), "mas-bandwidth/nova-sprint", "sprint-group/s1", "v2"); err != nil {
 		t.Fatalf("PR: %v", err)
 	}
-	if len(seen) != 1 || seen[0].CleanEnv || strings.Contains(strings.Join(seen[0].Env, " "), "GH_TOKEN") {
-		t.Fatalf("gh ran %d times with %+v; want one pr list on the host's own environment", len(seen), seen)
+	if len(seen) != 1 || !seen[0].CleanEnv || slices.ContainsFunc(seen[0].Env, func(kv string) bool {
+		return strings.HasPrefix(kv, "GH_TOKEN=") || strings.HasPrefix(kv, "GH_CONFIG_DIR=")
+	}) || !slices.Contains(seen[0].Env, "HOME="+os.Getenv("HOME")) {
+		t.Fatalf("gh ran %d times; want one pr list with the host's environment less its GitHub credentials", len(seen))
 	}
 }
 
