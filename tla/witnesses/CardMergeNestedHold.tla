@@ -173,6 +173,16 @@ ReadNo(c)    == Cardinality({i \in 1..c[2] : cs[<<c[1], i>>].kind = "read"
                                              /\ cs[<<c[1], i>>].review = cs[c].review})
 ConsName(c)  == IF cs[c].kind = "work" THEN c[1] \o ".w" \o ToString(cs[c].att)
                 ELSE c[1] \o ".r" \o ToString(cs[c].review) \o "." \o ToString(ReadNo(c))
+\* The names the next cuts take: Start's work consumer, and the k-th read
+\* cut now at p's review.
+WorkNext(p)    == p \o ".w" \o ToString(ps[p].att + 1)
+ReadNext(p, k) ==
+  p \o ".r" \o ToString(ps[p].review) \o "."
+    \o ToString(Cardinality({c \in ConsOf(p) : cs[c].st # "none" /\ cs[c].kind = "read"
+                                             /\ cs[c].review = ps[p].review}) + k)
+\* Cards and consumers share one namespace: a cut is fenced on its id being
+\* absent (the code's CardAbsent), and so is Add.
+NameFree(n)    == ~\E q \in P : Exists(q) /\ q = n
 
 \* The needs graph with p's needs replaced by ns has no cycle.
 RECURSIVE Reach(_, _, _)
@@ -341,6 +351,7 @@ StartGuard(p, r) ==
   /\ Serves(r, p)
   /\ ps[p].att < MaxAttempt
   /\ ps[p].ncut < K
+  /\ NameFree(WorkNext(p))
 
 Start(p, r) ==
   /\ StartGuard(p, r)
@@ -395,6 +406,7 @@ AskRead(p, r) ==
   /\ ~held
   /\ ReadRowOK(p, r)
   /\ ps[p].ncut < K
+  /\ NameFree(ReadNext(p, 1))
   /\ ps'   = [ps EXCEPT ![p].ncut = @ + 1]
   /\ cs'   = [cs EXCEPT ![NextSlot(p)] = ReadCut(p, r)]
   /\ last' = L("AskRead", p, NextSlot(p), r)
@@ -411,6 +423,7 @@ AskReads(p, R) ==
   /\ ~held
   /\ \A r \in R : ReadRowOK(p, r)
   /\ ps[p].ncut + Cardinality(R) <= K
+  /\ \A k \in 1..Cardinality(R) : NameFree(ReadNext(p, k))
   /\ ps'   = [ps EXCEPT ![p].ncut = @ + Cardinality(R)]
   /\ cs'   = [k \in CIds |-> IF \E r \in R : k = ReadSlot(p, R, r)
                              THEN ReadCut(p, CHOOSE r \in R : k = ReadSlot(p, R, r))
@@ -608,6 +621,7 @@ Unblock(p) ==
 Add(p, ns, as) ==
   /\ ps[p].st = "absent"
   /\ p \notin Dotted   \* round 7, ruling 1: an id may not contain "."
+  /\ \A c \in CIds : cs[c].st # "none" => ConsName(c) # p   \* CardAbsent
   /\ ns \subseteq {q \in P \ {p} : Exists(q)}
   /\ as \subseteq {q \in P \ {p} : Exists(q)}
   /\ Acyclic([OrderGraph EXCEPT ![p] = ns \cup as])
@@ -980,9 +994,11 @@ NeedsAcyclic == Acyclic(NeedsGraph)
 (* and after (the code at v2-card-fix3).                                 *)
 OrderAcyclic == Acyclic(OrderGraph)
 
-(* No card's id is a consumer's id (round 7, ruling 1): Add refuses an id *)
-(* with a dot, so a producer or sentinel never takes the name of a cut    *)
-(* work or read consumer.                                                 *)
+(* No card's id is a consumer's id: cards and consumers share one         *)
+(* namespace, fenced absent on every Add and cut. The bug ruling 1 closes *)
+(* is not here but in NeverStranded: an added id with a dot that names a  *)
+(* producer's next consumer leaves that producer never able to start      *)
+(* (CardDottedId).                                                        *)
 IdsDistinct ==
   \A q \in P, c \in CIds : (Exists(q) /\ cs[c].st # "none") => q # ConsName(c)
 
