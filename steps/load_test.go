@@ -25,6 +25,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -170,14 +171,7 @@ func storeSeed(v *View) []store.Op {
 // loadPG starts a throwaway PostgreSQL (as store's functional tests do).
 func loadPG(t *testing.T) string {
 	t.Helper()
-	bin := ""
-	if p, err := exec.LookPath("initdb"); err == nil {
-		bin = filepath.Dir(p)
-	} else if found, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb"); len(found) > 0 {
-		bin = filepath.Dir(found[0])
-	} else {
-		t.Skip("the load test's apply half needs PostgreSQL: initdb is not on PATH")
-	}
+	bin := pgbin.Dir(t)
 	dir := t.TempDir()
 	init := exec.Command(filepath.Join(bin, "initdb"), "-D", filepath.Join(dir, "data"), "-U", "nova", "--auth=trust", "-E", "UTF8", "--no-locale")
 	init.Env = append(os.Environ(), "LC_ALL=C")
