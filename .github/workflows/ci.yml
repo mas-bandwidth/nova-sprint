@@ -107,8 +107,10 @@ jobs:
           NOVA_TRACE_PG: "1"
 
   tlc:
+    # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
+    # (Glenn, 2026-11-06: "if you are out of memory, do it on the studio").
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, bench]
+    runs-on: [self-hosted, tlc]
     timeout-minutes: 180
     steps:
       - *clean
