@@ -354,7 +354,7 @@ NoTickWhileStopped == NoTickAfterObservedStop /\ NoAcceptedTickWhileStopped
 \* A fresh store is stopped, its reason "never started" (store.FreshStop),
 \* and a run may come up on it before up's walk is done (up starts the run
 \* service at step 4 of 8): until the coordinator's first Start it moves
-\* nothing, no tick applied, no edge dispatched (Glenn, 2026-11-07).
+\* nothing, no tick applied, no edge dispatched.
 \* RunFreshRunning starts the fresh store running and violates it.
 NeverStartedMovesNothing ==
   ~started => /\ done = {} /\ edgeDone = {}

@@ -28,7 +28,7 @@ func midUp(t *testing.T) *world {
 }
 
 // stop, start, hook, show and next work on any store with an epoch,
-// whatever up's step (Glenn, 2026-11-07: "A sprint that can move must be
+// whatever up's step ("A sprint that can move must be
 // stoppable"); the fresh store is stopped, never started, until start.
 func TestVerbsWorkMidUp(t *testing.T) {
 	w := midUp(t)

@@ -36,8 +36,8 @@ and trace family.
 
 Emission ran with the race detector on reserved amd-1. The full dirty-source
 archive is preserved locally at
-`/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/stop-trace-20261107/source.tar.gz`
-and on amd-1 at `/var/tmp/stella-stop-trace-20261107/source.tar.gz`.
+`/Volumes/nova/ai/friendG/working/l6-model-development-evidence-20261106/stop-trace-20261107/source.tar.gz`
+and on amd-1 at `/var/tmp/friendG-stop-trace-20261107/source.tar.gz`.
 Its SHA-256 is `5db72a67a317cc7104edeb2ed236be3746330f5da895092b3b9e125f50039d48`. `source-sha256.json` lists 101 Go source/dependency files
 from that exact archive; the archive preserves the complete source snapshot.
 This receipt does not rebind later edits to that snapshot. At packaging, 94 of
@@ -50,7 +50,7 @@ holds unmodified emitted trace bytes, `emit-*.log` the race-run outputs, and
 `results-corrected/` the raw TLC and shared-harness verdicts. Artifact hashes cover
 these bytes. `check.py` is the archival bench driver; its output directory is
 exclusive to an invocation to prevent overwriting evidence. The complete bench
-package remains at `/home/nova/jobs/stella-l6-stop-trace-20261107` on hetzner2.
+package remains at `/home/nova/jobs/friendG-l6-stop-trace-20261107` on hetzner2.
 
 ## Preserved first checker failure
 

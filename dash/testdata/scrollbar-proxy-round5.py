@@ -2,7 +2,7 @@ import json, threading, urllib.request, gzip
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import datetime, timezone
-root=Path('/var/tmp/stella-abshot-20261106/round5')
+root=Path('/var/tmp/friendG-abshot-20261106/round5')
 root.mkdir(parents=True, exist_ok=True)
 lock=threading.Lock()
 inject=b'''<style>html { overflow-y: scroll !important; } ::-webkit-scrollbar { width:15px; height:15px; }</style><script>addEventListener('DOMContentLoaded',()=>{const sample=()=>requestAnimationFrame(()=>{fetch('/__scrollbar-evidence',{method:'POST',body:JSON.stringify({width:innerWidth,height:innerHeight,client:document.documentElement.clientWidth,scrollbar:innerWidth-document.documentElement.clientWidth,compact:document.querySelector('.panel.streams')?.classList.contains('compact')})})});addEventListener('resize',sample);setTimeout(sample,500)});</script>'''

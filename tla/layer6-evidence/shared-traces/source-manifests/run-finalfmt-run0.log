@@ -1,6 +1,6 @@
 === RUN   TestEmitRunTrace
     run_trace_test.go:314: fixture random seed=0 report card=1 between-ops=false
-    run_trace_test.go:359: trace: /var/tmp/stella-l6-trace-finalfmt-20261107/run0.tla records=21
+    run_trace_test.go:359: trace: /var/tmp/friendG-l6-trace-finalfmt-20261107/run0.tla records=21
 --- PASS: TestEmitRunTrace (0.01s)
 PASS
 ok  	github.com/mas-bandwidth/nova-sprint/run	1.022s

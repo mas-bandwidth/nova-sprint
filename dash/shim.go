@@ -168,7 +168,7 @@ func setStreamStates(streams []streamLine, work map[string]*workRow) {
 // mapRows fills the Fleet and Friends tables. Every roster worker is a Fleet
 // row and every roster kin a Friends row, at its roster width, down until the
 // store has the row (the human, 2026-11-07: "we definitely need all that stuff
-// back"); a store row the roster does not name is shown as down (Stella,
+// back"); a store row the roster does not name is shown as down (
 // v2-l6). The tables are maps, so the order is by name.
 func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[string]*fleetRow) {
 	for n, w := range ros.Workers {
@@ -183,7 +183,7 @@ func mapRows(rows map[string]store.Row, ros roster.Roster, fleet, friends map[st
 			status = "held"
 		}
 		kind, width, _, found := ros.Row(n)
-		if !found { // not in nova-config: down, whatever the store says (Stella, v2-l6)
+		if !found { // not in nova-config: down, whatever the store says (v2-l6)
 			status = "down"
 		}
 		f := &fleetRow{Status: status, Width: width}
@@ -354,7 +354,7 @@ func setPercent(f *fleetRow) {
 }
 
 // machineLine is the page's machine line (v1's): RUNNING, or STOPPED and the
-// reason (drift row 4). The human page shows only STOPPED (Glenn,
+// reason (drift row 4). The human page shows only STOPPED (
 // 2026-10-04: "STOPPED is plenty"); /api/sprint carries the reason.
 func machineLine(s store.Snapshot) string {
 	if s.Stopped {

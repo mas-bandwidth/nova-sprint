@@ -1,6 +1,6 @@
 # The card contract
 
-What a brief must be before `add` accepts it. Glenn, 2026-11-06: the quality
+What a brief must be before `add` accepts it. the quality
 of the cards into the system "was a BIG PART" of whether a sprint went
 smoothly or was rough. `add` lints every brief against this page on every
 path, with no bypass, and refuses naming the section; `check` lints a brief
@@ -18,7 +18,7 @@ card is at its tier from its first deal (PRIORITY T1, T2, T17). An optional
 `PRIORITY: <level>` line declares its level, one of `low`, `normal`,
 `high`, `critical` or `blocker`; without it the level is `normal`, and any
 other spelling, `read` included (the rung of read consumers, never a
-brief's), is refused (PRIORITY D5). Glenn 2026-11-06: "There is low, normal,
+brief's), is refused (PRIORITY D5). "There is low, normal,
 high, read, critical, blocker in specific order." "Default is normal." and
 "Priorities are manually set by request.": the line is written by the
 person or the coordinator who asked for that level, and nothing computes it.
@@ -92,7 +92,7 @@ honest: LAND only with every done-when gate green at the exact head
 
 ## The card is a structured record (decided 2026-11-06)
 
-Glenn: "There is some value in having things *structured* that was an idea we
+"There is some value in having things *structured* that was an idea we
 learned from v1." "As long as the *structure* exists and things aren't free form text, I'm happy." "So the structure we choose here is the SQL database." So the card contract above is a typed record, defined once
 in `store/schema.sql` (the table and its checks are the structure; the Go types mirror the columns; there is no second definition): the markdown brief is a serialization of it, `add` parses
 the brief into the record and the lint is the parser's refusals naming the

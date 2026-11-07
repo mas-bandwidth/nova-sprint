@@ -9,7 +9,7 @@ import (
 )
 
 // The roster is nova-config as the steps consume it (package roster): the one
-// true source of the fleet and the friends (Glenn, 2026-11-06), nothing of
+// true source of the fleet and the friends, nothing of
 // which is copied into the store. A store row is a name, up or down, its
 // hook (session and role), held and its reason, flaps and a gen; its kind,
 // width and the tiers it serves are read here by name (Inputs.Roster).

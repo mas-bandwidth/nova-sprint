@@ -1,14 +1,14 @@
 # Layer 6: run, worker, verbs, the dashboard, and setup
 
-Draft for Glenn, 2026-11-06 (Rowan), not approved. Choices inside the layer are Rowan's and
-easy to overrule; Glenn is quoted only where the other designs quote him.
+Draft for the owner, 2026-11-06, not approved. Choices inside the layer are Rowan's and
+easy to overrule; the owner is quoted only where the other designs quote him.
 
 This layer is the processes that run layers 1 to 5 and the verbs that drive them. PostgreSQL
 owns the state. `nova-sprint run` is the one chooser; every other process is a client of the
 store through a verb. Whatever needs someone to act moves by push, by exec of `nova-bus
 send`; nobody polls (CORRECT-USE, "There is ONE WAY").
 
-## 1. The list for Glenn (bottom up: structure, guarantee, how checked)
+## 1. The list for the owner (bottom up: structure, guarantee, how checked)
 
 1. **Chooser lock.** One `run` applies ticks; a second refuses, naming the holder. A PostgreSQL advisory lock on run's own session, plus the bus name `sprint` (nova-bus allows one hook per name); `Run.tla` and a functional test starting two.
 2. **Reports as ops.** A row's report (`report`, `finish`, `read`) is one store op applied by the verb itself: its checks, then the card machine's plan for consumer and producer together, then `Apply`, one transaction, fenced by gen, its op id fixed by the consumer and gen so a repeat replays. Layer 2's conformance tests; the functional race against a running tick.
@@ -158,14 +158,14 @@ next `nova-sprint start`.
 
 `hook` does not run the bus hook: the bus hook (`nova-bus hook --as <name>` under the session's
 Monitor) is the earlier step it requires, because every push of the sprint travels over the bus
-(Glenn, 2026-11-06: "you have to be hooked in to the message bus FIRST before you hook into the
+("you have to be hooked in to the message bus FIRST before you hook into the
 sprint"). `hook` is the one defined entry point where an AI is fed how to use the sprint: it
 records the name and role in the row's session state in the store, which subscribes the name to
 the sprint's pushes over the bus (deals, read asks, withdraws, landing results, and for the
 coordinator every judgement), and prints the role's playbook first: `HOOKED <name> role=<role>`,
 then docs/PLAYBOOK-WORKER.md for a worker, or docs/PLAYBOOK-WORKER.md followed by
 docs/PLAYBOOK-COORDINATOR.md for the coordinator, who is a worker too ("so they get both
-playbooks!", Glenn 2026-11-06), then its `next:` line. Until it has run, every acting verb
+playbooks!", the owner 2026-11-06), then its `next:` line. Until it has run, every acting verb
 refuses with `hook in first: nova-sprint hook --as <name> --role worker` (or `coordinator` for a
 coordinator verb). `help playbook <role>` prints the same text for reading, compiled into the
 binary from those files, and a test holds every command line in them to a verb and flag that
@@ -225,13 +225,13 @@ next: nova-fleet check
 
 $ nova-sprint                      # after nova-fleet up
 NEXT nova-tools is up; the sprint is not set up
-next: nova-sprint up --as rowan
+next: nova-sprint up --as friendF
 
-$ nova-sprint up --as rowan
+$ nova-sprint up --as friendF
 UP 1/8 nova-tools: fleet green; nova-bus, nova-fleet, nova-config, nova-secrets at or above the pin: VERIFIED
 UP 2/8 store: schema sprint version 2 on studio: VERIFIED (made now)
-UP 3/8 coordinator rowan: not hooked
-SPRINT REFUSED up: rowan is not hooked in: run nova-bus hook --as rowan under your session's Monitor tool
+UP 3/8 coordinator friendF: not hooked
+SPRINT REFUSED up: friendF is not hooked in: run nova-bus hook --as friendF under your session's Monitor tool
 
 # the AI hooks in and runs up again; steps 1 to 3 verify; up stops where the human chooses
 UP 4/8 run: installed on studio; chooser lock held; sprint hooked: VERIFIED
@@ -245,7 +245,7 @@ next: nova-sprint up --key deepseek
 # the human types the key; up verifies 1 to 6 and goes on
 UP 7/8 workers: amd-1, amd-2, titan, captain hooked and up: VERIFIED
 UP 8/8 first deal: one work card and its read dealt and released within one tick: VERIFIED
-UP DONE run on studio; dashboard http://studio.tail1234.ts.net:8080; 4 workers up; coordinator rowan
+UP DONE run on studio; dashboard http://studio.tail1234.ts.net:8080; 4 workers up; coordinator friendF
 next: nova-sprint stream add <name> --repo <owner/name>
 
 $ nova-sprint stream add docs --repo mas-bandwidth/example
@@ -314,13 +314,13 @@ behind, takes a backup first and refuses if it fails. The first real store's `up
 
 ## 6. The dashboard
 
-Glenn, 2026-11-06, as docs/README "The dashboard" carries him: "The dashboard design should
+the owner, 2026-11-06, as docs/README "The dashboard" carries him: "The dashboard design should
 be identical to the v1 in visual, excluding the unimplemented stats part at bottom", and "it
 should be exactly matching what we currently have, visually. no changes except i think you
 added fail state." So v1's page (`index.html`, `app.js`, routes, JSON envelope) is carried as
 is behind the shim on branch `v2-dash-shim`, matched against the live v1 board at the shim
 README's widths, by eye and `tools/abshot`; any difference is a defect. `fail` is black, after
-landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); `blocked`
+landed (in the coordinator's ruling: "You can make fail black"); `blocked`
 is its own token, a red-brown column shown only when nonzero; the stats panel is left off.
 
 **Served two ways, one poller each.** `run --listen <addr>` rebuilds the view once a tick
@@ -340,11 +340,11 @@ down if down, else held if held, else up; read consumers are in the working coun
 sentinels are out of the ETA and the rates (LESSONS 6.15; both as built). The merge strip's
 `stuck` and `ci red` cells, blank in the shim, are filled from layer 3's landing step
 (LANDING step 5). The coordinator chip is filled from step 3's record. Nothing is added or
-removed unless Glenn asks (LESSONS 6.14).
+removed unless the owner asks (LESSONS 6.14).
 
 **No "needs you" column.** The board stays an exact v1 match, and v1 has none. The
 judgements queue is reached by `next` and by the bus push (section 7); the later
-nativization may add a column on Glenn's word, and not otherwise.
+nativization may add a column on the owner's word, and not otherwise.
 
 **Nativization is the final step.** After the dogfood gates pass with the board matching,
 the v1-shaped envelope gives way to a v2 view model, the adapter is deleted, and
@@ -380,7 +380,7 @@ same op as the move that raised it.
 - **Expired.** At its deadline the step expires it and applies policy's declared safe
   default for that kind, which never drops, accepts, merges or lands (LESSONS 5.7), and
   pushes `EXPIRED judgement=<id>: <what the default did>`. `blocked` has no deadline by
-  Glenn's ruling ("sits there until you review it").
+  the owner's ruling ("sits there until you review it").
 
 Landings, a stream done, a red, a block, a stall and an orphan reach the coordinator by the
 same pusher. **The stitch.** When the last producer of a stream lands, run logs and pushes:
@@ -469,11 +469,11 @@ layer is built, modelled, cold-read and green and gate 1 has happened at least o
 dealt, worked, read, merged and shown landed on the live board); gates 2 to 5 are 2.0.x point
 releases, each one a gate met.
 
-1. Our own sprint set up with `up` and run with the board live, Rowan and the kin as rows (SETUP, Glenn's gate in his words).
+1. Our own sprint set up with `up` and run with the board live, Rowan and the kin as rows (SETUP, the owner's gate in his words).
 2. A cold AI with no memory of this project takes a fresh fleet of VMs from zero to a running sprint with a dashboard, from docs/README.md and the tool's help alone, and then does it again.
 3. The friends adopt it: each kin hooks in and works cards with `take` and `finish` on their own harness.
 4. 10/10 from every friend and model on the six promises, read cold.
-5. Vanilla against sprint: the same cards, chosen before either run, done once in one long session and once through the sprint; wall clock and cost for each, printed by `show <stream>` and recorded. The bar is Glenn's to set; this layer only measures.
+5. Vanilla against sprint: the same cards, chosen before either run, done once in one long session and once through the sprint; wall clock and cost for each, printed by `show <stream>` and recorded. The bar is the owner's to set; this layer only measures.
 
 ## 11. Size
 
@@ -500,7 +500,7 @@ Section 6 of LESSONS.md, by line:
 - 6.11: width only from nova-config; nova-worker takes only when it starts a run, so
   `working` is work running; a kin's `next` shows its working count against its width.
 - 6.12, 6.13, 6.15: as built in the shim, and kept by section 6.
-- 6.14: nothing added to the board; no "needs you" column without Glenn's word.
+- 6.14: nothing added to the board; no "needs you" column without the owner's word.
 - 6.16: the merge strip's stuck and CI cells filled from layer 3.
 - 6.17: `dash --pull` and the cache.
 - 6.18: `up` and dogfood gate 2.
@@ -526,15 +526,15 @@ Section 6 of LESSONS.md, by line:
 - W.9: the fake clock starts at 1000.
 - W.12: an `OVERRUN` in the load test gets a profile before any change.
 - W.13: each dogfood gate keeps an attempts record; the third attempt at one gate is
-  reported to Glenn as stuck.
+  reported to the owner as stuck.
 - W.15: the v1 verbs dropped above are never ported; nothing live in v1 is deleted for v2.
 - W.16: cold readers and audits report; Rowan cuts the fixes.
 - W.17: the hooked-before-acting refusal and the chooser lock carry a DO NOT REMOVE comment
-  and a test; neither is weakened without Glenn.
-- W.18: this file quotes Glenn only where the other designs do; the rest is marked Rowan's.
+  and a test; neither is weakened without the owner.
+- W.18: this file quotes the owner only where the other designs do; the rest is marked Rowan's.
 - W.19: each dogfood row and child agent works in its own directory, cheapest fitting model.
 
-## Decided inside the layer (Rowan, 2026-11-06), easy to overrule
+## Decided inside the layer, easy to overrule
 
 The put-back of fenced plans after a refusal; one push per recipient per tick; setup answers
 as policy data; `up` keeping no progress record; the public dashboard pulling
@@ -655,7 +655,7 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 - `productionSetup.Completion` forwards the configured runtime's (section 40); a compile-time
   assertion covers every seam the engine type-asserts (`Setup`, `SetupHandoff`,
   `SetupCompletion`, `SetupLock`) and the workload.
-- The public board on a bench: the refusal is gone (Glenn, 2026-11-07); a bench serving the
+- The public board on a bench: the refusal is gone; a bench serving the
   pull-only board keeps its seat for its worker. The run machine still never serves it.
 - Defect 37, the role's password: step 2's verify and the role child prove nova_sprint's
   password with a SCRAM login (pgx `require_auth=scram-sha-256`); where pg_hba trusts the

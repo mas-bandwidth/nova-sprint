@@ -15,9 +15,9 @@ ok  	github.com/mas-bandwidth/nova-sprint/card	1.012s [no tests to run]
 ok  	github.com/mas-bandwidth/nova-sprint/dash	1.428s
 --- FAIL: TestFunctionalRebuildFromLog (0.39s)
     functional_test.go:612: 
-        	Error Trace:	/var/tmp/stella-dash-20261106/source/store/conformance_test.go:91
-        	            				/var/tmp/stella-dash-20261106/source/store/conformance_test.go:150
-        	            				/var/tmp/stella-dash-20261106/source/store/functional_test.go:612
+        	Error Trace:	/var/tmp/friendG-dash-20261106/source/store/conformance_test.go:91
+        	            				/var/tmp/friendG-dash-20261106/source/store/conformance_test.go:150
+        	            				/var/tmp/friendG-dash-20261106/source/store/functional_test.go:612
         	Error:      	Received unexpected error:
         	            	store: outcome unknown, call Replay with the op id: read tcp 127.0.0.1:54076->127.0.0.1:44619: read: connection reset by peer
         	Test:       	TestFunctionalRebuildFromLog

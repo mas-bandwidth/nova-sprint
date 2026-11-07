@@ -46,8 +46,8 @@ that production forbids the cursor advance or that production is defective.
 The Clear fixture source archive is
 `7163a783147675feeaae7b92d2f08c2b84d83c799352f4e792a6fe4af01ae963`.
 It is retained locally under
-`/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/envelope-20261107/`
-and on amd-1 at `/var/tmp/stella-l6-envelope-trace-20261107/`.
+`/Volumes/nova/ai/friendG/working/l6-model-development-evidence-20261106/envelope-20261107/`
+and on amd-1 at `/var/tmp/friendG-l6-envelope-trace-20261107/`.
 The deterministic/default-seed race log is retained. The supplied walk log only
 contains the reservation line; the emitter owner reported all 64 seed emissions
 successful. This receipt independently verifies their frozen bytes and model
@@ -57,7 +57,7 @@ A later source snapshot changes the Run fixture's exact expected subject/body to
 match the recipient envelope. Its archive is
 `735d548a826a99b31b918fd974b483d6c83aaaaf1d9cb7dfde1b92a2e551e3b5`,
 retained in the adjacent `envelope-run-20261107/` local directory and amd-1
-`/var/tmp/stella-l6-envelope-runtrace-20261107/`. The three emitted seeds 1, 7 and
+`/var/tmp/friendG-l6-envelope-runtrace-20261107/`. The three emitted seeds 1, 7 and
 42 all selected the same existing run-1 trace bytes; the stopped-mode output
 matches the retained stop trace. `run-rebinding.json` pins those unchanged input
 and raw-verdict hashes. They were not unnecessarily rerun and are not three
@@ -68,5 +68,5 @@ Each source snapshot has its own 101-file Go/dependency manifest, and the full
 archives preserve the remaining tree. `checked-spec`, `inputs`, `results` and
 artifact manifests pin the exact model/config/shared-checker/input/raw-log bytes.
 The complete TLC package remains on hetzner2 at
-`/home/nova/jobs/stella-l6-envelope-20261107/`. These two archived-source finite
+`/home/nova/jobs/friendG-l6-envelope-20261107/`. These two archived-source finite
 checkpoints do not constitute final integrated-source or GitHub CI acceptance.

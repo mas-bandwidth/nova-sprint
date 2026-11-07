@@ -85,28 +85,28 @@
   },
   {
     "table": "friends",
-    "name": "alex",
+    "name": "friendA",
     "live": "0.0%",
     "actual": "0.0%",
     "expected": "0.0%"
   },
   {
     "table": "friends",
-    "name": "emma",
+    "name": "friendC",
     "live": "49.2%",
     "actual": "49.2%",
     "expected": "49.2%"
   },
   {
     "table": "friends",
-    "name": "rowan",
+    "name": "friendF",
     "live": "61.8%",
     "actual": "61.8%",
     "expected": "61.8%"
   },
   {
     "table": "friends",
-    "name": "stella",
+    "name": "friendG",
     "live": "67.4%",
     "actual": "67.4%",
     "expected": "67.4%"

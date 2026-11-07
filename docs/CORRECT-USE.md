@@ -1,6 +1,6 @@
 # Correct use, enforced by the tool
 
-Glenn, 2026-11-06: "The key is #1. This is how we enforce correct usage,
+"The key is #1. This is how we enforce correct usage,
 instead of relying on LLMs to unreliably remember to do the right thing." And:
 "Make a new AI, unsure of how to use nova-sprint, get walked through the
 actual best practice way to use it, every time."
@@ -108,7 +108,7 @@ output names the next command.
 `finish` refuses, naming which: a head that is not forty hex characters; a
 head not on the card's branch at origin; a branch other than the one dealt; a
 row that is not the holder,
-naming who is. v1 accepted `finish --head abc` and printed OK (Johnny,
+naming who is. v1 accepted `finish --head abc` and printed OK (
 2026-11-06); v2 never does.
 
 ## Unknown outcomes never leak
@@ -147,7 +147,7 @@ and the bus push carries the same line.
 
 ## Everything moves by push, over nova-bus, and there is one way
 
-Glenn, 2026-11-06: "it's important for AIs to be given structure and get push
+"it's important for AIs to be given structure and get push
 notifications, esp. as coordinator. You should not need to keep polling or
 remember to do things, things should move forward mechanically, and notify
 you via push notification." "Similarly, for friends (and yourself) doing

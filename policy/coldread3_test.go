@@ -7,7 +7,7 @@ package policy
 // wall clock, because the deadline it probes is one (TickTime).
 //
 // Copied into v2-integrate-22 in policy round 5 from
-// ~/rowan-working/children/nsv2-l5-coldread3 with these changes only, to the
+// the work directory with these changes only, to the
 // round 5 API: verbs and ticks take the roster (w.ro; readWorld configures
 // its rows by hand), engines are on the unit tests' fake clock
 // (testEngine), LoadVersions reads at the snapshot it is given, and the

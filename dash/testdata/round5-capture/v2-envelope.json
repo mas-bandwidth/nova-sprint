@@ -180,7 +180,7 @@
         }
       },
       "friends": {
-        "alex": {
+        "friendA": {
           "blocker_working": "0",
           "critical_working": "0",
           "done": "0",
@@ -194,7 +194,7 @@
           "width": "2",
           "working": "0"
         },
-        "emma": {
+        "friendC": {
           "blocker_working": "0",
           "critical_working": "0",
           "done": "94",
@@ -208,7 +208,7 @@
           "width": "16",
           "working": "0"
         },
-        "rowan": {
+        "friendF": {
           "blocker_working": "0",
           "critical_working": "0",
           "done": "309",
@@ -222,7 +222,7 @@
           "width": "32",
           "working": "0"
         },
-        "stella": {
+        "friendG": {
           "blocker_working": "0",
           "critical_working": "0",
           "done": "240",

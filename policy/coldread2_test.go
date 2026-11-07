@@ -1,7 +1,7 @@
 package policy
 
 // Second cold read (2026-11-06, head ed68a22d), written by the cold reader
-// (~/rowan-working/children/nsv2-l5-coldread2) and copied here; Rowan
+// (the work directory) and copied here; Rowan
 // changed two in round 3, each marked "Round 3": the cache probe answers
 // strings inside the ruling's 4 MB a tick and then over it (its own text
 // says how), and the broken-catalog probe breaks the built-in through

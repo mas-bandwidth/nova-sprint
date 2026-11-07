@@ -140,10 +140,10 @@ func TestAuthorsAndAgreements(t *testing.T) {
 		}
 	}
 	var paths []string
-	canned := map[string]string{"pr 2830": `[{"login":"aurora-x","name":"Aurora","email":"aurora@example.invalid"},
-		{"login":"","name":"Bench","email":"bench@example.invalid"},{"login":"aurora-x","name":"Aurora","email":"aurora@example.invalid"}]`}
+	canned := map[string]string{"pr 2830": `[{"login":"friendB-x","name":"Aurora","email":"friendB@example.invalid"},
+		{"login":"","name":"Bench","email":"bench@example.invalid"},{"login":"friendB-x","name":"Aurora","email":"friendB@example.invalid"}]`}
 	got, err := actionsGH_internal(canned, &paths).Authors(context.Background(), "o/r", 2830)
-	want := []string{"Aurora <aurora@example.invalid> (aurora-x)", "Bench <bench@example.invalid>"}
+	want := []string{"Aurora <friendB@example.invalid> (friendB-x)", "Bench <bench@example.invalid>"}
 	if err != nil || !slices.Equal(got, want) {
 		t.Fatalf("Authors = %q, %v; want %q", got, err, want)
 	}

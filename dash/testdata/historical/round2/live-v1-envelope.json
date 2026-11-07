@@ -13,7 +13,7 @@
     ],
     "buffer": "27/240",
     "cleared": "2026-10-28T14:12:32.759715Z",
-    "coordinator": "rowan",
+    "coordinator": "friendF",
     "cost_check": {
       "streams_usd": "28.553000501999999993",
       "cards_usd": "28.553000501999999993",
@@ -53,7 +53,7 @@
       "delivery_faults": 1,
       "receipt_unknown": 1,
       "receipt_history": [
-        "from=rowan to=glenn: glenn is no known name; the names are nova-config's friend and machine rows (nova-bus names lists them); add one with nova-config friend add glenn --width 1 --tiers flash --as <you>, then nova-config apply; judgment IDs=tick-deadlines-dmn2e2qk0y8g-1409-227d9e7f93793078~2-1.1,tick-presence-dmn2e31p4ib4-1409-d7564bc86cae146e~2-1.1"
+        "from=friendF to=owner: owner is no known name; the names are nova-config's friend and machine rows (nova-bus names lists them); add one with nova-config friend add owner --width 1 --tiers flash --as <you>, then nova-config apply; judgment IDs=tick-deadlines-dmn2e2qk0y8g-1409-227d9e7f93793078~2-1.1,tick-presence-dmn2e31p4ib4-1409-d7564bc86cae146e~2-1.1"
       ]
     },
     "epoch": 2,
@@ -94,7 +94,7 @@
     "fleet_work": "on",
     "friends": [
       {
-        "name": "alex",
+        "name": "friendA",
         "ready": 0,
         "working": 0,
         "dealt_fleet": 0,
@@ -112,7 +112,7 @@
         "reason": "no answer to a heartbeat challenge within the window"
       },
       {
-        "name": "emma",
+        "name": "friendC",
         "ready": 0,
         "working": 0,
         "dealt_fleet": 0,
@@ -130,7 +130,7 @@
         "reason": "no answer to a heartbeat challenge within the window"
       },
       {
-        "name": "rowan",
+        "name": "friendF",
         "ready": 2,
         "working": 0,
         "dealt_fleet": 0,
@@ -157,7 +157,7 @@
         "reason": "no answer to a heartbeat challenge within the window"
       },
       {
-        "name": "stella",
+        "name": "friendG",
         "ready": 0,
         "working": 0,
         "dealt_fleet": 0,
@@ -489,7 +489,7 @@
       "workers": {}
     },
     "low": true,
-    "machine": "machine: STOPPED, expected back by 3:54 PM (Glenn 2026-11-05: stop the sprint); start ends it",
+    "machine": "machine: STOPPED, expected back by 3:54 PM (Owner 2026-11-05: stop the sprint); start ends it",
     "merge_row": {
       "merging": 0,
       "review": 19,
@@ -786,14 +786,14 @@
     },
     "ready": 27,
     "seat": {
-      "holder": "rowan",
+      "holder": "friendF",
       "generation": 6,
-      "from": "emma",
+      "from": "friendC",
       "at": "2026-10-27T12:48:13.146019-04:00",
-      "by": "rowan",
+      "by": "friendF",
       "taken": true,
-      "approved_by": "glenn",
-      "reason": "owner asked rowan to take over as coordinator (2026-10-27 12:47 EDT); emma hands over"
+      "approved_by": "owner",
+      "reason": "owner asked friendF to take over as coordinator (2026-10-27 12:47 EDT); friendC hands over"
     },
     "seat_waits": {
       "judgments": 8,
@@ -904,10 +904,10 @@
             "priced": 4,
             "usd": "0"
           },
-          "rowan": {
+          "friendF": {
             "reads": 1
           },
-          "stella": {
+          "friendG": {
             "reads": 1
           },
           "vision": {
@@ -976,10 +976,10 @@
           "intel": {
             "reads": 10
           },
-          "rowan": {
+          "friendF": {
             "reads": 8
           },
-          "stella": {
+          "friendG": {
             "reads": 7
           },
           "vision": {
@@ -1072,10 +1072,10 @@
             "priced": 2,
             "usd": "0.03858201"
           },
-          "rowan": {
+          "friendF": {
             "reads": 1
           },
-          "stella": {
+          "friendG": {
             "reads": 1
           },
           "vision": {
@@ -1144,7 +1144,7 @@
             "priced": 1,
             "usd": "0.06410919"
           },
-          "stella": {
+          "friendG": {
             "reads": 3
           },
           "vision": {
@@ -1202,10 +1202,10 @@
             "priced": 3,
             "usd": "0.096680196"
           },
-          "rowan": {
+          "friendF": {
             "reads": 2
           },
-          "stella": {
+          "friendG": {
             "reads": 2
           },
           "vision": {
@@ -1274,10 +1274,10 @@
             "priced": 4,
             "usd": "0.01354701"
           },
-          "rowan": {
+          "friendF": {
             "reads": 1
           },
-          "stella": {
+          "friendG": {
             "reads": 3
           },
           "vision": {
@@ -1329,7 +1329,7 @@
             "priced": 1,
             "usd": "0.03029049"
           },
-          "stella": {
+          "friendG": {
             "reads": 1
           },
           "vision": {
@@ -1380,7 +1380,7 @@
             "priced": 1,
             "usd": "0"
           },
-          "stella": {
+          "friendG": {
             "reads": 2
           },
           "vision": {
@@ -1497,10 +1497,10 @@
             "priced": 3,
             "usd": "0.063098118"
           },
-          "rowan": {
+          "friendF": {
             "reads": 2
           },
-          "stella": {
+          "friendG": {
             "reads": 8
           },
           "vision": {
@@ -1641,7 +1641,7 @@
           "intel": {
             "reads": 3
           },
-          "rowan": {
+          "friendF": {
             "reads": 1
           },
           "vision": {
@@ -1982,10 +1982,10 @@
             "priced": 7,
             "usd": "0.572002348"
           },
-          "rowan": {
+          "friendF": {
             "reads": 6
           },
-          "stella": {
+          "friendG": {
             "reads": 5
           },
           "vision": {
@@ -2052,10 +2052,10 @@
             "priced": 3,
             "usd": "0.11779479"
           },
-          "rowan": {
+          "friendF": {
             "reads": 2
           },
-          "stella": {
+          "friendG": {
             "reads": 6
           },
           "vision": {
@@ -2169,7 +2169,7 @@
       },
       {
         "Stream": "rocketnet-audit",
-        "Display": "Rocketnet: security audit (Stella)",
+        "Display": "Rocketnet: security audit (FriendG)",
         "State": "waiting",
         "Since": "2026-11-05T20:13:39Z",
         "Progress": "2026-11-05T23:58:15Z",
@@ -2177,7 +2177,7 @@
       },
       {
         "Stream": "serialize-audit-go",
-        "Display": "serialize.go: security audit (Stella)",
+        "Display": "serialize.go: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T19:21:21Z",
@@ -2186,7 +2186,7 @@
       },
       {
         "Stream": "serialize-audit-cpp",
-        "Display": "serialize: security audit (Stella)",
+        "Display": "serialize: security audit (FriendG)",
         "State": "waiting",
         "Since": "2026-11-05T20:53:51Z",
         "Progress": "2026-11-05T23:58:15Z",
@@ -2194,7 +2194,7 @@
       },
       {
         "Stream": "serialize-audit-c",
-        "Display": "serialize.c: security audit (Stella)",
+        "Display": "serialize.c: security audit (FriendG)",
         "State": "landed",
         "Since": "2026-11-05T17:22:06Z",
         "Progress": "2026-11-05T17:22:07Z",
@@ -2202,7 +2202,7 @@
       },
       {
         "Stream": "serialize-audit-cs",
-        "Display": "serialize.cs: security audit (Stella)",
+        "Display": "serialize.cs: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T19:21:21Z",
@@ -2211,7 +2211,7 @@
       },
       {
         "Stream": "serialize-audit-dart",
-        "Display": "serialize.dart: security audit (Stella)",
+        "Display": "serialize.dart: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T19:21:21Z",
@@ -2220,7 +2220,7 @@
       },
       {
         "Stream": "serialize-audit-elixir",
-        "Display": "serialize.elixir: security audit (Stella)",
+        "Display": "serialize.elixir: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T19:21:21Z",
@@ -2229,7 +2229,7 @@
       },
       {
         "Stream": "serialize-audit-goose",
-        "Display": "serialize.goose: security audit (Stella)",
+        "Display": "serialize.goose: security audit (FriendG)",
         "State": "waiting",
         "Since": "2026-11-05T16:45:38Z",
         "Progress": "2026-11-05T23:58:15Z",
@@ -2237,7 +2237,7 @@
       },
       {
         "Stream": "serialize-audit-java",
-        "Display": "serialize.java: security audit (Stella)",
+        "Display": "serialize.java: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T19:21:21Z",
@@ -2246,7 +2246,7 @@
       },
       {
         "Stream": "serialize-audit-js",
-        "Display": "serialize.js: security audit (Stella)",
+        "Display": "serialize.js: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T23:58:15Z",
@@ -2254,7 +2254,7 @@
       },
       {
         "Stream": "serialize-audit-lobster",
-        "Display": "serialize.lobster: security audit (Stella)",
+        "Display": "serialize.lobster: security audit (FriendG)",
         "State": "landed",
         "Since": "2026-11-05T17:16:02Z",
         "Progress": "2026-11-05T17:16:15Z",
@@ -2262,7 +2262,7 @@
       },
       {
         "Stream": "serialize-audit-lua",
-        "Display": "serialize.lua: security audit (Stella)",
+        "Display": "serialize.lua: security audit (FriendG)",
         "State": "landed",
         "Since": "2026-11-05T17:09:44Z",
         "Progress": "2026-11-05T17:13:58Z",
@@ -2270,7 +2270,7 @@
       },
       {
         "Stream": "serialize-audit-luau",
-        "Display": "serialize.luau: security audit (Stella)",
+        "Display": "serialize.luau: security audit (FriendG)",
         "State": "waiting",
         "Since": "2026-11-05T20:13:20Z",
         "Progress": "2026-11-05T23:58:15Z",
@@ -2278,7 +2278,7 @@
       },
       {
         "Stream": "serialize-audit-moo",
-        "Display": "serialize.moo: security audit (Stella)",
+        "Display": "serialize.moo: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T19:21:21Z",
@@ -2287,7 +2287,7 @@
       },
       {
         "Stream": "serialize-audit-nut",
-        "Display": "serialize.nut: security audit (Stella)",
+        "Display": "serialize.nut: security audit (FriendG)",
         "State": "waiting",
         "Since": "0001-01-01T00:00:00Z",
         "Progress": "2026-11-05T20:54:33Z",
@@ -2295,7 +2295,7 @@
       },
       {
         "Stream": "serialize-audit-rs",
-        "Display": "serialize.rs: security audit (Stella)",
+        "Display": "serialize.rs: security audit (FriendG)",
         "State": "landed",
         "Since": "2026-11-05T17:16:39Z",
         "Progress": "2026-11-05T17:16:39Z",
@@ -2303,7 +2303,7 @@
       },
       {
         "Stream": "schema-audit",
-        "Display": "Schema: security audit (Stella)",
+        "Display": "Schema: security audit (FriendG)",
         "State": "waiting",
         "Since": "2026-11-05T16:47:08Z",
         "Progress": "2026-11-05T23:58:15Z",
@@ -2603,7 +2603,7 @@
         }
       },
       "friends": {
-        "alex": {
+        "friendA": {
           "active": "-",
           "blocker_working": "0",
           "critical_working": "0",
@@ -2624,7 +2624,7 @@
           "width": "2",
           "working": "0"
         },
-        "emma": {
+        "friendC": {
           "active": "-",
           "blocker_working": "0",
           "critical_working": "0",
@@ -2645,7 +2645,7 @@
           "width": "16",
           "working": "0"
         },
-        "rowan": {
+        "friendF": {
           "active": "10d ago",
           "blocker_working": "0",
           "critical_working": "0",
@@ -2666,7 +2666,7 @@
           "width": "32",
           "working": "0"
         },
-        "stella": {
+        "friendG": {
           "active": "-",
           "blocker_working": "0",
           "critical_working": "0",
@@ -2991,7 +2991,7 @@
         }
       },
       "readers": {
-        "emma": {
+        "friendC": {
           "asked": "0",
           "broken": "0",
           "ok": "0",
@@ -2999,7 +2999,7 @@
           "tiers": "flash,pro,heavy,frontier",
           "width": "-"
         },
-        "freddy": {
+        "friendD": {
           "asked": "0",
           "broken": "0",
           "ok": "0",
@@ -3095,7 +3095,7 @@
           "tiers": "flash,pro,heavy,frontier",
           "width": "8"
         },
-        "rowan": {
+        "friendF": {
           "asked": "0",
           "broken": "0",
           "ok": "0",
@@ -3103,7 +3103,7 @@
           "tiers": "flash,pro,heavy,frontier",
           "width": "-"
         },
-        "stella": {
+        "friendG": {
           "asked": "0",
           "broken": "0",
           "ok": "0",
@@ -3163,10 +3163,10 @@
               "priced": 4,
               "usd": "0"
             },
-            "rowan": {
+            "friendF": {
               "reads": 1
             },
-            "stella": {
+            "friendG": {
               "reads": 1
             },
             "vision": {
@@ -3243,10 +3243,10 @@
             "intel": {
               "reads": 10
             },
-            "rowan": {
+            "friendF": {
               "reads": 8
             },
-            "stella": {
+            "friendG": {
               "reads": 7
             },
             "vision": {
@@ -3357,10 +3357,10 @@
               "priced": 2,
               "usd": "0.03858201"
             },
-            "rowan": {
+            "friendF": {
               "reads": 1
             },
-            "stella": {
+            "friendG": {
               "reads": 1
             },
             "vision": {
@@ -3449,7 +3449,7 @@
               "priced": 1,
               "usd": "0.06410919"
             },
-            "stella": {
+            "friendG": {
               "reads": 3
             },
             "vision": {
@@ -3516,10 +3516,10 @@
               "priced": 3,
               "usd": "0.096680196"
             },
-            "rowan": {
+            "friendF": {
               "reads": 2
             },
-            "stella": {
+            "friendG": {
               "reads": 2
             },
             "vision": {
@@ -3596,10 +3596,10 @@
               "priced": 4,
               "usd": "0.01354701"
             },
-            "rowan": {
+            "friendF": {
               "reads": 1
             },
-            "stella": {
+            "friendG": {
               "reads": 3
             },
             "vision": {
@@ -3662,7 +3662,7 @@
               "priced": 1,
               "usd": "0.03029049"
             },
-            "stella": {
+            "friendG": {
               "reads": 1
             },
             "vision": {
@@ -3733,7 +3733,7 @@
               "priced": 1,
               "usd": "0"
             },
-            "stella": {
+            "friendG": {
               "reads": 2
             },
             "vision": {
@@ -3866,10 +3866,10 @@
               "priced": 3,
               "usd": "0.063098118"
             },
-            "rowan": {
+            "friendF": {
               "reads": 2
             },
-            "stella": {
+            "friendG": {
               "reads": 8
             },
             "vision": {
@@ -4055,7 +4055,7 @@
             "intel": {
               "reads": 3
             },
-            "rowan": {
+            "friendF": {
               "reads": 1
             },
             "vision": {
@@ -4498,10 +4498,10 @@
               "priced": 7,
               "usd": "0.572002348"
             },
-            "rowan": {
+            "friendF": {
               "reads": 6
             },
-            "stella": {
+            "friendG": {
               "reads": 5
             },
             "vision": {
@@ -4577,10 +4577,10 @@
               "priced": 3,
               "usd": "0.11779479"
             },
-            "rowan": {
+            "friendF": {
               "reads": 2
             },
-            "stella": {
+            "friendG": {
               "reads": 6
             },
             "vision": {

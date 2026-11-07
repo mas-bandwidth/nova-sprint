@@ -13,8 +13,8 @@ var testRoster = func() roster.Roster {
 	worker := func(name string, width int) { r.Workers[name] = roster.Worker{Name: name, Width: width} }
 	kin := func(name string, width int) { r.Kin[name] = roster.Kin{Name: name, Width: width} }
 	worker("amd-1", 4000)
-	kin("stella", 4000)
-	kin("alex", 2)
+	kin("friendG", 4000)
+	kin("friendA", 2)
 	kin("kin", 2)
 	worker("r", 8)
 	worker("w", 2)

@@ -1,8 +1,8 @@
 TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)
 Running breadth-first search Model-Checking with fp 88 and seed 7823546832868176818 with 1 worker on 32 cores with 24162MB heap and 64MB offheap memory [pid: 417698] (Linux 7.0.0-43-generic amd64, Eclipse Adoptium 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
-Parsing file /home/nova/jobs/stella-l6-stop-trace-20261107/checked-spec/RunTrace.tla
-Parsing file /home/nova/jobs/stella-l6-stop-trace-20261107/checked-spec/Run.tla
-Parsing file /home/nova/jobs/stella-l6-stop-trace-20261107/inputs/stop/RunTraceLog.tla
+Parsing file /home/nova/jobs/friendG-l6-stop-trace-20261107/checked-spec/RunTrace.tla
+Parsing file /home/nova/jobs/friendG-l6-stop-trace-20261107/checked-spec/Run.tla
+Parsing file /home/nova/jobs/friendG-l6-stop-trace-20261107/inputs/stop/RunTraceLog.tla
 Parsing file /tmp/tmp.Tbt2J8CnYh/tlc-16924385321526584275/TLC.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
 Parsing file /tmp/tmp.Tbt2J8CnYh/tlc-16924385321526584275/Integers.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Integers.tla)
 Parsing file /tmp/tmp.Tbt2J8CnYh/tlc-16924385321526584275/Naturals.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)

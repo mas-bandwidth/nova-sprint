@@ -3,7 +3,7 @@ EXTENDS Setup
 
 (***************************************************************************
  up's walk (Setup.tla, unchanged) with the sprint's stop and the run's
- ticks beside it (Glenn, 2026-11-07: the run ticked, dealt and pushed while
+ ticks beside it (the run ticked, dealt and pushed while
  up was at step 7 of 8, and stop refused until step 8; "seems bad").
 
  Step 2's action makes the store, once. A fresh store is stopped, its

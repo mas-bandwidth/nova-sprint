@@ -1,21 +1,21 @@
 # Layer 5: policy
 
-Draft for Glenn, 2026-11-06: not approved, not built. Policy is the part
+Draft for not approved, not built. Policy is the part
 of the sprint the coordinator changes while it runs
 (promise 6: "change the rules of the sprint while it runs"). It is a Starlark
 file, stored as an immutable version in `sprint.policy` (LAYER-1-STORE.md),
 that answers a closed set of questions the steps (layer 3) ask. It never
 writes the store and never raises a move: it supplies a number, an order or
 a choice, and the engine checks the answer against its domain before any
-move uses it. The split rule (Glenn, 2026-10-27 and 2026-11-06, as the
+move uses it. The split rule (2026-10-27 and 2026-11-06, as the
 coordinator recorded it): if being wrong could corrupt the sprint, it is in
 the engine, modelled; if being wrong could only make the sprint slow, costly
-or badly ordered, it is policy. Glenn 2026-10-27, in LESSONS 5.1: "I want
+or badly ordered, it is policy. the owner 2026-10-27, in LESSONS 5.1: "I want
 our part that is not starlark to be immaculate". Package `policy`, pure Go
 over go.starlark.net: no store, no clock, no bus; the steps hand it inputs
 and take back validated answers.
 
-## The list for Glenn
+## The list for the owner
 
 Bottom up: the structure, what it must guarantee, how it is checked.
 
@@ -45,7 +45,7 @@ Bottom up: the structure, what it must guarantee, how it is checked.
 | decision | engine | policy | why that side |
 |---|---|---|---|
 | whether a move is legal, what it writes | layer 2 | | a wrong move corrupts |
-| the ladder blocker > critical > read > high > normal > low | layer 2, fixed | | Glenn's ruling, declared by request; a script must not put blocker below work |
+| the ladder blocker > critical > read > high > normal > low | layer 2, fixed | | the owner's ruling, declared by request; a script must not put blocker below work |
 | order among equals inside one level | | `order` | wrong order is only slow (LESSONS 5.3) |
 | a card's priority level | a person's verb | never | "Priorities are manually set by request." |
 | working consumers never exceed the row's width | layer 1, at the write | | over-filling a row corrupts |
@@ -101,7 +101,7 @@ end of file` (ruled 2026-11-07).
 | `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
 | `limits()` | none | dict: `bounces` 1..100, `faults` 1..100, `same_finding` 1..10, `reports_per_tick` 1..10000, `route_rest_window` 1..100, `route_rest_after` 1..window; layer 3's steering numbers (round 5): `escalate_after` 1..100 and `frontier_after` escalate_after..100 (the bounces at which work goes one rank up and to frontier), `flap_limit` 1..100, `idle_floor` and `land_target` numbers in (0, 1] | out of range, a missing key, a fraction that is not a number | below; the steering keys 2, 4, 3, 0.5 and 0.9, all guesses; `fleet_width_cap` 1..256 (the most consumers a worker machine works, its cores at most this; the roster's cap, drift row 26), 8, a guess |
 | `landing(stream)` | name, merging, review, rung (check asks both rungs: round 5) | `{"backed_up": b, "flowing": f}`, 0 <= f < b <= 1000, optional `"ci_wait"`: seconds 1..86400 | f >= b, ci_wait outside 1..86400 | backed up (rung 2) at 2 merging, flowing again at 1; ci_wait 600 (a guess) |
-| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (the seconds after a deal from which a row is nagged each tick for a card in hand it has not taken: Glenn 2026-11-07, default 1) and `ready_take` (the seconds after which such a card is withdrawn and dealt to another row with room: default 180) | zero, negative, absent: no wait is ever unbounded | below |
+| `timeouts()` | none | dict of seconds of running time, each 1..86400: `row_silent_gone`, `row_silent_withdraw` (>= gone), `landing_stall`, `base_regate` (a rising list), `judgement`, `route_rest_for`; optional `ready_nag` (the seconds after a deal from which a row is nagged each tick for a card in hand it has not taken: the owner 2026-11-07, default 1) and `ready_take` (the seconds after which such a card is withdrawn and dealt to another row with room: default 180) | zero, negative, absent: no wait is ever unbounded | below |
 | `stitch(stream)` | name, cards, landed | `True` or `False` | a non-bool | `True` when the stream has more than one card |
 | `prices()` | none | dict: model name to `{"in": n, "out": n}`, micro-dollars per million tokens, n >= 0 | a negative or non-int price | `{}`: every run unpriced until the coordinator sets them |
 
@@ -190,7 +190,7 @@ def timeouts():
         "base_regate": [120, 300],    # v1 (LANDING step 8)
         "judgement": 3600,            # guess
         "route_rest_for": 1800,       # v1 (PRIORITY T20)
-        "ready_nag": 1,               # Glenn 2026-11-07
+        "ready_nag": 1,               # the owner 2026-11-07
     }
 
 def stitch(stream):
@@ -252,7 +252,7 @@ records it), so lowering a silence never makes a card in hand due at once.
 
 ## The verbs
 
-All are the coordinator's: Glenn asks, the coordinator edits. Every
+All are the coordinator's: the owner asks, the coordinator edits. Every
 refusal is in the CORRECT-USE form.
 
 | verb | does | refuses, naming the fix |
@@ -400,7 +400,7 @@ An estimate: 1,300 lines of Go, 80 of Starlark, 150 of TLA+, 1,000 of tests.
 - Also held here: 3.4 (read count), 3.7 (`verdict`), 4.7
   (`row_silent_gone`), 4.24 in part (the rest numbers).
 
-## Decided inside the layer (Rowan, 2026-11-06), easy to overrule
+## Decided inside the layer, easy to overrule
 
 - One version answers a whole tick, so the receipt names one set of rules;
   kind `data` stays unused; a data table later is a question, not a second
@@ -511,7 +511,7 @@ validated every tick like the others. `policy.ReadCatalog(ctx, store, version)`
 Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
 give a function and a type one name. `Catalog.Unknown(model, harness)` is the
 row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
-(`nova-sprint policy set <file> --reason <why>`). The default's tier map is Glenn's (Hacker News, 2026-11-05),
+(`nova-sprint policy set <file> --reason <why>`). The default's tier map is the owner's (Hacker News, 2026-11-05),
 quoted in `default.star`: haiku, luna and deepseek-flash at flash; sonnet,
 terra and mercury-3 at pro; opus and sol at heavy; fable, astra and argon at
 frontier. The providers are the coordinator's mapping (anthropic, openai,
@@ -656,7 +656,7 @@ does not change `Pick`; only its header names the round 3 code. TLC on hetzner2,
 the one failure `CardDeps` (layer 2's model, not this layer's), killed
 with exit 137 after 8 minutes and 3.85M distinct states.
 
-**Owed.** The trace check binding `tla/Policy.tla` to the code (Glenn,
+**Owed.** The trace check binding `tla/Policy.tla` to the code (
 2026-11-07: the code's random walk emits traces, TLC checks them in CI) is
 not built here; until it is, this layer does not lock. Layer 3 is told the
 budget is 500 ms and that `AnswerContext` carries its deadline. (Built in
@@ -759,7 +759,7 @@ structs, the shared candidate sets, the counts); answer.go 146; policy.go
 linear-space diff, ruling 5); prefer.go 84 (the 5,000-producer budget);
 trace.go 55. Each was added by a design line or a ruling, not by drift;
 the 1.5k budget was set before rulings 3 to 7, the catalog and the trace
-check. Glenn's call whether to raise the budget or drop a feature (the
+check. the owner's call whether to raise the budget or drop a feature (the
 diff verb and the catalog are the two that could move to layer 6).
 
 Tests: `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
@@ -907,7 +907,7 @@ fences) are added; L5-3, L5-4, L5-8 and L5-14 carry the new probes.
 *Size.* 3,141 lines of non-test Go (2,402 without comments and blanks),
 from 2,545 (1,971) at round 4; the evaluator is 241 code lines, the clock
 24, the rest the probes' fixes and the roster. Over the 1.5k budget, as
-round 4 said; Glenn's call.
+round 4 said; the owner's call.
 
 *Tests.* `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
 c0067a27: ok (5.0 s). The timing probes with `NOVA_LOAD=1`, exclusive, on
@@ -938,7 +938,7 @@ they were not re-run.
 
 What the stitch changed in layer 5 and why:
 
-- **The evaluator's memory cap (Glenn's ruling 1).** `EvalMemory`, 512 MiB,
+- **The evaluator's memory cap (the owner's ruling 1).** `EvalMemory`, 512 MiB,
   the policy layer's number, passed to the child in
   `NOVA_POLICY_EVAL_MEMORY`. The child caps itself before it reads a request
   (`evalmem.go`): the Go runtime's memory limit, and a watchdog reading the
@@ -952,7 +952,7 @@ What the stitch changed in layer 5 and why:
   the cap by at most that before the watchdog sees it. A child that dies is
   read as before: every version it ran fails, naming the line it wrote, and
   Judgements opens one per failing version. `TestFunctionalEvaluatorMemoryCap`.
-- **Security reads (Glenn's ruling 2).** The prose rule stays gone: frontier
+- **Security reads (the owner's ruling 2).** The prose rule stays gone: frontier
   reads come only from a card's tier or its stream. A security stream names
   its need in its setting, the policy's `_SECURITY_STREAMS` list (the
   coordinator adds the stream with `policy set`), never in a brief's prose.

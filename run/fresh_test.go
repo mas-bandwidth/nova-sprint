@@ -39,7 +39,7 @@ func benchCatalog() policy.Catalog {
 // A fresh store is stopped, never started, and a run that comes up on it
 // (up starts the run service at step 4, before the walk is done) ticks
 // nothing: no op, no question to policy, no push. The first start lets the
-// next tick deal (Run.tla NeverStartedMovesNothing; Glenn, 2026-11-07).
+// next tick deal (Run.tla NeverStartedMovesNothing; the owner, 2026-11-07).
 func TestFreshStoreTicksNothingUntilStart(t *testing.T) {
 	f := store.NewFake()
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})

@@ -131,7 +131,7 @@ jobs:
 
   tlc:
     # The studio (32 cores, 512 GB): the 200+ TLC runs were OOM-killed on a 30 GB bench
-    # (Glenn, 2026-11-06: "if you are out of memory, do it on the studio").
+    # ("if you are out of memory, do it on the studio").
     if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
     runs-on: [self-hosted, tlc]
     timeout-minutes: 180

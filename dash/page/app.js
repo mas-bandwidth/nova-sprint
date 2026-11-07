@@ -7,7 +7,7 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"]; // Glenn 2026-11-07: no fail state on the board
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"]; // Owner 2026-11-07: no fail state on the board
 // Columns of the streams table, in flow order.
 var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
@@ -259,7 +259,7 @@ function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); 
 var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
 // the status word alone (up, held, down): the server may carry a reason after it ("held (why)"), which is the coordinator's view, never the pill's (the owner 2026-10-04 10:40 PM)
 function shownStatus(st) { var w = String(st || "").trim().split(/[\s(]/)[0]; return w === "asleep" ? "down" : w; }
-// A bud shows as its person: "rowan-next" is "rowan (next)" when "rowan" is a friend too
+// A bud shows as its person: "friendF-next" is "friendF (next)" when "friendF" is a friend too
 // (the owner 2026-10-04 ~4:24 PM: "this enforces it is one person, but multiple buds").
 function budLabel(name, table) {
   var i = name.indexOf("-");
@@ -390,7 +390,7 @@ function renderStreams(d) {
   FLOW.forEach(function (st, i) { all += sum[st]; if (st !== "landed") setNum(tc[2 + i], sum[st]); });
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
   setText(tc[COST_AT], money(sum.cost));
-  // stream counts, never cards: "landed" here read as cards beside the table's landed column (Glenn 2026-10-14), so it names its unit
+  // stream counts, never cards: "landed" here read as cards beside the table's landed column (Owner 2026-10-14), so it names its unit
   setText($("streams-sub"), keys.length + " streams · " + landedStreams + " landed · " + held + " held");
   // the "landed" header is centred over its n / total cell: same width as the cell, text centred
   var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
@@ -640,7 +640,7 @@ function renderHero(d, s, ft) {
   var perC = cs ? cents(cs.per_card) : null;
   // the tile is the API spend; kin on subscription seats are free, and their tokens are shown beside
   // the dollars (the owner 2026-11-07: "api rate work should be priced *exactly*. friend sub rate should be free.")
-  // Glenn 2026-11-07: the line under the total is "$x per card" and nothing else, ever.
+  // Owner 2026-11-07: the line under the total is "$x per card" and nothing else, ever.
   var per = perC !== null ? money(perC) + " per-card" : "";
   setText($("cost-per"), per || " ");
   var missing = cs && cs.missing_prices && cs.missing_prices.length ? " (no price for " + cs.missing_prices.join(", ") + ")" : "";

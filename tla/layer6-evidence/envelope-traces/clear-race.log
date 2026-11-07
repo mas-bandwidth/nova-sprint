@@ -1,6 +1,6 @@
 nova-reserve: HELD mode=shared slot=1/4 pid=462728
 === RUN   TestEmitClearTrace
-    clear_trace_test.go:145: trace: /var/tmp/stella-l6-envelope-trace-20261107/RunClearTraceLog.tla records=8
+    clear_trace_test.go:145: trace: /var/tmp/friendG-l6-envelope-trace-20261107/RunClearTraceLog.tla records=8
 --- PASS: TestEmitClearTrace (0.00s)
 === RUN   TestEmitClearActionWalk
     walk_trace_test.go:288: seed=0 actions=[notice notice push clear push] records=12 path=/tmp/TestEmitClearActionWalk3762135004/001/RunClearTraceLog.tla

@@ -1,6 +1,6 @@
 # Layer 2: the card machine
 
-Approved in shape by Glenn 2026-11-06 ("Looks fine. Continue."), then
+Approved in shape by  ("Looks fine. Continue."), then
 corrected by him the same hour to the producer and consumer shape of
 2026-09-29: "Remember the ideas we had of producer cards, and consumer cards.
 And consumer cards are either workers in fleet, or friends. Unifying the two.
@@ -28,7 +28,7 @@ this layer says *whether* the move is legal and *what* it writes.
   moves its producer to review. Whether the done reads of a head mean yes
   (to merging) or fix (back to ready, at the head of its queue) is policy's
   decision from all the reads of that head, never the engine's on the first
-  fix it sees (LESSONS 3.7; ruled by Rowan 2026-11-06).
+  fix it sees (LESSONS 3.7; ).
 - The holder lives on the consumer only. Two reads of one head are two read
   consumers; there is never a second holder column.
 
@@ -49,7 +49,7 @@ returns that count toward `blocked`; LESSONS 2.24), and `cost` with `priced`
 
 ## Producer states
 
-The six states Glenn locked on 2026-09-29, plus `fail`:
+The six states the owner locked on 2026-09-29, plus `fail`:
 
 | state | meaning |
 |---|---|
@@ -66,7 +66,7 @@ has one live work consumer; it has a live read consumer only in `review`.
 (Live: a consumer in `ready` or `working`.) Width is a different count: it
 caps the consumers a row holds in `working`, never those in `ready`, so ready
 work is dealt into a row's queue even when the row is at width (LESSONS 3.3;
-PRIORITY D21; ruled by Rowan 2026-11-06). How many `ready` consumers to deal
+PRIORITY D21; ). How many `ready` consumers to deal
 a row ahead of its width is policy's number.
 
 ## Consumer states
@@ -110,7 +110,7 @@ Producer events:
 | `Relink{need, to, reason}` | waiting | same | needs with `need` replaced by `to`, reason | as `Waive`; `to` is a non-final producer of the epoch and the new needs make no cycle; recorded as `Waive` is (LESSONS 2.18) |
 | `Edit{brief, reason}` | any non-final | same | brief, reason | no live consumer of p: an edit never bounces or rewrites a card in hand, and it keeps p's head, author, attempt, score and finished reads, so a scope-only edit keeps the reviewed head (LESSONS 2.25; PRIORITY D39, W14) |
 | `Rescore{score}` | any non-final | same | score | |
-| `SetPriority{level, reason}` | any non-final | same | priority | a producer only; level is `low`, `normal` (the default), `high`, `critical` or `blocker`; a verb a person or the coordinator runs on request, never raised by the engine or by policy (Glenn 2026-11-06: "Priorities are manually set by request." "Default is normal."); policy only orders within a level |
+| `SetPriority{level, reason}` | any non-final | same | priority | a producer only; level is `low`, `normal` (the default), `high`, `critical` or `blocker`; a verb a person or the coordinator runs on request, never raised by the engine or by policy ("Priorities are manually set by request." "Default is normal."); policy only orders within a level |
 | `Block{reason}` | waiting, ready, review, or working after its consumer is withdrawn | blocked | state, reason | a producer, never a sentinel; no live consumer of p; raised by policy when `bounces` passes its limit, with a judgement; a `fault` never counts (LESSONS 2.24); and by the coordinator's `hold <card>` with reason `held: <why>` (defect 47), its live consumers withdrawn in the same op |
 | `Unblock{reason}` | blocked | waiting | state, reason | a coordinator verb; Resolve then moves it on |
 
@@ -130,15 +130,15 @@ Rules the tables encode, each checked by the model and tested one by one:
   consumer. No event moves them, `Rescore` and `SetPriority` included.
 - A producer's priority is declared, never computed: `low`, `normal`,
   `high`, `critical` or `blocker`, normal by default, changed only by
-  `SetPriority` on request. Glenn 2026-11-06: "Critical was a priority
+  `SetPriority` on request. "Critical was a priority
   manually set by me at request." The deal order, lowest to highest, is
-  Glenn's (2026-11-06): "There is low, normal, high, read, critical, blocker
+  the owner's (2026-11-06): "There is low, normal, high, read, critical, blocker
   in specific order." `read` is the rung every read consumer occupies: above
-  high work, below critical and blocker. Glenn 2026-11-06: "reads are below blocker and critical.
+  high work, below critical and blocker. "reads are below blocker and critical.
   the idea is that when something is blocker and critical it must be done
   ahead of current work in flight (that resulted in the reads)." Ordering
   inside a level is policy's (LESSONS 5.3).
-- A blocker preempts. Glenn 2026-11-06: "blocker is so high, it'll kick out
+- A blocker preempts. "blocker is so high, it'll kick out
   the youngest work or read task on a worker to get started right away."
   When a blocker producer is ready and no row that serves it has width,
   policy raises `Withdraw{reason: "preempted by blocker <id>"}` on the
@@ -157,14 +157,14 @@ Rules the tables encode, each checked by the model and tested one by one:
   rule 30, 2026-11-07; it was `merging → review`, where a reader re-read the
   same red head and could send it straight back to land red again).
 - A fix keeps the score, so a fixed producer is at the head of its queue
-  without any priority rule (Glenn, 2026-09-29).
+  without any priority rule.
 - `attempt` rises only on `Start`. A consumer carries its attempt, and a
   producer event accepts only the consumer of its current attempt, so a
   report from an old attempt can never move the producer.
 - The reader is never the author: `AskRead` refuses the row that produced
   the head.
 - A row going down does **not** withdraw its consumers. `Withdraw` is a
-  separate event that policy raises after a silence it has stated (Johnny,
+  separate event that policy raises after a silence it has stated (
   Emma, 2026-11-06); the engine offers the move and never decides the
   silence.
 - A need failing takes its dependants: layer 3 raises `NeedFailed` for every
@@ -272,7 +272,7 @@ it through layer 1 as a refused op so it is visible.
   | `working` | the holder of its work consumer | the silence policy states, then `Withdraw` |
   | `review` | the holders of its live read consumers; else the next tick's `AskRead`; else, when no row may read it, a judgement to the coordinator | the readers' silence; one tick; the judgement's deadline (policy's) |
   | `merging` | the landing step's next pass, or a judgement on its stream (LANDING.md) | the landing-stall bound (LANDING.md) |
-  | `blocked` | the coordinator's `Unblock` | none, by Glenn's ruling (2026-11-05: it "sits there until you review it") |
+  | `blocked` | the coordinator's `Unblock` | none, by the owner's ruling (2026-11-05: it "sits there until you review it") |
 
   Reversed witnesses: a review with no askable reader and no judgement; a
   needs cycle; a producer parked with no named hold.
@@ -290,7 +290,7 @@ it through layer 1 as a refused op so it is visible.
 
 About 1,100 lines of Go. An estimate from the event count.
 
-## Decided inside the layer (Rowan, 2026-11-06), easy to overrule
+## Decided inside the layer, easy to overrule
 
 - Consumers live in `sprint.cards` with `kind` and `of`, not in a second
   table: one structure, one set of writes, one holder column, and the
@@ -302,15 +302,15 @@ About 1,100 lines of Go. An estimate from the event count.
   and cleared at `Start`: an attempt has one author, and a release before a
   finish leaves none.
 - The bounce limit that blocks a producer is policy's number, compared with `bounces` (LESSONS 2.24); the move is the engine's. A row is never blocked: on the record (10-25, 11-05) the flaps were our hook's, not the row's; a row's flaps stay a counted fact for policy to raise a judgement on.
-- The runner is its own binary, `nova-worker`, in this repo (Glenn: "your
+- The runner is its own binary, `nova-worker`, in this repo ("your
   call"); it and `nova-sprint` share the consumer verbs (take, report) from
-  one package. The name `nova-swarm` is reserved by Glenn for a future mode
+  one package. The name `nova-swarm` is reserved by the owner for a future mode
   where the whole sprint works one hard problem; this is workers across
   lanes, not a swarm.
 
 ## Hard needs, soft order, sentinels
 
-Glenn, 2026-11-06: "Cards had dependencies on other cards, we had sentinel
+"Cards had dependencies on other cards, we had sentinel
 cards (very useful). And you even had soft ordering for dependencies, eg.
 land order. Those were hard earned."
 
@@ -323,7 +323,7 @@ land order. Those were hard earned."
   queued (PRIORITY M20). A soft
   `after` never holds a landing whose target is not queued: in v1 a
   two-day-old LAND-AFTER froze four streams' landings until that rule was
-  made (2026-10-16; LESSONS 2.15; PRIORITY D29, M20; ruled by Rowan
+  made (2026-10-16; LESSONS 2.15; PRIORITY D29, M20; 
   2026-11-06).
 - A sentinel is a producer of kind `sentinel`: no brief, no consumer, no
   score of its own. When its needs have landed, `Reached` lands it, and that
@@ -490,7 +490,7 @@ with a design change, never a special case):
 
 ## Red goes to fix (2026-11-07, intent rule 30)
 
-Glenn, 2026-11-07: no terminal fail state for a producer; a failed card goes
+no terminal fail state for a producer; a failed card goes
 to fix or review, where a mind looks at it. Until the `fail` state itself is
 reworked (after the first landing), a red landing goes to fix:
 

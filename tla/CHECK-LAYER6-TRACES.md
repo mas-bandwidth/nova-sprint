@@ -97,7 +97,7 @@ The full gate cannot pass at this base, for two reasons outside the traces:
   import the deleted run/filestore), so the two handoff emitters fail; that
   is the stitch's wiring of the run verb.
 - the choices emitter (`TestSetupChoicesActualTrace`) fails at setup step 6
-  for both cases: `setup answer refused: row rowan does not exist` (the
+  for both cases: `setup answer refused: row friendF does not exist` (the
   services answer; its fixture predates e0887b13's role hooks).
 
 `ci-tlc.sh` now runs layer 6 too (the models, witnesses/layer6, and the Setup

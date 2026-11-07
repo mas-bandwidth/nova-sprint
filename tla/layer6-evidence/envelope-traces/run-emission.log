@@ -1,25 +1,25 @@
 nova-reserve: HELD mode=shared slot=1/4 pid=467795
 === RUN   TestEmitRunTrace
     run_trace_test.go:351: fixture random seed=1 report card=2 between-ops=true
-    run_trace_test.go:399: trace: /var/tmp/stella-l6-envelope-runtrace-20261107/run-1.tla records=29
+    run_trace_test.go:399: trace: /var/tmp/friendG-l6-envelope-runtrace-20261107/run-1.tla records=29
 --- PASS: TestEmitRunTrace (0.00s)
 PASS
 ok  	github.com/mas-bandwidth/nova-sprint/run	0.006s
 === RUN   TestEmitRunTrace
     run_trace_test.go:351: fixture random seed=7 report card=2 between-ops=true
-    run_trace_test.go:399: trace: /var/tmp/stella-l6-envelope-runtrace-20261107/run-7.tla records=29
+    run_trace_test.go:399: trace: /var/tmp/friendG-l6-envelope-runtrace-20261107/run-7.tla records=29
 --- PASS: TestEmitRunTrace (0.00s)
 PASS
 ok  	github.com/mas-bandwidth/nova-sprint/run	0.006s
 === RUN   TestEmitRunTrace
     run_trace_test.go:351: fixture random seed=42 report card=2 between-ops=true
-    run_trace_test.go:399: trace: /var/tmp/stella-l6-envelope-runtrace-20261107/run-42.tla records=29
+    run_trace_test.go:399: trace: /var/tmp/friendG-l6-envelope-runtrace-20261107/run-42.tla records=29
 --- PASS: TestEmitRunTrace (0.00s)
 PASS
 ok  	github.com/mas-bandwidth/nova-sprint/run	0.006s
 === RUN   TestEmitRunTrace
     run_trace_test.go:351: fixture random seed=0 report card=1 between-ops=false
-    run_trace_test.go:399: trace: /var/tmp/stella-l6-envelope-runtrace-20261107/run-stop.tla records=31
+    run_trace_test.go:399: trace: /var/tmp/friendG-l6-envelope-runtrace-20261107/run-stop.tla records=31
 --- PASS: TestEmitRunTrace (0.00s)
 PASS
 ok  	github.com/mas-bandwidth/nova-sprint/run	0.006s

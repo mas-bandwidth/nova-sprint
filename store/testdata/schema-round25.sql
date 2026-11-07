@@ -157,7 +157,7 @@ ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS usage text NOT NULL DEFAULT ''
 
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;
--- Johnny's review 2026-11-06: a working card could drop its holder and keep
+-- FriendE's review 2026-11-06: a working card could drop its holder and keep
 -- the slot), nor does a read consumer's review or a work consumer's finding
 -- (the producer's at cut), and a consumer's of names a producer of its own stream and tier
 -- (the foreign key says only that it names a card). A consumer's attempt is fixed at add

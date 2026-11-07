@@ -1,7 +1,7 @@
 package card
 
 // Emma's four from the second cold read of layer 2, folded from
-// /Volumes/nova/ai/rowan/working/handoff/SPRINT-V2-L2-READ2-emma-2026-11-06.md
+// /Volumes/nova/ai/friendF/working/handoff/SPRINT-V2-L2-READ2-emma-2026-11-06.md
 // (the probes that failed at c3fac873). Each one now expects the ruling.
 // Her failure lines are the attribution, not the behaviour.
 //

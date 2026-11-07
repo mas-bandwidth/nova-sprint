@@ -125,7 +125,7 @@ func testSet(t *testing.T, w *world) {
 	assert.Equal(t, before.Rows, after.Rows)
 	pv, err := w.st.Policy(w.ctx(), 2)
 	require.NoError(t, err)
-	assert.Equal(t, store.PolicyVersion{Version: 2, Kind: "script", Name: "two-reads.star", Body: pv.Body, Actor: "rowan", At: pv.At}, pv)
+	assert.Equal(t, store.PolicyVersion{Version: 2, Kind: "script", Name: "two-reads.star", Body: pv.Body, Actor: "friendF", At: pv.At}, pv)
 }
 
 func testActivateRefusals(t *testing.T, w *world) {
@@ -134,7 +134,7 @@ func testActivateRefusals(t *testing.T, w *world) {
 	kin := w.caller()
 	kin.Coordinator = false
 	_, err := Activate(w.ctx(), w.st, w.ro, e, kin, 1, "r")
-	assert.Equal(t, "SPRINT REFUSED policy activate: policy is the coordinator's: ask over the bus: nova-bus send --as rowan --to <coordinator>", refusal(t, err))
+	assert.Equal(t, "SPRINT REFUSED policy activate: policy is the coordinator's: ask over the bus: nova-bus send --as friendF --to <coordinator>", refusal(t, err))
 	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), 9, "r")
 	assert.Equal(t, "SPRINT REFUSED policy activate: policy version 9 does not exist: nova-sprint policy show --list", refusal(t, err))
 	_, err = Activate(w.ctx(), w.st, w.ro, e, w.caller(), 1, "r")
@@ -180,7 +180,7 @@ func testShow(t *testing.T, w *world) {
 	require.NoError(t, err)
 	pv, err := w.st.Policy(w.ctx(), v)
 	require.NoError(t, err)
-	assert.Equal(t, "  v2 script two-reads.star by rowan at "+pv.At.Format("2006-01-02T15:04:05Z")+": test\n\n"+pv.Body, out)
+	assert.Equal(t, "  v2 script two-reads.star by friendF at "+pv.At.Format("2006-01-02T15:04:05Z")+": test\n\n"+pv.Body, out)
 	_, err = Show(w.ctx(), w.st, 7)
 	assert.Equal(t, "SPRINT REFUSED policy show: policy version 7 does not exist: nova-sprint policy show --list", refusal(t, err))
 	list, err := List(w.ctx(), w.st)

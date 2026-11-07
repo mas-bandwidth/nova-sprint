@@ -285,7 +285,7 @@ func TestBreakLoadVersionsWalksPastSnapshotSeqCollapsingPrevIntoActive(t *testin
 		afterSnapshot: func() {
 			id, at := w.next()
 			_, err := w.st.Apply(w.ctx(), store.Op{
-				ID: id, Epoch: 1, Actor: "rowan", Kind: "policy-activate", At: at,
+				ID: id, Epoch: 1, Actor: "friendF", Kind: "policy-activate", At: at,
 				Writes: []store.Write{store.SetActivePolicy{Version: v4}},
 			})
 			require.NoError(t, err)

@@ -1,6 +1,6 @@
 package card
 
-// Folded from /Users/glenn/rowan-working/children/nsv2-card-coldread3/card/coldread3_test.go
+// Folded from /Users/user/friendF-working/children/nsv2-card-coldread3/card/coldread3_test.go
 // (the third cold read of layer 2, at 1b6e66ab). Two kinds of test:
 //
 //   - TestColdread3Defect*: one per confirmed defect; each failed at 1b6e66ab.

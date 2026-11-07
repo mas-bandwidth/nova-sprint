@@ -288,7 +288,7 @@
         }
       },
       "friends": {
-        "alex": {
+        "friendA": {
           "blocker_working": "0",
           "critical_working": "0",
           "done": "0",
@@ -384,7 +384,7 @@
           "width": "2",
           "working": "0"
         },
-        "stella": {
+        "friendG": {
           "blocker_working": "0",
           "critical_working": "0",
           "done": "0",

@@ -247,7 +247,7 @@ func seedFakeStore_internal(t *testing.T, clock func() time.Time) (*store.Fake, 
 	ctx := context.Background()
 	row := "amd-1.ds"
 	rec, err := st.Apply(ctx, store.Op{
-		ID: "setup-1", Epoch: 1, Actor: "rowan", Kind: "setup", At: clock(),
+		ID: "setup-1", Epoch: 1, Actor: "friendF", Kind: "setup", At: clock(),
 		Writes: []store.Write{
 			store.PutStream{Name: "s1", Repo: "mas-bandwidth/nova-sprint", Base: "main", Pos: 1, Forge: "github"},
 			store.PutRow{Name: row},

@@ -1,6 +1,6 @@
 // Browser smoke test against the checked-in synthetic envelope; no live store.
 const fs = require('fs'), http = require('http'), path = require('path');
-const {chromium} = require('/var/tmp/stella-dash-visual-20261106/node_modules/playwright');
+const {chromium} = require('/var/tmp/friendG-dash-visual-20261106/node_modules/playwright');
 const data = JSON.parse(fs.readFileSync('dash/testdata/seed.json', 'utf8'));
 const amount = '$90,071,992,547,409.93';
 data.data.tables.work.alpha.cost = amount;

@@ -40,7 +40,7 @@ No pin was changed and no TLC ran on the Studio.
 
 ```
 python3 tla/make-run-clear-witnesses.py
-ssh vision nova-reserve run --slots 16 --wait 60s --why stella-l6-clear-tlc -- python3 /home/glenn/jobs/stella-v2-l6-clear-model-20261106/tla/run-layer6.py --manifest layer6-clear-runs.json
+ssh vision nova-reserve run --slots 16 --wait 60s --why friendG-l6-clear-tlc -- python3 /home/user/jobs/v2-l6-clear-model-20261106/tla/run-layer6.py --manifest layer6-clear-runs.json
 ```
 
 The passing RunClear case generated 1,659 states, 1,112 distinct, with no states
@@ -53,7 +53,7 @@ code-tested. Eventual sends require fair scheduling and eventual confirmation.
 Six current cases are indexed in layer6-evidence/clear-review/results.json.
 That index explicitly names source_run: it combines the initial six-case run
 with a two-case witness refinement run. Full raw run records are preserved at
-`/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/clear-review/`
+`/Volumes/nova/ai/friendG/working/l6-model-development-evidence-20261106/clear-review/`
 and its clear-witness-review sibling. Only the current six logs are in this
 checkout. Every indexed module/config SHA matches the checked local artifact.
 

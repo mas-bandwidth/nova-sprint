@@ -17,7 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Cold read, 2026-11-06, at 649d1b4c (Rowan). One failing probe per confirmed defect.
+// Cold read, 2026-11-06, at 649d1b4c. One failing probe per confirmed defect.
 
 type crSprint struct {
 	mu       sync.Mutex

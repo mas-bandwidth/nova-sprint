@@ -318,7 +318,7 @@ func (v *View) Overlaps(p store.Card) []string {
 }
 
 // Open says whether row r may be dealt to: up on the bus, not held, and
-// hooked in to the sprint (Glenn, 2026-11-06: the hook is the subscription
+// hooked in to the sprint (the hook is the subscription
 // to the sprint's pushes; a row not hooked in is never dealt to and nothing
 // is pushed to it). The hook is the row's Session and Role (store round 22).
 func (v *View) Open(r store.Row) bool { return r.State == "up" && !r.Held && Hooked(r) }

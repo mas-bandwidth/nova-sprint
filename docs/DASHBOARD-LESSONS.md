@@ -1,7 +1,7 @@
 # The v1 dashboard, extracted for v2
 
 What nova-sprint v1's dashboard draws, how each cell is computed, what it looks like, and the
-rulings that made it so, extracted 2026-11-06 so the v2 dashboard is a visual match. Glenn,
+rulings that made it so, extracted 2026-11-06 so the v2 dashboard is a visual match. the owner,
 2026-11-06: "it should be exactly matching what we currently have, visually. no changes except i
 think you added fail state." and "The dashboard design should be identical to the v1 in visual,
 excluding the unimplemented stats part at bottom we didn't end up doing."
@@ -24,7 +24,7 @@ otherwise, section 0 lists the difference.
 | `assets/nova-sprint-dashboard.jpg` | the reference picture | dated 2026-10-05 (commit a2c5d1c7), before 30+ later asks. It shows a `machine running` chip, `Updated` with a green dot, the label "ALL CARDS BY STATE", "review + merge" in the In flight tile, review pink and merging amber, no `fix` state, no version chip. None of those are on the live page. **Do not match the jpg; match a fresh screenshot of the live v1 board.** |
 | Refresh | page keeps `/events` open, polls as fallback | `/events` removed 2026-10-14 ("remove the /events and /landings.json requests"); the page polls `/api/sprint` on a fixed 1000 ms timer only |
 | Work stream cell | display name (`stream set --display`), else key | `setText(r.nameT, k)`: the **key** always; app.js never reads a display name |
-| Work subtitle | `<n> streams · <l> landed · <h> held` | `<n> streams · <l> streams landed · <h> held` (Glenn 2026-10-14: "landed" read as cards) |
+| Work subtitle | `<n> streams · <l> landed · <h> held` | `<n> streams · <l> streams landed · <h> held` ("landed" read as cards) |
 | ETA while READY | "READY" in green (2026-10-13) | no READY anywhere in app.js; spec's own 10-11 paragraph: "no READY word in the ETA cell" |
 | Friends panel | hidden by CSS for v1.2.x | shown (2026-10-13: "shows the friends table by default"); empty when there is no friends table (2026-10-20) |
 | critical colour | "Both blocker and critical are the same bright red" (2026-10-08) | `--p-critical: #9b1c1c` (dark red) is the later rule in the sheet and wins on the fleet track; `--s-critical` #ff1a1a is unused by the track |
@@ -34,7 +34,7 @@ otherwise, section 0 lists the difference.
 
 ## 1. The screen, top to bottom
 
-Global: dark only (Glenn 2026-10-04 2:21 PM: "just remove the toggle light/dark. always dark.");
+Global: dark only ("just remove the toggle light/dark. always dark.");
 `<html data-theme="dark">`; light tokens exist in the CSS but nothing selects them. Tab title
 `nova-sprint`; favicon the robot tile (192 px PNG). Body background `--bg #0d0f12`, text
 `--text #eef0f3`, padding `2rem 2rem 4rem` (16 px all round on a phone, 32 px bottom). rem = 16 px
@@ -224,7 +224,7 @@ compact form. Grid: `name-w status-w minmax(4.5rem,1fr) minmax(0, calc(30.75rem 
 done columns are fixed, never content-sized (2026-10-06 9:28 PM).
 
 Rows: one per member (Friends: per friend); order up, held, down, then name (localeCompare). A
-"rowan-next" whose "rowan" is also a row shows as `rowan (next)` (2026-10-04 ~4:24 PM).
+"friendF-next" whose "friendF" is also a row shows as `friendF (next)` (2026-10-04 ~4:24 PM).
 
 - **status** pill: up good (green tint, green dot), held warning, down critical; a stored "asleep"
   shows as `down`; only the first word of the status is shown.
@@ -264,7 +264,7 @@ Each fleet row's `reads_working` and `working` include its machine's reader rows
 
 `.panel { --E: clamp(18.5rem, 45vw, 42rem) }`: the status column of Work, Fleet, Friends (and
 Providers) ends at the same distance from the panel's left edge, pills right-justified, so the
-pills line up down the page (Glenn 7:36 PM 2026-10-02). Name column = min(cap, E - pad - gap - S);
+pills line up down the page. Name column = min(cap, E - pad - gap - S);
 caps: Work 27.75rem, Fleet/Friends 15rem; S (minimum status width): Work 9.75rem, Fleet/Friends
 9.5rem, compact 3.5rem. Status width = E - pad - gap - name.
 
@@ -287,12 +287,12 @@ figure 2.75rem. Checked by eye at 375, 430, 760, 1024, 1440, 2000.
   (stuck amber when > 0, stopped red when > 0, CI red/green/grey).
 - **Landings**: markup present, `hidden`, nothing unhides it (the 10-min stacked chart is off).
 - **Last 24 hours** (`#history-panel`, charts.js + Pele, `/api/history`): the stats block asked
-  2026-10-18. **Omit in v2** (Glenn 2026-11-06: "excluding the unimplemented stats part at bottom
+  2026-10-18. **Omit in v2** ("excluding the unimplemented stats part at bottom
   we didn't end up doing"). Its sub-line was `<n> landed · <n> attempts finished (<p>% ok) · <n>
   reads · <n> workers`.
 - **Stream pages** (`/stream/<name>`, clicking a Work stream name, pointer cursor and underline on
   hover): asked the same day (2026-10-18) and served by the same charts.js. Not on the bottom of
-  the page; whether it is part of "the stats part" is for Glenn (section 5).
+  the page; whether it is part of "the stats part" is for the owner (section 5).
 
 ### 1.11 Footer
 
@@ -329,14 +329,14 @@ colour `--text-4 #30353d` (deliberately near-invisible), underline in `--border`
 
 ### 1.14 Where `fail` goes (the one addition)
 
-Not ruled. Options for Glenn, both keeping every other column fixed: (a) Work columns `... |
+Not ruled. Options for the owner, both keeping every other column fixed: (a) Work columns `... |
 merging | landed | fail | cost` and the legend/bar order `landed, fail, merging, fix, review,
 working, ready, waiting` (the finals first); (b) `fail` after `waiting` at the bar's right end.
 Also undecided: its colour (the palette's red `--critical #e05252` is "status, reserved: never a
 series"), whether `landed`'s `n / total` total includes failed cards, and whether `fail` counts in
 In flight (it should not: it is final).
 
-## 2. The rulings, in Glenn's words
+## 2. The rulings, in the owner's words
 
 From the spec's lock sections, pagelock.txt, the CSS/JS comments and the memory notes. "Changed"
 is what the code does because of it.
@@ -364,7 +364,7 @@ is what the code does because of it.
 | 2026-10-04 2:55 PM; 10:15 PM | (tick lateness is the coordinator's); "STOPPED is plenty" | machine word only RUNNING/STOPPED/STALE |
 | 2026-10-04 3:20, 3:25 PM | (a tile's subline is one line at every width) | nowrap + shorter forms |
 | 2026-10-04 ~4:08 PM | the widest track always spans 16 cells, "so no matter the size, it works out" | TRACK_SPAN |
-| 2026-10-04 ~4:24 PM | "this enforces it is one person, but multiple buds" | `rowan (next)` labels |
+| 2026-10-04 ~4:24 PM | "this enforces it is one person, but multiple buds" | `friendF (next)` labels |
 | 2026-10-04 10:40 PM | (the status word alone in the pill; reason is the coordinator's) | pill shows first word |
 | 2026-10-04 ~11:55 PM; 10-05 4:09 PM | names were cut off; "plenty of room there to print the stream name" | Work name cap 27.75rem; top-streams name column takes spare room |
 | 2026-10-04 8:04 AM; 8:07, 8:08, 8:10 PM | "change 'asleep' to 'down'"; "the friends table should LOOK exactly like the fleet table"; "for now, just put load as \"-\"" | one renderer; Total `x / y` |
@@ -401,7 +401,7 @@ is what the code does because of it.
 | 2026-10-12 ~00:52Z | "too close" | 1.5rem before the count |
 | 2026-10-12 ~00:57Z | "center align working and landed" | compact count centred |
 | 2026-10-12 ~00:58Z | "When stopped put STOPPED there in red" | STOP in the ETA tile; machine chip removed |
-| 2026-10-12 ~01:00, 01:02Z | coordinator chip; "rowan" on the phone | coordinator chip |
+| 2026-10-12 ~01:00, 01:02Z | coordinator chip; "friendF" on the phone | coordinator chip |
 | 2026-10-12 ~01:08Z | "too bright red. darker" | STOP 72% red mix |
 | 2026-10-12 ~01:07, 01:09, 01:10, 01:22Z | (blank top-stream rows; "not started"; blank In flight) | empty states |
 | 2026-10-12 ~01:20, 01:25Z | "put the version of nova sprint ... in a cell" | version chip; hide order |
@@ -529,11 +529,11 @@ shape, same zone.
 - [ ] Compact forms appear when a row overflows, not at a fixed width; Fleet compact has no ok%.
 - [ ] No horizontal scroll at 375 px; 16 px gutters.
 
-## 5. Contradictions with the "exact match" rule (for Glenn)
+## 5. Contradictions with the "exact match" rule (for the owner)
 
 1. **The reference picture is stale.** `assets/nova-sprint-dashboard.jpg` predates 30+ rulings
    (2026-10-05). Matching it would undo them; match the live v1 board instead.
-2. **`blocked`** is a v2 producer state Glenn ruled "colored black" on the board (2026-11-05); the
+2. **`blocked`** is a v2 producer state the owner ruled "colored black" on the board (2026-11-05); the
    exact-match rule names `fail` as the only addition.
 3. **"needs you"**: v2's LAYER-1-STORE.md and CORRECT-USE.md promise a dashboard "needs you" column
    reading `judgements`; v1's page has none (judgments are stripped from its copy).

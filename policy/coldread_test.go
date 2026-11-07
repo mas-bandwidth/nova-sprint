@@ -1,7 +1,7 @@
 package policy
 
 // Cold-read probes (2026-11-06), written by the cold reader of e33eea61
-// (~/rowan-working/children/nsv2-l5-coldread), copied here; two were changed
+// (the work directory), copied here; two were changed
 // by Rowan in round 3, when ruling 4 replaced the per-tick step budget with
 // one deadline per tick and said no memory bound exists (each change is
 // marked "Round 3"). Each TestColdreadDefect* fails at the head it was

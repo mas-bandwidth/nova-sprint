@@ -65,7 +65,7 @@ func TestTakeCarriesTheIdentity(t *testing.T) {
 // read is the edge's failure.
 func TestFinishRefusesAnotherIdentity(t *testing.T) {
 	mine := git.Commit{SHA: strings.Repeat("1", 40), AuthorEmail: testIdentity.Email, CommitterEmail: strings.ToUpper(testIdentity.Email)}
-	theirs := git.Commit{SHA: strings.Repeat("2", 40), AuthorEmail: "aurora@example.test", CommitterEmail: testIdentity.Email}
+	theirs := git.Commit{SHA: strings.Repeat("2", 40), AuthorEmail: "friendB@example.test", CommitterEmail: testIdentity.Email}
 	committed := git.Commit{SHA: strings.Repeat("3", 40), AuthorEmail: testIdentity.Email, CommitterEmail: "alice@nova-sprint.local"}
 	finish := []string{"finish", "p1.w1@1", "--head", head}
 	commits := func(cs ...git.Commit) func(*testing.T, *world) {
@@ -75,7 +75,7 @@ func TestFinishRefusesAnotherIdentity(t *testing.T) {
 		{name: "all the identity's", as: "alice", args: finish, exit: 0, prep: commits(mine), want: []string{"FINISHED p1.w1"}},
 		{name: "another author and committer", as: "alice", args: finish, exit: 1, prep: commits(mine, theirs, committed),
 			want: []string{"2 of the 3 commits on sprint/s/p1 since the base are not made as Sprint Bot <1+sprint-bot@users.noreply.example.test>",
-				"222222222222 (author aurora@example.test, committer 1+sprint-bot@users.noreply.example.test)",
+				"222222222222 (author friendB@example.test, committer 1+sprint-bot@users.noreply.example.test)",
 				"333333333333 (author 1+sprint-bot@users.noreply.example.test, committer alice@nova-sprint.local)",
 				`in the clone run git config user.name "Sprint Bot" and git config user.email "1+sprint-bot@users.noreply.example.test"`,
 				"git rebase " + base + " --exec 'git commit --amend --no-edit --reset-author'", "git push --force-with-lease origin sprint/s/p1"}},

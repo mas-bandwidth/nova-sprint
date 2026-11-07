@@ -78,7 +78,7 @@ type snapReader struct{ snap store.Snapshot }
 func (s snapReader) Snapshot(context.Context) (store.Snapshot, error) { return s.snap, nil }
 
 func testWorkload(f *fleetFake, rows map[string]store.Row, present map[string]bool) productionWorkload {
-	return productionWorkload{services: verbs.FleetServices{Command: f.command}.For("rowan", "nova-sprint up 7/8 workers"), run: workloadRun(),
+	return productionWorkload{services: verbs.FleetServices{Command: f.command}.For("friendF", "nova-sprint up 7/8 workers"), run: workloadRun(),
 		store:   snapReader{store.Snapshot{Epoch: 1, Rows: rows}},
 		present: func(context.Context) (map[string]bool, error) { return present, nil },
 		lastLine: func(_ context.Context, machine, service string) string {
@@ -109,7 +109,7 @@ func TestInstallWorkersWritesOneRecordPerBenchAndOnePlay(t *testing.T) {
 		"--keepalive", "true", "--enabled", "true",
 		"--env", `{"NOVA_BUS_REDIS":"100.100.1.3:6379","NOVA_BUS_USER":"sprint","NOVA_PG_DSN":"postgres://nova_sprint@db:5432/nova"}`,
 		"--seat", "amd-1", "--keys", "DEEPSEEK_API_KEY,INCEPTION_API_KEY,NOVA_BUS_PASSWORD,NOVA_SPRINT_PG_PASSWORD",
-		"--actor", "rowan", "--reason", "nova-sprint up 7/8 workers"}
+		"--actor", "friendF", "--reason", "nova-sprint up 7/8 workers"}
 	if len(adds) != 2 || !slices.Equal(adds[0], want) || adds[1][3] != "sprint-worker-amd-2" {
 		t.Fatalf("records:\n%q\nwant\n%q", adds, want)
 	}

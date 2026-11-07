@@ -1,6 +1,6 @@
 {
   "scope": "Read-only correspondence checkpoint; no full wiring, concrete RuntimeSetup adapter, or new runtime test result claimed",
-  "run_root": "/Volumes/nova/ai/stella/working/nova-sprint-v2-l6-run-20261106",
+  "run_root": "/Volumes/nova/ai/friendG/working/nova-sprint-v2-l6-run-20261106",
   "run_files": {
     "run/chooser.go": "f6aa7e51d41846e958e4eb7c51748eaa1f3938fc5aab7b639a8fd33960543ab3",
     "run/tick.go": "9f681983655965b004e4e114b99ad4d45230a1727e1287c9c8430f9486608e37",
@@ -13,7 +13,7 @@
     "run/notices.go": "af6502f3fb48129cbcb18a98714d1b89a36310afafa734cd850800d8f23027f6",
     "run/push_history_test.go": "b1739f2bfe77523419fd1af7d3c9a81fea936cf5c5daf863142ce554b3e19132"
   },
-  "verbs_root": "/Volumes/nova/ai/stella/working/nova-sprint-v2-l6-verbs-20261106",
+  "verbs_root": "/Volumes/nova/ai/friendG/working/nova-sprint-v2-l6-verbs-20261106",
   "verbs_files": {
     "verbs/setup.go": "5a49a6611942f010a328a82c469a09314909706f58d75a3d853d3847ab9bcc51",
     "verbs/pg_setup_lock.go": "5f872999c25691031020094c8d7f2ba1a87424439854c87c9c657447954cc528",

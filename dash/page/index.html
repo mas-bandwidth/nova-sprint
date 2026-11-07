@@ -360,7 +360,7 @@ footer a:hover { color: var(--text); }
    between the counts. 40 px gutters. Rows grouped by status: no rule between rows, a 1 px
    rule (the panel's border colour) between groups. */
 .streams .row { --pad: 2rem; --gap: clamp(1rem, calc(3vw - 2.75rem), 2.5rem); --S: 9.75rem; column-gap: var(--gap); padding: 0 var(--pad);
-  grid-template-columns: var(--name-w) var(--status-w) repeat(7, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Glenn 2026-11-07: fail column gone */
+  grid-template-columns: var(--name-w) var(--status-w) repeat(7, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Owner 2026-11-07: fail column gone */
 .streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }
 .streams.no-blocked .row > :nth-child(3) { display: none; }
 .streams .row > :nth-child(10) { grid-column: span 2; justify-self: end; }
@@ -447,7 +447,7 @@ footer a:hover { color: var(--text); }
 .streams.compact .row > :nth-child(10), .fleet.compact .row > :nth-child(5) { justify-self: center; margin-left: 0; } /* the count centred in its column (~00:57Z: "center align working and landed") */
 .streams.compact .row.head > :nth-child(10), .fleet.compact .row.head > :nth-child(5) { justify-self: stretch; width: auto !important; text-align: center; } /* and its title centred over it */
 .streams.compact .row > :nth-child(2), .fleet.compact .row > :nth-child(2) { justify-self: end; margin-right: 1.5rem; } /* a little room before the count (~00:52Z: "too close") */
-/* the coordinator chip says "coordinator rowan" wider than the phone, "rowan" on the phone (the owner 2026-10-12 ~01:02Z) */
+/* the coordinator chip says "coordinator friendF" wider than the phone, "friendF" on the phone (the owner 2026-10-12 ~01:02Z) */
 @media (max-width: 600px) { .coord-label { display: none; } }
 /* version and epoch chips: not on the phone; hidden (last first) when they would push the clock (the owner 2026-10-12 ~01:20Z) */
 .opt-chip.nofit { display: none; }

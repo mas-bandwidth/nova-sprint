@@ -22,7 +22,7 @@ func (t *tick) reports() {
 
 // refuse answers an item with a refusal and consumes it; nothing moves. The
 // answer rides with the item's group and goes out only when the budget
-// admits it (Stella, 03f44371); a carried item is answered when it is
+// admits it (03f44371); a carried item is answered when it is
 // consumed.
 func (t *tick) refuse(it InboxItem, format string, args ...any) {
 	t.groups = append(t.groups, group{kind: "none", none: true, key: GroupKey{Kind: "none", Item: it.ID},
@@ -45,7 +45,7 @@ func (t *tick) reportItem(it InboxItem) {
 		return
 	}
 	if !t.unclaimed(c.ID) {
-		return // a group of this tick moves it: the item waits for the folded result (Stella, 03f44371)
+		return // a group of this tick moves it: the item waits for the folded result (03f44371)
 	}
 	row, p := t.v.Rows[c.Holder], t.v.Cards[c.Of]
 	switch {

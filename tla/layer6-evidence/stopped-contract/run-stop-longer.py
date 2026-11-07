@@ -2,7 +2,7 @@
 """Run layer 6 TLC on reserved hetzner2 or authorized vision fallback.
 
 Use nova-reserve run with the host capacity (hetzner2: 8; vision: 16),
---wait 60s --why stella-l6-tlc -- python3 PATH.
+--wait 60s --why friendG-l6-tlc -- python3 PATH.
 Each invocation is sequential with two TLC workers, isolated tmp/state paths,
 and a ten-minute timeout. No parse error or timeout counts as a witness.
 """

@@ -183,8 +183,8 @@ func emitChoiceTrace(t *testing.T, dir, choice string) {
 	trace := &choiceTrace{t: t}
 	trace.state.services = "unknown"
 	db := store.NewFake()
-	c := Choices{Store: db, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
-	for _, pair := range [][2]string{{"coordinator", "rowan"}, {"dashboard", "tailnet"}} {
+	c := Choices{Store: db, Actor: "friendF", Now: func() time.Time { return time.Unix(1000, 0) }}
+	for _, pair := range [][2]string{{"coordinator", "friendF"}, {"dashboard", "tailnet"}} {
 		if err := c.Save(ctx, pair[0], pair[1]); err != nil {
 			t.Fatal(err)
 		}
@@ -206,7 +206,7 @@ func emitChoiceTrace(t *testing.T, dir, choice string) {
 	if choice == "configured" {
 		input = "deepseek"
 	}
-	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, Lock: setupLeaseFake{}, SetupObserver: trace.observe}
+	e := Engine{Actor: "friendF", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, Lock: setupLeaseFake{}, SetupObserver: trace.observe}
 	walkChoices(t, e, trace, work, input)
 	if choice == "none" && (term.asks != 0 || sink.saved) {
 		t.Fatal("none prompted for key")

@@ -1,9 +1,9 @@
 # Layer 1: the store
 
 The one place the sprint's state lives. Everything above it reads a snapshot and
-asks for one operation; nothing else writes. Approved by Glenn 2026-11-06
+asks for one operation; nothing else writes. 
 ("OK I like this. It sounds about right! Let's go."); the choices inside the
-layer are Rowan's (Glenn: "the person implementing should be able to select the
+layer are Rowan's ("the person implementing should be able to select the
 tools they want to use").
 
 ## What it is for
@@ -48,9 +48,9 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   price, so an unpriced run is shown as unpriced, never as $0; LESSONS 1.17),
   `priority text NOT NULL DEFAULT 'normal'` (checked against `low`,
   `normal`, `high`, `critical`, `blocker`; the deal order, lowest to
-  highest, is Glenn's of 2026-11-06: "There is low, normal, high, read,
+  highest, is the owner's of 2026-11-06: "There is low, normal, high, read,
   critical, blocker in specific order.", where `read` is the rung every read
-  consumer occupies and is never a producer's level; Glenn 2026-11-06: "Default is normal." and
+  consumer occupies and is never a producer's level; "Default is normal." and
   "Priorities are manually set by request.": a level is declared on a
   producer by a person or by the coordinator on request, never computed or
   raised by the system; a consumer has no level of its own and is ordered by
@@ -64,7 +64,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   false). `state`, `kind` and `result` are
   checked against their sets. `(epoch, stream)` references `streams`;
   `(epoch, holder)` references `rows`; `(epoch, of)` references `cards` when
-  `of` is set. The two kinds (layer 2's producer and consumer cards, Glenn
+  `of` is set. The two kinds (layer 2's producer and consumer cards, the owner
   2026-09-29 and 2026-11-06) share one table and one write set; what the
   store itself enforces about them (in Go and, where SQL can say it, in the schema's CHECKs and one trigger that refuses any change to `kind`, `of` or `stream`): a sentinel has no brief, no holder, no consumer and no `of`; a producer never has a holder (the holder
   write is refused on a producer, naming it); a consumer's `of` is set at add,
@@ -76,7 +76,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   write, never by a move. A card is added in state `waiting`, gen 0, attempt
   0, no holder; a consumer is added with its holder and the attempt it belongs to in the same op (a producer or sentinel with a non-zero attempt at add is refused).
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
-  `state text` (`up`, `down`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; Glenn 2026-11-06: "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
+  `state text` (`up`, `down`), `held boolean` (the coordinator's hold: no deals to this row while true, whatever its state; "the states that we have per-machine and per-friend ... up, down, held"), `session text` (the hook's session,
   so a late report from an old session can be told apart), `flaps integer`,
   `gen integer`, `epoch integer`. A row's width has one source, nova-config:
   the run loop writes `set row width` when nova-config's value differs from
@@ -152,7 +152,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   value, and above the last event's seq: "cursor X cannot pass the log at
   42"); an absent cursor reads as 0.
 
-Two columns for the tier (Glenn 2026-11-06: "flash, pro, heavy, frontier ...
+Two columns for the tier ("flash, pro, heavy, frontier ...
 making sure the right models did the work"): on cards, `tier text` (one of
 the four; a producer's, set at add from the brief; a consumer inherits its
 producer's at add); on rows, `tiers text[]` (the tiers this row serves; a
@@ -169,12 +169,12 @@ keeps the whole brief as given.
 
 ### Card states
 
-The closed set, locked by Glenn 2026-09-29 plus one exit and one consumer
+The closed set, plus one exit and one consumer
 state: `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`, `blocked`,
 `done`. `landed` means the code is on the base branch and is final. `fail` is
 the record of a card that stopped any other way (cancelled, replaced, its need
 failed, or a consumer withdrawn) with the reason kept. `done` is a consumer
-that reported. `blocked` is a producer that bounced too many times (Glenn
+that reported. `blocked` is a producer that bounced too many times (the owner
 2026-11-05: "if a card flaps around more than n times, it goes into blocked
 primary card state. blocked -> waiting -> ready"; coloured black on the
 board); it is not final, and only the coordinator's unblock leaves it. Which
@@ -225,7 +225,7 @@ consumer's holder is fixed at add; there is no holder write (Johnny's review,
 keep the slot); put card for a consumer names a row of the same epoch, a
 producer or sentinel never has one, and a `done` or `fail` consumer keeps its
 holder for the record and does not count. Width caps work in progress, not what is queued (LESSONS 3.3;
-PRIORITY D21; ruled by Rowan 2026-11-06): the count is the consumers a row
+PRIORITY D21; ): the count is the consumers a row
 holds in `working`, never those in `ready`. A state write that takes a
 consumer into `working` is
 refused when that row already holds as many `working` cards as its width,
@@ -335,7 +335,7 @@ Schema version 2 (2026-11-06) is the version with the two card kinds:
 `kind`, `of`, `author`, `base_sha`, `result`, the state `done`, and row
 `gen`; with the lessons placed the same day it also carries `prior_head`,
 `bounces`, `cost`, `priced` and the result `fault` (LESSONS 1.17, 2.24,
-3.9), `priority` (Glenn's rulings of 2026-11-06, above), and from the promise
+3.9), `priority` (the owner's rulings of 2026-11-06, above), and from the promise
 round the same day `tier`, `paths`, `done_when`, `prose`, the rows' `tiers`,
 `model` and `harness`, `sprint.judgements`, `sprint.cursors` and
 `events.policy`. Nothing is owed to a later layer; a later column arrives with
@@ -443,7 +443,7 @@ unknown rule and its known cases, the counter bounds, tier serving, the
 same-value refusals, the schema hash and the foreign-schema check, and the
 triggers and CHECKs that hold the contract in SQL as well as in Go.
 
-## Decided inside the layer (Rowan, 2026-11-06), one line each, easy to overrule
+## Decided inside the layer, one line each, easy to overrule
 
 - PostgreSQL for state, not Redis: the state wants transactions and history;
   Redis stays the bus.
@@ -487,7 +487,7 @@ Round 14 (2026-11-06, from the first cold read of layer 2): `cards.finding
 text NOT NULL DEFAULT ''` (producer: the last read's finding; work consumer: a
 copy at cut, fixed), written by `SetCardFinding` (producer only).
 
-Recorded with round 17 (2026-11-06; Glenn-approved context: a red read
+Recorded with round 17 (2026-11-06; the owner-approved context: a red read
 verdict is recorded on the producer so that a later waive can require it,
 where the card machine had been using `pr` for it): `cards.red boolean NOT
 NULL DEFAULT false` with the CHECK `cards_red_check` (`kind = 'producer' OR
@@ -746,7 +746,7 @@ model and harness wherever they are named).
 
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference then, since ruled the code's fault and fixed (round 22): the store inserted an absent cursor set to 0, which the model refuses.
 
-## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
+## Scale: hundreds or thousands of cards
 
 "remember, we'll have sprints with hundreds or thousands of cards." So the
 whole-epoch `Snapshot` is the cold-start read only. In steady state the run
@@ -771,7 +771,7 @@ ms; cold snapshot 45 ms; cold rebuild of the log 4.9 s read plus 83 ms fold;
 lock wait 21 ms mean, 168 max. At 2,000 producers every number is at or
 under these. Logs: store/testdata/load-*.log. The width count went from 3.8
 ms (a sequential scan) to 0.04 ms with one partial index. Remaining tick
-cost is about 1,500 one-row round trips; by Glenn's ruling the per-tick
+cost is about 1,500 one-row round trips; by the owner's ruling the per-tick
 budget absorbs bursts rather than further tuning here.
 
 ### Quiet A/B (2026-11-06, vision, PostgreSQL 18.6, fsync on)

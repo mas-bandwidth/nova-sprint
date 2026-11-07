@@ -1,5 +1,5 @@
 QUIET-CHECK 2026-11-06T22:02:33Z host=vision loadavg=0.81 0.63 1.10 1/1126 2737902 java=0
-c373d4a8 docs: per-tick budget, bursts spread over ticks (Glenn)
+c373d4a8 docs: per-tick budget, bursts spread over ticks (Owner)
 === RUN   TestLoad
 === RUN   TestLoad/producers=2000
     load_test.go:237: LOAD-INFO host=vision cpus=64 go=go1.26.10 postgres=18.6 (Ubuntu 18.6-0ubuntu0.26.04.1) fsync=on producers=2000 streams=20 rows=50 width=40 pg_stat_statements=false

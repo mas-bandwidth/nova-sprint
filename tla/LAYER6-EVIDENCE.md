@@ -65,7 +65,7 @@ python3 tla/make-run-witnesses.py
 On hetzner2, under its existing eight-slot capacity:
 
 ```sh
-nova-reserve run --slots 8 --wait 60s --why stella-l6-tlc -- python3 /home/nova/jobs/stella-v2-l6-models-20261106/tla/run-layer6.py
+nova-reserve run --slots 8 --wait 60s --why friendG-l6-tlc -- python3 /home/nova/jobs/v2-l6-models-20261106/tla/run-layer6.py
 ```
 
 The runner uses two TLC workers, a 1 GiB heap, isolated temp/state directories,
@@ -88,7 +88,7 @@ Acceptance pointer: `layer6-evidence/review/`, including results.json and full
 logs. It contains 17 checked invocations: four passing configurations and
 thirteen required counterexamples, including the accepted lock limitation.
 Development logs (first/second/aligned/final) are preserved outside the
-checkout at `/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/`
+checkout at `/Volumes/nova/ai/friendG/working/l6-model-development-evidence-20261106/`
 and are not the acceptance pointer. The first run exposed an incorrect monitor
 assignment written as a guard; this was corrected before acceptance runs.
 
@@ -105,7 +105,7 @@ These are measured bounded TLC enumerations, not production performance.
 
 Traces were read after TLC named the exact target, not inferred from exit code.
 The source comparison is against the implementation checkout
-`/Volumes/nova/ai/stella/working/nova-sprint-v2-l6-run-20261106`.
+`/Volumes/nova/ai/friendG/working/nova-sprint-v2-l6-run-20261106`.
 Chooser/tick and pusher source have been read. Pusher source hashes are in
 `layer6-evidence/pusher-source-checkpoint.json`; these identify the provisional
 source reading, not a runtime-tested commit. The setup walker has also been checked at the separate verbs checkout below;
@@ -166,7 +166,7 @@ result of TLC.
 ## Setup walker correspondence checkpoint
 
 The walker is in
-`/Volumes/nova/ai/stella/working/nova-sprint-v2-l6-verbs-20261106/verbs/setup.go`;
+`/Volumes/nova/ai/friendG/working/nova-sprint-v2-l6-verbs-20261106/verbs/setup.go`;
 its inspected SHA-256 is in layer6-evidence/setup-source-checkpoint.json.
 `up` always loops from step one, and `setupStep` probes before action, repeats
 Verify after Act, and advances only on Verified. These correspond to

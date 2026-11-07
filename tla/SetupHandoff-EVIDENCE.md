@@ -93,14 +93,14 @@ Commands (the first invocation used an earlier witness manifest; only exact
 current-hash successful cases from it are included):
 
 ```text
-ssh vision nova-reserve run --slots 16 --wait 60s --why stella-l6-handoff-tlc -- python3 /home/glenn/jobs/stella-v2-l6-handoff-model-20261106/tla/run-layer6.py --manifest SetupHandoff-runs.json --tag handoff-aligned
-ssh vision nova-reserve run --slots 16 --wait 60s --why stella-l6-handoff-witnesses -- python3 /home/glenn/jobs/stella-v2-l6-handoff-model-20261106/tla/run-layer6.py --manifest SetupHandoff-runs.json --tag handoff-witnesses --only SetupHandoffStaleRecord SetupHandoffWrongType SetupHandoffReuseSkips
-ssh vision nova-reserve run --slots 16 --wait 60s --why stella-l6-handoff-competitor -- python3 /home/glenn/jobs/stella-v2-l6-handoff-model-20261106/tla/run-layer6.py --manifest SetupHandoff-runs.json --tag handoff-competitor --only SetupHandoffRefusedEffect
+ssh vision nova-reserve run --slots 16 --wait 60s --why friendG-l6-handoff-tlc -- python3 /home/user/jobs/v2-l6-handoff-model-20261106/tla/run-layer6.py --manifest SetupHandoff-runs.json --tag handoff-aligned
+ssh vision nova-reserve run --slots 16 --wait 60s --why friendG-l6-handoff-witnesses -- python3 /home/user/jobs/v2-l6-handoff-model-20261106/tla/run-layer6.py --manifest SetupHandoff-runs.json --tag handoff-witnesses --only SetupHandoffStaleRecord SetupHandoffWrongType SetupHandoffReuseSkips
+ssh vision nova-reserve run --slots 16 --wait 60s --why friendG-l6-handoff-competitor -- python3 /home/user/jobs/v2-l6-handoff-model-20261106/tla/run-layer6.py --manifest SetupHandoff-runs.json --tag handoff-competitor --only SetupHandoffRefusedEffect
 ```
 
 Historical draft/aligned/witness/competitor logs and unfiltered result sets are
 preserved outside the checkout under
-`/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/handoff-*`.
+`/Volumes/nova/ai/friendG/working/l6-model-development-evidence-20261106/handoff-*`.
 The first draft had a TLC evaluation exception from reading a next-state
 variable before assignment; this was corrected, not counted as a witness.
 An obsolete wrong-type witness was also rejected, regenerated and checked.

@@ -55,24 +55,24 @@ func TestBoardListsTheWholeRoster(t *testing.T) {
 // over those with result ok, fail or fix, known the moment a card is done. A
 // fault, a close or release with no such result and every read are not in it.
 func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
-	ros := roster.Roster{Kin: map[string]roster.Kin{"emma": {Name: "emma", Width: 2}, "alex": {Name: "alex", Width: 2}, "bob": {Name: "bob", Width: 2}}}
+	ros := roster.Roster{Kin: map[string]roster.Kin{"friendC": {Name: "friendC", Width: 2}, "friendA": {Name: "friendA", Width: 2}, "bob": {Name: "bob", Width: 2}}}
 	card := func(id, kind, holder, author, result string) store.Card {
 		return store.Card{ID: id, Kind: kind, Of: "p", Stream: "s", Holder: holder, Author: author, State: "done", Result: result, Tier: "pro"}
 	}
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
-		"w1": card("w1", "work", "emma", "emma", "ok"), "w2": card("w2", "work", "alex", "alex", "fault"),
-		"w3": card("w3", "work", "alex", "alex", "ok"), "w4": card("w4", "work", "alex", "alex", "fail"),
-		"w5": card("w5", "work", "emma", "emma", "fix"), "w6": card("w6", "work", "bob", "bob", "fault"),
+		"w1": card("w1", "work", "friendC", "friendC", "ok"), "w2": card("w2", "work", "friendA", "friendA", "fault"),
+		"w3": card("w3", "work", "friendA", "friendA", "ok"), "w4": card("w4", "work", "friendA", "friendA", "fail"),
+		"w5": card("w5", "work", "friendC", "friendC", "fix"), "w6": card("w6", "work", "bob", "bob", "fault"),
 		"w7": card("w7", "work", "bob", "bob", ""), "w8": card("w8", "work", "bob", "bob", "released"),
-		"r1": card("r1", "read", "emma", "alex", "fix"), "r2": card("r2", "read", "alex", "emma", "ok"),
+		"r1": card("r1", "read", "friendC", "friendA", "fix"), "r2": card("r2", "read", "friendA", "friendC", "ok"),
 	}}
 	d := mapSnapshot(snap, ros, time.Time{})
 	friends := d.Tables["friends"].(map[string]*fleetRow)
-	if e := friends["emma"]; e.OK != 1 || e.Failed != 1 || e.OKPct != 50 || e.Done != 3 {
-		t.Errorf("emma = %+v: ok and fix work count, her read is her done and nothing else", e)
+	if e := friends["friendC"]; e.OK != 1 || e.Failed != 1 || e.OKPct != 50 || e.Done != 3 {
+		t.Errorf("friendC = %+v: ok and fix work count, her read is her done and nothing else", e)
 	}
-	if a := friends["alex"]; a.OK != 1 || a.Failed != 1 || a.OKPct != 50 || a.Done != 4 {
-		t.Errorf("alex = %+v: ok and fail count; the fault and emma's read of his work do not", a)
+	if a := friends["friendA"]; a.OK != 1 || a.Failed != 1 || a.OKPct != 50 || a.Done != 4 {
+		t.Errorf("friendA = %+v: ok and fail count; the fault and friendC's read of his work do not", a)
 	}
 	if b := friends["bob"]; b.OK != 0 || b.Failed != 0 || b.Done != 3 {
 		t.Errorf("bob = %+v: a fault, a close with no result and a release count for nothing", b)
@@ -85,8 +85,8 @@ func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
 	if err := json.Unmarshal(body, &cells); err != nil {
 		t.Fatal(err)
 	}
-	if cells["bob"]["okpct"] != "-" || cells["emma"]["okpct"] != "50.0%" {
-		t.Errorf("okpct cells: bob %q (want -), emma %q (want 50.0%%)", cells["bob"]["okpct"], cells["emma"]["okpct"])
+	if cells["bob"]["okpct"] != "-" || cells["friendC"]["okpct"] != "50.0%" {
+		t.Errorf("okpct cells: bob %q (want -), friendC %q (want 50.0%%)", cells["bob"]["okpct"], cells["friendC"]["okpct"])
 	}
 }
 

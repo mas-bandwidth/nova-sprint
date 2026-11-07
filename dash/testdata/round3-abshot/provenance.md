@@ -9,5 +9,5 @@
 abshot --a http://37.27.135.206/ --b http://127.0.0.1:18082/ \
   --widths 2000,1440,2800,1100,760,375 \
   --chrome /home/nova/.cache/ms-playwright/chromium_headless_shell-1254/chrome-headless-shell-linux64/chrome-headless-shell \
-  --out /var/tmp/stella-abshot-20261106/verified
+  --out /var/tmp/friendG-abshot-20261106/verified
 ```

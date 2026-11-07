@@ -24,8 +24,8 @@ func fleet() Fake {
 			{Name: "studio", Roles: []string{"keeper"}, Cores: 24},
 		},
 		Fs: []Friend{
-			{Name: "stella", Harness: "codex", Model: "m1", Width: 16, Tiers: []string{"pro", "heavy"}, Pronouns: "she/her", Enabled: true},
-			{Name: "alex", Harness: "claude", Model: "m2", Width: 2, Tiers: []string{"flash"}, Pronouns: "he/him", Enabled: true},
+			{Name: "friendG", Harness: "codex", Model: "m1", Width: 16, Tiers: []string{"pro", "heavy"}, Pronouns: "she/her", Enabled: true},
+			{Name: "friendA", Harness: "claude", Model: "m2", Width: 2, Tiers: []string{"flash"}, Pronouns: "he/him", Enabled: true},
 			{Name: "off", Harness: "x", Width: 4, Tiers: []string{"pro"}, Enabled: false},
 		},
 	}
@@ -41,8 +41,8 @@ func TestLoad(t *testing.T) {
 		"eight": {Name: "eight", Width: 8, Tiers: all, Harness: "nova-worker"},
 	}, r.Workers, "bench machines only; width min(cores, 8)")
 	assert.Equal(t, map[string]Kin{
-		"stella": {Name: "stella", Model: "m1", Harness: "codex", Width: 16, Tiers: []string{"pro", "heavy"}},
-		"alex":   {Name: "alex", Model: "m2", Harness: "claude", Width: 2, Tiers: []string{"flash"}},
+		"friendG": {Name: "friendG", Model: "m1", Harness: "codex", Width: 16, Tiers: []string{"pro", "heavy"}},
+		"friendA": {Name: "friendA", Model: "m2", Harness: "claude", Width: 2, Tiers: []string{"flash"}},
 	}, r.Kin, "enabled friends only, at their own width: no cap")
 }
 
@@ -61,10 +61,10 @@ func TestRow(t *testing.T) {
 	t.Parallel()
 	r, err := Load(context.Background(), fleet(), 8)
 	require.NoError(t, err)
-	kind, width, tiers, ok := r.Row("stella")
+	kind, width, tiers, ok := r.Row("friendG")
 	assert.Equal(t, []any{KindKin, 16, []string{"pro", "heavy"}, true}, []any{kind, width, tiers, ok})
 	tiers[0] = "changed"
-	assert.Equal(t, []string{"pro", "heavy"}, r.Kin["stella"].Tiers, "Row returns a copy")
+	assert.Equal(t, []string{"pro", "heavy"}, r.Kin["friendG"].Tiers, "Row returns a copy")
 	for _, name := range []string{"studio", "off", "nobody", ""} {
 		kind, width, tiers, ok := r.Row(name)
 		assert.Equal(t, []any{"", 0, []string(nil), false}, []any{kind, width, tiers, ok}, name)
@@ -113,7 +113,7 @@ func TestLoadSkipsABadRow(t *testing.T) {
 		r, err := Load(context.Background(), f, 8)
 		require.NoError(t, err, name)
 		assert.Equal(t, c.want, r.Refused, name)
-		for _, good := range []string{"hulk", "mini", "eight", "stella", "alex"} {
+		for _, good := range []string{"hulk", "mini", "eight", "friendG", "friendA"} {
 			_, _, _, ok := r.Row(good)
 			assert.True(t, ok, "%s: %s still loads", name, good)
 		}
@@ -121,7 +121,7 @@ func TestLoadSkipsABadRow(t *testing.T) {
 }
 
 // A bench with no cores in nova-config loads at width 0, held with the
-// reason, never refused; the rest of the roster loads (Glenn, 2026-11-07).
+// reason, never refused; the rest of the roster loads.
 func TestLoadHoldsABenchWithNoCores(t *testing.T) {
 	t.Parallel()
 	f := fleet()

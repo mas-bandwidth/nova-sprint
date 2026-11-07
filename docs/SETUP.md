@@ -1,6 +1,6 @@
 # Setting up nova-sprint: the contract
 
-Glenn, 2026-11-06. This is what the setup must be; layer 6 makes it exact and
+the owner, 2026-11-06. This is what the setup must be; layer 6 makes it exact and
 this page becomes the walkthrough an AI runs.
 
 ## 1. nova-tools first
@@ -37,7 +37,7 @@ types a second thing for that service.
 
 ## 4. The setup is part of the tool, and it is dogfooded
 
-Glenn, 2026-11-06: "The whole point of nova-sprint is to deliver this sprint
+"The whole point of nova-sprint is to deliver this sprint
 system on top of nova tools, help the human configure it, and setup the
 dashboard. Just like the whole fleet and tailscale stuff and github ci
 runners, it's useless if we don't ship this setup stuff as part of the tool,
@@ -51,7 +51,7 @@ this project takes a fresh fleet (VMs are enough) from zero to a running
 sprint with a dashboard, using only docs/README.md and the tool's own help,
 and then does it again. Simple and repeatable, or not done.
 
-Glenn, 2026-11-06, the dogfood gate in his words: "we need to dogfood the new user
+the owner, 2026-11-06, the dogfood gate in his words: "we need to dogfood the new user
 experience at least once, that means we set up our own sprint with it, and we
 successfully run that sprint with the dashboard working and it works." So two
 runs are owed before v2 is done: a cold AI's setup on a fresh fleet from the
@@ -59,7 +59,7 @@ docs alone (above), and our own real sprint set up with v2 through this same
 walkthrough, run to completion with the dashboard live, by Rowan and the kin as
 rows.
 
-nova-sprint and nova-tools release separately (Glenn, 2026-11-06: "We no longer
+nova-sprint and nova-tools release separately ("We no longer
 pin nova-sprint and nova-tools together ... we'll need a pin to the nova-tools
 version the nova-sprint release wants"). The binary carries the minimum
 nova-tools version it needs; `nova-sprint check` reads the installed tools'

@@ -97,7 +97,7 @@ func TestSetupActualTrace(t *testing.T) {
 		fake.world[k] = rng.Intn(2) == 1
 	}
 	capture := &setupTraceCapture{t: t, setup: fake}
-	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, Lock: setupLeaseFake{}, SetupObserver: capture.observe}
+	e := Engine{Actor: "friendF", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, Lock: setupLeaseFake{}, SetupObserver: capture.observe}
 	for round := 0; round < 4; round++ {
 		if r := e.Execute(context.Background(), []string{"up"}); r.Exit != 0 {
 			t.Fatal(r)

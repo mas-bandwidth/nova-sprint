@@ -18,14 +18,14 @@ import (
 const breakSHA = "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
 
 // breakClient_internal is a Client whose gh is fex: auth status answers as
-// rowan-claude and every `gh api graphql` answers graphql.
+// friendF-claude and every `gh api graphql` answers graphql.
 func breakClient_internal(graphql string) (*Client, *edge.FakeExec) {
 	fex := edge.NewFakeExec()
 	fex.On("gh", func(call edge.FakeCall) edge.FakeOutcome {
 		argv := call.Cmd.Argv
 		switch {
 		case len(argv) >= 3 && argv[1] == "auth" && argv[2] == "status":
-			return edge.FakeOutcome{Stdout: "github.com\n  Logged in to github.com account rowan-claude (GH_TOKEN)\n"}
+			return edge.FakeOutcome{Stdout: "github.com\n  Logged in to github.com account friendF-claude (GH_TOKEN)\n"}
 		case len(argv) >= 3 && argv[1] == "api" && argv[2] == "graphql":
 			return edge.FakeOutcome{Stdout: graphql}
 		}

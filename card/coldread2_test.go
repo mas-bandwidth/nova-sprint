@@ -1,7 +1,7 @@
 package card
 
 // The second cold read of layer 2, folded from
-// /Users/glenn/rowan-working/children/nsv2-l2-coldread2/card/coldread2_test.go
+// /Users/user/friendF-working/children/nsv2-l2-coldread2/card/coldread2_test.go
 // (the read at c3fac873). Assertions the rulings reversed — two AskReads
 // merged, Relink without InThisOp, a sentinel need, Replace by a consumer,
 // a withdraw that would strand, a withdraw head equal to the base — now

@@ -31,7 +31,7 @@ import (
 // unmodified pages: v1 full Work at windows >= 1930 px, v2 full only at >= 2010 px; at
 // 2000 px v1 full (40 px gutter), v2 compact (overflow 9 px). The round-four evidence was
 // captured headless with overlay scrollbars (no scrollbar width). Contract: README "the
-// full eleven-column Work table fits at both 2000 and 2800 px"; Glenn "exactly matching".
+// full eleven-column Work table fits at both 2000 and 2800 px"; the owner "exactly matching".
 func TestColdread4DefectWorkCompactAt2000WithScrollbar(t *testing.T) {
 	const rem, vw, scrollbar = 16.0, 2000.0, 15.0
 	clamp := func(lo, v, hi float64) float64 { return max(lo, min(v, hi)) }

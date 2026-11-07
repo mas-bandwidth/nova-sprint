@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// EvalMemory is the evaluator child's memory cap in bytes (Glenn's ruling,
+// EvalMemory is the evaluator child's memory cap in bytes (the owner's ruling,
 // 2026-11-07: a cap, the policy layer's number, default 512 MiB).
 //
 // The child caps itself before it reads a request. RLIMIT_AS is not used:

@@ -36,7 +36,7 @@ func TestAdvanceSnapshotKeepsStopAcrossOrdinaryEvent(t *testing.T) {
 }
 
 // The board of a fresh store shows STOPPED with its reason, never started,
-// until the coordinator's first start (Glenn, 2026-11-07).
+// until the coordinator's first start.
 func TestFreshStoreShowsStoppedNeverStarted(t *testing.T) {
 	s, err := store.NewFake().Snapshot(context.Background())
 	if err != nil {

@@ -166,7 +166,7 @@ func TestHoldRefusals(t *testing.T) {
 
 func TestPriority(t *testing.T) {
 	w := newWorld(t)
-	want(t, w.do("carol", "priority", "p1", "high", "--reason", "glenn asked"), 0, "p1 priority=high")
+	want(t, w.do("carol", "priority", "p1", "high", "--reason", "owner asked"), 0, "p1 priority=high")
 	if c := w.snap(t).Cards["p1"]; c.Priority != "high" {
 		t.Fatalf("card %+v", c)
 	}

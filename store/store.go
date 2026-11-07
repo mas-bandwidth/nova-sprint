@@ -279,7 +279,7 @@ type Identity struct {
 func (i Identity) Set() bool { return i.Name != "" && i.Email != "" }
 
 // NeverStarted is a fresh store's stop reason: a store begins stopped, and
-// nothing moves until the coordinator's first `nova-sprint start` (Glenn,
+// nothing moves until the coordinator's first `nova-sprint start` (
 // 2026-11-07: the run ticked on a fresh store while up was at step 7).
 const NeverStarted = "never started"
 

@@ -1,7 +1,7 @@
 package policy
 
 // Breaker probes (2026-11-06) against v2-l5-policy ed68a22d, by the Opus
-// breaker (/Volumes/nova/ai/rowan/working/handoff/l4l5-break/pol), copied
+// breaker (/Volumes/nova/ai/friendF/working/handoff/l4l5-break/pol), copied
 // here unchanged. Each TestBreak*
 // names the sequence and the guarantee it holds the code to. Timing probes
 // read real time and are functional: they skip under -race and -short.

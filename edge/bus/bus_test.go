@@ -55,7 +55,7 @@ func TestEdgeSendAndWhoOverFakeExec(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, who, 2)
 	assert.Equal(t, Presence{Name: "amd-1.ds", Uptime: "14s"}, who["amd-1.ds"])
-	assert.Equal(t, Presence{Name: "rowan", Uptime: "5m", Detail: "recv holding 99-0"}, who["rowan"])
+	assert.Equal(t, Presence{Name: "friendF", Uptime: "5m", Detail: "recv holding 99-0"}, who["friendF"])
 
 	// 5. A body over the cap is refused before nova-bus runs.
 	_, err = b.Send(ctx, "amd-1.ds", "DEAL", strings.Repeat("x", MaxMessageBytes+1))

@@ -8,14 +8,14 @@
 
 ## Running Against Live v1 and a Seeded v2 Board
 
-`2000` is the primary desktop width Glenn checks, alongside `1440` and `2800`:
+`2000` is the primary desktop width the owner checks, alongside `1440` and `2800`:
 
 ```sh
 # 1. Start a v2 board served from a migrated/seeded store (or fixture):
 NOVA_PG_DSN='postgres://user@host/db?sslmode=disable' NOVA_PG_PASSWORD='...' \
   go run ./cmd/nova-sprint-dash --listen 127.0.0.1:18082 &
 
-# 2. Run abshot at Glenn's widths (2000 first, plus 1440 and 2800):
+# 2. Run abshot at the owner's widths (2000 first, plus 1440 and 2800):
 go run ./tools/abshot \
   --a http://37.27.135.206/ \
   --b http://127.0.0.1:18082/ \
@@ -55,7 +55,7 @@ abshot \
   --a http://37.27.135.206/ \
   --b http://127.0.0.1:18082/ \
   --widths 1440,2000 \
-  --out /home/glenn/.cache/emma-abshot-example
+  --out /home/user/.cache/friendC-abshot-example
 ```
 
 Pasted `<out>/report.md` (exit code `1`):
@@ -79,13 +79,13 @@ Pasted `<out>/report.md` (exit code `1`):
 
 - 2000: Work table header (x=728, y=1675, w=1069, h=23, diff_px=9996): A has 'stream status waiting ready working review fix merging landed cost', B has 'stream status blocked waiting ready working review fix merging landed fail cost'
 - 2000: Last 24 hours (x=32, y=6154, w=1936, h=98, diff_px=188503): A has 'Last 24 hours', B has '(absent)'
-- 2000: Top bar (x=782, y=68, w=1093, h=48, diff_px=4911): A has 'nova-sprint version v1.6.29 coordinator rowan epoch 2 4:41:21 PM EST', B has 'nova-sprint version v2-dev epoch 1 4:41:24 PM EST'
+- 2000: Top bar (x=782, y=68, w=1093, h=48, diff_px=4911): A has 'nova-sprint version v1.6.29 coordinator friendF epoch 2 4:41:21 PM EST', B has 'nova-sprint version v2-dev epoch 1 4:41:24 PM EST'
 - 2000: Hero: ETA (x=726, y=275, w=205, h=54, diff_px=5796): A has 'ETA STOP', B has 'ETA'
 - 2000: Hero: Throughput (x=1049, y=533, w=138, h=112, diff_px=3694): A has 'THROUGHPUT 0 cards / hour', B has 'THROUGHPUT cards / hour'
 - 2000: Cards by state (x=519, y=1390, w=1172, h=22, diff_px=11937): A has 'CARDS BY STATE landed 151 merging 0 fix 5 review 19 working 3 ready 23 waiting 175', B has 'CARDS BY STATE landed 151 fail 0 merging 0 fix 5 review 19 working 3 ready 23 blocked 0 waiting 175'
 - 2000: Work table rows (x=566, y=1744, w=1365, h=2421, diff_px=129760): A has 'schema-main landed 0 0 0 0 0 0 5 / 5 $0.54 | schema-python landed 0 0 0 0 0 0 3 / 3 $0.02 | serialize-audit-c landed 0 0 0 0 0 0 1 / 1 $0...', B has 'schema-main landed 0 0 0 0 0 0 0 5 / 5 0 $0.54 | schema-python landed 0 0 0 0 0 0 0 3 / 3 0 $0.02 | serialize-audit-c landed 0 0 0 0 0 0 ...'
 - 2000: Fleet table rows (x=1691, y=4452, w=245, h=979, diff_px=17214): A has 'amd-1 up 2 0 / 8 72 33.3% 0.4% | amd-2 up 2 0 / 8 75 33.3% 4.9% | amd-3 up 3 0 / 8 55 38.5% 1.7% | captain up 0 0 / 8 0 0.0% 0.0% | hetzn...', B has 'amd-1 up 2 0 / 8 72 | amd-2 up 2 0 / 8 75 | amd-3 up 3 0 / 8 55 | captain up 0 0 / 8 0 | hetzner1 up 2 0 / 16 56 | hetzner2 up 2 0 / 16 4...'
-- 2000: Friends table rows (x=1691, y=5718, w=240, h=339, diff_px=3774): A has 'alex down 0 0 / 2 0 0.0% - | emma down 0 0 / 16 94 49.2% - | rowan down 2 0 / 32 309 61.8% - | stella down 0 0 / 64 240 67.4% - | Total 2...', B has 'alex down 0 0 / 2 0 | emma down 0 0 / 16 94 | rowan down 2 0 / 32 309 | stella down 0 0 / 64 240 | Total 2 0 / 114 643'
+- 2000: Friends table rows (x=1691, y=5718, w=240, h=339, diff_px=3774): A has 'friendA down 0 0 / 2 0 0.0% - | friendC down 0 0 / 16 94 49.2% - | friendF down 2 0 / 32 309 61.8% - | friendG down 0 0 / 64 240 67.4% - | Total 2...', B has 'friendA down 0 0 / 2 0 | friendC down 0 0 / 16 94 | friendF down 2 0 / 32 309 | friendG down 0 0 / 64 240 | Total 2 0 / 114 643'
 - 2000: Footer (x=32, y=6154, w=1936, h=182, diff_px=347255): A has 'https://github.com/mas-bandwidth/nova-sprint', B has 'https://github.com/mas-bandwidth/nova-sprint'
 
 ## Width 1440
@@ -94,7 +94,7 @@ Pasted `<out>/report.md` (exit code `1`):
 - **Viewport captures**: `1440-a.png` (1440x6288), `1440-b.png` (1440x6190), `1440-diff.png`
 
 - 1440: Last 24 hours (x=32, y=6042, w=1376, h=98, diff_px=133623): A has 'Last 24 hours', B has '(absent)'
-- 1440: Top bar (x=173, y=50, w=1142, h=81, diff_px=17809): A has 'version v1.6.29 coordinator rowan epoch 2 4:41:14 PM EST', B has 'nova-sprint version v2-dev epoch 1 4:41:17 PM EST'
+- 1440: Top bar (x=173, y=50, w=1142, h=81, diff_px=17809): A has 'version v1.6.29 coordinator friendF epoch 2 4:41:14 PM EST', B has 'nova-sprint version v2-dev epoch 1 4:41:17 PM EST'
 - 1440: Hero: ETA (x=539, y=275, w=205, h=54, diff_px=5798): A has 'ETA STOP', B has 'ETA'
 - 1440: Hero: Throughput (x=769, y=533, w=138, h=112, diff_px=3694): A has 'THROUGHPUT 0 cards / hour', B has 'THROUGHPUT cards / hour'
 - 1440: Cards by state (x=32, y=1278, w=1376, h=166, diff_px=121935): A has 'CARDS BY STATE landed 151 merging 0 fix 5 review 19 working 3 ready 23 waiting 175', B has 'CARDS BY STATE landed 151 fail 0 merging 0 fix 5 review 19 working 3 ready 23 blocked 0 waiting 175'
@@ -106,6 +106,6 @@ Pasted `<out>/report.md` (exit code `1`):
 - 1440: Fleet table rows (x=33, y=4317, w=1374, h=1083, diff_px=156320): A has 'amd-1 up 0 / 8 | amd-2 up 0 / 8 | amd-3 up 0 / 8 | captain up 0 / 8 | hetzner1 up 0 / 16 | hetzner2 up 0 / 16 | hulk up 0 / 8 | intel up ...', B has 'amd-1 up 0 / 8 | amd-2 up 0 / 8 | amd-3 up 0 / 8 | captain up 0 / 8 | hetzner1 up 0 / 16 | hetzner2 up 0 / 16 | hulk up 0 / 8 | intel up ...'
 - 1440: Friends panel header (x=33, y=5417, w=1374, h=141, diff_px=75836): A has 'Friends 0 up · 0 held · 4 down', B has 'Friends 0 up · 0 held · 4 down'
 - 1440: Friends table header (x=33, y=5513, w=1374, h=112, diff_px=14639): A has 'friend status working ok%', B has 'friend status working ok%'
-- 1440: Friends table rows (x=33, y=5583, w=1374, h=443, diff_px=92303): A has 'alex down 0 / 2 0.0% | emma down 0 / 16 49.2% | rowan down 0 / 32 61.8% | stella down 0 / 64 67.4% | Total 0 / 114 60.6%', B has 'alex down 0 / 2 | emma down 0 / 16 | rowan down 0 / 32 | stella down 0 / 64 | Total 0 / 114'
+- 1440: Friends table rows (x=33, y=5583, w=1374, h=443, diff_px=92303): A has 'friendA down 0 / 2 0.0% | friendC down 0 / 16 49.2% | friendF down 0 / 32 61.8% | friendG down 0 / 64 67.4% | Total 0 / 114 60.6%', B has 'friendA down 0 / 2 | friendC down 0 / 16 | friendF down 0 / 32 | friendG down 0 / 64 | Total 0 / 114'
 - 1440: Footer (x=32, y=6090, w=1376, h=134, diff_px=114605): A has 'https://github.com/mas-bandwidth/nova-sprint', B has 'https://github.com/mas-bandwidth/nova-sprint'
 ```

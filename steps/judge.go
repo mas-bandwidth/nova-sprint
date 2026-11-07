@@ -10,7 +10,7 @@ import (
 // judgement is one a step opens: kind.about.episode, a cause opening once
 // (an open one of the same kind and about is not opened again), a group key
 // for one push per shared cause (LESSONS 4.9), the deadline policy states
-// (none for blocked by Glenn's ruling) and the command that answers it.
+// (none for bruling) and the command that answers it.
 type judgement struct {
 	kind, about, question string
 	episode               int // 0: the next

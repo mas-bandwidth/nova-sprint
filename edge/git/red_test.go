@@ -17,7 +17,7 @@ func redPass_internal(t *testing.T, r forge.CheckRollup, split *forge.RedSplit, 
 	gf, ff, root, c1, _ := landWorld_internal()
 	ff.SetCheck("o/r", c1, r)
 	ff.Split, ff.SplitErr = split, splitErr
-	ff.AuthorsOf = []string{"Aurora <aurora@example.invalid> (aurora-x)"}
+	ff.AuthorsOf = []string{"Aurora <friendB@example.invalid> (friendB-x)"}
 	res, err := LandPass(context.Background(), gf, ff, one_internal(c1))
 	if err != nil || gf.OriginRef("v2") != root {
 		t.Fatalf("pass %+v err=%v: red never lands", res, err)

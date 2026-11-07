@@ -95,15 +95,15 @@ func TestLandedInCountsProducersBecomingLanded(t *testing.T) {
 }
 
 func TestCoordinatorName(t *testing.T) {
-	rows := map[string]store.Row{"w": {Name: "w", Role: "worker"}, "rowan": {Name: "rowan", Role: "coordinator"}, "zed": {Name: "zed", Role: "coordinator"}}
-	if got := coordinatorOf(rows); got != "rowan" {
+	rows := map[string]store.Row{"w": {Name: "w", Role: "worker"}, "friendF": {Name: "friendF", Role: "coordinator"}, "zed": {Name: "zed", Role: "coordinator"}}
+	if got := coordinatorOf(rows); got != "friendF" {
 		t.Fatalf("coordinator %q", got)
 	}
 	if got := coordinatorOf(map[string]store.Row{"w": {Role: "worker"}}); got != "" {
 		t.Fatalf("no coordinator is blank, got %q", got)
 	}
 	d := mapSnapshot(store.Snapshot{Rows: rows}, testRoster, time.Time{})
-	if d.Coordinator != "rowan" {
+	if d.Coordinator != "friendF" {
 		t.Fatalf("envelope coordinator %q", d.Coordinator)
 	}
 }

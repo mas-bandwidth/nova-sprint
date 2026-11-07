@@ -1,7 +1,7 @@
 {
   "at": "2026-11-06T22:39:59.439623+00:00",
   "command": [
-    "/var/tmp/stella-abshot-20261106/abshot",
+    "/var/tmp/friendG-abshot-20261106/abshot",
     "--a",
     "http://127.0.0.1:18083/",
     "--b",
@@ -9,9 +9,9 @@
     "--widths",
     "2000",
     "--chrome",
-    "/var/tmp/stella-dash-visual-20261106/chrome-scrollbars-round5.py",
+    "/var/tmp/friendG-dash-visual-20261106/chrome-scrollbars-round5.py",
     "--out",
-    "/var/tmp/stella-abshot-20261106/round5"
+    "/var/tmp/friendG-abshot-20261106/round5"
   ],
   "exit": 1,
   "harness_commit": "f70cf5e1e6151a5127df48e17ef2d59ced5f5172",

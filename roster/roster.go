@@ -132,7 +132,7 @@ func (r Roster) RefusedNamed(name string) (Refused, bool) {
 // width min(cores, cap) serving every tier; every enabled friend is kin at
 // its own width and tiers. cap is policy's limits().fleet_width_cap (drift
 // row 26; the built-in says 8). A cap below 1 and a failed read are errors.
-// A bench with no cores loads at width 0, Held NoCores (Glenn,
+// A bench with no cores loads at width 0, Held NoCores (
 // 2026-11-07: a machine with no core count is held, never refused). A row
 // that cannot be loaded (no name, a name given twice, a negative width, an
 // unknown tier) is skipped and named in Refused: the roster is not

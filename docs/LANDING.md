@@ -1,6 +1,6 @@
 # Landing: merging wide, never bottlenecked
 
-Approved by Glenn 2026-11-06 ("landing seems fine"), after: "a consistent
+("landing seems fine"), after: "a consistent
 failure in the previous system was doing lots of work, then failing in the
 merge. bottlenecking there. you need to think seriously about this now in this
 redesign." And: "merging was a thing that was done wide. Merging per-work

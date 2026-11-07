@@ -58,7 +58,7 @@
 (* except an op fenced on Running (run's tick ops). A fresh store begins   *)
 (* stopped, its reason "never started" (Empty.stopped; store.FreshStop,    *)
 (* written by Migrate), so nothing a tick plans lands before the first     *)
-(* start (FreshMovesNothing; Glenn, 2026-11-07).                           *)
+(* start (FreshMovesNothing; the owner, 2026-11-07).                           *)
 (*                                                                         *)
 (* A producer carries red (round 17): its last read's verdict was red, a   *)
 (* plain attribute set by SetRed (producers only; refused on a consumer or *)

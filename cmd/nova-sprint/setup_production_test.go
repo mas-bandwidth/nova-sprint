@@ -37,7 +37,7 @@ func TestProductionSetupConstructsRealDependenciesWithoutNetwork(t *testing.T) {
 	if _, ok := p.runtime.Adoption.(verbs.VersionAdoption); !ok {
 		t.Fatal("missing adoption adapter")
 	}
-	if p.forInput(verbs.SetupInput{Actor: "rowan"}).Prerequisites.Env.Choices.Actor != "rowan" {
+	if p.forInput(verbs.SetupInput{Actor: "friendF"}).Prerequisites.Env.Choices.Actor != "friendF" {
 		t.Fatal("input actor not carried")
 	}
 }
@@ -328,7 +328,7 @@ func TestPublicDashboardTargetRefusalsAreDistinct(t *testing.T) {
 			t.Fatalf("%s: %v", tc.chosen, err)
 		}
 	}
-	// A bench serves the public board and works cards (Glenn, 2026-11-07).
+	// A bench serves the public board and works cards.
 	if target, err := publicDashboardTarget("bench-1", "studio", machines, nil, "http://100.100.1.2:8080"); err != nil || target.URL != "http://8.8.4.4:8080" {
 		t.Fatalf("public board on a bench: %+v: %v", target, err)
 	}

@@ -165,12 +165,12 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 		t.Fatalf("epoch 1: p1 should be in review, is %s", snap.Cards["p1"].State)
 	}
 
-	if rec, err := st.Clear(ctx, store.Op{ID: "clear-1", Epoch: snap.Epoch, Actor: "rowan", Kind: "clear", At: clock()}); err != nil || !rec.Accepted {
+	if rec, err := st.Clear(ctx, store.Op{ID: "clear-1", Epoch: snap.Epoch, Actor: "friendF", Kind: "clear", At: clock()}); err != nil || !rec.Accepted {
 		t.Fatalf("clear: err=%v rec=%+v", err, rec)
 	}
 	snap, _ = st.Snapshot(ctx)
 	e2 := snap.Epoch
-	rec, err := st.Apply(ctx, store.Op{ID: "setup-e2", Epoch: e2, Actor: "rowan", Kind: "setup", At: clock(), Writes: []store.Write{
+	rec, err := st.Apply(ctx, store.Op{ID: "setup-e2", Epoch: e2, Actor: "friendF", Kind: "setup", At: clock(), Writes: []store.Write{
 		store.PutStream{Name: "s1", Repo: "mas-bandwidth/nova-sprint", Base: "main", Pos: 1},
 		store.SetRowState{Row: row, State: "up"},
 		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Priority: "normal", Brief: "brief text", Prose: "implement feature",

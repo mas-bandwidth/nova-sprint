@@ -139,7 +139,7 @@ func summarizeCost(s store.Snapshot) *costSummary {
 			out.ByTier[tier] = moneyCell(cents)
 		}
 	}
-	// Glenn 2026-11-07: the true average, API spend over every landed card,
+	// the true average, API spend over every landed card,
 	// seat cards at $0 ("with sub cards being free").
 	out.PerCard = "-"
 	if out.Landed > 0 {
@@ -163,7 +163,7 @@ func landedCards(s store.Snapshot, pricedOf map[string]bool) (landed, priced int
 }
 
 // perCardCell is the average in micro-dollars per card, to the nearest cent, or
-// to the nearest hundredth of a cent when the average is under a cent (Glenn
+// to the nearest hundredth of a cent when the average is under a cent (the owner
 // 2026-11-07: never rounded up; $0.28 over 237 cards is not "$0.01").
 func perCardCell(micros map[string]*big.Int, cards int) string {
 	total := new(big.Int)

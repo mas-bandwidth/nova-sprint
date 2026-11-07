@@ -1,5 +1,5 @@
 === RUN   TestEmitClearTrace
-    clear_trace_test.go:161: trace: /var/tmp/stella-l6-trace-finalfmt-20261107/clear.tla records=9
+    clear_trace_test.go:161: trace: /var/tmp/friendG-l6-trace-finalfmt-20261107/clear.tla records=9
 --- PASS: TestEmitClearTrace (0.00s)
 PASS
 ok  	github.com/mas-bandwidth/nova-sprint/run	1.017s

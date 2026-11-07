@@ -143,10 +143,10 @@ func (w *world) snap() store.Snapshot {
 	return s
 }
 
-// caller is the coordinator rowan with the next op id and time.
+// caller is the coordinator friendF with the next op id and time.
 func (w *world) caller() Caller {
 	id, at := w.next()
-	return Caller{Actor: "rowan", Coordinator: true, OpID: id, At: at}
+	return Caller{Actor: "friendF", Coordinator: true, OpID: id, At: at}
 }
 
 // up runs Up and requires it.

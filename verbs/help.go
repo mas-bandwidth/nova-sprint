@@ -72,7 +72,7 @@ func helpVerb(v *verb) string {
 // upNeed is what a verb needs from up (the matrix, LAYER-6 section 3): no
 // verb waits on up's step; help, version, up and check need nothing, and
 // every other verb needs the store up makes at step 2 (its epoch) and the
-// sprint's credential in the process (Glenn, 2026-11-07: a sprint that can
+// sprint's credential in the process (a sprint that can
 // move must be stoppable, whatever up's step).
 func upNeed(v *verb) string {
 	switch v.name {

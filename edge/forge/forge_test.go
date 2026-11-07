@@ -134,7 +134,7 @@ func fakeGraphQLExec_internal(_ context.Context, cmd edge.Cmd) (edge.Result, err
 		return edge.Result{Stderr: "missing GH_TOKEN", ExitCode: 1}, nil
 	}
 	if len(cmd.Argv) >= 3 && cmd.Argv[1] == "auth" && cmd.Argv[2] == "status" {
-		return edge.Result{Stdout: "Logged in to github.com account rowan-claude"}, nil
+		return edge.Result{Stdout: "Logged in to github.com account friendF-claude"}, nil
 	}
 	if len(cmd.Argv) >= 3 && cmd.Argv[1] == "api" && cmd.Argv[2] == "graphql" {
 		return edge.Result{Stdout: `{"data":{"repository":{` +
@@ -206,7 +206,7 @@ func TestRateLimitRestsIdentity(t *testing.T) {
 		Now:      func() int64 { return now },
 		Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 			if len(cmd.Argv) >= 3 && cmd.Argv[1] == "auth" {
-				return edge.Result{Stdout: "Logged in to github.com account rowan-claude"}, nil
+				return edge.Result{Stdout: "Logged in to github.com account friendF-claude"}, nil
 			}
 			if now < 1045 {
 				return edge.Result{Stderr: "HTTP 429: secondary rate limit exceeded\nRetry-After: 45", ExitCode: 1}, nil

@@ -1,6 +1,6 @@
 # Layer 3: the steps
 
-A draft for Glenn, 2026-11-06, not yet approved. It stands on layer 1
+A draft for the owner, 2026-11-06, not yet approved. It stands on layer 1
 (locked at 81bc9c24) and layer 2 as built, and asks layer 2 for one
 addition ("Asked of the layers below").
 
@@ -11,9 +11,9 @@ plans: ops for layer 1, edge requests for layer 4, answers owed to rows.
 Layer 6's run loop gathers the inputs, applies the ops, hands on the edge
 requests and pushes over nova-bus. Every move is a layer 2 move; a step
 decides only which moves this tick holds, in what order, within what budget.
-Glenn, 2026-11-06: "Let's not throw away what we learned in v1, which is always batch."
+"Let's not throw away what we learned in v1, which is always batch."
 
-## The list for Glenn
+## The list for the owner
 
 The structures of this layer, bottom up, each secured before the next:
 
@@ -118,7 +118,7 @@ folded after every apply; a snapshot per tick is a defect (LAYER-1).
 - Plans: with no free width on an open serving row, one group: `Withdraw` of a
   working consumer there (releasing its producer, score and branch kept)
   merged with the blocker's `Start` to that row, and an edge request to stop
-  the runner. Glenn, 2026-11-06: "blocker is so high, it'll kick out the
+  the runner. "blocker is so high, it'll kick out the
   youngest work or read task on a worker to get started right away." At
   most one per row per tick. No serving row at all: an `unserved` judgement
   per tier, and the blocker stays ready.
@@ -126,7 +126,7 @@ folded after every apply; a snapshot per tick is a defect (LAYER-1).
 
 ### Deal and reads
 
-One candidate list down Glenn's ladder, "low, normal, high, read, critical,
+One candidate list down the owner's ladder, "low, normal, high, read, critical,
 blocker in specific order": blocker work, critical work, every read owed,
 high, normal, low; within a rung, policy's order.
 
@@ -261,7 +261,7 @@ for each candidate, and the engine refuses one below the card's tier.
   width while producers wait, causes by count, closed back over three
   quarters (LESSONS 3.18); `land-rate`, a stream's or model's landed with no
   bounce over landed, under target over a sample (LESSONS 3.21).
-- Policy: `deadline(kind)` (none for `blocked` by Glenn's ruling, else one
+- Policy: `deadline(kind)` (none for `blocked` by the owner's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 
 ### Requests
@@ -278,7 +278,7 @@ acknowledgement cursor); Add is anyone hooked in. Refused:
 
 ## Policy questions and their defaults
 
-Glenn's rule: if being wrong could corrupt, it is in the engine; if only
+the owner's rule: if being wrong could corrupt, it is in the engine; if only
 slow, it is policy. Layer 3 delegates exactly the questions named above plus
 `budget` and `pack`; legality, needs, holds, width, overlap, the coordinator set, op ids
 and the refused-op rule stay in the engine. Policy absent: every default.
@@ -298,7 +298,7 @@ default deals, reads, lands or names a cause; none stalls.
    and takes in arrival order, landing groups, drops and holds, limits,
    judgements, then the deal list by rung. The tick budget is policy's
    count of cards touched per tick, default 250 until the load test sets it
-   (unmeasured; a measured burst cost about 1.4 ms a report). Glenn,
+   (unmeasured; a measured burst cost about 1.4 ms a report). the owner,
    2026-11-06: "if you distributed too many reports over several frames
    you'd stay in budget".
 4. Pack: groups go into ops in that order, up to the packing size (`pack`,
@@ -435,7 +435,7 @@ asker 300, requests 350): an estimate; layer 1's first was half its size.
 | 5.7 deadlines with safe defaults | Judgements (`deadline`, expiry default) |
 | 5.12 blocker preemption | Preemption |
 
-## Decided inside the layer (Rowan, 2026-11-06), easy to overrule
+## Decided inside the layer, easy to overrule
 
 - Ops are packed groups, applied in priority order: a refusal costs only
   its op, split by group next tick. Only the inbox carries.
@@ -443,7 +443,7 @@ asker 300, requests 350): an estimate; layer 1's first was half its size.
   hops of one card cannot share an op): a tick per engine hop.
 - Policy is asked per question per tick, a dozen calls whatever the size.
 
-## Built (rowan's child, 2026-11-07; branch `v2-l3-steps`, package `steps`)
+## Built (friendF's child, 2026-11-07; branch `v2-l3-steps`, package `steps`)
 
 What the code is, where it differs from the text above and why, every number
 marked measured or guess. The model is `tla/Steps.tla`; the code follows its
@@ -458,18 +458,18 @@ when each row was last on the bus (layer 6 keeps it; a row absent from it
 fires nothing). `Refused` is the last tick's refused ops from their
 receipts: an op's `Note` carries its groups' keys as JSON (`OpGroups`), so
 layer 6 splits a refused op by group and puts its items back in place; `Plan`
-has the four fields exactly. `Roster` is nova-config (Glenn, 2026-11-06: the
+has the four fields exactly. `Roster` is nova-config (the
 one true source; nothing of it in the store): a row's kind, width and tiers
 are read by name, a store row the roster lacks is never dealt to and is a
 `roster` judgement. `Inputs.Roster` is package roster's `Roster` (store
 round 22, merged from `v2-integrate-22`); `card.RowFromStore(r, width,
 tiers)` takes them from it. An open row is up, not held and hooked in to the
-sprint (Glenn, 2026-11-06: the hook is the subscription to the pushes): the
+sprint (the hook is the subscription to the pushes): the
 row's `Session` and `Role` set, the role worker or coordinator (who counts
 as a worker). Round 22 took width out of the store and `card.Take` does not
 check it, so width at a take is held only by the tick's inbox path
 (`takeItem`'s tally) and must be the take verb's check in layer 6: the
-tests take as that verb would (`roomToTake`); one line for rowan.
+tests take as that verb would (`roomToTake`); one line for friendF.
 
 **The asker.** Layer 5's question set, names and types as that doc has them
 (`Questions`, `Answers`), one call per tick with every subject; `budget` and

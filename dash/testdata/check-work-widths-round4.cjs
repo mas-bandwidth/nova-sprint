@@ -1,5 +1,5 @@
 const fs=require('fs'),assert=require('assert/strict');
-const {chromium}=require('/var/tmp/stella-dash-visual-20261106/node_modules/playwright');
+const {chromium}=require('/var/tmp/friendG-dash-visual-20261106/node_modules/playwright');
 (async()=>{const b=await chromium.launch({headless:true});const p=await b.newPage();await p.goto('http://127.0.0.1:18082');await p.evaluate(()=>document.fonts.ready);await p.waitForFunction(()=>document.querySelector('#streams .row:not(.head)'));
 const result=[];
 for(const width of [2000,2800,375]){
@@ -28,4 +28,4 @@ for(const width of [2000,2800,375]){
  if(width>=2000){for(const row of got.contentBoxes)assert.ok(Math.abs(row.costInset-32)<0.6,'cost inset row '+row.row+' = '+row.costInset);assert.notEqual(got.statusWordDisplay,'none');assert.ok(Math.max(...got.statusEdges)-Math.min(...got.statusEdges)<1);}
  result.push(got);
 }
-fs.writeFileSync('/var/tmp/stella-dash-visual-20261106/output-round4/work-width-check.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));await b.close();})().catch(e=>{console.error(e);process.exit(1)});
+fs.writeFileSync('/var/tmp/friendG-dash-visual-20261106/output-round4/work-width-check.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));await b.close();})().catch(e=>{console.error(e);process.exit(1)});

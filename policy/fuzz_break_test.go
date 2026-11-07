@@ -18,7 +18,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// Fuzz probes (2026-11-06), from /Volumes/nova/ai/rowan/working/handoff/
+// Fuzz probes (2026-11-06), from /Volumes/nova/ai/friendF/working/handoff/
 // policy-fuzz_break_test.go, copied here; Rowan changed two in round 3, each
 // marked "Round 3": the ruling that a refusal before storage names the file,
 // and the 2,000-file survey runs only with NOVA_POLICY_FUZZ=1 (it reports
@@ -79,7 +79,7 @@ func fuzzSeedStore() (store.Store, error) {
 			return nil, errors.New("seed refused: " + r.Reason)
 		}
 	}
-	if _, err := Up(ctx, st, Caller{Actor: "rowan", Coordinator: true, OpID: "fuzz-up", At: t0.Add(time.Hour)}); err != nil {
+	if _, err := Up(ctx, st, Caller{Actor: "friendF", Coordinator: true, OpID: "fuzz-up", At: t0.Add(time.Hour)}); err != nil {
 		return nil, err
 	}
 	return st, nil
@@ -398,7 +398,7 @@ func classify(dir string, idx int, body string, res fuzzResult) fuzzResult {
 		res.class, res.msg = "harness-error", err.Error()
 		return res
 	}
-	r, err := Set(ctx, st, seedRoster(), testEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(2 * time.Hour)}, path, "fuzz")
+	r, err := Set(ctx, st, seedRoster(), testEngine(), Caller{Actor: "friendF", Coordinator: true, OpID: "set", At: t0.Add(2 * time.Hour)}, path, "fuzz")
 	if err != nil {
 		var rf *Refusal
 		if !errors.As(err, &rf) {
@@ -531,7 +531,7 @@ func setMissing(t *testing.T) *Refusal {
 	if err := os.WriteFile(path, []byte(fuzzWithoutDef("limits")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Set(context.Background(), st, seedRoster(), testEngine(), Caller{Actor: "rowan", Coordinator: true, OpID: "set", At: t0.Add(time.Hour)}, path, "fuzz")
+	_, err = Set(context.Background(), st, seedRoster(), testEngine(), Caller{Actor: "friendF", Coordinator: true, OpID: "set", At: t0.Add(time.Hour)}, path, "fuzz")
 	var rf *Refusal
 	if !errors.As(err, &rf) {
 		t.Fatalf("want a refusal, got %v", err)

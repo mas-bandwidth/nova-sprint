@@ -1,8 +1,8 @@
 TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)
 Running breadth-first search Model-Checking with fp 14 and seed 7331946174289374269 with 1 worker on 32 cores with 24162MB heap and 64MB offheap memory [pid: 480511] (Linux 7.0.0-43-generic amd64, Eclipse Adoptium 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
-Parsing file /home/nova/jobs/stella-l6-envelope-20261107/checked-spec/RunClearTrace.tla
-Parsing file /home/nova/jobs/stella-l6-envelope-20261107/checked-spec/RunClear.tla
-Parsing file /home/nova/jobs/stella-l6-envelope-20261107/inputs/case-02/RunClearTraceLog.tla
+Parsing file /home/nova/jobs/friendG-l6-envelope-20261107/checked-spec/RunClearTrace.tla
+Parsing file /home/nova/jobs/friendG-l6-envelope-20261107/checked-spec/RunClear.tla
+Parsing file /home/nova/jobs/friendG-l6-envelope-20261107/inputs/case-02/RunClearTraceLog.tla
 Parsing file /tmp/tmp.zVwCouSt3y/tlc-1483343269769480255/TLC.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
 Parsing file /tmp/tmp.zVwCouSt3y/tlc-1483343269769480255/Naturals.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
 Parsing file /tmp/tmp.zVwCouSt3y/tlc-1483343269769480255/Sequences.tla (jar:file:/home/nova/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Sequences.tla)

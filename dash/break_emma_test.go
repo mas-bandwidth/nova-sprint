@@ -252,7 +252,7 @@ func TestBreakDashThroughputNotResetAcrossClearWhenLandedDoesNotDrop(t *testing.
 
 	// Clear opens Epoch 2, and 1 card lands in Epoch 2 at 11m10s.
 	now = now.Add(10 * time.Second)
-	if _, err := f.Clear(ctx, store.Op{ID: "clear-2", Epoch: 1, Actor: "rowan", Kind: "clear", At: now}); err != nil {
+	if _, err := f.Clear(ctx, store.Op{ID: "clear-2", Epoch: 1, Actor: "friendF", Kind: "clear", At: now}); err != nil {
 		t.Fatal(err)
 	}
 	mustApply(t, f, "e2-seed", 2,
@@ -274,7 +274,7 @@ func TestBreakDashThroughputNotResetAcrossClearWhenLandedDoesNotDrop(t *testing.
 
 // TestBreakDashPageBudLabelAndArchivedMatchObjectPrototypeNames breaks
 // page/app.js:260-264 & 294 against dash/README.md line 14:
-//   - "A bud shows as its person: 'rowan-next' is 'rowan (next)' when 'rowan' is a friend too"
+//   - "A bud shows as its person: 'friendF-next' is 'friendF (next)' when 'friendF' is a friend too"
 //
 // In page/app.js:
 //   - budLabel(name, table) checks `if (table[name.slice(0, i)])` on a plain Object

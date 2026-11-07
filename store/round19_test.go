@@ -44,7 +44,7 @@ func fakeFromSnapshot(h *harness) {
 		h.op("take", []Expect{CardGen{"c1", snap.Cards["c1"].Gen}}, SetCardState{"u1", "working"}),
 		h.op("stale", []Expect{CardGen{"c1", 0}}, SetCardReason{"c1", "x"}),
 		h.op("pol", nil, PutPolicy{"data", "q", "{}"}, SetActivePolicy{2}),
-		h.op("answer", nil, AnswerJudgement{"j1", "yes", "glenn"}, SetCursor{"feed", snap.Seq}),
+		h.op("answer", nil, AnswerJudgement{"j1", "yes", "owner"}, SetCursor{"feed", snap.Seq}),
 	} {
 		want, err := h.s.Apply(h.ctx, o)
 		require.NoError(h.t, err)

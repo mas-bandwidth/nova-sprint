@@ -35,7 +35,7 @@ functional/race gates remain separate from this trace result.
 
 The initial GitHub runner inventory had amd-1/amd-3 bench runners, a captain
 runner, and Studio's tlc label, with no registered vision/hetzner2 runner. That
-historical inventory led to this manual split-bench run. Rowan's later routing
+historical inventory led to this manual split-bench run. FriendF's later routing
 ruling (message suffix7278111, relayed by the parent) authorizes the existing amd
 bench for CI trace checking, separately from the local vision rule. Studio
 remains prohibited. The actual fixed-seed workflow and its observed run at the

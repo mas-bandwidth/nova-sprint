@@ -141,7 +141,7 @@ func TestFallbackCountsFromTheFirstByte(t *testing.T) {
 }
 
 // TestFunctionalEvaluatorMemoryCap: a version that allocates past the
-// evaluator's memory cap (Glenn's ruling, 2026-11-07, default 512 MiB) ends
+// evaluator's memory cap (the owner's ruling, 2026-11-07, default 512 MiB) ends
 // the child. As for any child that dies, every version it ran fails, naming
 // the cap (the tick applies the moves that need no answer and Judgements
 // opens one per failing version); the next tick starts a new child.

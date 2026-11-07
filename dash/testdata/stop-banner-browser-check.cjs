@@ -1,6 +1,6 @@
 // Synthetic stopped/start view; no live store or service is contacted.
 const fs = require('fs'), http = require('http'), path = require('path');
-const {chromium} = require('/var/tmp/stella-dash-visual-20261106/node_modules/playwright');
+const {chromium} = require('/var/tmp/friendG-dash-visual-20261106/node_modules/playwright');
 const data = JSON.parse(fs.readFileSync('dash/testdata/seed.json', 'utf8'));
 data.data.stopped = true; data.data.stop_reason = 'Scheduled maintenance'; data.data.machine = 'STOPPED'; data.data.done = true;
 const server = http.createServer((req, res) => {

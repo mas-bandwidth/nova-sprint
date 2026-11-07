@@ -8,6 +8,6 @@ and host-routing tests remain enabled. These are helper unit results, not a new
 84-case integrated emission/check or GitHub Actions acceptance.
 
 The exact helper/test/log hashes are in result.json. The complete isolated unit
-package remains at `/home/nova/jobs/stella-l6-helper84-20261107` on hetzner2 and
-`/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/helper84-20261107`
+package remains at `/home/nova/jobs/friendG-l6-helper84-20261107` on hetzner2 and
+`/Volumes/nova/ai/friendG/working/l6-model-development-evidence-20261106/helper84-20261107`
 locally. No TLC was run by these unit tests.

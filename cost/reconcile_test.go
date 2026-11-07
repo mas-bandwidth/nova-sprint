@@ -39,11 +39,11 @@ var t0 = time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
 // seeded is a Fake with one stream, a coordinator row and two consumers.
 func seeded(t *testing.T) *store.Fake {
 	f := store.NewFake()
-	apply(t, f, "seed", store.PutStream{Name: "s"}, store.PutRow{Name: "rowan", Session: "x", Role: "coordinator"}, store.SetRowState{Row: "rowan", State: "up"},
+	apply(t, f, "seed", store.PutStream{Name: "s"}, store.PutRow{Name: "friendF", Session: "x", Role: "coordinator"}, store.SetRowState{Row: "friendF", State: "up"},
 		store.PutCard{ID: "p", Kind: "producer", Stream: "s", Tier: "flash"},
-		store.PutCard{ID: "p.w1", Kind: "work", Of: "p", Stream: "s", Tier: "flash", Holder: "rowan"},
-		store.PutCard{ID: "p.r1", Kind: "read", Of: "p", Stream: "s", Tier: "flash", Holder: "rowan"},
-		store.PutCard{ID: "p.r2", Kind: "read", Of: "p", Stream: "s", Tier: "flash", Holder: "rowan"})
+		store.PutCard{ID: "p.w1", Kind: "work", Of: "p", Stream: "s", Tier: "flash", Holder: "friendF"},
+		store.PutCard{ID: "p.r1", Kind: "read", Of: "p", Stream: "s", Tier: "flash", Holder: "friendF"},
+		store.PutCard{ID: "p.r2", Kind: "read", Of: "p", Stream: "s", Tier: "flash", Holder: "friendF"})
 	return f
 }
 
@@ -89,7 +89,7 @@ func TestReconcileWindowAndOneJudgement(t *testing.T) {
 	apply(t, f, "r0", store.SetCardCost{Card: "p.r2", Cost: 9_000_000, Priced: true}, store.SetCardUsage{Card: "p.r2", Usage: "input=1 model=deepseek/deepseek-flash billing=api charged=-"})
 	tr := &fakeTransport{bodies: []string{balance("100.00"), balance("97.00"), balance("90.00"), balance("95.00")}}
 	readers := []Reader{ds(tr, "sk"), Inception{}}
-	lines, err := Reconcile(ctx, f, t0, "rowan", readers)
+	lines, err := Reconcile(ctx, f, t0, "friendF", readers)
 	require.NoError(t, err)
 	require.Len(t, lines, 2)
 	assert.Equal(t, "COST deepseek balance=$100: the first read: the next one measures the spend between them", lines[0].Text())
@@ -98,7 +98,7 @@ func TestReconcileWindowAndOneJudgement(t *testing.T) {
 	// in the window: a priced API run of deepseek ($2.50), a subscription run, an inception run
 	apply(t, f, "r1", store.SetCardCost{Card: "p.w1", Cost: 2_500_000, Priced: true}, store.SetCardUsage{Card: "p.w1", Usage: "input=1000 model=deepseek/deepseek-flash billing=api charged=-"})
 	apply(t, f, "r2", store.SetCardCost{Card: "p.r1", Cost: 0, Priced: true}, store.SetCardUsage{Card: "p.r1", Usage: "input=5 billing=subscription charged=1"})
-	lines, err = Reconcile(ctx, f, t0.Add(time.Hour), "rowan", readers[:1])
+	lines, err = Reconcile(ctx, f, t0.Add(time.Hour), "friendF", readers[:1])
 	require.NoError(t, err)
 	l := lines[0]
 	assert.Equal(t, int64(3_000_000), l.Spent)
@@ -107,22 +107,22 @@ func TestReconcileWindowAndOneJudgement(t *testing.T) {
 	assert.Equal(t, "COST deepseek 2026-11-07T12:00:00Z..2026-11-07T13:00:00Z provider=$3 recorded=$2.5 gap=$0.5", l.Text())
 
 	// $7 spent, $0 recorded: the judgement, then never a second
-	lines, err = Reconcile(ctx, f, t0.Add(2*time.Hour), "rowan", readers[:1])
+	lines, err = Reconcile(ctx, f, t0.Add(2*time.Hour), "friendF", readers[:1])
 	require.NoError(t, err)
-	assert.Equal(t, "cost-gap.rowan.1", lines[0].Judgement)
+	assert.Equal(t, "cost-gap.friendF.1", lines[0].Judgement)
 	s, _ := f.Snapshot(ctx)
-	j := s.Judgements["cost-gap.rowan.1"]
+	j := s.Judgements["cost-gap.friendF.1"]
 	assert.Equal(t, "open", j.State)
-	assert.Equal(t, "rowan", j.About)
+	assert.Equal(t, "friendF", j.About)
 	assert.Contains(t, j.Command, "choices: ack | retry")
 	// a top-up: no spend measured, no judgement
-	lines, err = Reconcile(ctx, f, t0.Add(3*time.Hour), "rowan", readers[:1])
+	lines, err = Reconcile(ctx, f, t0.Add(3*time.Hour), "friendF", readers[:1])
 	require.NoError(t, err)
 	assert.Contains(t, lines[0].Why, "a top-up")
 	tr.bodies = []string{balance("80.00")}
-	lines, err = Reconcile(ctx, f, t0.Add(4*time.Hour), "rowan", readers[:1])
+	lines, err = Reconcile(ctx, f, t0.Add(4*time.Hour), "friendF", readers[:1])
 	require.NoError(t, err)
-	assert.Equal(t, "cost-gap.rowan.1", lines[0].Judgement, "the open judgement is named, never a second")
+	assert.Equal(t, "cost-gap.friendF.1", lines[0].Judgement, "the open judgement is named, never a second")
 	s, _ = f.Snapshot(ctx)
 	n := 0
 	for _, j := range s.Judgements {

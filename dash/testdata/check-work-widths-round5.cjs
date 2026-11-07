@@ -1,5 +1,5 @@
 const fs=require('fs'),assert=require('assert/strict');
-const {chromium}=require('/var/tmp/stella-dash-visual-20261106/node_modules/playwright');
+const {chromium}=require('/var/tmp/friendG-dash-visual-20261106/node_modules/playwright');
 (async()=>{
  const results=[];
  for(const scrollbar of [0,15]){
@@ -33,5 +33,5 @@ const {chromium}=require('/var/tmp/stella-dash-visual-20261106/node_modules/play
   }
   await browser.close();
  }
- fs.writeFileSync('/var/tmp/stella-dash-visual-20261106/output-round5/work-width-check.json',JSON.stringify(results,null,2));
+ fs.writeFileSync('/var/tmp/friendG-dash-visual-20261106/output-round5/work-width-check.json',JSON.stringify(results,null,2));
 })().catch(e=>{console.error(e);process.exit(1)});

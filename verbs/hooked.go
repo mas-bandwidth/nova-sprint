@@ -10,7 +10,7 @@ import (
 )
 
 // hooked is the one hooked check (CORRECT-USE, "Hooked before anything that
-// acts as you"; DO NOT REMOVE without Glenn, LESSONS W.17): a name, on the
+// acts as you"; DO NOT REMOVE without the owner, LESSONS W.17): a name, on the
 // bus, hooked in to the sprint, in the role the verb needs. It returns the
 // snapshot it read, which the verb acts on.
 func (e *Engine) hooked(ctx context.Context, in *input, need role) (store.Snapshot, error) {
@@ -32,7 +32,7 @@ func (e *Engine) hooked(ctx context.Context, in *input, need role) (store.Snapsh
 }
 
 // onBus is a name given and present in nova-bus who: the bus first, then the
-// sprint (Glenn, 2026-11-06).
+// sprint.
 func (e *Engine) onBus(ctx context.Context, name string) error {
 	if name == "" {
 		return refuse("no name given", "pass --as <you>, or set NOVA_SPRINT_AS=<you>")

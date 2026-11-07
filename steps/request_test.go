@@ -13,7 +13,7 @@ import (
 func (w *world) verb(r Request) (store.Receipt, *card.Refusal) {
 	w.t.Helper()
 	w.fold()
-	r.Coordinators = []string{"rowan"}
+	r.Coordinators = []string{"friendF"}
 	op, ref := Verb(w.v, w.inputs(), r)
 	if ref != nil {
 		return store.Receipt{}, ref
@@ -42,41 +42,41 @@ func TestVerbActorTable(t *testing.T) {
 	}
 	before := w.snap().Seq
 	for _, c := range coord {
-		_, ref := w.verb(Request{Actor: "emma", Card: "p1", Event: c.ev})
+		_, ref := w.verb(Request{Actor: "friendC", Card: "p1", Event: c.ev})
 		require.NotNil(t, ref, c.name)
-		assert.Equal(t, c.name+" is the coordinator's; ask on the bus: `nova-bus send --as emma --to rowan ...`", ref.Reason)
+		assert.Equal(t, c.name+" is the coordinator's; ask on the bus: `nova-bus send --as friendC --to friendF ...`", ref.Reason)
 	}
 	for _, c := range []struct {
 		name string
 		ev   card.Event
 	}{{"Hold", card.Hold{Reason: "why"}}, {"Unhold", card.Unhold{Reason: "why"}}} {
-		_, ref := w.verb(Request{Actor: "emma", Row: "r1", Event: c.ev})
+		_, ref := w.verb(Request{Actor: "friendC", Row: "r1", Event: c.ev})
 		require.NotNil(t, ref)
 		assert.Contains(t, ref.Reason, c.name+" is the coordinator's")
 	}
-	_, ref := w.verb(Request{Actor: "emma", Stream: "s1", Event: card.HoldStream{Reason: "why"}})
+	_, ref := w.verb(Request{Actor: "friendC", Stream: "s1", Event: card.HoldStream{Reason: "why"}})
 	assert.Contains(t, ref.Reason, "HoldStream is the coordinator's")
-	_, ref = w.verb(Request{Actor: "emma", Judgement: "x", Answer: "retry"})
+	_, ref = w.verb(Request{Actor: "friendC", Judgement: "x", Answer: "retry"})
 	assert.Contains(t, ref.Reason, "judge is the coordinator's")
-	_, ref = w.verb(Request{Actor: "emma", Row: "r1", Event: card.Gone{}})
+	_, ref = w.verb(Request{Actor: "friendC", Row: "r1", Event: card.Gone{}})
 	assert.Equal(t, "Gone is the run loop's; presence is the bus's fact", ref.Reason)
 	assert.Equal(t, before, w.snap().Seq, "a verb refused for its actor writes nothing")
 
-	rc, ref := w.verb(Request{Actor: "rowan", Card: "p1", Event: card.SetPriority{Level: "high", Reason: "why"}})
+	rc, ref := w.verb(Request{Actor: "friendF", Card: "p1", Event: card.SetPriority{Level: "high", Reason: "why"}})
 	require.Nil(t, ref)
 	require.True(t, rc.Accepted, rc.Reason)
 	assert.Equal(t, "high", w.card("p1").Priority)
-	rc, ref = w.verb(Request{Actor: "rowan", Card: "p1", Event: card.Rescore{Score: 3}})
+	rc, ref = w.verb(Request{Actor: "friendF", Card: "p1", Event: card.Rescore{Score: 3}})
 	require.Nil(t, ref)
 	assert.True(t, rc.Accepted)
-	_, ref = w.verb(Request{Actor: "rowan", Card: "p1", Event: card.Unblock{Reason: "why"}})
+	_, ref = w.verb(Request{Actor: "friendF", Card: "p1", Event: card.Unblock{Reason: "why"}})
 	require.NotNil(t, ref, "the machine's refusal passes through")
 	assert.Contains(t, ref.Reason, "Unblock needs blocked")
-	rc, ref = w.verb(Request{Actor: "rowan", Stream: "s1", Event: card.HoldStream{Reason: "pause"}})
+	rc, ref = w.verb(Request{Actor: "friendF", Stream: "s1", Event: card.HoldStream{Reason: "pause"}})
 	require.Nil(t, ref)
 	assert.True(t, rc.Accepted, rc.Reason)
 	assert.True(t, w.snap().Streams["s1"].Held)
-	rc, ref = w.verb(Request{Actor: "rowan", Row: "r1", Event: card.Hold{Reason: "rest"}})
+	rc, ref = w.verb(Request{Actor: "friendF", Row: "r1", Event: card.Hold{Reason: "rest"}})
 	require.Nil(t, ref)
 	assert.True(t, rc.Accepted, rc.Reason)
 	rc, ref = w.verb(Request{Actor: Actor, Row: "r1", Event: card.Gone{}})
@@ -90,10 +90,10 @@ func TestVerbAddReport(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
-	rc, ref := s.verb(Request{Actor: "emma", Event: card.Add{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p1", Paths: []string{"a/x"}}})
+	rc, ref := s.verb(Request{Actor: "friendC", Event: card.Add{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p1", Paths: []string{"a/x"}}})
 	require.Nil(t, ref)
 	require.True(t, rc.Accepted, rc.Reason)
-	_, ref = s.verb(Request{Actor: "emma", Event: card.Add{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p2", Needs: []string{"p9"}}})
+	_, ref = s.verb(Request{Actor: "friendC", Event: card.Add{ID: "p2", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p2", Needs: []string{"p9"}}})
 	require.NotNil(t, ref)
 	assert.Equal(t, "need p9 of producer p2 is not a card", ref.Reason)
 	s.run(2)
@@ -119,7 +119,7 @@ func TestVerbDropNamesItsDependants(t *testing.T) {
 	w.must("add", store.PutCard{ID: "p3", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p3", Needs: []string{"p1"}, Paths: []string{"a/z"}})
 	w.must("add", store.PutCard{ID: "p4", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p4", Needs: []string{"p1"}, Paths: []string{"a/w"}})
 	w.must("add", store.PutCard{ID: "p5", Kind: "producer", Stream: "s1", Tier: "pro", Brief: "do p5", Needs: []string{"p3"}, Paths: []string{"a/u"}})
-	rc, ref := w.verb(Request{Actor: "rowan", Card: "p1", Event: card.Cancel{Reason: "dropped"},
+	rc, ref := w.verb(Request{Actor: "friendF", Card: "p1", Event: card.Cancel{Reason: "dropped"},
 		Drop: map[string]card.Event{"p2": card.Waive{Reason: "not needed"}, "p4": card.Relink{To: "p0", Reason: "p0 instead"}}})
 	require.Nil(t, ref)
 	require.True(t, rc.Accepted, rc.Reason)
@@ -146,7 +146,7 @@ func TestVerbDropReleasesLiveConsumers(t *testing.T) {
 	s.producer("p2", "s1", "pro", "a/y")
 	s.run(2)
 	s.requireState("p1.w1", "working")
-	rc, ref := s.verb(Request{Actor: "rowan", Card: "p1", Event: card.Cancel{Reason: "not needed"}})
+	rc, ref := s.verb(Request{Actor: "friendF", Card: "p1", Event: card.Cancel{Reason: "not needed"}})
 	require.Nil(t, ref)
 	require.True(t, rc.Accepted, rc.Reason)
 	c := s.card("p1.w1")
@@ -166,15 +166,15 @@ func TestVerbJudgementAnswer(t *testing.T) {
 	w.producer("p1", "s1", "pro", "a/x")
 	w.must("block", store.SetCardState{Card: "p1", State: "blocked"}, store.SetCardReason{Card: "p1", Reason: "bounced"})
 	w.must("judge", store.PutJudgement{ID: "blocked.p1.1", Kind: "blocked", About: "p1", Question: "?", Command: "judge", Group: "blocked"})
-	_, ref := w.verb(Request{Actor: "rowan", Judgement: "blocked.p1.1"})
+	_, ref := w.verb(Request{Actor: "friendF", Judgement: "blocked.p1.1"})
 	assert.Equal(t, "judgement blocked.p1.1 needs a choice: unblock | drop", ref.Reason)
-	_, ref = w.verb(Request{Actor: "rowan", Judgement: "blocked.p1.9", Answer: "unblock"})
+	_, ref = w.verb(Request{Actor: "friendF", Judgement: "blocked.p1.9", Answer: "unblock"})
 	assert.Equal(t, "judgement blocked.p1.9 does not exist: run `nova-sprint judge`", ref.Reason)
-	rc, ref := w.verb(Request{Actor: "rowan", Judgement: "blocked.p1.1", Answer: "unblock", Card: "p1", Event: card.Unblock{Reason: "reviewed"}})
+	rc, ref := w.verb(Request{Actor: "friendF", Judgement: "blocked.p1.1", Answer: "unblock", Card: "p1", Event: card.Unblock{Reason: "reviewed"}})
 	require.Nil(t, ref)
 	require.True(t, rc.Accepted, rc.Reason)
 	assert.Equal(t, "waiting", w.card("p1").State)
 	assert.Equal(t, "answered", w.snap().Judgements["blocked.p1.1"].State)
-	_, ref = w.verb(Request{Actor: "rowan", Judgement: "blocked.p1.1", Answer: "drop"})
-	assert.Equal(t, "judgement blocked.p1.1 was answered by rowan; nothing to answer", ref.Reason)
+	_, ref = w.verb(Request{Actor: "friendF", Judgement: "blocked.p1.1", Answer: "drop"})
+	assert.Equal(t, "judgement blocked.p1.1 was answered by friendF; nothing to answer", ref.Reason)
 }

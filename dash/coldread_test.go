@@ -52,7 +52,7 @@ func seedSprint(t *testing.T, s store.Store, n int) {
 	t.Helper()
 	w := []store.Write{
 		store.PutRow{Name: "amd-1"},
-		store.PutRow{Name: "stella"},
+		store.PutRow{Name: "friendG"},
 	}
 	for i := 0; i < 50; i++ {
 		w = append(w, store.PutStream{Name: fmt.Sprintf("s%02d", i)})
@@ -65,7 +65,7 @@ func seedSprint(t *testing.T, s store.Store, n int) {
 	for i := 0; i < n; i += 10 {
 		p, st := fmt.Sprintf("p%05d", i), fmt.Sprintf("s%02d", i%50)
 		w = append(w, store.PutCard{ID: "w" + p, Kind: "work", Of: p, Stream: st, Tier: "pro", Holder: "amd-1"},
-			store.PutCard{ID: "r" + p, Kind: "read", Of: p, Stream: st, Tier: "pro", Holder: "stella"})
+			store.PutCard{ID: "r" + p, Kind: "read", Of: p, Stream: st, Tier: "pro", Holder: "friendG"})
 	}
 	mustApply(t, s, "consumers", 1, w...)
 }
@@ -91,7 +91,7 @@ func TestColdreadFoldNoClear(t *testing.T) {
 	}
 	moves := [][]store.Write{
 		{store.SetRowState{Row: "amd-1", State: "up"}},
-		{store.SetRowState{Row: "stella", State: "up"}, store.SetRowHeld{Row: "stella", Held: true, Reason: "x"}},
+		{store.SetRowState{Row: "friendG", State: "up"}, store.SetRowHeld{Row: "friendG", Held: true, Reason: "x"}},
 		{store.SetCardState{Card: "p00000", State: "ready"}, store.SetCardState{Card: "wp00000", State: "ready"}},
 		{store.SetCardState{Card: "wp00000", State: "working"}},
 		{store.SetCardCost{Card: "wp00000", Cost: 1234567, Priced: true}, store.SetCardState{Card: "wp00000", State: "done"}},

@@ -1,7 +1,7 @@
 const fs = require('fs');
-const {chromium} = require('/var/tmp/stella-dash-visual-20261106/node_modules/playwright');
+const {chromium} = require('/var/tmp/friendG-dash-visual-20261106/node_modules/playwright');
 (async () => {
-  const dest = '/var/tmp/stella-dash-visual-20261106/output-round6';
+  const dest = '/var/tmp/friendG-dash-visual-20261106/output-round6';
   fs.mkdirSync(dest, {recursive:true});
   const browser = await chromium.launch({headless:true,ignoreDefaultArgs:["--hide-scrollbars"]});
   const context = await browser.newContext({timezoneId:'America/New_York',deviceScaleFactor:1});

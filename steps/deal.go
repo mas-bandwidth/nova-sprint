@@ -9,7 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// The ladder, highest first (Glenn, 2026-11-06: "low, normal, high, read,
+// The ladder, highest first ("low, normal, high, read,
 // critical, blocker in specific order"); read is the rung every read
 // consumer occupies.
 var ladder = []string{"blocker", "critical", "read", "high", "normal", "low"}

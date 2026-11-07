@@ -84,16 +84,16 @@ func TestColdread3DefectReadersEmptyHolderRow(t *testing.T) {
 }
 
 // v1 sent ok% "0.0%" (grey) for a row whose ok and failed are both 0 (live v1 capture
-// friends.alex). The human ruled otherwise on 2026-11-07 (directive 63b, 64a): the cell
+// friends.friendA). The human ruled otherwise on 2026-11-07 (directive 63b, 64a): the cell
 // is "-" until there is data, as the total already is; the capture is checked only to
 // show it is the old form.
 func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	v1 := readJSON(t, "testdata/live-v1-envelope.json")["data"].(map[string]any)["tables"].(map[string]any)
-	alex := v1["friends"].(map[string]any)["alex"].(map[string]any)
-	if alex["ok"] != "0" || alex["failed"] != "0" || alex["okpct"] != "0.0%" {
-		t.Fatalf("capture changed: %v", alex)
+	friendA := v1["friends"].(map[string]any)["friendA"].(map[string]any)
+	if friendA["ok"] != "0" || friendA["failed"] != "0" || friendA["okpct"] != "0.0%" {
+		t.Fatalf("capture changed: %v", friendA)
 	}
-	s := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"alex": {Name: "alex", State: "down"}}}
+	s := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{"friendA": {Name: "friendA", State: "down"}}}
 	b, err := json.Marshal(mapSnapshot(s, testRoster, time.Time{}).Tables["friends"])
 	if err != nil {
 		t.Fatal(err)
@@ -102,8 +102,8 @@ func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 	if err = json.Unmarshal(b, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if got := rows["alex"]["okpct"]; got != "-" {
-		t.Errorf("zero-denominator ok%%: v2 %q, want \"-\" (v1 sent %q)", got, alex["okpct"])
+	if got := rows["friendA"]["okpct"]; got != "-" {
+		t.Errorf("zero-denominator ok%%: v2 %q, want \"-\" (v1 sent %q)", got, friendA["okpct"])
 	}
 }
 

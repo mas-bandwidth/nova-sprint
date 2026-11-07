@@ -78,7 +78,7 @@ func (f FleetServices) Machines(ctx context.Context) ([]FleetMachine, error) {
 // swarm seat for each configured bench. The public dashboard service gets
 // no secret (a pull-only record without seat or keys, validPublicTarget):
 // that is the safety, so a bench that also serves the public board keeps
-// its seat for its worker (Glenn, 2026-11-07); the run machine never
+// its seat for its worker; the run machine never
 // serves it.
 func SprintSeats(machines []FleetMachine, run FleetService, publicHost string) ([]SprintSeat, error) {
 	if !fleetName.MatchString(run.Machine) || !fleetName.MatchString(run.Seat) {

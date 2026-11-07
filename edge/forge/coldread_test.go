@@ -18,7 +18,7 @@ func crClient_internal(fe *edge.FakeExec) *Client {
 		args := strings.Join(call.Cmd.Argv[1:], " ")
 		switch {
 		case strings.HasPrefix(args, "auth status"):
-			return edge.FakeOutcome{Stdout: "Logged in to github.com account rowan-claude (keyring)"}
+			return edge.FakeOutcome{Stdout: "Logged in to github.com account friendF-claude (keyring)"}
 		case strings.HasPrefix(args, "pr view"):
 			return edge.FakeOutcome{Stdout: `{"number":7,"headRefOid":"` + crSHA + `","baseRefName":"v2","state":"OPEN"}`}
 		case strings.HasPrefix(args, "api graphql"):

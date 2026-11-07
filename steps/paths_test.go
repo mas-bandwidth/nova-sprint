@@ -267,7 +267,7 @@ func TestTickRefusedOpSplitByGroup(t *testing.T) {
 }
 
 // TestTickUnlistedRow: a store row the roster lacks is dealt nothing and is
-// a judgement (Glenn, 2026-11-06: nova-config is the one source).
+// a judgement (nova-config is the one source).
 func TestTickUnlistedRow(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")
@@ -282,7 +282,7 @@ func TestTickUnlistedRow(t *testing.T) {
 }
 
 // TestTickUnhookedRow: a row up on the bus but not hooked in to the sprint
-// is never dealt to (Glenn, 2026-11-06); hooking in opens it.
+// is never dealt to; hooking in opens it.
 func TestTickUnhookedRow(t *testing.T) {
 	s := newSim(t)
 	s.stream("s1")
