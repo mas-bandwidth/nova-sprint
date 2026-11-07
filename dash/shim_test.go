@@ -1,9 +1,12 @@
 package dash
 
 import (
-	"github.com/mas-bandwidth/nova-sprint/store"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 func TestMapRepresentative(t *testing.T) {
@@ -34,5 +37,24 @@ func TestStreamStates(t *testing.T) {
 		if got[k] != v {
 			t.Errorf("%s state=%q want=%q", k, got[k], v)
 		}
+	}
+}
+
+// TestBlockedCardsWithReason: the work table lists each blocked producer
+// with its reason, so a card the coordinator held reads "held: <why>"
+// (defect 47); a stream with none has no list.
+func TestBlockedCardsWithReason(t *testing.T) {
+	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}, "t": {Name: "t"}}, Cards: map[string]store.Card{
+		"p1": {ID: "p1", Kind: "producer", Stream: "s", State: "blocked", Reason: "held: wrong brief"},
+		"p2": {ID: "p2", Kind: "producer", Stream: "s", State: "blocked", Reason: "missing-route: no adb"},
+		"p3": {ID: "p3", Kind: "producer", Stream: "t", State: "waiting"}}}
+	d := mapSnapshot(s, testRoster, time.Time{})
+	work := d.Tables["work"].(map[string]*workRow)
+	b, err := json.Marshal(work["s"])
+	if err != nil || !strings.Contains(string(b), `"blocked_cards":{"p1":"held: wrong brief","p2":"missing-route: no adb"}`) {
+		t.Fatalf("stream s: %s %v", b, err)
+	}
+	if b, _ := json.Marshal(work["t"]); strings.Contains(string(b), "blocked_cards") {
+		t.Fatalf("stream t has no blocked card: %s", b)
 	}
 }

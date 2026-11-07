@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -264,5 +265,31 @@ func TestPolicyRefusals(t *testing.T) {
 		{name: "an unreadable file", as: "carol", prep: withPolicy, args: []string{"policy", "set", "/nonexistent.star", "--reason", "r"}, exit: 1, want: []string{"set"}},
 		{name: "before up", as: "carol", prep: func(_ *testing.T, w *world) { w.e.Policy = policy.NewEngine(stillClock{}) },
 			args: []string{"policy", "show", "v1"}, exit: 1},
+	})
+}
+
+// TestHoldCard: hold parks one producer blocked with the reason, its live
+// consumer withdrawn in the same op; unhold sends it to waiting (defect 47).
+func TestHoldCard(t *testing.T) {
+	w := newWorld(t)
+	want(t, w.do("carol", "hold", "p1", "--reason", "wrong brief"), 0, "p1", "next: "+waitNext)
+	s := w.snap(t)
+	if c := s.Cards["p1"]; c.State != "blocked" || c.Reason != card.HeldPrefix+"wrong brief" {
+		t.Fatalf("held card %+v", c)
+	}
+	if c := s.Cards["p1.w1"]; c.State != "fail" {
+		t.Fatalf("its consumer %+v", c)
+	}
+	want(t, w.do("carol", "unhold", "p1", "--reason", "brief fixed"), 0, "p1")
+	if c := w.snap(t).Cards["p1"]; c.State != "waiting" {
+		t.Fatalf("unheld card %+v", c)
+	}
+}
+
+func TestHoldCardRefusals(t *testing.T) {
+	runCases(t, []tcase{
+		{name: "a consumer", as: "carol", args: []string{"hold", "p1.w1", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is a work card; hold its producer", "nova-sprint hold p1 --reason"}},
+		{name: "an unhold of a card not held", as: "carol", args: []string{"unhold", "p2", "--reason", "r"}, exit: 1, want: []string{"nova-sprint show p2"}},
+		{name: "a worker", as: "alice", args: []string{"hold", "p1", "--reason", "r"}, exit: 1, want: []string{"hold is the coordinator's"}},
 	})
 }

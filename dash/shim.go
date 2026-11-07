@@ -24,6 +24,10 @@ type workRow struct {
 	Fail       int
 	Cost       *big.Int
 	ByTier     map[string]*big.Int
+	// BlockedCards is each blocked producer's reason, by id: a card the
+	// coordinator holds reads "held: <why>" (card.HeldPrefix; defect 47), a
+	// missing route "missing-route: <what>" (defect 48).
+	BlockedCards map[string]string
 }
 type fleetRow struct {
 	Status   string
@@ -231,6 +235,10 @@ func countWork(w *workRow, c store.Card) {
 	switch state {
 	case "blocked":
 		w.Blocked++
+		if w.BlockedCards == nil {
+			w.BlockedCards = map[string]string{}
+		}
+		w.BlockedCards[c.ID] = edge.RedactN(c.Reason, edge.FailureMax)
 	case "waiting":
 		w.Waiting++
 	case "ready":
