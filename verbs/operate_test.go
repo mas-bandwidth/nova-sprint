@@ -30,7 +30,7 @@ func TestCheckRefusals(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "the fleet down", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.fleet = refuse("the fleet is down", "nova-fleet up") }, want: []string{"the fleet is down: nova-fleet up"}},
 		{name: "tools below the pin", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.tools = "v2.0.1" }, want: []string{"nova-tools v2.0.1 is below the pin v2.0.2: nova-fleet install --tag v2.0.2 <machine>"}},
-		{name: "tools unknown", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.tools = "v2.1.0-rc1" }, want: []string{"nova-tools' version is unknown: nova-fleet install --tag v2.0.2 <machine>"}},
+		{name: "tools unknown", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.tools = "v2.1.0-rc1" }, want: []string{"nova-tools' version is unknown (\"v2.1.0-rc1\" is not a release vMAJOR.MINOR.PATCH): nova-fleet install --tag v2.0.2 <machine>"}},
 		{name: "the store not set up", args: []string{"check"}, exit: 1, prep: func(_ *testing.T, w *world) { w.doctor.schema = false }, want: []string{"not at this build's schema", "nova-sprint up"}},
 		{name: "the bus fails", args: []string{"check"}, exit: 2, prep: func(_ *testing.T, w *world) { w.bus.err = errBroken }, want: []string{"nova-bus who failed"}},
 		{name: "the history differs", args: []string{"check", "--integrity"}, exit: 2, prep: func(_ *testing.T, w *world) { w.doctor.history = errBroken }, want: []string{"connection refused"}},

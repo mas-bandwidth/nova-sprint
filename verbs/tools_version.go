@@ -19,11 +19,11 @@ var toolsModule = regexp.MustCompile(`^github\.com/mas-bandwidth/nova-tools(/v[0
 func InstalledTools(context.Context) (string, error) {
 	path, err := exec.LookPath("nova-config")
 	if err != nil {
-		return "", fmt.Errorf("nova-config is not on PATH")
+		return "", cause("nova-config is not on PATH", err)
 	}
 	info, err := buildinfo.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("nova-config carries no build info")
+		return "", cause("nova-config carries no build info", err)
 	}
 	return toolsRelease(info)
 }

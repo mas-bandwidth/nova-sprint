@@ -51,7 +51,7 @@ func (p PGBackups) Backup(ctx context.Context, out string) (BackupInfo, error) {
 	}
 	defer os.Remove(path)
 	if err = runPGPassword(ctx, p.DSN, p.Password, "pg_dump", "--schema=sprint", "--data-only", "--format=plain", "--inserts", "--no-owner", "--no-privileges", "--file", path); err != nil {
-		return BackupInfo{}, fmt.Errorf("pg_dump failed")
+		return BackupInfo{}, cause("pg_dump failed", err)
 	}
 	source, err := store.Open(ctx, p.DSN, p.Password)
 	if err != nil {
@@ -108,21 +108,21 @@ func (p PGBackups) checkDumpVersion(ctx context.Context) error {
 	}
 	major, err := strconv.Atoi(strings.Split(fields[len(fields)-1], ".")[0])
 	if err != nil {
-		return fmt.Errorf("pg_dump version is unknown")
+		return cause("pg_dump version is unknown", err)
 	}
 	cfg, err := pgx.ParseConfig(p.DSN)
 	if err != nil {
-		return fmt.Errorf("cannot inspect PostgreSQL")
+		return cause("cannot inspect PostgreSQL", err)
 	}
 	cfg.Password = p.Password
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("cannot inspect PostgreSQL")
+		return cause("cannot inspect PostgreSQL", err)
 	}
 	defer conn.Close(ctx)
 	var server string
 	if err = conn.QueryRow(ctx, "SHOW server_version_num").Scan(&server); err != nil {
-		return fmt.Errorf("cannot inspect PostgreSQL version")
+		return cause("cannot inspect PostgreSQL version", err)
 	}
 	n, err := strconv.Atoi(server)
 	if err != nil || major < n/10000 {
@@ -203,11 +203,11 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 	}()
 	dataDir := filepath.Join(dir, "pg")
 	if err = runPG(ctx, "", "initdb", "-D", dataDir, "-A", "trust", "--no-instructions"); err != nil {
-		return BackupInfo{}, fmt.Errorf("initdb failed")
+		return BackupInfo{}, cause("initdb failed", err)
 	}
 	opts := "-k " + dir + " -c listen_addresses=''"
 	if err = runPG(ctx, "", "pg_ctl", "-D", dataDir, "-o", opts, "-w", "start"); err != nil {
-		return BackupInfo{}, fmt.Errorf("temporary PostgreSQL failed to start")
+		return BackupInfo{}, cause("temporary PostgreSQL failed to start", err)
 	}
 	defer func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -233,7 +233,7 @@ func (p PGBackups) verifyBytes(ctx context.Context, path string, dumpBytes []byt
 	sum := sha256.Sum256(dumpBytes)
 	validated := &VerifiedDump{statements: statements, digest: fmt.Sprintf("%x", sum)}
 	if err = p.Loader.Load(ctx, dsn, validated); err != nil {
-		return BackupInfo{}, fmt.Errorf("dump restore verification failed")
+		return BackupInfo{}, cause("dump restore verification failed", err)
 	}
 	snap, digest, schemaHash, err := verifyDatabase(ctx, dsn)
 	if err != nil {
