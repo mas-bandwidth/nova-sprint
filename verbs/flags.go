@@ -47,7 +47,7 @@ func parse(v *verb, args []string, actor string) (*input, *Fail) {
 			in.args = append(in.args, args[i+1:]...)
 			break
 		}
-		if !strings.HasPrefix(a, "--") || a == "--" {
+		if !strings.HasPrefix(a, "--") {
 			in.args = append(in.args, a)
 			continue
 		}

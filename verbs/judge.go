@@ -167,6 +167,9 @@ func runDrop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		if c, ok := snap.Cards[id]; ok && c.Of != "" {
 			return "", refuse(id+" is a consumer; a drop is of its producer", "nova-sprint "+in.verb+" "+c.Of+" --reason \"<why>\"")
 		}
+		if r, ok := ev.(card.Replace); ok {
+			follow(snap, id, r, chosen)
+		}
 		line, err := e.move(ctx, in, snap, steps.Request{Card: id, Event: ev, Drop: chosen}, id)
 		if err != nil {
 			return "", err
@@ -174,6 +177,17 @@ func runDrop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		lines = append(lines, line)
 	}
 	return done(nextAfter(in), lines...), nil
+}
+
+// follow relinks each open dependant of id that has no choice of its own
+// to the card replacing it (replace: "its dependants follow the other").
+func follow(snap store.Snapshot, id string, r card.Replace, chosen map[string]card.Event) {
+	for _, c := range snap.Cards {
+		if _, own := chosen[c.ID]; own || !slices.Contains(c.Needs, id) || c.State == card.Fail || c.State == card.LandedState {
+			continue
+		}
+		chosen[c.ID] = card.Relink{To: r.By, Reason: r.Reason}
+	}
 }
 
 // dropChoices is --waive <dependant> and --relink <dependant>=<card>.

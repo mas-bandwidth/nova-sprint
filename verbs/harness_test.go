@@ -52,6 +52,7 @@ type world struct {
 	doctor *fakeDoctor
 	svc    *fakeServices
 	arch   *fakeArchive
+	roster *fakeRoster
 }
 
 func sprint() store.Snapshot {
@@ -85,9 +86,9 @@ func worldFrom(t *testing.T, s store.Snapshot) *world {
 	}
 	w := &world{f: f, bus: &fakeBus{present: map[string]bool{"alice": true, "bob": true, "carol": true, "dave": true}},
 		origin: &fakeOrigin{tips: map[string]string{"o/r main": base, "o/r sprint/s/p1": head}}, doctor: &fakeDoctor{tools: "nova-version v2.0.2", schema: true},
-		svc: &fakeServices{}, arch: &fakeArchive{}}
+		svc: &fakeServices{}, arch: &fakeArchive{}, roster: newRoster()}
 	n := 0
-	w.e = &Engine{Store: f, Bus: w.bus, Roster: fakeRoster{}, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch,
+	w.e = &Engine{Store: f, Bus: w.bus, Roster: w.roster, Answers: fakeAnswers{}, Origin: w.origin, Doctor: w.doctor, Services: w.svc, Archive: w.arch,
 		Now: func() time.Time { return t0 }, Version: "v2.0.0-test", ToolPin: "v2.0.2",
 		Session: func() (string, error) { n++; return "minted-" + string(rune('0'+n)), nil }}
 	return w
@@ -143,15 +144,22 @@ func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
 	return out, b.err
 }
 
-type fakeRoster struct{ err error }
-
-func (r fakeRoster) ReadRosterAt(context.Context, int) (roster.Roster, error) {
-	all := []string{"flash", "pro", "heavy", "frontier"}
-	return roster.Roster{
-		Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all}, "bob": {Name: "bob", Width: 2, Tiers: []string{"flash"}}},
-		Kin:     map[string]roster.Kin{"carol": {Name: "carol", Model: "m-carol", Width: 1, Tiers: all}, "dave": {Name: "dave", Model: "m-dave", Width: 1, Tiers: all}},
-	}, r.err
+// fakeRoster is nova-config: alice and bob workers, carol and dave kin,
+// every tier, width 1 (bob 2); a test changes ro or sets err.
+type fakeRoster struct {
+	ro  roster.Roster
+	err error
 }
+
+func newRoster() *fakeRoster {
+	all := []string{"flash", "pro", "heavy", "frontier"}
+	return &fakeRoster{ro: roster.Roster{
+		Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: all}, "bob": {Name: "bob", Width: 2, Tiers: all}},
+		Kin:     map[string]roster.Kin{"carol": {Name: "carol", Model: "m-carol", Width: 1, Tiers: all}, "dave": {Name: "dave", Model: "m-dave", Width: 1, Tiers: all}},
+	}}
+}
+
+func (r *fakeRoster) ReadRosterAt(context.Context, int) (roster.Roster, error) { return r.ro, r.err }
 
 type fakeAnswers struct{}
 

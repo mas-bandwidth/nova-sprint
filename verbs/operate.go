@@ -252,6 +252,7 @@ func runClear(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 		}
 	}
 	if len(busy) > 0 {
+		slices.SortFunc(busy, func(a, b store.Card) int { return strings.Compare(a.ID, b.ID) })
 		return "", refuse("live consumers: "+idList(busy), "release each: nova-sprint release <card>@<gen> --reason \"<why>\"")
 	}
 	what := fmt.Sprintf("CLEAR epoch=%d cards=%d", snap.Epoch, len(snap.Cards))
