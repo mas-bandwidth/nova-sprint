@@ -118,11 +118,13 @@ func (c *Client) checkCredentials_internal(ctx context.Context) error {
 	if already {
 		return nil
 	}
-	res, err := c.cfg.Exec.Run(ctx, edge.Cmd{Argv: []string{c.cfg.Binary, "auth", "status"}, Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout})
+	cmd := edge.Cmd{Argv: []string{c.cfg.Binary, "auth", "status"}, Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout}
+	res, err := c.cfg.Exec.Run(ctx, cmd)
 	combined := res.Stdout + "\n" + res.Stderr
 	login := parseAuthLogin_internal(combined)
 	if (err != nil || !res.OK()) && login == "" {
-		return fmt.Errorf("forge refused: gh auth status failed for %s: %s: set GH_CONFIG_DIR for %s", name, strings.TrimSpace(combined), name)
+		// The environment is the whole process's: the failure names none of it.
+		return fmt.Errorf("forge refused: gh auth status for %s: %w: set GH_CONFIG_DIR for %s", name, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err), name)
 	}
 	want := cmp.Or(id.ExpectedLogin, name)
 	if isForbiddenLogin_internal(login) || (id.ExpectedLogin != "" && !strings.EqualFold(login, id.ExpectedLogin)) {
@@ -187,22 +189,21 @@ func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, st
 	if err := c.takeToken_internal(); err != nil {
 		return "", "", err
 	}
-	res, err := c.cfg.Exec.Run(ctx, edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout})
-	if err != nil || !res.OK() {
-		if retrySec, ok := detectRateLimit_internal(res.Stderr); ok {
-			c.mu.Lock()
-			c.restTill = c.cfg.Now() + retrySec
-			c.mu.Unlock()
-			return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.RestedUntil(), Reason: strings.TrimSpace(res.Stderr)}
-		}
+	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout}
+	res, err := c.cfg.Exec.Run(ctx, cmd)
+	if err == nil && res.OK() {
+		return res.Stdout, res.Stderr, nil
 	}
-	if err != nil {
-		return res.Stdout, res.Stderr, err
+	// The environment is the whole process's (with GH_TOKEN): the failure
+	// names none of it.
+	failed := edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err)
+	if retrySec, ok := detectRateLimit_internal(res.Stderr); ok {
+		c.mu.Lock()
+		c.restTill = c.cfg.Now() + retrySec
+		c.mu.Unlock()
+		return res.Stdout, res.Stderr, &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.RestedUntil(), Reason: failed.Error()}
 	}
-	if !res.OK() {
-		return res.Stdout, res.Stderr, fmt.Errorf("gh %s exited %d: %s", strings.Join(argv, " "), res.ExitCode, strings.TrimSpace(res.Stderr))
-	}
-	return res.Stdout, res.Stderr, nil
+	return res.Stdout, res.Stderr, failed
 }
 
 func detectRateLimit_internal(s string) (int64, bool) {
@@ -229,7 +230,7 @@ func (c *Client) PR(ctx context.Context, repo, head, base string) (PRInfo, bool,
 	}
 	var prs []PRInfo
 	if err := json.Unmarshal([]byte(stdout), &prs); err != nil {
-		return PRInfo{}, false, fmt.Errorf("forge: decode pr list: %w", err)
+		return PRInfo{}, false, fmt.Errorf("forge: decode gh pr list --json: %s", edge.ParseFailure(err, []byte(stdout)))
 	}
 	if len(prs) == 0 {
 		return PRInfo{}, false, nil
@@ -247,8 +248,11 @@ func (c *Client) OpenPR(ctx context.Context, repo, head, base, title, body strin
 		return PRInfo{}, err
 	}
 	pr, ok, err := c.PR(ctx, repo, head, base)
-	if err != nil || !ok {
-		return PRInfo{}, fmt.Errorf("forge: opened PR for %s -> %s on %s but could not find it: %v", head, base, repo, err)
+	if err != nil {
+		return PRInfo{}, fmt.Errorf("forge: opened PR for %s -> %s on %s but could not find it: %w", head, base, repo, err)
+	}
+	if !ok {
+		return PRInfo{}, fmt.Errorf("forge: opened PR for %s -> %s on %s but gh pr list shows no open PR for it", head, base, repo)
 	}
 	return pr, nil
 }
@@ -308,7 +312,7 @@ type gqlChecksEnvelope struct {
 func (c *Client) parseChecksGraphQL_internal(ctx context.Context, owner, name, raw string, shas []string) (map[string]CheckRollup, error) {
 	var env gqlChecksEnvelope
 	if err := json.Unmarshal([]byte(raw), &env); err != nil {
-		return nil, fmt.Errorf("forge: decode graphql checks: %w", err)
+		return nil, fmt.Errorf("forge: decode gh api graphql checks: %s", edge.ParseFailure(err, []byte(raw)))
 	}
 	out := make(map[string]CheckRollup, len(shas))
 	for i, sha := range shas {
@@ -341,7 +345,7 @@ func (c *Client) fetchMoreContexts_internal(ctx context.Context, owner, name, sh
 	}
 	var env gqlChecksEnvelope
 	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
-		return nil, gqlPageInfo{}, err
+		return nil, gqlPageInfo{}, fmt.Errorf("forge: decode gh api graphql check contexts after %s: %s", cursor, edge.ParseFailure(err, []byte(stdout)))
 	}
 	if commit := env.Data.Repository["c0"]; commit != nil && commit.StatusCheckRollup != nil {
 		return commit.StatusCheckRollup.Contexts.Nodes, commit.StatusCheckRollup.Contexts.PageInfo, nil
@@ -416,7 +420,7 @@ func (c *Client) Merge(ctx context.Context, repo string, pr int, sha, base strin
 	}
 	var info PRInfo
 	if err := json.Unmarshal([]byte(stdout), &info); err != nil {
-		return fmt.Errorf("forge: decode pr view: %w", err)
+		return fmt.Errorf("forge: decode gh pr view --json: %s", edge.ParseFailure(err, []byte(stdout)))
 	}
 	switch {
 	case info.BaseRef != base:

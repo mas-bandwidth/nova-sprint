@@ -144,7 +144,10 @@ func ReadJobRecord(jobDir string) (JobRecord, error) {
 	if err != nil {
 		return rec, err
 	}
-	return rec, json.Unmarshal(data, &rec)
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return rec, fmt.Errorf("job record %s: %s", filepath.Join(filepath.Base(jobDir), "job.json"), edge.ParseFailure(err, data))
+	}
+	return rec, nil
 }
 func TailBytes(b []byte, max int) string {
 	if max = cmp.Or(max, MaxReasonBytes); len(b) > max {

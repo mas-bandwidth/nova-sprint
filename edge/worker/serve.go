@@ -63,7 +63,9 @@ func Serve(ctx context.Context, c Config, out func(string)) error {
 	proxy := &KeyProxy{DefaultRoute: "provider", Routes: map[string]ProxyRoute{}}
 	if c.ProviderUpstream != "" {
 		proxy.Routes["provider"] = ProxyRoute{Name: "provider", UpstreamURL: c.ProviderUpstream, AllowedHosts: c.ProviderHosts,
-			Key: func() string { return ReadProviderKey(ex, cmp.Or(c.SecretsBin, "nova-secrets"), c.ProviderKey) }}
+			Key: func() (string, error) {
+				return ReadProviderKey(ex, cmp.Or(c.SecretsBin, "nova-secrets"), c.ProviderKey)
+			}}
 	}
 	srv, proxyAddr, err := proxy.ListenLoopback("127.0.0.1:0")
 	if err != nil {
