@@ -76,7 +76,7 @@ func TestFakeRaces(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 	h.seed()
-	h.ok(h.op("ready", nil, PutRow{Name: "w1", Session: "sess-a"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
+	h.ok(h.op("ready", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
 		"deal": {h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u1", "working"}, SetRowFlaps{"w1", 1}), h.op("deal", []Expect{RowGen{"w1", 1}}, SetCardState{"u2", "working"}, SetRowFlaps{"w1", 2})}, // the row gen fences a deal; width is the roster's (round 22)

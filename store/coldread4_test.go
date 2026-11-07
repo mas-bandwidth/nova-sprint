@@ -59,7 +59,7 @@ func cr4Scenario(h *harness) []string {
 	w("B1 working", nil, SetCardState{"B1", "working"})
 	w("a1 working beside it", nil, SetCardState{"a1", "working"})
 	w("a1 same state", nil, SetCardState{"a1", "working"})
-	w("put row keeps them working", nil, PutRow{Name: "r2", Session: "s2"})
+	w("put row keeps them working", nil, PutRow{Name: "r2", Session: "s2", Role: "worker"})
 	w("r3 and a heavy consumer working on it", nil, PutRow{Name: "r3"},
 		PutCard{Tier: "heavy", Kind: "work", ID: "w3", Of: "ph", Stream: "s1", Holder: "r3"}, SetCardState{"w3", "working"})
 	w("consumer on a row that does not exist", nil, PutCard{Tier: "heavy", Kind: "work", ID: "w4", Of: "ph", Stream: "s1", Holder: "r9"})

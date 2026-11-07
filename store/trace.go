@@ -39,9 +39,10 @@ import (
 //   - A consumer's tier: the model takes its producer's at add and ignores
 //     the write's; the store refuses one that differs. A walk sends the
 //     producer's.
-//   - Row session, flaps and reason, and the writes on them (SetRowSession,
-//     SetRowFlaps): TraceOp refuses those writes; PutRow's session is
-//     dropped. A row has no kind, width, tiers, model or harness in the
+//   - Row flaps and reason, and the write on them (SetRowFlaps): TraceOp
+//     refuses it. A row's session and role (the hook, PutRow) are projected
+//     as sess and role; a walk's sessions are the model's (x, y).
+//   - The stop's reason: only Stopped is projected (SetStopped's flag). A row has no kind, width, tiers, model or harness in the
 //     store or the model since round 22: they are the roster's.
 //   - Judgement kind, about, question, command, group, deadline, answer,
 //     actor and times: only the state is projected; a close before
@@ -59,6 +60,7 @@ type ModelState struct {
 	Judgements map[string]string // open, answered or expired
 	Cursors    map[string]int64
 	Policies   map[int]string // version -> body
+	Stopped    bool           // the sprint's stop (its reason is not projected)
 }
 
 // ModelCard is Store.tla's card record: [state, gen, holder, needs, kind,
@@ -70,11 +72,13 @@ type ModelCard struct {
 	Red                             bool
 }
 
-// ModelRow is Store.tla's row record: [state, gen, held].
+// ModelRow is Store.tla's row record: [state, gen, held, sess, role]. Sess
+// and Role are "-" (None) when the row is not hooked.
 type ModelRow struct {
-	State string
-	Gen   int
-	Held  bool
+	State      string
+	Gen        int
+	Held       bool
+	Sess, Role string
 }
 
 // TraceState is the refinement mapping of the store's state: the snapshot
@@ -88,7 +92,7 @@ func TraceState(s Snapshot, policies []PolicyVersion) ModelState {
 			Kind: c.Kind, Prod: orDash(c.Of, "-"), Tier: c.Tier, Red: c.Red}
 	}
 	for n, r := range s.Rows {
-		m.Rows[n] = ModelRow{State: r.State, Gen: r.Gen, Held: r.Held}
+		m.Rows[n] = ModelRow{State: r.State, Gen: r.Gen, Held: r.Held, Sess: orDash(r.Session, "-"), Role: orDash(r.Role, "-")}
 	}
 	for id, j := range s.Judgements {
 		m.Judgements[id] = j.State
@@ -99,6 +103,7 @@ func TraceState(s Snapshot, policies []PolicyVersion) ModelState {
 	for _, p := range policies {
 		m.Policies[p.Version] = p.Body
 	}
+	m.Stopped = s.Stopped
 	return m
 }
 
@@ -200,7 +205,9 @@ func traceWrite(w Write) (ModelWrite, error) {
 	case SetCardRed:
 		x.K, x.C, x.W = "setRed", v.Card, flag(v.Red)
 	case PutRow:
-		x.K, x.R = "putRow", v.Name
+		x.K, x.R, x.S, x.Kd = "putRow", v.Name, orDash(v.Session, "-"), orDash(v.Role, "-")
+	case SetStopped:
+		x.K, x.W = "setStopped", flag(v.Stopped)
 	case SetRowState:
 		x.K, x.R, x.S = "setRowState", v.Row, v.State
 	case SetRowHeld:

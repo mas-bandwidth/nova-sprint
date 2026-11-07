@@ -189,8 +189,8 @@ func TestFunctionalMigrateRound21(t *testing.T) {
 	want.Owner = "nova"
 	assert.Equal(t, want, id)
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
-	assert.Equal(t, Row{Name: "w1", State: "up", Session: "sess", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept")
-	h.ok(h.op("put", nil, PutRow{Name: "w1", Session: "sess-2"}))
+	assert.Equal(t, Row{Name: "w1", State: "up", Session: "sess", Role: "worker", Flaps: 2, Held: true, Gen: 3, Reason: "why"}, h.snap().Rows["w1"], "the row's sprint state is kept")
+	h.ok(h.op("put", nil, PutRow{Name: "w1", Session: "sess-2", Role: "worker"}))
 	assert.Equal(t, "working", h.snap().Cards["u1"].State)
 }
 
@@ -341,7 +341,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
-	h.ok(h.op("wide", nil, PutRow{Name: "w1", Session: "sess-a"})) // room for every take: the take checks width
+	h.ok(h.op("wide", nil, PutRow{Name: "w1", Session: "sess-a", Role: "worker"})) // room for every take: the take checks width
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
 		h.ok(h.op("add", nil, PutCard{Tier: "pro", Kind: "work", ID: id, Of: "c1", Stream: "s1", Holder: "w1"}))

@@ -16,9 +16,9 @@ TOps == [
 ]
 
 TraceLog == <<
-  [i |-> 1, action |-> "Init", epoch |-> 1, cards |-> <<>>, rows |-> <<>>, judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>],
-  [i |-> 2, action |-> "Apply", op |-> "o1", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> ("p1" :> [state |-> "waiting", gen |-> 0, holder |-> "none", needs |-> {}, kind |-> "producer", prod |-> "-", tier |-> "pro", red |-> FALSE]), rows |-> ("r1" :> [state |-> "up", gen |-> 0, held |-> FALSE]), judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>],
-  [i |-> 3, action |-> "Apply", op |-> "o2", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> <<>>, rows |-> ("r1" :> [state |-> "up", gen |-> 1, held |-> TRUE]), judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>],
-  [i |-> 4, action |-> "Apply", op |-> "o3", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> ("u1" :> [state |-> "working", gen |-> 0, holder |-> "r1", needs |-> {}, kind |-> "work", prod |-> "p1", tier |-> "pro", red |-> FALSE]), rows |-> <<>>, judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>]
+  [i |-> 1, action |-> "Init", epoch |-> 1, cards |-> <<>>, rows |-> <<>>, judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>, stopped |-> FALSE],
+  [i |-> 2, action |-> "Apply", op |-> "o1", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> ("p1" :> [state |-> "waiting", gen |-> 0, holder |-> "none", needs |-> {}, kind |-> "producer", prod |-> "-", tier |-> "pro", red |-> FALSE]), rows |-> ("r1" :> [state |-> "up", gen |-> 0, held |-> FALSE, sess |-> "-", role |-> "-"]), judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>, stopped |-> FALSE],
+  [i |-> 3, action |-> "Apply", op |-> "o2", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> <<>>, rows |-> ("r1" :> [state |-> "up", gen |-> 1, held |-> TRUE, sess |-> "-", role |-> "-"]), judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>, stopped |-> FALSE],
+  [i |-> 4, action |-> "Apply", op |-> "o3", known |-> TRUE, accepted |-> TRUE, epoch |-> 1, cards |-> ("u1" :> [state |-> "working", gen |-> 0, holder |-> "r1", needs |-> {}, kind |-> "work", prod |-> "p1", tier |-> "pro", red |-> FALSE]), rows |-> <<>>, judgements |-> <<>>, cursors |-> <<>>, policies |-> <<>>, stopped |-> FALSE]
 >>
 ====

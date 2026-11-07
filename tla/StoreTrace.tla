@@ -55,6 +55,7 @@ LoggedInit(r) ==
   /\ \A j \in Judgements : judgements[j] = Upd(r.judgements, Empty.judgements, j)
   /\ \A x \in Cursors    : cursors[x] = Upd(r.cursors, Empty.cursors, x)
   /\ \A v \in Versions   : policies[v] = Upd(r.policies, Empty.policies, v)
+  /\ stopped = r.stopped
 
 LoggedNext(r) ==
   /\ epoch' = r.epoch
@@ -63,6 +64,7 @@ LoggedNext(r) ==
   /\ \A j \in Judgements : judgements'[j] = Upd(r.judgements, judgements, j)
   /\ \A x \in Cursors    : cursors'[x] = Upd(r.cursors, cursors, x)
   /\ \A v \in Versions   : policies'[v] = Upd(r.policies, policies, v)
+  /\ stopped' = r.stopped
   /\ Has(r, "accepted") =>
        \E k \in DOMAIN events' : events'[k].id = r.op /\ events'[k].accepted = r.accepted
 

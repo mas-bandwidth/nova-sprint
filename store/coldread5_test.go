@@ -62,7 +62,6 @@ func cr5Scenario(h *harness) []string {
 	w("flaps same", nil, SetRowFlaps{"w1", 0})
 	w("score same", nil, SetCardScore{"c1", 10})
 	w("attempt same", nil, SetCardAttempt{"c1", 0})
-	w("session same", nil, SetRowSession{"w1", "sess-a"})
 	w("state same after a change in one op", nil, SetCardReason{"c1", "r"}, SetCardState{"c1", "waiting"})
 	w("reason same after add in one op", nil, PutCard{Tier: "pro", Kind: "producer", ID: "p9", Stream: "s1"}, SetCardReason{"p9", ""})
 	w("open j1", nil, PutJudgement{ID: "j1", Kind: "red"})
@@ -110,7 +109,6 @@ var cr5Want = map[string]string{
 	"held same":                           "refused: row w1 is already not held",
 	"score same":                          "refused: card c1 already has the given score",
 	"attempt same":                        "refused: card c1 already has the given attempt",
-	"session same":                        "refused: row w1 already has the given session",
 	"answer j1 the same again":            "refused: judgement j1 is answered; only an open judgement can be answered",
 	"put card with no stream":             "invalid: ",
 	"put card with an empty need":         "invalid: ",

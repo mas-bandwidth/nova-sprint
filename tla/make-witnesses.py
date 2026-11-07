@@ -19,7 +19,7 @@ INVARIANTS = [
     "IdempotentById", "AppliedIsLog", "LogMatchesState", "OpsInTheirEpoch",
     "ConditionsAtomic", "NoChangeOnRefusal", "NoSpuriousRefusal", "GenPerOp",
     "ClearCarriesRows", "JudgementClosedOnce", "CursorMonotone", "CursorWithinLog",
-    "LogAppendOnly", "PolicyImmutable", "ReceiptMatches", "RedOnlyOnProducers",
+    "LogAppendOnly", "PolicyImmutable", "ReceiptMatches", "RedOnlyOnProducers", "HookKept",
 ]
 
 # The passing runs: cfg name -> Scenario.
@@ -43,6 +43,10 @@ REACH = {
     "NeverRedKindRefused": ("deal", "a red write on a consumer (s15) and on a sentinel (s16) is refused"),
     "NeverSameRedRefused": ("deal", "a red write equal to the producer's flag is refused (s17)"),
     "NeverRowFenced": ("deal", "a row write is refused on a stale RowGen (e1)"),
+    "NeverHookRefused": ("deal", "a hook by another session while one holds the row is refused (s18)"),
+    "NeverRehooked": ("deal", "an unhooked row is hooked by another session as coordinator (s19, s20)"),
+    "NeverDealtStopped": ("deal", "a deal lands while the sprint is stopped (s21, a1)"),
+    "NeverSameStopRefused": ("deal", "a stop write equal to the sprint's stop is refused (s22)"),
     "NeverAnswered": ("records", "a judgement is answered (h1 or h2)"),
     "NeverJudgementFenced": ("records", "a second close of a judgement is refused on JudgementOpen"),
     "NeverCursorRefused": ("records", "a cursor write below the current value is refused (m2)"),
@@ -59,8 +63,8 @@ STALE_INFRA = [
     (r"  lost        \* op id -> transport failures so far (bounded by MaxLoss)",
      "  lost,       \\* op id -> transport failures so far (bounded by MaxLoss)\n"
      "  snap        \\* op id -> the state its transaction read at Begin (FAULT)", 1),
-    ("vars == <<epoch, cards, rows, judgements, cursors, policies, events, ledger, applied, phase, receipt, lost>>",
-     "vars == <<epoch, cards, rows, judgements, cursors, policies, events, ledger, applied, phase, receipt, lost, snap>>", 1),
+    ("vars == <<epoch, cards, rows, judgements, cursors, policies, stopped, events, ledger, applied, phase, receipt, lost>>",
+     "vars == <<epoch, cards, rows, judgements, cursors, policies, stopped, events, ledger, applied, phase, receipt, lost, snap>>", 1),
     (r"  /\ lost       = [o \in OpIds |-> 0]",
      "  /\\ lost       = [o \\in OpIds |-> 0]\n  /\\ snap       = [o \\in OpIds |-> Empty]", 1),
     ("  /\\ UNCHANGED <<store, events, ledger, applied, lost>>",
@@ -71,11 +75,11 @@ STALE_INFRA = [
      "      \\* FAULT: the op is judged with the snapshot its Begin read.\n"
      "      out  == Outcome([epoch |-> pre.epoch, cards |-> pre.cards, rows |-> pre.rows,\n"
      "                       judgements |-> pre.judgements, cursors |-> pre.cursors,\n"
-     "                       policies |-> pre.policies,\n"
+     "                       policies |-> pre.policies, stopped |-> pre.stopped,\n"
      "                       sn |-> snap[o], p0 |-> pre], o, Len(events))\n"
      "      post == [epoch |-> out.st.epoch, cards |-> out.st.cards, rows |-> out.st.rows,\n"
      "               judgements |-> out.st.judgements, cursors |-> out.st.cursors,\n"
-     "               policies |-> out.st.policies]\n", 1),
+     "               policies |-> out.st.policies, stopped |-> out.st.stopped]\n", 1),
     ("          /\\ lost'    = IF res = \"unknown\" THEN [lost EXCEPT ![o] = @ + 1] ELSE lost\n",
      "          /\\ lost'    = IF res = \"unknown\" THEN [lost EXCEPT ![o] = @ + 1] ELSE lost\n"
      "     /\\ UNCHANGED snap\n", 1),
@@ -137,6 +141,7 @@ WITNESSES = [
        "     /\\ judgements' = out.st.judgements\n"
        "     /\\ cursors'    = out.st.cursors\n"
        "     /\\ policies'   = out.st.policies\n"
+       "     /\\ stopped'    = out.st.stopped\n"
        "     /\\ events'  = Append(events, ev)\n"
        "     /\\ ledger'  = Append(ledger, ev)\n"
        "     /\\ phase'   = [phase EXCEPT ![o] = \"done\"]\n"
@@ -190,6 +195,19 @@ WITNESSES = [
        "  /\\ (w.k = \"setState\" /\\ w.s = \"working\" /\\ st.cards[w.c].holder # NoHolder)\n"
        "       => ~\\E x \\in Cards \\ {w.c} : /\\ st.cards[x].holder = st.cards[w.c].holder\n"
        "                                   /\\ st.cards[x].state = \"working\"\n", 1)]),
+    ("StoreHookStolen", "HookKept", "deal",
+     "Put row takes any session, whatever session holds the row: s18\n"
+     "hooks r2 by y while x holds it and is accepted.",
+     [("    [] w.k = \"putRow\"      -> ~(/\\ st.rows[w.r].state # Absent\n"
+       "                                /\\ st.rows[w.r].sess # None\n"
+       "                                /\\ w.s # None\n"
+       "                                /\\ w.s # st.rows[w.r].sess)\n",
+       "    [] w.k = \"putRow\"      -> TRUE   \\* FAULT: no session check\n", 1)]),
+    ("StoreStopDropped", "ClearCarriesRows", "deal",
+     "A clear does not keep the sprint's stop: after s21 stops it, k1\n"
+     "opens epoch 2 running.",
+     [("   policies |-> st.policies,\n   stopped |-> st.stopped]",
+       "   policies |-> st.policies,\n   stopped |-> FALSE]   \\* FAULT: the stop is not carried", 1)]),
     ("StoreJudgementTwice", "JudgementClosedOnce", "records",
      "Answer and expire refuse only an absent judgement, not a closed one:\n"
      "h1 answers j1, and h2, which carries no JudgementOpen fence, answers\n"

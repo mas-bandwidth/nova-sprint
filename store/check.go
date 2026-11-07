@@ -154,6 +154,19 @@ func (c *checker) oneOf(what, v string, set []string) *checker {
 	return c
 }
 
+// hook is a row's hook: session and role both set, the role one of
+// RowRoles, or both "" (unhooked).
+func (c *checker) hook(session, role string) *checker {
+	switch {
+	case session == "" && role == "":
+	case session == "" || role == "":
+		c.fail("a hook with session %q and role %q; set both, or neither to unhook", session, role)
+	default:
+		c.oneOf("row role", role, RowRoles)
+	}
+	return c
+}
+
 // key is the id or name a condition or write is about: never empty, so a
 // reason never names nothing ("card  does not exist").
 func (c *checker) key(table, k string) *checker {
