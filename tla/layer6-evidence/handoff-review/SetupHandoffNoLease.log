@@ -1,0 +1,327 @@
+TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)
+Running breadth-first search Model-Checking with fp 5 and seed -1191302959963382942 with 2 workers on 64 cores with 981MB heap and 64MB offheap memory [pid: 248950] (Linux 7.0.0-43-generic amd64, Eclipse Adoptium 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/glenn/jobs/stella-v2-l6-handoff-model-20261106/tla/SetupHandoffNoLease.tla
+Parsing file /home/glenn/jobs/stella-v2-l6-handoff-model-20261106/tla/layer6-evidence/handoff-aligned/SetupHandoffNoLease-tmp/tlc-16724345917664511173/Naturals.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file /home/glenn/jobs/stella-v2-l6-handoff-model-20261106/tla/layer6-evidence/handoff-aligned/SetupHandoffNoLease-tmp/tlc-16724345917664511173/FiniteSets.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file /home/glenn/jobs/stella-v2-l6-handoff-model-20261106/tla/layer6-evidence/handoff-aligned/SetupHandoffNoLease-tmp/tlc-16724345917664511173/Sequences.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Sequences.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module SetupHandoffNoLease
+Linting of module SetupHandoffNoLease
+Starting... (2026-11-07 01:01:20)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-07 01:01:23.
+Error: Invariant EffectsOrdered is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ exposed = {}
+/\ recordOrder = TRUE
+/\ record = "absent"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = FALSE
+/\ crashes = 0
+/\ credential = FALSE
+/\ seat = "admin"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "pre1"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 2: <Prefix1 line 45, col 3 to line 47, col 213 of module SetupHandoffNoLease>
+/\ exposed = {}
+/\ recordOrder = TRUE
+/\ record = "absent"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = FALSE
+/\ crashes = 0
+/\ credential = FALSE
+/\ seat = "admin"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "acquire1"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 3: <Acquire1 line 49, col 3 to line 52, col 206 of module SetupHandoffNoLease>
+/\ exposed = {}
+/\ recordOrder = TRUE
+/\ record = "absent"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = FALSE
+/\ crashes = 0
+/\ credential = FALSE
+/\ seat = "admin"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "credential"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "ours"
+
+State 4: <SaveCredential line 54, col 3 to line 57, col 201 of module SetupHandoffNoLease>
+/\ exposed = {}
+/\ recordOrder = TRUE
+/\ record = "absent"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = FALSE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "admin"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "schema"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "ours"
+
+State 5: <SaveSchema line 59, col 3 to line 62, col 205 of module SetupHandoffNoLease>
+/\ exposed = {}
+/\ recordOrder = TRUE
+/\ record = "absent"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "admin"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "record"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "ours"
+
+State 6: <SaveRecord line 64, col 3 to line 69, col 179 of module SetupHandoffNoLease>
+/\ exposed = {}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "admin"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "release"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "ours"
+
+State 7: <Release line 71, col 3 to line 75, col 197 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "admin"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "gap"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 8: <Launch2 line 81, col 3 to line 87, col 181 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "sprint"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "prevalidate"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 9: <Prevalidate line 142, col 3 to line 144, col 213 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = FALSE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "sprint"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "pre2"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 10: <Prefix2 line 89, col 3 to line 92, col 205 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = TRUE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "sprint"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "acquire2"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 11: <Acquire2 line 94, col 3 to line 97, col 206 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = FALSE
+/\ epoch = 0
+/\ prefix = TRUE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "sprint"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "validate"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 12: <Validate line 104, col 3 to line 108, col 185 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = TRUE
+/\ epoch = 0
+/\ prefix = TRUE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "sprint"
+/\ validationOrder = TRUE
+/\ fresh = FALSE
+/\ pc = "verify2"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 13: <Verify2 line 99, col 3 to line 102, col 206 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = TRUE
+/\ epoch = 0
+/\ prefix = TRUE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "sprint"
+/\ validationOrder = TRUE
+/\ fresh = TRUE
+/\ pc = "effects"
+/\ reuses = 0
+/\ effectOrder = TRUE
+/\ binding = TRUE
+/\ attemptEffect = FALSE
+/\ lease = "free"
+
+State 14: <Effect line 110, col 3 to line 116, col 169 of module SetupHandoffNoLease>
+/\ exposed = {"status", "id"}
+/\ recordOrder = TRUE
+/\ record = "setup"
+/\ validated = TRUE
+/\ epoch = 0
+/\ prefix = TRUE
+/\ recordEpoch = 0
+/\ recordSurvives = TRUE
+/\ schema = TRUE
+/\ crashes = 0
+/\ credential = TRUE
+/\ seat = "sprint"
+/\ validationOrder = TRUE
+/\ fresh = TRUE
+/\ pc = "done"
+/\ reuses = 0
+/\ effectOrder = FALSE
+/\ binding = TRUE
+/\ attemptEffect = TRUE
+/\ lease = "free"
+
+423 states generated, 228 distinct states found, 17 states left on queue.
+The depth of the complete state graph search is 15.
+Finished in 03s at (2026-11-07 01:01:23)
