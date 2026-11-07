@@ -251,6 +251,7 @@ type State struct {
 	Judgements map[string]Judgement  `json:"judgements,omitempty"`
 	Cursors    map[string]int64      `json:"cursors,omitempty"`
 	Stop       *Stop                 `json:"stop,omitempty"`
+	Identity   *Identity             `json:"identity,omitempty"`
 }
 
 // Stop is the sprint's stop: one value for the whole store, as the epoch
@@ -261,6 +262,20 @@ type Stop struct {
 	Stopped bool   `json:"stopped"`
 	Reason  string `json:"reason"`
 }
+
+// Identity is the git identity every commit of the sprint is authored and
+// committed under (round 24): one value for the whole store, as the stop
+// is, kept by a clear. A repository's contributor agreement keys off the
+// forge account, so every agent, friend and bench worker commits as one
+// account on the agreement's allowlist and names itself only in the
+// message. The zero value is not set. SetIdentity is its one write.
+type Identity struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// Set is whether the identity has been written.
+func (i Identity) Set() bool { return i.Name != "" && i.Email != "" }
 
 // NeverStarted is a fresh store's stop reason: a store begins stopped, and
 // nothing moves until the coordinator's first `nova-sprint start` (Glenn,
@@ -321,8 +336,9 @@ type Snapshot struct {
 	Rows       map[string]Row
 	Judgements map[string]Judgement
 	Cursors    map[string]int64
-	Stopped    bool   // the sprint is stopped (Stop)
-	StopReason string // why it was stopped or started again
+	Stopped    bool     // the sprint is stopped (Stop)
+	StopReason string   // why it was stopped or started again
+	Identity   Identity // the git identity the sprint commits as; zero when not set
 }
 
 func emptySnapshot(epoch int) Snapshot {
@@ -345,8 +361,8 @@ func freshSnapshot() Snapshot {
 // Fold lays events, in seq order, over s, the snapshot before them, and
 // returns the snapshot after them (s's maps are reused): a clear empties the
 // streams, cards, rows and judgements (its after-image carries the rows) and
-// keeps the cursors, which are global as seq is, the stop and the active
-// policy; every other accepted event lays its after-images over them, the
+// keeps the cursors, which are global as seq is, the stop, the identity
+// and the active policy; every other accepted event lays its after-images over them, the
 // active version included. It is the one fold: Rebuild, run's copy (layer 6)
 // and the trace checks all call it, so none can drift from the store.
 func Fold(s Snapshot, events []Event) Snapshot {
@@ -358,10 +374,13 @@ func Fold(s Snapshot, events []Event) Snapshot {
 		if e.After.Epoch != 0 {
 			keep := s
 			s = emptySnapshot(e.After.Epoch)
-			s.Seq, s.Cursors, s.Stopped, s.StopReason, s.Policy = keep.Seq, keep.Cursors, keep.Stopped, keep.StopReason, keep.Policy
+			s.Seq, s.Cursors, s.Stopped, s.StopReason, s.Policy, s.Identity = keep.Seq, keep.Cursors, keep.Stopped, keep.StopReason, keep.Policy, keep.Identity
 		}
 		if e.After.Stop != nil {
 			s.Stopped, s.StopReason = e.After.Stop.Stopped, e.After.Stop.Reason
+		}
+		if e.After.Identity != nil {
+			s.Identity = *e.After.Identity
 		}
 		overlay(s.Streams, e.After.Streams)
 		overlay(s.Cards, e.After.Cards)

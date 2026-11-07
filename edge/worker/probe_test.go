@@ -361,15 +361,29 @@ func TestStagePerStreamRepo(t *testing.T) {
 		return edge.FakeOutcome{}
 	})
 	g := &OSGitOps{WorkRoot: filepath.Join(roots, "clones"), MirrorRoot: filepath.Join(roots, "mirror"), Exec: fx}
-	j := Job{Repo: "o/r", Forge: "github", Kind: "work", Branch: "sprint/s/p1", BaseSHA: strings.Repeat("b", 40), WorktreeDir: filepath.Join(roots, "job", "repo")}
+	j := Job{Repo: "o/r", Forge: "github", Kind: "work", Branch: "sprint/s/p1", BaseSHA: strings.Repeat("b", 40), WorktreeDir: filepath.Join(roots, "job", "repo"), Consumer: "p1.w1"}
+	if _, err := g.StageWorktree(context.Background(), j); err == nil || !strings.Contains(err.Error(), "p1.w1 has no commit identity in its receipt") {
+		t.Fatalf("a job with no identity is staged: %v", err)
+	}
+	j.CommitName, j.CommitEmail = testCommitName, testCommitEmail
+	if err := os.RemoveAll(roots); err != nil {
+		t.Fatal(err)
+	}
+	before := len(fx.Calls())
 	if _, err := g.StageWorktree(context.Background(), j); err != nil {
 		t.Fatal(err)
 	}
-	var clones []string
-	for _, c := range fx.Calls() {
-		if c.Cmd.Argv[5] == "clone" {
+	var clones, config []string
+	for _, c := range fx.Calls()[before:] {
+		switch c.Cmd.Argv[5] {
+		case "clone":
 			clones = append(clones, strings.Join(c.Cmd.Argv[5:], " "))
+		case "config":
+			config = append(config, strings.Join(c.Cmd.Argv[6:], " "))
 		}
+	}
+	if strings.Join(config, ";") != "user.name "+testCommitName+";user.email "+testCommitEmail {
+		t.Fatalf("the job's clone is configured as %q, not the sprint's identity", config)
 	}
 	mirror, work := filepath.Join(roots, "mirror", "r.git"), filepath.Join(roots, "clones", "r")
 	if len(clones) != 3 || clones[0] != "clone --quiet --mirror https://github.com/o/r.git "+mirror ||

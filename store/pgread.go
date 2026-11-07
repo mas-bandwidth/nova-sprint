@@ -112,7 +112,7 @@ func (p *PG) Snapshot(ctx context.Context) (Snapshot, error) {
 func snapshotTx(ctx context.Context, tx pgx.Tx) (Snapshot, error) {
 	var s Snapshot
 	err := tx.QueryRow(ctx, `SELECT n, (SELECT coalesce(max(version), 0) FROM sprint.policy WHERE active),
-		(SELECT coalesce(max(seq), 0) FROM sprint.events), stopped, stop_reason FROM sprint.epoch WHERE id = 1`).Scan(&s.Epoch, &s.Policy, &s.Seq, &s.Stopped, &s.StopReason)
+		(SELECT coalesce(max(seq), 0) FROM sprint.events), stopped, stop_reason, commit_name, commit_email FROM sprint.epoch WHERE id = 1`).Scan(&s.Epoch, &s.Policy, &s.Seq, &s.Stopped, &s.StopReason, &s.Identity.Name, &s.Identity.Email)
 	if err != nil {
 		return s, err
 	}
@@ -333,6 +333,17 @@ func (t *pgTx) putStop(s Stop) error {
 	return err
 }
 
+func (t *pgTx) identity() (Identity, error) {
+	var i Identity
+	err := t.tx.QueryRow(t.ctx, "SELECT commit_name, commit_email FROM sprint.epoch WHERE id = 1").Scan(&i.Name, &i.Email)
+	return i, err
+}
+
+func (t *pgTx) putIdentity(i Identity) error {
+	_, err := t.tx.Exec(t.ctx, "UPDATE sprint.epoch SET commit_name = $1, commit_email = $2 WHERE id = 1", i.Name, i.Email)
+	return err
+}
+
 func (t *pgTx) cursor(name string) (int64, bool, error) {
 	c, ok, err := one(t.tx.QueryRow(t.ctx, "SELECT name, seq FROM sprint.cursors WHERE name = $1", name), scanCursor)
 	return c.seq, ok, err
@@ -403,6 +414,10 @@ func (s *State) clone() *State {
 	if s.Stop != nil {
 		stop := *s.Stop
 		c.Stop = &stop
+	}
+	if s.Identity != nil {
+		id := *s.Identity
+		c.Identity = &id
 	}
 	for k, v := range c.Cards {
 		v.Needs, v.After, v.Paths, v.DoneWhen = slices.Clone(v.Needs), slices.Clone(v.After), slices.Clone(v.Paths), slices.Clone(v.DoneWhen)

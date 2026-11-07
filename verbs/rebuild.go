@@ -5,7 +5,8 @@ import "github.com/mas-bandwidth/nova-sprint/store"
 // eventFold is store.Rebuild applied one event at a time; memory is bounded by
 // the current records and policy versions, not the length of the event log.
 // It starts from a fresh store (stopped, store.FreshStop) and folds the stop
-// as store.Fold does: kept by a clear, set by a stop or start's after-image.
+// as store.Fold does: kept by a clear, set by a stop or start's after-image;
+// the commit identity the same way.
 type eventFold struct {
 	snap     store.Snapshot
 	policies map[int]store.PolicyVersion
@@ -27,10 +28,13 @@ func (f *eventFold) add(e store.Event) {
 	if e.After.Epoch != 0 {
 		keep := f.snap
 		f.snap = emptyFoldSnapshot(e.After.Epoch)
-		f.snap.Seq, f.snap.Cursors, f.snap.Stopped, f.snap.StopReason = keep.Seq, keep.Cursors, keep.Stopped, keep.StopReason
+		f.snap.Seq, f.snap.Cursors, f.snap.Stopped, f.snap.StopReason, f.snap.Identity = keep.Seq, keep.Cursors, keep.Stopped, keep.StopReason, keep.Identity
 	}
 	if e.After.Stop != nil {
 		f.snap.Stopped, f.snap.StopReason = e.After.Stop.Stopped, e.After.Stop.Reason
+	}
+	if e.After.Identity != nil {
+		f.snap.Identity = *e.After.Identity
 	}
 	foldMap(f.snap.Streams, e.After.Streams)
 	foldMap(f.snap.Cards, e.After.Cards)

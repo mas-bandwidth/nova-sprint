@@ -19,8 +19,8 @@ func TestAgreementChecks(t *testing.T) {
 }
 
 // TestStreamAddWarnsOfAnAgreement: with a required agreement check, stream add
-// still adds the stream and prints a WARN naming the check and the identities
-// the benches commit as; check prints the same as a CHECK WARN; a repository
+// still adds the stream and prints a WARN naming the check and the one
+// identity every commit of the sprint is made as (or that none is set yet); check prints the same as a CHECK WARN; a repository
 // with no such check, or no forge, prints none; a forge that cannot be read
 // says so.
 func TestStreamAddWarnsOfAnAgreement(t *testing.T) {
@@ -29,7 +29,9 @@ func TestStreamAddWarnsOfAnAgreement(t *testing.T) {
 	runCases(t, []tcase{
 		{name: "an agreement check", as: "carol", args: add, exit: 0, prep: cla,
 			want: []string{"STREAM t repo=o/r base=main", `WARN stream t: o/r's main requires the check "Contributor Assignment Agreement"`,
-				"sign it for alice <alice@nova-sprint.local>, bob <bob@nova-sprint.local> before the first card lands", "kin commit as their own git identity"}},
+				"sign it for Sprint Bot <1+sprint-bot@users.noreply.example.test>, the identity every commit of the sprint is made as, before the first card lands"}},
+		{name: "an agreement and no identity yet", as: "carol", args: add, exit: 0, prep: cla, snap: func(s *store.Snapshot) { s.Identity = store.Identity{} },
+			want: []string{"sign it for the sprint's commit identity, which is not set yet (nova-sprint identity --name"}},
 		{name: "checks unreadable", as: "carol", args: add, exit: 0, prep: func(_ *testing.T, w *world) { w.forge.checkE = errBroken },
 			want: []string{"STREAM t", "WARN stream t: the checks o/r's main requires cannot be read (connection refused)", "sign it for the identities nova-sprint check lists"}},
 		{name: "check warns too", as: "carol", args: []string{"check"}, exit: 0, prep: then(healthy, cla),

@@ -232,6 +232,33 @@ func TestFunctionalMigrateRound22(t *testing.T) {
 	assert.Equal(t, "inception/mercury-3", h.snap().Cards["u2"].Model)
 }
 
+// Round 24: a store made by round 23's schema (round23Hash, a stopped
+// sprint in it) is upgraded by Migrate: the epoch row gains commit_name and
+// commit_email (empty: no identity), the new hash is recorded, the stop is
+// kept, and SetIdentity then sets it.
+func TestFunctionalMigrateRound23(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round23.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round23Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET stopped = true, stop_reason = 'pause' WHERE id = 1"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round23Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 23}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, []any{true, "pause", Identity{}}, []any{h.snap().Stopped, h.snap().StopReason, h.snap().Identity})
+	h.ok(h.op("set", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}))
+	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity)
+}
+
 func TestFunctionalMigrateRefusesOtherVersion(t *testing.T) {
 	t.Parallel()
 	_, p, dsn := pgHarness(t)

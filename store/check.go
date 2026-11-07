@@ -121,6 +121,14 @@ func (c *checker) name(ss ...string) *checker {
 	return c.text(ss...)
 }
 
+// given is what, every one of ss non-empty.
+func (c *checker) given(what string, ss ...string) *checker {
+	if slices.Contains(ss, "") {
+		c.fail("%s must not be empty", what)
+	}
+	return c
+}
+
 // num is an int that fits a PostgreSQL integer, none meaningful below 0.
 func (c *checker) num(what string, n int) *checker {
 	if n < 0 || n > math.MaxInt32 {

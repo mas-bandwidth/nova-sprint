@@ -139,7 +139,7 @@ func readyRead_internal() NextResponse {
 	return NextResponse{Epoch: 3, Row: "vision.ds", State: card.Up, Width: 1, Harness: "script", Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 2}}}
 }
 
-var okReadReceipt_internal = TakeInfo{Producer: "p1", Kind: "read", Stream: "s1", Tier: "flash", Epoch: 3, Attempt: 1, Head: strings.Repeat("a", 40), Model: "m1", Deadline: 900}
+var okReadReceipt_internal = TakeInfo{Producer: "p1", Kind: "read", Stream: "s1", Tier: "flash", Epoch: 3, Attempt: 1, Head: strings.Repeat("a", 40), Model: "m1", Deadline: 900, CommitName: testCommitName, CommitEmail: testCommitEmail}
 
 // ---- row 20: startup order and the wake loop -------------------------------
 
@@ -353,7 +353,7 @@ func TestStitchReceiptWithoutModelDeadlineForgeIsRefusedNamingTheFix(t *testing.
 func TestStitchReceiptWithAnEmptyForgeIsAHandStream(t *testing.T) {
 	t.Parallel()
 	cli := &CLISprintClient{Run: func(context.Context, []string) ([]byte, int, error) {
-		return []byte(`{"consumer":"p1.w1","model":"claude-x","deadline":2700,"forge":""}`), 0, nil
+		return []byte(`{"consumer":"p1.w1","model":"claude-x","deadline":2700,"forge":"","commit_name":"Sprint Bot","commit_email":"1+sprint-bot@users.noreply.example.test"}`), 0, nil
 	}}
 	info, err := cli.Take(context.Background(), "vision.ds", "p1.w1", 4)
 	if err != nil || info.Model != "claude-x" || info.Deadline != 2700 || info.Forge != "" {

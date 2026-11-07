@@ -141,6 +141,13 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	in := SetupInput{Actor: "alice", Dash: "tailnet", Services: "none"}
 	for round := 0; round < 2; round++ {
 		for step := 1; step <= 8; step++ {
+			if step == 7 && round == 0 { // no commit identity yet: up asks the human, and no act makes it true
+				check, err := r.Verify(ctx, step, in)
+				if err != nil || check.Verified || check.Action || !strings.Contains(check.Line, "ASK the human which forge account") {
+					t.Fatal(step, check, err)
+				}
+				setIdentity(t, db)
+			}
 			check, err := r.Verify(ctx, step, in)
 			if err != nil {
 				t.Fatal(step, err)

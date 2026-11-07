@@ -32,9 +32,10 @@ var schemaSQL string
 // upgrade path from version 1: a store at version 1 is refused like any
 // other version. Within version 2 there are three: a store made by round 16's
 // schema (round16Hash) or by round 17's, the one every round to 21 carried
-// (round21Hash), or by round 22's (round22Hash), is upgraded by Migrate
-// (round 17's red column, round 22's dropped row columns, round 23's model
-// column and row heartbeat columns).
+// (round21Hash), or by round 22's (round22Hash), or by round 23's
+// (round23Hash), is upgraded by Migrate (round 17's red column, round 22's
+// dropped row columns, round 23's model column and row heartbeat columns,
+// round 24's commit identity columns).
 const SchemaVersion = 2
 
 // round16Hash is the schema hash of round 16's schema.sql
@@ -58,6 +59,13 @@ const round21Hash = "cbe47774a69cf22749b6d414e1bc5689104820199313088df41975ef177
 // row heartbeat's four columns of sprint.rows, in Migrate's one transaction,
 // then the new hash is recorded.
 const round22Hash = "eb754483470ba67cfe6aa6c36646c19b4503a2fb10fd0344b3aa2fdff6a15b7e"
+
+// round23Hash is the schema hash of round 23's schema.sql
+// (testdata/schema-round23.sql): running schema.sql on it adds the epoch
+// row's commit_name and commit_email (empty on the one row: no identity set;
+// round 24, the identity every commit of the sprint is made as), in
+// Migrate's one transaction, then the new hash is recorded.
+const round23Hash = "e4d87e423396c701797836720e749b0d8ea81f8879cf2811f89275970a684b01"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
@@ -177,9 +185,10 @@ func (p *PG) Close() { p.pool.Close() }
 // any object of any kind in the namespace, which PostgreSQL records as a
 // pg_depend row on it (a relation, type, function, operator, collation, text
 // search object, operator family, ...). The other hashes it takes are
-// round16Hash, round21Hash and round22Hash: schema.sql adds cards.red to a round 16
+// round16Hash, round21Hash, round22Hash and round23Hash: schema.sql adds cards.red to a round 16
 // store, drops the five configuration columns of sprint.rows from either of the first two
-// (round 22) and adds cards.model and the row heartbeat's columns to all three (round 23), and the new hash is recorded, in the same transaction. When schema sprint already exists it
+// (round 22), adds cards.model and the row heartbeat's columns to the first three (round 23)
+// and the epoch row's commit identity to all four (round 24), and the new hash is recorded, in the same transaction. When schema sprint already exists it
 // skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
 // on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.

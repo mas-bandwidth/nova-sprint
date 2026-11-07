@@ -47,6 +47,8 @@ import (
 //   - Row flaps and reason, and the write on them (SetRowFlaps): TraceOp
 //     refuses it. A row's session and role (the hook, PutRow) are projected
 //     as sess and role; a walk's sessions are the model's (x, y).
+//   - The sprint's commit identity (SetIdentity, round 24): TraceOp refuses
+//     it; no store rule reads it, and a clear keeps it as it keeps the stop.
 //   - The stop's reason: only Stopped is projected (SetStopped's flag). A row has no kind, width, tiers, model or harness in the
 //     store or the model since round 22: they are the roster's (the tiers
 //     a worker advertises in its heartbeat are telemetry, above).

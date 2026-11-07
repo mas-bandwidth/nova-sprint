@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
+	"github.com/mas-bandwidth/nova-sprint/edge/worker"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/steps"
@@ -19,8 +20,8 @@ import (
 // (a friend's own; a bench's the active policy's bench model for the card's
 // tier, in provider/model form); take reads it from the consumer and never
 // invents one (defect 57). Deadline (seconds) is the active policy's
-// timeouts().consumer[tier], Forge the stream's; the worker holds none of
-// its own.
+// timeouts().consumer[tier], Forge the stream's, CommitName and CommitEmail
+// the sprint's; the worker holds none of its own.
 type takeReceipt struct {
 	Consumer  string   `json:"consumer"`
 	Producer  string   `json:"producer"`
@@ -46,6 +47,10 @@ type takeReceipt struct {
 	Model     string   `json:"model"`
 	Deadline  int      `json:"deadline"`
 	Forge     string   `json:"forge"`
+	// CommitName and CommitEmail are the sprint's commit identity
+	// (store.Identity): the worker writes them into the job's clone.
+	CommitName  string `json:"commit_name"`
+	CommitEmail string `json:"commit_email"`
 }
 
 // runTake is `take`: the row's acknowledgement of a card dealt to it. The
@@ -74,6 +79,9 @@ func runTake(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	c, err := heldBy(snap, ro, in.actor, id, gen)
 	if err != nil {
 		return "", err
+	}
+	if !snap.Identity.Set() {
+		return "", noIdentity()
 	}
 	if _, acked := snap.Cursors[steps.AckCursor(snap.Epoch, id)]; !acked {
 		if err := e.acknowledge(ctx, in.actor, snap, c, opID); err != nil {
@@ -161,7 +169,8 @@ func takenOutput(in *input, snap store.Snapshot, c store.Card, a policy.Answers)
 	t := takeReceipt{Consumer: c.ID, Producer: c.Of, Kind: c.Kind, Stream: c.Stream, Repo: s.Repo, Base: s.Base, Branch: c.Branch, Head: c.Head,
 		Tier: c.Tier, Brief: c.Brief, Prose: c.Prose, Finding: c.Finding, StreamRef: s.Base, BaseSHA: c.BaseSHA,
 		PriorHead: c.Prior, Paths: nonNil(c.Paths), DoneWhen: nonNil(c.DoneWhen), Epoch: snap.Epoch, Gen: c.Gen, Attempt: c.Attempt,
-		Review: c.Review, Model: c.Model, Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge}
+		Review: c.Review, Model: c.Model, Deadline: a.Timeouts.Consumer[c.Tier], Forge: s.Forge,
+		CommitName: snap.Identity.Name, CommitEmail: snap.Identity.Email}
 	if in.has("json") {
 		b, err := json.Marshal(t)
 		return string(b) + "\n", err
@@ -180,7 +189,7 @@ func takenText(t takeReceipt, row string) string {
 	if t.PriorHead != "" {
 		lines = append(lines, "continue from "+t.PriorHead+" (git fetch origin "+t.Branch+"); the finding: "+t.Finding)
 	}
-	lines = append(lines, t.Brief)
+	lines = append(lines, strings.TrimRight(worker.CommitRules(t.CommitName, t.CommitEmail), "\n"), t.Brief)
 	return done(fmt.Sprintf("nova-sprint finish %s --head <sha> --as %s --epoch %d", ref, row, t.Epoch), lines...)
 }
 

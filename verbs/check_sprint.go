@@ -21,6 +21,11 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 		return
 	}
 	heads := e.checkStreams(ctx, r, snap)
+	if line, f := identityCheck(snap); f != nil {
+		r.red(f)
+	} else {
+		r.ok("%s", line)
+	}
 	e.checkPolicy(ctx, r, snap)
 	e.checkCards(ctx, r, snap)
 	checkWorking(r, snap, who)

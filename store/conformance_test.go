@@ -48,6 +48,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"row held":                rowHeld,
 		"hook":                    hook,
 		"stop":                    stop,
+		"identity":                identity,
 		"stream settings":         streamSettings,
 		"lesson columns":          lessonColumns,
 		"review and row reason":   reviewAndRowReason,
@@ -519,6 +520,26 @@ func stop(h *harness) {
 	assert.Equal(h.t, got, Rebuild(h.events()))
 	_, err := h.s.Apply(h.ctx, h.op("twice", nil, SetStopped{true, "a"}, SetStopped{false, "b"}))
 	assert.ErrorIs(h.t, err, ErrInvalid, "one stop write per op")
+}
+
+// identity (round 24): the git identity the sprint commits as is one value
+// for the store, not set on a fresh store, set by SetIdentity with both
+// parts, refused when unchanged, kept by a clear, and in the log's images so
+// a rebuild has it.
+func identity(h *harness) {
+	assert.False(h.t, h.snap().Identity.Set(), "a fresh store has no identity")
+	h.seed()
+	_, err := h.s.Apply(h.ctx, h.op("no email", nil, SetIdentity{Name: "Bot"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "an identity needs both parts")
+	r := h.ok(h.op("set", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}))
+	assert.Equal(h.t, &State{Identity: &Identity{"Bot", "1+bot@users.noreply.example"}}, r.After)
+	h.refused(h.op("again", nil, SetIdentity{"Bot", "1+bot@users.noreply.example"}), "the sprint already commits as Bot <1+bot@users.noreply.example>")
+	h.ok(h.op("change", nil, SetIdentity{"Bot", "2+bot@users.noreply.example"}))
+	h.clear()
+	assert.Equal(h.t, Identity{"Bot", "2+bot@users.noreply.example"}, h.snap().Identity, "a clear keeps the identity")
+	assert.Equal(h.t, h.snap(), Rebuild(h.events()))
+	_, err = h.s.Apply(h.ctx, h.op("twice", nil, SetIdentity{"a", "a@x"}, SetIdentity{"b", "b@x"}))
+	assert.ErrorIs(h.t, err, ErrInvalid, "one identity write per op")
 }
 
 // Round 22: a stream's landing settings are stream state. A stream starts

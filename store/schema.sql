@@ -41,6 +41,12 @@ INSERT INTO sprint.epoch (id, n) VALUES (1, 1) ON CONFLICT (id) DO NOTHING;
 -- transaction); the defaults below are for a store made before that.
 ALTER TABLE sprint.epoch ADD COLUMN IF NOT EXISTS stopped boolean NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS stop_reason text NOT NULL DEFAULT '';
+-- Round 24: the git identity every commit of the sprint is authored and
+-- committed under (a repository's contributor agreement keys off the forge
+-- account) lives on the epoch's one row, as the stop does (a clear keeps
+-- it); '' and '' is not set. SetIdentity is its one write.
+ALTER TABLE sprint.epoch ADD COLUMN IF NOT EXISTS commit_name text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS commit_email text NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS sprint.streams (
     name  text    NOT NULL,

@@ -48,7 +48,8 @@ func writeJobMD_internal(j Job) error {
 }
 
 // finishRules_internal is how j finishes, word for word the same in JOB.md
-// and the prompt: what to leave in the checkout, the forms of result.json,
+// and the prompt: what to leave in the checkout, the identity its commits
+// carry, the forms of result.json,
 // and what the worker does after (it pushes; the harness runs no git push
 // and no gh, and the landing opens the pull request).
 func finishRules_internal(j Job) string {
@@ -63,11 +64,22 @@ func finishRules_internal(j Job) string {
 			"A run that exits without " + res + " is reported a fault.\n"
 	}
 	return "1. Commit your work in " + j.WorktreeDir + " on branch " + j.Branch + " (git add, then git commit -F <message file>). Run no git push and no gh: the worker pushes the branch after you exit, and the landing opens the pull request.\n" +
+		commitIdentity_internal(j) +
 		"2. Run every done-when command in the checkout; each must exit 0.\n" +
 		"3. Write " + res + ", then exit 0. Its forms:\n" +
 		"   {\"result\":\"ok\"}: the work is committed and every done-when command is green.\n" +
 		"   {\"result\":\"fail\",\"reason\":\"<what is not done, and why>\"}: you could not finish it; say what you found.\n" +
 		"A run that exits without " + res + " is reported \"fail: no verdict\".\n"
+}
+
+// commitIdentity_internal is the sprint's commit identity rule for a work
+// job (CommitRules), which the worker has already configured in the
+// checkout; "" for a job with none (staging refuses it).
+func commitIdentity_internal(j Job) string {
+	if j.CommitName == "" || j.CommitEmail == "" {
+		return ""
+	}
+	return "   This checkout is already configured; do not change it. " + strings.ReplaceAll(strings.TrimRight(CommitRules(j.CommitName, j.CommitEmail), "\n"), "\n", "\n   ") + "\n"
 }
 
 // routeFault_internal is the finish rule for a route or device this bench

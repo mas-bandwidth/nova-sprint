@@ -202,6 +202,20 @@ func TestRound22Hash(t *testing.T) {
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS model text")
 }
 
+// round23Hash is the hash of round 23's schema.sql, kept in testdata: it
+// has no commit identity on the epoch row, which this build's schema adds
+// (round 24). Unit: reads a file in the package, no store.
+func TestRound23Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round23.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round23Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round23Hash, schemaHash)
+	assert.NotContains(t, string(old), "commit_email")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS commit_email text")
+	assert.True(t, knownOlder(round23Hash))
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.

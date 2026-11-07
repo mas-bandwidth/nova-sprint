@@ -1,10 +1,11 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
-	"context"
+	"github.com/mas-bandwidth/nova-sprint/edge"
 )
 
 // Branches is every branch at the clone address url whose name starts
@@ -54,6 +55,44 @@ func (c *Client) ListTree(ctx context.Context, repoDir, rev string) ([]string, e
 		if p != "" {
 			out = append(out, p)
 		}
+	}
+	return out, nil
+}
+
+// Commit is one commit's identity as `git log` reads it: who authored it and
+// who committed it (finish's check of the sprint's commit identity).
+type Commit struct {
+	SHA, AuthorName, AuthorEmail, CommitterName, CommitterEmail string
+}
+
+// Commits is every commit reachable from head and from none of not (each
+// "" skipped), newest first, in the clone at repoDir: one `git log`. A
+// field that holds the separator is a failure naming the commit.
+func (c *Client) Commits(ctx context.Context, repoDir, head string, not ...string) ([]Commit, error) {
+	args := []string{"log", "--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce", head, "--not"}
+	for _, n := range not {
+		if strings.TrimSpace(n) != "" {
+			args = append(args, n)
+		}
+	}
+	args = append(args, "--")
+	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, args...)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		return nil, c.failed_internal(code, stdout, stderr, nil, args...)
+	}
+	var out []Commit
+	for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		f := strings.Split(line, "\x1f")
+		if len(f) != 5 {
+			return nil, fmt.Errorf("git log printed %q, not <sha> and four identity fields", edge.RedactN(line, 200))
+		}
+		out = append(out, Commit{SHA: f[0], AuthorName: f[1], AuthorEmail: f[2], CommitterName: f[3], CommitterEmail: f[4]})
 	}
 	return out, nil
 }

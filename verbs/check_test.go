@@ -55,7 +55,9 @@ func TestCheckAllGreen(t *testing.T) {
 	healthy(t, w)
 	r := w.do("", "check")
 	wantLines := []string{"CHECK fleet green", "CHECK nova-tools v2.0.2 (pin v2.0.2)", "CHECK store at schema", "CHECK bus answering (5 present)",
-		"CHECK stream s: o/r reachable, base main at bbbbbbbbbbbb", "CHECK policy v1 active (answered by v0; 0 ready producers asked)", "CHECK cards: none waiting or ready",
+		"CHECK stream s: o/r reachable, base main at bbbbbbbbbbbb",
+		"CHECK identity: every commit is made as Sprint Bot <1+sprint-bot@users.noreply.example.test> (hook prints the two git config lines; finish refuses a commit by another email)",
+		"CHECK policy v1 active (answered by v0; 0 ready producers asked)", "CHECK cards: none waiting or ready",
 		"CHECK working: 2 cards, each on a hooked row that is up and on the bus (a job dead on its bench is not visible here: no per-job heartbeat reaches the store)",
 		"CHECK judgements: none open", "CHECK run on studio (pid 41)",
 		"CHECK width: working 2 (2 dealt) of 4 open on 3 rows; 0 ready", "CHECK landings: none waiting", "next: nova-sprint next --as <you>"}

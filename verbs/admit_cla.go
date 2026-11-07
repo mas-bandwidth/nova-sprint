@@ -3,13 +3,10 @@ package verbs
 import (
 	"context"
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/worker"
-	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -19,7 +16,7 @@ import (
 // bot exposes it, and most do not, so admission does the closest correct
 // thing: it reads the checks the base branch requires and, when one looks like
 // a contributor agreement, warns at stream add (and in check) with the
-// identities the benches will author commits as, for the human to sign.
+// identity every commit of the sprint is made as, for the human to sign.
 // Nothing is refused: whether an identity has signed is not readable here.
 var agreementCheck = regexp.MustCompile(`(?i)\b(cla|caa)\b|contributor|assignment agreement|licen[cs]e agreement`)
 
@@ -54,31 +51,17 @@ func (e *Engine) agreementWarning(ctx context.Context, snap store.Snapshot, s st
 	}
 	return fmt.Sprintf("stream %s: %s's %s requires the check %s, which looks like a contributor agreement, and a commit whose author has not signed fails it",
 			s.Name, s.Repo, s.Base, quoteList(names)),
-		"sign it for " + e.commitIdentities(ctx, snap) + " before the first card lands; kin commit as their own git identity, which has to have signed too"
+		"sign it for " + commitIdentity(snap) + ", the identity every commit of the sprint is made as, before the first card lands"
 }
 
-// commitIdentities are the git authors the benches commit as, from the
-// roster (nova-config, the rows with width above 0) and the worker's author
-// format <row> <row@domain>.
-func (e *Engine) commitIdentities(ctx context.Context, snap store.Snapshot) string {
-	lim, _, err := e.rules(ctx, snap)
-	var ro roster.Roster
-	if err == nil {
-		ro, err = e.roster(ctx, lim, snap)
+// commitIdentity is the one git identity every agent, friend and bench
+// worker commits as (store.Identity, set by nova-sprint identity), or what to
+// do when the sprint has none yet.
+func commitIdentity(snap store.Snapshot) string {
+	if !snap.Identity.Set() {
+		return "the sprint's commit identity, which is not set yet (" + identityFix + ")"
 	}
-	if err != nil {
-		return "each bench's identity <row> <row@" + worker.CommitEmailDomain + "> (the roster could not be read: " + errText(err) + ")"
-	}
-	var ids []string
-	for _, n := range slices.Sorted(maps.Keys(ro.Workers)) {
-		if ro.Workers[n].Width > 0 {
-			ids = append(ids, fmt.Sprintf("%s <%s@%s>", n, n, worker.CommitEmailDomain))
-		}
-	}
-	if len(ids) == 0 {
-		return "each bench's identity <row> <row@" + worker.CommitEmailDomain + "> (no bench in nova-config has cores yet)"
-	}
-	return strings.Join(ids, ", ")
+	return snap.Identity.Name + " <" + snap.Identity.Email + ">"
 }
 
 func quoteList(names []string) string {

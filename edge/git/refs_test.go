@@ -44,3 +44,33 @@ func TestBranchesAndListTree(t *testing.T) {
 		t.Fatalf("a failed ls-tree: %v", err)
 	}
 }
+
+// TestCommits: one git log of head --not the bases (an empty base skipped),
+// read as five fields a line; a line with another count is a failure naming
+// it, and a failed run is its command.
+func TestCommits(t *testing.T) {
+	t.Parallel()
+	a, b := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	var argv []string
+	out, code := a+"\x1fBot\x1fbot@x\x1fBot\x1fbot@x\n"+b+"\x1fAda\x1fada@y\x1fBot\x1fbot@x\n", 0
+	c := New(Config{Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		argv = cmd.Argv
+		return edge.Result{Stdout: out, ExitCode: code}, nil
+	})})
+	got, err := c.Commits(context.Background(), "/repo", "HEAD", "base1", "", "origin/main")
+	want := []Commit{{a, "Bot", "bot@x", "Bot", "bot@x"}, {b, "Ada", "ada@y", "Bot", "bot@x"}}
+	if err != nil || len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("Commits = %v, %v", got, err)
+	}
+	if strings.Join(argv, " ") != "git log --format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce HEAD --not base1 origin/main --" {
+		t.Fatalf("argv %v", argv)
+	}
+	out = a + "\x1fBot\n"
+	if _, err := c.Commits(context.Background(), "/repo", "HEAD"); err == nil || !strings.Contains(err.Error(), "four identity fields") {
+		t.Fatalf("a short line: %v", err)
+	}
+	out, code = "", 128
+	if _, err := c.Commits(context.Background(), "/repo", "HEAD"); err == nil || !strings.Contains(err.Error(), "log") {
+		t.Fatalf("a failed log: %v", err)
+	}
+}

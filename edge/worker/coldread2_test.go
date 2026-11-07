@@ -60,7 +60,7 @@ func (s *cr2Sprint) Take(_ context.Context, _, id string, gen int) (TakeInfo, er
 	if kind == "" {
 		kind = "read"
 	}
-	return TakeInfo{Consumer: id, Producer: "p1", Kind: kind, Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, Gen: gen, Epoch: 3, Attempt: 1, Branch: "sprint/s1/p1", BaseSHA: strings.Repeat("b", 40), Head: strings.Repeat("a", 40)}, nil
+	return TakeInfo{Consumer: id, Producer: "p1", Kind: kind, Stream: "s1", Tier: "flash", Model: "m1", Deadline: 900, CommitName: testCommitName, CommitEmail: testCommitEmail, Gen: gen, Epoch: 3, Attempt: 1, Branch: "sprint/s1/p1", BaseSHA: strings.Repeat("b", 40), Head: strings.Repeat("a", 40)}, nil
 }
 func (s *cr2Sprint) Report(_ context.Context, req ReportRequest) (store.Receipt, error) {
 	s.mu.Lock()
