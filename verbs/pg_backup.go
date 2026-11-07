@@ -353,8 +353,11 @@ func verifyDatabase(ctx context.Context, dsn, dumpDigest string) (store.Snapshot
 	}
 	if len(last) == 1 {
 		if s, ok := strings.CutPrefix(last[0].Op, "restore-unhook-"+dumpDigest+"-"); ok {
-			if seq, err = strconv.ParseInt(s, 10, 64); err != nil || seq < 0 || seq >= snap.Seq {
-				return store.Snapshot{}, 0, "", "", fmt.Errorf("the restore's unhook op %q names no seq before it", last[0].Op)
+			if seq, err = strconv.ParseInt(s, 10, 64); err != nil {
+				return store.Snapshot{}, 0, "", "", fmt.Errorf("the restore's unhook op %q names no seq: %w", last[0].Op, err)
+			}
+			if seq < 0 || seq >= snap.Seq {
+				return store.Snapshot{}, 0, "", "", fmt.Errorf("the restore's unhook op %q names seq %d, not one before it", last[0].Op, seq)
 			}
 			if digest, err = EventPrefixDigest(ctx, pg, seq); err != nil {
 				return store.Snapshot{}, 0, "", "", err

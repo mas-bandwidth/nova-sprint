@@ -215,10 +215,10 @@ func TestFunctionalBackupMigratedRound25(t *testing.T) {
 // rebuild starts never started (store.FreshStop), so Migrate logs the stop
 // the store has, and its backup verifies (the rebuild compares the stop).
 func TestFunctionalBackupRound25RunningWithNoStopEvent(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("initdb"); err != nil {
 		t.Skip("requires PostgreSQL's initdb on PATH")
 	}
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	_, dsn := startBackupPG(ctx, t)

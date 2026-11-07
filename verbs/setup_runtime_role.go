@@ -188,7 +188,7 @@ const minServerVersion = 160000
 func requireServerVersion(num string) error {
 	n, err := strconv.Atoi(num)
 	if err != nil {
-		return fmt.Errorf("cannot inspect PostgreSQL version: server_version_num %q is not a number", num)
+		return fmt.Errorf("cannot inspect PostgreSQL version: server_version_num %q: %w", num, err)
 	}
 	if n < minServerVersion {
 		return &OperationError{
