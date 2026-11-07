@@ -53,6 +53,22 @@ func brief(t *testing.T, id, needs string) string {
 	return path
 }
 
+// TestAddIntoAnEmptySprint is the first add of a sprint with no cards: the
+// plan's replay reads the cards as they were before the add, so the new
+// card is not refused as existing.
+func TestAddIntoAnEmptySprint(t *testing.T) {
+	s := sprint()
+	s.Cards = map[string]store.Card{}
+	w := worldFrom(t, s)
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "a1", "")), 0, "ADD a1 kind=producer", "ADDED 1 cards")
+	want(t, w.do("carol", "add", "--stream", "s", "--brief-file", brief(t, "b1", "a1"), "--brief-file", brief(t, "c1", "")), 0, "ADDED 2 cards")
+	for _, id := range []string{"a1", "b1", "c1"} {
+		if c := w.snap(t).Cards[id]; c.Kind != "producer" {
+			t.Fatalf("card %s: %+v", id, c)
+		}
+	}
+}
+
 func TestAdd(t *testing.T) {
 	w := newWorld(t)
 	a, b := brief(t, "a1", ""), brief(t, "b1", "a1")
