@@ -8,16 +8,25 @@
 (***************************************************************************)
 (* Layer 5 of nova-sprint v2: policy versions, activation and the per-tick *)
 (* fallback (docs/LAYER-5-POLICY.md, "The model"; the code is              *)
-(* policy/answer.go Answer and policy/verbs.go Set and Activate).          *)
+(* policy/answer.go AnswerContext, policy/tick.go race, and               *)
+(* policy/verbs.go Set and Activate). Round 3: the tick's one deadline is *)
+(* one more way a version breaks on a tick, and a fallback started early  *)
+(* (tick.go fallbackAfter) never changes which version answers: the first *)
+(* in order that passes, as Tick says.                                    *)
 (*                                                                         *)
 (* Versions 1..MaxVersion are stored in order and never deleted; Default  *)
 (* is the built-in, never stored; it can fail too (a bug in the binary).  *)
 (* When every version tried fails the tick is answered by NoAnswer: it    *)
 (* still applies every move that needs no answer, and deals nothing.      *)
-(* Init is the state                                                      *)
-(* after up: the default stored as v1 and active. breaks is the set of    *)
-(* versions that fail (a runtime error or a refused answer) on the        *)
-(* current snapshot; Drift moves the snapshot, so breaks changes          *)
+(* Init is the state after up: the default stored as the next version    *)
+(* number and active (policy/verbs.go Up); the model holds no data rows,  *)
+(* which the code counts but never runs, so that number is 1 here.        *)
+(* Round 5: Activate answers the built-in's judgement too (policy:v0: any *)
+(* clean activation answers it), and is one op fenced at its snapshot's   *)
+(* seq in the code, as it is one step here.                               *)
+(* breaks is the set of                                                  *)
+(* versions that fail (a runtime error, a refused answer or the deadline) *)
+(* on the current snapshot; Drift moves the snapshot, so breaks changes   *)
 (* arbitrarily. One card stands for every card: a tick may move it, a     *)
 (* policy change never does, and a wait keeps the bound it started under. *)
 (* judgements[v] counts the open policy judgements of version v (group    *)
@@ -79,7 +88,7 @@ Set(v) ==
 
 (* policy activate: a stored version that runs clean on the current       *)
 (* snapshot; one op moves the active flag and answers the open policy     *)
-(* judgements of the old version and of v.                                *)
+(* judgements of the old version, of v and of the built-in.               *)
 Activate(v) ==
   /\ v \in stored
   /\ v # active
@@ -87,7 +96,7 @@ Activate(v) ==
   /\ active' = v
   /\ prev' = active
   /\ everActive' = everActive \cup {v}
-  /\ judgements' = [judgements EXCEPT ![active] = 0, ![v] = 0]
+  /\ judgements' = [judgements EXCEPT ![active] = 0, ![v] = 0, ![Default] = 0]
   /\ card' = card   \* a policy change never moves a card
   /\ waitBound' = waitBound
   /\ cardBefore' = card

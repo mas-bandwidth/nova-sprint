@@ -184,7 +184,7 @@ func (tr *policyTrace) record(action string, kv ...string) {
 		judged[v] = fmt.Sprintf("%d :> %d", v, n)
 	}
 	f = append(f, "stored |-> "+tlaInts(m.Stored), fmt.Sprintf("active |-> %d, prev |-> %d", m.Active, m.Prev),
-		"breaks |-> "+tlaInts(m.Breaks), fmt.Sprintf("answeredBy |-> %d", m.AnsweredBy),
+		"breaks |-> "+tlaInts(m.Breaks), "everActive |-> "+tlaInts(m.EverActive), fmt.Sprintf("answeredBy |-> %d", m.AnsweredBy),
 		"judgements |-> ("+strings.Join(judged, " @@ ")+")", fmt.Sprintf("card |-> %q", m.Card))
 	tr.recs = append(tr.recs, "["+strings.Join(f, ", ")+"]")
 	tr.prev = m

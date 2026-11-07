@@ -12,8 +12,13 @@
 (* is the built-in, never stored; it can fail too (a bug in the binary).  *)
 (* When every version tried fails the tick is answered by NoAnswer: it    *)
 (* still applies every move that needs no answer, and deals nothing.      *)
-(* Init is the state                                                      *)
-(* after up: the default stored as v1 and active. breaks is the set of    *)
+(* Init is the state after up: the default stored as the next version    *)
+(* number and active (policy/verbs.go Up); the model holds no data rows,  *)
+(* which the code counts but never runs, so that number is 1 here.        *)
+(* Round 5: Activate answers the built-in's judgement too (policy:v0: any *)
+(* clean activation answers it), and is one op fenced at its snapshot's   *)
+(* seq in the code, as it is one step here.                               *)
+(* breaks is the set of                                                  *)
 (* versions that fail (a runtime error, a refused answer or the deadline) *)
 (* on the current snapshot; Drift moves the snapshot, so breaks changes   *)
 (* arbitrarily. One card stands for every card: a tick may move it, a     *)
@@ -77,7 +82,7 @@ Set(v) ==
 
 (* policy activate: a stored version that runs clean on the current       *)
 (* snapshot; one op moves the active flag and answers the open policy     *)
-(* judgements of the old version and of v.                                *)
+(* judgements of the old version, of v and of the built-in.               *)
 Activate(v) ==
   /\ v \in stored
   /\ v # active
@@ -85,7 +90,7 @@ Activate(v) ==
   /\ active' = v
   /\ prev' = active
   /\ everActive' = everActive \cup {v}
-  /\ judgements' = [judgements EXCEPT ![active] = 0, ![v] = 0]
+  /\ judgements' = [judgements EXCEPT ![active] = 0, ![v] = 0, ![Default] = 0]
   /\ card' = card   \* a policy change never moves a card
   /\ waitBound' = waitBound
   /\ cardBefore' = card

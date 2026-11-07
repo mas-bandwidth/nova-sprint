@@ -8,11 +8,13 @@
 (*                                                                         *)
 (* r_1 is Init (the state after up). Each later record names an action of *)
 (* the model with its argument (v for Set and Activate) and carries       *)
-(* stored, active, prev, breaks, answeredBy, judgements and card after    *)
+(* stored, active, prev, breaks, everActive, answeredBy, judgements and  *)
+(* card after                                                              *)
 (* it, projected by TraceState (policy/trace.go, the refinement mapping). *)
 (* Each record carries the whole projected state, which is small; the     *)
-(* model's own bookkeeping (everActive, tickBreaks, cardBefore, waitBound, *)
-(* startBound, lastOp) is not projected: the action computes it.          *)
+(* model's own bookkeeping (tickBreaks, cardBefore, waitBound, startBound, *)
+(* lastOp) is not projected: the action computes it. everActive is        *)
+(* projected (round 5), so FallbackWasActive is checked against the code. *)
 (*                                                                         *)
 (* The trace adds nothing to the model: the actions are called with the   *)
 (* record's argument, and Drift's choice of breaks is fixed by the record. *)
@@ -40,9 +42,9 @@ StepAs(r) ==
     [] OTHER                 -> FALSE
 
 \* The projected state, of the model and of a record.
-Proj == [stored |-> stored, active |-> active, prev |-> prev, breaks |-> breaks,
+Proj == [stored |-> stored, active |-> active, prev |-> prev, breaks |-> breaks, everActive |-> everActive,
          answeredBy |-> answeredBy, judgements |-> judgements, card |-> card]
-ProjOf(r) == [stored |-> r.stored, active |-> r.active, prev |-> r.prev, breaks |-> r.breaks,
+ProjOf(r) == [stored |-> r.stored, active |-> r.active, prev |-> r.prev, breaks |-> r.breaks, everActive |-> r.everActive,
               answeredBy |-> r.answeredBy, judgements |-> r.judgements, card |-> r.card]
 
 TraceInit ==
