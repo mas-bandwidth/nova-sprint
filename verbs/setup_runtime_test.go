@@ -6,9 +6,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"testing"
 )
@@ -24,6 +26,7 @@ func (s *runtimeStore) Install(context.Context) error       { s.ready = true; s.
 type runtimeWork struct {
 	services, workers, smoke bool
 	actions                  int
+	installed                map[string]policy.Provider // the providers InstallWorkers was given
 }
 
 func (w *runtimeWork) ServicesReady(context.Context, []string) (bool, error) { return w.services, nil }
@@ -33,7 +36,8 @@ func (w *runtimeWork) InstallServices(context.Context, []string) error {
 	return nil
 }
 func (w *runtimeWork) WorkersReady(context.Context) (bool, error) { return w.workers, nil }
-func (w *runtimeWork) InstallWorkers(context.Context) error {
+func (w *runtimeWork) InstallWorkers(_ context.Context, chosen map[string]policy.Provider) error {
+	w.installed = chosen
 	w.workers = true
 	w.actions++
 	return nil
@@ -72,16 +76,87 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 		t.Fatal(check, err)
 	}
 }
+
+// declared is a made-up policy's providers: acme and zeta.
+func declared(context.Context) (map[string]policy.Provider, error) {
+	return map[string]policy.Provider{"acme": acmeProvider, "zeta": {URL: "https://zeta.test/api", Key: "ZETA_TOKEN", Probe: "https://zeta.test/api/v1/chat"}}, nil
+}
+
+// A service is a provider the active policy declares: any other, or one
+// named twice, is refused naming those it declares and the line that adds
+// one; with none declared, every service is refused.
 func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
 	t.Parallel()
-	for _, value := range []string{"unknown", "deepseek,deepseek", "deepseek,"} {
-		if _, err := setupServices(value); err == nil {
-			t.Fatal(value)
+	ctx := context.Background()
+	r := RuntimeSetup{Providers: declared}
+	fix := `nova-sprint up --services <provider>[,...] or --services none; a provider is declared in the policy's catalog() "providers" (nova-sprint policy show, then nova-sprint policy set <file> --reason <why>)`
+	for _, value := range []string{"unknown", "acme,acme", "acme,"} {
+		_, _, err := r.services(ctx, value)
+		var op *OperationError
+		if !errors.As(err, &op) || !strings.HasSuffix(op.Problem, "it declares: acme, zeta") || op.Fix != fix {
+			t.Fatal(value, err)
 		}
 	}
-	names, err := setupServices("openrouter,deepseek")
-	if err != nil || len(names) != 2 || names[0] != "deepseek" {
-		t.Fatal(names, err)
+	names, chosen, err := r.services(ctx, "zeta,acme")
+	if err != nil || !slices.Equal(names, []string{"acme", "zeta"}) || chosen["acme"] != acmeProvider || chosen["zeta"].Key != "ZETA_TOKEN" {
+		t.Fatal(names, chosen, err)
+	}
+	if names, chosen, err = r.services(ctx, "none"); err != nil || names != nil || chosen != nil {
+		t.Fatal(names, chosen, err)
+	}
+	var op *OperationError
+	if _, _, err = (RuntimeSetup{}).services(ctx, "acme"); !errors.As(err, &op) || !strings.HasSuffix(op.Problem, "it declares: none") {
+		t.Fatal(err)
+	}
+}
+
+// workersRuntime is step 7 on fakes: a services machine and one bench,
+// services saved as given, the control seat's store holding saved.
+func workersRuntime(t *testing.T, services string, saved bool) (RuntimeSetup, *runtimeWork, *[]string) {
+	t.Helper()
+	ctx := context.Background()
+	calls := &[]string{}
+	cmd := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name == "nova-config" {
+			return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":2},"items":[{"kind":"machine","fields":{"name":"studio","roles":"services"}},{"kind":"machine","fields":{"name":"amd-1","roles":"bench"}}]}`), nil
+		}
+		if name == "nova-secrets" {
+			*calls = append(*calls, args[1]+"->"+args[3])
+		}
+		return nil, nil
+	}
+	c := Choices{Store: store.NewFake(), Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
+	for _, kv := range [][2]string{{"dashboard", "tailnet"}, {"services", services}} {
+		if err := c.Save(ctx, kv[0], kv[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	work := &runtimeWork{}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c}}, Workload: work, Services: FleetServices{Command: cmd}, Providers: declared,
+		Keys:       ServiceKey{Sink: &sinkFake{saved: saved}},
+		Role:       SprintRoleBootstrap{Secrets: NovaSecrets{Seat: "control", Store: "/store", KeyFile: "/key"}, Grants: FleetGrants{Store: "/store", KeyFile: "/key", Pins: "/pins", ControlSeat: "control", Command: cmd}},
+		RunService: FleetService{Name: "sprint-run", Machine: "studio", Seat: "swarm-studio"}, Dashboards: map[string]DashboardTarget{"tailnet": {URL: "http://host"}}}
+	return r, work, calls
+}
+
+// Step 7 grants each worker bench's own seat the keys of the providers
+// step 6 saved, as the policy declares them, beside the sprint credential,
+// and installs the workers for exactly those providers; no other seat gets
+// a provider key. With none saved, no key is granted and the workers get no
+// route.
+func TestWorkersActGrantsServiceKeysToBenchSeats(t *testing.T) {
+	t.Parallel()
+	r, work, calls := workersRuntime(t, "zeta", true)
+	if err := r.workersAct(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{sprintPasswordName + "->swarm-studio", sprintPasswordName + "->amd-1", "ZETA_TOKEN->amd-1"}
+	if !slices.Equal(*calls, want) || len(work.installed) != 1 || work.installed["zeta"].Key != "ZETA_TOKEN" {
+		t.Fatalf("grants %q, workers for %v; want %q for zeta", *calls, work.installed, want)
+	}
+	r, work, calls = workersRuntime(t, "none", true)
+	if err := r.workersAct(context.Background()); err != nil || !slices.Equal(*calls, want[:2]) || len(work.installed) != 0 {
+		t.Fatal(err, *calls, work.installed)
 	}
 }
 

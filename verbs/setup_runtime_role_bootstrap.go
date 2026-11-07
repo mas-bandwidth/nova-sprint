@@ -96,14 +96,18 @@ func (s SprintRoleBootstrap) savePassword(ctx context.Context) error {
 	return s.Sink.Set(ctx, sprintPasswordName, bytes.NewReader(encoded))
 }
 
-// GrantSeat never grants a value to its own control-seat grants file.
-func (s SprintRoleBootstrap) GrantSeat(ctx context.Context, seat SprintSeat) error {
+// GrantSeat grants the sprint credential and keys (a worker bench's
+// provider keys), then refreshes its machine once; it never grants a value
+// to its own control-seat grants file.
+func (s SprintRoleBootstrap) GrantSeat(ctx context.Context, seat SprintSeat, keys ...string) error {
 	if s.Secrets.Seat == "" || s.Secrets.Seat != s.Grants.ControlSeat || s.Secrets.Store != s.Grants.Store || s.Secrets.KeyFile != s.Grants.KeyFile {
 		return fmt.Errorf("control seat mismatch")
 	}
 	if seat.Seat != s.Secrets.Seat {
-		if err := s.Grants.Grant(ctx, seat.Seat, seat.Machine, sprintPasswordName); err != nil {
-			return err
+		for _, name := range append([]string{sprintPasswordName}, keys...) {
+			if err := s.Grants.Grant(ctx, seat.Seat, seat.Machine, name); err != nil {
+				return err
+			}
 		}
 	}
 	return s.Grants.Refresh(ctx, seat.Seat, seat.Machine, sprintPasswordName)

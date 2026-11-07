@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -137,7 +138,7 @@ func (s *choiceTraceSink) Set(_ context.Context, name string, r io.Reader) error
 
 type choiceTraceProbe struct{}
 
-func (choiceTraceProbe) Run(context.Context, string) error { return nil }
+func (choiceTraceProbe) Run(context.Context, policy.Provider) error { return nil }
 
 type choiceTraceSetup struct {
 	trace   *choiceTrace
@@ -201,11 +202,14 @@ func emitChoiceTrace(t *testing.T, dir, choice string) {
 	term := &terminalFake{data: []byte("fake-key")}
 	sink := &choiceTraceSink{trace: trace, terminal: term}
 	work := &runtimeWork{}
-	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c}}, Workload: work, Keys: ServiceKey{Terminal: term, Sink: sink, Probe: choiceTraceProbe{}}}
+	runtime := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c}}, Workload: work, Keys: ServiceKey{Terminal: term, Sink: sink, Probe: choiceTraceProbe{}},
+		Providers: func(context.Context) (map[string]policy.Provider, error) {
+			return map[string]policy.Provider{"acme": acmeProvider}, nil
+		}}
 	fake := &choiceTraceSetup{trace: trace, runtime: runtime}
 	input := "none"
 	if choice == "configured" {
-		input = "deepseek"
+		input = "acme"
 	}
 	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: fake, Lock: setupLeaseFake{}, SetupObserver: trace.observe}
 	walkChoices(t, e, trace, work, input)

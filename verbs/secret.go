@@ -25,14 +25,12 @@ type SecretSink interface {
 	Set(context.Context, string, io.Reader) error
 }
 
-// EnsureKey never asks after a durable save. A crash before save may re-prompt.
-func EnsureKey(ctx context.Context, service string, terminal SecretTerminal, sink SecretSink) error {
+// EnsureKey asks for service's key, saved under name, only when it is not
+// saved; it never asks after a durable save. A crash before save may
+// re-prompt.
+func EnsureKey(ctx context.Context, service, name string, terminal SecretTerminal, sink SecretSink) error {
 	if terminal == nil || sink == nil {
 		return fmt.Errorf("secret prompt is unavailable: no terminal or no secret store configured")
-	}
-	name, err := secretName(service)
-	if err != nil {
-		return err
 	}
 	present, err := sink.Has(ctx, name)
 	if err != nil {
@@ -64,17 +62,6 @@ func EnsureKey(ctx context.Context, service string, terminal SecretTerminal, sin
 		return &OperationError{Problem: "key is empty", Fix: "run nova-sprint up --key " + service, Exit: 1}
 	}
 	return sink.Set(ctx, name, bytes.NewReader(key))
-}
-func secretName(service string) (string, error) {
-	if service == "" {
-		return "", fmt.Errorf("invalid service: the name is empty")
-	}
-	for _, r := range service {
-		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_' {
-			return "", fmt.Errorf("invalid service %q: lowercase letters, digits and '_' only", service)
-		}
-	}
-	return strings.ToUpper(service) + "_API_KEY", nil
 }
 
 // TTY reads from the controlling terminal and restores its original mode.

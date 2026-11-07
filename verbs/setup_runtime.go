@@ -1,12 +1,14 @@
 package verbs
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -27,7 +29,8 @@ type SetupRun interface {
 }
 
 // SetupWorkload is supplied by the binary for steps 6 to 8 (services,
-// workers, first deal). WorkersReady proves every worker bench
+// workers, first deal). InstallWorkers writes the workers for the providers
+// step 6 saved (their routes and keys, ServiceRoutes). WorkersReady proves every worker bench
 // (WorkerBenches) is hooked on the bus and up in the store; SmokeReady
 // proves every worker row is dealable when the sprint starts. A not-ready
 // answer is (false, *WorkloadNotReady) naming what is not: up acts, and
@@ -36,7 +39,7 @@ type SetupWorkload interface {
 	ServicesReady(context.Context, []string) (bool, error)
 	InstallServices(context.Context, []string) error
 	WorkersReady(context.Context) (bool, error)
-	InstallWorkers(context.Context) error
+	InstallWorkers(ctx context.Context, chosen map[string]policy.Provider) error
 	SmokeReady(context.Context) (bool, error)
 	RunSmoke(context.Context) error
 }
@@ -99,7 +102,11 @@ type RuntimeSetup struct {
 	// PolicyStore is where step 4 stores and activates the built-in
 	// default policy (policy.Up) before run starts; nil skips it.
 	PolicyStore store.Store
-	Now         func() time.Time // nil: time.Now
+	// Providers is the API-rate providers the active policy's catalog
+	// declares (policy.Catalog.Providers), the services up offers; nil
+	// declares none.
+	Providers func(context.Context) (map[string]policy.Provider, error)
+	Now       func() time.Time // nil: time.Now
 }
 
 func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (SetupCheck, error) {
@@ -333,7 +340,7 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 	if value == "" {
 		return SetupCheck{Line: "UP 6/8 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
 	}
-	names, err := setupServices(value)
+	names, chosen, err := r.services(ctx, value)
 	if err != nil {
 		return SetupCheck{}, err
 	}
@@ -344,7 +351,7 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 		return SetupCheck{Action: true}, nil
 	}
 	for _, name := range names {
-		ok, err := r.Keys.Verify(ctx, name)
+		ok, err := r.Keys.Verify(ctx, name, chosen[name])
 		if err != nil {
 			return SetupCheck{}, err
 		}
@@ -362,20 +369,35 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 	}
 	return setupReady(ok, line, err)
 }
-func setupServices(value string) ([]string, error) {
+
+// services is a services choice resolved against the providers the active
+// policy declares: the names in order and each one's configuration; none is
+// none. A name the policy does not declare, or one named twice, is refused
+// naming those it does and the line that adds one.
+func (r RuntimeSetup) services(ctx context.Context, value string) ([]string, map[string]policy.Provider, error) {
 	if value == "none" {
-		return nil, nil
+		return nil, nil, nil
+	}
+	declared := map[string]policy.Provider{}
+	if r.Providers != nil {
+		var err error
+		if declared, err = r.Providers(ctx); err != nil {
+			return nil, nil, err
+		}
 	}
 	names := strings.Split(value, ",")
-	seen := map[string]bool{}
+	chosen := map[string]policy.Provider{}
 	for _, name := range names {
-		if _, ok := modelProbeProviders[name]; !ok || seen[name] {
-			return nil, fmt.Errorf("unsupported or duplicate service")
+		p, ok := declared[name]
+		if _, twice := chosen[name]; !ok || twice {
+			offered := strings.Join(slices.Sorted(maps.Keys(declared)), ", ")
+			return nil, nil, &OperationError{Problem: fmt.Sprintf("service %q is not a provider the active policy declares, or is named twice; it declares: %s", Redact(name), cmp.Or(offered, "none")),
+				Fix: "nova-sprint up --services <provider>[,...] or --services none; a provider is declared in the policy's catalog() \"providers\" (nova-sprint policy show, then " + policy.CatalogFix + ")", Exit: 1}
 		}
-		seen[name] = true
+		chosen[name] = p
 	}
 	slices.Sort(names)
-	return names, nil
+	return names, chosen, nil
 }
 func (r RuntimeSetup) Act(ctx context.Context, step int, in SetupInput) error {
 	switch step {
@@ -494,7 +516,7 @@ func (r RuntimeSetup) servicesAct(ctx context.Context, in SetupInput) error {
 	if err != nil {
 		return err
 	}
-	names, err := setupServices(value)
+	names, chosen, err := r.services(ctx, value)
 	if err != nil {
 		return err
 	}
@@ -507,7 +529,7 @@ func (r RuntimeSetup) servicesAct(ctx context.Context, in SetupInput) error {
 		}
 	}
 	for _, name := range names {
-		if err := r.Keys.Act(ctx, name); err != nil {
+		if err := r.Keys.Act(ctx, name, chosen[name]); err != nil {
 			return err
 		}
 	}
@@ -547,12 +569,31 @@ func (r RuntimeSetup) workersAct(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	value, found, err := r.answer(ctx, "services", "", "")
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("services choice unavailable")
+	}
+	_, chosen, err := r.services(ctx, value)
+	if err != nil {
+		return err
+	}
+	// A worker's seat (the bench's own, named as it) opens the keys of the
+	// providers its routes name, beside the sprint credential.
+	_, keys := ServiceRoutes(chosen)
+	benches := WorkerBenches(machines)
 	for _, seat := range seats {
-		if err = r.Role.GrantSeat(ctx, seat); err != nil {
+		var grant []string
+		if seat.Seat == seat.Machine && slices.Contains(benches, seat.Machine) {
+			grant = keys
+		}
+		if err = r.Role.GrantSeat(ctx, seat, grant...); err != nil {
 			return err
 		}
 	}
-	return r.Workload.InstallWorkers(ctx)
+	return r.Workload.InstallWorkers(ctx, chosen)
 }
 
 // runHostMatches refuses a chosen run machine that is not the one the

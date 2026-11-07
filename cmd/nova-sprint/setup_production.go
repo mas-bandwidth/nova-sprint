@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/policy"
 	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
@@ -79,6 +80,10 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 	}
 	runDSN, _ := setupRoleDSN(cfg.DSN, "nova_sprint")
 	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
+	pol := policy.NewEngine(policy.RealClock{})
+	runtime.Providers = func(ctx context.Context) (map[string]policy.Provider, error) {
+		return policy.ReadProviders(ctx, st, pol)
+	}
 	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
 }
 

@@ -22,16 +22,18 @@ type sinkFake struct {
 	saved bool
 	fail  bool
 	value string
+	name  string // the name the value was saved under
 }
 
 func (s *sinkFake) Has(context.Context, string) (bool, error) { return s.saved, nil }
-func (s *sinkFake) Set(_ context.Context, _ string, r io.Reader) error {
+func (s *sinkFake) Set(_ context.Context, name string, r io.Reader) error {
 	if s.fail {
 		return errors.New("failed")
 	}
 	b, _ := io.ReadAll(r)
 	s.value = string(b)
 	s.saved = true
+	s.name = name
 	return nil
 }
 func TestKeyAskedAgainOnlyBeforeDurableSave(t *testing.T) {
@@ -39,18 +41,18 @@ func TestKeyAskedAgainOnlyBeforeDurableSave(t *testing.T) {
 	terminal := &terminalFake{data: []byte("fake-key")}
 	sink := &sinkFake{fail: true}
 	ctx := context.Background()
-	if EnsureKey(ctx, "deepseek", terminal, sink) == nil {
+	if EnsureKey(ctx, "acme", "ACME_API_KEY", terminal, sink) == nil {
 		t.Fatal("failed save accepted")
 	}
 	sink.fail = false
-	if err := EnsureKey(ctx, "deepseek", terminal, sink); err != nil {
+	if err := EnsureKey(ctx, "acme", "ACME_API_KEY", terminal, sink); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnsureKey(ctx, "deepseek", terminal, sink); err != nil {
+	if err := EnsureKey(ctx, "acme", "ACME_API_KEY", terminal, sink); err != nil {
 		t.Fatal(err)
 	}
-	if terminal.asks != 2 || sink.value != "fake-key" {
-		t.Fatal(terminal.asks, sink.value)
+	if terminal.asks != 2 || sink.value != "fake-key" || sink.name != "ACME_API_KEY" {
+		t.Fatal(terminal.asks, sink.value, sink.name)
 	}
 }
 
@@ -64,7 +66,7 @@ func (t terminalRace) ReadHidden(context.Context, string) ([]byte, error) {
 func TestKeySavedDuringPromptIsNotOverwritten(t *testing.T) {
 	t.Parallel()
 	sink := &sinkFake{}
-	if err := EnsureKey(context.Background(), "deepseek", terminalRace{sink}, sink); err != nil {
+	if err := EnsureKey(context.Background(), "acme", "ACME_API_KEY", terminalRace{sink}, sink); err != nil {
 		t.Fatal(err)
 	}
 	if sink.value != "already-saved" {
