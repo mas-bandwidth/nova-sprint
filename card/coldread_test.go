@@ -250,7 +250,7 @@ func TestColdPreemptARead(t *testing.T) {
 	w.move("p2", Resolve{})
 	start, r := w.plan("p2", Start{Row: "r2", Branch: "b", Base: base})
 	require.Nil(t, r)
-	w.op("preempt", mustMerge(t, w.consumerPlan("p1.r1.1", Withdraw{Reason: "preempted by blocker p2"}), start))
+	w.op("preempt", mustMerge(t, w.consumerPlan("p1.r1.1", Withdraw{Reason: "preempted by blocker p2", Preempt: true}), start))
 	w.consume("p2.w1", Take{Row: "r2"})
 	w.is("p1", Review)
 	assert.Zero(t, w.card("p1").Bounces)
@@ -679,7 +679,7 @@ func TestColdDefectWithdrawnHeadIsUnrecordable(t *testing.T) {
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
 	w.consume("p1.w1", Take{Row: "r1"})
-	w.consume("p1.w1", Withdraw{Reason: "preempted by blocker p2", Head: coldH3}) // releases p1 in the same plan
+	w.consume("p1.w1", Withdraw{Reason: "preempted by blocker p2", Head: coldH3, Preempt: true}) // releases p1 in the same plan
 	w.is("p1", Ready)
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
 	assert.Equal(t, coldH3, w.card("p1.w2").PriorHead, "the preempted attempt's pushed head is the next attempt's prior head")

@@ -405,7 +405,7 @@ func TestRelinkRefusals(t *testing.T) {
 		return r
 	}
 	for _, c := range []refusal{
-		{relink("n9", map[string]Card{}), "card n9 does not exist"},
+		{relink("n9", map[string]Card{}), "card n9 is not among the cards passed"},
 		{relink("n2", map[string]Card{"n2": {ID: "n2", Kind: "producer", State: LandedState}}), "producer n2 is landed; a need is relinked only to a producer or a sentinel that is not final"},
 		{relink("n2", map[string]Card{"n2": {ID: "n2", Kind: "work", State: Ready}}), "card n2 is a work consumer; a need is relinked only to a producer or a sentinel that is not final"},
 		{relink("n2", map[string]Card{"n2": {ID: "n2", Kind: "producer", State: Waiting, Needs: []string{"p1"}}}), "p1 needs n2 needs p1"},
@@ -601,9 +601,9 @@ func TestBlockFromWorking(t *testing.T) {
 // A Withdraw of the working producer's work consumer releases the producer
 // in the same plan; any other withdraw does not.
 func TestWithdrawReleases(t *testing.T) {
-	_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted"})
+	_, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted", Preempt: true})
 	refusal{r, `Withdraw of p1.w1 releases producer p1; it needs p1's stream s1, not ""`}.check(t)
-	plan, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted", Head: h2, Stream: Stream{Name: "s1", Held: true}})
+	plan, r := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Withdraw{Reason: "preempted", Head: h2, Stream: Stream{Name: "s1", Held: true}, Preempt: true})
 	require.Nil(t, r)
 	assert.Equal(t, []store.Expect{gen("p1.w1", 6), p1, store.StreamHeld{Stream: "s1", Held: true}}, plan.Expect, "released into a held stream: parked")
 	assert.Equal(t, []store.Write{store.SetCardState{Card: "p1.w1", State: Fail}, store.SetCardReason{Card: "p1.w1", Reason: "preempted"}, store.SetCardHead{Card: "p1.w1", Head: h2},
@@ -630,10 +630,10 @@ func TestWithdrawReleases(t *testing.T) {
 func TestNeedFailedInThisOp(t *testing.T) {
 	plan, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, needs(Waiting), NeedFailed{Need: "n1", InThisOp: true})
 	require.Nil(t, r)
-	assert.Equal(t, []store.Expect{p1}, plan.Expect, "no need-is-fail condition: the op fails it")
+	assert.Equal(t, []store.Expect{p1, store.CardState{Card: "n1", State: Fail}}, plan.Expect, "the fence refuses the plan applied alone; Merge drops it after the drop")
 	plan, r = Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, needs(Ready), Waive{Need: "n1", InThisOp: true})
 	require.Nil(t, r)
-	assert.Equal(t, []store.Expect{p1}, plan.Expect)
+	assert.Equal(t, []store.Expect{p1, store.CardState{Card: "n1", State: Fail}}, plan.Expect)
 	refusal{mv(Waiting, nil, NeedFailed{Need: "n1", InThisOp: true}), "need n1 of producer p1 is landed; it cannot fail in this op"}.check(t)
 }
 

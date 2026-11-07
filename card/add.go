@@ -54,6 +54,8 @@ func addShape(e Add, cards map[string]Card) *Refusal {
 		return no("Add makes a producer or sentinel, not a %s; consumers are cut by Start and AskRead", e.Kind)
 	case exists:
 		return no("card %s exists", e.ID)
+	case strings.Contains(e.ID, "."):
+		return no("id %s contains '.'; a producer or sentinel id has none, so it cannot be a consumer id", e.ID)
 	case e.Kind == "sentinel" && e.Brief != "":
 		return no("sentinel %s has no brief", e.ID)
 	case e.Kind == "sentinel" && e.Score != 0:
