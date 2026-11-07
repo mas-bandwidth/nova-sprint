@@ -5,8 +5,9 @@
 # Runs TLC once per module, all in parallel, each in its own invocation:
 #   Store.tla with Store.cfg and with StoreRecords.cfg (the two scenarios)
 #                                      must pass            (TLC exit 0)
-#   CardMachine.tla with CardMachine.cfg, CardDeps.cfg, CardPreempt.cfg, CardReads.cfg
-#     (its four scenarios)             must pass            (TLC exit 0)
+#   CardMachine.tla with CardMachine.cfg, CardDeps.cfg, CardPreempt.cfg, CardReads.cfg,
+#   CardMerge.cfg, CardMergePre.cfg, CardMergeDeps.cfg
+#     (its seven scenarios)            must pass            (TLC exit 0)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
 #   reach/*.cfg                        must report a violation (TLC exit 12):
 #     reach/Card*.cfg on CardMachine.tla, every other one on Store.tla
@@ -119,6 +120,9 @@ run CardMachine pass . CardMachine.cfg CardMachine.tla 4
 run CardDeps pass . CardDeps.cfg CardMachine.tla 4
 run CardPreempt pass . CardPreempt.cfg CardMachine.tla 4
 run CardReads pass . CardReads.cfg CardMachine.tla 4
+run CardMerge pass . CardMerge.cfg CardMachine.tla 4
+run CardMergePre pass . CardMergePre.cfg CardMachine.tla 4
+run CardMergeDeps pass . CardMergeDeps.cfg CardMachine.tla 4
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
