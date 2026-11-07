@@ -276,8 +276,11 @@ Next ==
   \/ StoreUp
   \/ Done
 
+\* Take is strongly fair: it is enabled only while a pass plans, and every
+\* pass takes the ready cards it has room for, so a card that stays ready
+\* with room through infinitely many passes is taken (a released card is).
 FairConsumer(c) ==
-  /\ WF_vars(Take(c))
+  /\ SF_vars(Take(c))
   /\ WF_vars(Stage(c))
   /\ WF_vars(Run(c))
   /\ WF_vars(Harvest(c))
