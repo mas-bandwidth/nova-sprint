@@ -727,7 +727,7 @@ v1.8.0): policy-walk-1..10 TRACE OK steps=203 212 206 206 191 214 211 209
 213 210; policy-breaker refused at 5 of 5 (expected); the store and card
 traces as before (8 + 2 + 20 OK, three breakers refused). Seeds 2, 4, 6
 and 8 reach NoAnswer (answeredBy -2: 3, 3, 7 and 4 ticks, measured); the
-others do not. TLC: TLC_RESULT_PLACEHOLDER
+others do not. TLC: `bash tla/ci-tlc.sh` on hetzner2 at a3b3143f, 115 of 115 runs ok, the 17 Policy runs among them as required (Policy.cfg no error, 10 witnesses, 6 reach checks; Policy.tla unchanged this round).
 
 *Size.* Before: 2,529 lines of non-test Go at cdeaddb2 (1,996 without
 comments and blank lines). After: 2,545 (1,971), of which `trace.go`, new,
