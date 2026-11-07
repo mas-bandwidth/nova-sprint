@@ -20,12 +20,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-// FleetWidthCap is the default most consumers a fleet machine works at
-// once: a worker's width is min(cores, cap). Policy owns the number (Glenn,
-// 2026-11-06: every fleet machine runs at width 8); Load takes it as an
-// argument so policy can pass its own.
-const FleetWidthCap = 8
-
 // WorkerHarness is the harness every worker runs.
 const WorkerHarness = "nova-worker"
 
@@ -83,8 +77,8 @@ type Roster struct {
 
 // Load reads src once: every machine with the bench role is a worker at
 // width min(cores, cap) serving every tier; every enabled friend is kin at
-// its own width and tiers. cap is FleetWidthCap unless policy says
-// otherwise. A name given twice, a cap below 1, a machine with no cores, a
+// its own width and tiers. cap is policy's limits().fleet_width_cap (drift
+// row 26; the built-in says 8). A name given twice, a cap below 1, a machine with no cores, a
 // negative width and an unknown tier are errors: the roster is not guessed.
 func Load(ctx context.Context, src Source, cap int) (Roster, error) {
 	if cap < 1 {

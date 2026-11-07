@@ -32,7 +32,7 @@ func fleet() Fake {
 
 func TestLoad(t *testing.T) {
 	t.Parallel()
-	r, err := Load(context.Background(), fleet(), FleetWidthCap)
+	r, err := Load(context.Background(), fleet(), 8)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]Worker{
 		"hulk":  {Name: "hulk", Width: 8, Tiers: all, Harness: "nova-worker"},
@@ -47,8 +47,7 @@ func TestLoad(t *testing.T) {
 
 func TestHulkAt64CoresIsWidth8(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, 8, FleetWidthCap)
-	r, err := Load(context.Background(), Fake{Ms: []Machine{{Name: "hulk", Roles: []string{"bench"}, Cores: 64}}}, FleetWidthCap)
+	r, err := Load(context.Background(), Fake{Ms: []Machine{{Name: "hulk", Roles: []string{"bench"}, Cores: 64}}}, 8)
 	require.NoError(t, err)
 	kind, width, tiers, ok := r.Row("hulk")
 	assert.Equal(t, []any{KindWorker, 8, all, true}, []any{kind, width, tiers, ok})
@@ -59,7 +58,7 @@ func TestHulkAt64CoresIsWidth8(t *testing.T) {
 
 func TestRow(t *testing.T) {
 	t.Parallel()
-	r, err := Load(context.Background(), fleet(), FleetWidthCap)
+	r, err := Load(context.Background(), fleet(), 8)
 	require.NoError(t, err)
 	kind, width, tiers, ok := r.Row("stella")
 	assert.Equal(t, []any{KindKin, 16, []string{"pro", "heavy"}, true}, []any{kind, width, tiers, ok})
@@ -99,6 +98,6 @@ func (friendsFail) Friends(context.Context) ([]Friend, error) { return nil, erro
 
 func TestLoadFriendsError(t *testing.T) {
 	t.Parallel()
-	_, err := Load(context.Background(), friendsFail{}, FleetWidthCap)
+	_, err := Load(context.Background(), friendsFail{}, 8)
 	assert.EqualError(t, err, "roster: friends: down")
 }
