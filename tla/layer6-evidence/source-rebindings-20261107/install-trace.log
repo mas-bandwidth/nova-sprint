@@ -1,0 +1,4 @@
+=== RUN   TestInstallTraceWalk
+--- PASS: TestInstallTraceWalk (0.02s)
+PASS
+ok  	github.com/mas-bandwidth/nova-sprint/verbs	0.021s

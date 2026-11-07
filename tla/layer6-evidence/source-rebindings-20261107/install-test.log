@@ -1,0 +1,35 @@
+=== RUN   TestInstallLockCrashHelper
+--- PASS: TestInstallLockCrashHelper (0.00s)
+=== RUN   TestInstallLockReacquiredAfterCrash
+--- PASS: TestInstallLockReacquiredAfterCrash (0.01s)
+=== RUN   TestInstallReleaseAndExistingRollback
+--- PASS: TestInstallReleaseAndExistingRollback (0.00s)
+=== RUN   TestInstallRefusesBadReleaseAndRegularDestination
+=== RUN   TestInstallRefusesBadReleaseAndRegularDestination/checksum
+=== RUN   TestInstallRefusesBadReleaseAndRegularDestination/duplicate
+=== RUN   TestInstallRefusesBadReleaseAndRegularDestination/empty_binary
+=== RUN   TestInstallRefusesBadReleaseAndRegularDestination/tarball-only_checksum
+--- PASS: TestInstallRefusesBadReleaseAndRegularDestination (0.00s)
+    --- PASS: TestInstallRefusesBadReleaseAndRegularDestination/checksum (0.00s)
+    --- PASS: TestInstallRefusesBadReleaseAndRegularDestination/duplicate (0.00s)
+    --- PASS: TestInstallRefusesBadReleaseAndRegularDestination/empty_binary (0.00s)
+    --- PASS: TestInstallRefusesBadReleaseAndRegularDestination/tarball-only_checksum (0.00s)
+=== RUN   TestInstallFailedCheckAndCancellation
+--- PASS: TestInstallFailedCheckAndCancellation (0.00s)
+=== RUN   TestParseInstall
+--- PASS: TestParseInstall (0.00s)
+=== RUN   TestInstallPreservesPreviousLinkOnCandidateFailure
+=== RUN   TestInstallPreservesPreviousLinkOnCandidateFailure/false
+=== RUN   TestInstallPreservesPreviousLinkOnCandidateFailure/true
+--- PASS: TestInstallPreservesPreviousLinkOnCandidateFailure (0.00s)
+    --- PASS: TestInstallPreservesPreviousLinkOnCandidateFailure/false (0.00s)
+    --- PASS: TestInstallPreservesPreviousLinkOnCandidateFailure/true (0.00s)
+=== RUN   TestInstallActivationLockAndRollbackCommand
+--- PASS: TestInstallActivationLockAndRollbackCommand (0.00s)
+=== RUN   TestInstallCancellationBeforeActivation
+--- PASS: TestInstallCancellationBeforeActivation (0.00s)
+=== RUN   TestInstallTraceWalk
+    install_trace_test.go:209: set NOVA_INSTALL_TRACE_DIR to emit trace observations
+--- SKIP: TestInstallTraceWalk (0.00s)
+PASS
+ok  	github.com/mas-bandwidth/nova-sprint/verbs	1.040s

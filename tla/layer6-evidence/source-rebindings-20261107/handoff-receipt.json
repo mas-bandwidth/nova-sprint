@@ -1,0 +1,25 @@
+{
+  "source_archive": "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/handoff-role-20261107/source.tar.gz",
+  "source_archive_sha256": "f25896ba01df9cc91cc48f80bf85bb9ec64886d4cbbb2a60d24b0bdc247917e4",
+  "emitter_sha256": "f06cd2fbfd541ea640f4e62c715b56b47e5bdaa7fb9ddd1c10df4446b3bfebc4",
+  "tlc_rerun": false,
+  "reason": "Both actual emitted trace files are byte-identical to retained checked inputs; model/config unchanged.",
+  "cases": [
+    {
+      "name": "success",
+      "trace_sha256": "f7068d413c14ea320df546f0657e3a7adb61a3f6156af2ccf75ea91d299795a9",
+      "emitter_log_sha256": "e54fdea65f387aa1bf3e5735b465584f7f453fd14f6a3f1a35e6673650b19c8d",
+      "retained_tlc_log": "tla/layer6-evidence/handoff-traces/success/tlc.log",
+      "retained_tlc_log_sha256": "48123f5e9cd7e60e875f77d1f1982828208e7d360a4c8929e5e19b72ee1de66e",
+      "retained_harness_log_sha256": "16205b9606919daa5aacc4d18fa3df18d58cfa6ebe6040c3b380113004911b1a"
+    },
+    {
+      "name": "stale",
+      "trace_sha256": "dff8ad15d35e57b715790a66628e6df42b7d26f2e1f4e384e774123e2e4a6afa",
+      "emitter_log_sha256": "433f6d0342312c5d78767f9860dff28bb0206d13a81c8a61105561ee9878ae47",
+      "retained_tlc_log": "tla/layer6-evidence/handoff-traces/stale/tlc.log",
+      "retained_tlc_log_sha256": "c22d0e1f40f3e2fa94d6476695a88bc8fb5db900667d33128898dc5b68518613",
+      "retained_harness_log_sha256": "bbb958749a2526a7fd0b71199748a244846a849fecebb1b8b34a59f793a774f7"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "handoff-source-emission.sha256": "91d773e719d401af224d70b3a2d05dcdd3ec4e5d7098220f3fa82beb745b5f37",
+  "install-source.sha256": "d4e50b45d4b0b92ccc3fedcc886460b6fe26823e3ca2d5d6c5ed30f6f6a62335",
+  "install-compile.log": "09a5bec9580ed1a945d939faf2f51c0377023e5c9384ff42bdd257121ffa9b00",
+  "install-vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "handoff-stale-emit.log": "433f6d0342312c5d78767f9860dff28bb0206d13a81c8a61105561ee9878ae47",
+  "README.md": "333210f0bec478cf39758a0e4f6b762ff2d0e0d7feca56f49573033d42a540c1",
+  "handoff-success-emit.log": "e54fdea65f387aa1bf3e5735b465584f7f453fd14f6a3f1a35e6673650b19c8d",
+  "install-trace.log": "0a6e88e58dbb469406acc489b0ee8d1239ad8ccbafab93752c73c285099f248e",
+  "handoff-receipt.json": "9bd24ac1b2ceb2386490e0284c372cc0ea42b622df8b7e3914581c253edc8d4c",
+  "install-test.log": "da1b110a34192528edbb184a6b67dca65c79989f5bd1742cc75d965ead2b5c2a",
+  "install-receipt.json": "3ad2f25ebaed9e12dc0e53850d03d68874c95048a8da3b1e4500cc6a4401daa1"
+}
