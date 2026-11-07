@@ -16,10 +16,19 @@ func TestFleetPublicInstallerArgs(t *testing.T) {
 	if err := f.Install(context.Background(), "public-host", "v2.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"nova-fleet", "install", "--repo", "mas-bandwidth/nova-sprint", "--tag", "v2.0.0", "--names", "nova-sprint", "public-host"}
+	want := []string{"nova-fleet", "install", "--tag", "v2.0.0", "--names", "nova-sprint", "public-host"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %q want %q", got, want)
 	}
+	f.repo = "acme/sprint"
+	if err := f.Install(context.Background(), "public-host", "v2.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	want = []string{"nova-fleet", "install", "--repo", "acme/sprint", "--tag", "v2.0.0", "--names", "nova-sprint", "public-host"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("configured repo: got %q want %q", got, want)
+	}
+	f.repo = ""
 	if err := f.Install(context.Background(), "public-host", "v2.0.0-rc.1"); err != nil {
 		t.Fatal(err)
 	}

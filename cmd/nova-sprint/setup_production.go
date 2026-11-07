@@ -32,8 +32,8 @@ import (
 // productionSetupConfig contains only public locations and credential values
 // already injected into this process by nova-secrets; it is never printed.
 type productionSetupConfig struct {
-	Binary, BinaryVersion, Host, DSN, AdminPassword, SprintPassword, BusUser, BusRedis string
-	Secrets                                                                            verbs.NovaSecrets
+	Binary, BinaryVersion, Host, DSN, AdminPassword, SprintPassword, BusUser, BusRedis, ReleaseRepo string
+	Secrets                                                                                         verbs.NovaSecrets
 }
 
 func productionSetupConfigFromEnv() (productionSetupConfig, error) {
@@ -53,7 +53,7 @@ func productionSetupConfigFromEnv() (productionSetupConfig, error) {
 	if seat == "" {
 		seat = host
 	}
-	return productionSetupConfig{Binary: binary, BinaryVersion: versionString(), Host: host, DSN: os.Getenv("NOVA_PG_DSN"), AdminPassword: os.Getenv("NOVA_PG_ADMIN_PASSWORD"), SprintPassword: os.Getenv("NOVA_SPRINT_PG_PASSWORD"), BusUser: os.Getenv("NOVA_BUS_USER"), BusRedis: os.Getenv("NOVA_BUS_REDIS"), Secrets: verbs.NovaSecrets{Store: os.Getenv("NOVA_SECRETS_STORE"), KeyFile: os.Getenv("NOVA_SECRETS_KEY"), Pins: os.Getenv("NOVA_SECRETS_PINS"), Seat: seat}}, nil
+	return productionSetupConfig{Binary: binary, BinaryVersion: versionString(), Host: host, DSN: os.Getenv("NOVA_PG_DSN"), AdminPassword: os.Getenv("NOVA_PG_ADMIN_PASSWORD"), SprintPassword: os.Getenv("NOVA_SPRINT_PG_PASSWORD"), BusUser: os.Getenv("NOVA_BUS_USER"), BusRedis: os.Getenv("NOVA_BUS_REDIS"), ReleaseRepo: os.Getenv("NOVA_SPRINT_RELEASE_REPO"), Secrets: verbs.NovaSecrets{Store: os.Getenv("NOVA_SECRETS_STORE"), KeyFile: os.Getenv("NOVA_SECRETS_KEY"), Pins: os.Getenv("NOVA_SECRETS_PINS"), Seat: seat}}, nil
 }
 
 // buildProductionSetup is called only by production CLI composition. It does
@@ -79,7 +79,7 @@ func makeProductionSetup(st store.Store, env verbs.ExecEnvironment, actor, pin s
 	}
 	runDSN, _ := setupRoleDSN(cfg.DSN, "nova_sprint")
 	runtime := verbs.RuntimeSetup{Prerequisites: verbs.SetupPrerequisites{Env: env, Pin: pin}, Store: schema, Run: verbs.PGSetupRun{DSN: runDSN, Password: cfg.SprintPassword, Env: env}, Services: verbs.FleetServices{Command: command}, Keys: verbs.ServiceKey{Terminal: verbs.TTY{}, Sink: secret, Probe: verbs.ModelProbeCommand{Binary: cfg.Binary, Secrets: secret}}, Role: role, Adoption: verbs.VersionAdoption{Binary: cfg.Binary, Secrets: secret, Keys: keys}, Snapshot: st, PolicyStore: st, Now: env.Choices.Now}
-	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command}}, productionSetupLock{cfg: cfg}
+	return productionSetup{runtime: runtime, cfg: cfg, command: command, installer: fleetPublicInstaller{command: command, repo: cfg.ReleaseRepo}}, productionSetupLock{cfg: cfg}
 }
 
 // Every seam the engine type-asserts on e.Setup and e.Lock, and the
