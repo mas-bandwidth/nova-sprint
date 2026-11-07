@@ -70,8 +70,8 @@ func (c *fakeClock) After(time.Duration) <-chan time.Time { return c.fire }
 // fallback) has passed.
 func (c *fakeClock) expire() { c.once.Do(func() { close(c.fire) }) }
 
-// testEngine is an engine on a fake clock that never expires.
-func testEngine() *Engine { return NewEngine(newFakeClock()) }
+// testEngine is an in-process engine on a fake clock that never expires.
+func testEngine() *Engine { return newLocal(newFakeClock()) }
 
 // configure adds c to the world's roster, as nova-config would.
 func (w *world) configure(c rc) {
