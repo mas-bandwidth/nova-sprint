@@ -519,6 +519,35 @@ other hash is still refused. Model: `red` is a plain card attribute
 witness `StoreRedOnConsumer` (the write without its kind check) and the
 reach checks `NeverRed`, `NeverRedKindRefused` and `NeverSameRedRefused`.
 
+Recorded with round 18 (2026-11-06): a read-only schema identity,
+`store.CheckSchema(ctx, dsn) (SchemaIdentity, error)` (and `Schema(ctx)` on
+`PG`, the same read on its pool, and on `Fake`). `SchemaIdentity` is
+`Present` (schema `sprint` exists), `Hash` (what `sprint.meta` records, ""
+when none), `Expected` (the hash this binary carries: `schemaHash`, the one
+computation, exported only through this field), `Current`, `KnownOlder` (a
+round-16 store Migrate upgrades), `Owner` (the role owning the schema) and
+`Round` (17 for the current schema, unchanged since round 17; 16; else 0). It
+runs in one `READ ONLY` transaction it rolls back, so a role with only
+`USAGE` on the schema and `SELECT` on `sprint.meta` can run it, and it reads
+the catalogs and `sprint.meta` with the same three helpers Migrate now uses
+(`namespace`, the `pg_depend` foreign check; `readMeta`; `metaRefusal`, the
+version and hash refusals in Migrate's words), so the two cannot disagree. A
+store Migrate takes is no error; every other outcome returns what was found
+and an error naming the fix: no database ("create it, or point NOVA_PG_DSN
+at the store's database"), no schema `sprint` or an empty one ("run
+Migrate"), a foreign one (Migrate's refusal), a `sprint.meta` the role cannot
+read ("grant this role USAGE on schema sprint and SELECT on sprint.meta, or
+check as <owner>"), one with no row, and another version or hash. The
+password comes as pgx takes it (`PGPASSWORD`, a pgpass file), not
+`NOVA_PG_PASSWORD`. Fake reports `Present`, `Hash` equal to `Expected`,
+`Current` and round 17, with no owner (the conformance scenario "schema
+identity"). The no-write proof (`TestFunctionalCheckSchemaWritesNothing`): on a
+store with ops in it, as its owner and as a `default_transaction_read_only`
+role, the sprint tables' `n_tup_ins`/`upd`/`del`, the events count and the
+next transaction id are unchanged for two seconds after. The schema and its
+hash do not change. No model change: it is a read, and changes no state the
+model holds.
+
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
 
 ## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
