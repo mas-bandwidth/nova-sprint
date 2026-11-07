@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
 )
@@ -117,3 +121,26 @@ func ParseFailure(err error, out []byte) string { return edge.ParseFailure(err, 
 // cause is what with err's text, redacted and bounded, err kept for
 // errors.Is (edge.Cause).
 func cause(what string, err error) error { return edge.Cause(what, err) }
+
+// ChildFailed is an internal child's failure: its error, redacted and
+// bounded, on stderr as one line (the parent's edge.CommandError carries
+// it), and code. A child that exits non-zero always says why.
+func ChildFailed(err error, code int) int {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "nova-sprint: "+edge.RedactN(err.Error(), edge.FailureMax))
+	}
+	return code
+}
+
+// missingNames is the names (never the values) of the empty ones, sorted:
+// "NAME, NAME not set".
+func missingNames(values map[string]string) string {
+	var names []string
+	for name, v := range values {
+		if v == "" {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return strings.Join(names, ", ") + " not set"
+}

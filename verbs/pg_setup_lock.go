@@ -39,7 +39,7 @@ func (p PGSetupLock) Acquire(ctx context.Context) (SetupLease, error) {
 	}
 	cfg, err := pgx.ParseConfig(p.DSN)
 	if err != nil {
-		return nil, fmt.Errorf("setup lock connection configuration invalid")
+		return nil, cause("setup lock connection configuration invalid", err)
 	}
 	if p.Password != "" {
 		cfg.Password = p.Password
@@ -52,7 +52,7 @@ func (p PGSetupLock) Acquire(ctx context.Context) (SetupLease, error) {
 	cfg.RuntimeParams["application_name"] = app
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("setup lock connection unavailable")
+		return nil, cause("setup lock connection unavailable", err)
 	}
 	var acquired bool
 	err = conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1, $2)", setupLockClass, setupLockObject).Scan(&acquired)
@@ -89,7 +89,7 @@ func (p *pgSetupLease) Check(ctx context.Context) error {
 		return fmt.Errorf("setup lock lost")
 	}
 	if err := p.conn.Ping(ctx); err != nil {
-		return fmt.Errorf("setup lock lost")
+		return cause("setup lock lost", err)
 	}
 	return nil
 }

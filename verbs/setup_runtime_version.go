@@ -44,7 +44,7 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 	v.Binary = binary
 	out, err := v.command(ctx, binary, "version")
 	if err != nil {
-		return false, fmt.Errorf("installed version unavailable")
+		return false, cause("installed version unavailable", err)
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) != 1 || !validInstalledBuild(fields[0]) {
@@ -54,10 +54,10 @@ func (v VersionAdoption) Ready(ctx context.Context, version string) (bool, error
 		return false, nil
 	}
 	if err = v.secretCommand(ctx, "check"); err != nil {
-		return false, fmt.Errorf("updated sprint check failed")
+		return false, cause("updated sprint check failed", err)
 	}
 	if err = v.secretCommand(ctx, "run", "--shadow"); err != nil {
-		return false, fmt.Errorf("updated sprint shadow failed")
+		return false, cause("updated sprint shadow failed", err)
 	}
 	return true, nil
 }

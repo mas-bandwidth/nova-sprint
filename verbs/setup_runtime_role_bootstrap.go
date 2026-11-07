@@ -84,7 +84,7 @@ func (s SprintRoleBootstrap) savePassword(ctx context.Context) error {
 		}
 	}()
 	if _, err := io.ReadFull(source, raw); err != nil {
-		return fmt.Errorf("role credential unavailable")
+		return cause("role credential unavailable", err)
 	}
 	encoded := make([]byte, base64.RawURLEncoding.EncodedLen(len(raw)))
 	defer func() {

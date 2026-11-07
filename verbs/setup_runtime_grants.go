@@ -38,7 +38,7 @@ func (g FleetGrants) Refresh(ctx context.Context, seat, machine, name string) er
 	}
 	_, err := g.command(ctx, "nova-fleet", "secrets-refresh", "--", "-l", machine, "-e", "nova_seal_store="+g.Store)
 	if err != nil {
-		return fmt.Errorf("nova-fleet secrets-refresh failed")
+		return cause("nova-fleet secrets-refresh failed", err)
 	}
 	return nil
 }

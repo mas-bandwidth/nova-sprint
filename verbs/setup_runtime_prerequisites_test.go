@@ -3,6 +3,7 @@ package verbs
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func TestSetupPrerequisitesRecheckToolsVersion(t *testing.T) {
 	version = "bad"
 	_, err = s.Tools(context.Background())
 	var op *OperationError
-	if !errors.As(err, &op) || op.Problem != "nova-tools version unknown" || op.Fix != "nova-fleet install --tag v1.6.20 <machine>" {
+	if !errors.As(err, &op) || !strings.HasPrefix(op.Problem, "nova-tools version unknown (") || op.Fix != "nova-fleet install --tag v1.6.20 <machine>" {
 		t.Fatal(err)
 	}
 	version = "v1.6.19"

@@ -117,11 +117,11 @@ func SprintStoreChild(ctx context.Context, install bool, version string) (bool, 
 		return ok, nil
 	}
 	if err = os.MkdirAll(dir, 0700); err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, cause("backup directory unavailable", err)
 	}
 	attempt, err := os.MkdirTemp(dir, "attempt-")
 	if err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, cause("backup directory unavailable", err)
 	}
 	if _, err = archive.Backup(ctx, attempt); err != nil {
 		_ = os.Remove(attempt) // only removes an empty attempt, never evidence
@@ -181,11 +181,11 @@ func sprintDSN(dsn string) (string, error) {
 func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, dir string) (bool, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "sprint-e*-s*.sql"))
 	if err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, cause("backup directory unavailable", err)
 	}
 	attempts, err := filepath.Glob(filepath.Join(dir, "attempt-*", "sprint-e*-s*.sql"))
 	if err != nil {
-		return false, fmt.Errorf("backup directory unavailable")
+		return false, cause("backup directory unavailable", err)
 	}
 	files = append(files, attempts...)
 	id, err := pg.Schema(ctx)
@@ -194,7 +194,7 @@ func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, d
 	}
 	snap, err := pg.Snapshot(ctx)
 	if err != nil {
-		return false, fmt.Errorf("store snapshot unavailable")
+		return false, cause("store snapshot unavailable", err)
 	}
 	for _, file := range files {
 		info, err := archive.Verify(ctx, file)
@@ -209,7 +209,7 @@ func verifiedFirstBackup(ctx context.Context, pg *store.PG, archive PGBackups, d
 		}
 		digest, err := EventPrefixDigest(ctx, pg, info.Seq)
 		if err != nil {
-			return false, fmt.Errorf("event history unavailable")
+			return false, cause("event history unavailable", err)
 		}
 		if digest == info.PrefixDigest {
 			return true, nil

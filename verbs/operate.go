@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/worker"
 
 	"github.com/mas-bandwidth/nova-sprint/run"
@@ -75,10 +76,17 @@ func runCheck(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (stri
 func (e *Engine) toolsAtPin(ctx context.Context) (string, error) {
 	line, err := e.Doctor.ToolsVersion(ctx)
 	v, ok := parseToolsRelease(line)
-	if err != nil || !ok {
-		return "", refuse("nova-tools' version is unknown", toolsFix(e.ToolPin))
+	if err != nil {
+		return "", refuse("nova-tools' version is unknown ("+Redact(err.Error())+")", toolsFix(e.ToolPin))
 	}
-	if at, err := atLeast(v, e.ToolPin); err != nil || !at {
+	if !ok {
+		return "", refuse(fmt.Sprintf("nova-tools' version is unknown (%q is not a release vMAJOR.MINOR.PATCH)", Redact(line)), toolsFix(e.ToolPin))
+	}
+	at, err := atLeast(v, e.ToolPin)
+	if err != nil {
+		return "", refuse("nova-tools "+v+" cannot be compared with the pin "+e.ToolPin+" ("+Redact(err.Error())+")", toolsFix(e.ToolPin))
+	}
+	if !at {
 		return "", refuse("nova-tools "+v+" is below the pin "+e.ToolPin, toolsFix(e.ToolPin))
 	}
 	return v, nil
@@ -102,14 +110,16 @@ func releaseVersion(s string) ([3]uint64, error) {
 	var out [3]uint64
 	parts := strings.Split(strings.TrimPrefix(s, "v"), ".")
 	if len(parts) != 3 {
-		return out, fmt.Errorf("invalid version")
+		return out, fmt.Errorf("invalid version: %s", edge.ParseRefused(fmt.Sprintf("%d dot-separated parts, want 3 (vMAJOR.MINOR.PATCH)", len(parts)), 0, []byte(s)))
 	}
+	at := len(s) - len(strings.TrimPrefix(s, "v"))
 	for i, p := range parts {
 		n, err := strconv.ParseUint(p, 10, 64)
 		if err != nil || p == "" || strings.Trim(p, "0123456789") != "" || (len(p) > 1 && p[0] == '0') {
-			return out, fmt.Errorf("invalid version")
+			return out, fmt.Errorf("invalid version: %s", edge.ParseRefused(fmt.Sprintf("part %q is not a number without leading zeros", p), at, []byte(s)))
 		}
 		out[i] = n
+		at += len(p) + 1
 	}
 	return out, nil
 }
