@@ -153,7 +153,7 @@ func e2ePG(t *testing.T) string {
 	t.Helper()
 	initdb, _ := exec.LookPath("initdb")
 	dir := filepath.Join(t.TempDir(), "data")
-	if out, err := exec.Command(initdb, "-D", dir, "-U", "nova_admin", "--auth=trust", "--no-locale").CombinedOutput(); err != nil {
+	if out, err := exec.Command(initdb, "-D", dir, "-U", "nova_admin", "--auth=trust", "--no-locale", "-E", "UTF8").CombinedOutput(); err != nil {
 		t.Fatalf("initdb: %v\n%s", err, out)
 	}
 	port := freePort(t)
@@ -297,36 +297,12 @@ func (x *e2e) storeSetup() {
 		_ = os.MkdirAll(dir, 0o700)
 		_, berr := (verbs.PGBackups{DSN: x.sprintDSN, Password: sprintPassword, Directory: dir, Version: x.version, Loader: verbs.PGSQLLoader{}}).Backup(ctx, dir)
 		why = append(why, fmt.Sprintf("backup: %v", berr))
-		why = append(why, dumpHeaders(dir)...)
 		pg.Close()
 	}
 	ready, err := verbs.SprintStoreChild(ctx, true, x.version)
 	why = append(why, fmt.Sprintf("SprintStoreChild: ready=%v err=%v", ready, err))
 	x.tr.record("up's store step in process, for the reason", exitOf(err), strings.Join(why, "\n"))
 	x.t.Fatalf("the store step failed: exit %d %s; in process:\n%s", code, out, strings.Join(why, "\n"))
-}
-
-// dumpHeaders are the first 30 lines of each dump under dir that are not
-// row data (no INSERT), numbered: what a rejected backup's parser saw.
-func dumpHeaders(dir string) []string {
-	var out []string
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".sql") {
-			return nil
-		}
-		b, _ := os.ReadFile(path)
-		out = append(out, "dump "+filepath.Base(path)+":")
-		for i, l := range strings.Split(string(b), "\n") {
-			if i >= 30 {
-				break
-			}
-			if !strings.HasPrefix(l, "INSERT") {
-				out = append(out, fmt.Sprintf("  %d: %s", i+1, l))
-			}
-		}
-		return nil
-	})
-	return out
 }
 
 // devVersion is this checkout's development version, dev+<12 hex>: the
