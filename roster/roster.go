@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
@@ -62,9 +63,17 @@ type Worker struct {
 	Name    string
 	Width   int
 	Tiers   []string
+	Routes  []string // the routes and devices it serves (RoutePrefix roles)
 	Harness string
 	Held    string
 }
+
+// RoutePrefix is how a machine serves a route or a device in nova-config
+// today: a role `route:<name>` beside `bench` (nova-config has no routes
+// field; a first-class one on machines and friends is owed upstream, and a
+// friend serves no route until it exists). A card declares the routes it
+// needs (card.NeedsRoutes) and is dealt only to rows that serve them all.
+const RoutePrefix = "route:"
 
 // NoCores is the Held reason of a bench with no cores in nova-config.
 const NoCores = "no cores in nova-config"
@@ -97,7 +106,7 @@ type Roster struct {
 func (r Roster) Clone() Roster {
 	r.Workers = maps.Clone(r.Workers)
 	for n, w := range r.Workers {
-		w.Tiers = slices.Clone(w.Tiers)
+		w.Tiers, w.Routes = slices.Clone(w.Tiers), slices.Clone(w.Routes)
 		r.Workers[n] = w
 	}
 	r.Kin = maps.Clone(r.Kin)
@@ -159,7 +168,7 @@ func (r *Roster) addWorkers(ms []Machine, cap int) {
 			r.refuse(m.Name, KindWorker, "machine "+why)
 			continue
 		}
-		w := Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Harness: WorkerHarness}
+		w := Worker{Name: m.Name, Width: min(m.Cores, cap), Tiers: slices.Clone(store.Tiers), Routes: routesOf(m.Roles), Harness: WorkerHarness}
 		if m.Cores < 1 {
 			w.Width, w.Held = 0, NoCores
 		}
@@ -213,4 +222,33 @@ func (r Roster) Row(name string) (kind string, width int, tiers []string, ok boo
 		return KindKin, k.Width, slices.Clone(k.Tiers), true
 	}
 	return "", 0, nil, false
+}
+
+// Routes is the routes row name serves (none for kin, or a name not in the
+// roster).
+func (r Roster) Routes(name string) []string {
+	return slices.Clone(r.Workers[name].Routes)
+}
+
+// ServesRoutes is whether row name serves every route of routes (true for
+// none).
+func (r Roster) ServesRoutes(name string, routes []string) bool {
+	for _, x := range routes {
+		if !slices.Contains(r.Workers[name].Routes, x) {
+			return false
+		}
+	}
+	return true
+}
+
+// routesOf is the routes a machine's roles name (RoutePrefix), sorted.
+func routesOf(roles []string) []string {
+	var out []string
+	for _, role := range roles {
+		if name, ok := strings.CutPrefix(strings.TrimSpace(role), RoutePrefix); ok && name != "" && !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
