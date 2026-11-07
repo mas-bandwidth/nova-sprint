@@ -2,6 +2,7 @@ package verbs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -50,11 +51,11 @@ func parseBrief(id, text string) (card.Add, []string, error) {
 	p := briefParts{a: card.Add{ID: id, Kind: "producer", Brief: text}, seen: map[string]bool{}}
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	if len(lines) == 0 || !strings.HasPrefix(lines[0], "tier: ") {
-		return p.a, nil, briefError("tier first line")
+		return p.a, nil, locateBriefError(id, 1, briefError("tier first line"))
 	}
 	p.a.Tier = strings.TrimSpace(strings.TrimPrefix(lines[0], "tier: "))
 	if !slices.Contains(store.Tiers, p.a.Tier) {
-		return p.a, nil, briefError("tier")
+		return p.a, nil, locateBriefError(id, 1, briefError("tier"))
 	}
 	separator := -1
 	for i, line := range lines[1:] {
@@ -63,26 +64,54 @@ func parseBrief(id, text string) (card.Add, []string, error) {
 			break
 		}
 		if err := p.line(line); err != nil {
-			return p.a, nil, err
+			return p.a, nil, locateBriefError(id, i+2, err)
 		}
 	}
 	if separator < 0 || separator >= len(lines) {
-		return p.a, nil, briefError("task prose")
+		return p.a, nil, locateBriefError(id, len(lines), briefError("task prose"))
 	}
 	p.prose = append(p.prose, lines[separator:]...)
 	for _, field := range []string{"PATHS", "TEST", "DONE-WHEN"} {
 		if !p.seen[field] {
-			return p.a, nil, briefError(field)
+			return p.a, nil, locateBriefError(id, len(lines), briefError(field))
 		}
 	}
 	p.a.Prose = strings.TrimSpace(strings.Join(p.prose, "\n"))
 	if p.a.Prose == "" {
-		return p.a, nil, briefError("task prose")
+		return p.a, nil, locateBriefError(id, len(lines), briefError("task prose"))
 	}
 	return p.a, p.tests, nil
 }
+
+// BriefLintError identifies the first failed canonical brief rule without quoting input.
+type BriefLintError struct {
+	Brief string
+	Line  int
+	Rule  string
+}
+
+func (e *BriefLintError) Error() string {
+	name := strings.NewReplacer("\n", " ", "\r", " ").Replace(e.Brief)
+	return fmt.Sprintf("%s: line %d %s", name, e.Line, e.Rule)
+}
 func briefError(field string) error {
-	return &OperationError{Problem: "brief missing or invalid " + field, Fix: "fix the brief's " + field + " section", Exit: 1}
+	rule := "must contain a valid " + field + " section"
+	switch field {
+	case "tier first line", "tier":
+		rule = "must be tier: <flash|pro|heavy|frontier>"
+	case "metadata":
+		rule = "must be a recognized metadata field"
+	case "task prose":
+		rule = "must include task prose after a blank line"
+	}
+	return &BriefLintError{Rule: rule}
+}
+func locateBriefError(id string, line int, err error) error {
+	if lint, ok := err.(*BriefLintError); ok {
+		lint.Brief = id
+		lint.Line = line
+	}
+	return err
 }
 
 func (p *briefParts) line(line string) error {
