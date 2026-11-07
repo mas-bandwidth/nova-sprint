@@ -178,3 +178,37 @@ func TestRoutesFromRoles(t *testing.T) {
 	c.Workers["b1"].Routes[0] = "x"
 	assert.Equal(t, "ipad", r.Workers["b1"].Routes[0], "a clone keeps its own routes")
 }
+
+// Defect 74: a worker that advertised in its heartbeat is dealt its own
+// tiers at width min(width, slots); one that advertised nothing, or read no
+// slots, keeps nova-config's shape; kin are untouched; the input is not
+// changed.
+func TestAdvertisedWidthAndTiers(t *testing.T) {
+	t.Parallel()
+	ro := Roster{
+		Workers: map[string]Worker{
+			"b1": {Name: "b1", Width: 8, Tiers: store.Tiers, Harness: WorkerHarness},
+			"b2": {Name: "b2", Width: 8, Tiers: store.Tiers, Harness: WorkerHarness},
+			"b3": {Name: "b3", Width: 4, Tiers: store.Tiers, Harness: WorkerHarness},
+			"b4": {Name: "b4", Width: 2, Tiers: store.Tiers, Harness: WorkerHarness},
+		},
+		Kin: map[string]Kin{"k1": {Name: "k1", Width: 3, Tiers: []string{"frontier"}}},
+	}
+	got := ro.Advertised(map[string]store.Row{
+		"b1": {Name: "b1", Session: "s", Tiers: "flash", SlotsTotal: 3},
+		"b2": {Name: "b2", Session: "s", SlotsTotal: 3},      // advertised no tiers: nova-config's shape
+		"b3": {Name: "b3", Session: "s", Tiers: "flash,pro"}, // no slots read: width stays
+		"b4": {Name: "b4", Session: "s", Tiers: "pro", SlotsTotal: 6},
+		"k1": {Name: "k1", Session: "s", Tiers: "flash", SlotsTotal: 1},
+	})
+	assert.Equal(t, []string{"flash"}, got.Workers["b1"].Tiers)
+	assert.Equal(t, 3, got.Workers["b1"].Width)
+	assert.Equal(t, store.Tiers, got.Workers["b2"].Tiers)
+	assert.Equal(t, 8, got.Workers["b2"].Width)
+	assert.Equal(t, []string{"flash", "pro"}, got.Workers["b3"].Tiers)
+	assert.Equal(t, 4, got.Workers["b3"].Width)
+	assert.Equal(t, 2, got.Workers["b4"].Width, "slots above the cores-cap width never widen it")
+	assert.Equal(t, ro.Kin["k1"], got.Kin["k1"])
+	assert.Equal(t, 8, ro.Workers["b1"].Width, "the input roster is not changed")
+	assert.Equal(t, store.Tiers, ro.Workers["b1"].Tiers)
+}

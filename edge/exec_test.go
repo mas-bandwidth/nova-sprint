@@ -262,3 +262,17 @@ func TestRestartRequeryIdempotencyPerFactKind(t *testing.T) {
 		assert.Equal(t, res1, res2, "restarted edge must return identical answer for fact kind %s", tc.kind)
 	}
 }
+
+// Defect 73: a command its caller cancels is "canceled", never a timeout;
+// a deadline that passes is the timeout.
+func TestExecCanceledIsNotATimeout(t *testing.T) {
+	t.Parallel()
+	_, err := classifyExecErr_internal("nova-sandbox", time.Minute, context.Canceled, nil, Result{})
+	var ee *ExecError
+	require.True(t, errors.As(err, &ee))
+	assert.Equal(t, ErrCanceled, ee.Kind)
+	assert.NotContains(t, ee.Error(), "timed out")
+	_, err = classifyExecErr_internal("nova-sandbox", time.Minute, context.DeadlineExceeded, nil, Result{})
+	require.True(t, errors.As(err, &ee))
+	assert.Equal(t, ErrTimeout, ee.Kind)
+}

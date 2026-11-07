@@ -293,6 +293,7 @@ func TestStitchUnacknowledgedReportIsKeptAndSentOnTheNextWake(t *testing.T) {
 			sp.reportErrs = append(sp.reportErrs, tc.failure)
 		}
 		r, _ := loopRunner_internal(t, sp, newFakeWakeHook(), &crWall{})
+		r.RefusalLimit = 10 // the resend alone: quarantine at the limit is TestLiveRefusedRecordIsQuarantinedAndThePassGoesOn
 		root := r.RootDir
 		_ = r.StepRow(context.Background(), "vision.ds")
 		rec, err := ReadJobRecord(filepath.Join(root, "jobs", "p1.r1"))
