@@ -23,6 +23,7 @@ type runnerJobDirState_internal struct {
 	pushed  bool
 	outcome string
 	bounced bool
+	stopped bool
 }
 
 type runnerAppliedOp_internal struct {
@@ -35,6 +36,7 @@ type runnerEnvState_internal struct {
 	crashes   int
 	storeDown bool
 	crashed   bool
+	released  bool
 }
 
 type runnerTraceStep_internal struct {
@@ -48,6 +50,7 @@ type runnerTraceStep_internal struct {
 	harnessAlive map[string]int
 	appliedOps   []runnerAppliedOp_internal
 	env          runnerEnvState_internal
+	pass         string
 }
 
 type runnerWalkHarness_internal struct {
@@ -63,6 +66,10 @@ type runnerWalkHarness_internal struct {
 	slotsInUse int
 	applied    map[int]runnerAppliedOp_internal
 	env        runnerEnvState_internal
+	pass       string          // the wake loop's pass: idle or planning
+	stopped    map[string]bool // kept by the worker's stop, to run again
+	takes      map[string]int
+	runner     *Runner // its stopped_internal writes the stop's record
 }
 
 func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
@@ -100,7 +107,20 @@ func newRunnerWalkHarness_internal(t *testing.T) *runnerWalkHarness_internal {
 		bounced:  map[string]bool{"c1": false, "c2": false},
 		alive:    map[string]int{"c1": 0, "c2": 0},
 		applied:  map[int]runnerAppliedOp_internal{},
+		pass:     "idle",
+		stopped:  map[string]bool{"c1": false, "c2": false},
+		takes:    map[string]int{"c1": 0, "c2": 0},
+		runner:   runnerForWalk_internal(t),
 	}
+}
+
+func runnerForWalk_internal(t *testing.T) *Runner {
+	t.Helper()
+	r, err := NewRunner(Runner{Host: "vision", RootDir: t.TempDir(), Now: func() time.Time { return time.Unix(1000, 0) }, Sleep: func(time.Duration) {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
 
 func runnerResID_internal(c string) int {
@@ -156,6 +176,7 @@ func refinementRunnerState_internal(t *testing.T, h *runnerWalkHarness_internal,
 		harnessAlive: alMap,
 		appliedOps:   ops,
 		env:          h.env,
+		pass:         h.pass,
 	}
 }
 
@@ -190,6 +211,7 @@ func (h *runnerWalkHarness_internal) projectJobDir_internal(t *testing.T, c stri
 		pushed:  h.pushed[c],
 		outcome: out,
 		bounced: h.bounced[c],
+		stopped: h.stopped[c],
 	}
 }
 
@@ -214,8 +236,9 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 	dir := h.jobDirPath_internal(c)
 	switch act {
 	case "Take":
+		h.takes[c]++
 		rec, err := h.st.Apply(ctx, store.Op{
-			ID:     FormatTakeOpID(1, c, 1, "vision.ds"),
+			ID:     FormatTakeOpID(1, c, h.takes[c], "vision.ds"),
 			Epoch:  1,
 			Actor:  "vision.ds",
 			Kind:   "take",
@@ -247,6 +270,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		}
 		h.slotsInUse++
 		h.alive[c] = 1
+		h.stopped[c] = false
 		h.jobState[c] = JobRunning
 	case "Harvest", "Die":
 		h.finishRun_internal(t, c, act, dir)
@@ -255,10 +279,60 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 	case "Crash":
 		h.env.crashes++
 		h.env.crashed = true
+		h.pass = "idle"
+	case "Stop":
+		h.stop_internal(t)
+	case "PassStart":
+		h.pass = "planning"
+	case "PassEnd":
+		h.pass = "idle"
+	case "Release":
+		h.release_internal(t, c)
 	case "Restart":
 		h.env.crashed = false
 		h.env.storeDown = false
 	}
+}
+
+// stop_internal is the worker's stop: each running job's record is kept by
+// the worker's own stopped_internal (no pid, no outcome), its harness gone
+// and its slot freed; the walk's job is at staged, as a resume treats a
+// running record with no live harness (prepareResume_internal).
+func (h *runnerWalkHarness_internal) stop_internal(t *testing.T) {
+	t.Helper()
+	for _, c := range []string{"c1", "c2"} {
+		if h.jobState[c] != JobRunning {
+			continue
+		}
+		dir := h.jobDirPath_internal(c)
+		rec, err := ReadJobRecord(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := h.runner.stopped_internal(&prepared_internal{job: Job{JobDir: dir, Row: "vision.ds", Consumer: c}, rec: rec}); err != nil {
+			t.Fatal(err)
+		}
+		h.alive[c], h.stopped[c], h.jobState[c] = 0, true, JobStaged
+	}
+	h.slotsInUse = 0
+	h.env.crashes++
+	h.env.crashed = true
+	h.pass = "idle"
+}
+
+// release_internal is the restart's no-blame give-back of a card with no
+// job directory: the card is ready again, with no report.
+func (h *runnerWalkHarness_internal) release_internal(t *testing.T, c string) {
+	t.Helper()
+	rec, err := h.st.Apply(context.Background(), store.Op{
+		ID: fmt.Sprintf("release-%s-%d", c, h.takes[c]), Epoch: 1, Actor: "vision.ds", Kind: "release",
+		At: h.t0.Add(time.Duration(h.stepN) * time.Second), Writes: []store.Write{store.SetCardState{Card: c, State: "ready"}},
+	})
+	if err != nil || !rec.Accepted {
+		t.Fatalf("Release %s: err=%v rec=%+v", c, err, rec)
+	}
+	h.jobState[c] = JobNone
+	h.env.released = true
 }
 
 func (h *runnerWalkHarness_internal) finishRun_internal(t *testing.T, c, act, dir string) {
@@ -338,7 +412,7 @@ func walkRunnerTrace_internal(t *testing.T, seed int64) []runnerTraceStep_intern
 	rng := rand.New(rand.NewSource(seed))
 	h := newRunnerWalkHarness_internal(t)
 	steps := []runnerTraceStep_internal{refinementRunnerState_internal(t, h, "Init", "none")}
-	for i := 0; i < 40; i++ {
+	for i := 0; i < 160; i++ {
 		st := steps[len(steps)-1]
 		if st.jobState["c1"] == JobCleaned && st.jobState["c2"] == JobCleaned {
 			steps = append(steps, refinementRunnerState_internal(t, h, "Done", "none"))
@@ -350,48 +424,63 @@ func walkRunnerTrace_internal(t *testing.T, seed int64) []runnerTraceStep_intern
 	return steps
 }
 
+type runnerMove_internal struct{ act, arg string }
+
 func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_internal, st runnerTraceStep_internal) (string, string) {
 	t.Helper()
 	if st.env.crashed {
 		h.applyStep_internal(t, "Restart", "none")
 		return "Restart", "none"
 	}
-	type move struct{ act, arg string }
-	var moves []move
+	moves := []runnerMove_internal{{"PassEnd", "none"}}
+	if st.pass == "idle" {
+		moves = []runnerMove_internal{{"PassStart", "none"}}
+	}
 	for _, c := range []string{"c1", "c2"} {
-		switch st.jobState[c] {
-		case JobNone:
-			if st.storeState[c] == "ready" {
-				moves = append(moves, move{"Take", c})
-			}
-		case JobTaken:
-			moves = append(moves, move{"Stage", c})
-		case JobStaged:
-			if st.slotsInUse < 1 && st.harnessAlive[c] == 0 {
-				moves = append(moves, move{"Run", c})
-			}
-		case JobRunning:
-			moves = append(moves, move{"Harvest", c}, move{"Die", c})
-		case JobHarvested:
-			if st.jobDir[c].outcome == "ok" {
-				moves = append(moves, move{"Rebase", c}, move{"Conflict", c})
-			} else {
-				moves = append(moves, move{"Push", c})
-			}
-		case JobRebased:
-			moves = append(moves, move{"Push", c})
-		case JobReporting:
-			moves = append(moves, move{"Report", c})
-		case JobRecorded:
-			moves = append(moves, move{"Clean", c})
-		}
+		moves = append(moves, consumerMoves_internal(st, c)...)
 	}
 	if st.env.crashes < 1 {
-		moves = append(moves, move{"Crash", "none"})
+		moves = append(moves, runnerMove_internal{"Crash", "none"}, runnerMove_internal{"Stop", "none"})
 	}
 	m := moves[rng.Intn(len(moves))]
 	h.applyStep_internal(t, m.act, m.arg)
 	return m.act, m.arg
+}
+
+// consumerMoves_internal are c's enabled job moves in st (a take only in a
+// pass; a release only after a restart, of a card with no job directory).
+func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_internal {
+	var moves []runnerMove_internal
+	switch st.jobState[c] {
+	case JobNone:
+		if st.storeState[c] == "ready" && st.pass == "planning" {
+			moves = append(moves, runnerMove_internal{"Take", c})
+		}
+	case JobTaken:
+		moves = append(moves, runnerMove_internal{"Stage", c})
+		if st.env.crashes > 0 && !st.env.released && st.storeState[c] == "working" && !st.jobDir[c].exists {
+			moves = append(moves, runnerMove_internal{"Release", c})
+		}
+	case JobStaged:
+		if st.slotsInUse < 1 && st.harnessAlive[c] == 0 {
+			moves = append(moves, runnerMove_internal{"Run", c})
+		}
+	case JobRunning:
+		moves = append(moves, runnerMove_internal{"Harvest", c}, runnerMove_internal{"Die", c})
+	case JobHarvested:
+		if st.jobDir[c].outcome == "ok" {
+			moves = append(moves, runnerMove_internal{"Rebase", c}, runnerMove_internal{"Conflict", c})
+		} else {
+			moves = append(moves, runnerMove_internal{"Push", c})
+		}
+	case JobRebased:
+		moves = append(moves, runnerMove_internal{"Push", c})
+	case JobReporting:
+		moves = append(moves, runnerMove_internal{"Report", c})
+	case JobRecorded:
+		moves = append(moves, runnerMove_internal{"Clean", c})
+	}
+	return moves
 }
 
 func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
@@ -403,7 +492,7 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 		if i == len(steps)-1 {
 			comma = ""
 		}
-		b.WriteString(fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, storeState |-> [c1 |-> %q, c2 |-> %q], jobState |-> [c1 |-> %q, c2 |-> %q], slotsInUse |-> %d, width |-> %d, jobDir |-> [c1 |-> %s, c2 |-> %s], harnessAlive |-> [c1 |-> %d, c2 |-> %d], appliedOps |-> %s, env |-> %s]%s\n",
+		b.WriteString(fmt.Sprintf("  [i |-> %d, action |-> %q, arg |-> %q, storeState |-> [c1 |-> %q, c2 |-> %q], jobState |-> [c1 |-> %q, c2 |-> %q], slotsInUse |-> %d, width |-> %d, jobDir |-> [c1 |-> %s, c2 |-> %s], harnessAlive |-> [c1 |-> %d, c2 |-> %d], appliedOps |-> %s, env |-> %s, pass |-> %q]%s\n",
 			i+1, s.action, s.arg,
 			s.storeState["c1"], s.storeState["c2"],
 			s.jobState["c1"], s.jobState["c2"],
@@ -413,6 +502,7 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 			s.harnessAlive["c1"], s.harnessAlive["c2"],
 			formatRunnerOpsTLA_internal(s.appliedOps),
 			formatRunnerEnvTLA_internal(s.env),
+			s.pass,
 			comma))
 	}
 	b.WriteString(">>\n")
@@ -421,8 +511,8 @@ func formatRunnerTraceTLA_internal(steps []runnerTraceStep_internal) string {
 }
 
 func formatRunnerJobDirTLA_internal(d runnerJobDirState_internal) string {
-	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s]",
-		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced))
+	return fmt.Sprintf("[exists |-> %s, creates |-> %d, pid |-> %d, resId |-> %d, pushed |-> %s, outcome |-> %q, bounced |-> %s, stopped |-> %s]",
+		tlaBool_internal(d.exists), d.creates, d.pid, d.resID, tlaBool_internal(d.pushed), d.outcome, tlaBool_internal(d.bounced), tlaBool_internal(d.stopped))
 }
 
 func formatRunnerOpsTLA_internal(ops []runnerAppliedOp_internal) string {
@@ -438,8 +528,8 @@ func formatRunnerOpsTLA_internal(ops []runnerAppliedOp_internal) string {
 }
 
 func formatRunnerEnvTLA_internal(e runnerEnvState_internal) string {
-	return fmt.Sprintf("[crashes |-> %d, storeDown |-> %s, crashed |-> %s]",
-		e.crashes, tlaBool_internal(e.storeDown), tlaBool_internal(e.crashed))
+	return fmt.Sprintf("[crashes |-> %d, storeDown |-> %s, crashed |-> %s, released |-> %s]",
+		e.crashes, tlaBool_internal(e.storeDown), tlaBool_internal(e.crashed), tlaBool_internal(e.released))
 }
 
 func tlaBool_internal(v bool) string {
