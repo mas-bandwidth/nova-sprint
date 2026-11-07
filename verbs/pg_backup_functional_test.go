@@ -210,10 +210,10 @@ func TestFunctionalBackupMigratedRound25(t *testing.T) {
 	}
 }
 
-// The live store (round 25, the deployed line) runs with no stop in its
-// log: the deployed line's stores began running, with nothing logged. A
+// A round 25 store runs with no stop in its log: stores of that round
+// began running, with nothing logged. A
 // rebuild starts never started (store.FreshStop), so Migrate logs the stop
-// the store has, and its backup verifies (L1.1's stop comparison holds).
+// the store has, and its backup verifies (the rebuild compares the stop).
 func TestFunctionalBackupRound25RunningWithNoStopEvent(t *testing.T) {
 	if _, err := exec.LookPath("initdb"); err != nil {
 		t.Skip("requires PostgreSQL's initdb on PATH")
@@ -247,7 +247,7 @@ func TestFunctionalBackupRound25RunningWithNoStopEvent(t *testing.T) {
 	}
 	snap, err := pg.Snapshot(ctx)
 	if err != nil || snap.Stopped {
-		t.Fatalf("the live store is running: %+v %v", snap, err)
+		t.Fatalf("the store is running: %+v %v", snap, err)
 	}
 	b := PGBackups{DSN: dsn, Directory: t.TempDir(), Version: "v2.0.1", Loader: PGSQLLoader{}}
 	if _, err = b.Backup(ctx, ""); err != nil {

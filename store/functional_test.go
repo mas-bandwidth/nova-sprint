@@ -1160,7 +1160,7 @@ func TestFunctionalEventIdentity(t *testing.T) {
 	assert.Equal(t, 1, epoch)
 }
 
-// A round 25 store (the deployed line's) began running with nothing logged,
+// A round 25 store began running with nothing logged,
 // and a rebuild starts never started (FreshStop): Migrate logs the stop the
 // store has, so the log rebuilds to it, whether it runs (one event) or was
 // stopped by hand with another reason (two, through the other flag); a

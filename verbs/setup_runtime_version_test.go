@@ -50,7 +50,7 @@ func TestVersionAdoptionRequiresCheck(t *testing.T) {
 
 // Every nova-sprint command up --version runs on the installed build is one
 // the verb table accepts: the real parser reads each argv, so adoption cannot
-// call a verb or flag no build has (it once called run --shadow).
+// call a verb or flag no build has.
 func TestAdoptionCommandsAreAllParseable(t *testing.T) {
 	t.Parallel()
 	const binary = "/bin/nova-sprint"
