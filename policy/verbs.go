@@ -119,8 +119,11 @@ func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, r
 		return Result{}, err
 	}
 	rep, err := check(ctx, st, e, snap, pv)
-	if err != nil || len(rep.Refusals) > 0 {
-		return Result{}, cmpErr(err, &Refusal{"activate", strings.Join(rep.Refusals, "; "), "nova-sprint policy check " + strconv.Itoa(v)})
+	if err != nil {
+		return Result{}, err
+	}
+	if len(rep.Refusals) > 0 {
+		return no(strings.Join(rep.Refusals, "; "), "nova-sprint policy check "+strconv.Itoa(v))
 	}
 	writes := []store.Write{store.SetActivePolicy{Version: v}}
 	for _, id := range append(OpenJudgements(snap, snap.Policy), OpenJudgements(snap, v)...) {
@@ -129,13 +132,6 @@ func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, r
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-activate", At: c.At, Note: reason, Writes: writes}
 	_, err = apply(ctx, st, op, "activate")
 	return Result{Version: v, Changes: len(rep.Changes), Next: "nova-sprint next"}, err
-}
-
-func cmpErr(err error, r *Refusal) error {
-	if err != nil {
-		return err
-	}
-	return r
 }
 
 func coordinator(verb string, c Caller, reason string) *Refusal {

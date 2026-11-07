@@ -171,7 +171,7 @@ func FuzzAnswers(f *testing.F) {
 	f.Fuzz(func(t *testing.T, b []byte) {
 		g := &fuzzLit{b: b}
 		var body strings.Builder
-		for _, q := range questionNames() {
+		for _, q := range questionNames {
 			fmt.Fprintf(&body, "def %s(%s):\n    return %s\n\n", q, params[q], g.lit(0))
 		}
 		a, fs := NewEngine().Answer(Versions{Active: pv(2, body.String())}, snap, FullQuestions(snap, nil))

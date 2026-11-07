@@ -84,11 +84,18 @@ func newAnswers(v int) Answers {
 		Verdict: map[string]string{}, Width: map[string]Width{}, Landing: map[string]Landing{}, Stitch: map[string]bool{}}
 }
 
-func catalogAsk(ctx context.Context) ask {
-	return ask{q: "catalog", digest: digestOf("catalog", "()"), accept: func(v starlark.Value) (func(*Answers), string) {
-		c, msg := checkCatalog(ctx, v)
-		return func(a *Answers) { a.Catalog = c.clone(); a.Catalog.Version = a.Version }, msg
+// askOf is question q about subject, its answer checked by check and,
+// when in domain, set into the tick's Answers by set.
+func askOf[T any](q, subject string, args starlark.Tuple, check func(starlark.Value) (T, string), set func(*Answers, T)) ask {
+	return ask{q: q, subject: subject, args: args, digest: digestOf(q, args.String()), accept: func(v starlark.Value) (func(*Answers), string) {
+		x, msg := check(v)
+		return func(a *Answers) { set(a, x) }, msg
 	}}
+}
+
+func catalogAsk(ctx context.Context) ask {
+	return askOf("catalog", "", nil, func(v starlark.Value) (Catalog, string) { return checkCatalog(ctx, v) },
+		func(a *Answers, c Catalog) { a.Catalog = c.clone(); a.Catalog.Version = a.Version })
 }
 
 // asks are the tick's questions in the order they are answered: the
@@ -96,32 +103,19 @@ func catalogAsk(ctx context.Context) ask {
 // validators that loop over what a policy returns check ctx.
 func (ix *index) asks(ctx context.Context, q Questions) []ask {
 	out := []ask{
-		{q: "limits", accept: func(v starlark.Value) (func(*Answers), string) {
-			l, msg := checkLimits(v)
-			return func(a *Answers) { a.Limits = l }, msg
-		}},
-		{q: "timeouts", accept: func(v starlark.Value) (func(*Answers), string) {
-			t, msg := checkTimeouts(v)
-			return func(a *Answers) { a.Timeouts = t; a.Timeouts.BaseRegate = slices.Clone(t.BaseRegate) }, msg
-		}},
-		{q: "prices", accept: func(v starlark.Value) (func(*Answers), string) {
-			p, msg := checkPrices(ctx, v)
-			return func(a *Answers) { a.Prices = maps.Clone(p) }, msg
-		}},
+		askOf("limits", "", nil, checkLimits, func(a *Answers, l Limits) { a.Limits = l }),
+		askOf("timeouts", "", nil, checkTimeouts, func(a *Answers, t Timeouts) { a.Timeouts = t; a.Timeouts.BaseRegate = slices.Clone(t.BaseRegate) }),
+		askOf("prices", "", nil, func(v starlark.Value) (map[string]Price, string) { return checkPrices(ctx, v) },
+			func(a *Answers, p map[string]Price) { a.Prices = maps.Clone(p) }),
 		catalogAsk(ctx),
 	}
 	for _, r := range ix.rows {
-		out = append(out, ask{q: "width", subject: r.Name, args: starlark.Tuple{row(r)}, accept: func(v starlark.Value) (func(*Answers), string) {
-			w, msg := checkWidth(v, r.Width)
-			return func(a *Answers) { a.Width[r.Name] = w }, msg
-		}})
+		out = append(out, askOf("width", r.Name, starlark.Tuple{row(r)}, func(v starlark.Value) (Width, string) { return checkWidth(v, r.Width) },
+			func(a *Answers, w Width) { a.Width[r.Name] = w }))
 	}
 	for _, id := range q.Order {
 		if c, ok := ix.producer(id); ok {
-			out = append(out, ask{q: "order", subject: id, args: starlark.Tuple{orderCard(c)}, accept: func(v starlark.Value) (func(*Answers), string) {
-				o, msg := checkOrder(v)
-				return func(a *Answers) { a.Order[id] = slices.Clone(o) }, msg
-			}})
+			out = append(out, askOf("order", id, starlark.Tuple{orderCard(c)}, checkOrder, func(a *Answers, o []any) { a.Order[id] = slices.Clone(o) }))
 		}
 	}
 	for _, rq := range q.Rows {
@@ -129,13 +123,7 @@ func (ix *index) asks(ctx context.Context, q Questions) []ask {
 			out = append(out, ix.rowsAsk(c, rq))
 		}
 	}
-	out = append(out, ix.subjectAsks(q)...)
-	for i := range out {
-		if out[i].digest == ([32]byte{}) {
-			out[i].digest = digestOf(out[i].q, out[i].args.String())
-		}
-	}
-	return out
+	return append(out, ix.subjectAsks(q)...)
 }
 
 // rowsAsk is one rows question, with its joint check: the rows named must
@@ -167,10 +155,7 @@ func (ix *index) subjectAsks(q Questions) []ask {
 	var out []ask
 	for _, id := range q.Reads {
 		if c, ok := ix.producer(id); ok {
-			out = append(out, ask{q: "reads", subject: id, args: starlark.Tuple{ix.card(c)}, accept: func(v starlark.Value) (func(*Answers), string) {
-				n, msg := checkReads(v)
-				return func(a *Answers) { a.Reads[id] = n }, msg
-			}})
+			out = append(out, askOf("reads", id, starlark.Tuple{ix.card(c)}, checkReads, func(a *Answers, n int) { a.Reads[id] = n }))
 		}
 	}
 	for _, id := range q.Verdict {
@@ -180,18 +165,12 @@ func (ix *index) subjectAsks(q Questions) []ask {
 	}
 	for _, lq := range q.Landing {
 		if _, ok := ix.streams[lq.Stream]; ok {
-			out = append(out, ask{q: "landing", subject: lq.Stream, args: starlark.Tuple{ix.landingStream(lq)}, accept: func(v starlark.Value) (func(*Answers), string) {
-				l, msg := checkLanding(v)
-				return func(a *Answers) { a.Landing[lq.Stream] = l }, msg
-			}})
+			out = append(out, askOf("landing", lq.Stream, starlark.Tuple{ix.landingStream(lq)}, checkLanding, func(a *Answers, l Landing) { a.Landing[lq.Stream] = l }))
 		}
 	}
 	for _, s := range q.Stitch {
 		if _, ok := ix.streams[s]; ok {
-			out = append(out, ask{q: "stitch", subject: s, args: starlark.Tuple{ix.stitchStream(s)}, accept: func(v starlark.Value) (func(*Answers), string) {
-				b, msg := checkStitch(v)
-				return func(a *Answers) { a.Stitch[s] = b }, msg
-			}})
+			out = append(out, askOf("stitch", s, starlark.Tuple{ix.stitchStream(s)}, checkStitch, func(a *Answers, b bool) { a.Stitch[s] = b }))
 		}
 	}
 	return out
@@ -203,10 +182,8 @@ func (ix *index) verdictAsk(c store.Card) ask {
 	for i, id := range ids {
 		reads[i], results[i] = ix.read(ix.snap.Cards[id]), ix.snap.Cards[id].Result
 	}
-	return ask{q: "verdict", subject: c.ID, args: starlark.Tuple{ix.card(c), reads}, accept: func(v starlark.Value) (func(*Answers), string) {
-		s, msg := checkVerdict(v, results)
-		return func(a *Answers) { a.Verdict[c.ID] = s }, msg
-	}}
+	return askOf("verdict", c.ID, starlark.Tuple{ix.card(c), reads}, func(v starlark.Value) (string, string) { return checkVerdict(v, results) },
+		func(a *Answers, s string) { a.Verdict[c.ID] = s })
 }
 
 func (ix *index) producer(id string) (store.Card, bool) {
