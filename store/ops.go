@@ -257,6 +257,12 @@ type SetCardCost struct {
 	Priced bool
 }
 
+// SetCardUsage sets a consumer's usage record: the words of package usage
+// (tokens by class, model, billing, the harness's charged dollars, why it is
+// unpriced), as the engine priced them (round 25). The store keeps the
+// words; it reads none of them. Refused on a producer or sentinel.
+type SetCardUsage struct{ Card, Usage string }
+
 // SetCardPriority sets a producer's or sentinel's level (low, normal, high,
 // critical, blocker); refused on a consumer for any value, normal included.
 type SetCardPriority struct{ Card, Priority string }
@@ -385,6 +391,7 @@ func (SetCardReview) isWrite()    {}
 func (SetCardFinding) isWrite()   {}
 func (SetCardRed) isWrite()       {}
 func (SetCardCost) isWrite()      {}
+func (SetCardUsage) isWrite()     {}
 func (SetCardPriority) isWrite()  {}
 func (PutRow) isWrite()           {}
 func (SetRowHeld) isWrite()       {}
@@ -549,6 +556,8 @@ func kindSpec(w Write) spec {
 		return s
 	case SetCardCost:
 		return card(v.Card, "cost", func(k *Card) { k.Cost, k.Priced = v.Cost, v.Priced }, func(c *checker) { c.num64("cost", v.Cost) }).kinds("SetCardCost", "a consumer", consumer)
+	case SetCardUsage:
+		return card(v.Card, "usage", func(k *Card) { k.Usage = v.Usage }, func(c *checker) { c.text(v.Usage) }).kinds("SetCardUsage", "a consumer", consumer)
 	case SetCardPriority:
 		// "" is normal, as at put card: one rule for an absent priority.
 		s := card(v.Card, "priority", func(k *Card) { k.Priority = cmp.Or(v.Priority, "normal") }, func(c *checker) { c.oneOf("card priority", cmp.Or(v.Priority, "normal"), Priorities) })

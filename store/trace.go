@@ -34,7 +34,7 @@ import (
 //     and name: not in the model; TraceOp refuses the first two.
 //   - Every card column no rule of the model reads (attempt, score, branch,
 //     head, pr, brief, prose, paths, done_when, reason, author, base_sha,
-//     prior_head, result, bounces, finding, review, cost, priced, priority,
+//     prior_head, result, bounces, finding, review, cost, priced, usage, priority,
 //     after) and the set writes on them: TraceOp refuses those writes, and a
 //     PutCard that sets one of the columns the store's rules read (after,
 //     attempt, review, finding, priority).

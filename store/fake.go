@@ -32,6 +32,7 @@ type Fake struct {
 	seq0     int64          // the seq before events[0]: 0, or the snapshot's (NewFakeFrom)
 	ops      map[string]int // op id -> index in events
 	drops    map[string]bool
+	balances []Balance // sprint.balances: global, only added to
 }
 
 // key is a row's primary key: the epoch it was written in and its name.

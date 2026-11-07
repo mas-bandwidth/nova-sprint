@@ -216,6 +216,43 @@ func TestRound23Hash(t *testing.T) {
 	assert.True(t, knownOlder(round23Hash))
 }
 
+// round24Hash is the hash of v2-stitch's round 24 schema.sql, kept in
+// testdata: it has no cards.usage and no sprint.balances, which round 25
+// adds. Unit: reads a file in the package, no store.
+func TestRound24Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round24.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round24Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round24Hash, schemaHash)
+	assert.NotContains(t, string(old), "usage")
+	assert.NotContains(t, string(old), "sprint.balances")
+	assert.Contains(t, string(old), "commit_email")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS usage")
+	assert.True(t, knownOlder(round24Hash))
+}
+
+// round25Hash is the hash of round 25's schema.sql (the deployed line's,
+// the live store's on 2026-11-07), kept in testdata: it has cards.usage and
+// sprint.balances and no cards.model, no heartbeat and no commit identity,
+// which this build's schema adds. Unit: reads a file in the package, no
+// store.
+func TestRound25Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round25.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round25Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round25Hash, schemaHash)
+	assert.Contains(t, string(old), "ADD COLUMN IF NOT EXISTS usage")
+	assert.Contains(t, string(old), "sprint.balances")
+	assert.NotContains(t, string(old), "model text")
+	assert.NotContains(t, string(old), "commit_email")
+	assert.NotContains(t, string(old), "load1_centi")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS model text")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS commit_email text")
+	assert.True(t, knownOlder(round25Hash))
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.

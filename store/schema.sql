@@ -177,6 +177,14 @@ ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red boolean NOT NULL DEFAULT f
 ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
     CONSTRAINT cards_model_check CHECK (kind IN ('work', 'read') OR model = '');
 
+-- usage (round 25): on a consumer, its run's usage record, the words of
+-- package usage (tokens by class, model, billing, the harness's charged
+-- dollars, why it is unpriced) beside cost and priced; '' on every other
+-- kind. Added by ALTER as red was, so a store Migrate upgrades and a new
+-- store get the one column the same way.
+ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS usage text NOT NULL DEFAULT ''
+    CONSTRAINT cards_usage_check CHECK (kind IN ('work', 'read') OR usage = '');
+
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;
 -- Johnny's review 2026-11-06: a working card could drop its holder and keep
@@ -333,6 +341,23 @@ CREATE TABLE IF NOT EXISTS sprint.judgements (
     CONSTRAINT judgements_order_check CHECK (closed_at >= opened_at)
 );
 CREATE OR REPLACE TRIGGER judgements_key_fixed BEFORE UPDATE ON sprint.judgements FOR EACH ROW EXECUTE FUNCTION sprint.key_fixed('id');
+
+-- A provider's balance as `nova-sprint cost reconcile` read it (round 25):
+-- one row per read, never changed or removed, so spend over a window is the
+-- balance's fall between two reads, set beside the store's priced API
+-- records of that provider over the same window (the events after seq, the
+-- store's last seq at the read). Global, as the policy is: a clear keeps it.
+-- balance_usd is the exact decimal the provider answered; raw is its answer
+-- as read (no secret is ever in it).
+CREATE TABLE IF NOT EXISTS sprint.balances (
+    id          bigserial   PRIMARY KEY,
+    provider    text        NOT NULL CHECK (provider <> ''),
+    at          timestamptz NOT NULL,
+    seq         bigint      NOT NULL CHECK (seq >= 0),
+    balance_usd numeric     NOT NULL CHECK (balance_usd >= 0),
+    raw         text        NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS balances_provider_at ON sprint.balances (provider, at);
 
 -- A subscriber's place in the event log (the last seq it read), so a restart
 -- resumes where it stopped (promise 6). Global, as seq is: a clear carries
