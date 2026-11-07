@@ -51,10 +51,15 @@ cd "$HERE" || exit 2
 "$JAVA" -XX:+UseParallelGC -Djava.io.tmpdir="$WORK" -DTLA-Library="$TRACE" -cp "$JAR" tlc2.TLC \
     -noGenerateSpecTE -workers 1 -metadir "$WORK/states" -config "$CFG" "${MODEL}Trace.tla" > "$WORK/tlc.log" 2>&1
 code=$?
+# Optional retained raw evidence; verdict semantics are unchanged.
+if [ -n "${TRACE_LOG:-}" ]; then
+    cp "$WORK/tlc.log" "$TRACE_LOG" || exit 2
+fi
 
 # The records are one per line after "TraceLog == <<"; record k is line start + k.
 start="$(grep -n '^TraceLog == <<$' "$LOGMOD" | cut -d: -f1)"
 n="$(awk -v s="$start" 'NR > s && /^  \[i \|-> /' "$LOGMOD" | wc -l | tr -d ' ')"
+[ "$n" -gt 0 ] || { echo "no recognized trace records" >&2; exit 2; }
 want="$(sed -n 's/^\\\* expect: //p' "$CFG")"
 record() { sed -n "$((start + $1))p" "$LOGMOD" | sed 's/^  //; s/,$//'; }
 

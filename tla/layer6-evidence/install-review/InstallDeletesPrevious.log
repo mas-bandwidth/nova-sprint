@@ -1,0 +1,119 @@
+TLC2 Version 2026.11.06.100558 (rev: 3ec1cc4)
+Running breadth-first search Model-Checking with fp 89 and seed 4727246965326199183 with 2 workers on 64 cores with 981MB heap and 64MB offheap memory [pid: 160884] (Linux 7.0.0-43-generic amd64, Eclipse Adoptium 21.0.12.1 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/glenn/jobs/stella-v2-l6-install-model-20261106/tla/InstallDeletesPrevious.tla
+Parsing file /home/glenn/jobs/stella-v2-l6-install-model-20261106/tla/layer6-evidence/install-review/InstallDeletesPrevious-tmp/tlc-9099526852447677605/Naturals.tla (jar:file:/home/glenn/.cache/nova-sprint/tla2tools-v1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
+Semantic processing of module Naturals
+Semantic processing of module InstallDeletesPrevious
+Linting of module InstallDeletesPrevious
+Starting... (2026-11-07 00:34:03)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-07 00:34:03.
+Error: Invariant PreviousRetained is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ stageBytes = 0
+/\ checkAtSwitch = TRUE
+/\ checked = FALSE
+/\ previousPresent = TRUE
+/\ active = "old"
+/\ versionAtSwitch = TRUE
+/\ phase = "ready"
+/\ stagedLink = FALSE
+/\ failure = "none"
+/\ candidateBytes = 0
+/\ reported = "unread"
+
+State 2: <Begin line 40, col 3 to line 43, col 65 of module InstallDeletesPrevious>
+/\ stageBytes = 1
+/\ checkAtSwitch = TRUE
+/\ checked = FALSE
+/\ previousPresent = TRUE
+/\ active = "old"
+/\ versionAtSwitch = TRUE
+/\ phase = "writing"
+/\ stagedLink = FALSE
+/\ failure = "none"
+/\ candidateBytes = 0
+/\ reported = "unread"
+
+State 3: <FinishWrite line 45, col 3 to line 48, col 65 of module InstallDeletesPrevious>
+/\ stageBytes = 2
+/\ checkAtSwitch = TRUE
+/\ checked = FALSE
+/\ previousPresent = TRUE
+/\ active = "old"
+/\ versionAtSwitch = TRUE
+/\ phase = "publishing"
+/\ stagedLink = FALSE
+/\ failure = "none"
+/\ candidateBytes = 0
+/\ reported = "unread"
+
+State 4: <Publish line 50, col 3 to line 53, col 48 of module InstallDeletesPrevious>
+/\ stageBytes = 0
+/\ checkAtSwitch = TRUE
+/\ checked = FALSE
+/\ previousPresent = TRUE
+/\ active = "old"
+/\ versionAtSwitch = TRUE
+/\ phase = "check"
+/\ stagedLink = FALSE
+/\ failure = "none"
+/\ candidateBytes = 2
+/\ reported = "unread"
+
+State 5: <CheckPass line 55, col 3 to line 58, col 65 of module InstallDeletesPrevious>
+/\ stageBytes = 0
+/\ checkAtSwitch = TRUE
+/\ checked = TRUE
+/\ previousPresent = TRUE
+/\ active = "old"
+/\ versionAtSwitch = TRUE
+/\ phase = "version"
+/\ stagedLink = FALSE
+/\ failure = "none"
+/\ candidateBytes = 2
+/\ reported = "unread"
+
+State 6: <ReadVersion("requested-version") line 65, col 3 to line 70, col 56 of module InstallDeletesPrevious>
+/\ stageBytes = 0
+/\ checkAtSwitch = TRUE
+/\ checked = TRUE
+/\ previousPresent = TRUE
+/\ active = "old"
+/\ versionAtSwitch = TRUE
+/\ phase = "link"
+/\ stagedLink = FALSE
+/\ failure = "none"
+/\ candidateBytes = 2
+/\ reported = "requested-version"
+
+State 7: <PrepareLink line 72, col 3 to line 75, col 65 of module InstallDeletesPrevious>
+/\ stageBytes = 0
+/\ checkAtSwitch = TRUE
+/\ checked = TRUE
+/\ previousPresent = TRUE
+/\ active = "old"
+/\ versionAtSwitch = TRUE
+/\ phase = "switch"
+/\ stagedLink = TRUE
+/\ failure = "none"
+/\ candidateBytes = 2
+/\ reported = "requested-version"
+
+State 8: <Activate line 77, col 3 to line 82, col 73 of module InstallDeletesPrevious>
+/\ stageBytes = 0
+/\ checkAtSwitch = TRUE
+/\ checked = TRUE
+/\ previousPresent = FALSE
+/\ active = "candidate"
+/\ versionAtSwitch = TRUE
+/\ phase = "done"
+/\ stagedLink = FALSE
+/\ failure = "none"
+/\ candidateBytes = 2
+/\ reported = "requested-version"
+
+21 states generated, 21 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 8.
+Finished in 00s at (2026-11-07 00:34:03)

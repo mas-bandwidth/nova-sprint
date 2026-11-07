@@ -1,0 +1,9 @@
+{
+  "archives": {
+    "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/run-finalfmt/source.tar": "6fe8d400c162f019b7a661da7607e2bdba2ae7210adf5a8e082efe4c0f4974e6",
+    "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/choices-source5/source.tar.gz": "d821b8c684e9b1311f8a70b35676c5bc2199e854e2dc3621f20ea55fcf092680",
+    "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/install-source2/source.tar.gz": "f99e7bc3db7467738521fa81ef4cf740bf7cd72c8cda3c69b57ef9f46c05d6b5"
+  },
+  "setup3_tree": "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/setup-frozen3-source",
+  "setup3_manifest": "17f69076ffe4fa63cea9fb236410dbe77a44e70f1c5554fd6208f1fc1ffc394f"
+}

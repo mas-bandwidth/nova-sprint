@@ -1,0 +1,17 @@
+TRACE REFUSED at 4 of 4: ReturnSuccess ([i |-> 4, action |-> "ReturnSuccess", active |-> "none", candidate |-> TRUE, checkOK |-> TRUE, version |-> "requested-version", problem |-> "none", previousPres...)
+-- the model after record 3 (TLC's last state):
+/\ phase = "switch"
+/\ active = "none"
+/\ reported = "requested-version"
+/\ stagedLink = TRUE
+/\ l = 3
+/\ versionAtSwitch = TRUE
+/\ checked = TRUE
+/\ previousPresent = FALSE
+/\ failure = "none"
+/\ candidateBytes = 2
+/\ stageBytes = 0
+/\ checkAtSwitch = TRUE
+
+-- record 4 (the code's step and state):
+[i |-> 4, action |-> "ReturnSuccess", active |-> "none", candidate |-> TRUE, checkOK |-> TRUE, version |-> "requested-version", problem |-> "none", previousPresent |-> FALSE]

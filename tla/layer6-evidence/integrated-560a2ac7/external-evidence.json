@@ -1,0 +1,8 @@
+{
+  "local": "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/integrated-560a2ac7",
+  "go_bench": "amd-1:/var/tmp/stella-l6-integrated-evidence-560a2ac7",
+  "tlc_bench": "vision:/home/glenn/jobs/stella-v2-l6-integrated-560a2ac7",
+  "source_archive_sha256": "b55b28f18ce53590e1829733a42fb02d2411e59beb7bcdd701e09aec530cd3c8",
+  "bundle": "/Volumes/nova/ai/stella/working/l6-model-development-evidence-20261106/integrated-560a2ac7.bundle",
+  "bundle_sha256": "2a87747fe606da794fc3bc6b9f6e7c9c29839902a24ba654be1be7dec5ec1b3d"
+}
