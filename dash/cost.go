@@ -69,7 +69,7 @@ func finishCosts(w *workRow) {
 // run exists, never a false $0.
 type costSummary struct {
 	Total       string            `json:"total"`    // every priced API run's cost
-	PerCard     string            `json:"per_card"` // total over the priced landed cards
+	PerCard     string            `json:"per_card"` // total over every landed card (seat cards at $0)
 	ByTier      map[string]string `json:"by_tier"`
 	Priced      int               `json:"priced_runs"`   // API runs priced from their tokens
 	Unpriced    int               `json:"unpriced_runs"` // finished API runs with no price: NoTokens + NoPrice
@@ -138,10 +138,12 @@ func summarizeCost(s store.Snapshot) *costSummary {
 			out.ByTier[tier] = moneyCell(cents)
 		}
 	}
+	// Glenn 2026-11-07: the true average, API spend over every landed card,
+	// seat cards at $0 ("with sub cards being free").
 	out.PerCard = "-"
-	if out.PricedCards > 0 {
-		per := new(big.Int).Add(rounded, big.NewInt(int64(out.PricedCards-1)))
-		out.PerCard = moneyCell(per.Div(per, big.NewInt(int64(out.PricedCards))))
+	if out.Landed > 0 {
+		per := new(big.Int).Add(rounded, big.NewInt(int64(out.Landed-1)))
+		out.PerCard = moneyCell(per.Div(per, big.NewInt(int64(out.Landed))))
 	}
 	return out
 }
