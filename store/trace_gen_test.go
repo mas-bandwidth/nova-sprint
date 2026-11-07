@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -39,7 +40,24 @@ func (w *storeWalk) next() (Op, bool) {
 	for range w.rng.IntN(5) / 2 { // most ops are unfenced
 		op.Expect = append(op.Expect, w.expect(s))
 	}
+	sameTier(op.Writes)
 	return op, false
+}
+
+// sameTier gives a consumer the tier of its producer when the op itself
+// puts the producer first: a consumer's tier is its producer's (the
+// abstraction in trace.go).
+func sameTier(ws []Write) {
+	tier := map[string]string{}
+	for i, x := range ws {
+		if p, ok := x.(PutCard); ok {
+			if t, put := tier[p.Of]; put && p.Of != "" {
+				p.Tier = t
+				ws[i] = p
+			}
+			tier[p.ID] = p.Tier
+		}
+	}
 }
 
 func (w *storeWalk) write(s Snapshot) Write {
@@ -65,7 +83,9 @@ func (w *storeWalk) write(s Snapshot) Write {
 func (w *storeWalk) putCard(s Snapshot) Write {
 	var needs []string
 	for range w.rng.IntN(3) {
-		needs = append(needs, w.pick(twCards[:3]))
+		if n := w.pick(twCards[:3]); !slices.Contains(needs, n) { // a set: the model has no list with a repeat
+			needs = append(needs, n)
+		}
 	}
 	if w.rng.IntN(4) == 0 {
 		return PutCard{ID: "t1", Kind: "sentinel", Stream: "s1", Tier: "pro", Needs: needs}

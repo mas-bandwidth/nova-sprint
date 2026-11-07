@@ -209,14 +209,14 @@ func (w *storeWalk) settle(op Op, clear bool) {
 				r, ok, err := w.s.Replay(context.Background(), op.ID)
 				require.NoError(w.t, err)
 				require.True(w.t, ok)
-				w.tr.step("Replay", op, clear, &r.Accepted, w.now())
+				w.tr.step("Replay", op, clear, &r, w.now())
 				return
 			}
 			continue
 		}
 		require.NoError(w.t, err, "%s", op.ID)
 		w.applied[op.ID] = true
-		w.tr.step("Apply", op, clear, &r.Accepted, w.now())
+		w.tr.step("Apply", op, clear, &r, w.now())
 		return
 	}
 }

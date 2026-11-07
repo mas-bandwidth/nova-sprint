@@ -231,5 +231,8 @@ func tracePutCard(v PutCard) (ModelWrite, error) {
 	if len(v.After) > 0 || v.Attempt != 0 || v.Review != 0 || v.Finding != "" || (v.Priority != "" && v.Priority != "normal") {
 		return ModelWrite{}, fmt.Errorf("store: trace: put card %s sets a column Store.tla leaves out", v.ID)
 	}
+	if len(normSet(v.Needs)) != len(v.Needs) {
+		return ModelWrite{}, fmt.Errorf("store: trace: put card %s names a need twice; Store.tla's needs are a set", v.ID)
+	}
 	return ModelWrite{K: "addCard", C: v.ID, R: orDash(v.Holder, "none"), S: v.Tier, N: normSet(v.Needs), Kd: v.Kind, P: orDash(v.Of, "-")}, nil
 }
