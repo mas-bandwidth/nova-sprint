@@ -295,8 +295,8 @@ func TestStopIsOneMessageThenAck(t *testing.T) {
 	var said []string
 	e.Fault = func(what string, err error) { said = append(said, what+": "+err.Error()) }
 	e.stop(context.Background(), steps.EdgeRequest{ID: "stop.2", Kind: "stop", Row: "alice", Consumer: "p1.w1"})
-	if got := e.Results(); len(got) != 0 {
-		t.Fatalf("an unsent stop was acknowledged: %+v", got)
+	if got := e.Results(); len(got) != 1 || got[0].Outcome != "fault" || got[0].Request != "stop.2" {
+		t.Fatalf("an unsent stop must leave flight by a fault result, or a later stop of the card is never sent: %+v", got)
 	}
 	if len(said) != 1 || !strings.HasPrefix(said[0], "stop stop.2 to alice: ") {
 		t.Fatalf("the unsent stop's cause was not said: %q", said)

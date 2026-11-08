@@ -423,10 +423,9 @@ func (t *Ticker) retire(plan steps.Plan, accepted map[string]bool) {
 
 // dispatch is the plan's edge requests whose After op was accepted, now in
 // flight; one whose After op was refused is not kept (steps plan it again by
-// the same id). A dispatched request leaves flight only when a result for it
-// is consumed: a stop whose send failed has none and stays, never reissued
-// (its withdrawal landed, so no step plans it again; the row learns of the
-// withdrawal from its WITHDRAWN notice, and the failure is an edge fault).
+// the same id). A dispatched request leaves flight when a result for it is
+// consumed; a stop whose send failed has a fault result and is not reissued
+// (its withdrawal landed; the row learns of it from its WITHDRAWN notice).
 func (t *Ticker) dispatch(edges []steps.EdgeRequest, accepted map[string]bool) []steps.EdgeRequest {
 	var out []steps.EdgeRequest
 	for _, e := range edges {
