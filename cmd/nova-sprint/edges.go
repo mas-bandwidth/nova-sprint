@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mas-bandwidth/nova-sprint/edge"
@@ -111,8 +112,12 @@ func (d doctor) Workers(ctx context.Context) ([]verbs.WorkerUnit, error) {
 	return units, nil
 }
 
-// Worker is machine's worker unit, false when machine is no bench.
+// Worker is machine's worker unit, false when machine is no bench or this
+// process has no fleet configuration (show prints the store's row alone).
 func (d doctor) Worker(ctx context.Context, machine string) (verbs.WorkerUnit, bool, error) {
+	if d.fleet == nil {
+		return verbs.WorkerUnit{}, false, nil
+	}
 	benches, err := d.benches(ctx)
 	if err != nil || !slices.Contains(benches, machine) {
 		return verbs.WorkerUnit{}, false, err
@@ -125,6 +130,8 @@ func (d doctor) benches(ctx context.Context) ([]string, error) {
 	if d.fleet == nil {
 		return nil, fmt.Errorf("this process has no fleet configuration: %w", cmp.Or(d.fleetErr, errors.New("the setup walk was not built")))
 	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	machines, err := d.fleet.runtime.Services.Machines(ctx)
 	if err != nil {
 		return nil, serviceConfigFailure("cannot inspect machine inventory: ", err)

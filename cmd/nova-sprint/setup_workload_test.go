@@ -300,6 +300,10 @@ func TestDoctorReadsEveryBenchWorkerUnit(t *testing.T) {
 	if _, err = fleetDoctor(credentials{}, nil).Workers(context.Background()); err == nil || !strings.Contains(err.Error(), "no fleet configuration") {
 		t.Fatal(err)
 	}
+	// show on a process with no fleet configuration prints the row alone.
+	if u, ok, err = fleetDoctor(credentials{}, nil).Worker(context.Background(), "amd-1"); err != nil || ok {
+		t.Fatalf("%+v %v %v", u, ok, err)
+	}
 }
 
 // The Setup the engine really gets forwards every seam it type-asserts

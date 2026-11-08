@@ -16,9 +16,9 @@ import (
 
 // checkSprint is check's health of the sprint, read from one snapshot: each
 // stream's repository and base at origin, each worker bench's service, the
-// open judgements by kind, who
-// runs the sprint, the width and why nothing deals, why each stream's
-// producers wait and its long NEEDS chains, and each landing's wait.
+// open judgements by kind, who runs the sprint, the width and why nothing
+// deals, why each stream's producers wait and its long NEEDS chains, and
+// each landing's wait.
 func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string]bus.Presence) {
 	snap, err := e.snapshot(ctx)
 	if err != nil {

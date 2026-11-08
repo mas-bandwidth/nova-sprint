@@ -44,12 +44,12 @@ func (e *Engine) checkWorkers(ctx context.Context, r *checkReport, snap store.Sn
 	flagged := 0
 	for _, u := range units {
 		switch f := workerFact(u, snap, who); {
-		case u.Unread != "":
-			flagged++
-			r.warn("worker "+u.Machine+": its unit's last log line is unreadable ("+u.Unread+")", workerLogFix(u))
 		case f != nil:
 			flagged++
 			r.red(f)
+		case u.Unread != "":
+			flagged++
+			r.warn("worker "+u.Machine+": its unit's last log line is unreadable ("+u.Unread+")", workerLogFix(u))
 		}
 	}
 	if flagged == 0 {
@@ -57,28 +57,33 @@ func (e *Engine) checkWorkers(ctx context.Context, r *checkReport, snap store.Sn
 	}
 }
 
-// workerFact is what check and show say of one worker bench whose log was
-// read: nil when its worker serves (its unit's last log line is no refusal
-// and its row is hooked, up and on the bus), else the refusal with its fix.
+// workerFact is what check and show say of one worker bench: nil when its
+// worker serves (its unit's last log line, when read, is no refusal, and its
+// row is hooked, up and on the bus) or its row is held on purpose, else the
+// refusal with its fix. A log that cannot be read still has its row and bus
+// checked (a powered-off bench is unreachable and off the bus), the reason
+// standing in for the last line.
 func workerFact(u WorkerUnit, snap store.Snapshot, who map[string]bus.Presence) *Fail {
-	if u.Unread != "" {
-		return nil
-	}
 	last := "the log is empty"
-	if u.LastLine != "" {
+	switch {
+	case u.Unread != "":
+		last = "its log " + u.Unread
+	case u.LastLine != "":
 		last = fmt.Sprintf("last log line %q", u.LastLine)
 	}
 	row, has := snap.Rows[u.Machine]
 	on, known := present(who, u.Machine)
 	switch {
-	case strings.HasPrefix(u.LastLine, "SPRINT REFUSED"):
+	case u.Unread == "" && strings.HasPrefix(u.LastLine, "SPRINT REFUSED"):
 		return refuse(fmt.Sprintf("worker %s: %q (its unit exits on it and is restarted, forever)", u.Machine, u.LastLine), workerFix)
 	case !has:
-		return refuse(fmt.Sprintf("worker %s: no row (%s)", u.Machine, last), workerLogFix(u))
+		return refuse(fmt.Sprintf("worker %s: no row in the store (%s)", u.Machine, last), workerLogFix(u))
+	case row.Held:
+		return nil
 	case row.Session == "":
-		return refuse(fmt.Sprintf("worker %s: not hooked (%s)", u.Machine, last), workerLogFix(u))
+		return refuse(fmt.Sprintf("worker %s: not hooked in the store (%s)", u.Machine, last), workerLogFix(u))
 	case row.State != "up":
-		return refuse(fmt.Sprintf("worker %s: row %s (%s)", u.Machine, row.State, last), workerLogFix(u))
+		return refuse(fmt.Sprintf("worker %s: the store's row state is %s (%s)", u.Machine, row.State, last), workerLogFix(u))
 	case known && !on:
 		return refuse(fmt.Sprintf("worker %s: not on the bus (%s)", u.Machine, last), workerLogFix(u))
 	}
