@@ -99,7 +99,8 @@ What each judgement kind asks of you, and where to look before you choose:
 
 - `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
-  choose `unhold`, or `drop`. A `held` judgement that says the card faulted for a missing
+  choose `unhold`, or `drop`. An unhold gives the card a full fresh bounce budget (the limit
+  counts only bounces after it; escalation to a stronger tier still reads the total). A `held` judgement that says the card faulted for a missing
   route or device names the row and what is missing (its reason starts `missing-route: <route>`,
   the route's name as a brief declares it with `NEEDS-ROUTE: <route>`): the card is never dealt
   again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
