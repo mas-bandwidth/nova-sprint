@@ -37,7 +37,7 @@ func (t *tick) fix() {
 		c := t.v.Cards[p]
 		finding := joinFindings(t.settled(c))
 		if finding == c.Finding {
-			t.judge("brief", p, "the read of "+p+" found the same thing twice: "+finding+"; the brief is wrong, not the worker")
+			t.judge("brief", p, "the read of "+p+" found the same thing twice: "+finding+"; the brief is wrong, not the worker. rework closes this and nothing more: the fix is dealt on the brief as it is; to change the brief, nova-sprint replace "+p+" --by <card>; drop cancels it")
 		}
 		t.group("fix", p, t.producerMove(p, card.ReadFix{Finding: finding}))
 	}

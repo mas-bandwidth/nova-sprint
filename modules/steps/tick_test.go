@@ -251,3 +251,36 @@ func TestTickFaultedReadIsOwedAgain(t *testing.T) {
 	require.Len(t, dealt, 1, "one new read owed and dealt")
 	assert.NotEqual(t, "p1.r1.1", dealt[0])
 }
+
+// TestTickBriefJudgementSaysWhatReworkDoes: the same finding twice opens a
+// brief judgement while the fix is dealt anyway; its question says that
+// rework only closes it (the fix goes ahead on the brief as it is) and how
+// to change the brief, so the choice is not mistaken for a move.
+func TestTickBriefJudgementSaysWhatReworkDoes(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 1, "pro", "heavy")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	s.take("p1.w1")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.tick()
+	s.take("p1.r1.1")
+	s.report("p1.r1.1", "fix", sha(1), "the test is wrong")
+	s.run(2)
+	s.take("p1.w2")
+	s.report("p1.w2", "ok", sha(2), "fixed")
+	s.tick()
+	s.take("p1.r2.1")
+	s.report("p1.r2.1", "fix", sha(2), "the test is wrong")
+	s.tick()
+	require.Empty(t, s.rejected)
+	js := s.openJudgements("brief")
+	require.Len(t, js, 1)
+	j := s.snap().Judgements[js[0]]
+	assert.Contains(t, j.Question, "rework closes this and nothing more: the fix is dealt on the brief as it is")
+	assert.Contains(t, j.Question, "nova-sprint replace p1 --by <card>")
+	assert.Contains(t, j.Command, "choices: rework | drop")
+}
