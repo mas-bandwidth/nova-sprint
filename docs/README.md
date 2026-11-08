@@ -6,8 +6,7 @@ With nova-sprint, your AIs can:
 * Run work across multiple models, harnesses and machines
 * Get work done as quickly as possible, respecting dependencies
 * Have every change reviewed and merged into main automatically
-* Show your humans the sprint's progress in a dashboard, so they can see the work moving
-* Be told when a judgement is needed, and change the rules of the sprint while it runs
+* Show the sprint's progress in a dashboard, so you can see the work moving
 
 nova-sprint coordinates work in Git repositories. A coordinator writes cards,
 workers receive them over nova-bus, and the run service arranges independent
