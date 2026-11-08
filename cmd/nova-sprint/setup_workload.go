@@ -262,23 +262,41 @@ func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 // (step 7) or a core count in nova-config, which its refusal names.
 func (productionWorkload) RunSmoke(context.Context) error { return nil }
 
+// workerUnit is machine's worker service as check and show read it
+// (verbs.Doctor.Workers): its unit's last log line, or why it is unreadable.
+func (p productionSetup) workerUnit(ctx context.Context, machine string) verbs.WorkerUnit {
+	u := verbs.WorkerUnit{Machine: machine, Service: "sprint-worker-" + machine}
+	u.LastLine, u.Unread = p.serviceLogLine(ctx, machine, u.Service)
+	return u
+}
+
 // lastServiceLogLine is the last line of service's unit log on machine,
-// over ssh to the inventory's address; what failed when it cannot be read.
+// quoted; "(the log is empty)"; or what failed when it cannot be read.
 func (p productionSetup) lastServiceLogLine(ctx context.Context, machine, service string) string {
+	line, unread := p.serviceLogLine(ctx, machine, service)
+	switch {
+	case unread != "":
+		return unread
+	case line == "":
+		return "(the log is empty)"
+	}
+	return fmt.Sprintf("%q", line)
+}
+
+// serviceLogLine is the last line of service's unit log on machine, over
+// ssh to the inventory's address ("" when the log is empty), or, second,
+// why it cannot be read.
+func (p productionSetup) serviceLogLine(ctx context.Context, machine, service string) (line, unread string) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	destination, err := p.sshDestination(ctx, machine)
 	if err != nil {
-		return "unreadable (" + edge.RedactN(err.Error(), 200) + ")"
+		return "", "unreadable (" + edge.RedactN(err.Error(), 200) + ")"
 	}
 	out, err := p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "tail", "-n", "1", serviceLogPath(service))
 	if err != nil {
-		return "unreadable over ssh to " + destination + " (" + edge.RedactN(err.Error(), 200) + ")"
+		return "", "unreadable over ssh to " + destination + " (" + edge.RedactN(err.Error(), 200) + ")"
 	}
 	text := strings.TrimSpace(string(out))
-	line := text[strings.LastIndex(text, "\n")+1:]
-	if line == "" {
-		return "(the log is empty)"
-	}
-	return fmt.Sprintf("%q", edge.RedactN(line, 300))
+	return edge.RedactN(text[strings.LastIndex(text, "\n")+1:], 300), ""
 }

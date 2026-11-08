@@ -60,7 +60,7 @@ func TestCheckAllGreen(t *testing.T) {
 		"CHECK identity: every commit is made as Sprint Bot <1+sprint-bot@users.noreply.example.test> (hook prints the two git config lines; finish refuses a commit by another email)",
 		"CHECK policy v1 active (answered by v0; 0 ready producers asked)", "CHECK cards: none waiting or ready",
 		"CHECK working: 2 cards, each on a hooked row that is up and on the bus (a job dead on its bench is not visible here: no per-job heartbeat reaches the store)",
-		"CHECK judgements: none open", "CHECK run on studio (pid 41)",
+		"CHECK workers: no bench in nova-config's inventory", "CHECK judgements: none open", "CHECK run on studio (pid 41)",
 		"CHECK width: working 2 (2 dealt) of 4 open on 3 rows; 0 ready", "CHECK landings: none waiting", "next: nova-sprint next --as <you>"}
 	if r.Exit != 0 || r.Output != strings.Join(wantLines, "\n")+"\n" {
 		t.Fatalf("exit %d:\n%s", r.Exit, r.Output)
@@ -257,4 +257,83 @@ func TestCheckReprovesAdmission(t *testing.T) {
 			prep: then(healthy, func(_ *testing.T, w *world) { w.origin.tips["o/r sprint/s"] = tip }),
 			want: []string{"CHECK RED stream s: branch sprint/s is at o/r's origin"}},
 	})
+}
+
+// TestCheckWorkers is each worker bench's service (D14, 2026-11-07: every
+// bench's unit crash-looped for days, the installed worker refusing flags an
+// earlier one took, while check said every working card was on a hooked row
+// that was up and on the bus): red when the unit's last log line is a
+// refusal, red when the bench is not hooked and up on the bus, one WARN for
+// a log or an inventory that cannot be read, and show <row> carrying the
+// same fact.
+func TestCheckWorkers(t *testing.T) {
+	t.Parallel()
+	refused := "SPRINT REFUSED worker: unknown flag --work-clone: nova-sprint help worker"
+	units := func(us ...WorkerUnit) func(*testing.T, *world) {
+		return func(_ *testing.T, w *world) { w.doctor.units = us }
+	}
+	alice := func(line string) WorkerUnit {
+		return WorkerUnit{Machine: "alice", Service: "sprint-worker-alice", LastLine: line}
+	}
+	fix := "nova-sprint up --as <coordinator> (it rewrites every bench's worker service record and applies it)"
+	// The refusal quotes the unit's own refusal line, so this output names
+	// SPRINT REFUSED more than once (want's one-refusal rule does not apply).
+	w := newWorld(t)
+	healthy(t, w)
+	units(alice(refused), WorkerUnit{Machine: "bob", Service: "sprint-worker-bob"})(t, w)
+	r := w.do("", "check")
+	red := "CHECK RED worker alice: \"" + refused + "\" (its unit exits on it and is restarted, forever): " + fix
+	if r.Exit != 1 || !strings.Contains(r.Output, red+"\n") || !strings.HasSuffix(r.Output, "SPRINT REFUSED check: "+strings.TrimPrefix(red, "CHECK RED ")+"\n") {
+		t.Fatalf("exit %d:\n%s", r.Exit, r.Output)
+	}
+	runCases(t, []tcase{
+		{name: "every bench serving", args: []string{"check"}, exit: 0, prep: then(healthy, units(alice("WORKER alice up"), WorkerUnit{Machine: "bob", Service: "sprint-worker-bob"})),
+			want: []string{"CHECK workers: 2 benches, each hooked, up and on the bus, its unit's last log line no refusal"}},
+		{name: "a bench not hooked", args: []string{"check"}, exit: 1, prep: then(healthy, units(alice("WORKER alice down"))),
+			snap: func(s *store.Snapshot) { r := s.Rows["alice"]; r.Session, r.Role = "", ""; s.Rows["alice"] = r },
+			want: []string{"CHECK RED worker alice: not hooked in the store (last log line \"WORKER alice down\"): read ~/.local/state/nova/services/sprint-worker-alice.log on alice and fix what it says, or take the bench role off a machine that is gone; then nova-sprint up --as <coordinator>"}},
+		{name: "a bench off the bus", args: []string{"check"}, exit: 1, prep: then(healthy, units(alice("")), func(_ *testing.T, w *world) { w.bus.present["alice"] = false }),
+			want: []string{"CHECK RED worker alice: not on the bus (the log is empty): read ~/.local/state/nova/services/sprint-worker-alice.log on alice"}},
+		{name: "a bench with no row", args: []string{"check"}, exit: 1, prep: then(healthy, units(WorkerUnit{Machine: "eve", Service: "sprint-worker-eve", LastLine: "x"})),
+			want: []string{"CHECK RED worker eve: no row in the store (last log line \"x\")"}},
+		{name: "a log that cannot be read", args: []string{"check"}, exit: 0, prep: then(healthy, units(WorkerUnit{Machine: "alice", Service: "sprint-worker-alice", Unread: "unreadable over ssh to alice (no route)"})),
+			want: []string{"CHECK WARN worker alice: its unit's last log line is unreadable (unreadable over ssh to alice (no route)): read ~/.local/state/nova/services/sprint-worker-alice.log on alice"}},
+		// F1: a bench whose log cannot be read still has its row and bus
+		// checked; a powered-off bench (ssh fails, off the bus) is red.
+		{name: "an unreadable bench off the bus", args: []string{"check"}, exit: 1, prep: then(healthy, units(WorkerUnit{Machine: "alice", Service: "sprint-worker-alice", Unread: "unreadable over ssh to alice (no route)"}), func(_ *testing.T, w *world) { w.bus.present["alice"] = false }),
+			want: []string{"CHECK RED worker alice: not on the bus (its log unreadable over ssh to alice (no route)): read ~/.local/state/nova/services/sprint-worker-alice.log on alice"}},
+		// F2: a held bench is held on purpose, its row state no fault; an
+		// unheld down row is named as the store's state.
+		// (exit 1 is check working's line for alice's card, not a worker line)
+		{name: "a held bench down", args: []string{"check"}, exit: 1, prep: then(healthy, units(alice("WORKER alice down"), WorkerUnit{Machine: "bob", Service: "sprint-worker-bob"})),
+			snap: func(s *store.Snapshot) { r := s.Rows["alice"]; r.Held, r.State = true, "down"; s.Rows["alice"] = r },
+			want: []string{"CHECK workers: 2 benches, each hooked, up and on the bus, its unit's last log line no refusal"}},
+		{name: "a bench whose store row is down", args: []string{"check"}, exit: 1, prep: then(healthy, units(alice("WORKER alice up"))),
+			snap: func(s *store.Snapshot) { r := s.Rows["alice"]; r.State = "down"; s.Rows["alice"] = r },
+			want: []string{"CHECK RED worker alice: the store's row state is down (last log line \"WORKER alice up\")"}},
+		{name: "benches that cannot be read", args: []string{"check"}, exit: 0, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.unitsErr = errBroken }),
+			want: []string{"CHECK WARN workers: the benches cannot be read (connection refused): nova-config machine list --json on the control machine", "CHECK judgements: none open"}},
+		{name: "show carries the fact", as: "carol", args: []string{"show", "alice"}, exit: 0, prep: units(alice(refused)),
+			want: []string{`"role": "worker"`, `"service": "sprint-worker-alice"`, `"last_line": "` + refused + `"`, `"problem": "worker alice: \"` + refused + `\" (its unit exits on it and is restarted, forever)"`, `"fix": "nova-sprint up --as`}},
+		{name: "show of a serving bench", as: "carol", args: []string{"show", "alice"}, exit: 0, prep: units(alice("WORKER alice up")),
+			want: []string{`"last_line": "WORKER alice up"`}},
+		{name: "show of a log that cannot be read", as: "carol", args: []string{"show", "alice"}, exit: 0, prep: units(WorkerUnit{Machine: "alice", Service: "sprint-worker-alice", Unread: "unreadable (no route)"}),
+			want: []string{`"unread": "unreadable (no route)"`}},
+	})
+}
+
+// A row that is no bench (dave, hooked from no bench) shows as the store's
+// row alone, and a row whose bench the doctor cannot read says so.
+func TestShowRowWithoutAWorker(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.doctor.units = []WorkerUnit{{Machine: "alice", Service: "sprint-worker-alice"}}
+	if out := w.ok(t, "carol", "show", "dave"); strings.Contains(out, `"worker"`) {
+		t.Fatal(out)
+	}
+	if out := w.ok(t, "carol", "show", "alice"); !strings.Contains(out, `"service": "sprint-worker-alice"`) || strings.Contains(out, `"problem"`) {
+		t.Fatal(out)
+	}
+	w.doctor.unitsErr = errBroken
+	want(t, w.do("carol", "show", "alice"), 0, `"unread": "connection refused"`)
 }

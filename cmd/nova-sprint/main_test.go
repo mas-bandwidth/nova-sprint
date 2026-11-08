@@ -46,11 +46,15 @@ func TestHiddenSetupModesFailClosedWithoutCredentials(t *testing.T) { // unitlin
 
 type oldTools struct{}
 
-func (oldTools) Fleet(context.Context) error                    { return nil }
-func (oldTools) ToolsVersion(context.Context) (string, error)   { return "v1.6.29", nil }
-func (oldTools) Schema(context.Context) (bool, error)           { return true, nil }
-func (oldTools) History(context.Context) error                  { return nil }
-func (oldTools) Run(context.Context) (run.ChooserStatus, error) { return run.ChooserStatus{}, nil }
+func (oldTools) Fleet(context.Context) error                         { return nil }
+func (oldTools) ToolsVersion(context.Context) (string, error)        { return "v1.6.29", nil }
+func (oldTools) Schema(context.Context) (bool, error)                { return true, nil }
+func (oldTools) History(context.Context) error                       { return nil }
+func (oldTools) Run(context.Context) (run.ChooserStatus, error)      { return run.ChooserStatus{}, nil }
+func (oldTools) Workers(context.Context) ([]verbs.WorkerUnit, error) { return nil, nil }
+func (oldTools) Worker(context.Context, string) (verbs.WorkerUnit, bool, error) {
+	return verbs.WorkerUnit{}, false, nil
+}
 
 func TestCheckRefusesToolsBelowThePin(t *testing.T) {
 	t.Parallel()
