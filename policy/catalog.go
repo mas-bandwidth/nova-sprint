@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/url"
@@ -240,6 +241,10 @@ func checkProviders(ctx context.Context, v starlark.Value) (map[string]Provider,
 			}
 			parsed, err := url.Parse(u[1])
 			if err != nil {
+				var ue *url.Error // url.Parse's error is always one; never a refusal of ours
+				if errors.As(err, &ue) {
+					return nil, refuse("%s: %s %s is not a URL: %v", at, u[0], brief(starlark.String(u[1])), ue.Err)
+				}
 				return nil, refuse("%s: %s %s is not a URL: %v", at, u[0], brief(starlark.String(u[1])), err)
 			}
 			if (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" || parsed.User != nil {
