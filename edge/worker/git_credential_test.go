@@ -675,3 +675,25 @@ func TestFileUnderJobsIsReported(t *testing.T) {
 		t.Fatalf("jobs %+v err %v said %q", jobs, err, said)
 	}
 }
+
+// TestUnreadableJobRecordIsReported: a job directory whose record cannot be
+// read (not a changed one) is reported, naming its path and the error.
+func TestUnreadableJobRecordIsReported(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	jobDir := filepath.Join(root, "jobs", "p1.w1")
+	if err := WriteJobRecord(jobDir, JobRecord{Consumer: "p1.w1", Row: "vision.ds", Gen: 1}); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{jobDir, filepath.Join(root, RecordsDir, "p1.w1")} {
+		if err := os.WriteFile(filepath.Join(d, "job.json"), []byte("{not json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, warns := quietRunner_internal(t, root, nil)
+	jobs, err := r.loadRowJobs_internal("vision.ds")
+	said := strings.Join(*warns, "\n")
+	if err != nil || len(jobs) != 0 || !strings.Contains(said, "p1.w1") || !strings.Contains(said, "invalid character") {
+		t.Fatalf("jobs %+v err %v said %q", jobs, err, said)
+	}
+}

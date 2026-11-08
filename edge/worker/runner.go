@@ -272,6 +272,9 @@ func (r *Runner) loadRowJobs_internal(row string) (map[string]JobRecord, error) 
 				err = rerr
 			}
 		}
+		if err != nil && !errors.Is(err, ErrJobDirChanged) && !r.isRunningInFlight_internal(e.Name()) { // a job in flight is still writing its record
+			r.report("job record "+dir+" (unreadable: left as it is, nothing pushed or reported)", err)
+		}
 		if !e.IsDir() && errors.Is(err, ErrJobDirChanged) {
 			r.report("job "+e.Name()+" (a file, not a job directory: left as it is, nothing pushed or reported)", err)
 		}
