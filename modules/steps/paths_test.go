@@ -413,3 +413,51 @@ func TestTickStableOpIDs(t *testing.T) {
 	assert.Regexp(t, `^t1\.\d+\.[0-9a-f]{16}$`, a.Ops[0].ID)
 	_ = time.Second
 }
+
+// TestTickRefusedAloneLeftOut: a group the store refused alone on the state
+// the next tick sees again (its cards at the same gens: no race, a defect)
+// is left out with one engine judgement carrying the store's reason, and
+// stays out while that judgement is open and its cards do not change
+// (LAYER-3 tick step 7); it is never resent every tick.
+func TestTickRefusedAloneLeftOut(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.fold()
+	plan := Tick(s.v, s.inputs(), benchAsk{})
+	plan.Ops = tickOnly(plan.Ops)
+	require.Len(t, plan.Ops, 1, "p1's resolve")
+	s.refused = []RefusedOp{{ID: plan.Ops[0].ID, Reason: "a store rule the steps did not pre-check", Groups: OpGroups(plan.Ops[0])}}
+	s.tick()
+	require.Empty(t, s.rejected)
+	assert.Empty(t, s.tickOps(), "left out, not resent")
+	js := s.openJudgements("engine")
+	require.Len(t, js, 1)
+	assert.Contains(t, s.snap().Judgements[js[0]].Question, "a store rule the steps did not pre-check")
+	s.tick()
+	assert.Empty(t, s.tickOps(), "still left out while the judgement is open and p1 is unchanged")
+	s.requireState("p1", "waiting")
+}
+
+// TestTickRefusedAloneClearsWhenItsCardChanges: once a card the left-out
+// group read moves, the engine judgement's cause has cleared: it expires,
+// and the group is planned again on the new state.
+func TestTickRefusedAloneClearsWhenItsCardChanges(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.fold()
+	plan := Tick(s.v, s.inputs(), benchAsk{})
+	plan.Ops = tickOnly(plan.Ops)
+	s.refused = []RefusedOp{{ID: plan.Ops[0].ID, Reason: "refused", Groups: OpGroups(plan.Ops[0])}}
+	s.tick()
+	require.Len(t, s.openJudgements("engine"), 1)
+	s.must("touch p1", store.SetCardReason{Card: "p1", Reason: "edited"}) // p1's gen moves
+	s.tick()
+	assert.Empty(t, s.openJudgements("engine"), "its cause cleared")
+	s.requireState("p1", "ready")
+}

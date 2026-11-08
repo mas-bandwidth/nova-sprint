@@ -203,6 +203,9 @@ func (t *tick) cleared(j store.Judgement) string {
 		if strings.HasPrefix(j.Question, noHead(j.About)) && t.in.Heads[j.About] != "" {
 			return "stream " + j.About + " has a head in the tick's inputs again"
 		}
+		if id := t.aloneChanged(j.Question); id != "" {
+			return id + " changed since the store refused its group"
+		}
 	}
 	return t.clearedDeal(j)
 }
