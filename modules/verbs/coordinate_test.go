@@ -336,3 +336,48 @@ func TestHoldCardRefusals(t *testing.T) {
 		{name: "a worker", as: "alice", args: []string{"hold", "p1", "--reason", "r"}, exit: 1, want: []string{"hold is the coordinator's"}},
 	})
 }
+
+// A multi-target move whose later target cannot be resolved refuses before
+// it moves anything: `hold alice zz` holds no one.
+func TestManyTargetsRefuseBeforeMoving(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	want(t, w.do("carol", "hold", "alice", "zz", "--reason", "r"), 1, "no row, stream or card zz")
+	if w.snap(t).Rows["alice"].Held {
+		t.Fatal("a refused hold held alice")
+	}
+	s := sprint()
+	dependant(&s)
+	w = worldFrom(t, s)
+	want(t, w.do("carol", "drop", "p4", "p1.w1", "--reason", "r"), 1, "p1.w1 is a consumer")
+	if c := w.snap(t).Cards["p4"]; c.State != "ready" {
+		t.Fatalf("a refused drop moved p4: %+v", c)
+	}
+}
+
+// A later move the steps refuse after earlier ones applied prints the
+// applied lines before the refusal: the user is never told nothing moved.
+func TestManyTargetsReportWhatApplied(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	want(t, w.do("carol", "hold", "alice", "--reason", "r"), 0, "row alice held=true")
+	r := w.do("carol", "unhold", "alice", "s", "--reason", "r")
+	want(t, r, 1, "row alice held=false applied at seq", "the moves above were applied", "nova-sprint show s")
+	if w.snap(t).Rows["alice"].Held {
+		t.Fatal("alice should be unheld")
+	}
+}
+
+// A group whose later member does not offer the choice refuses before any
+// member is answered.
+func TestJudgeAGroupRefusesBeforeAnswering(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	withJudgement("stall.p1.1", "g", "stall", "p1", "retry")(&s)
+	withJudgement("stall.p2.1", "g", "stall", "p2", "drop")(&s)
+	w := worldFrom(t, s)
+	want(t, w.do("carol", "judge", "g", "retry", "--reason", "r", "--expect", "2"), 2, "judgement stall.p2.1 takes one of: drop")
+	if j := w.snap(t).Judgements["stall.p1.1"]; j.State != "open" {
+		t.Fatalf("a refused group answered stall.p1.1: %+v", j)
+	}
+}

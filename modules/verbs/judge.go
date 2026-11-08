@@ -36,18 +36,23 @@ func runJudge(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (s
 			return "", refuse(fmt.Sprintf("group %s has %d open judgements", in.arg(0), len(members)), fmt.Sprintf("confirm with --expect %d", len(members)))
 		}
 	}
+	for _, j := range members {
+		if _, err := answerRequest(j, choice, reason, snap); err != nil {
+			return "", err
+		}
+	}
 	var lines []string
 	for i, j := range members {
 		if snap, err = e.again(ctx, snap, i); err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
 		r, err := answerRequest(j, choice, reason, snap)
 		if err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
 		line, err := e.answer(ctx, in, snap, j, r, reason)
 		if err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
 		lines = append(lines, line)
 	}
@@ -175,24 +180,37 @@ func runDrop(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if err != nil {
 		return "", err
 	}
+	for _, id := range in.args {
+		if err := dropTarget(in.verb, id, snap); err != nil {
+			return "", err
+		}
+	}
 	var lines []string
 	for i, id := range in.args {
 		if snap, err = e.again(ctx, snap, i); err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
-		if c, ok := snap.Cards[id]; ok && c.Of != "" {
-			return "", refuse(id+" is a consumer; a drop is of its producer", "nova-sprint "+in.verb+" "+c.Of+" --reason \"<why>\"")
+		if err := dropTarget(in.verb, id, snap); err != nil {
+			return "", partial(err, lines)
 		}
 		if r, ok := ev.(card.Replace); ok {
 			follow(snap, id, r, chosen)
 		}
 		line, err := e.move(ctx, in, snap, steps.Request{Card: id, Event: ev, Drop: chosen}, id)
 		if err != nil {
-			return "", err
+			return "", partial(err, lines)
 		}
 		lines = append(lines, line)
 	}
 	return done(nextAfter(in), lines...), nil
+}
+
+// dropTarget refuses a consumer: a drop is of its producer.
+func dropTarget(verb, id string, snap store.Snapshot) error {
+	if c, ok := snap.Cards[id]; ok && c.Of != "" {
+		return refuse(id+" is a consumer; a drop is of its producer", "nova-sprint "+verb+" "+c.Of+" --reason \"<why>\"")
+	}
+	return nil
 }
 
 // follow relinks each open dependant of id that has no choice of its own

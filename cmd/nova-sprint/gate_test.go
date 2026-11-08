@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
@@ -26,7 +28,7 @@ func TestHookGate(t *testing.T) {
 	t.Parallel()
 	here := &fakePresence{names: map[string]bus.Presence{"ann": {}}}
 	const noName = "SPRINT REFUSED queue: no acting name; pass --as <you> or set NOVA_SPRINT_AS=<you>, then hook in to the bus: nova-bus hook --as <you>"
-	const bobNext = "SPRINT REFUSED next: bob is not hooked in to the bus; hook in first: nova-bus hook --as bob"
+	const bobQueue = "SPRINT REFUSED queue: bob is not hooked in to the bus; hook in first: nova-bus hook --as bob"
 	cases := []struct {
 		name string
 		args []string
@@ -37,16 +39,18 @@ func TestHookGate(t *testing.T) {
 	}{
 		{"absent", []string{"take", "c@1", "--as", "bob"}, nil, here,
 			"SPRINT REFUSED take: bob is not hooked in to the bus; hook in first: nova-bus hook --as bob", 1},
-		{"absent via env", []string{"next"}, map[string]string{"NOVA_SPRINT_AS": "bob"}, here, bobNext, 1},
-		{"no args is next", nil, map[string]string{"NOVA_SPRINT_AS": "bob"}, here, bobNext, 1},
+		{"absent via env", []string{"queue"}, map[string]string{"NOVA_SPRINT_AS": "bob"}, here, bobQueue, 1},
 		{"no name", []string{"queue"}, nil, here, noName, 1},
 		{"as without value", []string{"queue", "--as"}, nil, here, noName, 1},
 		// the bus failing is exit 2, as docs/README.md's exit-code table says
 		{"bus down", []string{"queue", "--as=ann"}, map[string]string{"NOVA_BUS_REDIS": "10.0.0.1:6379"}, &fakePresence{err: errors.New("dial refused")},
 			"SPRINT REFUSED queue: cannot reach the bus at 10.0.0.1:6379 (dial refused); hook in once it answers: nova-bus hook --as ann", 2},
 		// unset, the fix is to set it, not a hook that cannot answer
-		{"bus unset", []string{"check", "--as", "alice"}, nil, &fakePresence{err: errors.New("dial refused")},
-			"SPRINT REFUSED check: cannot reach the bus: NOVA_BUS_REDIS is not set (dial refused): export NOVA_BUS_REDIS=<host:port>, then hook in: nova-bus hook --as alice", 2},
+		{"bus unset", []string{"queue", "--as", "alice"}, nil, &fakePresence{err: errors.New("dial refused")},
+			"SPRINT REFUSED queue: cannot reach the bus: NOVA_BUS_REDIS is not set (dial refused): export NOVA_BUS_REDIS=<host:port>, then hook in: nova-bus hook --as alice", 2},
+		// nova-bus that cannot run is named first, not the unset variable
+		{"bus binary missing", []string{"queue", "--as", "alice"}, nil, &fakePresence{err: fmt.Errorf("bus who: %w", &edge.ExecError{Program: "nova-bus", Kind: edge.ErrMissingBinary, Reason: `binary "nova-bus" not found`, Fix: "install nova-tools on PATH or run: nova-fleet up (missing nova-bus)"})},
+			`SPRINT REFUSED queue: cannot run nova-bus: binary "nova-bus" not found: install nova-tools on PATH or run: nova-fleet up (missing nova-bus), then export NOVA_BUS_REDIS=<host:port> and hook in: nova-bus hook --as alice`, 2},
 		// a refusal from the lookup (up's unset secrets store) is named as itself
 		{"lookup refused", []string{"up", "--as", "alice"}, nil, &fakePresence{err: &verbs.OperationError{Problem: "control-seat secrets configuration is incomplete (NOVA_SECRETS_STORE is not set)", Fix: "set NOVA_SECRETS_STORE", Exit: 1}},
 			"SPRINT REFUSED up: control-seat secrets configuration is incomplete (NOVA_SECRETS_STORE is not set): set NOVA_SECRETS_STORE", 1},
@@ -72,6 +76,19 @@ func TestHookGateRefusesAnUnknownVerbBeforeTheBus(t *testing.T) {
 		want := "SPRINT REFUSED nova-sprint: unknown verb " + args[0] + ": nova-sprint help"
 		if line != want || exit != 2 || fp.calls != 0 {
 			t.Fatalf("%v: gate = %q exit %d after %d lookups, want %q exit 2 and no lookup", args, line, exit, fp.calls, want)
+		}
+	}
+}
+
+// wake, check and next read the bus themselves: wake never fails a message,
+// check reports the bus as its own red line, and next answers a missing
+// prerequisite with exit 0 (and JSON under --json). The gate leaves them be.
+func TestHookGateLeavesTheBusToWakeCheckAndNext(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{nil, {"next"}, {"next", "--json"}, {"check", "--as", "alice"}, {"wake", "--as", "alice"}} {
+		fp := &fakePresence{err: errors.New("down")}
+		if got, exit := hookGate(context.Background(), args, envOf(nil), fp); got != "" || exit != 0 || fp.calls != 0 {
+			t.Fatalf("%v: gate = %q exit %d after %d lookups, want a pass", args, got, exit, fp.calls)
 		}
 	}
 }
