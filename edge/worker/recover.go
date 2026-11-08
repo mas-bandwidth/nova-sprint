@@ -256,10 +256,12 @@ func (r *Runner) quarantineChanged_internal(jobDir, consumer string, cause error
 	}
 	if err == nil {
 		r.report("the record of "+consumer+" set aside", json.Unmarshal(data, &rec))
+	} else {
+		r.report("harness not stopped for "+jobDir, fmt.Errorf("neither the kept job.json nor the job directory's could be read, so its pid and nonce are unknown: %w", err))
 	}
 	rec.Consumer = consumer
-	if r.Procs != nil && rec.PID > 0 {
-		r.report("stopping the harness of "+consumer+", set aside", r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
+	if rec.PID > 0 {
+		r.killTracked_internal("stopping the harness of "+consumer+", set aside", rec.PID, rec.Nonce)
 	}
 	r.setAside_internal(jobDir, rec, cause.Error())
 }
@@ -305,6 +307,9 @@ func (r *Runner) removeJobState_internal(consumer string) {
 func (r *Runner) legacySealedClone_internal(dir string) bool {
 	data, err := os.ReadFile(filepath.Join(dir, ".git", "objects", "info", "alternates"))
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			r.report("the clone at "+dir+" is left in place", fmt.Errorf("its alternates could not be read: %w", err))
+		}
 		return false
 	}
 	first, _, _ := strings.Cut(strings.TrimSpace(string(data)), "\n")

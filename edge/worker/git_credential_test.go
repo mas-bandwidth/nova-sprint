@@ -582,3 +582,96 @@ func TestJobStateRemovesOnlyTheWorkersOwnClones(t *testing.T) {
 		t.Fatalf("the previous release's clone: legacy left %v, work clone gone %v", fileExists_internal(legacy), !fileExists_internal(work))
 	}
 }
+
+// quietRunner_internal is a runner over root whose warnings are collected.
+func quietRunner_internal(t *testing.T, root string, procs ProcessTable) (*Runner, *[]string) {
+	t.Helper()
+	var warns []string
+	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: newFakeGit_internal(), Wall: &fakeWall{}, Procs: procs, Now: testClock_internal(), Sleep: noSleep_internal,
+		Warn: func(s string) { warns = append(warns, s) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r, &warns
+}
+
+// TestQuarantineSaysWhenItCannotKill: with no job.json to read, the
+// quarantine says it could not look for the harness, naming the job dir.
+func TestQuarantineSaysWhenItCannotKill(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	jobDir := filepath.Join(root, "jobs", "p1.w1")
+	if err := os.MkdirAll(filepath.Join(jobDir, "job.json"), 0o755); err != nil { // unreadable as a file
+		t.Fatal(err)
+	}
+	r, warns := quietRunner_internal(t, root, &fakeProcTable{alive: map[string]bool{}})
+	r.quarantineChanged_internal(jobDir, "p1.w1", ErrJobDirChanged)
+	said := strings.Join(*warns, "\n")
+	if !strings.Contains(said, "harness not stopped") || !strings.Contains(said, jobDir) {
+		t.Fatalf("the skipped kill is not said: %q", said)
+	}
+}
+
+// TestQuarantineSaysWhenNoProcessMatched: a recorded harness that is not
+// running (a worker restart on macOS) is said on the line, never silent.
+func TestQuarantineSaysWhenNoProcessMatched(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	jobDir := filepath.Join(root, "jobs", "p1.w1")
+	if err := WriteJobRecord(jobDir, JobRecord{Consumer: "p1.w1", Row: "vision.ds", Gen: 3, PID: 4242, Nonce: "n1"}); err != nil {
+		t.Fatal(err)
+	}
+	procs := &fakeProcTable{alive: map[string]bool{}}
+	r, warns := quietRunner_internal(t, root, procs)
+	r.quarantineChanged_internal(jobDir, "p1.w1", ErrJobDirChanged)
+	r.withdrawRunningJob_internal(JobRecord{Consumer: "p1.w2", PID: 4343, Nonce: "n2"})
+	said := strings.Join(*warns, "\n")
+	for _, want := range []string{"no live process matched pid 4242 with nonce n1", "no live process matched pid 4343 with nonce n2"} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("%q is not said: %q", want, said)
+		}
+	}
+}
+
+// TestLegacyCloneUnreadableIsSaidAndKept: alternates that cannot be read
+// (not a missing file) are reported, and the clone stays.
+func TestLegacyCloneUnreadableIsSaidAndKept(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	legacy := filepath.Join(root, "clones", "p1.w1")
+	if err := os.MkdirAll(filepath.Join(legacy, ".git", "objects", "info", "alternates"), 0o755); err != nil { // unreadable as a file
+		t.Fatal(err)
+	}
+	r, warns := quietRunner_internal(t, root, nil)
+	r.removeJobState_internal("p1.w1")
+	if said := strings.Join(*warns, "\n"); !fileExists_internal(legacy) || !strings.Contains(said, "alternates") || !strings.Contains(said, "p1.w1") {
+		t.Fatalf("legacy kept %v, said %q", fileExists_internal(legacy), said)
+	}
+	r2, warns2 := quietRunner_internal(t, t.TempDir(), nil) // no clone at all: nothing to say
+	r2.removeJobState_internal("p1.w1")
+	if len(*warns2) != 0 {
+		t.Fatalf("a missing clone is said: %q", *warns2)
+	}
+}
+
+// TestFileUnderJobsIsReported: a file, not a directory, under jobs/ that
+// fails the kept-copy check is reported and left as it is.
+func TestFileUnderJobsIsReported(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := WriteJobRecord(filepath.Join(root, "jobs", "p1.w1"), JobRecord{Consumer: "p1.w1", Row: "vision.ds", Gen: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "jobs", "p1.w1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "jobs", "p1.w1"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, warns := quietRunner_internal(t, root, nil)
+	jobs, err := r.loadRowJobs_internal("vision.ds")
+	said := strings.Join(*warns, "\n")
+	if err != nil || len(jobs) != 0 || !strings.Contains(said, "p1.w1") || !strings.Contains(said, "not the one the worker kept") || !fileExists_internal(filepath.Join(root, "jobs", "p1.w1")) {
+		t.Fatalf("jobs %+v err %v said %q", jobs, err, said)
+	}
+}

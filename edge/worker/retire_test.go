@@ -208,7 +208,8 @@ func TestWithdrawnJobPushesNothingAndIsRemovedOnce(t *testing.T) {
 	if rec, err := ReadJobRecord(g.r.retiredDir_internal(staleWorkRecord_internal(JobRunning, 1))); err != nil || rec.State != JobCleaned {
 		t.Fatalf("retired record: %+v, %v", rec, err)
 	}
-	if len(g.warns) != 0 {
+	// The rig's harness is not running: that is said once, nothing else.
+	if len(g.warns) != 1 || !strings.Contains(g.warns[0], "no live process matched pid 4242 with nonce n4242") {
 		t.Fatalf("warnings: %q", g.warns)
 	}
 }
