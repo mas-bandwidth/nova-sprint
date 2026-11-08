@@ -217,6 +217,9 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	return t.dispatch(plan.Edges, accepted), nil
 }
 
+// Seen says whether any row has been seen on the bus since the cold start.
+func (t *Ticker) Seen() bool { return len(t.seen) > 0 }
+
 // raiseSeen is the run loop's Seen (steps' runEvents: presence is the bus's
 // fact; Steps.tla EnvMove's flip up): each row down in the store and present
 // on the bus this tick comes up, one op each, applied before the plan so a

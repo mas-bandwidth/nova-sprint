@@ -143,18 +143,20 @@ func (t *Ticker) seed(ctx context.Context) {
 // tick is one tick (LAYER-6 section 2): the roster and who is on the bus,
 // read once; the Ticker's fold and plan; the edge requests out; the
 // envelopes; the board. A failed roster read plans nothing (an empty
-// roster would judge every row unknown) but still folds, pushes and shows.
+// roster would judge every row unknown) but still folds, pushes and shows;
+// so does a failed who read before any row was ever seen (no row would be
+// present, and every ready tier would be judged unserved).
 func (l *loop) tick(ctx context.Context, n int) error {
 	start := l.cfg.Clock.Now()
 	ro, rerr := l.cfg.Roster.ReadRosterAt(ctx, max(1, l.ticker.Limits().FleetWidthCap))
 	if rerr == nil {
 		l.log.RosterRefused(ro.Refused)
 	}
-	present := l.present(ctx)
+	present, werr := l.present(ctx)
 	budget := BudgetDeadline{Duration: func() time.Duration { return time.Duration(l.ticker.Timeouts().Tick) * time.Second }}
 	tctx, cancel := budget.Begin(ctx)
 	var err error
-	if rerr != nil {
+	if rerr != nil || (werr != nil && !l.ticker.Seen()) {
 		err = l.ticker.Fold(tctx)
 	} else {
 		var reqs []steps.EdgeRequest
@@ -194,13 +196,13 @@ func (l *loop) reconcile(ctx context.Context) {
 // this tick, logged. The steps count a row present for PresentGrace after
 // it was last seen, so one failed read deals and judges as the last good
 // one did.
-func (l *loop) present(ctx context.Context) []string {
+func (l *loop) present(ctx context.Context) ([]string, error) {
 	who, err := l.cfg.Bus.Who(ctx)
 	if err != nil {
 		l.log.EdgeFault("nova-bus who", err)
-		return nil
+		return nil, err
 	}
-	return slices.Sorted(maps.Keys(who))
+	return slices.Sorted(maps.Keys(who)), nil
 }
 
 func (l *loop) setStreams(s map[string]store.Stream) {

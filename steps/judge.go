@@ -274,10 +274,11 @@ func (t *tick) alarms() {
 	}
 }
 
-// load is the open width (up, unheld rows) and the working consumers.
+// load is the open width (up, unheld rows on the bus) and the working
+// consumers.
 func (t *tick) load() (open, working int) {
 	for n, r := range t.v.Rows {
-		if t.v.Open(r) {
+		if t.v.Open(r) && t.present(n) {
 			open += t.width(n)
 			working += t.v.Working(n)
 		}
