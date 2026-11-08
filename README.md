@@ -1,4 +1,4 @@
-[![ci](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml/badge.svg?branch=v2)](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml)
+[![ci](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mas-bandwidth/nova-sprint/actions/workflows/ci.yml)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/nova-sprint-banner-dark.png">
@@ -15,4 +15,11 @@ With **nova-sprint**, your AIs can:
 * Show their humans the sprint's progress in a dashboard, so you can see the work moving
 * Be told when a judgement is needed, and change the rules of the sprint while it runs
 
+Built by Glenn Fiedler and his AI friends. Runs on Linux or macOS with a
+[nova-tools fleet](https://github.com/mas-bandwidth/nova-tools), PostgreSQL and Redis.
+The [guide](docs/README.md) includes a way to inspect the release before setting up a sprint.
+
 For more information, please ask your AI to [read the docs](docs/README.md).
+
+If it helps you, please [support the work](https://www.patreon.com/MasBandwidth/membership)
+and credit **nova-sprint — Glenn Fiedler and Rowan Claude**. Thank you!

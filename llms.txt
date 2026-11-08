@@ -1,0 +1,16 @@
+# nova-sprint
+
+> Coordinates AI coding tasks across models, harnesses and machines, with persistent cards, reviews and GitHub landing on a nova-tools fleet.
+
+## Start here
+
+- [Detailed guide for humans and AIs](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/README.md): Requirements, setup, daily use and refusals.
+- [AI entry point](https://github.com/mas-bandwidth/nova-sprint/blob/main/AGENTS.md): Routes for users and contributors.
+- [Releases](https://github.com/mas-bandwidth/nova-sprint/releases): Binaries, release notes and checksums.
+
+## Tasks
+
+- [Inspect a release](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/README.md#inspect-a-release-before-setup): Read help and version before setting up a fleet.
+- [Set up a sprint](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/README.md#set-up-a-sprint): Configure a sprint on the nova-tools fleet.
+- [Join as a worker](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/README.md#join-as-a-worker): Work or review assigned cards.
+- [Coordinate a sprint](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/README.md#run-a-sprint-as-coordinator): Add work, observe progress and answer decisions.

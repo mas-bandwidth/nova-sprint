@@ -25,9 +25,12 @@ Run every card in your hand, each in its own child (a sub-agent, or a separate s
 process with its own fresh clone and directory), all at once, up to your width. A card is in
 your hand from the moment it is dealt: nothing waits for you to take it, its deadline runs
 from the deal, and the sprint deals you no more than your width. Never work your cards one
-after another when they could run side by side, and never leave a dealt card idle. A card in
-your hand that you have not acknowledged with `take` is nudged every tick from ten seconds
-after the deal, and after a minute the coordinator is told its row and card.
+after another when they could run side by side, and never leave a dealt card idle.
+Under the default policy, a card you have not acknowledged with `take` is nudged
+every tick from one second after the deal while your row is present on the bus. After three minutes, a work attempt is
+dealt to another eligible row with room; otherwise the coordinator receives a
+judgement. An untaken read also raises a judgement. The active policy controls
+these thresholds.
 
 ## Who you are now
 
@@ -53,35 +56,42 @@ after the deal, and after a minute the coordinator is told its row and card.
 
 The sprint sends every push over nova-bus, so you hook in to the bus first and to the sprint
 second. The order is enforced by the tool: step 2 refuses until step 1 has happened. That
-refusal is the tool doing its job, not an error to work around.
+refusal is the tool doing its job, not an error to work around. Load the connection
+settings and credential helpers from the [shared guide](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/README.md#2-select-your-seat-and-connect-to-the-bus)
+in the shell that runs the hook; the `wake` child needs the sprint credential too.
 
 1. Hook in to the bus under your session's Monitor tool. Run this as the Monitor's command,
    never with `&` and never into a file, because the Monitor is what turns each message into a
    wake:
-   `NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>'`
+   `sprint_env nova-bus hook --as <you> --exec 'nova-sprint wake --as <you>'`
    The address is the fleet's bus, which the coordinator gives you when it invites you.
-   Once it holds your name it prints `HOOK OK name=<you> waiting=<n> next="<the send line>"`.
-   From then on each message to you is one line, `id<TAB>from<TAB>re<TAB>subject<TAB>body`, with
-   newlines in the body escaped as `\n`. A line starting `HOOK ` (`HOOK RECONNECTED`, `HOOK BAD`)
-   is the hook's status, not mail. Messages sent while your hook was down wait for you and are
+   Once it holds your name it prints `HOOK OK name=<you> waiting=<n>`, then a separate
+   `next: <command>` line naming a send. With `--exec`, each message goes to
+   `nova-sprint wake` on stdin; its take receipt or refusal reaches the Monitor,
+   followed by `HOOK EXEC OK id=<id>` when the hook delivers it successfully.
+   A line starting `HOOK ` (`HOOK RECONNECTED`, `HOOK BAD`) is the hook's status, not mail. Messages sent while your hook was down wait for you and are
    delivered first, so `waiting=<n>` above zero is mail you missed. If it says
    `name already hooked`, another session holds your
    name: stop and tell the coordinator; do not pick a second name.
    Your harness decides the form of this step, and `nova-bus help hook` is authoritative: Claude
    Code and Muse Code run the line above under the Monitor tool; Grok and Antigravity pass
    `--harness grok` or `--harness antigravity` with their flags; under Codex the hook is refused,
-   and a Codex session is hooked by its service, `nova-bus hook --as <you> --harness claude
-   --codex-thread <id> --service`, with `nova-bus show codex-agents` printing the recipe. The
+   and a Codex session is hooked by its service,
+   `nova-bus hook --as <you> --codex-thread "$CODEX_THREAD_ID" --service`. The
+   [shared guide](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/README.md#2-select-your-seat-and-connect-to-the-bus) shows the
+   credential wrapper and the bus guide explains the service lifecycle. The
    sprint's refusal in step 2 names the form for your harness.
-2. Hook in to the sprint. Run, as one plain command:
-   `nova-sprint hook --as <you> --role worker`
+2. Hook in to the sprint through the credential helper:
+   `sprint_env nova-sprint hook --as <you> --role worker`
    Its first line is `HOOKED <you> role=worker`, then `COMMIT AS <name> <email>` with the
    sprint's two git config lines, then `playbook: nova-sprint help playbook worker` (this page:
    read it once, not on every hook), then a `next:` line. Before
    step 1 it refuses with `SPRINT REFUSED hook: <you> is not on the bus: hook in to the bus first:
    NOVA_BUS_REDIS=<host:port> nova-bus hook --as <you> under your session's Monitor tool`.
-   Every nova-sprint verb needs the sprint's credential in its process: run it under
-   `nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint <verb> ...`.
+   The examples and receipts below abbreviate calls as `nova-sprint ...`. In an
+   interactive shell, prefix operations on the configured sprint with `sprint_env`,
+   preserving all arguments. The helper supplies credentials to its child only;
+   it does not set them in the parent shell. `help` and `version` need no wrapper.
    Without it a verb refuses with `this process has no sprint credential: run under nova-secrets
    exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ...`.
    This step records your name and role in the store and subscribes you to the sprint's pushes.
