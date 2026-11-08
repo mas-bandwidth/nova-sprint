@@ -215,7 +215,7 @@ func (g *passGit) IsAncestor(context.Context, string, string, string) (bool, err
 func (g *passGit) LsRemote(context.Context, string, string) (string, bool, error) {
 	return g.head, true, nil
 }
-func (g *passGit) MergeGroup(_ context.Context, dir, _ string, _ []string, _ []git.LedgerRule) (git.MergeResult, error) {
+func (g *passGit) MergeGroup(_ context.Context, dir, _ string, _ []string) (git.MergeResult, error) {
 	g.merged = append(g.merged, cloneLocked(g.t, dir))
 	return git.MergeResult{Kind: git.MergeOK, SHA: strings.Repeat("c", 40)}, nil
 }

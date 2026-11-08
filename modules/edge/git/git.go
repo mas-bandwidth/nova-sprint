@@ -6,12 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 )
 
 const (
@@ -35,26 +36,15 @@ type ExecFunc func(ctx context.Context, cmd edge.Cmd) (edge.Result, error)
 
 func (f ExecFunc) Run(ctx context.Context, cmd edge.Cmd) (edge.Result, error) { return f(ctx, cmd) }
 
-type LedgerRule struct {
-	Path   string
-	Script []string
-}
 type MergeKind string
 
 const (
-	MergeOK           MergeKind = "ok"
-	MergeConflict     MergeKind = "conflict"
-	MergeLedgerFailed MergeKind = "ledger_failed"
+	MergeOK       MergeKind = "ok"
+	MergeConflict MergeKind = "conflict"
 )
 
 type MergeResult struct {
-	Kind              MergeKind
-	SHA, Tree, Reason string
-	ReusedHead        bool
-	Conflicts         []string
-}
-type RebaseResult struct {
-	OK          bool
+	Kind        MergeKind
 	SHA, Reason string
 	Conflicts   []string
 }
@@ -62,9 +52,7 @@ type Git interface {
 	Fetch(ctx context.Context, repoDir string, refs ...string) error
 	LsRemote(ctx context.Context, repoDir, ref string) (sha string, ok bool, err error)
 	IsAncestor(ctx context.Context, repoDir, ancestor, descendant string) (bool, error)
-	TreeHash(ctx context.Context, repoDir, rev string) (string, error)
-	MergeGroup(ctx context.Context, repoDir, onto string, heads []string, ledgers []LedgerRule) (MergeResult, error)
-	Rebase(ctx context.Context, worktree, onto string) (RebaseResult, error)
+	MergeGroup(ctx context.Context, repoDir, onto string, heads []string) (MergeResult, error)
 	Push(ctx context.Context, repoDir, sha, ref, expectOld string) error
 }
 type Config struct {
@@ -308,14 +296,7 @@ func (c *Client) IsAncestor(ctx context.Context, repoDir, ancestor, descendant s
 		return false, c.failed_internal(code, stdout, stderr, nil, "merge-base", "--is-ancestor", ancestor, descendant)
 	}
 }
-func (c *Client) TreeHash(ctx context.Context, repoDir, rev string) (string, error) {
-	stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "rev-parse", rev+"^{tree}")
-	if err != nil || code != 0 {
-		return "", cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "rev-parse", rev+"^{tree}"))
-	}
-	return strings.TrimSpace(stdout), nil
-}
-func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []string, ledgers []LedgerRule) (MergeResult, error) {
+func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []string) (MergeResult, error) {
 	if len(heads) == 0 {
 		return MergeResult{}, fmt.Errorf("git refused: MergeGroup requires at least one head")
 	}
@@ -324,11 +305,7 @@ func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []s
 			if stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "checkout", "--detach", heads[0]); err != nil || code != 0 {
 				return MergeResult{}, cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "checkout", "--detach", heads[0]))
 			}
-			tree, err := c.TreeHash(ctx, repoDir, heads[0])
-			if err != nil {
-				return MergeResult{}, err
-			}
-			return MergeResult{Kind: MergeOK, SHA: heads[0], Tree: tree, ReusedHead: true}, nil
+			return MergeResult{Kind: MergeOK, SHA: heads[0]}, nil
 		}
 	}
 	if _, _, ok := c.identity_internal(ctx); !ok {
@@ -344,12 +321,8 @@ func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []s
 	baseDate := strings.TrimSpace(baseDateRaw)
 	dateEnv := []string{"GIT_AUTHOR_DATE=" + baseDate, "GIT_COMMITTER_DATE=" + baseDate}
 	commitMsg := "nova-sprint merge " + strings.Join(heads, " ")
-	ledgerMap := make(map[string]LedgerRule, len(ledgers))
-	for _, l := range ledgers {
-		ledgerMap[l.Path] = l
-	}
 	for _, head := range heads {
-		if res, done, err := c.mergeOneHead_internal(ctx, repoDir, onto, head, ledgerMap, dateEnv, commitMsg); err != nil || done {
+		if res, done, err := c.mergeOneHead_internal(ctx, repoDir, onto, head, dateEnv, commitMsg); err != nil || done {
 			return res, err
 		}
 	}
@@ -357,93 +330,22 @@ func (c *Client) MergeGroup(ctx context.Context, repoDir, onto string, heads []s
 	if err != nil || code != 0 {
 		return MergeResult{}, cmp.Or(err, c.failed_internal(code, shaOut, shaErr, nil, "rev-parse", "HEAD"))
 	}
-	sha := strings.TrimSpace(shaOut)
-	tree, err := c.TreeHash(ctx, repoDir, sha)
-	if err != nil {
-		return MergeResult{}, err
-	}
-	return MergeResult{Kind: MergeOK, SHA: sha, Tree: tree}, nil
+	return MergeResult{Kind: MergeOK, SHA: strings.TrimSpace(shaOut)}, nil
 }
-func (c *Client) mergeOneHead_internal(ctx context.Context, repoDir, onto, head string, ledgerMap map[string]LedgerRule, dateEnv []string, commitMsg string) (MergeResult, bool, error) {
+func (c *Client) mergeOneHead_internal(ctx context.Context, repoDir, onto, head string, dateEnv []string, commitMsg string) (MergeResult, bool, error) {
 	mergeOut, mergeErr, code, err := c.runGitEnv_internal(ctx, repoDir, c.cfg.RebaseTimeout, dateEnv, "merge", "--no-ff", "-m", commitMsg, head)
 	if err != nil || code == 0 {
 		return MergeResult{}, err != nil, err
 	}
 	conflicts, listErr := c.unmergedFiles_internal(ctx, repoDir)
-	var nonLedger, ledgerFiles []string
-	for _, f := range conflicts {
-		if _, ok := ledgerMap[f]; ok {
-			ledgerFiles = append(ledgerFiles, f)
-		} else {
-			nonLedger = append(nonLedger, f)
-		}
+	cleanup := c.cleanup_internal(ctx, repoDir, []string{"merge", "--abort"}, []string{"reset", "--hard", onto})
+	reason := fmt.Sprintf("merge conflict on %s: %s", head, strings.Join(conflicts, ", "))
+	if len(conflicts) == 0 {
+		// No unmerged file: the merge failed for another reason, and
+		// git's own words are the reason.
+		reason = fmt.Sprintf("merge of %s failed: %v", head, cmp.Or(listErr, c.failed_internal(code, mergeOut, mergeErr, nil, "merge", "--no-ff", "-m", commitMsg, head)))
 	}
-	if len(nonLedger) > 0 || len(ledgerFiles) == 0 {
-		cleanup := c.cleanup_internal(ctx, repoDir, []string{"merge", "--abort"}, []string{"reset", "--hard", onto})
-		if len(nonLedger) == 0 {
-			nonLedger = conflicts
-		}
-		reason := fmt.Sprintf("merge conflict on %s: %s", head, strings.Join(nonLedger, ", "))
-		if len(nonLedger) == 0 {
-			// No unmerged file: the merge failed for another reason, and
-			// git's own words are the reason.
-			reason = fmt.Sprintf("merge of %s failed: %v", head, cmp.Or(listErr, c.failed_internal(code, mergeOut, mergeErr, nil, "merge", "--no-ff", "-m", commitMsg, head)))
-		}
-		return MergeResult{Kind: MergeConflict, Conflicts: nonLedger, Reason: reason + cleanup}, true, nil
-	}
-	if err := c.resolveLedgers_internal(ctx, repoDir, ledgerFiles, ledgerMap, dateEnv, commitMsg); err != nil {
-		cleanup := c.cleanup_internal(ctx, repoDir, []string{"merge", "--abort"}, []string{"reset", "--hard", onto})
-		return MergeResult{Kind: MergeLedgerFailed, Conflicts: ledgerFiles, Reason: err.Error() + cleanup}, true, nil
-	}
-	return MergeResult{}, false, nil
-}
-func (c *Client) resolveLedgers_internal(ctx context.Context, repoDir string, files []string, ledgerMap map[string]LedgerRule, dateEnv []string, commitMsg string) error {
-	for _, f := range files {
-		if rule := ledgerMap[f]; len(rule.Script) > 0 {
-			if stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "checkout", "--ours", "--", f); err != nil || code != 0 {
-				return cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "checkout", "--ours", "--", f))
-			}
-			cmd := edge.Cmd{Argv: rule.Script, Dir: repoDir, Env: c.gitEnv_internal(ctx), Timeout: c.cfg.RebaseTimeout}
-			if res, err := c.cfg.Exec.Run(ctx, cmd); err != nil || !res.OK() {
-				return fmt.Errorf("ledger script on %s: %w", f, edge.Failure(cmd.Argv, nil, res.ExitCode, res.Stdout, res.Stderr, err))
-			}
-		} else if err := c.mergeLedgerLines_internal(ctx, repoDir, f); err != nil {
-			return err
-		}
-		if stdout, stderr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "add", "--", f); err != nil || code != 0 {
-			return cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "add", "--", f))
-		}
-	}
-	if stdout, stderr, code, err := c.runGitEnv_internal(ctx, repoDir, c.cfg.RebaseTimeout, dateEnv, "commit", "-m", commitMsg); err != nil || code != 0 {
-		return cmp.Or(err, c.failed_internal(code, stdout, stderr, nil, "commit", "-m", commitMsg))
-	}
-	return nil
-}
-func (c *Client) mergeLedgerLines_internal(ctx context.Context, repoDir, relPath string) error {
-	ours, oursErr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "show", ":2:"+relPath)
-	if err != nil || code != 0 {
-		return cmp.Or(err, c.failed_internal(code, ours, oursErr, nil, "show", ":2:"+relPath))
-	}
-	theirs, theirsErr, code, err := c.runGit_internal(ctx, repoDir, c.cfg.RebaseTimeout, "show", ":3:"+relPath)
-	if err != nil || code != 0 {
-		return cmp.Or(err, c.failed_internal(code, theirs, theirsErr, nil, "show", ":3:"+relPath))
-	}
-	return os.WriteFile(filepath.Join(repoDir, relPath), []byte(unionLines_internal(ours, theirs)), 0o644)
-}
-func unionLines_internal(ours, theirs string) string {
-	seen := make(map[string]bool)
-	var out []string
-	for _, s := range []string{ours, theirs} {
-		for _, line := range strings.Split(strings.TrimRight(s, "\n"), "\n") {
-			if line != "" && !seen[line] {
-				seen[line], out = true, append(out, line)
-			}
-		}
-	}
-	if len(out) == 0 {
-		return ""
-	}
-	return strings.Join(out, "\n") + "\n"
+	return MergeResult{Kind: MergeConflict, Conflicts: conflicts, Reason: reason + cleanup}, true, nil
 }
 
 // cleanup_internal runs each git command to put a work tree back; it
@@ -472,26 +374,6 @@ func (c *Client) unmergedFiles_internal(ctx context.Context, dir string) ([]stri
 	}
 	slices.Sort(files)
 	return slices.Compact(files), nil
-}
-func (c *Client) Rebase(ctx context.Context, worktree, onto string) (RebaseResult, error) {
-	stdout, stderr, code, err := c.runGit_internal(ctx, worktree, c.cfg.RebaseTimeout, "rebase", onto)
-	if err != nil {
-		return RebaseResult{}, err
-	}
-	if code == 0 {
-		shaOut, shaErr, code, err := c.runGit_internal(ctx, worktree, c.cfg.RebaseTimeout, "rev-parse", "HEAD")
-		if err == nil && code != 0 {
-			err = c.failed_internal(code, shaOut, shaErr, nil, "rev-parse", "HEAD")
-		}
-		return RebaseResult{OK: err == nil, SHA: strings.TrimSpace(shaOut)}, err
-	}
-	conflicts, listErr := c.unmergedFiles_internal(ctx, worktree)
-	cleanup := c.cleanup_internal(ctx, worktree, []string{"rebase", "--abort"})
-	reason := cmp.Or(listErr, c.failed_internal(code, stdout, stderr, nil, "rebase", onto)).Error()
-	if len(conflicts) > 0 {
-		reason = fmt.Sprintf("rebase conflict onto %s: %s", onto, strings.Join(conflicts, ", "))
-	}
-	return RebaseResult{OK: false, Conflicts: conflicts, Reason: reason + cleanup}, nil
 }
 
 // GroupPrefix is the group branches' namespace: sprint-group/<stream>,

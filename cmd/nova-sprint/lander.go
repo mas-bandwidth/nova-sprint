@@ -115,7 +115,7 @@ func (l *lander) mergePR_internal(ctx context.Context, s store.Stream, branch, h
 
 func (l *lander) pushBase_internal(ctx context.Context, dir string, s store.Stream, tip, head string) (string, error) {
 	g := l.clones.git
-	merged, err := g.MergeGroup(ctx, dir, tip, []string{head}, nil)
+	merged, err := g.MergeGroup(ctx, dir, tip, []string{head})
 	if err != nil {
 		return "", err
 	}
