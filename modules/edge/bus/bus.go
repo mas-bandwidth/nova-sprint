@@ -59,7 +59,7 @@ func (e *Edge) Send(ctx context.Context, to, subject, body string) (string, erro
 	return e.send(ctx, to, subject, body)
 }
 
-func (e *Edge) send(ctx context.Context, to, subject, body string, extra ...string) (string, error) {
+func (e *Edge) send(ctx context.Context, to, subject, body string) (string, error) {
 	switch {
 	case strings.TrimSpace(to) == "" || strings.TrimSpace(subject) == "":
 		return "", fmt.Errorf("bus send: recipient and subject are required; pass --to <name> and a non-empty subject")
@@ -70,7 +70,6 @@ func (e *Edge) send(ctx context.Context, to, subject, body string, extra ...stri
 	if e.allowNew {
 		argv = append(argv, "--new")
 	}
-	argv = append(argv, extra...)
 	cmd := edge.Cmd{Argv: append(argv, subject, body), Env: e.env, Timeout: e.timeout}
 	res, err := e.exec.Run(ctx, cmd)
 	if err != nil {
@@ -83,16 +82,6 @@ func (e *Edge) send(ctx context.Context, to, subject, body string, extra ...stri
 		return msgID, nil
 	}
 	return "", fmt.Errorf("bus send to %s (%s): missing `<recipient> <id>` confirmation: %s; leaving cursor unmoved", to, subject, edge.ParseRefused("no `"+to+" <id>` line", 0, []byte(res.Stdout)))
-}
-
-// Reply answers message re from to (`nova-bus send --re`), with the same
-// confirmation rule as Send. The sprint hook's bus-reply uses it to point a
-// sender at its verbs; it reads no body.
-func (e *Edge) Reply(ctx context.Context, to, re, subject, body string) (string, error) {
-	if strings.TrimSpace(re) == "" {
-		return "", fmt.Errorf("bus reply to %s: the message id is required; pass NOVA_BUS_ID", to)
-	}
-	return e.send(ctx, to, subject, body, "--re", re)
 }
 
 func parseSendConfirmation_internal(stdout, to string) (string, bool) {
