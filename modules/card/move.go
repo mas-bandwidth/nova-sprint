@@ -1060,7 +1060,9 @@ func (m *mover) holdCard(e HoldCard) *Refusal {
 // unholdCard lifts a held producer (Held: the coordinator's hold, or a
 // missing-route fault's wait) back to plain waiting, whence it resolves and
 // is dealt as any other; parked under the stream's hold when the stream is
-// held.
+// held. It gives the producer a fresh bounce budget: its bounce base becomes
+// its bounces, so the bounce limit counts only the bounces since and does
+// not hold it again for the ones it was held for; bounces stays the total.
 func (m *mover) unholdCard(e UnholdCard) *Refusal {
 	if r := m.from(e, Waiting); r != nil {
 		return r
@@ -1074,6 +1076,10 @@ func (m *mover) unholdCard(e UnholdCard) *Refusal {
 		return no("stream %s is not producer %s's stream %s", m.s.Name, m.p.ID, m.p.Stream)
 	}
 	m.expect(store.StreamHeld{Stream: m.s.Name, Held: m.s.Held})
+	if m.p.BounceBase != m.p.Bounces {
+		// A fresh bounce budget: the limit counts only the bounces since.
+		m.write(store.SetCardBounceBase{Card: m.p.ID, Base: m.p.Bounces})
+	}
 	why := cmp.Or(e.Reason, "unheld")
 	if m.s.Held {
 		why = holdPhrase(m.s)

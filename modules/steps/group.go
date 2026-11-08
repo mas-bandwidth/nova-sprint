@@ -133,6 +133,8 @@ func written(w store.Write) (card, row string) {
 		return x.Card, ""
 	case store.SetCardBounces:
 		return x.Card, ""
+	case store.SetCardBounceBase:
+		return x.Card, ""
 	case store.SetCardReview:
 		return x.Card, ""
 	case store.SetCardFinding:

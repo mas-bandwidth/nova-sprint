@@ -70,6 +70,7 @@ type ModelProd struct {
 	St, Author, Prio, Finding string
 	Why                       string // "-", "held" or "route": what holds a waiting producer (TraceWhy)
 	Att, Head, Bounces, Score int
+	Base                      int // bounces at the last unhold (the store's bounce_base)
 	Review, Ncut              int
 	Needs, After              []string
 	Red                       bool
@@ -126,7 +127,7 @@ func traceProd(c store.Card, ncut int, head func(string) (int, error)) (ModelPro
 	h, err := head(c.Head)
 	return ModelProd{St: c.State, Att: c.Attempt, Head: h, Author: cmp.Or(c.Author, "none"), Bounces: c.Bounces, Score: c.Score,
 		Prio: c.Priority, Needs: slices.Clone(c.Needs), After: slices.Clone(c.After), Review: c.Review, Ncut: ncut,
-		Finding: fixOrNone(c.Finding), Red: c.Red, Why: TraceWhy(c.State, c.Reason)}, err
+		Finding: fixOrNone(c.Finding), Red: c.Red, Why: TraceWhy(c.State, c.Reason), Base: c.BounceBase}, err
 }
 
 // TraceWhy is a producer's why as the model names it: "route" when it waits

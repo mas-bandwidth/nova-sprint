@@ -1024,11 +1024,11 @@ func lessonColumns(h *harness) {
 	assert.Equal(h.t, "normal", s.Cards["k1"].Priority, "a consumer's priority is normal, named or not")
 	assert.Equal(h.t, "normal", s.Cards["c1"].Priority, "the default is normal")
 	r := h.ok(h.op("report", []Expect{CardGen{"u1", 0}}, SetCardPriorHead{"u1", "abc"}, SetCardCost{"u1", math.MaxInt32 + 1, true}, SetCardResult{"u1", "fault"},
-		SetCardBounces{"c1", 2}, SetCardPriority{"c1", "critical"}, SetCardCost{"u2", 5, false}))
+		SetCardBounces{"c1", 2}, SetCardBounceBase{"c1", 2}, SetCardPriority{"c1", "critical"}, SetCardCost{"u2", 5, false}))
 	u1want := Card{Tier: "pro", Priority: "normal", ID: "u1", Kind: "work", Of: "c1", Stream: "s1", State: "waiting", Holder: "w1", Gen: 1, Prior: "abc", Cost: math.MaxInt32 + 1, Priced: true, Result: "fault"}
 	assert.Equal(h.t, u1want, r.After.Cards["u1"], "cost is a bigint: it goes past the integer range")
 	c1want := c1
-	c1want.Gen, c1want.Bounces, c1want.Priority = 1, 2, "critical"
+	c1want.Gen, c1want.Bounces, c1want.BounceBase, c1want.Priority = 1, 2, 2, "critical"
 	assert.Equal(h.t, c1want, r.After.Cards["c1"])
 	assert.False(h.t, r.After.Cards["u2"].Priced, "an unpriced run is unpriced, never $0")
 	h.ok(h.op("level", nil, SetCardPriority{"g1", "high"}))
@@ -1049,6 +1049,8 @@ func lessonColumns(h *harness) {
 		{SetCardPriorHead{"c1", "x"}, "card c1 is of kind producer; SetCardPriorHead is only for a work consumer"},
 		{SetCardBounces{"u1", 1}, "card u1 is of kind work; SetCardBounces is only for a producer"},
 		{SetCardBounces{"g1", 1}, "card g1 is of kind sentinel; SetCardBounces is only for a producer"},
+		{SetCardBounceBase{"u1", 1}, "card u1 is of kind work; SetCardBounceBase is only for a producer"},
+		{SetCardBounceBase{"g1", 0}, "card g1 is of kind sentinel; SetCardBounceBase is only for a producer"},
 		{SetCardCost{"c1", 1, true}, "card c1 is of kind producer; SetCardCost is only for a consumer"},
 		{SetCardResult{"c1", "ok"}, "card c1 is of kind producer; SetCardResult is only for a consumer"},
 		{SetCardResult{"g1", ""}, "card g1 is of kind sentinel; SetCardResult is only for a consumer"},
@@ -1080,6 +1082,7 @@ func lessonColumns(h *harness) {
 		"negative cost":    h.op("x", nil, SetCardCost{"u1", -1, true}),
 		"negative bounces": h.op("x", nil, SetCardBounces{"c1", -1}),
 		"bounces too big":  h.op("x", nil, SetCardBounces{"c1", math.MaxInt32 + 1}),
+		"negative base":    h.op("x", nil, SetCardBounceBase{"c1", -1}),
 		"cost twice":       h.op("x", nil, SetCardCost{"u1", 1, true}, SetCardCost{"u1", 2, true}),
 		"priority twice":   h.op("x", nil, PutCard{Tier: "pro", Kind: "producer", ID: "c5", Stream: "s1"}, SetCardPriority{"c5", "high"}),
 		"nul prior head":   h.op("x", nil, SetCardPriorHead{"u1", "a\x00"}),
@@ -1671,6 +1674,7 @@ func coldRead4(h *harness) {
 		{SetCardBaseSHA{"c1", ""}, "card c1 already has the given base sha"},
 		{SetCardAttempt{"c1", 0}, "card c1 already has the given attempt"},
 		{SetCardBounces{"c1", 0}, "card c1 already has the given bounces"},
+		{SetCardBounceBase{"c1", 0}, "card c1 already has the given bounce base"},
 		{SetCardPriority{"c1", "normal"}, "card c1 already has the given priority"},
 		{SetCardPriority{"c1", ""}, "card c1 already has the given priority"}, // "" is normal, as at put card
 		{SetCardNeeds{"c1", []string{"c0"}}, "card c1 already has the given needs"},

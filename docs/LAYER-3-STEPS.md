@@ -217,8 +217,9 @@ high, normal, low; within a rung, policy's order.
 
 ### Retire and fail limits
 
-- Plans: `HoldCard` (reason `held: ...`) with a `held` judgement when bounces reach the limit (a
-  fault never counts; LESSONS 2.24); `Withdraw` of a working consumer whose
+- Plans: `HoldCard` (reason `held: ...`) with a `held` judgement when bounces since the
+  producer's last unhold (`bounces - bounce_base`) reach the limit (a fault never counts;
+  LESSONS 2.24; an unhold is a fresh budget); `Withdraw` of a working consumer whose
   row is silent past the bound, branch kept; `Gone` for a row whose session
   has not acked past its bound, never for one missed challenge in a long
   turn (LESSONS 4.7); a `flap` judgement past the flap limit.

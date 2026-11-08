@@ -301,6 +301,21 @@ func TestRound28Hash(t *testing.T) {
 	assert.True(t, knownOlder(round28Hash))
 }
 
+// round29Hash is the hash of round 29's schema.sql, kept in testdata: its
+// cards have no bounce_base, which this build's schema adds (round 30: an
+// unhold gives a producer a fresh bounce budget). Unit: reads a file in the
+// package, no store.
+func TestRound29Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round29.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round29Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round29Hash, schemaHash)
+	assert.NotContains(t, string(old), "bounce_base")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS bounce_base")
+	assert.True(t, knownOlder(round29Hash))
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.

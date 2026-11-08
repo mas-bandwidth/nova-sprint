@@ -180,6 +180,10 @@ type Card struct {
 	DoneWhen []string `json:"done_when,omitempty"`
 	Prose    string   `json:"prose"` // the task a mind reads; Brief keeps the whole brief as given
 	Model    string   `json:"model"` // on a consumer: the model its deal named (round 23); "" on a producer or sentinel
+
+	// BounceBase is a producer's bounces at its last unhold (SetCardBounceBase,
+	// round 30): the bounce limit counts Bounces - BounceBase; 0 on every other kind.
+	BounceBase int `json:"bounce_base,omitempty"`
 }
 
 // Row is a row of sprint.rows: a worker's or a kin's sprint state, and

@@ -207,6 +207,14 @@ ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS usage text NOT NULL DEFAULT ''
 ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
     CONSTRAINT cards_model_check CHECK (kind IN ('work', 'read') OR model = '');
 
+-- bounce_base (round 30): on a producer, its bounces at its last unhold, so
+-- the bounce limit counts only the bounces since (an unhold is a fresh
+-- budget); bounces stays the whole count. 0 on every other kind. Added by
+-- ALTER after model, so a store Migrate upgrades and a new store have the
+-- columns in the same order.
+ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS bounce_base integer NOT NULL DEFAULT 0
+    CONSTRAINT cards_bounce_base_check CHECK (bounce_base >= 0 AND (kind = 'producer' OR bounce_base = 0));
+
 -- Round 29: blocked is no card state (Glenn, 2026-11-07: "waiting is where
 -- stuff goes where it's having problems"). A held card, or one a missing
 -- route stopped, is waiting with its reason, which the deal refuses. The

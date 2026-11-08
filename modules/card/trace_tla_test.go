@@ -29,8 +29,8 @@ func tlaSet(ss []string) string {
 func (s Slot) tla() string { return fmt.Sprintf("<<%q, %d>>", s.P, s.I) }
 
 func (p ModelProd) tla() string {
-	return fmt.Sprintf("[st |-> %q, att |-> %d, head |-> %d, author |-> %q, bounces |-> %d, score |-> %d, prio |-> %q, needs |-> %s, after |-> %s, review |-> %d, ncut |-> %d, finding |-> %q, red |-> %s, why |-> %q]",
-		p.St, p.Att, p.Head, p.Author, p.Bounces, p.Score, p.Prio, tlaSet(p.Needs), tlaSet(p.After), p.Review, p.Ncut, p.Finding, tlaBool(p.Red), p.Why)
+	return fmt.Sprintf("[st |-> %q, att |-> %d, head |-> %d, author |-> %q, bounces |-> %d, score |-> %d, prio |-> %q, needs |-> %s, after |-> %s, review |-> %d, ncut |-> %d, finding |-> %q, red |-> %s, why |-> %q, base |-> %d]",
+		p.St, p.Att, p.Head, p.Author, p.Bounces, p.Score, p.Prio, tlaSet(p.Needs), tlaSet(p.After), p.Review, p.Ncut, p.Finding, tlaBool(p.Red), p.Why, p.Base)
 }
 
 func (c ModelCons) tla() string {

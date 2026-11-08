@@ -112,7 +112,7 @@ Producer events:
 | `Rescore{score}` | any non-final | same | score | |
 | `SetPriority{level, reason}` | any non-final | same | priority | a producer only; level is `low`, `normal` (the default), `high`, `critical` or `blocker`; a verb a person or the coordinator runs on request, never raised by the engine or by policy (Glenn 2026-11-06: "Priorities are manually set by request." "Default is normal."); policy only orders within a level |
 | `HoldCard{reason}` | waiting, ready, review, or working after its consumer is withdrawn | waiting | state, reason (`held: <why>`) | a producer, never a sentinel, not already held; no live consumer of p; raised by policy when `bounces` passes its limit, with a judgement; a `fault` never counts (LESSONS 2.24); and by the coordinator's `hold <card>` with reason `held: <why>` (defect 47), its live consumers withdrawn in the same op |
-| `UnholdCard{reason}` | waiting, held | waiting | reason | a coordinator verb; Resolve then moves it on |
+| `UnholdCard{reason}` | waiting, held | waiting | reason, bounce_base | a coordinator verb; Resolve then moves it on; `bounce_base` becomes `bounces` (a fresh bounce budget: the limit counts `bounces - bounce_base`; `bounces` stays the total) |
 
 A card with a problem has no state of its own (Glenn, 2026-11-07: "waiting is where stuff goes where it's having problems"). A waiting producer whose reason starts `held: ` (not a stream park, `held: stream S is held`) or `missing-route:` is held (`card.Held`): Resolve and WaiveRed refuse it, so the deal never takes it, and only `UnholdCard` lifts it.
 

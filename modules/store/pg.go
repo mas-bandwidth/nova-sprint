@@ -23,7 +23,7 @@ var schemaSQL string
 // SchemaVersion is the version of schema.sql, kept in sprint.meta with the
 // schema's hash. Version 2 adds to version 1: the card columns kind (with
 // sentinel), of, after, author, base_sha, prior_head, result (with fault),
-// bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding and red; the card
+// bounces, bounce_base, cost, priced, priority, tier, paths, done_when, prose, review, finding and red; the card
 // state done (round 29 dropped blocked); the row columns gen, held and reason (round 22
 // dropped kind, width, tiers, model and harness: configuration, the
 // roster's); the tables judgements and cursors; the events' policy; the meta
@@ -103,6 +103,13 @@ const round27Hash = "5aae26316b0ddbffbe2668a180446cd027dbf237a8e05baa85038786de6
 // card to waiting with its reason (migrateBlocked), in its one transaction,
 // then the new hash is recorded.
 const round28Hash = "45e961bd30f7a3497cc42ffa132adca022ee48703a9b218369e6c7fbae79a24e"
+
+// round29Hash is the schema hash of round 29's schema.sql
+// (testdata/schema-round29.sql): its cards have no bounce_base. Running
+// schema.sql on it adds cards.bounce_base, 0 on every card (round 30: an
+// unhold gives a producer a fresh bounce budget), then the new hash is
+// recorded.
+const round29Hash = "1a911dc3cf8cac36666a06784e9ddb54ebeeb91a12ee2b3123b6ad556a7c02d7"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does

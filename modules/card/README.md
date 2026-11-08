@@ -193,7 +193,7 @@ sets a reason that holds. UnholdCard lifts it to plain waiting.
 | Rescore{Score} | any non-final | producer only | score |
 | SetPriority{Level,Reason} | any non-final | (a sentinel too) | priority ("" is normal), reason |
 | HoldCard{Reason} | waiting, ready, review, working | a producer, never a sentinel, not already held; no live consumer; a reported one is applied first; Reason starts `held: ` (`HeldPrefix`) | state waiting (no write from waiting), reason: the coordinator's `hold <card>`, or policy's at the bounce limit |
-| UnholdCard{Reason} | waiting, held (`Held`) | StreamHeld as read; Reason does not hold | reason (`unheld` when empty; the hold phrase when the stream is held): plain waiting again |
+| UnholdCard{Reason} | waiting, held (`Held`) | StreamHeld as read; Reason does not hold | reason (`unheld` when empty; the hold phrase when the stream is held): plain waiting again; bounce_base = bounces when they differ (a fresh bounce budget) |
 
 Relink on a sentinel is allowed, as is SetPriority; Edit, Rescore, Start and
 AskRead on a sentinel are refused.
