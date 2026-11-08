@@ -1,7 +1,6 @@
 package store
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -137,17 +136,6 @@ func (f *Fake) Events(_ context.Context, afterSeq int64, max int) ([]Event, erro
 // Restored is false: a Fake is never restored (RestoreEnd is PostgreSQL's).
 func (f *Fake) Restored(context.Context) (string, time.Time, bool, error) {
 	return "", time.Time{}, false, nil
-}
-
-// EventIdentity returns the op id and epoch of the event at seq.
-func (f *Fake) EventIdentity(_ context.Context, seq int64) (string, int, bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	i, ok := slices.BinarySearchFunc(f.events, seq, func(e fakeEvent, s int64) int { return cmp.Compare(e.Seq, s) })
-	if !ok {
-		return "", 0, false, nil
-	}
-	return f.events[i].Op, f.events[i].Epoch, true, nil
 }
 
 func capEvents(max int) int {

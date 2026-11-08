@@ -1307,23 +1307,6 @@ func TestFunctionalReceiptAfterStoredOnce(t *testing.T) {
 	assert.Equal(t, r, ev[len(ev)-1].Receipt)
 }
 
-// EventIdentity on PostgreSQL: the same answers as Events, and it never
-// reads an image: with seq 1's after-image corrupt, Events fails and
-// EventIdentity still answers (the dashboard's cursor check, 2026-11-06).
-func TestFunctionalEventIdentity(t *testing.T) {
-	t.Parallel()
-	h, p, dsn := pgHarness(t)
-	checkEventIdentity(t, h)
-	unguardLog(t, dsn, `UPDATE sprint.events SET after = '"not a state"', before = '"not a state"' WHERE seq = 1`)
-	_, err := p.Events(context.Background(), 0, 0)
-	require.Error(t, err)
-	op, epoch, found, err := p.EventIdentity(context.Background(), 1)
-	require.NoError(t, err)
-	assert.True(t, found)
-	assert.NotEmpty(t, op)
-	assert.Equal(t, 1, epoch)
-}
-
 // A round 25 store began running with nothing logged,
 // and a rebuild starts never started (FreshStop): Migrate logs the stop the
 // store has, so the log rebuilds to it, whether it runs (one event) or was

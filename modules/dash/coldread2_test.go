@@ -4,7 +4,6 @@ package dash
 // Probes by Rowan’s second cold reader.
 
 import (
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -52,15 +51,5 @@ func TestColdread2DefectPulseUsesViewerClock(t *testing.T) {
 	}
 	if !strings.Contains(src, "dataAgeSeconds") {
 		t.Error("app.js never reads the server's dataAgeSeconds")
-	}
-}
-
-// v1 served /events (pageview.go ServeHTTP); v2 answers 404 there.
-func TestColdread2DefectV1RouteEvents404(t *testing.T) {
-	t.Parallel()
-	rec := httptest.NewRecorder()
-	Handler(&Cache{at: t1000, now: at1000}).ServeHTTP(rec, httptest.NewRequest("GET", "/events", nil))
-	if rec.Code == 404 {
-		t.Errorf("/events -> 404; v1 served it")
 	}
 }

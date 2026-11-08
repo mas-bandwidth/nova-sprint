@@ -31,10 +31,6 @@ type Store interface {
 	// Events returns events with seq above afterSeq, ascending, at most max
 	// of them; max is capped at MaxEvents, and max <= 0 means MaxEvents.
 	Events(ctx context.Context, afterSeq int64, max int) ([]Event, error)
-	// EventIdentity returns the op id and epoch of the event at seq, and
-	// false when there is none. It reads neither image nor the receipt, so
-	// a caller verifying a cursor pays for two columns, not the state.
-	EventIdentity(ctx context.Context, seq int64) (op string, epoch int, found bool, err error)
 	// Restored returns the digest (sha256 of the dump, from RestoreBegin) and
 	// time of the store's last restore (RestoreEnd, in the restore's own
 	// transaction), and false when it never was: a retried restore of the

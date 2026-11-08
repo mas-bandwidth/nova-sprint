@@ -7,52 +7,20 @@ import (
 	"time"
 )
 
-type sample struct {
-	at     time.Time
-	landed int
-}
-
-func (c *Cache) addSample(at time.Time, landed int) {
-	if len(c.samples) > 0 && landed < c.samples[len(c.samples)-1].landed {
-		c.samples = nil
-	}
-	c.samples = append(c.samples, sample{at, landed})
-	i := 0
-	for i < len(c.samples) && at.Sub(c.samples[i].at) > time.Hour {
-		i++
-	}
-	c.samples = append([]sample(nil), c.samples[i:]...)
-}
 func round1(n float64) float64 {
 	v, _ := strconv.ParseFloat(strconv.FormatFloat(n, 'f', 1, 64), 64)
 	return v
 }
 
-// rate matches v1 sampling, with zero during the warmup.
-func (c *Cache) rate() (float64, float64) {
-	r, m, _ := c.rateWindow()
-	return r, m
-}
-
-// rateWindow is rate plus the landings inside the window (0 in the warmup).
+// rateWindow is the throughput tile's rate, the minutes it was measured over
+// and the landings inside them, from the store's landings; 0 for none.
 func (c *Cache) rateWindow() (float64, float64, int) {
-	// the store's landings when the cache has them (the samples start empty
-	// after every run restart and read 0 for ten minutes: Glenn 2026-11-07)
 	if c.landingsOK {
 		if r, w, n, _ := landingRate(c.landings, c.clock()); r > 0 {
 			return r, w, n
 		}
 	}
-	if len(c.samples) < 2 {
-		return 0, 0, 0
-	}
-	a, b := c.samples[0], c.samples[len(c.samples)-1]
-	span := b.at.Sub(a.at)
-	minutes := round1(span.Minutes())
-	if span < 10*time.Minute {
-		return 0, minutes, 0
-	}
-	return round1(float64(b.landed-a.landed) * 3600 / span.Seconds()), minutes, b.landed - a.landed
+	return 0, 0, 0
 }
 
 // MinEtaLandings is the fewest landings in the rate window an ETA is given

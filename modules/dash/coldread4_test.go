@@ -5,17 +5,13 @@ package dash
 // TestColdread4Measure* only logs.
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -159,7 +155,7 @@ func TestNoBlockedOnTheBoard(t *testing.T) {
 // "(rule to confirm)".
 func TestColdread4DefectTrackFixRuleUndocumented(t *testing.T) {
 	t.Parallel()
-	b, err := os.ReadFile("README.md")
+	b, err := os.ReadFile("../../docs/DASHBOARD-LESSONS.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +165,7 @@ func TestColdread4DefectTrackFixRuleUndocumented(t *testing.T) {
 			return
 		}
 	}
-	t.Error("README has no sentence stating the track's fix rule (working work consumer, attempt >= 2)")
+	t.Error("DASHBOARD-LESSONS has no sentence stating the track's fix rule (working work consumer, attempt >= 2)")
 }
 
 // Round-four claim "dead code removed". Still present in non-test code: Cache.Data()
@@ -208,77 +204,4 @@ func TestColdread4DefectDeadCodeRemains(t *testing.T) {
 	if len(dead) > 0 {
 		t.Errorf("dead code remains: %s", strings.Join(dead, "; "))
 	}
-}
-
-// Measurement: 5,000 producers in 50 streams, a work and a read consumer for every
-// producer (10,000 consumers), 12 worker and 4 kin rows, on the in-memory store.
-func TestFunctionalColdread4Measure5000(t *testing.T) {
-	t.Parallel()
-	requireDashLoad(t)
-	ctx := context.Background()
-	f := store.NewFake()
-	var w []store.Write
-	for i := 0; i < 12; i++ {
-		w = append(w, store.PutRow{Name: fmt.Sprintf("m%02d", i)})
-	}
-	for i := 0; i < 4; i++ {
-		w = append(w, store.PutRow{Name: fmt.Sprintf("k%d", i)})
-	}
-	for i := 0; i < 50; i++ {
-		w = append(w, store.PutStream{Name: fmt.Sprintf("s%02d", i)})
-	}
-	for i := 0; i < 5000; i++ {
-		w = append(w, store.PutCard{ID: fmt.Sprintf("p%05d", i), Kind: "producer", Tier: "pro", Stream: fmt.Sprintf("s%02d", i%50)})
-	}
-	mustApply(t, f, "seed", 1, w...)
-	w = nil
-	for i := 0; i < 5000; i++ {
-		p, st := fmt.Sprintf("p%05d", i), fmt.Sprintf("s%02d", i%50)
-		w = append(w, store.PutCard{ID: "w" + p, Kind: "work", Of: p, Stream: st, Tier: "pro", Holder: fmt.Sprintf("m%02d", i%12)},
-			store.PutCard{ID: "r" + p, Kind: "read", Of: p, Stream: st, Tier: "pro", Holder: fmt.Sprintf("k%d", i%4)})
-	}
-	mustApply(t, f, "consumers", 1, w...)
-	t0 := time.Now()
-	c, err := New(ctx, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	startup := time.Since(t0)
-	if err = c.Advance(ctx, f); err != nil {
-		t.Fatal(err)
-	}
-	h := Handler(c)
-	var idle, one, js, jsz []time.Duration
-	var size, sizez int
-	for i := 0; i < 30; i++ {
-		t0 := time.Now()
-		if err = c.Advance(ctx, f); err != nil {
-			t.Fatal(err)
-		}
-		idle = append(idle, time.Since(t0))
-		mustApply(t, f, fmt.Sprintf("m%d", i), 1, store.SetCardReason{Card: "p00001", Reason: fmt.Sprint(i)})
-		t1 := time.Now()
-		if err = c.Advance(ctx, f); err != nil {
-			t.Fatal(err)
-		}
-		one = append(one, time.Since(t1))
-		t2 := time.Now()
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
-		js = append(js, time.Since(t2))
-		size = rec.Body.Len()
-		t3 := time.Now()
-		req := httptest.NewRequest("GET", "/api/sprint", nil)
-		req.Header.Set("Accept-Encoding", "gzip")
-		rec = httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		jsz = append(jsz, time.Since(t3))
-		sizez = rec.Body.Len()
-	}
-	q := func(d []time.Duration) string {
-		s := append([]time.Duration(nil), d...)
-		sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
-		return fmt.Sprintf("median=%s p90=%s max=%s", s[len(s)/2], s[len(s)*9/10], s[len(s)-1])
-	}
-	t.Logf("5000 producers + 10000 consumers, 16 rows, 30 iterations: startup %s; idle tick %s; one-event tick %s; JSON %s (%d B); JSON gzip %s (%d B)", startup, q(idle), q(one), q(js), size, q(jsz), sizez)
 }

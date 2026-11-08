@@ -425,7 +425,6 @@
   "fetchedAt": "2026-01-01T00:00:00Z",
   "minInterval": 1,
   "ok": true,
-  "readSeconds": 0,
   "throughput": 0,
   "throughputMinutes": 0
 }

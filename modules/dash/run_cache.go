@@ -30,9 +30,8 @@ type Feed struct {
 // NewFromFeed is the run-host dashboard: it reads no store; run publishes.
 // now is run's clock.
 func NewFromFeed(f Feed, now func() time.Time) *Cache {
-	c := &Cache{now: now, gate: make(chan struct{}, 1), initialized: true}
+	c := &Cache{now: now}
 	c.publish(f)
-	c.samples = []sample{{f.At, c.view.Landed}}
 	return c
 }
 
@@ -46,7 +45,6 @@ func (c *Cache) Publish(f Feed) error {
 		return fmt.Errorf("dashboard: a run snapshot older than the one shown (seq %d at %s)", f.Snap.Seq, f.At.Format(time.RFC3339))
 	}
 	c.publish(f)
-	c.addSample(f.At, c.view.Landed)
 	return nil
 }
 

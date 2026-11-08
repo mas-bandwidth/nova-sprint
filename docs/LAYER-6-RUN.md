@@ -130,7 +130,7 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `edit` | `<card> --brief-file <f> --reason <why>` | a live consumer: `nova-bus send --as <me> --to <holder> ...` instead | `nothing; wait for the bus` | 0, 1 |
 | `drop` | `<card>... --reason <why> [--waive <need> \| --relink <need>=<card>] [--dry-run]` | an open judgement on it: `judge <id> drop` (a live consumer is released by the drop itself) | `nothing; wait for the bus` | 0, 1 |
 | `hold`, `unhold` | `<row\|stream>... --reason <why> [--dry-run]` | unknown name | `nothing; wait for the bus` | 0, 1 |
-| `dash` | `--listen <addr> [--pull <tailnet addr>]` | no store and no `--pull`; the pulled run not answering | the URL | 0 on SIGTERM |
+| `dash` | `--listen <addr> --pull <tailnet addr>` | no `--pull`; the pulled run not answering | the URL | 0 on SIGTERM |
 | `backup` | `[--out <dir>]` | `pg_dump` missing or older than the server | `nothing` | 0, 1, 2 |
 | `restore` | `<file>` | schema `sprint` not empty; a run holds the lock; the dump fails its rebuild check | `run` | 0, 1, 2 |
 | `clear` | `--confirm <epoch> [--dry-run]` | wrong epoch; a live consumer, listing them; the backup it takes first failed | `stream add` | 0, 1, 2 |
@@ -325,11 +325,10 @@ README's widths, by eye and `tools/abshot`; any difference is a defect. `fail` i
 landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); there is
 no column for a card with a problem (2026-11-07: a held card is waiting); the stats panel is left off.
 
-**Served two ways, one poller each.** `run --listen <addr>` rebuilds the view once a tick
-from the tick's own local copy, adding no store read. `nova-sprint dash --listen <addr>` is
-the shim standalone, following the log with its `dashboard` cursor, for another host. Either
-way a request is answered from the cached view, the copy advances every second whether or
-not anyone looks, and the stale alarm and `/healthz` 503 are the shim's.
+**Served by run.** `run --listen <addr>` rebuilds the view once a tick from the tick's own
+local copy, adding no store read. A request is answered from the cached view, the copy
+advances every tick whether or not anyone looks, and the stale alarm and `/healthz` 503 are
+the shim's. Another host shows the board with `dash --pull` (below), never from the store.
 
 **Public, with the cache.** A public host never holds the DSN. `dash --pull <tailnet addr>
 --listen :443` fetches run's `/api/sprint` once a second over the tailnet and serves that

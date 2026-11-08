@@ -5,7 +5,6 @@ package dash
 // rule it breaks. TestHeldDashAttacks records the adversarial attacks that held.
 
 import (
-	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
@@ -14,117 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
-
-// TestBreakDashIdleFirstPollOnEmptyStoreCreatesCursorEvent breaks cache.go:36,59-63
-// and cursor.go:14-27 against dash/README.md line 12:
-//   - "The saved watermark is the consumed input prefix and excludes its own
-//     receipt; idle polls do not create cursor events."
-//
-// Sequence:
-//  1. Start New(ctx, s) on an empty store (snap.Seq == 0, 0 events).
-//  2. Call Advance(ctx, s) immediately with no events in the store.
-//  3. Because New sets pending: true unconditionally and Cursors["dashboard"]
-//     does not exist yet, Advance calls saveCursor and writes SetCursor{Seq: 0},
-//     creating event Seq=1 on an idle poll of an empty store!
-func TestBreakDashIdleFirstPollOnEmptyStoreCreatesCursorEvent(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	s := store.NewFake()
-	c, err := New(ctx, s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Advance(ctx, s); err != nil {
-		t.Fatal(err)
-	}
-	snap, err := s.Snapshot(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snap.Seq != 0 {
-		t.Fatalf("idle first poll on empty store created event(s): got store Seq=%d, want 0", snap.Seq)
-	}
-}
-
-// hookApplyStore runs beforeCursorApply right before saveCursor's s.Apply(ctx, op).
-type hookApplyStore struct {
-	store.Store
-	beforeCursorApply func()
-}
-
-func (s *hookApplyStore) Apply(ctx context.Context, op store.Op) (store.Receipt, error) {
-	if op.Kind == "cursor" && s.beforeCursorApply != nil {
-		fn := s.beforeCursorApply
-		s.beforeCursorApply = nil
-		fn()
-	}
-	return s.Store.Apply(ctx, op)
-}
-
-// TestBreakDashConcurrentEventDuringSaveCursorLeavesWatermarkBehindConsumedState
-// breaks cursor.go:14-38 & cache.go:59-65 against dash/README.md line 12:
-//   - "After consuming input it saves the global dashboard cursor with SetCursor,
-//     folding the cursor event into its own state so the next poll is idle (cursor.go).
-//     The saved watermark is the consumed input prefix and excludes its own receipt"
-//
-// Sequence:
-//  1. Seed store at Seq=1; New(ctx, s) starts at Seq=1.
-//  2. Apply e2 (Seq=2) to the store.
-//  3. In Advance(ctx, s), readAvailable folds e2 (c.state.Seq = 2), then calls
-//     saveCursor, which snapshots seq = 2.
-//  4. Before saveCursor's Apply(SetCursor{Seq: 2}) executes, another writer applies
-//     e3 (Seq=3, setting p1 to "landed"), so SetCursor{Seq: 2} lands at Seq=4.
-//  5. catchCursor(ctx, s, 4) folds BOTH e3 (Seq=3) and SetCursor{Seq: 2} (Seq=4)
-//     into c.state, and Advance then unconditionally sets c.pending = false!
-//  6. Now c.state (and c.view) has consumed e3 (Seq=3, p1 is shown as landed),
-//     and c.state.Seq is 4, yet the durable store cursor Cursors["dashboard"] is
-//     stuck at 2 (< 3) even after subsequent Advance calls!
-func TestBreakDashConcurrentEventDuringSaveCursorLeavesWatermarkBehindConsumedState(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	f := store.NewFake()
-	mustApply(t, f, "e1", 1,
-		store.PutStream{Name: "s1"},
-		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
-	)
-	c, err := New(ctx, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// First Advance saves initial cursor at 1 (lands at Seq=2).
-	if err := c.Advance(ctx, f); err != nil {
-		t.Fatal(err)
-	}
-	// Apply e2 (lands at Seq=3).
-	mustApply(t, f, "e2", 1, store.SetCardState{Card: "p1", State: "ready"})
-
-	hs := &hookApplyStore{
-		Store: f,
-		beforeCursorApply: func() {
-			// Concurrent writer applies e3 (lands at Seq=4) right before SetCursor{Seq: 3} (lands at Seq=5).
-			mustApply(t, f, "e3", 1, store.SetCardState{Card: "p1", State: "landed"})
-		},
-	}
-	if err := c.Advance(ctx, hs); err != nil {
-		t.Fatal(err)
-	}
-	// Follow-up Advance poll after the concurrent write:
-	if err := c.Advance(ctx, f); err != nil {
-		t.Fatal(err)
-	}
-	snap, err := f.Snapshot(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Event e3 (at Seq=4) was consumed into c.state (c.view.Landed == 1),
-	// so the saved dashboard cursor watermark must be >= 4!
-	if c.view.Landed != 1 {
-		t.Fatalf("expected c.view.Landed == 1 after folding e3, got %d", c.view.Landed)
-	}
-	if got := snap.Cursors[CursorName]; got < 4 {
-		t.Fatalf("dashboard consumed e3 at seq 4 (view.Landed=1, state.Seq=%d), but durable cursor watermark is stuck at %d (< 4)", c.state.Seq, got)
-	}
-}
 
 // TestBreakDashAllFinalStreamWithFailuresNeverSetsEnvelopeStreamStateFail breaks
 // shim.go:114-124 against dash/README.md lines 14 & 89:
@@ -222,61 +110,6 @@ func TestBreakDashStreamCostsWorkAndReadExceedTotalCost(t *testing.T) {
 	}
 }
 
-// TestBreakDashThroughputNotResetAcrossClearWhenLandedDoesNotDrop breaks
-// throughput.go:13-23 against dash/README.md line 16:
-//   - "Throughput samples landed over the last hour, with a ten-minute warmup
-//     displayed as 0 and a reset when the count falls."
-//
-// Sequence:
-//  1. Epoch 1 runs for 11 minutes (> 10m warmup) with 0 landed cards.
-//  2. Clear resets the store to Epoch 2, and 1 card lands in Epoch 2 before
-//     the next Advance poll (so landed goes 0 -> 1 across the Clear).
-//  3. Because addSample (throughput.go:14) only resets c.samples when
-//     landed < last.landed and never checks if c.state.Epoch changed,
-//     Epoch 2 skips the 10-minute warmup and reports non-zero throughput
-//     immediately after Clear using Epoch 1's sample!
-func TestBreakDashThroughputNotResetAcrossClearWhenLandedDoesNotDrop(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	f := store.NewFake()
-	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
-	mustApply(t, f, "e1", 1, store.PutStream{Name: "s1"})
-
-	c, err := New(ctx, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.now = func() time.Time { return now }
-	c.samples = []sample{{now, 0}}
-
-	// 11 minutes pass in Epoch 1 with 0 landed cards.
-	now = now.Add(11 * time.Minute)
-	if err := c.Advance(ctx, f); err != nil {
-		t.Fatal(err)
-	}
-
-	// Clear opens Epoch 2, and 1 card lands in Epoch 2 at 11m10s.
-	now = now.Add(10 * time.Second)
-	if _, err := f.Clear(ctx, store.Op{ID: "clear-2", Epoch: 1, Actor: "rowan", Kind: "clear", At: now}); err != nil {
-		t.Fatal(err)
-	}
-	mustApply(t, f, "e2-seed", 2,
-		store.PutStream{Name: "s1"},
-		store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"},
-	)
-	mustApply(t, f, "e2-land", 2,
-		store.SetCardState{Card: "p1", State: "landed"},
-	)
-	if err := c.Advance(ctx, f); err != nil {
-		t.Fatal(err)
-	}
-
-	// Epoch 2 is only 10 seconds old (< 10-minute warmup), so throughput rate must be 0!
-	if rate, minutes := c.rate(); rate != 0 {
-		t.Fatalf("10s into Epoch 2 after Clear, throughput rate = %v cards/hr (window=%vm), want 0 (10-minute warmup was not reset across Clear)", rate, minutes)
-	}
-}
-
 // TestBreakDashPageBudLabelAndArchivedMatchObjectPrototypeNames breaks
 // page/app.js:260-264 & 294 against dash/README.md line 14:
 //   - "A bud shows as its person: 'rowan-next' is 'rowan (next)' when 'rowan' is a friend too"
@@ -305,24 +138,14 @@ func TestBreakDashPageBudLabelAndArchivedMatchObjectPrototypeNames(t *testing.T)
 // TestHeldDashAttacks records the adversarial attacks against dash/ that held cleanly.
 func TestHeldDashAttacks(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
-	c, err := New(ctx, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
-	c.now = func() time.Time { return now }
-	if err := c.Advance(ctx, f); err != nil {
-		t.Fatal(err)
-	}
+	c := boardOf(t, f)
 
-	// 1. Stale alarm triggers 503 on /healthz after 30s of failed polls while
-	// /api/sprint continues serving the last good view with stale: true.
-	ts := &tapStore{Store: f, fail: true}
-	now = now.Add(35 * time.Second)
-	_ = c.Advance(ctx, ts)
+	// 1. Stale alarm triggers 503 on /healthz once run has published nothing
+	// for 35s, while /api/sprint continues serving the last good view.
+	now := c.at.Add(35 * time.Second)
+	c.now = func() time.Time { return now }
 	rec := httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/healthz", nil))
 	if rec.Code != 503 {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/dash"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -66,10 +67,8 @@ func TestDashboardProbeReadsTheDashHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cache, err := dash.New(ctx, st)
-	if err != nil {
-		t.Fatal(err)
-	}
+	at := time.Unix(1000, 0)
+	cache := dash.NewFromFeed(dash.Feed{Snap: snap, At: at}, func() time.Time { return at })
 	handler := dash.Handler(cache)
 	p := DashboardProbe{Transport: dashboardRoundTrip(func(r *http.Request) (*http.Response, error) {
 		rec := httptest.NewRecorder()

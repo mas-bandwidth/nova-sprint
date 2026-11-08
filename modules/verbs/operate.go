@@ -115,8 +115,8 @@ func runDash(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 	if e.Services == nil {
 		return "", broken("dash is not configured in this build", "nova-sprint check")
 	}
-	if in.str("listen") == "" {
-		return "", misuse("dash", "dash takes --listen <addr>")
+	if in.str("listen") == "" || in.str("pull") == "" {
+		return "", misuse("dash", "dash takes --listen <addr> --pull <url>")
 	}
 	if err := e.Services.Dash(ctx, in.str("listen"), in.str("pull")); err != nil {
 		return "", err

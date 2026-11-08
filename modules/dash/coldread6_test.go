@@ -2,7 +2,6 @@ package dash
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -37,37 +36,6 @@ func TestColdread6RosterFailureIsSaidAndKeepsTheStaleAlarm(t *testing.T) {
 	c.CheckFreshness(now.Add(40 * time.Second))
 	if !c.alarm {
 		t.Errorf("40s with no fresh data and no stale alarm")
-	}
-}
-
-// cursor.go catchCursor folded the events between the cursor's read and its
-// receipt without noteLandings, so a landing among them never reached the
-// ETA's count.
-func TestColdread6CursorCatchUpCountsLandings(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	f := store.NewFake()
-	mustApply(t, f, "e1", 1, store.PutStream{Name: "s1"}, store.PutCard{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro"})
-	c, err := New(ctx, f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Advance(ctx, f); err != nil {
-		t.Fatal(err)
-	}
-	mustApply(t, f, "e2", 1, store.SetCardState{Card: "p1", State: "merging"})
-	hs := &hookApplyStore{Store: f, beforeCursorApply: func() {
-		mustApply(t, f, "e3", 1, store.SetCardState{Card: "p1", State: "landed"})
-	}}
-	if err := c.Advance(ctx, hs); err != nil {
-		t.Fatal(err)
-	}
-	want, err := f.Landings(ctx, 1, c.state.Seq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !c.landingsOK || len(want) != 1 || len(c.landings) != len(want) {
-		t.Errorf("landings %v (ok %v), the store's %v: the cursor's catch-up dropped a landing", c.landings, c.landingsOK, want)
 	}
 }
 

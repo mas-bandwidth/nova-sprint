@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
-	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"net"
 	"net/http/httptest"
 	"os"
@@ -14,6 +12,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 func startPG(t *testing.T) string {
@@ -67,12 +68,12 @@ func TestFunctionalJSONGolden(t *testing.T) {
 	if !r.Accepted {
 		t.Fatal(r.Reason)
 	}
-	c, err := New(ctx, s)
+	snap, err := s.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.at = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	c.view = mapSnapshot(c.state, testRoster, c.at)
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := NewFromFeed(Feed{Snap: snap, Roster: testRoster, At: at, Landings: []time.Time{}}, func() time.Time { return at })
 	rec := httptest.NewRecorder()
 	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
 	var body any

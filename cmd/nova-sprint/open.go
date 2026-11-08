@@ -188,14 +188,6 @@ func (s *lazyStore) Replay(ctx context.Context, id string) (store.Receipt, bool,
 	return p.Replay(ctx, id)
 }
 
-func (s *lazyStore) EventIdentity(ctx context.Context, seq int64) (string, int, bool, error) {
-	p, err := s.get(ctx)
-	if err != nil {
-		return "", 0, false, err
-	}
-	return p.EventIdentity(ctx, seq)
-}
-
 func (s *lazyStore) Restored(ctx context.Context) (string, time.Time, bool, error) {
 	p, err := s.get(ctx)
 	if err != nil {

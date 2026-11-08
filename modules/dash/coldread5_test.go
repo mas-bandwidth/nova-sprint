@@ -5,16 +5,12 @@ package dash
 // TestColdread5Check* are checks that passed on this head (they fail only on a regression).
 
 import (
-	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 // v1's ETA tile, with no ETA in the summary, not stopped and not done, shows "-" with the sub
@@ -68,47 +64,5 @@ func TestColdread5CheckFunctionsUnder60Lines(t *testing.T) {
 				}
 			}
 		}
-	}
-}
-
-// main.go now opens the store under a 30 s context and cancels it as soon as Open returns.
-// pgxpool keeps no use of that context, so the pool must stay usable afterwards: Snapshot,
-// Events and the cursor write all succeed after the open context is cancelled.
-func TestColdread5CheckFunctionalPoolAfterOpenCancel(t *testing.T) {
-	t.Parallel()
-	dsn := startPG(t)
-	var s *store.PG
-	var err error
-	for i := 0; i < 100; i++ {
-		openCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		s, err = store.Open(openCtx, dsn, "")
-		cancel()
-		if err == nil {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	ctx := context.Background()
-	if err = s.Migrate(ctx); err != nil {
-		t.Fatal(err)
-	}
-	c, err := New(ctx, s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := s.Apply(ctx, store.Op{ID: "cr5-seed", Epoch: 1, Actor: "cr5", Kind: "seed", At: time.Now(), Writes: []store.Write{store.PutStream{Name: "s"}, store.PutCard{ID: "p", Kind: "producer", Tier: "pro", Stream: "s"}}})
-	if err != nil || !r.Accepted {
-		t.Fatalf("seed: %v %s", err, r.Reason)
-	}
-	if err = c.Advance(ctx, s); err != nil {
-		t.Fatal(err)
-	}
-	d := c.pageSnapshot().Data
-	if !d.OK || d.All != 1 || c.state.Cursors[CursorName] == 0 {
-		t.Fatalf("after open-cancel: ok=%v all=%d cursor=%d", d.OK, d.All, c.state.Cursors[CursorName])
 	}
 }
