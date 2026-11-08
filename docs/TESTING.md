@@ -44,26 +44,38 @@ program:
     go test -count=1 -race -short -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...   # per commit
     go test -count=1 -race -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...          # nightly
 
-Functional tests (each starts its own PostgreSQL with `initdb`; CI fails if `initdb` is missing).
-`TestFunctionalREADMECommandsRunCold` builds the binary and runs the commands
-README.md and docs/README.md show that run cold (help, version, `help <verb>`
-for every verb they name, the refusals), with the guide's exit-code table as
-the oracle:
+Functional tests (each starts its own PostgreSQL with `initdb`; the others
+need `redis-server`, `nova-bus`, `opencode`, `git`, `go` and, for the
+`NOVA_FUNCTIONAL_BUS` and `NOVA_FUNCTIONAL_SSH` fixtures, `nova-secrets`,
+`age-keygen` and `sshd`). `NOVA_FUNCTIONAL=1` fails a test whose program is
+missing instead of skipping it (`modules/pgbin`), so a missing program never
+passes; CI sets all three. `TestFunctionalREADMECommandsRunCold` builds the
+binary and runs the commands README.md and docs/README.md show that run cold
+(help, version, `help <verb>` for every verb they name, the refusals), with
+the guide's exit-code table as the oracle. `-v` prints each test still skipped
+and why:
 
     command -v initdb
-    go test -count=1 -race -run Functional ./...
+    NOVA_FUNCTIONAL=1 NOVA_FUNCTIONAL_BUS=1 NOVA_FUNCTIONAL_SSH=1 go test -count=1 -race -v -run Functional ./...
 
-On a Mac with Homebrew PostgreSQL, put its tools on PATH first:
+CI runs them on Linux and on macOS (mini-m5). On a Mac with Homebrew
+PostgreSQL, put its tools on PATH first:
 
-    export PATH=/opt/homebrew/opt/postgresql@18/bin:$PATH
+    export PATH=/opt/homebrew/opt/postgresql@18/bin:/opt/homebrew/bin:$PATH
 
-and run them with `-parallel 4`. Every functional test starts its own server,
-and each server takes System V shared memory; macOS's default limits
+and run them with `-p 4 -parallel 4`. Every functional test starts its own
+server, and each server takes System V shared memory; macOS's default limits
 (`kern.sysv.shmmni` 32) run out at the default parallelism (one per core) and
 tests fail with "could not create shared memory segment". Linux CI needs no
-flag.
+flag. CI's macOS job unsets `LANG` and `LC_ALL`, as an agent's shell has
+them: a test gives its PostgreSQL child `LC_ALL=C` itself (PostgreSQL 18 on
+macOS will not start without a locale).
 
-    go test -count=1 -race -parallel 4 -run Functional ./...
+    env -u LANG -u LC_ALL NOVA_FUNCTIONAL=1 NOVA_FUNCTIONAL_BUS=1 NOVA_FUNCTIONAL_SSH=1 go test -count=1 -race -p 4 -parallel 4 -v -run Functional ./...
+
+Known vulnerabilities (govulncheck, pinned; a reachable one fails CI):
+
+    go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 Trace validation (the code's walks against the models). Per commit it is
 short (the store walks at 150 steps); the nightly runs them at 500 and the

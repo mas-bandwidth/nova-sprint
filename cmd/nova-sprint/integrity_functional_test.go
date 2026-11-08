@@ -4,24 +4,30 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 func TestFunctionalLiveHistoryCheck(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	initdb, err := exec.LookPath("initdb")
-	if err != nil {
-		t.Skip("initdb required")
-	}
+	bin := pgbin.Dir(t)
 	dir := filepath.Join(t.TempDir(), "pg")
-	if out, err := exec.Command(initdb, "-D", dir, "-U", "nova", "--auth=trust", "--no-locale").CombinedOutput(); err != nil {
+	// LC_ALL=C: PostgreSQL 18 on macOS refuses to start under a shell with
+	// no valid locale ("postmaster became multithreaded during startup").
+	pgCmd := func(name string, args ...string) *exec.Cmd {
+		cmd := exec.Command(filepath.Join(bin, name), args...)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		return cmd
+	}
+	if out, err := pgCmd("initdb", "-D", dir, "-U", "nova", "--auth=trust", "--no-locale").CombinedOutput(); err != nil {
 		t.Fatalf("initdb: %v: %s", err, out)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -30,12 +36,11 @@ func TestFunctionalLiveHistoryCheck(t *testing.T) {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
-	ctl := filepath.Join(filepath.Dir(initdb), "pg_ctl")
 	options := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port)
-	if out, err := exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "log"), "-o", options, "-w", "start").CombinedOutput(); err != nil {
+	if out, err := pgCmd("pg_ctl", "-D", dir, "-l", filepath.Join(dir, "log"), "-o", options, "-w", "start").CombinedOutput(); err != nil {
 		t.Fatalf("postgres: %v: %s", err, out)
 	}
-	t.Cleanup(func() { _ = exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").Run() })
+	t.Cleanup(func() { _ = pgCmd("pg_ctl", "-D", dir, "-m", "immediate", "-w", "stop").Run() })
 	dsn := fmt.Sprintf("postgres://nova@127.0.0.1:%d/postgres?sslmode=disable", port)
 	pg, err := store.Open(ctx, dsn, "")
 	if err != nil {

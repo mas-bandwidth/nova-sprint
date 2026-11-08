@@ -3,7 +3,6 @@ package verbs
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,16 +18,7 @@ func TestFunctionalEnvironmentSchemaIdentity(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	dir := t.TempDir()
-	data := filepath.Join(dir, "pg")
-	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
-		t.Fatal(err)
-	}
-	if err := runPG(ctx, "", "pg_ctl", "-D", data, "-l", filepath.Join(dir, "pg.log"), "-o", "-k "+dir+" -c listen_addresses=''", "-w", "start"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = runPG(context.Background(), "", "pg_ctl", "-D", data, "-m", "immediate", "-w", "stop") })
-	dsn := "host=" + dir + " dbname=postgres sslmode=disable"
+	_, dsn := startBackupPG(ctx, t)
 	e := ExecEnvironment{DSN: dsn}
 	if ok, err := e.Schema(ctx); ok || err != nil {
 		t.Fatal(ok, err)

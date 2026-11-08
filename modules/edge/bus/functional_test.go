@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +26,7 @@ func findNovaBusBinary_internal(t *testing.T) string {
 	if _, err := os.Stat(cand); err == nil {
 		return cand
 	}
-	t.Skip("nova-bus binary not found on PATH or ~/.local/bin")
+	pgbin.Missing(t, "nova-bus is missing: it is not on PATH nor in ~/.local/bin")
 	return ""
 }
 
@@ -39,10 +40,7 @@ func freeLocalPort_internal(t *testing.T) int {
 
 func startThrowawayRedis_internal(t *testing.T) string {
 	t.Helper()
-	redisBin, err := exec.LookPath("redis-server")
-	if err != nil {
-		t.Skip("redis-server not installed")
-	}
+	redisBin := pgbin.Program(t, "redis-server")
 	port := freeLocalPort_internal(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	cmd := exec.Command(redisBin,

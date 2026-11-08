@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,14 +37,8 @@ func (b testBus) edge() *bus.Edge { return bus.New(bus.Config{Bin: b.bin, Env: b
 
 func testRedisBus(t *testing.T) testBus {
 	t.Helper()
-	redis, err := exec.LookPath("redis-server")
-	if err != nil {
-		t.Skip("redis-server required")
-	}
-	bin, err := exec.LookPath("nova-bus")
-	if err != nil {
-		t.Skip("nova-bus required")
-	}
+	redis := pgbin.Program(t, "redis-server")
+	bin := pgbin.Program(t, "nova-bus")
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	port := l.Addr().(*net.TCPAddr).Port

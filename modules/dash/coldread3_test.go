@@ -91,5 +91,3 @@ func TestColdread3DefectOkPctZeroDenominator(t *testing.T) {
 		t.Errorf("zero-denominator ok%%: %q, want \"-\"", got)
 	}
 }
-
-// start and stop run pg_ctl (-m immediate on stop), never a signal.

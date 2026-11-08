@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -113,16 +113,25 @@ func TestFunctionalBackupRoundTrip(t *testing.T) {
 	}
 }
 
-// startBackupPG starts a throwaway PostgreSQL on a socket in its own
-// directory and returns the directory and its postgres database's dsn. Not
-// t.TempDir: its path, with the test's name, is too long for a socket.
-func startBackupPG(ctx context.Context, t *testing.T) (string, string) {
+// pgDir is a directory for a throwaway PostgreSQL and its socket, removed
+// after the server stops. Not t.TempDir: its path, with the test's name, is
+// too long for a socket (macOS allows 103 bytes).
+func pgDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "nova-sprint-pg-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) }) // ignored: a temp dir; runs after the stop below
+	t.Cleanup(func() { _ = os.RemoveAll(dir) }) // ignored: a temp dir; runs after the server's stop
+	return dir
+}
+
+// startBackupPG starts a throwaway PostgreSQL on a socket in its own
+// directory (pgDir) and returns the directory and its postgres database's
+// dsn.
+func startBackupPG(ctx context.Context, t *testing.T) (string, string) {
+	t.Helper()
+	dir := pgDir(t)
 	data := filepath.Join(dir, "pg")
 	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "-E", "UTF8", "--no-locale", "--no-instructions"); err != nil { // UTF8, as a store is
 		t.Fatal(err)
@@ -146,9 +155,7 @@ const round25Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f44
 // migrated store's order.
 func TestFunctionalBackupMigratedRound25(t *testing.T) {
 	t.Parallel()
-	if _, err := exec.LookPath("initdb"); err != nil {
-		t.Skip("requires PostgreSQL's initdb on PATH")
-	}
+	pgbin.Program(t, "initdb")
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dir, dsn := startBackupPG(ctx, t)
@@ -216,9 +223,7 @@ func TestFunctionalBackupMigratedRound25(t *testing.T) {
 // the store has, and its backup verifies (the rebuild compares the stop).
 func TestFunctionalBackupRound25RunningWithNoStopEvent(t *testing.T) {
 	t.Parallel()
-	if _, err := exec.LookPath("initdb"); err != nil {
-		t.Skip("requires PostgreSQL's initdb on PATH")
-	}
+	pgbin.Program(t, "initdb")
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	_, dsn := startBackupPG(ctx, t)

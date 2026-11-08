@@ -17,11 +17,17 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
+// pgEnv is the environment of a PostgreSQL program: this process's, with
+// LC_ALL=C (PostgreSQL 18 on macOS refuses to start under a shell with no
+// valid locale: "postmaster became multithreaded during startup").
+func pgEnv() []string { return append(os.Environ(), "LC_ALL=C") }
+
 func startPG(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(pgbin.Dir(t), "initdb")
 	dir := t.TempDir()
 	cmd := exec.Command(bin, "-D", dir, "-U", "nova", "--auth=trust", "--no-locale")
+	cmd.Env = pgEnv()
 	if out, e := cmd.CombinedOutput(); e != nil {
 		t.Fatalf("initdb %v: %s", e, out)
 	}
@@ -33,11 +39,15 @@ func startPG(t *testing.T) string {
 	l.Close()
 	// pg_ctl starts it and stops it (-m immediate), never a signal.
 	ctl := filepath.Join(filepath.Dir(bin), "pg_ctl")
-	if out, e := exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "postgres.log"), "-o", fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port), "-w", "start").CombinedOutput(); e != nil {
+	start := exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "postgres.log"), "-o", fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port), "-w", "start")
+	start.Env = pgEnv()
+	if out, e := start.CombinedOutput(); e != nil {
 		t.Fatalf("pg_ctl start: %v\n%s", e, out)
 	}
 	t.Cleanup(func() {
-		if out, e := exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").CombinedOutput(); e != nil {
+		stop := exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop")
+		stop.Env = pgEnv()
+		if out, e := stop.CombinedOutput(); e != nil {
 			t.Logf("pg_ctl stop: %v\n%s", e, out)
 		}
 	})

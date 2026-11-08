@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/run"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -46,9 +47,7 @@ const sprintPassword = "e2e-sprint-password" // trust auth: the server never che
 
 func TestFunctionalEndToEnd(t *testing.T) { // unitlint: serial, setUp sets the process environment (t.Setenv)
 	for _, tool := range []string{"initdb", "pg_ctl", "pg_dump", "redis-server", "nova-bus", "git", "go"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			t.Skip(tool + " required")
-		}
+		pgbin.Program(t, tool)
 	}
 	x := &e2e{t: t, tr: &transcript{}, fg: &fakeForge{prs: map[string]forge.PRInfo{}}}
 	defer x.tr.save(t)

@@ -2,10 +2,11 @@ package run
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"net/url"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,21 +14,18 @@ import (
 	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
 )
 
-// The env path must name config/schema.sql from nova-tools v2.0.2. The
-// fixture applies it only to chooserTestPG's isolated temporary database.
+// configSchemaFixture is config/schema.sql of the nova-tools module go.mod
+// requires, the schema the roster reads. The fixture applies it only to
+// chooserTestPG's isolated temporary database.
 func configSchemaFixture(t *testing.T) []byte {
 	t.Helper()
-	path := os.Getenv("NOVA_CONFIG_SCHEMA_FILE")
-	if path == "" {
-		t.Skip("set NOVA_CONFIG_SCHEMA_FILE to the pinned config schema for PostgreSQL functional coverage")
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/mas-bandwidth/nova-tools/v2").Output()
+	if err != nil {
+		t.Fatalf("nova-tools module: %v", err)
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), "config", "schema.sql"))
 	if err != nil {
 		t.Fatal(err)
-	}
-	sum := sha256.Sum256(b)
-	if hex.EncodeToString(sum[:]) != "67b6692fa70a0fe80e82bc09e889973449eb9632ad41988b91baf48f3453b8d3" {
-		t.Fatal("config schema does not match pinned nova-tools v2.0.2")
 	}
 	return b
 }

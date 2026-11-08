@@ -164,16 +164,22 @@ func e2ePG(t *testing.T) string {
 	t.Helper()
 	initdb, _ := exec.LookPath("initdb")
 	dir := filepath.Join(t.TempDir(), "data")
-	if out, err := exec.Command(initdb, "-D", dir, "-U", "nova_admin", "--auth=trust", "--no-locale", "-E", "UTF8").CombinedOutput(); err != nil {
+	// LC_ALL=C: PostgreSQL 18 on macOS refuses to start under a shell with
+	// no valid locale ("postmaster became multithreaded during startup").
+	pgCmd := func(name string, args ...string) *exec.Cmd {
+		cmd := exec.Command(filepath.Join(filepath.Dir(initdb), name), args...)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		return cmd
+	}
+	if out, err := pgCmd("initdb", "-D", dir, "-U", "nova_admin", "--auth=trust", "--no-locale", "-E", "UTF8").CombinedOutput(); err != nil {
 		t.Fatalf("initdb: %v\n%s", err, out)
 	}
 	port := freePort(t)
-	ctl := filepath.Join(filepath.Dir(initdb), "pg_ctl")
 	opts := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port)
-	if out, err := exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "server.log"), "-o", opts, "-w", "start").CombinedOutput(); err != nil {
+	if out, err := pgCmd("pg_ctl", "-D", dir, "-l", filepath.Join(dir, "server.log"), "-o", opts, "-w", "start").CombinedOutput(); err != nil {
 		t.Fatalf("pg_ctl start: %v\n%s", err, out)
 	}
-	t.Cleanup(func() { _ = exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").Run() })
+	t.Cleanup(func() { _ = pgCmd("pg_ctl", "-D", dir, "-m", "immediate", "-w", "stop").Run() })
 	return fmt.Sprintf("postgres://nova_admin@127.0.0.1:%d/postgres?sslmode=disable", port)
 }
 

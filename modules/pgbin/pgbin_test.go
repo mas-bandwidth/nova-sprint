@@ -72,3 +72,25 @@ func TestFindOrder(t *testing.T) {
 		})
 	}
 }
+
+// A missing program skips its test only in a short run without
+// NOVA_FUNCTIONAL=1: CI's functional jobs (not short, NOVA_FUNCTIONAL=1)
+// fail it.
+func TestMissingSkipsOnlyShortRunsNotAskedToBeStrict(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		short      bool
+		functional string
+		skip       bool
+	}{
+		{true, "", true},
+		{true, "0", true},
+		{true, "1", false},
+		{false, "", false},
+		{false, "1", false},
+	} {
+		if got := skips(c.short, c.functional); got != c.skip {
+			t.Errorf("skips(short=%v, NOVA_FUNCTIONAL=%q) = %v, want %v", c.short, c.functional, got, c.skip)
+		}
+	}
+}

@@ -118,10 +118,61 @@ jobs:
       - name: initdb is present (a missing one fails the job, it does not skip)
         run: command -v initdb
       # Each functional test starts its own PostgreSQL. This runner is Linux, so
-      # the default parallelism is fine; on macOS run with -parallel 4, because
-      # its System V shared memory limits run out (docs/TESTING.md).
+      # the default parallelism is fine; macOS runs with -parallel 4 (below).
+      # NOVA_FUNCTIONAL=1: a functional test whose program (PostgreSQL,
+      # redis-server, nova-bus, opencode) is missing fails instead of skipping
+      # (modules/pgbin), and the fixtures behind it, _BUS and _SSH run. -v,
+      # less the progress lines: each test still skipped is printed with its
+      # reason (load measurements, the live GitHub test, the trace walks).
       - name: functional tests
-        run: go test -count=1 -race -timeout 100s -run Functional ./...
+        shell: bash
+        env: &functional-env
+          NOVA_FUNCTIONAL: "1"
+          NOVA_FUNCTIONAL_BUS: "1"
+          NOVA_FUNCTIONAL_SSH: "1"
+        run: go test -count=1 -race -timeout 100s -v -run Functional ./... 2>&1 | grep -v -E '^ *(=== (RUN|PAUSE|CONT|NAME)|--- PASS)'
+
+  # The functional tier on macOS: the platform the AIs' own machines run.
+  # PostgreSQL and Redis come from Homebrew (mini-m5's packages are the fleet
+  # play's, `nova-fleet runner-packages`); this job only finds them. LANG and
+  # LC_ALL are unset, as in an agent's shell or a launchd job: every test gives
+  # its PostgreSQL child LC_ALL=C. -p 4 -parallel 4: each server takes System V
+  # shared memory, and macOS's limits (kern.sysv.shmmni 32) run out at the
+  # default parallelism (docs/TESTING.md).
+  functional-macos:
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/v2' || github.ref == 'refs/heads/main'))
+    runs-on: [self-hosted, macOS, ARM64, mini-m5]
+    timeout-minutes: 2
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: Homebrew's PostgreSQL and Redis on PATH
+        shell: bash
+        run: |
+          for d in /opt/homebrew/bin /usr/local/bin; do [ -d "$d" ] && echo "$d" >> "$GITHUB_PATH"; done
+          bin=$(ls -d /opt/homebrew/opt/postgresql@*/bin /usr/local/opt/postgresql@*/bin 2>/dev/null | sort -V | tail -1 || true)
+          [ -n "$bin" ] && [ -x "$bin/initdb" ] || { echo "initdb is not installed on $(hostname -s): the functional tier needs PostgreSQL; run: nova-fleet runner-packages -- -l mini-m5" >&2; exit 1; }
+          echo "$bin" >> "$GITHUB_PATH"
+          "$bin/initdb" --version
+      - name: functional tests
+        shell: bash
+        env: *functional-env
+        run: env -u LANG -u LC_ALL go test -count=1 -race -p 4 -parallel 4 -timeout 100s -v -run Functional ./... 2>&1 | grep -v -E '^ *(=== (RUN|PAUSE|CONT|NAME)|--- PASS)'
+
+  # govulncheck, pinned: a known vulnerability reachable from this module's
+  # code, or in the Go release go.mod names, fails the job. The fix is the
+  # smallest bump of the module (or of go.mod's go line) that carries the fix.
+  vuln:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, bench]
+    timeout-minutes: 2
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   # Trace validation (tla/README.md, "Trace validation"), short: the store's
   # walks (the Fake, and PostgreSQL) at 150 steps, the card, policy, steps,

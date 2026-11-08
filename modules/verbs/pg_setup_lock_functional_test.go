@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,16 +17,8 @@ func TestFunctionalSetupLock(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	dir := t.TempDir()
-	data := filepath.Join(dir, "pg")
-	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
-		t.Fatal(err)
-	}
-	if err := runPG(ctx, "", "pg_ctl", "-D", data, "-l", filepath.Join(dir, "postgres.log"), "-o", "-k "+dir+" -c listen_addresses=''", "-w", "start"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = runPG(context.Background(), "", "pg_ctl", "-D", data, "-m", "immediate", "-w", "stop") })
-	lock := PGSetupLock{DSN: "host=" + dir + " dbname=postgres sslmode=disable", Host: "host-a", PID: 42}
+	_, dsn := startBackupPG(ctx, t)
+	lock := PGSetupLock{DSN: dsn, Host: "host-a", PID: 42}
 	lease, err := lock.Acquire(ctx)
 	if err != nil {
 		t.Fatal(err)

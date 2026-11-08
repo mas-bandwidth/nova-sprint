@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 )
 
 // Unit tier: no process, no socket, no clock.
@@ -192,10 +194,7 @@ func TestProbeListsModelsUnderTheProxyConfig(t *testing.T) {
 // PATH, and for opencode 2.x, which needs --standalone (Needs.Limits).
 func TestFunctionalOpenCodeListsTheConfiguredModels(t *testing.T) {
 	t.Parallel()
-	bin, err := exec.LookPath("opencode")
-	if err != nil {
-		t.Skip("opencode is not on PATH")
-	}
+	bin := pgbin.Program(t, "opencode")
 	ver, err := exec.Command(bin, "--version").Output()
 	if err != nil {
 		t.Fatalf("opencode --version: %v", err)

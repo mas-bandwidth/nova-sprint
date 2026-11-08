@@ -19,9 +19,9 @@ func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	dir := t.TempDir()
+	dir := pgDir(t)
 	data := filepath.Join(dir, "pg")
-	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
+	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "-E", "UTF8", "--no-instructions"); err != nil { // UTF8, as a store is
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(data, "pg_hba.conf"), []byte("local all all trust\nhost all all 127.0.0.1/32 scram-sha-256\n"), 0600); err != nil {
@@ -133,9 +133,9 @@ func roleAdoptionFixture(t *testing.T) (context.Context, *pgx.Conn, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	t.Cleanup(cancel)
-	dir := t.TempDir()
+	dir := pgDir(t)
 	data := filepath.Join(dir, "pg")
-	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
+	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "-E", "UTF8", "--no-instructions"); err != nil { // UTF8, as a store is
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(data, "pg_hba.conf"), []byte("local all all trust\nhost all all 127.0.0.1/32 scram-sha-256\n"), 0600); err != nil {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,18 +29,7 @@ func freePort_internal(t *testing.T) string {
 	return port
 }
 
-func pgBin_internal(t *testing.T) string {
-	if p, err := exec.LookPath("initdb"); err == nil {
-		return filepath.Dir(p)
-	}
-	found, _ := filepath.Glob("/opt/homebrew/opt/postgresql@18/bin/initdb")
-	debian, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb")
-	if found = append(found, debian...); len(found) > 0 {
-		return filepath.Dir(found[0])
-	}
-	t.Skip("functional tests need PostgreSQL initdb")
-	return ""
-}
+func pgBin_internal(t *testing.T) string { return pgbin.Dir(t) }
 
 func startFunctionalPG_internal(t *testing.T) *store.PG {
 	t.Helper()

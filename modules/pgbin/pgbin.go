@@ -1,5 +1,6 @@
-// Package pgbin finds the PostgreSQL server programs (initdb, pg_ctl, pg_dump)
-// the functional tests start a throwaway server from.
+// Package pgbin finds the programs the functional tests start: the
+// PostgreSQL server programs (initdb, pg_ctl, pg_dump) a throwaway server
+// comes from, and the others they name (redis-server, nova-bus).
 package pgbin
 
 import (
@@ -49,19 +50,40 @@ func version(dir string) int {
 	return n
 }
 
-// Dir is the directory holding the PostgreSQL programs for the test t. When
-// there is none, a short run (-short) skips t; any other run, and any run with
-// NOVA_FUNCTIONAL=1, fails it, so that asking for a functional test and getting
-// none is never a pass.
+// Dir is the directory holding the PostgreSQL programs for the test t; when
+// there is none, Missing.
 func Dir(t testing.TB) string {
 	t.Helper()
 	if dir, ok := Find(exec.LookPath, filepath.Glob); ok {
 		return dir
 	}
-	msg := "PostgreSQL is missing: initdb is not on PATH nor in " + strings.Join(places, ", ")
-	if testing.Short() && os.Getenv("NOVA_FUNCTIONAL") != "1" {
+	Missing(t, "PostgreSQL is missing: initdb is not on PATH nor in "+strings.Join(places, ", "))
+	return ""
+}
+
+// Program is the path of the program name on PATH for the test t; when it
+// is not there, Missing.
+func Program(t testing.TB, name string) string {
+	t.Helper()
+	p, err := exec.LookPath(name)
+	if err != nil {
+		Missing(t, name+" is missing: it is not on PATH")
+	}
+	return p
+}
+
+// Missing ends the test t, whose program msg names is absent. A short run
+// (-short) skips t; any other run, and any run with NOVA_FUNCTIONAL=1 (CI
+// sets it), fails it, so that asking for a functional test and getting none
+// is never a pass.
+func Missing(t testing.TB, msg string) {
+	t.Helper()
+	if skips(testing.Short(), os.Getenv("NOVA_FUNCTIONAL")) {
 		t.Skip(msg)
 	}
 	t.Fatal(msg)
-	return ""
 }
+
+// skips is whether a missing program skips its test: only in a short run
+// that NOVA_FUNCTIONAL (its value functional) does not ask to be strict.
+func skips(short bool, functional string) bool { return short && functional != "1" }

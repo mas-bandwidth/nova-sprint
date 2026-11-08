@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1069,19 +1070,10 @@ func TestColdread5Walk(t *testing.T) {
 
 // cold5StartPG starts a PostgreSQL of this test's own, as store's functional
 // tests do (initdb into TempDir, a free port, fsync off), and returns the
-// dsn. Skipped when initdb is not found.
+// dsn. Its programs are pgbin's.
 func cold5StartPG(t *testing.T) string {
 	t.Helper()
-	bin := ""
-	if p, err := exec.LookPath("initdb"); err == nil {
-		bin = filepath.Dir(p)
-	} else if found, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb"); len(found) > 0 { // ignored: a constant pattern
-		bin = filepath.Dir(found[len(found)-1])
-	} else if found, _ := filepath.Glob("/opt/homebrew/opt/postgresql@18/bin/initdb"); len(found) > 0 { // ignored: as above
-		bin = filepath.Dir(found[0])
-	} else {
-		t.Skip("functional tests need PostgreSQL: initdb not found")
-	}
+	bin := pgbin.Dir(t)
 	dir := t.TempDir()
 	init := exec.Command(filepath.Join(bin, "initdb"), "-D", filepath.Join(dir, "data"), "-U", "nova", "--auth=trust", "-E", "UTF8", "--no-locale")
 	init.Env = append(os.Environ(), "LC_ALL=C")

@@ -11,15 +11,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/pgbin"
 	"github.com/stretchr/testify/require"
 )
 
 func chooserTestPG(t *testing.T) string {
 	t.Helper()
-	initdb, err := exec.LookPath("initdb")
-	if err != nil {
-		t.Skip("initdb required")
-	}
+	initdb := filepath.Join(pgbin.Dir(t), "initdb")
 	dir := filepath.Join(t.TempDir(), "data")
 	// With no LC_ALL and no LANG, Homebrew PostgreSQL on macOS dies at start
 	// ("postmaster became multithreaded during startup"): give the children C.

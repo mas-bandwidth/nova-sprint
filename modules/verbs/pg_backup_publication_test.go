@@ -50,16 +50,7 @@ func TestFunctionalPublishedBackupRoundTrip(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	dir := t.TempDir()
-	data := filepath.Join(dir, "pg")
-	if err := runPG(ctx, "", "initdb", "-D", data, "-A", "trust", "--no-instructions"); err != nil {
-		t.Fatal(err)
-	}
-	if err := runPG(ctx, "", "pg_ctl", "-D", data, "-l", filepath.Join(dir, "postgres.log"), "-o", "-k "+dir+" -c listen_addresses=''", "-w", "start"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = runPG(context.Background(), "", "pg_ctl", "-D", data, "-m", "immediate", "-w", "stop") })
-	dsn := "host=" + dir + " dbname=postgres sslmode=disable"
+	dir, dsn := startBackupPG(ctx, t)
 	pg, err := store.Open(ctx, dsn, "")
 	if err != nil {
 		t.Fatal(err)
