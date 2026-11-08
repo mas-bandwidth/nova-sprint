@@ -17,7 +17,7 @@ import (
 // from its log. No clock: the fake clock starts at t0 (1000 s after the
 // epoch, never 0) and each op is one second later.
 type world struct {
-	t        *testing.T
+	t        testing.TB
 	f        *store.Fake
 	v        *View
 	roster   roster.Roster
@@ -36,7 +36,7 @@ const base = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 // sha is a distinct full commit sha for n.
 func sha(n int) string { return fmt.Sprintf("%040x", n+1) }
 
-func newWorld(t *testing.T) *world {
+func newWorld(t testing.TB) *world {
 	w := &world{t: t, f: store.NewFake(), now: t0, roster: roster.Roster{Workers: map[string]roster.Worker{}, Kin: map[string]roster.Kin{}}}
 	w.v = Build(w.snap(), t0)
 	return w

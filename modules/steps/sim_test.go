@@ -27,7 +27,7 @@ type sim struct {
 	rejected []store.Receipt
 }
 
-func newSim(t *testing.T) *sim {
+func newSim(t testing.TB) *sim {
 	return &sim{world: newWorld(t), ask: benchAsk{}, sent: set{}}
 }
 
