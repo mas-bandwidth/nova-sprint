@@ -103,7 +103,7 @@ func (w *work) setRowLoad(v SetRowLoad) (string, error) {
 		return r, err
 	}
 	next := old
-	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.Tiers = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal, v.Tiers
+	next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.CPUPeakDeci, next.Tiers, next.Version = v.Load1Centi, v.Cores, v.SlotsUsed, v.SlotsTotal, v.CPUPeakDeci, v.Tiers, v.Version
 	if next == old {
 		return "row " + v.Row + " already has the given load", nil
 	}
@@ -122,9 +122,9 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	next := Row{Name: v.Name, Session: v.Session, Role: v.Role, State: "down"}
 	if ok {
 		next.State, next.Flaps, next.Held, next.Reason = old.State, old.Flaps, old.Held, old.Reason
-		next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal = old.Load1Centi, old.Cores, old.SlotsUsed, old.SlotsTotal
+		next.Load1Centi, next.Cores, next.SlotsUsed, next.SlotsTotal, next.CPUPeakDeci = old.Load1Centi, old.Cores, old.SlotsUsed, old.SlotsTotal, old.CPUPeakDeci
 		if old.Session == v.Session { // an advertisement holds for the session that made it
-			next.Tiers = old.Tiers
+			next.Tiers, next.Version = old.Tiers, old.Version
 		}
 	}
 	return "", w.putRow(old, ok, next)

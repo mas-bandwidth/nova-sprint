@@ -41,10 +41,18 @@ var (
 // traceSeeds is the fixed seed set of each walk, and its length.
 var traceSeeds = map[string][]uint64{"fake": {1, 2, 3, 4, 5, 6, 7, 8}, "pg": {1, 2}}
 
-const traceSteps = 500
+// traceSteps is each walk's length: 500, or 150 under -short (the per-commit
+// trace job runs make-traces.sh with GOFLAGS=-short; the nightly runs 500).
+func traceSteps() int {
+	if testing.Short() {
+		return 150
+	}
+	return 500
+}
 
 // TestTraceWalk writes the Fake walk's traces (store-fake-<seed>).
 func TestTraceWalk(t *testing.T) {
+	t.Parallel()
 	dir := os.Getenv(traceEnv)
 	if dir == "" {
 		t.Skip("trace walks run under tla/make-traces.sh (" + traceEnv + " unset)")
@@ -54,7 +62,7 @@ func TestTraceWalk(t *testing.T) {
 			t.Parallel()
 			f := NewFake()
 			w := newStoreWalk(t, f, f, seed)
-			w.run(traceSteps)
+			w.run(traceSteps())
 			require.NoError(t, w.tr.write(filepath.Join(dir, fmt.Sprintf("store-fake-%d", seed)), "matched"))
 		})
 	}
@@ -63,6 +71,7 @@ func TestTraceWalk(t *testing.T) {
 // TestFunctionalTraceWalk is the same walk on PostgreSQL, with no transport
 // faults (store-pg-<seed>).
 func TestFunctionalTraceWalk(t *testing.T) {
+	t.Parallel()
 	dir := os.Getenv(traceEnv)
 	if dir == "" {
 		t.Skip("trace walks run under tla/make-traces.sh (" + traceEnv + " unset)")
@@ -71,7 +80,7 @@ func TestFunctionalTraceWalk(t *testing.T) {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) {
 			t.Parallel()
 			w := newStoreWalk(t, openPG(t, startPG(t)), nil, seed)
-			w.run(traceSteps)
+			w.run(traceSteps())
 			require.NoError(t, w.tr.write(filepath.Join(dir, fmt.Sprintf("store-pg-%d", seed)), "matched"))
 		})
 	}
@@ -92,8 +101,9 @@ func (g guardDropped) Apply(ctx context.Context, op Op) (Receipt, error) {
 // validation"): setting a cursor that was never set to 0. The store used to
 // accept it; it was ruled the code's fault, and the store now refuses it as
 // a write that changes nothing (an absent cursor is 0), as the model does.
-// The fixture tla/traces/store-cursor-zero must match.
+// make-traces.sh writes the trace to tla/traces/store-cursor-zero and TLC checks it.
 func TestTraceCursorZero(t *testing.T) {
+	t.Parallel()
 	w := newStoreWalk(t, NewFake(), nil, 0)
 	w.script(nil, PutStream{Name: "s1", Repo: "git@example.com:r.git", Base: "main", Pos: 1})
 	w.script(nil, SetCursor{Name: "c1", Seq: 0})
@@ -117,6 +127,7 @@ func breakerScript(w *storeWalk) {
 // the breaker's trace is the fixture tla/traces/store-breaker, which
 // check-trace.sh must refuse at its last step (the trace job runs it).
 func TestTraceRefusesDivergence(t *testing.T) {
+	t.Parallel()
 	honest := newStoreWalk(t, NewFake(), nil, 0)
 	breakerScript(honest)
 	f := NewFake()

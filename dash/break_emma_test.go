@@ -27,6 +27,7 @@ import (
 //     does not exist yet, Advance calls saveCursor and writes SetCursor{Seq: 0},
 //     creating event Seq=1 on an idle poll of an empty store!
 func TestBreakDashIdleFirstPollOnEmptyStoreCreatesCursorEvent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := store.NewFake()
 	c, err := New(ctx, s)
@@ -79,6 +80,7 @@ func (s *hookApplyStore) Apply(ctx context.Context, op store.Op) (store.Receipt,
 //     and c.state.Seq is 4, yet the durable store cursor Cursors["dashboard"] is
 //     stuck at 2 (< 3) even after subsequent Advance calls!
 func TestBreakDashConcurrentEventDuringSaveCursorLeavesWatermarkBehindConsumedState(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	mustApply(t, f, "e1", 1,
@@ -137,6 +139,7 @@ func TestBreakDashConcurrentEventDuringSaveCursorLeavesWatermarkBehindConsumedSt
 //  3. setStreamStates (shim.go:114-124) has branches only for "landed" and "working",
 //     leaving data.streams[0].state as "waiting" instead of "fail"!
 func TestBreakDashAllFinalStreamWithFailuresNeverSetsEnvelopeStreamStateFail(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{
 		Epoch:   1,
 		Streams: map[string]store.Stream{"s1": {Name: "s1", Pos: 1}},
@@ -170,6 +173,7 @@ func TestBreakDashAllFinalStreamWithFailuresNeverSetsEnvelopeStreamStateFail(t *
 //     work_cost is "$0.01" and read_cost is "$0.01", so work_cost + read_cost ($0.02)
 //     exceeds total_cost ($0.01)!
 func TestBreakDashStreamCostsWorkAndReadExceedTotalCost(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{
 		Epoch:   1,
 		Streams: map[string]store.Stream{"s1": {Name: "s1", Pos: 1}},
@@ -232,6 +236,7 @@ func TestBreakDashStreamCostsWorkAndReadExceedTotalCost(t *testing.T) {
 //     Epoch 2 skips the 10-minute warmup and reports non-zero throughput
 //     immediately after Clear using Epoch 1's sample!
 func TestBreakDashThroughputNotResetAcrossClearWhenLandedDoesNotDrop(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
@@ -283,6 +288,7 @@ func TestBreakDashThroughputNotResetAcrossClearWhenLandedDoesNotDrop(t *testing.
 //   - archivedSet(d) initializes `var a = {}` (instead of Object.create(null)), so
 //     `arch[name]` is truthy for "constructor", "toString", etc., hiding those streams!
 func TestBreakDashPageBudLabelAndArchivedMatchObjectPrototypeNames(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/app.js")
 	if err != nil {
 		t.Fatal(err)
@@ -298,6 +304,7 @@ func TestBreakDashPageBudLabelAndArchivedMatchObjectPrototypeNames(t *testing.T)
 
 // TestHeldDashAttacks records the adversarial attacks against dash/ that held cleanly.
 func TestHeldDashAttacks(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)

@@ -39,6 +39,7 @@ import (
 // review are skipped. Reached by legal moves: ok + fix reads, ReadFix, a
 // broken attempt that pushed h2, then an ok attempt that pushed h1 again.
 func TestColdread3DefectWaiveRedSkipsTheReadsOfANewAttempt(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
@@ -61,6 +62,7 @@ func TestColdread3DefectWaiveRedSkipsTheReadsOfANewAttempt(t *testing.T) {
 // relinks merged into one op both pass their fences and close a loop:
 // p1 needs x needs y needs z needs p1. The store has no cycle check.
 func TestColdread3DefectMergedRelinksMakeACycle(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("a"), producer("b"), producer("y", "b"), producer("x", "y"), producer("p1", "a"), producer("z", "p1"))
 	w.move("a", Cancel{Reason: "dropped"})
 	w.move("b", Cancel{Reason: "dropped"})
@@ -86,6 +88,7 @@ func TestColdread3DefectMergedRelinksMakeACycle(t *testing.T) {
 // condition holds before the writes: the op holds s1 and makes p1 ready in
 // it. Broken, Faulted, ReadFix and a releasing Withdraw merge the same way.
 func TestColdread3DefectMergedHoldLeavesAReadyProducer(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	s := w.snap()
 	hold, r := MoveStream(StreamFromStore(s.Streams["s1"]), HoldStream{Reason: "held for a release", Seq: s.Seq})
@@ -120,7 +123,11 @@ func cold3Note(m map[string]*cold3Break, kind, where string) {
 }
 
 func TestColdread3Walk(t *testing.T) {
-	const seeds, steps = 60, 1000 // 60,000 steps; odd seeds merge plans, even seeds do not, so the walk also gets deep
+	t.Parallel()
+	seeds, steps := int64(60), 1000 // 60,000 steps (half under -short: Relink comes early and rarely, so -short keeps every seed); odd seeds merge plans, even seeds do not, so the walk also gets deep
+	if testing.Short() {
+		steps = 500
+	}
 	var mu sync.Mutex
 	seen := map[string]int{}
 	var extra int

@@ -4,28 +4,30 @@ import (
 	"context"
 	"errors"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
+func TestVersionAdoptionRequiresCheck(t *testing.T) {
+	t.Parallel()
 	calls := []string{}
 	installed := "v2.0.0"
-	shadowErr := false
+	checkErr := false
 	a := VersionAdoption{Binary: "/bin/nova-sprint", ResolvePath: func() (string, error) { return "/bin/nova-sprint", nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, strings.Join(append([]string{name}, args...), " "))
 		if args[0] == "version" {
 			return versionOutput(t, installed), nil
 		}
-		if name == "nova-secrets" && args[len(args)-1] == "--shadow" && shadowErr {
+		if name == "nova-secrets" && args[len(args)-1] == "check" && checkErr {
 			return nil, errors.New("failed")
 		}
 		return nil, nil
 	}}
 	ok, err := a.Ready(context.Background(), "v2.0.0")
-	if err != nil || !ok || len(calls) != 3 {
+	if err != nil || !ok || len(calls) != 2 {
 		t.Fatal(ok, err, calls)
 	}
 	installed = "dev+0123456789ab"
@@ -39,10 +41,52 @@ func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
 		t.Fatal(ok, err)
 	}
 	installed = "v2.0.0"
-	shadowErr = true
+	checkErr = true
 	ok, err = a.Ready(context.Background(), "v2.0.0")
 	if err == nil || ok {
 		t.Fatal(ok, err)
+	}
+}
+
+// Every nova-sprint command up --version runs on the installed build is one
+// the verb table accepts: the real parser reads each argv, so adoption cannot
+// call a verb or flag no build has.
+func TestAdoptionCommandsAreAllParseable(t *testing.T) {
+	t.Parallel()
+	const binary = "/bin/nova-sprint"
+	var argvs [][]string
+	a := VersionAdoption{Binary: binary, ResolvePath: func() (string, error) { return binary, nil }, Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Keys: []string{sprintPasswordName}, Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch {
+		case name == binary:
+			argvs = append(argvs, args)
+		case name == "nova-secrets":
+			i := slices.Index(args, "--")
+			if i < 0 || i+1 >= len(args) || args[i+1] != binary {
+				t.Fatalf("nova-secrets runs no nova-sprint: %q", args)
+			}
+			argvs = append(argvs, args[i+2:])
+		default:
+			t.Fatalf("adoption ran %s %q", name, args)
+		}
+		if args[0] == "version" {
+			return versionOutput(t, "v2.0.0"), nil
+		}
+		return nil, nil
+	}}
+	if ok, err := a.Ready(context.Background(), "v2.0.0"); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if len(argvs) == 0 {
+		t.Fatal("adoption ran no nova-sprint command")
+	}
+	for _, argv := range argvs {
+		v, rest := lookup(argv)
+		if v == nil {
+			t.Fatalf("%q: no such verb", argv)
+		}
+		if _, fail := parse(v, rest, "studio"); fail != nil {
+			t.Fatalf("%q: %v", argv, fail)
+		}
 	}
 }
 
@@ -50,6 +94,7 @@ func TestVersionAdoptionRequiresCheckAndShadow(t *testing.T) {
 // retired nova-update): up refuses naming nova-fleet install, and runs
 // nothing.
 func TestVersionAdoptionApplyNamesNovaFleet(t *testing.T) {
+	t.Parallel()
 	ran := []string{}
 	a := VersionAdoption{Binary: "/bin/nova-sprint", Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		ran = append(ran, name)
@@ -73,6 +118,7 @@ type adoptionStub struct {
 func (a *adoptionStub) Ready(context.Context, string) (bool, error) { return a.ready, nil }
 func (a *adoptionStub) Apply(context.Context, string) error         { a.applied++; a.ready = true; return nil }
 func TestVersionAdoptionRunsWithStoreStep(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store := &runtimeStore{ready: true}
 	adopt := &adoptionStub{}
@@ -95,6 +141,7 @@ func TestVersionAdoptionRunsWithStoreStep(t *testing.T) {
 // binary's build info; a development or pseudo-version build, or another
 // module's binary, is unknown.
 func TestToolsReleaseFromBuildInfo(t *testing.T) {
+	t.Parallel()
 	info := func(path, version string) *debug.BuildInfo {
 		return &debug.BuildInfo{Main: debug.Module{Path: path, Version: version}}
 	}
@@ -129,6 +176,7 @@ func versionOutput(t *testing.T, version string) []byte {
 
 // The parser reads the verb's own output, and nothing else.
 func TestParseVersionOutputReadsTheVerb(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"v2.0.0", "v12.0.4", "dev+0123456789ab"} {
 		if got, err := ParseVersionOutput(versionOutput(t, v)); err != nil || got != v {
 			t.Fatal(v, got, err)

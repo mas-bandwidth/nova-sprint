@@ -13,6 +13,7 @@ import (
 // The log says each failure's cause, redacted: a name, never a secret's
 // value (audit row 28: errors are reported, never swallowed).
 func TestWriterLoggerReportsCountsAndRedactedCauses(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	l := NewWriterLogger(&out)
 	l.Log(TickMetrics{Number: 1, Seq: 9, Took: 2 * time.Second, Counts: TickCounts{Folded: 4, Applied: 2, Refused: 1, Edges: 3}, Err: ErrLockLost})
@@ -33,6 +34,7 @@ func TestWriterLoggerReportsCountsAndRedactedCauses(t *testing.T) {
 // TestRosterRefusedLogsOncePerChange: the same refused rows read each tick
 // are logged once; a change logs the new set; an empty set says none.
 func TestRosterRefusedLogsOncePerChange(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	l := NewWriterLogger(&out)
 	bad := []roster.Refused{{Name: "bench-1", Kind: roster.KindWorker, Reason: "machine bench-1 has 0 cores; set its cores in nova-config"}}

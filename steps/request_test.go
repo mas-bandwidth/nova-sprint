@@ -27,6 +27,7 @@ func (w *world) verb(r Request) (store.Receipt, *card.Refusal) {
 // TestVerbActorTable: every verb and actor (list item 8): a verb refused for
 // its actor writes nothing.
 func TestVerbActorTable(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")
@@ -87,6 +88,7 @@ func TestVerbActorTable(t *testing.T) {
 // TestVerbAddReport: Add is anyone's; Report is the holder's, of a card in
 // its hand from the deal (there is no Take event).
 func TestVerbAddReport(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -110,6 +112,7 @@ func TestVerbAddReport(t *testing.T) {
 // TestVerbDropNamesItsDependants: a Cancel fails its closure in the same op,
 // a dependant waived or relinked as the drop names.
 func TestVerbDropNamesItsDependants(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")
@@ -139,6 +142,7 @@ func TestVerbDropNamesItsDependants(t *testing.T) {
 // consumer in the same op, with the released record and no result, then
 // fails the producer.
 func TestVerbDropReleasesLiveConsumers(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")
@@ -160,6 +164,7 @@ func TestVerbDropReleasesLiveConsumers(t *testing.T) {
 // TestVerbJudgementAnswer: an open judgement is answered once with its move
 // in one op; a second answer is refused naming the first.
 func TestVerbJudgementAnswer(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t)
 	w.stream("s1")
 	w.row("r1", 2, "pro")

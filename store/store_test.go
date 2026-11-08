@@ -139,6 +139,7 @@ func TestSchemaIsEmbedded(t *testing.T) {
 // cannot rise, a plain error naming it, and nothing lands (PG's side is
 // TestFunctionalClientErrorIsKnown).
 func TestFakeCounterBound(t *testing.T) {
+	t.Parallel()
 	f := NewFake()
 	h := &harness{t: t, s: f, ctx: context.Background(), epoch: 1}
 	h.seed()
@@ -168,6 +169,7 @@ func TestFakeCounterBound(t *testing.T) {
 // The schema hash ignores comments, indentation and blank lines, so a
 // comment edit does not refuse every store; any change to the SQL does.
 func TestSchemaHash(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, schemaHash, hashSchema(schemaSQL))
 	assert.Equal(t, schemaHash, hashSchema("-- a new comment\n\n"+strings.ReplaceAll(schemaSQL, "\n", "  -- note\n\n")))
 	assert.Equal(t, schemaHash, hashSchema(strings.ReplaceAll(schemaSQL, "\n    ", "\n\t")))
@@ -251,6 +253,36 @@ func TestRound25Hash(t *testing.T) {
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS model text")
 	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS commit_email text")
 	assert.True(t, knownOlder(round25Hash))
+}
+
+// round26Hash is the hash of round 26's schema.sql, kept in testdata: it has
+// the row heartbeat without cpu_peak_deci, which this build's schema adds.
+// Unit: reads a file in the package, no store.
+func TestRound26Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round26.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round26Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round26Hash, schemaHash)
+	assert.Contains(t, string(old), "load1_centi")
+	assert.NotContains(t, string(old), "cpu_peak_deci")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS cpu_peak_deci")
+	assert.True(t, knownOlder(round26Hash))
+}
+
+// round27Hash is the hash of round 27's schema.sql, kept in testdata: it has
+// the row heartbeat without version, which this build's schema adds.
+// Unit: reads a file in the package, no store.
+func TestRound27Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round27.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round27Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round27Hash, schemaHash)
+	assert.Contains(t, string(old), "cpu_peak_deci")
+	assert.NotContains(t, string(old), "ADD COLUMN IF NOT EXISTS version")
+	assert.Contains(t, schemaSQL, "ADD COLUMN IF NOT EXISTS version")
+	assert.True(t, knownOlder(round27Hash))
 }
 
 // round21Hash is the hash of round 17's schema.sql, which every round to 21

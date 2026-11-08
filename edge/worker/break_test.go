@@ -33,6 +33,7 @@ import (
 // harness still works. (cmd/nova-worker also wires no ProcessTable at all,
 // so Procs is nil and nothing is ever adopted in the shipped binary.)
 func TestBreakRestartDuringHarnessReportsFaultAndRemovesLiveJobDir(t *testing.T) {
+	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	git := newFakeGit_internal()
@@ -93,6 +94,7 @@ func (g *blockingRebaseGit_internal) RebaseOntoStream(ctx context.Context, wt, r
 // so the producer goes to review at an un-rebased head whose tests never ran.
 // The same record exists after a kill anywhere in steps 6 and 7.
 func TestBreakRestartAfterHarvestReportsOkWithoutRebaseOrTests(t *testing.T) {
+	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
 	base := newFakeGit_internal()
@@ -143,6 +145,7 @@ func TestBreakRestartAfterHarvestReportsOkWithoutRebaseOrTests(t *testing.T) {
 // receipts: the runner runs the job and believes it reported, while epoch 2's
 // p1.w1 is never taken or reported and its producer never leaves working.
 func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
@@ -203,7 +206,7 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 	}
 }
 
-// TestBreakHarnessOutputUnbounded
+// TestFunctionalBreakHarnessOutputUnbounded
 //
 // Sequence: OSReserveWall.RunHarness runs a harness that prints 100 MB.
 //
@@ -212,7 +215,8 @@ func TestBreakStaleEpochJobReplaysOldReceipts(t *testing.T) {
 // stdout and stderr in an unbounded bytes.Buffer, so the runner holds the
 // whole output in memory (and writes all of it to harness.log); a harness
 // that prints without end exhausts the runner's memory.
-func TestBreakHarnessOutputUnbounded(t *testing.T) {
+func TestFunctionalBreakHarnessOutputUnbounded(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	w := &OSReserveWall{}
 	res, err := w.RunHarness(context.Background(), Job{Consumer: "p1.w1", JobDir: dir, WorktreeDir: dir},
@@ -225,7 +229,7 @@ func TestBreakHarnessOutputUnbounded(t *testing.T) {
 	}
 }
 
-// TestBreakHarnessTimeoutHangsOnBackgroundChild
+// TestFunctionalBreakHarnessTimeoutHangsOnBackgroundChild
 //
 // Sequence: OSReserveWall.RunHarness with a 300 ms timeout runs a harness
 // that starts a background process (`sleep 20 &`, as an agent starting a dev
@@ -236,7 +240,8 @@ func TestBreakHarnessOutputUnbounded(t *testing.T) {
 // output pipe open, and execBounded_internal sets no WaitDelay and kills no
 // process group, so cmd.Run blocks until the grandchild exits (20 s here,
 // forever for a server), and the runner is stuck past every deadline.
-func TestBreakHarnessTimeoutHangsOnBackgroundChild(t *testing.T) {
+func TestFunctionalBreakHarnessTimeoutHangsOnBackgroundChild(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	w := &OSReserveWall{}
 	done := make(chan time.Duration, 1)

@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 )
 
 func TestFunctionalVerbsPG(t *testing.T) {
@@ -71,26 +72,15 @@ func startPG(t testing.TB) *store.PG {
 	return p
 }
 
-// pgBin finds initdb: on PATH, else Homebrew's postgresql@18, else Debian's.
-func pgBin(t testing.TB) string {
-	if p, err := exec.LookPath("initdb"); err == nil {
-		return filepath.Dir(p)
-	}
-	found, _ := filepath.Glob("/opt/homebrew/opt/postgresql@18/bin/initdb") // ignored: a bad pattern is a constant's
-	debian, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb")          // ignored: as above
-	if found = append(found, debian...); len(found) > 0 {
-		return filepath.Dir(found[0])
-	}
-	t.Skip("functional tests need PostgreSQL: initdb is not on PATH, in /opt/homebrew/opt/postgresql@18/bin or /usr/lib/postgresql/*/bin")
-	return ""
-}
+// pgBin is the directory holding initdb and the other PostgreSQL programs.
+func pgBin(t testing.TB) string { return pgbin.Dir(t) }
 
 // TestFunctionalLoad: policy's share of a tick at 5,000 ready producers
 // over 100 rows that all serve every tier (the breaker's case: every rows
 // question has 100 candidates), with a cold cache and a warm one; the cold
 // tick must fit TickTime. It runs alone, before the parallel tests, since a
 // timing contends for the cores. The number is in LAYER-5's Built section.
-func TestFunctionalLoad(t *testing.T) { // not parallel: a timing contends for the cores
+func TestFunctionalLoad(t *testing.T) { // unitlint: not parallel, a timing contends for the cores
 	if raceSlowdown > 1 {
 		breakTiming(t)
 		t.Skip("timing under -race measures the race detector")

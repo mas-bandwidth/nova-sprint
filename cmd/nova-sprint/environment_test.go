@@ -9,7 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
-func TestProductionStoreRejectsAmbientCredentials(t *testing.T) {
+func TestProductionStoreRejectsAmbientCredentials(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	t.Setenv("PGPASSWORD", "ambient-should-not-be-used")
 	s := &lazyStore{creds: credentials{dsn: "postgres://nova_config@localhost/db"}}
 	if _, err := s.Snapshot(context.Background()); !isNoCredential(err) {
@@ -34,6 +34,7 @@ func isNoCredential(err error) bool {
 }
 
 func TestToolEnvironmentExcludesDatabaseSecrets(t *testing.T) {
+	t.Parallel()
 	env := toolEnvironment([]string{"PATH=/bin", "NOVA_BUS_PASSWORD=bus-fixture", "NOVA_SPRINT_PG_PASSWORD=secret", "NOVA_PG_ADMIN_PASSWORD=secret", "PGPASSWORD=secret"}, "nova-bus")
 	joined := strings.Join(env, "\n")
 	if !strings.Contains(joined, "NOVA_BUS_PASSWORD=bus-fixture") || strings.Contains(joined, "PG_PASSWORD") || strings.Contains(joined, "PGPASSWORD") {
@@ -50,6 +51,7 @@ func TestToolEnvironmentExcludesDatabaseSecrets(t *testing.T) {
 // next answers the same (exit 0); "not set up" is kept for a store without
 // the schema, which the credential cannot tell.
 func TestNoCredentialNamesSecretsExec(t *testing.T) {
+	t.Parallel()
 	creds := credentials{dsn: "postgres://nova_sprint@localhost/db"}
 	e := verbs.Engine{Store: &lazyStore{creds: creds}, Bus: present{"alice"}, Doctor: doctor{creds: creds}, Actor: "alice"}
 	const line = "this process has no sprint credential: run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ..."
@@ -63,7 +65,36 @@ func TestNoCredentialNamesSecretsExec(t *testing.T) {
 	if next.Exit != 0 || !strings.Contains(next.Output, "NEXT this process has no sprint credential") || !strings.HasSuffix(next.Output, "next: "+verbs.CredentialFix+"\n") {
 		t.Fatalf("next: %+v", next)
 	}
-	if _, err := (credentials{}).sprint(); !isNoCredential(err) || errors.Is(err, verbs.ErrNotSetUp) {
+	if _, err := (credentials{dsn: "postgres://nova_sprint@localhost/db"}).sprint(); !isNoCredential(err) || errors.Is(err, verbs.ErrNotSetUp) {
 		t.Fatalf("sprint: %v", err)
+	}
+}
+
+// A process with neither NOVA_PG_DSN nor the sprint credential names no
+// store: next answers up, the one verb run bare, never nova-secrets exec
+// (whose up refuses the credential: the loop of L6.4), and every other verb
+// refuses naming up.
+func TestNextWithNoCredentialNamesUp(t *testing.T) {
+	t.Parallel()
+	creds := credentials{}
+	e := verbs.Engine{Store: &lazyStore{creds: creds}, Bus: present{"alice"}, Doctor: doctor{creds: creds}, Actor: "alice"}
+	next := e.Execute(context.Background(), []string{"next"})
+	if next.Exit != 0 || !strings.Contains(next.Output, "NEXT no store is configured in this process") || !strings.HasSuffix(next.Output, "next: nova-sprint up --as alice\n") {
+		t.Fatalf("next: %+v", next)
+	}
+	if r := e.Execute(context.Background(), []string{"show"}); r.Exit != 1 || !strings.HasSuffix(r.Output, ": nova-sprint up --as alice\n") {
+		t.Fatalf("show: %+v", r)
+	}
+	if _, err := creds.sprint(); !errors.Is(err, verbs.ErrNoStore) {
+		t.Fatalf("sprint: %v", err)
+	}
+}
+
+// up under nova-secrets exec refuses, and the refusal ends with the command
+// that runs it bare (L6.4).
+func TestUpRefusalNamesCommand(t *testing.T) {
+	t.Parallel()
+	if got := upWithCredentials("alice"); !strings.HasSuffix(got, ": env -u NOVA_PG_ADMIN_PASSWORD -u NOVA_SPRINT_PG_PASSWORD nova-sprint up --as alice") {
+		t.Fatal(got)
 	}
 }

@@ -69,6 +69,7 @@ var coldAllowed = map[string][]string{
 // Final states never move, Rescore, SetPriority and Edit included, for every
 // consumer list and kind.
 func TestColdFinalNeverMoves(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"producer", "sentinel"} {
 		for _, s := range []string{LandedState, Fail} {
 			for _, e := range coldProducerEvents() {
@@ -97,6 +98,7 @@ func TestColdFinalNeverMoves(t *testing.T) {
 // context the sweep can build (consumer lists, held stream, need landed or
 // failed, producer or sentinel).
 func TestColdAcceptedOnlyFromTable(t *testing.T) {
+	t.Parallel()
 	ctxs := [][]Card{nil, {wk(Done, "ok", h2)}, {wk(Done, "fail", h2)}, {wk(Done, "fault", h2)}, {wk(Fail, "", "")}, {rd(Done, "ok")}, {wk(Done, "ok", h1), rd(Done, "fix")}}
 	for _, e := range coldProducerEvents() {
 		for _, s := range producerStates {
@@ -123,6 +125,7 @@ func TestColdAcceptedOnlyFromTable(t *testing.T) {
 // Faulted spends no bounce and no attempt; Released and preemption raise no
 // bounce.
 func TestColdFaultSpendsNothing(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		e    Event
 		cons []Card
@@ -142,6 +145,7 @@ func TestColdFaultSpendsNothing(t *testing.T) {
 // ReadYes: zero ok, a withdrawn read, a fix-only read, a read cut before a
 // Red (older review), a live read: each refused.
 func TestColdReadYesNeedsAnOkReadOfThisReview(t *testing.T) {
+	t.Parallel()
 	stale := rd(Done, "ok")
 	stale.Review = 0
 	for _, cons := range [][]Card{nil, {rd(Fail, "")}, {rd(Done, "fix")}, {stale}, {rd(Working, "")}, {wk(Done, "ok", h1)}} {
@@ -154,6 +158,7 @@ func TestColdReadYesNeedsAnOkReadOfThisReview(t *testing.T) {
 // Report: a non-holder, a short or malformed head, a read's head not the
 // producer's, an empty ok head, the base as an ok head.
 func TestColdReportRefusals(t *testing.T) {
+	t.Parallel()
 	work, read := wk(Working, "", ""), rd(Working, "")
 	for _, c := range []struct {
 		k Card
@@ -178,6 +183,7 @@ func TestColdReportRefusals(t *testing.T) {
 // Start: held stream, held row, down row, unknown row, wrong tier, and every
 // producer state but ready.
 func TestColdStartRefusals(t *testing.T) {
+	t.Parallel()
 	for _, row := range []string{"r3", "r4", "r5", "r9", ""} {
 		assert.NotNil(t, mv(Ready, nil, Start{Row: row, Branch: "b", Base: base}), row)
 	}
@@ -193,6 +199,7 @@ func TestColdStartRefusals(t *testing.T) {
 // Every row event from every row state: accepted only per the row table,
 // and every accepted plan lands on Fake as written.
 func TestColdRowsEveryState(t *testing.T) {
+	t.Parallel()
 	for _, down := range []bool{false, true} {
 		for _, held := range []bool{false, true} {
 			for _, e := range []Event{Seen{}, Gone{}, Hold{Reason: "h"}, Unhold{Reason: "u"}} {
@@ -227,6 +234,7 @@ func TestColdRowsEveryState(t *testing.T) {
 // one head may be live together); it names the next id. S3 (taken): never to
 // the row already holding a live read of this head.
 func TestColdAskReadBesideALiveRead(t *testing.T) {
+	t.Parallel()
 	refusal{mv(Review, []Card{rd(Working, "")}, AskRead{Row: "r1"}), "row r1 already holds live read p1.r1.1 of head " + h1}.check(t)
 	other := rd(Working, "")
 	other.Holder = "r3"
@@ -240,6 +248,7 @@ func TestColdAskReadBesideALiveRead(t *testing.T) {
 // Preempting a read: the withdraw of the read and the blocker's Start in one
 // op on a full row; the read's producer stays in review and is asked again.
 func TestColdPreemptARead(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), store.PutCard{ID: "p2", Priority: "blocker"})
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
@@ -261,10 +270,11 @@ func TestColdPreemptARead(t *testing.T) {
 // carries its fences. A Fake refusal other than width is a machine defect
 // (a same-value write, a write refused for kind, a bad fence).
 func TestColdWalk(t *testing.T) {
+	t.Parallel()
 	seen := map[string]int{}
 	var mu sync.Mutex
 	t.Run("seeds", func(t *testing.T) {
-		for seed := int64(1); seed <= 100; seed++ {
+		for seed := int64(1); seed <= walkSeeds(100, 10); seed++ {
 			t.Run(fmt.Sprint(seed), func(t *testing.T) {
 				t.Parallel() // each seed its own Fake
 				got := coldWalk(t, seed, 800)
@@ -282,7 +292,17 @@ func TestColdWalk(t *testing.T) {
 		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
 		assert.Positive(t, seen[e], "the walk never accepted %s", e)
 	}
-	t.Logf("accepted ops by event over 100 seeds x 800 steps: %v", seen)
+	t.Logf("accepted ops by event over %d seeds x 800 steps: %v", walkSeeds(100, 10), seen)
+}
+
+// walkSeeds is a random walk's full seed count, or its short one under
+// -short (the fewest that still accept every kind the walk requires): the
+// per-commit unit job runs -short, the nightly every seed.
+func walkSeeds(full, short int64) int64 {
+	if testing.Short() {
+		return short
+	}
+	return full
 }
 
 type coldFinal struct {
@@ -557,6 +577,7 @@ func coldCycle(cards map[string]store.Card) []string {
 // (withdrawn), so the producer sits in working with no live consumer and no
 // legal forward move (LESSONS 2.21, nothing stalls).
 func TestColdDefectWorkReportFixStallsProducer(t *testing.T) {
+	t.Parallel()
 	_, refused := MoveConsumer(wk(Working, "", ""), pr(Working), rows()["r1"], Report{Row: "r1", Result: "fix", Head: h2})
 	moved := false
 	for _, e := range []Event{Finished{Consumer: "p1.w1"}, Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, Released{}} {
@@ -571,6 +592,7 @@ func TestColdDefectWorkReportFixStallsProducer(t *testing.T) {
 // the machine accepts it over a work consumer that is done ok (its finished
 // head never reaches the producer).
 func TestColdDefectBlockOverFinishedWork(t *testing.T) {
+	t.Parallel()
 	assert.NotNil(t, mv(Working, []Card{wk(Done, "ok", h2)}, Block{Reason: "bounced"}), "Block over a done-ok work consumer")
 	assert.NotNil(t, mv(Working, nil, Block{Reason: "bounced"}), "Block of a working producer with no withdrawn consumer named")
 }
@@ -580,6 +602,7 @@ func TestColdDefectBlockOverFinishedWork(t *testing.T) {
 // left out, Cancel (and Block, Edit, NeedFailed) plan without fencing the
 // live consumer, and Fake accepts: a failed producer with a live consumer.
 func TestColdDefectOmittedLiveConsumerIsNotFenced(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
@@ -597,6 +620,7 @@ func TestColdDefectOmittedLiveConsumerIsNotFenced(t *testing.T) {
 
 // D4. Replace names a card that need not exist, or the card itself.
 func TestColdDefectReplaceByUnknownOrSelf(t *testing.T) {
+	t.Parallel()
 	assert.NotNil(t, mv(Ready, nil, Replace{By: "nope", Reason: "x"}), "replaced by a card that does not exist")
 	assert.NotNil(t, mv(Ready, nil, Replace{By: "p1", Reason: "x"}), "replaced by itself")
 }
@@ -604,6 +628,7 @@ func TestColdDefectReplaceByUnknownOrSelf(t *testing.T) {
 // D5, ruled the other way: SetPriority applies to producers and sentinels
 // (a release gate may be a blocker).
 func TestColdDefectSetPriorityOnSentinel(t *testing.T) {
+	t.Parallel()
 	g := pr(Waiting)
 	g.Kind = "sentinel"
 	plan, r := Move(g, nil, rows(), Stream{Name: "s1"}, needs(LandedState), SetPriority{Level: "high"})
@@ -616,6 +641,7 @@ func TestColdDefectSetPriorityOnSentinel(t *testing.T) {
 // same column, so the finding a ReadFix left is replaced by the reason for
 // a priority change (or "stream s1 is held") before the next Start.
 func TestColdDefectFindingOverwrittenBeforeStart(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
@@ -632,6 +658,7 @@ func TestColdDefectFindingOverwrittenBeforeStart(t *testing.T) {
 // CardState{need, fail}, and layer 1 checks every condition before any
 // write, so the drop and its waive can never be one op.
 func TestColdDefectWaiveInTheDropsOp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("p3", "n1"))
 	drop, r := w.plan("n1", Cancel{Reason: "dropped"})
 	require.Nil(t, r)
@@ -649,6 +676,7 @@ func TestColdDefectWaiveInTheDropsOp(t *testing.T) {
 // fences only p and the target. Two relinks from one snapshot each pass the
 // check and both land: p1 needs x needs y needs z needs p1.
 func TestColdDefectConcurrentRelinksMakeACycle(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("a"), producer("b"), producer("y", "b"), producer("x", "y"), producer("p1", "a"), producer("z", "p1"))
 	w.move("a", Cancel{Reason: "dropped"})
 	w.move("b", Cancel{Reason: "dropped"})
@@ -669,6 +697,7 @@ func TestColdDefectConcurrentRelinksMakeACycle(t *testing.T) {
 // has none, Report moves it to done), so a withdrawn consumer's head is
 // always empty and that write can never fire.
 func TestColdDefectWithdrawnHeadIsUnrecordable(t *testing.T) {
+	t.Parallel()
 	_ = Withdraw{Head: coldH3} // compiles: Withdraw records the pushed head (no reflection)
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
@@ -683,6 +712,7 @@ func TestColdDefectWithdrawnHeadIsUnrecordable(t *testing.T) {
 // a negative cost, a score or width past int32, a NUL in a branch, a row with
 // no name. The machine must refuse these as values.
 func TestColdDefectPlansTheStoreFindsInvalid(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		label string
 		plan  func(w *world) (Plan, *Refusal)
@@ -716,6 +746,7 @@ func TestColdDefectPlansTheStoreFindsInvalid(t *testing.T) {
 // machine's own moves (a sentinel never reaches review), so defence in depth
 // only; the guard is one line in askRead.
 func TestColdDefectAskReadCutsAReadOfASentinel(t *testing.T) {
+	t.Parallel()
 	g := pr(Review)
 	g.Kind = "sentinel"
 	_, r := Move(g, nil, rows(), Stream{Name: "s1"}, nil, AskRead{Row: "r1"})
@@ -729,6 +760,7 @@ func TestColdDefectAskReadCutsAReadOfASentinel(t *testing.T) {
 // it to review. Only head == base_sha is refused (LESSONS 3.5 says "an empty,
 // partial or not-done head is broken").
 func TestColdSuspectOkHeadEqualsPriorHead(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
@@ -745,6 +777,7 @@ func TestColdSuspectOkHeadEqualsPriorHead(t *testing.T) {
 // the machine's own moves today (Finished and Red raise review), but the
 // design states the rule on heads.
 func TestColdSuspectReadYesIgnoresHeadAndOf(t *testing.T) {
+	t.Parallel()
 	other := rd(Done, "ok")
 	other.Head = h2
 	assert.NotNil(t, mv(Review, []Card{other}, ReadYes{}), "a read of another head does not count")

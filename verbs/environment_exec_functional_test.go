@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,10 +13,10 @@ import (
 )
 
 func TestFunctionalEnvironmentSchemaIdentity(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("requires isolated PostgreSQL")
 	}
-	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	dir := t.TempDir()
@@ -51,7 +52,9 @@ func TestFunctionalEnvironmentSchemaIdentity(t *testing.T) {
 	if _, err = conn.Exec(ctx, "UPDATE sprint.meta SET hash='different'"); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := e.Schema(ctx); ok || err == nil {
+	// another build's store is a skew refusal naming both hashes, never
+	// "not set up" (L6.6)
+	if ok, err := e.Schema(ctx); ok || err == nil || !strings.Contains(err.Error(), "the store is at schema different (an unknown round), this build wants ") || !strings.Contains(err.Error(), "run the coordinator's build") {
 		t.Fatal(ok, err)
 	}
 }

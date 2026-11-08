@@ -2,15 +2,18 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
 
 func TestHandoffStatusRejectsMalformedOrDuplicate(t *testing.T) {
+	t.Parallel()
 	id := strings.Repeat("a", 64)
 	good := `{"status":"continue","id":"` + id + `"}`
 	if got, err := readHandoffStatus(strings.NewReader(good)); err != nil || got != id {
@@ -22,7 +25,7 @@ func TestHandoffStatusRejectsMalformedOrDuplicate(t *testing.T) {
 		}
 	}
 }
-func TestFunctionalUpChildUsesPrivateChannelAndSeparateSecrets(t *testing.T) {
+func TestFunctionalUpChildUsesPrivateChannelAndSeparateSecrets(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("set NOVA_FUNCTIONAL=1 for child-process test")
 	}
@@ -69,33 +72,43 @@ fi
 }
 
 func TestWaitHandoffCancellation(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := waitHandoff(ctx, make(chan handoffRead)); err == nil {
+	if _, err := waitHandoff(ctx, make(chan handoffRead), nil); err == nil {
 		t.Fatal("cancellation ignored")
 	}
 }
 
+// An in-memory pipe stands in for the OS pipe and a nil expiry channel for the
+// timer: the read completes when the writer closes.
 func TestHandoffReaderCompletesAfterWriterClose(t *testing.T) {
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Parallel()
+	reader, writer := io.Pipe()
 	result := make(chan handoffRead, 1)
 	go func() {
 		id, err := readHandoffStatus(reader)
-		_ = reader.Close()
 		result <- handoffRead{id: id, err: err}
 	}()
 	id := strings.Repeat("a", 64)
-	if _, err = writer.WriteString(`{"status":"continue","id":"` + id + `"}`); err != nil {
+	if _, err := writer.Write([]byte(`{"status":"continue","id":"` + id + `"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err = writer.Close(); err != nil {
+	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	got, err := waitHandoff(context.Background(), result)
+	got, err := waitHandoff(context.Background(), result, nil)
 	if err != nil || got != id {
 		t.Fatalf("id=%q err=%v", got, err)
+	}
+}
+
+// A channel still open when the expiry has passed is refused.
+func TestHandoffRefusedWhenWriterStaysOpenPastExpiry(t *testing.T) {
+	t.Parallel()
+	expired := make(chan time.Time)
+	close(expired)
+	if _, err := waitHandoff(context.Background(), make(chan handoffRead), expired); err == nil {
+		t.Fatal("an open channel past its expiry was accepted")
 	}
 }

@@ -13,6 +13,7 @@ func (s *sqlCollect) Exec(_ context.Context, v string) error {
 	return nil
 }
 func TestDumpParserQuotesAndComments(t *testing.T) {
+	t.Parallel()
 	dump := `-- generated
 \restrict abc123
 SET standard_conforming_strings = on;
@@ -29,6 +30,7 @@ INSERT INTO sprint.t VALUES ('one;two', E'a\'b', "x;y"); -- comment;
 	}
 }
 func TestDumpParserRejectsControlAndDirectives(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{"BEGIN;", "COMMIT/*c*/;", "-- hi\nSTART/*c*/TRANSACTION;", "COPY(sprint.t) TO STDOUT;", "\\! echo no\n", "\\restrict a\nSELECT 1;\n\\unrestrict b\n", "SELECT 'unterminated;", "\\restrict a\nSELECT 1;"} {
 		if err := ParseDump(strings.NewReader(text), nil); err == nil {
 			t.Fatalf("accepted %q", text)
@@ -37,6 +39,7 @@ func TestDumpParserRejectsControlAndDirectives(t *testing.T) {
 }
 
 func TestConfineDataRejectsExecutableValuesAndDDL(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
 	valid := header + "INSERT INTO sprint.events VALUES (E'hi\\'there', 10, NULL, true);\n"
@@ -54,6 +57,7 @@ func TestConfineDataRejectsExecutableValuesAndDDL(t *testing.T) {
 }
 
 func TestConfineDataOrdersCardsWithEscapedIdentifiers(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=dev+abcdef123456\n"
 	consumer := "INSERT INTO sprint.cards VALUES (E'child\\'id', 'work', 'parent', 's', 'ready');\n"
@@ -69,6 +73,7 @@ func TestConfineDataOrdersCardsWithEscapedIdentifiers(t *testing.T) {
 // landed timestamp) is refused naming the record and the one fix, before
 // the verification cluster's CHECK would refuse it unnamed.
 func TestConfineDataRefusesAnUnmappedCardState(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
 	for _, record := range []string{
@@ -97,6 +102,7 @@ func TestConfineDataRefusesAnUnmappedCardState(t *testing.T) {
 // everything else, while another sequence is still refused (the e2e's
 // backup step refused setval('sprint.balances_id_seq') before this).
 func TestConfineDataCarriesRound25Balances(t *testing.T) {
+	t.Parallel()
 	hash := strings.Repeat("a", 64)
 	header := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n"
 	balance := "INSERT INTO sprint.balances VALUES (1, 'deepseek', '2026-11-07 12:00:00+00', 5, 12.5, '');\n"
@@ -108,5 +114,21 @@ func TestConfineDataCarriesRound25Balances(t *testing.T) {
 	}
 	if _, err := ConfineData([]byte(header+"SELECT pg_catalog.setval('sprint.other_seq', 1, true);\n"), hash); err == nil {
 		t.Fatal("accepted another sequence")
+	}
+}
+
+// pg_dump 18 wraps a plain dump in \restrict/\unrestrict and sets
+// transaction_timeout in its preamble: a verified backup accepts both.
+func TestConfineDataAcceptsPgDump18Preamble(t *testing.T) {
+	t.Parallel()
+	hash := strings.Repeat("a", 64)
+	dump := "-- nova-sprint-backup schema=" + hash + " version=v2.0.0\n" +
+		"\\restrict Abc123\n" +
+		"SET statement_timeout = 0;\nSET lock_timeout = 0;\nSET idle_in_transaction_session_timeout = 0;\nSET transaction_timeout = 0;\n" +
+		"SET client_encoding = 'UTF8';\nSET standard_conforming_strings = on;\nSELECT pg_catalog.set_config('search_path', '', false);\n" +
+		"INSERT INTO sprint.events VALUES (E'hi', 10, NULL, true);\n" +
+		"\\unrestrict Abc123\n"
+	if _, err := ConfineData([]byte(dump), hash); err != nil {
+		t.Fatal(err)
 	}
 }

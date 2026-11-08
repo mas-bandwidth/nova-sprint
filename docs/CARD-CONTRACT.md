@@ -140,9 +140,13 @@ restored (an `ADMIT` line each). The parse refuses:
   `RunTest` both call it, so what is admitted is what runs. Nothing is run
   at add.
 - **Retired mechanics**, named with the line: a `WHO:`, `LOCK:` or `JOB:`
-  key; `JOB.md`; a lock (winlock, flock, lockfile, a bench or captain lock);
-  `ssh to <host>`; a DONE-WHEN or TEST that runs ssh. The take receipt is the
-  job, the deal is the who, and a gate names facts, never a host.
+  key; a `JOB.md` the brief has the harness write; a lock (winlock, flock,
+  lockfile, a bench or captain lock); `ssh to <host>`; a DONE-WHEN or TEST
+  that runs ssh. The take receipt is the job, the deal is the who, and a gate
+  names facts, never a host. `JOB.md` itself is the worker's file for its
+  harness (the worker writes it in the job directory at stage; the prompt
+  says to read it first), so a brief that sends the harness to read it
+  passes.
 
 Then, against the roster and origin:
 
@@ -177,7 +181,8 @@ under a branch), the base is at origin, and with forge github this host's gh
 identity has write, maintain or admin on the repository.
 
 A restore refuses a card record whose state this build does not map (one of
-waiting, ready, working, review, merging, landed, fail, blocked, done),
+waiting, ready, working, review, merging, landed, fail, done; `blocked`
+was dropped in schema round 29),
 naming the record. A dump of another shape (a v1 store with a `landed`
 timestamp column) is refused before that by the backup header's schema
 hash; there is no import verb.

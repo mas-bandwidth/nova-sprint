@@ -43,6 +43,7 @@ type Config struct {
 	Host          string
 	PID           int
 	ReposDir      string
+	Version       string // this build's release; worker rows behind it are dealt nothing (defect D3)
 	// Reconcile is the hourly provider-balance check (cost.Reconcile; nil:
 	// none), given the beat's time and the snapshot it follows.
 	Reconcile func(ctx context.Context, now time.Time, snap store.Snapshot) error
@@ -143,22 +144,24 @@ func (t *Ticker) seed(ctx context.Context) {
 // tick is one tick (LAYER-6 section 2): the roster and who is on the bus,
 // read once; the Ticker's fold and plan; the edge requests out; the
 // envelopes; the board. A failed roster read plans nothing (an empty
-// roster would judge every row unknown) but still folds, pushes and shows.
+// roster would judge every row unknown) but still folds, pushes and shows;
+// so does a failed who read before any row was ever seen (no row would be
+// present, and every ready tier would be judged unserved).
 func (l *loop) tick(ctx context.Context, n int) error {
 	start := l.cfg.Clock.Now()
 	ro, rerr := l.cfg.Roster.ReadRosterAt(ctx, max(1, l.ticker.Limits().FleetWidthCap))
 	if rerr == nil {
 		l.log.RosterRefused(ro.Refused)
 	}
-	present := l.present(ctx)
+	present, werr := l.present(ctx)
 	budget := BudgetDeadline{Duration: func() time.Duration { return time.Duration(l.ticker.Timeouts().Tick) * time.Second }}
 	tctx, cancel := budget.Begin(ctx)
 	var err error
-	if rerr != nil {
+	if rerr != nil || (werr != nil && !l.ticker.Seen()) {
 		err = l.ticker.Fold(tctx)
 	} else {
 		var reqs []steps.EdgeRequest
-		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results()})
+		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version})
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
 	cancel()
@@ -171,7 +174,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
-	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows), RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
+	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows, ""), RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
 		err = perr
 	}
 	l.log.Log(TickMetrics{Number: n, Seq: snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})
@@ -190,13 +193,17 @@ func (l *loop) reconcile(ctx context.Context) {
 	}
 }
 
-// present is who is on the bus, by name; a failed read is no one seen.
-func (l *loop) present(ctx context.Context) []string {
+// present is who is on the bus, by name; a failed read is no one seen
+// this tick, logged. The steps count a row present for PresentGrace after
+// it was last seen, so one failed read deals and judges as the last good
+// one did.
+func (l *loop) present(ctx context.Context) ([]string, error) {
 	who, err := l.cfg.Bus.Who(ctx)
 	if err != nil {
-		return nil
+		l.log.EdgeFault("nova-bus who", err)
+		return nil, err
 	}
-	return slices.Sorted(maps.Keys(who))
+	return slices.Sorted(maps.Keys(who)), nil
 }
 
 func (l *loop) setStreams(s map[string]store.Stream) {

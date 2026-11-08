@@ -43,6 +43,7 @@ func (h *fakeHook) Acquire(_ context.Context, name string) (HookLease, error) {
 }
 
 func TestChooserRefusalAndCleanup(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := &fakeSession{holder: "nova-sprint run studio 4121"}
 	h := &fakeHook{lease: &fakeLease{}}
@@ -59,6 +60,7 @@ func TestChooserRefusalAndCleanup(t *testing.T) {
 	}
 }
 func TestChooserHealthAndClose(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s := &fakeSession{locked: true}
 	lease := &fakeLease{}
@@ -85,6 +87,7 @@ func TestChooserHealthAndClose(t *testing.T) {
 }
 
 func TestDescribeHolder(t *testing.T) {
+	t.Parallel()
 	start := time.Date(2026, 11, 6, 14, 2, 0, 0, time.Local)
 	if got := describeHolder("nova-sprint run studio 4121", start); got != "studio (pid 4121, since 14:02)" {
 		t.Fatal(got)
@@ -95,6 +98,7 @@ func TestDescribeHolder(t *testing.T) {
 }
 
 func TestChooserConfigErrorHidesDSN(t *testing.T) {
+	t.Parallel()
 	const secret = "secret-token-for-test"
 	_, err := OpenChooser(context.Background(), "postgres://u:"+secret+"@%broken/db", "", "host", 1, &fakeHook{})
 	if err == nil || strings.Contains(err.Error(), secret) {
@@ -113,6 +117,7 @@ func (l *contextLease) Close(ctx context.Context) error {
 	return nil
 }
 func TestChooserCleanupSurvivesCancelledCaller(t *testing.T) {
+	t.Parallel()
 	s := &fakeSession{locked: true}
 	lease := &contextLease{}
 	c := &Chooser{session: s, hook: lease}

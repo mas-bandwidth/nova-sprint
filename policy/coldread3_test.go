@@ -183,6 +183,7 @@ func TestColdread3DefectCheckBlindToBackedUpRung(t *testing.T) {
 // Built ruling 4 bounds an abandoned run only by what one step allocates.
 // Reads the wall clock: the deadline it probes is one.
 func TestColdread3DefectAbandonedRunOutlivesDeadline(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	stuck := func() int {
 		buf := make([]byte, 1<<20)

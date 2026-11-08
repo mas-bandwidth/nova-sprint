@@ -31,6 +31,7 @@ func dealOne(t *testing.T) *sim {
 // names the row and the card; the acknowledgement stops both. The clock is
 // the world's.
 func TestHandNudgesThenJudgesUnacked(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	p := s.tick() // the first one-second tick after the deal: ready_nag is 1 s
 	require.Len(t, p.Nudges, 1)
@@ -58,6 +59,7 @@ func TestHandNudgesThenJudgesUnacked(t *testing.T) {
 // TestHandNoNudgeAfterTheReport: a row that reports without a take is not
 // nudged; the report is the first word the nudges wait for.
 func TestHandNoNudgeAfterTheReport(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.report("p1.w1", "ok", sha(1), "done")
 	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
@@ -74,6 +76,7 @@ func TestHandNoNudgeAfterTheReport(t *testing.T) {
 // nudged and left where it is (the human, 2026-11-07: "By leaving cards in
 // ready we are violating this promise").
 func TestHandReadyTakeRedeals(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")
@@ -108,6 +111,7 @@ func TestHandReadyTakeRedeals(t *testing.T) {
 // past ready_take, with another row with room, it is neither nudged,
 // withdrawn nor judged, and stays in its row's hand.
 func TestHandModellessIsAcked(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 1, "pro")
@@ -131,7 +135,7 @@ func TestHandModellessIsAcked(t *testing.T) {
 // while a serving row has room opens one undealt judgement naming the row,
 // the card and the cause. Here the tick budget (1 card) is spent each tick
 // by the next producer's Resolve, so the deal never comes to p1.
-func TestHandUndealtJudged(t *testing.T) {
+func TestHandUndealtJudged(t *testing.T) { // unitlint: serial, it writes the package's Engine, which every tick reads
 	was := Engine.Limits
 	Engine.Limits.Budget = 1
 	t.Cleanup(func() { Engine.Limits = was })
@@ -157,6 +161,7 @@ func TestHandUndealtJudged(t *testing.T) {
 // TestHandNoUndealtWithoutRoom: a ready producer with no serving row with
 // room is waiting for room, not stalled: no judgement.
 func TestHandNoUndealtWithoutRoom(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.producer("p2", "s1", "pro", "a/y")
 	s.tick()
@@ -172,6 +177,7 @@ func TestHandNoUndealtWithoutRoom(t *testing.T) {
 // what is missing, and the producer is never dealt again by itself
 // (defect 48).
 func TestHandRouteFaultBlocks(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.report("p1.w1", "fault", "", card.MissingRoute+" adb no device on this row")
 	s.requireState("p1", "blocked")
@@ -192,10 +198,97 @@ func TestHandRouteFaultBlocks(t *testing.T) {
 // TestHandPlainFaultRedeals: a fault that names no route goes back to
 // ready and is dealt again, as before.
 func TestHandPlainFaultRedeals(t *testing.T) {
+	t.Parallel()
 	s := dealOne(t)
 	s.report("p1.w1", "fault", "", "exit 137")
 	s.requireState("p1", "ready")
 	s.tick()
 	s.requireState("p1.w2", "working")
 	assert.Empty(t, s.openJudgements("blocked"))
+}
+
+// TestDealSkipsRowAbsentFromBus (D1', 2026-11-07): a row hooked and up in
+// the store, with room, that is not on the bus this tick is dealt nothing,
+// whatever its session record says: a configured row is not a present one.
+// On the bus again, it is dealt.
+func TestDealSkipsRowAbsentFromBus(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.away = set{"r1": {}}
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1", "ready")
+	assert.NotContains(t, s.snap().Cards, "p1.w1", "an absent row is dealt nothing")
+	s.away = nil
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	assert.Equal(t, "r1", s.card("p1.w1").Holder)
+}
+
+// TestHandAbsentRowNotNudgedAndRedealt (D1'): a row that leaves the bus with
+// a card in hand is not nudged (the bus would only queue it); the card still
+// counts toward ready_take, and at the bound it is withdrawn and dealt to a
+// present row, never to another absent one.
+func TestHandAbsentRowNotNudgedAndRedealt(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	slow := s.card("p1.w1").Holder
+	other := map[string]string{"r1": "r2", "r2": "r1"}[slow]
+	s.away = set{slow: {}, other: {}}
+	p := s.tick()
+	assert.Empty(t, p.Nudges, "an absent row is not nudged")
+	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
+	p = s.tick()
+	require.Empty(t, s.rejected)
+	assert.Empty(t, p.Nudges)
+	s.requireState("p1.w1", "working") // the only other row is absent too: not re-dealt there
+	js := s.openJudgements("unacked")
+	require.Len(t, js, 1)
+	assert.Contains(t, s.snap().Judgements[js[0]].Question, "not nudged: the row is absent from the bus")
+	delete(s.away, other)
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "fail")
+	s.requireState("p1.w2", "working")
+	assert.Equal(t, other, s.card("p1.w2").Holder, "re-dealt to the present row")
+}
+
+// TestDealPresentThroughOneFailedWho (D1' cold read): a `nova-bus who` read
+// that fails leaves every row as the last good read saw it, within
+// PresentGrace: the row is still dealt and no unserved judgement opens.
+// Past the grace the row is absent: nothing is dealt and unserved opens.
+func TestDealPresentThroughOneFailedWho(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.producer("p2", "s1", "pro", "b/x")
+	s.lapse = time.Second // the read this tick failed; the last good one was a tick ago
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	assert.Empty(t, s.openJudgements("unserved"), "one failed read judges nothing")
+	s.report("p1.w1", "ok", sha(1), "done")
+	s.lapse = time.Duration(Engine.PresentGrace+1) * time.Second
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p2", "ready")
+	assert.Len(t, s.openJudgements("unserved"), 1, "absent past the grace: no row serves")
 }

@@ -14,6 +14,7 @@ import (
 // unserved judgement naming the route, and a row that serves it is dealt
 // to (CARD-CONTRACT "Routes", intent rule 34).
 func TestTickRoutesDealOnlyToServingRows(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
 	s.row("r1", 2, "pro")

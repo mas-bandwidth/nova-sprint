@@ -343,6 +343,7 @@ func (w *world) land(id string, head string) {
 }
 
 func TestConformanceHappy(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.is("p1", Ready)
@@ -365,6 +366,7 @@ func TestConformanceHappy(t *testing.T) {
 }
 
 func TestConformanceFix(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
@@ -388,6 +390,7 @@ func TestConformanceFix(t *testing.T) {
 }
 
 func TestConformanceRed(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Finished{Consumer: w.work("p1", "r1", "ok", h1, "")})
@@ -406,6 +409,7 @@ func TestConformanceRed(t *testing.T) {
 }
 
 func TestConformanceFaultAndBroken(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Faulted{Consumer: w.work("p1", "r1", "fault", "", "tool lost")})
@@ -419,6 +423,7 @@ func TestConformanceFaultAndBroken(t *testing.T) {
 }
 
 func TestConformanceReleaseAndWithdraw(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
@@ -436,6 +441,7 @@ func TestConformanceReleaseAndWithdraw(t *testing.T) {
 }
 
 func TestConformanceBlockAndPark(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Block{Reason: "bounced too often"})
@@ -459,6 +465,7 @@ func TestConformanceBlockAndPark(t *testing.T) {
 }
 
 func TestConformanceNeeds(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("n2"), producer("p2", "n1"), producer("p3", "n1"), producer("p4", "n1"))
 	w.refused("p2", Resolve{}, "need n1 of producer p2 is waiting, not landed")
 	w.move("n1", Cancel{Reason: "dropped"})
@@ -477,6 +484,7 @@ func TestConformanceNeeds(t *testing.T) {
 }
 
 func TestConformanceSentinel(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), store.PutCard{ID: "g1", Kind: "sentinel", Needs: []string{"p1"}})
 	w.refused("g1", Reached{}, "need p1 of sentinel g1 is waiting, not landed")
 	w.refused("g1", Resolve{}, "sentinel g1 is landed by Reached, never resolved")
@@ -489,6 +497,7 @@ func TestConformanceSentinel(t *testing.T) {
 // and the start of the blocker are one op, and the withdraw releases the
 // preempted producer in it.
 func TestConformancePreemption(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), store.PutCard{ID: "p2", Priority: "blocker"})
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
@@ -501,6 +510,7 @@ func TestConformancePreemption(t *testing.T) {
 }
 
 func TestConformanceRows(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.row("r1", Hold{Reason: "maintenance"})
@@ -521,6 +531,7 @@ func TestConformanceRows(t *testing.T) {
 // the second is refused by its gen fence on r (its walk read q, r and b), so
 // no cycle forms.
 func TestConformanceRelinkStale(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("a"), producer("b"), producer("r", "b"), producer("q", "r"), producer("p", "a"))
 	w.move("a", Cancel{Reason: "x"})
 	w.move("b", Cancel{Reason: "x"})
@@ -541,6 +552,7 @@ func TestConformanceRelinkStale(t *testing.T) {
 // Stella's probe TestReviewStartTaskCopy, for both cut kinds: a consumer
 // carries its producer's brief, prose, paths, done_when, stream and tier.
 func TestConformanceCutCopiesTask(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, store.PutCard{ID: "p", Prose: "write the feature", Paths: []string{"src/"}, DoneWhen: []string{"go test ./..."}})
 	w.move("p", Resolve{})
 	work := w.work("p", "r1", "ok", h1, "")
@@ -557,6 +569,7 @@ func TestConformanceCutCopiesTask(t *testing.T) {
 // Stella's probe TestReviewWorkFixDeadend, inverted: a work consumer cannot
 // report fix, so no work card is left done with a result nothing handles.
 func TestConformanceWorkFixRefused(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p"))
 	w.move("p", Resolve{})
 	w.move("p", Start{Row: "r1", Branch: "b", Base: base})
@@ -569,6 +582,7 @@ func TestConformanceWorkFixRefused(t *testing.T) {
 // Stella's probe TestReviewParkWithStreamHold, as the planner it asked for:
 // the hold and the parks of the ready producers are one op the store accepts.
 func TestConformanceHoldStream(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"), producer("p3"))
 	w.move("p1", Resolve{})
 	w.move("p2", Resolve{})
@@ -586,6 +600,7 @@ func TestConformanceHoldStream(t *testing.T) {
 // ready after that snapshot is not parked by the stale plan: the store
 // refuses the op, and nothing in it lands.
 func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"), producer("p2"))
 	w.move("p1", Resolve{})
 	snap := w.snap()
@@ -617,6 +632,7 @@ func TestConformanceHoldStreamFencedAtSeq(t *testing.T) {
 // The card model's ruling: a return to ready while the stream is held parks
 // the producer in the same plan.
 func TestConformanceReturnIntoHeldStreamParks(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	c := w.work("p1", "r1", "fail", h2, "tests red")
@@ -634,6 +650,7 @@ func TestConformanceReturnIntoHeldStreamParks(t *testing.T) {
 // A drop and its dependants' moves are one op (NeedFailed and Waive with
 // InThisOp), and the store accepts it.
 func TestConformanceDropInOneOp(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"), producer("p2", "n1"), producer("p3", "n1"))
 	drop, r := w.plan("n1", Cancel{Reason: "dropped"})
 	require.Nil(t, r)
@@ -648,6 +665,7 @@ func TestConformanceDropInOneOp(t *testing.T) {
 
 // Add's plan is one the store accepts, and the card is as given.
 func TestConformanceAdd(t *testing.T) {
+	t.Parallel()
 	w := newWorld(t, producer("n1"))
 	all, _ := w.all()
 	plan, r := MoveAdd(Add{ID: "p1", Kind: "producer", Stream: "s1", Tier: "pro", Needs: []string{"n1"}, Brief: "do p1", Prose: "x"}, all)

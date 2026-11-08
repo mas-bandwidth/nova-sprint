@@ -45,6 +45,7 @@ func (s *handoffSetup) ValidateHandoff(_ context.Context, id string, _ SetupInpu
 	return nil
 }
 func TestSetupHandoffClosesLeaseBeforeSignal(t *testing.T) {
+	t.Parallel()
 	s := &handoffSetup{}
 	lock := &handoffLock{}
 	called := false
@@ -70,6 +71,7 @@ func TestSetupHandoffClosesLeaseBeforeSignal(t *testing.T) {
 }
 
 func TestSetupObservationsFollowActualCalls(t *testing.T) {
+	t.Parallel()
 	s := &setupFake{stop: 5}
 	var seen []SetupObservation
 	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: s, Lock: setupLeaseFake{}, SetupObserver: func(o SetupObservation) { seen = append(seen, o) }}
@@ -103,6 +105,7 @@ func (*rejectingHandoff) ValidateHandoff(context.Context, string, SetupInput) er
 	return &OperationError{Problem: "continuation changed", Fix: "nova-sprint up", Exit: 1}
 }
 func TestSetupRejectsContinuationBeforeLockedSteps(t *testing.T) {
+	t.Parallel()
 	s := &rejectingHandoff{}
 	lock := &handoffLock{}
 	e := Engine{Actor: "rowan", Store: upStore(true), Bus: upBus(), Now: upNow, Setup: s, Lock: lock}
@@ -113,6 +116,7 @@ func TestSetupRejectsContinuationBeforeLockedSteps(t *testing.T) {
 }
 
 func TestSetupHandoffCancellationBeforeSignal(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	lock := &handoffLock{onClose: cancel}
@@ -128,6 +132,7 @@ func TestSetupHandoffCancellationBeforeSignal(t *testing.T) {
 }
 
 func TestContinuationHooksAfterStepTwoBeforeStepThree(t *testing.T) {
+	t.Parallel()
 	s := &handoffSetup{}
 	lock := &handoffLock{}
 	st := upStore(false)

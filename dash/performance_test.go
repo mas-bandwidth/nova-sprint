@@ -26,7 +26,8 @@ func (s *countedStore) Snapshot(ctx context.Context) (store.Snapshot, error) {
 	s.snapshots++
 	return s.Store.Snapshot(ctx)
 }
-func TestDashboardIncremental5000(t *testing.T) {
+func TestFunctionalDashboardIncremental5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	ctx := context.Background()
 	f := store.NewFake()

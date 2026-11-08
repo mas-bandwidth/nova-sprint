@@ -1,9 +1,11 @@
 package steps
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/stretchr/testify/assert"
@@ -24,6 +26,7 @@ func (w *world) kin(name, model string, width int, tiers ...string) {
 // policy's bench model for the card's tier, a friend's with its own model,
 // and a read the same way per row (defect 57).
 func TestTickDealNamesTheModel(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 1, "pro")
 	s.kin("f1", "m-friend", 1, "pro")
@@ -49,6 +52,7 @@ func TestTickDealNamesTheModel(t *testing.T) {
 // per tier says why; a friend with a model still takes it; the judgement
 // clears once a model can be named (defect 57).
 func TestTickNoModelNoDeal(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	models := benchModels()
 	delete(models, "heavy")
@@ -75,6 +79,7 @@ func TestTickNoModelNoDeal(t *testing.T) {
 // no-policy judgement on the coordinator's row says why; resolve still runs;
 // once the gate lifts the deal resumes and the judgement clears (defect 53).
 func TestTickNoDealWithoutPolicy(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.ask = scripted{Answers{Models: benchModels(), NoDeal: "no policy is active: nova-sprint policy set <file> --reason <why>"}}
 	s.row("b1", 1, "pro")
@@ -101,6 +106,7 @@ func TestTickNoDealWithoutPolicy(t *testing.T) {
 // next tick, and so is one in a view built cold from such a snapshot (a
 // restore): resolve reads state, never landed events (section 64b).
 func TestTickResolvesFromState(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 4, "pro")
 	s.stream("s1")
@@ -126,6 +132,7 @@ func TestTickResolvesFromState(t *testing.T) {
 // started producer names is held, with an overlap judgement saying "held
 // behind <card> on <path>", which clears when it resolves (defect 50).
 func TestTickOverlapIsAFile(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.row("b1", 8, "pro")
 	s.stream("s1")
@@ -147,4 +154,56 @@ func TestTickOverlapIsAFile(t *testing.T) {
 	for _, p := range []string{"a/**", "a/*.go", "a/b?.go", "a/[bc].go", "a/", ""} {
 		assert.False(t, Concrete(p), p)
 	}
+}
+
+// listRows is a policy whose rows answer names every candidate in name
+// order (what the default policy answers for rows at one rank): the set a
+// card may go to, never a first-fit order.
+type listRows struct{}
+
+func (listRows) Ask(q Questions) Answers {
+	a := benchAsk{}.Ask(q)
+	a.Version = 1
+	a.Rows = map[string][]string{}
+	for _, r := range q.Rows {
+		for _, c := range r.Candidates {
+			a.Rows[r.Card.ID] = append(a.Rows[r.Card.ID], c.Name)
+		}
+	}
+	return a
+}
+
+// TestTickBurstSpreadsAcrossAnsweredRows: five cards ready at once over a
+// width-2 and a width-4 row policy both allows are dealt in one tick with
+// no row taking a second card while another has none; the in-tick tally
+// counts, so the burst does not land on the first answered row until it is
+// full.
+func TestTickBurstSpreadsAcrossAnsweredRows(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.ask = listRows{}
+	s.stream("s1")
+	s.row("r1", 2, "pro")
+	s.row("r2", 4, "pro")
+	for i := 1; i <= 5; i++ {
+		id := fmt.Sprintf("p%d", i)
+		s.producer(id, "s1", "pro", "a/"+id)
+		s.move(s.plan(id, card.Resolve{}))
+	}
+	s.tick()
+	require.Empty(t, s.rejected)
+	held := map[string]int{"r1": 0, "r2": 0}
+	var order []string
+	for _, op := range s.last.Ops {
+		for _, w := range op.Writes {
+			if p, ok := w.(store.PutCard); ok && p.Kind == "work" {
+				for r, n := range held {
+					assert.False(t, r != p.Holder && n == 0 && held[p.Holder] > 0, "%s takes a second card while %s has none (deals so far %v)", p.Holder, r, order)
+				}
+				held[p.Holder]++
+				order = append(order, p.Holder)
+			}
+		}
+	}
+	assert.Equal(t, map[string]int{"r1": 2, "r2": 3}, held, "five cards in one tick, every one dealt")
 }

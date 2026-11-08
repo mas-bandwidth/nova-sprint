@@ -3,19 +3,24 @@ package verbs
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/policy"
+	"github.com/mas-bandwidth/nova-sprint/roster"
+	"github.com/mas-bandwidth/nova-sprint/run"
 	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // checkSprint is check's health of the sprint, read from one snapshot: each
-// stream's repository and base at origin, the open judgements by kind, who
-// runs the sprint, the width and why nothing deals, why each stream's
-// producers wait and its long NEEDS chains, and each landing's wait.
+// stream's repository and base at origin, each worker bench's service, the
+// open judgements by kind, who runs the sprint, the width and why nothing
+// deals, why each stream's producers wait and its long NEEDS chains, and
+// each landing's wait.
 func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string]bus.Presence) {
 	snap, err := e.snapshot(ctx)
 	if err != nil {
@@ -31,6 +36,8 @@ func (e *Engine) checkSprint(ctx context.Context, r *checkReport, who map[string
 	e.checkPolicy(ctx, r, snap)
 	e.checkCards(ctx, r, snap)
 	checkWorking(r, snap, who)
+	e.checkWorkers(ctx, r, snap, who)
+	e.checkWorkerVersions(ctx, r, snap)
 	checkJudgements(r, snap)
 	running := e.checkRun(ctx, r, who)
 	ws := steps.Waits(snap.Cards)
@@ -152,15 +159,8 @@ func clipN(s string, n int) string {
 // name on the bus. It returns whether run serves the sprint.
 func (e *Engine) checkRun(ctx context.Context, r *checkReport, who map[string]bus.Presence) bool {
 	st, err := e.Doctor.Run(ctx)
-	switch {
-	case err != nil:
-		r.red(RefusalOr(err, broken("who runs the sprint cannot be read ("+errText(err)+")", "nova-sprint show run")))
-		return false
-	case !st.Held:
-		r.red(refuse("nothing runs the sprint: the chooser lock is free, so nothing is dealt or landed", runFix))
-		return false
-	case st.Operation != "run":
-		r.red(refuse(fmt.Sprintf("the chooser lock is held by %s on %s, not run", orWord(st.Operation, "an unknown holder"), orWord(st.Host, "an unknown host")), "nova-sprint show run names it; when it ends, "+runFix))
+	if f := runUnmet(st, err); f != nil {
+		r.red(f)
 		return false
 	}
 	if on, known := present(who, "sprint"); known && !on {
@@ -169,6 +169,79 @@ func (e *Engine) checkRun(ctx context.Context, r *checkReport, who map[string]bu
 	}
 	r.ok("run on %s (pid %d)", st.Host, st.PID)
 	return true
+}
+
+// checkWorkerVersions is one red line per hooked worker row whose binary
+// (its beat's version) is below the run's release, which check takes as its
+// own build's (the one up installs as run): the tick deals that row nothing
+// (roster.Advertised; defect D3). A build that is not a release compares
+// nothing and prints no line, as the tick does. Only the roster's bench
+// machines are read, as Advertised pins only them: a friend hooks as a
+// worker too and never beats. An unreadable roster prints nothing here (the
+// width line names it).
+func (e *Engine) checkWorkerVersions(ctx context.Context, r *checkReport, snap store.Snapshot) {
+	version := e.Version
+	if !roster.Behind("", version) || e.Roster == nil {
+		return
+	}
+	ro, err := e.Roster.ReadRosterAt(ctx, 1)
+	if err != nil {
+		return
+	}
+	n, behind := 0, false
+	for _, name := range slices.Sorted(maps.Keys(snap.Rows)) {
+		row := snap.Rows[name]
+		if _, bench := ro.Workers[name]; !bench || row.Session == "" {
+			continue
+		}
+		n++
+		if roster.Behind(row.Version, version) {
+			r.red(refuse(fmt.Sprintf("worker %s: binary %s below run's %s", name, orWord(row.Version, "(unknown)"), version),
+				"nova-fleet install --repo mas-bandwidth/nova-sprint --tag "+version+" "+name))
+			behind = true
+		}
+	}
+	if n > 0 && !behind {
+		r.ok("worker binaries: %d hooked rows at the run's %s or above", n, version)
+	}
+}
+
+// runUnmet is run not holding the chooser lock, or nil: check's run line and
+// next's answer (unmet) from the same read.
+func runUnmet(st run.ChooserStatus, err error) *Fail {
+	switch {
+	case err != nil:
+		return classify(RefusalOr(err, broken("who runs the sprint cannot be read ("+errText(err)+")", "nova-sprint show run")))
+	case !st.Held:
+		return refuse("nothing runs the sprint: the chooser lock is free, so nothing is dealt or landed", runFix)
+	case st.Operation != "run":
+		return refuse(fmt.Sprintf("the chooser lock is held by %s on %s, not run", orWord(st.Operation, "an unknown holder"), orWord(st.Host, "an unknown host")), "nova-sprint show run names it; when it ends, "+runFix)
+	}
+	return nil
+}
+
+// noPolicy is check's red line for a store with no active policy: its fix
+// works on any store, one up did not make included (L5.21).
+func noPolicy() *Fail {
+	return refuse("no policy is active: the tick runs on the built-in default", policy.FirstPolicyFix)
+}
+
+// unmet is the first of check's red lines before the sprint can deal: no
+// commit identity, no active policy, and, for the coordinator, run not
+// holding the chooser lock (a worker's next skips that read). The same facts
+// and fixes check prints, so next never says start or wait while check is
+// red on them (L6.5).
+func (e *Engine) unmet(ctx context.Context, snap store.Snapshot, coordinator bool) *Fail {
+	if _, f := identityCheck(snap); f != nil {
+		return f
+	}
+	if snap.Policy == 0 {
+		return noPolicy()
+	}
+	if !coordinator || e.Doctor == nil {
+		return nil
+	}
+	return runUnmet(e.Doctor.Run(ctx))
 }
 
 // runFix is how run is brought back: its service's log, then up.

@@ -66,6 +66,7 @@ func actionsCanned_internal() map[string]string {
 // either is new. A running workflow with a failed job is failing; a running
 // one without is not. Only new red's logs are read, timestamps stripped.
 func TestInheritanceSplitsByTheMergeBase(t *testing.T) {
+	t.Parallel()
 	var paths []string
 	c := actionsGH_internal(actionsCanned_internal(), &paths)
 	split, err := c.Inheritance(context.Background(), "o/r", "sprint/schema-100", actTip, actHead)
@@ -107,6 +108,7 @@ func TestInheritanceSplitsByTheMergeBase(t *testing.T) {
 // A compare that fails, or prints no sha, is an error naming it: the
 // landing then says the red was not compared.
 func TestInheritanceFaultsNameTheCall(t *testing.T) {
+	t.Parallel()
 	var paths []string
 	canned := actionsCanned_internal()
 	delete(canned, "repos/o/r/compare/"+actTip+"..."+actHead)
@@ -121,6 +123,7 @@ func TestInheritanceFaultsNameTheCall(t *testing.T) {
 
 // A job log that cannot be read is said in its lines, never dropped.
 func TestInheritanceUnreadLogIsSaid(t *testing.T) {
+	t.Parallel()
 	var paths []string
 	canned := actionsCanned_internal()
 	delete(canned, "repos/o/r/actions/jobs/121/logs")
@@ -133,6 +136,7 @@ func TestInheritanceUnreadLogIsSaid(t *testing.T) {
 // TestAuthorsAndAgreements (directive 63): an agreement check is named
 // like one; Authors is the PR's distinct commit authors.
 func TestAuthorsAndAgreements(t *testing.T) {
+	t.Parallel()
 	for name, want := range map[string]bool{"Contributor Assignment Agreement": true, "license/cla": true, "CLA": true, "cla-check": true,
 		"Gates / Linux Debug": false, "clang-tidy": false, "declare": false} {
 		if IsAgreement(name) != want {

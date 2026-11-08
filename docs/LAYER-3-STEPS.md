@@ -555,7 +555,7 @@ store's (the model, fixed: `rg`).
 
 **Measured** (vision, Linux, quiet under `nova-reserve --exclusive`,
 2026-11-07; 5,000 producers in 20 streams over 100 rows of width 4;
-`NOVA_LOAD=1 go test -run TestLoad ./steps/`): the fold of a tick's events 12.9 ms p50
+`NOVA_LOAD=1 go test -run TestFunctionalLoad ./steps/`): the fold of a tick's events 12.9 ms p50
 (13.5 p95); the plan at a budget of 250 cards with 2,500 producers ready
 47 ms p50, 71 p95, 78 max (the bar of 50 ms p50 met; before the planning
 was bounded by the budget it was 1,342 ms: the deal ranked every ready
@@ -729,7 +729,7 @@ candidate filter narrows the row set the model already chooses from.
   quadratic (measured on the working machine, not quiet: 52 ms p50 for
   4,908 opens). They are now lookups: a per-tick index of the planned ones
   and one of the view's, built on first use.
-- *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestLoadResolve
+- *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestFunctionalLoadResolve
   ./steps/`; the needs step alone, 5,000 waiting producers whose needs a
   store op landed, 20 streams, 100 rows, 20 ticks; ms p50/p95). On the
   working machine (darwin, not quiet): free (all 5,000 resolve) 7.97/10.57;

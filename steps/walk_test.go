@@ -21,6 +21,7 @@ import (
 // applies at once, so no race is possible and every op must be accepted
 // (RefusedOnlyByRace). At least 40% of the picked moves must be legal.
 func TestWalk(t *testing.T) {
+	t.Parallel()
 	steps := 2000
 	if testing.Short() {
 		steps = 300

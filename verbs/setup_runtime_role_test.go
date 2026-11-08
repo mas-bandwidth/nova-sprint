@@ -12,6 +12,7 @@ import (
 )
 
 func TestScramVerifierKnownVector(t *testing.T) {
+	t.Parallel()
 	salt, _ := base64.StdEncoding.DecodeString("W22ZaJ0SNY7soEsUEjb6gQ==")
 	got, err := scramVerifier("pencil", salt, 4096)
 	want := "SCRAM-SHA-256$4096:W22ZaJ0SNY7soEsUEjb6gQ==$WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=:wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU="
@@ -21,6 +22,7 @@ func TestScramVerifierKnownVector(t *testing.T) {
 }
 
 func TestRoleBootstrapSavesOnceAndPassesOnlyNames(t *testing.T) {
+	t.Parallel()
 	sink := &sinkFake{}
 	var calls [][]string
 	var modes []string
@@ -61,6 +63,7 @@ func TestRoleBootstrapSavesOnceAndPassesOnlyNames(t *testing.T) {
 // superuser's grant; on a role being created, the admin's CREATEROLE; any
 // other error keeps the pg error wrapped, SQLSTATE and message intact.
 func TestRolePermissionRefusalNamesTheGrant(t *testing.T) {
+	t.Parallel()
 	denied := &pgconn.PgError{Severity: "ERROR", Code: "42501", Message: "permission denied to alter role"}
 	var op *OperationError
 	if err := rolePermissionRefusal("role credential setup failed", denied, true); !errors.As(err, &op) ||
@@ -75,5 +78,29 @@ func TestRolePermissionRefusalNamesTheGrant(t *testing.T) {
 	err := rolePermissionRefusal("role creation failed", other, false)
 	if errors.As(err, &op) || !errors.Is(err, other) || err.Error() != `role creation failed: ERROR: role "nova_sprint" already exists (SQLSTATE 42710)` {
 		t.Fatalf("%v", err)
+	}
+}
+
+// PostgreSQL 14 and 15 lack pg_auth_members.set_option and GRANT ... WITH
+// SET: up refuses them by version, naming 16, before any SQL fails raw.
+func TestCreateSprintSchemaRefusesOldPostgres(t *testing.T) {
+	t.Parallel()
+	for _, num := range []string{"140024", "150010"} {
+		err := requireServerVersion(num)
+		var op *OperationError
+		if !errors.As(err, &op) || op.Exit != exitRefused || !strings.Contains(op.Problem, "needs PostgreSQL 16 or newer") || !strings.Contains(op.Fix, "upgrade the PostgreSQL server to 16") {
+			t.Fatal(num, err)
+		}
+	}
+	if err := requireServerVersion("140024"); !strings.Contains(err.Error(), "PostgreSQL 14.24 is too old") {
+		t.Fatal(err)
+	}
+	for _, num := range []string{"160000", "180006"} {
+		if err := requireServerVersion(num); err != nil {
+			t.Fatal(num, err)
+		}
+	}
+	if err := requireServerVersion("x"); err == nil {
+		t.Fatal("a non-number version passed")
 	}
 }

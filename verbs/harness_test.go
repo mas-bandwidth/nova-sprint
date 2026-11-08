@@ -278,18 +278,30 @@ func (o *fakeOrigin) Tip(_ context.Context, repo, branch string) (string, bool, 
 
 type fakeDoctor struct {
 	fleet, history error
+	schemaErr      error
 	tools          string
 	schema         bool
 	run            run.ChooserStatus
 	runErr         error
+	units          []WorkerUnit // the worker benches; nil: no bench
+	unitsErr       error
 }
 
 func (d *fakeDoctor) Fleet(context.Context) error                  { return d.fleet }
 func (d *fakeDoctor) ToolsVersion(context.Context) (string, error) { return d.tools, nil }
-func (d *fakeDoctor) Schema(context.Context) (bool, error)         { return d.schema, nil }
+func (d *fakeDoctor) Schema(context.Context) (bool, error)         { return d.schema, d.schemaErr }
 func (d *fakeDoctor) History(context.Context) error                { return d.history }
 func (d *fakeDoctor) Run(context.Context) (run.ChooserStatus, error) {
 	return d.run, d.runErr
+}
+func (d *fakeDoctor) Workers(context.Context) ([]WorkerUnit, error) { return d.units, d.unitsErr }
+func (d *fakeDoctor) Worker(_ context.Context, machine string) (WorkerUnit, bool, error) {
+	for _, u := range d.units {
+		if u.Machine == machine {
+			return u, true, d.unitsErr
+		}
+	}
+	return WorkerUnit{}, false, d.unitsErr
 }
 
 type fakeServices struct{ ran []string }

@@ -25,7 +25,10 @@ type (
 	// its logical cores, and its nova-reserve slots in use and in all (0 of 0
 	// when the slots could not be read). It is the board's load cell.
 	Heartbeat struct {
-		Load1                        float64
+		Load1 float64
+		// CPUPeak is the highest CPU busy percent of the last CPUWindow, across all
+		// the bench's cores (100: every core busy), the board's CPU cell.
+		CPUPeak                      float64
 		Cores, SlotsUsed, SlotsTotal int
 		// Tiers are what the harness serves (its adapter's Needs.Tiers),
 		// a comma list in store.Tiers' order: the roster deals by them.
@@ -48,6 +51,11 @@ type (
 		Exec       edge.Exec
 		ReserveBin string
 		ReadFile   func(string) ([]byte, error) // os.ReadFile when nil
+		// CPU is the sampler whose peak the beat carries (nil: the load
+		// average over the cores stands in for it); Now is the clock it is
+		// read at (time.Now when nil).
+		CPU *CPUSampler
+		Now func() time.Time
 	}
 )
 
@@ -61,6 +69,15 @@ func (m OSMeter) Sample(ctx context.Context) (Heartbeat, error) {
 		return Heartbeat{}, err
 	}
 	hb := Heartbeat{Load1: load, Cores: runtime.NumCPU()}
+	peak, ok := 0.0, false
+	if m.CPU != nil {
+		now := time.Now
+		if m.Now != nil {
+			now = m.Now
+		}
+		peak, ok = m.CPU.Peak(now())
+	}
+	hb.CPUPeak = cpuPeakOrLoad(peak, ok, load, hb.Cores)
 	res, err := cmp.Or[edge.Exec](m.Exec, edge.NewOSExec()).Run(ctx, edge.Cmd{Argv: []string{resolveToolBin_internal(cmp.Or(m.ReserveBin, "nova-reserve")), "status"}, Timeout: 5 * time.Second})
 	if err != nil || res.ExitCode != 0 {
 		return hb, fmt.Errorf("nova-reserve status: %w", edge.Failure([]string{"nova-reserve", "status"}, nil, res.ExitCode, res.Stdout, res.Stderr, err))

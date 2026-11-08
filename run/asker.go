@@ -26,6 +26,7 @@ type asker struct {
 	failures []policy.Failure
 	answers  policy.Answers
 	asked    bool
+	stored   int // the newest stored policy version while none is active (noDeal's fix), else 0
 }
 
 func (t *Ticker) asker(ctx context.Context, ro roster.Roster) *asker {
@@ -36,7 +37,24 @@ func (t *Ticker) asker(ctx context.Context, ro roster.Roster) *asker {
 	if v, ok := t.policyVersion(ctx, t.prev); ok && t.prev != t.snap.Policy {
 		vs.Prev = &v
 	}
-	return &asker{ctx: ctx, policy: t.policy, vs: vs, snap: t.snap, ro: ro}
+	a := &asker{ctx: ctx, policy: t.policy, vs: vs, snap: t.snap, ro: ro}
+	if vs.Active == nil {
+		a.stored = t.storedPolicy(ctx)
+	}
+	return a
+}
+
+// storedPolicy is the newest stored policy version, 0 when none is stored
+// or one cannot be read (the probe policy show --list makes; it runs only
+// while no version is active).
+func (t *Ticker) storedPolicy(ctx context.Context) int {
+	v := 0
+	for {
+		if _, err := t.store.Policy(ctx, v+1); err != nil {
+			return v
+		}
+		v++
+	}
 }
 
 func (t *Ticker) policyVersion(ctx context.Context, v int) (store.PolicyVersion, bool) {
@@ -68,7 +86,7 @@ func (a *asker) Ask(q steps.Questions) steps.Answers {
 	a.answers, a.failures = a.policy.AnswerContext(a.ctx, a.vs, a.snap, a.ro, pq)
 	a.asked = a.answers.Version >= 0
 	out := stepsAnswers(a.answers, a.failures)
-	out.NoDeal = noDeal(a.vs, a.answers, a.failures)
+	out.NoDeal = noDeal(a.vs, a.answers, a.failures, a.stored)
 	return out
 }
 
@@ -77,8 +95,13 @@ func (a *asker) Ask(q steps.Questions) steps.Answers {
 // built-in's defaults still run the rest of the tick, but nothing is dealt:
 // a deal on defaults carried no model and moved nothing (the fleet's idle
 // night of 2026-11-07). An active version that failed, so that another
-// answered, names its failure.
-func noDeal(vs policy.Versions, p policy.Answers, fs []policy.Failure) string {
+// answered, names its failure. With versions stored and none active (a
+// store whose first set did not activate; defect D3, 2026-11-07) the fix is
+// to activate the newest stored, not to set another.
+func noDeal(vs policy.Versions, p policy.Answers, fs []policy.Failure, stored int) string {
+	if vs.Active == nil && stored > 0 {
+		return fmt.Sprintf("no policy is active (v%d is stored, none active): nova-sprint policy activate v%d --reason <why>", stored, stored)
+	}
 	if vs.Active == nil {
 		return "no policy is active: nova-sprint policy set <file> --reason <why> (the first set activates; nova-sprint up installs the default)"
 	}

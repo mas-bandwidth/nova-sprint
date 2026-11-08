@@ -43,6 +43,7 @@ func (s *startupRetryRecorder) Events(ctx context.Context, after int64, max int)
 	return s.Store.Events(ctx, after, max)
 }
 func TestFunctionalContextRowan2StartupRetryDeadline(t *testing.T) {
+	t.Parallel()
 	if startupSnapshotDeadline != 30*time.Second {
 		t.Fatal("startup deadline changed")
 	}
@@ -64,6 +65,7 @@ func TestFunctionalContextRowan2StartupRetryDeadline(t *testing.T) {
 	}
 }
 func TestRowan2StartupRetryRespectsCancellation(t *testing.T) {
+	t.Parallel()
 	f := store.NewFake()
 	s := &startupRetryRecorder{Store: f, failFirst: true}
 	c, err := NewRecovering(context.Background(), s)
@@ -76,7 +78,7 @@ func TestRowan2StartupRetryRespectsCancellation(t *testing.T) {
 		t.Fatalf("expected canceled parent, got %v", err)
 	}
 }
-func TestRowan2UnknownProducerCountsAndAlarms(t *testing.T) {
+func TestRowan2UnknownProducerCountsAndAlarms(t *testing.T) { // unitlint: serial, it captures the process's log output (log.SetOutput)
 	ctx := context.Background()
 	f := store.NewFake()
 	mustApply(t, f, "seed", 1, store.PutStream{Name: "s"}, store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro"}, store.PutCard{ID: "p2", Kind: "producer", Stream: "s", Tier: "pro"})

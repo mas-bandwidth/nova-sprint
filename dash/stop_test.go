@@ -9,6 +9,7 @@ import (
 )
 
 func TestAdvanceSnapshotKeepsStopAcrossOrdinaryEvent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	write := func(id string, w store.Write) {
@@ -38,6 +39,7 @@ func TestAdvanceSnapshotKeepsStopAcrossOrdinaryEvent(t *testing.T) {
 // The board of a fresh store shows STOPPED with its reason, never started,
 // until the coordinator's first start (Glenn, 2026-11-07).
 func TestFreshStoreShowsStoppedNeverStarted(t *testing.T) {
+	t.Parallel()
 	s, err := store.NewFake().Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)

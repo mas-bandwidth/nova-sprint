@@ -7,6 +7,7 @@ import (
 )
 
 func TestFleetGrantsUsesEncryptedSeatCommands(t *testing.T) {
+	t.Parallel()
 	var calls [][]string
 	g := FleetGrants{Store: "/store", KeyFile: "/keys/control.key", Pins: "/pins", ControlSeat: "control", Command: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, append([]string{name}, args...))

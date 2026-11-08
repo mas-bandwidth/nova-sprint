@@ -44,6 +44,16 @@ func (b *limitedOutput) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+// upWithCredentials is up's refusal of a process holding a database
+// credential (under nova-secrets exec, say): up is the one verb run bare,
+// and the refusal ends with the command that runs it so (L6.4).
+func upWithCredentials(actor string) string {
+	if actor == "" {
+		actor = "<you>"
+	}
+	return "SPRINT REFUSED up: up is the one verb run without database credentials (each phase gets its own from nova-secrets): env -u NOVA_PG_ADMIN_PASSWORD -u NOVA_SPRINT_PG_PASSWORD nova-sprint up --as " + actor
+}
+
 // runUpWrapper never receives either database credential. Only the two
 // nova-secrets children receive their own named credential.
 func runUpWrapper(ctx context.Context, args []string) int {
@@ -56,7 +66,7 @@ func runUpWrapper(ctx context.Context, args []string) int {
 		return emit("SPRINT REFUSED up: --continuation is the second phase's own flag, never given by hand: nova-sprint help up\n", 1)
 	}
 	if os.Getenv("NOVA_PG_ADMIN_PASSWORD") != "" || os.Getenv("NOVA_SPRINT_PG_PASSWORD") != "" {
-		fmt.Fprintln(os.Stderr, "SPRINT REFUSED up: invoke the setup wrapper without database credentials (NOVA_PG_ADMIN_PASSWORD and NOVA_SPRINT_PG_PASSWORD must be unset; each phase gets its own from nova-secrets)")
+		fmt.Fprintln(os.Stderr, upWithCredentials(input.Actor))
 		return 1
 	}
 	cfg, err := productionSetupConfigFromEnv()
@@ -152,7 +162,7 @@ func runUpChild(ctx context.Context, cfg productionSetupConfig, key, mode string
 	if !channel {
 		return "", output, 0
 	}
-	status, err := waitHandoff(ctx, result)
+	status, err := waitHandoff(ctx, result, time.After(time.Second))
 	if err != nil {
 		return "", "SPRINT REFUSED up: invalid continuation channel: " + edge.RedactN(err.Error(), edge.CommandMax) + "\n", 2
 	}
@@ -232,15 +242,13 @@ type handoffRead struct {
 	err error
 }
 
-func waitHandoff(ctx context.Context, result <-chan handoffRead) (string, error) {
-	timer := time.NewTimer(time.Second)
-	defer timer.Stop()
+func waitHandoff(ctx context.Context, result <-chan handoffRead, expired <-chan time.Time) (string, error) {
 	select {
 	case r := <-result:
 		return r.id, r.err
 	case <-ctx.Done():
 		return "", ctx.Err()
-	case <-timer.C:
+	case <-expired:
 		return "", fmt.Errorf("continuation channel did not close")
 	}
 }

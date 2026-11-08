@@ -43,6 +43,7 @@ func waitCards() map[string]store.Card {
 // needs) or on the producer and file it is held behind; the longest chain
 // runs first to land first, without sentinels or landed cards.
 func TestWaitsGroupsByChainFrontAndHolder(t *testing.T) {
+	t.Parallel()
 	ws := Waits(waitCards())
 	require.Len(t, ws, 2)
 	s1, s2 := ws[0], ws[1]
@@ -64,6 +65,7 @@ func TestWaitsGroupsByChainFrontAndHolder(t *testing.T) {
 // TestWaitsLineNamesThreeAndCounts: a line names the three largest and
 // counts the rest; a long chain is abbreviated.
 func TestWaitsLineNamesThreeAndCounts(t *testing.T) {
+	t.Parallel()
 	cs := map[string]store.Card{}
 	for i := 0; i < 5; i++ {
 		front := fmt.Sprintf("f%d", i)
@@ -81,6 +83,7 @@ func TestWaitsLineNamesThreeAndCounts(t *testing.T) {
 // TestWaitsSurvivesACycle: a cycle written past add's refusal ends, and
 // counts its cards once.
 func TestWaitsSurvivesACycle(t *testing.T) {
+	t.Parallel()
 	cs := map[string]store.Card{
 		"a": {ID: "a", Kind: "producer", Stream: "s", State: "waiting", Needs: []string{"b"}},
 		"b": {ID: "b", Kind: "producer", Stream: "s", State: "waiting", Needs: []string{"a"}},
@@ -95,6 +98,7 @@ func TestWaitsSurvivesACycle(t *testing.T) {
 // TestIdleWhyAndFix: the idle summary over every stream, and the command
 // that moves the top blocker for each of its states.
 func TestIdleWhyAndFix(t *testing.T) {
+	t.Parallel()
 	what, fix := IdleWhy(Waits(waitCards()))
 	assert.Equal(t, "2 chains (longest 4, top: a blocks 5), 1 overlap (top: a holds 1 on x.go)", what)
 	assert.Equal(t, "each stream's waits and chains: nova-sprint check; the top: nova-sprint show a (it is working; its landing frees the chain); "+unchain, fix)
@@ -116,6 +120,7 @@ func TestIdleWhyAndFix(t *testing.T) {
 // dealable, the idle judgement names the chains and the overlaps and the
 // command that helps, not a bare idle.
 func TestIdleJudgementSaysWhyNothingDeals(t *testing.T) {
+	t.Parallel()
 	s := newSim(t)
 	s.row("r1", 8, "pro")
 	s.stream("s1")

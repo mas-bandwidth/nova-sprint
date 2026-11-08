@@ -64,7 +64,13 @@ func loadTree(t *testing.T, root string) *treeIndex {
 	// Event type names (and "<Event> work" / "<Event> read").
 	collectCardEventSubtests(t, filepath.Join(root, "card", "card.go"), idx.subTests)
 
-	loadTLA(t, filepath.Join(root, "tla"), idx)
+	// The reversed witnesses, reach checks and several configs are generated, not
+	// committed: read them from a copy where the generators ran.
+	tlaCopy := t.TempDir()
+	if out, err := exec.Command("bash", filepath.Join(root, "tla", "gen-witnesses.sh"), tlaCopy).CombinedOutput(); err != nil {
+		t.Fatalf("tla/gen-witnesses.sh: %v\n%s", err, out)
+	}
+	loadTLA(t, tlaCopy, idx)
 	loadSchemaChecks(t, filepath.Join(root, "store", "schema.sql"), idx.schemaCheck)
 	return idx
 }
@@ -454,7 +460,8 @@ func verifyEnforced(doc string, idx *treeIndex) []string {
 	return errs
 }
 
-func TestEnforcedLedger(t *testing.T) {
+func TestFunctionalEnforcedLedger(t *testing.T) {
+	t.Parallel()
 	root := filepath.Clean(filepath.Join("..", ".."))
 	idx := loadTree(t, root)
 	docBytes, err := os.ReadFile(filepath.Join(root, "docs", "ENFORCED.md"))
@@ -467,7 +474,8 @@ func TestEnforcedLedger(t *testing.T) {
 	}
 }
 
-func TestEnforcedRejectsBrokenLedger(t *testing.T) {
+func TestFunctionalEnforcedRejectsBrokenLedger(t *testing.T) {
+	t.Parallel()
 	root := filepath.Clean(filepath.Join("..", ".."))
 	idx := loadTree(t, root)
 	docBytes, err := os.ReadFile(filepath.Join(root, "docs", "ENFORCED.md"))
@@ -484,7 +492,7 @@ func TestEnforcedRejectsBrokenLedger(t *testing.T) {
 		{
 			name: "missing_top_level_test",
 			mutate: func(s string) string {
-				return strings.Replace(s, "`test TestLoad/build`", "`test TestDoesNotExistAnywhere/build`", 1)
+				return strings.Replace(s, "`test TestFunctionalLoad/build`", "`test TestDoesNotExistAnywhere/build`", 1)
 			},
 			wantErr: `missing top-level test "TestDoesNotExistAnywhere"`,
 		},

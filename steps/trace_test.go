@@ -27,7 +27,8 @@ import (
 // modelDefaults sets the engine's escalation to the model's (EscalateAfter
 // 1: the model bounds bounces at MaxBounce, so it escalates after one) for
 // the test and restores it after; the trace tests are the only ones that
-// write it, and top-level tests run one at a time.
+// write it, and they are serial: a serial top-level test ends before any
+// parallel one starts.
 func modelDefaults(t *testing.T) {
 	was := Engine.EscalateAfter
 	Engine.EscalateAfter = 1
@@ -75,9 +76,17 @@ func (a traceAsker) Ask(q Questions) Answers {
 		out.Reads[c.ID] = 1
 	}
 	for _, v := range q.Verdict {
-		out.Verdict[v.Card.ID] = "yes"
-		if slices.ContainsFunc(v.Reads, func(r ReadFacts) bool { return r.Result == "fix" }) {
+		// the model's Verdict: fix on a fix read, else yes on an ok read, else retry
+		said := func(res string) bool {
+			return slices.ContainsFunc(v.Reads, func(r ReadFacts) bool { return r.Result == res })
+		}
+		switch {
+		case said("fix"):
 			out.Verdict[v.Card.ID] = "fix"
+		case said("ok"):
+			out.Verdict[v.Card.ID] = "yes"
+		default:
+			out.Verdict[v.Card.ID] = "retry"
 		}
 	}
 	for _, r := range q.Width {
@@ -97,7 +106,7 @@ func (a traceAsker) Ask(q Questions) Answers {
 	day := 86400
 	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
 		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
-	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, BaseRegate: []int{day}}
+	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyNag: day, ReadyTake: day, BaseRegate: []int{day}}
 	return out
 }
 
@@ -177,7 +186,7 @@ func (w *traceWalk) record(action string, args []string) {
 	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
 	fields = append(fields, args...)
 	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
-		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc))
+		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA())
 	w.records = append(w.records, "["+strings.Join(fields, ", ")+"]")
 }
 
@@ -276,7 +285,7 @@ func (w *traceWalk) moved(action string, args []string) {
 // acknowledgement moves no card, so the model has no action for it.
 
 // results are the scenario's result sets: work ok (and fail for p in deal),
-// read ok (and fix for p in deal).
+// read ok (and fix and fault for p in deal).
 func (w *traceWalk) results(c store.Card) []string {
 	bounce := w.scen == "deal" && c.Of == "p"
 	if c.Kind == "work" {
@@ -286,7 +295,7 @@ func (w *traceWalk) results(c store.Card) []string {
 		return []string{"ok"}
 	}
 	if bounce {
-		return []string{"ok", "fix"}
+		return []string{"ok", "fix", "fault"}
 	}
 	return []string{"ok"}
 }
@@ -316,8 +325,19 @@ func (w *traceWalk) reportOne() {
 	w.moved("Report", []string{"card |-> " + SlotTLA(w.view(), id), fmt.Sprintf("res |-> %q", res)})
 }
 
+// busTLA is the model's bus: every row on nova-bus but the walk's away ones.
+func (w *traceWalk) busTLA() string {
+	var out []string
+	for _, r := range []string{"r1", "r2"} {
+		_, gone := w.away[r]
+		out = append(out, fmt.Sprintf("%s |-> %s", r, tlaBool(!gone)))
+	}
+	return "[" + strings.Join(out, ", ") + "]"
+}
+
 // envOne is the scenario's environment: pre lifts s2's hold and flips r2;
-// deal flips r1; land holds and lifts s1; burst has none.
+// deal flips r1 or takes r2 off the bus and back (D1'); land holds and
+// lifts s1; burst has none.
 func (w *traceWalk) envOne() {
 	w.pick()
 	s := w.snap()
@@ -329,6 +349,10 @@ func (w *traceWalk) envOne() {
 		}
 		w.flip("r2")
 	case "deal":
+		if w.rng.Intn(2) == 0 {
+			w.presence("r2")
+			return
+		}
 		w.flip("r1")
 	case "land":
 		if s.Streams["s1"].Held {
@@ -484,6 +508,22 @@ func (w *traceWalk) consumersIn(state string) []string {
 	return out
 }
 
+// presence takes row off nova-bus, or puts it back: the store is untouched
+// (its hook record stands), only the tick's Seen changes (Leave, Return).
+func (w *traceWalk) presence(row string) {
+	w.ok()
+	if _, gone := w.away[row]; gone {
+		delete(w.away, row)
+		w.moved("Return", nil)
+		return
+	}
+	if w.away == nil {
+		w.away = set{}
+	}
+	w.away[row] = struct{}{}
+	w.moved("Leave", nil)
+}
+
 // module is the StepsTraceLog module of the records, and cfg the trace cfg:
 // the scenario's constants, the model's bounds above anything the walk
 // reaches.
@@ -499,7 +539,7 @@ func (w *traceWalk) cfg() string {
 
 // TestTraceWalk: every scenario, 100 seeds, 2,000 steps; at least 40% of the
 // picked moves legal; no op refused without a race.
-func TestTraceWalk(t *testing.T) {
+func TestTraceWalk(t *testing.T) { // unitlint: serial, modelDefaults writes the package's Engine, which every tick reads
 	modelDefaults(t)
 	steps, seeds := 2000, int64(100)
 	if testing.Short() {
@@ -533,7 +573,7 @@ func TestTraceWalk(t *testing.T) {
 // TestTraceFixtures writes the fixed seed set's traces under NOVA_TRACE_DIR
 // (steps-walk-<scenario>-<seed>), for tla/make-traces.sh and check-trace.sh;
 // without it the walk runs and writes nothing.
-func TestTraceFixtures(t *testing.T) {
+func TestTraceFixtures(t *testing.T) { // unitlint: serial, modelDefaults writes the package's Engine, which every tick reads
 	modelDefaults(t)
 	dir := os.Getenv("NOVA_TRACE_DIR") // make-traces.sh's, absolute
 	if dir != "" && !filepath.IsAbs(dir) {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,8 +86,11 @@ type (
 		baseHarness_internal
 		ConfigDir string
 	}
-	OpenCodeHarness struct{ baseHarness_internal }
-	ScriptHarness   struct{ baseHarness_internal }
+	OpenCodeHarness struct {
+		baseHarness_internal
+		messages func(db string) ([]string, error) // nil: opencodeMessages; a unit test's rows
+	}
+	ScriptHarness struct{ baseHarness_internal }
 )
 
 func (baseHarness_internal) Usage(j Job) (Cost, bool) { return readUsageFile_internal(j.JobDir) }
@@ -99,9 +103,14 @@ func (h *CodexHarness) Name() string         { return "codex" }
 func (h *OpenCodeHarness) Name() string      { return "opencode" }
 
 // opencodeMessages reads the run's assistant messages from opencode's own
-// session database, each row's data JSON; a var so a unit test feeds rows.
+// session database, each row's data JSON (a unit test feeds rows through
+// OpenCodeHarness.messages).
 // The wall's XDG_DATA_HOME is <job>/data, so the database is the run's alone.
-var opencodeMessages = func(db string) ([]string, error) {
+// A run that never opened opencode has no database, and no sqlite3 is started.
+func opencodeMessages(db string) ([]string, error) {
+	if _, err := os.Stat(db); err != nil {
+		return nil, err
+	}
 	out, err := exec.Command("sqlite3", "-readonly", "-json", db, "select data from message where json_extract(data,'$.role')='assistant'").Output()
 	if err != nil {
 		return nil, err
@@ -144,7 +153,11 @@ func (h *OpenCodeHarness) Usage(j Job) (Cost, bool) {
 	if j.JobDir == "" {
 		return Cost{}, false
 	}
-	rows, err := opencodeMessages(filepath.Join(j.JobDir, "data", "opencode", "opencode.db"))
+	messages := h.messages
+	if messages == nil {
+		messages = opencodeMessages
+	}
+	rows, err := messages(filepath.Join(j.JobDir, "data", "opencode", "opencode.db"))
 	if err != nil {
 		return Cost{}, false
 	}
@@ -471,7 +484,13 @@ var wallKeeps_internal = []string{"PATH", "HOME", "LANG", "TERM"}
 // open, denied with the proxy's port reopened, or denied), and every name
 // of env passed with --env.
 func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
-	argv := []string{cmp.Or(cfg.ReserveBin, "nova-reserve")}
+	// Card work runs at nice 15, below CI's 0, and the harness, its builds
+	// and its gates inherit it, so a CI job on a shared bench keeps its cap.
+	var argv []string
+	if runtime.GOOS != "windows" {
+		argv = append(argv, "nice", "-n", "15")
+	}
+	argv = append(argv, cmp.Or(cfg.ReserveBin, "nova-reserve"))
 	if cfg.ReserveDir != "" {
 		argv = append(argv, "--dir", cfg.ReserveDir)
 	}

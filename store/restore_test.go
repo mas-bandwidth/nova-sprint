@@ -23,6 +23,7 @@ import (
 
 // The rows Begin leaves for the dump are schema.sql's only seed rows.
 func TestRestoreDDL(t *testing.T) {
+	t.Parallel()
 	assert.Equal(t, 1, strings.Count(schemaSQL, seedMeta))
 	assert.Equal(t, 1, strings.Count(schemaSQL, seedEpoch))
 	assert.Equal(t, 2, strings.Count(schemaSQL, "INSERT INTO"))

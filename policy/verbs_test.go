@@ -173,7 +173,7 @@ func testActivate(t *testing.T, w *world) {
 
 func testShow(t *testing.T, w *world) {
 	_, err := Show(w.ctx(), w.st, 0)
-	assert.Equal(t, "SPRINT REFUSED policy show: no policy is active: nova-sprint up", refusal(t, err))
+	assert.Equal(t, "SPRINT REFUSED policy show: no policy is active: "+FirstPolicyFix, refusal(t, err))
 	w.up()
 	v := w.set("two-reads.star", strings.Replace(defaultBody, "return 1  #", "return 2  #", 1))
 	out, err := Show(w.ctx(), w.st, v)

@@ -17,6 +17,7 @@ import (
 // This fixture exercises SSH and strict host-key checking against a private,
 // unprivileged local sshd without touching the user's SSH files.
 func TestFunctionalPublicVersionSSH(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_FUNCTIONAL_SSH") != "1" {
 		t.Skip("requires an isolated local sshd")
 	}

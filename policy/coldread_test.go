@@ -103,6 +103,7 @@ func TestColdreadDefectJudgementTextNotStorable(t *testing.T) {
 // "bounded steps"; a huge allocation or unbounded work must fail the version
 // (open a judgement), never stall the tick or exhaust the process.
 func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	// Round 3: the ruling (4, 2026-11-06) makes the tick's deadline the bound
 	// and says no memory bound exists, so one 512 MiB string (about 40 ms on
@@ -130,6 +131,7 @@ func TestColdreadDefectBuiltinWorkUnbounded(t *testing.T) {
 // all), which only the deadline can end. Design, "The embedding";
 // guarantee 4.
 func TestColdreadDefectTickStepsUnbounded(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	ro := handRoster(rc{"r", "worker", 2, store.Tiers, ""})
 	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{},

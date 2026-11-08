@@ -167,6 +167,7 @@ type Observed struct {
 	Roster  roster.Roster
 	Heads   map[string]string
 	Results []steps.InboxItem
+	Version string // the run's release: a worker row behind it is dealt nothing (roster.Advertised); "" pins nothing
 }
 
 // Tick is one tick: check the lock, fold, and, unless the sprint is stopped,
@@ -174,7 +175,10 @@ type Observed struct {
 // It returns the edge requests to dispatch: those whose After op was
 // accepted. While stopped it plans and applies nothing and returns none
 // (drift row 4; Run.tla NoTickAfterObservedStop): the results that arrive
-// wait in the inbox for the start.
+// wait in the inbox for the start. Only raiseSeen runs while stopped: a
+// row's presence moves no card (Store.tla: an op not fenced on Running
+// lands while stopped), and up's steps 7-8 wait on a fresh, never-started
+// store for the hooked rows to come up.
 func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, error) {
 	t.counts = TickCounts{}
 	t.inbox = append(t.inbox, t.fresh(o.Results)...) // kept even if this tick ends early
@@ -187,13 +191,13 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	for _, name := range o.Present {
 		t.seen[name] = o.Now
 	}
+	if err := t.raiseSeen(ctx, o); err != nil { // presence deals nothing, so it runs while stopped too
+		return nil, err
+	}
 	if t.snap.Stopped {
 		return nil, nil
 	}
-	if err := t.raiseSeen(ctx, o); err != nil {
-		return nil, err
-	}
-	o.Roster = o.Roster.Advertised(t.snap.Rows) // a worker's own width and tiers (defect 74)
+	o.Roster = o.Roster.Advertised(t.snap.Rows, o.Version) // a worker's own width and tiers (defect 74), none when its binary is behind the run's (D3)
 	in := steps.Inputs{Now: o.Now, Inbox: t.inbox, Inflight: t.requests(), Heads: maps.Clone(o.Heads),
 		Seen: maps.Clone(t.seen), Refused: t.refused, Roster: o.Roster}
 	a := t.asker(ctx, o.Roster)
@@ -206,13 +210,16 @@ func (t *Ticker) Tick(ctx context.Context, o Observed) ([]steps.EdgeRequest, err
 	if j, ok := judgementOp(a, o); ok {
 		ops = append(ops, j)
 	}
-	accepted, err := t.apply(ctx, ops)
+	accepted, err := t.apply(ctx, ops, true)
 	if err != nil {
 		return nil, err
 	}
 	t.retire(plan, accepted)
 	return t.dispatch(plan.Edges, accepted), nil
 }
+
+// Seen says whether any row has been seen on the bus since the cold start.
+func (t *Ticker) Seen() bool { return len(t.seen) > 0 }
 
 // raiseSeen is the run loop's Seen (steps' runEvents: presence is the bus's
 // fact; Steps.tla EnvMove's flip up): each row down in the store and present
@@ -235,7 +242,7 @@ func (t *Ticker) raiseSeen(ctx context.Context, o Observed) error {
 	if len(ops) == 0 {
 		return nil
 	}
-	_, err := t.apply(ctx, ops)
+	_, err := t.apply(ctx, ops, false)
 	return err
 }
 
@@ -263,16 +270,18 @@ func (t *Ticker) requests() []steps.EdgeRequest {
 // apply applies ops in order, one Apply each, folding after each. A refused
 // op is kept for the next tick's Inputs.Refused. An unknown outcome is
 // replayed by id before anything else (layer 1: an op id applies once).
-func (t *Ticker) apply(ctx context.Context, ops []store.Op) (map[string]bool, error) {
+func (t *Ticker) apply(ctx context.Context, ops []store.Op, tick bool) (map[string]bool, error) {
 	t.refused = nil
 	accepted := map[string]bool{}
 	for _, op := range ops {
 		if err := t.health.Check(ctx); err != nil {
 			return accepted, err
 		}
-		// A stop that commits after the fold refuses the op (store.Running;
-		// Run.tla NoAcceptedTickWhileStopped).
-		op.Expect = append(slices.Clone(op.Expect), store.Running{})
+		// A stop that commits after the fold refuses a tick op
+		// (store.Running; Run.tla NoAcceptedTickWhileStopped).
+		if tick {
+			op.Expect = append(slices.Clone(op.Expect), store.Running{})
+		}
 		r, err := t.store.Apply(ctx, op)
 		if errors.Is(err, store.ErrUnknown) {
 			var found bool

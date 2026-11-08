@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// TestBreakExecTimeoutLeavesGrandchildRunning
+// TestFunctionalBreakExecTimeoutLeavesGrandchildRunning
 //
 // Sequence: Exec `sh -c 'sleep 5 & echo $!; sleep 5'` with a 300 ms
 // timeout. The timeout fires, Exec returns ErrTimeout, and the backgrounded
@@ -22,7 +22,8 @@ import (
 // SIGTERM -> SIGKILL grace" and "mandatory policy timeouts": OSExec uses
 // exec.CommandContext with no process group (no Setpgid, no group kill), so
 // only the direct child is killed and every descendant outlives the edge.
-func TestBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
+func TestFunctionalBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
+	t.Parallel()
 	res, err := NewOSExec().Run(context.Background(), Cmd{
 		Argv:    []string{"sh", "-c", "sleep 5 & echo $!; sleep 5"},
 		Timeout: 300 * time.Millisecond,
@@ -48,7 +49,7 @@ func TestBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
 	}
 }
 
-// TestBreakExecSuccessWithBackgroundChildIsStartFailure
+// TestFunctionalBreakExecSuccessWithBackgroundChildIsStartFailure
 //
 // Sequence: Exec `sh -c '(sleep 2 &); exit 0'`: the program exits 0 at once
 // but a descendant keeps its stdout open. After WaitDelay (200 ms) Go's Wait
@@ -61,7 +62,8 @@ func TestBreakExecTimeoutLeavesGrandchildRunning(t *testing.T) {
 // Broken: Exec's contract that ExitCode is the program's exit status and that
 // ErrStart means the program could not be started (exec.go
 // classifyExecErr_internal).
-func TestBreakExecSuccessWithBackgroundChildIsStartFailure(t *testing.T) {
+func TestFunctionalBreakExecSuccessWithBackgroundChildIsStartFailure(t *testing.T) {
+	t.Parallel()
 	res, err := NewOSExec().Run(context.Background(), Cmd{
 		Argv:    []string{"sh", "-c", "(sleep 2 &); exit 0"},
 		Timeout: 10 * time.Second,

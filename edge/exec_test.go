@@ -3,8 +3,8 @@ package edge
 import (
 	"context"
 	"errors"
-	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -168,51 +168,63 @@ func TestRequestIDDeterministicAndInFlightDeduplication(t *testing.T) {
 	assert.NotEqual(t, id1, id3)
 	assert.NotEqual(t, id1, idEpoch2, "same card and sha in epochs 1 and 2 must produce different RequestIDs")
 
+	// A duplicate made while the first call is in flight does not run fn:
+	// it waits on the first, and with its context already cancelled it
+	// gives up at once, so no scheduling decides the outcome.
 	d := NewDeduplicator()
-	started := make(chan struct{})
-	release := make(chan struct{})
-	calls := 0
-
 	req := EdgeRequest{Epoch: 1, Kind: "land", Card: "card-1", SHA: "aaaa1111", After: []string{"op-accept-1"}}
-
+	calls := 0
+	var dupErr error
 	fn := func(ctx context.Context, r EdgeRequest) (EdgeResult, error) {
 		calls++
-		if calls == 1 {
-			close(started)
-			<-release
-		}
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, dupErr = d.Do(cancelled, req, func(context.Context, EdgeRequest) (EdgeResult, error) {
+			calls++
+			return EdgeResult{}, nil
+		})
 		return EdgeResult{Outcome: "green"}, nil
 	}
-
-	doneErr := make(chan error, 1)
-	var secondRes EdgeResult
-	go func() {
-		<-started
-		var err error
-		secondRes, err = d.Do(context.Background(), req, fn)
-		doneErr <- err
-	}()
-
-	go func() {
-		<-started
-		for i := 0; i < 100000; i++ {
-			runtime.Gosched()
-		}
-		close(release)
-	}()
-
 	firstRes, err := d.Do(context.Background(), req, fn)
 	require.NoError(t, err)
-	require.NoError(t, <-doneErr)
+	assert.ErrorIs(t, dupErr, context.Canceled)
 	assert.Equal(t, 1, calls, "in-flight duplicate must coalesce by RequestID")
 	assert.Equal(t, id1, firstRes.ID)
-	assert.Equal(t, firstRes, secondRes)
 
 	// After completion, a subsequent call re-queries the world rather than returning stale memory.
 	thirdRes, err := d.Do(context.Background(), req, fn)
 	require.NoError(t, err)
-	assert.Equal(t, 2, calls)
+	assert.Equal(t, 2, calls, "the re-query ran fn again")
 	assert.Equal(t, "green", thirdRes.Outcome)
+}
+
+// Real concurrency: duplicates blocked on one in-flight call all receive its
+// result, and fn runs once.
+func TestFunctionalInFlightDuplicatesShareOneResult(t *testing.T) {
+	t.Parallel()
+	d := NewDeduplicator()
+	req := EdgeRequest{Epoch: 1, Kind: "land", Card: "card-1", SHA: "aaaa1111"}
+	started, release := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	fn := func(context.Context, EdgeRequest) (EdgeResult, error) {
+		calls.Add(1)
+		close(started)
+		<-release
+		return EdgeResult{Outcome: "green"}, nil
+	}
+	results := make(chan EdgeResult, 5)
+	go func() { r, _ := d.Do(context.Background(), req, fn); results <- r }()
+	<-started
+	for range 4 {
+		go func() { r, _ := d.Do(context.Background(), req, fn); results <- r }()
+	}
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	first := <-results
+	for range 4 {
+		assert.Equal(t, first, <-results)
+	}
+	assert.Equal(t, int32(1), calls.Load())
 }
 
 func TestRestartRequeryIdempotencyPerFactKind(t *testing.T) {

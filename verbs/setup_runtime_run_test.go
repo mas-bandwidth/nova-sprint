@@ -12,6 +12,7 @@ import (
 )
 
 func TestSetupRunRequiresRealOwnerAndPresence(t *testing.T) {
+	t.Parallel()
 	status := run.ChooserStatus{Held: true, Operation: "run", Host: "bench-a"}
 	present := true
 	r := PGSetupRun{Inspect: func(context.Context, string, string) (run.ChooserStatus, error) { return status, nil }, Env: ExecEnvironment{Command: func(context.Context, string, ...string) ([]byte, error) {
@@ -44,6 +45,7 @@ func TestSetupRunRequiresRealOwnerAndPresence(t *testing.T) {
 // A machine has one name: "x.local" holding the lock is machine "x"; a
 // different machine is refused with both names.
 func TestSetupRunComparesMachineNames(t *testing.T) {
+	t.Parallel()
 	status := run.ChooserStatus{Held: true, Operation: "run", Host: "x.local"}
 	r := PGSetupRun{Inspect: func(context.Context, string, string) (run.ChooserStatus, error) { return status, nil }, Env: ExecEnvironment{Command: func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("WHO OK present=1\nsprint\t1m\n"), nil
@@ -61,6 +63,7 @@ func TestSetupRunComparesMachineNames(t *testing.T) {
 // No lock held: the refusal carries the unit's state and its log's last
 // lines, read through the injected command.
 func TestSetupRunNoLockShowsUnitStateAndLog(t *testing.T) {
+	t.Parallel()
 	var calls []string
 	cmd := func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, name+" "+strings.Join(args, " "))
@@ -102,6 +105,7 @@ func TestSetupRunNoLockShowsUnitStateAndLog(t *testing.T) {
 // Step 4 still not ready after its act is a refusal naming the condition,
 // never "step 4 is not verified".
 func TestRuntimeRunCheckRefusalNamesTheCondition(t *testing.T) {
+	t.Parallel()
 	r := RuntimeSetup{Run: notReadyRun{}, RunService: FleetService{Name: "sprint-run", Machine: "bench-a"}, DefaultRunHost: "bench-a"}
 	r.Prerequisites.Env.Choices = Choices{Store: store.NewFake(), Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
 	if err := r.Prerequisites.Env.Choices.Save(context.Background(), "run-on", "bench-a"); err != nil {
@@ -123,6 +127,7 @@ func (notReadyRun) Ready(context.Context, string, string) (bool, error) {
 // starts, once: a second act changes nothing. Its line names the secrets
 // store the run service opens.
 func TestRuntimeRunStoresDefaultPolicyOnce(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := store.NewFake()
 	now := func() time.Time { return time.Unix(1000, 0) }
@@ -158,6 +163,7 @@ func TestRuntimeRunStoresDefaultPolicyOnce(t *testing.T) {
 
 // A run machine or dashboard target that does not fit names why.
 func TestRuntimeTargetRefusalsNameTheirCause(t *testing.T) {
+	t.Parallel()
 	if err := runHostMatches("amd-2", "amd-1"); err == nil || !strings.Contains(err.Error(), `run machine "amd-2" is not "amd-1"`) {
 		t.Fatal(err)
 	}

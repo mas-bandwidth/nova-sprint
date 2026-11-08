@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -14,7 +15,13 @@ import (
 func fakeBusBin_internal(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "nova-bus")
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	// Hold ForkLock while the write fd is open: a parallel test forking in that
+	// window inherits the fd until its exec, and our own exec then fails with
+	// ETXTBSY "text file busy" (golang/go#22315).
+	syscall.ForkLock.RLock()
+	err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755)
+	syscall.ForkLock.RUnlock()
+	if err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -29,6 +36,7 @@ func waitOrFail_internal(t *testing.T, ch <-chan struct{}, what string) {
 }
 
 func TestFunctionalOSBusHookWakesOnALineAndStops(t *testing.T) {
+	t.Parallel()
 	bin := fakeBusBin_internal(t, `echo "HOOK OK name=$3 waiting=0" >&2
 echo "id1	from	-	subject	body"
 exec sleep 30`)
@@ -47,6 +55,7 @@ exec sleep 30`)
 }
 
 func TestFunctionalOSBusHookDeathCarriesItsExitAndStderr(t *testing.T) {
+	t.Parallel()
 	bin := fakeBusBin_internal(t, `echo "HOOK OK name=$3 waiting=0" >&2
 echo "redis: connection refused" >&2
 exit 3`)
@@ -61,6 +70,7 @@ exit 3`)
 }
 
 func TestFunctionalOSBusHookRefusedBeforeClaimingTheName(t *testing.T) {
+	t.Parallel()
 	bin := fakeBusBin_internal(t, `echo "name already hooked" >&2
 exit 1`)
 	if _, err := (OSBusHook{Bin: bin, ClaimWait: 10 * time.Second}).Start(context.Background(), "r1"); err == nil || !strings.Contains(err.Error(), "name already hooked") {
@@ -73,6 +83,7 @@ exit 1`)
 }
 
 func TestFunctionalBusEnvPassesOnlyTheBusConnection(t *testing.T) {
+	t.Parallel()
 	got := BusEnv([]string{"PATH=/bin", "NOVA_BUS_REDIS=127.0.0.1:6381", "DATABASE_URL=x", "NOVA_BUS_USER=u"})
 	if len(got) != 2 || got[0] != "NOVA_BUS_REDIS=127.0.0.1:6381" || got[1] != "NOVA_BUS_USER=u" {
 		t.Fatalf("BusEnv = %v", got)

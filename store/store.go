@@ -203,12 +203,20 @@ type Row struct {
 	Cores      int `json:"cores"`
 	SlotsUsed  int `json:"slots_used"`
 	SlotsTotal int `json:"slots_total"`
+	// CPUPeakDeci is the highest CPU busy percent over the last 10 seconds before the
+	// beat, in tenths (1000: every core busy); the board's CPU cell.
+	CPUPeakDeci int `json:"cpu_peak_deci"`
 	// Tiers is what the worker's harness adapter serves, as it advertised in
 	// its heartbeat: a comma list in Tiers' order, "" when it advertised
 	// none in this session (a PutRow that changes the session clears it).
 	// With SlotsTotal it is the roster's input for the row (defect 74:
 	// roster.Advertised); no store rule reads it.
 	Tiers string `json:"tiers"`
+	// Version is the release of the nova-sprint binary that beat (the one
+	// that takes the row's cards), "" when it did not say in this session
+	// (cleared with Tiers). The tick deals a worker row behind the run's
+	// release nothing (roster.Advertised; defect D3); no store rule reads it.
+	Version string `json:"version"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,

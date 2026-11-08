@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseSetupBoundsAndDuplicates(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		args  []string
 		actor string

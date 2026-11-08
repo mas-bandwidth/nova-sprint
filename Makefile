@@ -21,14 +21,16 @@ BINDIR ?= $(HOME)/.local/bin
 install: build
 	go run ./tools/placebin bin/* $(BINDIR)
 
-# the unit tier (docs/TESTING.md): no real time, sockets or network
+# the unit tier (docs/TESTING.md): no real time, sockets, network or process;
+# the test binaries run with no PATH and no HOME, as CI runs them
 test:
-	go test -skip Functional ./...
+	go test -race -short -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...
 
 lint:
 	test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 	go vet ./...
 	go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
+	go run ./tools/unitlint
 
 version:
 	@echo $(VERSION)

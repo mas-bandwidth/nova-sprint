@@ -7,7 +7,7 @@ package steps
 // cost by packing size, which sets pack. Skipped unless NOVA_LOAD=1; run it
 // on a quiet Linux bench:
 //
-//	NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestLoad -v ./steps/
+//	NOVA_LOAD=1 go test -count=1 -timeout 60m -run TestFunctionalLoad -v ./steps/
 //
 // Every measurement is one line, LOAD <name> n=<count> p50=<ms> p95=<ms>
 // max=<ms> [more=...], every bar one line, BAR <name> PASS|FAIL <why>.
@@ -25,6 +25,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +35,8 @@ const (
 	loadStreams   = 20
 )
 
-func TestLoad(t *testing.T) {
+func TestFunctionalLoad(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (minutes, on a Linux bench, never in per-commit CI)")
 	}
@@ -169,14 +171,7 @@ func storeSeed(v *View) []store.Op {
 // loadPG starts a throwaway PostgreSQL (as store's functional tests do).
 func loadPG(t *testing.T) string {
 	t.Helper()
-	bin := ""
-	if p, err := exec.LookPath("initdb"); err == nil {
-		bin = filepath.Dir(p)
-	} else if found, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb"); len(found) > 0 {
-		bin = filepath.Dir(found[0])
-	} else {
-		t.Skip("the load test's apply half needs PostgreSQL: initdb is not on PATH")
-	}
+	bin := pgbin.Dir(t)
 	dir := t.TempDir()
 	init := exec.Command(filepath.Join(bin, "initdb"), "-D", filepath.Join(dir, "data"), "-U", "nova", "--auth=trust", "-E", "UTF8", "--no-locale")
 	init.Env = append(os.Environ(), "LC_ALL=C")
@@ -239,7 +234,7 @@ func bar(t *testing.T, name string, ok bool, format string, args ...any) {
 	}
 }
 
-// TestLoadResolve times the needs step alone (section 64b: the tick resolves
+// TestFunctionalLoadResolve times the needs step alone (section 64b: the tick resolves
 // from the state, every tick) on 5,000 waiting producers whose needs a store
 // op landed (no land step, no edge result), in three worlds: free (every
 // producer names its own file, so all 5,000 resolve), held (each names two
@@ -248,7 +243,8 @@ func bar(t *testing.T, name string, ok bool, format string, args ...any) {
 // after one tick applied: the overlap judgements open, each checked for
 // clearing). The view is not applied between the timed ticks, so every tick
 // is the same worst case.
-func TestLoadResolve(t *testing.T) {
+func TestFunctionalLoadResolve(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NOVA_LOAD") != "1" {
 		t.Skip("load test: set NOVA_LOAD=1 to run it (on a Linux bench, never in per-commit CI)")
 	}

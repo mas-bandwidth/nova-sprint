@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -329,6 +330,9 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 		ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox",
 		ReadPaths: []string{"/usr", "/home/nova/sdk"}, NetDeny: true,
 	}, j, oEnv, cArgv)
+	if runtime.GOOS != "windows" && (len(wallArgv) < 3 || wallArgv[0] != "nice" || wallArgv[1] != "-n" || wallArgv[2] != "15") {
+		t.Fatalf("wall argv must run the work at nice 15, below CI: %v", wallArgv)
+	}
 	joined := strings.Join(wallArgv, " ")
 	if !strings.Contains(joined, "nova-reserve run --slots 1") || !strings.Contains(joined, "nova-sandbox --write "+dir) || !strings.Contains(joined, "--unix --net-deny --net-allow 127.0.0.1:19999") {
 		t.Fatalf("unexpected wall argv: %s", joined)
@@ -846,7 +850,7 @@ func TestConcurrentWidthWithdrawStopsRunningHarness(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("expected running harness ctx canceled on withdraw, got %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(2 * time.Second): // unitlint: a hang guard, not a measurement
 		t.Fatal("timed out waiting for withdraw to cancel running harness")
 	}
 	if err := <-done; err != nil {

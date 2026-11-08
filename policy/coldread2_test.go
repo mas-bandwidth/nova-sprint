@@ -35,7 +35,8 @@ const coldread2Margin = 100 * time.Millisecond * raceSlowdown
 // no bound but memory) and is refused only after it. Built, fix 5 and 6: "a
 // per-tick wall clock TickTime = 250 ms ... enforced by Thread.Cancel";
 // design guarantee 4, "A runtime error never stalls a tick".
-func TestColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
+func TestFunctionalColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
@@ -54,7 +55,8 @@ func TestColdread2DefectSingleStepOverrunsTickTime(t *testing.T) {
 // 2,000, about 120,000 steps) take 0.83 s on amd-3 and the version answers.
 // Built, fix 5 and 6: "a tick in which every version spends its budget takes
 // at most three budgets".
-func TestColdread2DefectCompileOutsideTickTime(t *testing.T) {
+func TestFunctionalColdread2DefectCompileOutsideTickTime(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
@@ -70,7 +72,8 @@ func TestColdread2DefectCompileOutsideTickTime(t *testing.T) {
 // the whole text before it cuts (0.69 s on 100 MB): about 1.25 s for one
 // verdict, with the clock already stopped. Built, fix 4 ("at most 4,096
 // bytes") and fix 5 and 6 (the per-tick wall clock).
-func TestColdread2DefectJudgementTextCostUnbounded(t *testing.T) {
+func TestFunctionalColdread2DefectJudgementTextCostUnbounded(t *testing.T) {
+	t.Parallel()
 	breakTiming(t)
 	w := fakeWorld(t)
 	snap := w.snap()
@@ -129,23 +132,36 @@ func cachedBytes(e *Engine) int {
 	return n
 }
 
-// Diff is a longest-common-subsequence table of len(a) x len(b) ints: two
-// stored versions of 8,000 lines each allocate 508 MiB (amd-3); at the
-// 64 KiB limit (65,536 newlines) it is about 32 GiB. Design, "The verbs":
-// policy diff is the text diff of two bodies, every body at most 64 KiB.
-func TestColdread2DefectDiffQuadraticMemory(t *testing.T) {
-	w := fakeWorld(t)
-	w.up()
-	pad := strings.Repeat("\n", 8000)
-	a := w.set("a.star", defaultBody+pad+"# a\n")
-	b := w.set("b.star", defaultBody+pad+"# b\n")
-	var m0, m1 runtime.MemStats
-	runtime.ReadMemStats(&m0)
-	_, err := Diff(w.ctx(), w.st, fmt.Sprint(a), fmt.Sprint(b))
-	runtime.ReadMemStats(&m1)
-	require.NoError(t, err)
-	alloc := m1.TotalAlloc - m0.TotalAlloc
-	assert.Less(t, alloc, uint64(64<<20), "diff of two %d-byte bodies allocated %d MiB", len(defaultBody)+8004, alloc>>20)
+// lineDiff's working memory is linear in its input: diffing two bodies with
+// no line in common (the worst case for the common subsequence) allocates
+// about twice as much at twice the lines, where a len(a) x len(b) table
+// would allocate four times as much. Allocation is read as the least bytes
+// of several runs of the call, since bytes other parallel tests allocate in
+// the same window only add to a run.
+func TestLineDiffMemoryGrowsLinearlyWithInput(t *testing.T) {
+	t.Parallel()
+	lines := func(prefix string, n int) []string {
+		s := make([]string, n)
+		for i := range s {
+			s[i] = fmt.Sprintf("%s%d", prefix, i)
+		}
+		return s
+	}
+	least := func(n int) uint64 {
+		x, y := lines("a", n), lines("b", n)
+		best := ^uint64(0)
+		for range 7 {
+			var out strings.Builder
+			var m0, m1 runtime.MemStats
+			runtime.ReadMemStats(&m0)
+			lineDiff(&out, x, y)
+			runtime.ReadMemStats(&m1)
+			best = min(best, m1.TotalAlloc-m0.TotalAlloc)
+		}
+		return best
+	}
+	small, large := least(1000), least(2000)
+	assert.Less(t, large, 3*small, "doubling the lines grew allocation from %d to %d bytes", small, large)
 }
 
 // When the built-in fails (the model's Drift may break Default; the design:
@@ -153,18 +169,19 @@ func TestColdread2DefectDiffQuadraticMemory(t *testing.T) {
 // reports ..."), a version without catalog() takes builtinCatalog, which
 // panics (catalog.go:62), and sync.OnceValue repeats the panic on every call:
 // every tick of that version panics. Model: TickAlwaysAnswered with NoAnswer.
-// The probe stands in the failing built-in for the embedded one; it is restored.
+// The probe stands in the failing built-in for the embedded one, in its own
+// engine (the engine's built-in is its own, taken from defaultBody when made).
 func TestColdread2DefectBrokenBuiltinCatalogPanics(t *testing.T) {
-	saved := defaultBody
-	t.Cleanup(func() { defaultBody = saved })
+	t.Parallel()
 	active, _ := override("catalog", "")
 	broken, _ := override("catalog", "def catalog():\n    return 1")
-	defaultBody = broken // Round 3: the engine takes the built-in from defaultBody when it is made
+	e := testEngine()
+	e.builtin = broken
 	w := fakeWorld(t)
 	snap := w.snap()
 	var a Answers
 	assert.NotPanics(t, func() {
-		a, _ = testEngine().Answer(Versions{Active: pv(2, active)}, snap, w.ro, FullQuestions(snap, nil))
+		a, _ = e.Answer(Versions{Active: pv(2, active)}, snap, w.ro, FullQuestions(snap, nil))
 	}) // ignored: the failures are the fallback's
 	assert.Equal(t, -1, a.Version, "the built-in's catalog failing is the last resort: the tick deals nothing")
 }

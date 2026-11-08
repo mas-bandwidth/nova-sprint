@@ -179,12 +179,14 @@ Left out:
 - `Store.tla`, `Store.cfg`, `StoreRecords.cfg`: the model and its two
   passing runs.
 - `witnesses/Store*`: seventeen reversed witnesses, each `Store.tla` with one
-  fault. They are generated: `python3 make-witnesses.py` writes every
-  witness and every cfg (`Store.cfg`, `StoreRecords.cfg`,
-  `witnesses/*.cfg`, `reach/*.cfg`) from `Store.tla` and the fault list in
-  the script. Each fault is a set of exact text replacements; one that no
-  longer matches stops the script. Edit `Store.tla`, rerun the script,
-  commit both.
+  fault. Only their cfgs are committed (`witnesses/*.cfg`); the modules are
+  generated at check time: `python3 make-witnesses.py` writes every witness
+  module and every cfg (`Store.cfg`, `StoreRecords.cfg`, `witnesses/*.cfg`,
+  `reach/*.cfg`) from `Store.tla` and the fault list in the script. Each
+  fault is a set of exact text replacements; one that no longer matches
+  stops the script. `gen-witnesses.sh DIR` runs every `make-*witnesses.py`
+  in a copy of this directory and is what `ci-tlc.sh` runs first. Edit
+  `Store.tla`, rerun the script, commit the cfgs.
 - `reach/Never*`: twenty-eight reachability checks on `Store.tla`. Each must
   be violated, which shows the passing runs are not vacuous.
 
@@ -209,29 +211,20 @@ gate. It runs every module in parallel:
 - `Store.tla` must pass with `Store.cfg` and with `StoreRecords.cfg` (TLC
   exit 0);
 - `CardMachine.tla` must pass with each of its scenario cfgs;
-- every `witnesses/*.tla` and every `reach/*.cfg` must report a violation
+- every generated `witnesses/*.tla` and every `reach/*.cfg` must report a violation
   (TLC exit 12) of the first invariant in its cfg. `reach/Card*.cfg` run on
   `CardMachine.tla`, every other reach cfg on `Store.tla`.
 
 It exits non-zero on any other outcome: a pass where a violation is
 required, a violation of a different invariant, a parse error, a crash, or a
 run that wrote no result. It uses a pinned, sha256-checked `tla2tools.jar`
-(v1.8.0), gives each run its own `java.io.tmpdir`, and passes
+(v1.8.0, from this repository's `tla-tools-1.8.0` release), gives each run its own `java.io.tmpdir`, and passes
 `-noGenerateSpecTE`, so a rerun in the same tree never sees trace modules.
 
 ```
 bash ci-tlc.sh
+TLC_SHARD=2/6 TLC_CORES=8 bash ci-tlc.sh   # one nightly shard: every sixth run, 8 cores
 ```
-
-The helper scripts:
-- `sh run-tlc.sh /path/to/tla2tools.jar [java]` runs the same set, one log
-  per run in `logs/`;
-- `sh run-one.sh` runs a single one;
-- `sh summarize-logs.sh` prints the result lines;
-- `sh show-trace.sh <name>` prints a counterexample's event ids, and
-  `sh show-all-traces.sh` does it for every violated log;
-- `sh last-state.sh <name>` prints the epoch, cards and rows of a
-  counterexample's last state.
 
 ## Invariants
 
@@ -627,9 +620,6 @@ cycle check.
   `python3 make-card-witnesses.py` from `CardMachine.tla` and the fault list
   in the script, in the same shape as `make-witnesses.py`: a replacement
   that no longer matches stops the script.
-- `card-trace.py`: `python3 -I card-trace.py logs/<name>.log` prints a card
-  counterexample one line per state (TLC names every step `<Next>`, so the
-  move is read off the diff).
 
 ## Invariants
 
@@ -779,7 +769,7 @@ Step invariants (each: the last step kept its rule):
 
 ## Results, the CI jar on hetzner2, 2026-11-07 (round 7, card/ at v2-card-fix4 4bb1a43b)
 
-Every run (store and card) in one parallel pass with `run-tlc.sh` (each JVM
+Every run (store and card) in one parallel pass (each JVM
 at `-Xmx3g`), the passing runs on 4 workers each and the rest on 1, on a
 host other users' TLC jobs were also loading, so the times are under full
 contention. CardDeps was OOM-killed in that pass (exit 137, the host short
@@ -850,7 +840,7 @@ invariant violated (60 runs).
 | reach `CardNeverWaivedRed` | NeverWaivedRed violated | 747797 / 229675 | 12 | 1min 31s |
 | reach `CardNeverYesAfterRed` | NeverYesAfterRed violated | 2227352 / 591860 | 15 | 3min 08s |
 
-The counterexamples were checked by hand with `card-trace.py`. Up to
+The counterexamples were checked by hand. Up to
 round 4, each move the fault lets through is one card/ at 4a085774 refuses:
 - **CardLandedMoves:** p1 is cancelled (fail), then Rescore changes its score.
 - **CardAuthorReads:** r2 produces head 1; a read of it is cut to r2.
@@ -1092,11 +1082,18 @@ operators where the check is about them:
 | `PolicyFailsToDefault` | guarantee 10 | a failed rows answer deals exactly what no policy deals, and every failed question has its `policy` judgement |
 | `AfterKept` | guarantee 3, ENFORCED L2-U19 | a land request never goes out for a producer whose `after` target is merging |
 | `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
+| `VerdictHasItsRead` | Fix | a yes has a done ok read of the review and no fix read, a fix a done fix read; a faulted read is neither |
+| `NeverDealtAbsent` | D1' (2026-11-07) | no accepted Start, read or preemption lands on a row absent from nova-bus (`bus`), whatever the store's up says |
 
 `ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
 under weak fairness on `Snap` and `Tick` only (rows need not take or
 report): a ready producer with room on an open serving row (under its
 width) is eventually dealt, unless the room goes.
+
+`FaultedReadReadAgain`, under the same fairness: a review whose done reads
+all faulted (a faulted read is not a read: it is owed again and the
+verdict is retry, which moves nothing) is eventually read again, or
+leaves review, unless the room for a read goes.
 
 `DealtWithinKTicks` (intent rule 33, an invariant over the counters `rdy`
 and `ju`): a producer ready for `UndealtTicks` (2) ticks with an open
@@ -1137,6 +1134,9 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsResolveOnEvent` | deal | resolve only on a landed result's event | ResolveFromState |
 | `witnesses/StepsGlobOverlaps` | pre | a glob both list counts as overlap | ResolveFromState |
 | `witnesses/StepsHeldUnshown` | deal | no overlap judgement for a held producer | HeldBehindShown |
+| `witnesses/StepsYesOnFault` | deal | the verdict default is yes unless a read said fix | VerdictHasItsRead |
+| `witnesses/StepsDealtAbsent` | deal | the deal reads the store's up as presence | NeverDealtAbsent |
+| `witnesses/StepsFaultCounted` | deal | a faulted read counts as a read | FaultedReadReadAgain (liveness, TLC exit 13) |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
 | `reach/StepsNeverRefused` | pre | none | violated: an op is refused by a race |
@@ -1161,6 +1161,8 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `reach/StepsNeverGated` | pre | none | violated: the policy gate opens no-policy |
 | `reach/StepsNeverHeldBehind` | deal | none | violated: an overlap judgement is opened |
 | `reach/StepsNeverHandLanded` | deal | none | violated: a store op lands a producer by hand |
+| `reach/StepsNeverReadAgain` | deal | none | violated: a review whose read faulted is read again |
+| `reach/StepsNeverAbsent` | deal | none | violated: a tick runs with an up row off the bus serving a ready card |
 
 `python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
 five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`
@@ -1442,9 +1444,9 @@ initdb fails the job instead of skipping the PostgreSQL walk.
 The walks write traces only when `NOVA_TRACE_DIR` names a directory
 (`make-traces.sh` sets it); without it the test suite is unchanged. The walk
 traces (`store-fake-*`, `store-pg-*`, `card-walk-*`) are regenerated, not
-committed. The committed fixtures are `store-breaker`, `card-breaker` and
-`store-cursor-zero`; `TestTraceRefusesDivergence` and `TestTraceCursorZero`
-compare them against what the code writes now (regenerate with
+committed. The committed fixtures are the breakers (`store-breaker`, `card-breaker`,
+`policy-breaker`), which `TestTraceRefusesDivergence` compares against what
+the code writes now (regenerate with
 `NOVA_TRACE_DIR=tla/traces go test -run '<test>' ./store/` or `./card/`).
 
 ## The walks and their seeds

@@ -81,12 +81,13 @@ type wireFailure struct {
 
 // evaluator is a process engine's child, started on first use.
 type evaluator struct {
-	mu    sync.Mutex
-	cmd   *exec.Cmd
-	in    io.WriteCloser
-	enc   *gob.Encoder
-	dec   *gob.Decoder
-	error *capped
+	mu     sync.Mutex
+	cmd    *exec.Cmd
+	in     io.WriteCloser
+	enc    *gob.Encoder
+	dec    *gob.Decoder
+	error  *capped
+	memory int // the child's cap in bytes; 0 is EvalMemory (a test sets a small one)
 }
 
 // NewEngine is an engine that runs every version in its own child process
@@ -95,7 +96,7 @@ type evaluator struct {
 func NewEngine(clock Clock) *Engine {
 	e := newLocal(clock)
 	e.proc = &evaluator{}
-	runtime.AddCleanup(e, (*evaluator).stop, e.proc)
+	runtime.AddCleanup(e, (*evaluator).release, e.proc)
 	return e
 }
 
@@ -194,7 +195,11 @@ func (ev *evaluator) startChild() error {
 		return fmt.Errorf("cannot find the policy evaluator: %w", err)
 	}
 	cmd := exec.Command(exe, EvalArg)
-	cmd.Env = append(os.Environ(), evalMemoryEnv+"="+strconv.Itoa(EvalMemory))
+	limit := EvalMemory
+	if ev.memory > 0 {
+		limit = ev.memory
+	}
+	cmd.Env = append(os.Environ(), evalMemoryEnv+"="+strconv.Itoa(limit))
 	ev.error = &capped{}
 	cmd.Stderr = ev.error
 	in, err := cmd.StdinPipe()
@@ -210,6 +215,14 @@ func (ev *evaluator) startChild() error {
 	}
 	ev.cmd, ev.in, ev.enc, ev.dec = cmd, in, gob.NewEncoder(in), gob.NewDecoder(out)
 	return nil
+}
+
+// release is stop for the collector's cleanup: it waits for a request in
+// flight, which holds mu, so the two stops never overlap.
+func (ev *evaluator) release() {
+	ev.mu.Lock()
+	defer ev.mu.Unlock()
+	ev.stop()
 }
 
 // stop kills the child, if any; the next request starts another.

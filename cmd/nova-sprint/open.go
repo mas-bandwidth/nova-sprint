@@ -29,8 +29,13 @@ func credentialsFromEnv() credentials {
 
 // sprint is the DSN as nova_sprint, or the refusal of a process without the
 // sprint's own credential (verbs.NoCredential: the store may well be set
-// up; "not set up" is for a store without the schema, defect 22).
+// up; "not set up" is for a store without the schema, defect 22). A process
+// with neither the DSN nor the credential names no store at all
+// (verbs.NoStore: up is its next command, never nova-secrets exec).
 func (c credentials) sprint() (string, error) {
+	if c.password == "" && c.dsn == "" {
+		return "", verbs.NoStore("")
+	}
 	if c.password == "" {
 		return "", verbs.NoCredential()
 	}
@@ -57,6 +62,7 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 	e.Services = services{creds: creds, store: st, roster: ro, policy: pol, git: git, forge: fg}
 	env := verbs.ExecEnvironment{DSN: creds.dsn, Password: creds.password, Choices: verbs.Choices{Store: st, Actor: actor, Now: time.Now}, Command: toolCommand}
 	e.Setup, e.Lock = buildProductionSetup(st, env, actor, toolPin)
+	e.Doctor = fleetDoctor(creds, e.Setup)
 	if len(args) > 0 && args[0] == "up" {
 		e.Bus = setupPresence{}
 	}
@@ -64,6 +70,19 @@ func newEngine(args []string, phase string) (*verbs.Engine, func()) {
 		e.ReportContinuation = reportHandoff
 	}
 	return e, func() { st.Close(); ro.Close() }
+}
+
+// fleetDoctor is the doctor with the setup walk's view of the fleet, through
+// which check and show read the worker benches (doctor.Workers).
+func fleetDoctor(creds credentials, setup verbs.Setup) doctor {
+	d := doctor{creds: creds}
+	switch p := setup.(type) {
+	case productionSetup:
+		d.fleet = &p
+	case failedProductionSetup:
+		d.fleetErr = p.err
+	}
+	return d
 }
 
 // busEdge is nova-bus with its connection only.

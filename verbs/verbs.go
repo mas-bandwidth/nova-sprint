@@ -98,6 +98,11 @@ type Doctor interface {
 	Schema(ctx context.Context) (bool, error)           // the store at this build's schema
 	History(ctx context.Context) error                  // the event log rebuilds the tables (read only)
 	Run(ctx context.Context) (run.ChooserStatus, error) // who holds the chooser lock (show run)
+	// Workers is every worker bench's service (the benches in nova-config's
+	// inventory, each unit's last log line); Worker is machine's, false
+	// when it is no bench (check_workers.go).
+	Workers(ctx context.Context) ([]WorkerUnit, error)
+	Worker(ctx context.Context, machine string) (WorkerUnit, bool, error)
 }
 
 // Services are the long-running verbs, the binary's.
@@ -130,6 +135,9 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 		if errors.Is(err, ErrNotSetUp) {
 			return failed(v.name, notSetUp(in.actor))
 		}
+		if errors.Is(err, ErrNoStore) {
+			return failed(v.name, NoStore(in.actor))
+		}
 		return failed(v.name, classify(err))
 	}
 	return Result{Output: out, Exit: exitDone}
@@ -139,6 +147,9 @@ func (e *Engine) call(ctx context.Context, v *verb, in *input) (string, error) {
 	if v.role == roleWorker || v.role == roleCoordinator {
 		snap, err := e.hooked(ctx, in, v.role)
 		if err != nil {
+			return "", err
+		}
+		if err = epochNow(in.epoch(), snap); err != nil {
 			return "", err
 		}
 		return v.run(e, ctx, in, snap)

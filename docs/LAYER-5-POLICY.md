@@ -95,7 +95,7 @@ end of file` (ruled 2026-11-07).
 | question | inputs | answer and domain | the engine also refuses | default |
 |---|---|---|---|---|
 | `order(card)` | id, stream, score, priority, tier, attempt, bounces, prior_head | a tuple of up to 4 ints or strings; the engine sorts by (rung, answer, id) | a tuple of other types or longer than 4 | fix attempts first, then score |
-| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), attempt, bounces, priority (no prose: round 5), and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width (the roster's, from nova-config: round 5), working, ready | the candidates to use, in preference order; the engine deals to the first with room (for a read, `count` distinct rows in that order) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; every candidate listed: the wanted rank and up, nearest first, then the ranks between the tier and the wanted one, highest first; those with room first, all of them when none has room (ruled 2026-11-06, so the joint check passes whenever any row could take the card); within a rank, by name (round 5) |
+| `rows(card, kind, candidates)` | the card: id, stream, tier (its minimum), attempt, bounces, priority (no prose: round 5), and for a read `writer_rank` (the rank of the row that wrote the head); `kind` `work` or `read`; `candidates`: the rows up, not held and serving the card's tier (the author excluded for a read), each with name, tiers, rank (the highest tier it lists), model, harness, width (the roster's, from nova-config: round 5), working, ready | the set of candidates the card may go to; the deal picks among them by the engine's ranking, which counts this tick's deals, so a burst spreads across rows (preemption takes the first listed; for a read, `count` distinct rows) | a name not in `candidates`; a row whose rank is below the card's tier; an empty list while candidates exist | the card's own rank; one rank up at 2 bounces, frontier at 4; for a read the rank above `writer_rank`, frontier for a security card; every candidate listed: the wanted rank and up, nearest first, then the ranks between the tier and the wanted one, highest first; those with room first, all of them when none has room (ruled 2026-11-06, so the joint check passes whenever any row could take the card); within a rank, by name (round 5) |
 | `reads(card)` | as `rows`' card | the count n, 1 <= n <= 5 | n out of range | 1 |
 | `verdict(card, reads)` | the producer; its done reads of this head and review (row, rank, result ok, fix or fault, finding) | `"yes"`, `"fix"` or `"retry"` (every done read faulted: layer 3 asks one more read; ruled 2026-11-06 after the cold read) | `"yes"` with no ok read, `"fix"` with no fix read (layer 2's rules), `"retry"` while a done read is ok or fix | any fix read means fix; else an ok read means yes; else retry |
 | `width(row)` | name, kind, width, tiers, model, harness (the roster's, from nova-config, by the row's name: round 5), flaps (the store's) | `{"work": w, "ahead": a}`, 0 <= w <= width, 0 <= a <= 4 x width | over the row's width | work = width, ahead = width (PRIORITY D21: 2 x width held) |
@@ -799,7 +799,7 @@ roster (nova-config changing under the sprint), as it moved the store's.
 3. `TestBreakSetRaceStoresOneBodyTwice`: `set` is fenced `AtSeq` at its
    snapshot, as `up` is; a set that loses the race is refused as "v<n>
    already stores this body" when the winner stored its body.
-4. and 5. `TestBreakProseMakesTheInputsOutrunTheTickDeadline`,
+4. and 5. `TestFunctionalBreakProseMakesTheInputsOutrunTheTickDeadline`,
    `TestBreakProseLeavesTheBuiltInUnableToAnswer`: the prose is no input
    and no part of the answer cache's key, and the evaluator's request drops
    briefs and prose (`unworded`). **One conflict with the ruling's premise**:
@@ -812,7 +812,7 @@ roster (nova-config changing under the sprint), as it moved the store's.
    the evaluator, cold engine): 5,000 producers in review with 16 KiB
    prose each, answered by the built-in in 113 ms (was 952 ms and no
    answer on the studio at f62551fe).
-6. `TestBreakFallbackTimerStartsAfterTheInputs`: the fallback's wait and
+6. `TestFunctionalBreakFallbackTimerStartsAfterTheInputs`: the fallback's wait and
    the deadline are both counted from the tick's first byte
    (`AnswerContext` reads the clock before the inputs are built; `race`
    waits `fallbackAfter` minus the time spent). The probe now skips on
@@ -911,7 +911,7 @@ round 4 said; Glenn's call.
 
 *Tests.* `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
 c0067a27: ok (5.0 s). The timing probes with `NOVA_LOAD=1`, exclusive, on
-amd-3 at a33fb7ef: all pass but `TestBreakFallbackTimerStartsAfterTheInputs`
+amd-3 at a33fb7ef: all pass but `TestFunctionalBreakFallbackTimerStartsAfterTheInputs`
 (skips, above). Load through the evaluator, 5,000 producers over 100 rows:
 cold 106.7 ms, warm 59.1 ms (measured).
 
@@ -923,7 +923,7 @@ required).
 
 *STATUS at the end of round 5* (the method moved to one holistic pass over
 all layers; this round stops here). rowan2's seven: all seven built; six
-pass, `TestBreakFallbackTimerStartsAfterTheInputs` skips by construction
+pass, `TestFunctionalBreakFallbackTimerStartsAfterTheInputs` skips by construction
 (above) and its ruling is checked by `TestFallbackCountsFromTheFirstByte`.
 Cold read 3's eight: all eight built and pass. Rulings built: every one in
 this section, the contradictions included. Half done or owed: layer 6's

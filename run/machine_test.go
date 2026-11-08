@@ -6,6 +6,7 @@ import (
 )
 
 func TestMachineIdentityIgnoresDisplaySuffixes(t *testing.T) {
+	t.Parallel()
 	for _, host := range []string{"x", "x.local", "X.local", "x.tail1234.ts.net"} {
 		if !SameMachine(host, "x") || MachineName(host) != "x" {
 			t.Fatalf("%q is not machine x", host)
@@ -17,6 +18,7 @@ func TestMachineIdentityIgnoresDisplaySuffixes(t *testing.T) {
 }
 
 func TestResolveMachine(t *testing.T) {
+	t.Parallel()
 	machines := []string{"amd-1", "x"}
 	if got, err := ResolveMachine("", "x.local", machines); err != nil || got != "x" {
 		t.Fatal(got, err)

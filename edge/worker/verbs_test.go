@@ -401,7 +401,7 @@ func (s *StoreSprintClient) Beat(ctx context.Context, row string, hb Heartbeat) 
 		return fmt.Errorf("%w: %v", ErrStoreDown, err)
 	}
 	op := store.Op{ID: fmt.Sprintf("beat-%s-%d", row, snap.Seq), Epoch: snap.Epoch, Actor: row, Kind: "beat", At: s.now_internal(),
-		Writes: []store.Write{store.SetRowLoad{Row: row, Load1Centi: int(hb.Load1*100 + 0.5), Cores: hb.Cores, SlotsUsed: hb.SlotsUsed, SlotsTotal: hb.SlotsTotal, Tiers: hb.Tiers}}}
+		Writes: []store.Write{store.SetRowLoad{Row: row, Load1Centi: int(hb.Load1*100 + 0.5), Cores: hb.Cores, SlotsUsed: hb.SlotsUsed, SlotsTotal: hb.SlotsTotal, CPUPeakDeci: int(hb.CPUPeak*10 + 0.5), Tiers: hb.Tiers}}}
 	_, err = s.applyWithReplay_internal(ctx, op)
 	return err
 }

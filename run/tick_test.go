@@ -52,9 +52,10 @@ func (a *answering) AnswerContext(_ context.Context, _ policy.Versions, snap sto
 type sent struct{ to, subject, body string }
 
 type fakeBus struct {
-	sent []sent
-	fail map[string]bool
-	who  map[string]bus.Presence
+	sent     []sent
+	fail     map[string]bool
+	who      map[string]bus.Presence
+	whoFails int // the first whoFails Who reads fail
 }
 
 func (b *fakeBus) Send(_ context.Context, to, subject, body string) (string, error) {
@@ -64,7 +65,13 @@ func (b *fakeBus) Send(_ context.Context, to, subject, body string) (string, err
 	b.sent = append(b.sent, sent{to, subject, body})
 	return "1-1", nil
 }
-func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) { return b.who, nil }
+func (b *fakeBus) Who(context.Context) (map[string]bus.Presence, error) {
+	if b.whoFails > 0 {
+		b.whoFails--
+		return nil, errors.New("nova-bus who exited 1")
+	}
+	return b.who, nil
+}
 
 var t0 = time.Unix(1_800_000_000, 0).UTC()
 
@@ -99,6 +106,7 @@ func tickN(t *testing.T, tk *Ticker, ro roster.Roster, n int) {
 }
 
 func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
@@ -139,6 +147,7 @@ func TestTickDealsAndPushesOneEnvelope(t *testing.T) {
 // run loop's Seen) and the deal follows; a row down and absent from the bus
 // stays down, and a row already up raises nothing.
 func TestTickRaisesSeenForAHookedRow(t *testing.T) {
+	t.Parallel()
 	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "alice", Session: "sess-1", Role: "worker"})
@@ -178,6 +187,7 @@ func TestTickRaisesSeenForAHookedRow(t *testing.T) {
 }
 
 func TestPushFailureLeavesTheCursor(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {
@@ -201,6 +211,7 @@ func TestPushFailureLeavesTheCursor(t *testing.T) {
 }
 
 func TestNoTickWhileStopped(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	must(t, f, "stop", store.SetStopped{Stopped: true, Reason: "maintenance"})
 	p := &answering{}
@@ -216,6 +227,7 @@ func TestNoTickWhileStopped(t *testing.T) {
 }
 
 func TestLostLockAppliesNothing(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	h := &healthy{}
 	tk, err := NewTicker(context.Background(), f, h, &answering{}, t0)
@@ -233,6 +245,7 @@ func TestLostLockAppliesNothing(t *testing.T) {
 }
 
 func TestEnvelopeIsBoundedWithNext(t *testing.T) {
+	t.Parallel()
 	var q []pending
 	for i := range 200 {
 		q = append(q, pending{int64(i + 1), Notice{Subject: "DEAL", Line: strings.Repeat("x", 60)}})
@@ -244,6 +257,7 @@ func TestEnvelopeIsBoundedWithNext(t *testing.T) {
 }
 
 func TestLandResultMapping(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		res  git.LandResult
 		err  error
@@ -268,6 +282,7 @@ func TestLandResultMapping(t *testing.T) {
 }
 
 func TestStopIsOneMessageThenAck(t *testing.T) {
+	t.Parallel()
 	b := &fakeBus{}
 	e := &Edges{Bus: b}
 	e.stop(context.Background(), steps.EdgeRequest{ID: "stop.1", Kind: "stop", Row: "alice", Consumer: "p1.w1"})
@@ -337,6 +352,7 @@ func (stillGit) LsRemote(context.Context, string, string) (string, bool, error) 
 }
 
 func TestServeTicksPushesAndLogs(t *testing.T) {
+	t.Parallel()
 	f := started(t)
 	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
 	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
@@ -371,6 +387,61 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	}
 }
 
+// TestServeFirstWhoFailurePlansNothing (D1' cold read): the first who read
+// after the start fails, so no row has been seen: that tick plans nothing
+// (no deal, no unserved or cannot-read judgement) and logs the fault; the
+// next good read deals as usual.
+func TestServeFirstWhoFailurePlansNothing(t *testing.T) {
+	t.Parallel()
+	f := started(t)
+	must(t, f, "stream", store.PutStream{Name: "s", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"})
+	must(t, f, "row", store.PutRow{Name: "bench", Session: "sess-1", Role: "worker"})
+	must(t, f, "up", store.SetRowState{Row: "bench", State: "up"})
+	must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &watched{beats: &beats{now: t0, tick: make(chan time.Time)}, read: make(chan struct{})}
+	b := &fakeBus{who: map[string]bus.Presence{"bench": {Name: "bench"}}, whoFails: 1}
+	var log strings.Builder
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, Clock: clock, Log: &log}, &healthy{})
+	}()
+	<-clock.read
+	for range 3 {
+		clock.tick <- t0
+	}
+	clock.tick <- t0 // the third tick has finished once the fourth beat is taken
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	out := log.String()
+	if !strings.Contains(out, "EDGE FAULT nova-bus who") {
+		t.Fatalf("the failed who read is not logged: %s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "TICK n=1 ") && !strings.Contains(line, " ops=0/0 ") {
+			t.Fatalf("the first tick planned with no row seen: %s", line)
+		}
+	}
+	snap, err := f.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, j := range snap.Judgements {
+		if j.Kind == "unserved" || j.Kind == "cannot-read" {
+			t.Fatalf("judgement %s (%s) opened by one failed who read", id, j.Kind)
+		}
+	}
+	if c, ok := snap.Cards["p1.w1"]; !ok || c.Holder != "bench" {
+		t.Fatalf("the good read after did not deal p1 to bench: %+v\n%s", snap.Cards, out)
+	}
+}
+
 // stopFirst commits a stop just before the first op it is asked to apply.
 type stopFirst struct {
 	*store.Fake
@@ -388,6 +459,7 @@ func (s *stopFirst) Apply(ctx context.Context, op store.Op) (store.Receipt, erro
 }
 
 func TestStopBetweenFoldAndApplyRefusesTheOp(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	st := &stopFirst{Fake: f}
 	tk, err := NewTicker(context.Background(), st, &healthy{}, &answering{}, t0)
@@ -414,13 +486,15 @@ func (a *failingActive) AnswerContext(ctx context.Context, vs policy.Versions, s
 // failing, the run deals nothing and one blocking no-policy judgement says
 // why; the first activation lets the next tick deal.
 func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
+	t.Parallel()
 	for name, c := range map[string]struct {
-		policy Asking
-		active bool
-		want   string
+		policy         Asking
+		active, stored bool
+		want           string
 	}{
-		"none active":   {&answering{}, false, "the run deals nothing: no policy is active: nova-sprint policy set <file> --reason <why>"},
-		"active failed": {&failingActive{}, true, "the run deals nothing: the active policy v1 failed (POLICY REFUSED v1 order(): division by zero)"},
+		"none active":         {&answering{}, false, false, "the run deals nothing: no policy is active: nova-sprint policy set <file> --reason <why>"},
+		"stored, none active": {&answering{}, false, true, "the run deals nothing: no policy is active (v1 is stored, none active): nova-sprint policy activate v1 --reason <why>"},
+		"active failed":       {&failingActive{}, true, false, "the run deals nothing: the active policy v1 failed (POLICY REFUSED v1 order(): division by zero)"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := store.NewFake()
@@ -430,6 +504,9 @@ func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
 			must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
 			if c.active {
 				must(t, f, "policy", activePolicy()...)
+			}
+			if c.stored {
+				must(t, f, "policy", store.PutPolicy{Kind: "script", Name: "p.star", Body: "# stored, never activated"})
 			}
 			ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}
 			tk, err := NewTicker(context.Background(), f, &healthy{}, c.policy, t0)
@@ -446,5 +523,39 @@ func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
 				t.Fatalf("judgement %+v, want open, no deadline, %q", j, c.want)
 			}
 		})
+	}
+}
+
+// TestTickDealsNothingToAStaleRow: a worker row whose binary (its heartbeat's
+// version) is below the run's release serves no tier, so a ready producer is
+// not dealt to it (defect D3: a stale bench's take receipt faulted 14 cards);
+// once its heartbeat carries the run's release it is dealt.
+func TestTickDealsNothingToAStaleRow(t *testing.T) {
+	t.Parallel()
+	f, ro := seeded(t)
+	must(t, f, "beat", store.SetRowLoad{Row: "alice", Load1Centi: 100, Cores: 8, SlotsTotal: 8, Tiers: "flash,pro", Version: "v2.0.5"})
+	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observe := func(i int) Observed {
+		return Observed{Now: t0.Add(time.Duration(i+1) * time.Second), Present: []string{"alice"}, Roster: ro, Heads: map[string]string{"s": strings.Repeat("a", 40)}, Version: "v2.0.6"}
+	}
+	for i := range 3 {
+		if _, err := tk.Tick(context.Background(), observe(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s := tk.Snapshot(); s.Cards["p1"].State != "ready" {
+		t.Fatalf("p1 is %s: dealt to a row below the run's release", s.Cards["p1"].State)
+	}
+	must(t, f, "beat at the run's release", store.SetRowLoad{Row: "alice", Load1Centi: 100, Cores: 8, SlotsTotal: 8, Tiers: "flash,pro", Version: "v2.0.6"})
+	for i := 3; i < 6; i++ {
+		if _, err := tk.Tick(context.Background(), observe(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s := tk.Snapshot(); s.Cards["p1"].State != "working" {
+		t.Fatalf("p1 is %s after the row came up to the run's release", s.Cards["p1"].State)
 	}
 }

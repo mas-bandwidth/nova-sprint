@@ -15,6 +15,7 @@ import (
 // forge github, the host's gh identity able to act; each refusal names its
 // one fix (intent rule 34).
 func TestStreamAdmission(t *testing.T) {
+	t.Parallel()
 	add := func(name string, more ...string) []string {
 		return append([]string{"stream", "add", name, "--repo", "o/r"}, more...)
 	}
@@ -51,6 +52,7 @@ func briefFile(t *testing.T, dir, id, text string) string {
 // and routes served, its PATHS at the base, DONE-WHEN parsing, no retired
 // mechanic or named bench, and its work not already at the base.
 func TestCardAdmission(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	b := func(id, meta string) []string {
 		text := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: go test ./...\n" + meta + "\nDo it.\n"
@@ -100,9 +102,14 @@ type failingTree struct{ *fakeOrigin }
 
 func (o *failingTree) Tree(context.Context, string, string) ([]string, error) { return nil, errBroken }
 
+// readsJobMD is the sentence the live briefs carry (D5, 2026-11-07): it
+// names JOB.md as the file the harness reads, which the worker writes.
+const readsJobMD = "Read $JOB/JOB.md first: it names the staged checkout (a full clone at BASE) and how this card finishes.\n"
+
 // TestBriefContractLint: the parser refuses the new fields' bad forms and
 // the retired mechanics, naming the line and the fix.
 func TestBriefContractLint(t *testing.T) {
+	t.Parallel()
 	good := "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: go test ./...\n\nDo it.\n"
 	for rule, text := range map[string]string{
 		`line 4 DONE-WHEN echo "open is not one command: a " is left open`:                                       strings.Replace(good, "DONE-WHEN: go test ./...", `DONE-WHEN: echo "open`, 1),
@@ -114,7 +121,8 @@ func TestBriefContractLint(t *testing.T) {
 		"must contain a valid PR section":                                                                        strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nPR: -3", 1),
 		"line 2 is a retired WHO line":                                                                           strings.Replace(good, "PATHS: a.go", "WHO: alice\nPATHS: a.go", 1),
 		"line 2 is a retired LOCK line":                                                                          strings.Replace(good, "PATHS: a.go", "LOCK: build\nPATHS: a.go", 1),
-		"line 7 names JOB.md, a retired mechanic":                                                                good + "Write JOB.md when done.\n",
+		"line 7 names a JOB.md to write, a retired mechanic":                                                     good + "Write JOB.md when done.\n",
+		"line 7 names a JOB.md to write, a retired":                                                              good + "JOB.md is written by you at the end.\n",
 		"line 7 names a lock (winlock), a retired":                                                               good + "Take the winlock first.\n",
 		"line 7 names a host to ssh to (ssh to bench9)":                                                          good + "Then ssh to bench9 and run it.\n",
 		"line 4 names a gate that runs on a named host":                                                          strings.Replace(good, "DONE-WHEN: go test ./...", "DONE-WHEN: ssh -o BatchMode=yes bench1 make", 1),
@@ -128,6 +136,11 @@ func TestBriefContractLint(t *testing.T) {
 			t.Fatalf("%q: fix %q", rule, f.Fix)
 		}
 	}
+	// The worker writes JOB.md for its harness (edge/worker/jobmd.go), so a
+	// brief that sends the harness to read it is right, not retired (D5).
+	if _, err := parseBrief("b1", good+readsJobMD); err != nil {
+		t.Fatalf("a brief that reads JOB.md: %v", err)
+	}
 	a, err := parseBrief("b1", strings.Replace(good, "PATHS: a.go", "PATHS: a.go\nNEEDS-ROUTE: ipad\nNEEDS-ROUTE: usb\nHEAD: "+tip+"\nPR: 12", 1))
 	if err != nil || len(a.DoneWhen) != 1 {
 		t.Fatalf("%+v %v", a, err)
@@ -137,6 +150,7 @@ func TestBriefContractLint(t *testing.T) {
 // TestGateFixSaysShC: a brief refused for a gate that needs a shell says to
 // wrap it in sh -c; a stored card is re-linted by the same parser (check).
 func TestGateFixSaysShC(t *testing.T) {
+	t.Parallel()
 	_, err := parseBrief("b1", "tier: pro\nPATHS: a.go\nTEST: t\nDONE-WHEN: `make` ; true\n\nDo it.\n")
 	if f := classify(err); !strings.Contains(f.Fix, "sh -c '...'") || !strings.Contains(f.What, "a backquote is shell syntax") {
 		t.Fatalf("%+v", f)
@@ -150,5 +164,49 @@ func TestGateFixSaysShC(t *testing.T) {
 	f.DoneWhen = []string{"sh -c 'cd x && make | tee log'"}
 	if err := cardLint(f, ro); err != nil {
 		t.Fatalf("%v", err)
+	}
+}
+
+// TestWritesJobMD: only a clause that has the harness write JOB.md is the
+// retired mechanic; reading it, naming it, negating a write, or the worker
+// writing it is not (D5 cold read, 2026-11-07).
+func TestWritesJobMD(t *testing.T) {
+	t.Parallel()
+	for _, line := range []string{
+		"Write JOB.md when done.",
+		"JOB.md is written by you at the end.",
+		"Overwrite JOB.md with the result.",
+		"Writing JOB.md is required.",
+		"Save the summary in JOB.md.",
+		"Record findings in $JOB/JOB.md.",
+		"Put the result into JOB.md.",
+		"Log each step to JOB.md.",
+		"Add a section to JOB.md.",
+		"Emit JOB.md at the end.",
+		"Fill in JOB.md.",
+		"Then update the JOB.md.",
+		"JOB.md must be updated before you exit.",
+	} {
+		if !writesJobMD(line) {
+			t.Errorf("%q: not refused", line)
+		}
+	}
+	for _, line := range []string{
+		strings.TrimSpace(readsJobMD),
+		"Write tests, then read JOB.md.",
+		"Update the docs as JOB.md says.",
+		"Commit when JOB.md says.",
+		"The worker writes JOB.md, read it first.",
+		"The worker writes JOB.md in the job directory; read it first.",
+		"Do not edit JOB.md.",
+		"Never write JOB.md.",
+		"JOB.md is rewritten at each stage.",
+		"JOB.md names the checkout.",
+		"Update the docs as described in JOB.md.",
+		"Write the code, then follow JOB.md.",
+	} {
+		if writesJobMD(line) {
+			t.Errorf("%q: refused", line)
+		}
 	}
 }

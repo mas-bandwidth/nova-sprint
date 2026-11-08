@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,18 @@ func chooserTestPG(t *testing.T) string {
 		t.Skip("initdb required")
 	}
 	dir := filepath.Join(t.TempDir(), "data")
-	out, err := exec.Command(initdb, "-D", dir, "-U", "nova", "--auth=trust", "--no-locale").CombinedOutput()
+	// With no LC_ALL and no LANG, Homebrew PostgreSQL on macOS dies at start
+	// ("postmaster became multithreaded during startup"): give the children C.
+	env := os.Environ()
+	if os.Getenv("LC_ALL") == "" && os.Getenv("LANG") == "" {
+		env = append(env, "LC_ALL=C")
+	}
+	pg := func(name string, args ...string) *exec.Cmd {
+		cmd := exec.Command(name, args...)
+		cmd.Env = env
+		return cmd
+	}
+	out, err := pg(initdb, "-D", dir, "-U", "nova", "--auth=trust", "--no-locale").CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -28,9 +40,10 @@ func chooserTestPG(t *testing.T) string {
 	require.NoError(t, l.Close())
 	ctl := filepath.Join(filepath.Dir(initdb), "pg_ctl")
 	opts := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port)
-	out, err = exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "server.log"), "-o", opts, "-w", "start").CombinedOutput()
+	// Stop is registered before start, so a failed start orphans no postmaster.
+	t.Cleanup(func() { _ = pg(ctl, "-D", dir, "-m", "fast", "-w", "stop").Run() })
+	out, err = pg(ctl, "-D", dir, "-l", filepath.Join(dir, "server.log"), "-o", opts, "-w", "start").CombinedOutput()
 	require.NoError(t, err, "%s", out)
-	t.Cleanup(func() { _ = exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").Run() })
 	return fmt.Sprintf("postgres://nova@127.0.0.1:%d/postgres?sslmode=disable", port)
 }
 func TestFunctionalChooserExclusionAndLoss(t *testing.T) {

@@ -353,7 +353,10 @@ NoTickWhileStopped == NoTickAfterObservedStop /\ NoAcceptedTickWhileStopped
 \* and a run may come up on it before up's walk is done (up starts the run
 \* service at step 4 of 8): until the coordinator's first Start it moves
 \* nothing, no tick applied, no edge dispatched (Glenn, 2026-11-07).
-\* RunFreshRunning starts the fresh store running and violates it.
+\* RunFreshRunning starts the fresh store running and violates it. A row's
+\* presence (run's raiseSeen: a hooked row down in the store comes up) is
+\* not a job here and moves no card; it is not fenced on Running, so it
+\* lands while stopped (Store.tla), and up's steps 7-8 can see rows up.
 NeverStartedMovesNothing ==
   ~started => /\ done = {} /\ edgeDone = {}
               /\ \A j \in Jobs : counts[j] = 0

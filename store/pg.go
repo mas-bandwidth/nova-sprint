@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -81,6 +83,18 @@ const round24Hash = "e7561ffcff21033ff3b0a7dd615e32b6c9f0c33278278fe30e1912fec5e
 // (round 23) and the epoch row's commit identity (round 26), in Migrate's
 // one transaction, then the new hash is recorded.
 const round25Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f4433d0e"
+
+// round26Hash is the schema hash of round 26's schema.sql
+// (testdata/schema-round26.sql): running schema.sql on it adds the row
+// heartbeat's cpu_peak_deci (round 27, the CPU busy peak of the last 10
+// seconds), in Migrate's one transaction, then the new hash is recorded.
+const round26Hash = "475ac9c67bf8c1d041e7a54b69f7c4e3a0b0d56bfd43a11dc6e4db31ff60dfed"
+
+// round27Hash is the schema hash of round 27's schema.sql
+// (testdata/schema-round27.sql): running schema.sql on it adds the row
+// heartbeat's version (round 28, the release of the binary that beat;
+// defect D3), in Migrate's one transaction, then the new hash is recorded.
+const round27Hash = "5aae26316b0ddbffbe2668a180446cd027dbf237a8e05baa85038786de6858b5"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
@@ -169,6 +183,27 @@ type parseError struct {
 func (e *parseError) Error() string { return e.text }
 func (e *parseError) Unwrap() error { return e.err }
 
+// IdleTxTimeout is how long PostgreSQL lets one of the sprint's sessions sit
+// idle in a transaction before it ends the session, and with it the
+// transaction: a client that stalls inside one (a stopped process, a lost
+// network) otherwise keeps its locks and snapshot until TCP gives up, hours,
+// and every DDL and, queued behind it, every reader waits. A sprint
+// transaction runs its statements milliseconds apart, so a minute is far past
+// any healthy pause and bounds what a stall can hold (PR #658).
+const IdleTxTimeout = "60s"
+
+// BoundIdleTx sets idle_in_transaction_session_timeout to IdleTxTimeout on
+// every connection made with cfg, unless the dsn already sets it.
+func BoundIdleTx(cfg *pgx.ConnConfig) {
+	if _, set := cfg.RuntimeParams["idle_in_transaction_session_timeout"]; set {
+		return
+	}
+	if cfg.RuntimeParams == nil {
+		cfg.RuntimeParams = map[string]string{}
+	}
+	cfg.RuntimeParams["idle_in_transaction_session_timeout"] = IdleTxTimeout
+}
+
 // Open connects to the store at dsn (NOVA_PG_DSN, no password in it) with
 // password (NOVA_PG_PASSWORD, may be empty). It never quotes the dsn back.
 func Open(ctx context.Context, dsn, password string) (*PG, error) {
@@ -179,6 +214,7 @@ func Open(ctx context.Context, dsn, password string) (*PG, error) {
 	if password != "" {
 		cfg.ConnConfig.Password = password
 	}
+	BoundIdleTx(cfg.ConnConfig)
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
@@ -205,7 +241,8 @@ func (p *PG) Close() { p.pool.Close() }
 // (round 22), adds cards.model and the row heartbeat's columns to the first three (round 23)
 // and the epoch row's commit identity to all four (round 24), and the new hash is recorded, in the same transaction. When schema sprint already exists it
 // skips CREATE SCHEMA (createSchema), so the schema's owner needs no CREATE
-// on the database (round 19). Twice is a no-op, and concurrent Migrates are safe: each holds one
+// on the database (round 19). An upgrade also logs the store's stop when its log does
+// not rebuild to it (logStop). Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
 	tx, err := p.pool.Begin(ctx)
@@ -223,6 +260,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if used && !meta {
 		return fmt.Errorf("store: migrate: %w", errForeign)
 	}
+	upgrade := false
 	if meta {
 		v, hash, _, err := readMeta(ctx, tx) // no row is version 0, refused below
 		if err != nil {
@@ -231,6 +269,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 		if err := metaRefusal(v, hash); err != nil {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
+		upgrade = hash != schemaHash
 	}
 	sql := schemaSQL
 	if present {
@@ -244,6 +283,11 @@ func (p *PG) Migrate(ctx context.Context) error {
 	}
 	if err := freshStop(ctx, tx, meta); err != nil {
 		return err
+	}
+	if upgrade {
+		if err := logStop(ctx, tx); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
@@ -262,6 +306,58 @@ func freshStop(ctx context.Context, tx pgx.Tx, existed bool) error {
 	}
 	if _, err := tx.Exec(ctx, "UPDATE sprint.epoch SET stopped = $1, stop_reason = $2 WHERE id = 1", FreshStop.Stopped, FreshStop.Reason); err != nil {
 		return fmt.Errorf("store: migrate: the fresh store's stop (%s) was not written: %w", FreshStop.Reason, err)
+	}
+	return nil
+}
+
+// logStop makes an upgraded store's log rebuild to its stop (guarantee 5),
+// in Migrate's transaction. A store made before FreshStop began running
+// with nothing logged, and a rebuild starts never started, so a store
+// whose log does not end at the stop it has (the last logged stop, else
+// FreshStop) gets SetStopped events from the log's stop to its own, through
+// the protocol: the epoch row is set back to the log's stop first, so each
+// before-image is what the log says. One event when the flag differs; two
+// (through the other flag) when only the reason does, since SetStopped
+// refuses an unchanged flag. A store whose log agrees logs nothing, so a
+// second Migrate is a no-op.
+func logStop(ctx context.Context, tx pgx.Tx) error {
+	var have Stop
+	var epoch int
+	var now time.Time
+	if err := tx.QueryRow(ctx, "SELECT stopped, stop_reason, n, transaction_timestamp() FROM sprint.epoch WHERE id = 1").Scan(&have.Stopped, &have.Reason, &epoch, &now); err != nil {
+		return fmt.Errorf("store: migrate: reading the stop: %w", err)
+	}
+	logged := FreshStop
+	var image []byte
+	err := tx.QueryRow(ctx, "SELECT after->'stop' FROM sprint.events WHERE accepted AND after ? 'stop' ORDER BY seq DESC LIMIT 1").Scan(&image)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return fmt.Errorf("store: migrate: reading the logged stop: %w", err)
+	default:
+		if err = json.Unmarshal(image, &logged); err != nil {
+			return fmt.Errorf("store: migrate: the logged stop %s does not decode: %w", image, err)
+		}
+	}
+	if logged == have {
+		return nil
+	}
+	if _, err = tx.Exec(ctx, "UPDATE sprint.epoch SET stopped = $1, stop_reason = $2 WHERE id = 1", logged.Stopped, logged.Reason); err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	steps := []Stop{have}
+	if logged.Stopped == have.Stopped {
+		steps = []Stop{{Stopped: !have.Stopped, Reason: "migrate"}, have}
+	}
+	for i, st := range steps {
+		op := Op{ID: fmt.Sprintf("migrate-stop-%d-%s", i+1, schemaHash), Epoch: epoch, Actor: "store-migrate", Kind: "stop", At: at(now), Writes: []Write{SetStopped(st)}}
+		r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+		switch {
+		case err != nil:
+			return fmt.Errorf("store: migrate: logging the store's stop: %w", err)
+		case !r.Accepted:
+			return fmt.Errorf("store: migrate: logging the store's stop was refused: %s", r.Reason)
+		}
 	}
 	return nil
 }

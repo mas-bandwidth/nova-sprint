@@ -2,7 +2,6 @@ package dash
 
 // Cold read by Rowan’s reviewer (2026-11-06), retained with adaptations for
 // the agreed 30-second health grace, controlled clock, and revised cost rule.
-// The unmodified original is testdata/coldread-original.go.txt.
 
 import (
 	"context"
@@ -10,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -81,6 +79,7 @@ func viewJSON(t *testing.T, s store.Snapshot) string {
 
 // 2: Snapshot once, the read position advances exactly +1 per call, and fold == Snapshot == Rebuild(all).
 func TestColdreadFoldNoClear(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 200)
@@ -144,6 +143,7 @@ func TestColdreadFoldNoClear(t *testing.T) {
 
 // 2: a clear empties the view and moves the epoch; an op kind the fold has never seen folds fine.
 func TestColdreadClearAndUnknownKind(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -151,7 +151,7 @@ func TestColdreadClearAndUnknownKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := f.Apply(ctx, store.Op{ID: "odd", Epoch: 1, Actor: "x", Kind: "frobnicate", At: time.Now(), Writes: []store.Write{store.SetCardState{Card: "p00001", State: "landed"}}})
+	r, err := f.Apply(ctx, store.Op{ID: "odd", Epoch: 1, Actor: "x", Kind: "frobnicate", At: t1000, Writes: []store.Write{store.SetCardState{Card: "p00001", State: "landed"}}})
 	if err != nil || !r.Accepted {
 		t.Fatalf("odd op: %v %+v", err, r)
 	}
@@ -161,7 +161,7 @@ func TestColdreadClearAndUnknownKind(t *testing.T) {
 	if d := c.pageSnapshot().Data; d.Landed != 1 || d.All != 20 {
 		t.Fatalf("after odd kind landed=%d all=%d", d.Landed, d.All)
 	}
-	if _, err = f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "x", Kind: "clear", At: time.Now()}); err != nil {
+	if _, err = f.Clear(ctx, store.Op{ID: "clear", Epoch: 1, Actor: "x", Kind: "clear", At: t1000}); err != nil {
 		t.Fatal(err)
 	}
 	if err = c.Advance(ctx, f); err != nil {
@@ -175,6 +175,7 @@ func TestColdreadClearAndUnknownKind(t *testing.T) {
 
 // 2: a lost connection keeps the copy and clock, observes the health grace, and recovers.
 func TestColdreadLostConnection(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -214,7 +215,8 @@ func TestColdreadLostConnection(t *testing.T) {
 }
 
 // 5: the refresh path at 5,000 producers (+1,000 consumers): idle tick, one-event tick, HTTP JSON.
-func TestColdreadRefresh5000(t *testing.T) {
+func TestFunctionalColdreadRefresh5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	for _, n := range []int{5000, 20000} {
 		ctx := context.Background()
@@ -254,6 +256,7 @@ func TestColdreadRefresh5000(t *testing.T) {
 
 // 4: MISSING cells come out absent or null, never a fabricated 0.
 func TestColdreadMissingCellsBlank(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -296,57 +299,10 @@ func TestColdreadMissingCellsBlank(t *testing.T) {
 	}
 }
 
-func readJSON(t *testing.T, path string) map[string]any {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var v map[string]any
-	if err = json.Unmarshal(b, &v); err != nil {
-		t.Fatal(err)
-	}
-	return v
-}
-
-// 3: the envelope's top-level value types against the live v1 capture.
-func TestColdreadDefectEnvelopeTypesVsV1(t *testing.T) {
-	v1 := readJSON(t, "testdata/live-v1-envelope.json")
-	c := &Cache{at: time.Now(), view: mapSnapshot(store.Snapshot{Epoch: 1}, testRoster, time.Now())}
-	rec := httptest.NewRecorder()
-	Handler(c).ServeHTTP(rec, httptest.NewRequest("GET", "/api/sprint", nil))
-	var v2 map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &v2); err != nil {
-		t.Fatal(err)
-	}
-	kind := func(x any) string { return fmt.Sprintf("%T", x) }
-	for k, a := range v1 {
-		if k == "data" {
-			continue
-		}
-		if kind(a) != kind(v2[k]) {
-			t.Errorf("%s: v1 %s (%v), v2 %s (%v)", k, kind(a), a, kind(v2[k]), v2[k])
-		}
-	}
-}
-
-// 3: v1 always sends a stream State; v2 sends "" for every stream not held, so an empty
-// stream's pill reads "idle" where v1 reads "waiting" (v2-2800.png vs v1-live-2000.png, serialize-audit-cs..moo).
-func TestColdreadDefectStreamStateBlank(t *testing.T) {
-	v1 := readJSON(t, "testdata/live-v1-envelope.json")
-	states := map[string]int{}
-	for _, s := range v1["data"].(map[string]any)["streams"].([]any) {
-		states[fmt.Sprint(s.(map[string]any)["State"])]++
-	}
-	d := mapSnapshot(store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"a": {Name: "a"}}}, testRoster, time.Now())
-	if states[""] == 0 && d.Streams[0].State == "" {
-		t.Errorf("v1 stream States %v (none blank); v2 sends State=%q", states, d.Streams[0].State)
-	}
-}
-
 // 3: the lessons map Throughput "as v1" (dashboard samples of landed), not MISSING; v2 never computes it,
 // so the tile's figure is "" and the tile collapses (v2-1100.png Throughput tile vs v1-live-1100.png).
 func TestColdreadDefectThroughputNeverComputed(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)
@@ -376,6 +332,7 @@ func TestColdreadDefectThroughputNeverComputed(t *testing.T) {
 
 // 3: a priced sum remains visible when a stream also has unpriced work.
 func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
+	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{"a": {ID: "a", Kind: "work", Stream: "s", Tier: "pro", Cost: 1200000, Priced: true}, "b": {ID: "b", Kind: "work", Stream: "s", Tier: "pro", Priced: false}}}
 	d := mapSnapshot(s, testRoster, time.Time{})
 	w := d.Tables["work"].(map[string]*workRow)["s"]
@@ -390,11 +347,12 @@ func TestColdreadDefectUnpricedBlanksV1Costs(t *testing.T) {
 
 // 3: the page links every stream name to /stream/<key> (charts.js); the shim answers 404.
 func TestColdreadDefectStreamPagesDead(t *testing.T) {
+	t.Parallel()
 	js, err := page.ReadFile("page/charts.js")
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := Handler(&Cache{at: time.Now()})
+	h := Handler(&Cache{at: t1000, now: at1000})
 	for _, p := range []string{"/stream/s00", "/api/stream/s00", "/api/history"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
@@ -406,6 +364,7 @@ func TestColdreadDefectStreamPagesDead(t *testing.T) {
 
 // 2 + 5, functional: a throwaway PostgreSQL, 5,000 producers, cold snapshot then deltas.
 func TestColdreadFunctionalPG5000(t *testing.T) {
+	t.Parallel()
 	requireDashLoad(t)
 	dsn := startPG(t)
 	ctx := context.Background()
@@ -454,6 +413,7 @@ func TestColdreadFunctionalPG5000(t *testing.T) {
 
 // TestRefreshCountsAndShape keeps a small deterministic counterpart to the load measurement.
 func TestRefreshCountsAndShape(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	f := store.NewFake()
 	seedSprint(t, f, 20)

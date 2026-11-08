@@ -15,7 +15,8 @@ import (
 
 // runShow is `show`: the record a refusal named, as JSON (a card's brief
 // once: its prose is the brief's task part). A card, a stream,
-// a row, `run` (who holds the chooser lock), nothing (the whole snapshot),
+// a row (with its worker bench's service, check_workers.go), `run` (who
+// holds the chooser lock), nothing (the whole snapshot),
 // or --stitch <stream> (every producer with its head, author, reads and
 // costs, and the range to diff).
 func runShow(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
@@ -47,6 +48,9 @@ func runShow(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 		var ok bool
 		if v, ok = record(snap, name); !ok {
 			return "", refuse("no card, stream or row "+name, "nova-sprint show")
+		}
+		if row, isRow := v.(store.Row); isRow {
+			v = e.showRow(ctx, row, snap)
 		}
 	}
 	b, err := json.MarshalIndent(v, "", "  ")

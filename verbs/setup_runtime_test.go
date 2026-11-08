@@ -41,6 +41,7 @@ func (w *runtimeWork) InstallWorkers(context.Context) error {
 func (w *runtimeWork) SmokeReady(context.Context) (bool, error) { return w.smoke, nil }
 func (w *runtimeWork) RunSmoke(context.Context) error           { w.smoke = true; w.actions++; return nil }
 func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	st := &runtimeStore{}
 	w := &runtimeWork{}
@@ -72,6 +73,7 @@ func TestRuntimeSetupOwnerChecksAreReverified(t *testing.T) {
 	}
 }
 func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"unknown", "deepseek,deepseek", "deepseek,"} {
 		if _, err := setupServices(value); err == nil {
 			t.Fatal(value)
@@ -87,6 +89,7 @@ type runtimeRun struct{ ready bool }
 
 func (r *runtimeRun) Ready(context.Context, string, string) (bool, error) { return r.ready, nil }
 func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := store.NewFake()
 	st := &runtimeStore{}
@@ -173,6 +176,7 @@ func TestRuntimeSetupWalkTwiceAndRegression(t *testing.T) {
 	}
 }
 func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
+	t.Parallel()
 	db := store.NewFake()
 	choices := Choices{Store: db, Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
 	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: choices}}}
@@ -186,6 +190,7 @@ func TestRuntimeSetupAsksBeforeChoosingDashboard(t *testing.T) {
 	}
 }
 func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
+	t.Parallel()
 	db := store.NewFake()
 	choices := Choices{Store: db, Actor: "rowan", Now: func() time.Time { return time.Unix(1000, 0) }}
 	command := func(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -207,6 +212,7 @@ func TestRuntimeSetupFirstTimeRefusesUnhookedCoordinator(t *testing.T) {
 // The bench role is the only word: the run machine is a worker bench when
 // it has the role.
 func TestWorkerBenchesIncludeTheRunMachineWhenItIsABench(t *testing.T) {
+	t.Parallel()
 	got := WorkerBenches([]FleetMachine{{Name: "studio", Roles: []string{"services", "bench"}}, {Name: "edge", Roles: []string{"services"}}, {Name: "amd-1", Roles: []string{"bench"}}})
 	if strings.Join(got, ",") != "studio,amd-1" {
 		t.Fatal(got)

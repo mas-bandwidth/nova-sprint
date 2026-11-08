@@ -13,7 +13,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
-func TestFunctionalSprintRoleSCRAM(t *testing.T) {
+func TestFunctionalSprintRoleSCRAM(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)
 	if os.Getenv("NOVA_FUNCTIONAL") != "1" {
 		t.Skip("requires isolated PostgreSQL")
 	}
@@ -177,8 +177,6 @@ func roleAdoptionFixture(t *testing.T) (context.Context, *pgx.Conn, string) {
 		t.Fatal(err)
 	}
 	pg.Close()
-	t.Setenv("NOVA_PG_DSN", dsn)
-	t.Setenv("NOVA_PG_ADMIN_PASSWORD", "fixture-admin")
 	return ctx, super, dsn
 }
 
@@ -190,6 +188,7 @@ func roleAdoptionExec(t *testing.T, ctx context.Context, conn *pgx.Conn, sql str
 }
 
 func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) {
+	t.Parallel()
 	ctx, super, dsn := roleAdoptionFixture(t)
 	// Password checks use host SCRAM; the local trusted socket is superuser-only fixture setup.
 	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err == nil {
@@ -223,6 +222,7 @@ func TestFunctionalSprintRoleOwnedPasswordPolicy(t *testing.T) {
 // login proves nothing; a role with no password is set from the seat's
 // value all the same, and the stored verifier is the seat's.
 func TestFunctionalSprintRolePasswordOnATrustHost(t *testing.T) {
+	t.Parallel()
 	ctx, super, dsn := roleAdoptionFixture(t)
 	var hba string
 	if err := super.QueryRow(ctx, "SELECT setting FROM pg_settings WHERE name='hba_file'").Scan(&hba); err != nil {
@@ -245,6 +245,7 @@ func TestFunctionalSprintRolePasswordOnATrustHost(t *testing.T) {
 }
 
 func TestFunctionalSprintRoleRejectsForeignSchema(t *testing.T) {
+	t.Parallel()
 	ctx, super, dsn := roleAdoptionFixture(t)
 	roleAdoptionExec(t, ctx, super, "GRANT USAGE ON SCHEMA sprint TO nova_admin; GRANT SELECT ON sprint.meta TO nova_admin")
 	var originalHash string
@@ -273,6 +274,7 @@ func TestFunctionalSprintRoleRejectsForeignSchema(t *testing.T) {
 }
 
 func TestFunctionalSprintRoleSetsUnsetPassword(t *testing.T) {
+	t.Parallel()
 	ctx, super, dsn := roleAdoptionFixture(t)
 	roleAdoptionExec(t, ctx, super, "GRANT USAGE ON SCHEMA sprint TO nova_admin; GRANT SELECT ON sprint.meta TO nova_admin; ALTER ROLE nova_sprint PASSWORD NULL")
 	if err := provisionSprintRole(ctx, dsn, "fixture-admin", "new-password", true); err != nil {

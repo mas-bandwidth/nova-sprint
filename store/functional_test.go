@@ -22,6 +22,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 )
 
 const wait = 30 * time.Second
@@ -35,19 +37,8 @@ func freePort(t *testing.T) string {
 	return port
 }
 
-// pgBin finds initdb: on PATH, else Homebrew's postgresql@18, else Debian's.
-func pgBin(t *testing.T) string {
-	if p, err := exec.LookPath("initdb"); err == nil {
-		return filepath.Dir(p)
-	}
-	found, _ := filepath.Glob("/opt/homebrew/opt/postgresql@18/bin/initdb") // ignored: a bad pattern is a constant's
-	debian, _ := filepath.Glob("/usr/lib/postgresql/*/bin/initdb")          // ignored: as above
-	if found = append(found, debian...); len(found) > 0 {
-		return filepath.Dir(found[0])
-	}
-	t.Skip("functional tests need PostgreSQL: initdb is not on PATH, in /opt/homebrew/opt/postgresql@18/bin or /usr/lib/postgresql/*/bin")
-	return ""
-}
+// pgBin is the directory holding initdb and the other PostgreSQL programs.
+func pgBin(t *testing.T) string { return pgbin.Dir(t) }
 
 // startPG starts a PostgreSQL of this test's own and returns the dsn of its
 // postgres database. Unix sockets are off: a macOS temp path is too long for one.
@@ -60,21 +51,23 @@ func startPG(t *testing.T) string {
 	out, err := init.CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	port := freePort(t)
-	// pg_ctl starts it and stops it (-m immediate: the postmaster stops its
-	// children before it exits, so none writes into the removed TempDir).
+	// pg_ctl starts it and stops it (-m fast: a clean shutdown; the postmaster stops its
+	// children and frees its SysV shared memory before it exits).
 	ctl := filepath.Join(bin, "pg_ctl")
 	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
 	start.Env = append(os.Environ(), "LC_ALL=C")
-	if out, err := start.CombinedOutput(); err != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", err, out)
-	}
+	// Stop is registered before start: a start that fails or times out can
+	// leave a postmaster running, and t.Fatalf must not orphan it.
 	t.Cleanup(func() {
-		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
+		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "fast", "-w", "stop")
 		stop.Env = append(os.Environ(), "LC_ALL=C")
 		if out, err := stop.CombinedOutput(); err != nil {
 			t.Logf("pg_ctl stop: %v\n%s", err, out)
 		}
 	})
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
@@ -366,6 +359,72 @@ func TestFunctionalMigrateRound25(t *testing.T) {
 	fresh := newDatabase(t, dsn, "fresh")
 	openPG(t, fresh)
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated live store's order: a positional dump of either loads into the other")
+}
+
+// Round 27: a store made by round 26's schema (round26Hash: the heartbeat
+// without cpu_peak_deci, a beaten row in it) is upgraded by Migrate: the column
+// is added (0 on the row), the new hash recorded, a second Migrate is a no-op,
+// the beat's values are kept, a beat then sets the peak, and the columns are in
+// a new store's order, and the epoch row's commit identity is kept.
+func TestFunctionalMigrateRound26(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round26.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round26Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET commit_name = 'Bot', commit_email = '1+bot@users.noreply.example' WHERE id = 1",
+		"INSERT INTO sprint.rows (name, state, session, role, load1_centi, cores, slots_used, slots_total, tiers, epoch) VALUES ('w1', 'up', 'sess', 'worker', 250, 8, 2, 8, 'flash', 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round26Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 26}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity, "the identity is kept")
+	r := h.snap().Rows["w1"]
+	assert.Equal(t, []int{250, 8, 2, 8, 0}, []int{r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.CPUPeakDeci}, "the beat is kept and the peak starts at 0")
+	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873, ""}))
+	assert.Equal(t, 873, h.snap().Rows["w1"].CPUPeakDeci)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
+// Round 28: a store made by round 27's schema (round27Hash: the heartbeat
+// without version, a beaten row in it) is upgraded by Migrate: the column is
+// added ("" on the row), the new hash recorded, a second Migrate is a no-op,
+// the beat's values are kept, a beat then sets the version, and the columns
+// are in a new store's order.
+func TestFunctionalMigrateRound27(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round27.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round27Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.rows (name, state, session, role, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, epoch) VALUES ('w1', 'up', 'sess', 'worker', 250, 8, 2, 8, 'flash', 873, 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round27Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 27}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	r := h.snap().Rows["w1"]
+	assert.Equal(t, []any{250, 873, "flash", ""}, []any{r.Load1Centi, r.CPUPeakDeci, r.Tiers, r.Version}, "the beat is kept and the version starts empty")
+	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873, "v2.0.6"}))
+	assert.Equal(t, "v2.0.6", h.snap().Rows["w1"].Version)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
 }
 
 // columns is every sprint table's columns in their order, the order a
@@ -1158,4 +1217,47 @@ func TestFunctionalEventIdentity(t *testing.T) {
 	assert.True(t, found)
 	assert.NotEmpty(t, op)
 	assert.Equal(t, 1, epoch)
+}
+
+// A round 25 store began running with nothing logged,
+// and a rebuild starts never started (FreshStop): Migrate logs the stop the
+// store has, so the log rebuilds to it, whether it runs (one event) or was
+// stopped by hand with another reason (two, through the other flag); a
+// second Migrate logs nothing.
+func TestFunctionalMigrateLogsTheStop(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round25.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	for _, tc := range []struct {
+		name, stop string
+		events     int
+		want       Stop
+	}{
+		{"running", "SELECT 1", 1, Stop{}},
+		{"stopped", "UPDATE sprint.epoch SET stopped = true, stop_reason = 'pause' WHERE id = 1", 2, Stop{true, "pause"}},
+	} {
+		db := newDatabase(t, dsn, tc.name)
+		c := connect(t, db)
+		for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round25Hash + "' WHERE id = 1",
+			`INSERT INTO sprint.events (seq, op, actor, kind, accepted, reason, before, after, receipt, at, epoch, policy) VALUES (1, 'seed', 'test', 'seed', true, '', '{}', '{}', '{"op":"seed","kind":"seed","actor":"test","epoch":1,"at":"2026-11-07T00:00:00Z","accepted":true,"seq":1,"after":{}}', '2026-11-07T00:00:00Z', 1, 0)`,
+			tc.stop} {
+			_, err = c.Exec(ctx, q)
+			require.NoError(t, err, q)
+		}
+		p := openPG(t, db) // Migrate
+		snap, err := p.Snapshot(ctx)
+		require.NoError(t, err)
+		events, err := p.Events(ctx, 0, MaxEvents)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, Stop{snap.Stopped, snap.StopReason}, tc.name)
+		assert.Len(t, events, 1+tc.events, tc.name)
+		rebuilt := Rebuild(events)
+		assert.Equal(t, tc.want, Stop{rebuilt.Stopped, rebuilt.StopReason}, "%s: the log rebuilds to the store's stop", tc.name)
+		require.NoError(t, p.Migrate(ctx))
+		again, err := p.Events(ctx, 0, MaxEvents)
+		require.NoError(t, err)
+		assert.Len(t, again, len(events), "%s: a second Migrate logs nothing", tc.name)
+	}
 }

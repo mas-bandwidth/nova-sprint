@@ -60,16 +60,16 @@ Run these in order at the start of a session, after a wrap-around, and after a l
    the board shows `STOPPED never started` until then. `stop`, `start`, `hook`, `show` and
    `next` work as soon as `up` has made the store (its step 2), whatever step `up` is at.
 5. List the judgements owed: `nova-sprint judge --as <you>`. Each is one line,
-   `JUDGEMENT <j> kind=<kind> card=<id> group=<g> ...`, and the last line is `next:` with the
-   command for the first. `JUDGEMENTS none` means nothing waits on you.
+   `JUDGEMENT <j> kind=<kind> about=<id> group=<g> choices=<c|c>`, and the last line is `next:` with the
+   command for the first. `no open judgements` means nothing waits on you.
 6. Look at the sprint: `nova-sprint show run` (who holds the run loop's lock: its host and pid),
    `nova-sprint queue --stream <s>` for each stream (its open producers in deal order, each with
    its state, needs and holders) and `nova-sprint check` for why they wait. Open the dashboard at
    the address `up` printed.
 7. Account for every row expected to work. `nova-bus who` lists the names whose hook is running;
    `nova-sprint show <row>` shows a row's record: its state (up or down), session, role, hold and
-   last heartbeat; `nova-sprint queue` shows which rows hold which cards, and `next --as <you>
-   --json` a row's width. Up, down and held are separate facts: a configured row is not a present one, and a
+   last heartbeat (a bench's with its worker unit); `nova-sprint queue` shows which rows hold
+   which cards, and `nova-sprint next --as <row> --json` a row's width. Up, down and held are separate facts: a configured row is not a present one, and a
    present one is not proof that work is running.
 
 Session start is done when `check` passes, you are hooked with the coordinator role, every
@@ -97,7 +97,7 @@ present or has a named reason (held, away, broken) that you are repairing.
 
 What each judgement kind asks of you, and where to look before you choose:
 
-- `blocked`: a card bounced past policy's limit and sits in `blocked` until you act; it has no
+- `blocked`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
   choose `unblock`, or `drop`. A `blocked` judgement that says the card faulted for a missing
   route or device names the row and what is missing (its reason starts `missing-route: <route>`,
@@ -163,7 +163,7 @@ doing, and the exact blocker when nothing can start.
 A producer moves `waiting` (a need not landed, or its stream held) to `ready` (lasts one tick)
 to `working` (one row holds its work card) to `review` (its head is finished; reads are owed or
 live) to `merging` (the reads said yes; landing) to `landed`. `fail` and `landed` are final;
-`blocked` waits for you. Each producer has consumer cards: one work card per attempt and a read
+a held card waits, with its reason, for you. Each producer has consumer cards: one work card per attempt and a read
 card per read, each dealt to one row: `queue` lists each producer's holders, and
 `show <consumer>` one consumer's holder and state.
 Nothing stalls silently: every state is waited on by someone named, within a bound policy states
@@ -195,7 +195,7 @@ named it:
 
 The quality of the cards decides whether a sprint is smooth or rough. `add` lints every brief on
 every path, with no bypass, and refuses naming the section; lint before you add with
-`nova-sprint add --stream <s> --brief-file <f> --dry-run`, which prints `ADD DRY RUN cards=<n>`.
+`nova-sprint add --stream <s> --brief-file <f> --dry-run`, which prints the `ADD` line of each card it would add and `(dry run)`.
 The card id is the file's name without `.md`. A brief is:
 
 1. Line 1: `tier: <flash|pro|heavy|frontier>`. Write cards pro-sized; heavy is for design, model
@@ -295,7 +295,7 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    a model other than the author's when one is present. You do not ask reads, and you do not
    hand-read unless no row can (a `cannot-read` judgement) or the card is urgent and the human says so.
 2. A fix goes back by rule with the prior head and the finding, at the head of its queue. You see
-   only what needs a mind: a `blocked` card, the same finding twice (`brief`), a land-rate under
+   only what needs a mind: a `blocked` judgement, the same finding twice (`brief`), a land-rate under
    target.
 3. The same finding twice means the brief is wrong, not the worker: add the corrected brief
    under a new id and `nova-sprint replace <old> --by <new> --reason "<why>"` before another
@@ -335,11 +335,11 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    `RELEASED row=<row> consumers=<n>`; every card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
-   prints `HOLD applied`. A hold of a row stops new deals to it and takes back only the cards it
+   prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and takes back only the cards it
    has not acknowledged; work the row has acknowledged stays, and a hold never stops landing.
    `nova-sprint unhold <row|stream> --reason "<why>"` ends it.
    To hold one card (a wrong brief, a question for the human), name the producer:
-   `nova-sprint hold <card> --reason "<why>"`. The card goes to `blocked` with the reason
+   `nova-sprint hold <card> --reason "<why>"`. The card goes to `waiting` with the reason
    `held: <why>`, its card in a row's hand is withdrawn in the same move (the branch kept), and
    it is never dropped; the board lists it under its stream with that reason.
    `nova-sprint unhold <card> --reason "<why>"` sends it back to `waiting`, and it is dealt again
@@ -359,19 +359,19 @@ card, how many reads, the verdict, widths at or below config, limits, the landin
 the stitch, prices. It is a Starlark file; you change it only when the human asks.
 
 1. `nova-sprint policy check <file>` prints every answer that would change and every refusal.
-2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY STORED v<n>` and
+2. `nova-sprint policy set <file> --reason "<the human's ask>"` prints `POLICY STORED v<n> changes=<k>` and
    `next: nova-sprint policy check v<n>`. When no policy is active the first set activates it
-   too (`POLICY STORED AND ACTIVE v<n>`). While no policy is active, or the active one fails,
+   too (`POLICY STORED AND ACTIVE v<n> changes=<k>`). While no policy is active, or the active one fails,
    the run deals nothing and one `no-policy` judgement on your row says so with the fix.
-3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> answers-changed=<k>`.
+3. `nova-sprint policy activate <n> --reason "<why>"` prints `POLICY ACTIVE v<n> changes=<k>`.
 4. A rollback is `policy activate` of an older version; `policy show --list` and `policy diff`
    show what you have.
 
 ## 9. Releases, backups and clears
 
-1. A new nova-sprint build is adopted whole with `nova-sprint up --version <v>`: it installs the
-   build beside the old, runs one shadow tick against the live store, swaps, watches three ticks,
-   and swaps back on any overrun, crash or refused tick, saying why. Never copy a binary by hand.
+1. A new nova-sprint build is adopted with `nova-sprint up --version <v>`: it checks that the
+   nova-sprint on PATH is that release and that its `check` passes; when it is not, it names the
+   `nova-fleet install` command that installs it. Never copy a binary by hand.
 2. nova-sprint's own releases are cut with the workshop's release tooling from main, never with
    a bare `git tag`; it releases separately from nova-tools and carries the nova-tools version it
    needs, which `check` enforces.
@@ -421,5 +421,5 @@ the stitch, prices. It is a Starlark file; you change it only when the human ask
 3. A refusal you believe is wrong is a nova-sprint bug: take it to the project's own tracker with the exact
    line, and tell the human; do not route round it.
 4. A design question (a customer, a ruling, hardware) is the human's: leave the card's judgement open
-   (a `blocked` card waits for you by design), ask the human with the question named, and answer the
+   (a held card waits for you by design), ask the human with the question named, and answer the
    judgement with the human's ruling.

@@ -6,3 +6,4 @@
 *_TTrace_*.bin
 /nova-sprint
 /nova-worker
+/run/testdata/e2e-transcript.txt

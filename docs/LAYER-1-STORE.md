@@ -845,7 +845,9 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   `SlotsTotal` (nova-reserve). One write sets them, `SetRowLoad{Row, Load1Centi, Cores,
   SlotsUsed, SlotsTotal}`: cores at least 1, slots used no more than the total, every number
   in `0..2147483647`, refused as every set write is when it changes nothing. It moves no gen,
-  so a beat never fences out a plan made from an earlier snapshot (`RowGen`); the log's
+  so a beat never fences out a plan made from an earlier snapshot (`RowGen`); round 27 adds
+  `Row.CPUPeakDeci`, `SetRowLoad.CPUPeakDeci` (the highest CPU busy percent of the last 10
+  seconds, in tenths, `0..1000`), the board's CPU cell; the log's
   before and after images still carry the change. `PutRow` keeps the values; a clear carries
   them (the next beat replaces them).
 - The four columns are added by `Migrate` after schema.sql (`rowLoadColumns`, `ADD COLUMN IF
@@ -881,6 +883,11 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   session that made it. No store rule reads it: the roster does (`roster.Advertised`, LAYER-4
   Built "the worker's live defects"). It moves no gen, as the rest of the heartbeat. Not in
   `Store.tla` (telemetry, as the load columns: `trace.go`'s notes). Conformance: `rowLoad`.
+  Round 28 adds `Row.Version`, `SetRowLoad.Version` (`rows.version`, appended last): the
+  release of the nova-sprint binary that beat, the one that takes the row's cards, kept and
+  cleared with `Tiers`; the tick deals a worker row behind the run's release nothing and
+  `check` names it (defect D3, 2026-11-07). Round 27's schema is a known older one Migrate
+  upgrades (`round27Hash`, `TestFunctionalMigrateRound27`).
 
 ## Built: the sprint's commit identity (stitch w4I, 2026-11-07; schema round 24)
 

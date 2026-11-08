@@ -14,6 +14,7 @@ import (
 // base and branch, the brief, take (the acknowledgement) and the finish
 // command (defect 52: the deal is the take).
 func TestDealNoticeTellsTheHand(t *testing.T) {
+	t.Parallel()
 	e := store.Event{Accepted: true, Epoch: 3, Before: &store.State{Cards: map[string]store.Card{}}, After: &store.State{Cards: map[string]store.Card{
 		"p.w1": {ID: "p.w1", Kind: "work", Of: "p", Stream: "s", State: "working", Holder: "alice", Tier: "pro", Attempt: 1, Gen: 1,
 			Branch: "sprint/s/p", BaseSHA: strings.Repeat("b", 40), Brief: "do p"},
@@ -35,6 +36,7 @@ func TestDealNoticeTellsTheHand(t *testing.T) {
 // envelope, move no cursor and are not resent by the pusher; the next
 // tick's nudges replace them.
 func TestPusherNudgesOutsideTheLog(t *testing.T) {
+	t.Parallel()
 	f := started(t)
 	p := NewPusher()
 	p.Nudge([]steps.Nudge{{Row: "alice", Card: "p.w1", Line: "NUDGE card=p.w1 dealt 10s ago"}})
@@ -72,6 +74,7 @@ func TestPusherNudgesOutsideTheLog(t *testing.T) {
 // TestTickNudgesAnUnacknowledgedDeal: the run loop pushes the steps' nudge
 // for a card dealt and not acknowledged past timeouts ready_nag (clock passed in).
 func TestTickNudgesAnUnacknowledgedDeal(t *testing.T) {
+	t.Parallel()
 	f, ro := seeded(t)
 	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
 	if err != nil {

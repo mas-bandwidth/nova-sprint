@@ -14,8 +14,9 @@ import (
 // stage (defect 68): what the card is, where its checkout is, and exactly
 // how it finishes. The prompt points the harness at it and carries the same
 // finish rules (finishRules_internal), so the two never disagree. It is the
-// worker's file for the harness, not a mechanic a brief may name (a brief
-// that asks for a JOB.md is refused at add as a retired v1 mechanic).
+// worker's file for the harness: a brief may send the harness to read it,
+// and a brief that asks the harness to write one is refused at add as a
+// retired v1 mechanic (verbs/brief_lint.go).
 const JobMDName = "JOB.md"
 
 // writeJobMD_internal writes j's JOB.md in its job directory.

@@ -10,6 +10,7 @@ import (
 // that is not a verb is ignored with one log line, and a verb is pointed
 // at once; its own name and no sender are nothing.
 func TestBusAnswer(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ from, re, subject, reply, log string }{
 		{from: "alice", re: "m-1", subject: "thanks", log: "ignored a reply from alice: the sprint's pushes are receipts"},
 		{from: "alice", re: "-", subject: "REPLY", log: "ignored a reply from alice"},

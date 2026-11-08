@@ -10,6 +10,7 @@ import (
 )
 
 func TestModelProbeUsesOnlyKnownEndpointAndDiscardsBody(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	p := ModelListProbe{Getenv: func(name string) string {
 		if name != "DEEPSEEK_API_KEY" {
@@ -35,6 +36,7 @@ func TestModelProbeUsesOnlyKnownEndpointAndDiscardsBody(t *testing.T) {
 	}
 }
 func TestModelProbeNoRedirect(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	p := ModelListProbe{Getenv: func(string) string { return "secret" }, Transport: dashboardRoundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++
@@ -45,6 +47,7 @@ func TestModelProbeNoRedirect(t *testing.T) {
 	}
 }
 func TestModelProbeCommandUsesSecretsExec(t *testing.T) {
+	t.Parallel()
 	var got []string
 	m := ModelProbeCommand{Binary: "/opt/bin/nova-sprint", Secrets: NovaSecrets{Store: "/store", KeyFile: "/key", Seat: "studio"}, Execute: func(_ context.Context, name string, args ...string) error {
 		got = append([]string{name}, args...)
@@ -59,6 +62,7 @@ func TestModelProbeCommandUsesSecretsExec(t *testing.T) {
 	}
 }
 func TestModelProbeRejectsInvalidKeyEvenIfCatalogIsPublic(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	p := ModelListProbe{Getenv: func(string) string { return "fixture" }, Transport: dashboardRoundTrip(func(r *http.Request) (*http.Response, error) {
 		calls++

@@ -115,14 +115,14 @@ recorded by `hook` (below); its refusal prints the step that is missing.
 | `up` | `[--as <coordinator>] [--dash tailnet\|public=<machine>[:<port>]] [--services <a,b>] [--key <service>] [--run-on <host>] [--version <v>]` | the first unverified step, with its fix (section 5) | the next step, then `stream add` | 0, 1 |
 | `stream add` | `<s> --repo <owner/name> [--base main] [--mode auto\|hand] [--forge github\|none]` | store not at schema: `up`; repo not readable: layer 4's line; stream exists: `show <s>`; with a forge, the group branch `sprint-group/<s>` cannot be created (a name git refuses, a branch at origin in its way, origin's branches unreadable, the push refused), naming the fix | `add --stream <s> --brief-file <f>` | 0, 1 |
 | `add` | `--stream <s> --brief-file <f>... [--needs <a,b>] [--after <a>] [--sentinel <id>] [--priority <level>] [--dry-run]` | unknown stream: `stream add`; a brief missing contract sections, by name; an unknown need; a cycle, naming the loop | `nothing; wait for the bus`, or `up` when no row is up | 0, 1 |
-| `run` | `[--listen <addr>] [--shadow]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
+| `run` | `[--listen <addr>]` | `check` fails; another run chooses, naming host and pid; `sprint` hooked elsewhere | at start: `worker --as <row>` when no row is up | 0 on SIGTERM, 2 on lock lost |
 | `worker` | `--as <row>` | not a host in nova-config's inventory: `nova-fleet join`; name hooked elsewhere; row serves no tier | `nothing; wait for the bus` | 0, 1 |
 | `take` | `<card>@<gen> --as <row>` | not hooked; not dealt to this row at this gen: `show <card>`; at width: `finish` one first | `finish <card>@<gen> --head <sha>` or `read <card>@<gen> yes\|fix` | 0, 1 |
 | `finish` | `<card>@<gen> --head <sha> --as <row>`, or `--failed --reason <why>` | not hooked; not the holder, naming who; not 40 hex; not on the dealt branch at origin: `git push origin <branch>`; head equals base or prior head (a head on origin is all it needs: no PR, no forge) | `nothing; wait for the bus` | 0, 1 |
 | `read` | `<card>@<gen> yes\|fix --as <row> [--finding <text>]` | not hooked; the reader wrote the head; head moved: `show <card>`; `fix` with no finding | `nothing; wait for the bus` | 0, 1 |
 | `release` | `<card>@<gen> --as <row> --reason <why>` (recorded `released: <why>`, no result: neither ok nor fail; the re-deal is a new attempt, no blame) | not the holder | `nothing; wait for the bus` | 0, 1 |
 | `release` | `<card>@<gen> --as <row> --reason <why>` | not the holder | `nothing; wait for the bus` | 0, 1 |
-| `beat` | `--load1 <loadavg> --cores <n> --slots-used <n> --slots-total <n> --as <row>` | not hooked; a flag missing or not a number; slots used over the total | `nothing; wait for the bus` | 0, 1, 2 |
+| `beat` | `--load1 <loadavg> [--cpu-peak <percent>] --cores <n> --slots-used <n> --slots-total <n> --as <row>` | not hooked; a flag missing or not a number; slots used over the total | `nothing; wait for the bus` | 0, 1, 2 |
 | `show` | `[<card>\|<stream>\|<row>\|run] [--stitch]` | unknown name | what `next` says for that name | 0, 1 |
 | `land` | `<card> --reason <why> [--head <sha>]` (coordinator) | not the coordinator; no reason; not a merging producer; `--head` not its finished head; the merge refused (a conflict: merge it into the base yourself, push, land again), naming the fix | `nothing; wait for the bus` | 0, 1, 2 |
 | `judge` | `[<id> <choice> --reason <why>]` | not the coordinator, or not hooked; judgement not open, naming who closed it; a choice it does not offer, listing them | the next open judgement, or `nothing; wait for the bus` | 0, 1 |
@@ -322,8 +322,8 @@ should be exactly matching what we currently have, visually. no changes except i
 added fail state." So v1's page (`index.html`, `app.js`, routes, JSON envelope) is carried as
 is behind the shim on branch `v2-dash-shim`, matched against the live v1 board at the shim
 README's widths, by eye and `tools/abshot`; any difference is a defect. `fail` is black, after
-landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); `blocked`
-is its own token, a red-brown column shown only when nonzero; the stats panel is left off.
+landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); there is
+no `blocked` column (2026-11-07: a held card is waiting); the stats panel is left off.
 
 **Served two ways, one poller each.** `run --listen <addr>` rebuilds the view once a tick
 from the tick's own local copy, adding no store read. `nova-sprint dash --listen <addr>` is
@@ -381,7 +381,7 @@ same op as the move that raised it.
   someone else answered. A second answer is refused naming the first.
 - **Expired.** At its deadline the step expires it and applies policy's declared safe
   default for that kind, which never drops, accepts, merges or lands (LESSONS 5.7), and
-  pushes `EXPIRED judgement=<id>: <what the default did>`. `blocked` has no deadline by
+  pushes `EXPIRED judgement=<id>: <what the default did>`. A `blocked` judgement has no deadline by
   Glenn's ruling ("sits there until you review it").
 
 Landings, a stream done, a red, a block, a stall and an orphan reach the coordinator by the
@@ -806,6 +806,12 @@ github.com credential is always gh as the host's login (no switch on
   min(nova-config's width, its slots) when it read its slots; one that advertised nothing keeps
   nova-config's shape; kin are untouched. The run tick applies it after its fold, every verb's
   roster read (`Engine.roster`, now given the snapshot) and the board's feed too.
+  `roster.Advertised(rows, version)` (defect D3): in the tick, `version` is the run's release
+  (`Config.Version`, `Observed.Version`) and a worker row whose beat's binary is below it, or
+  did not say, serves no tier, so it is dealt nothing; a build that is not a release pins
+  nothing, and the probe and the board pass "". `beat` records the beating build's version;
+  `check` prints `CHECK RED worker <row>: binary <v> below run's <v>: nova-fleet install
+  --repo mas-bandwidth/nova-sprint --tag <v> <row>`.
 - `release` gains `--head <sha>`: a row releasing a working work card it holds names the partial
   head it pushed, checked as a finish's head is; the producer goes back at that head with no
   bounce. nova-worker uses it for a job its restart cannot rebuild.

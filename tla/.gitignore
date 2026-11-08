@@ -1,0 +1,28 @@
+# Written by the make-*witnesses.py generators; gen-witnesses.sh runs them in a copy
+# for ci-tlc.sh. Run one here and its output lands in these paths.
+/witnesses/
+/CardDeps.cfg
+/CardMachine.cfg
+/CardMerge.cfg
+/CardMergeDeps.cfg
+/CardMergePre.cfg
+/CardPreempt.cfg
+/CardReads.cfg
+/Policy.cfg
+/Run.cfg
+/RunClear.cfg
+/RunFailover.cfg
+/RunInitiallyStopped.cfg
+/RunReports.cfg
+/RunStopStart.cfg
+/Setup.cfg
+/StepsBurst.cfg
+/StepsDeal.cfg
+/StepsLand.cfg
+/StepsPre.cfg
+/StepsPrePack1.cfg
+/Store.cfg
+/StoreRecords.cfg
+/reach/*
+!/reach/Runner*.cfg
+__pycache__/

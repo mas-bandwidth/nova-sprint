@@ -205,12 +205,12 @@ so honestly with one of these, never with a finish of a head that does not meet 
 - The harness, the bench or the model route failed, not the work (exit 134 or 137, a run that
   never started, a staging failure, a rate limit or credit refusal):
   `nova-sprint report <id>@<gen> --result fault --reason "<what failed>" --as <you> --epoch <e>`.
-  It prints `FAULTED <id> ...`; a fault spends no attempt and never counts toward blocked.
+  It prints `FAULTED <id> ...`; a fault spends no attempt and never counts toward a hold.
 - The work needs a route or device this row does not have (a tool, a device, a network, a
   model route): the same `report --result fault`, with a reason that starts `missing-route:`, then
   the route's name in one word (the name a brief declares with `NEEDS-ROUTE: <route>`), then what
   is missing, `--reason "missing-route: adb no device attached to this row"`. The card is not dealt
-  again by itself; it waits blocked until the coordinator answers.
+  again by itself; it waits, held, until the coordinator answers.
 - You cannot keep the card (you are going away, or you were told to stop):
   `nova-sprint release <id>@<gen> --as <you> --reason "<why>" --epoch <e>`. The card goes
   back to ready with your branch kept, and no blame. If you pushed commits on it, add

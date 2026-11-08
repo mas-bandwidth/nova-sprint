@@ -118,7 +118,7 @@ func (r RuntimeSetup) Verify(ctx context.Context, step int, in SetupInput) (Setu
 			return SetupCheck{}, fmt.Errorf("version adoption unavailable")
 		}
 		ok, err = r.Adoption.Ready(ctx, in.Version)
-		return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d, backup and version shadow: VERIFIED", store.SchemaVersion), err)
+		return setupReady(ok, fmt.Sprintf("UP 2/8 store: schema sprint version %d, backup and version check: VERIFIED", store.SchemaVersion), err)
 	case 3:
 		return r.Prerequisites.Coordinator(ctx, in.Actor)
 	case 4:
@@ -178,17 +178,14 @@ func (r RuntimeSetup) answer(ctx context.Context, name, input, def string) (stri
 	if c.Store == nil {
 		return "", false, fmt.Errorf("setup choices unavailable")
 	}
-	value, found, err := c.Get(ctx, name)
+	value, stored, err := c.Effective(ctx, name, input)
 	if err != nil {
 		return "", false, err
 	}
-	if found {
-		return value, true, nil
+	if value == "" {
+		return def, false, nil
 	}
-	if input != "" {
-		return input, false, nil
-	}
-	return def, false, nil
+	return value, stored, nil
 }
 func (r RuntimeSetup) runCheck(ctx context.Context, in SetupInput) (SetupCheck, error) {
 	host, saved, err := r.answer(ctx, "run-on", in.RunOn, r.DefaultRunHost)
