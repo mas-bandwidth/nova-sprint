@@ -36,20 +36,24 @@ func TestOSGitPushIsALeaseFromTheExpectedHead(t *testing.T) {
 	t.Parallel()
 	fx := edge.NewFakeExec()
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
-		switch c.Cmd.Argv[5] {
+		switch c.Cmd.Argv[gitArg0_internal] {
 		case "remote":
 			return edge.FakeOutcome{Stdout: testCloneURL + "\n"}
 		case "config":
+			return edge.FakeOutcome{Stdout: "remote.origin.url\n" + testCloneURL + "\x00"}
+		case "ls-files":
 			return edge.FakeOutcome{}
 		}
 		return edge.FakeOutcome{Stdout: testPriorSHA + "\n"}
 	})
 	g := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
 	ctx := context.Background()
-	if err := g.Push(ctx, "/wt", testCloneURL, testBranch, testWorkSHA, testPriorSHA); err != nil {
+	wt := filepath.Join(t.TempDir(), "repo")
+	writeStagedAlternates_internal(t, g, wt, "r")
+	if err := g.Push(ctx, wt, testCloneURL, testBranch, testWorkSHA, testPriorSHA); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Push(ctx, "/wt", testCloneURL, testBranch, testWorkSHA, ""); err != nil {
+	if err := g.Push(ctx, wt, testCloneURL, testBranch, testWorkSHA, ""); err != nil {
 		t.Fatal(err)
 	}
 	tip, err := g.BranchTip(ctx, Job{Repo: "o/r", Forge: "github", Branch: testBranch})
@@ -58,13 +62,13 @@ func TestOSGitPushIsALeaseFromTheExpectedHead(t *testing.T) {
 	}
 	var got []string
 	for _, c := range fx.Calls() {
-		if v := c.Cmd.Argv[5]; v != "remote" && v != "config" { // the remote guard's reads
-			got = append(got, strings.Join(c.Cmd.Argv[5:], " "))
+		if v := c.Cmd.Argv[gitArg0_internal]; v != "remote" && v != "config" && v != "ls-files" { // the guard's reads
+			got = append(got, strings.Join(c.Cmd.Argv[gitArg0_internal:], " "))
 		}
 	}
 	want := []string{
-		"push --force-with-lease=refs/heads/" + testBranch + ":" + testPriorSHA + " " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
-		"push --force-with-lease=refs/heads/" + testBranch + ": " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
+		"push --no-recurse-submodules --force-with-lease=refs/heads/" + testBranch + ":" + testPriorSHA + " " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
+		"push --no-recurse-submodules --force-with-lease=refs/heads/" + testBranch + ": " + testCloneURL + " " + testWorkSHA + ":refs/heads/" + testBranch,
 		"for-each-ref --format=%(objectname) refs/remotes/origin/" + testBranch,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {

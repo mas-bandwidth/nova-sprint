@@ -774,11 +774,21 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fx := edge.NewFakeExec()
-	// The guard's reads (the local config, origin, its push URL, the config), then the fetch.
-	fx.Enqueue("git", edge.FakeOutcome{}, edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{},
-		edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"})
+	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
+		switch args := c.Cmd.Argv[gitArg0_internal:]; {
+		case args[0] == "config" && args[1] == "--local":
+			return edge.FakeOutcome{Stdout: "remote.origin.url\n" + testCloneURL + "\x00"}
+		case args[0] == "remote":
+			return edge.FakeOutcome{Stdout: testCloneURL + "\n"}
+		case args[0] == "fetch":
+			return edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"}
+		}
+		return edge.FakeOutcome{}
+	})
 	gitOps := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
-	_, err := gitOps.RebaseOntoStream(ctx, t.TempDir(), testCloneURL, "sprint/s1/group")
+	wt := filepath.Join(t.TempDir(), "repo")
+	writeStagedAlternates_internal(t, gitOps, wt, "r")
+	_, err := gitOps.RebaseOntoStream(ctx, wt, testCloneURL, "sprint/s1/group")
 	var fe *FetchError
 	if !errors.As(err, &fe) || fe.StreamRef != "sprint/s1/group" {
 		t.Fatalf("expected *FetchError from RebaseOntoStream when fetch fails, got %T (%v)", err, err)

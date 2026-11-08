@@ -9,6 +9,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/store"
+	"io/fs"
 	"maps"
 	"math"
 	"os"
@@ -928,7 +929,7 @@ func (g *OSGitOps) Fetch(ctx context.Context, j Job) error {
 	if err != nil {
 		return err
 	}
-	if _, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), work, "fetch", "--quiet", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+	if _, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), work, "fetch", "--quiet", "--no-recurse-submodules", "origin", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
 		return fmt.Errorf("fetch %s: %w", url, err)
 	}
 	return nil
@@ -997,7 +998,7 @@ func (g *OSGitOps) checkoutJob_internal(ctx context.Context, to time.Duration, j
 			return "", err
 		}
 	}
-	return g.HeadSHA(ctx, j.WorktreeDir)
+	return g.headSHA_internal(ctx, j.WorktreeDir)
 }
 
 // BranchTip reads j's branch from the work clone's remote-tracking refs
@@ -1017,11 +1018,16 @@ func (g *OSGitOps) BranchTip(ctx context.Context, j Job) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error) {
-	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
-	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+	if err := g.guardWorktree_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree); err != nil {
 		return "", err
 	}
-	out, err := g.runGit_internal(ctx, to, worktree, "rev-parse", "HEAD")
+	return g.headSHA_internal(ctx, worktree)
+}
+
+// headSHA_internal is the worktree's HEAD, read with no guard: staging's
+// own read, before the harness has run.
+func (g *OSGitOps) headSHA_internal(ctx context.Context, worktree string) (string, error) {
+	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", "HEAD")
 	return strings.TrimSpace(out), err
 }
 
@@ -1044,25 +1050,106 @@ func stagedConfigKey_internal(key, value string) bool {
 	return false
 }
 
-// guardConfig_internal runs before every worker git call after the
-// harness (which can write the worktree's .git): the worktree's own config
-// (git config --local, read with nothing run) holds only the keys staging
-// wrote (stagedConfigKey_internal). Any other key (a filter, a
-// core.sshCommand, core.fsmonitor or core.hooksPath, an include, a remote
-// other than origin, url.*, http.*, credential.*) is refused, so the
-// worker's git never runs a command or reaches a server the harness chose.
-// Hooks never run in any case: every worker git call passes
-// core.hooksPath=/dev/null (runGit_internal).
-func (g *OSGitOps) guardConfig_internal(ctx context.Context, to time.Duration, worktree string) error {
+// guardWorktree_internal runs before every worker git call after the
+// harness, which can write anything under the worktree, .git included. The
+// worktree must be as staging left it:
+//   - no nested repository: no .git file or directory below its root
+//     (walked in Go, so no git runs in it), and no gitlink (mode 160000) in
+//     its index, so no git of the worker's ever runs inside another
+//     repository's config, filters or http settings (nestedRepo_internal,
+//     gitlinks_internal);
+//   - its own config (git config --local, read with nothing run) holds only
+//     the keys staging wrote (stagedConfigKey_internal): a filter,
+//     core.sshCommand, core.fsmonitor or core.hooksPath, an include, a
+//     remote other than origin, url.*, http.* or credential.* is refused;
+//   - its objects/info/alternates is the one staging wrote: the work clone's
+//     objects, then the work clone's own alternates (alternates_internal).
+//
+// Hooks never run in any case, and submodules are never recursed into:
+// every worker git call passes gitPrefix_internal.
+func (g *OSGitOps) guardWorktree_internal(ctx context.Context, to time.Duration, worktree string) error {
+	if err := nestedRepo_internal(worktree); err != nil {
+		return err
+	}
 	list, err := g.runGit_internal(ctx, to, worktree, "config", "--local", "--null", "--list")
 	if err != nil {
 		return err
 	}
+	origin := ""
 	for _, entry := range strings.Split(list, "\x00") {
 		key, value, _ := strings.Cut(entry, "\n")
 		if key != "" && !stagedConfigKey_internal(key, value) {
 			return fmt.Errorf("git refused: the worktree's config has %s, which neither git's clone nor the worker's staging writes: the harness changed .git/config, and the worker's git runs only with the config it staged", key)
 		}
+		if strings.EqualFold(key, "remote.origin.url") {
+			origin = value
+		}
+	}
+	if err := g.alternates_internal(worktree, origin); err != nil {
+		return err
+	}
+	return g.gitlinks_internal(ctx, to, worktree)
+}
+
+// nestedRepo_internal refuses a worktree with a .git file or directory
+// anywhere below its root, or one it cannot read whole (a .git could hide
+// there). Symbolic links are not followed, as git does not.
+func nestedRepo_internal(worktree string) error {
+	root := filepath.Join(worktree, ".git")
+	return filepath.WalkDir(worktree, func(p string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return fmt.Errorf("git refused: the worktree cannot be read whole to check it holds no nested repository: %w", err)
+		case p == root:
+			return filepath.SkipDir
+		case d.Name() == ".git":
+			return fmt.Errorf("git refused: the worktree holds a nested repository at %s: the harness made it, and the worker's git never runs in another repository's config", p)
+		}
+		return nil
+	})
+}
+
+// gitlinks_internal refuses a worktree whose index holds a gitlink (mode
+// 160000, a submodule): git ls-files --stage reads the index, running
+// nothing.
+func (g *OSGitOps) gitlinks_internal(ctx context.Context, to time.Duration, worktree string) error {
+	out, err := g.runGit_internal(ctx, to, worktree, "ls-files", "--stage", "-z")
+	if err != nil {
+		return err
+	}
+	for _, entry := range strings.Split(out, "\x00") {
+		if mode, rest, _ := strings.Cut(entry, " "); mode == "160000" {
+			_, path, _ := strings.Cut(rest, "\t")
+			return fmt.Errorf("git refused: the worktree's index holds a gitlink (a submodule) at %s: the worker's git never runs in another repository", path)
+		}
+	}
+	return nil
+}
+
+// alternates_internal refuses a worktree whose objects/info/alternates is
+// not the one staging wrote for its origin's work clone (clone --shared
+// writes <work>/.git/objects; StageWorktree appends the work clone's own
+// alternates): another object store could feed the worker's git objects
+// staging never fetched.
+func (g *OSGitOps) alternates_internal(worktree, origin string) error {
+	name, err := repoName_internal(origin)
+	if err != nil {
+		return fmt.Errorf("git refused: the worktree's origin %q names no work clone: %w", origin, err)
+	}
+	work, err := filepath.Abs(filepath.Join(g.WorkRoot, name))
+	if err != nil {
+		return err
+	}
+	want := []string{filepath.Join(work, ".git", "objects")}
+	if alt, err := os.ReadFile(filepath.Join(work, ".git", "objects", "info", "alternates")); err == nil {
+		want = append(want, strings.Fields(string(alt))...)
+	}
+	got, err := os.ReadFile(filepath.Join(worktree, ".git", "objects", "info", "alternates"))
+	if err != nil {
+		return fmt.Errorf("git refused: the worktree's objects/info/alternates, which staging wrote, cannot be read: the harness changed it: %w", err)
+	}
+	if !slices.Equal(strings.Fields(string(got)), want) {
+		return fmt.Errorf("git refused: the worktree's objects/info/alternates is %q, not the %q staging wrote: the harness changed it", strings.Fields(string(got)), want)
 	}
 	return nil
 }
@@ -1123,7 +1210,7 @@ func (g *OSGitOps) guardRemote_internal(ctx context.Context, to time.Duration, w
 	if strings.TrimSpace(remote) == "" {
 		return errors.New("git refused: the job names no clone URL to push or fetch: its record's repo and forge give none (CloneURL)")
 	}
-	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+	if err := g.guardWorktree_internal(ctx, to, worktree); err != nil {
 		return err
 	}
 	for _, args := range [][]string{{"remote", "get-url", "origin"}, {"remote", "get-url", "--push", "origin"}} {
@@ -1153,7 +1240,7 @@ func (g *OSGitOps) Push(ctx context.Context, worktree, remote, branch, headSHA, 
 	to := g.to_internal(g.Timeouts.WithDefaults().Push)
 	err := g.guardRemote_internal(ctx, to, worktree, remote)
 	if err == nil {
-		_, err = g.runGit_internal(ctx, to, worktree, "push", "--force-with-lease="+ref+":"+expect, remote, headSHA+":"+ref)
+		_, err = g.runGit_internal(ctx, to, worktree, "push", "--no-recurse-submodules", "--force-with-lease="+ref+":"+expect, remote, headSHA+":"+ref)
 	}
 	if err != nil {
 		at := cmp.Or(expect, "no branch (a new one)")
@@ -1166,7 +1253,7 @@ func (g *OSGitOps) RebaseOntoStream(ctx context.Context, worktree, remote, strea
 	if err := g.guardRemote_internal(ctx, to, worktree, remote); err != nil {
 		return "", err // the worktree's doing, so the job's failure, never a fault to retry
 	}
-	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", remote, streamRef); err != nil {
+	if _, err := g.runGit_internal(ctx, to, worktree, "fetch", "--quiet", "--no-recurse-submodules", remote, streamRef); err != nil {
 		return "", &FetchError{StreamRef: streamRef, Cause: err}
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "rebase", "FETCH_HEAD"); err != nil {
@@ -1202,7 +1289,7 @@ func (g *OSGitOps) HasHead(ctx context.Context, remote, branch, sha string) (boo
 }
 func (g *OSGitOps) IsDirty(ctx context.Context, worktree string) (bool, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
-	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+	if err := g.guardWorktree_internal(ctx, to, worktree); err != nil {
 		return false, err
 	}
 	out, err := g.runGit_internal(ctx, to, worktree, "status", "--porcelain")
@@ -1210,10 +1297,13 @@ func (g *OSGitOps) IsDirty(ctx context.Context, worktree string) (bool, error) {
 }
 func (g *OSGitOps) CommitAll(ctx context.Context, worktree, message string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
-	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+	if err := g.guardWorktree_internal(ctx, to, worktree); err != nil {
 		return "", err
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "add", "-A"); err != nil {
+		return "", err
+	}
+	if err := g.gitlinks_internal(ctx, to, worktree); err != nil { // the tree about to be committed
 		return "", err
 	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "commit", "--quiet", "--no-verify", "-m", message); err != nil {
@@ -1225,17 +1315,29 @@ func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
 	return os.RemoveAll(worktree)
 }
 
-// gitEnv_internal is every worker git call's whole environment: PATH,
-// HOME, no prompt, and the one credential (git.CredentialEnv).
-func (g *OSGitOps) gitEnv_internal() []string {
+// gitPrefix_internal begins every worker git call: no hooks, no
+// fsmonitor, and no submodule recursion, whatever any config says.
+var gitPrefix_internal = []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false", "-c", "diff.ignoreSubmodules=all"}
+
+// networkVerbs_internal are the worker's git verbs that reach a remote:
+// only they carry the credential (gitEnv_internal).
+var networkVerbs_internal = []string{"clone", "fetch", "ls-remote", "push"}
+
+// gitEnv_internal is a worker git call's whole environment: PATH, HOME,
+// no prompt, and for a network verb the one credential (git.CredentialEnv);
+// status, add, commit, rebase, rev-parse and config never carry it.
+func (g *OSGitOps) gitEnv_internal(verb string) []string {
 	env := []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"}
+	if !slices.Contains(networkVerbs_internal, verb) {
+		return env
+	}
 	return append(env, git.CredentialEnv(g.Token, cmp.Or(g.GitHubCredential, "gh"))...)
 }
 func (g *OSGitOps) runGit_internal(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
 	cmd := edge.Cmd{
-		Argv:     append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}, args...),
+		Argv:     append(slices.Clone(gitPrefix_internal), args...),
 		Dir:      dir,
-		Env:      g.gitEnv_internal(),
+		Env:      g.gitEnv_internal(args[0]),
 		CleanEnv: true, Timeout: timeout,
 	}
 	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, cmd)

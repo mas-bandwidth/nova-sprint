@@ -242,3 +242,60 @@ func TestFunctionalRunnerRebaseConflict(t *testing.T) {
 	assert.Equal(t, "fail", snap.Cards["p1.w1"].Result)
 	assert.Contains(t, snap.Cards["p1.w1"].Reason, "work.txt")
 }
+
+// TestFunctionalWorkerGitRefusesANestedRepoFilter (functional tier: real
+// git) is the round-3 reader's case: a repository nested in the worktree,
+// recorded as a gitlink, whose own config has a clean filter that touches a
+// marker and whose .gitattributes applies it. Plain `git status` in the
+// worktree runs the filter (the control); every worker git call after the
+// harness refuses the worktree first, so the marker never appears.
+func TestFunctionalWorkerGitRefusesANestedRepoFilter(t *testing.T) {
+	t.Parallel()
+	gb := setupGitBench_internal(t)
+	g := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
+	ctx := context.Background()
+	j := Job{Repo: gb.originDir, Kind: "work", Branch: "sprint/s1/p1", BaseSHA: gb.baseSHA, Consumer: "p1.w1",
+		WorktreeDir: filepath.Join(t.TempDir(), "job", "repo"), CommitName: testCommitName, CommitEmail: testCommitEmail}
+	require.NoError(t, g.Fetch(ctx, j))
+	_, err := g.StageWorktree(ctx, j)
+	require.NoError(t, err)
+	_, err = g.IsDirty(ctx, j.WorktreeDir)
+	require.NoError(t, err, "a staged worktree passes the guard")
+
+	marker := filepath.Join(t.TempDir(), "MARKER")
+	sub := filepath.Join(j.WorktreeDir, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	runGitCmd_internal(t, sub, "init", "-q")
+	runGitCmd_internal(t, sub, "config", "filter.x.clean", "sh -c 'touch "+marker+"; cat'")
+	require.NoError(t, os.WriteFile(filepath.Join(sub, ".gitattributes"), []byte("* filter=x\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "f"), []byte("one\n"), 0o644))
+	runGitCmd_internal(t, sub, "add", "f", ".gitattributes")
+	runGitCmd_internal(t, sub, "commit", "-q", "-m", "sub")
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "f"), []byte("two\n"), 0o644))
+	runGitCmd_internal(t, j.WorktreeDir, "add", "sub") // the gitlink
+	require.NoError(t, os.RemoveAll(marker))
+
+	for verb, call := range map[string]func() error{
+		"dirty":  func() error { _, err := g.IsDirty(ctx, j.WorktreeDir); return err },
+		"commit": func() error { _, err := g.CommitAll(ctx, j.WorktreeDir, "m"); return err },
+		"head":   func() error { _, err := g.HeadSHA(ctx, j.WorktreeDir); return err },
+		"push":   func() error { return g.Push(ctx, j.WorktreeDir, gb.originDir, j.Branch, gb.baseSHA, "") },
+		"fetch": func() error {
+			_, err := g.RebaseOntoStream(ctx, j.WorktreeDir, gb.originDir, "sprint/s1/group")
+			return err
+		},
+		"has head": func() error {
+			_, err := g.OriginHasHead(ctx, j.WorktreeDir, gb.originDir, j.Branch, gb.baseSHA)
+			return err
+		},
+	} {
+		err := call()
+		require.Error(t, err, verb)
+		require.Contains(t, err.Error(), "nested repository", verb)
+		_, statErr := os.Stat(marker)
+		require.True(t, os.IsNotExist(statErr), "%s: the nested repo's filter ran", verb)
+	}
+	runGitCmd_internal(t, j.WorktreeDir, "status", "--porcelain") // the control: plain git runs it
+	_, err = os.Stat(marker)
+	require.NoError(t, err, "the control: plain git status should have run the nested filter, so the case is live")
+}

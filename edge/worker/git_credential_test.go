@@ -22,12 +22,14 @@ const gitTokenFixture = "gh-gate-token-fixture"
 func workerGitCalls_internal(t *testing.T, g *OSGitOps, fx *edge.FakeExec) []edge.FakeCall {
 	t.Helper()
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
-		args := c.Cmd.Argv[5:] // after git -c hooksPath -c fsmonitor
+		args := c.Cmd.Argv[gitArg0_internal:] // after gitPrefix_internal
 		switch {
 		case args[0] == "clone":
 			_ = os.MkdirAll(args[len(args)-1], 0o755)
 		case args[0] == "remote" && args[1] == "get-url":
 			return edge.FakeOutcome{Stdout: "https://github.com/o/r.git\n"}
+		case args[0] == "config" && args[1] == "--local":
+			return edge.FakeOutcome{Stdout: "remote.origin.url\nhttps://github.com/o/r.git\x00"}
 		case args[0] == "rev-parse":
 			return edge.FakeOutcome{Stdout: strings.Repeat("a", 40) + "\n"}
 		}
@@ -39,6 +41,7 @@ func workerGitCalls_internal(t *testing.T, g *OSGitOps, fx *edge.FakeExec) []edg
 	if _, err := g.StageWorktree(ctx, j); err != nil {
 		t.Fatal(err)
 	}
+	writeStagedAlternates_internal(t, g, j.WorktreeDir, "r") // what the real clone --shared writes
 	if err := g.Fetch(ctx, j); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +58,7 @@ func workerGitCalls_internal(t *testing.T, g *OSGitOps, fx *edge.FakeExec) []edg
 	var remote []edge.FakeCall
 	verbs := map[string]bool{}
 	for _, c := range fx.Calls() {
-		if v := c.Cmd.Argv[5]; v == "clone" || v == "fetch" || v == "ls-remote" || v == "push" {
+		if v := c.Cmd.Argv[gitArg0_internal]; v == "clone" || v == "fetch" || v == "ls-remote" || v == "push" {
 			remote, verbs[v] = append(remote, c), true
 		}
 	}
@@ -185,7 +188,7 @@ func guardFake_internal(origin, pushURL string, local, global []string) (*edge.F
 	fx := edge.NewFakeExec()
 	var argvs []string
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
-		args := c.Cmd.Argv[5:]
+		args := c.Cmd.Argv[gitArg0_internal:]
 		argvs = append(argvs, strings.Join(args, " "))
 		switch {
 		case len(args) > 3 && args[0] == "remote" && args[2] == "--push":
@@ -227,6 +230,9 @@ func TestWorkerGitRefusesATamperedWorktree(t *testing.T) {
 	sha, lease := strings.Repeat("a", 40), strings.Repeat("b", 40)
 	ctx := context.Background()
 	with := func(extra ...string) []string { return append(slices.Clone(stagedLocal_internal), extra...) }
+	workRoot := t.TempDir()
+	wt := filepath.Join(t.TempDir(), "repo")
+	writeStagedAlternates_internal(t, &OSGitOps{WorkRoot: workRoot}, wt, "r")
 	type tamper struct {
 		origin, push  string
 		local, global []string
@@ -248,15 +254,15 @@ func TestWorkerGitRefusesATamperedWorktree(t *testing.T) {
 		"push URL elsewhere":                 {url, "https://evil.example/o/r.git", stagedLocal_internal, nil, "not the job's clone URL"},
 	}
 	calls := map[string]func(g *OSGitOps) error{
-		"push":  func(g *OSGitOps) error { return g.Push(ctx, "/wt", url, "sprint/s/p1", sha, lease) },
-		"fetch": func(g *OSGitOps) error { _, err := g.RebaseOntoStream(ctx, "/wt", url, "sprint/s/group"); return err },
+		"push":  func(g *OSGitOps) error { return g.Push(ctx, wt, url, "sprint/s/p1", sha, lease) },
+		"fetch": func(g *OSGitOps) error { _, err := g.RebaseOntoStream(ctx, wt, url, "sprint/s/group"); return err },
 		"has head": func(g *OSGitOps) error {
-			_, err := g.OriginHasHead(ctx, "/wt", url, "sprint/s/p1", sha)
+			_, err := g.OriginHasHead(ctx, wt, url, "sprint/s/p1", sha)
 			return err
 		},
-		"dirty":  func(g *OSGitOps) error { _, err := g.IsDirty(ctx, "/wt"); return err },
-		"commit": func(g *OSGitOps) error { _, err := g.CommitAll(ctx, "/wt", "m"); return err },
-		"head":   func(g *OSGitOps) error { _, err := g.HeadSHA(ctx, "/wt"); return err },
+		"dirty":  func(g *OSGitOps) error { _, err := g.IsDirty(ctx, wt); return err },
+		"commit": func(g *OSGitOps) error { _, err := g.CommitAll(ctx, wt, "m"); return err },
+		"head":   func(g *OSGitOps) error { _, err := g.HeadSHA(ctx, wt); return err },
 	}
 	remoteOnly := map[string]bool{"push": true, "fetch": true, "has head": true}
 	for name, c := range cases {
@@ -266,22 +272,24 @@ func TestWorkerGitRefusesATamperedWorktree(t *testing.T) {
 				continue // origin and insteadOf matter only to a call that reaches the remote
 			}
 			fx, argvs := guardFake_internal(c.origin, c.push, c.local, c.global)
-			err := call(&OSGitOps{Exec: fx, Token: gitTokenFixture})
-			ran := slices.ContainsFunc(*argvs, func(a string) bool { return !strings.HasPrefix(a, "config") && !strings.HasPrefix(a, "remote get-url") })
+			err := call(&OSGitOps{Exec: fx, Token: gitTokenFixture, WorkRoot: workRoot})
+			ran := slices.ContainsFunc(*argvs, func(a string) bool {
+				return !strings.HasPrefix(a, "config") && !strings.HasPrefix(a, "remote get-url") && !strings.HasPrefix(a, "ls-files")
+			})
 			if err == nil || !strings.Contains(err.Error(), "git refused:") || !strings.Contains(err.Error(), c.names) || ran {
 				t.Fatalf("%s, %s: err %v, git ran %q", name, verb, err, *argvs)
 			}
 		}
 	}
 	fx, argvs := guardFake_internal(url, url, stagedLocal_internal, []string{"url.git@github.com:.insteadof\nhttps://gitlab.example/"})
-	g := &OSGitOps{Exec: fx, Token: gitTokenFixture}
+	g := &OSGitOps{Exec: fx, Token: gitTokenFixture, WorkRoot: workRoot}
 	for verb, call := range calls {
 		if err := call(g); err != nil {
 			t.Fatalf("an untouched worktree, %s: %v", verb, err)
 		}
 	}
-	for _, want := range []string{"push --force-with-lease=refs/heads/sprint/s/p1:" + lease + " " + url + " " + sha + ":refs/heads/sprint/s/p1",
-		"fetch --quiet " + url + " sprint/s/group", "ls-remote " + url + " refs/heads/sprint/s/p1", "status --porcelain", "add -A"} {
+	for _, want := range []string{"push --no-recurse-submodules --force-with-lease=refs/heads/sprint/s/p1:" + lease + " " + url + " " + sha + ":refs/heads/sprint/s/p1",
+		"fetch --quiet --no-recurse-submodules " + url + " sprint/s/group", "ls-remote " + url + " refs/heads/sprint/s/p1", "status --porcelain", "add -A"} {
 		if !slices.Contains(*argvs, want) {
 			t.Fatalf("an untouched worktree: no %q in %q", want, *argvs)
 		}
@@ -290,11 +298,11 @@ func TestWorkerGitRefusesATamperedWorktree(t *testing.T) {
 		t.Fatalf("a remote call named origin: %q", *argvs)
 	}
 	for _, c := range fx.Calls() {
-		if !slices.Equal(c.Cmd.Argv[:5], []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}) {
-			t.Fatalf("a worker git call runs the worktree's hooks or fsmonitor: %q", c.Cmd.Argv)
+		if !slices.Equal(c.Cmd.Argv[:gitArg0_internal], []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "submodule.recurse=false", "-c", "diff.ignoreSubmodules=all"}) {
+			t.Fatalf("a worker git call runs the worktree's hooks or fsmonitor, or recurses into submodules: %q", c.Cmd.Argv)
 		}
 	}
-	if err := (&OSGitOps{Exec: fx}).Push(ctx, "/wt", "", "sprint/s/p1", sha, lease); err == nil || !strings.Contains(err.Error(), "names no clone URL") {
+	if err := (&OSGitOps{Exec: fx, WorkRoot: workRoot}).Push(ctx, wt, "", "sprint/s/p1", sha, lease); err == nil || !strings.Contains(err.Error(), "names no clone URL") {
 		t.Fatalf("a job with no clone URL: %v", err)
 	}
 }
@@ -349,5 +357,184 @@ func writeStagedRecord_internal(t *testing.T, jobDir string, rec JobRecord) {
 	r := &Runner{RootDir: filepath.Dir(filepath.Dir(jobDir))}
 	if err := r.keepRemote_internal(TakeInfo{Consumer: rec.Consumer, Repo: rec.Repo, Forge: rec.Forge}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// gitArg0_internal is the index of a worker git call's own arguments, after
+// gitPrefix_internal.
+var gitArg0_internal = len(gitPrefix_internal)
+
+// writeStagedAlternates_internal makes wt's .git/objects/info/alternates
+// as staging writes it for the work clone <g.WorkRoot>/<name>.
+func writeStagedAlternates_internal(t *testing.T, g *OSGitOps, wt, name string) {
+	t.Helper()
+	info := filepath.Join(wt, ".git", "objects", "info")
+	if err := os.MkdirAll(info, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(filepath.Join(g.WorkRoot, name, ".git", "objects")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// #680 round 3: a repository nested in the worktree (a .git below its root,
+// or a gitlink in its index) makes the worker's git run that repository's
+// config, its filters and http settings included, outside the wall; and
+// alternates the harness rewrote feed git objects staging never fetched.
+// Each is refused before git runs anything but the guard's reads (config,
+// ls-files), for every call after the harness.
+func TestWorkerGitRefusesANestedRepoOrNewAlternates(t *testing.T) {
+	t.Parallel()
+	const url = "https://github.com/o/r.git"
+	ctx := context.Background()
+	sha := strings.Repeat("a", 40)
+	calls := map[string]func(g *OSGitOps, wt string) error{
+		"push": func(g *OSGitOps, wt string) error { return g.Push(ctx, wt, url, "sprint/s/p1", sha, "") },
+		"fetch": func(g *OSGitOps, wt string) error {
+			_, err := g.RebaseOntoStream(ctx, wt, url, "sprint/s/group")
+			return err
+		},
+		"has head": func(g *OSGitOps, wt string) error {
+			_, err := g.OriginHasHead(ctx, wt, url, "sprint/s/p1", sha)
+			return err
+		},
+		"dirty":  func(g *OSGitOps, wt string) error { _, err := g.IsDirty(ctx, wt); return err },
+		"commit": func(g *OSGitOps, wt string) error { _, err := g.CommitAll(ctx, wt, "m"); return err },
+		"head":   func(g *OSGitOps, wt string) error { _, err := g.HeadSHA(ctx, wt); return err },
+	}
+	type tamper struct {
+		prep    func(t *testing.T, wt, workRoot string)
+		index   string // ls-files --stage -z output
+		names   string
+		gitRuns bool // the guard reads config and the index before it refuses
+	}
+	write := func(t *testing.T, path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := map[string]tamper{
+		"a nested .git directory": {prep: func(t *testing.T, wt, _ string) {
+			write(t, filepath.Join(wt, "sub", ".git", "config"), "[filter \"x\"]\n\tclean = touch /tmp/pwned\n")
+			write(t, filepath.Join(wt, "sub", ".gitattributes"), "* filter=x\n")
+		}, names: "nested repository at " + "SUB"},
+		"a nested .git file": {prep: func(t *testing.T, wt, _ string) {
+			write(t, filepath.Join(wt, "deep", "er", ".git"), "gitdir: /elsewhere\n")
+		}, names: "nested repository at"},
+		"a gitlink in the index": {index: "100644 " + sha + " 0\tREADME.md\x00160000 " + sha + " 0\tsub\x00", names: "gitlink (a submodule) at sub", gitRuns: true},
+		"an alternates line added": {prep: func(t *testing.T, wt, workRoot string) {
+			write(t, filepath.Join(wt, ".git", "objects", "info", "alternates"), filepath.Join(workRoot, "r", ".git", "objects")+"\n/tmp/evil/objects\n")
+		}, names: "objects/info/alternates", gitRuns: true},
+		"alternates elsewhere": {prep: func(t *testing.T, wt, _ string) {
+			write(t, filepath.Join(wt, ".git", "objects", "info", "alternates"), "/tmp/evil/objects\n")
+		}, names: "objects/info/alternates", gitRuns: true},
+		"alternates removed": {prep: func(t *testing.T, wt, _ string) {
+			if err := os.Remove(filepath.Join(wt, ".git", "objects", "info", "alternates")); err != nil {
+				t.Fatal(err)
+			}
+		}, names: "objects/info/alternates", gitRuns: true},
+	}
+	for name, c := range cases {
+		for verb, call := range calls {
+			workRoot := t.TempDir()
+			wt := filepath.Join(t.TempDir(), "repo")
+			writeStagedAlternates_internal(t, &OSGitOps{WorkRoot: workRoot}, wt, "r")
+			if c.prep != nil {
+				c.prep(t, wt, workRoot)
+			}
+			fx, argvs := guardFake_internal(url, url, stagedLocal_internal, nil)
+			fx.On("git", func(fc edge.FakeCall) edge.FakeOutcome { // the guard fake, with an index
+				if fc.Cmd.Argv[gitArg0_internal] == "ls-files" {
+					*argvs = append(*argvs, "ls-files")
+					return edge.FakeOutcome{Stdout: c.index}
+				}
+				*argvs = append(*argvs, strings.Join(fc.Cmd.Argv[gitArg0_internal:], " "))
+				if fc.Cmd.Argv[gitArg0_internal] == "config" {
+					return edge.FakeOutcome{Stdout: strings.Join(stagedLocal_internal, "\x00")}
+				}
+				return edge.FakeOutcome{Stdout: url + "\n"}
+			})
+			err := call(&OSGitOps{Exec: fx, WorkRoot: workRoot, Token: gitTokenFixture}, wt)
+			want := strings.Replace(c.names, "SUB", filepath.Join(wt, "sub", ".git"), 1)
+			ranOther := slices.ContainsFunc(*argvs, func(a string) bool { return !strings.HasPrefix(a, "config --local") && a != "ls-files" })
+			if err == nil || !strings.Contains(err.Error(), "git refused:") || !strings.Contains(err.Error(), want) || ranOther || !c.gitRuns && len(*argvs) != 0 {
+				t.Fatalf("%s, %s: err %v, git ran %q", name, verb, err, *argvs)
+			}
+		}
+	}
+	// A gitlink that git add -A records (the tree about to be committed) is
+	// refused before the commit.
+	workRoot := t.TempDir()
+	wt := filepath.Join(t.TempDir(), "repo")
+	writeStagedAlternates_internal(t, &OSGitOps{WorkRoot: workRoot}, wt, "r")
+	fx := edge.NewFakeExec()
+	added := false
+	var argvs []string
+	fx.On("git", func(fc edge.FakeCall) edge.FakeOutcome {
+		args := fc.Cmd.Argv[gitArg0_internal:]
+		argvs = append(argvs, args[0])
+		switch args[0] {
+		case "config":
+			return edge.FakeOutcome{Stdout: strings.Join(stagedLocal_internal, "\x00")}
+		case "add":
+			added = true
+		case "ls-files":
+			if added {
+				return edge.FakeOutcome{Stdout: "160000 " + sha + " 0\tsub\x00"}
+			}
+		}
+		return edge.FakeOutcome{}
+	})
+	if _, err := (&OSGitOps{Exec: fx, WorkRoot: workRoot}).CommitAll(ctx, wt, "m"); err == nil || !strings.Contains(err.Error(), "gitlink") || slices.Contains(argvs, "commit") {
+		t.Fatalf("a gitlink added by add -A: err %v, git ran %q", err, argvs)
+	}
+}
+
+// The token is on the network calls alone (clone, fetch, ls-remote,
+// push), never on status, add, commit, rebase, rev-parse, config or
+// ls-files; every call carries the no-hooks, no-fsmonitor, no-submodule
+// flags, and fetch and push --no-recurse-submodules.
+func TestWorkerGitTokenOnlyOnNetworkCalls(t *testing.T) {
+	t.Parallel()
+	fx := edge.NewFakeExec()
+	g := &OSGitOps{WorkRoot: filepath.Join(t.TempDir(), "clones"), MirrorRoot: filepath.Join(t.TempDir(), "mirror"), Exec: fx, Token: gitTokenFixture}
+	workerGitCalls_internal(t, g, fx)
+	wt := ""
+	for _, c := range fx.Calls() {
+		if args := c.Cmd.Argv[gitArg0_internal:]; args[0] == "push" {
+			wt = c.Cmd.Dir
+		}
+	}
+	if _, err := g.IsDirty(context.Background(), wt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.CommitAll(context.Background(), wt, "m"); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, c := range fx.Calls() {
+		args := c.Cmd.Argv[gitArg0_internal:]
+		seen[args[0]] = true
+		if !slices.Equal(c.Cmd.Argv[:gitArg0_internal], gitPrefix_internal) {
+			t.Fatalf("%q lacks the worker's git flags", c.Cmd.Argv)
+		}
+		network := slices.Contains(networkVerbs_internal, args[0])
+		token := slices.Contains(c.Cmd.Env, "NOVA_SPRINT_GIT_TOKEN="+gitTokenFixture)
+		helper := slices.ContainsFunc(c.Cmd.Env, func(kv string) bool { return strings.HasPrefix(kv, "GIT_CONFIG_") })
+		if network != token || network != helper {
+			t.Fatalf("%q: network %t, token %t, helper %t", args, network, token, helper)
+		}
+		if (args[0] == "fetch" || args[0] == "push") && !slices.Contains(args, "--no-recurse-submodules") {
+			t.Fatalf("%q recurses into submodules", args)
+		}
+	}
+	for _, v := range []string{"clone", "fetch", "ls-remote", "push", "rebase", "rev-parse", "status", "add", "commit", "config", "ls-files"} {
+		if !seen[v] {
+			t.Fatalf("git %s was not reached: %v", v, seen)
+		}
 	}
 }
