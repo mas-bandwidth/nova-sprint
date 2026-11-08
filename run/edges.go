@@ -312,22 +312,40 @@ func (e *Edges) WatchHeads(ctx context.Context, c Clock, streams func() map[stri
 	}
 }
 
+// readHeads reads each stream's base tip: one ls-remote per repository and
+// base, its answer every stream's that shares them (defect D6: nine streams
+// on one base were read nine times, and the one read that timed out lost
+// its head for the pass while the others kept theirs). A read that fails
+// keeps the head as last read (SEAMS: Inputs.Heads is the tip "as the edge
+// last read it"), and the failure is said per stream; a base not on origin
+// is a definite answer, and the head goes.
 func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) {
-	heads, failed := map[string]string{}, map[string]error{}
+	heads, failed, read := map[string]string{}, map[string]error{}, map[string]headRead{}
+	e.mu.Lock()
+	last := e.heads
+	e.mu.Unlock()
 	for name, s := range streams {
-		dir, err := e.clone(ctx, s)
+		url, err := git.CloneURL(s.Repo, s.Forge)
 		if err != nil {
 			failed[name] = fmt.Errorf("clone: %w", err)
 			continue
 		}
-		sha, ok, err := e.Git.LsRemote(ctx, dir, "refs/heads/"+s.Base)
+		key := url + "\x00" + s.Base
+		r, ok := read[key]
+		if !ok {
+			r = e.readHead(ctx, s)
+			read[key] = r
+		}
 		switch {
-		case err != nil:
-			failed[name] = fmt.Errorf("ls-remote %s: %w", s.Base, err)
-		case !ok:
-			failed[name] = fmt.Errorf("base branch %s is not on origin", s.Base)
+		case r.err != nil && r.gone:
+			failed[name] = r.err
+		case r.err != nil:
+			failed[name] = r.err
+			if sha, kept := last[name]; kept {
+				heads[name] = sha
+			}
 		default:
-			heads[name] = sha
+			heads[name] = r.sha
 		}
 	}
 	e.mu.Lock()
@@ -347,4 +365,27 @@ func (e *Edges) readHeads(ctx context.Context, streams map[string]store.Stream) 
 	for _, name := range tell {
 		e.fault("heads stream "+name, failed[name])
 	}
+}
+
+// headRead is one base tip as read at origin: the sha, or why the read
+// failed; gone says the failure is the base not being on origin.
+type headRead struct {
+	sha  string
+	err  error
+	gone bool
+}
+
+func (e *Edges) readHead(ctx context.Context, s store.Stream) headRead {
+	dir, err := e.clone(ctx, s)
+	if err != nil {
+		return headRead{err: fmt.Errorf("clone: %w", err)}
+	}
+	sha, ok, err := e.Git.LsRemote(ctx, dir, "refs/heads/"+s.Base)
+	switch {
+	case err != nil:
+		return headRead{err: fmt.Errorf("ls-remote %s: %w", s.Base, err)}
+	case !ok:
+		return headRead{err: fmt.Errorf("base branch %s is not on origin", s.Base), gone: true}
+	}
+	return headRead{sha: sha}
 }
