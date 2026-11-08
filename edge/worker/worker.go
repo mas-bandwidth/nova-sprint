@@ -76,6 +76,9 @@ type (
 		JobDir, WorktreeDir, ProxyAddr, CommitName, CommitEmail, ScriptMode, Forge                                                                      string
 		Deadline                                                                                                                                        time.Duration
 		Needs                                                                                                                                           Needs // the harness's wall, from its adapter
+		// Models are declared to the harness beside Model (the probe's
+		// listing: every tier candidate with a key-proxy route).
+		Models []string
 	}
 	Outcome struct {
 		Result, Head, Reason, Finding string

@@ -223,12 +223,12 @@ func (h *CodexHarness) Needs() Needs {
 // before it writes its log (measured on a bench, 2026-11-07). --unix reopens
 // nova-sandbox's same-uid escape (any local socket reachable by path): that
 // trade is accepted for this adapter only. It reaches providers through the
-// key proxy (one loopback --net-allow), logs under its data home, and lists
-// its models with `opencode models`.
+// key proxy (one loopback --net-allow, OpenCodeConfig), logs under its data
+// home, and lists its models with `opencode models`.
 func (h *OpenCodeHarness) Needs() Needs {
 	return Needs{Unix: true, Proxy: true, ListModels: []string{"opencode", "models"}, LogDir: filepath.Join("data", "opencode", "log"), Model: true,
-		Limits: "through the key proxy opencode needs a provider config in the wall home mapping the proxy's routes, which is not built: a model sent " +
-			"through OPENAI_BASE_URL dies with \"Unexpected server error\"; and its own write tool dies inside the wall with the same words (cause unknown)"}
+		Limits: "opencode 2.x starts a background service on a fixed port unless given --standalone, which 1.x refuses and this adapter does not pass: " +
+			"run opencode 1.x (1.18.20 measured); its write tool's death inside the wall (defect 33) was seen before --unix and not since on macOS (2026-11-08), unmeasured on Linux"}
 }
 
 // Needs: the script harness is the test double: no network, no model.
@@ -265,15 +265,75 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 	return argv, SanitizeWallEnv(env, j.JobDir)
 }
 
-// Command: the proxy's base URL names the route of the model's provider
-// (http://<proxy>/<provider>/v1), so one proxy serves every provider.
+// Command: opencode is given OpenCodeConfig for the job's model (and the
+// probe listing's Models) in OPENCODE_CONFIG_CONTENT, so one proxy serves
+// every provider.
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 	argv := append(append([]string{"opencode", "run"}, modelFlag_internal(j, "")...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
 	if j.ProxyAddr != "" {
-		env = append(env, "OPENAI_BASE_URL="+ProxyBaseURL(j.ProxyAddr, j.Model), "OPENAI_API_KEY="+ProxyPlaceholderKey)
+		env = append(env, "OPENCODE_CONFIG_CONTENT="+OpenCodeConfig(j.ProxyAddr, append(slices.Clone(j.Models), j.Model)))
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
+}
+
+type (
+	opencodeOptions_internal struct {
+		BaseURL string `json:"baseURL"`
+		APIKey  string `json:"apiKey"`
+	}
+	opencodeProvider_internal struct {
+		NPM     string                    `json:"npm"`
+		Name    string                    `json:"name"`
+		Options opencodeOptions_internal  `json:"options"`
+		Models  map[string]map[string]any `json:"models"`
+	}
+	opencodeConfig_internal struct {
+		Schema   string                               `json:"$schema"`
+		Provider map[string]opencodeProvider_internal `json:"provider"`
+	}
+)
+
+// OpenCodeConfig is opencode's config (JSON, its documented custom-provider
+// form; opencode 1.18 and 2.2 read it from OPENCODE_CONFIG_CONTENT) declaring
+// each provider/model of models under an OpenAI-compatible provider whose
+// base URL is the key proxy's route for it (ProxyBaseURL) and whose key is
+// the placeholder the proxy swaps for the real one. A model without a
+// provider prefix is left out.
+func OpenCodeConfig(proxyAddr string, models []string) string {
+	cfg := opencodeConfig_internal{Schema: "https://opencode.ai/config.json", Provider: map[string]opencodeProvider_internal{}}
+	for _, m := range models {
+		provider, id, ok := strings.Cut(m, "/")
+		if !ok || provider == "" || id == "" {
+			continue
+		}
+		p, seen := cfg.Provider[provider]
+		if !seen {
+			p = opencodeProvider_internal{NPM: "@ai-sdk/openai-compatible", Name: provider,
+				Options: opencodeOptions_internal{BaseURL: ProxyBaseURL(proxyAddr, m), APIKey: ProxyPlaceholderKey}, Models: map[string]map[string]any{}}
+		}
+		p.Models[id] = map[string]any{}
+		cfg.Provider[provider] = p
+	}
+	b, _ := json.Marshal(cfg) // maps of strings: never fails
+	return string(b)
+}
+
+// placeholderOpenCodeConfig_internal: v is exactly an OpenCodeConfig (no
+// field beside its own) whose every provider's key is the proxy placeholder,
+// the only config the wall admits.
+func placeholderOpenCodeConfig_internal(v string) bool {
+	var cfg opencodeConfig_internal
+	if json.Unmarshal([]byte(v), &cfg) != nil {
+		return false
+	}
+	for _, p := range cfg.Provider {
+		if p.Options.APIKey != ProxyPlaceholderKey {
+			return false
+		}
+	}
+	b, err := json.Marshal(cfg)
+	return err == nil && string(b) == v
 }
 
 const scriptHarnessProg_internal = `set -e
@@ -585,7 +645,7 @@ func baseWallEnv_internal(j Job) []string {
 func SanitizeWallEnv(env []string, jobDir string) []string {
 	var clean []string
 	hasPath := false
-	allowed := []string{"LANG", "LC_ALL", "GIT_TERMINAL_PROMPT", "NOVA_WORKER_CONSUMER", "NOVA_WORKER_ROW", "NOVA_WORKER_NONCE", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "OPENAI_BASE_URL"}
+	allowed := []string{"LANG", "LC_ALL", "GIT_TERMINAL_PROMPT", "NOVA_WORKER_CONSUMER", "NOVA_WORKER_ROW", "NOVA_WORKER_NONCE", "CLAUDE_CONFIG_DIR", "CODEX_HOME"}
 	for _, kv := range env {
 		k, v, ok := strings.Cut(kv, "=")
 		u := strings.ToUpper(k)
@@ -593,7 +653,7 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 		case !ok:
 		case u == "PATH":
 			hasPath, clean = true, append(clean, kv)
-		case u == "OPENAI_API_KEY" && v == ProxyPlaceholderKey:
+		case u == "OPENCODE_CONFIG_CONTENT" && placeholderOpenCodeConfig_internal(v):
 			clean = append(clean, kv)
 		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME") && jobDir == "":
 			clean = append(clean, kv)

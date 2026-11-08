@@ -74,7 +74,16 @@ func (r *Runner) probeModels_internal(ctx context.Context, row string, h Harness
 	if len(next.TierModels) == 0 {
 		return nil, nil, fmt.Errorf("no model for any tier: next --json names no tier for %s (roster: %s): check that nova-config gives this machine the bench role (nova-sprint check)", row, cmp.Or(next.RosterErr, "read"))
 	}
-	listed, err := r.listModels_internal(ctx, row, h)
+	var routed []string
+	for _, cands := range next.TierModels {
+		for _, m := range cands {
+			if provider, _, _ := strings.Cut(m, "/"); r.Proxy.HasRoute(provider) && !slices.Contains(routed, m) {
+				routed = append(routed, m)
+			}
+		}
+	}
+	slices.Sort(routed)
+	listed, err := r.listModels_internal(ctx, row, h, routed)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -138,9 +147,9 @@ func (r *Runner) servedModel_internal(needs Needs, cands, listed []string) (stri
 }
 
 // listModels_internal is the harness's own model list (its Needs'
-// ListModels run outside the wall, under the probe's home), nil when it has
-// no such command.
-func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness) ([]string, error) {
+// ListModels run outside the wall, under the probe's home and the env a job
+// with models declared would get), nil when it has no such command.
+func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness, models []string) ([]string, error) {
 	argv := h.Needs().ListModels
 	if argv == nil {
 		return nil, nil
@@ -151,7 +160,7 @@ func (r *Runner) listModels_internal(ctx context.Context, row string, h Harness)
 			return nil, fmt.Errorf("the probe directory: %w", err)
 		}
 	}
-	_, env := h.Command(Job{JobDir: dir, Row: row, Consumer: row + ".models"})
+	_, env := h.Command(Job{JobDir: dir, Row: row, Consumer: row + ".models", ProxyAddr: r.ProxyAddr, Models: models})
 	cmd := edge.Cmd{Argv: argv, Env: env, CleanEnv: true, Dir: dir, Timeout: r.Timeouts.LaunchGrace}
 	res, err := cmp.Or[edge.Exec](r.Exec, edge.NewOSExec()).Run(ctx, cmd)
 	if err != nil || res.ExitCode != 0 {

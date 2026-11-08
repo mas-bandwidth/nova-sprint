@@ -312,7 +312,7 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 	oh, _ := NewHarness("opencode")
 	_, oEnv := oh.Command(j)
 	envStr := strings.Join(oEnv, "\n")
-	if !strings.Contains(envStr, "OPENAI_BASE_URL=http://127.0.0.1:19999/deepseek/v1") || !strings.Contains(envStr, "OPENAI_API_KEY="+ProxyPlaceholderKey) {
+	if !strings.Contains(envStr, `"baseURL":"http://127.0.0.1:19999/deepseek/v1"`) || !strings.Contains(envStr, `"apiKey":"`+ProxyPlaceholderKey+`"`) {
 		t.Fatalf("opencode env missing proxy wiring: %v", oEnv)
 	}
 	dirtyEnv := append(oEnv, "NOVA_PG_DSN=postgres://secret", "GH_TOKEN=ghp_secret", "DEEPSEEK_API_KEY=sk-secret")
