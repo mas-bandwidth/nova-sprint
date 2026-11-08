@@ -503,3 +503,43 @@ func TestDealReadsKeepTheRowsAnswer(t *testing.T) {
 	}
 	assert.Equal(t, []string{"r2"}, reads, "two reads owed, one row in the answer: one read")
 }
+
+// TestTickFaultLimitHolds: policy's faults limit is read: a producer whose
+// work faults that many times running is held with a held judgement, as at
+// the bounce limit (a fault still spends no bounce); the unhold is a fresh
+// budget, so the next hold for faults comes a limit's worth of faults later.
+func TestTickFaultLimitHolds(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.run(2)
+	limit, n := Engine.Limits.Faults, 0
+	fault := func() {
+		n++
+		s.requireState("p1", "working")
+		s.take(fmt.Sprintf("p1.w%d", n))
+		s.report(fmt.Sprintf("p1.w%d", n), "fault", "", "the harness died")
+		s.tick()
+	}
+	for range limit {
+		fault()
+	}
+	s.requireState("p1", "waiting")
+	assert.Equal(t, fmt.Sprintf("held: faulted %d times running, the limit is %d", limit, limit), s.snap().Cards["p1"].Reason)
+	assert.Zero(t, s.snap().Cards["p1"].Bounces, "a fault spends no bounce")
+	require.Equal(t, []string{"held.p1.1"}, s.openJudgements("held"))
+	rc, ref := s.verb(Request{Actor: "rowan", Judgement: "held.p1.1", Answer: "unhold", Card: "p1", Event: card.UnholdCard{Reason: "reviewed"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.run(2)
+	assert.Empty(t, s.openJudgements("held"), "an unhold is not held again by the same faults")
+	for range limit - 1 {
+		fault()
+	}
+	assert.Empty(t, s.openJudgements("held"), "a fault short of a fresh limit")
+	fault()
+	s.requireState("p1", "waiting")
+	assert.Equal(t, []string{"held.p1.2"}, s.openJudgements("held"))
+}

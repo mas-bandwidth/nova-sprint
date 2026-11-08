@@ -998,13 +998,23 @@ result once or twice (layer 4 may redeliver).
    producer of the stream overlapping its paths that is started (working,
    review, merging) or ready, counting those resolved earlier in the tick.
    Never a function of rows.
+3a. **Limits** (the limits scenario): HoldCard, with a held judgement riding
+   it, for a ready or review producer with no live consumer at
+   `BounceLimit` bounces since its last unhold (`bounces - bb`), or for a
+   ready producer at a multiple of `FaultLimit` faults running while it is
+   ready on the newest of them (`FaultDue`); then per row in name order,
+   Withdraw of each working consumer of a row silent past the withdraw
+   bound and Gone for an up row silent past the gone bound. A row's silence
+   (`quiet`) counts from when the run last saw it, or from the run's start
+   when it has not seen it since (`known`).
 4. **Fix**: ReadYes or ReadFix (the default verdict) once every read of the
    current review is final and one is done.
 5. **Deal and reads**: blocker work, every read owed, normal work, in id
    order; a row is dealt while its working consumers are under its width,
    with the in-tick tally (the deal is the take, defect 52: the cut is
-   working). The row is policy's `rows`
-   answer when it is eligible for the candidate, else the default: the
+   working). Policy's `rows` answer is the set of rows the card may go to:
+   in domain (every row it names a candidate), the card goes to the best
+   of them with room, or waits; out of domain or failed, the default: the
    desired rank exactly (the card's tier; one up once its bounces reach
    `escalate_after`; for a read, the rank above its author's row), then
    above it, then an idle lane, most room, name. A row below the card's
@@ -1032,9 +1042,9 @@ when admitted and its op accepted (or it has no move); a refused op's items
 are put back in place; the rest carry, in arrival order.
 
 The oracle `a` is the asker: when a question has subjects, policy answers
-in domain (either row preferred for every candidate) or fails ("failed": no
-answer in the tick's policy time, an error, out of range, or a row not
-offered, which is one path in the engine).
+a set of rows (`{r1}`, `{r2}` or both, the same for every candidate) or
+fails (`{"failed"}`: no answer in the tick's policy time, an error, out of
+range, or a row not offered, which is one path in the engine).
 
 The per-card moves are layer 2's, written at the grain the steps read: each
 guard (`Legal`) and write (`ApplyG`) is the `CardMachine.tla` action of the
@@ -1043,7 +1053,7 @@ fixed by its `Scenario` constant (`Prods` is `{p1}` or `{p1, p2}`), and
 preemption of the youngest of two working consumers needs three producers.
 Heads are attempt numbers (an ok report of attempt n pushes head n).
 
-## The instance: four scenarios
+## The instance: the scenarios
 
 Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and 2
 (rank 2). There is no `ahead` since the deal became the take.
@@ -1055,10 +1065,11 @@ Rows: r1 width 1 serves tier 1 (rank 1); r2 width 2 serves tiers 1 and 2
 | deal | p, q (s1, overlapping), b (s2, tier 2, needs p) | all waiting | r1 down and up | K 4, MaxAtt 2, MaxBounce 1 (p only), MaxEnv 1, MaxArrive 1, Budget 2, Pack 2 |
 | land | p (s1), q (s2, after p) | both merging at head 1 | hold and lift s1 | K 2, MaxAtt 1, MaxEnv 2, MaxArrive 3, Budget 2, Pack 2 |
 | burst | as land | as land | none | K 1, MaxAtt 1, MaxArrive 4, Budget 1, Pack 1 |
+| limits | p, q (s1, disjoint paths) | both waiting | either row leaves the bus and returns (raising a down row); time passes (Elapse); UnholdCard of a held p; the run restarts | K 3, MaxAtt 3, MaxBounce 2, MaxEnv 5, MaxArrive 1, Budget 4, Pack 2; BounceLimit 1, FaultLimit 2; q's row never reports |
 
 Red results come only in land and burst; work and read reports are ok but
-in deal, where p may fail and a read of p may say fix. A fault report is a
-fail that spends no bounce, so no scenario needs it.
+in deal, where p may fail and a read of p may say fix, and in limits,
+where p's work may fail (a bounce) or fault (no bounce).
 
 ## Invariants and the liveness property
 
@@ -1093,6 +1104,10 @@ operators where the check is about them:
 | `AfterNeverHolds` | guarantee 3, ENFORCED L2-U18 | a stream with none in flight and a merging producer whose `after` targets are not merging gets a land request |
 | `VerdictHasItsRead` | Fix | a yes has a done ok read of the review and no fix read, a fix a done fix read; a faulted read is neither |
 | `NeverDealtAbsent` | D1' (2026-11-07) | no accepted Start, read or preemption lands on a row absent from nova-bus (`bus`), whatever the store's up says |
+| `HoldOnFreshBudget` | Retire and fail limits, #702 | a hold comes only at `BounceLimit` bounces since the last unhold, or at the fault limit |
+| `FaultsHeld` | Retire and fail limits (`faults`) | a ready producer at the fault limit with no live consumer is held, or moved by another group, in the tick |
+| `SilenceActs` | Retire and fail limits, finding 1 | every up row silent past the gone bound goes Gone, and every working consumer of a row silent past the withdraw bound is withdrawn (or its producer moved), whether or not the run saw the row since its start |
+| `RowsAnswerKept` | Deal, finding 2 | a card whose rows answer is in domain goes only to a row the answer names, or waits; a rows miss means some answer was out of domain |
 
 `ReadyDealtWhenRoom` (guarantee 8's second half, LAYER-2's nothing stalls),
 under weak fairness on `Snap` and `Tick` only (rows need not take or
@@ -1114,7 +1129,7 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 
 | Module | Scenario | Fault | Expected result |
 |---|---|---|---|
-| `StepsPre` / `StepsPrePack1` / `StepsDeal` / `StepsLand` / `StepsBurst` | pre / pre1 / deal / land / burst | none | pass, liveness included |
+| `StepsPre` / `StepsPrePack1` / `StepsDeal` / `StepsLand` / `StepsBurst` / `StepsLimits` | pre / pre1 / deal / land / burst / limits | none | pass, liveness included |
 | `witnesses/StepsDealtTwice` | pre | the deal does not skip a blocker the preemption claimed, and the preemption fires with free width | NeverDealtTwice |
 | `witnesses/StepsTwoGroups` | land | the land-result step ignores claimed cards | OneGroupPerCard |
 | `witnesses/StepsWidthOver` | burst | the deal checks no width | WidthKept |
@@ -1146,6 +1161,10 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `witnesses/StepsYesOnFault` | deal | the verdict default is yes unless a read said fix | VerdictHasItsRead |
 | `witnesses/StepsDealtAbsent` | deal | the deal reads the store's up as presence | NeverDealtAbsent |
 | `witnesses/StepsFaultCounted` | deal | a faulted read counts as a read | FaultedReadReadAgain (liveness, TLC exit 13) |
+| `witnesses/StepsHoldSpentBudget` | limits | the bounce limit counts every bounce, not those since the last unhold (#702) | HoldOnFreshBudget |
+| `witnesses/StepsFaultsUnread` | limits | the faults limit is read by no step | FaultsHeld |
+| `witnesses/StepsSilentUnseen` | limits | a row unseen since the run's start is never silent (finding 1) | SilenceActs |
+| `witnesses/StepsRowsPreference` | limits | the rows answer is a preference: with no room in it the card is dealt outside it (finding 2) | RowsAnswerKept |
 | `reach/StepsNeverPreempted` | pre | none | violated: a blocker preempts |
 | `reach/StepsNeverUnserved` | pre | none | violated: unserved is opened |
 | `reach/StepsNeverRefused` | pre | none | violated: an op is refused by a race |
@@ -1172,6 +1191,14 @@ serving row with room is dealt, or has an open undealt judgement (`ju`).
 | `reach/StepsNeverHandLanded` | deal | none | violated: a store op lands a producer by hand |
 | `reach/StepsNeverReadAgain` | deal | none | violated: a review whose read faulted is read again |
 | `reach/StepsNeverAbsent` | deal | none | violated: a tick runs with an up row off the bus serving a ready card |
+| `reach/StepsNeverLimitHeld` | limits | none | violated: a producer is held at the bounce limit |
+| `reach/StepsNeverRedealtAfterUnhold` | limits | none | violated: an unheld producer is dealt again |
+| `reach/StepsNeverFaultHeld` | limits | none | violated: a producer is held at the fault limit |
+| `reach/StepsNeverFaultedPastLimit` | limits | none | violated: an unheld producer faults again past the limit, not held |
+| `reach/StepsNeverSilentWithdrawn` | limits | none | violated: a silent row's working consumer is withdrawn |
+| `reach/StepsNeverGoneSilent` | limits | none | violated: a silent row goes Gone |
+| `reach/StepsNeverGoneUnseen` | limits | none | violated: a row unseen since the restart goes Gone |
+| `reach/StepsNeverRestarted` | limits | none | violated: the run restarts |
 
 `python3 make-steps-witnesses.py` writes every Steps witness and cfg (the
 five passing cfgs, `witnesses/Steps*`, `reach/Steps*.cfg`) from `Steps.tla`
@@ -1315,20 +1342,22 @@ model refuses record K of N:` with that record's action and arguments.
 Two kinds of fixture, both under `traces/`:
 
 - **The walk's** (`steps-walk-<scenario>-<seed>/`): the Go steps driving one
-  of the model's four scenarios on `store.Fake` (`modules/steps/trace_test.go`), each
-  step one of the model's actions (Snap, Tick, Take, Report, Hold, Unhold,
-  Gone, Seen, EdgeResult) picked at random, each recorded with the model's
+  of the model's scenarios on `store.Fake` (`modules/steps/trace_test.go`), each
+  step one of the model's actions (Snap, Tick, Report, Hold, Unhold, Gone,
+  Seen, Leave, Return, EdgeResult, Answer, and in limits Elapse, UnholdCard
+  and Restart) picked at random, each recorded with the model's
   variables projected from the code's state by the refinement mapping in
   `modules/steps/trace.go` (`StoreTLA`, `InboxTLA`, `InflightTLA`, `JudgementsTLA`;
   the mapping is in that file's comment). A record logs `w` in parts (`ps`,
-  `up`, `sh`, `tko` whole and `cs` as the slots that are not `none`, which
-  `StepsTrace.Parts` checks), the inbox, the in-flight requests and the
+  `up`, `rg`, `sh`, `tko`, `bb`, `hd`, `fr` whole and `cs` as the slots that
+  are not `none`, which `StepsTrace.Parts` checks), the rows' presence and
+  silence (`bus`, `quiet`, `known`), the inbox, the in-flight requests and the
   open judgements of the model's three kinds, and a Tick's `answer`. The
   tick plans on the view as Snap left it, so a move between Snap and Tick
   races it as in the model. The cfg sets the model's bounds above anything a
   walk reaches (K 60, MaxAtt 30, MaxBounce 30, MaxEnv and MaxArrive 1000)
   and the scenario's Budget and Pack. `TestTraceFixtures` writes the fixed
-  seed set (4 scenarios x 3 seeds x 150 steps) under `NOVA_TRACES`; the CI
+  seed set (5 scenarios x 3 seeds x 150 steps) under `NOVA_TRACES`; the CI
   job `trace` writes it every push and runs `check-trace.sh` on it.
   `TestTraceWalk` runs 100 seeds x 2,000 steps per scenario for depth (at
   least 40% of the picked moves legal while a producer is not final) and
@@ -1352,8 +1381,8 @@ which has none (the youngest is the engine's rule).
 ## Not modelled, and what the model found in the design
 
 Not modelled: holds' Withdraw of untaken consumers after the grace, the
-retire and fail limits (HoldCard at the bounce limit, Withdraw on silence,
-Gone, flap), sentinels and `landed-sentinel`, drops (NeedFailed over a
+flap judgement and the route rest (the limits scenario covers the holds at
+the bounce and fault limits, Withdraw on silence and Gone), sentinels and `landed-sentinel`, drops (NeedFailed over a
 closure, Waive, Relink), backed-up landing groups and the rungs, `conflict`
 and `base-red`, the alarms (`stall`, `idle`, `land-rate`), judgement
 deadlines and expiry defaults, the per-card request verbs and their actor

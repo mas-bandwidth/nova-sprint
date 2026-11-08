@@ -7,7 +7,7 @@
 witnesses (w-<name>.log), as ci-tlc.sh leaves them. Each fixture is a
 directory traces/steps-<name>/ with StepsTraceLog.tla (TraceLog, the record
 shape the Go walk emits: i, action, the action's arguments, and the logged
-variables w, inbox, inflight, js and bus; snap, phase, split and the Tick's
+variables w, inbox, inflight, js, bus, quiet and known; snap, phase, split and the Tick's
 answer are left out, which StepsTrace allows) and StepsTrace.cfg (the
 scenario's constants, TraceSpec, TraceMatched, and an
 "expect:" comment line that ci-tlc.sh reads).
@@ -30,6 +30,7 @@ SCEN = {
     "deal":  {"K": 4, "MaxAtt": 2, "MaxBounce": 1, "MaxEnv": 1, "MaxArrive": 1, "Budget": 2, "Pack": 2},
     "land":  {"K": 2, "MaxAtt": 1, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 3, "Budget": 2, "Pack": 2},
     "burst": {"K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 0, "MaxArrive": 4, "Budget": 1, "Pack": 1},
+    "limits": {"K": 3, "MaxAtt": 3, "MaxBounce": 2, "MaxEnv": 5, "MaxArrive": 1, "Budget": 4, "Pack": 2},
 }
 
 # fixture name -> (log, scenario, "ok" or "forbidden")
@@ -49,9 +50,16 @@ FIXTURES = {
     "bad-tier":         ("w-StepsTierUnchecked.log", "deal", "forbidden"),
     "bad-carry-dropped": ("w-StepsCarryDropped.log", "burst", "forbidden"),
     "bad-dealt-absent": ("w-StepsDealtAbsent.log", "deal", "forbidden"),
+    "ok-gone-unseen":   ("r-StepsNeverGoneUnseen.log", "limits", "ok"),
+    "ok-redealt-after-unhold": ("r-StepsNeverRedealtAfterUnhold.log", "limits", "ok"),
+    "bad-hold-spent-budget": ("w-StepsHoldSpentBudget.log", "limits", "forbidden"),
+    "bad-silent-unseen": ("w-StepsSilentUnseen.log", "limits", "forbidden"),
+    "ok-fault-held":    ("r-StepsNeverFaultHeld.log", "limits", "ok"),
+    "bad-faults-unread": ("w-StepsFaultsUnread.log", "limits", "forbidden"),
+    "bad-rows-preference": ("w-StepsRowsPreference.log", "limits", "forbidden"),
 }
 
-LOGGED = ["w", "inbox", "inflight", "js", "bus"]
+LOGGED = ["w", "inbox", "inflight", "js", "bus", "quiet", "known"]
 
 
 def states(text):
@@ -90,7 +98,7 @@ def action(a, b):
     if a["phase"] != b["phase"]:
         return ("Snap", {}) if b["phase"] == '"snapped"' else ("Tick", {})
     if a["env"] != b["env"]:
-        return ("EnvMove", {})
+        return ("Restart", {}) if '"restart"' in b["last"] else ("EnvMove", {})
     if a["arrived"] != b["arrived"]:
         n = int(b["arrived"]) - int(a["arrived"])
         new = items(b["inbox"])[-n:]

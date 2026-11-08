@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
@@ -35,10 +36,15 @@ func modelDefaults(t *testing.T) {
 	t.Cleanup(func() { Engine.EscalateAfter = was })
 }
 
-// traceScenarios are the model's four, with the constants its cfgs carry.
+// traceScenarios are the model's five, with the constants its cfgs carry.
 var traceScenarios = map[string]struct {
 	budget, pack int
-}{"pre": {2, 2}, "deal": {2, 2}, "land": {2, 2}, "burst": {1, 1}}
+}{"pre": {2, 2}, "deal": {2, 2}, "land": {2, 2}, "burst": {1, 1}, "limits": {4, 2}}
+
+// silentGone is row_silent_gone in limits (row_silent_withdraw is twice it),
+// and one Elapse: long beside the seconds a walk's ops take, so a row's
+// silence crosses a bound only by an Elapse, as the model's quiet does.
+const silentGone = 20000
 
 // traceWalk is one scenario's world and its trace.
 type traceWalk struct {
@@ -49,10 +55,10 @@ type traceWalk struct {
 	records  []string
 	stamp    map[string]int
 	reqID    map[string]string
-	phase    string // idle or snapped
-	pref     string // the asker's preferred row, "" for failed
-	raced    bool   // a move came after the fold
-	truth    *View  // the store as it is, for the records; the tick's view (w.v) is folded only at Snap
+	phase    string   // idle or snapped
+	pref     []string // the rows the asker answers, nil for failed
+	raced    bool     // a move came after the fold
+	truth    *View    // the store as it is, for the records; the tick's view (w.v) is folded only at Snap
 	tcursor  int64
 	counting bool // picks count toward the depth: a producer is not final
 	picked   int
@@ -96,23 +102,36 @@ func (a traceAsker) Ask(q Questions) Answers {
 		out.Landing[s.Name] = LandingAnswer{BackedUp: 1000, Flowing: 1, CIWait: 600}
 	}
 	for _, r := range q.Rows {
-		if w.pref == "" {
+		if w.pref == nil {
 			out.Failed["rows"] = "the walk's policy failed"
 		} else {
-			out.Rows[r.Card.ID] = []string{w.pref}
+			out.Rows[r.Card.ID] = w.pref
 		}
 	}
-	day := 86400
-	out.Limits = &Limits{Bounces: 100, Faults: 100, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
+	day, bounces, faults := 86400, 100, 100
+	if w.scen == "limits" {
+		bounces, faults = 1, 2 // the model's BounceLimit and FaultLimit
+	}
+	out.Limits = &Limits{Bounces: bounces, Faults: faults, SameFinding: 10, ReportsPerTick: 10000, RouteRestWindow: 100, RouteRestAfter: 100,
 		Budget: traceScenarios[w.scen].budget, Pack: traceScenarios[w.scen].pack}
-	out.Timeouts = &Timeouts{RowSilentGone: day, RowSilentWithdraw: day, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyNag: day, ReadyTake: day, BaseRegate: []int{day}}
+	gone, withdraw := w.silence()
+	out.Timeouts = &Timeouts{RowSilentGone: gone, RowSilentWithdraw: withdraw, LandingStall: day, Judgement: day, RouteRestFor: day, ReadyNag: day, ReadyTake: day, BaseRegate: []int{day}}
 	return out
+}
+
+// silence is the scenario's row_silent_gone and row_silent_withdraw.
+func (w *traceWalk) silence() (gone, withdraw int) {
+	if w.scen == "limits" {
+		return silentGone, 2 * silentGone
+	}
+	return 86400, 86400
 }
 
 func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	w := &traceWalk{sim: newSim(t), scen: scen, sc: TraceScenario{Tiers: []string{"pro", "heavy"}}, rng: rand.New(rand.NewSource(seed)),
 		stamp: map[string]int{}, reqID: map[string]string{}, phase: "idle"}
 	w.ask = traceAsker{w}
+	w.seenAt = map[string]time.Time{}
 	landLike := scen == "land" || scen == "burst"
 	w.stream("s1")
 	w.stream("s2")
@@ -130,7 +149,7 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 		q.After = []string{"p"}
 	}
 	w.must("add", q)
-	if !landLike {
+	if !landLike && scen != "limits" {
 		b := store.PutCard{ID: "b", Kind: "producer", Stream: "s2", Tier: "pro", Brief: "do b", Paths: []string{"a/y"}}
 		if scen == "deal" {
 			b.Tier, b.Needs = "heavy", []string{"p"}
@@ -153,6 +172,7 @@ func newTraceWalk(t *testing.T, scen string, seed int64) *traceWalk {
 	w.sc.Gen0 = map[string]int{}
 	for n, r := range w.v.Rows {
 		w.sc.Gen0[n] = r.Gen
+		w.seenAt[n] = w.now
 	}
 	w.record("Init", nil)
 	return w
@@ -185,7 +205,7 @@ func (w *traceWalk) record(action string, args []string) {
 	fields := []string{fmt.Sprintf("i |-> %d", len(w.records)+1), fmt.Sprintf("action |-> %q", action)}
 	fields = append(fields, args...)
 	fields = append(fields, StoreTLA(v, w.sc), "inbox |-> "+InboxTLA(w.inbox, w.stamp, w.reqID),
-		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA())
+		"inflight |-> "+InflightTLA(w.inflight, w.reqID, w.sent), "js |-> "+JudgementsTLA(v, w.sc), "bus |-> "+w.busTLA(), w.quietTLA())
 	w.records = append(w.records, "["+strings.Join(fields, ", ")+"]")
 }
 
@@ -234,7 +254,7 @@ func (w *traceWalk) step() {
 		moves = append(moves, w.tickOnce, w.tickOnce)
 	}
 	blind := w.rng.Intn(4) == 0 // one pick in four is blind, so refusals are met too
-	if blind || len(w.consumersIn("working")) > 0 {
+	if blind || slices.ContainsFunc(w.consumersIn("working"), func(id string) bool { return len(w.results(w.snap().Cards[id])) > 0 }) {
 		moves = append(moves, w.reportOne)
 	}
 	if blind || slices.ContainsFunc(w.inflight, func(r EdgeRequest) bool { _, sent := w.sent[r.ID]; return !sent }) {
@@ -257,9 +277,9 @@ func (w *traceWalk) snapAction() {
 
 func (w *traceWalk) tickOnce() {
 	w.t.Helper()
-	answer := "failed"
-	if w.asked() && w.pref != "" {
-		answer = w.pref
+	answer := `{"failed"}`
+	if w.asked() && w.pref != nil {
+		answer = `{"` + strings.Join(w.pref, `", "`) + `"}`
 	}
 	w.planTick()
 	if !w.raced {
@@ -269,8 +289,8 @@ func (w *traceWalk) tickOnce() {
 		w.reqID[e.ID] = ReqID(w.v, e)
 	}
 	w.phase = "idle"
-	w.record("Tick", []string{fmt.Sprintf("answer |-> [rows |-> %q]", answer)})
-	w.pref = []string{"r1", "r2", ""}[w.rng.Intn(3)]
+	w.record("Tick", []string{"answer |-> [rows |-> " + answer + "]"})
+	w.pref = [][]string{{"r1"}, {"r2"}, {"r1", "r2"}, nil}[w.rng.Intn(4)]
 }
 
 func (w *traceWalk) moved(action string, args []string) {
@@ -283,17 +303,24 @@ func (w *traceWalk) moved(action string, args []string) {
 // The walk has no take: the deal is the take (defect 52), and a row's
 // acknowledgement moves no card, so the model has no action for it.
 
-// results are the scenario's result sets: work ok (and fail for p in deal),
-// read ok (and fix and fault for p in deal).
+// results are the scenario's result sets: work ok (and fail for p in deal
+// and limits, and fault for p in limits), read ok (and fix and fault for p in deal); none for q in
+// limits, whose row's session is dead.
 func (w *traceWalk) results(c store.Card) []string {
-	bounce := w.scen == "deal" && c.Of == "p"
+	bounce := (w.scen == "deal" || w.scen == "limits") && c.Of == "p"
+	if w.scen == "limits" && c.Of == "q" {
+		return nil
+	}
 	if c.Kind == "work" {
+		if bounce && w.scen == "limits" {
+			return []string{"ok", "fail", "fault"}
+		}
 		if bounce {
 			return []string{"ok", "fail"}
 		}
 		return []string{"ok"}
 	}
-	if bounce {
+	if bounce && w.scen == "deal" {
 		return []string{"ok", "fix", "fault"}
 	}
 	return []string{"ok"}
@@ -308,6 +335,9 @@ func (w *traceWalk) reportOne() {
 	id := ids[w.rng.Intn(len(ids))]
 	c := w.snap().Cards[id]
 	results := w.results(c)
+	if len(results) == 0 {
+		return
+	}
 	res := results[w.rng.Intn(len(results))]
 	head := c.Head
 	if c.Kind == "work" {
@@ -359,7 +389,117 @@ func (w *traceWalk) envOne() {
 		} else {
 			w.hold("s1")
 		}
+	case "limits":
+		moves := []func(){func() { w.presence("r1") }, func() { w.presence("r2") }}
+		if len(w.away) > 0 {
+			moves = append(moves, w.elapse)
+		}
+		for _, p := range []string{"p", "q"} {
+			if c := s.Cards[p]; c.State == "waiting" && card.HeldReason(c.Reason) {
+				moves = append(moves, func() { w.unholdCard(p) })
+			}
+		}
+		if w.phase == "idle" && len(w.inbox) == 0 && len(w.inflight) == 0 {
+			moves = append(moves, w.restart)
+		}
+		moves[w.rng.Intn(len(moves))]()
 	}
+}
+
+// lastSeen is when the steps count row r's silence from: Seen, else the
+// view's start.
+func (w *traceWalk) lastSeen(r string) (time.Time, bool) {
+	if at, ok := w.seenAt[r]; ok {
+		return at, true
+	}
+	return w.v.Since, false
+}
+
+// quiet is row r's silence in the model's bounds.
+func (w *traceWalk) quiet(r string) int {
+	at, _ := w.lastSeen(r)
+	gone, withdraw := w.silence()
+	switch silent := w.now.Add(time.Second).Sub(at); {
+	case silent >= seconds(withdraw):
+		return 2
+	case silent >= seconds(gone):
+		return 1
+	}
+	return 0
+}
+
+// quietTLA is the model's quiet and known.
+func (w *traceWalk) quietTLA() string {
+	var q, k []string
+	for _, r := range []string{"r1", "r2"} {
+		_, known := w.lastSeen(r)
+		q = append(q, fmt.Sprintf("%s |-> %d", r, w.quiet(r)))
+		k = append(k, fmt.Sprintf("%s |-> %s", r, tlaBool(known)))
+	}
+	return "quiet |-> [" + strings.Join(q, ", ") + "], known |-> [" + strings.Join(k, ", ") + "]"
+}
+
+// elapse is time passing (the model's Elapse): every absent row short of
+// the withdraw bound is a bound more silent. A row seen since the start
+// keeps its last sighting earlier; the rows not seen since share the view's
+// start, which moves back once for all of them.
+func (w *traceWalk) elapse() {
+	w.pick()
+	moved, start := false, false
+	for _, r := range []string{"r1", "r2"} {
+		if _, away := w.away[r]; !away || w.quiet(r) >= 2 {
+			continue
+		}
+		moved = true
+		if at, known := w.seenAt[r]; known {
+			w.seenAt[r] = at.Add(-seconds(silentGone))
+		} else {
+			start = true
+		}
+	}
+	if !moved {
+		return
+	}
+	if start {
+		w.v.Since = w.v.Since.Add(-seconds(silentGone))
+	}
+	w.ok()
+	w.moved("Elapse", nil)
+}
+
+// unholdCard is the coordinator's unhold of a held producer (UnholdCard: a
+// fresh bounce budget).
+func (w *traceWalk) unholdCard(p string) {
+	w.pick()
+	if c := w.snap().Cards[p]; c.State != "waiting" || !card.HeldReason(c.Reason) {
+		return
+	}
+	op, ref := Verb(Build(w.snap(), w.now), Inputs{Now: w.now}, Request{Actor: "rowan", Coordinators: []string{"rowan"}, Card: p, Event: card.UnholdCard{Reason: "the walk"}})
+	if ref != nil || !w.apply("unhold", op.Expect, op.Writes...).Accepted {
+		return
+	}
+	w.ok()
+	w.moved("UnholdCard", nil)
+}
+
+// restart is the run restarting between ticks with nothing in flight (the
+// model's Restart): its view starts now, it has seen only the rows on the
+// bus, and it carries no refusals.
+func (w *traceWalk) restart() {
+	w.pick()
+	if w.phase != "idle" || len(w.inbox) > 0 || len(w.inflight) > 0 {
+		return
+	}
+	w.v.Since = w.now
+	w.seenAt = map[string]time.Time{}
+	for _, r := range []string{"r1", "r2"} {
+		if _, away := w.away[r]; !away {
+			w.seenAt[r] = w.now
+		}
+	}
+	w.refused = nil
+	w.ok()
+	w.record("Restart", nil)
 }
 
 func (w *traceWalk) hold(stream string) {
@@ -508,11 +648,19 @@ func (w *traceWalk) consumersIn(state string) []string {
 }
 
 // presence takes row off nova-bus, or puts it back: the store is untouched
-// (its hook record stands), only the tick's Seen changes (Leave, Return).
+// (its hook record stands), only the tick's Seen changes (Leave, Return); a
+// row back on the bus is seen at once, and raised if it went down (run's
+// raiseSeen).
 func (w *traceWalk) presence(row string) {
 	w.ok()
 	if _, gone := w.away[row]; gone {
 		delete(w.away, row)
+		w.seenAt[row] = w.now
+		if r := w.cardRow(w.snap().Rows[row]); r.State == "down" {
+			pl, ref := card.MoveRow(r, card.Seen{})
+			require.Nil(w.t, ref)
+			require.True(w.t, w.apply("row", pl.Expect, pl.Writes...).Accepted)
+		}
 		w.moved("Return", nil)
 		return
 	}
@@ -578,7 +726,7 @@ func TestTraceFixtures(t *testing.T) { // unitlint: serial, modelDefaults writes
 	if dir != "" && !filepath.IsAbs(dir) {
 		dir = filepath.Join("..", "..", dir) // relative to the repository root, as CI gives it
 	}
-	for _, scen := range []string{"pre", "deal", "land", "burst"} {
+	for _, scen := range []string{"pre", "deal", "land", "burst", "limits"} {
 		for seed := int64(1); seed <= 3; seed++ {
 			w := newTraceWalk(t, scen, seed)
 			for i := 0; i < 150; i++ {

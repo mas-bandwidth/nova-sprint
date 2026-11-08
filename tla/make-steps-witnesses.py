@@ -26,7 +26,7 @@ INVARIANTS = [
     "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
     "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered", "NoDealWithoutPolicy",
     "ResolveFromState", "HeldBehindShown", "DealIsTake", "DealtWithinKTicks", "VerdictHasItsRead",
-    "NeverDealtAbsent",
+    "NeverDealtAbsent", "HoldOnFreshBudget", "SilenceActs", "RowsAnswerKept", "FaultsHeld",
 ]
 PROPERTIES = ["ReadyDealtWhenRoom", "FaultedReadReadAgain"]
 
@@ -38,6 +38,7 @@ SCENARIOS = {
     "deal":  {"K": 4, "MaxAtt": 2, "MaxBounce": 1, "MaxEnv": 1, "MaxArrive": 1, "Budget": 2, "Pack": 2},
     "land":  {"K": 2, "MaxAtt": 1, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 3, "Budget": 2, "Pack": 2},
     "burst": {"K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 0, "MaxArrive": 4, "Budget": 1, "Pack": 1},
+    "limits": {"K": 3, "MaxAtt": 3, "MaxBounce": 2, "MaxEnv": 5, "MaxArrive": 1, "Budget": 4, "Pack": 2},
     # pre packed one group per op: a tick of several ops, so an op reads
     # cards an earlier op of the same tick wrote (the predicted fence).
     "pre1":  {"Scenario": "pre", "K": 2, "MaxAtt": 2, "MaxBounce": 0, "MaxEnv": 2, "MaxArrive": 2,
@@ -47,7 +48,7 @@ SCENARIOS = {
 # The passing runs: cfg name -> scenario. Each checks every invariant and,
 # under FairSpec, the liveness property.
 PASSING = {"StepsPre": "pre", "StepsPrePack1": "pre1", "StepsDeal": "deal", "StepsLand": "land",
-           "StepsBurst": "burst"}
+           "StepsBurst": "burst", "StepsLimits": "limits"}
 
 # Reachability checks on Steps.tla: name -> (scenario, what).
 REACH = {
@@ -77,6 +78,14 @@ REACH = {
     "StepsNeverAfterHeld": ("land", "a landing waits on a queued after target"),
     "StepsNeverCarried": ("burst", "the budget carries inbox items to the next tick"),
     "StepsNeverUndealt": ("burst", "a producer left ready with room two ticks opens undealt"),
+    "StepsNeverLimitHeld": ("limits", "the limits step holds a producer at the bounce limit"),
+    "StepsNeverRedealtAfterUnhold": ("limits", "a producer unheld with a fresh budget is dealt again"),
+    "StepsNeverSilentWithdrawn": ("limits", "a silent row's working consumer is withdrawn"),
+    "StepsNeverGoneSilent": ("limits", "a silent row goes Gone"),
+    "StepsNeverGoneUnseen": ("limits", "a row unseen since the restart goes Gone"),
+    "StepsNeverRestarted": ("limits", "the run restarts"),
+    "StepsNeverFaultHeld": ("limits", "the limits step holds a producer at the fault limit"),
+    "StepsNeverFaultedPastLimit": ("limits", "a producer unheld at the fault limit faults again, not held"),
 }
 
 # (name, target, scenario, fault, replacements). A target in PROPERTIES is a
@@ -179,10 +188,10 @@ WITNESSES = [
      [("  /\\ ~\\E q \\in Prods : Overlap(p, q) /\\ (W.ps[q].st \\in Started \\cup {\"ready\"} \\/ q \\in extra)\n",
        "  /\\ TRUE   \\* FAULT: was the overlap check\n", 1)]),
     ("StepsTierUnchecked", "NeverBelowTier", "deal",
-     "The tier is checked nowhere: policy's rows answer is taken for any up\n"
-     "row, and Start does not check that the row serves the card's tier.",
-     [("InDomain(V, x, ar, t) == ar \\in Rows /\\ Eligible(V, x, ar, t)",
-       "InDomain(V, x, ar, t) == ar \\in Rows /\\ V.up[ar] /\\ bus[ar]   \\* FAULT: was Eligible(V, x, ar, t)", 1),
+     "The tier is checked nowhere: a candidate row need not serve the\n"
+     "card's tier, and Start does not check that the row serves it.",
+     [("  /\\ Serves(r, x.p)\n",
+       "  /\\ TRUE   \\* FAULT: was Serves(r, x.p)\n", 1),
       ("  /\\ ~W.sh[Stream[p]]\n  /\\ Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n",
        "  /\\ ~W.sh[Stream[p]]\n  /\\ TRUE   \\* FAULT: was Serves(r, p)\n  /\\ W.ps[p].att < MaxAtt\n", 1)]),
     ("StepsAfterIgnored", "AfterKept", "land",
@@ -204,9 +213,9 @@ WITNESSES = [
     ("StepsPolicyStall", "PolicyFailsToDefault", "deal",
      "A failed rows answer plans nothing for the candidate instead of the\n"
      "default row.",
-     [("RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN ar ELSE DefaultRow(V, x, t)",
-       "RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN ar\n"
-       "                       ELSE IF ar = \"failed\" THEN NoR ELSE DefaultRow(V, x, t)   \\* FAULT", 1)]),
+     [("RowFor(V, x, t, ar) == IF InDomain(V, x, ar) THEN BestIn(V, x, t, ar) ELSE DefaultRow(V, x, t)",
+       "RowFor(V, x, t, ar) == IF InDomain(V, x, ar) THEN BestIn(V, x, t, ar)\n"
+       "                       ELSE IF \"failed\" \\in ar THEN NoR ELSE DefaultRow(V, x, t)   \\* FAULT", 1)]),
     ("StepsOldestVictim", "PreemptYoungest", "pre",
      "The victim default is the oldest working consumer, not the youngest.",
      [("VictimFor(W, S) == Youngest(W, S)",
@@ -251,6 +260,29 @@ WITNESSES = [
      "hooked and up but gone from the bus is dealt a card it never takes.",
      [("  /\\ bus[r]   \\* on the bus this tick: a configured row is not a present one (D1')\n",
        "  /\\ TRUE   \\* FAULT: was bus[r]\n", 1)]),
+    ("StepsHoldSpentBudget", "HoldOnFreshBudget", "limits",
+     "The limits step counts every bounce, not those since the last unhold\n"
+     "(#702 at the step): an unheld producer is held again at once for the\n"
+     "budget it was held for.",
+     [("BounceDue(V, p) == V.ps[p].st \\in {\"ready\", \"review\"} /\\ V.ps[p].bounces - V.bb[p] >= BounceLimit\n",
+       "BounceDue(V, p) == V.ps[p].st \\in {\"ready\", \"review\"} /\\ V.ps[p].bounces >= BounceLimit   \\* FAULT: was bounces - bb\n", 1)]),
+    ("StepsFaultsUnread", "FaultsHeld", "limits",
+     "The faults limit is validated and read by no step: a producer that\n"
+     "faults every attempt is dealt again for ever, never held.",
+     [("HoldDue(V, p, cl) == /\\ BounceDue(V, p) \\/ FaultDue(V, p)\n",
+       "HoldDue(V, p, cl) == /\\ BounceDue(V, p)   \\* FAULT: faults never hold\n", 1)]),
+    ("StepsSilentUnseen", "SilenceActs", "limits",
+     "The silence rule skips a row the run has not seen since its start\n"
+     "(finding 1): a row whose session died before a restart is never\n"
+     "Gone, and its working consumers are held for good.",
+     [("Silence(r) == quiet[r]\n",
+       "Silence(r) == IF known[r] THEN quiet[r] ELSE 0   \\* FAULT: unknown is never silent\n", 1)]),
+    ("StepsRowsPreference", "RowsAnswerKept", "limits",
+     "policy's rows answer is a preference (finding 2): with no room in\n"
+     "the rows it names, the card is dealt outside them.",
+     [("RowFor(V, x, t, ar) == IF InDomain(V, x, ar) THEN BestIn(V, x, t, ar) ELSE DefaultRow(V, x, t)",
+       "RowFor(V, x, t, ar) == IF InDomain(V, x, ar) /\\ BestIn(V, x, t, ar) # NoR THEN BestIn(V, x, t, ar)\n"
+       "                       ELSE DefaultRow(V, x, t)   \\* FAULT: no room in the answer deals outside it", 1)]),
     ("StepsDealOneShort", "ReadyDealtWhenRoom", "pre",
      "The deal leaves one slot of each row empty (a row is dealt only\n"
      "while working is under width less one): a ready producer with room\n"

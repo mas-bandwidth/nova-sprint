@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
@@ -17,7 +18,7 @@ import (
 // TLC then checks the trace is a behaviour of the model
 // (tla/check-trace.sh).
 //
-// The mapping. The model's store w is [ps, cs, up, sh, tko, pol]:
+// The mapping. The model's store w is [ps, cs, up, rg, sh, tko, pol, bb, hd]:
 //   - ps[p]: the producer p of the view: st its state (a card hold is not in the
 //     model and never arises in a scenario), att its attempt, head the
 //     attempt number of its head (heads are attempt numbers in the model: the
@@ -31,16 +32,21 @@ import (
 //   - up[r]: the row is up. rg[r]: the row's gen less its gen at Init (every
 //     row write raises it; the fence reads it). sh[s]: the stream is held.
 //   - tko: the working consumers in take order (View.TakenAt).
+//   - bb[p]: the producer's bounce_base. hd[p]: it waits held
+//     (card.HeldReason: HoldCard at the bounce limit).
 //   - pol: an active policy answers. It is not logged (left to the model):
 //     the walk's asker always answers, so the gate never closes in a walk.
 // inbox is the items in arrival order as [stamp, id, out], stamp the arrival
 // count the walk keeps, id the request's model id (ReqID), out the outcome
 // (ack for a stop). inflight is the requests in flight as [id, stream, sent].
 // js is the open judgements of the model's kinds (unserved, cannot-read,
-// policy, overlap, no-policy) as [kind, about], about a tier as its model
-// name ("t1", "t2"), the coordinator's row as "coord", a card or a question
-// as is. The Tick's answer is [rows |-> r]: the row the
-// walk's asker prefers, or "failed" (no answer, or no question asked).
+// policy, land, overlap, no-policy, held) as [kind, about], about a tier as
+// its model name ("t1", "t2"), the coordinator's row as "coord", a card or a
+// question as is. The Tick's answer is [rows |-> S]: the set of rows the
+// walk's asker answers, or {"failed"} (no answer, or no question asked).
+// quiet[r] is the row's silence as the steps measure it (from Seen, else
+// the view's start) in bounds: 0 under row_silent_gone, 1 under
+// row_silent_withdraw, else 2; known[r] is the row in Seen.
 
 // TraceScenario names the model's world in the Go world: the tiers the
 // model numbers 1 and 2, in order, and each row's generation at Init (the
@@ -76,15 +82,19 @@ func HeadN(head string) int {
 func Sha(n int) string { return fmt.Sprintf("%040x", n) }
 
 // StoreTLA is the model's w projected from the view, as the fields of a
-// trace record (ps, cs, up, sh, tko), joined with ", ".
+// trace record (ps, cs, up, rg, sh, tko, bb, hd), joined with ", ".
 func StoreTLA(v *View, sc TraceScenario) string {
-	var ps, cs []string
+	var ps, cs, bb, hd, fr []string
 	for _, p := range sortedKeys(v.Cards) {
 		c := v.Cards[p]
 		if isConsumer(c) {
 			continue
 		}
 		ps = append(ps, p+" |-> "+producerTLA(v, c))
+		bb = append(bb, fmt.Sprintf("%s |-> %d", p, c.BounceBase))
+		hd = append(hd, fmt.Sprintf("%s |-> %s", p, tlaBool(c.State == "waiting" && card.HeldReason(c.Reason))))
+		_, onFault := v.faultRun(c)
+		fr = append(fr, fmt.Sprintf("%s |-> %s", p, tlaBool(onFault)))
 		for i, k := range v.Consumers(p) {
 			cs = append(cs, fmt.Sprintf("<<%q, %d>> :> %s", p, i+1, consumerTLA(k)))
 		}
@@ -101,8 +111,9 @@ func StoreTLA(v *View, sc TraceScenario) string {
 	for _, s := range sortedKeys(v.Streams) {
 		sh = append(sh, fmt.Sprintf("%s |-> %s", s, tlaBool(v.Streams[s].Held)))
 	}
-	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], rg |-> [%s], sh |-> [%s], tko |-> <<%s>>",
-		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(rg, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "))
+	return fmt.Sprintf("ps |-> [%s], cs |-> %s, up |-> [%s], rg |-> [%s], sh |-> [%s], tko |-> <<%s>>, bb |-> [%s], hd |-> [%s], fr |-> [%s]",
+		strings.Join(ps, ", "), csTLA, strings.Join(up, ", "), strings.Join(rg, ", "), strings.Join(sh, ", "), strings.Join(takeOrder(v), ", "),
+		strings.Join(bb, ", "), strings.Join(hd, ", "), strings.Join(fr, ", "))
 }
 
 func producerTLA(v *View, c store.Card) string {
@@ -206,7 +217,7 @@ func JudgementsTLA(v *View, sc TraceScenario) string {
 	var out []string
 	for _, id := range sortedKeys(v.Judgements) {
 		j := v.Judgements[id]
-		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy", "land", "overlap", "no-policy"}, j.Kind) {
+		if j.State != "open" || !slices.Contains([]string{"unserved", "cannot-read", "policy", "land", "overlap", "no-policy", "held"}, j.Kind) {
 			continue
 		}
 		about := j.About

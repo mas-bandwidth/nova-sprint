@@ -10,7 +10,7 @@
 #   CardMerge.cfg, CardMergePre.cfg, CardMergeDeps.cfg
 #     (its seven scenarios)            must pass            (TLC exit 0)
 #   Steps.tla with StepsPre.cfg, StepsPrePack1.cfg, StepsDeal.cfg, StepsLand.cfg,
-#     StepsBurst.cfg (its scenarios, invariants and the liveness property)
+#     StepsBurst.cfg, StepsLimits.cfg (its scenarios, invariants and the liveness property)
 #                                      must pass            (TLC exit 0)
 #   Policy.tla with Policy.cfg         must pass            (TLC exit 0)
 #   layer 6: Run.tla with Run.cfg, RunReports.cfg, RunInitiallyStopped.cfg,
@@ -188,6 +188,7 @@ run StepsPrePack1 pass . StepsPrePack1.cfg Steps.tla 8
 run StepsDeal pass . StepsDeal.cfg Steps.tla 8
 run StepsLand pass . StepsLand.cfg Steps.tla 4
 run StepsBurst pass . StepsBurst.cfg Steps.tla 4
+run StepsLimits pass . StepsLimits.cfg Steps.tla 4
 run Policy pass . Policy.cfg Policy.tla 4
 run LandEdge pass . LandEdge.cfg LandEdge.tla 2
 run Runner pass . Runner.cfg Runner.tla 2

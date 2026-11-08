@@ -80,7 +80,26 @@
 (*   ignores.                                                             *)
 (* - "burst": land with budget 1, pack 1 and redelivered results: the    *)
 (*   carry.                                                               *)
-(* A work fault report is a fail that spends no bounce, so no scenario   *)
+(* - "limits": p and q (s1, tier 1, disjoint paths) on r1 and r2, the    *)
+(*   retire and fail limits (LAYER-3 "Retire and fail limits"). q's row   *)
+(*   never reports (a dead session: only silence frees it, and it fills a *)
+(*   row a rows answer may name); p's work may fail (a bounce) or fault   *)
+(*   (no bounce); at BounceLimit bounces since its last unhold (w.bb, the *)
+(*   store's bounce_base), or ready on its FaultLimit-th fault running   *)
+(*   (FaultRun, w.fr: its reason is still that fault's), the limits step *)
+(*   holds it (w.hd) with a held judgement riding the hold; the           *)
+(*   coordinator's UnholdCard lifts it and gives it a fresh budget (bb := *)
+(*   bounces, #702; fr := FALSE, so the next hold for faults comes at the *)
+(*   next multiple of the limit). Either row may leave the bus            *)
+(*   and come back (the run's Seen raising a down row), time may pass     *)
+(*   (Elapse) and the run may restart (Restart). quiet[r] is how long r   *)
+(*   has been silent, in bounds: 0 within the gone bound, 1 past it, 2    *)
+(*   past the withdraw bound, counted from when the run last saw r, or    *)
+(*   from the run's start when it has not seen r since (known[r] FALSE).  *)
+(*   An up row past the gone bound goes Gone and a row past the withdraw  *)
+(*   bound has its working consumers withdrawn, branch kept, whether or   *)
+(*   not the run ever saw it.                                             *)
+(* A work fault report is a fail that spends no bounce: only limits      *)
 (* needs it; red results come only in land and burst. A read may fault   *)
 (* (p's, in deal): a faulted read is done but is not a read. It is owed   *)
 (* again, and the verdict needs a read that said so: yes an ok read, fix  *)
@@ -118,7 +137,7 @@
 EXTENDS Naturals, FiniteSets, Sequences
 
 CONSTANTS
-  Scenario,   \* "pre", "deal", "land" or "burst"
+  Scenario,   \* "pre", "deal", "land", "burst" or "limits"
   K,          \* consumer slots per producer
   MaxAtt,     \* model bound: Start is not enabled at this attempt
   MaxBounce,  \* model bound: a fail or fix report is not enabled at this count
@@ -129,7 +148,8 @@ CONSTANTS
 
 Epoch     == 1
 LandLike  == Scenario \in {"land", "burst"}
-ProdSeq   == IF LandLike THEN <<"p", "q">> ELSE <<"b", "p", "q">>
+LimitsScen == Scenario = "limits"
+ProdSeq   == IF LandLike \/ LimitsScen THEN <<"p", "q">> ELSE <<"b", "p", "q">>
 Prods     == {ProdSeq[i] : i \in 1..Len(ProdSeq)}
 RowSeq    == <<"r1", "r2">>
 Rows      == {"r1", "r2"}
@@ -145,6 +165,11 @@ EscalateAfter == 1
 \* The undealt judgement's bound, in ticks: the code's UndealtAfter is 2 s
 \* at one tick a second (a guess, not measured).
 UndealtTicks == 2
+\* limits' bounces (policy's; the walk answers 100 outside limits, which no
+\* scenario reaches).
+BounceLimit == IF LimitsScen THEN 1 ELSE 100
+\* limits' faults (policy's; the walk answers 100 outside limits).
+FaultLimit == IF LimitsScen THEN 2 ELSE 100
 TierName(t) == IF t = 1 THEN "t1" ELSE "t2"
 
 Stream == [p \in Prods |-> CASE p = "p" -> "s1"
@@ -160,12 +185,13 @@ Tier   == [p \in Prods |-> IF p = "b" /\ Scenario = "deal" THEN 2 ELSE 1]
 Needs  == [p \in Prods |-> IF p = "b" /\ Scenario = "deal" THEN {"p"} ELSE {}]
 After  == [p \in Prods |-> IF p = "q" /\ LandLike THEN {"p"} ELSE {}]
 Prio0  == [p \in Prods |-> IF p = "b" /\ Scenario = "pre" THEN "blocker" ELSE "normal"]
-WorkResults == IF Scenario = "deal" THEN {"ok", "fail"} ELSE {"ok"}
+WorkResults == CASE Scenario = "deal" -> {"ok", "fail"} [] LimitsScen -> {"ok", "fail", "fault"} [] OTHER -> {"ok"}
 ReadResults == IF Scenario = "deal" THEN {"ok", "fix", "fault"} ELSE {"ok"}
-\* Only p bounces in deal (its fix, escalation and re-deal), and only p's
-\* reads fault; a red result comes only in land and burst.
-MayBounce(p) == Scenario = "deal" /\ p = "p"
+\* Only p bounces in deal (its fix, escalation and re-deal) and limits, and
+\* only p's reads fault; a red result comes only in land and burst.
+MayBounce(p) == Scenario \in {"deal", "limits"} /\ p = "p"
 MayFault(p)  == Scenario = "deal" /\ p = "p"
+MayWorkFault(p) == LimitsScen /\ p = "p"
 LandOutcomes == IF LandLike THEN {"landed", "red"} ELSE {"landed"}
 
 NoR     == "-"
@@ -189,22 +215,25 @@ W0 == [ps  |-> [p \in Prods |-> P0(p)],
        rg  |-> [r \in Rows |-> 0],
        sh  |-> [s \in Streams |-> Scenario = "pre" /\ s = "s2"],
        tko |-> <<>>,
-       pol |-> TRUE]
+       pol |-> TRUE,
+       bb  |-> [p \in Prods |-> 0],
+       hd  |-> [p \in Prods |-> FALSE],
+       fr  |-> [p \in Prods |-> FALSE]]
 
-\* The oracle's answer: rows(candidates, rows). A policy that answers
-\* prefers one row for every candidate (in domain for a candidate when that
-\* row is eligible for it, else that candidate's answer is out of domain).
-\* "failed" stands for every answer the engine cannot use: none in the
-\* tick's policy time, an error, out of range, or naming a row not offered
-\* (one path in the engine). The oracle branches only when a question has
-\* subjects (Asked). The preemption's victim is not policy's: the youngest
-\* working consumer on the row is the engine's fixed rule (LAYER-5, the
-\* boundary; LESSONS 5.12).
-Answers == {[rows |-> "r1"], [rows |-> "r2"], [rows |-> "failed"]}
-Unasked == [rows |-> "failed"]
+\* The oracle's answer: rows(card, kind, candidates), the set of rows the
+\* card may go to (LAYER-5), the same set for every candidate (in domain
+\* for a candidate when every row it names is a candidate for it, else that
+\* candidate's answer is out of domain). {"failed"} stands for every answer
+\* the engine cannot use: none in the tick's policy time, an error, out of
+\* range, or naming a row not offered (one path in the engine). The oracle
+\* branches only when a question has subjects (Asked). The preemption's
+\* victim is not policy's: the youngest working consumer on the row is the
+\* engine's fixed rule (LAYER-5, the boundary; LESSONS 5.12).
+Answers == {[rows |-> {"r1"}], [rows |-> {"r2"}], [rows |-> {"r1", "r2"}], [rows |-> {"failed"}]}
+Unasked == [rows |-> {"failed"}]
 
 VARIABLES
-  w,         \* the store: [ps, cs, up, rg, sh, tko, pol]; rg is each row's generation, which every row write raises; pol is whether an active policy answers
+  w,         \* the store: [ps, cs, up, rg, sh, tko, pol, bb, hd, fr]; rg is each row's generation, which every row write raises; pol is whether an active policy answers; bb each producer's bounce_base (its bounces at its last unhold); hd whether a waiting producer is held (HoldCard at a limit); fr whether a producer's reason is still its newest work consumer's fault (set by that fault, cleared by its next deal, a hold, an unhold or a park)
   snap,      \* the view the next tick plans on (W0 while idle)
   phase,     \* "idle" or "snapped"
   inbox,     \* edge results: Seq of [stamp, id, out]
@@ -218,9 +247,12 @@ VARIABLES
   last,      \* the step monitor: [tags, bad]
   rdy,       \* producer -> ticks in a row it was left ready with room (0..UndealtTicks)
   ju,        \* producers with an open undealt judgement
-  bus        \* row -> on nova-bus this tick (Present; not the store's up)
+  bus,       \* row -> on nova-bus this tick (Present; not the store's up)
+  quiet,     \* row -> its silence in bounds: 0 within the gone bound, 1 past it, 2 past the withdraw bound
+  known      \* row -> the run has seen it since its (re)start (else its silence counts from the start)
 
-vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last, rdy, ju, bus>>
+vars == <<w, snap, phase, inbox, inflight, js, jsnap, split, arrived, processed, env, last, rdy, ju, bus, quiet, known>>
+seen == <<bus, quiet, known>>
 aux  == <<rdy, ju>>
 Clean == [tags |-> {}, bad |-> {}]
 
@@ -234,6 +266,18 @@ Working(W, r)   == {c \in CIds : W.cs[c].st = "working" /\ W.cs[c].row = r}
 Load(W, r)      == {c \in CIds : Live(W, c) /\ W.cs[c].row = r}
 Serves(r, p)    == Tier[p] \in RowTiers[r]
 ServingOpen(W, p) == {r \in Rows : W.up[r] /\ bus[r] /\ Serves(r, p)}   \* up and present (D1')
+\* A candidate (policy's rows question offers it): open, present, serving
+\* the card's tier, and for a read not its author; room is not a condition
+\* (steps/tick.go candidates). Eligible adds the room the deal checks.
+Candidate(V, x, r) ==
+  /\ V.up[r]
+  /\ bus[r]   \* on the bus this tick: a configured row is not a present one (D1')
+  /\ Serves(r, x.p)
+  /\ (x.kind = "read" => r # V.ps[x.p].author)
+\* policy's rows answer is the set the card may go to (LAYER-5 rows): in
+\* domain when every row it names is a candidate (an empty answer is the
+\* engine's refusal too, and no answer here is empty).
+InDomain(V, x, ar) == ar \subseteq Rows /\ \A r \in ar : Candidate(V, x, r)
 \* Room for p: under the model's bounds, an open serving row with working
 \* consumers under its width.
 RoomIn(W, p)    == /\ W.ps[p].att < MaxAtt
@@ -298,6 +342,7 @@ Shared(p, q) == {f \in Paths[p] \cap Paths[q] : f \notin Globs}
 Overlap(p, q) == p # q /\ Stream[p] = Stream[q] /\ Shared(p, q) # {}
 ResolveOK(W, p, extra) ==
   /\ W.ps[p].st = "waiting"
+  /\ ~W.hd[p]   \* a held producer is never resolved (card.Held)
   /\ NeedsLanded(W, p)
   /\ ~W.sh[Stream[p]]
   /\ ~\E q \in Prods : Overlap(p, q) /\ (W.ps[q].st \in Started \cup {"ready"} \/ q \in extra)
@@ -315,11 +360,12 @@ ResolveOK(W, p, extra) ==
 StopReq(c) == [id |-> <<Epoch, "stop", c, 0>>, stream |-> Stream[c[1]], sent |-> FALSE]
 LandReq(V, p) == [id |-> <<Epoch, "land", PKey(p), V.ps[p].head>>, stream |-> Stream[p], sent |-> FALSE]
 
-Involved(kind, p, c) == CASE kind = "none" -> {} [] kind = "pre" -> {p, c[1]} [] OTHER -> {p}
+Involved(kind, p, c) == CASE kind \in {"none", "gone"} -> {} [] kind = "pre" -> {p, c[1]} [] OTHER -> {p}
 CardsOf(kind, p, c, V) ==
-  CASE kind = "none"                 -> {}
+  CASE kind \in {"none", "gone"}     -> {}
     [] kind = "pre"                  -> {PKey(p), NextSlot(V, p), c, PKey(c[1])}
     [] kind \in {"start", "read"}    -> {PKey(p), NextSlot(V, p)}
+    [] kind = "withdraw"             -> {PKey(p), c}
     [] OTHER                         -> {PKey(p)}
 ReadKeys(kind, p, c, V) ==
   UNION {{PKey(x)} \cup ConsOf(x) : x \in Involved(kind, p, c)}
@@ -333,7 +379,7 @@ Grp(kind, p, c, r, stamp, sha, V) ==
    cards |-> CardsOf(kind, p, c, V),
    rk    |-> ReadKeys(kind, p, c, V),
    rr    |-> IF r = NoR THEN {} ELSE {r},
-   rsx   |-> IF kind \in {"none", "yes", "landed"} THEN {} ELSE {Stream[p]},
+   rsx   |-> IF kind \in {"none", "yes", "landed", "hold", "gone"} THEN {} ELSE {Stream[p]},
    req   |-> IF kind = "pre" THEN {StopReq(c)} ELSE {}]
 NoneG(stamp, V) == Grp("none", "-", NoC, NoR, stamp, 0, V)
 
@@ -354,8 +400,11 @@ Legal(W, g) ==
     [] g.kind = "read"    -> ReadOK(W, g.p, g.r)
     [] g.kind = "yes"     -> Settled(W, g.p) /\ Verdict(W, g.p) = "yes"
     [] g.kind = "fix"     -> Settled(W, g.p) /\ Verdict(W, g.p) = "fix"
-    [] g.kind = "resolve" -> W.ps[g.p].st = "waiting" /\ NeedsLanded(W, g.p) /\ ~W.sh[Stream[g.p]]
+    [] g.kind = "resolve" -> W.ps[g.p].st = "waiting" /\ ~W.hd[g.p] /\ NeedsLanded(W, g.p) /\ ~W.sh[Stream[g.p]]
     [] g.kind = "landed"  -> W.ps[g.p].st = "merging" /\ W.ps[g.p].head = g.sha
+    [] g.kind = "hold"    -> W.ps[g.p].st \in {"ready", "review"} /\ NoLive(W, g.p)
+    [] g.kind = "withdraw" -> W.cs[g.c].st = "working"
+    [] g.kind = "gone"    -> W.up[g.r]
     [] OTHER              -> TRUE
 
 \* The writes. pre is CardMachine Preempt: Withdraw of the victim (which
@@ -367,12 +416,12 @@ PreWrites(W, g) ==
       ps1 == IF Releases(W, g.c) THEN [W.ps EXCEPT ![v].st = BackOf(W, v)] ELSE W.ps
   IN [W EXCEPT !.ps  = [ps1 EXCEPT ![g.p] = StartedP(W, g.p)],
                !.cs  = [W.cs EXCEPT ![g.c].st = "fail", ![NextSlot(W, g.p)] = StartCut(W, g.p, g.r)],
-               !.tko = Append(Drop(W.tko, g.c), NextSlot(W, g.p))]
+               !.tko = Append(Drop(W.tko, g.c), NextSlot(W, g.p)), !.fr[g.p] = FALSE]
 ApplyG(W, g) ==
   CASE g.kind = "pre"     -> PreWrites(W, g)
     [] g.kind = "start"   -> [W EXCEPT !.ps[g.p] = StartedP(W, g.p),
                                        !.cs[NextSlot(W, g.p)] = StartCut(W, g.p, g.r),
-                                       !.tko = Append(@, NextSlot(W, g.p))]
+                                       !.tko = Append(@, NextSlot(W, g.p)), !.fr[g.p] = FALSE]
     [] g.kind = "read"    -> [W EXCEPT !.ps[g.p].ncut = @ + 1,
                                        !.cs[NextSlot(W, g.p)] = ReadCut(W, g.p, g.r),
                                        !.tko = Append(@, NextSlot(W, g.p))]
@@ -380,6 +429,13 @@ ApplyG(W, g) ==
     [] g.kind = "fix"     -> [W EXCEPT !.ps[g.p].st = BackOf(W, g.p), !.ps[g.p].bounces = @ + 1]
     [] g.kind = "resolve" -> [W EXCEPT !.ps[g.p].st = "ready"]
     [] g.kind = "landed"  -> [W EXCEPT !.ps[g.p].st = "landed"]
+    \* The limits step (LAYER-3 "Retire and fail limits"): HoldCard at the
+    \* bounce or fault limit; Withdraw of a silent row's working consumer (releasing
+    \* its producer as the preemption's does); the row's Gone.
+    [] g.kind = "hold"    -> [W EXCEPT !.ps[g.p].st = "waiting", !.hd[g.p] = TRUE, !.fr[g.p] = FALSE]
+    [] g.kind = "withdraw" -> [W EXCEPT !.ps = IF Releases(W, g.c) THEN [W.ps EXCEPT ![g.p].st = BackOf(W, g.p)] ELSE W.ps,
+                                        !.cs[g.c].st = "fail", !.tko = Drop(W.tko, g.c)]
+    [] g.kind = "gone"    -> [W EXCEPT !.up[g.r] = FALSE, !.rg[g.r] = @ + 1]
     [] OTHER              -> W
 
 -----------------------------------------------------------------------------
@@ -411,7 +467,10 @@ PreFold(V, a, i, acc) ==
   ELSE
     LET b == ProdSeq[i]
         R == PreRows(V, b) \ acc.used
-        r == IF a.rows \in R THEN a.rows ELSE First(RowSeq, R)
+        \* the first row the answer names that is preemptable, else the
+        \* first by name and a miss (steps/preempt.go preferred)
+        A == IF InDomain(V, [p |-> b, kind |-> "work"], a.rows) THEN a.rows \cap R ELSE {}
+        r == IF A # {} THEN First(RowSeq, A) ELSE First(RowSeq, R)
         c == VictimFor(V, Victims(V, b, r))
         g == Grp("pre", b, c, r, 0, 0, V)
     IN IF ~BlockerDue(V, b) THEN PreFold(V, a, i + 1, acc)
@@ -420,7 +479,7 @@ PreFold(V, a, i, acc) ==
        ELSE IF R = {} THEN PreFold(V, a, i + 1, acc)
        ELSE PreFold(V, a, i + 1,
                     [acc EXCEPT !.gs = Append(@, g), !.used = @ \cup {r},
-                                !.miss = @ \cup (IF a.rows \notin R THEN {"rows"} ELSE {})])
+                                !.miss = @ \cup (IF A = {} THEN {"rows"} ELSE {})])
 PreStep(V, a) == PreFold(V, a, 1, [gs |-> <<>>, used |-> {}, uns |-> {}, miss |-> {}])
 
 \* The gate's plan: nothing (the fields of PreStep's and DealStep's acc).
@@ -461,7 +520,7 @@ ResolveFold(V, cl, i, acc) ==
           THEN ResolveFold(V, cl, i + 1, acc \cup {p})
           ELSE ResolveFold(V, cl, i + 1, acc)
 \* Held behind another producer: everything ready but the overlap.
-Held(V, cl, res) == {p \in Prods : /\ V.ps[p].st = "waiting" /\ NeedsLanded(V, p)
+Held(V, cl, res) == {p \in Prods : /\ V.ps[p].st = "waiting" /\ ~V.hd[p] /\ NeedsLanded(V, p)
                                     /\ ~V.sh[Stream[p]] /\ PKey(p) \notin cl /\ p \notin res}
 GroupsOf(kind, S, V) ==
   LET s == SelectSeq(ProdSeq, LAMBDA x : x \in S)
@@ -469,6 +528,46 @@ GroupsOf(kind, S, V) ==
 
 \* Fix: ReadYes or ReadFix by the default verdict; retry plans nothing.
 FixSet(V, cl, v) == {p \in Prods : Free(p, cl) /\ Settled(V, p) /\ Verdict(V, p) = v}
+
+\* The retire and fail limits (steps/limits.go), after needs, before fix.
+\* HoldCard at BounceLimit bounces since the last unhold (bounces - bb: an
+\* unhold is a fresh budget, #702), or for a ready producer at the fault
+\* limit (FaultDue), with no live consumer; then per row in name order: Withdraw of each working
+\* consumer of a row silent past the withdraw bound (its producer free), and
+\* Gone for an up row silent past the gone bound. Silence(r) is the row's
+\* silence as the steps measure it: from when the run last saw it, or from
+\* the run's start when it has not seen it since (known[r] FALSE), so a row
+\* whose session died before a restart still goes silent (finding 1).
+Silence(r) == quiet[r]
+\* FaultRun is p's faults running: its done work consumers' faults newer
+\* than its newest done work consumer that did not fault (a withdrawn one
+\* is passed over). Due at each multiple of the limit, while p is ready on
+\* the newest of them (fr). The hold clears fr and only the next fault sets
+\* it, at a run past the limit, so an unhold is a fresh budget.
+MaxOf(S) == CHOOSE m \in S : \A n \in S : n <= m
+FaultRun(W, p) ==
+  LET done  == {c \in ConsOf(p) : W.cs[c].kind = "work" /\ W.cs[c].st = "done"}
+      other == {W.cs[c].att : c \in {c \in done : W.cs[c].res # "fault"}}
+      floor == IF other = {} THEN 0 ELSE MaxOf(other)
+  IN Cardinality({c \in done : W.cs[c].res = "fault" /\ W.cs[c].att > floor})
+FaultDue(V, p) == /\ V.ps[p].st = "ready" /\ V.fr[p]
+                  /\ FaultRun(V, p) > 0 /\ FaultRun(V, p) % FaultLimit = 0
+BounceDue(V, p) == V.ps[p].st \in {"ready", "review"} /\ V.ps[p].bounces - V.bb[p] >= BounceLimit
+HoldDue(V, p, cl) == /\ BounceDue(V, p) \/ FaultDue(V, p)
+                     /\ Free(p, cl) /\ NoLive(V, p)
+RECURSIVE RowLimitsFold(_, _, _)
+RowLimitsFold(V, i, acc) ==
+  IF i > Len(RowSeq) THEN acc
+  ELSE
+    LET r  == RowSeq[i]
+        ws == IF Silence(r) >= 2 THEN {c \in Working(V, r) : c \notin acc.cl /\ Free(c[1], acc.cl)} ELSE {}
+        ps == SelectSeq(ProdSeq, LAMBDA p : \E c \in ws : c[1] = p)
+        wg == [j \in 1..Len(ps) |-> Grp("withdraw", ps[j], CHOOSE c \in ws : c[1] = ps[j], NoR, 0, 0, V)]
+        gg == IF V.up[r] /\ Silence(r) >= 1 THEN <<Grp("gone", "-", NoC, r, 0, 0, V)>> ELSE <<>>
+    IN RowLimitsFold(V, i + 1, [gs |-> acc.gs \o wg \o gg, cl |-> acc.cl \cup Cards(wg)])
+LimitsStep(V, cl) ==
+  LET hs == GroupsOf("hold", {p \in Prods : HoldDue(V, p, cl)}, V)
+  IN RowLimitsFold(V, 1, [gs |-> hs, cl |-> cl \cup Cards(hs)])
 
 \* Deal and reads. Candidates down the ladder: blocker work, every read
 \* owed, normal work; within a rung, id order (policy's order, default).
@@ -483,23 +582,23 @@ Desired(V, x) ==
   ELSE IF V.ps[x.p].bounces >= EscalateAfter /\ Tier[x.p] < MaxRank THEN Tier[x.p] + 1 ELSE Tier[x.p]
 Used(V, r, t) == Cardinality(Load(V, r)) + t[r]
 Eligible(V, x, r, t) ==
-  /\ V.up[r]
-  /\ bus[r]   \* on the bus this tick: a configured row is not a present one (D1')
-  /\ Serves(r, x.p)
+  /\ Candidate(V, x, r)
   /\ Used(V, r, t) < Width[r]
-  /\ (x.kind = "read" => r # V.ps[x.p].author)
 \* The default: the desired rank exactly, then above it, then an idle
 \* lane, then most room, then name.
 Score(V, x, r, t) ==
   (CASE Rank[r] = Desired(V, x) -> 100 [] Rank[r] > Desired(V, x) -> 50 [] OTHER -> 0)
   + (IF Used(V, r, t) = 0 THEN 10 ELSE 0) + (Width[r] - Used(V, r, t))
-DefaultRow(V, x, t) ==
-  LET E == {r \in Rows : Eligible(V, x, r, t)}
+BestIn(V, x, t, S) ==
+  LET E == {r \in S : Eligible(V, x, r, t)}
   IN IF E = {} THEN NoR
      ELSE CHOOSE r \in E : \A s \in E : \/ Score(V, x, r, t) > Score(V, x, s, t)
                                         \/ Score(V, x, r, t) = Score(V, x, s, t) /\ RowIdx(r) <= RowIdx(s)
-InDomain(V, x, ar, t) == ar \in Rows /\ Eligible(V, x, ar, t)
-RowFor(V, x, t, ar) == IF InDomain(V, x, ar, t) THEN ar ELSE DefaultRow(V, x, t)
+DefaultRow(V, x, t) == BestIn(V, x, t, Rows)
+\* policy's rows answer (InDomain): the engine's ranking picks among the
+\* rows of the answer with room, and with none the card waits (NoR), no
+\* judgement. An answer out of domain is a miss and the default answers.
+RowFor(V, x, t, ar) == IF InDomain(V, x, ar) THEN BestIn(V, x, t, ar) ELSE DefaultRow(V, x, t)
 MayMove(V, x, r) == IF x.kind = "work" THEN StartOK(V, x.p, r) ELSE ReadOK(V, x.p, r)
 
 \* acc: [gs, t (in-tick tally per row), miss, uns, cr]. useAns FALSE is the
@@ -512,7 +611,7 @@ DealFold(V, cands, i, acc, ar, useAns) ==
         r  == IF useAns THEN RowFor(V, x, acc.t, ar) ELSE DefaultRow(V, x, acc.t)
         ok == r # NoR /\ MayMove(V, x, r)
         g  == Grp(IF x.kind = "work" THEN "start" ELSE "read", x.p, NoC, r, 0, 0, V)
-        mi == IF InDomain(V, x, ar, acc.t) THEN {} ELSE {"rows"}
+        mi == IF InDomain(V, x, ar) THEN {} ELSE {"rows"}
         un == IF x.kind = "work" /\ ServingOpen(V, x.p) = {} THEN {TierName(Tier[x.p])} ELSE {}
         cr == IF x.kind = "read" /\ ServingOpen(V, x.p) \subseteq {V.ps[x.p].author}
               THEN {x.p} ELSE {}
@@ -614,7 +713,7 @@ SumSize(s, k) == IF k = 0 THEN 0 ELSE Size(s[k]) + SumSize(s, k - 1)
 \* alone, whatever landed its needs.
 FileShared(p, q) == p # q /\ Stream[p] = Stream[q] /\ \E f \in Paths[p] \cap Paths[q] : f \notin Globs
 Resolvable(V, cl, p) ==
-  /\ V.ps[p].st = "waiting" /\ PKey(p) \notin cl /\ ~V.sh[Stream[p]]
+  /\ V.ps[p].st = "waiting" /\ ~V.hd[p] /\ PKey(p) \notin cl /\ ~V.sh[Stream[p]]
   /\ \A n \in Needs[p] : V.ps[n].st = "landed"
   /\ ~\E q \in Prods : FileShared(p, q) /\ V.ps[q].st \in Started \cup {"ready"}
 
@@ -628,7 +727,8 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
              "RefusedOnlyByRace", "BudgetKept", "BlockerPreemptsInOneTick", "PreemptYoungest",
              "PolicyFailsToDefault", "AfterKept", "AfterNeverHolds", "MergingCovered",
              "NoDealWithoutPolicy", "ResolveFromState", "HeldBehindShown",
-             "VerdictHasItsRead", "NeverDealtAbsent"} :
+             "VerdictHasItsRead", "NeverDealtAbsent", "HoldOnFreshBudget", "SilenceActs",
+             "RowsAnswerKept", "FaultsHeld"} :
       ~CASE n = "OneGroupPerCard" ->
              \A i, j \in 1..Len(gs) : i # j => gs[i].cards \cap gs[j].cards = {}
         [] n = "GroupWhole" ->
@@ -652,7 +752,7 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
         [] n = "PreemptYoungest" ->
              \A g \in pres : g.c = Youngest(V, Victims(V, g.p, g.r))
         [] n = "PolicyFailsToDefault" ->
-             /\ (V.pol /\ a.rows \notin Rows) => dl.gs = DealStep(V, cl3, a.rows, FALSE).gs
+             /\ (V.pol /\ ~(a.rows \subseteq Rows)) => dl.gs = DealStep(V, cl3, a.rows, FALSE).gs
              /\ \A q \in pre.miss \cup dl.miss : [kind |-> "policy", about |-> q] \in jsn
         [] n = "AfterKept" ->
              \A p \in picks : \A t \in After[p] : V.ps[t].st # "merging"
@@ -676,7 +776,7 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
              \A p \in Prods : Resolvable(V, clr, p) => (p \in res \/ \E q \in res : FileShared(p, q))
         [] n = "HeldBehindShown" ->
              \A p \in Prods :
-               (/\ V.ps[p].st = "waiting" /\ PKey(p) \notin clr /\ ~V.sh[Stream[p]]
+               (/\ V.ps[p].st = "waiting" /\ ~V.hd[p] /\ PKey(p) \notin clr /\ ~V.sh[Stream[p]]
                 /\ \A n2 \in Needs[p] : V.ps[n2].st = "landed"
                 /\ \E q \in Prods : FileShared(p, q) /\ (V.ps[q].st \in Started \cup {"ready"} \/ q \in res))
                  => [kind |-> "overlap", about |-> p] \in jsn
@@ -687,7 +787,23 @@ TickChecks(V, W, W1, a, E, adm, ops, ap, pre, dl, cl3, jsn, jv, picks, cl4, res,
                                   /\ V.cs[c].st = "done" /\ V.cs[c].res = out
                IN IF g.kind = "yes" THEN said("ok") /\ ~said("fix") ELSE said("fix")
         [] n = "NeverDealtAbsent" ->
-             \A g \in accd : g.kind \in {"pre", "start", "read"} => bus[g.r]}
+             \A g \in accd : g.kind \in {"pre", "start", "read"} => bus[g.r]
+        [] n = "HoldOnFreshBudget" ->
+             \A g \in GroupsIn(E) : g.kind = "hold" => V.ps[g.p].bounces - V.bb[g.p] >= BounceLimit \/ FaultDue(V, g.p)
+        [] n = "FaultsHeld" ->
+             \A p \in Prods : (FaultDue(V, p) /\ NoLive(V, p)) =>
+               \E g \in GroupsIn(E) : (g.kind = "hold" /\ g.p = p) \/ PKey(p) \in g.cards
+        [] n = "SilenceActs" ->
+             \A r \in Rows :
+               /\ (V.up[r] /\ quiet[r] >= 1) => \E g \in GroupsIn(E) : g.kind = "gone" /\ g.r = r
+               /\ quiet[r] >= 2 => \A c \in Working(V, r) :
+                    \E g \in GroupsIn(E) : (g.kind = "withdraw" /\ g.c = c) \/ PKey(c[1]) \in g.cards
+        [] n = "RowsAnswerKept" ->
+             /\ \A g \in GroupsIn(dl.gs) :
+                  (g.kind \in {"start", "read"}
+                   /\ InDomain(V, [p |-> g.p, kind |-> IF g.kind = "start" THEN "work" ELSE "read"], a.rows))
+                    => g.r \in a.rows
+             /\ "rows" \in dl.miss => \E i \in 1..Len(Cands(V, cl3)) : ~InDomain(V, Cands(V, cl3)[i], a.rows)}
 
 -----------------------------------------------------------------------------
 (* Actions                                                                 *)
@@ -713,6 +829,8 @@ Init ==
   /\ rdy = [p \in Prods |-> 0]
   /\ ju = {}
   /\ bus = [r \in Rows |-> TRUE]
+  /\ quiet = [r \in Rows |-> 0]
+  /\ known = [r \in Rows |-> TRUE]
 
 Snap ==
   /\ phase = "idle"
@@ -721,7 +839,7 @@ Snap ==
   /\ jsnap' = js
   /\ last' = Clean
   /\ UNCHANGED <<w, inbox, inflight, js, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, seen>>
 
 \* Judgements the tick opens (unserved per tier, cannot-read per producer,
 \* policy per question, overlap per held producer, no-policy on the
@@ -733,7 +851,8 @@ Expired(V, J) ==
              \/ j.kind = "overlap" /\ \E p \in Prods :
                   p = j.about /\ ~(V.ps[p].st = "waiting" /\ \E q \in Prods : Overlap(p, q)
                                                             /\ V.ps[q].st \in Started \cup {"ready"})
-             \/ j.kind = "no-policy" /\ V.pol}
+             \/ j.kind = "no-policy" /\ V.pol
+             \/ j.kind = "held" /\ \E p \in Prods : p = j.about /\ (~V.hd[p] \/ V.ps[p].st # "waiting")}
 
 Tick(a) ==
   /\ phase = "snapped"
@@ -743,7 +862,8 @@ Tick(a) ==
          inb  == InboxFold(V, inbox, 1, [es |-> <<>>, cl |-> Cards(pre.gs)])
          res  == ResolveFold(V, inb.cl, 1, {})
          rgs  == GroupsOf("resolve", res, V)
-         cl2  == inb.cl \cup Cards(rgs)
+         lim  == LimitsStep(V, inb.cl \cup Cards(rgs))
+         cl2  == lim.cl
          fyes == GroupsOf("yes", FixSet(V, cl2, "yes"), V)
          ffix == GroupsOf("fix", FixSet(V, cl2, "fix"), V)
          cl3  == cl2 \cup Cards(fyes) \cup Cards(ffix)
@@ -754,7 +874,7 @@ Tick(a) ==
          jl   == LandJudged(V, inbox, inflight)
          jv   == jsnap \cup jl   \* the judgements as the tick sees them: its snapshot's and its own
          picks == LandPicks(V, cl4, inflight, jv)
-         E    == pre.gs \o dblk \o inb.es \o rgs \o fyes \o ffix \o drst
+         E    == pre.gs \o dblk \o inb.es \o rgs \o lim.gs \o fyes \o ffix \o drst
          adm  == Admit(E)
          ops  == PackOps(adm, split)
          ap   == ApplyFold(V, ops, 1, [w |-> W, pv |-> V, ok |-> {}, ref |-> {}])
@@ -767,17 +887,20 @@ Tick(a) ==
          uids  == {inbox[i].id : i \in {i \in 1..Len(inbox) : inbox[i].stamp \in ustamps}}
          stops == UNION {g.req : g \in UNION {GroupsIn(ops[i]) : i \in ap.ok}}
          lands == {LandReq(V, p) : p \in picks}
+         accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
          jnew == {[kind |-> "unserved", about |-> t] : t \in pre.uns \cup dl.uns}
                    \cup {[kind |-> "cannot-read", about |-> p] : p \in dl.cr}
                    \cup {[kind |-> "policy", about |-> q] : q \in pre.miss \cup dl.miss}
                    \cup jl
                    \cup {[kind |-> "overlap", about |-> p] : p \in Held(V, inb.cl, res)}
                    \cup (IF V.pol THEN {} ELSE {[kind |-> "no-policy", about |-> "coord"]})
+                   \cup {[kind |-> "held", about |-> g.p] : g \in {g \in accd : g.kind = "hold"}}   \* rides the hold
          jsn  == (js \ Expired(V, js)) \cup jnew
-         accd == UNION {GroupsIn(ops[i]) : i \in ap.ok}
          \* Left ready with room: a candidate of the view the tick did not deal.
          \* A run with no active policy deals nothing and says so (no-policy),
          \* so the gate counts nothing toward undealt.
+         \* A card policy's rows answer keeps waiting (no room in the rows it
+         \* names) counts too: the judgement says so.
          und  == {p \in Prods : V.pol /\ V.ps[p].st = "ready" /\ ~V.sh[Stream[p]] /\ RoomIn(V, p)
                                 /\ ap.w.ps[p].st = "ready"}
          tags == (IF \E g \in accd : g.kind = "pre" THEN {"pre"} ELSE {})
@@ -796,6 +919,12 @@ Tick(a) ==
                  \cup (IF \E g \in accd : g.kind = "start" /\ Rank[g.r] > Tier[g.p]
                                           /\ V.ps[g.p].bounces >= EscalateAfter
                        THEN {"escal"} ELSE {})
+                 \cup (IF \E g \in accd : g.kind = "hold" THEN {"held"} ELSE {})
+                 \cup (IF \E g \in accd : g.kind = "hold" /\ FaultDue(V, g.p) THEN {"faultheld"} ELSE {})
+                 \cup (IF \E g \in accd : g.kind = "withdraw" THEN {"silentw"} ELSE {})
+                 \cup (IF \E g \in accd : g.kind = "gone" THEN {"gone"} ELSE {})
+                 \cup (IF \E g \in accd : g.kind = "gone" /\ ~known[g.r] THEN {"goneunseen"} ELSE {})
+                 \cup (IF \E g \in accd : g.kind = "start" /\ V.bb[g.p] > 0 THEN {"redealt"} ELSE {})
      IN /\ w' = ap.w
         /\ inbox' = SelectSeq(inbox, LAMBDA it : it.stamp \notin ustamps)
         /\ processed' = processed + Cardinality(ustamps)
@@ -811,7 +940,7 @@ Tick(a) ==
   /\ phase' = "idle"
   /\ snap' = W0
   /\ jsnap' = {}
-  /\ UNCHANGED <<arrived, env, bus>>
+  /\ UNCHANGED <<arrived, env, seen>>
 
 \* There is no Take (defect 52): a consumer is dealt working, in its row's
 \* hand; the row's acknowledgement moves nothing the steps read.
@@ -824,8 +953,10 @@ ReportMove(W, p, c, res) ==
                                        !.review = @ + 1, !.red = FALSE]
     [] res = "fail" -> [W.ps[p] EXCEPT !.st = BackOf(W, p), !.bounces = @ + 1]
     [] OTHER        -> [W.ps[p] EXCEPT !.st = BackOf(W, p)]
+\* In limits q's consumers never report: its row's session is dead.
 Report(c, res) ==
   /\ w.cs[c].st = "working"
+  /\ ~(LimitsScen /\ c[1] = "q")
   /\ IF w.cs[c].kind = "read"
      THEN /\ res \in ReadResults
           /\ res = "fix" => (MayBounce(c[1]) /\ w.ps[c[1]].bounces < MaxBounce)
@@ -833,11 +964,13 @@ Report(c, res) ==
           /\ w' = [w EXCEPT !.cs[c].st = "done", !.cs[c].res = res, !.tko = Drop(@, c)]
      ELSE /\ res \in WorkResults
           /\ res = "fail" => (MayBounce(c[1]) /\ w.ps[c[1]].bounces < MaxBounce)
+          /\ res = "fault" => MayWorkFault(c[1])
           /\ w' = [w EXCEPT !.cs[c].st = "done", !.cs[c].res = res, !.tko = Drop(@, c),
-                            !.ps[c[1]] = ReportMove(w, c[1], c, res)]
+                            !.ps[c[1]] = ReportMove(w, c[1], c, res),
+                            !.fr[c[1]] = (res = "fault" /\ BackOf(w, c[1]) = "ready")]
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, seen>>
 
 \* The coordinator's hold (with Park of the stream's ready producers in the
 \* same op, LESSONS 2.20) and its lifting; a row's Gone and Seen.
@@ -849,7 +982,10 @@ UnholdsOf == CASE Scenario = "pre" -> {"s2"} [] Scenario = "land" -> {"s1"} [] O
 FlipsOf  == CASE Scenario = "pre" -> {"r2"} [] Scenario = "deal" -> {"r1"} [] OTHER -> {}
 \* In deal r2's hook drops and comes back: it leaves the bus and returns,
 \* the store's up untouched (D1').
-BusFlipsOf == CASE Scenario = "deal" -> {"r2"} [] OTHER -> {}
+\* In limits either row may leave and come back.
+BusFlipsOf == CASE Scenario = "deal" -> {"r2"} [] LimitsScen -> Rows [] OTHER -> {}
+\* In limits the coordinator unholds p (judge held.p unhold, or unhold p).
+UnholdCardsOf == IF LimitsScen THEN Prods ELSE {}
 \* In pre the active policy fails (a question errors or no version is
 \* active) and a fixed one is set; in deal a store op lands p by hand
 \* (land <card>), between ticks and with no land request in
@@ -863,26 +999,57 @@ HandLandOK(p) ==
   /\ w.ps[p].st = "merging"
   /\ ~\E f \in inflight : f.id[2] = "land" /\ f.id[3][1] = p
   /\ ~Judged(js, p)
+\* Leave and Return: a row's hook leaves nova-bus and comes back. The run
+\* sees a returning row at once (known, quiet 0) and raises it if it is
+\* down (run's raiseSeen, card Seen). Elapse (limits): time passes, and
+\* every absent row's silence grows by one bound.
 EnvMove ==
   /\ env < MaxEnv
   /\ env' = env + 1
-  /\ \/ /\ bus' = bus
+  /\ \/ /\ UNCHANGED seen
         /\ \/ \E s \in HoldsOf :
                 /\ ~w.sh[s]
                 /\ w' = [w EXCEPT !.sh[s] = TRUE,
                                   !.ps = [p \in Prods |-> IF Stream[p] = s /\ w.ps[p].st = "ready"
                                                          THEN [w.ps[p] EXCEPT !.st = "waiting"]
-                                                         ELSE w.ps[p]]]
+                                                         ELSE w.ps[p]],
+                                  !.fr = [p \in Prods |-> IF Stream[p] = s /\ w.ps[p].st = "ready" THEN FALSE ELSE w.fr[p]]]
            \/ \E s \in UnholdsOf : w.sh[s] /\ w' = [w EXCEPT !.sh[s] = FALSE]
            \/ \E r \in FlipsOf : w' = [w EXCEPT !.up[r] = ~w.up[r], !.rg[r] = @ + 1]
            \/ PolFlips /\ w' = [w EXCEPT !.pol = ~w.pol]
            \/ \E p \in HandLandsOf : HandLandOK(p) /\ w' = [w EXCEPT !.ps[p].st = "landed"]
-     \/ \E r \in BusFlipsOf : bus' = [bus EXCEPT ![r] = ~@] /\ w' = w
+           \* UnholdCard: plain waiting again, a fresh budget (bb := bounces; fr
+           \* is already FALSE: the hold cleared it)
+           \/ \E p \in UnholdCardsOf : /\ w.ps[p].st = "waiting" /\ w.hd[p]
+                                      /\ w' = [w EXCEPT !.hd[p] = FALSE, !.bb[p] = w.ps[p].bounces]
+     \/ \E r \in BusFlipsOf : /\ bus[r] /\ bus' = [bus EXCEPT ![r] = FALSE] /\ w' = w
+                             /\ UNCHANGED <<quiet, known>>
+     \/ \E r \in BusFlipsOf : /\ ~bus[r] /\ bus' = [bus EXCEPT ![r] = TRUE]
+                             /\ quiet' = [quiet EXCEPT ![r] = 0] /\ known' = [known EXCEPT ![r] = TRUE]
+                             /\ w' = IF w.up[r] THEN w ELSE [w EXCEPT !.up[r] = TRUE, !.rg[r] = @ + 1]
+     \/ /\ LimitsScen /\ \E r \in Rows : ~bus[r] /\ quiet[r] < 2
+        /\ quiet' = [r \in Rows |-> IF ~bus[r] /\ quiet[r] < 2 THEN quiet[r] + 1 ELSE quiet[r]]
+        /\ UNCHANGED <<w, bus, known>>
   \* The hand land is tagged for its reach check (StepsNeverHandLanded).
   /\ last' = IF \E p \in Prods : w.ps[p].st # "landed" /\ w'.ps[p].st = "landed"
              THEN [tags |-> {"handland"}, bad |-> {}] ELSE Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, js, split, arrived, processed>>
   /\ UNCHANGED aux
+
+\* The run restarts (limits): a new Ticker with no inbox, nothing in flight
+\* and no refusals, its view built now (Since): every row's silence counts
+\* from now, and only the rows on the bus are seen (the first tick's who).
+\* Between ticks, with nothing in flight (an in-flight edge's fate across a
+\* restart is layer 6's).
+Restart ==
+  /\ LimitsScen /\ phase = "idle" /\ inbox = <<>> /\ inflight = {}
+  /\ env < MaxEnv /\ env' = env + 1
+  /\ known' = bus
+  /\ quiet' = [r \in Rows |-> 0]
+  /\ split' = {}
+  /\ rdy' = [p \in Prods |-> 0]
+  /\ last' = [tags |-> {"restart"}, bad |-> {}]
+  /\ UNCHANGED <<w, snap, jsnap, phase, inbox, inflight, js, arrived, processed, ju, bus>>
 
 \* An edge's result reaches the inbox, once or twice.
 EdgeResult(f, out, n) ==
@@ -896,7 +1063,7 @@ EdgeResult(f, out, n) ==
   /\ inflight' = (inflight \ {f}) \cup {[f EXCEPT !.sent = TRUE]}
   /\ last' = Clean
   /\ UNCHANGED <<w, snap, jsnap, phase, js, split, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, seen>>
 
 \* The coordinator answers a land judgement (intent rule 32): land is the
 \* hand merge (Landed at its head), fix the producer to fix with the
@@ -916,20 +1083,25 @@ Answer(p, choice) ==
   /\ js' = js \ {LandJ(p)}
   /\ last' = Clean
   /\ UNCHANGED <<snap, jsnap, phase, inbox, inflight, split, arrived, processed, env>>
-  /\ UNCHANGED <<aux, bus>>
+  /\ UNCHANGED <<aux, seen>>
 
 Next ==
   \/ Snap
   \/ \E a \in AnswersFor(snap) : Tick(a)
   \/ \E c \in CIds, res \in WorkResults \cup ReadResults : Report(c, res)
   \/ EnvMove
+  \/ Restart
   \/ \E f \in inflight, out \in {"landed", "red", "ack"}, n \in 1..2 : EdgeResult(f, out, n)
   \/ \E p \in Prods, choice \in {"land", "fix", "retry"} : Answer(p, choice)
 
 Spec == Init /\ [][Next]_vars
 
 \* Liveness: weak fairness on the tick (Snap, then Tick with any answer).
+\* policy's rows answer is binding (a card waits while the set it names has
+\* no room), so the liveness properties also assume policy is not adverse
+\* forever: a tick on the default (a failed answer) comes infinitely often.
 FairSpec == Spec /\ WF_vars(Snap) /\ WF_vars(\E a \in AnswersFor(snap) : Tick(a))
+            /\ SF_vars(Tick(Unasked))
 
 -----------------------------------------------------------------------------
 (* Invariants, named as the design names its guarantees                   *)
@@ -945,7 +1117,12 @@ TypeOK ==
   /\ w.cs \in [CIds -> ConsRec]
   /\ w.up \in [Rows -> BOOLEAN]
   /\ bus \in [Rows -> BOOLEAN]
-  /\ w.rg \in [Rows -> 0..MaxEnv]
+  /\ w.rg \in [Rows -> Nat]
+  /\ w.bb \in [Prods -> 0..MaxBounce]
+  /\ w.hd \in [Prods -> BOOLEAN]
+  /\ w.fr \in [Prods -> BOOLEAN]
+  /\ quiet \in [Rows -> 0..2]
+  /\ known \in [Rows -> BOOLEAN]
   /\ w.sh \in [Streams -> BOOLEAN]
   /\ w.pol \in BOOLEAN
   /\ phase \in {"idle", "snapped"}
@@ -1050,6 +1227,20 @@ ResolveFromState         == "ResolveFromState" \notin last.bad
 HeldBehindShown          == "HeldBehindShown" \notin last.bad
 VerdictHasItsRead        == "VerdictHasItsRead" \notin last.bad
 NeverDealtAbsent         == "NeverDealtAbsent" \notin last.bad
+\* The retire and fail limits (limits): a hold only at BounceLimit bounces
+\* since the last unhold, so an unheld card is not held again for the
+\* budget it was held for (#702), or at the fault limit; a ready producer
+\* at the fault limit with no live consumer is held (or moved by another
+\* group) in the tick (the faults limit was read by no step); every up row silent past the gone bound
+\* goes Gone and every working consumer of a row silent past the withdraw
+\* bound is withdrawn (or its producer moved by another group), whether
+\* or not the run saw the row since its start (finding 1); a rows answer
+\* in domain is kept (the card goes to a row it names, or waits) and a
+\* rows miss means some answer was out of domain.
+HoldOnFreshBudget        == "HoldOnFreshBudget" \notin last.bad
+FaultsHeld               == "FaultsHeld" \notin last.bad
+SilenceActs              == "SilenceActs" \notin last.bad
+RowsAnswerKept           == "RowsAnswerKept" \notin last.bad
 
 (* Liveness, guarantee 8's second half and LAYER-2's nothing-stalls:    *)
 (* a ready producer with room on an open serving row (under width) is     *)
@@ -1104,6 +1295,14 @@ StepsNeverHeldBehind  == ~\E j \in js : j.kind = "overlap"
 StepsNeverHandLanded  == "handland" \notin last.tags
 StepsNeverUndealt     == ju = {}
 StepsNeverAbsent      == "absent" \notin last.tags
+StepsNeverLimitHeld   == "held" \notin last.tags
+StepsNeverRedealtAfterUnhold == "redealt" \notin last.tags
+StepsNeverFaultHeld   == "faultheld" \notin last.tags
+StepsNeverFaultedPastLimit == \A p \in Prods : FaultRun(w, p) <= FaultLimit
+StepsNeverSilentWithdrawn == "silentw" \notin last.tags
+StepsNeverGoneSilent  == "gone" \notin last.tags
+StepsNeverGoneUnseen  == "goneunseen" \notin last.tags
+StepsNeverRestarted   == "restart" \notin last.tags
 StepsNeverReadAgain   == ~\E p \in Prods : \E c, d \in CurReads(w, p) :
                            Faulted(w, c) /\ d # c /\ w.cs[d].st \in {"working", "done"} /\ ~Faulted(w, d)
 

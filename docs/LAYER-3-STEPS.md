@@ -219,10 +219,15 @@ high, normal, low; within a rung, policy's order.
 
 - Plans: `HoldCard` (reason `held: ...`) with a `held` judgement when bounces since the
   producer's last unhold (`bounces - bounce_base`) reach the limit (a fault never counts;
-  LESSONS 2.24; an unhold is a fresh budget); `Withdraw` of a working consumer whose
+  LESSONS 2.24; an unhold is a fresh budget), or when a ready producer's work
+  has faulted policy's `faults` times running (again at each multiple, so
+  the unhold is a fresh budget there too); `Withdraw` of a working consumer whose
   row is silent past the bound, branch kept; `Gone` for a row whose session
   has not acked past its bound, never for one missed challenge in a long
-  turn (LESSONS 4.7); a `flap` judgement past the flap limit.
+  turn (LESSONS 4.7); a `flap` judgement past the flap limit. A row's
+  silence counts from when the run last saw it on the bus, or from the
+  run's start when it has not seen it since: a row whose session died
+  before a restart still goes silent.
 - Policy: `bounce_limit` (3; v1 left it unsourced, LPM G1); `silence`
   (2 hours of running time, unmeasured); `gone_after` (10 minutes);
   `flap_limit` (3); `fault_limit` (3 faults of the last 10 on a row in 30
@@ -241,7 +246,9 @@ for each candidate, and the engine refuses one below the card's tier.
   unmeasured), one more per further step; a read at the rank above the
   writer's row (frontier stays frontier).
 - Policy: `rows`, `escalate_after`; an answer below the card's tier or off
-  the row's list is the default.
+  the row's list is the default. An answer in domain is the set of rows the
+  card may go to, not a preference: with no room in it the card waits (the
+  undealt judgement says so), never dealt outside it.
 
 ### Judgements
 

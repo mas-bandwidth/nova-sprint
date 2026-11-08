@@ -24,9 +24,10 @@ type world struct {
 	cursor   int64
 	n        int
 	now      time.Time
-	headless set           // streams the inputs carry no head for (the edge's read failed)
-	away     set           // rows the inputs do not see on the bus this tick (their hook is down)
-	lapse    time.Duration // how long ago the last good who read saw the rest (0: this tick)
+	headless set                  // streams the inputs carry no head for (the edge's read failed)
+	away     set                  // rows the inputs do not see on the bus this tick (their hook is down)
+	lapse    time.Duration        // how long ago the last good who read saw the rest (0: this tick)
+	seenAt   map[string]time.Time // when set, run's seen map: a present row is seen now, an away one keeps its last (absent: not seen since the start)
 }
 
 var t0 = time.Unix(1000, 0).UTC()
@@ -193,6 +194,11 @@ func (w *world) inputs() Inputs {
 	for r := range w.v.Rows {
 		if _, gone := w.away[r]; !gone {
 			in.Seen[r] = in.Now.Add(-w.lapse)
+			if w.seenAt != nil {
+				w.seenAt[r] = in.Seen[r]
+			}
+		} else if at, ok := w.seenAt[r]; ok {
+			in.Seen[r] = at
 		}
 	}
 	return in
