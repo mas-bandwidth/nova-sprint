@@ -44,9 +44,9 @@ func command(args []string) int {
 	if code, handled := internalCommand(ctx, args); handled {
 		return code
 	}
-	if line := hookGate(ctx, args, os.Getenv, gatePresence(args)); line != "" {
+	if line, exit := hookGate(ctx, args, os.Getenv, gatePresence(args)); line != "" {
 		fmt.Fprintln(os.Stderr, line)
-		return 1
+		return exit
 	}
 	if len(args) > 0 && args[0] == "up" {
 		return runUpWrapper(ctx, args[1:])

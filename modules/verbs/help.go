@@ -33,6 +33,7 @@ func runHelp(_ *Engine, _ context.Context, in *input, _ store.Snapshot) (string,
 		for i, s := range subs {
 			lines[i] = helpLine(find(name + " " + s))
 		}
+		lines = append(lines, "", "nova-sprint help "+name+" "+strings.Join(subs, "|")+" for its table")
 		return done("nova-sprint help "+name+" "+subs[0], lines...), nil
 	}
 	return "", misuse("help", "no verb "+name)
@@ -41,7 +42,7 @@ func runHelp(_ *Engine, _ context.Context, in *input, _ store.Snapshot) (string,
 func helpIndex() string {
 	lines := []string{"nova-sprint <verb> [flags]; every verb takes --as <name> (or NOVA_SPRINT_AS) and --epoch <e> (left out: the active epoch; given, any other is refused).",
 		"Exit 0: done, the last line says next. Exit 1: refused, one line naming the fix. Exit 2: bad usage, or the store, bus or an edge failed.",
-		"Before up: help, version, up and check run anywhere. Every other verb needs only the store up makes at its step 2 (an epoch), whatever step up is at; a fresh store is stopped, never started, until the coordinator runs start."}
+		"Before up: help and version run anywhere; up, check and every other verb need the acting name hooked in to the bus (NOVA_BUS_REDIS set, then nova-bus hook --as <you>). Every verb but help, version, up and check also needs the store up makes at its step 2 (an epoch), whatever step up is at; a fresh store is stopped, never started, until the coordinator runs start."}
 	for _, g := range groups {
 		lines = append(lines, "", g+":")
 		for _, v := range table {

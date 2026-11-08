@@ -175,3 +175,20 @@ func TestSetupBusNamesFailureCarriesStderr(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// up with NOVA_SECRETS_STORE unset is refused naming the variable, before
+// nova-secrets runs with an empty --store.
+func TestSetupBusRefusesAnUnsetSecretsStore(t *testing.T) {
+	t.Parallel()
+	cfg := configForSetup()
+	cfg.Secrets.Store = ""
+	run := func(_ context.Context, _ bool, name string, args ...string) ([]byte, error) {
+		t.Fatalf("ran %s %v with no store", name, args)
+		return nil, nil
+	}
+	_, err := setupBusCommand(cfg, func(context.Context) (bool, error) { return false, nil }, run)(context.Background(), "nova-bus", "who")
+	var op *verbs.OperationError
+	if !errors.As(err, &op) || op.Exit != 1 || !strings.Contains(op.Problem, "NOVA_SECRETS_STORE is not set") {
+		t.Fatal(err)
+	}
+}
