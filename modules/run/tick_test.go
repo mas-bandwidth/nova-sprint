@@ -559,3 +559,56 @@ func TestTickDealsNothingToAStaleRow(t *testing.T) {
 		t.Fatalf("p1 is %s after the row came up to the run's release", s.Cards["p1"].State)
 	}
 }
+
+// TestServeRosterFailureFailsTheTickAndJudges: every roster read fails, so
+// no tick plans; each TICK line says status=error with the cause, and one
+// engine judgement about the roster is open (opened once, not per tick).
+func TestServeRosterFailureFailsTheTickAndJudges(t *testing.T) {
+	t.Parallel()
+	f := started(t)
+	ro, err := NewConfigRoster(&fakeConfigSnapshot{err: errors.New("config: connection refused")}, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &watched{beats: &beats{now: t0, tick: make(chan time.Time)}, read: make(chan struct{})}
+	b := &fakeBus{who: map[string]bus.Presence{}}
+	var log strings.Builder
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, ReposDir: t.TempDir(), Clock: clock, Log: &log}, &healthy{})
+	}()
+	for range 3 {
+		clock.tick <- t0
+	}
+	clock.tick <- t0 // the third tick has finished once the fourth beat is taken
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	out := log.String()
+	for _, n := range []string{"1", "2", "3"} {
+		var line string
+		for _, l := range strings.Split(out, "\n") {
+			if strings.HasPrefix(l, "TICK n="+n+" ") {
+				line = l
+			}
+		}
+		if !strings.Contains(line, "status=error") || !strings.Contains(line, "roster read") || !strings.Contains(line, "connection refused") {
+			t.Fatalf("tick %s does not report the failed roster read: %q\n%s", n, line, out)
+		}
+	}
+	snap, err := f.Snapshot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var open []string
+	for id, j := range snap.Judgements {
+		if j.Kind == "engine" && j.About == "roster" && j.State == "open" {
+			open = append(open, id)
+		}
+	}
+	if len(open) != 1 {
+		t.Fatalf("open roster engine judgements %v, want one: %+v", open, snap.Judgements)
+	}
+}

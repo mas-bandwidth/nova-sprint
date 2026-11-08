@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 	"github.com/mas-bandwidth/nova-sprint/modules/policy"
 	"github.com/mas-bandwidth/nova-sprint/modules/roster"
@@ -77,6 +78,37 @@ func judgementOp(a *asker, o Observed) (store.Op, bool) {
 		op.Writes = append(op.Writes, j)
 	}
 	return op, true
+}
+
+// RosterUnread opens the engine judgement for a failed roster read, once
+// while one is open: the tick planned nothing (an empty roster would judge
+// every row unknown), so nothing is dealt until nova-config reads again. It
+// carries the judgement deadline and expires there (steps' judgements). The
+// refusals the last plan left are kept for the next plan.
+func (t *Ticker) RosterUnread(ctx context.Context, now time.Time, cause error) error {
+	n := 1
+	for _, j := range t.snap.Judgements {
+		if j.Kind != "engine" || j.About != "roster" {
+			continue
+		}
+		if j.State == "open" {
+			return nil
+		}
+		n++
+	}
+	tmo := t.timeouts.Judgement
+	if tmo <= 0 {
+		tmo = steps.Engine.Timeouts.Judgement
+	}
+	id := fmt.Sprintf("engine.roster.%d", n)
+	op := store.Op{ID: fmt.Sprintf("judge.engine.roster.%d.%d", t.snap.Epoch, t.snap.Seq), Epoch: t.snap.Epoch, Actor: "sprint", Kind: "judgement", At: now,
+		Writes: []store.Write{store.PutJudgement{ID: id, Kind: "engine", About: "roster", Group: "engine",
+			Question: "the roster read from nova-config failed, so nothing is planned or dealt: " + edge.RedactN(cause.Error(), edge.FailureMax),
+			Command:  "nova-sprint judge " + id + " <choice> --reason <why>   choices: retry", Deadline: now.Add(time.Duration(tmo) * time.Second)}}}
+	refused := t.refused
+	_, err := t.apply(ctx, []store.Op{op}, false)
+	t.refused = refused
+	return err
 }
 
 // NewTicker reads the one cold snapshot; later reads are Events only
