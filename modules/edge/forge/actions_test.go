@@ -197,3 +197,29 @@ func TestAPIPathTakesOwnerRepoFromAURL(t *testing.T) {
 }
 
 func c0_internal() *Client { var p []string; return actionsGH_internal(nil, &p) }
+
+// TestJobLinesReadsAPaintedLog: a log holding terminal escapes is read on
+// a gh that refuses to print them without --allow-escape-sequences and on
+// one that does not know the flag, and its lines carry no escape.
+func TestJobLinesReadsAPaintedLog(t *testing.T) {
+	t.Parallel()
+	const flag = "--allow-escape-sequences"
+	log := "2026-11-07T08:00:01.1234567Z \x1b[31m--- FAIL: TestWorkerCLIFlagRefusals (0.00s)\x1b[0m\n2026-11-07T08:00:02.0000000Z FAIL\tgithub.com/o/r/worker\t0.4s\n"
+	for name, knows := range map[string]bool{"new gh": true, "old gh": false} {
+		c := New(Config{Identity: Identity{Name: HostLogin}, Now: func() int64 { return 1000 },
+			Exec: ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+				has := slices.Contains(cmd.Argv, flag)
+				switch {
+				case has && !knows:
+					return edge.Result{ExitCode: 1, Stderr: "unknown flag: " + flag}, nil
+				case !has && knows:
+					return edge.Result{ExitCode: 1, Stderr: "the response contains terminal escape sequences; pass " + flag + " to output it anyway"}, nil
+				}
+				return edge.Result{Stdout: log}, nil
+			})})
+		lines, err := c.JobLines(context.Background(), "o/r", 121)
+		if err != nil || len(lines) == 0 || lines[0] != "--- FAIL: TestWorkerCLIFlagRefusals (0.00s)" || strings.Contains(strings.Join(lines, ""), "\x1b") {
+			t.Fatalf("%s: lines %q err %v, want the failing test without escapes", name, lines, err)
+		}
+	}
+}
