@@ -275,7 +275,7 @@ func (c *Client) Checks(ctx context.Context, repo string, shas []string) (map[st
 	if len(shas) > MaxChecksBatch {
 		return nil, fmt.Errorf("forge refused: Checks batch size %d exceeds %d SHAs: split into batches of at most %d", len(shas), MaxChecksBatch, MaxChecksBatch)
 	}
-	owner, name, ok := strings.Cut(repo, "/")
+	owner, name, ok := strings.Cut(RepoPath(repo), "/")
 	if !ok || owner == "" || name == "" {
 		return nil, fmt.Errorf("forge refused: invalid repository %q: expected org/repo", repo)
 	}
@@ -538,4 +538,26 @@ func isFullSHA_internal(s string) bool {
 		}
 	}
 	return true
+}
+
+// RepoPath is the <owner>/<repo> a forge API path names repo by. A stream
+// may keep its repository as a clone URL (https://host/<owner>/<repo>.git,
+// ssh://..., or git@host:<owner>/<repo>.git); pasted into repos/<r> that is
+// no path at all. An owner/repo is returned as it is, and so is anything
+// that names no owner/repo (a local path).
+func RepoPath(repo string) string {
+	repo = strings.TrimSpace(repo)
+	path := ""
+	if _, rest, ok := strings.Cut(repo, "://"); ok {
+		_, path, _ = strings.Cut(rest, "/")
+	} else if at, colon := strings.Index(repo, "@"), strings.Index(repo, ":"); at >= 0 && colon > at {
+		path = repo[colon+1:]
+	} else {
+		return repo
+	}
+	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	if owner, name, ok := strings.Cut(path, "/"); ok && owner != "" && name != "" && !strings.Contains(name, "/") {
+		return path
+	}
+	return repo
 }

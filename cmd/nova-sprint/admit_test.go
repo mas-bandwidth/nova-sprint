@@ -75,3 +75,20 @@ func TestHostForgeRequiredChecks(t *testing.T) {
 		}
 	}
 }
+
+// TestRequiredChecksFromAURL: a stream stored as a clone URL reads
+// repos/<owner>/<repo>, never the URL pasted into the path.
+func TestRequiredChecksFromAURL(t *testing.T) {
+	t.Parallel()
+	var argvs []string
+	f := hostForge{exec: forge.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		argvs = append(argvs, strings.Join(cmd.Argv, " "))
+		return edge.Result{Stdout: "Gates\n"}, nil
+	})}
+	if _, err := f.RequiredChecks(context.Background(), "https://github.com/mas-bandwidth/nova-tools", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if len(argvs) != 2 || !strings.HasPrefix(argvs[0], "gh api repos/mas-bandwidth/nova-tools/branches/main ") || !strings.HasPrefix(argvs[1], "gh api repos/mas-bandwidth/nova-tools/rules/branches/main ") {
+		t.Fatalf("argv %q", argvs)
+	}
+}
