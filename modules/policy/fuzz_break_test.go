@@ -454,7 +454,9 @@ func fuzzJobs() []fuzzJob {
 }
 
 // TestFunctionalFuzzPolicyReplay reruns files 5 and 76 of the 2000 one at a time, and the
-// default alone, with the tick timed, to tell a policy fault from load.
+// default alone, with the tick timed, to tell a policy fault from load: run
+// alone, each file is stored in domain or refused naming its line, and the
+// default answers every tick with no refusal.
 func TestFunctionalFuzzPolicyReplay(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -463,12 +465,18 @@ func TestFunctionalFuzzPolicyReplay(t *testing.T) {
 		t.Logf("file %d ops %s", i, jobs[i].ops)
 		r := runOne(dir, i, jobs[i].body, jobs[i].ops)
 		t.Logf("file %d serial: %s %s", i, r.class, r.msg)
+		if r.class != "stored-in-domain" && r.class != "refused-named" {
+			t.Errorf("file %d run alone: class %s: %s", i, r.class, r.msg)
+		}
 	}
 	big, ro := fuzzBigSnapshot()
 	for k := 0; k < 3; k++ {
 		start := time.Now()
 		_, fs := testEngine().Answer(Versions{Active: pv(1, defaultBody)}, big, ro, FullQuestions(big, nil))
 		t.Logf("default cold tick %d: %s, refusals %d", k, time.Since(start), len(fs))
+		if len(fs) > 0 {
+			t.Errorf("default cold tick %d refused: %s", k, fs[0].Error())
+		}
 	}
 }
 
