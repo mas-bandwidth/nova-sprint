@@ -177,8 +177,8 @@ Every verb that can withdraw or fail other cards (`drop`, `hold` of a row, `clea
 explicit ids, never "all", has `--dry-run`, and prints what it withdraws and which
 dependants fail before it does it (LESSONS 6.5; LESSONS-PRIORITY-AND-MERGE D33). One verb
 per thing (LESSONS 6.6): a judgement is answered only by `judge`, so the answers v1 spread
-over `rework`, `return`, `accept`, `unblock`, `waive`, `rank` and `resume` are the choices a
-judgement offers (`rework`, `drop`, `waive`, `relink`, `rescore`, `unblock`, `retry`,
+over `rework`, `return`, `accept`, `waive`, `rank`, `resume` and the rest are the choices a
+judgement offers (`rework`, `drop`, `waive`, `relink`, `rescore`, `unhold`, `retry`,
 `by-hand`). `check` is the one doctor. Owed to CORRECT-USE, a one-line edit (the coordinator
 is making it): its "Notifications name their verb" example becomes `judge <id> <choice>`.
 
@@ -323,7 +323,7 @@ added fail state." So v1's page (`index.html`, `app.js`, routes, JSON envelope) 
 is behind the shim on branch `v2-dash-shim`, matched against the live v1 board at the shim
 README's widths, by eye and `tools/abshot`; any difference is a defect. `fail` is black, after
 landed (Glenn, 2026-11-06, in the coordinator's ruling: "You can make fail black"); there is
-no `blocked` column (2026-11-07: a held card is waiting); the stats panel is left off.
+no column for a card with a problem (2026-11-07: a held card is waiting); the stats panel is left off.
 
 **Served two ways, one poller each.** `run --listen <addr>` rebuilds the view once a tick
 from the tick's own local copy, adding no store read. `nova-sprint dash --listen <addr>` is
@@ -381,10 +381,10 @@ same op as the move that raised it.
   someone else answered. A second answer is refused naming the first.
 - **Expired.** At its deadline the step expires it and applies policy's declared safe
   default for that kind, which never drops, accepts, merges or lands (LESSONS 5.7), and
-  pushes `EXPIRED judgement=<id>: <what the default did>`. A `blocked` judgement has no deadline by
+  pushes `EXPIRED judgement=<id>: <what the default did>`. A `held` judgement has no deadline by
   Glenn's ruling ("sits there until you review it").
 
-Landings, a stream done, a red, a block, a stall and an orphan reach the coordinator by the
+Landings, a stream done, a red, a hold, a stall and an orphan reach the coordinator by the
 same pusher. **The stitch.** When the last producer of a stream lands, run logs and pushes:
 
 ```

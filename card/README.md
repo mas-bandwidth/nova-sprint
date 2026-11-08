@@ -155,8 +155,8 @@ refusals: `a card needs a name`, `card "..." is over 128 bytes`,
 
 ## Producer table (Move)
 
-There is no blocked state (Glenn, 2026-11-07: "waiting is where stuff goes
-where it's having problems"). A producer that has a problem waits, its
+A card with a problem has no state of its own (Glenn, 2026-11-07: "waiting
+is where stuff goes where it's having problems"). A producer that has a problem waits, its
 reason saying what: the coordinator's hold (`held: <why>`, `HeldPrefix`,
 HoldCard), policy's hold at the bounce limit (the same), or a missing-route
 fault (`missing-route: <route> <what>`, `MissingRoute`). `HeldReason` is the

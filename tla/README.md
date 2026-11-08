@@ -678,8 +678,8 @@ Step invariants (each: the last step kept its rule):
 - **OnlyHolderActs**: Report only from the consumer's holder.
 - **RouteFaultWaits**: a work consumer's fault naming a missing route
   (result `route`) moves its producer to waiting with the missing-route
-  reason (`why` route), never to ready (defect 48). There is no blocked
-  state (Glenn, 2026-11-07: "waiting is where stuff goes where it's having
+  reason (`why` route), never to ready (defect 48). A card with a problem
+  has no state of its own (Glenn, 2026-11-07: "waiting is where stuff goes where it's having
   problems"): a producer with a problem waits, its `why` saying what.
 - **HeldNeverDealt**: a producer whose `why` is held or route is waiting;
   Resolve and WaiveRed refuse it, so the deal never takes it until

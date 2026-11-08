@@ -13,7 +13,7 @@ import (
 
 // runJudge is `judge`: with no argument the open judgements, with one the
 // judgement (or group) and its choices, with two the answer. A choice that
-// moves a card (unblock, drop) rides in the answer's op; the others are the
+// moves a card (unhold, drop) rides in the answer's op; the others are the
 // answer alone, which the next tick reads. A group is answered member by
 // member, one op each, after --expect <n> confirms how many.
 func runJudge(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
@@ -100,7 +100,7 @@ func (e *Engine) answer(ctx context.Context, in *input, snap store.Snapshot, j s
 	return e.move(ctx, in, snap, r, j.About)
 }
 
-// answerRequest is the answer as a request: unblock and drop move the card
+// answerRequest is the answer as a request: unhold and drop move the card
 // the judgement is about, and a land judgement's fix sends its producer to
 // fix with the reason as the finding (card.Red at its head); every other
 // choice (a land judgement's retry: the next tick asks the landing again)
@@ -112,7 +112,7 @@ func answerRequest(j store.Judgement, choice, reason string, snap store.Snapshot
 	}
 	r := steps.Request{Judgement: j.ID, Answer: choice}
 	switch choice {
-	case "unblock":
+	case "unhold":
 		r.Card, r.Event = j.About, card.UnholdCard{Reason: reason}
 	case "drop":
 		r.Card, r.Event = j.About, card.Cancel{Reason: reason}

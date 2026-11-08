@@ -60,11 +60,11 @@ func cold4LiveReads(s store.Snapshot, p string) []string {
 // ---- confirmed defects: each FAILS at eb3051a5 ----
 
 // D1. "a producer ... has a live read consumer only in review"; Cancel,
-// Block, ReadYes and ReadFix need "no live consumer of p"; "an Edit never
+// HoldCard, ReadYes and ReadFix need "no live consumer of p"; "an Edit never
 // lands while a consumer is live" (LAYER-2 tables and checks). Merge re-runs
 // a later move with the consumer list it was planned with (overlayCons in
 // replay.go overlays only the consumers passed), so a read cut by an earlier
-// plan of the same merge is invisible to it. AskRead then Cancel, Block,
+// plan of the same merge is invisible to it. AskRead then Cancel, HoldCard,
 // Edit, ReadFix or ReadYes on the same producer: the machine accepts, the
 // store accepts, and the producer leaves review (or is edited) with a live
 // read. Applied one by one, the second move is refused "withdraw it first".
@@ -177,7 +177,7 @@ func TestColdread4DefectNestedMergeSkipsTheReRun(t *testing.T) {
 // StreamHeld true (the Broken's park), which no store state satisfies. The
 // machine accepts, the store always refuses, and one by one (hold, then
 // Broken) is accepted and parks p1. The same with UnholdStream before a
-// Broken in a held stream, and with Faulted, ReadFix, Released and Unblock.
+// Broken in a held stream, and with Faulted, ReadFix, Released and UnholdCard.
 func TestColdread4DefectMergedFencesContradict(t *testing.T) {
 	t.Parallel()
 	t.Run("HoldThenBroken", func(t *testing.T) {

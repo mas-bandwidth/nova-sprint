@@ -370,7 +370,7 @@ func (l *load) build(t *testing.T) {
 func (l *load) judgement() PutJudgement {
 	i := l.judge
 	l.judge++
-	kinds := []string{"red", "fix", "stuck", "blocked", "flap", "conflict"}
+	kinds := []string{"red", "fix", "stuck", "held", "flap", "conflict"}
 	return PutJudgement{ID: fmt.Sprintf("j%06d", i), Kind: kinds[i%len(kinds)], About: prodID(i % l.n), Question: "The card has failed its read three times: retry, split or drop it?",
 		Command: fmt.Sprintf("nova-sprint answer j%06d retry|split|drop", i), Group: fmt.Sprintf("g%03d", i%50)}
 }

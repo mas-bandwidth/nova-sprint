@@ -130,19 +130,19 @@ func TestColdread4StreamCostsAreRoundedStrings(t *testing.T) {
 	}
 }
 
-// There is no blocked anywhere on the board (Glenn, 2026-11-07: "not just the display,
+// A card with a problem shows only as waiting on the board (Glenn, 2026-11-07: "not just the display,
 // that's an invented concept"): no column, legend entry, In flight part, wire count or
 // layout variant. In flight reads "N working · M verify" and its tooltip
 // "N working, R review, F fix, M merging", as v1's.
 func TestNoBlockedOnTheBoard(t *testing.T) {
 	t.Parallel()
-	for _, f := range []string{"page/app.js", "page/index.html"} {
+	for _, f := range []string{"page/app.js", "page/index.html", "page/stream.html", "page/charts.js"} {
 		b, err := page.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, line := range strings.Split(string(b), "\n") {
-			if strings.Contains(line, "blocked") && !strings.Contains(line, "Glenn 2026-11-07") {
+			if strings.Contains(strings.ToLower(line), "blocked") {
 				t.Errorf("%s still names blocked: %s", f, strings.TrimSpace(line))
 			}
 		}

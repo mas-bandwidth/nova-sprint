@@ -1266,6 +1266,9 @@ func holdStream(s Stream, v HoldStream) (Plan, *Refusal) {
 	if s.Held {
 		return Plan{}, no("stream %s is already held", s.Name)
 	}
+	if HeldReason(v.Reason) {
+		return Plan{}, no("reason %q would hold every producer stream %s parks; HoldStream's reason is the stream's, HoldCard holds a card", v.Reason, s.Name)
+	}
 	seen := map[string]bool{}
 	for _, p := range v.Ready {
 		if seen[p.ID] {

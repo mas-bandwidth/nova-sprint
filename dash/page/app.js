@@ -7,7 +7,7 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "waiting"]; // Glenn 2026-11-07: no fail state on the board, and no blocked: a held card is waiting
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "waiting"]; // Glenn 2026-11-07: no fail state on the board; a held card is waiting
 // Columns of the streams table, in flow order.
 var FLOW = ["waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.

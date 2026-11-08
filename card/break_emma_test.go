@@ -19,7 +19,7 @@ import (
 // composition" (third cold read rulings).
 //
 // Root cause in card/replay.go:95: compose mutates cur in-place via foldWrites
-// and stores the post-state in done.seen. When inner = Merge(unblock, hold) is
+// and stores the post-state in done.seen. When inner = Merge(unhold, hold) is
 // merged as the second argument of Merge(replace, inner), unionMissing copies
 // pReady from inner.seen where pReady.State is already Waiting (its post-state
 // from hold). When inner.again(cur) re-runs hold via readyOn(cur, "s1"), it

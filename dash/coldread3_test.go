@@ -42,7 +42,7 @@ func cr3WorkGrid(vw float64) (grid, content float64) {
 	return grid, content
 }
 
-// At 2000 px the Work grid, always ten columns (the fail and blocked columns are gone,
+// At 2000 px the Work grid, always ten columns (only the states a card has,
 // the human 2026-11-07), needs 1733 px and its row has 1870 px: it fits. Before the fail
 // column went it needed 1894 px, 24 px more than the row (v2-2000.png vs v1-live-2000.png).
 // README: "the full Work table fits at both 2000 and 2800 px".
@@ -55,7 +55,7 @@ func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
 	for _, rule := range []string{
 		".panel { --E: clamp(18.5rem, 45vw, 42rem); }",
 		".streams .row { --pad: 2rem; --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); --S: 9.75rem;",
-		"grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Glenn 2026-11-07: fail and blocked columns gone; always ten columns */",
+		"grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Glenn 2026-11-07: always ten columns; a held card is waiting */",
 		".streams .row { --name-cap: 27.75rem; }",
 		"padding: 2rem 2rem 4rem;",
 	} {

@@ -159,8 +159,8 @@ WITNESSES = [
     ("CardHeldDealt", "HeldNeverDealt", "life",
      "Resolve does not refuse a held producer: the deal takes a card the\n"
      "coordinator holds, or one waiting on a missing route, as soon as its\n"
-     "needs land (Glenn, 2026-11-07: blocked is no state; a hold is a\n"
-     "reason on waiting that the deal refuses).",
+     "needs land (Glenn, 2026-11-07: a card with a problem waits; a hold\n"
+     "is a reason on waiting that the deal refuses).",
      [("  /\\ ps[p].why = \"-\"   \\* the code: \"the deal never takes a held card\"\n",
        "  /\\ TRUE   \\* FAULT: was ps[p].why = \"-\"\n", 1)]),
     ("CardEditUnderLive", "EditNoLive", "life",

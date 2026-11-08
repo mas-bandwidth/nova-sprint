@@ -1011,7 +1011,7 @@ func usageColumn(h *harness) {
 }
 
 // The columns the lessons of v1 placed: prior_head (a work consumer's
-// continued head), bounces (a producer's count toward blocked), cost and
+// continued head), bounces (a producer's count toward the bounce hold), cost and
 // priced (a consumer's run, one field), priority (a producer's or sentinel's
 // level; a consumer's is always normal) and the result fault.
 func lessonColumns(h *harness) {

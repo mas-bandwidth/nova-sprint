@@ -200,11 +200,11 @@ func TestTickHoldAtLimit(t *testing.T) {
 	require.Empty(t, s.rejected)
 	s.requireState("p1", "waiting")
 	assert.Equal(t, fmt.Sprintf("held: bounced %d times, the limit is %d", Engine.Limits.Bounces, Engine.Limits.Bounces), s.snap().Cards["p1"].Reason)
-	js := s.openJudgements("blocked")
-	require.Equal(t, []string{"blocked.p1.1"}, js)
+	js := s.openJudgements("held")
+	require.Equal(t, []string{"held.p1.1"}, js)
 	s.run(3)
 	s.requireState("p1", "waiting")
-	assert.True(t, s.snap().Judgements["blocked.p1.1"].Deadline.IsZero(), "blocked has no deadline")
+	assert.True(t, s.snap().Judgements["held.p1.1"].Deadline.IsZero(), "held has no deadline")
 }
 
 // TestTickBudgetAndCarry: results over the budget are carried in arrival

@@ -66,7 +66,7 @@ var (
 
 // The closed sets the schema checks.
 var (
-	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "done"} // no blocked (round 29): a held card is waiting with its reason
+	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "done"} // round 29: a held card is waiting with its reason
 	CardKinds   = []string{"producer", "sentinel", "work", "read"}
 	CardResults = []string{"", "ok", "fix", "fail", "fault"}
 	Priorities  = []string{"low", "normal", "high", "critical", "blocker"} // a producer's or sentinel's level, lowest first

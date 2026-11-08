@@ -588,18 +588,18 @@ func TestColdDefectWorkReportFixStallsProducer(t *testing.T) {
 	assert.True(t, refused != nil || moved, "a work consumer's fix report is accepted, and no producer event accepts it")
 }
 
-// D2. Block from working is allowed only "after its consumer is withdrawn";
+// D2. HoldCard from working is allowed only "after its consumer is withdrawn";
 // the machine accepts it over a work consumer that is done ok (its finished
 // head never reaches the producer).
-func TestColdDefectBlockOverFinishedWork(t *testing.T) {
+func TestColdDefectHoldOverFinishedWork(t *testing.T) {
 	t.Parallel()
-	assert.NotNil(t, mv(Working, []Card{wk(Done, "ok", h2)}, HoldCard{Reason: "held: bounced"}), "Block over a done-ok work consumer")
-	assert.NotNil(t, mv(Working, nil, HoldCard{Reason: "held: bounced"}), "Block of a working producer with no withdrawn consumer named")
+	assert.NotNil(t, mv(Working, []Card{wk(Done, "ok", h2)}, HoldCard{Reason: "held: bounced"}), "HoldCard over a done-ok work consumer")
+	assert.NotNil(t, mv(Working, nil, HoldCard{Reason: "held: bounced"}), "HoldCard of a working producer with no withdrawn consumer named")
 }
 
 // D3. noLive trusts the caller's consumer list. In working the machine knows
 // its consumer's id (p.w<attempt>) but does not require it: with the list
-// left out, Cancel (and Block, Edit, NeedFailed) plan without fencing the
+// left out, Cancel (and HoldCard, Edit, NeedFailed) plan without fencing the
 // live consumer, and Fake accepts: a failed producer with a live consumer.
 func TestColdDefectOmittedLiveConsumerIsNotFenced(t *testing.T) {
 	t.Parallel()
@@ -637,7 +637,7 @@ func TestColdDefectSetPriorityOnSentinel(t *testing.T) {
 }
 
 // D6. A fix continues "with the finding in hand": Start copies p.reason to
-// the work consumer. But SetPriority, Park, Unblock and Edit overwrite the
+// the work consumer. But SetPriority, Park, UnholdCard and Edit overwrite the
 // same column, so the finding a ReadFix left is replaced by the reason for
 // a priority change (or "stream s1 is held") before the next Start.
 func TestColdDefectFindingOverwrittenBeforeStart(t *testing.T) {

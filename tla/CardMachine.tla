@@ -80,15 +80,20 @@
 (* leaves its producer waiting with why "route" on the first fault instead *)
 (* of a re-deal (defect 48; RouteFaultWaits).                              *)
 (*                                                                         *)
-(* There is no blocked state (Glenn, 2026-11-07: "waiting is where stuff   *)
-(* goes where it's having problems"). A producer's why is the part of its *)
-(* reason a rule reads: "held" for the coordinator's hold of one card      *)
-(* (HoldCard, defect 47, or policy's at the bounce limit; the code's       *)
-(* reason prefix "held: "), "route" for a missing-route fault, "-" for any *)
-(* other. A why other than "-" is only ever on a waiting producer; Resolve *)
-(* and WaiveRed refuse it, so the deal never takes a held card             *)
-(* (HeldNeverDealt), and UnholdCard lifts it back to plain waiting. A park *)
-(* into a held stream is the stream's hold (held), never a why.            *)
+(* A card with a problem has no state of its own (Glenn, 2026-11-07:       *)
+(* "waiting is where stuff goes where it's having problems"): it is        *)
+(* waiting, its reason saying why. A producer's why is NOT a card state    *)
+(* and the store has no such field: it is a projection of the producer's   *)
+(* reason text, the part of it a rule reads: "held" for a reason that      *)
+(* starts "held: " (the coordinator's hold of one card, HoldCard, defect   *)
+(* 47, or policy's at the bounce limit), "route" for one that starts       *)
+(* "missing-route:", "-" for any other (card.HeldReason; card.TraceWhy     *)
+(* derives it from the reason in every trace record, and the trace check   *)
+(* binds it to the code). A why other than "-" is only ever on a waiting   *)
+(* producer; Resolve and WaiveRed refuse it, so the deal never takes a     *)
+(* held card (HeldNeverDealt), and UnholdCard lifts it back to plain       *)
+(* waiting. A park into a held stream is the stream's hold (held), never a *)
+(* why, and HoldStream refuses a reason that would hold.                   *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets, Sequences, TLC
 
@@ -139,7 +144,7 @@ RowTiers == [r \in Rows |-> {"pro"}]
 Serves(r, p) == Tier[p] \in RowTiers[r]
 
 PStates == {"absent", "waiting", "ready", "working", "review", "merging", "landed", "fail"}
-Whys    == {"-", "held", "route"}   \* what holds a waiting producer (the code: card.HeldReason)
+Whys    == {"-", "held", "route"}   \* a projection of the reason text, never a state (card.HeldReason, card.TraceWhy)
 PFinal  == {"landed", "fail"}
 CStates == {"none", "ready", "working", "done", "fail"}
 CFinal  == {"done", "fail"}

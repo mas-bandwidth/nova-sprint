@@ -447,7 +447,10 @@ func TestFunctionalMigrateRound28(t *testing.T) {
 		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1), ('s1', 2)",
 		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('old', 'producer', 's1', 'blocked', 2, 'pro', 'bounced 3 times', 1)",
 		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p1', 'producer', 's1', 'blocked', 3, 'pro', 'held: looking at it', 2)",
-		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p2', 'producer', 's1', 'waiting', 0, 'pro', '', 2)"} {
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p2', 'producer', 's1', 'waiting', 0, 'pro', '', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p3', 'producer', 's1', 'blocked', 5, 'pro', 'bounced 3 times, the limit is 3', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p4', 'producer', 's1', 'blocked', 1, 'pro', 'missing-route: adb no device', 2)",
+		"INSERT INTO sprint.judgements (id, kind, about, question, command, group_key, state, opened_at, epoch) VALUES ('blocked.p3.1', 'blocked', 'p3', 'producer p3 bounced 3 times, the limit is 3', 'nova-sprint judge blocked.p3.1 <choice> --reason <why>   choices: unblock | drop', 'blocked', 'open', now() - interval '1 hour', 2)"} {
 		_, err = c.Exec(ctx, q)
 		require.NoError(t, err, q)
 	}
@@ -458,6 +461,16 @@ func TestFunctionalMigrateRound28(t *testing.T) {
 	h := &harness{t: t, s: p, ctx: ctx, epoch: 2}
 	p1 := h.snap().Cards["p1"]
 	assert.Equal(t, []any{"waiting", "held: looking at it", 4}, []any{p1.State, p1.Reason, p1.Gen}, "the held card is waiting with its reason, its gen raised by the op")
+	p3 := h.snap().Cards["p3"]
+	assert.Equal(t, []any{"waiting", "held: bounced 3 times, the limit is 3", 6}, []any{p3.State, p3.Reason, p3.Gen}, "a card held at the bounce limit stays held: its reason gains the hold's prefix, never released to the deal")
+	p4 := h.snap().Cards["p4"]
+	assert.Equal(t, []any{"waiting", "missing-route: adb no device"}, []any{p4.State, p4.Reason}, "a missing-route reason already holds and is kept as it is")
+	js := h.snap().Judgements
+	assert.Equal(t, []string{"expired", "round 29: reopened as held.p3.1"}, []string{js["blocked.p3.1"].State, js["blocked.p3.1"].Answer}, "the open judgement of the dropped kind is expired")
+	held := js["held.p3.1"]
+	assert.Equal(t, []string{"open", "held", "p3", "producer p3 bounced 3 times, the limit is 3", "nova-sprint judge held.p3.1 <choice> --reason <why>   choices: unhold | drop", "held"},
+		[]string{held.State, held.Kind, held.About, held.Question, held.Command, held.Group}, "and reopened as held, answered by unhold")
+	assert.True(t, held.Deadline.IsZero(), "a held judgement has no deadline")
 	assert.Equal(t, 0, h.snap().Cards["p2"].Gen, "a card that was not blocked is untouched")
 	events := h.events()
 	var moved []Event
@@ -472,7 +485,7 @@ func TestFunctionalMigrateRound28(t *testing.T) {
 	assert.Equal(t, "waiting", moved[0].After.Cards["p1"].State)
 	var oldState, oldReason string
 	require.NoError(t, c.QueryRow(ctx, "SELECT state, reason FROM sprint.cards WHERE id = 'old' AND epoch = 1").Scan(&oldState, &oldReason))
-	assert.Equal(t, []string{"waiting", "bounced 3 times"}, []string{oldState, oldReason}, "an earlier epoch's blocked card is waiting with its reason")
+	assert.Equal(t, []string{"waiting", "held: bounced 3 times"}, []string{oldState, oldReason}, "an earlier epoch's blocked card is waiting, held, with its reason")
 	_, err = c.Exec(ctx, "UPDATE sprint.cards SET state = 'blocked' WHERE id = 'p2' AND epoch = 2")
 	require.Error(t, err, "the CHECK no longer admits blocked")
 	assert.Contains(t, err.Error(), "cards_state_check")

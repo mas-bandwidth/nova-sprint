@@ -42,10 +42,10 @@ func TestStreamStates(t *testing.T) {
 	}
 }
 
-// TestHeldCardsAreWaiting: there is no blocked column (Glenn, 2026-11-07:
+// TestHeldCardsAreWaiting: a card with a problem has no column (Glenn, 2026-11-07:
 // "waiting is where stuff goes where it's having problems"): a held card
 // and one a missing route stopped count as waiting, and the wire carries no
-// blocked count and no blocked list.
+// count or list of its own.
 func TestHeldCardsAreWaiting(t *testing.T) {
 	t.Parallel()
 	s := store.Snapshot{Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{

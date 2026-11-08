@@ -43,7 +43,7 @@ always none. `attempt` on a producer counts its work consumers cut so far;
 a consumer carries the attempt it belongs to. The lessons placed on
 2026-11-06 add three more: `prior_head` (on a work consumer: the head this
 attempt continues from; LESSONS 3.9, 4.3), `bounces` (on a producer: the
-returns that count toward `blocked`; LESSONS 2.24), and `cost` with `priced`
+returns that count toward the bounce hold; LESSONS 2.24), and `cost` with `priced`
 (on a consumer: what its run cost, or that its route has no price; LESSONS
 1.17).
 
@@ -114,7 +114,7 @@ Producer events:
 | `HoldCard{reason}` | waiting, ready, review, or working after its consumer is withdrawn | waiting | state, reason (`held: <why>`) | a producer, never a sentinel, not already held; no live consumer of p; raised by policy when `bounces` passes its limit, with a judgement; a `fault` never counts (LESSONS 2.24); and by the coordinator's `hold <card>` with reason `held: <why>` (defect 47), its live consumers withdrawn in the same op |
 | `UnholdCard{reason}` | waiting, held | waiting | reason | a coordinator verb; Resolve then moves it on |
 
-There is no `blocked` state (Glenn, 2026-11-07: "waiting is where stuff goes where it's having problems"). A waiting producer whose reason starts `held: ` (not a stream park, `held: stream S is held`) or `missing-route:` is held (`card.Held`): Resolve and WaiveRed refuse it, so the deal never takes it, and only `UnholdCard` lifts it.
+A card with a problem has no state of its own (Glenn, 2026-11-07: "waiting is where stuff goes where it's having problems"). A waiting producer whose reason starts `held: ` (not a stream park, `held: stream S is held`) or `missing-route:` is held (`card.Held`): Resolve and WaiveRed refuse it, so the deal never takes it, and only `UnholdCard` lifts it.
 
 Consumer events:
 
@@ -190,7 +190,7 @@ Cancels; the machine still refuses a Cancel under a live consumer.) The drop tha
   from base (LESSONS 3.9, 4.3).
 - Only `Broken` and `ReadFix` raise `bounces`. A `fault` (harness,
   environment, bench, staging, a provider's rate limit or credit refusal)
-  returns the producer to ready with nothing counted, and `Block` compares
+  returns the producer to ready with nothing counted, and the bounce hold (`HoldCard`) compares
   `bounces`, never `attempt` (LESSONS 2.24, 4.14, 4.24).
 - A brief is changed only by `Edit`, and only while the producer has no live
   consumer; the coordinator messages a holder instead of editing under it
@@ -258,7 +258,7 @@ it through layer 1 as a refused op so it is visible.
   producer moving; the author reading their own head; red advancing;
   NeedFailed not enabled after a need failed; a report by a non-holder
   accepted; a producer with two live work consumers; a stale attempt's
-  report moving the producer; a fault counted toward `Block`; an edit under
+  report moving the producer; a fault counted toward the bounce hold; an edit under
   a live consumer; a `ready` consumer counted against width, which starves a
   row at width; a needs cycle accepted, which stalls both cards.
 - Nothing stalls (LESSONS 2.21), a liveness obligation of the same model:
@@ -303,7 +303,7 @@ About 1,100 lines of Go. An estimate from the event count.
 - The producer's `author` is set from the work consumer's row at `Finished`
   and cleared at `Start`: an attempt has one author, and a release before a
   finish leaves none.
-- The bounce limit that blocks a producer is policy's number, compared with `bounces` (LESSONS 2.24); the move is the engine's. A row is never blocked: on the record (10-25, 11-05) the flaps were our hook's, not the row's; a row's flaps stay a counted fact for policy to raise a judgement on.
+- The bounce limit that holds a producer is policy's number, compared with `bounces` (LESSONS 2.24); the move is the engine's. A row is never held by its flaps: on the record (10-25, 11-05) the flaps were our hook's, not the row's; a row's flaps stay a counted fact for policy to raise a judgement on.
 - The runner is its own binary, `nova-worker`, in this repo (Glenn: "your
   call"); it and `nova-sprint` share the consumer verbs (take, report) from
   one package. The name `nova-swarm` is reserved by Glenn for a future mode
@@ -382,7 +382,7 @@ with a design change, never a special case):
 - In `working` the machine knows its work consumer's id (`<producer>.w<attempt>`)
   and requires it in the consumers passed; a missing one is a refusal, and it
   is fenced in every plan that depends on "no live consumer".
-- `Block` from `working` requires the current attempt's consumer to be
+- `HoldCard` from `working` requires the current attempt's consumer to be
   withdrawn (`fail`); a consumer that has reported must be applied first
   (`Finished` or `Broken`), never discarded.
 - `Replace{by}` requires `by` to be an existing card other than the producer.
@@ -410,14 +410,14 @@ with a design change, never a special case):
 - An `Add` event builds the put-card plan for a producer or sentinel and
   refuses a cycle through needs or after, and a need that is not a card.
 - Wording: `attempt` counts the work consumers cut; `bounces` is what the
-  block limit reads; a fault raises neither.
+  bounce limit reads; a fault raises neither.
 
 ## Rulings from the card model (2026-11-06)
 
 - The invariant is as the tables have it: at most one live work consumer per
   producer, belonging to the current attempt; a producer in `working` whose
   consumer has reported or been withdrawn is one plan away from leaving
-  `working` (Finished, Broken, Faulted, Released, Block), and that plan is
+  `working` (Finished, Broken, Faulted, Released, HoldCard), and that plan is
   built in the same tick.
 - A move that returns a producer to `ready` while its stream is held
   (Broken, Faulted, ReadFix, Released) writes it parked in the same plan.
@@ -427,7 +427,7 @@ with a design change, never a special case):
   `ReadYes` requires a yes.
 - `NeedFailedTakesDependants` is a rule, not a side effect: a dependant of a
   failed need gets no new consumer and is failed by layer 3 in the same tick.
-- Row table text: there is no row block; the flap limit sentence is gone.
+- Row table text: a row's flaps never hold it; the flap limit sentence is gone.
 - The liveness obligation "nothing stalls" is layer 3's model, with the tick.
 
 ## Rulings from the second cold read of layer 2 (2026-11-06)
@@ -442,7 +442,7 @@ with a design change, never a special case):
 - `Broken` and `Faulted` write the consumer's reason into the producer's
   `finding`; `Start` copies `finding` to the new work consumer, so a fix
   attempt always carries what it fixes.
-- Every return into a held stream, and `Unblock`, parks with a reason that
+- Every return into a held stream, and `UnholdCard`, parks with a reason that
   names the hold ("held: <the stream's reason>").
 - `Add` caps a card id at 104 bytes so every consumer suffix fits in 128.
 - A sentinel may be a need (a phase mark is what later phases need).
@@ -455,7 +455,7 @@ with a design change, never a special case):
   `review`) on to `merging` without a new read when a
   done ok read of the previous review at the same head exists (the
   coordinator's judgement that the red was not the code's).
-- Actor rulings (who may Unblock, Waive, Relink, SetPriority, WaiveRed) are
+- Actor rulings (who may UnholdCard, Waive, Relink, SetPriority, WaiveRed) are
   layer 3's; events carry no actor.
 
 ## Rulings from the third cold read of layer 2 and the card model (2026-11-06)
@@ -561,20 +561,20 @@ that missed the push left it there.
   brief declares it with `NEEDS-ROUTE:` and `card.RouteName` reads it, the
   rest says what is missing, "missing-route: adb no device on this bench") moves the producer to
   `waiting` with that reason on the first such fault, never back to `ready`
-  (2026-11-07: no `blocked` state). Layer 3 opens the blocked judgement; the
-  producer waits held until the coordinator answers (`unblock`, which lifts
+  (2026-11-07: a card with a problem waits). Layer 3 opens the held
+  judgement; the producer waits held until the coordinator answers (`unhold`, which lifts
   the hold, or `drop`). Any other fault is as before.
-- Defect 47: `Block` is allowed from `waiting` too (a card held before it
+- Defect 47: `HoldCard` is allowed from `waiting` too (a card held before it
   resolves) and refused for a sentinel, so the coordinator's
-  `hold <card> --reason <why>` is a `Block` with reason `held: <why>`
+  `hold <card> --reason <why>` is a `HoldCard` with reason `held: <why>`
   (`card.HeldPrefix`), its live consumers withdrawn in the same op; `unhold
-  <card>` is its `Unblock`, back to `waiting`. The fail state is kept.
+  <card>` is its `UnholdCard`, back to `waiting`. The fail state is kept.
 
 Model: `tla/CardMachine.tla` changes with the code. `StartCut` and
 `ReadCut` write `working`; `RoomOn(r, gone)` guards `Start`, `AskRead`,
 `AskReads` and `Preempt`; `Take` is gone and `OnlyHolderActs` covers
 `Report`; `Faulted` takes the result `route` to `waiting` with `why`
-route; `HoldCard` (was `Block`) adds `waiting` and producers only. New invariants: `DealIsTake` (no consumer is
+route; `HoldCard` adds `waiting` and producers only. New invariants: `DealIsTake` (no consumer is
 `ready`), replacing `TakeBelowWidth`, and the step rule `RouteFaultWaits` (was `RouteFaultBlocks`), and since
 2026-11-07 `HeldNeverDealt` with its witness `CardHeldDealt`.
 Reversed witnesses (each must violate): `CardCutReady` (a cut that writes
@@ -588,7 +588,7 @@ breaker's trace fixture is regenerated.
 ### Built (w2D2, 2026-11-07; branch `v2-stitch-w2D2`)
 
 - Code: `card/card.go` (`MissingRoute`, `RouteFault`, `HeldPrefix`, no
-  `Take`), `card/move.go` (`cut` writes working; `Faulted` route; `Block`
+  `Take`), `card/move.go` (`cut` writes working; `Faulted` route; `HoldCard`
   from waiting, never a sentinel), `card/trace.go`; the conformance store in
   the card tests (`overWidth`) counts a cut as a move into working.
 - Tests: the card package's tables, breakers and cold reads changed from

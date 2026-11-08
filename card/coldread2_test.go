@@ -104,7 +104,7 @@ func TestCold2DefectBrokenReasonNeverReachesTheNextAttempt(t *testing.T) {
 // E5. A producer parked in a held stream carries "reason naming the hold"
 // (Park row; reversed witness "a producer parked with no named hold"). The
 // moves that return into a held stream (Broken, Faulted, ReadFix, Released,
-// the Withdraw release) and Unblock write waiting with the consumer's or the
+// the Withdraw release) and UnholdCard write waiting with the consumer's or the
 // event's reason, or none at all, never the hold.
 func TestCold2DefectParkedWithoutNamingTheHold(t *testing.T) {
 	t.Parallel()
@@ -253,7 +253,7 @@ func TestCold2Rulings(t *testing.T) {
 			}
 		}
 	})
-	t.Run("block from working with a reported consumer", func(t *testing.T) {
+	t.Run("hold from working with a reported consumer", func(t *testing.T) {
 		for res, apply := range map[string]string{"ok": "Finished", "fail": "Broken", "fault": "Faulted"} {
 			refusal{mv(Working, []Card{wk(Done, res, h2)}, HoldCard{Reason: "held: x"}), "consumer p1.w1 reported " + res + "; apply it with " + apply + " before HoldCard"}.check(t)
 		}

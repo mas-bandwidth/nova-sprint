@@ -57,7 +57,7 @@ Bottom up: the structure, what it must guarantee, how it is checked.
 | how many reads | | `reads` | (LESSONS 3.4; PRIORITY D17) |
 | yes or fix from all the done reads of a head | | `verdict` | ruled policy's in LAYER-2 (LESSONS 3.7) |
 | a yes needs at least one done ok read of this review and head | layer 2 | | a yes on zero yes lands unread code |
-| compare `bounces` with the limit; `Block` | layers 2 and 3 | | the move |
+| compare `bounces` with the limit; `HoldCard` | layers 2 and 3 | | the move |
 | the bounce, fault and same-finding limits | | `limits` | a wrong number only slows |
 | which rung a stream lands on (flowing, backed up) | | `landing` | LANDING.md: "by a number policy states" |
 | CI green at the exact base head; batch atomic; order kept | LANDING.md, engine | | a stale green corrupts main |

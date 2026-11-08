@@ -64,7 +64,7 @@ type walk struct {
 
 func newWalk(t *testing.T, seed int64) *walk {
 	w := &walk{sim: newSim(t), rng: rand.New(rand.NewSource(seed)), kinds: map[string]int{}}
-	// A policy version with a low bounce limit, so Block is reached in the
+	// A policy version with a low bounce limit, so HoldCard is reached in the
 	// walk's depth; the rest of the answers are the defaults, so the view's
 	// limits path is exercised too.
 	w.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50}}}

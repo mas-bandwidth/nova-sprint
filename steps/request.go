@@ -78,8 +78,8 @@ func Verb(v *View, in Inputs, r Request) (store.Op, *card.Refusal) {
 	return op, nil
 }
 
-// actorOK is the actor rule: coordinator events need a coordinator (Block
-// is the coordinator's hold of one card; the tick's own Block is policy's
+// actorOK is the actor rule: coordinator events need a coordinator (HoldCard
+// is the coordinator's hold of one card; the tick's own HoldCard is policy's
 // bounce limit and never comes here); Report the consumer's holder; Seen and Gone the run loop; Add
 // anyone.
 func (t *tick) actorOK(r Request) *card.Refusal {

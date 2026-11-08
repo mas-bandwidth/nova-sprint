@@ -594,11 +594,19 @@ func TestHoldStream(t *testing.T) {
 	}
 	_, r = MoveStream(Stream{Name: "s1"}, Resolve{})
 	refusal{r, "Resolve is not a stream event; MoveStream takes HoldStream and UnholdStream"}.check(t)
+	// A stream's reason never holds the cards it parks: each would stay held
+	// after the stream's unhold (as Park refuses it).
+	for _, why := range []string{"held: x", "missing-route: adb no device"} {
+		_, r = MoveStream(Stream{Name: "s1"}, HoldStream{Reason: why, Ready: []Card{a}})
+		refusal{r, fmt.Sprintf("reason %q would hold every producer stream s1 parks; HoldStream's reason is the stream's, HoldCard holds a card", why)}.check(t)
+	}
+	_, r = MoveStream(Stream{Name: "s1"}, HoldStream{Reason: "held: stream s1 is held", Ready: []Card{a}})
+	require.Nil(t, r, "the stream's own park phrase does not hold a card")
 }
 
 // Round 2, from the first cold read of layer 2 and Emma's read of a822dfc7.
 
-func TestBlockFromWorking(t *testing.T) {
+func TestHoldFromWorking(t *testing.T) {
 	t.Parallel()
 	for result, apply := range map[string]string{"ok": "Finished", "fail": "Broken", "fault": "Faulted"} {
 		refusal{mv(Working, []Card{wk(Done, result, h2)}, HoldCard{Reason: "held: x"}), "consumer p1.w1 reported " + result + "; apply it with " + apply + " before HoldCard"}.check(t)
@@ -685,7 +693,7 @@ func TestDealIsTake(t *testing.T) {
 // Defect 48: a fault naming a missing route leaves the producer waiting at
 // once with the fault's reason, head kept, no bounce, and the deal never
 // takes it until the coordinator lifts it; any other fault returns it to
-// ready (Glenn, 2026-11-07: there is no blocked state).
+// ready (Glenn, 2026-11-07: a card with a problem waits).
 func TestRouteFaultWaits(t *testing.T) {
 	t.Parallel()
 	faulted := wk(Done, "fault", h2)

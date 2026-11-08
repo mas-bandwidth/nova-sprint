@@ -179,10 +179,10 @@ high, normal, low; within a rung, policy's order.
   its tier has room, opens one judgement naming the row, the card and the
   cause (the tick's budget spent before it, or an engine defect). Checked
   after the deal, so a producer dealt this tick is skipped.
-- `blocked` for a route: a producer a `missing-route:` fault held waiting
-  (LAYER-2, defect 48) gets one `blocked` judgement naming the row, the card
+- `held` for a route: a producer a `missing-route:` fault held waiting
+  (LAYER-2, defect 48) gets one `held` judgement naming the row, the card
   and what is missing; it waits, never dealt again by itself, until
-  the coordinator answers (`unblock` or `drop`).
+  the coordinator answers (`unhold` or `drop`).
 
 ### Fix
 
@@ -217,7 +217,7 @@ high, normal, low; within a rung, policy's order.
 
 ### Retire and fail limits
 
-- Plans: `HoldCard` (reason `held: ...`) with a `blocked` judgement when bounces reach the limit (a
+- Plans: `HoldCard` (reason `held: ...`) with a `held` judgement when bounces reach the limit (a
   fault never counts; LESSONS 2.24); `Withdraw` of a working consumer whose
   row is silent past the bound, branch kept; `Gone` for a row whose session
   has not acked past its bound, never for one missed challenge in a long
@@ -249,7 +249,7 @@ for each candidate, and the engine refuses one below the card's tier.
   the command that answers it; `ExpireJudgement` when the cause clears, or
   at the deadline with the kind's safe default, which never drops, accepts,
   merges or lands (LESSONS 5.7).
-- The closed list a step opens: `blocked`, `unserved`, `cannot-read`,
+- The closed list a step opens: `held`, `unserved`, `cannot-read`,
   `land`, `stall`, `idle`, `land-rate`, `flap`, `brief`,
   `landed-sentinel`, `policy`, `engine`, `roster`, `overlap`, `no-model`,
   `no-policy`, `unacked`, `undealt` (`conflict`, `base-red`,
@@ -261,15 +261,15 @@ for each candidate, and the engine refuses one below the card's tier.
   width while producers wait, causes by count, closed back over three
   quarters (LESSONS 3.18); `land-rate`, a stream's or model's landed with no
   bounce over landed, under target over a sample (LESSONS 3.21).
-- Policy: `deadline(kind)` (none for `blocked` by Glenn's ruling, else one
+- Policy: `deadline(kind)` (none for `held` by Glenn's ruling, else one
   hour), `idle_floor` (0.5), `land_target` (0.9 over 20).
 
 ### Requests
 
-Each per-card verb is one step: event, actor check, `card.Move`, one op. The actor rule LAYER-2 left here: Unblock, Waive,
+Each per-card verb is one step: event, actor check, `card.Move`, one op. The actor rule LAYER-2 left here: UnholdCard, Waive,
 Relink, SetPriority, WaiveRed, Cancel, Replace, Edit, Rescore, the holds
-(of a row, a stream, or a producer card: `Block` with reason `held: <why>`
-and its live consumers withdrawn in one op; `unhold` is its `Unblock`) and
+(of a row, a stream, or a producer card: `HoldCard` with reason `held: <why>`
+and its live consumers withdrawn in one op; `unhold` is its `UnholdCard`) and
 judgement answers are the coordinator's (the rows nova-config names; an
 engine fact, since a wrong coordinator could corrupt); Report is the
 holder's, through the inbox (there is no Take event; `take` is the
@@ -387,7 +387,7 @@ of the last tick's groups.
   lying; stable op ids; packing, carry and the split by group. Time is
   `Inputs.Now`; no sockets, no network, no store but values.
 - Conformance on `store.Fake` and PostgreSQL: happy, fix, red, fault,
-  preemption, drop, hold, block and burst paths tick by tick, every op
+  preemption, drop, hold, bounce-hold and burst paths tick by tick, every op
   accepted; an op refused by a racing verb, then split by group; an unknown
   outcome replayed; each fold equal to a fresh snapshot; a random walk
   checking the model's invariants after every op.
@@ -495,7 +495,7 @@ and takes (so a consumer that has reported is never preempted), preemption,
 land results, needs (drops, Reached with a `landed-sentinel` judgement in
 the op, Resolve with the overlap tally), holds (Park, withdraw of untaken
 consumers on held rows at once and down rows after `row_silent_gone`),
-limits (Block with its judgement in the op, withdraw of a silent row's
+limits (HoldCard with its judgement in the op, withdraw of a silent row's
 working consumers, Gone, flap), fix (every yes before every fix, as the
 model orders them), the deal by rung (blocker, critical, read, high,
 normal, low; within a rung policy's `order` then id), land requests,
@@ -515,7 +515,7 @@ else flowing (`flowing` unused). Since 2026-11-07 (below) every result but
 `no-ci` and `forge` are gone.
 Judgement ids are `kind.about.episode` (a cause opens once while one is
 open; a flap's episode is its count), group key the kind (`policy:v<n>` for
-policy), deadline `timeouts.judgement` except `blocked`; at the deadline
+policy), deadline `timeouts.judgement` except `held`; at the deadline
 the expiry is the kind's safe default, nothing moves. The closed list gains
 `roster` (above). Facts a snapshot lacks (when a consumer was taken, a row
 went down, a row faulted, a stream last landed) are witnessed by the fold
@@ -575,7 +575,7 @@ the same size).
 purity lint (also every function under 60 lines), the asker (absent,
 erroring, slow, out of range, in domain), the paths (happy, fix, red and
 retry, fault, preemption, preemption refused by a race, drop, holds, row
-hold and down, block at the limit, budget and carry, refused op split by
+hold and down, hold at the limit, budget and carry, refused op split by
 group, unlisted row, unhooked row, silent row and flap, stable op ids), the
 verbs (the actor table, Add/Take/Report, a drop's dependants, a judgement
 answered), the random walk (100 seeds x 2,000 steps, 50% of picked moves
@@ -774,12 +774,12 @@ steps changed with it:
   it), plus the doc comments of `deal` and `withRoom`. Nothing else in that
   file changed.
 - `hand.go` (new): `AckCursor`, `Nudge`, `unacked` (nudges and the
-  `unacked` judgement), `undealt`, `routeBlocked`. `tick.go` runs `unacked`,
-  `undealt` (after the deal) and `routeBlocked` and returns the nudges in
+  `unacked` judgement), `undealt`, `routeHeld`. `tick.go` runs `unacked`,
+  `undealt` (after the deal) and `routeHeld` and returns the nudges in
   `Plan.Nudges`. `holds.go` withdraws consumers left `ready`, and on a held
   or down row only the unacknowledged ones. `view.go` keeps `TakenAt` (when
   a consumer went working, the deal), `ReadyAt` and `Acked`. `request.go`
-  takes a card hold (`holdMoves`: the `Block` merged with the `Withdraw` of
+  takes a card hold (`holdMoves`: the `HoldCard` merged with the `Withdraw` of
   each live consumer). `asker.go`: timeouts `ReadyNag` 1 s and `ReadyTake`
   180 s (the human's numbers, 2026-11-07, policy's `timeouts()`),
   `UndealtAfter` 2 s (a guess).
@@ -824,11 +824,11 @@ the landing (w2L); merged, superseding them where they differ:
 - The closed list of judgement kinds is the landing's (`land`; no
   `conflict`, `base-red`, `no-ci`, `forge`) with w2D1's `overlap`,
   `no-model`, `no-policy` and w2D2's `unacked`, `undealt`. No deadline:
-  `blocked`, `land`, `no-policy`. The view's judgement index (w2D1) is
+  `held`, `land`, `no-policy`. The view's judgement index (w2D1) is
   `jindex()`; `judged(p)` stays the landing's land-judgement test.
 - `unserved` is opened by the deal only (w2D1), with w2A's routes in its
   About (`unservedAbout`); the coordinator events take the landing's
-  `Landed` and `Red` and w2D2's `Block` (the card hold).
+  `Landed` and `Red` and w2D2's `HoldCard` (the card hold).
 - `undealt` counts room only on rows the deal can name a model for, and
   nothing while the policy gate deals nothing: `no-model` and `no-policy`
   already say why those cards wait (before this, a gated or model-less
@@ -836,7 +836,7 @@ the landing (w2L); merged, superseding them where they differ:
   defect; `TestTickNoDealWithoutPolicy`, `TestTickNoModelNoDeal`).
 - One vocabulary of routes: a `missing-route:` fault's first word is the
   route's name (`card.RouteName`), the name a brief declares with
-  `NEEDS-ROUTE:` (w2A) and a machine serves as `route:<name>`; the blocked
+  `NEEDS-ROUTE:` (w2A) and a machine serves as `route:<name>`; the held
   judgement's fix says so (replace the card with a brief that declares the
   route; or, when it already declares it, fix the row that serves it
   without having it). The harness prompt asks for that form.
@@ -889,7 +889,7 @@ with `Waits` (no change in behaviour; `TestTickOverlapIsAFile` unchanged).
 failed (a sentinel adds no length and is not listed; a cycle a store op
 wrote ends). `IdleWhy` is the summary ("N chains (longest K, top: <card>
 blocks M), H overlaps (top: <card> holds C on <file>)") and the command for
-the top card: show it when in flight, judge it when blocked, relink away from
+the top card: show it when in flight, judge it when held, relink away from
 it when missing or failed, and `replace` for a NEEDS that is not a consumed
 output; never a priority (intent rule 14: set by request only).
 

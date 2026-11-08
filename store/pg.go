@@ -307,33 +307,54 @@ func (p *PG) Migrate(ctx context.Context) error {
 }
 
 // migrateBlocked moves every card a store made before round 29 left in
-// state blocked to waiting, its reason kept (Glenn, 2026-11-07: blocked is no
-// state; a held card, or one a missing route stopped, is waiting with its
-// reason, which the deal refuses), in Migrate's transaction, then validates
-// the state's CHECK, which schema.sql adds NOT VALID. The current epoch's
-// cards move through one op of the protocol (actor store-migrate), so their
-// gens rise and the log rebuilds to them (guarantee 5); an earlier epoch's,
-// which no rebuild reads, by a plain UPDATE. A store with none logs nothing,
-// so a second Migrate is a no-op.
+// state blocked to waiting, held (Glenn, 2026-11-07: "waiting is where stuff
+// goes where it's having problems"), in Migrate's transaction, then
+// validates the state's CHECK, which schema.sql adds NOT VALID. A card was
+// blocked to keep it out of the deal, so its reason becomes one that holds
+// (HoldingReason): the text kept, a bounce limit's "bounced N times, the
+// limit is M" prefixed "held: ". The current epoch's cards move through one
+// op of the protocol (actor store-migrate), so their gens rise and the log
+// rebuilds to them (guarantee 5); an earlier epoch's, which no rebuild
+// reads, by plain UPDATEs. A store with none logs nothing, so a second
+// Migrate is a no-op.
 func migrateBlocked(ctx context.Context, tx pgx.Tx) error {
 	var epoch int
 	var now time.Time
 	if err := tx.QueryRow(ctx, "SELECT n, transaction_timestamp() FROM sprint.epoch WHERE id = 1").Scan(&epoch, &now); err != nil {
 		return fmt.Errorf("store: migrate: reading the epoch: %w", err)
 	}
-	rows, err := tx.Query(ctx, "SELECT id FROM sprint.cards WHERE state = 'blocked' AND epoch = $1 ORDER BY id", epoch)
+	type blocked struct {
+		ID, Reason string
+		Epoch      int
+	}
+	rows, err := tx.Query(ctx, "SELECT id, reason, epoch FROM sprint.cards WHERE state = 'blocked' ORDER BY epoch, id")
 	if err != nil {
 		return fmt.Errorf("store: migrate: reading the blocked cards: %w", err)
 	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	cards, err := pgx.CollectRows(rows, pgx.RowToStructByPos[blocked])
 	if err != nil {
 		return fmt.Errorf("store: migrate: reading the blocked cards: %w", err)
 	}
-	if len(ids) > 0 {
-		writes := make([]Write, len(ids))
-		for i, id := range ids {
-			writes[i] = SetCardState{Card: id, State: "waiting"}
+	var writes []Write
+	for _, c := range cards {
+		reason := HoldingReason(c.Reason)
+		if c.Epoch == epoch {
+			writes = append(writes, SetCardState{Card: c.ID, State: "waiting"})
+			if reason != c.Reason {
+				writes = append(writes, SetCardReason{Card: c.ID, Reason: reason})
+			}
+			continue
 		}
+		if _, err := tx.Exec(ctx, "UPDATE sprint.cards SET state = 'waiting', reason = $1 WHERE id = $2 AND epoch = $3", reason, c.ID, c.Epoch); err != nil {
+			return fmt.Errorf("store: migrate: moving an earlier epoch's blocked card %s to waiting: %w", c.ID, err)
+		}
+	}
+	reopen, err := reopenHeld(ctx, tx, epoch)
+	if err != nil {
+		return err
+	}
+	writes = append(writes, reopen...)
+	if len(writes) > 0 {
 		op := Op{ID: "migrate-blocked-" + schemaHash, Epoch: epoch, Actor: "store-migrate", Kind: "migrate", At: at(now), Writes: writes}
 		r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
 		switch {
@@ -343,13 +364,68 @@ func migrateBlocked(ctx context.Context, tx pgx.Tx) error {
 			return fmt.Errorf("store: migrate: moving the blocked cards to waiting was refused: %s", r.Reason)
 		}
 	}
-	if _, err := tx.Exec(ctx, "UPDATE sprint.cards SET state = 'waiting' WHERE state = 'blocked' AND epoch < $1", epoch); err != nil {
-		return fmt.Errorf("store: migrate: moving an earlier epoch's blocked cards to waiting: %w", err)
-	}
 	if _, err := tx.Exec(ctx, "ALTER TABLE sprint.cards VALIDATE CONSTRAINT cards_state_check"); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	return nil
+}
+
+// reopenHeld is the writes that move the current epoch's open judgements of
+// the kind round 29 dropped to kind held: each is expired, naming its
+// successor, and the successor opened with its question, answered by unhold
+// or drop, no deadline (a held card waits for the coordinator). A
+// judgement's id is fixed (sprint.key_fixed), so the kind in it is changed
+// by a new judgement, never an UPDATE.
+func reopenHeld(ctx context.Context, tx pgx.Tx, epoch int) ([]Write, error) {
+	type open struct{ ID, About, Question string }
+	rows, err := tx.Query(ctx, "SELECT id, about, question FROM sprint.judgements WHERE kind = 'blocked' AND state = 'open' AND epoch = $1 ORDER BY id", epoch)
+	if err != nil {
+		return nil, fmt.Errorf("store: migrate: reading the open judgements to reopen as held: %w", err)
+	}
+	js, err := pgx.CollectRows(rows, pgx.RowToStructByPos[open])
+	if err != nil {
+		return nil, fmt.Errorf("store: migrate: reading the open judgements to reopen as held: %w", err)
+	}
+	var writes []Write
+	for _, j := range js {
+		n := 1
+		for ; ; n++ {
+			var taken bool
+			if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM sprint.judgements WHERE id = $1 AND epoch = $2)", fmt.Sprintf("held.%s.%d", j.About, n), epoch).Scan(&taken); err != nil {
+				return nil, fmt.Errorf("store: migrate: %w", err)
+			}
+			if !taken {
+				break
+			}
+		}
+		id := fmt.Sprintf("held.%s.%d", j.About, n)
+		writes = append(writes, ExpireJudgement{ID: j.ID, Reason: "round 29: reopened as " + id},
+			PutJudgement{ID: id, Kind: "held", About: j.About, Question: j.Question, Group: "held",
+				Command: "nova-sprint judge " + id + " <choice> --reason <why>   choices: unhold | drop"})
+	}
+	return writes, nil
+}
+
+// HoldingReason is the reason round 29 gives a card it moves out of the
+// dropped blocked state: reason itself when it already holds (a hold's
+// "held: <why>", not a stream park's "held: stream <s> is held", or a
+// missing-route fault's "missing-route: ..."), else "held: " and reason, so
+// the card stays out of the deal. It mirrors card.HeldReason, which this
+// layer cannot import; card's TestMigratedReasonHolds binds the two.
+func HoldingReason(reason string) string {
+	if strings.HasPrefix(strings.TrimSpace(reason), "missing-route:") {
+		return reason
+	}
+	if strings.HasPrefix(reason, "held: ") {
+		name, park := strings.CutPrefix(reason, "held: stream ")
+		if !park || !strings.HasSuffix(name, " is held") || strings.Contains(strings.TrimSuffix(name, " is held"), " ") {
+			return reason
+		}
+	}
+	if reason == "" {
+		return "held: no reason was recorded"
+	}
+	return "held: " + reason
 }
 
 // freshStop stops a store Migrate has just made (there was no sprint.meta
