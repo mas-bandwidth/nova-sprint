@@ -60,7 +60,7 @@ class GateFailures(unittest.TestCase):
             fake_go.write_text('#!' + sys.executable + '\nimport os,json\nprint(json.dumps([os.getenv("NOVA_UNUSED_TRACE_SEED"),os.getenv("NOVA_RUN_TRACE_SEED"),os.getenv("NOVA_RUN_TRACE_STOP")]))\n')
             fake_go.chmod(0o700)
             with patch.dict(os.environ, {'NOVA_UNUSED_TRACE_SEED': 'stray', 'NOVA_RUN_TRACE_SEED': 'wrong', 'NOVA_RUN_TRACE_STOP': '1'}):
-                gate.run_emit(root, root, 'fixture', './run', 'TestFixture',
+                gate.run_emit(root, root, 'fixture', './modules/run', 'TestFixture',
                               {'NOVA_RUN_TRACE_SEED': '1'}, SimpleNamespace(go=str(fake_go), emit_timeout=5))
             self.assertEqual(json.loads((root / 'emit-logs/fixture.log').read_text()), [None, '1', None])
 
@@ -73,7 +73,7 @@ class GateFailures(unittest.TestCase):
             gate.emit_simple(Path('/source'), Path('/output'), SimpleNamespace(), cases)
         calls = {call.args[2]: call.args for call in emit.call_args_list}
         stopped = calls['run-stop']
-        self.assertEqual(stopped[3:5], ('./run', 'TestEmitRunTrace'))
+        self.assertEqual(stopped[3:5], ('./modules/run', 'TestEmitRunTrace'))
         self.assertEqual(stopped[5], {'NOVA_RUN_TRACE_SEED': '0', 'NOVA_RUN_TRACE_STOP': '1',
                                       'NOVA_RUN_TRACE_PATH': '/output/emitted/run-stop.tla'})
         for seed in range(3):

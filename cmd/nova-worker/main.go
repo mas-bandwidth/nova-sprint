@@ -14,7 +14,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/worker"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
 )
 
 func main() { os.Exit(run_internal(os.Args[1:], os.Stdout, os.Stderr)) }

@@ -540,7 +540,7 @@ below):
   fields written; a merged move writing a partial record (missing fields at
   their zero values) resets what it did not name (CardHandPlanPartial:
   Start then SetPriority in one op resets the attempt, AttemptOnlyOnStart).
-- Rulings 5 and 10 (wording) and 12 (the walk, the PG mirror, card/README)
+- Rulings 5 and 10 (wording) and 12 (the walk, the PG mirror, modules/card/README)
   are the code's.
 
 `last` is a step monitor. `StepRule` reads the state before and after each
@@ -1313,11 +1313,11 @@ model refuses record K of N:` with that record's action and arguments.
 Two kinds of fixture, both under `traces/`:
 
 - **The walk's** (`steps-walk-<scenario>-<seed>/`): the Go steps driving one
-  of the model's four scenarios on `store.Fake` (`steps/trace_test.go`), each
+  of the model's four scenarios on `store.Fake` (`modules/steps/trace_test.go`), each
   step one of the model's actions (Snap, Tick, Take, Report, Hold, Unhold,
   Gone, Seen, EdgeResult) picked at random, each recorded with the model's
   variables projected from the code's state by the refinement mapping in
-  `steps/trace.go` (`StoreTLA`, `InboxTLA`, `InflightTLA`, `JudgementsTLA`;
+  `modules/steps/trace.go` (`StoreTLA`, `InboxTLA`, `InflightTLA`, `JudgementsTLA`;
   the mapping is in that file's comment). A record logs `w` in parts (`ps`,
   `up`, `sh`, `tko` whole and `cs` as the slots that are not `none`, which
   `StepsTrace.Parts` checks), the inbox, the in-flight requests and the
@@ -1454,15 +1454,15 @@ traces (`store-fake-*`, `store-pg-*`, `card-walk-*`) are regenerated, not
 committed. The committed fixtures are the breakers (`store-breaker`, `card-breaker`,
 `policy-breaker`), which `TestTraceRefusesDivergence` compares against what
 the code writes now (regenerate with
-`NOVA_TRACE_DIR=tla/traces go test -run '<test>' ./store/` or `./card/`).
+`NOVA_TRACE_DIR=tla/traces go test -run '<test>' ./modules/store/` or `./modules/card/`).
 
 ## The walks and their seeds
 
-- Store: `TestTraceWalk` (store/trace_test.go) on the Fake, seeds 1..8, 500
+- Store: `TestTraceWalk` (modules/store/trace_test.go) on the Fake, seeds 1..8, 500
   steps, with transport faults (`Fake.Drop`: a lost request is LoseRequest, a
   lost reply after commit is Apply with known=FALSE, followed by Replay or a
   second Apply); `TestFunctionalTraceWalk` on PostgreSQL, seeds 1..2, no faults.
-  The generator (store/trace_gen_test.go) draws ops over the fixed names
+  The generator (modules/store/trace_gen_test.go) draws ops over the fixed names
   (producers p1 p2, cards p1 p2 t1 u1 u2 u3, rows r1 r2, judgements j1 j2,
   cursor c1, bodies a b, tiers flash pro, hook sessions x y with either
   role, the stop on and off), biased toward existing entities.
@@ -1471,7 +1471,7 @@ the code writes now (regenerate with
 
 ## The refinement mappings
 
-`store.TraceState` (store/trace.go) and `card.TraceState` (card/trace.go) are
+`store.TraceState` (modules/store/trace.go) and `card.TraceState` (modules/card/trace.go) are
 the mappings, each documented with every model variable it fills and every
 abstraction. `store.TraceOp` maps an op to the model's Ops entry and refuses
 what the model has no word for. In brief:

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/dash"
+	"github.com/mas-bandwidth/nova-sprint/modules/dash"
 )
 
 func TestFunctionalPublicDashboardRealHTTPAndShutdown(t *testing.T) {

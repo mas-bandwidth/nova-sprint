@@ -244,7 +244,7 @@ judgement, a hand landing and a red gate. `tla/Steps.tla` carries the land
 judgement and the `Answer` action (land, fix, retry) on layer 3's side, with
 `MergingCovered` (judgements as the tick's snapshot saw them) and the
 reversed witness `StepsLandAfterHoldsUntilLanded` (the after hold kept until the earlier card lands, so a card after one sent to fix sits with no request). The
-code is bound to `LandEdge.tla` by `edge/git/trace_test.go`
+code is bound to `LandEdge.tla` by `modules/edge/git/trace_test.go`
 (`TestLandEdgeTraceRefinementWalk`: `LandPass` on the git fake and a
 truthful forge, with the tick, outside commits and the answers played by
 the walk), checked by `tla/check-trace.sh LandEdge`.
@@ -275,15 +275,15 @@ the walk), checked by `tla/check-trace.sh LandEdge`.
 
 ## Where it lives
 
-- Layer 3 (`steps/land.go`): land requests (rung choice, order, the id),
+- Layer 3 (`modules/steps/land.go`): land requests (rung choice, order, the id),
   results (landed as one group; anything else a land judgement), the
-  unlanded report; `steps/judge.go`: the land judgement's choices and no
+  unlanded report; `modules/steps/judge.go`: the land judgement's choices and no
   deadline.
-- Layer 4 (`edge/git/land.go` `LandPass`; `edge/forge` PR, Checks, Merge,
+- Layer 4 (`modules/edge/git/land.go` `LandPass`; `modules/edge/forge` PR, Checks, Merge,
   FailedLines, and `actions.go` Inheritance, Authors, JobLines): one pass
-  of either automatic rung, a red one split by the base; `edge/git/git.go`: the
+  of either automatic rung, a red one split by the base; `modules/edge/git/git.go`: the
   group branch's name and its blockers.
-- Layer 6 (`run/edges.go`): passes asked again on pending CI and a moved
-  base, `ci_wait` for absent CI, the facts; `verbs/land.go`: `land`, the
-  group branch at `stream add`; `verbs/judge.go`: the answers;
+- Layer 6 (`modules/run/edges.go`): passes asked again on pending CI and a moved
+  base, `ci_wait` for absent CI, the facts; `modules/verbs/land.go`: `land`, the
+  group branch at `stream add`; `modules/verbs/judge.go`: the answers;
   `cmd/nova-sprint/lander.go`: the hand merge as the host's gh identity.

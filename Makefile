@@ -4,22 +4,22 @@
 # by .github/workflows/release.yml, stamped with the tag.
 
 VERSION ?= $(shell git describe --always --dirty --tags --match 'v[0-9]*')
-LDFLAGS := -X main.binaryVersion=$(VERSION) -X github.com/mas-bandwidth/nova-sprint/dash.Version=$(VERSION)
+LDFLAGS := -X main.binaryVersion=$(VERSION) -X github.com/mas-bandwidth/nova-sprint/modules/dash.Version=$(VERSION)
 
 .PHONY: build install test lint version
 
 build:
 	mkdir -p bin
-	go build -ldflags "$(LDFLAGS)" -o bin/ ./cmd/...
+	go build -ldflags "$(LDFLAGS)" -o bin/ ./cmd/nova-sprint ./cmd/nova-worker
 
 # install puts the built commands where a service finds them first
 # (~/.local/bin, nova-fleet's nova_bin_dir): each as a new file, signed ad hoc
 # on macOS, renamed over the old one, never overwritten in place, which macOS
-# kills (tools/placebin). Releases onto benches are nova-fleet's install.
+# kills (cmd/placebin). Releases onto benches are nova-fleet's install.
 BINDIR ?= $(HOME)/.local/bin
 
 install: build
-	go run ./tools/placebin bin/* $(BINDIR)
+	go run ./cmd/placebin bin/nova-sprint bin/nova-worker $(BINDIR)
 
 # the unit tier (docs/TESTING.md): no real time, sockets, network or process;
 # the test binaries run with no PATH and no HOME, as CI runs them
@@ -29,8 +29,8 @@ test:
 lint:
 	test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 	go vet ./...
-	go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
-	go run ./tools/unitlint
+	go run ./cmd/silentlint modules cmd
+	go run ./cmd/unitlint
 
 version:
 	@echo $(VERSION)

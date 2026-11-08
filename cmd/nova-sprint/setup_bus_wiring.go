@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 // setupCommandWithBus keeps bus authentication separate from database secrets.

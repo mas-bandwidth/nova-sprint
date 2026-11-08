@@ -15,13 +15,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/bus"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
-	"github.com/mas-bandwidth/nova-sprint/edge/git"
-	"github.com/mas-bandwidth/nova-sprint/run"
-	"github.com/mas-bandwidth/nova-sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/run"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 // gitEdge is git as the sprint. The landing's forge work runs as the host's

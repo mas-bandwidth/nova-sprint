@@ -347,7 +347,7 @@ NoAcceptedTickWhileStopped == tickStopSafe
 \* The brief's name (BRIEF-V2-STITCH step 3): nothing ticks while Stopped,
 \* neither a tick begun after the stop was seen nor one accepted under it.
 \* run.Ticker.Tick returns before steps.Tick when its folded copy is
-\* stopped (run/tick.go; TestNoTickWhileStopped).
+\* stopped (modules/run/tick.go; TestNoTickWhileStopped).
 NoTickWhileStopped == NoTickAfterObservedStop /\ NoAcceptedTickWhileStopped
 \* A fresh store is stopped, its reason "never started" (store.FreshStop),
 \* and a run may come up on it before up's walk is done (up starts the run

@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
-	"github.com/mas-bandwidth/nova-sprint/edge/git"
-	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 // TestHostForge: CanAct reads gh's viewerPermission and refuses below

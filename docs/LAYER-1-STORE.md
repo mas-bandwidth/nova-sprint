@@ -505,7 +505,7 @@ unchanged. The column is added by an `ALTER TABLE sprint.cards ADD COLUMN
 IF NOT EXISTS red ...` after the `CREATE TABLE`, not inside it, so a new
 store and an upgraded one get it the same way. The schema hash moves with
 it. What `Migrate` does on an existing round-16 store (hash
-`round16Hash`, the hash of `store/testdata/schema-round16.sql`, the
+`round16Hash`, the hash of `modules/store/testdata/schema-round16.sql`, the
 schema at 36c1bbd6), in its one transaction under the advisory lock: it
 finds version 2 and that hash and takes it instead of refusing; runs
 `schema.sql`, in which every `CREATE ... IF NOT EXISTS` is a no-op, every
@@ -769,7 +769,7 @@ tick 119 ms median, 153 max (was 327 / 387); tick while 200 reports/s arrive
 dashboard refresh from the local copy 24 ms; incremental read per tick 13
 ms; cold snapshot 45 ms; cold rebuild of the log 4.9 s read plus 83 ms fold;
 lock wait 21 ms mean, 168 max. At 2,000 producers every number is at or
-under these. Logs: store/testdata/load-*.log. The width count went from 3.8
+under these. Logs: modules/store/testdata/load-*.log. The width count went from 3.8
 ms (a sequential scan) to 0.04 ms with one partial index. Remaining tick
 cost is about 1,500 one-row round trips; by Glenn's ruling the per-tick
 budget absorbs bursts rather than further tuning here.
@@ -781,7 +781,7 @@ reservation, each started at a 1-minute load under 2 with no java (TLC), a
 sampler confirming none ran during it: before (c373d4a8), indexes
 (5c1eec16), image once (09b2eeb8), round 16 (36c1bbd6: the two indexes a
 store query uses, the event's images copied). Logs:
-store/testdata/load-vision-2026-11-06-r16-*.log. Medians in ms, 5,000
+modules/store/testdata/load-vision-2026-11-06-r16-*.log. Medians in ms, 5,000
 producers (2,000 in brackets):
 
 | | before | indexes | image once | round 16 |
@@ -823,7 +823,7 @@ store now begins stopped, its reason `never started` (`store.NeverStarted`,
   change has no stop event and reads running: run `nova-sprint stop` (or
   `start`) on it once, so the log and the row agree, before
   `check --integrity` or a backup's verification compares them.
-- The streaming fold the backup verification uses (`verbs/rebuild.go`) did
+- The streaming fold the backup verification uses (`modules/verbs/rebuild.go`) did
   not fold the stop at all; any stopped sprint would have failed its backup
   check. It now starts from `FreshStop`, keeps the stop across a clear and
   folds each event's stop.

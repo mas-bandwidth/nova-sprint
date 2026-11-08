@@ -18,7 +18,7 @@
 (* blamed), then each stream with no request in flight at the tick's    *)
 (* start asks one: its first eligible card (rung 1's pick) while fewer   *)
 (* than BackedUp wait, every one of them when backed up (rung 2).        *)
-(* Pass is one LandPass of layer 4 (edge/git/land.go): all the request's *)
+(* Pass is one LandPass of layer 4 (modules/edge/git/land.go): all the request's *)
 (* heads already on base is landed at once; one head whose branch holds   *)
 (* base's tip gates its own PR (rung 1); otherwise the heads are merged  *)
 (* onto base's tip into the group branch and its PR gates (rung 2). A    *)

@@ -19,6 +19,10 @@ when it joins two layers beside each other (steps and policy, steps and edge).
                 store (1)
 ```
 
+The layer packages live under `modules/`; executable entry points and development
+commands live under `cmd/`. Each module keeps its embedded files and test fixtures
+beside its Go sources.
+
 ## 1. store -> everyone
 
 `store.Store` (layer 1) is the only way to the state: `Snapshot`, `Apply`,
@@ -75,7 +79,7 @@ Verbs that move cards for a person (`judge`, `hold`, `drop`, `priority`,
 `edit`) build their op with `steps.Verb` on a View built from one snapshot,
 so a person's move is checked by the same actor rules as the tick's.
 
-## 4. policy -> steps (adapter in run: `run/asker.go`)
+## 4. policy -> steps (adapter in run: `modules/run/asker.go`)
 
 ```go
 func policy.NewEngine(clock policy.Clock) *policy.Engine        // the binary's, on policy.RealClock{}; the child is `nova-sprint policy-eval`
@@ -100,7 +104,7 @@ Policy owns the run's numbers: `limits().fleet_width_cap` (the roster cap),
 `timeouts().tick` (the tick's budget), `timeouts().consumer[tier]` (the
 deadline the take receipt carries).
 
-## 5. roster -> run (the real Source: `run/config_source.go`)
+## 5. roster -> run (the real Source: `modules/run/config_source.go`)
 
 ```go
 func roster.Load(ctx context.Context, src roster.Source, cap int) (roster.Roster, error)
@@ -116,7 +120,7 @@ REPEATABLE READ transaction), and hands it to `roster.Load` through
 Calls are serialized by run (one tick at a time). A failed read is the
 tick's: no tick that second, and the board shows the failure (section 7).
 
-## 6. edge -> run (`run/edges.go`)
+## 6. edge -> run (`modules/run/edges.go`)
 
 ```go
 type bus.Bus interface { Send(ctx, to, subject, body string) (msgID string, err error); Who(ctx) (map[string]bus.Presence, error) }

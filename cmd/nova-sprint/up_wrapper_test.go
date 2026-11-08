@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 func TestHandoffStatusRejectsMalformedOrDuplicate(t *testing.T) {

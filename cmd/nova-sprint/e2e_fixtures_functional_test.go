@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
-	"github.com/mas-bandwidth/nova-sprint/policy"
-	"github.com/mas-bandwidth/nova-sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 // TestMain serves the policy engine's child when the test binary is started
@@ -57,7 +57,7 @@ func (tr *transcript) record(cmd string, exit int, out string) {
 
 // save writes the transcript to run/testdata, where the bench commits it.
 func (tr *transcript) save(t *testing.T) {
-	path := filepath.Join("..", "..", "run", "testdata", "e2e-transcript.txt")
+	path := filepath.Join("..", "..", "modules", "run", "testdata", "e2e-transcript.txt")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Logf("transcript: %v", err)
 		return

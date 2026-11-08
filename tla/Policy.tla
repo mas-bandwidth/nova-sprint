@@ -2,8 +2,8 @@
 (***************************************************************************)
 (* Layer 5 of nova-sprint v2: policy versions, activation and the per-tick *)
 (* fallback (docs/LAYER-5-POLICY.md, "The model"; the code is              *)
-(* policy/answer.go AnswerContext, policy/tick.go race, and               *)
-(* policy/verbs.go Set and Activate). Round 3: the tick's one deadline is *)
+(* modules/policy/answer.go AnswerContext, modules/policy/tick.go race, and               *)
+(* modules/policy/verbs.go Set and Activate). Round 3: the tick's one deadline is *)
 (* one more way a version breaks on a tick, and a fallback started early  *)
 (* (tick.go fallbackAfter) never changes which version answers: the first *)
 (* in order that passes, as Tick says.                                    *)
@@ -13,7 +13,7 @@
 (* When every version tried fails the tick is answered by NoAnswer: it    *)
 (* still applies every move that needs no answer, and deals nothing.      *)
 (* Init is the state after up: the default stored as the next version    *)
-(* number and active (policy/verbs.go Up); the model holds no data rows,  *)
+(* number and active (modules/policy/verbs.go Up); the model holds no data rows,  *)
 (* which the code counts but never runs, so that number is 1 here.        *)
 (* Round 5: Activate answers the built-in's judgement too (policy:v0: any *)
 (* clean activation answers it), and is one op fenced at its snapshot's   *)
@@ -105,7 +105,7 @@ Drift ==
   /\ UNCHANGED <<stored, active, prev, everActive, answeredBy, tickBreaks, judgements, card, waitBound, startBound>>
 
 (* The version that answers a tick: active, else the previous active,     *)
-(* else the built-in (policy/answer.go Versions.tried), else NoAnswer     *)
+(* else the built-in (modules/policy/answer.go Versions.tried), else NoAnswer     *)
 (* (Answers.Version -1).                                                  *)
 Pick ==
   IF active \notin breaks THEN active

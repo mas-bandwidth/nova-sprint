@@ -2,7 +2,7 @@
 (***************************************************************************)
 (* Trace validation of Runner.tla: Runner.tla's next-state relation        *)
 (* constrained to a recording of the Go worker walk                        *)
-(* (edge/worker/trace_test.go).                                            *)
+(* (modules/edge/worker/trace_test.go).                                            *)
 (***************************************************************************)
 EXTENDS Runner, Sequences, RunnerTraceLog, TLC
 

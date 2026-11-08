@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 func TestProductionStoreRejectsAmbientCredentials(t *testing.T) { // unitlint: serial, it sets the process environment (t.Setenv)

@@ -7,7 +7,7 @@ are nightly (`.github/workflows/nightly.yml`, no time limit).
 The rules: unit tests run in parallel, under 2 minutes
 (under 1 minute is the aim), and use no real time, sleep, network or process;
 functional tests (a name containing `Functional`) run in parallel, under 2
-minutes, and may. Every test calls `t.Parallel()` first. `tools/unitlint`
+minutes, and may. Every test calls `t.Parallel()` first. `cmd/unitlint`
 refuses a test that does not, and a unit test that calls the clock, sleeps,
 dials, listens or starts a process; an exception is a comment on the line that
 says `unitlint:` and why. A clock in a test starts at 1000, never 0.
@@ -17,14 +17,14 @@ Lint:
     test -z "$(gofmt -l .)" || gofmt -l .
     go build -ldflags "-X main.binaryVersion=$(git describe --always --dirty --tags --match 'v[0-9]*')" ./...
     go vet ./...
-    go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
-    go run ./tools/unitlint
+    go run ./cmd/silentlint modules cmd
+    go run ./cmd/unitlint
 
 (`make lint` runs the same; `make build` stamps the version as CI does.)
 silentlint refuses the silent error forms: S1 a fixed-string error in an err
 branch, S2 a refusal re-wrapped without errors.As/AsRefusal/RefusalOr, S3 a
 `_ =` discard outside its named cleanups, S4 a bare exit that never writes
-the error (tools/silentlint/lint.go names each).
+the error (cmd/silentlint/lint.go names each).
 
 Unit tests (no clock, sockets, network, process or outside service). Per
 commit they run `-short`: the random walks and sweeps take a fifth of their

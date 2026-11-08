@@ -306,7 +306,7 @@ ResolveOK(W, p, extra) ==
 (* Groups. A group is one producer's move with the consumers it touches:  *)
 (* cards (written), rk (card records read, fenced), rr and rsx (the rows  *)
 (* and streams read, fenced; yes and landed read no stream, as            *)
-(* CardMachine's ReadYes and Landed and card/move.go do not). Card keys   *)
+(* CardMachine's ReadYes and Landed and modules/card/move.go do not). Card keys   *)
 (* are <<p, 0>> for a producer and <<p, i>> for its i-th consumer slot.   *)
 (* blk marks a blocker group (never cut by the budget); stamp the inbox   *)
 (* item it came from (0: none); req the edge requests it carries (After = *)

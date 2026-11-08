@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
 )
 
 // TestIdentityNamesTheChoice: the forge acts as the host's gh login unless

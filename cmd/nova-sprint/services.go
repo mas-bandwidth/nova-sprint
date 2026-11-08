@@ -13,15 +13,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/cost"
-	"github.com/mas-bandwidth/nova-sprint/dash"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
-	"github.com/mas-bandwidth/nova-sprint/edge/git"
-	"github.com/mas-bandwidth/nova-sprint/edge/worker"
-	"github.com/mas-bandwidth/nova-sprint/policy"
-	"github.com/mas-bandwidth/nova-sprint/run"
-	"github.com/mas-bandwidth/nova-sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/cost"
+	"github.com/mas-bandwidth/nova-sprint/modules/dash"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/worker"
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/run"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 // services are the long-running verbs: run (the chooser), worker (a

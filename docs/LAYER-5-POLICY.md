@@ -116,7 +116,7 @@ choices for policy that the first list left out.
 
 ## The default policy
 
-`policy/default.star`, embedded with `go:embed`. A number marked `v1` is
+`modules/policy/default.star`, embedded with `go:embed`. A number marked `v1` is
 v1's value, carried and not measured in v2; `guess` has no source; per the
 rule, a number derived from other constants is a guess and says so.
 `TIERS` is predeclared by the engine, in ladder order.
@@ -473,7 +473,7 @@ snapshot moves every tick; a version that breaks after its check is caught by
 the fallback). `Show`, `List` and `LoadVersions` walk the whole log; layer 6
 should call `PrevOf` as it folds events rather than `LoadVersions` per tick.
 
-**The default.** `policy/default.star` is the design's text unchanged. Not
+**The default.** `modules/policy/default.star` is the design's text unchanged. Not
 marked v1 or guess, because they are rules rather than tunables: the 0/1 fix
 flag in `order`, "one rank" in `_up(..., 1)`, and "more than one card" in
 `stitch`.
@@ -528,7 +528,7 @@ API-rate adapter).
 about 1,030; 117 lines of Starlark.
 
 **After the cold read of e33eea61** (seven defects; the probes are
-`policy/coldread_test.go`, copied from the cold reader's clone; the rulings
+`modules/policy/coldread_test.go`, copied from the cold reader's clone; the rulings
 are the coordinator's, 2026-11-06):
 
 1. The answer cache keys by label (`v<n>` or `default`) and only a stored
@@ -578,7 +578,7 @@ amd-3; cold tick 133 ms at 5,000 producers over 50 rows, without -race.
 
 **Round 3** (2026-11-07; rulings 1 to 7 from the Haiku fuzz, Stella's source
 review and cold read 2, and the Opus breaker's ruling; the probes are
-`policy/coldread2_test.go` and `policy/fuzz_break_test.go`, folded in with
+`modules/policy/coldread2_test.go` and `modules/policy/fuzz_break_test.go`, folded in with
 their readers' attribution in the headers). What each ruling became:
 
 1. A refusal before storage names the file (`check`, `set`: the `Label` of
@@ -630,7 +630,7 @@ their readers' attribution in the headers). What each ruling became:
 **The breaker's ruling.** The built-in's `rows` walked candidates x
 producers in Starlark and spent its step budget at 5,000 producers over 100
 rows. The candidate ranking is now a Go builtin, `prefer(candidates,
-rank)` (`policy/prefer.go`), memoised per candidate list and rank for one
+rank)` (`modules/policy/prefer.go`), memoised per candidate list and rank for one
 version's tick; the script hands it the short list and the wanted rank.
 The default's text otherwise stands. Load, measured on amd-3 without -race,
 5,000 ready producers over 100 rows that all serve every tier, every
@@ -665,7 +665,7 @@ round 4, below.)
 **Round 4** (2026-11-07). Emma's five break probes, the trace check, and
 size.
 
-*Emma's probes* (`policy/break_emma_test.go`, copied from
+*Emma's probes* (`modules/policy/break_emma_test.go`, copied from
 origin/v2-break-emma at 07993b6c with her attribution, gofmt only; every
 probe passes as written, none weakened):
 
@@ -706,14 +706,14 @@ default is stored as the next number. The model has no data rows, so
 nothing in it changes.
 
 *The trace check.* The shape of `tla/README.md` "Trace validation",
-copied: `policy/trace.go` `TraceState` is the refinement mapping (every
+copied: `modules/policy/trace.go` `TraceState` is the refinement mapping (every
 variable of `Policy.tla` named: stored, active, prev, breaks, answeredBy,
 judgements and card projected; everActive, tickBreaks, cardBefore,
 waitBound, startBound and lastOp the model's own bookkeeping, computed by
 the action the record names). `breaks` is each stored version and the
 built-in run by check on the snapshot's full question set on an engine of
 its own; a version not yet stored is never in it (Set checks before it
-stores). `policy/trace_test.go` `TestTraceWalk` drives, on the Fake, up,
+stores). `modules/policy/trace_test.go` `TestTraceWalk` drives, on the Fake, up,
 set, activate, a snapshot that drifts (row x<k>'s width between 1 and 2;
 version k, and the built-in at k = 0, fail while it is 2) and ticks that
 write their judgements and move one card as layer 3 would (a deal only
@@ -762,7 +762,7 @@ the 1.5k budget was set before rulings 3 to 7, the catalog and the trace
 check. Glenn's call whether to raise the budget or drop a feature (the
 diff verb and the catalog are the two that could move to layer 6).
 
-Tests: `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
+Tests: `go test -race -count=1 ./modules/policy/` on amd-3 under nova-reserve at
 35b61d2e: ok (9.6 s), functional tests included. Load on amd-3 without
 -race: the built-in at 5,000 producers over 100 rows, cold 61.7 ms, warm
 27.6 ms (measured; up from 56.8 ms, since `prefer` now orders every
@@ -787,7 +787,7 @@ found two for one coordinator when both did). A worker has no model (the roster'
 `Rank` takes the tiers. The trace walk's drift moves a row's width in the
 roster (nova-config changing under the sprint), as it moved the store's.
 
-*Rowan2's probes* (`policy/break_rowan2_test.go`, from origin/v2-break-rowan2
+*Rowan2's probes* (`modules/policy/break_rowan2_test.go`, from origin/v2-break-rowan2
 113e1fc0, adapted only to the round 5 API, as its header lists):
 
 1. and 2. `TestBreakSetBodyOrNameTheStoreRefusesReachesItAsErrInvalid`,
@@ -827,11 +827,11 @@ roster (nova-config changing under the sprint), as it moved the store's.
    named have work above 0 in width, while 2 candidate(s) could take a
    read".
 
-*Cold read 3's probes* (`policy/coldread3_test.go`, adapted only to the
+*Cold read 3's probes* (`modules/policy/coldread3_test.go`, adapted only to the
 round 5 API, as its header lists, and one line, below):
 
 1. `TestColdread3DefectAbandonedRunOutlivesDeadline`: **the evaluator**
-   (`policy/evaluator.go`). `NewEngine(clock)` runs every version (a tick's,
+   (`modules/policy/evaluator.go`). `NewEngine(clock)` runs every version (a tick's,
    check's, the catalog's) in a child process, this binary as
    `<binary> policy-eval`, one per engine and reused across ticks, gob on
    its stdin and stdout. The child runs the in-process engine with the
@@ -888,7 +888,7 @@ comes by rank, then by name, and the room sort is stable).
 
 *Layer 3's steering numbers.* `limits` gains five keys (names exact, the
 bounce limit stays `bounces`), each required, with the built-in's values
-from layer 3's engine defaults (origin/v2-l3-steps, `steps/asker.go`
+from layer 3's engine defaults (origin/v2-l3-steps, `modules/steps/asker.go`
 `Engine` and LAYER-3's Built section): `escalate_after` 2 (guess),
 `frontier_after` 4 (guess, PRIORITY T19), `flap_limit` 3 (unmeasured: a
 guess), `idle_floor` 0.5 (guess, LESSONS 3.18), `land_target` 0.9 (guess,
@@ -900,7 +900,7 @@ gives. One `TestRefusals` row per key.
 
 *The ledger.* `tests/enforced` indexed only store, card and steps after the
 layer 3 merge, so every L5 row's tests read as missing; it now lists
-`./policy` too, and fuzz targets (`FuzzAnswers`). Rows L5-15 (the roster),
+`./modules/policy` too, and fuzz targets (`FuzzAnswers`). Rows L5-15 (the roster),
 L5-16 (the evaluator and the clock) and L5-17 (the verbs' fields and
 fences) are added; L5-3, L5-4, L5-8 and L5-14 carry the new probes.
 
@@ -909,7 +909,7 @@ from 2,545 (1,971) at round 4; the evaluator is 241 code lines, the clock
 24, the rest the probes' fixes and the roster. Over the 1.5k budget, as
 round 4 said; Glenn's call.
 
-*Tests.* `go test -race -count=1 ./policy/` on amd-3 under nova-reserve at
+*Tests.* `go test -race -count=1 ./modules/policy/` on amd-3 under nova-reserve at
 c0067a27: ok (5.0 s). The timing probes with `NOVA_LOAD=1`, exclusive, on
 amd-3 at a33fb7ef: all pass but `TestFunctionalBreakFallbackTimerStartsAfterTheInputs`
 (skips, above). Load through the evaluator, 5,000 producers over 100 rows:

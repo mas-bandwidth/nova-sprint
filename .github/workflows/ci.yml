@@ -53,12 +53,12 @@ jobs:
         run: go build -ldflags "-X main.binaryVersion=$(git describe --always --dirty --tags --match 'v[0-9]*')" ./...
       - name: vet
         run: go vet ./...
-      # The silent-error lint (tools/silentlint): no error dropped in an err
+      # The silent-error lint (cmd/silentlint): no error dropped in an err
       # branch, no refusal re-wrapped, no unlisted `_ =` discard, no bare exit.
       - name: silentlint (every layer, bottom up)
-        run: go run ./tools/silentlint store card steps edge policy roster run verbs cmd dash tools
+        run: go run ./cmd/silentlint modules cmd
       - name: every test is parallel; no unit test uses real time, sleep, network or processes
-        run: go run ./tools/unitlint
+        run: go run ./cmd/unitlint
 
   # -short: the random walks and sweeps take fewer seeds or steps (the nightly
   # runs them all). Every test is parallel and packages run at the core count,
