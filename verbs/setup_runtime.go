@@ -335,6 +335,11 @@ func (r RuntimeSetup) servicesCheck(ctx context.Context, in SetupInput) (SetupCh
 		return SetupCheck{}, err
 	}
 	if value == "" {
+		if declared, err := r.declared(ctx); err != nil {
+			return SetupCheck{}, err
+		} else if len(declared) == 0 {
+			return SetupCheck{Line: "UP 6/8 services: the active policy declares no provider or bench model: declare them (nova-sprint policy show, then policy set <file>) or run up --services none", Next: "nova-sprint up --services none"}, nil
+		}
 		return SetupCheck{Line: "UP 6/8 services: not chosen\nASK the human which API-rate services to set up", Next: "nova-sprint up --services <names|none>"}, nil
 	}
 	names, chosen, err := r.services(ctx, value)
@@ -375,12 +380,9 @@ func (r RuntimeSetup) services(ctx context.Context, value string) ([]string, map
 	if value == "none" {
 		return nil, nil, nil
 	}
-	declared := map[string]policy.Provider{}
-	if r.Providers != nil {
-		var err error
-		if declared, err = r.Providers(ctx); err != nil {
-			return nil, nil, err
-		}
+	declared, err := r.declared(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
 	names := strings.Split(value, ",")
 	chosen := map[string]policy.Provider{}
@@ -396,6 +398,16 @@ func (r RuntimeSetup) services(ctx context.Context, value string) ([]string, map
 	slices.Sort(names)
 	return names, chosen, nil
 }
+
+// declared is the providers the active policy declares; none without a
+// Providers reader.
+func (r RuntimeSetup) declared(ctx context.Context) (map[string]policy.Provider, error) {
+	if r.Providers == nil {
+		return map[string]policy.Provider{}, nil
+	}
+	return r.Providers(ctx)
+}
+
 func (r RuntimeSetup) Act(ctx context.Context, step int, in SetupInput) error {
 	switch step {
 	case 2:

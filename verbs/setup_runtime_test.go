@@ -110,6 +110,26 @@ func TestRuntimeSetupUnknownServicesFailClosed(t *testing.T) {
 	}
 }
 
+// Step 6, unchosen, asks the human which service to set up only when the
+// active policy declares a provider; with none declared it says so, and
+// the next line is --services none.
+func TestServicesCheckSaysWhenThePolicyDeclaresNoProvider(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	c := Choices{Store: store.NewFake(), Actor: "alice", Now: func() time.Time { return time.Unix(1000, 0) }}
+	r := RuntimeSetup{Prerequisites: SetupPrerequisites{Env: ExecEnvironment{Choices: c}}}
+	check, err := r.servicesCheck(ctx, SetupInput{})
+	want := SetupCheck{Line: "UP 6/8 services: the active policy declares no provider or bench model: declare them (nova-sprint policy show, then policy set <file>) or run up --services none", Next: "nova-sprint up --services none"}
+	if err != nil || check != want {
+		t.Fatalf("%+v %v", check, err)
+	}
+	r.Providers = declared
+	check, err = r.servicesCheck(ctx, SetupInput{})
+	if err != nil || !strings.HasPrefix(check.Line, "UP 6/8 services: not chosen\nASK the human") || check.Next != "nova-sprint up --services <names|none>" {
+		t.Fatalf("%+v %v", check, err)
+	}
+}
+
 // workersRuntime is step 7 on fakes: a services machine and one bench,
 // services saved as given, the control seat's store holding saved.
 func workersRuntime(t *testing.T, services string, saved bool) (RuntimeSetup, *runtimeWork, *[]string) {
