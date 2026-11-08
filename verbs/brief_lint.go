@@ -22,9 +22,9 @@ var (
 	retiredLock = regexp.MustCompile(`(?i)\b(winlock|flock|lockfile|captain lock|bench lock)\b`)
 	retiredSSH  = regexp.MustCompile(`(?i)\bssh\s+(to|into|on)\s+[A-Za-z0-9][A-Za-z0-9.-]*`)
 	gateSSH     = regexp.MustCompile(`(?i)(^|[\s;&|(])ssh\s+(-\S+\s+)*[A-Za-z0-9_.@-]+`)
-	// writesJobMD is a clause that has the harness write JOB.md: a writing
-	// verb before it, or JOB.md said to be written.
-	writesJobMD = regexp.MustCompile(`(?i)\b(writes?|creates?|updates?|edits?|fills?( in)?|appends?( to)?|produces?|generates?|commits?)\b[^.;:]*\bJOB\.md\b|\bJOB\.md\b[^.;:]*\b(is|be|gets?)\s+(written|created|updated|edited|filled( in)?|produced|generated|committed)\b`)
+	// jobMDClause splits a line into clauses: at , ; : ! ? and a full
+	// stop that ends a sentence (never the dot in JOB.md).
+	jobMDClause = regexp.MustCompile(`[,;:!?]|\.(\s|$)`)
 )
 
 // retiredMechanic is the first line of a brief that names a retired
@@ -36,7 +36,7 @@ func retiredMechanic(lines []string) (int, string, string) {
 		key, value, _ := strings.Cut(strings.TrimSpace(line), ":")
 		gate := key == "DONE-WHEN" || key == "TEST"
 		switch {
-		case writesJobMD.MatchString(line):
+		case writesJobMD(line):
 			return i + 1, "a JOB.md to write", jobMDFix
 		case strings.HasPrefix(strings.TrimSpace(line), "WHO:"):
 			return i + 1, "a WHO line", retiredFix
@@ -49,4 +49,98 @@ func retiredMechanic(lines []string) (int, string, string) {
 		}
 	}
 	return 0, "", ""
+}
+
+// The words writesJobMD reads: a verb that writes a file, its passive
+// participle, the prepositions that tie a verb to the file it writes, the
+// words that end the verb's reach, and the words that make the clause not
+// an instruction to the harness to write (a negation, or the worker as the
+// writer).
+var (
+	jobMDWriteVerbs = wordSet("write writes writing overwrite overwrites overwriting create creates creating update updates updating edit edits editing fill fills filling append appends appending produce produces producing generate generates generating commit commits committing save saves saving record records recording log logs logging put puts putting add adds adding emit emits emitting")
+	jobMDWritten    = wordSet("written overwritten created updated edited filled appended produced generated committed saved recorded logged put added emitted")
+	jobMDPassive    = wordSet("is are be been being gets get must should will shall can")
+	jobMDTo         = wordSet("to into in")
+	jobMDDeterminer = wordSet("the a an your its this that")
+	jobMDBreak      = wordSet("then as when and or after before per until once if while unless so read follow see")
+	jobMDNot        = wordSet("not never don't do-not no doesn't won't nor")
+)
+
+func wordSet(s string) map[string]bool {
+	m := map[string]bool{}
+	for _, w := range strings.Fields(s) {
+		m[w] = true
+	}
+	return m
+}
+
+// writesJobMD reports whether a line has the harness write JOB.md, the v1
+// mechanic: a writing verb tied to JOB.md (directly, past a determiner, or
+// through an object of at most four words and to/into/in), or JOB.md said
+// to be written. A clause that negates the write or names the worker as the
+// writer is not one; nor is a clause that only reads or names JOB.md.
+func writesJobMD(line string) bool {
+	for _, clause := range jobMDClause.Split(line, -1) {
+		var words []string
+		for _, w := range strings.Fields(strings.ToLower(clause)) {
+			words = append(words, strings.Trim(w, "`'\"()[]*"))
+		}
+		if jobMDExempt(words) {
+			continue
+		}
+		for k, w := range words {
+			if w != "job.md" && !strings.HasSuffix(w, "/job.md") {
+				continue
+			}
+			if jobMDVerbBefore(words[:k]) || jobMDWrittenAfter(words[k+1:]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// jobMDExempt is a clause that negates the write or has the worker write.
+func jobMDExempt(words []string) bool {
+	for _, w := range words {
+		if jobMDNot[w] || strings.HasPrefix(w, "worker") {
+			return true
+		}
+	}
+	return false
+}
+
+// jobMDVerbBefore: the words before JOB.md end in a writing verb tied to it.
+func jobMDVerbBefore(before []string) bool {
+	i := len(before) - 1
+	for i >= 0 && jobMDDeterminer[before[i]] {
+		i--
+	}
+	if i >= 0 && jobMDWriteVerbs[before[i]] {
+		return true
+	}
+	if i < 0 || !jobMDTo[before[i]] {
+		return false
+	}
+	if i > 0 && before[i] == "in" && jobMDWriteVerbs[before[i-1]] {
+		return true // fill in JOB.md
+	}
+	for j, gap := i-1, 0; j >= 0 && gap <= 4; j, gap = j-1, gap+1 {
+		switch {
+		case jobMDWriteVerbs[before[j]]:
+			return true
+		case jobMDBreak[before[j]] || jobMDWritten[before[j]] || strings.HasSuffix(before[j], "ed"):
+			return false
+		}
+	}
+	return false
+}
+
+// jobMDWrittenAfter: the words after JOB.md say it is to be written.
+func jobMDWrittenAfter(after []string) bool {
+	i := 0
+	for i < len(after) && i < 3 && jobMDPassive[after[i]] {
+		i++
+	}
+	return i > 0 && i < len(after) && jobMDWritten[after[i]]
 }

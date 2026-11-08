@@ -166,3 +166,47 @@ func TestGateFixSaysShC(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// TestWritesJobMD: only a clause that has the harness write JOB.md is the
+// retired mechanic; reading it, naming it, negating a write, or the worker
+// writing it is not (D5 cold read, 2026-11-07).
+func TestWritesJobMD(t *testing.T) {
+	t.Parallel()
+	for _, line := range []string{
+		"Write JOB.md when done.",
+		"JOB.md is written by you at the end.",
+		"Overwrite JOB.md with the result.",
+		"Writing JOB.md is required.",
+		"Save the summary in JOB.md.",
+		"Record findings in $JOB/JOB.md.",
+		"Put the result into JOB.md.",
+		"Log each step to JOB.md.",
+		"Add a section to JOB.md.",
+		"Emit JOB.md at the end.",
+		"Fill in JOB.md.",
+		"Then update the JOB.md.",
+		"JOB.md must be updated before you exit.",
+	} {
+		if !writesJobMD(line) {
+			t.Errorf("%q: not refused", line)
+		}
+	}
+	for _, line := range []string{
+		strings.TrimSpace(readsJobMD),
+		"Write tests, then read JOB.md.",
+		"Update the docs as JOB.md says.",
+		"Commit when JOB.md says.",
+		"The worker writes JOB.md, read it first.",
+		"The worker writes JOB.md in the job directory; read it first.",
+		"Do not edit JOB.md.",
+		"Never write JOB.md.",
+		"JOB.md is rewritten at each stage.",
+		"JOB.md names the checkout.",
+		"Update the docs as described in JOB.md.",
+		"Write the code, then follow JOB.md.",
+	} {
+		if writesJobMD(line) {
+			t.Errorf("%q: refused", line)
+		}
+	}
+}
