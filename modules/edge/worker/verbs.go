@@ -16,6 +16,10 @@ import (
 var (
 	ErrStoreDown = errors.New("worker: store unreachable")
 	ErrRefused   = errors.New("worker: sprint refused")
+	// ErrHookFailed is a hook the sprint failed (exit 2) for something
+	// other than the store, in the sprint's own words: a stream's origin
+	// this host cannot read is not the store being down.
+	ErrHookFailed = errors.New("worker: sprint hook failed")
 	// ErrReceipt marks a take receipt that lacks what the worker takes from
 	// it (model, deadline, forge). It is fatal: the sprint is older than the
 	// worker, and every further card would be refused the same way.
@@ -125,6 +129,9 @@ func (c *CLISprintClient) classifyCLIError_internal(out []byte, code int, err er
 }
 func (c *CLISprintClient) Hook(ctx context.Context, row string) error {
 	out, code, err := c.run_internal(ctx, c.argv_internal("hook", "--as", row, "--role", "worker"))
+	if line, ok := strings.CutPrefix(string(out), "SPRINT REFUSED hook: "); code == 2 && err != nil && ok && !strings.HasPrefix(line, "the store ") {
+		return fmt.Errorf("%w: %w", ErrHookFailed, err)
+	}
 	return c.classifyCLIError_internal(out, code, err)
 }
 func (c *CLISprintClient) Unhook(ctx context.Context, row string) error {

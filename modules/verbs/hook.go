@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 
@@ -44,10 +45,11 @@ func runHook(e *Engine, ctx context.Context, in *input, _ store.Snapshot) (strin
 // process has what finish and read will need. The store credential is
 // proved by the read before this; finish also reads the card's head and
 // the group branch at the stream's origin, so every stream's repository
-// must be readable from this process, all read at once. No forge token is
-// asked of a row: the run does the forge work.
+// must be readable from this process, all read at once. A held stream
+// deals nothing, so its origin is not read. No forge token is asked of a
+// row: the run does the forge work.
 func (e *Engine) originsReadable(ctx context.Context, snap store.Snapshot) error {
-	ss := streamsInOrder(snap)
+	ss := slices.DeleteFunc(streamsInOrder(snap), func(s store.Stream) bool { return s.Held })
 	errs := make([]error, len(ss))
 	var wg sync.WaitGroup
 	for i, s := range ss {

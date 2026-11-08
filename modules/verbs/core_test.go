@@ -146,6 +146,17 @@ func TestHookRefusals(t *testing.T) {
 	})
 }
 
+// TestHookSkipsHeldStreams: a held stream deals nothing, so hook does not
+// read its origin; one this process cannot reach never refuses the hook.
+func TestHookSkipsHeldStreams(t *testing.T) {
+	t.Parallel()
+	s := sprint()
+	s.Streams["s"] = store.Stream{Name: "s", Repo: "o/r", Base: "main", Mode: "auto", Held: true}
+	w := worldFrom(t, s)
+	w.origin.err = errBroken
+	want(t, w.do("dave", "hook", "--role", "worker"), 0, "HOOKED dave role=worker")
+}
+
 // credentiallessStore is the store as a process without
 // NOVA_SPRINT_PG_PASSWORD reads it (cmd/nova-sprint: NoCredential).
 type credentiallessStore struct{ *store.Fake }
