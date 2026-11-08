@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/verbs"
 )
@@ -49,11 +50,13 @@ const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,ince
 
 // workerService is the nova-config service record of the worker on a
 // bench: its seat is the bench's own, its keys the sprint credential, the
+// github token its git clones, fetches and pushes take as their one
+// credential (forge.TokenEnv; the worker refuses to start without it), the
 // bus password when the bus has a user (as sprint-run's), and the provider
 // keys; its environment names the same store and bus as sprint-run's.
 func workerService(machine string, run verbs.FleetService, runAddress string) verbs.FleetService {
 	env := map[string]string{"NOVA_PG_DSN": benchReachable(run.Env["NOVA_PG_DSN"], runAddress), "NOVA_BUS_REDIS": benchReachable(run.Env["NOVA_BUS_REDIS"], runAddress)}
-	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD"}, workerProviderKeys()...)
+	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD", forge.TokenEnv}, workerProviderKeys()...)
 	if user := run.Env["NOVA_BUS_USER"]; user != "" {
 		env["NOVA_BUS_USER"] = user
 		keys = append(keys, "NOVA_BUS_PASSWORD")

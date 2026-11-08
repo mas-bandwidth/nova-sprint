@@ -65,6 +65,7 @@ func TestFunctionalBreakShippedWorkerRunsHarnessOutsideAnySlot(t *testing.T) { /
 	reserve := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\nwhile [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n", reserveLog)
 	_ = os.WriteFile(filepath.Join(bin, "nova-reserve"), []byte(reserve), 0o755)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("GH_GATE_TOKEN", "gh-gate-token-fixture") // the worker refuses without it; the origin is a path, so git never asks
 
 	var out, errBuf bytes.Buffer
 	code := run_internal([]string{"--once", "--as", "r1", "--host", "b1", "--harness", "script", "--root", filepath.Join(tmp, "root"),

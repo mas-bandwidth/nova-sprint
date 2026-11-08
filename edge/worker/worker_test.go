@@ -293,7 +293,7 @@ func TestRunnerRunsOnAnyHostTheCoordinatorsToo(t *testing.T) {
 			t.Fatalf("host %q: the worker refused: %v", host, err)
 		}
 	}
-	if err := (Config{Row: "coord", Host: "coord", Harness: "script"}).Check(); err != nil {
+	if err := (Config{Row: "coord", Host: "coord", Harness: "script", LookupEnv: func(string) (string, bool) { return gitTokenFixture, true }}).Check(); err != nil {
 		t.Fatalf("a worker config on the coordinator's host refused: %v", err)
 	}
 }

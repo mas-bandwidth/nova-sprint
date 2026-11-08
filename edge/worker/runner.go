@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/edge/git"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"maps"
 	"math"
@@ -804,8 +805,14 @@ type OSGitOps struct {
 	Exec                 edge.Exec
 	Timeouts             Timeouts
 	Timeout              time.Duration
-	mu                   sync.Mutex
-	clones               map[string]*sync.RWMutex // per clone URL (cloneLock_internal)
+	// Token and GitHubCredential are every git call's one credential over
+	// https (git.CredentialEnv): the token when set, else GitHubCredential's
+	// (default gh) login for https://github.com. The host's own credential
+	// helpers (~/.gitconfig's) are reset and never asked; the token is in
+	// git's environment only, never its argv or the harness's environment.
+	Token, GitHubCredential string
+	mu                      sync.Mutex
+	clones                  map[string]*sync.RWMutex // per clone URL (cloneLock_internal)
 }
 
 var orgRepo_internal = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
@@ -1056,11 +1063,18 @@ func (g *OSGitOps) CommitAll(ctx context.Context, worktree, message string) (str
 func (g *OSGitOps) RemoveWorktree(_ context.Context, worktree string) error {
 	return os.RemoveAll(worktree)
 }
+
+// gitEnv_internal is every worker git call's whole environment: PATH,
+// HOME, no prompt, and the one credential (git.CredentialEnv).
+func (g *OSGitOps) gitEnv_internal() []string {
+	env := []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"}
+	return append(env, git.CredentialEnv(g.Token, cmp.Or(g.GitHubCredential, "gh"))...)
+}
 func (g *OSGitOps) runGit_internal(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
 	cmd := edge.Cmd{
 		Argv:     append([]string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}, args...),
 		Dir:      dir,
-		Env:      []string{"PATH=" + cmp.Or(os.Getenv("PATH"), "/usr/local/bin:/usr/bin:/bin"), "HOME=" + cmp.Or(os.Getenv("HOME"), "/tmp"), "GIT_TERMINAL_PROMPT=0"},
+		Env:      g.gitEnv_internal(),
 		CleanEnv: true, Timeout: timeout,
 	}
 	res, err := cmp.Or[edge.Exec](g.Exec, edge.NewOSExec()).Run(ctx, cmd)

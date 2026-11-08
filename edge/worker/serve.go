@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 )
 
 // Config is one worker as a binary starts it: `nova-worker` and
@@ -27,6 +28,18 @@ type Config struct {
 	// Providers is --providers: the key proxy's routes (ParseProviders).
 	Providers string
 	Once      bool
+	// LookupEnv reads the worker's environment (os.LookupEnv when nil).
+	LookupEnv func(string) (string, bool)
+}
+
+// lookupEnv_internal is c's environment reader.
+func (c Config) lookupEnv_internal(name string) string {
+	lookup := c.LookupEnv
+	if lookup == nil {
+		lookup = os.LookupEnv
+	}
+	v, _ := lookup(name)
+	return strings.TrimSpace(v)
 }
 
 // Check refuses a config that cannot run, one line naming the fix.
@@ -37,8 +50,13 @@ func (c Config) Check() error {
 	if _, err := NewHarness(cmp.Or(c.Harness, "claude")); err != nil {
 		return err
 	}
-	_, err := ParseProviders(c.Providers)
-	return err
+	if _, err := ParseProviders(c.Providers); err != nil {
+		return err
+	}
+	if c.lookupEnv_internal(forge.TokenEnv) == "" {
+		return fmt.Errorf("worker refused: %s is not in the worker's environment, and it is the one github credential of the worker's git clones, fetches and pushes: on the control machine run nova-secrets grant %s --to %s --pins <dir> --store <dir> --key <file>, then nova-sprint up --as <coordinator>", forge.TokenEnv, forge.TokenEnv, strings.TrimSpace(c.Row))
+	}
+	return nil
 }
 
 // Serve builds the OS adapters and serves the row (Runner.ServeRow: hook,
@@ -89,7 +107,8 @@ func newOSRunner_internal(c Config, home string, proxy *KeyProxy, proxyAddr stri
 		StateDir: cmp.Or(c.StateDir, filepath.Join(home, ".local", "state")),
 		Sprint:   sprint, Beater: sprint,
 		Git: &OSGitOps{WorkRoot: cmp.Or(c.WorkRoot, filepath.Join(root, "clones")),
-			MirrorRoot: cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror")), Exec: ex, Timeouts: timeouts},
+			MirrorRoot: cmp.Or(c.MirrorRoot, filepath.Join(home, "nova-bench", "mirror")), Exec: ex, Timeouts: timeouts,
+			Token: c.lookupEnv_internal(forge.TokenEnv), GitHubCredential: "gh"},
 		Now: time.Now, Sleep: time.Sleep, After: time.After, WakeEvery: WakeEvery,
 		BusHook: OSBusHook{Env: BusEnv(os.Environ()), ClaimWait: timeouts.BusClaim}.Start,
 		Wall:    &OSReserveWall{UseSandbox: true, Exec: ex, Config: WallConfig{ReserveBin: "nova-reserve", SandboxBin: "nova-sandbox", ReserveWait: timeouts.ReserveWait, NetDeny: true}},

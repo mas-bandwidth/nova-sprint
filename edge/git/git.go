@@ -97,6 +97,20 @@ func tokenEnv_internal(token string) []string {
 		"GIT_CONFIG_KEY_1=credential.helper", "GIT_CONFIG_VALUE_1=" + helper}
 }
 
+// CredentialEnv is the git environment that makes one credential the only
+// one git uses over https: the token when it is set (tokenEnv_internal),
+// else gh's login for https://github.com (credentialEnv_internal). Each
+// resets credential.helper before it names its own, so a helper from the
+// host's config files (~/.gitconfig's included) is never asked. The token
+// reaches git in the environment only, never in argv. The landing's git
+// (Client) and the worker's (edge/worker OSGitOps) both use it.
+func CredentialEnv(token, gh string) []string {
+	if token != "" {
+		return tokenEnv_internal(token)
+	}
+	return credentialEnv_internal(gh)
+}
+
 type Client struct{ cfg Config }
 
 func New(cfg Config) *Client {
@@ -133,10 +147,7 @@ func (c *Client) gitEnv_internal(ctx context.Context, extra ...string) []string 
 	if name, email, ok := c.identity_internal(ctx); ok {
 		env = append(env, "GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email, "GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
 	}
-	if c.cfg.Token != "" {
-		return append(append(env, tokenEnv_internal(c.cfg.Token)...), extra...)
-	}
-	return append(append(env, credentialEnv_internal(c.cfg.GitHubCredential)...), extra...)
+	return append(append(env, CredentialEnv(c.cfg.Token, c.cfg.GitHubCredential)...), extra...)
 }
 
 // runGitEnv_internal runs git; a run that could not complete (a timeout, a
