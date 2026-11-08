@@ -117,6 +117,34 @@ func TestProbeRefusesAPolicyModelTheHarnessDoesNotList(t *testing.T) {
 	}
 }
 
+// The listing's home, tmp and data are fresh each time: a database a
+// previous opencode left (2.2.6's, which 1.18.20 refuses: "Database is not
+// empty and has no session table") is gone before `opencode models` runs.
+func TestProbeListsModelsInAFreshDataDir(t *testing.T) {
+	t.Parallel()
+	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
+	r := probeRunner_internal(t, sp, &fakeWall{}, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, allKeys_internal))
+	var stale []string
+	for _, sub := range []string{"home", "tmp", filepath.Join("data", "opencode")} {
+		p := filepath.Join(r.RootDir, "probes", "b1", sub, "stale")
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stale = append(stale, p)
+	}
+	if _, err := r.listModels_internal(context.Background(), "b1", &OpenCodeHarness{}, []string{"deepseek/deepseek-flash"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range stale {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s survived the listing: %v", p, err)
+		}
+	}
+}
+
 // 26, 29: every route's key comes from the environment; a route whose key
 // is absent refuses at the probe, naming the key.
 func TestProbeRefusesARouteWithNoKey(t *testing.T) {
