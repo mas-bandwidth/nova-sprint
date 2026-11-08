@@ -25,11 +25,7 @@ func (l *lander) fetched(ctx context.Context, s store.Stream, refs ...string) (s
 	if err != nil {
 		return "", err
 	}
-	dir, err := l.clones.clone(ctx, url)
-	if err == nil {
-		err = l.clones.git.Fetch(ctx, dir, refs...)
-	}
-	return dir, err
+	return l.clones.fetched(ctx, url, refs...)
 }
 
 // Heads is every branch at the stream's origin.

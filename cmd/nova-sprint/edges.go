@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -59,22 +60,59 @@ type origin struct {
 	dir string
 }
 
-func (o *origin) clone(ctx context.Context, repo string) (string, error) {
+// fetched is the address's clone, cloned when absent, with refs (or
+// origin's default refspec) fetched. The clone and the fetch hold an
+// exclusive file lock beside the clone, so reads of one address in this
+// process or another on the same dir never run git fetch in one repository
+// at once (it fails "cannot lock ref"); a wait for the lock ends with ctx.
+// What is read after the fetch takes no lock.
+func (o *origin) fetched(ctx context.Context, repo string, refs ...string) (string, error) {
 	sum := sha256.Sum256([]byte(repo))
 	dir := filepath.Join(o.dir, fmt.Sprintf("%x", sum[:8]))
 	if err := os.MkdirAll(o.dir, 0o700); err != nil {
 		return "", err
 	}
-	return dir, o.git.Clone(ctx, repo, dir)
+	lock, err := lockFile(ctx, dir+".lock")
+	if err != nil {
+		return "", err
+	}
+	err = o.git.Clone(ctx, repo, dir)
+	if err == nil {
+		err = o.git.Fetch(ctx, dir, refs...)
+	}
+	return dir, errors.Join(err, lock.Close())
+}
+
+// lockPoll is how often a wait for a clone's lock tries again.
+const lockPoll = 50 * time.Millisecond
+
+// lockFile is path opened and exclusively flocked (closing it unlocks),
+// tried every lockPoll until ctx ends.
+func lockFile(ctx context.Context, path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		switch {
+		case err == nil:
+			return f, nil
+		case !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EINTR):
+			return nil, errors.Join(fmt.Errorf("lock %s: %w", path, err), f.Close())
+		}
+		select {
+		case <-ctx.Done():
+			return nil, errors.Join(fmt.Errorf("waiting for the lock %s: %w", path, ctx.Err()), f.Close())
+		case <-time.After(lockPoll):
+		}
+	}
 }
 
 // Contains is whether head contains ancestor, read in the clone of the
 // repository at url (admission: the work is not already at the base).
 func (o *origin) Contains(ctx context.Context, url, ancestor, head string) (bool, error) {
-	dir, err := o.clone(ctx, url)
-	if err == nil {
-		err = o.git.Fetch(ctx, dir)
-	}
+	dir, err := o.fetched(ctx, url)
 	if err != nil {
 		return false, err
 	}
