@@ -3,6 +3,7 @@ package worker
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -328,30 +329,60 @@ func OpenCodeConfig(proxyAddr string, routes, models []string) string {
 	return string(b)
 }
 
-// placeholderOpenCodeConfig_internal: v is exactly an OpenCodeConfig, the
-// only config the wall admits: re-encoded it is v (no field beside its own,
-// each model {}), and each provider is a provider name with the
-// openai-compatible package, its own name, the placeholder key, and the
-// base URL of its route on one loopback proxy.
-func placeholderOpenCodeConfig_internal(v string) bool {
+// openCodeConfigRefusal_internal is why the wall refuses v, nil when v is
+// exactly an OpenCodeConfig, the only config it admits: re-encoded it is v
+// (no field beside its own, each model {}), and each provider is a provider
+// name with the openai-compatible package, its own name, the placeholder
+// key, and the base URL of its route on one loopback proxy. The reason
+// never quotes v.
+func openCodeConfigRefusal_internal(v string) error {
 	var cfg opencodeConfig_internal
 	if json.Unmarshal([]byte(v), &cfg) != nil || cfg.Schema != opencodeSchema_internal || len(cfg.Provider) == 0 {
-		return false
+		return errors.New("it is not an OpenCodeConfig with a provider")
 	}
 	proxy := ""
-	for name, p := range cfg.Provider {
-		u, err := url.Parse(p.Options.BaseURL)
-		if err != nil || u.Scheme != "http" || CheckLoopbackAddr(u.Host) != nil || (proxy != "" && u.Host != proxy) {
-			return false
+	for _, name := range slices.Sorted(maps.Keys(cfg.Provider)) {
+		p := cfg.Provider[name]
+		if !providerName_internal.MatchString(name) {
+			return errors.New("a provider is not a provider name")
+		}
+		u, _ := url.Parse(p.Options.BaseURL) // unparsable is nil, refused next; its error would quote the config
+		if u == nil || u.Scheme != "http" || CheckLoopbackAddr(u.Host) != nil || (proxy != "" && u.Host != proxy) {
+			return fmt.Errorf("provider %s: its baseURL is not on a loopback http proxy (the worker's --proxy-addr)", name)
 		}
 		proxy = u.Host
-		if !providerName_internal.MatchString(name) || p.NPM != opencodeNPM_internal || p.Name != name ||
-			p.Options.APIKey != ProxyPlaceholderKey || p.Options.BaseURL != ProxyBaseURL(proxy, name+"/") {
-			return false
+		if p.NPM != opencodeNPM_internal || p.Name != name || p.Options.APIKey != ProxyPlaceholderKey || p.Options.BaseURL != ProxyBaseURL(proxy, name+"/") {
+			return fmt.Errorf("provider %s: its package, name, key or baseURL is not the proxy route's", name)
 		}
 	}
-	b, err := json.Marshal(cfg)
-	return err == nil && string(b) == v
+	if b, _ := json.Marshal(cfg); string(b) != v { // strings and empty structs: never fails
+		return errors.New("it holds fields beside an OpenCodeConfig's own")
+	}
+	return nil
+}
+
+// WallRefusal is why the wall drops this job's opencode config (nil: none
+// to give, or admitted), said by the runner so a disagreement between
+// OpenCodeConfig and the wall's check is never a bare "not in the
+// harness's model list".
+func (h *OpenCodeHarness) WallRefusal(j Job) error {
+	cfg := OpenCodeConfig(j.ProxyAddr, j.Routes, append(slices.Clone(j.Models), j.Model))
+	if j.ProxyAddr == "" || cfg == "" {
+		return nil
+	}
+	if err := openCodeConfigRefusal_internal(cfg); err != nil {
+		return fmt.Errorf("the opencode config was refused at the wall: %w: OpenCodeConfig and SanitizeWallEnv disagree; fix them together", err)
+	}
+	return nil
+}
+
+// wallRefusal_internal is the harness's WallRefusal for j, nil for a
+// harness without one.
+func wallRefusal_internal(h Harness, j Job) error {
+	if w, ok := h.(interface{ WallRefusal(Job) error }); ok {
+		return w.WallRefusal(j)
+	}
+	return nil
 }
 
 const scriptHarnessProg_internal = `set -e
@@ -671,7 +702,7 @@ func SanitizeWallEnv(env []string, jobDir string) []string {
 		case !ok:
 		case u == "PATH":
 			hasPath, clean = true, append(clean, kv)
-		case u == "OPENCODE_CONFIG_CONTENT" && placeholderOpenCodeConfig_internal(v):
+		case u == "OPENCODE_CONFIG_CONTENT" && openCodeConfigRefusal_internal(v) == nil:
 			clean = append(clean, kv)
 		case (u == "HOME" || u == "TMPDIR" || u == "XDG_DATA_HOME") && jobDir == "":
 			clean = append(clean, kv)

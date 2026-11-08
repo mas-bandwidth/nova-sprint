@@ -597,6 +597,7 @@ func (r *Runner) runStep_internal(ctx context.Context, job Job, rec *JobRecord) 
 		return WallRunResult{}, err
 	}
 	job.Needs, job.Routes = h.Needs(), r.Proxy.RouteNames()
+	r.report("harness config for "+job.Consumer, wallRefusal_internal(h, job))
 	argv, env := h.Command(job)
 	rec.State = JobRunning
 	if rec.PID <= 0 || rec.PID == os.Getpid() {
