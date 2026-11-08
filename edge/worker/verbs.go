@@ -69,7 +69,6 @@ type (
 		// neither ok nor fail, no fault and no bounce (`nova-sprint release`);
 		// head, when not empty, is the partial head the worker pushed.
 		Release(ctx context.Context, row, consumer string, gen int, head, reason string) error
-		OpenJudgement(ctx context.Context, j store.Judgement) error
 	}
 	CLISprintClient struct {
 		Exec      edge.Exec
@@ -227,10 +226,6 @@ func (c *CLISprintClient) Release(ctx context.Context, row, consumer string, gen
 		args = append(args, "--head", head)
 	}
 	out, code, err := c.run_internal(ctx, c.argv_internal(args...))
-	return c.classifyCLIError_internal(out, code, err)
-}
-func (c *CLISprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
-	out, code, err := c.run_internal(ctx, c.argv_internal("judge-open", "--id", j.ID, "--kind", j.Kind, "--about", j.About, "--question", j.Question))
 	return c.classifyCLIError_internal(out, code, err)
 }
 func (c *CLISprintClient) Beat(ctx context.Context, row string, hb Heartbeat) error {

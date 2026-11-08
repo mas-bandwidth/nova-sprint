@@ -836,9 +836,13 @@ clock), mostly in `edge/worker/probe_test.go`.
 - **Judgement errors (30).** At 0832c0c0 the probe already appended the
   judgement's error to its refusal. Found: nova-sprint v2 has no `judge-open`
   verb, so `CLISprintClient.OpenJudgement` always fails ("unknown verb") and
-  every probe refusal says its judgement could not be opened. A row-raised
-  judgement needs a verb (layer 6) or an engine judgement for a row that
-  hooks and unhooks; not built here.
+  every probe refusal says its judgement could not be opened. Resolved in
+  v2.0.11 by removal: the worker's `OpenJudgement` call path (the
+  `SprintClient` method, its CLI argv, `probeRefusal_internal`) is gone, and
+  no new verb or judgement kind was added. A failed probe is the worker's
+  refusal alone, in its log; `nova-sprint check` is the surface (`CHECK RED
+  worker <row>: ...` with the unit's last log line). Test:
+  `TestProbeRefusalRunsNoJudgementVerb`.
 - **Each adapter's wall (32, intent rule 31).** `Harness.Needs()` declares
   `Unix`, `Proxy`/`NetOpen`, `Writes`, `ListModels`, `LogDir`, `Provider`,
   `Model` and `Limits`; `BuildWallArgv(cfg, job, env, argv)` honours
@@ -898,9 +902,9 @@ clock), mostly in `edge/worker/probe_test.go`.
 - `roster.Worker.Routes`: a machine's `route:<name>` roles, sorted and
   unique; `Roster.ServesRoutes`. Kin serve no routes. A first-class routes
   field in nova-config is owed upstream.
-- Still open (recorded above under "Judgement errors (30)"): no
-  `judge-open` verb exists, so a failed probe opens no judgement; with this
-  order the row stays unhooked and its worker log says why.
+- A failed probe opens no judgement (see "Judgement errors (30)"): with
+  this order the row stays unhooked, its worker log says why, and
+  `nova-sprint check` reports it red with that log line.
 ### Built: the worker's heartbeat (stitch, 2026-11-07)
 
 - `edge/worker/beat.go`: with a `Meter` and a `Beater` set (`Serve` sets both), `ServeRow` pushes

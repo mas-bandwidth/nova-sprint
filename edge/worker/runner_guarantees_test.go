@@ -58,9 +58,8 @@ func (s *crSprint) Report(_ context.Context, req ReportRequest) (store.Receipt, 
 	s.reports = append(s.reports, req)
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
-func (s *crSprint) Hook(context.Context, string) error                   { return nil }
-func (s *crSprint) Unhook(context.Context, string) error                 { return nil }
-func (s *crSprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
+func (s *crSprint) Hook(context.Context, string) error   { return nil }
+func (s *crSprint) Unhook(context.Context, string) error { return nil }
 func (s *crSprint) Release(_ context.Context, row, id string, gen int, _, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

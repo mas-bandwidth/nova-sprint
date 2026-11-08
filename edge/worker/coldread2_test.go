@@ -71,9 +71,8 @@ func (s *cr2Sprint) Report(_ context.Context, req ReportRequest) (store.Receipt,
 	}
 	return store.Receipt{Accepted: true, Op: req.ResultID}, nil
 }
-func (s *cr2Sprint) Hook(context.Context, string) error                   { return nil }
-func (s *cr2Sprint) Unhook(context.Context, string) error                 { return nil }
-func (s *cr2Sprint) OpenJudgement(context.Context, store.Judgement) error { return nil }
+func (s *cr2Sprint) Hook(context.Context, string) error   { return nil }
+func (s *cr2Sprint) Unhook(context.Context, string) error { return nil }
 func (s *cr2Sprint) Release(_ context.Context, row, id string, gen int, _, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

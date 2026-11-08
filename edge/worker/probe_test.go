@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // The worker's defects from the first bench runs (directives 42-45, 47-49,
@@ -23,21 +21,13 @@ import (
 // socket, no clock.
 
 // probeSprint is a sprint that answers next with tier models and records
-// judgements and unhooks.
+// hooks and unhooks.
 type probeSprint struct {
 	cr2Sprint
-	judgeErr   error
-	judgements []store.Judgement
-	unhooks    int
-	hooks      int
+	unhooks int
+	hooks   int
 }
 
-func (s *probeSprint) OpenJudgement(_ context.Context, j store.Judgement) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.judgements = append(s.judgements, j)
-	return s.judgeErr
-}
 func (s *probeSprint) Unhook(context.Context, string) error { s.unhooks++; return nil }
 func (s *probeSprint) Hook(context.Context, string) error   { s.hooks++; return nil }
 
@@ -143,19 +133,39 @@ func TestProbeRefusesARouteWithNoKey(t *testing.T) {
 	if wall.calls != 0 {
 		t.Fatalf("the harness ran with a key missing")
 	}
-	if len(sp.judgements) != 1 || sp.judgements[0].ID != "j-probe-b1" {
-		t.Fatalf("the probe's judgement: %+v", sp.judgements)
+}
+
+// Defect 30: nova-sprint has no verb a worker can open a judgement with, so
+// a failed probe runs no sprint verb for one and its refusal is the probe's
+// cause alone, with no "could not be opened" tail (`nova-sprint check`
+// surfaces the refusal from the worker's last log line).
+func TestProbeRefusalRunsNoJudgementVerb(t *testing.T) {
+	t.Parallel()
+	var calls [][]string
+	cli := &CLISprintClient{Run: func(_ context.Context, argv []string) ([]byte, int, error) {
+		calls = append(calls, slices.Clone(argv))
+		return []byte("SPRINT REFUSED " + argv[1] + ": no acting name\n"), 1, nil
+	}}
+	r := probeRunner_internal(t, cli, &fakeWall{}, listingExec_internal("deepseek/deepseek-flash"), threeProviders_internal(t, map[string]string{"DEEPSEEK_API_KEY": "sk-d"}))
+	err := r.ProbeRow(context.Background(), "amd-1", "opencode")
+	if err == nil || !strings.Contains(err.Error(), "worker refused: probe failed for row amd-1: ") {
+		t.Fatalf("want the probe's refusal, got %v", err)
+	}
+	if strings.Contains(err.Error(), "judgement") {
+		t.Fatalf("the refusal names a judgement: %v", err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("a failed probe ran sprint verbs: %q", calls)
 	}
 }
 
 // 25, 28, 30, 31, 32: a failed probe says the harness's error line (not a
 // bare reset), keeps stdout.log, stderr.log and command.txt, names a death
 // inside the wall before the harness's log with the command that shows the
-// wall, names the harness's known limits, and says the judgement it could
-// not open.
+// wall, and names the harness's known limits.
 func TestProbeFailureIsReadable(t *testing.T) {
 	t.Parallel()
-	sp := &probeSprint{judgeErr: errors.New("unknown verb"), cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
+	sp := &probeSprint{cr2Sprint: cr2Sprint{next: NextResponse{TierModels: map[string][]string{"flash": {"deepseek/deepseek-flash"}}}}}
 	fx := listingExec_internal("deepseek/deepseek-flash")
 	fx.On("nova-reserve", func(edge.FakeCall) edge.FakeOutcome {
 		return edge.FakeOutcome{ExitCode: 1, Stdout: "", Stderr: "WALL grants=/job net=denied\n\x1b[91mError: \x1b[0mUnexpected server error\n\x1b[0m\n", Duration: 300 * time.Millisecond}
@@ -173,7 +183,6 @@ func TestProbeFailureIsReadable(t *testing.T) {
 		"the harness died inside the wall before writing a log; nova-sandbox show --write ",
 		"--unix --net-deny --net-allow 127.0.0.1:7000",
 		"known limits of opencode: through the key proxy",
-		"(and its judgement could not be opened: unknown verb)",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("want %q in %s", want, msg)

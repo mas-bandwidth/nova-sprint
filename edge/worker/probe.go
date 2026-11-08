@@ -22,9 +22,9 @@ import (
 // policy's candidates for each tier (next --json's tier_models), the first
 // the harness serves. A take runs only a model the probe proved. Each run's
 // stdout.log, stderr.log and command.txt are kept under
-// <root>/probes/<row>/<model>. A failure opens the row's probe judgement and
-// is the worker's refusal: the cause, the harness's known limits, and where
-// its output is.
+// <root>/probes/<row>/<model>. A failure is the worker's refusal: the
+// cause, the harness's known limits, and where its output is (`nova-sprint
+// check` surfaces it from the worker's last log line; defect 30).
 func (r *Runner) ProbeRow(ctx context.Context, row, harnessName string) error {
 	h, err := r.harnessFor_internal(harnessName)
 	if err != nil {
@@ -41,7 +41,7 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName string) error {
 		err = r.probeModel_internal(ctx, row, h, m)
 	}
 	if err != nil {
-		return r.probeRefusal_internal(ctx, row, err)
+		return fmt.Errorf("worker refused: probe failed for row %s: %w", row, err)
 	}
 	r.mu.Lock()
 	r.probed[row] = true
@@ -51,21 +51,6 @@ func (r *Runner) ProbeRow(ctx context.Context, row, harnessName string) error {
 	}
 	r.mu.Unlock()
 	return nil
-}
-
-// probeRefusal_internal opens the row's probe judgement and is the refusal;
-// a judgement that cannot be opened is said in it, never dropped.
-func (r *Runner) probeRefusal_internal(ctx context.Context, row string, cause error) error {
-	line := cause.Error()
-	judged := r.Sprint.OpenJudgement(ctx, store.Judgement{
-		ID: "j-probe-" + row, Kind: "probe", About: row, Group: "probe:" + row,
-		Question: fmt.Sprintf("harness probe failed on %s: %s", row, edge.RedactN(line, edge.FailureMax)),
-		Command:  fmt.Sprintf("nova-sprint judge j-probe-%s retry --reason fixed", row),
-	})
-	if judged != nil {
-		line += " (and its judgement could not be opened: " + edge.RedactN(judged.Error(), edge.FailureMax) + ")"
-	}
-	return fmt.Errorf("worker refused: probe failed for row %s: %s", row, line)
 }
 
 // probeModels_internal are the models to probe and the tiers they serve:

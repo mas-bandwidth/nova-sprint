@@ -405,26 +405,6 @@ func (s *StoreSprintClient) Beat(ctx context.Context, row string, hb Heartbeat) 
 	_, err = s.applyWithReplay_internal(ctx, op)
 	return err
 }
-func (s *StoreSprintClient) OpenJudgement(ctx context.Context, j store.Judgement) error {
-	snap, err := s.Store.Snapshot(ctx)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrStoreDown, err)
-	}
-	if existing, ok := snap.Judgements[j.ID]; ok && existing.State == "open" {
-		return nil
-	}
-	now := s.now_internal()
-	op := store.Op{
-		ID:     "judge-open-" + j.ID + "-e" + strconv.Itoa(snap.Epoch),
-		Epoch:  snap.Epoch,
-		Actor:  cmp.Or(j.About, "worker"),
-		Kind:   "judgement",
-		At:     now,
-		Writes: []store.Write{store.PutJudgement{ID: j.ID, Kind: j.Kind, About: j.About, Question: j.Question, Command: j.Command, Group: j.Group, Deadline: j.Deadline}},
-	}
-	_, err = s.applyWithReplay_internal(ctx, op)
-	return err
-}
 
 func TestCLISprintClientCanonicalOpIDsAndFlags(t *testing.T) {
 	t.Parallel()
