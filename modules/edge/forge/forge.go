@@ -22,8 +22,6 @@ type FaultKind string
 const (
 	MaxChecksBatch                     = 100
 	DefaultTimeout                     = 30 * time.Second
-	DefaultHourlyLimit                 = 5000
-	DefaultBucketBurst                 = 100
 	DefaultRateLimitRestSec            = 60
 	CheckGreen              CheckState = "green"
 	CheckRed                CheckState = "red"
@@ -132,19 +130,17 @@ func Unset() []string {
 const TokenEnv = "GH_GATE_TOKEN"
 
 type Config struct {
-	Identity           Identity
-	Binary             string
-	Exec               edge.Exec
-	Timeout            time.Duration
-	Now                func() int64
-	HourlyLimit, Burst int
+	Identity Identity
+	Binary   string
+	Exec     edge.Exec
+	Timeout  time.Duration
+	Now      func() int64
 }
 type Client struct {
-	cfg                Config
-	mu                 sync.Mutex
-	tokens             float64
-	lastTick, restTill int64
-	methods            map[string]string // repo -> the merge method it allows
+	cfg      Config
+	mu       sync.Mutex
+	restTill int64
+	methods  map[string]string // repo -> the merge method it allows
 }
 
 func New(cfg Config) *Client { return NewClient(cfg.Exec, cfg) }
@@ -152,12 +148,10 @@ func NewClient(ex edge.Exec, cfg Config) *Client {
 	cfg.Binary = cmp.Or(cfg.Binary, "gh")
 	cfg.Exec = cmp.Or[edge.Exec](ex, cmp.Or[edge.Exec](cfg.Exec, edge.NewOSExec()))
 	cfg.Timeout = cmp.Or(cfg.Timeout, DefaultTimeout)
-	cfg.HourlyLimit = cmp.Or(cfg.HourlyLimit, DefaultHourlyLimit)
-	cfg.Burst = cmp.Or(cfg.Burst, DefaultBucketBurst)
 	if cfg.Now == nil {
 		cfg.Now = func() int64 { return time.Now().Unix() }
 	}
-	return &Client{cfg: cfg, tokens: float64(cfg.Burst), lastTick: cfg.Now(), methods: map[string]string{}}
+	return &Client{cfg: cfg, methods: map[string]string{}}
 }
 func (c *Client) RestedUntil() int64 { c.mu.Lock(); defer c.mu.Unlock(); return c.restTill }
 
@@ -171,23 +165,15 @@ func (c *Client) env_internal() []string {
 	}
 	return env
 }
-func (c *Client) takeToken_internal() error {
+
+// resting_internal refuses a call while the identity rests after GitHub
+// rate-limited it (detectRateLimit_internal sets restTill).
+func (c *Client) resting_internal() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := c.cfg.Now()
-	if now < c.restTill {
+	if c.cfg.Now() < c.restTill {
 		return &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.restTill, Reason: "identity is resting after GitHub rate limit"}
 	}
-	rate := float64(c.cfg.HourlyLimit) / 3600.0
-	if now > c.lastTick {
-		c.tokens = min(c.tokens+float64(now-c.lastTick)*rate, float64(c.cfg.Burst))
-		c.lastTick = now
-	}
-	if c.tokens < 1.0 {
-		c.restTill = now + int64((1.0-c.tokens)/rate) + 1
-		return &FaultError{Kind: FaultRateLimit, Identity: c.cfg.Identity.Name, RetryAfter: c.restTill, Reason: "token bucket exhausted for identity"}
-	}
-	c.tokens -= 1.0
 	return nil
 }
 func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, string, error) {
@@ -197,7 +183,7 @@ func (c *Client) runGH_internal(ctx context.Context, argv ...string) (string, st
 // runGHBytes_internal is runGH_internal with stdout capped at maxBytes (0:
 // edge.DefaultMaxBytes).
 func (c *Client) runGHBytes_internal(ctx context.Context, maxBytes int, argv ...string) (string, string, error) {
-	if err := c.takeToken_internal(); err != nil {
+	if err := c.resting_internal(); err != nil {
 		return "", "", err
 	}
 	cmd := edge.Cmd{Argv: append([]string{c.cfg.Binary}, argv...), Env: c.env_internal(), CleanEnv: true, Timeout: c.cfg.Timeout, MaxBytes: maxBytes}
