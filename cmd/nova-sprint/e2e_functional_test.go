@@ -29,7 +29,7 @@ import (
 // stream's origin.
 type e2e struct {
 	t                 *testing.T
-	dir, origin, boot string
+	dir, origin       string
 	adminDSN, busAddr string
 	sprintDSN         string
 	tr                *transcript

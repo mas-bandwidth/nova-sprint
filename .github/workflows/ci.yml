@@ -60,6 +60,30 @@ jobs:
       - name: every test is parallel; no unit test uses real time, sleep, network or processes
         run: go run ./cmd/unitlint
 
+  # staticcheck and deadcode at the versions go.mod pins as tools, as nova-tools
+  # runs them; their own job so lint stays inside 2 minutes. deadcode -test
+  # reports functions nothing reaches from a main or a test; a test file's
+  # fakes (forge.Fake's whole interface) are seams, so its lines are not counted.
+  # dash's Cache.SetRoster is not dead but unwired: the store's own board
+  # (dash without --pull) never sets a roster, so every row shows at width 0.
+  # It is kept, and listed here, until that is wired.
+  staticcheck:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, bench]
+    timeout-minutes: 2
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: staticcheck
+        run: go tool staticcheck ./...
+      - name: deadcode (no unreached function outside a test file)
+        shell: bash
+        run: |
+          out=$(go tool deadcode -test ./...)
+          out=$(printf '%s\n' "$out" | grep -v -e '_test\.go:' -e 'unreachable func: Cache\.SetRoster$' || true)
+          test -z "$out" || { printf '%s\n' "$out"; exit 1; }
+
   # -short: the random walks and sweeps take fewer seeds or steps (the nightly
   # runs them all). Every test is parallel and packages run at the core count,
   # so -race fits inside the 2-minute job. The test binaries run with an empty

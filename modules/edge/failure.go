@@ -89,18 +89,6 @@ func RedactN(text string, max int) string {
 // Redact is RedactN bounded at RedactMax.
 func Redact(text string) string { return RedactN(text, RedactMax) }
 
-// LastLine is the last non-empty line of out, redacted: a tool's own last
-// words.
-func LastLine(out string) string {
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if l := strings.TrimSpace(lines[i]); l != "" {
-			return Redact(l)
-		}
-	}
-	return ""
-}
-
 // secretsBanner is nova-secrets exec's own announcement on stderr (SECRETS
 // EXEC STARTING, or OK in older releases): never a cause, so a child's
 // refusal leaves it out. Its refusals (SECRETS EXEC FAIL, REFUSED) are kept.

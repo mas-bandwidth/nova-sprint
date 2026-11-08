@@ -440,16 +440,6 @@ func TestStitchDeadlineModelAndForgeComeFromTheReceipt(t *testing.T) {
 	}
 }
 
-type recordingSprint struct {
-	*StoreSprintClient
-	reports []ReportRequest
-}
-
-func (s *recordingSprint) Report(ctx context.Context, req ReportRequest) (store.Receipt, error) {
-	s.reports = append(s.reports, req)
-	return s.StoreSprintClient.Report(ctx, req)
-}
-
 func TestStitchHarnessAdaptersHoldNoModel(t *testing.T) {
 	t.Parallel()
 	for _, h := range []Harness{&ClaudeHarness{}, &CodexHarness{}, &OpenCodeHarness{}} {

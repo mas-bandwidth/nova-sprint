@@ -342,7 +342,7 @@ func (w *work) writeIdentity(v SetIdentity) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id := Identity{Name: v.Name, Email: v.Email}
+	id := Identity(v)
 	if old == id {
 		return fmt.Sprintf("the sprint already commits as %s <%s>", v.Name, v.Email), nil
 	}
@@ -359,7 +359,7 @@ func (w *work) writeStop(v SetStopped) (string, error) {
 	if old.Stopped == v.Stopped {
 		return fmt.Sprintf("the sprint is already %s", map[bool]string{true: "stopped", false: "running"}[v.Stopped]), nil
 	}
-	return "", w.putStop(old, Stop{Stopped: v.Stopped, Reason: v.Reason})
+	return "", w.putStop(old, Stop(v))
 }
 
 // activate makes one version the active one and deactivates the others; the

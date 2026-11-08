@@ -19,8 +19,16 @@ Lint:
     go vet ./...
     go run ./cmd/silentlint modules/store modules/card modules/steps modules/edge modules/policy modules/roster modules/run modules/verbs cmd modules/dash
     go run ./cmd/unitlint
+    go tool staticcheck ./...
+    go tool deadcode -test ./... | grep -v -e '_test\.go:' -e 'unreachable func: Cache\.SetRoster$'   # prints nothing
 
 (`make lint` runs the same; `make build` stamps the version as CI does.)
+staticcheck and deadcode run at the versions go.mod pins as tools. deadcode
+reports a function nothing reaches from a main or a test: delete it, unless
+it is a seam a test uses to observe or perturb the code (fault injection, a
+probe, an oracle). A test file's fakes implement a whole interface, so their
+lines are not counted. dash's `Cache.SetRoster` is unwired rather than dead
+(the store's own board never sets a roster) and is listed until it is wired.
 silentlint refuses the silent error forms: S1 a fixed-string error in an err
 branch, S2 a refusal re-wrapped without errors.As/AsRefusal/RefusalOr, S3 a
 `_ =` discard outside its named cleanups, S4 a bare exit that never writes
@@ -36,7 +44,11 @@ program:
     go test -count=1 -race -short -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...   # per commit
     go test -count=1 -race -skip Functional -exec "env PATH=/nonexistent HOME=/nonexistent" ./...          # nightly
 
-Functional tests (each starts its own PostgreSQL with `initdb`; CI fails if `initdb` is missing):
+Functional tests (each starts its own PostgreSQL with `initdb`; CI fails if `initdb` is missing).
+`TestFunctionalREADMECommandsRunCold` builds the binary and runs the commands
+README.md and docs/README.md show that run cold (help, version, `help <verb>`
+for every verb they name, the refusals), with the guide's exit-code table as
+the oracle:
 
     command -v initdb
     go test -count=1 -race -run Functional ./...

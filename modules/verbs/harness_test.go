@@ -45,7 +45,7 @@ func applyTest(t *testing.T, f *store.Fake, op store.Op) {
 // nova-sprint identity), as up's step 7 needs.
 func setIdentity(t *testing.T, f *store.Fake) {
 	t.Helper()
-	applyTest(t, f, store.Op{ID: "identity", Epoch: 1, Actor: "alice", Kind: "identity", At: t0, Writes: []store.Write{store.SetIdentity{Name: testIdentity.Name, Email: testIdentity.Email}}})
+	applyTest(t, f, store.Op{ID: "identity", Epoch: 1, Actor: "alice", Kind: "identity", At: t0, Writes: []store.Write{store.SetIdentity(testIdentity)}})
 }
 
 // world is an Engine over store.Fake and fakes of every edge, with the

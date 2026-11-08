@@ -889,12 +889,6 @@ func cloneRow(r Row) Row {
 	return r
 }
 
-func foldWrites(s records, ws []store.Write) {
-	for _, w := range ws {
-		foldWrite(s, w)
-	}
-}
-
 func foldWrite(s records, w store.Write) {
 	switch x := w.(type) {
 	case store.PutCard:

@@ -176,17 +176,6 @@ func (s *sim) requireState(id, state string) {
 	require.Equal(s.t, state, s.state(id), "card %s", id)
 }
 
-// kinds is the kinds of the groups the last tick's ops carried.
-func (s *sim) opKinds() []string {
-	var out []string
-	for _, op := range s.last.Ops {
-		for _, g := range OpGroups(op) {
-			out = append(out, fmt.Sprintf("%v", g.Cards))
-		}
-	}
-	return out
-}
-
 func (s *sim) openJudgements(kind string) []string {
 	var out []string
 	for id, j := range s.snap().Judgements {
