@@ -78,6 +78,16 @@ func (o *origin) fetched(ctx context.Context, repo string, refs ...string) (stri
 	return dir, errors.Join(err, lock.Close())
 }
 
+// push is git push from the address's clone at dir under the clone's lock:
+// a push updates refs/remotes/origin in the clone, as a fetch does.
+func (o *origin) push(ctx context.Context, dir, sha, ref, expectOld string) error {
+	lock, err := git.LockClone(ctx, dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(o.git.Push(ctx, dir, sha, ref, expectOld), lock.Close())
+}
+
 // Contains is whether head contains ancestor, read in the clone of the
 // repository at url (admission: the work is not already at the base).
 func (o *origin) Contains(ctx context.Context, url, ancestor, head string) (bool, error) {

@@ -44,7 +44,7 @@ func (l *lander) CreateGroup(ctx context.Context, s store.Stream, sha string) er
 	if err != nil {
 		return err
 	}
-	return l.clones.git.Push(ctx, dir, sha, git.GroupRef(s.Name), "")
+	return l.clones.push(ctx, dir, sha, git.GroupRef(s.Name), "")
 }
 
 // Land merges head (the tip of branch) into the stream's base: base's tip
@@ -99,7 +99,7 @@ func (l *lander) pushBase_internal(ctx context.Context, dir string, s store.Stre
 	if merged.Kind != git.MergeOK {
 		return "", &verbs.OperationError{Problem: fmt.Sprintf("head %s does not merge onto %s at %s: %s %s", head, s.Base, tip, merged.Reason, strings.Join(merged.Conflicts, ", ")), Fix: "merge it into " + s.Base + " yourself and push, then land it again (a head on base records at once)", Exit: 1}
 	}
-	if err := g.Push(ctx, dir, merged.SHA, "refs/heads/"+s.Base, tip); err != nil {
+	if err := l.clones.push(ctx, dir, merged.SHA, "refs/heads/"+s.Base, tip); err != nil {
 		return "", err
 	}
 	return merged.SHA, nil

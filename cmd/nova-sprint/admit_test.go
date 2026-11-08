@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // TestHostForge: CanAct reads gh's viewerPermission and refuses below
@@ -142,5 +145,41 @@ func TestOriginFetchSerialized(t *testing.T) {
 	}
 	if _, err := o.Tree(context.Background(), url, "abc"); err != nil || fetches.Load() != 2 {
 		t.Fatalf("after the first fetch: %v, %d fetches", err, fetches.Load())
+	}
+}
+
+// TestLanderPushTakesTheClonesLock: git push updates refs/remotes/origin/<ref>
+// in the clone, so the lander's push holds the clone's lock as its fetch
+// does, and the locked fetch runs auto-gc in the foreground (a detached gc
+// would outlive the lock). git is a fake (no process).
+func TestLanderPushTakesTheClonesLock(t *testing.T) {
+	t.Parallel()
+	var pushLocked []bool
+	var fetchArgv []string
+	l := &lander{clones: &origin{dir: t.TempDir(), git: git.New(git.Config{Exec: git.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		switch {
+		case slices.Contains(cmd.Argv, "push"):
+			f, err := os.OpenFile(cmd.Dir+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+			if err != nil {
+				return edge.Result{}, err
+			}
+			pushLocked = append(pushLocked, syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil)
+			if err := f.Close(); err != nil {
+				return edge.Result{}, err
+			}
+		case slices.Contains(cmd.Argv, "fetch"):
+			fetchArgv = cmd.Argv
+		}
+		return edge.Result{}, nil
+	})})}}
+	s := store.Stream{Name: "s1", Repo: "https://example.invalid/r.git", Base: "main"}
+	if err := l.CreateGroup(context.Background(), s, strings.Repeat("a", 40)); err != nil {
+		t.Fatal(err)
+	}
+	if len(pushLocked) != 1 || !pushLocked[0] {
+		t.Fatalf("pushes with the lock held: %v, want [true]", pushLocked)
+	}
+	if line := strings.Join(fetchArgv, " "); !strings.Contains(line, "-c gc.autoDetach=false -c maintenance.autoDetach=false fetch") {
+		t.Fatalf("fetch %q runs auto-gc detached", line)
 	}
 }

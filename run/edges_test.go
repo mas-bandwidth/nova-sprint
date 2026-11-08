@@ -195,3 +195,43 @@ func TestCloneAndFetchTakeTheClonesLock(t *testing.T) {
 		t.Fatalf("a heads read with the clone locked elsewhere: %v, %d clones", h.err, g.cloned)
 	}
 }
+
+// pushGit records whether each push ran with the clone's lock held.
+type pushGit struct {
+	git.Git
+	t      *testing.T
+	locked []bool
+}
+
+func (g *pushGit) Push(_ context.Context, dir, _, _, _ string) error {
+	g.locked = append(g.locked, cloneLocked(g.t, dir))
+	return nil
+}
+
+// cloneLocked is whether <dir>.lock is flocked by someone else now.
+func cloneLocked(t *testing.T, dir string) bool {
+	f, err := os.OpenFile(dir+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil
+}
+
+// TestLandPushTakesTheClonesLock: git push updates refs/remotes/origin/<ref>
+// in the clone, so LandPass's push holds the clone's lock as its fetch does.
+func TestLandPushTakesTheClonesLock(t *testing.T) {
+	t.Parallel()
+	g := &pushGit{t: t}
+	dir := filepath.Join(t.TempDir(), "clone")
+	if err := (lockedClone{g}).Push(context.Background(), dir, strings.Repeat("a", 40), "refs/heads/main", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.locked) != 1 || !g.locked[0] {
+		t.Fatalf("pushes with the lock held: %v, want [true]", g.locked)
+	}
+}
