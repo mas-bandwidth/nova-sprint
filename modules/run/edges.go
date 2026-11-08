@@ -101,7 +101,8 @@ func (e *Edges) result(it steps.InboxItem) {
 	e.results = append(e.results, it)
 }
 
-// stop is one bus message to the row; sent, it is acknowledged.
+// stop is one bus message to the row; sent, it is acknowledged. A failed
+// send is an edge fault and is not retried (Ticker.dispatch).
 func (e *Edges) stop(ctx context.Context, r steps.EdgeRequest) {
 	if _, err := e.Bus.Send(ctx, r.Row, "STOP", "STOP "+r.Consumer); err != nil {
 		e.fault("stop "+r.ID+" to "+r.Row, err)
