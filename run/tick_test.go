@@ -426,12 +426,13 @@ func (a *failingActive) AnswerContext(ctx context.Context, vs policy.Versions, s
 func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
 	t.Parallel()
 	for name, c := range map[string]struct {
-		policy Asking
-		active bool
-		want   string
+		policy         Asking
+		active, stored bool
+		want           string
 	}{
-		"none active":   {&answering{}, false, "the run deals nothing: no policy is active: nova-sprint policy set <file> --reason <why>"},
-		"active failed": {&failingActive{}, true, "the run deals nothing: the active policy v1 failed (POLICY REFUSED v1 order(): division by zero)"},
+		"none active":         {&answering{}, false, false, "the run deals nothing: no policy is active: nova-sprint policy set <file> --reason <why>"},
+		"stored, none active": {&answering{}, false, true, "the run deals nothing: no policy is active (v1 is stored, none active): nova-sprint policy activate v1 --reason <why>"},
+		"active failed":       {&failingActive{}, true, false, "the run deals nothing: the active policy v1 failed (POLICY REFUSED v1 order(): division by zero)"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := store.NewFake()
@@ -441,6 +442,9 @@ func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
 			must(t, f, "card", store.PutCard{ID: "p1", Kind: "producer", Stream: "s", Tier: "pro", Brief: "do p1", Paths: []string{"a"}})
 			if c.active {
 				must(t, f, "policy", activePolicy()...)
+			}
+			if c.stored {
+				must(t, f, "policy", store.PutPolicy{Kind: "script", Name: "p.star", Body: "# stored, never activated"})
 			}
 			ro := roster.Roster{Workers: map[string]roster.Worker{"alice": {Name: "alice", Width: 1, Tiers: []string{"pro"}}}}
 			tk, err := NewTicker(context.Background(), f, &healthy{}, c.policy, t0)
@@ -457,5 +461,39 @@ func TestTickDealsNothingWithoutAnActivePolicy(t *testing.T) {
 				t.Fatalf("judgement %+v, want open, no deadline, %q", j, c.want)
 			}
 		})
+	}
+}
+
+// TestTickDealsNothingToAStaleRow: a worker row whose binary (its heartbeat's
+// version) is below the run's release serves no tier, so a ready producer is
+// not dealt to it (defect D3: a stale bench's take receipt faulted 14 cards);
+// once its heartbeat carries the run's release it is dealt.
+func TestTickDealsNothingToAStaleRow(t *testing.T) {
+	t.Parallel()
+	f, ro := seeded(t)
+	must(t, f, "beat", store.SetRowLoad{Row: "alice", Load1Centi: 100, Cores: 8, SlotsTotal: 8, Tiers: "flash,pro", Version: "v2.0.5"})
+	tk, err := NewTicker(context.Background(), f, &healthy{}, &answering{}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observe := func(i int) Observed {
+		return Observed{Now: t0.Add(time.Duration(i+1) * time.Second), Present: []string{"alice"}, Roster: ro, Heads: map[string]string{"s": strings.Repeat("a", 40)}, Version: "v2.0.6"}
+	}
+	for i := range 3 {
+		if _, err := tk.Tick(context.Background(), observe(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s := tk.Snapshot(); s.Cards["p1"].State != "ready" {
+		t.Fatalf("p1 is %s: dealt to a row below the run's release", s.Cards["p1"].State)
+	}
+	must(t, f, "beat at the run's release", store.SetRowLoad{Row: "alice", Load1Centi: 100, Cores: 8, SlotsTotal: 8, Tiers: "flash,pro", Version: "v2.0.6"})
+	for i := 3; i < 6; i++ {
+		if _, err := tk.Tick(context.Background(), observe(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s := tk.Snapshot(); s.Cards["p1"].State != "working" {
+		t.Fatalf("p1 is %s after the row came up to the run's release", s.Cards["p1"].State)
 	}
 }

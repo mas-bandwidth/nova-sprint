@@ -113,7 +113,7 @@ func (e *Engine) roster(ctx context.Context, lim policy.Limits, snap store.Snaps
 	if err != nil {
 		return ro, RefusalOr(err, broken("nova-config's roster cannot be read ("+errText(err)+")", "nova-config check, then nova-sprint check"))
 	}
-	return ro.Advertised(snap.Rows), nil
+	return ro.Advertised(snap.Rows, ""), nil // the probe asks every tier its row serves; check names a stale binary
 }
 
 // epochNow refuses a row's command copied from an epoch a clear ended.

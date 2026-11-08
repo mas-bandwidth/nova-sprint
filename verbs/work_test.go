@@ -282,8 +282,8 @@ func TestBeat(t *testing.T) {
 	args := []string{"beat", "--load1", "2.505", "--cpu-peak", "87.25", "--cores", "8", "--slots-used", "3", "--slots-total", "8"}
 	want(t, w.do("alice", args...), 0, "BEAT alice applied at seq", "next: ")
 	r := w.snap(t).Rows["alice"]
-	if r.Load1Centi != 251 || r.CPUPeakDeci != 873 || r.Cores != 8 || r.SlotsUsed != 3 || r.SlotsTotal != 8 {
-		t.Fatalf("the row after the beat: %+v", r)
+	if r.Load1Centi != 251 || r.CPUPeakDeci != 873 || r.Cores != 8 || r.SlotsUsed != 3 || r.SlotsTotal != 8 || r.Version != "v2.0.0-test" {
+		t.Fatalf("the row after the beat (the version is the beating build's, defect D3): %+v", r)
 	}
 	seq := w.snap(t).Seq
 	want(t, w.do("alice", args...), 0, "BEAT alice unchanged")

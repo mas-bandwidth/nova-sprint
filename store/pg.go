@@ -90,6 +90,12 @@ const round25Hash = "9c9be7f5f7ae333043ff667a93f473d1bdc6c071bfad043f1e8d9ca1f44
 // seconds), in Migrate's one transaction, then the new hash is recorded.
 const round26Hash = "475ac9c67bf8c1d041e7a54b69f7c4e3a0b0d56bfd43a11dc6e4db31ff60dfed"
 
+// round27Hash is the schema hash of round 27's schema.sql
+// (testdata/schema-round27.sql): running schema.sql on it adds the row
+// heartbeat's version (round 28, the release of the binary that beat;
+// defect D3), in Migrate's one transaction, then the new hash is recorded.
+const round27Hash = "5aae26316b0ddbffbe2668a180446cd027dbf237a8e05baa85038786de6858b5"
+
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
 // not refuse every store.
