@@ -54,7 +54,7 @@ func coldProducerEvents() []Event {
 		Broken{Consumer: "p1.w1"}, Faulted{Consumer: "p1.w1"}, AskRead{Row: "r1"}, AskReads{Rows: []string{"r1"}}, ReadYes{}, ReadFix{Finding: "x"}, WaiveRed{Reason: "x"},
 		Landed{Head: h1}, Red{Head: h1, Reason: "x"}, Released{}, Cancel{Reason: "x"}, Replace{By: "p9", Reason: "x"},
 		NeedFailed{Need: "n1"}, Waive{Need: "n1"}, Relink{Need: "n1", To: "n2"}, Edit{Prose: "x"}, Rescore{Score: 9},
-		SetPriority{Level: "high"}, Block{Reason: "x"}, Unblock{Reason: "x"}}
+		SetPriority{Level: "high"}, HoldCard{Reason: "held: x"}, UnholdCard{Reason: "x"}}
 }
 
 // coldAllowed is the design's from-column per producer event.
@@ -63,7 +63,7 @@ var coldAllowed = map[string][]string{
 	"Finished": {Working}, "Broken": {Working}, "Faulted": {Working}, "Released": {Working},
 	"AskRead": {Review}, "AskReads": {Review}, "ReadYes": {Review}, "ReadFix": {Review}, "WaiveRed": {Review}, "Landed": {Merging}, "Red": {Merging},
 	"Cancel": nonFinal, "Replace": nonFinal, "NeedFailed": nonFinal, "Edit": nonFinal, "Rescore": nonFinal,
-	"SetPriority": nonFinal, "Waive": {Waiting}, "Relink": {Waiting}, "Block": {Waiting, Ready, Review, Working}, "Unblock": {Blocked},
+	"SetPriority": nonFinal, "Waive": {Waiting}, "Relink": {Waiting}, "HoldCard": {Waiting, Ready, Review, Working}, "UnholdCard": {Waiting},
 }
 
 // Final states never move, Rescore, SetPriority and Edit included, for every
@@ -289,7 +289,7 @@ func TestColdWalk(t *testing.T) {
 	// Released is not in the list: a Withdraw of the work consumer releases
 	// its producer in the same plan, so the walk never finds one to release.
 	for _, e := range []string{"Resolve", "Start", "Report", "Finished", "Broken", "Faulted", "AskRead", "ReadYes", "ReadFix",
-		"Landed", "Red", "Withdraw", "Block", "Unblock", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
+		"Landed", "Red", "Withdraw", "HoldCard", "UnholdCard", "Park", "Rescore", "SetPriority", "Edit", "Gone", "Seen", "Hold", "HoldStream"} {
 		assert.Positive(t, seen[e], "the walk never accepted %s", e)
 	}
 	t.Logf("accepted ops by event over %d seeds x 800 steps: %v", walkSeeds(100, 10), seen)
@@ -394,7 +394,7 @@ func (w *world) coldStepCard(rng *rand.Rand, ids []string, all map[string]Card, 
 	evs := []Event{Resolve{}, Resolve{}, Park{}, Reached{}, Start{Row: row, Branch: "b-" + p.ID, Base: base}, Start{Row: row, Branch: "b-" + p.ID, Base: base},
 		Finished{Consumer: cid}, Finished{Consumer: cid}, Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, AskReads{Rows: []string{row}},
 		ReadYes{}, ReadYes{}, ReadFix{Finding: "fix it"}, Landed{Head: pick(heads)}, Red{Head: pick(heads), Reason: "red"}, Red{Head: p.Head, Reason: "red"}, Released{},
-		Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
+		HoldCard{Reason: "held: bounced"}, UnholdCard{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: pick(Levels), Reason: "asked"},
 		Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
 	if rng.Intn(120) == 0 {
 		evs = []Event{Cancel{Reason: "c"}, Replace{By: "p3", Reason: "r"}, NeedFailed{Need: "p1"}, Waive{Need: "p1"}, Relink{Need: "p1", To: "p3"}}
@@ -402,7 +402,7 @@ func (w *world) coldStepCard(rng *rand.Rand, ids []string, all map[string]Card, 
 	if legal := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return !slices.Contains(coldAllowed[name(e)], p.State) }); len(legal) > 0 && rng.Intn(5) > 0 {
 		evs = legal // mostly events whose from-state matches, so the walk gets deep
 	}
-	side := []string{"Rescore", "SetPriority", "Edit", "Block"}
+	side := []string{"Rescore", "SetPriority", "Edit", "HoldCard"}
 	if moves := slices.DeleteFunc(slices.Clone(evs), func(e Event) bool { return slices.Contains(side, name(e)) }); len(moves) > 0 && rng.Intn(10) > 0 {
 		evs = moves // the side verbs are legal everywhere and would crowd out the path
 	}
@@ -588,18 +588,18 @@ func TestColdDefectWorkReportFixStallsProducer(t *testing.T) {
 	assert.True(t, refused != nil || moved, "a work consumer's fix report is accepted, and no producer event accepts it")
 }
 
-// D2. Block from working is allowed only "after its consumer is withdrawn";
+// D2. HoldCard from working is allowed only "after its consumer is withdrawn";
 // the machine accepts it over a work consumer that is done ok (its finished
 // head never reaches the producer).
-func TestColdDefectBlockOverFinishedWork(t *testing.T) {
+func TestColdDefectHoldOverFinishedWork(t *testing.T) {
 	t.Parallel()
-	assert.NotNil(t, mv(Working, []Card{wk(Done, "ok", h2)}, Block{Reason: "bounced"}), "Block over a done-ok work consumer")
-	assert.NotNil(t, mv(Working, nil, Block{Reason: "bounced"}), "Block of a working producer with no withdrawn consumer named")
+	assert.NotNil(t, mv(Working, []Card{wk(Done, "ok", h2)}, HoldCard{Reason: "held: bounced"}), "HoldCard over a done-ok work consumer")
+	assert.NotNil(t, mv(Working, nil, HoldCard{Reason: "held: bounced"}), "HoldCard of a working producer with no withdrawn consumer named")
 }
 
 // D3. noLive trusts the caller's consumer list. In working the machine knows
 // its consumer's id (p.w<attempt>) but does not require it: with the list
-// left out, Cancel (and Block, Edit, NeedFailed) plan without fencing the
+// left out, Cancel (and HoldCard, Edit, NeedFailed) plan without fencing the
 // live consumer, and Fake accepts: a failed producer with a live consumer.
 func TestColdDefectOmittedLiveConsumerIsNotFenced(t *testing.T) {
 	t.Parallel()
@@ -637,7 +637,7 @@ func TestColdDefectSetPriorityOnSentinel(t *testing.T) {
 }
 
 // D6. A fix continues "with the finding in hand": Start copies p.reason to
-// the work consumer. But SetPriority, Park, Unblock and Edit overwrite the
+// the work consumer. But SetPriority, Park, UnholdCard and Edit overwrite the
 // same column, so the finding a ReadFix left is replaced by the reason for
 // a priority change (or "stream s1 is held") before the next Start.
 func TestColdDefectFindingOverwrittenBeforeStart(t *testing.T) {

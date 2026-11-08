@@ -18,7 +18,7 @@ import (
 // (tla/check-trace.sh).
 //
 // The mapping. The model's store w is [ps, cs, up, sh, tko, pol]:
-//   - ps[p]: the producer p of the view: st its state (blocked is not in the
+//   - ps[p]: the producer p of the view: st its state (a card hold is not in the
 //     model and never arises in a scenario), att its attempt, head the
 //     attempt number of its head (heads are attempt numbers in the model: the
 //     walk pushes head Sha(n) for attempt n), author its author row ("-" for

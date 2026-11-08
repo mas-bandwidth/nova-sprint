@@ -175,12 +175,13 @@ func (t *tick) undealt() {
 	}
 }
 
-// routeBlocked opens the blocked judgement of a producer a missing-route
-// fault blocked (card.RouteFault; defect 48): the report is the row's own
+// routeHeld opens the held judgement of a producer a missing-route fault
+// left waiting (card.RouteFault; defect 48): the report is the row's own
 // op, so the judgement is the next tick's. It names the row, the card and
-// what is missing; the producer waits blocked until the coordinator answers.
-func (t *tick) routeBlocked() {
-	for _, p := range t.v.Producers("blocked") {
+// what is missing; the producer waits, never dealt, until the coordinator
+// answers.
+func (t *tick) routeHeld() {
+	for _, p := range t.v.Producers("waiting") {
 		c := t.v.Cards[p]
 		what, ok := card.RouteFault(c.Reason)
 		if !ok {
@@ -190,7 +191,7 @@ func (t *tick) routeBlocked() {
 		if w, found := t.v.Cards[workID(c)]; found {
 			row = "row " + w.Holder
 		}
-		t.judge("blocked", p, fmt.Sprintf("producer %s faulted on %s for a missing route or device: %s; it waits blocked, never dealt again by itself: %s", p, row, what, routeFix(c)))
+		t.judge("held", p, fmt.Sprintf("producer %s faulted on %s for a missing route or device: %s; it waits, never dealt again by itself: %s", p, row, what, routeFix(c)))
 	}
 }
 
@@ -201,9 +202,9 @@ func routeFix(c store.Card) string {
 	route := card.RouteName(c.Reason)
 	switch {
 	case route == "":
-		return "unblock to deal it again, or drop it"
+		return "unhold to deal it again, or drop it"
 	case slices.Contains(card.NeedsRoutes(c.Brief), route):
-		return "it declares " + card.RouteField + ": " + route + ", so the row that took it serves route:" + route + " without having it; fix that row's route, then unblock, or drop it"
+		return "it declares " + card.RouteField + ": " + route + ", so the row that took it serves route:" + route + " without having it; fix that row's route, then unhold, or drop it"
 	}
-	return "replace it (nova-sprint replace " + c.ID + " --by <card>) with a brief that declares " + card.RouteField + ": " + route + ", so the deal sends it only to a row serving route:" + route + "; or unblock to deal it again, or drop it"
+	return "replace it (nova-sprint replace " + c.ID + " --by <card>) with a brief that declares " + card.RouteField + ": " + route + ", so the deal sends it only to a row serving route:" + route + "; or unhold to deal it again, or drop it"
 }

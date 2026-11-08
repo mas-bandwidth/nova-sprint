@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/edge"
 	"github.com/mas-bandwidth/nova-sprint/roster"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/usage"
@@ -15,7 +14,6 @@ import (
 
 type workRow struct {
 	tierMicros map[string]*big.Int
-	Blocked    int
 	Waiting    int
 	Ready      int
 	Working    int
@@ -26,10 +24,6 @@ type workRow struct {
 	Fail       int
 	Cost       *big.Int
 	ByTier     map[string]*big.Int
-	// BlockedCards is each blocked producer's reason, by id: a card the
-	// coordinator holds reads "held: <why>" (card.HeldPrefix; defect 47), a
-	// missing route "missing-route: <what>" (defect 48).
-	BlockedCards map[string]string
 }
 type fleetRow struct {
 	Status   string
@@ -72,7 +66,7 @@ type envelope struct {
 	EtaWindow     float64                `json:"eta_window_minutes"` // minutes of landings the rate was measured over
 	EtaBasis      string                 `json:"eta_basis"`          // "last hour" or "sprint average"
 	EtaLandings   int                    `json:"eta_landings"`       // landings inside that window
-	Left          int                    `json:"left"`               // cards not yet landed (blocked, waiting, ready, working, review, fix, merging)
+	Left          int                    `json:"left"`               // cards not yet landed (waiting, ready, working, review, fix, merging)
 	Cost          *costSummary           `json:"cost"`
 	OK            bool                   `json:"ok"`
 	Error         string                 `json:"error,omitempty"`
@@ -131,10 +125,10 @@ func mapSnapshot(s store.Snapshot, ros roster.Roster, at time.Time) envelope {
 	}
 	landed, failed, all, left := 0, 0, 0, 0
 	for _, w := range work {
-		left += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging
+		left += w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging
 		landed += w.Landed
 		failed += w.Fail
-		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
+		all += w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
 	return envelope{Coordinator: coordinatorOf(s.Rows), Left: left, Cost: summarizeCost(s), Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, Machine: machineLine(s), Stopped: s.Stopped, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
 }
@@ -153,7 +147,7 @@ func coordinatorOf(rows map[string]store.Row) string {
 func setStreamStates(streams []streamLine, work map[string]*workRow) {
 	for i := range streams {
 		w := work[streams[i].Stream]
-		total := w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
+		total := w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 		if total > 0 && w.Landed == total {
 			streams[i].State = "landed"
 		} else if total > 0 && w.Fail > 0 && w.Landed+w.Fail == total {
@@ -241,12 +235,6 @@ func countWork(w *workRow, c store.Card) {
 		state = "fix"
 	}
 	switch state {
-	case "blocked":
-		w.Blocked++
-		if w.BlockedCards == nil {
-			w.BlockedCards = map[string]string{}
-		}
-		w.BlockedCards[c.ID] = edge.RedactN(c.Reason, edge.FailureMax)
 	case "waiting":
 		w.Waiting++
 	case "ready":

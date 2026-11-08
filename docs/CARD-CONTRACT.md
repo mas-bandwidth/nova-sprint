@@ -181,8 +181,8 @@ under a branch), the base is at origin, and with forge github this host's gh
 identity has write, maintain or admin on the repository.
 
 A restore refuses a card record whose state this build does not map (one of
-waiting, ready, working, review, merging, landed, fail, done; `blocked`
-was dropped in schema round 29),
+waiting, ready, working, review, merging, landed, fail, done; round 29
+dropped the old problem state),
 naming the record. A dump of another shape (a v1 store with a `landed`
 timestamp column) is refused before that by the backup header's schema
 hash; there is no import verb.

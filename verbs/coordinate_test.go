@@ -118,17 +118,21 @@ func TestAddRefusals(t *testing.T) {
 
 func TestJudge(t *testing.T) {
 	t.Parallel()
-	blocked := withJudgement("blocked.p3.1", "", "blocked", "p3", "unblock | drop")
+	held := withJudgement("held.p3.1", "", "held", "p3", "unhold | drop")
 	s := sprint()
-	blocked(&s)
+	held(&s)
 	dependant(&s)
-	setCard("p3", func(c *store.Card) { c.State = "blocked" })(&s)
+	setCard("p3", func(c *store.Card) { c.State, c.Reason = "waiting", card.HeldPrefix+"bounced" })(&s)
 	w := worldFrom(t, s)
-	want(t, w.do("carol", "judge"), 0, "JUDGEMENT blocked.p3.1 kind=blocked about=p3", "choices=unblock|drop")
-	want(t, w.do("carol", "judge", "blocked.p3.1"), 0, "question: what now?")
-	want(t, w.do("carol", "judge", "blocked.p3.1", "unblock", "--reason", "fixed by hand"), 0, "judgement blocked.p3.1 answered unblock", "applied at seq")
+	want(t, w.do("carol", "judge"), 0, "JUDGEMENT held.p3.1 kind=held about=p3", "choices=unhold|drop")
+	want(t, w.do("carol", "judge", "held.p3.1"), 0, "question: what now?")
+	want(t, w.do("carol", "judge", "held.p3.1", "unhold", "--reason", "fixed by hand"), 0, "judgement held.p3.1 answered unhold", "applied at seq")
+	p3 := w.snap(t).Cards["p3"]
+	if p3.State != "waiting" || p3.Reason != "fixed by hand" {
+		t.Fatalf("unhold did not lift the card's hold: %s %q", p3.State, p3.Reason)
+	}
 	want(t, w.do("carol", "judge"), 0, "no open judgements")
-	want(t, w.do("carol", "judge", "blocked.p3.1", "unblock", "--reason", "again"), 1, "judgement blocked.p3.1 was answered by carol")
+	want(t, w.do("carol", "judge", "held.p3.1", "unhold", "--reason", "again"), 1, "judgement held.p3.1 was answered by carol")
 }
 
 func TestJudgeAGroup(t *testing.T) {
@@ -144,12 +148,12 @@ func TestJudgeAGroup(t *testing.T) {
 
 func TestJudgeRefusals(t *testing.T) {
 	t.Parallel()
-	blocked := withJudgement("blocked.p3.1", "", "blocked", "p3", "unblock | drop")
+	held := withJudgement("held.p3.1", "", "held", "p3", "unhold | drop")
 	runCases(t, []tcase{
 		{name: "no judgement", as: "carol", args: []string{"judge", "zz"}, exit: 1, want: []string{"no open judgement or group zz", "nova-sprint judge"}},
-		{name: "no reason", as: "carol", snap: blocked, args: []string{"judge", "blocked.p3.1", "unblock"}, exit: 1, want: []string{"needs its reason"}},
-		{name: "a choice not offered", as: "carol", snap: blocked, args: []string{"judge", "blocked.p3.1", "retry", "--reason", "r"}, exit: 2, want: []string{"takes one of: unblock drop"}},
-		{name: "a worker", as: "alice", snap: blocked, args: []string{"judge"}, exit: 1, want: []string{"judge is the coordinator's"}},
+		{name: "no reason", as: "carol", snap: held, args: []string{"judge", "held.p3.1", "unhold"}, exit: 1, want: []string{"needs its reason"}},
+		{name: "a choice not offered", as: "carol", snap: held, args: []string{"judge", "held.p3.1", "retry", "--reason", "r"}, exit: 2, want: []string{"takes one of: unhold drop"}},
+		{name: "a worker", as: "alice", snap: held, args: []string{"judge"}, exit: 1, want: []string{"judge is the coordinator's"}},
 	})
 }
 
@@ -304,21 +308,22 @@ func TestPolicyRefusals(t *testing.T) {
 	})
 }
 
-// TestHoldCard: hold parks one producer blocked with the reason, its live
-// consumer withdrawn in the same op; unhold sends it to waiting (defect 47).
+// TestHoldCard: hold leaves one producer waiting with the hold's reason (a
+// card with a problem waits: Glenn, 2026-11-07), its live consumer withdrawn in the same
+// op; unhold leaves it plain waiting (defect 47).
 func TestHoldCard(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "hold", "p1", "--reason", "wrong brief"), 0, "p1", "next: "+waitNext)
 	s := w.snap(t)
-	if c := s.Cards["p1"]; c.State != "blocked" || c.Reason != card.HeldPrefix+"wrong brief" {
+	if c := s.Cards["p1"]; c.State != "waiting" || c.Reason != card.HeldPrefix+"wrong brief" {
 		t.Fatalf("held card %+v", c)
 	}
 	if c := s.Cards["p1.w1"]; c.State != "fail" {
 		t.Fatalf("its consumer %+v", c)
 	}
 	want(t, w.do("carol", "unhold", "p1", "--reason", "brief fixed"), 0, "p1")
-	if c := w.snap(t).Cards["p1"]; c.State != "waiting" {
+	if c := w.snap(t).Cards["p1"]; c.State != "waiting" || c.Reason != "unheld: brief fixed" {
 		t.Fatalf("unheld card %+v", c)
 	}
 }

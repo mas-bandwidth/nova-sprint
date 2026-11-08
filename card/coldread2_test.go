@@ -104,7 +104,7 @@ func TestCold2DefectBrokenReasonNeverReachesTheNextAttempt(t *testing.T) {
 // E5. A producer parked in a held stream carries "reason naming the hold"
 // (Park row; reversed witness "a producer parked with no named hold"). The
 // moves that return into a held stream (Broken, Faulted, ReadFix, Released,
-// the Withdraw release) and Unblock write waiting with the consumer's or the
+// the Withdraw release) and UnholdCard write waiting with the consumer's or the
 // event's reason, or none at all, never the hold.
 func TestCold2DefectParkedWithoutNamingTheHold(t *testing.T) {
 	t.Parallel()
@@ -246,18 +246,18 @@ func TestCold2Rulings(t *testing.T) {
 		refusal{mv(Review, nil, AskRead{Row: "r2"}), "r2 wrote producer p1's head and may not read it"}.check(t)
 	})
 	t.Run("working needs its consumer passed", func(t *testing.T) {
-		for _, e := range []Event{Cancel{Reason: "x"}, Edit{Prose: "x"}, Block{Reason: "x"}} {
+		for _, e := range []Event{Cancel{Reason: "x"}, Edit{Prose: "x"}, HoldCard{Reason: "held: x"}} {
 			r := mv(Working, nil, e)
 			if assert.NotNil(t, r, name(e)) {
 				assert.Contains(t, r.Reason, "was not passed", name(e))
 			}
 		}
 	})
-	t.Run("block from working with a reported consumer", func(t *testing.T) {
+	t.Run("hold from working with a reported consumer", func(t *testing.T) {
 		for res, apply := range map[string]string{"ok": "Finished", "fail": "Broken", "fault": "Faulted"} {
-			refusal{mv(Working, []Card{wk(Done, res, h2)}, Block{Reason: "x"}), "consumer p1.w1 reported " + res + "; apply it with " + apply + " before Block"}.check(t)
+			refusal{mv(Working, []Card{wk(Done, res, h2)}, HoldCard{Reason: "held: x"}), "consumer p1.w1 reported " + res + "; apply it with " + apply + " before HoldCard"}.check(t)
 		}
-		assert.Nil(t, mv(Working, []Card{wk(Fail, "", "")}, Block{Reason: "x"}))
+		assert.Nil(t, mv(Working, []Card{wk(Fail, "", "")}, HoldCard{Reason: "held: x"}))
 	})
 }
 
@@ -312,7 +312,7 @@ func TestCold2RulingsValues(t *testing.T) {
 			{SetPriority{Level: "urgent"}, "priority urgent is not one of low, normal, high, critical or blocker"},
 			{Rescore{Score: -1}, "score -1 is below 0"},
 			{Edit{Paths: []string{"a\x00"}}, `path "a\x00" is not valid UTF-8 or holds a NUL byte`},
-			{Block{Reason: string([]byte{0})}, `reason "\x00" is not valid UTF-8 or holds a NUL byte`},
+			{HoldCard{Reason: "held: " + string([]byte{0})}, `reason "held: \x00" is not valid UTF-8 or holds a NUL byte`},
 		} {
 			refusal{mv(Ready, nil, c.e), c.want}.check(t)
 		}

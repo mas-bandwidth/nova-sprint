@@ -12,7 +12,8 @@ import (
 // failed need takes the closure of its dependants in one group (LESSONS
 // 2.4). Then, in id order: a waiting sentinel whose needs landed is Reached
 // with a landed-sentinel judgement; a waiting producer whose needs landed,
-// whose stream is not held and who names no file a producer of its stream
+// whose stream is not held, who is not held itself (card.HeldReason: a
+// hold or a missing route) and who names no file a producer of its stream
 // that is ready or started names (those resolved this tick counted) is
 // Resolved; one held behind such a producer opens an overlap judgement
 // saying "held behind <card> on <path>" (defect 50). Room on a row is never
@@ -32,7 +33,7 @@ func (t *tick) needs() {
 			}
 			continue
 		}
-		if t.v.Streams[c.Stream].Held {
+		if t.v.Streams[c.Stream].Held || card.HeldReason(c.Reason) { // a held card waits: the deal never takes it
 			continue
 		}
 		if why := t.heldBehind(c); why != "" {

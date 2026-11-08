@@ -98,7 +98,7 @@ func TestColdreadFoldNoClear(t *testing.T) {
 		{store.SetCardState{Card: "rp00000", State: "working"}},
 		{store.SetCardResult{Card: "rp00000", Result: "ok"}, store.SetCardAuthor{Card: "rp00000", Author: "amd-1"}, store.SetCardState{Card: "rp00000", State: "done"}},
 		{store.SetCardState{Card: "p00000", State: "landed"}},
-		{store.SetCardState{Card: "p00010", State: "blocked"}},
+		{store.SetCardReason{Card: "p00010", Reason: "held: wrong brief"}},
 		{store.SetCardState{Card: "p00020", State: "fail"}},
 		{store.SetStreamHeld{Stream: "s03", Held: true}},
 		{store.PutJudgement{ID: "j1", Kind: "red", About: "s03", Question: "?"}},

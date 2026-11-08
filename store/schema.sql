@@ -5,7 +5,7 @@
 -- and judgement carries the epoch it was written in (a cursor is global, as
 -- seq is). Every count is 0 or more by a CHECK. Version 2 is the
 -- version with the two card kinds (kind with sentinel, of, after, author,
--- base_sha, result, the states blocked and done; prior_head, bounces, cost,
+-- base_sha, result, the state done; prior_head, bounces, cost,
 -- priced, priority, the result fault; tier, paths, done_when, prose,
 -- review, finding, red), row gen, held and reason, the judgements and cursors tables and
 -- the events' policy; there is no upgrade path from version 1.
@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     kind     text    NOT NULL CHECK (kind IN ('producer', 'sentinel', 'work', 'read')),
     "of"     text,
     stream   text    NOT NULL,
-    state    text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail', 'blocked', 'done')),
+    state    text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail', 'done')),
     gen      integer NOT NULL DEFAULT 0 CHECK (gen >= 0),
     attempt  integer NOT NULL DEFAULT 0 CHECK (attempt >= 0),
     score    integer NOT NULL DEFAULT 0 CHECK (score >= 0),
@@ -206,6 +206,18 @@ ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS usage text NOT NULL DEFAULT ''
 -- same way as a new one.
 ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT ''
     CONSTRAINT cards_model_check CHECK (kind IN ('work', 'read') OR model = '');
+
+-- Round 29: blocked is no card state (Glenn, 2026-11-07: "waiting is where
+-- stuff goes where it's having problems"). A held card, or one a missing
+-- route stopped, is waiting with its reason, which the deal refuses. The
+-- state's CHECK is replaced NOT VALID, so a store made before this round
+-- takes it with blocked rows still in it; Migrate (pg.go migrateBlocked)
+-- then moves every blocked card to waiting, its reason kept (the current
+-- epoch's through one logged op), and validates the CHECK, in its one
+-- transaction. On a new store and on a second run it is the same CHECK.
+ALTER TABLE sprint.cards DROP CONSTRAINT IF EXISTS cards_state_check;
+ALTER TABLE sprint.cards ADD CONSTRAINT cards_state_check
+    CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail', 'done')) NOT VALID;
 
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;

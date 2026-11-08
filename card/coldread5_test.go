@@ -524,7 +524,7 @@ func (w *world) cold5Narrow(rng *rand.Rand) cold4Step {
 	}
 	ev := map[string]Event{"Resolve": Resolve{}, "Start": Start{Row: []string{"r1", "r2", "r3"}[rng.Intn(3)], Branch: "b-" + c.ID, Base: base},
 		"Rescore": Rescore{Score: rng.Intn(4)}, "Edit": Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}, "Cancel": Cancel{Reason: "c"},
-		"Block": Block{Reason: "b"}, "Unblock": Unblock{Reason: "u"}, "Reached": Reached{}, "ReadYes": ReadYes{}, "Park": Park{}}[f[0]]
+		"HoldCard": HoldCard{Reason: "held: b"}, "UnholdCard": UnholdCard{Reason: "u"}, "Reached": Reached{}, "ReadYes": ReadYes{}, "Park": Park{}}[f[0]]
 	if ev == nil {
 		return s
 	}

@@ -17,11 +17,11 @@ judgement id as its message prints it, `<row>` a row's name on the bus.
    finish and read them by the worker playbook.
 3. The run loop does the seat's mechanical work: it deals, asks reads, decides yes or fix from
    all the reads, lands what CI passed green, parks cards in a held stream,
-   blocks a card that bounces too often, and opens a judgement only when a mind is needed. Do
+   holds a card that bounces too often (it waits with its reason), and opens a judgement only when a mind is needed. Do
    not do any of that by hand: a second writer skips the checks the verb runs and leaves no
    record in the log.
 4. You are told by push. From the moment you hook in to the sprint, every judgement, landing,
-   stall, block and orphan, and every deal and read ask for your own row, reaches you as one bus
+   stall, hold and orphan, and every deal and read ask for your own row, reaches you as one bus
    message carrying the command that answers it. Before you hook in, nothing reaches you.
 5. Push, not pull. `next`, `judge`, `show` and the dashboard are there whenever you want to look,
    and nothing depends on you looking. You never poll, never sleep and check, and never keep a
@@ -97,14 +97,14 @@ present or has a named reason (held, away, broken) that you are repairing.
 
 What each judgement kind asks of you, and where to look before you choose:
 
-- `blocked`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
+- `held`: a card bounced past policy's limit and waits held (`held: ...`) until you act; it has no
   deadline. Read its findings with `show <id>`; fix the brief (section 4) or the cause, then
-  choose `unblock`, or `drop`. A `blocked` judgement that says the card faulted for a missing
+  choose `unhold`, or `drop`. A `held` judgement that says the card faulted for a missing
   route or device names the row and what is missing (its reason starts `missing-route: <route>`,
   the route's name as a brief declares it with `NEEDS-ROUTE: <route>`): the card is never dealt
   again by itself. Replace it with a brief that declares the route, so it is dealt only to a row
   that serves it; or bring up a row that has the route (`route:<route>` in nova-config) and
-  `unblock`; or `drop` it.
+  `unhold`; or `drop` it.
 - `unacked`: a card has been in a row's hand a minute and the row has not acknowledged it
   (`take`), though it was nudged every tick. Reach the row on the bus; if its session is gone,
   `nova-sprint release <card>@<gen> --as <you> --reason "<why>"` deals the card again.
@@ -297,7 +297,7 @@ no land request and no land judgement is reported to you as an `engine` judgemen
    a model other than the author's when one is present. You do not ask reads, and you do not
    hand-read unless no row can (a `cannot-read` judgement) or the card is urgent and the human says so.
 2. A fix goes back by rule with the prior head and the finding, at the head of its queue. You see
-   only what needs a mind: a `blocked` judgement, the same finding twice (`brief`), a land-rate under
+   only what needs a mind: a `held` judgement, the same finding twice (`brief`), a land-rate under
    target.
 3. The same finding twice means the brief is wrong, not the worker: add the corrected brief
    under a new id and `nova-sprint replace <old> --by <new> --reason "<why>"` before another

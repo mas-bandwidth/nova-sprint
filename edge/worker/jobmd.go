@@ -91,7 +91,7 @@ func finishRules(j Job, k *KinFinish) string {
 			"A run that exits without " + res + " is reported \"fail: no verdict\".\n"
 	}
 	tail := fmt.Sprintf(" --as %s --epoch %d", k.Row, k.Epoch)
-	fault := "   nova-sprint report " + k.Ref + " --result fault --reason \"<why>\"" + tail + ": a tool, the harness or a route failed, not the work; a reason starting " + card.MissingRoute + " <route> blocks the card for the coordinator.\n"
+	fault := "   nova-sprint report " + k.Ref + " --result fault --reason \"<why>\"" + tail + ": a tool, the harness or a route failed, not the work; a reason starting " + card.MissingRoute + " <route> leaves the card waiting, with that reason, for the coordinator.\n"
 	if j.Kind == "read" {
 		return "1. Check out " + j.Head + " detached in a fresh directory of your own and read it against the card. Edit no tracked file, commit nothing, push nothing.\n" +
 			"2. Run every done-when command at that head; keep each command, exit code and log.\n" +
@@ -129,8 +129,8 @@ func kinIdentity(j Job) string {
 }
 
 // routeFault_internal is the finish rule for a route or device this bench
-// lacks: a fault whose reason starts card.MissingRoute blocks the card for the
-// coordinator instead of dealing it again (defect 48).
+// lacks: a fault whose reason starts card.MissingRoute leaves the card waiting,
+// with that reason, for the coordinator instead of dealing it again (defect 48).
 func routeFault_internal() string {
 	return fmt.Sprintf("   {\"result\":\"fault\",\"reason\":\"%s <route> <what is missing>\"}: the work needs a route or device this bench lacks (a tool, a device, a network); <route> is one word, the name a brief declares with %s: <route>. The card waits for the coordinator instead of being dealt again.\n", card.MissingRoute, card.RouteField)
 }

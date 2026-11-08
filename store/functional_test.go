@@ -427,6 +427,75 @@ func TestFunctionalMigrateRound27(t *testing.T) {
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
 }
 
+// Round 29: a store made by round 28's schema (round28Hash), with a card in
+// state blocked in the current epoch (a hold, its reason kept) and one in an
+// earlier epoch, is upgraded by Migrate: the current card is waiting with its
+// reason through one logged op of the protocol (actor store-migrate, its gen
+// raised, so the log rebuilds to it), the earlier epoch's card is waiting
+// too, the CHECK no longer admits blocked, a second Migrate is a no-op that
+// logs nothing, and the columns are in a new store's order (Glenn,
+// 2026-11-07: blocked is no state; a held card is waiting with its reason).
+func TestFunctionalMigrateRound28(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round28.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round28Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET n = 2 WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1), ('s1', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('old', 'producer', 's1', 'blocked', 2, 'pro', 'bounced 3 times', 1)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p1', 'producer', 's1', 'blocked', 3, 'pro', 'held: looking at it', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p2', 'producer', 's1', 'waiting', 0, 'pro', '', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p3', 'producer', 's1', 'blocked', 5, 'pro', 'bounced 3 times, the limit is 3', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p4', 'producer', 's1', 'blocked', 1, 'pro', 'missing-route: adb no device', 2)",
+		"INSERT INTO sprint.judgements (id, kind, about, question, command, group_key, state, opened_at, epoch) VALUES ('blocked.p3.1', 'blocked', 'p3', 'producer p3 bounced 3 times, the limit is 3', 'nova-sprint judge blocked.p3.1 <choice> --reason <why>   choices: unblock | drop', 'blocked', 'open', now() - interval '1 hour', 2)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round28Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 28}, id)
+	p := openPG(t, dsn) // Migrate
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 2}
+	p1 := h.snap().Cards["p1"]
+	assert.Equal(t, []any{"waiting", "held: looking at it", 4}, []any{p1.State, p1.Reason, p1.Gen}, "the held card is waiting with its reason, its gen raised by the op")
+	p3 := h.snap().Cards["p3"]
+	assert.Equal(t, []any{"waiting", "held: bounced 3 times, the limit is 3", 6}, []any{p3.State, p3.Reason, p3.Gen}, "a card held at the bounce limit stays held: its reason gains the hold's prefix, never released to the deal")
+	p4 := h.snap().Cards["p4"]
+	assert.Equal(t, []any{"waiting", "missing-route: adb no device"}, []any{p4.State, p4.Reason}, "a missing-route reason already holds and is kept as it is")
+	js := h.snap().Judgements
+	assert.Equal(t, []string{"expired", "round 29: reopened as held.p3.1"}, []string{js["blocked.p3.1"].State, js["blocked.p3.1"].Answer}, "the open judgement of the dropped kind is expired")
+	held := js["held.p3.1"]
+	assert.Equal(t, []string{"open", "held", "p3", "producer p3 bounced 3 times, the limit is 3", "nova-sprint judge held.p3.1 <choice> --reason <why>   choices: unhold | drop", "held"},
+		[]string{held.State, held.Kind, held.About, held.Question, held.Command, held.Group}, "and reopened as held, answered by unhold")
+	assert.True(t, held.Deadline.IsZero(), "a held judgement has no deadline")
+	assert.Equal(t, 0, h.snap().Cards["p2"].Gen, "a card that was not blocked is untouched")
+	events := h.events()
+	var moved []Event
+	for _, e := range events {
+		if e.Actor == "store-migrate" && e.After != nil && len(e.After.Cards) > 0 {
+			moved = append(moved, e)
+		}
+	}
+	require.Len(t, moved, 1, "one logged op moves the blocked cards of the current epoch")
+	assert.True(t, moved[0].Accepted)
+	assert.Equal(t, "blocked", moved[0].Before.Cards["p1"].State)
+	assert.Equal(t, "waiting", moved[0].After.Cards["p1"].State)
+	var oldState, oldReason string
+	require.NoError(t, c.QueryRow(ctx, "SELECT state, reason FROM sprint.cards WHERE id = 'old' AND epoch = 1").Scan(&oldState, &oldReason))
+	assert.Equal(t, []string{"waiting", "held: bounced 3 times"}, []string{oldState, oldReason}, "an earlier epoch's blocked card is waiting, held, with its reason")
+	_, err = c.Exec(ctx, "UPDATE sprint.cards SET state = 'blocked' WHERE id = 'p2' AND epoch = 2")
+	require.Error(t, err, "the CHECK no longer admits blocked")
+	assert.Contains(t, err.Error(), "cards_state_check")
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	assert.Len(t, h.events(), len(events), "a second Migrate logs nothing")
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
 // columns is every sprint table's columns in their order, the order a
 // positional INSERT (pg_dump --inserts) fills them in.
 func columns(t *testing.T, c *pgx.Conn) map[string][]string {

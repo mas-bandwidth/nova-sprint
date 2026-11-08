@@ -7,9 +7,9 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "blocked", "waiting"]; // Glenn 2026-11-07: no fail state on the board
+var STATES = ["landed", "merging", "fix", "review", "working", "ready", "waiting"]; // Glenn 2026-11-07: no fail state on the board; a held card is waiting
 // Columns of the streams table, in flow order.
-var FLOW = ["blocked", "waiting", "ready", "working", "review", "fix", "merging", "landed"];
+var FLOW = ["waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
 var LANDED_AT = 2 + FLOW.indexOf("landed"), COST_AT = 2 + FLOW.length;
 var POLL_MS = 1000;
@@ -395,7 +395,6 @@ function renderStreams(d) {
   // the "landed" header is centred over its n / total cell: same width as the cell, text centred
   var lw = tc[LANDED_AT].offsetWidth ? tc[LANDED_AT].offsetWidth + "px" : "";
   if (lw && box._head.children[LANDED_AT].style.width !== lw) box._head.children[LANDED_AT].style.width = lw;
-  box.closest("section").classList.toggle("no-blocked", sum.blocked === 0);
   return { sum: sum, all: all };
 }
 
@@ -415,7 +414,6 @@ function renderOverall(sum, all) {
     });
   }
   STATES.forEach(function (st) { setText(lg._items[st], st + " " + sum[st]); });
-  lg._items.blocked.parentNode.hidden = !sum.blocked;
 }
 window.addEventListener("resize", function () { if (overallLast) renderOverall(overallLast.sum, overallLast.all); });
 
@@ -787,12 +785,11 @@ var inflightLast = null;
 function renderInflight(sum) {
   var box = $("inflight-sub"); if (!box) return;
   var fx = sum.fix || 0;
-  setTitle(box, sum.working + " working, " + sum.review + " review, " + fx + " fix, " + sum.merging + " merging" + (sum.blocked ? ", " + sum.blocked + " blocked" : ""));
+  setTitle(box, sum.working + " working, " + sum.review + " review, " + fx + " fix, " + sum.merging + " merging");
   // the words shorten in turn when the line does not fit the tile (a phone)
   var forms = [["working", "verify"], ["work", "verify"], ["wk", "vfy"]];
   var draw = function (w) {
     var parts = [[sum.working, w[0]], [sum.review + (sum.fix || 0) + sum.merging, w[1]]].filter(function (p) { return p[0] > 0; });
-    if (sum.blocked) parts.push([sum.blocked,"blocked"]);
     box.textContent = "";
     if (!parts.length) box.textContent = "\u00a0"; // blank when nothing is in flight; the line keeps its height (the owner 2026-10-12 ~01:10Z)
     parts.forEach(function (p, i) {

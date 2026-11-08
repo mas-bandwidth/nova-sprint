@@ -207,9 +207,8 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .fb { color: var(--text-2); }
 .waiting { background: var(--s-waiting); } .ready { background: var(--s-ready); }
 .working { background: var(--s-working); } .review { background: var(--s-review); }
-:root { --s-fail: #000; --s-blocked: #704342; }
+:root { --s-fail: #000; }
 .fail { background: var(--s-fail); }
-.blocked { background: var(--s-blocked); }
 .fix { background: var(--s-fix); }
 .p-fix { background: var(--p-fix); }
 .p-blocker { background: var(--s-blocker); } .p-critical { background: var(--s-critical); } .p-reader { background: var(--s-read); }
@@ -355,12 +354,10 @@ footer a:hover { color: var(--text); }
    figure's extra width over a count's, so the gap from merging to landed matches the gaps
    between the counts. 40 px gutters. Rows grouped by status: no rule between rows, a 1 px
    rule (the panel's border colour) between groups. */
-.streams .row { --pad: 2rem; --gap: clamp(1rem, calc(3vw - 2.75rem), 2.5rem); --S: 9.75rem; column-gap: var(--gap); padding: 0 var(--pad);
-  grid-template-columns: var(--name-w) var(--status-w) repeat(7, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Glenn 2026-11-07: fail column gone */
-.streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }
-.streams.no-blocked .row > :nth-child(3) { display: none; }
-.streams .row > :nth-child(10) { grid-column: span 2; justify-self: end; }
-.streams .row.head > :nth-child(10) { text-align: center; }  /* width set by app.js to the n / total cell's */
+.streams .row { --pad: 2rem; --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); --S: 9.75rem; column-gap: var(--gap); padding: 0 var(--pad);
+  grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Glenn 2026-11-07: always ten columns; a held card is waiting */
+.streams .row > :nth-child(9) { grid-column: span 2; justify-self: end; }
+.streams .row.head > :nth-child(9) { text-align: center; }  /* width set by app.js to the n / total cell's */
 .streams .row > :nth-child(2) { justify-self: end; }
 .streams .row:not(.head):not(.total) { border-bottom: 0; }
 .streams .row.group-start { border-top: 1px solid var(--border); }
@@ -387,8 +384,8 @@ footer a:hover { color: var(--text); }
 .panel.compact .row { --pad: 1.5rem; --gap: 1.5rem; --S: 3.5rem; column-gap: var(--gap); padding: 0 var(--pad); }
 .panel.compact .panel-head, .panel.compact .empty { padding-left: 1.5rem; padding-right: 1.5rem; }
 .streams.compact .row { grid-template-columns: var(--name-w) var(--status-w) minmax(10.25rem, 1fr); }
-.streams.compact .row > :nth-child(10) { grid-column: auto; }
-.streams.compact .row > :nth-child(n+3):nth-child(-n+9), .streams.compact .row > :nth-child(11), .streams.compact .row > :nth-child(12) { display: none; }
+.streams.compact .row > :nth-child(9) { grid-column: auto; }
+.streams.compact .row > :nth-child(n+3):nth-child(-n+8), .streams.compact .row > :nth-child(10) { display: none; }
 .streams.compact .pill > span:last-child { display: none; }
 .fleet.compact .row, .friends.compact .row { grid-template-columns: var(--name-w) var(--status-w) minmax(7rem, 1fr) minmax(5.375rem, 1fr); }
 .fleet.compact .row > :nth-child(5), .friends.compact .row > :nth-child(5) { padding-left: 0; }
@@ -440,8 +437,8 @@ footer a:hover { color: var(--text); }
    vertically aligned between both tables. close to the rightmost column as it can be"): name | status | count; the name takes
    the spare room, the count column is one fixed width in both tables, so the two status columns line up */
 .streams.compact .row, .fleet.compact .row { --count-w: 10.5rem; grid-template-columns: minmax(0, 1fr) var(--status-w) var(--count-w); }
-.streams.compact .row > :nth-child(10), .fleet.compact .row > :nth-child(5) { justify-self: center; margin-left: 0; } /* the count centred in its column (~00:57Z: "center align working and landed") */
-.streams.compact .row.head > :nth-child(10), .fleet.compact .row.head > :nth-child(5) { justify-self: stretch; width: auto !important; text-align: center; } /* and its title centred over it */
+.streams.compact .row > :nth-child(9), .fleet.compact .row > :nth-child(5) { justify-self: center; margin-left: 0; } /* the count centred in its column (~00:57Z: "center align working and landed") */
+.streams.compact .row.head > :nth-child(9), .fleet.compact .row.head > :nth-child(5) { justify-self: stretch; width: auto !important; text-align: center; } /* and its title centred over it */
 .streams.compact .row > :nth-child(2), .fleet.compact .row > :nth-child(2) { justify-self: end; margin-right: 1.5rem; } /* a little room before the count (~00:52Z: "too close") */
 /* the coordinator chip says "coordinator rowan" wider than the phone, "rowan" on the phone (the owner 2026-10-12 ~01:02Z) */
 @media (max-width: 600px) { .coord-label { display: none; } }

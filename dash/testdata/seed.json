@@ -1,10 +1,10 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "a7d00c3ed31b",
+  "build": "21f69a4db0ad",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "a7d00c3ed31b",
+    "build": "21f69a4db0ad",
     "coordinator": "",
     "cost": {
       "api_tokens": "0",
@@ -406,7 +406,6 @@
       "readers": {},
       "work": {
         "alpha": {
-          "blocked": "0",
           "cost": "-",
           "cost_by_tier": {},
           "fail": "0",

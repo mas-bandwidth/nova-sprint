@@ -37,7 +37,7 @@ func sweepSteps(b *bk) []cold4Step {
 		evs := []Event{Resolve{}, Park{}, Reached{}, Start{Row: "r1", Branch: "b", Base: base}, Start{Row: "r2", Branch: "b", Base: base},
 			Finished{Consumer: w}, Broken{Consumer: w}, Faulted{Consumer: w}, AskRead{Row: "r1"}, AskRead{Row: "r2"}, AskRead{Row: "r3"},
 			AskReads{Rows: []string{"r2", "r3"}}, ReadYes{}, ReadFix{Finding: "f"}, WaiveRed{Reason: "w"}, Landed{Head: p.Head}, Red{Head: p.Head, Reason: "red"},
-			Released{}, Cancel{Reason: "c"}, Edit{Prose: "e" + id}, Rescore{Score: 7}, SetPriority{Level: "blocker", Reason: "b"}, SetPriority{Level: "low"}, Block{Reason: "b"}, Unblock{Reason: "u"}}
+			Released{}, Cancel{Reason: "c"}, Edit{Prose: "e" + id}, Rescore{Score: 7}, SetPriority{Level: "blocker", Reason: "b"}, SetPriority{Level: "low"}, HoldCard{Reason: "held: b"}, UnholdCard{Reason: "u"}}
 		for _, o := range prods {
 			if o != id {
 				evs = append(evs, Replace{By: o, Reason: "r"})

@@ -222,7 +222,7 @@ type SetCardBaseSHA struct{ Card, SHA string }
 type SetCardPriorHead struct{ Card, Head string }
 
 // SetCardBounces sets a producer's bounce count: the returns that count
-// toward blocked (a fault never raises it; layer 2 says when); refused on any
+// toward the bounce limit's hold (a fault never raises it; layer 2 says when); refused on any
 // other kind.
 type SetCardBounces struct {
 	Card    string

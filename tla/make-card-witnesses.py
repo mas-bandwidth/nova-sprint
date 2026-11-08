@@ -21,12 +21,12 @@ INVARIANTS = [
     "ReaderNeverAuthor", "WidthKept", "DealIsTake", "NeedFailedTakesDependants",
     "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "PreemptOnBlockerRow",
     "ResultsByKind", "OneLiveReadPerRow", "IdsDistinct", "PlainWithdrawUnguarded",
-    "MergeParksResolved",
+    "MergeParksResolved", "HeldNeverDealt",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
     "ReadFixNeedsFix", "WithdrawReleasesInOneStep", "WaiveRedNeedsPriorRead", "FixCarriesFailure",
     "ReplaceByLive", "HeadNeverRepeats",
-    "FaultSpendsNothing", "RouteFaultBlocks", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
+    "FaultSpendsNothing", "RouteFaultWaits", "HoldNoLive", "EditNoLive", "SentinelLandsByReached", "WaiveRedNeedsRed", "FencesOnSnapshot",
     "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
 ]
 
@@ -64,10 +64,10 @@ REACH = {
     "NeverLanded": ("life", "a producer lands"),
     "NeverFixed": ("life", "a review ends in ReadFix"),
     "NeverRed": ("life", "a merging producer goes red"),
-    "NeverBlocked": ("life", "a producer is blocked"),
+    "NeverHeld": ("life", "a producer waits on a hold"),
     "NeverSentinelReached": ("life", "the sentinel lands by Reached"),
     "NeverFaultRedealt": ("life", "a faulted work consumer's producer is started again"),
-    "NeverRouteBlocked": ("life", "a fault naming a missing route blocks its producer"),
+    "NeverRouteHeld": ("life", "a fault naming a missing route leaves its producer waiting on it"),
     "NeverRedToFix": ("life", "a red sends a merging producer to fix with the finding"),
     "NeverNeedFailed": ("deps", "NeedFailed takes a dependant"),
     "NeverRelinked": ("deps", "a failed need is relinked"),
@@ -132,25 +132,37 @@ WITNESSES = [
        "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was YesRead(p)\n", 1)]),
     ("CardFaultBumpsAttempt", "FaultSpendsNothing", "life",
      "Faulted raises the producer's attempt.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"waiting\" ELSE Back,\n"
+       "                                          !.why = IF cs[c].res = \"route\" THEN \"route\" ELSE \"-\",\n"
        "                                          !.head = KeptHead(p, c)])",
-       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"waiting\" ELSE Back,\n"
+       "                                          !.why = IF cs[c].res = \"route\" THEN \"route\" ELSE \"-\",\n"
        "                                          !.head = KeptHead(p, c),\n"
        "                                          !.att = @ + 1])   \\* FAULT: attempt+1", 1)]),
     ("CardFaultBounces", "FaultSpendsNothing", "life",
-     "Faulted raises bounces, so a fault counts toward Block.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+     "Faulted raises bounces, so a fault counts toward the bounce limit.",
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"waiting\" ELSE Back,\n"
+       "                                          !.why = IF cs[c].res = \"route\" THEN \"route\" ELSE \"-\",\n"
        "                                          !.head = KeptHead(p, c)])",
-       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"waiting\" ELSE Back,\n"
+       "                                          !.why = IF cs[c].res = \"route\" THEN \"route\" ELSE \"-\",\n"
        "                                          !.head = KeptHead(p, c),\n"
        "                                          !.bounces = @ + 1])   \\* FAULT: bounces+1", 1)]),
-    ("CardRouteRedealt", "RouteFaultBlocks", "life",
+    ("CardRouteRedealt", "RouteFaultWaits", "life",
      "A fault naming a missing route goes back to ready like any fault: the\n"
      "producer is dealt again to a row of the same kind (defect 48).",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"blocked\" ELSE Back,\n"
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = \"route\" THEN \"waiting\" ELSE Back,\n"
+       "                                          !.why = IF cs[c].res = \"route\" THEN \"route\" ELSE \"-\",\n"
        "                                          !.head = KeptHead(p, c)])",
-       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back,   \\* FAULT: was blocked on a route\n"
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back,   \\* FAULT: was waiting on a route\n"
        "                                          !.head = KeptHead(p, c)])", 1)]),
+    ("CardHeldDealt", "HeldNeverDealt", "life",
+     "Resolve does not refuse a held producer: the deal takes a card the\n"
+     "coordinator holds, or one waiting on a missing route, as soon as its\n"
+     "needs land (Glenn, 2026-11-07: a card with a problem waits; a hold\n"
+     "is a reason on waiting that the deal refuses).",
+     [("  /\\ ps[p].why = \"-\"   \\* the code: \"the deal never takes a held card\"\n",
+       "  /\\ TRUE   \\* FAULT: was ps[p].why = \"-\"\n", 1)]),
     ("CardEditUnderLive", "EditNoLive", "life",
      "Edit is accepted while the producer has a live consumer.",
      [("  /\\ NonFinal(p)\n  /\\ NoLive(p)\n  /\\ PStep(\"Edit\"",
@@ -221,13 +233,13 @@ WITNESSES = [
      "ready by a second ReadFix at an already-read head goes to merging.",
      [("  /\\ ps[p].red   \\* the code: \"no red on review N\"\n",
        "  /\\ TRUE   \\* FAULT: was ps[p].red\n", 1)]),
-    ("CardMergeCutUnseen", "BlockNoLive", "merge",
+    ("CardMergeCutUnseen", "HoldNoLive", "merge",
      "Merge: a consumer cut earlier in the op is invisible to the next\n"
-     "move (overlayCons before round 6): AskRead then Block in one op, and\n"
-     "Block's no-live check does not see the read just cut.",
-     [("  /\\ NoLive(p)\n  /\\ PStep(\"Block\"",
+     "move (overlayCons before round 6): AskRead then HoldCard in one op,\n"
+     "and HoldCard's no-live check does not see the read just cut.",
+     [("  /\\ NoLive(p)\n  /\\ PStep(\"HoldCard\"",
        "  /\\ \\A k \\in LiveOf(p) : op > 0 /\\ snap.cs[k].st = \"none\"   \\* FAULT: cut unseen\n"
-       "  /\\ PStep(\"Block\"", 1)]),
+       "  /\\ PStep(\"HoldCard\"", 1)]),
     ("CardMergeNestedHold", "ParkedUnderHold", "merge",
      "Merge: a release reads the stream from the snapshot, not from what a\n"
      "hold earlier in the op (nested or not) left: HoldStream then Withdraw\n"

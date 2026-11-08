@@ -48,7 +48,7 @@ func TestWalk(t *testing.T) {
 		assert.GreaterOrEqual(t, float64(legal), 0.4*float64(picked), "depth: at least 40%% of picked moves legal")
 		// park is a defence (the hold's own op parks; tla/README.md "Not
 		// modelled"), held by TestTickHolds alone.
-		for _, k := range []string{"resolve", "start", "read", "yes", "fix", "land", "pre", "withdraw", "drop", "reached", "block"} {
+		for _, k := range []string{"resolve", "start", "read", "yes", "fix", "land", "pre", "withdraw", "drop", "reached", "hold"} {
 			assert.Positive(t, kinds[k], "the walk never planned a %s group", k)
 		}
 	})
@@ -64,7 +64,7 @@ type walk struct {
 
 func newWalk(t *testing.T, seed int64) *walk {
 	w := &walk{sim: newSim(t), rng: rand.New(rand.NewSource(seed)), kinds: map[string]int{}}
-	// A policy version with a low bounce limit, so Block is reached in the
+	// A policy version with a low bounce limit, so HoldCard is reached in the
 	// walk's depth; the rest of the answers are the defaults, so the view's
 	// limits path is exercised too.
 	w.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 3, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50}}}
@@ -362,12 +362,12 @@ func (w *walk) verbOne() bool {
 	case 3:
 		e = card.Rescore{Score: w.rng.Intn(5)}
 	case 4:
-		e = card.Unblock{Reason: "walk"}
+		e = card.UnholdCard{Reason: "walk"}
 	case 5:
 		e = card.WaiveRed{Reason: "walk"}
 	default:
-		if c.State == "blocked" {
-			e = card.Unblock{Reason: "walk"}
+		if c.State == "waiting" && card.HeldReason(c.Reason) {
+			e = card.UnholdCard{Reason: "walk"}
 		} else if c.Red && c.State == "review" {
 			e = card.WaiveRed{Reason: "walk"}
 		} else {

@@ -174,9 +174,10 @@ func TestTickRowHoldAndDown(t *testing.T) {
 	assert.Equal(t, "row r1 is down; redealt", s.card("p2.w2").Reason)
 }
 
-// TestTickBlockAtLimit: a producer at the bounce limit is blocked with its
-// judgement in the same op; a fault never counts.
-func TestTickBlockAtLimit(t *testing.T) {
+// TestTickHoldAtLimit: a producer at the bounce limit is held (waiting with
+// the hold's reason, never dealt) with its judgement in the same op; a fault
+// never counts.
+func TestTickHoldAtLimit(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
 	s.stream("s1")
@@ -197,10 +198,13 @@ func TestTickBlockAtLimit(t *testing.T) {
 	s.report(fmt.Sprintf("p1.w%d", Engine.Limits.Bounces+1), "fail", "", "broke again")
 	s.tick()
 	require.Empty(t, s.rejected)
-	s.requireState("p1", "blocked")
-	js := s.openJudgements("blocked")
-	require.Equal(t, []string{"blocked.p1.1"}, js)
-	assert.True(t, s.snap().Judgements["blocked.p1.1"].Deadline.IsZero(), "blocked has no deadline")
+	s.requireState("p1", "waiting")
+	assert.Equal(t, fmt.Sprintf("held: bounced %d times, the limit is %d", Engine.Limits.Bounces, Engine.Limits.Bounces), s.snap().Cards["p1"].Reason)
+	js := s.openJudgements("held")
+	require.Equal(t, []string{"held.p1.1"}, js)
+	s.run(3)
+	s.requireState("p1", "waiting")
+	assert.True(t, s.snap().Judgements["held.p1.1"].Deadline.IsZero(), "held has no deadline")
 }
 
 // TestTickBudgetAndCarry: results over the budget are carried in arrival

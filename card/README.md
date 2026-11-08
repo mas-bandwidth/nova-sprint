@@ -61,7 +61,7 @@ store's records into the machine's.
   and the condition. Two AskReads of one head still collide. Two Starts of one
   producer, or two Adds of one id, name that fix.
 
-Events carry no actor. Who may Unblock, Waive, Relink, SetPriority or WaiveRed
+Events carry no actor. Who may HoldCard, UnholdCard, Waive, Relink, SetPriority or WaiveRed
 is layer 3's; the machine does not.
 
 A machine refusal never reaches the store as a write. Layer 3 logs it by
@@ -134,8 +134,8 @@ reason is then `held: stream S is held`. A stream has no reason column, so
 the phrase names the stream. Finding is written only by a read (ReadFix) and
 carried by Start onto the next work consumer. Broken and Faulted write the
 reason and do not touch finding. Start copies finding and copies no reason.
-Unblock of a producer whose stream is held parks it waiting with the same
-phrase. HoldStream's own park keeps the event's reason. A Red is recorded on
+UnholdCard of a producer whose stream is held leaves it waiting with the
+same phrase. HoldStream's own park keeps the event's reason. A Red is recorded on
 the producer's red column (`SetCardRed`). Finished and Start clear it.
 WaiveRed requires it and fences the plan on `CardRed`. Broken, Faulted and
 WaiveRed do not clear it. pr stays the pull-request number; this layer does
@@ -155,15 +155,27 @@ refusals: `a card needs a name`, `card "..." is over 128 bytes`,
 
 ## Producer table (Move)
 
+A card with a problem has no state of its own (Glenn, 2026-11-07: "waiting
+is where stuff goes where it's having problems"). A producer that has a problem waits, its
+reason saying what: the coordinator's hold (`held: <why>`, `HeldPrefix`,
+HoldCard), policy's hold at the bounce limit (the same), or a missing-route
+fault (`missing-route: <route> <what>`, `MissingRoute`). `HeldReason` is the
+one test of such a reason and `Held` of a waiting producer that has one; a
+park into a held stream (`held: stream S is held`) is the stream's hold,
+never the card's. Resolve and WaiveRed refuse a held producer, so the deal
+never takes it; Waive, Relink, Edit and SetPriority keep its reason (a
+reason-only Edit is refused), and no event but HoldCard or a route fault
+sets a reason that holds. UnholdCard lifts it to plain waiting.
+
 | Event | From | Conditions | Writes |
 |---|---|---|---|
-| Resolve | waiting | StreamHeld false, NeedsLanded | state ready |
-| Park | ready | StreamHeld true | state waiting, reason |
+| Resolve | waiting, not held (`Held`) | StreamHeld false, NeedsLanded | state ready |
+| Park | ready | StreamHeld true; Reason does not hold | state waiting, reason |
 | Reached (sentinel) | waiting | NeedsLanded | state landed |
 | Start{Row,Branch,Base} | ready | producer only; StreamHeld false; RowGen, RowIs up, RowHeld false; CardGen of every consumer; CardAbsent of the new id; width is the dealer's (layer 3), not checked here | state working, attempt+1, author cleared, red cleared when a Red set it; PutCard `p.wN` (work, of, stream, holder, tier, attempt, task, finding) + branch, base_sha, prior_head (p's head), state working (the deal is the take) |
 | Finished{Consumer} | working | CardGen of the work consumer of this attempt, done ok | state review, review+1, head, author = its holder, red cleared when a Red set it |
 | Broken{Consumer} | working | ... done fail; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), bounces+1, head |
-| Faulted{Consumer} | working | ... done fault; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), head (no bounce); state blocked when the fault's reason starts `missing-route:` (`MissingRoute`, defect 48) |
+| Faulted{Consumer} | working | ... done fault; StreamHeld as read | state ready (waiting if held), reason (the hold phrase when held), head (no bounce); state waiting with the fault's reason when it starts `missing-route:` (`MissingRoute`, defect 48), which holds it (`Held`) |
 | AskRead{Row} | review | producer only; a full sha head; StreamHeld false; row as Start; no live work consumer, no live read of this head on the row; CardAbsent of the new id | PutCard `p.rR.N` (read, review = p's, task) + head, author (p's), state working |
 | AskReads{Rows} | review | as AskRead, one snapshot, each row once | one PutCard per row, indices distinct (`p.rR.1`, `p.rR.2`, ...) |
 | ReadYes | review | no live consumer; a done ok read of p's current review and head | state merging |
@@ -180,8 +192,8 @@ refusals: `a card needs a name`, `card "..." is over 128 bytes`,
 | Edit{Prose,Paths,DoneWhen,Reason} | any non-final | producer only; no live consumer | prose, paths, done_when, reason (each when changed); the brief as given is immutable |
 | Rescore{Score} | any non-final | producer only | score |
 | SetPriority{Level,Reason} | any non-final | (a sentinel too) | priority ("" is normal), reason |
-| Block{Reason} | waiting, ready, review, working | a producer, never a sentinel; no live consumer; a reported one is applied first | state blocked, reason (`held: <why>` for the coordinator's `hold <card>`, `HeldPrefix`) |
-| Unblock{Reason} | blocked | StreamHeld as read | state waiting, reason (the hold phrase when the stream is held) |
+| HoldCard{Reason} | waiting, ready, review, working | a producer, never a sentinel, not already held; no live consumer; a reported one is applied first; Reason starts `held: ` (`HeldPrefix`) | state waiting (no write from waiting), reason: the coordinator's `hold <card>`, or policy's at the bounce limit |
+| UnholdCard{Reason} | waiting, held (`Held`) | StreamHeld as read; Reason does not hold | reason (`unheld` when empty; the hold phrase when the stream is held): plain waiting again |
 
 Relink on a sentinel is allowed, as is SetPriority; Edit, Rescore, Start and
 AskRead on a sentinel are refused.
@@ -247,7 +259,8 @@ The rest, in order of the code:
 - `sentinel X has no brief or prose to edit`; `producer X is held by R in consumer C; message R instead`; `Edit of producer X changes nothing`
 - `sentinel X has no score of its own`; `score -1 is below 0`; `producer X already has score 5`
 - `priority P is not one of low, normal, high, critical or blocker`; `producer X is already at priority normal`
-- `consumer C reported ok; apply it with Finished|Broken|Faulted before Block`
+- `consumer C reported ok; apply it with Finished|Broken|Faulted before HoldCard`
+- `producer X is held (R); the deal never takes a held card: unhold it first`; `producer X is already held (R)`; `producer X is not held; UnholdCard lifts a hold`; `a hold's reason starts "held: " and names why: "R"`; `reason "R" would hold producer X; hold it with HoldCard`; `reason "R" would hold producer X again; an unhold names why it is lifted`; `producer X is held (R); unhold it before WaiveRed`
 - `consumer C belongs to X, not Y`; `consumer C is held by R, not S`; `MoveConsumer was passed row S for a take on R; pass the consumer's holder row`; `row R is down; it cannot take`
 - `result "maybe" is not ok, fix, fail or fault`; `a work consumer reports ok, fail or fault; fix is a read's result`; `a read consumer reports ok, fix or fault; fail is a work's result`; `head H is not a full commit sha`; `head is empty; it needs a full commit sha`; `head H is the base; nothing was done`; `head H is the prior head; nothing new was pushed`; `read C was cut at H1, the report names H2`; `read C was cut at H1; producer X is at H2`
 - `read C is of head H; a read is withdrawn without a head of its own`; `consumer C is ready; it has not pushed a head`; `consumer C is ready; a preempt withdraws a working consumer, and the step chooses the youngest on the row`; `producer X is ready; withdrawing live work consumer C would leave it working; pass the producer in working, so the withdraw releases it`; `Withdraw of C releases producer X; it needs X's stream S, not ""`
@@ -265,7 +278,7 @@ go test -race ./card/
 `move_test.go` accepts every table row once with its plan asserted exactly,
 refuses it from every other state, and checks every refusal above.
 `conformance_test.go` drives producers through the happy, fix, red, fault,
-release, withdraw, block, park, need, sentinel, preemption, row, stale
+release, withdraw, hold, park, need, sentinel, preemption, row, stale
 relink, task copy, work-fix, stream-hold, return-into-held-stream, drop and
 add paths on `store.Fake`, applying each plan as a real op, requiring the
 receipt accepted, and checking every write type it lands. `coldread_test.go`

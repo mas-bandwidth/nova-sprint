@@ -85,7 +85,7 @@ Cards      == {"p1", "p2", "t1", "u1", "u2", "u3"}
 Rows       == {"r1", "r2"}
 Judgements == {"j1"}
 Cursors    == {"c1"}
-CardStates == {"waiting", "ready", "working", "review", "merging", "landed", "fail", "blocked", "done"}
+CardStates == {"waiting", "ready", "working", "review", "merging", "landed", "fail", "done"}
 CardKinds  == {"producer", "sentinel", "work", "read"}
 Consumers  == {"work", "read"}
 Unheld     == {"producer", "sentinel"}   \* kinds that never have a holder

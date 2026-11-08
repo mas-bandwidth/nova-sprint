@@ -66,7 +66,7 @@ var (
 
 // The closed sets the schema checks.
 var (
-	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "blocked", "done"}
+	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "done"} // round 29: a held card is waiting with its reason
 	CardKinds   = []string{"producer", "sentinel", "work", "read"}
 	CardResults = []string{"", "ok", "fix", "fail", "fault"}
 	Priorities  = []string{"low", "normal", "high", "critical", "blocker"} // a producer's or sentinel's level, lowest first
@@ -167,7 +167,7 @@ type Card struct {
 	BaseSHA  string   `json:"base_sha"`        // the base commit the attempt started from (schema 2)
 	Prior    string   `json:"prior_head"`      // on a work consumer: the head the attempt continues from
 	Result   string   `json:"result"`          // "", ok, fix, fail or fault
-	Bounces  int      `json:"bounces"`         // on a producer: the returns that count toward blocked
+	Bounces  int      `json:"bounces"`         // on a producer: the returns that count toward the bounce limit's hold
 	Finding  string   `json:"finding"`         // on a producer: the last read's finding; on a work consumer: its producer's at cut, fixed
 	Review   int      `json:"review"`          // on a producer: its entries into review; on a read consumer: its producer's at cut, fixed
 	Red      bool     `json:"red"`             // on a producer: the last read's verdict was red (SetCardRed, round 17); false on every other kind

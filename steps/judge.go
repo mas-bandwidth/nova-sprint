@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
 // judgement is one a step opens: kind.about.episode, a cause opening once
 // (an open one of the same kind and about is not opened again), a group key
 // for one push per shared cause (LESSONS 4.9), the deadline policy states
-// (none for blocked by Glenn's ruling) and the command that answers it.
+// (none for held by Glenn's ruling) and the command that answers it.
 type judgement struct {
 	kind, about, question string
 	episode               int // 0: the next
@@ -18,7 +19,7 @@ type judgement struct {
 
 // The closed list a step opens, with the choices judge offers for each.
 var choices = map[string]string{
-	"blocked": "unblock | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
+	"held": "unhold | drop", "unserved": "retry", "cannot-read": "retry | drop", "land": "land | fix | retry",
 	"stall": "retry", "idle": "retry", "land-rate": "retry", "flap": "retry", "brief": "rework | drop",
 	"landed-sentinel": "retry", "policy": "retry", "engine": "retry", "roster": "retry",
 	"overlap": "retry", "no-model": "retry", "no-policy": "retry", "unacked": "retry", "undealt": "retry",
@@ -103,8 +104,8 @@ func (t *tick) jindex() judgedIndex {
 	return t.jidx
 }
 
-// riding is the writes of a judgement that rides in a group's op (a block's
-// blocked, a sentinel's landed-sentinel), taken out of the judgement op.
+// riding is the writes of a judgement that rides in a group's op (a hold's
+// held, a sentinel's landed-sentinel), taken out of the judgement op.
 func (t *tick) riding(kind, about, question string) []store.Write {
 	if t.isOpen(kind, about) || t.pending(kind, about) {
 		return nil
@@ -129,10 +130,10 @@ func (t *tick) put(j judgement) store.Write {
 	if j.kind == "roster" {
 		w.Group = RosterGroup(j.about)
 	}
-	// A blocked card, a land judgement and the no-policy gate sit until
+	// A held card, a land judgement and the no-policy gate sit until
 	// answered or cleared: a land judgement's producer stays merging with no
 	// request until the coordinator says land, fix or retry (intent rule 32).
-	if j.kind != "blocked" && j.kind != "land" && j.kind != "no-policy" {
+	if j.kind != "held" && j.kind != "land" && j.kind != "no-policy" {
 		w.Deadline = t.in.Now.Add(seconds(t.tmo.Judgement))
 	}
 	return w
@@ -182,9 +183,9 @@ func (t *tick) cleared(j store.Judgement) string {
 				return "row " + r + " may read " + j.About
 			}
 		}
-	case "blocked":
-		if c, ok := t.v.Cards[j.About]; !ok || c.State != "blocked" {
-			return j.About + " is no longer blocked"
+	case "held":
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != card.Waiting || !card.HeldReason(c.Reason) {
+			return j.About + " is no longer held"
 		}
 	case "unacked":
 		if c, ok := t.v.Cards[j.About]; !ok || c.State != "working" || t.v.Acked(j.About) {

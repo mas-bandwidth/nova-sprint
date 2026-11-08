@@ -440,17 +440,17 @@ func TestConformanceReleaseAndWithdraw(t *testing.T) {
 	w.is("p1", Fail)
 }
 
-func TestConformanceBlockAndPark(t *testing.T) {
+func TestConformanceHoldAndPark(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
-	w.move("p1", Block{Reason: "bounced too often"})
-	w.refused("p1", Resolve{}, "producer p1 is in blocked, Resolve needs waiting")
-	w.move("p1", Unblock{Reason: "brief rewritten"})
+	w.move("p1", HoldCard{Reason: "held: bounced too often"})
+	w.refused("p1", Resolve{}, "producer p1 is held (held: bounced too often); the deal never takes a held card: unhold it first")
+	w.move("p1", UnholdCard{Reason: "brief rewritten"})
 	w.is("p1", Waiting)
 	w.move("p1", Resolve{})
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
-	w.refused("p1", Block{}, "producer p1 has live consumer p1.w1 on row r1; withdraw it first")
+	w.refused("p1", HoldCard{Reason: "held: x"}, "producer p1 has live consumer p1.w1 on row r1; withdraw it first")
 	w.refused("p1", Edit{Prose: "x"}, "producer p1 is held by r1 in consumer p1.w1; message r1 instead")
 	w.consume("p1.w1", Withdraw{Reason: "x"})
 	w.move("p1", Edit{Prose: "do it smaller", Paths: []string{"card/"}, DoneWhen: []string{"tests pass"}})

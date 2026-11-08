@@ -42,7 +42,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   head the attempt continues from, empty on a first attempt; LESSONS 3.9),
   `head text`, `pr integer`, `result text`
   (`""`, `ok`, `fix`, `fail`, `fault`), `bounces integer` (on a producer:
-  the returns that count toward `blocked`; a `fault` never raises it;
+  the returns that count toward the bounce hold; a `fault` never raises it;
   LESSONS 2.24), `cost bigint` (on a consumer: what its run cost, in
   micro-dollars) and `priced boolean` (false when the run's route has no
   price, so an unpriced run is shown as unpriced, never as $0; LESSONS 1.17),
@@ -120,7 +120,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   version when it applied, so a decision can always be traced to the rules
   that made it (promise 6; PROMISE reviews 2026-11-06).
 - `sprint.judgements`: `id text`, `kind text` (a word for the dashboard:
-  `red`, `fix`, `stuck`, `blocked`, `flap`, `conflict`, `landed-sentinel`,
+  `red`, `fix`, `stuck`, `held`, `flap`, `conflict`, `landed-sentinel`,
   and the rest layer 3 names), `about text` (the card, stream or row it
   concerns), `question text`, `command text` (the exact verb that answers
   it), `group_key text` (judgements with one key are shown and pushed as
@@ -170,14 +170,14 @@ keeps the whole brief as given.
 ### Card states
 
 The closed set, locked by Glenn 2026-09-29 plus one exit and one consumer
-state: `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`, `blocked`,
+state: `waiting`, `ready`, `working`, `review`, `merging`, `landed`, `fail`,
 `done`. `landed` means the code is on the base branch and is final. `fail` is
 the record of a card that stopped any other way (cancelled, replaced, its need
 failed, or a consumer withdrawn) with the reason kept. `done` is a consumer
-that reported. `blocked` is a producer that bounced too many times (Glenn
-2026-11-05: "if a card flaps around more than n times, it goes into blocked
-primary card state. blocked -> waiting -> ready"; coloured black on the
-board); it is not final, and only the coordinator's unblock leaves it. Which
+that reported. A card with a problem has no state of its own (Glenn, 2026-11-07: "waiting is where stuff goes where it's having problems"); round 29 moved every
+card in the old problem state to `waiting`, its reason made a hold: a producer held after too many
+bounces, by the coordinator, or by a missing route waits with that reason
+and only the coordinator's unhold lifts it. Which
 transitions are legal, and which states each kind may use, is layer 2's;
 to this layer a state outside the set is `ErrInvalid`. A card is live when it is in
 `ready` or `working`; live is what layer 2's producer invariant counts (one

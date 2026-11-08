@@ -19,7 +19,7 @@ import (
 // composition" (third cold read rulings).
 //
 // Root cause in card/replay.go:95: compose mutates cur in-place via foldWrites
-// and stores the post-state in done.seen. When inner = Merge(unblock, hold) is
+// and stores the post-state in done.seen. When inner = Merge(unhold, hold) is
 // merged as the second argument of Merge(replace, inner), unionMissing copies
 // pReady from inner.seen where pReady.State is already Waiting (its post-state
 // from hold). When inner.again(cur) re-runs hold via readyOn(cur, "s1"), it
@@ -30,7 +30,7 @@ func TestBreakNestedMergeLeavesReadyProducerInHeldStream(t *testing.T) {
 	w := newWorld(t, producer("pReady"), producer("p1"), producer("p2"))
 	w.move("pReady", Resolve{})
 	w.move("p2", Resolve{})
-	w.move("p2", Block{Reason: "bounced"})
+	w.move("p2", HoldCard{Reason: "held: bounced"})
 
 	s1 := StreamFromStore(w.snap().Streams["s1"])
 	p1 := w.card("p1")
@@ -40,12 +40,12 @@ func TestBreakNestedMergeLeavesReadyProducerInHeldStream(t *testing.T) {
 	// planReplace only reads p1 and p2 (not pReady).
 	planReplace, r := Move(p1, nil, nil, s1, map[string]Card{"p2": p2}, Replace{By: "p2", Reason: "dup"})
 	require.Nil(t, r)
-	planUnblock, r := Move(p2, nil, nil, s1, nil, Unblock{Reason: "thaw"})
+	planUnhold, r := Move(p2, nil, nil, s1, nil, UnholdCard{Reason: "thaw"})
 	require.Nil(t, r)
 	planHold, r := MoveStream(s1, HoldStream{Seq: w.snap().Seq, Ready: []Card{pReady}, Reason: "freeze"})
 	require.Nil(t, r)
 
-	inner, r := Merge(planUnblock, planHold)
+	inner, r := Merge(planUnhold, planHold)
 	require.Nil(t, r)
 	merged, r := Merge(planReplace, inner)
 	if r != nil {

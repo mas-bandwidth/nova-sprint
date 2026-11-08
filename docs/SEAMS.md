@@ -185,8 +185,8 @@ prints the receipt, and a repeat prints the same. A card the row has not
 acknowledged is nudged (`NUDGE card=<id> ...`) each tick from ten seconds
 after the deal; the deal's push names the model the deal named
 (`model=`). A fault whose reason starts `missing-route: <route>` (the
-route's name as a brief declares it with `NEEDS-ROUTE:`) blocks the
-producer for the coordinator instead of dealing it again (defect 48).
+route's name as a brief declares it with `NEEDS-ROUTE:`) leaves the
+producer waiting, with that reason, for the coordinator instead of dealing it again (defect 48).
 
 ## 7. dash -> run
 

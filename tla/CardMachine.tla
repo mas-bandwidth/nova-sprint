@@ -77,9 +77,23 @@
 (* state only for a consumer dealt before this change, which the steps    *)
 (* withdraw. A work consumer's fault that names a missing route or device *)
 (* (the code's reason prefix "missing-route:", the model's result "route") *)
-(* blocks its producer on the first fault instead of a re-deal (defect    *)
-(* 48; RouteFaultBlocks). Block is also enabled from waiting, for the     *)
-(* coordinator's hold of one card (defect 47), and never on a sentinel.   *)
+(* leaves its producer waiting with why "route" on the first fault instead *)
+(* of a re-deal (defect 48; RouteFaultWaits).                              *)
+(*                                                                         *)
+(* A card with a problem has no state of its own (Glenn, 2026-11-07:       *)
+(* "waiting is where stuff goes where it's having problems"): it is        *)
+(* waiting, its reason saying why. A producer's why is NOT a card state    *)
+(* and the store has no such field: it is a projection of the producer's   *)
+(* reason text, the part of it a rule reads: "held" for a reason that      *)
+(* starts "held: " (the coordinator's hold of one card, HoldCard, defect   *)
+(* 47, or policy's at the bounce limit), "route" for one that starts       *)
+(* "missing-route:", "-" for any other (card.HeldReason; card.TraceWhy     *)
+(* derives it from the reason in every trace record, and the trace check   *)
+(* binds it to the code). A why other than "-" is only ever on a waiting   *)
+(* producer; Resolve and WaiveRed refuse it, so the deal never takes a     *)
+(* held card (HeldNeverDealt), and UnholdCard lifts it back to plain       *)
+(* waiting. A park into a held stream is the stream's hold (held), never a *)
+(* why, and HoldStream refuses a reason that would hold.                   *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets, Sequences, TLC
 
@@ -129,7 +143,8 @@ Tier     == [p \in P |-> "pro"]
 RowTiers == [r \in Rows |-> {"pro"}]
 Serves(r, p) == Tier[p] \in RowTiers[r]
 
-PStates == {"absent", "waiting", "ready", "working", "review", "merging", "landed", "fail", "blocked"}
+PStates == {"absent", "waiting", "ready", "working", "review", "merging", "landed", "fail"}
+Whys    == {"-", "held", "route"}   \* a projection of the reason text, never a state (card.HeldReason, card.TraceWhy)
 PFinal  == {"landed", "fail"}
 CStates == {"none", "ready", "working", "done", "fail"}
 CFinal  == {"done", "fail"}
@@ -152,10 +167,10 @@ Findings == {"-", "fix"}
 NewProd(p) == [st |-> IF p \in Added THEN "absent" ELSE "waiting", att |-> 0, head |-> 0,
                author |-> None, bounces |-> 0, score |-> 0, prio |-> "normal",
                needs |-> Needs0[p], after |-> After0[p], review |-> 0, ncut |-> 0,
-               finding |-> "-", red |-> FALSE]
+               finding |-> "-", red |-> FALSE, why |-> "-"]
 
 VARIABLES
-  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding, red]
+  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding, red, why]
   cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review, prior, finding]
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
@@ -280,9 +295,10 @@ StepRule(n, ev, p, c, r) ==
            => ps'[c[1]].st = Back
     [] n = "FaultSpendsNothing" ->
          ev = "Faulted" => (ps'[p].att = ps[p].att /\ ps'[p].bounces = ps[p].bounces)
-    [] n = "RouteFaultBlocks" ->
-         ev = "Faulted" => (ps'[p].st = "blocked" <=> cs[c].res = "route")
-    [] n = "BlockNoLive" -> ev = "Block" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
+    [] n = "RouteFaultWaits" ->
+         ev = "Faulted" => /\ (ps'[p].why = "route" <=> cs[c].res = "route")
+                           /\ (cs[c].res = "route" => ps'[p].st = "waiting")
+    [] n = "HoldNoLive" -> ev = "HoldCard" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
     [] n = "EditNoLive" -> ev = "Edit" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
     [] n = "SentinelLandsByReached" ->
          \A s \in Sentinels :
@@ -303,7 +319,7 @@ StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixK
               "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs",
               "ReadYesNeedsYes", "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
               "WaiveRedNeedsPriorRead", "FixCarriesFailure", "ReplaceByLive", "HeadNeverRepeats",
-              "FaultSpendsNothing", "RouteFaultBlocks", "BlockNoLive", "EditNoLive",
+              "FaultSpendsNothing", "RouteFaultWaits", "HoldNoLive", "EditNoLive",
               "SentinelLandsByReached", "WaiveRedNeedsRed",
               "ReviewOnEntry", "FixSaysWhat", "InThisOpOnFailedNeed",
               "FencesOnSnapshot"}
@@ -339,6 +355,7 @@ RStep(ev, r, rec) ==
 Resolve(p) ==
   /\ p \in Prods
   /\ ps[p].st = "waiting"
+  /\ ps[p].why = "-"   \* the code: "the deal never takes a held card"
   /\ NeedsLanded(p)
   /\ ~held
   /\ PStep("Resolve", p, NoC, [ps[p] EXCEPT !.st = "ready"])
@@ -403,14 +420,16 @@ Broken(p, c) ==
   /\ PStep("Broken", p, c, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
                                          !.head = KeptHead(p, c)])
 
-\* A fault naming a missing route blocks the producer (defect 48): the same
-\* kind of row would fault the same way, so it waits for the coordinator.
+\* A fault naming a missing route leaves the producer waiting with why
+\* "route" (defect 48): the same kind of row would fault the same way, so it
+\* waits for the coordinator's UnholdCard, never resolved by itself.
 Faulted(p, c) ==
   /\ ps[p].st = "working"
   /\ IsCur(p, c)
   /\ cs[c].st = "done"
   /\ cs[c].res \in {"fault", "route"}
-  /\ PStep("Faulted", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = "route" THEN "blocked" ELSE Back,
+  /\ PStep("Faulted", p, c, [ps[p] EXCEPT !.st = IF cs[c].res = "route" THEN "waiting" ELSE Back,
+                                          !.why = IF cs[c].res = "route" THEN "route" ELSE "-",
                                           !.head = KeptHead(p, c)])
 
 \* AskRead refuses a sentinel, the author, and a row that already holds a
@@ -512,6 +531,7 @@ PrevYes(p) ==
 
 WaiveRed(p) ==
   /\ ps[p].st \in {"ready", "waiting"}
+  /\ ps[p].why = "-"   \* the code: "unhold it before WaiveRed"
   /\ NoLive(p)
   /\ ps[p].red   \* the code: "no red on review N"
   /\ PrevYes(p)
@@ -543,7 +563,7 @@ Released(p, c) ==
 Cancel(p) ==
   /\ NonFinal(p)
   /\ NoLive(p)
-  /\ PStep("Cancel", p, NoC, [ps[p] EXCEPT !.st = "fail"])
+  /\ PStep("Cancel", p, NoC, [ps[p] EXCEPT !.st = "fail", !.why = "-"])
 
 \* Replace{by}: by is a producer or sentinel other than p, non-final (the
 \* second cold read).
@@ -552,7 +572,7 @@ Replace(p, by) ==
   /\ by \in P \ {p}
   /\ NonFinal(by)
   /\ NoLive(p)
-  /\ ps'   = [ps EXCEPT ![p].st = "fail"]
+  /\ ps'   = [ps EXCEPT ![p].st = "fail", ![p].why = "-"]
   /\ UNCHANGED <<cs, rs, held>>
   /\ last' = L("Replace", p, NoC, by)   \* by rides in the row slot, for ReplaceByLive
 
@@ -561,7 +581,7 @@ NeedFailed(p, n) ==
   /\ n \in ps[p].needs
   /\ ps[n].st = "fail"
   /\ NoLive(p)
-  /\ PStep("NeedFailed", p, NoC, [ps[p] EXCEPT !.st = "fail"])
+  /\ PStep("NeedFailed", p, NoC, [ps[p] EXCEPT !.st = "fail", !.why = "-"])
 
 Waive(p, n) ==
   /\ ps[p].st = "waiting"
@@ -596,14 +616,14 @@ InThisOpDeps(n, p, m, to) ==
                               /\ to \notin ps[p].needs
                               /\ Acyclic([OrderGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])
 InThisOpMove(p, n, m, to) ==
-  CASE m = "NeedFailed" -> [ps[p] EXCEPT !.st = "fail"]
+  CASE m = "NeedFailed" -> [ps[p] EXCEPT !.st = "fail", !.why = "-"]
     [] m = "Waive"      -> [ps[p] EXCEPT !.needs = @ \ {n}]
     [] OTHER            -> [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}]
 InThisOp(n, p, m, to) ==
   /\ MaxOp = 1
   /\ NonFinal(n) /\ NoLive(n)            \* Cancel(n)
   /\ InThisOpDeps(n, p, m, to)
-  /\ ps'   = [ps EXCEPT ![n].st = "fail", ![p] = InThisOpMove(p, n, m, to)]
+  /\ ps'   = [ps EXCEPT ![n].st = "fail", ![n].why = "-", ![p] = InThisOpMove(p, n, m, to)]
   /\ UNCHANGED <<cs, rs, held>>
   /\ last' = L("InThisOp", p, NoC, n)   \* n rides in the row slot
 \* The need is fail in the folded state and was not at the op's start: an
@@ -636,16 +656,23 @@ SetPriority(p, l) ==
   /\ l # ps[p].prio
   /\ PStep("SetPriority", p, NoC, [ps[p] EXCEPT !.prio = l])
 
-Block(p) ==
-  /\ p \in Prods   \* a sentinel is never dealt: nothing to block
+\* HoldCard: the coordinator's hold of one producer (defect 47), or
+\* policy's at the bounce limit: it waits with why "held" (a reason, not a
+\* state), from waiting too, so a card can be held before it is ready.
+\* UnholdCard lifts a hold or a missing-route fault's wait back to plain
+\* waiting.
+HoldCard(p) ==
+  /\ p \in Prods   \* a sentinel is never dealt: nothing to hold
   /\ \/ ps[p].st \in {"waiting", "ready", "review"}
      \/ ps[p].st = "working" /\ \E c \in ConsOf(p) : IsCur(p, c) /\ cs[c].st = "fail"
+  /\ ps[p].why = "-"   \* the code: "already held"
   /\ NoLive(p)
-  /\ PStep("Block", p, NoC, [ps[p] EXCEPT !.st = "blocked"])
+  /\ PStep("HoldCard", p, NoC, [ps[p] EXCEPT !.st = "waiting", !.why = "held"])
 
-Unblock(p) ==
-  /\ ps[p].st = "blocked"
-  /\ PStep("Unblock", p, NoC, [ps[p] EXCEPT !.st = "waiting"])
+UnholdCard(p) ==
+  /\ ps[p].st = "waiting"
+  /\ ps[p].why # "-"
+  /\ PStep("UnholdCard", p, NoC, [ps[p] EXCEPT !.why = "-"])
 
 \* Add puts a new card (here the sentinel a): its needs are existing
 \* producers or sentinels, its after the same, and a cycle
@@ -778,7 +805,7 @@ UnholdStream ==
 CardMove ==
   \/ \E p \in P :
        \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
-       \/ Cancel(p) \/ Block(p) \/ Unblock(p)
+       \/ Cancel(p) \/ HoldCard(p) \/ UnholdCard(p)
        \/ \E h \in Heads : Landed(p, h)
        \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
        \/ \E R \in SUBSET Rows : AskReads(p, R)
@@ -887,7 +914,7 @@ Spec == Init /\ [][Next]_vars
 ProdRec == [st : PStates, att : 0..MaxAttempt, head : 0..MaxHead, author : Rows \cup {None},
             bounces : 0..MaxBounce, score : 0..1, prio : Prios, needs : SUBSET P,
             after : SUBSET P, review : 0..(MaxAttempt + MaxEnv), ncut : 0..K, finding : Findings,
-            red : BOOLEAN]
+            red : BOOLEAN, why : Whys]
 ConsRec == [st : CStates, kind : {"-", "work", "read"}, row : Rows \cup {NoR},
             att : 0..MaxAttempt, head : 0..MaxHead, res : Results,
             author : Rows \cup {None}, review : 0..(MaxAttempt + MaxEnv), prior : 0..MaxHead,
@@ -925,13 +952,13 @@ WorkingOneWorkConsumer ==
 
 (* A producer in working with no live consumer (its consumer reported)   *)
 (* is one plan from leaving working: Finished, Broken, Faulted, Released  *)
-(* or Block is enabled.                                                   *)
+(* or HoldCard is enabled.                                                *)
 WorkingLeavesInOneStep ==
   \A p \in Prods :
     (ps[p].st = "working" /\ NoLive(p))
       => \/ ENABLED (\E c \in ConsOf(p) :
                        Finished(p, c) \/ Broken(p, c) \/ Faulted(p, c) \/ Released(p, c))
-         \/ ENABLED Block(p)
+         \/ ENABLED HoldCard(p)
 
 (* No producer is ready in a held stream after any step: every move that  *)
 (* returns one to ready writes it parked under a hold, and HoldStream     *)
@@ -940,7 +967,7 @@ ParkedUnderHold == held => \A p \in P : ps[p].st # "ready"
 
 (* No producer is ever stranded (the second cold read): every non-final   *)
 (* producer with no live consumer has a move of its own enabled, other    *)
-(* than the coordinator's Cancel, Replace, Block, Edit, Rescore and       *)
+(* than the coordinator's Cancel, Replace, HoldCard, Edit, Rescore and    *)
 (* SetPriority; or waits on a need that can still move, on an after-      *)
 (* target that is merging, or (for the moves rows and holds gate) on a    *)
 (* row coming back, a hold lifting or a full row's room (the deal is the  *)
@@ -950,7 +977,7 @@ ParkedUnderHold == held => \A p \in P : ps[p].st # "ready"
 (* the model's limit, not the design's.                                   *)
 OwnMove(p) ==
   \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
-  \/ Unblock(p)
+  \/ UnholdCard(p)
   \/ \E h \in Heads : Landed(p, h) \/ Red(p, h)
   \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
   \/ \E c \in CIds : Finished(p, c) \/ Broken(p, c) \/ Faulted(p, c) \/ Released(p, c)
@@ -970,6 +997,11 @@ NeverStranded ==
          \/ \E n \in ps[p].needs : NonFinal(n)
          \/ \E a \in ps[p].after : ps[a].st = "merging"
          \/ Gated(p)
+
+(* A held producer is never dealt (Glenn, 2026-11-07): a why other than   *)
+(* "-" (a hold, a missing route) is only ever on a waiting producer, so    *)
+(* neither the deal's Resolve nor a Start nor WaiveRed has taken it.       *)
+HeldNeverDealt == \A p \in P : ps[p].why # "-" => ps[p].st = "waiting"
 
 (* A live read consumer only in review, of the producer's current head    *)
 (* and review count.                                                      *)
@@ -1055,8 +1087,8 @@ FixCarriesFailure      == "FixCarriesFailure" \notin last.bad
 ReplaceByLive          == "ReplaceByLive" \notin last.bad
 HeadNeverRepeats       == "HeadNeverRepeats" \notin last.bad
 FaultSpendsNothing     == "FaultSpendsNothing" \notin last.bad
-RouteFaultBlocks       == "RouteFaultBlocks" \notin last.bad
-BlockNoLive            == "BlockNoLive" \notin last.bad
+RouteFaultWaits        == "RouteFaultWaits" \notin last.bad
+HoldNoLive             == "HoldNoLive" \notin last.bad
 EditNoLive             == "EditNoLive" \notin last.bad
 SentinelLandsByReached == "SentinelLandsByReached" \notin last.bad
 WaiveRedNeedsRed       == "WaiveRedNeedsRed" \notin last.bad
@@ -1077,14 +1109,14 @@ AfterRed(p) == \E k \in ConsOf(p) : OkRead(p, k) /\ cs[k].review < ps[p].review
 
 NeverLanded          == \A p \in Prods : ps[p].st # "landed"
 (* Ready, bounced, and the current work consumer done ok: ReadFix (the    *)
-(* trace is checked by hand, since Block, Unblock and Resolve after an    *)
+(* trace is checked by hand, since HoldCard, UnholdCard and Resolve after *)
 (* earlier bounce can also get there).                                    *)
 NeverFixed           ==
   ~\E p \in Prods : ps[p].st = "ready" /\ ps[p].bounces >= 1 /\ \E c \in ConsOf(p) :
      IsCur(p, c) /\ cs[c].st = "done" /\ cs[c].res = "ok"
 NeverRed             == ~\E p \in Prods : AfterRed(p)
 NeverNeedFailed      == last.ev # "NeedFailed"
-NeverBlocked         == \A p \in P : ps[p].st # "blocked"
+NeverHeld            == \A p \in P : ps[p].why # "held"
 NeverPreempted       == last.ev # "Preempt"
 (* Only Reached lands a sentinel (SentinelLandsByReached); this one lands *)
 (* with its original needs landed, not waived away.                       *)
@@ -1115,9 +1147,9 @@ NeverFaultRedealt ==
      /\ cs[<<p, i>>].kind = "work" /\ cs[<<p, i>>].res = "fault"
      /\ cs[<<p, j>>].kind = "work"
 (* A work consumer's fault named a missing route and its producer waits   *)
-(* blocked for the coordinator (defect 48).                               *)
-NeverRouteBlocked ==
-  ~\E p \in Prods : ps[p].st = "blocked" /\ \E c \in ConsOf(p) : IsCur(p, c) /\ cs[c].res = "route"
+(* with why "route" for the coordinator (defect 48).                      *)
+NeverRouteHeld ==
+  ~\E p \in Prods : ps[p].st = "waiting" /\ ps[p].why = "route" /\ \E c \in ConsOf(p) : IsCur(p, c) /\ cs[c].res = "route"
 (* A red goes to fix with the finding (intent rule 30): only Red sets red, *)
 (* and only Red and ReadFix write a finding.                              *)
 NeverRedToFix ==

@@ -35,14 +35,17 @@ import (
 //   - finding: text in the code, "-" or "fix" in the model (whether a read
 //     asked for a fix): any non-empty finding is "fix".
 //   - A fault whose reason names a missing route (RouteFault) is the
-//     model's result "route"; the reason is otherwise left out.
+//     model's result "route". A waiting producer's reason that holds it
+//     (HeldReason) is the model's why: "route" for a missing route, "held"
+//     for a hold, "-" for any other reason and in any other state; the
+//     reason is otherwise left out.
 //   - Score and priority are carried as they are (any number, any level);
 //     the model's bounds on them (0..1; normal or blocker) are on its
 //     environment's choices, not on its moves.
 //   - flaps: carried as the count; the model stops Gone at 1, a bound the
 //     trace module lifts (CardMachineTrace.tla, GoneAt).
 //   - Left out because no rule of the model reads them (as the model says):
-//     branch, base_sha, reason, brief, prose, paths, done_when, cost, priced,
+//     branch, base_sha, the reason's text, brief, prose, paths, done_when, cost, priced,
 //     pr, tier (every card and row of a walk is pro), gen, the row's tiers,
 //     kind, session and labels, the stream's name, repo and position.
 //   - Producers live in one stream (the walk's); TraceState projects that
@@ -65,6 +68,7 @@ type Slot struct {
 // ModelProd is CardMachine.tla's producer record (a sentinel's too).
 type ModelProd struct {
 	St, Author, Prio, Finding string
+	Why                       string // "-", "held" or "route": what holds a waiting producer (TraceWhy)
 	Att, Head, Bounces, Score int
 	Review, Ncut              int
 	Needs, After              []string
@@ -122,7 +126,20 @@ func traceProd(c store.Card, ncut int, head func(string) (int, error)) (ModelPro
 	h, err := head(c.Head)
 	return ModelProd{St: c.State, Att: c.Attempt, Head: h, Author: cmp.Or(c.Author, "none"), Bounces: c.Bounces, Score: c.Score,
 		Prio: c.Priority, Needs: slices.Clone(c.Needs), After: slices.Clone(c.After), Review: c.Review, Ncut: ncut,
-		Finding: fixOrNone(c.Finding), Red: c.Red}, err
+		Finding: fixOrNone(c.Finding), Red: c.Red, Why: TraceWhy(c.State, c.Reason)}, err
+}
+
+// TraceWhy is a producer's why as the model names it: "route" when it waits
+// on a missing-route fault, "held" when it waits on a hold, "-" otherwise
+// (any other reason, or any other state).
+func TraceWhy(state, reason string) string {
+	switch _, route := RouteFault(reason); {
+	case state != Waiting || !HeldReason(reason):
+		return "-"
+	case route:
+		return "route"
+	}
+	return "held"
 }
 
 // TraceResult is a consumer's result as the model names it: a work fault

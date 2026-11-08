@@ -16,7 +16,7 @@ import (
 // every card its plan writes plus the card it is about, with the gens it
 // read them at; a later step skips a claimed card until the next tick.
 type group struct {
-	kind    string // the step's name for it: pre, start, read, yes, fix, resolve, reached, drop, landed, red, park, withdraw, block, gone, report, take, none
+	kind    string // the step's name for it: pre, start, read, yes, fix, resolve, reached, drop, landed, red, park, withdraw, hold, gone, report, take, none
 	about   string // the card or row it is about
 	plan    card.Plan
 	key     GroupKey

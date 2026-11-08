@@ -31,8 +31,11 @@ package does with it.
   the same text, and `ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red`
   adds `red`, false on every card, with its CHECK), then the new hash is
   recorded; the events are untouched and a second Migrate is a no-op. The binary knows schema version 2: version 1 plus the two card kinds
-  (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
-  `done`), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
+  (`kind` with `sentinel`, `of`, `after`, `result`, the state `done`; round
+  29 dropped the old problem state, Migrate moving each such card to `waiting`,
+  its reason made a hold (`held: ` prefixed unless it already holds), and
+  reopening its open judgement as `held`, through one logged op, then
+  validating the CHECK), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
   lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose`, `review`, `finding` and `red`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
   version 1 is refused like any other version.
@@ -342,7 +345,7 @@ each name to its seq. Every event also records
 `Rebuild` ignores it.
 
 The card states are `waiting`, `ready`, `working`, `review`, `merging`,
-`landed`, `fail`, `blocked`, `done`. Width caps work in progress, not what is
+`landed`, `fail`, `done` (a held card is `waiting` with its reason). Width caps work in progress, not what is
 queued: a row's width counts only the cards it holds in `working`, so a held
 card that is ready, waiting, done or anything else takes no room. Which kind
 may use which state is layer 2's; to the store only a state outside the set

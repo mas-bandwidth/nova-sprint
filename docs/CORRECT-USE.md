@@ -129,7 +129,7 @@ run: nova-sprint judge <n> <choice> --reason "<why>"
 ```
 
 `judge` is the one verb that answers a judgement; its choices are what v1
-spread over `rework`, `accept`, `unblock` and `drop` (LAYER-6, 2026-11-06). The
+spread over `rework`, `accept`, `unhold` and `drop` (LAYER-6, 2026-11-06). The
 board does not show a "needs you" column (it stays an exact match of v1 until
 it is nativized); the coordinator's `next` prints the oldest open judgement,
 and the bus push carries the same line.
@@ -160,7 +160,7 @@ So:
 - Every change of state that needs someone to act is one bus message to that
   someone, sent by the run loop the moment the change lands: a deal to the
   row; a read owed to the reader; a judgement to the coordinator; a landing,
-  a red, a block. The message carries the one command that answers it.
+  a red, a hold. The message carries the one command that answers it.
 - Nobody polls. `next` is for a cold start or a lost session, never the
   mechanism; the mechanism is the hook waking the session.
 - nova-sprint sends by running `nova-bus send` and reads presence with

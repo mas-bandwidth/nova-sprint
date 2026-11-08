@@ -285,6 +285,22 @@ func TestRound27Hash(t *testing.T) {
 	assert.True(t, knownOlder(round27Hash))
 }
 
+// round28Hash is the hash of round 28's schema.sql, kept in testdata: its
+// cards admit the state blocked, which this build's schema drops (round 29;
+// Glenn, 2026-11-07: blocked is no state). Unit: reads a file in the
+// package, no store.
+func TestRound28Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round28.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round28Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round28Hash, schemaHash)
+	assert.Contains(t, string(old), "'fail', 'blocked', 'done'")
+	assert.NotContains(t, schemaSQL, "'blocked'")
+	assert.NotContains(t, CardStates, "blocked")
+	assert.True(t, knownOlder(round28Hash))
+}
+
 // round21Hash is the hash of round 17's schema.sql, which every round to 21
 // carried, kept in testdata: it has the five configuration columns of
 // sprint.rows that round 22 drops, and this build's schema has none of them.
