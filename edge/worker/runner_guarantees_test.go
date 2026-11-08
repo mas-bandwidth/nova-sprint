@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -152,6 +151,7 @@ func TestCardTestsRunInsideTheSandbox(t *testing.T) {
 	if len(ex.argvs) != 1 || !slices.Equal(ex.argvs[0], argv) {
 		t.Fatalf("the wall ran %q, reported %q", ex.argvs, argv)
 	}
+	argv = unniced(argv)
 	if argv[0] != "/fixture/nova-reserve" || !slices.Contains(argv, "/fixture/nova-sandbox") || !slices.Equal(argv[len(argv)-3:], []string{"--", "make", "test"}) {
 		t.Errorf("card test command ran as %q: want nova-reserve, then nova-sandbox, then make test", argv)
 	}
@@ -170,7 +170,7 @@ func TestDefaultWallRunsHarnessUnderReserveAndSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv := res.Argv
+	argv := unniced(res.Argv)
 	sandbox := slices.IndexFunc(argv, func(a string) bool { return filepath.Base(a) == "nova-sandbox" })
 	if filepath.Base(argv[0]) != "nova-reserve" || sandbox < 0 || !slices.Equal(argv[len(argv)-3:], []string{"--", "harness", "run"}) {
 		t.Errorf("the wall nova-worker ships ran the harness as %q: want nova-reserve, then nova-sandbox, then the harness", argv)
@@ -218,20 +218,13 @@ func TestColdreadDefectPidNotRecordedWhileHarnessRuns(t *testing.T) {
 // main's Run returns exec's error for any non-zero exit (cmd/nova-worker/main.go:74-80)
 // and CLISprintClient treats err != nil as the store down (verbs.go:441), so a
 // refusal (exit 1) is retried forever instead of ending the retry.
-func TestFunctionalColdreadDefectCLIRefusalReadAsStoreDown(t *testing.T) {
+func TestColdreadDefectCLIRefusalReadAsStoreDown(t *testing.T) {
 	t.Parallel()
-	bin := filepath.Join(t.TempDir(), "nova-sprint")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'SPRINT REFUSED report: consumer p1.w1 is held by amd-2.ds'\nexit 1\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cli := &CLISprintClient{SprintBin: bin, Run: func(ctx context.Context, argv []string) ([]byte, int, error) {
-		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-		out, err := cmd.CombinedOutput()
-		code := 0
-		if cmd.ProcessState != nil {
-			code = cmd.ProcessState.ExitCode()
-		}
-		return out, code, err
+	// Run answers as the real nova-sprint does for a refusal: the line on
+	// stdout, exit 1, and exec's error for the non-zero exit. No process runs:
+	// a script written and exec'd here raced parallel forks (ETXTBSY) in CI.
+	cli := &CLISprintClient{SprintBin: "nova-sprint", Run: func(ctx context.Context, argv []string) ([]byte, int, error) {
+		return []byte("SPRINT REFUSED report: consumer p1.w1 is held by amd-2.ds\n"), 1, errors.New("exit status 1")
 	}}
 	_, err := cli.Report(context.Background(), ReportRequest{Row: "vision.ds", Consumer: "p1.w1", Gen: 3, ResultID: "res-p1.w1-g3", Result: "ok"})
 	if errors.Is(err, ErrStoreDown) {
@@ -314,4 +307,13 @@ func TestColdreadCheckConcurrentStepRowAndQueryEdge(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// unniced drops the "nice -n N" prefix the wall puts in front of card work
+// (BuildWallArgv), so the guarantees below read the wall itself.
+func unniced(argv []string) []string {
+	if len(argv) >= 3 && argv[0] == "nice" && argv[1] == "-n" {
+		return argv[3:]
+	}
+	return argv
 }
