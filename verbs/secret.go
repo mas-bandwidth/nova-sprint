@@ -185,6 +185,17 @@ func ttyMode(tty *os.File, mode string) error {
 // NovaSecrets uses the configured local secret store and passes values only on stdin.
 type NovaSecrets struct{ Store, KeyFile, Pins, Seat string }
 
+// ExecReady refuses before a `nova-secrets exec` argv is built when the
+// store, key or seat it needs is empty, naming the variable to set.
+func (n NovaSecrets) ExecReady() error {
+	for _, v := range []struct{ name, value string }{{"NOVA_SECRETS_STORE", n.Store}, {"NOVA_SECRETS_KEY", n.KeyFile}, {"NOVA_SECRETS_SEAT", n.Seat}} {
+		if v.value == "" {
+			return &OperationError{Problem: "control-seat secrets configuration is incomplete (" + v.name + " is not set)", Fix: "set NOVA_SECRETS_STORE, NOVA_SECRETS_KEY, NOVA_SECRETS_PINS and NOVA_SECRETS_SEAT; run nova-secrets -h", Exit: 1}
+		}
+	}
+	return nil
+}
+
 func (n NovaSecrets) Has(ctx context.Context, name string) (bool, error) {
 	args := []string{"names", "--store", n.Store}
 	if n.Seat != "" {

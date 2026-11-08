@@ -73,6 +73,9 @@ func setupBusKeyPresent(out []byte) (bool, error) {
 
 func setupBusAuthenticated(ctx context.Context, cfg productionSetupConfig, run func(context.Context, bool, string, ...string) ([]byte, error)) ([]byte, error) {
 	s := cfg.Secrets
+	if err := s.ExecReady(); err != nil {
+		return nil, err
+	}
 	args := []string{"exec", "--only", "NOVA_BUS_PASSWORD", "--store", s.Store, "--key", s.KeyFile, "--as", s.Seat, "--", "env", "NOVA_BUS_REDIS=" + cfg.BusRedis, "NOVA_BUS_USER=" + cfg.BusUser, "nova-bus", "who"}
 	return run(ctx, true, "nova-secrets", args...)
 }

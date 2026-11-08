@@ -548,6 +548,27 @@ func TestFleetCommandsUseIsolatedConfigCredential(t *testing.T) {
 	}
 }
 
+func TestFleetCommandRefusesIncompleteSecretsBeforeRunning(t *testing.T) {
+	t.Parallel()
+	for missing, clear := range map[string]func(*verbs.NovaSecrets){
+		"NOVA_SECRETS_STORE": func(s *verbs.NovaSecrets) { s.Store = "" },
+		"NOVA_SECRETS_KEY":   func(s *verbs.NovaSecrets) { s.KeyFile = "" },
+		"NOVA_SECRETS_SEAT":  func(s *verbs.NovaSecrets) { s.Seat = "" },
+	} {
+		cfg := configForSetup()
+		clear(&cfg.Secrets)
+		command := productionFleetCommandWith(cfg, func(context.Context, bool, string, ...string) ([]byte, error) {
+			t.Fatal("nova-secrets ran with", missing, "empty")
+			return nil, nil
+		})
+		_, err := command(context.Background(), "nova-config", "machine", "list", "--json")
+		var op *verbs.OperationError
+		if !errors.As(err, &op) || !strings.Contains(op.Problem, "control-seat secrets configuration is incomplete") || !strings.Contains(op.Problem, missing) || !strings.Contains(op.Fix, "run nova-secrets -h") {
+			t.Fatal(missing, err)
+		}
+	}
+}
+
 func TestUnwrappedToolsReceiveOnlyTheirOwnInputs(t *testing.T) {
 	t.Parallel()
 	env := []string{"PATH=/bin", "NOVA_PG_ADMIN_PASSWORD=admin", "NOVA_SPRINT_PG_PASSWORD=sprint", "NOVA_PG_PASSWORD=config", "NOVA_BUS_REDIS=127.0.0.1:6379", "NOVA_BUS_USER=bus", "NOVA_BUS_PASSWORD=bus-secret", "NOVA_SECRETS_STORE=/store", "CODEX_THREAD_ID=fixture"}
