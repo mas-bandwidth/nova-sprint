@@ -2,13 +2,20 @@ package run
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/edge/forge"
 	"github.com/mas-bandwidth/nova-sprint/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/steps"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -118,5 +125,73 @@ func TestHeadsSharedBaseReadOnceAndKept(t *testing.T) {
 	e.readHeads(context.Background(), streams)
 	if len(e.Heads()) != 0 || len(said) != 6 || !strings.Contains(said[5], "is not on origin") {
 		t.Fatalf("pass 5: heads %v, said %q", e.Heads(), said)
+	}
+}
+
+// lockGit is a clone whose ls-remote runs onLsRemote once (where another
+// process, check, takes the clone's lock), counting clones and fetches; a
+// land never goes past the fetch.
+type lockGit struct {
+	git.Git
+	onLsRemote      func()
+	cloned, fetched int
+}
+
+func (g *lockGit) Clone(context.Context, string, string) error { g.cloned++; return nil }
+func (g *lockGit) Fetch(context.Context, string, ...string) error {
+	g.fetched++
+	return nil
+}
+func (g *lockGit) IsAncestor(context.Context, string, string, string) (bool, error) {
+	return false, errors.New("lockGit: past the fetch")
+}
+func (g *lockGit) LsRemote(context.Context, string, string) (string, bool, error) {
+	if f := g.onLsRemote; f != nil {
+		g.onLsRemote = nil
+		f()
+	}
+	return strings.Repeat("a", 40), true, nil
+}
+
+// landForge is a forge LandPass never reaches here.
+type landForge struct{ forge.Forge }
+
+// TestCloneAndFetchTakeTheClonesLock: run's clone and LandPass's fetch hold
+// the clone's lock (<clone>.lock beside it, the lock nova-sprint check takes
+// in the same repos dir), so they never run git fetch in one repository at
+// once with another process ("cannot lock ref"). With the lock held
+// elsewhere, a land whose ctx ends does not fetch and faults, and a heads
+// read does not clone. git is a fake (no process); the lock file is in a
+// temp dir.
+func TestCloneAndFetchTakeTheClonesLock(t *testing.T) {
+	t.Parallel()
+	const url = "https://example.invalid/r.git"
+	dir := t.TempDir()
+	sum := sha256.Sum256([]byte(url))
+	f, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("%x.lock", sum[:8])), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	g := &lockGit{onLsRemote: func() {
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+			t.Error(err)
+		}
+		cancel()
+	}}
+	e := &Edges{Git: g, Forge: landForge{}, ReposDir: dir}
+	s := store.Stream{Name: "s1", Repo: url, Base: "main", Forge: "github"}
+	e.land(ctx, steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{strings.Repeat("b", 40)}, Branches: []string{"card/x"}}, s)
+	res := e.Results()
+	if g.fetched != 0 || len(res) != 1 || res[0].Outcome != "fault" || !strings.Contains(res[0].Reason, context.Canceled.Error()) {
+		t.Fatalf("a land fetched %d times with the clone locked elsewhere: %+v", g.fetched, res)
+	}
+	if h := e.readHead(ctx, s); !errors.Is(h.err, context.Canceled) || g.cloned != 1 {
+		t.Fatalf("a heads read with the clone locked elsewhere: %v, %d clones", h.err, g.cloned)
 	}
 }

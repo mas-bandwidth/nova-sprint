@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -136,7 +137,7 @@ func (e *Edges) land(ctx context.Context, r steps.EdgeRequest, s store.Stream) {
 	}
 	absent := time.Duration(0)
 	for {
-		res, err := git.LandPass(ctx, e.Git, e.Forge, req)
+		res, err := git.LandPass(ctx, lockedFetch{e.Git}, e.Forge, req)
 		if again, waited := askAgain_internal(res, err, absent, wait); again {
 			absent = waited
 			if e.Pause(ctx, LandPoll) != nil {
@@ -276,7 +277,24 @@ func (e *Edges) clone(ctx context.Context, s store.Stream) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(url))
 	dir := filepath.Join(e.ReposDir, fmt.Sprintf("%x", sum[:8]))
-	return dir, e.Git.Clone(ctx, url, dir)
+	lock, err := git.LockClone(ctx, dir)
+	if err != nil {
+		return "", err
+	}
+	return dir, errors.Join(e.Git.Clone(ctx, url, dir), lock.Close())
+}
+
+// lockedFetch is LandPass's Git with each fetch under the clone's lock
+// (git.LockClone, the lock nova-sprint check takes in the same repos dir);
+// its other steps, and its waits for CI, hold nothing.
+type lockedFetch struct{ git.Git }
+
+func (g lockedFetch) Fetch(ctx context.Context, dir string, refs ...string) error {
+	lock, err := git.LockClone(ctx, dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(g.Git.Fetch(ctx, dir, refs...), lock.Close())
 }
 
 // Stale asks the heads loop to read again now.
