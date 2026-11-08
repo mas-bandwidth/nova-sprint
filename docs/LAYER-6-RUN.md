@@ -484,9 +484,8 @@ excluded): verbs, their prerequisite tables and help 2,000 (the report verbs app
 plans); `next` 250; the tick, lock, put-back, budget and log 600; the pusher and judgements
 500; `up` with adoption 900; serving and `--pull` 300; backup and restore 250; `check` with
 the pin and `--integrity` 350; glue 850. An estimate from the verb count, not a measurement.
-With layers 1 and 2 at about 5.7k today, v2 stays under the 20k cap only if layers 3 to 5
-come to about 7k together; if it lands at the cap, v2.0.0 ships at the cap and the point
-releases bring it down (LESSONS "How we work" 4).
+The bar is the minimal code for what the tool does, no bloat; the point releases delete what
+is not essential (LESSONS "How we work" 4).
 
 ## 12. Lessons placed
 
@@ -768,7 +767,7 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   sets the row's 1-minute load average (hundredths), cores and nova-reserve slots in use and in
   all (layer 1, `SetRowLoad`). A beat that repeats the row's last values succeeds and writes
   nothing. It is the one push the load cell needs (INTENT 7); nova-worker sends it every
-  30 s (a guess) and at start. The board's side is `modules/dash/README.md`, Built.
+  30 s (a guess) and at start. Built.
 - `TestServeTicksPushesAndLogs` failed about one run in three: the deal waits for the head
   watch's first read of the stream's base tip, which ran in its own goroutine while the test
   drove only the tick beat. The test's clock now says when that read has finished (the watch asks
