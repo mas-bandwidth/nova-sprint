@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/edge/forge"
@@ -19,13 +21,14 @@ type lander struct {
 	forge  forge.Forge
 }
 
-// fetched is the stream's clone with refs fetched from origin.
-func (l *lander) fetched(ctx context.Context, s store.Stream, refs ...string) (string, error) {
+// locked is the stream's clone under its lock with refs fetched
+// (origin.locked); the caller closes the lock after its last write.
+func (l *lander) locked(ctx context.Context, s store.Stream, refs ...string) (string, *os.File, error) {
 	url, err := git.CloneURL(s.Repo, s.Forge)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return l.clones.fetched(ctx, url, refs...)
+	return l.clones.locked(ctx, url, refs...)
 }
 
 // Heads is every branch at the stream's origin.
@@ -40,22 +43,29 @@ func (l *lander) Heads(ctx context.Context, s store.Stream) (map[string]string, 
 // CreateGroup pushes sha to the stream's group branch, leased on its
 // absence: a branch made meanwhile is not overwritten.
 func (l *lander) CreateGroup(ctx context.Context, s store.Stream, sha string) error {
-	dir, err := l.fetched(ctx, s, "refs/heads/"+s.Base)
+	dir, lock, err := l.locked(ctx, s, "refs/heads/"+s.Base)
 	if err != nil {
 		return err
 	}
-	return l.clones.push(ctx, dir, sha, git.GroupRef(s.Name), "")
+	return errors.Join(l.clones.git.Push(ctx, dir, sha, git.GroupRef(s.Name), ""), lock.Close())
 }
 
 // Land merges head (the tip of branch) into the stream's base: base's tip
 // when head is on it already; else the PR branch -> base merged by the
 // repository's allowed method (opened when there is none), or, with no
 // forge, head merged onto base's tip and pushed fast-forward.
+// One lock on the clone is held from the fetch through the push (a merge
+// with no forge checks out and merges in the clone's work tree).
 func (l *lander) Land(ctx context.Context, s store.Stream, branch, head string) (string, error) {
-	dir, err := l.fetched(ctx, s, "refs/heads/"+s.Base, "refs/heads/"+branch)
+	dir, lock, err := l.locked(ctx, s, "refs/heads/"+s.Base, "refs/heads/"+branch)
 	if err != nil {
 		return "", err
 	}
+	sha, err := l.land_internal(ctx, dir, s, branch, head)
+	return sha, errors.Join(err, lock.Close())
+}
+
+func (l *lander) land_internal(ctx context.Context, dir string, s store.Stream, branch, head string) (string, error) {
 	g := l.clones.git
 	tip, ok, err := g.LsRemote(ctx, dir, "refs/heads/"+s.Base)
 	if err == nil && !ok {
@@ -99,7 +109,7 @@ func (l *lander) pushBase_internal(ctx context.Context, dir string, s store.Stre
 	if merged.Kind != git.MergeOK {
 		return "", &verbs.OperationError{Problem: fmt.Sprintf("head %s does not merge onto %s at %s: %s %s", head, s.Base, tip, merged.Reason, strings.Join(merged.Conflicts, ", ")), Fix: "merge it into " + s.Base + " yourself and push, then land it again (a head on base records at once)", Exit: 1}
 	}
-	if err := l.clones.push(ctx, dir, merged.SHA, "refs/heads/"+s.Base, tip); err != nil {
+	if err := g.Push(ctx, dir, merged.SHA, "refs/heads/"+s.Base, tip); err != nil {
 		return "", err
 	}
 	return merged.SHA, nil

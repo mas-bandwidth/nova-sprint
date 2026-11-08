@@ -231,6 +231,23 @@ func (pendingForge) PR(context.Context, string, string, string) (forge.PRInfo, b
 	return forge.PRInfo{Number: 1, HeadSHA: strings.Repeat("d", 40)}, true, nil
 }
 
+// cloneFree takes <dir>.lock with a blocking flock and lets it go, so it is
+// true once nobody holds the lock. A child process forked meanwhile holds
+// the fd only until its exec, and this waits that out (a non-blocking probe
+// flaked beside the functional tests); a lock held across the call blocks
+// it until the test binary's -timeout, which fails the test.
+func cloneFree(t *testing.T, dir string) bool {
+	f, err := os.OpenFile(dir+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+	if cerr := f.Close(); cerr != nil {
+		t.Error(cerr)
+	}
+	return err == nil
+}
+
 // TestLandPassHoldsTheClonesLock is defect 4: streams on one repository
 // share one clone, and one land goroutine runs per stream, so a pass's
 // build (fetch, MergeGroup's checkout and merge in the work tree, push)
@@ -240,18 +257,18 @@ func (pendingForge) PR(context.Context, string, string, string) (forge.PRInfo, b
 func TestLandPassHoldsTheClonesLock(t *testing.T) {
 	t.Parallel()
 	g := &passGit{t: t, head: strings.Repeat("b", 40)}
-	var paused []bool
+	var freeAtPause []bool
 	dir := t.TempDir()
 	s := store.Stream{Name: "s1", Repo: "https://example.invalid/r.git", Base: "main", Forge: "github"}
 	sum := sha256.Sum256([]byte(s.Repo))
 	clone := filepath.Join(dir, fmt.Sprintf("%x", sum[:8]))
 	e := &Edges{Git: g, Forge: pendingForge{}, ReposDir: dir, Pause: func(context.Context, time.Duration) error {
-		paused = append(paused, cloneLocked(t, clone))
+		freeAtPause = append(freeAtPause, cloneFree(t, clone))
 		return context.Canceled
 	}}
 	e.land(context.Background(), steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{g.head}, Branches: []string{"card/x"}}, s)
-	if !slices.Equal(g.merged, []bool{true}) || !slices.Equal(g.pushed, []bool{true}) || !slices.Equal(paused, []bool{false}) {
-		t.Fatalf("locked at merge %v, push %v, pause %v; want [true] [true] [false]", g.merged, g.pushed, paused)
+	if !slices.Equal(g.merged, []bool{true}) || !slices.Equal(g.pushed, []bool{true}) || !slices.Equal(freeAtPause, []bool{true}) {
+		t.Fatalf("locked at merge %v, push %v; free at pause %v; want [true] [true] [true]", g.merged, g.pushed, freeAtPause)
 	}
 }
 
@@ -284,5 +301,40 @@ func TestHeadsReadSkipsTheLockOnAClone(t *testing.T) {
 	e := &Edges{Git: &cloneGit{}, ReposDir: dir}
 	if h := e.readHead(ctx, store.Stream{Name: "s1", Repo: url, Base: "main", Forge: "github"}); h.err != nil || h.sha != strings.Repeat("a", 40) {
 		t.Fatalf("a heads read of a clone that is there, locked elsewhere: %q, %v", h.sha, h.err)
+	}
+}
+
+// TestLandPassWaitsForTheClonesLock: a pass on a clone that is there, with
+// the clone's lock held elsewhere (nova-sprint check fetching), waits for
+// it; a ctx that ends while it waits faults the landing without a fetch.
+func TestLandPassWaitsForTheClonesLock(t *testing.T) {
+	t.Parallel()
+	const url = "https://example.invalid/r.git"
+	dir := t.TempDir()
+	sum := sha256.Sum256([]byte(url))
+	clone := filepath.Join(dir, fmt.Sprintf("%x", sum[:8]))
+	if err := os.MkdirAll(filepath.Join(clone, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(clone+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	g := &lockGit{}
+	e := &Edges{Git: g, Forge: landForge{}, ReposDir: dir}
+	e.land(ctx, steps.EdgeRequest{ID: "land.s1.x", Kind: "land", Stream: "s1", Heads: []string{strings.Repeat("b", 40)}, Branches: []string{"card/x"}}, store.Stream{Name: "s1", Repo: url, Base: "main", Forge: "github"})
+	res := e.Results()
+	if g.fetched != 0 || len(res) != 1 || res[0].Outcome != "fault" || !strings.Contains(res[0].Reason, context.Canceled.Error()) {
+		t.Fatalf("a pass with the clone locked elsewhere: %d fetches, %+v", g.fetched, res)
 	}
 }

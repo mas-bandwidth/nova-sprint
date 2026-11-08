@@ -176,3 +176,40 @@ func TestLanderPushTakesTheClonesLock(t *testing.T) {
 		t.Fatalf("pushes with the lock held: %v, want [true]", pushLocked)
 	}
 }
+
+// TestLanderLandHoldsTheClonesLock: a hand landing with no forge merges in
+// the clone's work tree (MergeGroup's checkout and merge) and pushes, so one
+// lock is held from the fetch through the push. git is a fake (no process):
+// the checkout records whether the lock is held, then fails the merge.
+func TestLanderLandHoldsTheClonesLock(t *testing.T) {
+	t.Parallel()
+	tip, head := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	var checkoutLocked []bool
+	l := &lander{clones: &origin{dir: t.TempDir(), git: git.New(git.Config{Exec: git.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
+		switch {
+		case slices.Contains(cmd.Argv, "ls-remote"):
+			return edge.Result{Stdout: tip + "\trefs/heads/main\n"}, nil
+		case slices.Contains(cmd.Argv, "merge-base"):
+			return edge.Result{ExitCode: 1}, nil
+		case slices.Contains(cmd.Argv, "checkout"):
+			f, err := os.OpenFile(cmd.Dir+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+			if err != nil {
+				return edge.Result{}, err
+			}
+			checkoutLocked = append(checkoutLocked, syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil)
+			if err := f.Close(); err != nil {
+				return edge.Result{}, err
+			}
+			return edge.Result{ExitCode: 1, Stderr: "stop here"}, nil
+		}
+		return edge.Result{}, nil
+	})})}}
+	ctx := git.WithIdentity(context.Background(), "Test", "test@example.invalid")
+	s := store.Stream{Name: "s1", Repo: "https://example.invalid/r.git", Base: "main"}
+	if _, err := l.Land(ctx, s, "card/x", head); err == nil || !strings.Contains(err.Error(), "stop here") {
+		t.Fatalf("land: %v", err)
+	}
+	if len(checkoutLocked) != 1 || !checkoutLocked[0] {
+		t.Fatalf("checkouts with the lock held: %v, want [true]", checkoutLocked)
+	}
+}
