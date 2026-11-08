@@ -1,6 +1,7 @@
 package steps
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/modules/card"
@@ -36,11 +37,31 @@ func (t *tick) fix() {
 	for _, p := range fixes { // every yes before every fix, as the model orders them
 		c := t.v.Cards[p]
 		finding := joinFindings(t.settled(c))
-		if finding == c.Finding {
-			t.judge("brief", p, "the read of "+p+" found the same thing twice: "+finding+"; the brief is wrong, not the worker. rework closes this and nothing more: the fix is dealt on the brief as it is; to change the brief, nova-sprint replace "+p+" --by <card>; drop cancels it")
+		if n := t.sameFinding(c, finding); n >= t.lim.SameFinding {
+			t.judge("brief", p, fmt.Sprintf("the reads of %s found the same thing %d reviews running: ", p, n)+finding+"; the brief is wrong, not the worker. rework closes this and nothing more: the fix is dealt on the brief as it is; to change the brief, nova-sprint replace "+p+" --by <card>; drop cancels it")
 		}
 		t.group("fix", p, t.producerMove(p, card.ReadFix{Finding: finding}))
 	}
+}
+
+// sameFinding is how many of c's reviews running, ending at the current
+// one, found finding: the current, then each earlier review whose done
+// reads joined to the same text (policy's same_finding, LESSONS 5.9).
+func (t *tick) sameFinding(c store.Card, finding string) int {
+	n := 1
+	for r := c.Review - 1; r >= 1; r-- {
+		var reads []ReadFacts
+		for _, x := range t.v.Consumers(c.ID) {
+			if x.Kind == "read" && x.Review == r && x.State == "done" {
+				reads = append(reads, ReadFacts{Row: x.Holder, Result: x.Result, Finding: x.Reason})
+			}
+		}
+		if len(reads) == 0 || joinFindings(reads) != finding {
+			return n
+		}
+		n++
+	}
+	return n
 }
 
 // settled is the done reads of c's current review and head when every read

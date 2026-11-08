@@ -196,7 +196,7 @@ func (t *tick) cleared(j store.Judgement) string {
 			return "working at or above three quarters of the open width"
 		}
 	case "land-rate":
-		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= Engine.LandTarget {
+		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= t.lim.LandTarget {
 			return "land rate back at target"
 		}
 	case "engine":
@@ -259,13 +259,13 @@ func (t *tick) alarms() {
 				t.judge("stall", s, fmt.Sprintf("stream %s: nothing landed since %s while %d review and %d merging wait", s, since.UTC().Format("15:04:05"), f.Review, f.Merging))
 			}
 		}
-		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < Engine.LandTarget {
-			t.judge("land-rate", s, fmt.Sprintf("stream %s lands first time at %.0f%% over %d; the target is %.0f%%", s, rate*100, n, Engine.LandTarget*100))
+		if rate, n := t.landRate(s); n >= Engine.LandSample && rate < t.lim.LandTarget {
+			t.judge("land-rate", s, fmt.Sprintf("stream %s lands first time at %.0f%% over %d; the target is %.0f%%", s, rate*100, n, t.lim.LandTarget*100))
 		}
 	}
 	open, working := t.load()
 	waiting := len(t.v.byState["ready"]) + len(t.v.byState["waiting"])
-	if open > 0 && waiting > 0 && float64(working) < Engine.IdleFloor*float64(open) {
+	if open > 0 && waiting > 0 && float64(working) < t.lim.IdleFloor*float64(open) {
 		t.judge("idle", "fleet", fmt.Sprintf("working %d of %d open width while %d ready and %d waiting: %s", working, open, len(t.v.byState["ready"]), len(t.v.byState["waiting"]), t.idleCauses()))
 	}
 }

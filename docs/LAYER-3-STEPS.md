@@ -477,18 +477,20 @@ tests take as that verb would (`roomToTake`); one line for rowan.
 `pack` are layer 3's keys in `limits`. Absent, failed (`Failed[q]`, or `*`
 for the budget spent), out-of-domain or not-offered answers are the default
 for the subject with one `policy` judgement per question and version; no
-policy (version 0) is every default and no judgement. The engine's own
-numbers (`Engine`): `escalate_after` 2 and `frontier_after` 4 (guesses),
-`flap_limit` 3 (unmeasured), `idle_floor` 0.5 and closing at 0.75,
-`land_target` 0.9 over 20, and layer 5's defaults for `limits` (bounces 6,
+policy (version 0) is every default and no judgement. Every limit layer 5
+validates is read from policy's `limits` answer, the steering numbers
+(`escalate_after`, `frontier_after`, `flap_limit`, `idle_floor`,
+`land_target`) included; `Engine.Limits` is the built-in default for a
+failed or absent answer: `escalate_after` 2 and `frontier_after` 4
+(guesses), `flap_limit` 3 (unmeasured), `idle_floor` 0.5 (idle closes at
+the engine's 0.75), `land_target` 0.9 (over the engine's sample of 20),
+and layer 5's defaults for the rest of `limits` (bounces 6,
 not the 3 this text guessed: layer 5 is the later word), `timeouts`,
 `landing` (backed up at 4, flowing at 1) and `width` (ahead = width, where
 the model's instance uses 2 x width; the trace walk's asker answers the
 model's). `victim` is not a question: the youngest working consumer on the
 row is the engine's fixed rule (LAYER-5's boundary, LESSONS 5.12); the model
-lost its `victim` oracle to match. `escalate_after` is the engine's, not
-policy's, since layer 5's set has no such question (its `rows` default
-carries it). The tick budget (cards touched) is 250 and `pack` 50, both
+lost its `victim` oracle to match. The tick budget (cards touched) is 250 and `pack` 50, both
 measured below.
 
 **The steps.** Planned in this order, each skipping claimed cards: reports
@@ -594,10 +596,12 @@ the trace mapping were not in the first estimate's 3,000.
 **Not built as written.** The ledger test (`tests/enforced`) indexes the
 steps; its remaining failures after the merge are policy's rows (tests the
 ledger does not index while policy does not build on the integration
-branch). `same_finding` is not a count: the `brief`
-judgement opens when a fix read's finding is byte-equal to the producer's
-(LESSONS 5.9 in part). The route rest is per row, from the faults the fold
-saw. `land-rate` is per stream, not per route. `base_regate`'s timing is the
+branch). `same_finding` counts reviews running: the `brief` judgement
+opens when that many reviews in a row, ending at the current one, joined
+their fix reads to the same finding (LESSONS 5.9 in part). The route rest
+is per row: `route_rest_after` faults among the row's last
+`route_rest_window` finishes the fold saw. `reports_per_tick` caps the
+inbox reports planned per tick; the rest carry in order. `land-rate` is per stream, not per route. `base_regate`'s timing is the
 edge's. `stitch` and `prices` are not consumed here. Reports arriving
 through the inbox are not in the model (LAYER-6's path is).
 

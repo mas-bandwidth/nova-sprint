@@ -255,7 +255,7 @@ func TestTickUnholdFreshBudget(t *testing.T) {
 func TestTickBudgetAndCarry(t *testing.T) {
 	t.Parallel()
 	s := newSim(t)
-	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 1, Pack: 1}}}
+	s.ask = scripted{Answers{Version: 1, Models: benchModels(), Limits: &Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 1, Pack: 1}}}
 	s.row("r1", 4, "pro")
 	s.row("r2", 4, "pro", "heavy")
 	for i := 1; i <= 3; i++ {
@@ -460,4 +460,88 @@ func TestTickRefusedAloneClearsWhenItsCardChanges(t *testing.T) {
 	s.tick()
 	assert.Empty(t, s.openJudgements("engine"), "its cause cleared")
 	s.requireState("p1", "ready")
+}
+
+// policyLimits is a policy version answering limits l and nothing else of
+// note: the steps must read each validated limit from it, not the engine's.
+func policyLimits(l Limits) scripted {
+	return scripted{Answers{Version: 1, Models: benchModels(), Limits: &l}}
+}
+
+// TestTickLimitsAreReadFromPolicy: every validated limit a step uses is
+// policy's answer (flap_limit, same_finding, reports_per_tick here;
+// route_rest_window and escalate_after below), the engine's only the
+// default when limits() fails.
+func TestTickLimitsAreReadFromPolicy(t *testing.T) {
+	t.Parallel()
+	l := Engine.Limits
+	l.FlapLimit, l.SameFinding, l.ReportsPerTick = 1, 1, 1
+	t.Run("flap_limit", func(t *testing.T) {
+		t.Parallel()
+		s := newSim(t)
+		s.ask = policyLimits(l)
+		s.row("r1", 1, "pro")
+		s.must("flap", store.SetRowFlaps{Row: "r1", Flaps: 1})
+		s.tick()
+		assert.Len(t, s.openJudgements("flap"), 1, "one flap at a limit of 1")
+	})
+	t.Run("same_finding", func(t *testing.T) {
+		t.Parallel()
+		s := newSim(t)
+		s.ask = policyLimits(l)
+		s.stream("s1")
+		s.row("r1", 2, "pro")
+		s.row("r2", 1, "pro", "heavy")
+		s.producer("p1", "s1", "pro", "a/x")
+		s.run(2)
+		s.take("p1.w1")
+		s.report("p1.w1", "ok", sha(1), "done")
+		s.tick()
+		s.take("p1.r1.1")
+		s.report("p1.r1.1", "fix", sha(1), "the test is wrong")
+		s.tick()
+		assert.Len(t, s.openJudgements("brief"), 1, "the first finding at a same_finding of 1")
+	})
+	t.Run("reports_per_tick", func(t *testing.T) {
+		t.Parallel()
+		s := newSim(t)
+		s.row("r1", 1, "pro")
+		s.fold()
+		in := s.inputs()
+		in.Inbox = []InboxItem{{ID: "a", Kind: "report", Row: "r1", Consumer: "nope"}, {ID: "b", Kind: "report", Row: "r1", Consumer: "nope"}}
+		plan := Tick(s.v, in, policyLimits(l))
+		assert.Len(t, plan.Answers, 1, "one report a tick")
+		require.Len(t, plan.Carry, 1)
+		assert.Equal(t, "b", plan.Carry[0].ID)
+	})
+}
+
+// TestTickRouteRestWindowFromPolicy: the rest counts faults among the row's
+// last route_rest_window finishes: three faults then an ok rest the row
+// under a window of 10, not under a window of 3 (two faults in it).
+func TestTickRouteRestWindowFromPolicy(t *testing.T) {
+	t.Parallel()
+	now := time.Unix(1_000, 0)
+	v := &View{Rows: map[string]store.Row{}, Ends: map[string][]End{"r1": {{now, true}, {now, true}, {now, true}, {now, false}}}}
+	for _, window := range []int{10, 3} {
+		tk := newTick(v, Inputs{Now: now})
+		tk.lim, tk.tmo = Engine.Limits, Engine.Timeouts
+		tk.lim.RouteRestWindow = window
+		tk.rest()
+		_, rested := tk.rested["r1"]
+		assert.Equal(t, window == 10, rested, "window %d", window)
+	}
+}
+
+// TestTickEscalateAfterFromPolicy: escalation's bounces are policy's.
+func TestTickEscalateAfterFromPolicy(t *testing.T) {
+	t.Parallel()
+	v := &View{Rows: map[string]store.Row{}}
+	tk := newTick(v, Inputs{})
+	tk.lim = Engine.Limits
+	tk.lim.EscalateAfter, tk.lim.FrontierAfter = 1, 2
+	c := store.Card{ID: "p1", Kind: "producer", Tier: "flash", Bounces: 1}
+	assert.Equal(t, tierIndex("flash")+1, tk.desired(c, "work"), "one up at 1 bounce")
+	c.Bounces = 2
+	assert.Equal(t, tk.topRank(), tk.desired(c, "work"), "the top at 2")
 }

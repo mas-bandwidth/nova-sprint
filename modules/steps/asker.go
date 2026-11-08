@@ -102,11 +102,19 @@ type WidthAnswer struct{ Work int }
 // may have no CI at all before it is a judgement (0: the engine's).
 type LandingAnswer struct{ BackedUp, Flowing, CIWait int }
 
-// Limits is limits(): the counts. Budget (cards touched per tick) and Pack
-// (groups per op) are layer 3's keys in the same dict (LAYER-3, "Policy
-// questions and their defaults").
+// Limits is limits(): the counts, and layer 3's steering numbers in the
+// same dict (LAYER-5 round 5): EscalateAfter and FrontierAfter are the
+// bounces at which a work consumer is dealt one rank up and to the top rank
+// (LAYER-3 "Escalation"), FlapLimit the flaps that open a flap judgement,
+// IdleFloor the working share of the open width under which idle opens,
+// LandTarget the first-time land rate under which land-rate opens (0, never
+// a policy's answer, turns either off). Budget (cards touched per tick) and
+// Pack (groups per op) are layer 3's keys in the same dict (LAYER-3,
+// "Policy questions and their defaults").
 type Limits struct {
 	Bounces, Faults, SameFinding, ReportsPerTick, RouteRestWindow, RouteRestAfter int
+	EscalateAfter, FrontierAfter, FlapLimit                                       int
+	IdleFloor, LandTarget                                                         float64
 	Budget, Pack                                                                  int
 }
 
@@ -126,10 +134,10 @@ type Default struct{}
 func (Default) Ask(Questions) Answers { return Answers{} }
 
 // Defaults are the engine's own answers (LAYER-5's default policy; every
-// number marked there). EscalateAfter and FrontierAfter are the bounces at
-// which a work consumer is dealt one rank up and to the top rank (guesses,
-// LAYER-3 "Escalation"); FlapLimit is the flaps that open a flap judgement
-// (LAYER-3 "Retire and fail limits", 3, unmeasured). The seconds after a
+// number marked there; Limits' steering numbers are guesses: escalate_after
+// 2, frontier_after 4, flap_limit 3, idle_floor 0.5, land_target 0.9). IdleCeiling
+// is the working share at which idle closes, LandSample the landings
+// land-rate needs. The seconds after a
 // deal at which an unacknowledged card is nudged each tick and withdrawn are
 // policy's timeouts ready_nag and ready_take (LAYER-3 "In hand"; the human's
 // numbers, 2026-11-07), default.star's 1 and 180; Engine's are those a
@@ -141,17 +149,14 @@ func (Default) Ask(Questions) Answers { return Answers{} }
 // `nova-bus who` read is not every row gone (30, a guess at how long who
 // takes to drop a crashed hook; unmeasured).
 type Defaults struct {
-	EscalateAfter, FrontierAfter int
-	UndealtAfter                 int
-	PresentGrace                 int
-	Reads                        int
-	FlapLimit                    int
-	IdleFloor, IdleCeiling       float64
-	LandTarget                   float64
-	LandSample                   int
-	Limits                       Limits
-	Timeouts                     Timeouts
-	Landing                      LandingAnswer
+	UndealtAfter int
+	PresentGrace int
+	Reads        int
+	IdleCeiling  float64
+	LandSample   int
+	Limits       Limits
+	Timeouts     Timeouts
+	Landing      LandingAnswer
 }
 
 // Engine is the defaults as the designs give them. Budget 250 and Pack 50
@@ -160,9 +165,9 @@ type Defaults struct {
 // section of docs/LAYER-3-STEPS.md); the rest are layer 5's defaults or
 // guesses, marked there.
 var Engine = Defaults{
-	EscalateAfter: 2, FrontierAfter: 4, UndealtAfter: 2, PresentGrace: 30, Reads: 1, FlapLimit: 3,
-	IdleFloor: 0.5, IdleCeiling: 0.75, LandTarget: 0.9, LandSample: 20,
-	Limits:   Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3, Budget: 250, Pack: 50},
+	UndealtAfter: 2, PresentGrace: 30, Reads: 1, IdleCeiling: 0.75, LandSample: 20,
+	Limits: Limits{Bounces: 6, Faults: 3, SameFinding: 2, ReportsPerTick: 1000, RouteRestWindow: 10, RouteRestAfter: 3,
+		EscalateAfter: 2, FrontierAfter: 4, FlapLimit: 3, IdleFloor: 0.5, LandTarget: 0.9, Budget: 250, Pack: 50},
 	Timeouts: Timeouts{RowSilentGone: 600, RowSilentWithdraw: 1800, LandingStall: 60, Judgement: 3600, RouteRestFor: 1800, ReadyNag: 1, ReadyTake: 180, BaseRegate: []int{120, 300}},
 	Landing:  LandingAnswer{BackedUp: 2, Flowing: 1, CIWait: 600},
 }
@@ -328,8 +333,10 @@ func (o *oracle) limits() Limits {
 
 func limitsOK(l Limits) bool {
 	in := func(n, lo, hi int) bool { return n >= lo && n <= hi }
+	share := func(f float64) bool { return f >= 0 && f <= 1 }
 	return in(l.Bounces, 1, 100) && in(l.Faults, 1, 100) && in(l.SameFinding, 1, 10) && in(l.ReportsPerTick, 1, 10000) &&
-		in(l.RouteRestWindow, 1, 100) && in(l.RouteRestAfter, 1, l.RouteRestWindow) && in(l.Budget, 1, 10000) && in(l.Pack, 1, 10000)
+		in(l.RouteRestWindow, 1, 100) && in(l.RouteRestAfter, 1, l.RouteRestWindow) && in(l.Budget, 1, 10000) && in(l.Pack, 1, 10000) &&
+		in(l.EscalateAfter, 1, 100) && in(l.FrontierAfter, l.EscalateAfter, 100) && in(l.FlapLimit, 1, 100) && share(l.IdleFloor) && share(l.LandTarget)
 }
 
 // timeouts is timeouts(): every bound 1..86400 s, withdraw at or above gone,

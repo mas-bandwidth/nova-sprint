@@ -141,7 +141,7 @@ func NewTicker(ctx context.Context, st store.Store, h Health, p Asking, now time
 
 // witness folds the epoch's events up to the view's seq into the facts a
 // snapshot does not carry (when a consumer was dealt, a producer went
-// ready, a stream landed, a row went down, a row faulted), so a restart
+// ready, a stream landed, a row went down, a row's last finishes), so a restart
 // dates every bound as the run before it did instead of from now. The
 // epoch's first event is found by bisection on single-event reads: the
 // epoch is read, never a walk from seq 0 (drift row 23).
@@ -182,7 +182,7 @@ func witness(ctx context.Context, st store.Store, v *steps.View, now time.Time) 
 			break
 		}
 	}
-	v.TakenAt, v.ReadyAt, v.Landed, v.Down, v.Faults = w.TakenAt, w.ReadyAt, w.Landed, w.Down, w.Faults
+	v.TakenAt, v.ReadyAt, v.Landed, v.Down, v.Ends = w.TakenAt, w.ReadyAt, w.Landed, w.Down, w.Ends
 	return nil
 }
 

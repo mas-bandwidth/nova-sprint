@@ -13,8 +13,10 @@ import (
 // layer 6 that routes them here; the fold shows either way. There is no
 // take item: a dealt consumer is in hand at the deal (defect 52).
 func (t *tick) reports() {
+	n := 0
 	for _, it := range t.in.Inbox {
-		if it.Kind == "report" {
+		if it.Kind == "report" && n < t.lim.ReportsPerTick {
+			n++
 			t.reportItem(it)
 		}
 	}

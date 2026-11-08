@@ -62,3 +62,16 @@ func TestJudgementOpLeavesTheAnsweringVersionToSteps(t *testing.T) {
 	require.Len(t, op.Writes, 1)
 	assert.Equal(t, policy.Group(5), op.Writes[0].(store.PutJudgement).Group)
 }
+
+// TestStepsAnswersCarryEveryLimit: every limit policy validates reaches the
+// steps (the steering numbers were dropped, so the engine's ran whatever
+// the policy said).
+func TestStepsAnswersCarryEveryLimit(t *testing.T) {
+	t.Parallel()
+	p := policy.Answers{Version: 1, Limits: policy.Limits{Bounces: 4, Faults: 5, SameFinding: 3, ReportsPerTick: 7, RouteRestWindow: 9, RouteRestAfter: 2,
+		EscalateAfter: 3, FrontierAfter: 6, FlapLimit: 8, FleetWidthCap: 4, IdleFloor: 0.25, LandTarget: 0.75}}
+	l := stepsAnswers(p, nil).Limits
+	require.NotNil(t, l)
+	assert.Equal(t, [9]any{4, 5, 3, 7, 9, 2, 3, 6, 8}, [9]any{l.Bounces, l.Faults, l.SameFinding, l.ReportsPerTick, l.RouteRestWindow, l.RouteRestAfter, l.EscalateAfter, l.FrontierAfter, l.FlapLimit})
+	assert.Equal(t, [2]float64{0.25, 0.75}, [2]float64{l.IdleFloor, l.LandTarget})
+}
