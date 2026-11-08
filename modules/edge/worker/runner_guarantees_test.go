@@ -234,21 +234,6 @@ func TestColdreadDefectCLIRefusalReadAsStoreDown(t *testing.T) {
 	}
 }
 
-// Seam ruling 3: "Every edge answers requests as pure queries of the world".
-// QueryEdge runs RecoverRow first (runner.go:586), which reports, kills and
-// deletes job directories.
-func TestColdreadDefectQueryEdgeHasSideEffects(t *testing.T) {
-	t.Parallel()
-	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 1, Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", Gen: 3}}}}
-	r := crRunner_internal(t, sp, &crWall{})
-	if _, err := r.QueryEdge(context.Background(), EdgeRequest{Kind: "runner", Card: "p1.w1", Row: "vision.ds"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := sp.reported(); len(got) > 0 {
-		t.Errorf("a query wrote a store op: report %s result=%s reason=%q", got[0].ResultID, got[0].Result, got[0].Reason)
-	}
-}
-
 // Design item 1, "never a shell string". The script harness, nova-worker's
 // default (--harness script, main.go:28; and runner.go:113 when no name), builds
 // `sh -c` from the card's prose with Go %q quoting (harness.go:118-121, 176-179),
@@ -294,8 +279,8 @@ func TestColdreadDefectRunnerGitHasNoTimeout(t *testing.T) {
 	t.Errorf("OSGitOps (push, fetch, rebase, ls-remote on the bench) carries no timeout; a hung push blocks the runner forever")
 }
 
-// Not a defect probe: a -race check of wake work against a concurrent query.
-func TestColdreadCheckConcurrentStepRowAndQueryEdge(t *testing.T) {
+// Not a defect probe: a -race check of concurrent passes.
+func TestColdreadCheckConcurrentStepRow(t *testing.T) {
 	t.Parallel()
 	sp := &crSprint{next: NextResponse{Row: "vision.ds", State: card.Up, Width: 2, Working: []ConsumerSummary{{ID: "p1.r1", Kind: "read", Gen: 1}, {ID: "p3.w1", Kind: "work", Gen: 1}}}}
 	r := crRunner_internal(t, sp, &crWall{})
@@ -303,10 +288,7 @@ func TestColdreadCheckConcurrentStepRowAndQueryEdge(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		wg.Add(2)
 		go func() { defer wg.Done(); _ = r.StepRow(context.Background(), "vision.ds") }()
-		go func() {
-			defer wg.Done()
-			_, _ = r.QueryEdge(context.Background(), EdgeRequest{Kind: "runner", Card: "p3.w1", Row: "vision.ds"})
-		}()
+		go func() { defer wg.Done(); _ = r.StepRow(context.Background(), "vision.ds") }()
 	}
 	wg.Wait()
 }

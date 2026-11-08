@@ -25,27 +25,6 @@ const RefusalLimit = 3
 // (defects 61, 70) without asking the sprint for it again.
 const ReceiptName = "receipt.json"
 
-// RecoverRow is one recovery of the row's jobs, run to the end: what is
-// owed is sent, finished cards' directories are cleaned, a live harness is
-// adopted, and every job a stopped runner left is resumed (and waited for).
-func (r *Runner) RecoverRow(ctx context.Context, row string) error {
-	resumes, unsent, err := r.recoverRow_internal(ctx, row)
-	if err != nil || len(resumes) == 0 {
-		return cmp.Or(err, unsent)
-	}
-	next, err := r.Sprint.Next(ctx, row)
-	if err != nil {
-		return err
-	}
-	var launches []launch_internal
-	for _, l := range resumes {
-		if l, ok := r.claim_internal(ctx, l.c, l.resume); ok {
-			launches = append(launches, l)
-		}
-	}
-	return errors.Join(unsent, r.runBatch_internal(ctx, next, launches))
-}
-
 // recoverRow_internal does a pass's recovery and returns the jobs to
 // resume (not yet claimed), and the reports it owed and could not send.
 // One record the sprint keeps refusing never ends it (defect 69): it is
@@ -136,15 +115,9 @@ func (r *Runner) recoverWorkingJob_internal(ctx context.Context, w ConsumerSumma
 func (r *Runner) adopt_internal(ctx context.Context, jobDir string, w ConsumerSummary, rec JobRecord) {
 	if rec.DeadlineAt > 0 && r.Now().Unix() >= rec.DeadlineAt {
 		r.report("killing adopted harness "+w.ID, r.Procs.Kill(rec.PID, rec.Nonce, r.Timeouts.TerminateGrace))
-		r.mu.Lock()
-		delete(r.adopted, w.ID)
-		r.mu.Unlock()
 		r.resendErr_internal(ctx, jobDir, rec, r.faultAndReportJob_internal(ctx, jobDir, w.ID, rec, "adopted harness timed out past deadline"))
 		return
 	}
-	r.mu.Lock()
-	r.adopted[w.ID] = rec
-	r.mu.Unlock()
 	r.logStep_internal(rec.Row, w.ID, "adopt", fmt.Sprintf("pid=%d", rec.PID), 0)
 }
 

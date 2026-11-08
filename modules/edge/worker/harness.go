@@ -274,7 +274,7 @@ func (h *CodexHarness) Command(j Job) ([]string, []string) {
 func (h *OpenCodeHarness) Command(j Job) ([]string, []string) {
 	argv := append(append([]string{"opencode", "run"}, modelFlag_internal(j, "")...), buildPrompt_internal(j))
 	env := baseWallEnv_internal(j)
-	if cfg := OpenCodeConfig(j.ProxyAddr, j.Routes, append(slices.Clone(j.Models), j.Model)); j.ProxyAddr != "" && cfg != "" {
+	if cfg := OpenCodeConfig(j.ProxyAddr, j.Consumer, j.Routes, append(slices.Clone(j.Models), j.Model)); j.ProxyAddr != "" && cfg != "" {
 		env = append(env, "OPENCODE_CONFIG_CONTENT="+cfg)
 	}
 	return argv, SanitizeWallEnv(env, j.JobDir)
@@ -315,7 +315,7 @@ const (
 // external_directory: opencode runs in <job>/repo and writes result.json to
 // <job>, which `opencode run` otherwise auto-rejects; the wall is the
 // filesystem boundary.
-func OpenCodeConfig(proxyAddr string, routes, models []string) string {
+func OpenCodeConfig(proxyAddr, consumer string, routes, models []string) string {
 	cfg := opencodeConfig_internal{Schema: opencodeSchema_internal, Permission: opencodePermission_internal{ExternalDirectory: "allow"}, Provider: map[string]opencodeProvider_internal{}}
 	for _, m := range models {
 		provider, id, ok := strings.Cut(m, "/")
@@ -325,7 +325,7 @@ func OpenCodeConfig(proxyAddr string, routes, models []string) string {
 		p, seen := cfg.Provider[provider]
 		if !seen {
 			p = opencodeProvider_internal{NPM: opencodeNPM_internal, Name: provider,
-				Options: opencodeOptions_internal{BaseURL: ProxyBaseURL(proxyAddr, m), APIKey: ProxyPlaceholderKey}, Models: map[string]struct{}{}}
+				Options: opencodeOptions_internal{BaseURL: ProxyBaseURL(proxyAddr, m), APIKey: ProxyKey(consumer)}, Models: map[string]struct{}{}}
 		}
 		p.Models[id] = struct{}{}
 		cfg.Provider[provider] = p
@@ -363,7 +363,7 @@ func openCodeConfigRefusal_internal(v string) error {
 			return fmt.Errorf("provider %s: its baseURL is not on a loopback http proxy (the worker's --proxy-addr)", name)
 		}
 		proxy = u.Host
-		if p.NPM != opencodeNPM_internal || p.Name != name || p.Options.APIKey != ProxyPlaceholderKey || p.Options.BaseURL != ProxyBaseURL(proxy, name+"/") {
+		if p.NPM != opencodeNPM_internal || p.Name != name || !proxyKey_internal.MatchString(p.Options.APIKey) || p.Options.BaseURL != ProxyBaseURL(proxy, name+"/") {
 			return fmt.Errorf("provider %s: its package, name, key or baseURL is not the proxy route's", name)
 		}
 	}
@@ -378,7 +378,7 @@ func openCodeConfigRefusal_internal(v string) error {
 // OpenCodeConfig and the wall's check is never a bare "not in the
 // harness's model list".
 func (h *OpenCodeHarness) WallRefusal(j Job) error {
-	cfg := OpenCodeConfig(j.ProxyAddr, j.Routes, append(slices.Clone(j.Models), j.Model))
+	cfg := OpenCodeConfig(j.ProxyAddr, j.Consumer, j.Routes, append(slices.Clone(j.Models), j.Model))
 	if j.ProxyAddr == "" || cfg == "" {
 		return nil
 	}
@@ -620,11 +620,10 @@ func BuildWallArgv(cfg WallConfig, j Job, env, harnessArgv []string) []string {
 	if runtime.GOOS != "windows" {
 		argv = append(argv, "nice", "-n", "15")
 	}
-	argv = append(argv, cmp.Or(cfg.ReserveBin, "nova-reserve"))
+	argv = append(argv, cmp.Or(cfg.ReserveBin, "nova-reserve"), "run")
 	if cfg.ReserveDir != "" {
 		argv = append(argv, "--dir", cfg.ReserveDir)
 	}
-	argv = append(argv, "run")
 	if j.SlotWeight > 0 {
 		argv = append(argv, "--slots", strconv.Itoa(j.SlotWeight))
 	}

@@ -256,9 +256,6 @@ func (c *Client) OpenPR(ctx context.Context, repo, head, base, title, body strin
 	if repo == "" || head == "" || base == "" || title == "" {
 		return PRInfo{}, fmt.Errorf("forge refused: OpenPR requires repo, head, base, and title")
 	}
-	if existing, ok, err := c.PR(ctx, repo, head, base); err == nil && ok {
-		return existing, nil
-	}
 	if _, _, err := c.runGH_internal(ctx, "pr", "create", "--repo", repo, "--head", head, "--base", base, "--title", title, "--body", body); err != nil {
 		return PRInfo{}, err
 	}

@@ -12,8 +12,9 @@ import (
 // roster read with it, one pair, never one without the other (Stella's
 // handoff finding 6: a fresh snapshot is never shown beside an old roster).
 // RosterErr is the roster read's failure, if it failed: the board then shows
-// every row at width 0 and raises the stale alarm, and still shows the
-// store's own lines (STOPPED among them) as fresh.
+// every row at width 0, says the failure (on the log once per cause, and
+// on the page), and still shows the store's own lines (STOPPED among them)
+// as fresh; the stale alarm stays the data's age.
 type Feed struct {
 	Snap      store.Snapshot
 	Roster    roster.Roster
@@ -53,8 +54,9 @@ func (c *Cache) publish(f Feed) {
 	c.state = store.Snapshot{Seq: f.Snap.Seq, Epoch: f.Snap.Epoch}
 	c.at, c.err, c.alarm = f.At, nil, false
 	ro := f.Roster
+	c.rosterNote.note("the roster read", f.RosterErr)
 	if f.RosterErr != nil {
-		ro, c.alarm = roster.Roster{}, true
+		ro = roster.Roster{}
 	}
 	c.landings, c.landingsOK = nil, f.Landings != nil
 	if c.landingsOK {

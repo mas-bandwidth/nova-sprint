@@ -249,15 +249,6 @@ func (r *Runner) claim_internal(ctx context.Context, c ConsumerSummary, resume *
 	return launch_internal{ctx: runCtx, c: c, resume: resume, done: done}, true
 }
 
-// RunConsumer runs one dealt card as a pass would, and waits for it.
-func (r *Runner) RunConsumer(ctx context.Context, rowInfo NextResponse, c ConsumerSummary) error {
-	l, ok := r.claim_internal(ctx, c, nil)
-	if !ok {
-		return nil
-	}
-	return r.runJobs_internal(ctx, rowInfo, []launch_internal{l})[0].err
-}
-
 // runBatch_internal runs one pass's launches: each is prepared (taken, or
 // its record read back), every repo they stage is fetched once (defect 72:
 // no two fetches into one work clone at once, and one per repo per pass),

@@ -204,7 +204,7 @@ func dash.Handler(c *dash.Cache) http.Handler
 
 Run publishes its folded snapshot and the roster it read with it, as one
 pair, every tick (stopped or not). A failed roster read shows every row at
-width 0 with the alarm raised, never an old roster as current. The machine
+width 0 with the failure said, never an old roster as current. The machine
 line is `machine: RUNNING` or `machine: STOPPED <reason>`. `run --listen`
 serves it; `dash --pull` serves a pulled copy on a public host. The board's
 Why waiting panel calls `steps.Waits(snap.Cards)` and `steps.IdleWhy` (pure

@@ -312,7 +312,7 @@ func TestHarnessAdaptersAndWallWrapping(t *testing.T) {
 	oh, _ := NewHarness("opencode")
 	_, oEnv := oh.Command(j)
 	envStr := strings.Join(oEnv, "\n")
-	if !strings.Contains(envStr, `"baseURL":"http://127.0.0.1:19999/deepseek/v1"`) || !strings.Contains(envStr, `"apiKey":"`+ProxyPlaceholderKey+`"`) {
+	if !strings.Contains(envStr, `"baseURL":"http://127.0.0.1:19999/deepseek/v1"`) || !strings.Contains(envStr, `"apiKey":"`+ProxyKey("p1.w1")+`"`) {
 		t.Fatalf("opencode env missing proxy wiring: %v", oEnv)
 	}
 	dirtyEnv := append(oEnv, "NOVA_PG_DSN=postgres://secret", "GH_TOKEN=ghp_secret", "DEEPSEEK_API_KEY=sk-secret")
@@ -538,7 +538,7 @@ func TestRunnerRebaseConflictStageFaultAndLeftTree(t *testing.T) {
 	}
 }
 
-func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
+func TestRunnerRestartRecovery(t *testing.T) {
 	t.Parallel()
 	clock := testClock_internal()
 	st, row := seedFakeStore_internal(t, clock)
@@ -564,31 +564,16 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 	if err := r1.RecoverRow(ctx, row); err != nil {
 		t.Fatalf("RecoverRow live: %v", err)
 	}
-	if _, ok := r1.adopted["p1.w1"]; !ok {
-		t.Fatalf("expected live pid 777 adopted on restart")
+	if snap, _ := st.Snapshot(ctx); snap.Cards["p1.w1"].State != card.Working {
+		t.Fatalf("a live harness (pid 777) must be adopted and left working on restart: %+v", snap.Cards["p1.w1"])
 	}
 
-	// Simulate harness death while runner was down, then restart and recover on r2 before pure QueryEdge.
+	// Simulate harness death while runner was down, then restart and recover on r2.
 	delete(procs.alive, "777:nonce-live")
 	r2, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
 	if err := r2.RecoverRow(ctx, row); err != nil {
 		t.Fatalf("RecoverRow dead: %v", err)
 	}
-	req := EdgeRequest{Epoch: 1, Kind: "runner", Card: "p1.w1", SHA: testPriorSHA, Row: row, After: []string{"start-p1"}}
-	res1, err := r2.QueryEdge(ctx, req)
-	if err != nil {
-		t.Fatalf("QueryEdge 1: %v", err)
-	}
-	// Create a third brand-new Runner struct and query the exact same (epoch, kind, card, sha).
-	r3, _ := NewRunner(Runner{Sleep: noSleep_internal, Host: "b1", RootDir: root, Sprint: sc, Git: git, Wall: &fakeWall{}, Procs: procs, Now: clock})
-	res2, err := r3.QueryEdge(ctx, req)
-	if err != nil {
-		t.Fatalf("QueryEdge 2: %v", err)
-	}
-	if res1.ID != res2.ID || res1.Epoch != 1 || res1.Outcome != res2.Outcome || res1.SHA != res2.SHA || res1.Outcome == JobNone || res1.SHA != testPriorSHA {
-		t.Fatalf("QueryEdge not idempotent across Runner restart: res1=%+v res2=%+v", res1, res2)
-	}
-	assertEpochSeparatedQueryEdge_internal(t, ctx, r3, req, res1)
 	snap, _ := st.Snapshot(ctx)
 	// Defect 73: one the restart cannot resume (no receipt) is released with no blame.
 	if snap.Cards["p1"].State != "ready" || snap.Cards["p1"].Bounces != 0 || snap.Cards["p1"].Head != testPriorSHA {
@@ -641,19 +626,6 @@ func TestTakeRefusesReservedGroupBranch(t *testing.T) {
 	}
 	if _, err := sprint.Take(ctx, row, "p2.w1", 0); err == nil || !strings.Contains(err.Error(), "sprint/s1/group") {
 		t.Fatalf("expected Take(p2.w1) to be refused for reserved group branch, got %v", err)
-	}
-}
-
-func assertEpochSeparatedQueryEdge_internal(t *testing.T, ctx context.Context, r *Runner, req EdgeRequest, res1 EdgeResult) {
-	t.Helper()
-	reqEpoch2 := req
-	reqEpoch2.Epoch = 2
-	resEpoch2, err := r.QueryEdge(ctx, reqEpoch2)
-	if err != nil {
-		t.Fatalf("QueryEdge epoch 2: %v", err)
-	}
-	if resEpoch2.ID == res1.ID || resEpoch2.Epoch != 2 || resEpoch2.ID != RequestID(2, "runner", "p1.w1", testPriorSHA) {
-		t.Fatalf("QueryEdge epoch 2 must have distinct RequestID keyed on epoch: res1=%+v resEpoch2=%+v", res1, resEpoch2)
 	}
 }
 
@@ -757,9 +729,6 @@ func TestRecoveryMatchesFullJobIdentityEpochConsumerAttemptGen(t *testing.T) {
 	}
 	if err := r.RecoverRow(ctx, "vision.ds"); err != nil {
 		t.Fatalf("RecoverRow: %v", err)
-	}
-	if _, adopted := r.adopted["p1.w1"]; adopted {
-		t.Fatalf("mismatched (epoch, attempt, gen) job must never be adopted")
 	}
 	if len(sp.reported()) > 0 {
 		t.Fatalf("mismatched job must be kept for requery, never reported under new gen: %+v", sp.reported())

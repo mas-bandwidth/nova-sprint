@@ -262,9 +262,10 @@ func readChecks_internal(ctx context.Context, fg forge.Forge, req LandRequest, p
 	return true
 }
 
-// splitRed_internal is a red rollup's outcome and facts. New red (or red
-// that could not be compared) is ci_red at once, even while the run goes
-// on; red that is all inherited waits for the run (pending), then is
+// splitRed_internal is a red rollup's outcome and facts. New red is ci_red
+// at once, even while the run goes on; red that could not be compared waits
+// for the run (pending), then is ci_red with its first failing lines; red
+// that is all inherited waits for the run (pending), then is
 // ci_red_inherited, still a judgement: red never lands by itself. A
 // failing agreement check names the PR's commit authors.
 func splitRed_internal(ctx context.Context, fg forge.Forge, req LandRequest, pr int, r forge.CheckRollup, res *LandResult) LandOutcome {

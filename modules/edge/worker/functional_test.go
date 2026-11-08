@@ -183,7 +183,7 @@ func TestFunctionalRunnerEndToEndWithRebase(t *testing.T) {
 		RootDir:   t.TempDir(),
 		Sprint:    &StoreSprintClient{Store: pg, Origin: gitOps},
 		Git:       gitOps,
-		Wall:      &OSReserveWall{Config: WallConfig{WorkRoot: gitOps.WorkRoot, MirrorRoot: gitOps.MirrorRoot}},
+		Wall:      &OSReserveWall{Config: WallConfig{WorkRoot: gitOps.WorkRoot, MirrorRoot: gitOps.MirrorRoot, ReserveDir: t.TempDir()}},
 		Harnesses: map[string]Harness{"script": &ScriptHarness{}},
 		Now:       time.Now, Sleep: time.Sleep,
 	})
@@ -229,7 +229,7 @@ func TestFunctionalRunnerRebaseConflict(t *testing.T) {
 		RootDir:   t.TempDir(),
 		Sprint:    &StoreSprintClient{Store: pg, Origin: gitOps},
 		Git:       gitOps,
-		Wall:      &OSReserveWall{Config: WallConfig{WorkRoot: gitOps.WorkRoot, MirrorRoot: gitOps.MirrorRoot}},
+		Wall:      &OSReserveWall{Config: WallConfig{WorkRoot: gitOps.WorkRoot, MirrorRoot: gitOps.MirrorRoot, ReserveDir: t.TempDir()}},
 		Harnesses: map[string]Harness{"script": &ScriptHarness{}},
 		Now:       time.Now, Sleep: time.Sleep,
 	})
@@ -262,7 +262,7 @@ func TestFunctionalLateWriterCannotReachThePush(t *testing.T) {
 	gb := setupGitBench_internal(t)
 	root := t.TempDir()
 	g := &OSGitOps{WorkRoot: t.TempDir(), MirrorRoot: t.TempDir()}
-	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: g, Wall: &OSReserveWall{Config: WallConfig{WorkRoot: g.WorkRoot, MirrorRoot: g.MirrorRoot}}, Now: time.Now, Sleep: time.Sleep})
+	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: g, Wall: &OSReserveWall{Config: WallConfig{WorkRoot: g.WorkRoot, MirrorRoot: g.MirrorRoot, ReserveDir: t.TempDir()}}, Now: time.Now, Sleep: time.Sleep})
 	require.NoError(t, err)
 	ctx := context.Background()
 	jobDir := filepath.Join(root, "jobs", "p1.w1")
@@ -359,7 +359,7 @@ func TestFunctionalRestartActsOnlyOnTheKeptRecord(t *testing.T) {
 			var warns []string
 			procs := &fakeProcTable{alive: map[string]bool{"4242:n1": true}}
 			r, err := NewRunner(Runner{Host: "b1", RootDir: root, Sprint: sc, Git: g, Procs: procs,
-				Wall: &OSReserveWall{Config: WallConfig{WorkRoot: g.WorkRoot, MirrorRoot: g.MirrorRoot}}, Now: clock, Sleep: time.Sleep,
+				Wall: &OSReserveWall{Config: WallConfig{WorkRoot: g.WorkRoot, MirrorRoot: g.MirrorRoot, ReserveDir: t.TempDir()}}, Now: clock, Sleep: time.Sleep,
 				Warn: func(s string) { warns = append(warns, s) }})
 			require.NoError(t, err)
 			require.NoError(t, r.RecoverRow(ctx, row))

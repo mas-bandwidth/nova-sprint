@@ -53,7 +53,7 @@ func TestOpenCodeConfigDeclaresTheJobsModelThroughTheProxy(t *testing.T) {
 	if !ok || len(cfg.Provider) != 1 {
 		t.Fatalf("want one provider, deepseek: %+v", cfg)
 	}
-	if p.NPM != "@ai-sdk/openai-compatible" || p.Options.BaseURL != "http://127.0.0.1:7000/deepseek/v1" || p.Options.APIKey != ProxyPlaceholderKey {
+	if p.NPM != "@ai-sdk/openai-compatible" || p.Options.BaseURL != "http://127.0.0.1:7000/deepseek/v1" || p.Options.APIKey != ProxyKey("c1") {
 		t.Fatalf("deepseek is not the proxy's route with the placeholder key: %+v", p)
 	}
 	if _, ok := p.Models["deepseek-flash"]; !ok || len(p.Models) != 1 {
@@ -62,7 +62,7 @@ func TestOpenCodeConfigDeclaresTheJobsModelThroughTheProxy(t *testing.T) {
 	// opencode runs in <job>/repo and writes result.json to <job>, which it
 	// asks about as external_directory and `opencode run` auto-rejects; the
 	// wall is the filesystem boundary, so the config allows it.
-	if !strings.Contains(OpenCodeConfig("127.0.0.1:7000", []string{"deepseek"}, []string{"deepseek/deepseek-flash"}), `"permission":{"external_directory":"allow"}`) {
+	if !strings.Contains(OpenCodeConfig("127.0.0.1:7000", "p1.w1", []string{"deepseek"}, []string{"deepseek/deepseek-flash"}), `"permission":{"external_directory":"allow"}`) {
 		t.Fatalf("the config does not allow external_directory: %+v", cfg)
 	}
 	for _, kv := range env {
@@ -88,7 +88,7 @@ func TestOpenCodeConfigDeclaresTheJobsModelThroughTheProxy(t *testing.T) {
 			t.Errorf("model %s with routes %v is declared: %v", j.Model, j.Routes, env)
 		}
 	}
-	if got := OpenCodeConfig("127.0.0.1:7000", []string{"deepseek"}, []string{"deepseek/a", "inception/b", "../c"}); strings.Contains(got, "inception") || strings.Contains(got, "..") {
+	if got := OpenCodeConfig("127.0.0.1:7000", "p1.w1", []string{"deepseek"}, []string{"deepseek/a", "inception/b", "../c"}); strings.Contains(got, "inception") || strings.Contains(got, "..") {
 		t.Fatalf("only routed providers are declared: %s", got)
 	}
 }
@@ -99,7 +99,7 @@ func TestOpenCodeConfigDeclaresTheJobsModelThroughTheProxy(t *testing.T) {
 // another host, another package or anything nested never crosses this way.
 func TestSanitizeWallEnvKeepsOnlyAPlaceholderOpenCodeConfig(t *testing.T) {
 	t.Parallel()
-	good := OpenCodeConfig("127.0.0.1:7000", []string{"deepseek", "inception"}, []string{"deepseek/deepseek-flash", "inception/mercury-3"})
+	good := OpenCodeConfig("127.0.0.1:7000", "p1.w1", []string{"deepseek", "inception"}, []string{"deepseek/deepseek-flash", "inception/mercury-3"})
 	if !strings.Contains(good, `"deepseek-flash":{}`) {
 		t.Fatalf("the config this test edits: %s", good)
 	}
