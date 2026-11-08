@@ -1,5 +1,6 @@
 # Release: a pushed tag vX.Y.Z builds nova-sprint and nova-worker for every platform, writes one
-# SHA256SUMS and creates the GitHub release. Assets are named <command>_<tag>_<os>_<arch>[.exe],
+# SHA256SUMS and creates the GitHub release as a prerelease: it becomes latest only after a
+# real card has run end to end on it (gh release edit TAG --prerelease=false --latest). Assets are named <command>_<tag>_<os>_<arch>[.exe],
 # the scheme nova-tools' release uses and `nova-fleet install --repo mas-bandwidth/nova-sprint
 # --tag vX.Y.Z <host>...` reads (fleet/roles/nova-tools-install verifies each digest against
 # SHA256SUMS). The only credential is the workflow's GITHUB_TOKEN.
@@ -59,4 +60,4 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release create "$TAG" dist/* --title "nova-sprint $TAG" --generate-notes --verify-tag
+          gh release create "$TAG" dist/* --title "nova-sprint $TAG" --generate-notes --verify-tag --prerelease
