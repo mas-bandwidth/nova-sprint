@@ -145,8 +145,8 @@ func stepsAnswers(p policy.Answers, fs []policy.Failure) steps.Answers {
 	tm := p.Timeouts
 	a.Timeouts = &steps.Timeouts{RowSilentGone: tm.RowSilentGone, RowSilentWithdraw: tm.RowSilentWithdraw, LandingStall: tm.LandingStall,
 		Judgement: tm.Judgement, RouteRestFor: tm.RouteRestFor, ReadyNag: tm.ReadyNag, ReadyTake: tm.ReadyTake, BaseRegate: tm.BaseRegate}
-	for _, f := range fs {
-		if f.Question != "" {
+	for _, f := range fs { // another version's failure is its own policy judgement (policy.Judgements), never this version's
+		if f.Question != "" && f.Version == p.Version {
 			a.Failed[f.Question] = f.Msg
 		}
 	}

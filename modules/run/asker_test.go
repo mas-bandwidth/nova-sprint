@@ -34,3 +34,16 @@ func TestNoDealNamesTheStoredVersionToActivate(t *testing.T) {
 	}
 	assert.Equal(t, 3, tk.storedPolicy(context.Background()), "the newest stored version")
 }
+
+// TestStepsAnswersAttributesFailuresToTheirOwnVersion: v5 failed its verdict
+// question and v4 answered the tick; v4's verdicts are the tick's and no
+// failure is filed under v4 (v5's failure is its own policy judgement).
+func TestStepsAnswersAttributesFailuresToTheirOwnVersion(t *testing.T) {
+	t.Parallel()
+	p := policy.Answers{Version: 4, Verdict: map[string]string{"c1": "accept"}}
+	fs := []policy.Failure{{Version: 5, Label: "v5", Question: "verdict", Subject: "c1", Line: 3, Msg: "verdict: not a string"}}
+	a := stepsAnswers(p, fs)
+	assert.Equal(t, 4, a.Version)
+	assert.Equal(t, "accept", a.Verdict["c1"])
+	assert.Empty(t, a.Failed, "v5's failure is not v4's")
+}
