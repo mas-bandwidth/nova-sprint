@@ -49,7 +49,7 @@ it does not install a service or change an existing binary. It needs `curl`,
 ```sh
 (
   set -eu
-  NOVA_SPRINT_VERSION=v2.0.14
+  NOVA_SPRINT_VERSION=v2.0.15
   case "$(uname -s)" in
     Linux) sprint_os=linux ;;
     Darwin) sprint_os=darwin ;;
