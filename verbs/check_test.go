@@ -104,6 +104,31 @@ func TestCheckRedLines(t *testing.T) {
 			want: []string{"CHECK RED nova-tools v2.0.1 is below the pin v2.0.2: nova-fleet install --tag v2.0.2 <machine>", "CHECK landings: none waiting"}},
 		{name: "tools above the pin warn", args: []string{"check"}, exit: 0, prep: then(healthy, func(_ *testing.T, w *world) { w.doctor.tools = "v2.0.3" }),
 			want: []string{"CHECK WARN nova-tools v2.0.3 is above the pin v2.0.2 (this build was checked against v2.0.2): install the nova-sprint release that pins v2.0.3, or nova-fleet install --tag v2.0.2 <machine>"}},
+		{name: "a worker binary below the run's release", args: []string{"check"}, exit: 1,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.e.Version = "v2.0.6" }),
+			snap: func(s *store.Snapshot) {
+				for n, v := range map[string]string{"alice": "v2.0.6", "bob": "v2.0.5"} {
+					r := s.Rows[n]
+					r.Version = v
+					s.Rows[n] = r
+				}
+			},
+			want: []string{"CHECK RED worker bob: binary v2.0.5 below run's v2.0.6: nova-fleet install --repo mas-bandwidth/nova-sprint --tag v2.0.6 bob", "CHECK landings: none waiting"}},
+		{name: "a worker binary that never said", args: []string{"check"}, exit: 1,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.e.Version = "v2.0.6" }),
+			snap: func(s *store.Snapshot) { r := s.Rows["alice"]; r.Version = "v2.0.7"; s.Rows["alice"] = r },
+			want: []string{"CHECK RED worker bob: binary (unknown) below run's v2.0.6: nova-fleet install --repo mas-bandwidth/nova-sprint --tag v2.0.6 bob"}},
+		{name: "worker binaries at the run's release", args: []string{"check"}, exit: 0,
+			prep: then(healthy, func(_ *testing.T, w *world) { w.e.Version = "v2.0.6" }),
+			snap: func(s *store.Snapshot) {
+				for _, n := range []string{"alice", "bob"} {
+					r := s.Rows[n]
+					r.Version = "v2.0.6"
+					s.Rows[n] = r
+				}
+				s.Rows["dave"] = store.Row{Name: "dave", State: "up", Session: "s-dave", Role: "worker", Gen: 1} // a friend hooked as worker never beats: not a bench
+			},
+			want: []string{"CHECK worker binaries: 2 hooked rows at the run's v2.0.6 or above"}},
 		{name: "no commit identity", args: []string{"check"}, exit: 1, prep: healthy, snap: func(s *store.Snapshot) { s.Identity = store.Identity{} },
 			want: []string{"CHECK RED the sprint has no commit identity: no worker can hook and nothing can be committed: nova-sprint identity --name \"<git user.name>\" --email \"<git user.email>\" --reason \"<why>\""}},
 		{name: "a bench tier with no bench model", args: []string{"check"}, exit: 1, prep: then(healthy, func(_ *testing.T, w *world) { w.e.Answers = noBench{"heavy", "frontier"} }),
