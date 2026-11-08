@@ -59,33 +59,36 @@ type origin struct {
 	dir string
 }
 
-// fetched is the address's clone, cloned when absent, with refs (or
-// origin's default refspec) fetched, both under the clone's lock
-// (git.LockClone), so reads of one address in this process or another on
-// the same dir never run git fetch in one repository at once. What is read
-// after the fetch takes no lock.
-func (o *origin) fetched(ctx context.Context, repo string, refs ...string) (string, error) {
+// locked is the address's clone under its lock (git.LockClone), cloned when
+// absent, with refs (or origin's default refspec) fetched; the caller
+// closes the lock after its last write to the clone. Reads of one address
+// in this process or another on the same dir never run git in one
+// repository at once ("cannot lock ref").
+func (o *origin) locked(ctx context.Context, repo string, refs ...string) (string, *os.File, error) {
 	sum := sha256.Sum256([]byte(repo))
 	dir := filepath.Join(o.dir, fmt.Sprintf("%x", sum[:8]))
 	lock, err := git.LockClone(ctx, dir)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	err = o.git.Clone(ctx, repo, dir)
 	if err == nil {
 		err = o.git.Fetch(ctx, dir, refs...)
 	}
-	return dir, errors.Join(err, lock.Close())
+	if err != nil {
+		return "", nil, errors.Join(err, lock.Close())
+	}
+	return dir, lock, nil
 }
 
-// push is git push from the address's clone at dir under the clone's lock:
-// a push updates refs/remotes/origin in the clone, as a fetch does.
-func (o *origin) push(ctx context.Context, dir, sha, ref, expectOld string) error {
-	lock, err := git.LockClone(ctx, dir)
+// fetched is the address's clone with refs fetched (locked); what is read
+// after the fetch takes no lock.
+func (o *origin) fetched(ctx context.Context, repo string, refs ...string) (string, error) {
+	dir, lock, err := o.locked(ctx, repo, refs...)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return errors.Join(o.git.Push(ctx, dir, sha, ref, expectOld), lock.Close())
+	return dir, lock.Close()
 }
 
 // Contains is whether head contains ancestor, read in the clone of the
