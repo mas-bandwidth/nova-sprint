@@ -147,19 +147,6 @@ func TestColdreadDefectTickStepsUnbounded(t *testing.T) {
 	assert.NotEqual(t, 2, a.Version)
 }
 
-// ReadCatalog of an unknown version returns the store's ErrNotFound, not a
-// refusal naming the fix (coordinator's brief for ReadCatalog: "refuse an
-// unknown version naming the fix"; the verbs' own form, version()).
-func TestColdreadDefectReadCatalogUnknownVersion(t *testing.T) {
-	t.Parallel()
-	w := fakeWorld(t)
-	w.up()
-	_, err := ReadCatalog(w.ctx(), w.st, testEngine(), 99)
-	var r *Refusal
-	require.ErrorAs(t, err, &r, "got %v", err)
-	assert.Contains(t, r.Error(), "nova-sprint policy show --list")
-}
-
 // Not a defect probe: Answer from two goroutines on one engine, for -race.
 func TestColdreadConcurrentAnswer(t *testing.T) {
 	t.Parallel()

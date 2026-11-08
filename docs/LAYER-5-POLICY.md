@@ -503,26 +503,16 @@ five reach checks are each reached: 13 runs, run one by one with
 owed to the layer 3 and 6 wiring.
 
 **The catalog** (added at the coordinator's request, 2026-11-06, for the row
-verbs). Neither a `models` question nor a data section existed, so `catalog()`
-joined the question set: `{"models": {provider: [{"name": n, "tier": t}]},
-"harnesses": [h]}`, names non-empty, tiers from `TIERS`, nothing listed twice,
-validated every tick like the others. `policy.ReadCatalog(ctx, store, version)`
-(0 the built-in) returns `Catalog{Version, Models map[string][]Model{Name,
-Tier}, Harnesses}`; it is named ReadCatalog, not Catalog, because Go cannot
-give a function and a type one name. `Catalog.Unknown(model, harness)` is the
-row verbs' refusal text, naming the policy version; the fix is `CatalogFix`
-(`nova-sprint policy set <file> --reason <why>`). The default's tier map is Glenn's (Hacker News, 2026-11-05),
-quoted in `default.star`: haiku, luna and deepseek-flash at flash; sonnet,
-terra and mercury-3 at pro; opus and sol at heavy; fable, astra and argon at
-frontier. The providers are the coordinator's mapping (anthropic, openai,
-google, deepseek, inception); openai and google are guesses, and astra sits
-under `unknown`, a guess. 2026-11-07 (one vocabulary, defect 36): a name is
-the harness's own model id under its provider, and `Catalog.ForTier(tier)`
-hands a bench `provider/name` (a name holding a `/` as it is), providers in
-name order; deepseek-flash-4.1 became deepseek-flash (the id opencode lists),
-and mercury-2.5 (inception) and ultramarine-1-flash (paperinstruments) joined
-at flash, their tiers a guess. Harnesses: claude, codex, opencode and api (the
-API-rate adapter).
+verbs; cut to its bench on 2026-11-08). `catalog()` answers `{"bench": {tier:
+"provider/model"}}`, validated every tick like the others: each tier from
+`TIERS` once, each model in provider/model form (the harness's own model id
+under its provider). `Catalog{Version, Bench}` and `Catalog.BenchModel(tier)`
+are all the engine reads. The models-by-provider list, the harness list,
+`Catalog.Unknown`, `ForTier`, `ReadCatalog` and the prices warning went: no
+verb refused by them, and the probe and admission already refuse a bench
+model no bench can run. A version that still carries `models` and
+`harnesses` is accepted and those keys are not read. The built-in names no
+bench model: the operator's policy does.
 
 **Size.** At round 3: 2,529 lines of non-test Go, over the 1.5k budget by
 about 1,030; 117 lines of Starlark.
@@ -973,9 +963,9 @@ What the stitch changed in layer 5 and why:
 **Stitch, the bench model and the first set (2026-11-07, branch `v2-stitch-w2D1`).**
 - *The catalog's `bench` (defects 54, 57).* `catalog()` may carry
   `"bench": {tier: "provider/model"}`, the one model a bench row runs for a
-  card of that tier. Each key must be in `TIERS` and its model one of that
-  tier's models in the catalog (`bench: <tier>'s model <m> is not one of
-  its models (...)`); a list is refused. `Catalog.Bench` and
+  card of that tier. Each key must be in `TIERS` and its model in
+  provider/model form (2026-11-08: the tier's models list is gone); a list
+  is refused. `Catalog.Bench` and
   `Catalog.BenchModel(tier)`; run passes the active version's map to the
   steps as `Answers.Models`, and the deal writes the model on the consumer
   (LAYER-3's Built). A tier with no bench model leaves bench rows undealt

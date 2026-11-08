@@ -229,7 +229,11 @@ asks the human for its key once at a hidden terminal prompt and checks it with
 the provider. The AI runs the prompt; the human enters the value there. The
 installed worker's supported routes and the policy's model catalog must also
 match the selected configuration: adding a key alone does not make every model
-runnable. Follow any missing-route or harness refusal before starting work.
+runnable. The built-in policy names no bench model: a bench takes a tier's work
+only once the active policy's `catalog()` names that tier's model, as
+`{"bench": {"<tier>": "<provider>/<model>"}}` (`nova-sprint policy set`; `check`
+names each tier without one). Follow any missing-route or harness refusal
+before starting work.
 
 Use `--services none` to skip API-key setup. This does **not** disable the worker
 services installed on bench machines. For a sprint using only friend sessions,
