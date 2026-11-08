@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -49,14 +51,47 @@ const workerProviders = "deepseek=https://api.deepseek.com@DEEPSEEK_API_KEY,ince
 // bench: its seat is the bench's own, its keys the sprint credential, the
 // bus password when the bus has a user (as sprint-run's), and the provider
 // keys; its environment names the same store and bus as sprint-run's.
-func workerService(machine string, run verbs.FleetService) verbs.FleetService {
-	env := map[string]string{"NOVA_PG_DSN": run.Env["NOVA_PG_DSN"], "NOVA_BUS_REDIS": run.Env["NOVA_BUS_REDIS"]}
+func workerService(machine string, run verbs.FleetService, runAddress string) verbs.FleetService {
+	env := map[string]string{"NOVA_PG_DSN": benchReachable(run.Env["NOVA_PG_DSN"], runAddress), "NOVA_BUS_REDIS": benchReachable(run.Env["NOVA_BUS_REDIS"], runAddress)}
 	keys := append([]string{"NOVA_SPRINT_PG_PASSWORD"}, workerProviderKeys()...)
 	if user := run.Env["NOVA_BUS_USER"]; user != "" {
 		env["NOVA_BUS_USER"] = user
 		keys = append(keys, "NOVA_BUS_PASSWORD")
 	}
 	return verbs.FleetService{Name: "sprint-worker-" + machine, Machine: machine, Seat: machine, Argv: workerArgv(machine, run.Machine), Keys: keys, Env: env}
+}
+
+// loopbackAddr is true when addr (a URL such as the store's DSN, or a
+// host:port such as the bus's) names a loopback host: localhost in any
+// case, 127.0.0.0/8 or ::1.
+func loopbackAddr(addr string) bool {
+	host := ""
+	if u, err := url.Parse(addr); err == nil && u.Host != "" {
+		host = u.Hostname()
+	} else if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+}
+
+// benchReachable is addr as a bench reaches it: a loopback host is the run
+// machine's, so it becomes runAddress, the run machine's fleet address,
+// with user, port, database and query kept. Any other host, an empty
+// runAddress or an address it cannot parse is kept as it is.
+func benchReachable(addr, runAddress string) string {
+	if runAddress == "" || !loopbackAddr(addr) {
+		return addr
+	}
+	if u, err := url.Parse(addr); err == nil && u.Host != "" {
+		host := runAddress
+		if port := u.Port(); port != "" {
+			host = net.JoinHostPort(runAddress, port)
+		}
+		u.Host = host
+		return u.String()
+	}
+	_, port, _ := net.SplitHostPort(addr)
+	return net.JoinHostPort(runAddress, port)
 }
 
 // serviceLogPath is where nova-fleet's unit for service appends its output
@@ -95,15 +130,24 @@ func (w productionWorkload) InstallWorkers(ctx context.Context) error {
 		return serviceConfigFailure("cannot inspect machine inventory: ", err)
 	}
 	benches := verbs.WorkerBenches(machines)
+	runAddress := ""
+	for _, m := range machines {
+		if m.Name == w.run.Machine {
+			runAddress = m.Address
+		}
+	}
 	if w.services.Command == nil {
 		return fmt.Errorf("worker setup unavailable: no fleet command is wired")
 	}
 	if len(benches) == 0 {
 		return nil
 	}
+	if runAddress == "" && (loopbackAddr(w.run.Env["NOVA_PG_DSN"]) || loopbackAddr(w.run.Env["NOVA_BUS_REDIS"])) {
+		return &verbs.OperationError{Problem: "the store or bus is on loopback on run machine " + w.run.Machine + ", which has no fleet address in the machine inventory, so no bench could reach it", Fix: "nova-config machine set " + w.run.Machine + " --address <MagicDNS name> --actor <you> --reason <why>, then nova-sprint up again", Exit: 1}
+	}
 	names := make([]string, 0, len(benches))
 	for _, bench := range benches {
-		s := workerService(bench, w.run)
+		s := workerService(bench, w.run, runAddress)
 		if _, err = w.services.Ensure(ctx, s); err != nil {
 			return err
 		}
@@ -262,23 +306,41 @@ func (w productionWorkload) SmokeReady(ctx context.Context) (bool, error) {
 // (step 7) or a core count in nova-config, which its refusal names.
 func (productionWorkload) RunSmoke(context.Context) error { return nil }
 
+// workerUnit is machine's worker service as check and show read it
+// (verbs.Doctor.Workers): its unit's last log line, or why it is unreadable.
+func (p productionSetup) workerUnit(ctx context.Context, machine string) verbs.WorkerUnit {
+	u := verbs.WorkerUnit{Machine: machine, Service: "sprint-worker-" + machine}
+	u.LastLine, u.Unread = p.serviceLogLine(ctx, machine, u.Service)
+	return u
+}
+
 // lastServiceLogLine is the last line of service's unit log on machine,
-// over ssh to the inventory's address; what failed when it cannot be read.
+// quoted; "(the log is empty)"; or what failed when it cannot be read.
 func (p productionSetup) lastServiceLogLine(ctx context.Context, machine, service string) string {
+	line, unread := p.serviceLogLine(ctx, machine, service)
+	switch {
+	case unread != "":
+		return unread
+	case line == "":
+		return "(the log is empty)"
+	}
+	return fmt.Sprintf("%q", line)
+}
+
+// serviceLogLine is the last line of service's unit log on machine, over
+// ssh to the inventory's address ("" when the log is empty), or, second,
+// why it cannot be read.
+func (p productionSetup) serviceLogLine(ctx context.Context, machine, service string) (line, unread string) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	destination, err := p.sshDestination(ctx, machine)
 	if err != nil {
-		return "unreadable (" + edge.RedactN(err.Error(), 200) + ")"
+		return "", "unreadable (" + edge.RedactN(err.Error(), 200) + ")"
 	}
 	out, err := p.smallCommand(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "--", destination, "tail", "-n", "1", serviceLogPath(service))
 	if err != nil {
-		return "unreadable over ssh to " + destination + " (" + edge.RedactN(err.Error(), 200) + ")"
+		return "", "unreadable over ssh to " + destination + " (" + edge.RedactN(err.Error(), 200) + ")"
 	}
 	text := strings.TrimSpace(string(out))
-	line := text[strings.LastIndex(text, "\n")+1:]
-	if line == "" {
-		return "(the log is empty)"
-	}
-	return fmt.Sprintf("%q", edge.RedactN(line, 300))
+	return edge.RedactN(text[strings.LastIndex(text, "\n")+1:], 300), ""
 }

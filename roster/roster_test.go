@@ -200,7 +200,7 @@ func TestAdvertisedWidthAndTiers(t *testing.T) {
 		"b3": {Name: "b3", Session: "s", Tiers: "flash,pro"}, // no slots read: width stays
 		"b4": {Name: "b4", Session: "s", Tiers: "pro", SlotsTotal: 6},
 		"k1": {Name: "k1", Session: "s", Tiers: "flash", SlotsTotal: 1},
-	})
+	}, "")
 	assert.Equal(t, []string{"flash"}, got.Workers["b1"].Tiers)
 	assert.Equal(t, 3, got.Workers["b1"].Width)
 	assert.Equal(t, store.Tiers, got.Workers["b2"].Tiers)
@@ -211,4 +211,56 @@ func TestAdvertisedWidthAndTiers(t *testing.T) {
 	assert.Equal(t, ro.Kin["k1"], got.Kin["k1"])
 	assert.Equal(t, 8, ro.Workers["b1"].Width, "the input roster is not changed")
 	assert.Equal(t, store.Tiers, ro.Workers["b1"].Tiers)
+}
+
+// TestAdvertisedDropsAWorkerBehindTheRun: a worker whose row's binary is
+// below the run's release serves no tier (its heartbeat is a build whose take
+// receipt may not match the run's; defect D3, 2026-11-07), whatever it
+// advertised; a row at the run's release or above keeps its advertisement;
+// a row whose version is unknown ("" or not a release) is behind; a run that
+// is not a release (a dev build) compares nothing. Kin are untouched.
+func TestAdvertisedDropsAWorkerBehindTheRun(t *testing.T) {
+	t.Parallel()
+	ro := Roster{
+		Workers: map[string]Worker{
+			"b1": {Name: "b1", Width: 8, Tiers: store.Tiers, Harness: WorkerHarness},
+			"b2": {Name: "b2", Width: 8, Tiers: store.Tiers, Harness: WorkerHarness},
+			"b3": {Name: "b3", Width: 8, Tiers: store.Tiers, Harness: WorkerHarness},
+			"b4": {Name: "b4", Width: 8, Tiers: store.Tiers, Harness: WorkerHarness},
+		},
+		Kin: map[string]Kin{"k1": {Name: "k1", Width: 3, Tiers: []string{"frontier"}}},
+	}
+	rows := map[string]store.Row{
+		"b1": {Name: "b1", Session: "s", Tiers: "flash,pro", SlotsTotal: 4, Version: "v2.0.5"},
+		"b2": {Name: "b2", Session: "s", Tiers: "flash,pro", SlotsTotal: 4, Version: "v2.0.6"},
+		"b3": {Name: "b3", Session: "s", Tiers: "flash,pro", SlotsTotal: 4}, // no version in its heartbeat: a build before the version was carried
+		"b4": {Name: "b4", Session: "s", Tiers: "flash,pro", SlotsTotal: 4, Version: "v2.1.0"},
+		"k1": {Name: "k1", Session: "s"},
+	}
+	got := ro.Advertised(rows, "v2.0.6")
+	assert.Empty(t, got.Workers["b1"].Tiers, "below the run: serves no tier")
+	assert.Equal(t, []string{"flash", "pro"}, got.Workers["b2"].Tiers, "at the run's release")
+	assert.Empty(t, got.Workers["b3"].Tiers, "no version is below every release")
+	assert.Equal(t, []string{"flash", "pro"}, got.Workers["b4"].Tiers, "above the run")
+	assert.Equal(t, 4, got.Workers["b1"].Width, "the width is the row's; only the tiers go")
+	assert.Equal(t, ro.Kin["k1"], got.Kin["k1"])
+	dev := ro.Advertised(rows, "dev+0123456789ab")
+	assert.Equal(t, []string{"flash", "pro"}, dev.Workers["b1"].Tiers, "a run that is not a release compares nothing")
+	assert.Equal(t, []string{"flash", "pro"}, dev.Workers["b3"].Tiers)
+	assert.Equal(t, store.Tiers, ro.Workers["b1"].Tiers, "the input roster is not changed")
+}
+
+// TestBehind: have is behind want when want is a release and have is not,
+// or is a lower release; never when want is not a release.
+func TestBehind(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		have, want string
+		behind     bool
+	}{
+		{"v2.0.5", "v2.0.6", true}, {"v2.0.6", "v2.0.6", false}, {"v2.1.0", "v2.0.6", false}, {"v1.9.9", "v2.0.6", true},
+		{"", "v2.0.6", true}, {"dev+0123456789ab", "v2.0.6", true}, {"v2.0.5", "dev", false}, {"", "", false}, {"v2.0.5", "v2.0.0-test", false},
+	} {
+		assert.Equal(t, c.behind, Behind(c.have, c.want), "%q behind %q", c.have, c.want)
+	}
 }

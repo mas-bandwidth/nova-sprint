@@ -206,6 +206,10 @@ func (t *tick) cleared(j store.Judgement) string {
 		if rate, n := t.landRate(j.About); n < Engine.LandSample || rate >= Engine.LandTarget {
 			return "land rate back at target"
 		}
+	case "engine":
+		if strings.HasPrefix(j.Question, noHead(j.About)) && t.in.Heads[j.About] != "" {
+			return "stream " + j.About + " has a head in the tick's inputs again"
+		}
 	}
 	return t.clearedDeal(j)
 }

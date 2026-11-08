@@ -122,11 +122,15 @@ func (t *tick) preferred(c store.Card, rows []string) string {
 func (t *tick) base(stream string) (string, bool) {
 	b, ok := t.in.Heads[stream]
 	if !ok || b == "" {
-		t.engine(stream, "stream "+stream+" has no head in the tick's inputs; layer 6 reads the stream branch and passes Inputs.Heads")
+		t.engine(stream, noHead(stream)+"; layer 6 reads the stream branch and passes Inputs.Heads")
 		return "", false
 	}
 	return b, true
 }
+
+// noHead is how the engine judgement for a stream with no head begins;
+// cleared knows the judgement by it.
+func noHead(stream string) string { return "stream " + stream + " has no head in the tick's inputs" }
 
 // branch is the card branch: sprint/<stream>/<producer> (the stream's group
 // branch is sprint-group/<stream>, outside sprint/, so the two never meet as

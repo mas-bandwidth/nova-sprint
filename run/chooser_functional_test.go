@@ -28,9 +28,10 @@ func chooserTestPG(t *testing.T) string {
 	require.NoError(t, l.Close())
 	ctl := filepath.Join(filepath.Dir(initdb), "pg_ctl")
 	opts := fmt.Sprintf("-p %d -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", port)
+	// Stop is registered before start, so a failed start orphans no postmaster.
+	t.Cleanup(func() { _ = exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").Run() })
 	out, err = exec.Command(ctl, "-D", dir, "-l", filepath.Join(dir, "server.log"), "-o", opts, "-w", "start").CombinedOutput()
 	require.NoError(t, err, "%s", out)
-	t.Cleanup(func() { _ = exec.Command(ctl, "-D", dir, "-m", "immediate", "-w", "stop").Run() })
 	return fmt.Sprintf("postgres://nova@127.0.0.1:%d/postgres?sslmode=disable", port)
 }
 func TestFunctionalChooserExclusionAndLoss(t *testing.T) {

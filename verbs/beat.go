@@ -15,7 +15,8 @@ import (
 // what it is carrying; nobody asks it): the bench's 1-minute load average,
 // the highest CPU busy percent of its last 10 seconds (--cpu-peak, across all
 // cores, 100 is every core busy; the board's CPU cell), its logical cores, its nova-reserve slots in use and in all, and the
-// tiers its harness serves (--tiers, defect 74). It sets the row's load
+// tiers its harness serves (--tiers, defect 74), and this build's version (the
+// binary that takes the row's cards; defect D3). It sets the row's load
 // columns, which the board's load cell reads and the roster takes the row's
 // width and tiers from (roster.Advertised); it moves nothing else. A beat that repeats the last one is a success that writes
 // nothing, so a quiet bench makes no events.
@@ -24,7 +25,8 @@ func runBeat(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (st
 	if f != nil {
 		return "", f
 	}
-	if r := snap.Rows[in.actor]; r.Load1Centi == w.Load1Centi && r.Cores == w.Cores && r.SlotsUsed == w.SlotsUsed && r.SlotsTotal == w.SlotsTotal && r.CPUPeakDeci == w.CPUPeakDeci && r.Tiers == w.Tiers {
+	w.Version = e.Version // the build that takes this row's cards: the tick deals a row behind the run's release nothing (defect D3)
+	if r := snap.Rows[in.actor]; r.Load1Centi == w.Load1Centi && r.Cores == w.Cores && r.SlotsUsed == w.SlotsUsed && r.SlotsTotal == w.SlotsTotal && r.CPUPeakDeci == w.CPUPeakDeci && r.Tiers == w.Tiers && r.Version == w.Version {
 		return done(waitNext, "BEAT "+in.actor+" unchanged"), nil
 	}
 	op := e.newOp("beat", in.actor, snap, w)

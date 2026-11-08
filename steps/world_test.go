@@ -17,13 +17,14 @@ import (
 // from its log. No clock: the fake clock starts at t0 (1000 s after the
 // epoch, never 0) and each op is one second later.
 type world struct {
-	t      *testing.T
-	f      *store.Fake
-	v      *View
-	roster roster.Roster
-	cursor int64
-	n      int
-	now    time.Time
+	t        *testing.T
+	f        *store.Fake
+	v        *View
+	roster   roster.Roster
+	cursor   int64
+	n        int
+	now      time.Time
+	headless set // streams the inputs carry no head for (the edge's read failed)
 }
 
 var t0 = time.Unix(1000, 0).UTC()
@@ -189,7 +190,9 @@ func (w *world) reportPlan(c, result, head, reason string) (card.Plan, *card.Ref
 func (w *world) inputs() Inputs {
 	in := Inputs{Now: w.now.Add(time.Second), Heads: map[string]string{}, Seen: map[string]time.Time{}, Roster: w.roster}
 	for s := range w.v.Streams {
-		in.Heads[s] = base
+		if _, no := w.headless[s]; !no {
+			in.Heads[s] = base
+		}
 	}
 	for r := range w.v.Rows {
 		in.Seen[r] = in.Now

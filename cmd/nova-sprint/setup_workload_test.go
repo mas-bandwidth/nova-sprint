@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -254,6 +255,57 @@ func TestLastServiceLogLineReadsTheUnitLogOverSSH(t *testing.T) {
 	}
 }
 
+// The doctor's worker benches are the inventory's, each with its unit's
+// last log line over ssh (check's worker lines, D14); one machine's alone
+// for show; a process with no fleet configuration says so.
+func TestDoctorReadsEveryBenchWorkerUnit(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var seen [][]string
+	p := productionSetup{cfg: configForSetup(), command: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		mu.Lock()
+		seen = append(seen, append([]string{name}, args...))
+		mu.Unlock()
+		switch {
+		case name == "nova-config" && args[0] == "machine":
+			return []byte(`{"result":{"verb":"machine list","status":"ok","exit":0},"facts":{"kind":"machine","rows":3},"items":[` + workloadMachines + `]}`), nil
+		case name == "nova-config":
+			return []byte(`{"ansible_host":"100.100.1.` + map[string]string{"amd-1": "5", "amd-2": "6"}[args[2]] + `","ansible_user":"nova"}`), nil
+		case slices.Contains(args, "nova@100.100.1.5"):
+			return []byte("SPRINT REFUSED worker: unknown flag --work-clone: nova-sprint help worker\n"), nil
+		}
+		return nil, errors.New("no route")
+	}}
+	p.runtime.Services = verbs.FleetServices{Command: p.command}
+	d := fleetDoctor(credentials{}, p)
+	units, err := d.Workers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []verbs.WorkerUnit{{Machine: "amd-1", Service: "sprint-worker-amd-1", LastLine: "SPRINT REFUSED worker: unknown flag --work-clone: nova-sprint help worker"},
+		{Machine: "amd-2", Service: "sprint-worker-amd-2", Unread: "unreadable over ssh to nova@100.100.1.6 (no route)"}}
+	if !slices.Equal(units, want) {
+		t.Fatalf("%+v", units)
+	}
+	u, ok, err := d.Worker(context.Background(), "amd-1")
+	if err != nil || !ok || u != want[0] {
+		t.Fatalf("%+v %v %v", u, ok, err)
+	}
+	if u, ok, err = d.Worker(context.Background(), "studio"); err != nil || ok {
+		t.Fatalf("%+v %v %v", u, ok, err)
+	}
+	if _, err = fleetDoctor(credentials{}, failedProductionSetup{errors.New("no hostname")}).Workers(context.Background()); err == nil || !strings.Contains(err.Error(), "no fleet configuration: no hostname") {
+		t.Fatal(err)
+	}
+	if _, err = fleetDoctor(credentials{}, nil).Workers(context.Background()); err == nil || !strings.Contains(err.Error(), "no fleet configuration") {
+		t.Fatal(err)
+	}
+	// show on a process with no fleet configuration prints the row alone.
+	if u, ok, err = fleetDoctor(credentials{}, nil).Worker(context.Background(), "amd-1"); err != nil || ok {
+		t.Fatalf("%+v %v %v", u, ok, err)
+	}
+}
+
 // The Setup the engine really gets forwards every seam it type-asserts
 // (section 40: up refused "the setup walk has no completion").
 func TestProductionSetupForwardsEverySeam(t *testing.T) {
@@ -276,6 +328,59 @@ func TestWorkerDirectoriesAreUnderHome(t *testing.T) {
 	for in, want := range map[string]string{".local/state": "/home/nova/.local/state", "/abs/dir": "/abs/dir", "": ""} {
 		if got := underHome("/home/nova", in); got != want {
 			t.Fatalf("%q: %q, want %q", in, got, want)
+		}
+	}
+}
+
+// D15: a store or bus the run machine reaches on loopback is the run
+// machine's fleet address on a bench, keeping user, port, database and
+// query; an address that is not loopback is kept as it is.
+func TestWorkerServiceStoreAndBusReachableFromTheBench(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ dsn, bus, wantDSN, wantBus string }{
+		{"postgres://nova_sprint@127.0.0.1:5432/nova?sslmode=disable", "127.0.0.1:6379",
+			"postgres://nova_sprint@studio.tail.ts.net:5432/nova?sslmode=disable", "studio.tail.ts.net:6379"},
+		{"postgres://nova_sprint@localhost:5432/nova?sslmode=disable", "localhost:6379",
+			"postgres://nova_sprint@studio.tail.ts.net:5432/nova?sslmode=disable", "studio.tail.ts.net:6379"},
+		{"postgres://nova_sprint@[::1]:5432/nova", "[::1]:6379",
+			"postgres://nova_sprint@studio.tail.ts.net:5432/nova", "studio.tail.ts.net:6379"},
+		{"postgres://nova_sprint@100.76.29.55:5432/nova?sslmode=disable", "100.76.29.55:6379",
+			"postgres://nova_sprint@100.76.29.55:5432/nova?sslmode=disable", "100.76.29.55:6379"},
+	} {
+		run := workloadRun()
+		run.Env["NOVA_PG_DSN"], run.Env["NOVA_BUS_REDIS"] = c.dsn, c.bus
+		env := workerService("amd-1", run, "studio.tail.ts.net").Env
+		if env["NOVA_PG_DSN"] != c.wantDSN || env["NOVA_BUS_REDIS"] != c.wantBus {
+			t.Errorf("%s, %s: worker got %s, %s; want %s, %s", c.dsn, c.bus, env["NOVA_PG_DSN"], env["NOVA_BUS_REDIS"], c.wantDSN, c.wantBus)
+		}
+	}
+}
+
+// D15: a loopback store or bus with no fleet address for the run machine
+// (no address, or not in the inventory) is a refusal naming the machine
+// and how to give it one, before any record is written; a store that is
+// not loopback needs no address.
+func TestInstallWorkersRefusesLoopbackWithNoRunAddress(t *testing.T) {
+	t.Parallel()
+	noAddress := strings.Replace(workloadMachines, `"address":"100.100.1.2"`, `"address":""`, 1)
+	notListed := workloadMachines[strings.Index(workloadMachines, `{"kind":"machine","fields":{"name":"amd-1"`):]
+	for _, c := range []struct {
+		machines string
+		rows     int
+	}{{noAddress, 3}, {notListed, 2}} {
+		machines := c.machines
+		f := &fleetFake{machines: machines, rows: c.rows}
+		w := testWorkload(f, nil, nil)
+		w.run.Env["NOVA_PG_DSN"] = "postgres://nova_sprint@LOCALHOST:5432/nova?sslmode=disable"
+		err := w.InstallWorkers(context.Background())
+		var op *verbs.OperationError
+		if !errors.As(err, &op) || !strings.Contains(op.Problem, "studio") || !strings.Contains(op.Fix, "nova-config machine set studio --address") ||
+			slices.ContainsFunc(f.calls, func(c []string) bool { return len(c) > 2 && c[2] == "add" }) {
+			t.Fatal(err, f.calls)
+		}
+		f = &fleetFake{machines: machines, rows: c.rows}
+		if err := testWorkload(f, nil, nil).InstallWorkers(context.Background()); err != nil {
+			t.Fatal("a store that is not loopback needs no run address:", err)
 		}
 	}
 }

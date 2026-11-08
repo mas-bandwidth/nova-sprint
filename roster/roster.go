@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/store"
@@ -263,19 +264,55 @@ func routesOf(roles []string) []string {
 // holds for the session that made it (the store clears it at unhook and at
 // a new hook), so a worker probing before its hook is asked every tier's
 // models, never only last session's.
+// A worker whose row's binary is behind version, the run's release (Behind),
+// serves no tier: its take receipt may not be the run's (defect D3,
+// 2026-11-07: a stale bench faulted every card it took). version "" (or any
+// build that is not a release) pins nothing; the probe and the board pass "".
 // Kin are untouched: a friend's width and tiers are its own in nova-config.
-func (r Roster) Advertised(rows map[string]store.Row) Roster {
+func (r Roster) Advertised(rows map[string]store.Row, version string) Roster {
 	out := r.Clone()
 	for name, w := range out.Workers {
 		row, ok := rows[name]
-		if !ok || row.Tiers == "" {
-			continue
+		if ok && row.Tiers != "" {
+			w.Tiers = store.SplitTiers(row.Tiers)
+			if row.SlotsTotal > 0 {
+				w.Width = min(w.Width, row.SlotsTotal)
+			}
 		}
-		w.Tiers = store.SplitTiers(row.Tiers)
-		if row.SlotsTotal > 0 {
-			w.Width = min(w.Width, row.SlotsTotal)
+		if Behind(row.Version, version) {
+			w.Tiers = nil
 		}
 		out.Workers[name] = w
 	}
 	return out
+}
+
+// Behind says whether have, a row's binary release, is below want, the
+// run's: never when want is not a release vMAJOR.MINOR.PATCH (a dev build
+// pins nothing); always when have is not one (a binary that did not say).
+func Behind(have, want string) bool {
+	w, ok := release(want)
+	if !ok {
+		return false
+	}
+	h, ok := release(have)
+	return !ok || slices.Compare(h[:], w[:]) < 0
+}
+
+// release is v as vMAJOR.MINOR.PATCH's three numbers, false when it is not one.
+func release(v string) ([3]uint64, bool) {
+	var out [3]uint64
+	rest, ok := strings.CutPrefix(v, "v")
+	parts := strings.Split(rest, ".")
+	if !ok || len(parts) != 3 {
+		return out, false
+	}
+	for i, p := range parts {
+		n, err := strconv.ParseUint(p, 10, 64)
+		if err != nil || strings.Trim(p, "0123456789") != "" || (len(p) > 1 && p[0] == '0') {
+			return out, false
+		}
+		out[i] = n
+	}
+	return out, true
 }

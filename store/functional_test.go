@@ -56,9 +56,8 @@ func startPG(t *testing.T) string {
 	ctl := filepath.Join(bin, "pg_ctl")
 	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
 	start.Env = append(os.Environ(), "LC_ALL=C")
-	if out, err := start.CombinedOutput(); err != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", err, out)
-	}
+	// Stop is registered before start: a start that fails or times out can
+	// leave a postmaster running, and t.Fatalf must not orphan it.
 	t.Cleanup(func() {
 		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
 		stop.Env = append(os.Environ(), "LC_ALL=C")
@@ -66,6 +65,9 @@ func startPG(t *testing.T) string {
 			t.Logf("pg_ctl stop: %v\n%s", err, out)
 		}
 	})
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
@@ -386,8 +388,40 @@ func TestFunctionalMigrateRound26(t *testing.T) {
 	assert.Equal(t, Identity{"Bot", "1+bot@users.noreply.example"}, h.snap().Identity, "the identity is kept")
 	r := h.snap().Rows["w1"]
 	assert.Equal(t, []int{250, 8, 2, 8, 0}, []int{r.Load1Centi, r.Cores, r.SlotsUsed, r.SlotsTotal, r.CPUPeakDeci}, "the beat is kept and the peak starts at 0")
-	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873}))
+	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873, ""}))
 	assert.Equal(t, 873, h.snap().Rows["w1"].CPUPeakDeci)
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
+// Round 28: a store made by round 27's schema (round27Hash: the heartbeat
+// without version, a beaten row in it) is upgraded by Migrate: the column is
+// added ("" on the row), the new hash recorded, a second Migrate is a no-op,
+// the beat's values are kept, a beat then sets the version, and the columns
+// are in a new store's order.
+func TestFunctionalMigrateRound27(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round27.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round27Hash + "' WHERE id = 1",
+		"INSERT INTO sprint.rows (name, state, session, role, load1_centi, cores, slots_used, slots_total, tiers, cpu_peak_deci, epoch) VALUES ('w1', 'up', 'sess', 'worker', 250, 8, 2, 8, 'flash', 873, 1)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round27Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 27}, id)
+	p := openPG(t, dsn) // Migrate
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 1}
+	r := h.snap().Rows["w1"]
+	assert.Equal(t, []any{250, 873, "flash", ""}, []any{r.Load1Centi, r.CPUPeakDeci, r.Tiers, r.Version}, "the beat is kept and the version starts empty")
+	h.ok(h.op("beat", nil, SetRowLoad{"w1", 250, 8, 2, 8, "flash", 873, "v2.0.6"}))
+	assert.Equal(t, "v2.0.6", h.snap().Rows["w1"].Version)
 	fresh := newDatabase(t, dsn, "fresh")
 	openPG(t, fresh)
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")

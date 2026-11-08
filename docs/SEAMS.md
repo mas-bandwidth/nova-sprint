@@ -147,7 +147,9 @@ Layer 3 opens one `land` judgement per card for each of those. A request of
 kind `stop` is one bus message to the row (`STOP <consumer>`) and, once
 sent, an inbox item `{Kind: "stop", Request: req.ID, Outcome: "ack"}`.
 `Inputs.Heads` is the base tip of each stream as the edge last read it
-(`LsRemote` at start, after each landing, and every ten seconds).
+(`LsRemote` at start, after each landing, and every ten seconds; one read per
+repository and base, shared by every stream on them; a read that fails keeps
+the last tip, and a base no longer on origin drops it).
 
 The verbs' landing edge is `verbs.Lander` (`cmd/nova-sprint/lander.go`):
 `Land(stream, branch, head)` (the hand merge: the card branch's PR merged
