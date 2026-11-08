@@ -1,20 +1,7 @@
 # nova-sprint: the detailed guide
 
-With nova-sprint, your AIs can:
-
-* Keep all the work in cards outside any model's context, so nothing is forgotten
-* Run work across multiple models, harnesses and machines
-* Get work done as quickly as possible, respecting dependencies
-* Have every change reviewed and merged into main automatically
-* Show the sprint's progress in a dashboard, so you can see the work moving
-
-nova-sprint coordinates work in Git repositories. A coordinator writes cards,
-workers receive them over nova-bus, and the run service arranges independent
-reviews and landing. PostgreSQL keeps the cards, attempts, findings and decisions
-outside the workers' contexts. The dashboard shows that same work moving.
-
 This is the detailed guide for humans and AIs using nova-sprint. Pick the route
-that matches your task; you do not need to provision a second sprint to join one.
+that matches your task.
 
 | You want to… | Start here | What you need |
 | --- | --- | --- |
