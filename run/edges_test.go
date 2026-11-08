@@ -235,3 +235,35 @@ func TestLandPushTakesTheClonesLock(t *testing.T) {
 		t.Fatalf("pushes with the lock held: %v, want [true]", g.locked)
 	}
 }
+
+// TestHeadsReadSkipsTheLockOnAClone: a clone that is there (its .git
+// exists) is read without the clone's lock, so a heads read never waits
+// behind a landing on the same repository; only a clone to make takes it.
+func TestHeadsReadSkipsTheLockOnAClone(t *testing.T) {
+	t.Parallel()
+	const url = "https://example.invalid/r.git"
+	dir := t.TempDir()
+	sum := sha256.Sum256([]byte(url))
+	clone := filepath.Join(dir, fmt.Sprintf("%x", sum[:8]))
+	if err := os.MkdirAll(filepath.Join(clone, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(clone+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	e := &Edges{Git: &cloneGit{}, ReposDir: dir}
+	if h := e.readHead(ctx, store.Stream{Name: "s1", Repo: url, Base: "main", Forge: "github"}); h.err != nil || h.sha != strings.Repeat("a", 40) {
+		t.Fatalf("a heads read of a clone that is there, locked elsewhere: %q, %v", h.sha, h.err)
+	}
+}

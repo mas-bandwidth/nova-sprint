@@ -181,8 +181,7 @@ func (c *Client) runGit_internal(ctx context.Context, dir string, timeout time.D
 	return c.runGitEnv_internal(ctx, dir, timeout, nil, args...)
 }
 func (c *Client) Fetch(ctx context.Context, repoDir string, refs ...string) error {
-	// auto-gc in the foreground: a detached gc would outlive the clone's lock (LockClone).
-	args := []string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false", "fetch", "--no-tags", "origin"}
+	args := []string{"fetch", "--no-tags", "origin"}
 	for _, r := range refs {
 		if strings.TrimSpace(r) != "" {
 			args = append(args, r)

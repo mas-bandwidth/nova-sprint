@@ -150,12 +150,10 @@ func TestOriginFetchSerialized(t *testing.T) {
 
 // TestLanderPushTakesTheClonesLock: git push updates refs/remotes/origin/<ref>
 // in the clone, so the lander's push holds the clone's lock as its fetch
-// does, and the locked fetch runs auto-gc in the foreground (a detached gc
-// would outlive the lock). git is a fake (no process).
+// does. git is a fake (no process).
 func TestLanderPushTakesTheClonesLock(t *testing.T) {
 	t.Parallel()
 	var pushLocked []bool
-	var fetchArgv []string
 	l := &lander{clones: &origin{dir: t.TempDir(), git: git.New(git.Config{Exec: git.ExecFunc(func(_ context.Context, cmd edge.Cmd) (edge.Result, error) {
 		switch {
 		case slices.Contains(cmd.Argv, "push"):
@@ -167,8 +165,6 @@ func TestLanderPushTakesTheClonesLock(t *testing.T) {
 			if err := f.Close(); err != nil {
 				return edge.Result{}, err
 			}
-		case slices.Contains(cmd.Argv, "fetch"):
-			fetchArgv = cmd.Argv
 		}
 		return edge.Result{}, nil
 	})})}}
@@ -178,8 +174,5 @@ func TestLanderPushTakesTheClonesLock(t *testing.T) {
 	}
 	if len(pushLocked) != 1 || !pushLocked[0] {
 		t.Fatalf("pushes with the lock held: %v, want [true]", pushLocked)
-	}
-	if line := strings.Join(fetchArgv, " "); !strings.Contains(line, "-c gc.autoDetach=false -c maintenance.autoDetach=false fetch") {
-		t.Fatalf("fetch %q runs auto-gc detached", line)
 	}
 }

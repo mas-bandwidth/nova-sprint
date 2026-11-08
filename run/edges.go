@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -277,7 +278,10 @@ func (e *Edges) clone(ctx context.Context, s store.Stream) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(url))
 	dir := filepath.Join(e.ReposDir, fmt.Sprintf("%x", sum[:8]))
-	lock, err := git.LockClone(ctx, dir)
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		return dir, nil // there: no lock, so a heads read never waits behind a landing
+	}
+	lock, err := git.LockClone(ctx, dir) // Clone looks for .git again under it
 	if err != nil {
 		return "", err
 	}
