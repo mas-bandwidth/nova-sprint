@@ -208,8 +208,8 @@ func (t *tick) streamFacts(s string) StreamFacts {
 	return f
 }
 
-// candidates is the rows policy may name for c: open (up, not held), not
-// resting, serving c's tier, and for a read not c's author and not holding
+// candidates is the rows policy may name for c: open (up, not held), on the
+// bus this tick (present), not resting, serving c's tier, and for a read not c's author and not holding
 // a live read of c's head. Room is the engine's check at the deal. The work
 // list is built once per tier per tick (row claims are made before the
 // deal); a read's is filtered from it.
@@ -220,7 +220,7 @@ func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 	if !ok {
 		for _, n := range t.rowNames {
 			r := t.v.Rows[n]
-			if _, resting := t.rested[n]; resting || !t.v.Open(r) || !slices.Contains(t.tiers(n), c.Tier) || !t.in.Roster.ServesRoutes(n, routes) || !t.unclaimed(n) {
+			if _, resting := t.rested[n]; resting || !t.v.Open(r) || !t.present(n) || !slices.Contains(t.tiers(n), c.Tier) || !t.in.Roster.ServesRoutes(n, routes) || !t.unclaimed(n) {
 				continue
 			}
 			work = append(work, t.rowFacts(r))
@@ -237,6 +237,15 @@ func (t *tick) candidates(c store.Card, kind string) []RowFacts {
 		}
 	}
 	return out
+}
+
+// present says whether row n is on the bus this tick (Seen at Now). The
+// store's up and hook are the row's session record, not its presence (D1',
+// 2026-11-07: a row with no hook was dealt and nudged for an hour): an
+// absent row is dealt nothing and nudged nothing.
+func (t *tick) present(n string) bool {
+	seen, ok := t.in.Seen[n]
+	return ok && !seen.Before(t.in.Now)
 }
 
 // readingOn says whether row holds a live read of c's head.

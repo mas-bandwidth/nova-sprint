@@ -48,7 +48,8 @@ func (t *tick) dealtAt(c string) time.Time {
 // unacked is the nudges and the ready timeout (LAYER-3 "In hand"; the
 // human, 2026-11-07: "nag every second until taken", "ready_take withdraws
 // and re-deals"): a working consumer its row has not acknowledged is nudged
-// each tick from timeouts ready_nag after the deal, with the row's count of
+// each tick from timeouts ready_nag after the deal while the row is on the
+// bus (present), with the row's count of
 // such cards, the cards it has taken and its width; at ready_take a work
 // card is withdrawn and its producer dealt in the same group, by the
 // engine's ranking, to another row with room, never the slow one, and a
@@ -76,9 +77,11 @@ func (t *tick) unacked() []Nudge {
 			if since >= seconds(t.tmo.ReadyTake) && t.redeal(n, c, since) {
 				continue
 			}
-			cmd := fmt.Sprintf("nova-sprint take %s@%d --as %s --epoch %d", id, c.Gen, n, t.v.Epoch)
-			out = append(out, Nudge{Row: n, Card: id, Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
-				untaken, len(live)-untaken, t.room(n), id, since.Truncate(time.Second), cmd)})
+			if t.present(n) { // the bus only queues a nudge to an absent row
+				cmd := fmt.Sprintf("nova-sprint take %s@%d --as %s --epoch %d", id, c.Gen, n, t.v.Epoch)
+				out = append(out, Nudge{Row: n, Card: id, Line: fmt.Sprintf("NUDGE you have a new ready card. you have %d ready cards, you are currently working on %d, and your width is %d. Please work to width! card=%s dealt %s ago is in your hand, not acknowledged; run: %s",
+					untaken, len(live)-untaken, t.room(n), id, since.Truncate(time.Second), cmd)})
+			}
 			if since >= seconds(t.tmo.ReadyTake) {
 				t.judge("unacked", id, fmt.Sprintf("row %s has not acknowledged card %s, dealt %s ago and nudged each tick since %ds, and no other row with room serves it: is the row's session alive? (nova-sprint release %s@%d --reason <why> deals it again)",
 					n, id, since.Truncate(time.Second), t.tmo.ReadyNag, id, c.Gen))

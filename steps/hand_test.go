@@ -206,3 +206,61 @@ func TestHandPlainFaultRedeals(t *testing.T) {
 	s.requireState("p1.w2", "working")
 	assert.Empty(t, s.openJudgements("blocked"))
 }
+
+// TestDealSkipsRowAbsentFromBus (D1', 2026-11-07): a row hooked and up in
+// the store, with room, that is not on the bus this tick is dealt nothing,
+// whatever its session record says: a configured row is not a present one.
+// On the bus again, it is dealt.
+func TestDealSkipsRowAbsentFromBus(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.away = set{"r1": {}}
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1", "ready")
+	assert.NotContains(t, s.snap().Cards, "p1.w1", "an absent row is dealt nothing")
+	s.away = nil
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	assert.Equal(t, "r1", s.card("p1.w1").Holder)
+}
+
+// TestHandAbsentRowNotNudgedAndRedealt (D1'): a row that leaves the bus with
+// a card in hand is not nudged (the bus would only queue it); the card still
+// counts toward ready_take, and at the bound it is withdrawn and dealt to a
+// present row, never to another absent one.
+func TestHandAbsentRowNotNudgedAndRedealt(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.tick()
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "working")
+	slow := s.card("p1.w1").Holder
+	other := map[string]string{"r1": "r2", "r2": "r1"}[slow]
+	s.away = set{slow: {}, other: {}}
+	p := s.tick()
+	assert.Empty(t, p.Nudges, "an absent row is not nudged")
+	s.now = s.now.Add(seconds(Engine.Timeouts.ReadyTake))
+	p = s.tick()
+	require.Empty(t, s.rejected)
+	assert.Empty(t, p.Nudges)
+	s.requireState("p1.w1", "working") // the only other row is absent too: not re-dealt there
+	assert.Len(t, s.openJudgements("unacked"), 1)
+	delete(s.away, other)
+	s.tick()
+	require.Empty(t, s.rejected)
+	s.requireState("p1.w1", "fail")
+	s.requireState("p1.w2", "working")
+	assert.Equal(t, other, s.card("p1.w2").Holder, "re-dealt to the present row")
+}
