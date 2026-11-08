@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -101,27 +102,36 @@ func (e *Edge) Who(ctx context.Context) (map[string]Presence, error) {
 	if res.ExitCode != 0 {
 		return nil, fmt.Errorf("bus who: %w; check NOVA_BUS_REDIS and daemon status", edge.Failed(cmd, res, nil))
 	}
-	return parseWhoOutput_internal(res.Stdout)
+	return ParseWho([]byte(res.Stdout))
 }
-func parseWhoOutput_internal(stdout string) (map[string]Presence, error) {
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	if len(lines) == 0 || !strings.HasPrefix(lines[0], "WHO OK") {
-		return nil, fmt.Errorf("bus who: expected `WHO OK present=<n>`: %s", edge.ParseRefused("unexpected header", 0, []byte(stdout)))
+
+// ParseWho is the one parse of `nova-bus who`: "WHO OK present=<n>", then
+// n lines of name<TAB>uptime[<TAB>detail], each name once.
+func ParseWho(out []byte) (map[string]Presence, error) {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if !strings.HasPrefix(lines[0], "WHO OK present=") {
+		return nil, fmt.Errorf("bus who: expected `WHO OK present=<n>`: %s", edge.ParseRefused("unexpected header", 0, out))
 	}
-	out := make(map[string]Presence)
+	n, err := strconv.Atoi(strings.TrimPrefix(lines[0], "WHO OK present="))
+	if err != nil {
+		return nil, fmt.Errorf("bus who: expected `WHO OK present=<n>`: %s", edge.ParseFailure(err, out))
+	}
+	if n != len(lines)-1 {
+		return nil, fmt.Errorf("bus who: %s", edge.ParseRefused(fmt.Sprintf("present=%d but %d name lines", n, len(lines)-1), len(lines[0]), out))
+	}
+	who := make(map[string]Presence, n)
+	at := len(lines[0]) + 1
 	for _, line := range lines[1:] {
-		if line = strings.TrimSpace(line); line == "" {
-			continue
-		}
 		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) < 2 || parts[0] == "" {
-			return nil, fmt.Errorf("bus who: malformed presence line: %s", edge.ParseRefused("no name<TAB>uptime", max(strings.Index(stdout, line), 0), []byte(stdout)))
+		if _, seen := who[parts[0]]; len(parts) < 2 || parts[0] == "" || seen {
+			return nil, fmt.Errorf("bus who: %s", edge.ParseRefused("a name line is not a new name<TAB>uptime", at, out))
 		}
+		at += len(line) + 1
 		p := Presence{Name: parts[0], Uptime: parts[1]}
 		if len(parts) == 3 {
 			p.Detail = parts[2]
 		}
-		out[p.Name] = p
+		who[p.Name] = p
 	}
-	return out, nil
+	return who, nil
 }

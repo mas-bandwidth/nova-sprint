@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -238,32 +236,5 @@ func (p setupPresence) Who(ctx context.Context) (map[string]bus.Presence, error)
 	if err != nil {
 		return nil, err
 	}
-	return parseWho(out)
-}
-
-// parseWho is `nova-bus who`: "WHO OK present=<n>", then one tab-separated
-// line per name.
-func parseWho(out []byte) (map[string]bus.Presence, error) {
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if !strings.HasPrefix(lines[0], "WHO OK present=") {
-		return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseRefused("no WHO OK present= header", 0, out))
-	}
-	n, err := strconv.Atoi(strings.TrimPrefix(lines[0], "WHO OK present="))
-	if err != nil {
-		return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseFailure(err, out))
-	}
-	if n != len(lines)-1 {
-		return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseRefused(fmt.Sprintf("present=%d but %d name lines", n, len(lines)-1), len(lines[0]), out))
-	}
-	who := map[string]bus.Presence{}
-	at := len(lines[0]) + 1
-	for _, line := range lines[1:] {
-		f := strings.Split(line, "\t")
-		if len(f) < 2 || f[0] == "" {
-			return nil, fmt.Errorf("nova-bus who printed something else: %s", edge.ParseRefused("a name line is not name<TAB>uptime", at, out))
-		}
-		at += len(line) + 1
-		who[f[0]] = bus.Presence{Name: f[0], Uptime: f[1]}
-	}
-	return who, nil
+	return bus.ParseWho(out)
 }
