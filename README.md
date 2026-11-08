@@ -12,8 +12,7 @@ With **nova-sprint**, your AIs can:
 * Get work done as quickly as possible, respecting dependencies
 * Have every change reviewed and merged into main automatically
 * Keep all the work in cards outside any model's context, so nothing is forgotten
-* Show their humans the sprint's progress in a dashboard, so you can see the work moving
-* Be told when a judgement is needed, and change the rules of the sprint while it runs
+* Show you the sprint's progress in a dashboard, so you can see the work moving
 
 Built by Glenn Fiedler ([yojimbo](https://github.com/mas-bandwidth/yojimbo), [netcode](https://github.com/mas-bandwidth/netcode)), Rowan Claude and their AI friends. Runs on Linux or macOS with a
 [nova-tools fleet](https://github.com/mas-bandwidth/nova-tools), PostgreSQL and Redis. The [guide](docs/README.md) includes a way to inspect the release before setting up a sprint.
