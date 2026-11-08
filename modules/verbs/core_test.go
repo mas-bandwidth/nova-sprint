@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
 	"github.com/mas-bandwidth/nova-sprint/modules/steps"
 	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
@@ -86,6 +88,15 @@ func TestCoreRefusals(t *testing.T) {
 		{name: "a coordinator verb with no coordinator", as: "alice", args: []string{"stop", "--reason", "r"}, exit: 1,
 			snap: setRow("carol", func(r *store.Row) { r.Session, r.Role = "", "" }), want: []string{"the sprint has none"}},
 		{name: "the bus fails", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.bus.err = errBroken }, want: []string{"nova-bus who failed"}},
+		// nova-bus that cannot run is named first, and the fix still hooks in
+		{name: "nova-bus missing", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) {
+			w.bus.err = fmt.Errorf("bus who: %w", &edge.ExecError{Program: "nova-bus", Kind: edge.ErrMissingBinary, Reason: `binary "nova-bus" not found`, Fix: "install nova-tools on PATH"})
+		}, want: []string{`cannot run nova-bus: binary "nova-bus" not found: install nova-tools on PATH, then hook in to the bus first`, "nova-bus hook --as alice"}},
+		// the acting name is checked before the usage, an unknown verb before both
+		{name: "no name before the usage", args: []string{"take"}, exit: 1, want: []string{"SPRINT REFUSED take: no name given"}},
+		{name: "off the bus before the usage", as: "erin", args: []string{"stream", "add"}, exit: 1, want: []string{"SPRINT REFUSED stream add: erin is not on the bus"}},
+		{name: "an unknown verb before the bus", as: "alice", args: []string{"bogusverb"}, exit: 2, prep: func(_ *testing.T, w *world) { w.bus.err = errBroken }, want: []string{"unknown verb bogusverb: nova-sprint help"}},
+		{name: "own unhook off the bus", as: "erin", args: []string{"unhook"}, exit: 1, want: []string{"erin is not on the bus"}},
 		{name: "no bus", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.e.Bus = nil }, want: []string{"nova-bus is not configured"}},
 		{name: "no store", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.e.Store = nil }, want: []string{"the store is not configured"}},
 		{name: "the store fails", as: "alice", args: []string{"queue"}, exit: 2, prep: func(_ *testing.T, w *world) { w.e.Store = failingStore{w.f} }, want: []string{"the store did not answer"}},

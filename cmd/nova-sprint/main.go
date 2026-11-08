@@ -44,23 +44,10 @@ func command(args []string) int {
 	if code, handled := internalCommand(ctx, args); handled {
 		return code
 	}
-	if line, exit := hookGate(ctx, args, os.Getenv, gatePresence(args)); line != "" {
-		fmt.Fprintln(os.Stderr, line)
-		return exit
-	}
 	if len(args) > 0 && args[0] == "up" {
 		return runUpWrapper(ctx, args[1:])
 	}
 	return executeVerb(ctx, args, "")
-}
-
-// gatePresence is the bus as the verbs will read it: up reads it through
-// the setup walk (newEngine), every other verb through nova-bus directly.
-func gatePresence(args []string) verbs.Presence {
-	if len(args) > 0 && args[0] == "up" {
-		return setupPresence{}
-	}
-	return busEdge()
 }
 
 // executeVerb runs one verb on the engine open.go builds; phase is the up

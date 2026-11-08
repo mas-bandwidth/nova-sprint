@@ -19,6 +19,15 @@ const (
 	roleCoordinator
 )
 
+// actsAsName is a verb that refuses until its acting name is on the bus
+// (CORRECT-USE, "Hooked before anything that acts as you"): the worker and
+// coordinator verbs, and the cold verbs that act as a name. help, version,
+// the run, dash and worker services, and wake, check and next (which ask
+// the bus themselves and answer its absence in their own shape) do not.
+func (v *verb) actsAsName() bool {
+	return v.role != roleCold || v.name == "up" || v.name == "hook" || v.name == "unhook" || v.name == "restore"
+}
+
 func (r role) String() string {
 	return [...]string{"cold (no sprint hook needed)", "worker or coordinator", "coordinator"}[r]
 }
@@ -59,15 +68,6 @@ func lookup(args []string) (*verb, []string) {
 		return find("help"), args[1:]
 	}
 	return find(args[0]), args[1:]
-}
-
-// Known is whether args name a verb (no args is next).
-func Known(args []string) bool {
-	if len(args) == 0 {
-		return true
-	}
-	v, _ := lookup(args)
-	return v != nil
 }
 
 func find(name string) *verb {

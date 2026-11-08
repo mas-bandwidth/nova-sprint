@@ -128,6 +128,12 @@ func (e *Engine) Execute(ctx context.Context, args []string) Result {
 	}
 	in, f := parse(v, rest, e.Actor)
 	if f != nil {
+		// a verb that acts as a name refuses an absent name before its usage
+		if in != nil && v.actsAsName() {
+			if err := e.onBus(ctx, in.actor); err != nil {
+				return failed(v.name, classify(err))
+			}
+		}
 		return failed(v.name, f)
 	}
 	out, err := e.call(ctx, v, in)
