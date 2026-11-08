@@ -88,7 +88,7 @@ func benchModelCheck(version int, cat policy.Catalog, ro roster.Roster) *Fail {
 
 // checkCards re-proves each producer not yet dealt (waiting or ready)
 // as add admitted it (admitCards): its stream live, tier and routes served,
-// paths at the base, DONE-WHEN as one command, no retired mechanic, its work not
+// paths at the base, DONE-WHEN as one command, its work not
 // at the base. A restore or an old add is held to today's rule here.
 func (e *Engine) checkCards(ctx context.Context, r *checkReport, snap store.Snapshot) {
 	var facts []cardFacts

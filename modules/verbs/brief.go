@@ -56,9 +56,6 @@ func parseBrief(id, text string) (card.Add, error) {
 	if p.a.Prose == "" {
 		return p.a, lintAt(id, len(lines), "task prose")
 	}
-	if n, what, fix := retiredMechanic(lines); what != "" {
-		return p.a, &BriefLintError{Brief: id, Line: n, Rule: "names " + what + ", a retired mechanic", Fix: fix}
-	}
 	return p.a, nil
 }
 
@@ -88,8 +85,6 @@ func lintAt(id string, line int, field string) error {
 		rule = "must contain a valid DONE-WHEN section (one command: a program and its arguments, no shell syntax outside quotes)"
 	case card.RouteField:
 		rule = "must contain a valid " + card.RouteField + " section (one route name per line, 1 to 128 of a-z A-Z 0-9 . _ -)"
-	case "retired WHO", "retired LOCK", "retired JOB":
-		return &BriefLintError{Brief: id, Line: line, Rule: "is a " + field + " line, a retired mechanic", Fix: retiredFix}
 	}
 	return &BriefLintError{Brief: id, Line: line, Rule: rule}
 }
@@ -104,8 +99,6 @@ func (p *briefParts) line(line string) string {
 	switch strings.ToUpper(key) {
 	case "DEPENDS-ON", "DEPENDENCIES", "NEED":
 		return "NEEDS"
-	case "WHO", "LOCK", "JOB":
-		return "retired " + strings.ToUpper(key)
 	case "PATHS", "NEEDS", "AFTER", "PRIORITY", "TEST", "DONE-WHEN", card.RouteField:
 		if key != strings.ToUpper(key) || value == "" || (p.seen[key] && !repeatable[key]) {
 			return strings.ToUpper(key)

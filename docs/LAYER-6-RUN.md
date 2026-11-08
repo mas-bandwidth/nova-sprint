@@ -706,7 +706,7 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   producer is admitted. Streams are read at once (base tip, the tree at the
   tip by `git ls-tree` in the state dir's clone, the card branches by one
   `git ls-remote`); a card is refused for its lint (tier and routes served,
-  DONE-WHEN as one command, retired mechanic, a named bench), then its PATHS, then
+  DONE-WHEN as one command, a named bench), then its PATHS, then
   work already at the base (its branch, HEAD, or PR: `gh pr view`). The brief
   parse (`modules/verbs/brief.go`, `modules/verbs/brief_lint.go`) refuses the bad forms and
   the retired keys with the line.

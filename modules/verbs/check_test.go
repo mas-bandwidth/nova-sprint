@@ -270,14 +270,6 @@ func TestCheckReprovesAdmission(t *testing.T) {
 			want: []string{"CHECK RED policy v1 fails 1 question(s); the first: POLICY REFUSED v1 line 3 order(p1): boom", "nova-sprint policy check v1"}},
 		{name: "a ready card not admitted today", args: []string{"check"}, exit: 1, snap: ready, prep: healthy,
 			want: []string{"CHECK RED card p1: PATHS z/q.go: neither it nor its directory z/ is there at o/r's main (bbbbbbbbbbbb)"}},
-		{name: "a ready card whose brief reads JOB.md", args: []string{"check"}, exit: 0, prep: healthy,
-			snap: both(undealtSprint, setCard("p1", func(c *store.Card) {
-				c.State, c.Brief = "waiting", "tier: pro\nPATHS: a.go\nTEST: go test ./...\nDONE-WHEN: go test ./...\n\n"+readsJobMD
-			})),
-			want: []string{"CHECK cards: 1 waiting or ready, each admitted"}},
-		{name: "a ready card whose brief writes JOB.md", args: []string{"check"}, exit: 1, prep: healthy,
-			snap: both(undealtSprint, setCard("p1", func(c *store.Card) { c.State, c.Brief = "waiting", "tier: pro\n\nWrite JOB.md when done.\n" })),
-			want: []string{"CHECK RED card p1: line 3 names a JOB.md to write, a retired mechanic: the worker writes JOB.md for its harness, so a brief reads it and never writes it; remove it: the deal names the row"}},
 		{name: "a working card with no live job", args: []string{"check"}, exit: 1, snap: unhookedHolder, prep: healthy,
 			want: []string{"CHECK RED 1 working cards have no live job: p1.w1 on alice (not hooked)", "nova-sprint release <card>@<gen>"}},
 		{name: "a working card off the bus", args: []string{"check"}, exit: 1, snap: func(s *store.Snapshot) {

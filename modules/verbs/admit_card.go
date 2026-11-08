@@ -43,7 +43,7 @@ type streamAtBase struct {
 // admitCards proves each producer of facts (CORRECT-USE "Admission"): its
 // stream is live (its repository and base read at origin now), its tier and
 // routes have a serving row in nova-config, its PATHS exist at the base, its
-// DONE-WHEN lines are each one command (edge.ParseGate), it names no retired mechanic and no bench by name,
+// DONE-WHEN lines are each one command (edge.ParseGate), it names no bench by name,
 // and its work is not already at the base. Each stream is read once, all at
 // once; the result is each refused card's refusal, by id.
 func (e *Engine) admitCards(ctx context.Context, snap store.Snapshot, facts []cardFacts) (map[string]error, error) {
@@ -127,8 +127,7 @@ func treeSet(files []string) map[string]bool {
 }
 
 // cardLint is the checks that need no repository: the tier and routes
-// served by a row in nova-config, DONE-WHEN parsing, and no retired
-// mechanic or bench named (a stored brief is re-linted the same way).
+// served by a row in nova-config, DONE-WHEN parsing, and no bench named (a stored brief is re-linted the same way).
 func cardLint(f cardFacts, ro roster.Roster) error {
 	routes := card.NeedsRoutes(f.Brief)
 	if !served(ro, f.Tier, routes) {
@@ -140,11 +139,8 @@ func cardLint(f cardFacts, ro roster.Roster) error {
 		}
 	}
 	lines := strings.Split(f.Brief, "\n")
-	if n, what, fix := retiredMechanic(lines); what != "" {
-		return refuse(fmt.Sprintf("card %s: line %d names %s, a retired mechanic", f.ID, n, what), fix)
-	}
 	if n, bench := benchNamed(lines, ro); bench != "" {
-		return refuse(fmt.Sprintf("card %s: line %d's gate names the bench %s", f.ID, n, bench), retiredFix)
+		return refuse(fmt.Sprintf("card %s: line %d's gate names the bench %s", f.ID, n, bench), "a gate names the facts it needs (an OS, a tool), never a host; then nova-sprint add again")
 	}
 	return nil
 }

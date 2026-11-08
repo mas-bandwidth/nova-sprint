@@ -137,14 +137,6 @@ restored (an `ADMIT` line each). The parse refuses:
   is `edge.ParseGate`; admission (add, check, restore) and the worker's
   `RunTest` both call it, so what is admitted is what runs. Nothing is run
   at add.
-- **Retired mechanics**, named with the line: a `WHO:`, `LOCK:` or `JOB:`
-  key; a `JOB.md` the brief has the harness write; a lock (winlock, flock,
-  lockfile, a bench or captain lock); `ssh to <host>`; a DONE-WHEN or TEST
-  that runs ssh. The take receipt is the job, the deal is the who, and a gate
-  names facts, never a host. `JOB.md` itself is the worker's file for its
-  harness (the worker writes it in the job directory at stage; the prompt
-  says to read it first), so a brief that sends the harness to read it
-  passes.
 
 Then, against the roster and origin:
 

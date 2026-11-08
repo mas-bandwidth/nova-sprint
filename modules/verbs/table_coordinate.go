@@ -11,7 +11,7 @@ func coordinateVerbs() []*verb {
 		{name: "add", group: "coordinate", role: roleCoordinator, usage: "--stream <s> --brief-file <f>... [--dry-run] | --stream <s> --sentinel <id> --needs <a,b>", flags: "stream= brief-file=* needs= sentinel= dry-run", max: 0, run: runAdd,
 			about: "adds producers from briefs that pass the card contract, or a sentinel that lands when its needs land",
 			needs: []string{"an unknown stream: nova-sprint stream add", "a brief missing a contract section, by name", "an unknown need, or a cycle, named",
-				"admission (CARD-CONTRACT): the stream's base unreadable, no row serving the tier or a NEEDS-ROUTE route, a PATHS entry not at the base, a DONE-WHEN that is not one command, a retired mechanic, the work already at the base: each names its fix"}},
+				"admission (CARD-CONTRACT): the stream's base unreadable, no row serving the tier or a NEEDS-ROUTE route, a PATHS entry not at the base, a DONE-WHEN that is not one command, the work already at the base: each names its fix"}},
 		{name: "judge", group: "coordinate", role: roleCoordinator, usage: "[<judgement> <choice> --reason <why>] | <group> <choice> --expect <n> --reason <why>", flags: "reason= expect=", max: 2, run: runJudge,
 			about: "lists the open judgements, or answers one (or a group) with one of its offered choices",
 			needs: []string{"not open: names who closed it", "a choice it does not offer: lists them", "a group that changed: --expect <its size now>"}},
