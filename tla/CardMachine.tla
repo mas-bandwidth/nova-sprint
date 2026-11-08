@@ -107,7 +107,7 @@ CONSTANTS
 
 \* The merge scenarios are life, pre and deps with ops of several moves.
 \* MaxOp is read off the scenario, not a constant, so a cfg that names
-\* none (the trace's: card/trace_test.go) gets ops of one move.
+\* none (the trace's: modules/card/trace_test.go) gets ops of one move.
 World == CASE Scenario = "merge"     -> "life"
            [] Scenario = "mergepre"  -> "pre"
            [] Scenario = "mergedeps" -> "deps"

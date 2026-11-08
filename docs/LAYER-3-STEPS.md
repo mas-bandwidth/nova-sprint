@@ -391,7 +391,7 @@ of the last tick's groups.
   accepted; an op refused by a racing verb, then split by group; an unknown
   outcome replayed; each fold equal to a fresh snapshot; a random walk
   checking the model's invariants after every op.
-- Load, extending `store/load_test.go`: 5,000 producers; fold, plan and
+- Load, extending `modules/store/load_test.go`: 5,000 producers; fold, plan and
   apply timed apart at steady state, 200 reports/s, and a 2,000 burst.
   The bar: the full tick under one second at p99 and planning under 50 ms;
   the result is the per-op cost by packing size, which sets `pack` and the
@@ -412,7 +412,7 @@ asker 300, requests 350): an estimate; layer 1's first was half its size.
 
 - Layer 2: a current work consumer's `Report` carries the producer's
   `Finished`, `Broken` or `Faulted` in one plan, as `Withdraw` already folds
-  the release; checked in `card/move.go`, `report` writes the consumer only.
+  the release; checked in `modules/card/move.go`, `report` writes the consumer only.
 
 ## Lessons placed (LESSONS section 3, and the decisions owed here)
 
@@ -541,8 +541,8 @@ the plans each move builds on the view (built against `card.Merge` of
 that one function. A group's key is the cards its plan writes plus the card
 it is about, with the gens read, the row written and the inbox item.
 
-**Trace validation.** `steps/trace.go` is the refinement mapping to
-`Steps.tla`; `steps/trace_test.go` walks the model's four scenarios on
+**Trace validation.** `modules/steps/trace.go` is the refinement mapping to
+`Steps.tla`; `modules/steps/trace_test.go` walks the model's four scenarios on
 `store.Fake` (every seed and scenario: 100 x 2,000 for depth; 4 x 3 x 150 as
 the fixed fixtures CI checks with `tla/check-trace.sh`); `StepsTrace.tla`
 logs `w` in parts. All 12 walk fixtures and the model's 13 own fixtures
@@ -555,7 +555,7 @@ store's (the model, fixed: `rg`).
 
 **Measured** (vision, Linux, quiet under `nova-reserve --exclusive`,
 2026-11-07; 5,000 producers in 20 streams over 100 rows of width 4;
-`NOVA_LOAD=1 go test -run TestFunctionalLoad ./steps/`): the fold of a tick's events 12.9 ms p50
+`NOVA_LOAD=1 go test -run TestFunctionalLoad ./modules/steps/`): the fold of a tick's events 12.9 ms p50
 (13.5 p95); the plan at a budget of 250 cards with 2,500 producers ready
 47 ms p50, 71 p95, 78 max (the bar of 50 ms p50 met; before the planning
 was bounded by the budget it was 1,342 ms: the deal ranked every ready
@@ -570,7 +570,7 @@ is 50 (measured) and the budget stays 250 (measured: the full tick at
 the one-second p99 bar with room; the layer 1 tick alone was 119 ms p50 at
 the same size).
 
-**Tests.** Unit (`go test ./steps/`, no clock, sockets, network or store but
+**Tests.** Unit (`go test ./modules/steps/`, no clock, sockets, network or store but
 `store.Fake`): the view (a fold per event kind equals a fresh build), the
 purity lint (also every function under 60 lines), the asker (absent,
 erroring, slow, out of range, in domain), the paths (happy, fix, red and
@@ -690,7 +690,7 @@ candidate filter narrows the row set the model already chooses from.
   take receipt reads it from the consumer and take never chooses one. A
   friend's model is the roster's (`Roster.Kin[row].Model`); a bench's is
   the active policy's answer for the card's tier, `catalog().bench[tier]`,
-  in provider/model form, passed in `Answers.Models` (`steps/model.go`). A
+  in provider/model form, passed in `Answers.Models` (`modules/steps/model.go`). A
   candidate row with no model to name is not dealt to; when no serving row
   can be named one, the card stays where it is and one `no-model`
   judgement about the tier says why (tier, the row kinds, the policy
@@ -730,7 +730,7 @@ candidate filter narrows the row set the model already chooses from.
   4,908 opens). They are now lookups: a per-tick index of the planned ones
   and one of the view's, built on first use.
 - *Measured, the resolve cost* (`NOVA_LOAD=1 go test -run TestFunctionalLoadResolve
-  ./steps/`; the needs step alone, 5,000 waiting producers whose needs a
+  ./modules/steps/`; the needs step alone, 5,000 waiting producers whose needs a
   store op landed, 20 streams, 100 rows, 20 ticks; ms p50/p95). On the
   working machine (darwin, not quiet): free (all 5,000 resolve) 7.97/10.57;
   held (92 resolve, 4,908 open an overlap judgement) 4.67/7.98; held-open
@@ -852,7 +852,7 @@ the landing (w2L); merged, superseding them where they differ:
   (w2D2's `StepsDealOneShort`).
 - The stream fence (`rsx`) covers the groups that read the stream (pre,
   start, read, fix, resolve), not `yes` or `landed`: CardMachine's ReadYes
-  and Landed and `card/move.go` read no stream. Found by the trace check
+  and Landed and `modules/card/move.go` read no stream. Found by the trace check
   (`steps-walk-land-1`, record 38): a Hold between the Snap and the Tick
   refused the model's yes op on the fence while the code moved p to
   merging. The model followed the code and the card machine, which agree.

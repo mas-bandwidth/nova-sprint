@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 var setupSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

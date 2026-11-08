@@ -70,7 +70,7 @@ claiming current full-suite acceptance.
 ## After the run rewrite (f697b05f; this branch, 2026-11-06)
 
 The run core the Run fixtures were bound to (Engine, Scheduler, the old pusher)
-was deleted. `TestEmitRunTrace` (run/run_trace_test.go) is rewritten on
+was deleted. `TestEmitRunTrace` (modules/run/run_trace_test.go) is rewritten on
 `run.Ticker` and `run.Pusher` with the same case names, seeds and knobs:
 `run-0`, `run-1`, `run-2` (`NOVA_RUN_TRACE_SEED`) and `run-stop`
 (`NOVA_RUN_TRACE_STOP=1`), written to `NOVA_RUN_TRACE_PATH`. What changed in the
@@ -94,7 +94,7 @@ At 3f59b99c: `setup` TRACE OK steps=49; installer walks 000 and 063 TRACE OK
 
 The full gate cannot pass at this base, for two reasons outside the traces:
 - `cmd/nova-sprint` does not build (engine.go and handoff_trace_test.go
-  import the deleted run/filestore), so the two handoff emitters fail; that
+  import the deleted modules/run/filestore), so the two handoff emitters fail; that
   is the stitch's wiring of the run verb.
 - the choices emitter (`TestSetupChoicesActualTrace`) fails at setup step 6
   for both cases: `setup answer refused: row rowan does not exist` (the

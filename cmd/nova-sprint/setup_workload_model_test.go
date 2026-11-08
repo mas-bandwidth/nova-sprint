@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 // tla/Setup.tla's world[7] and world[8], bound to the workload adapter

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/forge"
-	"github.com/mas-bandwidth/nova-sprint/edge/git"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/forge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/git"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 // Tree is every file at sha in the address's clone under the state dir

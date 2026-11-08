@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 type handoffTraceFixture struct {

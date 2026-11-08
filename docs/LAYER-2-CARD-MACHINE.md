@@ -582,14 +582,14 @@ Reversed witnesses (each must violate): `CardCutReady` (a cut that writes
 breaks `WidthKept`), `CardRouteRedealt` (a route fault sent back to `ready`
 breaks `RouteFaultWaits`); `CardReadyCounted` is retired with `Take`. Reach
 check `NeverRouteHeld` (a route fault does hold). The card trace maps a
-missing-route fault to the result `route` (`card/trace.go`), and the
+missing-route fault to the result `route` (`modules/card/trace.go`), and the
 breaker's trace fixture is regenerated.
 
 ### Built (w2D2, 2026-11-07; branch `v2-stitch-w2D2`)
 
-- Code: `card/card.go` (`MissingRoute`, `RouteFault`, `HeldPrefix`, no
-  `Take`), `card/move.go` (`cut` writes working; `Faulted` route; `HoldCard`
-  from waiting, never a sentinel), `card/trace.go`; the conformance store in
+- Code: `modules/card/card.go` (`MissingRoute`, `RouteFault`, `HeldPrefix`, no
+  `Take`), `modules/card/move.go` (`cut` writes working; `Faulted` route; `HoldCard`
+  from waiting, never a sentinel), `modules/card/trace.go`; the conformance store in
   the card tests (`overWidth`) counts a cut as a move into working.
 - Tests: the card package's tables, breakers and cold reads changed from
   `Take` to the deal; `TestBreakHeldWidth` and the seq2 width test refuse a

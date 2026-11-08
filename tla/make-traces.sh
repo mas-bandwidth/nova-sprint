@@ -7,13 +7,13 @@
 #                                    parallel; exit 1 if any is not as expected
 #
 # The walks and their seeds (the seeds are in the tests):
-#   store-fake-<seed>   store/trace_test.go TestTraceWalk, the Fake, with transport faults
+#   store-fake-<seed>   modules/store/trace_test.go TestTraceWalk, the Fake, with transport faults
 #   store-pg-<seed>     TestFunctionalTraceWalk, PostgreSQL (needs initdb; skipped,
 #                       and said so, when it is missing, unless NOVA_TRACE_PG=1,
 #                       which makes a missing initdb a failure)
-#   card-walk-<seed>    card/trace_test.go TestTraceColdWalk, the card walk on the Fake
-#   policy-walk-<seed>  policy/trace_test.go TestTraceWalk, the policy walk on the Fake
-#   steps-walk-<scenario>-<seed>  steps/trace_test.go TestTraceFixtures, the steps walk of a
+#   card-walk-<seed>    modules/card/trace_test.go TestTraceColdWalk, the card walk on the Fake
+#   policy-walk-<seed>  modules/policy/trace_test.go TestTraceWalk, the policy walk on the Fake
+#   steps-walk-<scenario>-<seed>  modules/steps/trace_test.go TestTraceFixtures, the steps walk of a
 #                       Steps.tla scenario on the Fake; steps-ok-*, steps-bad-* are the
 #                       model's own fixtures (make-steps-traces.py), checked too
 #   store-breaker, card-breaker, policy-breaker   the divergence breakers (committed fixtures,
@@ -27,14 +27,14 @@ cd "$ROOT" || exit 1
 
 find "$OUT" -mindepth 1 -maxdepth 1 -type d \( -name 'store-fake-*' -o -name 'store-pg-*' -o -name 'card-walk-*' -o -name 'policy-walk-*' -o -name 'steps-walk-*' -o -name 'landedge-walk-*' -o -name 'runner-walk-*' \) -exec rm -rf {} +
 export NOVA_TRACE_DIR="$OUT"
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./store/ || exit 1
-go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./card/ || exit 1
-go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./policy/ || exit 1
-go test -count=1 -run 'TestTraceFixtures$' ./steps/ || exit 1
-go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./edge/git || exit 1
-go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./edge/worker || exit 1
+go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence|TestTraceCursorZero' ./modules/store/ || exit 1
+go test -count=1 -run 'TestTraceColdWalk$|TestTraceRefusesDivergence' ./modules/card/ || exit 1
+go test -count=1 -run 'TestTraceWalk$|TestTraceRefusesDivergence' ./modules/policy/ || exit 1
+go test -count=1 -run 'TestTraceFixtures$' ./modules/steps/ || exit 1
+go test -count=1 -run 'TestLandEdgeTraceRefinementWalk$' ./modules/edge/git || exit 1
+go test -count=1 -run 'TestRunnerTraceRefinementWalk$' ./modules/edge/worker || exit 1
 if command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || ls /opt/homebrew/opt/postgresql@18/bin/initdb >/dev/null 2>&1; then
-    go test -count=1 -run 'TestFunctionalTraceWalk$' ./store/ || exit 1
+    go test -count=1 -run 'TestFunctionalTraceWalk$' ./modules/store/ || exit 1
 elif [ "${NOVA_TRACE_PG:-0}" = 1 ]; then
     echo "make-traces: NOVA_TRACE_PG=1 and no initdb: the PostgreSQL walk cannot run" >&2
     exit 1

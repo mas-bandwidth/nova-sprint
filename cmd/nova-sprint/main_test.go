@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"github.com/mas-bandwidth/nova-sprint/policy"
-	"github.com/mas-bandwidth/nova-sprint/run"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/run"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 	"runtime/debug"
 	"strings"
 	"testing"

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
 )
 
 type fakePresence struct {

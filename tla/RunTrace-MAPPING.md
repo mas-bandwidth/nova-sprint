@@ -124,7 +124,7 @@ behavior, or constitute the final integrated GitHub Actions gate.
 
 ## The run.Ticker binding (2026-11-06, after f697b05f)
 
-`run/run_trace_test.go` (`TestEmitRunTrace`) drives the code that replaced the
+`modules/run/run_trace_test.go` (`TestEmitRunTrace`) drives the code that replaced the
 Engine and Scheduler: `acquireChooser` and `Chooser.Check` (unchanged),
 `coldStart` (NewTicker's cold snapshot, the policy seed, `Pusher.CatchUp`),
 `Ticker.Tick` (health check, fold, the stopped gate, `steps.Tick` itself, the

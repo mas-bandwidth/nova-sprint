@@ -1,4 +1,4 @@
-# Release: a pushed tag vX.Y.Z builds every command under cmd/ for every platform, writes one
+# Release: a pushed tag vX.Y.Z builds nova-sprint and nova-worker for every platform, writes one
 # SHA256SUMS and creates the GitHub release. Assets are named <command>_<tag>_<os>_<arch>[.exe],
 # the scheme nova-tools' release uses and `nova-fleet install --repo mas-bandwidth/nova-sprint
 # --tag vX.Y.Z <host>...` reads (fleet/roles/nova-tools-install verifies each digest against
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: go.mod
-      - name: build every command for every platform
+      - name: build the release commands for every platform
         shell: bash
         env:
           TAG: ${{ github.ref_name }}
@@ -28,12 +28,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          for dir in cmd/*/; do
+          for dir in cmd/nova-sprint cmd/nova-worker; do
             cmd=$(basename "$dir")
             # the version: main.binaryVersion (nova-sprint's version verb, and what a
             # backup records) and dash.Version for the dashboard; -X on a main
             # without the variable is a no-op
-            flags="-s -w -X main.binaryVersion=$TAG -X github.com/mas-bandwidth/nova-sprint/dash.Version=$TAG"
+            flags="-s -w -X main.binaryVersion=$TAG -X github.com/mas-bandwidth/nova-sprint/modules/dash.Version=$TAG"
             pids=()
             for target in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
               os=${target%/*}; arch=${target#*/}

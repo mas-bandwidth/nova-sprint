@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/edge"
-	"github.com/mas-bandwidth/nova-sprint/edge/bus"
-	"github.com/mas-bandwidth/nova-sprint/policy"
-	"github.com/mas-bandwidth/nova-sprint/roster"
-	"github.com/mas-bandwidth/nova-sprint/run"
-	"github.com/mas-bandwidth/nova-sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/run"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 	config "github.com/mas-bandwidth/nova-tools/v2/config/lib"
 )
 

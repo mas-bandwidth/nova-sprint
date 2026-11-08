@@ -31,6 +31,11 @@ Read [the test instructions](docs/TESTING.md) and the relevant source before edi
 The [layer map](docs/SEAMS.md) and the [card contract](docs/CARD-CONTRACT.md)
 explain the boundaries. Keep changes scoped and preserve existing work.
 
+Go command packages live in `cmd/<command>/`; reusable packages and their
+embedded assets live in `modules/<module>/`. `make build` and releases ship
+only `nova-sprint` and `nova-worker`; the other commands are development tools.
+The canonical role playbooks live beside their embed code in `modules/playbooks/`.
+
 Build with `make build` so the binaries carry their source version. Use the Go
 version in `go.mod` and run the relevant lint, unit and functional checks from
 `docs/TESTING.md` on a suitable build machine. Unit tests use no real clock,

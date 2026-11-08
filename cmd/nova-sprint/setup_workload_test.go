@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/roster"
-	"github.com/mas-bandwidth/nova-sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/verbs"
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/verbs"
 )
 
 // fleetFake is nova-config and nova-fleet for the workload: the machine

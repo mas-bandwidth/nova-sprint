@@ -428,7 +428,7 @@ witness each (`LandEdgeRedLands`, `LandEdgeStaleGate`,
 `LandEdgeJudgementHoldsStream`); reach checks for rung 2, a judgement, a
 hand landing and a red gate. Size: 2 streams, 3 cards, K = 1, BackedUp 2,
 MaxPass 6. The code is bound to it by `LandEdgeTrace.tla` and the walk in
-`edge/git/trace_test.go`.
+`modules/edge/git/trace_test.go`.
 
 `tla/Runner.tla`, one bench. Variables: each consumer's store state
 (`ready`, `working`, `done`, `fail`), its job state (`none`, `taken`,
@@ -527,16 +527,16 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
 
 ### Packages and models
 
-- `edge` (`edge/exec.go`, `edge/request.go`, `edge/exec_test.go`, `edge/coldread_test.go`, `edge/coldread2_test.go`, `edge/break_test.go`): `Exec` (`OSExec`, `FakeExec`, clock starting at `1000`), `RunArgv`, `ValidateCmd`, `RequestID(epoch, kind, card, sha)`, `EdgeRequest` (carrying `After []string`, `Repo`, `Base`, `PR`, `Mode`, `Ledgers`), `EdgeResult` (stub for `steps.EdgeResult`), and `Deduplicator` (in-flight coalescing by `RequestID` with zero persistent memory after completion). Every child process runs in its own process group (`Setpgid: true`, killed as `-pid` on timeout/cancellation) with stdin closed (`nil`), bounded stdout/stderr ring buffers (`DefaultMaxBytes = 64 KiB`, preserving head and tail), `WaitDelay = 200ms` (`exec.ErrWaitDelay` treated as normal exit when the command exited before timeout), `OnStart(pid)` callback, and mandatory policy timeouts.
-- `edge/bus` (`edge/bus/bus.go`, `edge/bus/bus_test.go`, `edge/bus/functional_test.go`): `Bus` (`Send`, `Who`) and `Edge`, which runs `nova-bus send` and `nova-bus who` through `edge.Exec`. `Send` refuses a body over 4096 bytes before nova-bus runs and returns the message id only when nova-bus exits 0 and prints `<recipient> <id>`; `Who` parses `WHO OK present=<n>` and its tab lines. The package holds no cursor and reads no store: what to send, to whom, and when the cursor moves are run's (layer 6, the one pusher; stitch, below).
-- `edge/git` (`edge/git/git.go`, `edge/git/land.go`, `edge/git/fake_test.go`, `edge/git/git_test.go`, `edge/git/coldread_test.go`, `edge/git/coldread2_test.go`, `edge/git/break_test.go`, `edge/git/functional_test.go`, `edge/git/trace_test.go`): `Git` (`Client`, `Fake`, clock starting at `1000`) and `LandPass` (`StreamBranch`, `StreamRef`, `ValidateCardBranch`, `RunRemoteLandStep`). Implements the 6-step landing pass from `LANDING.md` (fetch, merge group in score order with union ledger merge, push `--force-with-lease=<ref>:<old>`, gate at exact SHA, land only while base tip matches the gated parent, fast-forward stream branch). Per `1794011119389-0` (`LANDING.md` step 1), the stream integration branch is `sprint/<stream>/group` (`refs/heads/sprint/<stream>/group`), coexisting cleanly with card branches `sprint/<stream>/<producer>`, and `ValidateCardBranch` / `Take` refuse a card or producer branch named `group` or bare `sprint/<stream>`.
-- `edge/forge` (`edge/forge/forge.go`, `edge/forge/fake_test.go`, `edge/forge/forge_test.go`, `edge/forge/coldread_test.go`, `edge/forge/break_test.go`, `edge/forge/functional_test.go`): `Forge` (`Client`, `NewClient`, `Fake`, clock starting at `1000`), `PR`, `OpenPR`, `EnsurePR`, `Checks`, `Merge`, and `RestedUntil`. Queries `statusCheckRollup` via GraphQL at up to `MaxChecksBatch = 100` exact 40-hex commit SHAs per call with context pagination, classifies outcomes (`green`, `red`, `pending`, `fault`, `rate_limit`), verifies PR base and head SHA before fast-forwarding `refs/heads/<base>` in `Merge`, and enforces non-Glenn identity credentials (`GH_TOKEN` / `GH_CONFIG_DIR`) and per-identity token-bucket rate limiting.
-- `edge/worker` (`edge/worker/worker.go`, `edge/worker/harness.go`, `edge/worker/proxy.go`, `edge/worker/verbs.go`, `edge/worker/runner.go`, `edge/worker/verbs_test.go`, `edge/worker/worker_test.go`, `edge/worker/runner_guarantees_test.go`, `edge/worker/coldread2_test.go`, `edge/worker/break_test.go`, `edge/worker/functional_test.go`, `edge/worker/trace_test.go`) and `cmd/nova-worker` (`cmd/nova-worker/main.go`, `cmd/nova-worker/main_test.go`, `cmd/nova-worker/coldread2_test.go`, `cmd/nova-worker/break_test.go`):
+- `edge` (`modules/edge/exec.go`, `modules/edge/request.go`, `modules/edge/exec_test.go`, `modules/edge/coldread_test.go`, `modules/edge/coldread2_test.go`, `modules/edge/break_test.go`): `Exec` (`OSExec`, `FakeExec`, clock starting at `1000`), `RunArgv`, `ValidateCmd`, `RequestID(epoch, kind, card, sha)`, `EdgeRequest` (carrying `After []string`, `Repo`, `Base`, `PR`, `Mode`, `Ledgers`), `EdgeResult` (stub for `steps.EdgeResult`), and `Deduplicator` (in-flight coalescing by `RequestID` with zero persistent memory after completion). Every child process runs in its own process group (`Setpgid: true`, killed as `-pid` on timeout/cancellation) with stdin closed (`nil`), bounded stdout/stderr ring buffers (`DefaultMaxBytes = 64 KiB`, preserving head and tail), `WaitDelay = 200ms` (`exec.ErrWaitDelay` treated as normal exit when the command exited before timeout), `OnStart(pid)` callback, and mandatory policy timeouts.
+- `modules/edge/bus` (`modules/edge/bus/bus.go`, `modules/edge/bus/bus_test.go`, `modules/edge/bus/functional_test.go`): `Bus` (`Send`, `Who`) and `Edge`, which runs `nova-bus send` and `nova-bus who` through `edge.Exec`. `Send` refuses a body over 4096 bytes before nova-bus runs and returns the message id only when nova-bus exits 0 and prints `<recipient> <id>`; `Who` parses `WHO OK present=<n>` and its tab lines. The package holds no cursor and reads no store: what to send, to whom, and when the cursor moves are run's (layer 6, the one pusher; stitch, below).
+- `modules/edge/git` (`modules/edge/git/git.go`, `modules/edge/git/land.go`, `modules/edge/git/fake_test.go`, `modules/edge/git/git_test.go`, `modules/edge/git/coldread_test.go`, `modules/edge/git/coldread2_test.go`, `modules/edge/git/break_test.go`, `modules/edge/git/functional_test.go`, `modules/edge/git/trace_test.go`): `Git` (`Client`, `Fake`, clock starting at `1000`) and `LandPass` (`StreamBranch`, `StreamRef`, `ValidateCardBranch`, `RunRemoteLandStep`). Implements the 6-step landing pass from `LANDING.md` (fetch, merge group in score order with union ledger merge, push `--force-with-lease=<ref>:<old>`, gate at exact SHA, land only while base tip matches the gated parent, fast-forward stream branch). Per `1794011119389-0` (`LANDING.md` step 1), the stream integration branch is `sprint/<stream>/group` (`refs/heads/sprint/<stream>/group`), coexisting cleanly with card branches `sprint/<stream>/<producer>`, and `ValidateCardBranch` / `Take` refuse a card or producer branch named `group` or bare `sprint/<stream>`.
+- `modules/edge/forge` (`modules/edge/forge/forge.go`, `modules/edge/forge/fake_test.go`, `modules/edge/forge/forge_test.go`, `modules/edge/forge/coldread_test.go`, `modules/edge/forge/break_test.go`, `modules/edge/forge/functional_test.go`): `Forge` (`Client`, `NewClient`, `Fake`, clock starting at `1000`), `PR`, `OpenPR`, `EnsurePR`, `Checks`, `Merge`, and `RestedUntil`. Queries `statusCheckRollup` via GraphQL at up to `MaxChecksBatch = 100` exact 40-hex commit SHAs per call with context pagination, classifies outcomes (`green`, `red`, `pending`, `fault`, `rate_limit`), verifies PR base and head SHA before fast-forwarding `refs/heads/<base>` in `Merge`, and enforces non-Glenn identity credentials (`GH_TOKEN` / `GH_CONFIG_DIR`) and per-identity token-bucket rate limiting.
+- `modules/edge/worker` (`modules/edge/worker/worker.go`, `modules/edge/worker/harness.go`, `modules/edge/worker/proxy.go`, `modules/edge/worker/verbs.go`, `modules/edge/worker/runner.go`, `modules/edge/worker/verbs_test.go`, `modules/edge/worker/worker_test.go`, `modules/edge/worker/runner_guarantees_test.go`, `modules/edge/worker/coldread2_test.go`, `modules/edge/worker/break_test.go`, `modules/edge/worker/functional_test.go`, `modules/edge/worker/trace_test.go`) and `cmd/nova-worker` (`cmd/nova-worker/main.go`, `cmd/nova-worker/main_test.go`, `cmd/nova-worker/coldread2_test.go`, `cmd/nova-worker/break_test.go`):
   - No host refusal: nova-config's bench role is the only word on where a worker runs, the coordinator's machine included (2026-11-07; `CheckHost` and `--coordinator-hosts` are gone, below). `--as <row>` is the one mandatory flag.
   - Adapters (`ClaudeHarness`, `CodexHarness`, `OpenCodeHarness`, `ScriptHarness`) implementing `Harness` (`Name`, `Command`, `Probe`, `Classify`, `Usage`). `cmd/nova-worker` defaults `--harness` to `claude`. `ScriptHarness.Command` passes card fields as positional arguments (`$1`..`$9`) to a static shell program constant, never interpolating card prose into a shell string. `ClassifyJob` treats `<job>/result.json` as authoritative once written and classifies provider HTTP 402/429/5xx faults from `KeyProxy` (`ProxyStatus`) or structured harness JSON events, never by substring-scanning agent prose or test output.
-  - Loopback API key proxy (`KeyProxy` in `edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only the placeholder `nova-proxy-placeholder` (opencode: as each provider's `apiKey` in `OPENCODE_CONFIG_CONTENT`) (`Guarantee 12`).
+  - Loopback API key proxy (`KeyProxy` in `modules/edge/worker/proxy.go`): binds strictly to `127.0.0.1` (`CheckLoopbackAddr`), holds one route per provider (`--providers`), reads each route's key from the worker's environment (`EnvKey`), enforces the per-route `AllowedHosts` allowlist (`403 Forbidden` on unlisted hosts), records upstream 402/429/5xx statuses (`RecordStatus` / `ConsumeStatus`), and injects the real `Authorization: Bearer <key>` header outside the sandbox while the harness inside the wall receives only the placeholder `nova-proxy-placeholder` (opencode: as each provider's `apiKey` in `OPENCODE_CONFIG_CONTENT`) (`Guarantee 12`).
   - Sandbox & slot wall (`BuildWallArgv`, `SanitizeWallEnv`, `OSReserveWall`): both `OSReserveWall.RunHarness` and `OSReserveWall.RunTest` (which runs each `DoneWhen` line as the argv `edge.ParseGate` gives (the one parser admission uses too; a line with shell syntax outside quotes is an error and is never run)) always wrap execution in `nova-reserve run ... --wait <d> --why <consumer> -- nova-sandbox --write <jobDir> --read <toolchains...> [--unix] [--net-deny [--net-allow 127.0.0.1:<proxyPort>]] --env <name>... -- <argv...>` (the adapter's `Needs` decide `--unix` and the network, below) via `edge.Exec`, recording the child PID and `NOVA_WORKER_NONCE` at start via `Cmd.OnStart` and granting `--write` only to `JobDir` (shared `.git` and alternates are `--read` only). `SanitizeWallEnv` enforces an exact variable-name allowlist (`PATH`, `LANG`, `LC_ALL`, `GIT_TERMINAL_PROMPT`, `NOVA_WORKER_CONSUMER`, `NOVA_WORKER_ROW`, `NOVA_WORKER_NONCE`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_CONTENT` only when it is exactly an `OpenCodeConfig` (one `@ai-sdk/openai-compatible` provider per routed provider name, `baseURL` that provider's route on one loopback proxy, `apiKey` `ProxyPlaceholderKey`, models `{}`), plus `HOME`, `TMPDIR`, and `XDG_DATA_HOME` rooted inside `jobDir`).
-  - 9-step runner lifecycle (`RunConsumer`, `StepRow`, `ProbeRow`, `RecoverRow`, `RunWakeLoop`, `QueryEdge` in `edge/worker/runner.go`):
+  - 9-step runner lifecycle (`RunConsumer`, `StepRow`, `ProbeRow`, `RecoverRow`, `RunWakeLoop`, `QueryEdge` in `modules/edge/worker/runner.go`):
     * `FormatTakeOpID(epoch, consumer, gen, row)` (`take-e<epoch>-<consumer>-g<gen>-<row>`) and `FormatResultID(epoch, consumer, attempt, gen)` (`res-e<epoch>-<consumer>-a<attempt>-g<gen>`) fence store operations by epoch, consumer, attempt, and gen (`CLISprintClient.Take` passes `--id`).
     * `StepRow` launches ready consumers up to `Width` concurrently, tracks in-flight consumers so concurrent wakes never double-launch or clobber a running job directory, and cancels/kills any in-flight consumer whose store state becomes `fail` (`WITHDRAWN`).
     * `OSGitOps` executes all bench `git` operations through `edge.Exec` with `CleanEnv: true`, `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, and `Timeouts` (`Stage`, `Push`, `RebaseAndTest`); `RebaseOntoStream` returns `*FetchError` on a fetch failure so `RunConsumer` propagates the failure without reporting a stale head.
@@ -548,7 +548,7 @@ with their repositories); GitHub edge 500; nova-worker 1,900 (lifecycle
 
 1. **Wake-up via `next --as <row> --json`, reports via `report` (`1794007469002-0`)**: There is no `queue` verb. On wake-up and on restart, `nova-worker` calls `SprintClient.Next(ctx, row)` (`nova-sprint next --as <row> --json` via `CLISprintClient.Next`) and acts on the row's `working` and `ready` consumers; `DEAL` overflow trailers end with `"and N more: nova-sprint next --as <row>"`. Reports apply directly to the store through `SprintClient.Report` (`CLISprintClient.Report` / `nova-sprint report --as <row>`) fenced on `Op.ID = ResultID`, never into a tick inbox.
 2. **Pre-satisfied `After []OpID` and `EdgeResult` (`1794007773302-0`)**: Layer 3's `EdgeRequest` carries `After []OpID` (`After []string`); `run` dispatches an `EdgeRequest` to Layer 4 only after every operation in `After` has an accepted store receipt, so edges never see a request whose store precondition failed. Each edge returns `EdgeResult` (`steps.EdgeResult`) for the next tick's inbox.
-3. **Every edge fact is re-queryable by `(epoch, kind, card, sha)` idempotently (`1794007844911-0`, `1794011583522-0`)**: Request IDs are `RequestID(epoch, kind, card, sha)` (`sha256(epoch + "\x00" + kind + "\x00" + card + "\x00" + sha)`). In-flight duplicate requests with the same `RequestID` are deduplicated inside the edge (`edge.Deduplicator`), not by `run`. Every edge answers requests as pure queries of the world at `(epoch, kind, card, sha)` without relying on process memory (`edge/forge` queries GitHub check runs at `sha`; `edge/git` checks ancestry and base tip on origin; `edge/worker` inspects `job.json` and the store). Restarting the edge struct or process and querying `(epoch, kind, card, sha)` again returns the identical `EdgeResult`.
+3. **Every edge fact is re-queryable by `(epoch, kind, card, sha)` idempotently (`1794007844911-0`, `1794011583522-0`)**: Request IDs are `RequestID(epoch, kind, card, sha)` (`sha256(epoch + "\x00" + kind + "\x00" + card + "\x00" + sha)`). In-flight duplicate requests with the same `RequestID` are deduplicated inside the edge (`edge.Deduplicator`), not by `run`. Every edge answers requests as pure queries of the world at `(epoch, kind, card, sha)` without relying on process memory (`modules/edge/forge` queries GitHub check runs at `sha`; `modules/edge/git` checks ancestry and base tip on origin; `modules/edge/worker` inspects `job.json` and the store). Restarting the edge struct or process and querying `(epoch, kind, card, sha)` again returns the identical `EdgeResult`.
 4. **Stream settings arrive in the edge request (`1794008719695-0`)**: A stream's `repo`, `base` branch, `pr`-required flag, and landing `mode` are policy data (a policy row of kind `data` named `stream:<name>`, JSON `{repo, base, pr, mode}`). Layer 3 puts `base` and `pr` into each landing `EdgeRequest`, so the git and forge edges take them as arguments and never read the store for them.
 
 ### Timeouts and bounds (`measured` vs `guess`)
@@ -580,7 +580,7 @@ For bench hosts whose OS sandbox (`nova-sandbox`) cannot enforce `--net-deny` at
 
 What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
 
-- **Row 6, one pusher.** Round 3 had not deleted it: `edge/bus` still held
+- **Row 6, one pusher.** Round 3 had not deleted it: `modules/edge/bus` still held
   `BuildRecipientMessages`, `PushRecipient`, `PushTick`, the subject table and
   the `push:<name>` cursor writes. Deleted, with their tests, the `Push` model,
   `PushTrace`, the `PushCursorBeforeConfirm` witness and the push walk in
@@ -654,7 +654,7 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
     old round 2 ruling that a refusal (exit 1) is final
     (`TestColdread2DefectRefusedReportResentEveryWake` now says so); the
     record goes when the consumer turns final.
-  * *Owed, not done here.* `edge/forge/forge.go` (outside this branch's scope)
+  * *Owed, not done here.* `modules/edge/forge/forge.go` (outside this branch's scope)
     still holds the forbidden-logins literal in `isForbiddenLogin_internal`;
     no table gives it a source (nova-config v2.0.2 has none and the receipt
     carries none), so it needs a policy datum and a `forge.Config` field. The
@@ -690,7 +690,7 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
   (`credential.helper` empty) and adds one that answers with the token from
   the child's environment (`GIT_CONFIG_COUNT`; checked by hand with
   `git credential fill`). Run's landing asks `Ready` first and answers
-  `forge` instead of merging or pushing. The worker's forge (edge/worker,
+  `forge` instead of merging or pushing. The worker's forge (modules/edge/worker,
   another owner) now takes `GH_TOKEN` only; its `GH_CONFIG_DIR` fallback is
   gone with the field.
 - *Defect 34.* The verbs' `Origin` has no `PR` (finish asks no PR); `cmd`'s
@@ -711,7 +711,7 @@ What the stitch changed in layer 4 and why, row by row of DRIFT-ROUTING:
 Supersedes the landing parts of the two stitch notes above where they
 differ (LANDING.md, "The ladder, as built").
 
-- *`LandPass`* (`edge/git/land.go`, rewritten) is one pass of rung 1 or 2.
+- *`LandPass`* (`modules/edge/git/land.go`, rewritten) is one pass of rung 1 or 2.
   All heads already on base: landed at base's tip. One head whose branch
   already contains base's tip: rung 1, its own branch's PR against base,
   refused as `head_moved` if the branch is no longer at the head. Otherwise
@@ -743,7 +743,7 @@ differ (LANDING.md, "The ladder, as built").
   allowed method (merge commit, then squash, then rebase) with
   `--match-head-commit` and returns base's merge commit. `FailedLines(url)`
   reads the first failing lines of an Actions job's log (`FirstFailing`).
-- *Run* (`run/edges.go`): asks a pass again every `LandPoll` on
+- *Run* (`modules/run/edges.go`): asks a pass again every `LandPoll` on
   `ci_pending` and `base_moved`, and on `ci_absent` until the request's
   `Wait` (policy's `ci_wait`; `CIWait` 10 minutes when none, a guess), when
   it answers `no-ci`; every other outcome goes to layer 3 with its facts
@@ -754,19 +754,19 @@ differ (LANDING.md, "The ladder, as built").
   fast-forward push of the head merged onto base), `Heads`, and
   `CreateGroup` (pushed with a lease on its absence). The verbs' `Origin`
   lost `Contains` (finish no longer checks a head against any branch).
-- Tests (unit, fakes): `edge/git/git_test.go` (each rung and every outcome,
-  the group branch's namespace), `run/edges_land_test.go`
+- Tests (unit, fakes): `modules/edge/git/git_test.go` (each rung and every outcome,
+  the group branch's namespace), `modules/run/edges_land_test.go`
   (`TestAskAgainBoundsAnAbsentCI`, `TestLandItemRedCarriesTheFacts`,
-  `TestLandByHandStreamTouchesNothing`), `edge/forge` (Merge, FailedLines,
-  the identity). Functional (real git): `edge/git/functional_test.go`.
+  `TestLandByHandStreamTouchesNothing`), `modules/edge/forge` (Merge, FailedLines,
+  the identity). Functional (real git): `modules/edge/git/functional_test.go`.
 - *Models.* `LandEdge.tla` is the ladder: `Tick` (layer 3's landing),
   `Pass` (one `LandPass`), `BaseMoves`, `Answer` (land, fix, retry);
   invariants `BaseNeverRed`, `NothingLandsUnpassed`, `MergingCovered`, each
   with one reversed witness (`tla/make-landedge-witnesses.py`); reach
   checks `LandEdgeNever{RungTwo,Judged,HandLand,RedGated}`. The six old
-  LandEdge witnesses and `edge/git/coldread_test.go` (probes of the old
+  LandEdge witnesses and `modules/edge/git/coldread_test.go` (probes of the old
   ladder's defects) are removed. The trace walk
-  (`edge/git/trace_test.go`, `TestLandEdgeTraceRefinementWalk`: `LandPass`
+  (`modules/edge/git/trace_test.go`, `TestLandEdgeTraceRefinementWalk`: `LandPass`
   on the git fake and a truthful forge, 8 seeds walked to the end) writes
   `landedge-walk-<seed>`, checked against `LandEdgeTrace.tla`.
   Measured on the bench (TLC 1.8.0): `LandEdge.cfg` 46,288 distinct states
@@ -777,24 +777,24 @@ differ (LANDING.md, "The ladder, as built").
 
 `stream add <s> --repo mas-bandwidth/nova-tools --forge github`, the form the
 help prints, was refused at the fleet: the git edge passed `mas-bandwidth/nova-tools`
-to `git clone` and `git ls-remote` as a path. `edge/git/url.go` adds
+to `git clone` and `git ls-remote` as a path. `modules/edge/git/url.go` adds
 `CloneURL` and `IsOrgRepo`; `Client.Tip` reads a branch at an address with no
 clone; `Config.GitHubCredential` sets gh as git's github.com helper. Callers:
-`run/edges.go` (`Edges.clone`, for land and heads), `cmd/nova-sprint/edges.go`
+`modules/run/edges.go` (`Edges.clone`, for land and heads), `cmd/nova-sprint/edges.go`
 (`origin.Tip` no longer clones; `gitEdge` sets the helper when `GH_TOKEN` or
-`GH_CONFIG_DIR` is set), `verbs/stream.go` (`baseTip`, shared by `stream add`
-and `check`) and `verbs/head.go` (finish). Not changed here: the worker's
+`GH_CONFIG_DIR` is set), `modules/verbs/stream.go` (`baseTip`, shared by `stream add`
+and `check`) and `modules/verbs/head.go` (finish). Not changed here: the worker's
 staging still takes `--origin` (the per-stream-repository staging is another
 change; it should take its address from `git.CloneURL(receipt.repo,
-receipt.forge)`). Unit tests: `edge/git/url_test.go`,
-`run/edges_test.go`, `verbs/stream_url_test.go`,
+receipt.forge)`). Unit tests: `modules/edge/git/url_test.go`,
+`modules/run/edges_test.go`, `modules/verbs/stream_url_test.go`,
 `cmd/nova-sprint/edges_test.go`. Not run here: a clone of a private GitHub
 repository through the gh helper (functional, on a bench).
 ### The worker after the first bench runs (2026-11-07, stitch child c4)
 
 The first `nova-sprint worker` runs on a bench found these; each is fixed
 with a unit test (fake wall, fake exec, fake sprint; no process, socket or
-clock), mostly in `edge/worker/probe_test.go`.
+clock), mostly in `modules/edge/worker/probe_test.go`.
 
 - **Harness directory (defect 24).** `OSReserveWall.RunHarness` grants
   `--read` on the directory `exec.LookPath` finds the harness binary in and,
@@ -913,7 +913,7 @@ clock), mostly in `edge/worker/probe_test.go`.
   `nova-sprint check` reports it red with that log line.
 ### Built: the worker's heartbeat (stitch, 2026-11-07)
 
-- `edge/worker/beat.go`: with a `Meter` and a `Beater` set (`Serve` sets both), `ServeRow` pushes
+- `modules/edge/worker/beat.go`: with a `Meter` and a `Beater` set (`Serve` sets both), `ServeRow` pushes
   `nova-sprint beat` (layer 6) after the probe and then every `BeatEvery` (30 s, a guess) until
   the worker ends, on the runner's `Sleep`. `OSMeter` reads the 1-minute load average
   (`/proc/loadavg` on Linux, `sysctl -n vm.loadavg` on macOS and the BSDs, nothing on Windows:
@@ -922,13 +922,13 @@ clock), mostly in `edge/worker/probe_test.go`.
   0 of 0 and a warning. Each distinct failure is warned once, not every period. The worker
   keeps only the last warning's text; a beat that repeats the last one writes nothing.
 - Choice: a periodic verb of the worker's own, not the hook's presence (the bus hook is nova-bus's
-  and carries no numbers) and not a read verb that writes. Tests: `edge/worker/beat_test.go`.
+  and carries no numbers) and not a read verb that writes. Tests: `modules/edge/worker/beat_test.go`.
 
 ### Built: the landing's red split, its timing, and the host identity (stitch w3L, 2026-11-07)
 
 Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
 
-- *`forge` (`edge/forge/actions.go`, new).* `Inheritance(repo, base,
+- *`forge` (`modules/edge/forge/actions.go`, new).* `Inheritance(repo, base,
   baseTip, head)`: the merge base (`gh api repos/<r>/compare/<tip>...<head>
   --jq .merge_base_commit.sha`), the workflow runs at the head and at the
   merge base (`actions/runs?head_sha=`, `--jq`-projected so a page of 100
@@ -947,7 +947,7 @@ Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
   commit authors (`gh pr view --json commits`); `IsAgreement(check)`
   names a CLA/CAA/contributor-agreement check. `CheckRollup.Waiting`: a red
   rollup with a check still queued or running.
-- *`LandPass`* (`edge/git/land.go`): a red rollup goes through
+- *`LandPass`* (`modules/edge/git/land.go`): a red rollup goes through
   `splitRed_internal`: an agreement check failing reads `Authors` into
   `LandResult.Unsigned`; the split fills `MergeBase`, `Inherited`, `NewRed`
   (plus each failing check that is no failed job of any workflow: new, not
@@ -978,17 +978,17 @@ Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
   (a `Pass` is atomic up to its final outcome). The trace walk's truthful
   fake reports red as new (`fakeForge_internal.Inheritance`), so
   `walkOutcomes` is unchanged.
-- *Tests (unit, no network).* `edge/forge/actions_test.go`: gh with canned
+- *Tests (unit, no network).* `modules/edge/forge/actions_test.go`: gh with canned
   JSON for compare, runs, workflow runs, jobs and logs
   (`TestInheritanceSplitsByTheMergeBase`: inherited at the merge base,
   inherited by the base branch's last run, new at the merge base, new with
   no run on the base, a running workflow with a failed job, inherited logs
   never read), compare faults, an unread log, `Authors` and `IsAgreement`.
-  `edge/git/red_test.go`: inherited-only, waiting, new while waiting, the
-  agreement check, an uncompared split. `run/edges_land_test.go`
-  `TestLandItemSplitsRedByTheBase`; `steps/tick_test.go`
+  `modules/edge/git/red_test.go`: inherited-only, waiting, new while waiting, the
+  agreement check, an uncompared split. `modules/run/edges_land_test.go`
+  `TestLandItemSplitsRedByTheBase`; `modules/steps/tick_test.go`
   `TestTickLandInheritedRedIsAGlance`; `cmd/nova-sprint/edges_test.go`
-  `TestIdentityNamesTheChoice`; `edge/forge` `TestForgeActsAsTheHostsGh`
+  `TestIdentityNamesTheChoice`; `modules/edge/forge` `TestForgeActsAsTheHostsGh`
   now sets `GH_TOKEN` and `GH_CONFIG_DIR` and requires neither reaches gh.
 - *Not done.* Which author is unsigned is not parsed from the agreement
   check's output (every author is named); no functional test against a real
@@ -996,7 +996,7 @@ Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
   fleet, not run here).
 ## Built: one gate parser; the install (stitch w3A, 2026-11-07; directives 77, 78)
 
-- `edge.ParseGate` (`edge/argv.go`) is the one parser of a DONE-WHEN line.
+- `edge.ParseGate` (`modules/edge/argv.go`) is the one parser of a DONE-WHEN line.
   `OSReserveWall.RunTest` calls it (replacing `splitArgv_internal`, which was
   the tokenizer without the checks), so admission's add and the worker's run
   agree; a stored line with shell syntax is an error naming it, never run as
@@ -1007,15 +1007,15 @@ Directives 59, 63 (land side), 76; LANDING.md "Red that is not the card's".
 - The binary at `~/.local/bin/nova-sprint` on a bench is installed by
   nova-fleet's play (another repository), whose replace-by-rename and ad-hoc
   signing is not changed here. In this repository `make install` now uses
-  `tools/placebin`: a new file beside the old, `codesign --force --sign -` on
+  `cmd/placebin`: a new file beside the old, `codesign --force --sign -` on
   darwin, rename over, never an open of the old file for writing. Tests:
-  `tools/placebin/place_test.go` (the destination is a different file after
+  `cmd/placebin/place_test.go` (the destination is a different file after
   and the old open file keeps its bytes).
 
 ### Built: the worker's live defects (stitch w3W, 2026-11-07)
 
 From the first bench runs (directives items 61, 65 to 74). Files:
-`edge/worker/pass.go` (passes and jobs), `recover.go` (restart, release,
+`modules/edge/worker/pass.go` (passes and jobs), `recover.go` (restart, release,
 quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
 
 - **Passes apart from jobs (66).** A pass recovers the row's jobs, reads
@@ -1074,7 +1074,7 @@ quarantine), `outcome.go` (a read's outcome), `jobmd.go` (JOB.md).
   gone. Of the three stitch tests that encoded worker-opens-PR,
   `TestStitchStreamForgeWithNoAdapterIsAFaultNamingIt` is deleted (the
   landing opens and gates the card's PR: `TestLandRungOneGatesTheCardsOwnPR`
-  in `edge/git`), the PR assertion of
+  in `modules/edge/git`), the PR assertion of
   `TestStitchDeadlineModelAndForgeComeFromTheReceipt` is dropped, and the
   forge gates of the store-backed fake (`RequirePR`, `RequireGreenAtReport`)
   with them.
@@ -1129,7 +1129,7 @@ the card's branch. `cleanJobDir_internal` kept the directory (a dirty tree;
 the Go module cache inside it is read-only, so a plain remove fails too),
 so this happened again on every pass for as long as the worker lived, each
 time rewinding the new holder's branch to the stale head. Files:
-`edge/worker/retire.go` (new), `runner.go`, `recover.go`, `pass.go`,
+`modules/edge/worker/retire.go` (new), `runner.go`, `recover.go`, `pass.go`,
 `worker.go`.
 
 - **One push, by lease.** `OSGitOps.Push` (the worker's only `git push`)
@@ -1220,7 +1220,7 @@ time rewinding the new holder's branch to the stale head. Files:
   harness's environment was already clean of `GIT_AUTHOR_*`/`GIT_COMMITTER_*` and its HOME is
   the job's, so the clone's config is what its commits carry; the worker's own `CommitAll`
   commits in the same clone.
-- `CommitRules(name, email)` (edge/worker/identity.go) is the rule word for word in hook's
+- `CommitRules(name, email)` (modules/edge/worker/identity.go) is the rule word for word in hook's
   output, take's text, JOB.md and the prompt: the identity, the two `git config` lines, the
   `By:`/`Co-Authored-By:` rule, and that finish refuses another email. `ValidIdentity` refuses a
   value the printed lines could not carry (a quote, backslash, `$`, backtick, angle bracket or

@@ -38,7 +38,7 @@ func loadTree(t *testing.T, root string) *treeIndex {
 	if gr := runtime.GOROOT(); gr != "" {
 		goBin = filepath.Join(gr, "bin", "go")
 	}
-	cmd := exec.Command(goBin, "test", "-list=^(Test|Fuzz)", "./store", "./card", "./steps", "./policy")
+	cmd := exec.Command(goBin, "test", "-list=^(Test|Fuzz)", "./modules/store", "./modules/card", "./modules/steps", "./modules/policy")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -52,7 +52,7 @@ func loadTree(t *testing.T, root string) *treeIndex {
 	}
 
 	for _, pkg := range []string{"store", "card", "steps", "policy"} {
-		files, err := filepath.Glob(filepath.Join(root, pkg, "*_test.go"))
+		files, err := filepath.Glob(filepath.Join(root, "modules", pkg, "*_test.go"))
 		if err != nil {
 			t.Fatalf("glob %s: %v", pkg, err)
 		}
@@ -62,7 +62,7 @@ func loadTree(t *testing.T, root string) *treeIndex {
 	}
 	// TestProducerTable and TestConsumerTable derive subtest names from card
 	// Event type names (and "<Event> work" / "<Event> read").
-	collectCardEventSubtests(t, filepath.Join(root, "card", "card.go"), idx.subTests)
+	collectCardEventSubtests(t, filepath.Join(root, "modules", "card", "card.go"), idx.subTests)
 
 	// The reversed witnesses, reach checks and several configs are generated, not
 	// committed: read them from a copy where the generators ran.
@@ -71,7 +71,7 @@ func loadTree(t *testing.T, root string) *treeIndex {
 		t.Fatalf("tla/gen-witnesses.sh: %v\n%s", err, out)
 	}
 	loadTLA(t, tlaCopy, idx)
-	loadSchemaChecks(t, filepath.Join(root, "store", "schema.sql"), idx.schemaCheck)
+	loadSchemaChecks(t, filepath.Join(root, "modules", "store", "schema.sql"), idx.schemaCheck)
 	return idx
 }
 

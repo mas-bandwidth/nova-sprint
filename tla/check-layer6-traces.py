@@ -97,13 +97,13 @@ def case(repo, out, name, model, trace):
 
 
 def emit_simple(repo, out, args, cases):
-    jobs = [('run-' + str(s), 'Run', './run', 'TestEmitRunTrace',
+    jobs = [('run-' + str(s), 'Run', './modules/run', 'TestEmitRunTrace',
              'NOVA_RUN_TRACE_PATH', {'NOVA_RUN_TRACE_SEED': str(s)}) for s in (0, 1, 2)]
-    jobs += [('run-stop', 'Run', './run', 'TestEmitRunTrace', 'NOVA_RUN_TRACE_PATH',
+    jobs += [('run-stop', 'Run', './modules/run', 'TestEmitRunTrace', 'NOVA_RUN_TRACE_PATH',
               {'NOVA_RUN_TRACE_SEED': '0', 'NOVA_RUN_TRACE_STOP': '1'})]
     # The RunClear cases (clear, clear-walk-0..9) are owed: their emitters went
     # with the old pusher (f697b05f), and run.Pusher has no clear summary to bind.
-    jobs += [('setup', 'Setup', './verbs', 'TestSetupActualTrace', 'NOVA_SETUP_TRACE_OUT', {})]
+    jobs += [('setup', 'Setup', './modules/verbs', 'TestSetupActualTrace', 'NOVA_SETUP_TRACE_OUT', {})]
     jobs += [('handoff-' + str(s), 'SetupHandoff', './cmd/nova-sprint', 'TestFunctionalEmitHandoffTrace',
               'NOVA_HANDOFF_TRACE_PATH', {'NOVA_HANDOFF_TRACE_STALE': str(s)}) for s in (0, 1)]
     for name, model, package, test, key, env in jobs:
@@ -116,7 +116,7 @@ def emit_simple(repo, out, args, cases):
 def emit_groups(repo, out, args, cases):
     choices = out / 'emitted' / 'choices'
     choices.mkdir()
-    run_emit(repo, out, 'choices', './verbs', 'TestSetupChoicesActualTrace',
+    run_emit(repo, out, 'choices', './modules/verbs', 'TestSetupChoicesActualTrace',
              {'NOVA_SETUP_CHOICES_TRACE_DIR': str(choices)}, args)
     for name in ('none', 'configured'):
         cases.append(case(repo, out, 'choices-' + name, 'SetupChoices', choices / (name + '.tla')))

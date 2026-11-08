@@ -165,8 +165,8 @@ the sprint's pushes over the bus (deals, read asks, withdraws, landing results, 
 coordinator every judgement), and prints `HOOKED <name> role=<role>`, the commit identity, the
 line `playbook: nova-sprint help playbook <role>`, then its `next:` line. The playbook itself is
 not printed on every hook (a hook follows every wrap-around; 23 to 53 KB each time, V2 fix list
-item 25): `help playbook <role>` prints docs/PLAYBOOK-WORKER.md for a worker, or
-docs/PLAYBOOK-WORKER.md followed by docs/PLAYBOOK-COORDINATOR.md for the coordinator, who is a
+item 25): `help playbook <role>` prints modules/playbooks/PLAYBOOK-WORKER.md for a worker, or
+modules/playbooks/PLAYBOOK-WORKER.md followed by modules/playbooks/PLAYBOOK-COORDINATOR.md for the coordinator, who is a
 worker too ("so they get both playbooks!", Glenn 2026-11-06), compiled into the binary from those
 files. Until the hook has run, every acting verb refuses with `hook in first: nova-sprint hook
 --as <name> --role worker` (or `coordinator` for a coordinator verb). `TestPlaybookCommandsParse`
@@ -544,7 +544,7 @@ with no DSN; `judge` with choices in place of v1's answer verbs.
 
 ## Built: check says the sprint's health (stitch, 2026-11-07)
 
-`verbs/check.go`, `check_sprint.go`, `check_width.go`, `check_landing.go`
+`modules/verbs/check.go`, `check_sprint.go`, `check_width.go`, `check_landing.go`
 (item 43). `check` collected the plumbing only and refused at its first
 failure. It now prints one line per thing checked (`CHECK`, `CHECK WARN`,
 `CHECK RED <what>: <fix>`), every line even when an early one is red, and
@@ -567,7 +567,7 @@ card's branch, rung 2 `sprint-group/<s>`; since 2026-11-07 check reads no
 branch at origin for it). The landing line reads no in-flight state
 (run keeps it in memory), so "how long" is the judgement's open time when a
 stall judgement says it, and nothing otherwise. Upward the pin: lower is
-red, higher a warning that exits 0. Unit tests (`verbs/check_test.go`): the
+red, higher a warning that exits 0. Unit tests (`modules/verbs/check_test.go`): the
 all-green output line for line, and each red line with fakes. Not measured:
 check's time on a fleet with 25 streams (25 ls-remotes in parallel; a guess
 of 1 to 3 s over the network).
@@ -588,7 +588,7 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 - The service runs the scheduler, push worker and dashboard from the folded local view, with graceful HTTP shutdown. The public pull cache fetches once a second, serves cached JSON with gzip and ETag, rejects writes, validates the upstream envelope and limits requests by address. `nova-sprint dash` and the existing dashboard binary support the cache; the public CLI dispatches the available verbs, while `run` and `worker` still await their real layer adapters. The hidden bus callback was exercised through a real isolated hook and correlated reply.
 - Stream settings are recovered from `stream:<name>` policy-data events through the cold snapshot sequence, then updated with each event fold. Steps receive a copied map for current streams. The shadow seam plans without the chooser or effects and validates ordered ops against `store.NewFakeFrom`; it reports that concurrent changes and IDs used before the snapshot are not modelled. The actual layer 3 adapter and CLI entry are still pending.
 
-- The local manual-test seam `run/filestore` persists a Fake snapshot and event history in a file with per-operation locking and a separate chooser lease. It is explicitly a test store, not PostgreSQL or a power-loss durability substitute; the fake CLI can simulate setup, store verbs and a verified file backup/clear. The planner-driven terminal lifecycle is not yet wired, and fake restore remains unavailable.
+- The local manual-test seam `modules/run/filestore` persists a Fake snapshot and event history in a file with per-operation locking and a separate chooser lease. It is explicitly a test store, not PostgreSQL or a power-loss durability substitute; the fake CLI can simulate setup, store verbs and a verified file backup/clear. The planner-driven terminal lifecycle is not yet wired, and fake restore remains unavailable.
 
 - The CLI keeps help and version independent of the store, uses the canonical sprint credential explicitly and a passwordless sprint-role DSN for store access, and never exports it to unrelated tool commands. `check --history` uses the store owner’s read-only repeatable-read validator; `check --integrity` refuses while its external comparisons remain unavailable. Dirty or unknown builds do not claim a commit-derived identity.
 - Setup has a two-phase, separately leased continuation: the non-secret wrapper launches an admin-only child, receives only a typed ID over a private channel after lease release, then launches a sprint-only child that rechecks the persisted epoch/actor/arguments before and under a newly acquired lease. The constructor uses actual inventory/service records and isolated config credentials; remote run is deferred. Public dashboard installation still needs the owner’s fleet installer interface and remains required for 2.0.0. No live setup or deployment is claimed.
@@ -599,14 +599,14 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 ## Built: the run on a fresh store, and the verbs mid-up (2026-11-07)
 
 - A fresh store is stopped "never started" (layer 1's Built entry of the same date). The run
-  comes up on it and ticks nothing until `start`: `run/fresh_test.go` ticks a fresh Fake and
+  comes up on it and ticks nothing until `start`: `modules/run/fresh_test.go` ticks a fresh Fake and
   checks no sequence change, no ask, no send and no row moved, then one deal after `start`.
-  The dashboard shows `machine: STOPPED never started` (`dash/stop_test.go`).
+  The dashboard shows `machine: STOPPED never started` (`modules/dash/stop_test.go`).
 - No verb is gated on `up`'s step (section 3's matrix). The field refusal of `stop` while `up`
   was at step 7 was the missing credential reported as "not set up"; that is now its own
   refusal, `this process has no sprint credential` with the `nova-secrets exec` line as its fix
   (`verbs.NoCredential`), from `open.go` and the doctor's schema check alike. "Not set up" now
-  means only a store without the schema. `verbs/fresh_test.go` runs show, next, hook, stop,
+  means only a store without the schema. `modules/verbs/fresh_test.go` runs show, next, hook, stop,
   start and stop on a store as `up` leaves it before step 8, and each verb before the store
   exists.
 - `start` on a running sprint is a success that changes nothing and names `next`; `stop` on a
@@ -675,7 +675,7 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 
 ## Built: the landing to intent rule 32 (stitch, 2026-11-07, branch `v2-stitch-w2L`)
 
-- `land <card> --reason <why> [--head <sha>]` (`verbs/land.go`, coordinator):
+- `land <card> --reason <why> [--head <sha>]` (`modules/verbs/land.go`, coordinator):
   the hand merge of a merging producer's own head through `verbs.Lander`
   (the host's gh identity), recorded `card.Landed{Head, Merge, Reason: "by
   hand: <why>"}` in one op that also answers its open land judgement `land`.
@@ -688,11 +688,11 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
   branch; `show --stitch`'s diff range is `origin/<base>..origin/sprint-group/<s>`.
 - `release` records the reason `released: <why>` with an empty result
   (`verbs.ReleasedPrefix`; no schema change): neither ok nor fail.
-- Run (`run/edges.go`): LANDING.md "The ladder, as built"; `run/asker.go`
+- Run (`modules/run/edges.go`): LANDING.md "The ladder, as built"; `modules/run/asker.go`
   passes policy's `ci_wait`. `cmd`: the forge and git act as the host's gh
   login (`GH_GATE_TOKEN` optional), `GH_GATE_TOKEN` is no longer a key the
   sprint-run service needs, and the lander is wired into the engine.
-- Tests: `verbs/land_test.go` (`TestLandByHand`, `TestLandRefusals`,
+- Tests: `modules/verbs/land_test.go` (`TestLandByHand`, `TestLandRefusals`,
   `TestJudgeLandAnswers`, `TestStreamAddCreatesTheGroupBranch`),
   `TestReleaseIsNoBlame`, the verb list and the role matrix with `land`.
 ## Built: admission (stitch w2A, 2026-11-07; intent rule 34, defect 49)
@@ -700,19 +700,19 @@ This is a checkpoint, not a completed layer. `run/` contains the chooser session
 What can be found at add is found at add, each refusal with one fix. The
 checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
 
-- `stream add` (`verbs/admit_stream.go`): the card branch names against
+- `stream add` (`modules/verbs/admit_stream.go`): the card branch names against
   git's ref-name rules; then three reads at once: the base tip, no `sprint`
   or `sprint/<s>` branch at origin, and with forge github the host's gh
   identity at write or above (`Engine.Forge`, `cmd/nova-sprint/admit.go`:
   `gh repo view --json viewerPermission`). The group branch is not named or
   made here; the call site carries one comment for the landing's check.
-- `add` and its dry run (`verbs/admit_card.go`): after the plan, every
+- `add` and its dry run (`modules/verbs/admit_card.go`): after the plan, every
   producer is admitted. Streams are read at once (base tip, the tree at the
   tip by `git ls-tree` in the state dir's clone, the card branches by one
   `git ls-remote`); a card is refused for its lint (tier and routes served,
   DONE-WHEN as one command, retired mechanic, a named bench), then its PATHS, then
   work already at the base (its branch, HEAD, or PR: `gh pr view`). The brief
-  parse (`verbs/brief.go`, `verbs/brief_lint.go`) refuses the bad forms and
+  parse (`modules/verbs/brief.go`, `modules/verbs/brief_lint.go`) refuses the bad forms and
   the retired keys with the line.
 - `hook`: the snapshot read proves the store credential (none is
   `CredentialFix`); then every stream's base is read at once from this
@@ -727,13 +727,13 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   `store.CardStates`, naming the record; after the load, one `ADMIT` line per
   waiting or ready producer. The restore stands on a red admission line (a
   recovery refused for a moved path would leave no store); check repeats it.
-- `check` (`verbs/check_admission.go`): the stream lines use stream add's
+- `check` (`modules/verbs/check_admission.go`): the stream lines use stream add's
   admission; then the policy line (none active is red; a policy failing the
   order or rows question is red with `policy check`), the cards line (up to
   five red cards and a count), and the working line (a working consumer on a
   row unhooked, down or off the bus is red; a job dead on a present bench is
   not visible, said on the ok line).
-- The bus hook (`verbs/bus_answer.go`, item 45): a reply is never answered,
+- The bus hook (`modules/verbs/bus_answer.go`, item 45): a reply is never answered,
   a non-verb is logged once and ignored, a verb gets one reply naming the
   command to run.
 - Costs: admission is one ls-remote, one fetch and one ls-tree per stream,
@@ -745,9 +745,9 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   heartbeat reaches the store.
 ## Built: gates, drop and the agreement warning (stitch w3A, 2026-11-07; directives 77, 63)
 
-- DONE-WHEN is one argv (`edge.ParseGate`, shared with the worker): `verbs/brief.go`
+- DONE-WHEN is one argv (`edge.ParseGate`, shared with the worker): `modules/verbs/brief.go`
   (the brief parse, with the reason and `edge.GateFix` on the lint) and `cardLint`
-  (`verbs/admit_card.go`, add, check and restore) refuse shell syntax outside quotes
+  (`modules/verbs/admit_card.go`, add, check and restore) refuse shell syntax outside quotes
   and a first word that is not a program; the old `shellProblem` (which allowed
   `&&` and `|`, so a chain was admitted and then failed on the bench) is gone.
 - `drop`/`replace`: `steps.dropMoves` withdraws the dropped producer's live
@@ -758,7 +758,7 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   `TestVerbDropReleasesLiveConsumers`, `TestDropReleasesItsLiveConsumers`.
 - The agreement warning: `verbs.Forge.RequiredChecks` (`hostForge` reads
   `gh api repos/<r>/branches/<b>` for the protection contexts and
-  `repos/<r>/rules/branches/<b>` for rulesets); `verbs/admit_cla.go` matches the
+  `repos/<r>/rules/branches/<b>` for rulesets); `modules/verbs/admit_cla.go` matches the
   names and prints the identities (`worker.CommitEmailDomain`). Two extra gh
   reads per github stream at `stream add` and `check` (not measured).
 
@@ -768,12 +768,12 @@ checks are listed in CARD-CONTRACT.md "Admission"; here is where they live.
   sets the row's 1-minute load average (hundredths), cores and nova-reserve slots in use and in
   all (layer 1, `SetRowLoad`). A beat that repeats the row's last values succeeds and writes
   nothing. It is the one push the load cell needs (INTENT 7); nova-worker sends it every
-  30 s (a guess) and at start. The board's side is `dash/README.md`, Built.
+  30 s (a guess) and at start. The board's side is `modules/dash/README.md`, Built.
 - `TestServeTicksPushesAndLogs` failed about one run in three: the deal waits for the head
   watch's first read of the stream's base tip, which ran in its own goroutine while the test
   drove only the tick beat. The test's clock now says when that read has finished (the watch asks
   for its beat only after reading), and the test waits on it before its first tick. No
-  production code changed; `go test -run TestServeTicksPushesAndLogs -count=2000 -cpu 1,4 ./run/`
+  production code changed; `go test -run TestServeTicksPushesAndLogs -count=2000 -cpu 1,4 ./modules/run/`
   and 100 runs under `-race` pass.
 
 **Stitch w3I (2026-11-07).** The deal's push names the one model the deal
@@ -783,7 +783,7 @@ clipped brief. Test: `TestEventNoticesUseCommittedImagesAndRecipients`.
 ## Built: the landing's red split in the facts; the host identity (stitch w3L, 2026-11-07)
 
 Directives 59, 63, 76; LANDING.md "Red that is not the card's".
-`run/edges.go`: `landFacts` leads a red judgement's facts with `NEW red (not
+`modules/run/edges.go`: `landFacts` leads a red judgement's facts with `NEW red (not
 red on the base)` (each workflow, what the base was read from, "its run
 still going", each failed job's runner, page and first error lines), then
 `inherited red (red on the base too, not this card's)`, then the PR's
@@ -818,9 +818,9 @@ github.com credential is always gh as the host's login (no switch on
 
 ### Built: the installer's model retired (stitch, 2026-11-07)
 
-- The installer (`verbs/install*.go`) went with the verbs rewrite (c8b859a6): installing a release
+- The installer (`modules/verbs/install*.go`) went with the verbs rewrite (c8b859a6): installing a release
   onto a machine is nova-fleet's install, and `make install` places a local build through
-  `tools/placebin`. Its model (`tla/Install*.tla`, its witnesses, `Install-runs.json`) and the 64
+  `cmd/placebin`. Its model (`tla/Install*.tla`, its witnesses, `Install-runs.json`) and the 64
   install trace cases in `tla/check-layer6-traces.py` described code that no longer exists, and
   the trace script failed before checking anything (its emitter `TestInstallTraceWalk` was gone).
   Both are removed; the layer 6 trace check now emits and checks run, setup, handoff and choices.
@@ -833,7 +833,7 @@ github.com credential is always gh as the host's login (no switch on
   own before the raise. Each is a store append the model has no action for, so the code's
   physicalSeq went 18 to 21 at the raise where the model's Report allows 19. The gens matched
   (Report raises card 3 to gen 1); the brief's reading of the gens was not the refusal.
-- Fix, fixture side (`run/run_trace_test.go`): the raise is one outside op, as the model's Report
+- Fix, fixture side (`modules/run/run_trace_test.go`): the raise is one outside op, as the model's Report
   is one append. It retires w0 and cuts p0 a fresh consumer w1 working on r1 (put, then working, as
   a deal cuts one; a card's state is written once per op, so w0 cannot go ready and back), with
   the priority raise. w1 is the youngest working consumer whether the fold witnessed its take (at

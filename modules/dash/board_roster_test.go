@@ -1,0 +1,122 @@
+package dash
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/roster"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+)
+
+// The roster has rows the store lacks and the store has a row the roster
+// lacks (the human, 2026-11-07: "we definitely need all that stuff back"):
+// Fleet lists every roster worker and Friends every roster kin at the roster
+// width, down when the store has no row; the store's row the roster no longer
+// names stays, down; the
+// order is by name.
+func TestBoardListsTheWholeRoster(t *testing.T) {
+	t.Parallel()
+	ros := roster.Roster{
+		Workers: map[string]roster.Worker{"b-bench": {Name: "b-bench", Width: 8}, "a-bench": {Name: "a-bench", Width: 4}, "c-bench": {Name: "c-bench", Width: 2}},
+		Kin:     map[string]roster.Kin{"zed": {Name: "zed", Width: 3}, "amy": {Name: "amy", Width: 2}},
+	}
+	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
+		"a-bench": {Name: "a-bench", State: "up"}, "amy": {Name: "amy", State: "up", Held: true}, "gone": {Name: "gone", State: "up"},
+	}}
+	d := mapSnapshot(snap, ros, time.Time{})
+	fleet := d.Tables["fleet"].(map[string]*fleetRow)
+	friends := d.Tables["friends"].(map[string]*fleetRow)
+	want := map[string]fleetRow{
+		"a-bench": {Status: "up", Width: 4}, "b-bench": {Status: "down", Width: 8}, "c-bench": {Status: "down", Width: 2},
+		"gone": {Status: "down"},
+	}
+	if len(fleet) != len(want) {
+		t.Fatalf("fleet = %d rows, want %d: %+v", len(fleet), len(want), fleet)
+	}
+	for n, w := range want {
+		if g := fleet[n]; g == nil || *g != w {
+			t.Errorf("fleet[%s] = %+v, want %+v", n, g, w)
+		}
+	}
+	if len(friends) != 2 || friends["amy"].Status != "held" || friends["amy"].Width != 2 || friends["zed"].Status != "down" || friends["zed"].Width != 3 {
+		t.Fatalf("friends = %+v", friends)
+	}
+	body, err := json.Marshal(d.Tables["fleet"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again []byte
+	if again, err = json.Marshal(mapSnapshot(snap, ros, time.Time{}).Tables["fleet"]); err != nil || string(again) != string(body) {
+		t.Fatalf("the order is not stable: %v\n%s\n%s", err, body, again)
+	}
+}
+
+// OK% (directive 64a) is a worker's own finished work cards with result ok
+// over those with result ok, fail or fix, known the moment a card is done. A
+// fault, a close or release with no such result and every read are not in it.
+func TestOKPercentIsKnownWhenTheCardIsDone(t *testing.T) {
+	t.Parallel()
+	ros := roster.Roster{Kin: map[string]roster.Kin{"emma": {Name: "emma", Width: 2}, "alex": {Name: "alex", Width: 2}, "bob": {Name: "bob", Width: 2}}}
+	card := func(id, kind, holder, author, result string) store.Card {
+		return store.Card{ID: id, Kind: kind, Of: "p", Stream: "s", Holder: holder, Author: author, State: "done", Result: result, Tier: "pro"}
+	}
+	snap := store.Snapshot{Epoch: 1, Streams: map[string]store.Stream{"s": {Name: "s"}}, Cards: map[string]store.Card{
+		"w1": card("w1", "work", "emma", "emma", "ok"), "w2": card("w2", "work", "alex", "alex", "fault"),
+		"w3": card("w3", "work", "alex", "alex", "ok"), "w4": card("w4", "work", "alex", "alex", "fail"),
+		"w5": card("w5", "work", "emma", "emma", "fix"), "w6": card("w6", "work", "bob", "bob", "fault"),
+		"w7": card("w7", "work", "bob", "bob", ""), "w8": card("w8", "work", "bob", "bob", "released"),
+		"r1": card("r1", "read", "emma", "alex", "fix"), "r2": card("r2", "read", "alex", "emma", "ok"),
+	}}
+	d := mapSnapshot(snap, ros, time.Time{})
+	friends := d.Tables["friends"].(map[string]*fleetRow)
+	if e := friends["emma"]; e.OK != 1 || e.Failed != 1 || e.OKPct != 50 || e.Done != 3 {
+		t.Errorf("emma = %+v: ok and fix work count, her read is her done and nothing else", e)
+	}
+	if a := friends["alex"]; a.OK != 1 || a.Failed != 1 || a.OKPct != 50 || a.Done != 4 {
+		t.Errorf("alex = %+v: ok and fail count; the fault and emma's read of his work do not", a)
+	}
+	if b := friends["bob"]; b.OK != 0 || b.Failed != 0 || b.Done != 3 {
+		t.Errorf("bob = %+v: a fault, a close with no result and a release count for nothing", b)
+	}
+	body, err := json.Marshal(d.Tables["friends"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cells map[string]map[string]string
+	if err := json.Unmarshal(body, &cells); err != nil {
+		t.Fatal(err)
+	}
+	if cells["bob"]["okpct"] != "-" || cells["emma"]["okpct"] != "50.0%" {
+		t.Errorf("okpct cells: bob %q (want -), emma %q (want 50.0%%)", cells["bob"]["okpct"], cells["emma"]["okpct"])
+	}
+}
+
+// The load cell is the row's last heartbeat (directive 63a): the highest CPU
+// busy percent of its last 10 seconds across all the cores, v1's cell, with the
+// slots in its title; a row that is down, or has never beaten, has none.
+func TestLoadCellIsTheLastHeartbeat(t *testing.T) {
+	t.Parallel()
+	ros := roster.Roster{Workers: map[string]roster.Worker{"a": {Name: "a", Width: 4}, "b": {Name: "b", Width: 4}, "c": {Name: "c", Width: 4}}}
+	snap := store.Snapshot{Epoch: 1, Rows: map[string]store.Row{
+		"a": {Name: "a", State: "up", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
+		"b": {Name: "b", State: "down", Load1Centi: 252, CPUPeakDeci: 873, Cores: 8, SlotsUsed: 3, SlotsTotal: 8},
+		"c": {Name: "c", State: "up"},
+	}}
+	body, err := json.Marshal(mapSnapshot(snap, ros, time.Time{}).Tables["fleet"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cells map[string]map[string]string
+	if err := json.Unmarshal(body, &cells); err != nil {
+		t.Fatal(err)
+	}
+	if cells["a"]["load"] != "87.3%" || cells["a"]["slots"] != "3 / 8" {
+		t.Errorf("a = %v: want load 87.3%% and slots 3 / 8", cells["a"])
+	}
+	for _, n := range []string{"b", "c"} {
+		if _, ok := cells[n]["load"]; ok {
+			t.Errorf("%s shows a load, %v", n, cells[n])
+		}
+	}
+}

@@ -1,0 +1,167 @@
+package verbs
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/modules/card"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge"
+	"github.com/mas-bandwidth/nova-sprint/modules/policy"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
+)
+
+// Result is a verb's whole output and its exit status (LAYER-6 section 3):
+// 0 done, its last line `next: ...`; 1 refused, one line naming the command
+// that makes the prerequisite true; 2 could not run (bad usage, or the
+// store, the bus or an edge failed), one line in the same form.
+type Result struct {
+	Output string
+	Exit   int
+}
+
+// The three exit kinds.
+const (
+	exitDone    = 0
+	exitRefused = 1
+	exitFailed  = 2
+)
+
+// Fail is every verb's error: what is not true, the command that makes it
+// true, and the exit kind. It prints as the one refusal line, `SPRINT
+// REFUSED <verb>: <what>: <fix>`, whatever the kind.
+type Fail struct {
+	What, Fix string
+	Detail    string // printed before the refusal line: what a check found
+	Exit      int
+	cause     error // the sentinel it stands for (ErrNotSetUp), for errors.Is
+}
+
+func (f *Fail) Error() string { return f.What + ": " + f.Fix }
+func (f *Fail) Unwrap() error { return f.cause }
+
+// ErrNotSetUp is a store without this build's schema (no epoch yet): the fix
+// is up. A process without the sprint's credential is NoCredential, not
+// this: the store may well be set up (defect 22, 2026-11-07).
+var ErrNotSetUp = errors.New("the sprint is not set up")
+
+// CredentialFix is how a verb gets the sprint's credentials into its
+// process: nova-secrets exec on the seat up granted them to.
+const CredentialFix = "run under nova-secrets exec --only NOVA_SPRINT_PG_PASSWORD,NOVA_BUS_PASSWORD -- nova-sprint ..."
+
+// NoCredential is the refusal of a process without NOVA_SPRINT_PG_PASSWORD
+// (up mints it; the fleet's units and nova-secrets exec inject it).
+func NoCredential() *OperationError {
+	return &OperationError{Problem: "this process has no sprint credential", Fix: CredentialFix, Exit: exitRefused}
+}
+
+// ErrNoStore is a process that names no store at all: neither NOVA_PG_DSN
+// nor the sprint's credential. Nothing here points at a sprint, so the next
+// command is up, the one verb run bare (it makes the store and mints the
+// credential); joining a sprint that exists is the DSN and CredentialFix.
+var ErrNoStore = errors.New("no store is configured in this process")
+
+// NoStore is ErrNoStore's refusal (exit 1), naming up for actor.
+func NoStore(actor string) *Fail {
+	return &Fail{What: "no store is configured in this process (NOVA_PG_DSN and NOVA_SPRINT_PG_PASSWORD are unset; to join a sprint that exists, set NOVA_PG_DSN and " + CredentialFix + ")",
+		Fix: "nova-sprint up --as " + orWord(actor, "<you>"), Exit: exitRefused, cause: ErrNoStore}
+}
+
+// notSetUp is ErrNotSetUp's refusal (exit 1), naming up.
+func notSetUp(actor string) *Fail {
+	return &Fail{What: "the sprint is not set up", Fix: "nova-sprint up --as " + orWord(actor, "<you>"), Exit: exitRefused, cause: ErrNotSetUp}
+}
+
+// refuse is a prerequisite that does not hold (exit 1).
+func refuse(what, fix string) *Fail { return &Fail{What: what, Fix: fix, Exit: exitRefused} }
+
+// broken is a verb that could not run: an I/O failure, or a bug (exit 2).
+func broken(what, fix string) *Fail { return &Fail{What: what, Fix: fix, Exit: exitFailed} }
+
+// misuse is bad usage of verb (exit 2): its fix is the verb's help.
+func misuse(verb, what string) *Fail { return broken(what, "nova-sprint help "+verb) }
+
+// OperationError is the setup walk's refusal (the up machinery's adapters
+// return it): its Exit 2 is a failure, anything else a refusal.
+type OperationError struct {
+	Problem, Fix string
+	Exit         int
+}
+
+func (e *OperationError) Error() string { return e.Problem + ": " + e.Fix }
+
+// classify is every error as a Fail, so no error leaves a verb unclassified:
+// a Fail as it is; the setup walk's, the brief lint's, policy's and the card
+// machine's refusals in their own words; the store's invalid op as a bug;
+// anything else an I/O failure whose fix is the one doctor.
+func classify(err error) *Fail {
+	var f *Fail
+	var op *OperationError
+	var lint *BriefLintError
+	var pr *policy.Refusal
+	switch {
+	case errors.As(err, &f):
+		return f
+	case errors.Is(err, ErrNotSetUp):
+		return notSetUp("")
+	case errors.Is(err, ErrNoStore):
+		return NoStore("")
+	case errors.As(err, &op):
+		if op.Exit == exitFailed {
+			return broken(op.Problem, op.Fix)
+		}
+		return refuse(op.Problem, op.Fix)
+	case errors.As(err, &lint):
+		return refuse(lint.Error(), orWord(lint.Fix, "fix the brief and run nova-sprint add again"))
+	case errors.As(err, &pr):
+		return refuse(pr.What, pr.Fix)
+	case errors.Is(err, store.ErrInvalid):
+		return broken("nova-sprint built an invalid op ("+clip(err.Error())+")", "take it to the project's own tracker with this line")
+	}
+	if r := AsRefusal(err); r != nil {
+		// an internal child's refusal, read back from its stderr
+		return classify(r)
+	}
+	return broken(clip(err.Error()), "run nova-sprint check, then the verb again")
+}
+
+// moved is the card machine's or the steps' refusal of a move, with the
+// command that shows the record it was refused on.
+func moved(r *card.Refusal, subject string) *Fail {
+	return refuse(r.Reason, "nova-sprint show "+subject)
+}
+
+// line is the one refusal line.
+func (f *Fail) line(verb string) string {
+	return "SPRINT REFUSED " + oneLine(verb) + ": " + oneLine(f.What) + ": " + oneLine(f.Fix) + "\n"
+}
+
+// done is a success: its lines, then the `next:` line.
+func done(next string, lines ...string) string {
+	var b strings.Builder
+	for _, l := range lines {
+		b.WriteString(strings.TrimRight(l, "\n"))
+		b.WriteByte('\n')
+	}
+	b.WriteString("next: " + next + "\n")
+	return b.String()
+}
+
+// waitNext is the next line when the next move is someone else's.
+const waitNext = "nothing; wait for the bus"
+
+func oneLine(s string) string {
+	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
+}
+
+// clip is s on one line, bounded at edge.CommandMax: long enough for a
+// failed child's whole cause, which is the output that resolves it.
+func clip(s string) string {
+	s = oneLine(s)
+	if len(s) > edge.CommandMax {
+		s = s[:edge.CommandMax] + "..."
+	}
+	return s
+}
+
+func fmtCard(id string, gen int) string { return fmt.Sprintf("%s@%d", id, gen) }

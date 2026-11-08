@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mas-bandwidth/nova-sprint/edge/bus"
-	"github.com/mas-bandwidth/nova-sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/modules/edge/bus"
+	"github.com/mas-bandwidth/nova-sprint/modules/store"
 )
 
 // fileStore is store.Fake kept in a file across the processes of one test

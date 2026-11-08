@@ -232,7 +232,7 @@ So:
 - `stream add` and `check` warn when the base requires a contributor-agreement
   check, naming the identities to sign (CARD-CONTRACT "Admission").
 - `make install` puts the commands in `~/.local/bin` as a new file, signed ad
-  hoc on macOS, renamed over the old one (`tools/placebin`). Installing a
+  hoc on macOS, renamed over the old one (`cmd/placebin`). Installing a
   release onto a bench is nova-fleet's install, which is another repository's
   and is not changed here.
 

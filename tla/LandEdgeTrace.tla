@@ -2,7 +2,7 @@
 (***************************************************************************)
 (* Trace validation of LandEdge.tla: LandEdge.tla's next-state relation    *)
 (* constrained to a recording of the Go landing walk                       *)
-(* (edge/git/trace_test.go: LandPass on the git fake and a truthful       *)
+(* (modules/edge/git/trace_test.go: LandPass on the git fake and a truthful       *)
 (* forge, with the tick, outside commits and the coordinator's answers).  *)
 (***************************************************************************)
 EXTENDS LandEdge, Sequences, LandEdgeTraceLog, TLC
