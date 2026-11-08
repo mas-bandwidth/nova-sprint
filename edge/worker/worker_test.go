@@ -555,7 +555,7 @@ func TestRunnerRestartRecoveryAndQueryEdgeIdempotency(t *testing.T) {
 	git.headByWT[filepath.Join(jobDir, "repo")] = testPriorSHA
 
 	procs := &fakeProcTable{alive: map[string]bool{"777:nonce-live": true}}
-	_ = WriteJobRecord(jobDir, JobRecord{
+	writeStagedRecord_internal(t, jobDir, JobRecord{
 		Epoch: 1, Consumer: "p1.w1", Producer: "p1", Kind: "work", Row: row, Stream: "s1",
 		Branch: taken.Branch, BaseSHA: taken.BaseSHA, Gen: taken.Gen, Attempt: 1,
 		ResultID: "res-p1.w1-g3", State: JobRunning, PID: 777, Nonce: "nonce-live",
@@ -774,8 +774,8 @@ func TestRebaseOntoStreamFetchFailurePropagates(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	fx := edge.NewFakeExec()
-	// The remote guard's reads (origin, its push URL, the config), then the fetch.
-	fx.Enqueue("git", edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{},
+	// The guard's reads (the local config, origin, its push URL, the config), then the fetch.
+	fx.Enqueue("git", edge.FakeOutcome{}, edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{Stdout: testCloneURL + "\n"}, edge.FakeOutcome{},
 		edge.FakeOutcome{ExitCode: 128, Stderr: "fatal: couldn't find remote ref sprint/s1/group"})
 	gitOps := &OSGitOps{WorkRoot: t.TempDir(), Exec: fx}
 	_, err := gitOps.RebaseOntoStream(ctx, t.TempDir(), testCloneURL, "sprint/s1/group")

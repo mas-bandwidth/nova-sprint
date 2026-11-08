@@ -459,6 +459,9 @@ func (r *Runner) initJob_internal(rowInfo NextResponse, info TakeInfo, jobDir st
 	if err := writeReceipt_internal(jobDir, info); err != nil {
 		return Job{}, JobRecord{}, err
 	}
+	if err := r.keepRemote_internal(info); err != nil {
+		return Job{}, JobRecord{}, err
+	}
 	if err := WriteJobRecord(jobDir, rec); err != nil {
 		return Job{}, JobRecord{}, err
 	}
@@ -661,7 +664,11 @@ func (r *Runner) rebaseAndTestStep_internal(ctx context.Context, jobDir string, 
 	}
 	wt := filepath.Join(jobDir, "repo")
 	if r.Git != nil && rec.StreamRef != "" {
-		newSHA, err := r.Git.RebaseOntoStream(ctx, wt, recordRemote_internal(*rec), rec.StreamRef)
+		remote, err := r.jobRemote_internal(*rec)
+		newSHA := ""
+		if err == nil {
+			newSHA, err = r.Git.RebaseOntoStream(ctx, wt, remote, rec.StreamRef)
+		}
 		if err != nil {
 			var ce *ConflictError
 			var fe *FetchError
@@ -743,7 +750,12 @@ func (r *Runner) sendReportAndClean_internal(ctx context.Context, jobDir string,
 func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec JobRecord) error {
 	wt := filepath.Join(jobDir, "repo")
 	if rec.Kind == "work" && rec.PushedHead != "" && r.Git != nil {
-		if ok, err := r.Git.OriginHasHead(ctx, wt, recordRemote_internal(rec), rec.Branch, rec.PushedHead); err != nil || !ok {
+		remote, err := r.jobRemote_internal(rec)
+		ok := false
+		if err == nil {
+			ok, err = r.Git.OriginHasHead(ctx, wt, remote, rec.Branch, rec.PushedHead)
+		}
+		if err != nil || !ok {
 			why := "kept-unconfirmed-head"
 			if err != nil {
 				why += ": " + err.Error()
@@ -763,6 +775,9 @@ func (r *Runner) cleanJobDir_internal(ctx context.Context, jobDir string, rec Jo
 	}
 	if err := os.RemoveAll(jobDir); err != nil {
 		return err
+	}
+	if err := os.Remove(filepath.Join(r.RootDir, RemotesDir, rec.Consumer)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		r.report("removing the kept clone URL of "+rec.Consumer, err)
 	}
 	r.logStep_internal(rec.Row, rec.Consumer, "clean", "removed", 0)
 	return nil
@@ -1002,8 +1017,88 @@ func (g *OSGitOps) BranchTip(ctx context.Context, j Job) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 func (g *OSGitOps) HeadSHA(ctx context.Context, worktree string) (string, error) {
-	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "rev-parse", "HEAD")
+	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+		return "", err
+	}
+	out, err := g.runGit_internal(ctx, to, worktree, "rev-parse", "HEAD")
 	return strings.TrimSpace(out), err
+}
+
+// stagedConfigKey_internal is true for a local config key git writes at
+// clone (core.*, origin, the default branch's upstream, and the format
+// extensions a clone carries from its source) or the worker sets at stage
+// (origin's push URL on a read, the commit identity, the job branch's
+// upstream). Nothing else is ever in a staged worktree's .git/config.
+func stagedConfigKey_internal(key, value string) bool {
+	switch strings.ToLower(key) {
+	case "core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates", "core.ignorecase", "core.precomposeunicode", "core.symlinks",
+		"extensions.objectformat", "extensions.refstorage",
+		"remote.origin.url", "remote.origin.fetch", "remote.origin.pushurl", "user.name", "user.email":
+		return true
+	}
+	if name, ok := strings.CutPrefix(key, "branch."); ok {
+		lower := strings.ToLower(name)
+		return strings.HasSuffix(lower, ".merge") || strings.HasSuffix(lower, ".remote") && value == "origin"
+	}
+	return false
+}
+
+// guardConfig_internal runs before every worker git call after the
+// harness (which can write the worktree's .git): the worktree's own config
+// (git config --local, read with nothing run) holds only the keys staging
+// wrote (stagedConfigKey_internal). Any other key (a filter, a
+// core.sshCommand, core.fsmonitor or core.hooksPath, an include, a remote
+// other than origin, url.*, http.*, credential.*) is refused, so the
+// worker's git never runs a command or reaches a server the harness chose.
+// Hooks never run in any case: every worker git call passes
+// core.hooksPath=/dev/null (runGit_internal).
+func (g *OSGitOps) guardConfig_internal(ctx context.Context, to time.Duration, worktree string) error {
+	list, err := g.runGit_internal(ctx, to, worktree, "config", "--local", "--null", "--list")
+	if err != nil {
+		return err
+	}
+	for _, entry := range strings.Split(list, "\x00") {
+		key, value, _ := strings.Cut(entry, "\n")
+		if key != "" && !stagedConfigKey_internal(key, value) {
+			return fmt.Errorf("git refused: the worktree's config has %s, which neither git's clone nor the worker's staging writes: the harness changed .git/config, and the worker's git runs only with the config it staged", key)
+		}
+	}
+	return nil
+}
+
+// RemotesDir holds, outside every job directory (which the harness can
+// write), the clone URL each job's take receipt named: <root>/remotes/<consumer>.
+const RemotesDir = "remotes"
+
+// keepRemote_internal keeps info's clone URL ("" when its repo and forge
+// give none) where the harness cannot write, for jobRemote_internal.
+func (r *Runner) keepRemote_internal(info TakeInfo) error {
+	dir := filepath.Join(r.RootDir, RemotesDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("keep the job's clone URL: %w", err)
+	}
+	url, _ := CloneURL(info.Repo, info.Forge) // "" on a refusal: staging refuses it with its reason
+	if err := os.WriteFile(filepath.Join(dir, info.Consumer), []byte(url+"\n"), 0o600); err != nil {
+		return fmt.Errorf("keep the job's clone URL: %w", err)
+	}
+	return nil
+}
+
+// jobRemote_internal is the clone URL rec's job pushes and fetches from:
+// the one its take receipt named, kept outside the job directory
+// (keepRemote_internal). A job.json whose repo and forge now give another
+// is refused: the harness changed it.
+func (r *Runner) jobRemote_internal(rec JobRecord) (string, error) {
+	data, err := os.ReadFile(filepath.Join(r.RootDir, RemotesDir, rec.Consumer))
+	if err != nil {
+		return "", fmt.Errorf("git refused: %s has no clone URL kept from its take receipt outside its job directory: %w", rec.Consumer, err)
+	}
+	kept := strings.TrimSpace(string(data))
+	if got := recordRemote_internal(rec); got != kept {
+		return "", fmt.Errorf("git refused: job.json's repo %q (forge %q, clone URL %q) is not the take receipt's clone URL %q: the job directory was changed after the take", rec.Repo, rec.Forge, got, kept)
+	}
+	return kept, nil
 }
 
 // recordRemote_internal is the clone URL rec's job was staged from
@@ -1027,6 +1122,9 @@ func recordRemote_internal(rec JobRecord) string {
 func (g *OSGitOps) guardRemote_internal(ctx context.Context, to time.Duration, worktree, remote string) error {
 	if strings.TrimSpace(remote) == "" {
 		return errors.New("git refused: the job names no clone URL to push or fetch: its record's repo and forge give none (CloneURL)")
+	}
+	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+		return err
 	}
 	for _, args := range [][]string{{"remote", "get-url", "origin"}, {"remote", "get-url", "--push", "origin"}} {
 		got, err := g.runGit_internal(ctx, to, worktree, args...)
@@ -1103,11 +1201,18 @@ func (g *OSGitOps) HasHead(ctx context.Context, remote, branch, sha string) (boo
 	return err == nil && strings.HasPrefix(strings.TrimSpace(out), sha), err
 }
 func (g *OSGitOps) IsDirty(ctx context.Context, worktree string) (bool, error) {
-	out, err := g.runGit_internal(ctx, g.to_internal(g.Timeouts.WithDefaults().Stage), worktree, "status", "--porcelain")
+	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+		return false, err
+	}
+	out, err := g.runGit_internal(ctx, to, worktree, "status", "--porcelain")
 	return err == nil && strings.TrimSpace(out) != "", err
 }
 func (g *OSGitOps) CommitAll(ctx context.Context, worktree, message string) (string, error) {
 	to := g.to_internal(g.Timeouts.WithDefaults().Stage)
+	if err := g.guardConfig_internal(ctx, to, worktree); err != nil {
+		return "", err
+	}
 	if _, err := g.runGit_internal(ctx, to, worktree, "add", "-A"); err != nil {
 		return "", err
 	}

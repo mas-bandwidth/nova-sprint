@@ -379,7 +379,9 @@ func TestStagePerStreamRepo(t *testing.T) {
 		case "clone":
 			clones = append(clones, strings.Join(c.Cmd.Argv[5:], " "))
 		case "config":
-			config = append(config, strings.Join(c.Cmd.Argv[6:], " "))
+			if c.Cmd.Argv[6] != "--local" { // the config guard's read
+				config = append(config, strings.Join(c.Cmd.Argv[6:], " "))
+			}
 		}
 	}
 	if strings.Join(config, ";") != "user.name "+testCommitName+";user.email "+testCommitEmail {

@@ -178,9 +178,10 @@ func TestWorkerRefusesWithoutGitToken(t *testing.T) {
 }
 
 // guardFake_internal is a fake git whose worktree reads origin as origin
-// and its push URL as pushURL, and whose config lists config ("key\nvalue"
+// and its push URL as pushURL, whose local config (.git/config) lists
+// local and whose whole config lists local and global ("key\nvalue"
 // entries); it records every git argv after the -c pairs.
-func guardFake_internal(origin, pushURL string, config ...string) (*edge.FakeExec, *[]string) {
+func guardFake_internal(origin, pushURL string, local, global []string) (*edge.FakeExec, *[]string) {
 	fx := edge.NewFakeExec()
 	var argvs []string
 	fx.On("git", func(c edge.FakeCall) edge.FakeOutcome {
@@ -191,8 +192,10 @@ func guardFake_internal(origin, pushURL string, config ...string) (*edge.FakeExe
 			return edge.FakeOutcome{Stdout: pushURL + "\n"}
 		case args[0] == "remote":
 			return edge.FakeOutcome{Stdout: origin + "\n"}
+		case args[0] == "config" && args[1] == "--local":
+			return edge.FakeOutcome{Stdout: strings.Join(local, "\x00")}
 		case args[0] == "config":
-			return edge.FakeOutcome{Stdout: strings.Join(config, "\x00")}
+			return edge.FakeOutcome{Stdout: strings.Join(append(slices.Clone(local), global...), "\x00")}
 		case args[0] == "rev-parse":
 			return edge.FakeOutcome{Stdout: strings.Repeat("a", 40) + "\n"}
 		}
@@ -201,57 +204,84 @@ func guardFake_internal(origin, pushURL string, config ...string) (*edge.FakeExe
 	return fx, &argvs
 }
 
-// #680 cold read: the worktree is under the job directory, which the
-// harness writes, so its origin, its push URL or a url.*.insteadOf may point
-// at another repo or host by the time the worker pushes. Push, the rebase's
-// fetch and OriginHasHead refuse such a worktree before any git call
-// reaches a remote; an untouched one goes to the job's clone URL by name,
-// never to origin.
-func TestWorkerGitRefusesATamperedRemote(t *testing.T) {
+// stagedLocal_internal is a work worktree's .git/config as staging leaves
+// it (git 2.56: clone --shared, remote set-url, checkout -B, the identity).
+var stagedLocal_internal = []string{"core.repositoryformatversion\n0", "core.filemode\ntrue", "core.bare\nfalse", "core.logallrefupdates\ntrue",
+	"core.ignorecase\ntrue", "core.precomposeunicode\ntrue", "remote.origin.url\nhttps://github.com/o/r.git",
+	"remote.origin.fetch\n+refs/heads/*:refs/remotes/origin/*", "branch.main.remote\norigin", "branch.main.merge\nrefs/heads/main",
+	"user.name\nSprint Bot", "user.email\n1+sprint-bot@users.noreply.example.test"}
+
+// #680 cold reads: the worktree is under the job directory, which the
+// harness writes. Its .git/config may hold a remote named after the clone
+// URL (git push <url> then goes to that remote's url), http.* that sends
+// the token to another server (sslVerify off and a proxy; a scoped
+// http.https://github.com.* beats any -c), a filter or core.sshCommand that
+// runs a command in the worker's git, or an origin, push URL or insteadOf
+// pointed elsewhere. Every worker git call after the harness (push, the
+// rebase's fetch, OriginHasHead, IsDirty, CommitAll, HeadSHA) refuses it,
+// naming the key, before git runs anything else there; an untouched
+// worktree is reached by its clone URL, never origin.
+func TestWorkerGitRefusesATamperedWorktree(t *testing.T) {
 	t.Parallel()
 	const url = "https://github.com/o/r.git"
 	sha, lease := strings.Repeat("a", 40), strings.Repeat("b", 40)
 	ctx := context.Background()
-	reaches := func(argvs []string) bool {
-		return slices.ContainsFunc(argvs, func(a string) bool {
-			return strings.HasPrefix(a, "push") || strings.HasPrefix(a, "fetch") || strings.HasPrefix(a, "ls-remote")
-		})
+	with := func(extra ...string) []string { return append(slices.Clone(stagedLocal_internal), extra...) }
+	type tamper struct {
+		origin, push  string
+		local, global []string
+		names         string // in the refusal
 	}
-	for name, fake := range map[string][]string{
-		"origin elsewhere":          {"https://evil.example/o/r.git", url},
-		"origin another repo":       {"https://github.com/other/r.git", url},
-		"push URL elsewhere":        {url, "https://evil.example/o/r.git"},
-		"insteadOf":                 {url, url, "core.bare\nfalse", "url.https://evil.example/.insteadof\nhttps://github.com/"},
-		"pushInsteadOf, mixed case": {url, url, "url.https://github.com/other/.pushInsteadOf\nhttps://github.com/o/"},
-	} {
-		for verb, call := range map[string]func(g *OSGitOps) error{
-			"push":  func(g *OSGitOps) error { return g.Push(ctx, "/wt", url, "sprint/s/p1", sha, lease) },
-			"fetch": func(g *OSGitOps) error { _, err := g.RebaseOntoStream(ctx, "/wt", url, "sprint/s/group"); return err },
-			"has head": func(g *OSGitOps) error {
-				_, err := g.OriginHasHead(ctx, "/wt", url, "sprint/s/p1", sha)
-				return err
-			},
-		} {
-			fx, argvs := guardFake_internal(fake[0], fake[1], fake[2:]...)
+	cases := map[string]tamper{
+		"a remote named after the clone URL": {url, url, with("remote." + url + ".url\n/elsewhere"), nil, "remote." + url + ".url"},
+		"http.sslVerify and http.proxy":      {url, url, with("http.https://github.com.sslverify\nfalse", "http.proxy\nhttp://evil.example:8080"), nil, "http.https://github.com.sslverify"},
+		"http.curloptResolve":                {url, url, with("http.curloptresolve\ngithub.com:443:203.0.113.9"), nil, "http.curloptresolve"},
+		"a filter":                           {url, url, with("filter.x.clean\ntouch /tmp/pwned"), nil, "filter.x.clean"},
+		"core.sshCommand":                    {url, url, with("core.sshcommand\ntouch /tmp/pwned"), nil, "core.sshcommand"},
+		"core.fsmonitor":                     {url, url, with("core.fsmonitor\ntouch /tmp/pwned"), nil, "core.fsmonitor"},
+		"an include":                         {url, url, with("include.path\n/tmp/evil.config"), nil, "include.path"},
+		"a branch remote elsewhere":          {url, url, with("branch.x.remote\nhttps://evil.example/o/r.git"), nil, "branch.x.remote"},
+		"a local insteadOf":                  {url, url, with("url.https://evil.example/.insteadof\nhttps://github.com/"), nil, "url.https://evil.example/.insteadof"},
+		"a global insteadOf rewriting it":    {url, url, stagedLocal_internal, []string{"url.https://github.com/other/.pushinsteadof\nhttps://github.com/o/"}, "rewrites the job's clone URL"},
+		"origin elsewhere":                   {"https://evil.example/o/r.git", url, stagedLocal_internal, nil, "not the job's clone URL"},
+		"origin another repo":                {"https://github.com/other/r.git", url, stagedLocal_internal, nil, "not the job's clone URL"},
+		"push URL elsewhere":                 {url, "https://evil.example/o/r.git", stagedLocal_internal, nil, "not the job's clone URL"},
+	}
+	calls := map[string]func(g *OSGitOps) error{
+		"push":  func(g *OSGitOps) error { return g.Push(ctx, "/wt", url, "sprint/s/p1", sha, lease) },
+		"fetch": func(g *OSGitOps) error { _, err := g.RebaseOntoStream(ctx, "/wt", url, "sprint/s/group"); return err },
+		"has head": func(g *OSGitOps) error {
+			_, err := g.OriginHasHead(ctx, "/wt", url, "sprint/s/p1", sha)
+			return err
+		},
+		"dirty":  func(g *OSGitOps) error { _, err := g.IsDirty(ctx, "/wt"); return err },
+		"commit": func(g *OSGitOps) error { _, err := g.CommitAll(ctx, "/wt", "m"); return err },
+		"head":   func(g *OSGitOps) error { _, err := g.HeadSHA(ctx, "/wt"); return err },
+	}
+	remoteOnly := map[string]bool{"push": true, "fetch": true, "has head": true}
+	for name, c := range cases {
+		configOnly := c.origin == url && c.push == url && c.global == nil
+		for verb, call := range calls {
+			if !configOnly && !remoteOnly[verb] {
+				continue // origin and insteadOf matter only to a call that reaches the remote
+			}
+			fx, argvs := guardFake_internal(c.origin, c.push, c.local, c.global)
 			err := call(&OSGitOps{Exec: fx, Token: gitTokenFixture})
-			if err == nil || !strings.Contains(err.Error(), "git refused:") || reaches(*argvs) {
+			ran := slices.ContainsFunc(*argvs, func(a string) bool { return !strings.HasPrefix(a, "config") && !strings.HasPrefix(a, "remote get-url") })
+			if err == nil || !strings.Contains(err.Error(), "git refused:") || !strings.Contains(err.Error(), c.names) || ran {
 				t.Fatalf("%s, %s: err %v, git ran %q", name, verb, err, *argvs)
 			}
 		}
 	}
-	fx, argvs := guardFake_internal(url, url, "url.git@github.com:.insteadof\nhttps://gitlab.example/")
+	fx, argvs := guardFake_internal(url, url, stagedLocal_internal, []string{"url.git@github.com:.insteadof\nhttps://gitlab.example/"})
 	g := &OSGitOps{Exec: fx, Token: gitTokenFixture}
-	if err := g.Push(ctx, "/wt", url, "sprint/s/p1", sha, lease); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := g.RebaseOntoStream(ctx, "/wt", url, "sprint/s/group"); err != nil {
-		t.Fatal(err)
-	}
-	if ok, err := g.OriginHasHead(ctx, "/wt", url, "sprint/s/p1", sha); err != nil || ok {
-		t.Fatal(ok, err)
+	for verb, call := range calls {
+		if err := call(g); err != nil {
+			t.Fatalf("an untouched worktree, %s: %v", verb, err)
+		}
 	}
 	for _, want := range []string{"push --force-with-lease=refs/heads/sprint/s/p1:" + lease + " " + url + " " + sha + ":refs/heads/sprint/s/p1",
-		"fetch --quiet " + url + " sprint/s/group", "ls-remote " + url + " refs/heads/sprint/s/p1"} {
+		"fetch --quiet " + url + " sprint/s/group", "ls-remote " + url + " refs/heads/sprint/s/p1", "status --porcelain", "add -A"} {
 		if !slices.Contains(*argvs, want) {
 			t.Fatalf("an untouched worktree: no %q in %q", want, *argvs)
 		}
@@ -259,7 +289,65 @@ func TestWorkerGitRefusesATamperedRemote(t *testing.T) {
 	if slices.ContainsFunc(*argvs, func(a string) bool { return strings.Contains(a, " origin ") && !strings.HasPrefix(a, "remote") }) {
 		t.Fatalf("a remote call named origin: %q", *argvs)
 	}
+	for _, c := range fx.Calls() {
+		if !slices.Equal(c.Cmd.Argv[:5], []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}) {
+			t.Fatalf("a worker git call runs the worktree's hooks or fsmonitor: %q", c.Cmd.Argv)
+		}
+	}
 	if err := (&OSGitOps{Exec: fx}).Push(ctx, "/wt", "", "sprint/s/p1", sha, lease); err == nil || !strings.Contains(err.Error(), "names no clone URL") {
 		t.Fatalf("a job with no clone URL: %v", err)
+	}
+}
+
+// The clone URL a job pushes to is its take receipt's, kept outside the
+// job directory: a job.json the harness rewrote to another repo is refused
+// before any push, and a job with no kept URL is too.
+func TestWorkerGitRefusesATamperedJobRecord(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	git := newFakeGit_internal()
+	r, err := NewRunner(Runner{Host: "b1", RootDir: root, Git: git, Now: testClock_internal(), Sleep: noSleep_internal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := JobRecord{Consumer: "p1.w1", Kind: "work", Repo: "o/r", Forge: "github", Branch: "sprint/s/p1", Gen: 1}
+	if err := r.keepRemote_internal(TakeInfo{Consumer: rec.Consumer, Repo: rec.Repo, Forge: rec.Forge}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := r.jobRemote_internal(rec); err != nil || got != "https://github.com/o/r.git" {
+		t.Fatalf("the receipt's clone URL: %q, %v", got, err)
+	}
+	wt := filepath.Join(root, "jobs", rec.Consumer, "repo")
+	for name, tampered := range map[string]JobRecord{
+		"another repo": {Consumer: rec.Consumer, Kind: "work", Repo: "other/r", Forge: "github", Branch: rec.Branch, Gen: 1},
+		"another host": {Consumer: rec.Consumer, Kind: "work", Repo: "https://evil.example/o/r.git", Forge: "github", Branch: rec.Branch, Gen: 1},
+		"no repo":      {Consumer: rec.Consumer, Kind: "work", Forge: "github", Branch: rec.Branch, Gen: 1},
+	} {
+		if _, err := r.jobRemote_internal(tampered); err == nil || !strings.Contains(err.Error(), "is not the take receipt's clone URL") {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if err := r.pushBranch_internal(context.Background(), wt, &tampered, strings.Repeat("a", 40)); err == nil || !strings.Contains(err.Error(), "is not the take receipt's clone URL") {
+			t.Fatalf("%s: the push was not refused: %v", name, err)
+		}
+	}
+	if pushes := git.pushes(); len(pushes) != 0 {
+		t.Fatalf("a tampered record was pushed: %+v", pushes)
+	}
+	if _, err := r.jobRemote_internal(JobRecord{Consumer: "p2.w1", Repo: "o/r", Forge: "github"}); err == nil || !strings.Contains(err.Error(), "no clone URL kept") {
+		t.Fatalf("a job with no kept clone URL: %v", err)
+	}
+}
+
+// writeStagedRecord_internal is a job a runner before this one took and
+// staged: its record in jobDir (<root>/jobs/<consumer>) and the clone URL
+// its take kept outside it (keepRemote_internal).
+func writeStagedRecord_internal(t *testing.T, jobDir string, rec JobRecord) {
+	t.Helper()
+	if err := WriteJobRecord(jobDir, rec); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{RootDir: filepath.Dir(filepath.Dir(jobDir))}
+	if err := r.keepRemote_internal(TakeInfo{Consumer: rec.Consumer, Repo: rec.Repo, Forge: rec.Forge}); err != nil {
+		t.Fatal(err)
 	}
 }

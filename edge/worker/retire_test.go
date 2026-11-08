@@ -143,9 +143,7 @@ func newRetireRig_internal(t *testing.T, next NextResponse, rec JobRecord) *reti
 	t.Helper()
 	root := t.TempDir()
 	g := &retireRig_internal{sp: &crSprint{next: next}, git: newFakeGit_internal(), jobDir: filepath.Join(root, "jobs", rec.Consumer)}
-	if err := WriteJobRecord(g.jobDir, rec); err != nil {
-		t.Fatal(err)
-	}
+	writeStagedRecord_internal(t, g.jobDir, rec)
 	wt := filepath.Join(g.jobDir, "repo")
 	cache := filepath.Join(wt, ".gomodcache", "mod", "example.com", "m@v1")
 	if err := os.MkdirAll(cache, 0o755); err != nil {

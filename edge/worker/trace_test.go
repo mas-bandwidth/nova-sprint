@@ -311,9 +311,7 @@ func (h *runnerWalkHarness_internal) applyStep_internal(t *testing.T, act, c str
 		h.jobState[c] = JobStaged
 		rec := JobRecord{Epoch: 1, Consumer: c, Kind: "work", Row: "vision.ds", Branch: runnerBranchName_internal(c), BaseSHA: testBaseSHA,
 			Gen: 1, State: JobStaged, StartTipRead: true}
-		if err := WriteJobRecord(dir, rec); err != nil {
-			t.Fatal(err)
-		}
+		writeStagedRecord_internal(t, dir, rec)
 	case "Run":
 		rec, err := ReadJobRecord(dir)
 		if err != nil {
