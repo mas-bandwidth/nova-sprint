@@ -333,8 +333,8 @@ no land request and no land judgement is reported to you as an `engine` judgemen
 4. A row going down does not take its cards back. Its cards stay until the silence policy states,
    then an `orphan` judgement asks you. Before you answer, reach the row on the bus; release only
    when it is gone. A row that has left for good:
-   `nova-sprint release --row <row> --all --reason "<why>"` prints
-   `RELEASED row=<row> consumers=<n>`; every card goes back to ready with its branch kept.
+   for each card the `orphan` judgement names, `nova-sprint release <card>@<gen> --reason "<why>"`
+   prints `RELEASED <card> ...`; the card goes back to ready with its branch kept.
 5. Hold a row or a stream only for a real fault:
    `nova-sprint hold <row|stream> --reason "<why>" --dry-run`, then without `--dry-run`; it
    prints `HOLD ... applied at seq <n>`. A hold of a row stops new deals to it and takes back only the cards it

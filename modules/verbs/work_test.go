@@ -202,10 +202,6 @@ func TestRelease(t *testing.T) {
 	want(t, w.do("alice", "release", "p1.w1@1", "--reason", "tier"), 0, "RELEASED p1.w1", "branch sprint/s/p1 kept", "next: "+waitNext)
 	w = newWorld(t)
 	want(t, w.do("carol", "release", "p1.w1@1", "--reason", "bench down"), 0, "RELEASED p1.w1")
-	w = newWorld(t)
-	want(t, w.do("carol", "release", "--row", "alice", "--all", "--reason", "r", "--dry-run"), 0, "withdraws p1.w1@1 (dry run)")
-	want(t, w.do("carol", "release", "--row", "alice", "--all", "--reason", "r"), 0, "RELEASED row=alice consumers=1")
-	want(t, w.do("carol", "release", "--row", "alice", "--all", "--reason", "r"), 0, "holds nothing")
 }
 
 // A release is neither ok nor fail: the consumer keeps no result and says
@@ -246,9 +242,6 @@ func TestReleaseRefusals(t *testing.T) {
 		{name: "no card", as: "alice", args: []string{"release", "--reason", "r"}, exit: 2, want: []string{"<card>@<gen>"}},
 		{name: "not held", as: "alice", args: []string{"release", "p1.w1@2", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is not held at generation 2"}},
 		{name: "another's card", as: "bob", args: []string{"release", "p1.w1@1", "--reason", "r"}, exit: 1, want: []string{"p1.w1 is held by alice, not bob"}},
-		{name: "a row as a worker", as: "bob", args: []string{"release", "--row", "alice", "--all", "--reason", "r"}, exit: 1, want: []string{"release --row is the coordinator's"}},
-		{name: "no such row", as: "carol", args: []string{"release", "--row", "erin", "--all", "--reason", "r"}, exit: 1, want: []string{"no row erin"}},
-		{name: "a row without --all", as: "carol", args: []string{"release", "--row", "alice", "--reason", "r"}, exit: 2, want: []string{"confirm with --all"}},
 		{name: "an old epoch", as: "alice", args: []string{"release", "p1.w1@1", "--reason", "r", "--epoch", "3"}, exit: 1, want: []string{"epoch 3 is over"}},
 	})
 }
