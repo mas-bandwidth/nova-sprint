@@ -368,7 +368,7 @@ func TestServeTicksPushesAndLogs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, Clock: clock, Log: &log}, &healthy{})
+		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, ReposDir: t.TempDir(), Clock: clock, Log: &log}, &healthy{})
 	}()
 	<-clock.read // the deal needs the stream's base tip: no tick before the head watch has read it
 	for range 3 {
@@ -408,7 +408,7 @@ func TestServeFirstWhoFailurePlansNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, Clock: clock, Log: &log}, &healthy{})
+		done <- serve(ctx, Config{Store: f, Roster: ro, Bus: b, Policy: &answering{}, Git: stillGit{}, ReposDir: t.TempDir(), Clock: clock, Log: &log}, &healthy{})
 	}()
 	<-clock.read
 	for range 3 {
