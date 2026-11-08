@@ -396,6 +396,40 @@ func TestTickSilentRow(t *testing.T) {
 	assert.Equal(t, []string{"flap.r1.3"}, s.openJudgements("flap"))
 }
 
+// TestTickSilentRowUnseenSinceStart (finding 1): a row the run has not
+// seen since its (re)start is silent from the view's start (Since), so a
+// bench whose session died before a restart goes Gone past the gone bound
+// and has its acknowledged working consumers withdrawn past the withdraw
+// bound, its producer dealt again (tla/Steps.tla SilenceActs, witness
+// StepsSilentUnseen).
+func TestTickSilentRowUnseenSinceStart(t *testing.T) {
+	t.Parallel()
+	s := newSim(t)
+	s.stream("s1")
+	s.row("r1", 1, "pro")
+	s.row("r2", 1, "pro")
+	s.producer("p1", "s1", "pro", "a/x")
+	s.away = set{"r2": {}}
+	s.run(2)
+	s.take("p1.w1")
+	require.Equal(t, "r1", s.card("p1.w1").Holder)
+	// the run restarts: a new view built now, and r1's session is gone
+	s.fold()
+	s.v = Build(s.snap(), s.now)
+	s.away = set{"r1": {}}
+	s.now = s.now.Add(seconds(Engine.Timeouts.RowSilentGone))
+	s.tick()
+	assert.Equal(t, "down", s.snap().Rows["r1"].State, "Gone past the gone bound, measured from the restart")
+	s.requireState("p1.w1", "working")
+	s.now = s.now.Add(seconds(Engine.Timeouts.RowSilentWithdraw))
+	s.tick()
+	s.requireState("p1.w1", "fail")
+	assert.Contains(t, s.card("p1.w1").Reason, "row r1 silent for")
+	s.tick()
+	s.requireState("p1", "working")
+	assert.Equal(t, "r2", s.card("p1.w2").Holder, "dealt again to the row that is there")
+}
+
 // TestTickStableOpIDs: the same view and inputs name the same ops.
 func TestTickStableOpIDs(t *testing.T) {
 	t.Parallel()

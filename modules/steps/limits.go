@@ -47,7 +47,10 @@ func (t *tick) hasLive(p string) bool {
 }
 
 // rowLimits is the silence and flap rules of one row. A row absent from
-// Seen is unknown, and nothing fires on it.
+// Seen (not seen since the run's start) is silent since the view's start,
+// so a row whose session died before a restart still goes Gone and has its
+// working consumers withdrawn (tla/Steps.tla SilenceActs, witness
+// StepsSilentUnseen).
 func (t *tick) rowLimits(n string) {
 	r := t.v.Rows[n]
 	if r.Flaps >= Engine.FlapLimit {
@@ -55,7 +58,7 @@ func (t *tick) rowLimits(n string) {
 	}
 	seen, known := t.in.Seen[n]
 	if !known {
-		return
+		seen = t.v.Since
 	}
 	silent := t.in.Now.Sub(seen)
 	if silent >= seconds(t.tmo.RowSilentWithdraw) {
