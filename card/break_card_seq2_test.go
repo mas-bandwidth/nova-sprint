@@ -110,17 +110,17 @@ func TestBreakHeldRed(t *testing.T) {
 		b.ok(b.P("p1", ReadYes{}))
 		b.ok(b.P("p1", Landed{Head: hB}))
 	})
-	t.Run("red then block, unblock, restart: Start clears it", func(t *testing.T) {
+	t.Run("red then hold, unhold, restart: Start clears it", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.review("p1", "r1", hA)
 		b.readOf("p1", "r2", "ok")
 		b.ok(b.P("p1", ReadYes{}))
 		b.ok(b.P("p1", Red{Head: hA, Reason: "ci"}))
 		assert.True(t, b.c("p1").Red)
-		b.ok(b.P("p1", Block{Reason: "stuck"}))
+		b.ok(b.P("p1", HoldCard{Reason: "held: stuck"}))
 		assert.True(t, b.c("p1").Red)
-		b.no(b.P("p1", WaiveRed{Reason: "x"}), "WaiveRed needs ready or waiting") // blocked
-		b.ok(b.P("p1", Unblock{Reason: "go"}))
+		b.no(b.P("p1", WaiveRed{Reason: "x"}), "unhold it before WaiveRed") // held
+		b.ok(b.P("p1", UnholdCard{Reason: "go"}))
 		b.ok(b.P("p1", Resolve{}))
 		c := b.run("p1", "r1", "ok", hB)
 		assert.False(t, b.c("p1").Red) // Start cleared it
@@ -387,7 +387,7 @@ func TestBreakHeldSentinel(t *testing.T) {
 	t.Run("what a sentinel never takes", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.sentinel("g", []string{"p1"}))
-		for _, ev := range []Event{Resolve{}, Start{Row: "r1", Branch: "b", Base: base}, AskRead{Row: "r1"}, Edit{Prose: "x"}, Rescore{Score: 3}, Block{Reason: "x"}} {
+		for _, ev := range []Event{Resolve{}, Start{Row: "r1", Branch: "b", Base: base}, AskRead{Row: "r1"}, Edit{Prose: "x"}, Rescore{Score: 3}, HoldCard{Reason: "held: x"}} {
 			if b.step(b.P("g", ev)) {
 				t.Fatalf("%s accepted for a sentinel", name(ev))
 			}

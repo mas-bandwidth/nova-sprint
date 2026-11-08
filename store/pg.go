@@ -24,7 +24,7 @@ var schemaSQL string
 // schema's hash. Version 2 adds to version 1: the card columns kind (with
 // sentinel), of, after, author, base_sha, prior_head, result (with fault),
 // bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding and red; the card
-// states blocked and done; the row columns gen, held and reason (round 22
+// state done (round 29 dropped blocked); the row columns gen, held and reason (round 22
 // dropped kind, width, tiers, model and harness: configuration, the
 // roster's); the tables judgements and cursors; the events' policy; the meta
 // hash; the triggers that keep a card's kind, of, stream, holder, tier, id
@@ -95,6 +95,14 @@ const round26Hash = "475ac9c67bf8c1d041e7a54b69f7c4e3a0b0d56bfd43a11dc6e4db31ff6
 // heartbeat's version (round 28, the release of the binary that beat;
 // defect D3), in Migrate's one transaction, then the new hash is recorded.
 const round27Hash = "5aae26316b0ddbffbe2668a180446cd027dbf237a8e05baa85038786de6858b5"
+
+// round28Hash is the schema hash of round 28's schema.sql
+// (testdata/schema-round28.sql): its cards admit the state blocked. Running
+// schema.sql on it replaces the state's CHECK without blocked (round 29;
+// Glenn, 2026-11-07: blocked is no state), and Migrate moves every blocked
+// card to waiting with its reason (migrateBlocked), in its one transaction,
+// then the new hash is recorded.
+const round28Hash = "45e961bd30f7a3497cc42ffa132adca022ee48703a9b218369e6c7fbae79a24e"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
@@ -278,6 +286,9 @@ func (p *PG) Migrate(ctx context.Context) error {
 	if _, err := tx.Exec(ctx, sql); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
+	if err := migrateBlocked(ctx, tx); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, "UPDATE sprint.meta SET hash = $1 WHERE id = 1", schemaHash); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
@@ -290,6 +301,52 @@ func (p *PG) Migrate(ctx context.Context) error {
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: migrate: %w", err)
+	}
+	return nil
+}
+
+// migrateBlocked moves every card a store made before round 29 left in
+// state blocked to waiting, its reason kept (Glenn, 2026-11-07: blocked is no
+// state; a held card, or one a missing route stopped, is waiting with its
+// reason, which the deal refuses), in Migrate's transaction, then validates
+// the state's CHECK, which schema.sql adds NOT VALID. The current epoch's
+// cards move through one op of the protocol (actor store-migrate), so their
+// gens rise and the log rebuilds to them (guarantee 5); an earlier epoch's,
+// which no rebuild reads, by a plain UPDATE. A store with none logs nothing,
+// so a second Migrate is a no-op.
+func migrateBlocked(ctx context.Context, tx pgx.Tx) error {
+	var epoch int
+	var now time.Time
+	if err := tx.QueryRow(ctx, "SELECT n, transaction_timestamp() FROM sprint.epoch WHERE id = 1").Scan(&epoch, &now); err != nil {
+		return fmt.Errorf("store: migrate: reading the epoch: %w", err)
+	}
+	rows, err := tx.Query(ctx, "SELECT id FROM sprint.cards WHERE state = 'blocked' AND epoch = $1 ORDER BY id", epoch)
+	if err != nil {
+		return fmt.Errorf("store: migrate: reading the blocked cards: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return fmt.Errorf("store: migrate: reading the blocked cards: %w", err)
+	}
+	if len(ids) > 0 {
+		writes := make([]Write, len(ids))
+		for i, id := range ids {
+			writes[i] = SetCardState{Card: id, State: "waiting"}
+		}
+		op := Op{ID: "migrate-blocked-" + schemaHash, Epoch: epoch, Actor: "store-migrate", Kind: "migrate", At: at(now), Writes: writes}
+		r, err := (&PG{}).inTx(ctx, tx, op, check, func(t txn, epoch int) (string, *State, *State, error) { return run(t, epoch, op) })
+		switch {
+		case err != nil:
+			return fmt.Errorf("store: migrate: moving the blocked cards to waiting: %w", err)
+		case !r.Accepted:
+			return fmt.Errorf("store: migrate: moving the blocked cards to waiting was refused: %s", r.Reason)
+		}
+	}
+	if _, err := tx.Exec(ctx, "UPDATE sprint.cards SET state = 'waiting' WHERE state = 'blocked' AND epoch < $1", epoch); err != nil {
+		return fmt.Errorf("store: migrate: moving an earlier epoch's blocked cards to waiting: %w", err)
+	}
+	if _, err := tx.Exec(ctx, "ALTER TABLE sprint.cards VALIDATE CONSTRAINT cards_state_check"); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
 	return nil

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -183,8 +184,8 @@ func (t *tick) cleared(j store.Judgement) string {
 			}
 		}
 	case "blocked":
-		if c, ok := t.v.Cards[j.About]; !ok || c.State != "blocked" {
-			return j.About + " is no longer blocked"
+		if c, ok := t.v.Cards[j.About]; !ok || c.State != card.Waiting || !card.HeldReason(c.Reason) {
+			return j.About + " is no longer held"
 		}
 	case "unacked":
 		if c, ok := t.v.Cards[j.About]; !ok || c.State != "working" || t.v.Acked(j.About) {

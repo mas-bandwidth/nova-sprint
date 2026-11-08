@@ -175,10 +175,10 @@ func (m *mover) producerEvent(e Event) *Refusal {
 		return m.rescore(v)
 	case SetPriority:
 		return m.setPriority(v)
-	case Block:
-		return m.block(v)
-	case Unblock:
-		return m.unblock(v)
+	case HoldCard:
+		return m.holdCard(v)
+	case UnholdCard:
+		return m.unholdCard(v)
 	}
 	return no("%s is not a producer event; Move takes the producer table's events", name(e))
 }
@@ -221,6 +221,9 @@ func (m *mover) resolve(e Resolve) *Refusal {
 	if r := m.from(e, Waiting); r != nil {
 		return r
 	}
+	if Held(m.p) {
+		return no("producer %s is held (%s); the deal never takes a held card: unhold it first", m.p.ID, m.p.Reason)
+	}
 	if r := m.stream(true); r != nil {
 		return r
 	}
@@ -237,6 +240,9 @@ func (m *mover) park(e Park) *Refusal {
 	}
 	if r := m.stream(false); r != nil {
 		return r
+	}
+	if HeldReason(e.Reason) {
+		return no("reason %q would hold producer %s; Park parks it under the stream's hold, HoldCard holds it", e.Reason, m.p.ID)
 	}
 	m.state(m.p.ID, Waiting)
 	if e.Reason == "" {
@@ -512,11 +518,12 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 		return r
 	}
 	if _, route := RouteFault(c.Reason); route && !bounce {
-		// A fault naming a missing route or device blocks the producer on
-		// the first fault, never a re-deal (defect 48, intent rule 33): the
-		// same kind of row would fault the same way. Layer 3 opens the
-		// blocked judgement; the coordinator's Unblock deals it again.
-		m.state(m.p.ID, Blocked)
+		// A fault naming a missing route or device leaves the producer
+		// waiting with the fault's reason on the first fault, never a
+		// re-deal (defect 48, intent rule 33): the same kind of row would
+		// fault the same way, and Resolve refuses the reason (Held). Layer
+		// 3 opens the judgement; the coordinator's UnholdCard deals it again.
+		m.state(m.p.ID, Waiting)
 		m.reason(m.p.ID, m.p.Reason, c.Reason)
 		m.head(m.p.ID, m.p.Head, c.Head)
 		return nil
@@ -688,6 +695,9 @@ func (m *mover) readFix(e ReadFix) *Refusal {
 func (m *mover) waiveRed(e WaiveRed) *Refusal {
 	if r := m.from(e, Ready, Waiting); r != nil {
 		return r
+	}
+	if Held(m.p) {
+		return no("producer %s is held (%s); unhold it before WaiveRed", m.p.ID, m.p.Reason)
 	}
 	if r := m.noLive(m.liveRefusal); r != nil {
 		return r
@@ -864,8 +874,7 @@ func (m *mover) waive(e Waive) *Refusal {
 		return r
 	}
 	m.write(store.SetCardNeeds{Card: m.p.ID, Needs: slices.DeleteFunc(slices.Clone(m.p.Needs), func(n string) bool { return n == e.Need })})
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
-	return nil
+	return m.ownReason(e.Reason)
 }
 
 func (m *mover) relink(e Relink) *Refusal {
@@ -896,8 +905,7 @@ func (m *mover) relink(e Relink) *Refusal {
 	needs := slices.Clone(m.p.Needs)
 	needs[slices.Index(needs, e.Need)] = e.To
 	m.write(store.SetCardNeeds{Card: m.p.ID, Needs: needs})
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
-	return nil
+	return m.ownReason(e.Reason)
 }
 
 // cycle is the path of needs and after from id back to p ("c2", "c1" for c1
@@ -952,7 +960,7 @@ func (m *mover) edit(e Edit) *Refusal {
 	prose := e.Prose != "" && e.Prose != m.p.Prose
 	paths := e.Paths != nil && !slices.Equal(e.Paths, m.p.Paths)
 	done := e.DoneWhen != nil && !slices.Equal(e.DoneWhen, m.p.DoneWhen)
-	if m.p.State == Waiting && m.s.Held && !prose && !paths && !done && e.Reason != "" && e.Reason != m.p.Reason {
+	if m.p.State == Waiting && (m.s.Held || Held(m.p)) && !prose && !paths && !done && e.Reason != "" && e.Reason != m.p.Reason {
 		return no("reason is the hold's while parked")
 	}
 	if prose {
@@ -964,7 +972,9 @@ func (m *mover) edit(e Edit) *Refusal {
 	if done {
 		m.write(store.SetCardDoneWhen{Card: m.p.ID, DoneWhen: e.DoneWhen})
 	}
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
+	if r := m.ownReason(e.Reason); r != nil {
+		return r
+	}
 	if len(m.plan.Writes) == 0 {
 		return no("Edit of producer %s changes nothing", m.p.ID)
 	}
@@ -996,45 +1006,75 @@ func (m *mover) setPriority(e SetPriority) *Refusal {
 		return no("%s %s is already at priority %s", m.p.Kind, m.p.ID, level)
 	}
 	m.write(store.SetCardPriority{Card: m.p.ID, Priority: level})
-	m.reason(m.p.ID, m.p.Reason, e.Reason)
+	return m.ownReason(e.Reason)
+}
+
+// ownReason writes a coordinator's reason on a producer that stays where it
+// is (Waive, Relink, Edit, SetPriority): a held producer keeps its hold's
+// reason, which is what holds it (Held), and no such event sets a reason
+// that would hold a waiting producer: HoldCard is the one hold.
+func (m *mover) ownReason(now string) *Refusal {
+	switch {
+	case Held(m.p):
+		return nil
+	case m.p.State == Waiting && HeldReason(now):
+		return no("reason %q would hold producer %s; hold it with HoldCard", now, m.p.ID)
+	}
+	m.reason(m.p.ID, m.p.Reason, now)
 	return nil
 }
 
-// block parks a producer for the coordinator: policy's bounce limit, or the
-// coordinator's hold of one card (defect 47; from waiting too, so a card
-// can be held before it is ready). From working the attempt's consumer must
-// have been withdrawn (fail): one that has reported is applied first, never
+// holdCard holds a producer for the coordinator: policy's bounce limit, or
+// the coordinator's hold of one card (defect 47; from waiting too, so a card
+// can be held before it is ready). It waits with the hold's reason, which
+// the deal refuses (Held). From working the attempt's consumer must have
+// been withdrawn (fail): one that has reported is applied first, never
 // discarded.
-func (m *mover) block(e Block) *Refusal {
+func (m *mover) holdCard(e HoldCard) *Refusal {
 	if r := firstOf(m.from(e, Waiting, Ready, Review, Working), m.noLive(m.liveRefusal)); r != nil {
 		return r
 	}
-	if m.p.Kind == "sentinel" {
-		return no("sentinel %s is never dealt; there is nothing to block", m.p.ID)
+	switch {
+	case m.p.Kind == "sentinel":
+		return no("sentinel %s is never dealt; there is nothing to hold", m.p.ID)
+	case Held(m.p):
+		return no("producer %s is already held (%s)", m.p.ID, m.p.Reason)
+	case !strings.HasPrefix(e.Reason, HeldPrefix) || !HeldReason(e.Reason):
+		return no("a hold's reason starts %q and names why: %q", HeldPrefix, e.Reason)
 	}
 	if m.p.State == Working {
 		id := workID(m.p.ID, m.p.Attempt) // present and fenced: noLive required it
 		c := m.cons[slices.IndexFunc(m.cons, func(c Card) bool { return c.ID == id })]
 		if c.State == Done {
 			apply := map[string]string{"ok": "Finished", "fail": "Broken", "fault": "Faulted"}[c.Result]
-			return no("consumer %s reported %s; apply it with %s before Block", c.ID, c.Result, apply)
+			return no("consumer %s reported %s; apply it with %s before HoldCard", c.ID, c.Result, apply)
 		}
 	}
-	m.state(m.p.ID, Blocked)
+	if m.p.State != Waiting {
+		m.state(m.p.ID, Waiting)
+	}
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	return nil
 }
 
-func (m *mover) unblock(e Unblock) *Refusal {
-	if r := m.from(e, Blocked); r != nil {
+// unholdCard lifts a held producer (Held: the coordinator's hold, or a
+// missing-route fault's wait) back to plain waiting, whence it resolves and
+// is dealt as any other; parked under the stream's hold when the stream is
+// held.
+func (m *mover) unholdCard(e UnholdCard) *Refusal {
+	if r := m.from(e, Waiting); r != nil {
 		return r
 	}
-	if m.s.Name != m.p.Stream {
+	switch {
+	case !Held(m.p):
+		return no("producer %s is not held; UnholdCard lifts a hold", m.p.ID)
+	case HeldReason(e.Reason):
+		return no("reason %q would hold producer %s again; an unhold names why it is lifted", e.Reason, m.p.ID)
+	case m.s.Name != m.p.Stream:
 		return no("stream %s is not producer %s's stream %s", m.s.Name, m.p.ID, m.p.Stream)
 	}
 	m.expect(store.StreamHeld{Stream: m.s.Name, Held: m.s.Held})
-	m.state(m.p.ID, Waiting)
-	why := e.Reason
+	why := cmp.Or(e.Reason, "unheld")
 	if m.s.Held {
 		why = holdPhrase(m.s)
 	}

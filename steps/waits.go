@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
 )
 
@@ -36,6 +37,7 @@ type StreamWaits struct {
 // State is its state, "missing" for a need that names no card.
 type Blocker struct {
 	Card, State string
+	Reason      string // the card's reason: a waiting card's hold (card.HeldReason) is answered by unhold
 	Count       int
 }
 
@@ -203,11 +205,11 @@ func sortedNeeds(c store.Card) []string {
 func (w *waitScan) blockers(m map[string]int) []Blocker {
 	out := make([]Blocker, 0, len(m))
 	for id, n := range m {
-		st := "missing"
+		st, why := "missing", ""
 		if c, ok := w.cards[id]; ok {
-			st = c.State
+			st, why = c.State, c.Reason
 		}
-		out = append(out, Blocker{Card: id, State: st, Count: n})
+		out = append(out, Blocker{Card: id, State: st, Reason: why, Count: n})
 	}
 	slices.SortFunc(out, func(a, b Blocker) int { return cmpCount(a.Count, b.Count, a.Card, b.Card) })
 	return out
@@ -246,7 +248,7 @@ func (s StreamWaits) Waiting() (onNeeds, onFiles int) {
 const shown = 3
 
 // Line is the stream's why on one line, "" when nothing of it waits:
-// "53 wait on a (working), 2 on b (blocked); 3 held behind src/x.go of c".
+// "53 wait on a (working), 2 on b (waiting); 3 held behind src/x.go of c".
 func (s StreamWaits) Line() string {
 	var parts []string
 	if len(s.Blockers) > 0 {
@@ -289,14 +291,16 @@ func ChainText(chain []string) string {
 	return strings.Join(chain[:4], " -> ") + " -> ... -> " + chain[len(chain)-1]
 }
 
-// Fix is the command for a blocker: a blocked one answered, a missing or
-// failed one relinked away from, one in flight looked at (its landing frees
-// the chain). Never a priority: levels are set by request only (intent
-// rule 14).
+// Fix is the command for a blocker: a held one (waiting on a hold or a
+// missing route) unheld, a missing or failed one relinked away from, one in
+// flight looked at (its landing frees the chain). Never a priority: levels
+// are set by request only (intent rule 14).
 func (b Blocker) Fix() string {
+	switch {
+	case b.State == card.Waiting && card.HeldReason(b.Reason):
+		return "nova-sprint unhold " + b.Card + " --reason \"<why>\" (it waits: " + b.Reason + ")"
+	}
 	switch b.State {
-	case "blocked":
-		return "nova-sprint judge blocked." + b.Card + ".<n> unblock --reason \"<why>\" (nova-sprint judge lists it)"
 	case "missing", "fail":
 		return "nova-sprint relink <card> --need " + b.Card + " --to <card> --reason \"<why>\""
 	}

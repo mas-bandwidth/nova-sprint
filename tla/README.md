@@ -440,7 +440,7 @@ current head whose `review` equals the producer's.
 
 The rulings modelled: a Withdraw of the working producer's work consumer
 releases the producer in the same step (Preempt's Withdraw too), so
-Released and Block from working are kept as the tables have them but are
+Released and HoldCard from working are kept as the tables have them but are
 never enabled; Broken, Faulted, ReadFix, Released and that release write the
 producer parked (waiting) when the stream is held; a work consumer reports
 ok, fail or fault, a read ok, fix or fault; an ok work head is neither the
@@ -465,7 +465,7 @@ recorded on the producer as a flag `red` (the producers-only card column
 `red`; the code holds it in `pr` until the store has the column): Red sets
 it, Finished, Start and Preempt's Start clear it, and WaiveRed requires it.
 The prior-read check alone does not imply it: a Finished can come back to
-an already-read head (Block and Unblock out of review, an attempt withdrawn
+an already-read head (HoldCard and UnholdCard out of review, an attempt withdrawn
 with another head, an attempt reporting the old head), and only the red
 check refuses WaiveRed there (CardWaiveRedWithoutRed). `finding` is written
 only by ReadFix: Broken and Faulted keep it (the code writes a return's
@@ -632,11 +632,11 @@ State invariants:
   tables have it, per the card model's ruling).
 - **WorkingLeavesInOneStep**: a working producer with no live consumer (its
   consumer reported) has a leaving move enabled: Finished, Broken, Faulted,
-  Released or Block.
+  Released or HoldCard.
 - **ParkedUnderHold**: no producer is ready in a held stream after any step.
 - **NeverStranded**: every non-final producer with no live consumer has a
   move of its own enabled (not counting the coordinator's Cancel, Replace,
-  Block, Edit, Rescore, SetPriority), or waits on a need that can still
+  HoldCard, Edit, Rescore, SetPriority), or waits on a need that can still
   move, an after-target that is merging, or (waiting, ready, review) a row
   coming back, a hold lifting, or a full row's room (the deal is the take). A ready producer at the attempt bound, or
   one with no slot left, is exempt as the model's limit.
@@ -676,9 +676,14 @@ Step invariants (each: the last step kept its rule):
 - **OldAttemptNeverMoves**: Finished, Broken, Faulted and Released accept only
   the work consumer of the current attempt.
 - **OnlyHolderActs**: Report only from the consumer's holder.
-- **RouteFaultBlocks**: a work consumer's fault naming a missing route
-  (result `route`) moves its producer to blocked, never to ready (defect
-  48).
+- **RouteFaultWaits**: a work consumer's fault naming a missing route
+  (result `route`) moves its producer to waiting with the missing-route
+  reason (`why` route), never to ready (defect 48). There is no blocked
+  state (Glenn, 2026-11-07: "waiting is where stuff goes where it's having
+  problems"): a producer with a problem waits, its `why` saying what.
+- **HeldNeverDealt**: a producer whose `why` is held or route is waiting;
+  Resolve and WaiveRed refuse it, so the deal never takes it until
+  UnholdCard lifts it.
 - **ReadYesNeedsYes**: ReadYes only with a done ok read of the current head
   whose review equals the producer's.
 - **ReadFixNeedsFix**: ReadFix only with a done fix read of the same kind.
@@ -694,7 +699,7 @@ Step invariants (each: the last step kept its rule):
 - **HeadNeverRepeats**: a work consumer's reported or withdrawn head is
   never its prior head.
 - **FaultSpendsNothing**: Faulted keeps attempt and bounces.
-- **BlockNoLive**, **EditNoLive**: Block and Edit only with no live consumer.
+- **HoldNoLive**, **EditNoLive**: HoldCard and Edit only with no live consumer.
 - **SentinelLandsByReached**: a sentinel lands only by Reached, needs landed.
 - **WaiveRedNeedsRed**: WaiveRed only with the Red recorded.
 - **FencesOnSnapshot**: in an op, a move's conditions on a card's state are
@@ -719,11 +724,12 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardStaleReport` | life | Faulted accepts any work consumer of p | OldAttemptNeverMoves |
 | `witnesses/CardYesOnZero` | life | ReadYes without the yes-read check | ReadYesNeedsYes |
 | `witnesses/CardFaultBumpsAttempt` | life | Faulted raises attempt | FaultSpendsNothing |
-| `witnesses/CardFaultBounces` | life | Faulted raises bounces (a fault counted toward Block) | FaultSpendsNothing |
+| `witnesses/CardFaultBounces` | life | Faulted raises bounces (a fault counted toward the hold) | FaultSpendsNothing |
 | `witnesses/CardEditUnderLive` | life | Edit under a live consumer | EditNoLive |
 | `witnesses/CardCutReady` | life | Start cuts its consumer ready | DealIsTake |
 | `witnesses/CardDealOverWidth` | pre | Start has no room guard | WidthKept |
-| `witnesses/CardRouteRedealt` | life | a route fault goes back to ready | RouteFaultBlocks |
+| `witnesses/CardRouteRedealt` | life | a route fault goes back to ready | RouteFaultWaits |
+| `witnesses/CardHeldDealt` | life | Resolve takes a held producer | HeldNeverDealt |
 | `witnesses/CardNeedsCycle` | deps | Relink without the cycle check | NeedsAcyclic |
 | `witnesses/CardWithdrawLeavesWorking` | life | Withdraw does not release the working producer | WithdrawReleasesInOneStep |
 | `witnesses/CardReadFixOnZero` | life | ReadFix without the fix-read check | ReadFixNeedsFix |
@@ -735,7 +741,7 @@ Step invariants (each: the last step kept its rule):
 | `witnesses/CardTwoReadsOneRow` | life | AskRead takes a row holding a live read of the head | OneLiveReadPerRow |
 | `witnesses/CardPriorRepeated` | life | an ok report repeats the prior head | HeadNeverRepeats |
 | `witnesses/CardWaiveRedWithoutRed` | redw | WaiveRed without the red check | WaiveRedNeedsRed |
-| `witnesses/CardMergeCutUnseen` | merge | a consumer cut earlier in the op is unseen by the next move | BlockNoLive |
+| `witnesses/CardMergeCutUnseen` | merge | a consumer cut earlier in the op is unseen by the next move | HoldNoLive |
 | `witnesses/CardMergeNestedHold` | merge | a release reads the stream's hold from the snapshot | ParkedUnderHold |
 | `witnesses/CardMergeNoRerun` | merge | a merged move is checked on the snapshot, not the fold | FinalNeverMoves |
 | `witnesses/CardMergeOwnWrites` | merge | a move fences a state an earlier move wrote | FencesOnSnapshot |
@@ -753,8 +759,8 @@ Step invariants (each: the last step kept its rule):
 | `reach/CardNeverRed` | life | none | violated: merging goes red |
 | `reach/CardNeverYesAfterRed` | life | none | violated: a yes after a Red, on a new read |
 | `reach/CardNeverFaultRedealt` | life | none | violated: a faulted producer is started again |
-| `reach/CardNeverBlocked` | life | none | violated: a producer is blocked |
-| `reach/CardNeverRouteBlocked` | life | none | violated: a route fault blocks its producer |
+| `reach/CardNeverHeld` | life | none | violated: a producer waits on a hold |
+| `reach/CardNeverRouteHeld` | life | none | violated: a route fault leaves its producer waiting on it |
 | `reach/CardNeverSentinelReached` | life | none | violated: the sentinel lands on its landed need |
 | `reach/CardNeverNeedFailed` | deps | none | violated: NeedFailed takes a dependant |
 | `reach/CardNeverRelinked` | deps | none | violated: a failed need is relinked |
@@ -796,7 +802,7 @@ invariant violated (60 runs).
 | `CardHeldStreamReady` | ParkedUnderHold violated | 10428 / 3649 | 7 | 27s |
 | `CardInThisOpAlone` | InThisOpOnFailedNeed violated | 22 / 10 | 2 | 11s |
 | `CardLandedMoves` | FinalNeverMoves violated | 56 / 46 | 3 | 9s |
-| `CardMergeCutUnseen` | BlockNoLive violated | 40759 / 10276 | 8 | 30s |
+| `CardMergeCutUnseen` | HoldNoLive violated | 40759 / 10276 | 8 | 30s |
 | `CardMergeNestedHold` | ParkedUnderHold violated | 3470 / 1082 | 5 | 20s |
 | `CardMergeNestedStart` | PreemptOnBlockerRow violated | 50919 / 13081 | 8 | 33s |
 | `CardMergeNoRerun` | FinalNeverMoves violated | 190 / 138 | 3 | 15s |
@@ -874,16 +880,16 @@ round 4, each move the fault lets through is one card/ at 4a085774 refuses:
 - **CardPriorRepeated:** attempt 1 is withdrawn with head 1, attempt 2 is
   cut with prior 1 and reports ok with head 1.
 - **CardWaiveRedWithoutRed:** attempt 1 finishes head 1 (review 1), a read
-  of it says ok, Block and Unblock take p1 out of review with no Red;
+  of it says ok, HoldCard and UnholdCard take p1 out of review with no Red;
   attempt 2 (prior 1) is withdrawn with head 2, releasing p1 at head 2;
   attempt 3 (prior 2) reports ok with head 1 and Finished brings review 2
   at head 1. WaiveRed then merges on the review-1 read with no Red recorded
-  (the code: "no red on review 2"; every other check passes there: Block
+  (the code: "no red on review 2"; every other check passes there: HoldCard
   from review with no live consumer, the withdrawn head written by
   Released, an ok head that is neither base nor prior).
 - **CardMergeCutUnseen, CardMergeNestedHold, CardMergeNoRerun,
   CardMergeOwnWrites, CardMergeNestedStart** (rounds 5 and 6): AskRead then
-  Block in one op with the read unseen; HoldStream then a Withdraw leaving
+  HoldCard in one op with the read unseen; HoldStream then a Withdraw leaving
   p1 ready in a held stream; Cancel then a merged Rescore of the failed
   card; Resolve then Cancel fencing p1 ready against a waiting snapshot;
   a blocker Start on r2 then a preempt Withdraw of p1.1 working on r1 in
@@ -933,7 +939,7 @@ round 7 rulings refuse; "fix4 accepts" marks a divergence the code still has:
   YesAfterRed then cuts a new read at review 2 and merges on it; WaivedRed
   merges at review 2 on the review-1 read of the same head. FaultRedealt:
   fault, Faulted, Start of attempt 2; FindingCarried: a read says fix, ReadFix,
-  Start of attempt 2 carrying the finding. Blocked: Block from ready. SentinelReached: p1
+  Start of attempt 2 carrying the finding. Held: HoldCard from ready. SentinelReached: p1
   lands, then Reached. NeedFailed: p1 fails, NeedFailed takes p2; InThisOp:
   p1's Cancel and p2's NeedFailed in one step. Relinked: p2 fails, s's need
   is relinked to p1. Added: a with a need and an after; SentinelNeeded: a
@@ -1343,7 +1349,7 @@ which has none (the youngest is the engine's rule).
 ## Not modelled, and what the model found in the design
 
 Not modelled: holds' Withdraw of untaken consumers after the grace, the
-retire and fail limits (Block at the bounce limit, Withdraw on silence,
+retire and fail limits (HoldCard at the bounce limit, Withdraw on silence,
 Gone, flap), sentinels and `landed-sentinel`, drops (NeedFailed over a
 closure, Waive, Relink), backed-up landing groups and the rungs, `conflict`
 and `base-red`, the alarms (`stall`, `idle`, `land-rate`), judgement

@@ -139,8 +139,13 @@ type (
 	}
 	Rescore     struct{ Score int }
 	SetPriority struct{ Level, Reason string }
-	Block       struct{ Reason string }
-	Unblock     struct{ Reason string }
+	// HoldCard is the coordinator's hold of one producer (defect 47), or
+	// policy's at the bounce limit: it waits, its reason the hold's (Reason
+	// starts with HeldPrefix), and the deal never takes it (Resolve refuses
+	// it). UnholdCard lifts it, or a missing-route fault's wait, back to
+	// plain waiting with Reason. Neither is a state: a held card is waiting.
+	HoldCard   struct{ Reason string }
+	UnholdCard struct{ Reason string }
 )
 
 // Consumer events, one per row of the consumer table. There is no Take: a
@@ -251,8 +256,8 @@ func (Relink) isEvent()      {}
 func (Edit) isEvent()        {}
 func (Rescore) isEvent()     {}
 func (SetPriority) isEvent() {}
-func (Block) isEvent()       {}
-func (Unblock) isEvent()     {}
+func (HoldCard) isEvent()    {}
+func (UnholdCard) isEvent()  {}
 func (Report) isEvent()      {}
 func (Withdraw) isEvent()    {}
 func (Seen) isEvent()        {}
@@ -270,7 +275,6 @@ const (
 	Merging = "merging"
 	Done    = "done"
 	Fail    = "fail"
-	Blocked = "blocked"
 	Up      = "up"
 	Down    = "down"
 )
@@ -280,8 +284,9 @@ const LandedState = "landed"
 
 // MissingRoute is the reason kind of a fault that names a route or device
 // the row lacks (defect 48): a work consumer's fault whose reason starts
-// with it ("missing-route: adb no device attached") blocks its producer on
-// a judgement instead of a re-deal. The first word after it is the route's
+// with it ("missing-route: adb no device attached") leaves its producer
+// waiting with that reason, never dealt again until the coordinator answers
+// its judgement (Held). The first word after it is the route's
 // name, the one vocabulary of routes: the name a brief declares with
 // `NEEDS-ROUTE: <name>` (RouteField) and a machine serves through its
 // `route:<name>` role; the rest of the reason says what is missing.
@@ -305,9 +310,31 @@ func RouteName(reason string) string {
 }
 
 // HeldPrefix starts the reason of a producer the coordinator holds with
-// `hold <card>` (defect 47): a Block whose reason is "held: <why>". The
-// board lists it with the other blocked producers under its reason.
+// `hold <card>` (defect 47), or policy holds at the bounce limit: a HoldCard
+// whose reason is "held: <why>". The board lists it with the waiting
+// producers under its reason.
 const HeldPrefix = "held: "
+
+// HeldReason says whether reason holds a waiting producer out of the deal:
+// the coordinator's hold (HeldPrefix) or a missing-route fault
+// (MissingRoute). A park into a held stream ("held: stream <s> is held") is
+// the stream's hold, lifted with the stream, never the card's.
+func HeldReason(reason string) bool {
+	if _, route := RouteFault(reason); route {
+		return true
+	}
+	return strings.HasPrefix(reason, HeldPrefix) && !streamPhrase(reason)
+}
+
+// streamPhrase is a park into a held stream's reason (holdPhrase).
+func streamPhrase(reason string) bool {
+	name, ok := strings.CutPrefix(reason, "held: stream ")
+	return ok && strings.HasSuffix(name, " is held") && !strings.Contains(strings.TrimSuffix(name, " is held"), " ")
+}
+
+// Held says whether c is a producer waiting on a hold of its own (HeldReason):
+// the deal never resolves it; UnholdCard lifts it.
+func Held(c Card) bool { return c.State == Waiting && HeldReason(c.Reason) }
 
 // ReleasedPrefix starts a released consumer's reason: the record that it was
 // given back (by its row, or by a drop of its producer), not failed.

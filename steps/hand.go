@@ -175,12 +175,13 @@ func (t *tick) undealt() {
 	}
 }
 
-// routeBlocked opens the blocked judgement of a producer a missing-route
-// fault blocked (card.RouteFault; defect 48): the report is the row's own
+// routeHeld opens the blocked judgement of a producer a missing-route fault
+// left waiting (card.RouteFault; defect 48): the report is the row's own
 // op, so the judgement is the next tick's. It names the row, the card and
-// what is missing; the producer waits blocked until the coordinator answers.
-func (t *tick) routeBlocked() {
-	for _, p := range t.v.Producers("blocked") {
+// what is missing; the producer waits, never dealt, until the coordinator
+// answers.
+func (t *tick) routeHeld() {
+	for _, p := range t.v.Producers("waiting") {
 		c := t.v.Cards[p]
 		what, ok := card.RouteFault(c.Reason)
 		if !ok {
@@ -190,7 +191,7 @@ func (t *tick) routeBlocked() {
 		if w, found := t.v.Cards[workID(c)]; found {
 			row = "row " + w.Holder
 		}
-		t.judge("blocked", p, fmt.Sprintf("producer %s faulted on %s for a missing route or device: %s; it waits blocked, never dealt again by itself: %s", p, row, what, routeFix(c)))
+		t.judge("blocked", p, fmt.Sprintf("producer %s faulted on %s for a missing route or device: %s; it waits, never dealt again by itself: %s", p, row, what, routeFix(c)))
 	}
 }
 

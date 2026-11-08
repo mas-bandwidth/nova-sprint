@@ -172,15 +172,16 @@ func TestHandNoUndealtWithoutRoom(t *testing.T) {
 	assert.Empty(t, s.openJudgements("undealt"), "r1 is at width")
 }
 
-// TestHandRouteFaultBlocks: a work fault naming a missing route blocks the
-// producer on the first fault, opens a blocked judgement naming the row and
-// what is missing, and the producer is never dealt again by itself
-// (defect 48).
-func TestHandRouteFaultBlocks(t *testing.T) {
+// TestHandRouteFaultWaits: a work fault naming a missing route leaves the
+// producer waiting with that reason on the first fault (no blocked state:
+// Glenn, 2026-11-07), opens a blocked judgement naming the row and what is
+// missing, and the producer is never dealt again by itself (defect 48);
+// the coordinator's unblock answer deals it again.
+func TestHandRouteFaultWaits(t *testing.T) {
 	t.Parallel()
 	s := dealOne(t)
 	s.report("p1.w1", "fault", "", card.MissingRoute+" adb no device on this row")
-	s.requireState("p1", "blocked")
+	s.requireState("p1", "waiting")
 	s.tick()
 	js := s.openJudgements("blocked")
 	require.Len(t, js, 1)
@@ -189,10 +190,17 @@ func TestHandRouteFaultBlocks(t *testing.T) {
 	assert.Contains(t, q, "adb no device on this row")
 	assert.Contains(t, q, "declares NEEDS-ROUTE: adb, so the deal sends it only to a row serving route:adb", "the fix in the routes' one vocabulary")
 	s.run(4)
-	s.requireState("p1", "blocked")
+	s.requireState("p1", "waiting")
 	_, redealt := s.snap().Cards["p1.w2"]
 	assert.False(t, redealt, "never dealt again by itself")
 	assert.Len(t, s.openJudgements("blocked"), 1)
+	rc, ref := s.verb(Request{Actor: "rowan", Card: "p1", Event: card.UnholdCard{Reason: "adb attached"}})
+	require.Nil(t, ref)
+	require.True(t, rc.Accepted, rc.Reason)
+	s.tick()
+	assert.Empty(t, s.openJudgements("blocked"), "the judgement clears once the card is no longer held")
+	s.run(2)
+	s.requireState("p1.w2", "working")
 }
 
 // TestHandPlainFaultRedeals: a fault that names no route goes back to

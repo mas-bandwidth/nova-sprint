@@ -32,7 +32,7 @@ type Request struct {
 
 // coordinatorEvents are the events only a coordinator may raise (an engine
 // fact: a wrong coordinator could corrupt).
-var coordinatorEvents = []string{"Block", "Unblock", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream", "Landed", "Red"}
+var coordinatorEvents = []string{"HoldCard", "UnholdCard", "Waive", "Relink", "SetPriority", "WaiveRed", "Cancel", "Replace", "Edit", "Rescore", "Hold", "Unhold", "HoldStream", "UnholdStream", "Landed", "Red"}
 
 // runEvents are the run loop's own (presence).
 var runEvents = []string{"Seen", "Gone"}
@@ -143,7 +143,7 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 		return t.streamMoves(r, e)
 	case card.Cancel, card.Replace:
 		return t.dropMoves(r)
-	case card.Block:
+	case card.HoldCard:
 		return t.holdMoves(r.Card, e)
 	}
 	if _, ok := t.v.Cards[r.Card]; !ok {
@@ -158,10 +158,10 @@ func (t *tick) requestMoves(r Request) ([]move, *card.Refusal) {
 
 // holdMoves is the coordinator's hold of one producer (defect 47): each
 // live consumer withdrawn with the hold's reason (a work consumer's withdraw
-// releases its producer, its pushed branch kept), then Block, in one op, so
-// the card is never dealt again between the two. Block is planned on the
-// state the withdraws leave; card.Merge runs it again on the folded state.
-func (t *tick) holdMoves(p string, e card.Block) ([]move, *card.Refusal) {
+// releases its producer, its pushed branch kept), then HoldCard, in one op,
+// so the card is never dealt again between the two. HoldCard is planned on
+// the state the withdraws leave; card.Merge runs it again on the folded state.
+func (t *tick) holdMoves(p string, e card.HoldCard) ([]move, *card.Refusal) {
 	pc, ok := t.v.Cards[p]
 	if !ok {
 		return nil, &card.Refusal{Reason: "card " + p + " does not exist"}
@@ -177,7 +177,7 @@ func (t *tick) holdMoves(p string, e card.Block) ([]move, *card.Refusal) {
 	if len(moves) == 0 {
 		return []move{t.producerMove(p, e)}, nil
 	}
-	return append(moves, move{label: "Block " + p, plan: func() (card.Plan, *card.Refusal) {
+	return append(moves, move{label: "HoldCard " + p, plan: func() (card.Plan, *card.Refusal) {
 		after := card.FromStore(pc)
 		if after.State == card.Working {
 			after.State = cmp.Or(map[bool]string{true: card.Waiting}[t.v.Streams[pc.Stream].Held], card.Ready)

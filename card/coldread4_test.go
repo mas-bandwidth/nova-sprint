@@ -75,7 +75,7 @@ func TestColdread4DefectMergedCutIsInvisibleToTheNextMove(t *testing.T) {
 		e          Event
 	}{
 		{"Cancel", "", Cancel{Reason: "dropped"}},
-		{"Block", "", Block{Reason: "bounced"}},
+		{"HoldCard", "", HoldCard{Reason: "held: bounced"}},
 		{"Edit", "", Edit{Prose: "new scope", Reason: "scope"}},
 		{"ReadFix", "fix", ReadFix{Finding: "rename x"}},
 		{"ReadYes", "ok", ReadYes{}},
@@ -415,7 +415,7 @@ const cold4CheckSteps, cold4CheckOneIn = 1000, 1
 
 func TestColdread4Walk(t *testing.T) {
 	t.Parallel()
-	seeds, steps := walkSeeds(60, 6), 1000
+	seeds, steps := walkSeeds(60, 8), 1000
 	var mu sync.Mutex
 	accepted, kinds := map[string]int{}, map[string]int{}
 	broken, notes := map[string]*cold3Break{}, map[string]*cold3Break{}
@@ -754,7 +754,7 @@ func (w *world) cold4Prod(rng *rand.Rand, all map[string]Card, cons map[string][
 	evs := []Event{Resolve{}, Park{}, Reached{}, Start{Row: row, Branch: "b-" + p.ID, Base: base}, Finished{Consumer: cid},
 		Broken{Consumer: cid}, Faulted{Consumer: cid}, AskRead{Row: row}, ReadYes{}, ReadFix{Finding: "fix it"},
 		WaiveRed{Reason: "not the code"}, Landed{Head: p.Head}, Red{Head: p.Head, Reason: "red"}, Released{},
-		Block{Reason: "bounced"}, Unblock{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: Levels[rng.Intn(len(Levels))]},
+		HoldCard{Reason: "held: bounced"}, UnholdCard{Reason: "looked"}, Rescore{Score: rng.Intn(4)}, SetPriority{Level: Levels[rng.Intn(len(Levels))]},
 		Edit{Prose: fmt.Sprint("prose ", rng.Intn(3))}}
 	if rng.Intn(15) == 0 {
 		evs = []Event{Cancel{Reason: "c"}, Replace{By: prods[rng.Intn(len(prods))], Reason: "r"}}
@@ -844,7 +844,7 @@ func cold4Readers(w *world, p Card, rng *rand.Rand) []string {
 
 // cold4HoldPair is a hold (or an unhold of a held stream) with a move, in
 // either order; the move is most often one that returns a producer to ready
-// (a releasing Withdraw, Broken, Faulted, ReadFix, Resolve, Unblock).
+// (a releasing Withdraw, Broken, Faulted, ReadFix, Resolve, UnholdCard).
 func (w *world) cold4HoldPair(rng *rand.Rand) []cold4Step {
 	h := cold4Hold()
 	if w.snap().Streams["s1"].Held {
@@ -863,10 +863,10 @@ func (w *world) cold4HoldPair(rng *rand.Rand) []cold4Step {
 			} else if c.State == Done {
 				returns = append(returns, cold4P(p.ID, map[string]Event{"ok": Finished{Consumer: c.ID}, "fail": Broken{Consumer: c.ID}, "fault": Faulted{Consumer: c.ID}}[c.Result]))
 			}
+		case Held(p):
+			returns = append(returns, cold4P(p.ID, UnholdCard{Reason: "looked"}))
 		case p.State == Waiting:
 			returns = append(returns, cold4P(p.ID, Resolve{}))
-		case p.State == Blocked:
-			returns = append(returns, cold4P(p.ID, Unblock{Reason: "looked"}))
 		case p.State == Review && len(cons[p.ID]) > 0:
 			returns = append(returns, cold4P(p.ID, ReadFix{Finding: "f"}))
 		}
@@ -1003,7 +1003,7 @@ func (w *world) cold4ReviewPair(rng *rand.Rand) []cold4Step {
 	if len(rows) == 1 || rng.Intn(2) == 0 {
 		ask = AskRead{Row: rows[0]}
 	}
-	second := []Event{Cancel{Reason: "dropped"}, Block{Reason: "bounced"}, Edit{Prose: fmt.Sprint("scope ", rng.Intn(9)), Reason: "scope"},
+	second := []Event{Cancel{Reason: "dropped"}, HoldCard{Reason: "held: bounced"}, Edit{Prose: fmt.Sprint("scope ", rng.Intn(9)), Reason: "scope"},
 		ReadFix{Finding: "f"}, ReadYes{}, WaiveRed{Reason: "not the code"}, Rescore{Score: rng.Intn(4)}}[rng.Intn(7)]
 	return []cold4Step{cold4P(p.ID, ask), cold4P(p.ID, second)}
 }

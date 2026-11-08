@@ -26,13 +26,13 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/tests/pgbin"
 )
 
-// cr3WorkGrid is the no-blocked Work grid's minimum width and its row's content
+// cr3WorkGrid is the Work grid's minimum width and its row's content
 // width, in px, at viewport width vw, from page/index.html's own rules.
 func cr3WorkGrid(vw float64) (grid, content float64) {
 	const rem = 16.0
 	clamp := func(lo, v, hi float64) float64 { return max(lo, min(v, hi)) }
 	e := clamp(18.5*rem, 0.45*vw, 42*rem)               // .panel { --E: clamp(18.5rem, 45vw, 42rem) }
-	gap := clamp(1.5*rem, 0.10*vw-10.5625*rem, 2.5*rem) // .streams.no-blocked .row --gap
+	gap := clamp(1.5*rem, 0.10*vw-10.5625*rem, 2.5*rem) // .streams .row --gap
 	pad, s := 2*rem, 9.75*rem                           // .streams .row --pad, --S
 	name := min(27.75*rem, e-pad-gap-s)                 // --name-w, --name-cap 27.75rem
 	status := e - pad - gap - name                      // --status-w
@@ -42,7 +42,7 @@ func cr3WorkGrid(vw float64) (grid, content float64) {
 	return grid, content
 }
 
-// At 2000 px with no blocked card the Work grid, now ten columns (the fail column is gone,
+// At 2000 px the Work grid, always ten columns (the fail and blocked columns are gone,
 // the human 2026-11-07), needs 1733 px and its row has 1870 px: it fits. Before the fail
 // column went it needed 1894 px, 24 px more than the row (v2-2000.png vs v1-live-2000.png).
 // README: "the full Work table fits at both 2000 and 2800 px".
@@ -54,7 +54,8 @@ func TestColdread3DefectWorkGridOverflowsAt2000(t *testing.T) {
 	}
 	for _, rule := range []string{
 		".panel { --E: clamp(18.5rem, 45vw, 42rem); }",
-		".streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); }",
+		".streams .row { --pad: 2rem; --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem); --S: 9.75rem;",
+		"grid-template-columns: var(--name-w) var(--status-w) repeat(6, minmax(5.625rem, 1fr)) 4rem minmax(5.625rem, 1fr) minmax(7.5rem, 1.25fr); } /* Glenn 2026-11-07: fail and blocked columns gone; always ten columns */",
 		".streams .row { --name-cap: 27.75rem; }",
 		"padding: 2rem 2rem 4rem;",
 	} {

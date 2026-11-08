@@ -44,7 +44,7 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"row load":                rowLoad,
 		"sentinels":               sentinels,
 		"after":                   afterOrder,
-		"blocked":                 blockedState,
+		"no blocked state":        noBlockedState,
 		"row held":                rowHeld,
 		"hook":                    hook,
 		"stop":                    stop,
@@ -267,7 +267,7 @@ type strangeExpect struct{ AtSeq }
 
 func writeRefusals(h *harness) {
 	h.seed()
-	all := "waiting, ready, working, review, merging, landed, fail, blocked, done"
+	all := "waiting, ready, working, review, merging, landed, fail, done"
 	for _, c := range []struct {
 		w      Write
 		reason string
@@ -893,7 +893,7 @@ func rebuild(h *harness) {
 	h.ok(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}, SetCardState{"u1", "working"}, SetCardResult{"u2", "fix"}))
 	h.refused(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), "card c1 is at gen 1, expected gen 0")
 	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowFlaps{"w1", 4}, SetRowHeld{"w1", true, ""},
-		SetCardAfter{"c2", []string{"c0"}}, PutCard{Tier: "pro", Kind: "sentinel", ID: "g1", Stream: "s1", Needs: []string{"c2"}}, SetCardState{"c0", "blocked"}))
+		SetCardAfter{"c2", []string{"c0"}}, PutCard{Tier: "pro", Kind: "sentinel", ID: "g1", Stream: "s1", Needs: []string{"c2"}}, SetCardState{"c0", "fail"}))
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 	h.clear()
 	h.ok(h.op("seed2", nil, PutStream{Name: "s1"}, PutCard{Tier: "pro", Kind: "producer", ID: "c1", Stream: "s1"}, SetActivePolicy{1}, PutRow{Name: "w1"}))
@@ -954,13 +954,15 @@ func afterOrder(h *harness) {
 	assert.Nil(h.t, h.snap().Cards["c3"].After)
 }
 
-// blocked is in the set: the store admits it and leaves its moves to layer 2.
-func blockedState(h *harness) {
+// blocked is no card state (Glenn, 2026-11-07: "waiting is where stuff goes
+// where it's having problems"): the store refuses it as a write and as a
+// condition, and a held card is waiting with its reason (round 29).
+func noBlockedState(h *harness) {
 	h.seed()
-	h.ok(h.op("block", nil, SetCardState{"c1", "blocked"}))
-	assert.Equal(h.t, "blocked", h.snap().Cards["c1"].State)
-	h.ok(h.op("unblock", []Expect{CardState{"c1", "blocked"}}, SetCardState{"c1", "waiting"}))
-	h.refused(h.op("bad", []Expect{CardState{"c1", "blocked"}}, SetCardState{"c1", "ready"}), "card c1 is waiting, expected blocked")
+	h.invalidAll([]refusal{{SetCardState{"c1", "blocked"}, `card state "blocked" is not one of`}})
+	h.invalid(map[string]Op{"blocked condition": h.op("x", []Expect{CardState{"c1", "blocked"}})})
+	h.ok(h.op("hold", nil, SetCardReason{"c1", "held: looking at it"}))
+	assert.Equal(h.t, []string{"waiting", "held: looking at it"}, []string{h.snap().Cards["c1"].State, h.snap().Cards["c1"].Reason}, "a held card is waiting with its reason")
 }
 
 // held is the coordinator's hold on a row: its own write, kept by put row,

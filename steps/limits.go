@@ -8,7 +8,7 @@ import (
 )
 
 // limits is the retire and fail limits step (LAYER-3 "Retire and fail
-// limits"): Block with a blocked judgement when bounces reach the limit (a
+// limits"): HoldCard with a blocked judgement when bounces reach the limit (a
 // fault never counts, LESSONS 2.24); Withdraw of a working consumer whose
 // row is silent past the bound, branch kept; Gone for a row unseen past its
 // bound, never for one missed challenge (LESSONS 4.7: the bound is policy's
@@ -21,12 +21,12 @@ func (t *tick) limits() {
 				continue
 			}
 			why := fmt.Sprintf("bounced %d times, the limit is %d", c.Bounces, t.lim.Bounces)
-			if g := t.group("block", p, t.producerMove(p, card.Block{Reason: why})); g != nil {
-				g.judge = t.riding("blocked", p, "producer "+p+" "+why+"; it sits here until you review it")
+			if g := t.group("hold", p, t.producerMove(p, card.HoldCard{Reason: card.HeldPrefix + why})); g != nil {
+				g.judge = t.riding("blocked", p, "producer "+p+" "+why+"; it waits held until you review it")
 			}
 		}
 	}
-	t.routeBlocked()
+	t.routeHeld()
 	for _, n := range t.rowNames {
 		t.rowLimits(n)
 	}

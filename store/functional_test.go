@@ -427,6 +427,62 @@ func TestFunctionalMigrateRound27(t *testing.T) {
 	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
 }
 
+// Round 29: a store made by round 28's schema (round28Hash), with a card in
+// state blocked in the current epoch (a hold, its reason kept) and one in an
+// earlier epoch, is upgraded by Migrate: the current card is waiting with its
+// reason through one logged op of the protocol (actor store-migrate, its gen
+// raised, so the log rebuilds to it), the earlier epoch's card is waiting
+// too, the CHECK no longer admits blocked, a second Migrate is a no-op that
+// logs nothing, and the columns are in a new store's order (Glenn,
+// 2026-11-07: blocked is no state; a held card is waiting with its reason).
+func TestFunctionalMigrateRound28(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	old, err := os.ReadFile("testdata/schema-round28.sql")
+	require.NoError(t, err)
+	dsn := startPG(t)
+	c := connect(t, dsn)
+	for _, q := range []string{string(old), "UPDATE sprint.meta SET hash = '" + round28Hash + "' WHERE id = 1",
+		"UPDATE sprint.epoch SET n = 2 WHERE id = 1",
+		"INSERT INTO sprint.streams (name, epoch) VALUES ('s1', 1), ('s1', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('old', 'producer', 's1', 'blocked', 2, 'pro', 'bounced 3 times', 1)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p1', 'producer', 's1', 'blocked', 3, 'pro', 'held: looking at it', 2)",
+		"INSERT INTO sprint.cards (id, kind, stream, state, gen, tier, reason, epoch) VALUES ('p2', 'producer', 's1', 'waiting', 0, 'pro', '', 2)"} {
+		_, err = c.Exec(ctx, q)
+		require.NoError(t, err, q)
+	}
+	id, err := CheckSchema(ctx, dsn)
+	require.NoError(t, err, "Migrate would take it")
+	assert.Equal(t, SchemaIdentity{Present: true, Hash: round28Hash, Expected: schemaHash, KnownOlder: true, Owner: "nova", Round: 28}, id)
+	p := openPG(t, dsn) // Migrate
+	h := &harness{t: t, s: p, ctx: ctx, epoch: 2}
+	p1 := h.snap().Cards["p1"]
+	assert.Equal(t, []any{"waiting", "held: looking at it", 4}, []any{p1.State, p1.Reason, p1.Gen}, "the held card is waiting with its reason, its gen raised by the op")
+	assert.Equal(t, 0, h.snap().Cards["p2"].Gen, "a card that was not blocked is untouched")
+	events := h.events()
+	var moved []Event
+	for _, e := range events {
+		if e.Actor == "store-migrate" && e.After != nil && len(e.After.Cards) > 0 {
+			moved = append(moved, e)
+		}
+	}
+	require.Len(t, moved, 1, "one logged op moves the blocked cards of the current epoch")
+	assert.True(t, moved[0].Accepted)
+	assert.Equal(t, "blocked", moved[0].Before.Cards["p1"].State)
+	assert.Equal(t, "waiting", moved[0].After.Cards["p1"].State)
+	var oldState, oldReason string
+	require.NoError(t, c.QueryRow(ctx, "SELECT state, reason FROM sprint.cards WHERE id = 'old' AND epoch = 1").Scan(&oldState, &oldReason))
+	assert.Equal(t, []string{"waiting", "bounced 3 times"}, []string{oldState, oldReason}, "an earlier epoch's blocked card is waiting with its reason")
+	_, err = c.Exec(ctx, "UPDATE sprint.cards SET state = 'blocked' WHERE id = 'p2' AND epoch = 2")
+	require.Error(t, err, "the CHECK no longer admits blocked")
+	assert.Contains(t, err.Error(), "cards_state_check")
+	require.NoError(t, p.Migrate(ctx), "a second Migrate is a no-op")
+	assert.Len(t, h.events(), len(events), "a second Migrate logs nothing")
+	fresh := newDatabase(t, dsn, "fresh")
+	openPG(t, fresh)
+	assert.Equal(t, columns(t, connect(t, fresh)), columns(t, c), "a new store's columns are in the migrated store's order")
+}
+
 // columns is every sprint table's columns in their order, the order a
 // positional INSERT (pg_dump --inserts) fills them in.
 func columns(t *testing.T, c *pgx.Conn) map[string][]string {

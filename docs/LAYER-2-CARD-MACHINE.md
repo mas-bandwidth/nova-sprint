@@ -97,7 +97,7 @@ Producer events:
 | `Start{row, branch, base}` | ready | working | state, attempt+1, author=""; **cuts** a work consumer: kind work, of p, holder row, attempt, branch, base_sha, prior_head=p.head, reason=p.reason, state **working** (the deal is the take) | row up and not held; stream not held; width is not checked here, the machine seeing one producer's consumers: the dealer (layer 3) deals only to a row whose `working` consumers are below its roster width (LESSONS 3.3), and the model guards the cut with that check |
 | `Finished{c}` (its work consumer reported ok with head H) | working | review | state, head=H, author=c's row | c is p's work consumer of this attempt, done, result ok |
 | `Broken{c}` (its work consumer reported fail) | working | ready | state, reason=c's reason, bounces+1, head=c's head when c pushed one | c is p's work consumer of this attempt, done, result fail |
-| `Faulted{c}` (its work consumer reported fault) | working | ready, or **blocked** when c's reason starts `missing-route:` | state, reason=c's reason, head=c's head when c pushed one; **bounces unchanged** | c is p's work consumer of this attempt, done, result fault: a harness, environment or bench fault (exit 134 or 137, a run that never started, a staging failure, a provider's rate limit or credit refusal), which spends no attempt toward `blocked` (LESSONS 2.24, 4.14, 4.24); a fault naming a missing route or device is never dealt again by itself (defect 48) |
+| `Faulted{c}` (its work consumer reported fault) | working | ready, or **waiting** (held, reason kept) when c's reason starts `missing-route:` | state, reason=c's reason, head=c's head when c pushed one; **bounces unchanged** | c is p's work consumer of this attempt, done, result fault: a harness, environment or bench fault (exit 134 or 137, a run that never started, a staging failure, a provider's rate limit or credit refusal), which spends no attempt toward the bounce hold (LESSONS 2.24, 4.14, 4.24); a fault naming a missing route or device is never dealt again by itself (defect 48) |
 | `AskRead{row}` | review | review | **cuts** a read consumer: kind read, of p, holder row, head=p.head, author=p.author, state **working** | row up and not held; stream not held; row != p.author; width as `Start`'s, the dealer's |
 | `ReadYes` | review | merging | state | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy, which reads all of them (LESSONS 3.7) |
 | `ReadFix{reason}` | review | ready | state, reason=the findings policy chose, bounces+1 | every read consumer of p at p.head is done or fail; no live consumer of p; raised by policy from all the reads of that head, never automatically on the first fix (LESSONS 3.7); p.head is kept, so the next `Start` continues from it (LESSONS 3.9) |
@@ -111,8 +111,10 @@ Producer events:
 | `Edit{brief, reason}` | any non-final | same | brief, reason | no live consumer of p: an edit never bounces or rewrites a card in hand, and it keeps p's head, author, attempt, score and finished reads, so a scope-only edit keeps the reviewed head (LESSONS 2.25; PRIORITY D39, W14) |
 | `Rescore{score}` | any non-final | same | score | |
 | `SetPriority{level, reason}` | any non-final | same | priority | a producer only; level is `low`, `normal` (the default), `high`, `critical` or `blocker`; a verb a person or the coordinator runs on request, never raised by the engine or by policy (Glenn 2026-11-06: "Priorities are manually set by request." "Default is normal."); policy only orders within a level |
-| `Block{reason}` | waiting, ready, review, or working after its consumer is withdrawn | blocked | state, reason | a producer, never a sentinel; no live consumer of p; raised by policy when `bounces` passes its limit, with a judgement; a `fault` never counts (LESSONS 2.24); and by the coordinator's `hold <card>` with reason `held: <why>` (defect 47), its live consumers withdrawn in the same op |
-| `Unblock{reason}` | blocked | waiting | state, reason | a coordinator verb; Resolve then moves it on |
+| `HoldCard{reason}` | waiting, ready, review, or working after its consumer is withdrawn | waiting | state, reason (`held: <why>`) | a producer, never a sentinel, not already held; no live consumer of p; raised by policy when `bounces` passes its limit, with a judgement; a `fault` never counts (LESSONS 2.24); and by the coordinator's `hold <card>` with reason `held: <why>` (defect 47), its live consumers withdrawn in the same op |
+| `UnholdCard{reason}` | waiting, held | waiting | reason | a coordinator verb; Resolve then moves it on |
+
+There is no `blocked` state (Glenn, 2026-11-07: "waiting is where stuff goes where it's having problems"). A waiting producer whose reason starts `held: ` (not a stream park, `held: stream S is held`) or `missing-route:` is held (`card.Held`): Resolve and WaiveRed refuse it, so the deal never takes it, and only `UnholdCard` lifts it.
 
 Consumer events:
 
@@ -207,7 +209,7 @@ Cancels; the machine still refuses a Cancel under a live consumer.) The drop tha
 | `Unhold` | any | same | held=false |
 
 `limit` is a number policy supplies; the move is the engine's, the number is
-not. `blocked` leaves only by `Unblock`, a coordinator verb. A row's state
+not. A held producer waits until `UnholdCard`, a coordinator verb. A row's state
 never moves a card by itself.
 
 ## What it refuses, naming the fix
@@ -218,11 +220,11 @@ never moves a card by itself.
 - A head that is not a full 40-hex commit: "head abc is not a full commit sha".
 - A read report whose head is not the producer's: "producer X is at head H1, the read was of H2".
 - A read asked of the author: "r1 wrote producer X's head and may not read it".
-- A start or read in a held stream, to a blocked producer, or to a row that is down or held.
+- A start or read in a held stream, to a held producer, or to a row that is down or held.
 - A producer event naming a consumer that is not its consumer of the current
   attempt and kind, or one that is not done.
 - `NeedFailed` naming a card that is not a need, or a need that has not failed.
-- `Unblock` of a producer that is not blocked.
+- `UnholdCard` of a producer that is not held.
 - A cycle through `needs` or through `after`, at add or at any later needs,
   after or `Relink` write, naming the loop: "c1 needs c2 needs c1" (LESSONS
   2.19).
@@ -272,7 +274,7 @@ it through layer 1 as a refused op so it is visible.
   | `working` | the holder of its work consumer | the silence policy states, then `Withdraw` |
   | `review` | the holders of its live read consumers; else the next tick's `AskRead`; else, when no row may read it, a judgement to the coordinator | the readers' silence; one tick; the judgement's deadline (policy's) |
   | `merging` | the landing step's next pass, or a judgement on its stream (LANDING.md) | the landing-stall bound (LANDING.md) |
-  | `blocked` | the coordinator's `Unblock` | none, by Glenn's ruling (2026-11-05: it "sits there until you review it") |
+  | `waiting`, held | the coordinator's `UnholdCard` | none, by Glenn's ruling (2026-11-05: it "sits there until you review it") |
 
   Reversed witnesses: a review with no askable reader and no judgement; a
   needs cycle; a producer parked with no named hold.
@@ -558,9 +560,10 @@ that missed the push left it there.
   (`card.MissingRoute`; the first word after it is the route's name, as a
   brief declares it with `NEEDS-ROUTE:` and `card.RouteName` reads it, the
   rest says what is missing, "missing-route: adb no device on this bench") moves the producer to
-  `blocked` on the first such fault, never back to `ready`. Layer 3 opens the
-  blocked judgement; the producer waits there until the coordinator answers
-  (`unblock`, to deal it again, or `drop`). Any other fault is as before.
+  `waiting` with that reason on the first such fault, never back to `ready`
+  (2026-11-07: no `blocked` state). Layer 3 opens the blocked judgement; the
+  producer waits held until the coordinator answers (`unblock`, which lifts
+  the hold, or `drop`). Any other fault is as before.
 - Defect 47: `Block` is allowed from `waiting` too (a card held before it
   resolves) and refused for a sentinel, so the coordinator's
   `hold <card> --reason <why>` is a `Block` with reason `held: <why>`
@@ -570,14 +573,15 @@ that missed the push left it there.
 Model: `tla/CardMachine.tla` changes with the code. `StartCut` and
 `ReadCut` write `working`; `RoomOn(r, gone)` guards `Start`, `AskRead`,
 `AskReads` and `Preempt`; `Take` is gone and `OnlyHolderActs` covers
-`Report`; `Faulted` takes the result `route` to `blocked`; `Block` adds
-`waiting` and producers only. New invariants: `DealIsTake` (no consumer is
-`ready`), replacing `TakeBelowWidth`, and the step rule `RouteFaultBlocks`.
+`Report`; `Faulted` takes the result `route` to `waiting` with `why`
+route; `HoldCard` (was `Block`) adds `waiting` and producers only. New invariants: `DealIsTake` (no consumer is
+`ready`), replacing `TakeBelowWidth`, and the step rule `RouteFaultWaits` (was `RouteFaultBlocks`), and since
+2026-11-07 `HeldNeverDealt` with its witness `CardHeldDealt`.
 Reversed witnesses (each must violate): `CardCutReady` (a cut that writes
 `ready` breaks `DealIsTake`), `CardDealOverWidth` (a deal with no room guard
 breaks `WidthKept`), `CardRouteRedealt` (a route fault sent back to `ready`
-breaks `RouteFaultBlocks`); `CardReadyCounted` is retired with `Take`. Reach
-check `NeverRouteBlocked` (a route fault does block). The card trace maps a
+breaks `RouteFaultWaits`); `CardReadyCounted` is retired with `Take`. Reach
+check `NeverRouteHeld` (a route fault does hold). The card trace maps a
 missing-route fault to the result `route` (`card/trace.go`), and the
 breaker's trace fixture is regenerated.
 

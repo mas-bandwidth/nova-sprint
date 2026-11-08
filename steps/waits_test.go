@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/card"
 	"github.com/mas-bandwidth/nova-sprint/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -107,12 +108,14 @@ func TestIdleWhyAndFix(t *testing.T) {
 	for state, want := range map[string]string{
 		"waiting": "nova-sprint show x (it is waiting",
 		"ready":   "nova-sprint show x (it is ready",
-		"blocked": "nova-sprint judge blocked.x.<n> unblock",
 		"missing": "nova-sprint relink <card> --need x --to <card>",
 		"fail":    "nova-sprint relink <card> --need x --to <card>",
 		"review":  "nova-sprint show x (it is review",
 	} {
 		assert.Contains(t, Blocker{Card: "x", State: state}.Fix(), want, state)
+	}
+	for _, why := range []string{"held: wrong brief", card.MissingRoute + " adb"} {
+		assert.Equal(t, `nova-sprint unhold x --reason "<why>" (it waits: `+why+")", Blocker{Card: "x", State: "waiting", Reason: why}.Fix(), "a held blocker is unheld")
 	}
 }
 

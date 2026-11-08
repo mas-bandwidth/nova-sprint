@@ -63,7 +63,7 @@ func TestBreakHeldLiveRead(t *testing.T) {
 		rid := ""
 		b.ok(b.P("p1", AskRead{Row: "r2"}))
 		rid = "p1.r1.1"
-		for _, ev := range []Event{Cancel{Reason: "x"}, Block{Reason: "x"}, ReadYes{}, ReadFix{Finding: "x"}, WaiveRed{Reason: "x"}, Replace{By: "p9", Reason: "x"}, Landed{Head: hA}, Red{Head: hA, Reason: "x"}} {
+		for _, ev := range []Event{Cancel{Reason: "x"}, HoldCard{Reason: "held: x"}, ReadYes{}, ReadFix{Finding: "x"}, WaiveRed{Reason: "x"}, Replace{By: "p9", Reason: "x"}, Landed{Head: hA}, Red{Head: hA, Reason: "x"}} {
 			if b.step(b.P("p1", ev)) {
 				t.Fatalf("%s accepted under a live read", name(ev))
 			}
@@ -75,7 +75,7 @@ func TestBreakHeldLiveRead(t *testing.T) {
 	t.Run("a read cut in an op is live to the next plan of the op", func(t *testing.T) {
 		b := newBk(t, producer("p1"), producer("p9"))
 		b.review("p1", "r1", hA)
-		for _, ev := range []Event{Cancel{Reason: "x"}, Block{Reason: "x"}, Edit{Prose: "changed"}, Replace{By: "p9", Reason: "x"}} {
+		for _, ev := range []Event{Cancel{Reason: "x"}, HoldCard{Reason: "held: x"}, Edit{Prose: "changed"}, Replace{By: "p9", Reason: "x"}} {
 			b.noMerge("", b.P("p1", AskRead{Row: "r2"}), b.P("p1", ev))
 		}
 		b.is("p1", Review)
@@ -86,7 +86,7 @@ func TestBreakHeldLiveRead(t *testing.T) {
 		b.review("p1", "r1", hA)
 		rid := b.readOf("p1", "r2", "ok")
 		_ = rid
-		stale := []Event{ReadYes{}, Cancel{Reason: "x"}, Edit{Prose: "changed"}, Block{Reason: "x"}}
+		stale := []Event{ReadYes{}, Cancel{Reason: "x"}, Edit{Prose: "changed"}, HoldCard{Reason: "held: x"}}
 		var plans []Plan
 		for _, ev := range stale {
 			p, r := b.w.plan("p1", ev)
@@ -203,14 +203,15 @@ func TestBreakHeldLiveWork(t *testing.T) {
 		b.take(c2)
 		b.no(b.C(c1, Report{Result: "fail", Reason: "x"}), "nothing moves a fail card")
 	})
-	t.Run("broken, blocked, unblocked, restarted", func(t *testing.T) {
+	t.Run("broken, held, unheld, restarted", func(t *testing.T) {
 		b := newBk(t, producer("p1"))
 		b.ok(b.P("p1", Resolve{}))
 		c1 := b.run("p1", "r1", "fail", "")
 		b.ok(b.P("p1", Broken{Consumer: c1}))
-		b.ok(b.P("p1", Block{Reason: "too many"}))
-		b.no(b.P("p1", Start{Row: "r1", Branch: "b", Base: base}), "blocked")
-		b.ok(b.P("p1", Unblock{Reason: "go"}))
+		b.ok(b.P("p1", HoldCard{Reason: "held: too many"}))
+		b.no(b.P("p1", Start{Row: "r1", Branch: "b", Base: base}), "Start needs ready")
+		b.no(b.P("p1", Resolve{}), "the deal never takes a held card")
+		b.ok(b.P("p1", UnholdCard{Reason: "go"}))
 		b.ok(b.P("p1", Resolve{}))
 		c2 := b.start("p1", "r1")
 		b.is("p1", Working)

@@ -21,9 +21,9 @@ var (
 	h2   = strings.Repeat("b", 40)
 	base = strings.Repeat("c", 40)
 
-	producerStates = []string{Waiting, Ready, Working, Review, Merging, LandedState, Fail, Blocked}
+	producerStates = []string{Waiting, Ready, Working, Review, Merging, LandedState, Fail}
 	consumerStates = []string{Ready, Working, Done, Fail}
-	nonFinal       = []string{Waiting, Ready, Working, Review, Merging, Blocked}
+	nonFinal       = []string{Waiting, Ready, Working, Review, Merging}
 )
 
 // pr is producer p1 in state: attempt 1, review 1, head h1 written by r2.
@@ -131,10 +131,8 @@ func producerTable() []pcase {
 		{event: Rescore{Score: 9}, expect: []store.Expect{p1}, writes: []store.Write{store.SetCardScore{Card: "p1", Score: 9}}},
 		{event: SetPriority{Level: "blocker", Reason: "release"}, expect: []store.Expect{p1},
 			writes: []store.Write{store.SetCardPriority{Card: "p1", Priority: "blocker"}, store.SetCardReason{Card: "p1", Reason: "release"}}},
-		{event: Block{Reason: "bounced"}, from: []string{Waiting, Ready, Review, Working}, cons: gone, expect: goneFence,
-			writes: []store.Write{store.SetCardState{Card: "p1", State: Blocked}, store.SetCardReason{Card: "p1", Reason: "bounced"}}},
-		{event: Unblock{Reason: "reviewed"}, from: []string{Blocked}, expect: []store.Expect{p1, store.StreamHeld{Stream: "s1"}},
-			writes: []store.Write{store.SetCardState{Card: "p1", State: Waiting}, store.SetCardReason{Card: "p1", Reason: "reviewed"}}},
+		{event: HoldCard{Reason: "held: bounced"}, from: []string{Waiting, Ready, Review, Working}, cons: gone, expect: goneFence,
+			writes: []store.Write{store.SetCardState{Card: "p1", State: Waiting}, store.SetCardReason{Card: "p1", Reason: "held: bounced"}}},
 	}
 }
 
@@ -159,14 +157,14 @@ func TestProducerTable(t *testing.T) {
 		t.Run(name(c.event), func(t *testing.T) {
 			from := cmpList(c.from, nonFinal)
 			plan, r := c.move(from[len(from)-1])
-			if c.event == (Block{Reason: "bounced"}) {
+			if c.event == (HoldCard{Reason: "held: bounced"}) {
 				plan, r = c.move(Working) // also from working once its consumer is withdrawn
 			}
 			require.Nil(t, r, "accepted from %s", from[len(from)-1])
 			assert.Equal(t, c.expect, plan.Expect, "conditions")
 			assert.Equal(t, c.writes, plan.Writes, "writes")
 			for _, s := range from {
-				if s == Review && c.event == (Block{Reason: "bounced"}) {
+				if s == Review && c.event == (HoldCard{Reason: "held: bounced"}) {
 					continue // in review the fence also names the next read
 				}
 				_, r := c.move(s)
@@ -355,7 +353,7 @@ func TestProducerRefusals(t *testing.T) {
 		{mv(Ready, nil, Start{Row: "r1", Branch: "b"}), "base is empty; it needs a full commit sha"},
 		{mv(Ready, nil, Start{Row: "r1", Base: base}), "Start of producer p1 needs a branch"},
 		{mv(Ready, live, start("r1")), liveReason},
-		{mv(Blocked, nil, start("r1")), "producer p1 is in blocked, Start needs ready"},
+		{mv(Waiting, nil, start("r1")), "producer p1 is in waiting, Start needs ready"},
 		{mv(Working, nil, Finished{Consumer: "p1.w9"}), "card p1.w9 is not producer p1's work consumer of attempt 1"},
 		{mv(Working, []Card{rd(Done, "ok")}, Finished{Consumer: "p1.r1.1"}), "card p1.r1.1 is not producer p1's work consumer of attempt 1"},
 		{oldAttempt, "card p1.w1 is not producer p1's work consumer of attempt 2"},
@@ -381,11 +379,12 @@ func TestProducerRefusals(t *testing.T) {
 		{mv(Ready, nil, Replace{}), "Replace of producer p1 needs the card it is replaced by"},
 		{mv(Ready, nil, Replace{By: "p1"}), "producer p1 cannot be replaced by itself"},
 		{mv(Ready, nil, Replace{By: "nope"}), "card nope does not exist (Replace takes the card it is replaced by among the cards passed)"},
-		{mv(Working, live, Block{}), liveReason},
+		{mv(Working, live, HoldCard{Reason: "held: x"}), liveReason},
 		{mv(Waiting, nil, NeedFailed{Need: "n9"}), "n9 is not a need of producer p1"},
 		{mv(Waiting, nil, NeedFailed{Need: "n1"}), "need n1 of producer p1 is landed, not fail"},
 		{mv(Waiting, nil, Waive{Need: "n1"}), "need n1 of producer p1 is landed, not fail"},
-		{mv(Waiting, nil, Unblock{}), "producer p1 is in waiting, Unblock needs blocked"},
+		{mv(Waiting, nil, UnholdCard{}), "producer p1 is not held; UnholdCard lifts a hold"},
+		{mv(Ready, nil, UnholdCard{}), "producer p1 is in ready, UnholdCard needs waiting"},
 		{mv(Working, live, Edit{Prose: "x"}), "producer p1 is held by r1 in consumer p1.w1; message r1 instead"},
 		{mv(Ready, nil, Edit{}), "Edit of producer p1 changes nothing"},
 		{mv(Ready, nil, Rescore{Score: 5}), "producer p1 already has score 5"},
@@ -490,7 +489,7 @@ func TestNoLiveReadsEveryConsumer(t *testing.T) {
 	read := rd(Ready, "")
 	for _, cons := range [][]Card{{work, read}, {read, work}} {
 		refusal{mv(Review, cons, AskRead{Row: "r1"}), "producer p1 has a live work consumer p1.w9; a read is cut only after it reports"}.check(t)
-		for _, e := range []Event{Cancel{}, Replace{By: "p9"}, Block{}, ReadYes{}} {
+		for _, e := range []Event{Cancel{}, Replace{By: "p9"}, HoldCard{Reason: "held: x"}, ReadYes{}} {
 			refusal{mv(Review, cons, e), "producer p1 has live consumer p1.r1.1 on row r1; withdraw it first"}.check(t)
 		}
 		refusal{mv(Working, cons, NeedFailed{Need: "n1"}), "need n1 of producer p1 is landed, not fail"}.check(t)
@@ -602,10 +601,10 @@ func TestHoldStream(t *testing.T) {
 func TestBlockFromWorking(t *testing.T) {
 	t.Parallel()
 	for result, apply := range map[string]string{"ok": "Finished", "fail": "Broken", "fault": "Faulted"} {
-		refusal{mv(Working, []Card{wk(Done, result, h2)}, Block{}), "consumer p1.w1 reported " + result + "; apply it with " + apply + " before Block"}.check(t)
+		refusal{mv(Working, []Card{wk(Done, result, h2)}, HoldCard{Reason: "held: x"}), "consumer p1.w1 reported " + result + "; apply it with " + apply + " before HoldCard"}.check(t)
 	}
-	assert.Nil(t, mv(Working, []Card{wk(Fail, "", "")}, Block{Reason: "x"}), "withdrawn first")
-	refusal{mv(Working, nil, Block{}), "producer p1 is working; its work consumer p1.w1 was not passed (the consumer list must be complete)"}.check(t)
+	assert.Nil(t, mv(Working, []Card{wk(Fail, "", "")}, HoldCard{Reason: "held: x"}), "withdrawn first")
+	refusal{mv(Working, nil, HoldCard{Reason: "held: x"}), "producer p1 is working; its work consumer p1.w1 was not passed (the consumer list must be complete)"}.check(t)
 }
 
 // A Withdraw of the working producer's work consumer releases the producer
@@ -683,15 +682,17 @@ func TestDealIsTake(t *testing.T) {
 	require.Nil(t, r, "a held row reports what it holds: a hold stops new deals, not work in hand")
 }
 
-// Defect 48: a fault naming a missing route blocks the producer at once,
-// head kept, no bounce; any other fault returns it to ready.
-func TestRouteFaultBlocks(t *testing.T) {
+// Defect 48: a fault naming a missing route leaves the producer waiting at
+// once with the fault's reason, head kept, no bounce, and the deal never
+// takes it until the coordinator lifts it; any other fault returns it to
+// ready (Glenn, 2026-11-07: there is no blocked state).
+func TestRouteFaultWaits(t *testing.T) {
 	t.Parallel()
 	faulted := wk(Done, "fault", h2)
 	faulted.Reason = MissingRoute + " adb no device on this bench"
 	plan, r := Move(pr(Working), []Card{faulted}, rows(), Stream{Name: "s1"}, nil, Faulted{Consumer: "p1.w1"})
 	require.Nil(t, r)
-	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Blocked}))
+	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Waiting}))
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardReason{Card: "p1", Reason: faulted.Reason}))
 	for _, w := range plan.Writes {
 		_, bounce := w.(store.SetCardBounces)
@@ -703,18 +704,83 @@ func TestRouteFaultBlocks(t *testing.T) {
 	assert.Equal(t, "adb", RouteName(faulted.Reason), "the route's name is the first word, as NEEDS-ROUTE names it")
 	assert.Equal(t, "", RouteName(MissingRoute+"  "), "no name")
 	assert.Equal(t, "", RouteName("harness killed"), "not a route fault")
+	waiting := pr(Waiting)
+	waiting.Reason = faulted.Reason
+	assert.True(t, Held(waiting), "a missing-route wait holds the card")
+	refusal{mv2(waiting, Resolve{}), "producer p1 is held (missing-route: adb no device on this bench); the deal never takes a held card: unhold it first"}.check(t)
+	plan, r = Move(waiting, nil, rows(), Stream{Name: "s1"}, nil, UnholdCard{Reason: "adb attached"})
+	require.Nil(t, r)
+	assert.Equal(t, []store.Write{store.SetCardReason{Card: "p1", Reason: "adb attached"}}, plan.Writes, "the unhold is a reason, the card stays waiting")
 	faulted.Reason = "harness killed with exit 137"
 	plan, r = Move(pr(Working), []Card{faulted}, rows(), Stream{Name: "s1"}, nil, Faulted{Consumer: "p1.w1"})
 	require.Nil(t, r)
 	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Ready}))
 }
 
-// Defect 47: the coordinator's hold of one card is Block, from waiting too.
-func TestBlockFromWaiting(t *testing.T) {
+// mv2 is p's move on e with the default records and a free stream s1.
+func mv2(p Card, e Event) *Refusal {
+	_, r := Move(p, nil, rows(), Stream{Name: "s1"}, needs(LandedState), e)
+	return r
+}
+
+// Defect 47 and Glenn, 2026-11-07: the coordinator's hold of one card is
+// HoldCard, from waiting too: the card is waiting with the hold's reason,
+// never a state of its own, and the deal never takes it. Every other move
+// that keeps it waiting keeps the hold's reason; UnholdCard lifts it.
+func TestHoldCardWaits(t *testing.T) {
 	t.Parallel()
-	plan, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, nil, Block{Reason: "held: needs a tablet"})
+	plan, r := Move(pr(Waiting), nil, rows(), Stream{Name: "s1"}, nil, HoldCard{Reason: "held: needs a tablet"})
 	require.Nil(t, r)
-	assert.Contains(t, plan.Writes, store.Write(store.SetCardState{Card: "p1", State: Blocked}))
+	assert.Equal(t, []store.Write{store.SetCardReason{Card: "p1", Reason: "held: needs a tablet"}}, plan.Writes, "from waiting the hold is its reason alone")
+	held := pr(Waiting)
+	held.Reason = "held: needs a tablet"
+	held.Red = true
+	assert.True(t, Held(held))
+	for _, c := range []refusal{
+		{mv2(held, Resolve{}), "producer p1 is held (held: needs a tablet); the deal never takes a held card: unhold it first"},
+		{mv2(held, HoldCard{Reason: "held: again"}), "producer p1 is already held (held: needs a tablet)"},
+		{mv2(held, WaiveRed{Reason: "ci flake"}), "producer p1 is held (held: needs a tablet); unhold it before WaiveRed"},
+		{mv2(held, Edit{Reason: "new why"}), "reason is the hold's while parked"},
+		{mv2(held, UnholdCard{Reason: "held: still"}), `reason "held: still" would hold producer p1 again; an unhold names why it is lifted`},
+		{mv2(pr(Waiting), HoldCard{Reason: "needs a tablet"}), `a hold's reason starts "held: " and names why: "needs a tablet"`},
+		{mv2(pr(Waiting), SetPriority{Level: "high", Reason: "held: sneaky"}), `reason "held: sneaky" would hold producer p1; hold it with HoldCard`},
+		{mv2(pr(Waiting), Edit{Prose: "x", Reason: MissingRoute + " adb"}), `reason "missing-route: adb" would hold producer p1; hold it with HoldCard`},
+		{func() *Refusal {
+			_, r := Move(pr(Ready), nil, rows(), Stream{Name: "s1", Held: true}, nil, Park{Reason: "held: x"})
+			return r
+		}(),
+			`reason "held: x" would hold producer p1; Park parks it under the stream's hold, HoldCard holds it`},
+	} {
+		c.check(t)
+	}
+	plan, r = Move(held, nil, rows(), Stream{Name: "s1"}, nil, SetPriority{Level: "high", Reason: "asked"})
+	require.Nil(t, r)
+	assert.Equal(t, []store.Write{store.SetCardPriority{Card: "p1", Priority: "high"}}, plan.Writes, "a held card keeps its hold's reason")
+	plan, r = Move(held, nil, rows(), Stream{Name: "s1"}, nil, UnholdCard{})
+	require.Nil(t, r)
+	assert.Equal(t, []store.Write{store.SetCardReason{Card: "p1", Reason: "unheld"}}, plan.Writes, "an unhold always leaves a reason that does not hold")
+	plan, r = Move(held, nil, rows(), Stream{Name: "s1", Held: true}, nil, UnholdCard{Reason: "looked"})
+	require.Nil(t, r)
+	assert.Equal(t, []store.Write{store.SetCardReason{Card: "p1", Reason: "held: stream s1 is held"}}, plan.Writes, "parked under the stream's hold")
+	assert.Contains(t, plan.Expect, store.Expect(store.StreamHeld{Stream: "s1", Held: true}))
+	parked := pr(Waiting)
+	parked.Reason = "held: stream s1 is held"
+	assert.False(t, Held(parked), "a park into a held stream is the stream's hold, never the card's")
+	assert.Nil(t, mv2(parked, Resolve{}), "it resolves once the stream is free")
+	ready := pr(Ready)
+	ready.Reason = "held: x"
+	assert.False(t, Held(ready), "only a waiting card is held")
+}
+
+// HeldReason is the one test of what holds a waiting card.
+func TestHeldReason(t *testing.T) {
+	t.Parallel()
+	for reason, want := range map[string]bool{
+		"held: needs a tablet": true, "held: bounced 3 times, the limit is 3": true, MissingRoute + " adb": true, " " + MissingRoute + "x": true,
+		"held: stream s1 is held": false, "": false, "unheld: looked": false, "stream s1 is held": false, "held:": false,
+	} {
+		assert.Equal(t, want, HeldReason(reason), "%q", reason)
+	}
 }
 
 // D10: layer 1's value rules are refusals, so no plan is ErrInvalid.

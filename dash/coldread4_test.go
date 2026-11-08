@@ -25,7 +25,7 @@ import (
 
 // At a 2000 px window with a classic (non-overlay) 15 px vertical scrollbar, as desktop
 // Chrome draws on Linux and Windows and on macOS with "always show scrollbars", the
-// no-blocked Work grid needs 1864 px and its row content box is 1855 px: fitTables'
+// ten-column Work grid needs 1864 px and its row content box is 1855 px: fitTables'
 // new content-box check makes Work compact (stream | status | landed). v1 shows the full
 // table there (its grid needs 1814 px). Measured in Chromium with a 15 px scrollbar on the
 // unmodified pages: v1 full Work at windows >= 1930 px, v2 full only at >= 2010 px; at
@@ -40,7 +40,7 @@ func TestColdread4DefectWorkCompactAt2000WithScrollbar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(css), ".streams.no-blocked .row { --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem);") {
+	if !strings.Contains(string(css), ".streams .row { --pad: 2rem; --gap: clamp(1.5rem, calc(10vw - 10.5625rem), 2.5rem);") {
 		t.Fatal("index.html changed; recompute")
 	}
 	// vw units include the scrollbar; the content box does not.
@@ -130,19 +130,26 @@ func TestColdread4StreamCostsAreRoundedStrings(t *testing.T) {
 	}
 }
 
-// The In flight sub-line tooltip appends ", N blocked" unconditionally, so with no blocked
-// card it reads "3 working, 19 review, 5 fix, 0 merging, 0 blocked" where v1 reads
-// "3 working, 19 review, 5 fix, 0 merging" (measured on both pages with the round-four
-// captured envelopes). README: blocked shows "in the legend only when nonzero"; the only
-// ruled addition elsewhere is its sub-line count, which is conditional.
-func TestColdread4DefectInflightTooltipBlockedWhenAbsent(t *testing.T) {
+// There is no blocked anywhere on the board (Glenn, 2026-11-07: "not just the display,
+// that's an invented concept"): no column, legend entry, In flight part, wire count or
+// layout variant. In flight reads "N working · M verify" and its tooltip
+// "N working, R review, F fix, M merging", as v1's.
+func TestNoBlockedOnTheBoard(t *testing.T) {
 	t.Parallel()
-	js, err := page.ReadFile("page/app.js")
-	if err != nil {
-		t.Fatal(err)
+	for _, f := range []string{"page/app.js", "page/index.html"} {
+		b, err := page.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.Contains(line, "blocked") && !strings.Contains(line, "Glenn 2026-11-07") {
+				t.Errorf("%s still names blocked: %s", f, strings.TrimSpace(line))
+			}
+		}
 	}
-	if strings.Contains(string(js), `" merging, " + (sum.blocked || 0) + " blocked"`) {
-		t.Error(`app.js renderInflight: setTitle always appends ", " + (sum.blocked || 0) + " blocked"; v1 title has no blocked part`)
+	js, _ := page.ReadFile("page/app.js")
+	if !strings.Contains(string(js), `sum.merging + " merging");`) || !strings.Contains(string(js), `[[sum.working, w[0]], [sum.review + (sum.fix || 0) + sum.merging, w[1]]]`) {
+		t.Error("app.js renderInflight: the tooltip and the line are working and verify alone")
 	}
 }
 

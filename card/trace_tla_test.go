@@ -29,8 +29,8 @@ func tlaSet(ss []string) string {
 func (s Slot) tla() string { return fmt.Sprintf("<<%q, %d>>", s.P, s.I) }
 
 func (p ModelProd) tla() string {
-	return fmt.Sprintf("[st |-> %q, att |-> %d, head |-> %d, author |-> %q, bounces |-> %d, score |-> %d, prio |-> %q, needs |-> %s, after |-> %s, review |-> %d, ncut |-> %d, finding |-> %q, red |-> %s]",
-		p.St, p.Att, p.Head, p.Author, p.Bounces, p.Score, p.Prio, tlaSet(p.Needs), tlaSet(p.After), p.Review, p.Ncut, p.Finding, tlaBool(p.Red))
+	return fmt.Sprintf("[st |-> %q, att |-> %d, head |-> %d, author |-> %q, bounces |-> %d, score |-> %d, prio |-> %q, needs |-> %s, after |-> %s, review |-> %d, ncut |-> %d, finding |-> %q, red |-> %s, why |-> %q]",
+		p.St, p.Att, p.Head, p.Author, p.Bounces, p.Score, p.Prio, tlaSet(p.Needs), tlaSet(p.After), p.Review, p.Ncut, p.Finding, tlaBool(p.Red), p.Why)
 }
 
 func (c ModelCons) tla() string {
@@ -80,7 +80,7 @@ func (tr *cardTrace) args(label string, plan Plan) ([]string, error) {
 			return act("RawHold"), nil
 		}
 		return act("UnholdStream"), nil
-	case Resolve, Park, Reached, ReadYes, ReadFix, WaiveRed, Cancel, Block, Unblock, Edit:
+	case Resolve, Park, Reached, ReadYes, ReadFix, WaiveRed, Cancel, HoldCard, UnholdCard, Edit:
 		return act(name(e), "p", p), nil
 	case Start:
 		return act("Start", "p", p, "r", quoted(e.Row)), nil

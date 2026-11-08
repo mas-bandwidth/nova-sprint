@@ -113,7 +113,7 @@ func answerRequest(j store.Judgement, choice, reason string, snap store.Snapshot
 	r := steps.Request{Judgement: j.ID, Answer: choice}
 	switch choice {
 	case "unblock":
-		r.Card, r.Event = j.About, card.Unblock{Reason: reason}
+		r.Card, r.Event = j.About, card.UnholdCard{Reason: reason}
 	case "drop":
 		r.Card, r.Event = j.About, card.Cancel{Reason: reason}
 	case "fix":

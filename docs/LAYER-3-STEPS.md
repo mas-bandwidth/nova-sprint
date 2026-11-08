@@ -179,9 +179,9 @@ high, normal, low; within a rung, policy's order.
   its tier has room, opens one judgement naming the row, the card and the
   cause (the tick's budget spent before it, or an engine defect). Checked
   after the deal, so a producer dealt this tick is skipped.
-- `blocked` for a route: a producer a `missing-route:` fault blocked
+- `blocked` for a route: a producer a `missing-route:` fault held waiting
   (LAYER-2, defect 48) gets one `blocked` judgement naming the row, the card
-  and what is missing; it waits blocked, never dealt again by itself, until
+  and what is missing; it waits, never dealt again by itself, until
   the coordinator answers (`unblock` or `drop`).
 
 ### Fix
@@ -217,7 +217,7 @@ high, normal, low; within a rung, policy's order.
 
 ### Retire and fail limits
 
-- Plans: `Block` with a `blocked` judgement when bounces reach the limit (a
+- Plans: `HoldCard` (reason `held: ...`) with a `blocked` judgement when bounces reach the limit (a
   fault never counts; LESSONS 2.24); `Withdraw` of a working consumer whose
   row is silent past the bound, branch kept; `Gone` for a row whose session
   has not acked past its bound, never for one missed challenge in a long

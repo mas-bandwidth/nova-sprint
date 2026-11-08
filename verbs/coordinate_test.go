@@ -122,7 +122,7 @@ func TestJudge(t *testing.T) {
 	s := sprint()
 	blocked(&s)
 	dependant(&s)
-	setCard("p3", func(c *store.Card) { c.State = "blocked" })(&s)
+	setCard("p3", func(c *store.Card) { c.State, c.Reason = "waiting", card.HeldPrefix+"bounced" })(&s)
 	w := worldFrom(t, s)
 	want(t, w.do("carol", "judge"), 0, "JUDGEMENT blocked.p3.1 kind=blocked about=p3", "choices=unblock|drop")
 	want(t, w.do("carol", "judge", "blocked.p3.1"), 0, "question: what now?")
@@ -304,21 +304,22 @@ func TestPolicyRefusals(t *testing.T) {
 	})
 }
 
-// TestHoldCard: hold parks one producer blocked with the reason, its live
-// consumer withdrawn in the same op; unhold sends it to waiting (defect 47).
+// TestHoldCard: hold leaves one producer waiting with the hold's reason (no
+// blocked state: Glenn, 2026-11-07), its live consumer withdrawn in the same
+// op; unhold leaves it plain waiting (defect 47).
 func TestHoldCard(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
 	want(t, w.do("carol", "hold", "p1", "--reason", "wrong brief"), 0, "p1", "next: "+waitNext)
 	s := w.snap(t)
-	if c := s.Cards["p1"]; c.State != "blocked" || c.Reason != card.HeldPrefix+"wrong brief" {
+	if c := s.Cards["p1"]; c.State != "waiting" || c.Reason != card.HeldPrefix+"wrong brief" {
 		t.Fatalf("held card %+v", c)
 	}
 	if c := s.Cards["p1.w1"]; c.State != "fail" {
 		t.Fatalf("its consumer %+v", c)
 	}
 	want(t, w.do("carol", "unhold", "p1", "--reason", "brief fixed"), 0, "p1")
-	if c := w.snap(t).Cards["p1"]; c.State != "waiting" {
+	if c := w.snap(t).Cards["p1"]; c.State != "waiting" || c.Reason != "unheld: brief fixed" {
 		t.Fatalf("unheld card %+v", c)
 	}
 }

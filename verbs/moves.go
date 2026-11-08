@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/card"
@@ -44,13 +45,18 @@ func (e *Engine) again(ctx context.Context, snap store.Snapshot, i int) (store.S
 }
 
 // effects is what an op changes, in one line: each card's new state, each
-// hold, each answered judgement.
+// hold (a card's is its reason: a held card waits), each answered judgement.
 func effects(op store.Op) string {
 	var out []string
+	hold := strings.EqualFold(op.Kind, "HoldCard") || strings.EqualFold(op.Kind, "UnholdCard")
 	for _, w := range op.Writes {
 		switch x := w.(type) {
 		case store.SetCardState:
 			out = append(out, x.Card+"->"+x.State)
+		case store.SetCardReason:
+			if hold {
+				out = append(out, x.Card+" reason="+strconv.Quote(x.Reason))
+			}
 		case store.SetRowHeld:
 			out = append(out, fmt.Sprintf("row %s held=%t", x.Row, x.Held))
 		case store.SetStreamHeld:
@@ -70,10 +76,11 @@ func effects(op store.Op) string {
 }
 
 // runHold is `hold` and `unhold` of rows, streams and producer cards, one
-// op each. Holding a card (defect 47) parks that one producer blocked with
-// the reason "held: <why>", its live consumers withdrawn in the same op
-// (their pushed branches kept); unhold is its Unblock, back to waiting,
-// whence it resolves and is dealt as any other. It is never a drop.
+// op each. Holding a card (defect 47) leaves that one producer waiting with
+// the reason "held: <why>", which the deal refuses, its live consumers
+// withdrawn in the same op (their pushed branches kept); unhold is its
+// UnholdCard, back to plain waiting, whence it resolves and is dealt as any
+// other. It is never a drop.
 func runHold(e *Engine, ctx context.Context, in *input, snap store.Snapshot) (string, error) {
 	reason := in.str("reason")
 	if reason == "" {
@@ -116,9 +123,9 @@ func holdRequest(hold bool, name, reason string, snap store.Snapshot) (steps.Req
 			return steps.Request{}, refuse(name+" is a "+c.Kind+" card; hold its producer", "nova-sprint hold "+cmp.Or(c.Of, name)+" --reason \"<why>\"")
 		}
 		if hold {
-			return steps.Request{Card: name, Event: card.Block{Reason: card.HeldPrefix + reason}}, nil
+			return steps.Request{Card: name, Event: card.HoldCard{Reason: card.HeldPrefix + reason}}, nil
 		}
-		return steps.Request{Card: name, Event: card.Unblock{Reason: "unheld: " + reason}}, nil
+		return steps.Request{Card: name, Event: card.UnholdCard{Reason: "unheld: " + reason}}, nil
 	}
 	return steps.Request{}, refuse("no row, stream or card "+name, "nova-sprint show")
 }
