@@ -348,6 +348,7 @@ type SetRowLoad struct {
 	Load1Centi, Cores, SlotsUsed, SlotsTotal int
 	Tiers                                    string // the tiers the worker serves, a comma list of Tiers ("" none advertised)
 	CPUPeakDeci                              int    // the highest CPU busy percent over the last 10 s, across all cores, in tenths: 0 to 1000
+	Version                                  string // the release of the binary that beat ("" unknown)
 }
 
 // PutPolicy adds the next policy version, inactive; actor and at come from the op.

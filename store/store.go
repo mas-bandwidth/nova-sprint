@@ -212,6 +212,11 @@ type Row struct {
 	// With SlotsTotal it is the roster's input for the row (defect 74:
 	// roster.Advertised); no store rule reads it.
 	Tiers string `json:"tiers"`
+	// Version is the release of the nova-sprint binary that beat (the one
+	// that takes the row's cards), "" when it did not say in this session
+	// (cleared with Tiers). The tick deals a worker row behind the run's
+	// release nothing (roster.Advertised; defect D3); no store rule reads it.
+	Version string `json:"version"`
 }
 
 // Judgement is a row of sprint.judgements: a question owed to a person,

@@ -804,6 +804,12 @@ github.com credential is always gh as the host's login (no switch on
   min(nova-config's width, its slots) when it read its slots; one that advertised nothing keeps
   nova-config's shape; kin are untouched. The run tick applies it after its fold, every verb's
   roster read (`Engine.roster`, now given the snapshot) and the board's feed too.
+  `roster.Advertised(rows, version)` (defect D3): in the tick, `version` is the run's release
+  (`Config.Version`, `Observed.Version`) and a worker row whose beat's binary is below it, or
+  did not say, serves no tier, so it is dealt nothing; a build that is not a release pins
+  nothing, and the probe and the board pass "". `beat` records the beating build's version;
+  `check` prints `CHECK RED worker <row>: binary <v> below run's <v>: nova-fleet install
+  --repo mas-bandwidth/nova-sprint --tag <v> <row>`.
 - `release` gains `--head <sha>`: a row releasing a working work card it holds names the partial
   head it pushed, checked as a finish's head is; the producer goes back at that head with no
   bounce. nova-worker uses it for a job its restart cannot rebuild.

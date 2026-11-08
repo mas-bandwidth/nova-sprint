@@ -43,6 +43,7 @@ type Config struct {
 	Host          string
 	PID           int
 	ReposDir      string
+	Version       string // this build's release; worker rows behind it are dealt nothing (defect D3)
 	// Reconcile is the hourly provider-balance check (cost.Reconcile; nil:
 	// none), given the beat's time and the snapshot it follows.
 	Reconcile func(ctx context.Context, now time.Time, snap store.Snapshot) error
@@ -160,7 +161,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 		err = l.ticker.Fold(tctx)
 	} else {
 		var reqs []steps.EdgeRequest
-		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results()})
+		reqs, err = l.ticker.Tick(tctx, Observed{Now: start, Present: present, Roster: ro, Heads: l.edges.Heads(), Results: l.edges.Results(), Version: l.cfg.Version})
 		l.edges.Dispatch(ctx, reqs, l.ticker.snap)
 	}
 	cancel()
@@ -173,7 +174,7 @@ func (l *loop) tick(ctx context.Context, n int) error {
 	}
 	snap := l.ticker.Snapshot()
 	l.setStreams(snap.Streams)
-	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows), RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
+	if perr := l.board.Publish(dash.Feed{Snap: snap, Roster: ro.Advertised(snap.Rows, ""), RosterErr: rerr, Landings: l.ticker.Landings(), At: start}); perr != nil && err == nil {
 		err = perr
 	}
 	l.log.Log(TickMetrics{Number: n, Seq: snap.Seq, Took: l.cfg.Clock.Now().Sub(start), Counts: l.ticker.Counts(), Err: err})

@@ -56,7 +56,7 @@ func (s services) Run(ctx context.Context, listen string) error {
 	busEnv := toolEnvironment(os.Environ(), "nova-bus")
 	return run.Serve(ctx, run.Config{Store: s.store, DSN: dsn, Password: s.creds.password, Roster: ro,
 		Bus: busEdge(), Hook: run.SprintHook{Bin: busBinary(), Env: busEnv, Reply: self}, Policy: s.policy,
-		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(),
+		Git: s.git, Forge: s.forge, Listen: listen, Clock: run.WallClock{}, Log: os.Stderr, Host: host, PID: os.Getpid(), ReposDir: reposDir(), Version: versionString(),
 		Reconcile: func(ctx context.Context, now time.Time, snap store.Snapshot) error {
 			lines, err := cost.Reconcile(ctx, s.store, now, coordinatorOf(snap), cost.Readers(nil))
 			for _, l := range lines {
