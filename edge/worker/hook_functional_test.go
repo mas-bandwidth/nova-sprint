@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -14,7 +15,13 @@ import (
 func fakeBusBin_internal(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "nova-bus")
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	// Hold ForkLock while the write fd is open: a parallel test forking in that
+	// window inherits the fd until its exec, and our own exec then fails with
+	// ETXTBSY "text file busy" (golang/go#22315).
+	syscall.ForkLock.RLock()
+	err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755)
+	syscall.ForkLock.RUnlock()
+	if err != nil {
 		t.Fatal(err)
 	}
 	return p

@@ -53,9 +53,8 @@ func startFunctionalPG_internal(t *testing.T) *store.PG {
 	ctl := filepath.Join(bin, "pg_ctl")
 	start := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-l", filepath.Join(dir, "postgres.log"), "-o", "-p "+port+" -c listen_addresses=127.0.0.1 -c unix_socket_directories= -c fsync=off", "-w", "start")
 	start.Env = append(os.Environ(), "LC_ALL=C")
-	if out, err := start.CombinedOutput(); err != nil {
-		t.Fatalf("pg_ctl start: %v\n%s", err, out)
-	}
+	// Stop is registered before start: a start that fails or times out can
+	// leave a postmaster running, and t.Fatalf must not orphan it.
 	t.Cleanup(func() {
 		stop := exec.Command(ctl, "-D", filepath.Join(dir, "data"), "-m", "immediate", "-w", "stop")
 		stop.Env = append(os.Environ(), "LC_ALL=C")
@@ -63,6 +62,9 @@ func startFunctionalPG_internal(t *testing.T) *store.PG {
 			t.Logf("pg_ctl stop: %v\n%s", err, out)
 		}
 	})
+	if out, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("pg_ctl start: %v\n%s", err, out)
+	}
 	dsn := "postgres://nova@127.0.0.1:" + port + "/postgres?sslmode=disable"
 	require.Eventually(t, func() bool {
 		c, err := pgx.Connect(context.Background(), dsn)
