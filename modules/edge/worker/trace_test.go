@@ -602,8 +602,9 @@ func pickRunnerMove_internal(t *testing.T, rng *rand.Rand, h *runnerWalkHarness_
 }
 
 // consumerMoves_internal are c's enabled job moves in st: a take (the
-// acknowledgement of a card dealt working) only in a pass; a release only
-// after a restart, of a job left staged or harvested; a job's own moves only
+// acknowledgement of a card dealt working) only in a pass; a release after
+// a restart, of a job left staged or harvested, or of a staged job that
+// finds every slot held (NoSlotLimit); a job's own moves only
 // while its consumer is working; the withdraw, the retire and the holder's
 // push of defect 78 (branchMoves_internal).
 func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_internal {
@@ -611,7 +612,7 @@ func consumerMoves_internal(st runnerTraceStep_internal, c string) []runnerMove_
 	if st.storeState[c] != "working" && runnerRetireStates_internal[st.jobState[c]] {
 		return moves // a withdrawn job's only move is Retire
 	}
-	if (st.jobState[c] == JobStaged || st.jobState[c] == JobHarvested) && st.env.crashes > 0 && !st.env.released &&
+	if (st.jobState[c] == JobStaged || st.jobState[c] == JobHarvested) && (st.env.crashes > 0 || (st.jobState[c] == JobStaged && st.slotsInUse >= 1)) && !st.env.released &&
 		st.storeState[c] == "working" && st.jobDir[c].exists && st.harnessAlive[c] == 0 {
 		moves = append(moves, runnerMove_internal{"Release", c})
 	}

@@ -241,7 +241,7 @@ func TestStaleGenerationJobIsRetiredWithoutAPush(t *testing.T) {
 	t.Parallel()
 	g := newRetireRig_internal(t, NextResponse{Epoch: 1, Row: "vision.ds", State: card.Up, Width: 1,
 		Working: []ConsumerSummary{{ID: "p1.w1", Kind: "work", State: card.Working, Gen: 5, Attempt: 1}}}, staleWorkRecord_internal(JobHarvested, 3))
-	if _, err := g.r.recoverRow_internal(context.Background(), "vision.ds"); err != nil {
+	if _, _, err := g.r.recoverRow_internal(context.Background(), "vision.ds"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(g.jobDir); !errors.Is(err, os.ErrNotExist) || len(g.git.pushes()) != 0 || len(g.sp.reported()) != 0 {

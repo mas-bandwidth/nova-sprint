@@ -162,13 +162,22 @@ func (r *Runner) StepRow(ctx context.Context, row string) error {
 
 // stepRow_internal is one pass. Detached, its jobs run under the runner's
 // WaitGroup and a refused receipt among them reaches the loop on fatal.
+// Waited for (--once), every report not sent and every job not run is
+// the pass's error, a down store and a missing slot too.
 func (r *Runner) stepRow_internal(ctx context.Context, row string, detach bool) error {
-	next, launches, err := r.planPass_internal(ctx, row)
+	next, launches, unsent, err := r.planPass_internal(ctx, row)
+	if !detach {
+		if err != nil {
+			return err
+		}
+		errs := []error{unsent}
+		for _, p := range r.runJobs_internal(ctx, next, launches) {
+			errs = append(errs, p.err)
+		}
+		return errors.Join(errs...)
+	}
 	if err != nil || len(launches) == 0 {
 		return ignoreStoreDown_internal(err)
-	}
-	if !detach {
-		return r.runBatch_internal(ctx, next, launches)
 	}
 	r.jobs.Add(1)
 	go func() {
@@ -189,24 +198,23 @@ func (r *Runner) stepRow_internal(ctx context.Context, row string, detach bool) 
 // planPass_internal recovers the row's jobs (what is owed is sent, what was
 // stopped is resumed), then reads the row and claims its dealt cards up to
 // width. Each launch is claimed (in flight) before the pass returns, so the
-// next pass never starts it twice.
-func (r *Runner) planPass_internal(ctx context.Context, row string) (NextResponse, []launch_internal, error) {
-	resumes, err := r.recoverRow_internal(ctx, row)
+// next pass never starts it twice. unsent is the owed reports not sent.
+func (r *Runner) planPass_internal(ctx context.Context, row string) (next NextResponse, launches []launch_internal, unsent, err error) {
+	resumes, unsent, err := r.recoverRow_internal(ctx, row)
 	if err != nil {
-		return NextResponse{}, nil, err
+		return NextResponse{}, nil, nil, err
 	}
-	next, err := r.Sprint.Next(ctx, row)
+	next, err = r.Sprint.Next(ctx, row)
 	if err != nil {
-		return next, nil, err
+		return next, nil, unsent, err
 	}
-	var launches []launch_internal
 	for _, l := range resumes {
 		if l, ok := r.claim_internal(ctx, l.c, l.resume); ok {
 			launches = append(launches, l)
 		}
 	}
 	if next.State != card.Up || next.Held {
-		return next, launches, nil
+		return next, launches, unsent, nil
 	}
 	// The deal is the take (defect 52): every card in hand is working from
 	// its deal, within the row's width, so the pass starts a job for each
@@ -220,7 +228,7 @@ func (r *Runner) planPass_internal(ctx context.Context, row string) (NextRespons
 			launches = append(launches, l)
 		}
 	}
-	return next, launches, nil
+	return next, launches, unsent, nil
 }
 
 // claim_internal marks c in flight with a job context of its own, or is
@@ -409,6 +417,11 @@ func (r *Runner) send_internal(ctx context.Context, jobDir string, rec JobRecord
 	return err
 }
 
+// NoSlotLimit is how many runs of one job may find no nova-reserve slot
+// before the card is given back for a redeal (release, no blame), so a busy
+// bench never holds it for ever. A guess, not measured.
+const NoSlotLimit = 3
+
 // runAndHarvest_internal runs the harness (unless it already ran and wrote
 // its verdict) and harvests it. done: the job ends here (withdrawn, stopped,
 // no slot yet, or a harvest that could not be written).
@@ -429,6 +442,9 @@ func (r *Runner) runAndHarvest_internal(p *prepared_internal) (bool, error) {
 		case ctx.Err() != nil:
 			return true, r.stopped_internal(p)
 		case errors.Is(err, ErrNoSlot):
+			if p.rec.NoSlots >= NoSlotLimit {
+				r.releaseNoBlame_internal(ctx, p.rec, fmt.Sprintf("no nova-reserve slot on %s in %d tries", r.Host, p.rec.NoSlots))
+			}
 			return true, err
 		}
 	}

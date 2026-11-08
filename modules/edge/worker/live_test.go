@@ -492,7 +492,7 @@ func TestLivePassRunsOnlyTheHand(t *testing.T) {
 		t.Fatal("claim")
 	}
 	defer held.done()
-	_, launches, err := r.planPass_internal(context.Background(), "vision.ds")
+	_, launches, _, err := r.planPass_internal(context.Background(), "vision.ds")
 	if err != nil || len(launches) != 1 || launches[0].c.ID != "p2.r1" {
 		t.Fatalf("want one launch, p2.r1, got %+v (%v)", launches, err)
 	}

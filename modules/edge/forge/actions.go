@@ -96,7 +96,9 @@ const (
 // and, for a workflow with no completed run at the merge base, the base
 // branch's last completed run of the same workflow. A workflow is failing
 // at the head when a run of it there failed, or is still running with a
-// failed job. Only new red's logs are read.
+// failed job. A workflow red on the base is compared job by job: a job
+// that failed at the head and not in the base's run is new red. Only new
+// red's logs are read.
 func (c *Client) Inheritance(ctx context.Context, repo, base, baseTip, head string) (RedSplit, error) {
 	mb, err := c.mergeBase_internal(ctx, repo, baseTip, head)
 	if err != nil {
@@ -119,14 +121,22 @@ func (c *Client) Inheritance(ctx context.Context, repo, base, baseTip, head stri
 			}
 			continue
 		}
-		red, basis, err := c.redOnBase_internal(ctx, repo, base, mb, name, headRuns, baseRuns)
+		red, basis, baseRun, err := c.redOnBase_internal(ctx, repo, base, mb, name, headRuns, baseRuns)
 		if err != nil {
 			return RedSplit{}, err
 		}
 		w.Basis = basis
 		if red {
-			split.Inherited = append(split.Inherited, w)
-			continue
+			inherited, err := c.splitJobs_internal(ctx, repo, baseRun, &w)
+			if err != nil {
+				return RedSplit{}, err
+			}
+			if len(inherited.Jobs) > 0 || len(w.Jobs) == 0 {
+				split.Inherited = append(split.Inherited, inherited)
+			}
+			if len(w.Jobs) == 0 {
+				continue
+			}
 		}
 		c.readLines_internal(ctx, repo, &w)
 		split.New = append(split.New, w)
@@ -222,25 +232,54 @@ func (c *Client) failingAtHead_internal(ctx context.Context, repo, name string, 
 	return w, failing, nil
 }
 
-// redOnBase_internal is whether workflow name is red on the base, and what
-// that was read from: the merge base's newest completed run of it, else the
-// base branch's last completed run of the same workflow, else nothing.
-func (c *Client) redOnBase_internal(ctx context.Context, repo, base, mb, name string, headRuns, baseRuns []actionsRun) (bool, string, error) {
+// redOnBase_internal is whether workflow name is red on the base, what
+// that was read from, and the run it was read from: the merge base's newest
+// completed run of it, else the base branch's last completed run of the
+// same workflow, else nothing.
+func (c *Client) redOnBase_internal(ctx context.Context, repo, base, mb, name string, headRuns, baseRuns []actionsRun) (bool, string, int64, error) {
 	for _, r := range baseRuns {
 		if r.Name == name && r.Status == "completed" {
-			return r.Conclusion == "failure", "the merge base " + short(mb), nil
+			return r.Conclusion == "failure", "the merge base " + short(mb), r.ID, nil
 		}
 	}
 	i := slices.IndexFunc(headRuns, func(r actionsRun) bool { return r.Name == name })
 	path := "actions/workflows/" + strconv.FormatInt(headRuns[i].WorkflowID, 10) + "/runs?per_page=1&status=completed&branch=" + url.QueryEscape(base)
 	last, err := c.runs_internal(ctx, repo, path)
 	if err != nil {
-		return false, "", err
+		return false, "", 0, err
 	}
 	if len(last) == 0 {
-		return false, "no completed run on " + base + " to compare with", nil
+		return false, "no completed run on " + base + " to compare with", 0, nil
 	}
-	return last[0].Conclusion == "failure", fmt.Sprintf("%s's last completed run %d (the merge base %s ran none)", base, last[0].ID, short(mb)), nil
+	return last[0].Conclusion == "failure", fmt.Sprintf("%s's last completed run %d (the merge base %s ran none)", base, last[0].ID, short(mb)), last[0].ID, nil
+}
+
+// splitJobs_internal splits the failed jobs of w, a workflow red on the
+// base, by the base's run baseRun: the ones that failed there too are the
+// returned inherited copy of w; w keeps the rest, red at the head only,
+// which are new red.
+func (c *Client) splitJobs_internal(ctx context.Context, repo string, baseRun int64, w *WorkflowRed) (WorkflowRed, error) {
+	jobs, err := c.jobs_internal(ctx, repo, baseRun)
+	if err != nil {
+		return WorkflowRed{}, err
+	}
+	var redOnBase []string
+	for _, j := range jobs {
+		if j.Conclusion == "failure" {
+			redOnBase = append(redOnBase, j.Name)
+		}
+	}
+	inherited, fresh := *w, w.Jobs[:0:0]
+	inherited.Jobs = nil
+	for _, j := range w.Jobs {
+		if slices.Contains(redOnBase, j.Name) {
+			inherited.Jobs = append(inherited.Jobs, j)
+		} else {
+			fresh = append(fresh, j)
+		}
+	}
+	w.Jobs = fresh
+	return inherited, nil
 }
 
 // readLines_internal reads the first error lines of each of w's first

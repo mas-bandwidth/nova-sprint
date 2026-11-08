@@ -110,22 +110,49 @@ func (c *CLISprintClient) run_internal(ctx context.Context, argv []string) ([]by
 	return []byte(res.Stdout + res.Stderr), res.ExitCode, nil
 }
 
-// classifyCLIError_internal is a sprint verb's failure: exit 1 is the
-// sprint's refusal, in its own words (its one line, redacted), after the
-// command; anything else the store or the run being down, with the
-// command's failure.
+// classifyCLIError_internal is a sprint verb's failure: the store
+// unreachable (storeDown_internal) is ErrStoreDown, waited out; any other
+// is the sprint's refusal, in its own words (redacted) after the command and
+// its exit: exit 1 a refusal, exit 2 a failure that is not the store (a
+// misuse, a version skew), anything else a command that did not run as
+// asked.
 func (c *CLISprintClient) classifyCLIError_internal(out []byte, code int, err error) error {
 	if code == 0 && err == nil {
 		return nil
 	}
+	if storeDown_internal(out, code, err) {
+		return fmt.Errorf("%w: %w", ErrStoreDown, err)
+	}
+	words := edge.RedactN(TailBytes(out, 512), 512)
 	var ce *edge.CommandError
-	if code == 1 && errors.As(err, &ce) {
-		return fmt.Errorf("%w: %s: exit 1: %s", ErrRefused, ce.Command, edge.RedactN(TailBytes(out, 512), 512))
+	if errors.As(err, &ce) {
+		return fmt.Errorf("%w: %s: exit %d: %s", ErrRefused, ce.Command, code, cmp.Or(words, edge.RedactN(fmt.Sprint(ce.Err), 512)))
 	}
-	if code == 1 {
-		return fmt.Errorf("%w: %s", ErrRefused, edge.RedactN(TailBytes(out, 512), 512))
+	return fmt.Errorf("%w: exit %d: %s", ErrRefused, code, words)
+}
+
+// storeDown_internal: the verb did not get through to the store: it never
+// finished (timed out, or stopped by its caller), or the sprint failed
+// (exit 2) saying the store or PostgreSQL could not be reached, or saying
+// nothing at all.
+func storeDown_internal(out []byte, code int, err error) bool {
+	var xe *edge.ExecError
+	if errors.As(err, &xe) && (xe.Kind == edge.ErrTimeout || xe.Kind == edge.ErrCanceled) {
+		return true
 	}
-	return fmt.Errorf("%w: %w", ErrStoreDown, err)
+	if code != 2 {
+		return false
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		return true
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if rest, ok := strings.CutPrefix(line, "SPRINT REFUSED "); ok {
+			_, words, _ := strings.Cut(rest, ": ")
+			return strings.HasPrefix(words, "the store ") || strings.HasPrefix(words, "PostgreSQL cannot be reached")
+		}
+	}
+	return false
 }
 func (c *CLISprintClient) Hook(ctx context.Context, row string) error {
 	out, code, err := c.run_internal(ctx, c.argv_internal("hook", "--as", row, "--role", "worker"))

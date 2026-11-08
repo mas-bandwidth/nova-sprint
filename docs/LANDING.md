@@ -85,11 +85,15 @@ A red gated sha is split by the base before it is a judgement
    completed run of the same workflow is read instead
    (`actions/workflows/<id>/runs?branch=<base>&status=completed&per_page=1`)
    and the judgement says so ("<base>'s last completed run <id> (the merge
-   base <sha> ran none)"); with none there either it is **new**;
-4. for each new workflow, its failed jobs with their runners and pages, and
-   the first five error lines of the first three jobs' logs
-   (`actions/jobs/<id>/logs`, readable once a job ends while its run goes
-   on; timestamps stripped). Inherited red's logs are not read.
+   base <sha> ran none)"); with none there either it is **new**. An
+   inherited workflow is then compared job by job with that base run: only
+   its jobs that failed there too are inherited; a job that failed at the
+   head and not on the base is **new** red of the same workflow;
+4. for each new workflow (or new job of an inherited one), its failed jobs
+   with their runners and pages, and the first five error lines of the
+   first three jobs' logs (`actions/jobs/<id>/logs`, readable once a job
+   ends while its run goes on; timestamps stripped). Inherited red's logs
+   are not read.
 
 A failing check that is no failed job of any workflow (a commit status or
 another app's check run) is new red: nothing on the base compares with it.
@@ -100,7 +104,7 @@ not signed. Which one is on the check's own page; the landing does not
 parse it.
 
 Timing (directive 76): no judgement while the run is still queued or in
-progress (`CheckRollup.Waiting`) unless a failing workflow is new: red
+progress (`CheckRollup.Waiting`) unless a failing job is new: red
 that is all inherited so far is `ci_pending` ("waiting for the run") and
 asked again; new red escalates at once. A split that cannot be read waits
 for the run, then escalates as plain `ci_red` with the first failing lines
@@ -108,8 +112,9 @@ and the cause ("not compared with the base (...)").
 
 Outcomes: new red (or uncompared red) is `ci_red`, its facts led by
 `NEW red (not red on the base): <workflow> (<basis>) [job <name> on
-<runner> <url>: <lines>]`, then `inherited red (red on the base too, not
-this card's): ...`. Red that is all inherited, the run ended, is
+<runner> <url>: <lines>]`, naming only the jobs not red on the base, then
+`inherited red (red on the base too, not this card's): ...`. Red that is
+all inherited (every failing job red on the base too), the run ended, is
 `ci_red_inherited`: still a judgement (red never lands by itself), worded
 for a glance. Two examples as the code words them (unit-test data; shas
 cut to 12 here; the closing "land: ... fix: ... retry: ..." line is the
