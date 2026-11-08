@@ -258,18 +258,24 @@ func (c *Client) readLines_internal(ctx context.Context, repo string, w *Workflo
 
 // JobLines is the first five error lines of Actions job id's log (gh api
 // actions/jobs/<id>/logs, readable once the job ends, even while its run
-// goes on), each without its timestamp and cut to LineMax.
+// goes on), each without its timestamp or terminal escapes and cut to
+// LineMax. A gh that refuses to print escapes without
+// --allow-escape-sequences is passed it; one older than the flag is not.
 func (c *Client) JobLines(ctx context.Context, repo string, id int64) ([]string, error) {
 	rp, err := RepoPath(repo)
 	if err != nil {
 		return nil, err
 	}
-	stdout, _, err := c.runGHBytes_internal(ctx, LogMaxBytes, "api", "repos/"+rp+"/actions/jobs/"+strconv.FormatInt(id, 10)+"/logs")
+	argv := []string{"api", "repos/" + rp + "/actions/jobs/" + strconv.FormatInt(id, 10) + "/logs", "--allow-escape-sequences"}
+	stdout, stderr, err := c.runGHBytes_internal(ctx, LogMaxBytes, argv...)
+	if err != nil && strings.Contains(stderr, "unknown flag: --allow-escape-sequences") {
+		stdout, _, err = c.runGHBytes_internal(ctx, LogMaxBytes, argv[:2]...)
+	}
 	if err != nil {
 		return nil, err
 	}
 	var b strings.Builder
-	for _, l := range strings.Split(stdout, "\n") {
+	for _, l := range strings.Split(edge.StripANSI(stdout), "\n") {
 		l = logStampRe.ReplaceAllString(strings.TrimSpace(l), "")
 		b.WriteString(l[:min(len(l), LineMax)] + "\n")
 	}
