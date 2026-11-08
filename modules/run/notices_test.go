@@ -21,7 +21,7 @@ func TestEventNoticesUseCommittedImagesAndRecipients(t *testing.T) {
 		t.Fatalf("alice=%+v err=%v", a, err)
 	}
 	r, err := n.ForEvent(e, store.Snapshot{}, "rowan")
-	if err != nil || len(r) != 2 || r[0].Subject != "LANDED" || r[1].Group != "g" {
+	if err != nil || len(r) != 1 || r[0].Group != "g" { // a card's landing is no message; its stream's last is
 		t.Fatalf("rowan=%+v err=%v", r, err)
 	}
 	again, _ := n.ForEvent(e, store.Snapshot{}, "rowan")

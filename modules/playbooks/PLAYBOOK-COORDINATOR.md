@@ -86,14 +86,13 @@ present or has a named reason (held, away, broken) that you are repairing.
    message, `NEEDS YOU group=<key> size=<n> ids=<j1,...>`, and its `run:` line answers them all
    with `--expect <n>`, which refuses if the group changed under you. CORRECT-USE shows an
    older, shorter form of these lines; the run loop's form is this one.
-2. `LANDED card=<id> stream=<s> head=<40 hex> took=<d> cost=<$>`: nothing to run.
-3. `STREAM LANDED <s> range=<a>...<b> cards=<n> took=<d> cost=<$>`: run
+2. `STREAM LANDED <s> range=<a>...<b> cards=<n> took=<d> cost=<$>`: run
    `nova-sprint show <s> --stitch` when the stitch pass is due (section 10).
-4. `EXPIRED judgement=<j>: <what the safe default did>`: the default never drops, accepts, merges
+3. `EXPIRED judgement=<j>: <what the safe default did>`: the default never drops, accepts, merges
    or lands; decide whether more is needed.
-5. `ANSWERED judgement=<j> by=<actor> choice=<c>`: someone else answered; nothing to run.
-6. A deal or a read ask for your own row: the worker playbook.
-7. A message from a friend row, usually "stuck" with evidence: section 6.
+4. `ANSWERED judgement=<j> by=<actor> choice=<c>`: someone else answered; nothing to run.
+5. A deal or a read ask for your own row: the worker playbook.
+6. A message from a friend row, usually "stuck" with evidence: section 6.
 
 What each judgement kind asks of you, and where to look before you choose:
 

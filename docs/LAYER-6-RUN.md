@@ -208,7 +208,7 @@ nova-fleet check green, tools >= pin ......... nova-fleet up
                 -> finish <id>@<gen> --head <sha>   (holder; full sha; on origin; PR)
                   -> read <id>@<gen> yes|fix        (another hooked row; not the author)
                     -> landing (a yes at this head; CI green at this head; LANDING.md)
-                      -> LANDED pushed to the coordinator; STITCH when the stream is done
+                      -> STREAM LANDED pushed to the coordinator when the stream is done
 ```
 
 ## 4. `next` and the first time
@@ -269,9 +269,8 @@ FINISHED fix-typos.w1 head=<40 hex> applied at seq 2210
 next: nothing; wait for the bus
 
 # a read is dealt to another row; the landing gates and lands; the coordinator, who hears
-# only of producers (LESSONS 6.9), is pushed:
-LANDED card=fix-typos stream=docs head=<40 hex> took=6m12s cost=$0.04
-run: nova-sprint show fix-typos
+# only of streams (LESSONS 6.9), is pushed when the stream's last card is final:
+STREAM LANDED docs 1 landed; run: nova-sprint show docs --stitch
 ```
 
 ## 5. `up`: the setup walk
